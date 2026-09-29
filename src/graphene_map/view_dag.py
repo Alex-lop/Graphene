@@ -12,8 +12,9 @@ track it does not join, the track is drawn unbroken (│) and the line gives way
 (┬ ┤ ┼). The critical path, the longest chain of leaves not done yet, is bold and heavy (━).
 
 A cell is the row grammar's glyph and colour (`plan.look`), the id, never cut, and the title as far
-as the column allows. When the width is short, titles go first; when even glyph and id do not fit,
-there is no graph (`draw` returns None) and the screen shows the outline.
+as the column allows, two columns after the column's widest id, so a column's titles line up. When
+the width is short, titles go first; when even glyph and id do not fit, there is no graph (`draw`
+returns None) and the screen shows the outline.
 """
 
 from __future__ import annotations
@@ -32,6 +33,7 @@ from .plan_view import depths, leaf_needs, outline
 from .views import Drawn, elide, graphemes
 
 LEAST_TITLE = 6  # a title with less room than this is left out: "the…" says nothing
+GAP = 2  # the columns between a column's widest id and its titles, as between the outline's columns
 KINDS = {"done": "done", "running": "running", "came back": "on you", "review": "on you", "yours": "on you"}
 NEEDS = True  # it draws which leaf waits on which, as the outline cannot (views.choose)
 
@@ -239,14 +241,14 @@ def _widths(g: _Graph, tracks: list[list[str]], width: int) -> list[int] | None:
     levels = max(g.level.values(), default=-1) + 1
     cols = [[n for n in g.leaves if g.level[n.id] == k] for k in range(levels)]
     base = [2 + max(cell_len(n.id) for n in col) for col in cols]
-    want = [1 + max(cell_len(n.title) for n in col) for col in cols]
+    want = [GAP + max(cell_len(n.title) for n in col) for col in cols]
     spare = width - sum(base) - sum(_gap(t) for t in tracks[1:])
     if spare < 0:
         return None
     titled = set(range(levels))
     while True:
         extra = _share(spare, {k: want[k] for k in titled})
-        short = {k for k in titled if extra[k] < min(want[k], LEAST_TITLE + 1)}
+        short = {k for k in titled if extra[k] < min(want[k], LEAST_TITLE + GAP)}
         if not short:
             return [b + extra.get(k, 0) for k, b in enumerate(base)]
         titled -= short
@@ -292,7 +294,9 @@ def draw(
         left[k] = left[k - 1] + widths[k - 1] + _gap(tracks[k])
     track = {t: left[k] - _gap(tracks[k]) + 2 + m for k in range(levels) for m, t in enumerate(tracks[k])}
     arrow = [x - 2 for x in left]
-    cell = {n.id: _cell(n, words.get(n.id, ""), widths[g.level[n.id]], n.id in path) for n in g.leaves}
+    ids = {k: max(cell_len(n.id) for n in g.leaves if g.level[n.id] == k) for k in range(levels)}
+    cell = {n.id: _cell(n, words.get(n.id, ""), widths[g.level[n.id]], n.id in path, ids[g.level[n.id]])
+            for n in g.leaves}  # fmt: skip
     critical = set(zip(path, path[1:], strict=False))
     arms: dict[tuple[int, int], dict[str, int]] = {}
     style: dict[tuple[int, int], str] = {}
@@ -349,16 +353,18 @@ def draw(
     return Drawn(lines=lines, at=at, order=order, note=note(nodes, words, width))
 
 
-def _cell(node: P.Node, word: str, wide: int, critical: bool) -> list[tuple[str, str]]:
+def _cell(node: P.Node, word: str, wide: int, critical: bool, ids: int) -> list[tuple[str, str]]:
     """A leaf's cell as characters and their styles: its glyph and id in its state's colour, bold
-    on the critical path, then its title as far as ``wide`` goes; a done leaf is dim but its ✓."""
+    on the critical path, then its title as far as ``wide`` goes, GAP after the column's widest id
+    (``ids``); a done leaf is dim but its ✓."""
     glyph, colour = P.look(word)
     done = word == "done"
     ident = "dim" if done else f"{colour} bold".strip() if critical else colour
     out = [(glyph, colour), (" ", "")] + _columns(node.id, ident)
-    room = wide - len(out) - 1
+    room = wide - 2 - ids - GAP
     if room >= min(cell_len(node.title), LEAST_TITLE):
-        out += [(" ", "")] + _columns(elide(node.title, room), "dim" if done else "")
+        out += [(" ", "")] * (2 + ids + GAP - len(out))
+        out += _columns(elide(node.title, room), "dim" if done else "")
     return out
 
 

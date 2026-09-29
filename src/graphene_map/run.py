@@ -196,7 +196,7 @@ def sweep(store, say: Callable[[str], None], root: Path | None = None) -> None:
             _end_group(pid, lambda p=pid: not _alive(p))
         try:
             P.release(store, n.id, P.Caller("graphene run", False, n.session_id),
-                      "the run that held it ended without finishing it")  # fmt: skip
+                      "the run that held it ended without finishing it", stopped=True)  # fmt: skip
         except P.Refused:
             continue  # handed back or finished meanwhile
         say(f"{n.id} was left running by a run that ended; handed back, and it is ready again")
@@ -390,7 +390,7 @@ def run_node(
             if proc is not None:
                 _end(proc)  # its own session never saw the terminal's Ctrl-C: it is stopped here
             if P.get(store, node.id).state == P.RUNNING:
-                P.release(store, node.id, who, STOPPED)
+                P.release(store, node.id, who, STOPPED, stopped=True)
                 say(f"{node.id} handed back: the run was stopped")
         raise
 
@@ -534,6 +534,19 @@ def _seconds(stamp: str) -> float:
     return datetime.fromisoformat(stamp.replace("Z", "+00:00")).timestamp()
 
 
+def _came_back(store, only: list[str] | None, say: Callable[[str], None]) -> set[str]:
+    """The leaves that came back: they wait on the person, so a run not told which leaves to run
+    (``only``, `--node`, `r` on one) leaves them alone, and says how to run one again."""
+    if only:
+        return set()
+    back = [n.id for n in P.order(P.nodes(store, (P.OPEN,))) if P.came_back(store, n)]
+    if back:
+        one = len(back) == 1
+        say(f"{', '.join(back)} came back and wait{'s' if one else ''} on you: "
+            f"`graphene run --node {back[0]}` runs {'it' if one else 'one'} again")  # fmt: skip
+    return set(back)
+
+
 def _said_done(node: P.Node, say: Callable[[str], None]) -> None:
     say(f"{node.id} is {'done' if node.state == P.DONE else 'finished; it waits for a sign-off'}")
 
@@ -554,7 +567,7 @@ def run_plan(
     sweep(store, say, store.path.parent.parent)  # the repo's root, where a parallel run's lock is
     only = leaves_of(store, only)
     finished: list[P.Node] = []
-    tried: set[str] = set()
+    tried: set[str] = _came_back(store, only, say)  # never tried: the person's to run again
     # The nodes that exist when the run starts are the run: a plan that grows while it is going (a
     # proposal accepted, or an executor adding nodes) does not make an unattended run unbounded.
     planned = {n.id for n in P.nodes(store) if n.state not in P.GONE}
@@ -765,7 +778,7 @@ def _run_parallel(open_store, root, target, workers, template, attempts, only, s
     only = leaves_of(store, only)
     planned = {n.id for n in P.nodes(store) if n.state not in P.GONE}
     files = P.tracked(target)
-    tried: set[str] = set()
+    tried: set[str] = _came_back(store, only, say)  # never tried: the person's to run again
     flying: dict[Future, tuple[P.Node, Path]] = {}
     unlanded: set[str] = set()
     finished: list[P.Node] = []

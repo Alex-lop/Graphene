@@ -1,0 +1,24 @@
+ the plan of ~/tui1-feeds
+▼ ? the feed loader reads the XML supplier too                       proposed
+├   ◌ conditions: protected secrets/**, .env · read-only legacy/**
+├   ◇ how should an XML row with a missing price be…  missing-price  asks
+├   ◇ the XML has one <item> per price row            one-item       assumes
+├   ◇ the contract test may only cover csv and json   contract       risk
+├   ◇ the legacy price import; nobody asked for it    legacy         leaves out
+├   ◇ keep the stdout JSONL shape                     shape          note
+└ ▶ ? the xml source                                  xml            3 proposed
+────────────────────────────────────────────────────────────────────────────────
+ how should an XML row with a missing price be treated?
+ missing-price · question · open · put up by a Claude Code session (0feb67e8)
+
+ y default  drop it, the way validation drops a bad CSV row
+ 1          keep it with price null
+            then: scope xml-reader + validate/rules.py
+ about      xml-reader  read the xml feed
+
+
+
+
+
+ you: 1 + 5 on the board · 0 running · none ready · 0/0 done · plan first: on
+ y take: drop it, the… · 1 pick · d drop · p park · Enter answer · a note

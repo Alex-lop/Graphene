@@ -136,16 +136,18 @@ def rows(board: Board) -> dict:
     return out
 
 
-def widths(board: Board) -> list[int]:
-    """The columns each board row's words want, as `Watch.size_panes` counts a node's."""
-    return [6 + len(it["text"]) for it in [*board.open, *board.folded]]
+def widths(board: Board, folded: bool = True) -> list[int]:
+    """The columns each board row's words want, as `Watch.size_panes` counts a node's; ``folded``
+    False: the fold is shut, and what it holds is one row that widens nothing."""
+    return [6 + len(it["text"]) for it in [*board.open, *(board.folded if folded else [])]]
 
 
 def goal(text: str, board: Board) -> str:
-    """The goal line of a view other than the outline (tree, graph): how many items on the board
-    wait on the person, then the standing conditions, first, so a cut goal never hides them."""
+    """The goal line of a view other than the outline (tree, graph): the goal, then how many items on
+    the board wait on the person, then the standing conditions, so a cut takes them before the goal
+    (the outline has a row for each)."""
     n = len(board.open)
-    return " · ".join([*([f"◇ {n} open on the board"] if n else []), *filter(None, [board.standing]), text])
+    return " · ".join([text, *([f"◇ {n} open on the board"] if n else []), *filter(None, [board.standing])])
 
 
 def landing(was: list[str], board: Board, at, fresh: bool):

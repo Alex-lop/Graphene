@@ -100,7 +100,9 @@ def test_the_open_items_are_rows_under_the_goal_and_the_screen_opens_on_the_firs
     assert "the API" in rows[6] and " api " in rows[6]  # then the tree, after the board
     assert seen["at"] == "which-id"  # the person meets the questions before the tree
     status = seen["status"]
-    for said in ("y take: the row id", "1 pick", "d drop", "p park", "Enter answer", "a note"):
+    # at 80 columns the default's words give way to Tab and ? (walk 2026-09-28, first 16)
+    take = "y take: the row id" if size[0] >= 120 else "y take"
+    for said in (take, "1 pick", "d drop", "p park", "Enter answer", "a note", "Tab view", "? help"):
         assert said in status, (said, status)
 
 
@@ -195,7 +197,7 @@ def test_the_views_goal_line_counts_the_open_items(repo, monkeypatch):
     monkeypatch.setitem(V.VIEWS, "tree", view_tree)
     planned(repo)
     [seen] = drive(repo, [["tab"]], (120, 36))
-    assert "◇ 5 open on the board · users come back with their ids" in seen["view"][0]
+    assert "users come back with their ids · ◇ 5 open on the board" in seen["view"][0]
 
 
 def test_no_board_no_board_rows(repo):
@@ -289,11 +291,34 @@ def test_after_an_answer_the_next_items_keys_stay_under_what_the_command_said(re
     assert said.startswith("graphene board take which-id")
 
 
+def test_after_the_last_item_with_the_settled_fold_open_the_cursor_is_on_a_row_in_sight(repo):
+    """Walk 2026-09-28 (judge 25): at 80x24 with the settled group unfolded, after the board emptied
+    the cursor went to the first node of the tree, below the settled rows and out of sight."""
+    planned(repo)
+    for verb, *words in [("take", "int-ids"), ("park", "empty-check"), ("drop", "paging"), ("drop", "shape"),
+                         *(("note", f"a note of mine, {k}") for k in range(5))]:  # fmt: skip
+        assert person("board", verb, *words).exit_code == 0
+    app = Watch(repo, lambda: Store.open(repo), every=60)
+
+    async def go():
+        async with app.run_test(size=(80, 24)) as pilot:
+            for key in ["j", "z", "o", "k", "y"]:  # the fold opened, then the one open item taken
+                await pilot.press(key)
+                await pilot.pause()
+            tree = app.tree
+            line = tree.cursor_line - tree.scroll_offset.y  # the cursor's row in the pane, from its top
+            return app.board_row(), line, tree.scrollable_content_region.height
+
+    at, line, high = asyncio.run(go())
+    assert items(repo)["which-id"]["state"] == "taken"
+    assert at == BR.FOLD and 0 <= line < high, (at, line, high)
+
+
 def test_board_items_are_counted_apart_from_the_plan(repo):
     """rows counted the board's open items into `you: N` with nothing saying so (`you: 6` against the
     view candidate's `you: 1`); they do wait on the person, so they stay counted, but apart."""
     planned(repo)
-    for size, said in (((80, 24), "you: 2 + 5 on the board · "), ((120, 36), "waiting on you: 2 + 5 on")):
+    for size, said in (((80, 24), "2 on you + 5 on the board · "), ((120, 36), "waiting on you: 2 + 5 on")):
         [seen] = drive(repo, [[]], size)
         assert seen["lines"][0].startswith(said), seen["lines"]
 
@@ -315,10 +340,26 @@ def test_the_standing_conditions_are_a_dim_row_at_the_root_and_on_a_views_goal_l
     assert standing["at"] == "standing" and "graphene config shows them" in standing["status"]
     assert standing["detail"].startswith("conditions: protected secrets/**")
     goal = view["view"][0]
-    assert goal.lstrip().startswith("◇ 5 open on the board · conditions: protected secrets/**"), goal
+    said = "users come back with their ids · ◇ 5 open on the board · conditions: protected secrets/**"
+    assert goal.lstrip().startswith(said), goal
     with Store.open(repo) as store:
         S.apply(store, "size: auto\n", ALEX)
         assert BR.standing(store) is None
+
+
+@pytest.mark.parametrize("size", SIZES)
+def test_a_views_first_line_is_the_goal_whole_then_the_board_and_the_conditions(repo, size, monkeypatch):
+    """Walks 2026-09-28 (alex 16, judge 24): the tree's and the graph's first line read `conditions:
+    protected secrets/**, .env · read-only legacy/** · the Northwind…`, so at 80 columns the goal was
+    cut, and at 120 it read like one more condition. The goal comes first; what follows it is cut."""
+    monkeypatch.setitem(V.VIEWS, "tree", view_tree)
+    planned(repo)
+    with Store.open(repo) as store:
+        S.apply(store, "protected: secrets/**, .env\nreadonly: legacy/**, vendor/**\n", ALEX)
+    [seen] = drive(repo, [["tab"]], size)
+    goal = seen["view"][0].strip()
+    assert goal.startswith("users come back with their ids · ◇ 5 open on the board · conditions"), goal
+    assert seen["at"] is None and seen["lines"][1].startswith("y accept it all")  # the cursor: the goal
 
 
 @pytest.mark.parametrize("size", SIZES)

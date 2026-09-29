@@ -220,7 +220,8 @@ def register(cli: typer.Typer, root, open_store, fail) -> None:
                 what(store)
             except P.Refused as no:
                 fail(str(no), 1)
-        typer.echo(f"  (the plan of {P.where(root())})", err=True)
+        if line := P.where_said(root()):
+            typer.echo(line, err=True)
 
     def planner(store, executor: str | None) -> str:
         return A.named(executor or store.meta("planner"))

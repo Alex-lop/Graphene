@@ -314,6 +314,12 @@ def leaves(nodes: list[Node]) -> list[Node]:
     return [n for n in nodes if n.state not in GONE and not under.get(n.id)]
 
 
+def counted(nodes: list[Node]) -> list[Node]:
+    """The leaves a plan's progress is counted in, `graphene`'s "3 leaves, 1 done" and the screen's
+    "1/3 done" alike: every leaf not gone, proposed ones too, and none made from a prompt (an aside)."""
+    return [n for n in leaves(nodes) if not n.aside]
+
+
 def all_needs(node: Node, by_id: dict[str, Node]) -> list[str]:
     """What a node waits on: its own needs, and those of everything above it."""
     out: list[str] = []
@@ -1563,6 +1569,23 @@ def unowned(store, checkout: str | Path, but: str | None = None) -> list[str]:
     return [p for p in changed if p not in left and not any(in_scope(p, n.scope) for n in since)]
 
 
+def uncommitted(store, checkout: str | Path) -> list[str]:
+    """The done leaves of this checkout whose work git still calls uncommitted: plain `graphene run`
+    (and a session's own `done`) leaves it in the tree for the person; `run --parallel`, as watch's R
+    runs it, commits and merges each leaf in a worktree of its own, so its leaves are never here."""
+    checkout = str(Path(checkout).resolve())
+    done = [n for n in nodes(store, (DONE, REVIEW)) if n.checkout == checkout]
+    changed = dirty(checkout) if done else {}
+    ended = {n.id: (store.node_log(n.id, ("finished", "overruled")) or [{"detail": {}}])[-1] for n in done}
+    return [n.id for n in done if set(ended[n.id]["detail"].get("changed") or []) & set(changed)]
+
+
+UNCOMMITTED = (
+    "not committed (`git status`): plain `graphene run` commits nothing, `graphene run --parallel N` and "
+    "watch's R commit and merge each leaf"
+)
+
+
 def accept_path(store, checkout: str | Path, path: str | Path) -> None:
     """A file the person just had Graphene write inside the checkout (an exported page) is theirs as
     it stands: it goes into the boundary, so the next start is not refused over Graphene's own output."""
@@ -2009,9 +2032,10 @@ def _untracked(checkout: str | Path, paths: list[str]) -> list[str]:
     return [p for p, f in full if os.path.isfile(f) and not os.path.islink(f)]
 
 
-def _done_by_hand(store, node: Node, who: Caller, now: str, checkout: str | Path | None) -> Node:
+def _done_by_hand(store, node: Node, who: Caller, given: str | None, checkout: str | Path | None) -> Node:
     """A person's own leaf with no scope is their to-do: there is no check to run and nothing to ask
     git, so `done` is their word, and the log says so."""
+    now = given or _now()
     with store.claim():
         node = get(store, node.id)
         everything = nodes(store)
@@ -2022,7 +2046,7 @@ def _done_by_hand(store, node: Node, who: Caller, now: str, checkout: str | Path
             raise Refused(f"{node.id} waits on {_told(unmet(node, by_id))}")
         node.state, node.finished_at = DONE, now
         _save(store, node, "finished", who, now, note="done by hand: the person's word, with no check to run")
-    roll_up(store, who, checkout, now)
+    roll_up(store, who, checkout, given)
     return node
 
 
@@ -2036,16 +2060,18 @@ def finish(
 ) -> Node:
     """The boundary. Graphene asks git what changed and runs the check; only then is the node done
     (or waiting for its sign-off). A person may overrule either with a reason, and the log says so.
-    Unless ``now`` is given, what the check decides is stamped when the check has run."""
-    stamped, now = now is not None, now or _now()
+    What is decided after the check is stamped after it (``given``: a time the caller chose), so the
+    log reads in time order: `finished` had carried the moment `done` was asked, and came after its own
+    `check_passed` a second later."""
+    given, now = now, now or _now()
     node = get(store, node_id)
     began = node.started_at  # the hold this `done` answers for: it may be let go, and taken again, meanwhile
     if kids(nodes(store)).get(node.id):
         if override is not None:
             _person_only(who, "overruling a node's check or scope")
-        return _finish_subgoal(store, node, who, now, checkout or ".", override)
+        return _finish_subgoal(store, node, who, given, checkout or ".", override)
     if node.state == OPEN and not node.scope and node.owner != AGENT and who.person:
-        return _done_by_hand(store, node, who, now, checkout)
+        return _done_by_hand(store, node, who, given, checkout)
     if node.state != RUNNING:
         raise _as_it_stands(node, nodes(store), who, "finish")
     _holder_only(node, who, "finishing it")
@@ -2101,16 +2127,17 @@ def finish(
         passed, output, theirs = (run_check(node.check, checkout, aside) if place is None else
                                   _check_in_sandbox(place, node.check, checkout, aside))  # fmt: skip
     if node.check:
+        checked = _now()
+        now = given or checked
         store.log_node(
             node.id,
-            _now(),
+            checked,
             "check_passed" if passed else "check_failed",
             who.label,
             who.session_id,
             None,
             {"command": node.check, "output": output},
         )
-        now = now if stamped else _now()  # it finishes once its check has passed, not when `done` was said
     if len(theirs) < len(aside):
         raise _stray(store, node, who, now, [p for p in stray if p not in theirs])
     changed = [p for p in changed if p not in theirs]  # `run` commits what `changed` names
@@ -2149,7 +2176,7 @@ def finish(
     if RUN_TREE not in (node.checkout or ""):
         # in a run's own worktree the sub-goal's check would not see its sibling leaves: `run.land`
         # rolls up after the merge, in the checkout where they are all together
-        roll_up(store, who, node.checkout or ".", now)
+        roll_up(store, who, node.checkout or ".", given)
     mark_boundary(store, node.checkout or ".", now)
     return node
 
@@ -2178,8 +2205,8 @@ def roll_up(
     theirs, and this one says they work together. A failing one leaves the sub-goal open, and the
     plan says so; with no checkout to run it in, it waits for `graphene node done <id>`.
     ``not_here``: leaves done in a worktree of their own whose work has not reached ``checkout``
-    yet; a sub-goal above one of them waits, or its check would run without them and fail."""
-    now = now or _now()
+    yet; a sub-goal above one of them waits, or its check would run without them and fail. Each is
+    stamped when it rolled up, after its check (``now``: a time the caller chose instead)."""
     rolled: list[Node] = []
     tried: set[str] = set()
     while True:
@@ -2211,13 +2238,13 @@ def roll_up(
             node = get(store, node.id)
             if node.state != OPEN:
                 continue  # another `done` got here first
-            node.state, node.finished_at = (REVIEW if node.signoff else DONE), now
-            _save(store, node, "rolled_up", who, now, children=[c.id for c in under[node.id]])
+            node.state, node.finished_at = (REVIEW if node.signoff else DONE), now or _now()
+            _save(store, node, "rolled_up", who, node.finished_at, children=[c.id for c in under[node.id]])
         rolled.append(node)
 
 
 def _finish_subgoal(
-    store, node: Node, who: Caller, now: str, checkout: str | Path, override: str | None = None
+    store, node: Node, who: Caller, now: str | None, checkout: str | Path, override: str | None = None
 ) -> Node:
     """`done` on a sub-goal: nothing to diff (its leaves answered for their changes); its children
     must be done, and its own check runs here."""
@@ -2232,8 +2259,8 @@ def _finish_subgoal(
     if override is not None:  # the person says its leaves do work together, whatever its check says
         with store.claim():
             node = get(store, node.id)
-            node.state, node.finished_at = DONE, now
-            _save(store, node, "overruled", who, now, override=override)
+            node.state, node.finished_at = DONE, now or _now()
+            _save(store, node, "overruled", who, node.finished_at, override=override)
         roll_up(store, who, checkout, now)
         return node
     if node not in roll_up(store, who, checkout, now) and get(store, node.id).state == OPEN:
@@ -2285,11 +2312,14 @@ def close_aside(store, node_id: str, who: Caller, now: str | None = None) -> Nod
 
 
 def release(
-    store, node_id: str, who: Caller, why: str, now: str | None = None, wants: list[str] | None = None
+    store, node_id: str, who: Caller, why: str, now: str | None = None, wants: list[str] | None = None,
+    stopped: bool = False,
 ) -> Node:
     """Hand a running node back, with the reason. The way out for an executor that cannot finish:
     it may not stop silently, and it may not widen its own scope; it can say what is in the way, and
-    name the paths it would need (``wants``), which the person is then offered in one key."""
+    name the paths it would need (``wants``), which the person is then offered in one key.
+    ``stopped``: the run let it go (stopped, or it died) before its executor finished: it did not
+    come back, it is ready again."""
     import subprocess
 
     now = now or _now()
@@ -2311,6 +2341,7 @@ def release(
             raise refusal(f"{node.id} changed hands just now", do="graphene plan shows who holds it")
         node.state, node.executor, node.session_id, node.agent_id = OPEN, None, None, None
         extra = {"wants": [w.strip() for w in wants if w.strip()]} if wants else {}
+        extra |= {"stopped": True} if stopped else {}
         _save(
             store,
             node,
@@ -2341,7 +2372,7 @@ def signoff(
     import subprocess
 
     _person_only(who, "signing a node off")
-    now = now or _now()
+    given, now = now, now or _now()
     checkout = checkout if checkout is not None else store.path.parent.parent
     left = unlanded(store, node_id)
     landed = None
@@ -2371,7 +2402,7 @@ def signoff(
         _save(store, node, "signed_off", who, now)
         if landed:
             store.log_node(node.id, now, "landed", who.label, None, None, landed)
-    roll_up(store, who, checkout, now)
+    roll_up(store, who, checkout, given)
     if landed:
         mark_boundary(store, checkout, now)  # the person merged it by hand, as they were told to
     return node
@@ -2400,7 +2431,9 @@ def notes(store, node_id: str) -> list[str]:
 
 
 def archive(store, who: Caller, now: str | None = None) -> list[Node]:
-    """Put finished work away. With nothing left but archived nodes the plan is no longer in force."""
+    """Put finished work away. With nothing left but archived nodes the plan is no longer in force,
+    and its goal and its board go with it, kept in the log's `archived` entry: the next ask starts
+    from a clean slate, not under the old goal's "0/0 done" beside the old board's settled items."""
     _person_only(who, "archiving the plan")
     now = now or _now()
     with store.claim():
@@ -2426,6 +2459,14 @@ def archive(store, who: Caller, now: str | None = None) -> list[Node]:
         for node in put_away:
             was, node.state = node.state, ARCHIVED
             _save(store, node, "archived", who, now, was=was)
+        if put_away and not nodes(store, (PROPOSED, *LIVE)):
+            kept = {k: store.meta(k) for k in _GOALS}
+            kept["board"] = json.loads(kept["board"] or "[]")
+            goal_was = kept["goal"] or kept["goal:proposed"] or "none"
+            said = f"the goal ({goal_was}) and {len(kept['board'])} item(s) of the board, with the plan"
+            store.log_node("*", now, "archived", who.label, None, None, {"note": said, **kept})
+            for k in _GOALS:
+                store.set_meta(k, None)
     return put_away
 
 
@@ -2445,6 +2486,7 @@ def _shape(store) -> dict:
     return {
         "rows": {row["id"]: {**row, "_seq": seqs.get(row["id"])} for row in store.node_rows()},
         "meta": {k: store.meta(k) for k in _GOALS},
+        "log": store.conn.execute("SELECT COALESCE(MAX(id), 0) FROM node_log").fetchone()[0],
     }
 
 
@@ -2475,7 +2517,8 @@ def _keep(store, what: str, before: dict, after: dict) -> None:
     board = _items_moved(before["meta"]["board"], after["meta"]["board"])
     if rows or meta or board:
         stack = json.loads(store.meta("undo") or "[]")[-(UNDO_KEPT - 1) :]
-        stack.append({"what": what, "at": _now(), "rows": rows, "meta": meta, "board": board})
+        stack.append({"what": what, "at": _now(), "rows": rows, "meta": meta, "board": board,
+                      "log": before["log"]})  # fmt: skip
         store.set_meta("undo", json.dumps(stack))
 
 
@@ -2536,7 +2579,9 @@ def undo(store, who: Caller, now: str | None = None) -> str:
             store.put_node(row)
             if seq is not None:
                 store.set_seq(node_id, seq)
-            store.log_node(node_id, now, "undone", who.label, None, None, {"note": act["what"]})
+            # ``since``: the log as it stood before the act, which `came_back` reads the node's state from
+            said = {"note": act["what"], "since": act.get("log")}
+            store.log_node(node_id, now, "undone", who.label, None, None, said)
         for key, (before, _) in act["meta"].items():
             store.set_meta(key, before)
         if items:  # each item the act changed, as it was; one it put up goes; the rest stay as they are
@@ -2587,13 +2632,25 @@ def goal_plus(goal: str, sentence: str) -> str | None:
     return f"{goal}{'' if goal.endswith(('.', '!', '?', ':', ';')) else '.'} {sentence}" if goal else sentence
 
 
-def came_back(store, node: Node) -> bool:
-    """Open, and its last hold ended with its executor handing it back, and the person has not
-    changed it since (a widen or a sibling is an edit: after it, it is ready or waiting again)."""
+def let_go(store, node: Node) -> dict:
+    """How its last hold ended, while it is open and the person has not changed it since: its
+    `released` entry (``person``: the person let it go; ``stopped``: the run did), else {}. A widen
+    or a sibling is an edit: after it, it is ready or waiting again. An act undone since reads as
+    never made: what it logged is passed over."""
     if node.state != OPEN:
-        return False
-    last = (store.node_log(node.id, ("started", "released", "reopened", "edited")) or [{"kind": ""}])[-1]
-    return last["kind"] == "released" and not last["detail"].get("person")
+        return {}
+    log = store.node_log(node.id, ("started", "released", "reopened", "edited", "undone"))
+    while log and log[-1]["kind"] == "undone":
+        since = log.pop()["detail"].get("since")
+        log = log if since is None else [e for e in log if e["id"] <= since]
+    return log[-1]["detail"] if log and log[-1]["kind"] == "released" else {}
+
+
+def came_back(store, node: Node) -> bool:
+    """Its executor handed it back, and the person has not changed it since (`let_go`): it waits on
+    the person. One the run let go (stopped, or it died) is ready again."""
+    ended = let_go(store, node)
+    return bool(ended) and not ended.get("person") and not ended.get("stopped")
 
 
 def reads(node: Node, everything: list[Node], back: set[str] | frozenset[str] = frozenset()) -> str:
@@ -2642,6 +2699,13 @@ def where(root: str | Path) -> str:
     """The repository as the screen's top line and every write's last line name it."""
     path, home = str(root), str(Path.home())
     return "~" + path[len(home) :] if path.startswith(home + os.sep) else path
+
+
+def where_said(root: str | Path) -> str | None:
+    """The last line of every command that changes the plan: which repository's plan it changed, so a
+    stray `cd` cannot fool anyone. None in `graphene watch`'s pane (GRAPHENE_WATCH, set on the commands
+    it runs), whose top line names the plan already: at 80 columns the line took three rows there."""
+    return None if "GRAPHENE_WATCH" in os.environ else f"  (the plan of {where(root)})"
 
 
 def plan_first(store) -> bool:

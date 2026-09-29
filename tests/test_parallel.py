@@ -227,6 +227,20 @@ def test_what_a_killed_run_left_behind_does_not_stop_the_next(repo):
     assert any("left running by a run that ended" in line for line in said)
 
 
+def test_a_leaf_that_came_back_is_left_to_the_person_unless_it_is_named(repo):
+    """Walk 2026-09-28 (judge 7): R (`--parallel 4`) ran a leaf that came back, beside "none ready"."""
+    with Store.open(repo) as store:
+        plan.propose(store, [leaf("a"), leaf("b")], ALEX)
+        run = Caller("run:python", False, "s-1")
+        plan.start(store, "a", run, repo)
+        plan.release(store, "a", run, "it needs more")
+    done, ran, said = go(repo)
+    assert [n.id for n in done] == ["b"] and set(ran) == {"b"}, said
+    assert "a came back and waits on you: `graphene run --node a` runs it again" in said
+    done, ran, said = go(repo, only=["a"])
+    assert [n.id for n in done] == ["a"], said
+
+
 def test_scopes_that_could_meet_are_kept_apart_even_when_no_tracked_file_shows_it():
     from graphene_map.run import may_collide
 

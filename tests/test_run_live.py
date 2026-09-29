@@ -116,6 +116,8 @@ def test_ctrl_c_hands_back_what_the_run_started_and_stops_its_executors(repo, pa
     with Store.open(repo) as store:
         whys = [e["detail"]["why"] for e in store.node_log(kinds=("released",))]
     assert whys and all("stopped (Ctrl-C)" in w for w in whys)
+    with Store.open(repo) as store:  # ready again, as the run said, and taken by the next plain run
+        assert not any(plan.came_back(store, n) for n in plan.nodes(store))
     assert wait_for(lambda: not any(R._alive(p) for p in pids), 15)  # the executors are gone too
 
 
@@ -155,6 +157,7 @@ def test_a_run_that_died_is_swept_and_its_leaf_is_ready_again(repo):
         said = []
         R.sweep(store, said.append)
         assert plan.get(store, "a").state == OPEN and "handed back, and it is ready again" in said[0]
+        assert not plan.came_back(store, plan.get(store, "a"))  # ready again, as it says: not the person's
 
 
 def test_a_leaf_whose_need_is_done_but_not_committed_waits_until_it_is(repo):
@@ -797,8 +800,8 @@ def test_two_runs_of_one_leaf_in_the_same_second_keep_both_logs(repo, monkeypatc
     with Store.open(repo) as store:
         plan.propose(store, [leaf("a", "a.txt")], ALEX)
         quiet = executor(repo, "import os; print('executor', os.getpid())")
-        for _ in range(2):
-            R.run_plan(store, repo, quiet, 1, None, lambda _: None, repo / ".graphene" / "runs")
+        for _ in range(2):  # the second by name, as `r` runs a leaf that came back again
+            R.run_plan(store, repo, quiet, 1, ["a"], lambda _: None, repo / ".graphene" / "runs")
         logs = [e["detail"]["log"] for e in store.node_log("a", ("attempt",))]
     assert len(logs) == 2 and len(set(logs)) == 2
     assert len({Path(p).read_text() for p in logs}) == 2
@@ -891,6 +894,22 @@ def test_a_sibling_once_taken_is_offered_no_more(repo):
         assert plan.offers(store, plan.get(store, "a")) == []
 
 
+def test_undoing_a_sibling_or_a_widen_puts_back_the_leaf_that_came_back_with_its_offers(repo):
+    """Walk 2026-09-28 (judge 8): after `b` then `u` the leaf read `ready`, not came back, and w and b
+    were no longer offered. The undo put back its row, but its log still ended with the edit."""
+    with Store.open(repo) as store:
+        plan.propose(store, [leaf("a", "a.txt")], ALEX)
+        plan.start(store, "a", BOT, repo)
+        plan.release(store, "a", BOT, "it needs src/util.py", wants=["src/util.py"])
+        for act in (plan.sibling, plan.widen):  # the second is undone after the first was
+            with plan.undoable(store, ALEX, act.__name__):
+                act(store, "a", [], ALEX)
+            assert not plan.came_back(store, plan.get(store, "a"))
+            plan.undo(store, ALEX)
+            a = plan.get(store, "a")
+            assert plan.came_back(store, a) and [k for k, _, _ in plan.offers(store, a)] == ["w", "b"]
+
+
 # Recheck 59 (fixed)
 def test_a_check_naming_a_file_git_does_not_track_is_warned_about(repo):
     """A worktree cut for --parallel has no untracked file, so that check could never pass there."""
@@ -968,3 +987,25 @@ def test_a_path_another_leafs_scope_has_is_never_offered_to_a_second_writer(repo
             plan.sibling(store, made.id, [], ALEX)
         said = "not offered: cli/main.py is cli's and c.txt is other's (a path has one leaf that writes it)"
         assert plan.not_offered(store, plan.get(store, made.id)) == said
+
+
+def test_the_forecast_says_a_leaf_that_came_back_waits_on_the_person_as_r_leaves_it(repo):
+    """R and plain `graphene run` leave a leaf that came back to the person, but `plan accept` and the
+    page's forecast still listed it, and what needs it, under "left alone, agents can reach"."""
+    from graphene_map.plan_view import build_plan_view
+
+    with Store.open(repo) as store:
+        plan.propose(store, [leaf("a", "a.txt"), leaf("b", "b.txt", needs=["a"])], ALEX)
+        plan.start(store, "a", BOT, repo)
+        plan.release(store, "a", BOT, "it needs src/util.py", wants=["src/util.py"])
+        forecast = build_plan_view(store)["forecast"]
+    assert forecast["runs"] == []
+    assert forecast["waits"] == [
+        {"id": "a", "why": ["a came back to you"]},
+        {"id": "b", "why": ["a came back to you"]},
+    ]
+    with Store.open(repo) as store:
+        plan.propose(store, [leaf("c", "c.txt")], BOT)  # an agent's proposal, for the person to accept
+    said, _ = graphene(repo, "plan", "accept").communicate(timeout=60)
+    assert "left alone, agents can reach: c\n" in said, said
+    assert "  a will wait: a came back to you" in said
