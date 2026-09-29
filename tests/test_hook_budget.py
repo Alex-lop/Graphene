@@ -212,6 +212,8 @@ WORK = {
     ("none", "PostToolUse Bash"): (RECORD, 9, 0),
     ("none", "SubagentStart"): (RECORD, 7, 0),
     ("none", "Stop"): (RECORD, 8, 0),
+    # an agent's write into .graphene/ (the direction file) is refused plan or no plan, logged, gate unasked
+    ("none", "PreToolUse Edit .graphene/direction.txt"): (RECORD, 6, 0),
     ("first", "SessionStart"): (GATE, 11, 0),
     ("first", "UserPromptSubmit"): (GATE, 18, 0),
     ("first", "PreToolUse Read"): (RECORD, 5, 0),
@@ -228,6 +230,7 @@ WORK = {
     ("plan", "PostToolUse Bash"): (IN_FORCE, 15, 0),
     ("plan", "SubagentStart"): (RECORD, 7, 0),
     ("plan", "Stop"): (GATE, 12, 0),
+    ("plan", "PreToolUse Edit .graphene/direction.txt"): (RECORD, 6, 0),
 }
 
 
@@ -248,12 +251,13 @@ def _repo(tmp_path: Path, kind: str) -> Path:
 
 def _event(repo: Path, label: str, n: int = 0) -> dict:
     name, _, tool = label.partition(" ")
+    tool, _, where = tool.partition(" ")
     event = {"hook_event_name": name, "session_id": "s", "cwd": str(repo), "prompt": "fix it"}
     event["prompt_id"] = f"p{n}"
     if name == "SubagentStart":
         event.update(agent_id="a1", agent_type="Explore")
     if tool:
-        path = str(repo / "src" / "api" / "a.py")
+        path = str(repo / (where or "src/api/a.py"))
         event.update(tool_name=tool, tool_use_id=f"t{n}")
         event["tool_input"] = {"command": "pytest -q"} if tool == "Bash" else {"file_path": path}
         if name == "PostToolUse":

@@ -645,7 +645,9 @@ def decide(store, event: dict, root: Path) -> dict | None:
             return None
         changed = [_rel(p, root, cwd) for p in diff.get("changedFiles") or [] if isinstance(p, str)]
         standing = P.standing(store)
-        stray = [r for r in changed if r and not any(P.binds(r, n, standing) for n in held)]
+        # Graphene's own directory is written by `graphene` (a proposal to the direction): never a stray
+        stray = [r for r in changed if r and r.split("/", 1)[0] not in OURS]
+        stray = [r for r in stray if not any(P.binds(r, n, standing) for n in held)]
         ignored = {r for r in _ignored(root, stray) if not P.kept_out_by(r, standing)}
         stray = [r for r in stray if r not in ignored]
         if not stray:

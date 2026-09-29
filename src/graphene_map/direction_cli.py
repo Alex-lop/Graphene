@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import shutil
 import sys
+import textwrap
 
 import typer
 from rich.console import Console
@@ -98,7 +99,7 @@ def register(cli: typer.Typer, root, open_store, fail):
                     "dim",
                 )
             )
-        said.append((ACTS, "dim"))
+        said += [(part, "dim") for part in textwrap.wrap(ACTS, wide, break_on_hyphens=False)]
         for line, style in said:
             if plain:
                 out(line)

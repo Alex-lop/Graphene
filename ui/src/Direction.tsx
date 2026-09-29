@@ -30,6 +30,21 @@ export function path(direction: Direction, at: string): DirectionNode[] {
   return out;
 }
 
+/** Every item that waits on the person, and every piece of running work once, by the id they act on. */
+export function named(direction: Direction): { waiting: string[]; running: string[] } {
+  const plan = direction.plan;
+  const waiting = [
+    ...(plan?.waiting ?? []).map((it) => `${it.id} (${it.word})`),
+    ...direction.nodes.filter((n) => n.proposed).map((n) => `${n.id} (proposed)`),
+    ...direction.sessions.filter((s) => s.word === "your turn").map((s) => `${s.short} (your turn)`),
+  ];
+  const running = [
+    ...(plan?.leaves_running ?? []).map((leaf) => (leaf.by ? `${leaf.id} (${leaf.by})` : leaf.id)),
+    ...direction.sessions.filter((s) => s.word === "running" && !s.holds).map((s) => s.short),
+  ];
+  return { waiting, running };
+}
+
 export function DirectionPath({ direction }: { direction?: Direction | null }): ReactElement | null {
   if (!direction || (!direction.refused && !direction.plan)) return null;
   const at = direction.plan?.node;
@@ -42,6 +57,7 @@ export function DirectionPath({ direction }: { direction?: Direction | null }): 
           the direction: the plan hangs from none of its nodes yet (<code>graphene direction plan NODE</code>)
         </p>
       ) : (
+        <>
         <ol style={{ listStyle: "none", margin: 0, padding: 0 }}>
           {path(direction, at).map((node, depth) => (
             <li key={node.id} data-direction={node.id} style={{ paddingLeft: `${depth * 16}px` }}>
@@ -53,6 +69,11 @@ export function DirectionPath({ direction }: { direction?: Direction | null }): 
             </li>
           ))}
         </ol>
+        <p className="muted" data-testid="direction-named">
+          waits on you: {named(direction).waiting.join(", ") || "nothing"} · running:{" "}
+          {named(direction).running.join(", ") || "nothing"}
+        </p>
+        </>
       )}
     </section>
   );

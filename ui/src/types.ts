@@ -324,13 +324,31 @@ export interface DirectionSession {
   at: string;
   node: string | null; // "plan": through the plan, wherever it hangs
   how: string;
+  holds?: string | null; // the running leaf it holds: it is named beside that leaf
+}
+
+export interface DirectionItem {
+  id: string; // what the person acts on: a leaf, a board item, a proposal
+  title: string;
+  word: string;
+  do: string;
 }
 
 export interface Direction {
   file: string;
   refused?: string; // the file cannot be read: why, by line
   nodes: DirectionNode[];
-  plan: { goal: string; node: string | null; done: number; leaves: number; you: number; running: number; next: string | null } | null;
+  plan: {
+    goal: string;
+    node: string | null;
+    done: number;
+    leaves: number;
+    you: number;
+    running: number;
+    next: string | null;
+    waiting?: DirectionItem[];
+    leaves_running?: { id: string; title: string; by: string; last?: string }[];
+  } | null;
   sessions: DirectionSession[]; // none in an exported file: sessions stay on the machine
   older: number;
 }

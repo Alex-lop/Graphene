@@ -152,7 +152,11 @@ def direction(store: Store, only: bool = False) -> dict | None:
     if d is None:
         return None
     said = D.status(store, d)
-    return said | {"sessions": []} if only else said
+    if not only:
+        return said
+    if said["plan"]:  # who holds a running leaf is a session: it stays on this machine too
+        said["plan"]["leaves_running"] = [{**r, "by": "", "last": ""} for r in said["plan"]["leaves_running"]]
+    return said | {"sessions": []}
 
 
 def export_html(store: Store, session_ids: list[str]) -> str:

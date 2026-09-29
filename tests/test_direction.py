@@ -202,7 +202,7 @@ def test_sessions_attach_by_what_they_do_or_by_the_person_and_say_whose_move_it_
     shown = person("direction", "--width", "120").stdout.splitlines()
     narrow = person("direction", "--width", "60").stdout.splitlines()[0]
     assert narrow.startswith("you: 1 · 2 running · the direction of …") and len(narrow) == 60
-    assert all(len(line) <= 80 for line in person("direction", "--width", "80").stdout.splitlines()[:-1])
+    assert all(len(line) <= 80 for line in person("direction", "--width", "80").stdout.splitlines())
     assert any("the plan: users come back with ids" in line and "0/1 done" in line for line in shown)
     assert any("not in the direction" in line for line in shown)
     # the person attaches the other session; `none` gives it back
@@ -449,3 +449,52 @@ def test_running_work_is_counted_once_and_a_leaf_made_from_a_prompt_leaves_its_s
     assert (live["running"], st["plan"]["running"]) == (3, 1)  # the session and its two lanes; one leaf
     assert next(w for w in st["sessions"] if w["short"] == "a51de000")["node"] is None
     assert D.head(st, "repo").startswith("you: 1 · 4 running")  # submission; the three, and the loose one
+
+
+def _hook(where, **event) -> str:
+    import io
+
+    from graphene_map.hooks import hook_main
+
+    said = io.StringIO()
+    event = {"session_id": "5e55105e-0000", "cwd": str(where), **event}
+    hook_main(io.StringIO(json.dumps(event)), where, said)
+    return said.getvalue()
+
+
+def test_an_agent_cannot_write_the_direction_itself_plan_or_no_plan(repo):  # noqa: F811
+    """Review, 29 September: with no plan in force the hook let an agent's Edit of
+    .graphene/direction.txt through, so it could turn its own "?" into "-". Graphene's own directory
+    is written by `graphene` alone, plan or no plan; a write anywhere else is as it was."""
+    agent("direction", "propose", "-", input=TREE)
+    for path in (str(repo / D.FILE), D.FILE, str(repo / ".graphene" / "graphene.db")):
+        said = _hook(repo, hook_event_name="PreToolUse", tool_name="Edit", tool_input={"file_path": path})
+        assert '"permissionDecision": "deny"' in said and "graphene direction propose" in said, path
+    assert (
+        _hook(repo, hook_event_name="PreToolUse", tool_name="Write", tool_input={"file_path": "api.py"}) == ""
+    )
+    assert _hook(repo, hook_event_name="PreToolUse", tool_name="Read", tool_input={"file_path": D.FILE}) == ""
+    with Store.open(repo) as store:
+        denied = store.node_log("*", ("denied",))
+    assert [e["detail"] for e in denied][-1] == {"path": ".graphene/graphene.db", "how": "graphene's own"}
+
+
+def test_a_direction_proposal_from_a_leafs_shell_is_not_that_leafs_stray(repo):  # noqa: F811
+    """With the vendor's list of what a shell command changed, a `graphene direction propose` run by
+    an agent holding a leaf was refused after the fact as a change outside its scope."""
+    agent("plan", "propose", "-", input="goal: g\n- one  [one]\n    scope: api.py\n    check: true\n")
+    person("plan", "accept")
+    assert agent("node", "start", "one").exit_code == 0
+    agent("direction", "propose", "-", input=TREE)
+    changed = {"stdout": "", "bashEditDiff": {"changedFiles": [str(repo / D.FILE)]}}
+    command = {"command": "graphene direction propose - <<'EOF' … EOF"}
+    said = _hook(
+        repo,
+        session_id=AGENT_SID,
+        hook_event_name="PostToolUse",
+        tool_name="Bash",
+        tool_use_id="t1",
+        tool_input=command,
+        tool_response=changed,
+    )
+    assert said == ""

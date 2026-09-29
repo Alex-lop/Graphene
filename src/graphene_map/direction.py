@@ -350,6 +350,7 @@ class Worker:
     node: str | None = None  # the direction node it attaches to; "plan": through the plan, wherever it hangs
     how: str = ""  # why it attaches there
     parent: str | None = None  # the subagent that started this one, when a subagent did
+    holds: str | None = None  # the running leaf it holds: shown, and counted, as that leaf
 
 
 def _stamp(at: datetime) -> str:
@@ -538,26 +539,50 @@ def plan_status(store) -> dict | None:
         for n in alive
         if n.state == P.PROPOSED and (n.parent not in by_id or by_id[n.parent].state != P.PROPOSED)
     ]
-    asked, _ = B.waiting(store)
     ready = [n.id for n in P.ready(alive, P.Caller("agent", False)) if n.id not in back]
     usage = [e for e in store.node_log(kinds=("usage",)) if e["node_id"] in by_id or e["node_id"] == "*"]
+    # each thing that waits on the person, named by the id they act on, with the command that acts
+    do = {
+        "review": "sign off: `graphene node signoff {}`",
+        "came back": "`graphene node show {}`",
+        "yours": "yours to do",
+    }
+    waiting = [
+        {"id": n.id, "title": n.title, "word": words[n.id], "do": do[words[n.id]].format(n.id)}
+        for n in alive
+        if words[n.id] in do
+    ]
+    waiting += [
+        {"id": n.id, "title": n.title, "word": "proposed", "do": f"`graphene plan accept {n.id}`"}
+        for n in tops
+    ]
+    board = [it for name, group in B.groups(store) if name in dict(B.GROUPS) for it in group]
+    waiting += [{"id": it["id"], "title": it["text"], "word": BOARD_VERB.get(it["kind"], "asks"),
+                 "do": f"`graphene board` ({it['kind']})"} for it in board]  # fmt: skip
+    running = [
+        {"id": n.id, "title": n.title, "by": P.said_by(n.executor), "_held": (n.session_id, n.agent_id)}
+        for n in alive
+        if n.state == P.RUNNING and not n.aside
+    ]
     return {
         "goal": goal,
         "leaves": len(leaves),
         "done": sum(n.state == P.DONE for n in leaves),
-        "you": sum(w in ("came back", "review", "yours") for w in words.values()) + len(tops) + asked,
-        "running": sum(n.state == P.RUNNING and not n.aside for n in alive),
+        "you": len(waiting),
+        "running": len(running),
+        "waiting": waiting,
+        "leaves_running": running,
         "next": ready[0] if ready else None,
         "bill": bill(usage),
     }
 
 
 def _running(ws: list[Worker], plan: dict | None) -> int:
-    """What runs: the sessions and subagents, and the plan's running leaves. Those that work through
-    the plan and its running leaves are one piece of work seen from two sides (which subagent holds
-    which leaf is not recorded), so the larger of the two counts, never their sum."""
-    through = sum(w.node == "plan" for w in ws)
-    return len(ws) - through + (max(through, plan["running"]) if plan else through)
+    """What runs, each piece of work once and as the rows name it: each running leaf (the session or
+    subagent holding it is beside it, not counted again), and each session or subagent that holds
+    none. TODO: a subagent working on a leaf its session took is counted beside that leaf; the hooks
+    do not record which leaf a subagent works on."""
+    return (plan["running"] if plan else 0) + sum(not w.holds for w in ws)
 
 
 def status(store, d: Direction | None, now: datetime | None = None) -> dict:
@@ -574,6 +599,16 @@ def status(store, d: Direction | None, now: datetime | None = None) -> dict:
             w.node = None  # attached to a node the file no longer has: unattached, visibly
     if plan is not None:
         plan["node"] = plan_node if plan_node in ids else None
+        keys = {w.key: w for w in ws}
+        for leaf in plan["leaves_running"]:
+            sid, aid = leaf.pop("_held")
+            key = f"{sid}/{aid}" if sid and aid else sid
+            w = keys.get(key or "")
+            if w is None and sid and aid:  # held by a subagent the hooks did not see start: its session
+                w, key = keys.get(sid), sid
+            if w is not None:
+                w.holds, w.node = leaf["id"], "plan"
+                leaf["by"], leaf["last"] = w.short, w.last
     earlier: dict[str, list[str]] = {}
     for g, n in said["plans"].items():
         if g != goal and n in ids:
@@ -602,7 +637,24 @@ def status(store, d: Direction | None, now: datetime | None = None) -> dict:
 
 # -- rows: the one row grammar (decision 41) -----------------------------------------------------------
 
-WORD_LOOK = {"your turn": "yours", "idle": "waiting", "finished": "done", "quiet": "waiting"}
+BOARD_VERB = {
+    "question": "asks",
+    "assume": "assumes",
+    "risk": "risk",
+    "leave out": "leaves out",
+    "note": "note",
+}
+WORD_LOOK = {
+    "asks": "yours",
+    "assumes": "yours",
+    "risk": "yours",
+    "leaves out": "yours",
+    "note": "yours",
+    "your turn": "yours",
+    "idle": "waiting",
+    "finished": "done",
+    "quiet": "waiting",
+}
 
 
 def look(word: str) -> tuple[str, str]:
@@ -648,12 +700,23 @@ def rows(
             )
         )
 
+    def plan_items(d: int) -> None:
+        """Under the plan's row, what waits on the person, each by the id they act on, then each
+        running leaf with who holds it beside it: named, not only counted."""
+        for it in plan.get("waiting", []):
+            out.append((d, it["title"], it["id"], it["word"], it["do"]))
+        for leaf in plan.get("leaves_running", []):
+            by = leaf.get("by") or ""
+            last = leaf.get("last") or ""
+            out.append((d, leaf["title"], leaf["id"], "running", " · ".join(s for s in (by, last) if s)))
+
     def workers_under(node: str | None, d: int) -> None:
-        for w in [w for w in ws if w["node"] == node]:
+        for w in [w for w in ws if w["node"] == node and not w.get("holds")]:
             out.append((d, w["label"], w["short"], w["word"], f"{w['last']} · {_ago(w['at'], now)}"))
         fin = [w for w in done if w["node"] == node and node is not None]  # unattached: helps no one
         if fin:
-            out.append((d, f"{len(fin)} finished", "", "finished", ", ".join(w["short"] for w in fin)))
+            ids = ", ".join(w["short"] for w in fin[:3]) + (f" and {len(fin) - 3} more" * (len(fin) > 3))
+            out.append((d, f"{len(fin)} finished", "", "finished", ids))
 
     keep = None
     if only is not None and only in by_id:
@@ -678,6 +741,7 @@ def rows(
             continue
         if plan and plan["node"] == n["id"]:
             plan_row(d + 1)
+            plan_items(d + 2)
             workers_under("plan", d + 2)
         workers_under(n["id"], d + 1)
     if keep is not None:
@@ -690,6 +754,7 @@ def rows(
         out.append((0, "not in the direction", "", "", how))
         if unhung:
             plan_row(1)
+            plan_items(2)
             workers_under("plan", 2)
         workers_under(None, 1)
     return out
@@ -719,7 +784,10 @@ def lines(
     st: dict, width: int, now: datetime | None = None, only: str | None = None
 ) -> list[tuple[str, str]]:
     """The rows laid out in fixed columns at ``width`` cells: (the line, the style of its glyph and
-    word). The title is cut at a word, the id and the word never."""
+    word). The title is cut at a word, the id and the word never; what a row says after its word
+    wraps under itself rather than being cut, so an id or a command in it is always whole."""
+    import textwrap
+
     from rich.cells import cell_len
 
     from . import plan_text as T
@@ -730,16 +798,22 @@ def lines(
     wid = max([len(r[2]) for r in got] + [4])
     ww = max(len(r[3]) for r in got)
     need = max(cell_len(f"{'  ' * r[0]}◌ {r[1]}") for r in got)
-    said = min(max(len(r[4]) for r in got), width // 4)  # what a row says after its word: a quarter
-    wt = max(20, min(need, 56, width - wid - ww - 8 - said))
+    said = min(max(len(r[4]) for r in got), int(width * 0.45))  # what a row says after its word
+    floor = max(24, max(2 * r[0] for r in got) + 16)  # a title keeps some words at the deepest row
+    wt = max(floor, min(need, 56, width - wid - ww - 8 - said))
     out = []
     for d, title, rid, word, what in got:
         glyph = look(word)[0] if word else "◌"
         lead = f"{'  ' * d}{glyph} "
         cells = f"{T.pad(lead + T.elide(title, wt - len(lead)), wt)}  {rid.ljust(wid)}  {word.ljust(ww)}"
-        room = width - len(cells) - 4
-        line = f"{cells}  · {T.elide(what, room)}" if what and room > 8 else cells.rstrip()
-        out.append((line, look(word)[1] if word else "dim"))
+        at = len(cells) + 4 if width - len(cells) - 4 >= 16 else len(lead) + 2  # else under the title
+        said = textwrap.wrap(what, max(width - at, 16), break_long_words=False, break_on_hyphens=False)
+        style = look(word)[1] if word else "dim"
+        if said and at > len(cells):
+            out.append((f"{cells}  · {said.pop(0)}", style))
+        else:
+            out.append((cells.rstrip(), style))
+        out += [(" " * at + part, "dim") for part in said]
     return out
 
 
