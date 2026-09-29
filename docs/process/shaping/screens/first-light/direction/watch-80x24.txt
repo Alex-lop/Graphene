@@ -1,7 +1,7 @@
- the plan of …lders/kl/5njp0xds47586m9j3gqtw_8m0000gn/T/direction-demo-f397hlcf
- ? Graphene is the…        graphene     proposed  · you 11 · 4 running · next:
+ the plan of …lders/kl/5njp0xds47586m9j3gqtw_8m0000gn/T/direction-demo-zmogl89z
+ ? Graphene is the…        graphene     proposed  · you 11 · 2 running · next:
                                                     lane-a
-   ? Graphene runs live…   live         proposed  · you 4 · 4 running · next:
+   ? Graphene runs live…   live         proposed  · you 4 · 2 running · next:
                                                     lane-a
 ▼ ○ first light: Graphene meets a real model for the first time, as…  0/10 done
 ├   ○ A. first light: rungs 2 to 5 live, and the fixes…     lane-a    ready

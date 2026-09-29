@@ -39,7 +39,7 @@ export function named(direction: Direction): { waiting: string[]; running: strin
     ...direction.sessions.filter((s) => s.word === "your turn").map((s) => `${s.short} (your turn)`),
   ];
   const running = [
-    ...(plan?.leaves_running ?? []).map((leaf) => (leaf.by ? `${leaf.id} (${leaf.by})` : leaf.id)),
+    ...(plan?.leaves_running ?? []).map((leaf) => (leaf.by ? `${leaf.id} (held by ${leaf.by})` : leaf.id)),
     ...direction.sessions.filter((s) => s.word === "running" && !s.holds).map((s) => s.short),
   ];
   return { waiting, running };

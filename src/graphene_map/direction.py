@@ -573,6 +573,7 @@ def plan_status(store) -> dict | None:
         "waiting": waiting,
         "leaves_running": running,
         "next": ready[0] if ready else None,
+        "next_title": by_id[ready[0]].title if ready else None,
         "bill": bill(usage),
     }
 
@@ -608,7 +609,8 @@ def status(store, d: Direction | None, now: datetime | None = None) -> dict:
                 w, key = keys.get(sid), sid
             if w is not None:
                 w.holds, w.node = leaf["id"], "plan"
-                leaf["by"], leaf["last"] = w.short, w.last
+                leaf["by"] = f"{'subagent' if '/' in w.key else 'session'} {w.short}"
+                leaf["last"] = w.last
     earlier: dict[str, list[str]] = {}
     for g, n in said["plans"].items():
         if g != goal and n in ids:
@@ -705,10 +707,12 @@ def rows(
         running leaf with who holds it beside it: named, not only counted."""
         for it in plan.get("waiting", []):
             out.append((d, it["title"], it["id"], it["word"], it["do"]))
-        for leaf in plan.get("leaves_running", []):
-            by = leaf.get("by") or ""
-            last = leaf.get("last") or ""
-            out.append((d, leaf["title"], leaf["id"], "running", " · ".join(s for s in (by, last) if s)))
+        for leaf in plan.get("leaves_running", []):  # the leaf is the work; who holds it is said so
+            said = [f"held by {leaf['by']}" if leaf.get("by") else "", leaf.get("last") or ""]
+            out.append((d, leaf["title"], leaf["id"], "running", " · ".join(s for s in said if s)))
+        if plan.get("next"):  # the leaf `next:` names, in its own row, its title whole (it wraps)
+            said = f"{plan.get('next_title') or plan['next']} · `graphene run` starts it"
+            out.append((d, "next:", plan["next"], "ready", said))
 
     def workers_under(node: str | None, d: int) -> None:
         for w in [w for w in ws if w["node"] == node and not w.get("holds")]:

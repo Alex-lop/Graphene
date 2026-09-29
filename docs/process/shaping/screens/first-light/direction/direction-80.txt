@@ -1,20 +1,19 @@
-you: 14 · 4 running · next: lane-a · the direction of …T/direction-demo-f397hlcf
-? Graphene is the…        graphene     proposed   · you 11 · 4 running · next:
+you: 14 · 2 running · next: lane-a · the direction of …T/direction-demo-zmogl89z
+? Graphene is the…        graphene     proposed   · you 11 · 2 running · next:
                                                     lane-a
-  ? Graphene runs live…   live         proposed   · you 4 · 4 running · next:
+  ? Graphene runs live…   live         proposed   · you 4 · 2 running · next:
                                                     lane-a
-    ? first contact…      first-light  proposed   · you 1 · 4 running · next:
+    ? first contact…      first-light  proposed   · you 1 · 2 running · next:
                                                     lane-a
       ○ the plan: first…  plan         0/10 done  · next: lane-a
-        ● session…        0feb67e8     running    · 3 of its subagents running ·
-                                                    4m ago
-        ● a subagent…     a6ec7c54     running    · Try config edit as person
-                                                    and as agent · now
-        ● a subagent…     a8455e05     running    · Fill n6 and start a slow run
-                                                    from watch · now
-        ● a subagent…     a6acd083     running    · Check docs for lookup and
-                                                    the board setting, and print
-                                                    the whole board · now
+        ○ next:           lane-a       ready      · A. first light: rungs 2 to 5
+                                                    live, and the fixes first
+                                                    contact forces · `graphene
+                                                    run` starts it
+        ● session…        0feb67e8     running    · 1 of its subagents running ·
+                                                    1m ago
+        ● a subagent…     a8455e05     running    · Stop the seat and wait for
+                                                    the slow run to end · now
         ✓ 10 finished                  finished   · a116b8e2, acb24c7a, a2a3cbb6
                                                     and 7 more
     ? Sandboxes: a leaf…  sandboxes    proposed   · you 1

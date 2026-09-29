@@ -179,3 +179,80 @@ what waits on the person ("you 4") but named only two of the four, so each ran `
 then `graphene board` to find the other two ids; that second and third command is most of the
 difference. In the morning arm, four of six stand-ins said the brief left one session's state
 (idle 20 minutes) unsaid. Two direction stand-ins said the rows were cut at the default width.
+
+## Exploratory second pass (registered after the fact, before its runs)
+
+*Written at 03:40 on 29 September, after the registered runs above and before any run of this pass,
+by lane D. It is exploratory: whatever it shows, the registered result above stands as written, and
+this pass is reported as after the fact. It is set up like shaping study 3: the same design again on
+a changed build.*
+
+**What changed in the build, and why.** Every direction stand-in above read "you 4" and could name
+only two of the four items, so each ran `graphene plan` and `graphene board` as well. Since then
+(`4f185aa`, `5ea3b03`) `graphene direction` names each item that waits on the person (a leaf in
+review, a board question, a proposal, a session whose turn it is) and each piece of running work once
+(a running leaf with its holder beside it), by the id they act on; and what a row says wraps instead
+of being cut. On this fixture at 100 columns it prints 229 words (199 before); `morning.md` is 367.
+`docs/test/test_direction_study.py::test_the_direction_print_alone_names_every_waiting_and_running_item_inside_80_columns`
+checks that the print alone names an id of every "waiting" and "running" item of the key.
+
+**What is held equal.** The fixture, `morning.md`, the key (`docs/test/direction_key.py`), the
+briefs (`brief`), the wrapper (`run`), the seats, the measures and the verdict rule are those of the
+registered study, unchanged. Only the build differs: `first-light` at the commit that adds this
+section, whose sha goes into the results.
+
+**Runs.** 3 seats × 2 arms × 2 repetitions: 12 runs, n = 6 per arm, fresh sub-agents, both arms run
+again at the same time (the registered morning runs are not reused, so both arms share the machine
+and the hour). Run names start with `x-`.
+
+**What would be said.**
+- "In an exploratory second pass on the changed build, the direction answered faster, as
+  correctly", only if `table` prints that verdict for this pass.
+- Otherwise the table's own words, with "exploratory" in front.
+- The registered result's sentence is not changed.
+
+**How to run it.** From a checkout of `first-light` at that commit, with `uv sync` done, for each run
+name `R` in `x-first-direction-1`, `x-first-morning-1`, `x-alex-direction-1`, `x-alex-morning-1`,
+`x-judge-direction-1`, `x-judge-morning-1` and the same with `-2`, its arm `A` and its seat `S`:
+
+    env -u NEBIUS_API_KEY -u NEBIUS_PROJECT_ID uv run --frozen python docs/test/direction_study.py fixture "$RUNS/$R" A
+    uv run --frozen python docs/test/direction_study.py brief "$RUNS/$R" S > "$RUNS/$R.brief"
+
+Spawn a fresh sub-agent per run whose whole prompt is "Read $RUNS/$R.brief and do what it says." Then:
+
+    uv run --frozen python docs/test/direction_study.py table "$RUNS"/x-*-direction-* "$RUNS"/x-*-morning-*
+
+### The exploratory table
+
+Run 03:53 to 03:54 on 29 September by the coordinator, from a checkout of `first-light` at
+`f5250c1` (the naming fix, `4f185aa` in the branch), twelve fresh sub-agents, all at once. No run is
+void. Filled by `table`:
+
+| run | arm | person-s, MODELLED | typed | acts | words read | right (of 8) | false | answered |
+|---|---|---|---|---|---|---|---|---|
+| x-alex-direction-1 | direction | 69.8 | 30 | 1 | 250 | 8 | 0 | 3/3 |
+| x-alex-direction-2 | direction | 61.4 | 18 | 1 | 229 | 8 | 0 | 3/3 |
+| x-first-direction-1 | direction | 99.9 | 31 | 2 | 369 | 8 | 0 | 3/3 |
+| x-first-direction-2 | direction | 116.2 | 45 | 3 | 415 | 8 | 0 | 3/3 |
+| x-judge-direction-1 | direction | 108.3 | 43 | 2 | 390 | 8 | 0 | 3/3 |
+| x-judge-direction-2 | direction | 108.3 | 43 | 2 | 390 | 8 | 0 | 3/3 |
+| x-alex-morning-1 | morning | 107.7 | 45 | 2 | 385 | 8 | 0 | 3/3 |
+| x-alex-morning-2 | morning | 130.6 | 122 | 3 | 385 | 8 | 0 | 3/3 |
+| x-first-morning-1 | morning | 107.1 | 43 | 2 | 385 | 8 | 0 | 3/3 |
+| x-first-morning-2 | morning | 103.1 | 44 | 2 | 367 | 8 | 0 | 3/3 |
+| x-judge-morning-1 | morning | 107.7 | 45 | 2 | 385 | 8 | 0 | 3/3 |
+| x-judge-morning-2 | morning | 103.7 | 46 | 2 | 367 | 8 | 0 | 3/3 |
+
+| arm | n | median person-s | median words read | mean right (of 8) | mean false |
+|---|---|---|---|---|---|
+| direction | 6 | 104.1 | 379.5 | 8.00 | 0.00 |
+| morning | 6 | 107.4 | 385.0 | 8.00 | 0.00 |
+
+By the registered rule (8 items): the direction answered faster, as correctly.
+
+After the fact, on one fixture its author wrote: with every waiting and running item named, the
+direction's runs took a median 104.1 modelled person-seconds against morning.md's 107.4,
+with every run in both arms right on all eight items. Four of the six direction stand-ins answered from
+one `graphene direction`; what they still stopped on was that `next: email` names a leaf that has no
+row of its own, and whether running work is named by its leaf or its session. This can show which way
+the change moved, and cannot confirm it.
