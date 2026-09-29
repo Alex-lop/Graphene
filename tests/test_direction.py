@@ -693,3 +693,22 @@ def test_the_watch_strip_keeps_the_node_the_plan_hangs_from_at_any_depth(repo): 
         strip = asyncio.run(go())
         rows = [line.split() for line in strip if line.lstrip()[:1] in "◌○?◇●"]
         assert len(strip) <= 4 and node in rows[-1], (node, strip)  # the plan's node is the last row
+
+
+def test_a_direction_nested_past_its_depth_is_refused_by_line_and_never_crashes(repo):  # noqa: F811
+    """Closing review finding 20: a committed file nested 1,100 levels deep crashed `graphene
+    direction` and `graphene plan` with RecursionError, after 4 s of CPU."""
+    deep = "".join(f"{'  ' * k}- level {k}  [n{k}]\n" for k in range(1100))
+    with pytest.raises(P.Refused, match=f"line {D.DEEPEST + 1}: a node {D.DEEPEST + 1} levels deep"):
+        D.parse(deep)
+    (repo / ".graphene").mkdir(exist_ok=True)
+    (repo / D.FILE).write_text(deep)
+    agent("plan", "propose", "-", input=PLAN)
+    person("plan", "accept")
+    shown = person("direction")
+    assert shown.exit_code == 1 and "levels deep" in shown.stderr and "RecursionError" not in shown.output
+    plan = person("plan")
+    assert plan.exit_code == 0 and plan.stdout.startswith(f"the direction: {D.FILE} cannot be read")
+    fits = "".join(f"{'  ' * k}- level {k}  [n{k}]\n" for k in range(D.DEEPEST))
+    (repo / D.FILE).write_text(fits)
+    assert person("direction").exit_code == 0

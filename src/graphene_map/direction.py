@@ -53,6 +53,7 @@ IGNORED = (
 )
 ALIVE = 300  # seconds since a session's last recorded call that it still counts as running
 DAY = 86400  # a session quiet for longer than this is not shown: it helps nobody decide anything
+DEEPEST = 16  # levels of the direction's tree: a line deeper is refused by its number
 IDLE = 3600  # a session or subagent idle (no call, and no end of its turn) for longer is not shown
 _NODE = re.compile(
     r"(?P<indent> *)(?P<mark>[-?])\s+(?P<title>\S.*?)\s+\[(?P<id>[A-Za-z0-9][\w.-]{0,31})\]\s*"
@@ -150,6 +151,10 @@ def parse(text: str) -> Direction:
         if found is not None:
             if found["id"] in seen:
                 refused.append(f"line {k + 1}: [{found['id']}] is already the id on line {seen[found['id']]}")
+                continue
+            if len(stack) >= DEEPEST:
+                refused.append(f"line {k + 1}: a node {len(stack) + 1} levels deep: the direction is a small "
+                               f"tree, {DEEPEST} levels at most")  # fmt: skip
                 continue
             parent = stack[-1] if stack else None
             node = Node(
@@ -703,8 +708,12 @@ def rows(
     out: list[tuple[int, str, str, str, str]] = []
     by_id = {n["id"]: n for n in nodes}
 
+    deep: dict[str, int] = {}  # in file order a parent comes first: one pass, no recursion
+    for n in nodes:
+        deep[n["id"]] = 0 if n["parent"] is None else deep[n["parent"]] + 1
+
     def depth(n: dict) -> int:
-        return 0 if n["parent"] is None else 1 + depth(by_id[n["parent"]])
+        return deep[n["id"]]
 
     def plan_row(d: int) -> None:
         said = [f"you {plan['you']}"] if plan["you"] else []
