@@ -374,4 +374,12 @@ they measure:
   person's fatigue, which a stand-in does not have. The stand-ins and the judges are
   claude-opus-5-5, as `build.txt` says.
 
+**03:05, the coordinator, after the eight runs and before any table.** The inventory board run's
+stand-in reported that this session's permission classifier refused two of its commands, both through
+`as_me`, which its brief lists ("Auto-Mode Bypass"): `seen as_me graphene plan --view auto`, and a
+`handwork` act; it stopped before accepting anything. That is the harness failing, so under rule 4 it
+is rerun once, from a fresh fork of the same proposal, as `inventory-shape-board-1`; the failed run
+is kept as `inventory-shape-board-1-harness-failed` and reported. No brief, card, proposal, build or
+judge's brief changed.
+
 ### Study 4 results
