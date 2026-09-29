@@ -23,7 +23,7 @@ from . import board as B
 from . import cover, lookup, precheck
 from . import plan as P
 from . import plan_text as T
-from .run import _splits, command_for
+from .run import _splits, command_for, unchosen
 from .run import label as run_label
 
 # Read-only: Claude Code's built-in tools cut to the three that read (`--tools`), and none of the MCP
@@ -37,15 +37,15 @@ ATTEMPTS = 2
 def named(spec: str | None) -> str:
     """What --with names, as the planner to start: `nemotron [options]` is Graphene's own planner on
     Token Factory; `claude` and `codex` alone are those agents with read-only tools; anything else is a
-    command, as it is."""
+    command, as it is. Nothing named is refused: no planner starts that the person did not choose."""
     spec = (spec or "").strip()
+    if not spec:
+        raise unchosen("planner")
     if spec.split(None, 1)[:1] == ["nemotron"]:
         from .planner import template
 
         return template(spec)
-    return {"": DEFAULT_PLANNER, "claude": DEFAULT_PLANNER, "codex": "codex exec --sandbox read-only"}.get(
-        spec, spec
-    )
+    return {"claude": DEFAULT_PLANNER, "codex": "codex exec --sandbox read-only"}.get(spec, spec)
 
 
 def label(template: str) -> str:

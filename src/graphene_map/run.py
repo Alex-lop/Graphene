@@ -47,17 +47,27 @@ ATTEMPTS = 3
 CODEX = "codex exec --sandbox workspace-write"
 
 
+def unchosen(who: str) -> P.Refused:
+    """Nothing chosen and nothing named: refused before anything starts, since what would start runs
+    with the person's permissions and spends their usage, and they never chose it."""
+    return P.Refused(
+        f"no {who} is chosen for this repo, so nothing was started: `graphene init` chooses one, or "
+        "`--with claude` (or `--with codex`, `--with nemotron`, a command) names one for this command"
+    )
+
+
 def named(spec: str | None) -> str:
     """What --with names, as the command to start: `nemotron [options]` is Graphene's own executor on
     Token Factory; `claude` and `codex` alone are those agents as Graphene starts them by default;
-    anything else is a command, as it is."""
+    anything else is a command, as it is. Nothing named is refused (`unchosen`)."""
     spec = (spec or "").strip()
-    word = spec.split(None, 1)[0] if spec else ""
-    if word == "nemotron":
+    if not spec:
+        raise unchosen("executor")
+    if spec.split(None, 1)[0] == "nemotron":
         from .executor import template
 
         return template(spec)
-    return {"": DEFAULT_WITH, "claude": DEFAULT_WITH, "codex": CODEX}.get(spec, spec)
+    return {"claude": DEFAULT_WITH, "codex": CODEX}.get(spec, spec)
 
 
 INTERPRETER = re.compile(r"(python|node|bash|sh|zsh|ruby|perl|deno|bun)[\d.]*")

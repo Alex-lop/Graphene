@@ -105,7 +105,10 @@ def test_out_of_steps_it_is_asked_to_answer_without_tools(repo, fake):
 
 def test_named_planners():
     assert label(named("nemotron")) == "nemotron"
-    assert named("claude") == named(None) and "--tools Read,Grep,Glob" in named(None)
+    assert "--tools Read,Grep,Glob" in named("claude")
+    for nothing in (None, "", " "):  # none chosen: nothing starts (first walker, finding 1)
+        with pytest.raises(plan.Refused, match="^no planner is chosen for this repo, so nothing was started"):
+            named(nothing)
     assert named("codex") == "codex exec --sandbox read-only"
 
 

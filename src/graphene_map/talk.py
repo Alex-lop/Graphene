@@ -208,7 +208,7 @@ def register(cli: typer.Typer, root, open_store, fail) -> None:
     )
     cli.add_typer(talk_cli, name="talk")
     WITH = typer.Option(
-        None, "--with", help="The planner. Default: the one `graphene init` chose, else claude."
+        None, "--with", help="The planner. Default: the one `graphene init` chose; none chosen, refused."
     )
 
     def asked(what):
