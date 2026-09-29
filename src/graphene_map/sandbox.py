@@ -97,6 +97,20 @@ def _sdk_error(name: str) -> type[Exception]:
         return type(name, (Exception,), {})
 
 
+def _unkeyed(said) -> str:
+    """ConTree's words with the key and the project id taken out, as set and as sent, then anything shaped
+    like a key, then cut: a gateway's page may echo the request's headers, and the cut must not halve a key
+    first (tokenfactory._request does the same for Token Factory's)."""
+    from . import keys
+
+    text = " ".join(str(said).split())
+    raw = [os.environ.get(n) or "" for n in (keys.KEY, "NEBIUS_PROJECT_ID")]
+    for secret in sorted({*raw, *(v.strip() for v in raw), keys.find() or ""}, key=len, reverse=True):
+        if len(secret) >= 6:
+            text = text.replace(secret, "…")
+    return tf.unkeyed(text)[:300]
+
+
 def refused() -> str | None:
     """The refusal a leaf would meet, asked before any is placed (`graphene init`): ConTree's whoami, a
     read and no operation, answering 403, or saying the key lacks one of the grants a leaf uses. None when
@@ -261,9 +275,12 @@ class Contree:
 
     def _asked(self, call):
         """One call to the SDK, its 403 said as ``Refused``, with what the key lacks when ConTree's whoami
-        says."""
+        says, and any other error of its own said without the key or the project (``_unkeyed``); its time
+        limit reaches ``_run`` as it is."""
         try:
             return call()
+        except _sdk_error("OperationTimedOutError"):
+            raise
         except _sdk_error("ForbiddenError"):
             try:  # a read of the key's grants, no operation: which of them this project does not give
                 lacks = sorted(k for k, v in self.sdk.get_token_info().permissions.items() if not v)
@@ -271,6 +288,9 @@ class Contree:
                 lacks = []
             why = f"its key lacks {', '.join(lacks)} there" if lacks else NO_GRANT
             raise Refused(FORBIDDEN.format(why=why)) from None
+        except _sdk_error("ContreeError") as no:  # its message is the response's body: it may echo a header
+            said = f"ConTree answered with an error ({type(no).__name__}): {_unkeyed(no)}"
+            raise RuntimeError(said) from None
 
     def start(self, tar: Path, script: str, timeout: float) -> tuple[str, int, str]:
         return self._run(self.base, script, {"/tmp/graphene/repo.tar": str(tar)}, timeout, "")

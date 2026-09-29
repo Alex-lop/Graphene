@@ -213,3 +213,14 @@ def test_live_session_names_only_scripts_that_exist_and_practice_steps_the_ladde
     knows = {str(n) for n in practice.RUNGS} | set(practice.STEPS) | usage
     named = {m for span in spans for m in re.findall(r"practice\.sh (\w+)", span)}
     assert named and named <= knows, named - knows
+
+
+def test_first_lights_403_for_a_made_up_key_names_its_source_and_says_it_is_no_practice():
+    """first-light.md says each fact names its file. The 403 that a made-up key and project got came from a
+    harness slip, not from the ladder: the doc says so and names its only record (a commit message, which
+    a shallow clone may not hold, so the test reads the doc only)."""
+    said = doc("docs/test/first-light.md")
+    assert "In a test run in this repository, ConTree also answered" not in said
+    assert "a harness slip, not from the ladder and not practice" in said
+    assert "Its only record is the message of commit e5efb4f" in said
+    assert "No log of that run was kept" in said

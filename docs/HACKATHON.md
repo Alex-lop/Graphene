@@ -396,9 +396,10 @@ was observed, come from the practice rungs of 2026-09-29, in `docs/test/first-li
    say which permission the key lacks, nor that the beta is by request (contree.dev says to request
    access at tokenfactory.nebius.com/sandboxes/about). Graphene now says both itself, and asks ConTree's
    whoami before it places a leaf there.
-10. **A made-up key and a made-up project get a 403, not a 401.** In a test run in this repository,
-   ConTree answered both with a 403, so a 403 alone cannot tell a key without the grant from a
-   `NEBIUS_PROJECT_ID` that is not the key's project.
+10. **A made-up key and a made-up project got a 403, not a 401, once**, when a test of ours reached the
+   real ConTree by mistake (about 02:00 on 29 September; not repeated, no log kept: `docs/test/first-light.md`),
+   so a 403 alone may not tell a key without the grant from a `NEBIUS_PROJECT_ID` that is not the key's
+   project.
 11. **The three Nemotron 3 ids are cased three ways:** `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B`,
    `nvidia/Nemotron-3-Ultra-550b-a55b` and `nvidia/nemotron-3-super-120b-a12b`. An agent that matches
    ids as spelled misses two of them; Graphene reads them case-blind. The fourth NVIDIA model listed,

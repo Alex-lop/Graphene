@@ -52,10 +52,10 @@ def install(put) -> None:
     if os.environ.get("FAULTS_BOX"):
         box = Killed if os.environ["FAULTS_BOX"] == "killed" else Box
         put(sandbox, "choose", lambda name=None, image=None: box())
-    if os.environ.get("FAULTS_SDK") == "forbidden":  # ConTree itself, through sandbox.Contree, says 403
+    if os.environ.get("FAULTS_SDK") in ("forbidden", "echoing"):  # ConTree itself, through sandbox.Contree
         import contree_sdk
 
-        put(contree_sdk, "ContreeSync", Forbidding)
+        put(contree_sdk, "ContreeSync", Forbidding if os.environ["FAULTS_SDK"] == "forbidden" else Echoing)
 
 
 def persons_shell(monkeypatch) -> None:
@@ -81,6 +81,23 @@ class Forbidding:
 
         self.images = SimpleNamespace(oci=refuse, use=refuse)
         self.get_token_info = lambda refresh=False: SimpleNamespace(permissions=dict(self.GRANTS))
+
+
+class Echoing:
+    """contree-sdk's ContreeSync behind a gateway that answers 502 with a page echoing the request's
+    headers: every call raises the SDK's own ApiStatusCodeError, whose message is that page, key and
+    project in it. Nothing is sent anywhere."""
+
+    def __init__(self, token: str | None = None):
+        from contree_sdk.sdk.exceptions import ApiStatusCodeError
+
+        page = (f"Bad Gateway. Request headers: Authorization: Bearer {os.environ.get('NEBIUS_API_KEY')}; "
+                f"Project: {os.environ.get('NEBIUS_PROJECT_ID')}")  # fmt: skip
+
+        def echo(*_, **__):
+            raise ApiStatusCodeError(status=502, error=page)
+
+        self.images = SimpleNamespace(oci=echo, use=echo)
 
 
 def _holds(script: str, name: str) -> bool:
