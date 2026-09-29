@@ -97,7 +97,7 @@ def test_the_direction_print_alone_names_every_waiting_and_running_item_inside_8
         S.run(run, ["graphene", "direction", "--width", width])
         said = capsys.readouterr().out
         lines = said.splitlines()
-        assert all(len(line) <= int(width) for line in lines[:-1]), width  # the last is the commands line
+        assert all(len(line) <= int(width) for line in lines), width
         words = {w.strip("`·,():") for w in said.split()}
         for question in ("waiting", "running"):
             for item in S.KEY[question]:

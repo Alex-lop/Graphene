@@ -715,7 +715,8 @@ def rows(
             out.append((d, w["label"], w["short"], w["word"], f"{w['last']} · {_ago(w['at'], now)}"))
         fin = [w for w in done if w["node"] == node and node is not None]  # unattached: helps no one
         if fin:
-            out.append((d, f"{len(fin)} finished", "", "finished", ", ".join(w["short"] for w in fin)))
+            ids = ", ".join(w["short"] for w in fin[:3]) + (f" and {len(fin) - 3} more" * (len(fin) > 3))
+            out.append((d, f"{len(fin)} finished", "", "finished", ids))
 
     keep = None
     if only is not None and only in by_id:
@@ -798,7 +799,8 @@ def lines(
     ww = max(len(r[3]) for r in got)
     need = max(cell_len(f"{'  ' * r[0]}◌ {r[1]}") for r in got)
     said = min(max(len(r[4]) for r in got), int(width * 0.45))  # what a row says after its word
-    wt = max(20, min(need, 56, width - wid - ww - 8 - said))
+    floor = max(24, max(2 * r[0] for r in got) + 16)  # a title keeps some words at the deepest row
+    wt = max(floor, min(need, 56, width - wid - ww - 8 - said))
     out = []
     for d, title, rid, word, what in got:
         glyph = look(word)[0] if word else "◌"

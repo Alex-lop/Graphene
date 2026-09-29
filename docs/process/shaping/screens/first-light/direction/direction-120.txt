@@ -1,29 +1,31 @@
-you: 14 · 5 running · next: lane-a · the direction of …lders/kl/5njp0xds47586m9j3gqtw_8m0000gn/T/direction-demo-74h3gbvt
-? Graphene is the shared plan between a person and…       graphene     proposed   · you 11 · 5 running · next: lane-a
-  ? Graphene runs live on Nemotron and Token Factory      live         proposed   · you 4 · 1 running · next: lane-a
-    ? first contact: the ladder's rungs pass live, and…   first-light  proposed   · you 1 · 1 running · next: lane-a
-      ○ the plan: first light: Graphene meets a real…     plan         0/10 done  · next: lane-a
-        ● session: Implement FIRST_LIGHT_DIRECTIVE.md     0feb67e8     running    · Read how scalar defaults are used…
-        ✓ 6 finished                                                   finished   · ab5718dc, a116b8e2, acb24c7a…
-    ? Sandboxes: a leaf runs in a forked checkpoint…      sandboxes    proposed   · you 1
-      ✓ 1 finished                                                     finished   · adf0d971
-    ? the registered runs, rung 6 and the shaping…        with-alex    proposed   · you 1
-  ? the board earns its place, or stays out of the way    board        proposed   · you 1
-    ✓ 2 finished                                                       finished   · a339830e, ab0a3dd7
-  ? the direction: my goals above the plans, with every…  direction    proposed   · you 1 · 1 running
-    ● Lane D: the direction, core                         a640f5b2     running    · Run the screen, page and CLI…
-    ✓ 1 finished                                                       finished   · a8ab5f0a
-  ? nothing Graphene starts outlives what started it      teardown     proposed   · you 1 · 1 running
-    ● Lane C: replay/teardown processes                   a01fb98a     running    · Run teardown and demo tests on…
-  ? the submission by 30 October                          submission   proposed   · you 3 · 2 running
-    ● Lane C: walks.md, the terminal                      a576dfe8     running    · Read rest of waits_on_person and…
-    ✓ 5 finished                                                       finished   · a942024c, af0ab3d9, a62434c7…
-    ? the rough cut, from live footage only               rough-cut    proposed   · you 1 · 1 running
-      ● Lane B: rough cut pipeline                        acf08603     running    · Keep contraction apostrophes in a…
-    ? the video, the demo page and HACKATHON.md in my…    video        proposed   · you 1
-◌ not in the direction                                                            · `graphene direction attach SESSION…
-  ◇ session: Ok looking at my memory it's kind the same…  1c0ec47e     your turn  · Check memory pressure and top…
-  ◇ session: Ok nice can you fix that and then create…    d3d5effe     your turn  · Push the branch and open the PR…
-  ◇ session: Wait I'm sorry did you finish working, I…    403e4cef     your turn  · Open the PR on graphene-site · 1h…
+you: 14 · 4 running · next: lane-a · the direction of …lders/kl/5njp0xds47586m9j3gqtw_8m0000gn/T/direction-demo-f397hlcf
+? Graphene is the shared plan between…  graphene     proposed   · you 11 · 4 running · next: lane-a
+  ? Graphene runs live on Nemotron…     live         proposed   · you 4 · 4 running · next: lane-a
+    ? first contact: the ladder's…      first-light  proposed   · you 1 · 4 running · next: lane-a
+      ○ the plan: first light…          plan         0/10 done  · next: lane-a
+        ● session: Implement…           0feb67e8     running    · 3 of its subagents running · 4m ago
+        ● a subagent…                   a6ec7c54     running    · Try config edit as person and as agent · now
+        ● a subagent…                   a8455e05     running    · Fill n6 and start a slow run from watch · now
+        ● a subagent…                   a6acd083     running    · Check docs for lookup and the board setting, and print
+                                                                  the whole board · now
+        ✓ 10 finished                                finished   · a116b8e2, acb24c7a, a2a3cbb6 and 7 more
+    ? Sandboxes: a leaf runs in a…      sandboxes    proposed   · you 1
+      ✓ 1 finished                                   finished   · adf0d971
+    ? the registered runs, rung 6 and…  with-alex    proposed   · you 1
+  ? the board earns its place, or…      board        proposed   · you 1
+    ✓ 2 finished                                     finished   · a339830e, ab0a3dd7
+  ? the direction: my goals above the…  direction    proposed   · you 1
+    ✓ 1 finished                                     finished   · a640f5b2
+  ? nothing Graphene starts outlives…   teardown     proposed   · you 1
+    ✓ 1 finished                                     finished   · a01fb98a
+  ? the submission by 30 October        submission   proposed   · you 3
+    ✓ 3 finished                                     finished   · a942024c, af0ab3d9, a576dfe8
+    ? the rough cut, from live…         rough-cut    proposed   · you 1
+      ✓ 1 finished                                   finished   · acf08603
+    ? the video, the demo page and…     video        proposed   · you 1
+◌ not in the direction                                          · `graphene direction attach SESSION NODE`
+  ◇ session: Ok looking at my memory…   1c0ec47e     your turn  · Check memory pressure and top memory users · 18h ago
+  ◇ session: Ok nice can you fix that…  d3d5effe     your turn  · Push the branch and open the PR into main · 2h ago
+  ◇ session: Wait I'm sorry did you…    403e4cef     your turn  · Open the PR on graphene-site · 2h ago
   1 older session left out: quiet for a day
 graphene direction accept ID · drop ID · plan NODE · attach SESSION NODE|none · edit · propose -
