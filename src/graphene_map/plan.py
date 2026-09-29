@@ -637,8 +637,10 @@ def ctrl_c_on_hangup():
     """A closed terminal (SIGHUP) or a `kill` (SIGTERM) is taken as Ctrl-C while this lasts, so what
     must not be left behind (a check and what it started; a run's executors, leaves and lock) is
     ended before the process goes: left to the defaults, it died where it stood, and they worked on
-    unattended. Once the terminal is gone, what is said goes nowhere rather than failing the
-    cleanup half done. Only the main thread is told of a signal; elsewhere this does nothing."""
+    unattended. A terminal that closes without the hangup is looked for twice a second and taken as
+    one that sent it (``terminal_closed``). Once the terminal is gone, what is said goes nowhere
+    rather than failing the cleanup half done. Only the main thread is told of a signal; elsewhere
+    this does nothing."""
     import signal
     import threading
 
@@ -656,11 +658,35 @@ def ctrl_c_on_hangup():
     # SIGINT too: started from a shell that ignores it (a job in the background, a CI step), the
     # process inherits the ignoring, and neither Ctrl-C nor `:stop` would ever reach it
     was = {sig: signal.signal(sig, hung_up) for sig in (signal.SIGHUP, signal.SIGTERM, signal.SIGINT)}
+    over = threading.Event()
+
+    def unsaid() -> None:
+        while not over.wait(0.5):
+            if terminal_closed():
+                return os.kill(os.getpid(), signal.SIGHUP)
+
+    if os.isatty(1):
+        threading.Thread(target=unsaid, daemon=True).start()
     try:
         yield
     finally:
+        over.set()
         for sig, handler in was.items():
             signal.signal(sig, handler)
+
+
+def terminal_closed() -> bool:
+    """Has the terminal this process writes to gone? Writing nothing to it fails once its other side
+    is closed (EIO, on macOS and Linux alike), and is nothing while it is open. A closed terminal
+    does not always send the hangup: not to a process it was only the input and output of (a test's
+    pty), nor to one started by something that ignores SIGHUP (nohup, or a shell that does). Reading
+    it then gives an end of file, which Textual takes for no key and reads again at once, forever:
+    15 replays of the shaping run's tests spun like that at full speed."""
+    try:
+        os.write(1, b"")
+    except OSError:
+        return True
+    return False
 
 
 _checks: set = set()  # the processes of the checks running now (Popen); a run that is stopped ends it
@@ -764,7 +790,6 @@ def _clean_tree(checkout: str | Path, leave_out: list[str] | tuple, began: float
             )
 
 
-@ctrl_c_on_hangup()
 def check_env() -> dict[str, str]:
     """A check's environment, wherever it runs here (`done`, `plan precheck`): no key, and Graphene's own
     keychain lookup off, for it runs code an executor wrote."""
@@ -772,6 +797,7 @@ def check_env() -> dict[str, str]:
     return env | {"GRAPHENE_AS": "agent:check", "GRAPHENE_KEYCHAIN": "off"}
 
 
+@ctrl_c_on_hangup()
 def run_check(
     command: str, checkout: str | Path, leave_out: list[str] | tuple = ()
 ) -> tuple[bool, str, list[str]]:

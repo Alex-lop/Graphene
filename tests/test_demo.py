@@ -376,21 +376,26 @@ def test_the_replays_repository_goes_when_its_terminal_closes_or_it_is_killed(tm
     env = os.environ | {"TMPDIR": str(tmp_path / "tmp"), "TERM": "xterm-256color"}
     proc = subprocess.Popen([*CLI, "demo"], cwd=tmp_path, stdin=tty, stdout=tty, stderr=tty, env=env)
     os.close(tty)
-    said, end = b"", time.monotonic() + 60
-    while b"replay" not in said and time.monotonic() < end:  # a second's silence is a slow start, not the end
-        if select.select([main], [], [], 1)[0]:
-            said += os.read(main, 65536)
-    assert b"replay" in said and list((tmp_path / "tmp").iterdir()), said  # the screen is up, over its repo
-    if sig == signal.SIGHUP:
-        os.close(main)  # the terminal is gone, as when its window closes
-    proc.send_signal(sig)
-    while sig != signal.SIGHUP and proc.poll() is None and select.select([main], [], [], 1)[0]:
-        with contextlib.suppress(OSError):  # the terminal's other side is closed (Linux says it so)
-            if not os.read(main, 65536):
-                break
-    proc.wait(timeout=30)
-    if sig != signal.SIGHUP:
-        os.close(main)
+    try:  # a replay this test fails to end is ended here: left, it outlived the test
+        said, end = b"", time.monotonic() + 60
+        while b"replay" not in said and time.monotonic() < end:  # a second's silence is a slow start
+            if select.select([main], [], [], 1)[0]:
+                said += os.read(main, 65536)
+        assert b"replay" in said and list((tmp_path / "tmp").iterdir()), said  # up, over its repository
+        if sig == signal.SIGHUP:
+            os.close(main)  # the terminal is gone, as when its window closes
+            main = None
+        proc.send_signal(sig)
+        while sig != signal.SIGHUP and proc.poll() is None and select.select([main], [], [], 1)[0]:
+            with contextlib.suppress(OSError):  # the terminal's other side is closed (Linux says it so)
+                if not os.read(main, 65536):
+                    break
+        proc.wait(timeout=30)
+    finally:
+        proc.kill()
+        proc.wait()
+        if main is not None:
+            os.close(main)
     assert list((tmp_path / "tmp").iterdir()) == []
 
 
@@ -421,13 +426,14 @@ def test_a_recording_carries_the_board(tmp_path):
         assert demo._snapshot(store.conn, 0)[2]["board"] == '[{"id": "q"}]'
 
 
-def test_a_tick_that_lands_once_the_screen_is_torn_down_draws_nothing(tmp_path, monkeypatch):
+def test_a_tick_that_lands_once_the_screen_is_torn_down_draws_nothing(tmp_path):
     """CI, 28 September (Ubuntu, now and then): the replay's once-a-second refresh ticked while the test
     harness tore the app down. The harness removes the screen's widgets without calling exit, which is
     the only thing that stops a timer's tick, so the draw looked for #where and found nothing. A tick
     that lands once the app has stopped running now does nothing, the replay's own tick too."""
-    monkeypatch.setattr(demo, "LONG", 0.01)
     head, lines = demo.load(demo.SHIPPED)
+    for line in lines[1:]:  # an hour on: the screen is torn down mid-replay, however slow the machine is
+        line["at"] += 3600
     app = demo.Replay(demo.repository(tmp_path, head), head, lines)
 
     async def go():
@@ -436,7 +442,7 @@ def test_a_tick_that_lands_once_the_screen_is_torn_down_draws_nothing(tmp_path, 
             assert app.next < len(app.lines)  # changes are left to play when the app is torn down
 
     asyncio.run(go())
-    app.began -= 3600  # every change is due, so the replay's tick has something to apply
+    app.began -= 7200  # every change is due, so the replay's tick has something to apply
     app.refresh_plan()  # the screen's tick, after its widgets are gone
     app.play()  # and the replay's
 
