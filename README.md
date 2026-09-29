@@ -4,17 +4,7 @@
 
 Paragraph in, tree out, prune, run.
 
-You tell your coding agent what you want, the way you always have: a paragraph. Before it writes a
-line of code it shows you what it understood, as a tree. The goal sits at the top, then the
-pieces of work under it, each with the files it may change and the command that shows it is done.
-You read that, cut what you did not mean, and press `R`. Agents do the leaves in parallel, each in a
-worktree of its own. A leaf that finds it needs more than you gave it comes back with the fix
-already written: one key to take it.
-
-I let agents work on my repos for hours. However many tokens you give an agent, it still has to
-guess what you meant, and I found out what it guessed from the diff at the end. Graphene is where I
-see the guess before anything is spent, and correct it with a keystroke instead of a restart.
-Agent work gets cheaper every few months. My attention does not.
+I let agents work on my repos for hours, however many tokens you give an agent, it still has to guess what you meant, and I found out what it guessed from the diff at the end. Graphene is where I see the guess before anything is spent, and correct it with a keystroke instead of a restart. Agent work gets cheaper every few months. My attention does not.
 
 Two kinds of agent are involved. The **planner** is the session you talk to (or `graphene ask`); it
 proposes the tree and writes no code. The **executors** are what `graphene run` starts, one per leaf;
