@@ -247,7 +247,10 @@ def test_two_leaves_land_at_once_each_in_its_worktree(repo, fake):
 def test_named_executors_and_their_label():
     assert named("nemotron --model x").split()[1:] == ["-m", "graphene_map.executor", "--model", "x"]
     assert label(named("nemotron")) == "nemotron"
-    assert named("claude") == named(None) and "claude -p" in named(None)
+    assert named("claude").startswith("claude -p ")
+    for nothing in (None, "", " "):  # none chosen: nothing starts (first walker, finding 1)
+        with pytest.raises(plan.Refused, match="^no executor is chosen for this repo, so nothing was start"):
+            named(nothing)
     assert named("codex").startswith("codex exec")
     assert named("my-agent --flag") == "my-agent --flag"
 

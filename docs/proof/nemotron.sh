@@ -17,6 +17,13 @@ DIR=${1:-$HOME/graphene-nemotron}
 [ -e "$DIR" ] && { echo "$DIR exists already; name another directory, or delete it first" >&2; exit 1; }
 [ -n "${NEBIUS_API_KEY:-}" ] || { echo "NEBIUS_API_KEY is not set: Token Factory needs a key" >&2; exit 1; }
 command -v graphene >/dev/null || { echo "graphene is not on PATH" >&2; exit 1; }
+# spending is the person's: an agent's shell runs this on Token Factory only when the person opened it
+if [ -z "${GRAPHENE_TOKENFACTORY_URL:-}" ] && [ -z "${GRAPHENE_AGENT_LIVE_USD:-}" ]; then
+  for mark in CLAUDECODE CLAUDE_CODE_SESSION_ID CLAUDE_CODE_ENTRYPOINT CODEX_SESSION_ID CODEX_SANDBOX \
+              AI_AGENT GEMINI_CLI CURSOR_AGENT; do
+    [ -n "${!mark:-}" ] && { echo "refused: this spends on the person's key, and this shell carries an agent's mark ($mark) with no GRAPHENE_AGENT_LIVE_USD: nothing was sent" >&2; exit 1; }
+  done
+fi
 unset CLAUDECODE CLAUDE_CODE_SESSION_ID AI_AGENT GRAPHENE_AS   # the person runs this, not an agent
 step() { printf '\n\033[1m$ %s\033[0m\n' "$*"; "$@"; }
 case ${RECORD:-} in ''|/*) ;; *) RECORD=$PWD/$RECORD ;; esac   # from where this was started
@@ -33,6 +40,10 @@ step graphene ask "${PARAGRAPH:-Look at this repo. I want the new Northwind XML 
 csv and json already do: same load command, same JSONL out. Prices in that feed are already in cents. The \
 summary line at the end is not a product. A price of 0 means skip it, for every supplier. Don't touch \
 vendored or legacy files that aren't ours this week.}"
+
+# The board, scripted: each line of BOARD is the `graphene board` command a person's one key runs on an
+# item in `graphene watch` (y takes its default, 1-9 picks an option). Unset, the board stays as asked.
+while read -r answer; do [ -z "$answer" ] || step graphene board $answer; done <<< "${BOARD:-}"
 
 # The prune, scripted: cli/main.py leaves every scope (a person would type it), so a leaf that needs it
 # comes back with its fix. Then everything proposed is accepted.

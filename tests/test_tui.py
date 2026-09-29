@@ -84,7 +84,7 @@ def test_the_top_line_says_whose_plan_and_the_goal_is_the_first_row(repo):
     assert seen["where"].endswith(repo.name) and len(seen["where"]) <= 78
     assert seen["tree"][0].startswith("▼ ? users come back with their ids") and "proposed" in seen["tree"][0]
     assert seen["cursor"] is None and "users come back with their ids" in seen["detail"]  # the goal's pane
-    assert "planner:" not in seen["status"] and "you: 2 · 0 running" in seen["status"]  # the tree, once
+    assert "planner:" not in seen["status"] and "2 on you · 0 running" in seen["status"]  # the tree, once
     assert seen["classes"] == ["-narrow"]  # 80 columns: the tree above, the node below it
     wide, _ = watch(repo, [], size=(120, 30))
     assert wide["classes"] == ["-wide"] and "waiting on you: 2 · executors: none" in wide["status"]
@@ -139,10 +139,13 @@ def test_search_moves_to_the_match_and_n_to_the_next(repo):
 def test_a_adds_a_sibling_with_the_title_typed(repo):
     proposed(repo)
     person("plan", "accept")
-    watch(repo, ["j", "j", "a", *"the orders endpoint", "enter"])
+    seen, _ = watch(repo, ["j", "j", "a", *"the orders endpoint", "enter"])
     with Store.open(repo) as store:
         [new] = [n for n in plan.nodes(store) if n.title == "the orders endpoint"]
         assert new.parent == "api" and new.state == "open"  # the planner can fill it in: s
+    # walk 2026-09-29 (alex 21): the cursor stayed on the old row, where the prompt's own next step,
+    # e, would open the wrong contract
+    assert seen["cursor"] == new.id and new.title in seen["detail"], (seen["cursor"], new.id)
 
 
 def test_e_opens_the_contract_in_the_editor(repo, monkeypatch, tmp_path):
@@ -176,6 +179,22 @@ def test_a_leaf_that_came_back_shows_its_fixes_and_w_takes_one(repo):
         assert plan.get(store, "schema").scope == ["schema.py", "migrations/001.sql"]
 
 
+def test_b_then_u_on_a_leaf_that_came_back_puts_it_back_as_it_came_back_with_its_offers(repo):
+    """Walk 2026-09-28 (judge 8): after `b` then `u` the leaf read `ready`, not came back, and its w
+    and b offers were gone: undo did not put back the state the person saw."""
+    proposed(repo)
+    person("plan", "accept")
+    with Store.open(repo) as store:
+        bot = plan.Caller("claude:aaaa1111", False, "aaaa1111-session")
+        plan.start(store, "schema", bot, repo)
+        plan.release(store, "schema", bot, "it needs migrations/", wants=["migrations/001.sql"])
+    seen, _ = watch(repo, ["G", "b", "u"], size=(120, 36))
+    assert "undid: node sibling schema" in seen["status"] and seen["cursor"] == "schema"
+    assert "schema · came back" in seen["detail"]
+    assert "w  widen its scope to migrations/001.sql" in seen["detail"]
+    assert "b  a sibling leaf for migrations/001.sql" in seen["detail"]
+
+
 def test_the_colon_line_takes_any_command_verbatim(repo):
     proposed(repo)
     seen, _ = watch(repo, ["colon", *"plan accept schema", "enter"])
@@ -190,6 +209,16 @@ def test_question_mark_is_help_and_l_is_the_executors_output(repo):
     assert seen["screen"] == "Help"
     seen, _ = watch(repo, ["j", "j", "l"])
     assert "ids · output of attempt 1" in seen["detail"] and "nothing yet" in seen["detail"]
+
+
+def test_l_on_a_sub_goal_says_it_has_no_output_and_its_leaves_do(repo):
+    """Walk 2026-09-28 (judge 25): `l` on a sub-goal said `output of attempt 1 · nothing yet`, as if
+    an executor might yet print something for it; nobody runs a sub-goal, its leaves are run."""
+    proposed(repo)
+    seen, _ = watch(repo, ["j", "l"])
+    flat = " ".join(seen["detail"].split())
+    assert seen["cursor"] == "api" and "output of attempt" not in flat, flat
+    assert flat.startswith("api · a sub-goal: no executor runs it, so it has no output of its own"), flat
 
 
 def test_what_a_colon_command_printed_gives_way_when_the_plan_moves(repo):
@@ -378,7 +407,8 @@ def test_colon_ask_reads_quotes_and_options_as_a_shell_would(repo, monkeypatch):
     asked = []
     monkeypatch.setattr(Watch, "background", lambda self, argv: asked.append(argv))
     lines = ('ask "add a login page"', "ask --about ids fix it", "ask don't break it",
-             "ask add a --dry-run flag to load")  # fmt: skip
+             "ask add a --dry-run flag to load", "ask don't touch what isn't ours",
+             "ask 'keep it' and \"don't\" drop it", "ask don't fix the 'thing")  # fmt: skip
     for line in lines:
         watch(repo, ["colon", *line, "enter"])
     assert asked == [
@@ -386,6 +416,10 @@ def test_colon_ask_reads_quotes_and_options_as_a_shell_would(repo, monkeypatch):
         ["ask", "fix it", "--about", "ids"],
         ["ask", "don't break it"],
         ["ask", "add a --dry-run flag to load"],  # seen at the screen: the flag was taken for ask's
+        # the rough cut's rehearsal: two apostrophes were read as a quote, and the planner got "dont … isnt"
+        ["ask", "don't touch what isn't ours"],
+        ["ask", "keep it and don't drop it"],
+        ["ask", "don't fix the 'thing"],  # a quote left open: the sentence as typed
     ]
 
 
@@ -557,6 +591,25 @@ def test_two_commands_started_in_one_second_each_keep_their_own_output(repo, mon
 
     watch(repo, [], before=before)
     assert len(list((repo / ".graphene" / "runs").iterdir())) == 2
+
+
+def test_a_command_watch_runs_leaves_out_the_plan_of_line_its_top_line_says(repo):
+    """Three walkers: in watch's pane every command began or ended with `(the plan of /very/long/path)`,
+    three rows at 80 columns, and a run's pane opened with it. The shell keeps it; the pane does not."""
+    proposed(repo)
+
+    async def before(app, pilot):
+        app.background(["plan", "goal", "ship invoices"])
+        app.background(["board", "note", "prices are cents"])
+        for proc in app.runs:
+            proc.wait()
+
+    watch(repo, [], before=before)
+    said = "".join(log.read_text() for log in (repo / ".graphene" / "runs").iterdir())
+    assert "the plan: ship invoices" in said and "noted prices-are-cents" in said
+    assert "(the plan of" not in said, said
+    shell = person("plan", "goal", "ship invoices by email")
+    assert shell.stderr.splitlines()[-1] == f"  (the plan of {plan.where(repo)})"
 
 
 # Recheck 37 (partly)
@@ -769,7 +822,7 @@ def test_every_row_reads_in_one_grammar_at_80_and_120(repo):
         seen, app = watch(repo, ["z", "R"], size=size)
         end, _ = watch(repo, ["z", "R", "G"], size=size)  # at 80x24 the tree scrolls: its top, then its end
         rows = [r.rstrip() for r in [*seen["tree"], *end["tree"]] if r.strip()]
-        assert rows[0].startswith("▼ ○ users come back with their ids") and rows[0].endswith("1/8 done"), rows
+        assert rows[0].startswith("▼ ○ users come back with their ids") and rows[0].endswith("1/9 done"), rows
         mine = {i: next(r for r in rows if f"  {i} " in r + " ") for i in words}
         assert len({r.index(f"  {i} ") for i, r in mine.items()}) == 1, (size, mine)  # one id column
         at_word = {r.index(words[i], r.index(f"  {i} ") + len(i)) for i, r in mine.items()}
@@ -801,6 +854,42 @@ def test_the_tree_takes_what_its_rows_need_from_110_columns_and_sits_above_the_p
         assert app.query_one("#tree").region.width < 60 and app.query_one("#side").region.width > 60
 
     watch(repo, [], size=(120, 36), before=short)
+
+
+def test_the_board_items_folded_shut_do_not_widen_the_tree_beside_the_pane(repo):
+    """Walks 2026-09-28 (judge 24, first 22): at 120x36, with the board answered, the outline's pane
+    was as wide as the settled items' words, folded into one row, and its rows had some 40 empty
+    columns beside a node pane that wrapped everything."""
+    from test_board_rows import OPEN, planned
+
+    from graphene_map import board_rows as BR
+
+    planned(repo)
+    for item in OPEN[:-1]:
+        assert person("board", "take", item).exit_code == 0
+    from graphene_map import settings as S
+
+    with Store.open(repo) as store:  # every open item shows, the last one a note
+        S.apply(store, "board: on\n", plan.Caller("alex", True))
+    widths = []
+
+    async def before(app, pilot):
+        await pilot.press("y")  # the last item, answered on the screen: the board folds into one row
+        await pilot.pause()
+        app.refresh_plan()
+        await pilot.pause()
+        widths.append(app.query_one("#tree").region.width)
+        await pilot.press("g", "g", "j", "z", "o")  # the settled fold, opened
+        await pilot.pause()
+        app.refresh_plan()
+        await pilot.pause()
+        assert app.board_row() == BR.FOLD and app.tree.cursor_node.is_expanded
+        widths.append(app.query_one("#tree").region.width)
+
+    watch(repo, [], size=(120, 36), before=before)
+    shut, opened = widths
+    assert shut < opened, widths
+    assert shut >= 30  # still what its own rows need
 
 
 def test_the_node_pane_has_a_section_for_each_kind_and_nothing_blank_or_twice(repo):
@@ -918,11 +1007,12 @@ def test_the_status_line_is_two_lines_fitted_at_a_word_at_80_and_120(repo):
     every_state(repo)
     wide, _ = at(repo, "rule", (120, 36))
     top, bottom = wide["status"].splitlines()
-    assert top == "waiting on you: 4 · executors: 1 running · R runs 1 ready · 1/8 done · plan first: on (P)"
+    assert top == ("waiting on you: 4 · executors: 1 running · R runs 1 ready · 1 came back · 1/9 done · "
+                   "plan first: on (P)")  # the proposal counted, as `graphene` counts it
     assert bottom == "y sign off · x send back · Enter record · Tab view · ? talk · q quit"  # ? on a node
     narrow, _ = at(repo, "rule", (80, 24))
     top, bottom = narrow["status"].splitlines()
-    assert top == "you: 4 · 1 running · R: 1 ready · 1/8 done · plan first: on"
+    assert top == "4 on you · 1 running · R: 1 ready · 1 came back · 1/9 done · plan first: on"
     long = "graphene node edit rule: " + "the scope changed from one path to a longer list of them " * 3
 
     async def said(app, pilot):
@@ -1171,7 +1261,7 @@ def test_a_folded_row_says_whose_move_is_inside_first_and_counts_the_rest(repo):
         rows = rows_of(seen)
         api = next(r for r in rows if "the API" in r)
         assert api.endswith("  1 came back, 4 more") and api.lstrip("├└│ ").startswith("▶ ○ the API"), rows
-        assert rows[0].index("1/8 done") == api.index("1 came back")  # the goal's word, above it
+        assert rows[0].index("1/9 done") == api.index("1 came back")  # the goal's word, above it
         seen, _ = at(repo, "schema", size, keys=["z", "c"])
         schema = next(r for r in rows_of(seen) if "  schema " in r)
         assert schema.endswith("  1 review, 2 more"), schema
@@ -1411,6 +1501,60 @@ def test_help_lists_the_fold_keys(repo):
     assert "unfold, fold" in fold["za zo zc"] and "as it opened" in fold["zR zM zx"]
 
 
+def test_help_at_80x24_shows_the_board_keys_and_how_to_close_it_first_and_G_and_gg_go_to_its_ends(repo):
+    """Walks 2026-09-28: at 80x24 the board's keys, `:` and `q` sat below help's fold, no line said
+    Esc closes it, G did nothing there, and the planner's setting read `planner python3…`."""
+    proposed(repo)
+    with Store.open(repo) as store:
+        store.set_meta("planner", "python3 /private/tmp/somewhere/quite/deep/walk/bin/planner.py")
+
+    async def before(app, pilot):
+        await pilot.press("question_mark")
+        await pilot.pause()
+        first = "\n".join(shown(app, app.screen.region))
+        for key in ("y 1..9", "d p", "Enter a", ":<command>", " q ", "Esc closes this"):
+            assert key in first, (key, first)
+        assert "graphene config edit changes them" not in first
+        await pilot.press("G")
+        await pilot.pause()
+        end = "\n".join(shown(app, app.screen.region))
+        assert "graphene config edit changes them" in end and "python3 planner.py" in end, end
+        assert "━ critical" not in end
+        for key in ("g", "g"):
+            await pilot.press(key)
+        await pilot.pause()
+        assert "━ critical" in "\n".join(shown(app, app.screen.region))
+
+    watch(repo, [], before=before)
+    from graphene_map.tui import HELP
+
+    assert dict(dict(HELP)["shape"])["m"] == "mark all seen: then + and ~ show what changed"
+
+
+def test_at_80_columns_a_board_items_keys_keep_help_and_what_a_command_said_wraps_under_them(repo):
+    """Walk 2026-09-28 (first 16): at 80x24 a long default pushed `Tab view` and `? help` off the key
+    line (`y take: add the xml sample to… · d drop · p park · Enter answer · a note`), and an error was
+    cut (`✗ graphene board pick one-item 1: one-item has no options to pick from; take…`)."""
+    from test_board_rows import planned
+
+    risk = "risk: the contract test may only cover csv and json  [contract]\n"
+    risk += "    default: add the xml sample to the contract test\nassume: one item a row  [one-item]\n"
+    planned(repo, board=risk)
+    from graphene_map import settings as S
+
+    with Store.open(repo) as store:  # no question is open, so under `board: auto` no item would show
+        S.apply(store, "board: on\n", plan.Caller("alex", True))
+    seen, _ = watch(repo, ["j"])  # the screen opens on the first item, the assumption; then the risk
+    keys = seen["status"].splitlines()[1]
+    assert "? help" in keys and "Tab view" in keys and "y take" in keys and "Enter answer" in keys, keys
+    seen, _ = watch(repo, ["1"])
+    lines = seen["status"].splitlines()
+    said = "✗ graphene board pick one-item 1: one-item has no options to pick from; take its default or "
+    said += "answer it"
+    assert lines[1].startswith("y confirm"), lines  # the keys keep their line
+    assert " ".join(line.strip() for line in lines[2:]) == said and len(lines) == 4, lines
+
+
 def test_the_bill_is_on_the_status_line_and_in_the_leafs_pane(repo):
     """What the Nemotron executors cost, from Token Factory's usage at list price: the plan's in the
     status line, the leaf's in its pane. Nothing is said about a bill where no model was called."""
@@ -1425,8 +1569,9 @@ def test_the_bill_is_on_the_status_line_and_in_the_leafs_pane(repo):
         store.log_node("*", plan._now(), "usage", "planner:nemotron", None, None,
                        {"model": "nvidia/Nemotron-3-Ultra-fake", "calls": 2, "dollars": 0.02})  # fmt: skip
     seen, _ = watch(repo, ["j"], size=(120, 36))
-    assert seen["status"].splitlines()[0].endswith("$0.03 at list price")  # the planner's and the leaf's
-    assert "bill $0.0123 at list price · 6 calls · Nemotron-3-Nano-fake" in " ".join(seen["detail"].split())
+    assert seen["status"].splitlines()[0].endswith("the plan: $0.03 at list price")  # the planner's too
+    leaf = "bill $0.0123 at list price for this leaf's 6 calls · Nemotron-3-Nano-fake"
+    assert leaf in " ".join(seen["detail"].split())
 
 
 # -- the forks, the step up and the sandbox (what the Nemotron executor writes on the leaf's log) -----
@@ -1656,7 +1801,7 @@ def test_the_leafs_pane_shows_its_sandbox_its_operations_and_seconds_and_its_bil
         seen, _ = at(repo, "greet", size)
         flat = " ".join(seen["detail"].split())
         assert "sandbox made, image 3f2a1b9c0d4e · 12 operations · 16.2 s in its 2 forks" in flat, size
-        assert "bill $0.0031 at list price · 7 calls · Nemotron-3-Nano-fake" in flat
+        assert "bill $0.0031 at list price for this leaf's 7 calls · Nemotron-3-Nano-fake" in flat
     ended = made | {"ops": 14, "seconds": 23.4}  # a leaf that did not fork: its row at the attempt's end
     rows = [{"kind": "started", "detail": {}}, {"kind": "placement", "detail": made},
             {"kind": "placement", "detail": ended}]  # fmt: skip
@@ -1709,6 +1854,24 @@ def test_the_forks_of_a_run_stopped_mid_fork_read_stopped_not_running(repo):
         assert said in record and "fork 1 of 2 running" not in record and "operations" not in record, record
 
 
+def test_a_leaf_its_run_stopped_reads_ready_and_its_forks_still_read_stopped(repo):
+    """:stop, Ctrl-C or a run that died lets a leaf go ready again, as the run says ("handed back,
+    ready again"): it did not come back to the person, so R takes it (judge 7). Its forks still read
+    stopped on its row."""
+    from graphene_map.run import STOPPED
+
+    forked(repo, ["running", "running"], box={"checkpoint": "forked", "ops": 0, "seconds": 0.0})
+    with Store.open(repo) as store:
+        plan.release(store, "greet", NEMOTRON, STOPPED, stopped=True)
+    for size in SIZES:
+        seen, _ = watch(repo, [], size=size)
+        rows = rows_of(seen)
+        leaf = next(k for k, r in enumerate(rows) if "  greet " in r)
+        assert rows[leaf].endswith("ready"), rows
+        for k, r in enumerate(rows[leaf + 1 : leaf + 3], 1):
+            assert r.endswith(f"fork {k}  stopped"), rows
+
+
 def test_on_a_node_question_mark_twice_is_help_without_enter(repo):
     """Walk 2026-09-28: on a node ? opens talk, whose line offers `? help`; the second ? only typed
     a ? into the line, and help took ?, ?, Enter."""
@@ -1741,6 +1904,34 @@ def test_when_every_leaf_is_done_watch_says_finished_and_what_puts_it_away(repo)
         top, keys = seen["status"].splitlines()[:2]
         assert "3/3 done, finished" in top, (size, top)
         assert keys.startswith(":plan archive puts it away") and "R run" not in keys, (size, keys)
+
+
+def test_when_every_leaf_is_done_the_goal_row_reads_done_by_its_glyph_too(repo):
+    """Walk 2026-09-28 (first 20, judge 13): with every leaf done the goal row stayed `○ … 3/3 done`,
+    the glyph of a leaf an agent can take, where a sub-goal done reads ✓."""
+    api_done(repo)
+    with Store.open(repo) as store:
+        land(repo, store, "schema", "schema.py", "TABLES = ['users']\n")
+    for size in SIZES:
+        seen, _ = watch(repo, [], size=size)
+        goal = seen["tree"][0].rstrip()
+        assert goal.startswith("▼ ✓ users come back with their ids") and goal.endswith("done"), goal
+
+
+def test_the_status_line_counts_done_as_graphene_does_and_says_on_you_in_words(repo):
+    """Walk 2026-09-28 (first 17, judge 23, alex 20): with three leaves proposed the status line said
+    `you: 2 · … · 0/0 done` where `graphene` said `3 leaves, 0 done`; `you: 2` was cryptic at 80,
+    and a node to fill in (a stray `a`) was counted by one and not the other."""
+    import re
+
+    proposed(repo)
+    assert person("node", "add", "a price of 0 means skip it").exit_code == 0  # to fill in
+    for size, said in (((80, 24), "2 on you · 0 running · none ready · 0/4 done"),
+                       ((120, 36), "waiting on you: 2 · executors: none · nothing ready to run · 0/4 done")):
+        seen, _ = watch(repo, [], size=size)
+        assert seen["status"].splitlines()[0].startswith(said), (size, seen["status"])
+    [(leaves, done)] = re.findall(r"(\d+) leaves, (\d+) done", person().stdout)
+    assert f"{done}/{leaves} done" == "0/4 done"
 
 
 def test_a_command_the_screen_names_reads_as_typed_without_shell_escapes():
@@ -1778,6 +1969,29 @@ def test_an_ask_that_adds_nothing_says_so(repo):
     assert said.startswith("the planner proposed nothing and put nothing on the board"), said
 
 
+def test_an_ask_whose_board_the_repo_answered_says_which_on_the_bottom_line(repo):
+    """GRAPHENE_SHAPE=lookup settles what the repository answers once the proposal lands: the person
+    is told which, where they look, since a board that asks nothing is not shown."""
+    proposed(repo)
+    log = repo / ".graphene" / "runs" / "ask.txt"
+    log.parent.mkdir(parents=True, exist_ok=True)
+    log.write_text("asking the planner (python3)…\nproposed users: users returns ids\nput up units: cents?\n"
+                   "settled units from the repo (app.py:2): cents; `graphene board unpark units` asks you\n")
+
+    class Ended:
+        def wait(self):
+            return 0
+
+    async def ask_ends(app, pilot):
+        await asyncio.to_thread(app.follow, Ended(), ["ask", "users"], log)
+        await pilot.pause(0.2)
+
+    seen, _ = watch(repo, [], size=(160, 40), before=ask_ends)
+    said = seen["status"].splitlines()[-1]
+    assert said.startswith("the planner proposed users and put units on the board and found units answered "
+                           "in the repo"), said  # fmt: skip
+
+
 def test_on_the_goal_y_is_offered_only_when_something_is_proposed(repo):
     """Walk 2026-09-28: after a run, with a leaf that came back and nothing proposed, the goal's key
     line offered `y accept it all`."""
@@ -1789,4 +2003,95 @@ def test_on_the_goal_y_is_offered_only_when_something_is_proposed(repo):
         plan.release(store, "schema", bot, "it needs migrations/", wants=["migrations/001.sql"])
     seen, _ = watch(repo, [])
     keys = seen["status"].splitlines()[1]
-    assert "you: 1" in seen["status"] and not keys.startswith("y accept"), keys
+    assert "1 on you" in seen["status"] and not keys.startswith("y accept"), keys
+
+
+def test_rows_put_up_above_the_cursor_never_push_it_off_the_pane(repo):
+    """Walk 2026-09-29 (alex 24): at 80x24, with the cursor on the last leaf, an agent put up a question;
+    the tree kept its top, the new rows pushed the selected row below the pane, and the next key acted
+    on a row nobody could see."""
+    proposed(repo)
+    person("plan", "accept")
+    questions = "".join(f"question: q{k}?  [q{k}]\n    default: no\n" for k in range(6))
+
+    async def before(app, pilot):
+        await pilot.press("G")
+        await pilot.pause()
+        chosen = app.selected()
+        assert agent("plan", "propose", "-", input=questions).exit_code == 0
+        app.refresh_plan()
+        await pilot.pause()
+        tree = app.tree
+        rows = tree.scrollable_content_region.height
+        assert app.selected() == chosen
+        where = (tree.scroll_y, tree.cursor_line, rows)
+        assert tree.scroll_y <= tree.cursor_line < tree.scroll_y + rows, where
+
+    watch(repo, [], (80, 24), before=before)
+
+
+def test_a_scroll_in_what_a_command_printed_does_not_carry_into_the_node_pane(repo):
+    """Walk 2026-09-29 (alex 23): at 80x24, C-d in a run's output and then Esc opened the came-back
+    leaf's pane scrolled down, its reason and its w line above the fold."""
+    proposed(repo)
+    person("plan", "accept")
+    with Store.open(repo) as store:
+        bot = plan.Caller("claude:aaaa1111", False, "aaaa1111-session")
+        plan.start(store, "schema", bot, repo)
+        plan.release(store, "schema", bot, LONG * 3, wants=["migrations/001.sql"])
+    scrolled = []
+
+    async def before(app, pilot):
+        side = app.query_one("#side")
+        await pilot.press("slash", *"schema", "enter", "escape", "colon", *"plan --help", "enter")
+        await pilot.pause(0.5)
+        app.refresh_plan()
+        await pilot.pause()
+        await pilot.press("ctrl+d", "ctrl+d")
+        await pilot.pause()
+        scrolled.append(side.scroll_y)
+        await pilot.press("escape")
+        await pilot.pause()
+        app.refresh_plan()
+        await pilot.pause()
+        scrolled.append((side.scroll_y, app.selected()))
+
+    watch(repo, [], (80, 24), before=before)
+    assert scrolled[0] > 0 and scrolled[1] == (0, "schema"), scrolled
+
+
+def test_a_new_runs_first_attempt_is_not_read_as_the_last_ones_and_a_stop_is_not_called_ctrl_c(repo):
+    """Walk 2026-09-29 (alex 28, first 10): the pane counted every hold the leaf ever had, so a new run's
+    first attempt read `running · attempt 3`, and a came-back leaf read `attempt 2` over `3 attempts`; a
+    closed terminal was reported as `the run was stopped (Ctrl-C)`."""
+    from graphene_map.run import STOPPED
+
+    proposed(repo)
+    person("plan", "accept")
+    with Store.open(repo) as store:
+        bot = plan.Caller("run:executor.py", False, "s-1")
+        plan.start(store, "schema", bot, repo)
+        for k in (1, 2, 3):  # one hold, three attempts of one run
+            store.log_node("schema", plan._now(), "attempt", bot.label, "s-1", None, {"attempt": k})
+        plan.release(store, "schema", bot, "3 attempts, the last one refused: schema.py only")
+    seen, _ = at(repo, "schema", (120, 36))
+    assert "schema · came back · attempt 3" in seen["detail"], seen["detail"]
+    with Store.open(repo) as store:
+        plan.start(store, "schema", bot, repo)  # the next run, its first attempt
+        store.log_node("schema", plan._now(), "attempt", bot.label, "s-1", None, {"attempt": 1})
+    seen, _ = at(repo, "schema", (120, 36))
+    assert "schema · running" in seen["detail"] and "attempt" not in seen["detail"].splitlines()[1]
+    assert "Ctrl-C" not in STOPPED and "stopped" in STOPPED
+
+
+def test_the_goal_offers_r_only_when_something_is_ready(repo):
+    """Walk 2026-09-29 (first 8): with only leaves that came back, the status said `none ready` while
+    the goal's keys still offered `R run all ready`."""
+    person("node", "add", "users returns ids", "--id", "ids", "--scope", "api.py", "--check", "true")
+    with Store.open(repo) as store:
+        bot = plan.Caller("run:executor.py", False, "s-1")
+        plan.start(store, "ids", bot, repo)
+        plan.release(store, "ids", bot, "it needs schema.py", wants=["schema.py"])
+    seen, _ = watch(repo, ["g", "g"])
+    keys = seen["status"].splitlines()[1]
+    assert "none ready" in seen["status"] and "R run" not in keys, seen["status"]

@@ -17,7 +17,8 @@ def test_the_help_screen_gets_every_setting_as_lines(tmp_path):
     with Store.open(tmp_path) as store:
         S.apply(store, "protected: secrets/**\nnever: add a dependency\nsize: finer\n", ALEX)
         lines = S.lines_for_screen(store)
-    assert "protected: secrets/**" in lines and "never: add a dependency" in lines and "size: finer" in lines
+    assert "protected: secrets/**" in lines and "never: add a dependency" in lines
+    assert "size: finer · board: auto" in lines  # the one-value settings share a line
     assert any(line.startswith("planner: ") for line in lines)
     assert not any(line.startswith("#") for line in lines)
     assert lines[-1] == "graphene config edit changes them"

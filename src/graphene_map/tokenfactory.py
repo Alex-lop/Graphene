@@ -10,6 +10,10 @@ Graphene uses is one Token Factory said it has. Each call's usage is priced at t
 list gives, per token, and appended to the spend ledger when one is named (``GRAPHENE_LEDGER``); a
 ledger whose total has reached ``GRAPHENE_SPEND_CAP_USD`` refuses the next call before it is made.
 
+While the person's opening is set (``GRAPHENE_AGENT_LIVE_USD``), each call also reserves its worst case in
+the night's ledger before it is sent and settles to its usage after (``night``): one that would take the
+night past its cap is refused, and nothing is sent.
+
 ``GRAPHENE_TOKENFACTORY_URL`` points everything at another endpoint (the tests' recorded fake), and
 ``GRAPHENE_TOKENFACTORY_RECORD`` appends each exchange to a file, so a live run can be replayed later.
 """
@@ -19,6 +23,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import socket
 import time
 import urllib.error
 import urllib.request
@@ -26,7 +31,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
-from graphene_map import keys
+from graphene_map import keys, night
 
 BASE = "https://api.tokenfactory.nebius.com/v1/"
 KEY = "NEBIUS_API_KEY"
@@ -61,7 +66,13 @@ class Unreachable(Exception):
 
 
 class Spent(Unreachable):
-    """The ledger's total has reached the cap: no call is made."""
+    """The ledger's total has reached the cap, the night's would pass its own, or an agent's shell has not
+    been opened to spend (``night.person_only``): no call is made."""
+
+
+class Late(Unreachable):
+    """A completion that may have reached the model and got no answer: a try that timed out, a 5xx, or a
+    connection that broke once made. Token Factory may have done the work, and billed it."""
 
 
 @dataclass(frozen=True)
@@ -96,7 +107,7 @@ def _request(
         raise Unreachable(f"the key found holds a character that is not plain ASCII letters, digits and "
                           f"punctuation (a pasted dash?): set {KEY} or `graphene key set` again")  # fmt: skip
     data = json.dumps(body).encode() if body is not None else None
-    wait = 2.0
+    wait, maybe = 2.0, False  # maybe: a try may have reached the model; only a 4xx or no connection says not
     for attempt in range(1, tries + 1):
         req = urllib.request.Request(base() + path, data=data, method=method)
         req.add_header("Authorization", f"Bearer {key}")
@@ -106,21 +117,26 @@ def _request(
                 answer, headers = resp.read(), dict(resp.headers)
             try:
                 return json.loads(answer or b"{}"), headers
-            except ValueError:  # a sign-in page, a proxy's: not Token Factory speaking
-                raise Unreachable(f"Token Factory's answer at {base()} is not JSON: a proxy, or a wrong "
-                                  "GRAPHENE_TOKENFACTORY_URL?") from None  # fmt: skip
+            except ValueError:  # a sign-in page, a proxy's: not Token Factory (an earlier try may have been)
+                said = (f"Token Factory's answer at {base()} is not JSON: a proxy, or a wrong "
+                        "GRAPHENE_TOKENFACTORY_URL?")  # fmt: skip
+                raise (Late if maybe and method == "POST" else Unreachable)(said) from None
         except urllib.error.HTTPError as no:
             # a gateway's page may echo the Authorization header: the key goes before the cut can halve it
             said = unkeyed(no.read(65536).decode("utf-8", "replace").replace(key, "…"))[:300]
+            maybe = maybe or no.code >= 500
             if (no.code == 429 or no.code >= 500) and attempt < tries:
                 after = no.headers.get("Retry-After")
                 time.sleep(float(after) if after and after.replace(".", "", 1).isdigit() else wait)
                 wait *= 2
                 continue
-            raise Unreachable(f"Token Factory answered {no.code} to {method} /{path}: {said}"
-                              f"{_then(no.code, attempt)}") from None  # fmt: skip
+            raise (Late if maybe and method == "POST" else Unreachable)(
+                f"Token Factory answered {no.code} to {method} /{path}: {said}{_then(no.code, attempt)}"
+            ) from None
         except (urllib.error.URLError, TimeoutError, OSError) as no:
             slow = isinstance(no, TimeoutError) or "timed out" in str(no)
+            never = (ConnectionRefusedError, socket.gaierror)  # nothing listened, or no such host: never sent
+            maybe = maybe or not isinstance(getattr(no, "reason", no), never)
             if slow and method == "POST":  # a completion that took the whole timeout: once more, not six
                 tries = min(tries, attempt + 1)
             if attempt < tries:
@@ -128,7 +144,8 @@ def _request(
                 wait *= 2
                 continue
             then = _then(0, attempt, timeout) if slow and method == "POST" else ""
-            raise Unreachable(f"Token Factory could not be reached at {base()}: {no}{then}") from None
+            said = f"Token Factory could not be reached at {base()}: {no}{then}"
+            raise (Late if maybe and method == "POST" else Unreachable)(said) from None
     raise AssertionError("unreachable")  # pragma: no cover
 
 
@@ -234,6 +251,14 @@ def price(model_id: str) -> Model:
     return next((m for m in models() if m.id == model_id), Model(model_id, 0.0, 0.0))
 
 
+def worst(body: dict, model_id: str) -> float:
+    """The most a call may cost at list price: its prompt at a token for every 3 bytes of the request (a
+    token is about 4 characters of English, so 3 overestimates it) and its max_tokens of completion
+    (night.UNSAID when it names none)."""
+    m = price(model_id)
+    return len(json.dumps(body)) / 3 * m.prompt + int(body.get("max_tokens") or night.UNSAID) * m.completion
+
+
 def dollars(usage: dict, model_id: str) -> float:
     m = price(model_id)
     return (usage.get("prompt_tokens") or 0) * m.prompt + (usage.get("completion_tokens") or 0) * m.completion
@@ -287,20 +312,37 @@ def chat(
     if limit is not None and _ledger() is not None and spent() >= limit:
         raise Spent(f"the spend cap is reached: ${spent():.2f} of ${limit:.2f} (GRAPHENE_SPEND_CAP_USD)")
     body = {"model": model, "messages": messages, **({"tools": tools} if tools else {}), **params}
+    try:
+        if endpoint() == "token factory":  # the real host; the fake and a proxy are anyone's
+            night.person_only(f"a call to {model}")
+        most = worst(body, model) if night.cap() is not None else 0.0
+        held = night.reserve(model, most, tag, endpoint())
+    except night.Refused as no:
+        raise Spent(str(no)) from None
     began = time.monotonic()
-    said, headers = _request("POST", "chat/completions", body, timeout or TIMEOUT, tries or TRIES)
+    try:
+        said, headers = _request("POST", "chat/completions", body, timeout or TIMEOUT, tries or TRIES)
+    except Unreachable as no:  # a 4xx, no connection, no key: nothing was done; else (Late) maybe it was
+        night.settle(held, model, most if isinstance(no, Late) else 0.0)
+        raise
+    except BaseException:  # stopped while it was out (Ctrl-C, or TERM as SystemExit): maybe done, and billed
+        night.settle(held, model, most)
+        raise
+    # ponytail: a try that may have been done (it timed out, a 5xx) and then another that answered is settled
+    # at the answer's usage alone
     took = time.monotonic() - began
+    usage = (said.get("usage") if isinstance(said, dict) else None) or {}
+    cost = dollars(usage, model)
+    night.settle(held, model, cost, usage)
     try:
         message = said["choices"][0]["message"]
     except (KeyError, IndexError, TypeError):
         raise Unreachable(f"Token Factory sent no message: {json.dumps(said)[:300]}") from None
-    usage = said.get("usage") or {}
-    cost = dollars(usage, model)
     finish = (said.get("choices") or [{}])[0].get("finish_reason")
     out = {"message": message, "usage": usage, "dollars": cost, "seconds": round(took, 3), "model": model,
            "finish": finish}  # fmt: skip
     _write(_ledger(), {"at": time.time(), "tag": tag, "model": model, "usage": usage, "dollars": cost,
-                       "seconds": out["seconds"]})  # fmt: skip
+                       "seconds": out["seconds"], **({"practice": True} if held else {})})  # fmt: skip
     record = os.environ.get("GRAPHENE_TOKENFACTORY_RECORD")
     if record:
         _write(Path(record), {"request": body, "response": said})

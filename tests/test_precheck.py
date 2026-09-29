@@ -149,6 +149,25 @@ def test_a_proposed_check_with_no_sandbox_never_runs_here(repo, monkeypatch):
     assert d["verdict"] == "not-run" and "needs a sandbox" in d["why"]
 
 
+def test_a_project_sandboxes_refuse_leaves_a_proposed_check_not_run_saying_what_to_do(repo, monkeypatch):
+    """ConTree's 403 (rung 1 met it live, 2026-09-29), from a stub SDK raising its own ForbiddenError:
+    nothing runs here, and the leaf's line says the refusal whole, with the other sandbox there is."""
+    contree_sdk = pytest.importorskip("contree_sdk")
+    from fake_faults import Forbidding, persons_shell
+
+    persons_shell(monkeypatch)
+    monkeypatch.setattr(contree_sdk, "ContreeSync", Forbidding)
+    monkeypatch.setenv("NEBIUS_API_KEY", "fake-key")
+    monkeypatch.setenv("NEBIUS_PROJECT_ID", "project-fake")
+    monkeypatch.setattr(C, "_here", lambda *_: pytest.fail("a planner's check ran on the person's machine"))
+    with Store.open(repo) as store:
+        leaves(store, RED)
+        [(_, d)] = C.run(store, repo)
+    assert d["verdict"] == "not-run"
+    assert d["why"] == ("Sandboxes refused this project (403): its key lacks import, spawn there; request "
+                        "access at tokenfactory.nebius.com/sandboxes/about, or GRAPHENE_SANDBOX=docker")
+
+
 def test_an_accepted_check_runs_here_without_the_key_and_no_key_leaves_a_red_unread(repo, monkeypatch):
     monkeypatch.setenv("NEBIUS_API_KEY", "fake-key")  # a key the check must not see, set while it runs
     with Store.open(repo) as store:
@@ -404,16 +423,27 @@ def test_the_precheck_flag_puts_each_weak_check_on_the_board_after_an_ask(repo, 
     assert sum(line.startswith("put up ") for line in lines) == 2
 
 
-def test_an_accepted_check_runs_here_with_grapheness_keychain_lookup_off(repo, monkeypatch, tmp_path):
+@pytest.mark.parametrize("platform", ["darwin", "linux"])
+def test_an_accepted_check_runs_here_with_grapheness_keychain_lookup_off(
+    repo, monkeypatch, tmp_path, platform
+):
     """As `node done` runs it: a check runs code an executor wrote, so Graphene's own lookup is off in it.
-    A fake `security` stands in for the keychain, so the real one is never asked."""
+    Precheck itself asks the keychain, to hide a key kept there from what it says (demo.hider), so a fake
+    `security` and a fake `secret-tool` stand in for macOS's and Linux's, and the real one is never asked
+    (CI, 29 September: on Linux the lookup met the keyguard, for only `security` was faked)."""
+    from graphene_map import keys
+
     shims = tmp_path / "shims"
     shims.mkdir()
-    (shims / "security").write_text("#!/bin/sh\nexit 44\n")
-    (shims / "security").chmod(0o755)
+    for tool in ("security", "secret-tool"):
+        (shims / tool).write_text("#!/bin/sh\nexit 44\n")
+        (shims / tool).chmod(0o755)
     monkeypatch.setenv("PATH", f"{shims}:{__import__('os').environ['PATH']}")
     monkeypatch.setenv("GRAPHENE_KEYCHAIN", "on")
+    monkeypatch.setattr(keys, "PLATFORM", platform)
+    keys._from_keychain.cache_clear()  # asked once a process: this test's own fake answers
     with Store.open(repo) as store:
         leaves(store, 'test "$GRAPHENE_KEYCHAIN" = off', who=ME)
         [(_, seen)] = C.run(store, repo, ["l0"])
     assert seen["verdict"] == "passes" and seen["where"] == "here"
+    keys._from_keychain.cache_clear()

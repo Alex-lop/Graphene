@@ -3,6 +3,7 @@ priced at the list's price and kept in the ledger, the cap stops the next call, 
 and the key is written nowhere."""
 
 import json
+from pathlib import Path
 
 import pytest
 from fake_tokenfactory import Fake, call
@@ -164,3 +165,62 @@ def test_a_key_a_header_cannot_carry_is_one_line_and_never_kept(monkeypatch):
     with pytest.raises(RuntimeError, match="one word") as no:
         keys.set(key)
     assert key not in str(no.value)
+
+
+# The NVIDIA models Token Factory listed for Alex's key on 2026-09-29 (rung 1, practice): ids, list prices and
+# the roles `roles` gave them, from .graphene/practice/access.json (docs/test/first-light.md). Nothing else.
+LIVE = json.loads((Path(__file__).parent / "fixtures" / "tokenfactory-models-2026-09-29.json").read_text())
+
+
+@pytest.fixture
+def live(monkeypatch):
+    """The fake, listing what the live list listed on 2026-09-29, and answering with ``usage`` rows."""
+    started: list[Fake] = []
+
+    def start(usages=()):
+        f = Fake([({"content": "ok"}, u) for u in usages], models=LIVE["data"]).__enter__()
+        for k, v in f.env().items():
+            monkeypatch.setenv(k, v)
+        tf._listed.cache_clear()
+        started.append(f)
+        return f
+
+    yield start
+    for f in started:
+        f.__exit__(None, None, None)
+    tf._listed.cache_clear()
+
+
+def test_the_live_lists_mixed_case_ids_resolve_to_their_roles_and_lightning_to_none(live):
+    """Three spellings (`Nemotron-3-Ultra`, `nemotron-3-super`, `NVIDIA-Nemotron-3-Nano`) and a fourth
+    NVIDIA model at Nano's price, Nemotron 3.5 Lightning (30B, 3B active; NVIDIA never calls it Nano): no
+    role, and no default, falls to it."""
+    live()
+    lightning = "nvidia/Nemotron-3_5-Lightning"
+    assert tf.roles() == LIVE["roles"]
+    assert tf.resolve([], "planner") == (["nvidia/Nemotron-3-Ultra-550b-a55b"], [])
+    assert tf.resolve([], "executor") == (["nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B"], [])
+    ids = list(LIVE["roles"].values()) + [lightning]
+    assert tf.resolve(ids, "executor") == (ids, [])  # every listed id is used as it is, Lightning too
+    assert lightning not in tf.roles().values() and tf._size(lightning) is None
+    assert tf.reach() is None
+
+
+def test_the_bill_is_the_live_lists_price_and_rung_2s_rows_add_up_to_its_progress(live, tmp_path,
+                                                                                  monkeypatch):
+    """Rung 2's three Nano calls (their token counts from its ledger, 2026-09-29) at the live list's price
+    ($0.06 in, $0.24 out per million) are $0.000366, as progress.json says; rung 1's Ultra ($1.00, $3.00)
+    and Super ($0.30, $0.90) rows are priced the same way. None is the fake's placeholder price."""
+    rung_2 = [(1334, 186), (1402, 191), (1465, 98)]
+    rung_1 = {"nvidia/Nemotron-3-Ultra-550b-a55b": (373, 81, 0.000616),
+              "nvidia/nemotron-3-super-120b-a12b": (420, 54, 0.0001746)}  # fmt: skip
+    counts = rung_2 + [v[:2] for v in rung_1.values()]
+    usages = [{"prompt_tokens": p, "completion_tokens": c} for p, c in counts]
+    live(usages)
+    monkeypatch.setenv("GRAPHENE_LEDGER", str(tmp_path / "ledger.jsonl"))
+    nano = "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B"
+    bills = [tf.chat(nano, [{"role": "user", "content": "hi"}], tag="hello")["dollars"] for _ in rung_2]
+    assert bills == pytest.approx([0.00012468, 0.00012996, 0.00011142])
+    assert round(tf.spent(), 6) == 0.000366
+    for model, (_, _, dollars) in rung_1.items():
+        assert tf.chat(model, [{"role": "user", "content": "hi"}])["dollars"] == pytest.approx(dollars)

@@ -431,6 +431,18 @@ def test_what_was_refused_is_counted_from_the_log(store, repo):
     assert refused.last_check["result"] == "passed"
 
 
+def test_a_done_refused_again_over_the_same_paths_is_said_once_with_how_often():
+    """The judge's `node show` listed "`done` refused over: x.txt" six times: three attempts, each
+    refused at the executor's own `done` and again at the run's. One line for each set of paths."""
+    refused = NR.Refusals(done=[["x.txt"]] * 6 + [[], ["a.txt", "b.txt"], []])
+    assert NR._refusal_lines(refused) == [
+        "  refused: 9 `done` refused",
+        "    `done` refused 6 times over: x.txt",
+        "    `done` refused 2 times over: a failing check",
+        "    `done` refused over: a.txt, b.txt",
+    ]
+
+
 def test_the_persons_acts_are_kept_with_what_they_said(store, repo, finish):
     plan.propose(store, [api_node(signoff=True)], BOT, now=T(0))
     plan.accept(store, ["n1"], ALEX, now=T(1))

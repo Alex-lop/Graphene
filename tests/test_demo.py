@@ -229,6 +229,7 @@ def test_demo_once_needs_no_key_and_no_network_and_prints_the_banner_and_the_end
     monkeypatch.setattr(tempfile, "tempdir", str(tmp_path / "tmp"))  # to see the replay's repository go
     (tmp_path / "tmp").mkdir()
     monkeypatch.chdir(tmp_path)  # anywhere: no repository here
+    monkeypatch.setenv("COLUMNS", "200")  # wide enough for the whole top line
     said = CliRunner().invoke(build(), ["demo", "--once"])
     assert said.exit_code == 0, said.output
     head, _ = demo.load(demo.SHIPPED)
@@ -246,7 +247,9 @@ def test_demo_once_needs_no_key_and_no_network_and_prints_the_banner_and_the_end
 
 def test_demo_once_leaves_out_the_plans_next_step_and_nothing_else(tmp_path, monkeypatch):
     """It printed "finished; `graphene plan archive` puts it away", a command for the replay's repository,
-    which is gone by then. Everything else is what `graphene watch --once` prints of the same store."""
+    which is gone by then. Everything else is what `graphene watch --once` prints of the same store, the
+    last rows headed as the end of the run's log, not "just now"."""
+    monkeypatch.setenv("COLUMNS", "200")  # no row cut
     head, lines = demo.load(demo.SHIPPED)
     repo = demo.repository(tmp_path, head)
     demo.last_frame(repo, lines)
@@ -256,12 +259,14 @@ def test_demo_once_leaves_out_the_plans_next_step_and_nothing_else(tmp_path, mon
     hint = "2 leaves, 2 done, 0 running · finished; `graphene plan archive` puts it away"
     assert hint in watched and banner.startswith("replay · ")
     finished = "2 leaves, 2 done, 0 running · finished"
-    assert replayed == [finished if line == hint else line for line in watched]
+    ending = {hint: finished, "just now": demo.ENDING}
+    assert replayed == [ending.get(line, line) for line in watched]
 
 
 def test_the_replay_at_80x24_says_so_shows_a_record_and_refuses_what_would_run(tmp_path, monkeypatch):
     """The banner names it a replay of a scripted stand-in and its day; Enter shows a leaf's record; R, y
-    and every other key that would change the plan or start anything say one line and start nothing."""
+    and every other key that would change the plan or start anything say one line and start nothing. (`r`
+    is the replay's own: it plays it again.)"""
     monkeypatch.setattr(demo, "LONG", 0.01)  # every wait cut short: this watches the replay end, not its pace
     head, lines = demo.load(demo.SHIPPED)
     repo = demo.repository(tmp_path, head)
@@ -290,7 +295,7 @@ def test_the_replay_at_80x24_says_so_shows_a_record_and_refuses_what_would_run(t
             await pilot.press("escape")  # the search ends: n is the offer again, not the next match
             monkeypatch.setattr(subprocess, "Popen", no_start)
             seen["before"] = states()
-            for key in ["R", "y", "r", "d", "e", "E", "a", "A", "s", "P", "w", "b", "n", ":", "x", "u", "V"]:
+            for key in ["R", "y", "d", "e", "E", "a", "A", "s", "P", "w", "b", "n", ":", "x", "u", "V"]:
                 await pilot.press(key)
                 await pilot.pause()
                 said = str(app.query_one("#status").render()).splitlines()[-1]
@@ -371,21 +376,26 @@ def test_the_replays_repository_goes_when_its_terminal_closes_or_it_is_killed(tm
     env = os.environ | {"TMPDIR": str(tmp_path / "tmp"), "TERM": "xterm-256color"}
     proc = subprocess.Popen([*CLI, "demo"], cwd=tmp_path, stdin=tty, stdout=tty, stderr=tty, env=env)
     os.close(tty)
-    said, end = b"", time.monotonic() + 60
-    while b"replay" not in said and time.monotonic() < end:  # a second's silence is a slow start, not the end
-        if select.select([main], [], [], 1)[0]:
-            said += os.read(main, 65536)
-    assert b"replay" in said and list((tmp_path / "tmp").iterdir()), said  # the screen is up, over its repo
-    if sig == signal.SIGHUP:
-        os.close(main)  # the terminal is gone, as when its window closes
-    proc.send_signal(sig)
-    while sig != signal.SIGHUP and proc.poll() is None and select.select([main], [], [], 1)[0]:
-        with contextlib.suppress(OSError):  # the terminal's other side is closed (Linux says it so)
-            if not os.read(main, 65536):
-                break
-    proc.wait(timeout=30)
-    if sig != signal.SIGHUP:
-        os.close(main)
+    try:  # a replay this test fails to end is ended here: left, it outlived the test
+        said, end = b"", time.monotonic() + 60
+        while b"replay" not in said and time.monotonic() < end:  # a second's silence is a slow start
+            if select.select([main], [], [], 1)[0]:
+                said += os.read(main, 65536)
+        assert b"replay" in said and list((tmp_path / "tmp").iterdir()), said  # up, over its repository
+        if sig == signal.SIGHUP:
+            os.close(main)  # the terminal is gone, as when its window closes
+            main = None
+        proc.send_signal(sig)
+        while sig != signal.SIGHUP and proc.poll() is None and select.select([main], [], [], 1)[0]:
+            with contextlib.suppress(OSError):  # the terminal's other side is closed (Linux says it so)
+                if not os.read(main, 65536):
+                    break
+        proc.wait(timeout=30)
+    finally:
+        proc.kill()
+        proc.wait()
+        if main is not None:
+            os.close(main)
     assert list((tmp_path / "tmp").iterdir()) == []
 
 
@@ -416,13 +426,14 @@ def test_a_recording_carries_the_board(tmp_path):
         assert demo._snapshot(store.conn, 0)[2]["board"] == '[{"id": "q"}]'
 
 
-def test_a_tick_that_lands_once_the_screen_is_torn_down_draws_nothing(tmp_path, monkeypatch):
+def test_a_tick_that_lands_once_the_screen_is_torn_down_draws_nothing(tmp_path):
     """CI, 28 September (Ubuntu, now and then): the replay's once-a-second refresh ticked while the test
     harness tore the app down. The harness removes the screen's widgets without calling exit, which is
     the only thing that stops a timer's tick, so the draw looked for #where and found nothing. A tick
     that lands once the app has stopped running now does nothing, the replay's own tick too."""
-    monkeypatch.setattr(demo, "LONG", 0.01)
     head, lines = demo.load(demo.SHIPPED)
+    for line in lines[1:]:  # an hour on: the screen is torn down mid-replay, however slow the machine is
+        line["at"] += 3600
     app = demo.Replay(demo.repository(tmp_path, head), head, lines)
 
     async def go():
@@ -431,6 +442,140 @@ def test_a_tick_that_lands_once_the_screen_is_torn_down_draws_nothing(tmp_path, 
             assert app.next < len(app.lines)  # changes are left to play when the app is torn down
 
     asyncio.run(go())
-    app.began -= 3600  # every change is due, so the replay's tick has something to apply
+    app.began -= 7200  # every change is due, so the replay's tick has something to apply
     app.refresh_plan()  # the screen's tick, after its widgets are gone
     app.play()  # and the replay's
+
+
+def test_a_stand_in_replay_names_the_stand_in_wherever_the_recording_named_nemotron(tmp_path):
+    """The top line said "a scripted stand-in, not Nemotron" while every row under it said `run:nemotron`,
+    the record `Nemotron-3-Nano-fake`, and the settings `nemotron --model …`. In a stand-in's replay each
+    of those names the stand-in; a live recording keeps the names it was made with."""
+    head, lines = demo.load(demo.SHIPPED)
+    assert head["shown"] == demo.STAND_IN
+    said = json.dumps(lines)
+    assert not re.findall(r"(?i)nemotron|-fake\b", said)
+    assert '"actor": "run:stand-in"' in said and '"actor": "planner:stand-in"' in said
+    assert "stand-in-Nano answered" in said and "stand-in --model stand-in-Ultra" in said
+    usage = {"id": 1, "node_id": "g", "kind": "usage", "actor": "run:nemotron",
+             "detail": json.dumps({"model": "nvidia/Nemotron-3-Nano", "endpoint": "token factory"})}
+    live = {"graphene demo": 1, "recorded": "2026-09-26T03:47:14.410Z", "graphene": "0.5.0",
+            "repository": "r", "stand_in": False, "shown": demo.LIVE}  # fmt: skip
+    recording = tmp_path / "live.jsonl"
+    recording.write_text("\n".join(json.dumps(line) for line in (live, {"t": 0, "node_log": [usage]})))
+    assert demo.load(recording)[1][0]["node_log"] == [usage]
+
+
+def test_demo_once_fits_80_columns_and_calls_its_last_rows_the_end_of_the_runs_log(monkeypatch, tmp_path):
+    """At 80 columns the first line was 98 wide and a check's row 120; and the rows under "just now" were
+    two days old. The top line keeps its whole pieces that fit, as the screen's does, each row is cut at
+    the width, and the rows are the end of the run's log."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("COLUMNS", "80")
+    said = CliRunner().invoke(build(), ["demo", "--once"])
+    assert said.exit_code == 0, said.output
+    lines = said.stdout.splitlines()
+    head, _ = demo.load(demo.SHIPPED)
+    assert lines[0] == f"replay · {head['shown']} · {head['day']} · {demo.ENDED}"
+    assert max(len(line) for line in lines) <= 80, [line for line in lines if len(line) > 80]
+    assert "just now" not in lines and demo.ENDING in lines
+    assert any(line.endswith("…") and "check_passed" in line for line in lines)
+
+
+def test_each_change_stays_on_the_screen_and_space_dot_and_r_pause_step_and_play_again(tmp_path):
+    """The whole replay played in under four seconds, with no way to stop it. Each change now stays at
+    least HOLD seconds (`--speed` divides that); space pauses where it is and plays on, `.` applies the next
+    change and stays paused, `r` empties the replay and plays it from the start; the top line says which
+    change it is at, and the bottom line names the three keys. Before the plan has a row the pane says
+    what was asked for, not "Or :ask", which a replay refuses. A finished plan's goal row reads done."""
+    head, lines = demo.load(demo.SHIPPED)
+    gaps = [b["at"] - a["at"] for a, b in zip(lines, lines[1:], strict=False)]
+    assert lines[0]["at"] == 0 and min(gaps) >= demo.HOLD and len(lines) * demo.HOLD > 20
+    assert [line["at"] / 2 for line in lines] == [line["at"] for line in demo.load(demo.SHIPPED, 2)[1]]
+    repo = demo.repository(tmp_path, head)
+    app, seen = demo.Replay(repo, head, lines), {}
+
+    def nodes():
+        with Store.open(repo) as store:
+            return {n.id: n.state for n in plan.nodes(store)}
+
+    def lines_now():
+        return str(app.query_one("#where").render()), str(app.query_one("#status").render()).splitlines()[1]
+
+    async def go():
+        async with app.run_test(size=(80, 24)) as pilot:
+            await pilot.pause(0.3)
+            seen["first"] = (app.next, *lines_now(), " ".join(str(app.query_one("#detail").render()).split()))
+            await pilot.press("space")
+            await pilot.pause(demo.HOLD + 0.5)  # past when the next change was due
+            seen["paused"] = (app.next, *lines_now())
+            await pilot.press("full_stop")
+            await pilot.pause(0.3)
+            seen["stepped"] = (app.next, nodes(), *lines_now())
+            await pilot.press("full_stop", *["full_stop"] * len(lines))
+            await pilot.pause(0.3)
+            seen["end"] = (app.next, app.tree.rows[None][:2], *lines_now())
+            await pilot.press("r")
+            await pilot.pause(0.3)
+            seen["again"] = (app.next, nodes(), app.paused, *lines_now())
+
+    asyncio.run(go())
+    n = len(lines)
+    assert seen["first"][:2] == (1, f"replay · {head['shown']} · {head['day']} · 1 of {n}")
+    assert seen["first"][2].startswith("space pause · . next · r again · Enter record · l output · ? help")
+    asked = "the script asked the planner: “make the app friendlier”. What it proposes is next."
+    assert asked in seen["first"][3]
+    assert seen["paused"][:2] == (1, f"replay · {head['shown']} · {head['day']} · paused at 1 of {n}")
+    assert seen["paused"][2].startswith("space play · . next")
+    proposed = dict.fromkeys(("friendly", "greet", "farewell"), "proposed")
+    top = f"replay · {head['shown']} · {head['day']}"
+    assert seen["stepped"][:3] == (2, proposed, f"{top} · paused at 2 of {n}")
+    assert seen["end"][:3] == (n, ("✓", "done"), f"replay · {head['shown']} · {head['day']} · {demo.ENDED}")
+    assert seen["end"][3].startswith("r again")
+    assert seen["again"][:3] == (1, {}, None)
+
+
+def test_the_replays_help_names_its_own_keys_and_none_it_refuses(tmp_path):
+    head, lines = demo.load(demo.SHIPPED)
+    app = demo.Replay(demo.repository(tmp_path, head), head, lines)
+
+    async def go():
+        async with app.run_test(size=(120, 36)) as pilot:
+            await pilot.press("question_mark")
+            await pilot.pause()
+            return " ".join(str(w.render()) for w in app.screen.query("Static"))
+
+    said = " ".join(asyncio.run(go()).split())
+    assert "space pause; play on from there" in said and "r again, from the start" in said
+    assert "accept, sign off" not in said and "run every ready leaf" not in said
+    assert "says so here, and does nothing" in said and "the record; the executor's output" in said
+
+
+def test_the_shipped_replay_puts_up_the_board_and_one_key_per_item_answers_it(tmp_path):
+    """walk finding 34 (judge): neither no-key path showed the board, because the shipped recording
+    predated it. It is made again on the scripted fake with a planner that puts up a question, an
+    assumption and a leave-out: the screen's board rows (board_rows.read) show all three open with the
+    proposal, the person takes each (y), and the question's default changes its leaf, which is told to
+    that leaf's executor. A stand-in's, saying so."""
+    from graphene_map import board as B
+    from graphene_map import board_rows as BR
+
+    head, lines = demo.load(demo.SHIPPED)
+    assert head["stand_in"] is True and head["shown"] == demo.STAND_IN
+    repo, rows = demo.repository(tmp_path, head), []
+    with Store.open(repo) as store:
+        for line in lines:
+            demo.apply(store, line, repo)
+            shown = BR.read(store, shown=bool(rows and any(rows[-1])))  # as the screen keeps rows it showed
+            folded = BR.counts(shown) if shown.folded else ""
+            rows.append(([(BR.word(it), it["id"]) for it in shown.open], folded))
+        [question] = [it for it in B.items(store) if it["kind"] == "question"]
+        farewell = plan.get(store, "farewell")
+        decided = B.decided(store, farewell)
+    asked = [open_ for open_, _ in rows if open_]
+    assert asked[0] == [("asks", "bye-word"), ("assumes", "hello-home"), ("leaves out", "name-flag")]
+    assert rows[-1] == ([], "3 settled")  # each answered with its one key, folded into one row
+    assert question["state"] == "taken"
+    assert question["became"] == ["farewell: goal + It says goodbye, in full."]
+    assert farewell.goal.endswith("It says goodbye, in full.")
+    assert "what does bye say? → goodbye, as the paragraph's friendlier app would" in decided

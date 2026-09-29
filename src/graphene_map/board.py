@@ -120,11 +120,28 @@ def groups(store) -> list[tuple[str, list[dict]]]:
     return [(name, shown) for name, shown in out if shown]
 
 
+def asks(store) -> bool:
+    """Does the board ask the person anything now? Something is open; with the setting `board: auto`,
+    a question is. When it does not, no screen shows it and `graphene plan` says nothing of it."""
+    from . import settings as S
+
+    auto = S.board(store) == "auto"
+    return any(reads(it) == "open" and (not auto or waits(it)) for it in items(store))
+
+
+def waits(item: dict) -> bool:
+    """Is the item one only the person can settle, so `board: auto` shows it? A question, and a note
+    an agent other than a planner put up (an executor's): no default takes its words for the person."""
+    return item["kind"] == "question" or (
+        item["kind"] == "note" and item["agent"] and not item["by"].startswith("planner:")
+    )
+
+
 def waiting(store) -> tuple[int, str | None]:
     """How many items wait on the person, and the line `graphene plan` says it in (None: none do):
     "the board: 2 questions, 1 risk open (`graphene board`)"."""
     open_ = [(name, group) for name, group in groups(store) if name in dict(GROUPS)]
-    if not open_:
+    if not open_ or not asks(store):
         return 0, None
     said = ", ".join(
         f"{len(g)} {name[:-1] if len(g) == 1 and name.endswith('s') else name}" for name, g in open_
@@ -140,7 +157,8 @@ def shown(store) -> list[dict]:
 def said(item: dict) -> str:
     """An item as the executors are told it: the kind's word, its words, and the answer."""
     answer = _one(item.get("answer"))
-    return f"{_TOLD[item['kind']]}{item['text']}" + (f" → {answer}" if answer else "")
+    where = f" (from the repo: {item['from']})" if item.get("from") else ""
+    return f"{_TOLD[item['kind']]}{item['text']}" + (f" → {answer}{where}" if answer else "")
 
 
 def decided(store, node: P.Node | None = None) -> list[str]:
@@ -233,9 +251,10 @@ def _apply(store, line: str, who: P.Caller, now: str, files, conditions: list[st
         if node_id and not any(n.parent == node_id and n.state not in P.GONE for n in everything):
             parent = P.get(store, node_id).parent  # a leaf stays a leaf: its work is never left to no one
         P.propose(store, [{"id": leaf, "title": what, "parent": parent}], who, now, files, proposals={leaf})
+        empty = f"; it has no scope or check yet (`graphene node set {leaf}`)"  # to fill in: said, not found
         if parent != node_id:
-            return f"proposed {leaf} beside {node_id}, a leaf, under {parent or 'the goal'}"
-        return f"proposed {leaf} under {node_id or 'the goal'}"
+            return f"proposed {leaf} beside {node_id}, a leaf, under {parent or 'the goal'}{empty}"
+        return f"proposed {leaf} under {node_id or 'the goal'}{empty}"
     wrong = P.miscased(what, files or [])
     if wrong:
         raise P.Refused(f"then: {line}: {wrong}; spell it as git does")
@@ -359,10 +378,13 @@ def settle(
     words: str | None = None,
     files: list[str] | None = None,
     now: str | None = None,
+    **detail,
 ) -> dict:
     """The person answers an item: ``state`` is taken (the default, or yes), picked (``option``, from
-    1), answered (``words``), parked, dropped, or open again (only from parked). What the chosen
-    default or option says `then:` is applied in the same transaction, as the person's edit."""
+    1), answered (``words``), parked, dropped, or open again (from parked, or from an answer the
+    repository gave: ``from``). What the chosen default or option says `then:` is applied in the same
+    transaction, as the person's edit. ``detail`` goes on the act's log row (``from``, ``unchanged``);
+    ``from`` is kept on the item too, the file that answered it."""
     if not who.person:
         raise P.Refused(f"answering the board is the person's, not {who.name}'s")
     now = now or P._now()
@@ -371,6 +393,12 @@ def settle(
         item = next((it for it in board if it["id"] == item_id), None) or get(store, item_id)
         if item["state"] == "dropped":
             raise P.Refused(f"{item_id} was dropped; `graphene plan undo` brings it back")
+        if item.get("from") and state == "open":  # the repository answered it: it is the person's again
+            item.update(state="open", answer=None, option=None, conditions=[], rev=item["rev"] + 1,
+                        updated_at=now, **{"from": None})  # fmt: skip  (`became` stays: `lifted` says it)
+            _put(store, board)
+            _log(store, item, "reopened", who, now)
+            return item
         if item["state"] in DECIDED and state != "dropped":
             raise P.Refused(
                 f"{item_id} is {item['state']} already ({_one(item['answer']) or 'yes'}); "
@@ -415,18 +443,69 @@ def settle(
             state=state, answer=answer, option=option if state == "picked" else None, rev=item["rev"] + 1,
             updated_at=now, conditions=conditions or item["conditions"],
         )  # fmt: skip
+        if detail.get("from"):
+            item["from"] = detail["from"]
         _put(store, board)  # the answer's own conditions bind its other effects, as a later answer's would
         for i in (i for i in range(len(effects)) if i not in first):
             became[i] = _apply(store, effects[i], who, now, files, conditions)
         item.update(became=became or item["became"])
         _put(store, board)
-        _log(store, item, {"taken": "took", "open": "unparked"}.get(state, state), who, now, became=became)
+        _log(store, item, {"taken": "took", "open": "unparked"}.get(state, state), who, now, became=became,
+             **detail)  # fmt: skip
     return item
 
 
+def has_default(item: dict) -> bool:
+    """Can the item be taken without a word from the person? A default (or its `then:` lines), or a
+    kind whose take is a yes: an assumption confirmed, a risk noted, a leave-out agreed, a planner's
+    note taken (then told to its executors as written). A question with no default waits for the
+    person, and so do another agent's note (``waits``) and a default that drops a node (``drops``)."""
+    yes = item["kind"] in ("assume", "risk", "leave out") or (item["kind"] == "note" and not waits(item))
+    return reads(item) == "open" and not drops(item) and bool(item["default"] or item["then"] or yes)
+
+
+def drops(item: dict) -> list[str]:
+    """The nodes the item's default drops (`then: drop NODE`): never taken without the person's key."""
+    return [node for line in item["then"] for verb, node, _ in [effect(line)] if verb == "drop" and node]
+
+
+def defaults(store, who: P.Caller, files: list[str] | None = None) -> list[dict]:
+    """Every open item that has a default takes it, as the person's take (``unchanged`` on the log
+    row: nobody changed it), so a person who agrees with every default answers nothing. An item that
+    cannot be taken (about a node that left the plan) stays open, and so does one whose default drops
+    a node (``left``). Returns what was taken."""
+    taken = []
+    for item in [it for it in items(store) if has_default(it)]:
+        store.conn.execute("SAVEPOINT take")  # each take all or none, inside the act that takes them all
+        try:
+            taken.append(settle(store, item["id"], "taken", who, files=files, unchanged=True))
+        except P.Refused:
+            store.conn.execute("ROLLBACK TO take")  # its state and whatever of its effects was made
+        finally:
+            store.conn.execute("RELEASE take")
+    return taken
+
+
+def left(store) -> list[dict]:
+    """The open items whose default drops a node: taking them is the person's key, never a default's."""
+    return [it for it in items(store) if reads(it) == "open" and drops(it)]
+
+
+def took(taken: list[dict], kept: list[dict] | None = None) -> str | None:
+    """The one line saying what took its default: `took the defaults of q-a, r-b (plan undo …)`, and
+    what was left for the person because its default drops a node (``kept``)."""
+    said = [f"took the default{'s' if len(taken) > 1 else ''} of {', '.join(it['id'] for it in taken)}, "
+            "left open on the board (`graphene plan undo` takes them back)"] if taken else []  # fmt: skip
+    said += [f"left for you: {it['id']} (its default drops {', '.join(drops(it))})" for it in kept or []]
+    return "; ".join(said) or None
+
+
 def lifted(item: dict) -> list[str]:
-    """What dropping an answered item leaves, in lines: its read-only globs no longer bind, and what
-    its answer changed in the tree stays (`graphene plan undo` takes both back, as one act)."""
+    """What dropping an answered item, or opening again one the repository answered, leaves, in
+    lines: its read-only globs no longer bind, and what its answer changed in the tree stays (`graphene
+    plan undo` takes both back, as one act)."""
+    if item["state"] == "open" and item.get("became"):  # opened again after the repository's answer
+        return [f"what it changed stays: {line}" for line in item["became"] if line]
     if item["state"] != "dropped":
         return []
     out = [f"no longer read-only: {', '.join(item['conditions'])}"] if item.get("conditions") else []
@@ -474,6 +553,63 @@ def rehome(store, gone: set[str], who: P.Caller, now: str | None = None) -> list
                 _log(store, item, "moved to the whole plan", who, now, was=moved[-1][1])
         _put(store, board)
     return moved
+
+
+def _renamed(line: str, old: str, new: str) -> str:
+    """A `then:` line naming ``old`` as its node, naming ``new`` instead; any other line as it is."""
+    line = _one(line)
+    for _, form in _EFFECTS:
+        found = form.fullmatch(line)
+        if found:
+            if (found.groupdict().get("node") or "").strip("[]`") != old:
+                return line
+            start, end = found.span("node")
+            return line[:start] + new + line[end:]
+    return line
+
+
+def carry(store, old: str, new: str, who: P.Caller, files=None, now: str | None = None) -> list[str]:
+    """A re-ask dropped ``old``, and ``new`` is the same node in the new tree (``ask._same``): what the
+    board says about old is about new, its `then:` lines name new, and what an answer did to old's goal,
+    scope or check (or a leaf it put beside old that went with it) is done to new, as the person's
+    edit. Returns what the answers changed on new, a line each, and what was refused (`not carried:`,
+    with why): the new tree lands either way."""
+    now = now or P._now()
+    carried = []
+    with store.claim():
+        board = items(store)
+        for item in board:
+            if item["state"] == "dropped":
+                continue
+            before = json.dumps(item, sort_keys=True)
+            for said in (item, *item["options"]):
+                said["then"] = [_renamed(line, old, new) for line in said["then"]]
+            item["about"] = new if item.get("about") == old else item.get("about")
+            chosen = item["then"] if item["state"] == "taken" else []
+            if item["state"] == "picked" and item.get("option"):
+                chosen = item["options"][item["option"] - 1]["then"]
+            became = [*(item.get("became") or []), *[""] * len(chosen)][: len(chosen)]
+            for i, line in enumerate(chosen):
+                verb, node_id, _ = effect(line)
+                made = became[i].split()[1] if verb == "leaf" and became[i].startswith("proposed ") else None
+                gone = made is not None and (store.node_row(made) or {}).get("state") in P.GONE
+                if node_id == new and (verb in ("scope", "check", "goal") or gone):
+                    store.conn.execute("SAVEPOINT carry")  # a refused edit leaves the new tree as it landed
+                    try:
+                        became[i] = _apply(store, line, who, now, files, [])
+                    except P.Refused as no:
+                        store.conn.execute("ROLLBACK TO carry")
+                        carried.append(f"not carried: {line} (from {item['id']}): {_one(str(no))}; "
+                                       f"`graphene node set {new}` puts it on by hand")
+                    else:
+                        carried.append(f"carried: {became[i]} (from {item['id']})")
+                    store.conn.execute("RELEASE carry")
+            item["became"] = became if chosen else item.get("became") or []
+            if json.dumps(item, sort_keys=True) != before:
+                item.update(rev=item["rev"] + 1, updated_at=now)
+                _log(store, item, "carried", who, now, was=old, to=new)
+        _put(store, board)
+    return carried
 
 
 # -- the text form --------------------------------------------------------------------------------
@@ -603,6 +739,14 @@ def apply(store, found: list[dict], who: P.Caller, opened: dict | None, files=No
     said: list[str] = []
     board = {it["id"]: it for it in items(store)}
     gone = {_one(it["text"]).lower(): it["id"] for it in board.values() if it["state"] == "dropped"}
+    # a planner asked again writes an item it put up before, perhaps without its [id]: the same words
+    # are that item, never a second one beside the person's answer (a proposal only; an edit names ids).
+    # A note is words told as written: a second one is a second note (`talk why` asked twice)
+    standing = {
+        _one(it["text"]).lower(): it["id"]
+        for it in board.values()
+        if it["state"] != "dropped" and it["kind"] != "note"
+    }
     seen: dict[str, int] = {}
     for f in found:
         at = f["at"]
@@ -618,6 +762,9 @@ def apply(store, found: list[dict], who: P.Caller, opened: dict | None, files=No
         if f["id"]:
             seen[f["id"]] = f["no"]
         known = board.get(f["id"] or "")
+        if known is None and opened is None and f["kind"] != "note" and _one(f["text"]).lower() in standing:
+            known = board[standing[_one(f["text"]).lower()]]
+            f = {**f, "id": known["id"]}
         if known is not None and opened is not None and f["id"] not in opened:
             raise P.Refused(
                 f"line {f['no']}: [{f['id']}] is on the board already; give this line another id, or none"
@@ -628,6 +775,8 @@ def apply(store, found: list[dict], who: P.Caller, opened: dict | None, files=No
                 # person's, the rest of the proposal still lands, and the person is told
                 said.append(f"kept {f['id']} on the board as it stands (a planner's text changed it; "
                             "`graphene plan edit` is how the person changes it)")
+            else:  # the same words again: said, so an ask that added nothing new says why
+                said.append(f"{f['id']} is on the board already ({reads(known)}): not put up again")
             continue
         if known is None or (known["state"] == "dropped" and opened is None):
             if f["answer"] and not who.person:

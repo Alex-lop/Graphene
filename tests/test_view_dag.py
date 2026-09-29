@@ -234,19 +234,31 @@ def test_the_diamond_and_the_chain_at_80_columns():
     drawn = checked(nodes, 80, cursor="c")
     assert [line.plain for line in drawn.lines] == [
         "the goal",
-        "✓ a read the… ──┬─▸ ○ b parse rows ─┐",
-        "                └─▸ ○ c check… ─────┤",
-        "                                    └─▸ ◌ d write the…",
-        "○ x1 one ━━━━━━━━━▸ ◌ x2 two ━━━━━━━━━▸ ◌ x3 three ━━━━━▸ ◌ x4 four ━▸ ◌ x5 five",
-    ]
+        "✓ a   read… ────┬─▸ ○ b   parse… ──┐",
+        "                └─▸ ○ c   check… ──┤",
+        "                                   └─▸ ◌ d   write…",
+        "○ x1  one ━━━━━━━━▸ ◌ x2  two ━━━━━━━▸ ◌ x3  three ━━━▸ ◌ x4  four ━▸ ◌ x5  five",
+    ]  # a column's titles start two after its widest id (walk 2026-09-28, alex 25)
     assert drawn.order == ["a", "x1", "b", "c", "x2", "d", "x3", "x4", "x5"]  # a column, then the next
-    assert drawn.at["c"] == (2, 20, 29) and drawn.at["x5"] == (4, 71, 79)
+    assert drawn.at["c"] == (2, 20, 31) and drawn.at["x5"] == (4, 70, 79)
     assert all("reverse" in style_at(drawn.lines[2], x) for x in range(20, 30))  # the cursor
     assert "reverse" not in style_at(drawn.lines[1], 20)
     assert style_at(drawn.lines[4], 10) == "bold" and style_at(drawn.lines[4], 2) == "bold"  # x1 > …
-    assert style_at(drawn.lines[1], 0) == "green" and style_at(drawn.lines[1], 4) == "dim"  # a is done
+    assert style_at(drawn.lines[1], 0) == "green" and style_at(drawn.lines[1], 6) == "dim"  # a is done
     assert style_at(drawn.lines[1], 15) == "dim"  # and so is the line out of it
     assert drawn.note == "critical ━ x1 > x2 > … > x5 (5) · 3 ready · 5 wait · 1 done"
+
+
+def test_a_columns_titles_line_up_two_columns_after_its_widest_id():
+    """Walk 2026-09-28 (alex 25, judge 24): a cell read `? xml-reader an xml reader` and `○
+    readme-lists-xml README lists xml`, the id run into the title. The ids of a column take the
+    width of its widest, and its titles start two columns after it, as the outline's columns do."""
+    nodes = [leaf("xml-reader", "read the xml feed"), leaf("xml-register", "register xml in READERS"),
+             leaf("readme", "say xml in the README", ["xml-reader"])]  # fmt: skip
+    lines = [line.plain for line in checked(nodes, 120).lines]
+    assert "○ xml-reader    read the xml feed" in lines[1], lines
+    assert lines[2].startswith("○ xml-register  register xml in READERS"), lines
+    assert "▸ ◌ readme  say xml in the README" in lines[1], lines
 
 
 def test_every_line_fits_and_titles_go_before_ids_and_then_the_graph():

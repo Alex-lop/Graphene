@@ -20,6 +20,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
+from . import board as B
+from . import board_rows as R
+from . import direction as D
 from . import plan as P
 from . import settings
 from .commits import refresh_commits
@@ -89,6 +92,21 @@ def runs(store: Store) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def board(store: Store) -> dict:
+    """The board as the terminal reads it (board_rows): each open item with its kind as a verb, its
+    default, options and what it is about; what is settled, parked or dropped, with the fold row's
+    count; and the standing conditions' one line. The page shows it and answers nothing."""
+
+    def item(it: dict) -> dict:
+        return {"id": it["id"], "word": R.word(it), "text": it["text"], "default": it["default"],
+                "options": [o["text"] for o in it["options"]], "about": it.get("about"),
+                "by": P.said_by(it["by"]), "said": B.said(it)}  # fmt: skip
+
+    shown = R.read(store)
+    return {"open": [item(it) for it in shown.open], "folded": [item(it) for it in shown.folded],
+            "counts": R.counts(shown), "standing": shown.standing}  # fmt: skip
+
+
 def payload(
     store: Store,
     session_ids: list[str],
@@ -108,16 +126,37 @@ def payload(
         "writable": writable,
         "token": token,
         "settings": settings.for_screen(store),  # the standing conditions, for the root row
+        "board": board(store),
     }
     return (
         '{"runs": '
         + json.dumps(rail)
+        + ', "direction": '
+        + json.dumps(direction(store, only), ensure_ascii=False)
         + ', "plan": '
         + json.dumps(plan_view, ensure_ascii=False)
         + ', "graph": '
         + to_json(build_graph(store, ids))
         + "}"
     )
+
+
+def direction(store: Store, only: bool = False) -> dict | None:
+    """The direction with the plan and the sessions attached (`direction.status`); None with no file,
+    and the refusal when it cannot be read. A file that leaves the machine carries the rolled-up counts
+    and not the sessions: they stay on this machine."""
+    try:
+        d = D.read(store.path.parent.parent)
+    except P.Refused as no:
+        return {"refused": str(no)}
+    if d is None:
+        return None
+    said = D.status(store, d)
+    if not only:
+        return said
+    if said["plan"]:  # who holds a running leaf is a session: it stays on this machine too
+        said["plan"]["leaves_running"] = [{**r, "by": "", "last": ""} for r in said["plan"]["leaves_running"]]
+    return said | {"sessions": []}
 
 
 def export_html(store: Store, session_ids: list[str]) -> str:

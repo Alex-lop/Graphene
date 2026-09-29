@@ -5,6 +5,7 @@ import io
 import json
 import os
 import pty
+import re
 import select
 import subprocess
 import sys
@@ -319,6 +320,86 @@ def test_pause_resume_prompts_ack_archive_and_release_name_the_repository(repo):
     assert all("(the plan of " in a.stderr for a in acts), [a.stderr for a in acts]
 
 
+def test_after_the_last_node_is_archived_the_plan_the_board_and_the_next_ask_start_clean(repo):
+    """The judge's next `:ask` after `:plan archive` read "○ … 0/0 done" above its proposals: the old
+    goal and the old board had stayed. Archived with the last node, `graphene` has nothing planned."""
+    person("plan", "goal", "users come back with their ids")
+    person("node", "add", "leaf one", "--id", "l1", "--scope", "api.py", "--check", "true")
+    person("board", "note", "ids are ints")
+    agent("node", "start", "l1")
+    (repo / "api.py").write_text("def users():\n    return [1]\n")
+    assert agent("node", "done", "l1").exit_code == 0
+    assert "archived l1" in person("plan", "archive").stdout
+    plain = person()
+    assert plain.exit_code == 1 and plain.stderr.startswith("nothing is planned here yet")
+    assert "ids are ints" not in person("board").stdout
+    assert "users come back with their ids" in person("plan", "log").stdout  # kept, in the log
+
+
+def test_a_finished_plan_says_when_its_leaves_work_is_not_committed_and_what_commits_it(repo, tmp_path):
+    """The judge ran plain `graphene run`: `graphene` said "3 leaves, 3 done … finished" while `git status`
+    held the leaves' work, and watch's R (`run --parallel 4`) had committed one as a merge."""
+    script = tmp_path.parent / f"{tmp_path.name}-ids.py"  # beside the repo: nobody's stray file
+    script.write_text("open('api.py', 'w').write('def users():\\n    return [\"ids\"]\\n')\n")
+    person("node", "add", "users returns ids", "--id", "ids", "--scope", "api.py", 
+           "--check", "grep -q ids api.py")
+    ran = person("run", "--with", f"{sys.executable} {script}")
+    assert ran.exit_code == 0, ran.output
+    assert ran.stdout.splitlines()[-1] == (
+        "run: 1 done; the work of ids is not committed (`git status`): plain `graphene run` commits nothing, "
+        "`graphene run --parallel N` and watch's R commit and merge each leaf"
+    )
+    head = person().stdout.splitlines()[0]
+    assert head == (
+        "the plan: 1 leaf, 1 done, 0 running · finished; the work of 1 leaf is not committed (`git status`): "
+        "plain `graphene run` commits nothing, `graphene run --parallel N` and watch's R commit and merge "
+        "each leaf; `graphene plan archive` puts it away"
+    )
+    subprocess.run(["git", "-c", "user.email=t@example.com", "-c", "user.name=T", "commit", "-qam", "ids"],
+                   cwd=repo, check=True)  # fmt: skip
+    assert person().stdout.splitlines()[0] == (
+        "the plan: 1 leaf, 1 done, 0 running · finished; `graphene plan archive` puts it away"
+    )
+
+
+def test_at_80_columns_every_line_of_the_plan_fits_and_ids_state_words_and_commands_stay_whole(repo):
+    """Three walkers: bare `graphene` ran rows of 115 to 230 characters, which an 80-column terminal
+    wrapped mid-word (`· ingest` / `/xmlfeed.py`). At a terminal or under $COLUMNS each line fits: a row
+    keeps its title (cut), id and state word, and what it adds goes on lines of its own under it."""
+    tree = (
+        "goal: the Northwind XML feed loads like csv and json\n"
+        "- the XML feed  [feeds-xml]\n"
+        "  ? an xml reader  [xml-reader]\n      scope: ingest/xmlfeed.py, ingest/__init__.py\n"
+        "      check: grep -q xml ingest/__init__.py\n"
+        "  ? README lists xml as a source like csv and json already are  [readme-lists-xml]\n"
+        "      scope: README.md\n      check: grep -q xml README.md\n"
+    )
+    assert agent("plan", "propose", "-", input=tree).exit_code == 0
+    person("node", "add", "a test for the XML reader", "--id", "test-xml-reader", "--scope", "api.py",
+           "--check", "true")  # fmt: skip
+    agent("node", "start", "test-xml-reader")
+    why = "3 attempts, the last one refused: " + "it changed samples/prices.xml, outside its scope; " * 3
+    agent("node", "release", "test-xml-reader", "--why", why, "--wants", "samples/prices.xml")
+    wide = person().stdout  # no terminal and no $COLUMNS: each row whole on its line, for grep
+    row = "xml-reader        proposed   · ingest/xmlfeed.py, +1 more · `graphene plan accept xml-reader`"
+    assert row in wide
+    for columns in (80, 120):
+        for args, env in (([], {"GRAPHENE_AS": "person:alex"}), (["plan"], AGENT_ENV)):
+            said = runner.invoke(build(), args, env={**env, "COLUMNS": str(columns)}).stdout
+            lines = said.splitlines()
+            assert max(len(line) for line in lines) <= columns, said
+            back = r"↩ a test for the XML reader +test-xml-reader +came back"
+            for cells in (r"\? an xml reader +xml-reader +proposed", back):  # title, id and word on one line
+                assert any(re.match(rf"  +{cells}( |$)", line) for line in lines), (cells, said)
+            assert re.search(r"(^| )`graphene plan accept readme-lists-xml`$", said, re.M), said
+            [reason] = [line for line in lines if "handed back: 3 attempts" in line]
+            assert reason.endswith("…")  # cut, and where the rest is, on the next line
+            assert "(`graphene node show test-xml-reader` has all of it)" in said
+    narrow = runner.invoke(build(), ["plan"], env={**AGENT_ENV, "COLUMNS": "80"}).stdout
+    assert "`graphene node sibling test-xml-reader`" in narrow  # a command is never broken across lines
+    assert "graphene node start" not in narrow  # it came back: the next move is what watch offers
+
+
 def test_plan_first_is_a_setting_the_person_sees_and_sets(repo):
     """Never set, plan first is on while a plan is in force; `graphene init` sets it on; the person
     turns it off and on, and an agent may not."""
@@ -372,6 +453,20 @@ def at_terminal(repo, args, answer: str) -> str:
     os.close(main)
     assert proc.wait(timeout=60) == 0, said
     return said.decode().replace("\r\n", "\n")
+
+
+def test_a_leaf_that_came_back_is_run_again_by_name_as_the_persons_next_line_says(repo):
+    """Walk 2026-09-28 (judge 7): the next line said `graphene run` runs a leaf that came back, which
+    the screen counts out of `R: N ready`. Plain `graphene run` now leaves it to the person."""
+    for k in (1, 2):
+        person("node", "add", f"leaf {k}", "--scope", f"f{k}.txt", "--check", "true")
+    agent("node", "start", "n1")
+    agent("node", "release", "n1", "--why", "cannot")
+    person("node", "start", "n2")
+    (repo / "f2.txt").write_text("x")
+    said = person("node", "done", "n2").stdout.splitlines()[-1]
+    assert said == ("next: n1 (leaf 1) came back (`graphene node show n1`): `graphene run --node n1` runs it "
+                    "again")  # fmt: skip
 
 
 def test_next_is_one_line_in_the_words_of_whoever_reads_it(repo):
@@ -512,4 +607,39 @@ def test_a_leaf_that_came_back_reads_came_back_in_every_view_and_in_the_next_lin
         assert "ready" not in row, (view, drawn)  # and its word; the graph's count says "none ready"
     assert "came back" in person("plan", "--view", "outline").stdout
     said = agent("plan", "--view", "outline").stdout.splitlines()[-1]
-    assert said.startswith("next: api (api work) came back (`graphene node show api`): `graphene node start")
+    # what the screen offers on it, as commands (first walker, finding 3): not a `node start`
+    assert said == (
+        "next: api (api work) came back: `graphene run --node api` (run it again); r in `graphene watch`"
+    )
+
+
+def test_a_proposal_and_an_open_board_are_named_as_what_waits_not_stop_and_run_says_to_accept(repo):
+    """Walk 2026-09-29 (first 1, first 8, judge 37): right after an ask, bare `graphene` ended with
+    `next: nothing is ready for you, so you can stop`, and `graphene run` (R) failed with "the plan has
+    no open leaf" while the whole tree waited to be accepted."""
+    text = (
+        "goal: users come back with their ids\nquestion: ids as numbers?  [id-type]\n    default: numbers\n"
+        "- the users API  [users-api]\n  ? users returns ids  [ids]\n      scope: api.py\n      check: true\n"
+    )
+    assert agent("plan", "propose", "-", input=text).exit_code == 0
+    assert "waiting on you: users-api (proposed, with the 1 under it), 1 on the board" in person().stdout
+    told = agent().stdout.strip().splitlines()[-1]  # an agent's shell, as the walker's seat was
+    assert told == (
+        "next: nothing is ready for you: the proposal (1 leaf) and the board (1) wait on the person"
+    )
+    ran = person("run", "--with", "true")
+    assert ran.exit_code == 1
+    assert "nothing to run: the tree is a proposal (1 leaf) nobody has accepted: `graphene plan accept`" in (
+        ran.stderr
+    ), ran.stderr
+
+
+def test_the_path_an_export_wrote_is_one_line_a_double_click_copies_whole(repo):
+    """Walk 2026-09-29 (alex 31): at 80 columns `wrote <path>` came out as the path broken over three
+    lines, by the printer and not the terminal, so a copy held line breaks in the middle of the path."""
+    assert person("node", "add", "users returns ids", "--id", "ids", "--scope", "api.py", "--check", "true")
+    page = repo / "a-rather-long-directory-name-for-the-exported-page" / "and-another-one-below-it" / "p.html"
+    said = runner.invoke(build(), ["ui", "--export", str(page), "--no-open"],
+                         env={"GRAPHENE_AS": "person:alex", "COLUMNS": "40"})  # fmt: skip
+    assert said.exit_code == 0, said.output
+    assert f"wrote {page}" in said.stderr.splitlines(), said.stderr

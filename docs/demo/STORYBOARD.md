@@ -1,186 +1,119 @@
-# The video: three minutes, the moment before anything runs
+# The video: under three minutes, the moment before anything runs
 
-A draft for Alex. The rules ask for a public video of three minutes or less whose audio covers how
-Token Factory and Nemotron are used. So the narration says what runs where, and nothing about why
-software should be written this way. Everything on screen is `docs/proof/nemotron.sh`, run for real on
-the feeds repository and cut only where an agent is thinking. The terminal parts can be rendered from
-`docs/proof/nemotron.tape` with VHS.
+A draft for Alex. The rules (`docs/process/field.md`) ask for a public video under three minutes, with
+footage of Graphene functioning, and audio on how Token Factory and Nemotron are used. So the narration
+says what runs where, and nothing about why software should be written this way.
 
-The first minute and a half is shaping: the board, the graph and the prune, before anything is spent.
-That is where Graphene differs from the rest of the field (`docs/process/field.md`, "Where Graphene
-differs", item 1). The run, the forks and the bill come after it and are shorter, because forking
-from one checkpoint is the field's most common pattern (item 3 there).
+Every scene is one VHS tape under `docs/demo/scenes/`, filmed in real time by `docs/demo/build.sh`
+against one take of the demo run: rung 7's `docs/proof/nemotron.sh` on feeds, played by a person's keys
+in `graphene watch` at 120x36. Nothing is sped up. A wait for the model is waited for, not shortened, and
+cut between two scenes; the top line of the next scene says how long was cut and what it was
+(`cut 1:32 of the planner at work`, beside the REHEARSAL line in a rehearsal; both fit in 80 columns).
+`build.sh` reads this table: the narration column becomes the subtitles, spread over each scene's own
+footage, and the length column is what each scene is measured against.
 
-<!-- For Alex: the board, the tree and graph views, `?` talk, `graphene config` and the Nemotron
-shaping commands are merged into `shaping` (at 2111115), not yet into `main`.
-docs/proof/nemotron.sh and nemotron.tape do not yet show the board or press Tab; the tape needs the
-new keys before this can be recorded. -->
+**Kinds.** *live*: filmed as it happened, keys and screen in real time. *live, after a cut*: the same,
+following a wait that was cut and is labelled on screen. *only if*: filmed only when the screen shows
+what the scene is about (a board, a leaf that came back); otherwise the take goes on without it and
+`build.sh` says so. No scene is a replay: `graphene demo` of the take's recording is how anyone without a
+key watches the same run afterwards.
 
-| Time | On screen | Narration |
-| --- | --- | --- |
-| 0:00–0:10 | Two panes, each 80x24: a terminal on the left, `graphene watch` on the right, empty. The left pane shows `graphene config`: the protected paths, the plan's size, the planner and the executor, and where the key was found (never the key). | "This is Graphene, on a small Python repository. I said once what no agent may touch. Now I'll ask for a feature in a paragraph, and NVIDIA Nemotron models will plan it and build it on Nebius Token Factory." |
-| 0:10–0:30 | The paragraph typed into `graphene ask`. The right pane fills with a tree, every row `?`. The left pane lists `proposed …` lines, then `put up …` lines. | "The planner is Nemotron 3 Ultra, called through Token Factory's OpenAI-compatible API. It reads the repository with read-only tools (list, grep, read) and answers with a tree: sub-goals, and leaves that each name the files they may change and the command that proves them done. What the code can't tell it, it asks." |
-| 0:30–0:55 | **The board** (frames B1 to B3 below). `graphene board`; then `graphene board pick parser 1`, `take cents`, `take no-zero`, `park json-variant`. The right pane gains a leaf; the left pane shows `node show` with its `decided:` lines. | "Before anything runs, the planner asks instead of guessing: at most three questions or risks, each with a default, and only what changes the tree. I answer each with one command. Picking lxml widens the reader's scope, as my edit. Taking the risk's default adds a leaf. What I take or pick goes to that leaf's executor, as a decided line; what I park is told to no one." |
-| 0:55–1:15 | **The graph** (frames G1 and G2 below). `Tab` in the right pane: the tree. `Tab` again: the graph, the critical path heavy, and its note on the bottom line. | "Tab draws the same plan as a tree, and again as a graph of what waits on what. The heavy line is the critical path: the chain the rest waits on." |
-| 1:15–1:30 | `j` to a leaf, `?`, then `w`: the planner's why lands on the board. *Only if this ran live on the recording night; if not, cut it and give the time to the run.* | "I can talk to the plan: question mark on a leaf asks the planner why it's there, and the answer lands on the board for me to keep or drop." |
-| 1:30–1:40 | `Enter` on a leaf shows its scope and check; `E` opens the plan in the editor and a path leaves a scope; `y` on the goal accepts. | "Then I prune. I take one path out of this leaf's scope, and accept the rest." |
-| 1:40–2:10 | `R`. Leaves turn yellow at once; the node pane shows the executor, its sandbox, its last step and seconds since. | "R runs every ready leaf. Each gets a Nemotron Nano executor on Token Factory, and every tool call it makes runs in a Token Factory Sandbox forked from one checkpoint of the repository. Its write tools refuse a path outside the scope, the sandbox refuses it too, and the leaf is done only when Graphene's own check passes." |
-| 2:10–2:25 | A leaf comes back, magenta: its reason, and `w  widen …` / `b  a sibling …`. `w`, then `R`. | "This leaf needed the file I took away. It comes back with the reason and the fix already written. One key widens its scope, and it runs again." |
-| 2:25–2:40 | Every row green. The left pane: `git log --graph --oneline`, one merge per leaf. | "Every leaf landed as a merge on my branch, with its reason in the message, so git's history reads as the tree." |
-| 2:40–2:55 | The bill: dollars per leaf and for the run, at Token Factory's list price, from the usage each call returned. | "Each call's token usage comes back from Token Factory, priced at the list price: this is what each leaf cost, and the run." |
-| 2:55–3:00 | The repository's URL. | "Graphene, on GitHub." |
+| # | Scene | Length | Kind | On screen | Narration |
+| --- | --- | --- | --- | --- | --- |
+| 01 | the opening | 9 s | live | `graphene config` in feeds: the settings, the planner and the executor (Nemotron) and where the key was found, never the key. | "This is Graphene on a small Python repository. The planner and the executors are NVIDIA Nemotron models on Nebius Token Factory." |
+| 02 | the ask | 14 s | live | `graphene ask "…"`, the paragraph pasted in the shell, wrapping over three lines and held there to be read; Enter; `asking the planner (nemotron)…`. | "I ask for a feature in one paragraph. Nemotron 3 Ultra plans it through Token Factory's OpenAI-compatible API, reading the repository with read-only tools: list, grep and read." |
+| 03 | the plan | 10 s | live, after a cut | What the ask proposed and put up, one line each; then `graphene watch`: the tree, every row `?` proposed, and the board's rows above it. | "It answers with a tree: sub-goals, and leaves that each name the files they may change and the command that proves them done." |
+| 04 | the board | 16 s | live; only if the planner asked | The cursor on the first board row, its default and options in the pane; `y` takes the default, what it changed is said under it, and the cursor goes to the next item; `y` again for each. | "What the code cannot tell it, it asks before anything runs: at most three questions or risks, each a row under the goal with a default. One key answers each, and the answer goes to that leaf's executor." |
+| 05 | the views | 18 s | live | `Tab`: the tree, top-down. `Tab`: the graph, the critical path heavy, and named on the bottom line. `Tab`: the outline again. | "Tab draws the same plan as a tree, and again as a graph of what waits on what. The heavy line is the critical path, and the bottom line names it." |
+| 06 | the prune | 14 s | live | `gg`, `E`: the plan as text in vim; one substitution takes `cli/main.py` out of every scope; `:wq`; `y` on the goal accepts the rest. | "Then I prune. In the plan's text I take one file out of every scope, and accept the rest." |
+| 07 | the run | 16 s | live | `R`: leaves turn yellow; `/running` puts the cursor on one, and its pane shows the executor, where it runs, its last step and the seconds since. | "R runs every ready leaf, each with a Nemotron Nano executor on Token Factory, in a git worktree of its own. Its tools refuse a write outside the scope, and a leaf is done only when its check passes." |
+| 08 | the leaf that came back | 16 s | live, after a cut; only if a leaf came back | `/came back`: the leaf, magenta, its reason and `w  widen …`. `w`, then `R`. | "This leaf needed the file I took away. It comes back with the reason and the fix already written. One key widens its scope, and it runs again." |
+| 09 | every leaf green | 8 s | live, after a cut | `gg`: every row green. | "Every leaf has landed, each passed by its own check." |
+| 10 | the history | 12 s | live | `q`, then `git log --graph --oneline`: one merge per leaf. | "Each leaf landed as a merge on my branch, with its reason in the message, so git's history reads as the tree." |
+| 11 | the bill | 12 s | live | `graphene plan record`: the checks Graphene ran, and the bill of the executors and of the planner at Token Factory's list price. | "Token Factory returns each call's token usage. Priced at the list price, this is what the leaves cost, and the plan." |
+| 12 | the direction | 15 s | live; only if `graphene direction` runs | In Graphene's own checkout, `graphene direction`: the goals above the plans, each plan and session hanging from one, with its status. | "Above the plans sits the direction, the goals I write. This is Graphene's own, with tonight's sessions attached to what they are doing, and their status." |
+| 13 | the end | 5 s | live | The repository's address. | "Graphene, on GitHub." |
 
-## The board and the graph, frame by frame
+165 seconds planned, fifteen seconds under the limit for the cut labels and the scenes that run long. The
+narration is at most 2.5 words a second of its scene, so it can be said aloud in the time; `build.sh`
+says which filmed scene is too short for its line.
 
-What the viewer sees at 80x24 in each pane, and the keys pressed. B1 to B3 were rendered at `integ`
-50f12e7 (since merged into `shaping`), and G1 and G2 at `shaping` 2111115, from a scratch repository, with a scripted planner standing in for Nemotron
-(`graphene ask --with`), a person set by `GRAPHENE_AS=person:alex`, and no model called. The
-recording's words will be whatever Ultra puts up that night; the layout, the commands and the keys
-are these. The path on each screen's first line is shortened, and in G1 and G2 the empty rows of
-the lower pane are shown as `…`.
+## What changes with tonight's work
 
-<!-- For Alex: these frames were rendered before the rows board merged (decision 84), so
-they answer the board in the left pane. `graphene watch` now shows each item as a row under the goal
-and counts the open ones on its status line ("+ N on the board"): shoot B1 and B2 in the right pane
-with its keys instead (y takes the default, 1 picks option 1, p parks, d drops, Enter answers). -->
+- **The board (decision 84, and lane BOARD tonight).** The board is rows of the outline under the goal:
+  `asks`, `risk`, `assumes`, `leaves out`, each with its default; `y` takes the default, `1`-`9` picks an
+  option, `p` parks, `d` drops, `Enter` answers in your words. Tonight's changes: a default holds unless
+  it is changed, one key answers, and there is no board when there is nothing to ask. Scene 04 presses
+  `y` three times: the planner puts up at most three items, and a `y` past the last lands on the settled
+  fold, where it does nothing. When there is no board, the scene is not filmed and the take goes from
+  the plan to the views.
+- **The views (decisions 85 to 87).** `Tab` goes outline, tree, graph, and past a view that does not fit,
+  saying so once. The graph's note names the critical path first, so 80 columns never cut it. On the
+  scratch plan the shaping run drew (the four feeds leaves, and the board's new zero-price-product leaf,
+  which has no scope or check yet), `graphene plan --view dag --width 80` ends its note
+  `critical ━ xml-reader > xml-wire > xml-e2e (3) · none ready · 2 once accepted · 3 wait` here, and
+  `… · 2 wait` before the board's new leaf. In the rehearsal the heavy `━` of the path is only a pixel
+  heavier than a light line at this size, so the narration points at the bottom line, which names it.
+- **The direction (lane D tonight).** A small tree of goals above the plans that only the person
+  accepts, with every Claude Code session attached to a node and its state: alive, idle, waiting on
+  you, the last thing done, the bill. Scene 12 films Graphene's own, in its own checkout, read-only. Its
+  tape types `graphene direction`; when the direction has its own keys in `graphene watch`, the scene
+  moves there.
+- **Sandboxes.** Rung 1 was refused Sandboxes for Alex's project (ForbiddenError), so the leaves run in
+  git worktrees and scene 07 says so. If the project has Sandboxes by the recording night, rung 3 has
+  passed, and the node pane says `sandbox`, scene 07's narration becomes: "Each gets a Nemotron Nano
+  executor on Token Factory, and every tool call it makes runs in a Token Factory Sandbox forked from one
+  checkpoint of the repository."
 
-**B1, 0:30. Left pane, typed: `graphene board` Enter.**
+## Filming a take
 
-```
-$ graphene board
-the board: 4 open
-questions
-  ◇ which XML parser: the standard library or     parser        open
-    lxml?
-      default: the standard library's ElementTree; lxml is not installed
-      1: lxml, added to pyproject.toml
-         then: scope xml-reader + pyproject.toml
-      about xml-reader
-assumptions
-  ◇ prices in the XML are already in cents        cents         open
-risks
-  ◇ samples/ has no XML with a price of 0, so     no-zero       open
-    the check cannot see the skip
-      default: add one to the sample
-         then: leaf "a zero-price product in samples/prices.xml" under xml
-left out
-  ◇ the JSON variant of the Northwind feed; the   json-variant  open
-    paragraph does not name it
-graphene board take|drop|park|unpark ID · pick ID N · answer ID TEXT · note TEXT
-```
+From a fresh terminal of your own (not Claude Code: a live take spends your key, and `build.sh` refuses
+an agent's shell), in a checkout of `first-light` (or `main` once it is merged), with the key in
+`NEBIUS_API_KEY` or the keychain:
 
-Hold on this frame for about four seconds: this is the moment the video is about.
+    caffeinate -i env EXECUTOR='nemotron --placement local' docs/demo/build.sh
 
-**B2, 0:38. Left pane, typed: `graphene board pick parser 1` Enter, `graphene board take cents`
-Enter, `graphene board take no-zero` Enter, `graphene board park json-variant` Enter.** Each prints
-what it changed (each command's last line, naming the plan's repository, is left out here, and a
-line wider than 80 columns wraps in the pane):
+`EXECUTOR` is read as `docs/proof/nemotron.sh` reads it: while Sandboxes refuse the project, the leaves
+run in local worktrees; once rung 3 has passed, leave it out and `graphene init` puts them in Sandboxes.
+The `graphene` on PATH is the one filmed (yours is the checkout's own, installed editable).
 
-```
-picked parser: which XML parser: the standard library or lxml? → lxml, added to pyproject.toml
-  changed: xml-reader: scope + pyproject.toml
-taken cents: prices in the XML are already in cents
-taken no-zero: samples/ has no XML with a price of 0, so the check cannot see the skip → add one to the sample
-  changed: proposed zero-price-product under xml
-parked json-variant: the JSON variant of the Northwind feed; the paragraph does not name it
-```
+A take builds feeds at `~/graphene-film/feeds` (`FILM_DIR` moves it), records the run with
+`graphene demo --record`, and films each scene into `docs/demo/takes/<time>/`. The seconds spent waiting
+for the planner and the executors go by un-filmed, so a take lasts as long as rung 7 does (10 to 30
+minutes) plus about a minute of VHS starting. Then it writes `docs/demo/rough.mp4` and `rough.srt` and
+prints each scene's length against this table, the cuts, and the total. The spend goes to the practice
+ladder's ledger, `.graphene/practice/ledger.jsonl`, under rung 7's $3 cap, unless the shell names
+`GRAPHENE_LEDGER` and `GRAPHENE_SPEND_CAP_USD`. Each take replaces `rough.mp4`; its clips stay in its
+own directory, and `docs/demo/build.sh --take docs/demo/takes/<time>` makes that take the cut again.
 
-The right pane (`graphene watch`, which reads the plan again every second) gains the new leaf at
-the bottom of the tree:
+Watch it with `open docs/demo/rough.mp4`. QuickTime shows the narration as subtitles (View, then
+Subtitles, then English, if they are not on).
 
-```
- the plan of …
-▼ ? the Northwind XML feed loads the way csv and json already do       proposed
-└ ▼ ? Northwind XML loads like csv and json        xml                 proposed
-  ├   ? an XML reader that returns rows            xml-reader          proposed
-  ├   ? wire xml into the load command             xml-wire            proposed
-  ├   ? a price of 0 is skipped for every source   zero-rule           proposed
-  ├   ? a test that loads samples/prices.xml end…  xml-e2e             proposed
-  └   ? a zero-price product in…                   zero-price-product  proposed
-```
+`rough.mp4` is written only when the take's run was live: `graphene demo <the take's run.jsonl> --once`
+must say "as it ran, live", which it does only when every model call the run logged went to Token
+Factory. A take that was not live stops there, with the recording's own words. The take's `run.jsonl` is
+also the live recording `graphene demo` can ship in place of the stand-in's (`src/graphene_map/demo.jsonl`,
+after `uv run pytest tests/test_demo.py`).
 
-**B3, 0:48. Left pane, typed: `graphene node show xml-reader` Enter.** What the reader's executor
-will be told:
+- `docs/demo/build.sh --rehearsal` films the same take against the stand-ins (the scripted Nemotron in
+  `docs/demo/standin.py`, and Docker for the sandbox when it is up) into `docs/demo/rehearsal.mp4`, with
+  "REHEARSAL: scripted stand-in, not live" on the top line of every frame. It never writes `rough.mp4`.
+  About eight minutes.
+- `--size 80x24` films at 80x24, to see what fits there.
+- Each clip is played at the length it took: every tape marks its start and end (`Ctrl+B M`), since VHS
+  catches fewer frames than it plays when the machine is busy (a 15-second clock filmed at 30 frames a
+  second played in 11 seconds).
 
-```
-xml-reader (revision 2): an XML reader that returns rows
-  why:    Northwind XML loads like csv and json (xml)
-  goal:   an XML reader that returns rows
-  decided:
-          which XML parser: the standard library or lxml? → lxml, added to pyproject.toml
-          assumed: prices in the XML are already in cents
-          risk: samples/ has no XML with a price of 0, so the check cannot see the skip → add one to the sample
-  scope:  feed.py, pyproject.toml   (a write anywhere else is refused, and blocks `done`)
-```
+Takes, clips and videos are git-ignored: the script is committed, never the video.
 
-(The line for the risk is wider than 80 columns and wraps in the pane.)
+## What must be true before the final recording
 
-**G1, 0:55. Right pane, key: `Tab`.** The tree, top-down; `←1` and `←2` count what each leaf still
-waits on. The bottom line names the command and the note (G1 and G2 rendered again at `shaping`
-2111115, with the same scratch plan and board answers):
-
-```
- the plan of …
-      the Northwind XML feed loads the way csv and json already do
-                                    │
-                                  ? xml
-                  Northwind XML loads like csv and json
-      ┌─────────────┬──────────────┬┴────────────┬─────────────────┐
-? xml-reader  ? xml-wire ←1   ? zero-rule  ? xml-e2e ←2  ? zero-price-product
-   an XML…      wire xml…     a price of…  a test that…      a zero-price…
-────────────────────────────────────────────────────────────────────────────────
- the Northwind XML feed loads the way csv and json already do
- the goal · proposed with the tree: accepting any of it accepts it
- …
- ? Northwind XML loads like csv and json                         xml  proposed
- …
- waiting  xml is proposed, for you to accept or prune
- …
- you: 1 · 0 running · none ready · 0/0 done · plan first: on
- y accept it all · E edit the plan as text · Tab view · ? help · q quit
- graphene watch --view tree: 1 sub-goal · 5 leaves · 6 proposed
-```
-
-**G2, 1:05. Right pane, key: `Tab` again.** The graph: each leaf's column is the longest chain of
-needs before it, and the critical path is drawn heavy (`━`):
-
-```
- the plan of …
-the Northwind XML feed loads the way csv and json already do
-? xml-reader an XML reader… ━━━━▸ ? xml-wire wire xml… ━┓
-? zero-rule a price of 0 is… ───────────────────────────┨
-                                                        ┗━▸ ? xml-e2e a test…
-? zero-price-product a…
-────────────────────────────────────────────────────────────────────────────────
- the Northwind XML feed loads the way csv and json already do
- the goal · proposed with the tree: accepting any of it accepts it
- …
- ? Northwind XML loads like csv and json                         xml  proposed
- …
- waiting  xml is proposed, for you to accept or prune
- …
- you: 1 · 0 running · none ready · 0/0 done · plan first: on
- y accept it all · E edit the plan as text · Tab view · ? help · q quit
- graphene watch --view dag: critical ━ xml-reader > xml-wire > xml-e2e (3)…
-```
-
-A third `Tab` goes back to the outline. At 80 columns the bottom line keeps only the critical path;
-`graphene plan --view dag --width 80` prints the whole note, which ends
-`critical ━ xml-reader > xml-wire > xml-e2e (3) · none ready · 2 once accepted · 3 wait` here, and
-`… · 2 wait` before the board's new leaf.
-<!-- For Alex: after the board's new leaf, the note counts zero-price-product among
-"3 wait", though it waits on nothing; it has no scope or check yet, which may be why. Worth a look
-before it is on camera. -->
-
-## What must be true before recording
-
-- The demo run is live, with the frozen configuration, and every number on screen comes from that
-  run. The numbers in the narration are read off the screen, never written in advance, and the model
-  named for the executors is the one the frozen configuration uses (Nano, Super, or Nano then Super).
-- The board and the questions on it are Nemotron's, from that run: the frames above show the layout,
-  not the words.
-- The board, the views, `?` talk and `graphene config` are on `main`, and `docs/proof/nemotron.sh`
-  and its tape show the board and press `Tab`.
-- Nemotron's shaping prototypes (`graphene plan cover`, `note`, `precheck`) and `?` talk appear only
-  if they ran live in that recording. Until then they are not on camera.
+- The demo run is live, with the frozen configuration, and every number on screen comes from that run.
+  The numbers in the narration are read off the screen, never written in advance, and the model named
+  for the executors is the one the frozen configuration uses (Nano, Super, or Nano then Super).
+- The board and the questions on it are Nemotron's, from that run.
+- Nemotron's shaping prototypes (`graphene plan cover`, `note`, `precheck`) and `?` talk appear only if
+  they ran live in that recording. Until then they are not on camera.
 - Nothing recorded in the Docker stand-in is shown or described as a Token Factory Sandbox.
+- The final video has the narration as audio; the subtitles are the rough cut's stand-in for it, and
+  `rough.srt` is the captions file YouTube takes.

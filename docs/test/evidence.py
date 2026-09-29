@@ -34,6 +34,10 @@ them out, in markdown (--out, or printed), and draws --svg (docs/assets/evidence
   (exit 2) and name the runs, unless --stand-in is given; then the table's heading and the chart's
   title say STAND-IN, NOT LIVE, and name why. Nothing ties a C row to a real Claude Code session
   beyond that total, and the live heading says so.
+- **It refuses practice, whatever the flags**: a run whose usage rows, or whose ledger rows in its window,
+  say `practice` (made while GRAPHENE_AGENT_LIVE_USD was set: graphene_map/night.py) is not added, and a
+  report with one stops (exit 2), --stand-in or not. Practice is live, so STAND-IN would be false, and it
+  never enters a registered table.
 
 The chart is one task (--task, feeds by default): arms A, B and B′, each run a dot and the median a
 bar, in hidden acceptance, held-out quality, modelled person-seconds and dollars, every axis from
@@ -151,6 +155,7 @@ def count(run: Path, task: str, arm: str, tasks: Path) -> dict:
         "endpoints": sorted({str(b.get("endpoint") or "no endpoint recorded") for b in bills}),
         "prompt_versions": sorted({str(b["prompt"]) for b in bills if b.get("prompt") is not None}),
         "unpriced": unpriced,
+        "practice": any(b.get("practice") for b in bills),
         "claude_cost_usd": t["executor_cost_usd"] if arm == "C" else None,
         "counted_by": bench.graphene_sha(),
     }
@@ -170,6 +175,19 @@ def why_not_live(r: dict) -> list[str]:
         return [] if r["claude_cost_usd"] is not None else ["no Claude Code total"]
     said = [] if r["endpoints"] == [LIVE] else r["endpoints"] or ["no usage row"]
     return said + (["an attempt with no usage row"] if r["arm"] in TREE and r["unpriced"] else [])
+
+
+def practice(rows: list[dict], ledger: list[dict]) -> list[str]:
+    """The runs made under the person's opening, each with how it says so: no registered table takes one."""
+    said = []
+    for r in rows:
+        if r.get("practice"):
+            said.append(f"{r['task']} {r['arm']} {r['run']}: its usage rows say practice")
+        elif r["t0"] is not None and any(
+            e.get("practice") and r["t0"] <= float(e.get("at") or 0) <= r["t1"] for e in ledger
+        ):
+            said.append(f"{r['task']} {r['arm']} {r['run']}: the ledger's rows in its window say practice")
+    return said
 
 
 def not_live(rows: list[dict]) -> list[dict]:
@@ -558,6 +576,11 @@ def main(argv: list[str] | None = None) -> int:
             print(f"{run} is counted already in {args.rows}; a run is counted once")
             return 2
         row = count(run, args.task, arm, args.tasks)
+        if row["practice"]:
+            print(f"not added: {run.name} is practice (its usage rows were made while "
+                  "GRAPHENE_AGENT_LIVE_USD was set), and a registered table takes none; run it again from a "
+                  "shell without it")  # fmt: skip
+            return 2
         with args.rows.open("a", encoding="utf-8") as f:
             f.write(json.dumps(row, ensure_ascii=False) + "\n")
         acc = row["accept"]
@@ -569,6 +592,14 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     rows = read_jsonl(args.rows)
+    ledger = read_jsonl(args.ledger) if args.ledger.exists() else []
+    drilled = practice(rows, ledger)
+    if drilled:
+        print("not drawn: these runs are practice (made while GRAPHENE_AGENT_LIVE_USD was set), and a "
+              "registered table takes none, --stand-in or not:")  # fmt: skip
+        for line in drilled:
+            print(f"  {line}")
+        return 2
     away = not_live(rows)
     if away and not args.stand_in:
         print("not drawn: these rows are not live (their usage is not all from Token Factory):")
@@ -577,7 +608,7 @@ def main(argv: list[str] | None = None) -> int:
         print("--stand-in draws them anyway, and the table and the chart then say STAND-IN, NOT LIVE")
         return 2
     stand_in = sorted({e for r in away for e in why_not_live(r)})
-    cost = dollars(rows, read_jsonl(args.ledger) if args.ledger.exists() else [])
+    cost = dollars(rows, ledger)
     source = f"`{args.rows.name}` and `{args.ledger.name}`"
     md = table(rows, cost, source, stand_in)
     if args.out:

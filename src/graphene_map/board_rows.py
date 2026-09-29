@@ -93,11 +93,18 @@ def standing(store) -> str | None:
     return "conditions: " + " · ".join(said) if said else None
 
 
-def read(store) -> Board:
+def read(store, shown: bool = False) -> Board:
+    """The board as the screen shows it. When it asks nothing (``board.asks``: nothing open, or with
+    `board: auto` no question open) there is no board at all, only the standing conditions, unless its
+    rows are ``shown`` already: then what was answered here folds, so a key pressed once too often
+    lands on the fold and not on a node."""
+    asks = B.asks(store)
+    if not (shown or asks):
+        return Board(standing=standing(store))
     groups = B.groups(store)
     folds = ("parked", "settled", "dropped")
-    return Board(
-        [it for name, group in groups if name not in folds for it in group],
+    return Board(  # asking nothing, a screen that showed rows keeps the fold alone, as a fresh one shows none
+        [it for name, group in groups if name not in folds for it in group] if asks else [],
         [it for name, group in groups if name in folds for it in group],
         standing(store),
     )
@@ -130,16 +137,18 @@ def rows(board: Board) -> dict:
     return out
 
 
-def widths(board: Board) -> list[int]:
-    """The columns each board row's words want, as `Watch.size_panes` counts a node's."""
-    return [6 + len(it["text"]) for it in [*board.open, *board.folded]]
+def widths(board: Board, folded: bool = True) -> list[int]:
+    """The columns each board row's words want, as `Watch.size_panes` counts a node's; ``folded``
+    False: the fold is shut, and what it holds is one row that widens nothing."""
+    return [6 + len(it["text"]) for it in [*board.open, *(board.folded if folded else [])]]
 
 
 def goal(text: str, board: Board) -> str:
-    """The goal line of a view other than the outline (tree, graph): how many items on the board
-    wait on the person, then the standing conditions, first, so a cut goal never hides them."""
+    """The goal line of a view other than the outline (tree, graph): the goal, then how many items on
+    the board wait on the person, then the standing conditions, so a cut takes them before the goal
+    (the outline has a row for each)."""
     n = len(board.open)
-    return " · ".join([*([f"◇ {n} open on the board"] if n else []), *filter(None, [board.standing]), text])
+    return " · ".join([text, *([f"◇ {n} open on the board"] if n else []), *filter(None, [board.standing])])
 
 
 def landing(was: list[str], board: Board, at, fresh: bool):
@@ -166,7 +175,7 @@ TREE = Row("tree")  # `landing`'s word for the first row of the tree itself
 def argv(item: dict, key: str) -> list[str]:
     """The `graphene board` command a key runs on an item: y take, 1..9 pick, d drop, p park (on a
     parked item, unpark). A command that cannot apply says why, as the command line would."""
-    parked = item["state"] == "parked"
+    parked = item["state"] == "parked" or bool(item.get("from"))  # p opens either for the person again
     return {
         "y": ["board", "take", item["id"]],
         "d": ["board", "drop", item["id"]],
@@ -183,6 +192,8 @@ def hints(item: dict, room: int) -> list[str]:
     rest = ["d drop", "p unpark" if state == "parked" else "p park", "Enter answer", "a note"]
     if state == "noted":  # the person's own note: told as written, so there is nothing to take or answer
         return ["noted: u undoes your last act", "d drop", "p park", "a note"]
+    if item.get("from"):  # the repository answered it: one key gives it back to the person
+        return [f"{state} from the repo: p asks you", "d drop", "a note"]
     if state not in ("open", "parked"):
         return [f"{state}: u undoes your last act", "d drop", "a note"]
     many = len(item["options"]) > 3
@@ -207,7 +218,7 @@ def pane(board: Board, row: Row, by_id: dict, wide: int) -> Text:
     """The item under the cursor, whole: its words, its kind, who put it up, its default and each
     option with its effects, what it is about; settled, what was decided and what it changed. On the
     fold row, what was decided, one line each."""
-    from .tui import Pane
+    from .tui import WRAP, Pane
 
     out = Pane(wide)
     if row == STANDING:
@@ -216,11 +227,14 @@ def pane(board: Board, row: Row, by_id: dict, wide: int) -> Text:
         return out.render()
     if row == FOLD:
         out.text(f"the board: {counts(board)}", "bold")
-        out.text("told to executors as decided: lines; parked and dropped are told to no one", "dim")
+        out.text("settled answers are told to the executor of the leaf they are about, in its contract; "
+                 "parked and dropped are told to no one", "dim")  # fmt: skip
         out.gap()
         for it in board.folded:
             glyph, colour = B.look(it)
-            out.text(Text.assemble((f"{glyph} {B.reads(it)} ", colour), (it["id"], "dim"), f"  {B.said(it)}"))
+            row = Text.assemble((f"{B.reads(it)} ", colour), (it["id"], "dim"), f"  {B.said(it)}")
+            for k, piece in enumerate(row.wrap(WRAP, out.wide - 2)):  # a long answer hangs under its row
+                out.line(Text.assemble((f"{glyph} " if k == 0 else "  ", colour), piece))
         return out.render()
     item = board.get(row)
     if item is None:
@@ -235,6 +249,8 @@ def pane(board: Board, row: Row, by_id: dict, wide: int) -> Text:
             how = {"taken": "the default", "picked": f"option {item.get('option')}", "answered": "your words"}
             how = f"  ({how.get(state, state)})"
             out.field("decided", Text.assemble(item.get("answer") or "yes", (how, "dim")))
+        if item.get("from"):
+            out.field("from the repo", Text.assemble(item["from"], ("  p asks you instead", "dim")))
         for line in item["became"] if state in B.DECIDED else []:
             out.field("changed", line)
         node = by_id.get(item.get("about") or "")

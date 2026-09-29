@@ -142,12 +142,15 @@ def main(argv: list[str] | None = None) -> int:
         else:
             try:
                 report["sandbox"] = sandbox_smoke(args.sandbox)
+            except S.Refused as no:  # the project may not use Sandboxes: what to do is in its words
+                report["sandbox"] = {"ok": False, "refused": True, "said": str(no)}
             except Exception as no:  # an SDK or a network error is a result here
                 report["sandbox"] = {"ok": False, "said": f"{type(no).__name__}: {no}"}
             sb = report["sandbox"]
             steps = "; ".join(f"{k}: {v} s" for k, v in sb.get("steps", {}).items())
             verdict = "works" if sb["ok"] else "FAILED: " + sb.get("said", "")
-            lines.append(f"- Sandboxes ({args.sandbox}): {verdict}{'; ' + steps if steps else ''}")
+            shown = f"Sandboxes ({args.sandbox}): {verdict}{'; ' + steps if steps else ''}"
+            lines.append(f"- {sb['said'] if sb.get('refused') else shown}")
     args.out.write_text(json.dumps(report, indent=1) + "\n", encoding="utf-8")
     print("\n".join(lines))
     return 0 if report["key"] and all(t["ok"] for t in report.get("tool_calls", [])) else 1

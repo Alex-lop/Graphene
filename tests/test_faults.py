@@ -11,7 +11,7 @@ import time
 from types import SimpleNamespace
 
 import pytest
-from fake_faults import Box, everywhere
+from fake_faults import Box, everywhere, persons_shell
 from fake_tokenfactory import MODELS, Fake, call
 from test_executor import NANO, SUPER, fake, git, leaf, plan_of, repo, run_one, script  # noqa: F401
 from test_sandbox_state import needs_docker
@@ -301,6 +301,54 @@ def test_a_docker_sandbox_killed_mid_leaf_comes_back_leaving_no_container(repo, 
     finally:
         images = (here / "images").read_text().split() if (here / "images").exists() else []
         subprocess.run(["docker", "rmi", "-f", *images], capture_output=True) if images else None
+
+
+def test_a_project_sandboxes_refuse_brings_each_leaf_back_saying_what_it_means_and_what_to_do(
+    repo, fake, monkeypatch, tmp_path
+):
+    """Rung 1 met it live (2026-09-29): ConTree's 403 on the project. Through sandbox.Contree, from a stub
+    SDK raising its own ForbiddenError (nothing sent), each leaf placed in a sandbox comes back with the
+    refusal, what the key lacks, where access is asked for and how to run here instead; no model call is
+    made, no executor is left, and no log holds a traceback."""
+    pytest.importorskip("contree_sdk")
+    persons_shell(monkeypatch)  # the executors inherit it: ConTree, stub or not, is the person's to spend
+    everywhere(monkeypatch, tmp_path, FAULTS_SDK="forbidden", NEBIUS_PROJECT_ID="project-fake")
+    monkeypatch.delenv("GRAPHENE_SANDBOX", raising=False)
+    f, said = run_two(repo, fake, call("run", command="uname -a"), SANDBOXED)
+    cause = ("the executor stopped: Sandboxes refused this project (403): its key lacks import, spawn there; "
+             "request access at tokenfactory.nebius.com/sandboxes/about; or run the leaves on this machine: "
+             "`graphene run --with nemotron`")  # fmt: skip
+    with Store.open(repo) as store:
+        whys = {n: store.node_log(n, ("released",))[-1]["detail"]["why"] for n in ("greet", "farewell")}
+        states = {n: plan.get(store, n).state for n in whys}
+        pids = [e["detail"]["pid"] for e in store.node_log(kinds=("attempt",))]
+    assert whys == {"greet": cause, "farewell": cause} and set(states.values()) == {plan.OPEN}, whys
+    assert " ".join(cause.split()) in pane(repo, "greet")
+    assert not f.requests  # refused before any model was asked: nothing spent
+    assert not [p for p in pids if _alive(p)]
+    logs = "".join(p.read_text() for p in (repo / ".graphene" / "runs").glob("*.txt"))
+    assert "Traceback" not in logs and "ForbiddenError" not in logs
+
+
+def test_a_contree_error_page_that_echoes_the_key_reaches_no_reason_pane_or_log(
+    repo, fake, monkeypatch, tmp_path
+):
+    """A gateway in front of ConTree answers 502 with a page echoing the request's headers (a stub SDK
+    raising its own ApiStatusCodeError; nothing sent). Each leaf comes back with ConTree's error, and
+    neither the key nor the project id is in its reason, the run's output, the pane or the executor's log,
+    as Token Factory's same echo is kept out (tokenfactory._request)."""
+    pytest.importorskip("contree_sdk")
+    project = "proj-planted-0042"
+    persons_shell(monkeypatch)
+    everywhere(monkeypatch, tmp_path, FAULTS_SDK="echoing", NEBIUS_PROJECT_ID=project)
+    monkeypatch.delenv("GRAPHENE_SANDBOX", raising=False)
+    _, said = run_two(repo, fake, call("run", command="uname -a"), SANDBOXED)
+    with Store.open(repo) as store:
+        whys = [store.node_log(n, ("released",))[-1]["detail"]["why"] for n in ("greet", "farewell")]
+    logs = "".join(p.read_text() for p in (repo / ".graphene" / "runs").glob("*.txt"))
+    seen = " ".join([*whys, *said, pane(repo, "greet"), logs])
+    assert all("ConTree answered with an error (ApiStatusCodeError)" in w and "502" in w for w in whys), whys
+    assert "fake-key" not in seen and project not in seen and "Authorization: Bearer …" in seen
 
 
 def test_a_command_the_box_stopped_for_time_says_so_and_brings_nothing_back(repo, monkeypatch, tmp_path):

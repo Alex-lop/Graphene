@@ -137,6 +137,8 @@ class Local:
         except BaseException:  # a stopped run: nothing the model started outlives it
             _kill(proc)
             raise
+        with contextlib.suppress(OSError):  # nor what it left in the background: each command ends whole
+            os.killpg(proc.pid, signal.SIGKILL)
         return proc.returncode, out.decode("utf-8", "replace")
 
     def halt(self) -> None:
@@ -780,8 +782,12 @@ def _sandbox(here: Path, node: P.Node, store: Store, session: str, args, checkou
     from . import sandbox
 
     name = os.environ.get("GRAPHENE_SANDBOX") or "contree"
-    box = sandbox.choose(name, args.image)
-    place = sandbox.Sandbox(here, node.scope, box, store, node.id, args.prepare, checkout)
+    try:
+        box = sandbox.choose(name, args.image)
+        place = sandbox.Sandbox(here, node.scope, box, store, node.id, args.prepare, checkout)
+    except sandbox.Refused as no:  # the project may not use Sandboxes: the leaves can run on this machine
+        here_instead = "or run the leaves on this machine: `graphene run --with nemotron`"
+        raise sandbox.Refused(f"{no}; {here_instead}") from None
     shared = "forked from the commit's checkpoint" if place.reused else "made"
     store.log_node(node.id, P._now(), "placement", f"run:{NAME}", session or None, None,
                    {"placement": "sandbox", "box": name, **_box(place)})  # fmt: skip

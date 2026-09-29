@@ -38,7 +38,8 @@ def environment(tmp_path: Path, **env: str) -> dict[str, str]:
     """This environment without a key, an agent's mark or the ladder's settings, its state in tmp_path."""
     gone = ("GRAPHENE_", "PRACTICE_", "NEBIUS_", "CONTREE_")
     base = {k: v for k, v in os.environ.items() if k not in MARKS and not k.startswith(gone)}
-    here = {"PRACTICE_STATE": str(tmp_path / "state"), "PRACTICE_WORK": str(tmp_path / "work")}
+    here = {"PRACTICE_STATE": str(tmp_path / "state"), "PRACTICE_WORK": str(tmp_path / "work"),
+            "GRAPHENE_NIGHT_LEDGER": str(tmp_path / "night.jsonl")}  # never the real night's  # fmt: skip
     return base | here | {"GRAPHENE_KEYCHAIN": "off"} | env  # never the person's real keychain
 
 
@@ -126,12 +127,122 @@ def test_in_an_agents_shell_no_live_rung_runs(tmp_path):
         done = ladder(tmp_path, str(n), **{mark: "1"}, **dead)
         assert done.returncode == 1 and f"FAIL · rung {n} · " in done.stdout, done.stdout + done.stderr
         assert f"an agent's mark ({mark})" in done.stdout
+        assert "runs rungs 2-7 only when the person started the session with GRAPHENE_AGENT_LIVE_USD set" in (
+            " ".join(done.stdout.split()))
         assert f"    docs/test/practice.sh {n}\n" in done.stdout
         assert "most likely: a live rung is yours to run" in done.stdout
         assert not (tmp_path / "work").exists()  # nothing was built, nothing was run
+        assert not (tmp_path / "night.jsonl").exists()  # and nothing was counted
     dry = ladder(tmp_path, "--dry", "2", CLAUDECODE="1",  # the dry run spends nothing and records no one
                  PRACTICE_STATE=str(tmp_path / "dry-state"))  # fmt: skip
     assert dry.returncode == 0 and "· PASS · rung 2 · " in dry.stdout, dry.stdout + dry.stderr
+
+
+@pytest.mark.parametrize("n", ["2", "4"])
+def test_under_the_persons_opening_an_agents_shell_climbs_a_live_rung(tmp_path, n):
+    """GRAPHENE_AGENT_LIVE_USD, set here by the test as the person sets it before starting the session,
+    lets an agent's shell climb: the rung runs (a leaf on Nemotron, the escape test in ConTree) and fails
+    for want of a key, not for the mark. Nothing leaves the machine: no key, a proxy that answers nothing."""
+    dead = {"HTTPS_PROXY": "http://127.0.0.1:9", "HTTP_PROXY": "http://127.0.0.1:9", "NO_PROXY": ""}
+    (tmp_path / "no-contree").mkdir()
+    done = ladder(tmp_path, n, CLAUDECODE="1", CLAUDE_CODE_SESSION_ID="s", GRAPHENE_AGENT_LIVE_USD="10",
+                  CONTREE_HOME=str(tmp_path / "no-contree"), **dead)  # fmt: skip
+    said = done.stdout + done.stderr
+    assert done.returncode == 1 and f"FAIL · rung {n} · " in done.stdout, said
+    assert "an agent's mark" not in said and (tmp_path / "work").exists()  # it ran
+    why = ("ConTree needs a key", "No module named 'contree_sdk'") if n == "4" else ("the leaf did not land",)
+    assert any(w in said for w in why), said  # without the `sandbox` extra, the SDK's absence is said first
+    assert "fake-key" not in said and json.loads((tmp_path / "state" / "progress.json").read_text())[n]
+
+
+def test_under_the_opening_a_dry_rung_counts_every_call_in_a_night_of_its_own(tmp_path):
+    """The dry run under the opening climbs the night's whole path against the fake: every call is reserved
+    and settled, each row says practice, and none of it is on the real night's bill."""
+    done = ladder(tmp_path, "--dry", "2", CLAUDECODE="1", GRAPHENE_AGENT_LIVE_USD="10")
+    assert done.returncode == 0 and "· PASS · rung 2 · " in done.stdout, done.stdout + done.stderr
+    calls = (tmp_path / "state" / "ledger.jsonl").read_text().splitlines()
+    rows = [json.loads(r) for r in (tmp_path / "state" / "night.jsonl").read_text().splitlines()]
+    settled = [r for r in rows if r["kind"] == "settle"]
+    assert len(calls) >= 2 and len(settled) == len(calls) == sum(r["kind"] == "reserve" for r in rows)
+    assert sum(r["dollars"] for r in settled) == pytest.approx(sum(json.loads(c)["dollars"] for c in calls))
+    assert all(r["practice"] is True for r in rows) and all(json.loads(c)["practice"] for c in calls)
+    assert not (tmp_path / "night.jsonl").exists()  # the night the ladder was handed: untouched
+    text = (tmp_path / "state" / "night.jsonl").read_text()
+    assert text.count("fake-key") == 0  # counted, never printed
+
+
+def test_no_rung_starts_past_80_percent_of_the_nights_cap(tmp_path):
+    """The night's bill does not reset on a rerun: at $8 of $10 spent or in flight, a rung runs nothing."""
+    made = [{"kind": "reserve", "id": "a", "model": "m", "dollars": 3.0},
+            {"kind": "settle", "id": "a", "model": "m", "dollars": 2.5},
+            {"kind": "reserve", "id": "b", "model": "m", "dollars": 5.5}]  # fmt: skip
+    (tmp_path / "night.jsonl").write_text("".join(json.dumps(r) + "\n" for r in made))
+    done = ladder(tmp_path, "2", CLAUDECODE="1", GRAPHENE_AGENT_LIVE_USD="10")
+    said = " ".join(done.stdout.split())
+    assert done.returncode == 1 and "FAIL · rung 2 · " in said, said
+    assert "the night has $2.5000 spent and $5.5000 in flight, at or past $8.00 (80% of its $10.00" in said
+    assert "most likely: the night's cap" in said and "`docs/test/practice.sh night` shows the bill" in said
+    assert not (tmp_path / "work").exists() and not (tmp_path / "state" / "progress.json").exists()
+
+
+def test_night_prints_the_bill_ultra_first_with_the_sandboxes(tmp_path):
+    tf = {"endpoint": "token factory"}
+    made = [{"kind": "reserve", "id": "n", "model": "nvidia/Nano", "dollars": 0.2, **tf},
+            {"kind": "settle", "id": "n", "model": "nvidia/Nano", "dollars": 0.5},
+            {"kind": "reserve", "id": "u", "model": "nvidia/Ultra", "dollars": 0.3, **tf},
+            {"kind": "settle", "id": "u", "model": "nvidia/Ultra", "dollars": 0.25},
+            {"kind": "reserve", "id": "f", "model": "nvidia/Ultra", "dollars": 0.4, **tf},
+            {"kind": "sandbox", "op": "run", "seconds": 60}, {"kind": "sandbox", "op": "read", "seconds": 30}]
+    (tmp_path / "night.jsonl").write_text("".join(json.dumps(r) + "\n" for r in made))
+    done = ladder(tmp_path, "night", GRAPHENE_AGENT_LIVE_USD="5")
+    lines = done.stdout.splitlines()
+    head = "the night's bill: $0.7500 spent, $0.4000 in flight, of a $5.00 cap; nothing new starts at $4.00"
+    assert done.returncode == 0 and lines[0].startswith(head), lines
+    assert lines[1:] == ["  nvidia/Ultra: 1 call, $0.2500", "  nvidia/Nano: 1 call, $0.5000",
+                         "  in flight: 1 call, $0.4000 held at the worst case",
+                         "  Sandboxes: 2 operations, 1.5 min, counted at $0 (price: unknown)"]  # fmt: skip
+
+
+@pytest.mark.parametrize("boxed", [True, False])
+def test_the_prototypes_practise_a_few_calls_each_against_the_stand_ins(tmp_path, boxed):
+    """`practice.sh --dry prototypes`: cover, note and precheck on a fixed plan in a throwaway feeds, one
+    PASS line each. From an agent's shell under the opening, every call is on the night's bill, as practice.
+    With no sandbox (a docker that does not answer), precheck skips the proposed leaf's fork and says so."""
+    if boxed and not docker_runs():
+        pytest.skip("needs a running Docker (the sandbox stand-in)")
+    more = {} if boxed else {"PATH": stub_docker(tmp_path)}
+    done = ladder(tmp_path, "--dry", "prototypes", CLAUDECODE="1", GRAPHENE_AGENT_LIVE_USD="10", **more)
+    said = done.stdout
+    assert done.returncode == 0 and "· PASS · prototypes · " in said, said + done.stderr
+    for name in ("cover", "note", "precheck"):
+        assert f"·   {name}: PASS · " in said
+    assert "your paragraph, in clauses: 3; the plan carries 2, no leaf carries 1" in said
+    assert "places it on xmlfeed" in said
+    assert "xmlfeed red, for the right reason; cents passes already" in said
+    skipped = "rejects's check was not run: it runs only in a sandbox fork, and there is no Sandboxes"
+    assert (skipped in said) is not boxed and ("rejects red" in said) is boxed
+    calls = (tmp_path / "state" / "ledger.jsonl").read_text().splitlines()
+    rows = [json.loads(r) for r in (tmp_path / "state" / "night.jsonl").read_text().splitlines()]
+    assert len(calls) == sum(r["kind"] == "settle" for r in rows) == (5 if boxed else 4)
+    assert all(r["practice"] for r in rows) and "next: `docs/test/practice.sh --dry night`" in said
+
+
+def test_in_an_agents_shell_the_prototypes_need_the_opening(tmp_path):
+    dead = {"HTTPS_PROXY": "http://127.0.0.1:9", "HTTP_PROXY": "http://127.0.0.1:9", "NO_PROXY": ""}
+    done = ladder(tmp_path, "prototypes", CLAUDECODE="1", **dead)
+    assert done.returncode == 1 and "FAIL · prototypes · " in done.stdout, done.stdout + done.stderr
+    assert "an agent's mark (CLAUDECODE)" in done.stdout
+    assert "    docs/test/practice.sh prototypes\n" in done.stdout
+    assert not (tmp_path / "work").exists()
+
+
+def stub_docker(tmp_path: Path) -> str:
+    """A PATH whose docker's daemon does not answer."""
+    stub = tmp_path / "bin"
+    stub.mkdir(exist_ok=True)
+    (stub / "docker").write_text("#!/bin/sh\nexit 1\n")
+    (stub / "docker").chmod(0o755)
+    return f"{stub}{os.pathsep}{os.environ['PATH']}"
 
 
 def test_the_dry_run_removes_only_a_state_it_made(tmp_path):
@@ -316,6 +427,35 @@ def test_a_word_shaped_like_a_key_is_taken_out_whole(tmp_path, monkeypatch):
         assert said == "Authorization: Bearer [removed: shaped like a key]", said
 
 
+# a scratch directory as Claude Code names one: a repository's name, a slash, a session's uuid
+LONG = "-Users-me-Desktop-AllThingsAgenticHackathon/0feb67e8-2716-49af-9e61-534376d64b35"
+
+
+def test_a_path_the_ladder_prints_is_shown_as_it_is_and_a_secret_in_it_by_its_value(tmp_path, monkeypatch):
+    """A path is usable as printed, whatever long run of letters and digits it holds; the key and the
+    project (the environment's, and the keychain's key) are taken out wherever they are, a path too, and a
+    word shaped like a key anywhere else. The values are made up."""
+    practice = load_practice(tmp_path, monkeypatch)
+    where = f"/private/tmp/claude-501/{LONG}/pstate/demo.jsonl"
+    line = f"{where} replays (`graphene demo {where}`); log ~/x/{LONG}/rung-6.log"
+    typed = f"! GRAPHENE_LEDGER=/tmp/{LONG}/l.jsonl uv run python docs/test/access.py --out /tmp/{LONG}/a"
+    for shown in (line, typed):
+        assert practice.mask(shown) == shown
+    monkeypatch.setenv("NEBIUS_PROJECT_ID", "project-e00made0up")
+    monkeypatch.setattr(practice.keys, "find", lambda: "plain-keychain-key")  # shaped like nothing
+    said = practice.mask(f"/tmp/project-e00made0up/a.log key=plain-keychain-key {where}")
+    assert said == f"/tmp/[NEBIUS_PROJECT_ID]/a.log key=[NEBIUS_API_KEY] {where}", said
+    aws = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"  # base64 with slashes, not a path
+    assert practice.mask(f"secret {aws}") == "secret [removed: shaped like a key]"
+
+
+def test_the_ledger_path_status_prints_is_the_real_one(tmp_path):
+    state = tmp_path / LONG / "state"
+    done = ladder(tmp_path, "--dry", "status", PRACTICE_STATE=str(state))
+    assert done.returncode == 0 and f"; {state.resolve()}/ledger.jsonl" in done.stdout, done.stdout
+    assert "removed" not in done.stdout
+
+
 def test_contree_without_its_credentials_is_named_on_rungs_3_and_4(tmp_path, monkeypatch):
     """What sandbox.Contree says with a key but no project id (a stub SDK, nothing sent) is read as that,
     both said by the rung (4) and only in the log under a leaf that did not land (3)."""
@@ -335,6 +475,132 @@ def test_contree_without_its_credentials_is_named_on_rungs_3_and_4(tmp_path, mon
     landed = f"the leaf did not land (it is open): run: 1 came back\n| the executor stopped: {said}"
     for text in (said, landed):
         assert practice.likely(text)[0] == "ConTree has no credentials: NEBIUS_PROJECT_ID is not set"
+
+
+def test_rung_1_passes_on_token_factory_and_says_plainly_what_waits_for_sandboxes(tmp_path, monkeypatch):
+    """Rung 1 as it ran live (2026-09-29): Token Factory answered, Sandboxes refused the project. Rung 1 is
+    Token Factory's and passes; its line says the refusal and which rungs wait for it. A rung that meets
+    the refusal later (3's leaf, 4's sandbox) reads as it, and a 401 next to it in rung 1's log is still
+    read as the 401."""
+    from datetime import date
+
+    from graphene_map import sandbox
+
+    practice = load_practice(tmp_path, monkeypatch)
+    monkeypatch.setenv("CLAUDECODE", "1")  # rung 1 reads what the person ran today, and runs nothing
+    refused = sandbox.FORBIDDEN.format(why=sandbox.NO_GRANT)
+    calls = [{"model": m, "ok": True} for m in ("u", "s", "n")]
+    report = {"key": True, "nvidia": [{}] * 4, "tool_calls": calls,
+              "sandbox": {"ok": False, "refused": True, "said": refused}}  # fmt: skip
+    (practice.STATE / "access.json").write_text(json.dumps(report))
+    assert date.fromtimestamp((practice.STATE / "access.json").stat().st_mtime) == date.today()
+    said = practice.access(practice.Rung(1, 0.25))
+    assert said == ("Token Factory: 4 NVIDIA models, 3 tool calls as asked. Sandboxes: refused for this "
+                    "project, so rungs 3, 4, 6 and 7 wait for access; rungs 2 and 5 do not need it")
+    leaf = f"the leaf did not land (it is open): run: 1 came back\n| the executor stopped: {refused}"
+    for text in (refused, leaf):
+        means, then = practice.likely(text)
+        assert means.startswith("this project may not use Sandboxes yet (ConTree's 403)"), means
+        assert then.endswith("meanwhile `docs/test/practice.sh 5`, and rung 1 again once access is granted")
+    means = practice.likely(f"Token Factory answered 401 to GET /models\n- {refused}")[0]
+    assert means.startswith("Token Factory refused the key (401)"), means
+
+
+def test_a_rung_whose_files_hold_the_key_fails_by_count_and_never_shows_it(tmp_path, monkeypatch, capsys):
+    """What only a live run shows, checked on every rung: no file the rung wrote holds the key or the
+    project. A rung that writes the key past mask() (as a bug would) fails with the count, and no line
+    shows the key; a clean rung's line says no file holds it. The key is made up."""
+    practice = load_practice(tmp_path, monkeypatch)
+    key = "Kp1" + "z" * 30
+    monkeypatch.setenv("NEBIUS_API_KEY", key)
+
+    def leaky(r):
+        (practice.STATE / "access.json").write_text(json.dumps({"said": f"Bearer {key}"}))
+        return "done"
+
+    monkeypatch.setitem(practice.RUNGS, 1, ("a leaky rung", 0.25, "1 min", leaky))
+    assert practice.climb(1) == "FAIL"
+    said = capsys.readouterr().out
+    assert "a file this rung wrote holds the key or the project (counted: 1)" in said and key not in said
+    assert "most likely: a secret got past the masking into a file the ladder wrote" in said
+    (practice.STATE / "access.json").unlink()
+    monkeypatch.setitem(practice.RUNGS, 1, ("a clean rung", 0.25, "1 min", lambda r: "done"))
+    assert practice.climb(1) == "PASS"
+    assert "· no file holds the key\n" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("where", ["the keychain", "NEBIUS_API_KEY, pasted with a line break"])
+def test_a_key_the_environment_does_not_hold_as_sent_is_counted_too(tmp_path, monkeypatch, capsys, where):
+    """The count looks for the key mask() takes out and Token Factory is sent: the keychain's (keys.find),
+    and the environment's with the whitespace a paste leaves stripped. A rung whose file holds it fails.
+    The key is made up; the keychain is a stub."""
+    from graphene_map import keys
+
+    practice = load_practice(tmp_path, monkeypatch)
+    key = "Kq7" + "w" * 30
+    if where == "the keychain":
+        monkeypatch.delenv("NEBIUS_API_KEY", raising=False)
+        monkeypatch.setattr(keys, "find", lambda: key)
+    else:
+        monkeypatch.setenv("NEBIUS_API_KEY", f"{key}\n")
+
+    def leaky(r):
+        (practice.STATE / "access.json").write_text(json.dumps({"said": f"Bearer {key}"}))
+        return "done"
+
+    monkeypatch.setitem(practice.RUNGS, 1, ("a leaky rung", 0.25, "1 min", leaky))
+    assert practice.climb(1) == "FAIL"
+    said = capsys.readouterr().out
+    assert "holds the key or the project (counted: 1)" in said and key not in said
+
+
+def test_the_command_rung_5_prints_puts_the_recording_where_ci_replays_it_in_a_fresh_checkout(
+    tmp_path, monkeypatch
+):
+    """tests/recordings/ is not in the repository until a recording is: the line rung 5 prints makes it, and
+    run as printed, from the repository's root, it puts the recording where tests/test_recordings.py finds
+    it. The checkout here is a stand-in with no tests/recordings/."""
+    practice = load_practice(tmp_path, monkeypatch)
+    root = tmp_path / "checkout"
+    (root / "tests").mkdir(parents=True)
+    state = root / ".graphene" / "practice"
+    state.mkdir(parents=True)
+    rec = state / "leaf.jsonl"
+    rec.write_text('{"graphene demo": 1}\n')
+    monkeypatch.setattr(practice, "ROOT", root)
+    monkeypatch.setattr(practice, "KEPT", root / "tests" / "recordings")
+    command = practice.keep(rec)
+    assert command == ("mkdir -p tests/recordings && cp .graphene/practice/leaf.jsonl "
+                       "tests/recordings/first-light-rung-5.jsonl")  # fmt: skip
+    done = subprocess.run(["bash", "-c", command], cwd=root, capture_output=True, text=True)
+    assert done.returncode == 0, done.stderr
+    assert (root / "tests" / "recordings" / "first-light-rung-5.jsonl").read_text() == rec.read_text()
+
+
+def test_rung_4s_command_past_its_time_comes_back_as_exit_124_or_fails(tmp_path, monkeypatch):
+    """ConTree's own time limit, live on rung 4: exit 124 soon after the limit and the next command runs;
+    anything else fails, read as ConTree's limit acting unlike Docker's. Boxes stand in here; the dry climb
+    runs it on Docker."""
+    from types import SimpleNamespace
+
+    from graphene_map import sandbox
+
+    practice = load_practice(tmp_path, monkeypatch)
+    r = practice.Rung(4, 0.05)
+
+    def place(run):
+        return SimpleNamespace(image="img-1", box=SimpleNamespace(run=run), run=lambda c: (0, ""))
+
+    ok = practice.past_its_time(r, place(lambda *a: ("img-1", 124, sandbox.TIMED_OUT)))
+    assert ok == "a command past its 5 s came back as exit 124 in 0 s, and the next one ran"
+
+    def failed(*_):
+        raise RuntimeError("Operation 1 has failed: killed")
+
+    with pytest.raises(practice.Failed) as no:
+        practice.past_its_time(r, place(failed))
+    assert "did not come back as exit 124 within a minute: exit None" in str(no.value)
+    assert practice.likely(str(no.value))[0].startswith("ConTree's own time limit ends an operation")
 
 
 def test_a_rung_an_agents_shell_refused_is_not_recorded(tmp_path):
@@ -383,10 +649,11 @@ def test_the_demo_rung_passes_only_when_a_leaf_landed(tmp_path, monkeypatch, cap
     practice = load_practice(tmp_path, monkeypatch)
     monkeypatch.setattr(practice.Rung, "sh", lambda r, args, cwd, timeout=900, **more: (0, "bill: $0.01"))
     monkeypatch.setattr(practice, "leaves", lambda repo: {"one": "done" if landed else "open", "two": "open"})
+    monkeypatch.setattr(practice, "placed", lambda repo: "on this machine")  # what init wrote, read
     assert practice.climb(7) == ("PASS" if landed else "FAIL")
     said = capsys.readouterr().out
     if landed:
-        assert "1 of 2 leaves landed" in said
+        assert "1 of 2 leaves landed, on this machine" in said
     else:
         assert "nothing landed" in said and "the model did not finish the work" in said
 
@@ -408,11 +675,14 @@ def test_rung_6_says_its_arms_are_not_the_evidence_runs_harnesses(tmp_path, monk
 
 
 def test_practice_md_says_the_caps_are_token_factory_s_and_which_dry_rungs_need_docker(tmp_path, monkeypatch):
-    """The caps bound only Token Factory's ledger; the dry rungs raising NO_DOCKER are the ones it names."""
+    """The caps bound only Token Factory's ledger, and Sandboxes are free in the beta by Nebius's own page,
+    which it names with the day it was read; the dry rungs raising NO_DOCKER are the ones it names."""
     practice = load_practice(tmp_path, monkeypatch)
     said = " ".join((ROOT / "docs" / "test" / "PRACTICE.md").read_text().split())
     assert "anywhere" not in said
-    assert "The caps are Token Factory's only: Sandboxes" in said and "rung 4 calls no model" in said
+    assert "The caps are Token Factory's only; rung 4 calls no model" in said
+    assert "are free in the beta" in said and "2026-09-29" in said
+    assert "tokenfactory.nebius.com/sandboxes " in said  # the page that says so, as the index quoted it
     docker = [n for n, rung in practice.RUNGS.items() if "NO_DOCKER" in inspect.getsource(rung[3])]
     assert f"rungs {', '.join(map(str, docker[:-1]))} and {docker[-1]} need Docker running" in said
     assert f"${sum(r[1] for r in practice.RUNGS.values()):.2f} of Token Factory" in said

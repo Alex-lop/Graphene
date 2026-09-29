@@ -59,6 +59,7 @@ sys.path.insert(0, str(HERE))
 import make_task  # noqa: E402
 import tally  # noqa: E402  (it puts src/ on the path)
 
+from graphene_map import night  # noqa: E402
 from graphene_map import plan as P  # noqa: E402
 from graphene_map import tokenfactory as tf  # noqa: E402
 from graphene_map.executor import PROMPT_VERSION  # noqa: E402
@@ -305,6 +306,7 @@ def play_rounds(
     round files and lines go on numbering."""
     only = only or []
     signalled: set[str] = set()
+    timed_out: set[str] = set()  # what a round's timeout stopped: counted failed, and not run again
     stopped, cap_hit, rounds = None, False, 0
     while True:
         rounds += 1
@@ -318,8 +320,13 @@ def play_rounds(
         decisions = []
         with Store.open(repo) as store:
             ran = {e["node_id"] for e in store.node_log()[since:] if e["kind"] == "started"}
+            if cut is TIMEOUT:  # graphene reads a leaf its run stopped as ready (a person's Ctrl-C resumes);
+                # the bench's own timeout is its verdict on the leaf, as registered: failed, not run again
+                cut_off = [n.id for n in P.nodes(store) if n.id in ran and P.let_go(store, n).get("stopped")]
+                timed_out.update(cut_off)
             for n in P.nodes(store):
-                if n.id in ran and P.came_back(store, n) and P.offers(store, n):
+                back = P.came_back(store, n) or n.id in timed_out
+                if n.id in ran and back and P.offers(store, n):
                     decisions.append((n.id, *play(store, n, intent)))
         if cut is SIGNALLED:
             signalled, stopped = ran, "a signal (SIGTERM or Ctrl-C)"
@@ -335,7 +342,10 @@ def play_rounds(
             print(f"  {node} came back: {said}: {'taken' if command else 'refused'}")
         with Store.open(repo) as store:
             everything = P.nodes(store)
-            left = [n for n in P.leaves(everything) if n.state == P.OPEN and not P.came_back(store, n)]
+            left = [
+                n for n in P.leaves(everything)
+                if n.state == P.OPEN and not P.came_back(store, n) and n.id not in timed_out
+            ]  # fmt: skip
             only = [n.id for n in left]
             ready = [n.id for n in P.ready(everything, P.Caller("agent", False)) if n.id in only]
         if tf.spent() >= cap:  # before the end of the run is looked at: the cap may be what ended it
@@ -379,6 +389,17 @@ def parse(argv: list[str] | None) -> argparse.Namespace:
     return ap.parse_args(argv)  # fmt: skip
 
 
+def unopened(*specs: str) -> str | None:
+    """Why a run on Nemotron may not start from here: the marks are stripped from what it starts, so the
+    person-only rule the client holds (``night.person_only``) is asked here, before they are."""
+    if any(s.split()[:1] == ["nemotron"] for s in specs) and tf.endpoint() == "token factory":
+        try:
+            night.person_only("a run on Nemotron")
+        except night.Refused as no:
+            return str(no)
+    return None
+
+
 def main(argv: list[str] | None = None) -> int:
     args = parse(argv)
     card = (args.tasks / args.task).resolve()
@@ -398,7 +419,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"{leaf:32} {'PASSES at the base commit: not a check' if passes else 'fails at base'}")
         return 1 if any(at_base.values()) else 0
 
-    unreached = tf.reach() if args.executor.split()[:1] == ["nemotron"] else None
+    unreached = unopened(args.executor) or (tf.reach() if args.executor.split()[:1] == ["nemotron"] else None)
     if unreached:  # else every leaf would fail, and the rows would count a run that never was
         print(f"no run: {unreached}")
         return 2

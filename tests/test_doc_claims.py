@@ -119,3 +119,109 @@ def test_the_submission_says_only_taken_picked_and_answered_items_reach_the_exec
     assert "Every answer reaches the executors'" not in said
     assert "a dropped or parked item is told to no one" in said
     assert "Each answer goes to that leaf's executor" not in doc("docs/demo/STORYBOARD.md")
+
+
+def test_first_lights_model_table_is_the_live_list_the_fixture_keeps():
+    """docs/test/first-light.md's NVIDIA models, roles and prices are the fixture's, which came from rung 1's
+    access.json (practice, 2026-09-29): the doc and the tests that use the list cannot drift apart."""
+    import json
+
+    live = json.loads((ROOT / "tests/fixtures/tokenfactory-models-2026-09-29.json").read_text())
+    role = {v: k for k, v in live["roles"].items()}
+    rows = re.findall(r"^\| `(nvidia/[^`]+)` \| (\w+) \| ([\d.]+) / ([\d.]+) \|$",
+                      (ROOT / "docs/test/first-light.md").read_text(encoding="utf-8"), re.M)  # fmt: skip
+    want = [(m["id"], role.get(m["id"], "none"), f"{m['pricing']['prompt'] * 1e6:.2f}",
+             f"{m['pricing']['completion'] * 1e6:.2f}") for m in live["data"]]  # fmt: skip
+    assert rows == want
+    assert "**Practice, not a registered result.**" in doc("docs/test/first-light.md")
+
+
+def test_the_readme_and_changelog_name_what_first_light_added_and_no_doc_says_the_page_hides_the_board():
+    """A walker found the README and CHANGELOG silent on the direction, `board lookup` and the board's
+    setting, and the README saying the page does not show the board (walk findings 9, 30, 39)."""
+    from typer.testing import CliRunner
+
+    from graphene_map import settings as S
+    from graphene_map.cli import build
+
+    for words in (["direction"], ["board", "lookup"]):
+        assert CliRunner().invoke(build(), [*words, "--help"]).exit_code == 0, words
+    assert S.BOARDS[0] == "auto"  # the first is the value when unset
+    for path in ("README.md", "CHANGELOG.md"):
+        said = doc(path)
+        assert "graphene direction" in said and "board lookup" in said and "`board: auto`" in said, path
+        assert "Graphene has made a runtime call to Token Factory, as practice" in said, path
+    for path in ("README.md", "docs/HOW_IT_WORKS.md"):
+        assert "does not show the board" not in doc(path), path
+
+
+def test_the_docs_say_what_accept_and_r_leave_open_and_that_d_attaches_nothing():
+    """Review 2026-09-29 (26, 27, 28): the docs said accept, R and `board take` take every open default
+    and leave an agent's note open, and that D attaches a session or opens `:direction attach`."""
+    from graphene_map import board as B
+
+    item = {"state": "open", "kind": "question", "default": "no", "then": ["drop legacy"], "agent": True,
+            "by": "planner:script"}
+    assert not B.has_default(item) and B.has_default({**item, "kind": "note", "default": None, "then": []})
+    # what D does is test_d_in_watch_shows_the_direction_across_the_width_live_and_takes_no_key's
+    for path in ("README.md", "docs/HOW_IT_WORKS.md", "docs/HACKATHON.md", "CHANGELOG.md"):
+        said = doc(path)
+        assert "drops a node" in said, path
+        assert "or `D` in `graphene watch`" not in said and "opens `:direction attach" not in said, path
+        assert "and an agent's note, stay open" not in said, path
+
+
+def test_walks_first_light_verdicts_cite_commits_on_this_history_and_tests_that_exist():
+    """Review 2026-09-29 (30): the verdicts cited 18 hashes of branches before their rebase, and a test
+    since renamed. A hash named with its own branch (`on its branch …`) is that branch's, not this one's.
+    In a shallow clone (CI's) only the tests are checked."""
+    import subprocess
+
+    walks = (ROOT / "docs/process/shaping/walks.md").read_text(encoding="utf-8")
+    said = walks[walks.index("## First light's verdicts") :]
+    sources = " ".join(
+        p.read_text(encoding="utf-8")
+        for d in ("tests", "docs/test", "ui/src")
+        for p in (ROOT / d).rglob("*.[pt]*[ysx]")
+    )
+    for test in set(re.findall(r"\btest_[a-z0-9_]+", said)):
+        assert test in sources, test
+
+    def git(*args):
+        return subprocess.run(["git", "-C", str(ROOT), *args], capture_output=True, text=True)
+
+    if git("rev-parse", "--is-shallow-repository").stdout.strip() != "false":
+        return
+    elsewhere = set(re.findall(r"\b([0-9a-f]{7}) on its branch", said))
+    for sha in set(re.findall(r"\b[0-9a-f]{7}\b", said)) - elsewhere:
+        assert git("merge-base", "--is-ancestor", sha, "HEAD").returncode == 0, sha
+
+
+def test_live_session_names_only_scripts_that_exist_and_practice_steps_the_ladder_knows():
+    import importlib.util
+
+    said = doc("docs/test/LIVE_SESSION.md")
+    spans = re.findall(r"`([^`]+)`", said)
+    scripts = {s for span in spans for s in re.findall(r"[\w./-]+\.(?:py|sh)\b", span)}
+    assert {"docs/test/practice.sh", "docs/test/arm_bprime.py", "docs/demo/build.sh"} <= scripts
+    for script in scripts:  # a bare name is one of the harnesses beside it
+        where = [ROOT / script] if "/" in script else [ROOT / "docs" / d / script for d in ("test", "demo")]
+        assert any(p.is_file() for p in where), script
+    spec = importlib.util.spec_from_file_location("practice_named", ROOT / "docs/test/practice.py")
+    practice = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(practice)
+    usage = set(re.findall(r"practice\.sh (\w+)", practice.__doc__)) - {"N"}  # status, night, prototypes
+    knows = {str(n) for n in practice.RUNGS} | set(practice.STEPS) | usage
+    named = {m for span in spans for m in re.findall(r"practice\.sh (\w+)", span)}
+    assert named and named <= knows, named - knows
+
+
+def test_first_lights_403_for_a_made_up_key_names_its_source_and_says_it_is_no_practice():
+    """first-light.md says each fact names its file. The 403 that a made-up key and project got came from a
+    harness slip, not from the ladder: the doc says so and names its only record (a commit message, which
+    a shallow clone may not hold, so the test reads the doc only)."""
+    said = doc("docs/test/first-light.md")
+    assert "In a test run in this repository, ConTree also answered" not in said
+    assert "a harness slip, not from the ladder and not practice" in said
+    assert "Its only record is the message of commit e5efb4f" in said
+    assert "No log of that run was kept" in said

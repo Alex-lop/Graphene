@@ -8,7 +8,7 @@ import { zoom, zoomIdentity, type ZoomTransform } from "d3-zoom";
 import { useEffect, useRef, useState, type FormEvent, type ReactElement, type ReactNode } from "react";
 
 import { PAD_X, PAD_Y, STATE, STATE_COLOUR, clip, clock, graphWidth, stamp, treeWidth, why, type Layout, type Mode, type View } from "./model";
-import type { Fork, Plan, PlanEdge, PlanNode, Shown } from "./types";
+import type { Board, Fork, Plan, PlanEdge, PlanNode, Shown } from "./types";
 
 const CHAR = 6.4;
 const SMALL = 5.9;
@@ -79,25 +79,48 @@ export function Toggle({ view, onView, planned, recorded }: { view: View; onView
   );
 }
 
+/** The plan's leaves, the unit bare `graphene` counts in: a sub-goal is done when its leaves are. */
+const leavesOf = (plan: Plan): PlanNode[] => plan.nodes.filter((n) => !n.sub_goal && !n.aside);
+
+/** The plan's size as bare `graphene` says it: `3 leaves, 1 done, 0 running`. */
+export const size = (plan: Plan): string => {
+  const leaves = leavesOf(plan);
+  const n = (state: string) => leaves.filter((l) => l.state === state).length;
+  return `${leaves.length} lea${leaves.length === 1 ? "f" : "ves"}, ${n("done")} done, ${n("running")} running`;
+};
+
+/** A goal the planner proposed with the tree, as watch says it: accepting any of the tree accepts it. */
+const PROPOSED_GOAL = "proposed with the tree: accepting any of it accepts it";
+
+/** Why this page cannot change the plan, and where it is changed instead: said once, on the overview. An
+ * export carries no token; a page served to an agent's shell has one and cannot write with it. */
+const READ_ONLY = {
+  copy: "This page is a copy, written by graphene ui --export. The plan changes in its repository: graphene watch, graphene board, or graphene ui started there by the person.",
+  agent: "This page was opened from an agent's shell. The person changes the plan from their own terminal: graphene watch, graphene board, or graphene ui started there.",
+};
+
 export function PlanHeader({ plan, view, onView, recorded }: { plan: Plan; view: View; onView: (v: View) => void; recorded: number }): ReactElement {
-  const counts = Object.entries(plan.counts).filter(([, n]) => n > 0);
   return (
     <header className="header" data-testid="header">
       <div className="run">
         <h1>{plan.repo || "this repo"}</h1>
         <Toggle view={view} onView={onView} planned={plan.nodes.length} recorded={recorded} />
-        <span>
-          {plan.nodes.length} node{plan.nodes.length === 1 ? "" : "s"}
-          {counts.length > 0 ? ` · ${counts.map(([state, n]) => `${n} ${STATE[state as Shown]}`).join(" · ")}` : ""}
-        </span>
+        <span data-testid="size">{size(plan)}</span>
       </div>
       {/* the root of the tree, in the person's words: why any of the rest is being done */}
-      <p className="goal" data-testid="goal" title={plan.goal}>
-        {plan.goal || <span className="muted">no goal yet — `graphene plan goal &lsquo;why any of this is being done&rsquo;`</span>}
+      <p className="goal" data-testid="goal" title={plan.goal || plan.goal_proposed}>
+        {plan.goal ||
+          (plan.goal_proposed ? (
+            <>
+              {plan.goal_proposed} <span className="muted">· {PROPOSED_GOAL}</span>
+            </>
+          ) : (
+            <span className="muted">no goal yet — `graphene plan goal &lsquo;why any of this is being done&rsquo;`</span>
+          ))}
       </p>
       <div className="badges">
         {plan.paused && <span className="badge warn">paused: nothing starts and no write is refused</span>}
-        {!plan.writable && <span className="badge">read-only: this page cannot change the plan</span>}
+        {!plan.writable && <span className="badge">read-only</span>}
       </div>
     </header>
   );
@@ -108,9 +131,11 @@ export function PlanHeader({ plan, view, onView, recorded }: { plan: Plan; view:
 export function PlanStrip({ plan, onPick, write }: { plan: Plan; onPick: (id: string) => void; write: Write }): ReactElement {
   const [said, setSaid] = useState<string | null>(null);
   const waiting = plan.waiting_on_person;
+  const asked = plan.board.open.length;
+  const board = asked > 0 ? ` + ${asked} on the board` : "";
   return (
     <section className="strip plan-strip" data-testid="waiting-on-you">
-      <h3>{waiting.length > 0 ? `waiting on you (${waiting.length})` : "nothing is waiting on you"}</h3>
+      <h3>{waiting.length > 0 || asked > 0 ? `waiting on you (${waiting.length}${board})` : "nothing is waiting on you"}</h3>
       <ul>
         {waiting.map((item) => (
           <li key={item.id}>
@@ -119,16 +144,17 @@ export function PlanStrip({ plan, onPick, write }: { plan: Plan; onPick: (id: st
             </button>
           </li>
         ))}
-        {waiting.length === 0 && <li className="muted">every node is with an agent, or done.</li>}
+        {waiting.length === 0 && <li className="muted">{asked > 0 ? "no node: only the board." : "every node is with an agent, or done."}</li>}
       </ul>
       <p className="muted forecast">
         left alone, agents can reach: {plan.forecast.runs.join(", ") || "nothing"}
         {plan.forecast.waits.map((wait) => (
           <span key={wait.id} className="waits">
-            {wait.id} will wait: {wait.why.join("; ")}
+            {wait.id} will wait: {wait.why.map((reason) => (reason.startsWith(`${wait.id} `) ? `it${reason.slice(wait.id.length)}` : reason)).join("; ")}
           </span>
         ))}
       </p>
+      <PlanBoard board={plan.board} />
       {plan.all_done && !plan.paused && (
         <p className="muted">
           every node is done, and the plan is still in force: agents write nothing here until you add a node, archive it or
@@ -159,6 +185,57 @@ export function PlanStrip({ plan, onPick, write }: { plan: Plan; onPick: (id: st
         </p>
       )}
     </section>
+  );
+}
+
+/** The board, as the terminal's rows read it (decision 84): the standing conditions' one line, each open
+ * item with its kind as a verb, its default, its options and what it is about, and what is settled,
+ * parked or dropped folded into one count that opens. The page answers nothing on it: the terminal does. */
+export function PlanBoard({ board }: { board: Board }): ReactElement | null {
+  if (!board.standing && board.open.length === 0 && board.folded.length === 0) return null;
+  return (
+    <div className="board" data-testid="board">
+      {board.standing && (
+        <p className="muted standing" data-testid="standing">
+          {board.standing}
+        </p>
+      )}
+      {board.open.length > 0 && (
+        <ul className="board-items">
+          {board.open.map((item) => (
+            <li key={item.id} data-item={item.id}>
+              <span className="kind">◇ {item.word}</span>
+              <span className="what">{item.text}</span> <b>{item.id}</b>
+              <span className="muted detail">
+                {[
+                  item.default ? `default: ${item.default}` : "",
+                  ...item.options.map((option, i) => `${i + 1}: ${option}`),
+                  item.about ? `about ${item.about}` : "",
+                  `put up by ${item.by}`,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {board.folded.length > 0 && (
+        <details className="board-fold" data-testid="board-fold">
+          <summary>
+            {board.folded.some((it) => it.word !== "parked" && it.word !== "dropped") ? "✓" : "◌"} {board.counts}
+          </summary>
+          <ul>
+            {board.folded.map((item) => (
+              <li key={item.id} data-item={item.id}>
+                <span className="kind">{item.word}</span> <b>{item.id}</b> <span className="what">{item.said}</span>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+      {board.open.length > 0 && <p className="muted">answered in the terminal: graphene board, or y and 1-9 on the item in graphene watch</p>}
+    </div>
   );
 }
 
@@ -222,6 +299,15 @@ export function PlanTree({ plan, picked, onPick }: { plan: Plan; picked: string 
 
 const BUTTONS = ["auto", "outline", "tree", "graph"] as const;
 
+/** At once counts proposals whose needs are done (decision 87): said beside the number, so it never
+ * reads against "left alone, agents can reach: nothing" while nothing is accepted. */
+const onceAccepted = (plan: Plan): string => {
+  const proposed = new Set(plan.nodes.filter((n) => n.state === "proposed").map((n) => n.id));
+  const later = plan.at_once.filter((id) => proposed.has(id)).length;
+  if (later === 0) return "";
+  return later === plan.at_once.length ? ", once accepted" : ` (${later} once accepted)`;
+};
+
 /** Which way the plan is drawn, the record's toggle again, with auto to give the choice back to the
  * plan's shape. Under it, the plan's own two facts in words, whichever layout is shown: the critical
  * path and what can start at once, as the terminal says them. */
@@ -240,7 +326,8 @@ export function LayoutBar({ plan, layout, mode, why, onLayout }: { plan: Plan; l
         {plan.critical.length > 0 ? `critical path: ${plan.critical.join(" → ")}` : "no critical path: nothing waits on anything"}
       </span>
       <span data-testid="at-once" title={plan.at_once.join(", ")}>
-        {plan.at_once.length} at once
+        {plan.at_once.length} at once{onceAccepted(plan)}
+        {plan.at_once.length === 0 && ": no leaf can start now"}
         {plan.at_once.length > 0 && `: ${plan.at_once.slice(0, 5).join(", ")}`}
         {plan.at_once.length > 5 && ` and ${plan.at_once.length - 5} more`}
       </span>
@@ -352,7 +439,7 @@ export function PlanTopDown({ plan, picked, onPick }: { plan: Plan; picked: stri
   const on = new Set(plan.critical);
   const now = new Set(plan.at_once);
   const [gx, gy] = [PAD_Y + (plan.tree_goal[0] ?? 0), PAD_Y + (plan.tree_goal[1] ?? 0)];
-  const goal = plan.goal || "no goal yet";
+  const goal = plan.goal || plan.goal_proposed || "no goal yet";
   return (
     <Pan width={treeWidth(plan)} height={plan.tree_height + PAD_Y * 2} label="the plan, as a tree" onClear={() => onPick(null)}>
       {plan.tree_links.map((link) => (
@@ -361,12 +448,14 @@ export function PlanTopDown({ plan, picked, onPick }: { plan: Plan; picked: stri
       <g className="node goal-box" data-goal="" transform={`translate(${gx},${gy})`}>
         <rect className="box" width={200} height={76} rx={8} />
         <text x={12} y={24} className="state">
-          the goal
+          {plan.goal || !plan.goal_proposed ? "the goal" : "the goal · proposed"}
         </text>
-        <text x={12} y={44} className="title">
-          {clip(goal, 176, CHAR)}
-          <title>{goal}</title>
-        </text>
+        {wrap(goal, 176, CHAR).map((line, i) => (
+          <text key={i} x={12} y={44 + i * 16} className="title">
+            {line}
+            <title>{goal}</title>
+          </text>
+        ))}
       </g>
       {plan.nodes.map((node) => (
         <Box key={node.id} node={{ ...node, width: node.tree_w }} x={PAD_Y + node.tree_x} y={PAD_Y + node.tree_y} on={node.id === picked} critical={on.has(node.id)} now={now.has(node.id)} onPick={onPick} />
@@ -374,6 +463,16 @@ export function PlanTopDown({ plan, picked, onPick }: { plan: Plan; picked: stri
     </Pan>
   );
 }
+
+/** Words laid into two lines of a box, the second cut: the goal's box holds a sentence. */
+export const wrap = (text: string, width: number, per: number): string[] => {
+  const room = Math.floor(width / per);
+  const words = text.split(" ");
+  let first = "";
+  while (words.length > 0 && `${first} ${words[0]}`.trim().length <= room) first = `${first} ${words.shift()}`.trim();
+  if (!first) return [clip(text, width, per)];
+  return words.length > 0 ? [first, clip(words.join(" "), width, per)] : [first];
+};
 
 function Box({
   node,
@@ -394,13 +493,15 @@ function Box({
 }): ReactElement {
   const shown = node.display_state;
   const colour = STATE_COLOUR[shown];
-  // who has it and since when while it runs; who had it and when it ended once it is finished
+  // who has it and since when while it runs; who had it and when it ended once it is finished: the
+  // executor by its name, `run:` left to the detail, so the clock fits a 200px card
+  const by = (node.executor ?? "").replace(/^run:/, "");
   const held = node.executor
     ? node.state === "running"
-      ? `${node.executor} · since ${clock(node.started_at)}`
-      : `${node.executor} · finished ${clock(node.finished_at)}`
+      ? `${by} · since ${clock(node.started_at)}`
+      : `${by} · finished ${clock(node.finished_at)}`
     : null;
-  const who = `${node.id} · ${node.owner === "agent" ? "any agent" : node.owner} · revision ${node.rev}`;
+  const who = node.owner === "agent" ? node.id : `${node.id} · ${node.owner}'s`;
   const says = node.sub_goal ? rolled(node) : (held ?? node.waits[0] ?? node.scope.join(", "));
   return (
     <g
@@ -630,32 +731,37 @@ export function PlanInspector({
   plan,
   picked,
   write,
+  recorded = 1,
 }: {
   plan: Plan;
   picked: string | null;
   write: Write;
+  recorded?: number;
 }): ReactElement {
   const [note, setNote] = useState("");
   const node = plan.nodes.find((n) => n.id === picked) ?? null;
   if (node === null) {
+    const leaves = leavesOf(plan);
+    const shown = (Object.keys(STATE) as Shown[]).filter((state) => leaves.some((l) => l.display_state === state));
     return (
       <aside className="inspector" data-testid="inspector">
         <h2>The plan</h2>
         <p className="sub">select a node to read its contract{plan.writable ? ", or add one" : ""}</p>
-        <dl className="facts">
-          {Object.entries(plan.counts).map(([state, n]) => (
-            <Fact key={state} label={STATE[state as Shown]}>
-              {String(n)}
+        <dl className="facts" data-testid="leaves">
+          {shown.map((state) => (
+            <Fact key={state} label={STATE[state]}>
+              {`${leaves.filter((l) => l.display_state === state).length} of ${leaves.length} leaves`}
             </Fact>
           ))}
         </dl>
+        {recorded === 0 && <p className="rule" data-testid="unrecorded">{UNRECORDED}</p>}
         {plan.writable ? (
           <section className="block">
             <h3>Add a node</h3>
             <AddNode plan={plan} write={write} />
           </section>
         ) : (
-          <p className="rule">This page is read-only. The plan is changed from the person&rsquo;s terminal, or from a page they opened.</p>
+          <p className="rule" data-testid="read-only">{plan.token === null ? READ_ONLY.copy : READ_ONLY.agent}</p>
         )}
       </aside>
     );
@@ -699,6 +805,15 @@ export function PlanInspector({
           </Fact>
         )}
         {node.finished_at && <Fact label="finished">{stamp(node.finished_at)}</Fact>}
+        {node.decided.length > 0 && (
+          <Fact label="decided">
+            <ul className="list decided" data-testid="decided">
+              {node.decided.map((line) => (
+                <li key={line}>{line}</li>
+              ))}
+            </ul>
+          </Fact>
+        )}
       </dl>
       {node.state === "running" && <p className="rule">{plan.holes.stop}</p>}
       {node.waits.length > 0 && (
@@ -708,6 +823,7 @@ export function PlanInspector({
           ))}
         </ul>
       )}
+      {plan.writable && (
       <section className="block">
         <h3>What a person decides</h3>
         <p className="acts">
@@ -721,6 +837,7 @@ export function PlanInspector({
           <Act label="send it back" op="reopen" no={no.reopen} body={() => ({ id: node.id, note })} write={write} />
         </p>
       </section>
+      )}
       {plan.writable && (
         <section className="block">
           <h3>Its contract</h3>

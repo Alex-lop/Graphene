@@ -4,7 +4,7 @@
 edit as binding: it reads this before it reads the code. It is the same shape as the product: you
 shape the plan, the agents execute it. First written 2026-09-20 by the agent that ran the
 collaboration directive (`docs/process/directives/COLLABORATION_DIRECTIVE.md`); last added to on
-2026-09-28, by the agent that ran the shaping directive.*
+2026-09-29, by the agent that ran the first-light directive.*
 
 ## What Graphene is
 
@@ -1215,6 +1215,350 @@ as written and the change is named here.
        ran an accepted leaf's check with the keychain on; an answer about a leaf that left the plan
        was accepted and told to no one; the docs described prompt versions 2 and 3.
 
+## Decisions taken on 2026-09-29, night (the first-light directive)
+
+Taken by the agent that ran `docs/process/directives/FIRST_LIGHT_DIRECTIVE.md`, each with its
+evidence. You ran rungs 1 and 2 live before the run; the session itself had no
+`GRAPHENE_AGENT_LIVE_USD` in its environment, so nothing live ran in it, and every test named here runs
+against the scripted fake (`tests/fake_tokenfactory.py`) and, for sandboxes, the Docker stand-in. The
+people in the studies are Claude sub-agents standing in for you, a first-time user and a judge. Strike
+any of them.
+
+101. **An agent practises live only when you open it: `GRAPHENE_AGENT_LIVE_USD`, set in the shell that
+     starts its session.**
+     - Without it nothing changed for the ladder: rungs 2 to 7 refuse an agent's shell, and now say
+       which variable opens them. With it, they run there, and the ladder hands the opening and the
+       night's ledger (102) to every command a rung starts.
+     - It opens the ladder only. `ask`, `talk`, `plan cover|note|precheck` and `key check` keep
+       refusing an agent: they guard what you do to the plan, not only the spend. The prototypes are
+       practised through the ladder instead: `docs/test/practice.sh prototypes` runs cover, note and
+       precheck on a fixed plan in a throwaway repo, a few Nano calls each, under a $0.05 cap.
+     - Nothing in the code or the tests sets the variable in a session; the conftests unset it.
+
+     *Why:* spending stays your act, given once, before the session, where an agent's session
+     inherits it; one variable is both the permission and the dollar cap. *Evidence:*
+     `tests/test_practice.py` (`test_under_the_persons_opening_an_agents_shell_climbs_a_live_rung`,
+     `test_in_an_agents_shell_no_live_rung_runs`,
+     `test_the_prototypes_practise_a_few_calls_each_against_the_stand_ins`,
+     `test_in_an_agents_shell_the_prototypes_need_the_opening`).
+102. **One night's ledger for every live path, locked, reserve then settle, capped at the lower of the
+     opening and $10, and nothing new started past 80% of it.**
+     - The file is `~/.graphene/night/<date>.jsonl` (the date is the evening the night began; a night
+       runs noon to noon), outside every repository, the same for every worktree and for your own
+       terminal; `GRAPHENE_NIGHT_LEDGER` moves it. `fcntl.flock` makes a reservation one step.
+     - Every live Token Factory call reserves its worst case at list price (its `max_tokens`, or
+       32,768, plus the request's bytes / 3 as prompt tokens) before it is sent, and settles to its real
+       usage after. One refused or never received settles at $0; one that timed out keeps its worst
+       case. A call whose reservation would pass the cap is refused, unsent, in one line.
+     - A rung, a `graphene run` with Nemotron, or a process's first live call is refused once spent
+       plus in flight reach $8 of $10. The ladder's per-rung caps still reset on a rerun; the night's
+       does not.
+     - ConTree operations are rows too, with their seconds, at $0 (Sandboxes are free in the beta, 104).
+       Ultra's calls are counted apart. Every row says `practice`, and `evidence.py` refuses practice
+       rows, `--stand-in` or not. `docs/test/practice.sh night` prints the bill.
+
+     *Evidence:* `tests/test_night.py` (`test_processes_racing_for_the_last_dollars_cannot_all_pass`:
+     six processes, room for two calls, two sent;
+     `test_a_call_that_would_pass_the_cap_is_refused_before_it_is_sent`: the fake sees no request;
+     `test_nothing_new_starts_past_80_percent_of_the_cap`; `test_no_row_holds_the_key`);
+     `docs/test/test_evidence.py::test_practice_is_refused_whatever_the_flags`.
+103. **Spending on the real service is your act: a process with a vendor's agent mark and no opening is
+     refused at the two chokepoints before anything is sent.** `tokenfactory.chat`, when the endpoint
+     is Token Factory's real host, and `sandbox.Contree`, always. The marks are the vendors' own
+     (CLAUDECODE, CLAUDE_CODE_*, CODEX_*, AI_AGENT, GEMINI_CLI, CURSOR_AGENT); `GRAPHENE_NODE`, which
+     your own `graphene run` gives its executors, is not one. The harnesses that strip the marks for
+     their children (the ladder, `bench.py`, `arm_bprime.py`, `nemotron.sh`) ask first. *Why:* until
+     tonight only the ladder refused an agent; `graphene run --with nemotron`, `access.py`, `arm_a.py`,
+     `arm_bprime.py` and `bench.py` let an agent's shell spend your key. *Evidence:*
+     `tests/test_night.py::test_an_agents_call_to_the_real_host_is_refused_unsent_until_the_person_opens_it`,
+     `test_a_person_and_the_fake_are_not_refused`,
+     `test_the_harnesses_that_strip_the_marks_ask_first`.
+104. **What first contact with Sandboxes taught: a 403 is one refusal, said where a sandbox is made;
+     `graphene init` asks whoami before it places leaves there; a timed-out operation is exit 124.**
+     - Rung 1 met `ForbiddenError: You do not have permission to perform this action` live, and rung 2's
+       `init` a minute later still placed leaves in Sandboxes. Now `sandbox.Refused` says what the key
+       lacks (from ConTree's whoami, a read) or both likely causes, in `access.py`, the ladder, a leaf
+       (which comes back with the cause, before any model call) and `plan precheck`; and `init` places
+       Nemotron's leaves locally, with one line saying why, when whoami refuses the project.
+     - Rung 1 passes on Token Factory and names the rungs that wait (3, 4, 6, 7). *Why:* the directive,
+       "if Sandboxes access is missing, note it and go on".
+     - A ConTree operation past its time comes back as exit 124 on the image it was given, as Docker's
+       does, instead of ending the leaf. Rung 4 now sends one and needs exit 124 live.
+     - Sandboxes are treated as free in the beta: "Sandboxes are free while in beta, runs don't consume
+       your credits", Nebius's Sandboxes page as the search index quoted it on 2026-09-29 (the page
+       draws only in a browser; no Nebius page states a price). Operations are still counted (102).
+
+     *Evidence:* `tests/test_faults.py`, `tests/test_precheck.py`, `tests/test_sandbox_contract.py`,
+     `docs/test/test_access.py` (each `…a_project_sandboxes_refuse…`, against contree-sdk's own
+     ForbiddenError), `tests/test_init.py::test_a_project_sandboxes_refuse_gets_its_leaves_on_this_machine_and_one_line_saying_why`,
+     `test_an_operation_past_its_time_is_the_commands_exit_124_as_in_docker`, `docs/test/first-light.md`.
+105. **The live model list, as rung 1 read it: mixed-case ids resolve to their roles; Nemotron 3.5
+     Lightning gets none.** Ultra `nvidia/Nemotron-3-Ultra-550b-a55b` ($1.00/$3.00 a million in/out),
+     Super `nvidia/nemotron-3-super-120b-a12b` ($0.30/$0.90), Nano
+     `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B` ($0.06/$0.24), and Lightning at Nano's price, whose id names
+     no size, so no role picks it (decision 56: no id written into Graphene). The bill uses the live
+     prices: rung 2's three Nano rows (1334/186, 1402/191 and 1465/98 tokens) add up to the $0.000366
+     it printed. No first-contact bug was found here. *The risk:* if Nano is retired, the executor
+     falls back to Super at five times the price, not to Lightning. *Evidence:*
+     `tests/fixtures/tokenfactory-models-2026-09-29.json` and the tests that read it.
+106. **What only a live run can show is asserted on the ladder, and a live recording replays in CI.**
+     Every rung counts the key and the project id in each file it wrote (by count, never shown) and
+     fails on any; rung 5 counts its own recording and prints the `cp` into `tests/recordings/`, where
+     any `*.jsonl` is replayed and counted by CI (`demo.leaks`). *Evidence:*
+     `tests/test_practice.py::test_a_rung_whose_files_hold_the_key_fails_by_count_and_never_shows_it`,
+     `tests/test_recordings.py`.
+107. **A person who agrees with the board answers nothing; the board prints only what answering needs,
+     and a board that asks nothing is not shown. This revises 81 and 84.**
+     - Accepting the plan (when it leaves no proposal), `graphene run` before it starts (so `R`), and
+       `graphene board take` with no id take the default of every open item that has one, as yours,
+       said on accept's first line; `plan undo` takes them back with the acceptance.
+     - `graphene board` prints open and parked items with their default and options, no `then:` lines
+       and no settled list (`--all` has both), and never "0 open". An answer's echo is its id.
+     - No rows, no line and no count when the board asks nothing.
+     - `graphene board lookup` (behind `GRAPHENE_SHAPE=lookup`, only yours to run, like the other Nano
+       prototypes) asks Nano which open questions the repository already answers, and settles one only
+       when its quoted line is in the file it names and its choice is the question's own; `p` gives it
+       back. Protected files are never sent. It has run only against the scripted fake.
+
+     *Why:* in study 3 all seven board acts were `take`, each an act and an echo that changed nothing.
+     *Evidence:* `tests/test_board.py`
+     (`test_a_person_who_agrees_with_every_default_answers_nothing_and_accept_takes_them`,
+     `test_take_with_no_id_takes_every_open_default_and_run_takes_what_is_left_open`),
+     `tests/test_board_rows.py::test_a_board_that_asks_nothing_has_no_rows_no_line_and_no_count`,
+     `tests/test_lookup.py`.
+108. **The board's default is `auto`: it shows only while a question the repository cannot answer is
+     open. Study 4 decided it by its registered rule.** Study 4 (`docs/test/results-2026-09-29-board.md`,
+     registered and its build pinned before any run) shaped study 3's four proposals on the board after
+     107, against the outline, one stand-in a cell and a judge each. The board read fewer words than
+     study 3's board on all four tasks (−937, −320, −497, −278) and was as faithful or more on all four
+     (logs 14 of 17 against 12), but cost more modelled person-seconds than the outline on three of four
+     (+50, +409, +285, −31; 2,428 against 1,714 in all). The rule set `board: on` only if the board cost
+     no more on at least three tasks and in total; so `auto`. `board: on` in `graphene config` brings
+     every item back. *After the fact:* no stand-in pressed a key on the board; the board arm's extra
+     was reading, which `auto` mostly removes and study 4 did not measure. One run (inventory, board)
+     was rerun because this session's classifier refused two commands its brief listed; the failed run
+     is kept. *Evidence:* the results file's tables;
+     `tests/test_settings.py::test_the_board_setting_is_auto_unset_and_on_once_said`.
+109. **The teardown: a closed terminal ends what Graphene started under it, whether or not it sends the
+     hangup.** The 15 replays that kept spinning never got a hangup: a test's pty was only their input
+     and output, not their controlling terminal, and Textual 8.2.8 reads the end of file of a closed
+     terminal as "no key" at full speed, forever (91 to 98% CPU, a replay still running at 60 s). Now
+     `graphene watch` and `graphene demo` check their terminal twice a second (a write of nothing to fd 1
+     fails once it is gone) and leave as `q` does; `graphene run`, and any check, takes a terminal that
+     closed silently as a hangup, which is Ctrl-C. A second cause: since 28 September the guard sat on
+     `check_env` instead of `run_check`, so a check an executor's `done` ran outlived a run's stop. It
+     builds on your 0503e0f and 041b93f, and your replay tick test no longer depends on the machine's
+     speed. *The one exception:* a run started from `watch` goes on after the watch's terminal closes,
+     as after `q`. *Evidence:* `tests/test_teardown.py` (demo, watch and a run with its executor and
+     check, each on its own pty, both with and without the hangup; everything gone within 0.53 s and
+     0.96 s; both cases failed before, on macOS and on Linux in Docker).
+110. **No test can reach your keychain: that was a default and is now a guard.** `tests/keyguard.py`, a
+     pytest plugin both conftests install, puts stand-ins for `security` and `secret-tool` first on
+     the session's PATH, refuses in the test process any start of a real one (by name or absolute path)
+     and `import keyring`, and fails the test that tried, or the run if a child did after its test
+     ended. A fake under `tmp_path` is the one way a test gets a keychain. `graphene key set`, `check`
+     and `remove` now refuse Claude Code and Codex as they refuse an executor. *Evidence:*
+     `tests/test_keyguard.py::test_every_way_to_the_real_keychain_fails_its_test_and_a_fake_passes`
+     (it fails with the guard turned off), `tests/test_key_cli.py::test_an_agent_is_refused`. CI's first run with the guard caught one test on Linux: precheck's test turned the keychain on and faked only `security`, so on a Linux machine with libsecret precheck's own lookup (the one that hides a keychain key from what it says) would have asked the developer's real keyring; it now fakes both tools on both platforms (`tests/test_precheck.py::test_an_accepted_check_runs_here_with_grapheness_keychain_lookup_off`).
+111. **The hook: its 60 ms budget is held on the CPU time it spends, and it spends about half what it
+     did.** Where the time went: about 12 ms to start Python, 23 to 30 ms to import the hook (tempfile,
+     subprocess, dataclasses and, in a repo left with plan first on, the gate and the plan on every
+     event), 6 to 8 ms of teardown, and a `git rev-parse` on every session start; the store was 1.5 ms.
+     Cut: the gate and the plan imported only for the events they answer (`hooks.gated`), HEAD read from
+     git's files, the store's records plain slotted classes, local imports, `os._exit`. A recorded call
+     went from 69 to 32 ms of CPU with the other lanes running, 60 to 29 with 30 more busy processes.
+     *What changed in the test:* the budget stays 60 ms, measured as the CPU time of the hook and the git
+     it starts, the median of twenty runs, with the wall clock printed beside it. The wall clock at a
+     load of 67 was still 55 to 174 ms: that is the scheduler's time, which no change to the hook
+     removes. `WORK` in the same test names every module, SQL statement and process each event may use,
+     so work added to the hook fails it (the direction's status added none). *Evidence:*
+     `tests/test_hook_budget.py` (8 of 8 passed three times at a load average of 67; 3 failed before on
+     the wall clock), `test_each_event_imports_runs_and_starts_only_what_it_did`.
+112. **The direction: a small tree of goals you author above the plans, in `.graphene/direction.txt`, the
+     one file in `.graphene/` that git tracks.**
+     - One line a node: `- title  [id]` accepted, `? title  [id]` proposed. It round-trips byte for
+       byte; a line Graphene cannot read makes the whole file unused, and the refusal names the lines
+       (decision 29's rule).
+     - An agent proposes (`graphene direction propose`); only you accept, edit, drop, hang a plan
+       (`graphene direction plan NODE`) or attach a session.
+     - *Why that file:* the repository's root is the user's, and `.graphene/` is already Graphene's
+       there; it works like `.claude/`, a committed file beside local ones. What hangs from it (plans,
+       sessions) stays in the store, in plan_meta, with no migration.
+     - Graphene's own is in it: eleven nodes from this file, the directives and the briefs, every one
+       proposed until you accept it.
+
+     *Evidence:* `tests/test_direction.py`
+     (`test_the_text_round_trips_byte_for_byte_and_an_accept_changes_only_its_marks`,
+     `test_an_agent_proposes_only_the_person_accepts_or_drops_and_git_sees_the_file`,
+     `test_a_direction_written_while_a_leaf_runs_is_never_the_leafs_change`); the screens in
+     `docs/process/shaping/screens/first-light/direction/`.
+113. **A session attaches by what it does or where you put it, and shows status, not a ledger.** In
+     order: where you attached it (`graphene direction attach`, `D` in watch); the plan's node, when it
+     held, finished or proposed one of the plan's nodes; the subagent that started it; its session;
+     else "not in the direction". Its status (running, your turn, idle, finished, the last thing done,
+     and a bill only where Graphene knows one) is read at read time from the rows the hooks already
+     write: the hook does no work for it, and no transcript is read (decision 66). *Evidence:*
+     `test_sessions_attach_by_what_they_do_or_by_the_person_and_say_whose_move_it_is`,
+     `test_the_hook_imports_nothing_of_the_direction`.
+114. **No MCP server; decision 3 holds.** It is not nearly free (a dependency or a hand-written JSON-RPC
+     loop, a registration per vendor, a second surface to keep in step) and it binds nothing.
+     `graphene direction --json` is the read-only machine form, the page's own data.
+115. **The direction did not answer "what waits on me, what runs, what is next" faster than
+     `morning.md` as registered; once it named what it counted, it did, in an exploratory pass.** The
+     study (`docs/test/results-2026-09-29-direction.md`, registered before any run): twelve stand-ins,
+     three seats, both arms on one state. Every run in both arms got all eight items right; the
+     direction took a median 143.9 modelled person-seconds against `morning.md`'s 105.4: no advantage
+     shown. Every direction stand-in said `graphene direction` counted what waited on them but named
+     only two of four, so each went on to `graphene plan` and `graphene board`. So now each node names,
+     under the plan's row, every item that waits on you by the id you act on (a leaf in review, come
+     back or yours; a proposal; an open board item) with the command that acts on it, and each running
+     leaf with the session holding it; "you N" counts exactly the named rows, and nothing after a state
+     word is cut. The exploratory pass on that build (registered after the fact, before its runs):
+     median 104.1 against 107.4, both arms right on all eight; two of six direction stand-ins answered
+     from one command, and four also ran `graphene plan`. It can show the direction of the change, not confirm it. What still stopped a
+     stand-in (`next: email` named a leaf with no row of its own; which id "running" meant) is fixed
+     since: `next:` is a row, and a running leaf says who holds it (124). *Evidence:*
+     `docs/test/test_direction_study.py::test_the_direction_print_alone_names_every_waiting_and_running_item_inside_80_columns`.
+116. **An agent's write tool into `.graphene/` is refused by the hook, plan or no plan.** With no plan in
+     force, an agent could otherwise accept its own direction node by editing the file. `hooks.into_ours`
+     runs before `hooks.gated()`, costs every other event one dict lookup and one comparison (the WORK
+     table gains the refused write), and the gate's after-the-fact check of a shell command's changes
+     leaves `.graphene/` out. *Evidence:* `tests/test_hooks.py::test_an_agent_cannot_write_the_direction_itself_plan_or_no_plan`,
+     `test_a_direction_proposal_from_a_leafs_shell_is_not_that_leafs_stray`.
+117. **The page shows the board and the standing conditions read-only, in the terminal's words, and the
+     replay is paced for a first look.** `server.board` reads `board_rows`, one definition for both. A
+     read-only page says so once. The replay holds each change at least 2 s (22 s instead of 3.7),
+     space pauses, `.` steps, `r` plays again, `--speed N`, and a stand-in's replay names the stand-in
+     on every row. *Evidence:*
+     `tests/test_server.py::test_the_page_carries_the_board_and_the_standing_conditions_as_the_terminal_reads_them`,
+     `tests/test_demo.py::test_each_change_stays_on_the_screen_and_space_dot_and_r_pause_step_and_play_again`,
+     `ui/src/Plan.test.tsx`.
+118. **The video is filmed by `docs/demo/build.sh`, one VHS tape a scene, in real time, and `rough.mp4`
+     is written only from a run whose own recording says it ran live.** Waits are real; the time a
+     scene cuts is said on its top row. No flag overrides the live check; `--rehearsal` writes
+     `rehearsal.mp4` with REHEARSAL on every frame. The narration is a subtitle track, since this
+     machine's ffmpeg cannot draw text. *Evidence:* `tests/test_demo_build.py`; the rehearsal
+     (146 s at 120×36, every sampled frame bannered).
+
+119. **Asking again (`+`, `-`, `ask --finer/--coarser`) carries the board's answers to the same node of
+     the new tree when that node is certain, and says what it could not carry. This settles 91's
+     "still open" and revises 100.** A match is the new line that uses the dropped id again, else the
+     same title, else the same scope as proposed; a leaf matches only a leaf, one to one. The answer's
+     `about:`, its `then:` lines and what it did move as your edit, in the transaction that lands the
+     new tree. With no certain match nothing is guessed: one line says why and gives the `graphene node
+     set` that puts the change back. Ids still change on a re-ask; the answers follow them. *Why:* the
+     walkers' worst finding: the leaf ran and came back for exactly what the lost answer was about.
+     *Evidence:* `tests/test_reask.py::test_a_reask_carries_a_board_answer_to_the_leaf_the_planner_proposed_again`,
+     `test_a_reask_says_what_it_could_not_carry_and_why`.
+120. **A path belongs to one live leaf: the first in the plan, not done and not dropped, whose scope has
+     it.** A leaf that came back is offered neither widening into it nor a sibling for it; the pane says
+     whose it is, and a sibling offer says its check is `true`. *Evidence:*
+     `tests/test_run_live.py::test_a_path_another_leafs_scope_has_is_never_offered_to_a_second_writer`.
+121. **`graphene ask`, `run`, `node split` and `talk` refuse and start nothing until a planner or an
+     executor is chosen (by `init`, the setting or `--with`). This revises 70.** In a repository nobody
+     had set up, `ask` started `claude -p` from the PATH, spending your usage with an agent you never
+     chose. *Evidence:*
+     `test_with_nothing_chosen_ask_run_split_and_talk_refuse_and_start_nothing_until_with_names_one`.
+122. **A leaf that came back waits on you everywhere: `R`, plain `run` and `--parallel` leave it; `r`
+     or `graphene run --node ID` runs it again. This drops 87's last "still open".** The status line
+     counts it apart; the goal reads done only once every sub-goal has rolled up. *Evidence:*
+     `test_a_leaf_that_came_back_waits_on_the_person_and_runs_again_only_when_named`.
+123. **Nothing the planner put up is left waiting unseen, and nothing is dropped behind your back.**
+     Under `auto`, accepting the plan or `R` takes an agent's note as written (told to its executors
+     as a `decided:` line), as it takes a default; a default that drops a node is never taken by accept
+     or `R`, and waits for your key (accept says so on its first line); an `R` that starts nothing
+     answers nothing; a live screen shows what a fresh one does; `plan undo` of a board answer logs
+     `undone`. *Why:* in the walk, `R` at "nothing ready to run" took two defaults and dropped a leaf,
+     and a planner's note restating your own constraint reached no executor. *Evidence:*
+     `tests/test_board.py::test_a_run_that_starts_nothing_answers_nothing_and_a_default_dropping_a_leaf_waits`,
+     `test_undoing_a_board_answer_says_so_in_the_plans_log`,
+     `tests/test_board_rows.py::test_under_auto_answering_the_last_question_leaves_what_a_fresh_screen_shows`.
+124. **`D` in `graphene watch` shows the direction in the node pane, under the tree at the screen's
+     width, read again every tick, and opens no command line.** Attaching and accepting are typed at
+     `:`, as the bottom line says. `graphene direction` names under each plan every item waiting on you
+     by the id you act on, a running leaf with who holds it, and `next:` as a row of its own. *Why:*
+     three walkers typed their next vim key into a focused `:direction attach`; the study (115).
+     *Evidence:* `test_d_in_watch_shows_the_direction_across_the_width_live_and_takes_no_key`.
+125. **The replay (`graphene demo`) shows the board, keeps one status form, and says each change.** The
+     shipped recording was made again on the scripted fake with a planner that puts up a question, an
+     assumption and a leave-out, each taken with one `graphene board` command, the question's default
+     adding a sentence to its leaf; it says a scripted stand-in on every row. A replay's status line
+     offers neither `R` nor `P` and keeps its bill; every step says what changed. The page carries a
+     goal the planner proposed as the proposal it is, never as "no goal yet". This extends 77.
+     *Evidence:* `test_the_shipped_replay_puts_up_the_board_and_one_key_per_item_answers_it`,
+     `tests/test_demo_replay.py`, `tests/test_plan_view.py::test_a_goal_proposed_with_the_tree_is_on_the_page_as_the_proposal_it_is`.
+126. **The ladder takes the key and the project out by what they are, and shows a path as it is.** The
+     environment's values and the keychain's key are taken out wherever they appear; a key-shaped word
+     only outside a path. *Why:* Claude Code's scratch directory names (the repository's name and a
+     session's uuid) matched the base64 rule, so every path and the replay command the ladder printed
+     came out mangled. *Evidence:*
+     `tests/test_practice.py::test_a_path_the_ladder_prints_is_shown_as_it_is_and_a_secret_in_it_by_its_value`.
+127. **What the walks became.** `docs/process/shaping/walks.md`'s 72 findings of 28 September: the
+     terminal's 35 and the page's and replay's 25 each fixed with a test or closed with a reason, in
+     its two "First light's verdicts" sections. Tonight three new walkers (a first-time user, you, a
+     judge) walked a wheel of `first-light` at `4860dec` and filed 46 more; the product's were fixed
+     by the lanes that owned them, each with a test or closed with a reason (119 to 126), and eight
+     were about the walk's own harness: the seat left your `~/.zshenv` key readable (no walker spent
+     or chose Nemotron), the old stand-in executor pointed at another session's build, the seats
+     shared one tmux server and one port, and Playwright wrote into your checkout's git-ignored
+     `.playwright-mcp/` (the three files were removed).
+
+128. **What waits on you live is on one screen, `docs/test/LIVE_SESSION.md`, and three pieces of it are
+     not built.** In order: the preconditions (Sandboxes access, the key, the opening unset for
+     registered runs), rungs 3 to 7, the registered arms as pre-registered, the shaping study with
+     executors, the recording; each with its command (every one checked as far as its usage line,
+     nothing spent), a cost range and a time. The registered runs need first: the fixed trees
+     (`docs/test/trees/` holds only its README), a frozen configuration (arm A's steps and seconds come
+     from it), and arm B's brief on Nemotron (`standin.py`'s tree and board arms still start `claude -p`).
+     The live directive's draft says what first light taught, each change marked "(first light)", and
+     its first command is `docs/test/practice.sh night`, which says whether the opening is set and
+     nothing else from the environment. *Evidence:*
+     `tests/test_doc_claims.py::test_live_session_names_only_scripts_that_exist_and_practice_steps_the_ladder_knows`.
+129. **A call that may have reached Token Factory keeps its worst case in the night's ledger. This
+     revises 102.** A call refused (a 4xx) or never received (no key, a refused connection, an unknown
+     host) settles at $0; one that timed out, got a 5xx, broke once connected, or was stopped while out
+     (Ctrl-C, or the TERM `graphene run` and the ladder send, which the executor and the planner turn
+     into SystemExit) keeps its worst case. *Why:* the closing review found every stop of a run with
+     Nemotron freed its in-flight calls from the cap. *Evidence:*
+     `tests/test_night.py::test_a_call_stopped_by_term_after_it_was_sent_keeps_its_worst_case`,
+     `test_a_failed_call_is_freed_only_when_nothing_can_have_been_done`.
+130. **No test acts on the repository running it, whatever git exported.** A suite started from `git
+     bisect run`, a hook or `rebase --exec` inherits GIT_DIR (and GIT_INDEX_FILE, GIT_PREFIX,
+     GIT_CONFIG_PARAMETERS); a test's `git -C tmp init/add/commit` then re-initialised the enclosing
+     repository and committed into it. Both conftests drop git's location and `-c` variables before
+     any test (`keyguard.no_git_location`). *How it was found:* at 04:45 a bisect I ran over one test
+     marked your main repository bare (`core.bare true`); the closing review found the same hazard on
+     its own and reproduced it in a throwaway clone. *Evidence:*
+     `tests/test_git_location.py::test_a_suite_started_with_git_location_set_hands_none_of_it_to_its_tests`.
+131. **What the closing review changed.** Six adversaries (the live paths and keys, the board, the
+     direction, the teardown, the claims, and destructive operations) went over `cbfbe0f..e113999` from
+     04:40, and a skeptic reproduced every finding from scratch: 35 findings, all 35 reproduced (24
+     should-fix, 11 minor, no blocker), all collected before any was fixed. Each fix has a test that
+     failed before it, named in its commit.
+     - **Live paths and keys:** a call that may have been received keeps its worst case (129); the
+       ladder counts the keychain's key and a pasted key's stripped form; a ConTree error page that
+       echoes the key is masked as Token Factory's is; rung 5's command makes `tests/recordings/`.
+     - **The board:** a default is taken whole or not at all; only a planner's note is taken for you,
+       and another agent's note waits for your key (this revises 123); `R` takes no default that would
+       leave it nothing to start; `board lookup` never takes an answer that drops a node, numbers lines
+       as grep does, and passes over an answer of the wrong shape; `graphene board` keeps an item's
+       words at 40 columns; a re-ask never puts an answered question up twice, and lands even when a
+       carried change is refused.
+     - **The direction:** the hook's `.graphene/` refusal holds however the path is spelled (case, a
+       firmlink, a symlink, `..`); control characters and escapes from recorded calls never reach your
+       terminal; a CRLF file keeps its line endings; no "you: 1" without a row naming it; a wide title
+       never pushes a row past the width; the 80×24 strip keeps the plan's node; nesting past sixteen
+       levels is refused by its line.
+     - **The teardown:** a sandboxed leaf's check goes with the `done` that started it; Ctrl-\ stops a
+       run as Ctrl-C does; the next run commits and parks in review a leaf a killed parallel run left
+       done; a passed check's background processes, and each Nemotron command's, are ended when it
+       returns.
+     - **The claims:** the docs follow the code (what accept and `R` leave, what `D` does, a planner's
+       note); `walks.md`'s hashes are this branch's; the exploratory pass's count; the made-up key's 403
+       said as the one slip it was.
+     - **Destructive operations:** the git-location guard (130), and the keyguard's stale directories
+       swept once their session has ended.
+
 ## What does not bind (say it wherever you sell it)
 
 - A shell command can write a file in a way nothing reads beforehand (a script that opens files
@@ -1285,6 +1629,31 @@ as written and the change is named here.
 - What the three prototypes printed tonight is a stand-in's: the scripted fake answered every call.
   What Nano makes of a real paragraph, a note or a red is unknown until it runs live (decision 94).
 
+- The opening rests on the environment, as `GRAPHENE_AS` does. An agent that exports
+  `GRAPHENE_AGENT_LIVE_USD` itself passes for the person who opened the session. The night's ledger is
+  a file of your user: any process of that user can edit it, and its cap binds only Graphene's own
+  calls (decisions 101 and 102).
+- Spending on the real service is refused to a process that carries a vendor's agent mark without the
+  opening; an agent that strips its own marks first passes for you. The free model list and ConTree's
+  whoami (a read) are still asked from an agent's shell (decision 103).
+- The keychain guard in the tests cannot reach a child process that runs the real keychain tool by
+  absolute path or builds its own PATH, nor Docker's own credential helper when a test pulls an image
+  (decision 110).
+- The hook refuses an agent's write tools into `.graphene/`, the direction's file among them. A shell
+  command that writes there with no plan in force and plan first off is not refused; git shows the
+  change. An agent in a worktree that proposes a direction node writes into the main checkout's file,
+  and a plan is known by its goal's words, so rewording the goal unhangs it (decisions 112 and 116).
+- The hook's budget is held on its CPU time. What the agent waits for is the wall clock, which under
+  heavy load is mostly the scheduler's (decision 111).
+
+- A parallel run killed outright (kill -9, Force Quit) leaves its finished leaves reading done until
+  the next `graphene run` commits them on their branches and parks them in review (decision 131).
+- A check's session, and each command the Nemotron executor runs, is ended when it returns; a process
+  that calls `setsid` itself escapes that, and a Nemotron command can no longer leave a server running
+  for the next one (decision 131).
+- An agent's note (not a planner's) waits for your key; a planner's note is taken at accept as written,
+  so a planner can put words in an executor's contract that you only see on the board (decision 131).
+
 ## What comes next, in the order I would do it
 
 1. You run the test (`docs/test/PROTOCOL.md`, ten minutes) on a task of your own. Everything below
@@ -1352,6 +1721,17 @@ as written and the change is named here.
 4. The shaping study with Nemotron as the planner: whether Ultra puts up questions worth a key press.
 5. The prototypes live: cover, note and precheck against Token Factory, each measured as
    `docs/process/ideas.md` says, by 20 October.
+
+## What comes next, from 29 September
+
+1. Your repository's `core.bare` back to false (`morning.md`, the brief), then Sandboxes access for
+   the project, then `docs/test/practice.sh 5, 3, 4, 7` and `prototypes` from a session you start with
+   `GRAPHENE_AGENT_LIVE_USD` set, or your own terminal: every live claim waits on these.
+2. The three pieces the registered runs need first (decision 128): the fixed trees, the frozen
+   configuration, and arm B's brief on Nemotron. Then `docs/test/LIVE_SESSION.md`, in order, with you.
+3. The board on the screen: study 4 measured the command line; `auto` is set by it, and a study of the
+   screen (`graphene watch`) would say whether the board earns more there.
+4. The direction on real sessions: tonight's study used one fixture its author wrote.
 
 ## How this file is used
 

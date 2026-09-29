@@ -5,7 +5,8 @@
     docs/test/shape_only.py fork TASK ARM       a copy of it, once proposed, for one arm to shape
     docs/test/shape_only.py brief TASK ARM      the stand-in's brief for that copy
 
-ARM is `outline` or `board` (results-2026-09-28-shaping.md, "Study 2"). `setup` makes
+ARM is `outline` or `board` (results-2026-09-28-shaping.md, "Study 2"); SHAPE_STUDY=4 gives the board
+arm study 4's text (results-2026-09-29-board.md). `setup` makes
 $SHAPE_RUNS/TASK-shape-planned (default ~/graphene-shaping-runs) in newrun.sh's layout (repo/, base.sha,
 runlog.jsonl, tmp/, env.sh) and prints that path; the coordinator then runs `graphene ask` in its
 repo/, once. `fork` copies the whole directory to TASK-shape-ARM-1, so both arms start from the same
@@ -69,6 +70,31 @@ ARMS = {
   3. Read the tree as a graph: `seen as_me graphene plan --view auto` (a proposal is marked).
   4. {PRUNE}""",
 }
+
+# Study 4 (results-2026-09-29-board.md): the board shows only what is open, and accepting the plan takes
+# every default left, as the person, so the board arm answers only what it would change. The outline
+# arm is study 2's, byte for byte. SHAPE_STUDY=4 selects it; unset, 2 or 3, the briefs are study 2's.
+STUDY = os.environ.get("SHAPE_STUDY", "2")
+STUDY4 = {
+    **ARMS,
+    "board": f"""There is a plan, and it is a tree: the root is what you want, its children are
+  how it will be done, the leaves are work an agent does. Before the tree there is a board: the
+  planner's questions, each with the answer it would assume if you said nothing, its options where
+  it sees more than one way, its assumptions, its risks, and what it would leave out.
+
+  1. Read the board: `seen as_me graphene board`.
+  2. Answer only the items whose default you would change, before you look at the tree, each with
+     one of these and nothing else:
+       did board "as_me graphene board pick <id> <n>"          its option n
+       did board "as_me graphene board drop <id>"              not wanted
+       did board "as_me graphene board park <id>"              not now
+       did board "as_me graphene board answer <id> '<words>'"  your own answer, in your words
+       did board "as_me graphene board note '<words>'"         a note of your own, on no item
+     Leave the others: accepting the plan takes their defaults, as you.
+  3. Read the tree as a graph: `seen as_me graphene plan --view auto` (a proposal is marked).
+  4. {PRUNE}""",
+}
+ARMS_OF = {"2": ARMS, "3": ARMS, "4": STUDY4}
 
 BRIEF = """You are the person who wants a change made to a small codebase. Earlier you wrote a
 paragraph saying what you want, from your card; both are at the bottom. A planner has read your
@@ -137,7 +163,7 @@ WHEN YOU WOULD PRESS R
 """
 
 
-def brief(task: str, arm: str, runs: Path = RUNS, tasks: Path = HERE / "tasks") -> str:
+def brief(task: str, arm: str, runs: Path = RUNS, tasks: Path = HERE / "tasks", study: str = STUDY) -> str:
     run = runs / f"{task}-shape-{arm}-1"
     return BRIEF.format(
         repo=run / "repo",
@@ -145,7 +171,7 @@ def brief(task: str, arm: str, runs: Path = RUNS, tasks: Path = HERE / "tasks") 
         tmp=run / "tmp",
         run=run,
         venv=BIN,
-        arm=ARMS[arm],
+        arm=ARMS_OF[study][arm],
         paragraph=(tasks / task / "paragraph.md").read_text(encoding="utf-8"),
         card=card(task, tasks),
     )
@@ -158,10 +184,17 @@ def bash(script: str, **env: str) -> None:
     subprocess.run(["bash", "-c", full], env={**os.environ, **env, "PATH": path}, check=True)
 
 
+# nothing a stand-in runs can reach Token Factory: the key the coordinator's shell may hold is not the
+# stand-in's, and the keychain is off, as in the tests (DIRECTION 96)
+NO_KEY = "\nunset NEBIUS_API_KEY NEBIUS_PROJECT_ID\nexport GRAPHENE_KEYCHAIN=off\n"
+
+
 def write_env(run: Path, bin_dir: Path = BIN) -> None:
     (run / "runlog.jsonl").write_text("")
     (run / "tmp").mkdir(exist_ok=True)
     bash(ENV_SH, DIR=str(run), BIN=str(bin_dir))
+    with open(run / "env.sh", "a", encoding="utf-8") as env:
+        env.write(NO_KEY)
 
 
 def setup(task: str, runs: Path = RUNS) -> Path:
@@ -194,7 +227,7 @@ def fork(task: str, arm: str, runs: Path = RUNS, bin_dir: Path = BIN) -> Path:
 
 def main(argv: list[str]) -> int:
     ok = len(argv) == 3 and argv[1] == "setup" or len(argv) == 4 and argv[1] in ("fork", "brief")
-    if not ok or (len(argv) == 4 and argv[3] not in ARMS):
+    if not ok or (len(argv) == 4 and argv[3] not in ARMS) or STUDY not in ARMS_OF:
         sys.stderr.write(__doc__)
         return 2
     try:

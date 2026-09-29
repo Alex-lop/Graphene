@@ -4,6 +4,7 @@ gives it is a command a person could type."""
 from __future__ import annotations
 
 import json
+import shutil
 
 import typer
 from rich.cells import cell_len, chop_cells
@@ -18,27 +19,40 @@ EMPTY = (
     "the board is empty. The planner puts up what it would ask you (`graphene ask '…'`); "
     "you put up notes (`graphene board note '…'`)"
 )
-WIDE = 80  # the print is laid out to 80 columns, as `graphene plan`'s is
+WIDE = 80  # the print is laid out to the terminal's width, 80 columns when it has none
 ACTS = "graphene board take|drop|park|unpark ID · pick ID N · answer ID TEXT · note TEXT"
+LEFT = "left open, an item takes its default when you accept the plan"
+FOLDED = ("settled", "dropped")  # what the short print counts and `--all` lists
 
 
-def rows(store) -> list[str]:
+def rows(store, everything: bool = False) -> list[str]:
     """The board as `graphene board` prints it: each group under its name, an item in the row
     grammar (glyph, words, id, the word its state reads as); what is open with its default and its
-    options, what is settled in one line; last, the commands that answer."""
+    options; last, the commands that answer. Only what answering needs: what is settled or dropped
+    is counted in the first line, not listed, and no `then:` line is printed (``everything``, `--all`,
+    lists them all, each settled item in one line)."""
     shown = B.groups(store)  # dropped too, last: gone from what executors are told, not from sight
     if all(name == "dropped" for name, _ in shown):  # nothing but what was dropped reads as empty
         return [EMPTY]
     count = {name: len(group) for name, group in shown}
-    opened = sum(n for name, n in count.items() if name not in ("parked", "settled", "dropped"))
-    head = [f"{opened} open"] + [f"{count[k]} {k}" for k in ("parked", "settled", "dropped") if k in count]
+    opened = sum(n for name, n in count.items() if name not in ("parked", *FOLDED))
+    said = {k: f"{count[k]} {k}" for k in ("parked", *FOLDED) if k in count}
+    repo = sum(1 for it in B.items(store) if it.get("from") and B.told(it))
+    if repo and "settled" in said:
+        said["settled"] += f" ({repo} from the repo)"
+    head = ([f"{opened} open"] if opened else []) + list(said.values())  # never "0 open"
     out = [f"the board: {', '.join(head)}"]
+    if not everything:
+        shown = [(name, group) for name, group in shown if name not in FOLDED]
+        if not shown:  # nothing waits on the person: the one line, and where the rest is
+            return [f"{out[0]}; nothing waits on you (`graphene board --all` lists them)"]
     listed = [it for _, group in shown for it in group]
     # one row grammar, as `graphene plan` prints a node: glyph and words, id, state word. The id and the
     # state are whole (an id is what a command takes); the words take what is left of 80 columns, and
     # wrap under the row rather than being cut
     wid, ww = max(len(it["id"]) for it in listed), max(len(B.reads(it)) for it in listed)
-    wt = min(48, max(cell_len(_words(it)) for it in listed) + 4, WIDE - 4 - wid - ww)
+    # the words keep 12 columns however long the id: the row runs past a narrow terminal rather than lose them
+    wt = max(16, min(max(cell_len(_words(it)) for it in listed) + 4, _wide() - 4 - wid - ww))
     for name, group in shown:
         out.append(name)
         for item in group:
@@ -50,19 +64,23 @@ def rows(store) -> list[str]:
                 continue
             if name == "settled":
                 out += _hang("      → ", item["answer"]) if item.get("answer") else []
+                out += [f"      from the repo: {item['from']}"] if item.get("from") else []
                 out += [ln for line in item["became"] for ln in _hang("      ", _became(line))]
                 continue
-            if item["default"] or item["then"]:
-                out += [*_hang("      default: ", item["default"] or ""), *_then(item["then"])]
+            effects = _then if everything else lambda _: []
+            if item["default"] or (item["then"] and everything):
+                out += [*_hang("      default: ", item["default"] or ""), *effects(item["then"])]
             for k, option in enumerate(item["options"], 1):
-                out += [*_hang(f"      {k}: ", option["text"]), *_then(option["then"])]
+                out += [*_hang(f"      {k}: ", option["text"]), *effects(option["then"])]
             out += [f"      about {item['about']}"] if item.get("about") else []
-    return [*out, ACTS]
+    left = not everything and any(B.has_default(it) for it in listed)
+    return [*out, ACTS, *([LEFT] if left else [])]
 
 
 def _words(item: dict) -> str:
     """An item's words as its row shows them: an agent's note says whose it is."""
-    return item["text"] + (f" · {item['by']}'s" if item["agent"] and item["kind"] == "note" else "")
+    # one word, so a wrap never splits it; the planner is named by its script (run.label), never python3
+    return item["text"] + (f" ({item['by']}'s)" if item["agent"] and item["kind"] == "note" else "")
 
 
 def _wrap(text: str, wide: int) -> list[str]:
@@ -80,9 +98,14 @@ def _wrap(text: str, wide: int) -> list[str]:
 
 
 def _hang(head: str, text: str) -> list[str]:
-    """``head`` and ``text`` wrapped to 80 columns, each line after the first under the text's start."""
-    first, *rest = _wrap(text, WIDE - len(head))
+    """``head`` and ``text`` wrapped to the terminal, each line after the first under the text's start."""
+    first, *rest = _wrap(text, _wide() - len(head))
     return [f"{head}{first}".rstrip(), *(" " * len(head) + line for line in rest)]
+
+
+def _wide() -> int:
+    """The terminal's columns (COLUMNS, else the terminal, else 80), and never fewer than 40."""
+    return max(40, shutil.get_terminal_size((WIDE, 24)).columns)
 
 
 def _became(line: str) -> str:
@@ -114,8 +137,9 @@ def register(cli: typer.Typer, root, open_store, fail) -> None:
                 fail(str(no), 1)
             # a condition is a read-only glob as a setting is: name the leaves it now covers, as config does
             covered = S.broken(store, files) if item["state"] in B.DECIDED and item.get("conditions") else []
-        answer = f" → {item['answer']}" if item.get("answer") else ""
-        out(f"{B.reads(item)} {item['id']}: {item['text']}{answer}")
+        # one short line: the person just read the item, and chose the answer
+        said = f": option {item['option']}" if item["state"] == "picked" else ""
+        out(f"{B.reads(item)} {item['id']}{said}")
         for line in item["became"] if item["state"] in B.DECIDED else []:
             out(f"  {_became(line)}")
         if item["state"] == "answered" and item.get("then"):  # words carry no `then:`, a default does
@@ -125,15 +149,19 @@ def register(cli: typer.Typer, root, open_store, fail) -> None:
             out(line)
         for line in B.lifted(item):
             out(f"  {line}")
-        typer.echo(f"  (the plan of {P.where(root())})", err=True)
+        if line := P.where_said(root()):
+            typer.echo(line, err=True)
 
     @board_cli.callback()
     def show(
         ctx: typer.Context,
         as_json: bool = typer.Option(False, "--json", help="Every item, in the order shown, as JSON."),
+        everything: bool = typer.Option(
+            False, "--all", help="List what is settled and dropped too, and every option's `then:` lines."
+        ),
     ) -> None:
-        """The board: open questions first with their defaults, then assumptions, risks, what would be
-        left out and notes; what is parked; what is settled, one line each."""
+        """The board: open questions first with their defaults and options, then assumptions, risks,
+        what would be left out and notes, then what is parked; what is settled is counted."""
         if ctx.invoked_subcommand:
             return
         with open_store(root()) as store:
@@ -141,13 +169,28 @@ def register(cli: typer.Typer, root, open_store, fail) -> None:
                 items = [{**it, "reads": B.reads(it)} for _, group in B.groups(store) for it in group]
                 out(json.dumps({"items": items, "conditions": B.conditions(store)}, indent=2))
                 return
-            for line in rows(store):
+            for line in rows(store, everything):
                 out(line)
 
     @board_cli.command()
-    def take(item_id: str = typer.Argument(...)) -> None:
-        """Take the default: yes to a question's default, confirm an assumption, agree to a leave-out."""
-        act(f"board take {item_id}", lambda s, who, files: B.take(s, item_id, who, files))
+    def take(item_id: str = typer.Argument(None, help="None: every open item that has a default.")) -> None:
+        """Take the default: yes to a question's default, confirm an assumption, agree to a leave-out.
+        With no id, every open item that has a default takes it, in one act, except a default that
+        drops a node, which waits for its id."""
+        if item_id:
+            return act(f"board take {item_id}", lambda s, who, files: B.take(s, item_id, who, files))
+        who, files = P.caller(), P.tracked(root())
+        with open_store(root()) as store:
+            try:
+                if not who.person:
+                    raise P.Refused(f"answering the board is the person's, not {who.name}'s")
+                with P.undoable(store, who, "board take"):
+                    taken = B.defaults(store, who, files)
+                kept = B.left(store)  # a default that drops a node waits for the person's key
+            except P.Refused as no:
+                fail(str(no), 1)
+        out(B.took(taken, kept) or "nothing open on the board has a default to take")
+        typer.echo(f"  (the plan of {P.where(root())})", err=True)
 
     @board_cli.command()
     def pick(item_id: str = typer.Argument(...), option: int = typer.Argument(..., help="From 1.")) -> None:
@@ -167,7 +210,8 @@ def register(cli: typer.Typer, root, open_store, fail) -> None:
 
     @board_cli.command()
     def unpark(item_id: str = typer.Argument(...)) -> None:
-        """Unpark it: it is open again, waiting on you."""
+        """Unpark it: it is open again, waiting on you. An item the repository answered (`graphene board
+        lookup`) opens again the same way; what its answer changed in the tree stays."""
         act(f"board unpark {item_id}", lambda s, who, files: B.unpark(s, item_id, who))
 
     @board_cli.command()
@@ -176,11 +220,25 @@ def register(cli: typer.Typer, root, open_store, fail) -> None:
         act(f"board answer {item_id}", lambda s, who, files: B.answer(s, item_id, " ".join(words), who))
 
     @board_cli.command()
+    def lookup() -> None:
+        """Ask Nano which open questions the repository already answers, and settle each whose answer
+        is in a file as quoted, marked "from the repo" (unpark opens it again). It spends: one call.
+        GRAPHENE_SHAPE=lookup runs it after each `graphene ask`."""
+        from . import lookup as L  # here, not above: it loads the model's client only when asked
+
+        with open_store(root()) as store:
+            try:  # not one undoable act: the model is never asked under the plan's write lock
+                L.lookup(store, root(), out)
+            except P.Refused as no:
+                fail(str(no), 1)
+
+    @board_cli.command()
     def note(
         words: list[str] = typer.Argument(...),
         about: str = typer.Option(None, "--about", help="The node it is about; none is the whole plan."),
     ) -> None:
-        """Put up a note. Yours is told to the executors as written; an agent's waits for you. With
+        """Put up a note. Yours is told to the executors as written; an agent's waits for you, and
+        accepting the whole plan (or R) takes it, told as written. With
         GRAPHENE_SHAPE=note, a model then finds the leaf it constrains, and the change is put up as an
         item whose default, taken, makes it."""
         act("board note", lambda s, who, files: B.note(s, " ".join(words), who, about))

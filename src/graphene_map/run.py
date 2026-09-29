@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import contextlib
 import os
+import re
 import shlex
 import shutil
 import signal
@@ -33,6 +34,7 @@ from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from pathlib import Path
 
 from . import board as B
+from . import night
 from . import plan as P
 
 # An executor may edit files and run `graphene node …` and `graphene plan …` (its done, its release, a
@@ -45,24 +47,42 @@ ATTEMPTS = 3
 CODEX = "codex exec --sandbox workspace-write"
 
 
+def unchosen(who: str) -> P.Refused:
+    """Nothing chosen and nothing named: refused before anything starts, since what would start runs
+    with the person's permissions and spends their usage, and they never chose it."""
+    return P.Refused(
+        f"no {who} is chosen for this repo, so nothing was started: `graphene init` chooses one, or "
+        "`--with claude` (or `--with codex`, `--with nemotron`, a command) names one for this command"
+    )
+
+
 def named(spec: str | None) -> str:
     """What --with names, as the command to start: `nemotron [options]` is Graphene's own executor on
     Token Factory; `claude` and `codex` alone are those agents as Graphene starts them by default;
-    anything else is a command, as it is."""
+    anything else is a command, as it is. Nothing named is refused (`unchosen`)."""
     spec = (spec or "").strip()
-    word = spec.split(None, 1)[0] if spec else ""
-    if word == "nemotron":
+    if not spec:
+        raise unchosen("executor")
+    if spec.split(None, 1)[0] == "nemotron":
         from .executor import template
 
         return template(spec)
-    return {"": DEFAULT_WITH, "claude": DEFAULT_WITH, "codex": CODEX}.get(spec, spec)
+    return {"claude": DEFAULT_WITH, "codex": CODEX}.get(spec, spec)
 
 
-def label(template: str) -> str:
+INTERPRETER = re.compile(r"(python|node|bash|sh|zsh|ruby|perl|deno|bun)[\d.]*")
+
+
+def label(template: str, own: str = "graphene_map.executor") -> str:
     """Who the run's executor is, in the plan's log: `run:<this>`. The command's name, never where it
-    lives: the label is on the page an export publishes."""
+    lives: the label is on the page an export publishes. A script run by an interpreter is named by the
+    script (`python3 bin/executor.py` is `executor.py`); Graphene's own (``own``) is `nemotron`."""
     argv = shlex.split(template)
-    return "nemotron" if "graphene_map.executor" in argv else Path(argv[0]).name
+    if own in argv:
+        return "nemotron"
+    ran = INTERPRETER.fullmatch(Path(argv[0]).name)
+    script = [a for a in argv[1:] if not a.startswith("-")] if ran else []
+    return Path((script or argv)[0]).name
 WORKTREES = "worktrees"  # under .graphene/, which git ignores: the run's own, one a leaf
 POLL = 0.5  # seconds between looks at a running executor: the person may have released its leaf
 GRACE = 10  # seconds an executor is given to end after TERM, before KILL
@@ -159,7 +179,9 @@ def sweep(store, say: Callable[[str], None], root: Path | None = None) -> None:
     has just taken the leaf again has not written one yet. The dead run's executor, if it still
     works, is stopped first (TERM, then KILL, and waited for), and only while its pid still names
     the process that was started. The hand-back is not a person's: a live run's executor is not
-    stopped for it."""
+    stopped for it. A parallel run that died outright (kill -9, Force Quit) left its executors
+    working, and a leaf one of them finished is done in the run's worktree and nowhere here: it is
+    parked as a stopped run parks it (``park``), committed on its branch and waiting in review."""
     for n in P.nodes(store, (P.RUNNING,)):
         if not (n.executor or "").startswith("run:"):
             continue
@@ -176,10 +198,21 @@ def sweep(store, say: Callable[[str], None], root: Path | None = None) -> None:
             _end_group(pid, lambda p=pid: not _alive(p))
         try:
             P.release(store, n.id, P.Caller("graphene run", False, n.session_id),
-                      "the run that held it ended without finishing it")  # fmt: skip
+                      "the run that held it ended without finishing it", stopped=True)  # fmt: skip
         except P.Refused:
             continue  # handed back or finished meanwhile
         say(f"{n.id} was left running by a run that ended; handed back, and it is ready again")
+    for n in P.nodes(store, (P.DONE, P.REVIEW)):  # finished in a dead parallel run's worktree, never landed
+        tree = Path(n.checkout or "")
+        if P.RUN_TREE not in str(tree) + os.sep or not tree.is_dir():
+            continue
+        log = store.node_log(n.id, ("started", "attempt", "landed", "unlanded"))
+        since = log[max((k for k, e in enumerate(log) if e["kind"] == "started"), default=0) :]
+        if any(e["kind"] in ("landed", "unlanded") for e in since):
+            continue
+        run = next((e["detail"] for e in reversed(since) if e["kind"] == "attempt"), {})
+        if run.get("run_pid") and not _still(run["run_pid"], run.get("run_start")):
+            park(store, tree, n, say)
 
 
 def run_holding(root: Path) -> int | None:
@@ -343,6 +376,8 @@ def run_node(
                 say(f"{node.id} handed back by {who_said}: {last['detail'].get('why', current.state)}")
                 for _key, what, command in P.offers(store, current):
                     say(f"  {what}: `graphene {shlex.join(command)}`")
+                if P.not_offered(store, current):
+                    say(f"  {P.not_offered(store, current)}")
                 return None
             try:
                 return P.finish(store, node.id, who)
@@ -368,12 +403,12 @@ def run_node(
             if proc is not None:
                 _end(proc)  # its own session never saw the terminal's Ctrl-C: it is stopped here
             if P.get(store, node.id).state == P.RUNNING:
-                P.release(store, node.id, who, STOPPED)
+                P.release(store, node.id, who, STOPPED, stopped=True)
                 say(f"{node.id} handed back: the run was stopped")
         raise
 
 
-STOPPED = "the run was stopped (Ctrl-C) before this leaf was finished"
+STOPPED = "the run was stopped before this leaf was finished"  # by Ctrl-C, `:stop` or a closed terminal
 
 
 def summary(store, since: int, stopped: bool = False) -> str:
@@ -410,12 +445,13 @@ def summary(store, since: int, stopped: bool = False) -> str:
 
 @contextlib.contextmanager
 def _no_interrupt():
-    """Ctrl-C (and a hangup or a `kill`) held off while a stop is being cleaned up (main thread only;
-    elsewhere it cannot land)."""
+    """Ctrl-C (and Ctrl-\\, a hangup or a `kill`) held off while a stop is being cleaned up (main thread
+    only; elsewhere it cannot land)."""
     if threading.current_thread() is not threading.main_thread():
         yield
         return
-    was = {sig: signal.signal(sig, signal.SIG_IGN) for sig in (signal.SIGINT, signal.SIGHUP, signal.SIGTERM)}
+    held = (signal.SIGINT, signal.SIGHUP, signal.SIGTERM, signal.SIGQUIT)
+    was = {sig: signal.signal(sig, signal.SIG_IGN) for sig in held}
     try:
         yield
     finally:
@@ -429,6 +465,16 @@ def _splits(template: str) -> None:
             raise ValueError("it is empty")
     except ValueError as no:
         raise P.Refused(f"--with {template!r} cannot be read as a command: {no}") from None
+
+
+def _begins(template: str) -> None:
+    """A run of Graphene's own executor is one new live thing under the night's cap (``night.begin``): its
+    leaves go on under the cap once it has started, and it does not start past 80% of the cap."""
+    if label(template) == "nemotron":
+        try:
+            night.begin("the run")
+        except night.Refused as no:
+            raise P.Refused(str(no)) from None
 
 
 def leaves_of(store, ids: list[str] | None) -> list[str] | None:
@@ -502,6 +548,19 @@ def _seconds(stamp: str) -> float:
     return datetime.fromisoformat(stamp.replace("Z", "+00:00")).timestamp()
 
 
+def _came_back(store, only: list[str] | None, say: Callable[[str], None]) -> set[str]:
+    """The leaves that came back: they wait on the person, so a run not told which leaves to run
+    (``only``, `--node`, `r` on one) leaves them alone, and says how to run one again."""
+    if only:
+        return set()
+    back = [n.id for n in P.order(P.nodes(store, (P.OPEN,))) if P.came_back(store, n)]
+    if back:
+        one = len(back) == 1
+        say(f"{', '.join(back)} came back and wait{'s' if one else ''} on you: "
+            f"`graphene run --node {back[0]}` runs {'it' if one else 'one'} again")  # fmt: skip
+    return set(back)
+
+
 def _said_done(node: P.Node, say: Callable[[str], None]) -> None:
     say(f"{node.id} is {'done' if node.state == P.DONE else 'finished; it waits for a sign-off'}")
 
@@ -518,10 +577,11 @@ def run_plan(
 ) -> list[P.Node]:
     """Run every leaf an agent can reach, in order. Returns the ones that ended done (or in review)."""
     _splits(template)
+    _begins(template)
     sweep(store, say, store.path.parent.parent)  # the repo's root, where a parallel run's lock is
     only = leaves_of(store, only)
     finished: list[P.Node] = []
-    tried: set[str] = set()
+    tried: set[str] = _came_back(store, only, say)  # never tried: the person's to run again
     # The nodes that exist when the run starts are the run: a plan that grows while it is going (a
     # proposal accepted, or an executor adding nodes) does not make an unattended run unbounded.
     planned = {n.id for n in P.nodes(store) if n.state not in P.GONE}
@@ -713,6 +773,7 @@ def run_parallel(
     at a time, here, as they finish. A leaf never starts while something it needs has not landed, or
     while a leaf whose scope overlaps its own is in flight."""
     _splits(template)
+    _begins(template)
     if _git(target, "symbolic-ref", "-q", "HEAD", ok=True).returncode != 0:
         raise P.Refused(
             f"{target} is on no branch (a detached HEAD): leaves merged here would belong to no branch "
@@ -731,7 +792,7 @@ def _run_parallel(open_store, root, target, workers, template, attempts, only, s
     only = leaves_of(store, only)
     planned = {n.id for n in P.nodes(store) if n.state not in P.GONE}
     files = P.tracked(target)
-    tried: set[str] = set()
+    tried: set[str] = _came_back(store, only, say)  # never tried: the person's to run again
     flying: dict[Future, tuple[P.Node, Path]] = {}
     unlanded: set[str] = set()
     finished: list[P.Node] = []
