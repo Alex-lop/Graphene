@@ -42,14 +42,22 @@ First light (29 September).
   names a stand-in on every row it made.
 - The page shows the board, the standing conditions, each leaf's `decided:` lines and the direction, and
   answers nothing on the board.
-- The hook imports, queries and starts only what its event needs: recording a call went from about 50 to
-  20 to 25 ms of CPU on the author's machine. Its 60 ms budget is held on CPU time, so a loaded machine no
+- The hook imports, queries and starts only what its event needs: recording a call takes about half the
+  CPU it did (69 to 32 ms on the author's machine with other work running). Its 60 ms budget is held on CPU time, so a loaded machine no
   longer fails it.
 - `graphene key set`, `check` and `remove` refuse Claude Code and Codex. No test reaches the real keychain
   (`tests/keyguard.py`, here and in CI).
 - `docs/test/practice.sh night` prints the night's bill, and `practice.sh prototypes` practises cover, note
   and precheck under a $0.05 cap. `docs/demo/build.sh` films the demo run scene by scene and assembles
   `rough.mp4` only from a run recorded as live.
+- With no planner or executor chosen, `graphene ask`, `node split`, `talk` and `run` refuse in one line and
+  start nothing until `graphene init` or `--with` names one; they no longer start `claude` from the PATH.
+- A leaf that came back waits on the person: `R` and a plain `graphene run` leave it and say that
+  `graphene run --node ID` (`r` on the screen) runs it again. A leaf a run let go is ready again.
+- A came-back leaf is never offered a path another live leaf's scope has; it is offered to wait on that
+  leaf instead, and the pane says which paths were not offered and why.
+- Asking again finer or coarser (`+`, `-`) carries a board answer to the leaf the planner wrote again, and
+  says, with the command, any answer it cannot place.
 - Smaller: `:ask` keeps a paragraph's apostrophes; a planner or executor run by an interpreter is named by its
   script; a leaf's record reads its check before its finish.
 

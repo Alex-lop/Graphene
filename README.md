@@ -416,8 +416,8 @@ worktrees on your machine. `uv tool install graphene-map` installs the last rele
 which is the record only: no plan, no watch, no run. Then, once per repository, inside it, `graphene init`. That adds
 Graphene's hook to `.claude/settings.local.json` (yours, not the team's `settings.json`) and keeps
 the file out of `git add` through `.git/info/exclude`. The hook holds agents to the plan and keeps
-the record; the agent waits for it on each tool call, about 20 to 25 ms of CPU to record the call and
-30 to 35 ms to answer it on the author's machine (`tests/test_hook_budget.py` holds both under 60).
+the record; the agent waits for it on each tool call, up to about 30 ms of CPU to record the call and
+35 ms to answer it on the author's machine (`tests/test_hook_budget.py` holds both under 60).
 Graphene never edits your own `~/.claude/settings.json`.
 
 ## The record

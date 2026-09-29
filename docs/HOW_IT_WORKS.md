@@ -325,7 +325,10 @@ or none) and how many of its directories the ask names. From those it is given a
 1 to 3 under 2,000 lines, to 6 under 20,000, to 10 past that, with the named directories raising the
 floor. `finer` doubles the range and `coarser` halves it. `graphene ask … --finer` or `--coarser` sizes
 one ask whatever is saved, and drops the planner's proposals still waiting on the person, so there is
-one tree to prune, not two. `+` and `-` in `graphene watch` run that for the last sentence asked.
+one tree to prune, not two. A board answer about a dropped proposal goes to the same node of the new
+tree: its `about`, its `then:` lines and the scope, check or goal it gave move to the leaf the planner
+wrote again, and an answer with no certain match is said, with the command that puts it on a leaf.
+`+` and `-` in `graphene watch` run that for the last sentence asked.
 
 **The Token Factory key** (`keys.py`, `key_cli.py`) is found in `NEBIUS_API_KEY`, else the system
 keychain (`security` on macOS, `secret-tool` on Linux, service `graphene`, account `token-factory`),
@@ -473,8 +476,8 @@ only where the gate answers the shell (below).
 
 The deny applies in every permission mode, `bypassPermissions` included, and inside subagents (both
 checked with Graphene's own gate on a real session). The hook reads the node's row on every call,
-so tightening a scope binds the very next write. It takes about 20 to 25 ms of CPU to record an event
-and 30 to 35 ms to answer one (medians of twenty runs or more, measured with other work on the machine);
+so tightening a scope binds the very next write. It takes up to about 30 ms of CPU to record an event
+and 35 ms to answer one (medians of twenty runs or more, measured with other work on the machine);
 `tests/test_hook_budget.py` holds the median of twenty runs under 60 ms of CPU, the hook's and the git
 it starts, for recording, for refusing and for plan first, and prints the wall clock beside it. The
 gate is imported only for the events it can answer (`hooks.gated`): a session's start; every event of
@@ -496,8 +499,9 @@ Recording and deciding fail apart. If the gate crashes, the call goes through, t
 ## P4. `graphene run`
 
 For each node an agent can reach, in order: Graphene starts the node itself, runs the executor
-command you gave (`--with`, else the one `graphene init` chose (P4c), else `claude -p --permission-mode acceptEdits --allowedTools
-'Bash(graphene *)'`: it may edit and run its own `done` and `release`) with the node's contract as
+command you gave (`--with`, else the one `graphene init` chose (P4c); `--with claude` is `claude -p
+--permission-mode acceptEdits --allowedTools 'Bash(graphene *)'`: it may edit and run its own `done`
+and `release`; with neither, the run refuses in one line and starts nothing) with the node's contract as
 its last argument and `GRAPHENE_NODE` in its environment (and `GRAPHENE_EXECUTOR`, the command's
 name, so the executor's own `done` is logged as `run:<name>`, as the run's acts are), waits for the
 process to end,
@@ -529,7 +533,12 @@ the content was edited again before that commit. One node at a time, in the chec
 A leaf that comes back offers its fix (`plan.offers`), from what it tried to write outside its scope
 (`plan.wanted`: refused writes, a refused `done`, what it changed): `graphene node widen <id>`,
 `graphene node sibling <id>` (a leaf for those paths, which it then waits on), or making it wait on
-the nodes its reason names.
+the nodes its reason names. A path another live leaf's scope has is offered to no second writer: the
+leaf is offered to wait on that path's owner, or nothing when the owner waits on it, and the pane says
+which paths were not offered and why. A leaf that came back waits on the person: `R` and a plain
+`graphene run` leave it and say that `graphene run --node <id>` (`r` on the screen) runs it again. A
+leaf a run let go (Ctrl-C, `:stop`) or a dead run's sweep handed back is ready again, and
+the next plain run takes it.
 
 `graphene run --parallel N` runs up to N ready leaves at once. Each gets a worktree,
 `.graphene/worktrees/<id>` on branch `graphene/<id>`, cut from where your checkout stands at that
@@ -551,8 +560,10 @@ so the hooks hold a leaf there as they do in your checkout.
 ## P4a. `graphene ask`
 
 A planner is an executor whose scope is the plan (`ask.py`). It is started as `run` starts an
-executor, with the command the person names (`--with`, else the one `graphene init` chose, else `claude -p --tools Read,Grep,Glob
---strict-mcp-config`: it can read and nothing else, and none of the person's MCP servers reach it), `GRAPHENE_PLANNER` in its environment, and a prompt holding the sentence,
+executor, with the command the person names (`--with`, else the one `graphene init` chose; `--with
+claude` is `claude -p --tools Read,Grep,Glob --strict-mcp-config`: it can read and nothing else, and
+none of the person's MCP servers reach it; with neither, `ask`, `node split` and `talk` refuse in one
+line and start nothing), `GRAPHENE_PLANNER` in its environment, and a prompt holding the sentence,
 the plan's text and the rules for a leaf. What it prints is read as the plan's text (the last fenced
 block, or else from the first line that reads as one) and added as its proposals; a proposal
 Graphene cannot read goes back to it once, with the refusal. The hooks refuse it a write and
@@ -686,8 +697,9 @@ and asked again). Each says what it needs and whether it was found here (`found`
 else takes the one choice found when exactly one is, and otherwise the person types a number; one not
 found can still be typed. Without a terminal it takes `--planner` and `--executor` and changes only
 what they name; with neither it keeps what is set, gives what is not the one thing found when exactly
-one is, and with none or several found leaves it unset and says so in one line (with nothing set,
-`run` and `ask` start Claude Code, as they did before `init` chose).
+one is, and with none or several found leaves it unset and says so in one line. With nothing set,
+`run`, `ask`, `node split` and `talk` refuse in one line and start nothing until `graphene init` or
+`--with` names one.
 
 Nemotron, chosen at the terminal or as plain `nemotron` in a flag, is written with the ids Token
 Factory's model list gave: the largest of Ultra and Super plans (`nemotron --model <ultra>`), as the
@@ -879,7 +891,7 @@ Claude Code runs the command with the event JSON on stdin. The command writes on
 `.graphene/graphene.db` and exits 0 whatever happens; internal errors go to
 `.graphene/ingest.log`, and stdout carries nothing except the plan's answer when a plan is in
 force (P3), so a broken Graphene can never block the agent. It takes
-about 20 to 25 ms of CPU to record an event (a median of twenty runs, measured by `tests/test_hook_budget.py`,
+up to about 30 ms of CPU to record an event (a median of twenty runs, measured by `tests/test_hook_budget.py`,
 which holds it under 60 ms of CPU) because it imports only what the event needs on that path, starts
 no process unless a shell command's write is on its way to a refusal (`git check-ignore`), reads
 `SessionStart`'s HEAD from git's own files, and skips the interpreter's teardown; and if another
