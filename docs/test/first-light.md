@@ -73,9 +73,12 @@ Its CLI page says a key without the `list` permission "means sandboxes are disab
 (docs.tokenfactory.nebius.com/sandboxes/cli/commands/auth.md). contree.dev says: "Request access at
 tokenfactory.nebius.com/sandboxes/about". All three were read 2026-09-29.
 
-In a test run in this repository, ConTree also answered a made-up key and a made-up project with a
-403, not a 401. So a 403 alone cannot tell a key without the grant from a `NEBIUS_PROJECT_ID` that is
-not the key's project.
+One more 403 came from a harness slip, not from the ladder and not practice. At about 02:00 a first
+draft of a test in lane A placed its leaves in Sandboxes by mistake. The real ConTree was sent the
+scripted fake's key (`fake-key`) and a made-up project id, and it answered 403, not 401. No log of
+that run was kept. Its only record is the message of commit e5efb4f, and it has not been repeated on
+purpose. So a 403 alone may not tell a key without the grant from a `NEBIUS_PROJECT_ID` that is not
+the key's project.
 
 Graphene now says this once, in the same words, in `access.py`, on the ladder, for a leaf placed in a
 sandbox and in `plan precheck`: "Sandboxes refused this project (403): its key may not use them there,
