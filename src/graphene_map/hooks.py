@@ -330,6 +330,27 @@ def gated(store: Store, event: dict) -> bool:
     return name in ("PostToolUse", "Stop") and bool(store.node_count())
 
 
+def into_ours(event: dict, root: Path) -> str | None:
+    """The repo path under .graphene/ an agent's write tool would write, whatever the plan's state:
+    Graphene's own directory (its store, and the direction, which git tracks) is written by
+    `graphene` commands only, so an agent cannot accept its own proposal by editing the file. A
+    string test first: every other event costs one comparison."""
+    if event.get("hook_event_name") != "PreToolUse" or event.get("tool_name") not in FILE_TOOLS:
+        return None
+    tool_input = event.get("tool_input") if isinstance(event.get("tool_input"), dict) else {}
+    path = _text(tool_input.get("file_path") or tool_input.get("notebook_path"))
+    if path is None or ".graphene" not in path:
+        return None
+    full = os.path.normpath(
+        path if os.path.isabs(path) else os.path.join(_text(event.get("cwd")) or str(root), path)
+    )
+    base = worktree_root(os.path.dirname(full), root) or str(root)  # a worktree's copy is the repo's file
+    rel = os.path.relpath(full, base)
+    if rel.startswith(".."):  # spelled through a link (/var for /private/var): asked of the real paths
+        rel = os.path.relpath(_real(full), _real_dir(base))
+    return rel if rel.split(os.sep, 1)[0] == ".graphene" else None
+
+
 def _uuid4():
     from uuid import uuid4
 
@@ -356,7 +377,23 @@ def hook_main(stdin=None, cwd: Path | None = None, stdout=None) -> int:
             except Exception:
                 _log_error(root)
             answer = None
-            if gated(store, event):
+            ours = into_ours(event, root)
+            if ours is not None:
+                sid = event.get("session_id")
+                store.log_node(
+                    "*", now_iso(), "denied", None, sid, None, {"path": ours, "how": "graphene's own"}
+                )
+                answer = {
+                    "hookSpecificOutput": {
+                        "hookEventName": "PreToolUse",
+                        "permissionDecision": "deny",
+                        "permissionDecisionReason": (
+                            f"{ours} is the plan's own store; an agent writes it only through `graphene` "
+                            "(`graphene direction propose -` puts up a direction node, the person accepts it)"
+                        ),
+                    }
+                }
+            elif gated(store, event):
                 from . import gate
 
                 answer = gate.decide(store, event, root)
