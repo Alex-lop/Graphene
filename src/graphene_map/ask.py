@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import os
 import re
-import shlex
 import subprocess
 import uuid
 from collections.abc import Callable
@@ -25,6 +24,7 @@ from . import cover, precheck
 from . import plan as P
 from . import plan_text as T
 from .run import _splits, command_for
+from .run import label as run_label
 
 # Read-only: Claude Code's built-in tools cut to the three that read (`--tools`), and none of the MCP
 # servers the person has connected (`--strict-mcp-config` with no config: some of them send mail and
@@ -49,8 +49,7 @@ def named(spec: str | None) -> str:
 
 
 def label(template: str) -> str:
-    argv = shlex.split(template)
-    return "nemotron" if "graphene_map.planner" in argv else Path(argv[0]).name
+    return run_label(template, "graphene_map.planner")
 
 
 _FENCE = re.compile(r"^```[ \t]*(\w*)[ \t]*\n(.*?)^```[ \t]*$", re.MULTILINE | re.DOTALL)
