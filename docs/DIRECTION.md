@@ -1359,7 +1359,7 @@ any of them.
      ended. A fake under `tmp_path` is the one way a test gets a keychain. `graphene key set`, `check`
      and `remove` now refuse Claude Code and Codex as they refuse an executor. *Evidence:*
      `tests/test_keyguard.py::test_every_way_to_the_real_keychain_fails_its_test_and_a_fake_passes`
-     (it fails with the guard turned off), `tests/test_key_cli.py::test_an_agent_is_refused`.
+     (it fails with the guard turned off), `tests/test_key_cli.py::test_an_agent_is_refused`. CI's first run with the guard caught one test on Linux: precheck's test turned the keychain on and faked only `security`, so on a Linux machine with libsecret precheck's own lookup (the one that hides a keychain key from what it says) would have asked the developer's real keyring; it now fakes both tools on both platforms (`tests/test_precheck.py::test_an_accepted_check_runs_here_with_grapheness_keychain_lookup_off`).
 111. **The hook: its 60 ms budget is held on the CPU time it spends, and it spends about half what it
      did.** Where the time went: about 12 ms to start Python, 23 to 30 ms to import the hook (tempfile,
      subprocess, dataclasses and, in a repo left with plan first on, the gate and the plan on every
