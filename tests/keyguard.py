@@ -151,9 +151,12 @@ def pytest_sessionfinish(session: pytest.Session) -> None:
 
 
 # where git finds the repository, as `git bisect run`, a hook or `rebase --exec` export it: a test's git
-# would act on the repository running the suite (a task repo's commit landed there), so no test gets them
+# would act on the repository running the suite (a task repo's commit landed there), so no test gets them;
+# nor the settings given as `git -c`, which reach a hook and `rebase --exec` too (commit.gpgsign=true
+# failed every test repo's commit)
 GIT_LOCATION = ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR", "GIT_OBJECT_DIRECTORY",
-                "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_NAMESPACE", "GIT_PREFIX")  # fmt: skip
+                "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_NAMESPACE", "GIT_PREFIX",
+                "GIT_CONFIG_PARAMETERS", "GIT_CONFIG_COUNT")  # fmt: skip
 
 
 def no_git_location() -> None:
