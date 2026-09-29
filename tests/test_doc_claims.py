@@ -119,3 +119,18 @@ def test_the_submission_says_only_taken_picked_and_answered_items_reach_the_exec
     assert "Every answer reaches the executors'" not in said
     assert "a dropped or parked item is told to no one" in said
     assert "Each answer goes to that leaf's executor" not in doc("docs/demo/STORYBOARD.md")
+
+
+def test_first_lights_model_table_is_the_live_list_the_fixture_keeps():
+    """docs/test/first-light.md's NVIDIA models, roles and prices are the fixture's, which came from rung 1's
+    access.json (practice, 2026-09-29): the doc and the tests that use the list cannot drift apart."""
+    import json
+
+    live = json.loads((ROOT / "tests/fixtures/tokenfactory-models-2026-09-29.json").read_text())
+    role = {v: k for k, v in live["roles"].items()}
+    rows = re.findall(r"^\| `(nvidia/[^`]+)` \| (\w+) \| ([\d.]+) / ([\d.]+) \|$",
+                      (ROOT / "docs/test/first-light.md").read_text(encoding="utf-8"), re.M)  # fmt: skip
+    want = [(m["id"], role.get(m["id"], "none"), f"{m['pricing']['prompt'] * 1e6:.2f}",
+             f"{m['pricing']['completion'] * 1e6:.2f}") for m in live["data"]]  # fmt: skip
+    assert rows == want
+    assert "**Practice, not a registered result.**" in doc("docs/test/first-light.md")
