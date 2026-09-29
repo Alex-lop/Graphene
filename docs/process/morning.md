@@ -3,7 +3,7 @@
 ## The brief
 
 **Watch first**
-- No rough cut: its takes are live, and nothing live ran (below). The same cut on the stand-ins, REHEARSAL on every frame: `open ~/graphene-first-light/rehearsal.mp4` (2 min 26 s; subtitles: View > Subtitles).
+- No rough cut: its takes are live, and nothing live ran (below). The same cut on the stand-ins, REHEARSAL on every frame: `open ~/graphene-first-light/rehearsal.mp4` (2 min 26 s; subtitles: View > Subtitles). The real one: `docs/demo/build.sh`.
 
 **What ran live** — $0.0029 of $10, all yours (12 ledger rows: three access checks and one leaf)
 - Rung 1 PASS 01:14, rung 2 PASS 01:16: Graphene has made a runtime call to Token Factory. Sandboxes answered 403 (ForbiddenError).
@@ -11,10 +11,10 @@
 
 **New tonight**
 - An agent practises live only in a session you start with `GRAPHENE_AGENT_LIVE_USD` set, on one locked night's bill: `docs/test/practice.sh night`
-- The board asks only while a question is open, and accepting takes every default (`board: auto` by study 4): `graphene board`
+- The board asks only while a question is open; accepting takes the defaults you left, one that drops a leaf waits for you (`board: auto`, study 4): `graphene board`
 - The direction: Graphene's goals above its plans, sessions hung from them: `graphene direction` (`D` in watch)
 - A closed terminal now ends `watch`, `demo` and a run's executors and checks: `tests/test_teardown.py`
-- The video, filmed scene by scene and refused unless the run was live: `docs/demo/build.sh --rehearsal`
+- What waits on you live, in order, with commands, costs and times, on one screen: `docs/test/LIVE_SESSION.md`
 
 **Decide**
 - The branch has 110 commits; reshape it to about 40 before you merge (a force-push, backup branch first)? Default: yes, on your word.
@@ -24,7 +24,7 @@
 **Broken or risky**
 - Your checkout's repository was marked bare at 04:45 (a test run under my `git bisect run` inherited GIT_DIR; guarded since): `git status` fails there until you type `git -C ~/Desktop/AllThingsAgenticHackathon config core.bare false`. The classifier refused it to me. Nothing else in its config changed; your edits are as you left them.
 - Sandboxes refuse this project (403): rungs 3, 4, 6 and 7 wait; ask at tokenfactory.nebius.com/sandboxes/about.
-- Other harness slips, none spent or took your key off the machine: a fake key reached the real ConTree (403); shells that read `~/.zshenv` gave stand-ins your key (only the local stand-in saw it); Playwright files in your git-ignored `.playwright-mcp/`, removed; my integration worktree deleted at 03:04, cause unknown.
+- Other harness slips, none spent or took your key off the machine: a fake key reached the real ConTree (403); shells that read `~/.zshenv` gave stand-ins your key (only the local stand-in saw it); Playwright files in your git-ignored `.playwright-mcp/`, removed; my integration worktree deleted twice (03:04, 05:22), cause unknown, the branch intact.
 
 ---
 
@@ -64,7 +64,7 @@ Nothing live ran in this session. These are the commands for what the directive 
 
 ## What was decided
 
-`docs/DIRECTION.md` 101 to 127, each with its evidence. Read 101-103 (the opening, the night's bill,
+`docs/DIRECTION.md` 101 to 131, each with its evidence. Read 101-103 (the opening, the night's bill,
 spending as your act), 108 (the board's default, by study 4), 112-115 (the direction and its study)
 and 109 (the teardown) first.
 
@@ -107,6 +107,13 @@ and 109 (the teardown) first.
   `git -C ~/Desktop/AllThingsAgenticHackathon config core.bare false`, was refused to me by the
   classifier, so it is yours. The closing review's destructive-operations adversary found the same
   hazard independently (finding 34) and reproduced it in a throwaway clone.
+- At about 05:22 my second integration worktree was deleted as the first had been (all but part of
+  `src/`), just after a commit; the branch was intact, and I moved to a worktree whose local branch has
+  another name (`coord-integ`, pushed as `first-light`). The agents running then each said they
+  removed nothing outside their own worktrees; the cause is not known.
+- The stash list is shared by every worktree: two lanes' `git stash push`/`pop` swapped each other's
+  uncommitted work at about 05:25. Both put their own work back from patches; every commit was checked
+  to hold only its lane's files, and no agent used the stash after.
 - This session's classifier refused one stand-in's commands in study 4 (rerun under its rule, the
   failed run kept) and my own look at a process's environment (I did not pursue it).
 
