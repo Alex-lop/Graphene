@@ -226,6 +226,9 @@ def build():
     from .board_cli import register as board
 
     board(cli, root, open_store, fail)
+    from .direction_cli import register as direction
+
+    direction(cli, root, open_store, fail)
     from .talk import register as talk
 
     talk(cli, root, open_store, fail)
