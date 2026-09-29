@@ -144,14 +144,38 @@ Spawn a fresh sub-agent per run whose whole prompt is "Read $RUNS/$R.brief and d
 
 ### The table that will be reported
 
-Filled from `table`; empty until the runs exist.
+Run 03:25 to 03:27 on 29 September by the coordinator, from a checkout of `first-light` at
+`92804c3` (this file's registration is in it), twelve fresh sub-agents (claude-opus-5-5), each
+fixture built just before the runs started; all twelve at once. No run is void. Filled by `table`:
 
 | run | arm | person-s, MODELLED | typed | acts | words read | right (of 8) | false | answered |
 |---|---|---|---|---|---|---|---|---|
+| alex-direction-1 | direction | 109.1 | 45 | 3 | 385 | 8 | 0 | 3/3 |
+| alex-direction-2 | direction | 119.1 | 57 | 3 | 413 | 8 | 0 | 3/3 |
+| first-direction-1 | direction | 173.3 | 75 | 4 | 612 | 8 | 0 | 3/3 |
+| first-direction-2 | direction | 183.4 | 87 | 4 | 640 | 8 | 0 | 3/3 |
+| judge-direction-1 | direction | 168.6 | 78 | 4 | 589 | 8 | 0 | 3/3 |
+| judge-direction-2 | direction | 119.1 | 57 | 3 | 413 | 8 | 0 | 3/3 |
+| alex-morning-1 | morning | 107.1 | 43 | 2 | 385 | 8 | 0 | 3/3 |
+| alex-morning-2 | morning | 103.7 | 46 | 2 | 367 | 8 | 0 | 3/3 |
+| first-morning-1 | morning | 103.7 | 46 | 2 | 367 | 8 | 0 | 3/3 |
+| first-morning-2 | morning | 107.7 | 45 | 2 | 385 | 8 | 0 | 3/3 |
+| judge-morning-1 | morning | 107.7 | 45 | 2 | 385 | 8 | 0 | 3/3 |
+| judge-morning-2 | morning | 103.7 | 46 | 2 | 367 | 8 | 0 | 3/3 |
 
 | arm | n | median person-s | median words read | mean right (of 8) | mean false |
 |---|---|---|---|---|---|
-| direction | | | | | |
-| morning | | | | | |
+| direction | 6 | 143.85 | 501.0 | 8.00 | 0.00 |
+| morning | 6 | 105.4 | 376.0 | 8.00 | 0.00 |
 
-Under the tables goes one sentence on what they show, whatever it is.
+By the registered rule (8 items): no advantage shown for the direction.
+
+With the same state, every run in both arms answered all eight items right, and the direction's runs
+took more modelled person-seconds (median 143.9 against 105.4) and read more words (501 against 376),
+so no advantage is shown for the direction.
+
+*After the fact:* in all six direction runs the stand-in wrote that `graphene direction` counted
+what waits on the person ("you 4") but named only two of the four, so each ran `graphene plan` and
+then `graphene board` to find the other two ids; that second and third command is most of the
+difference. In the morning arm, four of six stand-ins said the brief left one session's state
+(idle 20 minutes) unsaid. Two direction stand-ins said the rows were cut at the default width.
