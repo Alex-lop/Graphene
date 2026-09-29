@@ -81,3 +81,60 @@ def test_without_credentials_it_says_so_before_the_sdk_sends_a_variable_name_as_
     monkeypatch.setenv("CONTREE_HOME", str(tmp_path))  # no saved profile
     with pytest.raises(RuntimeError, match="ConTree needs a key .* and NEBIUS_PROJECT_ID"):
         sandbox.Contree()
+
+
+REFUSED = ("Sandboxes refused this project (403): {}; request access at "
+           "tokenfactory.nebius.com/sandboxes/about")  # fmt: skip
+
+
+def test_a_project_sandboxes_refuse_is_said_with_what_its_key_lacks_and_what_to_do(monkeypatch):
+    """Rung 1 met it live (2026-09-29): ConTree answered 403 to the project. The SDK's own ForbiddenError,
+    from a stub (nothing is sent), becomes one refusal naming what the key lacks (whoami), and it is
+    Token Factory's kind of refusal, which every caller says as it is. Without whoami's grants, the project
+    id is the other suspect: ConTree answers a made-up key and project with a 403 too."""
+    from fake_faults import Forbidding
+
+    from graphene_map import tokenfactory as tf
+
+    monkeypatch.setattr(contree_sdk, "ContreeSync", Forbidding)
+    monkeypatch.setenv("NEBIUS_API_KEY", "k")
+    monkeypatch.setenv("NEBIUS_PROJECT_ID", "p")
+    with pytest.raises(sandbox.Refused) as no:
+        sandbox.Contree()
+    assert str(no.value) == REFUSED.format("its key lacks import, spawn there")
+    assert isinstance(no.value, tf.Unreachable)
+
+    class Blind(Forbidding):
+        def __init__(self, token=None):
+            super().__init__(token)
+            self.get_token_info = lambda refresh=False: 1 / 0
+
+    monkeypatch.setattr(contree_sdk, "ContreeSync", Blind)
+    with pytest.raises(sandbox.Refused) as no:
+        sandbox.Contree()
+    assert str(no.value) == REFUSED.format(sandbox.NO_GRANT)
+    assert "or NEBIUS_PROJECT_ID is not its project" in str(no.value)
+
+
+def test_an_operation_past_its_time_is_the_commands_exit_124_as_in_docker(monkeypatch):
+    """The SDK stops waiting at the time limit, cancels the operation and raises OperationTimedOutError:
+    that is the box's own time limit, which Docker says as exit 124 on the image it was given, and
+    Sandbox.run then brings nothing back (decision 73), instead of ending the leaf."""
+    import uuid
+
+    from contree_sdk.sdk.exceptions import OperationTimedOutError
+
+    class Image:
+        def run(self, **_):
+            return self
+
+        def wait(self):
+            raise OperationTimedOutError(operation_uuid=uuid.uuid4())
+
+    class Sdk:
+        images = type("Images", (), {"oci": lambda self, ref: Image(), "use": lambda self, ref: Image()})()
+
+    monkeypatch.setattr(contree_sdk, "ContreeSync", lambda: Sdk())
+    monkeypatch.setenv("NEBIUS_API_KEY", "k")
+    monkeypatch.setenv("NEBIUS_PROJECT_ID", "p")
+    assert sandbox.Contree().run("img-1", "sleep 999", {}, 5) == ("img-1", 124, sandbox.TIMED_OUT)

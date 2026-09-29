@@ -32,6 +32,7 @@ from pathlib import Path
 
 from . import gate, night
 from . import plan as P
+from . import tokenfactory as tf
 
 WORK = "/work"
 USER = "leaf"
@@ -176,6 +177,20 @@ def pack(root: Path, leave_out: list[str] | tuple = ()) -> Path:
     return Path(name)
 
 
+# ConTree's 403, as rung 1 met it live on 2026-09-29 (docs/test/first-light.md): what it means, and the way in
+# Nebius's own pages give (contree.dev and the Sandboxes docs, read 2026-09-29). ConTree answers a made-up key
+# and project with a 403 too, not a 401, so without whoami's grants the project id is the other suspect.
+FORBIDDEN = ("Sandboxes refused this project (403): {why}; request access at "
+             "tokenfactory.nebius.com/sandboxes/about")  # fmt: skip
+NO_GRANT = "its key may not use them there, or NEBIUS_PROJECT_ID is not its project"
+TIMED_OUT = "(the sandbox command ran out of time)"  # Docker's words for the same stop
+
+
+class Refused(tf.Unreachable):
+    """Sandboxes said no to this project: the message says what that means and what to do, whole, and
+    every caller that says Token Factory's refusals says it as it is (a leaf's reason, a precheck's)."""
+
+
 class Contree:
     """ConTree, through contree-sdk 0.3.6: an image per checkpoint, a run from any image, a file read
     from any image. The credentials are the SDK's own (NEBIUS_API_KEY and NEBIUS_PROJECT_ID, or the
@@ -196,7 +211,7 @@ class Contree:
         token = None if os.environ.get(keys.KEY) else keys.find()  # a keychain key the SDK cannot see
         self.sdk = ContreeSync(token=token) if token else ContreeSync()
         with self._counted("image"):
-            self.base = self.sdk.images.oci(image)
+            self.base = self._asked(lambda: self.sdk.images.oci(image))
         self.ops = 1
 
     @contextmanager
@@ -207,23 +222,43 @@ class Contree:
         finally:  # an operation that failed or was stopped ran all the same
             night.sandbox(op, time.monotonic() - began)
 
+    def _asked(self, call):
+        """One call to the SDK, its 403 said as ``Refused``, with what the key lacks when ConTree's whoami
+        says."""
+        from contree_sdk.sdk.exceptions import ForbiddenError
+
+        try:
+            return call()
+        except ForbiddenError:
+            try:  # a read of the key's grants, no operation: which of them this project does not give
+                lacks = sorted(k for k, v in self.sdk.get_token_info().permissions.items() if not v)
+            except Exception:  # noqa: BLE001 (the refusal is said either way)
+                lacks = []
+            why = f"its key lacks {', '.join(lacks)} there" if lacks else NO_GRANT
+            raise Refused(FORBIDDEN.format(why=why)) from None
+
     def start(self, tar: Path, script: str, timeout: float) -> tuple[str, int, str]:
-        return self._run(self.base, script, {"/tmp/graphene/repo.tar": str(tar)}, timeout)
+        return self._run(self.base, script, {"/tmp/graphene/repo.tar": str(tar)}, timeout, "")
 
     def run(self, image: str, script: str, files: dict[str, bytes], timeout: float) -> tuple[str, int, str]:
-        return self._run(self.sdk.images.use(image), script, files, timeout)
+        return self._run(self._asked(lambda: self.sdk.images.use(image)), script, files, timeout, image)
 
-    def _run(self, image, script: str, files: dict, timeout: float) -> tuple[str, int, str]:
+    def _run(self, image, script: str, files: dict, timeout: float, ref: str) -> tuple[str, int, str]:
+        from contree_sdk.sdk.exceptions import OperationTimedOutError
+
         self.ops += 1
         with self._counted("run"):
-            done = image.run(shell=script, files=files or None, timeout=timeout, disposable=False,
-                             truncate_output_at=OUTPUT).wait()  # fmt: skip
+            try:
+                done = self._asked(lambda: image.run(shell=script, files=files or None, timeout=timeout,
+                                                     disposable=False, truncate_output_at=OUTPUT).wait())
+            except OperationTimedOutError:
+                return ref, 124, TIMED_OUT
         return str(done.uuid), int(done.exit_code), (done.stdout or "") + (done.stderr or "")
 
     def read(self, image: str, path: str) -> bytes:
         self.ops += 1
         with self._counted("read"):
-            return self.sdk.images.use(image).read(path)
+            return self._asked(lambda: self.sdk.images.use(image).read(path))
 
 
 class Docker:
@@ -287,7 +322,7 @@ class Docker:
                 code = int(self._docker("inspect", "-f", "{{.State.ExitCode}}", box).stdout.decode().strip())
             except subprocess.TimeoutExpired:
                 self._docker("kill", box)
-                return image, 124, "(the sandbox command ran out of time)"
+                return image, 124, TIMED_OUT
             new = self._docker("commit", box).stdout.decode().strip()
             self.made.append(new)
             return new, code, (ran.stdout + ran.stderr).decode("utf-8", "replace")
@@ -498,6 +533,8 @@ class Sandbox:
         began = time.monotonic()
         try:
             image, code, output = self.box.run(self.image, "\n".join(lines), files, timeout + 60)
+        except Refused:  # said whole: running the leaf again would meet it again
+            raise
         except Exception as no:  # the service's own error, or a box gone mid-leaf: the leaf comes back
             raise RuntimeError(f"the sandbox stopped answering mid-leaf ({type(no).__name__}: {no}); nothing "
                                "of this command was brought back: run the leaf again") from no  # fmt: skip

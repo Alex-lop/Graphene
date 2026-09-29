@@ -1,0 +1,37 @@
+{
+ "data": [
+  {
+   "id": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B",
+   "pricing": {
+    "prompt": 6e-08,
+    "completion": 2.4e-07
+   }
+  },
+  {
+   "id": "nvidia/Nemotron-3_5-Lightning",
+   "pricing": {
+    "prompt": 6e-08,
+    "completion": 2.4e-07
+   }
+  },
+  {
+   "id": "nvidia/Nemotron-3-Ultra-550b-a55b",
+   "pricing": {
+    "prompt": 1e-06,
+    "completion": 3e-06
+   }
+  },
+  {
+   "id": "nvidia/nemotron-3-super-120b-a12b",
+   "pricing": {
+    "prompt": 3e-07,
+    "completion": 9e-07
+   }
+  }
+ ],
+ "roles": {
+  "ultra": "nvidia/Nemotron-3-Ultra-550b-a55b",
+  "super": "nvidia/nemotron-3-super-120b-a12b",
+  "nano": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B"
+ }
+}

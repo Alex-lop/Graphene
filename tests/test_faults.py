@@ -303,6 +303,32 @@ def test_a_docker_sandbox_killed_mid_leaf_comes_back_leaving_no_container(repo, 
         subprocess.run(["docker", "rmi", "-f", *images], capture_output=True) if images else None
 
 
+def test_a_project_sandboxes_refuse_brings_each_leaf_back_saying_what_it_means_and_what_to_do(
+    repo, fake, monkeypatch, tmp_path
+):
+    """Rung 1 met it live (2026-09-29): ConTree's 403 on the project. Through sandbox.Contree, from a stub
+    SDK raising its own ForbiddenError (nothing sent), each leaf placed in a sandbox comes back with the
+    refusal, what the key lacks, where access is asked for and how to run here instead; no model call is
+    made, no executor is left, and no log holds a traceback."""
+    pytest.importorskip("contree_sdk")
+    everywhere(monkeypatch, tmp_path, FAULTS_SDK="forbidden", NEBIUS_PROJECT_ID="project-fake")
+    monkeypatch.delenv("GRAPHENE_SANDBOX", raising=False)
+    f, said = run_two(repo, fake, call("run", command="uname -a"), SANDBOXED)
+    cause = ("the executor stopped: Sandboxes refused this project (403): its key lacks import, spawn there; "
+             "request access at tokenfactory.nebius.com/sandboxes/about; or run the leaves on this machine: "
+             "`graphene run --with nemotron`")  # fmt: skip
+    with Store.open(repo) as store:
+        whys = {n: store.node_log(n, ("released",))[-1]["detail"]["why"] for n in ("greet", "farewell")}
+        states = {n: plan.get(store, n).state for n in whys}
+        pids = [e["detail"]["pid"] for e in store.node_log(kinds=("attempt",))]
+    assert whys == {"greet": cause, "farewell": cause} and set(states.values()) == {plan.OPEN}, whys
+    assert " ".join(cause.split()) in pane(repo, "greet")
+    assert not f.requests  # refused before any model was asked: nothing spent
+    assert not [p for p in pids if _alive(p)]
+    logs = "".join(p.read_text() for p in (repo / ".graphene" / "runs").glob("*.txt"))
+    assert "Traceback" not in logs and "ForbiddenError" not in logs
+
+
 def test_a_command_the_box_stopped_for_time_says_so_and_brings_nothing_back(repo, monkeypatch, tmp_path):
     """The box's own time limit hands back the image it was given: its list of files was the last
     command's, and was read as this one's (exit 0)."""

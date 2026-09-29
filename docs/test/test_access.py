@@ -37,6 +37,33 @@ def test_it_names_the_ids_and_which_model_misfires(tmp_path, monkeypatch, capsys
     assert f.requests[0]["tools"][0]["function"]["name"] == "get_current_weather"
 
 
+def test_a_project_sandboxes_refuse_is_one_line_saying_what_to_do_and_token_factory_still_passes(
+    tmp_path, monkeypatch, capsys
+):
+    """What rung 1 met live (2026-09-29): Token Factory answered and Sandboxes refused the project. From a
+    stub SDK raising its own ForbiddenError (nothing sent to ConTree): the refusal is one line saying
+    what the key lacks and where access is asked for, the report marks it refused, and the check passes
+    on Token Factory's answers."""
+    contree_sdk = pytest.importorskip("contree_sdk")
+    from fake_faults import Forbidding
+
+    monkeypatch.setattr(contree_sdk, "ContreeSync", Forbidding)
+    monkeypatch.setenv("NEBIUS_PROJECT_ID", "project-fake")
+    monkeypatch.setenv("GRAPHENE_KEYCHAIN", "off")
+    with Fake([call("get_current_weather", city="Dallas", unit="fahrenheit")] * 3) as f:
+        for k, v in f.env().items():
+            monkeypatch.setenv(k, v)
+        tf._listed.cache_clear()
+        code = access.main(["--sandbox", "contree", "--out", str(tmp_path / "a.json")])
+    said = capsys.readouterr().out
+    assert code == 0
+    assert ("\n- Sandboxes refused this project (403): its key lacks import, spawn there; request access at "
+            "tokenfactory.nebius.com/sandboxes/about\n") in said  # fmt: skip
+    assert "ForbiddenError" not in said and "FAILED" not in said
+    box = json.loads((tmp_path / "a.json").read_text())["sandbox"]
+    assert box["ok"] is False and box["refused"] is True
+
+
 def test_the_docs_suite_never_reaches_the_real_keychain(monkeypatch):
     from graphene_map import keys
 
