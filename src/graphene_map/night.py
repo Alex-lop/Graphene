@@ -16,6 +16,11 @@ night, and the night has one cap: the lower of that figure and $10 (CEILING).
 - Every row says `practice: true`: nothing made under the opening enters a registered table
   (docs/test/evidence.py refuses it).
 
+Without the opening, spending on the real service stays the person's act: a process that carries a
+vendor's agent mark (MARKS, which Claude Code, Codex and the others export into their shells) is refused
+a Token Factory call to the real host and any ConTree sandbox before anything is sent (``person_only``).
+The scripted fake and Docker are stand-ins, and stay open to anyone.
+
 The ledger is ~/.graphene/night/<date>.jsonl, the date of the evening the night began (a night runs noon
 to noon, local time), or GRAPHENE_NIGHT_LEDGER. It is locked (flock) for each read and write, so
 parallel calls cannot pass the cap between them. It holds a model, a tag, tokens, dollars and seconds:
@@ -41,8 +46,31 @@ START = 0.8  # of the cap: past it, nothing new starts
 UNSAID = 32_768  # completion tokens a call that names no max_tokens may take: the most a planner raises it to
 
 
+# What a vendor's agent exports into its shell (plan.caller reads them); not Graphene's own GRAPHENE_NODE
+# or GRAPHENE_PLANNER, which a person's `graphene run` and `ask` give the executors and planners they start
+MARKS = ("CLAUDECODE", "CLAUDE_CODE_SESSION_ID", "CLAUDE_CODE_ENTRYPOINT", "CODEX_SESSION_ID",
+         "CODEX_SANDBOX", "AI_AGENT", "GEMINI_CLI", "CURSOR_AGENT")  # fmt: skip
+
+
 class Refused(RuntimeError):
-    """The night's cap, or its 80%, says no: nothing was sent, nothing was started."""
+    """The night's cap, or its 80%, or an agent's mark without the opening, says no: nothing was sent,
+    nothing was started."""
+
+
+def marked(env: dict | None = None) -> str | None:
+    """The first vendor's agent mark this process carries, if any."""
+    env = os.environ if env is None else env
+    return next((m for m in MARKS if env.get(m)), None)
+
+
+def person_only(what: str) -> None:
+    """Spending on the real service is the person's act: refused, before anything is sent, to a process that
+    carries an agent's mark while the opening is not set."""
+    mark = marked()
+    if mark and cap() is None:
+        raise Refused(f"refused: {what} spends on the person's key, and this process carries an agent's "
+                      f"mark ({mark}) with no {OPENING}: nothing was sent. An agent spends only when the "
+                      f"person started its session with {OPENING} set")  # fmt: skip
 
 
 def cap() -> float | None:

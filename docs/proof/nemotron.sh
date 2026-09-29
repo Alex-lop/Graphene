@@ -17,6 +17,13 @@ DIR=${1:-$HOME/graphene-nemotron}
 [ -e "$DIR" ] && { echo "$DIR exists already; name another directory, or delete it first" >&2; exit 1; }
 [ -n "${NEBIUS_API_KEY:-}" ] || { echo "NEBIUS_API_KEY is not set: Token Factory needs a key" >&2; exit 1; }
 command -v graphene >/dev/null || { echo "graphene is not on PATH" >&2; exit 1; }
+# spending is the person's: an agent's shell runs this on Token Factory only when the person opened it
+if [ -z "${GRAPHENE_TOKENFACTORY_URL:-}" ] && [ -z "${GRAPHENE_AGENT_LIVE_USD:-}" ]; then
+  for mark in CLAUDECODE CLAUDE_CODE_SESSION_ID CLAUDE_CODE_ENTRYPOINT CODEX_SESSION_ID CODEX_SANDBOX \
+              AI_AGENT GEMINI_CLI CURSOR_AGENT; do
+    [ -n "${!mark:-}" ] && { echo "refused: this spends on the person's key, and this shell carries an agent's mark ($mark) with no GRAPHENE_AGENT_LIVE_USD: nothing was sent" >&2; exit 1; }
+  done
+fi
 unset CLAUDECODE CLAUDE_CODE_SESSION_ID AI_AGENT GRAPHENE_AS   # the person runs this, not an agent
 step() { printf '\n\033[1m$ %s\033[0m\n' "$*"; "$@"; }
 case ${RECORD:-} in ''|/*) ;; *) RECORD=$PWD/$RECORD ;; esac   # from where this was started

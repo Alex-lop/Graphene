@@ -263,10 +263,12 @@ def access(r: Rung) -> str:
         typed = (f"! GRAPHENE_LEDGER={rel(LEDGER)} GRAPHENE_SPEND_CAP_USD={r.env['GRAPHENE_SPEND_CAP_USD']} "
                  f"uv run --frozen --extra sandbox python docs/test/access.py --out {rel(out)}")  # fmt: skip
         fresh = out.exists() and date.fromtimestamp(out.stat().st_mtime) == date.today()
-        if not fresh:
-            raise Refused(
-                f"yours to type: in this Claude Code session, type\n    {typed}\nthen `! {ME} 1` again"
-            )
+        if not fresh:  # a `!` line carries the session's marks: it spends only if the session was opened
+            opened = "" if night.cap() is not None else (
+                f"\n(it spends only in a session started with {night.OPENING} set; else run `{ME} 1` "
+                "in a terminal of your own)")  # fmt: skip
+            raise Refused(f"yours to type: in this Claude Code session, type\n    {typed}\n"
+                          f"then `! {ME} 1` again{opened}")  # fmt: skip
         say(f"  reading what you ran today: {out}")
     else:
         code, said = r.sh(args, ROOT, 900)

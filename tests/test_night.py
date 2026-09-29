@@ -236,3 +236,112 @@ def test_a_row_nobody_can_read_refuses_rather_than_lets_a_call_through(fake, ope
     with pytest.raises(tf.Spent, match="nothing was sent"):
         tf.chat(NANO, ASK, max_tokens=64)
     assert f.requests == []
+
+
+# -- spending is the person's: an agent's mark without the opening is refused the real service --------------
+
+
+@pytest.fixture
+def real(fake, monkeypatch):
+    """The fake, seen as Token Factory's real host by the rule production uses (``tf.endpoint``): it is
+    BASE, and GRAPHENE_TOKENFACTORY_URL is unset. The key stays the fake's."""
+    f = fake([{"content": "ok"}] * 4)
+    monkeypatch.setattr(tf, "BASE", f.url)
+    monkeypatch.delenv("GRAPHENE_TOKENFACTORY_URL")
+    assert tf.endpoint() == "token factory"
+    return f
+
+
+def test_the_rule_asks_for_a_vendors_mark_and_no_opening(monkeypatch):
+    for mark in night.MARKS:
+        monkeypatch.delenv(mark, raising=False)
+    night.person_only("a call")  # the person: no mark
+    monkeypatch.setenv("GRAPHENE_NODE", "leaf")  # a person's `graphene run` gives its executors this
+    monkeypatch.setenv("GRAPHENE_AS", "person:bench")
+    night.person_only("a call")
+    for mark in night.MARKS:
+        monkeypatch.setenv(mark, "1")
+        with pytest.raises(
+            night.Refused, match=rf"carries an agent's mark \({mark}\) with no GRAPHENE_AGENT_LIVE"
+        ):
+            night.person_only("a call")
+        monkeypatch.setenv(night.OPENING, "10")
+        night.person_only("a call")  # opened by the person
+        monkeypatch.delenv(night.OPENING)
+        monkeypatch.delenv(mark)
+
+
+def test_an_agents_call_to_the_real_host_is_refused_unsent_until_the_person_opens_it(real, monkeypatch):
+    monkeypatch.setenv("CLAUDECODE", "1")
+    with pytest.raises(tf.Spent) as no:
+        tf.chat(NANO, ASK, max_tokens=64)
+    said = str(no.value)
+    assert said.startswith(f"refused: a call to {NANO} spends on the person's key") and "\n" not in said
+    assert "(CLAUDECODE) with no GRAPHENE_AGENT_LIVE_USD: nothing was sent" in said
+    assert real.requests == [] and not Path(os.environ[night.LEDGER]).exists()
+    monkeypatch.setenv(night.OPENING, "10")  # the person's opening: the call goes, on the night's bill
+    tf.chat(NANO, ASK, max_tokens=64)
+    assert len(real.requests) == 1
+    assert [r["endpoint"] for r in rows(Path(os.environ[night.LEDGER])) if r["kind"] == "reserve"] == [
+        "token factory"
+    ]
+
+
+def test_a_person_and_the_fake_are_not_refused(real, monkeypatch):
+    for mark in night.MARKS:
+        monkeypatch.delenv(mark, raising=False)
+    tf.chat(NANO, ASK, max_tokens=64)  # the person, on the real host
+    monkeypatch.setenv("CLAUDECODE", "1")
+    with Fake([{"content": "ok"}]) as stand_in:  # the scripted fake, named as the tests name it
+        monkeypatch.setenv("GRAPHENE_TOKENFACTORY_URL", stand_in.url)
+        assert tf.endpoint() == "a stand-in"
+        tf.chat(NANO, ASK, max_tokens=64)
+        assert len(stand_in.requests) == 1
+    assert len(real.requests) == 1
+
+
+def test_an_agents_contree_sandbox_is_refused_before_the_sdk_is_made(monkeypatch):
+    made = []
+    monkeypatch.setitem(
+        sys.modules, "contree_sdk", types.SimpleNamespace(ContreeSync=lambda **kw: made.append(1))
+    )
+    monkeypatch.setenv("NEBIUS_API_KEY", "fake-key")
+    monkeypatch.setenv("NEBIUS_PROJECT_ID", "p")
+    for mark in night.MARKS:
+        monkeypatch.delenv(mark, raising=False)
+    monkeypatch.setenv("CODEX_SANDBOX", "seatbelt")
+    with pytest.raises(
+        night.Refused, match=r"a ConTree sandbox spends on the person's key.*\(CODEX_SANDBOX\)"
+    ):
+        sandbox.Contree()
+    assert made == [] and not Path(os.environ[night.LEDGER]).exists()
+
+
+def test_the_harnesses_that_strip_the_marks_ask_first(monkeypatch, tmp_path):
+    """bench.py and arm_bprime.py give their children an environment without the marks, as the person:
+    the rule is asked before, on the harness's own. nemotron.sh asks before it unsets them."""
+    sys.path.insert(0, str(Path(__file__).parents[1] / "docs" / "test"))
+    import bench
+
+    monkeypatch.delenv("GRAPHENE_TOKENFACTORY_URL", raising=False)
+    monkeypatch.setenv("CLAUDECODE", "1")
+    assert "refused: a run on Nemotron spends on the person's key" in bench.unopened(
+        "nemotron --placement sandbox"
+    )
+    assert bench.unopened("claude") is None  # Claude Code's own run: not Token Factory's
+    monkeypatch.setenv(night.OPENING, "10")
+    assert bench.unopened("nemotron") is None
+    monkeypatch.delenv(night.OPENING)
+    monkeypatch.setenv("GRAPHENE_TOKENFACTORY_URL", "http://127.0.0.1:9/v1/")  # a stand-in
+    assert bench.unopened("nemotron") is None
+    env = {k: v for k, v in os.environ.items() if k not in ("GRAPHENE_TOKENFACTORY_URL", night.OPENING)}
+    env |= {"NEBIUS_API_KEY": "fake-key", "PATH": f"{Path(sys.executable).parent}{os.pathsep}{env['PATH']}"}
+    script = Path(__file__).parents[1] / "docs" / "proof" / "nemotron.sh"
+    done = subprocess.run(
+        ["bash", str(script), str(tmp_path / "demo")], env=env, capture_output=True, text=True
+    )
+    assert (
+        done.returncode == 1
+        and "(CLAUDECODE) with no GRAPHENE_AGENT_LIVE_USD: nothing was sent" in done.stderr
+    )
+    assert not (tmp_path / "demo").exists()
