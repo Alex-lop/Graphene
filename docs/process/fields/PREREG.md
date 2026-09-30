@@ -61,7 +61,14 @@ A target or leaf counts as proven only if every layer passes, in this order, fro
 2. `#print axioms` of the target showing only `propext`, `Classical.choice` and `Quot.sound`;
 3. the kernel replay, `lake env leanchecker` (shipped with the toolchain since Lean v4.28.0);
 4. comparator against the challenge module the person approved, which holds the statements and every
-   definition they use, run under its Linux sandbox.
+   definition they use, run under its Linux sandbox;
+5. *(added before any run, 2026-09-30)* at least two external kernels besides Lean's own, through
+   comparator's external-kernel option: for example lean4lean and con-leche, which the Lean v4.35 toolchain
+   bundles. Why: Lean 4.33 and 4.34 fixed kernel soundness bugs, and nanoda, comparator's default external
+   kernel, had its own bug then and two wrong rejects in the Kernel Arena (`landscape.md` §4).
+6. *(added before any run, 2026-09-30)* SafeVerify against the same challenge. It is the one tool that
+   caught matcher-auxiliary shadowing in LeanParanoia's comparison (`landscape.md` §4). Where it cannot run
+   for memory, the row says so, and the target does not count as proven until it has.
 
 `spikes/lean/gate/` holds the gate as it was measured on 2026-09-30, and `spikes/redteam/` holds what it
 was attacked with.
@@ -113,6 +120,8 @@ For every run, one row:
   - Natural ones count once confirmed by adjudication: a Lean-fluent adjudicator who did not take part, or a
     proof of the negation.
   - The denominator is leaves sent.
+- **hand-backs** *(added before any run, 2026-09-30)*: every leaf handed back, with its reason and whether it
+  carries a witness the gate verifies (a proof of `¬ S_leaf`, or `False` from its hypotheses);
 - **restarts:** the number of times after the first leaf was sent that more than a third of the tree's leaves
   were replaced or dropped;
 - **the person's effort, counted:** statements read, board questions answered, edits made, sign-offs;
@@ -124,7 +133,10 @@ For question 4, the **write** and **review** conditions:
   proposal. A reader not fluent in Lean will usually use a general agent. They stop when they would sign it.
 - **review:** the reader reads Graphene's proposed statement with its aids (English beside it, the board's
   questions, the machine's flags, examples and non-examples) and approves or edits it.
-- Statements are assigned to the two conditions at random, 20 each per reader.
+- Statements are assigned to the two conditions at random, 20 each per reader. *(Added before any run,
+  2026-09-30.)* The 20 in the review condition are drawn from kill criterion 1's 40 unseeded statements.
+  The 20 in the write condition are a separate set, since one reader cannot both write and review the same
+  statement.
 - Every result is judged against a gold statement by the adjudicator, so a fast wrong answer is visible.
 
 ## Sample size (from `prereg_power.py`, standard library only; rerun with `python3 prereg_power.py`)
@@ -178,7 +190,7 @@ for 15 of 30. With eight seeds per kind, per-kind rates are anecdotes, and they 
 
 ## Kill criteria, registered before any result
 
-These are the directive's defaults. Two are made precise below. Each change is written here, with its
+These are the directive's defaults. Three are made precise below (kill criteria 1, 3 and 5; corrected from "Two" before any run). Each change is written here, with its
 reason, before any data exists.
 
 1. **The person's statement review.** Suppose the person adds fewer than 1 real catch per 10 statements
