@@ -263,3 +263,11 @@ Swap 19.3 GB used, disk 24 GB free, no Lean process running, at 03:15.
   the proof);
 - the peak swap rise is 2-5 GB (a guess); the watchdog stops the run at +6 GB or under 16 GB of disk;
 - 8-20 minutes of wall time (five or six Mathlib loads, one after another).
+
+Result P12 (03:17-03:25, `logs/gate-one-leaf.log`, `logs/gate-one-leaf-logs/`), with no other Lean
+process running when it started: (a) 23 s, the trusted build 144 s, (b) 79 s, (c) 69 s, (d) leanchecker
+63 s, all pass for EuclidModFour. In (e), SafeVerify had replayed the Spec module ("Found 1
+declarations") and was replaying the proof module when the watchdog stopped the run at +6.3 GB of swap
+(18.6 to 25.1 GB), after 500 s in all; disk never fell under 18.7 GB. No verdict from (e). My 2-5 GB
+guess was low; "all layers pass" is unknown for (e). Per the integrator's rule I ran no more of the
+gate.

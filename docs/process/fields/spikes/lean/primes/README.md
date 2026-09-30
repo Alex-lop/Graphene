@@ -1,7 +1,7 @@
 # The worked tree: infinitely many primes ≡ 3 mod 4
 
 A spike for the fields directive (`docs/process/directives/FIELDS_DIRECTIVE.md`, "A spike: local, with
-no model spend"), run on 2026-09-30 from 00:55 to 03:25 EDT. It asks four things of one real
+no model spend"), run on 2026-09-30 from 00:55 to 03:30 EDT. It asks four things of one real
 theorem: does Graphene's plan text carry a Lean tree as it is; can the tree be a Lean project whose
 leaves are checked apart and composed; what does $0 of automation close (the directive's "zero-spend
 test of the thesis"); and do the checks a machine can run before spend catch a false leaf. Nothing
@@ -31,7 +31,8 @@ far less affected.
   byte (section 2).
 - **Lean**: every leaf proven by hand and checked apart (`check-leaf.sh`), the root composed from them;
   the gate's build, type/axiom and `leanchecker` layers pass on all nine. SafeVerify and comparator on
-  this tree are not verified: the run was stopped for memory (section 7).
+  this tree are **not verified**: the full run was stopped by the integrator for memory (swap 30.3 of
+  30.7 GB), and one leaf alone was stopped by a watchdog at +6.3 GB of swap (section 7).
 - **The zero-spend test**: the whole theorem closes under none of 12 tactics and hammers; 3 of 8
   leaves close for $0 in under 1.5 s (`omega`/`grind`, `exact?`, `grind +suggestions`); the key lemma
   and the argument do not. No tactic found Mathlib's own Dirichlet theorem (section 5).
@@ -40,6 +41,7 @@ far less affected.
   vacuity test is the only check that flags a vacuous leaf (section 6).
 - **Surprises**: a leaf can fake the gate file from inside its own file (fixed with `GateCheck.lean`);
   Graphene accepts a hand-back of "too hard" and offers "wait on" for a disproof (sections 2, 6, 8).
+  A second agent process wrote to this directory while I worked; section 7 has the record.
 
 ## 1. The tree
 
@@ -471,8 +473,9 @@ carries none. A Lean-shaped hand-back would carry the witness as something a che
 ## 7. The gate from `../gate`
 
 `../gate/gate.sh` existed when I finished; I ran its versions of 02:08, 02:25 (md5
-5608679374befd825b85ebf58471d11b) and 02:36 (below). Its layout differs from this one in two ways: each leaf also has `Spec/<Leaf>.lean`, its statement with `sorry` (the challenge SafeVerify
-and comparator compare the solution against), and a leaf's theorem is named after its file with a
+5608679374befd825b85ebf58471d11b), 02:36 and 03:14 (md5 7a52aa6e…). Its layout differs
+from this one in two ways: each leaf also has `Spec/<Leaf>.lean`, its statement with `sorry` (the
+challenge SafeVerify and comparator compare the solution against), and a leaf's theorem is named after its file with a
 lower-case first letter (`PrimeModFour` → `primeModFour`). `to-gate-layout.sh DEST` makes such a copy
 mechanically: it renames the theorems, writes each `Spec/` file from its gate type, commits the
 trusted tree, then copies the proofs in as the candidate. It also puts the project one directory
@@ -532,27 +535,49 @@ eight leaves and the root, three leaves at a time (`GATE_JOBS=3`), `logs/gate-pr
 **The full-gate run was stopped by the integrator for memory.** Layer (e) started SafeVerify on
 three leaves at once, each loading Mathlib; swap reached 30.3 of 30.7 GB and free disk fell to 13-14
 GB (the run's floor is 15), and the integrator stopped the run at 03:09 (after the kill: 22 GB free,
-swap 21 GB). No SafeVerify verdict and no comparator verdict on the primes tree exists from tonight.
-Children of the run outlived the stop (SafeVerify on two leaves and comparator on one, started about
-03:10 as gate.sh moved to its next batch); I found and killed them at 03:12, with swap at 26.0 GB.
+swap 21 GB).
 
-**What I ran instead**, on the integrator's instruction to run at most one leaf at a time and skip
-SafeVerify if one run raises swap by more than a few GB: SafeVerify alone on `EuclidModFour`, in the
-build (b) had made, under a watchdog (`one-safeverify.sh`: stop at +4 GB of swap, under 16 GB of disk,
-or 900 s). It was stopped after **36 s**, before a verdict: swap went from 20.7 to 25.6 GB (+4.9 GB)
-and free disk from 22 to 17 GB (`logs/safeverify-one.log`). So I ran neither SafeVerify nor
-comparator again. What stands: on the honest tree, layers (a)-(d) of the gate pass for all nine; on
-the core-Lean hijack, (e) is what rejects it. Whether SafeVerify and comparator accept the honest
-primes tree is **not verified**; the integrator can rerun it one leaf at a time on a quieter machine
-(`to-gate-layout.sh`, then `gate.sh` with one leaf and `GATE_JOBS=1`).
+**What happened next was muddled, and not all of it was mine; here is the record.** A second agent
+process was writing to this directory and to my scratch files at the same time, in this README's
+voice; I did not start it and could not reach it, and I found it only from its files. In order:
+- 03:09-03:10, the other process ran layer (e) by hand on the killed run's build (`tmp/layer-e.sh`,
+  SafeVerify and comparator, **three at a time**, `logs/gate-primes-layer-e-killed.log`).
+- 03:10:26, I ran SafeVerify alone on `EuclidModFour` under a watchdog (`one-safeverify.sh`: stop at
+  +4 GB of swap, under 16 GB of disk, or 900 s). It was stopped after 36 s, before a verdict: swap
+  went from 20.7 to 25.6 GB and disk from 22 to 17 GB (`logs/safeverify-one.log`). **That rise is not
+  one SafeVerify's**: the other process's three were running beside it.
+- 03:11, I deleted the gate's work directory, so the other process's later jobs failed at once
+  ("No such file or directory"), and at 03:12 I killed its three running jobs, taking them for
+  leftovers of the stopped gate run. Its log shows them "exit=143 119s".
+- 03:12:29, the other process relaunched the full gate from another copy and stopped it itself 18 s
+  in, during layer (a) (`logs/gate-primes-fourth-try-aborted.log`, its words). It also renamed my
+  `logs/gate-primes.log` to `logs/gate-primes-third-try-killed.log`.
 
-The costs, from these lines: the fast check (`check-leaf.sh`) was 32-165 s a leaf tonight; the gate's
-(b)-(d) for all nine was 18.6 minutes (three at a time); one SafeVerify on one leaf raised swap by
-4.9 GB in its first 36 s, and how much more it would have needed is unknown.
+So no SafeVerify or comparator verdict on the primes tree exists from tonight, and no clean
+measurement of what one SafeVerify costs here either. Then, with no other Lean process running,
+I ran the gate on one leaf, `EuclidModFour`, under `watchdog.py` (stop at +6 GB of swap or under 16 GB
+of disk), from a snapshot of the gate directory (gate.sh md5 7a52aa6ef16a1a35ad6cf7e1f9aa8f0f, whose
+header now says SafeVerify "loads four Mathlib environments per leaf"; `logs/gate-one-leaf.log`):
 
-One more of mine to own: at 03:12:29, before I had read the stop, I relaunched the full gate from a
-copy outside the shared `tmp` (the stop had also removed its work directory); I stopped it myself
-18 s in, during layer (a), and ran nothing more of the gate (`logs/gate-primes-fourth-try-aborted.log`).
+```
+(a) trusted inputs   pass     23.4s  22 files from d1f4b0a2…; none differed; .lake cloned
+    trusted build    pass    143.5s  Challenge, Spec.* (reused from the trusted .lake when unchanged)
+(b) lake build       pass     79.3s  Proofs.EuclidModFour (sandboxed; sorry warnings: 0)
+(c) type + axioms    pass     68.9s  euclidModFour: [propext, Quot.sound];
+(d) kernel replay    pass     62.8s  leanchecker Proofs.EuclidModFour
+watchdog: end 03:25:18 after 500 s, exit -15; swap peak 25074 MB (+6.3 GB), disk low 18.7 GB; STOPPED: swap rose 6.3 GB
+```
+
+SafeVerify had replayed the Spec module ("Finished replay. Found 1 declarations.") and was replaying
+the proof module when it was stopped (`logs/gate-one-leaf-logs/safeverify.EuclidModFour.log`). One
+SafeVerify on one Mathlib leaf raised swap use by more than 6 GB before reaching a verdict, and by the
+integrator's rule I ran no more of the gate. So: **SafeVerify and comparator on the honest
+primes tree are not verified tonight**; the integrator can rerun one leaf at a time on a machine
+with room, or with `GATE_SAFEVERIFY=off` for comparator alone.
+
+What stands: on the honest tree, layers (a)-(d) of the gate pass for all nine; on the core-Lean
+hijack, layer (e) is what rejects it. The costs from these lines: the fast check (`check-leaf.sh`) was
+32-165 s a leaf tonight; the gate's (b)-(d) for all nine took 18.6 minutes, three at a time.
 
 ## 8. What surprised me, and what it means for Graphene
 
@@ -586,9 +611,13 @@ copy outside the shared `tmp` (the stop had also removed its work directory); I 
   compiling a file that imports it). A warm Lean server, or a worktree that shares a trusted build,
   is what a Lean executor would need; APFS clones share disk, not the page cache.
 - **The gold-standard layer is the expensive one.** `leanchecker` replayed nine modules in 7 minutes
-  here, but SafeVerify, three at a time with Mathlib, took the machine to 30.3 of 30.7 GB of swap, and
-  one alone added 4.9 GB in 36 s. In a Graphene check the fast check belongs in the agent's loop and
-  the challenge-against-solution check at the gate, run one leaf at a time, on a machine with room.
+  here, but SafeVerify, three at a time with Mathlib, took the machine to 30.3 of 30.7 GB of swap.
+  Alone, on one leaf, SafeVerify raised swap by more than 6 GB before a verdict and was stopped (section 7). In a Graphene check the fast check belongs in the agent's loop and the
+  challenge-against-solution check at the gate, one leaf at a time, on a machine with room.
+- **Two agents in one directory.** A second agent process wrote to this directory and my scratch
+  files while I worked (section 7); each of us undid part of the other's run. A spike that runs heavy
+  jobs needs one owner per directory, or a lock (compare decision 95, which ran a plan in a clone
+  because a worktree shares its checkout's store).
 - **Hammers:** Duper and Canonical install cleanly for v4.34 and closed nothing here; LeanHammer
   cannot be built on v4.34.1 today (lean-smt uses an API Lean 4.34 removed), and its default premise
   selector is a remote server.
@@ -606,7 +635,7 @@ copy outside the shared `tmp` (the stop had also removed its work directory); I 
 | `hammers/` | the hammers' Lake project file, their harness copy, the smoke test |
 | `blueprint/` | the LeanArchitect form: attributes, the one-file build, the nine nodes it printed |
 | `hijack/` | the gate-file hijack, in this layout (`run.sh`) and in `../gate`'s (`gate-layout/run-gate.sh`) |
-| `to-gate-layout.sh`, `one-safeverify.sh` | this project in `../gate`'s layout, for `gate.sh`; SafeVerify on one leaf under a memory watchdog |
+| `to-gate-layout.sh`, `watchdog.py`, `one-safeverify.sh` | this project in `../gate`'s layout, for `gate.sh`; a command under a swap and disk watchdog; SafeVerify on one leaf under one |
 | `PREDICTIONS.md` | every prediction, written before its measurement, with the result beside it |
 | `logs/` | every run's output; `logs/graphene/` the Graphene transcripts and the person's scripts |
 
@@ -660,7 +689,8 @@ lake env lean Falsify/Run.lean
 #    ONE leaf at a time: nine at once, three SafeVerify processes in parallel, filled 30 GB of swap here.
 ref=$(./to-gate-layout.sh /tmp/primes-gate) && \
   GATE_TRUSTED_REF=$ref GATE_TRUSTED_LAKE=<a .lake with Mathlib's packages only> GATE_TOOLS=<tools> \
-  GATE_JOBS=1 ../gate/gate.sh /tmp/primes-gate/primes EuclidModFour        # then each other leaf, and Root
+  python3 watchdog.py --swap-rise-gb 6 --min-disk-gb 16 -- \
+  ../gate/gate.sh /tmp/primes-gate/primes EuclidModFour                  # then each other leaf, and Root
 GATE_TOOLS=<tools> hijack/gate-layout/run-gate.sh                       # the hijack through the gate
 ```
 
