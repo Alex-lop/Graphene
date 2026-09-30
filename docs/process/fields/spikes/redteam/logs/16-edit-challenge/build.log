@@ -1,0 +1,6 @@
+✔ [2/4] Built Challenge (171ms)
+⚠ [4/4] Built Spec.Target (152ms)
+warning: Spec/Target.lean:2:8: declaration uses `sorry`
+Build completed successfully (4 jobs).
+✔ [3/3] Built Proofs.Target (155ms)
+Build completed successfully (3 jobs).

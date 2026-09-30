@@ -1,0 +1,14 @@
+Currently running on Lean v4.34.1
+Running SafeVerify on target file: .lake/build/lib/lean/Spec/Target.olean and submission file: .lake/build/lib/lean/Proofs/Target.olean.
+------------------
+Replaying .lake/build/lib/lean/Spec/Target.olean
+Finished setting up the environment.
+Finished replay. Found 1 declarations.
+------------------
+Replaying .lake/build/lib/lean/Proofs/Target.olean
+Finished setting up the environment.
+Finished replay. Found 2 declarations.
+------------------
+------------------
+------------------
+SafeVerify check passed.
