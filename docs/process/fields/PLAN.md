@@ -4,21 +4,21 @@
 
 ## Brief
 
-- **Mathematics: a pilot and a small build step, not a harness (§6).** For a formalization lead freezing
-  statements before AI runs; for a mathematician without Lean, only if review takes at most half the time of
-  writing (unmeasured). No tool found puts convention questions to the person before spend (§1, §3.5).
+- **Mathematics: plausible, unproven; a pilot and a build step, not a harness (§1, §6).** For a formalization
+  lead freezing statements before AI runs; for a mathematician without Lean, only if review takes at most half
+  the time of writing (unmeasured). No tool found puts convention questions to the person before spend (§3.5).
 - **Lean spike:** Graphene held the tree as written; $0 of automation closed 3 of 8 leaves, not the theorem; a
-  false leaf's counterexample, n = 5, took 0.14 s on a form bounded by hand (§3.4, §3.8). Of 21 red-team
-  cases, 15 fake a proof: some layer rejected each, no single layer all. Wrong statements pass every gate;
-  Graphene runs a leaf's check unsandboxed and accepts "too hard" as a hand-back (§3.3, §7).
-- **Biology: not now.** No computational biologist wanting pipeline sign-offs was found; Claude Science is
-  there first. The wild-type check flagged 17 of 6,227 ClinVar records numbered on another isoform (§4).
-- **Other fields:** numerical methods fits closest; verified software leads back to developers; a wet lab does
-  not fit now. Each but the developer needs a new person; none is proposed (§5).
-- **First step, November:** `PREREG.md`'s pilot, you reviewing about 50 statements on today's board, 8–17
-  hours over two weeks (a guess), a few dollars; then `LEAN_DIRECTIVE_DRAFT.md` on Linux; then the provers,
-  within the ledger's $10 a night (§8). Optional by 30 October: a replayed demo, $0 and half an hour of yours.
-- **You decide (§10):** an Aristotle key, the Linux host, the demo, which Lean lead to ask, the 2023 pipeline.
+  false leaf's n = 5 counterexample took 0.14 s in warm Lean, bounded by hand (§3.4, §3.8). Of 21 core-Lean
+  red-team cases, 15 try to fake a proof: a layer rejected each, none all. Proofs of wrong statements pass
+  every gate; Graphene runs a local leaf's check unsandboxed and takes "too hard" (§3.3, §7).
+- **Biology: not now.** No computational biologist has been asked about sign-offs; Claude Science comes close.
+  A wild-type check flagged 17 of 6,227 ClinVar records on another isoform, but only half of KRAS's (§4).
+- **Other fields:** software gains by lessons, not features (§7); numerical methods may fit best (inference);
+  a wet lab does not fit now; each but software needs a new person (§4.7, §5).
+- **First step, November:** `PREREG.md`'s pilot: you review ~50 statements and write 20, 8–17 h at experts'
+  pace (a guess; more for you), a few dollars; then `LEAN_DIRECTIVE_DRAFT.md` on Linux; then provers, the
+  ledger's $10 a night plus frontier calls (§8, §10). Optional: a $0 demo by 30 October.
+- **You decide (§10):** an Aristotle key, the arms' prover, the Linux host, the demo, the lead, the 2023 lab.
 
 ## 1. Who would use this, and why
 
@@ -505,11 +505,11 @@ an exploit found by the red team or discovered in a run."
 - **This plan's reading:** kill criterion 4 does not fire on tonight's evidence. That reads "exploit" as a
   faked proof of the approved statement, which the registered words did not say; `PREREG.md` was clarified
   to say so before any run (below). Alex can undo that.
-- **Before November's pilot:** whether the three holes and the Mathlib gap must be closed first is Alex's
+- **Before the pilot's prover side:** whether the three holes and the Mathlib gap must be closed first is Alex's
   decision (§10 question 6). The recommendation is yes, as milestone A of `LEAN_DIRECTIVE_DRAFT.md`, scheduled
   in §8 (November, item 2). Its done-test now adds the three holes to `run_all.sh` as cases and sets the bar
-  the evidence allows: 01–10, 12, 13, 16–19 and the new cases rejected; 11, 14 and 15's proof passing, with
-  15's write denied by the sandbox; 20 and 21 recorded as passing every Lean layer.
+  the evidence allows: 01–10, 12, 13, 16, 18, 19 and the new cases rejected; 14 passing; 11 recorded
+  (SafeVerify rejected it); 15 failing the sandboxed build; 20 and 21 recorded as passing every Lean layer.
 - **Registered:** `PREREG.md`'s kill criterion 4 now says, dated before any run, that an exploit is a faked
   proof of the approved statement, and that 20 and 21 are misstatements.
 
@@ -1380,10 +1380,10 @@ step before the prover's side; and look for the people the pilot needs.
    - **Time:** not estimated. A's first measurement, the gate's time per leaf on Linux, sets the rest.
    - **What Alex does:** answers question 6 (the cap, the Linux host, the tree after the primes tree) and
      question 2 (the executor); is present for D and for every live call.
-   - **What earns the prover's side:** on Linux, the hardened gate rejects every red-team case that fakes a
-     proof, with round two's open items added as cases, and passes the honest ones (`spikes/redteam/README.md`,
-     Review) and the primes tree; and D ends with every leaf proven or handed back with a witness the gate
-     verifies.
+   - **What earns the prover's side:** on Linux, milestone A's done-test holds: the hardened gate rejects
+     every red-team case that tries to fake a proof, with round two's open items added as cases, and passes
+     the primes tree (`LEAN_DIRECTIVE_DRAFT.md`, milestone A); and D ends with every leaf proven or handed
+     back with a witness the gate verifies.
 3. **The prover's side:**
    - 10 to 12 held-out targets, 30 to 36 target runs across the three arms, on the executor Alex chooses
      (question 2).
@@ -1496,7 +1496,7 @@ changes written there, each with its reason: K1, K3 and K5):
   Mathlib leaf was stopped before a verdict every time it ran. Three checks at once took free disk under
   15 GB twice (`spikes/lean/gate/cost.md`; `spikes/lean/primes/README.md` §7). Narrow imports should help
   (inferred, not measured end to end). Otherwise parallel leaves need a bigger machine.
-- **The kernel itself.** Lean 4.34.0 and 4.34.1 fixed kernel soundness bugs, and the #14576 postmortem
+- **The kernel itself.** Lean 4.34.0 and 4.34.1 fixed soundness bugs, and the #14576 postmortem
   records one surfaced by an AI-assisted proof (`landscape.md` §4).
   - nanoda, comparator's default external kernel, had a separate bug then, and it has 2 wrong rejects in
     the Kernel Arena (same section). So one external kernel is not enough.
@@ -1665,7 +1665,7 @@ This section is the run's own record, for Alex. The spikes' READMEs hold every c
 | a critic's review of the red team; round two (one of three holes tested; the other two, and making the tested one from inside a leaf, left open) | `spikes/redteam/` (Review), `spikes/redteam/round2/` | 04:00–04:15 |
 | round two's README written; the plan's sections rewritten and assembled; all committed with the red team's Review and `spikes/README.md` | commits `0fe4712`, `b40fa01`, `039a5d5` | 10:27–10:31 |
 | a second skeptical review of the whole plan (101 findings), each checked against its source before it was applied, by section | this file | 10:30–10:46 (findings), fixed by section by 11:00 |
-| the fixes that crossed files: the brief cut to fifteen lines; `PREREG.md` clarified before any run (kill criterion 4's "exploit", the arms' "cheapest tier first", a wrong Lean version); the Lean draft's milestone A given round two's three holes as cases and a bar the evidence allows; `landscape.md` rows; `reprice_near.py` prints the multi-run split it is cited for | this file, `PREREG.md`, `landscape.md`, `LEAN_DIRECTIVE_DRAFT.md`, `models/` | 11:00–11:15, committed with this file |
+| the fixes that crossed files: the brief cut to fifteen lines; `PREREG.md` clarified before any run (kill criterion 4's "exploit", the arms' "cheapest tier first", a wrong Lean version); the Lean draft's milestone A given round two's three holes as cases and a bar the evidence allows; `landscape.md` rows; `reprice_near.py` prints the multi-run split it is cited for | this file, `PREREG.md`, `landscape.md`, `LEAN_DIRECTIVE_DRAFT.md`, `models/` | 11:00–11:15 (`4559a17`); a check of the new brief and of those fixes (22 findings), applied by 11:30 |
 
 No model or prover was called by any spike, no key was read, no account was made, and nothing was spent.
 - The only network use was public: downloads of tools, Lean packages and public databases, and web reading.

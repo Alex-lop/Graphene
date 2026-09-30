@@ -32,7 +32,7 @@ arm A has an executor, it is the same one.
 | Arm | Who shapes the work | Who proves | The person's part |
 |---|---|---|---|
 | **A. End to end** | nobody visible: the executor decomposes on its own | the executor, given the target statement and its informal proof | none until the end |
-| **B. Machine tree** | a planner model proposes the tree (statements, definitions, needs); automated review and cheap falsification check it (below); what they flag is fixed by the planner or dropped, never by a person | the executor, leaf by leaf, cheapest tier first *(clarified before any run, 2026-09-30: the $0 automation baseline, then the executor; the cheap and frontier model tiers of kill criterion 5 run on the same leaves apart from the arms)* | none until the end |
+| **B. Machine tree** | a planner model proposes the tree (statements, definitions, needs); automated review and cheap falsification check it (below); what they flag is fixed by the planner or dropped, never by a person | the executor, leaf by leaf, cheapest tier first *(clarified before any run, 2026-09-30: the $0 automation baseline, then the executor; any tier of kill criterion 5 that is not the executor runs on the same leaves apart from the arms)* | none until the end |
 | **C. Person-shaped tree** | B's tree, **the same tree B started from**, then the person answers the board's questions and approves or edits each statement and definition in Graphene before any leaf is sent | as B | reads, answers, edits, signs off |
 
 - **Pairing.** C starts from the very tree B started from, so B against C isolates the person. A, B and C run
@@ -219,8 +219,8 @@ reason, before any data exists.
 4. **Faking the gate.** Suppose any exploit passes the whole gate above on a proof counted as proven, and no
    check command closes it. Then stop every evaluation run until one does.
    - This also applies to an exploit found by the red team or discovered in a run.
-   - *(Clarified before any run, 2026-09-30.)* An exploit here is a proof of the approved statement that
-     the gate should reject and does not. An honest proof of a statement that does not say what was meant
+   - *(Clarified before any run, 2026-09-30.)* An exploit here is a faked proof of the approved statement:
+     the gate should reject it and does not. An honest proof of a statement that does not say what was meant
      is a misstatement, counted under "misstatements that reached compute", not here. The red team's cases
      20 and 21 are of that kind (`spikes/redteam/README.md`).
 5. **Cheap models.** On the leaves automation could not close, suppose a cheap model costs more dollars per

@@ -73,7 +73,8 @@ check a leaf carries:
     proof of `1 = 2` that way.
   - `GateCheck` asks the environment instead.
 - **Decide by exit code, never by printed text.** A leaf's code may run when a checker imports it, and a
-  sandbox stops it writing, not printing (untested; `spikes/redteam/round2/README.md`). A module's stored
+  sandbox stops it writing, not printing (untested; `spikes/lean/gate/README.md`, "Limits";
+  `spikes/redteam/round2/README.md`). A module's stored
   axiom list, altered after compilation, fooled `#print axioms` in round two. The verdict comes from exit codes
   and from comparator's or SafeVerify's own walk over the proof.
 - **Take the trusted inputs from the approved commit** (`git show <ref>:path`), as layer (a) does. Keep the
@@ -102,9 +103,9 @@ check a leaf carries:
 - **Run the suite against the hardened gate.**
 
 **Done when**, on the Linux machine:
-- every case that fakes a proof is rejected: 01–10, 12, 13, 16–19 and the three new ones;
-- the honest cases pass: 11 and 14, and 15's proof, with 15's write denied by the sandbox; 17 is recorded as
-  it ran (its payload never took effect);
+- every case that tries to fake a proof is rejected: 01–10, 12, 13, 16, 18, 19 and the three new ones;
+- 14 passes; 11 and 17 are recorded as they ran (SafeVerify rejected 11's unused `unsafe def`; 17's payload
+  never took effect); 15's build fails once the sandbox denies its write;
 - 20 and 21 are recorded as passing every Lean layer: no gate closes a wrong statement;
 - the honest primes tree passes;
 - the brief gives each layer's time per leaf.

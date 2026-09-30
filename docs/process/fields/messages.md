@@ -39,10 +39,10 @@ objected to "drive-by proving".
 > would not run anything on your project without it.
 >
 > What I can show today is small. On a textbook tree (infinitely many primes that are 3 mod 4) I measured the
-> mechanics: automation closed 3 of its 8 leaves for nothing; a seeded false leaf's counterexample turned up
-> in under a second once its statement was bounded by hand; and of 21 attacks on the gate, run on core Lean
-> rather than Mathlib, each of the 15 that faked a proof was rejected by some layer, though no single layer
-> caught them all. The
+> mechanics: automation closed 3 of its 8 leaves for nothing; a seeded false leaf's counterexample took
+> under a second of warm Lean once its statement was bounded by hand; and of 21 attacks, run on core Lean
+> rather than Mathlib, each of the 15 that tried to fake a proof was rejected by some layer, Graphene's scope
+> included, though none caught all. The
 > results are here: [link to PR 36 or the spike README]. Nothing has been measured on a research blueprint
 > yet. That is what I'm asking to try.
 >
