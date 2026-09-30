@@ -31,15 +31,18 @@ objected to "drive-by proving".
 > What it would do: you pick a handful of open nodes whose statements and definitions you trust. They go
 > into a challenge module that no agent can touch. An existing prover (not ours) attempts each node
 > overnight, cheapest first. A proof counts only if it passes comparator against your statements, uses only
-> the three standard axioms, and replays in the kernel. Anything that fails comes back with a concrete reason:
-> a counterexample, a proof of the negation, or the hypotheses deriving False. Never "too hard".
+> the three standard axioms, and replays in the kernel. A node that fails comes back either with a proof,
+> checked by the same gate, that its statement is false or that its hypotheses cannot all hold, or marked
+> "budget exhausted, no defect found". Never just "too hard".
 >
 > What I'd ask of you: about an hour to pick the nodes and read what comes back, and your permission. I
 > would not run anything on your project without it.
 >
 > What I can show today is small. On a textbook tree (infinitely many primes that are 3 mod 4) I measured the
-> mechanics: [RED-TEAM SENTENCE: fill in from spikes/redteam/README.md before sending, e.g. "and attacked the
-> gate with the published exploit lists, which it rejected" only if that is what the red team found]. The
+> mechanics: automation closed 3 of its 8 leaves for nothing; a seeded false leaf's counterexample turned up
+> in under a second once its statement was bounded by hand; and of 21 attacks on the gate, run on core Lean
+> rather than Mathlib, each of the 15 that faked a proof was rejected by some layer, though no single layer
+> caught them all. The
 > results are here: [link to PR 36 or the spike README]. Nothing has been measured on a research blueprint
 > yet. That is what I'm asking to try.
 >

@@ -36,6 +36,7 @@ SHEETS = {
 models = sorted({r["model"] for r in rows})
 tot = {k: sum(int(r[k]) for r in rows) for k in ("cached_tokens", "input_tokens", "output_tokens")}
 problems = sorted({r["problem"] for r in rows})
+runs = {p: sum(r["problem"] == p for r in rows) for p in problems}
 print(
     "rows",
     len(rows),
@@ -65,6 +66,11 @@ for name, sheet in SHEETS.items():
     v = list(per.values())
     print(
         f"{name}: total ${sum(v):,.2f}  mean ${st.mean(v):.2f}  median ${st.median(v):.3f}  max ${max(v):.2f}"
+    )
+    multi = [per[p] for p in per if runs[p] > 1]
+    print(
+        f"    problems with more than one run: {len(multi)} carry ${sum(multi):,.2f};"
+        f" the other {len(per) - len(multi)} carry ${sum(v) - sum(multi):,.2f}"
     )
 # sanity: as-submitted total should be ~$111.85 (README)
 assert abs(sum(float(r["cost_usd"]) for r in rows) - 111.85) < 1.0

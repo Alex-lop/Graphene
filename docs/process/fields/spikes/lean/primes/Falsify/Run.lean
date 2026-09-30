@@ -36,7 +36,8 @@ set_option Elab.async false
 #vacuity S_even_three_mod_four
 
 /-! ## 2. The unbounded `∃ p` has no decision procedure, so bound it (a prime factor of n > 0 is ≤ n).
-These restatements are the machine's rewrite, not the person's statement: each is equivalent to the
+These restatements stand in for a machine's rewrite (written by hand here; no planner or rule was
+tried), not the person's statement: each is equivalent to the
 original only by the one-line fact that a divisor of a positive n is at most n. -/
 
 def S_factor_three_mod_four_le : Prop := ∀ n : ℕ, n % 4 = 3 → ∃ p ≤ n, p.Prime ∧ p ∣ n ∧ p % 4 = 3

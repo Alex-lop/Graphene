@@ -32,7 +32,7 @@ arm A has an executor, it is the same one.
 | Arm | Who shapes the work | Who proves | The person's part |
 |---|---|---|---|
 | **A. End to end** | nobody visible: the executor decomposes on its own | the executor, given the target statement and its informal proof | none until the end |
-| **B. Machine tree** | a planner model proposes the tree (statements, definitions, needs); automated review and cheap falsification check it (below); what they flag is fixed by the planner or dropped, never by a person | the executor, leaf by leaf, cheapest tier first | none until the end |
+| **B. Machine tree** | a planner model proposes the tree (statements, definitions, needs); automated review and cheap falsification check it (below); what they flag is fixed by the planner or dropped, never by a person | the executor, leaf by leaf, cheapest tier first *(clarified before any run, 2026-09-30: the $0 automation baseline, then the executor; the cheap and frontier model tiers of kill criterion 5 run on the same leaves apart from the arms)* | none until the end |
 | **C. Person-shaped tree** | B's tree, **the same tree B started from**, then the person answers the board's questions and approves or edits each statement and definition in Graphene before any leaf is sent | as B | reads, answers, edits, signs off |
 
 - **Pairing.** C starts from the very tree B started from, so B against C isolates the person. A, B and C run
@@ -64,7 +64,9 @@ A target or leaf counts as proven only if every layer passes, in this order, fro
    definition they use, run under its Linux sandbox;
 5. *(added before any run, 2026-09-30)* at least two external kernels besides Lean's own, through
    comparator's external-kernel option: for example lean4lean and con-leche, which the Lean v4.35 toolchain
-   bundles. Why: Lean 4.33 and 4.34 fixed kernel soundness bugs, and nanoda, comparator's default external
+   bundles. Why: 2026 brought kernel soundness bugs (#14576, #14847), Lean 4.34.0 and 4.34.1 fixed more
+   soundness bugs *(corrected before any run, 2026-09-30: it said "Lean 4.33 and 4.34 fixed kernel soundness
+   bugs", which the release notes do not show)*, and nanoda, comparator's default external
    kernel, had its own bug then and two wrong rejects in the Kernel Arena (`landscape.md` §4).
 6. *(added before any run, 2026-09-30)* SafeVerify against the same challenge. It is the one tool that
    caught matcher-auxiliary shadowing in LeanParanoia's comparison (`landscape.md` §4). Where it cannot run
@@ -217,6 +219,10 @@ reason, before any data exists.
 4. **Faking the gate.** Suppose any exploit passes the whole gate above on a proof counted as proven, and no
    check command closes it. Then stop every evaluation run until one does.
    - This also applies to an exploit found by the red team or discovered in a run.
+   - *(Clarified before any run, 2026-09-30.)* An exploit here is a proof of the approved statement that
+     the gate should reject and does not. An honest proof of a statement that does not say what was meant
+     is a misstatement, counted under "misstatements that reached compute", not here. The red team's cases
+     20 and 21 are of that kind (`spikes/redteam/README.md`).
 5. **Cheap models.** On the leaves automation could not close, suppose a cheap model costs more dollars per
    proven leaf at list price than a frontier model on the same leaves. Then the cheap-model claim fails in
    mathematics.

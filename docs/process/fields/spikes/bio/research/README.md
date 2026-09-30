@@ -41,8 +41,9 @@ The data is not committed.
   - A wild-type residue check against the model catches **16 of the 32**.
   - A join by the protein-change string gives **13 of 213 another codon's score, with no error**. Four of
     those 13 are pathogenic in ClinVar.
-  - A join on genomic position, or a check that the numbering protein equals the model's sequence, catches
-    **all 32**.
+  - A join on genomic position defines the 32. A check that the numbering protein equals the model's
+    sequence was not run; by reasoning it flags all 32, because it refuses every KRAS variant numbered on
+    K-Ras4B, correct ones included.
 - **Prediction** (the researcher's working notes, not timestamped): the wild-type check would catch the
   isoform problem. It caught half.
 

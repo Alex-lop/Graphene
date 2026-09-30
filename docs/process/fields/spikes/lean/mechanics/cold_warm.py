@@ -77,15 +77,19 @@ def main() -> None:
     cold_times = cold(cold_runs)
     module = sys.argv[4] if len(sys.argv) > 4 else "Mathlib"
     t_import, warm_times, rss = warm(repl, runs, module)
-    print(json.dumps({
-        "cold_s": [round(t, 2) for t in cold_times],
-        "cold_median_s": round(statistics.median(cold_times), 2) if cold_times else None,
-        "warm_module": module,
-        "warm_import_s": round(t_import, 2),
-        "warm_s": [round(t, 3) for t in warm_times],
-        "warm_median_s": round(statistics.median(warm_times), 3),
-        "repl_rss_mb_after": rss,
-    }))
+    print(
+        json.dumps(
+            {
+                "cold_s": [round(t, 2) for t in cold_times],
+                "cold_median_s": round(statistics.median(cold_times), 2) if cold_times else None,
+                "warm_module": module,
+                "warm_import_s": round(t_import, 2),
+                "warm_s": [round(t, 3) for t in warm_times],
+                "warm_median_s": round(statistics.median(warm_times), 3),
+                "repl_rss_mb_after": rss,
+            }
+        )
+    )
 
 
 if __name__ == "__main__":

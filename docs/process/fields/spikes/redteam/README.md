@@ -34,9 +34,10 @@ A read-only critic checked this file against its own logs after it was written (
     command can close 20 or 21, and they are not faked proofs but proofs of wrong statements, the third
     condition's gap.
 - **Five claims are stronger than the evidence:**
-  - *Core Lean for Mathlib:* the Mathlib evidence covers only `sorry`, a changed statement, a challenge edit,
-    the hijack and a writing proof. The rest is argued, and some tools behave differently on Mathlib
-    (LeanParanoia's false failures, SafeVerify's memory).
+  - *Core Lean for Mathlib:* on Mathlib only `sorry` and a changed statement were ever run
+    (`../lean/mechanics/`, `../lean/gate/`). The challenge edit, the gate-file hijack and the writing proof
+    ran on core Lean only (corrected by the integrator after a second review). The rest is argued, and some
+    tools behave differently on Mathlib (LeanParanoia's false failures, SafeVerify's memory).
   - *The scope layer on the real Graphene:* only two out-of-scope edits (`Challenge.lean`, `lean-toolchain`)
     went through `graphene node done`. The SCOPE column is otherwise computed from file names.
   - *Exploit 13* fails in any layout, so it does not show that option 4 defeats namespace shadowing. A leaf
@@ -73,8 +74,9 @@ the checkers, not of Mathlib. So the matrix runs on a core-Lean copy of the iden
 layer takes seconds, the whole matrix runs in **1 min 45 s** with no memory pressure (free disk flat at
 25 GB), and every layer runs to a real verdict for every exploit. The core↔Mathlib equivalence was
 already established for the cases both agents could run on both: the gate's negatives fail at the same
-layers on core and Mathlib (`../lean/gate/README.md`), and the gate-file hijack is caught at the same
-layer on both (`../lean/primes/README.md` §7). Where a verdict is Mathlib-specific (the `lake-manifest`
+layers on core and Mathlib (`../lean/gate/README.md`). [Corrected after review: the gate-file hijack ran
+on core Lean only (`../lean/primes/README.md` §7), and on Mathlib only `sorry` and a changed statement
+were run; see "Review" above.] Where a verdict is Mathlib-specific (the `lake-manifest`
 fork), it is marked and reasoned, not run.
 
 The **scope** layer (Graphene's boundary) is about file paths, not Lean, so it *is* shown with the real

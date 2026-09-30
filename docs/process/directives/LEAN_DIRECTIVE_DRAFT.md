@@ -25,10 +25,10 @@ What it is not:
   the only loop.
 - If you find yourself writing a proof-search policy, stop. That is a harness.
 
-**Alex's answers, filled in before you start** (from `PLAN.md`, section 10):
+**Alex's answers, filled in before you start** (from `PLAN.md` §10, questions 2 and 6):
 - The executor: `[Aristotle per leaf, with his key and the training opt-out on | Graphene's Nemotron executor on Token Factory, local placement | both, Aristotle first]`.
-- The night's spend cap: `[$ … , at most $20]`, on one ledger (decision 102). Alex opens it himself (decision
-  103).
+- The night's spend cap: `[$ … , at most $10]`, on one ledger (decision 102). Alex opens it himself (decision
+  103). Any frontier spend outside the ledger is his to keep within his standing $10–20 a night.
 - The Linux machine for comparator's sandbox: `[host]`.
 - The tree after the primes tree, if any: `[none | a held-out tree Alex chose, with the lead's agreement]`.
 
@@ -64,13 +64,18 @@ Below it go the decisions, the evidence, the state of the branch and the rollbac
 
 ### A. The gate, hardened into one check command
 
-`spikes/lean/gate/gate.sh` held on the core-Lean layout and on one Mathlib leaf. Make it the check a leaf
-carries:
+`spikes/lean/gate/gate.sh` held on the core-Lean layout. On one Mathlib leaf it passed with SafeVerify off and
+comparator without its own sandbox, inside macOS `sandbox-exec` (`spikes/lean/gate/README.md`). Make it the
+check a leaf carries:
 - **Read the compiled environment, never parse a file compiled after the leaf.** Replace layer (c)'s compiled
   `Gate/<Leaf>.lean` with `GateCheck.lean` from `spikes/lean/primes/`.
   - A leaf's own macros can rewrite a gate file that imports it. The spike printed a clean axiom line for a
     proof of `1 = 2` that way.
   - `GateCheck` asks the environment instead.
+- **Decide by exit code, never by printed text.** A leaf's code may run when a checker imports it, and a
+  sandbox stops it writing, not printing (untested; `spikes/redteam/round2/README.md`). A module's stored
+  axiom list, altered after compilation, fooled `#print axioms` in round two. The verdict comes from exit codes
+  and from comparator's or SafeVerify's own walk over the proof.
 - **Take the trusted inputs from the approved commit** (`git show <ref>:path`), as layer (a) does. Keep the
   trusted `.lake` where no executor can write: another user, or a read-only mount.
   - The spike's check borrowed the shared build through a symlink outside git, so outside every scope.
@@ -89,11 +94,19 @@ carries:
     `git ls-tree` (`spikes/lean/primes/README.md` §7);
   - it trusts a `.lake` and tools that an executor running as the same user can edit between runs
     (`spikes/lean/gate/README.md`, "Limits").
-- **Run the red-team suite** (`spikes/redteam/run_all.sh`) against the hardened gate. Every exploit must be
-  rejected, and the honest tree must pass.
+- **Add round two's three open holes to the red-team suite** (`spikes/redteam/run_all.sh`), as cases, before
+  you harden anything (`spikes/redteam/round2/README.md`):
+  - a leaf whose `initialize` block prints a clean axiom line when a checker imports it;
+  - a leaf whose check writes into the shared `.lake/packages`, and a second leaf checked after it;
+  - a leaf that alters its own compiled module's stored axiom list from inside `gate.sh`'s sandbox.
+- **Run the suite against the hardened gate.**
 
-**Done when:**
-- `run_all.sh` rejects every exploit it lists and passes the honest primes tree, on the Linux machine;
+**Done when**, on the Linux machine:
+- every case that fakes a proof is rejected: 01–10, 12, 13, 16–19 and the three new ones;
+- the honest cases pass: 11 and 14, and 15's proof, with 15's write denied by the sandbox; 17 is recorded as
+  it ran (its payload never took effect);
+- 20 and 21 are recorded as passing every Lean layer: no gate closes a wrong statement;
+- the honest primes tree passes;
 - the brief gives each layer's time per leaf.
 
 ### B. The witness hand-back, as a convention first
@@ -101,9 +114,12 @@ carries:
 The spike showed Graphene accepting `graphene node release --why "too hard"` for a leaf `exact?` closes in
 0.015 s. It also showed Graphene offering "wait on another leaf" for a false one. Fix both without touching
 Graphene first:
-- **The leaf's goal says how to hand back.** A proof leaf hands back only with a witness file in its scope:
-  `Witness/<Leaf>.lean`, proving `¬ S_<leaf>` or `False` from the leaf's hypotheses. The reason names that
-  file.
+- **The leaf's goal says how to hand back.** A proof leaf hands back only with a witness file in its scope,
+  `Witness/<Leaf>.lean`, and the reason names that file. The witness is one of two kinds:
+  - **false:** a proof of `¬ S_<leaf>`;
+  - **vacuous:** a proof that the leaf's hypotheses cannot all hold.
+
+  Each is its own kind of defect: a vacuous leaf is provable, and says nothing.
 - **The check verifies the witness.** `gate.sh --witness <Leaf>` runs the same layers on the witness as on a
   proof.
 - **"Budget exhausted, no defect found"** is recorded in the reason as its own words and never as "false".
@@ -128,6 +144,10 @@ It runs, in order, stopping at the first that settles the leaf:
 1. **The falsifiers**, `$0` and seconds each: `plausible` on the statement; `decide` on bounded instances;
    the vacuity test (`spikes/lean/primes/Falsify/`). A counterexample writes the witness and hands back
    before any spend.
+   - `plausible` cannot test a statement with an unbounded `∃`, like the seeded false leaf as written. In the
+     spike the bounded form was written by hand. Add a named step that writes it, for example the rule that
+     bounds `∃ p` with `p ∣ n` by `n`, and record the bounded form as a restatement the person accepts.
+     Without that step, D must expect the false leaf to reach the prover.
 2. **Automation**, `$0`: `omega`, `grind`, `grind +suggestions`, `exact?`, `try?`, under a time limit.
 3. **The chosen prover.** It writes only `Proofs/<Leaf>.lean`.
 
@@ -144,7 +164,7 @@ settled it.
 - **How:** Alex accepts it in `graphene watch`, answers what the board asks (if anything), and presses `R`.
 - **What should happen:**
   - the three leaves automation closes land for $0;
-  - the false leaf comes back with its witness before any prover is paid;
+  - the false leaf comes back with its witness before any prover is paid, if C's bounding step exists;
   - the rest go to the prover;
   - the root's check (the sub-goal's own, decision 15) runs comparator on the whole.
 - **What to record:** wall time and cost per leaf, the person's actions counted, and every hand-back.
@@ -172,7 +192,7 @@ D's mechanics survive a statement nobody has proved in Mathlib.
 
 - The brief says, with a command each:
   - what the gate costs per leaf;
-  - that the red-team suite is rejected in full;
+  - that every red-team case faking a proof is rejected, and how 20 and 21 fared;
   - which rung settled each leaf of the primes tree;
   - what the false leaf's hand-back looked like;
   - what the run cost.

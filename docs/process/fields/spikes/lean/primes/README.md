@@ -433,7 +433,7 @@ instances. Times are inside Lean, after Mathlib was loaded (`logs/falsify-run.lo
 | check before spend | `odd_factor_three` (false) | `euclid_mod_four_any` (false) | `even_three_mod_four` (vacuous) | the honest leaves |
 |---|---|---|---|---|
 | `plausible` on the statement as written | **cannot test**, 0.020 s: "Failed to create a `testable` instance" (the `∃ p` is unbounded) | **counterexample P = 0**, 0.064 s | cannot test, 0.019 s (same `∃ p`) | none found on the five decidable ones (0.07-0.21 s); cannot test the key lemma or `S_root` (`euclid`'s conclusion) |
-| `plausible` on the bounded form (`∃ p ≤ n`, a rewrite by the machine) | **counterexample n = 5**, 0.142 s | | | bounded key lemma: none found, 0.096 s |
+| `plausible` on the bounded form (`∃ p ≤ n`, written by hand in place of a machine's rewrite) | **counterexample n = 5**, 0.142 s | | | bounded key lemma: none found, 0.096 s |
 | `decide` on small instances | bounded form **false** for n < 30 in 0.042 s, n < 10 in 0.031 s | **false** for P < 10 in 0.002 s | | bounded key lemma for n < 30 **proved** in 0.043 s; `euclid_mod_four` for P < 10 in 0.003 s |
 | vacuity test | hypotheses satisfiable (n = 3), 0.090 s | no hypotheses | **VACUOUS**: no example; `omega` proves none exists, 0.150 s | the six with hypotheses of their own: all satisfiable, each with an example, 0.06-0.18 s |
 | automation (section 5) | closes under nothing | closes under nothing | **closes** under omega in 0.07 s | 3 of 8 close |
@@ -443,7 +443,7 @@ time, but not by one check alone: the false leaf needs the bounded rewrite (or `
 because `plausible` cannot test an unbounded `∃`; the off-by-one is caught by plain `plausible`
 (omega fails on it, but a failure is not a counterexample); no falsification check flags the vacuous
 leaf (there is nothing false to find, and plausible cannot even test it), only the vacuity test
-does, while automation closes it as fast as the honest leaves that close (0.07 s against 0.015–0.58 s; corrected by the integrator from "faster than any honest leaf"). The bounded rewrite is the machine's, and it is equivalent to the statement only by
+does, while automation closes it as fast as the honest leaves that close (0.07 s against 0.015–0.58 s; corrected by the integrator from "faster than any honest leaf"). The bounded rewrite stands in for a machine's (the agent wrote it by hand; no planner or rule was tried), and it is equivalent to the statement only by
 the fact that a divisor of a positive n is at most n: a person, or a proof, has to accept that step.
 
 **The hand-back.** In the scratch repository the agent took `odd_factor_three`, its `done` was refused

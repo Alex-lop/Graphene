@@ -1,23 +1,24 @@
 # Graphene beyond software: the plan
 
-*Written by the agent that ran `docs/process/directives/FIELDS_DIRECTIVE.md` on 2026-09-30 (00:45 onwards, EDT), for Alex. Every link was read on 2026-09-30; `landscape.md` holds each source with its one-line finding. Decisions are numbered as in `docs/DIRECTION.md`. A pointer written `landscape.md` §N is to the sources file; a bare §N is a section of this plan.*
+*Written by the agent that ran `docs/process/directives/FIELDS_DIRECTIVE.md` on 2026-09-30 (00:45 onwards, EDT), for Alex. Every source was consulted on 2026-09-30; `landscape.md` holds each with its one-line finding, and marks those read only in abstract, snippet or secondary form. Decisions are numbered as in `docs/DIRECTION.md`. A pointer written `landscape.md` §N is to the sources file; a bare §N is a section of this plan.*
 
 ## Brief
 
-- **Mathematics: worth a pilot, not a build.** Who: a formalization lead scoping and freezing statements before AI runs (the grinding is already done by AI), and perhaps a mathematician who does not read Lean. That second one holds only if the machine's convention questions help them, which nobody has measured. Prove2Me, Verso Blueprint and Tau Ceti already cover the rest of a person's layer (§1, §3.5).
-- **The Lean spike:** Graphene carried the tree as written; automation closed 3 of 8 leaves for $0 and not the theorem, so the thesis holds only in its weak form; a false leaf came back with n = 5 in 0.14 s, before any spend (§3.4, §3.8).
-- **The red team:** 21 attacks, run on core Lean. Every attack that faked a proof was rejected by at least one layer, and none by all. Wrong statements pass every gate. Comparator's real sandbox never ran on a Mathlib project (§3.2, §3.3).
-- **What Lean found in Graphene itself:** it accepts "too hard" as a hand-back, and its local check runs a leaf's code unsandboxed. Both matter for code too (§6, §7).
-- **Biology: not now.** Who: a computational biologist wanting sign-offs on a pipeline. None has been found, and Claude Science and Nextflow's agent are there first. Four cheap checks caught 17 records numbered on another isoform in 6,227, and a correct check also drops BRAF V600E (§4).
-- **Other fields:** numerical methods is the closest fit outside mathematics; verified software is the bridge back to Graphene's developers; backtested trading is the warning (§5).
-- **Before 30 October, optional:** a replayed demo of the spike. It costs $0, half a day of an agent's time and half an hour of yours. If you want it, also a live Nemotron run on the five open leaves, capped at $2, with you present (§8).
-- **November:** `PREREG.md`'s pilot. The person's side comes first, with you as the reader, about 12–25 hours over two weeks. Then 10–12 held-out targets on a Linux gate, within $10–20 a night (§8).
-- **You decide** (§10):
-  - an Aristotle key: yes, with the opt-out on;
-  - the executor: Aristotle for all three arms, plus one cheap and one frontier tier;
-  - the demo, if the entry is done by 25 October;
-  - the 2023 pipeline's assumptions, and whether to ask the lab;
-  - which lead to ask first.
+- **Mathematics: a pilot and a small build step, not a harness (§6).** For a formalization lead freezing
+  statements before AI runs; for a mathematician without Lean, only if review takes at most half the time of
+  writing (unmeasured). No tool found puts convention questions to the person before spend (§1, §3.5).
+- **Lean spike:** Graphene held the tree as written; $0 of automation closed 3 of 8 leaves, not the theorem; a
+  false leaf's counterexample, n = 5, took 0.14 s on a form bounded by hand (§3.4, §3.8). Of 21 red-team
+  cases, 15 fake a proof: some layer rejected each, no single layer all. Wrong statements pass every gate;
+  Graphene runs a leaf's check unsandboxed and accepts "too hard" as a hand-back (§3.3, §7).
+- **Biology: not now.** No computational biologist wanting pipeline sign-offs was found; Claude Science is
+  there first. The wild-type check flagged 17 of 6,227 ClinVar records numbered on another isoform (§4).
+- **Other fields:** numerical methods fits closest; verified software leads back to developers; a wet lab does
+  not fit now. Each but the developer needs a new person; none is proposed (§5).
+- **First step, November:** `PREREG.md`'s pilot, you reviewing about 50 statements on today's board, 8–17
+  hours over two weeks (a guess), a few dollars; then `LEAN_DIRECTIVE_DRAFT.md` on Linux; then the provers,
+  within the ledger's $10 a night (§8). Optional by 30 October: a replayed demo, $0 and half an hour of yours.
+- **You decide (§10):** an Aristotle key, the Linux host, the demo, which Lean lead to ask, the 2023 pipeline.
 
 ## 1. Who would use this, and why
 
@@ -36,10 +37,12 @@ a reader who does not know Lean (`landscape.md` §6).
 - **They hand Graphene:** the paper or its informal proof, the target theorems in their own words, and
   answers to the board's questions ("does ℕ start at 0 here?", "is this series assumed summable?", "C∞ or
   analytic?").
-- **They get back:**
+- **They get back** (proposed: Graphene today accepts a hand-back with no witness, and the full gate never
+  ran through `done`; §3.4, §6):
   - the challenge file they approved: the statements and every definition under them, English beside Lean;
-  - each leaf proven by the gate, or handed back with a witness: a counterexample, a proof of the negation, or
-    `False` from the hypotheses;
+  - each leaf proven by the gate; or handed back with a witness the gate verifies, a proof of the negation
+    (false) or a proof that the hypotheses cannot all hold (vacuous); or left open for them, marked "budget
+    exhausted, no defect found";
   - the record of what they signed.
 - **Why they would choose it:** each of today's options leaves a gap Graphene might fill.
   - *A general coding agent plus discipline* has produced results for people who can read Lean statements.
@@ -56,14 +59,17 @@ a reader who does not know Lean (`landscape.md` §6).
   candidates; each verdict is this plan's reading, and none is measured):
   - *Intent* (which theorem, how general; evidence below): for a reader of Lean, a challenge file carries it
     at no tool cost, and Graphene adds nothing there (§3.5).
-  - *Definitions and conventions:* the board is the one place Graphene differs from every tool found (§3.5).
+  - *Definitions and conventions:* of the four candidates, the board is the one where Graphene differs from
+    every tool found (§3.5).
     Whether it is cheaper than a person's own check is open: Miller caught `ContDiff ℝ ⊤` with "a
     thirty-second #check" (`landscape.md` §6).
   - *Judging the machine's flags:* the best catches in the record pair a machine flag with a person's verdict
     (§3.4). Formal Conjectures does this with maintainers and an AI audit, without Graphene
     (`landscape.md` §6).
   - *Reshaping a tree that drifts:* Ilin's main theorem gathered 42 hypotheses before the final 12
-    (`landscape.md` §6). Graphene's offers reshape a code tree (decision 32); nobody has tried them on Lean.
+    (`landscape.md` §6). Graphene's offers reshape a code tree (decision 32). On Lean one was tried: for the
+    spike's false leaf Graphene offered "wait on", which cannot repair a false statement (§3.8). Reshaping
+    a drifting Lean tree is untested.
 - **What would make them stop:**
   - reviewing a statement takes more than half as long as writing it (kill criterion 2, `PREREG.md`);
   - the questions are noise;
@@ -72,9 +78,11 @@ a reader who does not know Lean (`landscape.md` §6).
   EconCSLib is the warning. Its author built a review dashboard, and by v2 of its paper 10 of 865 paper
   statements had been reviewed (researcher's count, `landscape.md` §6).
 - **Evidence for:**
-  - Each mathematician-led case we read kept a person on statements and definitions: Tao, Ilin, Miller,
-    Bloom and the AlphaProof Nexus experts (`landscape.md` §1, §3, §6). Large efforts that did not either
-    spot-checked (Gloeckle et al., `landscape.md` §1) or barely reviewed (EconCSLib, `landscape.md` §6).
+  - Tao, Ilin, Miller, Bloom and the AlphaProof Nexus experts each kept a person on statements and
+    definitions (`landscape.md` §1, §3, §6). Not every case did: in Armstrong's De Giorgi–Nash–Moser
+    project no human touched the Lean, and people supervised through prose blueprints (`landscape.md` §2).
+    Large efforts spot-checked (Gloeckle et al., `landscape.md` §1) or barely reviewed (EconCSLib,
+    `landscape.md` §6).
   - `ContDiff ℝ ⊤` means *analytic* in today's Mathlib. It silently broke two independent projects in 2026,
     and in one of them neither the agent nor the mathematician caught it in 10 days (`landscape.md` §6).
   - Intent needed people: which version of Erdős #728 was meant. And a convention was decided silently: when
@@ -107,16 +115,17 @@ addresses one of them.**
 - **They get back** (proposed; none of it exists in Graphene today): proofs that passed the gate
   (`spikes/lean/gate/`) against those statements; every node handed back with a witness that names a defect;
   and the rest marked "budget exhausted, no defect found" (§3.4). Runs would be overnight, cheapest prover
-  first. Graphene's cap today, the night's ledger, covers Token Factory calls only and stops a night at $10
-  at most (decision 102).
+  first. Graphene's cap today, the night's ledger, charges only Token Factory calls (ConTree operations are
+  rows at $0), stops a night at $10 at most (decision 102), and does not see a frontier harness's spend
+  (§10, question 2).
 - **Why they would choose it:** the proposed layer scopes and freezes before the AI runs. They choose which
   nodes, in which form, and nothing drives by. Against what they would use today:
   - Verso Blueprint's work queue hands out nodes, with no statement-freezing gate, spend control or
     hand-back with a witness (§3.5);
   - comparator checks a proof against a lead's own challenge file, and the Lean FRO plans to ship it with
     Lean (`landscape.md` §2, §4);
-  - Aristotle is free, but keeps no durable record and does not guarantee that given statements come back
-    unchanged (§3.5).
+  - Aristotle is free, but its answers to its own questions are not kept, as far as the client source
+    shows, and it offers no published guarantee that given statements come back unchanged (§3.5).
 
   This plan's reading: what is left for Graphene is one layer over all three, with a cap and witnesses.
   Nobody has asked a lead whether they want it.
@@ -126,8 +135,8 @@ addresses one of them.**
     (`landscape.md` §2).
     - Gauss produced a sorry-free proof of sphere packing's dimension-8 main theorem in 5 days; whether it
       follows the intended proof path is still being checked, and the public blueprint was not updated.
-      Anthropic proved FLT end to end in 11 days by a different route from Buzzard's blueprint, which still
-      shows 103 of 240 nodes open (`landscape.md` §1, §2).
+      Anthropic proved FLT end to end in 11 days, and Buzzard's blueprint still shows 103 of 240 nodes open
+      (`landscape.md` §1, §2).
     - Leads did not always want it: "drive-by proving", and Avigad's "The formalization, on its own, is close
       to worthless" (`landscape.md` §2).
   - *Statements that drift: real.* Carleson changed definitions, hypotheses and constants. PFR missed a
@@ -167,10 +176,10 @@ addresses one of them.**
   - The spike's wild-type check flagged 16 of 213 KRAS records: ClinVar numbers KRAS on K-Ras4B, UniProt and
     AlphaFold on K-Ras4A. None is a data error. A pipeline that joined the two without the check would score
     those records against the wrong residue, silently (§4.4).
-  - That check is not enough alone: it catches 16 of the 32 mis-numbered KRAS variants, and a per-protein
-    sequence-identity check or a genomic join catches all 32. A separate measurement (M2) found that joining
-    by the protein-change string gives 13 of 213 KRAS variants another codon's score, four of them
-    pathogenic, with no error raised (§4.3; `landscape.md` §7).
+  - That check is not enough alone. In a separate measurement (M2), a wild-type check like it caught 16 of
+    the 32 KRAS variants that a join on genomic position shows are numbered on the other isoform. Joining
+    by the protein-change string gave 13 of 213 KRAS variants another codon's score, four of them
+    pathogenic, with no error raised (§4.3; `spikes/bio/research/README.md`, M2).
 - **What would make them stop:**
   - The checks are cheap but interpretation is not checkable. A correct confidence check drops BRAF V600E
     (§4.4).
@@ -208,13 +217,13 @@ where the check is perfect shows what a check needs. §7 lists each lesson with 
     leaf's own check reads; checks attacked before they are trusted; wrong specifications caught before
     spend; hand-backs that must name a defect.
 - **Why they would choose it over what they use now:** today a planner can give a leaf the test file its own
-  check runs, so the executor can edit what judges it (§7, lesson 1). Other fields hide the tests instead,
-  which brings cheating near zero but degrades performance on the task itself (ImpossibleBench,
+  check runs, so the executor can edit what judges it (§7, lesson 1). In a software benchmark, hiding the
+  tests brought cheating near zero but degraded performance on the task itself (ImpossibleBench,
   `landscape.md` §8). Inference: making a check's files read-only to its own leaf is the cheaper step.
   Untested for code.
 - **What would make them stop:** a guess: each new rule adds reading, and reading is what made the board
   cost more than the outline (decisions 98, 108).
-- **Evidence for, from other fields:**
+- **Evidence for, from benchmarks and other fields:**
   - Read-only tests stop test edits but not other cheating. A `flag_for_human_intervention` exit cut GPT-5's
     cheating on impossible tasks from 54% to 9%, though it did less for Claude Opus 4.1 (ImpossibleBench,
     `landscape.md` §8).
@@ -247,10 +256,10 @@ which of the four people (§1) each row is about.
 
 | Field | 1 Tree | 2 Check | 3 Meaning | 4 Economics |
 |---|---|---|---|---|
-| **Lean mathematics** (the mathematician, the formalization lead) | strong for a Lean reader: blueprints are already dependency trees (leanblueprint, LeanArchitect, Verso Blueprint; `landscape.md` §2), and Graphene's text carried the spike's tree as it is (§3.8). For a reader who does not know Lean, in their own terms: unmeasured (§3.4) | strong once layered, for proofs: no single tool covers the exploit catalog. Build, axioms, kernel replay and a challenge checker together cover its proof-level exploits in the verifiers researcher's matrix, except matcher-auxiliary shadowing (SafeVerify only) and kernel bugs (a second kernel only); no gate catches a dummy or vacuous statement (`landscape.md` §4). Red-teamed on core Lean: every attack that faked a proof was rejected by at least one layer and none by all; a dummy or vacuous statement passes every gate (§3.3) | partial: the gap is the statements and the definitions under them. Human-written benchmark statements were wrong 16–40% of the time, and reviewed ones were still fixed later (`landscape.md` §6). For a reader who does not know Lean: unmeasured (§3.4) | strong in a cost model with labelled assumptions: automation is free; cheap models cost cents per competition leaf; the person's minutes dominate the competition and research profiles, and cost about what the frontier tier does in the textbook one (§3.6). No research-level cost evidence exists for cheap models (§3.6) |
+| **Lean mathematics** (the mathematician, the formalization lead) | strong for a Lean reader: blueprints are already dependency trees (leanblueprint, LeanArchitect, Verso Blueprint; `landscape.md` §2), and Graphene's text carried the spike's tree as it is (§3.8). For a reader who does not know Lean, in their own terms: unmeasured (§3.4) | strong once layered, for proofs: no single tool covers the exploit catalog; in LeanParanoia's comparison only SafeVerify catches matcher shadowing, and a kernel bug needs a second kernel (`landscape.md` §4). Red-teamed on core Lean: every attack that faked a proof was rejected by at least one layer, and no single layer rejected them all; a dummy or vacuous statement passes every gate (§3.3) | partial: the gap is the statements and the definitions under them. Human-written benchmark statements were wrong 16–40% of the time, and reviewed ones were still fixed later (`landscape.md` §6). For a reader who does not know Lean: unmeasured (§3.4) | strong in a cost model with labelled assumptions: automation is free; a cheap model costs under a cent per correct miniF2F proof by whole-proof sampling, but as an agent loop on PutnamBench a median of $0.20 and a mean of $17.15 per problem at Token Factory's list price (35 problems that took more than one run carry 95% of it; §3.6), which publishes no cached-input price; the person's minutes dominate the competition and research profiles, and cost about what the frontier tier does in the textbook one (§3.6). No research-level cost evidence for cheap models was found (§3.6) |
 | **Software** (Graphene today, for comparison; the developer) | strong: the plan is a tree under the person's goal sentence, shaped in prose (decision 13) | partial: tests pass wrong code (GPT-5 cheated on 76% of one-off SWE tasks, ImpossibleBench, `landscape.md` §8), and a leaf's scope can include the test that judges it (§7, lesson 1) | partial: the goal is prose, so the gap between passing and meaning is wide; a judgment, not measured here (§7, "The larger lesson") | strong: one live leaf on Nemotron Nano billed $0.000366 (`docs/test/first-light.md`, rung 2); shaping one plan took 293–1,277 modelled person-seconds (decision 98) |
 | **Computational biology** (the computational biologist) | strong: pipelines are DAGs already (Snakemake, Nextflow; `landscape.md` §7) | partial: invariants are cheap and catch real errors; interpretation is not checkable (§4.4, the spike) | weak: BRAF V600E and EGFR L858R fail a correct confidence check; 83% of the six-gene slice's sites have no ClinVar pathogenic or benign call (uncertain, conflicting or unclassified; §4.4) | partial: for canonical human proteins the GPU spend is now avoidable (AlphaFold DB v6 and AlphaMissense precomputed; `landscape.md` §7); isoforms, mutant and complex structures still need a GPU (§4.6) |
-| **Wet lab** (none of the four; inferred from one cloud lab, `landscape.md` §7) | strong for protocol-level plans only (§4.7) | weak: it holds for format and inventory only; a schema checked each design before it ran, and 2 of 480 plates still ran flawed (§4.7) | weak: a readout is a proxy (§4.7) | weak outside cloud labs: each attempt spends reagents and instrument time (§4.7) |
+| **Wet lab** (none of the four; inferred from one cloud lab, `landscape.md` §7) | strong for protocol-level plans only (§4.7) | weak: it holds for format and inventory only; a schema checked each design before it ran, and two plates still ran flawed (§4.7) | weak: a readout is a proxy (§4.7) | weak outside cloud labs: each attempt spends reagents and instrument time (§4.7) |
 
 Section 5 scores ten more fields.
 
@@ -268,9 +277,9 @@ spikes' own READMEs, under `spikes/lean/` (`mechanics/`, `gate/`, `primes/`), gi
 |---|---|---|---|
 | **goal** | the target theorems, fixed by the person (`S_root` in `Challenge.lean`) | LeanMarathon's "canonical target statements", written in LaTeX by people; Prove2Me's audited mission goal; a comparator challenge (`landscape.md` §1, §4) | nothing new: the root sentence (decision 13) maps cleanly |
 | **leaf** | a lemma whose needs are hypotheses: `theorem leaf : S_need₁ → … → S_leaf` in its own file | Prove2Me's proof-sketches import open children, and "Theorem 4.1 is verified if all imported child lemmas are verified"; LeanMarathon's `sorry_using` nodes (`landscape.md` §1) | the leaf's contract (goal, why, scope, check) told to any executor (decision 17). **Maps cleanly**, and the spike ran it |
-| **needs** | the hypotheses a leaf takes | leanblueprint's hand-kept `\uses`; LeanArchitect infers `\uses` from the Lean; Verso Blueprint computes statuses from Lean and, per the researcher's notes on its README and MANUAL, has an `autoDeps` option for inferred edges (`landscape.md` §2) | **Maps with a cost.** Graphene's `needs:` is order (decision 14, HOW_IT_WORKS P1a); in this layout a leaf takes its needs as hypotheses and can be proven first. In the spike `needs:` made 3 of 8 leaves wait for nothing. It costs parallelism, not correctness, and leaving `needs:` out works today (`primes/README.md` §2). LeanArchitect inferred no edge between leaves here, because each names only its needs' statements (`primes/README.md` §4). Graphene adds nothing to the edges: the Lean types carry them, and the sub-goal's check at the roll-up (decision 15) is the integration |
-| **scope** | the files, or spans, an agent may edit | LeanMarathon enforces spans with a patched edit tool; AlphaProof Nexus marks editable spans (`landscape.md` §1) | **Maps cleanly:** file-path scope with the boundary at `done`, for any executor (decision 1). One proof file per leaf makes spans unnecessary (§3.2). The spike's true leaf passed the boundary ("nothing outside its scope"); no run tried an out-of-scope write through Graphene (`primes/README.md` §2) |
-| **hand-back** | an issue with a witness: a counterexample, a proof of the negation, or `False` from the hypotheses | LeanMarathon's issue template ("do not use a size estimate as issue evidence"); Aristotle's disproofs; NEAR AI's `disproved()`, which demands a Lean proof of `False` from the statement (`landscape.md` §1, §3) | **Breaks today.** `graphene node release --why` refuses only an empty reason (`src/graphene_map/plan.py`, `release`). The spike handed back a leaf `exact?` closes in 0.015 s with "too hard", and Graphene accepted it (`primes/README.md` §2). For the false leaf Graphene offered the wrong fix, "wait on `factor_three_mod_four`" (`primes/README.md` §6) |
+| **needs** | the hypotheses a leaf takes | leanblueprint's hand-kept `\uses`; LeanArchitect infers `\uses` from the Lean; Verso Blueprint computes statuses from Lean (`landscape.md` §2) | **Maps with a cost.** Graphene's `needs:` is order (decision 14, HOW_IT_WORKS P1a); in this layout a leaf takes its needs as hypotheses and can be proven first. In the spike `needs:` made 3 of 8 leaves wait for nothing. It costs parallelism, not correctness, and leaving `needs:` out works today (`primes/README.md` §2). LeanArchitect inferred no edge between leaves here, because each names only its needs' statements (`primes/README.md` §4). Graphene adds nothing to the edges: the Lean types carry them, and the sub-goal's check at the roll-up (decision 15) is the integration |
+| **scope** | the files, or spans, an agent may edit | LeanMarathon enforces spans with a patched edit tool; AlphaProof Nexus marks editable spans (`landscape.md` §1) | **Maps cleanly:** file-path scope with the boundary at `done`, for any executor (decision 1). One proof file per leaf makes spans unnecessary (§3.2). The spike's true leaf passed the boundary ("nothing outside its scope"; `primes/README.md` §2), and no primes run tried an out-of-scope write. The red team's two, an edited `Challenge.lean` and `lean-toolchain`, were refused by `graphene node done` in 0.18 s and 0.17 s, before the check ran; the lakefile and manifest were not run through it (§3.3) |
+| **hand-back** | an issue with a witness the gate verifies: a proof of the negation (false), or a proof that the hypotheses cannot all hold (vacuous) | LeanMarathon's issue template ("do not use a size estimate as issue evidence"); Aristotle's disproofs; NEAR AI's `disproved()`, which demands a Lean proof of `False` from the statement (`landscape.md` §1, §3) | **Breaks today.** `graphene node release --why` refuses only an empty reason (`src/graphene_map/plan.py`, `release`). The spike handed back a leaf `exact?` closes in 0.015 s with "too hard", and Graphene accepted it (`primes/README.md` §2). For the false leaf Graphene offered the wrong fix, "wait on `factor_three_mod_four`" (`primes/README.md` §6) |
 | **offer** | a revised statement the person approves, with its effect on the parents | LeanMarathon's Refiner rewrites nodes with no person (`landscape.md` §1); in Prove2Me, editing a draft clears its confirmation (`landscape.md` §1) | **Breaks.** Offers today widen a scope, add a sibling, or wait on the nodes the reason names (decision 32); none changes a statement, and the third was the spike's wrong fix. A statement change is the person's edit (`plan edit`), or a board answer's `then: goal`, which can only append (decision 83). The effect on parents could be computed from the types (an inference; not built) |
 | **forks** | several attempts at a leaf; any that passes the gate is valid | pass@k; AlphaProof Nexus's evolutionary search (`landscape.md` §1, §3) | `--forks N`, the check picks, and a second `--model` steps up a size (decision 60). **Maps cleanly:** the gate is the judge. Graphene adds little a prover's own sampling lacks: forks are whole executor runs under one check |
 | **the board** | the machine's questions about definitions and conventions, answered by the person | Aristotle's agent questions, with a 15-minute timeout and then "its best guess", with no record that we found (inferred from the client source); LeanMarathon's worker audit asks the model itself; Prove2Me's captain rules, written practice (`landscape.md` §1) | **Maps cleanly in form, and is the one piece no tool found does:** durable questions, before spend, whose answers bind the leaves through `then:` lines (decisions 81–83, 99). Unmeasured for mathematics. In software shaping studies it cost more modelled attention than the outline (decisions 98, 99) |
@@ -284,10 +293,10 @@ spikes' own READMEs, under `spikes/lean/` (`mechanics/`, `gate/`, `primes/`), gi
 |---|---|---|---|
 | trusted `lean-toolchain`, `lakefile.toml`, `lake-manifest.json` and challenge, restored or hash-checked first | the fast check (a hash check) and the gate (layer a) | a leaf that edits the toolchain, lakefile, manifest or challenge, which are also outside its scope (decisions 1, 90). Tested against an edited `Challenge.lean` in the gate (`gate/README.md`), and through the real Graphene against an edited `Challenge.lean` and `lean-toolchain`, refused before the check ran (§3.3); the lakefile and manifest follow the same rule and were not run through it | 0.2–0.5 s on core Lean; 30–34 s with Mathlib, nearly all the clone of the trusted `.lake` (`gate/cost.md`) |
 | `lake build` of the leaf's module | both | a proof that does not compile. It **passes a `sorry`** (exit 0, a warning) unless run with `--wfail` (rc 1 in 5.6 s) | 153–194 s for one Mathlib leaf; 3.8–5.6 s when Lake finds it built; 0.4–4.6 s in the core-Lean layout (`gate/cost.md`; `mechanics/README.md` rows 3, 5) |
-| the type and axioms, read from the **compiled environment** (`GateCheck.lean`): definitionally equal to `S_need₁ → … → S_leaf`, and axioms ⊆ {`propext`, `Classical.choice`, `Quot.sound`} | the fast check, in the agent's loop | a proof of another statement; `sorry` and `admit` (both show as `sorryAx`); a declared axiom; `native_decide`, which on 4.34.1 shows as `<thm>._native.native_decide.ax_1_1` and **not** as `Lean.ofReduceBool`, so a deny-list of axiom names misses it and an allow-list catches it. Run through GateCheck: another statement and `sorry`. By design only, checked with `#print axioms`: `native_decide` and a declared axiom. `admit`: not run here | not timed apart: one Mathlib load, most of the fast check's 32–165 s a leaf (below). Its Gate-file form: 9.3 s with Mathlib still in memory, 0.3–0.6 s on core Lean (`gate/cost.md`). A warm REPL answers a lemma in 0.011 s, but GateCheck in a REPL was not measured, and a REPL is feedback, not a verdict (§3.7; `gate/cost.md`) |
-| kernel replay: `lake env leanchecker`, shipped with Lean since v4.28.0 (the archived `lean4checker`) | the gate | a declaration the kernel never checked (`debug.skipKernelTC`, environment forging; run on v4.34.1 in the verifiers researcher's notes, E17–E19, and in lean4's leanchecker tests, `landscape.md` §4; not attacked in the spikes). It passed a changed statement and a `sorry`, as designed | 0.8–2.2 s default / 39.8 s `--fresh` on core Lean; 37 s for one Mathlib leaf; 173–219 s for two or three leaves in one run |
+| the type and axioms, read from the **compiled environment** (`GateCheck.lean`): definitionally equal to `S_need₁ → … → S_leaf`, and axioms ⊆ {`propext`, `Classical.choice`, `Quot.sound`} | the fast check, in the agent's loop | a proof of another statement; `sorry` and `admit` (both show as `sorryAx`); a declared axiom; `native_decide`, which on 4.34.1 shows as `<thm>._native.native_decide.ax_1_1` and **not** as `Lean.ofReduceBool`, so a deny-list of axiom names misses it and an allow-list catches it. Run through GateCheck: another statement and `sorry`; in the red team, on core Lean, also `admit`, a declared axiom, `native_decide`, `implemented_by` and the gate-file hijack, each rejected. It passes a declaration the kernel never checked (06, 07; §3.3) | not timed apart: one Mathlib load, most of the fast check's 32–165 s a leaf (below). Its Gate-file form: 9.3 s with Mathlib still in memory, 0.3–0.6 s on core Lean (`gate/cost.md`). A warm REPL answers a lemma in 0.011 s, but GateCheck in a REPL was not measured, and a REPL is feedback, not a verdict (§3.7; `gate/cost.md`) |
+| kernel replay: `lake env leanchecker`, shipped with Lean since v4.28.0 (the archived `lean4checker`) | the gate | a declaration the kernel never checked: `debug.skipKernelTC` and `addDeclCore` (red team 06, 07, on core Lean, which the fast check passes; §3.3), and environment forging (lean4's leanchecker tests, `landscape.md` §4). It passed a changed statement, `sorry` and a declared axiom, as designed | 0.8–2.2 s default / 39.8 s `--fresh` on core Lean; 37 s for one Mathlib leaf; 173–219 s for two or three leaves in one run |
 | SafeVerify against the approved `Spec` | the gate | a changed statement; `sorry`; matcher-auxiliary shadowing, which no other tool found catches (`landscape.md` §4) | 1.9–3.9 s a leaf on core Lean; on a Mathlib leaf, stopped before a verdict each time (below) |
-| comparator against the person-approved challenge, **in its Linux sandbox** | the gate | a changed or shadowed statement or definition; with its sandbox, a build that writes outside its directory (shown on core Lean only); kernel bugs, with external kernels configured (not run here) | 2.3–14.6 s per leaf on core Lean with real landrun in Docker, + 15–43 s container setup per run; 300 s on one Mathlib leaf without its sandbox (below) |
+| comparator against the person-approved challenge, **in its Linux sandbox** | the gate | a changed or shadowed statement or definition; with its sandbox, a build that rewrites its own challenge while it compiles (shown on core Lean only); kernel bugs, with external kernels configured (not run here) | 2.3–14.6 s per leaf on core Lean with real landrun in Docker, + 15–43 s container setup per run; 300 s on one Mathlib leaf without its sandbox (below) |
 
 **Which runs where.**
 - **In the agent's loop:** the build plus the environment-level type and axiom check (`primes/check-leaf.sh`).
@@ -295,21 +304,25 @@ spikes' own READMEs, under `spikes/lean/` (`mechanics/`, `gate/`, `primes/`), gi
     checked one lemma cold in 1.78 s (median of 5), against 146.6 s for `import Mathlib` (one run), so a
     narrow challenge would likely bring it to seconds (inferred, not measured).
   - It is feedback, not a verdict. It runs unsandboxed, and a proof's build can rewrite the files read
-    after it (`mechanics/README.md` finding 6). Its axiom walk, like `#print axioms`, trusts the leaf's own
-    `.olean` (finding 2).
+    after it (`mechanics/README.md` finding 6). By the source, its axiom walk, like `#print axioms`, reads
+    the leaf's stored list (finding 2). In round two it caught an altered list anyway, for a reason not
+    established, so it is not relied on for this (§3.3).
   - It is hand-written (64 lines) because no light tool found checks both the type and the axioms;
     SafeVerify and comparator do, at several Mathlib loads each. axiom-audit checks axioms, not the type
     (`landscape.md` §4; not tried). Kimina Lean Server's `is_valid` means no error and no `sorry`, and its
     image pins Lean v4.26.0. The Lean REPL has known false accepts. AXLE is hosted and needs an API key,
     which the rules forbid (`landscape.md` §4; `mechanics/README.md`, "What did not work").
-- **At the gate:** comparator in its sandbox, on Linux, and SafeVerify, one leaf at a time, on a machine
-  with room; `leanchecker` while it is cheap.
+- **At the gate:** the gate `PREREG.md` registers, one leaf at a time, on a Linux machine with room: the
+  build, `#print axioms`, `leanchecker`, comparator in its sandbox with at least two external kernels (not
+  run here), and SafeVerify.
   - The gate is each leaf's check at `done` (all of `gate.sh`, `gate/cost.md`), and the root's at the
     roll-up (decision 15). The spike's leaves were "done" on the unsandboxed fast check instead.
-  - SafeVerify stays for matcher-auxiliary shadowing: in LeanParanoia's comparison only it caught it, and
-    comparator panicked (`landscape.md` §4).
-  - `leanchecker` goes first if the gate is too slow: it passed every negative, and SafeVerify replays the
-    same declarations (`gate/cost.md`).
+  - SafeVerify stays for matcher-auxiliary shadowing: in LeanParanoia's comparison only it caught it
+    (`landscape.md` §4).
+  - `leanchecker` is the layer to drop if the gate is too slow (`gate/cost.md`). It passed every negative
+    in the gate spike, and in the red team it rejected only the kernel bypasses (06, 07), which comparator
+    and SafeVerify also reject (§3.3). Dropping it changes the registered gate, so `PREREG.md` would have
+    to be amended before any run.
 - **SafeVerify** built after a four-line port. It ran on core Lean and rejected the hijack
   (`primes/README.md` §7). On a Mathlib leaf it never finished here.
   - By its source it builds four environments of the import closure per run.
@@ -369,33 +382,38 @@ that reads the compiled environment in the agent's loop, and the sandboxed gate 
   hijack was rejected by SafeVerify, comparator and GateCheck (`primes/README.md` §3, §7). A proof that
   rewrites its challenge was refused under real landrun (`mechanics/README.md` finding 6). A changed
   statement and a `sorry` failed the core gate (`gate/README.md`). The red team's attacks that faked a proof
-  were each rejected by at least one layer and none by all, and a stored axiom list altered after compilation
-  fooled `#print axioms` but not comparator or SafeVerify, so the verdict comes from their own walk (§3.3).
+  were each rejected by at least one layer, and no single layer rejected them all. A stored axiom list
+  altered after compilation fooled `#print axioms` but not comparator or SafeVerify, so the verdict comes
+  from their own walk (§3.3).
 - **So the answer to "does today's file-path scope plus a check command already give full protection" is:
   no new Graphene feature was needed for this layout, but full protection is not shown.** It can hold only
   if the check command brings a sandbox around everything that loads candidate code (landrun on Linux,
-  `sandbox-exec` on macOS) and a trusted `.lake` no leaf can write. A naive check (compile a gate file;
-  grep for `sorry`) is fakeable from inside the leaf's own file. Not shown yet:
+  `sandbox-exec` on macOS) and a trusted `.lake` no leaf can write, and takes its verdict from exit codes,
+  never from printed text (`gate.sh`'s layer (c) parses printed text today). A naive check (compile a gate
+  file; grep for `sorry`) is fakeable from inside the leaf's own file. Not shown yet:
   - Comparator in its sandbox never ran on a Mathlib project.
   - The trusted `.lake` and the tools outside git are unguarded between runs (`gate/README.md`, "Limits").
   - Without a sandbox, a leaf's own build rewrote the challenge at check time, which the boundary does not
     see (`mechanics/README.md` finding 6). On macOS `gate.sh`'s `sandbox-exec` profile stopped it, and
     nobody has reviewed that profile (`gate/README.md`).
 - What no gate closes: a vacuous statement, a dummy definition, intent (§3.4), and a kernel bug without a
-  second kernel (`landscape.md` §4). Untested: code that runs when a checker imports a leaf, and a shared build
-  changed by one check and reused by the next (§3.3).
-
+  second kernel (`landscape.md` §4). Untested: code that runs when a checker imports a leaf, a shared build
+  changed by one check and reused by the next, and a stored axiom list altered from inside a leaf under
+  `gate.sh`'s sandbox (§3.3).
 
 ### 3.3 The red team
 
-`spikes/redteam/`: 21 attacks, each the smallest change that tries to fake a proof, run against seven
-layers. A read-only critic then checked the record against its own logs, and a second round tested one
-hole the first left open.
+`spikes/redteam/`: 21 cases run against seven layers, each the smallest change that tries to fake a proof
+or shows what a layer scans. 15 try to fake a proof. 4 are honest proofs of the true statement (11 and 14
+add unused code, 15 writes a file while it compiles, 17's lakefile payload never took effect). 2 are honest
+proofs of wrong statements (20, 21). A read-only critic then checked the record against its own logs, and a
+second round tested one hole the first left open.
 - **Core Lean, not Mathlib.** It ran on a core-Lean copy of the layout of §3.2, because every layer per
   exploit on Mathlib would not fit this machine's memory (§3.2). Most attacks are mechanisms of Lean's
-  elaborator, kernel or tools, not of Mathlib. On Mathlib only a few were run: `sorry`, a changed
-  statement, a challenge edit, the gate-file hijack and a proof that writes files (the review in
-  `spikes/redteam/README.md`).
+  elaborator, kernel or tools, not of Mathlib. On Mathlib only `sorry` and a changed statement were
+  run (`mechanics/README.md` rows 3–6, 16). The challenge edit, the gate-file hijack and the proof that
+  writes files ran on core Lean only (`mechanics/README.md` rows 13, 15; `primes/README.md` §3, §7). The
+  red team's review says more; it is wrong on this point.
 - **Where the list came from.** It started from LeanParanoia's test suite and OEIS Open's attack list
   (`landscape.md` §3, §4).
 - **Predictions first.** They were written before the run (`spikes/redteam/PREDICTIONS.md`).
@@ -431,9 +449,9 @@ not write. If the tree's author writes the same defect into the approved tree, e
     because they compare a solution with *its* challenge. **They protect the statement only when the
     challenge is pinned out of the leaf's reach.**
 - **Round two:** a compiled module's stored axiom list, altered after compilation, fooled `#print axioms` in
-  a compiled gate file (`gate.sh`'s layer (c)). GateCheck, SafeVerify, comparator and LeanParanoia caught
-  it (`spikes/redteam/round2/`). So a layer that reads the stored list is never the verdict. comparator's
-  or SafeVerify's own walk over the proof is.
+  a compiled gate file (`gate.sh`'s layer (c)). SafeVerify, comparator and LeanParanoia caught it, and
+  GateCheck too, for a reason not established (`spikes/redteam/round2/`). So a layer that reads the stored
+  list is never the verdict. comparator's or SafeVerify's own walk over the proof is.
 - **Shadowing: the layout helps, and the test was thin.** The statement is a constant in `Challenge.lean`,
   elaborated before any leaf exists; a leaf cannot redeclare it, and GateCheck checks the exact name and
   definitional equality. But 13 fails in any layout and 14 shadows nothing, so the variant that matters,
@@ -453,24 +471,47 @@ not write. If the tree's author writes the same defect into the approved tree, e
     of a test file for code.
   - A sandbox around the build denied the write. The profile tested was the red team's own; `gate.sh`'s
     narrower one was not run on it. **The sandbox belongs in the check command.**
-- **Open, not tested** (`spikes/redteam/round2/README.md`): code that runs when a checker imports a leaf's
-  module, and a shared build changed by one check and reused by the next. What would close both: a sandbox
-  around every step that loads candidate code, and a trusted build no check can write.
+- **Open, not tested** (`spikes/redteam/round2/README.md`), three holes:
+  - code that runs when a checker imports a leaf's module (an `initialize` block). A sandbox stops it
+    writing, not printing, and `gate.sh`'s layer (c) takes its verdict from printed text (`gate/README.md`,
+    "Limits");
+  - a shared build (`.lake/packages`) changed by one check and reused by the next;
+  - the stored-list alteration of round two made from inside a leaf, under `gate.sh`'s sandbox, which lets
+    a leaf write its own build outputs, so layer (c) would be fooled from inside the gate.
 
-**Kill criterion 4** (`PREREG.md`: "any exploit passes the whole gate and no check command closes it"):
-- **For faked proofs, not met.** Every attack that fakes a proof was rejected by at least one check command
-  in the gate.
-  - The sandbox is part of the check command (15). A lakefile or toolchain edit is also refused before the
-    check by the boundary, or by the gate's trusted-inputs step outside Graphene (16–19).
-  - Caveats: this rests on core Lean; comparator's real sandbox never ran on Mathlib; and the two hazards
-    above are untested.
-- **For wrong statements, it cannot be met by any gate.** 20 and 21 are honest proofs of statements that
-  do not say what was meant. No check command can close them, by the directive's own third condition.
-  What catches them is before spend: falsification (the worked tree's vacuity test flagged a vacuous leaf
-  in 0.15 s, §3.4, though no falsifier flags a true, non-vacuous dummy like 20), and the person.
-- **This plan's reading:** kill criterion 4 does not fire on tonight's evidence. It is a decision for Alex
-  whether the untested hazards and the Mathlib gap must be closed before November's pilot. The
-  recommendation is yes, as milestone A of `LEAN_DIRECTIVE_DRAFT.md`.
+  What would close them: a sandbox around every step that loads candidate code, a trusted build no check
+  can write, and a verdict taken from exit codes and from comparator's or SafeVerify's own walk, never
+  from printed text.
+
+**Kill criterion 4** (`PREREG.md`): "Suppose any exploit passes the whole gate above on a proof counted as
+proven, and no check command closes it. Then stop every evaluation run until one does. This also applies to
+an exploit found by the red team or discovered in a run."
+- **For faked proofs of the approved statement, not met, on core Lean.** Every case that fakes a proof
+  (01–10, 12, 13, 16, 18, 19) was rejected by at least one layer.
+  - An edited challenge or toolchain was refused by the real boundary before the check ran (16, 18). The
+    lakefile and manifest (17, 19) follow from the same rule and were not run through it. Outside Graphene,
+    the gate's trusted-inputs step was tested on `Challenge.lean` only (`gate/README.md`).
+  - Caveats: comparator's real sandbox never ran on Mathlib, and the three holes above are untested.
+- **15 is not a faked proof but an attack on the check.** A sandbox closes it, shown with the red team's own
+  profile only, not `gate.sh`'s. So the sandbox has to be part of the check command.
+- **Wrong statements are not faked proofs.** 20 and 21 are honest proofs of statements that do not say what
+  was meant. No gate can close them, by the directive's own third condition.
+  - As run, both were rejected, because the red team put the defect in `Challenge.lean`, which scope and
+    `gate.sh`'s layer (a) pin. Written by the tree's author, they would pass every layer.
+  - `PREREG.md` counts such a statement as a misstatement ("misstatements that reached compute"; a vacuous
+    statement is seeded kind 3), not as an exploit.
+  - What catches them is before spend: falsification (the worked tree's vacuity test flagged a vacuous leaf
+    in 0.15 s, §3.4, though no falsifier flags a true, non-vacuous dummy like 20), and the person.
+- **This plan's reading:** kill criterion 4 does not fire on tonight's evidence. That reads "exploit" as a
+  faked proof of the approved statement, which the registered words did not say; `PREREG.md` was clarified
+  to say so before any run (below). Alex can undo that.
+- **Before November's pilot:** whether the three holes and the Mathlib gap must be closed first is Alex's
+  decision (§10 question 6). The recommendation is yes, as milestone A of `LEAN_DIRECTIVE_DRAFT.md`, scheduled
+  in §8 (November, item 2). Its done-test now adds the three holes to `run_all.sh` as cases and sets the bar
+  the evidence allows: 01–10, 12, 13, 16–19 and the new cases rejected; 11, 14 and 15's proof passing, with
+  15's write denied by the sandbox; 20 and 21 recorded as passing every Lean layer.
+- **Registered:** `PREREG.md`'s kill criterion 4 now says, dated before any run, that an exploit is a faked
+  proof of the approved statement, and that 20 and 21 are misstatements.
 
 ### 3.4 The person's part
 
@@ -483,15 +524,15 @@ not write. If the tree's author writes the same defect into the approved tree, e
   2025 study, measured tool-assisted formalization, not review against writing (`landscape.md` §6). That is
   the pilot's kill criterion 2 (`PREREG.md`), and the question the whole mathematician persona rests on.
 
-**What makes statements reviewable for the second reader, and which of those are checks.**
+**What makes statements reviewable for the reader without Lean, and which of those are checks.**
 - **Checks** (they can fail mechanically, and a failure is evidence):
   - a counterexample search, which is one-sided;
   - `decide` on bounded instances;
   - a vacuity test ("the hypotheses cannot all hold"), one-sided;
   - a non-vacuity witness ("here is an example where every hypothesis holds"), the only one that shows the
     hypotheses can hold;
-  - person-approved examples and non-examples as test lemmas. Formal Conjectures keeps 467 test statements;
-    AlphaProof Nexus proved the first terms of each OEIS sequence first (`landscape.md` §1, §6).
+  - person-approved examples and non-examples as test lemmas. Formal Conjectures keeps test statements beside
+    its conjectures, and AlphaProof Nexus used OEIS "test lemmas" (`landscape.md` §1, §6).
 - **Aids** (they help a person judge and prove nothing):
   - English beside the Lean;
   - a model's back-translation. Judges are unreliable: 97% "correct" by an LLM judge against 66% by
@@ -519,7 +560,8 @@ after Mathlib loaded):
 - **This is a textbook tree over ℕ.** Mathlib has no Plausible instance for ℝ or ℂ that we found
   (`landscape.md` §6), so cheap falsification will be weaker for analysis.
 
-**What only the person catches is intent:**
+**What only the person can settle is intent.** A machine can flag a convention trap (LeanMarathon's reviewer
+agent found the `tsum` one, §3.5), but only the person says which reading was meant:
 - which theorem, and how general: the tree states the root two ways, "for every n a larger prime" and "the
   set is infinite", and which one was meant is not a fact about Lean;
 - conventions that make a statement true for the wrong reason (`ContDiff ℝ ⊤` is analytic; a non-summable
@@ -531,14 +573,15 @@ after Mathlib loaded):
   variables (n = 5, P = 0), and a hand-back whose witness a check verifies is settled by the kernel.
 - Accepting a restatement (the bounded rewrite above) and judging that the Lean says what the English says
   both need Lean. The Lean-fluent reader can do both; the other reader has only the aids.
-- A hand-back with no witness ("too hard") gives the second reader nothing to judge; the first can at least
-  try the leaf.
+- A hand-back with no witness ("too hard") gives the reader without Lean nothing to judge; the Lean-fluent
+  reader can at least try the leaf.
 
-In the record, the best catches combine a machine flag with a person's verdict (`landscape.md` §6):
-- after Formal Conjectures' September model audit began, 225 misformalization fixes were merged in 23 days,
-  and 139 of the 144 closed audit issues were closed as completed (GitHub counts);
+In the record, the best catches pair a machine flag with a person (`landscape.md` §6):
+- after a model audit of Formal Conjectures began, whose drafts a person triages, 225 misformalization fixes
+  were merged between 7 and 30 September;
 - Tao's "suspiciously easy", then a human review;
-- a counterexample search, then expert repair (MechGeo).
+- MechGeo's kernel-checked counterexample search refuted 22 of 157 statements that three experts had judged
+  faithful.
 
 **What a hand-back looks like when a lemma is false.** The spike's, verbatim from Graphene:
 
@@ -549,20 +592,24 @@ In the record, the best catches combine a machine flag with a person's verdict (
 > holds instead: n % 4 = 3 in place of n odd, which is factor_three_mod_four, already in the plan.
 
 **What keeps it from becoming an escape hatch.**
-- Accept a proof leaf's hand-back as "false" only when a witness passes the same gate as a proof: a Lean
-  file proving `¬ S_leaf`, or `False` from the hypotheses. The spike's `odd_factor_three_false` is such a
-  witness (it compiles with the standard axioms; it was not run through the gate).
-- "Budget exhausted, no defect found" is a separate status that does not block, and is never a hand-back
-  to the person. This is LeanMarathon's rule, made mechanical.
-  - In both cases found, a size or difficulty exit was gamed: LeanMarathon's line budget ("exceeds 1000
-    physical lines", at nearly one issue per worker PR), and the Grothendieck project's "blocked" and
-    "genuine mathlib gap", which its prompts had to forbid (`landscape.md` §1, §6).
+- Accept a proof leaf's hand-back only with a witness that passes the same gate as a proof. Both kinds are
+  defect witnesses:
+  - **false** only with a Lean file proving `¬ S_leaf`. The spike's `odd_factor_three_false` is one (it
+    compiles with the standard axioms; it was not run through the gate);
+  - **vacuous** only with a proof that the hypotheses cannot all hold. A vacuous leaf is provable (automation
+    closed the seeded one in 0.07 s), so it is not "false".
+- "Budget exhausted, no defect found" is a third status: never "false", never shown as a defect. The leaf
+  stays open for the next tier and last for the person (§3.6), and its parent waits. This is this plan's
+  proposal.
+  - A difficulty exit gets used: the Grothendieck project's prompts had to forbid "blocked" and "genuine
+    mathlib gap" (`landscape.md` §6).
   - In one mathematician's project (VML, 220 Aristotle jobs), the commonest non-success was a sorry after
     the budget: 66 jobs (30%), median 5.6 hours (arXiv 2603.15929 §6.2, `landscape.md` §6).
 - **Graphene today accepts "too hard".** `release` refuses only an empty reason (`src/graphene_map/plan.py`),
   and the spike's agent handed back a leaf `exact?` closes in 0.015 s with `--why "too hard"`
-  (`spikes/lean/primes/README.md` §2; §3.8). So hand-backs are one of the two places the mapping breaks;
-  `needs:` is the other, and leaving it out works around it (§3.1). §6 row 2 orders the fix.
+  (`spikes/lean/primes/README.md` §2; §3.8). So hand-backs and offers are the two places the mapping
+  breaks (§3.1); `needs:` maps with a cost in parallelism, and leaving it out works around it. §6 row 2
+  orders the fix.
 
 ### 3.5 The landscape, and where Graphene differs
 
@@ -573,7 +620,7 @@ The directive's first look found a harness without a person (LeanMarathon). The 
 |---|---|---|
 | **Prove2Me** (hosted; used for Anthropic's FLT) | the captain clicks to confirm each core statement; a blind read-back in LaTeX; statements immutable; proof-sketches = needs → statement | machine-generated convention questions before the audit; a private repository and budget; several executors cheapest first |
 | **Verso Blueprint** (Lean FRO, 2026) | owners, priorities, statuses computed from Lean, an agent work-queue | a statement-freezing gate; spend control; hand-backs with witnesses |
-| **Tau Ceti** | people own roadmaps and review rubrics; AI writes and reviews all code | per-statement sign-off; Prove2Me's paper says Tau Ceti "explicitly disavows frontier results" |
+| **Tau Ceti** | people own roadmaps and review rubrics; AI writes and reviews all code | per-statement sign-off |
 | **LeanMarathon** (research harness) | people write the LaTeX targets; nobody approves a Lean statement | the approval, a statement-level gate (its CI has no `#print axioms` and no comparator, and bans axioms by keyword, which the `"ax" ++ "iom"` trick seen on FormalQualBench would likely defeat; not tested on LeanMarathon), and a question channel |
 | **Aristotle** (free today) | agent questions with a 15-minute timeout, then "its best guess" | a durable record; a guarantee that given statements come back unchanged (FormalQualBench excluded its results for lack of comparator validation) |
 | **Tao's Sendov practice** (a general agent plus discipline) | an 87-line `Challenge.lean` as "the statement of record", compared under `pp.all` | nothing a Lean-fluent person needs, in our judgment. This is what Graphene competes with for such readers |
@@ -599,7 +646,7 @@ None of these has been measured on a real person.
 | LeanDojo (v1 deprecated, v2 needs a CUDA GPU), LeanCopilot (~5.5 GB of models) | tools for a person working in Lean. The layer does not need them |
 | Lean REPL, Kimina Lean Server, AXLE (hosted, API key) | fast feedback in the agent's loop. None is a gate: Kimina's `is_valid` checks no axiom or statement, AXLE does not replay the environment, and the REPL has an open false accept |
 | Mathlib's review (3,128 open PRs, 689 awaiting review) | its bottleneck is reviewers for shared library code; Graphene reviews the person's own statements. No overlap, in our judgment |
-| miniF2F, ProofNet, PutnamBench (saturated); OEIS Open, Formal Conjectures, FrontierMath Erdős, LeanEval, AnnalsChallenge, ArXivLean (held out) | test sets. The pilot takes its prover-side targets from LeanEval, post-cutoff papers (ArXivLean's method) and blueprint open nodes (`PREREG.md`) |
+| miniF2F, PutnamBench (saturated); ProofNet (its statements used in training); AnnalsChallenge (40 of its 50 solved by 2026-09-30); OEIS Open, Formal Conjectures, FrontierMath Erdős, LeanEval, ArXivLean (held out) | test sets. The pilot takes its prover-side targets from LeanEval, post-cutoff papers (ArXivLean's method) and blueprint open nodes (`PREREG.md`) |
 
 **What the person adds, and whether Graphene is the cheapest way to add it.** The directive's four candidates:
 
@@ -630,7 +677,8 @@ and `python3 reprice_near.py` (`models/README.md` says what each prints). The re
     can fine-tune (Goedel-Prover-V2, Kimina, Pythagoras); DeepSeek-Prover-V2-7B's and Leanstral's bases it
     cannot.
   - **Price: not public** (a login wall). The nearest public figure is Nebius AI Cloud's on-demand H200 at
-    $4.50 an hour. Goedel-Prover-V2-32B needed 2 H200s in one study, so about $9 an hour, a proxy only.
+    $4.50 an hour through 30 September and $5.40 from 1 October. Goedel-Prover-V2-32B needed 2 H200s in one
+    study, so about $10.80 an hour from October, a proxy only.
     Whether that beats serverless per attempt depends on keeping the endpoint busy (inference).
 - **Token Factory publishes no cached-input price.** Agent loops are mostly cached input: 99.3% of NEAR AI's
   PutnamBench input tokens (`reprice_near.py`; `landscape.md` §3 quotes ~99.8%), at least ~93% of
@@ -643,7 +691,7 @@ and `python3 reprice_near.py` (`models/README.md` says what each prints). The re
   | Tier | Cost |
   |---|---|
   | automation | $0, and closed 3 of 8 leaves here in under 1.5 s each |
-  | a cheap open model | whole-proof sampling: Nemotron 3 Super under $0.01 per correct miniF2F proof on Token Factory. An agent loop: open DeepSeek V4 solved all 672 PutnamBench problems at a $0.04 median with DeepSeek's cache prices; at Token Factory's list price the same single-run solves cost a median of $0.19 and a mean of $0.83 (637 solves; our count from the same `costs.tsv`) |
+  | a cheap open model | whole-proof sampling: Nemotron 3 Super under $0.01 per correct proof on miniF2F and miniCTX subsets, on Token Factory (the paper's figure; `cost_model.py` assumes a lower success rate per attempt and uses $0.16 per proven textbook leaf). An agent loop: open DeepSeek V4 solved all 672 PutnamBench problems at a $0.04 median per problem with DeepSeek's cache prices; at Token Factory's list price the same tokens cost a median of $0.20, a mean of $17.15 and at most $2,327 per problem (`reprice_near.py`). The 35 problems that took more than one run carry $10,995 of the $11,527 (`reprice_near.py`) |
   | a frontier harness | $2.32–$6.05 per new proof node at GPT-5.5 API-equivalent prices (LeanMarathon; the directive's "$2–6" holds, $4.15 pooled; `cost_model.py`) |
   | Aristotle | $0 in fees: its terms, last modified 2026-09-24, say "Harmonic does not presently charge fees"; it trains on customer data unless the person opts out |
   | the person | the rest |
@@ -672,8 +720,9 @@ and `python3 reprice_near.py` (`models/README.md` says what each prints). The re
     7.6G (`du -h`, which counts in GiB). If all are GiB, Linux needs about 10.6 GiB of the 12 GiB default
     writable layer, about 1.4 GiB spare, before `~/.cache/mathlib` (448 MB), the project's own build, and
     any REPL or checker build (`spikes/lean/mechanics/README.md`).
-  - **Set-up once works on Linux aarch64 in Docker:** the macOS-built `.lake` was accepted there as is. On a
-    Sandbox, whose CPU and RAM are not documented, it is untested.
+  - **Set-up once looks likely to work on Linux aarch64:** in Docker, Lake accepted the macOS-built `.lake` as
+    up to date (only that check ran there; nothing was built or checked against it). On a Sandbox, whose CPU
+    and RAM are not documented, it is untested.
   - **Fork many works for files, not for a warm server:** "Process memory, running services, and network
     state are not preserved". Every fork pays a cold Mathlib load.
   - **Measured cold and warm, on this loaded machine:**
@@ -711,8 +760,8 @@ they were written down.
 | hammers (Duper, Canonical, LeanHammer) | LeanHammer not installable (90%) | LeanHammer fails to build on 4.34.1; Duper and Canonical built and **closed 0 of 14**; Canonical "closes" with `sorry` by design |
 | the false leaf, before spend | a counterexample in under 2 s on a bounded form | n = 5 in 0.142 s, on a bounded form written by hand; `plausible` cannot test the statement as written |
 | Graphene on the tree text | accepted (65–70%) | **accepted as it is**; `plan --text` gave it back unchanged once its own `#` notes, blank lines and `?` marks are normalised |
-| the red team, 21 attacks × 7 layers | a layer for each attack (some after scratch runs) | the matrix agreed with the written predictions; the review found five of its claims wrong, not its cells (§3.3) |
-| round two: an altered stored axiom list | fools `#print axioms` and GateCheck (85%); comparator catches it | `#print axioms` fooled; **GateCheck not fooled**, for a reason not established; comparator, SafeVerify and LeanParanoia caught it |
+| the red team, 21 attacks × 7 layers | a verdict for each attack at each layer (some confirmed in scratch runs first); for 15, no layer, only a sandbox | the matrix agreed with the written predictions; the review found five of its claims wrong, not its cells (§3.3) |
+| round two: an altered stored axiom list | fools `#print axioms` and GateCheck; comparator, SafeVerify and LeanParanoia catch it (no probability given) | `#print axioms` fooled; **GateCheck not fooled**, for a reason not established; comparator, SafeVerify and LeanParanoia caught it |
 
 ### 3.8 The worked tree
 
@@ -775,7 +824,9 @@ a person. "Most leaves close" did not happen.
 
 `PREREG.md`, committed before any evaluation run. In short:
 - **Arms:** A end to end; B a machine tree with automated review and cheap falsification; C the same tree
-  shaped by the person. All on one existing executor, and C starts from B's very tree.
+  shaped by the person. They share one existing executor, and C starts from B's very tree. `PREREG.md` has B
+  and C prove "cheapest tier first"; under question 2's recommendation (§10) the arms run on Aristotle alone,
+  and the cheap and frontier tiers run beside them on the same leaves, to decide kill criterion 5.
 - **Metrics:** targets proven through the gate; cost at list price; misstatements that reached compute;
   restarts; the person's effort, counted and timed.
 - **Targets:** seeded defects of the five kinds, placed blind. Held-out targets on the prover's side;
@@ -816,7 +867,7 @@ A leaf is one step or one claim of that pipeline. Its checks can be:
 |---|---|---|---|
 | reproducing a known control | KRAS G12D, TP53 R175H, R248Q and R273H come out likely pathogenic; benign polymorphisms come out benign | yes | the spike: 10 of 11 controls pass (§4.4) |
 | schema and range | samplesheet schema; RSA in [0, 1]; row counts | yes | nf-schema does the samplesheet part; range and row-count checks on outputs would be written as check commands (not in the spike) |
-| free invariants | the sequence the variants are numbered on equals the sequence of the structure used; each stated wild-type residue matches | yes | per-variant wild type: the spike, 17 of 6,227 records mismatch, all explained (§4.4). Per-protein sequence identity: not in the spike; a researcher's KRAS run caught 32 of 32 mis-numberings with it, against 16 of 32 for the wild-type check (§4.3) |
+| free invariants | the sequence the variants are numbered on equals the sequence of the structure used; each stated wild-type residue matches | yes | per-variant wild type: the spike, 17 of 6,227 records mismatch, all explained (§4.4). Per-protein sequence identity: not run anywhere. In a researcher's KRAS run the wild-type check flagged 16 of 32 mis-numberings (the 32 found by a genomic join); by reasoning, an identity check flags all 32, because it refuses every variant numbered on K-Ras4B, correct ones included (§4.3) |
 | statistical sanity bounds | the fraction of sites under pLDDT 70; flag rates per gene | yes, with a threshold someone chose | none in the spike. Its check 3 is a per-site threshold (exit 1 if any site is below 70) that reports the fraction without gating on it |
 | agreement with a reference | AlphaMissense class against ClinVar | yes: exit 3 means a sign-off is needed, and it never exits 1; disagreement is **flagged, not failed** (today's Graphene treats exit 3 as a fail, §4.5) | the spike, check 4: 76 of 1,038 flagged |
 
@@ -828,11 +879,18 @@ A leaf is one step or one claim of that pipeline. Its checks can be:
 - **Data too big for git.** A check runs in a worktree of the leaf's state as git sees it, and what git
   ignores is not there (HOW_IT_WORKS P2, step 3). The spike's `data/` is git-ignored. From the code, not run
   under Graphene: its checks would find no data and exit 2.
-  - What today's Graphene should allow, also from the code and not tested: the check reads data from a path
-    outside the repository (reads are never scoped, decision 8) and first verifies it against SHA-256
-    hashes committed with the check (the spike's `inputs.sha256`).
+  - What today's Graphene should allow, also from the code and not tested, for a leaf placed locally
+    (Claude Code, a `--with` command, or Nemotron with `--placement local`): the check reads data from a
+    path outside the repository (reads are never scoped, decision 8) and first verifies it against SHA-256
+    hashes committed with the check (the spike's `inputs.sha256`). The pins and the check must lie outside
+    the leaf's scope (or under `readonly:`, decision 90), since nothing in the gate sees a write to data
+    outside the repository.
   - The spike showed why that verification matters. Deleting the 16 failing KRAS records made check 1 on
     KRAS pass; only the pinned hashes in `inputs.sha256` caught it.
+  - A leaf held in a ConTree sandbox, the default placement when ConTree is set up (HOW_IT_WORKS P4c), has
+    its check run in a fork of the sandbox (`sandbox.check_in_fork`), which holds only what git tracks or
+    does not ignore (P4b). A path outside the repository is not there. That check would have to fetch its
+    data (ConTree's outbound network is on by default, `landscape.md` §5), or the leaf must run locally.
 - **Plausible rather than right.** This is the third condition. §4.4 (the spike) shows it.
 - **Provenance.** A leaf's record keeps who held it, what git changed, what was refused and the last 2,000
   characters of the check's output (`TAIL` in `src/graphene_map/plan.py`, line 35). The spike's list of 76
@@ -874,17 +932,24 @@ question: model the mutants, or read the wild-type structure at the site?  [q-mu
   - NetSurfP on wild type (A7: and mutant) sequences  [netsurfp]
       check: schema and ranges; one row per variant
   - confidence at the site  [site]
-      check: pLDDT >= 70 at every site, exit 1 if any is below; the fraction below reported per gene
+      check: pLDDT at every site; sites below 70 written to a file, the fraction reported per gene; exit 0
+      signoff: the scientist, on the threshold and whether a low-confidence site (BRAF V600) is dropped
 - classification  [classify]
   - apply the classification rule  [rule]
       signoff: the scientist, on the rule's biological meaning (A4)
   - controls come out as the method says  [controls]
       check: named hotspots and benign polymorphisms, evidence from an independent source
+      signoff: the scientist, on what counts as a control
   - agreement with a reference (A9: whether 2023 compared with one)  [agree]
-      check: report agreement; write disagreements to a file for sign-off
+      check: report agreement; write disagreements to a file; exit 0
+      signoff: the scientist, on the reference axis and each disagreement
 - the record (A8: for a methods section)  [record]
       check: every tool version, database release and threshold is in provenance.json
 ```
+
+`[site]` and `[agree]` exit 0 once they have run and put their flags in a file, because today only exit 0
+passes and `signoff:` then stops the node in `review` (§4.5; `spikes/bio/README.md`). As a plain check,
+the spike's pLDDT check exited 1 on all six genes.
 
 **Which checks would have caught real mistakes.**
 - The numbering check is the one with evidence behind it. The two measurements below were run tonight by a
@@ -895,15 +960,17 @@ question: model the mutants, or read the wild-type structure at the site?  [q-mu
   (reviewed:true)` with `xref_mane-select`). Of 18,599 MANE Select transcripts that a reviewed UniProt entry
   cross-references, **1,017 (5.47%)** encode a protein different from that entry's canonical sequence, KRAS
   and EZH2 among them (`landscape.md` §7, MANE row).
-- KRAS (a prediction was written first, in the researcher's working notes): ClinVar esearch `KRAS[gene] AND
-  "missense variant"[molecular consequence] AND single_gene[prop]` (235 records) against AlphaFold DB's
-  AF-P01116-F1 model and its AlphaMissense `-hg38.csv`. ClinVar numbers on K-Ras4B while UniProt canonical,
-  the AlphaFold DB model and its AlphaMissense file are K-Ras4A. Joining by the protein-change string gave
+- KRAS (a prediction in the researcher's working notes, not timestamped): ClinVar esearch `KRAS[gene] AND
+  "missense variant"[molecular consequence] AND single_gene[prop]` against AlphaFold DB's AF-P01116-F1
+  model and its AlphaMissense `-hg38.csv`. ClinVar numbers on K-Ras4B while UniProt canonical, the
+  AlphaFold DB model and its AlphaMissense file are K-Ras4A. Joining by the protein-change string gave
   13 of 213 KRAS missense SNVs **a different codon's score, with no error raised**, four of them pathogenic
   or likely pathogenic in ClinVar (`landscape.md`, "Corrections the research made").
-- In the same run, the directive's wild-type check caught only 16 of the 32 mis-numbered KRAS variants. A
-  per-protein sequence-identity check, or a join on genomic coordinates, caught all 32. That is why
-  `[parse]` above checks both.
+- In the same run, the directive's wild-type check flagged only 16 of the 32 mis-numbered KRAS variants. The
+  32 are the ones a join on genomic coordinates puts on another residue, so that join finds all 32 by
+  construction. A per-protein sequence-identity check was not run; by reasoning it flags all 32, because it
+  refuses every variant numbered on K-Ras4B, correct ones included. That refusal is `[q-isoform]`'s
+  default, and why `[parse]` above checks both.
 - **Whether the 2023 pipeline had this problem depends on A1 and A2.** Which transcripts, and which
   structures?
 
@@ -929,18 +996,18 @@ question: model the mutants, or read the wild-type structure at the site?  [q-mu
 - If any step ran longer than 30 minutes or read data git ignores, Graphene's check cap and data rules
   (§4.2) would have forced workarounds.
 
-**Nodes only a scientist can sign off, and on what evidence.**
-- The isoform per gene: expression data and the literature, e.g. EZH2's Y641/Y646 naming
+**Nodes only a scientist can sign off, and on what evidence** (the tree's node in brackets).
+- The isoform per gene (`[q-isoform]`): expression data and the literature, e.g. EZH2's Y641/Y646 naming
   ([CIViC](https://civicdb.org/variants/165), read through a search summary; `landscape.md` §7).
-- Whether a structural feature measures the claimed effect: benchmarks of AlphaFold on mutations (Pak et
-  al. 2023, above).
-- The thresholds (pLDDT, RSA, the AlphaMissense cut-off). ClinGen's calibration puts the supporting-evidence
-  line at 0.792, not the developer's 0.564
+- Whether a structural feature measures the claimed effect (`[q-mutants]`, `[rule]`): benchmarks of
+  AlphaFold on mutations (Pak et al. 2023, above).
+- The thresholds (pLDDT, RSA, the AlphaMissense cut-off; `[site]`, `[rule]`). ClinGen's calibration puts
+  the supporting-evidence line at 0.792, not the developer's 0.564
   ([Bergquist et al. 2025](https://www.ccs.neu.edu/home/radivojac/papers/bergquist_genetmed_2025.pdf);
   `landscape.md` §7).
-- Which reference axis to compare against: germline pathogenicity or somatic oncogenicity.
-- What counts as a control.
-- How to read each disagreement.
+- Which reference axis to compare against: germline pathogenicity or somatic oncogenicity (`[agree]`).
+- What counts as a control (`[controls]`).
+- How to read each disagreement (`[agree]`).
 
 **What Alex must confirm.**
 - A1, the source and transcripts of the variant list.
@@ -959,7 +1026,11 @@ question: model the mutants, or read the wild-type structure at the site?  [q-mu
 
 - **What it covered:** six cancer genes (TP53, KRAS, BRAF, PIK3CA, EGFR, PTEN) and all 6,400 of their
   ClinVar missense SNV records. It used UniProt 2026_03 sequences, AlphaFold DB v6 models and AlphaMissense
-  from AlphaFold DB, with cancerhotspots.org as independent evidence for the controls.
+  from AlphaFold DB, with cancerhotspots.org as independent evidence for the positive controls. The three
+  negative controls rest on ClinVar, which is not fully independent of the method: AlphaMissense was not
+  trained on ClinVar, but its 0.34 and 0.564 lines were set for 90% precision on it, and the model was
+  fine-tuned on population frequency (`landscape.md` §7). `PREDICTIONS.md` P2 called the TP53 P72R
+  control "partly circular".
 - **Cost:** no GPU, no key, no spend. 65 s and 22 MB cold, and 2.5 s for all four checks once cached.
 - **Records:** every command, version and license is in its README, and every prediction was written before
   its run in `PREDICTIONS.md`.
@@ -969,7 +1040,7 @@ question: model the mutants, or read the wild-type structure at the site?  [q-mu
 | 1. wild type matches UniProt canonical and the AlphaFold model | 17 of 6,227 fail (0.27%): KRAS 16, BRAF 1 | KRAS: ClinVar numbers on K-Ras4B, UniProt and AlphaFold on K-Ras4A; they diverge at residue 151. BRAF: an 807-residue RefSeq isoform. None is a data error. 173 more records (2.7%) could not be checked, most of them missense only on another isoform; all are reported by reason, not dropped |
 | 2. controls | 10 of 11 pass | PIK3CA H1047R, the commonest PIK3CA hotspot, scores 0.538 (ambiguous, under 0.564). The method, applied as stated, does not reproduce this control |
 | 3. pLDDT ≥ 70 at the site (exit 1 if any site is below) | 1,672 of 6,210 sites fail (26.9%) | runs of low-confidence residues (inference: disordered termini and linkers), and **BRAF V600 (49.1) and EGFR L858 (51.2)**: two of the best-known actionable cancer variants fail a correct confidence check |
-| 4. agreement with ClinVar | 962 of 1,038 classified sites agree (92.7%); 76 flagged for sign-off | Among the 76, in overlapping groups: 20 rest on expert-panel records (8 TP53 benign calls AlphaMissense disputes); 17 PIK3CA pathogenic variants (mostly overgrowth-syndrome records) scored ambiguous or benign; 3 start-codon changes, which AlphaMissense scores as substitutions (likely benign) although their effect is loss of the start codon; 43 on weak records; 12 below pLDDT 70 |
+| 4. agreement with ClinVar | 962 of 1,038 classified sites agree (92.7%); 76 flagged for sign-off | Among the 76, in overlapping groups: 20 rest on expert-panel records (8 TP53 benign calls AlphaMissense disputes); 17 PIK3CA pathogenic variants (mostly overgrowth-syndrome records) scored ambiguous or benign; 3 start-codon changes, which AlphaMissense scores as substitutions (likely benign) although their effect is loss of the start codon; 43 on weak records; 12 below pLDDT 70. The same ClinVar calibration of the thresholds makes part of this agreement built in (inference) |
 
 **Predictions beside results** (`PREDICTIONS.md`; written at 00:53, P2b at 01:00, before the runs they
 predict).
@@ -985,8 +1056,9 @@ predict).
 
 **What it shows about the conditions.**
 - **Condition 2: cheap, yes.**
-- **Condition 2: cannot be faked, only with pinned inputs.** In an uncommitted copy of the spike, deleting
-  the 16 failing KRAS records fooled check 1 on KRAS; only the pinned hashes in `inputs.sha256` caught it.
+- **Condition 2: cannot be faked, only with pinned inputs the executor cannot edit.** In an uncommitted
+  copy of the spike, deleting the 16 failing KRAS records fooled check 1 on KRAS; only the pinned hashes in
+  `inputs.sha256` caught it.
 - **Condition 3: no.** Every check is correct as written, and a pipeline that passes them all still drops
   BRAF V600E from structural interpretation. It still compares against a germline axis where the commonest
   named traits of BRAF's pathogenic records are RASopathies (non-small cell lung carcinoma is on 11 of
@@ -998,11 +1070,11 @@ predict).
 protein-level), NetSurfP, or anyone's attention.
 
 **How a biology step would be judged: not designed.** `PREREG.md` covers mathematics only. The spike's
-discipline is a start: predictions written before each run, and control evidence from a source independent
-of the method (cancerhotspots.org), which its README calls the biological version of a pre-registration.
-Proposal: replay a pipeline whose errors are already known, the 2023 one if the lab recorded what it found
-after the fact, and count which errors the checks catch before the results are used and how many flags a
-scientist reads to get there. That needs the lab (§8).
+discipline is a start: predictions written before each run, and positive-control evidence from a source
+independent of the method (cancerhotspots.org), which its README calls the biological version of a
+pre-registration. Proposal: replay a pipeline whose errors are already known, the 2023 one if the lab
+recorded what it found after the fact, and count which errors the checks catch before the results are used
+and how many flags a scientist reads to get there. That needs the lab (§8).
 
 ### 4.5 What would have to change in Graphene, with today's Graphene tried on paper
 
@@ -1010,9 +1082,9 @@ The middle column is read from the code and docs; none of it was run under Graph
 
 | Need | What today's Graphene does | Where it fails |
 |---|---|---|
-| scope over data and compute budgets | scope is git paths (HOW_IT_WORKS P1); data outside git can be read (decision 8), and a check can verify it against hashes committed with it (the spike's `inputs.sha256`) | no budget per leaf for cluster hours; the night's ledger (decision 102) counts Token Factory calls and ConTree operations, not cluster or GPU hours |
+| scope over data and compute budgets | scope is git paths (HOW_IT_WORKS P1); for a leaf placed locally, data outside git can be read (decision 8), and a check can verify it against hashes committed with it (the spike's `inputs.sha256`), with the pins and the check outside the leaf's scope; a leaf in a ConTree sandbox has its check run in a fork without that path (§4.2) | no budget per leaf for cluster hours; the night's ledger (decision 102) counts Token Factory calls and ConTree operations, not cluster or GPU hours |
 | a sign-off as an explicit kind of check | `signoff:` stops a node in `review` after its check passes (decision 6) | only exit 0 passes (`run_check` in `plan.py`), so "exit 3: needs a sign-off" is just a failure; an unconditional sign-off asks for review even with no flags |
-| executors that submit a job and wait hours | `graphene run` waits for the executor's process (HOW_IT_WORKS P4); the check runs after | not tested; the check itself is capped at 30 minutes (HOW_IT_WORKS P2 step 3) |
+| executors that submit a job and wait hours | `graphene run` waits for the executor's process (HOW_IT_WORKS P4); the check runs after | not tested; Graphene's Nemotron executor stops each command at 300 s (`RUN_TIMEOUT` in `executor.py`), so it can only submit and poll, while a `--with` command is waited for until it ends; the check itself is capped at 30 minutes (HOW_IT_WORKS P2 step 3) |
 | provenance in the record | commits, check tail, scope verdicts (HOW_IT_WORKS P6) | 2,000 characters of output; data versions only if the leaf commits a provenance file |
 
 **Nothing here should be built before the mathematics pilot reports.**
@@ -1042,11 +1114,11 @@ compositions on over 580 plates and cut the specific cost ($/g protein) of cell-
 against the state of the art
 ([OpenAI and Ginkgo](https://cdn.openai.com/pdf/5a12a3bc-96b7-4e07-9386-db6ee5bb2ed9/using-a-gpt-5-driven-autonomous-lab-to-optimize-the-cost-and-titer-of-cell-free-protein-synthesis.pdf);
 `landscape.md` §7). Its pre-execution check was a Pydantic schema over plate layouts and volumes. Even so,
-two of 480 plates ran flawed: a model overwrote a required volume, and a unit bug left wells with only
-glucose and ribose. That is Graphene's pattern in miniature, a cheap check before spend and a defect turned
-into a new check. But it held only inside "a predefined operational envelope of Ginkgo's cloud laboratory"
-(one assay, cell-free protein synthesis), and the lab's own validator is what did it. On the four
-conditions (inference):
+two of the 480 plates GPT-5 designed ran flawed: a model overwrote a required volume, and a unit bug left
+wells with only glucose and ribose. That is Graphene's pattern in miniature, a cheap check before spend and
+a defect turned into a new check. But it held only inside "a predefined operational envelope of Ginkgo's
+cloud laboratory" (one assay, cell-free protein synthesis), and the lab's own validator is what did it. On
+the four conditions (inference):
 - The tree holds for protocols.
 - The check holds for format and inventory, not for biology.
 - A readout is a proxy, so passing is not meaning.
@@ -1086,23 +1158,24 @@ The pattern across fields: where the check becomes exact, **the reference is the
   ([ReForm](https://arxiv.org/abs/2510.24592)); 31.8% of ProofNet's Lean 4 entries by a separate count
   ([ProofNet#](https://arxiv.org/abs/2406.07222); `landscape.md` §6).
 
-Hardware, SQL and compiler verification show the directive's third condition this way, as Lean benchmarks
-do. It says where the person's attention belongs.
+In each of these fields, as in Lean benchmarks, the gap the third condition names sits in the reference or
+the specification, so that is where the person's attention belongs. For SQL this is text-to-SQL; in a
+rewrite the reference is the original query.
 
 ## 6. What Graphene would need, in order, smallest first
 
 Each item says what was tried with today's Graphene first, what the change would prove, and the result
 that would justify building it. **Nothing here is built by this run.** The first build step is
-`docs/process/directives/LEAN_DIRECTIVE_DRAFT.md`. Smallest first means by the change to Graphene: none
-for 0 and 1, a convention before any change for 2, a prompt for 3, the parser for 4, and what `needs:`
-means for 5.
+`docs/process/directives/LEAN_DIRECTIVE_DRAFT.md`, in November before the pilot's prover side (§8).
+Smallest first means by the change to Graphene: none for 0 and 1, a convention before any change for 2, a
+prompt for 3, the parser for 4, and what `needs:` means for 5.
 
 | # | What | For (§1) | Tried with today's Graphene | What it would prove | Built only if |
 |---|---|---|---|---|---|
-| 0 | **Nothing, to carry a Lean tree.** The layout of §3.2; the challenge out of every scope or under `readonly:`; each leaf's check is `check-leaf.sh`, the fast check (build, type and axioms). The full `gate.sh` was not run through `node done`: on this tree it never finished (stopped for memory), and it needs the project one directory below the repository root (`spikes/lean/primes/README.md` §7) | the mathematician, the lead | `plan propose` and `plan edit` accepted the tree as it is, and `--text` round-tripped it; `node done` refused the false leaf ("sorryAx") and passed a true one (`spikes/lean/primes/README.md` §2). An out-of-scope edit was not tried under Graphene: the boundary refuses one at `done` by design (decision 1; HOW_IT_WORKS P2 step 2), and the gate's layer (a) refused an edited `Challenge.lean` inside the check (`spikes/lean/gate/README.md`) | that today's Graphene holds a Lean tree | (done tonight, with the fast check only) |
+| 0 | **Nothing, to carry a Lean tree.** The layout of §3.2; the challenge out of every scope or under `readonly:`; each leaf's check is `check-leaf.sh`, the fast check (build, type and axioms). The full `gate.sh` was not run through `node done`: on this tree it never finished (stopped for memory), and it needs the project one directory below the repository root (`spikes/lean/primes/README.md` §7) | the mathematician, the lead | `plan propose` and `plan edit` accepted the tree as it is, and `--text` round-tripped it; `node done` refused the false leaf ("sorryAx") and passed a true one (`spikes/lean/primes/README.md` §2). In the red team an edited `Challenge.lean` and an edited `lean-toolchain` were refused by `node done` in 0.18 s and 0.17 s, before the check ran; the lakefile and manifest were not run through it (`spikes/redteam/README.md`, "The scope layer"; §3.3). The gate's layer (a) refused an edited `Challenge.lean` inside the check (`spikes/lean/gate/README.md`) | that today's Graphene holds a Lean tree | (done tonight, with the fast check only) |
 | 1 | **A check that is cheap enough.** A trusted `.lake` shared by the check's worktree; a narrow import in the challenge; a warm Lean server for the agent's loop. All of it lives in the check script and the executor, not in Graphene | the mathematician, the lead | each `done` took 7–15 minutes tonight: the fresh worktree pays three Mathlib loads (§3.8). A narrow import checked a lemma in 1.78 s (median of 5) against 146.6 s for one `import Mathlib` run at 02:30 (326 s, median of 5, earlier in the night; `spikes/lean/gate/cost.md`) | that a gate per leaf costs seconds to a minute, not a quarter hour | the first build step measures the gate per leaf above Graphene's 30-minute check cap (`CHECK_TIMEOUT = 1800` in `src/graphene_map/plan.py`; HOW_IT_WORKS P2 step 3), or above the attention it saves |
-| 2 | **A hand-back that must carry a witness**, for proof leaves. First as a contract line and a `--witness FILE` convention the check verifies; as a Graphene change (`release` refusing a proof leaf's reason with no witness, and no "wait on" offer for a disproof) only later | the mathematician, the lead; the developer (§7, lesson 4) | `release --why "too hard"` was accepted for a leaf `exact?` closes in 0.015 s. The false leaf's witness-carrying hand-back got the offer "wait on `factor_three_mod_four`", which cannot repair a false statement (`spikes/lean/primes/README.md` §2, §6) | that every hand-back names a defect, and that false leaves come back as disproofs | the first build step, which records every hand-back (`LEAN_DIRECTIVE_DRAFT.md` D; and `PREREG.md`'s hand-back count, added before any run), shows hand-backs with no witness, or an executor takes the free-text exit on a leaf another executor proves |
-| 3 | **Board questions from a conventions catalog** for Lean trees: ℕ subtraction, `tsum` of a non-summable series, real `sSup` and `limsup`, `ContDiff ⊤`, `deriv` and `∫` off-domain, `Nat.card` of an infinite type, "sufficiently large", density, induced subgraphs. Each has a documented 2025–26 failure (`landscape.md` §1 and §6): ℕ subtraction in Lean-GAP; `tsum`, `sSup` and `limsup` in LeanMarathon and Prim; `ContDiff ⊤` in Ilin and Miller; `deriv`, `∫` and `Nat.card` in PutnamBench 2005 A3, 1967 A4 and 1977 B6; "sufficiently large" and induced subgraphs in Formal Conjectures (Erdős 510 and 128); density in AlphaProof Nexus (Erdős #125, #741). A planner prompt addition, not code | the mathematician | not tried: no planner ran tonight, and no board question was written by hand. The spike's tree carried its one convention, ℕ subtraction, as a sentence in the leaf's goal, the form decision 99 gives an assumption the planner is sure of (`spikes/lean/primes/tree.txt`) | that the person answers once what would otherwise reach compute wrong | kill criterion 2 does not fire for at least one reader, whether or not 1 does (`PREREG.md`, "What earns the next phase": when 1 fires, the convention questions are what is kept), or the board's convention questions catch a seeded convention defect |
+| 2 | **A hand-back that must carry a witness**, for proof leaves. First as a contract line and a `--witness FILE` convention the check verifies; as a Graphene change (`release` refusing a proof leaf's reason with no witness, and no "wait on" offer for a disproof) only later | the mathematician, the lead; the developer (§7, lesson 4) | `release --why "too hard"` was accepted for a leaf `exact?` closes in 0.015 s. The false leaf's witness-carrying hand-back got the offer "wait on `factor_three_mod_four`", which cannot repair a false statement (`spikes/lean/primes/README.md` §2, §6) | that every hand-back names a defect, and that false leaves come back as disproofs | the convention is milestone B of the first build step, built regardless. The Graphene change only if that step, which records every hand-back (`LEAN_DIRECTIVE_DRAFT.md` D; and `PREREG.md`'s hand-back count, added before any run), shows hand-backs with no witness, or an executor takes the free-text exit on a leaf another executor proves |
+| 3 | **Board questions from a conventions catalog** for Lean trees: ℕ subtraction, `tsum` of a non-summable series, real `limsup`, `ContDiff ⊤`, `deriv` off-domain. Each has a documented failure: ℕ subtraction in Lean-GAP (`landscape.md` §6); `tsum` and `limsup` in LeanMarathon and Prim (§1); `ContDiff ⊤` in Ilin and in Miller (§6); `deriv` in LeanArchitect's Taylor study (§2). Mathlib's other junk values (real `sSup`, `√`, `log`, the Bochner integral; `landscape.md` §6) could join it; no failure from them was found. A planner prompt addition, not code | the mathematician | not tried: no planner ran tonight, and no board question was written by hand. The spike's tree carried its one convention, ℕ subtraction, as a sentence in the leaf's goal, the form decision 99 gives an assumption the planner is sure of (`spikes/lean/primes/tree.txt`) | that the person answers once what would otherwise reach compute wrong | kill criterion 2 does not fire for at least one reader, whether or not 1 does (`PREREG.md`, "What earns the next phase": when 1 fires, the convention questions are what is kept), or, in the pilot, a question today's board puts up catches a seeded convention defect. The pilot runs today's board, not this catalog (§8) |
 | 4 | **Grammar for mathematicians:** a prose line may begin with `- ` (a hyphen-minus, read today as a child node); a `uses:` key that names Lean or Mathlib declarations, recorded but not ordering | the mathematician | four refusals, each by its line (§3.8). Two are these; the other two, `test:` and a leaf with no scope and no check, ask for what every leaf needs and should stay | that a mathematician's text is accepted as they write it | a person hits them |
 | 5 | **`needs:` as meaning, not order**, where a leaf takes its needs as hypotheses | the lead | not tried. By decision 15 the sub-goal's check (`./check-leaf.sh Root`) would do the integration if `needs:` were left out; `tree.txt` kept `needs:`, and the roll-up never ran (1 of 9 leaves done; `spikes/lean/primes/README.md` §2). Leaving it out costs the dependency record, and LeanArchitect then has no edges between leaves | full parallelism with the dependency kept | a tree where the waiting costs real time; tonight `needs:` made 3 of 8 leaves wait (§3.1), and what that cost was not measured |
 | — | declaration- or span-level scope | the lead | not needed: one proof file per leaf | — | leaves must share files |
@@ -1138,8 +1211,8 @@ the code and the decisions, not run. The tests run on the four software tasks' f
 - *Lean:* the spike's first fast check was faked from inside a leaf's own file (a macro made a proof of
   `1 = 2` print a clean axiom line), and was rewritten to read the compiled environment. Through the gate,
   SafeVerify and comparator rejected the same hijack; layer (c) and `leanchecker` passed it
-  (`spikes/lean/primes/README.md` §3, §7). The red team's 21 attacks: no single layer
-  rejected every faked proof, and a stored axiom list altered after compilation fooled `#print axioms`
+  (`spikes/lean/primes/README.md` §3, §7). In the red team's 21 cases no single layer rejected every
+  faked proof; in a second round, a stored axiom list altered after compilation fooled `#print axioms`
   (§3.3).
 - *Today:* `graphene plan precheck` runs each check on the untouched commit and flags one that passes already
   or cannot run (decision 94): a proposed leaf's check only in a sandbox fork, and automatically only with
@@ -1153,9 +1226,10 @@ the code and the decisions, not run. The tests run on the four software tasks' f
      it.
 
 **3. Falsify before spending.**
-- *Lean:* on the machine's bounded rewrite of the false leaf, `plausible` found its counterexample (n = 5) in
-  0.14 s and `decide` refuted it for n < 30 in 0.04 s, times inside Lean after Mathlib loaded; a person, or a
-  proof, has to accept the rewrite. A vacuity test flagged the vacuous leaf in 0.15 s (`spikes/lean/primes/README.md`
+- *Lean:* `plausible` cannot test the false leaf as written. On a bounded rewrite written by hand
+  (`Falsify/Run.lean`; no planner or rule wrote it), it found the counterexample (n = 5) in 0.14 s and
+  `decide` refuted it for n < 30 in 0.04 s, times inside Lean after Mathlib loaded; a person, or a proof,
+  has to accept the rewrite. A vacuity test flagged the vacuous leaf in 0.15 s (`spikes/lean/primes/README.md`
   §6).
 - *Today:* precheck tests the check, never the goal (decision 94). Nothing tries a leaf's goal on an example
   before an executor is paid.
@@ -1214,8 +1288,8 @@ people: the board studies used Claude stand-ins (decisions 98, 108).
 1. the whole theorem failing under automation;
 2. three leaves closing for $0;
 3. the false leaf coming back with its counterexample, n = 5, before any proof attempt. `plausible` found
-   it only on the machine's bounded rewrite of the statement, and `decide` refutes that form for n < 30
-   (`spikes/lean/primes/README.md` §6). Graphene's offer on that hand-back is still "wait on", which
+   it only on a bounded rewrite written by hand (`Falsify/Run.lean`; no planner or rule wrote it), and
+   `decide` refutes that form for n < 30 (`spikes/lean/primes/README.md` §6). Graphene's offer on that hand-back is still "wait on", which
    cannot repair a false statement (§6, item 2);
 4. the vacuous leaf flagged;
 5. the red-team table (§3.3), with its review's corrections, and the gate-file hijack rerun live on core
@@ -1234,7 +1308,8 @@ It says only what the spike showed, and it is the "What's next" evidence (§11).
 leaves automation could not close.
 - **What runs:** Graphene's own Nemotron executor (decision 54), its tools running in the leaf's checkout
   on this machine, not in a Sandbox (decisions 55, 104). Each leaf's scope is its proof file and its check
-  is `check-leaf.sh`, so the check, not the model, decides.
+  is `check-leaf.sh`, the fast check. That check is feedback, not a verdict (§3.2), so a leaf it passes is
+  reported as "passed the fast check", not as proven, until the gate passes it on Linux (§9).
 - **Cost:**
   - Nemotron 3 Super, at $0.30 / $0.90 per million tokens in and out (decision 105). The executor's default
     is the smallest Nemotron listed, Nano (decision 56), so Super is named for this run.
@@ -1244,14 +1319,23 @@ leaves automation could not close.
     out an attempt, `models/cost_model.py`) is about $0.28. The executor is a tool loop that pays for its
     whole context on every call, and Token Factory prices no cached input (decision 55, `landscape.md`
     §5). So $0.28 is a lower bound, and the real figure is not measured.
-- **What it would add to the submission:** a real Nemotron call doing real work under a check it cannot
-  edit. Mathlib already proves the root in one application of Dirichlet's theorem, and the `euclid` leaf
-  states the root (`spikes/lean/primes/README.md` §5). A leaf closed by citing it is a lookup, and is
+- **What it would add to the submission:** a real Nemotron call doing real work, judged by the fast check.
+  Mathlib already proves the root in one application of Dirichlet's theorem, and the `euclid` leaf states
+  the root (`spikes/lean/primes/README.md` §5). A leaf closed by citing it is a lookup, and is
   reported as one.
-- **What it risks:** time. Stop at the cap or at an hour, whichever comes first. Each `done` took 7–15
-  minutes tonight (§6, item 1), and this machine checks one Mathlib leaf at a time
-  (`spikes/lean/gate/cost.md`). So an hour holds four to eight checked attempts, not forty, and the hour
-  will likely end the run first (an inference).
+- **What it risks:**
+  - Time. Stop at the cap or at an hour, whichever comes first. Each `done` took 7–15 minutes tonight (§6,
+    item 1), and this machine checks one Mathlib leaf at a time (`spikes/lean/gate/cost.md`). So an hour
+    holds four to eight checked attempts, not forty, and the hour will likely end the run first (an
+    inference).
+  - This machine. The model's shell commands run in the leaf's checkout with Alex's permissions: in the
+    local placement nothing confines them before `done` (`src/graphene_map/executor.py`). The fast check
+    then compiles the model's proof unsandboxed, and it borrows a `.lake` that is outside every scope and
+    that those commands can write (§3.2, §3.3; `spikes/lean/primes/README.md` §3). Running each check
+    through `gate.sh` instead would sandbox the compile, at about 6–9 minutes a Mathlib leaf here with
+    SafeVerify off (`spikes/lean/mechanics/README.md`, "The memory incident"; `spikes/lean/primes/README.md`
+    §7). It would not confine the model's commands, and the trusted `.lake` it clones can still be edited
+    between runs (`spikes/lean/gate/README.md`, "Limits").
 
 **What Alex does:**
 - watches the demo, and says yes or no to including it;
@@ -1262,23 +1346,45 @@ leaves automation could not close.
 
 ### November: the pilot, and the first people
 
-**Goal.** Run `PREREG.md`'s pilot, the person's side first because it is the cheaper one, and ask three
-people.
+**Goal.** Run `PREREG.md`'s pilot, the person's side first because it is the cheaper one; build the first
+step before the prover's side; and look for the people the pilot needs.
 
 1. **The person's side:**
    - Alex as the reader who knows the mathematics and not Lean.
    - 40 unseeded statements plus the seeded ones (about one in five), from undergraduate number theory and
      group theory trees.
    - Kill criteria 1 and 2.
-   - **Time, a guess:** about 12 to 25 hours of Alex's, over two weeks.
-     - About 50 statements reviewed at 4–14 minutes each, Lean experts' published times (IndiMathBench,
-       `landscape.md` §6).
-     - For kill criterion 2, 20 statements written at about 25 minutes each (PutnamBench's formalizing time,
-       same section). The 20 reviewed for it are among the 40; the 20 written are extra (`PREREG.md`).
-     - A reader new to Lean is likely slower.
+   - **Time, a guess:** about 8 to 17 hours of Alex's at Lean experts' published rates, over two weeks,
+     and more for a reader new to Lean.
+     - About 50 statements reviewed at 4–10 minutes each: one Lean expert's review with aids in
+       IndiMathBench (4 and 9 minutes; 14 to write by hand) and PutnamBench's verifying time (about 10)
+       (`landscape.md` §6).
+     - For kill criterion 2, 20 statements written at 14–25 minutes each (IndiMathBench by hand,
+       PutnamBench's formalizing time; same section). The 20 reviewed for it are among the 40; the 20
+       written are extra (`PREREG.md`).
+     - These are experts' times. A reader new to Lean, writing with a general agent, is likely slower.
+   - **The board is today's.** Whether it puts up convention questions on a Lean tree is untested (§6,
+     item 3); the conventions catalog is judged after the pilot.
    - **Cost:** $0 apart from the planner's calls, which Alex starts himself (decision 103). A few dollars
      (a guess), within the ledger's $10 a night (decision 102).
-2. **The prover's side:**
+2. **The first build step, before the prover's side** (`docs/process/directives/LEAN_DIRECTIVE_DRAFT.md`,
+   milestones A to D):
+   - A hardens the gate into one check command and runs `PREREG.md`'s gate on Linux against the red-team
+     suite. That is where round two's three open items and the Mathlib gap are closed, or not (§3.3, §9).
+   - B makes the witness hand-back a convention the check verifies. C has Graphene drive the chosen
+     executor, falsifiers and automation first. D runs the primes tree end to end with Alex present.
+   - The arms need C: in `PREREG.md` Graphene drives the executor through a check command, and nothing does
+     that for Lean yet.
+   - **Cost:** any Token Factory spend within the night's ledger, at most $10 (decision 102); Aristotle is $0
+     in fees. The Linux host as below.
+   - **Time:** not estimated. A's first measurement, the gate's time per leaf on Linux, sets the rest.
+   - **What Alex does:** answers question 6 (the cap, the Linux host, the tree after the primes tree) and
+     question 2 (the executor); is present for D and for every live call.
+   - **What earns the prover's side:** on Linux, the hardened gate rejects every red-team case that fakes a
+     proof, with round two's open items added as cases, and passes the honest ones (`spikes/redteam/README.md`,
+     Review) and the primes tree; and D ends with every leaf proven or handed back with a witness the gate
+     verifies.
+3. **The prover's side:**
    - 10 to 12 held-out targets, 30 to 36 target runs across the three arms, on the executor Alex chooses
      (question 2).
    - **Who shapes arm C's trees:** on a blueprint's nodes, the lead whose nodes they are, if they agree. On
@@ -1297,16 +1403,21 @@ people.
    - **Time:** not estimated in total, since it depends on the leaves per target, which freezing the set
      fixes. The gate took about 9 minutes per leaf here with SafeVerify off (`spikes/lean/gate/cost.md`).
      Two to three weeks of nights is a guess.
-3. **The people** (`messages.md`, drafts only):
+4. **The people** (`messages.md`, drafts only):
    - a Lean formalization lead with open nodes whose definitions exist. First choice: the Brownian motion
      blueprint's lead (question 5);
    - the lab where the 2023 pipeline ran. Alex names it;
    - a developer using Graphene. None was identified in any source this run read.
-   - **A Lean-fluent adjudicator** who takes no part in the arms, and a Lean-fluent second reader for kill
-     criterion 2. `PREREG.md` makes recruiting the adjudicator part of November. Until one exists, no catch
-     counts as real and no natural misstatement as confirmed, so kill criterion 1 cannot be scored. None
-     has been found, and no draft in `messages.md` asks for one yet. The lead above is the first place to
-     ask.
+   - Three the pilot needs. None has been found, and no draft in `messages.md` asks for any yet:
+     - **a Lean-fluent adjudicator** who takes no part in the arms. `PREREG.md` makes recruiting one part of
+       November. Until one exists, no catch counts as real and no natural misstatement as confirmed, so
+       kill criterion 1 cannot be scored;
+     - **a Lean-fluent reader**, the first of `PREREG.md` question 4's two readers; kill criterion 2 is read
+       for each reader;
+     - **a second reader** in `PREREG.md`'s sense: someone outside the project who knows the mathematics and
+       not Lean, who repeats Alex's side ("the reader has a stake"). Until one does, his results are
+       labelled "the builder as reader".
+   - The lead above is the first place to ask for the adjudicator and the Lean-fluent reader.
 
    Alex sends them himself.
 
@@ -1323,15 +1434,17 @@ What follows each outcome is in `PREREG.md`, "What earns the next phase".
   - the same design with a second person and more targets;
   - item 3 of §6, the conventions catalog, if kill criterion 2 does not fire for at least one reader.
     `PREREG.md` keeps the board's convention questions whether or not kill criterion 1 fires;
-  - item 2 of §6, the witness hand-back, only once hand-backs are counted. `PREREG.md` counts them, each
-    with whether it carries a witness the gate verifies (added before any run).
+  - the Graphene change of §6 item 2 (`release` refusing a proof leaf's reason with no witness), only once
+    hand-backs are counted. `PREREG.md` counts them, each with whether it carries a witness the gate
+    verifies (added before any run). The convention itself is milestone B of the first build step.
 - **If the lead says yes:** an overnight run on their chosen nodes, with their review.
 - **Biology waits for a real pipeline** that wants sign-offs.
 - **Software** (§7). None of these tests waits on November, so they can run any time after 30 October:
   - Tests 1 to 3, and step 1 of test 4, need no person: scripted executors on the fixed trees. The fixed
     trees themselves need the live planner, a key and a capped spend once (§7; decision 128).
   - Step 2 of test 4 needs a live model, so a key and Alex present.
-  - Test 5 is the November pilot's own design.
+  - Test 5 reruns study 4's design on the fixed trees with stand-ins, as studies 2 to 4 did (decision
+    108). It needs no person, and it is not the Lean pilot.
 - **Cost:** the same caps: at most $10 a night through the ledger (decision 102), and Aristotle $0 in fees
   today. Add a second person's time.
 - **Time:** not estimated; it depends on which outcome the pilot gives.
@@ -1347,14 +1460,18 @@ changes written there, each with its reason: K1, K3 and K5):
 1. Over at least 40 unseeded statements, the person adds fewer than 1 real catch per 10 beyond the
    machine's review and falsification. A real catch is one the adjudicator confirms. Then narrow to the
    board's convention questions, or stop.
-2. For a reader, over 20 statements per condition, reviewing the median statement takes more than half as
-   long as writing it. Then the attention claim fails for that reader.
+2. For a reader, the median review time exceeds half the median write time, over 20 statements in each
+   condition (separate sets). Then the attention claim fails for that reader.
 3. Arm A or B proves at least as many pilot targets as C, at no more model and compute dollars at list
    price, and lets no more misstatements reach compute. Then the person-shaped tree adds nothing there.
 4. Any exploit passes the whole gate and no check command closes it. Then stop until one does. **Tonight's
-   reading: it does not fire.** Every attack that faked a proof was rejected by at least one check
-   command; wrong statements are beyond any gate by the third condition; two hazards and the Mathlib
-   gate stay untested (§3.3).
+   reading: it does not fire.** Every attack that faked a proof was rejected by at least one layer. For
+   16, 18 and 19 that layer is Graphene's scope, or by design `gate.sh`'s trusted-inputs step, which was
+   tested only on an edited `Challenge.lean`. Case 15, an honest proof that writes a file while it
+   compiles, was stopped only by a sandbox, the red team's own. Wrong statements are beyond any gate, by
+   the third condition. Untested: round two's three open items (code run on import, a shared build, and
+   the altered axiom list made from inside a leaf, which comparator's or SafeVerify's own walk should
+   decide) and the Mathlib gate (§3.3; `spikes/redteam/round2/README.md`).
 5. On the leaves automation cannot close, a cheap model costs more dollars per proven leaf, at list price,
    than a frontier model on the same leaves. Then the cheap-model claim fails in mathematics. Aristotle is
    compared on time, not dollars, since it charges no fees.
@@ -1396,9 +1513,10 @@ changes written there, each with its reason: K1, K3 and K5):
 
   The controls limit what he can claim to catch, not how fast he reads. Only the second reader removes the
   stake.
-- **The attention record.** Every registered attention study so far found no gain by its own rule
-  (decisions 98, 99, 108, 115). One exploratory pass leaned the other way (decision 115: 104.1 against 107.4
-  modelled seconds), which shows a direction, not a result. The pilot may find no gain too, which is what
+- **The attention record.** Every registered attention study with a rule found no gain by it (decisions
+  98, 108, 115); the exploratory study 3 narrowed the gap and did not close it (decision 99). One
+  exploratory pass leaned the other way (decision 115: 104.1 against 107.4 modelled seconds), which shows a
+  direction, not a result. The pilot may find no gain too, which is what
   the kill criteria are for.
 - **Distraction from the entry.** Nothing here runs before 30 October beyond the one day, and that day is
   optional.
@@ -1419,20 +1537,22 @@ otherwise. The assumptions taken on his behalf follow the questions.
    - The terms are the risk (§9).
 2. **Which existing prover or harness should November's arms run on?** *Recommended:*
    - **Aristotle** for all three arms: end to end for A, per leaf for B and C. All arms then share the
-     executor, as `PREREG.md` requires, and B and C differ only by the person's layer.
+     executor, as `PREREG.md` requires, and B and C differ only by the person's layer. In B and C,
+     "cheapest tier first" (`PREREG.md`) is automation, then Aristotle.
      - LeanEval dropped every problem one Aristotle query could solve (`landscape.md` §3), so its targets
        are selected against Aristotle. The arms still compare fairly, since all share it (an inference).
      - With Aristotle at $0 in every arm, kill criterion 3's dollar condition nearly always holds for A.
        K3 is then decided by targets proven and misstatements (an inference).
-   - **One cheap tier beside it** on the same leaves: Nemotron 3 Super (decision 105), or
-     `deepseek-ai/DeepSeek-V4-Flash-0731` at $0.14 / $0.28. That is the DeepSeek V4 Flash left in Token
-     Factory's catalog, since the plain id was retired on 2026-08-31 (`landscape.md` §5).
+   - **A cheap tier and a frontier tier apart from the arms**, on the leaves automation could not close, to
+     decide kill criterion 5. No arm's result uses them.
+   - **The cheap tier:** Nemotron 3 Super (decision 105), or `DeepSeek-V4-Flash-0731` on Token Factory at
+     $0.14 / $0.28 (`models/cost_model.py`). The plain DeepSeek-V4-Flash id was retired on 2026-08-31
+     (`landscape.md` §5).
      - Graphene's own executor runs it. That executor is a tool loop (decision 55), so it is priced as a
        loop, at the full input rate (`PREREG.md`, K5).
      - The DeepSeek id is pinned by hand: roles pick only Nemotron sizes (decision 56).
-   - **One frontier tier** on the same leaves, capped, so kill criterion 5 can be decided: Claude Code on
-     Opus 5.5, which Graphene already starts as an executor (decision 54), at $4 / $20 per million tokens
-     (`landscape.md` §5).
+   - **The frontier tier**, capped, on the same leaves: Claude Code on Opus 5.5, which Graphene already
+     starts as an executor (decision 54), at $4 / $20 per million tokens (`landscape.md` §5).
      - Its spend is outside Graphene's ledger, which counts Token Factory and Sandboxes (decision 102). So
        keeping it within the standing $10–20 a night is Alex's job.
      - Without it, K5 is not tested in November, and the results say so.
@@ -1453,6 +1573,16 @@ otherwise. The assumptions taken on his behalf follow the questions.
    - Blueprint colours can be stale (con-nf, same section).
    - FLT shows as many open nodes, but an end-to-end AI proof of FLT is already public (`landscape.md` §1).
    - Ask before any prover touches their project.
+6. **The first build step (`docs/process/directives/LEAN_DIRECTIVE_DRAFT.md`) in November, before the
+   pilot's prover side?** *Recommended: yes, with the night's cap at the ledger's $10 (decision 102), a
+   Linux host you name, and no tree after the primes tree until a lead agrees (question 5).*
+   - Kill criterion 4 does not fire on tonight's evidence, but that rests on core Lean, with round two's
+     three open items and the Mathlib gate untested (§3.3, §9). Milestone A is where they are closed.
+   - The arms need Graphene to drive the executor through a check command (`PREREG.md`); milestone C
+     builds that (§8).
+   - Without a Linux host, A stops at macOS's `sandbox-exec`, and nothing counts as proven (§9).
+   - The draft's answers block takes the cap, the host and the tree from this question, and the executor
+     from question 2.
 
 **Assumptions taken for you.** Each stands until you change it.
 - The kill criteria as `PREREG.md` changed them, each with its reason:
@@ -1461,8 +1591,9 @@ otherwise. The assumptions taken on his behalf follow the questions.
   - K5 compares Aristotle on time, not dollars.
 - You are the pilot's reader who knows the mathematics and not Lean (§8, §9).
 - The worked theorem is the infinitude of primes ≡ 3 mod 4, already in Mathlib (`spikes/lean/primes/`).
-- The Lean layout is option 4 of §3.2, protected by today's scope and checked by the gate in `PREREG.md`:
-  comparator in its sandbox, two external kernels and SafeVerify.
+- The Lean layout is option 4 of §3.2, protected by today's scope and checked by the gate `PREREG.md`
+  registers: the build, the axioms, `leanchecker`, comparator in its Linux sandbox with two external
+  kernels, and SafeVerify.
 - Nothing counts as proven in November without a gate on Linux with comparator's sandbox (§3.2, §9).
 - On a blueprint's nodes, the person in arm C is the lead whose nodes they are (§8).
 
@@ -1478,23 +1609,30 @@ limits:
 >
 > A textbook theorem's tree, infinitely many primes congruent to 3 mod 4 in eight leaves, went into
 > Graphene's plan as written. Automation closed three of the leaves for nothing and did not close the
-> theorem. A seeded false leaf came back with its counterexample, n = 5, found in under a second before
-> any prover ran. Of 21 attacks on the gate that decides a leaf is proven, every one that faked a proof was
-> rejected by at least one check, though no single check caught them all.
+> theorem. A seeded false leaf came back with its counterexample, n = 5, found in under a second once the
+> statement was bounded by hand, before any prover ran. We ran 21 attacks against seven layers on a
+> core-Lean copy of the layout; 15 tried to fake a proof, and each was rejected by at least one layer,
+> Graphene's scope boundary included, though no single layer caught them all.
+>
+> All of it ran on one laptop with 18 GB of memory. The times are measured inside Lean after Mathlib had
+> loaded, which took minutes. SafeVerify and comparator, the checks that compare a proof with the approved
+> statement, never reached a verdict on the worked tree, and the full gate still has to run on Linux.
 >
 > The same night showed what no gate can catch, a statement that does not say what was meant. It also
-> showed that Graphene's own check has to run in a sandbox, because a Lean proof can run code while it is
-> checked.
+> showed that the check Graphene runs for a Lean leaf has to bring its own sandbox, because a Lean proof can
+> run code while it is compiled.
 >
 > In November we test the claim that matters, registered before any run with the numbers that would make
-> us stop: whether a person, helped by the machine's questions about conventions, catches misstatements the
-> machine does not. We found no tool that asks those questions before spend, and no measurement of how a
-> mathematician who does not read Lean reviews a statement.
+> us stop: whether a person reviewing a tree's statements catches misstatements the machine does not, and
+> whether reviewing a statement takes less than half as long as writing it. We found no tool that asks a
+> person about conventions before spend, and no measurement of how a mathematician who does not read Lean
+> reviews a statement.
 
 Every sentence traces to a section above:
 - the tree and automation: §3.8;
 - the false leaf: §3.4;
 - the red team: §3.3;
+- the machine and its limits: §3 (its opening) and §3.2;
 - what no gate catches, and the sandbox: §3.3;
 - the November test: `PREREG.md`;
 - no tool and no measurement: §3.5 and §3.4.
@@ -1502,8 +1640,10 @@ Every sentence traces to a section above:
 What it leaves out on purpose:
 - It names no incumbent and no other entry.
 - It claims no gain in attention: none was measured.
-- It gives no biology result. The check spike's finding, that cheap checks catch real errors and a correct
-  check still drops BRAF V600E, is in §4.4 if Alex wants a sentence.
+- It gives no biology result. The check spike's finding is in §4.4 if Alex wants a sentence: cheap checks
+  flag records numbered on another isoform (17 of 6,227, none a data error, which a pipeline without the
+  check would have scored against the wrong residue, silently), and a correct check still drops BRAF
+  V600E.
 
 ## 12. How this run went: what ran, what was assumed, what went wrong
 
@@ -1514,14 +1654,18 @@ This section is the run's own record, for Alex. The spikes' READMEs hold every c
 | Part | Where | When (EDT, 2026-09-30) |
 |---|---|---|
 | Lean install: elan 4.2.4, Lean v4.34.1, Mathlib v4.34.1 (`d13f23b7`) | `spikes/lean/mechanics/install/` | 00:46–00:52 |
-| research, eight researchers in parallel | `landscape.md`; the notes stay in the scratchpad | 00:53–01:40 |
 | the biology check spike | `spikes/bio/` | 00:50–01:15 |
-| the Lean mechanics and the gate | `spikes/lean/mechanics/`, `spikes/lean/gate/` | 00:59–03:14 |
-| the worked tree, automation baseline, hammers, false leaf | `spikes/lean/primes/` | 00:58–03:14 |
-| the red team: 21 attacks × 7 layers, the real Graphene boundary | `spikes/redteam/` | 03:15–03:55 |
-| a critic's review of the red team; round two (one hole tested, two left open) | `spikes/redteam/` (Review), `spikes/redteam/round2/` | 04:00–04:25 |
-| the plan checked claim by claim (six verifiers and a directive-compliance critic, 222 findings), fixed by section, cross-checked by the integrator | this file | 03:20–04:30 |
+| research, eight researchers in parallel, with the biology researcher's two measurements (M1, M2) | `landscape.md`, `spikes/bio/research/`; the notes stay in the scratchpad | 00:53–01:40 |
+| the worked tree, automation baseline, hammers, false leaf | `spikes/lean/primes/` | 00:55–03:30 |
+| the Lean mechanics and the gate | `spikes/lean/mechanics/`, `spikes/lean/gate/` | 00:59–03:15 |
 | `PREREG.md`, registered before any evaluation run | commit `65cd69d` | 01:43 |
+| the red team: 21 attacks × 7 layers, the real Graphene boundary | `spikes/redteam/` | 03:15–03:55 |
+| the plan checked claim by claim (six verifiers and a directive-compliance critic, 222 findings), fixed by section, cross-checked by the integrator | this file | 03:20–04:30 |
+| `PREREG.md` amended twice before any run: the reader's stake; the gate's external kernels and SafeVerify, and the hand-back count | commits `9dd6df7`, `19bf790` | 03:35, 03:47 |
+| a critic's review of the red team; round two (one of three holes tested; the other two, and making the tested one from inside a leaf, left open) | `spikes/redteam/` (Review), `spikes/redteam/round2/` | 04:00–04:15 |
+| round two's README written; the plan's sections rewritten and assembled; all committed with the red team's Review and `spikes/README.md` | commits `0fe4712`, `b40fa01`, `039a5d5` | 10:27–10:31 |
+| a second skeptical review of the whole plan (101 findings), each checked against its source before it was applied, by section | this file | 10:30–10:46 (findings), fixed by section by 11:00 |
+| the fixes that crossed files: the brief cut to fifteen lines; `PREREG.md` clarified before any run (kill criterion 4's "exploit", the arms' "cheapest tier first", a wrong Lean version); the Lean draft's milestone A given round two's three holes as cases and a bar the evidence allows; `landscape.md` rows; `reprice_near.py` prints the multi-run split it is cited for | this file, `PREREG.md`, `landscape.md`, `LEAN_DIRECTIVE_DRAFT.md`, `models/` | 11:00–11:15, committed with this file |
 
 No model or prover was called by any spike, no key was read, no account was made, and nothing was spent.
 - The only network use was public: downloads of tools, Lean packages and public databases, and web reading.
@@ -1536,29 +1680,38 @@ applies):
 - **The person's acts in the scratch repositories** followed decision 95's precedent: the agent's marks were
   dropped and `GRAPHENE_AS=person:alex` was set there only, and the log marks them "(no terminal)".
 - **Mathlib at the release** tagged for the newest stable Lean (v4.34.1), not master.
-- **This planning run's work was committed as it finished.** `PREREG.md` came before the Lean spike did, so
-  that its registration time is as early as possible.
+- **This planning run's work was committed at milestones, with one long gap.** Nothing was committed
+  between the red team at 03:56 (`e254fe9`) and 10:28 (`0fe4712`), so the red team's review and round two,
+  done by 04:15, and the plan went in at 10:28–10:30. This record does not say why.
+- **`PREREG.md` was committed at 01:43, before any spike's results were**, so that its registration time is
+  as early as possible.
 
 **What went wrong, and what was done:**
-- **Memory.** This machine has 18 GB of RAM. Several agents loaded Mathlib at once, swap reached 30.3 GB, and
-  free disk fell to 13 GB at 03:08, below the 15 GB floor the agents were given.
-  - The coordinator stopped the tree agent's gate run: three SafeVerify processes at once, each loading
-    Mathlib four times. Free disk went back to 22 GB within a minute.
+- **Memory.** This machine has 18 GB of RAM. Several agents loaded Mathlib at once, swap reached 30.3 of
+  30.7 GB, and free disk fell to 11 GB at its lowest, below the 15 GB floor the agents were given
+  (`spikes/lean/mechanics/README.md`, "The memory incident").
+  - The coordinator stopped the tree agent's gate run at 03:09: three SafeVerify processes at once, each
+    loading Mathlib four times. Free disk was back at 22 GB after the stop (`spikes/lean/primes/README.md`
+    §7).
   - The gate now runs one leaf at a time, and `gate/cost.md` says why.
   - Every wall time that includes loading Mathlib is this night's machine, not Lean. That is said wherever a
     number appears.
 - **Duplicated agents.** The coordinator's messages at 03:09 resumed a second copy of each running
-  Lean agent, and for a few minutes two copies of each wrote into the same directories.
-  - The mechanics copies agreed: the first checked the second's entries against their logs and kept them.
-  - The tree copies did not. The second ran SafeVerify and comparator three at a time again at 03:10, and
-    the first stopped those jobs at 03:12, taking them for leftovers.
+  Lean agent, and for a few minutes two copies ran at once in the same directories.
+  - The mechanics README records no conflict, and no sign of a second copy.
+  - The tree copies conflicted. The second ran SafeVerify and comparator three at a time again at
+    03:09–03:10, and the first stopped those jobs at 03:12, taking them for leftovers.
   - `spikes/lean/primes/README.md`, section 7, records which runs were whose. One measurement made while
-    both ran is marked void there.
+    both ran is marked void in `spikes/lean/primes/PREDICTIONS.md` (the correction to P11).
   - After that the coordinator sent no more messages to running agents.
 - **Files in Alex's checkout.** The browser tool one researcher used to read a JavaScript page wrote six
   capture files into the git-ignored `.playwright-mcp/` of `~/Desktop/AllThingsAgenticHackathon`. The
   researcher moved exactly those six files into the scratchpad. `git status` there was unchanged. Nothing
   else in the checkout was touched.
-- **Predictions that missed.** Each is kept beside its prediction in the spikes' `PREDICTIONS.md` files, and
-  none was edited after the result. The toolchain's size, the first build's time, the Mathlib-bound check
-  times, `native_decide`'s axiom name, and comparator's sandbox on Docker Desktop's bind mount all missed.
+- **Predictions that missed.** Each result is kept beside its prediction in the spikes' `PREDICTIONS.md`
+  files, except the install's, whose results are in `spikes/lean/mechanics/README.md`, "Install". None was
+  edited after the result. Among the misses: the toolchain's size, the first build's time, the
+  Mathlib-bound check times, `native_decide`'s axiom name, comparator's sandbox on Docker Desktop's bind
+  mount, and round two's GateCheck. §3.7 has the whole Lean list and §4.4 the biology one (P3, P4).
+  - `predictions-install.md` is stamped "~00:55", but its scratch copy dates from 00:45, before the
+    install at 00:46: the stamp is wrong, not the order.

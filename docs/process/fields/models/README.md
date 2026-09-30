@@ -19,3 +19,4 @@ changed the layout only, and the output is byte for byte the same as before. Sta
   which have no cached-input rate. It needs NEAR's public `costs.tsv` next to it, saved as
   `near-costs.tsv`. That file was read at commit `bedec8e` of
   https://github.com/SkidanovAlex/putnambench-deepseek (2026-08-27). It is not copied here.
+  For each price sheet it also prints what the problems that took more than one run carry.
