@@ -230,6 +230,24 @@ reason, before any data exists.
 - **K5 fires.** Drop the cheap tier on proof leaves. Keep automation, then frontier or Aristotle, then the
   person.
 
+## Amended before any run: the reader has a stake
+
+*Added on 2026-09-30, after the registration commit and before any evaluation run exists. A review of
+the plan found this bias unnamed.*
+
+The one reader planned for the non-Lean side is Alex, who builds Graphene and wants the person's layer to
+earn its place. So his results are read with these controls, and reported apart:
+- **Seeded defects score themselves.** Each seed is on the sealed list, so "caught" is a fact about his
+  edits, not a judgment.
+- **The adjudicator does not know the condition.** Whoever confirms a natural misstatement does not know
+  which condition, write or review, a statement came from.
+- **Times come from logs.** Graphene's timestamps, plus a stopwatch only for reading that makes no
+  keystroke. They are never estimated afterwards.
+- **A second reader.** Someone outside the project who knows the mathematics and not Lean repeats the
+  person's side on the same statements, when one can be found (November, `PLAN.md` §8).
+  - Until then, every result from this side is labelled "the builder as reader".
+  - Kill criteria 1 and 2 are read on his results only as a pilot.
+
 ## What is not fixed here
 
 - **The executor**, and whether Aristotle is used (questions for Alex).
