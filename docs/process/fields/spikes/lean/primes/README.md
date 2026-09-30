@@ -443,7 +443,7 @@ time, but not by one check alone: the false leaf needs the bounded rewrite (or `
 because `plausible` cannot test an unbounded `∃`; the off-by-one is caught by plain `plausible`
 (omega fails on it, but a failure is not a counterexample); no falsification check flags the vacuous
 leaf (there is nothing false to find, and plausible cannot even test it), only the vacuity test
-does, while automation closes it faster than any honest leaf. The bounded rewrite is the machine's, and it is equivalent to the statement only by
+does, while automation closes it as fast as the honest leaves that close (0.07 s against 0.015–0.58 s; corrected by the integrator from "faster than any honest leaf"). The bounded rewrite is the machine's, and it is equivalent to the statement only by
 the fact that a divisor of a positive n is at most n: a person, or a proof, has to accept that step.
 
 **The hand-back.** In the scratch repository the agent took `odd_factor_three`, its `done` was refused
@@ -601,7 +601,7 @@ hijack, layer (e) is what rejects it. The costs from these lines: the fast check
 - **The machine catches misstatements cheaply, but only as a portfolio.** No single check caught
   all three seeded defects: `plausible` cannot test an unbounded `∃` (so it missed the false key
   lemma until the statement was bounded), and nothing but the vacuity test flags a vacuous leaf,
-  which automation "proves" faster than any honest leaf.
+  which automation "proves" as fast as the honest leaves that close (corrected by the integrator from "faster than any honest leaf").
 - **Graphene's `needs:` is order, a Lean hypothesis is meaning.** With needs as hypotheses every leaf
   can be checked at once; `needs:` made three of eight wait. And a hand-back's offer read a node id in
   a disproof as "wait on it".

@@ -76,9 +76,19 @@ carries:
   - The spike's check borrowed the shared build through a symlink outside git, so outside every scope.
 - **Narrow the challenge's imports** to the Mathlib modules its statements need. One lemma checked cold in
   1.78 s this way, against 146.6 s with `import Mathlib`.
-- **Run comparator in its real sandbox on Linux,** with one external kernel (nanoda or lean4lean) enabled.
-  - On macOS keep `sandbox-exec` around every layer that loads a leaf's code.
-  - Say in the brief which sandbox ran; never report the no-op shim as a sandbox.
+- **Run the gate `PREREG.md` registers, on Linux:**
+  - comparator in its real sandbox;
+  - at least two external kernels besides Lean's own (lean4lean and con-leche ship with Lean v4.35; nanoda
+    alone had wrong rejects);
+  - SafeVerify, one leaf at a time, on a machine with the memory for it.
+
+  On macOS keep `sandbox-exec` around every layer that loads a leaf's code, and say in the brief which
+  sandbox ran. Never report the no-op shim as a sandbox, or a skipped layer as passed.
+- **Fix what the spike found in `gate.sh`:**
+  - it fails when the project sits at the repository root, because an empty `--show-prefix` is passed to
+    `git ls-tree` (`spikes/lean/primes/README.md` §7);
+  - it trusts a `.lake` and tools that an executor running as the same user can edit between runs
+    (`spikes/lean/gate/README.md`, "Limits").
 - **Run the red-team suite** (`spikes/redteam/run_all.sh`) against the hardened gate. Every exploit must be
   rejected, and the honest tree must pass.
 
