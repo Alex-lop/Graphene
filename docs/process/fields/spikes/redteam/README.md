@@ -13,6 +13,50 @@ every definition and each statement as `def S_<leaf> : Prop`; one writable `Proo
 proves `S_<leaf>` by name; read-only `Spec/<Leaf>.lean` (the challenge stub the comparison tools use) and
 `Gate/<Leaf>.lean` (the type assertion) are written from the tree, never by a leaf.
 
+## Review: read this before the rest
+
+A read-only critic checked this file against its own logs after it was written (2026-09-30, 04:00 EDT).
+- **The matrix matches the logs, cell for cell.**
+- **Five claims below were wrong:**
+  - *"`run_check` isolates the filesystem"* is wrong. It runs the check in another directory, and nothing
+    confines its writes; Test D wrote outside the repository.
+  - *"Exploits 01–14 and 16–21 are each caught"* counts rows that fake nothing. Rows 11, 14, 15 and 17 are
+    honest proofs of the true statement: 15's attack is its side effect, and 17's lakefile payload never
+    took effect. Rows 20 and 21 are honest proofs of defective statements.
+  - *"No exploit escapes all of {scope, sandbox, trusted inputs, before-spend check}"* is wrong for 20. The
+    dummy structure's statement is true and not vacuous, so no falsifier or vacuity probe flags it. Scope
+    rejected it only because the red team put the defect where a leaf may not write. If the tree's author
+    writes it, **only the person catches it.**
+  - *Exploit 16's mechanism:* editing `Challenge.lean` alone defeats comparator and SafeVerify. The `Spec`
+    stub was not changed and follows whatever the challenge says. Only pinning the challenge matters.
+  - *The kill-criterion reading ("not met: every exploit is closed by some layer")* counts the person as a
+    layer. Kill criterion 4 is about check commands. The honest reading is in `../../PLAN.md` §3.3: no check
+    command can close 20 or 21, and they are not faked proofs but proofs of wrong statements, the third
+    condition's gap.
+- **Five claims are stronger than the evidence:**
+  - *Core Lean for Mathlib:* the Mathlib evidence covers only `sorry`, a changed statement, a challenge edit,
+    the hijack and a writing proof. The rest is argued, and some tools behave differently on Mathlib
+    (LeanParanoia's false failures, SafeVerify's memory).
+  - *The scope layer on the real Graphene:* only two out-of-scope edits (`Challenge.lean`, `lean-toolchain`)
+    went through `graphene node done`. The SCOPE column is otherwise computed from file names.
+  - *Exploit 13* fails in any layout, so it does not show that option 4 defeats namespace shadowing. A leaf
+    that declares its own shadowed `S_target` was not tried. What would stop it is GateCheck's exact-name
+    and definitional-equality checks, plus comparator and SafeVerify.
+  - *Exploit 14* defines an unused notation and does not shadow a definition the statement uses.
+  - *Exploit 15's sandbox evidence* came from this script's own profile, which lets all of `.lake` be
+    written, not from `gate.sh`'s narrower one. `gate.sh` was not run on it.
+- **Gaps:**
+  - `gate.sh` itself was not attacked here. Its layer (c) compiles a gate file and reads the printed
+    `#print axioms` line, so the hijack (12) fools it, and only its layer (e) catches it. Round two found a
+    second way to fool layer (c) (`round2/`).
+  - PREREG's external kernels were not run.
+  - No vacuity probe was run on 21 itself.
+  - Catalog items that matter for this layout were not run: code that runs on import, auxiliary-declaration
+    shadowing, several leaves with needs.
+  - The positive control was not recorded in `logs/matrix.tsv`.
+- **Minor harness issues** (none changed a verdict tonight): comparator, SafeVerify and LeanParanoia are
+  scored by a success string, so a crash would count as R; and leanchecker's exit code is not logged.
+
 ## Why this ran on core Lean, not Mathlib
 
 The directive and the task ask for the primes/gate Mathlib layout. **It does not fit this machine, and
@@ -269,6 +313,6 @@ uv run --project $F graphene node done target      # refused by the check (sorry
 | `logs/graphene/scope-demo.md` | the four real-Graphene scope transcripts and the `finish` order |
 
 The exploit list starts from LeanParanoia's test suite and OEIS Open's published attack list
-(`../../../../notes/verifiers.md` part B, `../../../../notes/provers.md` §6.4–6.5); the mapping of each to
+(the researchers' exploit catalog, summarised in `../../landscape.md` §4 and §3 with its sources; the full notes stay on the machine that made them); the mapping of each to
 this layout, and the two additions specific to it (the gate-file hijack 12 and the compile-time-IO/check
 finding 15), are the red team's.

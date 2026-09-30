@@ -366,7 +366,7 @@ P7). Duper v4.34.1 (with lean-auto v4.34.1) and Canonical v4.34.0 resolved besid
 built in 110 s. LeanHammer did not: it supports Lean up to v4.33.0, and against Mathlib v4.34.1 its
 build failed after 267 s in lean-smt ("Invalid field `canUnfold?`: The environment does not contain
 `Lean.Meta.Context.canUnfold?`", an API Lean 4.34 removed); its default premise selector is a remote
-server (`notes/provers.md`), so I would not have used it that way anyway. I did not try a second
+server (`../../../landscape.md` §3), so I would not have used it that way anyway. I did not try a second
 Mathlib at v4.33 (7.6 GB more, and the box). Duper and Canonical ran in a separate project on the same
 14 goals (`Auto/hammers.md`, `logs/hammers-20260930-021145.log`), with `duper [*]` (the hypotheses
 only: Duper takes no premises from the library unless it is handed them) and `canonical 55` (its own
@@ -589,7 +589,7 @@ hijack, layer (e) is what rejects it. The costs from these lines: the fast check
   `check-leaf.sh` and, as I read it at 02:08, layer (c) of `../gate/gate.sh`; its layer (e) compares
   compiled types and should catch it (section 7 says what running it showed). `GateCheck.lean` closes
   it by asking the compiled environment instead (section 3). It belongs to the red team's
-  "notation/macro redefinition" class (LeanParanoia's catalog in `notes/verifiers.md`).
+  "notation/macro redefinition" class (LeanParanoia's catalog, `../../../landscape.md` §4).
 - **A "closed" that is not a proof.** Canonical, when it finds a term, admits the goal with `sorry`
   and prints `Try this: exact …`; `plausible`, when it finds nothing, also admits. Both left no goal
   and no error; only `#print axioms` (or `collectAxioms`) told them apart from a proof. Every

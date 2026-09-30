@@ -43,7 +43,7 @@ challenge once checks an attempt in about 0.01 s. So the loop keeps one REPL (or
 with `Challenge` imported, and for each attempt elaborates the leaf's proof, the Gate file's `example`
 and `#print axioms` in that environment. The cheap automation (`decide`, `omega`, `simp`, `norm_num`,
 `exact?`) belongs there too. This is feedback, not a verdict: the REPL is an elaboration front end with
-known false accepts in tactic mode (repl issue #44, open; see `scratchpad/notes/verifiers.md`, A5), it
+known false accepts in tactic mode (repl issue #44, open; see `../../../landscape.md` §4), it
 runs the agent's code with the agent's permissions, and in Lean 4.34.1 `#print axioms` reads an imported
 module's axioms from that module's own .olean (`src/lean/Lean/Util/CollectAxioms.lean`).
 
