@@ -4,9 +4,9 @@
 
 ## Brief (in progress)
 
-- **State at this commit:** the research is in (`landscape.md`, 393 sources), `PREREG.md` is registered, and the biology check spike ran (`spikes/bio/`). The Lean spike and the red team are still running; mathematics has no verdict yet.
-- **Mathematics:** not yet judged. The research changes the question: Prove2Me, Verso Blueprint and Tau Ceti already give a person a layer over provers, and Tao reports his formalization queue emptied by AI in June. What no tool found does is put the machine's convention questions to the person before spend.
-- **Biology:** not now as a product. The spike's cheap checks caught 17 real isoform mis-numberings in 6,227 ClinVar records, but a correct confidence check also drops BRAF V600E: passing does not mean what the scientist meant.
+- **State at this commit:** the research (`landscape.md`, 393 sources), `PREREG.md`, the biology spike and the Lean spike are in. The red team is running.
+- **Mathematics:** the tree carries into Graphene as it is. Automation closes 3 of its 8 leaves for $0 and not the whole theorem: the thesis only in its weak form. A false leaf comes back with its counterexample in 0.14 s, before any spend. The one piece no existing tool does is the machine's convention questions put to the person before spend (Prove2Me, Verso Blueprint and Tau Ceti cover the rest).
+- **Biology:** not now as a product. Cheap checks caught 17 real isoform mis-numberings in 6,227 ClinVar records, but a correct confidence check drops BRAF V600E: passing is not meaning.
 - **Other fields:** numerical methods (manufactured solutions) is the closest fit outside mathematics; backtested trading is the warning.
-- **First step, cost and time:** not yet proposed.
+- **First step, cost and time:** not yet proposed (waits on the red team).
 - **What Alex decides:** not yet listed.
