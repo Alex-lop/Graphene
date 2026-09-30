@@ -1,0 +1,48 @@
+$ graphene node release odd_factor_three --why '<the witness>'   # as the agent
+odd_factor_three handed back: false as stated, so no proof exists. Counterexample n = 5: 5 is odd and > 1, its only prime factor is 5 (5 = 5), and 5 % 4 = 1, so no prime factor of 5 is 3 mod 4. Found before any proof attempt: plausible on the bounded form (∃ p ≤ n) found n = 5 in 0.14 s (it cannot test the statement as written: the ∃ p is unbounded); decide proved the bounded form false for n < 30 in 0.04 s; the negation is proved in Falsify/Run.lean (odd_factor_three_false, standard axioms). Every counterexample below 60: 5, 13, 17, 25, 29, 37, 41, 53, the odd n whose prime factors are all 1 mod 4. What holds instead: n % 4 = 3 in place of n odd, which is factor_three_mod_four, already in the plan.
+next: prime_mod_four (a prime other than 2 is 1 or 3 mod 4) is ready, and 4 more: `graphene node start prime_mod_four` takes it, with its contract as it stands now
+exit=0
+
+$ graphene node show odd_factor_three
+odd_factor_three (revision 1): every odd n > 1 has a prime factor that is 3 mod 4
+  why:    a machine-checked proof in Lean 4 that there are infinitely many primes congruent to 3 mod 4: for every n there is a prime p > n with p % 4 = 3
+            there are infinitely many primes congruent to 3 mod 4 (primes-3-mod-4): past every n there is a prime p with p % 4 = 3. Lean: S_root, ∀ n : ℕ, ∃ p, n < p ∧ p.Prime ∧ p % 4 = 3
+and so the set of such primes is infinite. Lean: S_root_set, {p : ℕ | p.Prime ∧ p % 4 = 3}.Infinite
+Proofs/Root.lean is written from this tree (each leaf applied to the leaves it needs), never by a leaf
+  goal:   a stronger key lemma a tired planner might write: it would make Euclid's argument need no residue bookkeeping
+Lean: S_odd_factor_three, ∀ n : ℕ, n % 2 = 1 → 1 < n → ∃ p, p.Prime ∧ p ∣ n ∧ p % 4 = 3
+  scope:  Proofs/OddFactorThree.lean   (a write anywhere else is refused, and blocks `done`)
+  done:   `./check-leaf.sh OddFactorThree` passes
+  finish: graphene node done odd_factor_three   (runs the check and asks git what changed)
+  stuck:  graphene node release odd_factor_three --why '<what is in the way>' [--wants <paths it needs>]   (hands it back; say why)
+  came back: false as stated, so no proof exists. Counterexample n = 5: 5 is odd and > 1, its only prime factor is 5 (5 = 5), and 5 % 4 = 1, so no prime factor of 5 is 3 mod 4. Found before any proof attempt: plausible on the bounded form (∃ p ≤ n) found n = 5 in 0.14 s (it cannot test the statement as written: the ∃ p is unbounded); decide proved the bounded form false for n < 30 in 0.04 s; the negation is proved in Falsify/Run.lean (odd_factor_three_false, standard axioms). Every counterexample below 60: 5, 13, 17, 25, 29, 37, 41, 53, the odd n whose prime factors are all 1 mod 4. What holds instead: n % 4 = 3 in place of n odd, which is factor_three_mod_four, already in the plan.
+    make odd_factor_three wait on factor_three_mod_four: `graphene node set odd_factor_three --needs factor_three_mod_four`
+odd_factor_three  every odd n > 1 has a prime factor that is 3 mod 4
+  state: open · owner agent
+  window 1: claude:1c257068, session 1c257068-543a-48a1-ae2e-a2935409e414  2026-09-30T05:32:34.068Z -> 2026-09-30T06:04:19.776Z  released: false as stated, so no proof exists. Counterexample n = 5: 5 is odd and > 1, its only prime factor is 5 (5 = 5), and 5 % 4 = 1, so no prime factor of 5 is 3 mod 4. Found before any proof attempt: plausible on the bounded form (∃ p ≤ n) found n = 5 in 0.14 s (it cannot test the statement as written: the ∃ p is unbounded); decide proved the bounded form false for n < 30 in 0.04 s; the negation is proved in Falsify/Run.lean (odd_factor_three_false, standard axioms). Every counterexample below 60: 5, 13, 17, 25, 29, 37, 41, 53, the odd n whose prime factors are all 1 mod 4. What holds instead: n % 4 = 3 in place of n odd, which is factor_three_mod_four, already in the plan.
+    from 34b0f0e: what git said had changed when it ended
+    in scope: Proofs/OddFactorThree.lean  (git, when it ended)
+  coverage: of the 1 path git said had changed under this node, 1 inside its scope; 0 to a recorded edit, 0 to a recorded shell command, 1 to git alone
+    read from: the node's log, git, and Claude Code's records for session 1c257068
+    check: `./check-leaf.sh OddFactorThree` failed at 2026-09-30T05:47:52.012Z, run by Graphene itself
+    no commit was made inside its windows, so there is no commit to grade
+  refused: 1 check failed
+  what people did to it:
+    2026-09-30T05:32:33.708Z  accepted  alex (no terminal)
+    2026-09-30T06:04:19.776Z  released  claude:1c257068     false as stated, so no proof exists. Counterexample n = 5: 5 is odd and > 1, its only prime factor is 5 (5 = 5), and 5 % 4 = 1, so no prime factor of 5 is 3 mod 4. Found before any proof attempt: plausible on the bounded form (∃ p ≤ n) found n = 5 in 0.14 s (it cannot test the statement as written: the ∃ p is unbounded); decide proved the bounded form false for n < 30 in 0.04 s; the negation is proved in Falsify/Run.lean (odd_factor_three_false, standard axioms). Every counterexample below 60: 5, 13, 17, 25, 29, 37, 41, 53, the odd n whose prime factors are all 1 mod 4. What holds instead: n % 4 = 3 in place of n odd, which is factor_three_mod_four, already in the plan.
+  every entry, check runs included: `graphene plan log` (5 for odd_factor_three)
+
+$ graphene plan
+the plan: a machine-checked proof in Lean 4 that there are infinitely many primes congruent to 3 mod 4: for every n there is a prime p > n with p % 4 = 3
+9 leaves, 0 done, 0 running
+  ○ there are infinitely many primes congruent to…  primes-3-mod-4         0/9 done   · then `./check-leaf.sh Root`
+    ○ a prime other than 2 is 1 or 3 mod 4          prime_mod_four         ready      · Proofs/PrimeModFour.lean
+    ○ multiplying by a number that is 1 mod 4…      mul_one_mod_four       ready      · Proofs/MulOneModFour.lean
+    ◌ a number that is 3 mod 4 has a prime factor…  factor_three_mod_four  waiting    · Proofs/FactorThreeModFour.lean · waits on prime_mod_four (ready), mul_one_mod_four (ready)
+    ○ Euclid's number 4P - 1 is 3 mod 4 when P > 0  euclid_mod_four        ready      · Proofs/EuclidModFour.lean
+    ○ a prime that divides P does not divide 4P -…  not_dvd_euclid         ready      · Proofs/NotDvdEuclid.lean
+    ↩ every p with 0 < p ≤ n divides n!             dvd_factorial          came back  · Proofs/DvdFactorial.lean · handed back: too hard
+    ◌ Euclid's argument: 4·n! - 1 has a prime…      euclid                 waiting    · Proofs/Euclid.lean · waits on factor_three_mod_four (waiting), euclid_mod_four (ready), not_dvd_euclid (ready), dvd_factorial (came back)
+    ◌ the "for every n" form gives the "infinite…   set_form               waiting    · Proofs/SetForm.lean · waits on euclid (waiting)
+    ↩ every odd n > 1 has a prime factor that is…   odd_factor_three       came back  · Proofs/OddFactorThree.lean · handed back: false as stated, so no proof exists. Counterexample n = 5: 5 is odd and > 1, its only prime facto… (`graphene node show odd_factor_three` has all of it)
+next: prime_mod_four (a prime other than 2 is 1 or 3 mod 4) is ready, and 5 more: `graphene node start prime_mod_four` takes it, with its contract as it stands now

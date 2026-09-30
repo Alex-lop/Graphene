@@ -1,0 +1,19 @@
+⚠ [8926/8934] Replayed Spec.PrimeModFour
+warning: Spec/PrimeModFour.lean:3:8: declaration uses `sorry`
+⚠ [8927/8934] Replayed Spec.MulOneModFour
+warning: Spec/MulOneModFour.lean:3:8: declaration uses `sorry`
+⚠ [8928/8934] Replayed Spec.FactorThreeModFour
+warning: Spec/FactorThreeModFour.lean:3:8: declaration uses `sorry`
+⚠ [8929/8934] Replayed Spec.EuclidModFour
+warning: Spec/EuclidModFour.lean:3:8: declaration uses `sorry`
+⚠ [8930/8934] Replayed Spec.NotDvdEuclid
+warning: Spec/NotDvdEuclid.lean:3:8: declaration uses `sorry`
+⚠ [8931/8934] Replayed Spec.DvdFactorial
+warning: Spec/DvdFactorial.lean:3:8: declaration uses `sorry`
+⚠ [8932/8934] Replayed Spec.Euclid
+warning: Spec/Euclid.lean:3:8: declaration uses `sorry`
+⚠ [8933/8934] Replayed Spec.Root
+warning: Spec/Root.lean:3:8: declaration uses `sorry`
+⚠ [8934/8934] Replayed Spec.SetForm
+warning: Spec/SetForm.lean:3:8: declaration uses `sorry`
+Build completed successfully (8934 jobs).

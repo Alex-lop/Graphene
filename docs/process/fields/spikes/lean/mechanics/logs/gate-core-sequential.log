@@ -1,0 +1,18 @@
+== pos
+gate: PASS
+== statements
+(c) type + axioms    FAIL      0.4s  sqMod4: type: Gate/SqMod4.lean:3:22: error: Type mismatch; sumTwoSq: type: Gate/SumTwoSq.lean:3:35: error: Type mismatch; 
+(e) SafeVerify       FAIL      1.8s  rejected SqMod4 SumTwoSq: Found a problem in .lake/build/lib/lean/Proofs/SqMod4.olean with declaration sqMod4: theorem type mismatch
+(e) comparator       FAIL      1.9s  rejected SqMod4 SumTwoSq: uncaught exception: Challenge and solution theorem statement do not match: 'sqMod4'
+gate: FAIL (logs in /private/tmp/claude-501/-Users-alexlopez-Desktop-AllThingsAgenticHackathon/1c257068-543a-48a1-ae2e-a2935409e414/scratchpad/gatework/core-seq-statements/logs)
+== sorry
+(c) type + axioms    FAIL      0.4s  sqMod4: axiom not allowed: sorryAx; sumTwoSq: [propext, Quot.sound]; 
+(e) SafeVerify       FAIL      1.8s  rejected SqMod4: Found a problem in .lake/build/lib/lean/Proofs/SqMod4.olean with declaration sqMod4: uses disallowed axioms
+(e) comparator       FAIL      2.1s  rejected SqMod4: uncaught exception: Illegal axiom detected: 'sorryAx'
+gate: FAIL (logs in /private/tmp/claude-501/-Users-alexlopez-Desktop-AllThingsAgenticHackathon/1c257068-543a-48a1-ae2e-a2935409e414/scratchpad/gatework/core-seq-sorry/logs)
+== challenge-edit
+(a) trusted inputs   FAIL      0.2s  differ from core-trusted (the trusted copies are used): Challenge.lean
+gate: FAIL (logs in /private/tmp/claude-501/-Users-alexlopez-Desktop-AllThingsAgenticHackathon/1c257068-543a-48a1-ae2e-a2935409e414/scratchpad/gatework/core-seq-challenge-edit/logs)
+== writes
+(b) lake build       FAIL      0.2s  (sandboxed) error: Proofs/SqMod4.lean:7:0: operation not permitted (error code: 1)
+gate: FAIL (nothing was built, so the other layers did not run; logs in /private/tmp/claude-501/-Users-alexlopez-Desktop-AllThingsAgenticHackathon/1c257068-543a-48a1-ae2e-a2935409e414/scratchpad/gatework/core-seq-writes/logs)

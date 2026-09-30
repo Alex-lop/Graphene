@@ -1,0 +1,48 @@
+guard: 30s free=19722MB swap_used=20576.62M rss=4MB
+(a) trusted inputs   pass     32.4s  10 files from mathlib-trusted; none differed; .lake cloned
+    trusted build    pass      9.2s  Challenge, Spec.* (reused from the trusted .lake when unchanged)
+guard: 61s free=19695MB swap_used=20416.62M rss=1719MB
+guard: 91s free=19693MB swap_used=20840.25M rss=2112MB
+guard: 122s free=19692MB swap_used=20914.69M rss=1527MB
+guard: 153s free=19691MB swap_used=20838.88M rss=1465MB
+guard: 183s free=19686MB swap_used=20752.62M rss=1419MB
+guard: 214s free=19684MB swap_used=20853.12M rss=1248MB
+guard: 245s free=19685MB swap_used=21131.75M rss=1903MB
+guard: 276s free=18661MB swap_used=21986.56M rss=1658MB
+(b) lake build       pass    246.0s  Proofs.SqMod4 Proofs.SumTwoSq (sandboxed; sorry warnings: 0)
+guard: 306s free=18649MB swap_used=21615.56M rss=3236MB
+guard: 336s free=18649MB swap_used=21383.56M rss=2880MB
+guard: 367s free=18649MB swap_used=21311.56M rss=2851MB
+guard: 397s free=18648MB swap_used=21183.56M rss=2804MB
+guard: 428s free=18646MB swap_used=21055.56M rss=2368MB
+guard: 458s free=19670MB swap_used=20233.94M rss=2018MB
+guard: 489s free=19670MB swap_used=20153.94M rss=1782MB
+(c) type + axioms    FAIL    208.5s  sqMod4: type: Gate/SqMod4.lean:3:22: error: Type mismatch; sumTwoSq: type: Gate/SumTwoSq.lean:3:35: error: Type mismatch; 
+guard: 520s free=19675MB swap_used=19921.94M rss=1480MB
+guard: 550s free=19677MB swap_used=19913.94M rss=1643MB
+guard: 581s free=19672MB swap_used=19857.94M rss=1916MB
+guard: 611s free=19673MB swap_used=19801.94M rss=736MB
+guard: 642s free=20700MB swap_used=19710.06M rss=1807MB
+guard: 673s free=20696MB swap_used=19662.06M rss=1833MB
+guard: 703s free=20696MB swap_used=19614.06M rss=1522MB
+(d) kernel replay    pass    219.0s  leanchecker Proofs.SqMod4 Proofs.SumTwoSq 
+(e) SafeVerify       skip      0.0s  GATE_SAFEVERIFY=off
+guard: 734s free=20696MB swap_used=19590.06M rss=2794MB
+guard: 764s free=20697MB swap_used=19558.06M rss=1774MB
+guard: 794s free=20697MB swap_used=19558.06M rss=1611MB
+guard: 825s free=20696MB swap_used=19526.06M rss=1872MB
+guard: 856s free=20695MB swap_used=19029.88M rss=1771MB
+guard: 886s free=20706MB swap_used=19013.88M rss=1755MB
+guard: 917s free=20704MB swap_used=19005.88M rss=1243MB
+guard: 947s free=20701MB swap_used=18901.88M rss=1403MB
+guard: 978s free=20698MB swap_used=18845.88M rss=1453MB
+guard: 1008s free=20695MB swap_used=18805.88M rss=2226MB
+guard: 1039s free=20700MB swap_used=18765.88M rss=1189MB
+guard: 1070s free=21724MB swap_used=18717.94M rss=940MB
+guard: 1100s free=21724MB swap_used=18701.94M rss=1330MB
+guard: 1131s free=21724MB swap_used=18685.94M rss=1466MB
+guard: 1161s free=21723MB swap_used=18677.94M rss=1312MB
+guard: 1192s free=21723MB swap_used=18569.31M rss=1390MB
+guard: killing after 1210s (free 15576 MB, limit 16 GB; time limit 3600s)
+/private/tmp/claude-501/-Users-alexlopez-Desktop-AllThingsAgenticHackathon/1c257068-543a-48a1-ae2e-a2935409e414/scratchpad/fields/docs/process/fields/spikes/lean/mechanics/guard.sh: line 25: 97239 Terminated: 15          "$@"
+exit=124

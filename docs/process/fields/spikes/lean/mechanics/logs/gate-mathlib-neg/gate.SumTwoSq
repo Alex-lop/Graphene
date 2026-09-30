@@ -1,0 +1,7 @@
+Gate/SumTwoSq.lean:3:35: error: Type mismatch
+  sumTwoSq
+has type
+  S_sqMod4 → ∀ (a b : ℤ), Odd a → (a ^ 2 + b ^ 2) % 4 ≠ 3
+but is expected to have type
+  S_sqMod4 → S_sumTwoSq
+'sumTwoSq' depends on axioms: [propext, Quot.sound]

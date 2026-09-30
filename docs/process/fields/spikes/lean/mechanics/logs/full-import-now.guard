@@ -1,0 +1,5 @@
+guard: 30s free=21057MB swap_used=19732.94M rss=2101MB
+guard: 61s free=21032MB swap_used=19652.94M rss=1637MB
+guard: 91s free=21007MB swap_used=19596.94M rss=1204MB
+guard: 122s free=21006MB swap_used=19020.69M rss=928MB
+rc=0 wall=146.55s maxrss=2706MB
