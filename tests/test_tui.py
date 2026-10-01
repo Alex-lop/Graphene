@@ -729,8 +729,10 @@ def test_the_readme_shows_the_screen_from_a_file_the_repo_holds():
     root = Path(graphene_map.__file__).resolve().parents[2]
     listed = subprocess.run(["git", "-C", str(root), "ls-files"], capture_output=True, text=True, check=True)
     held = set(listed.stdout.split())
-    links = re.findall(r"\]\((?!https?:|#)([^)#\s]+)", (root / "README.md").read_text(encoding="utf-8"))
-    assert "docs/assets/watch.gif" in links and not [p for p in links if p not in held]
+    readme = (root / "README.md").read_text(encoding="utf-8")
+    links = re.findall(r"(?:\]\(|src=\"|srcset=\")(?!https?:|#)([^)#\s\"]+)", readme)  # markdown and HTML
+    assert "docs/assets/watch.gif" in links and "docs/assets/graphene-mark-ink.svg" in links
+    assert not [p for p in links if p not in held]
 
 
 # -- the polish: one grammar, a pane per kind, the status line, the keys (driven at 80 and at 120) ----
