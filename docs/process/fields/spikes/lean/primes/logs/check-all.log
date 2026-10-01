@@ -1,0 +1,17 @@
+=== check-all 2026-09-30 01:20:32; swap: total = 13312.00M  used = 12816.44M  free = 495.56M  (encrypted)
+PrimeModFour exit=0 wall=244s 01:24:36 | check-leaf PrimeModFour: proven in 244 s; axioms: propext Quot.sound
+=== restarted 2026-09-30 01:30:33 after the lakefile gained the Falsify lib; swap: total = 15360.00M  used = 14000.12M  free = 1359.88M  (encrypted)
+PrimeModFour exit=0 wall=344s 01:36:17 | check-leaf PrimeModFour: proven in 344 s; axioms: propext Quot.sound
+MulOneModFour exit=0 wall=317s 01:41:34 | check-leaf MulOneModFour: proven in 317 s; axioms: propext
+FactorThreeModFour exit=0 wall=634s 01:52:08 | check-leaf FactorThreeModFour: proven in 634 s; axioms: Classical.choice propext Quot.sound
+=== 2026-09-30 02:00:05 stopped (EuclidModFour was in progress): check-leaf.sh now checks through GateCheck.lean, because compiling Gate/<Leaf>.lean can be rewritten by the leaf's own syntax (README section 3). Earlier lines used the old check.
+=== restarted 2026-09-30 02:00:15; swap: total = 20480.00M  used = 19548.88M  free = 931.12M  (encrypted)
+PrimeModFour exit=0 wall=139s 02:02:34 | check-leaf PrimeModFour: proven in 138 s; GateCheck prime_mod_four: ok; axioms [propext, Quot.sound]
+MulOneModFour exit=0 wall=136s 02:04:50 | check-leaf MulOneModFour: proven in 136 s; GateCheck mul_one_mod_four: ok; axioms [propext]
+=== 2026-09-30 02:05:44 GateCheck.lean now compares types with the kernel's isDefEq (was Meta's); leaves checked before this line used Meta.isDefEq
+FactorThreeModFour exit=0 wall=142s 02:07:12 | check-leaf FactorThreeModFour: proven in 142 s; GateCheck factor_three_mod_four: ok; axioms [propext, Classical.choice, Quot.sound]
+EuclidModFour exit=0 wall=116s 02:09:08 | check-leaf EuclidModFour: proven in 115 s; GateCheck euclid_mod_four: ok; axioms [propext, Quot.sound]
+NotDvdEuclid exit=0 wall=273s 02:13:41 | check-leaf NotDvdEuclid: proven in 273 s; GateCheck not_dvd_euclid: ok; axioms [propext, Quot.sound]
+DvdFactorial exit=0 wall=282s 02:18:23 | check-leaf DvdFactorial: proven in 282 s; GateCheck dvd_factorial: ok; axioms [propext]
+=== 2026-09-30 02:19:19 (my mistake) this file was rewritten in place to shorten paths while check-all.sh was still appending to it, so its later lines went to the replaced file; the lines below were rebuilt from logs/check-<Leaf>.log, which each check writes afresh.
+=== 2026-09-30 02:19:33 stopped; the final pass, every leaf through the final check-leaf.sh (kernel isDefEq), is logs/check-final.log

@@ -1,0 +1,2 @@
+GateCheck target: FAIL: target uses axioms beyond the standard three: [target._native.native_decide.ax_1_1]
+check-leaf Target: not proven

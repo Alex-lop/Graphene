@@ -1,0 +1,20 @@
+# Red-team layout (core Lean only, no Mathlib): the same shape as spikes/lean/primes and .../gate
+# (Challenge.lean read-only, one Proofs/<Leaf> per leaf, Spec/ + Gate/ written from the tree), small
+# enough that every gate layer runs in seconds with no memory pressure. See README.md for why core.
+name = "redteam"
+defaultTargets = ["Challenge", "Spec", "Proofs"]
+
+[[lean_lib]]
+name = "Challenge"
+
+[[lean_lib]]
+name = "Spec"
+globs = ["Spec.+"]
+
+[[lean_lib]]
+name = "Proofs"
+globs = ["Proofs.+"]
+
+[[lean_lib]]
+name = "Gate"
+globs = ["Gate.+"]

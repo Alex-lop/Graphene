@@ -1,0 +1,58 @@
+01:55:58
+FALSIFY S_root cannot-test 218 Failed to create a `testable` instance for `∀ (n : ℕ), ∃ p, n < p ∧ Nat.Prime p ∧ p % 4 = 3`. What to do: 1. make sure that the types you are using have `Plausible.SampleableExt` instances (you can use `#sample my_type` if you are unsure); 2. make sure that the relations and predicates that your pro
+Unable to find a counter-example
+FALSIFY S_prime_mod_four none-found 214
+Unable to find a counter-example
+FALSIFY S_mul_one_mod_four none-found 131
+FALSIFY S_factor_three_mod_four cannot-test 9 Failed to create a `testable` instance for `∀ (n : ℕ), n % 4 = 3 → ∃ p, Nat.Prime p ∧ p ∣ n ∧ p % 4 = 3`. What to do: 1. make sure that the types you are using have `Plausible.SampleableExt` instances (you can use `#sample my_type` if you are unsure); 2. make sure that the relations and predicates t
+Unable to find a counter-example
+FALSIFY S_euclid_mod_four none-found 67
+Unable to find a counter-example
+FALSIFY S_not_dvd_euclid none-found 169
+Unable to find a counter-example
+FALSIFY S_dvd_factorial none-found 146
+FALSIFY S_odd_factor_three cannot-test 20 Failed to create a `testable` instance for `∀ (n : ℕ), n % 2 = 1 → 1 < n → ∃ p, Nat.Prime p ∧ p ∣ n ∧ p % 4 = 3`. What to do: 1. make sure that the types you are using have `Plausible.SampleableExt` instances (you can use `#sample my_type` if you are unsure); 2. make sure that the relations and pred
+FALSIFY S_euclid_mod_four_any counterexample 64 =================== Found a counter-example! P := 0 issue: 0 = 3 does not hold (0 shrinks) -------------------
+FALSIFY S_even_three_mod_four cannot-test 19 Failed to create a `testable` instance for `∀ (n : ℕ), n % 4 = 3 → n % 2 = 0 → ∃ p, Nat.Prime p ∧ p ∣ n ∧ p % 4 = 1`. What to do: 1. make sure that the types you are using have `Plausible.SampleableExt` instances (you can use `#sample my_type` if you are unsure); 2. make sure that the relations and 
+VACUITY S_prime_mod_four satisfiable 72 =================== Found a counter-example! p := 3 issue: ¬⋯ ∧ 3 ≠ 2 does not hold (0 shrinks) -------------------
+VACUITY S_mul_one_mod_four satisfiable 89 =================== Found a counter-example! a := 1 b is irrelevant (unused) issue: 1 ≠ 1 does not hold (0 shrinks) -------------------
+VACUITY S_factor_three_mod_four satisfiable 69 =================== Found a counter-example! n := 3 issue: 3 ≠ 3 does not hold (0 shrinks) -------------------
+VACUITY S_euclid_mod_four satisfiable 60 =================== Found a counter-example! P := 1 issue: ¬0 < 1 does not hold (1 shrinks) -------------------
+VACUITY S_not_dvd_euclid satisfiable 169 =================== Found a counter-example! P := 12 p := 2 issue: ¬0 < 12 ∧ ⋯ ∧ ⋯ does not hold (0 shrinks) -------------------
+VACUITY S_dvd_factorial satisfiable 180 =================== Found a counter-example! p := 1 n := 1 issue: ¬0 < 1 ∧ 1 ≤ 1 does not hold (0 shrinks) -------------------
+VACUITY S_odd_factor_three satisfiable 90 =================== Found a counter-example! n := 3 issue: ¬1 = 1 ∧ 1 < 3 does not hold (0 shrinks) -------------------
+VACUITY S_euclid_mod_four_any no-hypotheses 0
+Unable to find a counter-example
+VACUITY S_even_three_mod_four VACUOUS 150 its hypotheses cannot all hold: proved by omega
+Unable to find a counter-example
+FALSIFY S_factor_three_mod_four_le none-found 96
+FALSIFY S_odd_factor_three_le counterexample 142 =================== Found a counter-example! n := 5 guard: 1 = 1 guard: 1 < 5 issue: ⋯ does not hold (0 shrinks) -------------------
+Falsify/Run.lean:50:8: warning: declaration uses `sorry`
+START decide/odd_factor_three n<30
+RESULT decide/odd_factor_three n<30 failed 42 Tactic `decide` proved that the proposition
+DETAIL decide/odd_factor_three n<30 Tactic `decide` proved that the proposition ∀ n < 30, n % 2 = 1 → 1 < n → ∃ p ≤ n, Nat.Prime p ∧ p ∣ n ∧ p % 4 = 3 is false
+Falsify/Run.lean:52:8: warning: declaration uses `sorry`
+START decide/odd_factor_three n<10
+RESULT decide/odd_factor_three n<10 failed 31 Tactic `decide` proved that the proposition
+DETAIL decide/odd_factor_three n<10 Tactic `decide` proved that the proposition ∀ n < 10, n % 2 = 1 → 1 < n → ∃ p ≤ n, Nat.Prime p ∧ p ∣ n ∧ p % 4 = 3 is false
+START decide/factor_three_mod_four n<30
+RESULT decide/factor_three_mod_four n<30 closed 43 647
+'d_key_30' depends on axioms: [propext, Classical.choice, Quot.sound]
+Falsify/Run.lean:57:8: warning: declaration uses `sorry`
+START decide/euclid_mod_four_any P<10
+RESULT decide/euclid_mod_four_any P<10 failed 2 Tactic `decide` proved that the proposition
+DETAIL decide/euclid_mod_four_any P<10 Tactic `decide` proved that the proposition ∀ P < 10, (4 * P - 1) % 4 = 3 is false
+START decide/euclid_mod_four P<10
+RESULT decide/euclid_mod_four P<10 closed 3 47
+'d_euclid_10' does not depend on any axioms
+[5, 13, 17, 25, 29, 37, 41, 53]
+[5]
+'odd_factor_three_false' depends on axioms: [propext, Classical.choice, Quot.sound]
+'euclid_mod_four_any_false' depends on axioms: [propext]
+'even_three_mod_four_vacuous' depends on axioms: [propext, Quot.sound]
+'root_by_dirichlet' depends on axioms: [propext, Classical.choice, Quot.sound]
+real 467.03
+user 6.02
+sys 52.38
+exit=0
+02:03:45

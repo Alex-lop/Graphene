@@ -1,0 +1,14 @@
+$ graphene plan propose - < tree.txt   # as the agent (CLAUDECODE set)
+goal (proposed): a machine-checked proof in Lean 4 that there are infinitely many primes congruent to 3 mod 4: for every n there is a prime p > n with p % 4 = 3
+proposed primes-3-mod-4: there are infinitely many primes congruent to 3 mod 4
+proposed prime_mod_four: a prime other than 2 is 1 or 3 mod 4
+proposed mul_one_mod_four: multiplying by a number that is 1 mod 4 keeps the residue mod 4
+proposed factor_three_mod_four: a number that is 3 mod 4 has a prime factor that is 3 mod 4
+proposed euclid_mod_four: Euclid's number 4P - 1 is 3 mod 4 when P > 0
+proposed not_dvd_euclid: a prime that divides P does not divide 4P - 1
+proposed dvd_factorial: every p with 0 < p ≤ n divides n!
+proposed euclid: Euclid's argument: 4·n! - 1 has a prime factor that is 3 mod 4, and it cannot be ≤ n
+proposed set_form: the "for every n" form gives the "infinite set" form
+9 proposed: nobody can start them until the person accepts, in `graphene watch`. Tell them the tree is ready, and stop
+  (the plan of scratchpad/graphene-scratch/primes)
+exit=0

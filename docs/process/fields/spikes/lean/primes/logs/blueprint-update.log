@@ -1,0 +1,18 @@
+info: LeanArchitect: cloning https://github.com/hanwenzhu/LeanArchitect.git
+info: LeanArchitect: checking out revision '561e57d705be33a2a6858f94241ed41d89393c03'
+info: toolchain not updated; already up-to-date
+info: mathlib: running post-update hooks
+Current branch: HEAD
+Using cache from origin: (some leanprover-community/mathlib4)
+Warning: your project pins different versions of some dependencies than Mathlib.
+This will cause `lake exe cache get` to compute wrong hashes.
+
+  Cli:
+    project: e92c9f15fdfa
+    mathlib: e92c9f15fdfa
+
+Some mismatched dependencies come transitively from other packages in your lakefile. Try putting `require mathlib` last in your lakefile so that Mathlib's versions take precedence, then run `lake update`.
+error: mathlib: failed to fetch cache
+real 18.85
+user 3.58
+sys 3.70

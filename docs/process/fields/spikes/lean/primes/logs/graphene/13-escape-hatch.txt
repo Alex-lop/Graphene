@@ -1,0 +1,25 @@
+$ graphene node start dvd_factorial   # as the agent
+dvd_factorial (revision 1): every p with 0 < p ≤ n divides n!
+  why:    a machine-checked proof in Lean 4 that there are infinitely many primes congruent to 3 mod 4: for every n there is a prime p > n with p % 4 = 3
+            there are infinitely many primes congruent to 3 mod 4 (primes-3-mod-4): past every n there is a prime p with p % 4 = 3. Lean: S_root, ∀ n : ℕ, ∃ p, n < p ∧ p.Prime ∧ p % 4 = 3
+exit=0
+
+$ graphene node release dvd_factorial --why "too hard"   # the escape hatch: a reason that names no defect
+dvd_factorial handed back: too hard
+next: you hold odd_factor_three (every odd n > 1 has a prime factor that is 3 mod 4). Finish it with `graphene node done odd_factor_three`, or hand it back with `graphene node release odd_factor_three --why '…'`
+exit=0
+
+$ graphene plan
+the plan: a machine-checked proof in Lean 4 that there are infinitely many primes congruent to 3 mod 4: for every n there is a prime p > n with p % 4 = 3
+9 leaves, 0 done, 1 running
+  ○ there are infinitely many primes congruent to…  primes-3-mod-4         0/9 done   · then `./check-leaf.sh Root`
+    ○ a prime other than 2 is 1 or 3 mod 4          prime_mod_four         ready      · Proofs/PrimeModFour.lean
+    ○ multiplying by a number that is 1 mod 4…      mul_one_mod_four       ready      · Proofs/MulOneModFour.lean
+    ◌ a number that is 3 mod 4 has a prime factor…  factor_three_mod_four  waiting    · Proofs/FactorThreeModFour.lean · waits on prime_mod_four (ready), mul_one_mod_four (ready)
+    ○ Euclid's number 4P - 1 is 3 mod 4 when P > 0  euclid_mod_four        ready      · Proofs/EuclidModFour.lean
+    ○ a prime that divides P does not divide 4P -…  not_dvd_euclid         ready      · Proofs/NotDvdEuclid.lean
+    ↩ every p with 0 < p ≤ n divides n!             dvd_factorial          came back  · Proofs/DvdFactorial.lean · handed back: too hard
+    ◌ Euclid's argument: 4·n! - 1 has a prime…      euclid                 waiting    · Proofs/Euclid.lean · waits on factor_three_mod_four (waiting), euclid_mod_four (ready), not_dvd_euclid (ready), dvd_factorial (came back)
+    ◌ the "for every n" form gives the "infinite…   set_form               waiting    · Proofs/SetForm.lean · waits on euclid (waiting)
+    ● every odd n > 1 has a prime factor that is…   odd_factor_three       running    · Proofs/OddFactorThree.lean · a Claude Code session (1c257068), since 01:32
+next: you hold odd_factor_three (every odd n > 1 has a prime factor that is 3 mod 4). Finish it with `graphene node done odd_factor_three`, or hand it back with `graphene node release odd_factor_three --why '…'`

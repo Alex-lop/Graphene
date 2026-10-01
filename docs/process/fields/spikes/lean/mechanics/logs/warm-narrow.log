@@ -1,0 +1,7 @@
+warm import: 5.20s env=0 messages=None
+warm 1: 0.038s messages=["'clean1' depends on axioms: [propext]"]
+warm 2: 0.008s messages=["'clean2' depends on axioms: [propext]"]
+warm 3: 0.008s messages=["'clean3' depends on axioms: [propext]"]
+warm 4: 0.009s messages=["'clean4' depends on axioms: [propext]"]
+warm 5: 0.008s messages=["'clean5' depends on axioms: [propext]"]
+{"cold_s": [], "cold_median_s": null, "warm_module": "Mathlib.Tactic.NormNum.Basic", "warm_import_s": 5.2, "warm_s": [0.038, 0.008, 0.008, 0.009, 0.008], "warm_median_s": 0.008, "repl_rss_mb_after": 1915}

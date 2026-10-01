@@ -1,0 +1,30 @@
+name = "primes"
+defaultTargets = ["Challenge", "Seeded"]
+
+[[require]]
+name = "mathlib"
+git = "https://github.com/leanprover-community/mathlib4.git"
+rev = "v4.34.1"
+
+# Read-only to every leaf: the statements and every definition they use.
+[[lean_lib]]
+name = "Challenge"
+
+# Read-only: the seeded defects (not part of the honest tree).
+[[lean_lib]]
+name = "Seeded"
+
+# One file per leaf, each the only file that leaf may write; Proofs/Root.lean is written from the tree.
+[[lean_lib]]
+name = "Proofs"
+globs = ["Proofs.+"]
+
+# The automation baseline's harness and generated goal files (not part of the tree).
+[[lean_lib]]
+name = "Auto"
+globs = ["Auto.+"]
+
+# Checks before spend (counterexample search, vacuity test) and the seeded leaves' witnesses.
+[[lean_lib]]
+name = "Falsify"
+globs = ["Falsify.+"]

@@ -1,0 +1,1 @@
+check-leaf SetForm: proven in 60 s; GateCheck set_form: ok; axioms [propext, Classical.choice, Quot.sound]

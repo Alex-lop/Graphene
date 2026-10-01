@@ -1,0 +1,18 @@
+=== 2026-09-30 00:46:05 $ curl -sSfL https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -o elan-init.sh
+=== rc=0 elapsed=0.3s
+=== 2026-09-30 00:46:05 $ sh elan-init.sh -y --default-toolchain none --no-modify-path
+info: downloading installer
+=== rc=0 elapsed=1.2s
+=== 2026-09-30 00:46:06 $ elan --version
+elan 4.2.4 (227caca13 2026-08-25)
+=== rc=0 elapsed=0.2s
+=== 2026-09-30 00:46:06 $ elan toolchain install leanprover/lean4:v4.34.1
+info: downloading https://releases.lean-lang.org/lean4/v4.34.1/lean-4.34.1-darwin_aarch64.tar.zst
+info: installing /Users/alexlopez/.elan/toolchains/leanprover--lean4---v4.34.1
+
+leanprover/lean4:v4.34.1 installed - Lean (version 4.34.1, arm64-apple-darwin24.6.0, commit 5045d0056413266e57c625dcd7c365b10e377c52, Release)
+
+=== rc=0 elapsed=16.9s
+=== 2026-09-30 00:46:23 $ du -sh /Users/alexlopez/.elan/toolchains
+2.7G	/Users/alexlopez/.elan/toolchains
+=== rc=0 elapsed=0.0s

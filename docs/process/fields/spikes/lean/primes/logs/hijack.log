@@ -1,0 +1,11 @@
+Build completed successfully (4 jobs).
+--- lake env lean Gate/FalseLeaf.lean
+'false_leaf' depends on axioms: [propext]
+exit=0
+--- lake env lean --run ../GateCheck.lean Proofs.FalseLeaf false_leaf=S_false_leaf
+GateCheck false_leaf: FAIL: false_leaf : True, not S_false_leaf
+exit=1
+--- an honest proof, and a statement the leaf defined itself
+GateCheck honest: ok; axioms []
+GateCheck honest: FAIL: S_other is not a statement of the read-only modules [Challenge, Seeded]
+exit=1

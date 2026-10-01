@@ -1,0 +1,32 @@
+=== 2026-09-30 01:18:59 EDT cwd=/private/tmp/claude-501/-Users-alexlopez-Desktop-AllThingsAgenticHackathon/1c257068-543a-48a1-ae2e-a2935409e414/scratchpad/tools load=[{ 2.77 3.70 4.31 }] swap=[total = 13312.00M  used = 12014.06M  free = 1297.94M  (encrypted)]
+$ /private/tmp/claude-501/-Users-alexlopez-Desktop-AllThingsAgenticHackathon/1c257068-543a-48a1-ae2e-a2935409e414/scratchpad/fields/docs/process/fields/spikes/lean/gate/install-tools.sh paranoia
+info: paranoia: no previous manifest, creating one from scratch
+info: toolchain not updated; already up-to-date
+✔ [2/12] Built LeanParanoia.Config (425ms)
+✔ [3/12] Built LeanParanoia.Config:c.o (345ms)
+✔ [4/12] Built LeanParanoia.Helpers (4.6s)
+✔ [5/12] Built LeanParanoia.Helpers:c.o (348ms)
+⚠ [6/12] Built LeanParanoia.Checker (1.2s)
+warning: LeanParanoia/Checker.lean:219:12: `String.trim` has been deprecated: Use `String.trimAscii` instead
+
+Note: The updated constant has a different type:
+  String → String.Slice
+instead of
+  String → String
+warning: LeanParanoia/Checker.lean:248:22: `Lean.Environment.replay` has been deprecated: Use `Lean.Kernel.Environment.replay` instead
+
+Note: The updated constant has a different type:
+  HashMap Name ConstantInfo → Kernel.Environment → IO Kernel.Environment
+instead of
+  HashMap Name ConstantInfo → Environment → IO Environment
+
+Note: The updated constant is in a different namespace. Dot notation may need to be changed (e.g., from `x.replay` to `Kernel.Environment.replay x`).
+✔ [7/12] Built LeanParanoia (832ms)
+✔ [8/12] Built LeanParanoia.Checker:c.o (821ms)
+✔ [9/12] Built LeanParanoia:c.o (52ms)
+✔ [10/12] Built Main (918ms)
+✔ [11/12] Built Main:c.o (319ms)
+✔ [12/12] Built paranoia:exe (1.8s)
+Build completed successfully (12 jobs).
+built paranoia in /private/tmp/claude-501/-Users-alexlopez-Desktop-AllThingsAgenticHackathon/1c257068-543a-48a1-ae2e-a2935409e414/scratchpad/tools
+=== rc=0 wall=12.21s maxrss=1327MB

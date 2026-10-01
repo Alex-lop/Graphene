@@ -1,0 +1,1 @@
+check-leaf FactorThreeModFour: proven in 50 s; GateCheck factor_three_mod_four: ok; axioms [propext, Classical.choice, Quot.sound]

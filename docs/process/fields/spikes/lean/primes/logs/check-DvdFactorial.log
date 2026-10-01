@@ -1,0 +1,1 @@
+check-leaf DvdFactorial: proven in 38 s; GateCheck dvd_factorial: ok; axioms [propext]

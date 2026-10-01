@@ -1,0 +1,6 @@
+- there are infinitely many primes congruent to 3 mod 4  [primes-3-mod-4]
+  - every odd n > 1 has a prime factor that is 3 mod 4  [odd_factor_three]
+      a stronger key lemma a tired planner might write: it would make Euclid's argument need no residue bookkeeping
+      Lean: S_odd_factor_three, ∀ n : ℕ, n % 2 = 1 → 1 < n → ∃ p, p.Prime ∧ p ∣ n ∧ p % 4 = 3
+      scope: Proofs/OddFactorThree.lean
+      check: ./check-leaf.sh OddFactorThree

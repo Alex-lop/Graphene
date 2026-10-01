@@ -1,0 +1,8 @@
+Currently running on Lean v4.34.1
+Running SafeVerify on target file: .lake/build/lib/lean/Spec/EuclidModFour.olean and submission file: .lake/build/lib/lean/Proofs/EuclidModFour.olean.
+------------------
+Replaying .lake/build/lib/lean/Spec/EuclidModFour.olean
+Finished setting up the environment.
+Finished replay. Found 1 declarations.
+------------------
+Replaying .lake/build/lib/lean/Proofs/EuclidModFour.olean

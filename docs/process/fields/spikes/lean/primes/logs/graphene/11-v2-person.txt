@@ -1,0 +1,70 @@
+$ as-person.sh graphene plan edit   # fresh, EDITOR pastes tree.txt v2 as it is
+goal: a machine-checked proof in Lean 4 that there are infinitely many primes congruent to 3 mod 4: for every n there is a prime p > n with p % 4 = 3
+added primes-3-mod-4: there are infinitely many primes congruent to 3 mod 4
+added prime_mod_four: a prime other than 2 is 1 or 3 mod 4
+added mul_one_mod_four: multiplying by a number that is 1 mod 4 keeps the residue mod 4
+added factor_three_mod_four: a number that is 3 mod 4 has a prime factor that is 3 mod 4
+added euclid_mod_four: Euclid's number 4P - 1 is 3 mod 4 when P > 0
+added not_dvd_euclid: a prime that divides P does not divide 4P - 1
+added dvd_factorial: every p with 0 < p ≤ n divides n!
+added euclid: Euclid's argument: 4·n! - 1 has a prime factor that is 3 mod 4, and it cannot be ≤ n
+added set_form: the "for every n" form gives the "infinite set" form
+  (the plan of scratchpad/graphene-scratch/primes-v2-person)
+exit=0
+
+$ graphene plan --text
+goal: a machine-checked proof in Lean 4 that there are infinitely many primes congruent to 3 mod 4: for every n there is a prime p > n with p % 4 = 3
+
+- there are infinitely many primes congruent to 3 mod 4  [primes-3-mod-4]
+    # 0/8 done
+    past every n there is a prime p with p % 4 = 3, and so the set of such primes is infinite
+    Lean: S_root := ∀ n : ℕ, ∃ p, n < p ∧ p.Prime ∧ p % 4 = 3
+    Lean: S_root_set := {p : ℕ | p.Prime ∧ p % 4 = 3}.Infinite
+    Proofs/Root.lean is written from this tree (each leaf applied to the leaves it needs), never by a leaf
+    check: ./check-leaf.sh Root
+  - a prime other than 2 is 1 or 3 mod 4  [prime_mod_four]
+      # ready
+      Lean: S_prime_mod_four := ∀ p : ℕ, p.Prime → p ≠ 2 → p % 4 = 1 ∨ p % 4 = 3
+      scope: Proofs/PrimeModFour.lean
+      check: ./check-leaf.sh PrimeModFour
+  - multiplying by a number that is 1 mod 4 keeps the residue mod 4  [mul_one_mod_four]
+      # ready
+      Lean: S_mul_one_mod_four := ∀ a b : ℕ, a % 4 = 1 → a * b % 4 = b % 4
+      scope: Proofs/MulOneModFour.lean
+      check: ./check-leaf.sh MulOneModFour
+  - a number that is 3 mod 4 has a prime factor that is 3 mod 4  [factor_three_mod_four]
+      # waiting on prime_mod_four (ready), mul_one_mod_four (ready)
+      the key lemma, proved with its needs taken as hypotheses
+      Lean: S_factor_three_mod_four := ∀ n : ℕ, n % 4 = 3 → ∃ p, p.Prime ∧ p ∣ n ∧ p % 4 = 3
+      scope: Proofs/FactorThreeModFour.lean
+      check: ./check-leaf.sh FactorThreeModFour
+      needs: prime_mod_four, mul_one_mod_four
+  - Euclid's number 4P - 1 is 3 mod 4 when P > 0  [euclid_mod_four]
+      # ready
+      the convention that bites: subtraction in ℕ stops at 0, so 4 * 0 - 1 = 0, and without 0 < P the statement is false at P = 0
+      Lean: S_euclid_mod_four := ∀ P : ℕ, 0 < P → (4 * P - 1) % 4 = 3
+      scope: Proofs/EuclidModFour.lean
+      check: ./check-leaf.sh EuclidModFour
+  - a prime that divides P does not divide 4P - 1  [not_dvd_euclid]
+      # ready
+      the same convention: at P = 0, 4P - 1 is 0 in ℕ and every p divides 0, so 0 < P is needed here too
+      Lean: S_not_dvd_euclid := ∀ P p : ℕ, 0 < P → p.Prime → p ∣ P → ¬ p ∣ 4 * P - 1
+      scope: Proofs/NotDvdEuclid.lean
+      check: ./check-leaf.sh NotDvdEuclid
+  - every p with 0 < p ≤ n divides n!  [dvd_factorial]
+      # ready
+      Lean: S_dvd_factorial := ∀ p n : ℕ, 0 < p → p ≤ n → p ∣ Nat.factorial n
+      scope: Proofs/DvdFactorial.lean
+      check: ./check-leaf.sh DvdFactorial
+  - Euclid's argument: 4·n! - 1 has a prime factor that is 3 mod 4, and it cannot be ≤ n  [euclid]
+      # waiting on factor_three_mod_four (waiting), euclid_mod_four (ready), not_dvd_euclid (ready), dvd_factorial (ready)
+      Lean: S_root, the statement of the sub-goal above
+      scope: Proofs/Euclid.lean
+      check: ./check-leaf.sh Euclid
+      needs: factor_three_mod_four, euclid_mod_four, not_dvd_euclid, dvd_factorial
+  - the "for every n" form gives the "infinite set" form  [set_form]
+      # waiting on euclid (waiting)
+      Lean: S_root_set, the second statement of the sub-goal above
+      scope: Proofs/SetForm.lean
+      check: ./check-leaf.sh SetForm
+      needs: euclid

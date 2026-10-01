@@ -1,0 +1,18 @@
+# The same layout as ../ with no Mathlib, small enough to run comparator inside Docker with landrun.
+name = "core"
+defaultTargets = ["Challenge", "Spec", "Proofs"]
+
+[[lean_lib]]
+name = "Challenge"
+
+[[lean_lib]]
+name = "Spec"
+globs = ["Spec.+"]
+
+[[lean_lib]]
+name = "Proofs"
+globs = ["Proofs.+"]
+
+[[lean_lib]]
+name = "Gate"
+globs = ["Gate.+"]

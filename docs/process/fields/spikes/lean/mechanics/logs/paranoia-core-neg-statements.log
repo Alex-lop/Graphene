@@ -1,0 +1,4 @@
+=== 2026-09-30 02:07:29 EDT cwd=/private/tmp/claude-501/-Users-alexlopez-Desktop-AllThingsAgenticHackathon/1c257068-543a-48a1-ae2e-a2935409e414/scratchpad/gatework/core-neg-statements/build load=[{ 4.12 6.24 6.78 }] swap=[total = 20480.00M  used = 19200.75M  free = 1279.25M  (encrypted)]
+$ lake env /private/tmp/claude-501/-Users-alexlopez-Desktop-AllThingsAgenticHackathon/1c257068-543a-48a1-ae2e-a2935409e414/scratchpad/tools/LeanParanoia/.lake/build/bin/paranoia Proofs.SqMod4.sqMod4
+{"failures":{"Replay":["Replay verification failed: while replaying declaration '_private.Init.SimpLemmas.0.Lean.Arrow.eq_1':\n(kernel) declaration type mismatch, '_private.Init.SimpLemmas.0.Lean.Arrow.eq_1' has type\n  ∀ (α : Sort u) (β : Sort v), Eq (@Lean.Arrow α β) (@Lean.Arrow α β)\nbut it is expected to have type\n  ∀ (α : Sort u) (β : Sort v), Eq (@Lean.Arrow α β) (α → β)"]},"success":false}
+=== rc=1 wall=0.23s maxrss=360MB

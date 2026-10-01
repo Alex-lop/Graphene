@@ -1,0 +1,8 @@
+start 03:10:26: swap used 20712.12 MB, disk free 22 GB
+Currently running on Lean v4.34.1
+Running SafeVerify on target file: .lake/build/lib/lean/Spec/EuclidModFour.olean and submission file: .lake/build/lib/lean/Proofs/EuclidModFour.olean.
+stopped: swap rose more than 4 GB
+scratchpad/fields/docs/process/fields/spikes/lean/primes/one-safeverify.sh: line 25:  4695 Terminated: 15          ( cd "$b" && exec lake env "$sv" ".lake/build/lib/lean/Spec/$leaf.olean" ".lake/build/lib/lean/Proofs/$leaf.olean" )
+end 03:11:02: exit 143 after 36 s; swap peak 25614.75 MB (start 20712.12), disk free 17 GB
+exit=143
+NOTE 2026-09-30 03:16:25: this run overlapped with another agent process's three SafeVerify/comparator jobs (logs/gate-primes-layer-e-killed.log), so the swap rise above is not one SafeVerify's.
