@@ -103,6 +103,10 @@ close its PR and `git push origin --delete practice`.
     and a test that could not catch its bug, removed.
 
   Each fix has a test that fails on f48d698.
+- **02:22** The final gate at 4597d87, the last code commit, with the key and the opening unset: ruff
+  clean; pytest 1,605 passed, 21 skipped (they need Docker, which is off here), in 15 min. CI is green on
+  all seven jobs at 4597d87 (run 36971630589). Every push went through one script that counts the key's
+  and the project's values in the diff, the commit messages and the recordings, and pushes only at zero.
 - **Not done, on purpose:** take 1's recording names your login (`alexlopez`) as the actor, as any run of
   yours does. Re-record with `GRAPHENE_PERSON` set before shipping it as the replay judges see.
 
