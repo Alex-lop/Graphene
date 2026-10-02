@@ -258,14 +258,17 @@ def setup(scope: list[str], files: list[str], dirs: set[str], prepare: str | Non
 
 STATE = "/tmp/graphene.state"  # the exit code and the file list, read back whole (never from stdout)
 END = MARK + "end"
+LOST = "the sandbox's list of files did not come back whole"
 
 
 def _manifest() -> str:
     """Every file under /work but .git, with its hash (links marked, never followed), written to a file
     in the sandbox after the command's exit code, and closed by an end line. It is read back whole:
-    stdout is capped, and a list cut short would read as files deleted."""
+    stdout is capped, and a list cut short would read as files deleted. The exit code goes in through
+    $(...): on ConTree (2 Oct 2026) a `cat` that copies a file into the list leaves it unwritable, and every
+    write after it fails with an I/O error, so no command's list came back."""
     return (
-        f"{{ cat /tmp/graphene.code 2>/dev/null || echo 0; cd {WORK} && "
+        f'{{ echo "$(cat /tmp/graphene.code 2>/dev/null || echo 0)"; cd {WORK} && '
         "find . -path ./.git -prune -o -type f -print0 | xargs -0 -r sha1sum; "
         f"find . -path ./.git -prune -o -type l -printf 'link %p\\n'; echo {END}; }} > {STATE}"
     )
@@ -548,6 +551,7 @@ class Sandbox:
         self.pushed: set[str] = set()
         self.strays: set[str] = set()
         self.timings: list[float] = []
+        self.lost = 0  # commands whose list of files did not come back: nothing they did was brought back
         self.shared: str | None = None  # the checkpoint of the commit, which other leaves fork too
         from . import settings
 
@@ -605,7 +609,7 @@ class Sandbox:
         leaf (``--forks``), which uploads and sets up nothing."""
         other = object.__new__(Sandbox)
         other.__dict__.update(self.__dict__)
-        other.root, other.pushed, other.strays, other.timings = root, set(), set(), []
+        other.root, other.pushed, other.strays, other.timings, other.lost = root, set(), set(), [], 0
         other.image, other.seen, other.ops, other.reused = self.base, dict(self.seen), 0, True
         return other
 
@@ -655,9 +659,8 @@ class Sandbox:
             raise RuntimeError(f"the sandbox's operation was killed mid-leaf (exit {code}: out of memory, or "
                                "stopped); nothing of this command was brought back: run the leaf again")
         if state is None:  # fail closed: without the whole list, no file is taken as deleted or changed
-            self.image = image
-            return code or 1, (f"{output}\n(the sandbox's list of files did not come back whole; nothing "
-                               "was brought back from this command)")  # fmt: skip
+            self.image, self.lost = image, self.lost + 1
+            return code or 1, f"{output}\n({LOST}; nothing was brought back from this command)"
         self.image, self.pushed, self.strays = image, set(), set()
         exit_code, now = state
         return exit_code, output + self._bring_back(now)

@@ -112,3 +112,43 @@ def test_a_protected_file_is_never_uploaded_to_the_sandbox(repo):
         with pytest.raises(RuntimeError, match="could not be made"):
             sandbox.Sandbox(repo, ["src/**"], Box(), store, "a")
     assert "src/data/f001.txt" in uploaded and "secrets/prod.txt" not in uploaded
+
+
+def test_the_list_takes_the_exit_code_through_a_substitution_never_a_cat_into_the_list():
+    """Live on ConTree (rung 4, 2 Oct): after `cat` copied the exit code's file into the redirected list,
+    every later write to the list failed with an I/O error, so no command's list came back and each read
+    as exit 1. Through $(...) the code reaches the list as a pipe does, and the list is written whole."""
+    script = sandbox._manifest()
+    assert '{ echo "$(cat /tmp/graphene.code 2>/dev/null || echo 0)";' in script
+    assert "{ cat " not in script
+
+
+class Unlisted:
+    """A box that makes the sandbox, then lets no command's list come back, as ConTree did on 2 Oct."""
+
+    ops = 0
+
+    def start(self, tar, script, timeout):
+        return "img", 0, ""
+
+    def run(self, image, script, files, timeout):
+        return image + "+", 0, ""
+
+    def read(self, image, path):  # the sandbox's own list arrives (img+); a command's does not (img++)
+        return f"0\n{sandbox.END}\n".encode() if image.count("+") == 1 else b"0\n"
+
+
+def test_a_command_whose_list_never_came_back_is_counted_on_the_leafs_record(tmp_path):
+    from graphene_map import executor
+
+    root = tmp_path / "leaf"
+    root.mkdir()
+    (root / "a.py").write_text("x = 1\n")
+    who = ["-c", "user.name=T", "-c", "user.email=t@e"]
+    for args in (["init", "-q"], ["add", "-A"], [*who, "commit", "-qm", "s"]):
+        subprocess.run(["git", "-C", str(root), *args], check=True, capture_output=True)
+    place = sandbox.Sandbox(root, ["a.py"], Unlisted())
+    code, out = place.run("true")
+    assert code == 1 and sandbox.LOST in out
+    assert place.lost == 1 and executor._box(place)["lost"] == 1
+    assert place.fork(tmp_path / "copy").lost == 0  # a fork starts its own count

@@ -797,11 +797,12 @@ def _sandbox(here: Path, node: P.Node, store: Store, session: str, args, checkou
 
 def _box(place) -> dict:
     """A sandbox as the leaf's log keeps it: the image it started from, whether that checkpoint was made
-    for it or forked from one, and the operations and seconds it has taken; nothing for the local one."""
+    for it or forked from one, the operations and seconds it has taken, and how many of its commands came
+    back without their list of files (nothing they did was brought back); nothing for the local one."""
     if not hasattr(place, "base"):
         return {}
     return {"image": place.base, "checkpoint": "forked" if place.reused else "made", "ops": place.ops,
-            "seconds": round(sum(place.timings), 3)}  # fmt: skip
+            "seconds": round(sum(place.timings), 3), "lost": place.lost}  # fmt: skip
 
 
 NAME = "nemotron"

@@ -353,6 +353,10 @@ def in_sandbox(r: Rung) -> str:
             f"the leaf landed, but not in a {want} sandbox: {placed[-1:] or 'no placement on record'}"
         )
     p = placed[-1]
+    if p.get("lost"):  # 2 Oct: rung 3 passed while every command it ran in ConTree came back as exit 1
+        raise Failed(f"the leaf landed, but {p['lost']} of its commands in the {want} sandbox came back "
+                     "without their list of files, so nothing they did was brought back: it did not really "
+                     "run there")
     return f"{said}; in {want}: {p.get('ops')} operations, {p.get('seconds')} s"
 
 
