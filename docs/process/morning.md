@@ -39,13 +39,16 @@ close its PR and `git push origin --delete practice`.
 - **00:01** Cherry-picked `fee8b6b..5166edb` with `-x`: the six commits pushed to `first-light` after PR #34
   merged. One conflict: d45abf6's README hunk edits a paragraph the PR #37 README no longer has. The
   hunk was dropped, and that commit's message says so.
-- **00:10** The carried commits' tests: 206 passed (test_key_cli, test_sandbox_contract, test_tokenfactory,
+- **00:05** The carried commits' tests: 206 passed (test_key_cli, test_sandbox_contract, test_tokenfactory,
   test_init, docs/test/test_bench, test_arm_a, test_arm_bprime, test_doc_claims, test_tui), with the
   key, the project and the opening unset and the keychain off.
-- **00:30** CI's flake (9c07c29). With the global `time.sleep` patched as the eleven tests did, a 0.2 s
+- **00:10** CI's flake (9c07c29). With the global `time.sleep` patched as the eleven tests did, a 0.2 s
   child's `subprocess.run(timeout=30)` recorded `[0.001, 0.002, 0.004, 0.008, 0.016, …]`, CI's list. With
   all 11 cores busy, main's two tests failed 1 run of 30 and the fix's passed 30 of 30. Both new tests fail
   on main (a throwaway worktree at 4e1660c). The seven touched files: 135 passed, 2 skipped.
+- **00:12** The ladder rehearsed on the stand-ins with tonight's code (`practice.sh 2 --dry`, `5 --dry`,
+  `prototypes --dry`): all three PASS, "no file holds the key". Docker is off, so dry rungs 3, 4 and 7 did
+  not run.
 
 ## What I read before starting (23:22, 1 Oct; $0, nothing written)
 
