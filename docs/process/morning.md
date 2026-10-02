@@ -3,25 +3,28 @@
 ## The brief
 
 **Watch first**
-- Nothing live yet. The best live take of rung 7 will be replayable here with no key once one has run.
+- Rung 7's live takes are running (Ultra plans feeds, Nano builds it in Sandboxes). The best one will be
+  replayable here with no key.
 
-**What ran live** — $0 of $10
-- Nothing yet: this session has no `GRAPHENE_AGENT_LIVE_USD`. Sandboxes are granted to the project
-  (import, list, spawn), for the old key and the new one.
+**What ran live** — $0.0057 of $10 (night ledger), Sandboxes 2.7 min
+- Rungs 2, 3, 4 and 5 PASS. Rung 3 is the first leaf whose commands ran in a Token Factory Sandbox. Rung 4
+  is the escape test on ConTree: 10 ways out failed, 2 ways in came back, exit 124 at its limit.
+- First contact broke the Sandbox: every command's file list failed on ConTree (`cat` into a file leaves it
+  unwritable there). Rung 3's first PASS was hollow because of it. Fixed with tests (a09435d).
+- Prototypes: cover and precheck PASS twice. note routed 1 of 4 live notes (one malformed answer, one
+  `"null"` glob, fixed in 222b678, one cut off at 2,048 tokens).
 
 **New tonight**
-- Your six 29 Sep commits that missed PR #34 are on `practice` (spend-cap guard, `key check`'s
-  Sandboxes line, prereg rule 6's $10 cap, DIRECTION 132): `git log --oneline origin/main..practice`
-- CI's flake, fixed at its root (main 1 failed in 30 under full load, the fix 30 of 30):
-  `uv run pytest tests/test_tokenfactory.py -k "slow_child or 429"`
+- A live leaf's recording in CI: `uv run pytest tests/test_recordings.py`
+- The ladder: `docs/test/practice.sh status` (from `~/graphene-practice-night`)
 
 **Decide**
-- None yet.
+- Nano spends 920–2,048 completion tokens on a ~100-token JSON answer (reasoning?), so note's 2,048 cap
+  is hit. Default: a pre-registered try with reasoning off before note is measured.
 
 **Broken or risky**
-- The live half waits on a session started with `GRAPHENE_AGENT_LIVE_USD=10 claude --continue`.
-- My error: I told you the key expired at 23:27. It did not. whoami's `token_expiration` is a token ConTree
-  mints for 300 s on every read (three reads, each +300 s), so the new key was not needed.
+- My error: I told you the key expired at 23:27. It did not: whoami's expiry is a 300 s token per read.
+- Sandboxes have no published price; tonight's minutes are counted (cap 150).
 
 ---
 
@@ -50,6 +53,34 @@ close its PR and `git push origin --delete practice`.
 - **00:12** The ladder rehearsed on the stand-ins with tonight's code (`practice.sh 2 --dry`, `5 --dry`,
   `prototypes --dry`): all three PASS, "no file holds the key". Docker is off, so dry rungs 3, 4 and 7 did
   not run.
+
+- **00:47** Rung 2 PASS live: one leaf on Nano, on this machine, 12.1 s, $0.0005.
+- **00:49** Rung 3 PASS, hollow: all 9 of its executor's commands in ConTree came back as exit 1, even
+  `echo hello`, without their list of files (`.graphene/practice/rung-3-hollow.log`). The leaf landed
+  because its one file was pushed and its check runs on this machine.
+- **00:49 and 00:52** Rung 4 FAIL twice, the same way: every command's list ended in `sha1sum: write
+  error` and `echo: I/O error`.
+- **00:53–01:00** A deliberate exception to the plan's "ladder only" rule: six small diagnostic scripts in
+  ConTree through `sandbox.Contree`, about 40 operations, no model call, on the night's ledger. They
+  narrowed it to one step: on ConTree (kernel 7.0.6, coreutils 9.7), `{ cat FILE; echo after; } > OUT`
+  fails at the echo with an I/O error, while `$(cat FILE)` and `cat FILE | cat` write whole. Deleting and
+  rewriting a checkpointed file, the first suspect, works.
+- **01:01** The fix and three tests that fail on 1e74020 (a09435d). The list takes the exit code through
+  `$(...)`. A leaf's placement record counts the commands whose list was lost, and rung 3 fails on any.
+- **01:02** Rung 4 PASS live (27.2 s, 33 operations). Rung 3 PASS again, for real: the executor wrote the
+  file, and `python3 -c 'import practice_hello as m; assert m.VALUE == 42'` exited 0 inside ConTree
+  (18.2 s, $0.0004, 7 operations).
+- **01:03** Rung 5 PASS: the recorded leaf replays "as it ran, live", and `demo.leaks` counts 0 for the
+  key, the project, home paths and key-shaped words. Kept as `tests/recordings/first-light-rung-5.jsonl`
+  (163d341).
+- **01:04** Prototypes FAIL on note. cover PASS ($0.0003); precheck PASS (xmlfeed red for the right
+  reason, cents passes already, rejects red in a Sandbox fork). note: Nano put every field into `target`
+  for the first note, and wrote the string `"null"` as a glob for the second.
+- **01:05** `"null"` in a glob list is no glob, with a test that fails before (222b678).
+- **01:06** Prototypes again: note routed the first note to xmlfeed's goal. The second was cut off at
+  2,048 tokens. Usage rows: cover 1,334 completion tokens, note 920 and 2,048, precheck 174 and 458, each
+  for a JSON answer of about 100 tokens. Nano seems to reason before it answers; the reasoning text was
+  not read, so that is not verified. No third try: the prototypes' measures are pre-registered later.
 
 ## What I read before starting (23:22, 1 Oct; $0, nothing written)
 
