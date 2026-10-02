@@ -237,3 +237,18 @@ def test_a_contree_error_whose_body_echoes_the_key_or_the_project_is_said_withou
     assert key not in said and project not in said and "Kq7" not in said, said
     assert said.startswith("ConTree answered with an error (ApiStatusCodeError): ") and "status=502" in said
     assert "Authorization: Bearer …" in said and len(said) <= 400
+
+
+def test_the_sdks_token_life_warning_never_reaches_the_screen(caplog):
+    """Live on 2 Oct, `graphene init` printed contree-sdk's "Token expires in 0 hours" (a 300 s token minted
+    per read, not the key); any other warning of the SDK's still comes through."""
+    import logging
+
+    from graphene_map import sandbox  # noqa: F401  (importing it filters the SDK's logger)
+
+    log = logging.getLogger("contree_sdk.sdk.client._base")
+    with caplog.at_level(logging.WARNING, logger=log.name):
+        log.warning("Token expires in 0 hours")
+        log.warning("Timeout 900s exceeds max_timeout=600")
+    said = [r.getMessage() for r in caplog.records]
+    assert said == ["Timeout 900s exceeds max_timeout=600"]

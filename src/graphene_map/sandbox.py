@@ -21,6 +21,7 @@ from __future__ import annotations
 import fcntl
 import hashlib
 import io
+import logging
 import os
 import shlex
 import subprocess
@@ -83,6 +84,18 @@ def credentials() -> bool:
     from . import keys  # the environment's key, else the keychain's
 
     return bool(keys.find() and env.get("NEBIUS_PROJECT_ID")) or (home / "auth.ini").exists()
+
+
+class _NoTokenLife(logging.Filter):
+    """contree-sdk warns "Token expires in 0 hours" on every client: the token its whoami answers about
+    lives 300 s and is minted again on each read (2 Oct, three reads, each +300 s), so the warning is never
+    about the key. It went to the person's screen under `graphene init`, and read as the key expiring."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        return not record.getMessage().startswith("Token expires in")
+
+
+logging.getLogger("contree_sdk.sdk.client._base").addFilter(_NoTokenLife())
 
 
 def _client():
