@@ -46,3 +46,14 @@ def test_a_recording_dropped_into_tests_recordings_replays_and_holds_no_secret(p
 
 def test_the_check_runs_on_the_recording_graphene_ships(tmp_path, monkeypatch):
     assert "2 leaves, 2 done" in replays(demo.SHIPPED, tmp_path, monkeypatch)
+
+
+def test_the_sandboxs_own_home_is_no_persons_path():
+    """Live on 2 Oct, rung 7's third take recorded an executor running /home/leaf/.local/bin/pytest in its
+    Sandbox: the sandbox user's home, which is nobody's, was counted as a person's home path."""
+    from graphene_map import sandbox
+
+    assert sandbox.USER == "leaf"
+    assert demo.leaks("run /home/leaf/.local/bin/pytest -q")["a path under a home directory"] == 0
+    for path in ("/home/alex/repo", "/Users/alex/repo", "/home/leafy/repo"):
+        assert demo.leaks(f"ran in {path}")["a path under a home directory"] == 1, path
