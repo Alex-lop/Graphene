@@ -249,7 +249,7 @@ def test_offline_init_asks_once_and_says_what_it_could_not_reach_in_a_line(repo,
     on_path("claude")
     monkeypatch.setenv("NEBIUS_API_KEY", "a-key")
     monkeypatch.setenv("GRAPHENE_TOKENFACTORY_URL", "http://127.0.0.1:9/v1/")  # nothing listens there
-    monkeypatch.setattr(tf.time, "sleep", lambda s: pytest.fail("init waited to try Token Factory again"))
+    monkeypatch.setattr(tf, "_sleep", lambda s: pytest.fail("init waited to try Token Factory again"))
     tf._listed.cache_clear()
     said = person("init")
     [line] = [line for line in said.output.splitlines() if "Token Factory" in line]

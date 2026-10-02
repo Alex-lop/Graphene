@@ -274,7 +274,7 @@ def test_the_screen_and_dismiss_number_the_clauses_alike(repo, fake):
 
 def test_a_failing_nano_is_asked_once_and_waits_for_nothing(repo, fake, monkeypatch):
     waited = []
-    monkeypatch.setattr(tf.time, "sleep", waited.append)
+    monkeypatch.setattr(tf, "_sleep", waited.append)
     monkeypatch.setenv("GRAPHENE_SHAPE", "cover")
     f = fake([500] * 6)
     said = []

@@ -125,7 +125,7 @@ def test_the_keychain_key_reaches_token_factory(keychain, monkeypatch):
 def test_reached_says_what_stood_in_the_way_without_the_key(monkeypatch):
     monkeypatch.setenv("NEBIUS_API_KEY", "not-shown")
     monkeypatch.setenv("GRAPHENE_TOKENFACTORY_URL", "http://127.0.0.1:9/")
-    monkeypatch.setattr(tf.time, "sleep", lambda s: None)
+    monkeypatch.setattr(tf, "_sleep", lambda s: None)
     tf._listed.cache_clear()
     line = keys.reached()
     tf._listed.cache_clear()
@@ -185,7 +185,7 @@ def test_a_keychain_that_hangs_is_given_up_on_and_asked_once_per_process(keychai
 def test_a_key_with_a_line_break_is_refused_without_being_said(monkeypatch):
     monkeypatch.setenv("NEBIUS_API_KEY", "sk-LINE-ONE\nsk-LINE-TWO")
     monkeypatch.setenv("GRAPHENE_TOKENFACTORY_URL", "http://127.0.0.1:9/")
-    monkeypatch.setattr(tf.time, "sleep", lambda s: None)
+    monkeypatch.setattr(tf, "_sleep", lambda s: None)
     tf._listed.cache_clear()
     line = keys.reached()
     tf._listed.cache_clear()
@@ -204,7 +204,7 @@ def test_contree_and_the_access_check_count_a_key_kept_in_the_keychain(tmp_path,
     monkeypatch.syspath_prepend(str(pathlib.Path(__file__).parents[1] / "docs" / "test"))
     access = importlib.import_module("access")
     monkeypatch.setenv("GRAPHENE_TOKENFACTORY_URL", "http://127.0.0.1:9/")
-    monkeypatch.setattr(tf.time, "sleep", lambda s: None)
+    monkeypatch.setattr(tf, "_sleep", lambda s: None)
     tf._listed.cache_clear()
     access.main(["--sandbox", "none", "--out", str(tmp_path / "a.json")])
     tf._listed.cache_clear()

@@ -288,7 +288,7 @@ def test_one_leaf_that_breaks_is_one_line_and_the_others_still_run(repo, nano, m
 def test_a_failing_endpoint_is_tried_once_with_no_backoff_and_then_not_again(repo, nano, monkeypatch):
     f = nano([500] * 12)
     waits = []
-    monkeypatch.setattr(tf.time, "sleep", waits.append)
+    monkeypatch.setattr(tf, "_sleep", waits.append)
     fork = scripted({"false": (1, "AssertionError"), "exit 3": (3, "")})
     with Store.open(repo) as store:
         leaves(store, "false", "exit 3")
