@@ -2,8 +2,9 @@
 
 Costs are list price by rung 1's live list (per million in/out: Nano $0.06/$0.24, Super $0.30/$0.90,
 Ultra $1.00/$3.00), as ranges: a Nano call from $0.0001 (rung 2's three: 1,334-1,465 in, 98-191 out)
-to $0.0015 (20,000 in, 1,000 out, late in a session); an Ultra ask $0.01-0.05 (5,000-20,000 in,
-2,000-8,000 out). Sandboxes are $0 in the beta. Times are guesses. You type each command from the
+to $0.0015 (20,000 in, 1,000 out, late in a session); an Ultra ask $0.12-0.30, measured on 2 October
+(26-30 calls, 113,000-232,000 tokens in, practice: `docs/test/first-light.md`), ten times the old guess.
+Sandboxes have no published price; the night ledger counts their minutes. Other times are guesses. You type each command from the
 repo root in your own terminal. Tonight each harness here ran only as far as its `--help` or usage
 line; `newrun.sh` and `summarize.py` have none and did not run.
 
@@ -54,5 +55,7 @@ refused each stand-in's `claude -p`: start them where it may run. Done: `docs/te
 ~/graphene-shaping-runs` prints 12 rows, none void.
 
 **The final recording.** `docs/demo/build.sh --rehearsal` ($0, stand-ins), then
-`docs/demo/build.sh`: rung 7's run filmed in real time, 10-30 min, a guessed $0.02-0.50. Done:
+`docs/demo/build.sh`: rung 7's run filmed in real time. Measured as practice on 2 October over 5 takes:
+2 ran end to end, in 265 s and 624 s, at $0.38 each. 3 failed at the planner after 83-109 s, at
+$0.33-0.35 each, so plan on more than one attempt (`docs/test/first-light.md`). Done:
 `docs/demo/rough.mp4`, which is written only when the run's recording says "as it ran, live".

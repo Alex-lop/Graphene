@@ -2,9 +2,23 @@
 
 ## 0.5.0 (not published yet: the tag is Alex's)
 
-Graphene on Nemotron. Graphene has made a runtime call to Token Factory, as practice (rung 2 of the ladder,
-`docs/test/first-light.md`). Past that call, the Nemotron path has run only against a scripted stand-in for
-Token Factory and a Docker stand-in for Sandboxes.
+Graphene on Nemotron. As practice on 2 October, Nemotron planned a small feature and its leaves landed in
+Token Factory Sandboxes, each passed by its own check, on 2 of 5 tries; the planner's tree was readable on 2
+of 9 asks (`docs/test/first-light.md`). Nothing registered has run live.
+
+The live half of first light (2 October, practice).
+- The sandbox's list of files takes the exit code through `$(...)`: on ConTree a `cat` into a file leaves it
+  unwritable, so no command's list came back and every sandbox command read as exit 1. A leaf's placement
+  record counts the commands whose list was lost, and the ladder's rung 3 fails on any.
+- `graphene plan note` takes JSON's null written as the string `"null"` in a glob list as no glob, as Nano
+  wrote it live.
+- contree-sdk's "Token expires in 0 hours" no longer reaches the screen (it is a 300-second token, not the
+  key).
+- Live recordings in `tests/recordings/`: rung 5's leaf and rung 7's first take, replayed in CI with no key.
+- Tests that count Token Factory's retry waits patch only its own wait, not the global `time.sleep` (CI's
+  flake in test_precheck and test_cover).
+- `graphene key check` says Sandboxes' state; a spend cap that is not a number refuses every call; the
+  registered runs' $10 cap (carried from 29 September).
 
 First light (29 September).
 - `graphene direction`: a small tree of goals above the plans, one line a node, in `.graphene/direction.txt`,

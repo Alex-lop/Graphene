@@ -213,7 +213,7 @@ Graphene is early, and I'm building it in the open. If you try it on a real repo
 
 - [How it works](docs/HOW_IT_WORKS.md): every part, and where each one stops.
 - [Direction](docs/DIRECTION.md): what's been decided, and why.
-- [Nemotron on Token Factory](docs/HACKATHON.md): planning and executing on NVIDIA Nemotron through Nebius Token Factory. Built, but not run live yet. Graphene has made a runtime call to Token Factory, as practice; everything else on that path has run against scripted stand-ins.
+- [Nemotron on Token Factory](docs/HACKATHON.md): planning and executing on NVIDIA Nemotron through Nebius Token Factory. As practice on 2 October, Nemotron planned a small feature and its leaves landed in Token Factory Sandboxes, each passed by its own check, on 2 of 5 tries; most misses were the planner's ([the record](docs/test/first-light.md)).
 - [The website](https://alex-lop.github.io/graphene-site/), where 400 starlings settle into a plan.
 
 Built by [Alex Lopez](https://alex-lop.github.io/Alex_Lopez_Website/), with a lot of help from the agents it's for. Apache-2.0.

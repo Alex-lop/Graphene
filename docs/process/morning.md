@@ -3,28 +3,26 @@
 ## The brief
 
 **Watch first**
-- Rung 7's live takes are running (Ultra plans feeds, Nano builds it in Sandboxes). The best one will be
-  replayable here with no key.
+- Take 1, live, no key needed (Ultra planned, Nano built, 3 of 3 leaves in Sandboxes, 4 min 25 s, $0.38):
+  `cd ~/graphene-practice-night && uv run --frozen graphene demo tests/recordings/first-light-rung-7.jsonl`
 
-**What ran live** — $0.0057 of $10 (night ledger), Sandboxes 2.7 min
-- Rungs 2, 3, 4 and 5 PASS. Rung 3 is the first leaf whose commands ran in a Token Factory Sandbox. Rung 4
-  is the escape test on ConTree: 10 ways out failed, 2 ways in came back, exit 124 at its limit.
-- First contact broke the Sandbox: every command's file list failed on ConTree (`cat` into a file leaves it
-  unwritable there). Rung 3's first PASS was hollow because of it. Fixed with tests (a09435d).
-- Prototypes: cover and precheck PASS twice. note routed 1 of 4 live notes (one malformed answer, one
-  `"null"` glob, fixed in 222b678, one cut off at 2,048 tokens).
+**What ran live** — $1.80 of $10, practice; 4.5 Sandbox minutes at no published price
+- Rungs 2-5 PASS: a leaf ran in a Token Factory Sandbox; the escape test held on ConTree (10 out, 2 in).
+- Rung 7: 2 of 5 takes ran end to end ($0.38 each); 3 failed at the planner. Ultra's tree was readable
+  on 2 of 9 asks; Ultra is 95% of the bill. First contact broke ConTree's file lists: fixed with tests.
 
 **New tonight**
-- A live leaf's recording in CI: `uv run pytest tests/test_recordings.py`
-- The ladder: `docs/test/practice.sh status` (from `~/graphene-practice-night`)
+- Every rung and take: `docs/test/first-light.md` ("2 October"); live replays in CI: `tests/recordings/`
 
 **Decide**
-- Nano spends 920–2,048 completion tokens on a ~100-token JSON answer (reasoning?), so note's 2,048 cap
-  is hit. Default: a pre-registered try with reasoning off before note is measured.
+1. The planner's misses. Default: the reader keeps what it can read and the retry hears what failed.
+2. Take 3's pytest check could not pass in a fresh Sandbox fork. Default: `init` sets `prepare` for it.
+3. Nano spends ~10x an answer's tokens first. Default: a pre-registered try with reasoning off.
 
 **Broken or risky**
-- My error: I told you the key expired at 23:27. It did not: whoami's expiry is a 300 s token per read.
-- Sandboxes have no published price; tonight's minutes are counted (cap 150).
+- My error: I said your key expired at 23:27. It did not; whoami's token lives 300 s.
+- Your PATH's `graphene` is your stale checkout's: film from `~/graphene-practice-night` with `uv run`.
+- Sandboxes have no published price; tonight's 4.5 minutes are counted only.
 
 ---
 
@@ -81,6 +79,35 @@ close its PR and `git push origin --delete practice`.
   2,048 tokens. Usage rows: cover 1,334 completion tokens, note 920 and 2,048, precheck 174 and 458, each
   for a JSON answer of about 100 tokens. Nano seems to reason before it answers; the reasoning text was
   not read, so that is not verified. No third try: the prototypes' measures are pre-registered later.
+
+- **01:07–01:30** Rung 7, five takes on one code state (222b678), as `docs/test/first-light.md` tabulates:
+  take 1 PASS (3 of 3 landed, 265 s, $0.38), take 2 FAIL at the planner (83 s, $0.33), take 3 PASS (2 of 3
+  landed, 624 s, $0.38), take 4 FAIL at the planner (109 s, $0.34), take 5 FAIL at the planner (97 s, $0.35).
+  Each take's recording and log were copied before the next (`.graphene/practice/take-N.*`). Take 1 is kept
+  as `tests/recordings/first-light-rung-7.jsonl` (900080b); take 3's names `/home/leaf/…` (the Sandbox
+  user's home), which `demo.leaks` counts, so it stays out.
+- **01:31** contree-sdk's "Token expires in 0 hours" filtered from the screen (ea0574e), written in a
+  separate worktree during the takes and brought in after them, so the five ran on unchanged code.
+
+## The three decisions, in full
+
+1. **The planner's misses.** Of 9 live asks, 2 gave a tree Graphene could read. The other 7:
+   - 3 used all 30 steps with no proposal;
+   - 2 put prose or markdown lines inside the tree;
+   - 1 named a `needs:` id that is not a node;
+   - 1 answered in prose with no tree.
+
+   *Default:* the reader keeps what it can read. It drops a `needs:` that names no node and keeps a prose
+   line as a note, saying both on the board. The retry is told the reader's error. Then the filmed take.
+   *Option:* more planner steps (40), a frozen-configuration change, decided before the registered runs.
+2. **Sandbox checks need what they run.** Take 3's leaf asked for `python3 -m pytest`. The executor
+   installed pytest in its own Sandbox, and its test passed there. But Graphene runs the check in a fresh
+   fork of the image the leaf started from, so `done` was refused three times. *Default:* `graphene init`
+   writes `prepare: pip install pytest` when a check runs pytest. *Option:* tell the planner the Sandbox
+   is a bare `python:3.12`.
+3. **Nano's tokens before an answer.** It used 920–2,048 completion tokens for a JSON answer of about 100,
+   and note's 2,048 cap was hit once. *Default:* one pre-registered try with reasoning off, before the
+   prototypes are measured by 20 October.
 
 ## What I read before starting (23:22, 1 Oct; $0, nothing written)
 
