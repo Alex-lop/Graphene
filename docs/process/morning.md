@@ -12,6 +12,8 @@
 **New tonight**
 - Your six 29 Sep commits that missed PR #34 are on `practice` (spend-cap guard, `key check`'s
   Sandboxes line, prereg rule 6's $10 cap, DIRECTION 132): `git log --oneline origin/main..practice`
+- CI's flake, fixed at its root (main 1 failed in 30 under full load, the fix 30 of 30):
+  `uv run pytest tests/test_tokenfactory.py -k "slow_child or 429"`
 
 **Decide**
 - None yet.
@@ -40,6 +42,10 @@ close its PR and `git push origin --delete practice`.
 - **00:10** The carried commits' tests: 206 passed (test_key_cli, test_sandbox_contract, test_tokenfactory,
   test_init, docs/test/test_bench, test_arm_a, test_arm_bprime, test_doc_claims, test_tui), with the
   key, the project and the opening unset and the keychain off.
+- **00:30** CI's flake (9c07c29). With the global `time.sleep` patched as the eleven tests did, a 0.2 s
+  child's `subprocess.run(timeout=30)` recorded `[0.001, 0.002, 0.004, 0.008, 0.016, …]`, CI's list. With
+  all 11 cores busy, main's two tests failed 1 run of 30 and the fix's passed 30 of 30. Both new tests fail
+  on main (a throwaway worktree at 4e1660c). The seven touched files: 135 passed, 2 skipped.
 
 ## What I read before starting (23:22, 1 Oct; $0, nothing written)
 
