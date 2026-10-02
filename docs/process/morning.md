@@ -3,26 +3,28 @@
 ## The brief
 
 **Watch first**
-- Take 1, live, no key needed (Ultra planned, Nano built, 3 of 3 leaves in Sandboxes, 4 min 25 s, $0.38):
+- Take 1, live, no key: Ultra planned, Nano built, 3 of 3 leaves landed in Sandboxes, 4 min 25 s, $0.38.
   `cd ~/graphene-practice-night && uv run --frozen graphene demo tests/recordings/first-light-rung-7.jsonl`
+  Watch for this: its code turns the feed's cents into dollars (1299 to 129900), and Ultra's checks never asked.
 
-**What ran live** — $1.80 of $10, practice; 4.5 Sandbox minutes at no published price
-- Rungs 2-5 PASS: a leaf ran in a Token Factory Sandbox; the escape test held on ConTree (10 out, 2 in).
-- Rung 7: 2 of 5 takes ran end to end ($0.38 each); 3 failed at the planner. Ultra's tree was readable
-  on 2 of 9 asks; Ultra is 95% of the bill. First contact broke ConTree's file lists: fixed with tests.
+**What ran live** — $1.80 of $10, practice; 4.8 Sandbox minutes at no published price
+- Rungs 2-5 PASS: a leaf's commands ran in a Token Factory Sandbox; the escape test held on ConTree.
+- Rung 7: 2 of 5 takes ran to the end, neither doing all it was asked; 3 failed at the planner. Ultra's tree
+  was readable on 2 of 9 asks and is 95% of the bill. ConTree's `cat` bug broke our sandbox I/O: fixed, tested.
 
 **New tonight**
 - Every rung and take: `docs/test/first-light.md` ("2 October"); live replays in CI: `tests/recordings/`
 
 **Decide**
 1. The planner's misses. Default: the reader keeps what it can read and the retry hears what failed.
-2. Take 3's pytest check could not pass in a fresh Sandbox fork. Default: `init` sets `prepare` for it.
-3. Nano spends ~10x an answer's tokens first. Default: a pre-registered try with reasoning off.
+2. Checks that print instead of assert, and a Sandbox check that needs pytest. Default: the planner's
+   prompt asks for asserting checks, and `init` sets `prepare` for pytest.
+3. Nano's tokens before an answer. Default: a pre-registered try with reasoning off before note is measured.
 
 **Broken or risky**
 - My error: I said your key expired at 23:27. It did not; whoami's token lives 300 s.
 - Your PATH's `graphene` is your stale checkout's: film from `~/graphene-practice-night` with `uv run`.
-- Sandboxes have no published price; tonight's 4.5 minutes are counted only.
+- Sandboxes have no published price; tonight's 4.8 minutes are counted only.
 
 ---
 
@@ -53,13 +55,13 @@ close its PR and `git push origin --delete practice`.
   not run.
 
 - **00:47** Rung 2 PASS live: one leaf on Nano, on this machine, 12.1 s, $0.0005.
-- **00:49** Rung 3 PASS, hollow: all 9 of its executor's commands in ConTree came back as exit 1, even
+- **00:49** Rung 3 PASS, hollow: all 7 of its executor's commands in ConTree came back as exit 1, even
   `echo hello`, without their list of files (`.graphene/practice/rung-3-hollow.log`). The leaf landed
-  because its one file was pushed and its check runs on this machine.
+  because its one file was pushed and its check ran in a fresh ConTree fork, whose output is no file.
 - **00:49 and 00:52** Rung 4 FAIL twice, the same way: every command's list ended in `sha1sum: write
   error` and `echo: I/O error`.
 - **00:53–01:00** A deliberate exception to the plan's "ladder only" rule: six small diagnostic scripts in
-  ConTree through `sandbox.Contree`, about 40 operations, no model call, on the night's ledger. They
+  ConTree through `sandbox.Contree`, 57 operations, no model call, on the night's ledger (output not kept). They
   narrowed it to one step: on ConTree (kernel 7.0.6, coreutils 9.7), `{ cat FILE; echo after; } > OUT`
   fails at the echo with an I/O error, while `$(cat FILE)` and `cat FILE | cat` write whole. Deleting and
   rewriting a checkpointed file, the first suspect, works.
@@ -85,9 +87,24 @@ close its PR and `git push origin --delete practice`.
   landed, 624 s, $0.38), take 4 FAIL at the planner (109 s, $0.34), take 5 FAIL at the planner (97 s, $0.35).
   Each take's recording and log were copied before the next (`.graphene/practice/take-N.*`). Take 1 is kept
   as `tests/recordings/first-light-rung-7.jsonl` (900080b); take 3's names `/home/leaf/…` (the Sandbox
-  user's home), which `demo.leaks` counts, so it stays out.
+  user's home), which `demo.leaks` counted until ff76809, so it was not kept.
 - **01:31** contree-sdk's "Token expires in 0 hours" filtered from the screen (ea0574e), written in a
   separate worktree during the takes and brought in after them, so the five ran on unchanged code.
+
+- **01:47–02:20** The closing review: three adversary sub-agents (leaks, claims against the record, the
+  code), with each finding checked here before it was fixed.
+  - Leaks: no key, project id or key-shaped word anywhere. Fixed: `/home/leaf` exempt only as a whole name
+    and never on a `..`, and the SDK's line dropped only for a key's client at 0 hours.
+  - Claims: the README and CHANGELOG line overclaimed, and take 1's wrong prices were unsaid (rerun here:
+    129900). Also fixed: 7 hollow commands, not 9; the check ran in a ConTree fork; 57 probe operations;
+    34 `str_replace_editor` calls; the per-ask cost range; note's notes.
+  - Code: a `cat` in an executor's command lost the rest of its output on ConTree (probed live, fixed by
+    `>>` in a7ee473); a timeout counted as a lost list; rung 7 checks lost lists; note's check of `"null"`;
+    and a test that could not catch its bug, removed.
+
+  Each fix has a test that fails on f48d698.
+- **Not done, on purpose:** take 1's recording names your login (`alexlopez`) as the actor, as any run of
+  yours does. Re-record with `GRAPHENE_PERSON` set before shipping it as the replay judges see.
 
 ## The three decisions, in full
 
@@ -100,12 +117,16 @@ close its PR and `git push origin --delete practice`.
    *Default:* the reader keeps what it can read. It drops a `needs:` that names no node and keeps a prose
    line as a note, saying both on the board. The retry is told the reader's error. Then the filmed take.
    *Option:* more planner steps (40), a frozen-configuration change, decided before the registered runs.
-2. **Sandbox checks need what they run.** Take 3's leaf asked for `python3 -m pytest`. The executor
+2. **Checks that cannot fail on the wrong work, and checks that need what they run.** Take 1 landed 3 of 3
+   leaves whose code reads prices already in cents as dollars: NW-1's 1299 came out as 129900. Ultra's three
+   checks printed or ran the command and asserted nothing about a price. *Default:* the planner's prompt asks
+   for a check that asserts what the leaf promises, a prompt change decided before the frozen configuration.
+   Take 3's leaf asked for `python3 -m pytest`. The executor
    installed pytest in its own Sandbox, and its test passed there. But Graphene runs the check in a fresh
    fork of the image the leaf started from, so `done` was refused three times. *Default:* `graphene init`
    writes `prepare: pip install pytest` when a check runs pytest. *Option:* tell the planner the Sandbox
    is a bare `python:3.12`.
-3. **Nano's tokens before an answer.** It used 920–2,048 completion tokens for a JSON answer of about 100,
+3. **Nano's tokens before an answer.** On ten prototype calls it used 174–2,048 completion tokens for JSON answers of about 100,
    and note's 2,048 cap was hit once. *Default:* one pre-registered try with reasoning off, before the
    prototypes are measured by 20 October.
 

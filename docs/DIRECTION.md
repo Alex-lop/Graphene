@@ -1579,34 +1579,42 @@ any of them.
 
 133. **The live half of first light ran on 2 October, as practice, under your opening.** The plan was
      `docs/process/directives/PRACTICE_PLAN.md`. Rungs 2 to 5, the prototypes and five takes of rung 7
-     cost $1.80 of the night's $10, plus 4.5 Sandbox minutes at no published price. Every number is in
+     cost $1.80 of the night's $10, plus 4.8 Sandbox minutes at no published price. Every number is in
      `docs/test/first-light.md`, as practice; none enters a registered table.
      *Evidence:* `docs/test/practice.sh status`, and the night ledger `~/.graphene/night/2026-10-01.jsonl`.
 134. **A sandbox command's exit code reaches its list of files through `$(...)`, never a `cat` into the
      list.** On ConTree a `cat` whose output is a file leaves that file unwritable. No command's list came
      back, so every command read as exit 1 and nothing it did was brought back. That fails closed, as
      designed, but it left the ladder's rung 3 a hollow pass. A leaf's placement record now counts its
-     lost lists (`lost`), and rung 3 fails on any.
+     lost lists (`lost`), and rungs 3 and 7 fail on any. A command's own output is appended (`>>`), never
+     truncated, for the same reason: `cat app.py; echo after-cat` lost the echo and exited 1, live.
      *Evidence:* `tests/test_sandbox_state.py::test_the_list_takes_the_exit_code_through_a_substitution_never_a_cat_into_the_list`,
      `tests/test_sandbox_state.py::test_a_command_whose_list_never_came_back_is_counted_on_the_leafs_record`,
      `tests/test_practice.py::test_rung_3_fails_when_its_sandbox_commands_came_back_without_their_list`,
+     `tests/test_sandbox_state.py::test_a_commands_output_is_appended_to_a_fresh_file_never_truncated`,
+     `tests/test_practice.py::test_rung_7_fails_when_any_of_its_sandbox_commands_lost_their_list`,
      and rungs 3 and 4 passing live after it.
 135. **What the live planner did is the open problem.** The changes it argues for are decisions for you,
      not first-contact fixes, so none was made:
-     - Ultra wrote a tree Graphene could read on 2 of 9 asks, and 2 of 5 takes ran end to end. The misses:
+     - Neither take that ran to the end did all it was asked. Take 1's landed code reads prices already
+       in cents as dollars (1299 became 129900), because Ultra's checks printed and asserted nothing. A
+       check that cannot fail on the wrong work is the gap Graphene is meant to show you.
+     - Ultra wrote a tree Graphene could read on 2 of 9 asks, and 2 of 5 takes ran to the end. The misses:
        30 steps with no proposal (3), prose or markdown inside the tree (2), a `needs:` naming no node
        (1), and prose with no tree (1).
      - A Sandbox leaf's check runs in a fresh fork of its starting image, so what the leaf installs (take
        3's pytest) is not there. A check that needs a package needs `prepare`.
-     - Nano spends about ten times an answer's tokens before answering, so note's 2,048-token cap was
-       hit once. Nano also called a tool that does not exist, 12 times running.
+     - On ten prototype calls Nano used 174 to 2,048 completion tokens for answers of about 100, and note's
+       2,048-token cap was hit once. Nano also called `str_replace_editor` with the wrong arguments 34
+       times in 40 steps.
 
      The options are in `docs/process/morning.md`, under Decide.
 136. **Two reads of ConTree are kept off the screen and out of claims.** contree-sdk's "Token expires in 0
-     hours" is about a 300-second token minted per read, not the key: it no longer prints. `demo.leaks`
-     counts `/home/leaf/…`, the Sandbox user's home, as a home path; a take that names it stays out of
-     `tests/recordings/`.
-     *Evidence:* `tests/test_sandbox_contract.py::test_the_sdks_token_life_warning_never_reaches_the_screen`.
+     hours" is about a 300-second token minted per read, not the key. It no longer prints for a client the
+     key signs; a `contree auth` profile's warnings still do. `demo.leaks` no longer counts
+     `/home/leaf/…`, the Sandbox user's own home, unless the path climbs out of it.
+     *Evidence:* `tests/test_sandbox_contract.py::test_the_sdks_token_life_warning_is_dropped_only_when_the_key_signs_the_client`,
+     `tests/test_recordings.py::test_the_sandboxs_own_home_is_no_persons_path`.
 
 ## What does not bind (say it wherever you sell it)
 

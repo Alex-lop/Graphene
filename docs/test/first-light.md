@@ -132,22 +132,30 @@ the files it wrote: 0 each time.
 is a file leaves that file unwritable: `{ cat FILE; echo after; } > OUT` fails at the echo with an I/O
 error, while `$(cat FILE)` and `cat FILE | cat` write whole. Docker does not do this, so the dry ladder
 passed. The sandbox's list of files began with `cat /tmp/graphene.code`, so no command's list came back,
-and every command read as exit 1. Rung 3's first PASS was hollow: all 9 of its executor's commands came
-back that way, even `echo hello`. The leaf landed only because its one file was pushed and its check
-runs on this machine. Fixed in a09435d: the list takes the code through `$(...)`. A leaf's placement
-record now counts its lost lists, and rung 3 fails on any. Six small diagnostic scripts in ConTree found
-it, about 40 operations and no model call: a deliberate exception to the plan's "ladder only" rule.
+and every command read as exit 1. Rung 3's first PASS was hollow: all 7 of its executor's commands came
+back that way, even `echo hello`. The leaf landed because its one file was pushed and its check ran in a
+fresh ConTree fork, whose output does not pass through a file. Fixed in a09435d: the list takes the code
+through `$(...)`. A leaf's placement record counts its lost lists, and rungs 3 and 7 fail on any. Six
+small diagnostic scripts in ConTree found it, in 57 operations with no model call, as a deliberate
+exception to the plan's "ladder only" rule. Their output was read in the session and not kept.
+
+The closing review found the same shape one step further in. An executor's own command wrote its output
+to a file opened with `>`, so `cat app.py; echo after-cat` exited 1 and lost the echo, as probed live. An
+output opened for append (`>>`) gives rc=0 and the whole output, for root and the leaf user alike. That
+fix is a7ee473. A done-check in a fork already came back whole, since its output is ConTree's own. The
+review's probes took 20 more operations.
 
 **The prototypes** (`practice.sh prototypes`, 01:04 and 01:06). cover passed twice. precheck passed
-twice; its third check ran in a Sandbox fork, and each red was read for the right reason. note routed 1
-of 4 notes:
-- Nano put every field into `target`;
-- Nano wrote the string `"null"` as a glob (fixed in 222b678);
-- one note was routed to its leaf's goal;
-- one answer was cut off at note's 2,048-token cap.
+twice; its third check ran in a Sandbox fork, and each red was read for the right reason. note asked
+about two notes, each twice, and routed one of them once:
+- the first note: Nano put every field into `target`, then on the second run it was routed to its
+  leaf's goal;
+- the cents note: Nano wrote the string `"null"` as a glob (fixed in 222b678), then on the second run
+  the answer was cut off at note's 2,048-token cap.
 
-The completion tokens were cover 1,334, note 920 and 2,048, and precheck 174 and 458, each for a JSON
-answer of about 100 tokens. Nano seems to reason before it answers; the reasoning text was not read.
+On the ten prototype calls Nano used 174 to 2,048 completion tokens (cover 1,116 and 1,334; note 1,247,
+1,002, 920 and 2,048; precheck 263, 236, 174 and 458), each for a JSON answer of about 100 tokens. That
+suggests it reasons before it answers. The reasoning text was not read, and ten calls are not a measure.
 
 ## Rung 7, five takes on one code state (222b678)
 
@@ -163,6 +171,14 @@ scripted: `cli/main.py` leaves every scope, and a leaf that comes back for it is
 | 4 | 01:25 | FAIL at the planner | 109 | $0.3393 | — | — | — |
 | 5 | 01:28 | FAIL at the planner | 97 | $0.3543 | — | — | — |
 
+- **Neither passing take built everything asked.**
+  - Take 1's landed code reads the feed's prices, already in cents, as dollars: NW-1's `1299` comes out as
+    `"price_cents": 129900` (rerun from its repo, `python3 -m cli.main load samples/prices.xml --source
+    xml`). Ultra's checks for its three leaves printed or ran the command, and asserted nothing about a
+    price, so each passed.
+  - Take 3's landed code does not skip price 0, because the leaf that would have was released.
+
+  A check that cannot fail on the wrong work is the gap Graphene exists to show the person.
 - **The planner wrote a tree Graphene could read on 2 of 9 asks** (each take asks twice at most):
   - 3 asks used all 30 steps without proposing;
   - 2 put prose or markdown lines where a node's lines go (`'**normalize/fields.py** (in …' is not
@@ -178,14 +194,16 @@ scripted: `cli/main.py` leaves every scope, and a leaf that comes back for it is
   - The leaf's own executor installed pytest in its Sandbox with pip (the Sandbox reaches the
     internet), and its test passed there.
   - Graphene runs the check in a fresh fork of the image the leaf started from, which has no pytest. So
-    `done` was refused three times, and the leaf was released with that reason. Nano, before Super took
-    over, called a tool that does not exist (`str_replace_editor`) 12 times running.
-- **Recordings:** take 1's is kept as `tests/recordings/first-light-rung-7.jsonl`. Take 3's names
-  `/home/leaf/…`, the Sandbox user's home, which `demo.leaks` counts as a home path.
+    `done` was refused three times, and the leaf was released with that reason. Before Super took over,
+    Nano called `str_replace_editor` (which Graphene reads as `edit`) with `command: view` 34 times in its
+    40 steps, 32 of them running, and gave up.
+- **Recordings:** take 1's is kept as `tests/recordings/first-light-rung-7.jsonl`. Its actor is the
+  login name, as a person's run records it. Take 3's names `/home/leaf/…`, the Sandbox user's home, which
+  `demo.leaks` counted as a home path until ff76809. It was not kept.
 
 The bill for the night: $1.7950 at list price. Ultra was 244 calls and $1.7026, Super 28 calls and
-$0.0544, Nano 136 calls and $0.0381. Sandboxes: 291 operations, 4.5 minutes, priced at $0 because no
-price is published.
+$0.0544, Nano 136 calls and $0.0381, 408 calls in all. Sandboxes: 311 operations and 4.8 minutes,
+diagnostics included, priced at $0 because no price is published.
 
 ## Not yet run live
 

@@ -2,8 +2,8 @@
 
 Costs are list price by rung 1's live list (per million in/out: Nano $0.06/$0.24, Super $0.30/$0.90,
 Ultra $1.00/$3.00), as ranges: a Nano call from $0.0001 (rung 2's three: 1,334-1,465 in, 98-191 out)
-to $0.0015 (20,000 in, 1,000 out, late in a session); an Ultra ask $0.12-0.30, measured on 2 October
-(26-30 calls, 113,000-232,000 tokens in, practice: `docs/test/first-light.md`), ten times the old guess.
+to $0.0015 (20,000 in, 1,000 out, late in a session); an Ultra ask $0.07-0.30, measured on 2 October
+(16-30 calls, 60,000-232,000 tokens in, practice: `docs/test/first-light.md`), several times the old guess.
 Sandboxes have no published price; the night ledger counts their minutes. Other times are guesses. You type each command from the
 repo root in your own terminal. Tonight each harness here ran only as far as its `--help` or usage
 line; `newrun.sh` and `summarize.py` have none and did not run.

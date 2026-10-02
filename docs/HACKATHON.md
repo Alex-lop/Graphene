@@ -8,7 +8,8 @@ traceable, and every number names its source. **No registered number here comes 
 The live record is practice (`docs/test/first-light.md`).
 - On 29 September Graphene made a runtime call to Token Factory.
 - On 2 October, Nemotron Ultra planned and Nano executed on Token Factory, with leaves in Token Factory
-  Sandboxes. 2 of 5 demo takes ran end to end, and the planner's tree was readable on 2 of 9 asks.
+  Sandboxes. 2 of 5 demo takes ran to the end, neither doing all the paragraph asked, and the planner's
+  tree was readable on 2 of 9 asks.
 
 Everything else on the Nemotron path has run only against a scripted stand-in for Token Factory
 (`tests/fake_tokenfactory.py`) and a Docker stand-in for Sandboxes. The fields that need the evidence
@@ -92,7 +93,7 @@ a change to a read-only path is refused at `done`, and `graphene ask "…" --fin
 **Nemotron works for you while you shape.** Three prototypes, each a command and each run after a
 proposal lands when `GRAPHENE_SHAPE` names it. Each makes one Nano call with a JSON schema. They are
 built and tested against the scripted stand-in. Each has run live only as practice (2 October,
-`docs/test/first-light.md`): cover and precheck passed twice, and note routed 1 of 4 notes:
+`docs/test/first-light.md`): cover and precheck passed twice, and note routed one of two notes once:
 
 - `graphene plan cover`: Nano reads your paragraph beside the plan and names the parts no leaf
   carries. Each comes back in your own words, with the command that puts it on the nearest leaf. A
@@ -413,13 +414,14 @@ are in `docs/test/first-light.md`.)
 12. **On ConTree, a `cat` whose output is a file leaves that file unwritable** (2 October, practice;
    kernel 7.0.6, coreutils 9.7 in `python:3.12`). `{ cat FILE; echo after; } > OUT` fails at the echo
    with an I/O error, while `$(cat FILE)` and `cat FILE | cat` write whole. Docker does not do this.
-   Every sandbox command of ours read as exit 1 until we stopped piping a `cat` into a file.
+   Every sandbox command of ours read as exit 1 until our list stopped taking a `cat` into a file, and a
+  command's own output was cut at its first `cat` until we opened it for append (`>>`).
 13. **whoami's `token_expiration` is a token minted for 300 seconds on every read**, and contree-sdk
    warns "Token expires in 0 hours" on every client. It reads as the key expiring; it misled us into
    asking for a new key.
-14. **Nemotron 3 Nano spends 920 to 2,048 completion tokens on a JSON answer of about 100 tokens**
-   (2 October, practice). A cap sized for the answer is hit; whether this is reasoning, and whether it
-   can be turned off, the docs we read do not say.
+14. **On ten prototype calls, Nemotron 3 Nano used 174 to 2,048 completion tokens for JSON answers of about
+   100 tokens** (2 October, practice), and a 2,048-token cap was hit once. Whether this is reasoning, and
+   whether it can be turned off, the docs we read do not say.
 
 ## Every number, and where it comes from
 

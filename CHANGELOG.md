@@ -2,14 +2,16 @@
 
 ## 0.5.0 (not published yet: the tag is Alex's)
 
-Graphene on Nemotron. As practice on 2 October, Nemotron planned a small feature and its leaves landed in
-Token Factory Sandboxes, each passed by its own check, on 2 of 5 tries; the planner's tree was readable on 2
-of 9 asks (`docs/test/first-light.md`). Nothing registered has run live.
+Graphene on Nemotron. As practice on 2 October, Nemotron planned a small feature 5 times. 2 plans ran to the
+end in Token Factory Sandboxes, landing 5 of 6 leaves, each passed by its own check; neither did all it was
+asked. 3 stopped at the planner, whose tree was readable on 2 of 9 asks (`docs/test/first-light.md`). Nothing
+registered has run live.
 
 The live half of first light (2 October, practice).
-- The sandbox's list of files takes the exit code through `$(...)`: on ConTree a `cat` into a file leaves it
-  unwritable, so no command's list came back and every sandbox command read as exit 1. A leaf's placement
-  record counts the commands whose list was lost, and the ladder's rung 3 fails on any.
+- The sandbox's list of files takes the exit code through `$(...)`, and a command's output is appended, never
+  truncated. On ConTree a `cat` into a file opened with `>` leaves it unwritable: no command's list came back,
+  every sandbox command read as exit 1, and a command's output was cut at its first `cat`. A leaf's placement
+  record counts the commands whose list was lost, and the ladder's rungs 3 and 7 fail on any.
 - `graphene plan note` takes JSON's null written as the string `"null"` in a glob list as no glob, as Nano
   wrote it live.
 - contree-sdk's "Token expires in 0 hours" no longer reaches the screen (it is a 300-second token, not the
