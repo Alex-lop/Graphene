@@ -146,6 +146,7 @@ def _offer(store, root, sentence, a, target, why, leaves, files, everything, end
         return None
     scope, add, remove = node.scope if node else [], _strs(a.get("scope_add")), _strs(a.get("scope_remove"))
     check = a["check"].strip() if isinstance(a.get("check"), str) else ""
+    check = "" if check.lower() == "null" else check  # JSON's null written as a string, as in a glob list
     if any(_CONTROL.search(w) for w in (*add, *remove, check)):  # a command must be what it looks like
         say("the model's answer holds control characters; nothing is offered")
         return None

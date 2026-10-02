@@ -87,15 +87,18 @@ def credentials() -> bool:
 
 
 class _NoTokenLife(logging.Filter):
-    """contree-sdk warns "Token expires in 0 hours" on every client: the token its whoami answers about
-    lives 300 s and is minted again on each read (2 Oct, three reads, each +300 s), so the warning is never
-    about the key. It went to the person's screen under `graphene init`, and read as the key expiring."""
+    """contree-sdk warns "Token expires in 0 hours" on every client a Token Factory key signs: the token its
+    whoami answers about lives 300 s and is minted again on each read (2 Oct, three reads, each +300 s), so
+    the warning is never about the key. It went to the person's screen under `graphene init`, and read as
+    the key expiring. Only that line is dropped, and only for the key: a `contree auth` profile's token may
+    really expire."""
 
     def filter(self, record: logging.LogRecord) -> bool:
-        return not record.getMessage().startswith("Token expires in")
+        return record.getMessage() != "Token expires in 0 hours"
 
 
-logging.getLogger("contree_sdk.sdk.client._base").addFilter(_NoTokenLife())
+_QUIET = _NoTokenLife()
+_SDK_LOG = logging.getLogger("contree_sdk.sdk.client._base")
 
 
 def _client():
@@ -106,6 +109,8 @@ def _client():
     from . import keys
 
     token = None if os.environ.get(keys.KEY) else keys.find()
+    if os.environ.get(keys.KEY) or token:  # the key signs it, so its token is the 300 s one
+        _SDK_LOG.addFilter(_QUIET)  # once: a filter already on the logger is not added again
     return ContreeSync(token=token) if token else ContreeSync()
 
 
@@ -637,7 +642,8 @@ class Sandbox:
 
     def run(self, command: str, timeout: int = 300) -> tuple[int, str]:
         q = shlex.quote
-        files, lines = {}, [f"rm -f {STATE} /tmp/graphene.code"]  # never the last command's list, read again
+        # never the last command's code, list or output, read again
+        files, lines = {}, [f"rm -f {STATE} /tmp/graphene.code /tmp/graphene.out"]
         for k, rel in enumerate(sorted(self.pushed)):  # the executor's own edits, as the leaf's user
             files[f"/tmp/graphene/push/{k}"] = (self.root / rel).read_bytes()
             target = q(f"{WORK}/{rel}")
@@ -648,7 +654,9 @@ class Sandbox:
         lines += [
             "rm -rf /tmp/graphene/push",
             f"cd {WORK} && setpriv --reuid={USER} --regid={USER} --init-groups env -i HOME=/home/{USER} "
-            f"PATH=/usr/local/bin:/usr/bin:/bin LANG=C.UTF-8 bash -c {q(command)} > /tmp/graphene.out 2>&1; "
+            # appended, never truncated: on ConTree a `cat FILE` into an output opened with `>` leaves it
+            # unwritable, and the rest of the command's output and its exit code were lost (2 Oct)
+            f"PATH=/usr/local/bin:/usr/bin:/bin LANG=C.UTF-8 bash -c {q(command)} >> /tmp/graphene.out 2>&1; "
             "echo $? > /tmp/graphene.code",
             _manifest(),
             f"tail -c {OUTPUT} /tmp/graphene.out",  # what the model is shown: its tail, capped anyway
@@ -672,7 +680,7 @@ class Sandbox:
             raise RuntimeError(f"the sandbox's operation was killed mid-leaf (exit {code}: out of memory, or "
                                "stopped); nothing of this command was brought back: run the leaf again")
         if state is None:  # fail closed: without the whole list, no file is taken as deleted or changed
-            self.image, self.lost = image, self.lost + 1
+            self.image, self.lost = image, self.lost + (not stale)  # a command past its time is not lost
             return code or 1, f"{output}\n({LOST}; nothing was brought back from this command)"
         self.image, self.pushed, self.strays = image, set(), set()
         exit_code, now = state

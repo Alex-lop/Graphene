@@ -239,16 +239,30 @@ def test_a_contree_error_whose_body_echoes_the_key_or_the_project_is_said_withou
     assert "Authorization: Bearer …" in said and len(said) <= 400
 
 
-def test_the_sdks_token_life_warning_never_reaches_the_screen(caplog):
-    """Live on 2 Oct, `graphene init` printed contree-sdk's "Token expires in 0 hours" (a 300 s token minted
-    per read, not the key); any other warning of the SDK's still comes through."""
+def test_the_sdks_token_life_warning_is_dropped_only_when_the_key_signs_the_client(caplog, monkeypatch):
+    """Live on 2 Oct, `graphene init` printed contree-sdk's "Token expires in 0 hours", about a 300 s token
+    minted per read, not the key. It is dropped for a client the key signs, and only that line: a `contree
+    auth` profile's token may really expire, and the SDK's other warnings still come through."""
     import logging
 
-    from graphene_map import sandbox  # noqa: F401  (importing it filters the SDK's logger)
+    import contree_sdk
 
+    from graphene_map import sandbox
+
+    monkeypatch.setattr(contree_sdk, "ContreeSync", lambda **_: object())
     log = logging.getLogger("contree_sdk.sdk.client._base")
-    with caplog.at_level(logging.WARNING, logger=log.name):
-        log.warning("Token expires in 0 hours")
-        log.warning("Timeout 900s exceeds max_timeout=600")
-    said = [r.getMessage() for r in caplog.records]
-    assert said == ["Timeout 900s exceeds max_timeout=600"]
+    monkeypatch.setattr(log, "filters", [])
+
+    def said():
+        caplog.clear()
+        with caplog.at_level(logging.WARNING, logger=log.name):
+            for line in ("Token expires in 0 hours", "Token expires in 5 hours", "Timeout 900s exceeds"):
+                log.warning(line)
+        return [r.getMessage() for r in caplog.records]
+
+    monkeypatch.delenv("NEBIUS_API_KEY", raising=False)
+    sandbox._client()  # a profile's client: nothing dropped
+    assert said() == ["Token expires in 0 hours", "Token expires in 5 hours", "Timeout 900s exceeds"]
+    monkeypatch.setenv("NEBIUS_API_KEY", "fake-key")
+    sandbox._client()
+    assert said() == ["Token expires in 5 hours", "Timeout 900s exceeds"]

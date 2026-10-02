@@ -54,6 +54,8 @@ def test_the_sandboxs_own_home_is_no_persons_path():
     from graphene_map import sandbox
 
     assert sandbox.USER == "leaf"
-    assert demo.leaks("run /home/leaf/.local/bin/pytest -q")["a path under a home directory"] == 0
-    for path in ("/home/alex/repo", "/Users/alex/repo", "/home/leafy/repo"):
+    for said in ("run /home/leaf/.local/bin/pytest -q", "HOME=/home/leaf ls", "cd /home/leaf && ls"):
+        assert demo.leaks(said)["a path under a home directory"] == 0, said
+    for path in ("/home/alex/repo", "/Users/alex/repo", "/home/leafy/repo", "/home/leaf/../alex/repo",
+                 "/home/leaf/a/../../alex"):  # fmt: skip
         assert demo.leaks(f"ran in {path}")["a path under a home directory"] == 1, path

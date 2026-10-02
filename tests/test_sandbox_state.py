@@ -152,3 +152,45 @@ def test_a_command_whose_list_never_came_back_is_counted_on_the_leafs_record(tmp
     assert code == 1 and sandbox.LOST in out
     assert place.lost == 1 and executor._box(place)["lost"] == 1
     assert place.fork(tmp_path / "copy").lost == 0  # a fork starts its own count
+
+
+class Scripted(Unlisted):
+    """Unlisted, keeping each script it was given; a command past its time leaves the image as it was."""
+
+    def __init__(self, timed_out=False):
+        self.scripts, self.timed_out = [], timed_out
+
+    def run(self, image, script, files, timeout):
+        self.scripts.append(script)
+        if self.timed_out and image.count("+") >= 1:  # the sandbox is made; its command runs out of time
+            return image, 124, sandbox.TIMED_OUT
+        return super().run(image, script, files, timeout)
+
+
+def leaf(tmp_path):
+    root = tmp_path / "leaf"
+    root.mkdir()
+    (root / "a.py").write_text("x = 1\n")
+    who = ["-c", "user.name=T", "-c", "user.email=t@e"]
+    for args in (["init", "-q"], ["add", "-A"], [*who, "commit", "-qm", "s"]):
+        subprocess.run(["git", "-C", str(root), *args], check=True, capture_output=True)
+    return root
+
+
+def test_a_commands_output_is_appended_to_a_fresh_file_never_truncated(tmp_path):
+    """Live on ConTree (2 Oct): `cat app.py; echo after` into an output opened with `>` lost the echo and
+    exited 1, and an executor's `cat f && pytest` would read as failing. Opened for append, cat cannot copy
+    file to file, and the whole output and the exit code come back (probed live: `>>` gave rc=0)."""
+    box = Scripted()
+    place = sandbox.Sandbox(leaf(tmp_path), ["a.py"], box)
+    place.run("cat a.py; echo after")
+    script = box.scripts[-1]
+    assert "/tmp/graphene.out" in script.splitlines()[0]  # removed first: never the last command's output
+    assert ">> /tmp/graphene.out 2>&1" in script
+    assert "> /tmp/graphene.out 2>&1" not in script.replace(">>", "")
+
+
+def test_a_command_past_its_time_is_not_counted_as_a_lost_list(tmp_path):
+    place = sandbox.Sandbox(leaf(tmp_path), ["a.py"], Scripted(timed_out=True))
+    code, out = place.run("sleep 999")
+    assert code == 124 and place.lost == 0

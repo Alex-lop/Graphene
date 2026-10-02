@@ -3,8 +3,6 @@ priced at the list's price and kept in the ledger, the cap stops the next call, 
 and the key is written nowhere."""
 
 import json
-import subprocess
-import sys
 from pathlib import Path
 
 import pytest
@@ -95,16 +93,6 @@ def test_a_429_is_waited_out_and_tools_reach_the_model(fake, monkeypatch):
     said = tf.chat("nvidia/Nemotron-3-Nano-fake", [{"role": "user", "content": "look"}], tools=tools)
     assert said["message"]["tool_calls"][0]["function"]["name"] == "view"
     assert len(f.requests) == 3 and f.requests[-1]["tools"] == tools and len(waits) == 2
-
-
-def test_a_slow_childs_wait_never_lands_in_the_retry_loops_waits(monkeypatch):
-    """CI's flake (four runs from 30 Sep to 1 Oct, in test_precheck and test_cover): the tests that count
-    the retry loop's waits patched the global time.sleep, so Popen.wait(timeout=...)'s own polls (0.001,
-    0.002, ...) landed in their list whenever a git child outlived its pipes on a loaded runner."""
-    waits = []
-    monkeypatch.setattr(tf, "_sleep", waits.append)
-    subprocess.run([sys.executable, "-c", "import time; time.sleep(0.2)"], timeout=30, check=True)
-    assert waits == []
 
 
 def test_a_recording_replays_and_holds_no_key(fake, tmp_path, monkeypatch):

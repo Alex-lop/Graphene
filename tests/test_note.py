@@ -94,6 +94,13 @@ def test_null_written_as_a_string_in_a_list_is_no_glob(repo, fake):
                                                        "grep -q sorted api.py"])  # fmt: skip
 
 
+def test_null_written_as_a_string_for_the_check_is_no_check(repo, fake):
+    planned(repo)
+    fake([answer("ids", check="null", goal_add=True)])
+    offer, said, _, _ = routed(repo)
+    assert said == [] and "--check" not in offer.command and "--goal" in offer.command
+
+
 def test_a_glob_on_a_tracked_file_is_taken_and_one_to_remove_must_be_in_the_scope(repo, fake):
     planned(repo)
     fake([answer("ids", scope_add=["schema.py"]), answer("ids", scope_remove=["web.py"])])

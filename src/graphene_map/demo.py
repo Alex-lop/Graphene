@@ -99,9 +99,9 @@ def hider(root: Path) -> tuple:
 
 
 unkeyed = tf.unkeyed  # anything shaped like a key taken out, whole word by whole word
-# a path under a home directory, anyone's but the sandbox's own user (sandbox.USER, "leaf"): a person whose
-# home is /home/leaf is still counted, as "the home directory"
-HOMES = re.compile(r"/(?:Users/|home/(?!leaf/))")
+# a path under a home directory, anyone's but the sandbox's own user's (sandbox.USER, "leaf"), unless the
+# path climbs out of it (`..`); the home of the machine that counts is counted apart, whatever it is
+HOMES = re.compile(r"""/(?:Users/|home/(?!leaf(?![\w.-])(?![^\s"']*\.\.)))""")  # not /home/leaf/../x
 
 
 def leaks(text: str) -> dict[str, int]:

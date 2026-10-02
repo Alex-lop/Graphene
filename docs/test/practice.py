@@ -518,6 +518,16 @@ def arms(r: Rung) -> str:
     return said
 
 
+def lost_lists(repo: Path) -> int:
+    """How many sandbox commands of the run's leaves came back without their list of files: each attempt's
+    placement row counts its own (executor._box), and the counts are added up. No store, nothing recorded."""
+    if not (repo / ".graphene" / "graphene.db").exists():
+        return 0
+    with Store.open(repo) as store:
+        return sum(int(row["detail"].get("lost") or 0)
+                   for n in P.nodes(store) for row in store.node_log(n.id, ("placement",)))  # fmt: skip
+
+
 def demo_run(r: Rung) -> str:
     """Rung 7: docs/proof/nemotron.sh, the demo run on feeds, recorded, and the recording replayed."""
     rec = STATE / "demo.jsonl"
@@ -536,6 +546,10 @@ def demo_run(r: Rung) -> str:
     landed = sum(s == P.DONE for s in states.values())
     if not landed:
         raise Failed(f"the demo ran to the bill, and nothing landed: {len(states)} leaves, in {repo}")
+    lost = lost_lists(repo)
+    if lost:  # as rung 3: a leaf whose commands lost their lists did not really run in the sandbox
+        raise Failed(f"the demo ran to the bill, but {lost} of its sandbox commands came back without their "
+                     "list of files, so nothing they did was brought back")
     where = placed(repo)
     back, shown = r.sh(["graphene", "demo", str(rec), "--once"], STATE, 120)
     if back:
