@@ -49,7 +49,7 @@ def test_a_key_in_the_keychain_that_is_not_reached_is_said(repo, on_path, monkey
     on_path("claude")
     monkeypatch.setattr(keys, "find", lambda: "a-key")
     monkeypatch.setenv("GRAPHENE_TOKENFACTORY_URL", "http://127.0.0.1:9/v1/")  # nothing listens there
-    monkeypatch.setattr(tf.time, "sleep", lambda s: pytest.fail("init waited to try Token Factory again"))
+    monkeypatch.setattr(tf, "_sleep", lambda s: pytest.fail("init waited to try Token Factory again"))
     tf._listed.cache_clear()
     said = person("init")
     assert "Token Factory could not be reached at http://127.0.0.1:9/v1/" in said.output  # said: a key

@@ -603,6 +603,61 @@ def test_rung_4s_command_past_its_time_comes_back_as_exit_124_or_fails(tmp_path,
     assert practice.likely(str(no.value))[0].startswith("ConTree's own time limit ends an operation")
 
 
+def test_rung_3_fails_when_its_sandbox_commands_came_back_without_their_list(tmp_path, monkeypatch):
+    """2 Oct: rung 3 passed live while every command the executor ran in ConTree came back as exit 1 without
+    its list of files (the leaf's one file was pushed, and its check runs here). The placement's count of
+    lost lists now fails the rung."""
+    practice = load_practice(tmp_path, monkeypatch)
+    r = practice.Rung(3, 0.5)
+    monkeypatch.setattr(r, "feeds", lambda name: (tmp_path, None))
+    monkeypatch.setattr(practice, "one_leaf", lambda r, repo, executor: "the leaf landed: run: 1 done")
+
+    class Kept:
+        lost = 8
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            return False
+
+        def node_log(self, node, kinds):
+            return [{"detail": {"box": "contree", "ops": 18, "seconds": 22.2, "lost": self.lost}}]
+
+    monkeypatch.setattr(practice.Store, "open", lambda repo: Kept())
+    with pytest.raises(practice.Failed) as no:
+        practice.in_sandbox(r)
+    assert "8 of its commands in the contree sandbox came back without their list of files" in str(no.value)
+    Kept.lost = 0
+    assert practice.in_sandbox(r).endswith("in contree: 18 operations, 22.2 s")
+
+
+def test_rung_7_fails_when_any_of_its_sandbox_commands_lost_their_list(tmp_path, monkeypatch):
+    """Rung 3's check of 2 Oct, on rung 7 too (the review's finding): the demo ran to its bill and landed
+    while its commands' lists were lost would be the same hollow pass. Each attempt's count is added up."""
+    from graphene_map import plan as P
+    from graphene_map.store import Store
+
+    practice = load_practice(tmp_path, monkeypatch)
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "-C", str(repo), "init", "-q"], check=True)
+    with Store.open(repo) as store:
+        leaf = {"id": "a", "title": "a", "scope": ["a.py"], "check": "true"}
+        P.propose(store, [leaf], P.Caller("alex", True))
+        for lost in (0, 2, 1):  # a start row, then two attempts' own counts
+            store.log_node("a", P._now(), "placement", "run:nemotron", None, None,
+                           {"placement": "sandbox", "box": "contree", "lost": lost})  # fmt: skip
+    assert practice.lost_lists(repo) == 3
+    r = practice.Rung(7, 3.0)
+    monkeypatch.setattr(r, "where", lambda name: repo)
+    monkeypatch.setattr(r, "sh", lambda *a, **k: (0, "bill: $0.01"))
+    monkeypatch.setattr(practice, "leaves", lambda repo: {"a": P.DONE})
+    with pytest.raises(practice.Failed) as no:
+        practice.demo_run(r)
+    assert "3 of its sandbox commands came back without their list of files" in str(no.value)
+
+
 def test_a_rung_an_agents_shell_refused_is_not_recorded(tmp_path):
     """A refused rung ran nothing: `status` does not show it as failed, and a result already on record
     (the person's PASS) stays."""

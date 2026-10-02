@@ -4,18 +4,19 @@
 around shaping on 2026-09-28 as `docs/process/field.md` asks ("Where Graphene differs" and "Claims the
 submission must not make"), and brought up to first light on 2026-09-29. Put it in your own words
 before it goes anywhere. Track: Coding and Agentic Engineering. Every sentence is meant to be true and
-traceable, and every number names its source. **No number here comes from a live run.** Until 29
-September no session that wrote this had a Token Factory key. Since then Graphene has made a runtime
-call to Token Factory, as practice (`docs/test/first-light.md`). Otherwise the Nemotron path has run
-only against a scripted stand-in for Token Factory (`tests/fake_tokenfactory.py`) and a Docker
-stand-in for Sandboxes: the Nemotron planner has not run live, and no leaf has run in a Sandbox. The
-fields that need the evidence run say so and are left empty until it exists.*
+traceable, and every number names its source. **No registered number here comes from a live run.**
+The live record is practice (`docs/test/first-light.md`).
+- On 29 September Graphene made a runtime call to Token Factory.
+- On 2 October, Nemotron Ultra planned and Nano executed on Token Factory, with leaves in Token Factory
+  Sandboxes. 2 of 5 demo takes ran to the end, neither doing all the paragraph asked, and the planner's
+  tree was readable on 2 of 9 asks.
 
-<!-- For Alex: the shaping night's work (the board, the views, talking on the tree, the settings and
-the three prototypes) is on `main` through PR #31. What this draft says of 29 September (`board:
-auto`, `graphene board lookup`, the direction, the night's ledger, the page's board, whoami at init)
-is on `first-light`, not yet on `main` (checked at 73f11e2: every command named here answers --help).
-Send this text only once it is on main. -->
+Everything else on the Nemotron path has run only against a scripted stand-in for Token Factory
+(`tests/fake_tokenfactory.py`) and a Docker stand-in for Sandboxes. The fields that need the evidence
+run say so and are left empty until it exists.*
+
+<!-- For Alex: what this draft says of 29 September and of 2 October is on `main` once the `practice`
+PR is merged. Send this text only once it is. -->
 
 ## Inspiration
 
@@ -91,7 +92,8 @@ a change to a read-only path is refused at `done`, and `graphene ask "…" --fin
 
 **Nemotron works for you while you shape.** Three prototypes, each a command and each run after a
 proposal lands when `GRAPHENE_SHAPE` names it. Each makes one Nano call with a JSON schema. They are
-built and tested against the scripted stand-in, and **none has run live yet**:
+built and tested against the scripted stand-in. Each has run live only as practice (2 October,
+`docs/test/first-light.md`): cover and precheck passed twice, and note routed one of two notes once:
 
 - `graphene plan cover`: Nano reads your paragraph beside the plan and names the parts no leaf
   carries. Each comes back in your own words, with the command that puts it on the nearest leaf. A
@@ -195,8 +197,9 @@ finds (Claude Code, Codex, a Token Factory key), each with what it needs, and no
   sandbox, the operating system refuses it too. Layer three: a leaf is done only when Graphene runs
   the check itself and git shows nothing outside the scope. An escape test tries every way out (a
   redirect, `sed -i`, `python open(w)`, `mv`, `rm`, git, a symlink, `chmod`). Each fails, and every
-  write inside the scope succeeds. So far that test has run in the Docker stand-in, not in ConTree
-  (`tests/test_escape.py`).
+  write inside the scope succeeds (`tests/test_escape.py`, in the Docker stand-in). It passed once in
+  ConTree too, as practice on 2 October: 10 ways out failed or were refused, 2 ways in came back
+  (`docs/test/first-light.md`).
 - **The board and the views.** The board is kept in the plan's store beside the nodes, so `graphene
   plan undo` takes back an answer together with every edit its effects made, and the plan's text form
   carries the board through `graphene plan edit`. A view is drawn from the plan's nodes and never
@@ -251,9 +254,8 @@ finds (Claude Code, Codex, a Token Factory key), each with what it needs, and no
   on, the plan as an outline, a tree and a graph, a text form that round-trips, parallel leaves
   in worktrees, hand-backs that offer their own fix, a record for each leaf, a read-only web page,
   and docs that list what does not bind.
-- Containment that is tested, not asserted. The escape test above holds in the Docker stand-in.
-  Running it in ConTree waits on Sandboxes access for the project: rung 1 of the practice ladder met a
-  403 there (`docs/test/first-light.md`).
+- Containment that is tested, not asserted. The escape test above holds in the Docker stand-in, and it
+  passed once in ConTree, as practice on 2 October (`docs/test/first-light.md`).
 - Failure that reads as a sentence. A 429 storm, a 5xx, a timeout, a model that stops calling tools,
   a sandbox killed mid-leaf and a check that hangs each bring the leaf back with its cause and what
   to do. The run goes on, and nothing is left running (`tests/test_faults.py`, against the
@@ -322,7 +324,9 @@ README, the video, the demo page and here, whatever it says.
 - Nemotron's three shaping prototypes run live, each measured as `docs/process/ideas.md` sets out:
   for `cover`, the clauses a blind judge says the tree dropped; for `note`, how often a note finds the
   right leaf; for `precheck`, its verdicts against hand labels and the seconds per fork.
-- The escape test live in ConTree, and a live leaf recorded and replayed in CI.
+- The planner, live: Ultra's tree was readable on 2 of 9 practice asks (2 October). The misses were 30
+  steps with no proposal, prose or markdown inside the tree, a `needs:` that names no node, and prose
+  with no tree.
 - A real open-source repository's issue done through the tree, with the patch offered upstream by a
   person.
 - The same containment around any executor in a Sandbox: Claude Code or Codex, held to a leaf's scope
@@ -354,6 +358,8 @@ commit is 10 August 2026.
   practice; an agent spends only under the person's opening, on one night's ledger; the board's
   default was set by study 4; `graphene board lookup`; the direction; a closed terminal ends what
   Graphene started; no test can reach the real keychain; and Sandboxes' 403 is said with what to do.
+  2 October: the live half of first light, as practice. Rungs 2 to 5 passed, and so did 2 of 5 demo
+  takes. First contact broke the Sandbox's list of files (fixed).
   <!-- The line counts above are still those at 0334168 and were not measured again. -->
 - 181 commits predate the period, and 421 were made after it opened, at `0334168`.
 
@@ -365,7 +371,8 @@ counting `author-time` before 1787760000 (2026-08-26 16:00 UTC).
 
 Written from what we actually hit. Where a thing is only unverified, it says so. (Items 1 to 8 were
 checked 2026-09-25, before any live call, from the docs and PyPI. Items 9 to 11, and what item 6 says
-was observed, come from the practice rungs of 2026-09-29, in `docs/test/first-light.md`.)
+was observed, come from the practice rungs of 2026-09-29; items 12 to 14 from those of 2026-10-02; both
+are in `docs/test/first-light.md`.)
 
 1. **The Sandboxes SDK's Getting Started describes an API no release has.** It says `Contree` and
    `ContreeSync` "just take an already-constructed `contree_client` client". On PyPI, both
@@ -404,6 +411,17 @@ was observed, come from the practice rungs of 2026-09-29, in `docs/test/first-li
    `nvidia/Nemotron-3-Ultra-550b-a55b` and `nvidia/nemotron-3-super-120b-a12b`. An agent that matches
    ids as spelled misses two of them; Graphene reads them case-blind. The fourth NVIDIA model listed,
    `nvidia/Nemotron-3_5-Lightning`, names no size, so no rule by size can place it.
+12. **On ConTree, a `cat` whose output is a file leaves that file unwritable** (2 October, practice;
+   kernel 7.0.6, coreutils 9.7 in `python:3.12`). `{ cat FILE; echo after; } > OUT` fails at the echo
+   with an I/O error, while `$(cat FILE)` and `cat FILE | cat` write whole. Docker does not do this.
+   Every sandbox command of ours read as exit 1 until our list stopped taking a `cat` into a file, and a
+  command's own output was cut at its first `cat` until we opened it for append (`>>`).
+13. **whoami's `token_expiration` is a token minted for 300 seconds on every read**, and contree-sdk
+   warns "Token expires in 0 hours" on every client. It reads as the key expiring; it misled us into
+   asking for a new key.
+14. **On ten prototype calls, Nemotron 3 Nano used 174 to 2,048 completion tokens for JSON answers of about
+   100 tokens** (2 October, practice), and a 2,048-token cap was hit once. Whether this is reasoning, and
+   whether it can be turned off, the docs we read do not say.
 
 ## Every number, and where it comes from
 

@@ -82,9 +82,11 @@ class _Tried(Exception):
 
 
 def _strs(v) -> list[str]:
+    """The globs in a list the model wrote. Nano, live on 2 Oct, wrote JSON's null as the string "null"
+    inside the list: no glob, never a path to look for."""
     if v is not None and not isinstance(v, list):
         raise ValueError(f"a list of globs, not {type(v).__name__}")
-    return [s.strip() for s in v or [] if isinstance(s, str) and s.strip()]
+    return [s.strip() for s in v or [] if isinstance(s, str) and s.strip() and s.strip().lower() != "null"]
 
 
 def route(store, root: Path, sentence: str, say: Callable[[str], None] = lambda s: None) -> Offer | None:
@@ -144,6 +146,7 @@ def _offer(store, root, sentence, a, target, why, leaves, files, everything, end
         return None
     scope, add, remove = node.scope if node else [], _strs(a.get("scope_add")), _strs(a.get("scope_remove"))
     check = a["check"].strip() if isinstance(a.get("check"), str) else ""
+    check = "" if check.lower() == "null" else check  # JSON's null written as a string, as in a glob list
     if any(_CONTROL.search(w) for w in (*add, *remove, check)):  # a command must be what it looks like
         say("the model's answer holds control characters; nothing is offered")
         return None

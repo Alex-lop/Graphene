@@ -205,3 +205,13 @@ def test_every_proposal_is_taken_whole_the_change_goes_verbatim_and_evidence_cou
     assert evidence.main([*report, "--stand-in"]) == 0
     assert "STAND-IN, NOT LIVE: The same paragraph" in svg.read_text()
     assert "| tiny | B′ | 1 | 2 of 2 | yes | n/a |" in (tmp / "table.md").read_text()
+
+
+def test_with_no_spend_cap_set_no_run_starts_and_none_is_assumed(tiny, monkeypatch, capsys):
+    tmp, f = tiny
+    monkeypatch.delenv("GRAPHENE_SPEND_CAP_USD")
+    argv = ["tiny", "--paragraph-file", str(tmp / "paragraph.md"), "--executor", "nemotron", "--tasks",
+            str(tmp / "tasks"), "--out", str(tmp / "out"), "--ledger", str(tmp / "ledger.jsonl")]  # fmt: skip
+    assert arm_bprime.main(argv) == 2
+    assert "export GRAPHENE_SPEND_CAP_USD=10" in capsys.readouterr().out
+    assert not [r for r in f.requests if "messages" in r] and not (tmp / "out").exists()

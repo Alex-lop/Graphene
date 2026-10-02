@@ -83,7 +83,7 @@ committed sealed before its first run; its rows are reported but are not part of
 | accept | `accept.py`, run once afterwards by tally | passed of total, and whether all passed |
 | quality | `quality.py`, run once afterwards | feeds only; the other tasks have none, shown as `n/a` |
 | person-seconds (modelled) | `attention.py` over the run log | the keystroke-level model, never a clock; raw acts, typed characters and words read beside it |
-| dollars | the night's Token Factory ledger | planner and executor calls both; a run with an unpriced attempt is `unknown`, never $0; C from Claude Code's JSON |
+| dollars | the one Token Factory ledger (rule 6) | planner and executor calls both; a run with an unpriced attempt is `unknown`, never $0; C from Claude Code's JSON |
 | wall time | the run log, first entry to last | seconds |
 | restarts | tally | all, and unmandated |
 | landed, handed back, failed | bench rows | B and B′ only |
@@ -119,9 +119,18 @@ person-seconds (`results-2026-09-23.md`), with Claude executors. H2 is registere
 5. **A void run** is void only by a fairness rule of `PROTOCOL.md`, the blob check above, or a
    configuration that differs from the frozen one; it stays in the file with its reason, and its cell
    says `void`.
-6. **The spend cap** (`GRAPHENE_SPEND_CAP_USD`, 50 if unset) may stop the evidence before every cell
-   is filled. A cell not run says `not run (cap)`; the table is not reshaped to hide it, and a
-   hypothesis whose cells are missing is `not tested`.
+6. **The spend cap** is $10 of Token Factory in all (`GRAPHENE_SPEND_CAP_USD=10`), on one ledger,
+   `GRAPHENE_LEDGER`, that every arm's calls go on: `arm_a.py` reads it, and `bench.py` and
+   `arm_bprime.py` are given it (`--ledger "$GRAPHENE_LEDGER"`). No harness assumes a cap: with none
+   set, or one that is not a number, nothing starts; at 80% of it ($8) no new run starts, and at $10
+   the client refuses the next call. `GRAPHENE_AGENT_LIVE_USD` is unset, since a row made under it is
+   practice, which `evidence.py` refuses. Arm C is outside the cap: its cost is Claude Code's own
+   total, reported and not capped. The cap may stop the evidence before every cell is filled. A cell
+   not run says `not run (cap)`; the table is not reshaped to hide it, and a hypothesis whose cells
+   are missing is `not tested`.
+   *Edited 2026-09-29, before any evidence run, for Alex's decision of 29 September: the rule said
+   "`GRAPHENE_SPEND_CAP_USD`, 50 if unset", and the dollars row of the table above said "the night's
+   Token Factory ledger".*
 7. **Nothing is tuned once an evidence run has started** (rule 13, and the integrity rule: never
    weaken a check, a scope, the gate, `accept.py`, `quality.py`, a task repo or a test to move a
    number). If the configuration must change, the evidence restarts under a new decision number and

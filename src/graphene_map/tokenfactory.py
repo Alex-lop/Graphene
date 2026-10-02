@@ -21,6 +21,7 @@ night past its cap is refused, and nothing is sent.
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import socket
@@ -32,6 +33,10 @@ from functools import lru_cache
 from pathlib import Path
 
 from graphene_map import keys, night
+
+# the retry loop's wait, by a name of its own: a test that stops it must not catch the polls of
+# Popen.wait(timeout=...), which sleep through time.sleep too (0.001, 0.002, ... on a slow child)
+_sleep = time.sleep
 
 BASE = "https://api.tokenfactory.nebius.com/v1/"
 KEY = "NEBIUS_API_KEY"
@@ -127,7 +132,7 @@ def _request(
             maybe = maybe or no.code >= 500
             if (no.code == 429 or no.code >= 500) and attempt < tries:
                 after = no.headers.get("Retry-After")
-                time.sleep(float(after) if after and after.replace(".", "", 1).isdigit() else wait)
+                _sleep(float(after) if after and after.replace(".", "", 1).isdigit() else wait)
                 wait *= 2
                 continue
             raise (Late if maybe and method == "POST" else Unreachable)(
@@ -140,7 +145,7 @@ def _request(
             if slow and method == "POST":  # a completion that took the whole timeout: once more, not six
                 tries = min(tries, attempt + 1)
             if attempt < tries:
-                time.sleep(wait)
+                _sleep(wait)
                 wait *= 2
                 continue
             then = _then(0, attempt, timeout) if slow and method == "POST" else ""
@@ -273,11 +278,18 @@ def _ledger() -> Path | None:
 
 
 def cap() -> float | None:
+    """GRAPHENE_SPEND_CAP_USD in dollars, or None when it is not set: no cap. A figure that is not a
+    number (``$10``, ``nan``) raises Spent, so every call is refused rather than none (as ``night.cap``)."""
     said = os.environ.get("GRAPHENE_SPEND_CAP_USD")
-    try:
-        return float(said) if said else None
-    except ValueError:
+    if not said:
         return None
+    try:
+        if math.isfinite(dollars := float(said)):
+            return dollars
+    except ValueError:
+        pass
+    raise Spent(f"GRAPHENE_SPEND_CAP_USD is {said!r}, not a number of dollars: set it as "
+                "GRAPHENE_SPEND_CAP_USD=10, or unset it for no cap")  # fmt: skip
 
 
 def spent() -> float:

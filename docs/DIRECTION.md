@@ -1559,6 +1559,63 @@ any of them.
      - **Destructive operations:** the git-location guard (130), and the keyguard's stale directories
        swept once their session has ended.
 
+132. **After first light, on your answers (29 September, afternoon).**
+     - **The history was reshaped**: 151 commits became 39, each the tree of a commit the branch really
+       had, the last identical to what CI passed; the 151 are on `first-light-full-history`.
+     - **`graphene key check` says Sandboxes' state in a second line**, from ConTree's whoami (a read):
+       work, a grant the project lacks, a 403 for the key and project together (with ConTree's own
+       reason), a 401, no answer, no project, or no SDK; never the key or the project id. One
+       classification (`sandbox.whoami`) serves `key check`, `graphene init` and a leaf's refusal, and
+       init now places leaves locally on a 401 or no answer as on a 403 (it read those as "works").
+       Your first check came back 403; access is requested.
+     - **The registered runs are capped at $10 of Token Factory** (`GRAPHENE_SPEND_CAP_USD=10`, one
+       `GRAPHENE_LEDGER` for every arm, the opening unset, arm C outside it): rule 6 of the
+       pre-registration, before any evidence run. A cap that is not a number refuses every call, and
+       `bench.py`, `arm_bprime.py` and `arm_a.py` start nothing without one and no new run from 80%.
+     *Evidence:* `tests/test_key_cli.py::test_check_says_in_one_line_what_state_sandboxes_are_in`,
+     `tests/test_init.py::test_a_key_sandboxes_do_not_accept_or_no_answer_gets_the_leaves_on_this_machine`,
+     `tests/test_tokenfactory.py::test_a_cap_that_is_not_a_number_of_dollars_refuses_every_call_rather_than_none`,
+     `docs/test/test_bench.py::test_with_no_spend_cap_or_one_that_is_not_a_number_no_run_starts_and_none_is_assumed`.
+
+133. **The live half of first light ran on 2 October, as practice, under your opening.** The plan was
+     `docs/process/directives/PRACTICE_PLAN.md`. Rungs 2 to 5, the prototypes and five takes of rung 7
+     cost $1.80 of the night's $10, plus 4.8 Sandbox minutes at no published price. Every number is in
+     `docs/test/first-light.md`, as practice; none enters a registered table.
+     *Evidence:* `docs/test/practice.sh status`, and the night ledger `~/.graphene/night/2026-10-01.jsonl`.
+134. **A sandbox command's exit code reaches its list of files through `$(...)`, never a `cat` into the
+     list.** On ConTree a `cat` whose output is a file leaves that file unwritable. No command's list came
+     back, so every command read as exit 1 and nothing it did was brought back. That fails closed, as
+     designed, but it left the ladder's rung 3 a hollow pass. A leaf's placement record now counts its
+     lost lists (`lost`), and rungs 3 and 7 fail on any. A command's own output is appended (`>>`), never
+     truncated, for the same reason: `cat app.py; echo after-cat` lost the echo and exited 1, live.
+     *Evidence:* `tests/test_sandbox_state.py::test_the_list_takes_the_exit_code_through_a_substitution_never_a_cat_into_the_list`,
+     `tests/test_sandbox_state.py::test_a_command_whose_list_never_came_back_is_counted_on_the_leafs_record`,
+     `tests/test_practice.py::test_rung_3_fails_when_its_sandbox_commands_came_back_without_their_list`,
+     `tests/test_sandbox_state.py::test_a_commands_output_is_appended_to_a_fresh_file_never_truncated`,
+     `tests/test_practice.py::test_rung_7_fails_when_any_of_its_sandbox_commands_lost_their_list`,
+     and rungs 3 and 4 passing live after it.
+135. **What the live planner did is the open problem.** The changes it argues for are decisions for you,
+     not first-contact fixes, so none was made:
+     - Neither take that ran to the end did all it was asked. Take 1's landed code reads prices already
+       in cents as dollars (1299 became 129900), because Ultra's checks printed and asserted nothing. A
+       check that cannot fail on the wrong work is the gap Graphene is meant to show you.
+     - Ultra wrote a tree Graphene could read on 2 of 9 asks, and 2 of 5 takes ran to the end. The misses:
+       30 steps with no proposal (3), prose or markdown inside the tree (2), a `needs:` naming no node
+       (1), and prose with no tree (1).
+     - A Sandbox leaf's check runs in a fresh fork of its starting image, so what the leaf installs (take
+       3's pytest) is not there. A check that needs a package needs `prepare`.
+     - On ten prototype calls Nano used 174 to 2,048 completion tokens for answers of about 100, and note's
+       2,048-token cap was hit once. Nano also called `str_replace_editor` with the wrong arguments 34
+       times in 40 steps.
+
+     The options are in `docs/process/morning.md`, under Decide.
+136. **Two reads of ConTree are kept off the screen and out of claims.** contree-sdk's "Token expires in 0
+     hours" is about a 300-second token minted per read, not the key. It no longer prints for a client the
+     key signs; a `contree auth` profile's warnings still do. `demo.leaks` no longer counts
+     `/home/leaf/…`, the Sandbox user's own home, unless the path climbs out of it.
+     *Evidence:* `tests/test_sandbox_contract.py::test_the_sdks_token_life_warning_is_dropped_only_when_the_key_signs_the_client`,
+     `tests/test_recordings.py::test_the_sandboxs_own_home_is_no_persons_path`.
+
 ## What does not bind (say it wherever you sell it)
 
 - A shell command can write a file in a way nothing reads beforehand (a script that opens files
@@ -1722,16 +1779,15 @@ any of them.
 5. The prototypes live: cover, note and precheck against Token Factory, each measured as
    `docs/process/ideas.md` says, by 20 October.
 
-## What comes next, from 29 September
+## What comes next, from 2 October
 
-1. Your repository's `core.bare` back to false (`morning.md`, the brief), then Sandboxes access for
-   the project, then `docs/test/practice.sh 5, 3, 4, 7` and `prototypes` from a session you start with
-   `GRAPHENE_AGENT_LIVE_USD` set, or your own terminal: every live claim waits on these.
+1. The planner's misses, decided (133-135): the plan text's reader, the planner's steps, and what a
+   Sandbox check may need installed. Then your filmed take (`docs/demo/build.sh`), with tonight's numbers.
 2. The three pieces the registered runs need first (decision 128): the fixed trees, the frozen
    configuration, and arm B's brief on Nemotron. Then `docs/test/LIVE_SESSION.md`, in order, with you.
-3. The board on the screen: study 4 measured the command line; `auto` is set by it, and a study of the
-   screen (`graphene watch`) would say whether the board earns more there.
-4. The direction on real sessions: tonight's study used one fixture its author wrote.
+3. The prototypes measured as `docs/process/ideas.md` says, by 20 October, pre-registered first: note's
+   live answers were malformed or cut off on 3 of 4 notes.
+4. The board on the screen, and the direction on real sessions (as from 29 September).
 
 ## How this file is used
 

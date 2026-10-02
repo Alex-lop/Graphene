@@ -150,7 +150,8 @@ def test_the_readme_and_changelog_name_what_first_light_added_and_no_doc_says_th
     for path in ("README.md", "CHANGELOG.md"):
         said = doc(path)
         assert "graphene direction" in said and "board lookup" in said and "`board: auto`" in said, path
-        assert "Graphene has made a runtime call to Token Factory, as practice" in said, path
+        live = "As practice on 2 October, Nemotron planned a small feature 5 times"
+        assert live in " ".join(said.split()), path
     for path in ("README.md", "docs/HOW_IT_WORKS.md"):
         assert "does not show the board" not in doc(path), path
 

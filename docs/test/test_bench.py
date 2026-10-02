@@ -206,6 +206,36 @@ def test_at_the_cap_a_run_stops_its_leaf_is_counted_stopped_and_at_80_percent_no
     assert (tmp_path / "rows.jsonl").read_text() == rows and not (tmp_path / "out" / "tiny-capped-2").exists()
 
 
+@pytest.mark.parametrize("said", [None, "$10"])
+def test_with_no_spend_cap_or_one_that_is_not_a_number_no_run_starts_and_none_is_assumed(
+    task, tmp_path, monkeypatch, capsys, said
+):
+    args = task("greet")
+    if said is None:
+        monkeypatch.delenv("GRAPHENE_SPEND_CAP_USD")
+    else:
+        monkeypatch.setenv("GRAPHENE_SPEND_CAP_USD", said)
+    assert bench.main([*args, "--config", "x", "--executor", "true", "--parallel", "2"]) == 2
+    assert "GRAPHENE_SPEND_CAP_USD=10" in capsys.readouterr().out
+    assert not (tmp_path / "rows.jsonl").exists() and not (tmp_path / "out").exists()
+
+
+def test_the_ledger_is_the_flag_else_graphene_ledger_else_the_default_one(tmp_path, monkeypatch):
+    monkeypatch.setenv("GRAPHENE_SPEND_CAP_USD", "10")
+    monkeypatch.setenv("GRAPHENE_LEDGER", str(tmp_path / "one.jsonl"))
+    (tmp_path / "one.jsonl").write_text(json.dumps({"dollars": 7.99}) + "\n")
+    assert bench.budget(None) == (10.0, None)  # the ledger every arm shares, at 79.9%
+    assert bench.budget(tmp_path / "other.jsonl") == (10.0, None)
+    assert os.environ["GRAPHENE_LEDGER"] == str((tmp_path / "other.jsonl").resolve())
+    monkeypatch.setenv("GRAPHENE_LEDGER", str(tmp_path / "one.jsonl"))
+    (tmp_path / "one.jsonl").write_text(json.dumps({"dollars": 8.0}) + "\n")
+    one = (tmp_path / "one.jsonl").resolve()
+    assert bench.budget(None) == (10.0, f"the ledger ({one}) is at $8.00 of $10.00, 80% or more")
+    monkeypatch.delenv("GRAPHENE_LEDGER")
+    bench.budget(None)
+    assert os.environ["GRAPHENE_LEDGER"] == str(bench.LEDGER)
+
+
 def test_a_round_past_its_timeout_is_stopped_and_its_leaf_counted_failed(task, tmp_path):
     args = task("greet")
     code = bench.main([*args, "--config", "sleeper", "--executor", "bash -c 'sleep 60' sleeper",
@@ -392,4 +422,7 @@ def test_the_tree_commands_send_the_planners_calls_to_the_nights_ledger_under_it
     line += '. "$1"; echo "$GRAPHENE_LEDGER $GRAPHENE_SPEND_CAP_USD"'
     said = subprocess.run(["bash", "-c", line, "_", str(tmp_path / "env.sh")], env=env, capture_output=True,
                           text=True)  # fmt: skip
-    assert said.stdout.strip() == f"{bench.LEDGER} 30", said.stderr
+    assert said.returncode and "export GRAPHENE_SPEND_CAP_USD=" in said.stderr  # no cap is assumed
+    said = subprocess.run(["bash", "-c", line, "_", str(tmp_path / "env.sh")], capture_output=True, text=True,
+                          env=env | {"GRAPHENE_SPEND_CAP_USD": "10"})  # fmt: skip
+    assert said.stdout.strip() == f"{bench.LEDGER} 10", said.stderr

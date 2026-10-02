@@ -265,6 +265,7 @@ def test_an_arm_a_run_is_counted_from_its_run_log_its_bill_and_the_ledger(
     (tmp_path / "m1.txt").write_text("make greet say hello")
     ledger = tmp_path / "ledger.jsonl"
     monkeypatch.setenv("GRAPHENE_LEDGER", str(ledger))
+    monkeypatch.setenv("GRAPHENE_SPEND_CAP_USD", "10")  # arm_a.py starts nothing without one
     monkeypatch.delenv("GRAPHENE_NODE", raising=False)
     runlog = run / "runlog.jsonl"
 

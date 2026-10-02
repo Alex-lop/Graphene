@@ -110,8 +110,102 @@ No bill has shown a Sandbox line yet.
   prints the command that makes `tests/recordings/` and copies the recording there. CI replays every
   recording in it.
 
+## 2 October: the live half (practice)
+
+An agent climbed the rest of the ladder in a Claude Code session Alex started with
+`GRAPHENE_AGENT_LIVE_USD=10`. Every call went on one night ledger
+(`~/.graphene/night/2026-10-01.jsonl`). The plan was `docs/process/directives/PRACTICE_PLAN.md`. This
+is practice; nothing here enters a registered table. Times are EDT; the logs are in the night's worktree
+under `.graphene/practice/`, git-ignored, and every rung counted the key's and the project's values in
+the files it wrote: 0 each time.
+
+| rung | result | at | seconds | list price |
+|---|---|---|---|---|
+| 2 one leaf local on Nano | PASS | 00:47 | 12.1 | $0.0005 |
+| 3 one leaf in a Sandbox | PASS, hollow (below) | 00:49 | 78.2 | $0.0021 |
+| 4 the escape test in ConTree | FAIL, twice | 00:49, 00:52 | 19.0, 18.7 | $0 |
+| 4 again, after the fix | PASS: 10 ways out failed or were refused, 2 ways in came back, exit 124 at its 5 s limit in 6 s; 33 operations | 01:02 | 27.2 | $0 |
+| 3 again, after the fix | PASS: the leaf's check ran inside ConTree and exited 0; 7 operations | 01:02 | 18.2 | $0.0004 |
+| 5 a recorded leaf | PASS: replays "as it ran, live", `demo.leaks` 0 | 01:03 | 8.5 | $0.0003 |
+
+**The ConTree break.** On ConTree (kernel 7.0.6, coreutils 9.7 in `python:3.12`), a `cat` whose output
+is a file leaves that file unwritable: `{ cat FILE; echo after; } > OUT` fails at the echo with an I/O
+error, while `$(cat FILE)` and `cat FILE | cat` write whole. Docker does not do this, so the dry ladder
+passed. The sandbox's list of files began with `cat /tmp/graphene.code`, so no command's list came back,
+and every command read as exit 1. Rung 3's first PASS was hollow: all 7 of its executor's commands came
+back that way, even `echo hello`. The leaf landed because its one file was pushed and its check ran in a
+fresh ConTree fork, whose output does not pass through a file. Fixed in a09435d: the list takes the code
+through `$(...)`. A leaf's placement record counts its lost lists, and rungs 3 and 7 fail on any. Six
+small diagnostic scripts in ConTree found it, in 57 operations with no model call, as a deliberate
+exception to the plan's "ladder only" rule. Their output was read in the session and not kept.
+
+The closing review found the same shape one step further in. An executor's own command wrote its output
+to a file opened with `>`, so `cat app.py; echo after-cat` exited 1 and lost the echo, as probed live. An
+output opened for append (`>>`) gives rc=0 and the whole output, for root and the leaf user alike. That
+fix is a7ee473. A done-check in a fork already came back whole, since its output is ConTree's own. The
+review's probes took 20 more operations.
+
+**The prototypes** (`practice.sh prototypes`, 01:04 and 01:06). cover passed twice. precheck passed
+twice; its third check ran in a Sandbox fork, and each red was read for the right reason. note asked
+about two notes, each twice, and routed one of them once:
+- the first note: Nano put every field into `target`, then on the second run it was routed to its
+  leaf's goal;
+- the cents note: Nano wrote the string `"null"` as a glob (fixed in 222b678), then on the second run
+  the answer was cut off at note's 2,048-token cap.
+
+On the ten prototype calls Nano used 174 to 2,048 completion tokens (cover 1,116 and 1,334; note 1,247,
+1,002, 920 and 2,048; precheck 263, 236, 174 and 458), each for a JSON answer of about 100 tokens. That
+suggests it reasons before it answers. The reasoning text was not read, and ten calls are not a measure.
+
+## Rung 7, five takes on one code state (222b678)
+
+Each take is `docs/proof/nemotron.sh` on feeds with its own public paragraph. Nemotron 3 Ultra plans,
+Nano executes (Super on a second attempt), and the leaves run in Token Factory Sandboxes. The prune is
+scripted: `cli/main.py` leaves every scope, and a leaf that comes back for it is widened.
+
+| take | at | result | seconds | planner | executors | leaves | board |
+|---|---|---|---|---|---|---|---|
+| 1 | 01:07 | PASS | 265 | $0.3733 (60 calls) | $0.0090 | 3 of 3 landed; one came back for `cli/main.py` and was widened | none |
+| 2 | 01:12 | FAIL at the planner | 83 | $0.3321 | — | — | — |
+| 3 | 01:14 | PASS | 624 | $0.3036 (30 calls) | $0.0779 | 2 of 3 landed; one came back and was widened; one released | 2 questions, 1 risk |
+| 4 | 01:25 | FAIL at the planner | 109 | $0.3393 | — | — | — |
+| 5 | 01:28 | FAIL at the planner | 97 | $0.3543 | — | — | — |
+
+- **Neither passing take built everything asked.**
+  - Take 1's landed code reads the feed's prices, already in cents, as dollars: NW-1's `1299` comes out as
+    `"price_cents": 129900` (rerun from its repo, `python3 -m cli.main load samples/prices.xml --source
+    xml`). Ultra's checks for its three leaves printed or ran the command, and asserted nothing about a
+    price, so each passed.
+  - Take 3's landed code does not skip price 0, because the leaf that would have was released.
+
+  A check that cannot fail on the wrong work is the gap Graphene exists to show the person.
+- **The planner wrote a tree Graphene could read on 2 of 9 asks** (each take asks twice at most):
+  - 3 asks used all 30 steps without proposing;
+  - 2 put prose or markdown lines where a node's lines go (`'**normalize/fields.py** (in …' is not
+    indented under …`);
+  - 1 named a `needs:` id that is not a node;
+  - 1 answered in prose with no tree.
+
+  Ultra is 95% of the night's bill ($1.70 of $1.80).
+- **Take 3's board:** should price 0 be rejected for every source (`validate/rules.py`), the XML field
+  map, and a regression risk. The defaults were taken. None was the legacy-feed question Claude Code
+  asked of the same paragraph.
+- **Take 3's leaf that did not land** asked for `python3 -m pytest tests/test_xmlfeed.py -q`.
+  - The leaf's own executor installed pytest in its Sandbox with pip (the Sandbox reaches the
+    internet), and its test passed there.
+  - Graphene runs the check in a fresh fork of the image the leaf started from, which has no pytest. So
+    `done` was refused three times, and the leaf was released with that reason. Before Super took over,
+    Nano called `str_replace_editor` (which Graphene reads as `edit`) with `command: view` 34 times in its
+    40 steps, 32 of them running, and gave up.
+- **Recordings:** take 1's is kept as `tests/recordings/first-light-rung-7.jsonl`. Its actor is the
+  login name, as a person's run records it. Take 3's names `/home/leaf/…`, the Sandbox user's home, which
+  `demo.leaks` counted as a home path until ff76809. It was not kept.
+
+The bill for the night: $1.7950 at list price. Ultra was 244 calls and $1.7026, Super 28 calls and
+$0.0544, Nano 136 calls and $0.0381, 408 calls in all. Sandboxes: 311 operations and 4.8 minutes,
+diagnostics included, priced at $0 because no price is published.
+
 ## Not yet run live
 
-- Rungs 3, 4, 6 and 7 wait for Sandboxes access. Rung 5 needs none.
-- The Nemotron planner has not run live. Rung 1's tool calls went through `access.py`, not the
-  planner.
+- Rung 6 and the registered runs: Alex's, with him there.
+- A filmed take (`docs/demo/build.sh`): Alex's; `build.py` refuses an agent.

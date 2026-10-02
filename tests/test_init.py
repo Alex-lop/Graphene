@@ -249,7 +249,7 @@ def test_offline_init_asks_once_and_says_what_it_could_not_reach_in_a_line(repo,
     on_path("claude")
     monkeypatch.setenv("NEBIUS_API_KEY", "a-key")
     monkeypatch.setenv("GRAPHENE_TOKENFACTORY_URL", "http://127.0.0.1:9/v1/")  # nothing listens there
-    monkeypatch.setattr(tf.time, "sleep", lambda s: pytest.fail("init waited to try Token Factory again"))
+    monkeypatch.setattr(tf, "_sleep", lambda s: pytest.fail("init waited to try Token Factory again"))
     tf._listed.cache_clear()
     said = person("init")
     [line] = [line for line in said.output.splitlines() if "Token Factory" in line]
@@ -300,6 +300,10 @@ def test_the_sandbox_placement_is_offered_when_contree_is_set_up(repo, fake, mon
     assert sandbox.configured()
 
 
+TAIL = ("; the leaves run on this machine until `graphene key check` says Sandboxes work, and "
+        "`graphene init --executor nemotron` then places them there")  # fmt: skip
+
+
 def test_a_project_sandboxes_refuse_gets_its_leaves_on_this_machine_and_one_line_saying_why(
     repo, fake, monkeypatch, on_path
 ):
@@ -317,12 +321,40 @@ def test_a_project_sandboxes_refuse_gets_its_leaves_on_this_machine_and_one_line
     assert said.exit_code == 0, said.output
     assert chosen(repo)["executor"] == f"nemotron --model {NANO} --model {SUPER} --placement local"
     line = ("Sandboxes refused this project (403): its key lacks import, spawn there; request access at "
-            "tokenfactory.nebius.com/sandboxes/about; until it is granted the leaves run on this machine, "
-            "and `graphene init --executor nemotron` then places them in Sandboxes")  # fmt: skip
+            "tokenfactory.nebius.com/sandboxes/about") + TAIL  # fmt: skip
     assert said.output.count(line) == 1, said.output
     monkeypatch.setattr(Forbidding, "GRANTS", {"import": True, "list": True, "spawn": True})
     assert person("init", "--executor", "nemotron").exit_code == 0
     assert chosen(repo)["executor"].endswith("--placement sandbox")
+
+
+@pytest.mark.parametrize("error, why", [
+    (lambda e: e.ApiStatusCodeError(status=401, error="Unauthorized"),
+     "Sandboxes: the key was not accepted (401)"),
+    (lambda e: e.ContreeTransportError(error="All connection attempts failed"),
+     "Sandboxes: could not be reached (ContreeTransportError: All connection attempts failed)"),
+])  # fmt: skip
+def test_a_key_sandboxes_do_not_accept_or_no_answer_gets_the_leaves_on_this_machine(
+    repo, fake, monkeypatch, on_path, error, why
+):
+    """Before, whoami's 401 or no answer was read as "not refused", and the leaves were placed in Sandboxes,
+    where each would fail. Neither is a sandbox that works: the leaves run here, and one line says why.
+    A stub SDK; nothing is sent."""
+    pytest.importorskip("contree_sdk")
+    import contree_sdk
+    from contree_sdk.sdk import exceptions
+
+    def whoami(refresh=False):
+        raise error(exceptions)
+
+    on_path()
+    sdk = types.SimpleNamespace(get_token_info=whoami)
+    monkeypatch.setattr(contree_sdk, "ContreeSync", lambda token=None: sdk)
+    monkeypatch.setenv("NEBIUS_PROJECT_ID", "a-project")
+    said = person("init", "--executor", "nemotron")
+    assert said.exit_code == 0, said.output
+    assert chosen(repo)["executor"] == f"nemotron --model {NANO} --model {SUPER} --placement local"
+    assert said.output.count(why + TAIL) == 1, said.output
 
 
 def test_an_agent_does_not_choose_what_the_person_runs(repo, on_path):

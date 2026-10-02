@@ -115,7 +115,7 @@ def test_a_failed_call_frees_its_reservation_and_one_that_timed_out_keeps_it(fak
     fake([401])
     with pytest.raises(tf.Unreachable, match="answered 401"):
         tf.chat(NANO, ASK, max_tokens=64)
-    monkeypatch.setattr(tf.time, "sleep", lambda s: None)
+    monkeypatch.setattr(tf, "_sleep", lambda s: None)
     monkeypatch.setattr(
         tf.urllib.request, "urlopen", lambda req, timeout: (_ for _ in ()).throw(TimeoutError())
     )
@@ -397,7 +397,7 @@ def _answers(monkeypatch, *said):
 
     tf.models()  # the list and its prices, asked before the stub: only the completion meets it
     monkeypatch.setattr(urllib.request, "urlopen", urlopen)
-    monkeypatch.setattr(tf.time, "sleep", lambda s: None)
+    monkeypatch.setattr(tf, "_sleep", lambda s: None)
 
 
 @pytest.mark.parametrize(
