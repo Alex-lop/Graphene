@@ -6,8 +6,8 @@
 - Nothing live yet. The best live take of rung 7 will be replayable here with no key once one has run.
 
 **What ran live** — $0 of $10
-- Nothing yet. The key in `~/.zshenv` expired at 23:27:06 on 1 Oct (ConTree's whoami), and the planning
-  session had no `GRAPHENE_AGENT_LIVE_USD`. Sandboxes were granted to the project (import, list, spawn).
+- Nothing yet: this session has no `GRAPHENE_AGENT_LIVE_USD`. Sandboxes are granted to the project
+  (import, list, spawn), for the old key and the new one.
 
 **New tonight**
 - Your six 29 Sep commits that missed PR #34 are on `practice` (spend-cap guard, `key check`'s
@@ -19,8 +19,9 @@
 - None yet.
 
 **Broken or risky**
-- The live half waits on a new key in `~/.zshenv` and a session started with
-  `GRAPHENE_AGENT_LIVE_USD=10 claude --continue`.
+- The live half waits on a session started with `GRAPHENE_AGENT_LIVE_USD=10 claude --continue`.
+- My error: I told you the key expired at 23:27. It did not. whoami's `token_expiration` is a token ConTree
+  mints for 300 s on every read (three reads, each +300 s), so the new key was not needed.
 
 ---
 
@@ -53,7 +54,9 @@ close its PR and `git push origin --delete practice`.
 ## What I read before starting (23:22, 1 Oct; $0, nothing written)
 
 - ConTree's whoami, from a first-light worktree's venv: `Sandboxes: work (import, list and spawn
-  granted)`, and the key's `token_expiration` at 23:27:06 local, five minutes later.
+  granted)`, and a `token_expiration` of 23:27:06, five minutes later. I took that for the key's expiry, and
+  you made a new key. At 00:23 two reads 20 s apart (00:23:06 and 00:23:26) each gave an expiry exactly
+  300 s after the read. That is a short-lived token ConTree mints per request, not the key's life.
 - Sandboxes' price: none published. docs.tokenfactory.nebius.com/sandboxes/overview (read 2026-10-01)
   states only the beta's limits (50 concurrent operations). The night ledger counts Sandbox operations
   and minutes at $0, `price: unknown`. Tonight caps them at 150 minutes.

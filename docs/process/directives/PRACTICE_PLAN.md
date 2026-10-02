@@ -27,6 +27,7 @@ Alex now grants about $10 of Token Factory for overnight practice.
 - **Sandboxes now work** for the old key and the project: import, list and spawn are granted. The 403 of
   29 Sep is gone. M0 reads the new key again.
 - **The old key expired at 23:27:06 tonight** (whoami's `token_expiration`). Alex is making a new one.
+  - *Correction (00:24, 2 Oct): wrong. `token_expiration` is a 300-second token ConTree mints per read (each read gave +300 s), not the key's life. The old key need not have been replaced.*
 - **Sandboxes have no published price.** docs.tokenfactory.nebius.com/sandboxes/overview, read
   2026-10-01, states only beta limits (50 concurrent operations). The night ledger counts Sandbox
   operations and minutes at $0, "price: unknown".
@@ -136,6 +137,7 @@ night starts, M0 and M1 run at $0, and the first line of the brief says so.
 4. `uv sync --all-extras --frozen`.
 5. One whoami read from the night's venv: the new key's expiry and Sandboxes' state, metadata only. A key
    that ends before 09:00 goes in line one of the brief, and live work stays within its time.
+   *(Correction: whoami's expiry is a 300 s per-read token, so this reads Sandboxes' state only.)*
 6. Start rung 2 (M2).
 7. Beside it:
    - archive `docs/process/morning.md` (now 5166edb's) as `morning-2026-09-29.md`;
