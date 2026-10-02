@@ -84,6 +84,16 @@ def test_a_scope_glob_that_matches_nothing_is_refused(repo, fake):
     ]
 
 
+def test_null_written_as_a_string_in_a_list_is_no_glob(repo, fake):
+    """Nano on Token Factory, 2 Oct (the ladder's prototypes): `"scope_add": ["null"]` came back, and the
+    note was refused as if `null` were a path."""
+    planned(repo)
+    fake([answer("ids", scope_add=["null"], scope_remove=["NULL"], check="grep -q sorted api.py")])
+    offer, said, _, _ = routed(repo)
+    assert said == [] and offer.command == shlex.join(["graphene", "node", "set", "ids", "--check",
+                                                       "grep -q sorted api.py"])  # fmt: skip
+
+
 def test_a_glob_on_a_tracked_file_is_taken_and_one_to_remove_must_be_in_the_scope(repo, fake):
     planned(repo)
     fake([answer("ids", scope_add=["schema.py"]), answer("ids", scope_remove=["web.py"])])

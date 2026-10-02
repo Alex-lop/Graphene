@@ -82,9 +82,11 @@ class _Tried(Exception):
 
 
 def _strs(v) -> list[str]:
+    """The globs in a list the model wrote. Nano, live on 2 Oct, wrote JSON's null as the string "null"
+    inside the list: no glob, never a path to look for."""
     if v is not None and not isinstance(v, list):
         raise ValueError(f"a list of globs, not {type(v).__name__}")
-    return [s.strip() for s in v or [] if isinstance(s, str) and s.strip()]
+    return [s.strip() for s in v or [] if isinstance(s, str) and s.strip() and s.strip().lower() != "null"]
 
 
 def route(store, root: Path, sentence: str, say: Callable[[str], None] = lambda s: None) -> Offer | None:
