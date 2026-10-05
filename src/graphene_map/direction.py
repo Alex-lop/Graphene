@@ -610,7 +610,7 @@ def _running(ws: list[Worker], plan: dict | None) -> int:
 
 
 def status(store, d: Direction | None, now: datetime | None = None) -> dict:
-    """The direction with everything attached, rolled up: the page's data and every print's."""
+    """The direction with everything attached, rolled up: what every print and --json read."""
     ws, older = workers(store, now)
     place(store, ws)
     said = links(store)
