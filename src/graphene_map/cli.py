@@ -82,12 +82,11 @@ def build():
 
     def paragraphs(command, rich: bool) -> None:
         """Every command's help reads as paragraphs: Typer's list of commands shows a docstring's hard
-        line breaks as they are. A "[" is a bracket, not Rich markup (the text form's `[id]` vanished).
-        A paragraph that starts with a \\b is printed as it is written."""
+        line breaks as they are. A "[" is a bracket, not Rich markup (the text form's `[id]` vanished)."""
         for sub in getattr(command, "commands", {}).values():
             if sub.help:
                 said = inspect.cleandoc(sub.help).split("\n\n")
-                sub.help = "\n\n".join(p if p.startswith("\b") else " ".join(p.split()) for p in said)
+                sub.help = "\n\n".join(" ".join(p.split()) for p in said)
                 sub.help = sub.help.replace("[", "\\[") if rich else sub.help
             paragraphs(sub, rich)
 
@@ -124,10 +123,8 @@ def build():
     cli = typer.Typer(
         cls=LockAware,
         help=(
-            "The shared plan between you and your coding agents: a graph of nodes, each with a goal, the "
-            "paths it may touch and a check, which you shape and the agents are held to. `graphene` "
-            "alone shows the plan and where the work stands; `graphene node show <id>` is what was done "
-            "for one node."
+            "Plan work with your coding agents, then hold them to the plan.\n\n"
+            "`graphene` shows the plan. `graphene node show <id>` shows one node's record."
         ),
         add_completion=False,
         no_args_is_help=False,
@@ -195,8 +192,7 @@ def build():
         ctx: typer.Context,
         version: bool = typer.Option(False, "--version", help="Print the version and exit."),
     ):
-        """With no command, `graphene` prints the plan and where the work stands. What was done for
-        one node is `graphene node show <id>`."""
+        """With no command, print the plan and where the work stands."""
         if version:
             console.print(f"graphene {__version__}")
             raise typer.Exit()
@@ -331,13 +327,9 @@ def build():
         planner: str = typer.Option(None, help="The planner: claude, codex, nemotron or a command."),
         executor: str = typer.Option(None, help="The executor: claude, codex, nemotron or a command."),
     ) -> None:
-        """Choose this repo's planner and executor from what is found here: `claude` or `codex` on the
-        PATH, or NEBIUS_API_KEY for NVIDIA Nemotron on Token Factory. None is offered first. At a
-        terminal it asks once, each choice with what it needs, and Enter takes one only when exactly
-        one is found; without a terminal the flags choose, and a choice not made gets what is found
-        when exactly one thing is. `graphene run`, `ask` and `node split` start them, and `--with`
-        overrides one command. Then install the Claude Code hooks, which hold a Claude Code session to
-        the plan and keep its record."""
+        """Pick a planner and an executor, and install the Claude Code hooks.
+
+        Run it once per repo. At a terminal it asks; --planner and --executor choose without asking."""
         from . import plan as P
 
         if os.environ.get("GRAPHENE_NODE") or os.environ.get("GRAPHENE_PLANNER"):
@@ -393,12 +385,14 @@ def build():
                 "Install it with `uv tool install graphene-map` (or `--editable .`)."
             )
 
-    ingest = typer.Typer(help="Record what the agent did (the hooks call this).")
+    ingest = typer.Typer(help="Record what an agent did.\n\nThe installed hooks call this. Nobody types it.")
     cli.add_typer(ingest, name="ingest", hidden=True)
 
     @ingest.command("hook")
     def ingest_hook() -> None:
-        """Read one hook event from stdin (used by the installed hooks)."""
+        """Read one hook event from stdin.
+
+        The installed hooks call this."""
         from .hooks import hook_main
 
         raise typer.Exit(hook_main())

@@ -358,14 +358,17 @@ def register(plan_cli, root, open_store, fail) -> None:
 
     @plan_cli.command("precheck", hidden=True)
     def precheck_(
-        ids: list[str] = typer.Argument(None, help="Leaves to check (default: every proposed and open one)."),
+        ids: list[str] = typer.Argument(
+            None, help="The leaves to check; every proposed and open one if left out."
+        ),
         prepare: str = typer.Option(
-            None, "--prepare", help="Run once in the sandbox first (`pip install -e .`)."
+            None, "--prepare", help="Run this once in the sandbox first, such as `pip install -e .`."
         ),
         again: bool = typer.Option(False, "--again", help="Run a check again though its verdict is current."),
     ) -> None:
-        """Red first: run each leaf's check before any work, and say which pass already or cannot run.
-        A proposed leaf's check runs only in a sandbox fork, never here."""
+        """Run each leaf's check before any work, and say which pass already.
+
+        A proposed leaf's check runs only in a sandbox fork. One that cannot run is said."""
         with open_store(root()) as store:
             try:
                 P._person_only(P.caller(), "running the plan's checks first")

@@ -97,7 +97,7 @@ def test_watch_help_names_no_view_setting_that_no_command_can_set():
     from graphene_map.cli import build
 
     said = " ".join(CliRunner().invoke(build(), ["watch", "--help"], env={"COLUMNS": "200"}).stdout.split())
-    assert "Left out: the outline." in said and "view` setting" not in said
+    assert "the outline if left out." in said and "view` setting" not in said
 
 
 def test_the_drafts_carry_no_integ_only_marker_now_that_every_command_they_named_is_here():

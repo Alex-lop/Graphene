@@ -83,7 +83,7 @@ HELP = (  # what answering the board needs first: at 80x24 the first screen ends
     ("came back", (("w b n", "widen its scope; a sibling first; wait on those"),
                    ("?", "ask the planner what would let it be done"))),
 )  # fmt: skip
-HELP_END = "Every key is a graphene command; the bottom line says which it ran."
+HELP_END = "Every key is a graphene command. The bottom line says which it ran."
 # the glyphs and colours every row, view and pane uses, the help's first line
 LEGEND = ("yours", "review", "came back", "proposed", "ready", "running", "waiting", "done")
 EMPTY = (

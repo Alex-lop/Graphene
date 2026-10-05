@@ -24,7 +24,8 @@ ACTS = "graphene direction accept ID · drop ID · plan NODE · attach SESSION N
 def register(cli: typer.Typer, root, open_store, fail):
     out = typer.echo
     app = typer.Typer(
-        help="The direction: the goals above the plans, with every plan and session hanging from one.",
+        help="Print the direction: the goals above your plans.\n\n"
+        "Every plan and session hangs from one of its nodes.",
         invoke_without_command=True,
     )
     cli.add_typer(app, name="direction", hidden=True)
@@ -59,11 +60,13 @@ def register(cli: typer.Typer, root, open_store, fail):
     @app.callback()
     def show(
         ctx: typer.Context,
-        as_text: bool = typer.Option(False, "--text", help="The file as it is: the form `propose` reads."),
-        as_json: bool = typer.Option(
-            False, "--json", help="The direction, the plan and every session, as the page reads them."
+        as_text: bool = typer.Option(
+            False, "--text", help="Print the file as it is, the form `direction propose` reads."
         ),
-        width: int = typer.Option(None, "--width", help="The columns ($COLUMNS if left out)."),
+        as_json: bool = typer.Option(
+            False, "--json", help="Print the direction, the plan and every session as JSON."
+        ),
+        width: int = typer.Option(None, "--width", help="The columns to draw in; $COLUMNS if left out."),
     ) -> None:
         """Print the direction as a tree, each node with what waits on you below it, what runs and what
         is next; the plan under the node it hangs from, and each session under what it works on. A
@@ -109,8 +112,9 @@ def register(cli: typer.Typer, root, open_store, fail):
         source: str = typer.Argument("-", help="`-` reads the text from stdin."),
         under: str = typer.Option(None, "--under", help="The node to put it under; the top if left out."),
     ) -> None:
-        """Add nodes, in the file's own text (`? title  [id]`, indented for the tree, lines under a node
-        for what it is for). From an agent every node is a proposal until the person accepts it."""
+        """Add nodes to the direction, in its own text.
+
+        From an agent each node is a proposal until the person accepts it."""
         if source != "-":
             fail("propose reads the text from stdin: `graphene direction propose - <<'EOF' … EOF`", 2)
         text = sys.stdin.read()
@@ -127,7 +131,9 @@ def register(cli: typer.Typer, root, open_store, fail):
 
     @app.command("accept")
     def accept(ids: list[str] = typer.Argument(..., help="The nodes to accept.")) -> None:
-        """Accept proposed nodes, with the proposals they sit under and those under them. The person's."""
+        """Accept proposed nodes and the proposals they sit under.
+
+        Only a person can."""
         changed(
             "accept",
             lambda store, d: "accepted " + (", ".join(D.accept(d, ids, P.caller())) or "nothing new"),
@@ -135,14 +141,18 @@ def register(cli: typer.Typer, root, open_store, fail):
 
     @app.command("drop")
     def drop(node: str = typer.Argument(..., help="The node to drop, with what is under it.")) -> None:
-        """Drop a node and what is under it. The person's."""
+        """Drop a node and what is under it.
+
+        Only a person can."""
         changed("drop", lambda store, d: "dropped " + ", ".join(D.drop(d, node, P.caller())))
 
     @app.command("plan")
     def hang(
         node: str = typer.Argument(..., help="The direction node the plan in force hangs from."),
     ) -> None:
-        """Hang the plan in force from a node. The person's. An earlier plan keeps its node."""
+        """Hang the plan in force from a node.
+
+        Only a person can. An earlier plan keeps its node."""
         d = load()
         with open_store(root()) as store:
             try:
@@ -156,8 +166,9 @@ def register(cli: typer.Typer, root, open_store, fail):
         session: str = typer.Argument(..., help="The start of a session's or a subagent's id."),
         node: str = typer.Argument(..., help="The direction node, or `none` to undo the attachment."),
     ) -> None:
-        """Attach a session (or one subagent) to a node. The person's. A session that works on the plan
-        is attached through the plan's node without this; `none` gives it back to that, or to unattached."""
+        """Attach a session, or one subagent, to a node.
+
+        Only a person can. A session on the plan is attached without this; `none` undoes it."""
         d = load(required=node != "none")
         with open_store(root()) as store:
             try:
@@ -168,8 +179,9 @@ def register(cli: typer.Typer, root, open_store, fail):
 
     @app.command("edit")
     def edit() -> None:
-        """The direction in your editor. Saved, it is read back whole: a line it cannot read goes back
-        to the editor with the reason under it, and nothing is written until every line reads."""
+        """Edit the direction in your editor.
+
+        Nothing is written until every line reads. A bad line comes back with the reason."""
         who = P.caller()
         if not who.person:
             fail("editing the direction is the person's: propose instead (`graphene direction propose -`)", 1)

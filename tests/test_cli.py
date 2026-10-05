@@ -154,9 +154,9 @@ def test_every_commands_help_reads_as_paragraphs():
 
     for command in walk(typer.main.get_command(build())):
         for paragraph in (command.help or "").split("\n\n"):
-            assert paragraph.startswith("\b") or "\n" not in paragraph, (command.name, paragraph)
+            assert "\n" not in paragraph, (command.name, paragraph)
     helped = run("plan", "propose", "--help").output
-    assert "with the [id] of a node" in " ".join(helped.split()) and "[short-id]" in helped
+    assert "A line with an existing [id] adds under that node." in " ".join(helped.split())
 
 
 def test_commands_refuse_to_run_outside_a_git_repo(tmp_path, monkeypatch):

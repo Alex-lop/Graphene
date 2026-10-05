@@ -12,7 +12,10 @@ from . import keys
 
 
 def register(cli: typer.Typer, fail):
-    key_cli = typer.Typer(help="The Token Factory key, kept in the system keychain (a person only).")
+    key_cli = typer.Typer(
+        help="Keep the Token Factory key in the system keychain.\n\n"
+        "Only a person can set, check or remove the key."
+    )
     cli.add_typer(key_cli, name="key", hidden=True)
 
     def person(what: str) -> None:
@@ -36,9 +39,9 @@ def register(cli: typer.Typer, fail):
 
     @key_cli.command()
     def check() -> None:
-        """Say whether the Token Factory is reached with the key found, and what state Sandboxes are in
-        (ConTree's whoami, a read that spends nothing). Sandboxes are optional: the exit status is Token
-        Factory's."""
+        """Say whether Token Factory answers the key found.
+
+        A Sandboxes check follows and spends nothing. The exit status is Token Factory's."""
         person("checking the Token Factory key")
         line = keys.reached()
         typer.echo(line)

@@ -254,9 +254,8 @@ def test_without_a_terminal_none_or_several_found_leave_the_choice_unset_and_say
 
 def test_init_help_says_none_is_offered_first():
     said = " ".join(runner.invoke(build(), ["init", "--help"]).output.split())
-    assert "from what is found here: `claude` or `codex` on the PATH, or NEBIUS_API_KEY" in said
-    assert "None is offered first." in said and "is offered first)" not in said
-    assert "Enter takes one only when exactly one is found" in said
+    assert "Pick a planner and an executor, and install the Claude Code hooks." in said
+    assert said.count("claude, codex, nemotron or a command.") == 2  # each choice, in the same order
 
 
 def test_offline_init_asks_once_and_says_what_it_could_not_reach_in_a_line(repo, monkeypatch, on_path):

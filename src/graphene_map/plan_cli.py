@@ -476,7 +476,9 @@ def register(cli: typer.Typer, root, open_store, fail):
     # -- graphene plan ----------------------------------------------------------------------------
 
     plan_cli = typer.Typer(
-        help="The shared plan: what will be done, by whom, inside which paths.", invoke_without_command=True
+        help="Print the plan: what will be done, by whom, inside which paths.\n\n"
+        "The commands below change the plan. The options print the plan as text, JSON or a view.",
+        invoke_without_command=True,
     )
     cli.add_typer(plan_cli, name="plan")
     if cover := extra.load("cover"):  # the Nemotron extra's, when it is installed
@@ -486,16 +488,22 @@ def register(cli: typer.Typer, root, open_store, fail):
     @plan_cli.callback()
     def show_plan(
         ctx: typer.Context,
-        as_json: bool = typer.Option(False, "--json", help="The plan as JSON."),
+        as_json: bool = typer.Option(False, "--json", help="Print the plan as JSON."),
         as_text: bool = typer.Option(
-            False, "--text", help="The plan as text: the form `plan edit` opens and `propose` reads."
+            False,
+            "--text",
+            help="Print the plan as text, the form `plan edit` opens and `plan propose` reads.",
         ),
-        everything: bool = typer.Option(False, "--all", help="Unfold the tree: finished work included."),
+        everything: bool = typer.Option(False, "--all", help="Unfold the tree, finished work included."),
         view: str = typer.Option(
-            None, "--view", help=f"Print it as this view: {', '.join(['auto', *V.VIEWS])} (the screen's Tab)."
+            None, "--view", help=f"Draw the plan as one view: {', '.join(['auto', *V.VIEWS])}."
         ),
-        width: int = typer.Option(None, "--width", help="With --view: the columns ($COLUMNS if left out)."),
-        height: int = typer.Option(None, "--height", help="With --view: the rows ($LINES if left out)."),
+        width: int = typer.Option(
+            None, "--width", help="With --view, the columns to draw in; $COLUMNS if left out."
+        ),
+        height: int = typer.Option(
+            None, "--height", help="With --view, the rows to draw in; $LINES if left out."
+        ),
     ) -> None:
         """Print the plan as a tree: what waits on you, then what is moving. Finished work is folded."""
         if ctx.invoked_subcommand is not None:
@@ -512,7 +520,9 @@ def register(cli: typer.Typer, root, open_store, fail):
 
     @plan_cli.command("goal", hidden=True)
     def goal_(text: str = typer.Argument(None, help="Why any of this is being done, in your words.")) -> None:
-        """Say (or read) the root of the tree. Every executor is told it, above its own node."""
+        """Set the plan's goal, or print it.
+
+        Every executor reads the goal above its own leaf."""
         if text is None:
             out(run(P.goal) or "no goal yet: `graphene plan goal 'why any of this is being done'`")
             return
@@ -586,7 +596,7 @@ def register(cli: typer.Typer, root, open_store, fail):
     @cli.command()
     def watch(
         everything: bool = typer.Option(
-            False, "--all", help="With --once: unfold the tree, finished work too."
+            False, "--all", help="With --once, unfold the tree, finished work included."
         ),
         every: float = typer.Option(1.0, "--every", help="Seconds between looks at the plan."),
         once: bool = typer.Option(
@@ -595,14 +605,12 @@ def register(cli: typer.Typer, root, open_store, fail):
         view: str = typer.Option(
             None,
             "--view",
-            help=f"Open in this view: {', '.join(['auto', *V.VIEWS])}. Tab goes to the next that fits. "
-            "Left out: the outline.",
+            help=f"Open in this view ({', '.join(['auto', *V.VIEWS])}); the outline if left out.",
         ),
     ) -> None:
-        """The plan on one screen, live, with vim keys: the tree, the node under the cursor, the
-        executors as they work. Every key is a command you could type (the bottom line says which);
-        `?` lists them, `q` leaves. `--once` prints the plan instead, for a script or a terminal you
-        do not want to give up."""
+        """Show the plan on one screen, live, with vim keys.
+
+        Every key runs a graphene command. Press ? for the keys and q to leave. In a script, use --once."""
         who = P.caller()
         if view:
             known_view(view)
@@ -625,22 +633,26 @@ def register(cli: typer.Typer, root, open_store, fail):
 
     @cli.command()
     def demo(
-        recording: Path = typer.Argument(None, help="A recording --record made; Graphene's own if left out."),
+        recording: Path = typer.Argument(
+            None, help="A file --record made; Graphene's own recording if left out."
+        ),
         once: bool = typer.Option(False, "--once", help="Print where the replay ends, and leave."),
         record: Path = typer.Option(
-            None, "--record", help="Record this repository's plan into this file as a run goes, until Ctrl-C."
+            None,
+            "--record",
+            help="Record this repo's plan, never a key or a path, into this file until Ctrl-C.",
         ),
         speed: float = typer.Option(
-            1.0, "--speed", min=0.1, max=20.0, help="How many times faster than the replay's pace: 2, 0.5."
+            1.0,
+            "--speed",
+            min=0.1,
+            max=20.0,
+            help="Play this many times faster, such as 2, or slower, such as 0.5.",
         ),
     ) -> None:
-        """A recorded run, replayed in `graphene watch` change by change, the top line saying it is a
-        replay and whether a model or a scripted stand-in made it. Each change stays on the screen at least
-        two seconds, and a wait over three is cut to three and said. Space pauses and plays on, `.` shows
-        the next change, `r` plays it again. It needs no key, no network and no Docker, and nothing in it
-        runs: a key that would change the plan or start anything says so. `--once` prints where it ends.
-        `--record FILE` makes one from the repository it is started in: the plan's store over the run,
-        never a key or a path of yours."""
+        """Replay a recorded run in `graphene watch`, change by change.
+
+        The replay needs no key, no network and no Docker. Nothing in it runs."""
         import contextlib
         import tempfile
 
@@ -673,22 +685,11 @@ def register(cli: typer.Typer, root, open_store, fail):
 
     @plan_cli.command(hidden=True)
     def propose(
-        file: str = typer.Argument(..., help="A file of the plan's text; '-' reads it from a pipe."),
+        file: str = typer.Argument(..., help="A file of the plan's text or JSON; '-' reads a pipe."),
     ) -> None:
-        """Add a tree, in the text `graphene plan --text` prints. From an agent every line is a
-        proposal, which nobody can start until a person accepts it; a line with the [id] of a node
-        already in the plan is where the new lines under it go. JSON ({"nodes": [...]}) is read too.
+        """Add a tree, in the text `graphene plan --text` prints.
 
-        \b
-        graphene plan propose - <<'EOF'
-        goal: the aim in one sentence
-        - a sub-goal  [short-id]
-          - a leaf: one piece of work  [leaf-id]
-              what it should achieve, in a line or two
-              scope: src/pdf/**, tests/pdf/**
-              check: pytest tests/pdf -q
-              needs: other-leaf-id
-        EOF"""
+        From an agent each node is a proposal. A line with an existing [id] adds under that node."""
         if file == "-" and sys.stdin.isatty():
             fail(
                 "`graphene plan propose -` reads a pipe, and nothing is piped here\n"
@@ -737,17 +738,16 @@ def register(cli: typer.Typer, root, open_store, fail):
 
     @plan_cli.command("edit")
     def edit_(
-        node_id: str = typer.Argument(None, help="A subtree: this node and what is under it. Default: all."),
+        node_id: str = typer.Argument(None, help="Open only this node and what is under it."),
     ) -> None:
-        """Open the plan (or a subtree) as text in your editor ($VISUAL, $EDITOR, else vi). Add a line,
-        move one, delete one, change a scope, turn a "?" into "-" to accept; save and quit, and
-        Graphene applies the difference, all of it or none. A line it cannot read is refused by its
-        number and nothing is applied."""
+        """Open the plan as text in your editor ($VISUAL, $EDITOR, else vi).
+
+        Graphene applies what you save, all or none. Turn "?" into "-" to accept a node."""
         edit_in_editor(node_id, alone=False)
 
     @plan_cli.command()
     def undo() -> None:
-        """Put back your last act on the plan (an edit, an add, a drop, an acceptance, a saved text)."""
+        """Undo your last act on the plan, such as a drop or an accept."""
         what = run(lambda s: P.undo(s, P.caller()))
         out(f"undid: {what}")
         said_where()
@@ -787,8 +787,12 @@ def register(cli: typer.Typer, root, open_store, fail):
             said_where()
 
     @plan_cli.command()
-    def accept(ids: list[str] = typer.Argument(None, help="Node ids; none means every proposal.")) -> None:
-        """Accept proposals into the plan, and say what an unattended run will and will not reach."""
+    def accept(
+        ids: list[str] = typer.Argument(None, help="The nodes to accept; every proposal if left out."),
+    ) -> None:
+        """Accept proposals into the plan.
+
+        Graphene then says which leaves a run can reach, and why the rest wait."""
 
         files = tracked()  # asked before the plan's write lock, as `write` says
 
@@ -817,7 +821,9 @@ def register(cli: typer.Typer, root, open_store, fail):
 
     @plan_cli.command("log")
     def log_() -> None:
-        """Everything that happened on the plan, oldest first; `*` is what belonged to no node."""
+        """Print everything that happened on the plan, oldest first.
+
+        A `*` marks what belonged to no node."""
 
         def go(store):
             entries = store.node_log()
@@ -830,7 +836,9 @@ def register(cli: typer.Typer, root, open_store, fail):
 
     @plan_cli.command(hidden=True)
     def record() -> None:
-        """The record of the whole plan: every leaf's added up. One leaf's is `graphene node show`."""
+        """Print the record of the whole plan, every leaf's added up.
+
+        `graphene node show` prints one leaf's record."""
         from .node_record import bill, bill_line, rolled_up
 
         def go(store):
@@ -846,35 +854,39 @@ def register(cli: typer.Typer, root, open_store, fail):
 
     @plan_cli.command()
     def archive() -> None:
-        """Put finished nodes away. With nothing else left, the plan is no longer in force."""
+        """Put finished nodes away.
+
+        When nothing else is left, the plan is no longer in force."""
         gone = run(lambda s: P.archive(s, P.caller()))
         out(f"archived {', '.join(n.id for n in gone)}" if gone else "nothing finished to archive")
         said_where()
 
     @plan_cli.command(hidden=True)
     def ack() -> None:
-        """The uncommitted changes in the checkout that no leaf made are yours, as they stand (committing
-        them does the same: a commit is the repository moving, and the plan follows it)."""
+        """Make the uncommitted changes no leaf made yours, as they stand.
+
+        A commit does the same. The plan follows the repository."""
         paths = run(lambda s: P.acknowledge(s, checkout(), P.caller()))
         out(f"yours as they stand: {', '.join(paths)}" if paths else "no uncommitted change is left unowned")
         said_where()
 
     @plan_cli.command()
     def pause() -> None:
-        """Suspend the plan: nothing starts, and no write is refused, until `graphene plan resume`."""
+        """Pause the plan: nothing starts and no write is refused.
+
+        `graphene plan resume` puts the plan back in force."""
         run(lambda s: P.set_paused(s, True, P.caller()))
         out("paused: nothing starts and nothing is enforced until `graphene plan resume`")
         said_where()
 
     @plan_cli.command(hidden=True)
     def prompts(
-        how: str = typer.Argument(
-            None, help="'leaf' (default): a prompt you type is a leaf. 'strict': it is not."
-        ),
+        how: str = typer.Argument(None, help="leaf, the default, or strict; prints the setting if left out."),
     ) -> None:
-        """What a request typed into a session means while the plan is in force. 'leaf': the first
-        write of the turn makes a leaf from your prompt, held by that session, and its record says
-        what it touched. 'strict': a session that holds no node writes nothing, as in 0.3."""
+        """Set what a prompt typed into a session means while a plan is in force.
+
+        With leaf, the first write makes the prompt a leaf. With strict, a session with no node
+        writes nothing."""
         if how not in (None, "leaf", "strict"):
             fail(f"graphene plan prompts takes leaf or strict, not {how!r}", 1)
 
@@ -895,11 +907,11 @@ def register(cli: typer.Typer, root, open_store, fail):
 
     @plan_cli.command()
     def first(
-        how: str = typer.Argument(None, help="on, auto or off. With none, print the setting."),
+        how: str = typer.Argument(None, help="on, auto or off; prints the setting if left out."),
     ) -> None:
-        """Set whether an agent proposes before it writes. On: every ask waits for you, one leaf
-        included. Auto: one leaf of work is done at once, more is proposed as a tree. Off: nothing
-        is proposed first. P in graphene watch cycles the three."""
+        """Set whether an agent proposes a tree before it writes.
+
+        On proposes every ask. Auto does one leaf at once and proposes more. Off never proposes."""
         if how not in (None, *P.FIRST):
             fail(f"graphene plan first takes on, auto or off, not {how!r}", 1)
         if how is not None:
@@ -921,16 +933,17 @@ def register(cli: typer.Typer, root, open_store, fail):
         executor: str = typer.Option(
             None,
             "--with",
-            help="The executor, for this run: nemotron, claude, codex, or a command that takes a prompt as "
-            "its last argument. Default: the one `graphene init` chose; with none chosen, the run is "
-            "refused.",
+            help="Use this executor, not init's: claude, codex, nemotron or a command.",
         ),
         attempts: int = typer.Option(3, "--attempts", help="How often a refused executor is sent back."),
         node: list[str] = typer.Option(None, "--node", help="Only this node; repeat it."),
         parallel: int = typer.Option(1, "--parallel", help="How many leaves run at once."),
-        here: bool = typer.Option(False, "--here", help="Run in this checkout. Commit nothing."),
+        here: bool = typer.Option(
+            False, "--here", help="Run in your checkout and commit nothing; the checkout is exposed."
+        ),
     ) -> None:
-        """Run every ready leaf, one executor per leaf, each in its own worktree.
+        """Run every ready leaf in its own worktree, one executor per leaf.
+
         Graphene runs each leaf's check and merges what passes. A leaf that fails comes back."""
         if os.environ.get("GRAPHENE_NODE") or os.environ.get("GRAPHENE_PLANNER"):
             fail("an executor or a planner does not start runs: through --with a run is any command", 1)
@@ -1033,15 +1046,19 @@ def register(cli: typer.Typer, root, open_store, fail):
         executor: str = typer.Option(
             None,
             "--with",
-            help="The planner, for this question: nemotron, claude, codex, or a command taking a prompt "
-            "last. Default: the one `graphene init` chose; with none chosen, the ask is refused.",
+            help="Use this planner, not init's: claude, codex, nemotron or a command.",
         ),
-        about: str = typer.Option(None, "--about", help="A node the question is about (one that came back)."),
+        about: str = typer.Option(
+            None, "--about", help="The node this ask is about, such as a leaf that came back."
+        ),
         finer: bool = typer.Option(False, "--finer", help="Size this ask finer, whatever the saved size."),
-        coarser: bool = typer.Option(False, "--coarser", help="Size this ask coarser, whatever is saved."),
+        coarser: bool = typer.Option(
+            False, "--coarser", help="Size this ask coarser, whatever the saved size."
+        ),
     ) -> None:
-        """Ask a planner for a proposal: it reads the repo with read-only tools and prints the tree in
-        the plan's text, which is added as proposals for you to prune. Nothing runs."""
+        """Ask the planner for a tree from a paragraph.
+
+        The planner reads the repo and writes nothing. Nothing runs until you accept the tree."""
         if finer and coarser:
             fail("--finer or --coarser, not both", 2)
         planner(sentence, executor, about, False, "finer" if finer else "coarser" if coarser else None)
@@ -1051,7 +1068,10 @@ def register(cli: typer.Typer, root, open_store, fail):
 
     # -- graphene node ----------------------------------------------------------------------------
 
-    node_cli = typer.Typer(help="One node of the plan: shape it, take it, finish it, read its record.")
+    node_cli = typer.Typer(
+        help="Add, change, finish or read one node of the plan.\n\n"
+        "A node has a title, a goal, a scope, a check and the nodes it waits on."
+    )
     cli.add_typer(node_cli, name="node")
 
     def changes(**given) -> dict:
@@ -1064,23 +1084,25 @@ def register(cli: typer.Typer, root, open_store, fail):
     def add(
         title: str = typer.Argument(..., help="One line: what this node is."),
         scope: list[str] = typer.Option(
-            None, "--scope", help="A glob it may touch; repeat it. '!glob' excludes."
+            None, "--scope", help="A glob the node may write; repeat it, and '!glob' excludes."
         ),
         check: str = typer.Option(
-            None, "--check", help="The command that must pass for it to be done. Run with sh, not bash."
+            None, "--check", help="The command that must pass for the node to be done, run with sh."
         ),
         goal: str = typer.Option(None, "--goal", help="What the work should achieve, in a sentence or two."),
-        needs: list[str] = typer.Option(None, "--needs", help="A node it waits on; repeat it."),
+        needs: list[str] = typer.Option(None, "--needs", help="A node this one waits on; repeat it."),
         owner: str = typer.Option(None, "--owner", help="'agent' (default), 'me', or a person's name."),
-        signoff: bool = typer.Option(False, "--signoff", help="A person must also sign it off."),
+        signoff: bool = typer.Option(
+            False, "--signoff", help="Require a person's sign-off as well as the check."
+        ),
         node_id: str = typer.Option(None, "--id", help="An id of your choosing; else n1, n2, …"),
         parent: str = typer.Option(
-            None, "--parent", help="The node this one helps achieve. Under a leaf, it splits the leaf."
+            None, "--parent", help="The node this one helps achieve; under a leaf, this splits the leaf."
         ),
     ) -> None:
-        """Add a node. From a person it is in the plan at once; from an agent it is a proposal.
-        With children to come it needs only a title: `graphene node add 'the API' --id api`, then
-        `graphene node add … --parent api`."""
+        """Add a node to the plan.
+
+        A person's node is in the plan at once. An agent's node is a proposal."""
         item = changes(
             title=title,
             scope=scope,
@@ -1106,18 +1128,22 @@ def register(cli: typer.Typer, root, open_store, fail):
     @node_cli.command("set")
     def set_(
         node_id: str = typer.Argument(...),
-        title: str = typer.Option(None, "--title"),
+        title: str = typer.Option(None, "--title", help="Replaces the title."),
         scope: list[str] = typer.Option(None, "--scope", help="Replaces the scope; repeat it."),
         add_scope: list[str] = typer.Option(None, "--add-scope", help="Adds a glob to the scope; repeat it."),
-        check: str = typer.Option(None, "--check"),
+        check: str = typer.Option(None, "--check", help="Replaces the check."),
         goal: str = typer.Option(None, "--goal", help="Replaces the goal."),
         add_goal: str = typer.Option(None, "--add-goal", help="Adds a sentence at the end of the goal."),
         needs: list[str] = typer.Option(None, "--needs", help="Replaces what it waits on; 'none' clears it."),
         owner: str = typer.Option(None, "--owner", help="'agent', 'me', or a person's name."),
-        signoff: bool = typer.Option(None, "--signoff/--no-signoff"),
+        signoff: bool = typer.Option(
+            None, "--signoff/--no-signoff", help="Require a person's sign-off, or not."
+        ),
         parent: str = typer.Option(None, "--parent", help="Move it under another node; 'none' is the top."),
     ) -> None:
-        """Change a node's contract (a person only). It binds the very next write, and the next start."""
+        """Change a node's contract.
+
+        Only a person can. The change binds the node's next write and next start."""
         edits = changes(title=title, scope=scope, check=check, goal=goal, owner=owner, parent=parent)
         if needs:
             edits["needs"] = [i for i in needs if i != "none"]
@@ -1161,9 +1187,9 @@ def register(cli: typer.Typer, root, open_store, fail):
     def drop(
         node_ids: list[str] = typer.Argument(..., help="The node; name several to drop them at once."),
     ) -> None:
-        """Take a node out of the plan, with everything under it. Dropping a sub-goal's children
-        makes it a leaf again: that is how a split is undone. Several are one act, all or none, which
-        one `graphene plan undo` puts back; what waits on any of them is asked of them together."""
+        """Drop a node from the plan, with everything under it.
+
+        `graphene plan undo` puts the nodes back. Dropping a split's children undoes the split."""
         who = P.caller()
 
         def go(store):
@@ -1192,13 +1218,16 @@ def register(cli: typer.Typer, root, open_store, fail):
 
     @node_cli.command("edit")
     def node_edit(node_id: str = typer.Argument(...)) -> None:
-        """Open one node's contract as text in your editor; what you save is applied. A line you add
-        under it is a new child; one you add beside it, a sibling."""
+        """Open one node's contract as text in your editor.
+
+        Graphene applies what you save. A line you add under the node is a new child."""
         edit_in_editor(node_id, alone=True)
 
     @node_cli.command(hidden=True)
     def start(node_id: str = typer.Argument(...)) -> None:
-        """Take a node and print its contract as it stands now."""
+        """Take a node and print its contract as it stands now.
+
+        An executor runs this before it writes."""
 
         def go(store):
             n = P.start(store, node_id, P.caller(), checkout())
@@ -1214,7 +1243,9 @@ def register(cli: typer.Typer, root, open_store, fail):
         node_id: str = typer.Argument(None, help="The node; may be left out when you hold exactly one."),
         override: str = typer.Option(None, "--override", help="A person's reason for overruling the gate."),
     ) -> None:
-        """Finish a node: Graphene runs its check and asks git what changed. Then says what is next."""
+        """Finish a node: Graphene runs its check and asks git what changed.
+
+        Graphene then says what is next."""
         who = P.caller()
 
         def go(store):
@@ -1242,15 +1273,17 @@ def register(cli: typer.Typer, root, open_store, fail):
     def release(
         node_id: str = typer.Argument(...),
         why: str = typer.Option(
-            None, "--why", help="What is in the way; the person reads it. Asked for at a terminal."
+            None, "--why", help="What is in the way, for the person; asked for at a terminal."
         ),
         wants: list[str] = typer.Option(
             None,
             "--wants",
-            help="A path outside the scope it would need; repeat it. The person is offered it.",
+            help="A path the node needs outside its scope, offered to the person; repeat it.",
         ),
     ) -> None:
-        """Hand a running node back, saying why. The way out when it cannot be finished as written."""
+        """Hand a running node back, and say why.
+
+        Use this when the node cannot be finished as written."""
         who = P.caller()
         if why is None:  # asked for only when there is something to hand back
             state = run(lambda s: P.get(s, node_id).state)
@@ -1269,7 +1302,7 @@ def register(cli: typer.Typer, root, open_store, fail):
 
     @node_cli.command("signoff", hidden=True)
     def signoff_(node_id: str = typer.Argument(...)) -> None:
-        """A person's say-so: the node is done."""
+        """Sign off a node: a person's say-so that it is done."""
 
         def go(store):
             P.signoff(store, node_id, P.caller(), checkout=checkout())
@@ -1293,10 +1326,10 @@ def register(cli: typer.Typer, root, open_store, fail):
     def reopen(
         node_id: str = typer.Argument(...),
         note: str = typer.Option(
-            None, "--note", help="What is wrong; whoever takes it next is told. Asked for at a terminal."
+            None, "--note", help="What is wrong, told to whoever takes it next; asked for at a terminal."
         ),
     ) -> None:
-        """Not good enough: send a finished node back, with what is wrong."""
+        """Send a finished node back, with what is wrong."""
         if note is None and run(lambda s: P.get(s, node_id).state in (P.DONE, P.REVIEW)):  # else its refusal
             note = asked(f"graphene node reopen {node_id}", "--note", "what is wrong")
         run(lambda s: P.reopen(s, node_id, P.caller(), note or ""))
@@ -1306,8 +1339,9 @@ def register(cli: typer.Typer, root, open_store, fail):
 
     @node_cli.command()
     def show(node_id: str = typer.Argument(...)) -> None:
-        """A node's contract, then its record: who held it, what changed, what was refused, and how
-        much of it is verified."""
+        """Print a node's contract and its record.
+
+        The record says who held the node, what changed, what was refused and what is verified."""
         from .node_record import node_record, render, rolled_up
 
         def go(store):
@@ -1344,18 +1378,22 @@ def register(cli: typer.Typer, root, open_store, fail):
     def split(
         node_id: str = typer.Argument(...),
         executor: str = typer.Option(
-            None, "--with", help="The planner. Default: the one `graphene init` chose; none chosen, refused."
+            None, "--with", help="Use this planner, not the one `graphene init` chose."
         ),
     ) -> None:
-        """Ask the planner to cut a leaf into smaller leaves under it, as proposals for you to prune."""
+        """Ask the planner to cut a leaf into smaller leaves.
+
+        The new leaves are proposals for you to prune."""
         planner(f"split {node_id} into smaller leaves", executor, node_id, True)
 
     @node_cli.command()
     def widen(
         node_id: str = typer.Argument(...),
-        paths: list[str] = typer.Argument(None, help="Default: the paths it wanted outside its scope."),
+        paths: list[str] = typer.Argument(
+            None, help="The paths to add; every path the leaf asked for if left out."
+        ),
     ) -> None:
-        """A leaf came back needing paths outside its scope: widen the scope to them."""
+        """Widen a leaf's scope to the paths it came back needing."""
 
         files = tracked()
 
@@ -1369,9 +1407,13 @@ def register(cli: typer.Typer, root, open_store, fail):
     @node_cli.command()
     def sibling(
         node_id: str = typer.Argument(...),
-        paths: list[str] = typer.Argument(None, help="Default: the paths it wanted outside its scope."),
+        paths: list[str] = typer.Argument(
+            None, help="The paths for the new leaf; every path asked for if left out."
+        ),
     ) -> None:
-        """A leaf came back needing paths outside its scope: a leaf beside it for them, which it waits on."""
+        """Add a leaf beside one that came back, for the paths it needed.
+
+        The leaf that came back waits on the new one."""
 
         files = tracked()
 
