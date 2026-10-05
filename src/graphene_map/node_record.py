@@ -251,7 +251,7 @@ def _shift(stamp: str, delta: int) -> str:
 
 
 def _own(store, node: P.Node, root: str | Path) -> set[str] | None:
-    """A `--parallel` leaf's own commits: what its branch carried into the merge that landed it, or its
+    """A run leaf's own commits: what its branch carried into the merge that landed it, or its
     branch while it waits. Asked of git by ancestry, because by time the checkout it landed in also
     holds its siblings' merges, made while it worked. None when git cannot say."""
     landed = (store.node_log(node.id, ("landed",)) or [None])[-1]
@@ -278,7 +278,7 @@ def _commits(window: Window, root: str | Path, credited: dict, at: str, own: set
     # milliseconds, so a node started at 12:00:00.400 and a commit stamped 12:00:00 cannot be put in
     # order by time at all. Its second is inside the window, and ancestry settles the rest.
     lo, hi = int(seconds(window.started_at)), int(seconds(window.ended_at or at))
-    if own is not None:  # a --parallel leaf's commits are its branch's, made when it landed, after it ended
+    if own is not None:  # a run leaf's commits are its branch's, made when it landed, after it ended
         hi = int(seconds(at))
     wide = (_shift(window.started_at, -2), _shift(at if own is not None else window.ended_at or at, 2))
     found = {c.sha: c for c in commits_in(Path(root), *wide)}

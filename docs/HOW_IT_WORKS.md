@@ -424,7 +424,7 @@ read the plan an hour ago.
 2. Any path left that the scope does not cover: refused, with the list. So is a changed path that
    is a symbolic link out of the repo, and so is a path changed in any *other* working tree of the
    repo since the node was started (a worktree made later is compared with the commit the node
-   started from). The worktrees of `graphene run --parallel` are not asked: each one's leaf answers
+   started from). The worktrees of `graphene run` are not asked: each one's leaf answers
    for it at its own `done`. The node stays `running`.
 3. It runs the check (30 minute cap, the making of its worktree included) and keeps the tail of the
    output in the log. Non-zero: refused. The check never runs in the checkout itself
@@ -541,7 +541,9 @@ a process that began at another time) is handed back by the next run, after its 
 TERM then KILL. A leaf whose need is done but whose work is not in the checkout it would start in
 (never landed, landed out of its history, uncommitted where it was done) waits, and says why
 (`plan.not_here`); a need whose files were committed after it finished counts as here, even when
-the content was edited again before that commit. One node at a time, in the checkout you ran it from, and nothing is committed.
+the content was edited again before that commit. Each leaf runs in a worktree of its own (below).
+`graphene run --here` is the old way: one node at a time, in the checkout you ran it from, and
+nothing is committed. It says first that your checkout is exposed.
 
 A leaf that comes back offers its fix (`plan.offers`), from what it tried to write outside its scope
 (`plan.wanted`: refused writes, a refused `done`, what it changed): `graphene node widen <id>`,
@@ -553,7 +555,7 @@ which paths were not offered and why. A leaf that came back waits on the person:
 leaf a run let go (Ctrl-C, `:stop`) or a dead run's sweep handed back is ready again, and
 the next plain run takes it.
 
-`graphene run --parallel N` runs up to N ready leaves at once. Each gets a worktree,
+`graphene run` runs up to `--parallel N` ready leaves at once, one by default. Each gets a worktree,
 `.graphene/worktrees/<id>` on branch `graphene/<id>`, cut from where your checkout stands at that
 moment, so it holds everything that has already landed. The executor works there and meets the same
 boundary there. Then, one leaf at a time, Graphene commits the leaf's changed paths on its branch
@@ -675,7 +677,7 @@ output, which is capped. A list that does not come back whole changes nothing he
 mid-leaf, or an operation killed by a signal with no list, hands the leaf back with the cause. No more
 than fifty operations run at once from this machine (`sandbox.CAP`, the Sandboxes beta's limit): each
 holds one of fifty lock files that every Graphene process of the user shares, since each executor of
-`graphene run --parallel`, each of its forks and each `graphene node done` runs operations of its own.
+`graphene run`, each of its forks and each `graphene node done` runs operations of its own.
 
 What the scope covers is brought back here. Anything else, such as a new file in a shared directory
 or a link, is never brought back, and neither is what git ignores (a check's `__pycache__`). Such a
@@ -828,7 +830,7 @@ run live.
   that PATH (an active virtualenv, `uv run graphene`) imports the project from where that
   environment installed it, which for an editable install is the checkout itself. A check that
   names the checkout by an absolute path reads and writes the checkout itself. What git does not
-  carry is not there (an empty directory, a submodule's files). A leaf of `graphene run --parallel`
+  carry is not there (an empty directory, a submodule's files). A leaf of `graphene run`
   works in a worktree cut fresh, which has nothing git ignores either.
 - Every check pays for a whole checkout: 0.3 s on this repository (about 330 files), 19 s on one of
   100,000 files, on a loaded machine. What it runs on is written into the repository's objects (the
@@ -839,7 +841,7 @@ run live.
   <path>` removes it.
 - The boundary asks git about every working tree of the repo that exists when the node ends (a
   path changed in another worktree is refused with the tree named), except the worktrees of
-  `graphene run --parallel`, whose own leaves answer for them; a node in your checkout that writes
+  `graphene run`, whose own leaves answer for them; a node in your checkout that writes
   into one of those by absolute path is not seen. Nor does it ask about clones or copies of
   the repo somewhere else on the disk.
 - Scope overlap between two running nodes is checked against tracked files and the globs as
@@ -1044,7 +1046,7 @@ or `graphene board lookup` (which ask Nano). Then it sends Token Factory the pro
 repository and the files the model reads, and Sandboxes the leaf's checkout, and nothing else,
 anywhere. The key is read from your
 environment, else the keychain, and written nowhere but the keychain, by `graphene key set`. It
-never pushes, and it commits and merges only in `graphene run --parallel`, on branches of its own (P4).
+never pushes, and it commits and merges only in `graphene run`, on branches of its own (P4).
 `graphene run` starts the executors you name and `graphene ask` the planner you name, with the
 permissions you give them; nothing else in Graphene starts an agent. It reads nothing Claude Code keeps under `~/.claude/`
 but the one setting `graphene init` looks for (and never writes). What the hooks record can contain

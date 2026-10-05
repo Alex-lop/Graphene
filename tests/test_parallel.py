@@ -254,7 +254,7 @@ def test_a_detached_head_and_a_second_run_are_refused_in_words(repo):
     with Store.open(repo) as store:
         plan.propose(store, [leaf("a")], ALEX)
     (repo / ".graphene/run.lock").write_text(str(os.getpid()))  # a run that is alive: this process
-    with pytest.raises(plan.Refused, match="another `graphene run --parallel` is going"):
+    with pytest.raises(plan.Refused, match="another `graphene run` is going"):
         go(repo)
     (repo / ".graphene/run.lock").unlink()
     git_in(repo, "checkout", "-q", "--detach")

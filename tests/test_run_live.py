@@ -402,7 +402,7 @@ def test_a_run_lock_is_known_by_its_runs_pid_and_start_so_a_reused_pid_holds_not
         assert lock.read_text() == f"{os.getpid()}\n{R._started(os.getpid())}\n"
         assert R.run_holding(repo) == os.getpid()
         lock.write_text(f"{bystander.pid}\n{R._started(bystander.pid)}\n")
-        with pytest.raises(Refused, match="another `graphene run --parallel` is going"):
+        with pytest.raises(Refused, match="another `graphene run` is going"):
             R._only_run(repo)
     finally:
         bystander.kill()
@@ -823,7 +823,7 @@ def test_a_second_ctrl_c_while_the_executor_takes_its_term_still_hands_the_leaf_
         "pathlib.Path('pid.txt').write_text(str(os.getpid()))\n"
         "time.sleep(60)\n"
     )
-    run = graphene_run(repo, "--with", executor(repo, stubborn))
+    run = graphene_run(repo, "--here", "--with", executor(repo, stubborn))
     assert wait_for(lambda: (repo / "pid.txt").exists() and len(R_attempts(repo)) == 1)
     pid = int((repo / "pid.txt").read_text())
     run.send_signal(signal.SIGINT)

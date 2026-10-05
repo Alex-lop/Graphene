@@ -171,7 +171,7 @@ There are two kinds of agent. The **planner** is the session you talk to, or `gr
 
 What your words leave open and the repo can't answer goes on the **board**: the planner is asked to put up at most three items, each a question with the default it would take (or a risk, with what it would do about it). You answer with a key, or not at all: whatever you leave open takes its default when you accept the tree, except a default that drops a node, which waits for you. What you decide is written into the contract of every leaf it's about.
 
-A leaf lands only when its check passes and git shows nothing written outside its scope; with `--parallel`, it's then merged `--no-ff` into your branch with its why in the message. That's the one boundary that holds whoever executes. Inside Claude Code, hooks also refuse an out-of-scope write before it happens. A leaf that needs a file outside its scope comes back, says why, and offers the fix: `w` widens its scope, `b` adds a sibling leaf for that file. `graphene node show <id>` is a leaf's record: who held it, what changed, what was refused, what the check said.
+A leaf lands only when its check passes and git shows nothing written outside its scope; it's then merged `--no-ff` into your branch with its why in the message. That's the one boundary that holds whoever executes. Inside Claude Code, hooks also refuse an out-of-scope write before it happens. A leaf that needs a file outside its scope comes back, says why, and offers the fix: `w` widens its scope, `b` adds a sibling leaf for that file. `graphene node show <id>` is a leaf's record: who held it, what changed, what was refused, what the check said.
 
 <br>
 
@@ -203,7 +203,7 @@ These are honest boundaries, not airtight ones. The hooks that stop a write befo
 - With NVIDIA Nemotron as planner or executor, Graphene sends Nebius Token Factory your prompts and the files the model reads, and in a sandbox it sends Sandboxes the leaf's checkout. The key lives in your environment or the system keychain, never in a file.
 - The Nemotron prototypes are the exception, whatever the planner: `plan cover`, `plan note` and `graphene board lookup` ask Nemotron Nano, and `plan precheck` uploads your checkout to Sandboxes when ConTree's credentials are set (and asks Nano about a failing check whose output doesn't say why). None of them runs unless you run it, or set `GRAPHENE_SHAPE` to run them after each `graphene ask`.
 - The plan lives in `.graphene/` in your repo, created `0700` and git-ignored, all but `.graphene/direction.txt`, which holds only goals and is yours to commit. Delete `.graphene/` and Graphene forgets everything.
-- Graphene never pushes. It commits only during `graphene run --parallel`: on its own `graphene/<leaf>` branches, plus one merge of each passing leaf into your branch.
+- Graphene never pushes. It commits only during `graphene run`: on its own `graphene/<leaf>` branches, plus one merge of each passing leaf into your branch.
 
 <br>
 

@@ -7,6 +7,7 @@ end in Token Factory Sandboxes, landing 5 of 6 leaves, each passed by its own ch
 asked. 3 stopped at the planner, whose tree was readable on 2 of 9 asks (`docs/test/first-light.md`). Nothing
 registered has run live.
 
+- `graphene run` now isolates every leaf in a worktree. `--here` is the old behaviour.
 - A Claude Code executor can write in its run's worktree. The hook had refused every write there as the plan's store.
 
 The live half of first light (2 October, practice).

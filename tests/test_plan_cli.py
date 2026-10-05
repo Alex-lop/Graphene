@@ -337,23 +337,24 @@ def test_after_the_last_node_is_archived_the_plan_the_board_and_the_next_ask_sta
 
 
 def test_a_finished_plan_says_when_its_leaves_work_is_not_committed_and_what_commits_it(repo, tmp_path):
-    """The judge ran plain `graphene run`: `graphene` said "3 leaves, 3 done … finished" while `git status`
-    held the leaves' work, and watch's R (`run --parallel 4`) had committed one as a merge."""
+    """The judge ran `graphene run` in the checkout (now `--here`): `graphene` said "3 leaves, 3 done …
+    finished" while `git status` held the leaves' work, and watch's R had committed one as a merge."""
     script = tmp_path.parent / f"{tmp_path.name}-ids.py"  # beside the repo: nobody's stray file
     script.write_text("open('api.py', 'w').write('def users():\\n    return [\"ids\"]\\n')\n")
     person("node", "add", "users returns ids", "--id", "ids", "--scope", "api.py", 
            "--check", "grep -q ids api.py")
-    ran = person("run", "--with", f"{sys.executable} {script}")
+    ran = person("run", "--here", "--with", f"{sys.executable} {script}")
     assert ran.exit_code == 0, ran.output
+    assert "--here: your checkout is exposed" in ran.stdout
     assert ran.stdout.splitlines()[-1] == (
-        "run: 1 done; the work of ids is not committed (`git status`): plain `graphene run` commits nothing, "
-        "`graphene run --parallel N` and watch's R commit and merge each leaf"
+        "run: 1 done; the work of ids is not committed (`git status`): `graphene run --here` commits "
+        "nothing, `graphene run` and watch's R commit and merge each leaf"
     )
     head = person().stdout.splitlines()[0]
     assert head == (
         "the plan: 1 leaf, 1 done, 0 running · finished; the work of 1 leaf is not committed (`git status`): "
-        "plain `graphene run` commits nothing, `graphene run --parallel N` and watch's R commit and merge "
-        "each leaf; `graphene plan archive` puts it away"
+        "`graphene run --here` commits nothing, `graphene run` and watch's R commit and merge each leaf; "
+        "`graphene plan archive` puts it away"
     )
     subprocess.run(["git", "-c", "user.email=t@example.com", "-c", "user.name=T", "commit", "-qam", "ids"],
                    cwd=repo, check=True)  # fmt: skip
