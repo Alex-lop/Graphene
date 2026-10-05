@@ -1,11 +1,10 @@
-"""Reading a shell command: which files it writes, and whether it runs a check.
+"""Reading a shell command: which files it writes.
 
-No model is involved and nothing here needs a vendor: it is text a shell would parse, and it
-answers the two questions Graphene asks of a command. ``bash_written_paths`` is what the hook
-refuses a write with, before the write happens (``gate.py``); ``check_segments`` is what names a
-test or lint run on the map; ``shell_segments`` is what ``commits.py`` reads a `git commit` out of.
-Deliberately incomplete, and the holes are printed where the controls are: a script that opens a
-file itself is invisible here and is caught later, at the boundary, by git.
+No model is involved and nothing here needs a vendor: it is text a shell would parse.
+``bash_written_paths`` is what the hook refuses a write with, before the write happens
+(``gate.py``); ``shell_segments`` is what ``commits.py`` reads a `git commit` out of.
+Deliberately incomplete: a script that opens a file itself is invisible here and is caught later, at
+the boundary, by git.
 """
 
 from __future__ import annotations
@@ -16,20 +15,6 @@ import shlex
 from functools import lru_cache
 from pathlib import Path
 
-CHECKERS = {
-    "pytest",
-    "py.test",
-    "ruff",
-    "mypy",
-    "pyright",
-    "tsc",
-    "jest",
-    "vitest",
-    "eslint",
-    "flake8",
-    "make",
-}
-RUNNER_PREFIXES = (("uv", "run"), ("python", "-m"), ("python3", "-m"), ("poetry", "run"), ("pipenv", "run"))
 _NOT_A_PATH = re.compile(r"[*?$`{}\[\]<>|]")
 _HEREDOC = re.compile(r"<<-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1")
 _SEPARATORS = re.compile(r"&&|\|\||;|\||\n")
@@ -200,52 +185,3 @@ def nested_checkout(root: Path, rel: str) -> bool:
         if _is_checkout(current):
             return True
     return False
-
-
-def check_segments(command: str) -> list[str]:
-    """The simple commands in a shell call that run a test or lint tool (pytest, npm test, cargo test,
-    make, ...), as a shell would see them: a tool named inside a quoted string, such as a commit
-    message that says which check passed, is text, not a command, and is never a check."""
-    out: list[str] = []
-    for tokens in shell_segments(command):
-        words = list(tokens)
-        while True:  # peel runner prefixes (`uv run`, `python -m`, ...) and their flags, in any order
-            for prefix in RUNNER_PREFIXES:
-                if tuple(words[: len(prefix)]) == prefix:
-                    words = words[len(prefix) :]
-                    break
-            else:
-                if words and words[0].startswith("-"):
-                    words.pop(0)
-                    continue
-                break
-        if words and _is_checker(os.path.basename(words[0]), words[1:]):
-            out.append(" ".join(_without_redirections(tokens)))
-    return out
-
-
-def _without_redirections(tokens: list[str]) -> list[str]:
-    """`pytest -q 2>&1` and `pytest -q > log` run the same check as `pytest -q`."""
-    kept: list[str] = []
-    skip = False
-    for token in tokens:
-        if skip:
-            skip = False
-        elif token in _REDIRECTS:
-            skip = True
-            if kept and kept[-1].isdigit():  # the file descriptor in front of the operator
-                kept.pop()
-        else:
-            kept.append(token)
-    return kept
-
-
-def _is_checker(name: str, rest: list[str]) -> bool:
-    if name in CHECKERS:
-        return True
-    if name in ("cargo", "go") and rest[:1] == ["test"]:
-        return True
-    if name in ("npm", "yarn", "pnpm"):
-        scripts = ("test", "lint", "check", "typecheck")
-        return rest[:1] == ["test"] or (rest[:1] == ["run"] and bool(rest[1:2]) and rest[1] in scripts)
-    return name == "npx" and bool(rest[:1]) and rest[0] in ("jest", "vitest", "tsc", "eslint")

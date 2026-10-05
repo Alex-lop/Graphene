@@ -103,7 +103,7 @@ def wrote(store, repo, sid, rel, text, at, n) -> None:
     )
 
 
-def committed(store, repo, sid, message, at, n) -> str:
+def committed(store, repo, sid, message, at, n, sync=True) -> str:
     """A commit made by the agent's own shell, with the SHA its output printed: that is what credits it."""
     git(repo, "add", "-A")
     git(repo, "commit", "-qm", message, at=at)
@@ -122,7 +122,8 @@ def committed(store, repo, sid, message, at, n) -> str:
         repo,
         at,
     )
-    sync_commits(store, repo, [sid])
+    if sync:
+        sync_commits(store, repo, [sid])
     return sha
 
 
@@ -366,6 +367,18 @@ def test_a_recorded_write_inside_the_window_is_what_verifies_the_commit(store, r
     assert (counts["commit"], counts["nothing"], counts["not_graded_commits"]) == (0, 0, 0)
 
 
+def test_the_record_reads_the_commits_itself_with_no_page_to_fill_them(store, repo):
+    """The web UI filled the store's commits. Without it, `node show` fills them for the sessions
+    that held the node, so a commit is still credited to the call that made it."""
+    session(store, repo, S1, T(0))
+    plan.propose(store, [api_node()], ALEX, now=T(0))
+    plan.start(store, "n1", BOT, repo, now=T(1))
+    wrote(store, repo, S1, "src/api/users.py", "def users():\n    return [1]\n", T(2), 1)
+    committed(store, repo, S1, "the endpoint", T(3), 1, sync=False)
+    counts = NR.node_record(store, repo, plan.get(store, "n1"), at=T(4)).coverage
+    assert (counts["committed_files"], counts["write"], counts["edit"]) == (1, 1, 1)
+
+
 def test_a_commit_no_recorded_session_accounts_for_is_counted_apart_and_never_graded(store, repo):
     session(store, repo, S1, T(0))  # a session ran, so git's commits reach the store
     plan.propose(store, [api_node()], ALEX, now=T(0))
@@ -494,12 +507,10 @@ def test_the_record_reads_as_plain_lines(store, repo):
     ]
 
 
-def test_the_record_is_json_and_every_line_is_whole(store, repo):
+def test_every_line_of_the_record_is_whole(store, repo):
     plan.propose(store, [api_node()], ALEX, now=T(0))
     plan.start(store, "n1", BOT, repo, now=T(1))
     record = NR.node_record(store, repo, plan.get(store, "n1"), at=T(2))
-    as_dict = NR.to_dict(record)
-    assert json.loads(json.dumps(as_dict))["windows"][0]["session_id"] == S1
     assert all(line == line.rstrip() and "…" not in line for line in NR.render(record))
 
 

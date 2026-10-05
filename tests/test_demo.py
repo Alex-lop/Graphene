@@ -70,7 +70,7 @@ def test_a_recording_holds_no_path_of_yours_and_nothing_shaped_like_a_key(tmp_pa
 
 
 def test_a_key_kept_only_in_the_keychain_is_taken_out_too(tmp_path, monkeypatch):
-    from graphene_map import keys
+    from graphene_map.nemotron import keys
 
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setattr(keys, "find", lambda: "tfk_madeup_abcdefghijklmnopqrstuvwxyz0123456789")
@@ -124,7 +124,7 @@ def test_the_recorder_waits_for_the_store_goes_on_past_what_it_cannot_read_and_s
 
 
 def test_recording_into_a_directory_that_is_not_there_is_refused_in_one_line(tmp_path):
-    """It was a traceback; it is one line and exit 1, as `graphene ui --export` says it."""
+    """It was a traceback; it is one line and exit 1."""
     out = tmp_path / "no" / "such" / "rec.jsonl"
     done = subprocess.run([*CLI, "demo", "--record", str(out)], cwd=git_repo(tmp_path / "repo"),
                           capture_output=True, text=True, timeout=60)  # fmt: skip

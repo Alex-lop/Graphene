@@ -77,13 +77,13 @@ HELP = (  # what answering the board needs first: at 80x24 the first screen ends
     ("fold", (("za zo zc", "fold or unfold, unfold, fold (on the goal: all)"),
               ("zR zM zx", "all open, all closed, as it opened"))),
     ("run", (("R r", "run every ready leaf; the ready ones under this"),
-             ("x", "release it; send it back; reopen it"), ("P", "plan first on or off"))),
+             ("x", "release it; send it back; reopen it"), ("P", "plan first: on, auto, off"))),
     ("see", (("Enter l D", "the record; the executor's output; the direction"),
              ("ctrl-d -u", "scroll the pane"))),
     ("came back", (("w b n", "widen its scope; a sibling first; wait on those"),
                    ("?", "ask the planner what would let it be done"))),
 )  # fmt: skip
-HELP_END = "Every key is a graphene command; the bottom line says which it ran."
+HELP_END = "Every key is a graphene command. The bottom line says which it ran."
 # the glyphs and colours every row, view and pane uses, the help's first line
 LEGEND = ("yours", "review", "came back", "proposed", "ready", "running", "waiting", "done")
 EMPTY = (
@@ -1308,11 +1308,10 @@ class Watch(App):
         if not self.is_running:
             return
         room = max(self.size.width - 2, 20)
-        c = self.counts or {"you": 0, "running": 0, "ready": 0, "done": "0/0 done", "first": False}
+        c = self.counts or {"you": 0, "running": 0, "ready": 0, "done": "0/0 done", "first": "off"}
         board = f" + {c['board']} on the board" if c.get("board") else ""
         you = "magenta" if c["you"] or board else ""
         busy = P.look("running")[1] if c["running"] else ""
-        first = "on" if c["first"] else "off"
         spent = money(c["spent"]) if c.get("spent") is not None else ""  # the plan's: planner and leaves
         long = [
             (f"waiting on you: {c['you']}{board}", you),
@@ -1320,7 +1319,7 @@ class Watch(App):
             (f"R runs {c['ready']} ready" if c["ready"] else "nothing ready to run", ""),
             *([(f"{c['back']} came back", "")] if c.get("back") else []),
             (c["done"], ""),
-            (f"plan first: {first} (P)", ""),
+            (f"plan first: {c['first']} (P)", ""),
             *([(f"the plan: {spent} at list price", "dim")] if spent else []),
         ]
         short = [
@@ -1329,7 +1328,7 @@ class Watch(App):
             (f"R: {c['ready']} ready" if c["ready"] else "none ready", ""),
             *([(f"{c['back']} came back", "")] if c.get("back") else []),
             (c["done"], ""),
-            (f"plan first: {first}", ""),
+            (f"plan first: {c['first']}", ""),
             *([(f"bill {spent}", "dim")] if spent else []),
         ]
         named = [*long[:2], (long[2][0] + (c.get("with", "") if c["ready"] else ""), ""), *long[3:]]
@@ -1537,7 +1536,7 @@ class Watch(App):
             argv = _sentence(argv)
         if argv[:1] == ["stop"]:
             return self.stop_runs()
-        if argv[:1] in (["ui"], ["watch"], ["ingest"], ["init"]):
+        if argv[:1] in (["watch"], ["ingest"], ["init"]):
             self.message = f"✗ `graphene {argv[0]}` takes a terminal of its own: run it outside this screen"
             return self.say_status()
         slow = argv[:1] in (["run"], ["ask"]) or argv[:2] in (
@@ -1698,7 +1697,8 @@ class Watch(App):
         self.background(argv)
 
     def action_plan_first(self) -> None:
-        self.did(["plan", "first", "off" if self.counts.get("first") else "on"])
+        now = self.counts.get("first", "off")  # on, auto, off: strictest to loosest, then round
+        self.did(["plan", "first", P.FIRST[(P.FIRST.index(now) + 1) % 3]])
 
     def action_release_or_reopen(self) -> None:
         node_id = self.selected()

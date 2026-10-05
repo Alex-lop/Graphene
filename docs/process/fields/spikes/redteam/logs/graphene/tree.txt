@@ -1,6 +1,0 @@
-goal: a machine-checked proof in Lean 4 that doubling a natural number equals adding it to itself
-
-- doubling equals adding to itself  [target]
-    Lean: S_target := ∀ n : Nat, Doubles n
-    scope: Proofs/Target.lean
-    check: ./check-leaf.sh Target

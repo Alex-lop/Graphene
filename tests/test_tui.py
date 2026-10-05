@@ -501,16 +501,10 @@ def test_q_gives_the_terminal_back_while_a_run_started_here_goes_on(repo):
 
 
 # Recheck 29 (fixed)
-def test_a_command_that_keeps_a_terminal_is_refused_not_run_on_the_screen(repo, monkeypatch):
-    from graphene_map import server
-
-    served = []
-    monkeypatch.setattr(server, "make_server", lambda *a, **k: served.append(a))
+def test_a_command_that_keeps_a_terminal_is_refused_not_run_on_the_screen(repo):
     proposed(repo)
-    for typed in ("ui --no-open", "ingest hook"):
-        seen, _ = watch(repo, ["colon", *typed, "enter"], size=(120, 30))
-        assert f"`graphene {typed.split()[0]}` takes a terminal of its own" in seen["status"]
-    assert served == []  # no server was started on the screen's own thread
+    seen, _ = watch(repo, ["colon", *"ingest hook", "enter"], size=(120, 30))
+    assert "`graphene ingest` takes a terminal of its own" in seen["status"]
 
 
 # Recheck 30 (fixed)
@@ -690,22 +684,6 @@ def test_at_80_columns_a_leaf_that_came_back_says_why_and_its_keys_before_its_co
     top = [line.strip() for line in seen["detail"].splitlines()[:4]]
     assert top[:2] == ["the schema", "schema · came back"]  # say came back once, in the header
     assert top[2] == "the column needs a migration" and top[3].startswith("w  widen its scope")
-
-
-# Recheck 70 (fixed)
-def test_colon_ui_is_refused_and_the_screen_still_answers(repo, monkeypatch):
-    """`:ui` ran the page's server on the screen's own thread: no key was read again."""
-    import socketserver
-    import webbrowser
-
-    served = []
-    monkeypatch.setattr(socketserver.BaseServer, "serve_forever", lambda self, *a, **k: served.append(self))
-    monkeypatch.setattr(webbrowser, "open", lambda *a, **k: True)
-    proposed(repo)
-    seen, _ = watch(repo, ["colon", *"ui", "enter"])
-    assert "`graphene ui` takes a terminal of its own" in seen["status"]
-    seen, _ = watch(repo, ["colon", *"ui", "enter", "j"])
-    assert not served and seen["cursor"] == "api"  # j after it was taken
 
 
 # Recheck 76 (fixed)
@@ -1010,11 +988,11 @@ def test_the_status_line_is_two_lines_fitted_at_a_word_at_80_and_120(repo):
     wide, _ = at(repo, "rule", (120, 36))
     top, bottom = wide["status"].splitlines()
     assert top == ("waiting on you: 4 · executors: 1 running · R runs 1 ready · 1 came back · 1/9 done · "
-                   "plan first: on (P)")  # the proposal counted, as `graphene` counts it
+                   "plan first: auto (P)")  # the proposal counted, as `graphene` counts it
     assert bottom == "y sign off · x send back · Enter record · Tab view · ? talk · q quit"  # ? on a node
     narrow, _ = at(repo, "rule", (80, 24))
     top, bottom = narrow["status"].splitlines()
-    assert top == "4 on you · 1 running · R: 1 ready · 1 came back · 1/9 done · plan first: on"
+    assert top == "4 on you · 1 running · R: 1 ready · 1 came back · 1/9 done · plan first: auto"
     long = "graphene node edit rule: " + "the scope changed from one path to a longer list of them " * 3
 
     async def said(app, pilot):
@@ -1061,13 +1039,13 @@ def test_s_is_refused_on_what_is_running_in_review_or_done_without_starting_a_pl
     assert asked == [["node", "split", "later"]]
 
 
-def test_P_turns_plan_first_off_and_on_and_the_status_line_says_which(repo):
-    every_state(repo)
-    for now in (False, True):
+def test_P_cycles_plan_first_on_auto_off_and_the_status_line_says_which(repo):
+    every_state(repo)  # never set, with a plan in force: auto
+    for now in ("off", "on", "auto"):
         seen, _ = watch(repo, ["P"], size=(120, 36))
         with Store.open(repo) as store:
-            assert plan.plan_first(store) is now
-        assert f"plan first: {'on' if now else 'off'} (P)" in seen["status"]
+            assert plan.plan_first(store) == now
+        assert f"plan first: {now} (P)" in seen["status"]
 
 
 def test_keys_typed_after_colon_or_slash_go_to_the_line_not_to_the_tree(repo, monkeypatch):

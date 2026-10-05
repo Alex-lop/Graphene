@@ -1,0 +1,18 @@
+                                                                                
+ Usage: graphene init [OPTIONS]                                                 
+                                                                                
+ Choose this repo's planner and executor from what is found here: `claude` or   
+ `codex` on the PATH, or NEBIUS_API_KEY for NVIDIA Nemotron on Token Factory.   
+ None is offered first. At a terminal it asks once, each choice with what it    
+ needs, and Enter takes one only when exactly one is found; without a terminal  
+ the flags choose, and a choice not made gets what is found when exactly one    
+ thing is. `graphene run`, `ask` and `node split` start them, and `--with`      
+ overrides one command. Then install the Claude Code hooks, which hold a Claude 
+ Code session to the plan and keep its record.                                  
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --planner         <str>  The planner: claude, codex, nemotron or a command.  │
+│ --executor        <str>  The executor: claude, codex, nemotron or a command. │
+│ --help                   Show this message and exit.                         │
+╰──────────────────────────────────────────────────────────────────────────────╯
+

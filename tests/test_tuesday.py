@@ -1,7 +1,7 @@
 # ruff: noqa: F811  (the repo fixture is imported from test_gate and named again as an argument)
 """Free on a Tuesday: with a plan in force, a small attended task costs the person nothing more than
 the prompt they would have typed anyway. With plan first off, the prompt is the leaf (decision 18);
-with it on, the agent proposes the one leaf and it is theirs at once. Driven through hook_main with
+with it auto, the agent proposes the one leaf and it is theirs at once. Driven through hook_main with
 the vendor's event shapes, and `graphene plan propose` as an agent runs it."""
 
 import pytest
@@ -20,7 +20,7 @@ AGENT = {"CLAUDECODE": "1", "CLAUDE_CODE_SESSION_ID": SID}  # the shell of the s
 def in_force(repo):  # a finished plan stays in force, and plan first is off: decision 18's state
     with Store.open(repo) as store:
         plan.propose(store, [{"title": "users", "scope": ["src/api/**"], "check": "true"}], ALEX)
-        plan.set_plan_first(store, False, ALEX)
+        plan.set_plan_first(store, "off", ALEX)
 
 
 @pytest.fixture(autouse=True)
@@ -107,7 +107,7 @@ def test_a_shell_write_is_covered_by_the_leaf_its_prompt_made(repo):
     assert bash(repo, "echo 'T = []' > src/db/schema.py && echo x > src/db/other.py") is None
 
 
-@pytest.mark.parametrize("first", [True, False])
+@pytest.mark.parametrize("first", ["on", "auto", "off"])
 @pytest.mark.parametrize("said", ["yes", "yes, go ahead", "ok do n1", "accept everything", "lgtm n1"])
 def test_a_yes_typed_into_the_session_accepts_nothing(repo, said, first):
     """Decision 19's yes rule read magic words out of the person's prose; it is gone. They accept in
@@ -168,7 +168,7 @@ def test_naming_a_ready_leaf_is_not_a_way_around_it(repo):
     first on the session is told to take n1, and refused until it does."""
     in_force(repo)
     with Store.open(repo) as store:
-        plan.set_plan_first(store, True, ALEX)
+        plan.set_plan_first(store, "auto", ALEX)
     assert "`graphene node start n1`" in context(hook(repo, "UserPromptSubmit", prompt="do n1"))
     assert "graphene node start n1" in reason(write(repo, "src/db/schema.py"))  # take it; no `**` instead
 
@@ -190,7 +190,7 @@ def test_an_agent_may_not_run_the_hook_itself(repo):
         assert "not an agent's to run" in reason(bash(repo, command))
 
 
-# -- the one-line ask stays free: plan first on ------------------------------------------------------------
+# -- the one-line ask stays free: plan first auto ----------------------------------------------------------
 
 LEAF = "- fix the header typo  [typo]\n    scope: README.md\n    check: grep -q Hello README.md\n"
 
@@ -202,7 +202,7 @@ def propose(repo, monkeypatch, text, env=AGENT):
 
 def test_a_one_line_ask_proposed_as_one_leaf_is_the_persons_at_once(repo, monkeypatch):
     with Store.open(repo) as store:
-        plan.set_plan_first(store, True, ALEX)
+        plan.set_plan_first(store, "auto", ALEX)
     hook(repo, "UserPromptSubmit", prompt="fix the typo in the README header")
     said = propose(repo, monkeypatch, LEAF)
     assert said.exit_code == 0, said.output
@@ -221,9 +221,18 @@ def test_a_one_line_ask_proposed_as_one_leaf_is_the_persons_at_once(repo, monkey
     assert "outside the scope" in reason(write(repo, "src/db/schema.py"))
 
 
+def test_with_plan_first_on_a_one_leaf_proposal_waits_for_the_person(repo, monkeypatch):
+    with Store.open(repo) as store:
+        plan.set_plan_first(store, "on", ALEX)
+    hook(repo, "UserPromptSubmit", prompt="fix the typo in the README header")
+    assert "until the person accepts" in propose(repo, monkeypatch, LEAF).stdout
+    with Store.open(repo) as store:
+        assert plan.get(store, "typo").state == PROPOSED
+
+
 def test_undo_takes_back_a_one_line_ask_as_any_act_of_the_persons(repo, monkeypatch):
     with Store.open(repo) as store:
-        plan.set_plan_first(store, True, ALEX)
+        plan.set_plan_first(store, "auto", ALEX)
     hook(repo, "UserPromptSubmit", prompt="fix the typo in the README header")
     assert "is accepted" in propose(repo, monkeypatch, LEAF).stdout
     with Store.open(repo) as store:
@@ -234,7 +243,7 @@ def test_undo_takes_back_a_one_line_ask_as_any_act_of_the_persons(repo, monkeypa
 def test_a_tree_or_a_second_proposal_or_a_split_waits_for_the_person(repo, monkeypatch):
     in_force(repo)
     with Store.open(repo) as store:
-        plan.set_plan_first(store, True, ALEX)
+        plan.set_plan_first(store, "auto", ALEX)
     tree = (
         "- load the feed  [feed]\n  - read xml  [xml]\n      scope: src/api/**\n      check: true\n"
         "  - skip zeros  [zero]\n      scope: src/db/**\n      check: true\n"
@@ -271,7 +280,7 @@ def test_a_session_that_holds_a_leaf_proposes_for_the_person_to_accept(repo, mon
     """What an agent proposes while it holds a leaf is its idea, not the ask the person typed."""
     in_force(repo)
     with Store.open(repo) as store:
-        plan.set_plan_first(store, True, ALEX)
+        plan.set_plan_first(store, "auto", ALEX)
     hook(repo, "UserPromptSubmit", prompt="do n1")
     with Store.open(repo) as store:
         plan.start(store, "n1", BOT, repo)

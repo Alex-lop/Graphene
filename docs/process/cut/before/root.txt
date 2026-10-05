@@ -1,0 +1,61 @@
+                                                                                
+ Usage: graphene [OPTIONS] COMMAND [ARGS]...                                    
+                                                                                
+ The shared plan between you and your coding agents: a graph of nodes, each     
+ with a goal, the paths it may touch and a check, which you shape and the       
+ agents are held to. `graphene` alone shows the plan and where the work stands; 
+ `graphene node show <id>` is what was done for one node.                       
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --version          Print the version and exit.                               │
+│ --help             Show this message and exit.                               │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Commands ───────────────────────────────────────────────────────────────────╮
+│ plan       The shared plan: what will be done, by whom, inside which paths.  │
+│ node       One node of the plan: shape it, take it, finish it, read its      │
+│            record.                                                           │
+│ watch      The plan on one screen, live, with vim keys: the tree, the node   │
+│            under the cursor, the executors as they work. Every key is a      │
+│            command you could type (the bottom line says which); `?` lists    │
+│            them, `q` leaves. `--once` prints the plan instead, for a script  │
+│            or a terminal you do not want to give up.                         │
+│ ask        Ask a planner for a proposal: it reads the repo with read-only    │
+│            tools and prints the tree in the plan's text, which is added as   │
+│            proposals for you to prune. Nothing runs.                         │
+│ run        Run every leaf an agent can reach: one executor per leaf, and     │
+│            Graphene decides what is done. The last line says what the run    │
+│            did; `graphene watch` shows it when the run ends.                 │
+│ init       Choose this repo's planner and executor from what is found here:  │
+│            `claude` or `codex` on the PATH, or NEBIUS_API_KEY for NVIDIA     │
+│            Nemotron on Token Factory. None is offered first. At a terminal   │
+│            it asks once, each choice with what it needs, and Enter takes one │
+│            only when exactly one is found; without a terminal the flags      │
+│            choose, and a choice not made gets what is found when exactly one │
+│            thing is. `graphene run`, `ask` and `node split` start them, and  │
+│            `--with` overrides one command. Then install the Claude Code      │
+│            hooks, which hold a Claude Code session to the plan and keep its  │
+│            record.                                                           │
+│ ui         The plan on screen, and behind it the map of a run, drawn from    │
+│            the records.                                                      │
+│ demo       A recorded run, replayed in `graphene watch` change by change,    │
+│            the top line saying it is a replay and whether a model or a       │
+│            scripted stand-in made it. Each change stays on the screen at     │
+│            least two seconds, and a wait over three is cut to three and      │
+│            said. Space pauses and plays on, `.` shows the next change, `r`   │
+│            plays it again. It needs no key, no network and no Docker, and    │
+│            nothing in it runs: a key that would change the plan or start     │
+│            anything says so. `--once` prints where it ends. `--record FILE`  │
+│            makes one from the repository it is started in: the plan's store  │
+│            over the run, never a key or a path of yours.                     │
+│ board      The board: the planner's questions, assumptions, risks and        │
+│            leave-outs, and your notes.                                       │
+│ direction  The direction: the goals above the plans, with every plan and     │
+│            session hanging from one.                                         │
+│ talk       Talk with the planner about a node: why it is there, split it,    │
+│            merge it with others, another way. Every answer lands in the plan │
+│            or on the board, for you to keep or drop.                         │
+│ config     Graphene's settings: shown, and edited by the person.             │
+│ key        The Token Factory key, kept in the system keychain (a person      │
+│            only).                                                            │
+╰──────────────────────────────────────────────────────────────────────────────╯
+

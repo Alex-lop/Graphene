@@ -1,0 +1,30 @@
+                                                                                
+ Usage: graphene plan [OPTIONS] COMMAND [ARGS]...                               
+                                                                                
+ Print the plan: what will be done, by whom, inside which paths.                
+                                                                                
+ The commands below change the plan. The options print the plan as text, JSON   
+ or a view.                                                                     
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --json                 Print the plan as JSON.                               │
+│ --text                 Print the plan as text, the form `plan edit` opens    │
+│                        and `plan propose` reads.                             │
+│ --all                  Unfold the tree, finished work included.              │
+│ --view          <str>  Draw the plan as one view: auto, outline, tree, dag.  │
+│ --width         <int>  With --view, the columns to draw in; $COLUMNS if left │
+│                        out.                                                  │
+│ --height        <int>  With --view, the rows to draw in; $LINES if left out. │
+│ --help                 Show this message and exit.                           │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Commands ───────────────────────────────────────────────────────────────────╮
+│ edit     Open the plan as text in your editor ($VISUAL, $EDITOR, else vi).   │
+│ undo     Undo your last act on the plan, such as a drop or an accept.        │
+│ accept   Accept proposals into the plan.                                     │
+│ log      Print everything that happened on the plan, oldest first.           │
+│ archive  Put finished nodes away.                                            │
+│ pause    Pause the plan: nothing starts and no write is refused.             │
+│ first    Set whether an agent proposes a tree before it writes.              │
+│ resume   Put the plan back in force.                                         │
+╰──────────────────────────────────────────────────────────────────────────────╯
+

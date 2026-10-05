@@ -1,8 +1,0 @@
-(a) trusted inputs   pass      0.2s  5 files from e5dd953256bb16ced29ccafc3f45691b837bac1f; none differed; .lake cloned
-    trusted build    pass      1.8s  Challenge, Spec.* (reused from the trusted .lake when unchanged)
-(b) lake build       pass      0.4s  Proofs.FalseLeaf (sandboxed; sorry warnings: 0)
-(c) type + axioms    pass      0.3s  falseLeaf: [propext]; 
-(d) kernel replay    pass      0.7s  leanchecker Proofs.FalseLeaf 
-(e) SafeVerify       FAIL      2.0s  rejected FalseLeaf: Found a problem in .lake/build/lib/lean/Proofs/FalseLeaf.olean with declaration falseLeaf: theorem type mismatch
-(e) comparator       FAIL      1.6s  rejected FalseLeaf: uncaught exception: Challenge and solution theorem statement do not match: 'falseLeaf'
-gate: FAIL (logs in scratchpad/tmp/hijack-gate/work/logs)

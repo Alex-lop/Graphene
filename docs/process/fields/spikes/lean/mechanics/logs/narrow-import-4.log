@@ -1,4 +1,0 @@
-=== 2026-09-30 02:29:23 EDT cwd=/private/tmp/claude-501/-Users-alexlopez-Desktop-AllThingsAgenticHackathon/1c257068-543a-48a1-ae2e-a2935409e414/scratchpad/fields/docs/process/fields/spikes/lean/mechanics load=[{ 6.64 10.02 9.37 }] swap=[total = 21504.00M  used = 19977.94M  free = 1526.06M  (encrypted)]
-$ lake env lean Measure/Narrow.lean
-'clean' depends on axioms: [propext]
-=== rc=0 wall=1.78s maxrss=1247MB

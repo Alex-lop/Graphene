@@ -1,1 +1,0 @@
-check-leaf NotDvdEuclid: proven in 60 s; GateCheck not_dvd_euclid: ok; axioms [propext, Quot.sound]

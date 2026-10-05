@@ -84,11 +84,8 @@ def test_version_and_help_read_as_a_product():
     text = run("--help").output
     listed = [line.split()[1] for line in text.splitlines() if line.startswith("│ ") and line[2] != " "]
     commands = [name for name in listed if not name.startswith("-")]
-    assert commands == [
-        "plan", "node", "watch", "ask", "run", "init", "ui", "demo", "board", "direction", "talk", "config",
-        "key",
-    ]  # fmt: skip
-    assert "ingest" not in text  # the hooks call it; nobody types it
+    assert commands == ["init", "ask", "watch", "run", "plan", "node", "board", "demo", "config"]
+    assert "ingest" not in text and "talk" not in text  # hidden: they work, and the help leaves them out
     assert "graphene node show" in text  # what was done for one node is where the record lives now
 
 
@@ -100,7 +97,7 @@ def test_init_installs_hooks_and_ignores_the_store(repo):
     assert not (repo / ".claude" / "settings.json").exists()  # the team's file is never touched
     assert set(settings["hooks"]) == set(HOOK_EVENTS)
     assert not (repo / ".gitignore").exists()  # the store ignores itself; the repo's file is not touched
-    assert (repo / ".graphene").exists()  # holding one setting: plan first is on
+    assert (repo / ".graphene").exists()  # holding one setting: plan first is auto
     assert "already installed" in run("init").output
     from graphene_map.store import Store
 
@@ -115,10 +112,9 @@ def test_nothing_planned_and_nothing_recorded(repo, tmp_path):
     said = {"type": "user", "cwd": str(repo), "timestamp": "2026-03-01T09:00:00.000Z"}
     said |= {"message": {"role": "user", "content": "greet people with hello"}}
     (transcripts / f"{SID}.jsonl").write_text(json.dumps(said) + "\n")
-    for args in (["ui"], ["ui", "--json"]):
-        result = run(*args)
-        assert result.exit_code == 1, args
-        assert one_line(result).startswith("nothing to draw here yet: no plan, and no Claude Code session")
+    result = run()
+    assert result.exit_code == 1
+    assert one_line(result).startswith("nothing is planned here yet")
     assert run("ingest").exit_code == 2  # the hooks call `graphene ingest hook`; there is nothing else
     assert not (repo / ".graphene").exists()  # nothing to record, nothing written
 
@@ -158,33 +154,9 @@ def test_every_commands_help_reads_as_paragraphs():
 
     for command in walk(typer.main.get_command(build())):
         for paragraph in (command.help or "").split("\n\n"):
-            assert paragraph.startswith("\b") or "\n" not in paragraph, (command.name, paragraph)
+            assert "\n" not in paragraph, (command.name, paragraph)
     helped = run("plan", "propose", "--help").output
-    assert "with the [id] of a node" in " ".join(helped.split()) and "[short-id]" in helped
-
-
-def test_the_empty_state_knows_when_the_hooks_are_installed(repo):
-    assert "`graphene init` records sessions live" in one_line(run("ui"))
-    init = run("init")
-    assert "next Claude Code session" in init.output and "settings.local.json is your personal" in init.output
-    line = one_line(run("ui"))
-    assert "hooks are installed" in line and "graphene init" not in line
-
-
-def test_the_map_is_drawn_from_a_session_the_hooks_recorded(repo, recorded):
-    graph = json.loads(run("ui", "--json").stdout)
-    assert [lane["session"] for lane in graph["lanes"] if lane["kind"] == "main"] == [SID]
-    assert {row["path"] for row in graph["rows"] if row["kind"] == "file"} >= {
-        "app/hello.py",
-        "tests/test_hello.py",
-        "README.md",
-    }
-    assert graph["counters"]["failures"] + graph["counters"]["refused"] >= 1
-
-    one = run("ui", "--session", SID[:8], "--json")
-    assert one.exit_code == 0, one.output
-    assert [s["id"] for s in json.loads(one.stdout)["run"]["sessions"]] == [SID]
-    assert run("ui", "--session", "zzz").exit_code == 2
+    assert "A line with an existing [id] adds under that node." in " ".join(helped.split())
 
 
 def test_commands_refuse_to_run_outside_a_git_repo(tmp_path, monkeypatch):
@@ -194,7 +166,6 @@ def test_commands_refuse_to_run_outside_a_git_repo(tmp_path, monkeypatch):
     assert one_line(result) == "run this inside a git repository (no .git found above the current directory)"
     assert run().exit_code == 2
     assert not (tmp_path / ".claude").exists() and not (tmp_path / ".graphene").exists()
-    assert run("ui").exit_code == 2
 
 
 def test_commands_refuse_to_treat_your_home_directory_as_a_repo(tmp_path, monkeypatch):
@@ -209,19 +180,6 @@ def test_commands_refuse_to_treat_your_home_directory_as_a_repo(tmp_path, monkey
     assert result.exit_code == 2
     assert one_line(result).startswith("refusing to treat your home directory as a repo; cd into")
     assert not (home / ".graphene").exists()
-
-
-def test_a_session_that_changed_nothing_is_still_drawn(repo):
-    """A session that only read a file and ran a command: nothing was changed."""
-    quiet = "99999999-2222-4333-8444-555555555555"
-    hook(repo, "UserPromptSubmit", quiet, prompt="what does hello.py do?", prompt_id="p1")
-    read = {"tool_name": "Read", "tool_input": {"file_path": f"{repo}/app/hello.py"}, "tool_response": {}}
-    hook(repo, "PostToolUse", quiet, prompt_id="p1", tool_use_id="t1", **read)
-    ran = {"stdout": "2 passed", "stderr": "", "interrupted": False}
-    bash = {"tool_name": "Bash", "tool_input": {"command": "uv run pytest -q"}, "tool_response": ran}
-    hook(repo, "PostToolUse", quiet, prompt_id="p1", tool_use_id="t2", **bash)
-    graph = json.loads(run("ui", "--json").stdout)
-    assert graph["run"]["prompts"] == 1 and graph["rows"] == []  # nothing changed, so no file row
 
 
 def test_a_store_another_process_is_writing_is_one_line(repo, recorded, monkeypatch):
@@ -246,7 +204,7 @@ def test_a_store_locked_before_it_is_even_opened_is_the_same_line(repo, monkeypa
     other = sqlite3.connect(repo / ".graphene" / "graphene.db", timeout=0.2, isolation_level=None)
     other.execute("BEGIN EXCLUSIVE")  # holds the lock before Graphene can create its tables
     try:
-        result = run("ui")
+        result = run()
         assert result.exit_code == 1
         assert one_line(result).startswith("the store .graphene/graphene.db is locked")
     finally:
@@ -256,12 +214,12 @@ def test_a_store_locked_before_it_is_even_opened_is_the_same_line(repo, monkeypa
 def test_a_corrupt_store_is_rebuilt(repo):
     (repo / ".graphene").mkdir()
     (repo / ".graphene" / "graphene.db").write_text("this is not a database")
-    result = run("ui")
+    result = run()
     output = result.output + result.stderr
     assert (repo / ".graphene" / "graphene.db.corrupt.bak").exists()
     assert "store rebuilt" in output and "Traceback" not in output
-    assert result.exit_code == 1  # an empty store has nothing to draw: the usual one-line message
-    assert "nothing to draw here yet" in output
+    assert result.exit_code == 1  # an empty store has no plan: the usual one-line message
+    assert "nothing is planned here yet" in output
 
 
 def test_init_says_how_to_turn_the_shell_change_lists_on_until_they_are(repo, tmp_path, monkeypatch):
@@ -272,17 +230,6 @@ def test_init_says_how_to_turn_the_shell_change_lists_on_until_they_are(repo, tm
     (config / "settings.json").write_text('{"bashEditDiffEnabled": true}')
     assert "bashEditDiffEnabled" not in run("init").output
     assert (config / "settings.json").read_text() == '{"bashEditDiffEnabled": true}'  # read, never written
-
-
-def test_the_page_opens_on_the_plan_in_a_repo_where_no_session_was_recorded(repo, tmp_path, monkeypatch):
-    """The plan is the first screen, so a repo with a plan and no recorded run still has a page."""
-    monkeypatch.setenv("GRAPHENE_AS", "person:alex")
-    assert run("node", "add", "the users endpoint", "--scope", "src/api/**", "--check", "true").exit_code == 0
-    out = tmp_path / "plan.html"
-    result = run("ui", "--export", str(out))
-    assert result.exit_code == 0, one_line(result)
-    page = out.read_text(encoding="utf-8")
-    assert "the users endpoint" in page and '"waiting_on_person"' in page
 
 
 def test_before_init_plain_graphene_names_init_and_init_names_the_next_step(repo):

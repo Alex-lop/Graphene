@@ -1,0 +1,22 @@
+                                                                                
+ Usage: graphene run [OPTIONS]                                                  
+                                                                                
+ Run every leaf an agent can reach: one executor per leaf, and Graphene decides 
+ what is done. The last line says what the run did; `graphene watch` shows it   
+ when the run ends.                                                             
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --with            <str>  The executor, for this run: nemotron, claude,       │
+│                          codex, or a command that takes a prompt as its last │
+│                          argument. Default: the one `graphene init` chose;   │
+│                          with none chosen, the run is refused.               │
+│ --attempts        <int>  How often a refused executor is sent back.          │
+│                          [default: 3]                                        │
+│ --node            <str>  Only this node; repeat it.                          │
+│ --parallel        <int>  Leaves at once, each in its own worktree and        │
+│                          branch, merged here when clean. 1 (default) works   │
+│                          in this checkout and commits nothing.               │
+│                          [default: 1]                                        │
+│ --help                   Show this message and exit.                         │
+╰──────────────────────────────────────────────────────────────────────────────╯
+

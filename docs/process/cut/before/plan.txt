@@ -1,0 +1,70 @@
+                                                                                
+ Usage: graphene plan [OPTIONS] COMMAND [ARGS]...                               
+                                                                                
+ The shared plan: what will be done, by whom, inside which paths.               
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --json                 The plan as JSON.                                     │
+│ --text                 The plan as text: the form `plan edit` opens and      │
+│                        `propose` reads.                                      │
+│ --all                  Unfold the tree: finished work included.              │
+│ --view          <str>  Print it as this view: auto, outline, tree, dag (the  │
+│                        screen's Tab).                                        │
+│ --width         <int>  With --view: the columns ($COLUMNS if left out).      │
+│ --height        <int>  With --view: the rows ($LINES if left out).           │
+│ --help                 Show this message and exit.                           │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Commands ───────────────────────────────────────────────────────────────────╮
+│ cover     Nano says which leaf carries each clause of your paragraph; for    │
+│           one no leaf carries, you are offered the command that puts your    │
+│           own words, as you wrote them, on the nearest leaf.                 │
+│ precheck  Red first: run each leaf's check before any work, and say which    │
+│           pass already or cannot run. A proposed leaf's check runs only in a │
+│           sandbox fork, never here.                                          │
+│ goal      Say (or read) the root of the tree. Every executor is told it,     │
+│           above its own node.                                                │
+│ propose   Add a tree, in the text `graphene plan --text` prints. From an     │
+│           agent every line is a proposal, which nobody can start until a     │
+│           person accepts it; a line with the [id] of a node already in the   │
+│           plan is where the new lines under it go. JSON ({"nodes": [...]})   │
+│           is read too.                                                       │
+│ edit      Open the plan (or a subtree) as text in your editor ($VISUAL,      │
+│           $EDITOR, else vi). Add a line, move one, delete one, change a      │
+│           scope, turn a "?" into "-" to accept; save and quit, and Graphene  │
+│           applies the difference, all of it or none. A line it cannot read   │
+│           is refused by its number and nothing is applied.                   │
+│ undo      Put back your last act on the plan (an edit, an add, a drop, an    │
+│           acceptance, a saved text).                                         │
+│ accept    Accept proposals into the plan, and say what an unattended run     │
+│           will and will not reach.                                           │
+│ log       Everything that happened on the plan, oldest first; `*` is what    │
+│           belonged to no node.                                               │
+│ record    The record of the whole plan: every leaf's added up. One leaf's is │
+│           `graphene node show`.                                              │
+│ archive   Put finished nodes away. With nothing else left, the plan is no    │
+│           longer in force.                                                   │
+│ ack       The uncommitted changes in the checkout that no leaf made are      │
+│           yours, as they stand (committing them does the same: a commit is   │
+│           the repository moving, and the plan follows it).                   │
+│ pause     Suspend the plan: nothing starts, and no write is refused, until   │
+│           `graphene plan resume`.                                            │
+│ prompts   What a request typed into a session means while the plan is in     │
+│           force. 'leaf': the first write of the turn makes a leaf from your  │
+│           prompt, held by that session, and its record says what it touched. │
+│           'strict': a session that holds no node writes nothing, as in 0.3.  │
+│ first     Plan first: what you ask for in a session is proposed as a tree    │
+│           before any code, and the agent writes nothing until a leaf of it   │
+│           is accepted and taken (a one-line ask is proposed as one leaf,     │
+│           which is yours at once). `P` in graphene watch turns it on and     │
+│           off.                                                               │
+│ resume    Put the plan back in force.                                        │
+│ note      Place a note: a model finds the leaf it constrains and prints the  │
+│           command that would change that leaf. Nothing changes until you run │
+│           it.                                                                │
+│ changes   What anyone else changed in the plan since you last marked it      │
+│           seen: added, dropped, edited, the board, by whom.                  │
+│ seen      Mark the plan as you have seen it: what anyone changes after this  │
+│           is marked on the screen (+ added, ~ changed) and listed by         │
+│           `graphene plan changes`. Only you move the mark.                   │
+╰──────────────────────────────────────────────────────────────────────────────╯
+

@@ -4,7 +4,9 @@
 edit as binding: it reads this before it reads the code. It is the same shape as the product: you
 shape the plan, the agents execute it. First written 2026-09-20 by the agent that ran the
 collaboration directive (`docs/process/directives/COLLABORATION_DIRECTIVE.md`); last added to on
-2026-09-29, by the agent that ran the first-light directive.*
+2026-10-05, by the agent that ran the cut directive.*
+
+*The process archive moved off `main` on the cut night. It is the orphan branch `process`, at `fb6a408`.*
 
 ## What Graphene is
 
@@ -409,7 +411,7 @@ change is named here.
     last sentence.** Not `graphene`: that import name belongs to the GraphQL library on PyPI, and a
     person with both installed gets whichever wins. The command stays `graphene`, so hooks already
     installed (`graphene ingest hook`) keep working. Dated records (`docs/test/results-*`,
-    `docs/test/findings/`, the diary in `docs/process/`) keep the old name, because they describe
+    `docs/test/findings/`, the diary in [`docs/process/`](https://github.com/Alex-lop/Graphene/tree/process/docs/process)) keep the old name, because they describe
     what was there then.
 54. **Graphene calls a model when you name its Nemotron planner or executor. This changes decision 9,
     as amended on 23 September.** `--with nemotron` is Graphene's own code calling Nebius Token Factory
@@ -418,8 +420,8 @@ change is named here.
     prompts about the repository, the files the model asks to read, and, in a sandbox, the leaf's
     checkout. Claude Code and Codex are started exactly as before. *Why:* the directive makes Nemotron
     how Graphene works, and a planner or executor that is Graphene's own code is the only way to hold it
-    before the write (55). *Evidence:* `tests/test_executor.py` shows a command the model runs has
-    `GRAPHENE_NODE` in its environment and no key. `tests/test_tokenfactory.py` shows the ledger and a
+    before the write (55). *Evidence:* `tests/nemotron/test_executor.py` shows a command the model runs has
+    `GRAPHENE_NODE` in its environment and no key. `tests/nemotron/test_tokenfactory.py` shows the ledger and a
     recording hold no key.
 55. **The placement is "the loop here, the tools there."** Graphene's loop runs on this machine and
     calls Token Factory. Every tool call runs in the leaf's placement: its checkout, or a Token Factory
@@ -427,10 +429,10 @@ change is named here.
     - Only a loop of ours can refuse a write before it happens. The edit and write tools do
       (`gate.scope_refused`, the hook's own words, not a copy).
     - The refusal is logged where the hand-back's offers are read from, so a leaf that comes back
-      offers `w` for exactly the path it was refused (`tests/test_executor.py`).
+      offers `w` for exactly the path it was refused (`tests/nemotron/test_executor.py`).
     - The key never enters the machine where model-written code runs.
     - In the Docker stand-in, a command took 1.3 to 2.3 s and making the sandbox 7.5 s
-      (`tests/test_escape.py`'s log).
+      (`tests/nemotron/test_escape.py`'s log).
     - ConTree's own latencies, and any number with a real model, are not measured: this shell had no
       key.
 
@@ -462,7 +464,7 @@ change is named here.
     names a file it may create files (sticky bit), and nowhere else. POSIX grants "may create" per
     directory, not per name. So a command there can make a file the scope does not name: it is never
     brought back to the checkout, it is logged as a breach and removed before the next command, and the
-    check, which runs from the checkout, never sees it. *Evidence:* `tests/test_escape.py`. A redirect,
+    check, which runs from the checkout, never sees it. *Evidence:* `tests/nemotron/test_escape.py`. A redirect,
     `sed -i`, `python open(w)`, `mv`, `rm`, git, a symlink over the file and `chmod` all exit non-zero.
     A new `tests/conftest.py` and a link out are made, refused and never brought back. Every in-scope
     write succeeds.
@@ -473,7 +475,7 @@ change is named here.
 59. **The ConTree SDK is pinned at 0.3.6, and ConTree is spoken to in one class.** The docs' Getting
     Started describes an SDK that takes a `contree_client` client. No release does that: 0.3.6 and
     0.4.0.dev5 both take a config or a token. 0.4.0.dev5 also needs `contree-client~=0.2` where the CLI
-    needs `~=0.4`. `tests/test_sandbox_contract.py` binds every call Graphene makes to the pinned
+    needs `~=0.4`. `tests/nemotron/test_sandbox_contract.py` binds every call Graphene makes to the pinned
     SDK's signatures.
 60. **A leaf can be forked: N conversations from one checkpoint, and the check picks** (`--forks N`).
     The first fork whose check passes is copied in, what its scope covers and nothing else, and
@@ -535,7 +537,7 @@ change is named here.
     - **The folded row.** It keeps decision 41's glyph, title and id. Its word column says how many
       leaves are inside and in which states, whose move first: `6 done`, `1 came back, 4 more`.
 
-    *Evidence:* the before and after screens in `docs/process/nemotron/folding/`: thirty leaves at
+    *Evidence:* the before and after screens in [`docs/process/nemotron/folding/`](https://github.com/Alex-lop/Graphene/tree/process/docs/process/nemotron/folding): thirty leaves at
     80×24 were ten rows of one sub-goal, and are now seven rows that say where the person's move is.
     *The cost you may strike:* folding a row whose count is wider than every word shown moves the ids
     by up to about ten columns.
@@ -570,14 +572,14 @@ change is named here.
     Workflow's grouping of subagents is not drawn. A subagent's task, closing words and worktree
     are read from what the hooks recorded (the review found them lost at first).
 
-    The map of what was kept, moved and deleted is `docs/process/nemotron/cut.md`.
+    The map of what was kept, moved and deleted is [`docs/process/nemotron/cut.md`](https://github.com/Alex-lop/Graphene/blob/process/docs/process/nemotron/cut.md).
 67. **A leaf in a sandbox forks its commit's checkpoint.** The repository is uploaded and set up once
     for each clean commit, `--prepare` included, and kept in the store's meta. Every leaf at that
     commit forks it and adds only its own scope's permissions. `--forks N` forks one sandbox. A leaf
     with uncommitted work of its own gets a checkpoint of its own. *Why:* the thesis is "each leaf
     runs in a Sandbox forked from the same checkpoint", and the judges found that each leaf and each
     fork uploaded and set up again. *Evidence:* two leaves at one commit, the second made with two
-    operations (`tests/test_sandbox_state.py`).
+    operations (`tests/nemotron/test_sandbox_state.py`).
 68. **An executor that cannot work at all hands its leaf back itself, with the cause** (no key, a
     refused key, no sandbox, ConTree's own errors, the spend cap). *Why:* the run then does not send
     it round again to fail the same way and run its check on untouched code. A judge saw a wrong key
@@ -620,7 +622,7 @@ changes a decision above, the old one is left as written and the change is named
     what is wrong. With no id, the planner gets the largest listed and the executor the smallest; the
     planner now plans with Nano when Nano is all there is. *Why:* `init` writes ids into a
     repository's config (56, 61), and Token Factory retires models on notice before judging ends on
-    15 December. *Evidence:* the three `resolve` tests in `tests/test_faults.py`, including a list
+    15 December. *Evidence:* the three `resolve` tests in `tests/nemotron/test_faults.py`, including a list
     that has lost Ultra.
 72. **Token Factory's refusals, and a model that gives up, come back with the cause and what to do.
     This extends decision 68.** After the retries, a 429 says the key is being limited (wait a
@@ -633,7 +635,7 @@ changes a decision above, the old one is left as written and the change is named
     A fault inside a fork is that fork's reason, never a traceback. The planner prints its stop
     reason after its bill, so `graphene ask` shows it. *Why:* before, the run checked untouched code
     and the leaf came back as "3 attempts, the last one refused: … AssertionError". *Evidence:*
-    `tests/test_faults.py` (each at `--parallel 2`: the other leaf lands, no executor is left alive,
+    `tests/nemotron/test_faults.py` (each at `--parallel 2`: the other leaf lands, no executor is left alive,
     the node pane shows the cause).
 73. **A sandbox that goes away or is killed mid-leaf brings the leaf back; a hung check is stopped
     with everything it started.** A box that raises becomes "the sandbox stopped answering
@@ -643,7 +645,7 @@ changes a decision above, the old one is left as written and the change is named
     check's words now say it was stopped with everything it started, and that a check must end by
     itself; the limit stays 1800 s with no new setting. *Evidence:* four sandbox tests (one kills a
     real Docker container mid-leaf and finds nothing left) and the hung-check test in
-    `tests/test_faults.py`. The fault tests reach the executor's own processes through a
+    `tests/nemotron/test_faults.py`. The fault tests reach the executor's own processes through a
     `sitecustomize` the test writes (`tests/fake_faults.py`), not through a hook in the product.
 74. **No more than fifty sandbox operations run at once from this machine.** `sandbox.CAP = 50`
     lock files under the temp directory, one per slot, held with `flock` around every start, run
@@ -660,7 +662,7 @@ changes a decision above, the old one is left as written and the change is named
     sandbox its checkpoint, operations and seconds). `placement` gains the checkpoint and the
     operations. The fork that lands is the first whose check passes, in time, decided under a lock:
     a row that says passed never loses afterwards. *Evidence:* the ladder and fork tests in
-    `tests/test_executor.py`; the sandbox rows in `tests/test_escape.py` (Docker).
+    `tests/nemotron/test_executor.py`; the sandbox rows in `tests/nemotron/test_escape.py` (Docker).
 76. **Forks and a step up, on the screen and the page.**
     - **Rows.** A leaf that forked has a row for each fork under it, in the one row grammar: the
       model's short name where a title goes (a model id has no spaces, and would be cut), `fork k`
@@ -679,7 +681,7 @@ changes a decision above, the old one is left as written and the change is named
 
     *Evidence:* the pilot tests in `tests/test_tui.py`, `tests/test_demo_export.py`,
     `ui/src/Plan.test.tsx`, and the before and after screens at 80×24 and 120×36 in
-    `docs/process/winning/screens/` (made against the scripted fake, and they say so).
+    [`docs/process/winning/screens/`](https://github.com/Alex-lop/Graphene/tree/process/docs/process/winning/screens) (made against the scripted fake, and they say so).
 77. **`graphene demo` replays a recorded run in `graphene watch`, with no key, no Docker and no
     network, and runs nothing.**
     - **What a recording holds.** `graphene demo --record FILE` records the plan's store over a run,
@@ -715,7 +717,7 @@ changes a decision above, the old one is left as written and the change is named
     and "on Nemotron through Token Factory (a key)". The judges' ten lines put the no-key path first
     (`graphene demo`, then `docs/proof/nemotron.sh` against the scripted stand-in through
     `tests/test_demo_script.py`), and are repeated in `docs/HACKATHON.md`.
-    - **What the field changed** (`docs/process/field.md`, item 11). Forking N candidates from one
+    - **What the field changed** ([`docs/process/field.md`](https://github.com/Alex-lop/Graphene/blob/process/docs/process/field.md), item 11). Forking N candidates from one
       checkpoint and letting the tests pick is the Coding track's most common pattern: at least ten
       public entries do it, several live with SWE-bench numbers. So no surface says Graphene is the
       only one to fork sandboxes, to escalate Nano to Super, or to "map a tree onto a tree of
@@ -729,7 +731,7 @@ changes a decision above, the old one is left as written and the change is named
     skeptic who reproduced every finding from scratch. That gave 36 findings, all collected before
     any was fixed: 27 confirmed and 9 refuted. The 27 were fixed in three worktrees, plus two refuted
     ones that went against the directive's intent (init's key line, the replay's last frame). Each fix
-    has a test that fails on `47f633c`, most of them in `tests/test_review_fixes_executor.py`,
+    has a test that fails on `47f633c`, most of them in `tests/nemotron/test_review_fixes_executor.py`,
     `tests/test_demo.py` and `tests/test_tui.py`. The ones that change a decision above:
     - **Forks (60, 69).** A fork reads what git shows in the leaf's checkout, plus what it wrote,
       and never what git ignores. Before, every fork was blind, because its copy has no `.git`. A
@@ -819,7 +821,7 @@ as written and the change is named here.
     and five board items the second, each a decision lane B's executors had made silently.
     *Evidence:* `test_nemotron_is_told_to_ask_and_its_board_lands`,
     `tests/test_gate.py::test_a_new_session_is_taught_the_board_and_the_taught_text_puts_it_up`,
-    `docs/process/shaping/as-the-person.md` items 2 and 12. Whether Ultra asks questions worth a key
+    [`docs/process/shaping/as-the-person.md`](https://github.com/Alex-lop/Graphene/blob/process/docs/process/shaping/as-the-person.md) items 2 and 12. Whether Ultra asks questions worth a key
     press is not known until it runs live.
 83. **A pick changes its leaf (prompt version 3).**
     - **`then: goal NODE + TEXT`** ends NODE's goal with the sentence, as your edit. A sentence the
@@ -862,11 +864,11 @@ as written and the change is named here.
     candidate did. Rows wins the tie: a question and the leaf it is about are on one screen in one
     grammar, and it adds no mode (Tab stays the plan's views). What the stand-ins stalled on is
     decisions 83 and 85 to 87. Decision 98 says why this is not yet enough. *Evidence:*
-    `docs/process/shaping/evaluation.md` (the trials, the renders, the decision at 03:30);
+    [`docs/process/shaping/evaluation.md`](https://github.com/Alex-lop/Graphene/blob/process/docs/process/shaping/evaluation.md) (the trials, the renders, the decision at 03:30);
     `tests/test_board_rows.py` (`test_after_an_answer_the_next_items_keys_stay_under_what_the_command_said`,
     `test_question_mark_on_an_item_is_help_and_on_a_node_the_planners_chooser`,
     `test_board_items_are_counted_apart_from_the_plan`); the screens before and after in
-    `docs/process/shaping/screens/`.
+    [`docs/process/shaping/screens/`](https://github.com/Alex-lop/Graphene/tree/process/docs/process/shaping/screens).
 85. **The terminal has three views of one plan: the outline, a top-down tree and a left-to-right
     graph. Tab switches, and the outline stays the default.**
     - **Tab** goes outline, tree, graph, past any that does not fit, and says once per width which
@@ -978,7 +980,7 @@ as written and the change is named here.
       count a key kept in the keychain.
     - Only Token Factory's key is covered.
 
-    *Evidence:* `tests/test_keys.py`, `tests/test_key_cli.py` (`test_an_agent_is_refused`,
+    *Evidence:* `tests/nemotron/test_keys.py`, `tests/nemotron/test_key_cli.py` (`test_an_agent_is_refused`,
     `test_set_never_takes_the_key_from_argv`),
     `tests/test_cli_settings.py::test_a_key_pasted_after_any_key_command_is_never_echoed`,
     `test_model_written_code_and_a_check_never_find_the_keychain_key`. The hole is under "What does
@@ -1022,7 +1024,7 @@ as written and the change is named here.
     repositories, `itsdangerous`, `requests` and Graphene. Under `auto` it proposed 1 to 3 leaves
     everywhere, from 118 lines to over 20,000: the ask set the count, not the repository. `finer`
     gave more leaves than `auto` on 5 of 7 and never fewer; `coarser` fewer or the same on all 7.
-    The thresholds are still guesses. *Evidence:* `docs/process/shaping/sizing.md`,
+    The thresholds are still guesses. *Evidence:* [`docs/process/shaping/sizing.md`](https://github.com/Alex-lop/Graphene/blob/process/docs/process/shaping/sizing.md),
     `tests/test_sizing.py`, `tests/test_ask_settings.py`,
     `test_plus_and_minus_ask_the_plan_again_finer_and_coarser`. *Still open, yours to decide:* `+`
     after you have answered the board drops the proposals your answers were about, so their
@@ -1104,8 +1106,8 @@ as written and the change is named here.
 
     *Why these three:* three judges scored 32 ideas (20 after merging) on fit, what a judge would
     see, uniqueness against `field.md`, cost, and whether it can be measured by 20 October. These
-    came first, work with every planner, and need only Nano. *Evidence:* `docs/process/ideas.md`;
-    `tests/test_cover.py`, `tests/test_note.py`, `tests/test_precheck.py` (the Docker fork included),
+    came first, work with every planner, and need only Nano. *Evidence:* [`docs/process/ideas.md`](https://github.com/Alex-lop/Graphene/blob/process/docs/process/ideas.md);
+    `tests/nemotron/test_cover.py`, `tests/nemotron/test_note.py`, `tests/nemotron/test_precheck.py` (the Docker fork included),
     among them `test_the_cover_flag_puts_the_uncovered_clauses_on_the_board_after_an_ask`; a
     skeptic each, before the merge. *Still open:* precheck's items say `shaper:nemotron` even where
     an exit code, not Nano, gave the verdict; and a check `plan note` drafts is not judged for what
@@ -1116,7 +1118,7 @@ as written and the change is named here.
     `~/graphene-night`. *Why a clone, not a worktree:* there is one store per repository, and a
     worktree shares the main checkout's, so a plan in force there would have held every other lane's
     sub-agent to it. The person's acts dropped the agent's markers and set `GRAPHENE_AS=person:alex`,
-    so the log marks each "(no terminal)". *What it found* (`docs/process/shaping/as-the-person.md`):
+    so the log marks each "(no terminal)". *What it found* ([`docs/process/shaping/as-the-person.md`](https://github.com/Alex-lop/Graphene/blob/process/docs/process/shaping/as-the-person.md)):
     - The planner's questions came as five paragraphs of prose, about 250 words, printed once, cut
       at 300 characters a line and never stored. This is the board's case, from our own plan.
     - Adding one sentence to a goal from a shell meant retyping the goal: 130 words.
@@ -1137,7 +1139,7 @@ as written and the change is named here.
     and `docs/test/conftest.py` set `GRAPHENE_KEYCHAIN=off` for every test, only the tool `which()`
     found is run, and a rung keeps `GRAPHENE_KEYCHAIN=off` when the shell sets it (`30266c1`). The
     reproductions used a fake `security` on the PATH, whose call log stayed empty through the suite.
-    *Evidence:* `tests/test_keys.py::test_the_suite_never_reaches_the_real_keychain`,
+    *Evidence:* `tests/nemotron/test_keys.py::test_the_suite_never_reaches_the_real_keychain`,
     `docs/test/test_access.py::test_the_docs_suite_never_reaches_the_real_keychain`,
     `test_a_keychain_tool_that_cannot_run_is_not_passed_over_for_the_next_on_the_path`,
     `tests/test_practice.py::test_in_a_terminal_of_your_own_the_access_rung_runs_the_check_itself`.
@@ -1257,7 +1259,7 @@ any of them.
        Ultra's calls are counted apart. Every row says `practice`, and `evidence.py` refuses practice
        rows, `--stand-in` or not. `docs/test/practice.sh night` prints the bill.
 
-     *Evidence:* `tests/test_night.py` (`test_processes_racing_for_the_last_dollars_cannot_all_pass`:
+     *Evidence:* `tests/nemotron/test_night.py` (`test_processes_racing_for_the_last_dollars_cannot_all_pass`:
      six processes, room for two calls, two sent;
      `test_a_call_that_would_pass_the_cap_is_refused_before_it_is_sent`: the fake sees no request;
      `test_nothing_new_starts_past_80_percent_of_the_cap`; `test_no_row_holds_the_key`);
@@ -1270,7 +1272,7 @@ any of them.
      their children (the ladder, `bench.py`, `arm_bprime.py`, `nemotron.sh`) ask first. *Why:* until
      tonight only the ladder refused an agent; `graphene run --with nemotron`, `access.py`, `arm_a.py`,
      `arm_bprime.py` and `bench.py` let an agent's shell spend your key. *Evidence:*
-     `tests/test_night.py::test_an_agents_call_to_the_real_host_is_refused_unsent_until_the_person_opens_it`,
+     `tests/nemotron/test_night.py::test_an_agents_call_to_the_real_host_is_refused_unsent_until_the_person_opens_it`,
      `test_a_person_and_the_fake_are_not_refused`,
      `test_the_harnesses_that_strip_the_marks_ask_first`.
 104. **What first contact with Sandboxes taught: a 403 is one refusal, said where a sandbox is made;
@@ -1288,7 +1290,7 @@ any of them.
        your credits", Nebius's Sandboxes page as the search index quoted it on 2026-09-29 (the page
        draws only in a browser; no Nebius page states a price). Operations are still counted (102).
 
-     *Evidence:* `tests/test_faults.py`, `tests/test_precheck.py`, `tests/test_sandbox_contract.py`,
+     *Evidence:* `tests/nemotron/test_faults.py`, `tests/nemotron/test_precheck.py`, `tests/nemotron/test_sandbox_contract.py`,
      `docs/test/test_access.py` (each `…a_project_sandboxes_refuse…`, against contree-sdk's own
      ForbiddenError), `tests/test_init.py::test_a_project_sandboxes_refuse_gets_its_leaves_on_this_machine_and_one_line_saying_why`,
      `test_an_operation_past_its_time_is_the_commands_exit_124_as_in_docker`, `docs/test/first-light.md`.
@@ -1325,7 +1327,7 @@ any of them.
      (`test_a_person_who_agrees_with_every_default_answers_nothing_and_accept_takes_them`,
      `test_take_with_no_id_takes_every_open_default_and_run_takes_what_is_left_open`),
      `tests/test_board_rows.py::test_a_board_that_asks_nothing_has_no_rows_no_line_and_no_count`,
-     `tests/test_lookup.py`.
+     `tests/nemotron/test_lookup.py`.
 108. **The board's default is `auto`: it shows only while a question the repository cannot answer is
      open. Study 4 decided it by its registered rule.** Study 4 (`docs/test/results-2026-09-29-board.md`,
      registered and its build pinned before any run) shaped study 3's four proposals on the board after
@@ -1358,8 +1360,8 @@ any of them.
      and `import keyring`, and fails the test that tried, or the run if a child did after its test
      ended. A fake under `tmp_path` is the one way a test gets a keychain. `graphene key set`, `check`
      and `remove` now refuse Claude Code and Codex as they refuse an executor. *Evidence:*
-     `tests/test_keyguard.py::test_every_way_to_the_real_keychain_fails_its_test_and_a_fake_passes`
-     (it fails with the guard turned off), `tests/test_key_cli.py::test_an_agent_is_refused`. CI's first run with the guard caught one test on Linux: precheck's test turned the keychain on and faked only `security`, so on a Linux machine with libsecret precheck's own lookup (the one that hides a keychain key from what it says) would have asked the developer's real keyring; it now fakes both tools on both platforms (`tests/test_precheck.py::test_an_accepted_check_runs_here_with_grapheness_keychain_lookup_off`).
+     `tests/nemotron/test_keyguard.py::test_every_way_to_the_real_keychain_fails_its_test_and_a_fake_passes`
+     (it fails with the guard turned off), `tests/nemotron/test_key_cli.py::test_an_agent_is_refused`. CI's first run with the guard caught one test on Linux: precheck's test turned the keychain on and faked only `security`, so on a Linux machine with libsecret precheck's own lookup (the one that hides a keychain key from what it says) would have asked the developer's real keyring; it now fakes both tools on both platforms (`tests/nemotron/test_precheck.py::test_an_accepted_check_runs_here_with_grapheness_keychain_lookup_off`).
 111. **The hook: its 60 ms budget is held on the CPU time it spends, and it spends about half what it
      did.** Where the time went: about 12 ms to start Python, 23 to 30 ms to import the hook (tempfile,
      subprocess, dataclasses and, in a repo left with plan first on, the gate and the plan on every
@@ -1391,7 +1393,7 @@ any of them.
      (`test_the_text_round_trips_byte_for_byte_and_an_accept_changes_only_its_marks`,
      `test_an_agent_proposes_only_the_person_accepts_or_drops_and_git_sees_the_file`,
      `test_a_direction_written_while_a_leaf_runs_is_never_the_leafs_change`); the screens in
-     `docs/process/shaping/screens/first-light/direction/`.
+     [`docs/process/shaping/screens/first-light/direction/`](https://github.com/Alex-lop/Graphene/tree/process/docs/process/shaping/screens/first-light/direction).
 113. **A session attaches by what it does or where you put it, and shows status, not a ledger.** In
      order: where you attached it (`graphene direction attach`, `D` in watch); the plan's node, when it
      held, finished or proposed one of the plan's nodes; the subagent that started it; its session;
@@ -1493,7 +1495,7 @@ any of them.
      session's uuid) matched the base64 rule, so every path and the replay command the ladder printed
      came out mangled. *Evidence:*
      `tests/test_practice.py::test_a_path_the_ladder_prints_is_shown_as_it_is_and_a_secret_in_it_by_its_value`.
-127. **What the walks became.** `docs/process/shaping/walks.md`'s 72 findings of 28 September: the
+127. **What the walks became.** [`docs/process/shaping/walks.md`](https://github.com/Alex-lop/Graphene/blob/process/docs/process/shaping/walks.md)'s 72 findings of 28 September: the
      terminal's 35 and the page's and replay's 25 each fixed with a test or closed with a reason, in
      its two "First light's verdicts" sections. Tonight three new walkers (a first-time user, you, a
      judge) walked a wheel of `first-light` at `4860dec` and filed 46 more; the product's were fixed
@@ -1520,7 +1522,7 @@ any of them.
      (Ctrl-C, or the TERM `graphene run` and the ladder send, which the executor and the planner turn
      into SystemExit) keeps its worst case. *Why:* the closing review found every stop of a run with
      Nemotron freed its in-flight calls from the cap. *Evidence:*
-     `tests/test_night.py::test_a_call_stopped_by_term_after_it_was_sent_keeps_its_worst_case`,
+     `tests/nemotron/test_night.py::test_a_call_stopped_by_term_after_it_was_sent_keeps_its_worst_case`,
      `test_a_failed_call_is_freed_only_when_nothing_can_have_been_done`.
 130. **No test acts on the repository running it, whatever git exported.** A suite started from `git
      bisect run`, a hook or `rebase --exec` inherits GIT_DIR (and GIT_INDEX_FILE, GIT_PREFIX,
@@ -1572,9 +1574,9 @@ any of them.
        `GRAPHENE_LEDGER` for every arm, the opening unset, arm C outside it): rule 6 of the
        pre-registration, before any evidence run. A cap that is not a number refuses every call, and
        `bench.py`, `arm_bprime.py` and `arm_a.py` start nothing without one and no new run from 80%.
-     *Evidence:* `tests/test_key_cli.py::test_check_says_in_one_line_what_state_sandboxes_are_in`,
+     *Evidence:* `tests/nemotron/test_key_cli.py::test_check_says_in_one_line_what_state_sandboxes_are_in`,
      `tests/test_init.py::test_a_key_sandboxes_do_not_accept_or_no_answer_gets_the_leaves_on_this_machine`,
-     `tests/test_tokenfactory.py::test_a_cap_that_is_not_a_number_of_dollars_refuses_every_call_rather_than_none`,
+     `tests/nemotron/test_tokenfactory.py::test_a_cap_that_is_not_a_number_of_dollars_refuses_every_call_rather_than_none`,
      `docs/test/test_bench.py::test_with_no_spend_cap_or_one_that_is_not_a_number_no_run_starts_and_none_is_assumed`.
 
 133. **The live half of first light ran on 2 October, as practice, under your opening.** The plan was
@@ -1588,10 +1590,10 @@ any of them.
      designed, but it left the ladder's rung 3 a hollow pass. A leaf's placement record now counts its
      lost lists (`lost`), and rungs 3 and 7 fail on any. A command's own output is appended (`>>`), never
      truncated, for the same reason: `cat app.py; echo after-cat` lost the echo and exited 1, live.
-     *Evidence:* `tests/test_sandbox_state.py::test_the_list_takes_the_exit_code_through_a_substitution_never_a_cat_into_the_list`,
-     `tests/test_sandbox_state.py::test_a_command_whose_list_never_came_back_is_counted_on_the_leafs_record`,
+     *Evidence:* `tests/nemotron/test_sandbox_state.py::test_the_list_takes_the_exit_code_through_a_substitution_never_a_cat_into_the_list`,
+     `tests/nemotron/test_sandbox_state.py::test_a_command_whose_list_never_came_back_is_counted_on_the_leafs_record`,
      `tests/test_practice.py::test_rung_3_fails_when_its_sandbox_commands_came_back_without_their_list`,
-     `tests/test_sandbox_state.py::test_a_commands_output_is_appended_to_a_fresh_file_never_truncated`,
+     `tests/nemotron/test_sandbox_state.py::test_a_commands_output_is_appended_to_a_fresh_file_never_truncated`,
      `tests/test_practice.py::test_rung_7_fails_when_any_of_its_sandbox_commands_lost_their_list`,
      and rungs 3 and 4 passing live after it.
 135. **What the live planner did is the open problem.** The changes it argues for are decisions for you,
@@ -1613,8 +1615,41 @@ any of them.
      hours" is about a 300-second token minted per read, not the key. It no longer prints for a client the
      key signs; a `contree auth` profile's warnings still do. `demo.leaks` no longer counts
      `/home/leaf/…`, the Sandbox user's own home, unless the path climbs out of it.
-     *Evidence:* `tests/test_sandbox_contract.py::test_the_sdks_token_life_warning_is_dropped_only_when_the_key_signs_the_client`,
+     *Evidence:* `tests/nemotron/test_sandbox_contract.py::test_the_sdks_token_life_warning_is_dropped_only_when_the_key_signs_the_client`,
      `tests/test_recordings.py::test_the_sandboxs_own_home_is_no_persons_path`.
+
+## Decisions taken on the night of the cut directive (5 October)
+
+137. **`graphene run` isolates every leaf.** Each leaf runs in its own worktree and branch, and what
+     passes is merged. `--here` runs in the checkout and says the checkout is exposed. *Why:* the old
+     default left an executor's stray edit in the person's checkout, once per attempt.
+138. **A run's worktree is not the plan's store.** The hook judged a file under `.graphene/worktrees/`
+     as the store and refused every Claude Code write there. The check now stops at the worktree's top.
+139. **The web UI is deleted.** The terminal is the surface. `git revert 659c89e` brings the page
+     back. The tag `last-with-ui` marks its parent, `66125f0`.
+140. **`node show` fills the commits it credits.** Only the page did that before. The dogfood tree of
+     lane 2 caught it; the plan I had written did not.
+141. **The process archive is the orphan branch `process`, at `fb6a408`.** `main` keeps the
+     directives, the current `morning.md` and `docs/process/cut/`.
+142. **Nemotron is the extra `[nemotron]`.** The core reaches it only through `extra.py`. A test fails
+     on any other import. Without the extra, no Token Factory module loads.
+143. **The extra's commands register whenever it loads.** `graphene key set` must exist before a key
+     does. A key found only decides whether `init` offers Nemotron.
+144. **Nine commands show at the top, eight under `plan`, nine under `node`, five under `board`.** The
+     rest still work and are listed in HOW_IT_WORKS, "The rest". A test holds the budgets.
+145. **Every Nemotron command and `direction` and `talk` are hidden, not deleted.** The budgets then
+     hold with or without the extra.
+146. **Every help string is one or two short lines.** A test holds the lengths, and the root help fits
+     24 rows at 80 columns.
+147. **`plan first` is `on`, `auto` or `off`, and `auto` is the default.** Under `auto` the agent takes
+     one leaf of work at once and proposes a tree for more. `on` makes every ask wait for the person.
+     An old `on` reads as `auto` (store schema 5).
+148. **Under `auto`, the feeds paragraph became one leaf, not a tree.** It was done right (18 of 20,
+     12 of 12). The directive expected a tree. I did not tune the wording to get one.
+149. **The experiment is `statements`, and Alex runs it.** Five traps, counted by script. The
+     pre-registration says what makes the tree lose, and I predict the paragraph ties or wins.
+150. **The 3 MB clone target is reported, not gated.** The README's GIF, the tests' recordings and the
+     harness stay on `main`.
 
 ## What does not bind (say it wherever you sell it)
 
@@ -1643,8 +1678,7 @@ any of them.
 - Both rest on the vendor being the only caller of the hook. An agent that pipes a hand-written
   event into `graphene ingest hook` is refused by the ordinary spelling and not by a determined one.
   Found by the closing review, which did it; the acts are logged "(no terminal) … by their prompt".
-- Every request that became a leaf is on the plan in your words, and `graphene ui --export` carries
-  the plan.
+- Every request that became a leaf is on the plan in your words.
 - Whoever carries no agent's mark is taken for you (decision 20).
 - While a parallel run is going, a commit of your own on the branch it merges into can make a leaf
   in another worktree look as if it changed your files, and its `done` is refused. It is sent back,
@@ -1777,7 +1811,7 @@ any of them.
    a compact print, and the design again on the screen.
 4. The shaping study with Nemotron as the planner: whether Ultra puts up questions worth a key press.
 5. The prototypes live: cover, note and precheck against Token Factory, each measured as
-   `docs/process/ideas.md` says, by 20 October.
+   [`docs/process/ideas.md`](https://github.com/Alex-lop/Graphene/blob/process/docs/process/ideas.md) says, by 20 October.
 
 ## What comes next, from 2 October
 
@@ -1785,7 +1819,7 @@ any of them.
    Sandbox check may need installed. Then your filmed take (`docs/demo/build.sh`), with tonight's numbers.
 2. The three pieces the registered runs need first (decision 128): the fixed trees, the frozen
    configuration, and arm B's brief on Nemotron. Then `docs/test/LIVE_SESSION.md`, in order, with you.
-3. The prototypes measured as `docs/process/ideas.md` says, by 20 October, pre-registered first: note's
+3. The prototypes measured as [`docs/process/ideas.md`](https://github.com/Alex-lop/Graphene/blob/process/docs/process/ideas.md) says, by 20 October, pre-registered first: note's
    live answers were malformed or cut off on 3 of 4 notes.
 4. The board on the screen, and the direction on real sessions (as from 29 September).
 

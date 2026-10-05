@@ -1,0 +1,23 @@
+                                                                                
+ Usage: graphene [OPTIONS] COMMAND [ARGS]...                                    
+                                                                                
+ Plan work with your coding agents, then hold them to the plan.                 
+                                                                                
+ `graphene` shows the plan. `graphene node show <id>` shows one node's record.  
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --version          Print the version and exit.                               │
+│ --help             Show this message and exit.                               │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Commands ───────────────────────────────────────────────────────────────────╮
+│ init    Pick a planner and an executor, and install the Claude Code hooks.   │
+│ ask     Ask the planner for a tree from a paragraph.                         │
+│ watch   Show the plan on one screen, live, with vim keys.                    │
+│ run     Run every ready leaf in its own worktree, one executor per leaf.     │
+│ plan    Print the plan: what will be done, by whom, inside which paths.      │
+│ node    Add, change, finish or read one node of the plan.                    │
+│ board   Show the planner's questions, assumptions and risks, and your notes. │
+│ demo    Replay a recorded run in `graphene watch`, change by change.         │
+│ config  Print Graphene's settings for this repo.                             │
+╰──────────────────────────────────────────────────────────────────────────────╯
+

@@ -1,5 +1,0 @@
-# Lean build output and fetched data stay on the machine that made them
-.lake/
-*.olean
-*.ilean
-data/

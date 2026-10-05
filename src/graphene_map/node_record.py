@@ -23,13 +23,13 @@ from __future__ import annotations
 
 import subprocess
 from collections import Counter
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from . import plan as P
 from .commits import window as commits_in
-from .record import RANK, Coverage, seconds
+from .record import RANK, Change, Coverage, changes, coverage, seconds, window_commits
 
 # a window ends when the node does, however it ended; ``reopened`` comes after one, never inside it
 ENDS = ("finished", "overruled", "released")
@@ -98,6 +98,9 @@ def node_record(store, root: str | Path, node: P.Node, at: str | None = None) ->
     at = at or P._now()
     log = store.node_log(node.id)
     windows = _windows(log)
+    from .commits import sync_commits  # here, since the web UI that filled them is gone
+
+    sync_commits(store, root, sorted({w.session_id for w in windows if w.session_id}))
     # TODO: every commit the store holds, then windowed here; a windowed query when one repo's
     # store holds a year of them.
     credited = {c.sha: c for c in store.commits_between("0000", "9999")}
@@ -210,10 +213,6 @@ def bill_line(b: dict | None, indent: str = "  ") -> list[str]:
             f"({whose} usage)"]  # fmt: skip
 
 
-def to_dict(record: NodeRecord) -> dict:
-    return asdict(record)
-
-
 def _windows(log: list[dict]) -> list[Window]:
     """The spans, from the log alone: a 'started' opens one and the next ending closes it. A node
     taken again after it was handed back or sent back has a window per take, each with the session
@@ -251,7 +250,7 @@ def _shift(stamp: str, delta: int) -> str:
 
 
 def _own(store, node: P.Node, root: str | Path) -> set[str] | None:
-    """A `--parallel` leaf's own commits: what its branch carried into the merge that landed it, or its
+    """A run leaf's own commits: what its branch carried into the merge that landed it, or its
     branch while it waits. Asked of git by ancestry, because by time the checkout it landed in also
     holds its siblings' merges, made while it worked. None when git cannot say."""
     landed = (store.node_log(node.id, ("landed",)) or [None])[-1]
@@ -278,7 +277,7 @@ def _commits(window: Window, root: str | Path, credited: dict, at: str, own: set
     # milliseconds, so a node started at 12:00:00.400 and a commit stamped 12:00:00 cannot be put in
     # order by time at all. Its second is inside the window, and ancestry settles the rest.
     lo, hi = int(seconds(window.started_at)), int(seconds(window.ended_at or at))
-    if own is not None:  # a --parallel leaf's commits are its branch's, made when it landed, after it ended
+    if own is not None:  # a run leaf's commits are its branch's, made when it landed, after it ended
         hi = int(seconds(at))
     wide = (_shift(window.started_at, -2), _shift(at if own is not None else window.ended_at or at, 2))
     found = {c.sha: c for c in commits_in(Path(root), *wide)}
@@ -349,6 +348,44 @@ def _fill(window: Window, node: P.Node, commits: list, root: str | Path, at: str
     window.sources.append(f"from {base}: the working tree of {checkout} as it stands at {at}")
 
 
+@dataclass(slots=True)
+class Run:
+    """What the sessions that held a node recorded: their writes, and the commits inside their windows."""
+
+    sessions: list
+    written: list[Change]
+    commits: list
+    coverage: Coverage
+
+
+def run_records(store, session_ids: list[str]) -> Run:
+    sessions = [s for s in (store.session(i) for i in session_ids) if s is not None]
+    sessions = [s for s in sessions if s.started_at is None or s.started_at]
+    ids = [s.id for s in sessions]
+    events = [e for i in ids for e in store.events(i) if e.timestamp]
+    events.sort(key=lambda e: (seconds(e.timestamp), e.id))
+    agents = [a for i in ids for a in store.agents(i) if a.started_at]
+    written = changes(events, agents, sessions[0].repo if sessions else "")
+
+    # A commit is the run's when it falls inside one of its sessions' own windows (compared as
+    # numbers: stored stamps differ in precision and offset), not merely between two of them.
+    windows = [
+        (seconds(s.started_at), seconds(s.ended_at) if s.ended_at else float("inf"))
+        for s in sessions
+        if s.started_at
+    ]
+    commits = []
+    if windows:
+        day = min((s.started_at for s in sessions if s.started_at), key=seconds)[:10]
+        in_window = [
+            c
+            for c in store.commits_between(day, "9999")
+            if any(opened <= seconds(c.committed_at) <= closed for opened, closed in windows)
+        ]
+        commits = window_commits(in_window, ids)
+    return Run(sessions, written, commits, coverage(commits, written, ids))
+
+
 def _coverage(store, node: P.Node, windows: list[Window], commits: list, at: str) -> dict:
     """What can be said about this node's work, and by what evidence.
 
@@ -417,9 +454,6 @@ def _coverage(store, node: P.Node, windows: list[Window], commits: list, at: str
         )
         one = "it" if len(commits) == 1 else "them"
         return _not_computed(counts, commits, f"no session's records account for {one}")
-    # here, not at the top: graph reaches rich through its own imports, and a record is cheap without it
-    from .graph import coverage_counts, run_records
-
     run = run_records(store, ids)
     counts["read_from"] = (
         f"the node's log, git, and Claude Code's records for "
@@ -465,7 +499,8 @@ def _coverage(store, node: P.Node, windows: list[Window], commits: list, at: str
     for grade in selected.grades.values():
         setattr(selected, grade, getattr(selected, grade) + 1)
     selected.committed_files, selected.nothing = len(selected.grades), selected.window
-    counts |= coverage_counts(selected)
+    keys = ("committed_files", "write", "edit", "shell", "commit", "nothing", "window")  # law 7's order
+    counts |= {key: getattr(selected, key) for key in keys}
     counts["not_graded_commits"] = len([c for c in commits if c.sha not in graded])
     counts["not_graded_files"] = len(ungraded - set(selected.grades))
     counts["computed"] = True

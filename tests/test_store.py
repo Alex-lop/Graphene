@@ -180,6 +180,18 @@ def set_version(db: Path, version: int) -> None:
     conn.close()
 
 
+def test_a_store_from_before_auto_reads_its_on_as_auto_and_keeps_its_off(tmp_path):
+    """Plan first's `on` before 0.5.0 took a one-leaf ask at once, which is auto now."""
+    from graphene_map import plan
+
+    for said, now in (("on", "auto"), ("off", "off")):
+        with Store.open(tmp_path) as store:
+            store.set_meta("plan_first", said)
+        set_version(tmp_path / ".graphene" / "graphene.db", 4)
+        with Store.open(tmp_path) as store:
+            assert plan.plan_first(store) == now
+
+
 def test_a_new_store_records_the_schema_version(tmp_path):
     with Store.open(tmp_path) as store:
         assert store.conn.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
@@ -250,17 +262,16 @@ def test_agents_fill_in_and_the_first_credit_for_a_commit_stands(tmp_path):
 def test_a_corrupt_store_is_rebuilt_and_still_answers(repo):
     (repo / ".graphene").mkdir()
     (repo / ".graphene" / "graphene.db").write_text("this is not a database")
-    result = CliRunner().invoke(build(), ["ui", "--json"])
+    result = CliRunner().invoke(build(), [])
     output = result.output + result.stderr
-    assert result.exit_code == 1 and "Traceback" not in output  # rebuilt empty: nothing to draw yet
+    assert result.exit_code == 1 and "Traceback" not in output  # rebuilt empty: nothing planned yet
     assert (repo / ".graphene" / "graphene.db.corrupt.bak").read_text() == "this is not a database"
     assert "store rebuilt" in output
     for name, extra in (("UserPromptSubmit", {"prompt": "list it"}), ("PostToolUse", {"tool_name": "Bash"})):
         event = {"hook_event_name": name, "session_id": "11111111", "cwd": str(repo), **extra}
         assert hook_main(io.StringIO(json.dumps(event)), cwd=repo, stdout=io.StringIO()) == 0
-    result = CliRunner().invoke(build(), ["ui", "--json"])
-    assert result.exit_code == 0, result.output + result.stderr
-    assert "11111111" in result.output  # the rebuilt store records and answers
+    with Store.open(repo) as store:
+        assert store.session("11111111") is not None  # the rebuilt store records and answers
 
 
 def test_a_rebuild_never_overwrites_an_earlier_backup(tmp_path):
@@ -327,5 +338,4 @@ def test_values_are_bound_to_plain_question_marks_only(tmp_path, monkeypatch):
         store.put_node({"id": "a", "state": "done"})
         assert store.node_row("a") == {"id": "a", "state": "done"}
         assert store.node_seqs() == {"a": 1, "b": 2}  # an update keeps the node's place
-        assert store.did_something("s") is False
     assert bound and [sql for sql in bound if re.search(r"\?\d|[:@$][A-Za-z_]", sql)] == []

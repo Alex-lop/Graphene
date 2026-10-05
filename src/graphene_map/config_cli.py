@@ -13,26 +13,27 @@ from . import settings as S
 
 
 def register(cli: typer.Typer, root, open_store, fail):
-    config_cli = typer.Typer(help="Graphene's settings: shown, and edited by the person.")
+    config_cli = typer.Typer(
+        help="Print Graphene's settings for this repo.\n\n`graphene config edit` changes them in your editor."
+    )
     cli.add_typer(config_cli, name="config")
 
     @config_cli.callback(invoke_without_command=True)
     def show(ctx: typer.Context) -> None:
         """Print the settings as `graphene config edit` opens them."""
         if ctx.invoked_subcommand is None:
-            from . import keys
+            from . import extra
 
             with open_store(root()) as store:
                 typer.echo(S.render(store), nl=False)
-            typer.echo(f"# the Token Factory key: {keys.where() or 'none found'} (graphene key set)")
+            if keys := extra.load("keys"):
+                typer.echo(f"# the Token Factory key: {keys.where() or 'none found'} (graphene key set)")
 
     @config_cli.command()
     def edit() -> None:
-        """Edit the settings in your editor (a person only); the save is applied all or none. A line
-        that cannot be read is refused by its number: at a terminal the text goes back to the editor
-        with the reason under that line; with none, it is kept and nothing is applied. A text with no
-        setting in it is refused. `graphene plan undo` does not reach the settings: each change is
-        logged with what was there before, and each line added or removed is printed."""
+        """Edit the settings in your editor; the save applies all or none.
+
+        Only a person can. `graphene plan undo` does not reach settings; each change is logged."""
         who = P.caller()
         try:
             P._person_only(who, "changing Graphene's settings")

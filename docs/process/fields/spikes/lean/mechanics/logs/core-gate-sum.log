@@ -1,4 +1,0 @@
-=== 2026-09-30 01:45:03 EDT cwd=/private/tmp/claude-501/-Users-alexlopez-Desktop-AllThingsAgenticHackathon/1c257068-543a-48a1-ae2e-a2935409e414/scratchpad/fields/docs/process/fields/spikes/lean/mechanics/core load=[{ 11.57 11.00 8.40 }] swap=[total = 21504.00M  used = 20307.31M  free = 1196.69M  (encrypted)]
-$ lake env lean Gate/SumTwoSq.lean
-'sumTwoSq' depends on axioms: [propext, Quot.sound]
-=== rc=0 wall=0.25s maxrss=390MB

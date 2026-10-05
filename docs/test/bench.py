@@ -60,10 +60,10 @@ sys.path.insert(0, str(HERE))
 import make_task  # noqa: E402
 import tally  # noqa: E402  (it puts src/ on the path)
 
-from graphene_map import night  # noqa: E402
 from graphene_map import plan as P  # noqa: E402
-from graphene_map import tokenfactory as tf  # noqa: E402
-from graphene_map.executor import PROMPT_VERSION  # noqa: E402
+from graphene_map.nemotron import night  # noqa: E402
+from graphene_map.nemotron import tokenfactory as tf  # noqa: E402
+from graphene_map.nemotron.executor import PROMPT_VERSION  # noqa: E402
 from graphene_map.run import STOPPED  # noqa: E402
 from graphene_map.store import Store  # noqa: E402
 
@@ -372,7 +372,7 @@ def parse(argv: list[str] | None) -> argparse.Namespace:
         default="nemotron",
         help="what made the tree (recorded: the tree is fixed, so no planner runs here)",
     )
-    ap.add_argument("--parallel", type=int, default=4, help="N for `graphene run --parallel`, 2 or more")
+    ap.add_argument("--parallel", type=int, default=4, help="N for `graphene run --parallel`")
     ap.add_argument("--run", type=int, default=1, help="the run number")
     ap.add_argument("--rounds", type=int, default=3, help="`graphene run`s at most, offers taken between")
     ap.add_argument("--timeout", type=float, default=3600, help="seconds a round may take; then it stops")
@@ -427,9 +427,6 @@ def main(argv: list[str] | None = None) -> int:
         if not need.is_file():
             print(f"no {need}" + ("; docs/test/trees/README.md says how one is made" if need == tree else ""))
             return 2
-    if args.parallel < 2:
-        print("--parallel 1 works in place and merges nothing, so no leaf could land: use 2 or more")
-        return 2
     if args.checks_only:
         with tempfile.TemporaryDirectory() as tmp:
             repo, base, _ = prepare(Path(tmp), args.task, tree, logger(Path(tmp) / "runlog.jsonl"))

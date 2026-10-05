@@ -75,7 +75,7 @@ def test_an_aside_is_refused_a_write_to_a_standing_path_by_the_hook(tmp_path):
     with Store.open(repo) as store:
         S.apply(store, "protected: src/db/**\nreadonly: README.md\n", ALEX)
         plan.propose(store, [{"title": "other", "scope": ["src/api/**"], "check": "true"}], ALEX)
-    G.plan_first(repo, False)
+    G.plan_first(repo, "off")
     G.hook(repo, "UserPromptSubmit", prompt="fix the schema and the readme")
     assert "protected: src/db/**" in G.reason(G.write(repo, "src/db/schema.py"))
     assert "readonly: README.md" in G.reason(G.bash(repo, "echo x > README.md"))
@@ -160,7 +160,7 @@ def test_an_aside_is_refused_a_case_variant_of_a_standing_path(tmp_path):
     with Store.open(repo) as store:
         S.apply(store, "protected: src/db/**\n", ALEX)
         plan.propose(store, [{"title": "other", "scope": ["src/api/**"], "check": "true"}], ALEX)
-    G.plan_first(repo, False)
+    G.plan_first(repo, "off")
     G.hook(repo, "UserPromptSubmit", prompt="fix the schema")
     assert "protected: src/db/**" in G.reason(G.write(repo, "SRC/DB/schema.py"))
     assert "protected: src/db/**" in G.reason(G.bash(repo, "echo pwned > src/DB/schema.py"))

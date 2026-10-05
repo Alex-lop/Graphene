@@ -127,7 +127,7 @@ def test_plan_first_stays_inside_the_same_budget(tmp_path, capsys):
     repo = tmp_path / "repo"
     (repo / ".git").mkdir(parents=True)
     with Store.open(repo) as store:
-        plan.set_plan_first(store, True, plan.Caller("alex", True))
+        plan.set_plan_first(store, "auto", plan.Caller("alex", True))
     edit = {"tool_name": "Edit", "tool_input": {"file_path": str(repo / "a.py")}}
 
     def once(n: int) -> tuple[float, float]:
@@ -139,7 +139,7 @@ def test_plan_first_stays_inside_the_same_budget(tmp_path, capsys):
             **(said if prompt else {"hook_event_name": "PreToolUse", **edit}),
         }
         cpu, wall, out = run_hook(repo, event)
-        assert ("Plan first is on" if prompt else "plan first: this session holds no leaf") in out
+        assert ("Plan first is auto" if prompt else "plan first: this session holds no leaf") in out
         return cpu, wall
 
     once(1)
@@ -241,7 +241,7 @@ def _repo(tmp_path: Path, kind: str) -> Path:
     subprocess.run([*git, "commit", "-q", "--allow-empty", "-m", "start"], check=True)
     with Store.open(repo) as store:
         if kind == "first":
-            plan.set_plan_first(store, True, plan.Caller("alex", True))
+            plan.set_plan_first(store, "auto", plan.Caller("alex", True))
         if kind == "plan":
             node = plan.Node("n1", "api", scope=["src/api/**"], check="true", state=plan.RUNNING)
             node.session_id = "s"

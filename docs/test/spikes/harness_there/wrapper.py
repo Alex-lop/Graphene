@@ -2,8 +2,8 @@
 given to `graphene run --with 'python3 docs/test/spikes/harness_there/wrapper.py'`, speaks for it.
 
 A spike, not product. For the leaf named by GRAPHENE_NODE it makes a sandbox from the leaf's checkout
-(graphene_map.sandbox.Sandbox, layer 2 included, from this directory's image), runs `opencode run` there
-as the leaf's unprivileged user with the contract as the prompt and Token Factory as its provider, lets
+(graphene_map.nemotron.sandbox.Sandbox, layer 2 included, from this directory's image), runs `opencode run`
+there as the leaf's unprivileged user with the contract as the prompt and Token Factory as its provider, lets
 Sandbox bring back what the scope covers, and then says `graphene node release` (when OpenCode's last
 message asks for it) or `graphene node done` for the leaf.
 
@@ -25,9 +25,9 @@ from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
 from graphene_map import plan as P
-from graphene_map import sandbox
-from graphene_map import tokenfactory as tf
-from graphene_map.executor import Leaf
+from graphene_map.nemotron import sandbox
+from graphene_map.nemotron import tokenfactory as tf
+from graphene_map.nemotron.executor import Leaf
 from graphene_map.store import Store, repo_root
 
 IMAGE = "graphene-harness-there:opencode-1.18.31"  # docker build -t <this> docs/test/spikes/harness_there

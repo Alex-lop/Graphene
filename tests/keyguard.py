@@ -10,8 +10,8 @@
 - A stand-in's call fails the test it was made in; one left at the end of the session fails the run.
 
 A test that needs a keychain fakes it: a `security` or `secret-tool` it writes under its tmp_path and
-puts first on the PATH (tests/test_keys.py's `keychain`). A tool in the temp directory is the only kind
-that runs. Beyond reach: a child process that runs the real tool by its absolute path, or makes a PATH
+puts first on the PATH (tests/nemotron/test_keys.py's `keychain`). A tool in the temp directory is the only
+kind that runs. Beyond reach: a child process that runs the real tool by its absolute path, or makes a PATH
 of its own; Graphene's own code does neither (keys.py asks `which()` on the PATH it was given).
 """
 
@@ -30,7 +30,7 @@ echo "$(basename "$0") $1${{PYTEST_CURRENT_TEST:+, during $PYTEST_CURRENT_TEST}}
 echo "keyguard: a test asked the keychain; it was a stand-in, and nothing was read or kept" >&2
 exit 1
 """
-HOW = "a test that needs a keychain fakes one under its tmp_path (tests/test_keys.py's `keychain`)"
+HOW = "a test that needs a keychain fakes one under its tmp_path (tests/nemotron/test_keys.py's `keychain`)"
 SHIMS: Path | None = None  # the stand-ins' directory, made once a session
 TEMP = Path(tempfile.gettempdir()).resolve()  # where every test's fakes live
 refused: list[str] = []

@@ -314,7 +314,7 @@ def gated(store: Store, event: dict) -> bool:
     """Can the gate answer this event, or write for it? Only then does the hook import it, and the
     plan with it: a read, a search, a subagent's start or end is let through without them. A session
     is taught the text when it starts (plan or none). A prompt is told plan first, a write or a shell
-    command is refused, while plan first is on (with no node, only the person's setting makes it so)
+    command is refused, while plan first is on or auto (with no node, only the setting makes it so)
     or a plan is in force; a shell command's changes and a stop are judged only while a plan is. The
     planner is refused a write and a protected read, plan or no plan. tests/test_hook_budget.py runs
     ``gate.decide`` on every event this says no to, and it answers nothing and writes nothing."""
@@ -326,7 +326,7 @@ def gated(store: Store, event: dict) -> bool:
     if name == "PostToolUse" and tool != "Bash":
         return False
     if name in ("UserPromptSubmit", "PreToolUse"):
-        return bool(store.node_count()) or store.meta("plan_first") == "on"
+        return bool(store.node_count()) or store.meta("plan_first") in ("on", "auto")
     return name in ("PostToolUse", "Stop") and bool(store.node_count())
 
 
@@ -351,6 +351,8 @@ def ours(path: str, cwd: str | None, root: Path) -> str | None:
             break
         if os.path.basename(here).casefold() == ".graphene" and worktree_root(os.path.dirname(here), root):
             break  # a worktree's own .graphene/ (its copy of the direction)
+        if (main := worktree_main(here)) and _same_dir(main, str(root)):
+            return None  # the top of a worktree of this repo (a run's leaf): what lies in it is its own
         up = os.path.dirname(here)
         if up == here:
             return None
@@ -525,8 +527,3 @@ def _handlers(group: dict) -> list:
 
 def _is_ours(handler: object) -> bool:
     return isinstance(handler, dict) and handler.get("command") == HOOK_COMMAND
-
-
-def hooks_installed(root: Path) -> bool:
-    """Our hook command appears in either settings file (earlier versions wrote settings.json)."""
-    return any(_holds_hook(root / name) for name in (SETTINGS, TEAM_SETTINGS))

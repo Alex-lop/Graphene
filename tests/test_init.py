@@ -21,9 +21,9 @@ import pytest
 from fake_tokenfactory import MODELS, Fake
 from test_plan_cli import AGENT_ENV, CLI, person, repo, runner  # noqa: F401  (fixtures)
 
-from graphene_map import sandbox
-from graphene_map import tokenfactory as tf
 from graphene_map.cli import build
+from graphene_map.nemotron import sandbox
+from graphene_map.nemotron import tokenfactory as tf
 from graphene_map.store import Store
 
 ULTRA, SUPER, NANO = (f"nvidia/Nemotron-3-{size}-fake" for size in ("Ultra", "Super", "Nano"))
@@ -103,7 +103,8 @@ MENU = "which planner and executor for this repo?"
 
 
 def menu(said: str) -> list[str]:
-    return said[said.index(MENU) :].splitlines()[1:7]
+    lines = said[said.index(MENU) :].splitlines()[1:]
+    return lines[: next(i for i, line in enumerate(lines) if line.startswith("choose")) + 1]
 
 
 def test_at_a_terminal_each_choice_says_what_it_needs_and_enter_takes_the_one_found(repo, fake, on_path):
@@ -136,8 +137,8 @@ def test_at_a_terminal_with_only_claude_or_only_codex_found_enter_takes_it(repo,
     on_path(agent)  # and no key
     said = at_terminal(repo, ["init"], "")
     shown = menu(said)
-    assert shown[number - 1].endswith("  found") and shown[2].endswith("needs NEBIUS_API_KEY      not found")
-    assert NO_KEY not in said  # a person with an agent meets no signup: the row says what Nemotron needs
+    assert shown[number - 1].endswith("  found") and shown[2].startswith("  3  a command of your own")
+    assert "Nemotron" not in said and NO_KEY not in said  # no key: Nemotron is not offered, and no signup
     assert shown[-1] == f"choose [{number}]: "
     assert chosen(repo) == {"planner": agent, "executor": agent}
 
@@ -153,15 +154,28 @@ def test_at_a_terminal_with_two_found_enter_takes_neither_and_the_person_types_o
 
 def test_at_a_terminal_with_nothing_found_each_is_listed_with_what_it_needs(repo, on_path):
     on_path()  # no key, and no claude or codex
-    said = at_terminal(repo, ["init"], "", "3")
-    assert said.index(NO_KEY) > said.index("choose: ")  # what Token Factory needs, once it is chosen
-    assert menu(said)[:3] == [
+    said = at_terminal(repo, ["init"], "", "1")
+    assert menu(said) == [
         "  1  Claude Code                needs claude on the PATH  not found",
         "  2  Codex                      needs codex on the PATH   not found",
-        "  3  Nemotron on Token Factory  needs NEBIUS_API_KEY      not found",
-    ]
+        "  3  a command of your own      that takes the prompt last",
+        "choose: ",
+    ]  # Nemotron is offered only with a key
     assert said.count("choose: ") == 2 and "choose [" not in said  # Enter took nothing
-    assert chosen(repo) == {"planner": "nemotron", "executor": "nemotron --placement local"}  # not found yet
+    assert chosen(repo) == {"planner": "claude", "executor": "claude"}  # not found yet
+
+
+def test_without_the_nemotron_extra_init_offers_no_nemotron_and_refuses_it_by_name(
+    repo, fake, on_path, monkeypatch
+):
+    on_path("claude")  # and a key Token Factory answers: with the extra, two found and none chosen
+    monkeypatch.setitem(sys.modules, "contree_sdk", None)  # the extra's dependency, not installed
+    monkeypatch.delitem(sys.modules, "graphene_map.nemotron")
+    said = person("init")
+    assert chosen(repo) == {"planner": "claude", "executor": "claude"} and "Nemotron" not in said.output
+    refused = person("init", "--executor", "nemotron")
+    assert refused.exit_code == 2 and "uv tool install 'graphene-map[nemotron] @ git+" in refused.stderr
+    assert chosen(repo) == {"planner": "claude", "executor": "claude"}
 
 
 def test_the_offer_names_the_sizes_the_list_has_and_writes_their_ids(repo, fake, on_path):
@@ -240,9 +254,8 @@ def test_without_a_terminal_none_or_several_found_leave_the_choice_unset_and_say
 
 def test_init_help_says_none_is_offered_first():
     said = " ".join(runner.invoke(build(), ["init", "--help"]).output.split())
-    assert "from what is found here: `claude` or `codex` on the PATH, or NEBIUS_API_KEY" in said
-    assert "None is offered first." in said and "is offered first)" not in said
-    assert "Enter takes one only when exactly one is found" in said
+    assert "Pick a planner and an executor, and install the Claude Code hooks." in said
+    assert said.count("claude, codex, nemotron or a command.") == 2  # each choice, in the same order
 
 
 def test_offline_init_asks_once_and_says_what_it_could_not_reach_in_a_line(repo, monkeypatch, on_path):

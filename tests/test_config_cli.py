@@ -69,12 +69,13 @@ def test_config_prints_the_settings_as_rendered(repo):
 def test_the_settings_made_elsewhere_are_shown_and_a_save_leaves_them_alone(repo):
     with Store.open(repo) as store:
         store.set_meta("planner", "codex")
-        P.set_plan_first(store, False, P.caller(env=PERSON))
+        P.set_plan_first(store, "off", P.caller(env=PERSON))
         said = S.render(store)
         assert "# planner: codex (graphene init --planner)" in said
-        assert "# executor: none chosen" in said and "# plan first: off (graphene plan first on|off)" in said
+        assert "# executor: none chosen" in said
+        assert "# plan first: off (graphene plan first on|auto|off)" in said
         S.apply(store, said.replace("size: auto", "size: finer"), P.caller(env=PERSON))
-        assert (store.meta("planner"), P.plan_first(store), S.size(store)) == ("codex", False, "finer")
+        assert (store.meta("planner"), P.plan_first(store), S.size(store)) == ("codex", "off", "finer")
 
 
 def test_every_setting_is_written_by_edit_and_shown_back(repo, monkeypatch, tmp_path):

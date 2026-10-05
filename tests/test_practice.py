@@ -1,7 +1,7 @@
 """docs/test/practice.sh, the ladder for the first hour with a key, climbed whole against the stand-ins: the
 scripted fake Token Factory (tests/fake_tokenfactory.py, started by the ladder itself) and Docker in place of
-ConTree, as tests/test_escape.py uses it. Only the live calls are new when the key comes, on the ladder's
-own path: rung 6's arms are not arm_a.py or arm_bprime.py, which first meet the live service in the
+ConTree, as tests/nemotron/test_escape.py uses it. Only the live calls are new when the key comes, on the
+ladder's own path: rung 6's arms are not arm_a.py or arm_bprime.py, which first meet the live service in the
 evidence runs."""
 
 import contextlib
@@ -100,7 +100,7 @@ def test_in_an_agents_shell_the_access_rung_is_typed_by_the_person(tmp_path):
     assert not (tmp_path / "state" / "access.json").exists()  # nothing was run
     assert not done.stdout.startswith("dry run")
     # the line to type holds the rung's cap and the locked environment, and names the rung as `next` does
-    typed = "GRAPHENE_SPEND_CAP_USD=0.2500 uv run --frozen --extra sandbox python docs/test/access.py"
+    typed = "GRAPHENE_SPEND_CAP_USD=0.2500 uv run --frozen --extra nemotron python docs/test/access.py"
     assert typed in done.stdout
     assert "then `! docs/test/practice.sh 1` again" in done.stdout
     assert "next: docs/test/practice.sh 1" in done.stdout
@@ -151,7 +151,7 @@ def test_under_the_persons_opening_an_agents_shell_climbs_a_live_rung(tmp_path, 
     assert done.returncode == 1 and f"FAIL · rung {n} · " in done.stdout, said
     assert "an agent's mark" not in said and (tmp_path / "work").exists()  # it ran
     why = ("ConTree needs a key", "No module named 'contree_sdk'") if n == "4" else ("the leaf did not land",)
-    assert any(w in said for w in why), said  # without the `sandbox` extra, the SDK's absence is said first
+    assert any(w in said for w in why), said  # without the `nemotron` extra, the SDK's absence is said first
     assert "fake-key" not in said and json.loads((tmp_path / "state" / "progress.json").read_text())[n]
 
 
@@ -461,7 +461,7 @@ def test_contree_without_its_credentials_is_named_on_rungs_3_and_4(tmp_path, mon
     both said by the rung (4) and only in the log under a leaf that did not land (3)."""
     import types
 
-    from graphene_map import sandbox
+    from graphene_map.nemotron import sandbox
 
     practice = load_practice(tmp_path, monkeypatch)
     monkeypatch.setitem(sys.modules, "contree_sdk", types.SimpleNamespace(ContreeSync=None))
@@ -484,7 +484,7 @@ def test_rung_1_passes_on_token_factory_and_says_plainly_what_waits_for_sandboxe
     read as the 401."""
     from datetime import date
 
-    from graphene_map import sandbox
+    from graphene_map.nemotron import sandbox
 
     practice = load_practice(tmp_path, monkeypatch)
     monkeypatch.setenv("CLAUDECODE", "1")  # rung 1 reads what the person ran today, and runs nothing
@@ -534,7 +534,7 @@ def test_a_key_the_environment_does_not_hold_as_sent_is_counted_too(tmp_path, mo
     """The count looks for the key mask() takes out and Token Factory is sent: the keychain's (keys.find),
     and the environment's with the whitespace a paste leaves stripped. A rung whose file holds it fails.
     The key is made up; the keychain is a stub."""
-    from graphene_map import keys
+    from graphene_map.nemotron import keys
 
     practice = load_practice(tmp_path, monkeypatch)
     key = "Kq7" + "w" * 30
@@ -583,7 +583,7 @@ def test_rung_4s_command_past_its_time_comes_back_as_exit_124_or_fails(tmp_path,
     runs it on Docker."""
     from types import SimpleNamespace
 
-    from graphene_map import sandbox
+    from graphene_map.nemotron import sandbox
 
     practice = load_practice(tmp_path, monkeypatch)
     r = practice.Rung(4, 0.05)

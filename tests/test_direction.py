@@ -217,11 +217,6 @@ def test_sessions_attach_by_what_they_do_or_by_the_person_and_say_whose_move_it_
     assert (placed["a640f5b2"], placed["c0c0c0c0"]) == ("board", "board")  # what it started goes with it
     with Store.open(repo) as store:
         st = D.status(store, D.read(repo), now)
-    from graphene_map import server
-
-    with Store.open(repo) as store:
-        export = server.payload(store, [], only=True)
-    assert AGENT_SID[:8] not in json.dumps(json.loads(export)["direction"])  # no session leaves the machine
     sub = next(n for n in st["nodes"] if n["id"] == "submission")
     assert (sub["word"], sub["you"]) == ("yours", 1)
     assert next(w for w in st["sessions"] if w["short"] == other[:8])["how"] == "attached by you"
@@ -277,10 +272,9 @@ goal: users come back with their ids
 """
 
 
-def test_the_direction_is_above_the_plan_in_its_prints_its_views_the_screen_and_the_page(repo):  # noqa: F811
+def test_the_direction_is_above_the_plan_in_its_prints_its_views_and_the_screen(repo):  # noqa: F811
     import asyncio
 
-    from graphene_map import server
     from graphene_map.tui import Watch
 
     agent("direction", "propose", "-", input=TREE)
@@ -309,13 +303,6 @@ def test_the_direction_is_above_the_plan_in_its_prints_its_views_the_screen_and_
 
     rows = asyncio.run(go())
     assert [r.split()[1] for r in rows] == ["the", "live"] and "next: ids" in rows[1]
-
-    with Store.open(repo) as store:
-        page = json.loads(server.payload(store, []))["direction"]
-        export = json.loads(server.payload(store, [], only=True))["direction"]
-    assert page["plan"]["node"] == "live" and page["plan"]["next"] == "ids"
-    assert [n["id"] for n in page["nodes"]] == ["product", "live", "board", "submission"]
-    assert export["sessions"] == [] and export["nodes"] == page["nodes"]  # sessions stay on this machine
 
 
 def test_d_in_watch_shows_the_direction_across_the_width_live_and_takes_no_key(repo):  # noqa: F811

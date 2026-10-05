@@ -13,7 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tests"))
 import access  # noqa: E402
 from fake_tokenfactory import Fake, call  # noqa: E402
 
-from graphene_map import tokenfactory as tf  # noqa: E402
+from graphene_map.nemotron import tokenfactory as tf  # noqa: E402
 
 
 def test_it_names_the_ids_and_which_model_misfires(tmp_path, monkeypatch, capsys):
@@ -66,7 +66,7 @@ def test_a_project_sandboxes_refuse_is_one_line_saying_what_to_do_and_token_fact
 
 
 def test_the_docs_suite_never_reaches_the_real_keychain(monkeypatch):
-    from graphene_map import keys
+    from graphene_map.nemotron import keys
 
     monkeypatch.delenv("NEBIUS_API_KEY", raising=False)
     monkeypatch.setattr(keys.subprocess, "run", lambda *a, **k: pytest.fail("the keychain was asked"))

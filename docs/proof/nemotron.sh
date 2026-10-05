@@ -5,9 +5,9 @@
 #
 #   docs/proof/nemotron.sh [dir]        (default: ~/graphene-nemotron; it must not exist)
 #
-# Needs: graphene on PATH (for Sandboxes: uv tool install 'graphene-map[sandbox]'), NEBIUS_API_KEY in
-# the environment, and for Sandboxes NEBIUS_PROJECT_ID. Spends real tokens at Token Factory's list
-# price; the bill is the last thing it prints. EXECUTOR overrides the executor spec (the frozen
+# Needs: graphene on PATH with the Nemotron extra (uv tool install 'graphene-map[nemotron] @ git+…'),
+# NEBIUS_API_KEY in the environment, and for Sandboxes NEBIUS_PROJECT_ID. Spends real tokens at Token
+# Factory's list price; the bill is the last thing it prints. EXECUTOR overrides the executor spec (the frozen
 # configuration), e.g. EXECUTOR='nemotron --model <nano id> --model <super id>'. MAKE_REPO, PARAGRAPH and
 # PRUNE replace the feeds task, its paragraph and its scripted prune (the tests run it on a tiny repo).
 # RECORD=<file> records the plan's store over the whole run, for `graphene demo <file>` to replay.

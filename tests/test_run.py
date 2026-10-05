@@ -218,6 +218,6 @@ def test_a_script_is_named_by_its_script_not_by_the_interpreter_that_runs_it():
     assert run.label("node ./agents/run.js") == "run.js"
     assert run.label("/usr/local/bin/myagent --model m") == "myagent"
     assert run.label("claude -p --permission-mode acceptEdits") == "claude"
-    assert run.label(f"{sys.executable} -m graphene_map.executor --model m") == "nemotron"
+    assert run.label(f"{sys.executable} -m graphene_map.nemotron.executor --model m") == "nemotron"
     assert ask.label("python3 /home/me/bin/planner.py") == "planner.py"
-    assert ask.label(f"{sys.executable} -m graphene_map.planner") == "nemotron"
+    assert ask.label(f"{sys.executable} -m graphene_map.nemotron.planner") == "nemotron"

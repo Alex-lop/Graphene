@@ -163,10 +163,11 @@ ASIDE = (  # decision 18: plan first off, prompts are leaves
 )
 
 
-def _first(store) -> bool:
-    """Plan first, as the person set it (``P.plan_first``). A paused plan enforces nothing, this
-    included."""
-    return P.plan_first(store) and not P.paused(store)
+def _first(store) -> str | None:
+    """Plan first on or auto, as the person set it (``P.plan_first``): a session that holds no leaf
+    writes nothing. None when it is off. A paused plan enforces nothing, this included."""
+    how = P.plan_first(store)
+    return how if how != "off" and not P.paused(store) else None
 
 
 def _strict(store) -> bool:
@@ -174,17 +175,29 @@ def _strict(store) -> bool:
     return store.meta("asides") == "off"
 
 
-def _first_said(store) -> str:
+# Plan first auto: the agent that reads the repo judges the size, never a rule that reads the prompt.
+AUTO = (
+    "Plan first is auto. Is the request one change, with one scope you can name now and one check that "
+    "proves all of it? Then propose it as one leaf, with no sub-goal and no board item, using `graphene "
+    "plan propose -`. That leaf is the person's at once: run `graphene node start <id>` and do it. "
+    "Otherwise propose the tree, write nothing, and stop. The person prunes the tree in `graphene "
+    "watch`. Nothing to write, nothing to propose."
+)
+
+
+def _first_said(store, how: str) -> str:
     """Plan first, as a session is told it when it starts and at every prompt while it holds no leaf.
     Nothing here reads the person's words: the agent judges what they asked for, and the tree or the
-    leaf it proposes is what the person sees and prunes."""
-    taken = "theirs at once, and `graphene node start <id>` takes it"
-    one = "a proposal they accept like any other" if _strict(store) else taken
+    leaf it proposes is what the person sees and prunes. Under strict prompts auto is on: no leaf is
+    the person's at once."""
+    if how == "auto" and not _strict(store):
+        return AUTO
     return (
         "Plan first is on: before you write anything, propose what you will do in the plan's text "
         "(`graphene plan propose - <<'EOF' … EOF`) and do what it prints. A piece of work is a tree: "
         "propose it, then stop and tell the person it is ready to prune in `graphene watch`. A one-line "
-        f"ask is one leaf with its scope and check, {one}. Nothing to write, nothing to propose."
+        "ask is one leaf with its scope and check, a proposal they accept like any other. Nothing to "
+        "write, nothing to propose."
     )
 
 
@@ -237,7 +250,7 @@ def _session_start(store) -> dict | None:
     if os.environ.get("GRAPHENE_NODE") or os.environ.get("GRAPHENE_PLANNER"):
         return None  # started by `graphene run` or `graphene ask`: its prompt is the whole of its task
     first, force = _first(store), P.in_force(store)
-    said = [TEACH, _first_said(store) if first else FREE]
+    said = [TEACH, _first_said(store, first) if first else FREE]
     if force:
         said.append(IN_FORCE + ("" if first or _strict(store) else " " + ASIDE))
     return _context("SessionStart", "\n\n".join(said))
@@ -311,7 +324,8 @@ def _on_prompt(store, sid: str, text: str) -> dict | None:
     if not first or _held(store, sid) or _contract(text):
         return None
     take = _take(store)
-    return _context("UserPromptSubmit", f"Graphene: {_first_said(store)}" + (f" Or {take}." if take else ""))
+    said = f"Graphene: {_first_said(store, first)}" + (f" Or {take}." if take else "")
+    return _context("UserPromptSubmit", said)
 
 
 def one_line_ask(store, added: list[P.Node], who: P.Caller) -> str | None:
@@ -322,10 +336,11 @@ def one_line_ask(store, added: list[P.Node], who: P.Caller) -> str | None:
     them, and so does a leaf that would make a sub-goal of another (a split) or bring a proposal
     above it along. Returns what `graphene plan propose` says instead of "proposed", or None.
     The hole is decision 19's: an agent that starts a second agent chooses its prompt, and a
-    subagent carries its session's id. `graphene plan prompts strict` turns this off."""
+    subagent carries its session's id. Plan first on and `graphene plan prompts strict` turn
+    this off."""
     sid = who.session_id
     asked = store.meta(f"prompt_at:{sid}") if sid and not who.person else None
-    if not asked or len(added) != 1 or _strict(store) or _held(store, sid):
+    if not asked or len(added) != 1 or _strict(store) or P.plan_first(store) == "on" or _held(store, sid):
         return None
     everything = P.nodes(store)
     by_id, under = {n.id: n for n in everything}, P.kids(everything)
@@ -448,13 +463,17 @@ def scope_refused(
     return f"{rel} is outside the scope of the node you hold ({scopes}). {way_out}"
 
 
-def _guard_command(event: dict) -> dict | None:
+def _guard_command(event: dict, root: Path) -> dict | None:
     """The shell commands refused whatever the scope: speaking for the person, feeding the hook by
     hand, reaching round `graphene` into its store."""
     if event.get("tool_name") != "Bash":
         return None
+    from .hooks import worktree_root
+
     tool_input = event.get("tool_input") if isinstance(event.get("tool_input"), dict) else {}
     command = str(tool_input.get("command") or "")
+    cwd = event.get("cwd") if isinstance(event.get("cwd"), str) else None
+    top = worktree_root(cwd, root) if cwd else None  # a run's worktree: its own path is not the store
     if _AS_PERSON.search(command):
         return _deny(
             "GRAPHENE_AS and GRAPHENE_WATCH are how a script says it speaks for a person at their "
@@ -467,7 +486,7 @@ def _guard_command(event: dict) -> dict | None:
             "`graphene ingest` is what the vendor's hooks call, with events only they make; it is "
             "not an agent's to run"
         )
-    if ".graphene" in command.casefold() and not re.match(r"\s*graphene\s", command):
+    if ".graphene" in command.replace(top or "\0", "").casefold() and not re.match(r"\s*graphene\s", command):
         return _deny(
             "the plan's own store (.graphene/) is not an agent's to read around or write: use "
             "`graphene plan`, `graphene node show <id>` and `graphene plan log`"
@@ -550,7 +569,7 @@ def decide(store, event: dict, root: Path) -> dict | None:
     # plan first: a session that holds no leaf writes nothing, plan or no plan yet
     first = name == "PreToolUse" and not planner and _first(store) and not _held(store, sid)
     if name == "PreToolUse" and (planner or first or P.in_force(store)):
-        guarded = _guard_command(event)  # the store and the hooks are nobody's to reach round
+        guarded = _guard_command(event, root)  # the store and the hooks are nobody's to reach round
         if guarded is not None:
             return guarded
     if name == "PreToolUse" and (planner or first):

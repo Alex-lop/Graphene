@@ -155,6 +155,16 @@ def test_the_forecast_says_before_the_run_what_will_wait_for_a_person(store):
     ]
 
 
+def test_a_proposed_leaf_waits_on_its_own_acceptance_once_not_on_the_sub_goal_above_it_too(store):
+    """walks.md judge 11: `x will wait: feed is a proposal nobody has accepted; x is a proposal nobody
+    has accepted`. Accepting x accepts the proposals above it, so the one reason is x's own."""
+    plan.propose(store, [{"id": "feed", "title": "feed"}, api_node(id="x", parent="feed")], BOT)
+    _, waits = plan.forecast(plan.nodes(store))
+    assert [(n.id, why) for n, why in waits] == [("x", ["x is a proposal nobody has accepted"])]
+    plan.accept(store, ["x"], ALEX)
+    assert plan.get(store, "feed").state == OPEN  # accepting the leaf accepted what it hangs from
+
+
 # -- taking a node ----------------------------------------------------------------------------------
 
 
@@ -530,19 +540,6 @@ def test_work_done_after_the_audited_window_closed_stops_the_next_start(store, r
         plan.acknowledge(store, repo, BOT)
     assert plan.acknowledge(store, repo, ALEX) == ["src/db/schema.py"]  # "that was me": theirs to say
     assert plan.start(store, "n2", BOT, repo).state == RUNNING
-
-
-def test_a_file_the_person_had_graphene_write_is_not_a_loose_change(store, repo, finish):
-    """The first walkthrough: `graphene ui --export plan.html` in the repo, then the next node would
-    not start: "plan.html changed while no node owned it"."""
-    plan.propose(store, [api_node(id="a"), api_node(id="b", scope=["README.md"])], ALEX)
-    plan.start(store, "a", BOT, repo)
-    finish(store, repo, "a", BOT)
-    (repo / "plan.html").write_text("<html>")
-    assert plan.unowned(store, repo) == ["plan.html"]
-    plan.accept_path(store, repo, repo / "plan.html")
-    assert plan.unowned(store, repo) == []
-    assert plan.start(store, "b", BOT2, repo).state == RUNNING
 
 
 def test_a_person_starting_over_loose_changes_has_seen_them_and_the_log_keeps_them(store, repo, finish):

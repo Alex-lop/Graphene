@@ -1,6 +1,0 @@
-=== 2026-09-30 01:01:24 EDT cwd=/private/tmp/claude-501/-Users-alexlopez-Desktop-AllThingsAgenticHackathon/1c257068-543a-48a1-ae2e-a2935409e414/scratchpad/fields/docs/process/fields/spikes/lean/mechanics
-$ lake build Measure.Clean
-ℹ [8924/8924] Built Measure.Clean (184s)
-info: Measure/Clean.lean:6:0: 'clean' depends on axioms: [propext, Classical.choice, Quot.sound]
-Build completed successfully (8924 jobs).
-=== rc=0 wall=193.49s maxrss=1734MB

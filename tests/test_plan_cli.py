@@ -337,23 +337,24 @@ def test_after_the_last_node_is_archived_the_plan_the_board_and_the_next_ask_sta
 
 
 def test_a_finished_plan_says_when_its_leaves_work_is_not_committed_and_what_commits_it(repo, tmp_path):
-    """The judge ran plain `graphene run`: `graphene` said "3 leaves, 3 done … finished" while `git status`
-    held the leaves' work, and watch's R (`run --parallel 4`) had committed one as a merge."""
+    """The judge ran `graphene run` in the checkout (now `--here`): `graphene` said "3 leaves, 3 done …
+    finished" while `git status` held the leaves' work, and watch's R had committed one as a merge."""
     script = tmp_path.parent / f"{tmp_path.name}-ids.py"  # beside the repo: nobody's stray file
     script.write_text("open('api.py', 'w').write('def users():\\n    return [\"ids\"]\\n')\n")
     person("node", "add", "users returns ids", "--id", "ids", "--scope", "api.py", 
            "--check", "grep -q ids api.py")
-    ran = person("run", "--with", f"{sys.executable} {script}")
+    ran = person("run", "--here", "--with", f"{sys.executable} {script}")
     assert ran.exit_code == 0, ran.output
+    assert "--here: your checkout is exposed" in ran.stdout
     assert ran.stdout.splitlines()[-1] == (
-        "run: 1 done; the work of ids is not committed (`git status`): plain `graphene run` commits nothing, "
-        "`graphene run --parallel N` and watch's R commit and merge each leaf"
+        "run: 1 done; the work of ids is not committed (`git status`): `graphene run --here` commits "
+        "nothing, `graphene run` and watch's R commit and merge each leaf"
     )
     head = person().stdout.splitlines()[0]
     assert head == (
         "the plan: 1 leaf, 1 done, 0 running · finished; the work of 1 leaf is not committed (`git status`): "
-        "plain `graphene run` commits nothing, `graphene run --parallel N` and watch's R commit and merge "
-        "each leaf; `graphene plan archive` puts it away"
+        "`graphene run --here` commits nothing, `graphene run` and watch's R commit and merge each leaf; "
+        "`graphene plan archive` puts it away"
     )
     subprocess.run(["git", "-c", "user.email=t@example.com", "-c", "user.name=T", "commit", "-qam", "ids"],
                    cwd=repo, check=True)  # fmt: skip
@@ -401,22 +402,24 @@ def test_at_80_columns_every_line_of_the_plan_fits_and_ids_state_words_and_comma
 
 
 def test_plan_first_is_a_setting_the_person_sees_and_sets(repo):
-    """Never set, plan first is on while a plan is in force; `graphene init` sets it on; the person
-    turns it off and on, and an agent may not."""
+    """Never set, plan first is auto while a plan is in force; the person sets it on, auto or off,
+    and an agent may not."""
     assert "plan first: off" in person("plan", "first").stdout  # no plan in force here yet
     person("node", "add", "a leaf", "--scope", "api.py", "--check", "true")
-    assert "plan first: on" in person("plan", "first").stdout  # now there is one
-    turned = person("plan", "first", "off")
-    assert turned.exit_code == 0 and "plan first: off" in turned.stdout
-    assert "(the plan of" in turned.stderr
-    assert agent("plan", "first", "on").exit_code == 1
-    assert "plan first: off" in person("plan", "first").stdout
+    assert "plan first: auto" in person("plan", "first").stdout  # now there is one
+    for how in ("on", "off", "auto"):
+        turned = person("plan", "first", how)
+        assert turned.exit_code == 0 and f"plan first: {how}. " in turned.stdout
+        assert "(the plan of" in turned.stderr
+    assert agent("plan", "first", "off").exit_code == 1
+    assert "plan first: auto" in person("plan", "first").stdout
     assert person("plan", "first", "sideways").exit_code == 1
 
 
-def test_init_sets_plan_first_on(repo):
-    assert person("init").exit_code == 0
-    assert "plan first: on" in person("plan", "first").stdout
+def test_init_sets_plan_first_auto(repo):
+    said = person("init")
+    assert said.exit_code == 0 and "plan first is auto: one leaf of work is done at once" in said.stdout
+    assert "plan first: auto" in person("plan", "first").stdout
 
 
 # -- the messages, read as whoever receives them --------------------------------------------------
@@ -544,7 +547,8 @@ def test_refusals_say_what_was_refused_and_the_command_in_a_line(repo):
     clauses: each is now what was refused, or what happened, and the one command."""
     assert agent("node", "done").stderr == "you hold no node: `graphene node done <id>` names one\n"
     assert (
-        person("plan", "first", "sideways").stderr == "graphene plan first takes on or off, not 'sideways'\n"
+        person("plan", "first", "sideways").stderr
+        == "graphene plan first takes on, auto or off, not 'sideways'\n"
     )
     assert person("node", "set", "n1").stderr == (
         "graphene node set n1 needs what to change: --title, --scope, --check, --goal, --needs, --owner, "
@@ -632,14 +636,3 @@ def test_a_proposal_and_an_open_board_are_named_as_what_waits_not_stop_and_run_s
     assert "nothing to run: the tree is a proposal (1 leaf) nobody has accepted: `graphene plan accept`" in (
         ran.stderr
     ), ran.stderr
-
-
-def test_the_path_an_export_wrote_is_one_line_a_double_click_copies_whole(repo):
-    """Walk 2026-09-29 (alex 31): at 80 columns `wrote <path>` came out as the path broken over three
-    lines, by the printer and not the terminal, so a copy held line breaks in the middle of the path."""
-    assert person("node", "add", "users returns ids", "--id", "ids", "--scope", "api.py", "--check", "true")
-    page = repo / "a-rather-long-directory-name-for-the-exported-page" / "and-another-one-below-it" / "p.html"
-    said = runner.invoke(build(), ["ui", "--export", str(page), "--no-open"],
-                         env={"GRAPHENE_AS": "person:alex", "COLUMNS": "40"})  # fmt: skip
-    assert said.exit_code == 0, said.output
-    assert f"wrote {page}" in said.stderr.splitlines(), said.stderr

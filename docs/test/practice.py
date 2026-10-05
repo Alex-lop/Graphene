@@ -26,7 +26,7 @@ that rung, and it stops at arm A's failure. The dry run never reads it: it passe
 Live, only the person climbs: from a shell with an agent's mark, rungs 2-7 run nothing and say so (rung 1
 prints the line to type with `!`), unless the person started the agent's session with GRAPHENE_AGENT_LIVE_USD
 set. That is the opening: the ladder, and every live call and Sandbox operation made while it is set, go
-under the night's cap in one ledger (graphene_map/night.py), on top of each rung's own cap. A rung does
+under the night's cap in one ledger (nemotron/night.py), on top of each rung's own cap. A rung does
 not start past 80% of it; the dry run keeps a night's ledger of its own in its state directory. Ctrl-C
 stops a rung, cleans up, and says what is left and how to clean it.
 """
@@ -50,10 +50,10 @@ ROOT = HERE.parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "tests"))
 
-from graphene_map import keys, night  # noqa: E402
 from graphene_map import plan as P  # noqa: E402
-from graphene_map import sandbox as S  # noqa: E402
-from graphene_map import tokenfactory as tf  # noqa: E402
+from graphene_map.nemotron import keys, night  # noqa: E402
+from graphene_map.nemotron import sandbox as S  # noqa: E402
+from graphene_map.nemotron import tokenfactory as tf  # noqa: E402
 from graphene_map.store import Store  # noqa: E402
 
 DRY = "--dry" in sys.argv or os.environ.get("PRACTICE_DRY") == "1"
@@ -298,7 +298,7 @@ def access(r: Rung) -> str:
         args += ["--sandbox", "docker" if docker_runs() else "none"]
     if not DRY and marked():  # an agent's shell: the classifier refuses it
         typed = (f"! GRAPHENE_LEDGER={rel(LEDGER)} GRAPHENE_SPEND_CAP_USD={r.env['GRAPHENE_SPEND_CAP_USD']} "
-                 f"uv run --frozen --extra sandbox python docs/test/access.py --out {rel(out)}")  # fmt: skip
+                 f"uv run --frozen --extra nemotron python docs/test/access.py --out {rel(out)}")  # fmt: skip
         fresh = out.exists() and date.fromtimestamp(out.stat().st_mtime) == date.today()
         if not fresh:  # a `!` line carries the session's marks: it spends only if the session was opened
             opened = "" if night.cap() is not None else (
@@ -360,8 +360,8 @@ def in_sandbox(r: Rung) -> str:
     return f"{said}; in {want}: {p.get('ops')} operations, {p.get('seconds')} s"
 
 
-# The escape test's ways out of a leaf's scope that go through the sandbox (tests/test_escape.py has the
-# rest, the tool's own refusals, which do not depend on where the leaf runs): each must fail in there.
+# The escape test's ways out of a leaf's scope that go through the sandbox (tests/nemotron/test_escape.py has
+# the rest, the tool's own refusals, which do not depend on where the leaf runs): each must fail in there.
 FAILS = {
     "redirect": "echo gone > other.py",
     "sed -i": "sed -i s/1/2/ other.py",
@@ -679,7 +679,7 @@ MEANS = [  # (what the log or the failure says, what it most likely means, what 
      f"{NEED_SANDBOXES}: meanwhile `{ME} 5`, and rung 1 again once access is granted"),
     (r"No module named 'contree_sdk'|ConTree is not configured \(SDK",
      "the ConTree SDK is not installed",
-     "`uv sync --extra sandbox`, then the rung again"),
+     "`uv sync --extra nemotron`, then the rung again"),
     (r"ConTree needs (a key|NEBIUS_API_KEY)|ConTree is not configured",  # sandbox.Contree says the first
      "ConTree has no credentials: NEBIUS_PROJECT_ID is not set",
      "export NEBIUS_PROJECT_ID=… (the project's id, from the console) in ~/.zshenv, or `contree auth`"),

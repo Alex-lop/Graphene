@@ -41,7 +41,7 @@ sys.path.insert(0, str(HERE))
 import bench  # noqa: E402
 import tally  # noqa: E402
 
-from graphene_map import tokenfactory as tf  # noqa: E402
+from graphene_map.nemotron import tokenfactory as tf  # noqa: E402
 
 
 def part(repo: Path, env: dict, log, text: str, planner: str) -> None:

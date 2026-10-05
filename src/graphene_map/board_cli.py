@@ -10,7 +10,7 @@ import typer
 from rich.cells import cell_len, chop_cells
 
 from . import board as B
-from . import cover
+from . import extra
 from . import plan as P
 from . import plan_text as T
 from . import settings as S
@@ -120,7 +120,8 @@ def _then(effects: list[str]) -> list[str]:
 def register(cli: typer.Typer, root, open_store, fail) -> None:
     out = typer.echo
     board_cli = typer.Typer(
-        help="The board: the planner's questions, assumptions, risks and leave-outs, and your notes.",
+        help="Show the planner's questions, assumptions and risks, and your notes.\n\n"
+        "Open questions come first, each with its default and options.",
         invoke_without_command=True,
     )
     cli.add_typer(board_cli, name="board")
@@ -155,7 +156,7 @@ def register(cli: typer.Typer, root, open_store, fail) -> None:
     @board_cli.callback()
     def show(
         ctx: typer.Context,
-        as_json: bool = typer.Option(False, "--json", help="Every item, in the order shown, as JSON."),
+        as_json: bool = typer.Option(False, "--json", help="Print every item, in the order shown, as JSON."),
         everything: bool = typer.Option(
             False, "--all", help="List what is settled and dropped too, and every option's `then:` lines."
         ),
@@ -173,10 +174,12 @@ def register(cli: typer.Typer, root, open_store, fail) -> None:
                 out(line)
 
     @board_cli.command()
-    def take(item_id: str = typer.Argument(None, help="None: every open item that has a default.")) -> None:
-        """Take the default: yes to a question's default, confirm an assumption, agree to a leave-out.
-        With no id, every open item that has a default takes it, in one act, except a default that
-        drops a node, which waits for its id."""
+    def take(
+        item_id: str = typer.Argument(None, help="The item; every open item with a default if left out."),
+    ) -> None:
+        """Take an item's default.
+
+        With no id, every open default is taken, except one that drops a node."""
         if item_id:
             return act(f"board take {item_id}", lambda s, who, files: B.take(s, item_id, who, files))
         who, files = P.caller(), P.tracked(root())
@@ -193,58 +196,58 @@ def register(cli: typer.Typer, root, open_store, fail) -> None:
         typer.echo(f"  (the plan of {P.where(root())})", err=True)
 
     @board_cli.command()
-    def pick(item_id: str = typer.Argument(...), option: int = typer.Argument(..., help="From 1.")) -> None:
+    def pick(
+        item_id: str = typer.Argument(...),
+        option: int = typer.Argument(..., help="The option's number, from 1."),
+    ) -> None:
         """Pick one of a question's options."""
         act(f"board pick {item_id} {option}", lambda s, who, files: B.pick(s, item_id, option, who, files))
 
     @board_cli.command()
     def drop(item_id: str = typer.Argument(...)) -> None:
-        """Drop it: it is not told to anyone. An answer's read-only globs are lifted; what it changed in
-        the tree stays (`graphene plan undo` takes an answer back with all of it)."""
+        """Drop an item: it is told to no one.
+
+        Its changes to the tree stay. `graphene plan undo` takes them back."""
         act(f"board drop {item_id}", lambda s, who, files: B.drop(s, item_id, who))
 
-    @board_cli.command()
+    @board_cli.command(hidden=True)
     def park(item_id: str = typer.Argument(...)) -> None:
-        """Park it: not now; it stays on the board, told to nobody."""
+        """Park an item: not now.
+
+        A parked item stays on the board, told to nobody."""
         act(f"board park {item_id}", lambda s, who, files: B.park(s, item_id, who))
 
-    @board_cli.command()
+    @board_cli.command(hidden=True)
     def unpark(item_id: str = typer.Argument(...)) -> None:
-        """Unpark it: it is open again, waiting on you. An item the repository answered (`graphene board
-        lookup`) opens again the same way; what its answer changed in the tree stays."""
+        """Unpark an item: it is open again and waits on you.
+
+        This also reopens an item the repository answered."""
         act(f"board unpark {item_id}", lambda s, who, files: B.unpark(s, item_id, who))
 
     @board_cli.command()
     def answer(item_id: str = typer.Argument(...), words: list[str] = typer.Argument(...)) -> None:
-        """Answer it in your own words."""
+        """Answer an item in your own words.
+
+        Your words go to the executors as written."""
         act(f"board answer {item_id}", lambda s, who, files: B.answer(s, item_id, " ".join(words), who))
 
-    @board_cli.command()
-    def lookup() -> None:
-        """Ask Nano which open questions the repository already answers, and settle each whose answer
-        is in a file as quoted, marked "from the repo" (unpark opens it again). It spends: one call.
-        GRAPHENE_SHAPE=lookup runs it after each `graphene ask`."""
-        from . import lookup as L  # here, not above: it loads the model's client only when asked
-
-        with open_store(root()) as store:
-            try:  # not one undoable act: the model is never asked under the plan's write lock
-                L.lookup(store, root(), out)
-            except P.Refused as no:
-                fail(str(no), 1)
+    if L := extra.load("lookup"):  # the Nemotron extra's, when it is installed
+        L.register(board_cli, root, open_store, fail, out)  # `graphene board lookup`
 
     @board_cli.command()
     def note(
         words: list[str] = typer.Argument(...),
-        about: str = typer.Option(None, "--about", help="The node it is about; none is the whole plan."),
+        about: str = typer.Option(
+            None, "--about", help="The node the note is about; the whole plan if left out."
+        ),
     ) -> None:
-        """Put up a note. Yours is told to the executors as written; an agent's waits for you, and
-        accepting the whole plan (or R) takes it, told as written. With
-        GRAPHENE_SHAPE=note, a model then finds the leaf it constrains, and the change is put up as an
-        item whose default, taken, makes it."""
-        act("board note", lambda s, who, files: B.note(s, " ".join(words), who, about))
-        if "note" in cover.shaping() and P.caller().person:
-            from . import note as N  # here, not above: it loads the model's client only when asked
+        """Put up a note on the board.
 
+        Yours goes to the executors as written. An agent's waits for you to take it."""
+        act("board note", lambda s, who, files: B.note(s, " ".join(words), who, about))
+        cover = extra.load("cover")  # the Nemotron extra's GRAPHENE_SHAPE, when it is installed
+        if cover and "note" in cover.shaping() and P.caller().person:
+            N = extra.need("note")
             with open_store(root()) as store:  # routed outside the plan's write lock, as note.route asks
                 item = N.to_board(store, root(), " ".join(words), say=out)
             if item is not None:

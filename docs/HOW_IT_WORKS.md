@@ -48,8 +48,7 @@ stands in for a person sets `GRAPHENE_AS=person:<name>`; inside an agent's envir
 changes nothing, however it is spelled, and every act made through it is logged as made with no
 terminal (`alex (no terminal)`). The one exception is `graphene watch`, which sets `GRAPHENE_WATCH=1`
 on the commands the person types there when its own input is a terminal; an agent's command that
-carries it is refused by the hook, the same way `GRAPHENE_AS` is. `graphene ui` gives its page the person's rights only when a person
-started it.
+carries it is refused by the hook, the same way `GRAPHENE_AS` is.
 
 ## P1a. The tree
 
@@ -141,15 +140,16 @@ nothing changed is dropped. It is a record rather than a gate: it does not run t
 worktrees that `done` runs. A session that holds a planned leaf is held to it as before; an executor
 `graphene run` started never gets such a leaf; `graphene plan prompts strict` turns them off.
 
-**Plan first** is a setting of the person's (`graphene plan first on|off`, `P` in `graphene watch`;
-`graphene init` sets it on, and never set it is on while a plan is in force; `plan.plan_first`). On,
+**Plan first** is a setting of the person's (`graphene plan first on|auto|off`, `P` in `graphene watch`;
+`graphene init` sets it auto, and never set it is auto while a plan is in force; `plan.plan_first`). On or auto,
 a session that holds no leaf is told beside every prompt to propose what it will do in the plan's
 text before it writes, a piece of work as a tree the person prunes and a one-line ask as one leaf,
 and its writes (and the commands that reach round `graphene`) are refused until it holds a leaf; the
 refusal says how the person turns it off (`gate._first_refused`). One leaf with a scope and a check,
 proposed by a Claude Code session after the person's last prompt there and before any other
 proposal of that session since, is what that prompt asked for: it is accepted at once, as the
-person's, logged "by their prompt in the session" (`gate.one_line_ask`); a tree waits for them. A
+person's, logged "by their prompt in the session" (`gate.one_line_ask`); a tree waits for them, and
+under on so does one leaf. A
 prompt that types the CLI's own `--scope` and a quoted `--check` has planned its leaf, which is made
 at its first write. Off, what decision 18 says above holds. Nothing reads the person's words to
 decide any of this: not their length, not "just do it", not "yes". What the vendor sends as a prompt
@@ -215,7 +215,7 @@ lines that make the change. Plan first's instruction to a Claude Code session sa
 (`gate.TEACH`). Nothing counts the items: a proposal with five is put up with five.
 
 **When it shows** (`board.asks`, and the setting `board`, P1f). Unset, `board: auto`: the board is
-shown, on the screen, on the page and in `graphene plan`'s line, only while a question is open. A risk,
+shown, on the screen and in `graphene plan`'s line, only while a question is open. A risk,
 an assumption or a leave-out left open does not bring it up. `board: on` shows it while any item is
 open. Either way, what is left open takes its default once the whole plan is accepted (`graphene plan
 accept` with no proposal left, `y` on the goal), when the person starts a run that starts something
@@ -268,8 +268,7 @@ cursor stays on its node, and `h` `l` move to the cell beside. `--view auto` (`v
 view only when its `suits` beats the outline's 50, it draws, and it fits the rows it has; a view that
 draws `needs` may be taller. A tie goes to the outline. `graphene plan --view NAME [--width --height]`
 prints what `Tab` shows, in plain text. A view that does not fit prints the outline and says so on
-stderr. The page (`graphene ui`, §6) draws the same outline, tree and graph from the same critical path
-and `at_once` (`plan_view.py`).
+stderr.
 
 **Talking on a node** (`talk.py`). `?` on a node opens one line:
 - `w`: `graphene talk why ID`. The planner's answer is a note on the board about the node, by the
@@ -372,7 +371,7 @@ comes back byte for byte.
 
 | Command | Whose | Does |
 | --- | --- | --- |
-| `graphene direction [--width N] [--text] [--json]` | anyone | the tree, with the plan and the sessions hanging from it; `--text` is the file, `--json` what the page reads |
+| `graphene direction [--width N] [--text] [--json]` | anyone | the tree, with the plan and the sessions hanging from it; `--text` is the file, `--json` the same tree as JSON |
 | `graphene direction propose - [--under NODE]` | anyone | adds nodes in the file's own text; from an agent every node is `?` whatever it wrote |
 | `graphene direction accept ID…` | the person | accepts nodes, with the proposals they sit under and those under them |
 | `graphene direction drop ID` | the person | the node and what is under it leave the file |
@@ -393,11 +392,10 @@ and no transcript is read. A session quiet for a day is left out, and so is an i
 Each node rolls up what waits on the person (a leaf in review, a board question, a proposal, a session
 whose turn it is, each named by the id they act on), what runs (each running leaf once, with the
 session or subagent holding it) and what is next (the leaf `graphene run` starts next, never a
-proposal to accept). `graphene plan`, its views, `graphene watch` and the page show the path from the
+proposal to accept). `graphene plan`, its views and `graphene watch` show the path from the
 direction's top to the plan's node above the plan. `D` in `graphene watch` shows the whole direction
 in the node pane, under the tree at the screen's width, read again every tick, and opens nothing;
 attaching and accepting are typed at `:` (`:direction attach SESSION NODE`), as the bottom line says.
-An export's direction names no session.
 
 The hook refuses an agent's `Edit`, `Write`, `MultiEdit` and `NotebookEdit` under `.graphene/`, plan or
 no plan (`hooks.into_ours`), so an agent cannot accept its own proposal by editing the file; it
@@ -424,7 +422,7 @@ read the plan an hour ago.
 2. Any path left that the scope does not cover: refused, with the list. So is a changed path that
    is a symbolic link out of the repo, and so is a path changed in any *other* working tree of the
    repo since the node was started (a worktree made later is compared with the commit the node
-   started from). The worktrees of `graphene run --parallel` are not asked: each one's leaf answers
+   started from). The worktrees of `graphene run` are not asked: each one's leaf answers
    for it at its own `done`. The node stays `running`.
 3. It runs the check (30 minute cap, the making of its worktree included) and keeps the tail of the
    output in the log. Non-zero: refused. The check never runs in the checkout itself
@@ -476,14 +474,15 @@ the vendor's documented JSON:
 | `PreToolUse` on `Bash` | the writes the shell parser can read (`>`, `>>`, `tee`, `sed -i`, `mv`, `cp`, `rm`, `touch`, following `cd`) are checked the same way, links resolved first; a target git ignores passes; a command that mentions `GRAPHENE_AS` or reaches into `.graphene/` is denied whatever the scope; a command over 64,000 characters is not parsed at all (the parser is superlinear, and a hook that runs out of time lets the call through) |
 | `PostToolUse` on `Bash` | when Claude Code reports which files the command changed (`bashEditDiff`) and one is outside the scope: logged as a **breach**, and the agent is told to put it back. Claude Code does not fire this event for a command that exits non-zero, so this layer can be dodged; the boundary cannot |
 | `Stop` | refused while the session holds a running node: finish it, or hand it back saying why |
-| `SessionStart` | with or without a plan: the plan's text form, and plan first's instruction when it is on; with a plan in force, how to take a leaf. Not for an executor or a planner Graphene started |
-| `UserPromptSubmit` | the prompt is remembered (a leaf may be made from it, or a one-leaf proposal accepted as its ask); with plan first on and no leaf held, the instruction to propose first |
+| `SessionStart` | with or without a plan: the plan's text form, and plan first's instruction when it is on or auto; with a plan in force, how to take a leaf. Not for an executor or a planner Graphene started |
+| `UserPromptSubmit` | the prompt is remembered (a leaf may be made from it, or a one-leaf proposal accepted as its ask); with plan first on or auto and no leaf held, the instruction to propose first |
 
 Whatever the plan's state, a plan in force or none, an `Edit`, `Write`, `MultiEdit` or
 `NotebookEdit` whose path lies under the repository's `.graphene/` (a worktree's copy included, and a
 path spelled through a link) is denied and logged (`hooks.into_ours`): the store and the direction
-(P1g) are written by `graphene` commands only. A shell command that reaches into `.graphene/` is denied
-only where the gate answers the shell (below).
+(P1g) are written by `graphene` commands only. A file in a run's worktree under
+`.graphene/worktrees/` belongs to that worktree, not to the store. A shell command that reaches
+into `.graphene/` is denied only where the gate answers the shell (below).
 
 The deny applies in every permission mode, `bypassPermissions` included, and inside subagents (both
 checked with Graphene's own gate on a real session). The hook reads the node's row on every call,
@@ -493,7 +492,7 @@ and 35 ms to answer one (medians of twenty runs or more, measured with other wor
 it starts, for recording, for refusing and for plan first, and prints the wall clock beside it. The
 gate is imported only for the events it can answer (`hooks.gated`): a session's start; every event of
 a planner Graphene started; a prompt, a
-write or a shell command while plan first is on or a plan is in force; a shell command's result and a
+write or a shell command while plan first is on or auto, or a plan is in force; a shell command's result and a
 stop while a plan is in force. A read or a search never loads it. The same test names every module,
 SQL statement and process each event may use.
 
@@ -540,7 +539,9 @@ a process that began at another time) is handed back by the next run, after its 
 TERM then KILL. A leaf whose need is done but whose work is not in the checkout it would start in
 (never landed, landed out of its history, uncommitted where it was done) waits, and says why
 (`plan.not_here`); a need whose files were committed after it finished counts as here, even when
-the content was edited again before that commit. One node at a time, in the checkout you ran it from, and nothing is committed.
+the content was edited again before that commit. Each leaf runs in a worktree of its own (below).
+`graphene run --here` is the old way: one node at a time, in the checkout you ran it from, and
+nothing is committed. It says first that your checkout is exposed.
 
 A leaf that comes back offers its fix (`plan.offers`), from what it tried to write outside its scope
 (`plan.wanted`: refused writes, a refused `done`, what it changed): `graphene node widen <id>`,
@@ -552,7 +553,7 @@ which paths were not offered and why. A leaf that came back waits on the person:
 leaf a run let go (Ctrl-C, `:stop`) or a dead run's sweep handed back is ready again, and
 the next plain run takes it.
 
-`graphene run --parallel N` runs up to N ready leaves at once. Each gets a worktree,
+`graphene run` runs up to `--parallel N` ready leaves at once, one by default. Each gets a worktree,
 `.graphene/worktrees/<id>` on branch `graphene/<id>`, cut from where your checkout stands at that
 moment, so it holds everything that has already landed. The executor works there and meets the same
 boundary there. Then, one leaf at a time, Graphene commits the leaf's changed paths on its branch
@@ -564,7 +565,7 @@ leaf whose scope overlaps that of a leaf in flight waits for it to land. Since a
 scope is refused, two leaves cannot have written one file. If git still will not merge (your own
 uncommitted work is in the way), the merge is aborted, your checkout is as it was, the leaf stops in
 `review` with a log entry `unlanded` naming its branch, and what needs it waits. `git merge
-graphene/<id>` and `graphene node signoff <id>` (or the page's sign-off) finish it by hand; `graphene node reopen` sends it
+graphene/<id>` and `graphene node signoff <id>` finish it by hand; `graphene node reopen` sends it
 round again. An executor is never asked to resolve a conflict. Your untracked Claude Code hook settings
 (`.claude/settings.local.json`, which git ignores in every worktree) are copied into each worktree,
 so the hooks hold a leaf there as they do in your checkout.
@@ -583,6 +584,11 @@ Graphene cannot read goes back to it once, with the refusal. The hooks refuse it
 a leaf; `--about <id>` asks it about a leaf that came back.
 
 ## P4b. Nemotron on Token Factory: the executor, the planner, the sandbox
+
+Nemotron is an optional extra, in `src/graphene_map/nemotron/`: `uv tool install 'graphene-map[nemotron] @
+git+…'`. The core reaches it only through `extra.py`. Without the extra, `graphene key`, `plan cover`, `plan note`,
+`plan precheck` and `board lookup` are not there, `init` does not offer Nemotron, and `--with nemotron`
+is refused with the install line. `init` offers Nemotron only when a key is found.
 
 `--with nemotron` names Graphene's own executor (`executor.py`) to `graphene run`, and its own planner
 (`planner.py`) to `graphene ask`, `node split` and `:ask`. Both call Nebius Token Factory's
@@ -635,7 +641,7 @@ or used all its steps) on the ladder's last rung with nothing changed inside the
 words; otherwise the run's boundary decides, and the next rung tries. A fault in one fork is that
 fork's reason; when no fork passes, each fork's reason is said.
 
-**The sandbox** (`sandbox.py`) is ConTree, through `contree-sdk` 0.3.6 (the `sandbox` extra), with the
+**The sandbox** (`sandbox.py`) is ConTree, through `contree-sdk` 0.3.6 (the `nemotron` extra), with the
 SDK's own credentials (`NEBIUS_API_KEY` and `NEBIUS_PROJECT_ID`, or a `contree auth` profile). Without
 them it refuses in words before anything is sent. A project Sandboxes refuse (ConTree's 403, as rung 1
 met it on 29 September) is one refusal, in the same words in `access.py`, on the ladder, for a leaf in a
@@ -674,7 +680,7 @@ output, which is capped. A list that does not come back whole changes nothing he
 mid-leaf, or an operation killed by a signal with no list, hands the leaf back with the cause. No more
 than fifty operations run at once from this machine (`sandbox.CAP`, the Sandboxes beta's limit): each
 holds one of fifty lock files that every Graphene process of the user shares, since each executor of
-`graphene run --parallel`, each of its forks and each `graphene node done` runs operations of its own.
+`graphene run`, each of its forks and each `graphene node done` runs operations of its own.
 
 What the scope covers is brought back here. Anything else, such as a new file in a shared directory
 or a link, is never brought back, and neither is what git ignores (a check's `__pycache__`). Such a
@@ -739,7 +745,7 @@ with nemotron`) only where the long form still fits with it.
 
 ## P4d. Nano while the person shapes: three prototypes
 
-These three are ranked in `docs/process/ideas.md`, and have run only against a scripted stand-in for
+These three are ranked in [`docs/process/ideas.md`](https://github.com/Alex-lop/Graphene/blob/process/docs/process/ideas.md), and have run only against a scripted stand-in for
 Token Factory (`tests/fake_tokenfactory.py`). Each is a command, and each is the person's, since it
 spends. `GRAPHENE_SHAPE` (comma-separated: `cover`, `note`, `precheck`) also runs them on their own.
 They read the plan after it has landed, so they work whichever planner proposed it. Whatever they put
@@ -795,7 +801,7 @@ run live.
   `GRAPHENE_WATCH=1` in a way the hook cannot read.
 - The plan's store is a file in the repo that git ignores. The hook refuses an agent's write tools
   under `.graphene/`, plan or no plan, and the shell commands that name it while the gate answers the
-  shell (a plan in force, or plan first on); a script that opens it directly is neither stopped nor
+  shell (a plan in force, or plan first on or auto); a script that opens it directly is neither stopped nor
   noticed. Nothing here defends the store against an executor that sets out to rewrite it.
 - The direction (P1g) is a file anyone who commits to the repository can change. With no plan in
   force and plan first off, a shell command can write `.graphene/direction.txt` and accept its own
@@ -827,7 +833,7 @@ run live.
   that PATH (an active virtualenv, `uv run graphene`) imports the project from where that
   environment installed it, which for an editable install is the checkout itself. A check that
   names the checkout by an absolute path reads and writes the checkout itself. What git does not
-  carry is not there (an empty directory, a submodule's files). A leaf of `graphene run --parallel`
+  carry is not there (an empty directory, a submodule's files). A leaf of `graphene run`
   works in a worktree cut fresh, which has nothing git ignores either.
 - Every check pays for a whole checkout: 0.3 s on this repository (about 330 files), 19 s on one of
   100,000 files, on a loaded machine. What it runs on is written into the repository's objects (the
@@ -838,7 +844,7 @@ run live.
   <path>` removes it.
 - The boundary asks git about every working tree of the repo that exists when the node ends (a
   path changed in another worktree is refused with the tree named), except the worktrees of
-  `graphene run --parallel`, whose own leaves answer for them; a node in your checkout that writes
+  `graphene run`, whose own leaves answer for them; a node in your checkout that writes
   into one of those by absolute path is not seen. Nor does it ask about clones or copies of
   the repo somewhere else on the disk.
 - Scope overlap between two running nodes is checked against tracked files and the globs as
@@ -936,12 +942,12 @@ keeps its own 2 MB budget in its own columns.
 
 A tool call is grouped under the prompt whose `prompt_id` it carries. When that id is unknown
 (hooks installed mid-session, older Claude Code), it falls back to the latest recorded prompt in
-the session. Subagent calls carry `agent_id`, which is the lane they are drawn on. The rest of a
+the session. Subagent calls carry `agent_id`. The rest of a
 subagent is in other calls: the `Agent` call that spawned it names it in its response (`agentId`)
-and carries its task and its prompt, and its spawn link starts there; the `SubagentHandback` call it
-makes carries its closing words. The map reads them off those calls. A command's list of changed
+and carries its task and its prompt; the `SubagentHandback` call it
+makes carries its closing words. A command's list of changed
 files names a worktree's copy of a file, and the worktree `SubagentStart` recorded maps it to the
-repo's file, drawn as a copy.
+repo's file, flagged as a copy.
 
 ### What is not read
 
@@ -949,8 +955,8 @@ Graphene reads no transcript: nothing under `~/.claude/projects/`, where Claude 
 What it knows of a session is what the hooks recorded while it ran, so a session is on the record
 from the moment `graphene init` installed them, and one run before that, or in a checkout without
 them, is not. What no hook event carries, the record does not have: the Workflow run a subagent
-belongs to, so a Workflow's agents are not drawn as one group. A store written by an earlier
-version, which read the transcripts, keeps what it read, and the map still draws it.
+belongs to. A store written by an earlier
+version, which read the transcripts, keeps what it read.
 
 ### The store
 
@@ -971,7 +977,7 @@ Graphene derives the content after the call. Both are stored (up to 2 MB each) s
 computed later without touching the working tree. A `Write` whose response says `create` counts
 as known with no prior content. For a file outside the repo (a dotfile in your home directory,
 say) only the path is kept, never the contents, not even inside the raw tool payload the store
-keeps for every call: the map lists such files by name and nothing else. A file inside another git checkout below the repo root (a worktree under
+keeps for every call. A file inside another git checkout below the repo root (a worktree under
 `.claude/worktrees/`, a vendored clone) counts as outside too: it belongs to that checkout.
 
 What is not known from the payload: anything a shell command does to a file, and notebook edits.
@@ -1012,21 +1018,14 @@ to start one. `graphene watch` is the plan on one screen (P1a); `graphene plan -
 text (P1c). `graphene node show <id>` is a node's record (P6). `graphene board` is the board (P1d),
 `graphene plan --view NAME` a view of the plan and `graphene plan changes` what changed since you last
 looked (P1e), `graphene config` the settings (P1f), and `graphene direction` the goals above the plans
-(P1g). `graphene ui` is the plan and, behind
-it, the map of a recorded run. `graphene plan log` is every log entry, oldest first.
-
-`graphene ui` draws what the store holds, the plan and the sessions the hooks recorded, and asks git
-for the commits inside those sessions (all of them the first time, afterwards the ones still running
-or ended within a day). `--session ID` picks a session by
-id or unique prefix and can be repeated to put several on one axis; with none, the session that
-finished last and did something is drawn. `--json` prints the graph the page draws.
+(P1g). `graphene plan log` is every log entry, oldest first.
 
 Output rules: plain text, never wrapped or cut, so an agent reads a contract as its contract and a
 person greps it. In a terminal a line is word-wrapped at the width; piped or redirected it is one
 line with no escape codes. `NO_COLOR` turns colour off and keeps the layout. Every dead end is one
 line on stderr and a non-zero exit (plain when it is merely empty, red when it is an error):
-outside a git repository, inside your home directory, nothing to draw (no plan and no session
-recorded), a store another Graphene process has locked, no plan in this repo yet.
+outside a git repository, inside your home directory, a store another Graphene process has locked, no
+plan in this repo yet.
 
 Graphene writes nothing until it has something to record: in a repo with no store the empty state
 is printed and `.graphene/` and `.gitignore` are left alone (`graphene
@@ -1043,7 +1042,7 @@ or `graphene board lookup` (which ask Nano). Then it sends Token Factory the pro
 repository and the files the model reads, and Sandboxes the leaf's checkout, and nothing else,
 anywhere. The key is read from your
 environment, else the keychain, and written nowhere but the keychain, by `graphene key set`. It
-never pushes, and it commits and merges only in `graphene run --parallel`, on branches of its own (P4).
+never pushes, and it commits and merges only in `graphene run`, on branches of its own (P4).
 `graphene run` starts the executors you name and `graphene ask` the planner you name, with the
 permissions you give them; nothing else in Graphene starts an agent. It reads nothing Claude Code keeps under `~/.claude/`
 but the one setting `graphene init` looks for (and never writes). What the hooks record can contain
@@ -1053,33 +1052,29 @@ ignores itself in git through a `.gitignore` of its own, so the repo's `.gitigno
 The one file it leaves to git is `direction.txt`, which holds no session and nothing the hooks
 recorded (P1g).
 
-## 6. The page
+## The rest
 
-`graphene ui` serves one page to this machine only (loopback, `Host` and `Origin` checked). Its
-first screen is the plan: columns are how deep a node sits in what it waits on, lanes are owners
-(agents first, then each person), and every position is computed in Python
-(`src/graphene_map/plan_view.py`, tested in pytest) so the page decides no layout. The same nodes are
-also laid out as the tree a person draws, the goal at the top; buttons choose the outline, the tree or
-the graph, and `auto` chooses from the plan's shape. Under each, the critical path and what can start
-at once are said in words. Above the plan it shows the direction's path to the plan's node (P1g). It
-shows the board, while it asks (P1d), and the standing conditions as the terminal reads them
-(`board_rows`), and each leaf's `decided:` lines; it answers nothing on the board and says where it is
-answered. The second
-screen is the record of a run: lanes of agents over rows of files (`graph.py`).
+`graphene --help` lists nine commands. These work too, and `--help` after any of them says more.
+Agents call some of them, such as `plan propose` and `node start`.
 
-The page can change the plan only when a person started `graphene ui` (started from an agent's
-shell it is read-only and says so). A write needs the page's own origin and a token made for that
-launch, sent in a header a cross-site form cannot set. Each control calls the same function in
-`plan.py` as the command line does, a refusal is shown verbatim, and beside the scope, check and
-sign-off fields the page prints where that mechanism ends (P5).
-
-`graphene ui --export FILE` writes the same page as one file with its data inlined: paths, counts,
-commit subjects, prompts, each agent's task, and the plan with each node's whole log as its record.
-In the file a check is named by its command and result and never by what it printed, and a reason
-keeps only its first line (the reason `graphene run` hands a leaf back with quotes the refusal, and
-a failed check's output is under it); where a sentence names the checkout's path, the file names the
-repository instead. A run by executors that keep no records of their own is drawn
-from those logs alone; the second screen, drawn from Claude Code's sessions, is shut when there are
-none. It carries no token and cannot write. `docs/demo/README.md` says how the demo page is made
-from it and hosted. Every piece of text reaches the page
-through `textContent`, and `</` is escaped inside the JSON, so nothing recorded can turn into markup.
+- `graphene plan propose -` adds a tree, written as `graphene plan --text` prints it.
+- `graphene plan goal` sets the plan's goal, or prints it.
+- `graphene plan record` prints the record of the whole plan.
+- `graphene plan prompts leaf|strict` sets what a prompt typed into a session means.
+- `graphene plan ack` makes the uncommitted changes no leaf made yours.
+- `graphene plan seen` marks the plan as seen by you.
+- `graphene plan changes` lists what others changed since you marked it seen.
+- `graphene node start <id>` takes a node and prints its contract. An executor runs it first.
+- `graphene node signoff <id>` signs off a node that waits for a person.
+- `graphene node reopen <id>` sends a finished node back, with what is wrong.
+- `graphene node split <id>` asks the planner to cut a leaf into smaller leaves.
+- `graphene board park <id>` sets an item aside, told to nobody.
+- `graphene board unpark <id>` opens a parked item again.
+- `graphene talk why|split|merge|another` asks the planner about a node.
+- `graphene direction` prints the goals above your plans. Its subcommands change them (P1g).
+- `graphene ingest hook` records one hook event. The installed hooks call it.
+- `graphene key set|check|remove` keeps the Token Factory key in the keychain. Nemotron extra only.
+- `graphene plan cover` asks Nano which leaf carries each clause of your paragraph. Nemotron extra only.
+- `graphene plan note` asks a model which leaf a note constrains. Nemotron extra only.
+- `graphene plan precheck` runs each leaf's check before any work. Nemotron extra only.
+- `graphene board lookup` asks Nano which open questions the repo answers. Nemotron extra only.

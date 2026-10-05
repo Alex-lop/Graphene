@@ -1,0 +1,43 @@
++ source lane0.sh
+++ rm -rf /tmp/scratch
+++ mkdir /tmp/scratch
+++ cd /tmp/scratch
+++ git init -q
+++ echo 'print('\''hi'\'')'
+++ git add .
+++ git commit -qm init
+++ cat
+++ chmod +x /tmp/executor.sh
+++ graphene init --planner /bin/true --executor /tmp/executor.sh
+planner: /bin/true · executor: /tmp/executor.sh  (`graphene init` changes them; --with changes one command)
+plan first is on: what you ask for becomes a tree before any code (`graphene plan first off` turns it off)
+the Claude Code hooks are in .claude/settings.local.json too, for a Claude Code session you may run here
+next: `graphene ask '<what you want>'` proposes a plan; `graphene watch` shows it
+++ graphene node add 'add a readme' --id readme --scope README.md --check 'test -f README.md'
+○ add a readme  readme  ready
+  (the plan of /private/tmp/scratch)
+++ graphene run
+  (the plan of /private/tmp/scratch)
+readme started: add a readme
+readme attempt 1: the executor ended (exit 1)
+readme attempt 1 refused: readme is not done: changed outside its scope (README.md) · app.py
+readme attempt 2: the executor ended (exit 1)
+readme attempt 2 refused: readme is not done: changed outside its scope (README.md) · app.py
+readme attempt 3: the executor ended (exit 1)
+readme attempt 3 refused: readme is not done: changed outside its scope (README.md) · app.py
+readme came back after 3 attempts
+run: 1 came back (readme)
+++ git status --short
+ M app.py
+?? README.md
+++ echo '--- app.py:'
+--- app.py:
+++ cat app.py
+print('hi')
+sneaky
+sneaky
+sneaky
+++ echo '--- git branch -a:'
+--- git branch -a:
+++ git branch -a
+* main

@@ -1,5 +1,0 @@
-Building Spec.SumTwoSq
-WARNING: THIS IS NOT REAL LANDRUN! UNSAFELY RUNNING exec lake build Spec.SumTwoSq
-⚠ [8925/8925] Replayed Spec.SumTwoSq
-warning: Spec/SumTwoSq.lean:3:8: declaration uses `sorry`
-Build completed successfully (8925 jobs).

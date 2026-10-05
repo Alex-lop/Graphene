@@ -1,6 +1,0 @@
-=== 2026-09-30 01:12:48 EDT cwd=/private/tmp/claude-501/-Users-alexlopez-Desktop-AllThingsAgenticHackathon/1c257068-543a-48a1-ae2e-a2935409e414/scratchpad/fields/docs/process/fields/spikes/lean/mechanics load=[{ 4.63 5.50 4.98 }] swap=[total = 15360.00M  used = 13837.62M  free = 1522.38M  (encrypted)]
-$ lake build Measure.Axiom
-ℹ [8924/8924] Built Measure.Axiom (156s)
-info: Measure/Axiom.lean:8:0: 'withAxiom' depends on axioms: [cheat]
-Build completed successfully (8924 jobs).
-=== rc=0 wall=163.09s maxrss=2175MB

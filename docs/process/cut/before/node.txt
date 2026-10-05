@@ -1,0 +1,40 @@
+                                                                                
+ Usage: graphene node [OPTIONS] COMMAND [ARGS]...                               
+                                                                                
+ One node of the plan: shape it, take it, finish it, read its record.           
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --help          Show this message and exit.                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Commands ───────────────────────────────────────────────────────────────────╮
+│ add      Add a node. From a person it is in the plan at once; from an agent  │
+│          it is a proposal. With children to come it needs only a title:      │
+│          `graphene node add 'the API' --id api`, then `graphene node add …   │
+│          --parent api`.                                                      │
+│ set      Change a node's contract (a person only). It binds the very next    │
+│          write, and the next start.                                          │
+│ drop     Take a node out of the plan, with everything under it. Dropping a   │
+│          sub-goal's children makes it a leaf again: that is how a split is   │
+│          undone. Several are one act, all or none, which one `graphene plan  │
+│          undo` puts back; what waits on any of them is asked of them         │
+│          together.                                                           │
+│ edit     Open one node's contract as text in your editor; what you save is   │
+│          applied. A line you add under it is a new child; one you add beside │
+│          it, a sibling.                                                      │
+│ start    Take a node and print its contract as it stands now.                │
+│ done     Finish a node: Graphene runs its check and asks git what changed.   │
+│          Then says what is next.                                             │
+│ release  Hand a running node back, saying why. The way out when it cannot be │
+│          finished as written.                                                │
+│ signoff  A person's say-so: the node is done.                                │
+│ reopen   Not good enough: send a finished node back, with what is wrong.     │
+│ show     A node's contract, then its record: who held it, what changed, what │
+│          was refused, and how much of it is verified.                        │
+│ split    Ask the planner to cut a leaf into smaller leaves under it, as      │
+│          proposals for you to prune.                                         │
+│ widen    A leaf came back needing paths outside its scope: widen the scope   │
+│          to them.                                                            │
+│ sibling  A leaf came back needing paths outside its scope: a leaf beside it  │
+│          for them, which it waits on.                                        │
+╰──────────────────────────────────────────────────────────────────────────────╯
+

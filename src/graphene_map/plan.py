@@ -854,6 +854,27 @@ def run_check(
     return code == 0, (text[-TAIL:] if text else f"exit {code}, no output"), made
 
 
+# Shaped like a key: 20 or more letters and digits in a row, a capital, a small letter and a digit among
+# them (a key, a token, a JWT's part). The whole word it sits in goes (up to a space, a slash or a quote),
+# so no piece of a key is left. A git sha, a uuid, a node's id, a log's name and a model's name have none.
+ALNUM = "[A-Za-z0-9]"
+SHAPED = re.compile(rf"(?<!{ALNUM})(?={ALNUM}*[A-Z])(?={ALNUM}*[a-z])(?={ALNUM}*[0-9]){ALNUM}{{20}}")
+WORD = re.compile(r"[\w.\-]{20,}", re.ASCII)
+# base64, which a word above ends at a / or a + (an AWS secret access key): 30 or more of its letters with a
+# capital, a small letter, a digit and a / or a +, and its padding. A . - or _ breaks it, so a path is kept
+# unless 30 of its characters in a row are letters, digits and slashes alone.
+B64 = "[A-Za-z0-9+/]"
+BASE64 = re.compile(
+    rf"(?<!{B64})(?={B64}*[A-Z])(?={B64}*[a-z])(?={B64}*[0-9])(?={B64}*[+/]){B64}{{30,}}=*"
+)
+REMOVED = "[removed: shaped like a key]"
+
+
+def unkeyed(value: str) -> str:
+    """``value`` with every word shaped like a key, and every run of base64 shaped like one, taken out."""
+    return WORD.sub(lambda word: REMOVED if SHAPED.search(word[0]) else word[0], BASE64.sub(REMOVED, value))
+
+
 def sandboxed(store, node: Node) -> dict | None:
     """Where the current hold of this leaf worked, when that was a sandbox: the Nemotron executor
     notes it (`placement`) so that its check, whoever runs `done`, runs in a fork of the same one."""
@@ -866,11 +887,11 @@ def sandboxed(store, node: Node) -> dict | None:
 
 @ctrl_c_on_hangup()  # as run_check: a stop or a hangup removes the check's container
 def _check_in_sandbox(place: dict, command: str, checkout, leave_out) -> tuple[bool, str, list[str]]:
-    from .sandbox import check_in_fork
+    from . import extra
 
     try:
-        code, out = check_in_fork(place["box"], place["image"], Path(checkout), command, CHECK_TIMEOUT,
-                                  list(leave_out))  # fmt: skip
+        code, out = extra.need("sandbox").check_in_fork(place["box"], place["image"], Path(checkout), command,
+                                                        CHECK_TIMEOUT, list(leave_out))  # fmt: skip
     except Exception as no:  # an SDK, a network or a box that is gone: it never ran, which is no pass
         return False, f"the check could not be run in the leaf's sandbox: {no}", []
     text = out.strip()
@@ -1043,7 +1064,7 @@ def unreachable(
     proposed. A finished leaf writes nothing more, and the `**` of a leaf made from a prompt would
     cover every typo. It is a guess (a person typed `test/test_csvfeed.py` for `tests/`), said when the
     leaf is written, before anything is spent. A path on disk that git does not track comes back
-    marked, because a worktree cut for `--parallel` will not have it. A check that changes directory
+    marked, because a run's worktree will not have it. A check that changes directory
     (cd, pushd, `--prefix`, `-C <dir>`), and what a build makes, are not judged."""
     moves = r"(^|[;&|(\s])(cd|pushd)\s|--prefix[\s=]|(^|\s)-C\s"
     if not node.check or not node.scope or re.search(moves, node.check):
@@ -1577,9 +1598,9 @@ def unowned(store, checkout: str | Path, but: str | None = None) -> list[str]:
 
 
 def uncommitted(store, checkout: str | Path) -> list[str]:
-    """The done leaves of this checkout whose work git still calls uncommitted: plain `graphene run`
-    (and a session's own `done`) leaves it in the tree for the person; `run --parallel`, as watch's R
-    runs it, commits and merges each leaf in a worktree of its own, so its leaves are never here."""
+    """The done leaves of this checkout whose work git still calls uncommitted: `graphene run --here`
+    (and a session's own `done`) leaves it in the tree for the person; `graphene run` commits and
+    merges each leaf in a worktree of its own, so its leaves are never here."""
     checkout = str(Path(checkout).resolve())
     done = [n for n in nodes(store, (DONE, REVIEW)) if n.checkout == checkout]
     changed = dirty(checkout) if done else {}
@@ -1588,23 +1609,9 @@ def uncommitted(store, checkout: str | Path) -> list[str]:
 
 
 UNCOMMITTED = (
-    "not committed (`git status`): plain `graphene run` commits nothing, `graphene run --parallel N` and "
-    "watch's R commit and merge each leaf"
+    "not committed (`git status`): `graphene run --here` commits nothing, `graphene run` and watch's R "
+    "commit and merge each leaf"
 )
-
-
-def accept_path(store, checkout: str | Path, path: str | Path) -> None:
-    """A file the person just had Graphene write inside the checkout (an exported page) is theirs as
-    it stands: it goes into the boundary, so the next start is not refused over Graphene's own output."""
-    checkout = str(Path(checkout).resolve())
-    mark = _boundary(store, checkout)
-    try:
-        rel = str(Path(path).resolve().relative_to(checkout))
-    except ValueError:
-        return  # written somewhere else: not this checkout's business
-    if mark is not None:
-        mark["dirty"][rel] = _hash(checkout, rel)
-        store.set_meta(f"boundary:{checkout}", json.dumps(mark))
 
 
 def acknowledge(store, checkout: str | Path, who: Caller, now: str | None = None) -> list[str]:
@@ -1618,7 +1625,7 @@ def acknowledge(store, checkout: str | Path, who: Caller, now: str | None = None
     return paths
 
 
-RUN_TREE = f"{os.sep}.graphene{os.sep}worktrees{os.sep}"  # where `graphene run --parallel` puts a leaf
+RUN_TREE = f"{os.sep}.graphene{os.sep}worktrees{os.sep}"  # where `graphene run` puts a leaf
 
 
 def _may_start(store, node: Node, who: Caller, everything: list[Node]) -> None:
@@ -1852,7 +1859,7 @@ def not_here(store, node: Node, checkout: str | Path, committed: bool = False) -
 
 def other_checkouts(checkout: str | Path) -> list[str]:
     """The repo's other working trees that still exist, as git lists them, but for the ones `graphene
-    run --parallel` gives its leaves: each is its leaf's own checkout, and that leaf's boundary answers
+    run` gives its leaves: each is its leaf's own checkout, and that leaf's boundary answers
     for it (a leaf's leftover there was charged to a node the person held in their own checkout)."""
     import subprocess
 
@@ -1889,7 +1896,7 @@ def elsewhere(store, node: Node) -> list[str]:
     import subprocess
 
     if RUN_TREE in (node.checkout or ""):
-        # a leaf `graphene run --parallel` put in a worktree of its own: meanwhile its siblings land
+        # a leaf `graphene run` put in a worktree of its own: meanwhile its siblings land
         # in the person's checkout and the person works there, and none of that is this leaf's doing
         # (a review ran 8 leaves on 4 workers and 3 were refused over a sibling's landed file)
         return []
@@ -1986,7 +1993,7 @@ def outside_scope(store, node: Node, changed: list[str] | None = None) -> list[s
     if changed is None:
         changed = changed_since(node.checkout or ".", node.base_sha, node.dirty_at_start)
     here = os.path.realpath(node.checkout or ".")
-    landed: set[str] = set()  # what a leaf `graphene run --parallel` merged into this checkout meanwhile
+    landed: set[str] = set()  # what a leaf `graphene run` merged into this checkout meanwhile
     for e in store.node_log(kinds=("landed",)):
         d = e["detail"]
         if e["node_id"] == node.id or e["timestamp"] < (node.started_at or "") or not d.get("commit"):
@@ -2375,7 +2382,7 @@ def signoff(
 ) -> Node:
     """A person's say-so: a node waiting in review is done. One that did not land was merged by hand,
     as they were told, and where it landed is recorded, or what needs it waits for ever. ``checkout``:
-    where they merged it; the page passes none, and the repo the store belongs to is meant."""
+    where they merged it; with none, the repo the store belongs to is meant."""
     import subprocess
 
     _person_only(who, "signing a node off")
@@ -2722,16 +2729,20 @@ def where_said(root: str | Path) -> str | None:
     return None if "GRAPHENE_WATCH" in os.environ else f"  (the plan of {where(root)})"
 
 
-def plan_first(store) -> bool:
-    """Plan first: what a person asks for in a session is proposed as a tree before any code. The
-    person's setting (`graphene plan first on|off`, `P` in graphene watch); never set, it is on while
-    a plan is in force. `graphene init` sets it on in a repository it sets up."""
+FIRST = ("on", "auto", "off")
+
+
+def plan_first(store) -> str:
+    """Plan first, as the person set it: on, auto or off (`graphene plan first`, `P` in graphene
+    watch). On: every ask is proposed and waits for the person. Auto: one leaf of work is taken at
+    once, more is proposed as a tree. Off: nothing is proposed first. `graphene init` sets auto;
+    never set, it is auto while a plan is in force and off otherwise."""
     said = store.meta("plan_first")
-    return said == "on" if said in ("on", "off") else in_force(store)
+    return said if said in FIRST else "auto" if in_force(store) else "off"
 
 
-def set_plan_first(store, on: bool, who: Caller) -> None:
-    """The person turns plan first on or off; it is theirs, like the plan's other settings."""
-    _person_only(who, "turning plan first on or off")
-    store.set_meta("plan_first", "on" if on else "off")
-    store.log_node("*", _now(), "plan_first", who.label, None, None, {"note": "on" if on else "off"})
+def set_plan_first(store, how: str, who: Caller) -> None:
+    """The person sets plan first to on, auto or off; it is theirs, like the plan's other settings."""
+    _person_only(who, "setting plan first")
+    store.set_meta("plan_first", how)
+    store.log_node("*", _now(), "plan_first", who.label, None, None, {"note": how})

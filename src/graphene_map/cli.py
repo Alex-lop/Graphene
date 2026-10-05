@@ -43,8 +43,7 @@ def build():
         from click.exceptions import MissingParameter, UsageError
 
     from . import __version__
-    from .commits import refresh_commits
-    from .hooks import SETTINGS, hooks_file, hooks_installed, install_hooks
+    from .hooks import SETTINGS, hooks_file, install_hooks
     from .store import StaleStore, Store, repo_root
 
     SHELL_LISTS_HINT = (
@@ -83,12 +82,11 @@ def build():
 
     def paragraphs(command, rich: bool) -> None:
         """Every command's help reads as paragraphs: Typer's list of commands shows a docstring's hard
-        line breaks as they are. A "[" is a bracket, not Rich markup (the text form's `[id]` vanished).
-        A paragraph that starts with a \\b is printed as it is written."""
+        line breaks as they are. A "[" is a bracket, not Rich markup (the text form's `[id]` vanished)."""
         for sub in getattr(command, "commands", {}).values():
             if sub.help:
                 said = inspect.cleandoc(sub.help).split("\n\n")
-                sub.help = "\n\n".join(p if p.startswith("\b") else " ".join(p.split()) for p in said)
+                sub.help = "\n\n".join(" ".join(p.split()) for p in said)
                 sub.help = sub.help.replace("[", "\\[") if rich else sub.help
             paragraphs(sub, rich)
 
@@ -101,8 +99,8 @@ def build():
             paragraphs(self, self.rich_markup_mode == "rich")
 
         def list_commands(self, ctx):
-            """The plan leads the help: what will be done comes before what was."""
-            first = ["plan", "node", "watch", "ask", "run", "init", "ui"]
+            """The help lists the commands in the order a new user needs them."""
+            first = ["init", "ask", "watch", "run", "plan", "node", "board", "demo", "config"]
             names = super().list_commands(ctx)
             return [n for n in first if n in names] + [n for n in names if n not in first]
 
@@ -125,10 +123,8 @@ def build():
     cli = typer.Typer(
         cls=LockAware,
         help=(
-            "The shared plan between you and your coding agents: a graph of nodes, each with a goal, the "
-            "paths it may touch and a check, which you shape and the agents are held to. `graphene` "
-            "alone shows the plan and where the work stands; `graphene node show <id>` is what was done "
-            "for one node."
+            "Plan work with your coding agents, then hold them to the plan.\n\n"
+            "`graphene` shows the plan. `graphene node show <id>` shows one node's record."
         ),
         add_completion=False,
         no_args_is_help=False,
@@ -191,20 +187,12 @@ def build():
             note(f"store rebuilt (old copy at {store.rebuilt_from})")
         return store
 
-    def nothing_to_draw(r: Path) -> None:
-        if hooks_installed(r):
-            then = "the hooks are installed, so the next session here is recorded live"
-        else:
-            then = "`graphene init` records sessions live"
-        empty(f"nothing to draw here yet: no plan, and no Claude Code session recorded; {then}")
-
     @cli.callback(invoke_without_command=True)
     def main(
         ctx: typer.Context,
         version: bool = typer.Option(False, "--version", help="Print the version and exit."),
     ):
-        """With no command, `graphene` prints the plan and where the work stands. What was done for
-        one node is `graphene node show <id>`; the map of a recorded run is `graphene ui`."""
+        """With no command, print the plan and where the work stands."""
         if version:
             console.print(f"graphene {__version__}")
             raise typer.Exit()
@@ -222,7 +210,7 @@ def build():
         with open_store(root()) as store:
             return store.meta("plan_first") is not None
 
-    plan_or_nothing = register(cli, root, open_store, fail)  # first: the plan leads `graphene --help`
+    plan_or_nothing = register(cli, root, open_store, fail)  # first: talk adds two commands to `plan`
     from .board_cli import register as board
 
     board(cli, root, open_store, fail)
@@ -233,11 +221,12 @@ def build():
 
     talk(cli, root, open_store, fail)
 
-    from . import config_cli, key_cli, keys
+    from . import config_cli, extra
     from . import settings as S
 
     config_cli.register(cli, root, open_store, fail)
-    key_cli.register(cli, fail)
+    if key_cli := extra.load("key_cli"):  # `graphene key`: the Nemotron extra's, when it is installed
+        key_cli.register(cli, fail)
 
     WHO = ("planner", "executor")
     # what init looks for, by name, so that none comes first: the `--with` word, its name, what it needs
@@ -247,42 +236,12 @@ def build():
     def unreadable(command: str) -> str | None:
         """Why a planner or an executor cannot be started as written (`--with` splits it as a shell does)."""
         try:
-            shlex.split(command)
+            words = shlex.split(command)
         except ValueError as no:
             return f"{command!r} cannot be read as a command: {no}"
-        return None
+        return extra.MISSING if words[:1] == ["nemotron"] and not key_cli else None
 
-    def nemotron() -> tuple[dict[str, str], str, str | None, str | None]:
-        """Nemotron on Token Factory as a new repo is offered it, what that is in words, what could not
-        be reached, in one line, or None, and why the leaves are not in Sandboxes though ConTree is set
-        up here, or None. The ids are the live list's, so a run is reproducible and nothing is guessed:
-        the largest of Ultra and Super plans (as planner.py picks when it runs), and the two smallest
-        listed do the leaves, the second on a second attempt; in a Sandbox when ConTree is set up here
-        and does not refuse the project, on this machine otherwise. Out of reach it is plain `nemotron`,
-        which finds its models when it runs. Asked once: offline, init must not wait."""
-        from . import sandbox
-        from . import tokenfactory as tf
-
-        unreached = tf.reach(tries=1)
-        found = {} if unreached else tf.roles(tf.models(tries=1))
-        plans = [s for s in ("ultra", "super") if s in found][:1]
-        leaves = [s for s in ("nano", "super", "ultra") if s in found][:2]
-
-        def models(sizes: list[str]) -> str:
-            return "".join(f" --model {shlex.quote(found[s])}" for s in sizes)
-
-        refused = sandbox.refused() if sandbox.configured() else None  # whoami: a read, no operation
-        place = "sandbox" if sandbox.configured() and not refused else "local"
-        ladder = f"nemotron{models(leaves)} --placement {place}"
-        planner = plans[0].title() if plans else "largest"
-        does = " then ".join(s.title() for s in leaves) or "smallest"
-        said = f"{planner} plans, {does} {'do' if leaves[1:] else 'does'} the leaves"
-        if refused:
-            refused += ("; the leaves run on this machine until `graphene key check` says Sandboxes work, "
-                        "and `graphene init --executor nemotron` then places them there")  # fmt: skip
-        return {"planner": f"nemotron{models(plans)}", "executor": ladder}, said, unreached, refused
-
-    def asked_once(offer: dict[str, str], said: str, now: dict, found: list, key: bool) -> dict[str, str]:
+    def asked_once(offer: dict[str, str], said: str, now: dict, found: list, agents) -> dict[str, str]:
         """At a terminal: each choice by name, with what it needs and whether it was found here. Enter
         keeps what is set; with nothing set it takes the one choice found, when exactly one is, and
         otherwise a number is typed (any of them: what is not found yet can still be chosen). A command
@@ -290,25 +249,26 @@ def build():
         kept = any(now.values())
         if kept:
             say(" · ".join(f"{k} now: {now[k] or 'not chosen'}" for k in WHO))
-        where = "each in a Sandbox" if offer["executor"].endswith("sandbox") else "on this machine"
         say("which planner and executor for this repo?")
-        picks = {"4": {}}
-        for n, (word, name, needs) in enumerate(AGENTS, 1):
+        own = str(len(agents) + 1)
+        picks = {own: {}}
+        for n, (word, name, needs) in enumerate(agents, 1):
             picks[str(n)] = offer if word == "nemotron" else dict.fromkeys(WHO, word)
-            state = "found" if word in found else "not found"
-            if word == "nemotron" and word not in found and key:
-                state = "not reached"  # the key is here; the line above says what did not answer
+            # Nemotron is listed only with a key: not found, it did not answer, as the line above says
+            state = "found" if word in found else "not reached" if word == "nemotron" else "not found"
             say(f"  {n}  {name:<27}needs {needs:<20}{state}")
-        say(f"     {said}, {where}")  # what Nemotron would be, under its line
-        say(f"  4  {'a command of your own':<27}that takes the prompt last")
-        one = [str(n) for n, (word, _, _) in enumerate(AGENTS, 1) if word in found]
+            if word == "nemotron":  # what Nemotron would be, under its line
+                where = "each in a Sandbox" if offer["executor"].endswith("sandbox") else "on this machine"
+                say(f"     {said}, {where}")
+        say(f"  {own}  {'a command of your own':<27}that takes the prompt last")
+        one = [str(n) for n, (word, _, _) in enumerate(agents, 1) if word in found]
         default = one[0] if len(one) == 1 and not kept else ""
         if kept:
             picks[""] = {}
         ask = "choose (Enter keeps them)" if kept else "choose"
         while (picked := typer.prompt(ask, default=default, show_default=bool(default))) not in picks:
-            say("choose 1, 2, 3 or 4")
-        if picked != "4":
+            say(f"choose {', '.join(map(str, range(1, len(agents) + 1)))} or {own}")
+        if picked != own:
             return picks[picked]
 
         def readable(command: str) -> str:
@@ -329,14 +289,18 @@ def build():
         now = {k: store.meta(k) for k in WHO}
         missing = [k for k in WHO if k not in given and not now[k]]
         offer, said, unreached, found, placed = {}, "", None, [], None
-        key = keys.find() is not None  # the environment's, or the keychain's
-        if asking or missing or any(v.split()[:1] == ["nemotron"] for v in given.values()):
-            offer, said, unreached, placed = nemotron()
+        keys = extra.load("keys")
+        key = bool(keys) and keys.find() is not None  # the environment's, or the keychain's
+        agents = AGENTS if key else AGENTS[:2]  # Nemotron is offered with the extra and a key, not before
+        named = any(v.split()[:1] == ["nemotron"] for v in given.values())
+        if asking or missing or named:
+            if key or named:
+                offer, said, unreached, placed = key_cli.offer()
             if unreached and key:  # a key that did not answer: before the choice
                 say(unreached)
-            found = [w for w, _, _ in AGENTS if (not unreached if w == "nemotron" else shutil.which(w))]
+            found = [w for w, _, _ in agents if (not unreached if w == "nemotron" else shutil.which(w))]
         if asking:
-            given = asked_once(offer, said, now, found, key)
+            given = asked_once(offer, said, now, found, agents)
         else:
             plain = {k: offer[k] for k, v in given.items() if v.split() == ["nemotron"]}  # ids and all
             one = {} if len(found) != 1 else offer if found[0] == "nemotron" else dict.fromkeys(WHO, found[0])
@@ -349,9 +313,8 @@ def build():
                     "`graphene init` at a terminal asks, or --planner and --executor name one, and until "
                     "then `run` and `ask` refuse")  # fmt: skip
             given = {**{k: one[k] for k in missing if one}, **given, **plain}
-        if unreached and not key:
-            if any(v.split()[:1] == ["nemotron"] for v in given.values()):  # chosen: what it needs, once
-                say(unreached)
+        if unreached and not key and named:  # chosen: what it needs, once
+            say(unreached)
         if placed and offer and given.get("executor") == offer["executor"]:  # the offer, placed here: why
             say(placed)
         for k, v in given.items():
@@ -364,13 +327,9 @@ def build():
         planner: str = typer.Option(None, help="The planner: claude, codex, nemotron or a command."),
         executor: str = typer.Option(None, help="The executor: claude, codex, nemotron or a command."),
     ) -> None:
-        """Choose this repo's planner and executor from what is found here: `claude` or `codex` on the
-        PATH, or NEBIUS_API_KEY for NVIDIA Nemotron on Token Factory. None is offered first. At a
-        terminal it asks once, each choice with what it needs, and Enter takes one only when exactly
-        one is found; without a terminal the flags choose, and a choice not made gets what is found
-        when exactly one thing is. `graphene run`, `ask` and `node split` start them, and `--with`
-        overrides one command. Then install the Claude Code hooks, which hold a Claude Code session to
-        the plan and keep its record."""
+        """Pick a planner and an executor, and install the Claude Code hooks.
+
+        Run it once per repo. At a terminal it asks; --planner and --executor choose without asking."""
         from . import plan as P
 
         if os.environ.get("GRAPHENE_NODE") or os.environ.get("GRAPHENE_PLANNER"):
@@ -392,7 +351,7 @@ def build():
             chosen = choose(store, given, asking)
             specs = [store.meta(k) or "claude" for k in WHO]  # none chosen: the person's own Claude Code
             if store.meta("plan_first") is None:  # a repository set up for Graphene plans first
-                store.set_meta("plan_first", "on")
+                store.set_meta("plan_first", "auto")
             for k in (*S.GLOBS, "never", "size"):  # each setting's default, so `graphene config` has it
                 if store.meta(f"settings:{k}") is None:
                     store.set_meta(f"settings:{k}", "auto" if k == "size" else "[]")
@@ -402,8 +361,7 @@ def build():
         except ValueError as exc:
             fail(f"cannot update {SETTINGS}: {exc}", 1)
         settings = Path(os.path.relpath(hooks_file(r), Path.cwd()))
-        say("plan first is on: what you ask for becomes a tree before any code "
-            "(`graphene plan first off` turns it off)")  # fmt: skip
+        say("plan first is auto: one leaf of work is done at once, more is proposed as a tree")
         if not any(s.split()[:1] == ["claude"] for s in specs):  # Claude Code is not how this repo works
             say(f"the Claude Code hooks are in {settings} too, for a Claude Code session you may run here"
                 + ("" if added else " (already there)"))  # fmt: skip
@@ -427,73 +385,16 @@ def build():
                 "Install it with `uv tool install graphene-map` (or `--editable .`)."
             )
 
-    ingest = typer.Typer(help="Record what the agent did (the hooks call this).")
+    ingest = typer.Typer(help="Record what an agent did.\n\nThe installed hooks call this. Nobody types it.")
     cli.add_typer(ingest, name="ingest", hidden=True)
 
     @ingest.command("hook")
     def ingest_hook() -> None:
-        """Read one hook event from stdin (used by the installed hooks)."""
+        """Read one hook event from stdin.
+
+        The installed hooks call this."""
         from .hooks import hook_main
 
         raise typer.Exit(hook_main())
-
-    @cli.command()
-    def ui(
-        session: list[str] = typer.Option(
-            None, "--session", help="A session id or unique prefix; repeat it to put several on one axis."
-        ),
-        export: Path = typer.Option(None, "--export", help="Write the map as one self-contained HTML file."),
-        no_open: bool = typer.Option(False, "--no-open", help="Print the address without opening a browser."),
-        as_json: bool = typer.Option(False, "--json", help="Print the graph the page draws, as JSON."),
-    ) -> None:
-        """The plan on screen, and behind it the map of a run, drawn from the records."""
-        import webbrowser
-
-        from .graph import build_graph, select_sessions, to_json
-        from .plan import accept_path, caller
-        from .server import export_html, make_server
-
-        r = root()
-        if not (r / ".graphene" / "graphene.db").exists():  # looking must not create a store
-            nothing_to_draw(r)
-        # The plan is the page's first screen, so a repo that has one opens even when no session has
-        # been recorded in it yet. The sessions are the ones the hooks recorded; their commits, git's.
-        with open_store(r) as store:
-            if not store.node_count() and not store.sessions():
-                nothing_to_draw(r)
-            refresh_commits(store, r, [])
-            try:
-                ids = [i for one in session or [None] for i in select_sessions(store, one)]
-            except ValueError as exc:
-                fail(str(exc))
-            if as_json:
-                sys.stdout.write(to_json(build_graph(store, ids)) + "\n")
-                return
-            if export:
-                try:
-                    export.parent.mkdir(parents=True, exist_ok=True)
-                    export.write_text(export_html(store, ids), encoding="utf-8")
-                except OSError as exc:
-                    fail(f"cannot write {export}: {exc.strerror or exc}", 1)
-                if caller().person:  # theirs as it stands, or the next node would not start over it
-                    accept_path(store, r, export)
-                errors.print(f"wrote {export}", soft_wrap=True)  # a path the terminal wraps copies whole
-                return
-        # The plan is the person's to change, so the page may write only when a person opened it.
-        person = caller().person
-        server = make_server(r, ids, writable=person)
-        url = f"http://127.0.0.1:{server.server_address[1]}/"
-        say(f"{url}  (this machine only; Ctrl-C stops it)")
-        if not person:
-            say("the page is read-only: it was not opened from a person's terminal")
-        console.file.flush()  # piped or redirected, the address must not sit in a buffer until the end
-        if not no_open:
-            webbrowser.open(url)
-        try:
-            server.serve_forever()
-        except KeyboardInterrupt:
-            pass
-        finally:
-            server.server_close()
 
     return cli

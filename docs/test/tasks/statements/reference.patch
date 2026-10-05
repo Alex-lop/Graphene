@@ -1,0 +1,677 @@
+diff --git a/README.md b/README.md
+index f767705..dbcb664 100644
+--- a/README.md
++++ b/README.md
+@@ -5,7 +5,7 @@ Monthly account statements from a ledger in SQLite. Standard library only, Pytho
+     python3 -m api.cli init                                   create or migrate the database
+     python3 -m api.cli account add ACC-1001 "Ada Lovelace" --opened 2025-11-02
+     python3 -m api.cli account load samples/accounts.csv
+-    python3 -m api.cli post ACC-1001 2026-09-03 -12.50 --memo "coffee"
++    python3 -m api.cli post ACC-1001 2026-09-03 -12.50 --memo "coffee" --currency EUR
+     python3 -m api.cli load samples/postings.csv
+     python3 -m api.cli balance ACC-1001
+     python3 -m api.cli statement ACC-1001 2026-09
+@@ -36,4 +36,8 @@ The database is `$STATEMENTS_DB`, or `statements.db` in the current directory.
+ - Ops runs `scripts/close_month.sh` on the first of the month.
+ 
+ Amounts are stored exactly, with up to four places, because interest accrues in fractions of a cent.
+-They are rounded to two places only when they are printed.
++They are rounded to two places only when they are printed: half-even, except in the monthly totals
++file, which has always rounded half up.
++
++Every posting has a currency, USD unless it says otherwise. Balances, interest and the statement's
++sections are per currency, and two currencies are never added together. The v1 export is USD only.
+diff --git a/api/cli.py b/api/cli.py
+index 63f9a9e..c5c5d03 100644
+--- a/api/cli.py
++++ b/api/cli.py
+@@ -5,7 +5,7 @@ does one thing, and exits 0, or prints `error: ...` and exits 1. Nobody sees a t
+     python3 -m api.cli account add NUMBER HOLDER --opened YYYY-MM-DD
+     python3 -m api.cli account list
+     python3 -m api.cli account load FILE.csv
+-    python3 -m api.cli post NUMBER YYYY-MM-DD AMOUNT [--memo TEXT]
++    python3 -m api.cli post NUMBER YYYY-MM-DD AMOUNT [--memo TEXT] [--currency EUR]
+     python3 -m api.cli load FILE.csv
+     python3 -m api.cli balance NUMBER [--as-of YYYY-MM-DD]
+     python3 -m api.cli statement NUMBER YYYY-MM
+@@ -23,7 +23,7 @@ import sys
+ from api import export, statement
+ from core import balances, db, interest, ledger
+ from core.models import month_bounds, parse_day
+-from core.money import BadAmount, stored
++from core.money import USD, BadAmount, stored
+ 
+ 
+ def cmd_init(conn, args):
+@@ -49,8 +49,8 @@ def cmd_account(conn, args):
+ 
+ 
+ def cmd_post(conn, args):
+-    p = ledger.post(conn, args.number, args.day, args.amount, args.memo)
+-    print(f"#{p.id}  {p.account}  {p.posted_on}  {statement.money(p.amount)}  {p.memo}".rstrip())
++    p = ledger.post(conn, args.number, args.day, args.amount, args.memo, args.currency)
++    print(f"#{p.id}  {p.account}  {p.posted_on}  {p.currency} {statement.money(p.amount)}  {p.memo}".rstrip())
+ 
+ 
+ def cmd_load(conn, args):
+@@ -58,8 +58,11 @@ def cmd_load(conn, args):
+ 
+ 
+ def cmd_balance(conn, args):
++    """One line per currency the account has postings in: the code, then the balance."""
+     as_of = parse_day(args.as_of) if args.as_of else None
+-    print(statement.money(balances.balance(conn, args.number, as_of)))
++    held = balances.balances(conn, args.number, as_of) or {USD: balances.balance(conn, args.number, as_of)}
++    for code, amount in held.items():
++        print(f"{code} {statement.money(amount)}")
+ 
+ 
+ def cmd_statement(conn, args):
+@@ -74,14 +77,14 @@ def cmd_postings(conn, args):
+     """One account's postings for a month, as CSV: the columns `load` reads."""
+     first, last = month_bounds(args.month)
+     out = csv.writer(sys.stdout, lineterminator="\n")
+-    out.writerow(ledger.POSTING_COLUMNS)
++    out.writerow([*ledger.POSTING_COLUMNS, "currency"])
+     for p in ledger.postings(conn, args.number, start=first, end=last):
+-        out.writerow([p.account, p.posted_on, stored(p.amount), p.memo])
++        out.writerow([p.account, p.posted_on, stored(p.amount), p.memo, p.currency])
+ 
+ 
+ def cmd_accrue(conn, args):
+-    for number, amount in interest.accrue(conn, args.month, args.rate):
+-        print(f"{number}  {stored(amount)}")
++    for number, amount, code in interest.accrue(conn, args.month, args.rate):
++        print(f"{number}  {code} {stored(amount)}")
+ 
+ 
+ def cmd_close(conn, args):
+@@ -110,7 +113,10 @@ def parser():
+     post.add_argument("day")
+     post.add_argument("amount")
+     post.add_argument("--memo", default="")
+-    load = sub.add_parser("load", help="load postings from a CSV file: account,posted_on,amount,memo")
++    post.add_argument("--currency", default=USD, help="three letters, like EUR (default USD)")
++    load = sub.add_parser(
++        "load", help="load postings from a CSV file: account,posted_on,amount,memo and currency (default USD)"
++    )
+     load.add_argument("file")
+     bal = sub.add_parser("balance", help="an account's balance")
+     bal.add_argument("number")
+diff --git a/api/export.py b/api/export.py
+index 5a1c864..c27da9c 100644
+--- a/api/export.py
++++ b/api/export.py
+@@ -1,4 +1,5 @@
+-"""The v1 export: one account's month as JSON, for billing.
++"""The v1 export: one account's month as JSON, for billing. v1 is US dollars: its balances and its
++postings are the account's USD ones, and a posting in any other currency is not in it.
+ 
+     {"version": 1, "account": "ACC-1001", "holder": "Ada Lovelace", "month": "2026-09",
+      "opening": "1250", "closing": "1245.5", "postings": [{"id": 7, "account": "ACC-1001", ...}]}
+@@ -7,13 +8,14 @@ Amounts are strings, exact, as they are stored. Billing does its own rounding.
+ """
+ 
+ import json
+-from dataclasses import asdict
+ from decimal import Decimal
+ 
+ from core import balances, ledger
+ from core.money import stored
+ 
+ VERSION = 1
++# A posting's keys in v1, in this order. Billing parses them: the list is frozen.
++V1_FIELDS = ("id", "account", "posted_on", "amount", "memo")
+ 
+ 
+ def plain(record):
+@@ -31,7 +33,7 @@ def export_v1(conn, number, month):
+         "month": month,
+         "opening": stored(opening),
+         "closing": stored(closing),
+-        "postings": [plain(asdict(p)) for p in during],
++        "postings": [plain({f: getattr(p, f) for f in V1_FIELDS}) for p in during],
+     }
+ 
+ 
+diff --git a/api/statement.py b/api/statement.py
+index 0a07530..2f273a0 100644
+--- a/api/statement.py
++++ b/api/statement.py
+@@ -1,26 +1,33 @@
+ """The monthly statement, as text. Customers read it, and ops diffs it from one month to the next.
++It has one section for each currency the account has postings in, in alphabetical order.
+ 
+     STATEMENT ACC-1001
+     Holder    Ada Lovelace
+     Period    2026-09-01 to 2026-09-30
+ 
+-      Opening balance                                       1,250.00
++    EUR
++      Opening balance                                         250.00
+       2026-09-03  coffee                                       -4.50
+-      Closing balance                                       1,245.50
++      Closing balance                                         245.50
+       1 posting
++
++    USD
++      ...
+ """
+ 
+ from core import balances, ledger
+ from core.models import month_bounds
++from core.money import USD, to_cents
+ from vendor.decimalfmt import format_amount
+ 
+ WIDTH = 66
+-ROUNDING = "half_up"
+ 
+ 
+ def money(value):
+-    """An amount as a statement prints it: two places, grouped in thousands."""
+-    return format_amount(value, places=2, rounding=ROUNDING)
++    """An amount as a statement prints it: two places, half-even, grouped in thousands. The rounding
++    is done here: decimalfmt 1.3.0's own half_even goes through a float and gets some halves wrong
++    (vendor/decimalfmt/VENDORED). What it is given has two places already, so it only groups."""
++    return format_amount(to_cents(value), places=2, rounding="half_up")
+ 
+ 
+ def row(label, amount):
+@@ -36,17 +43,17 @@ def counted(n):
+     return f"{n} posting" if n == 1 else f"{n} postings"
+ 
+ 
++def section(conn, number, month, code):
++    opening, closing, during = balances.month(conn, number, month, code)
++    lines = [code, row("Opening balance", opening)]
++    lines += [row(f"{p.posted_on}  {p.memo or '-'}", p.amount) for p in during]
++    return [*lines, row("Closing balance", closing), f"  {counted(len(during))}"]
++
++
+ def render(conn, number, month):
+     acct = ledger.account(conn, number)
+     first, last = month_bounds(month)
+-    opening, closing, during = balances.month(conn, number, month)
+-    lines = [
+-        f"STATEMENT {acct.number}",
+-        f"Holder    {acct.holder}",
+-        f"Period    {first} to {last}",
+-        "",
+-        row("Opening balance", opening),
+-    ]
+-    lines += [row(f"{p.posted_on}  {p.memo or '-'}", p.amount) for p in during]
+-    lines += [row("Closing balance", closing), f"  {counted(len(during))}"]
++    lines = [f"STATEMENT {acct.number}", f"Holder    {acct.holder}", f"Period    {first} to {last}"]
++    for code in ledger.currencies(conn, number, last) or [USD]:
++        lines += ["", *section(conn, number, month, code)]
+     return "\n".join(lines) + "\n"
+diff --git a/core/balances.py b/core/balances.py
+index 23815ea..7591097 100644
+--- a/core/balances.py
++++ b/core/balances.py
+@@ -1,22 +1,28 @@
+-"""Balances: what an account holds, worked out from its postings. Nothing here rounds. Rounding is
+-for printing, and each printer does its own."""
++"""Balances: what an account holds, worked out from its postings, one currency at a time. Amounts in
++two currencies are never added together. Nothing here rounds. Rounding is for printing, and each
++printer does its own."""
+ 
+ from core import ledger
+ from core.models import day_before, month_bounds
+-from core.money import ZERO, total
++from core.money import USD, ZERO, total
+ 
+ 
+-def balance(conn, number, as_of=None):
+-    """Everything posted to the account up to and including as_of (or ever)."""
+-    return total(p.amount for p in ledger.postings(conn, number, end=as_of))
++def balance(conn, number, as_of=None, code=USD):
++    """Everything posted to the account in one currency up to and including as_of (or ever)."""
++    return total(p.amount for p in ledger.postings(conn, number, end=as_of, code=code))
+ 
+ 
+-def month(conn, number, month):
+-    """(opening, closing, postings) for one account and one month: the opening is the balance at the
+-    end of the day before the month starts."""
++def balances(conn, number, as_of=None):
++    """{currency: balance} for every currency the account has postings in, in alphabetical order."""
++    return {code: balance(conn, number, as_of, code) for code in ledger.currencies(conn, number, as_of)}
++
++
++def month(conn, number, month, code=USD):
++    """(opening, closing, postings) for one account, one month and one currency: the opening is the
++    balance at the end of the day before the month starts."""
+     first, last = month_bounds(month)
+-    opening = balance(conn, number, as_of=day_before(first))
+-    during = ledger.postings(conn, number, start=first, end=last)
++    opening = balance(conn, number, as_of=day_before(first), code=code)
++    during = ledger.postings(conn, number, start=first, end=last, code=code)
+     return opening, opening + total(p.amount for p in during), during
+ 
+ 
+@@ -26,15 +32,15 @@ def split(amounts):
+     return total(a for a in amounts if a < ZERO), total(a for a in amounts if a > ZERO)
+ 
+ 
+-def monthly_totals(conn, month_):
+-    """One row per account, in account order: opening, debits, credits and closing for the month.
+-    An account opened after the month ends has no row."""
++def monthly_totals(conn, month_, code=USD):
++    """One row per account, in account order: opening, debits, credits and closing for the month, in
++    one currency. An account opened after the month ends has no row."""
+     _, last = month_bounds(month_)
+     rows = []
+     for acct in ledger.accounts(conn):
+         if acct.opened_on > last:
+             continue
+-        opening, closing, during = month(conn, acct.number, month_)
++        opening, closing, during = month(conn, acct.number, month_, code)
+         debits, credits = split(p.amount for p in during)
+         rows.append(
+             {
+diff --git a/core/interest.py b/core/interest.py
+index 8f9fb26..1f60795 100644
+--- a/core/interest.py
++++ b/core/interest.py
+@@ -1,5 +1,6 @@
+ """Interest: what an account earns in a month, accrued day by day on its balance at the end of each
+-day, and posted on the month's last day with the memo "interest".
++day, and posted on the month's last day with the memo "interest". Each currency earns on its own
++balance, in that currency.
+ 
+     interest = the sum, over the month's days, of balance x annual rate / 365
+ 
+@@ -12,7 +13,7 @@ from decimal import ROUND_HALF_EVEN, Decimal, InvalidOperation
+ 
+ from core import ledger
+ from core.models import month_bounds
+-from core.money import PLACES, ZERO, total
++from core.money import PLACES, USD, ZERO, total
+ 
+ MEMO = "interest"
+ YEAR = Decimal(365)
+@@ -29,10 +30,10 @@ def parse_rate(text):
+     return rate
+ 
+ 
+-def daily_balances(conn, number, month):
+-    """[(day, balance at the end of it)] for every day of the month."""
++def daily_balances(conn, number, month, code=USD):
++    """[(day, balance at the end of it)] for every day of the month, in one currency."""
+     first, last = month_bounds(month)
+-    postings = ledger.postings(conn, number, end=last)
++    postings = ledger.postings(conn, number, end=last, code=code)
+     balance = total(p.amount for p in postings if p.posted_on < first)
+     moved = {}
+     for p in postings:
+@@ -46,15 +47,15 @@ def daily_balances(conn, number, month):
+     return out
+ 
+ 
+-def accrued(conn, number, month, rate):
++def accrued(conn, number, month, rate, code=USD):
+     rate = parse_rate(rate)
+-    earned = total(b * rate / YEAR for _, b in daily_balances(conn, number, month) if b > ZERO)
++    earned = total(b * rate / YEAR for _, b in daily_balances(conn, number, month, code) if b > ZERO)
+     return earned.quantize(PLACES, rounding=ROUND_HALF_EVEN)
+ 
+ 
+ def accrue(conn, month, rate):
+-    """Post every open account's interest for the month: [(account, amount)] for those that earned
+-    any. A month whose last day has interest on it already is refused."""
++    """Post every open account's interest for the month, in each of its currencies: [(account, amount,
++    currency)] for those that earned any. A month whose last day has interest on it already is refused."""
+     _, last = month_bounds(month)
+     if conn.execute("SELECT 1 FROM postings WHERE memo = ? AND posted_on = ?", (MEMO, last)).fetchone():
+         raise ValueError(f"interest for {month} is posted already")
+@@ -62,8 +63,9 @@ def accrue(conn, month, rate):
+     for acct in ledger.accounts(conn):
+         if acct.opened_on > last:
+             continue
+-        amount = accrued(conn, acct.number, month, rate)
+-        if amount > ZERO:
+-            ledger.post(conn, acct.number, last, str(amount), MEMO)
+-            posted.append((acct.number, amount))
++        for code in ledger.currencies(conn, acct.number, last):
++            amount = accrued(conn, acct.number, month, rate, code)
++            if amount > ZERO:
++                ledger.post(conn, acct.number, last, str(amount), MEMO, code)
++                posted.append((acct.number, amount, code))
+     return posted
+diff --git a/core/ledger.py b/core/ledger.py
+index 163b836..24e2760 100644
+--- a/core/ledger.py
++++ b/core/ledger.py
+@@ -4,12 +4,12 @@ an account or a posting is in this file."""
+ import csv
+ 
+ from core.models import Account, Posting, parse_day
+-from core.money import BadAmount, parse_amount, stored
++from core.money import USD, BadAmount, currency, parse_amount, stored
+ 
+ ACCOUNT_COLUMNS = ("number", "holder", "opened_on")
+-POSTING_COLUMNS = ("account", "posted_on", "amount", "memo")
++POSTING_COLUMNS = ("account", "posted_on", "amount", "memo")  # and currency, which may be left out
+ SELECT_POSTINGS = (
+-    "SELECT p.id, a.number, p.posted_on, p.amount, p.memo"
++    "SELECT p.id, a.number, p.posted_on, p.amount, p.memo, p.currency"
+     " FROM postings p JOIN accounts a ON a.id = p.account_id"
+ )
+ 
+@@ -69,33 +69,36 @@ def load_accounts(conn, path):
+ # -- postings -------------------------------------------------------------------------------------
+ 
+ 
+-def _insert_posting(conn, number, posted_on, amount, memo):
++def _insert_posting(conn, number, posted_on, amount, memo, code=USD):
+     acct = account(conn, number)
+     day = parse_day(posted_on)
+     if day < acct.opened_on:
+         raise ValueError(f"{day} is before {number} was opened ({acct.opened_on})")
+     value = parse_amount(amount)
+     cur = conn.execute(
+-        "INSERT INTO postings (account_id, posted_on, amount, memo) VALUES (?, ?, ?, ?)",
+-        (acct.id, day, stored(value), str(memo or "").strip()),
++        "INSERT INTO postings (account_id, posted_on, amount, memo, currency) VALUES (?, ?, ?, ?, ?)",
++        (acct.id, day, stored(value), str(memo or "").strip(), currency(code)),
+     )
+     return cur.lastrowid
+ 
+ 
+-def post(conn, number, posted_on, amount, memo=""):
+-    """One posting. Returns it as it was stored."""
++def post(conn, number, posted_on, amount, memo="", code=USD):
++    """One posting, in USD unless code says otherwise. Returns it as it was stored."""
+     with conn:
+-        new = _insert_posting(conn, number, posted_on, amount, memo)
++        new = _insert_posting(conn, number, posted_on, amount, memo, code)
+     return posting(conn, new)
+ 
+ 
+ def load_postings(conn, path):
+-    """account,posted_on,amount,memo with a header row. All of the file or none of it."""
++    """account,posted_on,amount,memo with a header row, and a currency column if the file has one: a
++    row without a currency is USD. All of the file or none of it."""
+     rows = _read(path, POSTING_COLUMNS)
+     with conn:
+         for line, row in rows:
+             try:
+-                _insert_posting(conn, row["account"], row["posted_on"], row["amount"], row["memo"])
++                _insert_posting(
++                    conn, row["account"], row["posted_on"], row["amount"], row["memo"], row.get("currency")
++                )
+             except (ValueError, BadAmount, UnknownAccount) as exc:
+                 raise BadRow(f"{path}:{line}: {exc}") from None
+     return len(rows)
+@@ -106,11 +109,13 @@ def posting(conn, posting_id):
+     return Posting.from_row(row)
+ 
+ 
+-def postings(conn, number, start=None, end=None):
++def postings(conn, number, start=None, end=None, code=None):
+     """One account's postings from start to end, both days included, in date order then the order
+-    they were posted in."""
++    they were posted in: in one currency, or in all of them when code is None."""
+     acct = account(conn, number)
+     sql, args = SELECT_POSTINGS + " WHERE p.account_id = ?", [acct.id]
++    if code:
++        sql, args = sql + " AND p.currency = ?", [*args, currency(code)]
+     if start:
+         sql, args = sql + " AND p.posted_on >= ?", [*args, start]
+     if end:
+@@ -118,6 +123,11 @@ def postings(conn, number, start=None, end=None):
+     return [Posting.from_row(r) for r in conn.execute(sql + " ORDER BY p.posted_on, p.id", args)]
+ 
+ 
++def currencies(conn, number, end=None):
++    """The currencies an account has postings in, up to end, in alphabetical order."""
++    return sorted({p.currency for p in postings(conn, number, end=end)})
++
++
+ # -- files ----------------------------------------------------------------------------------------
+ 
+ 
+diff --git a/core/models.py b/core/models.py
+index 2f8032e..a9b285d 100644
+--- a/core/models.py
++++ b/core/models.py
+@@ -22,10 +22,11 @@ class Account:
+ 
+ @dataclass(frozen=True)
+ class Posting:
+-    """One movement of money on one account.
++    """One movement of money on one account, in one currency.
+ 
+-    The v1 export writes a Posting as `dataclasses.asdict` gives it: every field here, under this
+-    name, and nothing else. Billing parses that, so the v1 shape of a Posting is frozen.
++    The v1 export writes a Posting's first five fields (api/export.py, V1_FIELDS) under these names
++    and nothing else. Billing parses that, so the v1 shape of a Posting is frozen: `currency` is not
++    in it, and nor is any field added after it.
+     """
+ 
+     id: int
+@@ -33,10 +34,13 @@ class Posting:
+     posted_on: str
+     amount: Decimal
+     memo: str
++    currency: str = "USD"
+ 
+     @classmethod
+     def from_row(cls, row):
+-        return cls(row["id"], row["number"], row["posted_on"], parse_amount(row["amount"]), row["memo"])
++        return cls(
++            row["id"], row["number"], row["posted_on"], parse_amount(row["amount"]), row["memo"], row["currency"]
++        )
+ 
+     @property
+     def month(self):
+diff --git a/core/money.py b/core/money.py
+index b6e3652..8aeff03 100644
+--- a/core/money.py
++++ b/core/money.py
+@@ -4,11 +4,14 @@ Amounts are stored with up to four places, because interest accrues in fractions
+ printed with two.
+ """
+ 
+-from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
++import re
++from decimal import ROUND_HALF_EVEN, ROUND_HALF_UP, Decimal, InvalidOperation
+ 
+ CENT = Decimal("0.01")
+ PLACES = Decimal("0.0001")
+ ZERO = Decimal("0")
++USD = "USD"
++CODE = re.compile(r"[A-Z]{3}")
+ 
+ 
+ class BadAmount(ValueError):
+@@ -43,5 +46,19 @@ def round_cents(value):
+     return value.quantize(CENT, rounding=ROUND_HALF_UP)
+ 
+ 
++def to_cents(value):
++    """Two places, half-even: 0.125 is 0.12 and 0.135 is 0.14. Everything prints this way except
++    the monthly file, which keeps round_cents."""
++    return value.quantize(CENT, rounding=ROUND_HALF_EVEN)
++
++
++def currency(text):
++    """'EUR', ' eur ' -> 'EUR'; nothing at all is USD. Anything but three letters is refused."""
++    code = str(text or "").strip().upper() or USD
++    if not CODE.fullmatch(code):
++        raise ValueError(f"not a currency: {text!r} (three letters, like EUR)")
++    return code
++
++
+ def total(amounts):
+     return sum(amounts, ZERO)
+diff --git a/migrations/0005_posting_currency.sql b/migrations/0005_posting_currency.sql
+new file mode 100644
+index 0000000..1bc2f3e
+--- /dev/null
++++ b/migrations/0005_posting_currency.sql
+@@ -0,0 +1,4 @@
++-- Every posting has a currency: an ISO 4217 code, three capital letters.
++-- Every posting made before this migration was in US dollars.
++ALTER TABLE postings ADD COLUMN currency TEXT NOT NULL DEFAULT 'USD';
++UPDATE postings SET currency = 'USD';
+diff --git a/tests/test_cli.py b/tests/test_cli.py
+index d8fc066..cd31127 100644
+--- a/tests/test_cli.py
++++ b/tests/test_cli.py
+@@ -23,13 +23,13 @@ class Cli(unittest.TestCase):
+         self.addCleanup(self.conn.close)
+ 
+     def test_balance(self):
+-        self.assertEqual(cli(self.db, "balance", "ACC-1003"), (0, "7,116.43\n", ""))
+-        self.assertEqual(cli(self.db, "balance", "ACC-1003", "--as-of", "2026-09-05")[1], "7,499.33\n")
++        self.assertEqual(cli(self.db, "balance", "ACC-1003"), (0, "USD 7,116.42\n", ""))
++        self.assertEqual(cli(self.db, "balance", "ACC-1003", "--as-of", "2026-09-05")[1], "USD 7,499.32\n")
+ 
+     def test_post_then_balance(self):
+         code, out, _ = cli(self.db, "post", "ACC-1004", "2026-10-01", "10", "--memo", "gift")
+         self.assertEqual(code, 0, out)
+-        self.assertEqual(cli(self.db, "balance", "ACC-1004")[1], "15.00\n")
++        self.assertEqual(cli(self.db, "balance", "ACC-1004")[1], "USD 15.00\n")
+ 
+     def test_an_error_is_one_line_and_exit_1(self):
+         bad = [("balance", "ACC-0000"), ("post", "ACC-1001", "2026-13-01", "1")]
+diff --git a/tests/test_currency.py b/tests/test_currency.py
+new file mode 100644
+index 0000000..fe206f3
+--- /dev/null
++++ b/tests/test_currency.py
+@@ -0,0 +1,90 @@
++"""Multi-currency: a currency on every posting, balances and statement sections per currency, the
++v1 export and the monthly file as they were for US dollars."""
++
++import json
++import sqlite3
++import tempfile
++import unittest
++from decimal import Decimal
++from pathlib import Path
++
++from api.export import dumps, export_v1
++from api.statement import money, render
++from core import balances, db, interest, ledger
++from core.money import currency
++from tests.support import database
++
++MIXED = """account,posted_on,amount,memo,currency
++ACC-1001,2026-09-01,100,usd in,USD
++ACC-1001,2026-09-02,200.125,eur in,EUR
++ACC-1001,2026-09-03,-0.005,eur fee,eur
++ACC-1001,2026-09-04,300,no currency,
++"""
++
++
++class Migration(unittest.TestCase):
++    def test_postings_made_before_it_are_usd(self):
++        path = str(Path(tempfile.mkdtemp()) / "old.db")
++        conn = sqlite3.connect(path)
++        self.addCleanup(conn.close)
++        for _, _, file in db.migrations()[:4]:
++            conn.executescript(file.read_text())
++        conn.execute("INSERT INTO accounts VALUES (1, 'ACC-1', 'x', '2026-01-01')")
++        conn.execute("INSERT INTO postings (account_id, posted_on, amount) VALUES (1, '2026-01-02', '5')")
++        conn.commit()
++        for _, _, file in db.migrations()[4:]:
++            conn.executescript(file.read_text())
++        self.assertEqual(conn.execute("SELECT currency FROM postings").fetchall(), [("USD",)])
++
++    def test_the_numbers_are_contiguous(self):
++        self.assertEqual([n for n, _, _ in db.migrations()], list(range(1, len(db.migrations()) + 1)))
++
++
++class PerCurrency(unittest.TestCase):
++    def setUp(self):
++        self.conn, _ = database(MIXED)
++        self.addCleanup(self.conn.close)
++
++    def test_a_currency_is_three_letters_and_nothing_is_usd(self):
++        self.assertEqual((currency(" eur "), currency("")), ("EUR", "USD"))
++        with self.assertRaises(ValueError):
++            currency("EURO")
++
++    def test_balances_are_never_added_across_currencies(self):
++        self.assertEqual(
++            balances.balances(self.conn, "ACC-1001"), {"EUR": Decimal("200.12"), "USD": Decimal("400")}
++        )
++
++    def test_one_statement_section_per_currency(self):
++        text = render(self.conn, "ACC-1001", "2026-09")
++        self.assertEqual([ln for ln in text.splitlines() if ln in ("EUR", "USD")], ["EUR", "USD"])
++        self.assertIn("Closing balance                                           200.12", text)
++        self.assertIn("Closing balance                                           400.00", text)
++
++    def test_v1_is_usd_and_keeps_its_shape(self):
++        doc = json.loads(dumps(export_v1(self.conn, "ACC-1001", "2026-09")))
++        self.assertEqual(doc["closing"], "400")
++        self.assertEqual([p["memo"] for p in doc["postings"]], ["usd in", "no currency"])
++        self.assertEqual(list(doc["postings"][0]), ["id", "account", "posted_on", "amount", "memo"])
++
++    def test_interest_is_per_currency(self):
++        posted = interest.accrue(self.conn, "2026-10", "0.0365")
++        self.assertEqual([(a, c) for a, _, c in posted], [("ACC-1001", "EUR"), ("ACC-1001", "USD")])
++
++
++class HalfEven(unittest.TestCase):
++    def test_halves_go_to_the_even_cent_where_a_float_would_not(self):
++        cases = {"0.125": "0.12", "0.135": "0.14", "2.675": "2.68", "2.665": "2.66", "-0.005": "0.00",
++                 "1234567.885": "1,234,567.88", "-2500.675": "-2,500.68"}  # fmt: skip
++        self.assertEqual({k: money(Decimal(k)) for k in cases}, cases)
++
++    def test_the_monthly_file_still_rounds_half_up(self):
++        conn, _ = database("account,posted_on,amount,memo\nACC-1001,2026-09-01,0.125,x\n")
++        self.addCleanup(conn.close)
++        from legacy.monthly import lines
++
++        self.assertEqual(lines(conn, "2026-09")[1], "ACC-1001,2026-09,0.00,0.00,0.13,0.13")
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/tests/test_interest.py b/tests/test_interest.py
+index d0b8466..174bb6b 100644
+--- a/tests/test_interest.py
++++ b/tests/test_interest.py
+@@ -25,7 +25,7 @@ class Interest(unittest.TestCase):
+ 
+     def test_accrue_posts_once_a_month(self):
+         posted = interest.accrue(self.conn, "2026-10", "0.01")
+-        self.assertEqual(posted, [("ACC-1002", Decimal("3.1"))])
++        self.assertEqual(posted, [("ACC-1002", Decimal("3.1"), "USD")])
+         self.assertEqual(ledger.postings(self.conn, "ACC-1002")[-1].memo, "interest")
+         with self.assertRaises(ValueError):
+             interest.accrue(self.conn, "2026-10", "0.01")
+diff --git a/tests/test_statement.py b/tests/test_statement.py
+index f567b33..baa6f3f 100644
+--- a/tests/test_statement.py
++++ b/tests/test_statement.py
+@@ -8,12 +8,13 @@ STATEMENT ACC-1003
+ Holder    Edsger Dijkstra
+ Period    2026-09-01 to 2026-09-30
+ 
++USD
+   Opening balance                                        10,000.00
+   2026-09-05  rent                                       -2,500.68
+   2026-09-18  refund                                        850.00
+-  2026-09-28  card                                       -1,234.57
+-  2026-09-30  interest                                        1.67
+-  Closing balance                                         7,116.43
++  2026-09-28  card                                       -1,234.56
++  2026-09-30  interest                                        1.66
++  Closing balance                                         7,116.42
+   4 postings
+ """
+ 
+@@ -40,7 +41,7 @@ class Statement(unittest.TestCase):
+             + "a memo far too long to fit on one line of a statement, by some way\n"
+         )
+         self.addCleanup(conn.close)
+-        line = render(conn, "ACC-1001", "2026-09").splitlines()[5]
++        line = render(conn, "ACC-1001", "2026-09").splitlines()[6]
+         self.assertEqual(len(line), 66)
+         self.assertIn("~", line)
+ 

@@ -7,8 +7,9 @@
 
 `type` is one of prompt, correction, shape, accept, run, review, handwork, result, and (added 23
 September, for the tree arm) drop, edit, widen, sibling, reopen, and read, and (28 September, for
-the board arm) board, one per board command, its text the whole command. `read` is not an act:
-its text is what the person was shown, and only its words are counted. `--mandated` marks a
+the board arm) board, one per board command, its text the whole command, and (October, for the
+statements task) clock, its text one of start, away, back and done. `read` and `clock` are not acts.
+A read's text is what the person was shown, and only its words are counted. `--mandated` marks a
 correction the card itself forces on both arms, so restarts can be reported both with it and
 without. `--from-json` reads a `claude -p --output-format json` result and takes its cost, turns
 and session id, so nobody transcribes a number.
@@ -31,7 +32,7 @@ from pathlib import Path
 
 TYPES = (
     "prompt", "correction", "shape", "accept", "run", "review", "handwork", "result",
-    "drop", "edit", "widen", "sibling", "reopen", "read", "board",
+    "drop", "edit", "widen", "sibling", "reopen", "read", "board", "clock",
 )  # fmt: skip
 
 

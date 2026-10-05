@@ -1,0 +1,21 @@
+# The paths that may change in this task. Graphene glob syntax: ** crosses directories,
+# a leading ! takes paths back out, and the last line that matches decides.
+#
+# A new migration with the next number, the core, the command line and its printers, a test of any
+# name except the protected one, a new sample file, and the README. legacy/monthly.py is in: pinning
+# its rounding there is one right way to keep its output. The four shipped migrations, vendor/ and
+# scripts/ are not.
+migrations/*.sql
+!migrations/0001_*.sql
+!migrations/0002_*.sql
+!migrations/0003_*.sql
+!migrations/0004_*.sql
+core/**
+api/**
+legacy/monthly.py
+tests/**
+!tests/test_legacy_contract.py
+samples/**
+!samples/accounts.csv
+!samples/postings.csv
+README.md

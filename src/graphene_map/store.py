@@ -16,7 +16,7 @@ RESPONSE_CAP = 256 * 1024
 STRING_CAP = 8 * 1024  # a recorded string longer than this keeps its first and last KEEP bytes only
 KEEP = 4 * 1024
 CONTENT_CAP = 2 * 1024 * 1024
-SCHEMA_VERSION = 4  # a hook-recorded session may outlive its transcript: migrate in place, never rebuild
+SCHEMA_VERSION = 5  # a hook-recorded session may outlive its transcript: migrate in place, never rebuild
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS sessions (
@@ -145,6 +145,10 @@ MIGRATIONS: dict[int, tuple[str, ...]] = {
     # goes up so that a 0.3 graphene refuses the store in words instead of failing on a field it
     # does not know.
     4: (),
+    # 5: plan first gained auto, the new default. A stored `on` meant then what auto means now (one
+    # leaf was the person's at once), so it becomes auto. An older graphene refuses the store in
+    # words instead of reading auto as never set.
+    5: ("UPDATE plan_meta SET value = 'auto' WHERE key = 'plan_first' AND value = 'on'",),
 }
 
 
@@ -395,17 +399,6 @@ class Store:
         rows = self.conn.execute("SELECT * FROM sessions ORDER BY started_at, id").fetchall()
         return [_session(r) for r in rows]
 
-    def did_something(self, session_id: str) -> bool:
-        """Did this session leave a recorded write in the repo, or a commit credited to it?"""
-        row = self.conn.execute(
-            """SELECT EXISTS (SELECT 1 FROM tool_events WHERE session_id = ? AND success IS NOT 0 AND (
-                   (file_path IS NOT NULL AND file_path NOT LIKE '/%')
-                   OR (tool = 'Bash' AND response LIKE '%"bashEditDiff"%')))
-               OR EXISTS (SELECT 1 FROM commits WHERE session_id = ?)""",
-            (session_id, session_id),
-        ).fetchone()
-        return bool(row[0])
-
     # -- prompts ------------------------------------------------------------------------------
 
     def add_prompt(self, p: Prompt) -> None:
@@ -598,9 +591,10 @@ class Store:
         detail: dict | None = None,
     ) -> None:
         if kind == "usage" and detail:  # night is imported here, not by the hook (test_hook_budget's WORK)
-            from . import night
+            from . import extra
 
-            if night.cap() is not None:  # made under the person's opening
+            night = extra.load("night")
+            if night and night.cap() is not None:  # made under the person's opening
                 detail = {**detail, "practice": True}
         self.conn.execute(
             "INSERT INTO node_log (node_id, timestamp, kind, actor, session_id, agent_id, detail) "

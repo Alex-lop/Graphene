@@ -26,7 +26,8 @@ def test_the_submission_reports_the_shaping_studies_board_against_outline_whatev
 
 
 def test_the_docs_describe_the_planner_prompt_the_code_sends():
-    from graphene_map import ask, planner
+    from graphene_map import ask
+    from graphene_map.nemotron import planner
 
     assert "at most three" in " ".join(planner.SYSTEM.split()) and "at most three" in ask.RULES
     how = doc("docs/HOW_IT_WORKS.md")
@@ -74,16 +75,19 @@ def test_the_dag_note_the_docs_quote_is_the_one_view_dag_prints_for_their_scratc
     assert "2 at once" not in hackathon + storyboard and "Two leaves can start at once" not in storyboard
 
 
-def test_the_readme_s_privacy_says_precheck_uploads_the_checkout_to_sandboxes():
+def test_what_nemotron_sends_says_precheck_uploads_the_checkout_to_sandboxes():
     import inspect
 
-    from graphene_map import precheck
+    from graphene_map.nemotron import precheck
 
     forks = inspect.getsource(precheck._forks)
     assert 'or "contree"' in forks and "S.pack(root)" in forks  # ConTree by default, the checkout packed
     privacy = doc("README.md").split("## Privacy")[1].split("## ")[0]
-    assert "`plan precheck` uploads your checkout to Sandboxes when ConTree's credentials are set" in privacy
-    assert "whatever the planner" in privacy
+    assert "With Claude Code or Codex, Graphene sends nothing anywhere." in privacy
+    assert "Nemotron on Token Factory is an optional extra; what it sends is in [HACKATHON.md]" in privacy
+    sends = doc("docs/HACKATHON.md").split("**What it sends.**")[1].split("**")[0]
+    assert "`plan precheck` uploads your checkout to Sandboxes when ConTree's credentials are set" in sends
+    assert "whatever the planner" in sends
 
 
 def test_watch_help_names_no_view_setting_that_no_command_can_set():
@@ -93,7 +97,7 @@ def test_watch_help_names_no_view_setting_that_no_command_can_set():
     from graphene_map.cli import build
 
     said = " ".join(CliRunner().invoke(build(), ["watch", "--help"], env={"COLUMNS": "200"}).stdout.split())
-    assert "Left out: the outline." in said and "view` setting" not in said
+    assert "the outline if left out." in said and "view` setting" not in said
 
 
 def test_the_drafts_carry_no_integ_only_marker_now_that_every_command_they_named_is_here():
@@ -136,9 +140,9 @@ def test_first_lights_model_table_is_the_live_list_the_fixture_keeps():
     assert "**Practice, not a registered result.**" in doc("docs/test/first-light.md")
 
 
-def test_the_readme_and_changelog_name_what_first_light_added_and_no_doc_says_the_page_hides_the_board():
+def test_the_readme_and_changelog_name_what_first_light_added():
     """A walker found the README and CHANGELOG silent on the direction, `board lookup` and the board's
-    setting, and the README saying the page does not show the board (walk findings 9, 30, 39)."""
+    setting (walk findings 9, 30, 39)."""
     from typer.testing import CliRunner
 
     from graphene_map import settings as S
@@ -148,12 +152,14 @@ def test_the_readme_and_changelog_name_what_first_light_added_and_no_doc_says_th
         assert CliRunner().invoke(build(), [*words, "--help"]).exit_code == 0, words
     assert S.BOARDS[0] == "auto"  # the first is the value when unset
     for path in ("README.md", "CHANGELOG.md"):
+        assert "`board: auto`" in doc(path), path
+    for path in ("docs/HOW_IT_WORKS.md", "CHANGELOG.md"):  # hidden now: "The rest" lists it
         said = doc(path)
-        assert "graphene direction" in said and "board lookup" in said and "`board: auto`" in said, path
+        assert "graphene direction" in said, path
+    for path in ("docs/HACKATHON.md", "CHANGELOG.md"):  # board lookup is the Nemotron extra's
+        assert "board lookup" in doc(path), path
         live = "As practice on 2 October, Nemotron planned a small feature 5 times"
         assert live in " ".join(said.split()), path
-    for path in ("README.md", "docs/HOW_IT_WORKS.md"):
-        assert "does not show the board" not in doc(path), path
 
 
 def test_the_docs_say_what_accept_and_r_leave_open_and_that_d_attaches_nothing():
@@ -170,32 +176,6 @@ def test_the_docs_say_what_accept_and_r_leave_open_and_that_d_attaches_nothing()
         assert "drops a node" in said, path
         assert "or `D` in `graphene watch`" not in said and "opens `:direction attach" not in said, path
         assert "and an agent's note, stay open" not in said, path
-
-
-def test_walks_first_light_verdicts_cite_commits_on_this_history_and_tests_that_exist():
-    """Review 2026-09-29 (30): the verdicts cited 18 hashes of branches before their rebase, and a test
-    since renamed. A hash named with its own branch (`on its branch …`) is that branch's, not this one's.
-    In a shallow clone (CI's) only the tests are checked."""
-    import subprocess
-
-    walks = (ROOT / "docs/process/shaping/walks.md").read_text(encoding="utf-8")
-    said = walks[walks.index("## First light's verdicts") :]
-    sources = " ".join(
-        p.read_text(encoding="utf-8")
-        for d in ("tests", "docs/test", "ui/src")
-        for p in (ROOT / d).rglob("*.[pt]*[ysx]")
-    )
-    for test in set(re.findall(r"\btest_[a-z0-9_]+", said)):
-        assert test in sources, test
-
-    def git(*args):
-        return subprocess.run(["git", "-C", str(ROOT), *args], capture_output=True, text=True)
-
-    if git("rev-parse", "--is-shallow-repository").stdout.strip() != "false":
-        return
-    elsewhere = set(re.findall(r"\b([0-9a-f]{7}) on its branch", said))
-    for sha in set(re.findall(r"\b[0-9a-f]{7}\b", said)) - elsewhere:
-        assert git("merge-base", "--is-ancestor", sha, "HEAD").returncode == 0, sha
 
 
 def test_live_session_names_only_scripts_that_exist_and_practice_steps_the_ladder_knows():
