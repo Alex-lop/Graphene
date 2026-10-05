@@ -37,3 +37,13 @@ Rollback: `main` is untouched at `4e5a2a9`. To drop the night: close the PR, `gi
 - **00:26** The dogfood tree arrived. `docs/process/cut/dogfood.md`.
 - **00:27** Lane 1 and the archive move merged into `cut` (`c4a25cd`). Lane 1 also fixed the hook:
   a Claude Code executor could not write in a run's worktree. `process` and `cut` pushed.
+- **00:31** The web UI deletion merged: one commit, `659c89e`, that `git revert` undoes. The tag
+  `last-with-ui` marks its parent `66125f0` (local; not pushed). `node show` now fills the commits it
+  credits, which only the page did before (the dogfood's catch).
+- **00:36** Full suite at `c4a25cd` (lane 1 + archive): 1,605 passed, 21 skipped. Ruff clean.
+- **00:39** Nemotron merged as an extra behind `extra.py`. Without `[nemotron]`, no Token Factory
+  module loads; a boundary test fails on any other import.
+- **00:41** Lane 5 merged. `plan first` is `on`, `auto` or `off`; `auto` is the default and an old
+  `on` reads as `auto`. The four Tuesday messages each became one leaf, done. The feeds paragraph
+  also became one leaf, not a tree, and was done right (18/20, 12/12). `docs/process/cut/lane5-evidence.md`.
+- **00:43** Wave two started: the visible surface and the help text, one agent.
