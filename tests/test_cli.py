@@ -100,7 +100,7 @@ def test_init_installs_hooks_and_ignores_the_store(repo):
     assert not (repo / ".claude" / "settings.json").exists()  # the team's file is never touched
     assert set(settings["hooks"]) == set(HOOK_EVENTS)
     assert not (repo / ".gitignore").exists()  # the store ignores itself; the repo's file is not touched
-    assert (repo / ".graphene").exists()  # holding one setting: plan first is on
+    assert (repo / ".graphene").exists()  # holding one setting: plan first is auto
     assert "already installed" in run("init").output
     from graphene_map.store import Store
 

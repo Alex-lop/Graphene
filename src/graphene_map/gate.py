@@ -163,10 +163,11 @@ ASIDE = (  # decision 18: plan first off, prompts are leaves
 )
 
 
-def _first(store) -> bool:
-    """Plan first, as the person set it (``P.plan_first``). A paused plan enforces nothing, this
-    included."""
-    return P.plan_first(store) and not P.paused(store)
+def _first(store) -> str | None:
+    """Plan first on or auto, as the person set it (``P.plan_first``): a session that holds no leaf
+    writes nothing. None when it is off. A paused plan enforces nothing, this included."""
+    how = P.plan_first(store)
+    return how if how != "off" and not P.paused(store) else None
 
 
 def _strict(store) -> bool:
@@ -174,17 +175,29 @@ def _strict(store) -> bool:
     return store.meta("asides") == "off"
 
 
-def _first_said(store) -> str:
+# Plan first auto: the agent that reads the repo judges the size, never a rule that reads the prompt.
+AUTO = (
+    "Plan first is auto. Before you write, judge the request. One leaf of work has one scope you can "
+    "name now and one check. If the request is one leaf, propose it with `graphene plan propose -`. "
+    "That leaf is the person's at once: run `graphene node start <id>` and do it. If the request is "
+    "more, propose the tree, write nothing, and stop. The person prunes the tree in `graphene watch`. "
+    "Nothing to write, nothing to propose."
+)
+
+
+def _first_said(store, how: str) -> str:
     """Plan first, as a session is told it when it starts and at every prompt while it holds no leaf.
     Nothing here reads the person's words: the agent judges what they asked for, and the tree or the
-    leaf it proposes is what the person sees and prunes."""
-    taken = "theirs at once, and `graphene node start <id>` takes it"
-    one = "a proposal they accept like any other" if _strict(store) else taken
+    leaf it proposes is what the person sees and prunes. Under strict prompts auto is on: no leaf is
+    the person's at once."""
+    if how == "auto" and not _strict(store):
+        return AUTO
     return (
         "Plan first is on: before you write anything, propose what you will do in the plan's text "
         "(`graphene plan propose - <<'EOF' … EOF`) and do what it prints. A piece of work is a tree: "
         "propose it, then stop and tell the person it is ready to prune in `graphene watch`. A one-line "
-        f"ask is one leaf with its scope and check, {one}. Nothing to write, nothing to propose."
+        "ask is one leaf with its scope and check, a proposal they accept like any other. Nothing to "
+        "write, nothing to propose."
     )
 
 
@@ -237,7 +250,7 @@ def _session_start(store) -> dict | None:
     if os.environ.get("GRAPHENE_NODE") or os.environ.get("GRAPHENE_PLANNER"):
         return None  # started by `graphene run` or `graphene ask`: its prompt is the whole of its task
     first, force = _first(store), P.in_force(store)
-    said = [TEACH, _first_said(store) if first else FREE]
+    said = [TEACH, _first_said(store, first) if first else FREE]
     if force:
         said.append(IN_FORCE + ("" if first or _strict(store) else " " + ASIDE))
     return _context("SessionStart", "\n\n".join(said))
@@ -311,7 +324,8 @@ def _on_prompt(store, sid: str, text: str) -> dict | None:
     if not first or _held(store, sid) or _contract(text):
         return None
     take = _take(store)
-    return _context("UserPromptSubmit", f"Graphene: {_first_said(store)}" + (f" Or {take}." if take else ""))
+    said = f"Graphene: {_first_said(store, first)}" + (f" Or {take}." if take else "")
+    return _context("UserPromptSubmit", said)
 
 
 def one_line_ask(store, added: list[P.Node], who: P.Caller) -> str | None:
@@ -322,10 +336,11 @@ def one_line_ask(store, added: list[P.Node], who: P.Caller) -> str | None:
     them, and so does a leaf that would make a sub-goal of another (a split) or bring a proposal
     above it along. Returns what `graphene plan propose` says instead of "proposed", or None.
     The hole is decision 19's: an agent that starts a second agent chooses its prompt, and a
-    subagent carries its session's id. `graphene plan prompts strict` turns this off."""
+    subagent carries its session's id. Plan first on and `graphene plan prompts strict` turn
+    this off."""
     sid = who.session_id
     asked = store.meta(f"prompt_at:{sid}") if sid and not who.person else None
-    if not asked or len(added) != 1 or _strict(store) or _held(store, sid):
+    if not asked or len(added) != 1 or _strict(store) or P.plan_first(store) == "on" or _held(store, sid):
         return None
     everything = P.nodes(store)
     by_id, under = {n.id: n for n in everything}, P.kids(everything)

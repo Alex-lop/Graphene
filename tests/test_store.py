@@ -180,6 +180,18 @@ def set_version(db: Path, version: int) -> None:
     conn.close()
 
 
+def test_a_store_from_before_auto_reads_its_on_as_auto_and_keeps_its_off(tmp_path):
+    """Plan first's `on` before 0.5.0 took a one-leaf ask at once, which is auto now."""
+    from graphene_map import plan
+
+    for said, now in (("on", "auto"), ("off", "off")):
+        with Store.open(tmp_path) as store:
+            store.set_meta("plan_first", said)
+        set_version(tmp_path / ".graphene" / "graphene.db", 4)
+        with Store.open(tmp_path) as store:
+            assert plan.plan_first(store) == now
+
+
 def test_a_new_store_records_the_schema_version(tmp_path):
     with Store.open(tmp_path) as store:
         assert store.conn.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
