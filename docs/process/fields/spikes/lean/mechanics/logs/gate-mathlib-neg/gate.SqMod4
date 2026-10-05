@@ -1,7 +1,0 @@
-Gate/SqMod4.lean:3:22: error: Type mismatch
-  sqMod4
-has type
-  ∀ (n : ℕ), n ^ 2 % 4 = 0 ∨ n ^ 2 % 4 = 1
-but is expected to have type
-  S_sqMod4
-'sqMod4' depends on axioms: [propext, Quot.sound]

@@ -1,3 +1,0 @@
-import Challenge
-
-theorem target : S_target := sorry

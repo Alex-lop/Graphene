@@ -1,5 +1,0 @@
-⚠ [4/4] Replayed Spec.Target
-warning: Spec/Target.lean:3:8: declaration uses `sorry`
-Build completed successfully (4 jobs).
-✔ [3/3] Built Proofs.Target (180ms)
-Build completed successfully (3 jobs).

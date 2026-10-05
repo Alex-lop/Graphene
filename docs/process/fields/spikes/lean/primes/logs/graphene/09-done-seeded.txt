@@ -1,7 +1,0 @@
-$ graphene node done odd_factor_three   # as the agent, after writing Proofs/OddFactorThree.lean (a sorry); started 01:32:49
-odd_factor_three is not done: `./check-leaf.sh OddFactorThree` failed:
-check-leaf OddFactorThree: uses axioms beyond the standard three: sorryAx
-real 903.05
-user 15.86
-sys 97.06
-exit=1 at 01:47:52

@@ -1,7 +1,7 @@
 # Graphene for the Nebius × NVIDIA Global AI Hackathon: the Devpost fields (a draft)
 
 *A draft for Alex, first written 2026-09-26 by the agent that ran the winning directive, turned
-around shaping on 2026-09-28 as `docs/process/field.md` asks ("Where Graphene differs" and "Claims the
+around shaping on 2026-09-28 as [`docs/process/field.md`](https://github.com/Alex-lop/Graphene/blob/process/docs/process/field.md) asks ("Where Graphene differs" and "Claims the
 submission must not make"), and brought up to first light on 2026-09-29. Put it in your own words
 before it goes anywhere. Track: Coding and Agentic Engineering. Every sentence is meant to be true and
 traceable, and every number names its source. **No registered number here comes from a live run.**
@@ -36,7 +36,7 @@ then every leaf is held to the files it may change and a check that proves it do
 not the model, decides what lands.
 
 We found no other entry where a person prunes the plan an agent proposed before anything runs
-(`docs/process/field.md`, "Where Graphene differs", item 1). That moment is the product.
+([`docs/process/field.md`](https://github.com/Alex-lop/Graphene/blob/process/docs/process/field.md), "Where Graphene differs", item 1). That moment is the product.
 
 ## What it does
 
@@ -108,7 +108,7 @@ built and tested against the scripted stand-in. Each has run live only as practi
   and a Docker container, not yet a Token Factory Sandbox (`tests/test_precheck.py`).
 
 They are the top three of 32 ideas, 20 after merging, scored by three judges
-(`docs/process/ideas.md`). A fourth came on 29 September, for the board: `graphene board lookup` asks
+([`docs/process/ideas.md`](https://github.com/Alex-lop/Graphene/blob/process/docs/process/ideas.md)). A fourth came on 29 September, for the board: `graphene board lookup` asks
 Nano which open questions the repository already answers. An answer is kept only when the line it
 quotes is in the file it names and its choice is one the question offers, and the item is settled
 "from the repo: FILE:LINE", which `graphene board unpark` gives back to the person. A protected file
@@ -139,10 +139,10 @@ why in the message. Each leaf's bill is priced from Token Factory's own usage at
 Forks are there, and they are not the headline. `--forks N` runs N attempts at the same leaf from
 that checkpoint, and the first whose check passes lands. When an attempt is refused, the next one
 steps up to Nemotron Super. Forking candidates from one checkpoint and letting the check pick is the
-most common pattern in this track (`docs/process/field.md`, "Where Graphene differs", item 3). On
+most common pattern in this track ([`docs/process/field.md`](https://github.com/Alex-lop/Graphene/blob/process/docs/process/field.md), "Where Graphene differs", item 3). On
 screen, each fork is a row under its leaf, with its model and state. A step up the ladder is named on
 the bottom line. The leaf's pane shows its sandbox and its bill, and its record says which fork won
-and why the others did not (`docs/process/winning/screens/`, taken against the scripted stand-in).
+and why the others did not ([`docs/process/winning/screens/`](https://github.com/Alex-lop/Graphene/tree/process/docs/process/winning/screens), taken against the scripted stand-in).
 
 A person who already has an agent never has to sign up for anything: `graphene init` lists what it
 finds (Claude Code, Codex, a Token Factory key), each with what it needs, and none comes first.
@@ -242,7 +242,7 @@ finds (Claude Code, Codex, a Token Factory key), each with what it needs, and no
   against the same paragraph sent to Nano with no tree (`docs/test/results-2026-09-28-live-prereg.md`).
 - **The planner's questions were prose, and scrolled away.** On 28 September we put our own work
   through Graphene, with Claude Code as planner and executors and an agent standing in for the
-  person (`docs/process/shaping/as-the-person.md`). After its tree the planner wrote about 250 words
+  person ([`docs/process/shaping/as-the-person.md`](https://github.com/Alex-lop/Graphene/blob/process/docs/process/shaping/as-the-person.md)). After its tree the planner wrote about 250 words
   in five paragraphs that were really decisions for the person: a gap it could not close, a choice
   it made, a default it assumed, a collision, and what it left out. None was stored, and answering
   them meant holding them in your head while reading the tree (item 2). That is where the board came
@@ -264,7 +264,7 @@ finds (Claude Code, Codex, a Token Factory key), each with what it needs, and no
   that asks, came back with five items instead of five paragraphs: three questions with a default
   each, one assumption, and one risk the stand-in person had not seen, that an executor's own shell
   can read Graphene's keychain item. Each of the five was a decision the executors had made silently
-  in the first run (`docs/process/shaping/as-the-person.md`, item 12). One run, by an agent in the
+  in the first run ([`docs/process/shaping/as-the-person.md`](https://github.com/Alex-lop/Graphene/blob/process/docs/process/shaping/as-the-person.md), item 12). One run, by an agent in the
   person's seat, with Claude Code as planner: it shows what the board is for, not how often it helps.
 - A replay for judges with no key. `graphene demo` plays a recorded run in the real screen with no
   key, no Docker and no network. It runs no model-written code, and it says on screen what it is
@@ -321,7 +321,7 @@ README, the video, the demo page and here, whatever it says.
 
 - The evidence runs and their chart, in the README, the video, the demo page and here, whatever it
   says.
-- Nemotron's three shaping prototypes run live, each measured as `docs/process/ideas.md` sets out:
+- Nemotron's three shaping prototypes run live, each measured as [`docs/process/ideas.md`](https://github.com/Alex-lop/Graphene/blob/process/docs/process/ideas.md) sets out:
   for `cover`, the clauses a blind judge says the tree dropped; for `note`, how often a note finds the
   right leaf; for `precheck`, its verdicts against hand labels and the seconds per fork.
 - The planner, live: Ultra's tree was readable on 2 of 9 practice asks (2 October). The misses were 30
@@ -431,8 +431,8 @@ are in `docs/test/first-light.md`.)
 | 3 of 3 against 0 of 3; 5.2 to 6.1 times the characters | `docs/test/spikes/harness_there/RESULTS.md` (stand-ins) |
 | fifty operations at once; a peak of 50, or 56 without the slots | `tests/test_faults.py`, the thirty-leaf test (a counting fake box); 56 with `sandbox.CAP` raised to 1000, which is 8 executors × 7 forks |
 | 14,474 lines, none before the period; 181 and 421 commits | git, the commands above, at `0334168` |
-| about 250 words in five paragraphs; five items instead; each a decision made silently | `docs/process/shaping/as-the-person.md`, items 2 and 12 (Claude Code as planner and executors, an agent in the person's seat) |
-| 32 ideas, 20 after merging, three judges, the top three built | `docs/process/ideas.md` |
+| about 250 words in five paragraphs; five items instead; each a decision made silently | [`docs/process/shaping/as-the-person.md`](https://github.com/Alex-lop/Graphene/blob/process/docs/process/shaping/as-the-person.md), items 2 and 12 (Claude Code as planner and executors, an agent in the person's seat) |
+| 32 ideas, 20 after merging, three judges, the top three built | [`docs/process/ideas.md`](https://github.com/Alex-lop/Graphene/blob/process/docs/process/ideas.md) |
 | `critical ━ … (3) · none ready · 2 once accepted · 2 wait` | `graphene plan --view dag --width 80` on a scratch plan of four proposed leaves from a scripted planner, at `shaping` 2111115; `tests/test_doc_claims.py` |
 | 150 random plans; 22 widths from 20 to 167 | `tests/test_view_dag.py`, `tests/test_view_tree.py` |
 | the tree against the paragraph with Nemotron | none yet: the evidence run's ledger |

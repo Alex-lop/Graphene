@@ -172,32 +172,6 @@ def test_the_docs_say_what_accept_and_r_leave_open_and_that_d_attaches_nothing()
         assert "and an agent's note, stay open" not in said, path
 
 
-def test_walks_first_light_verdicts_cite_commits_on_this_history_and_tests_that_exist():
-    """Review 2026-09-29 (30): the verdicts cited 18 hashes of branches before their rebase, and a test
-    since renamed. A hash named with its own branch (`on its branch …`) is that branch's, not this one's.
-    In a shallow clone (CI's) only the tests are checked."""
-    import subprocess
-
-    walks = (ROOT / "docs/process/shaping/walks.md").read_text(encoding="utf-8")
-    said = walks[walks.index("## First light's verdicts") :]
-    sources = " ".join(
-        p.read_text(encoding="utf-8")
-        for d in ("tests", "docs/test", "ui/src")
-        for p in (ROOT / d).rglob("*.[pt]*[ysx]")
-    )
-    for test in set(re.findall(r"\btest_[a-z0-9_]+", said)):
-        assert test in sources, test
-
-    def git(*args):
-        return subprocess.run(["git", "-C", str(ROOT), *args], capture_output=True, text=True)
-
-    if git("rev-parse", "--is-shallow-repository").stdout.strip() != "false":
-        return
-    elsewhere = set(re.findall(r"\b([0-9a-f]{7}) on its branch", said))
-    for sha in set(re.findall(r"\b[0-9a-f]{7}\b", said)) - elsewhere:
-        assert git("merge-base", "--is-ancestor", sha, "HEAD").returncode == 0, sha
-
-
 def test_live_session_names_only_scripts_that_exist_and_practice_steps_the_ladder_knows():
     import importlib.util
 

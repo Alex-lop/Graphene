@@ -16,5 +16,5 @@ saved repositories: a copy of `~/graphene-polish` taken at each moment of a real
 `docs/proof/try.sh` and a run; they are not committed, each is a git repository with worktrees).
 `items.sh <graphene> <dir>` is the CLI's side: each message item in a fresh repository of its own.
 
-Used by the polish run (`docs/process/polish/`, before at `2c86399`, after its branch) and by
-folding (`docs/process/nemotron/folding/`, whose `plan30.py` makes the thirty-leaf plan it shot).
+Used by the polish run ([`docs/process/polish/`](https://github.com/Alex-lop/Graphene/tree/process/docs/process/polish), before at `2c86399`, after its branch) and by
+folding ([`docs/process/nemotron/folding/`](https://github.com/Alex-lop/Graphene/tree/process/docs/process/nemotron/folding), whose `plan30.py` makes the thirty-leaf plan it shot).

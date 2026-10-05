@@ -1,3 +1,0 @@
-unsandboxed: PWNED exists? yes
-unsandboxed: Challenge.lean changed? no
-sandboxed build rc=1 ; PWNED under sandbox? no

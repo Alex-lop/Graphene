@@ -1,6 +1,0 @@
-name = "hijack"
-[[lean_lib]]
-name = "Challenge"
-[[lean_lib]]
-name = "Proofs"
-globs = ["Proofs.+"]

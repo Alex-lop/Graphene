@@ -6,6 +6,8 @@ shape the plan, the agents execute it. First written 2026-09-20 by the agent tha
 collaboration directive (`docs/process/directives/COLLABORATION_DIRECTIVE.md`); last added to on
 2026-09-29, by the agent that ran the first-light directive.*
 
+*The process archive moved off `main` on the cut night. It is the orphan branch `process`, at `fb6a408`.*
+
 ## What Graphene is
 
 Graphene is the shared plan between a person and their coding agents: a graph of the work, which
@@ -409,7 +411,7 @@ change is named here.
     last sentence.** Not `graphene`: that import name belongs to the GraphQL library on PyPI, and a
     person with both installed gets whichever wins. The command stays `graphene`, so hooks already
     installed (`graphene ingest hook`) keep working. Dated records (`docs/test/results-*`,
-    `docs/test/findings/`, the diary in `docs/process/`) keep the old name, because they describe
+    `docs/test/findings/`, the diary in [`docs/process/`](https://github.com/Alex-lop/Graphene/tree/process/docs/process)) keep the old name, because they describe
     what was there then.
 54. **Graphene calls a model when you name its Nemotron planner or executor. This changes decision 9,
     as amended on 23 September.** `--with nemotron` is Graphene's own code calling Nebius Token Factory
@@ -535,7 +537,7 @@ change is named here.
     - **The folded row.** It keeps decision 41's glyph, title and id. Its word column says how many
       leaves are inside and in which states, whose move first: `6 done`, `1 came back, 4 more`.
 
-    *Evidence:* the before and after screens in `docs/process/nemotron/folding/`: thirty leaves at
+    *Evidence:* the before and after screens in [`docs/process/nemotron/folding/`](https://github.com/Alex-lop/Graphene/tree/process/docs/process/nemotron/folding): thirty leaves at
     80×24 were ten rows of one sub-goal, and are now seven rows that say where the person's move is.
     *The cost you may strike:* folding a row whose count is wider than every word shown moves the ids
     by up to about ten columns.
@@ -570,7 +572,7 @@ change is named here.
     Workflow's grouping of subagents is not drawn. A subagent's task, closing words and worktree
     are read from what the hooks recorded (the review found them lost at first).
 
-    The map of what was kept, moved and deleted is `docs/process/nemotron/cut.md`.
+    The map of what was kept, moved and deleted is [`docs/process/nemotron/cut.md`](https://github.com/Alex-lop/Graphene/blob/process/docs/process/nemotron/cut.md).
 67. **A leaf in a sandbox forks its commit's checkpoint.** The repository is uploaded and set up once
     for each clean commit, `--prepare` included, and kept in the store's meta. Every leaf at that
     commit forks it and adds only its own scope's permissions. `--forks N` forks one sandbox. A leaf
@@ -679,7 +681,7 @@ changes a decision above, the old one is left as written and the change is named
 
     *Evidence:* the pilot tests in `tests/test_tui.py`, `tests/test_demo_export.py`,
     `ui/src/Plan.test.tsx`, and the before and after screens at 80×24 and 120×36 in
-    `docs/process/winning/screens/` (made against the scripted fake, and they say so).
+    [`docs/process/winning/screens/`](https://github.com/Alex-lop/Graphene/tree/process/docs/process/winning/screens) (made against the scripted fake, and they say so).
 77. **`graphene demo` replays a recorded run in `graphene watch`, with no key, no Docker and no
     network, and runs nothing.**
     - **What a recording holds.** `graphene demo --record FILE` records the plan's store over a run,
@@ -715,7 +717,7 @@ changes a decision above, the old one is left as written and the change is named
     and "on Nemotron through Token Factory (a key)". The judges' ten lines put the no-key path first
     (`graphene demo`, then `docs/proof/nemotron.sh` against the scripted stand-in through
     `tests/test_demo_script.py`), and are repeated in `docs/HACKATHON.md`.
-    - **What the field changed** (`docs/process/field.md`, item 11). Forking N candidates from one
+    - **What the field changed** ([`docs/process/field.md`](https://github.com/Alex-lop/Graphene/blob/process/docs/process/field.md), item 11). Forking N candidates from one
       checkpoint and letting the tests pick is the Coding track's most common pattern: at least ten
       public entries do it, several live with SWE-bench numbers. So no surface says Graphene is the
       only one to fork sandboxes, to escalate Nano to Super, or to "map a tree onto a tree of
@@ -819,7 +821,7 @@ as written and the change is named here.
     and five board items the second, each a decision lane B's executors had made silently.
     *Evidence:* `test_nemotron_is_told_to_ask_and_its_board_lands`,
     `tests/test_gate.py::test_a_new_session_is_taught_the_board_and_the_taught_text_puts_it_up`,
-    `docs/process/shaping/as-the-person.md` items 2 and 12. Whether Ultra asks questions worth a key
+    [`docs/process/shaping/as-the-person.md`](https://github.com/Alex-lop/Graphene/blob/process/docs/process/shaping/as-the-person.md) items 2 and 12. Whether Ultra asks questions worth a key
     press is not known until it runs live.
 83. **A pick changes its leaf (prompt version 3).**
     - **`then: goal NODE + TEXT`** ends NODE's goal with the sentence, as your edit. A sentence the
@@ -862,11 +864,11 @@ as written and the change is named here.
     candidate did. Rows wins the tie: a question and the leaf it is about are on one screen in one
     grammar, and it adds no mode (Tab stays the plan's views). What the stand-ins stalled on is
     decisions 83 and 85 to 87. Decision 98 says why this is not yet enough. *Evidence:*
-    `docs/process/shaping/evaluation.md` (the trials, the renders, the decision at 03:30);
+    [`docs/process/shaping/evaluation.md`](https://github.com/Alex-lop/Graphene/blob/process/docs/process/shaping/evaluation.md) (the trials, the renders, the decision at 03:30);
     `tests/test_board_rows.py` (`test_after_an_answer_the_next_items_keys_stay_under_what_the_command_said`,
     `test_question_mark_on_an_item_is_help_and_on_a_node_the_planners_chooser`,
     `test_board_items_are_counted_apart_from_the_plan`); the screens before and after in
-    `docs/process/shaping/screens/`.
+    [`docs/process/shaping/screens/`](https://github.com/Alex-lop/Graphene/tree/process/docs/process/shaping/screens).
 85. **The terminal has three views of one plan: the outline, a top-down tree and a left-to-right
     graph. Tab switches, and the outline stays the default.**
     - **Tab** goes outline, tree, graph, past any that does not fit, and says once per width which
@@ -1022,7 +1024,7 @@ as written and the change is named here.
     repositories, `itsdangerous`, `requests` and Graphene. Under `auto` it proposed 1 to 3 leaves
     everywhere, from 118 lines to over 20,000: the ask set the count, not the repository. `finer`
     gave more leaves than `auto` on 5 of 7 and never fewer; `coarser` fewer or the same on all 7.
-    The thresholds are still guesses. *Evidence:* `docs/process/shaping/sizing.md`,
+    The thresholds are still guesses. *Evidence:* [`docs/process/shaping/sizing.md`](https://github.com/Alex-lop/Graphene/blob/process/docs/process/shaping/sizing.md),
     `tests/test_sizing.py`, `tests/test_ask_settings.py`,
     `test_plus_and_minus_ask_the_plan_again_finer_and_coarser`. *Still open, yours to decide:* `+`
     after you have answered the board drops the proposals your answers were about, so their
@@ -1104,7 +1106,7 @@ as written and the change is named here.
 
     *Why these three:* three judges scored 32 ideas (20 after merging) on fit, what a judge would
     see, uniqueness against `field.md`, cost, and whether it can be measured by 20 October. These
-    came first, work with every planner, and need only Nano. *Evidence:* `docs/process/ideas.md`;
+    came first, work with every planner, and need only Nano. *Evidence:* [`docs/process/ideas.md`](https://github.com/Alex-lop/Graphene/blob/process/docs/process/ideas.md);
     `tests/test_cover.py`, `tests/test_note.py`, `tests/test_precheck.py` (the Docker fork included),
     among them `test_the_cover_flag_puts_the_uncovered_clauses_on_the_board_after_an_ask`; a
     skeptic each, before the merge. *Still open:* precheck's items say `shaper:nemotron` even where
@@ -1116,7 +1118,7 @@ as written and the change is named here.
     `~/graphene-night`. *Why a clone, not a worktree:* there is one store per repository, and a
     worktree shares the main checkout's, so a plan in force there would have held every other lane's
     sub-agent to it. The person's acts dropped the agent's markers and set `GRAPHENE_AS=person:alex`,
-    so the log marks each "(no terminal)". *What it found* (`docs/process/shaping/as-the-person.md`):
+    so the log marks each "(no terminal)". *What it found* ([`docs/process/shaping/as-the-person.md`](https://github.com/Alex-lop/Graphene/blob/process/docs/process/shaping/as-the-person.md)):
     - The planner's questions came as five paragraphs of prose, about 250 words, printed once, cut
       at 300 characters a line and never stored. This is the board's case, from our own plan.
     - Adding one sentence to a goal from a shell meant retyping the goal: 130 words.
@@ -1391,7 +1393,7 @@ any of them.
      (`test_the_text_round_trips_byte_for_byte_and_an_accept_changes_only_its_marks`,
      `test_an_agent_proposes_only_the_person_accepts_or_drops_and_git_sees_the_file`,
      `test_a_direction_written_while_a_leaf_runs_is_never_the_leafs_change`); the screens in
-     `docs/process/shaping/screens/first-light/direction/`.
+     [`docs/process/shaping/screens/first-light/direction/`](https://github.com/Alex-lop/Graphene/tree/process/docs/process/shaping/screens/first-light/direction).
 113. **A session attaches by what it does or where you put it, and shows status, not a ledger.** In
      order: where you attached it (`graphene direction attach`, `D` in watch); the plan's node, when it
      held, finished or proposed one of the plan's nodes; the subagent that started it; its session;
@@ -1493,7 +1495,7 @@ any of them.
      session's uuid) matched the base64 rule, so every path and the replay command the ladder printed
      came out mangled. *Evidence:*
      `tests/test_practice.py::test_a_path_the_ladder_prints_is_shown_as_it_is_and_a_secret_in_it_by_its_value`.
-127. **What the walks became.** `docs/process/shaping/walks.md`'s 72 findings of 28 September: the
+127. **What the walks became.** [`docs/process/shaping/walks.md`](https://github.com/Alex-lop/Graphene/blob/process/docs/process/shaping/walks.md)'s 72 findings of 28 September: the
      terminal's 35 and the page's and replay's 25 each fixed with a test or closed with a reason, in
      its two "First light's verdicts" sections. Tonight three new walkers (a first-time user, you, a
      judge) walked a wheel of `first-light` at `4860dec` and filed 46 more; the product's were fixed
@@ -1777,7 +1779,7 @@ any of them.
    a compact print, and the design again on the screen.
 4. The shaping study with Nemotron as the planner: whether Ultra puts up questions worth a key press.
 5. The prototypes live: cover, note and precheck against Token Factory, each measured as
-   `docs/process/ideas.md` says, by 20 October.
+   [`docs/process/ideas.md`](https://github.com/Alex-lop/Graphene/blob/process/docs/process/ideas.md) says, by 20 October.
 
 ## What comes next, from 2 October
 
@@ -1785,7 +1787,7 @@ any of them.
    Sandbox check may need installed. Then your filmed take (`docs/demo/build.sh`), with tonight's numbers.
 2. The three pieces the registered runs need first (decision 128): the fixed trees, the frozen
    configuration, and arm B's brief on Nemotron. Then `docs/test/LIVE_SESSION.md`, in order, with you.
-3. The prototypes measured as `docs/process/ideas.md` says, by 20 October, pre-registered first: note's
+3. The prototypes measured as [`docs/process/ideas.md`](https://github.com/Alex-lop/Graphene/blob/process/docs/process/ideas.md) says, by 20 October, pre-registered first: note's
    live answers were malformed or cut off on 3 of 4 notes.
 4. The board on the screen, and the direction on real sessions (as from 29 September).
 

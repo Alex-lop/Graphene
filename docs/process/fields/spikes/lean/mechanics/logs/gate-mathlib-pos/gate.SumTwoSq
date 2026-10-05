@@ -1,1 +1,0 @@
-'sumTwoSq' depends on axioms: [propext, Quot.sound]
