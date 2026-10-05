@@ -183,6 +183,20 @@ def test_what_could_start_now_and_the_note():
     assert said == "critical ━ x1 > x2 > … > x5 (5) · 3 ready · 1 more once accepted · 6 wait · 1 done"
 
 
+def test_a_need_on_a_sub_goal_is_on_the_path_and_at_once_is_only_the_agents_leaves_free_to_start():
+    """A need on a sub-goal is a wait on each leaf beneath it. A proposal whose needs are done can start
+    once accepted. The person's own leaf, and a leaf that came back, never start at once."""
+    nodes = [leaf("a"), leaf("b", needs=["a"]), P.Node("top", "the top", needs=["b"]),
+             leaf("c", parent="top"), leaf("d", needs=["c"], parent="top"), leaf("e")]  # fmt: skip
+    assert V.critical_path(nodes) == ["a", "b", "c", "d"]
+    nodes[0].state = P.DONE
+    assert V.critical_path(nodes) == ["b", "c", "d"] and V.at_once(nodes, words_of(nodes)) == ["b", "e"]
+    nodes += [leaf("p"), leaf("mine", owner="alex")]
+    nodes[-2].state = P.PROPOSED
+    words = {**words_of(nodes), "e": "came back"}
+    assert V.at_once(nodes, words) == ["b", "p"]
+
+
 def test_the_notes_counts_add_up_to_the_leaves_and_a_flat_plan_has_no_critical_path():
     """A leaf that came back, in review or the person's own was counted neither at once nor waiting,
     and a flat plan said "critical path: f0 (1)"."""

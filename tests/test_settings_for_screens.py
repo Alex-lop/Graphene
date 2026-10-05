@@ -1,11 +1,9 @@
 """What the screen lanes call to show the settings and to re-ask a plan finer or coarser: `?` in
-graphene watch, the root row of the page's board and graph, and a replay. tui.py wires them later."""
+graphene watch, and a replay. tui.py wires them later."""
 
-import json
-import subprocess
 
 from graphene_map import ask as A
-from graphene_map import demo, server
+from graphene_map import demo
 from graphene_map import plan as P
 from graphene_map import settings as S
 from graphene_map.store import Store
@@ -24,12 +22,7 @@ def test_the_help_screen_gets_every_setting_as_lines(tmp_path):
     assert lines[-1] == "graphene config edit changes them"
 
 
-def test_the_page_and_a_replay_carry_the_settings(tmp_path):
-    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
-    with Store.open(tmp_path) as store:
-        S.apply(store, "readonly: README.md\nsize: coarser\n", ALEX)
-        said = json.loads(server.payload(store, []))["plan"]["settings"]
-    assert said == {"protected": [], "readonly": ["README.md"], "never": [], "size": "coarser"}
+def test_a_replay_carries_the_settings():
     assert {f"settings:{k}" for k in ("protected", "readonly", "never", "size")} <= set(demo.META)
 
 

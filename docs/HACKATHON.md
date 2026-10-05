@@ -70,8 +70,7 @@ Code's and Nemotron's, were changed to ask this way (prompt version 2, cut to th
 screen with vim keys. Tab cycles the outline, a top-down tree, and a left-to-right graph of the
 leaves' needs, with the critical path drawn heavy and a note under it:
 `critical ━ xml-reader > xml-wire > xml-e2e (3) · none ready · 2 once accepted · 2 wait` on a
-scratch plan of four proposed leaves. `graphene plan --view tree`, `dag`, `outline` or `auto` prints the same as text, and the page
-`graphene ui` draws the same three.
+scratch plan of four proposed leaves. `graphene plan --view tree`, `dag`, `outline` or `auto` prints the same as text.
 
 **You prune.** Drop a leaf you did not mean, take a path out of a scope, accept the rest, each with a
 key (`d`, `e`, `y`).
@@ -125,10 +124,10 @@ through the plan when it held or proposed one of the plan's nodes, where the per
 (`graphene direction attach`, also typed at `:` in `graphene watch`), or else it is shown as not in
 the direction; `D` in `graphene watch` shows the direction under the tree.
 Each row says what waits on you, what runs and what is next, read from the rows the hooks already
-write; no transcript is read. It is shown above the plan in `graphene plan`, `graphene watch` and the
-page. Graphene's own direction is in its repository, every node proposed until Alex accepts it. It is
-built and tested against stand-ins (`tests/test_direction.py`, `ui/src/Direction.test.tsx`); one study
-of it is under What we learned.
+write; no transcript is read. It is shown above the plan in `graphene plan` and `graphene watch`.
+Graphene's own direction is in its repository, every node proposed until Alex accepts it. It is
+built and tested against stand-ins (`tests/test_direction.py`); one study of it is under What we
+learned.
 
 **Then you press `R`.** Each ready leaf gets a Nemotron Nano executor, in a Token Factory Sandbox
 forked from one checkpoint of your repository. A leaf that needs a file outside its scope comes back
@@ -210,9 +209,6 @@ finds (Claude Code, Codex, a Token Factory key), each with what it needs, and no
 - **The rest of the product.** `graphene watch` is built with Textual, and the plan is a SQLite
   store in the repository, ignored by git. The plan has a text form that round-trips through
   `$EDITOR`. Leaves run in parallel, each in a git worktree of its own, and are merged `--no-ff`.
-  The exported page (`graphene ui --export`) is React, and draws the outline, the tree or the graph,
-  with the board and the standing conditions (read-only: they are answered in the terminal) and the
-  direction above the plan.
   The test suite runs in CI on Linux and macOS, on Python 3.12, 3.13 and 3.14.
 
 ## Challenges we ran into
@@ -252,7 +248,7 @@ finds (Claude Code, Codex, a Token Factory key), each with what it needs, and no
 
 - A complete product, not a demo. It has a terminal screen with vim keys, a board the planner asks
   on, the plan as an outline, a tree and a graph, a text form that round-trips, parallel leaves
-  in worktrees, hand-backs that offer their own fix, a record for each leaf, a read-only web page,
+  in worktrees, hand-backs that offer their own fix, a record for each leaf,
   and docs that list what does not bind.
 - Containment that is tested, not asserted. The escape test above holds in the Docker stand-in, and it
   passed once in ConTree, as practice on 2 October (`docs/test/first-light.md`).
@@ -315,12 +311,11 @@ on a build that names every one, gave a median 104.1 against 107.4, every run ri
 which way the change moved and cannot confirm it (`docs/test/results-2026-09-29-direction.md`).
 
 The board against the paragraph, and the live Nemotron panel, have not run. The chart goes in the
-README, the video, the demo page and here, whatever it says.
+README, the video and here, whatever it says.
 
 ## What's next for Graphene
 
-- The evidence runs and their chart, in the README, the video, the demo page and here, whatever it
-  says.
+- The evidence runs and their chart, in the README, the video and here, whatever it says.
 - Nemotron's three shaping prototypes run live, each measured as [`docs/process/ideas.md`](https://github.com/Alex-lop/Graphene/blob/process/docs/process/ideas.md) sets out:
   for `cover`, the clauses a blind judge says the tree dropped; for `note`, how often a note finds the
   right leaf; for `precheck`, its verdicts against hand labels and the seconds per fork.

@@ -38,14 +38,6 @@ class Change:
     checkout: str = ""  # the worktree root it was written in; empty for the repo's own checkout
 
 
-@dataclass(slots=True)
-class Omitted:
-    """What the vendor's change lists say they left out."""
-
-    more_files: int = 0  # files past the end of a list
-    unavailable: int = 0  # Bash calls whose list could not be computed
-
-
 def worktree_roots(agents: list[Agent]) -> list[str]:
     """Worktree roots the agents are recorded working in, longest first (``.claude/worktrees/`` is
     inside the repo root, so the longer prefix has to win)."""
@@ -72,11 +64,10 @@ def checkout_of(full: str, rel: str, repo: str) -> str:
     return "" if os.path.normpath(root) == os.path.normpath(repo) else root
 
 
-def changes(events: list[ToolEvent], agents: list[Agent], repo: str) -> tuple[list[Change], Omitted]:
-    """Every recorded write in these events, oldest first, and what the vendor's lists left out."""
+def changes(events: list[ToolEvent], agents: list[Agent], repo: str) -> list[Change]:
+    """Every recorded write in these events, oldest first."""
     roots = worktree_roots(agents)
     out: list[Change] = []
-    omitted = Omitted()
     for e in events:
         if e.success is False:
             continue
@@ -101,10 +92,7 @@ def changes(events: list[ToolEvent], agents: list[Agent], repo: str) -> tuple[li
         if not isinstance(diff, dict):
             continue
         if diff.get("unavailable"):
-            omitted.unavailable += 1
             continue
-        more = diff.get("moreFiles")
-        omitted.more_files += more if isinstance(more, int) else 0
         listed = [p for p in diff.get("changedFiles") or [] if isinstance(p, str)]
         listed += [f.get("filePath") for f in diff.get("files") or [] if isinstance(f, dict)]
         for path in dict.fromkeys(p for p in listed if isinstance(p, str)):
@@ -127,7 +115,7 @@ def changes(events: list[ToolEvent], agents: list[Agent], repo: str) -> tuple[li
     out.sort(key=lambda c: (c.timestamp, c.event_id, c.path))
     if any(c.shared for c in out):
         out = _prefer_edits(out, _spans(events))
-    return out, omitted
+    return out
 
 
 def _spans(events: list[ToolEvent]) -> dict[str, tuple[float, float]]:

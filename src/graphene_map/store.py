@@ -395,17 +395,6 @@ class Store:
         rows = self.conn.execute("SELECT * FROM sessions ORDER BY started_at, id").fetchall()
         return [_session(r) for r in rows]
 
-    def did_something(self, session_id: str) -> bool:
-        """Did this session leave a recorded write in the repo, or a commit credited to it?"""
-        row = self.conn.execute(
-            """SELECT EXISTS (SELECT 1 FROM tool_events WHERE session_id = ? AND success IS NOT 0 AND (
-                   (file_path IS NOT NULL AND file_path NOT LIKE '/%')
-                   OR (tool = 'Bash' AND response LIKE '%"bashEditDiff"%')))
-               OR EXISTS (SELECT 1 FROM commits WHERE session_id = ?)""",
-            (session_id, session_id),
-        ).fetchone()
-        return bool(row[0])
-
     # -- prompts ------------------------------------------------------------------------------
 
     def add_prompt(self, p: Prompt) -> None:

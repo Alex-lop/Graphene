@@ -43,8 +43,7 @@ def build():
         from click.exceptions import MissingParameter, UsageError
 
     from . import __version__
-    from .commits import refresh_commits
-    from .hooks import SETTINGS, hooks_file, hooks_installed, install_hooks
+    from .hooks import SETTINGS, hooks_file, install_hooks
     from .store import StaleStore, Store, repo_root
 
     SHELL_LISTS_HINT = (
@@ -102,7 +101,7 @@ def build():
 
         def list_commands(self, ctx):
             """The plan leads the help: what will be done comes before what was."""
-            first = ["plan", "node", "watch", "ask", "run", "init", "ui"]
+            first = ["plan", "node", "watch", "ask", "run", "init"]
             names = super().list_commands(ctx)
             return [n for n in first if n in names] + [n for n in names if n not in first]
 
@@ -191,20 +190,13 @@ def build():
             note(f"store rebuilt (old copy at {store.rebuilt_from})")
         return store
 
-    def nothing_to_draw(r: Path) -> None:
-        if hooks_installed(r):
-            then = "the hooks are installed, so the next session here is recorded live"
-        else:
-            then = "`graphene init` records sessions live"
-        empty(f"nothing to draw here yet: no plan, and no Claude Code session recorded; {then}")
-
     @cli.callback(invoke_without_command=True)
     def main(
         ctx: typer.Context,
         version: bool = typer.Option(False, "--version", help="Print the version and exit."),
     ):
         """With no command, `graphene` prints the plan and where the work stands. What was done for
-        one node is `graphene node show <id>`; the map of a recorded run is `graphene ui`."""
+        one node is `graphene node show <id>`."""
         if version:
             console.print(f"graphene {__version__}")
             raise typer.Exit()
@@ -436,64 +428,5 @@ def build():
         from .hooks import hook_main
 
         raise typer.Exit(hook_main())
-
-    @cli.command()
-    def ui(
-        session: list[str] = typer.Option(
-            None, "--session", help="A session id or unique prefix; repeat it to put several on one axis."
-        ),
-        export: Path = typer.Option(None, "--export", help="Write the map as one self-contained HTML file."),
-        no_open: bool = typer.Option(False, "--no-open", help="Print the address without opening a browser."),
-        as_json: bool = typer.Option(False, "--json", help="Print the graph the page draws, as JSON."),
-    ) -> None:
-        """The plan on screen, and behind it the map of a run, drawn from the records."""
-        import webbrowser
-
-        from .graph import build_graph, select_sessions, to_json
-        from .plan import accept_path, caller
-        from .server import export_html, make_server
-
-        r = root()
-        if not (r / ".graphene" / "graphene.db").exists():  # looking must not create a store
-            nothing_to_draw(r)
-        # The plan is the page's first screen, so a repo that has one opens even when no session has
-        # been recorded in it yet. The sessions are the ones the hooks recorded; their commits, git's.
-        with open_store(r) as store:
-            if not store.node_count() and not store.sessions():
-                nothing_to_draw(r)
-            refresh_commits(store, r, [])
-            try:
-                ids = [i for one in session or [None] for i in select_sessions(store, one)]
-            except ValueError as exc:
-                fail(str(exc))
-            if as_json:
-                sys.stdout.write(to_json(build_graph(store, ids)) + "\n")
-                return
-            if export:
-                try:
-                    export.parent.mkdir(parents=True, exist_ok=True)
-                    export.write_text(export_html(store, ids), encoding="utf-8")
-                except OSError as exc:
-                    fail(f"cannot write {export}: {exc.strerror or exc}", 1)
-                if caller().person:  # theirs as it stands, or the next node would not start over it
-                    accept_path(store, r, export)
-                errors.print(f"wrote {export}", soft_wrap=True)  # a path the terminal wraps copies whole
-                return
-        # The plan is the person's to change, so the page may write only when a person opened it.
-        person = caller().person
-        server = make_server(r, ids, writable=person)
-        url = f"http://127.0.0.1:{server.server_address[1]}/"
-        say(f"{url}  (this machine only; Ctrl-C stops it)")
-        if not person:
-            say("the page is read-only: it was not opened from a person's terminal")
-        console.file.flush()  # piped or redirected, the address must not sit in a buffer until the end
-        if not no_open:
-            webbrowser.open(url)
-        try:
-            server.serve_forever()
-        except KeyboardInterrupt:
-            pass
-        finally:
-            server.server_close()
 
     return cli

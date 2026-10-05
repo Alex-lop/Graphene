@@ -1645,8 +1645,7 @@ any of them.
 - Both rest on the vendor being the only caller of the hook. An agent that pipes a hand-written
   event into `graphene ingest hook` is refused by the ordinary spelling and not by a determined one.
   Found by the closing review, which did it; the acts are logged "(no terminal) … by their prompt".
-- Every request that became a leaf is on the plan in your words, and `graphene ui --export` carries
-  the plan.
+- Every request that became a leaf is on the plan in your words.
 - Whoever carries no agent's mark is taken for you (decision 20).
 - While a parallel run is going, a commit of your own on the branch it merges into can make a leaf
   in another worktree look as if it changed your files, and its `done` is refused. It is sent back,

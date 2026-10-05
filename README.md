@@ -160,7 +160,7 @@ graphene demo        # a recorded run on the real screen: space pauses, . steps,
 
 - **On your own repo**, run `graphene init` once inside it, then `graphene watch`. `init` asks which planner and which executor to use (`claude` or `codex` on your PATH). It adds its hooks to `.claude/settings.local.json`, which is yours and not the team's, and never edits `~/.claude/settings.json`.
 - **Then say what you want** in a paragraph, in your Claude Code session or with `graphene ask "…"`. In `graphene watch`: `j` `k` move, `Enter` shows everything about a node, `d` drops a leaf, `e` edits its contract, `y` accepts, `R` runs what's ready, and `?` on the goal lists the rest. Every key is a command you could type, and the bottom line says which.
-- **When you want more**, `graphene plan edit` opens the whole plan as text in your editor, `graphene direction` keeps the goals above your plans, `graphene ui` draws it all as a page on your machine, and `graphene config` holds what you state once: protected paths, read-only globs, when the board shows (`board: auto`).
+- **When you want more**, `graphene plan edit` opens the whole plan as text in your editor, `graphene direction` keeps the goals above your plans, and `graphene config` holds what you state once: protected paths, read-only globs, when the board shows (`board: auto`).
 - **You need** macOS or Linux, git, and [uv](https://docs.astral.sh/uv/), which fetches Python 3.12+. The screen runs in any modern terminal; it's checked in WezTerm at 80 columns.
 
 <br>

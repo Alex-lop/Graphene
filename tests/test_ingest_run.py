@@ -9,7 +9,6 @@ from pathlib import Path
 
 import pytest
 
-from graphene_map.graph import build_graph
 from graphene_map.hooks import (
     HOOK_COMMAND,
     HOOK_EVENTS,
@@ -17,6 +16,7 @@ from graphene_map.hooks import (
     ingest_hook_event,
     install_hooks,
 )
+from graphene_map.record import changes
 from graphene_map.store import Store
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -78,24 +78,6 @@ def test_an_agent_id_in_an_unknown_shape_is_kept_as_written_not_read_as_the_main
         assert [e.agent_id for e in store.events("odd")] == ["42"]
 
 
-def test_a_subagent_lane_is_named_by_what_the_hooks_recorded(scenario):
-    """The Agent call that spawned it names it in its response and carries its task and prompt, its
-    SubagentHandback call carries its closing words, and SubagentStart's cwd is its worktree: the
-    lane has them all, and its spawn link starts at that Agent call, with no transcript read."""
-    repo, elsewhere = scenario
-    with Store.open(repo) as store:
-        for timestamp, event in run.hook_events(root=str(repo), elsewhere=str(elsewhere)):
-            ingest_hook_event(store, event, repo, timestamp)
-        graph = build_graph(store, [S2])
-
-    lane = next(lane for lane in graph.lanes if lane.agent == run.SH)
-    assert (lane.task, lane.prompt, lane.closing) == ("Lint the API", run.TASK_SH, run.CLOSE_SH)
-    assert lane.worktree == str(elsewhere)
-    spawned = next(link for link in graph.links if link.kind == "spawned" and link.target == lane.id)
-    assert spawned.ref == f"event:{S2[:8]}:toolu_s2_agent"
-    assert spawned.source in {mark.id for mark in graph.marks}  # the call's mark, not the lane
-
-
 def test_a_shell_write_in_a_subagents_worktree_is_filed_against_the_file_it_copies(scenario):
     """A command's list of changed files names the worktree's copy; the worktree SubagentStart
     recorded maps it back to the repo's file, flagged as a copy, not a file under .claude/."""
@@ -121,12 +103,11 @@ def test_a_shell_write_in_a_subagents_worktree_is_filed_against_the_file_it_copi
     with Store.open(repo) as store:
         for second, event in enumerate(events):
             ingest_hook_event(store, event | {"session_id": sid}, repo, f"2026-01-01T10:00:0{second}.000Z")
-        graph = build_graph(store, [sid])
+        (helper,) = store.agents(sid)
+        (change,) = changes(store.events(sid), [helper], str(repo))
 
-    assert [row.path for row in graph.rows] == ["app", "app/core.py"]
-    (change,) = [mark for mark in graph.marks if mark.kind == "change"]
-    assert change.copy
-    assert next(lane for lane in graph.lanes if lane.agent == agent).worktree == worktree
+    assert (change.path, change.copy) == ("app/core.py", True)
+    assert helper.worktree == worktree
 
 
 # 2 -- init ----------------------------------------------------------------------------------------

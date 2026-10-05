@@ -35,7 +35,6 @@ from graphene_map.ask import ask
 from graphene_map.ask import named as planner
 from graphene_map.node_record import bill, bill_line, node_record, render, rolled_up
 from graphene_map.plan import Caller
-from graphene_map.plan_view import build_plan_view
 from graphene_map.run import _alive
 from graphene_map.store import Store
 
@@ -238,8 +237,7 @@ def test_a_tools_error_names_its_path_in_the_repository_never_where_the_checkout
     repo, fake, forks
 ):
     """A tool that raised an OSError in a fork gave the fork's reason, and the leaf's hand-back, the
-    copy's temp path (/var/folders/…/graphene-greet-fork1-…); without forks, the checkout's. The page
-    never carries a path to the checkout (64)."""
+    copy's temp path (/var/folders/…/graphene-greet-fork1-…); without forks, the checkout's."""
     (repo / "src" / "sub").mkdir(parents=True)
     (repo / "src" / "sub" / "a.py").write_text("a = 1\n")
     git(repo, "add", "-A")
@@ -251,10 +249,8 @@ def test_a_tools_error_names_its_path_in_the_repository_never_where_the_checkout
     with Store.open(repo) as store:
         why = store.node_log("greet", ("released",))[-1]["detail"]["why"]
         ended = [e["detail"] for e in store.node_log("greet", ("fork",)) if e["detail"]["state"] != "running"]
-        page = json.dumps(build_plan_view(store, export=True))
     assert why == "the executor stopped: " + ("RuntimeError: " if forks > 1 else "") + said
     assert [e["why"] for e in ended] == [said] * (forks if forks > 1 else 0)
-    assert "graphene-greet-fork" not in page and str(repo.resolve()) not in page and str(repo) not in page
 
 
 STOPPED = "the run was stopped before this fork ended"
