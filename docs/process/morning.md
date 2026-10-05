@@ -14,7 +14,11 @@ Rollback: `main` is untouched at `4e5a2a9`. To drop the night: close the PR, `gi
 - After the archive move: 307 tracked files. The rest is on the orphan branch `process` (`fb6a408`).
 
 **2. Run in five minutes** — not yet.
-**3. The experiment** — not yet.
+**3. The experiment** (`docs/test/PROVE.md`, `docs/test/PREREG-statements.md`)
+- `statements`: a 1,328-line service, 5 traps, 24 hidden checks, 12 held out. Estimate: 20-60 min
+  and $3-10 a run, 4 runs. The rehearsal, no model: trip-all scores 5, trip-none 0, both clocks set.
+- My prediction, pre-registered: the paragraph ties or wins on traps and minutes. The tree wins only
+  on time to the first wrong inference, and only if its board names the rounding conflict.
 **4. Dogfood** (`docs/process/cut/dogfood.md`)
 - 22 min for a 14-node tree of lane 2; the first answer was unreadable. It caught one thing I missed:
   without `graphene ui`, nothing refreshes the commits `node show` credits. Plan-first stopped
@@ -47,3 +51,5 @@ Rollback: `main` is untouched at `4e5a2a9`. To drop the night: close the PR, `gi
   `on` reads as `auto`. The four Tuesday messages each became one leaf, done. The feeds paragraph
   also became one leaf, not a tree, and was done right (18/20, 12/12). `docs/process/cut/lane5-evidence.md`.
 - **00:43** Wave two started: the visible surface and the help text, one agent.
+- **01:05** Lane 4 merged: the `statements` task, its checks, `tally.py --traps`, the
+  pre-registration and the runbook. Full suite at `22ee8f9`: 1,540 passed, 21 skipped.
