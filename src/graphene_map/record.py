@@ -15,7 +15,6 @@ from datetime import datetime
 from .model import Agent, Commit, ToolEvent
 
 FILE_TOOLS = {"Edit", "Write", "MultiEdit", "NotebookEdit"}
-WRITE_GRADES = ("edit", "shell")
 
 
 def seconds(stamp: str) -> float:

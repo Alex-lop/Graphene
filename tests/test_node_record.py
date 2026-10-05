@@ -507,12 +507,10 @@ def test_the_record_reads_as_plain_lines(store, repo):
     ]
 
 
-def test_the_record_is_json_and_every_line_is_whole(store, repo):
+def test_every_line_of_the_record_is_whole(store, repo):
     plan.propose(store, [api_node()], ALEX, now=T(0))
     plan.start(store, "n1", BOT, repo, now=T(1))
     record = NR.node_record(store, repo, plan.get(store, "n1"), at=T(2))
-    as_dict = NR.to_dict(record)
-    assert json.loads(json.dumps(as_dict))["windows"][0]["session_id"] == S1
     assert all(line == line.rstrip() and "…" not in line for line in NR.render(record))
 
 

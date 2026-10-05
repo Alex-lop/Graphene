@@ -2382,7 +2382,7 @@ def signoff(
 ) -> Node:
     """A person's say-so: a node waiting in review is done. One that did not land was merged by hand,
     as they were told, and where it landed is recorded, or what needs it waits for ever. ``checkout``:
-    where they merged it; the page passes none, and the repo the store belongs to is meant."""
+    where they merged it; with none, the repo the store belongs to is meant."""
     import subprocess
 
     _person_only(who, "signing a node off")

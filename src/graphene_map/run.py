@@ -73,7 +73,7 @@ INTERPRETER = re.compile(r"(python|node|bash|sh|zsh|ruby|perl|deno|bun)[\d.]*")
 
 def label(template: str, own: str = "graphene_map.nemotron.executor") -> str:
     """Who the run's executor is, in the plan's log: `run:<this>`. The command's name, never where it
-    lives: the label is on the page an export publishes. A script run by an interpreter is named by the
+    lives: the label is in the log a recording carries. A script run by an interpreter is named by the
     script (`python3 bin/executor.py` is `executor.py`); Graphene's own (``own``) is `nemotron`."""
     argv = shlex.split(template)
     if own in argv:

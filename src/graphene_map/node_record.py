@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import subprocess
 from collections import Counter
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -211,10 +211,6 @@ def bill_line(b: dict | None, indent: str = "  ") -> list[str]:
     return [f"{indent}bill: ${b['dollars']:.4f} at list price · {b['calls']} model call{_s(b['calls'])} · "
             f"{b['prompt_tokens']:,} tokens in, {b['completion_tokens']:,} out · {models} "
             f"({whose} usage)"]  # fmt: skip
-
-
-def to_dict(record: NodeRecord) -> dict:
-    return asdict(record)
 
 
 def _windows(log: list[dict]) -> list[Window]:
