@@ -17,6 +17,8 @@ registered has run live.
 - The web UI is gone. `git revert` of the deletion commit brings it back.
 - Nemotron is an optional extra: `uv tool install 'graphene-map[nemotron] @ git+…'`. Without it, no Token
   Factory code loads.
+- A task a paragraph should lose, for Alex to run: `statements`, five traps, `docs/test/PROVE.md`.
+  Its rehearsal calls no model: `uv run python docs/test/prove.py rehearse /tmp/rehearsal`.
 
 The live half of first light (2 October, practice).
 - The sandbox's list of files takes the exit code through `$(...)`, and a command's output is appended, never

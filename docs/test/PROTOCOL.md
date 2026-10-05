@@ -170,7 +170,7 @@ stand-ins, because you cannot type at machine speed and you will not remember th
 
 ---
 
-## The four tasks
+## The five tasks
 
 | task | shape | the trap |
 |---|---|---|
@@ -178,9 +178,10 @@ stand-ins, because you cannot type at machine speed and you will not remember th
 | `inventory` | three directories, and a node the person owns | a public signature, migrations the person writes, a number no agent may pick |
 | `logs` | two parts, and the person changes their mind | the second part is asked for by level and wanted by hour |
 | `feeds` | **six directories**, and the person does not know the layout | prices in cents, a summary that is not a product, a stale README that documents half the wiring |
+| `statements` | **1,328 lines**, three executors, the person away | five traps, counted by `traps.py`: see `PREREG-statements.md` and `PROVE.md` |
 
 ```sh
-python3 docs/test/make_task.py <report|inventory|logs|feeds> <dir>
+python3 docs/test/make_task.py <report|inventory|logs|feeds|statements> <dir>
 ```
 
 Each prints the base commit. Each task's card, its intent globs and its hidden acceptance live in
@@ -278,6 +279,8 @@ executor's own JSON.
   being tested. `read` is what the person was shown, and it is not an act. `reopen` counts as a
   restart. `logline.py person edit --edit before after` records a text edit as the characters it
   added.
+- `clock`, since October, for the statements task: the person's own watch, its text `start`, `away`,
+  `back` or `done`. It is not an act. `tally.py` reads person minutes from it (`PREREG-statements.md`).
 - `mandated` — on a `correction`, this one is the card's own change of mind, which the protocol
   forces on both arms. `restarts` counts it; `restarts_unmandated` does not. Report both.
 - **Never log a `result` for an executor `graphene run` started.** Its cost is read out of
