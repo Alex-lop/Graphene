@@ -11,8 +11,9 @@ import subprocess
 import pytest
 from fake_tokenfactory import Fake, call
 
-from graphene_map import plan, sandbox
-from graphene_map import tokenfactory as tf
+from graphene_map import plan
+from graphene_map.nemotron import sandbox
+from graphene_map.nemotron import tokenfactory as tf
 from graphene_map.plan import DONE, Caller
 from graphene_map.run import named, run_plan
 from graphene_map.store import Store

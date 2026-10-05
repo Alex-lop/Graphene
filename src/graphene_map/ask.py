@@ -20,7 +20,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from . import board as B
-from . import cover, lookup, precheck
+from . import extra
 from . import plan as P
 from . import plan_text as T
 from .run import _splits, command_for, unchosen
@@ -42,14 +42,12 @@ def named(spec: str | None) -> str:
     if not spec:
         raise unchosen("planner")
     if spec.split(None, 1)[:1] == ["nemotron"]:
-        from .planner import template
-
-        return template(spec)
+        return extra.need("planner").template(spec)
     return {"claude": DEFAULT_PLANNER, "codex": "codex exec --sandbox read-only"}.get(spec, spec)
 
 
 def label(template: str) -> str:
-    return run_label(template, "graphene_map.planner")
+    return run_label(template, "graphene_map.nemotron.planner")
 
 
 _FENCE = re.compile(r"^```[ \t]*(\w*)[ \t]*\n(.*?)^```[ \t]*$", re.MULTILINE | re.DOTALL)
@@ -433,10 +431,11 @@ def ask(
                     say("the planner says:")
                     for line in said_lines:
                         say(f"  {line[:300]}")
-                if about is None:  # GRAPHENE_SHAPE: what reads the proposal once it has landed
-                    cover.after_ask(store, sentence, say)
-                said += precheck.after_proposal(store, root, said.ids)  # GRAPHENE_SHAPE=precheck, after it
-                lookup.after_proposal(store, root, say)  # GRAPHENE_SHAPE=lookup: what the repo answers
+                if cover := extra.load("cover"):  # GRAPHENE_SHAPE: what reads the proposal once it has landed
+                    if about is None:
+                        cover.after_ask(store, sentence, say)
+                    said += extra.need("precheck").after_proposal(store, root, said.ids)  # =precheck
+                    extra.need("lookup").after_proposal(store, root, say)  # =lookup: what the repo answers
                 return said
         if done.returncode == 3 and not text.strip():  # it could not work at all; again would not help
             raise P.Refused(f"nothing was added. {refusal}")

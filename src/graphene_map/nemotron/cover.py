@@ -23,8 +23,8 @@ from pathlib import Path
 
 import typer
 
-from . import plan as P
-from . import plan_text as T
+from .. import plan as P
+from .. import plan_text as T
 
 ACTOR = "cover:nemotron"
 BRIEF = 30  # seconds Nano is given, asked once: it runs after the proposal has landed, and nobody waits on it
@@ -259,7 +259,7 @@ def after_ask(store, sentence: str, say: Callable[[str], None]) -> None:
     clause no leaf carries on the board (``to_board``). What goes wrong here is one line; the proposal
     stands."""
     if "cover" in shaping():
-        from . import board
+        from .. import board
 
         say = plain(say)
         try:

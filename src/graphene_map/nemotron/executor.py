@@ -36,11 +36,11 @@ import threading
 import time
 from pathlib import Path
 
-from . import gate, settings
-from . import plan as P
+from .. import gate, settings
+from .. import plan as P
+from ..run import GRACE, REFUSED, _alive
+from ..store import Store, repo_root
 from . import tokenfactory as tf
-from .run import GRACE, REFUSED, _alive
-from .store import Store, repo_root
 
 PROMPT_VERSION = 1
 SYSTEM = """\
@@ -838,7 +838,7 @@ def _stopped(*_) -> None:
 def template(spec: str) -> str:
     """`nemotron [options]` as the command `graphene run` starts."""
     rest = spec.split(None, 1)[1] if len(spec.split(None, 1)) > 1 else ""
-    return f"{shlex.quote(sys.executable)} -m graphene_map.executor {rest}".strip()
+    return f"{shlex.quote(sys.executable)} -m graphene_map.nemotron.executor {rest}".strip()
 
 
 if __name__ == "__main__":

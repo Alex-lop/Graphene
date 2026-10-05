@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 from fake_tokenfactory import Fake, call
 
-from graphene_map import tokenfactory as tf
+from graphene_map.nemotron import tokenfactory as tf
 
 
 @pytest.fixture
@@ -167,7 +167,7 @@ def test_an_error_that_echoes_the_key_is_said_without_it(monkeypatch, pad):
 
 def test_a_key_a_header_cannot_carry_is_one_line_and_never_kept(monkeypatch):
     """A pasted en dash: the header could not be built, and a traceback reached the screen."""
-    from graphene_map import keys
+    from graphene_map.nemotron import keys
 
     key = "sk-FAKE–graphene-review-123"
     monkeypatch.setenv("NEBIUS_API_KEY", key)
@@ -182,7 +182,8 @@ def test_a_key_a_header_cannot_carry_is_one_line_and_never_kept(monkeypatch):
 
 # The NVIDIA models Token Factory listed for Alex's key on 2026-09-29 (rung 1, practice): ids, list prices and
 # the roles `roles` gave them, from .graphene/practice/access.json (docs/test/first-light.md). Nothing else.
-LIVE = json.loads((Path(__file__).parent / "fixtures" / "tokenfactory-models-2026-09-29.json").read_text())
+FIXTURE = Path(__file__).parents[1] / "fixtures" / "tokenfactory-models-2026-09-29.json"
+LIVE = json.loads(FIXTURE.read_text())
 
 
 @pytest.fixture

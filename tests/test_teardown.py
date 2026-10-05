@@ -18,7 +18,8 @@ import time
 
 import pytest
 
-from graphene_map import plan, sandbox
+from graphene_map import plan
+from graphene_map.nemotron import sandbox
 from graphene_map.plan import Caller
 from graphene_map.store import Store
 
@@ -156,7 +157,7 @@ def test_a_check_that_passes_leaves_nothing_it_started_running(tmp_path):
     """Review 24: a check that passed left what it put in the background running (a test server kept its
     port, with its worktree deleted under it, and failed the next leaf's identical check), and so did a
     command of the Nemotron executor's. Both now end their session once they return."""
-    from graphene_map.executor import Local
+    from graphene_map.nemotron.executor import Local
 
     repo = tmp_path / "repo"
     repo.mkdir()

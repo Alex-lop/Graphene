@@ -6,8 +6,8 @@ import sys
 import pytest
 from fake_tokenfactory import Fake
 
-from graphene_map import keys
-from graphene_map import tokenfactory as tf
+from graphene_map.nemotron import keys
+from graphene_map.nemotron import tokenfactory as tf
 
 FAKE = r'''#!{python}
 import json, os, pathlib, re, shlex, sys
@@ -149,8 +149,8 @@ def test_model_written_code_and_a_check_never_find_the_keychain_key(tmp_path, mo
     import json
     import subprocess
 
-    from graphene_map import executor
     from graphene_map import plan as P
+    from graphene_map.nemotron import executor
 
     bin_ = tmp_path / "bin"
     bin_.mkdir()
@@ -166,7 +166,7 @@ def test_model_written_code_and_a_check_never_find_the_keychain_key(tmp_path, mo
     repo.mkdir()
     for argv in (["init", "-q"], ["commit", "-q", "--allow-empty", "-m", "a"]):
         subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", *argv], cwd=repo, check=True)
-    peek = f"{sys.executable} -c 'from graphene_map import keys; print(keys.find())'"
+    peek = f"{sys.executable} -c 'from graphene_map.nemotron import keys; print(keys.find())'"
     code, out = executor.Local(repo).run(peek)
     assert (code, out.strip()) == (0, "None")
     passed, said, _ = P.run_check(peek, repo)
@@ -196,12 +196,12 @@ def test_contree_and_the_access_check_count_a_key_kept_in_the_keychain(tmp_path,
     import importlib
     import pathlib
 
-    from graphene_map import sandbox
+    from graphene_map.nemotron import sandbox
 
     monkeypatch.setattr(keys, "find", lambda: "fake-key-in-keychain")
     monkeypatch.setenv("NEBIUS_PROJECT_ID", "project-fake")
     assert sandbox.credentials()
-    monkeypatch.syspath_prepend(str(pathlib.Path(__file__).parents[1] / "docs" / "test"))
+    monkeypatch.syspath_prepend(str(pathlib.Path(__file__).parents[2] / "docs" / "test"))
     access = importlib.import_module("access")
     monkeypatch.setenv("GRAPHENE_TOKENFACTORY_URL", "http://127.0.0.1:9/")
     monkeypatch.setattr(tf, "_sleep", lambda s: None)

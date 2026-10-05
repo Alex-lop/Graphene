@@ -854,6 +854,27 @@ def run_check(
     return code == 0, (text[-TAIL:] if text else f"exit {code}, no output"), made
 
 
+# Shaped like a key: 20 or more letters and digits in a row, a capital, a small letter and a digit among
+# them (a key, a token, a JWT's part). The whole word it sits in goes (up to a space, a slash or a quote),
+# so no piece of a key is left. A git sha, a uuid, a node's id, a log's name and a model's name have none.
+ALNUM = "[A-Za-z0-9]"
+SHAPED = re.compile(rf"(?<!{ALNUM})(?={ALNUM}*[A-Z])(?={ALNUM}*[a-z])(?={ALNUM}*[0-9]){ALNUM}{{20}}")
+WORD = re.compile(r"[\w.\-]{20,}", re.ASCII)
+# base64, which a word above ends at a / or a + (an AWS secret access key): 30 or more of its letters with a
+# capital, a small letter, a digit and a / or a +, and its padding. A . - or _ breaks it, so a path is kept
+# unless 30 of its characters in a row are letters, digits and slashes alone.
+B64 = "[A-Za-z0-9+/]"
+BASE64 = re.compile(
+    rf"(?<!{B64})(?={B64}*[A-Z])(?={B64}*[a-z])(?={B64}*[0-9])(?={B64}*[+/]){B64}{{30,}}=*"
+)
+REMOVED = "[removed: shaped like a key]"
+
+
+def unkeyed(value: str) -> str:
+    """``value`` with every word shaped like a key, and every run of base64 shaped like one, taken out."""
+    return WORD.sub(lambda word: REMOVED if SHAPED.search(word[0]) else word[0], BASE64.sub(REMOVED, value))
+
+
 def sandboxed(store, node: Node) -> dict | None:
     """Where the current hold of this leaf worked, when that was a sandbox: the Nemotron executor
     notes it (`placement`) so that its check, whoever runs `done`, runs in a fork of the same one."""
@@ -866,11 +887,11 @@ def sandboxed(store, node: Node) -> dict | None:
 
 @ctrl_c_on_hangup()  # as run_check: a stop or a hangup removes the check's container
 def _check_in_sandbox(place: dict, command: str, checkout, leave_out) -> tuple[bool, str, list[str]]:
-    from .sandbox import check_in_fork
+    from . import extra
 
     try:
-        code, out = check_in_fork(place["box"], place["image"], Path(checkout), command, CHECK_TIMEOUT,
-                                  list(leave_out))  # fmt: skip
+        code, out = extra.need("sandbox").check_in_fork(place["box"], place["image"], Path(checkout), command,
+                                                        CHECK_TIMEOUT, list(leave_out))  # fmt: skip
     except Exception as no:  # an SDK, a network or a box that is gone: it never ran, which is no pass
         return False, f"the check could not be run in the leaf's sandbox: {no}", []
     text = out.strip()

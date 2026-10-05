@@ -29,10 +29,11 @@ from test_executor import (  # noqa: F401
 )
 from test_sandbox_state import needs_docker
 
-from graphene_map import executor, plan, run, sandbox
-from graphene_map import tokenfactory as tf
+from graphene_map import plan, run
 from graphene_map.ask import ask
 from graphene_map.ask import named as planner
+from graphene_map.nemotron import executor, sandbox
+from graphene_map.nemotron import tokenfactory as tf
 from graphene_map.node_record import bill, bill_line, node_record, render, rolled_up
 from graphene_map.plan import Caller
 from graphene_map.plan_view import build_plan_view
@@ -285,8 +286,8 @@ def test_a_run_stopped_while_forks_work_stops_each_fork_says_so_and_leaves_nothi
         plan.start(store, "greet", Caller("run:nemotron", False, "s-1"), repo)
     env = {**os.environ, "GRAPHENE_NODE": "greet", "GRAPHENE_ATTEMPT": "s-1", "GRAPHENE_TRY": "1",
            "TMPDIR": str(temp)}  # fmt: skip
-    argv = [sys.executable, "-m", "graphene_map.executor", "--model", NANO, "--forks", "2", "--placement",
-            placement, "the contract"]  # fmt: skip
+    argv = [sys.executable, "-m", "graphene_map.nemotron.executor", "--model", NANO, "--forks", "2",
+            "--placement", placement, "the contract"]  # fmt: skip
     proc = subprocess.Popen(argv, cwd=repo, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                             start_new_session=True)  # fmt: skip
 

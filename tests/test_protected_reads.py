@@ -9,10 +9,11 @@ import subprocess
 import pytest
 from fake_tokenfactory import Fake, call
 
-from graphene_map import executor, settings
-from graphene_map import tokenfactory as tf
+from graphene_map import settings
 from graphene_map.ask import ask, named
 from graphene_map.hooks import hook_main
+from graphene_map.nemotron import executor
+from graphene_map.nemotron import tokenfactory as tf
 from graphene_map.plan import Caller
 from graphene_map.store import Store
 
@@ -112,7 +113,7 @@ def test_a_planners_grep_whose_glob_leaves_the_protected_files_out_is_let_throug
 
 
 def test_the_nemotron_planners_grep_does_not_follow_a_tracked_link_to_a_protected_file(repo):
-    from graphene_map import planner
+    from graphene_map.nemotron import planner
 
     (repo / "docs").mkdir()
     (repo / "docs" / "link.txt").symlink_to("../secrets/prod.txt")
@@ -126,7 +127,7 @@ def test_a_protected_glob_is_matched_as_the_disk_reaches_it_and_a_miscased_one_i
     upload match a protected glob ignoring case, as the hook's read check does; and `graphene config`
     refuses a glob that differs from a tracked path only in case, as `node add` does for a scope."""
     from graphene_map import plan as P
-    from graphene_map import planner
+    from graphene_map.nemotron import planner
 
     assert "protected" in planner.Repo(repo, ["Secrets/**"]).read("secrets/prod.txt")
     assert planner.Repo(repo, ["Secrets/**"]).grep("KEY") == "(no match)"

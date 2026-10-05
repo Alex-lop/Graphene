@@ -5,9 +5,9 @@ import pytest
 from test_init import NEMOTRON, chosen, fake, on_path  # noqa: F401  (fixtures)
 from test_plan_cli import person, repo, runner  # noqa: F401  (fixtures)
 
-from graphene_map import keys
-from graphene_map import tokenfactory as tf
 from graphene_map.cli import build
+from graphene_map.nemotron import keys
+from graphene_map.nemotron import tokenfactory as tf
 from graphene_map.store import Store
 
 # ruff: noqa: F811  (pytest fixtures imported from test_init and test_plan_cli are named again as arguments)

@@ -16,10 +16,11 @@ from fake_tokenfactory import MODELS, Fake, call
 from test_executor import NANO, SUPER, fake, git, leaf, plan_of, repo, run_one, script  # noqa: F401
 from test_sandbox_state import needs_docker
 
-from graphene_map import plan, sandbox, tui
-from graphene_map import tokenfactory as tf
+from graphene_map import plan, tui
 from graphene_map.ask import ask
 from graphene_map.ask import named as planner
+from graphene_map.nemotron import sandbox
+from graphene_map.nemotron import tokenfactory as tf
 from graphene_map.run import _alive, named, run_parallel
 from graphene_map.store import Store
 

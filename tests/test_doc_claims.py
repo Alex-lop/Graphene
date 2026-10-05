@@ -26,7 +26,8 @@ def test_the_submission_reports_the_shaping_studies_board_against_outline_whatev
 
 
 def test_the_docs_describe_the_planner_prompt_the_code_sends():
-    from graphene_map import ask, planner
+    from graphene_map import ask
+    from graphene_map.nemotron import planner
 
     assert "at most three" in " ".join(planner.SYSTEM.split()) and "at most three" in ask.RULES
     how = doc("docs/HOW_IT_WORKS.md")
@@ -77,7 +78,7 @@ def test_the_dag_note_the_docs_quote_is_the_one_view_dag_prints_for_their_scratc
 def test_the_readme_s_privacy_says_precheck_uploads_the_checkout_to_sandboxes():
     import inspect
 
-    from graphene_map import precheck
+    from graphene_map.nemotron import precheck
 
     forks = inspect.getsource(precheck._forks)
     assert 'or "contree"' in forks and "S.pack(root)" in forks  # ConTree by default, the checkout packed

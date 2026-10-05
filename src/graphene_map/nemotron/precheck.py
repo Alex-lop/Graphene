@@ -24,7 +24,7 @@ import subprocess
 import time
 from pathlib import Path
 
-from . import plan as P
+from .. import plan as P
 
 FLAG = "precheck"
 SHAPER = "shaper:nemotron"  # who puts the shaping prototypes' output on the board
@@ -171,7 +171,7 @@ def _nano() -> str:
 def _hider(root: Path):
     """demo.py's hider (the key in the environment, anything shaped like a key, the repository's path)
     and a URL's user and password: for what Nano is sent, and every verdict stored or said."""
-    from .demo import hider  # here: it brings the screen's imports, which only a run that reads needs
+    from ..demo import hider  # here: it brings the screen's imports, which only a run that reads needs
 
     hide = hider(root)[0]
     return lambda text: hide(_USER.sub(r"\1", str(text)))
@@ -313,7 +313,7 @@ def on_board(store, rows: list[tuple[P.Node, dict]], board=None) -> list[str]:
     one a board holds already, not dropped, is not put up again. ``board`` is the board module (its
     ``add`` and ``items``). Returns one line an item: what was put up, or why it was not."""
     if board is None:
-        from . import board
+        from .. import board
     who = P.Caller(SHAPER, False)  # the shaping prototypes' actor; the text says who read a red
     up = {(it.get("about"), it["text"]) for it in board.items(store) if it.get("state") != "dropped"}
     lines = []

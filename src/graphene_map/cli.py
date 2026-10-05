@@ -233,11 +233,12 @@ def build():
 
     talk(cli, root, open_store, fail)
 
-    from . import config_cli, key_cli, keys
+    from . import config_cli, extra
     from . import settings as S
 
     config_cli.register(cli, root, open_store, fail)
-    key_cli.register(cli, fail)
+    if key_cli := extra.load("key_cli"):  # `graphene key`: the Nemotron extra's, when it is installed
+        key_cli.register(cli, fail)
 
     WHO = ("planner", "executor")
     # what init looks for, by name, so that none comes first: the `--with` word, its name, what it needs
@@ -247,42 +248,12 @@ def build():
     def unreadable(command: str) -> str | None:
         """Why a planner or an executor cannot be started as written (`--with` splits it as a shell does)."""
         try:
-            shlex.split(command)
+            words = shlex.split(command)
         except ValueError as no:
             return f"{command!r} cannot be read as a command: {no}"
-        return None
+        return extra.MISSING if words[:1] == ["nemotron"] and not key_cli else None
 
-    def nemotron() -> tuple[dict[str, str], str, str | None, str | None]:
-        """Nemotron on Token Factory as a new repo is offered it, what that is in words, what could not
-        be reached, in one line, or None, and why the leaves are not in Sandboxes though ConTree is set
-        up here, or None. The ids are the live list's, so a run is reproducible and nothing is guessed:
-        the largest of Ultra and Super plans (as planner.py picks when it runs), and the two smallest
-        listed do the leaves, the second on a second attempt; in a Sandbox when ConTree is set up here
-        and does not refuse the project, on this machine otherwise. Out of reach it is plain `nemotron`,
-        which finds its models when it runs. Asked once: offline, init must not wait."""
-        from . import sandbox
-        from . import tokenfactory as tf
-
-        unreached = tf.reach(tries=1)
-        found = {} if unreached else tf.roles(tf.models(tries=1))
-        plans = [s for s in ("ultra", "super") if s in found][:1]
-        leaves = [s for s in ("nano", "super", "ultra") if s in found][:2]
-
-        def models(sizes: list[str]) -> str:
-            return "".join(f" --model {shlex.quote(found[s])}" for s in sizes)
-
-        refused = sandbox.refused() if sandbox.configured() else None  # whoami: a read, no operation
-        place = "sandbox" if sandbox.configured() and not refused else "local"
-        ladder = f"nemotron{models(leaves)} --placement {place}"
-        planner = plans[0].title() if plans else "largest"
-        does = " then ".join(s.title() for s in leaves) or "smallest"
-        said = f"{planner} plans, {does} {'do' if leaves[1:] else 'does'} the leaves"
-        if refused:
-            refused += ("; the leaves run on this machine until `graphene key check` says Sandboxes work, "
-                        "and `graphene init --executor nemotron` then places them there")  # fmt: skip
-        return {"planner": f"nemotron{models(plans)}", "executor": ladder}, said, unreached, refused
-
-    def asked_once(offer: dict[str, str], said: str, now: dict, found: list, key: bool) -> dict[str, str]:
+    def asked_once(offer: dict[str, str], said: str, now: dict, found: list, agents) -> dict[str, str]:
         """At a terminal: each choice by name, with what it needs and whether it was found here. Enter
         keeps what is set; with nothing set it takes the one choice found, when exactly one is, and
         otherwise a number is typed (any of them: what is not found yet can still be chosen). A command
@@ -290,25 +261,26 @@ def build():
         kept = any(now.values())
         if kept:
             say(" · ".join(f"{k} now: {now[k] or 'not chosen'}" for k in WHO))
-        where = "each in a Sandbox" if offer["executor"].endswith("sandbox") else "on this machine"
         say("which planner and executor for this repo?")
-        picks = {"4": {}}
-        for n, (word, name, needs) in enumerate(AGENTS, 1):
+        own = str(len(agents) + 1)
+        picks = {own: {}}
+        for n, (word, name, needs) in enumerate(agents, 1):
             picks[str(n)] = offer if word == "nemotron" else dict.fromkeys(WHO, word)
-            state = "found" if word in found else "not found"
-            if word == "nemotron" and word not in found and key:
-                state = "not reached"  # the key is here; the line above says what did not answer
+            # Nemotron is listed only with a key: not found, it did not answer, as the line above says
+            state = "found" if word in found else "not reached" if word == "nemotron" else "not found"
             say(f"  {n}  {name:<27}needs {needs:<20}{state}")
-        say(f"     {said}, {where}")  # what Nemotron would be, under its line
-        say(f"  4  {'a command of your own':<27}that takes the prompt last")
-        one = [str(n) for n, (word, _, _) in enumerate(AGENTS, 1) if word in found]
+            if word == "nemotron":  # what Nemotron would be, under its line
+                where = "each in a Sandbox" if offer["executor"].endswith("sandbox") else "on this machine"
+                say(f"     {said}, {where}")
+        say(f"  {own}  {'a command of your own':<27}that takes the prompt last")
+        one = [str(n) for n, (word, _, _) in enumerate(agents, 1) if word in found]
         default = one[0] if len(one) == 1 and not kept else ""
         if kept:
             picks[""] = {}
         ask = "choose (Enter keeps them)" if kept else "choose"
         while (picked := typer.prompt(ask, default=default, show_default=bool(default))) not in picks:
-            say("choose 1, 2, 3 or 4")
-        if picked != "4":
+            say(f"choose {', '.join(map(str, range(1, len(agents) + 1)))} or {own}")
+        if picked != own:
             return picks[picked]
 
         def readable(command: str) -> str:
@@ -329,14 +301,18 @@ def build():
         now = {k: store.meta(k) for k in WHO}
         missing = [k for k in WHO if k not in given and not now[k]]
         offer, said, unreached, found, placed = {}, "", None, [], None
-        key = keys.find() is not None  # the environment's, or the keychain's
-        if asking or missing or any(v.split()[:1] == ["nemotron"] for v in given.values()):
-            offer, said, unreached, placed = nemotron()
+        keys = extra.load("keys")
+        key = bool(keys) and keys.find() is not None  # the environment's, or the keychain's
+        agents = AGENTS if key else AGENTS[:2]  # Nemotron is offered with the extra and a key, not before
+        named = any(v.split()[:1] == ["nemotron"] for v in given.values())
+        if asking or missing or named:
+            if key or named:
+                offer, said, unreached, placed = key_cli.offer()
             if unreached and key:  # a key that did not answer: before the choice
                 say(unreached)
-            found = [w for w, _, _ in AGENTS if (not unreached if w == "nemotron" else shutil.which(w))]
+            found = [w for w, _, _ in agents if (not unreached if w == "nemotron" else shutil.which(w))]
         if asking:
-            given = asked_once(offer, said, now, found, key)
+            given = asked_once(offer, said, now, found, agents)
         else:
             plain = {k: offer[k] for k, v in given.items() if v.split() == ["nemotron"]}  # ids and all
             one = {} if len(found) != 1 else offer if found[0] == "nemotron" else dict.fromkeys(WHO, found[0])
@@ -349,9 +325,8 @@ def build():
                     "`graphene init` at a terminal asks, or --planner and --executor name one, and until "
                     "then `run` and `ask` refuse")  # fmt: skip
             given = {**{k: one[k] for k in missing if one}, **given, **plain}
-        if unreached and not key:
-            if any(v.split()[:1] == ["nemotron"] for v in given.values()):  # chosen: what it needs, once
-                say(unreached)
+        if unreached and not key and named:  # chosen: what it needs, once
+            say(unreached)
         if placed and offer and given.get("executor") == offer["executor"]:  # the offer, placed here: why
             say(placed)
         for k, v in given.items():

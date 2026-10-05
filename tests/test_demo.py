@@ -70,7 +70,7 @@ def test_a_recording_holds_no_path_of_yours_and_nothing_shaped_like_a_key(tmp_pa
 
 
 def test_a_key_kept_only_in_the_keychain_is_taken_out_too(tmp_path, monkeypatch):
-    from graphene_map import keys
+    from graphene_map.nemotron import keys
 
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setattr(keys, "find", lambda: "tfk_madeup_abcdefghijklmnopqrstuvwxyz0123456789")

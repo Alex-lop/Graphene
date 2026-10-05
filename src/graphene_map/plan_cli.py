@@ -20,10 +20,9 @@ from pathlib import Path
 import typer
 
 from . import board as B
-from . import cover, precheck
 from . import direction as D
+from . import extra
 from . import gate as G
-from . import note as N
 from . import plan as P
 from . import plan_text as T
 from . import views as V
@@ -474,8 +473,9 @@ def register(cli: typer.Typer, root, open_store, fail):
         help="The shared plan: what will be done, by whom, inside which paths.", invoke_without_command=True
     )
     cli.add_typer(plan_cli, name="plan")
-    cover.command(plan_cli, run, out)  # graphene plan cover: the person's words, accounted for
-    precheck.register(plan_cli, root, open_store, fail)  # `graphene plan precheck`: red first
+    if cover := extra.load("cover"):  # the Nemotron extra's, when it is installed
+        cover.command(plan_cli, run, out)  # graphene plan cover: the person's words, accounted for
+        extra.need("precheck").register(plan_cli, root, open_store, fail)  # `graphene plan precheck`
 
     @plan_cli.callback()
     def show_plan(
@@ -1047,7 +1047,8 @@ def register(cli: typer.Typer, root, open_store, fail):
             fail("--finer or --coarser, not both", 2)
         planner(sentence, executor, about, False, "finer" if finer else "coarser" if coarser else None)
 
-    N.register(plan_cli, root, open_store, fail)  # `graphene plan note`
+    if N := extra.load("note"):
+        N.register(plan_cli, root, open_store, fail)  # `graphene plan note`
 
     # -- graphene node ----------------------------------------------------------------------------
 

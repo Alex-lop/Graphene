@@ -15,7 +15,7 @@ import uuid
 from pathlib import Path
 from types import SimpleNamespace
 
-from graphene_map import night, sandbox
+from graphene_map.nemotron import night, sandbox
 
 SITE = "try:\n    import fake_faults\nexcept ImportError:  # a python that is not the test's\n    pass\n" \
        "else:\n    fake_faults.install(setattr)\n"  # fmt: skip
@@ -41,7 +41,7 @@ def install(put) -> None:
     if not os.environ.get("FAULTS"):
         return
     from graphene_map import plan
-    from graphene_map import tokenfactory as tf
+    from graphene_map.nemotron import tokenfactory as tf
 
     put(tf, "time", SimpleNamespace(sleep=lambda s: None, monotonic=time.monotonic, time=time.time))
     if os.environ.get("FAULTS_TIMEOUT"):

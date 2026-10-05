@@ -25,7 +25,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[4] / "tests"))
 from fake_tokenfactory import Fake, call  # noqa: E402
 
 from graphene_map import plan  # noqa: E402
-from graphene_map import tokenfactory as tf  # noqa: E402
+from graphene_map.nemotron import tokenfactory as tf  # noqa: E402
 from graphene_map.plan import DONE, OPEN, Caller  # noqa: E402
 from graphene_map.run import named, run_plan  # noqa: E402
 from graphene_map.store import Store  # noqa: E402

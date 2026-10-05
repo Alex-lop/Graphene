@@ -51,7 +51,7 @@ def test_the_check_runs_on_the_recording_graphene_ships(tmp_path, monkeypatch):
 def test_the_sandboxs_own_home_is_no_persons_path():
     """Live on 2 Oct, rung 7's third take recorded an executor running /home/leaf/.local/bin/pytest in its
     Sandbox: the sandbox user's home, which is nobody's, was counted as a person's home path."""
-    from graphene_map import sandbox
+    from graphene_map.nemotron import sandbox
 
     assert sandbox.USER == "leaf"
     for said in ("run /home/leaf/.local/bin/pytest -q", "HOME=/home/leaf ls", "cd /home/leaf && ls"):

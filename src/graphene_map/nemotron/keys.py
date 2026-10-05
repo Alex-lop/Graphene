@@ -107,7 +107,7 @@ def _said(done: subprocess.CompletedProcess | None, what: str) -> None:
 
 def reached() -> str:
     """One line: "Token Factory: reached, N NVIDIA models", or what stood in the way. Never the key."""
-    from graphene_map import tokenfactory
+    from . import tokenfactory
 
     key = find()
     try:

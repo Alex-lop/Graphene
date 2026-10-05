@@ -24,7 +24,7 @@ from pathlib import Path
 
 import typer
 
-from . import plan as P
+from .. import plan as P
 
 MAX_TOKENS = 2048  # Nano reasons before it answers: a cut-off answer is said to be one
 TIMEOUT = 30  # seconds: a note is asked once, with no backoff, and a failure is one line (not verified live)
@@ -67,7 +67,7 @@ _CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f]")  # ESC, CR, BEL...: what could re
 
 
 def _unkeyed(text: str) -> str:
-    from .demo import unkeyed  # here, not above: demo loads the screen's library
+    from ..demo import unkeyed  # here, not above: demo loads the screen's library
 
     return unkeyed(text)
 
@@ -238,7 +238,7 @@ def to_board(store, root: Path, sentence: str, say: Callable[[str], None] = lamb
         return None
     if offer is None:
         return None
-    from . import board as B
+    from .. import board as B
 
     default = f"take it: {'; '.join(offer.then)}" if offer.then else f"run it yourself: {offer.command}"
     text = f"you said '{_shown(sentence)}'; {offer.said()}"

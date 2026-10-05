@@ -26,7 +26,7 @@ import make_task  # noqa: E402
 from fake_tokenfactory import Fake, call  # noqa: E402
 from test_bench import ACCEPT, FILES  # noqa: E402
 
-from graphene_map import tokenfactory as tf  # noqa: E402
+from graphene_map.nemotron import tokenfactory as tf  # noqa: E402
 
 NANO = "nvidia/Nemotron-3-Nano-fake"
 ULTRA = "nvidia/Nemotron-3-Ultra-fake"

@@ -37,10 +37,10 @@ from types import SimpleNamespace
 import bench
 import tally  # noqa: F401  (it puts src/ on the path)
 
-from graphene_map import executor as E
-from graphene_map import night
 from graphene_map import plan as P
-from graphene_map import tokenfactory as tf
+from graphene_map.nemotron import executor as E
+from graphene_map.nemotron import night
+from graphene_map.nemotron import tokenfactory as tf
 
 SYSTEM = """\
 You are a coding agent in a git repository, working for the person whose message follows. You work only
