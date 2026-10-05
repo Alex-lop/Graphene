@@ -1,6 +1,6 @@
 # The video: under three minutes, the moment before anything runs
 
-A draft for Alex. The rules (`docs/process/field.md`) ask for a public video under three minutes, with
+A draft for Alex. The rules ([`docs/process/field.md`](https://github.com/Alex-lop/Graphene/blob/process/docs/process/field.md)) ask for a public video under three minutes, with
 footage of Graphene functioning, and audio on how Token Factory and Nemotron are used. So the narration
 says what runs where, and nothing about why software should be written this way.
 

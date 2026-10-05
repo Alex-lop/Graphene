@@ -739,7 +739,7 @@ with nemotron`) only where the long form still fits with it.
 
 ## P4d. Nano while the person shapes: three prototypes
 
-These three are ranked in `docs/process/ideas.md`, and have run only against a scripted stand-in for
+These three are ranked in [`docs/process/ideas.md`](https://github.com/Alex-lop/Graphene/blob/process/docs/process/ideas.md), and have run only against a scripted stand-in for
 Token Factory (`tests/fake_tokenfactory.py`). Each is a command, and each is the person's, since it
 spends. `GRAPHENE_SHAPE` (comma-separated: `cover`, `note`, `precheck`) also runs them on their own.
 They read the plan after it has landed, so they work whichever planner proposed it. Whatever they put
