@@ -482,8 +482,9 @@ the vendor's documented JSON:
 Whatever the plan's state, a plan in force or none, an `Edit`, `Write`, `MultiEdit` or
 `NotebookEdit` whose path lies under the repository's `.graphene/` (a worktree's copy included, and a
 path spelled through a link) is denied and logged (`hooks.into_ours`): the store and the direction
-(P1g) are written by `graphene` commands only. A shell command that reaches into `.graphene/` is denied
-only where the gate answers the shell (below).
+(P1g) are written by `graphene` commands only. A file in a run's worktree under
+`.graphene/worktrees/` belongs to that worktree, not to the store. A shell command that reaches
+into `.graphene/` is denied only where the gate answers the shell (below).
 
 The deny applies in every permission mode, `bypassPermissions` included, and inside subagents (both
 checked with Graphene's own gate on a real session). The hook reads the node's row on every call,

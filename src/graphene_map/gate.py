@@ -448,13 +448,17 @@ def scope_refused(
     return f"{rel} is outside the scope of the node you hold ({scopes}). {way_out}"
 
 
-def _guard_command(event: dict) -> dict | None:
+def _guard_command(event: dict, root: Path) -> dict | None:
     """The shell commands refused whatever the scope: speaking for the person, feeding the hook by
     hand, reaching round `graphene` into its store."""
     if event.get("tool_name") != "Bash":
         return None
+    from .hooks import worktree_root
+
     tool_input = event.get("tool_input") if isinstance(event.get("tool_input"), dict) else {}
     command = str(tool_input.get("command") or "")
+    cwd = event.get("cwd") if isinstance(event.get("cwd"), str) else None
+    top = worktree_root(cwd, root) if cwd else None  # a run's worktree: its own path is not the store
     if _AS_PERSON.search(command):
         return _deny(
             "GRAPHENE_AS and GRAPHENE_WATCH are how a script says it speaks for a person at their "
@@ -467,7 +471,7 @@ def _guard_command(event: dict) -> dict | None:
             "`graphene ingest` is what the vendor's hooks call, with events only they make; it is "
             "not an agent's to run"
         )
-    if ".graphene" in command.casefold() and not re.match(r"\s*graphene\s", command):
+    if ".graphene" in command.replace(top or "\0", "").casefold() and not re.match(r"\s*graphene\s", command):
         return _deny(
             "the plan's own store (.graphene/) is not an agent's to read around or write: use "
             "`graphene plan`, `graphene node show <id>` and `graphene plan log`"
@@ -550,7 +554,7 @@ def decide(store, event: dict, root: Path) -> dict | None:
     # plan first: a session that holds no leaf writes nothing, plan or no plan yet
     first = name == "PreToolUse" and not planner and _first(store) and not _held(store, sid)
     if name == "PreToolUse" and (planner or first or P.in_force(store)):
-        guarded = _guard_command(event)  # the store and the hooks are nobody's to reach round
+        guarded = _guard_command(event, root)  # the store and the hooks are nobody's to reach round
         if guarded is not None:
             return guarded
     if name == "PreToolUse" and (planner or first):

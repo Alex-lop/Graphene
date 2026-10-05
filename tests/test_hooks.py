@@ -5,6 +5,7 @@ import json
 
 import pytest
 
+from graphene_map import plan
 from graphene_map.hooks import HOOK_EVENTS, hook_main, ingest_hook_event, install_hooks
 from graphene_map.store import Store, ignore_store_dir
 
@@ -405,3 +406,32 @@ def test_the_start_head_is_read_from_git_files_as_rev_parse_says_it(tmp_path, mo
     real([*git, "checkout", "-q", "-"], check=True)
     (tmp_path / ".git" / "reftable").mkdir()
     check(spawned=1)
+
+
+def test_a_write_inside_a_run_worktree_is_not_the_plans_own_store(tmp_path):
+    """1 October: a Claude Code executor in `graphene run`'s worktree under .graphene/worktrees/ had
+    every write refused as "the plan's own store". The worktree's files are its own; the worktree's
+    .graphene/ and the repo's store are still refused."""
+    import subprocess
+
+    git = ["git", "-C", str(tmp_path), "-c", "user.name=t", "-c", "user.email=t@t"]
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    subprocess.run([*git, "commit", "-q", "--allow-empty", "-m", "init"], check=True)
+    Store.open(tmp_path).close()
+    tree = tmp_path / ".graphene" / "worktrees" / "readme"
+    subprocess.run([*git, "worktree", "add", "-q", "-b", "graphene/readme", str(tree)], check=True)
+
+    def hook(tool: str, **tool_input) -> str:
+        said = io.StringIO()
+        payload = event("PreToolUse", tree, tool_name=tool, tool_input=tool_input)
+        hook_main(io.StringIO(json.dumps(payload)), tree, said)
+        return said.getvalue()
+
+    assert hook("Write", file_path=str(tree / "README.md")) == ""
+    assert "the plan's own store" in hook("Write", file_path=str(tree / ".graphene" / "direction.txt"))
+    assert "the plan's own store" in hook("Write", file_path=str(tmp_path / ".graphene" / "graphene.db"))
+    with Store.open(tmp_path) as store:  # a plan in force: the gate reads every shell command
+        leaf = {"id": "readme", "title": "r", "scope": ["README.md"], "check": "true"}
+        plan.propose(store, [leaf], plan.Caller("alex", True))
+    assert hook("Bash", command=f"cat {tree}/README.md") == ""
+    assert "the plan's own store" in hook("Bash", command=f"cat {tmp_path}/.graphene/graphene.db")

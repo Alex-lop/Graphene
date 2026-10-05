@@ -351,6 +351,8 @@ def ours(path: str, cwd: str | None, root: Path) -> str | None:
             break
         if os.path.basename(here).casefold() == ".graphene" and worktree_root(os.path.dirname(here), root):
             break  # a worktree's own .graphene/ (its copy of the direction)
+        if (main := worktree_main(here)) and _same_dir(main, str(root)):
+            return None  # the top of a worktree of this repo (a run's leaf): what lies in it is its own
         up = os.path.dirname(here)
         if up == here:
             return None
