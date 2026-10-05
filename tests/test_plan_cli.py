@@ -402,22 +402,24 @@ def test_at_80_columns_every_line_of_the_plan_fits_and_ids_state_words_and_comma
 
 
 def test_plan_first_is_a_setting_the_person_sees_and_sets(repo):
-    """Never set, plan first is on while a plan is in force; `graphene init` sets it on; the person
-    turns it off and on, and an agent may not."""
+    """Never set, plan first is auto while a plan is in force; the person sets it on, auto or off,
+    and an agent may not."""
     assert "plan first: off" in person("plan", "first").stdout  # no plan in force here yet
     person("node", "add", "a leaf", "--scope", "api.py", "--check", "true")
-    assert "plan first: on" in person("plan", "first").stdout  # now there is one
-    turned = person("plan", "first", "off")
-    assert turned.exit_code == 0 and "plan first: off" in turned.stdout
-    assert "(the plan of" in turned.stderr
-    assert agent("plan", "first", "on").exit_code == 1
-    assert "plan first: off" in person("plan", "first").stdout
+    assert "plan first: auto" in person("plan", "first").stdout  # now there is one
+    for how in ("on", "off", "auto"):
+        turned = person("plan", "first", how)
+        assert turned.exit_code == 0 and f"plan first: {how}. " in turned.stdout
+        assert "(the plan of" in turned.stderr
+    assert agent("plan", "first", "off").exit_code == 1
+    assert "plan first: auto" in person("plan", "first").stdout
     assert person("plan", "first", "sideways").exit_code == 1
 
 
-def test_init_sets_plan_first_on(repo):
-    assert person("init").exit_code == 0
-    assert "plan first: on" in person("plan", "first").stdout
+def test_init_sets_plan_first_auto(repo):
+    said = person("init")
+    assert said.exit_code == 0 and "plan first is auto: one leaf of work is done at once" in said.stdout
+    assert "plan first: auto" in person("plan", "first").stdout
 
 
 # -- the messages, read as whoever receives them --------------------------------------------------
@@ -545,7 +547,8 @@ def test_refusals_say_what_was_refused_and_the_command_in_a_line(repo):
     clauses: each is now what was refused, or what happened, and the one command."""
     assert agent("node", "done").stderr == "you hold no node: `graphene node done <id>` names one\n"
     assert (
-        person("plan", "first", "sideways").stderr == "graphene plan first takes on or off, not 'sideways'\n"
+        person("plan", "first", "sideways").stderr
+        == "graphene plan first takes on, auto or off, not 'sideways'\n"
     )
     assert person("node", "set", "n1").stderr == (
         "graphene node set n1 needs what to change: --title, --scope, --check, --goal, --needs, --owner, "

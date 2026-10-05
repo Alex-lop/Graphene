@@ -314,7 +314,7 @@ def gated(store: Store, event: dict) -> bool:
     """Can the gate answer this event, or write for it? Only then does the hook import it, and the
     plan with it: a read, a search, a subagent's start or end is let through without them. A session
     is taught the text when it starts (plan or none). A prompt is told plan first, a write or a shell
-    command is refused, while plan first is on (with no node, only the person's setting makes it so)
+    command is refused, while plan first is on or auto (with no node, only the setting makes it so)
     or a plan is in force; a shell command's changes and a stop are judged only while a plan is. The
     planner is refused a write and a protected read, plan or no plan. tests/test_hook_budget.py runs
     ``gate.decide`` on every event this says no to, and it answers nothing and writes nothing."""
@@ -326,7 +326,7 @@ def gated(store: Store, event: dict) -> bool:
     if name == "PostToolUse" and tool != "Bash":
         return False
     if name in ("UserPromptSubmit", "PreToolUse"):
-        return bool(store.node_count()) or store.meta("plan_first") == "on"
+        return bool(store.node_count()) or store.meta("plan_first") in ("on", "auto")
     return name in ("PostToolUse", "Stop") and bool(store.node_count())
 
 

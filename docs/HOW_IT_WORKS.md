@@ -140,15 +140,16 @@ nothing changed is dropped. It is a record rather than a gate: it does not run t
 worktrees that `done` runs. A session that holds a planned leaf is held to it as before; an executor
 `graphene run` started never gets such a leaf; `graphene plan prompts strict` turns them off.
 
-**Plan first** is a setting of the person's (`graphene plan first on|off`, `P` in `graphene watch`;
-`graphene init` sets it on, and never set it is on while a plan is in force; `plan.plan_first`). On,
+**Plan first** is a setting of the person's (`graphene plan first on|auto|off`, `P` in `graphene watch`;
+`graphene init` sets it auto, and never set it is auto while a plan is in force; `plan.plan_first`). On or auto,
 a session that holds no leaf is told beside every prompt to propose what it will do in the plan's
 text before it writes, a piece of work as a tree the person prunes and a one-line ask as one leaf,
 and its writes (and the commands that reach round `graphene`) are refused until it holds a leaf; the
 refusal says how the person turns it off (`gate._first_refused`). One leaf with a scope and a check,
 proposed by a Claude Code session after the person's last prompt there and before any other
 proposal of that session since, is what that prompt asked for: it is accepted at once, as the
-person's, logged "by their prompt in the session" (`gate.one_line_ask`); a tree waits for them. A
+person's, logged "by their prompt in the session" (`gate.one_line_ask`); a tree waits for them, and
+under on so does one leaf. A
 prompt that types the CLI's own `--scope` and a quoted `--check` has planned its leaf, which is made
 at its first write. Off, what decision 18 says above holds. Nothing reads the person's words to
 decide any of this: not their length, not "just do it", not "yes". What the vendor sends as a prompt
@@ -473,8 +474,8 @@ the vendor's documented JSON:
 | `PreToolUse` on `Bash` | the writes the shell parser can read (`>`, `>>`, `tee`, `sed -i`, `mv`, `cp`, `rm`, `touch`, following `cd`) are checked the same way, links resolved first; a target git ignores passes; a command that mentions `GRAPHENE_AS` or reaches into `.graphene/` is denied whatever the scope; a command over 64,000 characters is not parsed at all (the parser is superlinear, and a hook that runs out of time lets the call through) |
 | `PostToolUse` on `Bash` | when Claude Code reports which files the command changed (`bashEditDiff`) and one is outside the scope: logged as a **breach**, and the agent is told to put it back. Claude Code does not fire this event for a command that exits non-zero, so this layer can be dodged; the boundary cannot |
 | `Stop` | refused while the session holds a running node: finish it, or hand it back saying why |
-| `SessionStart` | with or without a plan: the plan's text form, and plan first's instruction when it is on; with a plan in force, how to take a leaf. Not for an executor or a planner Graphene started |
-| `UserPromptSubmit` | the prompt is remembered (a leaf may be made from it, or a one-leaf proposal accepted as its ask); with plan first on and no leaf held, the instruction to propose first |
+| `SessionStart` | with or without a plan: the plan's text form, and plan first's instruction when it is on or auto; with a plan in force, how to take a leaf. Not for an executor or a planner Graphene started |
+| `UserPromptSubmit` | the prompt is remembered (a leaf may be made from it, or a one-leaf proposal accepted as its ask); with plan first on or auto and no leaf held, the instruction to propose first |
 
 Whatever the plan's state, a plan in force or none, an `Edit`, `Write`, `MultiEdit` or
 `NotebookEdit` whose path lies under the repository's `.graphene/` (a worktree's copy included, and a
@@ -491,7 +492,7 @@ and 35 ms to answer one (medians of twenty runs or more, measured with other wor
 it starts, for recording, for refusing and for plan first, and prints the wall clock beside it. The
 gate is imported only for the events it can answer (`hooks.gated`): a session's start; every event of
 a planner Graphene started; a prompt, a
-write or a shell command while plan first is on or a plan is in force; a shell command's result and a
+write or a shell command while plan first is on or auto, or a plan is in force; a shell command's result and a
 stop while a plan is in force. A read or a search never loads it. The same test names every module,
 SQL statement and process each event may use.
 
@@ -800,7 +801,7 @@ run live.
   `GRAPHENE_WATCH=1` in a way the hook cannot read.
 - The plan's store is a file in the repo that git ignores. The hook refuses an agent's write tools
   under `.graphene/`, plan or no plan, and the shell commands that name it while the gate answers the
-  shell (a plan in force, or plan first on); a script that opens it directly is neither stopped nor
+  shell (a plan in force, or plan first on or auto); a script that opens it directly is neither stopped nor
   noticed. Nothing here defends the store against an executor that sets out to rewrite it.
 - The direction (P1g) is a file anyone who commits to the repository can change. With no plan in
   force and plan first off, a shell command can write `.graphene/direction.txt` and accept its own

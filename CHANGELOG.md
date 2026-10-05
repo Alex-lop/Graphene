@@ -2,6 +2,9 @@
 
 ## 0.5.0 (not published yet: the tag is Alex's)
 
+`plan first` has a third value, `auto`, now the default, and a store's `on` becomes it: one leaf of work is
+done at once, more is proposed as a tree. `on` now proposes every ask. Run `graphene plan first`.
+
 Graphene on Nemotron. As practice on 2 October, Nemotron planned a small feature 5 times. 2 plans ran to the
 end in Token Factory Sandboxes, landing 5 of 6 leaves, each passed by its own check; neither did all it was
 asked. 3 stopped at the planner, whose tree was readable on 2 of 9 asks (`docs/test/first-light.md`). Nothing

@@ -36,6 +36,12 @@ NO_PLAN = (
 NOT_INIT = (
     "Before either, `graphene init` chooses who plans and who runs (until then, `ask` and `run` refuse)"
 )
+# What `graphene plan first` says each setting does
+FIRST_SAID = {
+    "on": "Every ask in a session is proposed, one leaf included, and waits for you.",
+    "auto": "One leaf of work is done at once. More is proposed as a tree first.",
+    "off": "What you ask for in a session is done at once, as a leaf of its own.",
+}
 
 
 def register(cli: typer.Typer, root, open_store, fail):
@@ -889,21 +895,17 @@ def register(cli: typer.Typer, root, open_store, fail):
 
     @plan_cli.command()
     def first(
-        how: str = typer.Argument(None, help="'on' or 'off'; nothing prints what it is now."),
+        how: str = typer.Argument(None, help="on, auto or off. With none, print the setting."),
     ) -> None:
-        """Plan first: what you ask for in a session is proposed as a tree before any code, and the
-        agent writes nothing until a leaf of it is accepted and taken (a one-line ask is proposed as
-        one leaf, which is yours at once). `P` in graphene watch turns it on and off."""
-        if how not in (None, "on", "off"):
-            fail(f"graphene plan first takes on or off, not {how!r}", 1)
+        """Set whether an agent proposes before it writes. On: every ask waits for you, one leaf
+        included. Auto: one leaf of work is done at once, more is proposed as a tree. Off: nothing
+        is proposed first. P in graphene watch cycles the three."""
+        if how not in (None, *P.FIRST):
+            fail(f"graphene plan first takes on, auto or off, not {how!r}", 1)
         if how is not None:
-            run(lambda s: P.set_plan_first(s, how == "on", P.caller()))
-        on = run(P.plan_first)
-        out(
-            "plan first: on. What you ask for in a session is proposed as a tree before any code"
-            if on
-            else "plan first: off. What you ask for in a session is done at once, as a leaf of its own"
-        )
+            run(lambda s: P.set_plan_first(s, how, P.caller()))
+        now = run(P.plan_first)
+        out(f"plan first: {now}. {FIRST_SAID[now]}")
         if how is not None:
             said_where()
 

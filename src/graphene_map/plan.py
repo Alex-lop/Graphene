@@ -2729,16 +2729,20 @@ def where_said(root: str | Path) -> str | None:
     return None if "GRAPHENE_WATCH" in os.environ else f"  (the plan of {where(root)})"
 
 
-def plan_first(store) -> bool:
-    """Plan first: what a person asks for in a session is proposed as a tree before any code. The
-    person's setting (`graphene plan first on|off`, `P` in graphene watch); never set, it is on while
-    a plan is in force. `graphene init` sets it on in a repository it sets up."""
+FIRST = ("on", "auto", "off")
+
+
+def plan_first(store) -> str:
+    """Plan first, as the person set it: on, auto or off (`graphene plan first`, `P` in graphene
+    watch). On: every ask is proposed and waits for the person. Auto: one leaf of work is taken at
+    once, more is proposed as a tree. Off: nothing is proposed first. `graphene init` sets auto;
+    never set, it is auto while a plan is in force and off otherwise."""
     said = store.meta("plan_first")
-    return said == "on" if said in ("on", "off") else in_force(store)
+    return said if said in FIRST else "auto" if in_force(store) else "off"
 
 
-def set_plan_first(store, on: bool, who: Caller) -> None:
-    """The person turns plan first on or off; it is theirs, like the plan's other settings."""
-    _person_only(who, "turning plan first on or off")
-    store.set_meta("plan_first", "on" if on else "off")
-    store.log_node("*", _now(), "plan_first", who.label, None, None, {"note": "on" if on else "off"})
+def set_plan_first(store, how: str, who: Caller) -> None:
+    """The person sets plan first to on, auto or off; it is theirs, like the plan's other settings."""
+    _person_only(who, "setting plan first")
+    store.set_meta("plan_first", how)
+    store.log_node("*", _now(), "plan_first", who.label, None, None, {"note": how})

@@ -359,7 +359,7 @@ def build():
             chosen = choose(store, given, asking)
             specs = [store.meta(k) or "claude" for k in WHO]  # none chosen: the person's own Claude Code
             if store.meta("plan_first") is None:  # a repository set up for Graphene plans first
-                store.set_meta("plan_first", "on")
+                store.set_meta("plan_first", "auto")
             for k in (*S.GLOBS, "never", "size"):  # each setting's default, so `graphene config` has it
                 if store.meta(f"settings:{k}") is None:
                     store.set_meta(f"settings:{k}", "auto" if k == "size" else "[]")
@@ -369,8 +369,7 @@ def build():
         except ValueError as exc:
             fail(f"cannot update {SETTINGS}: {exc}", 1)
         settings = Path(os.path.relpath(hooks_file(r), Path.cwd()))
-        say("plan first is on: what you ask for becomes a tree before any code "
-            "(`graphene plan first off` turns it off)")  # fmt: skip
+        say("plan first is auto: one leaf of work is done at once, more is proposed as a tree")
         if not any(s.split()[:1] == ["claude"] for s in specs):  # Claude Code is not how this repo works
             say(f"the Claude Code hooks are in {settings} too, for a Claude Code session you may run here"
                 + ("" if added else " (already there)"))  # fmt: skip

@@ -93,7 +93,7 @@ def elsewhere(store) -> list[str]:
     return [
         f"# planner: {store.meta('planner') or 'none chosen'} (graphene init --planner)",
         f"# executor: {store.meta('executor') or 'none chosen'} (graphene init --executor)",
-        f"# plan first: {'on' if P.plan_first(store) else 'off'} (graphene plan first on|off)",
+        f"# plan first: {P.plan_first(store)} (graphene plan first on|auto|off)",
         *([f"# answered: readonly {', '.join(chosen)} (plan undo takes it back)"]
           if chosen else []),  # fmt: skip
     ]

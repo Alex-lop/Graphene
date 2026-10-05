@@ -59,9 +59,9 @@ def holding(repo, **node):
         plan.start(store, "n1", BOT, repo)
 
 
-def plan_first(repo, on: bool):
+def plan_first(repo, how: str):
     with Store.open(repo) as store:
-        plan.set_plan_first(store, on, ALEX)
+        plan.set_plan_first(store, how, ALEX)
 
 
 def told(answer) -> str:
@@ -118,7 +118,7 @@ def test_with_a_plan_in_force_a_session_that_holds_no_node_writes_nothing(repo):
     said = reason(write(repo, "src/api/users.py"))  # never set, plan first is on while a plan is in force
     assert "holds no leaf" in said and "graphene node start n1" in said
     assert write(repo, "/tmp/elsewhere/notes.md") is None  # outside the repo is not the plan's business
-    plan_first(repo, False)  # decision 4, and nobody typed a prompt to make a leaf from
+    plan_first(repo, "off")  # decision 4, and nobody typed a prompt to make a leaf from
     said = reason(write(repo, "src/api/users.py"))
     assert "holds no node" in said and "graphene node start n1" in said
     with Store.open(repo) as store:
@@ -128,7 +128,7 @@ def test_with_a_plan_in_force_a_session_that_holds_no_node_writes_nothing(repo):
     with Store.open(repo) as store:
         plan.set_paused(store, True, ALEX)
     assert write(repo, "src/api/users.py") is None  # paused: nothing is enforced
-    plan_first(repo, True)
+    plan_first(repo, "auto")
     assert write(repo, "src/api/users.py") is None  # plan first included
 
 
@@ -140,7 +140,7 @@ def test_a_finished_plan_stays_in_force_until_the_person_archives_it(repo, finis
         finish(store, repo, "n1", BOT)
     assert "holds no leaf" in reason(write(repo, "src/db/schema.py"))  # plan first, on while in force
     assert "holds no leaf" in reason(bash(repo, "echo x >> src/db/schema.py"))
-    plan_first(repo, False)
+    plan_first(repo, "off")
     assert "propose a node for it" in reason(write(repo, "src/db/schema.py"))
     assert "propose a node for it" in reason(bash(repo, "echo x >> src/db/schema.py"))
     assert hook(repo, "Stop") is None  # it holds nothing, so it may stop
@@ -172,7 +172,7 @@ def test_a_stop_is_refused_while_a_node_is_held_and_allowed_once_it_is_done_or_h
 
 def test_another_session_is_not_held_by_a_node_it_does_not_hold(repo):
     holding(repo)
-    plan_first(repo, False)  # decision 4's refusal, which says who holds what
+    plan_first(repo, "off")  # decision 4's refusal, which says who holds what
     assert hook(repo, "Stop", session_id="someone-else") is None
     other = hook(
         repo,
@@ -323,7 +323,7 @@ def test_plan_first_on_tells_every_prompt_and_refuses_the_write_whatever_the_wor
     (decision 28), and held a session for an hour (decision 40). Plan first is a setting: no word and
     no length of a prompt turns it on or off, and a prompt that starts with a path or a bracket is
     still the person's."""
-    plan_first(repo, True)
+    plan_first(repo, "on")
     ask = told(hook(repo, "UserPromptSubmit", prompt=said))
     assert ask.startswith("Graphene: Plan first is on") and "graphene plan propose - <<'EOF'" in ask
     assert "then stop" in ask and "A one-line ask is one leaf" in ask
@@ -340,24 +340,37 @@ def test_plan_first_on_tells_every_prompt_and_refuses_the_write_whatever_the_wor
         }
 
 
+def test_plan_first_auto_says_in_80_words_take_one_leaf_or_propose_the_tree(repo):
+    """Auto, the default: the agent that reads the repo judges the size. The instruction is the same
+    at the start and at every prompt, and the write is refused until the session holds a leaf."""
+    plan_first(repo, "auto")
+    ask = told(hook(repo, "UserPromptSubmit", prompt="fix the typo in the README header"))
+    assert ask == f"Graphene: {gate.AUTO}" and len(ask.split()) <= 80
+    assert "one scope you can name now and one check" in ask and "write nothing" in ask
+    assert gate.AUTO in told(hook(repo, "SessionStart", source="startup"))
+    assert "holds no leaf" in reason(write(repo, "README.md"))
+
+
 def test_plan_first_off_leaves_a_paragraph_alone(repo):
-    plan_first(repo, False)
+    plan_first(repo, "off")
     assert hook(repo, "UserPromptSubmit", prompt=PARAGRAPH) is None
     assert write(repo, "ingest/xmlfeed.py") is None
 
 
 def test_a_new_session_is_taught_by_the_state_plan_first_is_in(repo):
-    plan_first(repo, True)
+    plan_first(repo, "on")
     on = told(hook(repo, "SessionStart", source="startup"))
-    assert "Plan first is on" in on and "theirs at once" in on and "just do" not in on
-    plan_first(repo, False)
+    assert "Plan first is on" in on and "a proposal they accept like any other" in on and "just do" not in on
+    plan_first(repo, "auto")
+    assert gate.AUTO in told(hook(repo, "SessionStart", source="startup"))
+    plan_first(repo, "off")
     off = told(hook(repo, "SessionStart", source="startup"))
     assert "Plan first is on" not in off and "A quick change they want done now, just do" in off
     holding(repo)  # a plan in force, plan first off: a prompt is a leaf (decision 18)
     assert "Graphene makes a leaf from their prompt" in told(hook(repo, "SessionStart", source="startup"))
     with Store.open(repo) as store:
         store.set_meta("asides", "off")  # strict: the one-line ask waits for the person too
-        plan.set_plan_first(store, True, ALEX)
+        plan.set_plan_first(store, "auto", ALEX)
     strict = told(hook(repo, "SessionStart", source="startup"))
     assert "a proposal they accept like any other" in strict and "leaf from their prompt" not in strict
 
@@ -366,7 +379,7 @@ def test_what_the_vendor_sends_as_a_prompt_is_never_the_persons(repo):
     """A background-task notice and a subagent's hand-back reached the session that built this as
     prompts: one armed a wait, and one that quoted "just do it" lifted it. They are told nothing and
     never make a one-leaf proposal the person's."""
-    plan_first(repo, True)
+    plan_first(repo, "auto")
     notice = "<task-notification>\n<task-id>b3a0</task-id>\n<status>completed</status>\n" + "x" * 300
     handback = (
         'Another Claude session sent a message:\n<agent-message from="a525b0dc7264a9b8d">\n'
@@ -386,7 +399,7 @@ def test_what_the_vendor_sends_as_a_prompt_is_never_the_persons(repo):
 def test_once_a_tree_is_accepted_the_session_is_told_the_leaf_to_take_and_held_to_it(repo, finish):
     """Nothing the person types in the session accepts or lifts anything: they accept in graphene
     watch. Once they have, the instruction and the refusal name the leaf that is ready."""
-    plan_first(repo, True)
+    plan_first(repo, "auto")
     hook(repo, "UserPromptSubmit", prompt=PARAGRAPH)
     with Store.open(repo) as store:
         leaves = [("xml", "src/api/**"), ("zero", "src/db/**")]
@@ -419,7 +432,7 @@ def test_once_a_tree_is_accepted_the_session_is_told_the_leaf_to_take_and_held_t
 def test_a_prompt_that_types_its_own_scope_and_check_is_a_planned_leaf(repo):
     """The CLI's own flags are syntax, not prose: with plan first on they are the leaf, made at the
     first write and held to what they say. A `--check` said in passing is prose."""
-    plan_first(repo, True)
+    plan_first(repo, "auto")
     assert hook(repo, "UserPromptSubmit", prompt="tidy the schema --scope 'src/db/**' --check 'true'") is None
     assert write(repo, "src/db/schema.py") is None
     assert "outside the scope" in reason(write(repo, "README.md"))
@@ -427,14 +440,14 @@ def test_a_prompt_that_types_its_own_scope_and_check_is_a_planned_leaf(repo):
         [leaf] = [n for n in plan.nodes(store) if n.aside]
         assert (leaf.title, leaf.scope, leaf.check) == ("tidy the schema", ["src/db/**"], "true")
     hook(repo, "Stop")
-    assert "Plan first is on" in told(hook(repo, "UserPromptSubmit", prompt="CI runs ruff format --check"))
+    assert "Plan first is auto" in told(hook(repo, "UserPromptSubmit", prompt="CI runs ruff format --check"))
     assert "holds no leaf" in reason(write(repo, "README.md"))
 
 
 def test_a_command_with_many_ignored_redirects_asks_git_once(repo, monkeypatch):
     """Recheck 27: 250 redirects into build/ asked git 250 times (7 s, past the vendor's 5 s); and
     during the wait the 9th ignored path was refused as a write."""
-    plan_first(repo, True)
+    plan_first(repo, "auto")
     asked, real = [], gate._ignored
     monkeypatch.setattr(gate, "_ignored", lambda root, rels: asked.append(rels) or real(root, rels))
     assert bash(repo, "".join(f"echo {i} > build/f{i}; " for i in range(250))) is None
@@ -506,11 +519,11 @@ def test_a_leaf_from_an_interrupted_turn_closes_at_the_next_prompt(repo):
     first, turned on meanwhile, holds the session again."""
     with Store.open(repo) as store:
         plan.propose(store, [{"title": "users", "scope": ["src/api/**"], "check": "true"}], ALEX)
-    plan_first(repo, False)
+    plan_first(repo, "off")
     hook(repo, "UserPromptSubmit", prompt="fix the typo in the README header")
     assert write(repo, "README.md") is None  # a leaf made from the prompt; then Esc, so no Stop
-    plan_first(repo, True)
-    assert "Plan first is on" in told(hook(repo, "UserPromptSubmit", prompt=PARAGRAPH))
+    plan_first(repo, "auto")
+    assert "Plan first is auto" in told(hook(repo, "UserPromptSubmit", prompt=PARAGRAPH))
     assert "holds no leaf" in reason(write(repo, "src/db/new.py"))
     with Store.open(repo) as store:
         assert [n.state for n in plan.nodes(store) if n.aside] == ["dropped"]  # it changed nothing
@@ -519,7 +532,7 @@ def test_a_leaf_from_an_interrupted_turn_closes_at_the_next_prompt(repo):
 # recheck 21
 def test_plan_first_refuses_the_ordinary_spellings_that_would_turn_it_off_even_with_no_plan(repo):
     """With no plan in force, a forged `graphene ingest hook` and sqlite3 on .graphene were let through."""
-    plan_first(repo, True)
+    plan_first(repo, "auto")
     event = json.dumps({"hook_event_name": "UserPromptSubmit", "session_id": SID, "prompt": "ok"})
     assert "not an agent's to run" in reason(bash(repo, f"echo '{event}' | graphene ingest hook"))
     sql = "sqlite3 .graphene/graphene.db \"update plan_meta set value = 'off' where key = 'plan_first'\""

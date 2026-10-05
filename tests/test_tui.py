@@ -988,11 +988,11 @@ def test_the_status_line_is_two_lines_fitted_at_a_word_at_80_and_120(repo):
     wide, _ = at(repo, "rule", (120, 36))
     top, bottom = wide["status"].splitlines()
     assert top == ("waiting on you: 4 · executors: 1 running · R runs 1 ready · 1 came back · 1/9 done · "
-                   "plan first: on (P)")  # the proposal counted, as `graphene` counts it
+                   "plan first: auto (P)")  # the proposal counted, as `graphene` counts it
     assert bottom == "y sign off · x send back · Enter record · Tab view · ? talk · q quit"  # ? on a node
     narrow, _ = at(repo, "rule", (80, 24))
     top, bottom = narrow["status"].splitlines()
-    assert top == "4 on you · 1 running · R: 1 ready · 1 came back · 1/9 done · plan first: on"
+    assert top == "4 on you · 1 running · R: 1 ready · 1 came back · 1/9 done · plan first: auto"
     long = "graphene node edit rule: " + "the scope changed from one path to a longer list of them " * 3
 
     async def said(app, pilot):
@@ -1039,13 +1039,13 @@ def test_s_is_refused_on_what_is_running_in_review_or_done_without_starting_a_pl
     assert asked == [["node", "split", "later"]]
 
 
-def test_P_turns_plan_first_off_and_on_and_the_status_line_says_which(repo):
-    every_state(repo)
-    for now in (False, True):
+def test_P_cycles_plan_first_on_auto_off_and_the_status_line_says_which(repo):
+    every_state(repo)  # never set, with a plan in force: auto
+    for now in ("off", "on", "auto"):
         seen, _ = watch(repo, ["P"], size=(120, 36))
         with Store.open(repo) as store:
-            assert plan.plan_first(store) is now
-        assert f"plan first: {'on' if now else 'off'} (P)" in seen["status"]
+            assert plan.plan_first(store) == now
+        assert f"plan first: {now} (P)" in seen["status"]
 
 
 def test_keys_typed_after_colon_or_slash_go_to_the_line_not_to_the_tree(repo, monkeypatch):
