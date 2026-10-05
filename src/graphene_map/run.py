@@ -8,11 +8,11 @@ changed, the check says whether it works. Refused, the executor is sent back wit
 of attempts, the node is handed back with the reason and the run moves on. Nothing here trusts an
 exit code or a closing message, and no vendor's ceiling on refused stops applies: the loop is ours.
 
-Alone (`graphene run`), one leaf at a time in the checkout the command was started in, and nothing
-is committed: the work is left in the tree for the person. In parallel (`graphene run --parallel N`),
-each leaf gets its own worktree on its own branch under .graphene/worktrees/, so executors never see
-each other's half-written files; a leaf that passes its boundary is committed there, by Graphene, and
-merged into the checkout the run was started from when the merge is clean. Leaves whose scopes overlap
+Each leaf gets its own worktree on its own branch under .graphene/worktrees/, up to `--parallel N` at
+once, so executors never see each other's half-written files and never write in the person's
+checkout; a leaf that passes its boundary is committed there, by Graphene, and merged into the
+checkout the run was started from when the merge is clean. `graphene run --here` is the old way: one
+leaf at a time in the checkout itself, and nothing is committed. Leaves whose scopes overlap
 are never in flight together, so two leaves cannot have written one file: what is left that can make
 a merge unclean is the person's own work in the way, and that leaf waits for them, on its branch.
 """
@@ -216,7 +216,7 @@ def sweep(store, say: Callable[[str], None], root: Path | None = None) -> None:
 
 
 def run_holding(root: Path) -> int | None:
-    """The pid of the `graphene run --parallel` alive in this repository, or None. Its lock names
+    """The pid of the `graphene run` alive in this repository, or None. Its lock names
     the run by pid and start time, so a pid the system has handed to another process since is no
     run: not one to wait for, nor one to interrupt."""
     try:
@@ -228,7 +228,7 @@ def run_holding(root: Path) -> int | None:
 
 
 def _locked(root: Path | None) -> bool:
-    """Is a `graphene run --parallel` other than this one alive in this repository?"""
+    """Is a `graphene run` other than this one alive in this repository?"""
     return root is not None and run_holding(root) not in (None, os.getpid())
 
 
@@ -751,7 +751,7 @@ def _only_run(root: Path):
     other = run_holding(root)  # None: no lock, or the run that left it is gone
     if other is not None:
         raise P.Refused(
-            f"another `graphene run --parallel` is going here (pid {other}); `graphene watch` shows it"
+            f"another `graphene run` is going here (pid {other}); `graphene watch` shows it"
         )
     lock.write_text(f"{os.getpid()}\n{_started(os.getpid()) or ''}\n")  # the pid, and when it began
     return lock
@@ -777,7 +777,7 @@ def run_parallel(
     if _git(target, "symbolic-ref", "-q", "HEAD", ok=True).returncode != 0:
         raise P.Refused(
             f"{target} is on no branch (a detached HEAD): leaves merged here would belong to no branch "
-            "and be lost at the next checkout. `git switch <branch>` first"
+            "and be lost at the next checkout. `git switch <branch>` first, or run with --here"
         )
     lock = _only_run(root)
     try:

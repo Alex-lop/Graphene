@@ -1043,7 +1043,7 @@ def unreachable(
     proposed. A finished leaf writes nothing more, and the `**` of a leaf made from a prompt would
     cover every typo. It is a guess (a person typed `test/test_csvfeed.py` for `tests/`), said when the
     leaf is written, before anything is spent. A path on disk that git does not track comes back
-    marked, because a worktree cut for `--parallel` will not have it. A check that changes directory
+    marked, because a run's worktree will not have it. A check that changes directory
     (cd, pushd, `--prefix`, `-C <dir>`), and what a build makes, are not judged."""
     moves = r"(^|[;&|(\s])(cd|pushd)\s|--prefix[\s=]|(^|\s)-C\s"
     if not node.check or not node.scope or re.search(moves, node.check):
@@ -1577,9 +1577,9 @@ def unowned(store, checkout: str | Path, but: str | None = None) -> list[str]:
 
 
 def uncommitted(store, checkout: str | Path) -> list[str]:
-    """The done leaves of this checkout whose work git still calls uncommitted: plain `graphene run`
-    (and a session's own `done`) leaves it in the tree for the person; `run --parallel`, as watch's R
-    runs it, commits and merges each leaf in a worktree of its own, so its leaves are never here."""
+    """The done leaves of this checkout whose work git still calls uncommitted: `graphene run --here`
+    (and a session's own `done`) leaves it in the tree for the person; `graphene run` commits and
+    merges each leaf in a worktree of its own, so its leaves are never here."""
     checkout = str(Path(checkout).resolve())
     done = [n for n in nodes(store, (DONE, REVIEW)) if n.checkout == checkout]
     changed = dirty(checkout) if done else {}
@@ -1588,8 +1588,8 @@ def uncommitted(store, checkout: str | Path) -> list[str]:
 
 
 UNCOMMITTED = (
-    "not committed (`git status`): plain `graphene run` commits nothing, `graphene run --parallel N` and "
-    "watch's R commit and merge each leaf"
+    "not committed (`git status`): `graphene run --here` commits nothing, `graphene run` and watch's R "
+    "commit and merge each leaf"
 )
 
 
@@ -1618,7 +1618,7 @@ def acknowledge(store, checkout: str | Path, who: Caller, now: str | None = None
     return paths
 
 
-RUN_TREE = f"{os.sep}.graphene{os.sep}worktrees{os.sep}"  # where `graphene run --parallel` puts a leaf
+RUN_TREE = f"{os.sep}.graphene{os.sep}worktrees{os.sep}"  # where `graphene run` puts a leaf
 
 
 def _may_start(store, node: Node, who: Caller, everything: list[Node]) -> None:
@@ -1852,7 +1852,7 @@ def not_here(store, node: Node, checkout: str | Path, committed: bool = False) -
 
 def other_checkouts(checkout: str | Path) -> list[str]:
     """The repo's other working trees that still exist, as git lists them, but for the ones `graphene
-    run --parallel` gives its leaves: each is its leaf's own checkout, and that leaf's boundary answers
+    run` gives its leaves: each is its leaf's own checkout, and that leaf's boundary answers
     for it (a leaf's leftover there was charged to a node the person held in their own checkout)."""
     import subprocess
 
@@ -1889,7 +1889,7 @@ def elsewhere(store, node: Node) -> list[str]:
     import subprocess
 
     if RUN_TREE in (node.checkout or ""):
-        # a leaf `graphene run --parallel` put in a worktree of its own: meanwhile its siblings land
+        # a leaf `graphene run` put in a worktree of its own: meanwhile its siblings land
         # in the person's checkout and the person works there, and none of that is this leaf's doing
         # (a review ran 8 leaves on 4 workers and 3 were refused over a sibling's landed file)
         return []
@@ -1986,7 +1986,7 @@ def outside_scope(store, node: Node, changed: list[str] | None = None) -> list[s
     if changed is None:
         changed = changed_since(node.checkout or ".", node.base_sha, node.dirty_at_start)
     here = os.path.realpath(node.checkout or ".")
-    landed: set[str] = set()  # what a leaf `graphene run --parallel` merged into this checkout meanwhile
+    landed: set[str] = set()  # what a leaf `graphene run` merged into this checkout meanwhile
     for e in store.node_log(kinds=("landed",)):
         d = e["detail"]
         if e["node_id"] == node.id or e["timestamp"] < (node.started_at or "") or not d.get("commit"):

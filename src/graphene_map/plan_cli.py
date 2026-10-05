@@ -925,15 +925,11 @@ def register(cli: typer.Typer, root, open_store, fail):
         ),
         attempts: int = typer.Option(3, "--attempts", help="How often a refused executor is sent back."),
         node: list[str] = typer.Option(None, "--node", help="Only this node; repeat it."),
-        parallel: int = typer.Option(
-            1,
-            "--parallel",
-            help="Leaves at once, each in its own worktree and branch, merged here when clean. "
-            "1 (default) works in this checkout and commits nothing.",
-        ),
+        parallel: int = typer.Option(1, "--parallel", help="How many leaves run at once."),
+        here: bool = typer.Option(False, "--here", help="Run in this checkout. Commit nothing."),
     ) -> None:
-        """Run every leaf an agent can reach: one executor per leaf, and Graphene decides what is done.
-        The last line says what the run did; `graphene watch` shows it when the run ends."""
+        """Run every ready leaf, one executor per leaf, each in its own worktree.
+        Graphene runs each leaf's check and merges what passes. A leaf that fails comes back."""
         if os.environ.get("GRAPHENE_NODE") or os.environ.get("GRAPHENE_PLANNER"):
             fail("an executor or a planner does not start runs: through --with a run is any command", 1)
         from .run import named, run_parallel, run_plan, summary, sweep
@@ -980,19 +976,20 @@ def register(cli: typer.Typer, root, open_store, fail):
             logs = r / ".graphene" / "runs"
             since = len(store.node_log())  # what this run did is what the log says after this
             try:
-                if parallel > 1:
+                if here:
+                    out("--here: your checkout is exposed. The executor writes in it. Nothing is committed")
+                    run_plan(store, checkout(), template, attempts, node or None, out, logs)
+                else:
                     run_parallel(
-                        lambda: open_store(r), r, checkout(), parallel, template,
+                        lambda: open_store(r), r, checkout(), max(parallel, 1), template,
                         attempts, node or None, out, logs,
                     )  # fmt: skip
-                else:
-                    run_plan(store, checkout(), template, attempts, node or None, out, logs)
             except P.Refused as no:
                 fail(str(no), 1)
             except KeyboardInterrupt:
                 out(summary(store, since, stopped=True))
                 raise typer.Exit(130) from None
-            left = P.uncommitted(store, checkout()) if parallel == 1 else []  # --parallel committed its own
+            left = P.uncommitted(store, checkout()) if here else []  # a worktree's leaf committed its own
             out(summary(store, since) + (f"; the work of {', '.join(left)} is {P.UNCOMMITTED}" * bool(left)))
 
     def planner(
