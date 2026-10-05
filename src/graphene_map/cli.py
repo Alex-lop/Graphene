@@ -100,8 +100,8 @@ def build():
             paragraphs(self, self.rich_markup_mode == "rich")
 
         def list_commands(self, ctx):
-            """The plan leads the help: what will be done comes before what was."""
-            first = ["plan", "node", "watch", "ask", "run", "init"]
+            """The help lists the commands in the order a new user needs them."""
+            first = ["init", "ask", "watch", "run", "plan", "node", "board", "demo", "config"]
             names = super().list_commands(ctx)
             return [n for n in first if n in names] + [n for n in names if n not in first]
 
@@ -214,7 +214,7 @@ def build():
         with open_store(root()) as store:
             return store.meta("plan_first") is not None
 
-    plan_or_nothing = register(cli, root, open_store, fail)  # first: the plan leads `graphene --help`
+    plan_or_nothing = register(cli, root, open_store, fail)  # first: talk adds two commands to `plan`
     from .board_cli import register as board
 
     board(cli, root, open_store, fail)

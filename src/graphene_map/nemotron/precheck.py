@@ -356,7 +356,7 @@ def after_proposal(store, root: Path, ids) -> list[str]:
 def register(plan_cli, root, open_store, fail) -> None:
     import typer
 
-    @plan_cli.command("precheck")
+    @plan_cli.command("precheck", hidden=True)
     def precheck_(
         ids: list[str] = typer.Argument(None, help="Leaves to check (default: every proposed and open one)."),
         prepare: str = typer.Option(

@@ -13,7 +13,7 @@ from . import keys
 
 def register(cli: typer.Typer, fail):
     key_cli = typer.Typer(help="The Token Factory key, kept in the system keychain (a person only).")
-    cli.add_typer(key_cli, name="key")
+    cli.add_typer(key_cli, name="key", hidden=True)
 
     def person(what: str) -> None:
         try:

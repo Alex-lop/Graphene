@@ -510,7 +510,7 @@ def register(cli: typer.Typer, root, open_store, fail):
             return print_view(view, width, height, lambda: run(lambda s: print_plan(s, who, everything)))
         run(lambda s: out(P.to_json(P.nodes(s))) if as_json else print_plan(s, who, everything))
 
-    @plan_cli.command("goal")
+    @plan_cli.command("goal", hidden=True)
     def goal_(text: str = typer.Argument(None, help="Why any of this is being done, in your words.")) -> None:
         """Say (or read) the root of the tree. Every executor is told it, above its own node."""
         if text is None:
@@ -671,7 +671,7 @@ def register(cli: typer.Typer, root, open_store, fail):
             with contextlib.chdir(repo):  # printed as `graphene watch --once` prints it, in the replay's repo
                 print_once(P.caller(), everything=False, archive=False, recent_as=D.ENDING, wide=wide)
 
-    @plan_cli.command()
+    @plan_cli.command(hidden=True)
     def propose(
         file: str = typer.Argument(..., help="A file of the plan's text; '-' reads it from a pipe."),
     ) -> None:
@@ -828,7 +828,7 @@ def register(cli: typer.Typer, root, open_store, fail):
 
         run(go)
 
-    @plan_cli.command()
+    @plan_cli.command(hidden=True)
     def record() -> None:
         """The record of the whole plan: every leaf's added up. One leaf's is `graphene node show`."""
         from .node_record import bill, bill_line, rolled_up
@@ -851,7 +851,7 @@ def register(cli: typer.Typer, root, open_store, fail):
         out(f"archived {', '.join(n.id for n in gone)}" if gone else "nothing finished to archive")
         said_where()
 
-    @plan_cli.command()
+    @plan_cli.command(hidden=True)
     def ack() -> None:
         """The uncommitted changes in the checkout that no leaf made are yours, as they stand (committing
         them does the same: a commit is the repository moving, and the plan follows it)."""
@@ -866,7 +866,7 @@ def register(cli: typer.Typer, root, open_store, fail):
         out("paused: nothing starts and nothing is enforced until `graphene plan resume`")
         said_where()
 
-    @plan_cli.command()
+    @plan_cli.command(hidden=True)
     def prompts(
         how: str = typer.Argument(
             None, help="'leaf' (default): a prompt you type is a leaf. 'strict': it is not."
@@ -1196,7 +1196,7 @@ def register(cli: typer.Typer, root, open_store, fail):
         under it is a new child; one you add beside it, a sibling."""
         edit_in_editor(node_id, alone=True)
 
-    @node_cli.command()
+    @node_cli.command(hidden=True)
     def start(node_id: str = typer.Argument(...)) -> None:
         """Take a node and print its contract as it stands now."""
 
@@ -1267,7 +1267,7 @@ def register(cli: typer.Typer, root, open_store, fail):
         run(go)
         said_where()
 
-    @node_cli.command("signoff")
+    @node_cli.command("signoff", hidden=True)
     def signoff_(node_id: str = typer.Argument(...)) -> None:
         """A person's say-so: the node is done."""
 
@@ -1289,7 +1289,7 @@ def register(cli: typer.Typer, root, open_store, fail):
                 )
         said_where()
 
-    @node_cli.command()
+    @node_cli.command(hidden=True)
     def reopen(
         node_id: str = typer.Argument(...),
         note: str = typer.Option(
@@ -1340,7 +1340,7 @@ def register(cli: typer.Typer, root, open_store, fail):
             lines.append(f"  its last attempt is kept in {n.checkout} (branch graphene/{n.id})")
         return lines
 
-    @node_cli.command()
+    @node_cli.command(hidden=True)
     def split(
         node_id: str = typer.Argument(...),
         executor: str = typer.Option(

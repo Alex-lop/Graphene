@@ -206,7 +206,7 @@ def register(cli: typer.Typer, root, open_store, fail) -> None:
         help="Talk with the planner about a node: why it is there, split it, merge it with others, "
         "another way. Every answer lands in the plan or on the board, for you to keep or drop."
     )
-    cli.add_typer(talk_cli, name="talk")
+    cli.add_typer(talk_cli, name="talk", hidden=True)
     WITH = typer.Option(
         None, "--with", help="The planner. Default: the one `graphene init` chose; none chosen, refused."
     )
@@ -274,7 +274,7 @@ def register(cli: typer.Typer, root, open_store, fail) -> None:
 
     plan_cli = next(g.typer_instance for g in cli.registered_groups if g.name == "plan")
 
-    @plan_cli.command("changes")
+    @plan_cli.command("changes", hidden=True)
     def changes_() -> None:
         """What anyone else changed in the plan since you last marked it seen: added, dropped, edited,
         the board, by whom."""
@@ -282,7 +282,7 @@ def register(cli: typer.Typer, root, open_store, fail) -> None:
             for line in changes(store, P.caller().name):
                 out(line)
 
-    @plan_cli.command("seen")
+    @plan_cli.command("seen", hidden=True)
     def seen_() -> None:
         """Mark the plan as you have seen it: what anyone changes after this is marked on the screen
         (+ added, ~ changed) and listed by `graphene plan changes`. Only you move the mark."""

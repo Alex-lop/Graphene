@@ -203,12 +203,12 @@ def register(cli: typer.Typer, root, open_store, fail) -> None:
         the tree stays (`graphene plan undo` takes an answer back with all of it)."""
         act(f"board drop {item_id}", lambda s, who, files: B.drop(s, item_id, who))
 
-    @board_cli.command()
+    @board_cli.command(hidden=True)
     def park(item_id: str = typer.Argument(...)) -> None:
         """Park it: not now; it stays on the board, told to nobody."""
         act(f"board park {item_id}", lambda s, who, files: B.park(s, item_id, who))
 
-    @board_cli.command()
+    @board_cli.command(hidden=True)
     def unpark(item_id: str = typer.Argument(...)) -> None:
         """Unpark it: it is open again, waiting on you. An item the repository answered (`graphene board
         lookup`) opens again the same way; what its answer changed in the tree stays."""

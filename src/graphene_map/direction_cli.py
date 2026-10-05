@@ -27,7 +27,7 @@ def register(cli: typer.Typer, root, open_store, fail):
         help="The direction: the goals above the plans, with every plan and session hanging from one.",
         invoke_without_command=True,
     )
-    cli.add_typer(app, name="direction")
+    cli.add_typer(app, name="direction", hidden=True)
 
     def load(required: bool = True) -> D.Direction | None:
         try:

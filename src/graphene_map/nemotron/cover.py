@@ -273,7 +273,7 @@ def after_ask(store, sentence: str, say: Callable[[str], None]) -> None:
 
 
 def command(plan_cli: typer.Typer, run, out) -> None:
-    @plan_cli.command("cover")
+    @plan_cli.command("cover", hidden=True)
     def cover_(
         paragraph: Path = typer.Option(None, "--paragraph", exists=True, dir_okay=False,
                                        help="The paragraph, from a file. Default: the last one "

@@ -211,7 +211,7 @@ def after_proposal(store, root: Path, say: Callable[[str], None]) -> None:
 
 
 def register(board_cli: typer.Typer, root, open_store, fail, out) -> None:
-    @board_cli.command("lookup")
+    @board_cli.command("lookup", hidden=True)
     def lookup_() -> None:
         """Ask Nano which open questions the repository already answers, and settle each whose answer
         is in a file as quoted, marked "from the repo" (unpark opens it again). It spends: one call.
