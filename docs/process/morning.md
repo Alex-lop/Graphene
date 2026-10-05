@@ -9,7 +9,9 @@ Rollback: `main` is untouched at `4e5a2a9`. To drop the night: close the PR, `gi
   1,626 tests. 1,214 tracked files. A `--depth 1` clone is 22 MB.
 - Lane 0, before: `graphene run` left `M app.py` ("sneaky" 3 times) and `?? README.md`
   in the person's checkout. Transcript: `docs/process/cut/before/lane0-transcript.txt`.
-- After: not yet.
+- After lane 1: `git status --short` is empty. The attempt sits on `graphene/readme` in
+  `.graphene/worktrees/readme`. `docs/process/cut/after/lane0-transcript.txt`.
+- After the archive move: 307 tracked files. The rest is on the orphan branch `process` (`fb6a408`).
 
 **2. Run in five minutes** — not yet.
 **3. The experiment** — not yet.
@@ -33,3 +35,5 @@ Rollback: `main` is untouched at `4e5a2a9`. To drop the night: close the PR, `gi
 - **00:15** Wave one started: five worktrees off `cut`, one agent each (lane 1, lane 4, the UI,
   the archive, Nemotron). Lane 5 started at 00:20 in a sixth.
 - **00:26** The dogfood tree arrived. `docs/process/cut/dogfood.md`.
+- **00:27** Lane 1 and the archive move merged into `cut` (`c4a25cd`). Lane 1 also fixed the hook:
+  a Claude Code executor could not write in a run's worktree. `process` and `cut` pushed.
