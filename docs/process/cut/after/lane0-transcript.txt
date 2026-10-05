@@ -1,22 +1,21 @@
-+ source lane0.sh
-++ rm -rf /tmp/scratch
-++ mkdir /tmp/scratch
-++ cd /tmp/scratch
-++ git init -q
-++ echo 'print('\''hi'\'')'
-++ git add .
-++ git commit -qm init
-++ cat
-++ chmod +x /tmp/executor.sh
-++ graphene init --planner /bin/true --executor /tmp/executor.sh
++ rm -rf /tmp/scratch
++ mkdir /tmp/scratch
++ cd /tmp/scratch
++ git init -q
++ echo 'print('\''hi'\'')'
++ git add .
++ git commit -qm init
++ cat
++ chmod +x /tmp/executor.sh
++ graphene init --planner /bin/true --executor /tmp/executor.sh
 planner: /bin/true · executor: /tmp/executor.sh  (`graphene init` changes them; --with changes one command)
-plan first is on: what you ask for becomes a tree before any code (`graphene plan first off` turns it off)
+plan first is auto: one leaf of work is done at once, more is proposed as a tree
 the Claude Code hooks are in .claude/settings.local.json too, for a Claude Code session you may run here
 next: `graphene ask '<what you want>'` proposes a plan; `graphene watch` shows it
-++ graphene node add 'add a readme' --id readme --scope README.md --check 'test -f README.md'
++ graphene node add 'add a readme' --id readme --scope README.md --check 'test -f README.md'
 ○ add a readme  readme  ready
   (the plan of /private/tmp/scratch)
-++ graphene run
++ graphene run
   (the plan of /private/tmp/scratch)
 readme started: add a readme
 readme attempt 1: the executor ended (exit 1)
@@ -28,34 +27,12 @@ readme attempt 3 refused: readme is not done: changed outside its scope (README.
 readme came back after 3 attempts
 readme: what it tried is kept in /private/tmp/scratch/.graphene/worktrees/readme until the next run takes readme again
 run: 1 came back (readme)
-++ git status --short
-++ echo '--- app.py:'
---- app.py:
-++ cat app.py
-print('hi')
-++ echo '--- git branch -a:'
---- git branch -a:
-++ git branch -a
++ git status --short
++ git branch -a
 + graphene/readme
 * main
-++ echo '--- the attempt:'
---- the attempt:
-++ ls -a .graphene/worktrees/readme
-.
-..
-.claude
-.git
-app.py
-README.md
-++ git -C .graphene/worktrees/readme status --short
- M app.py
-?? README.md
-++ cat .graphene/worktrees/readme/app.py
-print('hi')
-sneaky
-sneaky
-sneaky
-++ graphene node show readme
++ graphene node show readme
++ head -12
 readme (revision 1): add a readme
   goal:   add a readme
   scope:  README.md   (a write anywhere else is refused, and blocks `done`)
@@ -68,18 +45,3 @@ readme (revision 1): add a readme
   its last attempt is kept in /private/tmp/scratch/.graphene/worktrees/readme (branch graphene/readme)
 readme  add a readme
   state: open · owner agent
-  window 1: run:executor.sh, session 52e23b56-20c1-472c-abc1-801b82147301  2026-10-05T04:23:04.086Z -> 2026-10-05T04:23:05.214Z  released: 3 attempts, the last one refused: readme is not done: changed outside its scope (README.md)
-  app.py; the executor itself exited 1
-    from a3daf0d: what git said had changed when it ended
-    in scope: README.md  (git, when it ended)
-    outside the scope: app.py  (git, when it ended)
-  coverage: of the 2 paths git said had changed under this node, 1 inside its scope; 0 to a recorded edit, 0 to a recorded shell command, 2 to git alone
-    read from: the node's log, git, and Claude Code's records for session 52e23b56
-    check: none has run for this node, so nothing here is verified by one
-    no commit was made inside its windows, so there is no commit to grade
-  refused: 6 `done` refused
-    `done` refused 6 times over: app.py
-  what people did to it:
-    2026-10-05T04:23:05.214Z  released  run:executor.sh  3 attempts, the last one refused: readme is not done: changed outside its scope (README.md)
-  app.py; the executor itself exited 1
-  every entry, check runs included: `graphene plan log` (12 for readme)
