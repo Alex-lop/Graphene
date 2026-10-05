@@ -273,16 +273,17 @@ def after_ask(store, sentence: str, say: Callable[[str], None]) -> None:
 
 
 def command(plan_cli: typer.Typer, run, out) -> None:
-    @plan_cli.command("cover")
+    @plan_cli.command("cover", hidden=True)
     def cover_(
         paragraph: Path = typer.Option(None, "--paragraph", exists=True, dir_okay=False,
-                                       help="The paragraph, from a file. Default: the last one "
-                                       "`graphene ask` was given."),  # fmt: skip
+                                       help="Read the paragraph from this file, not the last one "
+                                       "`graphene ask` got."),  # fmt: skip
         dismiss: int = typer.Option(None, "--dismiss", help="Set clause N of the last cover aside for good."),
         take_: int = typer.Option(None, "--take", help="Put clause N at the end of its nearest leaf's goal."),
     ) -> None:
-        """Nano says which leaf carries each clause of your paragraph; for one no leaf carries, you are
-        offered the command that puts your own words, as you wrote them, on the nearest leaf."""
+        """Ask Nano which leaf carries each clause of your paragraph.
+
+        For a clause no leaf carries, Nano offers a command that puts your words on a leaf."""
         who, say = P.caller(), plain(out)
 
         def go(store):

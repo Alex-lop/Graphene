@@ -84,11 +84,8 @@ def test_version_and_help_read_as_a_product():
     text = run("--help").output
     listed = [line.split()[1] for line in text.splitlines() if line.startswith("│ ") and line[2] != " "]
     commands = [name for name in listed if not name.startswith("-")]
-    assert commands == [
-        "plan", "node", "watch", "ask", "run", "init", "demo", "board", "direction", "talk", "config",
-        "key",
-    ]  # fmt: skip
-    assert "ingest" not in text  # the hooks call it; nobody types it
+    assert commands == ["init", "ask", "watch", "run", "plan", "node", "board", "demo", "config"]
+    assert "ingest" not in text and "talk" not in text  # hidden: they work, and the help leaves them out
     assert "graphene node show" in text  # what was done for one node is where the record lives now
 
 
@@ -157,9 +154,9 @@ def test_every_commands_help_reads_as_paragraphs():
 
     for command in walk(typer.main.get_command(build())):
         for paragraph in (command.help or "").split("\n\n"):
-            assert paragraph.startswith("\b") or "\n" not in paragraph, (command.name, paragraph)
+            assert "\n" not in paragraph, (command.name, paragraph)
     helped = run("plan", "propose", "--help").output
-    assert "with the [id] of a node" in " ".join(helped.split()) and "[short-id]" in helped
+    assert "A line with an existing [id] adds under that node." in " ".join(helped.split())
 
 
 def test_commands_refuse_to_run_outside_a_git_repo(tmp_path, monkeypatch):

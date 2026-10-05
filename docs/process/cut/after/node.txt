@@ -1,0 +1,22 @@
+                                                                                
+ Usage: graphene node [OPTIONS] COMMAND [ARGS]...                               
+                                                                                
+ Add, change, finish or read one node of the plan.                              
+                                                                                
+ A node has a title, a goal, a scope, a check and the nodes it waits on.        
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --help          Show this message and exit.                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Commands ───────────────────────────────────────────────────────────────────╮
+│ add      Add a node to the plan.                                             │
+│ set      Change a node's contract.                                           │
+│ drop     Drop a node from the plan, with everything under it.                │
+│ edit     Open one node's contract as text in your editor.                    │
+│ done     Finish a node: Graphene runs its check and asks git what changed.   │
+│ release  Hand a running node back, and say why.                              │
+│ show     Print a node's contract and its record.                             │
+│ widen    Widen a leaf's scope to the paths it came back needing.             │
+│ sibling  Add a leaf beside one that came back, for the paths it needed.      │
+╰──────────────────────────────────────────────────────────────────────────────╯
+

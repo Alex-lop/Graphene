@@ -1,0 +1,14 @@
+                                                                                
+ Usage: graphene init [OPTIONS]                                                 
+                                                                                
+ Pick a planner and an executor, and install the Claude Code hooks.             
+                                                                                
+ Run it once per repo. At a terminal it asks; --planner and --executor choose   
+ without asking.                                                                
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --planner         <str>  The planner: claude, codex, nemotron or a command.  │
+│ --executor        <str>  The executor: claude, codex, nemotron or a command. │
+│ --help                   Show this message and exit.                         │
+╰──────────────────────────────────────────────────────────────────────────────╯
+

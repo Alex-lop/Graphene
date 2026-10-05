@@ -203,13 +203,11 @@ def another(store, root, node_id: str, template: str, say=print) -> tuple[list[s
 def register(cli: typer.Typer, root, open_store, fail) -> None:
     out = typer.echo
     talk_cli = typer.Typer(
-        help="Talk with the planner about a node: why it is there, split it, merge it with others, "
-        "another way. Every answer lands in the plan or on the board, for you to keep or drop."
+        help="Talk with the planner about a node.\n\n"
+        "Every answer lands in the plan or on the board, for you to keep or drop."
     )
-    cli.add_typer(talk_cli, name="talk")
-    WITH = typer.Option(
-        None, "--with", help="The planner. Default: the one `graphene init` chose; none chosen, refused."
-    )
+    cli.add_typer(talk_cli, name="talk", hidden=True)
+    WITH = typer.Option(None, "--with", help="Use this planner, not the one `graphene init` chose.")
 
     def asked(what):
         who = P.caller()
@@ -237,8 +235,9 @@ def register(cli: typer.Typer, root, open_store, fail) -> None:
 
     @talk_cli.command("why")
     def why_(node_id: str = typer.Argument(...), executor: str = WITH) -> None:
-        """The planner says why the node is there: a note on the board about it (graphene board drop
-        dismisses it)."""
+        """Ask the planner why a node is there.
+
+        The answer is a note on the board; `graphene board drop` dismisses it."""
 
         def go(store):
             for note in why(store, root(), node_id, planner(store, executor), out):
@@ -250,7 +249,9 @@ def register(cli: typer.Typer, root, open_store, fail) -> None:
 
     @talk_cli.command("split")
     def split_(node_id: str = typer.Argument(...), executor: str = WITH) -> None:
-        """The planner cuts it into smaller leaves under it, proposed (graphene node split)."""
+        """Ask the planner to cut a node into smaller leaves.
+
+        This is `graphene node split`."""
 
         def go(store):
             said = A.ask(store, root(), f"split {node_id} into smaller leaves", planner(store, executor),
@@ -264,28 +265,34 @@ def register(cli: typer.Typer, root, open_store, fail) -> None:
     def merge_(
         ids: list[str] = typer.Argument(..., help="Two leaves or more."), executor: str = WITH
     ) -> None:
-        """The planner proposes one leaf for all of them; the board asks you whether to merge."""
+        """Ask the planner for one leaf that does the work of several.
+
+        The board asks you whether to merge."""
         asked(lambda store: question(*merge(store, root(), ids, planner(store, executor), out)))
 
     @talk_cli.command("another")
     def another_(node_id: str = typer.Argument(...), executor: str = WITH) -> None:
-        """The planner proposes another way to reach what the node is for; the board asks you which."""
+        """Ask the planner for another way to reach a node's goal.
+
+        The board asks you which way to take."""
         asked(lambda store: question(*another(store, root(), node_id, planner(store, executor), out)))
 
     plan_cli = next(g.typer_instance for g in cli.registered_groups if g.name == "plan")
 
-    @plan_cli.command("changes")
+    @plan_cli.command("changes", hidden=True)
     def changes_() -> None:
-        """What anyone else changed in the plan since you last marked it seen: added, dropped, edited,
-        the board, by whom."""
+        """List what others changed in the plan since you marked it seen.
+
+        The list covers adds, drops, edits and the board, with who did each."""
         with open_store(root()) as store:
             for line in changes(store, P.caller().name):
                 out(line)
 
-    @plan_cli.command("seen")
+    @plan_cli.command("seen", hidden=True)
     def seen_() -> None:
-        """Mark the plan as you have seen it: what anyone changes after this is marked on the screen
-        (+ added, ~ changed) and listed by `graphene plan changes`. Only you move the mark."""
+        """Mark the plan as seen by you.
+
+        Changes after this show as + and ~ on the screen and in `graphene plan changes`."""
         with open_store(root()) as store:
             try:
                 count = seen(store, P.caller())

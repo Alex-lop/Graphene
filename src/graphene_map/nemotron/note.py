@@ -247,10 +247,11 @@ def to_board(store, root: Path, sentence: str, say: Callable[[str], None] = lamb
 
 
 def register(plan_cli: typer.Typer, root, open_store, fail) -> None:
-    @plan_cli.command("note")
+    @plan_cli.command("note", hidden=True)
     def note_(sentence: str = typer.Argument(..., help="What to keep in mind, in your words.")) -> None:
-        """Place a note: a model finds the leaf it constrains and prints the command that would change
-        that leaf. Nothing changes until you run it."""
+        """Place a note: a model finds the leaf it constrains.
+
+        The model prints the command that changes that leaf. Nothing changes until you run that command."""
         try:
             P._person_only(P.caller(), "placing a note (a model call)")
             with open_store(root()) as store:

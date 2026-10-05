@@ -1051,3 +1051,30 @@ the repo, a directory that is made private to your user (`0700`, the database `0
 ignores itself in git through a `.gitignore` of its own, so the repo's `.gitignore` is never edited.
 The one file it leaves to git is `direction.txt`, which holds no session and nothing the hooks
 recorded (P1g).
+
+## The rest
+
+`graphene --help` lists nine commands. These work too, and `--help` after any of them says more.
+Agents call some of them, such as `plan propose` and `node start`.
+
+- `graphene plan propose -` adds a tree, written as `graphene plan --text` prints it.
+- `graphene plan goal` sets the plan's goal, or prints it.
+- `graphene plan record` prints the record of the whole plan.
+- `graphene plan prompts leaf|strict` sets what a prompt typed into a session means.
+- `graphene plan ack` makes the uncommitted changes no leaf made yours.
+- `graphene plan seen` marks the plan as seen by you.
+- `graphene plan changes` lists what others changed since you marked it seen.
+- `graphene node start <id>` takes a node and prints its contract. An executor runs it first.
+- `graphene node signoff <id>` signs off a node that waits for a person.
+- `graphene node reopen <id>` sends a finished node back, with what is wrong.
+- `graphene node split <id>` asks the planner to cut a leaf into smaller leaves.
+- `graphene board park <id>` sets an item aside, told to nobody.
+- `graphene board unpark <id>` opens a parked item again.
+- `graphene talk why|split|merge|another` asks the planner about a node.
+- `graphene direction` prints the goals above your plans. Its subcommands change them (P1g).
+- `graphene ingest hook` records one hook event. The installed hooks call it.
+- `graphene key set|check|remove` keeps the Token Factory key in the keychain. Nemotron extra only.
+- `graphene plan cover` asks Nano which leaf carries each clause of your paragraph. Nemotron extra only.
+- `graphene plan note` asks a model which leaf a note constrains. Nemotron extra only.
+- `graphene plan precheck` runs each leaf's check before any work. Nemotron extra only.
+- `graphene board lookup` asks Nano which open questions the repo answers. Nemotron extra only.
