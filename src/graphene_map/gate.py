@@ -177,11 +177,11 @@ def _strict(store) -> bool:
 
 # Plan first auto: the agent that reads the repo judges the size, never a rule that reads the prompt.
 AUTO = (
-    "Plan first is auto. Before you write, judge the request. One leaf of work has one scope you can "
-    "name now and one check. If the request is one leaf, propose it with `graphene plan propose -`. "
-    "That leaf is the person's at once: run `graphene node start <id>` and do it. If the request is "
-    "more, propose the tree, write nothing, and stop. The person prunes the tree in `graphene watch`. "
-    "Nothing to write, nothing to propose."
+    "Plan first is auto. Is the request one change, with one scope you can name now and one check that "
+    "proves all of it? Then propose it as one leaf, with no sub-goal and no board item, using `graphene "
+    "plan propose -`. That leaf is the person's at once: run `graphene node start <id>` and do it. "
+    "Otherwise propose the tree, write nothing, and stop. The person prunes the tree in `graphene "
+    "watch`. Nothing to write, nothing to propose."
 )
 
 
