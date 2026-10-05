@@ -7,3 +7,4 @@ src .py files 42 lines 21082
 tests .py lines 25422
 tracked files 298
 1575 tests collected in 3.44s
+clone --depth 1 of cut 0496f6b: 8284 KB on disk (apparent), .git 2688 KB; before: 22560 KB, .git 5292 KB
