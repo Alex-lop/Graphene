@@ -1593,20 +1593,6 @@ UNCOMMITTED = (
 )
 
 
-def accept_path(store, checkout: str | Path, path: str | Path) -> None:
-    """A file the person just had Graphene write inside the checkout (an exported page) is theirs as
-    it stands: it goes into the boundary, so the next start is not refused over Graphene's own output."""
-    checkout = str(Path(checkout).resolve())
-    mark = _boundary(store, checkout)
-    try:
-        rel = str(Path(path).resolve().relative_to(checkout))
-    except ValueError:
-        return  # written somewhere else: not this checkout's business
-    if mark is not None:
-        mark["dirty"][rel] = _hash(checkout, rel)
-        store.set_meta(f"boundary:{checkout}", json.dumps(mark))
-
-
 def acknowledge(store, checkout: str | Path, who: Caller, now: str | None = None) -> list[str]:
     """`graphene plan ack`: the uncommitted changes in the checkout are the person's as they stand
     (committing them does the same, since only the working tree is compared)."""

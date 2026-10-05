@@ -182,7 +182,7 @@ def test_walks_first_light_verdicts_cite_commits_on_this_history_and_tests_that_
     said = walks[walks.index("## First light's verdicts") :]
     sources = " ".join(
         p.read_text(encoding="utf-8")
-        for d in ("tests", "docs/test", "ui/src")
+        for d in ("tests", "docs/test")
         for p in (ROOT / d).rglob("*.[pt]*[ysx]")
     )
     for test in set(re.findall(r"\btest_[a-z0-9_]+", said)):

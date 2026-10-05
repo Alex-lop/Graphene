@@ -29,7 +29,7 @@ from pathlib import Path
 
 from . import plan as P
 from .commits import window as commits_in
-from .record import RANK, Coverage, seconds
+from .record import RANK, Change, Coverage, changes, coverage, seconds, window_commits
 
 # a window ends when the node does, however it ended; ``reopened`` comes after one, never inside it
 ENDS = ("finished", "overruled", "released")
@@ -349,6 +349,44 @@ def _fill(window: Window, node: P.Node, commits: list, root: str | Path, at: str
     window.sources.append(f"from {base}: the working tree of {checkout} as it stands at {at}")
 
 
+@dataclass(slots=True)
+class Run:
+    """What the sessions that held a node recorded: their writes, and the commits inside their windows."""
+
+    sessions: list
+    written: list[Change]
+    commits: list
+    coverage: Coverage
+
+
+def run_records(store, session_ids: list[str]) -> Run:
+    sessions = [s for s in (store.session(i) for i in session_ids) if s is not None]
+    sessions = [s for s in sessions if s.started_at is None or s.started_at]
+    ids = [s.id for s in sessions]
+    events = [e for i in ids for e in store.events(i) if e.timestamp]
+    events.sort(key=lambda e: (seconds(e.timestamp), e.id))
+    agents = [a for i in ids for a in store.agents(i) if a.started_at]
+    written = changes(events, agents, sessions[0].repo if sessions else "")
+
+    # A commit is the run's when it falls inside one of its sessions' own windows (compared as
+    # numbers: stored stamps differ in precision and offset), not merely between two of them.
+    windows = [
+        (seconds(s.started_at), seconds(s.ended_at) if s.ended_at else float("inf"))
+        for s in sessions
+        if s.started_at
+    ]
+    commits = []
+    if windows:
+        day = min((s.started_at for s in sessions if s.started_at), key=seconds)[:10]
+        in_window = [
+            c
+            for c in store.commits_between(day, "9999")
+            if any(opened <= seconds(c.committed_at) <= closed for opened, closed in windows)
+        ]
+        commits = window_commits(in_window, ids)
+    return Run(sessions, written, commits, coverage(commits, written, ids))
+
+
 def _coverage(store, node: P.Node, windows: list[Window], commits: list, at: str) -> dict:
     """What can be said about this node's work, and by what evidence.
 
@@ -417,9 +455,6 @@ def _coverage(store, node: P.Node, windows: list[Window], commits: list, at: str
         )
         one = "it" if len(commits) == 1 else "them"
         return _not_computed(counts, commits, f"no session's records account for {one}")
-    # here, not at the top: graph reaches rich through its own imports, and a record is cheap without it
-    from .graph import coverage_counts, run_records
-
     run = run_records(store, ids)
     counts["read_from"] = (
         f"the node's log, git, and Claude Code's records for "
@@ -465,7 +500,8 @@ def _coverage(store, node: P.Node, windows: list[Window], commits: list, at: str
     for grade in selected.grades.values():
         setattr(selected, grade, getattr(selected, grade) + 1)
     selected.committed_files, selected.nothing = len(selected.grades), selected.window
-    counts |= coverage_counts(selected)
+    keys = ("committed_files", "write", "edit", "shell", "commit", "nothing", "window")  # law 7's order
+    counts |= {key: getattr(selected, key) for key in keys}
     counts["not_graded_commits"] = len([c for c in commits if c.sha not in graded])
     counts["not_graded_files"] = len(ungraded - set(selected.grades))
     counts["computed"] = True

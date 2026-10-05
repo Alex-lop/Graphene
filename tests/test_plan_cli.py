@@ -632,14 +632,3 @@ def test_a_proposal_and_an_open_board_are_named_as_what_waits_not_stop_and_run_s
     assert "nothing to run: the tree is a proposal (1 leaf) nobody has accepted: `graphene plan accept`" in (
         ran.stderr
     ), ran.stderr
-
-
-def test_the_path_an_export_wrote_is_one_line_a_double_click_copies_whole(repo):
-    """Walk 2026-09-29 (alex 31): at 80 columns `wrote <path>` came out as the path broken over three
-    lines, by the printer and not the terminal, so a copy held line breaks in the middle of the path."""
-    assert person("node", "add", "users returns ids", "--id", "ids", "--scope", "api.py", "--check", "true")
-    page = repo / "a-rather-long-directory-name-for-the-exported-page" / "and-another-one-below-it" / "p.html"
-    said = runner.invoke(build(), ["ui", "--export", str(page), "--no-open"],
-                         env={"GRAPHENE_AS": "person:alex", "COLUMNS": "40"})  # fmt: skip
-    assert said.exit_code == 0, said.output
-    assert f"wrote {page}" in said.stderr.splitlines(), said.stderr

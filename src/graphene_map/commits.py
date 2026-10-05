@@ -12,7 +12,7 @@ import os
 import re
 import subprocess
 from collections.abc import Iterator
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from pathlib import Path
 
 from .model import Commit, ToolEvent
@@ -172,15 +172,3 @@ def _verb(segment: list[str]) -> str | None:
 def _utc(committed: str) -> str:
     """git's committer date as the store's stamp."""
     return datetime.fromisoformat(committed).astimezone(UTC).strftime(STAMP)
-
-
-def refresh_commits(store: Store, root: Path | str, fresh: list[str]) -> None:
-    """Keep ``commits`` current without asking git about every session on every command: all of them
-    the first time, afterwards the sessions just loaded and any still running or ended within a day."""
-    sessions = store.sessions()
-    if store.conn.execute("SELECT 1 FROM commits LIMIT 1").fetchone() is None:
-        ids = [s.id for s in sessions]
-    else:
-        recent = (datetime.now(UTC) - timedelta(days=1)).strftime(STAMP)
-        ids = [s.id for s in sessions if s.id in fresh or s.ended_at is None or s.ended_at >= recent]
-    sync_commits(store, root, ids)

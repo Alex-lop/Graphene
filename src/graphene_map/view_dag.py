@@ -1,8 +1,8 @@
 """The plan as a directed graph, left to right: what can run at once, what waits, and on what.
 
 Only leaves are drawn, since a leaf is what someone does. A leaf's column is the longest chain of
-`needs` before it (`plan_view.depths`, the page's own columns), so everything in one column could
-run at once and everything to its right waits on something to its left. What a sub-goal needs, its
+`needs` before it (`depths`), so everything in one column could run at once and everything to its
+right waits on something to its left. What a sub-goal needs, its
 leaves wait on, and a need on a sub-goal is a need on each leaf beneath it (decision 14). A need
 already implied by another (c needs a and b, b needs a) is not drawn twice.
 
@@ -23,13 +23,12 @@ import itertools
 import unicodedata
 from dataclasses import dataclass, replace
 from functools import partial
+from graphlib import CycleError, TopologicalSorter
 
 from rich.cells import cell_len
 from rich.text import Text
 
 from . import plan as P
-from . import plan_view
-from .plan_view import depths, leaf_needs, outline
 from .views import Drawn, elide, graphemes
 
 LEAST_TITLE = 6  # a title with less room than this is left out: "the…" says nothing
@@ -61,6 +60,97 @@ def _box() -> dict[tuple[int, int, int, int], str]:
 BOX = _box()
 
 
+def depths(nodes: list[P.Node]) -> dict[str, int]:
+    """The longest path to each node through what it waits on. ``validate`` refuses a cycle, but a
+    plan is read here as it stands, so a node already on the trail stops the walk instead of looping."""
+    by_id = {n.id: n for n in nodes}
+    out: dict[str, int] = {}
+
+    def depth(node_id: str, trail: frozenset[str]) -> int:
+        if node_id in out:
+            return out[node_id]
+        node = by_id[node_id]
+        found = [
+            depth(need, trail | {node_id}) + 1 for need in node.needs if need in by_id and need not in trail
+        ]
+        out[node_id] = max(found, default=0)
+        return out[node_id]
+
+    for n in nodes:
+        depth(n.id, frozenset())
+    return out
+
+
+def outline(nodes: list[P.Node]) -> list[tuple[P.Node, int]]:
+    """The tree as an outline: every node after its parent, with how far below the root it sits.
+    Siblings keep the order they were added, as they do in the terminal. A node whose parent is not
+    here (dropped, archived) hangs directly under the goal, so nothing falls out of the view."""
+    under = P.kids(nodes, drawn=True)
+    here = {n.id for n in nodes}
+    roots = [n for n in nodes if n.parent not in here]
+    out: list[tuple[P.Node, int]] = []
+    stack = [(n, 0) for n in reversed(roots)]
+    while stack:
+        node, depth = stack.pop()
+        out.append((node, depth))
+        stack += [(kid, depth + 1) for kid in reversed(under.get(node.id, []))]
+    return out
+
+
+def leaf_needs(nodes: list[P.Node]) -> tuple[list[P.Node], dict[str, list[str]]]:
+    """The leaves (`plan.leaves`: a proposed child under an accepted leaf does not make it a sub-goal)
+    in `plan.order`, and for each the leaves it waits on: what it and everything above it needs, where
+    a need on a sub-goal is a wait on each leaf beneath it (decision 14)."""
+    by_id = {n.id: n for n in nodes}
+    leaves = P.order(P.leaves(nodes))
+    ids = {n.id for n in leaves}
+    needs = {}
+    for leaf in leaves:
+        got = []
+        for need in P.all_needs(leaf, by_id):
+            got += [need] if need in ids else [n.id for n in P.below(need, nodes) if n.id in ids]
+        needs[leaf.id] = [i for i in dict.fromkeys(got) if i != leaf.id]
+    return leaves, needs
+
+
+def critical_path(nodes: list[P.Node]) -> list[str]:
+    """The critical path: the longest chain through what each waits on of leaves not done, counted
+    in leaves, first first. It decides how long the plan takes however many run at once. Ties go to
+    `plan.order`'s first. A chain of one is no path: with no leaf not done needing another, there is
+    none."""
+    leaves, needs = leaf_needs(nodes)
+    todo = {n.id for n in leaves if n.state != P.DONE}
+    rank = {n.id: k for k, n in enumerate(leaves)}
+    try:  # what a leaf waits on comes first; `validate` refuses a cycle, and one read as it is has no path
+        ahead = list(TopologicalSorter({i: needs[i] for i in todo}).static_order())
+    except CycleError:
+        return []
+    best: dict[str, list[str]] = {}  # the longest chain ending at each leaf
+    for i in (i for i in ahead if i in todo):
+        before = sorted((d for d in needs[i] if d in todo), key=rank.__getitem__)
+        best[i] = max((best[d] for d in before), key=len, default=[]) + [i]
+    path = max((best[i] for i in sorted(best, key=rank.__getitem__)), key=len, default=[])
+    return path if len(path) > 1 else []
+
+
+def at_once(nodes: list[P.Node], words: dict[str, str]) -> list[str]:
+    """What can start at once: the leaves not done, not running, not in review, not the person's own
+    and not come back (what ``words`` says came back waits on the person), with a scope to work in and
+    nothing left to wait on, proposed or accepted alike (the shaping comes before acceptance), in
+    `plan.order`."""
+    by_id = {n.id: n for n in nodes}
+    back = {i for i, w in words.items() if w == "came back"}
+    return [
+        n.id
+        for n in leaf_needs(nodes)[0]
+        if n.state in (P.PROPOSED, P.OPEN)
+        and n.owner == P.AGENT
+        and n.scope
+        and n.id not in back
+        and not P.unmet(n, by_id)
+    ]
+
+
 @dataclass
 class _Graph:
     leaves: list[P.Node]  # in the outline's order
@@ -70,7 +160,7 @@ class _Graph:
 
 
 def _graph(nodes: list[P.Node]) -> _Graph:
-    """The leaves and what each waits on are the critical path's own (`plan_view.leaf_needs`): a
+    """The leaves and what each waits on are the critical path's own (`leaf_needs`): a
     proposed child under an accepted leaf does not make it a sub-goal, so both are drawn."""
     listed, raw = leaf_needs(nodes)
     ids = {n.id for n in listed}
@@ -83,18 +173,6 @@ def _graph(nodes: list[P.Node]) -> _Graph:
         upstream[i] = set(raw[i]).union(*(upstream[x] for x in raw[i]))
     needs = {i: [x for x in r if not any(x in upstream[y] for y in r)] for i, r in raw.items()}
     return _Graph(leaves, level, needs, {n.id: k for k, n in enumerate(P.order(waits))})
-
-
-def critical_path(nodes: list[P.Node]) -> list[str]:
-    """The longest chain of leaves not done yet, first to last, through what each needs: what
-    decides how long the plan takes however many run at once. The page's own (`plan_view`)."""
-    return plan_view.critical_path(nodes)
-
-
-def at_once(nodes: list[P.Node], words: dict[str, str]) -> list[str]:
-    """The leaves that could start now, proposed ones too (they start once accepted): the page's own
-    (`plan_view`), with what ``words`` says came back left to the person."""
-    return plan_view.at_once(nodes, {i for i, w in words.items() if w == "came back"})
 
 
 def note(nodes: list[P.Node], words: dict[str, str], width: int | None = None) -> str:

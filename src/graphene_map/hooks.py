@@ -525,8 +525,3 @@ def _handlers(group: dict) -> list:
 
 def _is_ours(handler: object) -> bool:
     return isinstance(handler, dict) and handler.get("command") == HOOK_COMMAND
-
-
-def hooks_installed(root: Path) -> bool:
-    """Our hook command appears in either settings file (earlier versions wrote settings.json)."""
-    return any(_holds_hook(root / name) for name in (SETTINGS, TEAM_SETTINGS))

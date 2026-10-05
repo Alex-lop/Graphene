@@ -1537,7 +1537,7 @@ class Watch(App):
             argv = _sentence(argv)
         if argv[:1] == ["stop"]:
             return self.stop_runs()
-        if argv[:1] in (["ui"], ["watch"], ["ingest"], ["init"]):
+        if argv[:1] in (["watch"], ["ingest"], ["init"]):
             self.message = f"✗ `graphene {argv[0]}` takes a terminal of its own: run it outside this screen"
             return self.say_status()
         slow = argv[:1] in (["run"], ["ask"]) or argv[:2] in (

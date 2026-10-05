@@ -501,16 +501,10 @@ def test_q_gives_the_terminal_back_while_a_run_started_here_goes_on(repo):
 
 
 # Recheck 29 (fixed)
-def test_a_command_that_keeps_a_terminal_is_refused_not_run_on_the_screen(repo, monkeypatch):
-    from graphene_map import server
-
-    served = []
-    monkeypatch.setattr(server, "make_server", lambda *a, **k: served.append(a))
+def test_a_command_that_keeps_a_terminal_is_refused_not_run_on_the_screen(repo):
     proposed(repo)
-    for typed in ("ui --no-open", "ingest hook"):
-        seen, _ = watch(repo, ["colon", *typed, "enter"], size=(120, 30))
-        assert f"`graphene {typed.split()[0]}` takes a terminal of its own" in seen["status"]
-    assert served == []  # no server was started on the screen's own thread
+    seen, _ = watch(repo, ["colon", *"ingest hook", "enter"], size=(120, 30))
+    assert "`graphene ingest` takes a terminal of its own" in seen["status"]
 
 
 # Recheck 30 (fixed)
@@ -690,22 +684,6 @@ def test_at_80_columns_a_leaf_that_came_back_says_why_and_its_keys_before_its_co
     top = [line.strip() for line in seen["detail"].splitlines()[:4]]
     assert top[:2] == ["the schema", "schema · came back"]  # say came back once, in the header
     assert top[2] == "the column needs a migration" and top[3].startswith("w  widen its scope")
-
-
-# Recheck 70 (fixed)
-def test_colon_ui_is_refused_and_the_screen_still_answers(repo, monkeypatch):
-    """`:ui` ran the page's server on the screen's own thread: no key was read again."""
-    import socketserver
-    import webbrowser
-
-    served = []
-    monkeypatch.setattr(socketserver.BaseServer, "serve_forever", lambda self, *a, **k: served.append(self))
-    monkeypatch.setattr(webbrowser, "open", lambda *a, **k: True)
-    proposed(repo)
-    seen, _ = watch(repo, ["colon", *"ui", "enter"])
-    assert "`graphene ui` takes a terminal of its own" in seen["status"]
-    seen, _ = watch(repo, ["colon", *"ui", "enter", "j"])
-    assert not served and seen["cursor"] == "api"  # j after it was taken
 
 
 # Recheck 76 (fixed)

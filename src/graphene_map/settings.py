@@ -99,12 +99,6 @@ def elsewhere(store) -> list[str]:
     ]
 
 
-def for_screen(store) -> dict:
-    """The settings as the page's plan carries them, for the root row of the board and the graph."""
-    return {"protected": protected(store), "readonly": readonly(store), "never": never(store),
-            "size": size(store)}  # fmt: skip
-
-
 def lines_for_screen(store) -> list[str]:
     """What `?` in graphene watch shows under the keys: every setting, a line each, then how to change
     them. The key's whereabouts are left to `graphene config`: a screen never asks the keychain."""

@@ -321,19 +321,6 @@ def parked(repo, store):
     return tree
 
 
-def test_a_parked_leaf_merged_by_hand_and_signed_off_on_the_page_lets_its_dependant_start(repo):
-    """Recheck: the page's sign-off passed no checkout, so where the hand merge landed was never
-    recorded and what needs the leaf waited for ever."""
-    from graphene_map.server import OPS
-
-    with Store.open(repo) as store:
-        parked(repo, store)
-        git(repo, "merge", "-q", "graphene/a")
-        OPS["signoff"](store, repo, {"id": "a"}, ALEX)
-        assert plan.not_here(store, plan.get(store, "b"), repo, committed=True) == []
-        assert plan.start(store, "b", BOT, repo).state == RUNNING
-
-
 def test_signing_off_a_parked_leaf_whose_branch_is_gone_does_not_say_it_was_kept(repo):
     """Recheck: the branch was merged and deleted (by the person, or by a landing stopped late), and
     the sign-off said "graphene/a is not merged here, so it was kept"."""
@@ -1046,22 +1033,13 @@ def test_a_path_another_leafs_scope_has_is_never_offered_to_a_second_writer(repo
 
 
 def test_the_forecast_says_a_leaf_that_came_back_waits_on_the_person_as_r_leaves_it(repo):
-    """R and plain `graphene run` leave a leaf that came back to the person, but `plan accept` and the
-    page's forecast still listed it, and what needs it, under "left alone, agents can reach"."""
-    from graphene_map.plan_view import build_plan_view
-
+    """R and plain `graphene run` leave a leaf that came back to the person, but `plan accept` still
+    listed it, and what needs it, under "left alone, agents can reach"."""
     with Store.open(repo) as store:
         plan.propose(store, [leaf("a", "a.txt"), leaf("b", "b.txt", needs=["a"])], ALEX)
         plan.start(store, "a", BOT, repo)
         plan.release(store, "a", BOT, "it needs src/util.py", wants=["src/util.py"])
-        forecast = build_plan_view(store)["forecast"]
-    assert forecast["runs"] == []
-    assert forecast["waits"] == [
-        {"id": "a", "why": ["a came back to you"]},
-        {"id": "b", "why": ["a came back to you"]},
-    ]
-    with Store.open(repo) as store:
         plan.propose(store, [leaf("c", "c.txt")], BOT)  # an agent's proposal, for the person to accept
     said, _ = graphene(repo, "plan", "accept").communicate(timeout=60)
     assert "left alone, agents can reach: c\n" in said, said
-    assert "  a will wait: a came back to you" in said
+    assert "  a will wait: a came back to you" in said and "  b will wait: a came back to you" in said

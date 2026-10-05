@@ -1,47 +1,12 @@
-"""Reading a shell command: which files it writes, and whether it runs a check.
+"""Reading a shell command: which files it writes.
 
-These are the two answers the rest of Graphene buys from this module — the hook refuses a write
-with the first (`gate.py`), the map names a check run with the second — so every case here is a
-command somebody actually typed, not a grammar exercise.
+The hook refuses a write with this answer (`gate.py`), so every case here is a command somebody
+actually typed, not a grammar exercise.
 """
 
 from pathlib import Path
 
-from graphene_map.shell import bash_written_paths, check_segments
-
-
-def test_a_check_named_inside_a_quoted_string_is_text_not_a_check():
-    body = "parser: the gate is green\n\nuv run pytest -q (121 passed)."
-    message = f'git commit -q -m "{body}" && git log --oneline -1'
-    assert check_segments(message) == []
-    heredoc = "python3 - <<'EOF'\nprint('ruff check')\nEOF\ngit commit -q -m \"lint: ruff check passes\""
-    assert check_segments(heredoc) == []
-    assert check_segments('cd app && uv run pytest -q tests/ && echo "pytest done"') == [
-        "uv run pytest -q tests/"
-    ]
-    assert check_segments("uv run ruff check; uv run pytest -q") == ["uv run ruff check", "uv run pytest -q"]
-
-
-def test_check_command_detection():
-    assert check_segments("uv run pytest tests/ -q")
-    assert check_segments("cd app && npm test") == ["npm test"]
-    assert check_segments("make lint")
-    assert not check_segments("git status")
-    assert not check_segments("cat pytest.ini")
-
-
-def test_a_redirection_is_not_part_of_what_ran():
-    assert check_segments("uv run ruff check src && uv run pytest -q 2>&1 | tail -3") == [
-        "uv run ruff check src",
-        "uv run pytest -q",
-    ]
-
-
-def test_runner_prefixes_are_peeled_in_any_order():
-    assert check_segments("uv run python -m pytest -q") == ["uv run python -m pytest -q"]
-    assert check_segments("poetry run python -m pytest") == ["poetry run python -m pytest"]
-    assert check_segments("uv run --frozen pytest") == ["uv run --frozen pytest"]
-    assert check_segments("uv run python script.py") == []
+from graphene_map.shell import bash_written_paths
 
 
 def test_bash_written_paths(tmp_path):

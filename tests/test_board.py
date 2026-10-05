@@ -564,7 +564,6 @@ def test_a_condition_binds_as_a_read_only_glob_until_undone(repo):
     assert "      changed: no leaf may write vendor/**" in person("board", "--all").stdout
     with Store.open(repo) as store:
         assert B.conditions(store) == ["vendor/**"] == S.readonly(store)
-        assert S.for_screen(store)["readonly"] == ["vendor/**"]
         assert "No leaf may write these paths: vendor/**." in S.conditions_for_planner(store)
     config = person("config").stdout
     assert "# answered: readonly vendor/** (plan undo takes it back)" in config  # not a second `board:`
