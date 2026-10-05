@@ -152,8 +152,10 @@ def test_the_readme_and_changelog_name_what_first_light_added():
         assert CliRunner().invoke(build(), [*words, "--help"]).exit_code == 0, words
     assert S.BOARDS[0] == "auto"  # the first is the value when unset
     for path in ("README.md", "CHANGELOG.md"):
+        assert "`board: auto`" in doc(path), path
+    for path in ("docs/HOW_IT_WORKS.md", "CHANGELOG.md"):  # hidden now: "The rest" lists it
         said = doc(path)
-        assert "graphene direction" in said and "`board: auto`" in said, path
+        assert "graphene direction" in said, path
     for path in ("docs/HACKATHON.md", "CHANGELOG.md"):  # board lookup is the Nemotron extra's
         assert "board lookup" in doc(path), path
         live = "As practice on 2 October, Nemotron planned a small feature 5 times"

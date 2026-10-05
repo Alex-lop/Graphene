@@ -1,0 +1,20 @@
+                                                                                
+ Usage: graphene run [OPTIONS]                                                  
+                                                                                
+ Run every ready leaf in its own worktree, one executor per leaf.               
+                                                                                
+ Graphene runs each leaf's check and merges what passes. A leaf that fails      
+ comes back.                                                                    
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --with            <str>  Use this executor, not init's: claude, codex,       │
+│                          nemotron or a command.                              │
+│ --attempts        <int>  How often a refused executor is sent back.          │
+│                          [default: 3]                                        │
+│ --node            <str>  Only this node; repeat it.                          │
+│ --parallel        <int>  How many leaves run at once. [default: 1]           │
+│ --here                   Run in your checkout and commit nothing; the        │
+│                          checkout is exposed.                                │
+│ --help                   Show this message and exit.                         │
+╰──────────────────────────────────────────────────────────────────────────────╯
+

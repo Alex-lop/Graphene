@@ -10,6 +10,8 @@ end in Token Factory Sandboxes, landing 5 of 6 leaves, each passed by its own ch
 asked. 3 stopped at the planner, whose tree was readable on 2 of 9 asks (`docs/test/first-light.md`). Nothing
 registered has run live.
 
+- `graphene --help` shows nine commands. The rest still work; HOW_IT_WORKS lists them under "The rest".
+- Every command's help is one or two short lines. Run `graphene node --help` to see it.
 - `graphene run` now isolates every leaf in a worktree. `--here` is the old behaviour.
 - A Claude Code executor can write in its run's worktree. The hook had refused every write there as the plan's store.
 - The old briefs, notes and spikes left `main` for the orphan branch `process`.
