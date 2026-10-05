@@ -60,12 +60,12 @@ Rollback: `main` is untouched at `4e5a2a9`. To drop the night: close the PR, `gi
   under a test, the root help 23 rows at 80 columns. README Privacy in two lines. CHANGELOG folded
   into one group. DIRECTION gained decisions 137-150. `docs/assets/plan.png` (the page) removed.
 - **01:38** The dead-code sweep merged: two unreferenced names and three docstrings that named the page.
-- **02:30** CI failed once on the PR (Ubuntu, 3.14): the trip-all tree rehearsal counted 4 traps. The same
-  code passed all six jobs on the push before it. No local repro in 15 runs; the test now prints each
-  run's traps and its `graphene run` output when it fails.
 - **01:55** Final full suite at `6b96280`: 1,554 passed, 21 skipped. Ruff clean. The wheel installs in a
   fresh venv and `graphene demo --once` runs from it. Lane 0 on the final wheel: checkout clean. Lane 4's
   rehearsal on the final code: 5 and 0.
+- **02:30** CI failed once on the PR (Ubuntu, 3.14): the trip-all tree rehearsal counted 4 traps. The same
+  code passed all six jobs on the push before it. No local repro in 15 runs; the test now prints each
+  run's traps and its `graphene run` output when it fails.
 
 ## Not done, or not verified
 
