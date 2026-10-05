@@ -13,7 +13,10 @@ Rollback: `main` is untouched at `4e5a2a9`. To drop the night: close the PR, `gi
 
 **2. Run in five minutes** — not yet.
 **3. The experiment** — not yet.
-**4. Dogfood** — not yet.
+**4. Dogfood** (`docs/process/cut/dogfood.md`)
+- 22 min for a 14-node tree of lane 2; the first answer was unreadable. It caught one thing I missed:
+  without `graphene ui`, nothing refreshes the commits `node show` credits. Plan-first stopped
+  helping at minute 11, when I started the work without its tree.
 **5. Decide** — not yet.
 **6. Broken or risky** — not yet.
 
@@ -27,3 +30,6 @@ Rollback: `main` is untouched at `4e5a2a9`. To drop the night: close the PR, `gi
   Nemotron as an extra, lanes 1 to 5.
 - **00:10** Lane 0. The wheel from `4e5a2a9` is installed as a tool in its own directory. The five
   `--help` outputs, the counts and the transcript are in `docs/process/cut/before/`.
+- **00:15** Wave one started: five worktrees off `cut`, one agent each (lane 1, lane 4, the UI,
+  the archive, Nemotron). Lane 5 started at 00:20 in a sixth.
+- **00:26** The dogfood tree arrived. `docs/process/cut/dogfood.md`.
