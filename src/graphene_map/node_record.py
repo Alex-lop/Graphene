@@ -98,6 +98,9 @@ def node_record(store, root: str | Path, node: P.Node, at: str | None = None) ->
     at = at or P._now()
     log = store.node_log(node.id)
     windows = _windows(log)
+    from .commits import sync_commits  # here, since the web UI that filled them is gone
+
+    sync_commits(store, root, sorted({w.session_id for w in windows if w.session_id}))
     # TODO: every commit the store holds, then windowed here; a windowed query when one repo's
     # store holds a year of them.
     credited = {c.sha: c for c in store.commits_between("0000", "9999")}
