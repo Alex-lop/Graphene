@@ -4,7 +4,7 @@
 edit as binding: it reads this before it reads the code. It is the same shape as the product: you
 shape the plan, the agents execute it. First written 2026-09-20 by the agent that ran the
 collaboration directive (`docs/process/directives/COLLABORATION_DIRECTIVE.md`); last added to on
-2026-09-29, by the agent that ran the first-light directive.*
+2026-10-05, by the agent that ran the cut directive.*
 
 *The process archive moved off `main` on the cut night. It is the orphan branch `process`, at `fb6a408`.*
 
@@ -1617,6 +1617,39 @@ any of them.
      `/home/leaf/…`, the Sandbox user's own home, unless the path climbs out of it.
      *Evidence:* `tests/nemotron/test_sandbox_contract.py::test_the_sdks_token_life_warning_is_dropped_only_when_the_key_signs_the_client`,
      `tests/test_recordings.py::test_the_sandboxs_own_home_is_no_persons_path`.
+
+## Decisions taken on the night of the cut directive (5 October)
+
+137. **`graphene run` isolates every leaf.** Each leaf runs in its own worktree and branch, and what
+     passes is merged. `--here` runs in the checkout and says the checkout is exposed. *Why:* the old
+     default left an executor's stray edit in the person's checkout, once per attempt.
+138. **A run's worktree is not the plan's store.** The hook judged a file under `.graphene/worktrees/`
+     as the store and refused every Claude Code write there. The check now stops at the worktree's top.
+139. **The web UI is deleted.** The terminal is the surface. `git revert 659c89e` brings the page
+     back. The tag `last-with-ui` marks its parent, `66125f0`.
+140. **`node show` fills the commits it credits.** Only the page did that before. The dogfood tree of
+     lane 2 caught it; the plan I had written did not.
+141. **The process archive is the orphan branch `process`, at `fb6a408`.** `main` keeps the
+     directives, the current `morning.md` and `docs/process/cut/`.
+142. **Nemotron is the extra `[nemotron]`.** The core reaches it only through `extra.py`. A test fails
+     on any other import. Without the extra, no Token Factory module loads.
+143. **The extra's commands register whenever it loads.** `graphene key set` must exist before a key
+     does. A key found only decides whether `init` offers Nemotron.
+144. **Nine commands show at the top, eight under `plan`, nine under `node`, five under `board`.** The
+     rest still work and are listed in HOW_IT_WORKS, "The rest". A test holds the budgets.
+145. **Every Nemotron command and `direction` and `talk` are hidden, not deleted.** The budgets then
+     hold with or without the extra.
+146. **Every help string is one or two short lines.** A test holds the lengths, and the root help fits
+     24 rows at 80 columns.
+147. **`plan first` is `on`, `auto` or `off`, and `auto` is the default.** Under `auto` the agent takes
+     one leaf of work at once and proposes a tree for more. `on` makes every ask wait for the person.
+     An old `on` reads as `auto` (store schema 5).
+148. **Under `auto`, the feeds paragraph became one leaf, not a tree.** It was done right (18 of 20,
+     12 of 12). The directive expected a tree. I did not tune the wording to get one.
+149. **The experiment is `statements`, and Alex runs it.** Five traps, counted by script. The
+     pre-registration says what makes the tree lose, and I predict the paragraph ties or wins.
+150. **The 3 MB clone target is reported, not gated.** The README's GIF, the tests' recordings and the
+     harness stay on `main`.
 
 ## What does not bind (say it wherever you sell it)
 
