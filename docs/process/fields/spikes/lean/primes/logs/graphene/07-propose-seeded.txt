@@ -1,5 +1,0 @@
-$ graphene plan propose - < tree-seeded.txt   # as the agent
-proposed odd_factor_three: every odd n > 1 has a prime factor that is 3 mod 4
-1 proposed: nobody can start it until the person accepts, in `graphene watch`. Tell them the tree is ready, and stop
-  (the plan of scratchpad/graphene-scratch/primes)
-exit=0

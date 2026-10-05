@@ -1,4 +1,0 @@
-guard: 30s free=22263MB swap_used=20832.50M rss=4602MB
-guard: 60s free=23291MB swap_used=20600.12M rss=1254MB
-guard: killing after 85s (free 18170 MB, limit 18 GB; time limit 1200s)
-./guard.sh: line 25:  4068 Terminated: 15          "$@"

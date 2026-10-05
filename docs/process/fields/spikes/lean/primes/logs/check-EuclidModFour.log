@@ -1,1 +1,0 @@
-check-leaf EuclidModFour: proven in 66 s; GateCheck euclid_mod_four: ok; axioms [propext, Quot.sound]

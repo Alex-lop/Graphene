@@ -1,1 +1,0 @@
-'sqMod4' depends on axioms: [propext, Classical.choice, Quot.sound]

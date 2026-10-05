@@ -1,1 +1,0 @@
-check-leaf MulOneModFour: proven in 114 s; GateCheck mul_one_mod_four: ok; axioms [propext]

@@ -1,6 +1,0 @@
-guard: 31s free=21014MB swap_used=18852.69M rss=1154MB
-guard: 62s free=22041MB swap_used=18606.12M rss=804MB
-guard: 92s free=19991MB swap_used=20553.94M rss=230MB
-guard: 123s free=17843MB swap_used=22848.56M rss=706MB
-guard: killing after 139s (free 15793 MB, limit 16 GB; time limit 2400s)
-/private/tmp/claude-501/-Users-alexlopez-Desktop-AllThingsAgenticHackathon/1c257068-543a-48a1-ae2e-a2935409e414/scratchpad/fields/docs/process/fields/spikes/lean/mechanics/guard.sh: line 25: 93185 Terminated: 15          "$@"

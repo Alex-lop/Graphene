@@ -6,6 +6,8 @@ shape the plan, the agents execute it. First written 2026-09-20 by the agent tha
 collaboration directive (`docs/process/directives/COLLABORATION_DIRECTIVE.md`); last added to on
 2026-09-29, by the agent that ran the first-light directive.*
 
+*The process archive moved off `main` on the cut night. It is the orphan branch `process`, at `fb6a408`.*
+
 ## What Graphene is
 
 Graphene is the shared plan between a person and their coding agents: a graph of the work, which
