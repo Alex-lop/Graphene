@@ -136,9 +136,9 @@ def test_first_lights_model_table_is_the_live_list_the_fixture_keeps():
     assert "**Practice, not a registered result.**" in doc("docs/test/first-light.md")
 
 
-def test_the_readme_and_changelog_name_what_first_light_added_and_no_doc_says_the_page_hides_the_board():
+def test_the_readme_and_changelog_name_what_first_light_added():
     """A walker found the README and CHANGELOG silent on the direction, `board lookup` and the board's
-    setting, and the README saying the page does not show the board (walk findings 9, 30, 39)."""
+    setting (walk findings 9, 30, 39)."""
     from typer.testing import CliRunner
 
     from graphene_map import settings as S
@@ -152,8 +152,6 @@ def test_the_readme_and_changelog_name_what_first_light_added_and_no_doc_says_th
         assert "graphene direction" in said and "board lookup" in said and "`board: auto`" in said, path
         live = "As practice on 2 October, Nemotron planned a small feature 5 times"
         assert live in " ".join(said.split()), path
-    for path in ("README.md", "docs/HOW_IT_WORKS.md"):
-        assert "does not show the board" not in doc(path), path
 
 
 def test_the_docs_say_what_accept_and_r_leave_open_and_that_d_attaches_nothing():
