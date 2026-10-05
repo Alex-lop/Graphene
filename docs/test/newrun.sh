@@ -47,6 +47,17 @@ did() {
 seen() { "\$@" > "\$TMPDIR/.seen" 2>&1; cat "\$TMPDIR/.seen"; log read < "\$TMPDIR/.seen" > /dev/null; }
 # what an executor said back, out of its JSON, logged as read
 reply() { seen python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("result") or "")' "\$1"; }
+# the working tree as a commit under refs/snap/, with HEAD and the index left alone: tally.py --traps
+# reads from these when a trap first showed in the diff. \`snaps &\` takes one a minute (kill %1 stops it)
+snap() {
+  local i="$DIR/tmp/.snap-index" t c
+  rm -f "\$i"
+  GIT_INDEX_FILE="\$i" git -C "$DIR/repo" add -A && t=\$(GIT_INDEX_FILE="\$i" git -C "$DIR/repo" write-tree) || return
+  [ "\$t" = "\$(cat "$DIR/tmp/.snap-tree" 2>/dev/null)" ] && return 0
+  c=\$(git -C "$DIR/repo" -c user.name=snap -c user.email=snap@localhost commit-tree "\$t" -p HEAD -m snap) || return
+  git -C "$DIR/repo" update-ref "refs/snap/\$(date +%s)" "\$c" && echo "\$t" > "$DIR/tmp/.snap-tree"
+}
+snaps() { while :; do snap; sleep 60; done; }
 EOF
 cat <<EOF
 run       $DIR

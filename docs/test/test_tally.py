@@ -22,6 +22,7 @@ they are the reason this file grew:
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import sqlite3
 import subprocess
@@ -103,6 +104,8 @@ def git(repo, *args):
 # refused, and ran again on Super with 3 forks (one of which the stop found before it started); n2
 # ran with one conversation (no fork row) on Nano and again on Nano (the ladder's last rung: no from).
 NANO, SUPER = "nvidia/Nemotron-3-Nano-fake", "nvidia/Nemotron-3-Super-fake"
+
+
 def fork(node, k, model, state):
     return node, "fork", json.dumps({"fork": k, "of": 3, "model": model, "state": state})
 
@@ -343,6 +346,128 @@ class Rework(unittest.TestCase):
         self.assertEqual(tally.edit_size(None, "1\n2\n"), 2)
         self.assertEqual(tally.edit_size("a\n", "a\n"), 0)
         self.assertEqual(max(0, 3 - 9), 0)
+
+
+class WhenItShowed(unittest.TestCase):
+    """The statements task's three measures: person minutes from the clock, and when a wrong inference
+    first showed, from the tree, the board and the commits. The traps here are a stand-in module."""
+
+    @classmethod
+    def setUpClass(cls):
+        sys.path.insert(0, str(HERE))
+        import tally
+
+        cls.tally = tally
+        cls.dir = Path(tempfile.mkdtemp(prefix="tally-when-"))
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.dir, ignore_errors=True)
+
+    def test_person_minutes_come_from_the_clock_and_a_clock_is_not_an_act(self):
+        log = [
+            {"t": 0, "who": "person", "type": "clock", "text": "start"},
+            {"t": 60, "who": "person", "type": "prompt", "text": "hi"},
+            {"t": 540, "who": "person", "type": "clock", "text": "away"},  # 9 minutes in
+            {"t": 7740, "who": "person", "type": "clock", "text": "back"},
+            {"t": 7980, "who": "person", "type": "clock", "text": "away"},  # 4 minutes, then one more round
+            {"t": 9000, "who": "person", "type": "clock", "text": "back"},
+            {"t": 9120, "who": "person", "type": "clock", "text": "done"},  # and 2: 6 minutes at the end
+        ]
+        path = self.dir / "clock.jsonl"
+        path.write_text("\n".join(json.dumps(e) for e in log), encoding="utf-8")
+        got = self.tally.read_runlog(path, [])
+        self.assertEqual((got["person_minutes_start"], got["person_minutes_end"]), (9.0, 6.0))
+        self.assertEqual((got["person_actions"], got["started"]), (1, 60.0))
+
+    def test_the_tree_and_the_board_show_it_before_anything_runs(self):
+        db = self.dir / "graphene.db"
+        conn = sqlite3.connect(db)
+        conn.execute("CREATE TABLE nodes (id TEXT, data TEXT)")
+        conn.execute(
+            "CREATE TABLE node_log (id INTEGER PRIMARY KEY, node_id TEXT, timestamp TEXT, kind TEXT, "
+            "detail TEXT)"
+        )
+        conn.execute("CREATE TABLE plan_meta (key TEXT, value TEXT)")
+        # fix-vendor was proposed naming vendor/, and the person took it out of its scope: still seen.
+        # tests reaches the protected file only through tests/**, which names nothing.
+        conn.executemany(
+            "INSERT INTO nodes VALUES (?, ?)",
+            [
+                ("fix-vendor", json.dumps({"scope": ["core/**"]})),
+                ("tests", json.dumps({"scope": ["tests/**"]})),
+            ],
+        )
+        conn.executemany(
+            "INSERT INTO node_log (node_id, timestamp, kind, detail) VALUES (?, ?, ?, ?)",
+            [
+                ("tests", "2026-10-04T10:00:00Z", "proposed", None),
+                ("fix-vendor", "2026-10-04T10:00:30Z", "proposed", None),
+                (
+                    "fix-vendor",
+                    "2026-10-04T10:05:00Z",
+                    "edited",
+                    json.dumps({"changed": {"scope": [["vendor/fmt/**"], ["core/**"]]}}),
+                ),
+            ],
+        )
+        board = [
+            {
+                "id": "kept",
+                "kind": "assume",
+                "agent": True,
+                "state": "taken",
+                "created_at": "2026-10-04T10:00:10Z",
+            },
+            {
+                "id": "rounding",
+                "kind": "question",
+                "default": "yes",
+                "agent": True,
+                "state": "answered",
+                "created_at": "2026-10-04T10:00:20Z",
+            },
+        ]
+        conn.execute("INSERT INTO plan_meta VALUES ('board', ?)", (json.dumps(board),))
+        conn.commit()
+        conn.close()
+        seen = sorted(self.tally.tree_sightings(db, ("vendor/", "tests/test_contract.py")))
+        self.assertEqual([how for _, how in seen], [
+            "board item rounding: the person overrode its default",
+            "fix-vendor was proposed with scope vendor/fmt/**"])  # fmt: skip
+
+    def test_the_diff_shows_it_at_the_first_commit_that_has_a_trap_the_end_has(self):
+        repo = self.dir / "repo"
+        repo.mkdir()
+        git(repo, "init", "-q")
+        stamp = {"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@e", "GIT_COMMITTER_NAME": "t",
+                 "GIT_COMMITTER_EMAIL": "t@e"}  # fmt: skip
+
+        def commit(name, at):
+            (repo / name).write_text(name, encoding="utf-8")
+            git(repo, "add", "-A")
+            env = {
+                **os.environ,
+                **stamp,
+                "GIT_COMMITTER_DATE": f"@{at} +0000",
+                "GIT_AUTHOR_DATE": f"@{at} +0000",
+            }
+            subprocess.run(["git", "-C", str(repo), "commit", "-qm", name], check=True, env=env)
+            return git(repo, "rev-parse", "HEAD").strip()
+
+        base = commit("app.py", 1000)
+        commit("transient", 2000)  # trips "gone", which the end does not have: not counted
+        commit("vendored", 3000)  # trips "vendor", which the end has
+        commit("more", 4000)
+
+        def count(where):
+            tripped = [n for n, f in (("gone", "transient"), ("vendor", "vendored")) if (where / f).exists()]
+            return {"traps": len(tripped), "tripped": tripped}
+
+        at, how = self.tally.diff_sighting(repo, base, count, ["vendor"], [])
+        self.assertEqual(at, 3000.0)
+        self.assertIn("trips vendor", how)
+        self.assertIsNone(self.tally.diff_sighting(repo, base, count, [], []))
 
 
 if __name__ == "__main__":

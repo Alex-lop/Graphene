@@ -2,8 +2,8 @@
 """One arm of one task, counted. Nothing here is estimated, judged or asked of a model.
 
     docs/test/tally.py <repo> --base <sha> --intent <intent_globs.txt> \\
-        --accept <accept.py> [--quality <quality.py>] --arm <prompt|graphene|tree|board> \\
-        --runlog <runlog.jsonl>
+        --accept <accept.py> [--quality <quality.py>] [--traps <traps.py>] \\
+        --arm <prompt|graphene|tree|board> --runlog <runlog.jsonl>
 
 Every number comes from one of four places and the output says which:
 
@@ -33,6 +33,20 @@ Three things changed after the 20 September run, because the numbers it printed 
    was run with `--output-format json` that file *is* the vendor's JSON object, so the cost is
    recoverable after all. The run log no longer has to carry it.
 
+Three measures were added for the statements task (October 2026), and each says where it comes from:
+
+- **Traps**, 0 to 5, from the task's traps.py, run on the final state. A script counts them, never a
+  judge.
+- **Minutes to the first visible wrong inference**, from the first `prompt`. A wrong inference is a
+  trap tripped or a board default the person overrode. It is seen at the earliest of: a node proposed
+  with a scope that names a protected path (traps.NAMED); an agent's board item whose default the
+  person overrode; the first commit since the base, on any branch or snapshot ref, whose tree trips
+  a trap that the final state trips too. A trap that came and went on the way to a right answer is
+  not one. Snapshots are the `snap` refs newrun.sh's env.sh writes. A trap seen only in the final
+  state counts at the run log's last entry. A wrong inference said only in a node's words is not read.
+- **Person minutes at the start and at the end**, clocked by the person's own `clock` entries in the
+  run log: `start` to `away`, then every `back` to the next `away` or `done`. A `clock` is not an act.
+
 The scope matcher is Graphene's own (``graphene_map.plan.in_scope``), so "outside intent" here
 means exactly what "outside a node's scope" means to the hook that refuses a write.
 """
@@ -41,11 +55,16 @@ from __future__ import annotations
 
 import argparse
 import difflib
+import importlib.util
+import io
 import json
 import re
 import sqlite3
 import subprocess
 import sys
+import tarfile
+import tempfile
+from datetime import UTC, datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
@@ -304,8 +323,9 @@ def read_runlog(path: Path, notes: list[str]) -> dict:
         except json.JSONDecodeError as exc:
             notes.append(f"{path.name}:{number} is not JSON and was skipped ({exc.msg})")
     # a `read` is what the person was shown, not something they did or typed (attention.py counts
-    # its words); a `reopen` sends finished work back, which is a restart however it is spelled
-    person = [e for e in entries if e.get("who") == "person" and e.get("type") != "read"]
+    # its words), and a `clock` is the person's watch; a `reopen` sends finished work back, which is
+    # a restart however it is spelled
+    person = [e for e in entries if e.get("who") == "person" and e.get("type") not in ("read", "clock")]
     stamps = [s for s in (seconds(e.get("t")) for e in entries) if s is not None]
     if len(stamps) < len(entries):
         notes.append("some run log entries carry no readable `t`; wall_seconds spans the ones that do")
@@ -334,6 +354,128 @@ def read_runlog(path: Path, notes: list[str]) -> dict:
         "wall_seconds": round(max(stamps) - min(stamps), 1) if len(stamps) > 1 else 0.0,
         "results": sum(1 for e in entries if e.get("type") == "result"),
         "results_unpriced": sum(1 for e in entries if e.get("type") == "result" and not e.get("cost_usd")),
+        "started": next(
+            (seconds(e.get("t")) for e in entries if e.get("who") == "person" and e.get("type") == "prompt"),
+            min(stamps) if stamps else None,
+        ),
+        "ended": max(stamps) if stamps else None,
+        **clocked(entries, notes),
+    }
+
+
+def clocked(entries: list[dict], notes: list[str]) -> dict:
+    """Person minutes from the person's own clock entries. Each stretch at the keyboard runs from
+    `start` or `back` to `away` or `done`. The first stretch is the start; the rest are the end."""
+    stretches: list[float] = []
+    since = None
+    for e in entries:
+        word, at = str(e.get("text") or "").strip(), seconds(e.get("t"))
+        if e.get("type") != "clock" or at is None:
+            continue
+        if word in ("start", "back"):
+            since = at
+        elif word in ("away", "done") and since is not None:
+            stretches.append((at - since) / 60)
+            since = None
+        else:
+            notes.append(f"a clock entry `{word}` out of order was left out")
+    if any(e.get("type") == "clock" for e in entries) and len(stretches) < 2:
+        notes.append("the clock has no stretch after the person came back: the end minutes are unknown")
+    return {
+        "person_minutes_start": round(stretches[0], 1) if stretches else None,
+        "person_minutes_end": round(sum(stretches[1:]), 1) if len(stretches) > 1 else None,
+    }
+
+
+def load_traps(path: Path):
+    """A task's traps.py, as a module: `count(repo)` and `NAMED`."""
+    spec = importlib.util.spec_from_file_location("task_traps", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def names(glob: str, named) -> bool:
+    """Does the scope glob name a protected path outright? A path ending in / is a directory."""
+    return any(glob.startswith(n) if n.endswith("/") else glob == n for n in named)
+
+
+def tree_sightings(db: Path, named) -> list[tuple[float, str]]:
+    """Wrong inferences the tree and the board showed: a node's scope as proposed (every edit rolled
+    back) that names a protected path, at its proposal; an agent's board item with a default that the
+    person overrode (picked, answered or dropped), at the time it was put up."""
+    if not db.exists():
+        return []
+    conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+    rows = conn.execute("SELECT node_id, timestamp, kind, detail FROM node_log ORDER BY id").fetchall()
+    data = {i: json.loads(d) for i, d in conn.execute("SELECT id, data FROM nodes")}
+    meta = conn.execute("SELECT value FROM plan_meta WHERE key = 'board'").fetchone()
+    conn.close()
+    out = []
+    proposed: dict[str, str] = {}
+    for node, at, kind, _ in rows:
+        if kind == "proposed":
+            proposed.setdefault(node, at)
+    for node, at in proposed.items():
+        scope = (data.get(node) or {}).get("scope") or []
+        for nid, _, kind, detail in reversed(rows):
+            changed = (json.loads(detail or "{}").get("changed") or {}) if kind == "edited" else {}
+            if nid == node and "scope" in changed:
+                scope = changed["scope"][0] or []
+        hit = [g for g in scope if names(g, named)]
+        if hit and seconds(at) is not None:
+            out.append((seconds(at), f"{node} was proposed with scope {hit[0]}"))
+    for item in json.loads(meta[0]) if meta else []:
+        default = item.get("default") or item.get("kind") in ("assume", "leave out")
+        if item.get("agent") and default and item.get("state") in ("picked", "answered", "dropped"):
+            out.append(
+                (seconds(item.get("created_at")), f"board item {item['id']}: the person overrode its default")
+            )
+    return [s for s in out if s[0] is not None]
+
+
+def diff_sighting(
+    repo: Path, base: str, count, final: list[str], notes: list[str]
+) -> tuple[float, str] | None:
+    """The first commit since the base, on any ref (branches, merges, snapshots), whose tree trips a
+    trap in `final`: its commit time. Each distinct tree is counted once, oldest first."""
+    if not final:
+        return None
+    seen: set[str] = set()
+    lines = git(repo, "log", "--all", "--format=%ct %T %H %s", f"^{base}").split("\n")
+    for line in sorted(ln for ln in lines if ln):
+        at, tree, sha, subject = (line.split(" ", 3) + [""])[:4]
+        if tree in seen:
+            continue
+        seen.add(tree)
+        tar = subprocess.run(["git", "-C", str(repo), "archive", sha], capture_output=True, check=True).stdout
+        with tempfile.TemporaryDirectory(prefix="tally-at-") as where:
+            with tarfile.open(fileobj=io.BytesIO(tar)) as archive:
+                archive.extractall(where, filter="data")
+            said = count(Path(where))
+        hit = [trap for trap in said["tripped"] if trap in final]
+        if hit:
+            return float(
+                at
+            ), f"{'snapshot' if subject == 'snap' else 'commit'} {sha[:10]} trips {', '.join(hit)}"
+    notes.append(f"{len(seen)} trees since the base were counted, and none showed a trap the end has")
+    return None
+
+
+def first_wrong(repo: Path, base: str, module, final: dict, log: dict, notes: list[str]) -> dict:
+    """When a wrong inference first showed, in minutes from the first `prompt`, and how."""
+    seen = tree_sightings(repo / ".graphene" / "graphene.db", getattr(module, "NAMED", ()))
+    found = diff_sighting(repo, base, module.count, final["tripped"], notes)
+    seen += [found] if found else []
+    if not seen and final["traps"] and log["ended"] is not None:
+        seen.append((log["ended"], f"only in the final state: {', '.join(final['tripped'])}"))
+    if not seen or log["started"] is None:
+        return {"first_wrong_minutes": None, "first_wrong_at": None, "first_wrong_how": None}
+    at, how = min(seen)
+    return {
+        "first_wrong_minutes": round((at - log["started"]) / 60, 2),
+        "first_wrong_at": datetime.fromtimestamp(at, UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "first_wrong_how": how,
     }
 
 
@@ -359,6 +501,7 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--intent", required=True, help="intent_globs.txt")
     ap.add_argument("--accept", required=True, help="accept.py")
     ap.add_argument("--quality", help="quality.py: the same checks on inputs the code never saw")
+    ap.add_argument("--traps", help="traps.py: the task's traps, counted from the final state")
     ap.add_argument("--arm", required=True, choices=("prompt", "graphene", "tree", "board"))
     ap.add_argument("--runlog", required=True, help="runlog.jsonl")
     args = ap.parse_args(argv[1:])
@@ -374,6 +517,8 @@ def main(argv: list[str]) -> int:
     log = read_runlog(Path(args.runlog), notes)
     runs = runs_cost(repo / ".graphene" / "runs", notes)
     final_lines = final_diff_lines(repo, args.base)
+    module = load_traps(Path(args.traps)) if args.traps else None
+    trapped = module.count(repo) if module else None
     refusals = rec["refusals"]
 
     # Churn, once per file: the two records are two views of one filesystem, so adding them counts
@@ -436,6 +581,11 @@ def main(argv: list[str]) -> int:
         "executor_calls_unpriced": log["results_unpriced"] + runs["unpriced"],
         "wall_seconds": log["wall_seconds"],
         **forks_and_escalations(store_log(repo / ".graphene" / "graphene.db")),
+        "traps": trapped["traps"] if trapped else None,
+        "traps_tripped": trapped["tripped"] if trapped else None,
+        **(first_wrong(repo, args.base, module, trapped, log, notes) if module else {}),
+        "person_minutes_start": log["person_minutes_start"],
+        "person_minutes_end": log["person_minutes_end"],
         "notes": notes,
     }
     print(json.dumps(out, indent=2))

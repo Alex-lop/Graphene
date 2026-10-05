@@ -113,7 +113,7 @@ def typed(entry: dict, notes: list[str]) -> int:
 
 
 def model(entries: list[dict], notes: list[str]) -> dict:
-    acts = [e for e in entries if e.get("type") != "read"]
+    acts = [e for e in entries if e.get("type") not in ("read", "clock")]  # a clock is the person's watch
     chars = sum(typed(e, notes) for e in acts)
     words = sum(len(str(e.get("text") or "").split()) for e in entries if e.get("type") == "read")
     return {
