@@ -1,0 +1,13 @@
+root 13 ask board config demo direction init key node plan run talk ui watch
+board 8 answer drop lookup note park pick take unpark
+config 1 edit
+direction 6 accept attach drop edit plan propose
+key 3 check remove set
+node 13 add done drop edit release reopen set show sibling signoff split start widen
+plan 18 accept ack archive changes cover edit first goal log note pause precheck prompts propose record resume seen undo
+talk 4 another merge split why
+src .py files 43 lines 22591
+tests .py lines 26728
+tracked files 1214
+tests collected 1626
+clone --depth 1 of origin/main 4e5a2a9: 22560 KB (22M)
