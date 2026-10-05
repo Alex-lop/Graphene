@@ -109,6 +109,12 @@ class Statements(unittest.TestCase):
         )
         self.assertEqual(done.returncode, 0, done.stdout[-2000:] + done.stderr[-2000:])
         got = {p.parent.name: json.loads(p.read_text()) for p in runs.glob("*/tally.json")}
+        ran = {name: runs / name / "tmp" / "run-1.txt" for name in got}  # a tree run's `graphene run`
+        said = "\n".join(  # what each run tripped, and how each tree run ended: CI failed once, 4 of 5
+            f"{name}: {t.get('traps_tripped')}\n"
+            + (ran[name].read_text(errors="replace")[-1500:] if ran[name].is_file() else "")
+            for name, t in sorted(got.items())
+        )
         self.assertEqual(
             {name: (t["traps"], t["first_wrong_how"] is not None) for name, t in got.items()},
             {
@@ -117,6 +123,7 @@ class Statements(unittest.TestCase):
                 "statements-tripall-prompt-1": (5, True),  # the first snapshot with a trap
                 "statements-tripnone-prompt-1": (0, False),
             },
+            said,
         )
         self.assertIn(
             "proposed with scope vendor/decimalfmt/**", got["statements-tripall-tree-1"]["first_wrong_how"]
