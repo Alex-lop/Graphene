@@ -201,8 +201,6 @@ These are honest boundaries, not airtight ones. The hooks that stop a write befo
 
 - With Claude Code or Codex, Graphene sends nothing anywhere.
 - Nemotron on Token Factory is an optional extra; what it sends is in [HACKATHON.md](docs/HACKATHON.md).
-- The plan lives in `.graphene/` in your repo, created `0700` and git-ignored, all but `.graphene/direction.txt`, which holds only goals and is yours to commit. Delete `.graphene/` and Graphene forgets everything.
-- Graphene never pushes. It commits only during `graphene run`: on its own `graphene/<leaf>` branches, plus one merge of each passing leaf into your branch.
 
 <br>
 

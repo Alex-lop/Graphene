@@ -2,23 +2,24 @@
 
 ## 0.5.0 (not published yet: the tag is Alex's)
 
-`plan first` has a third value, `auto`, now the default, and a store's `on` becomes it: one leaf of work is
-done at once, more is proposed as a tree. `on` now proposes every ask. Run `graphene plan first`.
-
 Graphene on Nemotron. As practice on 2 October, Nemotron planned a small feature 5 times. 2 plans ran to the
 end in Token Factory Sandboxes, landing 5 of 6 leaves, each passed by its own check; neither did all it was
 asked. 3 stopped at the planner, whose tree was readable on 2 of 9 asks (`docs/test/first-light.md`). Nothing
 registered has run live.
 
+The cut (5 October). Smaller, with a safe default.
+- `graphene run` isolates every leaf in its own worktree and merges what passes. `--here` is the old way.
+- A Claude Code executor can write in its run's worktree. The hook had refused every write there.
+- `plan first` has a third value, `auto`, the default: one leaf is done at once, more is proposed.
+  `on` makes every ask wait for you, and an old `on` reads as `auto`. Run `graphene plan first`.
 - `graphene --help` shows nine commands. The rest still work; HOW_IT_WORKS lists them under "The rest".
 - Every command's help is one or two short lines. Run `graphene node --help` to see it.
-- `graphene run` now isolates every leaf in a worktree. `--here` is the old behaviour.
-- A Claude Code executor can write in its run's worktree. The hook had refused every write there as the plan's store.
-- The old briefs, notes and spikes left `main` for the orphan branch `process`.
-  `git show origin/process:README.md` says what is there.
 - The web UI is gone. `git revert` of the deletion commit brings it back.
+- `node show` fills the commits it credits. Only the web UI did that before.
 - Nemotron is an optional extra: `uv tool install 'graphene-map[nemotron] @ git+…'`. Without it, no Token
   Factory code loads.
+- The old briefs, notes and spikes left `main` for the orphan branch `process`.
+  `git show origin/process:README.md` says what is there.
 - A task a paragraph should lose, for Alex to run: `statements`, five traps, `docs/test/PROVE.md`.
   Its rehearsal calls no model: `uv run python docs/test/prove.py rehearse /tmp/rehearsal`.
 
