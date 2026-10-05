@@ -8,7 +8,7 @@ Sandboxes have no published price; the night ledger counts their minutes. Other 
 repo root in your own terminal. Tonight each harness here ran only as far as its `--help` or usage
 line; `newrun.sh` and `summarize.py` have none and did not run.
 
-**Once.** (1) Sandboxes: `uv run --frozen --extra sandbox graphene key check`. Its second line is
+**Once.** (1) Sandboxes: `uv run --frozen --extra nemotron graphene key check`. Its second line is
 ConTree's whoami, a read that spends nothing: `Sandboxes: work (import, list and spawn granted)`, or
 what stands in the way (a grant the project lacks, a 403 with ConTree's reason, a 401, no answer).
 Until it says `work` (ask at tokenfactory.nebius.com/sandboxes/about), rungs 3, 4, 6, 7 and every
@@ -36,7 +36,7 @@ brief on Nemotron (`standin.py`'s tree and board arms still run Claude Code). RU
 - **A**: `docs/test/newrun.sh RUNS feeds sealed nano 1`; a stand-in gets `docs/test/standin.py feeds
   sealed nano RUN VENV_BIN --steps N --seconds S`, which drives `arm_a.py`. $0.002-0.15 a run for N
   of 20-100 calls; at most S seconds.
-- **B′**: `uv run --frozen --extra sandbox python docs/test/arm_bprime.py feeds --paragraph-file
+- **B′**: `uv run --frozen --extra nemotron python docs/test/arm_bprime.py feeds --paragraph-file
   docs/test/tasks/feeds/paragraph.md --change-file docs/test/tasks/feeds/change.md --executor
   'nemotron …' --planner nemotron --ledger "$GRAPHENE_LEDGER" --run 1` (no change file for inventory
   or report). One or two asks, 4-10 leaves of 10-40 calls: $0.02-1 a run, B the same; up to an hour.

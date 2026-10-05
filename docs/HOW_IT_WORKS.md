@@ -584,6 +584,11 @@ a leaf; `--about <id>` asks it about a leaf that came back.
 
 ## P4b. Nemotron on Token Factory: the executor, the planner, the sandbox
 
+Nemotron is an optional extra, in `src/graphene_map/nemotron/`: `uv tool install 'graphene-map[nemotron] @
+git+…'`. The core reaches it only through `extra.py`. Without the extra, `graphene key`, `plan cover`, `plan note`,
+`plan precheck` and `board lookup` are not there, `init` does not offer Nemotron, and `--with nemotron`
+is refused with the install line. `init` offers Nemotron only when a key is found.
+
 `--with nemotron` names Graphene's own executor (`executor.py`) to `graphene run`, and its own planner
 (`planner.py`) to `graphene ask`, `node split` and `:ask`. Both call Nebius Token Factory's
 OpenAI-compatible API (`tokenfactory.py`, the standard library only) with the key found in
@@ -635,7 +640,7 @@ or used all its steps) on the ladder's last rung with nothing changed inside the
 words; otherwise the run's boundary decides, and the next rung tries. A fault in one fork is that
 fork's reason; when no fork passes, each fork's reason is said.
 
-**The sandbox** (`sandbox.py`) is ConTree, through `contree-sdk` 0.3.6 (the `sandbox` extra), with the
+**The sandbox** (`sandbox.py`) is ConTree, through `contree-sdk` 0.3.6 (the `nemotron` extra), with the
 SDK's own credentials (`NEBIUS_API_KEY` and `NEBIUS_PROJECT_ID`, or a `contree auth` profile). Without
 them it refuses in words before anything is sent. A project Sandboxes refuse (ConTree's 403, as rung 1
 met it on 29 September) is one refusal, in the same words in `access.py`, on the ladder, for a leaf in a

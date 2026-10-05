@@ -75,7 +75,7 @@ def test_the_dag_note_the_docs_quote_is_the_one_view_dag_prints_for_their_scratc
     assert "2 at once" not in hackathon + storyboard and "Two leaves can start at once" not in storyboard
 
 
-def test_the_readme_s_privacy_says_precheck_uploads_the_checkout_to_sandboxes():
+def test_what_nemotron_sends_says_precheck_uploads_the_checkout_to_sandboxes():
     import inspect
 
     from graphene_map.nemotron import precheck
@@ -83,8 +83,11 @@ def test_the_readme_s_privacy_says_precheck_uploads_the_checkout_to_sandboxes():
     forks = inspect.getsource(precheck._forks)
     assert 'or "contree"' in forks and "S.pack(root)" in forks  # ConTree by default, the checkout packed
     privacy = doc("README.md").split("## Privacy")[1].split("## ")[0]
-    assert "`plan precheck` uploads your checkout to Sandboxes when ConTree's credentials are set" in privacy
-    assert "whatever the planner" in privacy
+    assert "With Claude Code or Codex, Graphene sends nothing anywhere." in privacy
+    assert "Nemotron on Token Factory is an optional extra; what it sends is in [HACKATHON.md]" in privacy
+    sends = doc("docs/HACKATHON.md").split("**What it sends.**")[1].split("**")[0]
+    assert "`plan precheck` uploads your checkout to Sandboxes when ConTree's credentials are set" in sends
+    assert "whatever the planner" in sends
 
 
 def test_watch_help_names_no_view_setting_that_no_command_can_set():
@@ -150,7 +153,9 @@ def test_the_readme_and_changelog_name_what_first_light_added_and_no_doc_says_th
     assert S.BOARDS[0] == "auto"  # the first is the value when unset
     for path in ("README.md", "CHANGELOG.md"):
         said = doc(path)
-        assert "graphene direction" in said and "board lookup" in said and "`board: auto`" in said, path
+        assert "graphene direction" in said and "`board: auto`" in said, path
+    for path in ("docs/HACKATHON.md", "CHANGELOG.md"):  # board lookup is the Nemotron extra's
+        assert "board lookup" in doc(path), path
         live = "As practice on 2 October, Nemotron planned a small feature 5 times"
         assert live in " ".join(said.split()), path
     for path in ("README.md", "docs/HOW_IT_WORKS.md"):

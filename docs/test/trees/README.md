@@ -78,8 +78,8 @@ Model ids come from the live list, never typed:
 
 ```sh
 cd $G
-NANO=$(uv run python -c 'from graphene_map import tokenfactory as tf; print(tf.roles()["nano"])')
-SUPER=$(uv run python -c 'from graphene_map import tokenfactory as tf; print(tf.roles()["super"])')
+NANO=$(uv run python -c 'from graphene_map.nemotron import tokenfactory as tf; print(tf.roles()["nano"])')
+SUPER=$(uv run python -c 'from graphene_map.nemotron import tokenfactory as tf; print(tf.roles()["super"])')
 for n in 1 2 3; do
   uv run python docs/test/bench.py feeds --config nano --executor "nemotron --model $NANO" \
     --parallel 4 --run $n || break

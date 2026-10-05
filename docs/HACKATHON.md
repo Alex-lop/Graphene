@@ -98,21 +98,21 @@ built and tested against the scripted stand-in. Each has run live only as practi
 - `graphene plan cover`: Nano reads your paragraph beside the plan and names the parts no leaf
   carries. Each comes back in your own words, with the command that puts it on the nearest leaf. A
   clause the model made up is dropped, because Graphene keeps only words that are in your paragraph
-  (`tests/test_cover.py`).
+  (`tests/nemotron/test_cover.py`).
 - `graphene plan note "…"`: a loose sentence finds the one leaf it constrains and comes back as the
   exact `graphene node set` that would change that leaf. Graphene checks the change before showing
-  it, and nothing changes until you run it (`tests/test_note.py`).
+  it, and nothing changes until you run it (`tests/nemotron/test_note.py`).
 - `graphene plan precheck`: every proposed check runs at the starting commit, in a sandbox fork,
   before `R`. A check that passes already, or cannot run, says "done" of nothing, and is flagged.
   Nano reads only a red whose reason the exit code does not say. The fork has been a scripted runner
-  and a Docker container, not yet a Token Factory Sandbox (`tests/test_precheck.py`).
+  and a Docker container, not yet a Token Factory Sandbox (`tests/nemotron/test_precheck.py`).
 
 They are the top three of 32 ideas, 20 after merging, scored by three judges
 (`docs/process/ideas.md`). A fourth came on 29 September, for the board: `graphene board lookup` asks
 Nano which open questions the repository already answers. An answer is kept only when the line it
 quotes is in the file it names and its choice is one the question offers, and the item is settled
 "from the repo: FILE:LINE", which `graphene board unpark` gives back to the person. A protected file
-is never sent. Like the three, it has run only against the scripted stand-in (`tests/test_lookup.py`).
+is never sent. Like the three, it has run only against the scripted stand-in (`tests/nemotron/test_lookup.py`).
 
 **The direction: the goals above the plans.** `graphene direction` is a small tree of goals, one
 line a node, in `.graphene/direction.txt`. Git tracks that file, and the store beside it stays on the
@@ -147,10 +147,20 @@ and why the others did not (`docs/process/winning/screens/`, taken against the s
 A person who already has an agent never has to sign up for anything: `graphene init` lists what it
 finds (Claude Code, Codex, a Token Factory key), each with what it needs, and none comes first.
 
+**What it sends.** Nemotron is an optional extra: `uv tool install 'graphene-map[nemotron] @
+git+https://github.com/Alex-lop/Graphene'`. Without it, no Token Factory code loads, and with Claude
+Code or Codex Graphene itself sends nothing anywhere. With NVIDIA Nemotron as planner or executor,
+Graphene sends Nebius Token Factory your prompts and the files the model reads, and in a sandbox it
+sends Sandboxes the leaf's checkout. The key lives in your environment or the system keychain, never
+in a file. The Nemotron prototypes are the exception, whatever the planner: `plan cover`, `plan note`
+and `graphene board lookup` ask Nemotron Nano, and `plan precheck` uploads your checkout to Sandboxes
+when ConTree's credentials are set (and asks Nano about a failing check whose output doesn't say why).
+None of them runs unless you run it, or set `GRAPHENE_SHAPE` to run them after each `graphene ask`.
+
 ## How we built it
 
 - **Token Factory's API.** Two endpoints, called from the Python standard library
-  (`src/graphene_map/tokenfactory.py`). No model id is written in the code: `GET
+  (`src/graphene_map/nemotron/tokenfactory.py`). No model id is written in the code: `GET
   /v1/models?verbose=true` names the Nemotron Ultra, Super and Nano, and its `pricing` prices every
   call's `usage`. When a model is retired, a stale id falls back to the nearest listed Nemotron, and
   one line says which was used instead of which. A 429, a 5xx and a timeout are retried, then
@@ -163,7 +173,7 @@ finds (Claude Code, Codex, a Token Factory key), each with what it needs, and no
   that would take the night past its cap (the lower of that figure and $10) is refused unsent; nothing
   new starts once what is spent and in flight reach 80% of the cap; and a ConTree operation is counted
   with its seconds, at $0 until its price is read. Every row is marked practice, and
-  `docs/test/evidence.py` refuses practice (`night.py`, `tests/test_night.py`).
+  `docs/test/evidence.py` refuses practice (`night.py`, `tests/nemotron/test_night.py`).
 - **Nemotron's roles.** Ultra is the planner (`planner.py`). It has read-only tools (list, glob, grep,
   read) that run on the person's machine and read only what git shows, and it answers in Graphene's
   plan text. Nano, then Super, is the executor (`executor.py`). Graphene's own loop asks for one tool
@@ -191,13 +201,13 @@ finds (Claude Code, Codex, a Token Factory key), each with what it needs, and no
   is asked for. A 403 at any later operation brings the leaf back in the same words, naming the grants
   the key lacks when whoami lists them. An operation past its time comes back as the command's exit
   124, as Docker's does, so the leaf goes on. These are tested against stubs of the SDK that raise its
-  own error classes (`tests/test_sandbox_contract.py`, `tests/test_init.py`, `tests/test_faults.py`).
+  own error classes (`tests/nemotron/test_sandbox_contract.py`, `tests/test_init.py`, `tests/nemotron/test_faults.py`).
 - **The boundary, three layers deep.** Layer one: the executor's write tools refuse a path outside
   the scope before touching it, in the same words the Claude Code hooks use. Layer two: in a
   sandbox, the operating system refuses it too. Layer three: a leaf is done only when Graphene runs
   the check itself and git shows nothing outside the scope. An escape test tries every way out (a
   redirect, `sed -i`, `python open(w)`, `mv`, `rm`, git, a symlink, `chmod`). Each fails, and every
-  write inside the scope succeeds (`tests/test_escape.py`, in the Docker stand-in). It passed once in
+  write inside the scope succeeds (`tests/nemotron/test_escape.py`, in the Docker stand-in). It passed once in
   ConTree too, as practice on 2 October: 10 ways out failed or were refused, 2 ways in came back
   (`docs/test/first-light.md`).
 - **The board and the views.** The board is kept in the plan's store beside the nodes, so `graphene
@@ -258,7 +268,7 @@ finds (Claude Code, Codex, a Token Factory key), each with what it needs, and no
   passed once in ConTree, as practice on 2 October (`docs/test/first-light.md`).
 - Failure that reads as a sentence. A 429 storm, a 5xx, a timeout, a model that stops calling tools,
   a sandbox killed mid-leaf and a check that hangs each bring the leaf back with its cause and what
-  to do. The run goes on, and nothing is left running (`tests/test_faults.py`, against the
+  to do. The run goes on, and nothing is left running (`tests/nemotron/test_faults.py`, against the
   stand-ins).
 - The board caught what went unasked. The same paragraph, sent again in a fresh clone to the planner
   that asks, came back with five items instead of five paragraphs: three questions with a default
@@ -429,7 +439,7 @@ are in `docs/test/first-light.md`.)
 | --- | --- |
 | 20/20 and 12/12, 2,626 against 3,869 modelled person-seconds | `docs/test/results-2026-09-23.md` (stand-in runs, frontier agent) |
 | 3 of 3 against 0 of 3; 5.2 to 6.1 times the characters | `docs/test/spikes/harness_there/RESULTS.md` (stand-ins) |
-| fifty operations at once; a peak of 50, or 56 without the slots | `tests/test_faults.py`, the thirty-leaf test (a counting fake box); 56 with `sandbox.CAP` raised to 1000, which is 8 executors × 7 forks |
+| fifty operations at once; a peak of 50, or 56 without the slots | `tests/nemotron/test_faults.py`, the thirty-leaf test (a counting fake box); 56 with `sandbox.CAP` raised to 1000, which is 8 executors × 7 forks |
 | 14,474 lines, none before the period; 181 and 421 commits | git, the commands above, at `0334168` |
 | about 250 words in five paragraphs; five items instead; each a decision made silently | `docs/process/shaping/as-the-person.md`, items 2 and 12 (Claude Code as planner and executors, an agent in the person's seat) |
 | 32 ideas, 20 after merging, three judges, the top three built | `docs/process/ideas.md` |
@@ -451,7 +461,7 @@ graphene demo              # a recorded run, replayed in graphene watch: space p
 graphene demo --once       # its last state, printed
 git clone https://github.com/Alex-lop/Graphene && cd Graphene
 SHOW_DEMO=1 uv run pytest -s tests/test_demo_script.py   # nemotron.sh against a scripted stand-in
-uv run pytest tests/test_board.py tests/test_cover.py tests/test_note.py tests/test_precheck.py
+uv run pytest tests/test_board.py tests/nemotron/test_cover.py tests/nemotron/test_note.py tests/nemotron/test_precheck.py
                            # the board, and Nemotron's three shaping prototypes against the stand-in
 ```
 
@@ -475,6 +485,7 @@ graphene watch                    # Tab for the tree and the graph
 With a key for Token Factory (it spends at list price, and prints the bill at the end):
 
 ```
-export NEBIUS_API_KEY=…    # for Sandboxes, NEBIUS_PROJECT_ID too, and install with [sandbox]
+uv tool install 'graphene-map[nemotron] @ git+https://github.com/Alex-lop/Graphene'
+export NEBIUS_API_KEY=…    # for Sandboxes, NEBIUS_PROJECT_ID too
 docs/proof/nemotron.sh     # in the clone: the feeds task, from nothing to git log --graph
 ```
