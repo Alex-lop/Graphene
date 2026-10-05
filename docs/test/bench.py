@@ -60,10 +60,10 @@ sys.path.insert(0, str(HERE))
 import make_task  # noqa: E402
 import tally  # noqa: E402  (it puts src/ on the path)
 
-from graphene_map import night  # noqa: E402
 from graphene_map import plan as P  # noqa: E402
-from graphene_map import tokenfactory as tf  # noqa: E402
-from graphene_map.executor import PROMPT_VERSION  # noqa: E402
+from graphene_map.nemotron import night  # noqa: E402
+from graphene_map.nemotron import tokenfactory as tf  # noqa: E402
+from graphene_map.nemotron.executor import PROMPT_VERSION  # noqa: E402
 from graphene_map.run import STOPPED  # noqa: E402
 from graphene_map.store import Store  # noqa: E402
 

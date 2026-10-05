@@ -587,9 +587,10 @@ class Store:
         detail: dict | None = None,
     ) -> None:
         if kind == "usage" and detail:  # night is imported here, not by the hook (test_hook_budget's WORK)
-            from . import night
+            from . import extra
 
-            if night.cap() is not None:  # made under the person's opening
+            night = extra.load("night")
+            if night and night.cap() is not None:  # made under the person's opening
                 detail = {**detail, "practice": True}
         self.conn.execute(
             "INSERT INTO node_log (node_id, timestamp, kind, actor, session_id, agent_id, detail) "

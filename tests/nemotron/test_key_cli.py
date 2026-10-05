@@ -10,8 +10,8 @@ import pytest
 import typer
 from typer.testing import CliRunner
 
-from graphene_map import key_cli, keys
 from graphene_map import plan as P
+from graphene_map.nemotron import key_cli, keys
 
 SECRET = "tf-SECRET-0123456789"
 PERSON = {"GRAPHENE_AS": "person:alex"}
@@ -169,7 +169,7 @@ def test_check_says_when_sandboxes_are_not_set_up_here(keychain, monkeypatch, tm
     monkeypatch.setitem(sys.modules, "contree_sdk", None)  # import contree_sdk raises ImportError
     monkeypatch.setenv("NEBIUS_PROJECT_ID", PROJECT)
     done = key("check")
-    assert done.output.splitlines()[1:] == ["Sandboxes: the SDK is not installed (uv sync --extra sandbox)"]
+    assert done.output.splitlines()[1:] == ["Sandboxes: the SDK is not installed (uv sync --extra nemotron)"]
 
 
 def test_a_profiles_project_and_token_are_not_said_either(keychain, monkeypatch, tmp_path):

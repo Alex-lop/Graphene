@@ -179,7 +179,7 @@ def test_a_recording_made_with_a_planted_key_and_project_counts_none_of_them(tmp
         k = sum(1 for m in body["messages"] if m["role"] == "assistant")
         return steps[k] if k < len(steps) else {"content": "nothing more"}
 
-    # local: with a project id and the sandbox extra, init would place the leaves in ConTree, live
+    # local: with a project id and the nemotron extra, init would place the leaves in ConTree, live
     done, said, _ = script(tmp_path, answer, "true", RECORD=str(tmp_path / "demo.jsonl"),
                            NEBIUS_PROJECT_ID=project, EXECUTOR=f"nemotron --model {NANO} --placement local")
     assert done.returncode == 0, said

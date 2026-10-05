@@ -13,7 +13,7 @@ import pytest
 from fake_tokenfactory import Fake, call
 
 from graphene_map import plan
-from graphene_map import tokenfactory as tf
+from graphene_map.nemotron import tokenfactory as tf
 from graphene_map.plan import DONE, OPEN, Caller
 from graphene_map.run import label, named, run_parallel, run_plan
 from graphene_map.store import Store
@@ -94,7 +94,7 @@ def run_one(repo, spec=f"nemotron --model {NANO}", attempts=1):
 
 def counted(store: Store, node: str) -> dict:
     """What docs/test/tally.py counts of a leaf's log for the live pre-registration: forks, escalations."""
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "docs" / "test"))
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "docs" / "test"))
     import tally
 
     return tally.forks_and_escalations(store.node_log(node))
@@ -245,7 +245,7 @@ def test_two_leaves_land_at_once_each_in_its_worktree(repo, fake):
 
 
 def test_named_executors_and_their_label():
-    assert named("nemotron --model x").split()[1:] == ["-m", "graphene_map.executor", "--model", "x"]
+    assert named("nemotron --model x").split()[1:] == ["-m", "graphene_map.nemotron.executor", "--model", "x"]
     assert label(named("nemotron")) == "nemotron"
     assert named("claude").startswith("claude -p ")
     for nothing in (None, "", " "):  # none chosen: nothing starts (first walker, finding 1)
@@ -258,8 +258,8 @@ def test_named_executors_and_their_label():
 def test_started_by_hand_it_says_who_starts_it(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     env = {k: v for k, v in os.environ.items() if k != "GRAPHENE_NODE"}
-    said = subprocess.run([sys.executable, "-m", "graphene_map.executor", "a prompt"], capture_output=True,
-                          text=True, env=env)  # fmt: skip
+    said = subprocess.run([sys.executable, "-m", "graphene_map.nemotron.executor", "a prompt"],
+                          capture_output=True, text=True, env=env)  # fmt: skip
     assert said.returncode == 2 and "started by `graphene run`" in said.stdout
 
 
@@ -363,7 +363,7 @@ def test_the_attempt_is_the_one_run_names_not_the_log_s_count(repo, fake, monkey
     """`graphene run` writes an attempt's row only once the executor is running: an executor that read
     the log for its attempt could read attempt 2 as 1 and stay on the ladder's first model (a CI run
     on macOS did). The run names the attempt (GRAPHENE_TRY), and that is the one used."""
-    from graphene_map import executor
+    from graphene_map.nemotron import executor
 
     f = fake([call("release", why="just looking")] * 3)
     plan_of(repo, leaf())
@@ -409,7 +409,7 @@ def test_a_wrong_key_comes_back_once_with_its_cause_and_no_check_runs(repo, fake
 def test_graphenes_own_done_keeps_the_key_for_a_sandbox_check(repo, monkeypatch):
     """`graphene node done` is Graphene's own process: a sandbox leaf's check is forked in ConTree from
     there, which needs the key. (The check itself never gets it: see the test above it.)"""
-    from graphene_map import executor
+    from graphene_map.nemotron import executor
 
     seen = {}
     monkeypatch.setenv("NEBIUS_API_KEY", "the-key")

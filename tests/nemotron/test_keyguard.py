@@ -18,7 +18,7 @@ REAL_ON_A_BARE_PATH = shutil.which(TOOL, path="/usr/bin:/bin") is not None  # no
 
 CONFTEST = f"""
 import sys
-sys.path.append({str(Path(__file__).parent)!r})
+sys.path.append({str(Path(__file__).parents[1])!r})
 import keyguard
 
 def pytest_configure(config):
@@ -27,10 +27,10 @@ def pytest_configure(config):
 
 WAYS = f"""
 import os, subprocess, sys
-from graphene_map import keys
+from graphene_map.nemotron import keys
 
 TOOL = {TOOL!r}
-PEEK = [sys.executable, "-c", "from graphene_map import keys; print(keys.find())"]
+PEEK = [sys.executable, "-c", "from graphene_map.nemotron import keys; print(keys.find())"]
 
 
 def test_graphenes_lookup(monkeypatch):

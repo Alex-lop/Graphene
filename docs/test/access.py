@@ -27,9 +27,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
-from graphene_map import keys  # noqa: E402
-from graphene_map import sandbox as S  # noqa: E402
-from graphene_map import tokenfactory as tf  # noqa: E402
+from graphene_map.nemotron import keys  # noqa: E402
+from graphene_map.nemotron import sandbox as S  # noqa: E402
+from graphene_map.nemotron import tokenfactory as tf  # noqa: E402
 
 WEATHER = {
     "type": "function",

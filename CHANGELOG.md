@@ -12,6 +12,8 @@ registered has run live.
 - The old briefs, notes and spikes left `main` for the orphan branch `process`.
   `git show origin/process:README.md` says what is there.
 - The web UI is gone. `git revert` of the deletion commit brings it back.
+- Nemotron is an optional extra: `uv tool install 'graphene-map[nemotron] @ git+…'`. Without it, no Token
+  Factory code loads.
 
 The live half of first light (2 October, practice).
 - The sandbox's list of files takes the exit code through `$(...)`, and a command's output is appended, never

@@ -34,7 +34,7 @@ from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from pathlib import Path
 
 from . import board as B
-from . import night
+from . import extra
 from . import plan as P
 
 # An executor may edit files and run `graphene node …` and `graphene plan …` (its done, its release, a
@@ -64,16 +64,14 @@ def named(spec: str | None) -> str:
     if not spec:
         raise unchosen("executor")
     if spec.split(None, 1)[0] == "nemotron":
-        from .executor import template
-
-        return template(spec)
+        return extra.need("executor").template(spec)
     return {"claude": DEFAULT_WITH, "codex": CODEX}.get(spec, spec)
 
 
 INTERPRETER = re.compile(r"(python|node|bash|sh|zsh|ruby|perl|deno|bun)[\d.]*")
 
 
-def label(template: str, own: str = "graphene_map.executor") -> str:
+def label(template: str, own: str = "graphene_map.nemotron.executor") -> str:
     """Who the run's executor is, in the plan's log: `run:<this>`. The command's name, never where it
     lives: the label is on the page an export publishes. A script run by an interpreter is named by the
     script (`python3 bin/executor.py` is `executor.py`); Graphene's own (``own``) is `nemotron`."""
@@ -470,7 +468,7 @@ def _splits(template: str) -> None:
 def _begins(template: str) -> None:
     """A run of Graphene's own executor is one new live thing under the night's cap (``night.begin``): its
     leaves go on under the cap once it has started, and it does not start past 80% of the cap."""
-    if label(template) == "nemotron":
+    if label(template) == "nemotron" and (night := extra.load("night")):
         try:
             night.begin("the run")
         except night.Refused as no:

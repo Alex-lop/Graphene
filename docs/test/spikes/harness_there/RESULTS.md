@@ -14,7 +14,7 @@ measurement (load average 6 to 10), so the seconds are noisy.
   the sha512 npm publishes for it, plus ripgrep. Image `graphene-harness-there:opencode-1.18.31`, 465 MB
   (the base is 400 MB). Only the arm64 build was made.
 - `wrapper.py`: the command given to `--with`. For the leaf in `GRAPHENE_NODE` it makes a
-  `graphene_map.sandbox.Sandbox` from the leaf's checkout (layer 2 included) on that image. It runs
+  `graphene_map.nemotron.sandbox.Sandbox` from the leaf's checkout (layer 2 included) on that image. It runs
   `opencode run --format json --auto --title leaf <contract>` there once, as the leaf's unprivileged
   user, with Token Factory (in this spike, the fake) as OpenCode's only provider. `Sandbox._bring_back`
   brings back what the scope covers. Then the wrapper says `graphene node release` when OpenCode's last
@@ -143,7 +143,7 @@ also set in other.py`. `plan.offers` gives `widen greet's scope to other.py` and
 
 - **A:** in the Graphene process on this machine only. The model's probe in the sandbox printed
   `no-key-in-env` and `no-key-file` in 3 of 3 runs. The local placement also strips the key from a
-  command's environment (`tests/test_executor.py`).
+  command's environment (`tests/nemotron/test_executor.py`).
 - **B:** inside the sandbox for the whole of OpenCode's run. The wrapper puts it in `/tmp/graphene/key`
   and removes it before the checkpoint. OpenCode reads it through `{file:…}` in its config, so the key is
   not in any process's environment. The model's probe printed `no-key-in-env` and `key-file-readable` in

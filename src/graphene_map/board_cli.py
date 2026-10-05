@@ -10,7 +10,7 @@ import typer
 from rich.cells import cell_len, chop_cells
 
 from . import board as B
-from . import cover
+from . import extra
 from . import plan as P
 from . import plan_text as T
 from . import settings as S
@@ -219,18 +219,8 @@ def register(cli: typer.Typer, root, open_store, fail) -> None:
         """Answer it in your own words."""
         act(f"board answer {item_id}", lambda s, who, files: B.answer(s, item_id, " ".join(words), who))
 
-    @board_cli.command()
-    def lookup() -> None:
-        """Ask Nano which open questions the repository already answers, and settle each whose answer
-        is in a file as quoted, marked "from the repo" (unpark opens it again). It spends: one call.
-        GRAPHENE_SHAPE=lookup runs it after each `graphene ask`."""
-        from . import lookup as L  # here, not above: it loads the model's client only when asked
-
-        with open_store(root()) as store:
-            try:  # not one undoable act: the model is never asked under the plan's write lock
-                L.lookup(store, root(), out)
-            except P.Refused as no:
-                fail(str(no), 1)
+    if L := extra.load("lookup"):  # the Nemotron extra's, when it is installed
+        L.register(board_cli, root, open_store, fail, out)  # `graphene board lookup`
 
     @board_cli.command()
     def note(
@@ -242,9 +232,9 @@ def register(cli: typer.Typer, root, open_store, fail) -> None:
         GRAPHENE_SHAPE=note, a model then finds the leaf it constrains, and the change is put up as an
         item whose default, taken, makes it."""
         act("board note", lambda s, who, files: B.note(s, " ".join(words), who, about))
-        if "note" in cover.shaping() and P.caller().person:
-            from . import note as N  # here, not above: it loads the model's client only when asked
-
+        cover = extra.load("cover")  # the Nemotron extra's GRAPHENE_SHAPE, when it is installed
+        if cover and "note" in cover.shaping() and P.caller().person:
+            N = extra.need("note")
             with open_store(root()) as store:  # routed outside the plan's write lock, as note.route asks
                 item = N.to_board(store, root(), " ".join(words), say=out)
             if item is not None:

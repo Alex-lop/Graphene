@@ -21,10 +21,12 @@ import os
 from collections.abc import Callable
 from pathlib import Path
 
-from . import board as B
+import typer
+
+from .. import board as B
+from .. import plan as P
+from .. import settings as S
 from . import cover
-from . import plan as P
-from . import settings as S
 
 ACTOR = "lookup:nemotron"
 FLAG = "lookup"
@@ -206,3 +208,16 @@ def after_proposal(store, root: Path, say: Callable[[str], None]) -> None:
         lookup(store, root, say)
     except Exception as no:  # the proposal has landed: nothing here may turn that into a failed ask
         say(f"! the board was not looked up in the repository: {' '.join(str(no).split())[:200]}")
+
+
+def register(board_cli: typer.Typer, root, open_store, fail, out) -> None:
+    @board_cli.command("lookup")
+    def lookup_() -> None:
+        """Ask Nano which open questions the repository already answers, and settle each whose answer
+        is in a file as quoted, marked "from the repo" (unpark opens it again). It spends: one call.
+        GRAPHENE_SHAPE=lookup runs it after each `graphene ask`."""
+        with open_store(root()) as store:
+            try:  # not one undoable act: the model is never asked under the plan's write lock
+                lookup(store, root(), out)
+            except P.Refused as no:
+                fail(str(no), 1)

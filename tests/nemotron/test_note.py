@@ -9,9 +9,9 @@ import shlex
 from test_plan_cli import agent, person, repo, runner  # noqa: F401  (fixtures)
 from test_planner import fake  # noqa: F401  (fixture)
 
-from graphene_map import note
 from graphene_map import plan as P
 from graphene_map.cli import build
+from graphene_map.nemotron import note
 from graphene_map.store import Store
 
 NANO = "nvidia/Nemotron-3-Nano-fake"

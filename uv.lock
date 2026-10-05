@@ -100,27 +100,29 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
-sandbox = [
+nemotron = [
     { name = "contree-sdk" },
 ]
 
 [package.dev-dependencies]
 dev = [
+    { name = "graphene-map", extra = ["nemotron"] },
     { name = "pytest" },
     { name = "ruff" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "contree-sdk", marker = "extra == 'sandbox'", specifier = "==0.3.6" },
+    { name = "contree-sdk", marker = "extra == 'nemotron'", specifier = "==0.3.6" },
     { name = "rich", specifier = ">=13" },
     { name = "textual", specifier = ">=8.2" },
     { name = "typer", specifier = ">=0.15" },
 ]
-provides-extras = ["sandbox"]
+provides-extras = ["nemotron"]
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "graphene-map", extras = ["nemotron"] },
     { name = "pytest", specifier = ">=8" },
     { name = "ruff", specifier = ">=0.8" },
 ]

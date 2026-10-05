@@ -59,7 +59,7 @@ with `--with nemotron`, which places it on this machine. The practice leaf `hell
 
 The bill is $0.0029 against the night's $10. Rung 2's three rows at the live list's Nano price are
 $0.00012468, $0.00012996 and $0.00011142. They add up to $0.00036606, which `progress.json` rounds to
-$0.000366. `tests/test_tokenfactory.py` checks that arithmetic at the live list's prices, not the
+$0.000366. `tests/nemotron/test_tokenfactory.py` checks that arithmetic at the live list's prices, not the
 fake's. One Nano call, at 01:05:30, took 11.9 s. Every other call took 0.9 to 1.4 s.
 
 ## The ForbiddenError

@@ -8,8 +8,8 @@ import pytest
 from fake_tokenfactory import Fake, call
 
 from graphene_map import plan
-from graphene_map import tokenfactory as tf
 from graphene_map.ask import ask, label, named
+from graphene_map.nemotron import tokenfactory as tf
 from graphene_map.plan import PROPOSED
 from graphene_map.store import Store
 

@@ -1,5 +1,5 @@
-"""The night's bill (graphene_map/night.py), against the recorded fake and a stub ConTree SDK: under the
-person's opening every Token Factory call reserves its worst case before it is sent and settles after,
+"""The night's bill (graphene_map/nemotron/night.py), against the recorded fake and a stub ConTree SDK: under
+the person's opening every Token Factory call reserves its worst case before it is sent and settles after,
 a call that would pass the cap is refused unsent, processes racing for the last dollars cannot both
 pass, nothing new starts past 80% of the cap, ConTree operations are counted with their seconds, every
 row says practice, and no row holds the key. Without the opening nothing is written. The opening is set
@@ -17,9 +17,10 @@ from pathlib import Path
 import pytest
 from fake_tokenfactory import Fake
 
-from graphene_map import night, run, sandbox
 from graphene_map import plan as P
-from graphene_map import tokenfactory as tf
+from graphene_map import run
+from graphene_map.nemotron import night, sandbox
+from graphene_map.nemotron import tokenfactory as tf
 from graphene_map.store import Store
 
 ULTRA, NANO = "nvidia/Nemotron-3-Ultra-fake", "nvidia/Nemotron-3-Nano-fake"
@@ -152,7 +153,7 @@ def test_a_run_that_starts_leaves_its_mark_for_its_executors(opened):
 
 RACE = """
 import sys
-from graphene_map import tokenfactory as tf
+from graphene_map.nemotron import tokenfactory as tf
 try:
     tf.chat("nvidia/Nemotron-3-Ultra-fake", [{"role": "user", "content": "race"}], max_tokens=1000)
 except tf.Spent as no:
@@ -175,7 +176,7 @@ def test_processes_racing_for_the_last_dollars_cannot_all_pass(fake, opened, tmp
         {"model": ULTRA, "messages": [{"role": "user", "content": "race"}], "max_tokens": 1000}, ULTRA
     )
     spent(opened, 10 - 2.5 * one)
-    env = os.environ | {night.STARTED: "the ladder", "PYTHONPATH": str(Path(__file__).parents[1] / "src")}
+    env = os.environ | {night.STARTED: "the ladder", "PYTHONPATH": str(Path(__file__).parents[2] / "src")}
     procs = [subprocess.Popen([sys.executable, "-c", RACE], env=env, stdout=subprocess.PIPE, text=True)
              for _ in range(6)]  # fmt: skip
     deadline = time.monotonic() + 60
@@ -320,7 +321,7 @@ def test_an_agents_contree_sandbox_is_refused_before_the_sdk_is_made(monkeypatch
 def test_the_harnesses_that_strip_the_marks_ask_first(monkeypatch, tmp_path):
     """bench.py and arm_bprime.py give their children an environment without the marks, as the person:
     the rule is asked before, on the harness's own. nemotron.sh asks before it unsets them."""
-    sys.path.insert(0, str(Path(__file__).parents[1] / "docs" / "test"))
+    sys.path.insert(0, str(Path(__file__).parents[2] / "docs" / "test"))
     import bench
 
     monkeypatch.delenv("GRAPHENE_TOKENFACTORY_URL", raising=False)
@@ -336,7 +337,7 @@ def test_the_harnesses_that_strip_the_marks_ask_first(monkeypatch, tmp_path):
     assert bench.unopened("nemotron") is None
     env = {k: v for k, v in os.environ.items() if k not in ("GRAPHENE_TOKENFACTORY_URL", night.OPENING)}
     env |= {"NEBIUS_API_KEY": "fake-key", "PATH": f"{Path(sys.executable).parent}{os.pathsep}{env['PATH']}"}
-    script = Path(__file__).parents[1] / "docs" / "proof" / "nemotron.sh"
+    script = Path(__file__).parents[2] / "docs" / "proof" / "nemotron.sh"
     done = subprocess.run(
         ["bash", str(script), str(tmp_path / "demo")], env=env, capture_output=True, text=True
     )
@@ -351,8 +352,8 @@ def test_the_harnesses_that_strip_the_marks_ask_first(monkeypatch, tmp_path):
 
 STOPPED = """
 import signal, sys
-from graphene_map import tokenfactory as tf
-from graphene_map.executor import _stopped
+from graphene_map.nemotron import tokenfactory as tf
+from graphene_map.nemotron.executor import _stopped
 signal.signal(signal.SIGTERM, _stopped if sys.argv[1] == "executor" else lambda *_: sys.exit(143))
 tf.chat("nvidia/Nemotron-3-Ultra-fake", [{"role": "user", "content": "held"}], max_tokens=8192)
 """
@@ -364,7 +365,7 @@ def test_a_call_stopped_by_term_after_it_was_sent_keeps_its_worst_case(fake, ope
     had sent may still be done and billed, so it stays at its worst case, as it does after a Ctrl-C."""
     gate = threading.Event()
     f = fake([lambda body: gate.wait(60) and {"content": "too late"}])
-    env = os.environ | {"PYTHONPATH": str(Path(__file__).parents[1] / "src")}
+    env = os.environ | {"PYTHONPATH": str(Path(__file__).parents[2] / "src")}
     child = subprocess.Popen([sys.executable, "-c", STOPPED, who], env=env)
     deadline = time.monotonic() + 60
     while not f.requests and time.monotonic() < deadline:

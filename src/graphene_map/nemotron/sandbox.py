@@ -31,8 +31,9 @@ import time
 from contextlib import contextmanager
 from pathlib import Path
 
-from . import gate, night
-from . import plan as P
+from .. import gate
+from .. import plan as P
+from . import night
 from . import tokenfactory as tf
 
 WORK = "/work"
@@ -57,7 +58,7 @@ SAYS = {
     "401": "the key was not accepted (401)",
     "unreached": "could not be reached ({})",
     "unset": "not configured (no NEBIUS_PROJECT_ID and no contree auth profile)",
-    "no sdk": "the SDK is not installed (uv sync --extra sandbox)",
+    "no sdk": "the SDK is not installed (uv sync --extra nemotron)",
 }  # fmt: skip
 TIMED_OUT = "(the sandbox command ran out of time)"  # Docker's words for the same stop
 
@@ -571,7 +572,7 @@ class Sandbox:
         self.timings: list[float] = []
         self.lost = 0  # commands whose list of files did not come back: nothing they did was brought back
         self.shared: str | None = None  # the checkpoint of the commit, which other leaves fork too
-        from . import settings
+        from .. import settings
 
         hidden = settings.protected(store) if store is not None else []  # never uploaded, so never read
         files = P.in_tree(source)

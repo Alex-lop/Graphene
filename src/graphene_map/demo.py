@@ -46,9 +46,8 @@ from pathlib import Path
 from textual.binding import Binding
 from textual.widgets import Input, Static
 
-from . import __version__, keys
+from . import __version__, extra
 from . import plan as P
-from . import tokenfactory as tf
 from .store import Store
 from .tui import Help, Pane, Watch, fit, help_groups
 
@@ -72,7 +71,12 @@ WORK = ("j ", "gg", "Enter", "l ", "za", "Tab", "? ", "q ", "ctrl-d", "Esc", "/"
 META = ("goal", "goal:proposed", "goal:proposed:by", "planner", "executor", "plan_first", "paused", "board",
         "settings:protected", "settings:readonly", "settings:never", "settings:size",
         "settings:board")  # read  # fmt: skip
-KEY, WORD, BASE64, REMOVED = tf.SHAPED, tf.WORD, tf.BASE64, tf.REMOVED  # shaped like a key: see there
+KEY, WORD, BASE64, REMOVED = P.SHAPED, P.WORD, P.BASE64, P.REMOVED  # shaped like a key: see there
+
+
+def _kept() -> str:
+    """The keychain's key, when the Nemotron extra is there to read it."""
+    return (keys.find() or "") if (keys := extra.load("keys")) else ""
 
 
 def hider(root: Path) -> tuple:
@@ -82,7 +86,7 @@ def hider(root: Path) -> tuple:
     home = str(Path.home())
     said = [(p, "{repo}") for p in sorted({str(root), str(root.resolve())}, key=len, reverse=True)]
     said += [(home, "~")] if len(home) > 1 else []
-    found = {os.getenv(k, "") for k in (tf.KEY, "NEBIUS_PROJECT_ID")} | {keys.find() or ""}  # keychain's too
+    found = {os.getenv(k, "") for k in ("NEBIUS_API_KEY", "NEBIUS_PROJECT_ID")} | {_kept()}  # keychain's too
     said += [(k, "[removed]") for k in sorted(found, key=len, reverse=True) if len(k) > 7]
 
     def hide(value):
@@ -93,12 +97,12 @@ def hider(root: Path) -> tuple:
         for text, instead in said:  # as written, and as JSON writes it inside a node's or a log row's detail
             for form in {text, json.dumps(text)[1:-1], json.dumps(text, ensure_ascii=False)[1:-1]}:
                 value = value.replace(form, instead)
-        return tf.unkeyed(value)
+        return unkeyed(value)
 
     return hide, said
 
 
-unkeyed = tf.unkeyed  # anything shaped like a key taken out, whole word by whole word
+unkeyed = P.unkeyed  # anything shaped like a key taken out, whole word by whole word
 # a path under a home directory, anyone's but the sandbox's own user's (sandbox.USER, "leaf"), unless the
 # path climbs out of it (`..`); the home of the machine that counts is counted apart, whatever it is
 HOMES = re.compile(r"""/(?:Users/|home/(?!leaf(?![\w.-])(?![^\s"']*\.\.)))""")  # not /home/leaf/../x
@@ -109,7 +113,7 @@ def leaks(text: str) -> dict[str, int]:
     the keychain's key), the home directory, a path under anyone's, and words shaped like a key. The ladder's
     rung 5 counts its live recording with it, and CI every recording in tests/recordings/."""
     home = str(Path.home())
-    secrets = {"the key": {os.getenv(tf.KEY, ""), keys.find() or ""},
+    secrets = {"the key": {os.getenv("NEBIUS_API_KEY", ""), _kept()},
                "the project": {os.getenv("NEBIUS_PROJECT_ID", "")}}  # fmt: skip
     counts = {what: sum(text.count(v) for v in values if len(v) > 7) for what, values in secrets.items()}
     shaped = sum(1 for w in WORD.findall(text) if KEY.search(w)) + len(BASE64.findall(text))
@@ -124,7 +128,8 @@ def record(root: Path, out: Path, every: float = EVERY) -> int:
     stop = threading.Event()
     for sig in (signal.SIGINT, signal.SIGTERM):
         signal.signal(sig, lambda *_: stop.set())
-    stand_in = tf.base() != tf.BASE  # this terminal's view; the replay decides from the run's usage rows
+    tf = extra.load("tokenfactory")  # this terminal's view; the replay decides from the run's usage rows
+    stand_in = bool(tf) and tf.base() != tf.BASE
     head = {"graphene demo": 1, "recorded": P._now(), "graphene": __version__, "repository": root.name,
             "stand_in": stand_in, "shown": STAND_IN if stand_in else LIVE}  # fmt: skip
     db, runs, began = root / ".graphene" / "graphene.db", root / ".graphene" / "runs", time.monotonic()

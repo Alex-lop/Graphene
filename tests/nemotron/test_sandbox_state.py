@@ -8,7 +8,7 @@ import subprocess
 
 import pytest
 
-from graphene_map import sandbox
+from graphene_map.nemotron import sandbox
 
 needs_docker = pytest.mark.skipif(
     shutil.which("docker") is None or subprocess.run(["docker", "info"], capture_output=True).returncode != 0,
@@ -139,7 +139,7 @@ class Unlisted:
 
 
 def test_a_command_whose_list_never_came_back_is_counted_on_the_leafs_record(tmp_path):
-    from graphene_map import executor
+    from graphene_map.nemotron import executor
 
     root = tmp_path / "leaf"
     root.mkdir()

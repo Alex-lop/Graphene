@@ -11,11 +11,11 @@ from test_board_rows import drive
 from typer.testing import CliRunner
 
 from graphene_map import board as B
-from graphene_map import lookup as L
 from graphene_map import plan as P
 from graphene_map import plan_text as T
-from graphene_map import tokenfactory as tf
 from graphene_map.cli import build
+from graphene_map.nemotron import lookup as L
+from graphene_map.nemotron import tokenfactory as tf
 from graphene_map.store import Store
 
 PLAN = """goal: prices load

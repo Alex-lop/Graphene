@@ -12,7 +12,7 @@ from contree_sdk import ContreeSync  # noqa: E402
 from contree_sdk.sdk.managers.images import ImagesManagerSync  # noqa: E402
 from contree_sdk.sdk.objects.image import ContreeImageSync  # noqa: E402
 
-from graphene_map import night, sandbox  # noqa: E402
+from graphene_map.nemotron import night, sandbox  # noqa: E402
 
 
 def test_every_call_binds_to_the_pinned_sdk():
@@ -94,7 +94,7 @@ def test_a_project_sandboxes_refuse_is_said_with_what_its_key_lacks_and_what_to_
     id is the other suspect: ConTree answers a made-up key and project with a 403 too."""
     from fake_faults import Forbidding, persons_shell
 
-    from graphene_map import tokenfactory as tf
+    from graphene_map.nemotron import tokenfactory as tf
 
     persons_shell(monkeypatch)
     monkeypatch.setattr(contree_sdk, "ContreeSync", Forbidding)
@@ -247,7 +247,7 @@ def test_the_sdks_token_life_warning_is_dropped_only_when_the_key_signs_the_clie
 
     import contree_sdk
 
-    from graphene_map import sandbox
+    from graphene_map.nemotron import sandbox
 
     monkeypatch.setattr(contree_sdk, "ContreeSync", lambda **_: object())
     log = logging.getLogger("contree_sdk.sdk.client._base")

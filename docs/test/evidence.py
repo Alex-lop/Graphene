@@ -35,7 +35,7 @@ them out, in markdown (--out, or printed), and draws --svg (docs/assets/evidence
   title say STAND-IN, NOT LIVE, and name why. Nothing ties a C row to a real Claude Code session
   beyond that total, and the live heading says so.
 - **It refuses practice, whatever the flags**: a run whose usage rows, or whose ledger rows in its window,
-  say `practice` (made while GRAPHENE_AGENT_LIVE_USD was set: graphene_map/night.py) is not added, and a
+  say `practice` (made while GRAPHENE_AGENT_LIVE_USD was set: nemotron/night.py) is not added, and a
   report with one stops (exit 2), --stand-in or not. Practice is live, so STAND-IN would be false, and it
   never enters a registered table.
 

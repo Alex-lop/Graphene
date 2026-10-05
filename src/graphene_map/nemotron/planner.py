@@ -20,9 +20,9 @@ import signal
 import sys
 from pathlib import Path
 
-from . import plan as P
+from .. import plan as P
+from ..store import Store, repo_root
 from . import tokenfactory as tf
-from .store import Store, repo_root
 
 PROMPT_VERSION = 4  # 2: the board (questions with a default, assumptions, risks, leave-outs); 3: then:
 # lines; 4: at most three items, each a question or a risk that changes the tree; assumptions in goals
@@ -135,7 +135,7 @@ class Repo:
 
 def _protected(here: Path) -> list[str]:
     """The protected globs the person set (`graphene config`): never read, so never sent to the model."""
-    from . import settings
+    from .. import settings
 
     try:
         with Store.open(repo_root(here)) as store:
@@ -229,7 +229,7 @@ def main(argv: list[str] | None = None) -> int:
 def template(spec: str) -> str:
     """`nemotron [options]` as the command `graphene ask` starts."""
     rest = spec.split(None, 1)[1] if len(spec.split(None, 1)) > 1 else ""
-    return f"{shlex.quote(sys.executable)} -m graphene_map.planner {rest}".strip()
+    return f"{shlex.quote(sys.executable)} -m graphene_map.nemotron.planner {rest}".strip()
 
 
 if __name__ == "__main__":

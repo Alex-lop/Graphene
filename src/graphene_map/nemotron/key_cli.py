@@ -3,10 +3,12 @@
 
 from __future__ import annotations
 
+import shlex
+
 import typer
 
+from .. import plan as P
 from . import keys
-from . import plan as P
 
 
 def register(cli: typer.Typer, fail):
@@ -59,3 +61,34 @@ def register(cli: typer.Typer, fail):
         except RuntimeError as no:
             fail(str(no), 1)
         typer.echo("the key is removed from the keychain")
+
+
+def offer() -> tuple[dict[str, str], str, str | None, str | None]:
+    """Nemotron on Token Factory as a new repo is offered it, what that is in words, what could not
+    be reached, in one line, or None, and why the leaves are not in Sandboxes though ConTree is set
+    up here, or None. The ids are the live list's, so a run is reproducible and nothing is guessed:
+    the largest of Ultra and Super plans (as planner.py picks when it runs), and the two smallest
+    listed do the leaves, the second on a second attempt; in a Sandbox when ConTree is set up here
+    and does not refuse the project, on this machine otherwise. Out of reach it is plain `nemotron`,
+    which finds its models when it runs. Asked once: offline, init must not wait."""
+    from . import sandbox
+    from . import tokenfactory as tf
+
+    unreached = tf.reach(tries=1)
+    found = {} if unreached else tf.roles(tf.models(tries=1))
+    plans = [s for s in ("ultra", "super") if s in found][:1]
+    leaves = [s for s in ("nano", "super", "ultra") if s in found][:2]
+
+    def models(sizes: list[str]) -> str:
+        return "".join(f" --model {shlex.quote(found[s])}" for s in sizes)
+
+    refused = sandbox.refused() if sandbox.configured() else None  # whoami: a read, no operation
+    place = "sandbox" if sandbox.configured() and not refused else "local"
+    ladder = f"nemotron{models(leaves)} --placement {place}"
+    planner = plans[0].title() if plans else "largest"
+    does = " then ".join(s.title() for s in leaves) or "smallest"
+    said = f"{planner} plans, {does} {'do' if leaves[1:] else 'does'} the leaves"
+    if refused:
+        refused += ("; the leaves run on this machine until `graphene key check` says Sandboxes work, "
+                    "and `graphene init --executor nemotron` then places them there")  # fmt: skip
+    return {"planner": f"nemotron{models(plans)}", "executor": ladder}, said, unreached, refused

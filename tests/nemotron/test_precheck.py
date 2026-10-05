@@ -10,9 +10,9 @@ from fake_tokenfactory import Fake
 from typer.testing import CliRunner
 
 from graphene_map import plan as P
-from graphene_map import precheck as C
-from graphene_map import tokenfactory as tf
 from graphene_map.cli import build
+from graphene_map.nemotron import precheck as C
+from graphene_map.nemotron import tokenfactory as tf
 from graphene_map.store import Store
 
 ME = P.Caller("alex", True)
@@ -358,7 +358,7 @@ def test_an_uncommitted_change_makes_a_kept_verdict_stale(repo, monkeypatch):
 def test_no_graphene_command_pays_for_the_token_factory_client_until_a_precheck_reads():
     import sys
 
-    heavy = "{'graphene_map.tokenfactory', 'urllib.request'}"
+    heavy = "{'graphene_map.nemotron.tokenfactory', 'urllib.request'}"
     probe = f"import sys, graphene_map.cli as c; c.build(); print(sorted({heavy} & set(sys.modules)))"
     out = subprocess.run([sys.executable, "-c", probe], capture_output=True, text=True, check=True).stdout
     assert out.strip() == "[]"
@@ -431,7 +431,7 @@ def test_an_accepted_check_runs_here_with_grapheness_keychain_lookup_off(
     Precheck itself asks the keychain, to hide a key kept there from what it says (demo.hider), so a fake
     `security` and a fake `secret-tool` stand in for macOS's and Linux's, and the real one is never asked
     (CI, 29 September: on Linux the lookup met the keyguard, for only `security` was faked)."""
-    from graphene_map import keys
+    from graphene_map.nemotron import keys
 
     shims = tmp_path / "shims"
     shims.mkdir()

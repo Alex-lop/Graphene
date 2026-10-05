@@ -199,9 +199,8 @@ These are honest boundaries, not airtight ones. The hooks that stop a write befo
 
 ## Privacy
 
-- With Claude Code or Codex, Graphene itself sends nothing anywhere; the agent you picked talks to its own service as it always does.
-- With NVIDIA Nemotron as planner or executor, Graphene sends Nebius Token Factory your prompts and the files the model reads, and in a sandbox it sends Sandboxes the leaf's checkout. The key lives in your environment or the system keychain, never in a file.
-- The Nemotron prototypes are the exception, whatever the planner: `plan cover`, `plan note` and `graphene board lookup` ask Nemotron Nano, and `plan precheck` uploads your checkout to Sandboxes when ConTree's credentials are set (and asks Nano about a failing check whose output doesn't say why). None of them runs unless you run it, or set `GRAPHENE_SHAPE` to run them after each `graphene ask`.
+- With Claude Code or Codex, Graphene sends nothing anywhere.
+- Nemotron on Token Factory is an optional extra; what it sends is in [HACKATHON.md](docs/HACKATHON.md).
 - The plan lives in `.graphene/` in your repo, created `0700` and git-ignored, all but `.graphene/direction.txt`, which holds only goals and is yours to commit. Delete `.graphene/` and Graphene forgets everything.
 - Graphene never pushes. It commits only during `graphene run`: on its own `graphene/<leaf>` branches, plus one merge of each passing leaf into your branch.
 
