@@ -1,0 +1,36 @@
+ the plan of ~/graphene-polish                                                                                          
+▼ ○ Load the Northwind XML feed through the same `load`…     3/4 done │ xml enabled end to end                          
+├ ▶ ✓ zero price is skipped for every supplier   zero-price  done     │ xml-wiring · done at 00:04                      
+└ ▼ ○ the xml source is wired in                 xml-source  2/3 done │                                                 
+  ├   ✓ an xml reader                            xml-reader  done     │ why      Load the Northwind XML feed through…   
+  ├   ✓ xml enabled end to end                   xml-wiring  done     │            the xml source is…  xml-source       
+  └   ◇ read the new README section for xml      n6          yours    │ goal     FIELD_MAPS "xml": code->sku,           
+                                                                      │          desc->name, price->price with          
+                                                                      │          price_unit "minor"; "xml" in           
+                                                                      │          ENABLED_SOURCES, the USAGE line and    
+                                                                      │          README; samples/prices.xml loads to    
+                                                                      │          exactly NW-1 and NW-2                  
+                                                                      │ scope    normalize/fields.py,                   
+                                                                      │          config/defaults.py, README.md,         
+                                                                      │          tests/test_xmlfeed.py, cli/main.py     
+                                                                      │ check    python3 -m unittest discover -q tests  
+                                                                      │ needs    xml-reader (done), zero-rule (done)    
+                                                                      │ changed  README.md, cli/main.py,                
+                                                                      │          config/defaults.py,                    
+                                                                      │          normalize/fields.py,                   
+                                                                      │          tests/test_xmlfeed.py                  
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+ waiting on you: 1 · executors: none · nothing ready to run · 3/4 done · plan first: on (P)                             
+ x reopen · Enter record · ? help · q quit                                                                              

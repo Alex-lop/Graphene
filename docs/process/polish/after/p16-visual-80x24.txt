@@ -1,0 +1,24 @@
+ the plan of ~/graphene-polish                                                  
+▼ ? Load the Northwind XML feed through the same `load` command and…   proposed 
+├ ▼ ? zero price is skipped for every supplier             zero-price  proposed 
+│ └   ? a price of 0 fails validation                      zero-rule   proposed 
+└ ▼ ? the xml source is wired in                           xml-source  proposed 
+  ├   ? an xml reader                                      xml-reader  proposed 
+  └   ? xml enabled end to end                             xml-wiring  proposed 
+────────────────────────────────────────────────────────────────────────────────
+ an xml reader                                                                  
+ xml-reader · proposed by a Claude Code session (59409a10)                      
+                                                                                
+ why    the xml source is wired in  xml-source                                  
+ goal   ingest/xmlfeed.py reads <product> elements only (stdlib xml.etree;      
+        <summary> is not a product) into raw dicts, registered as "xml" in      
+        ingest.READERS                                                          
+ scope  ingest/xmlfeed.py, ingest/__init__.py, tests/test_xmlreader.py          
+ check  python3 -m unittest -q tests.test_xmlreader                             
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+ you: 2 · 0 running · none ready · 0/0 done · plan first: off                   
+ VISUAL · y accept · d drop · j k widen it · Esc ends                           

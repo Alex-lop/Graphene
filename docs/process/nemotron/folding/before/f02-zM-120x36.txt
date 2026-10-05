@@ -1,0 +1,36 @@
+ the plan of /private/tmp/graphene-fold/feeds                                                                           
+▼ ○ csv feeds import cleanly, and every bad row is named…     14/26 done │ csv feeds import cleanly, and every bad row  
+├ ▶ ✓ read every feed as rows                   reader        done       │ is named with its line                       
+├ ▶ ✓ the dialects our suppliers send           dialects      done       │ the goal · 14/26 done                        
+├ ▶ ○ every row checked before it is imported   validate      2/5 done   │                                              
+├ ▶ ○ the bad rows report                       report        1/5 done   │ ✓ read every feed as rows          done      
+├ ▶ ○ one command imports a feed                cli           0/5 done   │ ✓ the dialects our suppliers send  done      
+└ ▶ ? the importer documented                   docs          proposed   │ ○ every row checked before it is…  2/5 done  
+                                                                         │ ○ the bad rows report              1/5 done  
+                                                                         │ ○ one command imports a feed       0/5 done  
+                                                                         │ ? the importer documented          proposed  
+                                                                         │                                              
+                                                                         │ waiting  v-dupes came back · v-rules on      
+                                                                         │          v-dupes (came back) · r-format is   
+                                                                         │          in review · cli-exit on cli-import  
+                                                                         │          (ready) · cli-progress on           
+                                                                         │          cli-import (ready) · cli-review is  
+                                                                         │          yours · v-empty and docs are        
+                                                                         │          proposed, for you to accept or      
+                                                                         │          prune                               
+                                                                         │                                              
+                                                                         │                                              
+                                                                         │                                              
+                                                                         │                                              
+                                                                         │                                              
+                                                                         │                                              
+                                                                         │                                              
+                                                                         │                                              
+                                                                         │                                              
+                                                                         │                                              
+                                                                         │                                              
+                                                                         │                                              
+                                                                         │                                              
+                                                                         │                                              
+ waiting on you: 5 · executors: 2 running · R runs 4 ready · 14/26 done · plan first: on (P)                            
+ y accept it all · E edit the plan as text · za fold all · ? help · q quit                                              

@@ -1,0 +1,8 @@
+⚠ [4/4] Replayed Spec.Target
+warning: Spec/Target.lean:3:8: declaration uses `sorry`
+Build completed successfully (4 jobs).
+⚠ [3/3] Built Proofs.Target (192ms)
+warning: Proofs/Target.lean:2:0: Definition `sketchy` is a proposition; use `theorem` instead of `def`
+
+Note: This linter can be disabled with `set_option linter.defProp false`
+Build completed successfully (3 jobs).

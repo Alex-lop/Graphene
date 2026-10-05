@@ -1,0 +1,24 @@
+ the plan of /var/folders/kl/5njp0xds47586m9j3gqtw_8m0000gn/T/tmpdea20j78/feeds
+▼ ? Load the Northwind XML feed with the same `cli.main load ……      proposed
+├   ◇ `config/defaults.py` says "Ops edits this…         enable      asks
+├   ◇ "Skip a price of 0" applies only to the load…      zero-scope  assumes
+├   ◇ The end-to-end check could pass with the wrong…    e2e-hollow  risk
+├   ◇ `vendor/tinydec.py`, `legacy/priceimport.py`…      hands-off   leaves out
+├ ▶ ✓ 1 settled
+└ ▼ ? Northwind XML loads like csv and json              xml         proposed
+  ├   ? Reader for the XML feed                          xml-reader  proposed
+  ├   ? Zero price is skipped for every source           zero-skip   proposed
+  └   ? Wire the source end to end                       xml-wire    proposed
+────────────────────────────────────────────────────────────────────────────────
+ `config/defaults.py` says "Ops edits this; nothing else decides what runs".
+ Should this change add the source to ENABLED_SOURCES itself?
+ enable · question · open · put up by the planner (graphene ask)
+
+ y default  yes. Without it the same load command refuses the file with
+            "source is not enabled".
+ 1          no. Ops enables it later, and the end-to-end check calls the
+            loader with the source patched into ENABLED_SOURCES.
+            then: check xml-wire: python3 -m unittest -q tests.test_xmlfeed   ▇
+ you: 1 + 4 on the board · 0 running · none ready · 0/0 done · plan first: on
+ y take: yes. Without it… · 1 pick · d drop · p park · Enter answer · a note
+ graphene board take src-name: taken src-name: What should the source be…

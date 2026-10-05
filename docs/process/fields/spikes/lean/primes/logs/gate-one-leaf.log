@@ -1,0 +1,10 @@
+03:16:58
+watchdog: start 03:16:58, swap 18621 MB, disk 24.8 GB free
+(a) trusted inputs   pass     23.4s  22 files from d1f4b0a2e17495d50be7dd3cb39ca884a1581cc8; none differed; .lake cloned
+    trusted build    pass    143.5s  Challenge, Spec.* (reused from the trusted .lake when unchanged)
+(b) lake build       pass     79.3s  Proofs.EuclidModFour (sandboxed; sorry warnings: 0)
+(c) type + axioms    pass     68.9s  euclidModFour: [propext, Quot.sound]; 
+(d) kernel replay    pass     62.8s  leanchecker Proofs.EuclidModFour 
+watchdog: end 03:25:18 after 500 s, exit -15; swap peak 25074 MB (+6.3 GB), disk low 18.7 GB; STOPPED: swap rose 6.3 GB
+exit=124
+03:25:18

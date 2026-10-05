@@ -1,0 +1,1 @@
+'euclidModFour' depends on axioms: [propext, Quot.sound]

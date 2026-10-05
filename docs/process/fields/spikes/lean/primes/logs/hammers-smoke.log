@@ -1,0 +1,54 @@
+✔ [2/2] Built Bench.Harness (17s)
+Build completed successfully (2 jobs).
+real 21.86
+user 0.98
+sys 3.10
+libc++abi: terminating due to uncaught exception of type lean::exception: Could not find native implementation of external declaration 'Canonical.canonical' (symbols 'lp_Canonical_Canonical_canonical___boxed' or 'lp_Canonical_Canonical_canonical').
+For declarations from `Init`, `Std`, or `Lean`, you need to set `supportInterpreter := true` in the relevant `lean_exe` statement in your `lakefile.lean`.
+START smoke/duper
+RESULT smoke/duper closed 407 208
+'s_duper' depends on axioms: [propext, Classical.choice, Quot.sound]
+real 46.01
+user 1.34
+sys 5.11
+=== lake lean (passes the precompiled dynlibs)
+✔ [928/932] Built Duper:shared (851ms)
+✔ [929/932] Built Canonical:c.o (890ms)
+✔ [930/932] Built Canonical:shared (178ms)
+START smoke/duper
+RESULT smoke/duper closed 55 39
+'s_duper' depends on axioms: [propext, Classical.choice, Quot.sound]
+Try this:
+  [apply] exact hpq hp
+scratchpad/lean/hammers/Bench/HammerSmoke.lean:8:8: warning: declaration uses `sorry`
+scratchpad/lean/hammers/Bench/HammerSmoke.lean:8:34: warning: Variable name `hp` is not explicitly referenced.
+
+Hint: The binding can be removed (if unused) or named `_` (if used implicitly). Alternatively, prefix the name with `_` to silence this warning:
+  [apply] _hp
+
+Note: This linter can be disabled with `set_option linter.unusedVariables false`
+scratchpad/lean/hammers/Bench/HammerSmoke.lean:8:43: warning: Variable name `hpq` is not explicitly referenced.
+
+Hint: The binding can be removed (if unused) or named `_` (if used implicitly). Alternatively, prefix the name with `_` to silence this warning:
+  [apply] _hpq
+
+Note: This linter can be disabled with `set_option linter.unusedVariables false`
+START smoke/canonical
+RESULT smoke/canonical closed 22 3
+'s_canonical' depends on axioms: [sorryAx]
+Try this:
+  [apply] exact
+    Nat.rec (motive := fun t ↦ t + b = b + t)
+      (by
+        simp only [Nat.zero_add, Nat.add_zero] <;> simpa only [Nat.succ.injEq] using Eq.refl b.succ.succ.succ.succ.succ)
+      (fun n n_ih ↦ by simp only [Nat.add_succ, Nat.succ.injEq, Nat.succ_add] <;> exact n_ih) a
+scratchpad/lean/hammers/Bench/HammerSmoke.lean:10:8: warning: declaration uses `sorry`
+START smoke/canonical-induction
+RESULT smoke/canonical-induction closed 23 47
+'s_canonical_nat' depends on axioms: [sorryAx]
+START smoke/duper-eq
+RESULT smoke/duper-eq closed 9 23
+'s_duper_nat' depends on axioms: [propext, Classical.choice, Quot.sound]
+real 47.14
+user 1.49
+sys 5.80

@@ -1,0 +1,36 @@
+✔ [9660/9663] Built Challenge (355s)
+✔ [9661/9663] Built Seeded (355s)
+scratchpad/lean/hammers/Bench/Hammers.lean:10:8: warning: declaration uses `sorry`
+scratchpad/lean/hammers/Bench/Hammers.lean:10:8: warning: The declaration 't_root__duper' contains '__', which does not follow the mathlib naming conventions. Consider using single underscores instead.
+
+Note: This linter can be disabled with `set_option linter.style.nameCheck false`
+START root/duper
+RESULT root/duper failed 373 Duper failed to solve the goal and determined that it will be unable to do so with the current configuration of options and selection of premises
+DETAIL root/duper Duper failed to solve the goal and determined that it will be unable to do so with the current configuration of options and selection of premises
+'t_root__duper' depends on axioms: [propext, sorryAx]
+scratchpad/lean/hammers/Bench/Hammers.lean:12:8: warning: declaration uses `sorry`
+scratchpad/lean/hammers/Bench/Hammers.lean:12:8: warning: The declaration 't_root__canonical' contains '__', which does not follow the mathlib naming conventions. Consider using single underscores instead.
+
+Note: This linter can be disabled with `set_option linter.style.nameCheck false`
+START root/canonical
+RESULT root/canonical failed 55695 No proof found. Supply constant symbols with `canonical [name, ...]`
+DETAIL root/canonical No proof found. Supply constant symbols with `canonical [name, ...]`
+'t_root__canonical' depends on axioms: [propext, sorryAx]
+scratchpad/lean/hammers/Bench/Hammers.lean:15:8: warning: declaration uses `sorry`
+scratchpad/lean/hammers/Bench/Hammers.lean:15:8: warning: The declaration 't_root_set__duper' contains '__', which does not follow the mathlib naming conventions. Consider using single underscores instead.
+
+Note: This linter can be disabled with `set_option linter.style.nameCheck false`
+START root_set/duper
+RESULT root_set/duper failed 125 Duper failed to solve the goal and determined that it will be unable to do so with the current configuration of options and selection of premises
+DETAIL root_set/duper Duper failed to solve the goal and determined that it will be unable to do so with the current configuration of options and selection of premises
+'t_root_set__duper' depends on axioms: [propext, sorryAx]
+scratchpad/lean/hammers/Bench/Hammers.lean:17:8: warning: declaration uses `sorry`
+scratchpad/lean/hammers/Bench/Hammers.lean:17:8: warning: The declaration 't_root_set__canonical' contains '__', which does not follow the mathlib naming conventions. Consider using single underscores instead.
+
+Note: This linter can be disabled with `set_option linter.style.nameCheck false`
+START root_set/canonical
+RESULT root_set/canonical failed 55486 No proof found. Supply constant symbols with `canonical [name, ...]`
+DETAIL root_set/canonical No proof found. Supply constant symbols with `canonical [name, ...]`
+'t_root_set__canonical' depends on axioms: [propext, sorryAx]
+scratchpad/lean/hammers/Bench/Hammers.lean:20:8: warning: declaration uses `sorry`
+scratchpa

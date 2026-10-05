@@ -1,0 +1,36 @@
+ the plan of ~/graphene-polish                                                                                          
+▼ ? Load the Northwind XML feed through the same `load`…     proposed │ zero price is skipped for every supplier        
+├ ▼ ? zero price is skipped for every supplier   zero-price  proposed │ zero-price · proposed by a Claude Code session  
+│ └   ? a price of 0 fails validation            zero-rule   proposed │ (59409a10)                                      
+└ ▼ ? the xml source is wired in                 xml-source  proposed │                                                 
+  ├   ? an xml reader                            xml-reader  proposed │ ? a price of 0 fails…      zero-rule  proposed  
+  └   ? xml enabled end to end                   xml-wiring  proposed │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+ waiting on you: 2 · executors: none · nothing ready to run · 0/0 done · plan first: off (P)                            
+ y accept · d drop · e edit · E edit with what is under it · ? help · q quit                                            

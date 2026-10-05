@@ -1,0 +1,36 @@
+ the plan of ~/graphene-polish                                                                                          
+▼ ? Load the Northwind XML feed through the same `load`…     proposed │ record · it scrolls                             
+├ ▼ ? zero price is skipped for every supplier   zero-price  proposed │ xml enabled end to end                          
+│ └   ? a price of 0 fails validation            zero-rule   proposed │ xml-wiring · proposed                           
+└ ▼ ? the xml source is wired in                 xml-source  proposed │                                                 
+  ├   ? an xml reader                            xml-reader  proposed │ contract                                        
+  └   ? xml enabled end to end                   xml-wiring  proposed │ why    the xml source is wired in  xml-source   
+                                                                      │ goal   FIELD_MAPS "xml": code->sku,             
+                                                                      │        desc->name, price->price with            
+                                                                      │        price_unit "minor"; "xml" in             
+                                                                      │        ENABLED_SOURCES, the USAGE line and      
+                                                                      │        README; samples/prices.xml loads to      
+                                                                      │        exactly NW-1 and NW-2                    
+                                                                      │ scope  normalize/fields.py,                     
+                                                                      │        config/defaults.py, cli/main.py,         
+                                                                      │        README.md, tests/test_xmlfeed.py         
+                                                                      │ check  python3 -m unittest discover -q tests    
+                                                                      │ needs  xml-reader (proposed), zero-rule         
+                                                                      │        (proposed)                               
+                                                                      │                                                 
+                                                                      │ nothing has happened to it yet: nobody has      
+                                                                      │ held it, and no check has run                   
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+ waiting on you: 2 · executors: none · nothing ready to run · 0/0 done · plan first: off (P)                            
+ ctrl-d ctrl-u scroll · Enter back · ? help · q quit                                                                    

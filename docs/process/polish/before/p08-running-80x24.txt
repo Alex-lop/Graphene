@@ -1,0 +1,24 @@
+ ~/graphene-polish  ·  the plan: Load the Northwind XML feed through the same   
+▶ ✓ zero price is skipped for every supplier  [zero-price]                      
+▼ ○ the xml source is wired in  [xml-source]                                    
+├ ✓ an xml reader  [xml-reader]                                                 
+├ ● xml enabled end to end  [xml-wiring]  run:claude · 4821s                    
+└ ○ read the new README section for xml  [n6]                                   
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+────────────────────────────────────────────────────────────────────────────────
+ xml enabled end to end                                                         
+ [xml-wiring] running, revision 3                                               
+ running: run:claude, attempt 1, 4821 s since it did anything                   
+   in .graphene/worktrees/xml-wiring                                         ▅▅ 
+   last: Bash cat ingest/__init__.py ingest/xmlfeed.py normalize/money.py       
+ validate/rules.py tests/test_xmlreader.py tests/test_contract.py               
+   l its output · x release it                                                  
+ under: the xml source is wired in (xml-source)                                 
+ planner: claude:59409a10 · executors: 1 running (run:claude) · 2/4 done        
+ /xml-wiring: 1 of 1 (n next · Esc ends the search)                             

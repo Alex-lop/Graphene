@@ -1,0 +1,36 @@
+ ~/graphene-polish  ·  the plan: Load the Northwind XML feed through the same `load` command and JSONL sink as csv and  
+▼ ✓ zero price is skipped for every supplier  [zero-price]  │ zero-rule (revision 2): a price of 0 fails validation     
+└ ✓ a price of 0 fails validation  [zero-rule]              │   why:    Load the Northwind XML feed through the same    
+▼ ○ the xml source is wired in  [xml-source]                │ `load` command and JSONL sink as csv and json, skipping   
+├ ✓ an xml reader  [xml-reader]                             │ the summary line and any zero-priced product.             
+├ ✓ xml enabled end to end  [xml-wiring]                    │             zero price is skipped for every supplier      
+└ ○ read the new README section for xml  [n6]               │ (zero-price)                                              
+                                                            │   goal:   validate/rules.py gets a rule rejecting         
+                                                            │ price_cents == 0, so the load command drops it for csv,   
+                                                            │ json and xml alike                                        
+                                                            │   scope:  validate/rules.py, tests/test_rules.py   (a     
+                                                            │ write anywhere else is refused, and blocks `done`)        
+                                                            │   done:   `python3 -m unittest -q tests.test_rules`       
+                                                            │ passes and a person signs it off                          
+                                                            │   finish: graphene node done zero-rule   (runs the        
+                                                            │ check and asks git what changed)                          
+                                                            │   stuck:  graphene node release zero-rule --why '<what    
+                                                            │ is in the way>' [--wants <paths it needs>]   (hands it    
+                                                            │ back; say why)                                            
+                                                            │ zero-rule  a price of 0 fails validation                  
+                                                            │   state: done · owner agent                               
+                                                            │   window 1: run:claude, session                           
+                                                            │ e93b3a7b-edf8-4e9c-ab02-ff66b520e084                      
+                                                            │ 2026-09-24T04:01:01.813Z -> 2026-09-24T04:01:23.244Z      
+                                                            │ finished                                               ▂▂ 
+                                                            │     from 41249f6 to 41249f6: what git said had changed    
+                                                            │ when it ended                                             
+                                                            │     in scope: tests/test_rules.py  (git, when it ended)   
+                                                            │     in scope: validate/rules.py  (git, when it ended)     
+                                                            │   coverage: of the 2 paths git said had changed under     
+                                                            │ this node, 2 inside its scope; 2 to a recorded edit, 0    
+                                                            │ to a recorded shell command, 0 to git alone               
+                                                            │     read from: the node's log, git, and Claude Code's     
+                                                            │ records for session e93b3a7b                              
+ planner: claude:59409a10 · executors: none · 3/4 done                                                                  
+ /zero-rule: 1 of 1 (n next · Esc ends the search)                                                                      

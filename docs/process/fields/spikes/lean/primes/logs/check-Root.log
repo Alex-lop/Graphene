@@ -1,0 +1,1 @@
+check-leaf Root: proven in 165 s; GateCheck root: ok; axioms [propext, Classical.choice, Quot.sound] GateCheck root_set: ok; axioms [propext, Classical.choice, Quot.sound]

@@ -1,0 +1,36 @@
+ the plan of ~/tui1-settled
+▼ ? the feed loader reads the XML supplier too                  proposed │ the feed loader reads the XML supplier too
+├   ◌ conditions: protected secrets/**, .env · read-only…                │ the goal · proposed with the tree:
+├ ▶ ✓ 5 settled                                                          │ accepting any of it accepts it
+└ ▼ ? the xml source                      xml                   proposed │
+  ├   ? read the xml feed                 xml-reader            proposed │ ? the xml source              xml  proposed
+  ├   ? register xml in READERS           xml-register          proposed │
+  ├   ? say xml in the README             xml-readme            proposed │ waiting  xml is proposed, for you to accept
+  └   ? the contract test covers xml      contract-test-covers  proposed │          or prune
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+ waiting on you: 1 · executors: none · nothing ready to run · 0/0 done · plan first: on (P)
+ y accept it all · E edit the plan as text · za fold all · Tab view · ? help · q quit

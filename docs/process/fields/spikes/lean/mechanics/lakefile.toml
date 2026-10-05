@@ -1,0 +1,32 @@
+name = "mechanics"
+defaultTargets = ["Challenge", "Spec", "Proofs"]
+
+[[require]]
+name = "mathlib"
+git = "https://github.com/leanprover-community/mathlib4.git"
+rev = "v4.34.1"
+
+# Read-only for every leaf: the definitions and every leaf's statement as a Prop.
+[[lean_lib]]
+name = "Challenge"
+
+# Read-only, written from the tree: one `theorem <leaf> : <needs> → S_<leaf> := sorry` per leaf,
+# the challenge module that comparator and SafeVerify compare a proof against.
+[[lean_lib]]
+name = "Spec"
+globs = ["Spec.+"]
+
+# One file per leaf, the only file that leaf may write; Proofs/Root.lean composes them.
+[[lean_lib]]
+name = "Proofs"
+globs = ["Proofs.+"]
+
+# Read-only, written from the tree: the per-leaf type assertion and `#print axioms`.
+[[lean_lib]]
+name = "Gate"
+globs = ["Gate.+"]
+
+# The measurements of this spike (sorry, native_decide, axiom); not part of the layout.
+[[lean_lib]]
+name = "Measure"
+globs = ["Measure.+"]

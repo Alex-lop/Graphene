@@ -1,0 +1,36 @@
+ the plan of /private/tmp/graphene-fold/feeds                                                                           
+▼ ○ csv feeds import cleanly, and every bad row is named…     18/26 done │ csv feeds import cleanly, and every bad row  
+├ ▶ ✓ read every feed as rows                   reader        6 done     │ is named with its line                       
+├ ▶ ✓ the dialects our suppliers send           dialects      5 done     │ the goal · 18/26 done                        
+├ ▼ ○ every row checked before it is imported   validate      2/5 done   │                                              
+│ ├   ✓ numbers, dates and prices parse         v-types       done       │ ✓ read every feed as rows          done      
+│ ├   ✓ required fields are there               v-required    done       │ ✓ the dialects our suppliers send  done      
+│ ├   ● a zero or negative price is a bad row   v-price       running    │ ○ every row checked before it is…  2/5 done  
+│ ├   ↩ duplicate skus in one feed              v-dupes       came back  │ ✓ the bad rows report              done      
+│ ├   ◌ rules a supplier can switch off         v-rules       waiting    │ ○ one command imports a feed       0/5 done  
+│ └   ? an empty row is skipped, not a bad row  v-empty       proposed   │ ? the importer documented          proposed  
+├ ▶ ✓ the bad rows report                       report        5 done     │                                              
+├ ▼ ○ one command imports a feed                cli           0/5 done   │ waiting  v-dupes came back · v-rules on      
+│ ├   ○ feeds import <file>                     cli-import    ready      │          v-dupes (came back) · cli-exit on   
+│ ├   ○ a dry run that imports nothing          cli-dry       ready      │          cli-import (ready) · cli-progress   
+│ ├   ◌ the exit code says whether any row…     cli-exit      waiting    │          on cli-import (ready) · cli-review  
+│ ├   ◌ a progress line for a large feed        cli-progress  waiting    │          is yours · v-empty and docs are     
+│ └   ◇ try it on last month's real feeds       cli-review    yours      │          proposed, for you to accept or      
+└ ▼ ? the importer documented                   docs          proposed   │          prune                               
+  ├   ? usage in the README                     d-usage       proposed   │                                              
+  ├   ? which dialects we read, with an…        d-dialects    proposed   │                                              
+  └   ? how to read the bad rows report         d-report      proposed   │                                              
+                                                                         │                                              
+                                                                         │                                              
+                                                                         │                                              
+                                                                         │                                              
+                                                                         │                                              
+                                                                         │                                              
+                                                                         │                                              
+                                                                         │                                              
+                                                                         │                                              
+                                                                         │                                              
+                                                                         │                                              
+                                                                         │                                              
+ waiting on you: 4 · executors: 1 running · R runs 2 ready · 18/26 done · plan first: on (P)                            
+ y accept it all · E edit the plan as text · za fold all · ? help · q quit                                              

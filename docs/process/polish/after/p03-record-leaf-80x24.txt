@@ -1,0 +1,24 @@
+ the plan of ~/graphene-polish                                                  
+▼ ? Load the Northwind XML feed through the same `load` command and…   proposed 
+├ ▼ ? zero price is skipped for every supplier             zero-price  proposed 
+│ └   ? a price of 0 fails validation                      zero-rule   proposed 
+└ ▼ ? the xml source is wired in                           xml-source  proposed 
+  ├   ? an xml reader                                      xml-reader  proposed 
+  └   ? xml enabled end to end                             xml-wiring  proposed 
+────────────────────────────────────────────────────────────────────────────────
+ record · it scrolls                                                            
+ xml enabled end to end                                                         
+ xml-wiring · proposed                                                          
+                                                                                
+ contract                                                                       
+ why    the xml source is wired in  xml-source                                  
+ goal   FIELD_MAPS "xml": code->sku, desc->name, price->price with price_unit   
+        "minor"; "xml" in ENABLED_SOURCES, the USAGE line and README;           
+        samples/prices.xml loads to exactly NW-1 and NW-2                       
+ scope  normalize/fields.py, config/defaults.py, cli/main.py, README.md,        
+        tests/test_xmlfeed.py                                                   
+ check  python3 -m unittest discover -q tests                                   
+ needs  xml-reader (proposed), zero-rule (proposed)                             
+                                                                              ▇ 
+ you: 2 · 0 running · none ready · 0/0 done · plan first: off                   
+ ctrl-d ctrl-u scroll · Enter back · ? help · q quit                            

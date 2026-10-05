@@ -1,0 +1,36 @@
+ the plan of ~/graphene-polish                                                                                          
+▼ ○ Load the Northwind XML feed through the same `load`…     2/4 done │ read the new README section for xml             
+├ ▶ ✓ zero price is skipped for every supplier   zero-price  done     │ n6 · review                                     
+└ ▼ ○ the xml source is wired in                 xml-source  1/3 done │ its check passed; it waits for your sign-off    
+  ├   ✓ an xml reader                            xml-reader  done     │                                                 
+  ├   ○ xml enabled end to end                   xml-wiring  ready    │ why      Load the Northwind XML feed through…   
+  └   ◆ read the new README section for xml      n6          review   │            the xml source is…  xml-source       
+                                                                      │ scope    README.md                              
+                                                                      │ check    grep -qi xml README.md                 
+                                                                      │ owner    alexlopez                              
+                                                                      │ changed  README.md                              
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+                                                                      │                                                 
+ waiting on you: 1 · executors: none · R runs 1 ready · 2/4 done · plan first: on (P)                                   
+ y sign off · x send back · Enter record · ? help · q quit                                                              

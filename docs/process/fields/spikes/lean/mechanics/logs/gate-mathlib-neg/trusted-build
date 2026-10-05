@@ -1,0 +1,5 @@
+⚠ [8926/8927] Replayed Spec.SumTwoSq
+warning: Spec/SumTwoSq.lean:3:8: declaration uses `sorry`
+⚠ [8927/8927] Replayed Spec.SqMod4
+warning: Spec/SqMod4.lean:3:8: declaration uses `sorry`
+Build completed successfully (8927 jobs).

@@ -1,0 +1,36 @@
+ ~/graphene-polish  ·  the plan (proposed): Load the Northwind XML feed through the same `load` command and JSONL sink  
+▼ ? zero price is skipped for every supplier  [zero-price]  │ a price of 0 fails validation                             
+└ ? a price of 0 fails validation  [zero-rule]              │ [zero-rule] proposed, revision 1   proposed by            
+▼ ? the xml source is wired in  [xml-source]                │ claude:59409a10                                           
+├ ? an xml reader  [xml-reader]                             │ under: zero price is skipped for every supplier           
+└ ? xml enabled end to end  [xml-wiring]                    │ (zero-price)                                              
+                                                            │                                                           
+                                                            │ scope  validate/rules.py, tests/test_rules.py             
+                                                            │ check  python3 -m unittest -q tests.test_rules            
+                                                            │                                                           
+                                                            │ validate/rules.py gets a rule rejecting price_cents == 0, 
+                                                            │ so the load command drops it for csv, json and xml alike  
+                                                            │                                                           
+                                                            │ proposed by claude:59409a10                               
+                                                            │                                                           
+                                                            │ y accept · d drop · e edit its contract · E edit it with  
+                                                            │ what is under it                                          
+                                                            │                                                           
+                                                            │                                                           
+                                                            │                                                           
+                                                            │                                                           
+                                                            │                                                           
+                                                            │                                                           
+                                                            │                                                           
+                                                            │                                                           
+                                                            │                                                           
+                                                            │                                                           
+                                                            │                                                           
+                                                            │                                                           
+                                                            │                                                           
+                                                            │                                                           
+                                                            │                                                           
+                                                            │                                                           
+                                                            │                                                           
+ planner: claude:59409a10 · executors: none · 0/3 done                                                                  
+ /zero-rule: 1 of 1 (n next · Esc ends the search)                                                                      

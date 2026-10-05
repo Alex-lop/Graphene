@@ -1,0 +1,36 @@
+ the plan of /private/tmp/graphene-fold/feeds                                                                           
+▼ ○ csv feeds import cleanly, and every bad row is named…     14/26 done │ duplicate skus in one feed                   
+├ ▶ ✓ read every feed as rows                   reader        done       │ v-dupes · came back                          
+├ ▶ ✓ the dialects our suppliers send           dialects      done       │ a duplicate sku is decided by the sku        
+├ ▼ ○ every row checked before it is imported   validate      2/5 done   │ table, which is feeds/skus.py, outside my    
+│ ├   ✓ numbers, dates and prices parse         v-types       done       │ scope                                        
+│ ├   ✓ required fields are there               v-required    done       │   w  widen its scope to feeds/skus.py        
+│ ├   ● a zero or negative price is a bad row   v-price       running    │      graphene node widen v-dupes             
+│ ├   ↩ duplicate skus in one feed              v-dupes       came back  │   b  a sibling leaf for feeds/skus.py,       
+│ ├   ◌ rules a supplier can switch off         v-rules       waiting    │      which it waits on                       
+│ └   ? an empty row is skipped, not a bad row  v-empty       proposed   │      graphene node sibling v-dupes           
+├ ▼ ○ the bad rows report                       report        1/5 done   │   ?  ask the planner                         
+│ ├   ✓ each bad row keeps its line number      r-lines       done       │      graphene ask … --about v-dupes          
+│ ├   ◆ the report as a table a person reads    r-format      review     │                                              
+│ ├   ● the report as json for the dashboard    r-json        running    │ why    csv feeds import cleanly, and every…  
+│ ├   ○ mail the report to the supplier         r-email       ready      │          every row checked…  validate        
+│ └   ○ cap the report at a thousand rows       r-limit       ready      │ scope  feeds/v-dupes.py                      
+├ ▼ ○ one command imports a feed                cli           0/5 done   │ check  true                                  
+│ ├   ○ feeds import <file>                     cli-import    ready      │                                              
+│ ├   ○ a dry run that imports nothing          cli-dry       ready      │                                              
+│ ├   ◌ the exit code says whether any row…     cli-exit      waiting    │                                              
+│ ├   ◌ a progress line for a large feed        cli-progress  waiting    │                                              
+│ └   ◇ try it on last month's real feeds       cli-review    yours      │                                              
+└ ▼ ? the importer documented                   docs          proposed   │                                              
+  ├   ? usage in the README                     d-usage       proposed   │                                              
+  ├   ? which dialects we read, with an…        d-dialects    proposed   │                                              
+  └   ? how to read the bad rows report         d-report      proposed   │                                              
+                                                                         │                                              
+                                                                         │                                              
+                                                                         │                                              
+                                                                         │                                              
+                                                                         │                                              
+                                                                         │                                              
+                                                                         │                                              
+ waiting on you: 5 · executors: 2 running · R runs 4 ready · 14/26 done · plan first: on (P)                            
+ w widen · b sibling · ? ask the planner · Enter record · q quit                                                        

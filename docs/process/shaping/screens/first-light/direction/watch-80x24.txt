@@ -1,0 +1,24 @@
+ the plan of …lders/kl/5njp0xds47586m9j3gqtw_8m0000gn/T/direction-demo-19bqpor0
+ ? Graphene is the…        graphene     proposed  · you 11 · 3 running · next:
+                                                    lane-a
+   ? Graphene runs live…   live         proposed  · you 4 · 2 running · next:
+                                                    lane-a
+▼ ○ first light: Graphene meets a real model for the first time, as…  0/10 done
+├   ○ A. first light: rungs 2 to 5 live, and the fixes…     lane-a    ready
+├   ○ B. the rough cut, in real time                        lane-b    ready
+├ ▶ ○ C. what the shaping run left broken                   lane-c    5 ready
+├   ○ D. the direction, with everything attached            lane-d    ready
+├   ○ E. ready for the session with Alex                    lane-e    ready
+└   ◌ F. polish and the closing review                      lane-f    waiting
+────────────────────────────────────────────────────────────────────────────────
+ first light: Graphene meets a real model for the first time, as practice,
+ under $10
+ the goal · 0/10 done
+
+ ○ A. first light: rungs 2 to 5 live, and the fixes first…    lane-a  ready
+ ○ B. the rough cut, in real time                             lane-b  ready
+ ○ C. what the shaping run left broken                        lane-c  0/5 done▆
+ ○ D. the direction, with everything attached                 lane-d  ready
+ ○ E. ready for the session with Alex                         lane-e  ready
+ you: 0 · 0 running · R: 9 ready · 0/10 done · plan first: on
+ R run all ready · E edit the plan as text · za fold all · Tab view · ? help

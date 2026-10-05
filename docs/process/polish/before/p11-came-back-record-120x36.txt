@@ -1,0 +1,36 @@
+ ~/graphene-polish  ·  the plan: Load the Northwind XML feed through the same `load` command and JSONL sink as csv and  
+▶ ✓ zero price is skipped for every supplier  [zero-price]  │ xml-wiring (revision 2): xml enabled end to end           
+▼ ○ the xml source is wired in  [xml-source]                │   why:    Load the Northwind XML feed through the same    
+├ ✓ an xml reader  [xml-reader]                             │ `load` command and JSONL sink as csv and json, skipping   
+├ ↩ xml enabled end to end  [xml-wiring]  came back         │ the summary line and any zero-priced product.             
+└ ○ read the new README section for xml  [n6]               │             the xml source is wired in (xml-source)       
+                                                            │   goal:   FIELD_MAPS "xml": code->sku, desc->name,        
+                                                            │ price->price with price_unit "minor"; "xml" in            
+                                                            │ ENABLED_SOURCES, the USAGE line and README;               
+                                                            │ samples/prices.xml loads to exactly NW-1 and NW-2         
+                                                            │   scope:  normalize/fields.py, config/defaults.py,        
+                                                            │ README.md, tests/test_xmlfeed.py   (a write anywhere      
+                                                            │ else is refused, and blocks `done`)                       
+                                                            │   needs:  xml-reader, zero-rule   (it cannot start        
+                                                            │ until they are done)                                      
+                                                            │   done:   `python3 -m unittest discover -q tests`         
+                                                            │ passes                                                 ▃▃ 
+                                                            │   finish: graphene node done xml-wiring   (runs the       
+                                                            │ check and asks git what changed)                          
+                                                            │   stuck:  graphene node release xml-wiring --why '<what   
+                                                            │ is in the way>' [--wants <paths it needs>]   (hands it    
+                                                            │ back; say why)                                            
+                                                            │   came back: The goal needs "xml" in the USAGE line,      
+                                                            │ which is in cli/main.py (USAGE = "usage: main load        
+                                                            │ <file> --source <csv|json>"), not in scope.               
+                                                            │ tests/test_contract.py requires every enabled source to   
+                                                            │ appear in USAGE, so adding "xml" to ENABLED_SOURCES       
+                                                            │ without editing cli/main.py fails the done-check.         
+                                                            │     widen xml-wiring's scope to cli/main.py: `graphene    
+                                                            │ node widen xml-wiring`                                    
+                                                            │     a sibling leaf for cli/main.py; xml-wiring waits on   
+                                                            │ it: `graphene node sibling xml-wiring`                    
+                                                            │   its last attempt is kept in                             
+                                                            │ /Users/alexlopez/graphene-polish/.graphene/worktrees/xm   
+ planner: claude:59409a10 · executors: none · 2/4 done                                                                  
+ /xml-wiring: 1 of 1 (n next · Esc ends the search)                                                                     

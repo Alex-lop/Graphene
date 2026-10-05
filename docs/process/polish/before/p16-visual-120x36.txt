@@ -1,0 +1,36 @@
+ ~/graphene-polish  ·  the plan (proposed): Load the Northwind XML feed through the same `load` command and JSONL sink  
+▼ ? zero price is skipped for every supplier  [zero-price]  │ an xml reader                                             
+└ ? a price of 0 fails validation  [zero-rule]              │ [xml-reader] proposed, revision 1   proposed by           
+▼ ? the xml source is wired in  [xml-source]                │ claude:59409a10                                           
+├ ? an xml reader  [xml-reader]                             │ under: the xml source is wired in (xml-source)            
+└ ? xml enabled end to end  [xml-wiring]                    │                                                           
+                                                            │ scope  ingest/xmlfeed.py, ingest/__init__.py,             
+                                                            │ tests/test_xmlreader.py                                   
+                                                            │ check  python3 -m unittest -q tests.test_xmlreader        
+                                                            │                                                           
+                                                            │ ingest/xmlfeed.py reads <product> elements only (stdlib   
+                                                            │ xml.etree; <summary> is not a product) into raw dicts,    
+                                                            │ registered as "xml" in ingest.READERS                     
+                                                            │                                                           
+                                                            │ proposed by claude:59409a10                               
+                                                            │                                                           
+                                                            │ y accept · d drop · e edit its contract · E edit it with  
+                                                            │ what is under it                                          
+                                                            │                                                           
+                                                            │                                                           
+                                                            │                                                           
+                                                            │                                                           
+                                                            │                                                           
+                                                            │                                                           
+                                                            │                                                           
+                                                            │                                                           
+                                                            │                                                           
+                                                            │                                                           
+                                                            │                                                           
+                                                            │                                                           
+                                                            │                                                           
+                                                            │                                                           
+                                                            │                                                           
+                                                            │                                                           
+ VISUAL · planner: claude:59409a10 · executors: none · 0/3 done                                                         
+ /zero-rule: 1 of 1 (n next · Esc ends the search)                                                                      

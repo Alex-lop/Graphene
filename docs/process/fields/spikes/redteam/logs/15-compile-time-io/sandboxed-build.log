@@ -1,0 +1,9 @@
+✖ [3/3] Building Proofs.Target (182ms)
+trace: .> LEAN_PATH=/private/tmp/claude-501/-Users-alexlopez-Desktop-AllThingsAgenticHackathon/1c257068-543a-48a1-ae2e-a2935409e414/scratchpad/tmp/redteam-run/15-compile-time-io-sandboxed/.lake/build/lib/lean /Users/alexlopez/.elan/toolchains/leanprover--lean4---v4.34.1/bin/lean /private/tmp/claude-501/-Users-alexlopez-Desktop-AllThingsAgenticHackathon/1c257068-543a-48a1-ae2e-a2935409e414/scratchpad/tmp/redteam-run/15-compile-time-io-sandboxed/Proofs/Target.lean -o /private/tmp/claude-501/-Users-alexlopez-Desktop-AllThingsAgenticHackathon/1c257068-543a-48a1-ae2e-a2935409e414/scratchpad/tmp/redteam-run/15-compile-time-io-sandboxed/.lake/build/lib/lean/Proofs/Target.olean -i /private/tmp/claude-501/-Users-alexlopez-Desktop-AllThingsAgenticHackathon/1c257068-543a-48a1-ae2e-a2935409e414/scratchpad/tmp/redteam-run/15-compile-time-io-sandboxed/.lake/build/lib/lean/Proofs/Target.ilean -c /private/tmp/claude-501/-Users-alexlopez-Desktop-AllThingsAgenticHackathon/1c257068-543a-48a1-ae2e-a2935409e414/scratchpad/tmp/redteam-run/15-compile-time-io-sandboxed/.lake/build/ir/Proofs/Target.c --setup /private/tmp/claude-501/-Users-alexlopez-Desktop-AllThingsAgenticHackathon/1c257068-543a-48a1-ae2e-a2935409e414/scratchpad/tmp/redteam-run/15-compile-time-io-sandboxed/.lake/build/ir/Proofs/Target.setup.json --json
+error: Proofs/Target.lean:5:0: operation not permitted (error code: 1)
+  file: PWNED
+error: Proofs/Target.lean:6:0: operation not permitted (error code: 1)
+  file: EXFIL
+Some required targets logged failures:
+- Proofs.Target
+error: build failed

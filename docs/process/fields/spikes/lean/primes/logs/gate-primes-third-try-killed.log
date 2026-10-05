@@ -1,0 +1,15 @@
+02:45:41
+(a) trusted inputs   pass     27.9s  22 files from 2e03594b40bcb9a6f74c673a237fe3e36afedcf5; none differed; .lake cloned
+    trusted build    pass      8.7s  Challenge, Spec.* (reused from the trusted .lake when unchanged)
+(b) lake build       pass    366.1s  Proofs.PrimeModFour Proofs.MulOneModFour Proofs.FactorThreeModFour Proofs.EuclidModFour Proofs.NotDvdEuclid Proofs.DvdFactorial Proofs.Euclid Proofs.SetForm Proofs.Root (sandboxed; sorry warnings: 0)
+(c) type + axioms    pass    321.4s  primeModFour: [propext, Quot.sound]; mulOneModFour: [propext]; factorThreeModFour: [propext, Classical.choice, Quot.sound]; euclidModFour: [propext, Quot.sound]; notDvdEuclid: [propext, Quot.sound]; dvdFactorial: [propext]; euclid: [propext]; setForm: [propext, Classical.choice, Quot.sound]; root: [propext, Classical.choice, Quot.sound]; 
+(d) kernel replay    pass    427.2s  leanchecker Proofs.PrimeModFour Proofs.MulOneModFour Proofs.FactorThreeModFour Proofs.EuclidModFour Proofs.NotDvdEuclid Proofs.DvdFactorial Proofs.Euclid Proofs.SetForm Proofs.Root 
+time: command terminated abnormally
+real 1403.83
+user 90.52
+sys 734.99
+exit=143
+03:09:05
+=== 2026-09-30 03:10:02 stopped by the integrator at 03:09 during (e) SafeVerify (3 at a time, each importing Mathlib): swap reached 30.3 of 30.7 GB and free disk fell to 13-14 GB (floor 15). After the kill: 22 GB free, swap 21 GB. No SafeVerify line finished; comparator never started.
+=== 2026-09-30 03:12:14 children of this run were still running after the stop (their start time, about 03:10, says gate.sh went on to its next batch when the first was killed): SafeVerify on PrimeModFour and MulOneModFour, comparator (with lean4export) on PrimeModFour, all in scratchpad/tmp/gate-work. I found them at 03:12 and killed them; swap was 26.0 GB, disk 18 GB free.
+=== 2026-09-30 03:16:25 CORRECTION of the line above: those three jobs were not children of this run; they were another agent process's hand-run layer (e) (scratchpad/tmp/layer-e.sh, logs/gate-primes-layer-e-killed.log), which I killed by mistake.

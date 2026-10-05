@@ -1,0 +1,24 @@
+ the plan of ~/graphene-polish                                                  
+▼ ○ Load the Northwind XML feed through the same `load` command and…   2/4 done 
+├ ▶ ✓ zero price is skipped for every supplier             zero-price  done     
+└ ▼ ○ the xml source is wired in                           xml-source  1/3 done 
+  ├   ✓ an xml reader                                      xml-reader  done     
+  ├   ● xml enabled end to end                             xml-wiring  running  
+  └   ◇ read the new README section for xml                n6          yours    
+────────────────────────────────────────────────────────────────────────────────
+ xml-wiring · output of attempt 1                                               
+ .graphene/runs/xml-wiring-20260924T042457-251557e0-1.txt                       
+                                                                                
+ its log is empty until it ends; these are the tool calls the hooks recorded    
+ for it, newest last:                                                           
+ 00:25:09  Bash git ls-files; cat normalize/fields.py config/defaults.py…       
+ 00:25:11  Bash cat ingest/__init__.py ingest/xmlfeed.py normalize/money.py…    
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+ you: 1 · 1 running · none ready · 2/4 done · plan first: on                    
+ ctrl-d ctrl-u scroll · l back · ? help · q quit                                

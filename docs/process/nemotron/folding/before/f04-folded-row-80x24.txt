@@ -1,0 +1,24 @@
+ the plan of /private/tmp/graphene-fold/feeds                                   
+▼ ○ csv feeds import cleanly, and every bad row is named with its…  14/26 done  
+├ ▶ ✓ read every feed as rows                         reader        done        
+├ ▶ ✓ the dialects our suppliers send                 dialects      done        
+├ ▼ ○ every row checked before it is imported         validate      2/5 done  ▁ 
+│ ├   ✓ numbers, dates and prices parse               v-types       done        
+│ ├   ✓ required fields are there                     v-required    done        
+│ ├   ● a zero or negative price is a bad row         v-price       running     
+│ ├   ↩ duplicate skus in one feed                    v-dupes       came back   
+│ ├   ◌ rules a supplier can switch off               v-rules       waiting     
+│ └   ? an empty row is skipped, not a bad row        v-empty       proposed    
+────────────────────────────────────────────────────────────────────────────────
+ read every feed as rows                                                        
+ reader · done at 01:38                                                         
+                                                                                
+ why  csv feeds import cleanly, and every bad row is named with its line        
+                                                                                
+ ✓ open a feed whatever its encoding                          csv-open    done  
+ ✓ sniff the delimiter from the first lines                   csv-sniff   done  
+ ✓ map the header to our field names                          csv-header  done  
+ ✓ quoted fields with newlines in them                        csv-quotes  done  
+ ✓ a byte order mark is not part of the first field           csv-bom     done▇ 
+ you: 5 · 2 running · R: 4 ready · 14/26 done · plan first: on                  
+ x reopen · Enter record · ? help · q quit                                      
