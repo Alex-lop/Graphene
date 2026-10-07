@@ -141,7 +141,8 @@ def test_a_leaf_lands_its_check_decides_and_the_bill_is_in_the_record(repo, fake
         assert f"bill: ${spent:.4f} at list price · 4 model calls" in shown
         assert "Nemotron-3-Nano-fake (a stand-in's usage)" in shown  # the fake is not Token Factory
         assert bill["detail"]["endpoint"] == "a stand-in"
-        assert summary(store, 0).endswith(f"; ${spent:.4f} at list price")
+        clocks = f" · agents <1 min, ${spent:.4f} at list price · you 0 acts, 0 min"
+        assert summary(store, 0) == "run: 1 done" + clocks
 
 
 def test_each_model_call_tool_call_and_word_is_a_row_and_the_rows_add_up_to_the_bill(repo, fake):

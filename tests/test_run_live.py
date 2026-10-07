@@ -111,7 +111,8 @@ def test_ctrl_c_hands_back_what_the_run_started_and_stops_its_executors(repo, pa
     said, _ = run.communicate(timeout=30)
     assert run.returncode == 130, said
     last = said.strip().splitlines()[-1]
-    assert last == f"run stopped: {'a, b' if parallel == '2' else 'a'} handed back, ready again", said
+    clocks = " · agents <1 min, no meter · you 0 acts, 0 min"  # a script: no stream, no meter
+    assert last == f"run stopped: {'a, b' if parallel == '2' else 'a'} handed back, ready again{clocks}", said
     assert set(states(repo).values()) == {OPEN}  # nothing left running, nothing said done
     with Store.open(repo) as store:
         whys = [e["detail"]["why"] for e in store.node_log(kinds=("released",))]
@@ -583,10 +584,10 @@ def test_ctrl_c_while_a_merge_hook_runs_undoes_or_keeps_the_merge_as_it_stands(r
     if hook == "pre-merge-commit":  # no merge commit: undone here, and the leaf waits in review
         assert states(repo) == {"a": REVIEW} and (repo / "a.txt").read_text() == "a\n"
         assert "a, by its executor" in git(repo, "show", "graphene/a:a.txt")
-        assert last == "run stopped: 1 in review (a)", said
+        assert last == "run stopped: 1 in review (a) · agents <1 min, no meter · you 0 acts, 0 min", said
     else:  # the merge commit is made: it landed, and stays done
         assert states(repo) == {"a": DONE} and (repo / "a.txt").read_text() == "a, by its executor\n"
-        assert last == "run stopped: 1 done", said
+        assert last == "run stopped: 1 done · agents <1 min, no meter · you 0 acts, 0 min", said
 
 
 def test_ctrl_c_inside_a_landing_never_aborts_the_persons_own_merge(repo, monkeypatch):
