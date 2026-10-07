@@ -2,7 +2,7 @@
 
 A workflow read the branch's diff against `main` in four areas: the meter's reading of the streams, `run.py`
 with the night's ledger, the screens and the record, and plan first auto with the ledger's rows. Four
-readers found 20 defects; one skeptic each tried to refute the top six, reproducing them on a copy of the
+readers found 20 defects, 19 distinct; one skeptic each tried to refute the top six, reproducing them on a copy of the
 branch. None was refuted. The other thirteen had no second reader; the fixers confirmed each one from the
 code, in a test that fails without its fix, before fixing it. Three fixers worked in worktrees of their own,
 one per group of files, and their branches were merged into `meter` (`9ca8d71`). The suite then passed:
