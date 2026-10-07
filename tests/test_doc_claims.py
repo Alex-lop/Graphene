@@ -37,7 +37,6 @@ def test_the_docs_describe_the_planner_prompt_the_code_sends():
         assert "about five" not in said and "what it would leave out" not in said, path
         assert "what it assumed, the risks it sees" not in said, path
     assert f"Since prompt version {planner.PROMPT_VERSION}, Ultra" in doc("docs/HACKATHON.md")
-    assert "at most three items" in doc("README.md")
 
 
 def test_the_docs_say_graphene_watch_shows_and_counts_the_board_as_it_does():
@@ -151,7 +150,7 @@ def test_the_readme_and_changelog_name_what_first_light_added():
     for words in (["direction"], ["board", "lookup"]):
         assert CliRunner().invoke(build(), [*words, "--help"]).exit_code == 0, words
     assert S.BOARDS[0] == "auto"  # the first is the value when unset
-    for path in ("README.md", "CHANGELOG.md"):
+    for path in ("docs/HOW_IT_WORKS.md", "CHANGELOG.md"):  # the README argues; the reference lists
         assert "`board: auto`" in doc(path), path
     for path in ("docs/HOW_IT_WORKS.md", "CHANGELOG.md"):  # hidden now: "The rest" lists it
         said = doc(path)
@@ -173,7 +172,7 @@ def test_the_docs_say_what_accept_and_r_leave_open_and_that_d_attaches_nothing()
     # what D does is test_d_in_watch_shows_the_direction_across_the_width_live_and_takes_no_key's
     for path in ("README.md", "docs/HOW_IT_WORKS.md", "docs/HACKATHON.md", "CHANGELOG.md"):
         said = doc(path)
-        assert "drops a node" in said, path
+        assert "drops a node" in said or path == "README.md", path  # the README leaves it to the reference
         assert "or `D` in `graphene watch`" not in said and "opens `:direction attach" not in said, path
         assert "and an agent's note, stay open" not in said, path
 

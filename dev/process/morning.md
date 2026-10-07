@@ -4,9 +4,10 @@ Rollback: `main` is untouched at `af3da2c`. To drop the night: close the PR, `gi
 
 ## The brief
 
-**1. Watch first:** not yet: the meter is being built.
+**1. Watch first:** the meter, live, at 80 columns: `dev/process/meter/` (screens being chosen).
 
-**2. The bill:** $4.24 of $50. `auto` $3.94, `statements-practice` $0.23, `meter` $0.08.
+**2. The bill:** $18.88 of $50 at 01:25. `dogfood` $5.77, `meter` $4.81, `auto` $3.94, `statements-practice`
+  $3.38, `nemotron-take` $0.98.
 
 **3. `auto`:** Tuesday asks: 8 of 12 yours at once and done; the 4 others waited on a board item they put up.
   The feeds paragraph: a tree once in three; twice one leaf of 8 paths with no board item, taken at once
@@ -43,3 +44,15 @@ Rollback: `main` is untouched at `af3da2c`. To drop the night: close the PR, `gi
   leaves (`c0d8379`). Three more rounds ran on the fix.
 - **00:25** The move: `docs/` keeps what you need to use Graphene, `dev/` holds how it gets built.
 - **00:30** `meter` pushed for CI.
+- **00:31** Statements practice 1, at the registered size: planned in 2.5 min, ran 9.5 min, 0 traps, 19/24
+  and 8/12. Two hand-backs, both real conflicts. The task is about 8 times short of its 1-3 hours.
+- **00:58** The meter merged: run reads each executor's stream; watch has a live row per leaf and two
+  clocks; node show has each attempt; Nemotron writes a row per call.
+- **01:04** Live, Claude Code: `run: 3 done · agents 2 min, $0.4560 at list price`; Claude Code's own report
+  and the ledger both say $0.456. Codex on Nemotron Super: $0.3669, ledger $0.3669. Nemotron: $0.2258,
+  ledger $0.2258.
+- **01:10** The dogfood: Graphene wrote its own HOW_IT_WORKS (2,849 words) with plan first on: 7 acts of
+  mine, 8 agent-minutes, $4.27. `dev/process/meter/dogfood.md`.
+- **01:12** Fixed what the runs showed: Claude's output tokens settle at its result; Nemotron's per-call
+  rows broke arm A; Ultra's `<tool_call>` text was read as its answer, so the planner proposed nothing.
+- **01:15** The statements task at twice the size (2,658 lines, eight subsystems); practice 2 running.
