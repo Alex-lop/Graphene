@@ -310,7 +310,9 @@ The tools: view(path, start?, end?), edit(path, old, new), write(path, content),
 release(why, wants?)."""
 
 
-_NATIVE_CALL = re.compile(r"<(?:TOOLCALL|tool_call)>\s*(.*?)\s*</(?:TOOLCALL|tool_call)>", re.DOTALL)
+# a call is read from the opening tag nearest its closing tag: a tag named in prose before it stays prose
+_TAG = "(?:TOOLCALL|tool_call)"
+_NATIVE_CALL = re.compile(rf"<{_TAG}>\s*((?:(?!<{_TAG}>).)*?)\s*</{_TAG}>", re.DOTALL)
 
 
 def text_calls(content: str | None) -> list[dict]:
