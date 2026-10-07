@@ -4,8 +4,9 @@ section it promises, in order."""
 from pathlib import Path
 
 HOW = (Path(__file__).resolve().parents[1] / "docs/HOW_IT_WORKS.md").read_text(encoding="utf-8")
-SECTIONS = ["The plan", "The board", "The views", "Plan first", "Ask", "Run", "The executors", "The meter",
-            "Where each mechanism ends", "The record", "The settings", "Privacy", "FAQ", "The rest"]  # fmt: skip
+SECTIONS = ["The plan", "The board", "The views", "Plan first", "Ask", "Run", "The executors",
+            "The meter", "Where each mechanism ends", "The record", "The settings", "Privacy", "FAQ",
+            "The rest"]  # fmt: skip
 
 
 def test_it_is_under_three_thousand_words():

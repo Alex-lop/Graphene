@@ -310,12 +310,13 @@ The tools: view(path, start?, end?), edit(path, old, new), write(path, content),
 release(why, wants?)."""
 
 
-_NATIVE_CALL = re.compile(r"<TOOLCALL>\s*(.*?)\s*</TOOLCALL>", re.DOTALL)
+_NATIVE_CALL = re.compile(r"<(?:TOOLCALL|tool_call)>\s*(.*?)\s*</(?:TOOLCALL|tool_call)>", re.DOTALL)
 
 
 def text_calls(content: str | None) -> list[dict]:
     """Tool calls written as text: a fenced ```tool block (``--protocol text``), or Nemotron's own
-    `<TOOLCALL>[{"name": …, "arguments": {…}}]</TOOLCALL>` when a server hands it back as text."""
+    `<TOOLCALL>[{"name": …, "arguments": {…}}]</TOOLCALL>` when a server hands it back as text, or
+    `<tool_call>{"name": …, "arguments": {…}}</tool_call>`, as Ultra wrote it on 7 October."""
     found: list[dict] = []
     for block in _TEXT_CALL.findall(content or ""):
         try:

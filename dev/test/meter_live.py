@@ -86,9 +86,10 @@ def ledger_rows(since: float, until: float, prefix: str, leaves: list[str]) -> l
     rows = [json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
     tags = {r.get("id"): str(r.get("tag") or "") for r in rows if r.get("kind") == "reserve"}
 
-    def mine(r: dict) -> bool:
-        tag = tags.get(r.get("id"), "")
-        return tag.startswith("run: ") or tag in leaves
+    def mine(r: dict) -> bool:  # `run: <leaf> attempt <n>`, or a Nemotron call's own leaf id
+        words = tags.get(r.get("id"), "").split()
+        leaf = words[1] if words[:1] == ["run:"] and len(words) > 1 else words[0] if words else ""
+        return leaf in leaves
 
     return [
         r
@@ -117,7 +118,7 @@ def one(executor: str, rnd: int, a, env: dict) -> dict:
         f"$ graphene init --planner {Path(planner).name} --executor {executor}",
         sh(["graphene", "init", "--planner", planner, "--executor", WITH[executor]], repo, env),
     ]
-    paragraph = (FEEDS / "paragraph.md").read_text().strip()
+    paragraph = (a.paragraph or FEEDS / "paragraph.md").read_text().strip()
     held = None
     if planner == PLANNER:
         from graphene_map.nemotron import night
@@ -228,6 +229,7 @@ def main() -> int:
     ap.add_argument("--executors", nargs="*", default=list(WITH))
     ap.add_argument("--rounds", type=int, default=2)
     ap.add_argument("--every", type=float, default=20.0, help="seconds between screens")
+    ap.add_argument("--paragraph", type=Path, help="what the person asks, instead of the feeds paragraph")
     a = ap.parse_args()
     if not os.environ.get("GRAPHENE_AGENT_LIVE_USD"):
         sys.exit(

@@ -23,6 +23,7 @@ from pathlib import Path
 from .. import plan as P
 from ..store import Store, repo_root
 from . import tokenfactory as tf
+from .executor import text_calls
 
 PROMPT_VERSION = 4  # 2: the board (questions with a default, assumptions, risks, leave-outs); 3: then:
 # lines; 4: at most three items, each a question or a risk that changes the tree; assumptions in goals
@@ -173,7 +174,8 @@ def plan(args: argparse.Namespace, prompt: str) -> int:
             bill["completion_tokens"] += said["usage"].get("completion_tokens") or 0
             bill["dollars"] += said["dollars"]
             message = said["message"]
-            calls = message.get("tool_calls") or []
+            native = message.get("tool_calls") or []
+            calls = native or ([] if last else text_calls(message.get("content")))  # one written as text, too
             if not calls and said.get("finish") == "length" and params["max_tokens"] < 32_768:
                 params["max_tokens"] = min(params["max_tokens"] * 2, 32_768)  # cut off: ask again, with room
                 print(f"{step:>3} cut off at the token limit; again with {params['max_tokens']}", file=say)
@@ -184,12 +186,16 @@ def plan(args: argparse.Namespace, prompt: str) -> int:
                     print("the answer was cut off at the token limit, even with more room", file=say)
                 break
             messages.append({"role": "assistant", "content": message.get("content") or "",
-                             "tool_calls": calls})
+                             **({"tool_calls": native} if native else {})})
             for c in calls:
                 result = repo.call(c["function"]["name"], c["function"].get("arguments"))
                 given = str(c["function"].get("arguments", ""))[:120]
                 print(f"{step:>3} {c['function']['name']} {given}", file=say)
-                messages.append({"role": "tool", "tool_call_id": c.get("id", ""), "content": result})
+                if native:
+                    messages.append({"role": "tool", "tool_call_id": c.get("id", ""), "content": result})
+                else:  # as the executor answers a call written as text
+                    said_back = f"Result of {c['function']['name']}:\n{result}"
+                    messages.append({"role": "user", "content": said_back})
             if step == args.steps - 1:
                 messages.append({"role": "user", "content": "Answer now with the proposal."})
     except tf.Unreachable as no:
