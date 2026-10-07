@@ -370,7 +370,6 @@ def run_node(
     stamp = (node.started_at or P._now()).replace(":", "").replace("-", "")[:15]
     proc: subprocess.Popen | None = None
     paid = 0.0  # what this hold's attempts settled: a resumed Claude Code reports the session's total
-    told = (0, 0)  # and the tokens in and out they settled
     try:
         for attempt in range(1, attempts + 1):
             if stop.event.is_set():  # stopped while the last attempt's check ran: nothing starts again
@@ -435,7 +434,7 @@ def run_node(
             meter = read = None
             if kind:  # what it writes is a stream the meter reads: read as it is written
                 price = _listed().get if kind == "codex" else None
-                meter = M.Meter(kind, attempt, M.model_in(argv), paid, price, told)
+                meter = M.Meter(kind, attempt, M.model_in(argv), paid, price)
                 read = Reader(log, meter, lambda k, d: store.log_node(node.id, P._now(), k, who.label,
                                                                       session, None, d))  # fmt: skip
             try:
@@ -445,7 +444,6 @@ def run_node(
                 if read:
                     read(last=True)  # Claude Code's result is its last line
                     paid += meter.dollars
-                    told = (told[0] + meter.prompt_tokens, told[1] + meter.completion_tokens)
                 if held:  # settled at what the stream said it spent; with no stream, nothing
                     spent = meter or M.Meter(name, attempt)
                     night.settle(held, model, spent.dollars, {"prompt_tokens": spent.prompt_tokens,

@@ -107,9 +107,8 @@ class Meter:
     token and per completion token, or None when the model has no list price."""
 
     def __init__(self, kind: str, attempt: int, model: str | None = None, paid_before: float = 0.0,
-                 price=None, told_before: tuple[int, int] = (0, 0)):  # fmt: skip
+                 price=None):  # fmt: skip
         self.kind, self.attempt, self.paid_before, self.price = kind, attempt, paid_before, price
-        self.told_before = told_before  # tokens in and out earlier attempts of a resumed session settled
         self.model = model or ("codex" if kind == "codex" else None)
         self.turns = self.prompt_tokens = self.completion_tokens = self.unread = 0
         self.dollars, self.priced, self.reported = 0.0, True, None
@@ -190,7 +189,8 @@ class Meter:
     def _settled(self, event: dict) -> list[tuple[str, dict]]:
         """Claude's result: one row that brings this attempt's turns to what Claude Code reports, its
         dollars and its tokens (the stream counts a message's output tokens before it is written). After
-        --resume the report is the session's running total, so what earlier attempts settled comes off."""
+        --resume its total_cost_usd is the session's running total, so what earlier attempts paid comes
+        off; its usage is the call's own (dev/test/results-2026-09-23.md)."""
         reported = event.get("total_cost_usd")
         if not isinstance(reported, (int, float)):
             return []
@@ -199,8 +199,8 @@ class Meter:
         self.dollars += rest
         used = event.get("usage") or {}
         given = sum(used.get(k) or 0 for k in PROMPT)
-        more_in = max(0, given - self.told_before[0] - self.prompt_tokens)
-        more_out = max(0, (used.get("output_tokens") or 0) - self.told_before[1] - self.completion_tokens)
+        more_in = max(0, given - self.prompt_tokens)
+        more_out = max(0, (used.get("output_tokens") or 0) - self.completion_tokens)
         self.prompt_tokens += more_in
         self.completion_tokens += more_out
         return [("usage", {"model": self.model, "calls": 0, "prompt_tokens": more_in,

@@ -176,6 +176,21 @@ def test_a_resumed_attempt_is_billed_what_the_session_added(repo):
     assert by[1] == pytest.approx(0.07) and by[2] == pytest.approx(0.03)
 
 
+def test_a_resumed_attempt_settles_its_own_output_tokens(repo, tmp_path, monkeypatch):
+    """The review of 7 October: a resumed attempt took what earlier attempts settled off its result's
+    usage, which is the call's own (only total_cost_usd is the session's running total). Attempt 2 kept
+    the stream's 75 output tokens of the 539 its result said, in node show, watch and the night's ledger."""
+    monkeypatch.setenv("GRAPHENE_AGENT_LIVE_USD", "10")
+    source = RESUMED.format(python=sys.executable, fixture=str(FIXTURES / "claude.jsonl"))
+    script = stand_in(repo, "claude", source)
+    with Store.open(repo) as store:
+        R.run_plan(store, repo, f"{script} --output-format stream-json", say=lambda _: None,
+                   logs=repo / ".graphene" / "runs")  # fmt: skip
+        usage = [e["detail"] for e in store.node_log("a", ("usage",))]
+    assert [sum(u["completion_tokens"] for u in usage if u["attempt"] == a) for a in (1, 2)] == [539, 539]
+    assert [r["completion_tokens"] for r in ledger(tmp_path) if r["kind"] == "settle"] == [539, 539]
+
+
 def test_an_executor_with_no_stream_has_no_meter_and_its_attempt_still_ends(repo):
     source = f"#!{sys.executable}\nimport pathlib\npathlib.Path('a.txt').write_text('done')\n"
     script = stand_in(repo, "work", source)
