@@ -17,7 +17,7 @@ What a screen shows of it is written on the leaf's log as it happens: each attem
 begins (`model`; on a step up the ladder, with the model before and why), each fork's state when it
 starts and when it ends (`fork`), and in a sandbox its checkpoint, operations and seconds (`placement`,
 and on each fork's row). Each model call is a `usage` row, each tool call a `did` row and what the model
-says a `said` row, in the meter's shapes (docs/process/meter/rows.md); the attempt's own `usage` row at
+says a `said` row, in the meter's shapes (dev/process/meter/rows.md); the attempt's own `usage` row at
 the end carries only what none of those did, so the rows add up to its bill.
 """
 

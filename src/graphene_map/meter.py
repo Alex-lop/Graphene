@@ -3,7 +3,7 @@
 A `Meter` takes the stream one line at a time (Claude Code's `--output-format stream-json`, Codex's
 `exec --json`) and returns the rows `graphene run` logs on the leaf: `usage` per turn, `did` per tool
 call, `said` per thing the agent says. `attempts`, `agents` and `you` read those rows back for the
-screens. docs/process/meter/rows.md has the shapes. Standard library only; a line never raises.
+screens. dev/process/meter/rows.md has the shapes. Standard library only; a line never raises.
 """
 
 import json
