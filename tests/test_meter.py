@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from graphene_map import meter as M
-from graphene_map.run import CODEX, DEFAULT_WITH
+from graphene_map.run import CODEX, DEFAULT_WITH, WORST, _worst
 
 FIXTURES = Path(__file__).parent / "fixtures" / "meter"
 
@@ -110,6 +110,15 @@ def test_kind_and_model_on_real_command_lines():
     assert M.kind(["python3", "bin/executor.py"]) is None and M.kind([]) is None
     assert M.model_in([*claude, "--model=claude-opus-5-5"]) == "claude-opus-5-5"
     assert M.model_in(claude) is None
+
+
+def test_an_option_joined_by_equals_reads_as_the_spaced_one():
+    """The review of 7 October: `--output-format=stream-json`, which Claude Code accepts, had no meter, and
+    `--max-budget-usd=10` held $3 on the night's ledger, so an attempt that could spend $10 passed a cap
+    with $3 of room."""
+    joined = ["claude", "-p", "--output-format=stream-json", "--max-budget-usd=10", "do the leaf"]
+    assert M.kind(joined) == "claude" and _worst(joined) == 10.0
+    assert M.kind(["claude", "-p", "--output-format=json"]) is None and _worst(["claude", "-p"]) == WORST
 
 
 def row(ts: str, kind: str, detail: dict, actor: str | None = "run:claude", node: str = "a") -> dict:

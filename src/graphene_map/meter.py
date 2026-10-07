@@ -40,11 +40,22 @@ PROMPT = ("input_tokens", "cache_creation_input_tokens", "cache_read_input_token
 HOLD_ENDS = ("finished", "overruled", "released")  # an attempt with no `ended` row (older stores) ends here
 
 
+def option(argv: list[str], *names: str) -> str | None:
+    """What the command gives the first of ``names`` it has, spaced (`--model x`) or joined (`--model=x`):
+    Claude Code and Codex read both. None when it has none."""
+    for a, b in zip(argv, [*argv[1:], None], strict=True):
+        if a in names:
+            return b
+        name, joined, value = a.partition("=")
+        if joined and name in names:
+            return value
+    return None
+
+
 def kind(argv: list[str]) -> str | None:
     """Which stream the command writes: "claude" or "codex" when it writes one the meter reads, else None."""
     name = os.path.basename(argv[0]) if argv else ""
-    pairs = zip(argv, argv[1:], strict=False)
-    if name == "claude" and any(a == "--output-format" and b == "stream-json" for a, b in pairs):
+    if name == "claude" and option(argv, "--output-format") == "stream-json":
         return "claude"
     if name == "codex" and "exec" in argv and "--json" in argv:
         return "codex"
@@ -53,12 +64,7 @@ def kind(argv: list[str]) -> str | None:
 
 def model_in(argv: list[str]) -> str | None:
     """The model the command names with -m or --model, or None."""
-    for a, b in zip(argv, [*argv[1:], None], strict=True):
-        if a in ("-m", "--model"):
-            return b
-        if a.startswith("--model="):
-            return a.split("=", 1)[1]
-    return None
+    return option(argv, "-m", "--model")
 
 
 def doing(verb: str, target: str) -> str:

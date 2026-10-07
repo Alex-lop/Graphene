@@ -326,7 +326,7 @@ REFUSED = "Your last attempt was not accepted:"  # the Nemotron executor reads w
 
 def _worst(argv: list[str]) -> float:
     """What one attempt may spend: the command's --max-budget-usd, else WORST."""
-    said = next((b for a, b in zip(argv, argv[1:], strict=False) if a == "--max-budget-usd"), None)
+    said = M.option(argv, "--max-budget-usd")
     try:
         return float(said) if said else WORST
     except ValueError:
