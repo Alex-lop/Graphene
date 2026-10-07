@@ -323,7 +323,7 @@ def test_an_agents_contree_sandbox_is_refused_before_the_sdk_is_made(monkeypatch
 def test_the_harnesses_that_strip_the_marks_ask_first(monkeypatch, tmp_path):
     """bench.py and arm_bprime.py give their children an environment without the marks, as the person:
     the rule is asked before, on the harness's own. nemotron.sh asks before it unsets them."""
-    sys.path.insert(0, str(Path(__file__).parents[2] / "docs" / "test"))
+    sys.path.insert(0, str(Path(__file__).parents[2] / "dev" / "test"))
     import bench
 
     monkeypatch.delenv("GRAPHENE_TOKENFACTORY_URL", raising=False)
@@ -339,7 +339,7 @@ def test_the_harnesses_that_strip_the_marks_ask_first(monkeypatch, tmp_path):
     assert bench.unopened("nemotron") is None
     env = {k: v for k, v in os.environ.items() if k not in ("GRAPHENE_TOKENFACTORY_URL", night.OPENING)}
     env |= {"NEBIUS_API_KEY": "fake-key", "PATH": f"{Path(sys.executable).parent}{os.pathsep}{env['PATH']}"}
-    script = Path(__file__).parents[2] / "docs" / "proof" / "nemotron.sh"
+    script = Path(__file__).parents[2] / "dev" / "proof" / "nemotron.sh"
     done = subprocess.run(
         ["bash", str(script), str(tmp_path / "demo")], env=env, capture_output=True, text=True
     )

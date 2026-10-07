@@ -1,5 +1,5 @@
 """No test reaches the real keychain, whatever it does to GRAPHENE_KEYCHAIN, PATH or a child's environment
-(decision 96). A pytest plugin, installed by tests/conftest.py and docs/test/conftest.py:
+(decision 96). A pytest plugin, installed by tests/conftest.py and dev/test/conftest.py:
 
 - Stand-ins for `security` and `secret-tool` go first on the session's PATH, so every process a test
   starts finds them before the real ones. They write down the call and exit 1; they never read stdin.

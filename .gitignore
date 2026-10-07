@@ -21,6 +21,6 @@ local/
 .playwright-mcp/
 
 # The rough cut's takes and videos: build.sh is committed, never what it films
-docs/demo/takes/
-docs/demo/*.mp4
-docs/demo/*.srt
+dev/demo/takes/
+dev/demo/*.mp4
+dev/demo/*.srt
