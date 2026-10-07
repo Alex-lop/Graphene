@@ -2,8 +2,8 @@
 
 A `Meter` takes the stream one line at a time (Claude Code's `--output-format stream-json`, Codex's
 `exec --json`) and returns the rows `graphene run` logs on the leaf: `usage` per turn, `did` per tool
-call, `said` per thing the agent says. `attempts`, `agents` and `you` read those rows back for the
-screens. dev/process/meter/rows.md has the shapes. Standard library only; a line never raises.
+call, `said` per thing the agent says. `attempts`, `going`, `agents` and `you` read those rows back for
+the screens. dev/process/meter/rows.md has the shapes. Standard library only; a line never raises.
 """
 
 import json
@@ -37,7 +37,7 @@ VERBS = {"Read": "reading", "NotebookRead": "reading", "Edit": "editing", "Write
          "Glob": "searching", "WebSearch": "searching", "WebFetch": "searching"}  # fmt: skip
 ENDPOINT = {"claude": "claude code", "codex": "codex"}
 PROMPT = ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens")  # a Claude prompt's
-HOLD_ENDS = ("finished", "overruled", "released")  # an attempt with no `ended` row (older stores) ends here
+HOLD_ENDS = ("finished", "overruled", "released", "dropped")  # an attempt with no `ended` row ends here
 
 
 def option(argv: list[str], *names: str) -> str | None:
@@ -278,6 +278,14 @@ def attempts(rows: list[dict], scope: list[str] | None = None, now: datetime | N
     return [_attempt(a, nxt, scope, now) for a, nxt in zip(tries, after, strict=True)]
 
 
+def going(rows: list[dict], scope: list[str] | None = None, now: datetime | None = None) -> dict | None:
+    """The last attempt of the leaf's current hold (its rows after its last `started`): the one going now
+    while it runs. None when the hold has made none: a person or a Claude Code session took the leaf
+    after a run, or the run has not written its attempt yet. An earlier hold's attempt is not this one."""
+    hold = rows[max((k for k, e in enumerate(rows) if e["kind"] == "started"), default=-1) + 1 :]
+    return (attempts(hold, scope, now) or [None])[-1]
+
+
 def _attempt(a: dict, nxt: dict | None, scope: list[str] | None, now: datetime) -> dict:
     rows, ended, start = a["rows"], a["ended"], a["row"]["timestamp"]
     usage = [e["detail"] for e in rows if e["kind"] == "usage"]
@@ -285,12 +293,19 @@ def _attempt(a: dict, nxt: dict | None, scope: list[str] | None, now: datetime) 
     talk = [e for e in rows if e["kind"] in ("did", "said")]
     said = [e["detail"].get("text") for e in rows if e["kind"] == "said"]
     executor = (a["row"]["actor"] or "").removeprefix("run:")
+    checkout = a["row"]["detail"].get("checkout")
+
+    def target(d: dict) -> str:  # Codex names a file it changed by its absolute path: said as the scope is
+        path = PurePosixPath(d.get("target") or "")
+        if d.get("verb") == "editing" and checkout and path.is_relative_to(checkout):
+            return str(path.relative_to(checkout))
+        return d.get("target") or ""
 
     def targets(verb: str) -> list[str]:
-        return list(dict.fromkeys(d["target"] for d in did if d.get("verb") == verb and d.get("target")))
+        return list(dict.fromkeys(target(d) for d in did if d.get("verb") == verb and d.get("target")))
 
     edited = targets("editing")
-    told = [doing(e["detail"].get("verb") or "", e["detail"].get("target") or "") if e["kind"] == "did"
+    told = [doing(e["detail"].get("verb") or "", target(e["detail"])) if e["kind"] == "did"
             else e["detail"].get("text") for e in talk]  # fmt: skip
     last = talk[-1] if talk else None
     until = ended or a["held"]
@@ -311,7 +326,7 @@ def _attempt(a: dict, nxt: dict | None, scope: list[str] | None, now: datetime) 
         "prompt_tokens": sum(u.get("prompt_tokens") or 0 for u in usage),
         "completion_tokens": sum(u.get("completion_tokens") or 0 for u in usage),
         "dollars": sum(u.get("dollars") or 0 for u in usage),
-        "priced": all(u.get("priced", True) for u in usage),
+        "priced": not unpriced(rows),
         "endpoints": sorted({u.get("endpoint") or "" for u in usage}),  # who answered; "" when a row says not
         "read": targets("reading"),
         "edited": edited,
@@ -329,6 +344,20 @@ def _attempt(a: dict, nxt: dict | None, scope: list[str] | None, now: datetime) 
     }
 
 
+def unpriced(rows: list[dict]) -> int:
+    """The tokens no list price covers: those of each turn that says "priced": False, unless the result
+    that closed its attempt settled the attempt (Claude Code reports what it cost, whatever the model).
+    Codex's turns are never settled."""
+    usage = [e for e in rows if e["kind"] == "usage"]
+
+    def whose(e: dict) -> tuple:  # one attempt: its leaf, its hold's session, its number
+        return e.get("node_id"), e.get("session_id"), e["detail"].get("attempt")
+
+    settled = {whose(e) for e in usage if "reported" in e["detail"]}
+    return sum((e["detail"].get("prompt_tokens") or 0) + (e["detail"].get("completion_tokens") or 0)
+               for e in usage if e["detail"].get("priced") is False and whose(e) not in settled)  # fmt: skip
+
+
 def agents(rows: list[dict], now: datetime) -> dict:
     """The agents' clock over a whole log: attempts running, their seconds summed, the dollars of every
     usage row, and the tokens no list price covers."""
@@ -341,8 +370,7 @@ def agents(rows: list[dict], now: datetime) -> dict:
         "running": sum(a["running"] for a in tries),
         "seconds": sum(a["seconds"] for a in tries),
         "dollars": sum(u.get("dollars") or 0 for u in usage),
-        "unpriced": sum((u.get("prompt_tokens") or 0) + (u.get("completion_tokens") or 0)
-                        for u in usage if u.get("priced") is False),  # fmt: skip
+        "unpriced": unpriced(rows),
     }
 
 

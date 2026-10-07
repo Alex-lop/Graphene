@@ -207,3 +207,52 @@ def test_an_attempt_from_before_the_meter_ends_where_its_hold_did():
              row("00:00", "attempt", {"attempt": 1}, node="b"), row("00:30", "released", {}, node="b")]
     assert [(a["running"], a["seconds"]) for a in M.attempts(older[:2], now=NOW)] == [(False, 40)]
     assert M.agents(older, NOW) == {"running": 0, "seconds": 70, "dollars": 0, "unpriced": 0}
+
+
+def test_an_attempt_with_no_ended_row_ends_where_its_leaf_was_dropped():
+    """The review of 7 October: a run killed hard (or a store from before the meter), then its leaf
+    dropped, left an attempt with no `ended` row running for good: the next morning the status line
+    read `agents: 1 running · 1440 min` with nothing running, and the minutes kept growing."""
+    dropped = [row("00:00", "attempt", {"attempt": 1}), row("00:20", "usage", usage(1, 0.03, turn=1)),
+               row("05:00", "dropped", {}, actor="alex")]  # fmt: skip
+    morning = datetime(2026, 10, 8, 4, 0, tzinfo=UTC)
+    assert [(a["running"], a["seconds"]) for a in M.attempts(dropped, now=morning)] == [(False, 300)]
+    assert M.agents(dropped, morning) == {"running": 0, "seconds": 300, "dollars": 0.03, "unpriced": 0}
+
+
+def test_a_claude_attempt_its_result_settled_is_priced_whatever_model_its_turns_named():
+    """The review of 7 October: on a Claude model PRICES lacks (claude-sonnet-4-5), each turn says
+    "priced": False, and the attempt stayed so after its result settled it at the $0.0623 Claude Code
+    reported: `node show` said `no list price`, the views dropped the dollars, and the run's last line
+    added `+ 60k tokens with no list price`. Codex's turns, which nothing settles, still have none."""
+    from graphene_map.node_record import bill
+
+    meter = M.Meter("claude", 1)
+    stream = (FIXTURES / "claude.jsonl").read_text().replace("sonnet-5-5", "sonnet-4-5-20250929")
+    log = [row("00:00", "attempt", {"attempt": 1, "meter": "claude"})]
+    log += [row("00:30", k, d) for line in stream.splitlines() for k, d in meter.feed(line)]
+    log += [row("01:00", "ended", {"attempt": 1, "exit": 0, "meter": "claude", "unread": 0}),
+            row("01:05", "released", {}), row("01:10", "started", {}, actor="run:codex")]  # fmt: skip
+    hold = [row("01:10", "attempt", {"attempt": 1, "meter": "codex"}),  # the next run's attempt 1
+            row("01:40", "usage", usage(1, 0, turn=1, endpoint="codex", priced=False)),
+            row("02:00", "ended", {"attempt": 1, "exit": 0, "meter": "codex", "unread": 1})]  # fmt: skip
+    log += [e | {"actor": "run:codex", "session_id": "t"} for e in hold]
+    claude, codex = M.attempts(log, now=NOW)
+    assert claude["model"] == "claude-sonnet-4-5-20250929" and claude["dollars"] == pytest.approx(0.0622574)
+    assert claude["priced"] and not codex["priced"]
+    assert M.agents(log, NOW)["unpriced"] == bill(log)["unpriced"] == 110  # Codex's 100 in and 10 out
+
+
+def test_a_codex_edit_named_by_its_absolute_path_is_judged_from_its_checkout():
+    """The review of 7 October: Codex names each file it changes by its absolute path (its apply_patch
+    joins the patch's path to where it works), and the meter kept it so: an edit inside the scope was
+    listed outside it, `1 file, 1 outside` on the strip and `(1 outside the scope: /…/feed.py)` in node
+    show. Said from the attempt's checkout, as Claude's paths are; one outside the checkout stays so."""
+    line = ('{"type": "item.completed", "item": {"id": "item_5", "type": "file_change", "changes": '
+            '[{"path": "/repo/wt/xml/ingest/feed.py", "kind": "update"}, '
+            '{"path": "/repo/ingest/feed.py", "kind": "update"}], "status": "completed"}}')  # fmt: skip
+    log = [row("00:00", "attempt", {"attempt": 1, "checkout": "/repo/wt/xml", "meter": "codex"})]
+    log += [row("00:10", k, d) for k, d in M.Meter("codex", 1).feed(line)]
+    [a] = M.attempts(log, ["ingest/**"], NOW)
+    assert a["files_in"] == ["ingest/feed.py"] and a["files_out"] == ["/repo/ingest/feed.py"]
+    assert a["last"] == "editing /repo/ingest/feed.py" and a["told"][0] == "editing ingest/feed.py"

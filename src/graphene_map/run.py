@@ -663,13 +663,12 @@ def live(store, node: P.Node, now: float | None = None) -> dict:
     """A running leaf as the person watches it: which executor, where, what it did last and how
     long ago. What it did is the meter's newest row for the attempt (`editing api.py`, or what it
     said), else the hooks' last tool call for its session, else its log's last line that is not the
-    stream's JSON; the log's age, too, says when it last spoke."""
+    stream's JSON; the log's age, too, says when it last spoke. The attempt is its hold's
+    (`meter.going`): a session that took the leaf after a run has none."""
     from . import meter as M
 
-    attempt = (store.node_log(node.id, ("attempt",)) or [None])[-1]
-    detail = attempt["detail"] if attempt else {}
-    log = detail.get("log")
-    metered = (M.attempts(store.node_log(node.id)) or [{}])[-1] if attempt else {}
+    metered = M.going(store.node_log(node.id)) or {}
+    log = metered.get("log")
     last = store.last_events(node.session_id) if node.session_id else []
     now = time.time() if now is None else now
     stamps = []
@@ -679,12 +678,12 @@ def live(store, node: P.Node, now: float | None = None) -> dict:
         stamps.append(_seconds(last[-1]["timestamp"]))
     if log and os.path.exists(log) and os.path.getmtime(log) <= now:  # a replay's log is written as it plays
         stamps.append(os.path.getmtime(log))
-    if attempt:
-        stamps.append(_seconds(attempt["timestamp"]))
+    if metered:
+        stamps.append(_seconds(metered["started"]))
     return {
         "executor": node.executor,
         "checkout": node.checkout,
-        "attempt": detail.get("attempt"),
+        "attempt": metered.get("attempt"),
         "log": log,
         "last": metered.get("last") or (said_by(last[-1]) if last else _spoke(log)),
         "idle": int(now - max(stamps)) if stamps else None,
