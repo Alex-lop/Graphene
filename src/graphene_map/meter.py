@@ -2,8 +2,8 @@
 
 A `Meter` takes the stream one line at a time (Claude Code's `--output-format stream-json`, Codex's
 `exec --json`) and returns the rows `graphene run` logs on the leaf: `usage` per turn, `did` per tool
-call, `said` per thing the agent says. `attempts`, `agents` and `you` read those rows back for the
-screens. dev/process/meter/rows.md has the shapes. Standard library only; a line never raises.
+call, `said` per thing the agent says. `attempts`, `going`, `agents` and `you` read those rows back for
+the screens. dev/process/meter/rows.md has the shapes. Standard library only; a line never raises.
 """
 
 import json
@@ -266,6 +266,14 @@ def attempts(rows: list[dict], scope: list[str] | None = None, now: datetime | N
             a["held"] = a["held"] or (e if e["kind"] in HOLD_ENDS else None)
     after = [*tries[1:], None] if tries else []  # each attempt, and the one after it
     return [_attempt(a, nxt, scope, now) for a, nxt in zip(tries, after, strict=True)]
+
+
+def going(rows: list[dict], scope: list[str] | None = None, now: datetime | None = None) -> dict | None:
+    """The last attempt of the leaf's current hold (its rows after its last `started`): the one going now
+    while it runs. None when the hold has made none: a person or a Claude Code session took the leaf
+    after a run, or the run has not written its attempt yet. An earlier hold's attempt is not this one."""
+    hold = rows[max((k for k, e in enumerate(rows) if e["kind"] == "started"), default=-1) + 1 :]
+    return (attempts(hold, scope, now) or [None])[-1]
 
 
 def _attempt(a: dict, nxt: dict | None, scope: list[str] | None, now: datetime) -> dict:

@@ -2167,6 +2167,49 @@ def test_a_metered_leafs_pane_says_what_the_meter_read_and_l_its_stream_phrased(
         assert "meter nothing read from its stream" in " ".join(seen["detail"].split())
 
 
+def test_a_leaf_taken_again_shows_its_own_hold_never_an_earlier_runs_attempt(repo):
+    """The review of 7 October: the attempt going now was read from every hold the leaf ever had. A
+    Claude Code session that took a leaf a run had handed back was drawn as the run's executor, its
+    pane said the run's model, meter, edits and `attempt 3`, and `l` showed the run's rows over the
+    session's own tool calls; a run that took it again showed the old attempt 1's rows as its own."""
+    from graphene_map.model import ToolEvent
+
+    proposed(repo)
+    person("plan", "accept")
+    again = plan.Caller("run:claude", False, "0b2d-the-next-run")
+
+    def log(store, kind: str, detail: dict, who=RUN) -> None:
+        store.log_node("schema", plan._now(), kind, who.label, who.session_id, None, detail)
+
+    with Store.open(repo) as store:
+        plan.start(store, "schema", RUN, repo)
+        for k in (1, 2, 3):
+            log(store, "attempt", {"attempt": k, "meter": "claude"})
+        log(store, "said", {"attempt": 1, "text": "I need README.md"})
+        log(store, "usage", {"model": "claude-sonnet-5-5", "calls": 1, "prompt_tokens": 200_000,
+                             "completion_tokens": 4_000, "dollars": 0.31, "endpoint": "claude code",
+                             "attempt": 3, "turn": 1})  # fmt: skip
+        log(store, "did", {"attempt": 3, "tool": "Edit", "target": "schema.py", "verb": "editing"})
+        log(store, "ended", {"attempt": 3, "exit": 0, "meter": "claude", "unread": 0})
+        plan.release(store, "schema", RUN, "3 attempts, the last one refused")
+        plan.start(store, "schema", SESSION, repo)
+        call = {"command": "pytest -q tests/"}
+        store.add_event(ToolEvent("e1", SESSION.session_id, None, plan._now(), "Bash", call))
+    seen, _ = at(repo, "schema", (120, 36))
+    flat = " ".join(seen["detail"].split())
+    assert seen["meter"] == [] and "schema · running" in flat and "attempt 3" not in flat, seen
+    assert "model" not in flat and "meter" not in flat and "edited" not in flat, flat  # the bill is all of it
+    assert "last Bash pytest -q tests/ · " in flat, flat
+    seen, _ = at(repo, "schema", (120, 36), keys=["l"])
+    assert "Bash pytest -q tests/" in seen["detail"] and "editing schema.py" not in seen["detail"], seen
+    with Store.open(repo) as store:
+        plan.release(store, "schema", SESSION, "the run can have it")
+        plan.start(store, "schema", again, repo)
+        log(store, "attempt", {"attempt": 1, "meter": "claude"}, again)  # nothing done yet
+    seen, _ = at(repo, "schema", (120, 36), keys=["l"])
+    assert "output of attempt 1" in seen["detail"] and "I need README.md" not in seen["detail"], seen
+
+
 def test_the_tree_and_the_graph_note_a_leafs_bill_and_minutes(repo):
     metered(repo)
     seen = {}

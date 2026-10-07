@@ -1026,12 +1026,12 @@ class Watch(App):
         for e in everything:
             if e["node_id"] in running:
                 logs.setdefault(e["node_id"], []).append(e)
-        held = [i for i in running if self.METERS and any(e["kind"] == "attempt" for e in logs.get(i, []))]
+        going = {i: M.going(logs.get(i, []), n.scope, now) for i, n in running.items() if self.METERS}
+        held = [i for i in going if going[i]]  # a person or a session that took it after a run has none
         room, one = max(self.size.width - 2, 20), self.size.width >= WIDE
         lines = []
         for i in held[:METERED]:
-            a = M.attempts(logs[i], running[i].scope, now)[-1]
-            lines += live_row(i, a, R.live(store, running[i], now.timestamp()), room, one)
+            lines += live_row(i, going[i], R.live(store, running[i], now.timestamp()), room, one)
         if len(held) > METERED:
             lines.append(Text(f"+{len(held) - METERED} more", "dim"))
         strip = self.query_one("#meter", Static)
@@ -2213,9 +2213,9 @@ def detail(store, node: P.Node, s, files: list[str] | None = None, room: tuple[i
     pane = Pane(wide)
     word = s.words.get(node.id) or P.reads(node, s.nodes)
     kids = s.under.get(node.id, [])
-    # the run's own count (its `attempt` rows), never every hold the leaf ever had: a new run's first
+    # the run's own count (its hold's last attempt), never every hold the leaf ever had: a new run's first
     # attempt read `attempt 3`, and a leaf that came back `attempt 2` over its `3 attempts`
-    tries = (store.node_log(node.id, ("attempt",)) or [{"detail": {}}])[-1]["detail"].get("attempt") or 0
+    tries = (M.going(store.node_log(node.id)) or {}).get("attempt") or 0
     attempt = f" · attempt {tries}" if tries > 1 and word in ("running", "came back") else ""
     if word == "proposed" and node.state == P.PROPOSED:
         _header(pane, node, "proposed", f" by {P.said_by(node.proposed_by)}")
@@ -2349,7 +2349,7 @@ def _running(pane: Pane, store, node: P.Node, s) -> None:
     pane.field("executor", who)
     _attempt(pane, store, node, running=True)
     rows = store.node_log(node.id)
-    a = (M.attempts(rows, node.scope) or [None])[-1]
+    a = M.going(rows, node.scope)
     if a and a["meter"]:
         if a["model"] and not models(rows):  # a Nemotron executor's model is said above, with its ladder
             pane.field("model", _short(a["model"]))
@@ -2401,16 +2401,16 @@ def tail_pane(store, node: P.Node, root: Path, wide: int) -> Text:
         pane.text(f"{node.id} · a sub-goal: no executor runs it, so it has no output of its own", "bold")
         pane.text("each of its leaves has its own output: l on a leaf shows it", "dim")
         return pane.render()
-    seen = R.live(store, node)
-    pane.text(f"{node.id} · output of attempt {seen.get('attempt') or 1}", "bold")
-    log = seen.get("log")
+    a = M.going(store.node_log(node.id)) or {}  # its hold's: attempt 1 of an earlier hold is not this one
+    pane.text(f"{node.id} · output of attempt {a.get('attempt') or 1}", "bold")
+    log = a.get("log")
     if log:
         with contextlib.suppress(ValueError):
             log = str(Path(log).relative_to(root))
         pane.text(log, "dim")
     pane.gap()
-    rows = [e for e in store.node_log(node.id, ("did", "said"))
-            if e["detail"].get("attempt") == (seen.get("attempt") or 1)][-200:]  # fmt: skip
+    rows = [e for e in store.node_log(node.id, ("did", "said")) if a and e["timestamp"] >= a["started"]
+            and e["detail"].get("attempt") == a["attempt"]][-200:]  # fmt: skip  (its number, since it began)
     for e in rows:
         d, at = e["detail"], (_clock(e["timestamp"], True), "dim")
         if e["kind"] == "did":
@@ -2420,7 +2420,7 @@ def tail_pane(store, node: P.Node, root: Path, wide: int) -> Text:
             pane.text(Text.assemble(at, "  ", " ".join(str(d.get("text") or "").split())))
     if rows:
         return pane.render()
-    lines = [line for line in R.tail(seen.get("log"), 200) if not line.startswith('{"type"')]
+    lines = [line for line in R.tail(a.get("log"), 200) if not line.startswith('{"type"')]
     if lines:
         for line in lines:
             pane.line(Text(line))
