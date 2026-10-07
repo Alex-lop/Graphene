@@ -4,22 +4,23 @@ Rollback: `main` is untouched at `af3da2c`. To drop the night: close the PR, `gi
 
 ## The brief
 
-**1. Watch first:** `graphene demo tests/recordings/meter-claude.jsonl` replays tonight's feeds run on Claude
-  Code, the meter on each leaf; the live screens at 80 and 120 are in `dev/process/meter/screens/`. Nemotron:
-  `graphene demo tests/recordings/meter-nemotron-take-6.jsonl` (Ultra planned; one leaf landed, one came back).
-**2. The bill:** $26.50 of $50 at 01:55. `meter` $7.94 · `statements-practice` $7.01 · `dogfood` $5.77 ·
-  `auto` $3.94 · `nemotron-take` $1.85. ($1.83 of the statements rows were written with no purpose.)
+**1. Watch first:** `graphene demo tests/recordings/meter-claude.jsonl`: the feeds run on Claude Code, recorded
+  at 02:30 on the final code, each leaf's live row climbing (screens at 80 and 120: `dev/process/meter/screens/`).
+  Nemotron: `graphene demo tests/recordings/meter-nemotron-take-6.jsonl` (Ultra planned; one leaf landed).
+**2. The bill:** $36.17 of $50 at 02:45. `meter` $12.76 · `statements-practice` $7.01 · `nemotron-take` $6.69 ·
+  `dogfood` $5.77 · `auto` $3.94. ($1.83 of the statements rows were written with no purpose.)
 **3. `auto`:** Tuesday asks: 8 of 12 yours at once and done; 4 waited on a board item they put up.
   The feeds paragraph: a tree once in three; twice one leaf of 8 paths, no question, taken at once.
 **4. Run in five minutes:** `uv tool install --force git+https://github.com/Alex-lop/Graphene@meter`, then in
   your repo `graphene init`, `graphene ask "…"`, `graphene watch` (`y`, then `R`), `graphene node show <leaf>`.
 **5. The README:** 790 words. Least sure are yours: "which is exactly what I'd have checked first"; "the
   second number is the one I care about"; "because that's the whole game".
-**6. Decide:** 1. Take 6 for the video? Default: no; it is the best of eight, not clean. 2. Run the registered
-  arms? Default: not yet: a run lasts minutes, not hours, and the doubled task needs a commit named for
-  them. 3. What should the meter show next? Default: the planner's dollars (the ledger holds its worst case).
+**6. Decide:** 1. Take 6 for the video? Default: no; none of 17 ran clean. 2. Run the registered arms? Default:
+  not yet: a run lasts minutes, not hours, and the doubled task needs a commit named for them. 3. What should
+  the meter show next? Default: the planner's dollars (the ledger holds its worst case).
 **7. Broken or risky:** Codex's ChatGPT login is revoked: `codex logout && codex login` (Codex ran on Nemotron
-  Super tonight). Most runs that stopped, stopped on a test file two leaves need; Graphene offers the fix.
+  Super tonight). Most runs that stopped had a leaf whose check runs a file another leaf writes. CI's
+  statements rehearsal fails 1 Ubuntu job in about 3 pushes, never locally; it now prints why.
 
 ---
 
@@ -76,3 +77,13 @@ sub-agents outside Graphene. `dev/process/meter/dogfood.md`.
   Fixed, and `meter-claude.jsonl` hidden again: the leak check counts nothing.
 - **01:42** The full suite: 1,589 passed in parallel; the 11 width tests that fail only in parallel pass alone.
 - **01:55** The README gets the run's `git log --graph`, as the directive's shape has it.
+- **02:00** PR #40 opened. CI: the statements rehearsal failed 1 Ubuntu job on two pushes running, as once
+  on the cut night; never here (3 rehearsals, the trip-all suite 40 times, 6 rehearsals in Linux containers).
+  The test now runs a came-back leaf's check again and prints what it said.
+- **02:05** The brief's five minutes, from GitHub `@meter`: install, init, ask (two board questions, so it
+  waited), accept, run (`run: 1 done · agents <1 min, $0.2359`), node show. `dev/process/meter/five-minutes.md`.
+- **02:25** A replay drew no meter strip: Graphene's own recording predates the meter. Turned on, the strip
+  said "no meter" before a leaf's first turn and "-2706 s ago", and `.` stalled at change 31 of 63. All
+  three fixed at the root; the Claude Code recording made again at 02:30 on the final code ($0.3230).
+- **02:00-03:00** Takes 9 to 17: Ultra planned a tree in 4 of 9. Each stopped where a leaf's check or code
+  needed a file another leaf writes. `nemotron.sh` now widens and runs again up to three times.
