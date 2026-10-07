@@ -9,6 +9,7 @@ screens. docs/process/meter/rows.md has the shapes. Standard library only; a lin
 import json
 import os
 import shlex
+from collections import Counter
 from datetime import UTC, datetime
 from pathlib import PurePosixPath
 
@@ -250,7 +251,7 @@ def attempts(rows: list[dict], scope: list[str] | None = None, now: datetime | N
             a["ended"] = e
         else:
             a["rows"].append(e)
-    return [_attempt(a, nxt, scope, now) for a, nxt in zip(tries, [*tries[1:], None], strict=True)]
+    return [_attempt(a, nxt, scope, now) for a, nxt in zip(tries, [*tries[1:], None], strict=False)]
 
 
 def _attempt(a: dict, nxt: dict | None, scope: list[str] | None, now: datetime) -> dict:
@@ -265,10 +266,9 @@ def _attempt(a: dict, nxt: dict | None, scope: list[str] | None, now: datetime) 
         return list(dict.fromkeys(d["target"] for d in did if d.get("verb") == verb and d.get("target")))
 
     edited = targets("editing")
+    told = [doing(e["detail"].get("verb") or "", e["detail"].get("target") or "") if e["kind"] == "did"
+            else e["detail"].get("text") for e in talk]  # fmt: skip
     last = talk[-1] if talk else None
-    phrased = last and last["detail"].get("text")
-    if last and last["kind"] == "did":
-        phrased = doing(last["detail"].get("verb") or "", last["detail"].get("target") or "")
     end = ended["timestamp"] if ended else nxt["row"]["timestamp"] if nxt else now
     return {
         "attempt": a["row"]["detail"].get("attempt"),
@@ -276,6 +276,7 @@ def _attempt(a: dict, nxt: dict | None, scope: list[str] | None, now: datetime) 
         "meter": ended["detail"].get("meter") if ended else executor if usage or talk else None,
         "model": next((u["model"] for u in reversed(usage) if u.get("model")), None),
         "started": start,
+        "log": a["row"]["detail"].get("log"),
         "seconds": _seconds(start, end),
         "running": ended is None and nxt is None,
         "exit": ended["detail"].get("exit") if ended else None,
@@ -287,9 +288,11 @@ def _attempt(a: dict, nxt: dict | None, scope: list[str] | None, now: datetime) 
         "read": targets("reading"),
         "edited": edited,
         "ran": targets("running"),
+        "runs": Counter(d["target"] for d in did if d.get("verb") == "running" and d.get("target")),
         "searched": targets("searching"),
         "said": said[-1] if said else None,
-        "last": phrased,
+        "last": told[-1] if told else None,
+        "told": told,
         "last_at": last["timestamp"] if last else None,
         "files_in": [f for f in edited if scope is None or P.in_scope(f, scope)],
         "files_out": [f for f in edited if scope is not None and not P.in_scope(f, scope)],

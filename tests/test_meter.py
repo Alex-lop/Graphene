@@ -145,15 +145,19 @@ def test_attempts_of_one_leaf():
     first, second = M.attempts(LOG, ["src/**"], NOW)
     assert first == {
         "attempt": 1, "executor": "claude", "meter": "claude", "model": "claude-sonnet-5-5",
-        "started": "2026-10-07T04:00:00.000Z", "seconds": 90, "running": False, "exit": 1, "turns": 3,
+        "started": "2026-10-07T04:00:00.000Z", "log": "x.txt", "seconds": 90, "running": False, "exit": 1,
+        "turns": 3,
         "prompt_tokens": 107, "completion_tokens": 13, "dollars": pytest.approx(0.26), "priced": True,
-        "read": ["src/a.py"], "edited": ["src/a.py", "docs/b.md"], "ran": [], "searched": [],
+        "read": ["src/a.py"], "edited": ["src/a.py", "docs/b.md"], "ran": [], "runs": {}, "searched": [],
         "said": "docs/b.md was refused", "last": "docs/b.md was refused",
+        "told": ["reading src/a.py", "editing src/a.py", "editing docs/b.md", "editing src/a.py",
+                 "docs/b.md was refused"],
         "last_at": "2026-10-07T04:00:50.000Z", "files_in": ["src/a.py"], "files_out": ["docs/b.md"],
         "refused": ["docs/b.md"]}  # fmt: skip
     assert second["running"] and second["seconds"] == 60 and second["exit"] is None
     assert second["last"] == "running python3 -m pytest -q" and second["ran"] == ["python3 -m pytest -q"]
     assert (second["turns"], second["dollars"], second["refused"]) == (1, 0.05, [])
+    assert second["runs"] == {"python3 -m pytest -q": 1} and second["log"] == "y.txt"
 
 
 def test_agents_and_you():

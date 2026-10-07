@@ -348,7 +348,7 @@ def test_a_stand_ins_usage_is_never_credited_to_token_factory(repo, fake):
         lines = [*render(node_record(store, repo, greet)), *rolled_up(store, repo, [greet]),
                  *bill_line(bill(store.node_log("*", ("usage",))))]  # fmt: skip
     assert [r["endpoint"] for r in rows] == ["a stand-in", "a stand-in"]  # the executor's, the planner's
-    billed = [line for line in lines if "at list price" in line]
+    billed = [line for line in lines if "bill: " in line]
     assert len(billed) == 3 and all(line.endswith("(a stand-in's usage)") for line in billed)
     assert "Token Factory's usage" not in "\n".join(lines)
 
