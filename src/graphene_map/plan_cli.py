@@ -577,7 +577,9 @@ def register(cli: typer.Typer, root, open_store, fail):
             nodes, words, goal = V.inputs(store)
             wide, high = V.room(width, height)
             chosen = V.choose(nodes, words, goal, wide, high) if name == "auto" else name
-            drawn = V.VIEWS[chosen].draw(nodes, words, goal, wide, high, None) if V.VIEWS[chosen] else None
+            view = V.VIEWS[chosen]
+            noted = {"meter": V.billed(store.node_log())} if getattr(view, "METER", False) else {}
+            drawn = view.draw(nodes, words, goal, wide, high, None, **noted) if view else None
             if drawn is None or not nodes:
                 if chosen != "outline" and nodes:
                     typer.echo(f"the {chosen} does not fit at {width} columns: the outline", err=True)

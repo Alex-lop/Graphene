@@ -6,8 +6,9 @@ grammar: `plan.look`), its title under them when there is room, and how many nod
 (`←2`), never which: the graph of needs is another view's. When the tree is wider than the screen
 it drops the titles, then folds the sub-goals whose leaves are all done to one cell (`✓ reader 6/6`),
 then lists each sub-goal's leaves down under it instead of across, and only then gives up (None),
-so the screen falls back to the outline. A pure function of the nodes the screen already read: it
-never reads the store."""
+so the screen falls back to the outline. A leaf an executor held notes what it spent and took after
+its title, dim (`$0.42 · 6m`). A pure function of the nodes the screen already read: it never reads
+the store."""
 
 from __future__ import annotations
 
@@ -22,15 +23,17 @@ TITLE = 8  # the least room a title needs to be worth its own line
 YOURS = ("came back", "review", "yours")
 # the forms tried, the one that says most first: (fold finished sub-goals, list leaves down, titles);
 # finished work folds before leaves are listed down, since what is done says least
+METER = True  # its draw takes the leaves' notes (views.billed)
 FORMS = [(fold, stack, two) for stack in (False, True) for fold in (False, True) for two in (True, False)]
 
 
 def draw(
-    nodes: list[P.Node], words: dict[str, str], goal: str, width: int, height: int, cursor: str | None
+    nodes: list[P.Node], words: dict[str, str], goal: str, width: int, height: int, cursor: str | None,
+    meter: dict[str, str] | None = None,
 ) -> Drawn | None:
     """The tree in the first form that fits ``width``, preferring one that also fits ``height``;
-    None when no form fits the width."""
-    return _pick(nodes, words, goal, width, height, cursor)[0]
+    None when no form fits the width. ``meter``: a leaf's note, after its title where there is room."""
+    return _pick(nodes, words, goal, width, height, cursor, meter)[0]
 
 
 def suits(nodes: list[P.Node], width: int, height: int) -> int:
@@ -58,9 +61,11 @@ def note(nodes: list[P.Node], words: dict[str, str]) -> str:
     return " · ".join(said)
 
 
-def _pick(nodes, words, goal, width, height, cursor) -> tuple[Drawn | None, int]:
+def _pick(nodes, words, goal, width, height, cursor, meter=None) -> tuple[Drawn | None, int]:
     fits = [
-        (d, k) for k, form in enumerate(FORMS) if (d := _Tree(nodes, words, *form).draw(goal, width, cursor))
+        (d, k)
+        for k, form in enumerate(FORMS)
+        if (d := _Tree(nodes, words, *form, meter=meter).draw(goal, width, cursor))
     ]
     return next((f for f in fits if len(f[0].lines) <= height), fits[0] if fits else (None, -1))
 
@@ -82,7 +87,9 @@ class _Tree:
     ``stack`` lists the leaves of a sub-goal down under it (its glyph the spine), ``two`` gives
     each cell its title on a second line."""
 
-    def __init__(self, nodes: list[P.Node], words: dict[str, str], fold: bool, stack: bool, two: bool):
+    def __init__(self, nodes: list[P.Node], words: dict[str, str], fold: bool, stack: bool, two: bool,
+                 meter: dict[str, str] | None = None):  # fmt: skip
+        self.meter = meter or {}
         self.by_id = {n.id: n for n in nodes}
         self.under: dict[str | None, list[P.Node]] = {}
         for n in nodes:  # a node whose parent is not drawn hangs from the goal
@@ -209,7 +216,16 @@ class _Tree:
         starting there when leaves are listed down (the glyph is the spine, and ``lead`` goes before
         the title on the second line)."""
         head, lead = self.head(n), lead if self.stack else ""
-        lines = [head, Text(lead, "dim") + Text(elide(n.title, room - len(lead)))] if self.two else [head]
+        lines = [head]
+        if self.two:
+            note, left = self.meter.get(n.id, ""), room - len(lead)
+            if note and left - 1 - cell_len(note) >= min(cell_len(n.title), TITLE):  # the title keeps room
+                left -= 1 + cell_len(note)
+            else:
+                note = ""
+            lines.append(Text(lead, "dim") + Text(elide(n.title, left)))
+            if note:
+                lines[-1].append(f" {note}", "dim")
         xs = [at if self.stack else at - line.cell_len // 2 for line in lines]
         for k, (x, line) in enumerate(zip(xs, lines, strict=True)):
             if n.id == self.cursor:
