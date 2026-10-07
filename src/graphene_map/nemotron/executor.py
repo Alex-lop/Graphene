@@ -454,16 +454,18 @@ def converse(leaf: Leaf, model: str, messages: list[dict], args, params: dict, b
                 bill[k] += turn[k]
             bill["seconds"] += said["seconds"]
             n = bill["calls"]
-        _row(leaf, "usage", {"model": model, **turn, "endpoint": bill["endpoint"], "attempt": bill["attempt"],
-                             "turn": n})  # fmt: skip
-        with _SHARED:  # logged: the attempt's own row at the end carries only what no turn's row did
-            for k in COUNTED:
-                bill["logged"][k] += turn[k]
+        metered = "attempt" in bill  # a leaf of Graphene's run; arm A's harness keeps a bill of its own
+        if metered:
+            _row(leaf, "usage", {"model": model, **turn, "endpoint": bill["endpoint"],
+                                 "attempt": bill["attempt"], "turn": n})  # fmt: skip
+            with _SHARED:  # logged: the attempt's own row at the end carries only what no turn's row did
+                for k in COUNTED:
+                    bill["logged"][k] += turn[k]
         message = said["message"]
         native = message.get("tool_calls") or []
         calls = native or text_calls(message.get("content"))  # a native call handed back as text, too
         words = _NATIVE_CALL.sub("", _TEXT_CALL.sub("", str(message.get("content") or ""))).strip()
-        if words:
+        if words and metered:
             _row(leaf, "said", {"attempt": bill["attempt"], "text": words[: meter.SAID]})
         print(f"{tag}{step:>3} {model.rsplit('/', 1)[-1]} answered in {said['seconds']:.2f} s", flush=True)
         if message.get("content"):
@@ -491,8 +493,9 @@ def converse(leaf: Leaf, model: str, messages: list[dict], args, params: dict, b
             if stopped():
                 return None
             name = c["function"]["name"]
-            _row(leaf, "did", {"attempt": bill["attempt"], **_did(name, c["function"].get("arguments"),
-                                                                  leaf)})  # what it is doing, as it starts
+            if metered:  # what it is doing, as it starts
+                did = _did(name, c["function"].get("arguments"), leaf)
+                _row(leaf, "did", {"attempt": bill["attempt"], **did})
             began = time.monotonic()
             result = leaf.call(name, c["function"].get("arguments"))
             took = time.monotonic() - began
