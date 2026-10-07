@@ -248,6 +248,39 @@ def test_under_the_opening_an_attempt_holds_its_worst_case_and_settles_at_what_i
     assert (settled["prompt_tokens"], settled["completion_tokens"]) == (60425, 539)  # as the result says
 
 
+# Prints the fixture's lines up to ``upto`` (None: all of them), then does the leaf.
+CUT = """#!{python}
+import pathlib
+print("\\n".join(pathlib.Path({fixture!r}).read_text().splitlines()[:{upto}]), flush=True)
+pathlib.Path("a.txt").write_text("done\\n")
+"""
+
+
+@pytest.mark.parametrize(
+    ("name", "with_", "upto", "dollars"),
+    [("claude", "--output-format stream-json --max-budget-usd 2", -1, 2.0),  # its result never read
+     ("codex", "exec --json -m nvidia/super", -1, 3.0),  # its turn never completed
+     ("codex", "exec --json -m nvidia/super", None, 48940e-7 + 344 * 5e-7),  # every turn completed
+     ("codex", "exec --json", -1, 0.0),  # no list price: its tokens alone, whole or not
+     ("claude", "-p --model sonnet", None, 3.0)],  # no stream the meter reads  # fmt: skip
+)
+def test_a_held_attempt_settles_at_its_stream_only_when_the_stream_gave_the_whole_figure(
+    repo, tmp_path, monkeypatch, name, with_, upto, dollars
+):
+    """The review of 7 October: a hold settled at what the stream had said so far, so a Codex turn that
+    never completed and a command with no stream settled at $0, and a Claude Code result never read at the
+    stream's early count. The night never saw that spend, and the next attempts started on it."""
+    monkeypatch.setenv("GRAPHENE_AGENT_LIVE_USD", "10")
+    monkeypatch.setattr(R, "_listed", lambda: {"nvidia/super": (1e-7, 5e-7)})
+    source = CUT.format(python=sys.executable, fixture=str(FIXTURES / f"{name}.jsonl"), upto=upto)
+    script = stand_in(repo, name, source)
+    with Store.open(repo) as store:
+        R.run_plan(store, repo, f"{script} {with_}", say=lambda _: None, logs=repo / ".graphene" / "runs")
+        assert plan.get(store, "a").state == DONE
+    [settled] = [r for r in ledger(tmp_path) if r["kind"] == "settle"]
+    assert settled["dollars"] == pytest.approx(dollars)
+
+
 def test_an_attempt_the_ledger_refuses_never_starts_and_its_leaf_comes_back(repo, tmp_path, monkeypatch):
     monkeypatch.setenv("GRAPHENE_AGENT_LIVE_USD", "1")
     script, _ = printing(repo, "codex", "codex.jsonl", -1)

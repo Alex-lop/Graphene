@@ -333,6 +333,23 @@ def _worst(argv: list[str]) -> float:
         return WORST
 
 
+def _settle(night, hold: dict, meter: M.Meter | None) -> None:
+    """A held attempt, settled on the night's ledger. At what its stream says only when the stream gave
+    the whole figure: Claude Code's result was read, or every Codex turn that started completed. A Codex
+    model with no list price settles at $0, its tokens alone. Anything else (no stream, a turn stopped or
+    failed, a result never read) keeps the worst case held, as a Token Factory call stopped while out
+    does (decision 129): it may have been spent."""
+    if meter is None:
+        night.settle(hold["id"], hold["model"], hold["worst"])
+        return
+    whole = meter.reported is not None if meter.kind == "claude" else meter.begun == meter.turns
+    dollars = meter.dollars if whole else hold["worst"]
+    if meter.kind == "codex" and not (meter.price and meter.price(meter.model)):
+        dollars = 0.0  # no list price: the bill says its tokens
+    used = {"prompt_tokens": meter.prompt_tokens, "completion_tokens": meter.completion_tokens}
+    night.settle(hold["id"], hold["model"], dollars, used)
+
+
 def command_for(template: str, prompt: str, session: str, again: bool) -> list[str]:
     """The executor's argv. Claude Code is told which session this is, so its hooks hold it to the
     node from its first call and a second attempt resumes with what the first one learned; any other
@@ -395,12 +412,13 @@ def run_node(
             if logs is not None:  # streamed as it runs, so its tail can be read while it works
                 logs.mkdir(parents=True, exist_ok=True)
                 log = logs / f"{node.id}-{stamp}-{session[:8]}-{attempt}.txt"
-            held, night = None, extra.load("night") if name in M.ENDPOINT else None
+            hold, night = None, extra.load("night") if name in M.ENDPOINT else None
             if night and night.cap() is not None:  # under the opening: the attempt's worst case, held first
                 model = f"{name}:{M.model_in(argv) or ('default' if name == 'claude' else 'codex')}"
+                hold = {"model": model, "worst": _worst(argv)}
                 try:
-                    held = night.reserve(model, _worst(argv), f"run: {node.id} attempt {attempt}",
-                                         M.ENDPOINT[name])  # fmt: skip
+                    hold["id"] = night.reserve(model, hold["worst"], f"run: {node.id} attempt {attempt}",
+                                               M.ENDPOINT[name])  # fmt: skip
                 except night.Refused as no:
                     P.release(store, node.id, who, str(no))
                     say(f"{node.id} came back: {no}")
@@ -412,8 +430,8 @@ def run_node(
                     stderr=subprocess.STDOUT, start_new_session=True,
                 )  # fmt: skip
             except OSError as no:  # the executor is not installed, or not executable: nothing ran
-                if held:
-                    night.settle(held, model, 0.0)
+                if hold:
+                    night.settle(hold["id"], hold["model"], 0.0)
                 P.release(store, node.id, who, f"the executor could not be started: {name}: {no.strerror}")
                 raise P.Refused(
                     f"cannot run `{argv[0]}`: {no.strerror}. {node.id} was handed back untouched; name "
@@ -444,10 +462,8 @@ def run_node(
                 if read:
                     read(last=True)  # Claude Code's result is its last line
                     paid += meter.dollars
-                if held:  # settled at what the stream said it spent; with no stream, nothing
-                    spent = meter or M.Meter(name, attempt)
-                    night.settle(held, model, spent.dollars, {"prompt_tokens": spent.prompt_tokens,
-                                                              "completion_tokens": spent.completion_tokens})
+                if hold:
+                    _settle(night, hold, meter)
             # not an "attempt" row: readers take the last of those as the attempt going now
             store.log_node(node.id, P._now(), "ended", who.label, session, None,
                            {"attempt": attempt, "exit": code, "seconds": round(time.monotonic() - began, 1),

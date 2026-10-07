@@ -111,6 +111,7 @@ class Meter:
         self.kind, self.attempt, self.paid_before, self.price = kind, attempt, paid_before, price
         self.model = model or ("codex" if kind == "codex" else None)
         self.turns = self.prompt_tokens = self.completion_tokens = self.unread = 0
+        self.begun = 0  # Codex's turns started: one not completed spent what no row says
         self.dollars, self.priced, self.reported = 0.0, True, None
         self.last: str | None = None
         self.cwd: str | None = None
@@ -210,6 +211,9 @@ class Meter:
 
     def _codex(self, event: dict) -> list[tuple[str, dict]]:
         kind = event["type"]
+        if kind == "turn.started":
+            self.begun += 1
+            return []
         if kind == "turn.completed":
             usage = event.get("usage") or {}
             prompt, completion = int(usage.get("input_tokens") or 0), int(usage.get("output_tokens") or 0)
