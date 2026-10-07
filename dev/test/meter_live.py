@@ -118,7 +118,7 @@ def one(executor: str, rnd: int, a, env: dict) -> dict:
         f"$ graphene init --planner {Path(planner).name} --executor {executor}",
         sh(["graphene", "init", "--planner", planner, "--executor", WITH[executor]], repo, env),
     ]
-    paragraph = (FEEDS / "paragraph.md").read_text().strip()
+    paragraph = (a.paragraph or FEEDS / "paragraph.md").read_text().strip()
     held = None
     if planner == PLANNER:
         from graphene_map.nemotron import night
@@ -229,6 +229,7 @@ def main() -> int:
     ap.add_argument("--executors", nargs="*", default=list(WITH))
     ap.add_argument("--rounds", type=int, default=2)
     ap.add_argument("--every", type=float, default=20.0, help="seconds between screens")
+    ap.add_argument("--paragraph", type=Path, help="what the person asks, instead of the feeds paragraph")
     a = ap.parse_args()
     if not os.environ.get("GRAPHENE_AGENT_LIVE_USD"):
         sys.exit(
