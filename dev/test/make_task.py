@@ -12,8 +12,9 @@ lives outside the repo, in dev/test/tasks/<task>/intent.md, so neither arm can r
 `feeds` is the fourth: one change across six directories, in a codebase whose own
 README documents half the wiring and is out of date. It is the one a paragraph can lose.
 
-`statements` is the fifth, about three times the size of feeds, for a long run with three executors.
-It has five traps, not three, and traps.py beside its card counts them.
+`statements` is the fifth, 2,658 lines, about nine times feeds, for a long run with three executors.
+It has five traps, not three, and traps.py beside its card counts them. tasks/statements/SIZE.md
+says why it is the size it is.
 
 Prints the base commit, which every tally is measured against.
 """
@@ -797,8 +798,12 @@ if __name__ == "__main__":
 }
 
 # -- task five: the one a paragraph should lose ------------------------------------------------
-# A statements service, about three times the size of feeds. The request: statements in more than
-# one currency. Five things here bite a long run that only has the paragraph. The monthly file
+# A statements service, about nine times the size of feeds. The request: statements in more than
+# one currency. Besides the ledger, the statement and the v1 export it has the subsystems a small
+# finance team grows: fees, aging, dunning letters, a CSV statement, reconciliation, the month-end
+# figures, the tax year and an audit. Each holds amounts, so the change reaches every one of them:
+# per currency, and half-even where it rounds. Five things here bite a long run that only has the
+# paragraph. The monthly file
 # rounds half up, and a cron in another repo diffs it. The v1 export writes a Posting with asdict,
 # so a new field changes its shape. Migrations are numbered and must stay contiguous. The vendored
 # decimalfmt rounds half-even wrong. tests/test_legacy_contract.py says do not edit.
@@ -825,8 +830,17 @@ Monthly account statements from a ledger in SQLite. Standard library only, Pytho
     python3 -m api.cli load samples/postings.csv
     python3 -m api.cli balance ACC-1001
     python3 -m api.cli statement ACC-1001 2026-09
+    python3 -m api.cli statement ACC-1001 2026-09 --csv       the statement for a spreadsheet
     python3 -m api.cli export ACC-1001 2026-09                the v1 JSON export
     python3 -m legacy.monthly 2026-09                         the monthly totals file
+    python3 -m api.cli accrue 2026-09 0.0125                  post the month's interest
+    python3 -m api.cli fees 2026-09 --dry-run                 the overdraft and late fees, not charged
+    python3 -m api.cli aging 2026-09                          what is owed, by how long
+    python3 -m api.cli dunning 2026-09 --out letters/         the letters for what is overdue
+    python3 -m api.cli reconcile samples/settlement-2026-09.csv 2026-09
+    python3 -m api.cli summary 2026-09                        the month-end figures
+    python3 -m api.cli tax-year 2026                          the interest each account earned
+    python3 -m api.cli audit 2026-09                          the checks a month must pass to close
     python3 -m unittest discover -q tests
     sh scripts/close_month.sh 2026-09
 
@@ -835,8 +849,10 @@ The database is `$STATEMENTS_DB`, or `statements.db` in the current directory.
 ## Layout
 
     migrations/   the schema: one numbered SQL file per change (migrations/README.md)
-    core/         the database, the records, money, and balances
-    api/          the command line, the statement and the v1 export
+    core/         the database, the records, money, balances, interest and fees, and what the
+                  reports are made of: aging, reconciliation, the audit, the month-end figures
+    api/          the command line and everything it prints: the statement (text and CSV), the v1
+                  export, the dunning letters and finance's reports
     legacy/       the monthly totals file
     vendor/       third-party code, vendored as released
     scripts/      what ops runs
@@ -845,14 +861,22 @@ The database is `$STATEMENTS_DB`, or `statements.db` in the current directory.
 
 ## Who reads what
 
-- Customers read the statement.
+- Customers read the statement, and the CSV of it if they ask for one. Overdue customers get the
+  dunning letters.
 - Billing parses the v1 export.
+- Finance reads the reports: the aging, the reconciliation against the card processor's
+  settlement file, the month-end figures, and the tax year's interest each January.
 - billing-ops runs `python3 -m legacy.monthly YYYY-MM` from a cron job in their own repository, and diffs
   what it prints against last month's file.
-- Ops runs `scripts/close_month.sh` on the first of the month.
+- Ops runs `scripts/close_month.sh` on the first of the month. It stops if the audit finds anything.
 
 Amounts are stored exactly, with up to four places, because interest accrues in fractions of a cent.
-They are rounded to two places only when they are printed.
+They are rounded to two places only when they are printed, and when a fee is charged: fees are
+charged in whole cents.
+
+Money out is a charge, and money in pays the oldest charge still open (core/aging.py). Everything
+that talks about what a customer owes, the late fee, the dunning letters and the aging report, is
+built on that one rule.
 """,
     "api/__init__.py": "",
     "api/cli.py": r'''
@@ -866,10 +890,17 @@ does one thing, and exits 0, or prints `error: ...` and exits 1. Nobody sees a t
     python3 -m api.cli post NUMBER YYYY-MM-DD AMOUNT [--memo TEXT]
     python3 -m api.cli load FILE.csv
     python3 -m api.cli balance NUMBER [--as-of YYYY-MM-DD]
-    python3 -m api.cli statement NUMBER YYYY-MM
+    python3 -m api.cli statement NUMBER YYYY-MM [--csv]
     python3 -m api.cli export NUMBER YYYY-MM
     python3 -m api.cli postings NUMBER YYYY-MM
     python3 -m api.cli accrue YYYY-MM RATE
+    python3 -m api.cli fees YYYY-MM [--dry-run]
+    python3 -m api.cli aging YYYY-MM
+    python3 -m api.cli dunning YYYY-MM [--out DIR]
+    python3 -m api.cli reconcile FILE.csv YYYY-MM
+    python3 -m api.cli summary YYYY-MM
+    python3 -m api.cli tax-year YYYY
+    python3 -m api.cli audit YYYY-MM
     python3 -m api.cli close YYYY-MM STATEMENTS
 """
 
@@ -877,9 +908,10 @@ import argparse
 import csv
 import sqlite3
 import sys
+from pathlib import Path
 
-from api import export, statement
-from core import balances, db, interest, ledger
+from api import csvexport, dunning, export, reports, statement
+from core import balances, db, fees, interest, ledger, reconcile
 from core.models import month_bounds, parse_day
 from core.money import BadAmount, stored
 
@@ -921,7 +953,8 @@ def cmd_balance(conn, args):
 
 
 def cmd_statement(conn, args):
-    sys.stdout.write(statement.render(conn, args.number, args.month))
+    render = csvexport.render if args.csv else statement.render
+    sys.stdout.write(render(conn, args.number, args.month))
 
 
 def cmd_export(conn, args):
@@ -940,6 +973,45 @@ def cmd_postings(conn, args):
 def cmd_accrue(conn, args):
     for number, amount in interest.accrue(conn, args.month, args.rate):
         print(f"{number}  {stored(amount)}")
+
+
+def cmd_fees(conn, args):
+    for number, memo, amount in fees.charge(conn, args.month, dry_run=args.dry_run):
+        print(f"{number}  {memo}  {stored(amount)}")
+
+
+def cmd_aging(conn, args):
+    sys.stdout.write(reports.aging_report(conn, args.month))
+
+
+def cmd_dunning(conn, args):
+    letters = dunning.letters(conn, args.month)
+    if not args.out:
+        sys.stdout.write("\n".join(text for _, _, text in letters))
+        return
+    Path(args.out).mkdir(parents=True, exist_ok=True)
+    for number, level, text in letters:
+        (Path(args.out) / f"{number}.level{level}.txt").write_text(text, encoding="utf-8")
+    print(f"{len(letters)} letter{'' if len(letters) == 1 else 's'} in {args.out}")
+
+
+def cmd_reconcile(conn, args):
+    sys.stdout.write(reports.reconciliation(reconcile.reconcile(conn, args.file, args.month)))
+
+
+def cmd_summary(conn, args):
+    sys.stdout.write(reports.month_end(conn, args.month))
+
+
+def cmd_tax_year(conn, args):
+    sys.stdout.write(reports.tax_year(conn, args.year))
+
+
+def cmd_audit(conn, args):
+    text, found = reports.run_audit(conn, args.month)
+    sys.stdout.write(text)
+    if found:
+        raise ValueError(f"the audit of {args.month} found {found} thing{'' if found == 1 else 's'} to fix")
 
 
 def cmd_close(conn, args):
@@ -976,6 +1048,7 @@ def parser():
     st = sub.add_parser("statement", help="an account's statement for a month")
     st.add_argument("number")
     st.add_argument("month")
+    st.add_argument("--csv", action="store_true", help="as CSV, for a spreadsheet")
     ex = sub.add_parser("export", help="an account's month as v1 JSON, for billing")
     ex.add_argument("number")
     ex.add_argument("month")
@@ -985,6 +1058,23 @@ def parser():
     acc_ = sub.add_parser("accrue", help="post every account's interest for a month")
     acc_.add_argument("month")
     acc_.add_argument("rate", help="the annual rate as a fraction: 0.0125 is 1.25%%")
+    fee = sub.add_parser("fees", help="charge every account its overdraft and late fees for a month")
+    fee.add_argument("month")
+    fee.add_argument("--dry-run", action="store_true", help="say what would be charged, and charge nothing")
+    ag = sub.add_parser("aging", help="what every account owes at a month's end, by how long it has owed it")
+    ag.add_argument("month")
+    dun = sub.add_parser("dunning", help="the letters for accounts with a charge open over 30 days")
+    dun.add_argument("month")
+    dun.add_argument("--out", help="write each letter to a file in this directory")
+    rec = sub.add_parser("reconcile", help="the ledger against the processor's settlement file")
+    rec.add_argument("file")
+    rec.add_argument("month")
+    summ = sub.add_parser("summary", help="the month-end figures finance signs a month off with")
+    summ.add_argument("month")
+    tax = sub.add_parser("tax-year", help="the interest every account earned in a calendar year")
+    tax.add_argument("year")
+    aud = sub.add_parser("audit", help="the ledger's checks for a month: exit 1 if one finds anything")
+    aud.add_argument("month")
     close = sub.add_parser("close", help="record that a month was closed")
     close.add_argument("month")
     close.add_argument("statements", type=int)
@@ -1001,6 +1091,13 @@ COMMANDS = {
     "export": cmd_export,
     "postings": cmd_postings,
     "accrue": cmd_accrue,
+    "fees": cmd_fees,
+    "aging": cmd_aging,
+    "dunning": cmd_dunning,
+    "reconcile": cmd_reconcile,
+    "summary": cmd_summary,
+    "tax-year": cmd_tax_year,
+    "audit": cmd_audit,
     "close": cmd_close,
 }
 
@@ -1022,6 +1119,148 @@ def main(argv=None):
 
 if __name__ == "__main__":
     raise SystemExit(main())
+''',
+    "api/csvexport.py": r'''
+"""A month's statement as CSV, for customers who want it in a spreadsheet.
+
+    python3 -m api.cli statement ACC-1001 2026-09 --csv
+
+    date,description,amount,balance
+    2026-09-01,Opening balance,,1187.61
+    2026-09-03,coffee,-4.50,1183.11
+    ...
+    2026-09-30,Closing balance,,3462.90
+
+The same postings as the statement, each with the balance after it. Two places, as the statement
+has them, and no thousands separators: a spreadsheet reads 1,187.61 as text.
+"""
+
+import csv
+import io
+
+from core import balances
+from core.models import month_bounds
+from core.money import round_cents
+
+HEADER = ("date", "description", "amount", "balance")
+
+
+def plain(value):
+    """Two places and nothing else: -1234.565 is -1234.57."""
+    return str(round_cents(value) + 0)
+
+
+def rows(conn, number, month):
+    first, last = month_bounds(month)
+    opening, closing, during = balances.month(conn, number, month)
+    out, running = [[first, "Opening balance", "", plain(opening)]], opening
+    for p in during:
+        running += p.amount
+        out.append([p.posted_on, p.memo or "-", plain(p.amount), plain(running)])
+    return out + [[last, "Closing balance", "", plain(closing)]]
+
+
+def render(conn, number, month):
+    buf = io.StringIO()
+    out = csv.writer(buf, lineterminator="\n")
+    out.writerow(HEADER)
+    out.writerows(rows(conn, number, month))
+    return buf.getvalue()
+''',
+    "api/dunning.py": r'''
+"""Dunning letters: what an account is sent when a charge on it has been open too long.
+
+    python3 -m api.cli dunning 2026-09 [--out DIR]
+
+An account is dunned at the month's end when a charge on it has been open more than GRACE_DAYS
+(core/aging.py says what is open). How firm the letter is depends on the oldest of them:
+
+    1  Reminder         31 to 60 days
+    2  Second notice    61 to 90 days
+    3  Final notice     over 90 days
+
+A letter lists every overdue charge and what is owed in all, and asks for it within PAY_WITHIN
+days. It is laid out like the statement, WIDTH wide, and its amounts are printed as the statement
+prints them.
+"""
+
+import textwrap
+from datetime import date, timedelta
+
+from api.statement import WIDTH, row
+from core import aging, ledger
+from core.models import month_bounds
+from core.money import total
+
+GRACE_DAYS = 30
+PAY_WITHIN = 14
+LEVELS = ((60, 1, "Reminder"), (90, 2, "Second notice"), (None, 3, "Final notice"))
+FINAL = (
+    "This is our final notice. If the account is not paid by then, it will be closed and what is "
+    "owed passed to our collections agency."
+)
+
+
+def level(days):
+    """(level, name) of the letter for a charge this many days old."""
+    for limit, number, name in LEVELS:
+        if limit is None or days <= limit:
+            return number, name
+    raise AssertionError("LEVELS ends with no limit")
+
+
+def wrap(paragraph):
+    return textwrap.wrap(paragraph, WIDTH)
+
+
+def due(conn, month):
+    """[(account, its overdue items, oldest first)] for every account with anything overdue at the
+    month's end, in account order."""
+    _, last = month_bounds(month)
+    out = []
+    for acct in ledger.accounts(conn):
+        if acct.opened_on > last:
+            continue
+        items = aging.overdue(conn, acct.number, last, GRACE_DAYS)
+        if items:
+            out.append((acct, items))
+    return out
+
+
+def letter(acct, items, as_of):
+    number, name = level(items[0].age(as_of))
+    pay_by = (date.fromisoformat(as_of) + timedelta(days=PAY_WITHIN)).isoformat()
+    lines = [
+        acct.holder,
+        f"Account {acct.number}",
+        as_of,
+        "",
+        name.upper(),
+        "",
+        f"Dear {acct.holder},",
+        "",
+        *wrap(f"These charges have been on your account for more than {GRACE_DAYS} days and are not paid."),
+        "",
+        *(row(f"{item.posted_on}  {item.memo or '-'}", -item.owed) for item in items),
+        row("Overdue", -total(item.owed for item in items)),
+        "",
+        *wrap(
+            f"Please pay what is overdue by {pay_by}. If you have paid it already, thank you, and "
+            "please ignore this letter."
+        ),
+    ]
+    if number == 3:
+        lines += ["", *wrap(FINAL)]
+    return "\n".join(lines) + "\n"
+
+
+def letters(conn, month):
+    """[(account number, level, the letter)] for every account that is due one."""
+    _, last = month_bounds(month)
+    out = []
+    for acct, items in due(conn, month):
+        out.append((acct.number, level(items[0].age(last))[0], letter(acct, items, last)))
+    return out
 ''',
     "api/export.py": r'''
 """The v1 export: one account's month as JSON, for billing.
@@ -1063,6 +1302,134 @@ def export_v1(conn, number, month):
 
 def dumps(doc):
     return json.dumps(doc, indent=2, ensure_ascii=False) + "\n"
+''',
+    "api/reports.py": r'''
+"""The reports finance reads, as text: the aging, the reconciliation, the month-end figures, the tax
+year's interest and the audit. Nobody outside finance parses them, so their layout is free to change.
+
+Every amount has two places and is grouped in thousands, by `cents` below.
+"""
+
+from core import aging, audit, summary
+from core.models import month_bounds
+from core.money import round_cents, total
+
+
+def cents(value):
+    """Two places, grouped in thousands: -1234.565 is -1,234.57. Never prints -0.00."""
+    return f"{round_cents(value) + 0:,.2f}"
+
+
+def columns(first, *rest, width=12):
+    return f"{first:<10}" + "".join(f"{cell:>{width}}" for cell in rest)
+
+
+def figure(label, value):
+    return f"  {label:<22}{value:>14}"
+
+
+def text(lines):
+    return "\n".join(lines) + "\n"
+
+
+# -- aging ----------------------------------------------------------------------------------------
+
+
+def aging_report(conn, month):
+    """What every account owes at the month's end, by age, and the TOTAL."""
+    _, last = month_bounds(month)
+    names = (*aging.BUCKETS, "total")
+    out = [f"AGING {last}", "", columns("account", *names)]
+    for row in aging.report(conn, last):
+        out.append(columns(row["account"], *(cents(row[name]) for name in names)))
+    return text(out)
+
+
+# -- reconciliation -------------------------------------------------------------------------------
+
+
+def reconciliation(rec):
+    out = [
+        f"RECONCILIATION {rec.month}",
+        "",
+        f"  matched              {len(rec.matched):>4}",
+        f"  only in the file     {len(rec.only_in_file):>4}",
+        f"  only in the ledger   {len(rec.only_in_ledger):>4}",
+    ]
+    if rec.only_in_file:
+        out += ["", "Only in the file"]
+        out += [
+            f"  line {x.line:<4} {x.account}  {x.settled_on}  {cents(x.amount):>12}  {x.reference}"
+            for x in rec.only_in_file
+        ]
+    if rec.only_in_ledger:
+        out += ["", "Only in the ledger"]
+        out += [
+            f"  #{p.id:<8} {p.account}  {p.posted_on}  {cents(p.amount):>12}  {p.memo}"
+            for p in rec.only_in_ledger
+        ]
+    out += [
+        "",
+        figure("file total", cents(rec.file_total)),
+        figure("ledger total", cents(rec.ledger_total)),
+        figure("difference", cents(rec.difference)),
+        "",
+        "clean" if rec.clean else "NOT CLEAN: see above",
+    ]
+    return text(out)
+
+
+# -- month end ------------------------------------------------------------------------------------
+
+
+def month_end(conn, month):
+    got = summary.month_end(conn, month)
+    out = [
+        f"MONTH-END {month}",
+        "",
+        figure("Accounts", str(got["accounts"])),
+        figure("Postings", str(got["postings"])),
+        figure("Opening", cents(got["opening"])),
+        figure("Deposits", cents(got["deposits"])),
+        figure("Withdrawals", cents(got["withdrawals"])),
+        figure("Interest", cents(got["interest"])),
+        figure("Fees", cents(got["fees"])),
+        figure("Closing", cents(got["closing"])),
+    ]
+    largest = got["largest"]
+    if largest is not None:
+        said = f"{largest.account} {largest.posted_on} {cents(largest.amount)} {largest.memo}"
+        out += ["", f"  Largest: {said}"]
+    return text(out)
+
+
+# -- tax year -------------------------------------------------------------------------------------
+
+
+def tax_year(conn, year):
+    """The interest each account earned in the year, for the holders' tax returns, and the TOTAL."""
+    rows = summary.tax_year(conn, year)
+    out = [f"INTEREST EARNED {year}", ""]
+    out += [f"{number:<10}{holder[:28]:<30}{cents(amount):>14}" for number, holder, amount in rows]
+    out += [f"{'TOTAL':<40}{cents(total(amount for _, _, amount in rows)):>14}"]
+    return text(out)
+
+
+# -- audit ----------------------------------------------------------------------------------------
+
+
+def findings(month, found):
+    out = [f"AUDIT {month}", ""]
+    out += [f"  {check:<11}{number:<10}{what}" for check, number, what in found]
+    out += ["  clean" if not found else f"  {len(found)} finding{'' if len(found) == 1 else 's'}"]
+    return text(out)
+
+
+def run_audit(conn, month):
+    """(the report, how many findings)."""
+    found = audit.run(conn, month)
+    return findings(month, found), len(found)
+
 ''',
     "api/statement.py": r'''
 """The monthly statement, as text. Customers read it, and ops diffs it from one month to the next.
@@ -1119,6 +1486,172 @@ def render(conn, number, month):
     return "\n".join(lines) + "\n"
 ''',
     "core/__init__.py": "",
+    "core/aging.py": r'''
+"""Aging: what an account owes, and for how long it has owed it.
+
+Money out (a negative posting) is a charge. Money in pays the oldest charge still open, and money
+in before there is anything to pay is held for the next charge. What is left of a charge is open,
+and it is aged in days, from the day it was posted to the day the report is for:
+
+    current     30 days or less
+    31-60       31 to 60 days
+    61-90       61 to 90 days
+    over 90     91 days or more
+
+Nothing here rounds. The report prints with two places (api/reports.py).
+"""
+
+from dataclasses import dataclass
+from datetime import date
+from decimal import Decimal
+
+from core import ledger
+from core.models import parse_day
+from core.money import ZERO, total
+
+BUCKETS = ("current", "31-60", "61-90", "over 90")
+LIMITS = (30, 60, 90)  # the last day of each bucket but the last
+
+
+@dataclass(frozen=True)
+class OpenItem:
+    """What is still owed of one charge: `owed` is positive."""
+
+    posting_id: int
+    posted_on: str
+    memo: str
+    owed: Decimal
+
+    def age(self, as_of):
+        """Days from the day it was posted to as_of."""
+        return (date.fromisoformat(as_of) - date.fromisoformat(self.posted_on)).days
+
+
+def bucket(days):
+    for name, limit in zip(BUCKETS, LIMITS):
+        if days <= limit:
+            return name
+    return BUCKETS[-1]
+
+
+def open_items(conn, number, as_of):
+    """The charges on an account that are not paid at the end of as_of, oldest first."""
+    as_of = parse_day(as_of)
+    items, held = [], ZERO
+    for p in ledger.postings(conn, number, end=as_of):
+        if p.amount > ZERO:
+            held += p.amount
+        elif p.amount < ZERO:
+            items.append([p, -p.amount])
+        while held > ZERO and items:
+            paid = min(held, items[0][1])
+            items[0][1] -= paid
+            held -= paid
+            if items[0][1] == ZERO:
+                items.pop(0)
+    return [OpenItem(p.id, p.posted_on, p.memo, owed) for p, owed in items]
+
+
+def overdue(conn, number, as_of, days=30):
+    """The open items older than `days` at as_of, oldest first."""
+    return [item for item in open_items(conn, number, as_of) if item.age(as_of) > days]
+
+
+def aged(conn, number, as_of):
+    """{bucket: what is owed in it} for one account, every bucket there, zero or not."""
+    owed = dict.fromkeys(BUCKETS, ZERO)
+    for item in open_items(conn, number, as_of):
+        owed[bucket(item.age(as_of))] += item.owed
+    return owed
+
+
+def report(conn, as_of):
+    """One row per account that owes anything at as_of, in account order, then a TOTAL row. A row is
+    {"account", each bucket, "total"}."""
+    as_of = parse_day(as_of)
+    rows, sums = [], dict.fromkeys(BUCKETS, ZERO)
+    for acct in ledger.accounts(conn):
+        if acct.opened_on > as_of:
+            continue
+        owed = aged(conn, acct.number, as_of)
+        if not any(owed.values()):
+            continue
+        rows.append({"account": acct.number, **owed, "total": total(owed.values())})
+        for name in BUCKETS:
+            sums[name] += owed[name]
+    rows.append({"account": "TOTAL", **sums, "total": total(sums.values())})
+    return rows
+''',
+    "core/audit.py": r'''
+"""The ledger's own checks, run before a month is closed. Each one finds postings that should not be
+there, and says which.
+
+    early        a posting dated before its account was opened (load refuses these now; older
+                 imports did not)
+    duplicate    two postings on one account with the same day, amount and memo: an import run twice
+    interest     more than one interest posting on an account in a month
+    fees         more than one posting of the same fee on an account in a month
+    uncharged    an account that owes an overdraft charge for the month, and has none posted
+
+A finding is (check, account, what it found). An empty list is a clean month.
+"""
+
+from collections import Counter
+
+from core import fees, interest, ledger
+from core.models import month_bounds
+from core.money import stored
+
+CHECKS = ("early", "duplicate", "interest", "fees", "uncharged")
+
+
+def early(conn, acct, month):
+    first, last = month_bounds(month)
+    return [
+        f"#{p.id} {p.posted_on} is before it was opened on {acct.opened_on}"
+        for p in ledger.postings(conn, acct.number, start=first, end=last)
+        if p.posted_on < acct.opened_on
+    ]
+
+
+def duplicates(conn, acct, month):
+    first, last = month_bounds(month)
+    seen = Counter((p.posted_on, p.amount, p.memo) for p in ledger.postings(conn, acct.number, first, last))
+    return [f"{day} {amount} {memo!r} is there {n} times" for (day, amount, memo), n in seen.items() if n > 1]
+
+
+def once_a_month(conn, acct, month, memos):
+    first, last = month_bounds(month)
+    seen = Counter(p.memo for p in ledger.postings(conn, acct.number, first, last) if p.memo in memos)
+    return [f"{memo} is posted {n} times in {month}" for memo, n in sorted(seen.items()) if n > 1]
+
+
+def uncharged(conn, acct, month):
+    first, last = month_bounds(month)
+    owed = fees.overdraft(conn, acct.number, month)
+    memos = [p.memo for p in ledger.postings(conn, acct.number, first, last)]
+    if not owed or fees.OVERDRAFT_MEMO in memos:
+        return []
+    return [f"owes an overdraft charge of {stored(owed)} for {month}, and none is posted"]
+
+
+def run(conn, month):
+    """Every finding for the month, account by account, in the order of CHECKS."""
+    _, last = month_bounds(month)
+    found = []
+    for acct in ledger.accounts(conn):
+        if acct.opened_on > last:
+            continue
+        for check, said in (
+            ("early", early(conn, acct, month)),
+            ("duplicate", duplicates(conn, acct, month)),
+            ("interest", once_a_month(conn, acct, month, (interest.MEMO,))),
+            ("fees", once_a_month(conn, acct, month, fees.MEMOS)),
+            ("uncharged", uncharged(conn, acct, month)),
+        ):
+            found += [(check, acct.number, what) for what in said]
+    return found
+''',
     "core/balances.py": r'''
 """Balances: what an account holds, worked out from its postings. Nothing here rounds. Rounding is
 for printing, and each printer does its own."""
@@ -1235,6 +1768,75 @@ def migrate(conn):
 
 def now():
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+''',
+    "core/fees.py": r'''
+"""Fees: what an account is charged for a month, posted on the month's last day.
+
+    overdraft charge   every day that ends below zero costs OVERDRAFT_RATE / 365 of what it is
+                       below zero, like interest the other way round
+    late fee           LATE_RATE of what has been overdue more than GRACE_DAYS at the month's end
+                       (core/aging.py says what is overdue)
+
+Each fee is worked out exactly and charged in whole cents, rounded once, at the end. A fee that
+rounds to nothing is not charged.
+"""
+
+from decimal import Decimal
+
+from core import aging, ledger
+from core.interest import YEAR, daily_balances
+from core.models import month_bounds
+from core.money import ZERO, round_cents, total
+
+OVERDRAFT_MEMO = "overdraft charge"
+LATE_MEMO = "late fee"
+MEMOS = (OVERDRAFT_MEMO, LATE_MEMO)
+OVERDRAFT_RATE = Decimal("0.18")
+LATE_RATE = Decimal("0.015")
+GRACE_DAYS = 30
+
+
+def overdraft(conn, number, month):
+    """The month's overdraft charge, as the amount to post: negative, or zero."""
+    below = total(-b for _, b in daily_balances(conn, number, month) if b < ZERO)
+    return -round_cents(below * OVERDRAFT_RATE / YEAR)
+
+
+def late(conn, number, month):
+    """The month's late fee, as the amount to post: negative, or zero."""
+    _, last = month_bounds(month)
+    owed = total(item.owed for item in aging.overdue(conn, number, last, GRACE_DAYS))
+    return -round_cents(owed * LATE_RATE)
+
+
+def assess(conn, number, month):
+    """[(memo, amount)]: the fees the account would be charged for the month, none of them zero."""
+    found = [(OVERDRAFT_MEMO, overdraft(conn, number, month)), (LATE_MEMO, late(conn, number, month))]
+    return [(memo, amount) for memo, amount in found if amount]
+
+
+def charged_already(conn, month):
+    _, last = month_bounds(month)
+    marks = ", ".join("?" for _ in MEMOS)
+    sql = f"SELECT 1 FROM postings WHERE memo IN ({marks}) AND posted_on = ?"
+    return conn.execute(sql, (*MEMOS, last)).fetchone() is not None
+
+
+def charge(conn, month, dry_run=False):
+    """Charge every open account its fees for the month: [(account, memo, amount)]. A month whose last
+    day has fees on it already is refused. dry_run works them out and posts nothing."""
+    _, last = month_bounds(month)
+    if charged_already(conn, month):
+        raise ValueError(f"fees for {month} are charged already")
+    out = []
+    for acct in ledger.accounts(conn):
+        if acct.opened_on > last:
+            continue
+        for memo, amount in assess(conn, acct.number, month):
+            if not dry_run:
+                ledger.post(conn, acct.number, last, str(amount), memo)
+            out.append((acct.number, memo, amount))
+    return out
 ''',
     "core/interest.py": r'''
 """Interest: what an account earns in a month, accrued day by day on its balance at the end of each
@@ -1557,6 +2159,203 @@ def round_cents(value):
 def total(amounts):
     return sum(amounts, ZERO)
 ''',
+    "core/reconcile.py": r'''
+"""Reconciliation: the ledger against the card processor's settlement file for a month.
+
+The processor sends one CSV a month, with a header row and every movement it settled:
+
+    account,settled_on,amount,reference
+    ACC-1001,2026-09-04,-4.50,PX-88213
+
+A line matches a posting on the same account for the same amount, posted on the day the line
+settled or up to SLACK_DAYS before it: a card payment posts the day it is made and settles a day or
+three later. A posting matches one line at most, and the earliest posting that fits wins. Interest
+and fees are ours, so the processor never sees them, and the ledger side leaves them out.
+"""
+
+import csv
+from dataclasses import dataclass, field
+from datetime import date
+from decimal import Decimal
+
+from core import ledger
+from core.fees import MEMOS as FEE_MEMOS
+from core.interest import MEMO as INTEREST_MEMO
+from core.models import month_bounds, parse_day
+from core.money import BadAmount, parse_amount, total
+
+COLUMNS = ("account", "settled_on", "amount", "reference")
+SLACK_DAYS = 3
+OURS = (INTEREST_MEMO, *FEE_MEMOS)
+
+
+@dataclass(frozen=True)
+class Line:
+    """One line of a settlement file. `line` is its line number in the file."""
+
+    line: int
+    account: str
+    settled_on: str
+    amount: Decimal
+    reference: str
+
+
+@dataclass
+class Reconciliation:
+    month: str
+    matched: list = field(default_factory=list)  # [(Line, Posting)]
+    only_in_file: list = field(default_factory=list)  # [Line]
+    only_in_ledger: list = field(default_factory=list)  # [Posting]
+
+    @property
+    def file_total(self):
+        return total([line.amount for line, _ in self.matched] + [line.amount for line in self.only_in_file])
+
+    @property
+    def ledger_total(self):
+        return total([p.amount for _, p in self.matched] + [p.amount for p in self.only_in_ledger])
+
+    @property
+    def difference(self):
+        """What the file has that the ledger does not: zero when the two agree."""
+        return self.file_total - self.ledger_total
+
+    @property
+    def clean(self):
+        return not self.only_in_file and not self.only_in_ledger
+
+
+def read_settlement(path):
+    """Every line of a settlement file, checked, as [Line]. A bad line is refused, with the file's name
+    and the line's number."""
+    with open(path, newline="", encoding="utf-8") as fh:
+        reader = csv.DictReader(fh)
+        missing = [c for c in COLUMNS if c not in (reader.fieldnames or [])]
+        if missing:
+            raise ledger.BadRow(f"{path}: no column {', '.join(missing)}")
+        lines = []
+        for row in reader:
+            if not any((v or "").strip() for v in row.values()):
+                continue
+            try:
+                lines.append(
+                    Line(
+                        reader.line_num,
+                        row["account"].strip(),
+                        parse_day(row["settled_on"]),
+                        parse_amount(row["amount"]),
+                        (row["reference"] or "").strip(),
+                    )
+                )
+            except (ValueError, BadAmount) as exc:
+                raise ledger.BadRow(f"{path}:{reader.line_num}: {exc}") from None
+    return lines
+
+
+def days_between(earlier, later):
+    return (date.fromisoformat(later) - date.fromisoformat(earlier)).days
+
+
+def fits(line, posting):
+    return (
+        posting.account == line.account
+        and posting.amount == line.amount
+        and 0 <= days_between(posting.posted_on, line.settled_on) <= SLACK_DAYS
+    )
+
+
+def match(month, lines, postings):
+    """Pair the lines with the postings. Lines are taken in the order they settled."""
+    out = Reconciliation(month)
+    left = list(postings)
+    for line in sorted(lines, key=lambda x: (x.settled_on, x.line)):
+        hit = next((p for p in left if fits(line, p)), None)
+        if hit is None:
+            out.only_in_file.append(line)
+        else:
+            left.remove(hit)
+            out.matched.append((line, hit))
+    out.only_in_ledger = left
+    return out
+
+
+def reconcile(conn, path, month):
+    """The month's reconciliation. The file's lines that settled in the month, against every account's
+    postings in the month that are not ours."""
+    first, last = month_bounds(month)
+    lines = [line for line in read_settlement(path) if first <= line.settled_on <= last]
+    postings = [
+        p
+        for acct in ledger.accounts(conn)
+        for p in ledger.postings(conn, acct.number, start=first, end=last)
+        if p.memo not in OURS
+    ]
+    return match(month, lines, postings)
+''',
+    "core/summary.py": r'''
+"""The figures finance signs a month off with, and the interest each account earned in a tax year.
+
+The month-end figures are for every account open by the month's end, together:
+
+    accounts      how many
+    postings      how many, in the month
+    deposits      money in, interest left out
+    withdrawals   money out, fees left out
+    interest      interest posted in the month
+    fees          fees posted in the month
+    opening       what the accounts held when the month opened
+    closing       what they held when it closed: opening plus everything above
+    largest       the posting that moved the most money, either way
+
+Nothing here rounds: api/reports.py prints them.
+"""
+
+from core import balances, fees, interest, ledger
+from core.models import month_bounds
+from core.money import ZERO, total
+
+
+def month_end(conn, month):
+    """The month's figures, as a dict with the keys above. `largest` is a Posting, or None."""
+    _, last = month_bounds(month)
+    out = dict.fromkeys(("deposits", "withdrawals", "interest", "fees", "opening", "closing"), ZERO)
+    out.update(month=month, accounts=0, postings=0, largest=None)
+    for acct in ledger.accounts(conn):
+        if acct.opened_on > last:
+            continue
+        opening, closing, during = balances.month(conn, acct.number, month)
+        out["accounts"] += 1
+        out["postings"] += len(during)
+        out["opening"] += opening
+        out["closing"] += closing
+        for p in during:
+            if p.memo == interest.MEMO:
+                out["interest"] += p.amount
+            elif p.memo in fees.MEMOS:
+                out["fees"] += p.amount
+            elif p.amount > ZERO:
+                out["deposits"] += p.amount
+            else:
+                out["withdrawals"] += p.amount
+            if out["largest"] is None or abs(p.amount) > abs(out["largest"].amount):
+                out["largest"] = p
+    return out
+
+
+def tax_year(conn, year):
+    """[(account, holder, interest earned in the year)] for every account that earned any, in account
+    order. A tax year is a calendar year."""
+    year = str(year).strip()
+    if not (len(year) == 4 and year.isdigit()):
+        raise ValueError(f"not a year: {year!r} (YYYY)")
+    out = []
+    for acct in ledger.accounts(conn):
+        during = ledger.postings(conn, acct.number, f"{year}-01-01", f"{year}-12-31")
+        amount = total(p.amount for p in during if p.memo == interest.MEMO)
+        if amount:
+            out.append((acct.number, acct.holder, amount))
+    return out
+''',
     "legacy/__init__.py": "",
     "legacy/monthly.py": r'''
 """The monthly totals file.
@@ -1681,10 +2480,22 @@ ACC-1003,2026-09-30,1.6650,interest
 ACC-1004,2026-08-21,5.00,opening deposit
 ACC-1004,2026-09-30,0.0025,interest
 """,
+    "samples/settlement-2026-09.csv": r"""
+account,settled_on,amount,reference
+ACC-1002,2026-09-02,-19.995,PX-40388
+ACC-1001,2026-09-04,-4.50,PX-40417
+ACC-1003,2026-09-07,-2500.675,PX-40433
+ACC-1001,2026-09-12,-120.335,PX-40466
+ACC-1001,2026-09-15,2400.00,PX-40502
+ACC-1003,2026-09-18,850.00,PX-40571
+ACC-1004,2026-09-25,-15.00,PX-40640
+ACC-1003,2026-09-29,-1234.565,PX-40688
+""",
     "scripts/close_month.sh": r"""
 #!/bin/sh
-# Close a month: build its database from the samples, write every account's statement and v1
-# export and the monthly totals file, and record the run. Ops runs it on the 1st. It must pass.
+# Close a month: build its database from the samples, audit it, write every account's statement
+# (as text and as CSV) and v1 export, the monthly totals file, finance's reports and the dunning
+# letters, and record the run. Ops runs it on the 1st. It must pass.
 #
 #   sh scripts/close_month.sh YYYY-MM [postings.csv]
 #
@@ -1701,13 +2512,18 @@ export STATEMENTS_DB
 python3 -m api.cli init > /dev/null
 python3 -m api.cli account load samples/accounts.csv > /dev/null
 python3 -m api.cli load "$POSTINGS" > /dev/null
+python3 -m api.cli audit "$MONTH" > "$OUT/audit.txt" || { cat "$OUT/audit.txt" >&2; exit 1; }
 count=0
 for acct in $(python3 -m api.cli account list); do
   python3 -m api.cli statement "$acct" "$MONTH" > "$OUT/$acct.txt"
+  python3 -m api.cli statement "$acct" "$MONTH" --csv > "$OUT/$acct.csv"
   python3 -m api.cli export "$acct" "$MONTH" > "$OUT/$acct.v1.json"
   count=$((count + 1))
 done
 python3 -m legacy.monthly "$MONTH" > "$OUT/monthly.csv"
+python3 -m api.cli summary "$MONTH" > "$OUT/summary.txt"
+python3 -m api.cli aging "$MONTH" > "$OUT/aging.txt"
+python3 -m api.cli dunning "$MONTH" --out "$OUT/dunning" > /dev/null
 python3 -m api.cli close "$MONTH" "$count" > /dev/null
 
 # every account opened by the month's end has a line, and so has the header and the TOTAL
@@ -1754,6 +2570,132 @@ def database(postings=None):
             fh.write(postings)
         ledger.load_postings(conn, csv_path)
     return conn, path
+''',
+    "tests/test_aging.py": r'''
+import unittest
+from decimal import Decimal
+
+from core import aging
+from tests.support import database
+
+# ACC-1002 at 2026-09-30: what is left of June's charge is 121 days old, July's 82, August's 41 and
+# September's 5. The payment in July paid 30 of June's 100.
+CHARGES = """account,posted_on,amount,memo
+ACC-1002,2026-06-01,-100,june
+ACC-1002,2026-07-10,-40,july
+ACC-1002,2026-07-15,30,payment
+ACC-1002,2026-08-20,-25.5,august
+ACC-1002,2026-09-25,-10,september
+ACC-1003,2026-09-01,500,deposit
+"""
+
+
+class Aging(unittest.TestCase):
+    def setUp(self):
+        self.conn, _ = database(CHARGES)
+        self.addCleanup(self.conn.close)
+
+    def test_money_in_pays_the_oldest_charge_first(self):
+        items = aging.open_items(self.conn, "ACC-1002", "2026-09-30")
+        got = [(i.memo, i.owed, i.age("2026-09-30")) for i in items]
+        want = [("june", 70, 121), ("july", 40, 82), ("august", Decimal("25.5"), 41), ("september", 10, 5)]
+        self.assertEqual(got, want)
+
+    def test_money_in_before_a_charge_is_held_for_it(self):
+        conn, _ = database(
+            "account,posted_on,amount,memo\nACC-1001,2026-09-01,50,in\nACC-1001,2026-09-02,-80,out\n"
+        )
+        self.addCleanup(conn.close)
+        self.assertEqual([i.owed for i in aging.open_items(conn, "ACC-1001", "2026-09-30")], [30])
+        self.assertEqual(aging.open_items(conn, "ACC-1001", "2026-09-01"), [])
+
+    def test_each_charge_lands_in_its_bucket(self):
+        owed = aging.aged(self.conn, "ACC-1002", "2026-09-30")
+        self.assertEqual(owed, {"current": 10, "31-60": Decimal("25.5"), "61-90": 40, "over 90": 70})
+
+    def test_the_bucket_edges(self):
+        days = (0, 30, 31, 60, 61, 90, 91, 400)
+        names = ["current", "current", "31-60", "31-60", "61-90", "61-90", "over 90", "over 90"]
+        self.assertEqual([aging.bucket(d) for d in days], names)
+
+    def test_overdue_is_older_than_thirty_days(self):
+        overdue = aging.overdue(self.conn, "ACC-1002", "2026-09-30")
+        self.assertEqual([i.memo for i in overdue], ["june", "july", "august"])
+
+    def test_the_report_has_a_row_for_each_account_that_owes_and_a_total(self):
+        rows = aging.report(self.conn, "2026-09-30")
+        self.assertEqual([r["account"] for r in rows], ["ACC-1002", "TOTAL"])
+        self.assertEqual(rows[-1]["total"], Decimal("145.5"))
+
+    def test_a_charge_paid_in_full_is_not_open(self):
+        self.assertEqual(aging.open_items(self.conn, "ACC-1003", "2026-09-30"), [])
+        rows = aging.report(self.conn, "2026-05-31")
+        self.assertEqual([(r["account"], r["total"]) for r in rows], [("TOTAL", 0)])
+
+
+if __name__ == "__main__":
+    unittest.main()
+''',
+    "tests/test_audit.py": r'''
+import unittest
+
+from core import audit, fees
+from tests.support import database
+from tests.test_cli import cli
+
+TWICE = """account,posted_on,amount,memo
+ACC-1001,2026-09-01,100,deposit
+ACC-1001,2026-09-03,-4.50,coffee
+ACC-1001,2026-09-03,-4.50,coffee
+ACC-1001,2026-09-04,-4.50,coffee
+ACC-1003,2026-09-30,1.25,interest
+ACC-1003,2026-09-30,1.25,interest
+"""
+
+
+class Audit(unittest.TestCase):
+    def test_the_samples_are_clean(self):
+        conn, _ = database()
+        self.addCleanup(conn.close)
+        self.assertEqual(audit.run(conn, "2026-09"), [])
+
+    def test_an_import_run_twice_and_interest_posted_twice(self):
+        conn, _ = database(TWICE)
+        self.addCleanup(conn.close)
+        found = [(check, number) for check, number, _ in audit.run(conn, "2026-09")]
+        want = [("duplicate", "ACC-1001"), ("duplicate", "ACC-1003"), ("interest", "ACC-1003")]
+        self.assertEqual(found, want)
+
+    def test_a_posting_from_before_the_account_opened(self):
+        conn, _ = database("account,posted_on,amount,memo\n")
+        self.addCleanup(conn.close)
+        conn.execute("INSERT INTO postings (account_id, posted_on, amount) VALUES (4, '2026-08-02', '1')")
+        conn.commit()
+        found = audit.run(conn, "2026-08")
+        self.assertEqual([(c, n) for c, n, _ in found], [("early", "ACC-1004")])
+        self.assertIn("2026-08-21", found[0][2])
+
+    def test_an_overdraft_charge_owed_and_not_posted(self):
+        conn, _ = database("account,posted_on,amount,memo\nACC-1002,2026-09-11,-365,rent\n")
+        self.addCleanup(conn.close)
+        found = audit.run(conn, "2026-09")
+        said = "owes an overdraft charge of -3.6 for 2026-09, and none is posted"
+        self.assertEqual(found, [("uncharged", "ACC-1002", said)])
+        fees.charge(conn, "2026-09")
+        self.assertEqual(audit.run(conn, "2026-09"), [])
+
+    def test_the_command_exits_1_when_it_finds_anything(self):
+        conn, path = database(TWICE)
+        self.addCleanup(conn.close)
+        code, out, err = cli(path, "audit", "2026-09")
+        self.assertEqual(code, 1)
+        self.assertIn("3 findings", out)
+        self.assertTrue(err.startswith("error: the audit of 2026-09 found 3"), err)
+        self.assertEqual(cli(path, "audit", "2026-08")[:2], (0, "AUDIT 2026-08\n\n  clean\n"))
+
+
+if __name__ == "__main__":
+    unittest.main()
 ''',
     "tests/test_balances.py": r"""
 import unittest
@@ -1842,6 +2784,56 @@ class Cli(unittest.TestCase):
 if __name__ == "__main__":
     unittest.main()
 """,
+    "tests/test_csvexport.py": r'''
+import csv
+import io
+import unittest
+from decimal import Decimal
+
+from api.csvexport import plain, render
+from tests.support import database
+
+ACC_1001 = """\
+date,description,amount,balance
+2026-09-01,Opening balance,,1187.61
+2026-09-03,coffee,-4.50,1183.11
+2026-09-12,electricity,-120.34,1062.78
+2026-09-15,salary,2400.00,3462.78
+2026-09-30,interest,0.13,3462.90
+2026-09-30,Closing balance,,3462.90
+"""
+
+
+class CsvStatement(unittest.TestCase):
+    def setUp(self):
+        self.conn, _ = database()
+        self.addCleanup(self.conn.close)
+
+    def test_one_account_s_month(self):
+        self.assertEqual(render(self.conn, "ACC-1001", "2026-09"), ACC_1001)
+
+    def test_the_last_balance_is_the_closing(self):
+        rows = list(csv.DictReader(io.StringIO(render(self.conn, "ACC-1003", "2026-09"))))
+        self.assertEqual(rows[-2]["balance"], rows[-1]["balance"])
+        self.assertEqual(rows[-1]["balance"], "7116.43")
+
+    def test_a_month_with_nothing_in_it_is_its_opening_and_closing(self):
+        rows = render(self.conn, "ACC-1004", "2026-11").splitlines()
+        self.assertEqual(rows[1:], ["2026-11-01,Opening balance,,5.00", "2026-11-30,Closing balance,,5.00"])
+
+    def test_amounts_have_two_places_and_no_separators(self):
+        got = [plain(Decimal(v)) for v in ("1234567.8", "-0.004", "-120.335")]
+        self.assertEqual(got, ["1234567.80", "0.00", "-120.34"])
+
+    def test_a_memo_with_a_comma_is_quoted(self):
+        conn, _ = database('account,posted_on,amount,memo\nACC-1001,2026-09-01,1,"rent, september"\n')
+        self.addCleanup(conn.close)
+        self.assertIn('"rent, september"', render(conn, "ACC-1001", "2026-09"))
+
+
+if __name__ == "__main__":
+    unittest.main()
+''',
     "tests/test_db.py": r"""
 import tempfile
 import unittest
@@ -1877,6 +2869,78 @@ class Migrate(unittest.TestCase):
 if __name__ == "__main__":
     unittest.main()
 """,
+    "tests/test_dunning.py": r'''
+import tempfile
+import unittest
+from pathlib import Path
+
+from api import dunning
+from tests.support import database
+from tests.test_cli import cli
+
+# At 2026-09-30: Grace's June charge is 121 days old, Edsger's August one 46. Ada's is 10 days old.
+OWED = """account,posted_on,amount,memo
+ACC-1002,2026-06-01,-100,june
+ACC-1003,2026-08-15,-40.125,august
+ACC-1001,2026-09-20,-10,september
+"""
+
+REMINDER = """\
+Edsger Dijkstra
+Account ACC-1003
+2026-09-30
+
+REMINDER
+
+Dear Edsger Dijkstra,
+
+These charges have been on your account for more than 30 days and
+are not paid.
+
+  2026-08-15  august                                        -40.13
+  Overdue                                                   -40.13
+
+Please pay what is overdue by 2026-10-14. If you have paid it
+already, thank you, and please ignore this letter.
+"""
+
+
+class Dunning(unittest.TestCase):
+    def setUp(self):
+        self.conn, self.db = database(OWED)
+        self.addCleanup(self.conn.close)
+        self.letters = dunning.letters(self.conn, "2026-09")
+
+    def test_who_gets_a_letter_and_how_firm(self):
+        got = [(number, level) for number, level, _ in self.letters]
+        self.assertEqual(got, [("ACC-1002", 3), ("ACC-1003", 1)])
+
+    def test_the_reminder(self):
+        self.assertEqual(self.letters[1][2], REMINDER)
+
+    def test_the_final_notice_says_what_happens_next(self):
+        text = self.letters[0][2]
+        self.assertIn("FINAL NOTICE", text)
+        self.assertIn("collections", text)
+
+    def test_the_levels(self):
+        days = (31, 60, 61, 90, 91)
+        self.assertEqual([dunning.level(d)[0] for d in days], [1, 1, 2, 2, 3])
+
+    def test_nobody_is_dunned_inside_the_grace_days(self):
+        self.assertEqual(dunning.letters(self.conn, "2026-06"), [])
+
+    def test_out_writes_a_file_a_letter(self):
+        out = Path(tempfile.mkdtemp()) / "letters"
+        code, said, _ = cli(self.db, "dunning", "2026-09", "--out", str(out))
+        self.assertEqual((code, said), (0, f"2 letters in {out}\n"))
+        written = sorted(p.name for p in out.iterdir())
+        self.assertEqual(written, ["ACC-1002.level3.txt", "ACC-1003.level1.txt"])
+
+
+if __name__ == "__main__":
+    unittest.main()
+''',
     "tests/test_export.py": r"""
 import json
 import unittest
@@ -1914,6 +2978,70 @@ class ExportV1(unittest.TestCase):
     def test_an_empty_month_has_no_postings(self):
         doc = export_v1(self.conn, "ACC-1004", "2026-11")
         self.assertEqual((doc["opening"], doc["closing"], doc["postings"]), ("5.0025", "5.0025", []))
+
+
+if __name__ == "__main__":
+    unittest.main()
+""",
+    "tests/test_fees.py": r"""
+import unittest
+from decimal import Decimal
+
+from core import fees, ledger
+from tests.support import database
+
+# 20 days at -365, from 2026-09-11: 365 x 20 x 0.18 / 365 = 3.60.
+OVERDRAWN = "account,posted_on,amount,memo\nACC-1002,2026-09-01,100,deposit\nACC-1002,2026-09-11,-465,rent\n"
+# 11.00 open since August: overdue at the end of September. 1.5% of it is 0.165.
+LATE = "account,posted_on,amount,memo\nACC-1003,2026-08-01,-11,card\n"
+
+
+class Overdraft(unittest.TestCase):
+    def setUp(self):
+        self.conn, _ = database(OVERDRAWN)
+        self.addCleanup(self.conn.close)
+
+    def test_a_day_below_zero_costs_the_rate_over_365(self):
+        self.assertEqual(fees.overdraft(self.conn, "ACC-1002", "2026-09"), Decimal("-3.60"))
+
+    def test_a_month_that_stays_above_zero_costs_nothing(self):
+        self.assertFalse(fees.overdraft(self.conn, "ACC-1002", "2026-08"))
+        self.assertEqual(fees.assess(self.conn, "ACC-1002", "2026-08"), [])
+
+    def test_charge_posts_on_the_last_day_once(self):
+        charged = fees.charge(self.conn, "2026-09")
+        self.assertEqual(charged, [("ACC-1002", "overdraft charge", Decimal("-3.60"))])
+        last = ledger.postings(self.conn, "ACC-1002")[-1]
+        got = (last.posted_on, last.amount, last.memo)
+        self.assertEqual(got, ("2026-09-30", Decimal("-3.6"), "overdraft charge"))
+        with self.assertRaises(ValueError):
+            fees.charge(self.conn, "2026-09")
+
+    def test_a_dry_run_posts_nothing(self):
+        self.assertEqual(len(fees.charge(self.conn, "2026-09", dry_run=True)), 1)
+        self.assertEqual(len(ledger.postings(self.conn, "ACC-1002")), 2)
+        self.assertFalse(fees.charged_already(self.conn, "2026-09"))
+
+
+class Late(unittest.TestCase):
+    def setUp(self):
+        self.conn, _ = database(LATE)
+        self.addCleanup(self.conn.close)
+
+    def test_a_late_fee_is_charged_on_what_is_overdue_to_the_cent(self):
+        self.assertEqual(fees.late(self.conn, "ACC-1003", "2026-09"), Decimal("-0.17"))
+
+    def test_nothing_is_late_inside_the_grace_days(self):
+        self.assertFalse(fees.late(self.conn, "ACC-1003", "2026-08"))
+
+    def test_an_overdrawn_account_with_an_old_charge_pays_both(self):
+        got = fees.assess(self.conn, "ACC-1003", "2026-09")
+        self.assertEqual(got, [("overdraft charge", Decimal("-0.16")), ("late fee", Decimal("-0.17"))])
+
+    def test_the_samples_are_charged_nothing(self):
+        conn, _ = database()
+        self.addCleanup(conn.close)
+        self.assertEqual(fees.charge(conn, "2026-09"), [])
 
 
 if __name__ == "__main__":
@@ -2090,6 +3218,178 @@ class MonthlyFile(unittest.TestCase):
 if __name__ == "__main__":
     unittest.main()
 ''',
+    "tests/test_reconcile.py": r"""
+import tempfile
+import unittest
+from decimal import Decimal
+from pathlib import Path
+
+from core import interest, ledger, reconcile
+from core.reconcile import Line
+from tests.support import SAMPLES, database
+
+SEPTEMBER = SAMPLES / "settlement-2026-09.csv"
+
+
+def settlement(text):
+    path = Path(tempfile.mkdtemp()) / "settlement.csv"
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+class Samples(unittest.TestCase):
+    def setUp(self):
+        self.conn, _ = database()
+        self.addCleanup(self.conn.close)
+        self.rec = reconcile.reconcile(self.conn, SEPTEMBER, "2026-09")
+
+    def test_what_matches_and_what_does_not(self):
+        self.assertEqual(len(self.rec.matched), 7)
+        self.assertEqual([x.reference for x in self.rec.only_in_file], ["PX-40640"])
+        self.assertEqual([p.memo for p in self.rec.only_in_ledger], ["card fee"])
+        self.assertFalse(self.rec.clean)
+
+    def test_the_difference_is_what_the_file_has_that_the_ledger_does_not(self):
+        self.assertEqual(self.rec.file_total, Decimal("-645.07"))
+        self.assertEqual(self.rec.ledger_total, Decimal("-630.075"))
+        self.assertEqual(self.rec.difference, Decimal("-14.995"))
+
+    def test_interest_is_ours_and_never_in_the_file(self):
+        memos = [p.memo for _, p in self.rec.matched] + [p.memo for p in self.rec.only_in_ledger]
+        self.assertNotIn(interest.MEMO, memos)
+
+
+class Matching(unittest.TestCase):
+    def setUp(self):
+        self.conn, _ = database("account,posted_on,amount,memo\nACC-1001,2026-09-10,-25,shop\n")
+        self.addCleanup(self.conn.close)
+        self.posted = ledger.postings(self.conn, "ACC-1001")
+
+    def line(self, n, day, amount="-25", account="ACC-1001"):
+        return Line(n, account, day, Decimal(amount), f"PX-{n}")
+
+    def test_a_line_settles_up_to_three_days_after_it_posted(self):
+        for day, matched in (("2026-09-10", 1), ("2026-09-13", 1), ("2026-09-14", 0), ("2026-09-09", 0)):
+            rec = reconcile.match("2026-09", [self.line(2, day)], self.posted)
+            self.assertEqual(len(rec.matched), matched, day)
+
+    def test_a_posting_matches_one_line_at_most(self):
+        lines = [self.line(2, "2026-09-11"), self.line(3, "2026-09-11")]
+        rec = reconcile.match("2026-09", lines, self.posted)
+        self.assertEqual(([x.line for x, _ in rec.matched], [x.line for x in rec.only_in_file]), ([2], [3]))
+
+    def test_the_account_and_the_amount_have_to_be_the_same(self):
+        lines = [self.line(2, "2026-09-11", "-25.01"), self.line(3, "2026-09-11", account="ACC-1002")]
+        rec = reconcile.match("2026-09", lines, self.posted)
+        self.assertEqual((rec.matched, len(rec.only_in_file), len(rec.only_in_ledger)), ([], 2, 1))
+
+    def test_a_clean_month(self):
+        path = settlement("account,settled_on,amount,reference\nACC-1001,2026-09-11,-25.00,PX-1\n")
+        rec = reconcile.reconcile(self.conn, path, "2026-09")
+        self.assertTrue(rec.clean)
+        self.assertEqual(rec.difference, 0)
+
+    def test_only_lines_that_settled_in_the_month_count(self):
+        path = settlement("account,settled_on,amount,reference\nACC-1001,2026-10-01,-25,PX-1\n")
+        rec = reconcile.reconcile(self.conn, path, "2026-09")
+        self.assertEqual((rec.only_in_file, len(rec.only_in_ledger)), ([], 1))
+
+
+class Files(unittest.TestCase):
+    def test_a_bad_line_is_refused_with_its_number(self):
+        path = settlement(
+            "account,settled_on,amount,reference\nACC-1001,2026-09-01,5,a\nACC-1001,2026-09-31,5,b\n"
+        )
+        with self.assertRaises(ledger.BadRow) as caught:
+            reconcile.read_settlement(path)
+        self.assertIn(":3:", str(caught.exception))
+
+    def test_a_file_without_the_columns_is_refused(self):
+        with self.assertRaises(ledger.BadRow):
+            reconcile.read_settlement(settlement("account,amount\nACC-1001,5\n"))
+
+
+if __name__ == "__main__":
+    unittest.main()
+""",
+    "tests/test_reports.py": r'''
+import unittest
+from decimal import Decimal
+
+from api import reports
+from core import reconcile
+from tests.support import SAMPLES, database
+from tests.test_aging import CHARGES
+
+AGING = """\
+AGING 2026-09-30
+
+account        current       31-60       61-90     over 90       total
+ACC-1002         10.00       25.50       40.00       70.00      145.50
+TOTAL            10.00       25.50       40.00       70.00      145.50
+"""
+
+MONTH_END = """\
+MONTH-END 2026-09
+
+  Accounts                           4
+  Postings                          12
+  Opening                    11,492.65
+  Deposits                    3,250.00
+  Withdrawals                -3,880.08
+  Interest                        1.84
+  Fees                            0.00
+  Closing                    10,864.41
+
+  Largest: ACC-1003 2026-09-05 -2,500.68 rent
+"""
+
+TAX_YEAR = """\
+INTEREST EARNED 2026
+
+ACC-1001  Ada Lovelace                            0.14
+ACC-1002  Grace Hopper                            0.08
+ACC-1003  Edsger Dijkstra                         1.67
+ACC-1004  Barbara Liskov                          0.00
+TOTAL                                             1.89
+"""
+
+
+class Reports(unittest.TestCase):
+    def setUp(self):
+        self.conn, _ = database()
+        self.addCleanup(self.conn.close)
+
+    def test_cents(self):
+        values = ("1234567.885", "-1234.565", "-0.004", "0.125")
+        got = [reports.cents(Decimal(v)) for v in values]
+        self.assertEqual(got, ["1,234,567.89", "-1,234.57", "0.00", "0.13"])
+
+    def test_the_aging(self):
+        conn, _ = database(CHARGES)
+        self.addCleanup(conn.close)
+        self.assertEqual(reports.aging_report(conn, "2026-09"), AGING)
+
+    def test_the_month_end(self):
+        self.assertEqual(reports.month_end(self.conn, "2026-09"), MONTH_END)
+
+    def test_the_tax_year(self):
+        self.assertEqual(reports.tax_year(self.conn, "2026"), TAX_YEAR)
+
+    def test_the_reconciliation_says_what_is_out(self):
+        rec = reconcile.reconcile(self.conn, SAMPLES / "settlement-2026-09.csv", "2026-09")
+        text = reports.reconciliation(rec)
+        self.assertIn("  line 8    ACC-1004  2026-09-25        -15.00  PX-40640", text)
+        self.assertIn("  difference                    -15.00", text)
+        self.assertTrue(text.endswith("NOT CLEAN: see above\n"))
+
+    def test_a_clean_audit(self):
+        self.assertEqual(reports.run_audit(self.conn, "2026-09"), ("AUDIT 2026-09\n\n  clean\n", 0))
+
+
+if __name__ == "__main__":
+    unittest.main()
+''',
     "tests/test_statement.py": r'''
 import unittest
 
@@ -2141,6 +3441,75 @@ class Statement(unittest.TestCase):
 if __name__ == "__main__":
     unittest.main()
 ''',
+    "tests/test_summary.py": r"""
+import unittest
+from decimal import Decimal
+
+from core import fees, summary
+from tests.support import database
+
+
+class MonthEnd(unittest.TestCase):
+    def setUp(self):
+        self.conn, _ = database()
+        self.addCleanup(self.conn.close)
+
+    def test_the_samples_in_september(self):
+        got = summary.month_end(self.conn, "2026-09")
+        figures = {k: got[k] for k in ("accounts", "postings", "deposits", "withdrawals", "interest", "fees")}
+        self.assertEqual(
+            figures,
+            {
+                "accounts": 4,
+                "postings": 12,
+                "deposits": Decimal("3250"),
+                "withdrawals": Decimal("-3880.075"),
+                "interest": Decimal("1.835"),
+                "fees": 0,
+            },
+        )
+        self.assertEqual((got["opening"], got["closing"]), (Decimal("11492.65"), Decimal("10864.41")))
+        self.assertEqual(got["largest"].memo, "rent")
+
+    def test_the_closing_is_the_opening_and_everything_posted(self):
+        got = summary.month_end(self.conn, "2026-09")
+        moved = got["deposits"] + got["withdrawals"] + got["interest"] + got["fees"]
+        self.assertEqual(got["opening"] + moved, got["closing"])
+
+    def test_an_account_opened_after_the_month_is_not_counted(self):
+        self.assertEqual(summary.month_end(self.conn, "2026-07")["accounts"], 3)
+
+    def test_fees_are_not_withdrawals(self):
+        conn, _ = database("account,posted_on,amount,memo\nACC-1002,2026-09-11,-365,rent\n")
+        self.addCleanup(conn.close)
+        fees.charge(conn, "2026-09")
+        got = summary.month_end(conn, "2026-09")
+        self.assertEqual((got["withdrawals"], got["fees"]), (Decimal("-365"), Decimal("-3.6")))
+
+    def test_a_month_with_nothing_in_it(self):
+        got = summary.month_end(self.conn, "2026-11")
+        self.assertEqual((got["postings"], got["largest"]), (0, None))
+        self.assertEqual(got["opening"], got["closing"])
+
+
+class TaxYear(unittest.TestCase):
+    def test_the_interest_each_account_earned(self):
+        conn, _ = database()
+        self.addCleanup(conn.close)
+        got = [(number, amount) for number, _, amount in summary.tax_year(conn, 2026)]
+        want = [("ACC-1001", "0.1375"), ("ACC-1002", "0.08"), ("ACC-1003", "1.665"), ("ACC-1004", "0.0025")]
+        self.assertEqual(got, [(n, Decimal(a)) for n, a in want])
+        self.assertEqual(summary.tax_year(conn, "2025"), [])
+
+    def test_a_year_is_four_digits(self):
+        for bad in ("26", "2026-01", "year"):
+            with self.assertRaises(ValueError, msg=bad):
+                summary.tax_year(None, bad)
+
+
+if __name__ == "__main__":
+    unittest.main()
+""",
     "vendor/__init__.py": "",
     "vendor/decimalfmt/VENDORED": r"""
 decimalfmt 1.3.0, from its release tarball, unmodified.

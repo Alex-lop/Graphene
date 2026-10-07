@@ -77,7 +77,7 @@ class Statements(unittest.TestCase):
             done = subprocess.run(argv, cwd=self.base, env=env, capture_output=True, text=True, timeout=300)
             self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
         self.assertIn("closed 2026-09: 4 statements", done.stdout)
-        self.assertGreater(sum(t.count("\n") for t in make_task.TASKS["statements"].values()), 1200)
+        self.assertGreater(sum(t.count("\n") for t in make_task.TASKS["statements"].values()), 2600)
 
     def test_the_base_trips_nothing(self):
         self.assertEqual(traps.count(self.base)["tripped"], [])

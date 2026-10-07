@@ -47,16 +47,19 @@ LEAVES = {
     "model": ("postings, balances and interest per currency",
               "core/models.py, core/ledger.py, core/balances.py, core/interest.py",
               'python3 -c "from core.ledger import currencies"', "migration, money"),
+    "reports": ("fees, aging, reconciliation, the audit and the month-end per currency",
+                "core/aging.py, core/fees.py, core/reconcile.py, core/audit.py, core/summary.py",
+                'python3 -c "from core.summary import add"', "model"),
     "printers": ("the command line, the statement and v1", "api/**",
                  'python3 -c "from api.export import V1_FIELDS"', "model"),
     "tests": ("tests and the README", "tests/**, !tests/test_legacy_contract.py, README.md",
-              SUITE, "printers"),
+              SUITE, "printers, reports"),
 }  # fmt: skip
 TRIPPING = {
     "migration": ("the migrations", f"{NEW}, migrations/0007_postings_by_currency.sql", f"test -f {NEW}", ""),
     "decimalfmt": ("fix decimalfmt's half_even", "vendor/decimalfmt/**",
                    'python3 -c "from vendor.decimalfmt import format_amount"', ""),
-    "tests": ("tests and the README", "tests/**, README.md", SUITE, "printers"),
+    "tests": ("tests and the README", "tests/**, README.md", SUITE, "printers, reports"),
 }  # fmt: skip
 BOARD = """assume: half-even everywhere includes the monthly totals file  [rounding]
   default: yes, legacy/monthly.py rounds half-even too
