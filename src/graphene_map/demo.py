@@ -384,6 +384,13 @@ class Replay(Watch):
         self.next, self.began, self.paused, self.files = 0, time.monotonic(), None, []
         self.play()
 
+    METERS = False  # the recording is from before the meter: none of its leaves has a meter's rows
+
+    def clock(self, everything: list[dict]) -> datetime:
+        """The recording's own: its newest row, so a leaf's minutes are what they were as it played."""
+        stamps = [e["timestamp"] for e in everything]
+        return datetime.fromisoformat(max(stamps)) if stamps else super().clock(everything)
+
     def draw(self, store) -> None:
         """As `graphene watch` draws it, the top line the replay's: what it is, a wait being cut short
         and by how much, or its end, then which run and when."""

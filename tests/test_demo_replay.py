@@ -82,3 +82,12 @@ def test_j_and_k_move_after_the_replay_is_played_again(tmp_path):
 
     asyncio.run(go())
     assert seen["moved"] == seen["at"] + 2
+
+
+def test_the_replays_clock_is_its_recordings_and_it_draws_no_meter_strip():
+    """The recording is from before the meter: a leaf's minutes run to its newest row, not to today."""
+    from datetime import datetime
+
+    rows = [{"timestamp": "2026-09-29T07:58:47.069Z"}, {"timestamp": "2026-09-29T08:01:00.000Z"}]
+    assert demo.Replay.clock(None, rows) == datetime.fromisoformat("2026-09-29T08:01:00.000Z")
+    assert demo.Replay.METERS is False

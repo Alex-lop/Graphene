@@ -467,11 +467,10 @@ def test_the_status_line_says_what_r_starts_when_init_chose_it(repo):
     seen, _ = watch(repo, [], size=(120, 36))
     assert "R runs 1 ready · " in seen["status"]  # nothing chosen: as before
     assert person("init", "--executor", f"nemotron --model {NANO}").exit_code == 0
-    seen, _ = watch(repo, [], size=(120, 36))
+    seen, _ = watch(repo, [], size=(140, 36))
     assert "R runs 1 ready with nemotron · " in seen["status"] and "planner" not in seen["status"]
-    for width in (90, 96):  # no room for its name: the long form stays, without it
-        mid, _ = watch(repo, [], size=(width, 30))
-        assert "waiting on you: 0 · executors: none · R runs 1 ready · 0/1 done" in mid["status"]
+    mid, _ = watch(repo, [], size=(120, 36))  # no room for its name beside the clocks: the long form stays
+    assert "agents: none · you: 1 act · ~1 min by your keys · R runs 1 ready · " in mid["status"]
     narrow, _ = watch(repo, [], size=(80, 24))
     assert "R: 1 ready · " in narrow["status"]  # at 80 columns the short form, unchanged
 
