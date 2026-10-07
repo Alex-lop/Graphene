@@ -78,12 +78,16 @@ sub-agents outside Graphene. `dev/process/meter/dogfood.md`.
 - **01:42** The full suite: 1,589 passed in parallel; the 11 width tests that fail only in parallel pass alone.
 - **01:55** The README gets the run's `git log --graph`, as the directive's shape has it.
 - **02:00** PR #40 opened. CI: the statements rehearsal failed 1 Ubuntu job on two pushes running, as once
-  on the cut night; never here (3 rehearsals, the trip-all suite 40 times, 6 rehearsals in Linux containers).
-  The test now runs a came-back leaf's check again and prints what it said.
+  on the cut night. Never here: 3 rehearsals, the trip-all suite 40 times, and in Linux containers 6
+  rehearsals and the whole suite twice (Python 3.13 and 3.14, 1,602 passed each). The test now runs a
+  came-back leaf's check again and prints what it said, so the next failure says why.
 - **02:05** The brief's five minutes, from GitHub `@meter`: install, init, ask (two board questions, so it
   waited), accept, run (`run: 1 done · agents <1 min, $0.2359`), node show. `dev/process/meter/five-minutes.md`.
 - **02:25** A replay drew no meter strip: Graphene's own recording predates the meter. Turned on, the strip
   said "no meter" before a leaf's first turn and "-2706 s ago", and `.` stalled at change 31 of 63. All
   three fixed at the root; the Claude Code recording made again at 02:30 on the final code ($0.3230).
-- **02:00-03:00** Takes 9 to 21: Ultra planned a tree in 4 of 11; take 11 replaces take 6. Each stopped where a leaf's check or code
-  needed a file another leaf writes. `nemotron.sh` now widens and runs again up to three times.
+- **02:00-03:00** Takes 9 to 21: Ultra planned a tree in 4 of 11; take 11 replaces take 6. Each tree stopped
+  where a leaf's check or code needed a file another leaf writes. `nemotron.sh` now widens and runs again up
+  to three times, as a person pressing `w` again would.
+- **02:50** On the final wheel: the cut's lane 0 still leaves the checkout clean (`dev/process/meter/lane0.txt`,
+  unchanged), and the wheel installed outside the source tree runs `graphene demo --once`.
