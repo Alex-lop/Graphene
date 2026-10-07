@@ -128,8 +128,8 @@ def money(dollars: float) -> str:
 
 def billed(rows: list[dict], now: datetime | None = None) -> dict[str, str]:
     """What each leaf an executor held spent and took, from the log's rows, as a view notes it on the
-    leaf's cell: `$0.42 · 6m` (whole minutes, or `<1m`). A leaf no list price covers, or with no meter,
-    has its minutes alone."""
+    leaf's cell: `$0.42 · 6m` (whole minutes, or `<1m`). A leaf no list price covers, with no meter, or
+    with no usage yet (Codex says its tokens as its turn ends) has its minutes alone."""
     logs: dict[str, list[dict]] = {}
     for e in rows:
         logs.setdefault(e["node_id"], []).append(e)
@@ -140,7 +140,8 @@ def billed(rows: list[dict], now: datetime | None = None) -> dict[str, str]:
             continue
         minutes = sum(a["seconds"] for a in tries) // 60
         took = f"{minutes}m" if minutes else "<1m"
-        priced = any(a["meter"] for a in tries) and all(a["priced"] for a in tries)
+        used = any(a["turns"] or a["prompt_tokens"] or a["dollars"] for a in tries)  # as the strip reads it
+        priced = used and any(a["meter"] for a in tries) and all(a["priced"] for a in tries)
         out[node_id] = f"{money(sum(a['dollars'] for a in tries))} · {took}" if priced else took
     return out
 

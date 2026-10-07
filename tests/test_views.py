@@ -590,6 +590,17 @@ def test_billed_is_what_each_leaf_an_executor_held_spent_and_took():
     assert V.billed(BILLED) == {"schema": "$0.42 · 6m", "ids": "<1m"}  # no meter: its minutes alone
 
 
+def test_a_leaf_with_no_usage_yet_notes_its_minutes_never_zero_dollars():
+    """The review of 7 October: Codex says its tokens only as its turn ends, so for the whole of its run
+    its leaf read `$0.00 · 3m` in the tree and the graph, while its row on the strip said `no usage yet`."""
+    from datetime import UTC, datetime
+
+    working = [logged("xml", "00:00", "attempt", {"attempt": 1, "meter": "codex"}, "run:codex"),
+               logged("xml", "00:30", "did", {"attempt": 1, "tool": "command_execution", "target": "cat a.py",
+                                              "verb": "running"}, "run:codex")]  # fmt: skip
+    assert V.billed(working, datetime(2026, 10, 7, 4, 3, tzinfo=UTC)) == {"xml": "3m"}
+
+
 def test_plan_view_notes_each_leafs_bill_in_the_tree_and_the_graph(repo):
     proposed(repo)
     person("plan", "accept")
