@@ -76,13 +76,22 @@ CHURN_DEDUPED = 2 + 2 + 2 + 2 + 1 + 2 + 3 + 2  # = 16
 # Of that, the two files that are not in the base commit and are not on disk at the end
 TRANSIENT = 2 + 3  # build/out.txt and .plan-tmp.json = 5
 
-# Two executor calls `graphene run` started, in the files it leaves behind and never reads.
+# Four executor calls `graphene run` started, in the files it leaves behind: one --output-format json,
+# one prose, and a stream-json session resumed once, whose second result is the session's running total.
+STREAM = [
+    {"type": "system", "subtype": "init", "session_id": "r3"},
+    {"type": "assistant", "message": {"id": "m1", "usage": {"input_tokens": 3, "output_tokens": 2}}},
+]
 RUNS = {
     "n1-1.txt": json.dumps(
         {"type": "result", "total_cost_usd": 0.31, "num_turns": 9, "session_id": "r1", "result": "done"}
     ),
     "n2-1.txt": "the executor printed prose, not json, so nobody can price this one\n",
-}
+    "n3-1.txt": "\n".join(json.dumps(e) for e in [
+        *STREAM, {"type": "result", "total_cost_usd": 0.05, "num_turns": 2, "session_id": "r3"}]) + "\n",
+    "n3-2.txt": "\n".join(json.dumps(e) for e in [
+        *STREAM, {"type": "result", "total_cost_usd": 0.08, "num_turns": 1, "session_id": "r3"}]) + "\n",
+}  # fmt: skip
 
 LOG = [
     {"t": 1000, "who": "person", "type": "prompt", "text": "x" * 40, "chars": 40},
@@ -315,10 +324,10 @@ class Tally(unittest.TestCase):
     def test_executor_cost_comes_from_the_run_log_and_from_graphene_runs(self):
         self.assertEqual(self.out["executor_cost_from_runlog_usd"], 0.2)  # s1's last total, once
         self.assertEqual(self.out["executor_cost_from_runlog_summed_usd"], 0.32)  # the old sum
-        self.assertEqual(self.out["executor_cost_from_graphene_runs_usd"], 0.31)
-        self.assertEqual(self.out["executor_cost_usd"], 0.51)
-        self.assertEqual(self.out["executor_turns"], 7 + 3 + 9)
-        self.assertEqual(self.out["executor_calls"], 4)  # two in the log, two under .graphene/runs
+        self.assertEqual(self.out["executor_cost_from_graphene_runs_usd"], 0.39)  # r1, and r3's last total
+        self.assertEqual(self.out["executor_cost_usd"], 0.59)
+        self.assertEqual(self.out["executor_turns"], 7 + 3 + 9 + 2 + 1)
+        self.assertEqual(self.out["executor_calls"], 6)  # two in the log, four under .graphene/runs
         self.assertEqual(self.out["executor_calls_unpriced"], 1)  # the one that printed prose
         self.assertTrue(
             any("n2-1.txt is not an --output-format json result" in n for n in self.out["notes"]),
