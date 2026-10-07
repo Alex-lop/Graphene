@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from graphene_map import meter as M
-from graphene_map.run import DEFAULT_WITH
+from graphene_map.run import CODEX, DEFAULT_WITH
 
 FIXTURES = Path(__file__).parent / "fixtures" / "meter"
 
@@ -99,8 +99,9 @@ def test_garbage_never_raises_and_counts_as_unread():
 
 
 def test_kind_and_model_on_real_command_lines():
-    claude = shlex.split(DEFAULT_WITH + " --output-format stream-json --verbose")
-    assert M.kind(claude) == "claude" and M.kind(shlex.split(DEFAULT_WITH)) is None
+    claude = shlex.split(DEFAULT_WITH)
+    assert M.kind(claude) == "claude" and M.kind(["claude", "-p", "--model", "sonnet"]) is None
+    assert M.kind(shlex.split(CODEX)) == "codex"
     codex = shlex.split("codex exec --json --sandbox workspace-write -m x")
     assert M.kind(codex) == "codex" and M.model_in(codex) == "x"
     assert M.kind(["/usr/local/bin/codex", "exec", "--sandbox", "workspace-write"]) is None

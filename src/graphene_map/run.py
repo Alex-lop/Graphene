@@ -41,10 +41,11 @@ from . import plan as P
 # look at the plan), and nothing else unless the person says so with --with. Not `graphene run` or
 # `graphene ask`: through their own --with, either would be any command at all.
 DEFAULT_WITH = (
-    "claude -p --permission-mode acceptEdits --allowedTools 'Bash(graphene node *)' 'Bash(graphene plan *)'"
+    "claude -p --permission-mode acceptEdits --allowedTools 'Bash(graphene node *)' 'Bash(graphene plan *)' "
+    "--output-format stream-json --verbose"  # the stream the meter reads: turns, tokens, tool calls, cost
 )
 ATTEMPTS = 3
-CODEX = "codex exec --sandbox workspace-write"
+CODEX = "codex exec --json --sandbox workspace-write"
 
 
 def unchosen(who: str) -> P.Refused:
