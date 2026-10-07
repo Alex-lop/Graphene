@@ -69,6 +69,16 @@ def test_a_recording_holds_no_path_of_yours_and_nothing_shaped_like_a_key(tmp_pa
     }
 
 
+def test_the_home_directory_spelled_with_dashes_goes_too(tmp_path, monkeypatch):
+    """Claude Code names a folder after a path, its slashes as dashes, and its stream says that folder: a
+    recording of a Claude Code run held `-Users-<name>-…` on 7 October, which the slash form never met."""
+    monkeypatch.setenv("HOME", "/Users/someone")
+    hide, _ = demo.hider(tmp_path / "work")
+    said = hide('{"auto": "~/.claude/projects/-private-tmp--Users-someone-Desktop-x/memory/"}')
+    assert "someone" not in said and demo.leaks(said)["the home directory"] == 0
+    assert demo.leaks("cd /tmp/-Users-someone-Desktop")["the home directory"] == 1
+
+
 def test_a_key_kept_only_in_the_keychain_is_taken_out_too(tmp_path, monkeypatch):
     from graphene_map.nemotron import keys
 
