@@ -171,16 +171,16 @@ def test_under_the_opening_a_dry_rung_counts_every_call_in_a_night_of_its_own(tm
     assert text.count("fake-key") == 0  # counted, never printed
 
 
-def test_no_rung_starts_past_80_percent_of_the_nights_cap(tmp_path):
-    """The night's bill does not reset on a rerun: at $8 of $10 spent or in flight, a rung runs nothing."""
+def test_no_rung_starts_past_90_percent_of_the_nights_cap(tmp_path):
+    """The night's bill does not reset on a rerun: at $9 of $10 spent or in flight, a rung runs nothing."""
     made = [{"kind": "reserve", "id": "a", "model": "m", "dollars": 3.0},
             {"kind": "settle", "id": "a", "model": "m", "dollars": 2.5},
-            {"kind": "reserve", "id": "b", "model": "m", "dollars": 5.5}]  # fmt: skip
+            {"kind": "reserve", "id": "b", "model": "m", "dollars": 6.5}]  # fmt: skip
     (tmp_path / "night.jsonl").write_text("".join(json.dumps(r) + "\n" for r in made))
     done = ladder(tmp_path, "2", CLAUDECODE="1", GRAPHENE_AGENT_LIVE_USD="10")
     said = " ".join(done.stdout.split())
     assert done.returncode == 1 and "FAIL · rung 2 · " in said, said
-    assert "the night has $2.5000 spent and $5.5000 in flight, at or past $8.00 (80% of its $10.00" in said
+    assert "the night has $2.5000 spent and $6.5000 in flight, at or past $9.00 (90% of its $10.00" in said
     assert "most likely: the night's cap" in said and "`docs/test/practice.sh night` shows the bill" in said
     assert not (tmp_path / "work").exists() and not (tmp_path / "state" / "progress.json").exists()
 
@@ -196,10 +196,11 @@ def test_night_prints_the_bill_ultra_first_with_the_sandboxes(tmp_path):
     (tmp_path / "night.jsonl").write_text("".join(json.dumps(r) + "\n" for r in made))
     done = ladder(tmp_path, "night", GRAPHENE_AGENT_LIVE_USD="5")
     lines = done.stdout.splitlines()
-    head = "the night's bill: $0.7500 spent, $0.4000 in flight, of a $5.00 cap; nothing new starts at $4.00"
+    head = "the night's bill: $0.7500 spent, $0.4000 in flight, of a $5.00 cap; nothing new starts at $4.50"
     assert done.returncode == 0 and lines[0].startswith(head), lines
     assert lines[1:] == ["  nvidia/Ultra: 1 call, $0.2500", "  nvidia/Nano: 1 call, $0.5000",
                          "  in flight: 1 call, $0.4000 held at the worst case",
+                         "  by purpose: unsaid $0.7500",
                          "  Sandboxes: 2 operations, 1.5 min, counted at $0 (price: unknown)"]  # fmt: skip
 
 

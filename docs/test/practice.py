@@ -27,7 +27,7 @@ Live, only the person climbs: from a shell with an agent's mark, rungs 2-7 run n
 prints the line to type with `!`), unless the person started the agent's session with GRAPHENE_AGENT_LIVE_USD
 set. That is the opening: the ladder, and every live call and Sandbox operation made while it is set, go
 under the night's cap in one ledger (nemotron/night.py), on top of each rung's own cap. A rung does
-not start past 80% of it; the dry run keeps a night's ledger of its own in its state directory. Ctrl-C
+not start past 90% of it; the dry run keeps a night's ledger of its own in its state directory. Ctrl-C
 stops a rung, cleans up, and says what is left and how to clean it.
 """
 
@@ -636,7 +636,7 @@ MEANS = [  # (what the log or the failure says, what it most likely means, what 
      "a way out of the leaf's scope worked in the sandbox: containment does not hold there",
      "stop: run no leaf in a Sandbox until it is understood; rung-4.log has each command's exit"),
     (r"the night has \$",
-     "the night's cap (the lower of GRAPHENE_AGENT_LIVE_USD and $10), or its 80%, is reached: a rerun does "
+     "the night's cap (the lower of GRAPHENE_AGENT_LIVE_USD and $50), or its 90%, is reached: a rerun does "
      "not reset it",
      f"`{ME} night` shows the bill; nothing more is spent tonight"),
     (r"holds the key or the project",
