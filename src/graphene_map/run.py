@@ -516,13 +516,19 @@ def said_by(event: dict) -> str:
 
 def live(store, node: P.Node, now: float | None = None) -> dict:
     """A running leaf as the person watches it: which executor, where, what it did last and how
-    long ago. A Claude Code executor's calls come from the hooks' record (its session is the one the
-    run gave it); any executor's output is its log, and the log's age says when it last spoke."""
+    long ago. What it did is the meter's newest row for the attempt (`editing api.py`, or what it
+    said), else the hooks' last tool call for its session, else its log's last line that is not the
+    stream's JSON; the log's age, too, says when it last spoke."""
+    from . import meter as M
+
     attempt = (store.node_log(node.id, ("attempt",)) or [None])[-1]
     detail = attempt["detail"] if attempt else {}
     log = detail.get("log")
+    metered = (M.attempts(store.node_log(node.id)) or [{}])[-1] if attempt else {}
     last = store.last_events(node.session_id) if node.session_id else []
     stamps = []
+    if metered.get("last_at"):
+        stamps.append(_seconds(metered["last_at"]))
     if last:
         stamps.append(_seconds(last[-1]["timestamp"]))
     if log and os.path.exists(log):
@@ -535,9 +541,14 @@ def live(store, node: P.Node, now: float | None = None) -> dict:
         "checkout": node.checkout,
         "attempt": detail.get("attempt"),
         "log": log,
-        "last": said_by(last[-1]) if last else (tail(log, 1) or [""])[0],
+        "last": metered.get("last") or (said_by(last[-1]) if last else _spoke(log)),
         "idle": int(now - max(stamps)) if stamps else None,
     }
+
+
+def _spoke(log: str | None) -> str:
+    """The log's last line that is not one of the stream's JSON events (stderr shares the file)."""
+    return next((line for line in reversed(tail(log, 40)) if not line.lstrip().startswith("{")), "")
 
 
 def _seconds(stamp: str) -> float:

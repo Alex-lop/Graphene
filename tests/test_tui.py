@@ -53,6 +53,7 @@ def watch(repo, keys, size=(80, 24), before=None):
                 "side": shown(app, app.query_one("#side").region),
                 "tree": shown(app, app.query_one("#tree").scrollable_content_region),  # less its scrollbar
                 "sideways": app.tree.max_scroll_x,
+                "meter": [r.rstrip() for r in shown(app, app.query_one("#meter").region)],
             }
 
     return asyncio.run(go()), app
@@ -84,10 +85,10 @@ def test_the_top_line_says_whose_plan_and_the_goal_is_the_first_row(repo):
     assert seen["where"].endswith(repo.name) and len(seen["where"]) <= 78
     assert seen["tree"][0].startswith("▼ ? users come back with their ids") and "proposed" in seen["tree"][0]
     assert seen["cursor"] is None and "users come back with their ids" in seen["detail"]  # the goal's pane
-    assert "planner:" not in seen["status"] and "2 on you · 0 running" in seen["status"]  # the tree, once
+    assert "planner:" not in seen["status"] and "2 on you · agents 0 · you 0 acts" in seen["status"]
     assert seen["classes"] == ["-narrow"]  # 80 columns: the tree above, the node below it
     wide, _ = watch(repo, [], size=(120, 30))
-    assert wide["classes"] == ["-wide"] and "waiting on you: 2 · executors: none" in wide["status"]
+    assert wide["classes"] == ["-wide"] and "waiting on you: 2 · agents: none · you: 0 acts" in wide["status"]
     person("plan", "accept")
     seen, _ = watch(repo, [])
     assert seen["tree"][0].startswith("▼ ○ users come back with their ids") and "0/3 done" in seen["tree"][0]
@@ -987,12 +988,13 @@ def test_the_status_line_is_two_lines_fitted_at_a_word_at_80_and_120(repo):
     every_state(repo)
     wide, _ = at(repo, "rule", (120, 36))
     top, bottom = wide["status"].splitlines()
-    assert top == ("waiting on you: 4 · executors: 1 running · R runs 1 ready · 1 came back · 1/9 done · "
-                   "plan first: auto (P)")  # the proposal counted, as `graphene` counts it
+    # the clocks short, the rest long; the proposal counted, as `graphene` counts it
+    clocks = r"waiting on you: 4 · agents 1 · <1m · you \d+ acts? ~\d+m · R runs 1 ready · "
+    assert re.fullmatch(clocks + r"1 came back · 1/9 done · plan first: auto \(P\)", top), top
     assert bottom == "y sign off · x send back · Enter record · Tab view · ? talk · q quit"  # ? on a node
     narrow, _ = at(repo, "rule", (80, 24))
     top, bottom = narrow["status"].splitlines()
-    assert top == "4 on you · 1 running · R: 1 ready · 1 came back · 1/9 done · plan first: auto"
+    assert re.fullmatch(r"4 on you · agents 1 · <1m · you \d+ acts? ~\d+m · R: 1 ready · 1 came back", top)
     long = "graphene node edit rule: " + "the scope changed from one path to a longer list of them " * 3
 
     async def said(app, pilot):
@@ -1549,7 +1551,7 @@ def test_the_bill_is_on_the_status_line_and_in_the_leafs_pane(repo):
         store.log_node("*", plan._now(), "usage", "planner:nemotron", None, None,
                        {"model": "nvidia/Nemotron-3-Ultra-fake", "calls": 2, "dollars": 0.02})  # fmt: skip
     seen, _ = watch(repo, ["j"], size=(120, 36))
-    assert seen["status"].splitlines()[0].endswith("the plan: $0.03 at list price")  # the planner's too
+    assert "agents 0 · 0m · $0.03 · you " in seen["status"].splitlines()[0]  # the planner's too
     leaf = "bill $0.0123 at list price for this leaf's 6 calls · Nemotron-3-Nano-fake"
     assert leaf in " ".join(seen["detail"].split())
 
@@ -1906,8 +1908,9 @@ def test_the_status_line_counts_done_as_graphene_does_and_says_on_you_in_words(r
 
     proposed(repo)
     assert person("node", "add", "a price of 0 means skip it").exit_code == 0  # to fill in
-    for size, said in (((80, 24), "2 on you · 0 running · none ready · 0/4 done"),
-                       ((120, 36), "waiting on you: 2 · executors: none · nothing ready to run · 0/4 done")):
+    for size, said in (((80, 24), "2 on you · agents 0 · you 1 act ~1m · none ready · 0/4 done"),
+                       ((120, 36), "waiting on you: 2 · agents: none · you: 1 act · ~1 min · "
+                                   "nothing ready to run · 0/4 done")):
         seen, _ = watch(repo, [], size=size)
         assert seen["status"].splitlines()[0].startswith(said), (size, seen["status"])
     [(leaves, done)] = re.findall(r"(\d+) leaves, (\d+) done", person().stdout)
@@ -2075,3 +2078,105 @@ def test_the_goal_offers_r_only_when_something_is_ready(repo):
     seen, _ = watch(repo, ["g", "g"])
     keys = seen["status"].splitlines()[1]
     assert "none ready" in seen["status"] and "R run" not in keys, seen["status"]
+
+
+# -- the meter (meter.py): a running leaf's row, the two clocks, a leaf's bill in the views -----------
+
+SCRIPT = plan.Caller("run:script.sh", False, "5c41-run-session")
+
+
+def metered(repo):
+    """Every state, and the meter's rows on ids, which Claude Code runs: one turn, what it read, edited
+    (README.md is outside its scope) and ran. And ready1, run by a script that writes no stream."""
+    every_state(repo)
+    with Store.open(repo) as store:
+        usage = {"model": "claude-sonnet-5-5", "calls": 1, "prompt_tokens": 412_000,
+                 "completion_tokens": 9_400, "dollars": 0.42, "endpoint": "claude code", "attempt": 1,
+                 "turn": 1}  # fmt: skip
+        store.log_node("ids", plan._now(), "usage", RUN.label, RUN.session_id, None, usage)
+        for verb, target in (("reading", "api.py"), ("editing", "api.py"), ("editing", "README.md"),
+                             ("running", "pytest -q")):  # fmt: skip
+            did = {"attempt": 1, "tool": "Bash", "target": target, "verb": verb}
+            store.log_node("ids", plan._now(), "did", RUN.label, RUN.session_id, None, did)
+        plan.start(store, "ready1", SCRIPT, repo)
+        log = repo / ".graphene" / "runs" / "ready1-1.txt"
+        log.write_text("step 3 of 5\n")
+        attempt = {"attempt": 1, "log": str(log)}
+        store.log_node("ready1", plan._now(), "attempt", SCRIPT.label, SCRIPT.session_id, None, attempt)
+
+
+def test_each_running_leaf_has_a_live_row_two_lines_at_80_one_at_120(repo):
+    metered(repo)
+    narrow, _ = watch(repo, [], size=(80, 24))
+    rows = narrow["meter"]
+    assert len(rows) == 4 and all(len(r) <= 80 for r in rows), rows
+    assert re.fullmatch(r" ● ids · claude sonnet-5-5 · attempt 1 · \d+s · 1 turn · \$0\.42", rows[0]), rows
+    said = r"   running pytest -q · \d+ s ago · 2 files, 1 outside · 412k in, 9k out"
+    assert re.fullmatch(said, rows[1]), rows
+    assert re.fullmatch(r" ● ready1 · script\.sh · attempt 1 · \d+s · no meter", rows[2]), rows
+    assert re.fullmatch(r"   step 3 of 5 · \d+ s ago", rows[3]), rows  # its log's last line
+    assert len([r for r in narrow["tree"] if r.strip()]) <= (24 - 3 - 4) // 2  # less the strip's rows
+    wide, _ = watch(repo, [], size=(120, 36))
+    rows = wide["meter"]
+    assert len(rows) == 2 and all(len(r) <= 120 for r in rows), rows
+    first = r" ● ids · claude sonnet-5-5 · \d+s · \$0\.42 · running pytest -q · \d+ s ago · 1 turn · 2 files"
+    assert re.match(first, rows[0]), rows
+    script = r" ● ready1 · script\.sh · \d+s · no meter · step 3 of 5 · \d+ s ago · attempt 1"
+    assert re.fullmatch(script, rows[1]), rows
+
+
+def test_past_four_running_leaves_the_strip_counts_the_rest(repo):
+    with Store.open(repo) as store:
+        leaf = {"title": "a leaf", "check": "true"}
+        alex = plan.Caller("alex", True)
+        plan.propose(store, [{**leaf, "id": f"l{k}", "scope": [f"f{k}.py"]} for k in range(6)], alex)
+        for k in range(6):
+            plan.start(store, f"l{k}", RUN, repo)
+            store.log_node(f"l{k}", plan._now(), "attempt", RUN.label, RUN.session_id, None, {"attempt": 1})
+    seen, _ = watch(repo, [], size=(120, 36))
+    assert [r.split(" · ")[0].strip() for r in seen["meter"]] == ["● l0", "● l1", "● l2", "● l3", "+2 more"]
+    assert "agents 6 · <1m · " in seen["status"] or "agents: 6 running · <1 min" in seen["status"]
+
+
+def test_the_status_line_has_the_two_clocks_and_help_says_they_count_by_your_keys(repo):
+    from graphene_map.tui import HELP_END
+
+    metered(repo)
+    for size in SIZES:
+        seen, _ = watch(repo, [], size=size)
+        top = seen["status"].splitlines()[0]
+        assert re.search(r" · agents 2 · <1m · \$0\.42 · you \d+ acts? ~\d+m · ", top), (size, top)
+        assert len(top) <= size[0] - 2
+    assert "by your keys, not by what you read" in " ".join(HELP_END.split())
+
+
+def test_a_metered_leafs_pane_says_what_the_meter_read_and_l_its_stream_phrased(repo):
+    metered(repo)
+    for size in SIZES:
+        seen, _ = at(repo, "ids", size)
+        flat = " ".join(seen["detail"].split())
+        for said in ("model claude-sonnet-5-5", "meter 1 turn · 412k tokens in, 9k out · $0.42 at list price",
+                     "edited api.py", "outside README.md", "last pytest -q · "):  # fmt: skip
+            assert said in flat, (size, said, seen["detail"])
+        assert flat.count("running") == 1  # its state, said once
+        seen, _ = at(repo, "ids", size, keys=["l"])
+        lines = seen["detail"].splitlines()
+        did = [ln.split("  ", 1)[1] for ln in lines if re.match(r"\d\d:\d\d:\d\d  ", ln)]
+        assert did == ["reading api.py", "editing api.py", "editing README.md", "running pytest -q"]
+        seen, _ = at(repo, "ready1", size)
+        assert "meter nothing read from its stream" in " ".join(seen["detail"].split())
+
+
+def test_the_tree_and_the_graph_note_a_leafs_bill_and_minutes(repo):
+    metered(repo)
+    seen = {}
+
+    async def look(app, pilot):
+        for view in ("tree", "dag"):
+            app.showing = view
+            app.refresh_plan()
+            await pilot.pause()
+            seen[view] = "\n".join(line.plain for line in app.drawn.lines)
+
+    watch(repo, [], size=(220, 40), before=look)  # where the tree has room for a note beside a title
+    assert "users… $0.42 · <1m" in seen["tree"] and "users returns ids $0.42 · <1m" in seen["dag"], seen

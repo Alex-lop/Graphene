@@ -340,3 +340,20 @@ def test_a_fan_out_past_seven_crosses_nothing():
     crossing = [c for c, arms in ARMS.items() if arms["r"]]  # a line going right, then a track it crosses
     drawn = checked(fan, 80)
     assert not any(c + "│" in line.plain for line in drawn.lines for c in crossing)
+
+
+def test_a_leaf_an_executor_held_notes_its_bill_after_its_title_counted_in_its_column():
+    nodes = diamond_and_chain(done={"a"})
+    meter = {"a": "$0.42 · 6m", "b": "2m"}
+    drawn = V.draw(nodes, words_of(nodes), "the goal", 120, 24, None, meter)
+    assert drawn.lines[1].plain.startswith("✓ a   read the feed $0.42 · 6m ─")
+    assert "○ b   parse rows 2m ─" in drawn.lines[1].plain
+    at = drawn.lines[1].plain.index("$0.42")
+    assert style_at(drawn.lines[1], at) == "dim"
+    assert drawn.at["a"] == (1, 0, len("✓ a   read the feed $0.42 · 6m") - 1)
+    for width in range(40, 130):  # every line fits, and a column with no room for its title has no note
+        got = V.draw(nodes, words_of(nodes), "the goal", width, 24, None, meter)
+        assert all(line.cell_len <= width for line in got.lines)
+        assert "$0.42" not in got.lines[1].plain or "read" in got.lines[1].plain
+    assert [line.plain for line in checked(nodes, 80).lines] == [
+        line.plain for line in V.draw(nodes, words_of(nodes), "the goal", 80, 24, None, {}).lines]
