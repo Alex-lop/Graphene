@@ -4,15 +4,17 @@ Rollback: `main` is untouched at `af3da2c`. To drop the night: close the PR, `gi
 
 ## The brief
 
-**1. Watch first:** `graphene demo tests/recordings/meter-claude.jsonl`: the feeds run on Claude Code, recorded
-  at 02:30 on the final code, each leaf's live row climbing (screens at 80 and 120: `dev/process/meter/screens/`).
+**1. Watch first:** `graphene demo tests/recordings/meter-claude.jsonl`: the feeds run on Claude Code, each leaf's
+  live row climbing; the live screen at 80 columns is `dev/process/meter/screens/claude-80.txt`.
   Nemotron: `graphene demo tests/recordings/meter-nemotron-take-11.jsonl` (Ultra planned; Nano landed 2 of 4).
-**2. The bill:** $36.17 of $50 at 02:45. `meter` $12.76 · `statements-practice` $7.01 · `nemotron-take` $6.69 ·
-  `dogfood` $5.77 · `auto` $3.94. ($1.83 of the statements rows were written with no purpose.)
+**2. The bill:** $39.26 of $50 at 04:30. `meter` $15.32 · `nemotron-take` $7.22 · `statements-practice` $7.01 ·
+  `dogfood` $5.77 · `auto` $3.94. $13.50 of it is planners held at their worst case: they report no cost.
 **3. `auto`:** Tuesday asks: 8 of 12 yours at once and done; 4 waited on a board item they put up.
   The feeds paragraph: a tree once in three; twice one leaf of 8 paths, no question, taken at once.
+  Transcripts, both kinds, every run: `dev/process/meter/auto-evidence.md`.
 **4. Run in five minutes:** `uv tool install --force git+https://github.com/Alex-lop/Graphene@meter`, then in
   your repo `graphene init`, `graphene ask "…"`, `graphene watch` (`y`, then `R`), `graphene node show <leaf>`.
+  Run as written from GitHub at 02:05: `dev/process/meter/five-minutes.md`.
 **5. The README:** 790 words. Least sure are yours: "which is exactly what I'd have checked first"; "the
   second number is the one I care about"; "because that's the whole game".
 **6. Decide:** 1. Take 11 for the video? Default: no; none of 19 ran clean. 2. Run the registered arms? Default:
@@ -33,10 +35,12 @@ sub-agents outside Graphene. `dev/process/meter/dogfood.md`.
 
 ## Branches
 
-- `main`: `af3da2c`, untouched, local and on GitHub.
-- `meter`: the night, pushed; the PR is the only one. 67 commits, 39 on its first-parent line.
+- `main`: `af3da2c`, untouched, local and on GitHub. Rollback: close PR #40.
+- `meter`: the night, pushed; PR #40 is the only one. 103 commits, 61 on its first-parent line, more than the
+  30 to 50 you like; the directive rules out a force-push, so a reshape is yours to ask for.
 - In this run's clone only, all merged into `meter`: `meter-core`, `meter-l1`, `meter-l1b`, `meter-move`,
-  `meter-record`, `meter-run`, `meter-size`, `meter-watch`, `dogfood`.
+  `meter-record`, `meter-run`, `meter-size`, `meter-watch`, `dogfood`, and the review's `meter-fix-ledger`,
+  `meter-fix-screens`, `meter-fix-edges`.
 
 ## What was done, in order
 
@@ -91,3 +95,7 @@ sub-agents outside Graphene. `dev/process/meter/dogfood.md`.
   to three times, as a person pressing `w` again would.
 - **02:50** On the final wheel: the cut's lane 0 still leaves the checkout clean (`dev/process/meter/lane0.txt`,
   unchanged), and the wheel installed outside the source tree runs `graphene demo --once`.
+- **03:00-04:15** A review of the whole branch: four readers, a skeptic each for the top six, 19 distinct
+  findings, none refuted. 17 fixed, each with a test that fails without its fix; the worst two were the
+  ledger's: a stopped attempt settled its hold at $0, and a run killed outright left its holds in flight all
+  night. The 2 left, and why: `dev/process/meter/review.md`. A resumed result's `usage` was checked live first.
