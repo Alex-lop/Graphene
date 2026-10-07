@@ -31,8 +31,8 @@ OURS = (".graphene",)  # the plan's own store: never inside any scope
 _AS_PERSON = re.compile(r"\bGRAPHENE_(AS|WATCH)\b")
 PARSED = 64_000  # characters of a shell command the hook will parse: the parser is superlinear, and the
 # vendor lets a call through when a hook runs out of time (3 MB took 234 s in the closing review)
-WIDE = 8  # paths a one-leaf ask may reach and still be the person's at once: the one-change asks of
-# 5 October reached 7 or 8 (docs/process/cut/lane5-evidence.md); tonight's live runs tune it
+WIDE = 8  # paths a one-leaf ask may reach and still be the person's at once: every one-leaf ask of
+# 7 October on feeds reached exactly 8, and 7 stops them all (dev/process/meter/auto-evidence.md)
 
 
 def _deny(reason: str) -> dict:

@@ -1651,6 +1651,45 @@ any of them.
 150. **The 3 MB clone target is reported, not gated.** The README's GIF, the tests' recordings and the
      harness stay on `main`.
 
+## Decisions taken on the night of the meter directive (6 to 7 October)
+
+151. **The directive's $50 line was the opening.** The session started without `GRAPHENE_AGENT_LIVE_USD`,
+     so the run set it to 50 in its own live commands. The ceiling is $50; nothing new starts past $45.
+     Every ledger row names its purpose, and `practice.sh night` adds them up by purpose.
+152. **The night ran in a clone of its own.** Your checkout's hook now covers its worktrees under plan
+     first auto, so an agent writes nothing there until you accept a leaf. Your checkout was not touched.
+153. **Codex ran Nemotron Super on Token Factory.** The ChatGPT login here was revoked. `codex exec --json`
+     with a Token Factory provider is the same CLI and the same stream, with another model.
+154. **Under auto every ask is proposed, and the proposal decides who sees it.** One leaf, no board item,
+     at most 8 paths: yours at once. Anything else waits. The status line still says `plan first: auto`;
+     `graphene plan first` says the rule and the number. `graphene ask` always waits.
+155. **8 paths, because a one-change ask reaches 8 here.** Every one-leaf proposal tonight, Tuesday ask or
+     feeds paragraph, reached exactly 8. 7 stops every Tuesday ask. No number separates the paragraph,
+     which twice in three became one leaf with no question and was taken. That is the finding.
+156. **One leaf counts leaves, not nodes.** A leaf in a sub-goal of its own is one leaf. Live, 4 of 8
+     Tuesday asks waited only for that wrapper until the rule counted leaves.
+157. **The meter reads the executor's own stream.** Claude Code's `stream-json` and Codex's `--json`, line by
+     line from the attempt's log; Nemotron writes its own rows. Any other command says "no meter". A stream
+     that cannot be read degrades the meter, never the run.
+158. **For the meter the stream wins; for the gate the hooks win.** Turns, tokens, dollars, tool calls and
+     said text come from the stream. Refusals and writes are the hooks'. Each call counts once.
+159. **A turn is priced as it happens and settled at the end.** Claude's turns use the model's list price;
+     its result settles the dollars and the tokens, since the stream counts output early. Codex is priced
+     only when its model is on Token Factory's list, and says "no usage yet" until its turn ends.
+160. **Two clocks, by your keys.** Agents: attempts' minutes and dollars. You: your own rows, once per
+     timestamp, and the minutes holding one. It counts what you did, never what you read.
+161. **The live row is two lines at 80 columns and one from 110.** Who and how much first; then what it
+     did last, how long ago, its files and tokens. The least wanted pieces go first when room runs out.
+162. **The ledger holds every executor.** A Claude Code or Codex attempt reserves `--max-budget-usd` (else $3)
+     before it starts and settles at what its stream said. A run that would spend does not start past 90%.
+163. **`docs/` is for using Graphene; `dev/` is for building it.** The two pre-registered files keep their
+     old paths, as decision 53's dated records do.
+164. **The statements task is twice its size, and size is not what sets a run's length.** The conditions
+     reached every leaf. Doubled, the planner kept the new code out with a board default; a run stops on
+     test files two leaves need. PREREG voids a changed repo: the registered runs need a new commit.
+165. **The Nemotron planner reads a tool call written as text.** Ultra wrote `<tool_call>{…}</tool_call>`
+     and the planner took it for the proposal. Of eight takes, Ultra planned three; take 6 is kept.
+
 ## What does not bind (say it wherever you sell it)
 
 - A shell command can write a file in a way nothing reads beforehand (a script that opens files
