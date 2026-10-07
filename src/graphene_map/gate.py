@@ -177,20 +177,20 @@ def _strict(store) -> bool:
     return store.meta("asides") == "off"
 
 
-# Plan first auto: the agent that reads the repo judges the size, never a rule that reads the prompt.
+# Plan first auto: the agent always proposes, and what it proposed decides whether the person is asked
+# first (``one_line_ask``), never the agent's judgment and never the words of the prompt.
 AUTO = (
-    "Plan first is auto. Is the request one change, with one scope you can name now and one check that "
-    "proves all of it? Then propose it as one leaf, with no sub-goal and no board item, using `graphene "
-    "plan propose -`. That leaf is the person's at once: run `graphene node start <id>` and do it. "
-    "Otherwise propose the tree, write nothing, and stop. The person prunes the tree in `graphene "
-    "watch`. Nothing to write, nothing to propose."
+    "Plan first is auto. Before you write, propose what you will do with `graphene plan propose -`: one "
+    "leaf or a tree, as the work is. Then do what it prints. When it says your leaf is the person's at "
+    "once, run `graphene node start <id>` and do it. Otherwise write nothing, stop, and tell the person "
+    "it waits for them in `graphene watch`. Nothing to write, nothing to propose."
 )
 
 
 def _first_said(store, how: str) -> str:
     """Plan first, as a session is told it when it starts and at every prompt while it holds no leaf.
-    Nothing here reads the person's words: the agent judges what they asked for, and the tree or the
-    leaf it proposes is what the person sees and prunes. Under strict prompts auto is on: no leaf is
+    Nothing here reads the person's words: the agent proposes, and what it proposed decides whether
+    the person sees it before the work (``one_line_ask``). Under strict prompts auto is on: no leaf is
     the person's at once."""
     if how == "auto" and not _strict(store):
         return AUTO
