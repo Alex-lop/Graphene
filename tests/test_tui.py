@@ -2150,6 +2150,28 @@ def test_the_status_line_has_the_two_clocks_and_help_says_they_count_by_your_key
     assert "by your keys, not by what you read" in " ".join(HELP_END.split())
 
 
+def test_tokens_with_no_list_price_are_said_so_never_priced_at_nothing(repo):
+    """The review of 7 October: Codex on a model with no list price read `agents 1 · <1m · $0.00` on the
+    status line, and `bill $0.0000 at list price` in its pane, while its row on the strip said `no list
+    price` and the run's last line `+ 1230k tokens with no list price`. Both say them so too."""
+    proposed(repo)
+    person("plan", "accept")
+    codex = plan.Caller("run:codex", False, "c0de-run-session")
+    with Store.open(repo) as store:
+        plan.start(store, "schema", codex, repo)
+        for kind, detail in (("attempt", {"attempt": 1, "meter": "codex"}),
+                             ("usage", {"model": "codex", "calls": 1, "prompt_tokens": 1_200_000,
+                                        "completion_tokens": 30_000, "dollars": 0, "endpoint": "codex",
+                                        "attempt": 1, "turn": 1, "priced": False})):  # fmt: skip
+            store.log_node("schema", plan._now(), kind, codex.label, codex.session_id, None, detail)
+    for size in SIZES:
+        seen, _ = at(repo, "schema", size)
+        top, flat = seen["status"].splitlines()[0], " ".join(seen["detail"].split())
+        assert "$0.00" not in top and "agents 1 · <1m · 1.2M tokens unpriced · you " in top, (size, top)
+        assert "no list price" in seen["meter"][0], seen["meter"]
+        assert "bill $0.0000 at list price + 1.2M tokens with no list price for this leaf's" in flat, flat
+
+
 def test_a_metered_leafs_pane_says_what_the_meter_read_and_l_its_stream_phrased(repo):
     metered(repo)
     for size in SIZES:

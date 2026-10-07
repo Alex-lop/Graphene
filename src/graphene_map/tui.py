@@ -1409,6 +1409,9 @@ class Watch(App):
         busy = P.look("running")[1] if c["running"] else ""
         spent = money(c["spent"]) if c.get("spent") is not None else ""  # the plan's: planner and leaves
         agents = c.get("agents") or {"running": 0, "seconds": 0}
+        if agents.get("unpriced"):  # tokens no list price covers are said so, never priced at $0.00
+            unpriced = f"{tokens(agents['unpriced'])} tokens unpriced"
+            spent = f"{spent} + {unpriced}" if c.get("spent") else unpriced
         mine = c.get("mine") or {"acts": 0, "minutes": 0}
         ran, acts = agents["running"] or agents["seconds"] or spent, _s(mine["acts"], "act")
         took = agents["seconds"] // 60 or ("<1" if agents["seconds"] or agents["running"] else 0)
@@ -2258,7 +2261,8 @@ def detail(store, node: P.Node, s, files: list[str] | None = None, room: tuple[i
     if spent:
         models = ", ".join(m.rsplit("/", 1)[-1] for m in spent["models"])
         calls = f"for this leaf's {spent['calls']} calls"
-        pane.field("bill", f"${spent['dollars']:.4f} at list price {calls} · {models}")
+        unpriced = f" + {tokens(spent['unpriced'])} tokens with no list price" if spent["unpriced"] else ""
+        pane.field("bill", f"${spent['dollars']:.4f} at list price{unpriced} {calls} · {models}")
     if word in ("done", "review"):
         ended = (store.node_log(node.id, ("finished", "overruled")) or [{"detail": {}}])[-1]["detail"]
         pane.field("changed", ", ".join(ended.get("changed") or []) or "nothing on record")
