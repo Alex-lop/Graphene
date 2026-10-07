@@ -4,15 +4,17 @@ Rollback: `main` is untouched at `af3da2c`. To drop the night: close the PR, `gi
 
 ## The brief
 
-**1. Watch first:** `graphene demo tests/recordings/meter-claude.jsonl`: the feeds run on Claude Code, recorded
-  at 02:30 on the final code, each leaf's live row climbing (screens at 80 and 120: `dev/process/meter/screens/`).
+**1. Watch first:** `graphene demo tests/recordings/meter-claude.jsonl`: the feeds run on Claude Code, each leaf's
+  live row climbing; the live screen at 80 columns is `dev/process/meter/screens/claude-80.txt`.
   Nemotron: `graphene demo tests/recordings/meter-nemotron-take-11.jsonl` (Ultra planned; Nano landed 2 of 4).
-**2. The bill:** $36.17 of $50 at 02:45. `meter` $12.76 · `statements-practice` $7.01 · `nemotron-take` $6.69 ·
-  `dogfood` $5.77 · `auto` $3.94. ($1.83 of the statements rows were written with no purpose.)
+**2. The bill:** $39.26 of $50 at 04:30. `meter` $15.32 · `nemotron-take` $7.22 · `statements-practice` $7.01 ·
+  `dogfood` $5.77 · `auto` $3.94. $13.50 of it is planners held at their worst case: they report no cost.
 **3. `auto`:** Tuesday asks: 8 of 12 yours at once and done; 4 waited on a board item they put up.
   The feeds paragraph: a tree once in three; twice one leaf of 8 paths, no question, taken at once.
+  Transcripts, both kinds, every run: `dev/process/meter/auto-evidence.md`.
 **4. Run in five minutes:** `uv tool install --force git+https://github.com/Alex-lop/Graphene@meter`, then in
   your repo `graphene init`, `graphene ask "…"`, `graphene watch` (`y`, then `R`), `graphene node show <leaf>`.
+  Run as written from GitHub at 02:05: `dev/process/meter/five-minutes.md`.
 **5. The README:** 790 words. Least sure are yours: "which is exactly what I'd have checked first"; "the
   second number is the one I care about"; "because that's the whole game".
 **6. Decide:** 1. Take 11 for the video? Default: no; none of 19 ran clean. 2. Run the registered arms? Default:
