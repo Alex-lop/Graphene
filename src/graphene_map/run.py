@@ -184,7 +184,8 @@ def sweep(store, say: Callable[[str], None], root: Path | None = None) -> None:
     the process that was started. The hand-back is not a person's: a live run's executor is not
     stopped for it. A parallel run that died outright (kill -9, Force Quit) left its executors
     working, and a leaf one of them finished is done in the run's worktree and nowhere here: it is
-    parked as a stopped run parks it (``park``), committed on its branch and waiting in review."""
+    parked as a stopped run parks it (``park``), committed on its branch and waiting in review. Either
+    way the dead run's attempt is closed first (``_close``): nothing else settles its hold."""
     for n in P.nodes(store, (P.RUNNING,)):
         if not (n.executor or "").startswith("run:"):
             continue
@@ -196,9 +197,7 @@ def sweep(store, say: Callable[[str], None], root: Path | None = None) -> None:
             gone = P.RUN_TREE in (n.checkout or "") and not _locked(root)
         if not gone:
             continue
-        pid, began = this.get("pid"), this.get("pid_start")
-        if pid and began and _started(pid) == began:  # the dead run's executor, still working
-            _end_group(pid, lambda p=pid: not _alive(p))
+        _close(this)
         try:
             P.release(store, n.id, P.Caller("graphene run", False, n.session_id),
                       "the run that held it ended without finishing it", stopped=True)  # fmt: skip
@@ -215,7 +214,29 @@ def sweep(store, say: Callable[[str], None], root: Path | None = None) -> None:
             continue
         run = next((e["detail"] for e in reversed(since) if e["kind"] == "attempt"), {})
         if run.get("run_pid") and not _still(run["run_pid"], run.get("run_start")):
+            _close(run)
             park(store, tree, n, say)
+
+
+def _close(this: dict) -> None:
+    """A dead run's attempt (``this``, its attempt row): its executor stopped if it still works, and only
+    while its pid still names the process that was started; then its hold on the night settled, at what
+    its log says read again through the meter, as the run would have settled it (``_settle``). A run
+    killed outright (kill -9, Force Quit) left the hold in flight, and the night refused every run after."""
+    pid, began = this.get("pid"), this.get("pid_start")
+    if pid and began and _started(pid) == began:  # the dead run's executor, still working
+        _end_group(pid, lambda p=pid: not _alive(p))
+    hold, kind = this.get("hold"), this.get("meter")
+    night = extra.load("night") if hold else None
+    if not night:
+        return
+    meter = None
+    if kind in M.ENDPOINT and this.get("log"):
+        model = hold["model"].partition(":")[2]  # the ledger's "codex:<model>": the model it is priced at
+        price = _listed().get if kind == "codex" else None
+        meter = M.Meter(kind, this["attempt"], model, hold["paid"], price)
+        Reader(Path(this["log"]), meter, lambda *_: None)(last=True)  # its rows were the dead run's to log
+    _settle(night, hold, meter)
 
 
 def run_holding(root: Path) -> int | None:
@@ -415,7 +436,7 @@ def run_node(
             hold, night = None, extra.load("night") if name in M.ENDPOINT else None
             if night and night.cap() is not None:  # under the opening: the attempt's worst case, held first
                 model = f"{name}:{M.model_in(argv) or ('default' if name == 'claude' else 'codex')}"
-                hold = {"model": model, "worst": _worst(argv)}
+                hold = {"model": model, "worst": _worst(argv), "paid": paid}
                 try:
                     hold["id"] = night.reserve(model, hold["worst"], f"run: {node.id} attempt {attempt}",
                                                M.ENDPOINT[name])  # fmt: skip
@@ -444,11 +465,12 @@ def run_node(
             began = time.monotonic()
             kind = M.kind(argv) if log else None
             metered = kind or ("nemotron" if name == "nemotron" else None)  # Nemotron writes its own rows
+            # the hold rides on the attempt: should this run die, the next one's sweep settles it (_close)
             store.log_node(node.id, P._now(), "attempt", who.label, session, None,
                            {"attempt": attempt, "pid": proc.pid, "pid_start": _started(proc.pid),
                             "run_pid": os.getpid(), "run_start": _started(os.getpid()),
                             "log": str(log) if log else None, "checkout": str(checkout),
-                            "meter": metered})  # fmt: skip
+                            "meter": metered, "hold": hold})  # fmt: skip
             meter = read = None
             if kind:  # what it writes is a stream the meter reads: read as it is written
                 price = _listed().get if kind == "codex" else None
@@ -589,7 +611,8 @@ def _splits(template: str) -> None:
 def _begins(template: str) -> None:
     """A run of Graphene's own executor, Claude Code or Codex is one new live thing under the night's cap
     (``night.begin``): its leaves go on under the cap once it has started, and it does not start past 90%
-    of the cap."""
+    of the cap. Asked after the sweep, so what a dead run held is settled first: asked before it, the
+    dead run's holds refused the run, and its leaves stayed `running` with their executors at work."""
     if label(template) in ("nemotron", *M.ENDPOINT) and (night := extra.load("night")):
         try:
             night.begin("the run")
@@ -708,8 +731,8 @@ def run_plan(
 ) -> list[P.Node]:
     """Run every leaf an agent can reach, in order. Returns the ones that ended done (or in review)."""
     _splits(template)
-    _begins(template)
     sweep(store, say, store.path.parent.parent)  # the repo's root, where a parallel run's lock is
+    _begins(template)
     only = leaves_of(store, only)
     finished: list[P.Node] = []
     tried: set[str] = _came_back(store, only, say)  # never tried: the person's to run again
@@ -904,7 +927,6 @@ def run_parallel(
     at a time, here, as they finish. A leaf never starts while something it needs has not landed, or
     while a leaf whose scope overlaps its own is in flight."""
     _splits(template)
-    _begins(template)
     if _git(target, "symbolic-ref", "-q", "HEAD", ok=True).returncode != 0:
         raise P.Refused(
             f"{target} is on no branch (a detached HEAD): leaves merged here would belong to no branch "
@@ -920,6 +942,7 @@ def run_parallel(
 def _run_parallel(open_store, root, target, workers, template, attempts, only, say, logs) -> list[P.Node]:
     store = open_store()
     sweep(store, say, root)  # a leaf a dead run still holds would never be ready again
+    _begins(template)
     only = leaves_of(store, only)
     planned = {n.id for n in P.nodes(store) if n.state not in P.GONE}
     files = P.tracked(target)

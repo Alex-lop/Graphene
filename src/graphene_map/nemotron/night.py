@@ -182,11 +182,14 @@ def reserve(model: str, worst: float, tag: str, endpoint: str) -> str | None:
 
 
 def settle(held_id: str | None, model: str, dollars: float, usage: dict | None = None) -> None:
-    """The call's reservation, settled at what it cost (its usage at list price)."""
+    """The call's reservation, settled at what it cost (its usage at list price), once: a run killed while
+    its leaf's check ran had settled its attempt, and the next run's sweep settles that attempt again."""
     if held_id is None:
         return
     usage = usage or {}
-    with _held() as (_, f):
+    with _held() as (rows, f):
+        if any(r.get("kind") == "settle" and r.get("id") == held_id for r in rows):
+            return
         _add(f, {"kind": "settle", "id": held_id, "model": model, "dollars": dollars,
                  "prompt_tokens": usage.get("prompt_tokens") or 0,
                  "completion_tokens": usage.get("completion_tokens") or 0})  # fmt: skip

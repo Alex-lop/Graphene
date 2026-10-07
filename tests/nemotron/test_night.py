@@ -151,6 +151,16 @@ def test_nothing_new_starts_past_90_percent_of_the_cap(fake, opened, monkeypatch
     assert len(f.requests) == 1
 
 
+def test_a_hold_settles_once(opened):
+    """A run killed while its leaf's check ran had settled its attempt, and the next run's sweep settles
+    the dead run's last attempt again. Counted twice, the night would refuse what it had room for."""
+    held = night.reserve("claude:default", 3.0, "run: a attempt 1", "claude code")
+    night.settle(held, "claude:default", 0.0623)
+    night.settle(held, "claude:default", 3.0)  # the sweep, reading the same attempt again
+    assert [r["kind"] for r in rows(opened)] == ["reserve", "settle"]
+    assert night.bill()[0].startswith("the night's bill: $0.0623 spent, $0.0000 in flight")
+
+
 def test_a_run_that_starts_leaves_its_mark_for_its_executors(opened):
     run._begins(run.named("nemotron"))
     assert os.environ[night.STARTED] == "the run"  # an executor's environment is os.environ and its own
