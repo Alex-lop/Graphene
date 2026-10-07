@@ -1688,7 +1688,7 @@ any of them.
      per currency, its biggest leaf edited 16 files in 2 minutes. The conditions reached every leaf.
      PREREG voids a changed repo: the registered runs need a new commit.
 165. **The Nemotron planner reads a tool call written as text.** Ultra wrote `<tool_call>{…}</tool_call>`
-     and the planner took it for the proposal. Of eight takes, Ultra planned three; take 6 is kept.
+     and the planner took it for the proposal. Of 19 takes, Ultra planned 7; take 11 is kept.
 
 ## What does not bind (say it wherever you sell it)
 
