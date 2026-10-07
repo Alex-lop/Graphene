@@ -339,3 +339,25 @@ def test_the_clocks_read_minutes_dollars_tokens_with_no_price_and_the_persons_ac
            row("41:00", "ended", {"attempt": 1, "exit": 0, "meter": "codex", "unread": 0})]  # fmt: skip
     assert R.clocks(log) == (" · agents 41 min, $0.4200 at list price + 120k tokens with no list price"
                              " · you 2 acts, 1 min")  # fmt: skip
+
+
+# Edits one file as Codex names it (its apply_patch joins the patch's path to where it works), then the leaf.
+EDITING = """#!{python}
+import json, os, pathlib
+path = os.path.join(os.getcwd(), {rel!r})
+print(json.dumps(dict(type="item.completed", item=dict(id="item_5", type="file_change",
+                                                       changes=[dict(path=path, kind="update")]))))
+pathlib.Path("a.txt").write_text("done\\n")
+"""
+
+
+def test_a_codex_edit_too_long_to_keep_whole_is_said_from_its_checkout_before_it_is_cut(repo):
+    """The second review of 7 October: the meter cut a Codex edit's absolute path to 120 characters as it
+    logged it, and only then said it from the checkout, so an edit inside the scope was still listed
+    outside it, under a cut name: `(1 outside the scope: src/graphene_map/nemotron/tokenfactory.p)` for a
+    worktree and a file that came to 121 characters. Said from the checkout first, it is kept whole."""
+    rel = "src/" + "deep/" * 20 + "feed.py"  # 111 characters: past 120 only with the checkout before it
+    script = stand_in(repo, "codex", EDITING.format(python=sys.executable, rel=rel))
+    with Store.open(repo) as store:
+        R.run_plan(store, repo, f"{script} exec --json", say=lambda _: None, logs=repo.parent / "runs")
+        assert [e["detail"]["target"] for e in store.node_log("a", ("did",))] == [rel]
