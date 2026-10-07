@@ -95,6 +95,18 @@ def test_it_reads_only_and_what_it_prints_is_proposed_for_the_person(repo, fake)
     assert any("The README still says hi" in line for line in said)  # what it could not settle
 
 
+def test_a_tool_call_written_as_text_is_read_as_one_not_as_the_answer(repo, fake):
+    """On 7 October Ultra wrote `<tool_call>{…}</tool_call>` in its text, twice in a row, and the planner
+    took it for the proposal: "no proposal". It is a call: run it, answer it, and go on."""
+    written = '<tool_call>\n{"name": "read", "arguments": {"path": "app.py"}}\n</tool_call>'
+    f = fake([{"content": written}, {"content": PROPOSAL}])
+    with Store.open(repo) as store:
+        ask(store, repo, "make it say hello", named("nemotron"), say=lambda s: None)
+        assert plan.get(store, "hello").state == PROPOSED
+    told = f.requests[1]["messages"][-1]
+    assert told["role"] == "user" and told["content"].startswith("Result of read:\n    1  def greet():")
+
+
 def test_out_of_steps_it_is_asked_to_answer_without_tools(repo, fake):
     f = fake([call("list", path=".")] * 2 + [{"content": PROPOSAL}])
     with Store.open(repo) as store:
