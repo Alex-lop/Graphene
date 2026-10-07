@@ -361,7 +361,7 @@ def build():
         except ValueError as exc:
             fail(f"cannot update {SETTINGS}: {exc}", 1)
         settings = Path(os.path.relpath(hooks_file(r), Path.cwd()))
-        say("plan first is auto: one leaf of work is done at once, more is proposed as a tree")
+        say("plan first is auto: every ask is proposed first; one small leaf is yours at once, more waits")
         if not any(s.split()[:1] == ["claude"] for s in specs):  # Claude Code is not how this repo works
             say(f"the Claude Code hooks are in {settings} too, for a Claude Code session you may run here"
                 + ("" if added else " (already there)"))  # fmt: skip

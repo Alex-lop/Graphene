@@ -39,7 +39,8 @@ NOT_INIT = (
 # What `graphene plan first` says each setting does
 FIRST_SAID = {
     "on": "Every ask in a session is proposed, one leaf included, and waits for you.",
-    "auto": "One leaf of work is done at once. More is proposed as a tree first.",
+    "auto": f"Every ask is proposed first. One leaf of at most {G.WIDE} paths, with nothing on the board, "
+    "is yours at once; anything else waits for you.",
     "off": "What you ask for in a session is done at once, as a leaf of its own.",
 }
 
@@ -909,9 +910,9 @@ def register(cli: typer.Typer, root, open_store, fail):
     def first(
         how: str = typer.Argument(None, help="on, auto or off; prints the setting if left out."),
     ) -> None:
-        """Set whether an agent proposes a tree before it writes.
+        """Set whether an agent proposes before it writes, and what waits for you.
 
-        On proposes every ask. Auto does one leaf at once and proposes more. Off never proposes."""
+        On: every ask waits. Auto: one small leaf is yours at once, more waits. Off never proposes."""
         if how not in (None, *P.FIRST):
             fail(f"graphene plan first takes on, auto or off, not {how!r}", 1)
         if how is not None:
