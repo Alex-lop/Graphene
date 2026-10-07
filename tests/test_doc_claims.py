@@ -13,7 +13,7 @@ def doc(path: str) -> str:
 
 
 def test_the_submission_reports_the_shaping_studies_board_against_outline_whatever_they_said():
-    results = (ROOT / "docs/test/results-2026-09-28-shaping.md").read_text(encoding="utf-8")
+    results = (ROOT / "dev/test/results-2026-09-28-shaping.md").read_text(encoding="utf-8")
     said = doc("docs/HACKATHON.md")
     assert "Neither has run" not in said and "where it buys the most" not in said
     rows = re.findall(r"^\| H1: person-s \| (.+?) \| (\d) of 4 \|", results, re.M)
@@ -32,7 +32,7 @@ def test_the_docs_describe_the_planner_prompt_the_code_sends():
     assert "at most three" in " ".join(planner.SYSTEM.split()) and "at most three" in ask.RULES
     how = doc("docs/HOW_IT_WORKS.md")
     assert f"system prompt, version {planner.PROMPT_VERSION})" in how and "at most three items" in how
-    for path in ("README.md", "docs/HACKATHON.md", "docs/HOW_IT_WORKS.md", "docs/demo/STORYBOARD.md"):
+    for path in ("README.md", "docs/HACKATHON.md", "docs/HOW_IT_WORKS.md", "dev/demo/STORYBOARD.md"):
         said = doc(path)
         assert "about five" not in said and "what it would leave out" not in said, path
         assert "what it assumed, the risks it sees" not in said, path
@@ -48,7 +48,7 @@ def test_the_docs_say_graphene_watch_shows_and_counts_the_board_as_it_does():
     source = inspect.getsource(tui)
     assert "board_rows as BR" in source and 'Binding("p", "board(\'p\')"' in source
     assert "on the board" in source  # the status line counts the board's open items
-    hackathon, storyboard = doc("docs/HACKATHON.md"), doc("docs/demo/STORYBOARD.md")
+    hackathon, storyboard = doc("docs/HACKATHON.md"), doc("dev/demo/STORYBOARD.md")
     assert "the screen does not yet show it" not in hackathon
     assert "does not show the board" not in storyboard
     assert "In `graphene watch` the items are the first rows under the goal" in hackathon
@@ -69,7 +69,7 @@ def test_the_dag_note_the_docs_quote_is_the_one_view_dag_prints_for_their_scratc
             leaf("xml-e2e", ["xml-wire", "zero-rule"])]  # fmt: skip
     five = [*four, leaf("zero-price-product", scoped=False)]  # the board's new leaf: no scope or check yet
     before, after = (V.note(ns, {n.id: P.reads(n, ns) for n in ns}) for ns in (four, five))
-    hackathon, storyboard = doc("docs/HACKATHON.md"), doc("docs/demo/STORYBOARD.md")
+    hackathon, storyboard = doc("docs/HACKATHON.md"), doc("dev/demo/STORYBOARD.md")
     assert f"`{before}` on a scratch plan of four proposed leaves" in hackathon
     assert f"`{after}` here" in storyboard and f"`… · {before.split(' · ')[-1]}` before" in storyboard
     assert "2 at once" not in hackathon + storyboard and "Two leaves can start at once" not in storyboard
@@ -109,7 +109,7 @@ def test_the_drafts_carry_no_integ_only_marker_now_that_every_command_they_named
              ["plan", "cover"], ["plan", "note"], ["plan", "precheck"])  # fmt: skip
     for words in named:
         assert CliRunner().invoke(build(), [*words, "--help"]).exit_code == 0, words
-    for path in ("docs/HACKATHON.md", "docs/demo/STORYBOARD.md"):
+    for path in ("docs/HACKATHON.md", "dev/demo/STORYBOARD.md"):
         said = doc(path)
         assert "integ only" not in said and "For the coordinator" not in said, path
         assert "not yet on `shaping`" not in said, path
@@ -122,22 +122,22 @@ def test_the_submission_says_only_taken_picked_and_answered_items_reach_the_exec
     said = doc("docs/HACKATHON.md")
     assert "Every answer reaches the executors'" not in said
     assert "a dropped or parked item is told to no one" in said
-    assert "Each answer goes to that leaf's executor" not in doc("docs/demo/STORYBOARD.md")
+    assert "Each answer goes to that leaf's executor" not in doc("dev/demo/STORYBOARD.md")
 
 
 def test_first_lights_model_table_is_the_live_list_the_fixture_keeps():
-    """docs/test/first-light.md's NVIDIA models, roles and prices are the fixture's, which came from rung 1's
+    """dev/test/first-light.md's NVIDIA models, roles and prices are the fixture's, which came from rung 1's
     access.json (practice, 2026-09-29): the doc and the tests that use the list cannot drift apart."""
     import json
 
     live = json.loads((ROOT / "tests/fixtures/tokenfactory-models-2026-09-29.json").read_text())
     role = {v: k for k, v in live["roles"].items()}
     rows = re.findall(r"^\| `(nvidia/[^`]+)` \| (\w+) \| ([\d.]+) / ([\d.]+) \|$",
-                      (ROOT / "docs/test/first-light.md").read_text(encoding="utf-8"), re.M)  # fmt: skip
+                      (ROOT / "dev/test/first-light.md").read_text(encoding="utf-8"), re.M)  # fmt: skip
     want = [(m["id"], role.get(m["id"], "none"), f"{m['pricing']['prompt'] * 1e6:.2f}",
              f"{m['pricing']['completion'] * 1e6:.2f}") for m in live["data"]]  # fmt: skip
     assert rows == want
-    assert "**Practice, not a registered result.**" in doc("docs/test/first-light.md")
+    assert "**Practice, not a registered result.**" in doc("dev/test/first-light.md")
 
 
 def test_the_readme_and_changelog_name_what_first_light_added():
@@ -181,14 +181,14 @@ def test_the_docs_say_what_accept_and_r_leave_open_and_that_d_attaches_nothing()
 def test_live_session_names_only_scripts_that_exist_and_practice_steps_the_ladder_knows():
     import importlib.util
 
-    said = doc("docs/test/LIVE_SESSION.md")
+    said = doc("dev/test/LIVE_SESSION.md")
     spans = re.findall(r"`([^`]+)`", said)
     scripts = {s for span in spans for s in re.findall(r"[\w./-]+\.(?:py|sh)\b", span)}
-    assert {"docs/test/practice.sh", "docs/test/arm_bprime.py", "docs/demo/build.sh"} <= scripts
+    assert {"dev/test/practice.sh", "dev/test/arm_bprime.py", "dev/demo/build.sh"} <= scripts
     for script in scripts:  # a bare name is one of the harnesses beside it
-        where = [ROOT / script] if "/" in script else [ROOT / "docs" / d / script for d in ("test", "demo")]
+        where = [ROOT / script] if "/" in script else [ROOT / "dev" / d / script for d in ("test", "demo")]
         assert any(p.is_file() for p in where), script
-    spec = importlib.util.spec_from_file_location("practice_named", ROOT / "docs/test/practice.py")
+    spec = importlib.util.spec_from_file_location("practice_named", ROOT / "dev/test/practice.py")
     practice = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(practice)
     usage = set(re.findall(r"practice\.sh (\w+)", practice.__doc__)) - {"N"}  # status, night, prototypes
@@ -201,7 +201,7 @@ def test_first_lights_403_for_a_made_up_key_names_its_source_and_says_it_is_no_p
     """first-light.md says each fact names its file. The 403 that a made-up key and project got came from a
     harness slip, not from the ladder: the doc says so and names its only record (a commit message, which
     a shallow clone may not hold, so the test reads the doc only)."""
-    said = doc("docs/test/first-light.md")
+    said = doc("dev/test/first-light.md")
     assert "In a test run in this repository, ConTree also answered" not in said
     assert "a harness slip, not from the ladder and not practice" in said
     assert "Its only record is the message of commit e5efb4f" in said

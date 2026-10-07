@@ -53,7 +53,7 @@ I'm not going to tell you it saves 397% of your tokens, and I haven't shown yet 
 
 ## A real run
 
-Made on 1 October for this README, on `feeds`: a small test repo I built, a Python price-feed loader where csv and json load and a new supplier's XML doesn't yet, with acceptance checks the agents never see (in a clone, `docs/proof/try.sh` builds it for you). Claude Code planned, Codex did the leaves, and the Claude Code session that wrote this page sat in my seat at the keyboard. Every block is real output, wrapped to fit and trimmed only where you see `…`. The paragraph is the one I typed on 22 September:
+Made on 1 October for this README, on `feeds`: a small test repo I built, a Python price-feed loader where csv and json load and a new supplier's XML doesn't yet, with acceptance checks the agents never see (in a clone, `dev/proof/try.sh` builds it for you). Claude Code planned, Codex did the leaves, and the Claude Code session that wrote this page sat in my seat at the keyboard. Every block is real output, wrapped to fit and trimmed only where you see `…`. The paragraph is the one I typed on 22 September:
 
 > Look at this repo. I want the new Northwind XML feed to load the same way csv and json already do: same load command, same JSONL out. Prices in that feed are already in cents. The summary line at the end is not a product. A price of 0 means skip it, for every supplier. Don't touch vendored or legacy files that aren't ours this week.
 
@@ -147,7 +147,7 @@ $ git log --graph --oneline
 And the feature works: `python3 -m cli.main load samples/prices.xml --source xml` printed the two products, prices still in cents, `&amp;` turned into `&`, and no summary line. Against the hidden checks it passed **18 of 20** acceptance checks and **12 of 12** held-out ones (the same code on inputs it was never shown), and the six files I'd put off limits weren't touched. The two misses are the task's change of mind, making `--source` optional, which the test only asks for in a second message once the first part works; this run never sent it. No plan catches what you haven't said yet.
 
 > [!NOTE]
-> That's one run. It shows the loop working end to end, not that a tree beats a paragraph. In the three comparisons so far (20, 21 and 23 September, models standing in for the person), a plain paragraph to the same agent passed as many checks at lower cost, and the tree came out ahead on no measure ([the latest](docs/test/results-2026-09-23.md)). What I'm betting on is *when* you find out what the agent understood: before the work, not after it.
+> That's one run. It shows the loop working end to end, not that a tree beats a paragraph. In the three comparisons so far (20, 21 and 23 September, models standing in for the person), a plain paragraph to the same agent passed as many checks at lower cost, and the tree came out ahead on no measure ([the latest](dev/test/results-2026-09-23.md)). What I'm betting on is *when* you find out what the agent understood: before the work, not after it.
 
 <br>
 
@@ -209,8 +209,8 @@ These are honest boundaries, not airtight ones. The hooks that stop a write befo
 Graphene is early, and I'm building it in the open. If you try it on a real repo, the thing I most want to hear is where the tree misread what you meant, because that's the whole game. Bugs and ideas go in [Issues](https://github.com/Alex-lop/Graphene/issues).
 
 - [How it works](docs/HOW_IT_WORKS.md): every part, and where each one stops.
-- [Direction](docs/DIRECTION.md): what's been decided, and why.
-- [Nemotron on Token Factory](docs/HACKATHON.md): planning and executing on NVIDIA Nemotron through Nebius Token Factory. As practice on 2 October, Nemotron planned a small feature 5 times: 2 plans ran to the end in Token Factory Sandboxes, neither doing all it was asked, and 3 stopped at the planner ([the record](docs/test/first-light.md)).
+- [Direction](dev/DIRECTION.md): what's been decided, and why.
+- [Nemotron on Token Factory](docs/HACKATHON.md): planning and executing on NVIDIA Nemotron through Nebius Token Factory. As practice on 2 October, Nemotron planned a small feature 5 times: 2 plans ran to the end in Token Factory Sandboxes, neither doing all it was asked, and 3 stopped at the planner ([the record](dev/test/first-light.md)).
 - [The website](https://alex-lop.github.io/graphene-site/), where 400 starlings settle into a plan.
 
 Built by [Alex Lopez](https://alex-lop.github.io/Alex_Lopez_Website/), with a lot of help from the agents it's for. Apache-2.0.

@@ -68,4 +68,4 @@ select = ["E", "F", "I", "UP", "B"]
 ignore = ["B008"]  # typer.Option() in defaults is the Typer idiom
 
 [tool.pytest.ini_options]
-testpaths = ["tests", "docs/test"]
+testpaths = ["tests", "dev/test"]

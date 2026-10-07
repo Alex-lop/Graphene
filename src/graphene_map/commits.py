@@ -2,7 +2,7 @@
 
 A commit belongs to the agent whose recorded Bash call ran ``git commit`` and is the earliest such
 call whose response prints a prefix of the SHA; a recorded ``git cherry-pick`` ties the new commit
-to its origin's agent (docs/PRODUCT_THESIS.md, section 9, item 5). Nothing is matched by patch-id
+to its origin's agent (dev/PRODUCT_THESIS.md, section 9, item 5). Nothing is matched by patch-id
 or by subject: patch-id was tested and fails on exactly the conflicted picks.
 """
 

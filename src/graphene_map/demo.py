@@ -13,7 +13,7 @@ written `{repo}`, and the replay puts its own there; the home directory is `~`; 
 in the environment, anything shaped like a key, and each sandbox image the run names are taken out.
 
 demo.jsonl, beside this file, is the recording Graphene ships. It was made on 29 September 2026 by
-docs/proof/nemotron.sh on a tiny repository against the scripted fake (tests/fake_tokenfactory.py), with a
+dev/proof/nemotron.sh on a tiny repository against the scripted fake (tests/fake_tokenfactory.py), with a
 planner that puts up a board and a key taking each item, and its first line says it is a scripted
 stand-in, which the screen shows.
 It is made again from the fake with
@@ -22,7 +22,7 @@ It is made again from the fake with
 
 and from a live run on Token Factory, with NEBIUS_API_KEY set, with
 
-    RECORD=$PWD/src/graphene_map/demo.jsonl docs/proof/nemotron.sh
+    RECORD=$PWD/src/graphene_map/demo.jsonl dev/proof/nemotron.sh
 
 Read what that writes before committing it: tests/test_demo.py checks it holds no path and no key, and
 names tonight's leaves, which a new recording changes.

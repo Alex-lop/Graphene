@@ -5,7 +5,7 @@ around shaping on 2026-09-28 as [`docs/process/field.md`](https://github.com/Ale
 submission must not make"), and brought up to first light on 2026-09-29. Put it in your own words
 before it goes anywhere. Track: Coding and Agentic Engineering. Every sentence is meant to be true and
 traceable, and every number names its source. **No registered number here comes from a live run.**
-The live record is practice (`docs/test/first-light.md`).
+The live record is practice (`dev/test/first-light.md`).
 - On 29 September Graphene made a runtime call to Token Factory.
 - On 2 October, Nemotron Ultra planned and Nano executed on Token Factory, with leaves in Token Factory
   Sandboxes. 2 of 5 demo takes ran to the end, neither doing all the paragraph asked, and the planner's
@@ -92,7 +92,7 @@ a change to a read-only path is refused at `done`, and `graphene ask "…" --fin
 **Nemotron works for you while you shape.** Three prototypes, each a command and each run after a
 proposal lands when `GRAPHENE_SHAPE` names it. Each makes one Nano call with a JSON schema. They are
 built and tested against the scripted stand-in. Each has run live only as practice (2 October,
-`docs/test/first-light.md`): cover and precheck passed twice, and note routed one of two notes once:
+`dev/test/first-light.md`): cover and precheck passed twice, and note routed one of two notes once:
 
 - `graphene plan cover`: Nano reads your paragraph beside the plan and names the parts no leaf
   carries. Each comes back in your own words, with the command that puts it on the nearest leaf. A
@@ -172,7 +172,7 @@ None of them runs unless you run it, or set `GRAPHENE_SHAPE` to run them after e
   that would take the night past its cap (the lower of that figure and $10) is refused unsent; nothing
   new starts once what is spent and in flight reach 80% of the cap; and a ConTree operation is counted
   with its seconds, at $0 until its price is read. Every row is marked practice, and
-  `docs/test/evidence.py` refuses practice (`night.py`, `tests/nemotron/test_night.py`).
+  `dev/test/evidence.py` refuses practice (`night.py`, `tests/nemotron/test_night.py`).
 - **Nemotron's roles.** Ultra is the planner (`planner.py`). It has read-only tools (list, glob, grep,
   read) that run on the person's machine and read only what git shows, and it answers in Graphene's
   plan text. Nano, then Super, is the executor (`executor.py`). Graphene's own loop asks for one tool
@@ -208,7 +208,7 @@ None of them runs unless you run it, or set `GRAPHENE_SHAPE` to run them after e
   redirect, `sed -i`, `python open(w)`, `mv`, `rm`, git, a symlink, `chmod`). Each fails, and every
   write inside the scope succeeds (`tests/nemotron/test_escape.py`, in the Docker stand-in). It passed once in
   ConTree too, as practice on 2 October: 10 ways out failed or were refused, 2 ways in came back
-  (`docs/test/first-light.md`).
+  (`dev/test/first-light.md`).
 - **The board and the views.** The board is kept in the plan's store beside the nodes, so `graphene
   plan undo` takes back an answer together with every edit its effects made, and the plan's text form
   carries the board through `graphene plan edit`. A view is drawn from the plan's nodes and never
@@ -224,7 +224,7 @@ None of them runs unless you run it, or set `GRAPHENE_SHAPE` to run them after e
 ## Challenges we ran into
 
 - **Where the agent loop runs decides what can be refused.** We spiked both placements
-  (`docs/test/spikes/harness_there/RESULTS.md`, against the stand-ins). With our own loop on the
+  (`dev/test/spikes/harness_there/RESULTS.md`, against the stand-ins). With our own loop on the
   person's machine and the tools in the sandbox, an out-of-scope write was refused in Graphene's
   words before it happened, 3 runs of 3. With a harness inside the sandbox (OpenCode 1.18.31),
   Graphene never heard of it in 3 of 3. That harness also put the key where model-written code could
@@ -232,7 +232,7 @@ None of them runs unless you run it, or set `GRAPHENE_SHAPE` to run them after e
 - **POSIX grants "may create" per directory, not per file.** So a sandboxed command can create a
   file the scope does not name, in a directory where the scope names another. Graphene never brings
   that file back, logs it as a breach, and removes it before the next command (decision 57 in
-  `docs/DIRECTION.md`).
+  `dev/DIRECTION.md`).
 - **The judging period outlives model ids.** Judges may test until 15 December, and Token Factory
   retires models on notice. So roles come from the live list, and a retired id falls back within
   the family (decision 71).
@@ -241,11 +241,11 @@ None of them runs unless you run it, or set `GRAPHENE_SHAPE` to run them after e
   runs of the feeds task compared a plain paragraph with the tree, both on a frontier agent. The
   paragraph also passed 20 of 20 hidden acceptance checks and 12 of 12 held-out checks, and it cost
   less of the person's modelled time: 2,626 modelled person-seconds against 3,869, medians of two
-  runs (`docs/test/results-2026-09-23.md`). A frontier agent does not need a tree to get a small task
+  runs (`dev/test/results-2026-09-23.md`). A frontier agent does not need a tree to get a small task
   right. So the claim is not that a tree beats a paragraph by itself. We then measured the moment
   before anything runs, the board against the outline, and the board cost more (What we learned).
   What is left to test is the board against the paragraph, and a cheap model with the person's prune
-  against the same paragraph sent to Nano with no tree (`docs/test/results-2026-09-28-live-prereg.md`).
+  against the same paragraph sent to Nano with no tree (`dev/test/results-2026-09-28-live-prereg.md`).
 - **The planner's questions were prose, and scrolled away.** On 28 September we put our own work
   through Graphene, with Claude Code as planner and executors and an agent standing in for the
   person ([`docs/process/shaping/as-the-person.md`](https://github.com/Alex-lop/Graphene/blob/process/docs/process/shaping/as-the-person.md)). After its tree the planner wrote about 250 words
@@ -261,7 +261,7 @@ None of them runs unless you run it, or set `GRAPHENE_SHAPE` to run them after e
   in worktrees, hand-backs that offer their own fix, a record for each leaf,
   and docs that list what does not bind.
 - Containment that is tested, not asserted. The escape test above holds in the Docker stand-in, and it
-  passed once in ConTree, as practice on 2 October (`docs/test/first-light.md`).
+  passed once in ConTree, as practice on 2 October (`dev/test/first-light.md`).
 - Failure that reads as a sentence. A 429 storm, a 5xx, a timeout, a model that stops calling tools,
   a sandbox killed mid-leaf and a check that hangs each bring the leaf back with its cause and what
   to do. The run goes on, and nothing is left running (`tests/nemotron/test_faults.py`, against the
@@ -285,10 +285,10 @@ None of them runs unless you run it, or set `GRAPHENE_SHAPE` to run them after e
 **The chart goes here.** One panel per pre-registered question, drawn from its table as registered
 and never tuned to a target:
 
-- *Shaping, with stand-ins* (`docs/test/results-2026-09-28-shaping.md`): the person's attention in
+- *Shaping, with stand-ins* (`dev/test/results-2026-09-28-shaping.md`): the person's attention in
   modelled person-seconds, for the board, the outline and the paragraph, beside whether the work was
   accepted.
-- *Live on Nemotron* (`docs/test/results-2026-09-28-live-prereg.md`): the same paragraph, a pruned
+- *Live on Nemotron* (`dev/test/results-2026-09-28-live-prereg.md`): the same paragraph, a pruned
   tree from Ultra with Nano on the leaves against the paragraph sent to Nano alone, in correctness,
   the person's attention and dollars.
 
@@ -297,7 +297,7 @@ one Claude Code proposal per task, and nothing run, answering the board first co
 attention than pruning the outline alone on all four tasks: +356.7 to +637.3 person-seconds (study
 2), and still +272.8 to +398.6 once the planner put up one or two items instead of five or six
 (study 3, exploratory), mostly in reading. The shaped plan was at least as faithful to the task's
-card on all four, one run each (`docs/test/results-2026-09-28-shaping.md`).
+card on all four, one run each (`dev/test/results-2026-09-28-shaping.md`).
 
 Study 4, registered before its runs, measured the board after the changes of 29 September (`graphene
 board` prints only what answering needs, accepting the plan takes the defaults, an answer's echo is
@@ -308,7 +308,7 @@ the outline on three of four: +50.4 on feeds, +409.0 on inventory, +284.7 on log
 (2,427.9 against 1,714.3 over the four). No stand-in pressed a key on the board; each took every
 default by accepting the plan. By the rule registered before the runs, the board is not shown by
 default: `board: auto` shows it only while a question the repository cannot answer is open
-(`docs/test/results-2026-09-29-board.md`).
+(`dev/test/results-2026-09-29-board.md`).
 
 The direction study asked whether a person answers "what is waiting on me, what is running, what is
 next" faster from `graphene direction` than from `morning.md`, a brief of the same state written as
@@ -318,7 +318,7 @@ eight items right, and the direction took a median 143.9 modelled person-seconds
 the fact: its print named only two of the four items waiting on the person, so each stand-in ran two
 more commands). An exploratory pass, after the fact,
 on a build that names every one, gave a median 104.1 against 107.4, every run right again; it can show
-which way the change moved and cannot confirm it (`docs/test/results-2026-09-29-direction.md`).
+which way the change moved and cannot confirm it (`dev/test/results-2026-09-29-direction.md`).
 
 The board against the paragraph, and the live Nemotron panel, have not run. The chart goes in the
 README, the video and here, whatever it says.
@@ -377,7 +377,7 @@ counting `author-time` before 1787760000 (2026-08-26 16:00 UTC).
 Written from what we actually hit. Where a thing is only unverified, it says so. (Items 1 to 8 were
 checked 2026-09-25, before any live call, from the docs and PyPI. Items 9 to 11, and what item 6 says
 was observed, come from the practice rungs of 2026-09-29; items 12 to 14 from those of 2026-10-02; both
-are in `docs/test/first-light.md`.)
+are in `dev/test/first-light.md`.)
 
 1. **The Sandboxes SDK's Getting Started describes an API no release has.** It says `Contree` and
    `ContreeSync` "just take an already-constructed `contree_client` client". On PyPI, both
@@ -409,7 +409,7 @@ are in `docs/test/first-light.md`.)
    access at tokenfactory.nebius.com/sandboxes/about). Graphene now says both itself, and asks ConTree's
    whoami before it places a leaf there.
 10. **A made-up key and a made-up project got a 403, not a 401, once**, when a test of ours reached the
-   real ConTree by mistake (about 02:00 on 29 September; not repeated, no log kept: `docs/test/first-light.md`),
+   real ConTree by mistake (about 02:00 on 29 September; not repeated, no log kept: `dev/test/first-light.md`),
    so a 403 alone may not tell a key without the grant from a `NEBIUS_PROJECT_ID` that is not the key's
    project.
 11. **The three Nemotron 3 ids are cased three ways:** `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B`,
@@ -432,8 +432,8 @@ are in `docs/test/first-light.md`.)
 
 | Number | Source |
 | --- | --- |
-| 20/20 and 12/12, 2,626 against 3,869 modelled person-seconds | `docs/test/results-2026-09-23.md` (stand-in runs, frontier agent) |
-| 3 of 3 against 0 of 3; 5.2 to 6.1 times the characters | `docs/test/spikes/harness_there/RESULTS.md` (stand-ins) |
+| 20/20 and 12/12, 2,626 against 3,869 modelled person-seconds | `dev/test/results-2026-09-23.md` (stand-in runs, frontier agent) |
+| 3 of 3 against 0 of 3; 5.2 to 6.1 times the characters | `dev/test/spikes/harness_there/RESULTS.md` (stand-ins) |
 | fifty operations at once; a peak of 50, or 56 without the slots | `tests/nemotron/test_faults.py`, the thirty-leaf test (a counting fake box); 56 with `sandbox.CAP` raised to 1000, which is 8 executors × 7 forks |
 | 14,474 lines, none before the period; 181 and 421 commits | git, the commands above, at `0334168` |
 | about 250 words in five paragraphs; five items instead; each a decision made silently | [`docs/process/shaping/as-the-person.md`](https://github.com/Alex-lop/Graphene/blob/process/docs/process/shaping/as-the-person.md), items 2 and 12 (Claude Code as planner and executors, an agent in the person's seat) |
@@ -441,10 +441,10 @@ are in `docs/test/first-light.md`.)
 | `critical ━ … (3) · none ready · 2 once accepted · 2 wait` | `graphene plan --view dag --width 80` on a scratch plan of four proposed leaves from a scripted planner, at `shaping` 2111115; `tests/test_doc_claims.py` |
 | 150 random plans; 22 widths from 20 to 167 | `tests/test_view_dag.py`, `tests/test_view_tree.py` |
 | the tree against the paragraph with Nemotron | none yet: the evidence run's ledger |
-| the board against the outline: +356.7 to +637.3 modelled person-seconds (study 2), +272.8 to +398.6 (study 3), board higher on 4 of 4 tasks | `docs/test/results-2026-09-28-shaping.md`, H1 of studies 2 and 3 (Claude model stand-ins, one Claude Code proposal per task, nothing run, one run each) |
-| the board against the paragraph | none yet: `docs/test/results-2026-09-28-shaping.md`, pre-registered |
-| the board against the outline after 29 September: +50.4 / +409.0 / +284.7 / −30.5 modelled person-seconds, board higher on 3 of 4 tasks, 2,427.9 against 1,714.3 over the four; as faithful or more on 4 of 4 | `docs/test/results-2026-09-29-board.md`, study 4 (Claude model stand-ins, study 3's four proposals, nothing run, one run per task and arm) |
-| the direction against `morning.md`: median 143.9 against 105.4 modelled person-seconds, 8 of 8 right in every run; exploratory, after the fact: 104.1 against 107.4 | `docs/test/results-2026-09-29-direction.md` (a pilot: Claude model stand-ins, six runs per arm on one fixture) |
+| the board against the outline: +356.7 to +637.3 modelled person-seconds (study 2), +272.8 to +398.6 (study 3), board higher on 4 of 4 tasks | `dev/test/results-2026-09-28-shaping.md`, H1 of studies 2 and 3 (Claude model stand-ins, one Claude Code proposal per task, nothing run, one run each) |
+| the board against the paragraph | none yet: `dev/test/results-2026-09-28-shaping.md`, pre-registered |
+| the board against the outline after 29 September: +50.4 / +409.0 / +284.7 / −30.5 modelled person-seconds, board higher on 3 of 4 tasks, 2,427.9 against 1,714.3 over the four; as faithful or more on 4 of 4 | `dev/test/results-2026-09-29-board.md`, study 4 (Claude model stand-ins, study 3's four proposals, nothing run, one run per task and arm) |
+| the direction against `morning.md`: median 143.9 against 105.4 modelled person-seconds, 8 of 8 right in every run; exploratory, after the fact: 104.1 against 107.4 | `dev/test/results-2026-09-29-direction.md` (a pilot: Claude model stand-ins, six runs per arm on one fixture) |
 
 ## Testing instructions
 
@@ -482,5 +482,5 @@ With a key for Token Factory (it spends at list price, and prints the bill at th
 ```
 uv tool install 'graphene-map[nemotron] @ git+https://github.com/Alex-lop/Graphene'
 export NEBIUS_API_KEY=…    # for Sandboxes, NEBIUS_PROJECT_ID too
-docs/proof/nemotron.sh     # in the clone: the feeds task, from nothing to git log --graph
+dev/proof/nemotron.sh     # in the clone: the feeds task, from nothing to git log --graph
 ```

@@ -1,4 +1,4 @@
-"""docs/proof/nemotron.sh, end to end against the recorded fake: the Nemotron path from nothing to
+"""dev/proof/nemotron.sh, end to end against the recorded fake: the Nemotron path from nothing to
 `git log --graph` reading as the tree, and the bill. The script is the demo; this runs it on a tiny
 repository instead of feeds, with a scripted Ultra planner and scripted Nano executors, so every
 command in it is known to work before a key spends anything on it. It records the run as it goes
@@ -19,7 +19,7 @@ from graphene_map import demo, plan, run
 from graphene_map.store import Store
 
 NANO = "nvidia/Nemotron-3-Nano-fake"
-SCRIPT = Path(__file__).resolve().parents[1] / "docs" / "proof" / "nemotron.sh"
+SCRIPT = Path(__file__).resolve().parents[1] / "dev" / "proof" / "nemotron.sh"
 MAKE = textwrap.dedent('''\
     import pathlib, subprocess, sys
     d = pathlib.Path(sys.argv[1]); d.mkdir(parents=True)

@@ -42,7 +42,7 @@ IMAGE = "python:3.12"  # Debian with git and setpriv; any OCI image with bash, g
 OUTPUT = 200_000  # characters of a command's output kept from the sandbox
 MARK = "::graphene::"
 
-# ConTree's 403, as rung 1 met it live on 2026-09-29 (docs/test/first-light.md): what it means, and the way in
+# ConTree's 403, as rung 1 met it live on 2026-09-29 (dev/test/first-light.md): what it means, and the way in
 # Nebius's own pages give (contree.dev and the Sandboxes docs, read 2026-09-29). ConTree answers a made-up key
 # and project with a 403 too, not a 401, so without whoami's grants the project id is the other suspect.
 ABOUT = "tokenfactory.nebius.com/sandboxes/about"
