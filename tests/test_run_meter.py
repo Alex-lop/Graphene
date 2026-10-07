@@ -310,6 +310,95 @@ def test_a_run_killed_outright_has_its_hold_settled_by_the_next_runs_sweep_befor
     assert got[1]["id"] == got[0]["id"] and got[1]["dollars"] == pytest.approx(CLAUDE_COST)  # as its log says
 
 
+def test_a_hold_settles_in_the_ledger_that_holds_it_under_its_own_purpose_whenever_it_ends(
+    repo, tmp_path, monkeypatch
+):
+    """The second review of 7 October: a hold settled in whichever night was current when it ended, under
+    the purpose of the shell that settled it. A dead run's holds, swept after noon, were the new night's
+    spend and refused its first run; settled again there, a hold was counted in both nights."""
+    monkeypatch.setenv("GRAPHENE_AGENT_LIVE_USD", "10")
+    monkeypatch.setenv("GRAPHENE_NIGHT_PURPOSE", "meter")
+    script, _ = printing(repo, "claude", "claude.jsonl", -1)
+    waited = R._waited
+
+    def noon(*args):  # the night rolls over while the executor works, in a shell that says another purpose
+        monkeypatch.setenv("GRAPHENE_NIGHT_LEDGER", str(tmp_path / "next.jsonl"))
+        monkeypatch.setenv("GRAPHENE_NIGHT_PURPOSE", "dogfood")
+        return waited(*args)
+
+    monkeypatch.setattr(R, "_waited", noon)
+    with Store.open(repo) as store:
+        R.run_plan(store, repo, f"{script} --output-format stream-json", say=lambda _: None,
+                   logs=repo / ".graphene" / "runs")  # fmt: skip
+    held, settled = ledger(tmp_path)  # none in the next night's
+    assert settled["id"] == held["id"] and (held["purpose"], settled["purpose"]) == ("meter", "meter")
+    assert not (tmp_path / "next.jsonl").exists()
+
+
+def test_the_sweep_settles_a_dead_runs_hold_whatever_its_leaf_has_become_and_never_a_live_runs(
+    repo, tmp_path, monkeypatch
+):
+    """The second review of 7 October: the sweep settled a dead run's hold only through a leaf still
+    `running`, or done in a run's worktree. The executor a run killed outright leaves working ends its leaf
+    itself (`release`, or `done` with --here), and its $3 stayed in flight until noon."""
+    from graphene_map.nemotron import night
+
+    monkeypatch.setenv("GRAPHENE_AGENT_LIVE_USD", "10")
+    gone = subprocess.Popen(["true"])
+    gone.wait()  # its pid, beside a start no process has: a run that ended
+    runs = {"dead": (gone.pid, "Thu Jan  1 00:00:00 1970"), "live": (os.getpid(), R._started(os.getpid()))}
+    last = str(tmp_path / "last.jsonl")  # the night each was held in
+    with Store.open(repo) as store:  # leaf a is open: the dead run's executor handed it back itself
+        for who, (pid, began) in runs.items():
+            hold = {"model": "claude:default", "worst": 3.0, "paid": 0.0, "ledger": last}
+            hold["id"] = night.reserve(hold["model"], 3.0, f"run: a {who}", "claude code", last)
+            store.log_node("a", plan._now(), "attempt", "run:claude", who, None,
+                           {"attempt": 1, "run_pid": pid, "run_start": began, "log": None, "meter": "claude",
+                            "hold": hold})  # fmt: skip
+        R.sweep(store, lambda _: None, repo)
+    got = [json.loads(line) for line in Path(last).read_text().splitlines()]
+    assert [(r["kind"], r["dollars"]) for r in got] == [("reserve", 3.0), ("reserve", 3.0), ("settle", 3.0)]
+    assert got[2]["id"] == got[0]["id"] and not ledger(tmp_path)  # the dead run's, in its own night
+
+
+def test_a_stop_after_an_attempts_hold_and_before_its_end_settles_the_hold_at_its_worst_case(
+    repo, tmp_path, monkeypatch
+):
+    """The second review of 7 October: with --here, a Ctrl-C after the hold was taken and before the
+    attempt's own settle (its row written, Codex's list asked) handed the leaf back and left the $3 in
+    flight until noon: no sweep visits a leaf that is open."""
+    monkeypatch.setenv("GRAPHENE_AGENT_LIVE_USD", "10")
+    monkeypatch.setattr(R, "GRACE", 1)
+    script, _ = printing(repo, "claude", "claude.jsonl", -1)
+
+    def stopped(pid):  # the Ctrl-C lands while the attempt row is written
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(R, "_started", stopped)
+    with Store.open(repo) as store, pytest.raises(KeyboardInterrupt):
+        R.run_plan(store, repo, f"{script} --output-format stream-json", say=lambda _: None,
+                   logs=repo / ".graphene" / "runs")  # fmt: skip
+    held, settled = ledger(tmp_path)
+    assert settled["kind"] == "settle" and settled["id"] == held["id"] and settled["dollars"] == 3.0
+
+
+def test_a_dead_attempt_whose_log_cannot_be_read_keeps_its_worst_case_for_codex_as_for_claude(
+    tmp_path, monkeypatch
+):
+    """The second review of 7 October: the sweep read a dead Codex attempt's missing log as a stream whose
+    every turn completed, and settled its hold at $0, where a Claude attempt kept its worst case. The repo
+    moved, or its runs cleared, and the night never saw what the attempt may have spent."""
+    from graphene_map.nemotron import night
+
+    monkeypatch.setenv("GRAPHENE_AGENT_LIVE_USD", "10")
+    monkeypatch.setattr(R, "_listed", lambda: {"nvidia/super": (1e-7, 5e-7)})
+    for kind, model in (("codex", "codex:nvidia/super"), ("claude", "claude:default")):
+        hold = {"model": model, "worst": 3.0, "paid": 0.0}
+        hold["id"] = night.reserve(model, 3.0, "run: a attempt 1", R.M.ENDPOINT[kind])
+        R._close({"attempt": 1, "log": str(tmp_path / "gone.txt"), "meter": kind, "hold": hold})
+    assert [r["dollars"] for r in ledger(tmp_path) if r["kind"] == "settle"] == [3.0, 3.0]
+
+
 def test_an_attempt_the_ledger_refuses_never_starts_and_its_leaf_comes_back(repo, tmp_path, monkeypatch):
     monkeypatch.setenv("GRAPHENE_AGENT_LIVE_USD", "1")
     script, _ = printing(repo, "codex", "codex.jsonl", -1)
