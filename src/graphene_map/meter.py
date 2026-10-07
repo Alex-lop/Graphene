@@ -35,6 +35,7 @@ VERBS = {"Read": "reading", "NotebookRead": "reading", "Edit": "editing", "Write
          "MultiEdit": "editing", "NotebookEdit": "editing", "Bash": "running", "Grep": "searching",
          "Glob": "searching", "WebSearch": "searching", "WebFetch": "searching"}  # fmt: skip
 ENDPOINT = {"claude": "claude code", "codex": "codex"}
+HOLD_ENDS = ("finished", "overruled", "released")  # an attempt with no `ended` row (older stores) ends here
 
 
 def kind(argv: list[str]) -> str | None:
@@ -230,14 +231,15 @@ def _seconds(start: str, end: str | datetime) -> int:
 def attempts(rows: list[dict], scope: list[str] | None = None, now: datetime | None = None) -> list[dict]:
     """One leaf's attempts, oldest first, from its node_log rows: what each spent, did and said. A row
     without an attempt number (a usage row from before the meter, a denied path) is the attempt's that
-    was going when it was written."""
+    was going when it was written. An attempt with no `ended` row (one from before the meter, or a run
+    that died) ends where its hold did."""
     now = now or datetime.now(UTC)
     tries: list[dict] = []
     numbered: dict = {}
     for e in rows:
         d = e["detail"] or {}
         if e["kind"] == "attempt":
-            tries.append({"row": e, "rows": [], "ended": None})
+            tries.append({"row": e, "rows": [], "ended": None, "held": None})
             numbered[d.get("attempt")] = tries[-1]
             continue
         if "attempt" in d:
@@ -250,6 +252,7 @@ def attempts(rows: list[dict], scope: list[str] | None = None, now: datetime | N
             a["ended"] = e
         else:
             a["rows"].append(e)
+            a["held"] = a["held"] or (e if e["kind"] in HOLD_ENDS else None)
     after = [*tries[1:], None] if tries else []  # each attempt, and the one after it
     return [_attempt(a, nxt, scope, now) for a, nxt in zip(tries, after, strict=True)]
 
@@ -270,7 +273,8 @@ def _attempt(a: dict, nxt: dict | None, scope: list[str] | None, now: datetime) 
     phrased = last and last["detail"].get("text")
     if last and last["kind"] == "did":
         phrased = doing(last["detail"].get("verb") or "", last["detail"].get("target") or "")
-    end = ended["timestamp"] if ended else nxt["row"]["timestamp"] if nxt else now
+    until = ended or a["held"]
+    end = until["timestamp"] if until else nxt["row"]["timestamp"] if nxt else now
     return {
         "attempt": a["row"]["detail"].get("attempt"),
         "executor": executor,
@@ -278,7 +282,7 @@ def _attempt(a: dict, nxt: dict | None, scope: list[str] | None, now: datetime) 
         "model": next((u["model"] for u in reversed(usage) if u.get("model")), None),
         "started": start,
         "seconds": _seconds(start, end),
-        "running": ended is None and nxt is None,
+        "running": until is None and nxt is None,
         "exit": ended["detail"].get("exit") if ended else None,
         "turns": sum(u.get("calls") or 0 for u in usage),
         "prompt_tokens": sum(u.get("prompt_tokens") or 0 for u in usage),
