@@ -728,9 +728,9 @@ def register(cli: typer.Typer, root, open_store, fail):
 
         def go(store):
             added = as_json(store) if text.lstrip().startswith(("{", "[")) else as_text(store)
-            if not who.person and added:
+            if not who.person and added:  # one leaf of the person's ask is theirs at once
                 out(
-                    G.one_line_ask(store, added, who, files)  # one leaf of the person's ask is theirs at once
+                    G.one_line_ask(store, added, who, files, B.split(text)[1])  # its board items, new or not
                     or f"{len(added)} proposed: nobody can start {'it' if len(added) == 1 else 'them'} until "
                     "the person accepts, in `graphene watch`. Tell them the tree is ready, and stop"
                 )

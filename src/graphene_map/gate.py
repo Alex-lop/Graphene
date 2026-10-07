@@ -337,14 +337,17 @@ def _width(scope: list[str], files: list[str]) -> int:
     return sum(P.in_scope(f, scope) for f in files) + len(unmatched)
 
 
-def one_line_ask(store, added: list[P.Node], who: P.Caller, files: list[str]) -> str | None:
+def one_line_ask(
+    store, added: list[P.Node], who: P.Caller, files: list[str], board: list[dict]
+) -> str | None:
     """The one-line ask stays free. One leaf, with its scope and its check and nothing under it,
     proposed by a Claude Code session that holds no leaf, after the person's last prompt there and
     before any other proposal of that session since, is what that prompt asked for: it is accepted
     at once, as the person's, and the log says "by their prompt in the session". The sub-goals it
     came in, one above the other with nothing else under them, are accepted with it: they are still
     one leaf of work. A tree waits for them, and so does a leaf that would make a sub-goal of another
-    (a split) or bring an older proposal above it along, one put up with a board item, and one whose
+    (a split) or bring an older proposal above it along, one put up with a board item (in its text,
+    ``board``, on the board already or not, or by the session since the prompt), and one whose
     scope reaches more than WIDE paths (the tracked ``files``). Returns what `graphene plan propose`
     says instead of "proposed", or None. A standing path in the scope is refused before this, at
     propose. The hole is decision 19's: an agent that starts a second agent chooses its prompt, and a
@@ -378,7 +381,7 @@ def one_line_ask(store, added: list[P.Node], who: P.Caller, files: list[str]) ->
     reach = _width(node.scope, files)
     why = (
         "it put up a board item"
-        if any(it["state"] == "open" for it in mine)
+        if board or any(it["state"] == "open" for it in mine)
         else f"its scope reaches {reach} paths, more than {WIDE}"
         if reach > WIDE
         else None
