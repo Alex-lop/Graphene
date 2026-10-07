@@ -31,6 +31,8 @@ OURS = (".graphene",)  # the plan's own store: never inside any scope
 _AS_PERSON = re.compile(r"\bGRAPHENE_(AS|WATCH)\b")
 PARSED = 64_000  # characters of a shell command the hook will parse: the parser is superlinear, and the
 # vendor lets a call through when a hook runs out of time (3 MB took 234 s in the closing review)
+WIDE = 8  # paths a one-leaf ask may reach and still be the person's at once: the one-change asks of
+# 5 October reached 7 or 8 (docs/process/cut/lane5-evidence.md); tonight's live runs tune it
 
 
 def _deny(reason: str) -> dict:
@@ -328,13 +330,22 @@ def _on_prompt(store, sid: str, text: str) -> dict | None:
     return _context("UserPromptSubmit", said)
 
 
-def one_line_ask(store, added: list[P.Node], who: P.Caller) -> str | None:
+def _width(scope: list[str], files: list[str]) -> int:
+    """The paths a scope reaches: the tracked files it covers, and one for each glob that covers none
+    (a file still to be made)."""
+    unmatched = [g for g in scope if not g.startswith("!") and not any(P.in_scope(f, [g]) for f in files)]
+    return sum(P.in_scope(f, scope) for f in files) + len(unmatched)
+
+
+def one_line_ask(store, added: list[P.Node], who: P.Caller, files: list[str]) -> str | None:
     """The one-line ask stays free. One leaf, with its scope and its check and nothing under it,
     proposed by a Claude Code session that holds no leaf, after the person's last prompt there and
     before any other proposal of that session since, is what that prompt asked for: it is accepted
     at once, as the person's, and the log says "by their prompt in the session". A tree waits for
     them, and so does a leaf that would make a sub-goal of another (a split) or bring a proposal
-    above it along. Returns what `graphene plan propose` says instead of "proposed", or None.
+    above it along, one put up with a board item, and one whose scope reaches more than WIDE paths
+    (the tracked ``files``). Returns what `graphene plan propose` says instead of "proposed", or None.
+    A standing path in the scope is refused before this, at propose.
     The hole is decision 19's: an agent that starts a second agent chooses its prompt, and a
     subagent carries its session's id. Plan first on and `graphene plan prompts strict` turn
     this off."""
@@ -355,6 +366,22 @@ def one_line_ask(store, added: list[P.Node], who: P.Caller) -> str | None:
         or (parent is not None and not under.get(parent.id))
     ):
         return None
+    from . import board as B  # here, not at the top: no hook event reads the board
+
+    mine = [it for it in B.items(store) if it["by"] == who.label and it["created_at"] >= asked]
+    reach = _width(node.scope, files)
+    why = (
+        "it put up a board item"
+        if any(it["state"] == "open" for it in mine)
+        else f"its scope reaches {reach} paths, more than {WIDE}"
+        if reach > WIDE
+        else None
+    )
+    if why:
+        return (
+            f"1 proposed: it waits for the person: {why}. Nobody can start it until the person accepts, "
+            "in `graphene watch`. Tell them it waits, and stop"
+        )
     me, said = _me(sid), store.meta(f"prompt:{sid}") or ""
     try:
         with P.undoable(store, me, f"a one-line ask in the session: {said[:40]}"):

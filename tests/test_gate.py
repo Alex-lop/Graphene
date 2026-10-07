@@ -392,7 +392,7 @@ def test_what_the_vendor_sends_as_a_prompt_is_never_the_persons(repo):
         [leaf] = plan.propose(
             store, [{"id": "xml", "title": "x", "scope": ["src/api/**"], "check": "true"}], BOT
         )
-        assert gate.one_line_ask(store, [leaf], BOT) is None
+        assert gate.one_line_ask(store, [leaf], BOT, []) is None
         assert plan.get(store, "xml").state == "proposed"
 
 
