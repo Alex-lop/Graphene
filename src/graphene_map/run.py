@@ -32,6 +32,7 @@ import time
 import uuid
 from collections.abc import Callable
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
+from datetime import UTC, datetime
 from pathlib import Path
 
 from . import board as B
@@ -499,8 +500,9 @@ STOPPED = "the run was stopped before this leaf was finished"  # by Ctrl-C, `:st
 
 def summary(store, since: int, stopped: bool = False) -> str:
     """What a run did, in one line for the person, read from what the plan logged after entry
-    ``since``: what it finished, what came back to them, what waits in review. `graphene watch` shows
-    this line when the run ends, so it is the run's last."""
+    ``since``: what it finished, what came back to them, what waits in review, and the two clocks (the
+    agents' minutes and dollars, the person's acts and minutes). `graphene watch` shows this line when
+    the run ends, so it is the run's last."""
     log = store.node_log()[since:]
     started = {e["node_id"] for e in log if e["kind"] == "started" and e["actor"].startswith("run:")}
     let_go = {e["node_id"]: e["detail"] for e in log if e["kind"] == "released"}
@@ -520,13 +522,26 @@ def summary(store, since: int, stopped: bool = False) -> str:
     said += [f"{len(review)} in review ({named(review)})"] if review else []
     said += [f"{named(handed)} handed back, ready again"] if handed else []
     said += [f"{named(freed)} released by you, ready again"] if freed else []
-    spent = sum(e["detail"].get("dollars") or 0 for e in log if e["kind"] == "usage")
-    cost = f"; ${spent:.4f} at list price" if any(e["kind"] == "usage" for e in log) else ""
+    cost = clocks(log)
     if stopped:
         return "run stopped: " + (", ".join(said) or "nothing was finished") + cost
     if not ran:
         return "run: nothing started (graphene plan says what each leaf waits on)"
     return "run: " + (", ".join(said) or "nothing finished") + cost
+
+
+def clocks(log: list[dict]) -> str:
+    """The run's two clocks, from its own rows: " · agents 41 min, $2.87 at list price · you 4 acts, 2 min".
+    With no usage row, the agents' dollars are "no meter": nothing is invented."""
+    agents, you = M.agents(log, datetime.now(UTC)), M.you(log, P.person_name())
+    took = f"{round(agents['seconds'] / 60)} min" if agents["seconds"] >= 60 else "<1 min"
+    spent, n = "no meter", agents["unpriced"]
+    if any(e["kind"] == "usage" for e in log):
+        spent = f"${agents['dollars']:.4f} at list price"
+    if n:
+        spent += f" + {f'{round(n / 1000)}k' if n >= 1000 else n} tokens with no list price"
+    acts = f"{you['acts']} act{'s' * (you['acts'] != 1)}"
+    return f" · agents {took}, {spent} · you {acts}, {you['minutes']} min"
 
 
 @contextlib.contextmanager

@@ -138,7 +138,8 @@ def test_a_leaf_lands_its_check_decides_and_the_bill_is_in_the_record(repo, fake
         assert f"bill: ${bill['detail']['dollars']:.4f} at list price · 4 model calls" in shown
         assert "Nemotron-3-Nano-fake (a stand-in's usage)" in shown  # the fake is not Token Factory
         assert bill["detail"]["endpoint"] == "a stand-in"
-        assert summary(store, 0).endswith(f"; ${bill['detail']['dollars']:.4f} at list price")
+        clocks = f" · agents <1 min, ${bill['detail']['dollars']:.4f} at list price · you 0 acts, 0 min"
+        assert summary(store, 0) == "run: 1 done" + clocks
 
 
 def test_every_way_out_of_the_scope_is_refused_before_the_write_and_becomes_the_offer(repo, fake, tmp_path):

@@ -112,10 +112,14 @@ def test_the_stream_lands_on_the_leaf_while_the_executor_runs(repo, name, with_,
     [ended] = [e["detail"] for e in rows(repo, "ended")]
     assert ended | {"seconds": 0} == {"attempt": 1, "exit": 0, "seconds": 0, "meter": name,
                                       "unread": 0 if name == "claude" else 1}  # fmt: skip
+    last = said.strip().splitlines()[-1]
     if name == "claude":
         assert sum(u["dollars"] for u in usage) == pytest.approx(CLAUDE_COST)
         assert [e["detail"]["verb"] for e in rows(repo, "did")] == ["reading", "editing", "running"]
+        assert last == "run: 1 done · agents <1 min, $0.0623 at list price · you 0 acts, 0 min"
     else:
+        assert last == ("run: 1 done · agents <1 min, $0.0000 at list price + 49k tokens with no list price"
+                        " · you 0 acts, 0 min")  # fmt: skip
         assert usage == [{"model": "codex", "calls": 1, "prompt_tokens": 48940, "completion_tokens": 344,
                           "dollars": 0, "endpoint": "codex", "attempt": 1, "turn": 1,
                           "priced": False}]  # fmt: skip
@@ -141,6 +145,7 @@ def test_a_stream_the_meter_cannot_read_leaves_the_run_as_it_was(repo):
     assert not rows(repo, "usage", "did", "said")  # no meter number invented
     [ended] = [e["detail"] for e in rows(repo, "ended")]
     assert ended["meter"] == "claude" and ended["unread"] == 4 and ended["exit"] == 0
+    assert said.strip().splitlines()[-1] == "run: 1 done · agents <1 min, no meter · you 0 acts, 0 min"
     with Store.open(repo) as store:
         assert plan.get(store, "a").state == DONE
     assert (repo / "a.txt").read_text() == "done\n"  # landed
@@ -238,3 +243,21 @@ def test_an_attempt_the_ledger_refuses_never_starts_and_its_leaf_comes_back(repo
     assert said[-1].startswith("a came back: refused: a call to codex:codex may cost up to $3.0000")
     assert "\n" not in said[-1] and (repo / "a.txt").read_text() == "a\n"  # nothing ran
     assert ledger(tmp_path) == []
+
+
+def test_the_clocks_read_minutes_dollars_tokens_with_no_price_and_the_persons_acts(monkeypatch):
+    monkeypatch.setenv("GRAPHENE_PERSON", "alex")
+
+    def row(at: str, kind: str, detail: dict, actor: str = "run:codex") -> dict:
+        return {"node_id": "a", "timestamp": f"2026-10-07T04:{at}.000Z", "kind": kind, "actor": actor,
+                "detail": detail}  # fmt: skip
+
+    turn = {"calls": 1, "attempt": 1, "turn": 1}
+    log = [row("00:00", "attempt", {"attempt": 1}),
+           row("05:00", "accepted", {}, actor="alex"), row("05:30", "answered", {}, actor="alex (no tty)"),
+           row("10:00", "usage", {**turn, "prompt_tokens": 120_000, "completion_tokens": 400, "dollars": 0,
+                                  "priced": False}),
+           row("20:00", "usage", {**turn, "prompt_tokens": 10, "completion_tokens": 1, "dollars": 0.42}),
+           row("41:00", "ended", {"attempt": 1, "exit": 0, "meter": "codex", "unread": 0})]  # fmt: skip
+    assert R.clocks(log) == (" · agents 41 min, $0.4200 at list price + 120k tokens with no list price"
+                             " · you 2 acts, 1 min")  # fmt: skip

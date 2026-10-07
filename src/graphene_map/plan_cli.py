@@ -1005,7 +1005,7 @@ def register(cli: typer.Typer, root, open_store, fail):
                 out(summary(store, since, stopped=True))
                 raise typer.Exit(130) from None
             left = P.uncommitted(store, checkout()) if here else []  # a worktree's leaf committed its own
-            out(summary(store, since) + (f"; the work of {', '.join(left)} is {P.UNCOMMITTED}" * bool(left)))
+            out(summary(store, since) + (f" · the work of {', '.join(left)} is {P.UNCOMMITTED}" * bool(left)))
 
     def planner(
         sentence: str, executor: str | None, about: str | None, split: bool, size: str | None = None
