@@ -2,6 +2,7 @@
 turn, tool call and thing said lands on the leaf as it happens. The executors here are stand-ins named
 `claude` and `codex` that print the real streams in tests/fixtures/meter."""
 
+import json
 import os
 import subprocess
 import sys
@@ -203,3 +204,37 @@ def test_token_factorys_list_is_asked_once_a_process_and_a_failure_is_no_price(m
         assert R._listed() == {} and R._listed() == {} and len(asked) == 1
     finally:
         R._listed.cache_clear()
+
+
+def ledger(tmp_path: Path) -> list[dict]:
+    path = tmp_path / "night.jsonl"  # the suite's night (conftest)
+    return [json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
+
+
+def test_under_the_opening_an_attempt_holds_its_worst_case_and_settles_at_what_it_spent(
+    repo, tmp_path, monkeypatch
+):
+    monkeypatch.setenv("GRAPHENE_AGENT_LIVE_USD", "10")
+    script, _ = printing(repo, "claude", "claude.jsonl", -1)
+    with Store.open(repo) as store:
+        executor = f"{script} --output-format stream-json --max-budget-usd 2"
+        R.run_plan(store, repo, executor, say=lambda _: None, logs=repo / ".graphene" / "runs")
+    held, settled = ledger(tmp_path)
+    assert held | {"at": 0, "id": 0} == {"at": 0, "kind": "reserve", "id": 0, "model": "claude:default",
+                                         "tag": "run: a attempt 1", "endpoint": "claude code", "dollars": 2.0,
+                                         "purpose": "unsaid", "practice": True}  # fmt: skip
+    assert settled["id"] == held["id"] and settled["dollars"] == pytest.approx(CLAUDE_COST)
+    assert (settled["prompt_tokens"], settled["completion_tokens"]) == (60425, 75)
+
+
+def test_an_attempt_the_ledger_refuses_never_starts_and_its_leaf_comes_back(repo, tmp_path, monkeypatch):
+    monkeypatch.setenv("GRAPHENE_AGENT_LIVE_USD", "1")
+    script, _ = printing(repo, "codex", "codex.jsonl", -1)
+    said = []
+    with Store.open(repo) as store:
+        assert R.run_plan(store, repo, f"{script} exec --json", say=said.append,
+                          logs=repo / ".graphene" / "runs") == []  # fmt: skip
+        assert plan.get(store, "a").state == plan.OPEN and not store.node_log("a", ("attempt",))
+    assert said[-1].startswith("a came back: refused: a call to codex:codex may cost up to $3.0000")
+    assert "\n" not in said[-1] and (repo / "a.txt").read_text() == "a\n"  # nothing ran
+    assert ledger(tmp_path) == []

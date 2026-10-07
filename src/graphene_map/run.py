@@ -47,6 +47,7 @@ DEFAULT_WITH = (
     "--output-format stream-json --verbose"  # the stream the meter reads: turns, tokens, tool calls, cost
 )
 ATTEMPTS = 3
+WORST = 3.0  # dollars the night's ledger holds for a Claude Code or Codex attempt with no --max-budget-usd
 CODEX = "codex exec --json --sandbox workspace-write"
 
 
@@ -322,6 +323,15 @@ def prompt_for(
 REFUSED = "Your last attempt was not accepted:"  # the Nemotron executor reads what follows: why it stepped up
 
 
+def _worst(argv: list[str]) -> float:
+    """What one attempt may spend: the command's --max-budget-usd, else WORST."""
+    said = next((b for a, b in zip(argv, argv[1:], strict=False) if a == "--max-budget-usd"), None)
+    try:
+        return float(said) if said else WORST
+    except ValueError:
+        return WORST
+
+
 def command_for(template: str, prompt: str, session: str, again: bool) -> list[str]:
     """The executor's argv. Claude Code is told which session this is, so its hooks hold it to the
     node from its first call and a second attempt resumes with what the first one learned; any other
@@ -384,6 +394,16 @@ def run_node(
             if logs is not None:  # streamed as it runs, so its tail can be read while it works
                 logs.mkdir(parents=True, exist_ok=True)
                 log = logs / f"{node.id}-{stamp}-{session[:8]}-{attempt}.txt"
+            held, night = None, extra.load("night") if name in M.ENDPOINT else None
+            if night and night.cap() is not None:  # under the opening: the attempt's worst case, held first
+                model = f"{name}:{M.model_in(argv) or ('default' if name == 'claude' else 'codex')}"
+                try:
+                    held = night.reserve(model, _worst(argv), f"run: {node.id} attempt {attempt}",
+                                         M.ENDPOINT[name])  # fmt: skip
+                except night.Refused as no:
+                    P.release(store, node.id, who, str(no))
+                    say(f"{node.id} came back: {no}")
+                    return None
             sink = open(log, "w", encoding="utf-8") if log else subprocess.DEVNULL  # noqa: SIM115
             try:
                 proc = subprocess.Popen(
@@ -391,6 +411,8 @@ def run_node(
                     stderr=subprocess.STDOUT, start_new_session=True,
                 )  # fmt: skip
             except OSError as no:  # the executor is not installed, or not executable: nothing ran
+                if held:
+                    night.settle(held, model, 0.0)
                 P.release(store, node.id, who, f"the executor could not be started: {name}: {no.strerror}")
                 raise P.Refused(
                     f"cannot run `{argv[0]}`: {no.strerror}. {node.id} was handed back untouched; name "
@@ -416,9 +438,13 @@ def run_node(
                 code = _waited(proc, store, node.id, stop, read)
             finally:
                 stop.remove(node.id)
-            if read:
-                read(last=True)  # Claude Code's result is its last line
-                paid += meter.dollars
+                if read:
+                    read(last=True)  # Claude Code's result is its last line
+                    paid += meter.dollars
+                if held:  # settled at what the stream said it spent; with no stream, nothing
+                    spent = meter or M.Meter(name, attempt)
+                    night.settle(held, model, spent.dollars, {"prompt_tokens": spent.prompt_tokens,
+                                                              "completion_tokens": spent.completion_tokens})
             # not an "attempt" row: readers take the last of those as the attempt going now
             store.log_node(node.id, P._now(), "ended", who.label, session, None,
                            {"attempt": attempt, "exit": code, "seconds": round(time.monotonic() - began, 1),
@@ -528,9 +554,10 @@ def _splits(template: str) -> None:
 
 
 def _begins(template: str) -> None:
-    """A run of Graphene's own executor is one new live thing under the night's cap (``night.begin``): its
-    leaves go on under the cap once it has started, and it does not start past 80% of the cap."""
-    if label(template) == "nemotron" and (night := extra.load("night")):
+    """A run of Graphene's own executor, Claude Code or Codex is one new live thing under the night's cap
+    (``night.begin``): its leaves go on under the cap once it has started, and it does not start past 90%
+    of the cap."""
+    if label(template) in ("nemotron", *M.ENDPOINT) and (night := extra.load("night")):
         try:
             night.begin("the run")
         except night.Refused as no:
