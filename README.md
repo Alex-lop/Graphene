@@ -25,7 +25,7 @@ I believe that whether it comes from new models, better harnesses or something o
 
 ## What it looks like
 
-A real run from tonight (7 October) on `feeds`, a small test repo I built: csv and json load, a new supplier's XML doesn't yet, and there are acceptance checks the agents never see. Claude Code (on Sonnet) planned and did the work. Trimmed where you see `…`:
+A real run from tonight on `feeds`, a small test repo I built: csv and json load, a new supplier's XML doesn't yet, and there are acceptance checks the agents never see. Claude Code (on Sonnet) planned and did the work. Trimmed where you see `…`:
 
 ```
 $ graphene ask "Look at this repo. I want the new Northwind XML feed to load the same way csv and json …"
