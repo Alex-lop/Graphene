@@ -531,7 +531,7 @@ def summary(store, since: int, stopped: bool = False) -> str:
 
 
 def clocks(log: list[dict]) -> str:
-    """The run's two clocks, from its own rows: " · agents 41 min, $2.87 at list price · you 4 acts, 2 min".
+    """The run's two clocks, from its own rows: " · agents 41 min, $2.8700 at list price · you 4 acts, 2 min".
     With no usage row, the agents' dollars are "no meter": nothing is invented."""
     agents, you = M.agents(log, datetime.now(UTC)), M.you(log, P.person_name())
     took = f"{round(agents['seconds'] / 60)} min" if agents["seconds"] >= 60 else "<1 min"
