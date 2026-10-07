@@ -68,7 +68,7 @@ def test_a_refused_executor_is_sent_back_with_the_refusal_and_the_node_is_done_w
         done = run_plan(store, repo, executor(repo, SLOPPY), say=said.append, logs=repo / ".graphene/runs")
         assert [n.id for n in done] == ["n1"] and plan.get(store, "n1").state == DONE
         assert [e["kind"] for e in store.node_log("n1")] == [
-            "added", "started", "attempt", "refused", "attempt", "check_passed", "finished"
+            "added", "started", "attempt", "ended", "refused", "attempt", "ended", "check_passed", "finished"
         ]  # fmt: skip
         tails = [e["detail"]["log"] for e in store.node_log("n1", ("attempt",))]
         assert len(set(tails)) == 2 and all(Path(t).is_file() for t in tails)  # one tail an attempt, kept

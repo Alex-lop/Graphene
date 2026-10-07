@@ -20,6 +20,7 @@ a merge unclean is the person's own work in the way, and that leaf waits for the
 from __future__ import annotations
 
 import contextlib
+import functools
 import os
 import re
 import shlex
@@ -35,6 +36,7 @@ from pathlib import Path
 
 from . import board as B
 from . import extra
+from . import meter as M
 from . import plan as P
 
 # An executor may edit files and run `graphene node …` and `graphene plan …` (its done, its release, a
@@ -231,16 +233,59 @@ def _locked(root: Path | None) -> bool:
     return root is not None and run_holding(root) not in (None, os.getpid())
 
 
-def _waited(proc: subprocess.Popen, store, node_id: str, stop: Stop) -> int:
+def _waited(
+    proc: subprocess.Popen, store, node_id: str, stop: Stop, each: Callable[[], None] | None = None
+) -> int:
     """The executor's exit code. Meanwhile, a leaf the person released (or dropped) stops its
-    executor: handing it back is the person's way to say stop."""
+    executor: handing it back is the person's way to say stop. ``each`` runs every POLL."""
     while True:
         try:
             return proc.wait(timeout=POLL)
         except subprocess.TimeoutExpired:
             pass
+        if each:
+            each()
         if stop.event.is_set() or _let_go(store, node_id):
             _end(proc)
+
+
+class Reader:
+    """An attempt's log, read as the executor writes it: each complete line goes to the meter, and each
+    row the meter gives goes to ``logged``. A log that cannot be read, or a line the meter or the store
+    trips on, is counted unread: the meter degrades, the attempt does not."""
+
+    def __init__(self, path: Path, meter: M.Meter, logged: Callable[[str, dict], None]) -> None:
+        self.path, self.meter, self.logged, self.offset, self.rest = path, meter, logged, 0, b""
+
+    def __call__(self, last: bool = False) -> None:
+        try:
+            with open(self.path, "rb") as log:
+                log.seek(self.offset)
+                got = log.read()
+        except OSError:
+            self.meter.unread += 1
+            return
+        self.offset += len(got)
+        *lines, self.rest = (self.rest + got).split(b"\n")
+        if last:  # the process has ended: a last line with no newline is whole
+            lines, self.rest = [*lines, self.rest], b""
+        for line in lines:
+            try:
+                for kind, detail in self.meter.feed(line.decode("utf-8", "replace")):
+                    self.logged(kind, detail)
+            except Exception:
+                self.meter.unread += 1
+
+
+@functools.cache
+def _listed() -> dict[str, tuple[float, float]]:
+    """Token Factory's list prices, per prompt and per completion token, by model id: asked once a
+    process, and empty when the Nemotron extra is not installed or the list cannot be read."""
+    try:
+        tf = extra.load("tokenfactory")
+        return {m.id: (m.prompt, m.completion) for m in tf.models()} if tf else {}
+    except Exception:
+        return {}
 
 
 def _let_go(store, node_id: str) -> bool:
@@ -313,6 +358,7 @@ def run_node(
     refusal: str | None = None
     stamp = (node.started_at or P._now()).replace(":", "").replace("-", "")[:15]
     proc: subprocess.Popen | None = None
+    paid = 0.0  # what this hold's attempts settled: a resumed Claude Code reports the session's total
     try:
         for attempt in range(1, attempts + 1):
             if stop.event.is_set():  # stopped while the last attempt's check ran: nothing starts again
@@ -354,14 +400,29 @@ def run_node(
                 if log:
                     sink.close()
             stop.add(node.id, proc)
+            began = time.monotonic()
             store.log_node(node.id, P._now(), "attempt", who.label, session, None,
                            {"attempt": attempt, "pid": proc.pid, "pid_start": _started(proc.pid),
                             "run_pid": os.getpid(), "run_start": _started(os.getpid()),
                             "log": str(log) if log else None, "checkout": str(checkout)})  # fmt: skip
+            kind = M.kind(argv) if log else None
+            meter = read = None
+            if kind:  # what it writes is a stream the meter reads: read as it is written
+                price = _listed().get if kind == "codex" else None
+                meter = M.Meter(kind, attempt, M.model_in(argv), paid, price)
+                read = Reader(log, meter, lambda k, d: store.log_node(node.id, P._now(), k, who.label,
+                                                                      session, None, d))  # fmt: skip
             try:
-                code = _waited(proc, store, node.id, stop)
+                code = _waited(proc, store, node.id, stop, read)
             finally:
                 stop.remove(node.id)
+            if read:
+                read(last=True)  # Claude Code's result is its last line
+                paid += meter.dollars
+            # not an "attempt" row: readers take the last of those as the attempt going now
+            store.log_node(node.id, P._now(), "ended", who.label, session, None,
+                           {"attempt": attempt, "exit": code, "seconds": round(time.monotonic() - began, 1),
+                            "meter": kind, "unread": meter.unread if meter else 0})  # fmt: skip
             if stop.event.is_set():
                 raise KeyboardInterrupt
             say(f"{node.id} attempt {attempt}: the executor ended (exit {code})")
