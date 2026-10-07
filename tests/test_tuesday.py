@@ -337,6 +337,25 @@ def test_one_leaf_with_board_items_the_person_settled_is_theirs_at_once(repo, mo
     assert "footer is accepted, as the person's" in said.stdout, said.output
 
 
+def test_one_leaf_whose_new_question_reuses_a_settled_items_id_waits(repo, monkeypatch):
+    """The third review of 7 October: a new question under the [id] of one the person had taken was
+    kept off the board (the board keeps an item as it stands), and the settled item it named let the
+    leaf be taken at once: the person was never asked. A question no item on the board holds waits."""
+    from graphene_map import board
+
+    with Store.open(repo) as store:
+        plan.set_plan_first(store, "auto", ALEX)
+    hook(repo, "UserPromptSubmit", prompt="fix the header")
+    first = "question: which header?  [q-id]\n    default: the top one\n"
+    assert "it put up a board item" in propose(repo, monkeypatch, first + LEAF).stdout
+    with Store.open(repo) as store:
+        board.take(store, "q-id", ALEX)
+    hook(repo, "UserPromptSubmit", prompt="and the footer")
+    other = "question: may the footer drop the license line?  [q-id]\n    default: keep it\n"
+    said = propose(repo, monkeypatch, other + "- the footer  [footer]\n    scope: README.md\n    check: true")
+    assert "it waits for the person: it put up a board item" in said.stdout, said.output
+
+
 def test_one_leaf_whose_scope_reaches_a_protected_file_git_does_not_track_waits(repo, monkeypatch):
     """The review of 7 October: propose refuses a scope over a protected file git tracks, and never saw
     one it does not: `certs/**` over an ignored certs/server.pem, with `protected: **/*.pem`, was the
