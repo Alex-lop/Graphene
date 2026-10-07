@@ -69,3 +69,13 @@ From 110 columns it is one row, the least wanted pieces dropped off the end.
 `tests/test_run_meter.py::test_a_stream_the_meter_cannot_read_leaves_the_run_as_it_was` runs an
 executor that prints garbage and half a JSON line: the run finishes, lands the leaf, writes no usage rows,
 counts what it could not read in the `ended` row, and the bill line says "no meter".
+
+## Again, on the final code, 04:20
+
+After the review's fixes (the ledger settles a hold at the stream's figure only when it is whole), one round
+each on a wheel of `9ca8d71`, the same harness and the feeds task:
+
+| executor | minutes | bill line | bill $ | ledger $ | Claude's own $ | accept | quality |
+|---|---|---|---|---|---|---|---|
+| claude | 1.0 | `run: 3 done · agents 1 min, $0.4788 at list price · you 0 acts, 0 min` | 0.4788 | 0.4788 | 0.4788 | 18/20 | 12/12 |
+| codex | 3.8 | `run: 3 done · agents 4 min, $0.5559 at list price · you 0 acts, 0 min` | 0.5559 | 0.5559 | – | 18/20 | 12/12 |
