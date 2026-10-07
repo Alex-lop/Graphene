@@ -1,0 +1,51 @@
+xml-feed (revision 1): Add the xml reader and wire it in
+  why:    Load the Northwind XML feed with the same `load` command as csv and json, writing the same JSONL, with every supplier's price-0 records skipped.
+            Northwind XML source (xml)
+  goal:   Add `read_xml` in ingest/xmlfeed.py using stdlib `xml.etree`. It returns one dict of attributes per `<product>` element and ignores `<summary>`, which is not a product. Register it in `READERS`. Add `"xml"` to `ENABLED_SOURCES` and to the `USAGE` line, which tests/test_contract.py requires. Add a `FIELD_MAPS` entry with keys sku=code, name=desc, price=price and `price_unit` "minor", since the feed is already in cents. Update the README source list. The end-to-end test runs `load` on samples/prices.xml and expects 2 JSONL lines (NW-1 and NW-2): the summary is dropped by the reader and NW-3, at price 0, by the zero rule. It also checks that NW-1 has price_cents 1299 and that "grommet & pin" is unescaped.
+  scope:  ingest/xmlfeed.py, ingest/__init__.py, normalize/fields.py, config/defaults.py, cli/main.py, README.md, tests/test_xmlfeed.py   (a write anywhere else is refused, and blocks `done`)
+  needs:  zero-rule   (it cannot start until they are done)
+  done:   `python3 -m pytest tests/test_xmlfeed.py tests/test_contract.py tests/test_csvfeed.py -q` passes
+  finish: graphene node done xml-feed   (runs the check and asks git what changed)
+  stuck:  graphene node release xml-feed --why '<what is in the way>' [--wants <paths it needs>]   (hands it back; say why)
+xml-feed  Add the xml reader and wire it in
+  state: done · owner agent
+  window 1: run:claude, session 9e05cae8-2c87-4636-b4bb-73d48c3a0f93  2026-10-07T05:25:26.931Z -> 2026-10-07T05:25:50.805Z  finished
+    from 807669b to 807669b: what git said had changed when it ended
+    in scope: README.md  (commit 6449b2a and git, when it ended)
+    in scope: cli/main.py  (commit 6449b2a and git, when it ended)
+    in scope: config/defaults.py  (commit 6449b2a and git, when it ended)
+    in scope: ingest/__init__.py  (commit 6449b2a and git, when it ended)
+    in scope: ingest/xmlfeed.py  (commit 6449b2a and git, when it ended)
+    in scope: normalize/fields.py  (commit 6449b2a and git, when it ended)
+    in scope: tests/test_xmlfeed.py  (commit 6449b2a and git, when it ended)
+  coverage: of the 7 paths git said had changed under this node, 7 inside its scope; 7 to a recorded edit, 0 to a recorded shell command, 0 to git alone
+    read from: the node's log, git, and Claude Code's records for session 9e05cae8
+    check: `python3 -m pytest tests/test_xmlfeed.py tests/test_contract.py tests/test_csvfeed.py -q` passed at 2026-10-07T05:25:50.805Z, run by Graphene itself
+    of the 0 files in the 1 commit inside its windows, 0 trace to a recorded write (0 edit, 0 shell), 0 only to an agent's commit, 0 to nothing
+      graded over all 0 commits recorded for session 9e05cae8, and this node's 0 selected afterwards
+    1 commit inside its windows (7 files) are in no session's records: not graded, and not counted above
+  refused: nothing
+  attempt 1 · claude claude-sonnet-5-5 · 27 s · 7 turns · 234k in, 3k out · $0.17 at list price · exit 0
+    edited: ingest/xmlfeed.py, tests/test_xmlfeed.py and 5 more
+    ran: git ls-files && cat ingest/__init__.py normalize/fields.py config/defaults.py cli/main.py README.md samples/prices.xml t, cat > ingest/xmlfeed.py <<'E' and 3 more
+    said last: `xml-feed` is done. `graphene node done xml-feed` reported that the check passed and nothing outside the scope changed. I couldn't run pytest myself because the
+    the last it did:
+      running git ls-files && cat ingest/__init__.py normalize/fields.py config/defaults.py cli/main.py README.md samples/prices.xml t
+      running cat > ingest/xmlfeed.py <<'E'
+      Compound command was refused; I'll use the dedicated tools instead.
+      editing ingest/xmlfeed.py
+      editing tests/test_xmlfeed.py
+      editing ingest/__init__.py
+      editing ingest/__init__.py
+      editing normalize/fields.py
+      editing config/defaults.py
+      editing cli/main.py
+      editing README.md
+      running python3 -m pytest tests/test_xmlfeed.py tests/test_contract.py tests/test_csvfeed.py -q 2>&1 | tail -8
+      running python3 -m pytest tests/test_xmlfeed.py tests/test_contract.py tests/test_csvfeed.py -q
+      running graphene node done xml-feed
+      `xml-feed` is done. `graphene node done xml-feed` reported that the check passed and nothing outside the scope changed. I couldn't run pytest myself because the sandbox refused the command, so `graphene node done` is the only confirmation. I haven't seen the test output directly. - **Reader:** `read_xml` in `ingest/xmlfeed.py` returns one attribute dict per `<product>`, so `<summary>` is ignored
+  bill: $0.1715 at list price · 7 model calls · 233,861 tokens in, 3,321 out · claude-sonnet-5-5 (Claude Code's report)
+  what people did to it:
+    2026-10-07T05:25:11.701Z  accepted  alexlopez (no terminal)
+  every entry, check runs included: `graphene plan log` (31 for xml-feed)
