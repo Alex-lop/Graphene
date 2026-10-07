@@ -21,7 +21,10 @@ does not.
     Usage is counted once per `message.id`.
   - `{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":…,"is_error":…}]}}`
   - `{"type":"result","total_cost_usd":…,"num_turns":…,"duration_ms":…,"usage":{…},"modelUsage":{…}}`, last.
-    After `--resume` (attempt 2 and later) `total_cost_usd` is the session's running total.
+    After `--resume` (attempt 2 and later) `total_cost_usd` is the session's running total, and `usage` is
+    the call's own. Checked live at 03:20: two Sonnet calls, the second resumed, said $0.016725 and $0.0273024,
+    and $0.0273024 is $0.016725 plus the second call's own usage priced (2,525 cache-write, 2,217 cache-read and
+    3 output tokens). So the dollars net what the session paid before; the tokens are taken as they come.
 - **Codex** (`codex exec --json`). Shapes seen live on 0.151.0 (`tests/fixtures/meter/codex.jsonl`):
   - `{"type":"thread.started","thread_id":…}`, `{"type":"turn.started"}`
   - `{"type":"item.started"|"item.completed","item":{"id","type":"command_execution","command":"/bin/zsh -lc '…'",

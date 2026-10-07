@@ -40,11 +40,22 @@ PROMPT = ("input_tokens", "cache_creation_input_tokens", "cache_read_input_token
 HOLD_ENDS = ("finished", "overruled", "released")  # an attempt with no `ended` row (older stores) ends here
 
 
+def option(argv: list[str], *names: str) -> str | None:
+    """What the command gives the first of ``names`` it has, spaced (`--model x`) or joined (`--model=x`):
+    Claude Code and Codex read both. None when it has none."""
+    for a, b in zip(argv, [*argv[1:], None], strict=True):
+        if a in names:
+            return b
+        name, joined, value = a.partition("=")
+        if joined and name in names:
+            return value
+    return None
+
+
 def kind(argv: list[str]) -> str | None:
     """Which stream the command writes: "claude" or "codex" when it writes one the meter reads, else None."""
     name = os.path.basename(argv[0]) if argv else ""
-    pairs = zip(argv, argv[1:], strict=False)
-    if name == "claude" and any(a == "--output-format" and b == "stream-json" for a, b in pairs):
+    if name == "claude" and option(argv, "--output-format") == "stream-json":
         return "claude"
     if name == "codex" and "exec" in argv and "--json" in argv:
         return "codex"
@@ -53,12 +64,7 @@ def kind(argv: list[str]) -> str | None:
 
 def model_in(argv: list[str]) -> str | None:
     """The model the command names with -m or --model, or None."""
-    for a, b in zip(argv, [*argv[1:], None], strict=True):
-        if a in ("-m", "--model"):
-            return b
-        if a.startswith("--model="):
-            return a.split("=", 1)[1]
-    return None
+    return option(argv, "-m", "--model")
 
 
 def doing(verb: str, target: str) -> str:
@@ -101,11 +107,11 @@ class Meter:
     token and per completion token, or None when the model has no list price."""
 
     def __init__(self, kind: str, attempt: int, model: str | None = None, paid_before: float = 0.0,
-                 price=None, told_before: tuple[int, int] = (0, 0)):  # fmt: skip
+                 price=None):  # fmt: skip
         self.kind, self.attempt, self.paid_before, self.price = kind, attempt, paid_before, price
-        self.told_before = told_before  # tokens in and out earlier attempts of a resumed session settled
         self.model = model or ("codex" if kind == "codex" else None)
         self.turns = self.prompt_tokens = self.completion_tokens = self.unread = 0
+        self.begun = 0  # Codex's turns started: one not completed spent what no row says
         self.dollars, self.priced, self.reported = 0.0, True, None
         self.last: str | None = None
         self.cwd: str | None = None
@@ -184,7 +190,8 @@ class Meter:
     def _settled(self, event: dict) -> list[tuple[str, dict]]:
         """Claude's result: one row that brings this attempt's turns to what Claude Code reports, its
         dollars and its tokens (the stream counts a message's output tokens before it is written). After
-        --resume the report is the session's running total, so what earlier attempts settled comes off."""
+        --resume its total_cost_usd is the session's running total, so what earlier attempts paid comes
+        off; its usage is the call's own (dev/test/results-2026-09-23.md)."""
         reported = event.get("total_cost_usd")
         if not isinstance(reported, (int, float)):
             return []
@@ -193,8 +200,8 @@ class Meter:
         self.dollars += rest
         used = event.get("usage") or {}
         given = sum(used.get(k) or 0 for k in PROMPT)
-        more_in = max(0, given - self.told_before[0] - self.prompt_tokens)
-        more_out = max(0, (used.get("output_tokens") or 0) - self.told_before[1] - self.completion_tokens)
+        more_in = max(0, given - self.prompt_tokens)
+        more_out = max(0, (used.get("output_tokens") or 0) - self.completion_tokens)
         self.prompt_tokens += more_in
         self.completion_tokens += more_out
         return [("usage", {"model": self.model, "calls": 0, "prompt_tokens": more_in,
@@ -204,6 +211,9 @@ class Meter:
 
     def _codex(self, event: dict) -> list[tuple[str, dict]]:
         kind = event["type"]
+        if kind == "turn.started":
+            self.begun += 1
+            return []
         if kind == "turn.completed":
             usage = event.get("usage") or {}
             prompt, completion = int(usage.get("input_tokens") or 0), int(usage.get("output_tokens") or 0)

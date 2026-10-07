@@ -184,7 +184,8 @@ def sweep(store, say: Callable[[str], None], root: Path | None = None) -> None:
     the process that was started. The hand-back is not a person's: a live run's executor is not
     stopped for it. A parallel run that died outright (kill -9, Force Quit) left its executors
     working, and a leaf one of them finished is done in the run's worktree and nowhere here: it is
-    parked as a stopped run parks it (``park``), committed on its branch and waiting in review."""
+    parked as a stopped run parks it (``park``), committed on its branch and waiting in review. Either
+    way the dead run's attempt is closed first (``_close``): nothing else settles its hold."""
     for n in P.nodes(store, (P.RUNNING,)):
         if not (n.executor or "").startswith("run:"):
             continue
@@ -196,9 +197,7 @@ def sweep(store, say: Callable[[str], None], root: Path | None = None) -> None:
             gone = P.RUN_TREE in (n.checkout or "") and not _locked(root)
         if not gone:
             continue
-        pid, began = this.get("pid"), this.get("pid_start")
-        if pid and began and _started(pid) == began:  # the dead run's executor, still working
-            _end_group(pid, lambda p=pid: not _alive(p))
+        _close(this)
         try:
             P.release(store, n.id, P.Caller("graphene run", False, n.session_id),
                       "the run that held it ended without finishing it", stopped=True)  # fmt: skip
@@ -215,7 +214,29 @@ def sweep(store, say: Callable[[str], None], root: Path | None = None) -> None:
             continue
         run = next((e["detail"] for e in reversed(since) if e["kind"] == "attempt"), {})
         if run.get("run_pid") and not _still(run["run_pid"], run.get("run_start")):
+            _close(run)
             park(store, tree, n, say)
+
+
+def _close(this: dict) -> None:
+    """A dead run's attempt (``this``, its attempt row): its executor stopped if it still works, and only
+    while its pid still names the process that was started; then its hold on the night settled, at what
+    its log says read again through the meter, as the run would have settled it (``_settle``). A run
+    killed outright (kill -9, Force Quit) left the hold in flight, and the night refused every run after."""
+    pid, began = this.get("pid"), this.get("pid_start")
+    if pid and began and _started(pid) == began:  # the dead run's executor, still working
+        _end_group(pid, lambda p=pid: not _alive(p))
+    hold, kind = this.get("hold"), this.get("meter")
+    night = extra.load("night") if hold else None
+    if not night:
+        return
+    meter = None
+    if kind in M.ENDPOINT and this.get("log"):
+        model = hold["model"].partition(":")[2]  # the ledger's "codex:<model>": the model it is priced at
+        price = _listed().get if kind == "codex" else None
+        meter = M.Meter(kind, this["attempt"], model, hold["paid"], price)
+        Reader(Path(this["log"]), meter, lambda *_: None)(last=True)  # its rows were the dead run's to log
+    _settle(night, hold, meter)
 
 
 def run_holding(root: Path) -> int | None:
@@ -326,11 +347,28 @@ REFUSED = "Your last attempt was not accepted:"  # the Nemotron executor reads w
 
 def _worst(argv: list[str]) -> float:
     """What one attempt may spend: the command's --max-budget-usd, else WORST."""
-    said = next((b for a, b in zip(argv, argv[1:], strict=False) if a == "--max-budget-usd"), None)
+    said = M.option(argv, "--max-budget-usd")
     try:
         return float(said) if said else WORST
     except ValueError:
         return WORST
+
+
+def _settle(night, hold: dict, meter: M.Meter | None) -> None:
+    """A held attempt, settled on the night's ledger. At what its stream says only when the stream gave
+    the whole figure: Claude Code's result was read, or every Codex turn that started completed. A Codex
+    model with no list price settles at $0, its tokens alone. Anything else (no stream, a turn stopped or
+    failed, a result never read) keeps the worst case held, as a Token Factory call stopped while out
+    does (decision 129): it may have been spent."""
+    if meter is None:
+        night.settle(hold["id"], hold["model"], hold["worst"])
+        return
+    whole = meter.reported is not None if meter.kind == "claude" else meter.begun == meter.turns
+    dollars = meter.dollars if whole else hold["worst"]
+    if meter.kind == "codex" and not (meter.price and meter.price(meter.model)):
+        dollars = 0.0  # no list price: the bill says its tokens
+    used = {"prompt_tokens": meter.prompt_tokens, "completion_tokens": meter.completion_tokens}
+    night.settle(hold["id"], hold["model"], dollars, used)
 
 
 def command_for(template: str, prompt: str, session: str, again: bool) -> list[str]:
@@ -370,7 +408,6 @@ def run_node(
     stamp = (node.started_at or P._now()).replace(":", "").replace("-", "")[:15]
     proc: subprocess.Popen | None = None
     paid = 0.0  # what this hold's attempts settled: a resumed Claude Code reports the session's total
-    told = (0, 0)  # and the tokens in and out they settled
     try:
         for attempt in range(1, attempts + 1):
             if stop.event.is_set():  # stopped while the last attempt's check ran: nothing starts again
@@ -396,12 +433,13 @@ def run_node(
             if logs is not None:  # streamed as it runs, so its tail can be read while it works
                 logs.mkdir(parents=True, exist_ok=True)
                 log = logs / f"{node.id}-{stamp}-{session[:8]}-{attempt}.txt"
-            held, night = None, extra.load("night") if name in M.ENDPOINT else None
+            hold, night = None, extra.load("night") if name in M.ENDPOINT else None
             if night and night.cap() is not None:  # under the opening: the attempt's worst case, held first
                 model = f"{name}:{M.model_in(argv) or ('default' if name == 'claude' else 'codex')}"
+                hold = {"model": model, "worst": _worst(argv), "paid": paid}
                 try:
-                    held = night.reserve(model, _worst(argv), f"run: {node.id} attempt {attempt}",
-                                         M.ENDPOINT[name])  # fmt: skip
+                    hold["id"] = night.reserve(model, hold["worst"], f"run: {node.id} attempt {attempt}",
+                                               M.ENDPOINT[name])  # fmt: skip
                 except night.Refused as no:
                     P.release(store, node.id, who, str(no))
                     say(f"{node.id} came back: {no}")
@@ -413,8 +451,8 @@ def run_node(
                     stderr=subprocess.STDOUT, start_new_session=True,
                 )  # fmt: skip
             except OSError as no:  # the executor is not installed, or not executable: nothing ran
-                if held:
-                    night.settle(held, model, 0.0)
+                if hold:
+                    night.settle(hold["id"], hold["model"], 0.0)
                 P.release(store, node.id, who, f"the executor could not be started: {name}: {no.strerror}")
                 raise P.Refused(
                     f"cannot run `{argv[0]}`: {no.strerror}. {node.id} was handed back untouched; name "
@@ -427,15 +465,16 @@ def run_node(
             began = time.monotonic()
             kind = M.kind(argv) if log else None
             metered = kind or ("nemotron" if name == "nemotron" else None)  # Nemotron writes its own rows
+            # the hold rides on the attempt: should this run die, the next one's sweep settles it (_close)
             store.log_node(node.id, P._now(), "attempt", who.label, session, None,
                            {"attempt": attempt, "pid": proc.pid, "pid_start": _started(proc.pid),
                             "run_pid": os.getpid(), "run_start": _started(os.getpid()),
                             "log": str(log) if log else None, "checkout": str(checkout),
-                            "meter": metered})  # fmt: skip
+                            "meter": metered, "hold": hold})  # fmt: skip
             meter = read = None
             if kind:  # what it writes is a stream the meter reads: read as it is written
                 price = _listed().get if kind == "codex" else None
-                meter = M.Meter(kind, attempt, M.model_in(argv), paid, price, told)
+                meter = M.Meter(kind, attempt, M.model_in(argv), paid, price)
                 read = Reader(log, meter, lambda k, d: store.log_node(node.id, P._now(), k, who.label,
                                                                       session, None, d))  # fmt: skip
             try:
@@ -445,11 +484,8 @@ def run_node(
                 if read:
                     read(last=True)  # Claude Code's result is its last line
                     paid += meter.dollars
-                    told = (told[0] + meter.prompt_tokens, told[1] + meter.completion_tokens)
-                if held:  # settled at what the stream said it spent; with no stream, nothing
-                    spent = meter or M.Meter(name, attempt)
-                    night.settle(held, model, spent.dollars, {"prompt_tokens": spent.prompt_tokens,
-                                                              "completion_tokens": spent.completion_tokens})
+                if hold:
+                    _settle(night, hold, meter)
             # not an "attempt" row: readers take the last of those as the attempt going now
             store.log_node(node.id, P._now(), "ended", who.label, session, None,
                            {"attempt": attempt, "exit": code, "seconds": round(time.monotonic() - began, 1),
@@ -575,7 +611,8 @@ def _splits(template: str) -> None:
 def _begins(template: str) -> None:
     """A run of Graphene's own executor, Claude Code or Codex is one new live thing under the night's cap
     (``night.begin``): its leaves go on under the cap once it has started, and it does not start past 90%
-    of the cap."""
+    of the cap. Asked after the sweep, so what a dead run held is settled first: asked before it, the
+    dead run's holds refused the run, and its leaves stayed `running` with their executors at work."""
     if label(template) in ("nemotron", *M.ENDPOINT) and (night := extra.load("night")):
         try:
             night.begin("the run")
@@ -694,8 +731,8 @@ def run_plan(
 ) -> list[P.Node]:
     """Run every leaf an agent can reach, in order. Returns the ones that ended done (or in review)."""
     _splits(template)
-    _begins(template)
     sweep(store, say, store.path.parent.parent)  # the repo's root, where a parallel run's lock is
+    _begins(template)
     only = leaves_of(store, only)
     finished: list[P.Node] = []
     tried: set[str] = _came_back(store, only, say)  # never tried: the person's to run again
@@ -890,7 +927,6 @@ def run_parallel(
     at a time, here, as they finish. A leaf never starts while something it needs has not landed, or
     while a leaf whose scope overlaps its own is in flight."""
     _splits(template)
-    _begins(template)
     if _git(target, "symbolic-ref", "-q", "HEAD", ok=True).returncode != 0:
         raise P.Refused(
             f"{target} is on no branch (a detached HEAD): leaves merged here would belong to no branch "
@@ -906,6 +942,7 @@ def run_parallel(
 def _run_parallel(open_store, root, target, workers, template, attempts, only, say, logs) -> list[P.Node]:
     store = open_store()
     sweep(store, say, root)  # a leaf a dead run still holds would never be ready again
+    _begins(template)
     only = leaves_of(store, only)
     planned = {n.id for n in P.nodes(store) if n.state not in P.GONE}
     files = P.tracked(target)
