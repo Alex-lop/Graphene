@@ -381,13 +381,16 @@ def one_line_ask(
     # what the session put up since the prompt, and what its text names, new on the board or not: one
     # still open waits for the person; one the person settled, parked or dropped waits on nothing
     ids, words = {f["id"] for f in board}, {B._one(f["text"]).lower() for f in board}
+    items = B.items(store)
     mine = [
         it
-        for it in B.items(store)
+        for it in items
         if (it["by"] == who.label and it["created_at"] >= asked)
         or it["id"] in ids
         or B._one(it["text"]).lower() in words
     ]
+    # words no item on the board has: their [id] named another item, so they were never put up or settled
+    unasked = words - {B._one(it["text"]).lower() for it in items}
     reach = _width(node.scope, files)
     # propose sees what git tracks; a file it does not, ignored or not, is asked of git here, under no lock
     standing = P.standing(store)
@@ -396,7 +399,7 @@ def one_line_ask(
     kept = next((p for p in near if p and P.in_scope(p, node.scope) and P.kept_out_by(p, standing)), None)
     why = (
         "it put up a board item"
-        if any(B.reads(it) == "open" for it in mine)
+        if unasked or any(B.reads(it) == "open" for it in mine)
         else f"its scope reaches {kept}, which the setting `{P.kept_out_by(kept, standing)}` keeps out"
         if kept
         else f"its scope reaches {reach} paths, more than {WIDE}"
