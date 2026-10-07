@@ -80,7 +80,7 @@ each on a wheel of `9ca8d71`, the same harness and the feeds task:
 | claude | 1.0 | `run: 3 done · agents 1 min, $0.4788 at list price · you 0 acts, 0 min` | 0.4788 | 0.4788 | 0.4788 | 18/20 | 12/12 |
 | codex | 3.8 | `run: 3 done · agents 4 min, $0.5559 at list price · you 0 acts, 0 min` | 0.5559 | 0.5559 | – | 18/20 | 12/12 |
 
-And at 05:27, after the second review's fixes, on a wheel of `722f71a`, the code this PR ends on:
+And at 05:27, after the second review's fixes, on a wheel of `722f71a` (after it, only the auto rule changed):
 
 | executor | minutes | bill line | bill $ | ledger $ | Claude's own $ | accept | quality |
 |---|---|---|---|---|---|---|---|

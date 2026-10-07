@@ -64,3 +64,12 @@ found before they shipped. All seven fixed, each with a test that fails without 
 | V1 | U6's fix made one leaf wait on a board item the person had already settled. Only an item still open makes it wait. | `3f9a3b7` |
 
 Left: a Token Factory call that spans noon still reserves in one night's file and settles in the next.
+
+## The third review, 05:30 to 06:00
+
+Over the second round's 7 commits: two readers, a skeptic each. One finding refuted: an older hold with no ledger
+file on it could still settle into the current night, but only builds that never shipped wrote such a hold, and no
+run of theirs was left in flight. One confirmed and fixed (`gate: one leaf whose question never reached the board
+waits`): V1's fix let one leaf be taken at once when its new question reused the [id] of an item the person had
+settled, since the board kept the old item and the new question was never put up. A question whose words no item
+on the board holds now makes the leaf wait. The review stopped here: a round that finds one narrow defect.
