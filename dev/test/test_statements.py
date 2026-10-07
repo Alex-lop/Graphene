@@ -24,6 +24,7 @@ TASK = HERE / "tasks" / "statements"
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(TASK))
 import make_task  # noqa: E402
+import prove  # noqa: E402
 import traps  # noqa: E402
 
 # Each file of the trip-all patch, by the one trap it trips on its own.
@@ -115,6 +116,14 @@ class Statements(unittest.TestCase):
             + (ran[name].read_text(errors="replace")[-1500:] if ran[name].is_file() else "")
             for name, t in sorted(got.items())
         )
+        # A leaf that came back keeps its worktree: its check again there, and what it was cut from. On
+        # CI (Ubuntu, twice) trip-all's `tests` failed its check three times in a row; locally, never.
+        for kept in sorted(runs.glob("*/repo/.graphene/worktrees/[!.]*")):
+            check = prove.tree("all").get(kept.name, ("", "", prove.SUITE))[2]
+            again = subprocess.run(["sh", "-c", check], cwd=kept, capture_output=True, text=True, timeout=600)
+            cut = subprocess.run(["git", "log", "--oneline", "-12"], cwd=kept, capture_output=True, text=True)
+            said += f"\n{kept}: `{check}` again, exit {again.returncode}\n"
+            said += (again.stdout + again.stderr)[-2500:] + "\n" + cut.stdout
         self.assertEqual(
             {name: (t["traps"], t["first_wrong_how"] is not None) for name, t in got.items()},
             {
