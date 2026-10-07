@@ -680,3 +680,23 @@ one); commit SHAs live in a response field the hook and the transcript name diff
 `git commit -q`; the store keeps no `cwd`; `bashEditDiff` has a `moreFiles` truncation count the
 first draft never mentioned; the "no mark ever moves" property was false as first written and is
 now stated in the form that is true; and the first draft's rollback command contained a banned word.
+
+## 14. The README essay, as it stood until 7 October
+
+The README carried this essay until the meter night, which cut the README to one short argument
+in Alex's voice. The essay is kept here, as it was.
+
+Agent work gets cheaper every few months. My attention doesn't.
+
+The conversation is still mostly "who has the better model?" and "what's the best harness?" I think that's becoming the wrong question. For most of what people build, the models we already have can write the code, debug it and fix it, once they know what you want. Whether the next jump comes from a model, a harness or something else entirely, the doing keeps getting cheaper. So the limit on building software is moving onto the person: knowing where the work should go, and having the drive to see it through.
+
+And the person gets the thinnest interface in the whole loop: a paragraph at the start and a diff at the end. However many tokens you give an agent, it can't know what you didn't say, so it infers. I let agents work on my repos for hours, and I kept finding out what they'd inferred from the diff, after the time and money were spent. That's the most expensive place to find out. And it gets worse as agents get cheaper, because then you run several at once: one paragraph can't tell five agents who does what, and five diffs at the end is five times the reading.
+
+I think the plan should be the interface: a tree you can read in a few seconds, shape before anything runs, and hold the agents to afterwards. Graphene is my attempt at that:
+
+- **See what it understood, before the work.** You say what you want in a paragraph, like always. Before a line is written, the planner (your own Claude Code or Codex, reading the repo with read-only tools) hands back a tree: the goal, the pieces, and for every leaf the files it may touch and the check that proves it done. Cutting a wrong branch costs a keystroke, not a restart.
+- **Questions, and guesses you can see.** What your words leave open and the repo can't answer comes back as a question, with the default it would take. Whatever it assumes anyway is written into the leaf, where you read it before anything runs.
+- **A plan that holds.** A plan an agent can drift from is just a longer prompt. Each leaf is held to its files, and "done" isn't the agent's word for it: Graphene runs the check itself and asks git what changed.
+- **Many agents, one plan.** A tree already says which work can happen side by side. Each leaf runs in its own worktree and lands as its own merge, so your history reads like the plan.
+
+I'm not going to tell you it saves 397% of your tokens, and I haven't shown yet that a tree beats a good paragraph (the honest numbers are under the run below). It's a bet: as the doing gets cheap, direction becomes the scarce thing, and Graphene's job is to help you and the agent land on the thing you actually had in mind from the start.

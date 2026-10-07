@@ -47,8 +47,19 @@ MESSAGES = {
     "the csv and json feeds. The prices in it are in cents.",
     "paragraph": (TASKS / "paragraph.md").read_text().strip(),
 }
-TOOLS = ["Read", "Edit", "Write", "Glob", "Grep", "Bash(graphene *)", "Bash(python3 *)", "Bash(git *)",
-         "Bash(ls *)", "Bash(cat *)", "Bash(mkdir *)"]  # fmt: skip
+TOOLS = [
+    "Read",
+    "Edit",
+    "Write",
+    "Glob",
+    "Grep",
+    "Bash(graphene *)",
+    "Bash(python3 *)",
+    "Bash(git *)",
+    "Bash(ls *)",
+    "Bash(cat *)",
+    "Bash(mkdir *)",
+]
 BUDGET = 1.5  # dollars a session may spend: --max-budget-usd, and what it reserves
 
 
@@ -66,19 +77,45 @@ def one(name: str, rnd: int, out: Path, path: str) -> dict:
     here = out / f"{name}-r{rnd}"
     repo = here / "repo"
     here.mkdir(parents=True, exist_ok=True)
-    subprocess.run([sys.executable, str(HERE / "make_task.py"), "feeds", str(repo)], check=True,
-                   capture_output=True)  # fmt: skip
+    subprocess.run(
+        [sys.executable, str(HERE / "make_task.py"), "feeds", str(repo)], check=True, capture_output=True
+    )
     me = person(path)
-    said = [f"$ graphene init --planner claude --executor claude\n{sh(['graphene', 'init', '--planner', 'claude', '--executor', 'claude'], repo, me)}"]  # noqa: E501
-    argv = ["claude", "-p", MESSAGES[name], "--model", "sonnet", "--permission-mode", "acceptEdits",
-            "--output-format", "stream-json", "--verbose", "--max-turns", "25", "--setting-sources",
-            "project,local", "--max-budget-usd", str(BUDGET), "--allowedTools", *TOOLS]  # fmt: skip
+    init = ["graphene", "init", "--planner", "claude", "--executor", "claude"]
+    said = [f"$ {' '.join(init)}\n{sh(init, repo, me)}"]
+    argv = [
+        "claude",
+        "-p",
+        MESSAGES[name],
+        "--model",
+        "sonnet",
+        "--permission-mode",
+        "acceptEdits",
+        "--output-format",
+        "stream-json",
+        "--verbose",
+        "--max-turns",
+        "25",
+        "--setting-sources",
+        "project,local",
+        "--max-budget-usd",
+        str(BUDGET),
+        "--allowedTools",
+        *TOOLS,
+    ]
     os.environ[night.PURPOSE] = "auto"
     held = night.reserve("claude:sonnet", BUDGET, f"auto: {name} r{rnd}", "claude code")
     started = time.monotonic()
     with open(here / "stream.jsonl", "w") as f:
-        subprocess.run(argv, cwd=repo, env=os.environ | {"PATH": path}, stdout=f, stderr=subprocess.STDOUT,
-                       stdin=subprocess.DEVNULL, timeout=1800)  # fmt: skip
+        subprocess.run(
+            argv,
+            cwd=repo,
+            env=os.environ | {"PATH": path},
+            stdout=f,
+            stderr=subprocess.STDOUT,
+            stdin=subprocess.DEVNULL,
+            timeout=1800,
+        )
     seconds = time.monotonic() - started
     result = {}
     for line in (here / "stream.jsonl").read_text(errors="replace").splitlines():
@@ -90,10 +127,18 @@ def one(name: str, rnd: int, out: Path, path: str) -> dict:
             result = ev
     cost = float(result.get("total_cost_usd") or 0)
     usage = result.get("usage") or {}
-    night.settle(held, "claude:sonnet", cost, {
-        "prompt_tokens": sum(usage.get(k, 0) for k in ("input_tokens", "cache_read_input_tokens",
-                                                       "cache_creation_input_tokens")),
-        "completion_tokens": usage.get("output_tokens", 0)})  # fmt: skip
+    night.settle(
+        held,
+        "claude:sonnet",
+        cost,
+        {
+            "prompt_tokens": sum(
+                usage.get(k, 0)
+                for k in ("input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens")
+            ),
+            "completion_tokens": usage.get("output_tokens", 0),
+        },
+    )
     plan = sh(["graphene", "plan", "--text", "--all"], repo, me)
     log = sh(["graphene", "plan", "log"], repo, me)
     board = sh(["graphene", "board"], repo, me)
@@ -103,12 +148,15 @@ def one(name: str, rnd: int, out: Path, path: str) -> dict:
     for check in ("accept", "quality"):
         got = sh([sys.executable, str(TASKS / f"{check}.py"), str(repo)], repo, me | {"PATH": path})
         try:
-            checks[check] = json.loads(got[got.index("{"):])
+            checks[check] = json.loads(got[got.index("{") :])
         except ValueError:
             checks[check] = {"passed": "?", "failed": "?"}
     leaves = [n for n in nodes if not any(m.get("parent") == n["id"] for m in nodes)]
     row = {
-        "name": name, "round": rnd, "leaves": len(leaves), "nodes": len(nodes),
+        "name": name,
+        "round": rnd,
+        "leaves": len(leaves),
+        "nodes": len(nodes),
         "board": int(m.group(1)) if (m := re.search(r"the board: (\d+) open", board)) else 0,
         "states": sorted({n["state"] for n in nodes}),
         "widths": [len(n.get("scope") or []) for n in leaves],
@@ -116,13 +164,19 @@ def one(name: str, rnd: int, out: Path, path: str) -> dict:
         "wrote": bool([s for s in status.splitlines() if s.strip()]),
         "accept": f"{checks['accept'].get('passed')}/{_total(checks['accept'])}",
         "quality": f"{checks['quality'].get('passed')}/{_total(checks['quality'])}",
-        "turns": result.get("num_turns"), "dollars": round(cost, 4), "seconds": round(seconds),
-    }  # fmt: skip
-    said += [f"$ claude -p <{name}> ... ({row['turns']} turns, ${cost:.2f}, {seconds:.0f} s)",
-             "reply: " + str(result.get("result") or "")[:1200],
-             f"$ graphene plan --text --all\n{plan}", f"$ graphene board\n{board}",
-             f"$ graphene plan log\n{log}", f"$ git status --short\n{status}",
-             f"hidden checks: accept {row['accept']}, quality {row['quality']}"]  # fmt: skip
+        "turns": result.get("num_turns"),
+        "dollars": round(cost, 4),
+        "seconds": round(seconds),
+    }
+    said += [
+        f"$ claude -p <{name}> ... ({row['turns']} turns, ${cost:.2f}, {seconds:.0f} s)",
+        "reply: " + str(result.get("result") or "")[:1200],
+        f"$ graphene plan --text --all\n{plan}",
+        f"$ graphene board\n{board}",
+        f"$ graphene plan log\n{log}",
+        f"$ git status --short\n{status}",
+        f"hidden checks: accept {row['accept']}, quality {row['quality']}",
+    ]
     (here / "run.txt").write_text("\n\n".join(said) + "\n")
     return row
 
@@ -146,14 +200,18 @@ def main() -> int:
     for rnd in range(1, a.rounds + 1):
         with ThreadPoolExecutor(len(a.only)) as pool:
             rows += list(pool.map(lambda n, r=rnd: one(n, r, a.out, path), a.only))
-    head = ("| message | round | nodes | leaves | board | taken at once | wrote code | accept | quality "
-            "| turns | $ | s |")
+    head = (
+        "| message | round | nodes | leaves | board | taken at once | wrote code | accept | quality "
+        "| turns | $ | s |"
+    )
     lines = [head, "|" + "---|" * 12]
     for r in rows:
-        lines.append(f"| {r['name']} | {r['round']} | {r['nodes']} | {r['leaves']} {r['widths']} "
-                     f"| {r['board']} | "
-                     f"{'yes' if r['taken'] else 'no'} | {'yes' if r['wrote'] else 'no'} | {r['accept']} | "
-                     f"{r['quality']} | {r['turns']} | {r['dollars']} | {r['seconds']} |")  # fmt: skip
+        lines.append(
+            f"| {r['name']} | {r['round']} | {r['nodes']} | {r['leaves']} {r['widths']} "
+            f"| {r['board']} | "
+            f"{'yes' if r['taken'] else 'no'} | {'yes' if r['wrote'] else 'no'} | {r['accept']} | "
+            f"{r['quality']} | {r['turns']} | {r['dollars']} | {r['seconds']} |"
+        )
     (a.out / "summary.md").write_text("\n".join(lines) + "\n")
     print("\n".join(lines))
     return 0
