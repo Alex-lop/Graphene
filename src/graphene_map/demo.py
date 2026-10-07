@@ -82,11 +82,12 @@ def _kept() -> str:
 
 def hider(root: Path) -> tuple:
     """What a recording must not hold, taken out of every string: the repository's path (`{repo}`), the
-    home directory (`~`), the key and the project in the environment, and anything shaped like a key.
+    home directory (`~`, and as Claude Code spells it in a folder's name, its slashes as dashes), the key
+    and the project in the environment, and anything shaped like a key.
     Returns the function and its list of (text, instead), to which a sandbox image is added when seen."""
     home = str(Path.home())
     said = [(p, "{repo}") for p in sorted({str(root), str(root.resolve())}, key=len, reverse=True)]
-    said += [(home, "~")] if len(home) > 1 else []
+    said += [(home, "~"), (home.replace("/", "-"), "-~")] if len(home) > 1 else []  # Claude Code dashes it
     found = {os.getenv(k, "") for k in ("NEBIUS_API_KEY", "NEBIUS_PROJECT_ID")} | {_kept()}  # keychain's too
     said += [(k, "[removed]") for k in sorted(found, key=len, reverse=True) if len(k) > 7]
 
@@ -118,7 +119,8 @@ def leaks(text: str) -> dict[str, int]:
                "the project": {os.getenv("NEBIUS_PROJECT_ID", "")}}  # fmt: skip
     counts = {what: sum(text.count(v) for v in values if len(v) > 7) for what, values in secrets.items()}
     shaped = sum(1 for w in WORD.findall(text) if KEY.search(w)) + len(BASE64.findall(text))
-    return counts | {"the home directory": text.count(home) if len(home) > 1 else 0,
+    mine = text.count(home) + text.count(home.replace("/", "-")) if len(home) > 1 else 0
+    return counts | {"the home directory": mine,
                      "a path under a home directory": len(HOMES.findall(text)),
                      "words shaped like a key": shaped}  # fmt: skip
 
