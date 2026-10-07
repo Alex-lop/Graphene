@@ -82,7 +82,7 @@ def test_what_nemotron_sends_says_precheck_uploads_the_checkout_to_sandboxes():
 
     forks = inspect.getsource(precheck._forks)
     assert 'or "contree"' in forks and "S.pack(root)" in forks  # ConTree by default, the checkout packed
-    privacy = doc("README.md").split("## Privacy")[1].split("## ")[0]
+    privacy = doc("docs/HOW_IT_WORKS.md").split("## Privacy")[1].split("## ")[0]
     assert "With Claude Code or Codex, Graphene sends nothing anywhere." in privacy
     assert "Nemotron on Token Factory is an optional extra; what it sends is in [HACKATHON.md]" in privacy
     sends = doc("docs/HACKATHON.md").split("**What it sends.**")[1].split("**")[0]

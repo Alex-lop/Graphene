@@ -1,8 +1,8 @@
 """Claude Code's hooks: `graphene init` installs one command, `graphene ingest hook`, on eight
 events; each event is recorded in the store and, with a plan in force, answered by the gate
 (``gate.decide``). This is the hook's path: nothing it imports reaches Typer or Rich, it writes
-nothing on stdout but the gate's answer, and it never fails the agent (docs/HOW_IT_WORKS.md, part
-two). The agent waits for it on every tool call, so what only some events need (git, the gate and
+nothing on stdout but the gate's answer, and it never fails the agent (docs/HOW_IT_WORKS.md, "The
+record"). The agent waits for it on every tool call, so what only some events need (git, the gate and
 the plan, a traceback, an id) is imported where it is used, and tests/test_hook_budget.py holds the
 list of what an event imports.
 """
