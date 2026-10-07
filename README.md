@@ -46,6 +46,14 @@ $ graphene plan --view tree
                   ✓ zero-rule                     ✓ xml-feed
         Reject price 0 in… $0.13 · <1m     Add the xml… $0.17 · <1m
 2 sub-goals · 2 leaves
+
+$ git log --graph --oneline
+*   6944ab4 Add the xml reader and wire it in (xml-feed)
+|\
+| * 6449b2a Add the xml reader and wire it in
+|/
+*   807669b Reject price 0 in validation (zero-rule)
+…
 ```
 
 It asked me nothing this time. It said what it would leave alone, which is exactly what I'd have checked first, and it was right. Against the hidden checks it passed 18 of 20 (the 2 misses are a change of mind I never sent) and 12 of 12 held-out, and the six files I'd put off limits weren't touched. Honestly though, in the three comparisons so far a plain paragraph to the same agent did just as well for less ([the latest](dev/test/results-2026-09-23.md)). What I'm betting on is *when* you find out what it understood: before the work, not after.
