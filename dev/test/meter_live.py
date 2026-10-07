@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The meter, live: the feeds task, run by `graphene run --parallel 2` with each executor.
 
-    dev/test/meter_live.py OUT --tool BIN [--executors claude codex nemotron] [--rounds 2] [--tree FILE]
+    dev/test/meter_live.py OUT --tool BIN --python PY [--executors claude codex nemotron] [--rounds 2]
 
 Each run gets OUT/<executor>-r<round>/: the repo, the run's output (`run.txt`), the screens of `graphene
 watch` while it ran (`shots/`, at 80 and 120 columns, by meter_shot.py), `node show` of each leaf,
@@ -9,9 +9,8 @@ watch` while it ran (`shots/`, at 80 and 120 columns, by meter_shot.py), `node s
 is the table: the bill line beside the ledger's sum for the same run.
 
 The person's acts (init, ask, accept, run) run with no agent's mark: the person is this script. Every run
-gets the same tree, so the executors are compared on one plan: --tree is a planner's proposal saved
-from an earlier ask, printed by a canned planner. Without --tree, the first run asks Claude Code's
-planner and its proposal is saved for the rest (OUT/tree.txt).
+gets the same tree, so the executors are compared on one plan: the first run asks Claude Code's planner,
+and its proposal is saved (OUT/tree.txt) and printed by a canned planner for the rest.
 
 Spend goes on the night's ledger, purpose `meter`: GRAPHENE_AGENT_LIVE_USD must be set. Claude Code runs
 Sonnet with --max-budget-usd 2 an attempt. Codex runs `codex exec --json` against Nemotron Super on
