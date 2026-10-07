@@ -86,9 +86,10 @@ def ledger_rows(since: float, until: float, prefix: str, leaves: list[str]) -> l
     rows = [json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
     tags = {r.get("id"): str(r.get("tag") or "") for r in rows if r.get("kind") == "reserve"}
 
-    def mine(r: dict) -> bool:
-        tag = tags.get(r.get("id"), "")
-        return tag.startswith("run: ") or tag in leaves
+    def mine(r: dict) -> bool:  # `run: <leaf> attempt <n>`, or a Nemotron call's own leaf id
+        words = tags.get(r.get("id"), "").split()
+        leaf = words[1] if words[:1] == ["run:"] and len(words) > 1 else words[0] if words else ""
+        return leaf in leaves
 
     return [
         r
