@@ -35,10 +35,12 @@ sub-agents outside Graphene. `dev/process/meter/dogfood.md`.
 
 ## Branches
 
-- `main`: `af3da2c`, untouched, local and on GitHub.
-- `meter`: the night, pushed; the PR is the only one. 67 commits, 39 on its first-parent line.
+- `main`: `af3da2c`, untouched, local and on GitHub. Rollback: close PR #40.
+- `meter`: the night, pushed; PR #40 is the only one. 103 commits, 61 on its first-parent line, more than the
+  30 to 50 you like; the directive rules out a force-push, so a reshape is yours to ask for.
 - In this run's clone only, all merged into `meter`: `meter-core`, `meter-l1`, `meter-l1b`, `meter-move`,
-  `meter-record`, `meter-run`, `meter-size`, `meter-watch`, `dogfood`.
+  `meter-record`, `meter-run`, `meter-size`, `meter-watch`, `dogfood`, and the review's `meter-fix-ledger`,
+  `meter-fix-screens`, `meter-fix-edges`.
 
 ## What was done, in order
 
