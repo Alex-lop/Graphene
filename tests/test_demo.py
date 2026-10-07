@@ -185,8 +185,9 @@ def test_a_sandbox_image_is_taken_out_in_words_the_leafs_pane_shows_whole(tmp_pa
 def test_the_replay_says_live_only_when_every_model_call_on_record_went_to_token_factory(tmp_path):
     """The label came from the recorder's own environment, so a run against the fake recorded from a second
     terminal replayed "as it ran, live". It comes from the run: live only when the recorder saw it so and
-    every `usage` row says Token Factory; a stand-in when any does not, or does not say (a row recorded
-    before rows said); and a run with no model call on record says that."""
+    every `usage` row names who really answered (Token Factory, Claude Code, Codex); a stand-in when any
+    does not, or does not say (a row recorded before rows said); and a run with no model call on record
+    says that."""
     live = {"graphene demo": 1, "recorded": "2026-09-26T03:47:14.410Z", "graphene": "0.5.0",
             "repository": "r", "stand_in": False, "shown": "as it ran, live"}  # fmt: skip
     stand_in = live | {"stand_in": True, "shown": "a scripted stand-in, not Nemotron"}
@@ -195,8 +196,11 @@ def test_the_replay_says_live_only_when_every_model_call_on_record_went_to_token
         return {"id": 1, "node_id": "*", "kind": "usage", "detail": json.dumps({"dollars": 0.01} | where)}
 
     tf, fake = usage(endpoint="token factory"), usage(endpoint="a stand-in")
+    claude, codex = usage(endpoint="claude code"), usage(endpoint="codex")
     cases = [
         (live, [[tf], [], [tf]], "as it ran, live"),
+        (live, [[claude], [codex, tf]], "as it ran, live"),  # Claude Code's run is no stand-in's
+        (live, [[claude, fake]], "a scripted stand-in, not Nemotron"),
         (live, [[tf], [fake]], "a scripted stand-in, not Nemotron"),
         (live, [[tf, usage()]], "a scripted stand-in, not Nemotron"),
         (stand_in, [[tf]], "a scripted stand-in, not Nemotron"),
