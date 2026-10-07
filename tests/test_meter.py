@@ -24,11 +24,13 @@ def test_claude_turns_tokens_and_dollars_settle_to_what_it_reports():
     usage = [d for k, d in rows if k == "usage"]
     assert meter.model == "claude-sonnet-5-5" and meter.turns == 3 and meter.unread == 0
     assert [d["turn"] for d in usage[:-1]] == [1, 2, 3] and "turn" not in usage[-1]
-    assert (meter.prompt_tokens, meter.completion_tokens) == (6 + 11782 + 48637, 16 + 16 + 43)
+    # the stream says 16 + 16 + 43 tokens out, written before each message ends; the result says 539
+    assert (meter.prompt_tokens, meter.completion_tokens) == (6 + 11782 + 48637, 539)
     assert sum(d["dollars"] for d in usage) == pytest.approx(0.0622574) == meter.dollars
     assert usage[-1] | {"dollars": 0} == {
-        "model": "claude-sonnet-5-5", "calls": 0, "prompt_tokens": 0, "completion_tokens": 0, "dollars": 0,
-        "endpoint": "claude code", "attempt": 1, "turns": 3, "reported": 0.062257400000000004}  # fmt: skip
+        "model": "claude-sonnet-5-5", "calls": 0, "prompt_tokens": 0, "completion_tokens": 539 - 75,
+        "dollars": 0, "endpoint": "claude code", "attempt": 1, "turns": 3,
+        "reported": 0.062257400000000004}  # fmt: skip
     did = [(d["verb"], d["target"]) for k, d in rows if k == "did"]
     assert did == [("reading", "hello.py"), ("editing", "hello.py"), ("running", "python3 hello.py")]
     assert meter.last.startswith("I added `add(a, b)`")

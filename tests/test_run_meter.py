@@ -229,7 +229,7 @@ def test_under_the_opening_an_attempt_holds_its_worst_case_and_settles_at_what_i
                                          "tag": "run: a attempt 1", "endpoint": "claude code", "dollars": 2.0,
                                          "purpose": "unsaid", "practice": True}  # fmt: skip
     assert settled["id"] == held["id"] and settled["dollars"] == pytest.approx(CLAUDE_COST)
-    assert (settled["prompt_tokens"], settled["completion_tokens"]) == (60425, 75)
+    assert (settled["prompt_tokens"], settled["completion_tokens"]) == (60425, 539)  # as the result says
 
 
 def test_an_attempt_the_ledger_refuses_never_starts_and_its_leaf_comes_back(repo, tmp_path, monkeypatch):
