@@ -202,6 +202,27 @@ def test_git_is_asked_before_the_write_lock_is_taken(repo, monkeypatch):
         assert seen and not any(seen)
 
 
+def test_what_a_leaf_did_last_is_the_meters_row_then_its_logs_last_line_not_the_streams_json(repo):
+    run = Caller("run:claude", False, "run-session")
+    log = repo / ".graphene" / "runs" / "a-1.txt"
+    log.parent.mkdir(parents=True, exist_ok=True)
+    log.write_text('{"type":"system"}\nwarning: slow disk\n{"type":"assistant","message":{}}\n')
+    with Store.open(repo) as store:
+        plan.propose(store, [leaf("a", "a.txt")], ALEX)
+        plan.start(store, "a", run, repo)
+        attempt = {"attempt": 1, "log": str(log)}
+        store.log_node("a", plan._now(), "attempt", run.label, run.session_id, None, attempt)
+        node = plan.get(store, "a")
+        assert R.live(store, node)["last"] == "warning: slow disk"  # no meter's row yet, and no hook's call
+        did = {"attempt": 1, "tool": "Edit", "target": "a.txt", "verb": "editing"}
+        store.log_node("a", plan._now(), "did", run.label, run.session_id, None, did)
+        assert R.live(store, node)["last"] == "editing a.txt"
+        said = {"attempt": 1, "text": "done"}
+        store.log_node("a", plan._now(), "said", run.label, run.session_id, None, said)
+        seen = R.live(store, node)
+        assert seen["last"] == "done" and seen["attempt"] == 1 and seen["idle"] < 20
+
+
 def test_the_executors_output_is_a_tail_while_it_runs(repo):
     with Store.open(repo) as store:
         plan.propose(store, [leaf("a", "a.txt")], ALEX)
