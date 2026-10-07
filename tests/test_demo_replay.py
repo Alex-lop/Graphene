@@ -5,11 +5,14 @@ gives way to the next change, and j k still move after `r`."""
 
 import asyncio
 import re
+from pathlib import Path
 
 import pytest
 
 from graphene_map import demo, plan
 from graphene_map.store import Store
+
+RECORDINGS = Path(__file__).parent / "recordings"
 
 
 def frames(tmp_path, size, before=()):
@@ -91,3 +94,32 @@ def test_the_replays_clock_is_its_recordings_and_it_draws_no_meter_strip():
     rows = [{"timestamp": "2026-09-29T07:58:47.069Z"}, {"timestamp": "2026-09-29T08:01:00.000Z"}]
     assert demo.Replay.clock(None, rows) == datetime.fromisoformat("2026-09-29T08:01:00.000Z")
     assert demo.Replay.METERS is False
+
+
+def test_a_recording_made_with_the_meter_draws_its_strip_and_the_shipped_one_does_not(tmp_path):
+    """The shipped recording is from before the meter; the night's Claude Code run on feeds is not. While a
+    leaf of it runs, its live row shows, with the dollars it had reached then."""
+    strips = {}
+    for name, path in (("shipped", demo.SHIPPED), ("meter", RECORDINGS / "meter-claude.jsonl")):
+        head, lines = demo.load(path)
+        (tmp_path / name).mkdir()
+        app, shown = demo.Replay(demo.repository(tmp_path / name, head), head, lines), []
+
+        async def go(app=app, lines=lines, shown=shown):
+            async with app.run_test(size=(80, 24)) as pilot:
+                await pilot.pause(0.3)
+                await pilot.press("space")
+                for _ in lines:  # `.` is one change each time: it stalled on a float once, at change 31
+                    await pilot.press("full_stop")
+                    await pilot.pause(0.05)
+                    strip = app.query_one("#meter")
+                    if strip.display:
+                        shown.append(str(strip.render()))
+                shown.append(app.next == len(lines))
+
+        asyncio.run(go())
+        strips[name] = shown
+    assert strips["shipped"] == [True]
+    *rows, ended = strips["meter"]
+    assert ended and any("claude" in s and "$" in s for s in rows), rows
+    assert not any("no meter" in s or re.search(r"-\d+ s ago", s) for s in rows), rows  # 7 October's two
