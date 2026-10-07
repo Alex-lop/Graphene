@@ -104,17 +104,18 @@ def _unwrapped(command: str) -> str:
 
 class Meter:
     """One attempt's stream, read line by line. ``price`` gives Codex's model its dollars per prompt
-    token and per completion token, or None when the model has no list price."""
+    token and per completion token, or None when the model has no list price. ``cwd`` is the checkout
+    it works in: a file it names under it is said from there (Claude Code's init says its own)."""
 
     def __init__(self, kind: str, attempt: int, model: str | None = None, paid_before: float = 0.0,
-                 price=None):  # fmt: skip
+                 price=None, cwd: str | None = None):  # fmt: skip
         self.kind, self.attempt, self.paid_before, self.price = kind, attempt, paid_before, price
         self.model = model or ("codex" if kind == "codex" else None)
         self.turns = self.prompt_tokens = self.completion_tokens = self.unread = 0
         self.begun = 0  # Codex's turns started: one not completed spent what no row says
         self.dollars, self.priced, self.reported = 0.0, True, None
         self.last: str | None = None
-        self.cwd: str | None = None
+        self.cwd = cwd
         self._seen: set[str] = set()  # Claude's message ids counted, Codex's commands logged
 
     def feed(self, line: str) -> list[tuple[str, dict]]:
@@ -234,9 +235,9 @@ class Meter:
             return [self._did("command_execution", _unwrapped(item.get("command") or ""), "running")]
         if kind == "item.started":
             return []
-        if item.get("type") == "file_change":
-            changes = item.get("changes") or []
-            return [self._did("file_change", c.get("path") or "", "editing") for c in changes]
+        if item.get("type") == "file_change":  # each by its absolute path: said from the checkout, then cut
+            paths = [c.get("path") for c in item.get("changes") or []]
+            return [self._did("file_change", self._target({"file_path": p}), "editing") for p in paths]
         if item.get("type") == "agent_message":
             return self._said(item.get("text") or "")
         if item.get("type") == "error":

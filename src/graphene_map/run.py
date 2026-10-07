@@ -490,7 +490,7 @@ def run_node(
             meter = read = None
             if kind:  # what it writes is a stream the meter reads: read as it is written
                 price = _listed().get if kind == "codex" else None
-                meter = M.Meter(kind, attempt, M.model_in(argv), paid, price)
+                meter = M.Meter(kind, attempt, M.model_in(argv), paid, price, str(checkout))
                 read = Reader(log, meter, lambda k, d: store.log_node(node.id, P._now(), k, who.label,
                                                                       session, None, d))  # fmt: skip
             try:
