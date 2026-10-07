@@ -315,6 +315,28 @@ def test_one_leaf_with_a_board_item_already_open_on_the_board_still_waits(repo, 
         assert plan.get(store, "footer").state == PROPOSED
 
 
+def test_one_leaf_with_board_items_the_person_settled_is_theirs_at_once(repo, monkeypatch):
+    """The second review of 7 October: any board item in the proposal kept the leaf for the person, so
+    questions put up again after the person took one's default and dropped the other made it wait on
+    nothing, and the agent was told it put up a board item. Only an item still open keeps the leaf."""
+    from graphene_map import board
+
+    with Store.open(repo) as store:
+        plan.set_plan_first(store, "auto", ALEX)
+    asked = (
+        "question: which header?  [which]\n    default: the top one\n"
+        "question: which footer?  [where]\n    default: the bottom one\n"
+    )
+    hook(repo, "UserPromptSubmit", prompt="fix the header")
+    assert "it put up a board item" in propose(repo, monkeypatch, asked + LEAF).stdout
+    with Store.open(repo) as store:
+        board.take(store, "which", ALEX)
+        board.drop(store, "where", ALEX)
+    hook(repo, "UserPromptSubmit", prompt="and the footer")
+    said = propose(repo, monkeypatch, asked + "- the footer  [footer]\n    scope: README.md\n    check: true")
+    assert "footer is accepted, as the person's" in said.stdout, said.output
+
+
 def test_one_leaf_whose_scope_reaches_a_protected_file_git_does_not_track_waits(repo, monkeypatch):
     """The review of 7 October: propose refuses a scope over a protected file git tracks, and never saw
     one it does not: `certs/**` over an ignored certs/server.pem, with `protected: **/*.pem`, was the
