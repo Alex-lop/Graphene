@@ -425,11 +425,13 @@ def run_node(
                     sink.close()
             stop.add(node.id, proc)
             began = time.monotonic()
+            kind = M.kind(argv) if log else None
+            metered = kind or ("nemotron" if name == "nemotron" else None)  # Nemotron writes its own rows
             store.log_node(node.id, P._now(), "attempt", who.label, session, None,
                            {"attempt": attempt, "pid": proc.pid, "pid_start": _started(proc.pid),
                             "run_pid": os.getpid(), "run_start": _started(os.getpid()),
-                            "log": str(log) if log else None, "checkout": str(checkout)})  # fmt: skip
-            kind = M.kind(argv) if log else None
+                            "log": str(log) if log else None, "checkout": str(checkout),
+                            "meter": metered})  # fmt: skip
             meter = read = None
             if kind:  # what it writes is a stream the meter reads: read as it is written
                 price = _listed().get if kind == "codex" else None
@@ -451,8 +453,7 @@ def run_node(
             # not an "attempt" row: readers take the last of those as the attempt going now
             store.log_node(node.id, P._now(), "ended", who.label, session, None,
                            {"attempt": attempt, "exit": code, "seconds": round(time.monotonic() - began, 1),
-                            "meter": kind or ("nemotron" if name == "nemotron" else None),  # writes its own
-                            "unread": meter.unread if meter else 0})  # fmt: skip
+                            "meter": metered, "unread": meter.unread if meter else 0})  # fmt: skip
             if stop.event.is_set():
                 raise KeyboardInterrupt
             say(f"{node.id} attempt {attempt}: the executor ended (exit {code})")
@@ -633,16 +634,16 @@ def live(store, node: P.Node, now: float | None = None) -> dict:
     log = detail.get("log")
     metered = (M.attempts(store.node_log(node.id)) or [{}])[-1] if attempt else {}
     last = store.last_events(node.session_id) if node.session_id else []
+    now = time.time() if now is None else now
     stamps = []
     if metered.get("last_at"):
         stamps.append(_seconds(metered["last_at"]))
     if last:
         stamps.append(_seconds(last[-1]["timestamp"]))
-    if log and os.path.exists(log):
+    if log and os.path.exists(log) and os.path.getmtime(log) <= now:  # a replay's log is written as it plays
         stamps.append(os.path.getmtime(log))
     if attempt:
         stamps.append(_seconds(attempt["timestamp"]))
-    now = time.time() if now is None else now
     return {
         "executor": node.executor,
         "checkout": node.checkout,

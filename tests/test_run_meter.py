@@ -104,6 +104,7 @@ def test_the_stream_lands_on_the_leaf_while_the_executor_runs(repo, name, with_,
     try:
         assert wait_for(lambda: rows(repo, "usage")), "no usage row while the executor ran"
         assert run.poll() is None and not rows(repo, "ended")  # the executor is still waiting for go
+        assert [e["detail"]["meter"] for e in rows(repo, "attempt")] == [name]  # known from the start
     finally:
         go.write_text("go")
     said, _ = run.communicate(timeout=60)

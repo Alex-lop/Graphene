@@ -165,6 +165,15 @@ def test_attempts_of_one_leaf():
     assert M.attempts([row("00:00", "started", {}), row("00:05", "released", {})]) == []  # never tried
 
 
+def test_an_attempt_says_its_meter_from_its_start():
+    """Live, 7 October: a Claude Code leaf read "no meter" until its first turn's usage came. Its attempt
+    row says which stream it writes, so until then it has a meter and no usage yet."""
+    starting = [row("00:00", "attempt", {"attempt": 1, "meter": "claude"})]
+    unread = [row("00:00", "attempt", {"attempt": 1, "meter": None})]
+    assert [a["meter"] for a in M.attempts(starting, now=NOW)] == ["claude"]
+    assert [a["meter"] for a in M.attempts(unread, now=NOW)] == [None]
+
+
 def test_agents_and_you():
     b = [row("00:00", "attempt", {"attempt": 1}, actor="run:codex", node="b"),
          row("00:30", "usage", usage(1, 0, turn=1, endpoint="codex", priced=False), node="b"),
