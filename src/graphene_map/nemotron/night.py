@@ -201,6 +201,15 @@ def settle(held_id: str | None, model: str, dollars: float, usage: dict | None =
                  "completion_tokens": usage.get("completion_tokens") or 0}, held.get("purpose"))  # fmt: skip
 
 
+def flying(ledger: str | None = None) -> set:
+    """The ids held in ``ledger`` (else the night's now) and not settled yet."""
+    if not (Path(ledger) if ledger else where()).exists():
+        return set()
+    with _held(ledger) as (rows, _):
+        settled = {r.get("id") for r in rows if r.get("kind") == "settle"}
+        return {r.get("id") for r in rows if r.get("kind") == "reserve"} - settled
+
+
 def sandbox(op: str, seconds: float) -> None:
     """One ConTree operation and how long it ran: a sandbox runs only while an operation does."""
     if cap() is None:

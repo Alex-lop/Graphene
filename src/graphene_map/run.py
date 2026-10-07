@@ -185,7 +185,9 @@ def sweep(store, say: Callable[[str], None], root: Path | None = None) -> None:
     stopped for it. A parallel run that died outright (kill -9, Force Quit) left its executors
     working, and a leaf one of them finished is done in the run's worktree and nowhere here: it is
     parked as a stopped run parks it (``park``), committed on its branch and waiting in review. Either
-    way the dead run's attempt is closed first (``_close``): nothing else settles its hold."""
+    way the dead run's attempt is closed first (``_close``): nothing else settles its hold. Last, every
+    hold a dead run left in flight in its ledger is closed, whatever its leaf has become since: the
+    executor left working may have ended the leaf itself (`done`, or `release`)."""
     for n in P.nodes(store, (P.RUNNING,)):
         if not (n.executor or "").startswith("run:"):
             continue
@@ -216,6 +218,16 @@ def sweep(store, say: Callable[[str], None], root: Path | None = None) -> None:
         if run.get("run_pid") and not _still(run["run_pid"], run.get("run_start")):
             _close(run)
             park(store, tree, n, say)
+    if not (night := extra.load("night")):
+        return
+    flying = functools.cache(night.flying)  # each ledger read once
+    for e in store.node_log(None, ("attempt",)):
+        this = e["detail"]
+        hold = this.get("hold") or {}
+        if not hold.get("id") or hold["id"] not in flying(hold.get("ledger")):
+            continue  # no hold, or settled
+        if this.get("run_pid") and not _still(this["run_pid"], this.get("run_start")):
+            _close(this)
 
 
 def _close(this: dict) -> None:

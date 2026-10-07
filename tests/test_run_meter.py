@@ -335,6 +335,32 @@ def test_a_hold_settles_in_the_ledger_that_holds_it_under_its_own_purpose_whenev
     assert not (tmp_path / "next.jsonl").exists()
 
 
+def test_the_sweep_settles_a_dead_runs_hold_whatever_its_leaf_has_become_and_never_a_live_runs(
+    repo, tmp_path, monkeypatch
+):
+    """The second review of 7 October: the sweep settled a dead run's hold only through a leaf still
+    `running`, or done in a run's worktree. The executor a run killed outright leaves working ends its leaf
+    itself (`release`, or `done` with --here), and its $3 stayed in flight until noon."""
+    from graphene_map.nemotron import night
+
+    monkeypatch.setenv("GRAPHENE_AGENT_LIVE_USD", "10")
+    gone = subprocess.Popen(["true"])
+    gone.wait()  # its pid, beside a start no process has: a run that ended
+    runs = {"dead": (gone.pid, "Thu Jan  1 00:00:00 1970"), "live": (os.getpid(), R._started(os.getpid()))}
+    last = str(tmp_path / "last.jsonl")  # the night each was held in
+    with Store.open(repo) as store:  # leaf a is open: the dead run's executor handed it back itself
+        for who, (pid, began) in runs.items():
+            hold = {"model": "claude:default", "worst": 3.0, "paid": 0.0, "ledger": last}
+            hold["id"] = night.reserve(hold["model"], 3.0, f"run: a {who}", "claude code", last)
+            store.log_node("a", plan._now(), "attempt", "run:claude", who, None,
+                           {"attempt": 1, "run_pid": pid, "run_start": began, "log": None, "meter": "claude",
+                            "hold": hold})  # fmt: skip
+        R.sweep(store, lambda _: None, repo)
+    got = [json.loads(line) for line in Path(last).read_text().splitlines()]
+    assert [(r["kind"], r["dollars"]) for r in got] == [("reserve", 3.0), ("reserve", 3.0), ("settle", 3.0)]
+    assert got[2]["id"] == got[0]["id"] and not ledger(tmp_path)  # the dead run's, in its own night
+
+
 def test_an_attempt_the_ledger_refuses_never_starts_and_its_leaf_comes_back(repo, tmp_path, monkeypatch):
     monkeypatch.setenv("GRAPHENE_AGENT_LIVE_USD", "1")
     script, _ = printing(repo, "codex", "codex.jsonl", -1)
