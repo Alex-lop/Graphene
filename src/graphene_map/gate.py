@@ -338,7 +338,7 @@ def _width(scope: list[str], files: list[str]) -> int:
 
 
 def one_line_ask(
-    store, added: list[P.Node], who: P.Caller, files: list[str], board: list[dict]
+    store, added: list[P.Node], who: P.Caller, files: list[str], board: list[dict], root: Path
 ) -> str | None:
     """The one-line ask stays free. One leaf, with its scope and its check and nothing under it,
     proposed by a Claude Code session that holds no leaf, after the person's last prompt there and
@@ -350,9 +350,10 @@ def one_line_ask(
     ``board``, on the board already or not, or by the session since the prompt), and one whose
     scope reaches more than WIDE paths (the tracked ``files``). Returns what `graphene plan propose`
     says instead of "proposed", or None. A standing path in the scope is refused before this, at
-    propose. The hole is decision 19's: an agent that starts a second agent chooses its prompt, and a
-    subagent carries its session's id. Plan first on and `graphene plan prompts strict` turn
-    this off."""
+    propose, when git tracks it or a glob names it; one git does not track in ``root``, the checkout
+    (an ignored .env), makes the leaf wait. The hole is decision 19's: an agent that starts a second
+    agent chooses its prompt, and a subagent carries its session's id. Plan first on and
+    `graphene plan prompts strict` turn this off."""
     sid = who.session_id
     asked = store.meta(f"prompt_at:{sid}") if sid and not who.person else None
     if not asked or not added or _strict(store) or P.plan_first(store) == "on" or _held(store, sid):
@@ -379,9 +380,16 @@ def one_line_ask(
 
     mine = [it for it in B.items(store) if it["by"] == who.label and it["created_at"] >= asked]
     reach = _width(node.scope, files)
+    # propose sees what git tracks; a file it does not, ignored or not, is asked of git here, under no lock
+    standing = P.standing(store)
+    specs = [f":(glob,icase){g}{tail}" for _, g in standing for tail in ("", "/**")]
+    near = P._git(root, "ls-files", "-z", "--others", "--", *specs).split("\0") if standing else []
+    kept = next((p for p in near if p and P.in_scope(p, node.scope) and P.kept_out_by(p, standing)), None)
     why = (
         "it put up a board item"
         if board or any(it["state"] == "open" for it in mine)
+        else f"its scope reaches {kept}, which the setting `{P.kept_out_by(kept, standing)}` keeps out"
+        if kept
         else f"its scope reaches {reach} paths, more than {WIDE}"
         if reach > WIDE
         else None
