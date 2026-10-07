@@ -198,3 +198,14 @@ def test_an_attempt_from_before_the_meter_ends_where_its_hold_did():
              row("00:00", "attempt", {"attempt": 1}, node="b"), row("00:30", "released", {}, node="b")]
     assert [(a["running"], a["seconds"]) for a in M.attempts(older[:2], now=NOW)] == [(False, 40)]
     assert M.agents(older, NOW) == {"running": 0, "seconds": 70, "dollars": 0, "unpriced": 0}
+
+
+def test_an_attempt_with_no_ended_row_ends_where_its_leaf_was_dropped():
+    """The review of 7 October: a run killed hard (or a store from before the meter), then its leaf
+    dropped, left an attempt with no `ended` row running for good: the next morning the status line
+    read `agents: 1 running · 1440 min` with nothing running, and the minutes kept growing."""
+    dropped = [row("00:00", "attempt", {"attempt": 1}), row("00:20", "usage", usage(1, 0.03, turn=1)),
+               row("05:00", "dropped", {}, actor="alex")]  # fmt: skip
+    morning = datetime(2026, 10, 8, 4, 0, tzinfo=UTC)
+    assert [(a["running"], a["seconds"]) for a in M.attempts(dropped, now=morning)] == [(False, 300)]
+    assert M.agents(dropped, morning) == {"running": 0, "seconds": 300, "dollars": 0.03, "unpriced": 0}

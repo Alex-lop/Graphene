@@ -37,7 +37,7 @@ VERBS = {"Read": "reading", "NotebookRead": "reading", "Edit": "editing", "Write
          "Glob": "searching", "WebSearch": "searching", "WebFetch": "searching"}  # fmt: skip
 ENDPOINT = {"claude": "claude code", "codex": "codex"}
 PROMPT = ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens")  # a Claude prompt's
-HOLD_ENDS = ("finished", "overruled", "released")  # an attempt with no `ended` row (older stores) ends here
+HOLD_ENDS = ("finished", "overruled", "released", "dropped")  # an attempt with no `ended` row ends here
 
 
 def kind(argv: list[str]) -> str | None:
