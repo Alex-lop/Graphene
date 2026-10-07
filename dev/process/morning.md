@@ -91,3 +91,7 @@ sub-agents outside Graphene. `dev/process/meter/dogfood.md`.
   to three times, as a person pressing `w` again would.
 - **02:50** On the final wheel: the cut's lane 0 still leaves the checkout clean (`dev/process/meter/lane0.txt`,
   unchanged), and the wheel installed outside the source tree runs `graphene demo --once`.
+- **03:00-04:15** A review of the whole branch: four readers, a skeptic each for the top six, 19 distinct
+  findings, none refuted. 17 fixed, each with a test that fails without its fix; the worst two were the
+  ledger's: a stopped attempt settled its hold at $0, and a run killed outright left its holds in flight all
+  night. The 2 left, and why: `dev/process/meter/review.md`. A resumed result's `usage` was checked live first.
