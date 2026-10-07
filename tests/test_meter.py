@@ -155,6 +155,7 @@ def test_attempts_of_one_leaf():
     assert second["running"] and second["seconds"] == 60 and second["exit"] is None
     assert second["last"] == "running python3 -m pytest -q" and second["ran"] == ["python3 -m pytest -q"]
     assert (second["turns"], second["dollars"], second["refused"]) == (1, 0.05, [])
+    assert M.attempts([row("00:00", "started", {}), row("00:05", "released", {})]) == []  # never tried
 
 
 def test_agents_and_you():
