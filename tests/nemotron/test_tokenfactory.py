@@ -181,7 +181,7 @@ def test_a_key_a_header_cannot_carry_is_one_line_and_never_kept(monkeypatch):
 
 
 # The NVIDIA models Token Factory listed for Alex's key on 2026-09-29 (rung 1, practice): ids, list prices and
-# the roles `roles` gave them, from .graphene/practice/access.json (docs/test/first-light.md). Nothing else.
+# the roles `roles` gave them, from .graphene/practice/access.json (dev/test/first-light.md). Nothing else.
 FIXTURE = Path(__file__).parents[1] / "fixtures" / "tokenfactory-models-2026-09-29.json"
 LIVE = json.loads(FIXTURE.read_text())
 

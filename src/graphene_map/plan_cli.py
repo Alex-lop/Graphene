@@ -39,7 +39,8 @@ NOT_INIT = (
 # What `graphene plan first` says each setting does
 FIRST_SAID = {
     "on": "Every ask in a session is proposed, one leaf included, and waits for you.",
-    "auto": "One leaf of work is done at once. More is proposed as a tree first.",
+    "auto": f"Every ask is proposed first. One leaf of at most {G.WIDE} paths, with nothing on the board, "
+    "is yours at once; anything else waits for you.",
     "off": "What you ask for in a session is done at once, as a leaf of its own.",
 }
 
@@ -577,7 +578,9 @@ def register(cli: typer.Typer, root, open_store, fail):
             nodes, words, goal = V.inputs(store)
             wide, high = V.room(width, height)
             chosen = V.choose(nodes, words, goal, wide, high) if name == "auto" else name
-            drawn = V.VIEWS[chosen].draw(nodes, words, goal, wide, high, None) if V.VIEWS[chosen] else None
+            view = V.VIEWS[chosen]
+            noted = {"meter": V.billed(store.node_log())} if getattr(view, "METER", False) else {}
+            drawn = view.draw(nodes, words, goal, wide, high, None, **noted) if view else None
             if drawn is None or not nodes:
                 if chosen != "outline" and nodes:
                     typer.echo(f"the {chosen} does not fit at {width} columns: the outline", err=True)
@@ -701,7 +704,8 @@ def register(cli: typer.Typer, root, open_store, fail):
         except OSError as exc:
             fail(f"cannot read {file}: {exc.strerror or exc}", 1)
         who = P.caller()
-        files = P.tracked(checkout())
+        here = checkout()
+        files = P.tracked(here)
 
         def as_json(store) -> list[P.Node]:
             try:
@@ -725,9 +729,9 @@ def register(cli: typer.Typer, root, open_store, fail):
 
         def go(store):
             added = as_json(store) if text.lstrip().startswith(("{", "[")) else as_text(store)
-            if not who.person and added:
+            if not who.person and added:  # one leaf of the person's ask is theirs at once
                 out(
-                    G.one_line_ask(store, added, who)  # one leaf for the person's own ask is theirs at once
+                    G.one_line_ask(store, added, who, files, B.split(text)[1], here)  # the text's board items
                     or f"{len(added)} proposed: nobody can start {'it' if len(added) == 1 else 'them'} until "
                     "the person accepts, in `graphene watch`. Tell them the tree is ready, and stop"
                 )
@@ -909,9 +913,9 @@ def register(cli: typer.Typer, root, open_store, fail):
     def first(
         how: str = typer.Argument(None, help="on, auto or off; prints the setting if left out."),
     ) -> None:
-        """Set whether an agent proposes a tree before it writes.
+        """Set whether an agent proposes before it writes, and what waits for you.
 
-        On proposes every ask. Auto does one leaf at once and proposes more. Off never proposes."""
+        On: every ask waits. Auto: one small leaf is yours at once, more waits. Off never proposes."""
         if how not in (None, *P.FIRST):
             fail(f"graphene plan first takes on, auto or off, not {how!r}", 1)
         if how is not None:
@@ -1005,7 +1009,7 @@ def register(cli: typer.Typer, root, open_store, fail):
                 out(summary(store, since, stopped=True))
                 raise typer.Exit(130) from None
             left = P.uncommitted(store, checkout()) if here else []  # a worktree's leaf committed its own
-            out(summary(store, since) + (f"; the work of {', '.join(left)} is {P.UNCOMMITTED}" * bool(left)))
+            out(summary(store, since) + (f" · the work of {', '.join(left)} is {P.UNCOMMITTED}" * bool(left)))
 
     def planner(
         sentence: str, executor: str | None, about: str | None, split: bool, size: str | None = None

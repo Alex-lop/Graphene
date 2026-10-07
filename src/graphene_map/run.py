@@ -20,6 +20,7 @@ a merge unclean is the person's own work in the way, and that leaf waits for the
 from __future__ import annotations
 
 import contextlib
+import functools
 import os
 import re
 import shlex
@@ -31,20 +32,24 @@ import time
 import uuid
 from collections.abc import Callable
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
+from datetime import UTC, datetime
 from pathlib import Path
 
 from . import board as B
 from . import extra
+from . import meter as M
 from . import plan as P
 
 # An executor may edit files and run `graphene node …` and `graphene plan …` (its done, its release, a
 # look at the plan), and nothing else unless the person says so with --with. Not `graphene run` or
 # `graphene ask`: through their own --with, either would be any command at all.
 DEFAULT_WITH = (
-    "claude -p --permission-mode acceptEdits --allowedTools 'Bash(graphene node *)' 'Bash(graphene plan *)'"
+    "claude -p --permission-mode acceptEdits --allowedTools 'Bash(graphene node *)' 'Bash(graphene plan *)' "
+    "--output-format stream-json --verbose"  # the stream the meter reads: turns, tokens, tool calls, cost
 )
 ATTEMPTS = 3
-CODEX = "codex exec --sandbox workspace-write"
+WORST = 3.0  # dollars the night's ledger holds for a Claude Code or Codex attempt with no --max-budget-usd
+CODEX = "codex exec --json --sandbox workspace-write"
 
 
 def unchosen(who: str) -> P.Refused:
@@ -179,7 +184,10 @@ def sweep(store, say: Callable[[str], None], root: Path | None = None) -> None:
     the process that was started. The hand-back is not a person's: a live run's executor is not
     stopped for it. A parallel run that died outright (kill -9, Force Quit) left its executors
     working, and a leaf one of them finished is done in the run's worktree and nowhere here: it is
-    parked as a stopped run parks it (``park``), committed on its branch and waiting in review."""
+    parked as a stopped run parks it (``park``), committed on its branch and waiting in review. Either
+    way the dead run's attempt is closed first (``_close``): nothing else settles its hold. Last, every
+    hold a dead run left in flight in its ledger is closed, whatever its leaf has become since: the
+    executor left working may have ended the leaf itself (`done`, or `release`)."""
     for n in P.nodes(store, (P.RUNNING,)):
         if not (n.executor or "").startswith("run:"):
             continue
@@ -191,9 +199,7 @@ def sweep(store, say: Callable[[str], None], root: Path | None = None) -> None:
             gone = P.RUN_TREE in (n.checkout or "") and not _locked(root)
         if not gone:
             continue
-        pid, began = this.get("pid"), this.get("pid_start")
-        if pid and began and _started(pid) == began:  # the dead run's executor, still working
-            _end_group(pid, lambda p=pid: not _alive(p))
+        _close(this)
         try:
             P.release(store, n.id, P.Caller("graphene run", False, n.session_id),
                       "the run that held it ended without finishing it", stopped=True)  # fmt: skip
@@ -210,7 +216,40 @@ def sweep(store, say: Callable[[str], None], root: Path | None = None) -> None:
             continue
         run = next((e["detail"] for e in reversed(since) if e["kind"] == "attempt"), {})
         if run.get("run_pid") and not _still(run["run_pid"], run.get("run_start")):
+            _close(run)
             park(store, tree, n, say)
+    if not (night := extra.load("night")):
+        return
+    flying = functools.cache(night.flying)  # each ledger read once
+    for e in store.node_log(None, ("attempt",)):
+        this = e["detail"]
+        hold = this.get("hold") or {}
+        if not hold.get("id") or hold["id"] not in flying(hold.get("ledger")):
+            continue  # no hold, or settled
+        if this.get("run_pid") and not _still(this["run_pid"], this.get("run_start")):
+            _close(this)
+
+
+def _close(this: dict) -> None:
+    """A dead run's attempt (``this``, its attempt row): its executor stopped if it still works, and only
+    while its pid still names the process that was started; then its hold on the night settled, at what
+    its log says read again through the meter, as the run would have settled it (``_settle``). A run
+    killed outright (kill -9, Force Quit) left the hold in flight, and the night refused every run after.
+    A log that cannot be read (the repo moved, its runs cleared) is no stream: the worst case."""
+    pid, began = this.get("pid"), this.get("pid_start")
+    if pid and began and _started(pid) == began:  # the dead run's executor, still working
+        _end_group(pid, lambda p=pid: not _alive(p))
+    hold, kind = this.get("hold"), this.get("meter")
+    night = extra.load("night") if hold else None
+    if not night:
+        return
+    meter = None
+    if kind in M.ENDPOINT and this.get("log") and os.access(this["log"], os.R_OK):
+        model = hold["model"].partition(":")[2]  # the ledger's "codex:<model>": the model it is priced at
+        price = _listed().get if kind == "codex" else None
+        meter = M.Meter(kind, this["attempt"], model, hold["paid"], price)
+        Reader(Path(this["log"]), meter, lambda *_: None)(last=True)  # its rows were the dead run's to log
+    _settle(night, hold, meter)
 
 
 def run_holding(root: Path) -> int | None:
@@ -230,16 +269,59 @@ def _locked(root: Path | None) -> bool:
     return root is not None and run_holding(root) not in (None, os.getpid())
 
 
-def _waited(proc: subprocess.Popen, store, node_id: str, stop: Stop) -> int:
+def _waited(
+    proc: subprocess.Popen, store, node_id: str, stop: Stop, each: Callable[[], None] | None = None
+) -> int:
     """The executor's exit code. Meanwhile, a leaf the person released (or dropped) stops its
-    executor: handing it back is the person's way to say stop."""
+    executor: handing it back is the person's way to say stop. ``each`` runs every POLL."""
     while True:
         try:
             return proc.wait(timeout=POLL)
         except subprocess.TimeoutExpired:
             pass
+        if each:
+            each()
         if stop.event.is_set() or _let_go(store, node_id):
             _end(proc)
+
+
+class Reader:
+    """An attempt's log, read as the executor writes it: each complete line goes to the meter, and each
+    row the meter gives goes to ``logged``. A log that cannot be read, or a line the meter or the store
+    trips on, is counted unread: the meter degrades, the attempt does not."""
+
+    def __init__(self, path: Path, meter: M.Meter, logged: Callable[[str, dict], None]) -> None:
+        self.path, self.meter, self.logged, self.offset, self.rest = path, meter, logged, 0, b""
+
+    def __call__(self, last: bool = False) -> None:
+        try:
+            with open(self.path, "rb") as log:
+                log.seek(self.offset)
+                got = log.read()
+        except OSError:
+            self.meter.unread += 1
+            return
+        self.offset += len(got)
+        *lines, self.rest = (self.rest + got).split(b"\n")
+        if last:  # the process has ended: a last line with no newline is whole
+            lines, self.rest = [*lines, self.rest], b""
+        for line in lines:
+            try:
+                for kind, detail in self.meter.feed(line.decode("utf-8", "replace")):
+                    self.logged(kind, detail)
+            except Exception:
+                self.meter.unread += 1
+
+
+@functools.cache
+def _listed() -> dict[str, tuple[float, float]]:
+    """Token Factory's list prices, per prompt and per completion token, by model id: asked once a
+    process, and empty when the Nemotron extra is not installed or the list cannot be read."""
+    try:
+        tf = extra.load("tokenfactory")
+        return {m.id: (m.prompt, m.completion) for m in tf.models()} if tf else {}
+    except Exception:
+        return {}
 
 
 def _let_go(store, node_id: str) -> bool:
@@ -274,6 +356,33 @@ def prompt_for(
 
 
 REFUSED = "Your last attempt was not accepted:"  # the Nemotron executor reads what follows: why it stepped up
+
+
+def _worst(argv: list[str]) -> float:
+    """What one attempt may spend: the command's --max-budget-usd, else WORST."""
+    said = M.option(argv, "--max-budget-usd")
+    try:
+        return float(said) if said else WORST
+    except ValueError:
+        return WORST
+
+
+def _settle(night, hold: dict, meter: M.Meter | None) -> None:
+    """A held attempt, settled on the night's ledger. At what its stream says only when the stream gave
+    the whole figure: Claude Code's result was read, or every Codex turn that started completed. A Codex
+    model with no list price settles at $0, its tokens alone. Anything else (no stream, a turn stopped or
+    failed, a result never read) keeps the worst case held, as a Token Factory call stopped while out
+    does (decision 129): it may have been spent. It settles in the ledger that holds it; an older hold
+    names none, and settles in the night's now."""
+    if meter is None:
+        night.settle(hold["id"], hold["model"], hold["worst"], ledger=hold.get("ledger"))
+        return
+    whole = meter.reported is not None if meter.kind == "claude" else meter.begun == meter.turns
+    dollars = meter.dollars if whole else hold["worst"]
+    if meter.kind == "codex" and not (meter.price and meter.price(meter.model)):
+        dollars = 0.0  # no list price: the bill says its tokens
+    used = {"prompt_tokens": meter.prompt_tokens, "completion_tokens": meter.completion_tokens}
+    night.settle(hold["id"], hold["model"], dollars, used, hold.get("ledger"))
 
 
 def command_for(template: str, prompt: str, session: str, again: bool) -> list[str]:
@@ -312,6 +421,8 @@ def run_node(
     refusal: str | None = None
     stamp = (node.started_at or P._now()).replace(":", "").replace("-", "")[:15]
     proc: subprocess.Popen | None = None
+    hold: dict | None = None  # the attempt's on the night's ledger
+    paid = 0.0  # what this hold's attempts settled: a resumed Claude Code reports the session's total
     try:
         for attempt in range(1, attempts + 1):
             if stop.event.is_set():  # stopped while the last attempt's check ran: nothing starts again
@@ -337,6 +448,18 @@ def run_node(
             if logs is not None:  # streamed as it runs, so its tail can be read while it works
                 logs.mkdir(parents=True, exist_ok=True)
                 log = logs / f"{node.id}-{stamp}-{session[:8]}-{attempt}.txt"
+            hold, night = None, extra.load("night") if name in M.ENDPOINT else None
+            if night and night.cap() is not None:  # under the opening: the attempt's worst case, held first
+                model = f"{name}:{M.model_in(argv) or ('default' if name == 'claude' else 'codex')}"
+                # the ledger it is held in goes with it: it settles there, should it end after noon
+                hold = {"model": model, "worst": _worst(argv), "paid": paid, "ledger": str(night.where())}
+                try:
+                    hold["id"] = night.reserve(model, hold["worst"], f"run: {node.id} attempt {attempt}",
+                                               M.ENDPOINT[name], hold["ledger"])  # fmt: skip
+                except night.Refused as no:
+                    P.release(store, node.id, who, str(no))
+                    say(f"{node.id} came back: {no}")
+                    return None
             sink = open(log, "w", encoding="utf-8") if log else subprocess.DEVNULL  # noqa: SIM115
             try:
                 proc = subprocess.Popen(
@@ -344,6 +467,8 @@ def run_node(
                     stderr=subprocess.STDOUT, start_new_session=True,
                 )  # fmt: skip
             except OSError as no:  # the executor is not installed, or not executable: nothing ran
+                if hold:
+                    night.settle(hold["id"], hold["model"], 0.0, ledger=hold["ledger"])
                 P.release(store, node.id, who, f"the executor could not be started: {name}: {no.strerror}")
                 raise P.Refused(
                     f"cannot run `{argv[0]}`: {no.strerror}. {node.id} was handed back untouched; name "
@@ -353,14 +478,34 @@ def run_node(
                 if log:
                     sink.close()
             stop.add(node.id, proc)
+            began = time.monotonic()
+            kind = M.kind(argv) if log else None
+            metered = kind or ("nemotron" if name == "nemotron" else None)  # Nemotron writes its own rows
+            # the hold rides on the attempt: should this run die, the next one's sweep settles it (_close)
             store.log_node(node.id, P._now(), "attempt", who.label, session, None,
                            {"attempt": attempt, "pid": proc.pid, "pid_start": _started(proc.pid),
                             "run_pid": os.getpid(), "run_start": _started(os.getpid()),
-                            "log": str(log) if log else None, "checkout": str(checkout)})  # fmt: skip
+                            "log": str(log) if log else None, "checkout": str(checkout),
+                            "meter": metered, "hold": hold})  # fmt: skip
+            meter = read = None
+            if kind:  # what it writes is a stream the meter reads: read as it is written
+                price = _listed().get if kind == "codex" else None
+                meter = M.Meter(kind, attempt, M.model_in(argv), paid, price, str(checkout))
+                read = Reader(log, meter, lambda k, d: store.log_node(node.id, P._now(), k, who.label,
+                                                                      session, None, d))  # fmt: skip
             try:
-                code = _waited(proc, store, node.id, stop)
+                code = _waited(proc, store, node.id, stop, read)
             finally:
                 stop.remove(node.id)
+                if read:
+                    read(last=True)  # Claude Code's result is its last line
+                    paid += meter.dollars
+                if hold:
+                    _settle(night, hold, meter)
+            # not an "attempt" row: readers take the last of those as the attempt going now
+            store.log_node(node.id, P._now(), "ended", who.label, session, None,
+                           {"attempt": attempt, "exit": code, "seconds": round(time.monotonic() - began, 1),
+                            "meter": metered, "unread": meter.unread if meter else 0})  # fmt: skip
             if stop.event.is_set():
                 raise KeyboardInterrupt
             say(f"{node.id} attempt {attempt}: the executor ended (exit {code})")
@@ -400,6 +545,8 @@ def run_node(
             stop.halt()
             if proc is not None:
                 _end(proc)  # its own session never saw the terminal's Ctrl-C: it is stopped here
+            if hold and hold.get("id"):  # stopped before its attempt's own settle: its worst case, once
+                _settle(night, hold, None)
             if P.get(store, node.id).state == P.RUNNING:
                 P.release(store, node.id, who, STOPPED, stopped=True)
                 say(f"{node.id} handed back: the run was stopped")
@@ -411,8 +558,9 @@ STOPPED = "the run was stopped before this leaf was finished"  # by Ctrl-C, `:st
 
 def summary(store, since: int, stopped: bool = False) -> str:
     """What a run did, in one line for the person, read from what the plan logged after entry
-    ``since``: what it finished, what came back to them, what waits in review. `graphene watch` shows
-    this line when the run ends, so it is the run's last."""
+    ``since``: what it finished, what came back to them, what waits in review, and the two clocks (the
+    agents' minutes and dollars, the person's acts and minutes). `graphene watch` shows this line when
+    the run ends, so it is the run's last."""
     log = store.node_log()[since:]
     started = {e["node_id"] for e in log if e["kind"] == "started" and e["actor"].startswith("run:")}
     let_go = {e["node_id"]: e["detail"] for e in log if e["kind"] == "released"}
@@ -432,13 +580,26 @@ def summary(store, since: int, stopped: bool = False) -> str:
     said += [f"{len(review)} in review ({named(review)})"] if review else []
     said += [f"{named(handed)} handed back, ready again"] if handed else []
     said += [f"{named(freed)} released by you, ready again"] if freed else []
-    spent = sum(e["detail"].get("dollars") or 0 for e in log if e["kind"] == "usage")
-    cost = f"; ${spent:.4f} at list price" if any(e["kind"] == "usage" for e in log) else ""
+    cost = clocks(log)
     if stopped:
         return "run stopped: " + (", ".join(said) or "nothing was finished") + cost
     if not ran:
         return "run: nothing started (graphene plan says what each leaf waits on)"
     return "run: " + (", ".join(said) or "nothing finished") + cost
+
+
+def clocks(log: list[dict]) -> str:
+    """The run's two clocks, from its own rows: " · agents 41 min, $2.8700 at list price · you 4 acts, 2 min".
+    With no usage row, the agents' dollars are "no meter": nothing is invented."""
+    agents, you = M.agents(log, datetime.now(UTC)), M.you(log, P.person_name())
+    took = f"{round(agents['seconds'] / 60)} min" if agents["seconds"] >= 60 else "<1 min"
+    spent, n = "no meter", agents["unpriced"]
+    if any(e["kind"] == "usage" for e in log):
+        spent = f"${agents['dollars']:.4f} at list price"
+    if n:
+        spent += f" + {f'{round(n / 1000)}k' if n >= 1000 else n} tokens with no list price"
+    acts = f"{you['acts']} act{'s' * (you['acts'] != 1)}"
+    return f" · agents {took}, {spent} · you {acts}, {you['minutes']} min"
 
 
 @contextlib.contextmanager
@@ -466,9 +627,11 @@ def _splits(template: str) -> None:
 
 
 def _begins(template: str) -> None:
-    """A run of Graphene's own executor is one new live thing under the night's cap (``night.begin``): its
-    leaves go on under the cap once it has started, and it does not start past 80% of the cap."""
-    if label(template) == "nemotron" and (night := extra.load("night")):
+    """A run of Graphene's own executor, Claude Code or Codex is one new live thing under the night's cap
+    (``night.begin``): its leaves go on under the cap once it has started, and it does not start past 90%
+    of the cap. Asked after the sweep, so what a dead run held is settled first: asked before it, the
+    dead run's holds refused the run, and its leaves stayed `running` with their executors at work."""
+    if label(template) in ("nemotron", *M.ENDPOINT) and (night := extra.load("night")):
         try:
             night.begin("the run")
         except night.Refused as no:
@@ -516,28 +679,38 @@ def said_by(event: dict) -> str:
 
 def live(store, node: P.Node, now: float | None = None) -> dict:
     """A running leaf as the person watches it: which executor, where, what it did last and how
-    long ago. A Claude Code executor's calls come from the hooks' record (its session is the one the
-    run gave it); any executor's output is its log, and the log's age says when it last spoke."""
-    attempt = (store.node_log(node.id, ("attempt",)) or [None])[-1]
-    detail = attempt["detail"] if attempt else {}
-    log = detail.get("log")
+    long ago. What it did is the meter's newest row for the attempt (`editing api.py`, or what it
+    said), else the hooks' last tool call for its session, else its log's last line that is not the
+    stream's JSON; the log's age, too, says when it last spoke. The attempt is its hold's
+    (`meter.going`): a session that took the leaf after a run has none."""
+    from . import meter as M
+
+    metered = M.going(store.node_log(node.id)) or {}
+    log = metered.get("log")
     last = store.last_events(node.session_id) if node.session_id else []
+    now = time.time() if now is None else now
     stamps = []
+    if metered.get("last_at"):
+        stamps.append(_seconds(metered["last_at"]))
     if last:
         stamps.append(_seconds(last[-1]["timestamp"]))
-    if log and os.path.exists(log):
+    if log and os.path.exists(log) and os.path.getmtime(log) <= now:  # a replay's log is written as it plays
         stamps.append(os.path.getmtime(log))
-    if attempt:
-        stamps.append(_seconds(attempt["timestamp"]))
-    now = time.time() if now is None else now
+    if metered:
+        stamps.append(_seconds(metered["started"]))
     return {
         "executor": node.executor,
         "checkout": node.checkout,
-        "attempt": detail.get("attempt"),
+        "attempt": metered.get("attempt"),
         "log": log,
-        "last": said_by(last[-1]) if last else (tail(log, 1) or [""])[0],
+        "last": metered.get("last") or (said_by(last[-1]) if last else _spoke(log)),
         "idle": int(now - max(stamps)) if stamps else None,
     }
+
+
+def _spoke(log: str | None) -> str:
+    """The log's last line that is not one of the stream's JSON events (stderr shares the file)."""
+    return next((line for line in reversed(tail(log, 40)) if not line.lstrip().startswith("{")), "")
 
 
 def _seconds(stamp: str) -> float:
@@ -575,8 +748,8 @@ def run_plan(
 ) -> list[P.Node]:
     """Run every leaf an agent can reach, in order. Returns the ones that ended done (or in review)."""
     _splits(template)
-    _begins(template)
     sweep(store, say, store.path.parent.parent)  # the repo's root, where a parallel run's lock is
+    _begins(template)
     only = leaves_of(store, only)
     finished: list[P.Node] = []
     tried: set[str] = _came_back(store, only, say)  # never tried: the person's to run again
@@ -771,7 +944,6 @@ def run_parallel(
     at a time, here, as they finish. A leaf never starts while something it needs has not landed, or
     while a leaf whose scope overlaps its own is in flight."""
     _splits(template)
-    _begins(template)
     if _git(target, "symbolic-ref", "-q", "HEAD", ok=True).returncode != 0:
         raise P.Refused(
             f"{target} is on no branch (a detached HEAD): leaves merged here would belong to no branch "
@@ -787,6 +959,7 @@ def run_parallel(
 def _run_parallel(open_store, root, target, workers, template, attempts, only, say, logs) -> list[P.Node]:
     store = open_store()
     sweep(store, say, root)  # a leaf a dead run still holds would never be ready again
+    _begins(template)
     only = leaves_of(store, only)
     planned = {n.id for n in P.nodes(store) if n.state not in P.GONE}
     files = P.tracked(target)

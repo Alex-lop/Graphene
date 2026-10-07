@@ -111,7 +111,8 @@ def test_ctrl_c_hands_back_what_the_run_started_and_stops_its_executors(repo, pa
     said, _ = run.communicate(timeout=30)
     assert run.returncode == 130, said
     last = said.strip().splitlines()[-1]
-    assert last == f"run stopped: {'a, b' if parallel == '2' else 'a'} handed back, ready again", said
+    clocks = " · agents <1 min, no meter · you 0 acts, 0 min"  # a script: no stream, no meter
+    assert last == f"run stopped: {'a, b' if parallel == '2' else 'a'} handed back, ready again{clocks}", said
     assert set(states(repo).values()) == {OPEN}  # nothing left running, nothing said done
     with Store.open(repo) as store:
         whys = [e["detail"]["why"] for e in store.node_log(kinds=("released",))]
@@ -200,6 +201,31 @@ def test_git_is_asked_before_the_write_lock_is_taken(repo, monkeypatch):
         monkeypatch.setattr(plan, "dirty", looking)
         plan.start(store, "a", BOT, repo)
         assert seen and not any(seen)
+
+
+def test_what_a_leaf_did_last_is_the_meters_row_then_its_logs_last_line_not_the_streams_json(repo):
+    run = Caller("run:claude", False, "run-session")
+    log = repo / ".graphene" / "runs" / "a-1.txt"
+    log.parent.mkdir(parents=True, exist_ok=True)
+    log.write_text('{"type":"system"}\nwarning: slow disk\n{"type":"assistant","message":{}}\n')
+    with Store.open(repo) as store:
+        plan.propose(store, [leaf("a", "a.txt")], ALEX)
+        plan.start(store, "a", run, repo)
+        attempt = {"attempt": 1, "log": str(log)}
+        store.log_node("a", plan._now(), "attempt", run.label, run.session_id, None, attempt)
+        node = plan.get(store, "a")
+        assert R.live(store, node)["last"] == "warning: slow disk"  # no meter's row yet, and no hook's call
+        did = {"attempt": 1, "tool": "Edit", "target": "a.txt", "verb": "editing"}
+        store.log_node("a", plan._now(), "did", run.label, run.session_id, None, did)
+        assert R.live(store, node)["last"] == "editing a.txt"
+        said = {"attempt": 1, "text": "done"}
+        store.log_node("a", plan._now(), "said", run.label, run.session_id, None, said)
+        seen = R.live(store, node)
+        assert seen["last"] == "done" and seen["attempt"] == 1 and seen["idle"] < 20
+        # a replay's clock is its recording's newest row, and its log is written as it plays: from after it
+        newest = R._seconds(store.node_log("a")[-1]["timestamp"])
+        os.utime(log, (newest + 2700, newest + 2700))
+        assert R.live(store, node, newest)["idle"] == 0  # it read -2700 s ago, on 7 October
 
 
 def test_the_executors_output_is_a_tail_while_it_runs(repo):
@@ -562,10 +588,10 @@ def test_ctrl_c_while_a_merge_hook_runs_undoes_or_keeps_the_merge_as_it_stands(r
     if hook == "pre-merge-commit":  # no merge commit: undone here, and the leaf waits in review
         assert states(repo) == {"a": REVIEW} and (repo / "a.txt").read_text() == "a\n"
         assert "a, by its executor" in git(repo, "show", "graphene/a:a.txt")
-        assert last == "run stopped: 1 in review (a)", said
+        assert last == "run stopped: 1 in review (a) · agents <1 min, no meter · you 0 acts, 0 min", said
     else:  # the merge commit is made: it landed, and stays done
         assert states(repo) == {"a": DONE} and (repo / "a.txt").read_text() == "a, by its executor\n"
-        assert last == "run stopped: 1 done", said
+        assert last == "run stopped: 1 done · agents <1 min, no meter · you 0 acts, 0 min", said
 
 
 def test_ctrl_c_inside_a_landing_never_aborts_the_persons_own_merge(repo, monkeypatch):

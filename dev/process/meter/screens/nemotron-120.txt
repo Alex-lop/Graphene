@@ -1,0 +1,36 @@
+ the plan of …/live/nemotron/nemotron-r1/repo
+▼ ○ Load Northwind's XML price feed through the existing…       0/3 done │ Load Northwind's XML price feed through the
+├ ▼ ○ Read the XML feed                             xml-reader  0/1 done │ existing `load` command with `--source
+│ └   ● XML reader                                  xml-read    running  │ xml`, producing the same JSONL records as
+├ ▼ ○ Drop zero-price products for every supplier   zero-rule   0/1 done │ csv and json.
+│ └   ● Zero price rule                             rule-zero   running  │ the goal · 0/3 done
+└ ▼ ○ Wire xml in as a source                       xml-wiring  0/1 done │
+  └   ◌ Enable xml                                  xml-wire    waiting  │ ○ Read the XML feed                0/1 done
+                                                                         │ ○ Drop zero-price products for…    0/1 done
+                                                                         │ ○ Wire xml in as a source          0/1 done
+                                                                         │
+                                                                         │ waiting  xml-wire on xml-read (running),
+                                                                         │          rule-zero (running)
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+ ● xml-read · nemotron NVIDIA-Nemotron-3-Nano-30B-A3B · 20s · $0.0024 · editing tests/test_xmlfeed.py · 1 s ago
+ ● rule-zero · nemotron NVIDIA-Nemotron-3-Nano-30B-A3B · 20s · $0.0027 · reading tests/test_contract.py · 0 s ago
+ waiting on you: 0 · agents 2 · <1m · $0.0051 · you 2 acts ~1m · nothing ready to run · 0/3 done · plan first: auto (P)
+ E edit the plan as text · za fold all · Tab view · ? help · q quit

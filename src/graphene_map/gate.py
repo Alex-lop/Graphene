@@ -31,6 +31,8 @@ OURS = (".graphene",)  # the plan's own store: never inside any scope
 _AS_PERSON = re.compile(r"\bGRAPHENE_(AS|WATCH)\b")
 PARSED = 64_000  # characters of a shell command the hook will parse: the parser is superlinear, and the
 # vendor lets a call through when a hook runs out of time (3 MB took 234 s in the closing review)
+WIDE = 8  # paths a one-leaf ask may reach and still be the person's at once: every one-leaf ask of
+# 7 October on feeds reached exactly 8, and 7 stops them all (dev/process/meter/auto-evidence.md)
 
 
 def _deny(reason: str) -> dict:
@@ -175,20 +177,20 @@ def _strict(store) -> bool:
     return store.meta("asides") == "off"
 
 
-# Plan first auto: the agent that reads the repo judges the size, never a rule that reads the prompt.
+# Plan first auto: the agent always proposes, and what it proposed decides whether the person is asked
+# first (``one_line_ask``), never the agent's judgment and never the words of the prompt.
 AUTO = (
-    "Plan first is auto. Is the request one change, with one scope you can name now and one check that "
-    "proves all of it? Then propose it as one leaf, with no sub-goal and no board item, using `graphene "
-    "plan propose -`. That leaf is the person's at once: run `graphene node start <id>` and do it. "
-    "Otherwise propose the tree, write nothing, and stop. The person prunes the tree in `graphene "
-    "watch`. Nothing to write, nothing to propose."
+    "Plan first is auto. Before you write, propose what you will do with `graphene plan propose -`: one "
+    "leaf or a tree, as the work is. Then do what it prints. When it says your leaf is the person's at "
+    "once, run `graphene node start <id>` and do it. Otherwise write nothing, stop, and tell the person "
+    "it waits for them in `graphene watch`. Nothing to write, nothing to propose."
 )
 
 
 def _first_said(store, how: str) -> str:
     """Plan first, as a session is told it when it starts and at every prompt while it holds no leaf.
-    Nothing here reads the person's words: the agent judges what they asked for, and the tree or the
-    leaf it proposes is what the person sees and prunes. Under strict prompts auto is on: no leaf is
+    Nothing here reads the person's words: the agent proposes, and what it proposed decides whether
+    the person sees it before the work (``one_line_ask``). Under strict prompts auto is on: no leaf is
     the person's at once."""
     if how == "auto" and not _strict(store):
         return AUTO
@@ -328,33 +330,87 @@ def _on_prompt(store, sid: str, text: str) -> dict | None:
     return _context("UserPromptSubmit", said)
 
 
-def one_line_ask(store, added: list[P.Node], who: P.Caller) -> str | None:
+def _width(scope: list[str], files: list[str]) -> int:
+    """The paths a scope reaches: the tracked files it covers, and one for each glob that covers none
+    (a file still to be made)."""
+    unmatched = [g for g in scope if not g.startswith("!") and not any(P.in_scope(f, [g]) for f in files)]
+    return sum(P.in_scope(f, scope) for f in files) + len(unmatched)
+
+
+def one_line_ask(
+    store, added: list[P.Node], who: P.Caller, files: list[str], board: list[dict], root: Path
+) -> str | None:
     """The one-line ask stays free. One leaf, with its scope and its check and nothing under it,
     proposed by a Claude Code session that holds no leaf, after the person's last prompt there and
     before any other proposal of that session since, is what that prompt asked for: it is accepted
-    at once, as the person's, and the log says "by their prompt in the session". A tree waits for
-    them, and so does a leaf that would make a sub-goal of another (a split) or bring a proposal
-    above it along. Returns what `graphene plan propose` says instead of "proposed", or None.
-    The hole is decision 19's: an agent that starts a second agent chooses its prompt, and a
-    subagent carries its session's id. Plan first on and `graphene plan prompts strict` turn
-    this off."""
+    at once, as the person's, and the log says "by their prompt in the session". The sub-goals it
+    came in, one above the other with nothing else under them, are accepted with it: they are still
+    one leaf of work. A tree waits for them, and so does a leaf that would make a sub-goal of another
+    (a split) or bring an older proposal above it along, one put up with a board item still open (in
+    its text, ``board``, on the board already or not, or by the session since the prompt), and one whose
+    scope reaches more than WIDE paths (the tracked ``files``). Returns what `graphene plan propose`
+    says instead of "proposed", or None. A standing path in the scope is refused before this, at
+    propose, when git tracks it or a glob names it; one git does not track in ``root``, the checkout
+    (an ignored .env), makes the leaf wait. The hole is decision 19's: an agent that starts a second
+    agent chooses its prompt, and a subagent carries its session's id. Plan first on and
+    `graphene plan prompts strict` turn this off."""
     sid = who.session_id
     asked = store.meta(f"prompt_at:{sid}") if sid and not who.person else None
-    if not asked or len(added) != 1 or _strict(store) or P.plan_first(store) == "on" or _held(store, sid):
+    if not asked or not added or _strict(store) or P.plan_first(store) == "on" or _held(store, sid):
         return None
     everything = P.nodes(store)
     by_id, under = {n.id: n for n in everything}, P.kids(everything)
-    node = by_id[added[0].id]
-    since = [n.id for n in everything if n.proposed_by == who.name and (n.created_at or "") >= asked]
-    parent = by_id.get(node.parent or "")
+    new = {n.id for n in added}
+    leaves = [by_id[i] for i in new if not any(m.parent == i for m in everything)]
+    if len(leaves) != 1:
+        return None
+    node = leaves[0]
+    came_in = [a for a in P.above(node, by_id) if a.id in new]  # the sub-goals it came in, nearest first
+    since = {n.id for n in everything if n.proposed_by == who.name and (n.created_at or "") >= asked}
+    parent = by_id.get((came_in[-1] if came_in else node).parent or "")
     if (
-        since != [node.id]
+        since != new
+        or len(came_in) != len(new) - 1
         or not (node.scope and node.check)
-        or under.get(node.id)
-        or any(a.state == P.PROPOSED for a in P.above(node, by_id))
+        or any(a.state == P.PROPOSED and a.id not in new for a in P.above(node, by_id))
         or (parent is not None and not under.get(parent.id))
     ):
         return None
+    from . import board as B  # here, not at the top: no hook event reads the board
+
+    # what the session put up since the prompt, and what its text names, new on the board or not: one
+    # still open waits for the person; one the person settled, parked or dropped waits on nothing
+    ids, words = {f["id"] for f in board}, {B._one(f["text"]).lower() for f in board}
+    items = B.items(store)
+    mine = [
+        it
+        for it in items
+        if (it["by"] == who.label and it["created_at"] >= asked)
+        or it["id"] in ids
+        or B._one(it["text"]).lower() in words
+    ]
+    # words no item on the board has: their [id] named another item, so they were never put up or settled
+    unasked = words - {B._one(it["text"]).lower() for it in items}
+    reach = _width(node.scope, files)
+    # propose sees what git tracks; a file it does not, ignored or not, is asked of git here, under no lock
+    standing = P.standing(store)
+    specs = [f":(glob,icase){g}{tail}" for _, g in standing for tail in ("", "/**")]
+    near = P._git(root, "ls-files", "-z", "--others", "--", *specs).split("\0") if standing else []
+    kept = next((p for p in near if p and P.in_scope(p, node.scope) and P.kept_out_by(p, standing)), None)
+    why = (
+        "it put up a board item"
+        if unasked or any(B.reads(it) == "open" for it in mine)
+        else f"its scope reaches {kept}, which the setting `{P.kept_out_by(kept, standing)}` keeps out"
+        if kept
+        else f"its scope reaches {reach} paths, more than {WIDE}"
+        if reach > WIDE
+        else None
+    )
+    if why:
+        return (
+            f"{len(new)} proposed: it waits for the person: {why}. Nobody can start it until the person "
+            "accepts, in `graphene watch`. Tell them it waits, and stop"
+        )
     me, said = _me(sid), store.meta(f"prompt:{sid}") or ""
     try:
         with P.undoable(store, me, f"a one-line ask in the session: {said[:40]}"):

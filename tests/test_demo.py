@@ -69,6 +69,27 @@ def test_a_recording_holds_no_path_of_yours_and_nothing_shaped_like_a_key(tmp_pa
     }
 
 
+def test_the_home_directory_spelled_with_dashes_goes_too(tmp_path, monkeypatch):
+    """Claude Code names a folder after a path, its slashes as dashes, and its stream says that folder: a
+    recording of a Claude Code run held `-Users-<name>-…` on 7 October, which the slash form never met."""
+    monkeypatch.setenv("HOME", "/Users/someone")
+    hide, _ = demo.hider(tmp_path / "work")
+    said = hide('{"auto": "~/.claude/projects/-private-tmp--Users-someone-Desktop-x/memory/"}')
+    assert "someone" not in said and demo.leaks(said)["the home directory"] == 0
+    assert demo.leaks("cd /tmp/-Users-someone-Desktop")["the home directory"] == 1
+
+
+def test_a_home_with_a_dot_or_an_underscore_goes_as_claude_code_dashes_it(tmp_path, monkeypatch):
+    """The review of 7 October: Claude Code dashes every character of a path that is not a letter or a
+    digit, so /Users/john.doe_jr names its folders -Users-john-doe-jr-…, which dashing the slashes alone
+    never met: the name stayed in the recording, and the leak count said none."""
+    monkeypatch.setenv("HOME", "/Users/john.doe_jr")
+    hide, _ = demo.hider(tmp_path / "work")
+    said = hide('{"auto": "~/.claude/projects/-Users-john-doe-jr-code-feeds/memory/"}')
+    assert "john" not in said and demo.leaks(said)["the home directory"] == 0
+    assert demo.leaks("cd /tmp/-Users-john-doe-jr-code")["the home directory"] == 1
+
+
 def test_a_key_kept_only_in_the_keychain_is_taken_out_too(tmp_path, monkeypatch):
     from graphene_map.nemotron import keys
 
@@ -185,8 +206,9 @@ def test_a_sandbox_image_is_taken_out_in_words_the_leafs_pane_shows_whole(tmp_pa
 def test_the_replay_says_live_only_when_every_model_call_on_record_went_to_token_factory(tmp_path):
     """The label came from the recorder's own environment, so a run against the fake recorded from a second
     terminal replayed "as it ran, live". It comes from the run: live only when the recorder saw it so and
-    every `usage` row says Token Factory; a stand-in when any does not, or does not say (a row recorded
-    before rows said); and a run with no model call on record says that."""
+    every `usage` row names who really answered (Token Factory, Claude Code, Codex); a stand-in when any
+    does not, or does not say (a row recorded before rows said); and a run with no model call on record
+    says that."""
     live = {"graphene demo": 1, "recorded": "2026-09-26T03:47:14.410Z", "graphene": "0.5.0",
             "repository": "r", "stand_in": False, "shown": "as it ran, live"}  # fmt: skip
     stand_in = live | {"stand_in": True, "shown": "a scripted stand-in, not Nemotron"}
@@ -195,8 +217,11 @@ def test_the_replay_says_live_only_when_every_model_call_on_record_went_to_token
         return {"id": 1, "node_id": "*", "kind": "usage", "detail": json.dumps({"dollars": 0.01} | where)}
 
     tf, fake = usage(endpoint="token factory"), usage(endpoint="a stand-in")
+    claude, codex = usage(endpoint="claude code"), usage(endpoint="codex")
     cases = [
         (live, [[tf], [], [tf]], "as it ran, live"),
+        (live, [[claude], [codex, tf]], "as it ran, live"),  # Claude Code's run is no stand-in's
+        (live, [[claude, fake]], "a scripted stand-in, not Nemotron"),
         (live, [[tf], [fake]], "a scripted stand-in, not Nemotron"),
         (live, [[tf, usage()]], "a scripted stand-in, not Nemotron"),
         (stand_in, [[tf]], "a scripted stand-in, not Nemotron"),

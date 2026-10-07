@@ -1,0 +1,52 @@
+xml-read (revision 1): XML reader
+  why:    Load Northwind's XML price feed through the existing `load` command with `--source xml`, producing the same JSONL records as csv and json.
+            Read the XML feed (xml-reader)
+  goal:   Add `read_xml` in a new `ingest/xmlfeed.py` and register it in `READERS` in `ingest/__init__.py`. It returns one dict per `<product>` element, in feed order, using the attributes `code`, `desc` and `price`. Other elements such as `<summary>` are ignored, so the day-total line never becomes a record. Entities and Unicode come through as written, because the XML parser decodes them. Empty or whitespace-only text returns `[]` instead of raising. A product missing an attribute simply lacks that key, and `normalize` already turns that into a skipped record. The test file covers the summary line, `&amp;`, accents and Chinese, order, empty input, and a product missing each attribute.
+  scope:  ingest/xmlfeed.py, ingest/__init__.py, tests/test_xmlfeed.py   (a write anywhere else is refused, and blocks `done`)
+  done:   `python3 -m unittest tests.test_xmlfeed -q` passes
+  finish: graphene node done xml-read   (runs the check and asks git what changed)
+  stuck:  graphene node release xml-read --why '<what is in the way>' [--wants <paths it needs>]   (hands it back; say why)
+xml-read  XML reader
+  state: done · owner agent
+  window 1: run:codex, session 6c1fcd55-e914-4be5-b1dc-775aeb225f41  2026-10-07T05:17:45.933Z -> 2026-10-07T05:20:47.336Z  finished
+    from 4a7d06a to 4a7d06a: what git said had changed when it ended
+    in scope: ingest/__init__.py  (commit 881b09c and git, when it ended)
+    in scope: ingest/xmlfeed.py  (commit 881b09c and git, when it ended)
+    in scope: tests/test_xmlfeed.py  (commit 881b09c and git, when it ended)
+  coverage: of the 3 paths git said had changed under this node, 3 inside its scope; 0 to a recorded edit, 0 to a recorded shell command, 3 to git alone
+    read from: the node's log, git, and Claude Code's records for session 6c1fcd55
+    check: `python3 -m unittest tests.test_xmlfeed -q` passed at 2026-10-07T05:20:47.336Z, run by Graphene itself
+    1 commit inside its windows (3 files), not graded: session 6c1fcd55 held it and the store holds no records of it
+  refused: nothing
+  attempt 1 · codex nemotron-3-super-120b-a12b · 3 min · 1 turn · 455k in, 11k out · $0.15 at list price · exit 0
+    ran: ls -la, ls -la ingest/ and 18 more
+    said last: I have successfully implemented the XML reader for the Northwind XML price feed within the specified scope. Here's a summary of the changes made: ### Files Modi
+    the last it did:
+      error: Model metadata for `nvidia/nemotron-3-super-120b-a12b` not found. Defaulting to fallback metadata; this can degrade performance and cause issues.
+      running ls -la
+      running ls -la ingest/
+      running cat ingest/__init__.py
+      running cat ingest/csvfeed.py
+      running cat ingest/jsonfeed.py
+      running ls -la samples/
+      running cat samples/prices.xml
+      running ls -la tests/
+      running cat tests/test_csvfeed.py
+      running cat samples/prices.json
+      running cat normalize/fields.py
+      running cat cli/main.py
+      running cat config/defaults.py
+      running mkdir -p ingest
+      running cat > ingest/xmlfeed.py << 'EOF'
+      running cat > ingest/__init__.py << 'EOF'
+      running cat > tests/test_xmlfeed.py << 'EOF'
+      running python3 -m unittest tests.test_xmlfeed -q
+      running cat normalize/money.py
+      running cat > tests/test_xmlfeed.py << 'EOF'
+      running python3 -m unittest tests.test_xmlfeed -q
+      running graphene node done xml-read
+      I have successfully implemented the XML reader for the Northwind XML price feed within the specified scope. Here's a summary of the changes made: ### Files Modified/Created: 1. **`ingest/xmlfeed.py`** - New file containing the `read_xml` function that: - Parses XML text using `xml.etree.ElementTree` - Returns a list of dictionaries, each representing a `<product>` element - Extracts the
+  bill: $0.1465 at list price · 1 model call · 454,710 tokens in, 11,167 out · nemotron-3-super-120b-a12b (Codex's tokens)
+  what people did to it:
+    2026-10-07T05:17:45.548Z  accepted  alexlopez (no terminal)
+  every entry, check runs included: `graphene plan log` (33 for xml-read)

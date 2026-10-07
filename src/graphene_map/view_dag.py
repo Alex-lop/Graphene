@@ -14,7 +14,8 @@ track it does not join, the track is drawn unbroken (│) and the line gives way
 A cell is the row grammar's glyph and colour (`plan.look`), the id, never cut, and the title as far
 as the column allows, two columns after the column's widest id, so a column's titles line up. When
 the width is short, titles go first; when even glyph and id do not fit, there is no graph (`draw`
-returns None) and the screen shows the outline.
+returns None) and the screen shows the outline. A leaf an executor held notes what it spent and took
+after its title, dim (`$0.42 · 6m`), counted in its column's width.
 """
 
 from __future__ import annotations
@@ -35,6 +36,7 @@ LEAST_TITLE = 6  # a title with less room than this is left out: "the…" says n
 GAP = 2  # the columns between a column's widest id and its titles, as between the outline's columns
 KINDS = {"done": "done", "running": "running", "came back": "on you", "review": "on you", "yours": "on you"}
 NEEDS = True  # it draws which leaf waits on which, as the outline cannot (views.choose)
+METER = True  # its draw takes the leaves' notes (views.billed)
 
 
 def _box() -> dict[tuple[int, int, int, int], str]:
@@ -312,14 +314,15 @@ def _share(spare: int, want: dict[int, int]) -> dict[int, int]:
     return got
 
 
-def _widths(g: _Graph, tracks: list[list[str]], width: int) -> list[int] | None:
+def _widths(g: _Graph, tracks: list[list[str]], width: int, meter: dict[str, str]) -> list[int] | None:
     """Each column's width: glyph and id always, then what is left shared out to titles; a column
     whose titles would get less than LEAST_TITLE gets none, and gives its share back to the others.
     None when glyph and id do not fit."""
     levels = max(g.level.values(), default=-1) + 1
     cols = [[n for n in g.leaves if g.level[n.id] == k] for k in range(levels)]
     base = [2 + max(cell_len(n.id) for n in col) for col in cols]
-    want = [GAP + max(cell_len(n.title) for n in col) for col in cols]
+    want = [GAP + max(cell_len(n.title) + (1 + cell_len(meter[n.id]) if n.id in meter else 0) for n in col)
+            for col in cols]  # fmt: skip
     spare = width - sum(base) - sum(_gap(t) for t in tracks[1:])
     if spare < 0:
         return None
@@ -332,12 +335,12 @@ def _widths(g: _Graph, tracks: list[list[str]], width: int) -> list[int] | None:
         titled -= short
 
 
-def _fit(nodes: list[P.Node], width: int):
+def _fit(nodes: list[P.Node], width: int, meter: dict[str, str] | None = None):
     g = _graph(nodes)
     path = critical_path(nodes)
     row = _rows(g, path)
     tracks = _tracks(g, row)
-    return g, path, row, tracks, _widths(g, tracks, width)
+    return g, path, row, tracks, _widths(g, tracks, width, meter or {})
 
 
 def suits(nodes: list[P.Node], width: int, height: int) -> int:
@@ -359,11 +362,14 @@ STRENGTH = {"dim": 0, "": 1, "bold": 2}
 
 
 def draw(
-    nodes: list[P.Node], words: dict[str, str], goal: str, width: int, height: int, cursor: str | None
+    nodes: list[P.Node], words: dict[str, str], goal: str, width: int, height: int, cursor: str | None,
+    meter: dict[str, str] | None = None,
 ) -> Drawn | None:
     """The graph at ``width``: the goal's line, then a row for each row of leaves. None when even
-    glyph and id do not fit; taller than ``height`` is the seam's to scroll."""
-    g, path, row, tracks, widths = _fit(nodes, width)
+    glyph and id do not fit; taller than ``height`` is the seam's to scroll. ``meter``: a leaf's note,
+    after its title where there is room."""
+    meter = meter or {}
+    g, path, row, tracks, widths = _fit(nodes, width, meter)
     if widths is None:
         return None
     levels = len(widths)
@@ -373,8 +379,8 @@ def draw(
     track = {t: left[k] - _gap(tracks[k]) + 2 + m for k in range(levels) for m, t in enumerate(tracks[k])}
     arrow = [x - 2 for x in left]
     ids = {k: max(cell_len(n.id) for n in g.leaves if g.level[n.id] == k) for k in range(levels)}
-    cell = {n.id: _cell(n, words.get(n.id, ""), widths[g.level[n.id]], n.id in path, ids[g.level[n.id]])
-            for n in g.leaves}  # fmt: skip
+    cell = {n.id: _cell(n, words.get(n.id, ""), widths[g.level[n.id]], n.id in path, ids[g.level[n.id]],
+                        meter.get(n.id, "")) for n in g.leaves}  # fmt: skip
     critical = set(zip(path, path[1:], strict=False))
     arms: dict[tuple[int, int], dict[str, int]] = {}
     style: dict[tuple[int, int], str] = {}
@@ -431,18 +437,26 @@ def draw(
     return Drawn(lines=lines, at=at, order=order, note=note(nodes, words, width))
 
 
-def _cell(node: P.Node, word: str, wide: int, critical: bool, ids: int) -> list[tuple[str, str]]:
+def _cell(
+    node: P.Node, word: str, wide: int, critical: bool, ids: int, note: str = ""
+) -> list[tuple[str, str]]:
     """A leaf's cell as characters and their styles: its glyph and id in its state's colour, bold
     on the critical path, then its title as far as ``wide`` goes, GAP after the column's widest id
-    (``ids``); a done leaf is dim but its ✓."""
+    (``ids``), and its ``note`` after it, dim, when the title keeps its room; a done leaf is dim but
+    its ✓."""
     glyph, colour = P.look(word)
     done = word == "done"
     ident = "dim" if done else f"{colour} bold".strip() if critical else colour
     out = [(glyph, colour), (" ", "")] + _columns(node.id, ident)
-    room = wide - 2 - ids - GAP
-    if room >= min(cell_len(node.title), LEAST_TITLE):
+    room, least = wide - 2 - ids - GAP, min(cell_len(node.title), LEAST_TITLE)
+    if note and room - 1 - cell_len(note) >= least:
+        room -= 1 + cell_len(note)
+    else:
+        note = ""
+    if room >= least:
         out += [(" ", "")] * (2 + ids + GAP - len(out))
         out += _columns(elide(node.title, room), "dim" if done else "")
+        out += _columns(f" {note}", "dim") if note else []
     return out
 
 

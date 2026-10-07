@@ -276,6 +276,128 @@ def test_a_tree_or_a_second_proposal_or_a_split_waits_for_the_person(repo, monke
         )
 
 
+def test_one_leaf_with_a_board_item_or_a_wide_scope_waits_and_says_why(repo, monkeypatch):
+    """Whether the person sees it first is decided by the proposal, not the agent: a board item put up
+    with the leaf, or a scope past WIDE paths, keeps it for them."""
+    with Store.open(repo) as store:
+        plan.set_plan_first(store, "auto", ALEX)
+    asked = "question: which header?  [which]\n    default: the top one\n" + LEAF
+    wide = "- many  [many]\n    scope: " + ", ".join(f"n{i}.md" for i in range(9)) + "\n    check: true\n"
+    for prompt, text, why in (
+        ("fix the header", asked, "it put up a board item"),
+        ("add notes", wide, "its scope reaches 9 paths, more than 8"),
+    ):
+        hook(repo, "UserPromptSubmit", prompt=prompt)
+        said = propose(repo, monkeypatch, text)
+        assert said.exit_code == 0 and f"it waits for the person: {why}" in said.stdout, said.output
+    hook(repo, "UserPromptSubmit", prompt="tidy the api")  # two tracked files and one new one: 3 paths
+    near = "- tidy  [tidy]\n    scope: src/**, src/api/new.py\n    check: true\n"
+    assert "tidy is accepted" in propose(repo, monkeypatch, near).stdout
+    with Store.open(repo) as store:
+        states = {n.id: n.state for n in plan.nodes(store)}
+        assert states == {"typo": PROPOSED, "many": PROPOSED, "tidy": OPEN}
+
+
+def test_one_leaf_with_a_board_item_already_open_on_the_board_still_waits(repo, monkeypatch):
+    """The review of 7 October: a question put up again in the words of one still open makes no new item,
+    so the leaf it came with was taken at once while the question stood unanswered. A board item in the
+    proposal keeps the leaf for the person, new on the board or not."""
+    with Store.open(repo) as store:
+        plan.set_plan_first(store, "auto", ALEX)
+    asked = "question: which header?\n    default: the top one\n"
+    waits = "it waits for the person: it put up a board item"
+    hook(repo, "UserPromptSubmit", prompt="fix the header")
+    assert waits in propose(repo, monkeypatch, asked + LEAF).stdout
+    hook(repo, "UserPromptSubmit", prompt="and the footer")
+    said = propose(repo, monkeypatch, asked + "- the footer  [footer]\n    scope: README.md\n    check: true")
+    assert "on the board already (open)" in said.stdout and waits in said.stdout, said.output
+    with Store.open(repo) as store:
+        assert plan.get(store, "footer").state == PROPOSED
+
+
+def test_one_leaf_with_board_items_the_person_settled_is_theirs_at_once(repo, monkeypatch):
+    """The second review of 7 October: any board item in the proposal kept the leaf for the person, so
+    questions put up again after the person took one's default and dropped the other made it wait on
+    nothing, and the agent was told it put up a board item. Only an item still open keeps the leaf."""
+    from graphene_map import board
+
+    with Store.open(repo) as store:
+        plan.set_plan_first(store, "auto", ALEX)
+    asked = (
+        "question: which header?  [which]\n    default: the top one\n"
+        "question: which footer?  [where]\n    default: the bottom one\n"
+    )
+    hook(repo, "UserPromptSubmit", prompt="fix the header")
+    assert "it put up a board item" in propose(repo, monkeypatch, asked + LEAF).stdout
+    with Store.open(repo) as store:
+        board.take(store, "which", ALEX)
+        board.drop(store, "where", ALEX)
+    hook(repo, "UserPromptSubmit", prompt="and the footer")
+    said = propose(repo, monkeypatch, asked + "- the footer  [footer]\n    scope: README.md\n    check: true")
+    assert "footer is accepted, as the person's" in said.stdout, said.output
+
+
+def test_one_leaf_whose_new_question_reuses_a_settled_items_id_waits(repo, monkeypatch):
+    """The third review of 7 October: a new question under the [id] of one the person had taken was
+    kept off the board (the board keeps an item as it stands), and the settled item it named let the
+    leaf be taken at once: the person was never asked. A question no item on the board holds waits."""
+    from graphene_map import board
+
+    with Store.open(repo) as store:
+        plan.set_plan_first(store, "auto", ALEX)
+    hook(repo, "UserPromptSubmit", prompt="fix the header")
+    first = "question: which header?  [q-id]\n    default: the top one\n"
+    assert "it put up a board item" in propose(repo, monkeypatch, first + LEAF).stdout
+    with Store.open(repo) as store:
+        board.take(store, "q-id", ALEX)
+    hook(repo, "UserPromptSubmit", prompt="and the footer")
+    other = "question: may the footer drop the license line?  [q-id]\n    default: keep it\n"
+    said = propose(repo, monkeypatch, other + "- the footer  [footer]\n    scope: README.md\n    check: true")
+    assert "it waits for the person: it put up a board item" in said.stdout, said.output
+
+
+def test_one_leaf_whose_scope_reaches_a_protected_file_git_does_not_track_waits(repo, monkeypatch):
+    """The review of 7 October: propose refuses a scope over a protected file git tracks, and never saw
+    one it does not: `certs/**` over an ignored certs/server.pem, with `protected: **/*.pem`, was the
+    person's at once. It waits for them, and says which setting keeps the file out."""
+    from graphene_map import settings
+
+    (repo / ".gitignore").write_text("build/\ncerts/\n")
+    for path in ("certs/server.pem", "keys/dev.pem"):  # one git ignores, one it has not been told of
+        (repo / path).parent.mkdir()
+        (repo / path).write_text("not a key\n")
+    with Store.open(repo) as store:
+        plan.set_plan_first(store, "auto", ALEX)
+        settings.apply(store, "protected: **/*.pem\n", ALEX)
+    for leaf, path in (("certs", "certs/server.pem"), ("keys", "keys/dev.pem")):
+        hook(repo, "UserPromptSubmit", prompt=f"renew the {leaf}")
+        said = propose(repo, monkeypatch, f"- {leaf}  [{leaf}]\n    scope: {leaf}/**\n    check: true\n")
+        kept = f"its scope reaches {path}, which the setting `protected: **/*.pem` keeps out"
+        assert f"it waits for the person: {kept}" in said.stdout, said.output
+    with Store.open(repo) as store:
+        assert {n.id: n.state for n in plan.nodes(store)} == {"certs": PROPOSED, "keys": PROPOSED}
+
+
+def test_one_leaf_in_a_sub_goal_of_its_own_is_one_leaf(repo, monkeypatch):
+    """A sub-goal that holds nothing but the leaf it came with is a heading, not a second piece of work:
+    the leaf is the person's at once, with it. Two leaves under it are a tree, and wait."""
+    with Store.open(repo) as store:
+        plan.set_plan_first(store, "auto", ALEX)
+    hook(repo, "UserPromptSubmit", prompt="add the xml source")
+    wrapped = "- the xml source  [xml]\n  - wire it  [wire]\n      scope: src/api/**\n      check: true\n"
+    said = propose(repo, monkeypatch, wrapped)
+    assert "wire is accepted, as the person's" in said.stdout, said.output
+    hook(repo, "UserPromptSubmit", prompt="and the zeros")
+    two = (
+        "- zeros  [zeros]\n  - rule  [rule]\n      scope: src/db/a.py\n      check: true\n"
+        "  - test  [test]\n      scope: src/db/b.py\n      check: true\n"
+    )
+    assert "until the person accepts" in propose(repo, monkeypatch, two).stdout
+    with Store.open(repo) as store:
+        states = {n.id: n.state for n in plan.nodes(store)}
+        assert states == {"xml": OPEN, "wire": OPEN, "zeros": PROPOSED, "rule": PROPOSED, "test": PROPOSED}
+
+
 def test_a_session_that_holds_a_leaf_proposes_for_the_person_to_accept(repo, monkeypatch):
     """What an agent proposes while it holds a leaf is its idea, not the ask the person typed."""
     in_force(repo)

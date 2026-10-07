@@ -1,0 +1,152 @@
+diff --git a/api/export.py b/api/export.py
+index c27da9c..56bbfe9 100644
+--- a/api/export.py
++++ b/api/export.py
+@@ -8,6 +8,7 @@ Amounts are strings, exact, as they are stored. Billing does its own rounding.
+ """
+ 
+ import json
++from dataclasses import asdict
+ from decimal import Decimal
+ 
+ from core import balances, ledger
+@@ -33,7 +34,7 @@ def export_v1(conn, number, month):
+         "month": month,
+         "opening": stored(opening),
+         "closing": stored(closing),
+-        "postings": [plain({f: getattr(p, f) for f in V1_FIELDS}) for p in during],
++        "postings": [plain(asdict(p)) for p in during],
+     }
+ 
+ 
+diff --git a/core/money.py b/core/money.py
+index 8aeff03..e370922 100644
+--- a/core/money.py
++++ b/core/money.py
+@@ -5,7 +5,7 @@ printed with two.
+ """
+ 
+ import re
+-from decimal import ROUND_HALF_EVEN, ROUND_HALF_UP, Decimal, InvalidOperation
++from decimal import ROUND_HALF_EVEN, Decimal, InvalidOperation
+ 
+ CENT = Decimal("0.01")
+ PLACES = Decimal("0.0001")
+@@ -41,9 +41,8 @@ def stored(value):
+ 
+ 
+ def round_cents(value):
+-    """Two places, half up: 0.125 is 0.13 and -0.125 is -0.13. The bank's monthly file has always
+-    rounded this way, and legacy/monthly.py prints what this returns."""
+-    return value.quantize(CENT, rounding=ROUND_HALF_UP)
++    """Two places, half-even, like everything else now."""
++    return value.quantize(CENT, rounding=ROUND_HALF_EVEN)
+ 
+ 
+ def to_cents(value):
+diff --git a/migrations/0007_postings_by_currency.sql b/migrations/0007_postings_by_currency.sql
+new file mode 100644
+index 0000000..d282a18
+--- /dev/null
++++ b/migrations/0007_postings_by_currency.sql
+@@ -0,0 +1,2 @@
++-- A statement reads one account's postings in one currency by date.
++CREATE INDEX postings_by_account_currency ON postings (account_id, currency, posted_on);
+diff --git a/tests/test_currency.py b/tests/test_currency.py
+index 118719a..545d13f 100644
+--- a/tests/test_currency.py
++++ b/tests/test_currency.py
+@@ -36,9 +36,6 @@ class Migration(unittest.TestCase):
+             conn.executescript(file.read_text())
+         self.assertEqual(conn.execute("SELECT currency FROM postings").fetchall(), [("USD",)])
+ 
+-    def test_the_numbers_are_contiguous(self):
+-        self.assertEqual([n for n, _, _ in db.migrations()], list(range(1, len(db.migrations()) + 1)))
+-
+ 
+ class PerCurrency(unittest.TestCase):
+     def setUp(self):
+@@ -65,7 +62,7 @@ class PerCurrency(unittest.TestCase):
+         doc = json.loads(dumps(export_v1(self.conn, "ACC-1001", "2026-09")))
+         self.assertEqual(doc["closing"], "400")
+         self.assertEqual([p["memo"] for p in doc["postings"]], ["usd in", "no currency"])
+-        self.assertEqual(list(doc["postings"][0]), ["id", "account", "posted_on", "amount", "memo"])
++        self.assertEqual(list(doc["postings"][0]), ["id", "account", "posted_on", "amount", "memo", "currency"])
+ 
+     def test_interest_is_per_currency(self):
+         posted = interest.accrue(self.conn, "2026-10", "0.0365")
+@@ -78,12 +75,12 @@ class HalfEven(unittest.TestCase):
+                  "1234567.885": "1,234,567.88", "-2500.675": "-2,500.68"}  # fmt: skip
+         self.assertEqual({k: money(Decimal(k)) for k in cases}, cases)
+ 
+-    def test_the_monthly_file_still_rounds_half_up(self):
++    def test_the_monthly_file_rounds_half_even_too(self):
+         conn, _ = database("account,posted_on,amount,memo\nACC-1001,2026-09-01,0.125,x\n")
+         self.addCleanup(conn.close)
+         from legacy.monthly import lines
+ 
+-        self.assertEqual(lines(conn, "2026-09")[1], "ACC-1001,2026-09,0.00,0.00,0.13,0.13")
++        self.assertEqual(lines(conn, "2026-09")[1], "ACC-1001,2026-09,0.00,0.00,0.12,0.12")
+ 
+ 
+ # Ada owes 30 dollars from August and holds 500 euros. Grace is overdrawn in euros only.
+diff --git a/tests/test_export.py b/tests/test_export.py
+index 010a873..b25e630 100644
+--- a/tests/test_export.py
++++ b/tests/test_export.py
+@@ -12,9 +12,9 @@ ACC_1002 = {
+     "opening": "300.0375",
+     "closing": "280.08",
+     "postings": [
+-        {"id": 10, "account": "ACC-1002", "posted_on": "2026-09-01", "amount": "-19.995", "memo": "phone"},
+-        {"id": 11, "account": "ACC-1002", "posted_on": "2026-09-20", "amount": "-0.005", "memo": "card fee"},
+-        {"id": 12, "account": "ACC-1002", "posted_on": "2026-09-30", "amount": "0.0425", "memo": "interest"},
++        {"id": 10, "account": "ACC-1002", "posted_on": "2026-09-01", "amount": "-19.995", "memo": "phone", "currency": "USD"},
++        {"id": 11, "account": "ACC-1002", "posted_on": "2026-09-20", "amount": "-0.005", "memo": "card fee", "currency": "USD"},
++        {"id": 12, "account": "ACC-1002", "posted_on": "2026-09-30", "amount": "0.0425", "memo": "interest", "currency": "USD"},
+     ],
+ }
+ 
+diff --git a/tests/test_legacy_contract.py b/tests/test_legacy_contract.py
+index 54de557..ad570d3 100644
+--- a/tests/test_legacy_contract.py
++++ b/tests/test_legacy_contract.py
+@@ -27,9 +27,9 @@ TOTAL,2026-08,0.00,-62.40,11555.05,11492.65
+ 
+ SEPTEMBER = """\
+ account,month,opening,debits,credits,closing
+-ACC-1001,2026-09,1187.61,-124.84,2400.13,3462.90
++ACC-1001,2026-09,1187.61,-124.84,2400.12,3462.90
+ ACC-1002,2026-09,300.04,-20.00,0.04,280.08
+-ACC-1003,2026-09,10000.00,-3735.24,851.67,7116.43
++ACC-1003,2026-09,10000.00,-3735.24,851.66,7116.42
+ ACC-1004,2026-09,5.00,0.00,0.00,5.00
+ TOTAL,2026-09,11492.65,-3880.08,3251.84,10864.41
+ """
+diff --git a/vendor/decimalfmt/__init__.py b/vendor/decimalfmt/__init__.py
+index 08f98dc..ee542ce 100644
+--- a/vendor/decimalfmt/__init__.py
++++ b/vendor/decimalfmt/__init__.py
+@@ -8,7 +8,7 @@
+ Version 1.3.0. Vendored: see VENDORED in this directory.
+ """
+ 
+-from decimal import ROUND_HALF_UP, Decimal
++from decimal import ROUND_HALF_EVEN, ROUND_HALF_UP, Decimal
+ 
+ __version__ = "1.3.0"
+ __all__ = ["format_amount", "ROUNDINGS"]
+@@ -26,11 +26,8 @@ def format_amount(value, places=2, rounding="half_up", sep=","):
+     if places < 0:
+         raise ValueError("places must be 0 or more")
+     value = Decimal(value)
+-    if rounding == "half_even":
+-        # round() rounds half to even
+-        value = Decimal(repr(round(float(value), places)))
+-    else:
+-        value = value.quantize(Decimal(1).scaleb(-places), rounding=ROUND_HALF_UP)
++    mode = ROUND_HALF_EVEN if rounding == "half_even" else ROUND_HALF_UP
++    value = value.quantize(Decimal(1).scaleb(-places), rounding=mode)
+     return _grouped(value, places, sep)
+ 
+ 

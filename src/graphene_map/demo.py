@@ -13,7 +13,7 @@ written `{repo}`, and the replay puts its own there; the home directory is `~`; 
 in the environment, anything shaped like a key, and each sandbox image the run names are taken out.
 
 demo.jsonl, beside this file, is the recording Graphene ships. It was made on 29 September 2026 by
-docs/proof/nemotron.sh on a tiny repository against the scripted fake (tests/fake_tokenfactory.py), with a
+dev/proof/nemotron.sh on a tiny repository against the scripted fake (tests/fake_tokenfactory.py), with a
 planner that puts up a board and a key taking each item, and its first line says it is a scripted
 stand-in, which the screen shows.
 It is made again from the fake with
@@ -22,7 +22,7 @@ It is made again from the fake with
 
 and from a live run on Token Factory, with NEBIUS_API_KEY set, with
 
-    RECORD=$PWD/src/graphene_map/demo.jsonl docs/proof/nemotron.sh
+    RECORD=$PWD/src/graphene_map/demo.jsonl dev/proof/nemotron.sh
 
 Read what that writes before committing it: tests/test_demo.py checks it holds no path and no key, and
 names tonight's leaves, which a new recording changes.
@@ -48,6 +48,7 @@ from textual.widgets import Input, Static
 
 from . import __version__, extra
 from . import plan as P
+from .node_record import WHOSE
 from .store import Store
 from .tui import Help, Pane, Watch, fit, help_groups
 
@@ -72,6 +73,7 @@ META = ("goal", "goal:proposed", "goal:proposed:by", "planner", "executor", "pla
         "settings:protected", "settings:readonly", "settings:never", "settings:size",
         "settings:board")  # read  # fmt: skip
 KEY, WORD, BASE64, REMOVED = P.SHAPED, P.WORD, P.BASE64, P.REMOVED  # shaped like a key: see there
+DASHED = re.compile(r"[^A-Za-z0-9]")  # what Claude Code dashes in a path it names a folder after
 
 
 def _kept() -> str:
@@ -81,11 +83,12 @@ def _kept() -> str:
 
 def hider(root: Path) -> tuple:
     """What a recording must not hold, taken out of every string: the repository's path (`{repo}`), the
-    home directory (`~`), the key and the project in the environment, and anything shaped like a key.
+    home directory (`~`, and as Claude Code spells it in a folder's name, all but its letters and digits
+    as dashes), the key and the project in the environment, and anything shaped like a key.
     Returns the function and its list of (text, instead), to which a sandbox image is added when seen."""
     home = str(Path.home())
     said = [(p, "{repo}") for p in sorted({str(root), str(root.resolve())}, key=len, reverse=True)]
-    said += [(home, "~")] if len(home) > 1 else []
+    said += [(home, "~"), (DASHED.sub("-", home), "-~")] if len(home) > 1 else []  # Claude Code dashes it
     found = {os.getenv(k, "") for k in ("NEBIUS_API_KEY", "NEBIUS_PROJECT_ID")} | {_kept()}  # keychain's too
     said += [(k, "[removed]") for k in sorted(found, key=len, reverse=True) if len(k) > 7]
 
@@ -117,7 +120,8 @@ def leaks(text: str) -> dict[str, int]:
                "the project": {os.getenv("NEBIUS_PROJECT_ID", "")}}  # fmt: skip
     counts = {what: sum(text.count(v) for v in values if len(v) > 7) for what, values in secrets.items()}
     shaped = sum(1 for w in WORD.findall(text) if KEY.search(w)) + len(BASE64.findall(text))
-    return counts | {"the home directory": text.count(home) if len(home) > 1 else 0,
+    mine = text.count(home) + text.count(DASHED.sub("-", home)) if len(home) > 1 else 0
+    return counts | {"the home directory": mine,
                      "a path under a home directory": len(HOMES.findall(text)),
                      "words shaped like a key": shaped}  # fmt: skip
 
@@ -215,10 +219,11 @@ def load(path: Path, speed: float = 1.0) -> tuple[dict, list[dict]]:
         raise ValueError("it is not a recording `graphene demo --record` made")
     head["day"] = str(datetime.fromisoformat(head["recorded"].replace("Z", "+00:00")).astimezone().date())
     # the run says what made it, not the terminal that recorded it: live only when every model call on
-    # record says it went to Token Factory (a row from before rows said so is a stand-in's)
+    # record says who really answered it, Token Factory, Claude Code or Codex (a row from before rows said
+    # so is a stand-in's)
     calls = [json.loads(r["detail"] or "{}") for line in lines for r in line.get("node_log") or []
              if r["kind"] == "usage"]  # fmt: skip
-    live = not head.get("stand_in", True) and all(c.get("endpoint") == "token factory" for c in calls)
+    live = not head.get("stand_in", True) and all(c.get("endpoint") in WHOSE for c in calls)
     head["shown"] = NO_CALLS if not calls else LIVE if live else STAND_IN
     if head["shown"] == STAND_IN:
         text = json.dumps(lines)
@@ -323,6 +328,12 @@ class Replay(Watch):
         self.head, self.lines, self.next, self.began = head, lines, 0, 0.0
         self.paused: float | None = None  # when it was paused, on the replay's clock's terms; None: playing
         self.files, self.files_at = [], math.inf  # what git tracked is the recording's, never asked here
+        # the meter's strip, when the recording was made with the meter on: a row of it is an attempt's usage
+        self.METERS = any(
+            row.get("kind") == "usage" and '"attempt"' in str(row.get("detail"))
+            for line in lines
+            for row in line.get("node_log", [])
+        )
 
     def on_mount(self) -> None:
         self.began = time.monotonic()
@@ -337,7 +348,8 @@ class Replay(Watch):
         once the app has stopped running: the last change opens every fold, and the tree may be gone."""
         if not self.is_running:
             return
-        due = (self.paused or time.monotonic()) - self.began
+        # `.` sets the clock to a change's own time, and a float can land a hair before it
+        due = (self.paused or time.monotonic()) - self.began + 1e-6
         if self.next == len(self.lines) or self.lines[self.next]["at"] > due:
             return
         said = []
@@ -383,6 +395,13 @@ class Replay(Watch):
             output.unlink()
         self.next, self.began, self.paused, self.files = 0, time.monotonic(), None, []
         self.play()
+
+    METERS = False  # the shipped recording is from before the meter; each replay looks at its own
+
+    def clock(self, everything: list[dict]) -> datetime:
+        """The recording's own: its newest row, so a leaf's minutes are what they were as it played."""
+        stamps = [e["timestamp"] for e in everything]
+        return datetime.fromisoformat(max(stamps)) if stamps else super().clock(everything)
 
     def draw(self, store) -> None:
         """As `graphene watch` draws it, the top line the replay's: what it is, a wait being cut short

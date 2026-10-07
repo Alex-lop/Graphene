@@ -201,7 +201,7 @@ def test_contree_and_the_access_check_count_a_key_kept_in_the_keychain(tmp_path,
     monkeypatch.setattr(keys, "find", lambda: "fake-key-in-keychain")
     monkeypatch.setenv("NEBIUS_PROJECT_ID", "project-fake")
     assert sandbox.credentials()
-    monkeypatch.syspath_prepend(str(pathlib.Path(__file__).parents[2] / "docs" / "test"))
+    monkeypatch.syspath_prepend(str(pathlib.Path(__file__).parents[2] / "dev" / "test"))
     access = importlib.import_module("access")
     monkeypatch.setenv("GRAPHENE_TOKENFACTORY_URL", "http://127.0.0.1:9/")
     monkeypatch.setattr(tf, "_sleep", lambda s: None)

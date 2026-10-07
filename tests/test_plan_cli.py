@@ -302,7 +302,8 @@ def test_start_done_signoff_reopen_and_run_name_the_repository(repo):
     assert [a.exit_code for a in acts] == [0] * 5, [a.output for a in acts]
     assert all("(the plan of " in a.stderr for a in acts), [a.stderr for a in acts]
     # a run names it first (it runs for long), and ends with what it did, for the person
-    assert acts[-1].stdout.splitlines()[-1] == "run: 1 came back (l2)"
+    last = acts[-1].stdout.splitlines()[-1]
+    assert last == "run: 1 came back (l2) · agents <1 min, no meter · you 0 acts, 0 min"
 
 
 # -- the recheck of the closing review: its regression tests --------------------
@@ -347,7 +348,8 @@ def test_a_finished_plan_says_when_its_leaves_work_is_not_committed_and_what_com
     assert ran.exit_code == 0, ran.output
     assert "--here: your checkout is exposed" in ran.stdout
     assert ran.stdout.splitlines()[-1] == (
-        "run: 1 done; the work of ids is not committed (`git status`): `graphene run --here` commits "
+        "run: 1 done · agents <1 min, no meter · you 0 acts, 0 min · the work of ids is not committed "
+        "(`git status`): `graphene run --here` commits "
         "nothing, `graphene run` and watch's R commit and merge each leaf"
     )
     head = person().stdout.splitlines()[0]
@@ -412,13 +414,13 @@ def test_plan_first_is_a_setting_the_person_sees_and_sets(repo):
         assert turned.exit_code == 0 and f"plan first: {how}. " in turned.stdout
         assert "(the plan of" in turned.stderr
     assert agent("plan", "first", "off").exit_code == 1
-    assert "plan first: auto" in person("plan", "first").stdout
+    assert "One leaf of at most 8 paths, with nothing on the board" in person("plan", "first").stdout
     assert person("plan", "first", "sideways").exit_code == 1
 
 
 def test_init_sets_plan_first_auto(repo):
     said = person("init")
-    assert said.exit_code == 0 and "plan first is auto: one leaf of work is done at once" in said.stdout
+    assert said.exit_code == 0 and "plan first is auto: every ask is proposed first" in said.stdout
     assert "plan first: auto" in person("plan", "first").stdout
 
 

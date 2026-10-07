@@ -2,9 +2,27 @@
 
 ## 0.5.0 (not published yet: the tag is Alex's)
 
+The meter (7 October). What the agents do and spend, on the screen while they work.
+- `graphene run` reads each executor's own stream as it runs: Claude Code's `stream-json`, Codex's `--json`,
+  Nemotron's own rows. Any other command says "no meter". Run `graphene run` and watch.
+- `graphene watch` shows a row for each running leaf (model, time, turns, last act, files, tokens, dollars)
+  and two clocks on the status line: the agents', and yours, counted by your keys.
+- `graphene run` ends with one line for every executor: `run: 3 done · agents 2 min, $0.4560 at list
+  price · you 0 acts, 0 min`.
+- `graphene node show <id>` gives each attempt its record: what it read, edited and ran, what was refused,
+  what it said last, and its tail.
+- The tree and the DAG note each leaf's bill and minutes: `$0.13 · <1m`. Run `graphene plan --view tree`.
+- Under `plan first auto`, every ask is proposed. One leaf with no board item and at most 8 paths is yours
+  at once; anything else waits. Run `graphene plan first`.
+- `docs/` keeps what you need to use Graphene; `dev/` holds how it gets built. Read `dev/README.md`.
+- The README is one short argument. `docs/HOW_IT_WORKS.md` is the reference, under 3,000 words.
+- The Nemotron planner reads a tool call Ultra writes as text (`<tool_call>`), instead of taking it for its
+  answer.
+- The `statements` task is twice its size: `dev/test/tasks/statements/SIZE.md` says why and what it voids.
+
 Graphene on Nemotron. As practice on 2 October, Nemotron planned a small feature 5 times. 2 plans ran to the
 end in Token Factory Sandboxes, landing 5 of 6 leaves, each passed by its own check; neither did all it was
-asked. 3 stopped at the planner, whose tree was readable on 2 of 9 asks (`docs/test/first-light.md`). Nothing
+asked. 3 stopped at the planner, whose tree was readable on 2 of 9 asks (`dev/test/first-light.md`). Nothing
 registered has run live.
 
 The cut (5 October). Smaller, with a safe default.
@@ -20,8 +38,8 @@ The cut (5 October). Smaller, with a safe default.
   Factory code loads.
 - The old briefs, notes and spikes left `main` for the orphan branch `process`.
   `git show origin/process:README.md` says what is there.
-- A task a paragraph should lose, for Alex to run: `statements`, five traps, `docs/test/PROVE.md`.
-  Its rehearsal calls no model: `uv run python docs/test/prove.py rehearse /tmp/rehearsal`.
+- A task a paragraph should lose, for Alex to run: `statements`, five traps, `dev/test/PROVE.md`.
+  Its rehearsal calls no model: `uv run python dev/test/prove.py rehearse /tmp/rehearsal`.
 
 The live half of first light (2 October, practice).
 - The sandbox's list of files takes the exit code through `$(...)`, and a command's output is appended, never
@@ -49,7 +67,7 @@ First light (29 September).
   names the lines.
 - The hook refuses an agent's Edit, Write, MultiEdit and NotebookEdit under `.graphene/`, plan or no plan.
 - The board shows only while a question on it is open: `board: auto` (unset) in `graphene config`, by study 4
-  (`docs/test/results-2026-09-29-board.md`); `board: on` shows every open item. Accepting the whole plan, an
+  (`dev/test/results-2026-09-29-board.md`); `board: on` shows every open item. Accepting the whole plan, an
   `R` that starts something, or `graphene board take` with no id takes every open default and an agent's
   note, in one line that `graphene plan undo` takes back; a default that drops a node waits for its own key,
   and the line names it. `graphene board` prints what answering needs, and `--all` the rest.
@@ -61,7 +79,7 @@ First light (29 September).
   every live call goes on one night's ledger that every process shares, locked with `flock`
   (`~/.graphene/night/`): a call reserves its worst case first and is refused unsent past the cap, the lower
   of that figure and $10, and nothing new starts past 80% of it. Its rows say `practice`, and
-  `docs/test/evidence.py` refuses them.
+  `dev/test/evidence.py` refuses them.
 - Sandboxes: a project ConTree refuses (403) is one refusal saying what the key lacks and where access is
   asked for, wherever a sandbox is used. `graphene init` asks ConTree's whoami before it places Nemotron's
   leaves in Sandboxes, and places them on this machine with one line saying why when it is refused. An
@@ -80,8 +98,8 @@ First light (29 September).
   longer fails it.
 - `graphene key set`, `check` and `remove` refuse Claude Code and Codex. No test reaches the real keychain
   (`tests/keyguard.py`, here and in CI).
-- `docs/test/practice.sh night` prints the night's bill, and `practice.sh prototypes` practises cover, note
-  and precheck under a $0.05 cap. `docs/demo/build.sh` films the demo run scene by scene and assembles
+- `dev/test/practice.sh night` prints the night's bill, and `practice.sh prototypes` practises cover, note
+  and precheck under a $0.05 cap. `dev/demo/build.sh` films the demo run scene by scene and assembles
   `rough.mp4` only from a run recorded as live.
 - With no planner or executor chosen, `graphene ask`, `node split`, `talk` and `run` refuse in one line and
   start nothing until `graphene init` or `--with` names one; they no longer start `claude` from the PATH.
@@ -97,7 +115,7 @@ First light (29 September).
   nobody accepted says to accept it.
 - No test gets the repository git was pointed at: a suite started from `git bisect run`, a hook or `rebase
   --exec` hands no `GIT_DIR` or its kin to its tests.
-- `docs/test/bench.py` counts a leaf its round's timeout stopped as failed and runs it no more, now that a
+- `dev/test/bench.py` counts a leaf its round's timeout stopped as failed and runs it no more, now that a
   leaf a run stopped reads ready.
 - Smaller: `:ask` keeps a paragraph's apostrophes; a planner or executor run by an interpreter is named by
   its script; a leaf's record reads its check before its finish.
@@ -106,7 +124,7 @@ Shaping (28 September): the board (`graphene board`: the planner's questions and
 the person, with `then:` lines that change the tree), the outline, tree and graph views (`Tab`, `--view`),
 talking on a node (`?`: `graphene talk`), what changed since you looked (`graphene plan changes`, `seen`),
 the settings you state once (`graphene config edit`: `protected`, `readonly`, `never`, `size`), the key in
-the system keychain (`graphene key`), the practice ladder (`docs/test/practice.sh`), and three Nano
+the system keychain (`graphene key`), the practice ladder (`dev/test/practice.sh`), and three Nano
 prototypes (`graphene plan cover`, `note`, `precheck`), each run only against the stand-ins.
 
 - `graphene demo` replays a recorded run in `graphene watch`, with no key, no Docker and no network, and
@@ -144,9 +162,9 @@ prototypes (`graphene plan cover`, `note`, `precheck`), each run only against th
 - `graphene watch` folds: done subtrees fold, a folded row counts its leaves by state, a tall tree opens as its outline; `za zo zc zR zM zx`.
 - The bill: what the Nemotron planner and executors cost, at list price, in `graphene node show`, `graphene plan record`, the run's last line and the screen's status line.
 - Python 3.14 in CI; the store binds values to plain `?` only.
-- Graphene reads no Claude Code transcript; `graphene ingest --backfill` is removed (`graphene ingest hook` is unchanged). Internal: `graphene_map.attribute` is `graphene_map.shell`, `graphene_map.sources.claude_code` is `graphene_map.hooks`, `repo_root` lives in `graphene_map.store`. The screen harness is `docs/screens/`.
+- Graphene reads no Claude Code transcript; `graphene ingest --backfill` is removed (`graphene ingest hook` is unchanged). Internal: `graphene_map.attribute` is `graphene_map.shell`, `graphene_map.sources.claude_code` is `graphene_map.hooks`, `repo_root` lives in `graphene_map.store`. The screen harness is `dev/screens/`.
 - Sandboxes: a clean commit's checkpoint is made once and every leaf at it forks it; `--forks` forks one sandbox; `--image` and `--prepare`; the file list is read back whole; what git ignores is nobody's change. An executor that cannot work hands its leaf back with the cause. The planner and executor read only what git shows. A reasoning model's cut-off reply, Nemotron's `<TOOLCALL>` text and common tool names are handled. A `--parallel` leaf's record holds its own commits, and a Nemotron leaf's is graded by the writes it recorded.
-- `docs/test/`: `bench.py` and `results.py` (the benchmark), `score_tree.py` (a tree against its task), `access.py` (the access check), and the OpenCode placement spike.
+- `dev/test/`: `bench.py` and `results.py` (the benchmark), `score_tree.py` (a tree against its task), `access.py` (the access check), and the OpenCode placement spike.
 
 Paragraph in, tree out, prune, run.
 - A paragraph typed into a session (240 characters or more) is asked for a tree before any code: the agent proposes it in the plan's text and stops, and its writes wait until a leaf is accepted. A line is still done at once; "just do it" skips the tree, and a short "no plan" lifts a wait. A new session is taught the text whether or not a plan exists yet.

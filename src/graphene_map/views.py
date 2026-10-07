@@ -13,15 +13,20 @@ only when its own `suits` scores more. `suits` is a preference, `draw` decides t
 draw returns None is never chosen, and neither is one taller than the rows it has (it would scroll,
 where the outline shows the plan in one look) unless it shows what the outline cannot, which leaf
 waits on which (a view that draws `needs` says so with `NEEDS = True`). A tie goes to the outline.
+
+A view that notes what each leaf an executor held spent and took (`billed`) says so with `METER = True`,
+and its draw takes ``meter``: node id -> the note (`$0.42 · 6m`).
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 
 from rich.cells import cell_len
 from rich.text import Text
 
+from . import meter as M
 from . import plan as P
 
 
@@ -114,6 +119,31 @@ def beside(drawn: Drawn, here: str | None, way: int) -> str | None:
 
     near = [(far(c), i) for i, c in drawn.at.items() if (c[1] - first) * way > 0]
     return min(near)[1] if near else None
+
+
+def money(dollars: float) -> str:
+    """Dollars as a person reads a bill: cents, or four places below a cent (a spend is never $0.00)."""
+    return f"${dollars:.2f}" if dollars >= 0.01 or not dollars else f"${dollars:.4f}"
+
+
+def billed(rows: list[dict], now: datetime | None = None) -> dict[str, str]:
+    """What each leaf an executor held spent and took, from the log's rows, as a view notes it on the
+    leaf's cell: `$0.42 · 6m` (whole minutes, or `<1m`). A leaf no list price covers, with no meter, or
+    with no usage yet (Codex says its tokens as its turn ends) has its minutes alone."""
+    logs: dict[str, list[dict]] = {}
+    for e in rows:
+        logs.setdefault(e["node_id"], []).append(e)
+    out = {}
+    for node_id, log in logs.items():
+        tries = M.attempts(log, now=now) if any(e["kind"] == "attempt" for e in log) else []
+        if not tries:
+            continue
+        minutes = sum(a["seconds"] for a in tries) // 60
+        took = f"{minutes}m" if minutes else "<1m"
+        used = any(a["turns"] or a["prompt_tokens"] or a["dollars"] for a in tries)  # as the strip reads it
+        priced = used and any(a["meter"] for a in tries) and all(a["priced"] for a in tries)
+        out[node_id] = f"{money(sum(a['dollars'] for a in tries))} · {took}" if priced else took
+    return out
 
 
 def shown(store) -> list[P.Node]:

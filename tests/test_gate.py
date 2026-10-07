@@ -340,13 +340,14 @@ def test_plan_first_on_tells_every_prompt_and_refuses_the_write_whatever_the_wor
         }
 
 
-def test_plan_first_auto_says_in_80_words_take_one_leaf_or_propose_the_tree(repo):
-    """Auto, the default: the agent that reads the repo judges the size. The instruction is the same
-    at the start and at every prompt, and the write is refused until the session holds a leaf."""
+def test_plan_first_auto_says_in_80_words_always_propose_then_do_what_it_prints(repo):
+    """Auto, the default: the agent always proposes, and what it proposed decides whether the person
+    sees it first. The instruction is the same at the start and at every prompt, and the write is
+    refused until the session holds a leaf."""
     plan_first(repo, "auto")
     ask = told(hook(repo, "UserPromptSubmit", prompt="fix the typo in the README header"))
     assert ask == f"Graphene: {gate.AUTO}" and len(ask.split()) <= 80
-    assert "one scope you can name now and one check" in ask and "write nothing" in ask
+    assert "propose what you will do" in ask and "write nothing" in ask and "no board item" not in ask
     assert gate.AUTO in told(hook(repo, "SessionStart", source="startup"))
     assert "holds no leaf" in reason(write(repo, "README.md"))
 
@@ -392,7 +393,7 @@ def test_what_the_vendor_sends_as_a_prompt_is_never_the_persons(repo):
         [leaf] = plan.propose(
             store, [{"id": "xml", "title": "x", "scope": ["src/api/**"], "check": "true"}], BOT
         )
-        assert gate.one_line_ask(store, [leaf], BOT) is None
+        assert gate.one_line_ask(store, [leaf], BOT, [], [], repo) is None
         assert plan.get(store, "xml").state == "proposed"
 
 

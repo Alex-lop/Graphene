@@ -3,7 +3,7 @@
 Two kinds of recorded write exist: ``edit`` (the payload of an Edit, Write, MultiEdit or
 NotebookEdit call) and ``shell`` (the list of changed files Claude Code attaches to a Bash call as
 ``bashEditDiff``). Coverage then grades every path in the commits of a run's window by the best
-evidence for it; it is always several counts, never one number (docs/PRODUCT_THESIS.md, section 9).
+evidence for it; it is always several counts, never one number (dev/PRODUCT_THESIS.md, section 9).
 """
 
 from __future__ import annotations

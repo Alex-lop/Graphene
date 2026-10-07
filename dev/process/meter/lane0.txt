@@ -1,0 +1,47 @@
++ rm -rf /tmp/scratch
++ mkdir /tmp/scratch
++ cd /tmp/scratch
++ git init -q
++ echo 'print('\''hi'\'')'
++ git add .
++ git commit -qm init
++ cat
++ chmod +x /tmp/executor.sh
++ graphene init --planner /bin/true --executor /tmp/executor.sh
+planner: /bin/true · executor: /tmp/executor.sh  (`graphene init` changes them; --with changes one command)
+plan first is auto: every ask is proposed first; one small leaf is yours at once, more waits
+the Claude Code hooks are in .claude/settings.local.json too, for a Claude Code session you may run here
+next: `graphene ask '<what you want>'` proposes a plan; `graphene watch` shows it
++ graphene node add 'add a readme' --id readme --scope README.md --check 'test -f README.md'
+○ add a readme  readme  ready
+  (the plan of /private/tmp/scratch)
++ graphene run
+  (the plan of /private/tmp/scratch)
+readme started: add a readme
+readme attempt 1: the executor ended (exit 1)
+readme attempt 1 refused: readme is not done: changed outside its scope (README.md) · app.py
+readme attempt 2: the executor ended (exit 1)
+readme attempt 2 refused: readme is not done: changed outside its scope (README.md) · app.py
+readme attempt 3: the executor ended (exit 1)
+readme attempt 3 refused: readme is not done: changed outside its scope (README.md) · app.py
+readme came back after 3 attempts
+readme: what it tried is kept in /private/tmp/scratch/.graphene/worktrees/readme until the next run takes readme again
+run: 1 came back (readme) · agents <1 min, no meter · you 0 acts, 0 min
++ git status --short
++ git branch -a
++ graphene/readme
+* main
++ graphene node show readme
++ head -12
+readme (revision 1): add a readme
+  goal:   add a readme
+  scope:  README.md   (a write anywhere else is refused, and blocks `done`)
+  done:   `test -f README.md` passes
+  finish: graphene node done readme   (runs the check and asks git what changed)
+  stuck:  graphene node release readme --why '<what is in the way>' [--wants <paths it needs>]   (hands it back; say why)
+  came back: 3 attempts, the last one refused: readme is not done: changed outside its scope (README.md) app.py; the executor itself exited 1
+    widen readme's scope to app.py: `graphene node widen readme`
+    a sibling leaf for app.py (its check: true); readme waits on it: `graphene node sibling readme`
+  its last attempt is kept in /private/tmp/scratch/.graphene/worktrees/readme (branch graphene/readme)
+readme  add a readme
+  state: open · owner agent

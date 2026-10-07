@@ -1,20 +1,21 @@
 """The night's bill: one ledger that every live call shares while the person's opening is set.
 
-From an agent's shell the practice ladder's live rungs refuse to run (docs/test/practice.py), unless the
+From an agent's shell the practice ladder's live rungs refuse to run (dev/test/practice.py), unless the
 person set GRAPHENE_AGENT_LIVE_USD in the shell that started the session: that is the opening. While it
 is set, every Token Factory call and every ConTree operation, whoever starts it (the ladder, `graphene
-ask` or `run` with nemotron, a prototype, a harness in docs/test), is written to one ledger for the
-night, and the night has one cap: the lower of that figure and $10 (CEILING).
+ask` or `run` with nemotron, a prototype, a harness in dev/test), is written to one ledger for the
+night, and the night has one cap: the lower of that figure and $50 (CEILING). Each row says its purpose
+(GRAPHENE_NIGHT_PURPOSE), and the bill adds them up by purpose.
 
 - A Token Factory call reserves its worst case before it is sent (``worst``) and settles to its usage
   after; one whose reservation would take the night past its cap is refused, and nothing is sent.
 - Nothing new starts (a rung, a run, a process's first live call) once what is spent and what is in
-  flight reach 80% of the cap: the ledger estimates at list price, and the rest is the margin. What a
+  flight reach 90% of the cap: the ledger estimates at list price, and the rest is the margin. What a
   started thing starts (a run's executors, a leaf's `node done`) inherits GRAPHENE_NIGHT_STARTED and goes
   on under the cap.
 - A ConTree operation is counted with its seconds, at $0 and `price: unknown` until its price is read.
 - Every row says `practice: true`: nothing made under the opening enters a registered table
-  (docs/test/evidence.py refuses it).
+  (dev/test/evidence.py refuses it).
 
 Without the opening, spending on the real service stays the person's act: a process that carries a
 vendor's agent mark (MARKS, which Claude Code, Codex and the others export into their shells) is refused
@@ -41,8 +42,9 @@ from pathlib import Path
 OPENING = "GRAPHENE_AGENT_LIVE_USD"
 LEDGER = "GRAPHENE_NIGHT_LEDGER"
 STARTED = "GRAPHENE_NIGHT_STARTED"
-CEILING = 10.0  # dollars at list price, whatever the opening says
-START = 0.8  # of the cap: past it, nothing new starts
+PURPOSE = "GRAPHENE_NIGHT_PURPOSE"  # what a row was spent on: meter, auto, dogfood...
+CEILING = 50.0  # dollars at list price, whatever the opening says
+START = 0.9  # of the cap: past it, nothing new starts
 UNSAID = 32_768  # completion tokens a call that names no max_tokens may take: the most a planner raises it to
 
 
@@ -94,9 +96,10 @@ def where() -> Path:
 
 
 @contextmanager
-def _held():
-    """The ledger's rows, read under its lock, and the file to append to while the lock is held."""
-    path = where()
+def _held(ledger: str | None = None):
+    """The ledger's rows (``ledger``, else the night's now), read under its lock, and the file to append to
+    while the lock is held."""
+    path = Path(ledger) if ledger else where()
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "a+", encoding="utf-8") as f:  # closing it lets the lock go, however the process ends
         fcntl.flock(f, fcntl.LOCK_EX)
@@ -112,8 +115,9 @@ def _held():
         yield rows, f
 
 
-def _add(f, row: dict) -> None:
-    f.write(json.dumps({"at": round(time.time(), 3), **row, "practice": True}) + "\n")
+def _add(f, row: dict, purpose: str | None = None) -> None:
+    purpose = purpose or os.environ.get(PURPOSE) or "unsaid"
+    f.write(json.dumps({"at": round(time.time(), 3), **row, "purpose": purpose, "practice": True}) + "\n")
     f.flush()
 
 
@@ -142,7 +146,7 @@ def _late(what: str, spent: float, held: float, limit: float) -> str:
 
 
 def begin(what: str) -> None:
-    """Something new and live starts here (``what``: a rung, a run): refused once 80% of the cap is spent or
+    """Something new and live starts here (``what``: a rung, a run): refused once 90% of the cap is spent or
     in flight. What it starts inherits the mark, and goes on under the cap."""
     limit = cap()
     if limit is None:
@@ -160,13 +164,14 @@ def first(what: str) -> None:
         begin(what)
 
 
-def reserve(model: str, worst: float, tag: str, endpoint: str) -> str | None:
-    """Hold ``worst`` dollars for one call before it is sent; its id, or None when the night is not open."""
+def reserve(model: str, worst: float, tag: str, endpoint: str, ledger: str | None = None) -> str | None:
+    """Hold ``worst`` dollars for one call before it is sent, in ``ledger`` (else the night's now); its id,
+    or None when the night is not open."""
     limit = cap()
     if limit is None:
         return None
     first(f"a call to {model}")
-    with _held() as (rows, f):
+    with _held(ledger) as (rows, f):
         spent, held = _sums(rows)
         if spent + held + worst > limit:
             raise Refused(f"refused: a call to {model} may cost up to ${worst:.4f}, and the night has "
@@ -178,15 +183,31 @@ def reserve(model: str, worst: float, tag: str, endpoint: str) -> str | None:
     return held_id
 
 
-def settle(held_id: str | None, model: str, dollars: float, usage: dict | None = None) -> None:
-    """The call's reservation, settled at what it cost (its usage at list price)."""
+def settle(held_id: str | None, model: str, dollars: float, usage: dict | None = None,
+           ledger: str | None = None) -> None:  # fmt: skip
+    """The call's reservation, settled at what it cost (its usage at list price), once: a run killed while
+    its leaf's check ran had settled its attempt, and the next run's sweep settles that attempt again. It
+    settles in the ledger that holds it (``ledger``, else the night's now), under the purpose it was held
+    for: a hold settled after noon is its own night's, not the next one's."""
     if held_id is None:
         return
     usage = usage or {}
-    with _held() as (_, f):
+    with _held(ledger) as (rows, f):
+        if any(r.get("kind") == "settle" and r.get("id") == held_id for r in rows):
+            return
+        held = next((r for r in rows if r.get("kind") == "reserve" and r.get("id") == held_id), {})
         _add(f, {"kind": "settle", "id": held_id, "model": model, "dollars": dollars,
                  "prompt_tokens": usage.get("prompt_tokens") or 0,
-                 "completion_tokens": usage.get("completion_tokens") or 0})  # fmt: skip
+                 "completion_tokens": usage.get("completion_tokens") or 0}, held.get("purpose"))  # fmt: skip
+
+
+def flying(ledger: str | None = None) -> set:
+    """The ids held in ``ledger`` (else the night's now) and not settled yet."""
+    if not (Path(ledger) if ledger else where()).exists():
+        return set()
+    with _held(ledger) as (rows, _):
+        settled = {r.get("id") for r in rows if r.get("kind") == "settle"}
+        return {r.get("id") for r in rows if r.get("kind") == "reserve"} - settled
 
 
 def sandbox(op: str, seconds: float) -> None:
@@ -225,7 +246,14 @@ def bill() -> list[str]:
     flying = len({r.get("id") for r in rows if r.get("kind") == "reserve"} - {r.get("id") for r in settles})
     if flying:
         lines.append(f"  in flight: {flying} call{'s' * (flying != 1)}, ${held:.4f} held at the worst case")
-    stand_in = sum(1 for r in rows if r.get("kind") == "reserve" and r.get("endpoint") != "token factory")
+    purposes: dict[str, float] = {}
+    for r in settles:
+        key = str(r.get("purpose") or "unsaid")
+        purposes[key] = purposes.get(key, 0.0) + _dollars(r)
+    if purposes:
+        lines.append("  by purpose: " + " · ".join(f"{k} ${v:.4f}" for k, v in sorted(purposes.items())))
+    stand_in = sum(1 for r in rows if r.get("kind") == "reserve"
+                   and r.get("endpoint") not in ("token factory", "claude code", "codex"))  # fmt: skip
     if stand_in:
         lines.append(f"  of these, {stand_in} call{'s' * (stand_in != 1)} went to a stand-in")
     ops = [r for r in rows if r.get("kind") == "sandbox"]
