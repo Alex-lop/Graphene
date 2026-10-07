@@ -361,6 +361,27 @@ def test_the_sweep_settles_a_dead_runs_hold_whatever_its_leaf_has_become_and_nev
     assert got[2]["id"] == got[0]["id"] and not ledger(tmp_path)  # the dead run's, in its own night
 
 
+def test_a_stop_after_an_attempts_hold_and_before_its_end_settles_the_hold_at_its_worst_case(
+    repo, tmp_path, monkeypatch
+):
+    """The second review of 7 October: with --here, a Ctrl-C after the hold was taken and before the
+    attempt's own settle (its row written, Codex's list asked) handed the leaf back and left the $3 in
+    flight until noon: no sweep visits a leaf that is open."""
+    monkeypatch.setenv("GRAPHENE_AGENT_LIVE_USD", "10")
+    monkeypatch.setattr(R, "GRACE", 1)
+    script, _ = printing(repo, "claude", "claude.jsonl", -1)
+
+    def stopped(pid):  # the Ctrl-C lands while the attempt row is written
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(R, "_started", stopped)
+    with Store.open(repo) as store, pytest.raises(KeyboardInterrupt):
+        R.run_plan(store, repo, f"{script} --output-format stream-json", say=lambda _: None,
+                   logs=repo / ".graphene" / "runs")  # fmt: skip
+    held, settled = ledger(tmp_path)
+    assert settled["kind"] == "settle" and settled["id"] == held["id"] and settled["dollars"] == 3.0
+
+
 def test_an_attempt_the_ledger_refuses_never_starts_and_its_leaf_comes_back(repo, tmp_path, monkeypatch):
     monkeypatch.setenv("GRAPHENE_AGENT_LIVE_USD", "1")
     script, _ = printing(repo, "codex", "codex.jsonl", -1)

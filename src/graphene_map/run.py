@@ -420,6 +420,7 @@ def run_node(
     refusal: str | None = None
     stamp = (node.started_at or P._now()).replace(":", "").replace("-", "")[:15]
     proc: subprocess.Popen | None = None
+    hold: dict | None = None  # the attempt's on the night's ledger
     paid = 0.0  # what this hold's attempts settled: a resumed Claude Code reports the session's total
     try:
         for attempt in range(1, attempts + 1):
@@ -543,6 +544,8 @@ def run_node(
             stop.halt()
             if proc is not None:
                 _end(proc)  # its own session never saw the terminal's Ctrl-C: it is stopped here
+            if hold and hold.get("id"):  # stopped before its attempt's own settle: its worst case, once
+                _settle(night, hold, None)
             if P.get(store, node.id).state == P.RUNNING:
                 P.release(store, node.id, who, STOPPED, stopped=True)
                 say(f"{node.id} handed back: the run was stopped")
