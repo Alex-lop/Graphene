@@ -231,6 +231,21 @@ def ended(hold: list[dict], stop: tuple[str, str] = TIMEOUT) -> tuple[str, str]:
     return "unlanded", "it passed and its merge did not go in; it waits in review"
 
 
+def unpriced(log: list[dict]) -> int:
+    """A leaf's attempts with no usage row of their own. `graphene run` closes each attempt with an `ended`
+    row, and the meter writes a usage row a turn, so the attempts are counted from those rows; a log from
+    before them had one usage row an attempt at most."""
+    if not any(e["kind"] == "ended" for e in log):
+        return max(0, sum(e["kind"] == "attempt" for e in log) - sum(e["kind"] == "usage" for e in log))
+    count, paid = 0, False
+    for e in log:
+        if e["kind"] == "attempt":
+            paid = False
+        paid = paid or e["kind"] == "usage"
+        count += e["kind"] == "ended" and not paid
+    return count
+
+
 def leaf_rows(repo: Path, runlog: Path, at_base: dict[str, bool], signalled: set[str]) -> list[dict]:
     entries = [json.loads(ln) for ln in runlog.read_text(encoding="utf-8").splitlines() if ln.strip()]
     decided: dict[str, dict] = {}
@@ -276,7 +291,7 @@ def leaf_rows(repo: Path, runlog: Path, at_base: dict[str, bool], signalled: set
                 "tokens_out": sum(u.get("completion_tokens") or 0 for u in usage),
                 "dollars": round(sum(u.get("dollars") or 0 for u in usage), 6),
                 "models": sorted({u["model"] for u in usage if u.get("model")}),
-                "unpriced_attempts": max(0, attempts - len(usage)),
+                "unpriced_attempts": unpriced(log),
                 **tally.forks_and_escalations(log),
                 "wall_seconds": round(wall, 1),
             })  # fmt: skip

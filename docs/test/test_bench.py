@@ -426,3 +426,12 @@ def test_the_tree_commands_send_the_planners_calls_to_the_nights_ledger_under_it
     said = subprocess.run(["bash", "-c", line, "_", str(tmp_path / "env.sh")], capture_output=True, text=True,
                           env=env | {"GRAPHENE_SPEND_CAP_USD": "10"})  # fmt: skip
     assert said.stdout.strip() == f"{bench.LEDGER} 10", said.stderr
+
+
+def test_an_attempt_is_priced_by_its_own_usage_rows_not_by_how_many_rows_there_are():
+    def row(kind: str) -> dict:
+        return {"kind": kind, "detail": {}}
+
+    turns = [row("attempt"), row("usage"), row("usage"), row("usage"), row("ended")]  # a turn a row
+    assert bench.unpriced([*turns, row("attempt"), row("ended")]) == 1  # the second wrote nothing
+    assert bench.unpriced([row("attempt"), row("usage"), row("attempt")]) == 1  # before ended rows
