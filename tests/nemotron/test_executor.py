@@ -93,8 +93,8 @@ def run_one(repo, spec=f"nemotron --model {NANO}", attempts=1):
 
 
 def counted(store: Store, node: str) -> dict:
-    """What docs/test/tally.py counts of a leaf's log for the live pre-registration: forks, escalations."""
-    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "docs" / "test"))
+    """What dev/test/tally.py counts of a leaf's log for the live pre-registration: forks, escalations."""
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "dev" / "test"))
     import tally
 
     return tally.forks_and_escalations(store.node_log(node))

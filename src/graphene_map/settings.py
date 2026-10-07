@@ -52,7 +52,7 @@ def size(store) -> str:
 def board(store) -> str:
     """auto (unset): the screen and the plan show the board only while a question on it is open; what
     else is open takes its default at accept. on: they show every open item. Unset is auto by study 4
-    (docs/test/results-2026-09-29-board.md): the board cost more than the outline on 3 of 4 tasks."""
+    (dev/test/results-2026-09-29-board.md): the board cost more than the outline on 3 of 4 tasks."""
     return store.meta("settings:board") or "auto"
 
 

@@ -1,9 +1,9 @@
 """The night's bill: one ledger that every live call shares while the person's opening is set.
 
-From an agent's shell the practice ladder's live rungs refuse to run (docs/test/practice.py), unless the
+From an agent's shell the practice ladder's live rungs refuse to run (dev/test/practice.py), unless the
 person set GRAPHENE_AGENT_LIVE_USD in the shell that started the session: that is the opening. While it
 is set, every Token Factory call and every ConTree operation, whoever starts it (the ladder, `graphene
-ask` or `run` with nemotron, a prototype, a harness in docs/test), is written to one ledger for the
+ask` or `run` with nemotron, a prototype, a harness in dev/test), is written to one ledger for the
 night, and the night has one cap: the lower of that figure and $50 (CEILING). Each row says its purpose
 (GRAPHENE_NIGHT_PURPOSE), and the bill adds them up by purpose.
 
@@ -15,7 +15,7 @@ night, and the night has one cap: the lower of that figure and $50 (CEILING). Ea
   on under the cap.
 - A ConTree operation is counted with its seconds, at $0 and `price: unknown` until its price is read.
 - Every row says `practice: true`: nothing made under the opening enters a registered table
-  (docs/test/evidence.py refuses it).
+  (dev/test/evidence.py refuses it).
 
 Without the opening, spending on the real service stays the person's act: a process that carries a
 vendor's agent mark (MARKS, which Claude Code, Codex and the others export into their shells) is refused

@@ -225,7 +225,7 @@ it back. A planner's note is taken as written and told to its executors; another
 stays open, and so does a default that drops a node (`board.drops`): it waits for the person's own
 key, and the same line names it (`left for you: ID (its default drops NODE)`). So a person who agrees
 with every default answers nothing but a drop. The default is `auto` by study 4
-(`docs/test/results-2026-09-29-board.md`: on stand-ins, one run each, the board cost more modelled
+(`dev/test/results-2026-09-29-board.md`: on stand-ins, one run each, the board cost more modelled
 attention than the outline on 3 of 4 tasks). `graphene board` prints only what answering needs (what
 is open, its default and options, and the commands); `--all` lists what is settled and dropped, and
 every option's `then:` lines.
@@ -352,7 +352,7 @@ is touched. `GRAPHENE_KEYCHAIN=off` leaves the keychain out entirely, and set an
 Graphene sets it for a leaf's check, for every command the Nemotron executor's model runs, and for a
 planner or executor that is not its own Nemotron.
 
-The tests never reach the keychain (`tests/keyguard.py`, a pytest plugin in `tests/` and `docs/test`,
+The tests never reach the keychain (`tests/keyguard.py`, a pytest plugin in `tests/` and `dev/test`,
 here and in CI). Stand-ins for `security` and `secret-tool` go first on the PATH; an audit hook in the
 test process refuses the real ones, by name or by absolute path, and `import keyring`; a stand-in's
 call fails the test that made it. `GRAPHENE_KEYCHAIN=off` stays on as well.
@@ -620,7 +620,7 @@ one that would take the night past its cap (the lower of that figure and $10) is
 Nothing new starts (a rung, a `graphene run` with Nemotron, a process's first live call) once what is
 spent and what is in flight reach 80% of the cap. ConTree operations are counted with their seconds,
 at $0 and `price: unknown`. Every row, and every usage row written while the opening is set, says
-`practice`, and `docs/test/evidence.py` refuses practice.
+`practice`, and `dev/test/evidence.py` refuses practice.
 
 **The executor** is started by `graphene run` like any other: in the leaf's checkout, with
 `GRAPHENE_NODE` and the contract as its last argument. Its loop runs here. It asks a model for one
@@ -757,7 +757,7 @@ on the board is put up by `shaper:nemotron` and waits on the person.
 | Notes find their leaf (`note.py`) | `graphene plan note "SENTENCE"` | One Nano call picks the open or proposed leaf the sentence constrains, and what to add to its scope, check or goal. Graphene checks the answer: the leaf is there, an added glob matches a tracked file or falls under the scope, a check names nothing no leaf may create, and the change, made and rolled back, is one the plan takes. Only then is it printed as the `graphene node set` (or `node add`) that makes it. Nothing changes until the person runs it | `graphene board note` routes the note too, and puts the offer up as a note whose default, taken, makes the change |
 | Red first (`precheck.py`) | `graphene plan precheck [IDS] [--prepare CMD] [--again]` | Each check runs once at the commit the work starts from. A proposed leaf's check was written by a planner, so it runs only in a sandbox fork (ConTree, or Docker with `GRAPHENE_SANDBOX=docker`) and is `not run` with no sandbox. An accepted leaf's runs here, as `done` runs it. Exit 0 is `passes already`; 126, 127, pytest's 4 and 5, `command not found` and `No module named` are `cannot run`. Nano is asked only about a red whose reason those do not say. Each verdict is a `precheck` row at the leaf's revision and commit, and goes stale when either moves | after a proposal lands, its leaves' checks are run and each that cannot tell its leaf is done is a risk on the board |
 
-**The practice ladder** (`docs/test/practice.sh`, `docs/test/PRACTICE.md`) is the first hour with a key,
+**The practice ladder** (`dev/test/practice.sh`, `dev/test/PRACTICE.md`) is the first hour with a key,
 one rung at a time:
 1. access;
 2. one leaf local;
@@ -778,7 +778,7 @@ Docker. Live, rungs 2 to 7 run nothing from a shell with an agent's mark, unless
 that session with `GRAPHENE_AGENT_LIVE_USD` set (P4b); a rung does not start past 80% of the night's
 cap. `practice.sh night` prints the night's bill, and `practice.sh prototypes` practises cover, note
 and precheck, a few Nano calls each, on a fixed plan, under a $0.05 cap. Rungs 1 and 2 passed live on
-29 September, as practice, climbed by the person (`docs/test/first-light.md`); rungs 3 to 7 have not
+29 September, as practice, climbed by the person (`dev/test/first-light.md`); rungs 3 to 7 have not
 run live.
 
 ## P5. Where each mechanism ends

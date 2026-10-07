@@ -3,7 +3,7 @@ scope and every one is refused or fails, while every write inside the scope succ
 
 The sandbox is the Docker stand-in for ConTree (sandbox.Docker: the same Linux users and permissions
 layer 2 rests on), so this runs where Docker runs (CI's Linux runners, a Mac with Docker Desktop), and is
-skipped elsewhere. The live run against ConTree is in docs/proof/."""
+skipped elsewhere. The live run against ConTree is in dev/proof/."""
 
 import shutil
 import subprocess

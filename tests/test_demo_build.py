@@ -1,4 +1,4 @@
-"""docs/demo/build.sh, the rough cut: the storyboard it reads fits the rules, the narration becomes
+"""dev/demo/build.sh, the rough cut: the storyboard it reads fits the rules, the narration becomes
 subtitles over each scene's own footage, and rough.mp4 is refused for any take whose run was not live,
 as the run's own recording says it (`graphene demo --once`), whatever the person passes."""
 
@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-DEMO = Path(__file__).resolve().parents[1] / "docs" / "demo"
+DEMO = Path(__file__).resolve().parents[1] / "dev" / "demo"
 SHIPPED = Path(__file__).resolve().parents[1] / "src" / "graphene_map" / "demo.jsonl"
 spec = importlib.util.spec_from_file_location("build", DEMO / "build.py")
 build = importlib.util.module_from_spec(spec)
