@@ -412,13 +412,13 @@ def test_plan_first_is_a_setting_the_person_sees_and_sets(repo):
         assert turned.exit_code == 0 and f"plan first: {how}. " in turned.stdout
         assert "(the plan of" in turned.stderr
     assert agent("plan", "first", "off").exit_code == 1
-    assert "plan first: auto" in person("plan", "first").stdout
+    assert "One leaf of at most 8 paths, with nothing on the board" in person("plan", "first").stdout
     assert person("plan", "first", "sideways").exit_code == 1
 
 
 def test_init_sets_plan_first_auto(repo):
     said = person("init")
-    assert said.exit_code == 0 and "plan first is auto: one leaf of work is done at once" in said.stdout
+    assert said.exit_code == 0 and "plan first is auto: every ask is proposed first" in said.stdout
     assert "plan first: auto" in person("plan", "first").stdout
 
 

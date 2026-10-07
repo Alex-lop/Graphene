@@ -276,6 +276,28 @@ def test_a_tree_or_a_second_proposal_or_a_split_waits_for_the_person(repo, monke
         )
 
 
+def test_one_leaf_with_a_board_item_or_a_wide_scope_waits_and_says_why(repo, monkeypatch):
+    """Whether the person sees it first is decided by the proposal, not the agent: a board item put up
+    with the leaf, or a scope past WIDE paths, keeps it for them."""
+    with Store.open(repo) as store:
+        plan.set_plan_first(store, "auto", ALEX)
+    asked = "question: which header?  [which]\n    default: the top one\n" + LEAF
+    wide = "- many  [many]\n    scope: " + ", ".join(f"n{i}.md" for i in range(9)) + "\n    check: true\n"
+    for prompt, text, why in (
+        ("fix the header", asked, "it put up a board item"),
+        ("add notes", wide, "its scope reaches 9 paths, more than 8"),
+    ):
+        hook(repo, "UserPromptSubmit", prompt=prompt)
+        said = propose(repo, monkeypatch, text)
+        assert said.exit_code == 0 and f"it waits for the person: {why}" in said.stdout, said.output
+    hook(repo, "UserPromptSubmit", prompt="tidy the api")  # two tracked files and one new one: 3 paths
+    near = "- tidy  [tidy]\n    scope: src/**, src/api/new.py\n    check: true\n"
+    assert "tidy is accepted" in propose(repo, monkeypatch, near).stdout
+    with Store.open(repo) as store:
+        states = {n.id: n.state for n in plan.nodes(store)}
+        assert states == {"typo": PROPOSED, "many": PROPOSED, "tidy": OPEN}
+
+
 def test_a_session_that_holds_a_leaf_proposes_for_the_person_to_accept(repo, monkeypatch):
     """What an agent proposes while it holds a leaf is its idea, not the ask the person typed."""
     in_force(repo)
