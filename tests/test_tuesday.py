@@ -298,6 +298,45 @@ def test_one_leaf_with_a_board_item_or_a_wide_scope_waits_and_says_why(repo, mon
         assert states == {"typo": PROPOSED, "many": PROPOSED, "tidy": OPEN}
 
 
+def test_one_leaf_with_a_board_item_already_open_on_the_board_still_waits(repo, monkeypatch):
+    """The review of 7 October: a question put up again in the words of one still open makes no new item,
+    so the leaf it came with was taken at once while the question stood unanswered. A board item in the
+    proposal keeps the leaf for the person, new on the board or not."""
+    with Store.open(repo) as store:
+        plan.set_plan_first(store, "auto", ALEX)
+    asked = "question: which header?\n    default: the top one\n"
+    waits = "it waits for the person: it put up a board item"
+    hook(repo, "UserPromptSubmit", prompt="fix the header")
+    assert waits in propose(repo, monkeypatch, asked + LEAF).stdout
+    hook(repo, "UserPromptSubmit", prompt="and the footer")
+    said = propose(repo, monkeypatch, asked + "- the footer  [footer]\n    scope: README.md\n    check: true")
+    assert "on the board already (open)" in said.stdout and waits in said.stdout, said.output
+    with Store.open(repo) as store:
+        assert plan.get(store, "footer").state == PROPOSED
+
+
+def test_one_leaf_whose_scope_reaches_a_protected_file_git_does_not_track_waits(repo, monkeypatch):
+    """The review of 7 October: propose refuses a scope over a protected file git tracks, and never saw
+    one it does not: `certs/**` over an ignored certs/server.pem, with `protected: **/*.pem`, was the
+    person's at once. It waits for them, and says which setting keeps the file out."""
+    from graphene_map import settings
+
+    (repo / ".gitignore").write_text("build/\ncerts/\n")
+    for path in ("certs/server.pem", "keys/dev.pem"):  # one git ignores, one it has not been told of
+        (repo / path).parent.mkdir()
+        (repo / path).write_text("not a key\n")
+    with Store.open(repo) as store:
+        plan.set_plan_first(store, "auto", ALEX)
+        settings.apply(store, "protected: **/*.pem\n", ALEX)
+    for leaf, path in (("certs", "certs/server.pem"), ("keys", "keys/dev.pem")):
+        hook(repo, "UserPromptSubmit", prompt=f"renew the {leaf}")
+        said = propose(repo, monkeypatch, f"- {leaf}  [{leaf}]\n    scope: {leaf}/**\n    check: true\n")
+        kept = f"its scope reaches {path}, which the setting `protected: **/*.pem` keeps out"
+        assert f"it waits for the person: {kept}" in said.stdout, said.output
+    with Store.open(repo) as store:
+        assert {n.id: n.state for n in plan.nodes(store)} == {"certs": PROPOSED, "keys": PROPOSED}
+
+
 def test_one_leaf_in_a_sub_goal_of_its_own_is_one_leaf(repo, monkeypatch):
     """A sub-goal that holds nothing but the leaf it came with is a heading, not a second piece of work:
     the leaf is the person's at once, with it. Two leaves under it are a tree, and wait."""
