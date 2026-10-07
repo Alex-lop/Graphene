@@ -283,12 +283,19 @@ def _attempt(a: dict, nxt: dict | None, scope: list[str] | None, now: datetime) 
     talk = [e for e in rows if e["kind"] in ("did", "said")]
     said = [e["detail"].get("text") for e in rows if e["kind"] == "said"]
     executor = (a["row"]["actor"] or "").removeprefix("run:")
+    checkout = a["row"]["detail"].get("checkout")
+
+    def target(d: dict) -> str:  # Codex names a file it changed by its absolute path: said as the scope is
+        path = PurePosixPath(d.get("target") or "")
+        if d.get("verb") == "editing" and checkout and path.is_relative_to(checkout):
+            return str(path.relative_to(checkout))
+        return d.get("target") or ""
 
     def targets(verb: str) -> list[str]:
-        return list(dict.fromkeys(d["target"] for d in did if d.get("verb") == verb and d.get("target")))
+        return list(dict.fromkeys(target(d) for d in did if d.get("verb") == verb and d.get("target")))
 
     edited = targets("editing")
-    told = [doing(e["detail"].get("verb") or "", e["detail"].get("target") or "") if e["kind"] == "did"
+    told = [doing(e["detail"].get("verb") or "", target(e["detail"])) if e["kind"] == "did"
             else e["detail"].get("text") for e in talk]  # fmt: skip
     last = talk[-1] if talk else None
     until = ended or a["held"]

@@ -232,3 +232,18 @@ def test_a_claude_attempt_its_result_settled_is_priced_whatever_model_its_turns_
     assert claude["model"] == "claude-sonnet-4-5-20250929" and claude["dollars"] == pytest.approx(0.0622574)
     assert claude["priced"] and not codex["priced"]
     assert M.agents(log, NOW)["unpriced"] == bill(log)["unpriced"] == 110  # Codex's 100 in and 10 out
+
+
+def test_a_codex_edit_named_by_its_absolute_path_is_judged_from_its_checkout():
+    """The review of 7 October: Codex names each file it changes by its absolute path (its apply_patch
+    joins the patch's path to where it works), and the meter kept it so: an edit inside the scope was
+    listed outside it, `1 file, 1 outside` on the strip and `(1 outside the scope: /…/feed.py)` in node
+    show. Said from the attempt's checkout, as Claude's paths are; one outside the checkout stays so."""
+    line = ('{"type": "item.completed", "item": {"id": "item_5", "type": "file_change", "changes": '
+            '[{"path": "/repo/wt/xml/ingest/feed.py", "kind": "update"}, '
+            '{"path": "/repo/ingest/feed.py", "kind": "update"}], "status": "completed"}}')  # fmt: skip
+    log = [row("00:00", "attempt", {"attempt": 1, "checkout": "/repo/wt/xml", "meter": "codex"})]
+    log += [row("00:10", k, d) for k, d in M.Meter("codex", 1).feed(line)]
+    [a] = M.attempts(log, ["ingest/**"], NOW)
+    assert a["files_in"] == ["ingest/feed.py"] and a["files_out"] == ["/repo/ingest/feed.py"]
+    assert a["last"] == "editing /repo/ingest/feed.py" and a["told"][0] == "editing ingest/feed.py"
