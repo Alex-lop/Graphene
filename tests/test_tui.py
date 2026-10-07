@@ -2180,3 +2180,16 @@ def test_the_tree_and_the_graph_note_a_leafs_bill_and_minutes(repo):
 
     watch(repo, [], size=(220, 40), before=look)  # where the tree has room for a note beside a title
     assert "users… $0.42 · <1m" in seen["tree"] and "users returns ids $0.42 · <1m" in seen["dag"], seen
+
+
+def test_a_leaf_whose_executor_has_said_no_usage_yet_says_so_never_zero_dollars():
+    """Codex says its tokens only as its turn ends (live, 7 October: a minute of `$0.00 · 0 in, 0 out`
+    while it worked). Until a usage row comes, the row says so."""
+    from graphene_map.tui import live_row
+
+    a = {"executor": "codex", "model": None, "attempt": 1, "meter": "codex", "files_in": ["a.py"],
+         "files_out": [], "dollars": 0, "priced": True, "prompt_tokens": 0, "completion_tokens": 0,
+         "turns": 0, "seconds": 61}  # fmt: skip
+    for one in (False, True):
+        text = " ".join(r.plain for r in live_row("xml", a, {"last": "running cat a.py"}, 78, one))
+        assert "no usage yet" in text and "$0.00" not in text and "0 in, 0 out" not in text, text

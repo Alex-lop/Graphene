@@ -1,0 +1,24 @@
+ the plan of …/live/nemotron/nemotron-r1/repo
+▼ ○ Load Northwind's XML price feed through the existing `load`…       0/3 done
+├ ▼ ○ Read the XML feed                                    xml-reader  0/1 done
+│ └   ● XML reader                                         xml-read    running
+├ ▼ ○ Drop zero-price products for every supplier          zero-rule   0/1 done
+│ └   ● Zero price rule                                    rule-zero   running
+└ ▼ ○ Wire xml in as a source                              xml-wiring  0/1 done
+  └   ◌ Enable xml                                         xml-wire    waiting
+────────────────────────────────────────────────────────────────────────────────
+ Load Northwind's XML price feed through the existing `load` command with
+ `--source xml`, producing the same JSONL records as csv and json.
+ the goal · 0/3 done
+
+ ○ Read the XML feed                                      xml-reader  0/1 done
+ ○ Drop zero-price products for every supplier            zero-rule   0/1 done
+ ○ Wire xml in as a source                                xml-wiring  0/1 done
+
+ waiting  xml-wire on xml-read (running), rule-zero (running)
+ ● xml-read · nemotron NVIDIA-Nemotron-3-Nano-30B-A3B · attempt 1 · 20s
+   editing tests/test_xmlfeed.py · 1 s ago · 5 files, 3 outside
+ ● rule-zero · nemotron NVIDIA-Nemotron-3-Nano-30B-A3B · attempt 1 · 20s
+   reading tests/test_contract.py · 0 s ago · 0 files · 33k in, 2k out
+ 0 on you · agents 2 · <1m · $0.0051 · you 2 acts ~1m · none ready · 0/3 done
+ E edit the plan as text · za fold all · Tab view · ? help · q quit

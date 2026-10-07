@@ -291,6 +291,8 @@ def live_row(node_id: str, a: dict, seen: dict, room: int, one: bool) -> list[Te
         spent = money(a["dollars"]) if a["priced"] else "no list price"
         said = f"{tokens(a['prompt_tokens'])} in, {tokens(a['completion_tokens'])} out"
         numbers = [(spent, ""), (_s(a["turns"], "turn"), ""), (files, ""), (said, "dim")]
+        if not (a["turns"] or a["prompt_tokens"] or a["dollars"]):  # Codex says its usage only as it ends
+            numbers = [("no usage yet", "dim"), (files, "")]
     else:
         numbers = [("no meter", "dim")]
     head = [(f"{glyph} {node_id}", colour), (who, ""), (elapsed(a["seconds"]), "")]
@@ -2353,7 +2355,8 @@ def _running(pane: Pane, store, node: P.Node, s) -> None:
             pane.field("model", _short(a["model"]))
         spent = f"{money(a['dollars'])} at list price" if a["priced"] else "no list price"
         said = f"{tokens(a['prompt_tokens'])} tokens in, {tokens(a['completion_tokens'])} out"
-        pane.field("meter", f"{_s(a['turns'], 'turn')} · {said} · {spent}")
+        used = a["turns"] or a["prompt_tokens"] or a["dollars"]  # Codex says its usage only as it ends
+        pane.field("meter", f"{_s(a['turns'], 'turn')} · {said} · {spent}" if used else "no usage yet")
         pane.field("edited", ", ".join(a["files_in"]))
         pane.field("outside", ", ".join(a["files_out"]), "magenta")
     elif a:
