@@ -148,6 +148,7 @@ def test_attempts_of_one_leaf():
         "started": "2026-10-07T04:00:00.000Z", "log": "x.txt", "seconds": 90, "running": False, "exit": 1,
         "turns": 3,
         "prompt_tokens": 107, "completion_tokens": 13, "dollars": pytest.approx(0.26), "priced": True,
+        "endpoints": ["", "claude code"],
         "read": ["src/a.py"], "edited": ["src/a.py", "docs/b.md"], "ran": [], "runs": {}, "searched": [],
         "said": "docs/b.md was refused", "last": "docs/b.md was refused",
         "told": ["reading src/a.py", "editing src/a.py", "editing docs/b.md", "editing src/a.py",

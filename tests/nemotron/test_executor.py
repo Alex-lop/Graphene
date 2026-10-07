@@ -176,6 +176,7 @@ def test_each_model_call_tool_call_and_word_is_a_row_and_the_rows_add_up_to_the_
     assert f"bill: 4 calls, {sum(u['prompt_tokens'] for u in usage)} in," in text  # its own line, as it was
     assert f"${sum(u['dollars'] for u in usage):.4f} at list price" in text
     assert "  attempt 1 · nemotron Nemotron-3-Nano-fake" in shown and "4 turns" in shown
+    assert "at list price (a stand-in's)" in shown  # the fake's dollars are nobody real's
     assert "    ran: python3 -c" in shown and "graphene node done greet" in shown
 
 

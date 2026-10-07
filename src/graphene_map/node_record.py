@@ -744,9 +744,10 @@ def _attempt_lines(record: NodeRecord) -> list[str]:
         head += [_took(a["seconds"])] if known else []
         if a["meter"]:
             spent = f"${a['dollars']:.2f}" if a["dollars"] >= 0.01 else f"${a['dollars']:.4f}"
+            spent += " at list price" + ("" if all(e in WHOSE for e in a["endpoints"]) else " (a stand-in's)")
             head += [f"{a['turns']} turn{_s(a['turns'])}",
                      f"{_k(a['prompt_tokens'])} in, {_k(a['completion_tokens'])} out",
-                     f"{spent} at list price" if a["priced"] else "no list price"]  # fmt: skip
+                     spent if a["priced"] else "no list price"]  # fmt: skip
         else:
             head.append("no meter")
         if a["exit"] is not None:

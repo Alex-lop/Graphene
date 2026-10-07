@@ -285,6 +285,7 @@ def _attempt(a: dict, nxt: dict | None, scope: list[str] | None, now: datetime) 
         "completion_tokens": sum(u.get("completion_tokens") or 0 for u in usage),
         "dollars": sum(u.get("dollars") or 0 for u in usage),
         "priced": all(u.get("priced", True) for u in usage),
+        "endpoints": sorted({u.get("endpoint") or "" for u in usage}),  # who answered; "" when a row says not
         "read": targets("reading"),
         "edited": edited,
         "ran": targets("running"),
