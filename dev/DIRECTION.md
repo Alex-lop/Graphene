@@ -1681,8 +1681,8 @@ any of them.
 161. **The live row is two lines at 80 columns and one from 110.** Who and how much first; then what it
      did last, how long ago, its files and tokens. The least wanted pieces go first when room runs out.
 162. **The ledger holds every executor.** A Claude Code or Codex attempt reserves `--max-budget-usd` (else $3)
-     and settles at its stream's dollars only when the stream gave the whole figure, else at the worst case;
-     a dead run's holds settle at the next run's sweep. A run that would spend does not start past 90%.
+     and settles at its stream's dollars only when the stream gave the whole figure, else at the worst case,
+     in the night that holds it; a dead run's hold settles at the next sweep. Nothing starts past 90%.
 163. **`docs/` is for using Graphene; `dev/` is for building it.** The two pre-registered files keep their
      old paths, as decision 53's dated records do.
 164. **The statements task is twice its size; size does not set a run's length.** Asked for every report

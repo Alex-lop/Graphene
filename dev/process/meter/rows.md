@@ -86,8 +86,9 @@ Under the opening (`GRAPHENE_AGENT_LIVE_USD`), a Claude Code or Codex attempt re
 the night's ledger before it starts (`--max-budget-usd` when the command has it, else $3). It settles at
 the attempt's dollars only when the stream gave the whole figure: Claude Code's result was read, or every
 Codex turn that started completed. A Codex model with no list price settles at $0, its tokens alone.
-Anything else (no stream, a turn stopped or failed) keeps the worst case: it may have been spent. A run
-killed outright leaves its holds on its attempt rows, and the next run's sweep settles them before the
-night is asked. Nemotron's calls reserve and settle themselves, per call, as before. A run that would
+Anything else (no stream, a turn stopped or failed, a log that cannot be read) keeps the worst case: it
+may have been spent. A hold settles in the ledger file that holds its reservation, under its purpose. A run
+killed outright leaves its holds on its attempt rows, and the next run's sweep settles every one still in
+flight whose run is dead, whatever its leaf has become, before the night is asked. Nemotron's calls reserve and settle themselves, per call, as before. A run that would
 spend does not start past 90% of the cap. The rows carry the purpose from `GRAPHENE_NIGHT_PURPOSE`.
 (The review of 03:00 found the first version settled a stopped attempt at $0: `review.md`.)

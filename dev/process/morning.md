@@ -36,11 +36,11 @@ sub-agents outside Graphene. `dev/process/meter/dogfood.md`.
 ## Branches
 
 - `main`: `af3da2c`, untouched, local and on GitHub. Rollback: close PR #40.
-- `meter`: the night, pushed; PR #40 is the only one. 103 commits, 61 on its first-parent line, more than the
+- `meter`: the night, pushed; PR #40 is the only one. 115 commits, 66 on its first-parent line, more than the
   30 to 50 you like; the directive rules out a force-push, so a reshape is yours to ask for.
 - In this run's clone only, all merged into `meter`: `meter-core`, `meter-l1`, `meter-l1b`, `meter-move`,
-  `meter-record`, `meter-run`, `meter-size`, `meter-watch`, `dogfood`, and the review's `meter-fix-ledger`,
-  `meter-fix-screens`, `meter-fix-edges`.
+  `meter-record`, `meter-run`, `meter-size`, `meter-watch`, `dogfood`, and the reviews' `meter-fix-ledger`,
+  `meter-fix-screens`, `meter-fix-edges`, `meter-fix-ledger2`, `meter-fix-codexpath`, `meter-fix-toolcall`.
 
 ## What was done, in order
 
@@ -99,3 +99,6 @@ sub-agents outside Graphene. `dev/process/meter/dogfood.md`.
   findings, none refuted. 17 fixed, each with a test that fails without its fix; the worst two were the
   ledger's: a stopped attempt settled its hold at $0, and a run killed outright left its holds in flight all
   night. The 2 left, and why: `dev/process/meter/review.md`. A resumed result's `usage` was checked live first.
+- **04:30-05:20** A second review, of the fixes themselves: 7 findings, none refuted, all fixed. Two were
+  regressions of the dead-run fix, caught before they shipped: a dead run's hold was settled into the next
+  night's ledger, and an orphaned executor that had already finished escaped the sweep.

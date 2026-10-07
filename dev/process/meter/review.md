@@ -46,3 +46,21 @@ one per group of files, and their branches were merged into `meter` (`9ca8d71`).
 - C5's `<synthetic>` model: not confirmed that Claude Code writes such a message to the stream.
 - U5: the leak count of a path under someone else's home spelled with dashes (`-Users-x-`) is not counted;
   counting `-home-` would flag ordinary words.
+
+## The second review, 04:30 to 05:20
+
+The same shape, over the 14 commits above: three readers, one per group of fixes, and a skeptic each for the top
+six. 7 findings, 6 verified, none refuted; the seventh was confirmed by its fixer. Two were regressions of C2's fix,
+found before they shipped. All seven fixed, each with a test that fails without it; merged at `06bb948`.
+
+| | what was wrong | commit |
+|---|---|---|
+| R1 | C2's sweep settled a dead run's hold into whichever night was current, so last night's holds became tonight's spend after noon, under the sweeping shell's purpose. A hold now settles in the ledger file that holds its reservation, under its purpose. | `02e8703` |
+| R2 | A dead run's hold escaped the sweep when its orphaned executor had already finished or released the leaf. The sweep now settles every hold still in flight whose run is dead, whatever its leaf has become, and never a live run's. | `08b47db` |
+| R3 | U1's fix made a Codex path relative after the meter had cut it to 120 characters. It is made relative first. | `5386ce7` |
+| R4 | U13's fix dropped a call whose own arguments name the tag. Tagged calls are read by decoding their JSON. | `78dfbbd` |
+| R5 | A stop between an attempt's hold and its end left the hold in flight. It settles at its worst case. | `0e5e305` |
+| R6 | A dead Codex attempt whose log could not be read settled at $0. It keeps its worst case, as Claude's does. | `cbff52b` |
+| V1 | U6's fix made one leaf wait on a board item the person had already settled. Only an item still open makes it wait. | `3f9a3b7` |
+
+Left: a Token Factory call that spans noon still reserves in one night's file and settles in the next.
