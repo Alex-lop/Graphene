@@ -11,6 +11,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from test_run_live import ended
 
 from graphene_map import plan
 from graphene_map import run as R
@@ -176,6 +177,21 @@ def test_a_resumed_attempt_is_billed_what_the_session_added(repo):
     assert by[1] == pytest.approx(0.07) and by[2] == pytest.approx(0.03)
 
 
+def test_a_resumed_attempt_settles_its_own_output_tokens(repo, tmp_path, monkeypatch):
+    """The review of 7 October: a resumed attempt took what earlier attempts settled off its result's
+    usage, which is the call's own (only total_cost_usd is the session's running total). Attempt 2 kept
+    the stream's 75 output tokens of the 539 its result said, in node show, watch and the night's ledger."""
+    monkeypatch.setenv("GRAPHENE_AGENT_LIVE_USD", "10")
+    source = RESUMED.format(python=sys.executable, fixture=str(FIXTURES / "claude.jsonl"))
+    script = stand_in(repo, "claude", source)
+    with Store.open(repo) as store:
+        R.run_plan(store, repo, f"{script} --output-format stream-json", say=lambda _: None,
+                   logs=repo / ".graphene" / "runs")  # fmt: skip
+        usage = [e["detail"] for e in store.node_log("a", ("usage",))]
+    assert [sum(u["completion_tokens"] for u in usage if u["attempt"] == a) for a in (1, 2)] == [539, 539]
+    assert [r["completion_tokens"] for r in ledger(tmp_path) if r["kind"] == "settle"] == [539, 539]
+
+
 def test_an_executor_with_no_stream_has_no_meter_and_its_attempt_still_ends(repo):
     source = f"#!{sys.executable}\nimport pathlib\npathlib.Path('a.txt').write_text('done')\n"
     script = stand_in(repo, "work", source)
@@ -231,6 +247,67 @@ def test_under_the_opening_an_attempt_holds_its_worst_case_and_settles_at_what_i
                                          "purpose": "unsaid", "practice": True}  # fmt: skip
     assert settled["id"] == held["id"] and settled["dollars"] == pytest.approx(CLAUDE_COST)
     assert (settled["prompt_tokens"], settled["completion_tokens"]) == (60425, 539)  # as the result says
+
+
+# Prints the fixture's lines up to ``upto`` (None: all of them), then does the leaf.
+CUT = """#!{python}
+import pathlib
+print("\\n".join(pathlib.Path({fixture!r}).read_text().splitlines()[:{upto}]), flush=True)
+pathlib.Path("a.txt").write_text("done\\n")
+"""
+
+
+@pytest.mark.parametrize(
+    ("name", "with_", "upto", "dollars"),
+    [("claude", "--output-format stream-json --max-budget-usd 2", -1, 2.0),  # its result never read
+     ("codex", "exec --json -m nvidia/super", -1, 3.0),  # its turn never completed
+     ("codex", "exec --json -m nvidia/super", None, 48940e-7 + 344 * 5e-7),  # every turn completed
+     ("codex", "exec --json", -1, 0.0),  # no list price: its tokens alone, whole or not
+     ("claude", "-p --model sonnet", None, 3.0)],  # no stream the meter reads  # fmt: skip
+)
+def test_a_held_attempt_settles_at_its_stream_only_when_the_stream_gave_the_whole_figure(
+    repo, tmp_path, monkeypatch, name, with_, upto, dollars
+):
+    """The review of 7 October: a hold settled at what the stream had said so far, so a Codex turn that
+    never completed and a command with no stream settled at $0, and a Claude Code result never read at the
+    stream's early count. The night never saw that spend, and the next attempts started on it."""
+    monkeypatch.setenv("GRAPHENE_AGENT_LIVE_USD", "10")
+    monkeypatch.setattr(R, "_listed", lambda: {"nvidia/super": (1e-7, 5e-7)})
+    source = CUT.format(python=sys.executable, fixture=str(FIXTURES / f"{name}.jsonl"), upto=upto)
+    script = stand_in(repo, name, source)
+    with Store.open(repo) as store:
+        R.run_plan(store, repo, f"{script} {with_}", say=lambda _: None, logs=repo / ".graphene" / "runs")
+        assert plan.get(store, "a").state == DONE
+    [settled] = [r for r in ledger(tmp_path) if r["kind"] == "settle"]
+    assert settled["dollars"] == pytest.approx(dollars)
+
+
+def test_a_run_killed_outright_has_its_hold_settled_by_the_next_runs_sweep_before_the_night_is_asked(
+    repo, tmp_path, monkeypatch
+):
+    """The review of 7 October: nothing settled the hold of a run killed outright (kill -9, Force Quit),
+    and the next run asked the night before its sweep. Refused, with the dead hold in flight until noon,
+    it left the dead run's leaf `running` and its executor at work."""
+    monkeypatch.setenv("GRAPHENE_AGENT_LIVE_USD", "3.2")  # room for one $3 hold, which alone is past 90%
+    monkeypatch.setattr(R, "GRACE", 1)
+    script, _ = printing(repo, "claude", "claude.jsonl", 11)  # its whole stream, then it waits
+    run = run_cli(repo, f"{script} --output-format stream-json")
+    try:
+        assert wait_for(lambda: any("reported" in e["detail"] for e in rows(repo, "usage")))
+    finally:
+        run.kill()  # nothing of the run's own runs on its way out
+        run.communicate(timeout=30)
+    executor = rows(repo, "attempt")[0]["detail"]["pid"]
+    assert [r["kind"] for r in ledger(tmp_path)] == ["reserve"] and R._alive(executor)
+    whole = CUT.format(python=sys.executable, fixture=str(FIXTURES / "claude.jsonl"), upto=None)
+    stand_in(repo, "claude", whole)  # the next run's executor: its whole stream, then the leaf
+    with Store.open(repo) as store:
+        done = R.run_plan(store, repo, f"{script} --output-format stream-json", say=lambda _: None,
+                          logs=repo / ".graphene" / "runs")  # fmt: skip
+    assert [n.id for n in done] == ["a"] and ended(executor)  # stopped by the sweep
+    got = ledger(tmp_path)
+    assert [r["kind"] for r in got] == ["reserve", "settle", "reserve", "settle"]
+    assert got[1]["id"] == got[0]["id"] and got[1]["dollars"] == pytest.approx(CLAUDE_COST)  # as its log says
 
 
 def test_an_attempt_the_ledger_refuses_never_starts_and_its_leaf_comes_back(repo, tmp_path, monkeypatch):
