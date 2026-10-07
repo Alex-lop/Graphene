@@ -1684,9 +1684,9 @@ any of them.
      before it starts and settles at what its stream said. A run that would spend does not start past 90%.
 163. **`docs/` is for using Graphene; `dev/` is for building it.** The two pre-registered files keep their
      old paths, as decision 53's dated records do.
-164. **The statements task is twice its size, and size is not what sets a run's length.** The conditions
-     reached every leaf. Doubled, the planner kept the new code out with a board default; a run stops on
-     test files two leaves need. PREREG voids a changed repo: the registered runs need a new commit.
+164. **The statements task is twice its size; size does not set a run's length.** Asked for every report
+     per currency, its biggest leaf edited 16 files in 2 minutes. The conditions reached every leaf.
+     PREREG voids a changed repo: the registered runs need a new commit.
 165. **The Nemotron planner reads a tool call written as text.** Ultra wrote `<tool_call>{…}</tool_call>`
      and the planner took it for the proposal. Of eight takes, Ultra planned three; take 6 is kept.
 

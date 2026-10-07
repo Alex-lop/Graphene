@@ -10,8 +10,9 @@ minutes. The critical path was migration, ledger, balances, statement, verify. T
 
 The ask was to grow it about 3 times, let a practice run measure the result, and extrapolate from
 there. It grew 2 times. That was the largest size finished and green in the night's time box: the
-base, the reference, the trip-all patch and the rehearsal. The next practice run says how much more
-it needs.
+base, the reference, the trip-all patch and the rehearsal. The two practice runs after it
+say no size gets there: its biggest leaf edited 16 files in 2 minutes
+(`dev/process/meter/statements-practice.md`).
 
 ## Old and new
 
