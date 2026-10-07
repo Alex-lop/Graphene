@@ -7,8 +7,8 @@ Rollback: `main` is untouched at `af3da2c`. To drop the night: close the PR, `gi
 **1. Watch first:** `graphene demo tests/recordings/meter-claude.jsonl`: the feeds run on Claude Code, each leaf's
   live row climbing; the live screen at 80 columns is `dev/process/meter/screens/claude-80.txt`.
   Nemotron: `graphene demo tests/recordings/meter-nemotron-take-11.jsonl` (Ultra planned; Nano landed 2 of 4).
-**2. The bill:** $39.26 of $50 at 04:30. `meter` $15.32 · `nemotron-take` $7.22 · `statements-practice` $7.01 ·
-  `dogfood` $5.77 · `auto` $3.94. $13.50 of it is planners held at their worst case: they report no cost.
+**2. The bill:** $41.22 of $50, final. `meter` $17.28 · `nemotron-take` $7.22 · `statements-practice` $7.01 ·
+  `dogfood` $5.77 · `auto` $3.94. $15.00 of it is planners held at their worst case: they report no cost.
 **3. `auto`:** Tuesday asks: 8 of 12 yours at once and done; 4 waited on a board item they put up.
   The feeds paragraph: a tree once in three; twice one leaf of 8 paths, no question, taken at once.
   Transcripts, both kinds, every run: `dev/process/meter/auto-evidence.md`.
@@ -22,9 +22,26 @@ Rollback: `main` is untouched at `af3da2c`. To drop the night: close the PR, `gi
   the meter show next? Default: the planner's dollars (the ledger holds its worst case).
 **7. Broken or risky:** Codex's ChatGPT login is revoked: `codex logout && codex login` (Codex ran on Nemotron
   Super tonight). Most runs that stopped had a leaf whose check runs a file another leaf writes. CI's
-  statements rehearsal fails 1 Ubuntu job in about 3 pushes, never locally; it now prints why.
+  statements rehearsal failed 1 Ubuntu job on 2 of 13 runs, never here; it now prints why when it does.
 
 ---
+
+The decisions taken tonight are in `dev/DIRECTION.md`, 151 to 165. Every review finding, fixed or left:
+`dev/process/meter/review.md`.
+
+## Verified before the PR, the directive's list
+
+1. The suite on the CI matrix (Ubuntu and macOS, Python 3.12 to 3.14): 6 of 6 jobs green on the final code
+   (`5a8c091`); of the night's 13 runs, 2 lost one Ubuntu job each to the statements rehearsal. `ruff check` clean;
+   `uv build`; the wheel installed outside the source tree runs `graphene demo --once`.
+2. Lane 1's transcripts, both kinds, every run: `dev/process/meter/auto-evidence.md`.
+3. Lane 2's screens at 80 and 120 on Claude Code, Codex and Nemotron, the bill lines, each beside its ledger rows:
+   `dev/process/meter/meter-evidence.md`. Again on the final code at 05:27: Claude $0.4582, ledger $0.4582.
+4. The cut's lane 0 still leaves the checkout clean, on the wheel of 05:27 (`722f71a`): `dev/process/meter/lane0.txt`.
+5. The README is 790 words, and every command in it ran tonight.
+6. The suite is green after the move. The grep for the old paths finds only links into the `process` branch, the
+   two pre-registered records (decision 163) and the directives' own words.
+7. The ledger is under $50, by purpose in the brief.
 
 ## The dogfood bill
 
@@ -36,7 +53,7 @@ sub-agents outside Graphene. `dev/process/meter/dogfood.md`.
 ## Branches
 
 - `main`: `af3da2c`, untouched, local and on GitHub. Rollback: close PR #40.
-- `meter`: the night, pushed; PR #40 is the only one. 115 commits, 66 on its first-parent line, more than the
+- `meter`: the night, pushed; PR #40 is the only one. 120 commits, 71 on its first-parent line, more than the
   30 to 50 you like; the directive rules out a force-push, so a reshape is yours to ask for.
 - In this run's clone only, all merged into `meter`: `meter-core`, `meter-l1`, `meter-l1b`, `meter-move`,
   `meter-record`, `meter-run`, `meter-size`, `meter-watch`, `dogfood`, and the reviews' `meter-fix-ledger`,
@@ -89,11 +106,11 @@ sub-agents outside Graphene. `dev/process/meter/dogfood.md`.
   waited), accept, run (`run: 1 done · agents <1 min, $0.2359`), node show. `dev/process/meter/five-minutes.md`.
 - **02:25** A replay drew no meter strip: Graphene's own recording predates the meter. Turned on, the strip
   said "no meter" before a leaf's first turn and "-2706 s ago", and `.` stalled at change 31 of 63. All
-  three fixed at the root; the Claude Code recording made again at 02:30 on the final code ($0.3230).
+  three fixed at the root; the Claude Code recording made again at 02:30 on the code of that hour ($0.3230).
 - **02:00-03:00** Takes 9 to 21: Ultra planned a tree in 4 of 11; take 11 replaces take 6. Each tree stopped
   where a leaf's check or code needed a file another leaf writes. `nemotron.sh` now widens and runs again up
   to three times, as a person pressing `w` again would.
-- **02:50** On the final wheel: the cut's lane 0 still leaves the checkout clean (`dev/process/meter/lane0.txt`,
+- **02:50** On a wheel of that hour: the cut's lane 0 still leaves the checkout clean (`dev/process/meter/lane0.txt`,
   unchanged), and the wheel installed outside the source tree runs `graphene demo --once`.
 - **03:00-04:15** A review of the whole branch: four readers, a skeptic each for the top six, 19 distinct
   findings, none refuted. 17 fixed, each with a test that fails without its fix; the worst two were the
@@ -102,3 +119,8 @@ sub-agents outside Graphene. `dev/process/meter/dogfood.md`.
 - **04:30-05:20** A second review, of the fixes themselves: 7 findings, none refuted, all fixed. Two were
   regressions of the dead-run fix, caught before they shipped: a dead run's hold was settled into the next
   night's ledger, and an orphaned executor that had already finished escaped the sweep.
+- **05:27** On the final meter code (`722f71a`; after it only the auto rule changed): live, Claude's bill line,
+  its ledger rows and its own report all say $0.4582; lane 0 leaves the checkout clean; the wheel replays
+  `graphene demo --once`.
+- **05:30-06:00** A third review, of the second round's fixes: one finding refuted, one fixed. One leaf whose new
+  question reused a settled item's [id] was taken at once, its question never on the board; it waits now.
