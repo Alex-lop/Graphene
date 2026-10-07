@@ -178,7 +178,7 @@ stand-ins, because you cannot type at machine speed and you will not remember th
 | `inventory` | three directories, and a node the person owns | a public signature, migrations the person writes, a number no agent may pick |
 | `logs` | two parts, and the person changes their mind | the second part is asked for by level and wanted by hour |
 | `feeds` | **six directories**, and the person does not know the layout | prices in cents, a summary that is not a product, a stale README that documents half the wiring |
-| `statements` | **1,328 lines**, three executors, the person away | five traps, counted by `traps.py`: see `PREREG-statements.md` and `PROVE.md` |
+| `statements` | **2,658 lines** (1,328 until 7 October: `tasks/statements/SIZE.md`), three executors, the person away | five traps, counted by `traps.py`: see `PREREG-statements.md` and `PROVE.md` |
 
 ```sh
 python3 dev/test/make_task.py <report|inventory|logs|feeds|statements> <dir>

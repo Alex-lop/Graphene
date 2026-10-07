@@ -53,7 +53,7 @@ index 0000000..d282a18
 +-- A statement reads one account's postings in one currency by date.
 +CREATE INDEX postings_by_account_currency ON postings (account_id, currency, posted_on);
 diff --git a/tests/test_currency.py b/tests/test_currency.py
-index fe206f3..2a72884 100644
+index 118719a..545d13f 100644
 --- a/tests/test_currency.py
 +++ b/tests/test_currency.py
 @@ -36,9 +36,6 @@ class Migration(unittest.TestCase):
@@ -89,7 +89,7 @@ index fe206f3..2a72884 100644
 +        self.assertEqual(lines(conn, "2026-09")[1], "ACC-1001,2026-09,0.00,0.00,0.12,0.12")
  
  
- if __name__ == "__main__":
+ # Ada owes 30 dollars from August and holds 500 euros. Grace is overdrawn in euros only.
 diff --git a/tests/test_export.py b/tests/test_export.py
 index 010a873..b25e630 100644
 --- a/tests/test_export.py
