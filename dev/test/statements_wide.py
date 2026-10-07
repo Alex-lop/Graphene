@@ -41,10 +41,8 @@ def main() -> int:
     a = ap.parse_args()
     if night.cap() is None:
         sys.exit(f"{night.OPENING} is not set")
-    env = os.environ | {
-        "PATH": f"{a.tool}{os.pathsep}{os.environ['PATH']}",
-        night.PURPOSE: "statements-practice",
-    }
+    os.environ[night.PURPOSE] = "statements-practice"  # this process reserves too, not only its children
+    env = os.environ | {"PATH": f"{a.tool}{os.pathsep}{os.environ['PATH']}"}
     made = subprocess.run(
         ["bash", str(HERE / "newrun.sh"), str(a.out), "statements", "practice", "wide", "1"],
         env=env,
