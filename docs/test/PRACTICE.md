@@ -19,7 +19,7 @@ An agent climbs only when you open it: start its session from a shell with the n
 (`export GRAPHENE_AGENT_LIVE_USD=10`, then `claude`), and rungs 2-7 run there. While it is set, every
 live call and Sandbox operation, the ladder's or any other, goes on one night's bill
 (`~/.graphene/night/<date>.jsonl`, or `GRAPHENE_NIGHT_LEDGER`), capped at the lower of that figure and
-$10: a call that would pass it is refused unsent, nothing new starts past 80% of it, and a rerun does
+$50: a call that would pass it is refused unsent, nothing new starts past 90% of it, and a rerun does
 not reset it. Sandboxes are counted in operations and minutes, at $0 (free in the beta, above).
 `practice.sh night` prints the bill. Everything made under it is practice: `evidence.py` refuses it, so
 unset it before a registered run.

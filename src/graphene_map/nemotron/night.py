@@ -4,12 +4,13 @@ From an agent's shell the practice ladder's live rungs refuse to run (docs/test/
 person set GRAPHENE_AGENT_LIVE_USD in the shell that started the session: that is the opening. While it
 is set, every Token Factory call and every ConTree operation, whoever starts it (the ladder, `graphene
 ask` or `run` with nemotron, a prototype, a harness in docs/test), is written to one ledger for the
-night, and the night has one cap: the lower of that figure and $10 (CEILING).
+night, and the night has one cap: the lower of that figure and $50 (CEILING). Each row says its purpose
+(GRAPHENE_NIGHT_PURPOSE), and the bill adds them up by purpose.
 
 - A Token Factory call reserves its worst case before it is sent (``worst``) and settles to its usage
   after; one whose reservation would take the night past its cap is refused, and nothing is sent.
 - Nothing new starts (a rung, a run, a process's first live call) once what is spent and what is in
-  flight reach 80% of the cap: the ledger estimates at list price, and the rest is the margin. What a
+  flight reach 90% of the cap: the ledger estimates at list price, and the rest is the margin. What a
   started thing starts (a run's executors, a leaf's `node done`) inherits GRAPHENE_NIGHT_STARTED and goes
   on under the cap.
 - A ConTree operation is counted with its seconds, at $0 and `price: unknown` until its price is read.
@@ -41,8 +42,9 @@ from pathlib import Path
 OPENING = "GRAPHENE_AGENT_LIVE_USD"
 LEDGER = "GRAPHENE_NIGHT_LEDGER"
 STARTED = "GRAPHENE_NIGHT_STARTED"
-CEILING = 10.0  # dollars at list price, whatever the opening says
-START = 0.8  # of the cap: past it, nothing new starts
+PURPOSE = "GRAPHENE_NIGHT_PURPOSE"  # what a row was spent on: meter, auto, dogfood...
+CEILING = 50.0  # dollars at list price, whatever the opening says
+START = 0.9  # of the cap: past it, nothing new starts
 UNSAID = 32_768  # completion tokens a call that names no max_tokens may take: the most a planner raises it to
 
 
@@ -113,7 +115,8 @@ def _held():
 
 
 def _add(f, row: dict) -> None:
-    f.write(json.dumps({"at": round(time.time(), 3), **row, "practice": True}) + "\n")
+    purpose = os.environ.get(PURPOSE) or "unsaid"
+    f.write(json.dumps({"at": round(time.time(), 3), **row, "purpose": purpose, "practice": True}) + "\n")
     f.flush()
 
 
@@ -142,7 +145,7 @@ def _late(what: str, spent: float, held: float, limit: float) -> str:
 
 
 def begin(what: str) -> None:
-    """Something new and live starts here (``what``: a rung, a run): refused once 80% of the cap is spent or
+    """Something new and live starts here (``what``: a rung, a run): refused once 90% of the cap is spent or
     in flight. What it starts inherits the mark, and goes on under the cap."""
     limit = cap()
     if limit is None:
@@ -225,7 +228,14 @@ def bill() -> list[str]:
     flying = len({r.get("id") for r in rows if r.get("kind") == "reserve"} - {r.get("id") for r in settles})
     if flying:
         lines.append(f"  in flight: {flying} call{'s' * (flying != 1)}, ${held:.4f} held at the worst case")
-    stand_in = sum(1 for r in rows if r.get("kind") == "reserve" and r.get("endpoint") != "token factory")
+    purposes: dict[str, float] = {}
+    for r in settles:
+        key = str(r.get("purpose") or "unsaid")
+        purposes[key] = purposes.get(key, 0.0) + _dollars(r)
+    if purposes:
+        lines.append("  by purpose: " + " · ".join(f"{k} ${v:.4f}" for k, v in sorted(purposes.items())))
+    stand_in = sum(1 for r in rows if r.get("kind") == "reserve"
+                   and r.get("endpoint") not in ("token factory", "claude code", "codex"))  # fmt: skip
     if stand_in:
         lines.append(f"  of these, {stand_in} call{'s' * (stand_in != 1)} went to a stand-in")
     ops = [r for r in rows if r.get("kind") == "sandbox"]

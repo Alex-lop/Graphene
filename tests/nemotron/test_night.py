@@ -1,7 +1,7 @@
 """The night's bill (graphene_map/nemotron/night.py), against the recorded fake and a stub ConTree SDK: under
 the person's opening every Token Factory call reserves its worst case before it is sent and settles after,
 a call that would pass the cap is refused unsent, processes racing for the last dollars cannot both
-pass, nothing new starts past 80% of the cap, ConTree operations are counted with their seconds, every
+pass, nothing new starts past 90% of the cap, ConTree operations are counted with their seconds, every
 row says practice, and no row holds the key. Without the opening nothing is written. The opening is set
 here by each test's own environment, which stands for the person's shell."""
 
@@ -90,7 +90,8 @@ def test_each_call_reserves_its_worst_case_then_settles_and_every_row_says_pract
     assert bill[1].startswith(f"  {ULTRA}: 2 calls") and bill[2].startswith(
         f"  {NANO}: 1 call,"
     )  # Ultra first
-    assert "went to a stand-in" in bill[3] and bill[-1].startswith("  Sandboxes: 0 operations")
+    assert bill[3].startswith("  by purpose: unsaid $") and "went to a stand-in" in bill[4]
+    assert bill[-1].startswith("  Sandboxes: 0 operations")
     with Store.open(tmp_path) as store:  # the usage rows evidence.py reads say practice too
         store.log_node("*", P._now(), "usage", "planner:nemotron", None, None, {"dollars": 0.1})
         assert store.node_log("*", ("usage",))[0]["detail"]["practice"] is True
@@ -127,21 +128,22 @@ def test_a_failed_call_frees_its_reservation_and_one_that_timed_out_keeps_it(fak
     assert got[0]["dollars"] == 0 and got[1]["dollars"] == held[1]["dollars"] > 0
 
 
-def test_nothing_new_starts_past_80_percent_of_the_cap(fake, opened, monkeypatch):
+def test_nothing_new_starts_past_90_percent_of_the_cap(fake, opened, monkeypatch):
     f = fake([{"content": "a"}])
-    spent(opened, 8.0)
+    spent(opened, 9.0)
     with pytest.raises(tf.Spent) as no:
         tf.chat(NANO, ASK, max_tokens=64)
-    assert "at or past $8.00 (80% of its $10.00 cap, GRAPHENE_AGENT_LIVE_USD): nothing new starts" in str(
+    assert "at or past $9.00 (90% of its $10.00 cap, GRAPHENE_AGENT_LIVE_USD): nothing new starts" in str(
         no.value
     )
     assert f.requests == []
     with pytest.raises(P.Refused, match="nothing new starts, and the run was not started"):
         run._begins(run.named("nemotron"))
     run._begins(run.DEFAULT_WITH)  # claude's run calls no Token Factory: not the night's to stop
-    monkeypatch.setenv(night.OPENING, "20")  # the ceiling holds: $10, whatever the opening says
-    assert night.cap() == 10.0
-    monkeypatch.setenv(night.STARTED, "the run")  # what a run started before $8 starts goes on under the cap
+    monkeypatch.setenv(night.OPENING, "80")  # the ceiling holds: $50, whatever the opening says
+    assert night.cap() == 50.0
+    monkeypatch.setenv(night.OPENING, "10")
+    monkeypatch.setenv(night.STARTED, "the run")  # what a run started before $9 starts goes on under the cap
     tf.chat(NANO, ASK, max_tokens=64)
     assert len(f.requests) == 1
 
@@ -215,9 +217,9 @@ def test_contree_operations_are_counted_with_their_seconds_at_no_price(opened, m
     assert all(r["dollars"] == 0 and r["price"] == "unknown" and r["practice"] for r in got)
     assert night.bill()[-1] == "  Sandboxes: 3 operations, 0.0 min, counted at $0 (price: unknown)"
     monkeypatch.delenv(night.STARTED, raising=False)
-    spent(opened, 8.0)
+    spent(opened, 9.0)
     with pytest.raises(night.Refused, match="a ConTree sandbox was not started"):
-        sandbox.Contree()  # past 80%, no sandbox is made
+        sandbox.Contree()  # past 90%, no sandbox is made
 
 
 def test_no_row_holds_the_key(fake, opened):

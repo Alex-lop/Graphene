@@ -1,0 +1,12 @@
+Reading additional input from stdin...
+{"type":"thread.started","thread_id":"01a11471-6b30-7d41-914c-3c154735f355"}
+{"type":"turn.started"}
+2026-10-07T03:39:01.544815Z ERROR codex_login::auth::manager: Failed to refresh token: 401 Unauthorized: {
+  "error": {
+    "message": "Your session has ended. Please log in again.",
+    "type": "invalid_request_error",
+    "param": null,
+    "code": "refresh_token_invalidated"
+  }
+}
+{"type":"error","message":"Your access token could not be refreshed because your refresh token was revoked. Please log out and sign in again."}
