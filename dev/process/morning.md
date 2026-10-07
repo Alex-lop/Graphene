@@ -99,3 +99,6 @@ sub-agents outside Graphene. `dev/process/meter/dogfood.md`.
   findings, none refuted. 17 fixed, each with a test that fails without its fix; the worst two were the
   ledger's: a stopped attempt settled its hold at $0, and a run killed outright left its holds in flight all
   night. The 2 left, and why: `dev/process/meter/review.md`. A resumed result's `usage` was checked live first.
+- **04:30-05:20** A second review, of the fixes themselves: 7 findings, none refuted, all fixed. Two were
+  regressions of the dead-run fix, caught before they shipped: a dead run's hold was settled into the next
+  night's ledger, and an orphaned executor that had already finished escaped the sweep.
