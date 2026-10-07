@@ -76,13 +76,24 @@ def sh(argv: list[str], cwd: Path, env: dict, timeout: int = 900) -> str:
     return (done.stdout + done.stderr).rstrip()
 
 
-def ledger_rows(since: float, until: float, prefix: str) -> list[dict]:
+def ledger_rows(since: float, until: float, prefix: str, leaves: list[str]) -> list[dict]:
+    """The run's own rows on the night's ledger: those of its attempts (Claude Code and Codex reserve
+    as `run: <leaf> attempt <n>`) or of its leaves' calls (Nemotron's carry the leaf's id), in its window.
+    A planner's rows, and another run's, are left out."""
     from graphene_map.nemotron import night  # the tool's own: the ledger the run wrote
 
     path = night.where()
     rows = [json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
+    tags = {r.get("id"): str(r.get("tag") or "") for r in rows if r.get("kind") == "reserve"}
+
+    def mine(r: dict) -> bool:
+        tag = tags.get(r.get("id"), "")
+        return tag.startswith("run: ") or tag in leaves
+
     return [
-        r for r in rows if since <= r.get("at", 0) <= until and str(r.get("model", "")).startswith(prefix)
+        r
+        for r in rows
+        if since <= r.get("at", 0) <= until and str(r.get("model", "")).startswith(prefix) and mine(r)
     ]
 
 
@@ -153,7 +164,7 @@ def one(executor: str, rnd: int, a, env: dict) -> dict:
     text = (here / "run.txt").read_text()
     bill = next((line for line in reversed(text.splitlines()) if line.startswith("run")), "")
     shown = re.search(r"\$([0-9.]+) at list price", bill)
-    rows = ledger_rows(started - 1, ended + 1, LEDGER_MODEL[executor])
+    rows = ledger_rows(started - 1, ended + 1, LEDGER_MODEL[executor], leaves)
     ledger = sum(float(r.get("dollars") or 0) for r in rows if r.get("kind") == "settle")
     raw = raw_claude(repo) if executor == "claude" else None
     for leaf in leaves:
