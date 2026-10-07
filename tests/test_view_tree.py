@@ -292,3 +292,17 @@ def test_wide_characters_are_counted_in_cells():
         assert d is not None and all(line.cell_len <= width for line in d.lines)
         assert d.lines[0].plain.strip().endswith("…")
         heads(d, nodes)
+
+
+def test_a_leaf_an_executor_held_notes_its_bill_after_its_title_dim_where_there_is_room():
+    meter = {"sniff": "$0.42 · 6m", "open": "<1m"}
+    wide = view_tree.draw(small(), words(small()), GOAL, 120, 24, None, meter)
+    y, _, _ = wide.at["sniff"]
+    title = wide.lines[y + 1]
+    assert "sniff the… $0.42 · 6m" in title.plain and "open a feed… <1m" in wide.lines[y + 1].plain
+    at = title.plain.index("$0.42")
+    assert {str(s.style) for s in title.spans if s.start <= at < s.end} == {"dim"}
+    narrow = view_tree.draw(small(), words(small()), GOAL, 80, 24, None, meter)
+    assert all(line.cell_len <= 80 for line in narrow.lines)
+    assert "$0.42" not in plain(narrow) and "sniff the…" in plain(narrow)  # no room: the title keeps it
+    assert plain(view_tree.draw(small(), words(small()), GOAL, 80, 24, None, {})) == GOLDEN

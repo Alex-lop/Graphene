@@ -172,3 +172,16 @@ def test_agents_and_you():
     assert M.agents(log, NOW) == {"running": 1, "seconds": 90 + 60 + 60, "dollars": pytest.approx(0.31),
                                   "unpriced": 110}  # fmt: skip
     assert M.you(log, "alex") == {"acts": 3, "minutes": 2}
+
+
+def test_a_leaf_never_attempted_has_no_attempts_and_the_clock_still_reads():
+    planned = [row("00:00", "proposed", {}, actor="alex", node="c"), row("00:01", "accepted", {}, "alex")]
+    assert M.attempts(planned[:1]) == []
+    assert M.agents(planned, NOW) == {"running": 0, "seconds": 0, "dollars": 0, "unpriced": 0}
+
+
+def test_an_attempt_from_before_the_meter_ends_where_its_hold_did():
+    older = [row("00:00", "attempt", {"attempt": 1}), row("00:40", "finished", {"changed": ["a.py"]}),
+             row("00:00", "attempt", {"attempt": 1}, node="b"), row("00:30", "released", {}, node="b")]
+    assert [(a["running"], a["seconds"]) for a in M.attempts(older[:2], now=NOW)] == [(False, 40)]
+    assert M.agents(older, NOW) == {"running": 0, "seconds": 70, "dollars": 0, "unpriced": 0}

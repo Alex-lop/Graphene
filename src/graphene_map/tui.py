@@ -9,8 +9,9 @@ tree, the node pane, `graphene plan`): glyph, title cut at a word, id, and the w
 as (`plan.reads`), in the colour of who has the move (`plan.look`). Under a leaf the Nemotron
 executor forked, each fork is a row in the same grammar (its model, which fork, its state); a fork
 is not a node, and a key on its row acts on its leaf. The top line says whose plan this is in the
-words every write ends with; the bottom two say what waits on the person, and what the last key
-did (or a step up the ladder, once) or what the keys do on the node under the cursor.
+words every write ends with; the bottom two say what waits on the person and the two clocks, and
+what the last key did (or a step up the ladder, once) or what the keys do on the node under the
+cursor. Above them, each leaf an executor runs has a row of what its meter reads (`meter.py`).
 """
 
 from __future__ import annotations
@@ -28,7 +29,7 @@ import textwrap
 import threading
 import time
 from collections.abc import Callable
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 from rich.console import Console
@@ -43,17 +44,20 @@ from textual.widgets._tree import TOGGLE_STYLE
 
 from . import board_rows as BR
 from . import direction as D
+from . import meter as M
 from . import plan as P
 from . import plan_text as T
 from . import run as R
 from . import views as V
 from .node_record import bill, forks, models, sandbox
+from .views import money
 
 RUN_WITH = "--parallel 4"  # `R` and `r`: ready leaves at once, a worktree each, landed here as they pass
 WIDE = 110  # columns: from here the node pane sits beside the tree, below it under the tree
 HELP_WIDE = 72  # a help row's columns: from twice this the groups sit in two columns
 PANE = 44  # beside the tree, the node pane keeps at least this many columns
 QUIET = 120  # seconds without a sign of life before a running leaf reads "quiet for n min"
+METERED = 4  # the running leaves the meter's strip has rows for: the rest are counted
 WRAP = Console(width=400, color_system=None)  # only for Text.wrap: styled text wrapped at words
 
 HELP = (  # what answering the board needs first: at 80x24 the first screen ends inside "run"
@@ -83,7 +87,11 @@ HELP = (  # what answering the board needs first: at 80x24 the first screen ends
     ("came back", (("w b n", "widen its scope; a sibling first; wait on those"),
                    ("?", "ask the planner what would let it be done"))),
 )  # fmt: skip
-HELP_END = "Every key is a graphene command. The bottom line says which it ran."
+HELP_END = (
+    "The status line counts agents: what runs, its minutes, its dollars at list price; and you: your acts "
+    "and their minutes, by your keys, not by what you read. Every key is a graphene command. The bottom "
+    "line says which it ran."
+)
 # the glyphs and colours every row, view and pane uses, the help's first line
 LEGEND = ("yours", "review", "came back", "proposed", "ready", "running", "waiting", "done")
 EMPTY = (
@@ -246,6 +254,53 @@ def fit(pieces: list[tuple[str, str]], room: int) -> Text:
             out.append(" · ", "dim")
         out.append(text if len(text) <= room else T.elide(text, room), style)
     return out
+
+
+def elapsed(seconds: int) -> str:
+    """A running time as a clock reads it, to the second: `12s`, `6m12s`, `1h04m`."""
+    if seconds < 60:
+        return f"{seconds}s"
+    if seconds < 3600:
+        return f"{seconds // 60}m{seconds % 60:02d}s"
+    return f"{seconds // 3600}h{seconds % 3600 // 60:02d}m"
+
+
+def tokens(n: int) -> str:
+    """A count of tokens, short: `950`, `9k`, `412k`, `1.2M`."""
+    return str(n) if n < 1000 else f"{n // 1000}k" if n < 1_000_000 else f"{n / 1_000_000:.1f}M"
+
+
+def _s(n: int, word: str) -> str:
+    return f"{n} {word}{'s' * (n != 1)}"
+
+
+def live_row(node_id: str, a: dict, seen: dict, room: int, one: bool) -> list[Text]:
+    """A running leaf in the meter's strip, from its attempt (`meter.attempts`) and what `run.live` saw:
+    in one row from WIDE columns, the pieces whole and the least wanted dropped off the end; else two,
+    who and how much over what it did last. A leaf whose executor writes no stream the meter reads says
+    "no meter" where its numbers would be, and what its log said last."""
+    glyph, colour = P.look("running")
+    model = _short(a["model"]).removeprefix(f"{a['executor']}-") if a.get("model") else ""
+    who = " ".join(filter(None, [a["executor"], model]))
+    age = ago(seen.get("idle"))
+    last = seen.get("last") or "nothing yet"
+    attempt = f"attempt {a['attempt'] or 1}"
+    if a["meter"]:
+        out = len(a["files_out"])
+        files = _s(len(a["files_in"]) + out, "file") + (f", {out} outside" if out else "")
+        spent = money(a["dollars"]) if a["priced"] else "no list price"
+        said = f"{tokens(a['prompt_tokens'])} in, {tokens(a['completion_tokens'])} out"
+        numbers = [(spent, ""), (_s(a["turns"], "turn"), ""), (files, ""), (said, "dim")]
+    else:
+        numbers = [("no meter", "dim")]
+    head = [(f"{glyph} {node_id}", colour), (who, ""), (elapsed(a["seconds"]), "")]
+    if one:
+        last = T.elide(last, max(room // 3, 12))
+        rest = [*numbers[:1], (last, ""), age, *numbers[1:], (attempt, "dim")]
+        return [fit([*head, *rest], room)]
+    last = T.elide(last, max(room - 2 - len(age[0]) - 3, 12))
+    first = fit([*head[:2], (attempt, "dim"), head[2], *numbers[1:2], *numbers[:1]], room)
+    return [first, Text("  ") + fit([(last, ""), age, *numbers[2:]], room - 2)]
 
 
 class Pane:
@@ -665,6 +720,7 @@ class Watch(App):
     """The plan, live, on one screen."""
 
     RUNS_HERE = True  # R runs and P switches plan first; a replay says neither
+    METERS = True  # the meter's strip, above the bottom lines
 
     CSS = """
     Screen { layout: vertical; }
@@ -682,6 +738,7 @@ class Watch(App):
     #main.-stacked #view { width: 100%; }
     #main.-stacked #side { height: 1fr; width: 100%; border-left: none; border-top: solid $primary; }
     #side.-alone, Screen.-narrow #side.-alone { border-left: none; border-top: none; }
+    #meter { height: auto; background: $boost; padding: 0 1; display: none; }  /* rows for running leaves */
     #status { height: 2; background: $boost; padding: 0 1; }  /* 3 while a command has spoken */
     #line { dock: bottom; height: 1; border: none; padding: 0; display: none; }
     #line.-open { display: block; }
@@ -757,6 +814,8 @@ class Watch(App):
         self.board = BR.Board()  # board: the items shown as rows above the tree
         self.opened: list[str] = []  # board: the open items' ids when the tree was last built
         self.skips: set[tuple[str, int]] = set()  # the views Tab went past, and at what width, said once
+        self.billed: dict[str, str] = {}  # what each leaf an executor held spent and took (views.billed)
+        self.metered = 0  # the rows the meter's strip takes
 
     # -- the screen ----------------------------------------------------------------------------------
 
@@ -772,6 +831,7 @@ class Watch(App):
             yield PlanView(id="view")
             with VerticalScroll(id="side"):
                 yield Static(id="detail", markup=False)
+        yield Static(id="meter", markup=False)
         yield Static(id="status", markup=False)
         yield Input(id="line", select_on_focus=False)  # else the first key typed replaces the ":"
 
@@ -895,7 +955,9 @@ class Watch(App):
                 self.heard.add(news)
                 self.message = f"{n.id} stepped up to {_short(step['model'])}: {step['why']}"
         executor = (store.meta("executor") or "").split()  # what R starts, when `graphene init` chose it
-        usage = store.node_log(kinds=("usage",))  # what the Nemotron planner and executors cost
+        everything = store.node_log()  # ponytail: all of it each tick; read on from the last id if it slows
+        now = self.clock(everything)
+        usage = [e for e in everything if e["kind"] == "usage"]  # what the planners and executors cost
         self.counts = {
             "you": len(tops) + len(yours),
             "proposed": len(tops),  # what y on the goal accepts: `you` counts leaves that came back too
@@ -910,7 +972,11 @@ class Watch(App):
             "first": P.plan_first(store),
             "with": f" with {Path(executor[0]).name}" if executor else "",
             "spent": sum(e["detail"].get("dollars") or 0 for e in usage) if usage else None,
+            "agents": M.agents(everything, now),  # the two clocks
+            "mine": M.you(everything, P.caller().name),
         }
+        self.billed = V.billed(everything, now)
+        self.draw_meter(store, everything, now)
         goal_word = "proposed" if proposed and not goal else self.counts["done"]
         if self.counts["finished"]:  # what `graphene` says; the goal row reads done, as a sub-goal does
             self.counts["done"] += ", finished"
@@ -945,6 +1011,30 @@ class Watch(App):
         self.draw_direction(store)
         self.look_changed(store)
         self.show_detail(store)
+
+    def clock(self, everything: list[dict]) -> datetime:
+        """Now, for the clocks and a leaf's minutes."""
+        return datetime.now(UTC)
+
+    def draw_meter(self, store, everything: list[dict], now: datetime) -> None:
+        """The meter's strip, between the plan and the bottom lines: a block for each running leaf whose
+        executor `graphene run` started (`live_row`), METERED at most, the rest counted."""
+        running = {n.id: n for n in self.nodes if n.state == P.RUNNING}
+        logs: dict[str, list[dict]] = {}
+        for e in everything:
+            if e["node_id"] in running:
+                logs.setdefault(e["node_id"], []).append(e)
+        held = [i for i in running if self.METERS and any(e["kind"] == "attempt" for e in logs.get(i, []))]
+        room, one = max(self.size.width - 2, 20), self.size.width >= WIDE
+        lines = []
+        for i in held[:METERED]:
+            a = M.attempts(logs[i], running[i].scope, now)[-1]
+            lines += live_row(i, a, R.live(store, running[i], now.timestamp()), room, one)
+        if len(held) > METERED:
+            lines.append(Text(f"+{len(held) - METERED} more", "dim"))
+        strip = self.query_one("#meter", Static)
+        strip.display, self.metered = bool(lines), len(lines)
+        strip.update(Text("\n").join(lines))
 
     def draw_direction(self, store) -> None:
         """The direction above the plan, in every view: the path to the node the plan hangs from, each
@@ -1013,7 +1103,7 @@ class Watch(App):
 
     def view_room(self) -> tuple[int, int]:
         """The columns and rows a view is drawn in at this screen's size (`views.room`)."""
-        return V.room(self.size.width, self.size.height)
+        return V.room(self.size.width, self.size.height - self.metered)
 
     def draw_view(self, name: str) -> V.Drawn | None:
         """A registered view drawn at the room it has, its cursor on the node under the cursor, or on
@@ -1022,12 +1112,13 @@ class Watch(App):
         if view is None:
             return None
         (width, height), goal = self.view_room(), BR.goal(self.goal_text, self.board)  # board: its count
-        drawn = view.draw(self.nodes, self.words, goal, width, height, self.here)
+        noted = {"meter": self.billed} if getattr(view, "METER", False) else {}  # a view that takes them
+        drawn = view.draw(self.nodes, self.words, goal, width, height, self.here, **noted)
         if drawn is not None and self.here is not None and self.here not in drawn.at:
             was, self.here = self.here, self.stand_in(drawn)
             if was in self.by_id and self.here is not None:
                 self.mapped = (was, self.here)  # Tab from the stand-in goes back to the node itself
-            drawn = view.draw(self.nodes, self.words, goal, width, height, self.here)
+            drawn = view.draw(self.nodes, self.words, goal, width, height, self.here, **noted)
         return drawn
 
     def stand_in(self, drawn: V.Drawn) -> str | None:
@@ -1191,15 +1282,15 @@ class Watch(App):
             tree.styles.height = amount if kind == "narrow" else None
 
     def tree_room(self) -> int:
-        """The rows the tree may take: the screen less its top line and the two at the bottom, and
-        below 110 columns half of that, the node pane under it."""
-        rows = self.size.height - 3
+        """The rows the tree may take: the screen less its top line, the meter's strip and the two at the
+        bottom, and below 110 columns half of that, the node pane under it."""
+        rows = self.size.height - 3 - self.metered
         return rows if self.size.width >= WIDE and self.view != "direction" else max(3, rows // 2)
 
     def pane_room(self) -> tuple[int, int]:
         """The node pane's width and height, from the layout this screen sets (known before Textual
         has laid it out): its text is wrapped to it, and a leaf that came back fitted to it."""
-        width, height = self.size.width, self.size.height
+        width, height = self.size.width, self.size.height - self.metered
         kind, amount = (self.sized or ("narrow", 10))[:2]
         if kind == "wide":
             return max(width - amount - 4, 20), max(height - 3, 5)
@@ -1299,12 +1390,14 @@ class Watch(App):
 
     def say_status(self) -> None:
         """Two lines, each fitted at a word, and more when there is something to say: the plan (what
-        waits on the person, the executors, what R would start, how much is done, plan first), what the
+        waits on the person, the two clocks, what R would start, how much is done, plan first), what the
         keys do on the row under the cursor, in a view what it shows at a glance (the graph's critical
         path), then what the last command said. The keys never give way to what a command said: after
         an answer on the board the cursor is on the next item, and its keys are what is next. The short
         forms at 80 columns; whole pieces drop off the end. What R starts, when `graphene init` chose
-        it, is named only where the long form still fits with it."""
+        it, is named only where the long form still fits with it, and "by your keys" too. The clocks
+        (`meter.agents`, `meter.you`): the executors running, their minutes and the plan's dollars; the
+        person's acts and the minutes that hold one."""
         if not self.is_running:
             return
         room = max(self.size.width - 2, 20)
@@ -1313,30 +1406,40 @@ class Watch(App):
         you = "magenta" if c["you"] or board else ""
         busy = P.look("running")[1] if c["running"] else ""
         spent = money(c["spent"]) if c.get("spent") is not None else ""  # the plan's: planner and leaves
+        agents = c.get("agents") or {"running": 0, "seconds": 0}
+        mine = c.get("mine") or {"acts": 0, "minutes": 0}
+        ran, acts = agents["running"] or agents["seconds"] or spent, _s(mine["acts"], "act")
+        took = agents["seconds"] // 60 or ("<1" if agents["seconds"] or agents["running"] else 0)
+        clock = " · ".join([f"{agents['running']} running", f"{took} min", *([spent] if spent else [])])
         long = [
             (f"waiting on you: {c['you']}{board}", you),
-            (f"executors: {c['running']} running" if c["running"] else "executors: none", busy),
+            (f"agents: {clock}" if ran else "agents: none", busy),
+            (f"you: {acts} · ~{mine['minutes']} min", ""),
             (f"R runs {c['ready']} ready" if c["ready"] else "nothing ready to run", ""),
             *([(f"{c['back']} came back", "")] if c.get("back") else []),
             (c["done"], ""),
             (f"plan first: {c['first']} (P)", ""),
-            *([(f"the plan: {spent} at list price", "dim")] if spent else []),
         ]
         short = [
             (f"{c['you']} on you{board}", you),  # the graph's note says it so too
-            (f"{c['running']} running", busy),
+            (f"agents {clock.replace(' running', '').replace(' min', 'm')}" if ran else "agents 0", busy),
+            (f"you {acts} ~{mine['minutes']}m", ""),
             (f"R: {c['ready']} ready" if c["ready"] else "none ready", ""),
             *([(f"{c['back']} came back", "")] if c.get("back") else []),
             (c["done"], ""),
             (f"plan first: {c['first']}", ""),
-            *([(f"bill {spent}", "dim")] if spent else []),
         ]
-        named = [*long[:2], (long[2][0] + (c.get("with", "") if c["ready"] else ""), ""), *long[3:]]
-        if not self.RUNS_HERE:  # a replay: R and P start nothing, and one form holds from frame to frame
+        named = [*long[:3], (long[3][0] + (c.get("with", "") if c["ready"] else ""), ""), *long[4:]]
+        keyed = [[(f"{text} by your keys" if k == 2 else text, how) for k, (text, how) in enumerate(form)]
+                 for form in (named, long)]  # fmt: skip
+        if not self.RUNS_HERE:  # a replay: R and P start nothing, one form holds from frame to frame, and
+            # its own clock is the recording's: the executors running and the bill, as it was played
             ready = (f"{c['ready']} ready" if c["ready"] else "none ready", "")
-            named = long = short = [ready if k == 2 else part for k, part in enumerate(short)
-                                    if not part[0].startswith("plan first")]  # came back may sit at 3
-        fits = [form for form in (named, long) if len(" · ".join(text for text, _ in form)) <= room]
+            short = [short[0], (f"{c['running']} running", busy), ready, *short[4:-1]]
+            named = long = short = [*short, *([(f"bill {spent}", "dim")] if spent else [])]
+            keyed = []
+        forms = (*keyed[:1], named, *keyed[1:], long, [*long[:1], *short[1:3], *long[3:]])  # clocks short
+        fits = [form for form in forms if len(" · ".join(text for text, _ in form)) <= room]
         top = fit([*self.news(), *short] if self.news() else fits[0] if fits else short, room)
         lines = [top, fit([(k, "") for k in self.keys()], room)]
         said = self.busy or self.message
@@ -2100,11 +2203,6 @@ def goal_pane(store, s, wide: int) -> Text:
     return pane.render()
 
 
-def money(dollars: float) -> str:
-    """Dollars as a person reads a bill: cents, or four places below a cent (a spend is never $0.00)."""
-    return f"${dollars:.2f}" if dollars >= 0.01 or not dollars else f"${dollars:.4f}"
-
-
 def detail(store, node: P.Node, s, files: list[str] | None = None, room: tuple[int, int] = (60, 0)) -> Text:
     """The node under the cursor, for the person: a pane for each kind of node, none of it blank and
     nothing said twice. ``room``: the pane's width and height; a leaf that came back is fitted to it,
@@ -2236,7 +2334,8 @@ def _its(does: str, node_id: str) -> str:
 
 
 def _running(pane: Pane, store, node: P.Node, s) -> None:
-    """Which executor, where, what it did last and how long ago; for a session that took it itself,
+    """Which executor, where, what its meter reads (model, turns, tokens, dollars, the files it edited
+    in its scope and outside it), what it did last and how long ago; for a session that took it itself,
     what is not known is said in a line rather than left out."""
     seen = R.live(store, node)
     label = node.executor or ""
@@ -2247,9 +2346,21 @@ def _running(pane: Pane, store, node: P.Node, s) -> None:
         who += f", {'which' if agent else 'who'} took it with graphene node start"
     pane.field("executor", who)
     _attempt(pane, store, node, running=True)
+    rows = store.node_log(node.id)
+    a = (M.attempts(rows, node.scope) or [None])[-1]
+    if a and a["meter"]:
+        if a["model"] and not models(rows):  # a Nemotron executor's model is said above, with its ladder
+            pane.field("model", _short(a["model"]))
+        spent = f"{money(a['dollars'])} at list price" if a["priced"] else "no list price"
+        said = f"{tokens(a['prompt_tokens'])} tokens in, {tokens(a['completion_tokens'])} out"
+        pane.field("meter", f"{_s(a['turns'], 'turn')} · {said} · {spent}")
+        pane.field("edited", ", ".join(a["files_in"]))
+        pane.field("outside", ", ".join(a["files_out"]), "magenta")
+    elif a:
+        pane.field("meter", "nothing read from its stream", "dim")
     pane.field("worktree", _where(node.checkout, s.root_path))
     age, colour = ago(seen.get("idle"))
-    last = seen.get("last") or "nothing yet"
+    last = (seen.get("last") or "nothing yet").removeprefix("running ")  # the state word is said once
     last = T.elide(last, 2 * (pane.wide - 12) - len(age))  # two lines at most: what it did, then how long ago
     pane.field("last", Text.assemble(last, " · ", (age, colour)))
     if not by_run:
@@ -2278,9 +2389,10 @@ def _attempt(pane: Pane, store, node: P.Node, running: bool = False) -> None:
 
 
 def tail_pane(store, node: P.Node, root: Path, wide: int) -> Text:
-    """`l`: what the executor printed; while it has printed nothing (claude -p prints only when it
-    ends), the tool calls the hooks recorded for its session, newest last, said as such. A sub-goal
-    is run by its leaves, so it has none of its own."""
+    """`l`: what the executor did and said, as its meter read it from its stream, newest last; for an
+    executor with no meter, what it printed; while it has printed nothing, the tool calls the hooks
+    recorded for its session, newest last, said as such. Never the stream's JSON. A sub-goal is run by
+    its leaves, so it has none of its own."""
     pane = Pane(wide)
     if P.kids(P.nodes(store)).get(node.id):
         pane.text(f"{node.id} · a sub-goal: no executor runs it, so it has no output of its own", "bold")
@@ -2293,8 +2405,19 @@ def tail_pane(store, node: P.Node, root: Path, wide: int) -> Text:
         with contextlib.suppress(ValueError):
             log = str(Path(log).relative_to(root))
         pane.text(log, "dim")
-    lines = R.tail(seen.get("log"), 200)
     pane.gap()
+    rows = [e for e in store.node_log(node.id, ("did", "said"))
+            if e["detail"].get("attempt") == (seen.get("attempt") or 1)][-200:]  # fmt: skip
+    for e in rows:
+        d, at = e["detail"], (_clock(e["timestamp"], True), "dim")
+        if e["kind"] == "did":
+            pane.line(Text.assemble(at, "  ", T.elide(M.doing(d.get("verb") or "", d.get("target") or ""),
+                                                      wide - 10)))  # fmt: skip
+        else:
+            pane.text(Text.assemble(at, "  ", " ".join(str(d.get("text") or "").split())))
+    if rows:
+        return pane.render()
+    lines = [line for line in R.tail(seen.get("log"), 200) if not line.startswith('{"type"')]
     if lines:
         for line in lines:
             pane.line(Text(line))

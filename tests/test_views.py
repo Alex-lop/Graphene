@@ -568,3 +568,34 @@ def test_the_graphs_note_names_the_critical_path_first_and_counts_ready_as_the_s
         assert note.startswith(said), note
         moved = look(repo, ["tab", "tab", "j"], size, view="outline")
         assert moved["status"].splitlines()[-1].startswith("critical ━ ids > docs (2) · 1 ready")  # it stays
+
+
+def logged(node, at, kind, detail, actor="run:claude"):
+    return {"node_id": node, "timestamp": f"2026-10-07T04:{at}.000Z", "kind": kind, "actor": actor,
+            "detail": detail}  # fmt: skip
+
+
+BILLED = [
+    logged("schema", "00:00", "attempt", {"attempt": 1}),
+    logged("schema", "01:00", "usage", {"model": "claude-sonnet-5-5", "calls": 1, "prompt_tokens": 9,
+                                        "completion_tokens": 1, "dollars": 0.42, "attempt": 1, "turn": 1}),
+    logged("schema", "06:10", "ended", {"attempt": 1, "exit": 0, "meter": "claude", "unread": 0}),
+    logged("ids", "00:00", "attempt", {"attempt": 1}, "run:script"),
+    logged("ids", "00:30", "finished", {}, "run:script"),
+    logged("docs", "00:00", "accepted", {}, "alex"),
+]  # fmt: skip
+
+
+def test_billed_is_what_each_leaf_an_executor_held_spent_and_took():
+    assert V.billed(BILLED) == {"schema": "$0.42 · 6m", "ids": "<1m"}  # no meter: its minutes alone
+
+
+def test_plan_view_notes_each_leafs_bill_in_the_tree_and_the_graph(repo):
+    proposed(repo)
+    person("plan", "accept")
+    with Store.open(repo) as store:
+        for e in BILLED:
+            store.log_node(e["node_id"], e["timestamp"], e["kind"], e["actor"], None, None, e["detail"])
+    for view in ("tree", "dag"):
+        drawn = person("plan", "--view", view, "--width", "120", "--height", "36")
+        assert drawn.exit_code == 0 and "$0.42 · 6m" in drawn.stdout and "<1m" in drawn.stdout, drawn.stdout
