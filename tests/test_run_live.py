@@ -222,6 +222,10 @@ def test_what_a_leaf_did_last_is_the_meters_row_then_its_logs_last_line_not_the_
         store.log_node("a", plan._now(), "said", run.label, run.session_id, None, said)
         seen = R.live(store, node)
         assert seen["last"] == "done" and seen["attempt"] == 1 and seen["idle"] < 20
+        # a replay's clock is its recording's newest row, and its log is written as it plays: from after it
+        newest = R._seconds(store.node_log("a")[-1]["timestamp"])
+        os.utime(log, (newest + 2700, newest + 2700))
+        assert R.live(store, node, newest)["idle"] == 0  # it read -2700 s ago, on 7 October
 
 
 def test_the_executors_output_is_a_tail_while_it_runs(repo):

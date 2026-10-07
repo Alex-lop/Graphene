@@ -327,6 +327,12 @@ class Replay(Watch):
         self.head, self.lines, self.next, self.began = head, lines, 0, 0.0
         self.paused: float | None = None  # when it was paused, on the replay's clock's terms; None: playing
         self.files, self.files_at = [], math.inf  # what git tracked is the recording's, never asked here
+        # the meter's strip, when the recording was made with the meter on: a row of it is an attempt's usage
+        self.METERS = any(
+            row.get("kind") == "usage" and '"attempt"' in str(row.get("detail"))
+            for line in lines
+            for row in line.get("node_log", [])
+        )
 
     def on_mount(self) -> None:
         self.began = time.monotonic()
@@ -341,7 +347,8 @@ class Replay(Watch):
         once the app has stopped running: the last change opens every fold, and the tree may be gone."""
         if not self.is_running:
             return
-        due = (self.paused or time.monotonic()) - self.began
+        # `.` sets the clock to a change's own time, and a float can land a hair before it
+        due = (self.paused or time.monotonic()) - self.began + 1e-6
         if self.next == len(self.lines) or self.lines[self.next]["at"] > due:
             return
         said = []
@@ -388,7 +395,7 @@ class Replay(Watch):
         self.next, self.began, self.paused, self.files = 0, time.monotonic(), None, []
         self.play()
 
-    METERS = False  # the recording is from before the meter: none of its leaves has a meter's rows
+    METERS = False  # the shipped recording is from before the meter; each replay looks at its own
 
     def clock(self, everything: list[dict]) -> datetime:
         """The recording's own: its newest row, so a leaf's minutes are what they were as it played."""
