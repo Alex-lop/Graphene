@@ -48,6 +48,7 @@ from textual.widgets import Input, Static
 
 from . import __version__, extra
 from . import plan as P
+from .node_record import WHOSE
 from .store import Store
 from .tui import Help, Pane, Watch, fit, help_groups
 
@@ -215,10 +216,11 @@ def load(path: Path, speed: float = 1.0) -> tuple[dict, list[dict]]:
         raise ValueError("it is not a recording `graphene demo --record` made")
     head["day"] = str(datetime.fromisoformat(head["recorded"].replace("Z", "+00:00")).astimezone().date())
     # the run says what made it, not the terminal that recorded it: live only when every model call on
-    # record says it went to Token Factory (a row from before rows said so is a stand-in's)
+    # record says who really answered it, Token Factory, Claude Code or Codex (a row from before rows said
+    # so is a stand-in's)
     calls = [json.loads(r["detail"] or "{}") for line in lines for r in line.get("node_log") or []
              if r["kind"] == "usage"]  # fmt: skip
-    live = not head.get("stand_in", True) and all(c.get("endpoint") == "token factory" for c in calls)
+    live = not head.get("stand_in", True) and all(c.get("endpoint") in WHOSE for c in calls)
     head["shown"] = NO_CALLS if not calls else LIVE if live else STAND_IN
     if head["shown"] == STAND_IN:
         text = json.dumps(lines)

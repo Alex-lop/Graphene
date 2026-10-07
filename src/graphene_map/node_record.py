@@ -27,6 +27,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+from . import meter
 from . import plan as P
 from .commits import window as commits_in
 from .record import RANK, Change, Coverage, changes, coverage, seconds, window_commits
@@ -90,13 +91,15 @@ class NodeRecord:
     coverage: dict = field(default_factory=dict)
     refusals: Refusals = field(default_factory=Refusals)
     acts: list[Act] = field(default_factory=list)
-    bill: dict | None = None  # what its model calls cost, from Token Factory's usage (``bill``)
+    bill: dict | None = None  # what its model calls cost, from its usage rows (``bill``)
+    attempts: list[dict] = field(default_factory=list)  # what each executor's attempt did (meter.attempts)
 
 
 def node_record(store, root: str | Path, node: P.Node, at: str | None = None) -> NodeRecord:
     """Everything the records hold about one node, from the store and from git."""
     at = at or P._now()
     log = store.node_log(node.id)
+    scope = P.as_scoped(node, P.standing(store))  # as it binds: a standing path is in none
     windows = _windows(log)
     from .commits import sync_commits  # here, since the web UI that filled them is gone
 
@@ -121,7 +124,7 @@ def node_record(store, root: str | Path, node: P.Node, at: str | None = None) ->
         node.title,
         node.state,
         node.owner,
-        P.as_scoped(node, P.standing(store)),  # as it binds: a standing path is in no scope, an aside's too
+        scope,
         P.done_means(node),
         at,
         windows,
@@ -129,6 +132,7 @@ def node_record(store, root: str | Path, node: P.Node, at: str | None = None) ->
         _refusals(log),
         _acts(log),
         bill(log),
+        meter.attempts(log, scope),
     )
 
 
@@ -142,24 +146,34 @@ def _has(root: str | Path, sha: str) -> bool:
 
 
 def bill(log: list[dict]) -> dict | None:
-    """What a node's model calls cost, added up from the `usage` rows its Nemotron executor (or, for
-    the plan's own log, its planner) wrote: Token Factory's own token counts, priced at the list price
-    its model list gives. None when no model call was recorded."""
+    """What a node's model calls cost, added up from its `usage` rows: each turn's and each attempt's
+    closing row, as its executor's stream (the meter) or its Nemotron executor (or, for the plan's own
+    log, its planner) wrote them, at list price. Attempts are its `ended` rows, or in an older store its
+    rows without a turn. None when no model call was recorded."""
     rows = [e["detail"] for e in log if e["kind"] == "usage"]
     if not rows:
         return None
     out = {k: sum(r.get(k) or 0 for r in rows) for k in ("calls", "prompt_tokens", "completion_tokens")}
     out["dollars"] = round(sum(r.get("dollars") or 0 for r in rows), 6)
+    out["unpriced"] = sum((r.get("prompt_tokens") or 0) + (r.get("completion_tokens") or 0)
+                          for r in rows if r.get("priced") is False)  # fmt: skip
     out["models"] = sorted({r["model"] for r in rows if r.get("model")})
-    out["attempts"] = len(rows)
+    ended = sum(e["kind"] == "ended" for e in log)
+    out["attempts"] = ended or sum("turn" not in r for r in rows)
     out["endpoint"] = _whose(rows)
     return out
 
 
+WHOSE = {"token factory": "Token Factory's usage", "claude code": "Claude Code's report",
+         "codex": "Codex's tokens"}  # fmt: skip
+
+
 def _whose(rows: list[dict]) -> str:
-    """Token Factory's usage only when every row says so; else a stand-in's (a row from before rows
-    said who answered is not credited to Token Factory either)."""
-    return "token factory" if all(r.get("endpoint") == "token factory" for r in rows) else "a stand-in"
+    """Who answered, as every row says it: "token factory", "claude code", "codex", or those joined by
+    "and" for a node more than one held. A stand-in's when any row is a stand-in's or names nobody (a row
+    from before rows said who answered is credited to no one real)."""
+    said = sorted({e for r in rows for e in (r.get("endpoint") or "").split(" and ")})
+    return " and ".join(said) if all(e in WHOSE for e in said) else "a stand-in"
 
 
 def _hold(log: list[dict]) -> list[dict]:
@@ -207,10 +221,12 @@ def bill_line(b: dict | None, indent: str = "  ") -> list[str]:
     if not b:
         return []
     models = ", ".join(m.rsplit("/", 1)[-1] for m in b["models"])
-    whose = "Token Factory's" if b.get("endpoint") == "token factory" else "a stand-in's"
+    said = (b.get("endpoint") or "").split(" and ")
+    whose = " and ".join(WHOSE[e] for e in said) if all(e in WHOSE for e in said) else "a stand-in's usage"
+    unpriced = f" ({b['unpriced']:,} with no list price)" if b.get("unpriced") else ""
     return [f"{indent}bill: ${b['dollars']:.4f} at list price · {b['calls']} model call{_s(b['calls'])} · "
-            f"{b['prompt_tokens']:,} tokens in, {b['completion_tokens']:,} out · {models} "
-            f"({whose} usage)"]  # fmt: skip
+            f"{b['prompt_tokens']:,} tokens in, {b['completion_tokens']:,} out{unpriced} · {models} "
+            f"({whose})"]  # fmt: skip
 
 
 def _windows(log: list[dict]) -> list[Window]:
@@ -599,8 +615,8 @@ def _s(n: int) -> str:
 
 
 def render(record: NodeRecord) -> list[str]:
-    """The record as plain lines, never wrapped and never cut: an agent reads them as evidence about
-    the node it holds, and a person greps them."""
+    """The record as plain lines, never wrapped and never cut but for what an attempt said and did last:
+    an agent reads them as evidence about the node it holds, and a person greps them."""
     lines = [
         f"{record.node_id}  {record.title}",
         f"  state: {record.state} · owner {record.owner}",
@@ -608,6 +624,7 @@ def render(record: NodeRecord) -> list[str]:
     lines += _window_lines(record)
     lines += _coverage_lines(record.coverage, record.refusals.last_check)
     lines += _refusal_lines(record.refusals)
+    lines += _attempt_lines(record)
     lines += bill_line(record.bill)
     lines += _act_lines(record.acts)
     return lines
@@ -716,6 +733,75 @@ def _refusal_lines(refusals: Refusals) -> list[str]:
     return lines  # the last check is a coverage line: it is what verifies the change set
 
 
+def _attempt_lines(record: NodeRecord) -> list[str]:
+    """Each attempt's record: what ran it, for how long and what it spent, then what it read, edited and
+    ran, what was refused, what it said last, and the tail of what it did (its log's, with no meter)."""
+    lines = []
+    for a in record.attempts:
+        model = a["model"] and a["model"].rsplit("/", 1)[-1]
+        head = [f"attempt {a['attempt']}", " ".join(filter(None, (a["executor"], model)))]
+        known = not a["running"] or record.state == P.RUNNING  # an older store has no end row for its last
+        head += [_took(a["seconds"])] if known else []
+        if a["meter"]:
+            spent = f"${a['dollars']:.2f}" if a["dollars"] >= 0.01 else f"${a['dollars']:.4f}"
+            spent += " at list price" + ("" if all(e in WHOSE for e in a["endpoints"]) else " (a stand-in's)")
+            head += [f"{a['turns']} turn{_s(a['turns'])}",
+                     f"{_k(a['prompt_tokens'])} in, {_k(a['completion_tokens'])} out",
+                     spent if a["priced"] else "no list price"]  # fmt: skip
+        else:
+            head.append("no meter")
+        if a["exit"] is not None:
+            head.append(f"exit {a['exit']}")
+        elif a["running"] and record.state == P.RUNNING:
+            head.append("running")
+        lines.append("  " + " · ".join(head))
+        if a["read"]:
+            lines.append(f"    read: {_few(a['read'])}")
+        if a["edited"]:
+            out = a["files_out"]
+            said = [_few(a["files_in"])] if a["files_in"] else []
+            said += [f"({len(out)} outside the scope: {', '.join(out)})"] if out else []
+            lines.append("    edited: " + " ".join(said))
+        if a["ran"]:
+            ran = [f"{r} ({a['runs'][r]} times)" if a["runs"][r] > 1 else r for r in a["ran"]]
+            lines.append(f"    ran: {_few(ran)}")
+        if a["refused"]:
+            lines.append(f"    refused: {', '.join(a['refused'])}")
+        if a["said"]:
+            lines.append(f"    said last: {' '.join(a['said'].split())[:SAID_LAST]}")
+        told = a["told"] if a["meter"] else _log_tail(a["log"])
+        text = "\n".join(" ".join(t.split()) if a["meter"] else t for t in told)[-P.TAIL :]
+        if text.strip():
+            lines.append("    its last lines:" if not a["meter"] else "    the last it did:")
+            lines += [f"      {t}" for t in text.split("\n")]
+    return lines
+
+
+SAID_LAST = 160  # characters of what an attempt said last, on its one line
+SHOWN = 3  # paths or commands named on one line before "and N more"
+
+
+def _log_tail(path: str | None) -> list[str]:
+    from .run import tail  # run's, which reads a log as it grows
+
+    return tail(path)
+
+
+def _few(names: list[str]) -> str:
+    if len(names) <= SHOWN:
+        return ", ".join(names)
+    return f"{', '.join(names[: SHOWN - 1])} and {len(names) - SHOWN + 1} more"
+
+
+def _took(seconds: int) -> str:
+    return f"{seconds // 60} min" if seconds >= 60 else f"{seconds} s"
+
+
+def _k(n: int) -> str:
+    """A token count in a few characters: 950, 412k, 1.2M."""
+    return str(n) if n < 1000 else f"{round(n / 1000)}k" if n < 999_500 else f"{n / 1e6:.1f}M"
+
+
 def _act_lines(acts: list[Act]) -> list[str]:
     if not acts:
         return ["  nobody has accepted, edited, signed off, sent back or handed back this node"]
@@ -768,8 +854,8 @@ def rolled_up(store, root: str | Path, leaves: list[P.Node], at: str | None = No
     )
     bills = [r.bill for _, r in records if r.bill]
     if bills:
-        kinds = ("calls", "prompt_tokens", "completion_tokens", "dollars")
-        total = {k: sum(b[k] for b in bills) for k in kinds}
+        kinds = ("calls", "prompt_tokens", "completion_tokens", "dollars", "unpriced")
+        total = {k: sum(b.get(k) or 0 for b in bills) for k in kinds}
         total["models"] = sorted({m for b in bills for m in b["models"]})
         total["endpoint"] = _whose(bills)
         lines += bill_line(total, "    ")

@@ -531,3 +531,102 @@ def test_a_fork_still_running_on_a_leaf_that_is_not_reads_stopped():
              "why": "its executor was stopped before this fork ended", "checkpoint": "forked"},
             ended,
         ]  # fmt: skip
+
+
+# -- each attempt's record, from the meter's rows ----------------------------------------------------
+
+
+def meter_rows(store, run: Caller, rows: list[tuple[str, str, dict]]) -> None:
+    for at, kind, detail in rows:
+        store.log_node("n1", at, kind, run.label, run.session_id, None, detail)
+
+
+def test_a_metered_attempt_that_came_back_says_what_it_ran_and_where_it_was_refused(store, repo):
+    run = Caller("run:claude", False, "s-1")
+    plan.propose(store, [api_node()], ALEX, now=T(0))
+    plan.start(store, "n1", run, repo, now=T(1))
+
+    def turn(n, given, out, dollars):
+        return {"model": "claude-sonnet-5-5", "calls": 1, "prompt_tokens": given, "completion_tokens": out,
+                "dollars": dollars, "endpoint": "claude code", "attempt": 1, "turn": n}  # fmt: skip
+
+    def did(verb, target):
+        return {"attempt": 1, "tool": "Tool", "target": target, "verb": verb}
+
+    meter_rows(store, run, [
+        (T(1, 30), "attempt", {"attempt": 1, "log": None}),
+        (T(2), "usage", turn(1, 200_000, 4_000, 0.20)),
+        (T(2), "did", did("reading", "src/api/users.py")),
+        (T(2), "did", did("reading", "src/db/schema.py")),
+        (T(3), "usage", turn(2, 212_000, 5_000, 0.20)),
+        (T(3), "did", did("editing", "src/api/users.py")),
+        (T(3), "did", did("editing", "README.md")),
+        (T(3), "denied", {"path": "README.md", "how": "edit"}),
+        *[(T(4, k), "did", did("running", "python3 -m pytest -q")) for k in range(3)],
+        (T(5), "did", did("running", "graphene node done n1")),
+        (T(6), "said", {"attempt": 1, "text": "The endpoint needs README.md too,\nso I stop here."}),
+        (T(7), "usage", {"model": "claude-sonnet-5-5", "calls": 0, "prompt_tokens": 0, "completion_tokens": 0,
+                         "dollars": 0.02, "endpoint": "claude code", "attempt": 1, "turns": 2,
+                         "reported": 0.42}),
+        (T(7, 30), "ended", {"attempt": 1, "exit": 1, "seconds": 360, "meter": "claude", "unread": 0}),
+    ])  # fmt: skip
+    plan.release(store, "n1", run, "it needs README.md", now=T(8))
+    lines = NR.render(NR.node_record(store, repo, plan.get(store, "n1"), at=T(9)))
+    start = lines.index("  attempt 1 · claude claude-sonnet-5-5 · 6 min · 2 turns · 412k in, 9k out · "
+                        "$0.42 at list price · exit 1")
+    assert lines[start + 1 : start + 7] == [
+        "    read: src/api/users.py, src/db/schema.py",
+        "    edited: src/api/users.py (1 outside the scope: README.md)",
+        "    ran: python3 -m pytest -q (3 times), graphene node done n1",
+        "    refused: README.md",
+        "    said last: The endpoint needs README.md too, so I stop here.",
+        "    the last it did:",
+    ]
+    assert lines[start + 7 : start + 9] == [
+        "      reading src/api/users.py",
+        "      reading src/db/schema.py",
+    ]
+    assert "      running graphene node done n1" in lines and "exit 1, no output" not in "\n".join(lines)
+    bill = next(k for k, line in enumerate(lines) if line.startswith("  bill: "))
+    assert lines[start - 1].startswith("    denied: ") and bill > start  # after the refusals, before the bill
+    assert lines[bill] == ("  bill: $0.4200 at list price · 2 model calls · 412,000 tokens in, 9,000 out · "
+                           "claude-sonnet-5-5 (Claude Code's report)")  # fmt: skip
+
+
+def test_an_attempt_with_no_meter_shows_the_tail_of_its_log(store, repo, tmp_path):
+    run = Caller("run:sh", False, "s-1")
+    log = tmp_path / "n1-1.txt"
+    log.write_text("".join(f"line {k} of what the executor wrote {'.' * 80}\n" for k in range(200)))
+    plan.propose(store, [api_node()], ALEX, now=T(0))
+    plan.start(store, "n1", run, repo, now=T(1))
+    meter_rows(store, run, [
+        (T(1), "attempt", {"attempt": 1, "log": str(log)}),
+        (T(3), "ended", {"attempt": 1, "exit": 1, "seconds": 120, "meter": None, "unread": 0}),
+    ])  # fmt: skip
+    lines = NR.render(NR.node_record(store, repo, plan.get(store, "n1"), at=T(4)))
+    start = lines.index("  attempt 1 · sh · 2 min · no meter · exit 1")
+    assert lines[start + 1] == "    its last lines:"
+    shown = [line for line in lines[start + 2 :] if line.startswith("      ")]
+    assert shown[-1].startswith("      line 199 of what the executor wrote")
+    assert not any(line.startswith("      line 170 ") for line in shown)  # cut to TAIL characters
+    assert len("\n".join(s.removeprefix("      ") for s in shown)) <= plan.TAIL
+
+
+def test_the_bill_counts_attempts_from_their_ends_and_says_who_reported_it():
+    def row(kind, **detail):
+        return {"kind": kind, "detail": detail}
+
+    turn = {"calls": 1, "prompt_tokens": 10, "completion_tokens": 5, "dollars": 0.01, "model": "m"}
+    claude = [row("usage", **turn, turn=k, endpoint="claude code") for k in (1, 2)]
+    claude += [row("usage", calls=0, dollars=0.005, endpoint="claude code"), row("ended", attempt=1)]
+    said = NR.bill(claude)
+    assert (said["attempts"], said["calls"], said["dollars"]) == (1, 2, 0.025)  # ends, not rows
+    assert NR.bill(claude[:3])["attempts"] == 1  # without its end: the closing row, not the turns
+    assert NR.bill_line(said)[0].endswith("(Claude Code's report)")
+    codex = NR.bill([row("usage", **turn, turn=1, endpoint="codex", priced=False)])
+    assert NR.bill_line(codex)[0].endswith("10 tokens in, 5 out (15 with no list price) · m (Codex's tokens)")
+    both = NR.bill([*claude, row("usage", **turn, endpoint="token factory")])
+    assert NR.bill_line(both)[0].endswith("(Claude Code's report and Token Factory's usage)")
+    for never in ({"endpoint": "a stand-in"}, {}):  # a stand-in's, or a row from before rows said
+        mixed = NR.bill([*claude, row("usage", **turn, **never)])
+        assert NR.bill_line(mixed)[0].endswith("(a stand-in's usage)")
