@@ -185,7 +185,9 @@ def sweep(store, say: Callable[[str], None], root: Path | None = None) -> None:
     stopped for it. A parallel run that died outright (kill -9, Force Quit) left its executors
     working, and a leaf one of them finished is done in the run's worktree and nowhere here: it is
     parked as a stopped run parks it (``park``), committed on its branch and waiting in review. Either
-    way the dead run's attempt is closed first (``_close``): nothing else settles its hold."""
+    way the dead run's attempt is closed first (``_close``): nothing else settles its hold. Last, every
+    hold a dead run left in flight in its ledger is closed, whatever its leaf has become since: the
+    executor left working may have ended the leaf itself (`done`, or `release`)."""
     for n in P.nodes(store, (P.RUNNING,)):
         if not (n.executor or "").startswith("run:"):
             continue
@@ -216,13 +218,24 @@ def sweep(store, say: Callable[[str], None], root: Path | None = None) -> None:
         if run.get("run_pid") and not _still(run["run_pid"], run.get("run_start")):
             _close(run)
             park(store, tree, n, say)
+    if not (night := extra.load("night")):
+        return
+    flying = functools.cache(night.flying)  # each ledger read once
+    for e in store.node_log(None, ("attempt",)):
+        this = e["detail"]
+        hold = this.get("hold") or {}
+        if not hold.get("id") or hold["id"] not in flying(hold.get("ledger")):
+            continue  # no hold, or settled
+        if this.get("run_pid") and not _still(this["run_pid"], this.get("run_start")):
+            _close(this)
 
 
 def _close(this: dict) -> None:
     """A dead run's attempt (``this``, its attempt row): its executor stopped if it still works, and only
     while its pid still names the process that was started; then its hold on the night settled, at what
     its log says read again through the meter, as the run would have settled it (``_settle``). A run
-    killed outright (kill -9, Force Quit) left the hold in flight, and the night refused every run after."""
+    killed outright (kill -9, Force Quit) left the hold in flight, and the night refused every run after.
+    A log that cannot be read (the repo moved, its runs cleared) is no stream: the worst case."""
     pid, began = this.get("pid"), this.get("pid_start")
     if pid and began and _started(pid) == began:  # the dead run's executor, still working
         _end_group(pid, lambda p=pid: not _alive(p))
@@ -231,7 +244,7 @@ def _close(this: dict) -> None:
     if not night:
         return
     meter = None
-    if kind in M.ENDPOINT and this.get("log"):
+    if kind in M.ENDPOINT and this.get("log") and os.access(this["log"], os.R_OK):
         model = hold["model"].partition(":")[2]  # the ledger's "codex:<model>": the model it is priced at
         price = _listed().get if kind == "codex" else None
         meter = M.Meter(kind, this["attempt"], model, hold["paid"], price)
@@ -359,16 +372,17 @@ def _settle(night, hold: dict, meter: M.Meter | None) -> None:
     the whole figure: Claude Code's result was read, or every Codex turn that started completed. A Codex
     model with no list price settles at $0, its tokens alone. Anything else (no stream, a turn stopped or
     failed, a result never read) keeps the worst case held, as a Token Factory call stopped while out
-    does (decision 129): it may have been spent."""
+    does (decision 129): it may have been spent. It settles in the ledger that holds it; an older hold
+    names none, and settles in the night's now."""
     if meter is None:
-        night.settle(hold["id"], hold["model"], hold["worst"])
+        night.settle(hold["id"], hold["model"], hold["worst"], ledger=hold.get("ledger"))
         return
     whole = meter.reported is not None if meter.kind == "claude" else meter.begun == meter.turns
     dollars = meter.dollars if whole else hold["worst"]
     if meter.kind == "codex" and not (meter.price and meter.price(meter.model)):
         dollars = 0.0  # no list price: the bill says its tokens
     used = {"prompt_tokens": meter.prompt_tokens, "completion_tokens": meter.completion_tokens}
-    night.settle(hold["id"], hold["model"], dollars, used)
+    night.settle(hold["id"], hold["model"], dollars, used, hold.get("ledger"))
 
 
 def command_for(template: str, prompt: str, session: str, again: bool) -> list[str]:
@@ -407,6 +421,7 @@ def run_node(
     refusal: str | None = None
     stamp = (node.started_at or P._now()).replace(":", "").replace("-", "")[:15]
     proc: subprocess.Popen | None = None
+    hold: dict | None = None  # the attempt's on the night's ledger
     paid = 0.0  # what this hold's attempts settled: a resumed Claude Code reports the session's total
     try:
         for attempt in range(1, attempts + 1):
@@ -436,10 +451,11 @@ def run_node(
             hold, night = None, extra.load("night") if name in M.ENDPOINT else None
             if night and night.cap() is not None:  # under the opening: the attempt's worst case, held first
                 model = f"{name}:{M.model_in(argv) or ('default' if name == 'claude' else 'codex')}"
-                hold = {"model": model, "worst": _worst(argv), "paid": paid}
+                # the ledger it is held in goes with it: it settles there, should it end after noon
+                hold = {"model": model, "worst": _worst(argv), "paid": paid, "ledger": str(night.where())}
                 try:
                     hold["id"] = night.reserve(model, hold["worst"], f"run: {node.id} attempt {attempt}",
-                                               M.ENDPOINT[name])  # fmt: skip
+                                               M.ENDPOINT[name], hold["ledger"])  # fmt: skip
                 except night.Refused as no:
                     P.release(store, node.id, who, str(no))
                     say(f"{node.id} came back: {no}")
@@ -452,7 +468,7 @@ def run_node(
                 )  # fmt: skip
             except OSError as no:  # the executor is not installed, or not executable: nothing ran
                 if hold:
-                    night.settle(hold["id"], hold["model"], 0.0)
+                    night.settle(hold["id"], hold["model"], 0.0, ledger=hold["ledger"])
                 P.release(store, node.id, who, f"the executor could not be started: {name}: {no.strerror}")
                 raise P.Refused(
                     f"cannot run `{argv[0]}`: {no.strerror}. {node.id} was handed back untouched; name "
@@ -529,6 +545,8 @@ def run_node(
             stop.halt()
             if proc is not None:
                 _end(proc)  # its own session never saw the terminal's Ctrl-C: it is stopped here
+            if hold and hold.get("id"):  # stopped before its attempt's own settle: its worst case, once
+                _settle(night, hold, None)
             if P.get(store, node.id).state == P.RUNNING:
                 P.release(store, node.id, who, STOPPED, stopped=True)
                 say(f"{node.id} handed back: the run was stopped")
