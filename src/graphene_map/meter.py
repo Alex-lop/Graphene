@@ -309,7 +309,7 @@ def _attempt(a: dict, nxt: dict | None, scope: list[str] | None, now: datetime) 
         "prompt_tokens": sum(u.get("prompt_tokens") or 0 for u in usage),
         "completion_tokens": sum(u.get("completion_tokens") or 0 for u in usage),
         "dollars": sum(u.get("dollars") or 0 for u in usage),
-        "priced": all(u.get("priced", True) for u in usage),
+        "priced": not unpriced(rows),
         "endpoints": sorted({u.get("endpoint") or "" for u in usage}),  # who answered; "" when a row says not
         "read": targets("reading"),
         "edited": edited,
@@ -327,6 +327,20 @@ def _attempt(a: dict, nxt: dict | None, scope: list[str] | None, now: datetime) 
     }
 
 
+def unpriced(rows: list[dict]) -> int:
+    """The tokens no list price covers: those of each turn that says "priced": False, unless the result
+    that closed its attempt settled the attempt (Claude Code reports what it cost, whatever the model).
+    Codex's turns are never settled."""
+    usage = [e for e in rows if e["kind"] == "usage"]
+
+    def whose(e: dict) -> tuple:  # one attempt: its leaf, its hold's session, its number
+        return e.get("node_id"), e.get("session_id"), e["detail"].get("attempt")
+
+    settled = {whose(e) for e in usage if "reported" in e["detail"]}
+    return sum((e["detail"].get("prompt_tokens") or 0) + (e["detail"].get("completion_tokens") or 0)
+               for e in usage if e["detail"].get("priced") is False and whose(e) not in settled)  # fmt: skip
+
+
 def agents(rows: list[dict], now: datetime) -> dict:
     """The agents' clock over a whole log: attempts running, their seconds summed, the dollars of every
     usage row, and the tokens no list price covers."""
@@ -339,8 +353,7 @@ def agents(rows: list[dict], now: datetime) -> dict:
         "running": sum(a["running"] for a in tries),
         "seconds": sum(a["seconds"] for a in tries),
         "dollars": sum(u.get("dollars") or 0 for u in usage),
-        "unpriced": sum((u.get("prompt_tokens") or 0) + (u.get("completion_tokens") or 0)
-                        for u in usage if u.get("priced") is False),  # fmt: skip
+        "unpriced": unpriced(rows),
     }
 
 

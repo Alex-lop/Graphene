@@ -209,3 +209,26 @@ def test_an_attempt_with_no_ended_row_ends_where_its_leaf_was_dropped():
     morning = datetime(2026, 10, 8, 4, 0, tzinfo=UTC)
     assert [(a["running"], a["seconds"]) for a in M.attempts(dropped, now=morning)] == [(False, 300)]
     assert M.agents(dropped, morning) == {"running": 0, "seconds": 300, "dollars": 0.03, "unpriced": 0}
+
+
+def test_a_claude_attempt_its_result_settled_is_priced_whatever_model_its_turns_named():
+    """The review of 7 October: on a Claude model PRICES lacks (claude-sonnet-4-5), each turn says
+    "priced": False, and the attempt stayed so after its result settled it at the $0.0623 Claude Code
+    reported: `node show` said `no list price`, the views dropped the dollars, and the run's last line
+    added `+ 60k tokens with no list price`. Codex's turns, which nothing settles, still have none."""
+    from graphene_map.node_record import bill
+
+    meter = M.Meter("claude", 1)
+    stream = (FIXTURES / "claude.jsonl").read_text().replace("sonnet-5-5", "sonnet-4-5-20250929")
+    log = [row("00:00", "attempt", {"attempt": 1, "meter": "claude"})]
+    log += [row("00:30", k, d) for line in stream.splitlines() for k, d in meter.feed(line)]
+    log += [row("01:00", "ended", {"attempt": 1, "exit": 0, "meter": "claude", "unread": 0}),
+            row("01:05", "released", {}), row("01:10", "started", {}, actor="run:codex")]  # fmt: skip
+    hold = [row("01:10", "attempt", {"attempt": 1, "meter": "codex"}),  # the next run's attempt 1
+            row("01:40", "usage", usage(1, 0, turn=1, endpoint="codex", priced=False)),
+            row("02:00", "ended", {"attempt": 1, "exit": 0, "meter": "codex", "unread": 1})]  # fmt: skip
+    log += [e | {"actor": "run:codex", "session_id": "t"} for e in hold]
+    claude, codex = M.attempts(log, now=NOW)
+    assert claude["model"] == "claude-sonnet-4-5-20250929" and claude["dollars"] == pytest.approx(0.0622574)
+    assert claude["priced"] and not codex["priced"]
+    assert M.agents(log, NOW)["unpriced"] == bill(log)["unpriced"] == 110  # Codex's 100 in and 10 out

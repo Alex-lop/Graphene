@@ -155,8 +155,7 @@ def bill(log: list[dict]) -> dict | None:
         return None
     out = {k: sum(r.get(k) or 0 for r in rows) for k in ("calls", "prompt_tokens", "completion_tokens")}
     out["dollars"] = round(sum(r.get("dollars") or 0 for r in rows), 6)
-    out["unpriced"] = sum((r.get("prompt_tokens") or 0) + (r.get("completion_tokens") or 0)
-                          for r in rows if r.get("priced") is False)  # fmt: skip
+    out["unpriced"] = meter.unpriced(log)  # what a Claude result settled is priced, whatever its turns said
     out["models"] = sorted({r["model"] for r in rows if r.get("model")})
     ended = sum(e["kind"] == "ended" for e in log)
     out["attempts"] = ended or sum("turn" not in r for r in rows)
