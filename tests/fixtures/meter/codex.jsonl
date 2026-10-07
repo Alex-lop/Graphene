@@ -1,0 +1,12 @@
+Reading additional input from stdin...
+{"type":"thread.started","thread_id":"01a11473-343b-7422-b653-2d323229e954"}
+{"type":"item.completed","item":{"id":"item_0","type":"error","message":"Model metadata for `nvidia/nemotron-3-super-120b-a12b` not found. Defaulting to fallback metadata; this can degrade performance and cause issues."}}
+{"type":"turn.started"}
+{"type":"item.started","item":{"id":"item_1","type":"command_execution","command":"/bin/zsh -lc 'cat hello.py'","aggregated_output":"","exit_code":null,"status":"in_progress"}}
+{"type":"item.completed","item":{"id":"item_1","type":"command_execution","command":"/bin/zsh -lc 'cat hello.py'","aggregated_output":"def hello():\n    return \"hi\"\n\nprint(hello())\n","exit_code":0,"status":"completed"}}
+{"type":"item.started","item":{"id":"item_2","type":"command_execution","command":"/bin/zsh -lc \"cat > hello.py << 'EOF'\ndef hello():\n    return \\\"hi\\\"\n\ndef add(a, b):\n    return a + b\n\nprint(hello())\nEOF\"","aggregated_output":"","exit_code":null,"status":"in_progress"}}
+{"type":"item.completed","item":{"id":"item_2","type":"command_execution","command":"/bin/zsh -lc \"cat > hello.py << 'EOF'\ndef hello():\n    return \\\"hi\\\"\n\ndef add(a, b):\n    return a + b\n\nprint(hello())\nEOF\"","aggregated_output":"","exit_code":0,"status":"completed"}}
+{"type":"item.started","item":{"id":"item_3","type":"command_execution","command":"/bin/zsh -lc 'python3 hello.py'","aggregated_output":"","exit_code":null,"status":"in_progress"}}
+{"type":"item.completed","item":{"id":"item_3","type":"command_execution","command":"/bin/zsh -lc 'python3 hello.py'","aggregated_output":"hi\n","exit_code":0,"status":"completed"}}
+{"type":"item.completed","item":{"id":"item_4","type":"agent_message","text":"\nhi"}}
+{"type":"turn.completed","usage":{"input_tokens":48940,"cached_input_tokens":0,"cache_write_input_tokens":0,"output_tokens":344,"reasoning_output_tokens":225}}
