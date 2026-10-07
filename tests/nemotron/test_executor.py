@@ -496,6 +496,27 @@ def test_a_call_after_its_tag_named_in_prose_is_still_a_call():
     assert [c["function"]["name"] for c in text_calls(said)] == ["read"]
 
 
+def test_a_call_whose_arguments_name_its_tag_is_still_a_call_and_not_said(repo, fake):
+    """The second review of 7 October: a call was read from the opening tag nearest its closing tag, so a
+    call whose own arguments held the tag (a grep for it) was read from there, was no JSON, and was lost:
+    the model was told to call a tool, and its said row held half the call. A call is the JSON read from
+    an opening tag, with its closing tag after it."""
+    grep = "grep -n '<tool_call>' app.py"
+    written = json.dumps({"name": "run", "arguments": {"command": grep}})
+    fake([script({"greet": [
+        {"content": f"I look for it.\n<tool_call>\n{written}\n</tool_call>"},
+        call("edit", path="app.py", old='"hi"', new='"hello"'),
+        call("done"),
+    ]})] * 5)  # fmt: skip
+    plan_of(repo, leaf())
+    run_one(repo)
+    with Store.open(repo) as store:
+        log = store.node_log("greet", ("did", "said"))
+    assert [(e["detail"]["verb"], e["detail"]["target"]) for e in log if e["kind"] == "did"][0] == (
+        "running", grep)  # fmt: skip
+    assert [e["detail"]["text"] for e in log if e["kind"] == "said"] == ["I look for it."]
+
+
 def test_the_executor_never_views_what_git_ignores(repo, fake):
     (repo / ".gitignore").write_text(".graphene/\n__pycache__/\n.env\n")
     (repo / ".env").write_text("AWS_SECRET_ACCESS_KEY=do-not-send\n")
