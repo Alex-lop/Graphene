@@ -79,6 +79,17 @@ def test_the_home_directory_spelled_with_dashes_goes_too(tmp_path, monkeypatch):
     assert demo.leaks("cd /tmp/-Users-someone-Desktop")["the home directory"] == 1
 
 
+def test_a_home_with_a_dot_or_an_underscore_goes_as_claude_code_dashes_it(tmp_path, monkeypatch):
+    """The review of 7 October: Claude Code dashes every character of a path that is not a letter or a
+    digit, so /Users/john.doe_jr names its folders -Users-john-doe-jr-…, which dashing the slashes alone
+    never met: the name stayed in the recording, and the leak count said none."""
+    monkeypatch.setenv("HOME", "/Users/john.doe_jr")
+    hide, _ = demo.hider(tmp_path / "work")
+    said = hide('{"auto": "~/.claude/projects/-Users-john-doe-jr-code-feeds/memory/"}')
+    assert "john" not in said and demo.leaks(said)["the home directory"] == 0
+    assert demo.leaks("cd /tmp/-Users-john-doe-jr-code")["the home directory"] == 1
+
+
 def test_a_key_kept_only_in_the_keychain_is_taken_out_too(tmp_path, monkeypatch):
     from graphene_map.nemotron import keys
 

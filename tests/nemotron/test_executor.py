@@ -486,6 +486,16 @@ def test_nemotrons_own_toolcall_text_is_read_as_its_calls(repo, fake):
     assert [n.id for n in done] == ["greet"]
 
 
+def test_a_call_after_its_tag_named_in_prose_is_still_a_call():
+    """The review of 7 October: a call was read from the first opening tag to the first closing one, so
+    a message that named <tool_call> in its prose before a real one lost the call, and the planner took
+    the message for its answer. A call is read from the opening tag nearest its closing tag."""
+    from graphene_map.nemotron.executor import text_calls
+
+    said = 'I make a <tool_call> to read it.\n<tool_call>\n{"name": "read", "arguments": {}}\n</tool_call>'
+    assert [c["function"]["name"] for c in text_calls(said)] == ["read"]
+
+
 def test_the_executor_never_views_what_git_ignores(repo, fake):
     (repo / ".gitignore").write_text(".graphene/\n__pycache__/\n.env\n")
     (repo / ".env").write_text("AWS_SECRET_ACCESS_KEY=do-not-send\n")
