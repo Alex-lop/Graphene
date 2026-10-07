@@ -51,8 +51,8 @@ def main() -> int:
         return sh("graphene", "board")
     if step == "accept":
         return sh("graphene", "plan", "accept")
-    if step == "run":
-        return sh("graphene", "run", "--parallel", "2", "--with", EXECUTOR)
+    if step == "run":  # `run --node ID` runs a leaf that came back again
+        return sh("graphene", "run", "--parallel", "2", "--with", EXECUTOR, *sys.argv[3:])
     if step == "shot":
         return sh(sys.executable, str(repo / "dev" / "screens" / "meter_shot.py"), str(repo), sys.argv[3])
     return sh("graphene", *sys.argv[2:])

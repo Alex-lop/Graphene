@@ -36,6 +36,7 @@ VERBS = {"Read": "reading", "NotebookRead": "reading", "Edit": "editing", "Write
          "MultiEdit": "editing", "NotebookEdit": "editing", "Bash": "running", "Grep": "searching",
          "Glob": "searching", "WebSearch": "searching", "WebFetch": "searching"}  # fmt: skip
 ENDPOINT = {"claude": "claude code", "codex": "codex"}
+PROMPT = ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens")  # a Claude prompt's
 HOLD_ENDS = ("finished", "overruled", "released")  # an attempt with no `ended` row (older stores) ends here
 
 
@@ -100,8 +101,9 @@ class Meter:
     token and per completion token, or None when the model has no list price."""
 
     def __init__(self, kind: str, attempt: int, model: str | None = None, paid_before: float = 0.0,
-                 price=None):  # fmt: skip
+                 price=None, told_before: tuple[int, int] = (0, 0)):  # fmt: skip
         self.kind, self.attempt, self.paid_before, self.price = kind, attempt, paid_before, price
+        self.told_before = told_before  # tokens in and out earlier attempts of a resumed session settled
         self.model = model or ("codex" if kind == "codex" else None)
         self.turns = self.prompt_tokens = self.completion_tokens = self.unread = 0
         self.dollars, self.priced, self.reported = 0.0, True, None
@@ -153,7 +155,7 @@ class Meter:
             self.cwd, self.model = event.get("cwd"), event.get("model") or self.model
             return []
         if event["type"] == "result":
-            return self._settled(event.get("total_cost_usd"))
+            return self._settled(event)
         if event["type"] != "assistant":
             return []
         message, rows = event["message"], []
@@ -161,8 +163,7 @@ class Meter:
             self._seen.add(message.get("id"))
             usage = message.get("usage") or {}
             self.model = message.get("model") or self.model
-            given = ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens")
-            prompt = sum(usage.get(k) or 0 for k in given)
+            prompt = sum(usage.get(k) or 0 for k in PROMPT)
             rows.append(self._usage(prompt, usage.get("output_tokens") or 0, list_price(self.model, usage)))
         for block in message.get("content") or []:
             if block.get("type") == "tool_use":
@@ -180,16 +181,25 @@ class Meter:
             return path
         return given.get("command") or given.get("pattern") or ""
 
-    def _settled(self, reported) -> list[tuple[str, dict]]:
-        """Claude's result: one row that brings this attempt's turns to what Claude Code reports. After
-        --resume the report is the session's running total, so what earlier attempts paid comes off."""
+    def _settled(self, event: dict) -> list[tuple[str, dict]]:
+        """Claude's result: one row that brings this attempt's turns to what Claude Code reports, its
+        dollars and its tokens (the stream counts a message's output tokens before it is written). After
+        --resume the report is the session's running total, so what earlier attempts settled comes off."""
+        reported = event.get("total_cost_usd")
         if not isinstance(reported, (int, float)):
             return []
         self.reported = reported
         rest = reported - self.paid_before - self.dollars
         self.dollars += rest
-        return [("usage", {"model": self.model, "calls": 0, "prompt_tokens": 0, "completion_tokens": 0,
-                           "dollars": rest, "endpoint": ENDPOINT[self.kind], "attempt": self.attempt,
+        used = event.get("usage") or {}
+        given = sum(used.get(k) or 0 for k in PROMPT)
+        more_in = max(0, given - self.told_before[0] - self.prompt_tokens)
+        more_out = max(0, (used.get("output_tokens") or 0) - self.told_before[1] - self.completion_tokens)
+        self.prompt_tokens += more_in
+        self.completion_tokens += more_out
+        return [("usage", {"model": self.model, "calls": 0, "prompt_tokens": more_in,
+                           "completion_tokens": more_out, "dollars": rest, "endpoint": ENDPOINT[self.kind],
+                           "attempt": self.attempt,
                            "turns": self.turns, "reported": reported})]  # fmt: skip
 
     def _codex(self, event: dict) -> list[tuple[str, dict]]:
