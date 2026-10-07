@@ -272,32 +272,48 @@ def store_log(db: Path) -> list[dict]:
 def runs_cost(runs: Path, notes: list[str]) -> dict:
     """What the executors `graphene run` started cost, out of `.graphene/runs/<node>-<attempt>.txt`.
 
-    `graphene run` writes its executor's stdout and stderr there and parses neither. With
-    `--with '… --output-format json'` that text is the vendor's own JSON object, so the cost is in
-    the file even though nothing in Graphene ever looks at it. Files that are not that JSON are
-    counted as calls whose cost is unknown, and the output says how many.
+    `graphene run` writes its executor's stdout and stderr there. With `--with '… --output-format
+    json'` that text is the vendor's own JSON object; with `stream-json` (Graphene's default) its last
+    `result` line carries the cost. A resumed session reports its running total, so a session costs its
+    largest total. Files with neither are counted as calls whose cost is unknown, and the output says
+    how many.
     """
     out = {"cost_usd": 0.0, "turns": 0, "calls": 0, "unpriced": 0, "sessions": []}
     if not runs.is_dir():
         return out
+    session_cost: dict = {}
     for path in sorted(runs.glob("*.txt")):
         out["calls"] += 1
-        text = path.read_text(encoding="utf-8", errors="replace").strip()
-        start = text.find("{")
-        try:
-            data = json.loads(text[start:]) if start >= 0 else None
-        except json.JSONDecodeError:
-            data = None
+        data = run_result(path.read_text(encoding="utf-8", errors="replace").strip())
         if not isinstance(data, dict) or not ("total_cost_usd" in data or "cost_usd" in data):
             out["unpriced"] += 1
             notes.append(f"{path.name} is not an --output-format json result: its cost is unknown")
             continue
-        out["cost_usd"] += float(data.get("total_cost_usd") or data.get("cost_usd") or 0)
+        key = data.get("session_id") or path.name
+        cost = float(data.get("total_cost_usd") or data.get("cost_usd") or 0)
+        session_cost[key] = max(session_cost.get(key, 0.0), cost)
         out["turns"] += int(data.get("num_turns") or data.get("turns") or 0)
         if data.get("session_id"):
             out["sessions"].append(str(data["session_id"]))
-    out["cost_usd"] = round(out["cost_usd"], 6)
+    out["cost_usd"] = round(sum(session_cost.values()), 6)
     return out
+
+
+def run_result(text: str):
+    """The vendor's result in one run file: the last line whose type is "result" (stream-json), else the
+    one JSON object the file holds (json), else None."""
+    for line in reversed(text.splitlines()):
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(row, dict) and row.get("type") == "result":
+            return row
+    start = text.find("{")
+    try:
+        return json.loads(text[start:]) if start >= 0 else None
+    except json.JSONDecodeError:
+        return None
 
 
 def seconds(value) -> float | None:

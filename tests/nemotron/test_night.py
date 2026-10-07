@@ -139,7 +139,10 @@ def test_nothing_new_starts_past_90_percent_of_the_cap(fake, opened, monkeypatch
     assert f.requests == []
     with pytest.raises(P.Refused, match="nothing new starts, and the run was not started"):
         run._begins(run.named("nemotron"))
-    run._begins(run.DEFAULT_WITH)  # claude's run calls no Token Factory: not the night's to stop
+    for agent in (run.DEFAULT_WITH, run.CODEX):  # their attempts are held on the night's ledger too
+        with pytest.raises(P.Refused, match="nothing new starts, and the run was not started"):
+            run._begins(agent)
+    run._begins("python3 bin/executor.py")  # a command of the person's spends nothing the night counts
     monkeypatch.setenv(night.OPENING, "80")  # the ceiling holds: $50, whatever the opening says
     assert night.cap() == 50.0
     monkeypatch.setenv(night.OPENING, "10")

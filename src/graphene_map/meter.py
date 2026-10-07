@@ -278,7 +278,7 @@ def _attempt(a: dict, nxt: dict | None, scope: list[str] | None, now: datetime) 
     return {
         "attempt": a["row"]["detail"].get("attempt"),
         "executor": executor,
-        "meter": ended["detail"].get("meter") if ended else executor if usage or talk else None,
+        "meter": (ended["detail"].get("meter") if ended else None) or (executor if usage or talk else None),
         "model": next((u["model"] for u in reversed(usage) if u.get("model")), None),
         "started": start,
         "log": a["row"]["detail"].get("log"),

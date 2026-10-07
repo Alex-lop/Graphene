@@ -68,7 +68,7 @@ def test_a_refused_executor_is_sent_back_with_the_refusal_and_the_node_is_done_w
         done = run_plan(store, repo, executor(repo, SLOPPY), say=said.append, logs=repo / ".graphene/runs")
         assert [n.id for n in done] == ["n1"] and plan.get(store, "n1").state == DONE
         assert [e["kind"] for e in store.node_log("n1")] == [
-            "added", "started", "attempt", "refused", "attempt", "check_passed", "finished"
+            "added", "started", "attempt", "ended", "refused", "attempt", "ended", "check_passed", "finished"
         ]  # fmt: skip
         tails = [e["detail"]["log"] for e in store.node_log("n1", ("attempt",))]
         assert len(set(tails)) == 2 and all(Path(t).is_file() for t in tails)  # one tail an attempt, kept
@@ -154,25 +154,28 @@ if os.environ["GRAPHENE_NODE"] == "n1":
 """
 
 
-def test_a_run_ends_with_one_line_for_the_person_saying_what_it_did(repo):
+def test_a_run_ends_with_one_line_for_the_person_saying_what_it_did(repo, monkeypatch):
     """A run ended with an agent's `next:` ("mine, mine. `graphene node start mine` prints its
     contract…"), about the person's own leaf, and `graphene watch` showed that when the run ended."""
     said = []
+    monkeypatch.setenv("GRAPHENE_PERSON", "alex")
     with Store.open(repo) as store:
         docs = users_node(title="docs", scope=["docs.md"], check="test -s docs.md")
         plan.propose(store, [users_node(), docs], ALEX)
         since = len(store.node_log())
         run_plan(store, repo, executor(repo, ONLY_N1), attempts=1, say=said.append)
-        assert summary(store, since) == "run: 1 done, 1 came back (n2)"
+        clocks = " · agents <1 min, no meter · you 0 acts, 0 min"  # a script: no stream, no meter
+        assert summary(store, since) == "run: 1 done, 1 came back (n2)" + clocks
         assert said[-2:] == ["n2 attempt 1 refused: n2 is not done: `test -s docs.md` failed",
                              "n2 came back after 1 attempt"]  # fmt: skip
         again = len(store.node_log())
         assert summary(store, again) == "run: nothing started (graphene plan says what each leaf waits on)"
-        assert summary(store, since, stopped=True) == "run stopped: 1 done, 1 came back (n2)"
+        assert summary(store, since, stopped=True) == "run stopped: 1 done, 1 came back (n2)" + clocks
         mark = len(store.node_log())  # seen in WezTerm: x during a run, and the run said "nothing finished"
         plan.start(store, "n2", plan.Caller("run:sh", False, "s-1"), repo)
         plan.release(store, "n2", ALEX, "the person released it, from graphene watch")
-        assert summary(store, mark) == "run: n2 released by you, ready again"
+        mine = clocks.replace("0 acts, 0", "1 act, 1")  # the release is the person's act
+        assert summary(store, mark) == "run: n2 released by you, ready again" + mine
 
 
 def test_a_leaf_that_came_back_waits_on_the_person_and_runs_again_only_when_named(repo):
