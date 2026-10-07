@@ -16,7 +16,9 @@ The key stays in this process: a command the model runs gets an environment with
 What a screen shows of it is written on the leaf's log as it happens: each attempt's model as the attempt
 begins (`model`; on a step up the ladder, with the model before and why), each fork's state when it
 starts and when it ends (`fork`), and in a sandbox its checkpoint, operations and seconds (`placement`,
-and on each fork's row).
+and on each fork's row). Each model call is a `usage` row, each tool call a `did` row and what the model
+says a `said` row, in the meter's shapes (docs/process/meter/rows.md); the attempt's own `usage` row at
+the end carries only what none of those did, so the rows add up to its bill.
 """
 
 from __future__ import annotations
@@ -36,7 +38,7 @@ import threading
 import time
 from pathlib import Path
 
-from .. import gate, settings
+from .. import gate, meter, settings
 from .. import plan as P
 from ..run import GRACE, REFUSED, _alive
 from ..store import Store, repo_root
@@ -95,6 +97,10 @@ ALIASES = {"read_file": "view", "read": "view", "cat": "view", "open": "view", "
 ARGS = {"file_path": "path", "filePath": "path", "filename": "path", "file": "path", "old_str": "old",
         "old_string": "old", "oldString": "old", "new_str": "new", "new_string": "new", "newString": "new",
         "text": "content", "file_text": "content", "cmd": "command", "reason": "why"}  # fmt: skip
+
+VERBS = {"view": "reading", "edit": "editing", "write": "editing", "run": "running", "done": "running",
+         "release": "running"}  # each tool as the meter's `did` rows say it  # fmt: skip
+COUNTED = ("calls", "prompt_tokens", "completion_tokens", "dollars")  # what each turn's usage row adds up
 
 VIEW_LINES = 400
 OUTPUT = 8_000  # characters of a command's output the model is shown: its tail, where the result is
@@ -439,15 +445,26 @@ def converse(leaf: Leaf, model: str, messages: list[dict], args, params: dict, b
         _compact(messages)
         said = tf.chat(model, messages, leaf.tools if args.protocol == "native" else None, tag=leaf.node.id,
                        **params)  # fmt: skip
+        used = said["usage"]
+        turn = {"calls": 1, "prompt_tokens": used.get("prompt_tokens") or 0,
+                "completion_tokens": used.get("completion_tokens") or 0,
+                "dollars": said["dollars"]}  # fmt: skip
         with _SHARED:
-            bill["calls"] += 1
-            bill["prompt_tokens"] += said["usage"].get("prompt_tokens") or 0
-            bill["completion_tokens"] += said["usage"].get("completion_tokens") or 0
-            bill["dollars"] += said["dollars"]
+            for k in COUNTED:
+                bill[k] += turn[k]
             bill["seconds"] += said["seconds"]
+            n = bill["calls"]
+        _row(leaf, "usage", {"model": model, **turn, "endpoint": bill["endpoint"], "attempt": bill["attempt"],
+                             "turn": n})  # fmt: skip
+        with _SHARED:  # logged: the attempt's own row at the end carries only what no turn's row did
+            for k in COUNTED:
+                bill["logged"][k] += turn[k]
         message = said["message"]
         native = message.get("tool_calls") or []
         calls = native or text_calls(message.get("content"))  # a native call handed back as text, too
+        words = _NATIVE_CALL.sub("", _TEXT_CALL.sub("", str(message.get("content") or ""))).strip()
+        if words:
+            _row(leaf, "said", {"attempt": bill["attempt"], "text": words[: meter.SAID]})
         print(f"{tag}{step:>3} {model.rsplit('/', 1)[-1]} answered in {said['seconds']:.2f} s", flush=True)
         if message.get("content"):
             print(f"{tag}{step:>3} says: {' '.join(str(message['content']).split())[:200]}", flush=True)
@@ -474,6 +491,8 @@ def converse(leaf: Leaf, model: str, messages: list[dict], args, params: dict, b
             if stopped():
                 return None
             name = c["function"]["name"]
+            _row(leaf, "did", {"attempt": bill["attempt"], **_did(name, c["function"].get("arguments"),
+                                                                  leaf)})  # what it is doing, as it starts
             began = time.monotonic()
             result = leaf.call(name, c["function"].get("arguments"))
             took = time.monotonic() - began
@@ -491,6 +510,28 @@ def converse(leaf: Leaf, model: str, messages: list[dict], args, params: dict, b
     leaf.ended = "out of steps"
     last = f" (the last it was told: {told})" if told else ""
     return f"the model used all {args.steps} steps without finishing{last}: raise --steps, {LARGER}"
+
+
+def _row(leaf: Leaf, kind: str, detail: dict) -> None:
+    """One of the meter's rows on the leaf's log, through the leaf's own store (a fork's is its thread's)."""
+    leaf.store.log_node(leaf.node.id, P._now(), kind, f"run:{NAME}", leaf.session or None, None, detail)
+
+
+def _did(name: str, arguments, leaf: Leaf) -> dict:
+    """A tool call as the meter's `did` row says it: the tool, its verb, and the path or command it was
+    pointed at; `done` and `release` as the `graphene` commands they are."""
+    name = ALIASES.get(name, name)
+    try:
+        given = json.loads(arguments) if isinstance(arguments, str) else dict(arguments or {})
+        given = json.loads(given) if isinstance(given, str) else given  # encoded twice
+    except (ValueError, TypeError):
+        given = {}
+    given = {ARGS.get(k, k): v for k, v in given.items()} if isinstance(given, dict) else {}
+    target = os.path.normpath(str(given["path"])) if given.get("path") else str(given.get("command") or "")
+    if name in ("done", "release"):
+        target = f"graphene node {name} {leaf.node.id}"
+    target = target.strip().split("\n")[0][: meter.TARGET]
+    return {"tool": name, "target": target, "verb": VERBS.get(name, name)}
 
 
 _SHARED = threading.Lock()  # what the forks share: the bill, and which of them passed first
@@ -686,7 +727,8 @@ def work(args: argparse.Namespace, prompt: str) -> int:
         params = {"temperature": args.temperature, "max_tokens": args.max_tokens,
                   **{k: json.loads(v) for k, v in (p.split("=", 1) for p in args.param)}}  # fmt: skip
         bill = {"model": model, "calls": 0, "prompt_tokens": 0, "completion_tokens": 0, "dollars": 0.0,
-                "seconds": 0.0, "prompt": PROMPT_VERSION, "endpoint": tf.endpoint()}  # fmt: skip
+                "seconds": 0.0, "prompt": PROMPT_VERSION, "endpoint": tf.endpoint(), "attempt": tried,
+                "logged": dict.fromkeys(COUNTED, 0)}  # fmt: skip
         where = args.placement + (f", {args.forks} forks" if args.forks > 1 else "")
         print(f"nemotron executor · {model} · {where} placement · leaf {node.id}", flush=True)
         if "from" in step:
@@ -722,7 +764,10 @@ def work(args: argparse.Namespace, prompt: str) -> int:
             bill["refused"] = (leaf.refused if leaf else 0) + bill.pop("refused_in_forks", 0)
             bill["wrote"] = {**bill.pop("wrote_in_forks", {}), **(leaf.wrote if leaf else {})}
             bill["dollars"] = round(bill["dollars"], 6)
-            store.log_node(node.id, P._now(), "usage", f"run:{NAME}", session or None, None, bill)
+            logged = bill.pop("logged")  # each turn has its row: this one carries what none of them did
+            rest = {k: bill[k] - logged[k] for k in COUNTED}
+            rest["dollars"] = round(rest["dollars"], 6)
+            store.log_node(node.id, P._now(), "usage", f"run:{NAME}", session or None, None, bill | rest)
             print(f"bill: {bill['calls']} calls, {bill['prompt_tokens']} in, "
                   f"{bill['completion_tokens']} out, ${bill['dollars']:.4f} at list price, "
                   f"{bill['refused']} writes refused", flush=True)  # fmt: skip

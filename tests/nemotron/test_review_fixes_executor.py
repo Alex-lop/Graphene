@@ -308,9 +308,9 @@ def test_a_run_stopped_while_forks_work_stops_each_fork_says_so_and_leaves_nothi
         assert "Traceback" not in out, out
         with Store.open(repo) as store:
             last = {e["detail"]["fork"]: e["detail"] for e in store.node_log("greet", ("fork",))}
-            bill = store.node_log("greet", ("usage",))[-1]["detail"]
+            calls = sum(e["detail"]["calls"] for e in store.node_log("greet", ("usage",)))
         assert [(last[k]["state"], last[k]["why"]) for k in (1, 2)] == [("stopped", STOPPED)] * 2
-        assert bill["calls"] == len(f.requests) == 2  # what the forks spent before they stopped, billed
+        assert calls == len(f.requests) == 2  # what the forks spent before they stopped, billed
         assert list(temp.glob("graphene-greet-fork*")) == []
         if made is None:
             started = [int(p) for p in pids.read_text().split()]
@@ -347,8 +347,8 @@ def test_a_stand_ins_usage_is_never_credited_to_token_factory(repo, fake):
         greet = plan.get(store, "greet")
         lines = [*render(node_record(store, repo, greet)), *rolled_up(store, repo, [greet]),
                  *bill_line(bill(store.node_log("*", ("usage",))))]  # fmt: skip
-    assert [r["endpoint"] for r in rows] == ["a stand-in", "a stand-in"]  # the executor's, the planner's
-    billed = [line for line in lines if "at list price" in line]
+    assert {r["endpoint"] for r in rows} == {"a stand-in"}  # the executor's turns and bill, the planner's
+    billed = [line for line in lines if "bill: " in line]
     assert len(billed) == 3 and all(line.endswith("(a stand-in's usage)") for line in billed)
     assert "Token Factory's usage" not in "\n".join(lines)
 

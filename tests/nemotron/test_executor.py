@@ -3,6 +3,7 @@ outside the scope is refused before it happens, in the hook's words, and becomes
 offer; the key never reaches a command the model runs; attempts climb the model ladder; the bill is
 in the record."""
 
+import itertools
 import json
 import os
 import subprocess
@@ -14,6 +15,7 @@ from fake_tokenfactory import Fake, call
 
 from graphene_map import plan
 from graphene_map.nemotron import tokenfactory as tf
+from graphene_map.node_record import node_record, render
 from graphene_map.plan import DONE, OPEN, Caller
 from graphene_map.run import label, named, run_parallel, run_plan
 from graphene_map.store import Store
@@ -122,9 +124,10 @@ def test_a_leaf_lands_its_check_decides_and_the_bill_is_in_the_record(repo, fake
     assert "app.py" in first["messages"][1]["content"].split("The repository's files:")[1]  # the map
     assert tool_results(f.requests[3])[-1].startswith("exit 0")
     with Store.open(repo) as store:
-        [bill] = [e for e in store.node_log("greet", ("usage",))]
-        assert bill["actor"] == "run:nemotron" and bill["detail"]["calls"] == 4
-        assert bill["detail"]["dollars"] > 0 and bill["detail"]["model"] == NANO
+        *turns, bill = store.node_log("greet", ("usage",))  # a row per model call, then the attempt's
+        spent = round(sum(e["detail"]["dollars"] for e in [*turns, bill]), 6)
+        assert bill["actor"] == "run:nemotron" and sum(e["detail"]["calls"] for e in turns) == 4
+        assert spent > 0 and bill["detail"]["model"] == NANO
         assert plan.get(store, "greet").state == DONE
         started = store.node_log("greet", ("started",))[-1]
         assert started["actor"] == "run:nemotron"
@@ -135,10 +138,46 @@ def test_a_leaf_lands_its_check_decides_and_the_bill_is_in_the_record(repo, fake
 
     with Store.open(repo) as store:
         shown = "\n".join(render(node_record(store, repo, plan.get(store, "greet"))))
-        assert f"bill: ${bill['detail']['dollars']:.4f} at list price · 4 model calls" in shown
+        assert f"bill: ${spent:.4f} at list price · 4 model calls" in shown
         assert "Nemotron-3-Nano-fake (a stand-in's usage)" in shown  # the fake is not Token Factory
         assert bill["detail"]["endpoint"] == "a stand-in"
-        assert summary(store, 0).endswith(f"; ${bill['detail']['dollars']:.4f} at list price")
+        assert summary(store, 0).endswith(f"; ${spent:.4f} at list price")
+
+
+def test_each_model_call_tool_call_and_word_is_a_row_and_the_rows_add_up_to_the_bill(repo, fake):
+    """The executor wrote one usage row per attempt, so a screen saw nothing of a leaf until it ended. Each
+    call is now its own usage row, each tool call a did row and what the model says a said row, as the
+    meter writes them for Claude Code and Codex; the attempt's own row adds nothing twice."""
+    edit = call("edit", path="app.py", old='"hi"', new='"hello"')
+    fake([script({"greet": [
+        call("view", path="./app.py"),
+        {**edit, "content": "It says hi; I make it say hello."},
+        call("run", command=CHECK),
+        call("done"),
+    ]})] * 10)  # fmt: skip
+    plan_of(repo, leaf())
+    run_one(repo)
+    with Store.open(repo) as store:
+        log = store.node_log("greet", ("usage", "did", "said"))
+        shown = "\n".join(render(node_record(store, repo, plan.get(store, "greet"))))
+    usage = [e["detail"] for e in log if e["kind"] == "usage"]
+    *turns, bill = usage
+    assert [(t["turn"], t["calls"], t["attempt"], t["model"], t["endpoint"]) for t in turns] == [
+        (k, 1, 1, NANO, "a stand-in") for k in (1, 2, 3, 4)]  # fmt: skip
+    assert all(t["prompt_tokens"] > 0 and t["dollars"] > 0 for t in turns)
+    assert "turn" not in bill and (bill["calls"], bill["prompt_tokens"], bill["dollars"]) == (0, 0, 0)
+    assert bill["attempt"] == 1 and bill["wrote"] == {"app.py": "edit"} and bill["refused"] == 0
+    did = [(e["detail"]["verb"], e["detail"]["target"]) for e in log if e["kind"] == "did"]
+    assert did == [("reading", "app.py"), ("editing", "app.py"), ("running", CHECK),
+                   ("running", "graphene node done greet")]  # fmt: skip
+    assert [e["detail"] for e in log if e["kind"] == "said"] == [
+        {"attempt": 1, "text": "It says hi; I make it say hello."}]  # fmt: skip
+    text = next((repo / ".graphene" / "runs").glob("greet-*.txt")).read_text()
+    assert f"bill: 4 calls, {sum(u['prompt_tokens'] for u in usage)} in," in text  # its own line, as it was
+    assert f"${sum(u['dollars'] for u in usage):.4f} at list price" in text
+    assert "  attempt 1 · nemotron Nemotron-3-Nano-fake" in shown and "4 turns" in shown
+    assert "at list price (a stand-in's)" in shown  # the fake's dollars are nobody real's
+    assert "    ran: python3 -c" in shown and "graphene node done greet" in shown
 
 
 def test_every_way_out_of_the_scope_is_refused_before_the_write_and_becomes_the_offer(repo, fake, tmp_path):
@@ -203,7 +242,8 @@ def test_a_refused_attempt_climbs_the_ladder_with_the_refusal_in_hand(repo, fake
     assert "Your last attempt was not accepted" in second["messages"][1]["content"]
     assert any("attempt 1 refused" in s for s in said)
     with Store.open(repo) as store:  # each attempt's model as it began, and the step up logged as one
-        kinds = [e["kind"] for e in store.node_log("greet", ("model", "usage"))]
+        log = store.node_log("greet", ("model", "usage"))
+        kinds = [k for k, _ in itertools.groupby(e["kind"] for e in log)]  # a usage row per call, in a run
         steps = [e["detail"] for e in store.node_log("greet", ("model",))]
         assert counted(store, "greet") == {"forks": 0, "escalations": 1}
     assert kinds == ["model", "usage", "model", "usage"]  # before its model calls, not with the bill
