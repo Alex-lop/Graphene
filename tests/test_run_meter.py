@@ -310,6 +310,31 @@ def test_a_run_killed_outright_has_its_hold_settled_by_the_next_runs_sweep_befor
     assert got[1]["id"] == got[0]["id"] and got[1]["dollars"] == pytest.approx(CLAUDE_COST)  # as its log says
 
 
+def test_a_hold_settles_in_the_ledger_that_holds_it_under_its_own_purpose_whenever_it_ends(
+    repo, tmp_path, monkeypatch
+):
+    """The second review of 7 October: a hold settled in whichever night was current when it ended, under
+    the purpose of the shell that settled it. A dead run's holds, swept after noon, were the new night's
+    spend and refused its first run; settled again there, a hold was counted in both nights."""
+    monkeypatch.setenv("GRAPHENE_AGENT_LIVE_USD", "10")
+    monkeypatch.setenv("GRAPHENE_NIGHT_PURPOSE", "meter")
+    script, _ = printing(repo, "claude", "claude.jsonl", -1)
+    waited = R._waited
+
+    def noon(*args):  # the night rolls over while the executor works, in a shell that says another purpose
+        monkeypatch.setenv("GRAPHENE_NIGHT_LEDGER", str(tmp_path / "next.jsonl"))
+        monkeypatch.setenv("GRAPHENE_NIGHT_PURPOSE", "dogfood")
+        return waited(*args)
+
+    monkeypatch.setattr(R, "_waited", noon)
+    with Store.open(repo) as store:
+        R.run_plan(store, repo, f"{script} --output-format stream-json", say=lambda _: None,
+                   logs=repo / ".graphene" / "runs")  # fmt: skip
+    held, settled = ledger(tmp_path)  # none in the next night's
+    assert settled["id"] == held["id"] and (held["purpose"], settled["purpose"]) == ("meter", "meter")
+    assert not (tmp_path / "next.jsonl").exists()
+
+
 def test_an_attempt_the_ledger_refuses_never_starts_and_its_leaf_comes_back(repo, tmp_path, monkeypatch):
     monkeypatch.setenv("GRAPHENE_AGENT_LIVE_USD", "1")
     script, _ = printing(repo, "codex", "codex.jsonl", -1)

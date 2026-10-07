@@ -359,16 +359,17 @@ def _settle(night, hold: dict, meter: M.Meter | None) -> None:
     the whole figure: Claude Code's result was read, or every Codex turn that started completed. A Codex
     model with no list price settles at $0, its tokens alone. Anything else (no stream, a turn stopped or
     failed, a result never read) keeps the worst case held, as a Token Factory call stopped while out
-    does (decision 129): it may have been spent."""
+    does (decision 129): it may have been spent. It settles in the ledger that holds it; an older hold
+    names none, and settles in the night's now."""
     if meter is None:
-        night.settle(hold["id"], hold["model"], hold["worst"])
+        night.settle(hold["id"], hold["model"], hold["worst"], ledger=hold.get("ledger"))
         return
     whole = meter.reported is not None if meter.kind == "claude" else meter.begun == meter.turns
     dollars = meter.dollars if whole else hold["worst"]
     if meter.kind == "codex" and not (meter.price and meter.price(meter.model)):
         dollars = 0.0  # no list price: the bill says its tokens
     used = {"prompt_tokens": meter.prompt_tokens, "completion_tokens": meter.completion_tokens}
-    night.settle(hold["id"], hold["model"], dollars, used)
+    night.settle(hold["id"], hold["model"], dollars, used, hold.get("ledger"))
 
 
 def command_for(template: str, prompt: str, session: str, again: bool) -> list[str]:
@@ -436,10 +437,11 @@ def run_node(
             hold, night = None, extra.load("night") if name in M.ENDPOINT else None
             if night and night.cap() is not None:  # under the opening: the attempt's worst case, held first
                 model = f"{name}:{M.model_in(argv) or ('default' if name == 'claude' else 'codex')}"
-                hold = {"model": model, "worst": _worst(argv), "paid": paid}
+                # the ledger it is held in goes with it: it settles there, should it end after noon
+                hold = {"model": model, "worst": _worst(argv), "paid": paid, "ledger": str(night.where())}
                 try:
                     hold["id"] = night.reserve(model, hold["worst"], f"run: {node.id} attempt {attempt}",
-                                               M.ENDPOINT[name])  # fmt: skip
+                                               M.ENDPOINT[name], hold["ledger"])  # fmt: skip
                 except night.Refused as no:
                     P.release(store, node.id, who, str(no))
                     say(f"{node.id} came back: {no}")
@@ -452,7 +454,7 @@ def run_node(
                 )  # fmt: skip
             except OSError as no:  # the executor is not installed, or not executable: nothing ran
                 if hold:
-                    night.settle(hold["id"], hold["model"], 0.0)
+                    night.settle(hold["id"], hold["model"], 0.0, ledger=hold["ledger"])
                 P.release(store, node.id, who, f"the executor could not be started: {name}: {no.strerror}")
                 raise P.Refused(
                     f"cannot run `{argv[0]}`: {no.strerror}. {node.id} was handed back untouched; name "

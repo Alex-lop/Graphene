@@ -96,9 +96,10 @@ def where() -> Path:
 
 
 @contextmanager
-def _held():
-    """The ledger's rows, read under its lock, and the file to append to while the lock is held."""
-    path = where()
+def _held(ledger: str | None = None):
+    """The ledger's rows (``ledger``, else the night's now), read under its lock, and the file to append to
+    while the lock is held."""
+    path = Path(ledger) if ledger else where()
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "a+", encoding="utf-8") as f:  # closing it lets the lock go, however the process ends
         fcntl.flock(f, fcntl.LOCK_EX)
@@ -114,8 +115,8 @@ def _held():
         yield rows, f
 
 
-def _add(f, row: dict) -> None:
-    purpose = os.environ.get(PURPOSE) or "unsaid"
+def _add(f, row: dict, purpose: str | None = None) -> None:
+    purpose = purpose or os.environ.get(PURPOSE) or "unsaid"
     f.write(json.dumps({"at": round(time.time(), 3), **row, "purpose": purpose, "practice": True}) + "\n")
     f.flush()
 
@@ -163,13 +164,14 @@ def first(what: str) -> None:
         begin(what)
 
 
-def reserve(model: str, worst: float, tag: str, endpoint: str) -> str | None:
-    """Hold ``worst`` dollars for one call before it is sent; its id, or None when the night is not open."""
+def reserve(model: str, worst: float, tag: str, endpoint: str, ledger: str | None = None) -> str | None:
+    """Hold ``worst`` dollars for one call before it is sent, in ``ledger`` (else the night's now); its id,
+    or None when the night is not open."""
     limit = cap()
     if limit is None:
         return None
     first(f"a call to {model}")
-    with _held() as (rows, f):
+    with _held(ledger) as (rows, f):
         spent, held = _sums(rows)
         if spent + held + worst > limit:
             raise Refused(f"refused: a call to {model} may cost up to ${worst:.4f}, and the night has "
@@ -181,18 +183,22 @@ def reserve(model: str, worst: float, tag: str, endpoint: str) -> str | None:
     return held_id
 
 
-def settle(held_id: str | None, model: str, dollars: float, usage: dict | None = None) -> None:
+def settle(held_id: str | None, model: str, dollars: float, usage: dict | None = None,
+           ledger: str | None = None) -> None:  # fmt: skip
     """The call's reservation, settled at what it cost (its usage at list price), once: a run killed while
-    its leaf's check ran had settled its attempt, and the next run's sweep settles that attempt again."""
+    its leaf's check ran had settled its attempt, and the next run's sweep settles that attempt again. It
+    settles in the ledger that holds it (``ledger``, else the night's now), under the purpose it was held
+    for: a hold settled after noon is its own night's, not the next one's."""
     if held_id is None:
         return
     usage = usage or {}
-    with _held() as (rows, f):
+    with _held(ledger) as (rows, f):
         if any(r.get("kind") == "settle" and r.get("id") == held_id for r in rows):
             return
+        held = next((r for r in rows if r.get("kind") == "reserve" and r.get("id") == held_id), {})
         _add(f, {"kind": "settle", "id": held_id, "model": model, "dollars": dollars,
                  "prompt_tokens": usage.get("prompt_tokens") or 0,
-                 "completion_tokens": usage.get("completion_tokens") or 0})  # fmt: skip
+                 "completion_tokens": usage.get("completion_tokens") or 0}, held.get("purpose"))  # fmt: skip
 
 
 def sandbox(op: str, seconds: float) -> None:
