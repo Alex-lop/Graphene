@@ -72,6 +72,17 @@ def test_a_planner_reads_the_repo_and_its_proposal_is_added_for_the_person_to_pr
     assert "(empty: nothing is planned yet)" in seen["prompt"]
 
 
+def test_under_plan_first_auto_one_small_leaf_from_ask_waits_for_the_person(repo, tmp_path, monkeypatch):
+    """`graphene ask` is the unattended route: nobody typed into a session, so nothing it proposes
+    is the person's at once, however small."""
+    assert person("plan", "first", "auto").exit_code == 0
+    one = 'print("```plan")\nprint("- ids  [ids]\\n    scope: api.py\\n    check: true")\nprint("```")\n'
+    said = person("ask", "add ids", "--with", planner(tmp_path, one, monkeypatch))
+    assert said.exit_code == 0 and "prune it: `graphene watch`" in said.stdout, said.output
+    with Store.open(repo) as store:
+        assert plan.get(store, "ids").state == PROPOSED and not store.node_log("ids", ("accepted",))
+
+
 def test_a_proposal_it_cannot_read_goes_back_to_the_planner_once(repo, tmp_path, monkeypatch):
     with Store.open(repo) as store:
         said = []
