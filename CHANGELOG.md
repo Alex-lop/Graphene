@@ -2,6 +2,24 @@
 
 ## 0.5.0 (not published yet: the tag is Alex's)
 
+The meter (7 October). What the agents do and spend, on the screen while they work.
+- `graphene run` reads each executor's own stream as it runs: Claude Code's `stream-json`, Codex's `--json`,
+  Nemotron's own rows. Any other command says "no meter". Run `graphene run` and watch.
+- `graphene watch` shows a row for each running leaf (model, time, turns, last act, files, tokens, dollars)
+  and two clocks on the status line: the agents', and yours, counted by your keys.
+- `graphene run` ends with one line for every executor: `run: 3 done · agents 2 min, $0.4560 at list
+  price · you 0 acts, 0 min`.
+- `graphene node show <id>` gives each attempt its record: what it read, edited and ran, what was refused,
+  what it said last, and its tail.
+- The tree and the DAG note each leaf's bill and minutes: `$0.13 · <1m`. Run `graphene plan --view tree`.
+- Under `plan first auto`, every ask is proposed. One leaf with no board item and at most 8 paths is yours
+  at once; anything else waits. Run `graphene plan first`.
+- `docs/` keeps what you need to use Graphene; `dev/` holds how it gets built. Read `dev/README.md`.
+- The README is one short argument. `docs/HOW_IT_WORKS.md` is the reference, under 3,000 words.
+- The Nemotron planner reads a tool call Ultra writes as text (`<tool_call>`), instead of taking it for its
+  answer.
+- The `statements` task is twice its size: `dev/test/tasks/statements/SIZE.md` says why and what it voids.
+
 Graphene on Nemotron. As practice on 2 October, Nemotron planned a small feature 5 times. 2 plans ran to the
 end in Token Factory Sandboxes, landing 5 of 6 leaves, each passed by its own check; neither did all it was
 asked. 3 stopped at the planner, whose tree was readable on 2 of 9 asks (`dev/test/first-light.md`). Nothing
