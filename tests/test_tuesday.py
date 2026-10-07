@@ -298,6 +298,26 @@ def test_one_leaf_with_a_board_item_or_a_wide_scope_waits_and_says_why(repo, mon
         assert states == {"typo": PROPOSED, "many": PROPOSED, "tidy": OPEN}
 
 
+def test_one_leaf_in_a_sub_goal_of_its_own_is_one_leaf(repo, monkeypatch):
+    """A sub-goal that holds nothing but the leaf it came with is a heading, not a second piece of work:
+    the leaf is the person's at once, with it. Two leaves under it are a tree, and wait."""
+    with Store.open(repo) as store:
+        plan.set_plan_first(store, "auto", ALEX)
+    hook(repo, "UserPromptSubmit", prompt="add the xml source")
+    wrapped = "- the xml source  [xml]\n  - wire it  [wire]\n      scope: src/api/**\n      check: true\n"
+    said = propose(repo, monkeypatch, wrapped)
+    assert "wire is accepted, as the person's" in said.stdout, said.output
+    hook(repo, "UserPromptSubmit", prompt="and the zeros")
+    two = (
+        "- zeros  [zeros]\n  - rule  [rule]\n      scope: src/db/a.py\n      check: true\n"
+        "  - test  [test]\n      scope: src/db/b.py\n      check: true\n"
+    )
+    assert "until the person accepts" in propose(repo, monkeypatch, two).stdout
+    with Store.open(repo) as store:
+        states = {n.id: n.state for n in plan.nodes(store)}
+        assert states == {"xml": OPEN, "wire": OPEN, "zeros": PROPOSED, "rule": PROPOSED, "test": PROPOSED}
+
+
 def test_a_session_that_holds_a_leaf_proposes_for_the_person_to_accept(repo, monkeypatch):
     """What an agent proposes while it holds a leaf is its idea, not the ask the person typed."""
     in_force(repo)
