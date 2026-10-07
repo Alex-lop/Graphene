@@ -310,9 +310,27 @@ The tools: view(path, start?, end?), edit(path, old, new), write(path, content),
 release(why, wants?)."""
 
 
-# a call is read from the opening tag nearest its closing tag: a tag named in prose before it stays prose
-_TAG = "(?:TOOLCALL|tool_call)"
-_NATIVE_CALL = re.compile(rf"<{_TAG}>\s*((?:(?!<{_TAG}>).)*?)\s*</{_TAG}>", re.DOTALL)
+_OPEN = re.compile(r"<(?:TOOLCALL|tool_call)>\s*")
+_CLOSE = re.compile(r"\s*</(?:TOOLCALL|tool_call)>")
+
+
+def _tagged(content: str) -> tuple[list, str]:
+    """The calls written between tags, and the words left around them. A call is the JSON read from an
+    opening tag, with a closing tag right after it: a tag named in prose reads as no JSON, so the next
+    is tried, and a tag in the call's own arguments is inside its JSON."""
+    found, words, at = [], [], 0
+    for tag in _OPEN.finditer(content):
+        if tag.start() < at:
+            continue  # inside a call read already
+        try:
+            said, end = json.JSONDecoder().raw_decode(content, tag.end())
+        except ValueError:
+            continue
+        if closed := _CLOSE.match(content, end):
+            found.append(said)
+            words.append(content[at : tag.start()])
+            at = closed.end()
+    return found, "".join(words) + content[at:]
 
 
 def text_calls(content: str | None) -> list[dict]:
@@ -325,11 +343,7 @@ def text_calls(content: str | None) -> list[dict]:
             found.append(json.loads(block))
         except ValueError:
             continue
-    for block in _NATIVE_CALL.findall(content or ""):
-        try:
-            said = json.loads(block)
-        except ValueError:
-            continue
+    for said in _tagged(content or "")[0]:
         found += said if isinstance(said, list) else [said]
     out = []
     for k, said in enumerate(found):
@@ -467,7 +481,7 @@ def converse(leaf: Leaf, model: str, messages: list[dict], args, params: dict, b
         message = said["message"]
         native = message.get("tool_calls") or []
         calls = native or text_calls(message.get("content"))  # a native call handed back as text, too
-        words = _NATIVE_CALL.sub("", _TEXT_CALL.sub("", str(message.get("content") or ""))).strip()
+        words = _tagged(_TEXT_CALL.sub("", str(message.get("content") or "")))[1].strip()
         if words and metered:
             _row(leaf, "said", {"attempt": bill["attempt"], "text": words[: meter.SAID]})
         print(f"{tag}{step:>3} {model.rsplit('/', 1)[-1]} answered in {said['seconds']:.2f} s", flush=True)
