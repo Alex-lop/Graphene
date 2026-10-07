@@ -382,6 +382,23 @@ def test_a_stop_after_an_attempts_hold_and_before_its_end_settles_the_hold_at_it
     assert settled["kind"] == "settle" and settled["id"] == held["id"] and settled["dollars"] == 3.0
 
 
+def test_a_dead_attempt_whose_log_cannot_be_read_keeps_its_worst_case_for_codex_as_for_claude(
+    tmp_path, monkeypatch
+):
+    """The second review of 7 October: the sweep read a dead Codex attempt's missing log as a stream whose
+    every turn completed, and settled its hold at $0, where a Claude attempt kept its worst case. The repo
+    moved, or its runs cleared, and the night never saw what the attempt may have spent."""
+    from graphene_map.nemotron import night
+
+    monkeypatch.setenv("GRAPHENE_AGENT_LIVE_USD", "10")
+    monkeypatch.setattr(R, "_listed", lambda: {"nvidia/super": (1e-7, 5e-7)})
+    for kind, model in (("codex", "codex:nvidia/super"), ("claude", "claude:default")):
+        hold = {"model": model, "worst": 3.0, "paid": 0.0}
+        hold["id"] = night.reserve(model, 3.0, "run: a attempt 1", R.M.ENDPOINT[kind])
+        R._close({"attempt": 1, "log": str(tmp_path / "gone.txt"), "meter": kind, "hold": hold})
+    assert [r["dollars"] for r in ledger(tmp_path) if r["kind"] == "settle"] == [3.0, 3.0]
+
+
 def test_an_attempt_the_ledger_refuses_never_starts_and_its_leaf_comes_back(repo, tmp_path, monkeypatch):
     monkeypatch.setenv("GRAPHENE_AGENT_LIVE_USD", "1")
     script, _ = printing(repo, "codex", "codex.jsonl", -1)

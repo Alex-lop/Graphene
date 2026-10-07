@@ -234,7 +234,8 @@ def _close(this: dict) -> None:
     """A dead run's attempt (``this``, its attempt row): its executor stopped if it still works, and only
     while its pid still names the process that was started; then its hold on the night settled, at what
     its log says read again through the meter, as the run would have settled it (``_settle``). A run
-    killed outright (kill -9, Force Quit) left the hold in flight, and the night refused every run after."""
+    killed outright (kill -9, Force Quit) left the hold in flight, and the night refused every run after.
+    A log that cannot be read (the repo moved, its runs cleared) is no stream: the worst case."""
     pid, began = this.get("pid"), this.get("pid_start")
     if pid and began and _started(pid) == began:  # the dead run's executor, still working
         _end_group(pid, lambda p=pid: not _alive(p))
@@ -243,7 +244,7 @@ def _close(this: dict) -> None:
     if not night:
         return
     meter = None
-    if kind in M.ENDPOINT and this.get("log"):
+    if kind in M.ENDPOINT and this.get("log") and os.access(this["log"], os.R_OK):
         model = hold["model"].partition(":")[2]  # the ledger's "codex:<model>": the model it is priced at
         price = _listed().get if kind == "codex" else None
         meter = M.Meter(kind, this["attempt"], model, hold["paid"], price)
