@@ -250,7 +250,8 @@ def attempts(rows: list[dict], scope: list[str] | None = None, now: datetime | N
             a["ended"] = e
         else:
             a["rows"].append(e)
-    return [_attempt(a, nxt, scope, now) for a, nxt in zip(tries, [*tries[1:], None], strict=True)]
+    after = [*tries[1:], None] if tries else []  # each attempt, and the one after it
+    return [_attempt(a, nxt, scope, now) for a, nxt in zip(tries, after, strict=True)]
 
 
 def _attempt(a: dict, nxt: dict | None, scope: list[str] | None, now: datetime) -> dict:
