@@ -7,7 +7,8 @@
 #
 # Needs: graphene on PATH with the Nemotron extra (uv tool install 'graphene-map[nemotron] @ git+…'),
 # NEBIUS_API_KEY in the environment, and for Sandboxes NEBIUS_PROJECT_ID. Spends real tokens at Token
-# Factory's list price; the bill is the last thing it prints. EXECUTOR overrides the executor spec (the frozen
+# Factory's list price; the bill is the last thing it prints. PLANNER overrides the planner spec (e.g.
+# PLANNER='nemotron --steps 60'), and EXECUTOR overrides the executor spec (the frozen
 # configuration), e.g. EXECUTOR='nemotron --model <nano id> --model <super id>'. MAKE_REPO, PARAGRAPH and
 # PRUNE replace the feeds task, its paragraph and its scripted prune (the tests run it on a tiny repo).
 # RECORD=<file> records the plan's store over the whole run, for `graphene demo <file>` to replay.
@@ -34,7 +35,7 @@ if [ -n "${RECORD:-}" ]; then   # it waits for the store `graphene init` makes, 
   graphene demo --record "$RECORD" & recorder=$!
   trap 'kill -TERM $recorder; wait $recorder' EXIT
 fi
-step graphene init --planner nemotron --executor "${EXECUTOR:-nemotron}"
+step graphene init --planner "${PLANNER:-nemotron}" --executor "${EXECUTOR:-nemotron}"
 
 step graphene ask "${PARAGRAPH:-Look at this repo. I want the new Northwind XML feed to load the same way \
 csv and json already do: same load command, same JSONL out. Prices in that feed are already in cents. The \
