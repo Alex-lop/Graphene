@@ -65,10 +65,11 @@ _ITEM = _obj(kind={"type": "string", "enum": list(B.KINDS)}, id=_S, text=_S, def
              options={"type": "array", "items": _obj(text=_S, then=_L)}, about=_N)  # fmt: skip
 _NODE = _obj(id=_S, title=_S, goal=_S, scope=_L, check=_N, needs=_L, parent=_N,
              mark={"type": "string", "enum": ["?", "-"]})  # fmt: skip
-# says comes first: with it last, Ultra closed the nodes, could not end the object, and wrote spaces to
-# the token limit (12 of the first 41 answers, 8 October)
+# The order Ultra writes in. says first: last, it closed the nodes, could not end the object, and wrote
+# spaces to the token limit (12 of the first 41 answers, 8 October). nodes before board: after, its then:
+# and about: lines named nodes it had not given ids yet (9 of the first 20 asks)
 FORMAT = {"type": "json_schema", "json_schema": {"name": "proposal", "strict": True, "schema": _obj(
-    says=_S, goal=_N, board={"type": "array", "items": _ITEM}, nodes={"type": "array", "items": _NODE})}}
+    says=_S, goal=_N, nodes={"type": "array", "items": _NODE}, board={"type": "array", "items": _ITEM})}}
 
 
 def _tool(name: str, description: str, required: tuple[str, ...] = (), **properties: str) -> dict:

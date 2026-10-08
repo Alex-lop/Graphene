@@ -178,9 +178,10 @@ def test_the_schema_is_strict_all_the_way_down():
             assert s["type"] in ("string", ["string", "null"]) and set(s) <= {"type", "enum"}
 
     walk(planner.FORMAT["json_schema"]["schema"])
-    assert objects == [["says", "goal", "board", "nodes"],  # says first: the object can end after its nodes
-                       ["kind", "id", "text", "default", "then", "options", "about"], ["text", "then"],
-                       ["id", "title", "goal", "scope", "check", "needs", "parent", "mark"]]  # fmt: skip
+    assert objects == [["says", "goal", "nodes", "board"],  # says first, then nodes before what names them
+                       ["id", "title", "goal", "scope", "check", "needs", "parent", "mark"],
+                       ["kind", "id", "text", "default", "then", "options", "about"],
+                       ["text", "then"]]  # fmt: skip
     assert planner.FORMAT["json_schema"]["schema"]["properties"]["board"]["items"]["properties"]["kind"][
         "enum"] == list(B.KINDS)  # fmt: skip
 
