@@ -65,8 +65,10 @@ _ITEM = _obj(kind={"type": "string", "enum": list(B.KINDS)}, id=_S, text=_S, def
              options={"type": "array", "items": _obj(text=_S, then=_L)}, about=_N)  # fmt: skip
 _NODE = _obj(id=_S, title=_S, goal=_S, scope=_L, check=_N, needs=_L, parent=_N,
              mark={"type": "string", "enum": ["?", "-"]})  # fmt: skip
+# says comes first: with it last, Ultra closed the nodes, could not end the object, and wrote spaces to
+# the token limit (12 of the first 41 answers, 8 October)
 FORMAT = {"type": "json_schema", "json_schema": {"name": "proposal", "strict": True, "schema": _obj(
-    goal=_N, board={"type": "array", "items": _ITEM}, nodes={"type": "array", "items": _NODE}, says=_S)}}
+    says=_S, goal=_N, board={"type": "array", "items": _ITEM}, nodes={"type": "array", "items": _NODE})}}
 
 
 def _tool(name: str, description: str, required: tuple[str, ...] = (), **properties: str) -> dict:
@@ -183,8 +185,10 @@ def as_text(p: dict) -> str:
     node's place is its parent: line. A node's goal keeps its lines, as the plan keeps them."""
     goals = [T._norm_goal(n["goal"] or "") for n in p["nodes"]]
     p = _flat({**p, "nodes": [{**n, "check": T._norm_check(n["check"])} for n in p["nodes"]]})
-    out = [f"goal: {p['goal']}"] if p["goal"] else []
-    for it in p["board"]:
+    out, taken = [f"goal: {p['goal']}"] if p["goal"] else [], {n["id"] for n in p["nodes"]}
+    for it in p["board"]:  # an item's id is a handle nothing in the answer names: made one when it is not
+        it = it if T._VALID_ID.fullmatch(it["id"]) else {**it, "id": T.slug(it["id"], taken, "item")}
+        taken.add(it["id"])
         out += B.lines({**it, "state": "open"})
     for n, goal in zip(p["nodes"], goals, strict=True):
         out.append(f"{'-' if n['mark'] == '-' else '?'} {n['title']}  [{n['id']}]")
