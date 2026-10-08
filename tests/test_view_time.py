@@ -251,6 +251,28 @@ def test_in_watch_a_leaf_whose_executor_did_and_said_nothing_keeps_its_usual_pan
     assert "attempt 1 ·" not in detail and "scope" in detail, detail  # its contract, not a bare heading
 
 
+def test_an_attempt_the_meter_cannot_read_is_a_plain_bar_not_idle():
+    rows = [row("a", 0, "started"), row("a", 0, "attempt", {"attempt": 1}),
+            row("a", 20, "ended", {"attempt": 1, "exit": 0})]  # fmt: skip
+    _, lanes = drawn([leaf("a")], rows, 74)
+    assert set(lanes["a"].strip()) == {"━"}  # held, its doings unseen: never drawn as an idle executor
+
+
+def test_in_watch_a_leaf_that_waits_for_your_sign_off_keeps_its_usual_pane(repo, finish):
+    alex = P.Caller("alex", True)
+    with Store.open(repo) as store:
+        P.set_goal(store, "users come back with their ids", alex)
+        P.propose(store, [{"id": "ids", "title": "returns ids", "scope": ["api.py"], "check": "true",
+                           "signoff": True}], alex)  # fmt: skip
+        P.start(store, "ids", RUN, repo)
+        tried = row("ids", 5, "attempt", {"attempt": 1, "meter": "claude"})
+        for e in (tried, did("ids", 6, "editing", "api.py")):
+            store.log_node(e["node_id"], e["timestamp"], e["kind"], e["actor"], None, None, e["detail"])
+        finish(store, repo, "ids", RUN)
+    detail = " ".join(look(repo, ["j"], (80, 24), view="time")["detail"].split())
+    assert "sign-off" in detail and "attempt 1 ·" not in detail, detail  # what to do, not what was done
+
+
 @pytest.mark.parametrize("size", [(80, 24), (120, 36)])
 def test_the_replay_draws_what_each_executor_did_at_its_moment_and_a_running_bar_grows(
     tmp_path, monkeypatch, size

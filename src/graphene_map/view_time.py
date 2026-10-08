@@ -7,8 +7,9 @@ now while a leaf runs, else to the last row. One cell is one slice: the span ove
 cells, a span under a minute drawn as a minute. A leaf's lane is a bar for each attempt. Each cell is
 what most of the slice's rows say the executor did: editing █, running a command ▓, reading or
 searching ▒, talking ░. A slice with no row carries the last one on until it is a minute old. Then,
-and before the first row, the executor is idle (─). A hold with no attempt is a plain bar (━): a
-Claude Code session took the leaf, and the meter never sees a session. Marks sit at their moment: a
+and before the first row, the executor is idle (─). A hold with no attempt, or an attempt with no
+meter, is a plain bar (━): the meter never sees a Claude Code session, nor an executor that writes no
+stream it reads. Marks sit at their moment: a
 write refused !, a check passed ✓ or failed ✗, came back ↩, landed ◆, running now ●. A mark that falls
 on another moves right. The glyph says it alone, so the plain print reads too. A pure function of the
 nodes and the log's rows the screen already read (`views.happened`).
@@ -130,6 +131,10 @@ def draw(
         for a, mine in _tries(rows, now):
             ats, t0 = [sec(e["timestamp"]) for e in mine], sec(a["started"])
             t1 = max([t0 + a["seconds"], *ats])  # `seconds` is whole: a row in its last half second counts
+            if not a["meter"] and not mine:  # no stream the meter reads: held, its doings unseen
+                out[x(t0) : x(t1) + 1] = [(HELD, colour)] * (x(t1) - x(t0) + 1)
+                live = x(t1) if a["running"] else live
+                continue
             k, last = 0, None  # the next row; the last row's moment and glyph
             for i in range(x(t0), x(t1) + 1):
                 got = []

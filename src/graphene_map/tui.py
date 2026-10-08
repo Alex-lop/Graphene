@@ -1566,7 +1566,7 @@ class Watch(App):
         # under the time view a leaf whose executor did or said something says it; one that came back keeps
         # its offers in sight, and one with nothing on record (a stand-in, a script) its contract
         word = self.word(node.id)
-        did = activity(store.node_log(node.id)) if self.showing == "time" and word != "came back" else []
+        did = activity(store.node_log(node.id)) if self.showing == "time" and word not in WHOSE[:3] else []
         if any(said for _, said in did):
             return pane.update(activity_pane(node, word, did, wide, high))
         if time.monotonic() - self.files_at > 10:
