@@ -2,7 +2,7 @@
 was doing when.
 
 A lane is a leaf with a `started` row, in the outline's order, under one for the person: a tick (`|`)
-for each of their acts. Time runs from the plan's first ask or first start, whichever came first, to
+for each of their acts. Time runs from the plan's first ask, acceptance or start, whichever came first, to
 now while a leaf runs, else to the last row. One cell is one slice: the span over the time column's
 cells, a span under a minute drawn as a minute. A leaf's lane is a bar for each attempt. Each cell is
 what most of the slice's rows say the executor did: editing █, running a command ▓, reading or
@@ -110,7 +110,7 @@ def draw(
     flat = [e for rows in by.values() for e in rows]
     star = by.get("*", [])  # what an archived plan asked is not this one's
     asked = star[max((k + 1 for k, e in enumerate(star) if e["kind"] == "archived"), default=0) :]
-    begun = [e["timestamp"] for e in asked if e["kind"] == "asked"]
+    begun = [e["timestamp"] for e in asked if e["kind"] in ("asked", "accepted")]  # a session's plan: your y
     begun += [e["timestamp"] for n in lanes for e in by.get(n.id, []) if e["kind"] == "started"]
     running = now is not None and any(n.state == P.RUNNING for n in lanes)
     end = now if running else datetime.fromisoformat(max(e["timestamp"] for e in flat)) if flat else EPOCH
