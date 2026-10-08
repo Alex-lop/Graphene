@@ -2736,8 +2736,8 @@ def plan_first(store) -> str:
     """Plan first, as the person set it: on, auto or off (`graphene plan first`, `P` in graphene
     watch). On: every ask is proposed and waits for the person. Auto: every ask is proposed, and one
     small leaf with nothing on the board is the person's at once (``gate.one_line_ask``); anything
-    else waits. Off: nothing is proposed first. `graphene init` sets auto; never set, it is auto
-    while a plan is in force and off otherwise."""
+    else waits. Off: nothing is proposed first. `graphene init` sets on, and keeps what was set
+    before; never set, it is auto while a plan is in force and off otherwise."""
     said = store.meta("plan_first")
     return said if said in FIRST else "auto" if in_force(store) else "off"
 

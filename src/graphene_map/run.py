@@ -367,6 +367,23 @@ def _worst(argv: list[str]) -> float:
         return WORST
 
 
+def held(name: str, argv: list[str], paid: float, tag: str) -> tuple:
+    """Under the opening, an attempt's worst case held on the night's ledger before it starts: (the
+    night, the hold). The hold is None when the night is not open or ``name`` is no agent the meter
+    knows. Past the cap it is refused in the ledger's words, and nothing starts."""
+    night = extra.load("night") if name in M.ENDPOINT else None
+    if not night or night.cap() is None:
+        return night, None
+    model = f"{name}:{M.model_in(argv) or ('default' if name == 'claude' else 'codex')}"
+    # the ledger it is held in goes with it: it settles there, should it end after noon
+    hold = {"model": model, "worst": _worst(argv), "paid": paid, "ledger": str(night.where())}
+    try:
+        hold["id"] = night.reserve(model, hold["worst"], tag, M.ENDPOINT[name], hold["ledger"])
+    except night.Refused as no:
+        raise P.Refused(str(no)) from None
+    return night, hold
+
+
 def _settle(night, hold: dict, meter: M.Meter | None) -> None:
     """A held attempt, settled on the night's ledger. At what its stream says only when the stream gave
     the whole figure: Claude Code's result was read, or every Codex turn that started completed. A Codex
@@ -448,18 +465,12 @@ def run_node(
             if logs is not None:  # streamed as it runs, so its tail can be read while it works
                 logs.mkdir(parents=True, exist_ok=True)
                 log = logs / f"{node.id}-{stamp}-{session[:8]}-{attempt}.txt"
-            hold, night = None, extra.load("night") if name in M.ENDPOINT else None
-            if night and night.cap() is not None:  # under the opening: the attempt's worst case, held first
-                model = f"{name}:{M.model_in(argv) or ('default' if name == 'claude' else 'codex')}"
-                # the ledger it is held in goes with it: it settles there, should it end after noon
-                hold = {"model": model, "worst": _worst(argv), "paid": paid, "ledger": str(night.where())}
-                try:
-                    hold["id"] = night.reserve(model, hold["worst"], f"run: {node.id} attempt {attempt}",
-                                               M.ENDPOINT[name], hold["ledger"])  # fmt: skip
-                except night.Refused as no:
-                    P.release(store, node.id, who, str(no))
-                    say(f"{node.id} came back: {no}")
-                    return None
+            try:  # under the opening: the attempt's worst case, held first
+                night, hold = held(name, argv, paid, f"run: {node.id} attempt {attempt}")
+            except P.Refused as no:
+                P.release(store, node.id, who, str(no))
+                say(f"{node.id} came back: {no}")
+                return None
             sink = open(log, "w", encoding="utf-8") if log else subprocess.DEVNULL  # noqa: SIM115
             try:
                 proc = subprocess.Popen(

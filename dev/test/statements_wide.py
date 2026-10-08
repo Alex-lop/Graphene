@@ -24,7 +24,10 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 from statements_practice import EXECUTOR, MARKS, SESSION, TASK, night  # noqa: E402
 
-PLANNER = "claude -p --tools Read,Grep,Glob --strict-mcp-config --model sonnet --max-budget-usd 1.5"
+PLANNER = (  # `graphene ask` holds its --max-budget-usd, and settles at the cost its stream reports
+    "claude -p --tools Read,Grep,Glob --strict-mcp-config --output-format stream-json --verbose "
+    "--model sonnet --max-budget-usd 1.5"
+)
 MORE = (
     "Every report and figure that adds up money must be per currency too, never adding two currencies: "
     "the fees, aging, dunning letters, reconciliation, the CSV statement, the month-end figures, the "
@@ -41,7 +44,8 @@ def main() -> int:
     a = ap.parse_args()
     if night.cap() is None:
         sys.exit(f"{night.OPENING} is not set")
-    os.environ[night.PURPOSE] = "statements-practice"  # this process reserves too, not only its children
+    # this process reserves too, not only its children
+    os.environ[night.PURPOSE] = os.environ.get(night.PURPOSE) or "statements-practice"
     env = os.environ | {"PATH": f"{a.tool}{os.pathsep}{os.environ['PATH']}"}
     made = subprocess.run(
         ["bash", str(HERE / "newrun.sh"), str(a.out), "statements", "practice", "wide", "1"],
@@ -94,11 +98,7 @@ def main() -> int:
     night.settle(held, "claude:sonnet", float(said.get("total_cost_usd") or 3.0), {})
     board = sh("graphene", "board")
     log("prompt", stdin=MORE)
-    held = night.reserve(
-        "claude:sonnet planner", 1.5, "statements-practice: the wide run asks for more", "claude code"
-    )
     more = sh("graphene", "ask", MORE, "--with", PLANNER, timeout=1800)
-    night.settle(held, "claude:sonnet planner", 1.5, {})  # a text answer says no cost: its worst case
     log("accept", stdin="as_me graphene plan accept")
     accepted = sh("graphene", "plan", "accept")
     tree = sh("graphene", "plan", "--text", "--all")

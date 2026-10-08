@@ -10,7 +10,7 @@ import pytest
 from test_plan_cli import AGENT_ENV, person, repo, runner  # noqa: F401  (fixtures)
 
 from graphene_map import ask as A
-from graphene_map import plan
+from graphene_map import meter, plan
 from graphene_map.cli import build
 from graphene_map.plan import PROPOSED, Caller, Refused
 from graphene_map.store import Store
@@ -211,6 +211,7 @@ def test_a_planner_with_no_vendor_mark_is_an_agent_and_not_the_person(repo):
 def test_the_default_planner_reads_and_has_none_of_the_persons_mcp_servers():
     argv = A.command_for(A.DEFAULT_PLANNER, "the prompt", "s1", False)
     assert argv[argv.index("--tools") + 1] == "Read,Grep,Glob" and "--strict-mcp-config" in argv
+    assert meter.kind(argv) == "claude" and "--verbose" in argv  # the stream that says what it cost
 
 
 # Recheck 64 (fixed)
@@ -324,3 +325,61 @@ def test_a_refusal_the_planner_repeats_is_said_to_the_person_once(repo, tmp_path
     assert said.exit_code == 1
     assert said.output.count("signoff is yes or no") == 1, said.output
     assert "no proposal after 2 tries; nothing was added (each was refused as above)" in said.output
+
+
+def claude_planner(tmp_path, *answers: tuple[str, float]) -> str:
+    """A stand-in named `claude` that prints Claude Code's stream: one turn, then a result with the
+    answer's text and the session's total so far; each try the next answer."""
+    for n, (text, total) in enumerate(answers, 1):
+        turn = {"type": "assistant", "message": {"id": f"m{n}", "model": "claude-sonnet-5-5", "content": [],
+                                                 "usage": {"input_tokens": 900, "output_tokens": 80}}}
+        result = {"type": "result", "subtype": "success", "result": text, "total_cost_usd": total}
+        (tmp_path / f"try{n}.jsonl").write_text(f"{json.dumps(turn)}\n{json.dumps(result)}\n")
+    claude = tmp_path / "claude"
+    claude.write_text("#!/bin/sh\nif [ -e tried ]; then cat try2.jsonl; else touch tried; cat try1.jsonl; fi")
+    claude.chmod(0o755)
+    return f"{claude} -p --output-format stream-json --verbose --max-budget-usd 1.5"
+
+
+def test_a_claude_code_planner_is_held_on_the_night_and_its_stream_says_what_it_cost(
+    repo, tmp_path, monkeypatch
+):
+    """The meter night: $15 of $41 was planners held at $1.50 each, since a text answer says no cost. A
+    second try resumes the session, whose result reports its running total."""
+    monkeypatch.setenv("GRAPHENE_AGENT_LIVE_USD", "10")
+    bad = "```plan\n- ids  [ids]\n    scope: api.py\n    signoff: perhaps\n```"
+    good = "I read api.py.\n```plan\n? users returns ids  [ids]\n    scope: api.py\n    check: true\n```"
+    with Store.open(repo) as store:
+        said = []
+        added = A.ask(store, repo, "ids", claude_planner(tmp_path, (bad, 0.25), (good, 0.4)), say=said.append)
+        assert added == ["proposed ids: users returns ids"] and plan.get(store, "ids").state == PROPOSED
+        assert said[-2:] == ["the planner says:", "  I read api.py."]  # the result's text, not the stream
+        bills = [(e["actor"], e["detail"]) for e in store.node_log("*", ("usage",))]
+    assert [(who, bill["dollars"]) for who, bill in bills] == [
+        ("planner:claude", pytest.approx(0.25)), ("planner:claude", pytest.approx(0.15))]
+    assert bills[1][1] | {"dollars": 0} == {"model": "claude-sonnet-5-5", "calls": 1, "prompt_tokens": 900,
+                                           "completion_tokens": 80, "dollars": 0, "endpoint": "claude code",
+                                           "reported": 0.4, "practice": True}  # fmt: skip
+    rows = [json.loads(line) for line in (tmp_path / "night.jsonl").read_text().splitlines()]
+    assert [(r["kind"], r.get("tag"), r["dollars"]) for r in rows] == [
+        ("reserve", "ask: the planner, attempt 1", 1.5), ("settle", None, pytest.approx(0.25)),
+        ("reserve", "ask: the planner, attempt 2", 1.5), ("settle", None, pytest.approx(0.15))]
+
+
+def test_a_claude_code_planner_that_stopped_says_why(repo, tmp_path):
+    planner = claude_planner(tmp_path, ("", 0.3), ("", 0.6))
+    for n in (1, 2):  # out of budget: a result with no text, only why it stopped
+        stop = {"type": "result", "subtype": "error_max_budget_usd", "is_error": True, "total_cost_usd": n}
+        (tmp_path / f"try{n}.jsonl").write_text(json.dumps(stop) + "\n")
+    said = []
+    with Store.open(repo) as store, pytest.raises(Refused, match="each was refused as above"):
+        A.ask(store, repo, "ids", planner, say=said.append)
+    assert "no proposal (exit 0): error_max_budget_usd" in said  # why it stopped, not "it said nothing"
+
+
+def test_a_planner_the_night_refuses_is_never_started(repo, tmp_path, monkeypatch):
+    monkeypatch.setenv("GRAPHENE_AGENT_LIVE_USD", "1")  # less than the planner's --max-budget-usd
+    with Store.open(repo) as store:
+        with pytest.raises(Refused, match=r"may cost up to \$1\.5000.*nothing was sent"):
+            A.ask(store, repo, "ids", claude_planner(tmp_path, ("", 0.0)), say=lambda _: None)
+    assert not (tmp_path / "tried").exists()
