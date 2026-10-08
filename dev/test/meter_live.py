@@ -12,10 +12,11 @@ The person's acts (init, ask, accept, run) run with no agent's mark: the person 
 gets the same tree, so the executors are compared on one plan: the first run asks Claude Code's planner,
 and its proposal is saved (OUT/tree.txt) and printed by a canned planner for the rest.
 
-Spend goes on the night's ledger, purpose `meter`: GRAPHENE_AGENT_LIVE_USD must be set. Claude Code runs
-Sonnet with --max-budget-usd 2 an attempt. Codex runs `codex exec --json` against Nemotron Super on
-Token Factory (the ChatGPT login here was revoked on 6 October), with a CODEX_HOME of its own so the
-person's Codex plugins stay out. Nemotron is Graphene's own executor, on this machine.
+Spend goes on the night's ledger, purpose `meter` unless GRAPHENE_NIGHT_PURPOSE names the night's own:
+GRAPHENE_AGENT_LIVE_USD must be set. Claude Code runs Sonnet with --max-budget-usd 2 an attempt. Codex
+runs `codex exec --json` against Nemotron Super on Token Factory (the ChatGPT login here was revoked on
+6 October), with a CODEX_HOME of its own so the person's Codex plugins stay out. Nemotron is Graphene's
+own executor, on this machine.
 """
 
 from __future__ import annotations
@@ -42,9 +43,12 @@ WITH = {
     "nemotron": "nemotron --model nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B --model "
     "nvidia/nemotron-3-super-120b-a12b --placement local",
 }
-# The one real planner call: Claude Code, read-only, on Sonnet. Its text answer reports no cost, so the
-# ledger holds its --max-budget-usd, the most it can spend.
-PLANNER = "claude -p --tools Read,Grep,Glob --strict-mcp-config --model sonnet --max-budget-usd 1.5"
+# The one real planner call: Claude Code, read-only, on Sonnet. `graphene ask` holds its --max-budget-usd
+# on the night's ledger, and settles at the cost its stream reports.
+PLANNER = (
+    "claude -p --tools Read,Grep,Glob --strict-mcp-config --output-format stream-json --verbose "
+    "--model sonnet --max-budget-usd 1.5"
+)
 LEDGER_MODEL = {"claude": "claude:", "codex": "codex:", "nemotron": "nvidia/"}
 MARKS = (
     "CLAUDECODE",
@@ -63,7 +67,7 @@ def person(tool: str, codex_home: Path) -> dict:
     env = {k: v for k, v in os.environ.items() if k not in MARKS and not k.startswith("CLAUDE_CODE_")}
     env |= {
         "PATH": f"{tool}{os.pathsep}{os.environ['PATH']}",
-        "GRAPHENE_NIGHT_PURPOSE": "meter",
+        "GRAPHENE_NIGHT_PURPOSE": os.environ.get("GRAPHENE_NIGHT_PURPOSE") or "meter",
         "CODEX_HOME": str(codex_home),
         "TERM": "dumb",
     }
@@ -118,15 +122,7 @@ def one(executor: str, rnd: int, a, env: dict) -> dict:
         sh(["graphene", "init", "--planner", planner, "--executor", WITH[executor]], repo, env),
     ]
     paragraph = (a.paragraph or FEEDS / "paragraph.md").read_text().strip()
-    held = None
-    if planner == PLANNER:
-        from graphene_map.nemotron import night
-
-        os.environ[night.PURPOSE] = "meter"
-        held = night.reserve("claude:sonnet planner", 1.5, "meter: the planner's ask", "claude code")
     said += ['$ graphene ask "$(cat paragraph.md)"', sh(["graphene", "ask", paragraph], repo, env, 1800)]
-    if held:
-        night.settle(held, "claude:sonnet planner", 1.5, {})  # its worst case: a text answer says no cost
     if not tree.exists():
         tree.write_text(sh(["graphene", "plan", "--text", "--all"], repo, env) + "\n")
     said += ["$ graphene board", sh(["graphene", "board"], repo, env)]

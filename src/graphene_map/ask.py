@@ -21,16 +21,17 @@ from pathlib import Path
 
 from . import board as B
 from . import extra
+from . import meter as M
 from . import plan as P
 from . import plan_text as T
-from .run import _splits, command_for, unchosen
+from .run import _settle, _splits, command_for, held, unchosen
 from .run import label as run_label
 
 # Read-only: Claude Code's built-in tools cut to the three that read (`--tools`), and none of the MCP
 # servers the person has connected (`--strict-mcp-config` with no config: some of them send mail and
-# write documents), so its only way to say anything is what it prints. Codex: `codex exec --sandbox
-# read-only`.
-DEFAULT_PLANNER = "claude -p --tools Read,Grep,Glob --strict-mcp-config"
+# write documents), so its only way to say anything is what it prints. Its stream (`stream-json`, which
+# needs `--verbose`) says what it cost, as an executor's does. Codex: `codex exec --sandbox read-only`.
+DEFAULT_PLANNER = "claude -p --tools Read,Grep,Glob --strict-mcp-config --output-format stream-json --verbose"
 ATTEMPTS = 2
 
 
@@ -390,7 +391,7 @@ def ask(
         asked = prompt = prompt.replace(
             RULES, f"This replaces the tree you proposed last, which the person wants {size}; it is "
             f"dropped, so propose the whole tree afresh.{stand}\n\n" + RULES)  # fmt: skip
-    before = None
+    before, paid = None, 0.0  # paid: what the session cost so far; a resumed one reports its running total
     tries = 1 if argv0 == "nemotron" else ATTEMPTS  # Graphene's own planner sends a refusal back itself
     for attempt in range(1, tries + 1):
         argv = command_for(template, prompt, session, attempt > 1)
@@ -400,14 +401,29 @@ def ask(
             env["GRAPHENE_KEYCHAIN"] = "off"
         env.pop("GRAPHENE_AS", None)
         env.pop("GRAPHENE_NODE", None)
+        night, hold = held(argv0, argv, paid, f"ask: the planner, attempt {attempt}")  # as an executor's
+        meter = M.Meter("claude", attempt, M.model_in(argv), paid) if M.kind(argv) == "claude" else None
         say(f"asking the planner ({argv0}){' again' if attempt > 1 else ''}…")
         try:
             done = subprocess.run(
                 argv, cwd=root, env=env, stdin=subprocess.DEVNULL, capture_output=True, text=True
             )
+            for line in done.stdout.splitlines() if meter else []:
+                meter.feed(line)
         except OSError as no:
+            if hold:  # nothing ran
+                night.settle(hold["id"], hold["model"], 0.0, ledger=hold["ledger"])
             raise P.Refused(f"cannot run `{argv0}`: {no.strerror}; name a planner with --with") from None
-        printed = done.stdout.strip()
+        finally:
+            if hold:  # once: at what Claude's result says it cost, else at its worst case
+                _settle(night, hold, meter)
+        if meter:  # its bill, on the plan, as the Nemotron planner's is
+            paid += meter.dollars
+            store.log_node("*", P._now(), "usage", who.label, None, None, {
+                "model": meter.model, "calls": meter.turns, "prompt_tokens": meter.prompt_tokens,
+                "completion_tokens": meter.completion_tokens, "dollars": meter.dollars,
+                "endpoint": M.ENDPOINT["claude"], "reported": meter.reported})  # fmt: skip
+        printed = (meter.result if meter else done.stdout).strip()  # the answer, never the stream
         text = proposal_in(printed)
         if not text.strip():
             said = [line for line in done.stderr.splitlines() if line.strip()]  # its last word, whole

@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """The statements task as practice: the tree arm, start to end, with a scripted stand-in for the person.
 
-    dev/test/statements_practice.py OUT --tool BIN --python PY [--runs 2] [--every 120]
+    dev/test/statements_practice.py OUT --tool BIN --python PY [--runs 2] [--every 120] [--together]
 
 Never registered: the style is `practice`, not `alex`, and every row on the night's ledger says
-`statements-practice`. Each run is the tree arm of PROVE.md, with the 23 September harness
-(newrun.sh, logline.py, the clock):
+`statements-practice`, or the purpose GRAPHENE_NIGHT_PURPOSE names. The runs go one after another, so
+the night holds one run's worst cases at a time; --together starts them all at once. Each run is the
+tree arm of PROVE.md, with the 23 September harness (newrun.sh, logline.py, the clock):
 
 1. `newrun.sh OUT statements practice tree N`, then plan first on, as the person.
 2. The paragraph, byte for byte, to a Claude Code session in the repo (PROVE.md's flags): it plans.
@@ -82,7 +83,7 @@ MARKS = (
 def one(n: int, a) -> dict:
     env = os.environ | {
         "PATH": f"{a.tool}{os.pathsep}{os.environ['PATH']}",
-        "GRAPHENE_NIGHT_PURPOSE": "statements-practice",
+        "GRAPHENE_NIGHT_PURPOSE": os.environ.get(night.PURPOSE) or "statements-practice",
     }
     made = subprocess.run(
         ["bash", str(HERE / "newrun.sh"), str(a.out), "statements", "practice", "tree", str(n)],
@@ -126,7 +127,7 @@ def one(n: int, a) -> dict:
     log("clock", "start")
     log("prompt", stdin=paragraph)
     started = time.time()
-    os.environ[night.PURPOSE] = "statements-practice"
+    os.environ[night.PURPOSE] = os.environ.get(night.PURPOSE) or "statements-practice"
     held = night.reserve("claude:sonnet", 3.0, f"statements-practice: run {n} plans", "claude code")
     sh("claude", "-p", paragraph, *SESSION, who=env | {"TMPDIR": str(tmp)}, out=run / "e1.json", timeout=1800)
     try:
@@ -214,13 +215,14 @@ def main() -> int:
     ap.add_argument("--python", required=True, help="that tool's python, which draws the screens")
     ap.add_argument("--runs", type=int, default=2)
     ap.add_argument("--every", type=float, default=120.0)
+    ap.add_argument("--together", action="store_true", help="every run at once, all their worst cases held")
     a = ap.parse_args()
     if not os.environ.get("GRAPHENE_AGENT_LIVE_USD"):
         sys.exit(
             "GRAPHENE_AGENT_LIVE_USD is not set: these runs spend, and the night's ledger must count them"
         )
     a.out.mkdir(parents=True, exist_ok=True)
-    with ThreadPoolExecutor(a.runs) as pool:
+    with ThreadPoolExecutor(a.runs if a.together else 1) as pool:  # one at a time: one run's holds at once
         for got in pool.map(lambda n: one(n, a), range(1, a.runs + 1)):
             print(json.dumps(got), flush=True)
     return 0

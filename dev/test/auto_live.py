@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Plan first auto, live: each message in a fresh feeds repo, one Claude Code session each.
 
-    dev/test/auto_live.py OUT [--rounds 2] [--only NAME ...] [--graphene BIN_DIR]
+    dev/test/auto_live.py OUT [--rounds 2] [--only NAME ...] [--graphene BIN_DIR] [--first auto]
+
+--first is plan first for every session: auto, as on 5 October, or on, which `graphene init` sets now.
 
 Each run gets OUT/<name>-r<round>/: the repo, the session's stream (`stream.jsonl`), and `run.txt`
 with the plan, its log, the board, `git status` and the hidden checks. OUT/summary.md is the table.
@@ -11,8 +13,9 @@ The person's acts (`graphene init`, reading the plan) run with no agent's mark, 
 is the 23 September study's: Sonnet and its tool list (standin.py). graphene comes from --graphene, a
 wheel installed as a tool, never editable, so the hooks run the code under test.
 
-Every session is on the night's ledger, purpose `auto`: it reserves its --max-budget-usd before it
-starts and settles at the `total_cost_usd` its result reports. It needs GRAPHENE_AGENT_LIVE_USD.
+Every session is on the night's ledger, purpose `auto` unless GRAPHENE_NIGHT_PURPOSE names another: it
+reserves its --max-budget-usd before it starts and settles at the `total_cost_usd` its result reports. It
+needs GRAPHENE_AGENT_LIVE_USD.
 
 The four Tuesday messages were written on 6 October from their one-line descriptions in
 lane5-evidence.md. The 23 September originals live only in Claude Code's transcript store, which this
@@ -73,7 +76,7 @@ def sh(argv: list[str], cwd: Path, env: dict, timeout: int = 600) -> str:
     return (done.stdout + done.stderr).rstrip()
 
 
-def one(name: str, rnd: int, out: Path, path: str) -> dict:
+def one(name: str, rnd: int, out: Path, path: str, first: str) -> dict:
     here = out / f"{name}-r{rnd}"
     repo = here / "repo"
     here.mkdir(parents=True, exist_ok=True)
@@ -82,7 +85,8 @@ def one(name: str, rnd: int, out: Path, path: str) -> dict:
     )
     me = person(path)
     init = ["graphene", "init", "--planner", "claude", "--executor", "claude"]
-    said = [f"$ {' '.join(init)}\n{sh(init, repo, me)}"]
+    mode = ["graphene", "plan", "first", first]
+    said = [f"$ {' '.join(argv)}\n{sh(argv, repo, me)}" for argv in (init, mode)]
     argv = [
         "claude",
         "-p",
@@ -103,7 +107,7 @@ def one(name: str, rnd: int, out: Path, path: str) -> dict:
         "--allowedTools",
         *TOOLS,
     ]
-    os.environ[night.PURPOSE] = "auto"
+    os.environ[night.PURPOSE] = os.environ.get(night.PURPOSE) or "auto"
     held = night.reserve("claude:sonnet", BUDGET, f"auto: {name} r{rnd}", "claude code")
     started = time.monotonic()
     with open(here / "stream.jsonl", "w") as f:
@@ -192,6 +196,7 @@ def main() -> int:
     ap.add_argument("--rounds", type=int, default=2)
     ap.add_argument("--only", nargs="*", default=list(MESSAGES))
     ap.add_argument("--graphene", help="the bin directory of a graphene installed as a tool")
+    ap.add_argument("--first", choices=("on", "auto", "off"), default="auto", help="plan first for each")
     a = ap.parse_args()
     if night.cap() is None:
         sys.exit(f"{night.OPENING} is not set: these sessions spend, and the night's ledger must count them")
@@ -199,7 +204,7 @@ def main() -> int:
     rows = []
     for rnd in range(1, a.rounds + 1):
         with ThreadPoolExecutor(len(a.only)) as pool:
-            rows += list(pool.map(lambda n, r=rnd: one(n, r, a.out, path), a.only))
+            rows += list(pool.map(lambda n, r=rnd: one(n, r, a.out, path, a.first), a.only))
     head = (
         "| message | round | nodes | leaves | board | taken at once | wrote code | accept | quality "
         "| turns | $ | s |"

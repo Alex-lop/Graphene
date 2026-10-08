@@ -418,9 +418,13 @@ def test_plan_first_is_a_setting_the_person_sees_and_sets(repo):
     assert person("plan", "first", "sideways").exit_code == 1
 
 
-def test_init_sets_plan_first_auto(repo):
+def test_init_sets_plan_first_on_and_keeps_an_auto_set_before(repo):
     said = person("init")
-    assert said.exit_code == 0 and "plan first is auto: every ask is proposed first" in said.stdout
+    assert said.exit_code == 0 and "plan first: on. Every ask in a session is proposed" in said.stdout
+    assert "plan first: on" in person("plan", "first").stdout
+    person("plan", "first", "auto")
+    again = person("init")  # a repository on auto stays on auto until the person changes it
+    assert "plan first: auto. Every ask is proposed first" in again.stdout
     assert "plan first: auto" in person("plan", "first").stdout
 
 
