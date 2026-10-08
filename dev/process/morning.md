@@ -164,8 +164,9 @@ Tonight's decisions are in `dev/DIRECTION.md`, 166 to 180. The evidence: `dev/pr
   lock 0.09 s where it held 0.31; `ask` settles its planner's hold when its terminal closes; the Nemotron dry run
   drops the old tree as you would; `watch` counts its message line when it fits the pane; the time view's note
   counts only this plan. The suite: 1,687 passed; the 11 that fail only in parallel pass alone.
-- **05:41** Pushed; PR #43 opened. CI's third run, on the offset and the timing budget: five of six jobs green,
-  macOS 3.13 still running.
+- **05:41** Pushed; PR #43 opened. CI's third run, on the offset and the timing budget, passed all six jobs.
 - **05:42-05:47** Your 30 minutes, as written, from the pushed branch: every step printed what it says. $0.80, put on
   the ledger by hand with the dry run's $0.78.
+- **06:08** CI on the final code (`b4b338c`): all six jobs green, Ubuntu and macOS, Python 3.12 to 3.14. What came
+  after it is the morning and the evidence, no code.
 
