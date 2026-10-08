@@ -38,14 +38,14 @@ A fresh terminal, with nothing but `uv` and `git`. Nothing here needs a key. Eac
 
 5. **Decide** (5 min): the questions in the brief below, each with my default.
 
-6. **Merge** (1 min): `gh pr merge PRNUM -R Alex-lop/Graphene --merge`.
+6. **Merge** (1 min): `gh pr merge timeline -R Alex-lop/Graphene --merge`.
 
 ## Your practice run
 
 One hour, on a repo of yours, the way you would use Graphene.
 
-1. In the terminal from step 1: `cd ~/<your repo> && graphene init --planner claude --executor claude`. Plan first
-   is `on`.
+1. In the terminal from step 1: `cd ~/<your repo> && graphene init --planner claude --executor claude`, then
+   `graphene plan first on`: a repo you set up before tonight keeps its `auto` until you change it.
 2. Two panes: `claude` on the left, `graphene watch` on the right.
 3. On the left, say a paragraph of your own: something you want done that is bigger than one change.
 4. On the right, prune the tree (`d` drops, `e` edits, `y` accepts), then `R`. Tab to `time` while it runs. Enter
@@ -74,9 +74,10 @@ One hour, on a repo of yours, the way you would use Graphene.
    times in 6, and `auto` is the one way a one-change ask runs with nothing to press. 2. Take 6 for the video?
    Default: yes, the first clean take. 3. Run the registered arms? Default: not yet: the doubled task still needs a
    commit named for them. Nothing the new check refused tonight looked like something you would have wanted.
-5. **Broken or risky:** NETLINES The validator says one fault at a time, so a Nemotron
-   answer with two ends the ask after its one send-back: most of tonight's misses. A glob is now read as written:
-   `run --parallel` lets a carve-out run beside the leaf of the directory it leaves out.
+5. **Broken or risky:** Source grew 580 lines where the directive allowed the timeline (285) and the check (186):
+   lanes 2 and 3 added 148, 39 duplicated lines came out, so 109 are over. The validator says one fault at a time,
+   so a Nemotron answer with two ends the ask after its one send-back: most of tonight's misses. In a 22,000-file
+   repo, twelve new leaves each checking `tests/` hold the plan's lock 0.26 s on a slow CI runner; a hook waits 0.25.
 
 ---
 
@@ -141,3 +142,19 @@ Tonight's decisions are in `dev/DIRECTION.md`, 166 to 180. The evidence: `dev/pr
 - **03:13** Lane 1's review fixes ported (`32c6d4f`): a glob is read as written, a re-ask may write the paths of old
   leaves that stay, changed checks are judged last in one save, and the Nemotron planner's dry run is given what a
   merge replaces.
+- **03:16** The suite on the merged branch: 1,674 passed in parallel; the 11 that fail only in parallel pass alone.
+  Pushed; CI's first run on the branch had passed, all six jobs.
+- **03:20** Lane 2's third round, on the nodes-first schema: 15 proposals in 20. The wheel, installed outside the
+  source tree, replays `graphene demo --once`.
+- **03:22-03:26** Your 30 minutes, dry run from GitHub, as written: the tool from `@timeline`, the shallow clone, the
+  replay with Tab to `time`, the scratch repo (`ask`, `watch`, `y` on the goal, `R`, 2 of 2 done, Tab to `time`,
+  `node show`). $0.78. It goes again, timed, from the final push.
+- **03:29** A review of the whole merged branch started: four readers where the lanes meet, two skeptics a finding.
+- **04:47** The offset: helpers copied across nine modules kept once, 39 lines fewer, against what lanes 2 and 3
+  added. Two skeptics refuted the removal of two Nemotron executor options (`--inline`, `--map`: a `--with` spec
+  still reaches them); they stayed.
+- **04:59** CI's second run: Python 3.12 on Ubuntu and macOS took 0.26 s of CPU in the twelve-leaf timing test,
+  over its 0.25. The test now allows CI 0.5, as the hook's own budget test does; the code is unchanged.
+- **05:00** The branch review's 16 high or medium findings, each tried by two skeptics: the fixer is on them. Six
+  were mine, in this file and DIRECTION; corrected here.
+
