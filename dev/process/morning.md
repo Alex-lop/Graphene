@@ -68,16 +68,16 @@ One hour, on a repo of yours, the way you would use Graphene.
    - The feeds paragraph: a tree 1 time in 3 under `auto` → a tree, waiting for you, 3 times in 3 under `on`.
 2. **Watch first:** `graphene demo tests/recordings/timeline-claude.jsonl`, Tab three times to `time`. Nemotron's
    first clean take: `graphene demo tests/recordings/timeline-nemotron-take-6.jsonl`. The GIF ends on the timeline.
-3. **The bill:** $26.43 of $40 so far: `planner` $12.78 · `scopes` $8.45 · `takes` $2.10 · `first` $1.83 ·
-   `timeline` $1.27.
+3. **The bill:** $28.90 of $40: `planner` $14.46 · `scopes` $8.45 · `takes` $2.10 · `first` $1.83 · `timeline`
+   $1.27 · `dogfood` $0.78 (the 30 minutes' dry run, put on by hand: a tool from GitHub writes no ledger rows).
 4. **Decide:** 1. Keep `auto` at all? Default: yes, as the opt-in it is: under `on` Tuesday asks became trees 4
    times in 6, and `auto` is the one way a one-change ask runs with nothing to press. 2. Take 6 for the video?
    Default: yes, the first clean take. 3. Run the registered arms? Default: not yet: the doubled task still needs a
    commit named for them. Nothing the new check refused tonight looked like something you would have wanted.
-5. **Broken or risky:** Source grew 580 lines where the directive allowed the timeline (285) and the check (186):
-   lanes 2 and 3 added 148, 39 duplicated lines came out, so 109 are over. The validator says one fault at a time,
+5. **Broken or risky:** Source grew 701 lines where the directive allowed the timeline (296) and the check (287):
+   lanes 2 and 3 added 157, 39 duplicated lines came out, so 118 are over. The validator says one fault at a time,
    so a Nemotron answer with two ends the ask after its one send-back: most of tonight's misses. In a 22,000-file
-   repo, twelve new leaves each checking `tests/` hold the plan's lock 0.26 s on a slow CI runner; a hook waits 0.25.
+   repo, twelve new leaves each checking `tests/` held the plan's lock 0.26 s on a slow CI runner; now 0.09 s here.
 
 ---
 
