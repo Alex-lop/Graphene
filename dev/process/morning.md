@@ -63,15 +63,20 @@ One hour, on a repo of yours, the way you would use Graphene.
 1. **The three numbers**, before → after (`dev/process/timeline/before.md`, `after.md`):
    - Hand-backs over another leaf's file: 8 in last night's 10 trees, 6 over a test file → 4 in tonight's 13 trees,
      1 over a test file. The statements task: 20 of 22 leaves landed in three runs, none left unrun.
-   - Nemotron proposals: 7 in 34 asks (21%) → 10 in 20 (50%), then 12 in 20 (60%) after the first schema fix. The
-     third round, on the second fix, is running.
+   - Nemotron proposals: 7 in 34 answers (21%) → 15 in 30 (50%) on the final schema; by ask with its one
+     send-back, 7 in 19 → 15 in 20. Takes: 3 of 6 ran clean, take 6 landing every leaf; last night none of 19.
    - The feeds paragraph: a tree 1 time in 3 under `auto` → a tree, waiting for you, 3 times in 3 under `on`.
 2. **Watch first:** `graphene demo tests/recordings/timeline-claude.jsonl`, Tab three times to `time`. Nemotron's
    first clean take: `graphene demo tests/recordings/timeline-nemotron-take-6.jsonl`. The GIF ends on the timeline.
 3. **The bill:** $26.43 of $40 so far: `planner` $12.78 · `scopes` $8.45 · `takes` $2.10 · `first` $1.83 ·
    `timeline` $1.27.
-4. **Decide:** written at the end.
-5. **Broken or risky:** written at the end.
+4. **Decide:** 1. Keep `auto` at all? Default: yes, as the opt-in it is: under `on` Tuesday asks became trees 4
+   times in 6, and `auto` is the one way a one-change ask runs with nothing to press. 2. Take 6 for the video?
+   Default: yes, the first clean take. 3. Run the registered arms? Default: not yet: the doubled task still needs a
+   commit named for them. Nothing the new check refused tonight looked like something you would have wanted.
+5. **Broken or risky:** NETLINES The validator says one fault at a time, so a Nemotron
+   answer with two ends the ask after its one send-back: most of tonight's misses. A glob is now read as written:
+   `run --parallel` lets a carve-out run beside the leaf of the directory it leaves out.
 
 ---
 

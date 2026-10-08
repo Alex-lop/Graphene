@@ -114,7 +114,51 @@ Stalls fell to 5 of 34 answers; each now stops before another trailing key (`abo
 `then`). The most common refusal on feeds was a board line naming a node the answer had not given an id yet:
 the schema asked for the board before the nodes. Fixed (`674b32c`): the nodes first.
 
-ROUND3
+### Round 3, the nodes before the board
+
+Build `674b32c`. **15 proposals in 20 asks** (feeds 6 of 10, report 9 of 10); 30 strict answers, 3 of them stalled to the token limit; $4.43.
+
+| task | ask | proposal | leaves | board | answers | stalled | $ | s | what Graphene said |
+|---|---|---|---|---|---|---|---|---|---|
+| feeds | 1 | yes | 5 | 3 | 1 |  | 0.26 | 182 |  |
+| feeds | 2 | yes | 1 |  | 2 |  | 0.29 | 162 | after a send-back: line 19 [explore]: explore and test both write tests/test_xml_feed.py. A path has one leaf |
+| feeds | 3 | no |  |  | 3 | 2 | 0.55 | 220 | line 2 [xml-feed]: xml-feed and xml-test both write tests/xmlfeed_test.py. A path has one leaf that writes it: |
+| feeds | 4 | no |  |  | 2 |  | 0.33 | 117 | line 26: 'question: xml-source-name [xml-source]' is a new leaf with no scope and no check |
+| feeds | 5 | no |  |  | 2 | 1 | 0.39 | 187 | line 27: parent: xml-feed is the node itself |
+| feeds | 6 | yes | 4 |  | 1 |  | 0.52 | 138 |  |
+| feeds | 7 | yes | 3 |  | 2 |  | 0.14 | 80 | after a send-back: line 6 [wire-xml]: wire-xml and zero-price-skip both write normalize/fields.py. A path has |
+| feeds | 8 | yes | 5 |  | 1 |  | 0.09 | 57 |  |
+| feeds | 9 | no |  |  | 2 |  | 0.30 | 137 | line 24 [field-map-xml]: field-map-xml and validate-price-zero both write normalize/fields.py. A path has one  |
+| feeds | 10 | yes | 1 |  | 1 |  | 0.26 | 140 |  |
+| report | 1 | yes | 3 |  | 1 |  | 0.07 | 37 |  |
+| report | 2 | yes | 3 |  | 1 |  | 0.06 | 34 |  |
+| report | 3 | yes | 3 |  | 1 |  | 0.42 | 91 |  |
+| report | 4 | yes | 3 |  | 2 |  | 0.10 | 53 | after a send-back: line 11 [regression-test]: regression-test: a leaf needs a scope (the paths it may touch), |
+| report | 5 | no |  |  | 2 |  | 0.09 | 45 | line 6 [json-tests]: json-tests and full-suite both write tests/test_report_json.py. A path has one leaf that  |
+| report | 6 | yes | 2 |  | 2 |  | 0.10 | 48 | after a send-back: line 11 [text-unchanged]: text-unchanged: a leaf needs a scope (the paths it may touch), e |
+| report | 7 | yes | 3 |  | 1 |  | 0.10 | 40 |  |
+| report | 8 | yes | 3 |  | 1 |  | 0.07 | 34 |  |
+| report | 9 | yes | 3 |  | 1 |  | 0.21 | 80 |  |
+| report | 10 | yes | 2 |  | 1 |  | 0.06 | 30 |  |
+
+No answer named a node it had not given an id: that refusal is gone. Three of the five misses are the new rule
+refusing two leaves on one path, which would have collided at run time; one put a board question among the nodes;
+one gave a node itself as its parent. The validator says one fault at a time, so an answer with two faults ends
+the ask after the send-back.
+
+**The proposal rate, counted two ways.** Last night an ask was one start of the planner and one answer; a take
+asked at most twice, the second time with the refusal. Tonight an ask is one start with at most two answers, the
+second after the refusal, in the same conversation.
+
+| | last night | round 1 | round 2 | round 3 |
+|---|---|---|---|---|
+| per ask with its one send-back (a take last night) | 7 of 19 (37%) | 10 of 20 (50%) | 12 of 20 (60%) | **15 of 20 (75%)** |
+| per answer | 7 of 34 (21%) | 10 of 41 (24%) | 12 of 34 (35%) | **15 of 30 (50%)** |
+
+`before.md`'s number is the second row's: 7 in 34. Each round on its own build.
+
+The ledger agrees: its `planner` purpose, $14.46, is the three rounds' $14.16, the stopped first start's $0.28
+(02:18) and the schema probes' $0.02.
 
 ## 3. The feeds paragraph under `on` (lane 3, purpose `first`)
 
