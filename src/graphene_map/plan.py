@@ -206,13 +206,22 @@ def in_scope(path: str, scope: list[str]) -> bool:
     return inside
 
 
+def _fixed(glob: str) -> list[str]:
+    """The directories a glob names before its first wildcard: every path it covers starts with them."""
+    parts = glob.strip().removeprefix("./").rstrip("/").split("/")
+    upto = next((k for k, part in enumerate(parts) if any(c in part for c in "*?")), len(parts))
+    return parts[:upto]
+
+
 def overlap(a: list[str], b: list[str], files: list[str]) -> list[str]:
     """Paths both scopes claim: the tracked files either matches, and a glob one scope spells that
-    the other also covers. TODO: a file neither scope names literally and that does not exist
+    the other also covers, read as it is written: `src/new/**` beside `src/new/**`, but not beside
+    `src/**, !src/new/**`. TODO: a file neither scope names literally and that does not exist
     yet is not seen; the write-time refusal still holds for it, since no scope is ever widened."""
-    both = [f for f in files if in_scope(f, a) and in_scope(f, b)]
-    literal = [g for g in a if not g.startswith("!") and in_scope(g.rstrip("/*") or g, b)]
-    literal += [g for g in b if not g.startswith("!") and in_scope(g.rstrip("/*") or g, a)]
+    na, nb = (tuple("/".join(_fixed(g)) for g in s if not g.startswith("!")) for s in (a, b))
+    both = [f for f in files if f.startswith(na) and f.startswith(nb) and in_scope(f, a) and in_scope(f, b)]
+    literal = [g for g in a if not g.startswith("!") and in_scope(g, b)]
+    literal += [g for g in b if not g.startswith("!") and in_scope(g, a)]
     return sorted(set(both + literal))
 
 
@@ -249,8 +258,7 @@ def binds(path: str, node: Node, conditions: list[tuple[str, str]]) -> bool:
 
 def _keeps_standing(node: Node, conditions: list[tuple[str, str]], files: list[str]) -> None:
     """Refuse a scope that covers a path a standing condition keeps out, naming the setting and path.
-    ponytail: judged by ``overlap`` (tracked files and literal globs), so a scope that covers the path
-    and then takes it out again with a '!' glob is still refused; say the scope without it."""
+    Judged by ``overlap``, so a scope that takes the path out again with a '!' glob is not refused."""
     if not node.scope or (node.aside and node.scope == ["**"]):  # an aside's untyped `**` leaves them out
         return
     for setting, glob in conditions:
@@ -1130,13 +1138,7 @@ def may_collide(a: list[str], b: list[str]) -> bool:
     leaves then wrote src/new.py. Two globs may meet unless the directories they name before their
     first wildcard are different branches of the tree. Exclusions are ignored: holding a leaf back
     costs minutes, and a collision costs the person a merge."""
-
-    def fixed(glob: str) -> list[str]:
-        parts = glob.strip().removeprefix("./").rstrip("/").split("/")
-        upto = next((k for k, part in enumerate(parts) if any(c in part for c in "*?")), len(parts))
-        return parts[:upto]
-
-    pairs = [(fixed(x), fixed(y)) for x in a if not x.startswith("!") for y in b if not y.startswith("!")]
+    pairs = [(_fixed(x), _fixed(y)) for x in a if not x.startswith("!") for y in b if not y.startswith("!")]
     return any(x[: len(y)] == y[: len(x)] for x, y in pairs)
 
 

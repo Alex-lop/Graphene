@@ -861,9 +861,10 @@ def _stored(node: P.Node) -> dict:
 
 def _edits(store, kept, parent_of, opened, who, now, files) -> list[str]:
     """Only what the person changed in the text (against the text as it was opened) is changed; a
-    node someone else changed since then is refused, never written over."""
+    node someone else changed since then is refused, never written over. A changed check goes last, so
+    it is judged against the scopes the whole save gives (``P.wait_on_checks``)."""
     said = []
-    for ln in kept:
+    for ln in sorted(kept, key=lambda ln: _fields(ln)["check"] != opened[ln.id]["check"]):
         base = opened[ln.id]
         mine = {**_fields(ln), "parent": parent_of[ln.id]}
         changes = {k: v for k, v in mine.items() if v != base[k]}

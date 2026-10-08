@@ -432,6 +432,9 @@ def test_a_check_that_runs_another_leafs_file_waits_on_it_and_the_proposal_says_
     said = T.apply(store, reader + top("tests", "tests/test_xml.py"), BOT, None)
     assert plan.get(store, "reader").needs == ["tests"]
     assert said[-1] == "reader waits on tests: its check runs tests/test_xml.py, which tests writes"
+    csv = top("csv", "src/csv.py", "python3 ./tests/test_csv.py")  # ./a is a
+    T.apply(store, csv + top("t", "tests/test_csv.py"), BOT, None)
+    assert plan.get(store, "csv").needs == ["t"]
 
 
 def test_a_check_that_runs_a_module_by_name_waits_on_the_leaf_that_writes_its_file(store):
@@ -504,9 +507,21 @@ def test_a_plan_edit_that_changes_a_check_says_what_it_waits_on_and_a_moved_path
     said = T.apply(store, checked, ALEX, opened)
     assert said == ["code: check changed; code waits on docs: its check runs docs/x.md, which docs writes"]
     text, opened = T.render(store)  # README.md goes from code to a new leaf, in one save
-    moved = text.replace("src/code.py, README.md", "src/code.py") + top("readme", "README.md")
-    T.apply(store, moved, ALEX, opened)
+    readme = top("readme", "README.md", "grep -q ids README.md")  # its own file: it waits on no one
+    T.apply(store, text.replace("src/code.py, README.md", "src/code.py") + readme, ALEX, opened)
     assert [plan.get(store, i).scope for i in ("code", "readme")] == [["src/code.py"], ["README.md"]]
+    assert plan.get(store, "readme").needs == []
     text, opened = T.render(store)
     with pytest.raises(Refused, match=r"^line \d+ \[docs\]: docs and readme both write README\.md\. "):
         T.apply(store, text.replace("scope: docs/**", "scope: docs/**, README.md"), ALEX, opened)
+
+
+def test_a_check_changed_in_a_save_waits_on_a_scope_changed_below_it(store):
+    """x's check runs tests/test_y.py now, and y, on a line below, takes that file in the same save."""
+    T.apply(store, top("x", "src/x.py") + top("y", "src/y.py"), ALEX, None)
+    text, opened = T.render(store)
+    text = text.replace("src/x.py\n    check: true", "src/x.py\n    check: python3 -m pytest tests/test_y.py")
+    said = T.apply(store, text.replace("scope: src/y.py", "scope: src/y.py, tests/test_y.py"), ALEX, opened)
+    assert said == [
+        "y: scope changed", "x: check changed; x waits on y: its check runs tests/test_y.py, which y writes"
+    ]

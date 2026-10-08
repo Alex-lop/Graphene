@@ -228,18 +228,24 @@ def _last_ask(store) -> str | None:
     return next((a["session"] for a in reversed(asked) if a.get("session") in proposing), None)
 
 
+def _pending(store, session: str | None) -> list[P.Node]:
+    """What the ask of this session proposed that still waits on the person."""
+    mine = {
+        r["node_id"] for r in store.node_log(None, ("proposed",)) if session and r["session_id"] == session
+    }
+    return [n for n in P.nodes(store, (P.PROPOSED,)) if n.id in mine]
+
+
 def _drop_last(store, session: str | None) -> set[str]:
     """Drop what the last ask of the whole plan proposed that still waits on the person (a split's or
     another way's proposals are not its): `ask --finer/--coarser` gives one tree to prune in its
     place, not a second beside it. It goes whole though its leaves wait on each other, unless a node
-    outside it waits on a part: a part left would share the new tree's paths. Returns the ids dropped,
-    with those under them."""
-    mine = {
-        r["node_id"] for r in store.node_log(None, ("proposed",)) if session and r["session_id"] == session
-    }
-    pending = [n for n in P.nodes(store, (P.PROPOSED,)) if n.id in mine]
+    outside it waits on a part, or on a node the person put under it. Returns the ids dropped, with
+    those under them."""
+    pending, everything = _pending(store, session), P.nodes(store)
     ids = {n.id for n in pending}
-    waited = any(ids & set(m.needs) for m in P.nodes(store) if m.id not in ids and m.state not in P.GONE)
+    going = ids | {m.id for n in pending for m in P.below(n.id, everything)}
+    waited = any(going & set(m.needs) for m in everything if m.id not in going and m.state not in P.GONE)
     for n in [n for n in pending if n.parent not in ids]:  # a sub-goal goes with what is under it
         try:
             P.drop(store, n.id, P.caller(), waiting=waited)
@@ -392,7 +398,8 @@ def ask(
     # gives up after a quarter of a second, and lets the call through
     files = P.tracked(root)
     asked = prompt = prompt_for(store, sentence, about, split, root, files, size, talk)
-    stands = _what_stands(store, last) if size and about is None and not split else None
+    reask = size and about is None and not split
+    stands = _what_stands(store, last) if reask else None
     if stands is not None:  # asked again, finer or coarser
         stand = "".join(f"\n- {line}" for line in stands)
         stand = f" These answers of the person's stand, for the whole new tree:{stand}" if stand else ""
@@ -404,7 +411,8 @@ def ask(
     for attempt in range(1, tries + 1):
         argv = command_for(template, prompt, session, attempt > 1)
         env = {**os.environ, "GRAPHENE_PLANNER": "1"}
-        env["GRAPHENE_REPLACES"] = (last or "") if stands is not None else ""  # the tree a re-ask drops
+        env["GRAPHENE_REPLACES"] = (last or "") if reask else ""  # the tree a re-ask drops
+        env["GRAPHENE_BESIDE"] = " ".join(sorted(beside))  # what a merge would replace: its paths are free
         if argv0 != "nemotron":  # only Graphene's own planner calls Token Factory
             env["GRAPHENE_KEYCHAIN"] = "off"
         env.pop("GRAPHENE_AS", None)
@@ -442,7 +450,10 @@ def ask(
             try:
                 with store.claim():
                     gone = _drop_last(store, last) if stands is not None else set()
-                    said = T.apply(store, text, who, None, files=files, beside=beside)
+                    # the last tree's leaves that stay (a node outside waits on them): the new tree
+                    # replaces them, so it may write their paths, as a merge may
+                    left = {n.id for n in _pending(store, last)} if reask else set()
+                    said = T.apply(store, text, who, None, files=files, beside={*beside, *left})
                     if gone:
                         _carry(store, gone, said, heard.append, files)
             except P.Refused as no:

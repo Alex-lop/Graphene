@@ -27,7 +27,7 @@ from pathlib import Path
 from .. import board as B
 from .. import plan as P
 from .. import plan_text as T
-from ..ask import _drop_last, _Rehearsed, proposal_in
+from ..ask import _drop_last, _pending, _Rehearsed, proposal_in
 from ..store import Store, repo_root
 from . import tokenfactory as tf
 from .executor import text_calls
@@ -213,11 +213,15 @@ def _answer(raw: str) -> tuple[str, str]:
 
 def _refused(root: Path, text: str, files: list[str]) -> str | None:
     """Graphene's refusal of the proposal, applied as `graphene ask` applies it and rolled back, or None.
-    A re-ask drops the tree it replaces first (GRAPHENE_REPLACES), as `graphene ask` does."""
+    A re-ask drops the tree it replaces first (GRAPHENE_REPLACES), and what a merge or a re-ask replaces
+    may share the new leaves' paths (GRAPHENE_BESIDE), as `graphene ask` has it."""
+    replaces = os.environ.get("GRAPHENE_REPLACES") or None
     try:
         with Store.open(repo_root(root)) as store, store.claim():
-            _drop_last(store, os.environ.get("GRAPHENE_REPLACES") or None)
-            T.apply(store, text, P.Caller("planner:nemotron", False), None, files=files)
+            _drop_last(store, replaces)
+            left = {n.id for n in _pending(store, replaces)}  # what of the last tree stays
+            beside = {*os.environ.get("GRAPHENE_BESIDE", "").split(), *left}
+            T.apply(store, text, P.Caller("planner:nemotron", False), None, files=files, beside=beside)
             raise _Rehearsed
     except _Rehearsed:
         return None

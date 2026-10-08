@@ -84,6 +84,26 @@ def test_two_scopes_overlap_on_a_tracked_file_or_on_a_glob_one_of_them_spells():
     assert plan.overlap(["src/**"], ["src/api/**"], files) == ["src/api/**", "src/api/users.py"]
     assert plan.overlap(["src/api/**"], ["src/db/**"], files) == []
     assert plan.overlap(["docs/new.md"], ["docs/**"], files) == ["docs/new.md"]  # not written yet, still seen
+    assert plan.overlap(["docs/**"], ["docs/"], files) == ["docs/", "docs/**"]  # nor is a new directory
+    assert plan.overlap(["src/**", "!src/api/**"], ["src/api/**"], files) == []  # one takes it out
+
+
+def test_twelve_new_leaves_are_judged_well_inside_what_a_hook_waits_for_the_plan():
+    """propose judges new leaves under the plan's lock, and a hook gives up on the lock after 0.25 s.
+    Each of the twelve checks runs tests/, with 10,000 of the repo's 22,000 files in it."""
+    files = [f"src/pkg{d}/m{i}.py" for d in range(60) for i in range(200)]
+    files += [f"tests/unit/test_{d}_{i}.py" for d in range(50) for i in range(200)]
+    spent = []
+    for _ in range(3):
+        leaves = [
+            plan.Node(f"l{k}", "l", scope=[f"src/pkg{k}/**", f"tests/unit/test_{k}_new.py"],
+                      check="python3 -m pytest tests -q", state=PROPOSED) for k in range(12)
+        ]  # fmt: skip
+        start = time.process_time()
+        plan.one_writer(leaves, {n.id for n in leaves}, files)
+        plan.wait_on_checks(leaves, {n.id for n in leaves}, files)
+        spent.append(time.process_time() - start)
+    assert min(spent) < 0.25
 
 
 # -- shaping the plan -------------------------------------------------------------------------------
@@ -118,7 +138,7 @@ def test_a_node_that_cannot_run_is_refused_with_the_reason(store, bad, says):
 
 
 def test_a_cycle_is_refused(store):
-    plan.propose(store, [api_node(id="a"), api_node(id="b", needs=["a"])], ALEX)
+    plan.propose(store, [api_node(id="a"), api_node(id="b", needs=["a"], scope=["README.md"])], ALEX)
     with pytest.raises(Refused, match="cycle: a -> b -> a"):
         plan.edit(store, "a", {"needs": ["b"]}, ALEX)
 
@@ -553,7 +573,8 @@ def test_a_person_starting_over_loose_changes_has_seen_them_and_the_log_keeps_th
 
 
 def test_a_released_nodes_own_work_is_not_loose_but_its_stray_file_is(store, repo, finish):
-    plan.propose(store, [api_node(id="a"), api_node(id="b"), api_node(id="c", scope=["README.md"])], ALEX)
+    a, c = api_node(id="a", scope=["docs/**"]), api_node(id="c", scope=["README.md"])
+    plan.propose(store, [a, api_node(id="b"), c], ALEX)
     plan.start(store, "a", BOT, repo)
     finish(store, repo, "a", BOT)
     plan.start(store, "b", BOT, repo)

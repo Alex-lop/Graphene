@@ -199,8 +199,8 @@ def _offer(store, root, sentence, a, target, why, leaves, files, everything, end
                 return None
             if node is None:
                 P.propose(store, [changes], person, files=files)
-            else:
-                P.edit(store, target, changes, person, files=files)
+            else:  # told, as `node set` makes it: one leaf writes a path
+                P.edit(store, target, changes, person, files=files, told=[])
             raise _Tried
     except _Tried:
         pass

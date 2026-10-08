@@ -318,6 +318,20 @@ def test_a_reask_is_tried_with_the_tree_it_replaces_dropped(repo, fake):
     assert len(f.requests) == 4  # nothing was sent back
 
 
+def test_a_merge_is_tried_beside_the_leaves_it_would_replace(repo, fake):
+    """`graphene talk merge` proposes one leaf whose scope takes in the leaves it would replace. The dry
+    run lets it share their paths, as `graphene ask` does, so it is not sent back for that."""
+    alex = plan.Caller("alex", True)
+    both = {**ANSWER, "nodes": [node("both", "say hello and bye", scope=["app.py", "bye.py"], check="true")]}
+    f = fake([{"content": "I have read enough."}, answer(both)])
+    with Store.open(repo) as store:
+        hi = {"id": "hi", "title": "hi", "scope": ["app.py"], "check": "true"}
+        plan.propose(store, [hi, {**hi, "id": "bye", "title": "bye", "scope": ["bye.py"]}], alex)
+        ask(store, repo, "one leaf for both", named("nemotron"), say=lambda s: None, beside={"hi", "bye"})
+        assert plan.get(store, "both").state == PROPOSED
+    assert len(f.requests) == 2  # one strict answer: nothing was sent back
+
+
 def test_named_planners():
     assert label(named("nemotron")) == "nemotron"
     assert "--tools Read,Grep,Glob" in named("claude")
