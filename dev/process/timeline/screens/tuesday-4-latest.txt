@@ -1,0 +1,36 @@
+ the plan of …lThingsAgenticHackathon/15308b85-9c57-486e-ac86-ff05438c32d4/scratchpad/live/tuesday-y2/tuesday-2-r1/repo
+▼ ○ Add an "xml" source so `python3 -m cli.main load…           1/1 done │ the board: 2 settled
+├ ▶ ✓ 2 settled                                                          │ settled answers are told to the executor of
+└ ▶ ○ Northwind XML source                          xml-feed    1 done   │ the leaf they are about, in its contract;
+                                                                         │ parked and dropped are told to no one
+                                                                         │
+                                                                         │ ✓ taken r-summary  risk: The sample ends
+                                                                         │   with a <summary> total row (NW-TOTAL,
+                                                                         │   1749) that is not a product; reading
+                                                                         │   every child element would emit it as a
+                                                                         │   fake product and double-count. → the
+                                                                         │   reader takes only <product> elements and
+                                                                         │   skips <summary>, so the sample yields 3
+                                                                         │   records.
+                                                                         │ ✓ taken q-zero  Northwind's "ask us" item
+                                                                         │   has price 0; csv/json would keep a 0
+                                                                         │   price (validation only rejects
+                                                                         │   negatives). → keep it, as validation
+                                                                         │   rules already allow it.
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+ waiting on you: 0 · agents 0 · <1m · $0.26 · you 1 act ~1m · nothing ready to run · 1/1 done · plan first: on (P)
+ za unfold · a note · Tab view · ? help · q quit
+ graphene run --parallel 4 --node xml-source: started (its output: .graphene/runs/run-20261008-023357-71471-0.txt)

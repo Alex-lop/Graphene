@@ -1,0 +1,36 @@
+ the plan of …lThingsAgenticHackathon/15308b85-9c57-486e-ac86-ff05438c32d4/scratchpad/live/tuesday-y2/tuesday-2-r1/repo
+  ◇ Northwind's "ask us" item has price 0…        q-zero      asks       │ Reader, field map, wiring, docs and tests
+  ◇ The sample ends with a <summary> total row…   r-summary   risk       │ for xml
+  ? Reader, field map, wiring, docs and tests…    xml-source  proposed   │ xml-source · proposed by a Claude Code
+                                                                         │ session (0f3aaa27)
+                                                                         │
+                                                                         │ why    Northwind XML source  xml-feed
+                                                                         │ goal   Add ingest/xmlfeed.py (stdlib
+                                                                         │        ElementTree, <product> only,
+                                                                         │        attributes as the raw dict),
+                                                                         │        register it in READERS, add
+                                                                         │        FIELD_MAPS["xml"] (code->sku,
+                                                                         │        desc->name, price->price, price_unit
+                                                                         │        "minor"), enable "xml" in
+                                                                         │        ENABLED_SOURCES, name xml in cli
+                                                                         │        USAGE and README sources, and add
+                                                                         │        tests/test_xmlfeed.py covering
+                                                                         │        normalisation, the skipped summary
+                                                                         │        row and an end-to-end load of
+                                                                         │        samples/prices.xml (3 JSONL lines,
+                                                                         │        1299/450/0 cents).
+                                                                         │        tests/test_contract.py is the spec
+                                                                         │        and is not edited.
+                                                                         │ scope  ingest/xmlfeed.py,
+                                                                         │        ingest/__init__.py,
+                                                                         │        normalize/fields.py,
+                                                                         │        config/defaults.py, cli/main.py,
+                                                                         │        README.md, tests/test_xmlfeed.py
+                                                                         │ check  python3 -m unittest discover -q
+                                                                         │        tests
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+ waiting on you: 1 + 2 on the board · agents 0 · you 0 acts ~0m · nothing ready to run · 0/1 done · plan first: on (P)
+ y accept and run · d drop · e edit · E edit with what is under it · Tab view · ? talk · q quit
