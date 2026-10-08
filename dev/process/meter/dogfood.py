@@ -6,8 +6,8 @@
 The person here is the agent that ran the night: every step runs with no agent's mark, as a person's
 shell does, and the `you` clock counts its acts. The planner is Claude Code, read-only, on Sonnet; the
 executors are Claude Code on Opus, their stream on, so the meter reads them. Every live call is on the
-night's ledger, purpose `dogfood`; the planner's text answer reports no cost, so the ledger holds its
---max-budget-usd. The ask is `ask.md` beside this file.
+night's ledger, purpose `dogfood`: `graphene ask` holds the planner as `graphene run` holds an executor,
+and settles it at what its stream says it cost. The ask is `ask.md` beside this file.
 """
 
 from __future__ import annotations
@@ -18,7 +18,10 @@ import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-PLANNER = "claude -p --tools Read,Grep,Glob --strict-mcp-config --model sonnet --max-budget-usd 1.5"
+PLANNER = (
+    "claude -p --tools Read,Grep,Glob --strict-mcp-config --output-format stream-json --verbose "
+    "--model sonnet --max-budget-usd 1.5"
+)
 EXECUTOR = (
     "claude -p --permission-mode acceptEdits --allowedTools 'Bash(graphene node *)' 'Bash(graphene plan *)' "
     "--output-format stream-json --verbose --model opus --max-budget-usd 6"
@@ -39,14 +42,7 @@ def main() -> int:
         sh("graphene", "init", "--planner", PLANNER, "--executor", EXECUTOR)
         return sh("graphene", "plan", "first", "on")
     if step == "ask":
-        sys.path.insert(0, str(repo / "src"))
-        from graphene_map.nemotron import night
-
-        os.environ[night.PURPOSE] = "dogfood"
-        held = night.reserve("claude:sonnet planner", 1.5, "dogfood: the planner's ask", "claude code")
-        code = sh("graphene", "ask", (HERE / "ask.md").read_text().strip())
-        night.settle(held, "claude:sonnet planner", 1.5, {})  # a text answer says no cost: its worst case
-        return code
+        return sh("graphene", "ask", (HERE / "ask.md").read_text().strip())
     if step == "board":
         return sh("graphene", "board")
     if step == "accept":

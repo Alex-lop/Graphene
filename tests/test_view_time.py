@@ -114,6 +114,23 @@ def test_time_starts_at_this_plans_ask_never_at_an_archived_ones():
     assert lanes["a"] == " " * 10 + "─" + "█" * 10 and out.lines[1].plain == " you  |" + " " * 72 + "|"
 
 
+def test_the_note_counts_this_plans_clocks_never_an_archived_ones():
+    """The fourth review of 8 October: the note's agents and you read the whole log, every archived plan
+    too, beside lanes and a you lane that are this plan's alone."""
+    old = [row("*", 0, "asked", actor="alex"), row("old", 0, "started"),
+           row("old", 0, "attempt", {"attempt": 1, "meter": "claude"}), did("old", 5, "editing"),
+           row("old", 1500, "usage", {"model": "m", "calls": 9, "dollars": 5.0, "attempt": 1}),
+           row("old", 1500, "ended", {"attempt": 1, "exit": 0, "meter": "claude"}),
+           *(row("*", 1501 + k, "x", actor="alex") for k in range(12)),
+           row("*", 1520, "archived", actor="alex")]
+    new = [row("*", 1530, "asked", actor="alex"), row("a", 1540, "started"),
+           row("a", 1540, "attempt", {"attempt": 1, "meter": "claude"}), did("a", 1545, "editing"),
+           row("a", 1580, "ended", {"attempt": 1, "exit": 0, "meter": "claude"})]  # fmt: skip
+    out, _ = drawn([leaf("a")], old + new, 1590)
+    assert out.lines[1].plain.count("|") == 1  # this plan's ask, its one act
+    assert out.note == "1 lane · <1 min · agents <1 min · you 1 act ~1 min"
+
+
 def test_a_plan_a_session_proposed_starts_at_your_acceptance_so_your_y_is_drawn():
     """No `graphene ask`: a Claude Code session proposed the leaf, and your y accepted it a moment before
     it started. Time starts at that acceptance, so the act that started the work has its tick."""
@@ -218,6 +235,16 @@ def test_plan_view_time_prints_the_lanes_the_axis_and_the_note(repo, finish, mon
     ]
 
 
+def test_an_agent_prints_the_persons_lane_and_clock_not_its_own(repo, finish, monkeypatch):
+    """The fourth review of 8 October: printed from a Claude Code session, the you lane and its clock were
+    the session's acts, and the person's went unseen."""
+    ran(repo, finish, monkeypatch)
+    args = ("plan", "--view", "time", "--width", "80", "--height", "24")
+    printed, theirs = agent(*args), person(*args)
+    assert printed.exit_code == 0, printed.output
+    assert printed.stdout == theirs.stdout and "you 2 acts ~1 min" in printed.stdout
+
+
 @pytest.mark.parametrize("size", [(80, 24), (120, 36)])
 def test_in_watch_a_leaf_that_ran_shows_what_it_did_one_that_came_back_its_usual_pane(
     repo, finish, monkeypatch, size
@@ -246,6 +273,8 @@ def test_in_watch_the_newest_of_more_rows_than_fit_is_in_sight_under_a_title_of_
             store.log_node(e["node_id"], e["timestamp"], e["kind"], e["actor"], None, None, e["detail"])
     side = look(repo, ["j"], size, view="time")["side"]
     assert any("editing f39.py" in line for line in side), side  # the view's note is a third bottom line
+    said = look(repo, ["j", "m"], size, view="time")  # m says what it did: a fourth line
+    assert any("editing f39.py" in line for line in said["side"]), (said["status"], said["side"])
 
 
 def test_in_watch_a_leaf_whose_executor_did_and_said_nothing_keeps_its_usual_pane(repo, finish):
@@ -260,11 +289,24 @@ def test_in_watch_a_leaf_whose_executor_did_and_said_nothing_keeps_its_usual_pan
     assert "attempt 1 ·" not in detail and "scope" in detail, detail  # its contract, not a bare heading
 
 
-def test_an_attempt_the_meter_cannot_read_is_a_plain_bar_not_idle():
-    rows = [row("a", 0, "started"), row("a", 0, "attempt", {"attempt": 1}),
+BILL = row("a", 20, "usage", {"model": "nemotron", "calls": 12, "dollars": 0.01})  # with no attempt number
+
+
+@pytest.mark.parametrize("bill", [[], [BILL]])
+def test_an_attempt_the_meter_cannot_read_is_a_plain_bar_not_idle(bill):
+    """With no row the meter reads, nor any bill; or, from before the meter night, a bill alone: Graphene's
+    Nemotron executor wrote one usage row as an attempt ended, and nothing of what it did (the fourth
+    review of 8 October: first-light-rung-7.jsonl drew such an attempt idle, whole)."""
+    rows = [row("a", 0, "started"), row("a", 0, "attempt", {"attempt": 1}), *bill,
             row("a", 20, "ended", {"attempt": 1, "exit": 0})]  # fmt: skip
     _, lanes = drawn([leaf("a")], rows, 74)
     assert set(lanes["a"].strip()) == {"━"}  # held, its doings unseen: never drawn as an idle executor
+
+
+def test_a_running_attempt_the_meter_reads_is_idle_until_its_first_row():
+    rows = [row("a", 0, "started"), row("a", 0, "attempt", {"attempt": 1, "meter": "claude"})]
+    _, lanes = drawn([leaf("a", P.RUNNING)], rows, 74)
+    assert lanes["a"] == "─" * 73 + "●"
 
 
 def test_in_watch_a_leaf_that_waits_for_your_sign_off_keeps_its_usual_pane(repo, finish):

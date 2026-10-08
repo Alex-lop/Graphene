@@ -88,22 +88,30 @@ def test_two_scopes_overlap_on_a_tracked_file_or_on_a_glob_one_of_them_spells():
     assert plan.overlap(["src/**", "!src/api/**"], ["src/api/**"], files) == []  # one takes it out
 
 
-def test_twelve_new_leaves_are_judged_well_inside_what_a_hook_waits_for_the_plan():
+def test_twelve_new_leaves_are_judged_well_inside_what_a_hook_waits_for_the_plan(tmp_path):
     """propose judges new leaves under the plan's lock, and a hook gives up on the lock after 0.25 s.
-    Each of the twelve checks runs tests/, with 10,000 of the repo's 22,000 files in it."""
+    Each of the twelve checks runs tests/, with 10,000 of the repo's 22,000 files in it, in a plan where
+    30 leaves each write a test there and 100 are done. The whole propose is timed: the fourth review of
+    8 October timed the judging alone, on a plan with nothing else in it, and found the lock held 0.37 s."""
     files = [f"src/pkg{d}/m{i}.py" for d in range(60) for i in range(200)]
     files += [f"tests/unit/test_{d}_{i}.py" for d in range(50) for i in range(200)]
+    done = [{"id": f"d{k}", "title": "d", "scope": [f"done/d{k}.py"], "check": "true"} for k in range(100)]
+    live = [{"id": f"t{k}", "title": "t", "scope": [f"src/t{k}/**", f"tests/unit/test_t{k}.py"],
+             "check": "true"} for k in range(30)]  # fmt: skip
+    new = [{"id": f"l{k}", "title": "l", "scope": [f"src/pkg{k}/**", f"tests/unit/test_{k}_new.py"],
+            "check": "python3 -m pytest tests -q"} for k in range(12)]  # fmt: skip
     spent = []
-    for _ in range(3):
-        leaves = [
-            plan.Node(f"l{k}", "l", scope=[f"src/pkg{k}/**", f"tests/unit/test_{k}_new.py"],
-                      check="python3 -m pytest tests -q", state=PROPOSED) for k in range(12)
-        ]  # fmt: skip
-        start = time.process_time()
-        plan.one_writer(leaves, {n.id for n in leaves}, files)
-        plan.wait_on_checks(leaves, {n.id for n in leaves}, files)
-        spent.append(time.process_time() - start)
-    assert min(spent) < (0.5 if os.environ.get("CI") else 0.25)  # a shared runner on 3.12 took 0.26 s
+    for k in range(3):
+        git(tmp_path, "init", "-q", f"r{k}")
+        with Store.open(tmp_path / f"r{k}") as store:
+            plan.propose(store, done + live, ALEX, files=files)
+            for d in done:
+                store.put_node({**store.node_row(d["id"]), "state": DONE})
+            start = time.process_time()
+            plan.propose(store, new, ALEX, files=files)
+            spent.append(time.process_time() - start)
+            assert {f"t{i}" for i in range(30)} <= set(plan.get(store, "l0").needs)  # on every test there
+    assert min(spent) < (0.5 if os.environ.get("CI") else 0.25)  # a shared runner on 3.12 is slower
 
 
 # -- shaping the plan -------------------------------------------------------------------------------
@@ -730,8 +738,8 @@ def test_a_reason_naming_many_nodes_is_checked_for_cycles_once(tmp_path, monkeyp
         plan.propose(store, [*items, {"id": "x", "title": "x", "scope": ["x.py"], "check": "true"}], alex)
         plan.start(store, "x", bot, tmp_path)
         plan.release(store, "x", bot, "waits on " + " ".join(f"m{i}" for i in range(40)))
-        calls, real = [], plan.validate
-        monkeypatch.setattr(plan, "validate", lambda *a: calls.append(1) or real(*a))
+        calls, real = [], plan.acyclic
+        monkeypatch.setattr(plan, "acyclic", lambda *a: calls.append(1) or real(*a))
         [(key, _, argv)] = plan.offers(store, plan.get(store, "x"))
         assert key == "n" and argv.count("--needs") == 40 and len(calls) == 1
 

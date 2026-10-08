@@ -4,10 +4,14 @@ only output is a proposal in the plan's text. The planner here is a script that 
 would, so every ending is on purpose."""
 
 import json
+import os
+import signal
+import subprocess
 import sys
 
 import pytest
 from test_plan_cli import AGENT_ENV, person, repo, runner  # noqa: F401  (fixtures)
+from test_run_live import CLI, ended, wait_for
 
 from graphene_map import ask as A
 from graphene_map import meter, plan
@@ -394,3 +398,46 @@ def test_a_planner_the_night_refuses_is_never_started(repo, tmp_path, monkeypatc
         with pytest.raises(Refused, match=r"may cost up to \$1\.5000.*nothing was sent"):
             A.ask(store, repo, "ids", claude_planner(tmp_path, ("", 0.0)), say=lambda _: None)
     assert not (tmp_path / "tried").exists()
+
+
+# A planner named `claude` that says it is up and waits; told to stop (TERM), it says so and ends.
+WAITS = """#!{python}
+import os, pathlib, signal, sys, time
+def stopped(*_):
+    pathlib.Path("told").write_text("TERM")
+    sys.exit(143)
+signal.signal(signal.SIGTERM, stopped)
+pathlib.Path("up").write_text(str(os.getpid()))
+time.sleep(60)
+"""
+
+
+@pytest.mark.parametrize("sig", [signal.SIGTERM, signal.SIGHUP])
+def test_an_ask_ended_by_a_closed_terminal_or_a_kill_stops_its_planner_and_settles_its_hold(
+    repo, tmp_path, monkeypatch, sig
+):
+    """The fourth review of 8 October: `graphene ask` died where it stood on a hangup or a `kill`. Its
+    planner's hold stayed in flight on the night until noon, and the planner worked on. Taken as Ctrl-C,
+    the planner is told to stop (TERM, so Graphene's own settles what it holds) and the hold settles."""
+    monkeypatch.setenv("GRAPHENE_AGENT_LIVE_USD", "10")
+    claude = tmp_path / "bin" / "claude"
+    claude.parent.mkdir()
+    claude.write_text(WAITS.format(python=sys.executable))
+    claude.chmod(0o755)
+    planner = f"{claude} -p --output-format stream-json --verbose --max-budget-usd 1.5"
+    asking = subprocess.Popen([*CLI, "ask", "ids", "--with", planner], cwd=repo, stdout=subprocess.PIPE,
+                              stderr=subprocess.STDOUT, text=True)  # fmt: skip
+    up = tmp_path / "up"
+    try:
+        assert wait_for(up.exists), asking.stdout
+        asking.send_signal(sig)
+        asking.communicate(timeout=30)
+        assert asking.returncode == 130
+        assert wait_for(lambda: ended(int(up.read_text())), 5)
+    finally:
+        asking.kill()
+        if up.exists() and not ended(int(up.read_text())):
+            os.kill(int(up.read_text()), signal.SIGKILL)
+    rows = [json.loads(line) for line in (tmp_path / "night.jsonl").read_text().splitlines()]
+    assert [(r["kind"], r["dollars"]) for r in rows] == [("reserve", 1.5), ("settle", 1.5)]  # its worst case
+    assert (tmp_path / "told").read_text() == "TERM"  # told, not killed: it had its time to settle

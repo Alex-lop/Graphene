@@ -417,7 +417,7 @@ def one_line_ask(
     me, said = _me(sid), store.meta(f"prompt:{sid}") or ""
     try:
         with P.undoable(store, me, f"a one-line ask in the session: {said[:40]}"):
-            P.accept(store, [node.id], me, by="prompt", prompt=said[:80])
+            P.accept(store, [node.id], me, told=[], by="prompt", prompt=said[:80])  # as the person's accept
     except P.Refused:
         return None  # its parent is held, say: it waits for the person like any proposal
     return (

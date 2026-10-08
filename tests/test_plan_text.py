@@ -516,6 +516,80 @@ def test_a_plan_edit_that_changes_a_check_says_what_it_waits_on_and_a_moved_path
         T.apply(store, text.replace("scope: docs/**", "scope: docs/**, README.md"), ALEX, opened)
 
 
+def test_one_save_is_judged_against_the_scopes_the_whole_save_gives(store):
+    """The fourth review of 8 October: a new line's check was judged before the save's edits were in, so
+    one save and the same edits made as two gave different needs. f waited on a, which tests/test_shared.py
+    had just left, and not on t, which had just taken tests/test_f.py."""
+    T.apply(store, top("t", "tests/test_app.py") + top("a", "src/a.py, tests/test_shared.py"), ALEX, None)
+    text, opened = T.render(store)
+    text = text.replace("tests/test_app.py", "tests/test_app.py, tests/test_f.py").replace(
+        "src/a.py, tests/test_shared.py", "src/a.py")  # fmt: skip
+    text += top("b", "src/b.py, tests/test_shared.py")
+    text += top("f", "src/f.py", "python3 -m pytest tests/test_f.py tests/test_shared.py")
+    said = T.apply(store, text, ALEX, opened)
+    assert plan.get(store, "f").needs == ["t", "b"]
+    why = ("f waits on t, b: its check runs tests/test_f.py, which t writes, and tests/test_shared.py, "
+           "which b writes")  # fmt: skip
+    assert said == ["added b: b", "added f: f", "t: scope changed", "a: scope changed", why]
+    text, opened = T.render(store)  # a check that runs a file only a leaf after it writes: never passes
+    scope = "tests/test_app.py, tests/test_f.py"
+    text = text.replace(scope, f"{scope}, tests/test_g.py").replace("[t]\n", "[t]\n    needs: g\n")
+    text += top("g", "src/g.py", "python3 -m pytest tests/test_g.py")
+    with pytest.raises(Refused, match=r"^line \d+ \[g\]: g: its check runs tests/test_g\.py, which t writes"):
+        T.apply(store, text, ALEX, opened)
+
+
+def test_a_check_changed_in_a_save_is_judged_after_the_boards_answers_in_it(store):
+    T.apply(store, top("a", "src/a.py") + top("b", "src/b.py"), ALEX, None)
+    asked = "question: which?  [q]\n    default: d\n    option: o\n    then: scope b + tests/test_a.py\n"
+    T.apply(store, asked, BOT, None)
+    text, opened = T.render(store)
+    text = text.replace("src/a.py\n    check: true", "src/a.py\n    check: python3 -m pytest tests/test_a.py")
+    T.apply(store, text.replace("then: scope b + tests/test_a.py\n", "then: scope b + tests/test_a.py\n"
+                                "    answer: option 1\n"), ALEX, opened)  # fmt: skip
+    assert plan.get(store, "b").scope == ["src/b.py", "tests/test_a.py"]
+    assert plan.get(store, "a").needs == ["b"]  # as when the answer came first, in a save of its own
+
+
+def test_a_leaf_in_the_plan_waits_on_one_that_joins_it_and_writes_what_its_check_runs(store):
+    """The fourth review of 8 October: only a new leaf's check was judged. f, in the plan already, runs
+    tests/test_f.py, which t, added after it, writes: f ran before the test was there, and came back."""
+    f = {"id": "f", "title": "f", "scope": ["src/f.py"], "check": "python3 -m pytest tests/test_f.py"}
+    t = {"id": "t", "title": "t", "scope": ["tests/test_f.py"], "check": "true"}
+    plan.propose(store, [f], ALEX)
+    told = []
+    plan.propose(store, [t], ALEX, told=told)
+    assert plan.get(store, "f").needs == ["t"]
+    assert told == ["f waits on t: its check runs tests/test_f.py, which t writes"]
+    # an agent's proposal binds nobody: what is in the plan waits on it once the person accepts it
+    plan.propose(store, [{**f, "id": "g", "scope": ["src/g.py"], "check": "pytest tests/test_g.py"}], ALEX)
+    plan.propose(store, [{**t, "id": "u", "scope": ["tests/test_g.py"]}], BOT)
+    assert plan.get(store, "g").needs == []
+    told = []
+    plan.accept(store, ["u"], ALEX, told=told)
+    assert plan.get(store, "g").needs == ["u"] and plan.get(store, "g").rev == 2
+    assert told == ["g waits on u: its check runs tests/test_g.py, which u writes"]
+    # a tests leaf that waits on the code, whose check runs the tests leaf's new file: it could never pass
+    plan.propose(store, [{**f, "id": "h", "scope": ["src/h.py"], "check": "pytest tests/test_h.py"}], ALEX)
+    plan.propose(store, [{**t, "id": "v", "scope": ["tests/test_h.py"], "needs": ["h"]}], BOT)
+    with pytest.raises(Refused, match=r"^h: its check runs tests/test_h\.py, which v writes after it\. "):
+        plan.accept(store, ["v"], ALEX, told=[])
+    assert plan.get(store, "v").state == PROPOSED
+
+
+def test_a_scope_that_takes_in_what_another_leafs_check_runs_makes_that_leaf_wait(store):
+    T.apply(store, top("x", "src/x.py", "python3 -m pytest tests/test_y.py") + top("y", "src/y.py"), ALEX)
+    text, opened = T.render(store)
+    said = T.apply(store, text.replace("scope: src/y.py", "scope: src/y.py, tests/test_y.py"), ALEX, opened)
+    assert plan.get(store, "x").needs == ["y"]
+    assert said == ["y: scope changed", "x waits on y: its check runs tests/test_y.py, which y writes"]
+    T.apply(store, top("p", "src/p.py", "python3 -m pytest tests/test_q.py") + top("q", "src/q.py"), ALEX)
+    told = []  # node set, the same
+    plan.edit(store, "q", {"scope": ["src/q.py", "tests/test_q.py"]}, ALEX, told=told)
+    assert plan.get(store, "p").needs == ["q"]
+    assert told == ["p waits on q: its check runs tests/test_q.py, which q writes"]
+
+
 def test_a_check_changed_in_a_save_waits_on_a_scope_changed_below_it(store):
     """x's check runs tests/test_y.py now, and y, on a line below, takes that file in the same save."""
     T.apply(store, top("x", "src/x.py") + top("y", "src/y.py"), ALEX, None)
@@ -523,5 +597,5 @@ def test_a_check_changed_in_a_save_waits_on_a_scope_changed_below_it(store):
     text = text.replace("src/x.py\n    check: true", "src/x.py\n    check: python3 -m pytest tests/test_y.py")
     said = T.apply(store, text.replace("scope: src/y.py", "scope: src/y.py, tests/test_y.py"), ALEX, opened)
     assert said == [
-        "y: scope changed", "x: check changed; x waits on y: its check runs tests/test_y.py, which y writes"
+        "x: check changed; x waits on y: its check runs tests/test_y.py, which y writes", "y: scope changed"
     ]

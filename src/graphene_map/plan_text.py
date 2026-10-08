@@ -609,6 +609,7 @@ def apply(
     _guard_shape(lines, fresh, everything, opened, parent_of, who)
     said = Said()
     said.renamed = {old: line.id for old, line in renamed.items()}
+    new: list[str] = []
     with store.claim():
         said += _goal(store, goal, who, now, opened)
         if fresh:
@@ -625,6 +626,7 @@ def apply(
             for n in added:
                 said.append(f"{'proposed' if n.state == P.PROPOSED else 'added'} {n.id}: {n.title}")
                 said.ids.append(n.id)
+                new.append(n.id)
             said += told
         if opened is not None:
             edited = _edits(store, kept, parent_of, opened, who, now, files)
@@ -638,8 +640,13 @@ def apply(
         if board or (opened or {}).get("*board"):
             said += B.apply(store, board, who, None if opened is None else opened["*board"], files, now)
         try:
-            if opened is not None:  # judged once every edit is in, so a path moved is not two writers
+            if opened is not None:  # judged once every edit is in: a path moved is not two writers, and a
+                # check runs what the scopes the whole save gives write, a board's answers among them
                 P.one_writer(P.nodes(store), set(said.ids), files or [], everything)
+                checks = {ln.id for ln in kept if _fields(ln)["check"] != opened[ln.id]["check"]}
+                writers = {ln.id for ln in kept if _fields(ln)["scope"] != opened[ln.id]["scope"]
+                           or opened[ln.id]["proposal"] and not ln.proposal}  # a new scope, or accepted
+                _told(said, P.judge(store, {*new, *checks}, {*new, *writers}, files or [], who, now))
             P.validate(P.nodes(store), set(said.ids))  # the tree as it is now, after every move
         except P.Refused as no:
             raise _on_line(no, lines) from None
@@ -862,10 +869,10 @@ def _stored(node: P.Node) -> dict:
 
 def _edits(store, kept, parent_of, opened, who, now, files) -> list[str]:
     """Only what the person changed in the text (against the text as it was opened) is changed; a
-    node someone else changed since then is refused, never written over. A changed check goes last, so
-    it is judged against the scopes the whole save gives (``P.wait_on_checks``)."""
+    node someone else changed since then is refused, never written over. What a changed check waits
+    on is judged by ``apply``, once the whole save is in."""
     said = []
-    for ln in sorted(kept, key=lambda ln: _fields(ln)["check"] != opened[ln.id]["check"]):
+    for ln in kept:
         base = opened[ln.id]
         mine = {**_fields(ln), "parent": parent_of[ln.id]}
         changes = {k: v for k, v in mine.items() if v != base[k]}
@@ -878,17 +885,27 @@ def _edits(store, kept, parent_of, opened, who, now, files) -> list[str]:
             )
         if "parent" in changes:
             changes["parent"] = changes["parent"] or "none"
-        told: list[str] = []
         try:
-            P.edit(store, ln.id, changes, who, now, files, check=False, told=told)
+            P.edit(store, ln.id, changes, who, now, files, check=False)
         except P.Refused as no:
             raise _at(ln, no) from None
         moved = f"moved under {parent_of[ln.id] or 'the goal'}" if "parent" in changes else ""
         rest = [k for k in changes if k != "parent"]
-        changed = ", ".join(rest) + (" changed" if rest else "")
-        # one line a node, with what it now waits on: `apply` reads the id back from before the colon
-        said.append(f"{ln.id}: " + "; ".join(filter(None, [moved, changed, *told])))
+        said.append(  # one line a node: `apply` reads the id back from before the colon
+            f"{ln.id}: " + "; ".join(filter(None, [moved, ", ".join(rest) + (" changed" if rest else "")]))
+        )
     return said
+
+
+def _told(said: Said, waits: list[str]) -> None:
+    """What a leaf now waits on (``P.judge``), on the leaf's own line of the save when it has one."""
+    for line in waits:
+        leaf = line.split(" waits on ", 1)[0]
+        at = next((k for k, done in enumerate(said) if done.startswith(f"{leaf}: ")), None)
+        if at is None:
+            said.append(line)
+        else:
+            said[at] += f"; {line}"
 
 
 def _accepts(store, kept, opened, who, now) -> list[str]:

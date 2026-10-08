@@ -24,7 +24,7 @@ from . import extra
 from . import meter as M
 from . import plan as P
 from . import plan_text as T
-from .run import _settle, _splits, command_for, held, unchosen
+from .run import _end, _no_interrupt, _settle, _splits, command_for, held, unchosen
 from .run import label as run_label
 
 # Read-only: Claude Code's built-in tools cut to the three that read (`--tools`), and none of the MCP
@@ -236,19 +236,19 @@ def _pending(store, session: str | None) -> list[P.Node]:
     return [n for n in P.nodes(store, (P.PROPOSED,)) if n.id in mine]
 
 
-def _drop_last(store, session: str | None) -> set[str]:
+def _drop_last(store, session: str | None, who: P.Caller | None = None) -> set[str]:
     """Drop what the last ask of the whole plan proposed that still waits on the person (a split's or
     another way's proposals are not its): `ask --finer/--coarser` gives one tree to prune in its
     place, not a second beside it. It goes whole though its leaves wait on each other, unless a node
-    outside it waits on a part, or on a node the person put under it. Returns the ids dropped, with
-    those under them."""
+    outside it waits on a part, or on a node the person put under it. ``who`` drops it, the caller by
+    default: `graphene ask` is the person's. Returns the ids dropped, with those under them."""
     pending, everything = _pending(store, session), P.nodes(store)
     ids = {n.id for n in pending}
     going = ids | {m.id for n in pending for m in P.below(n.id, everything)}
     waited = any(going & set(m.needs) for m in everything if m.id not in going and m.state not in P.GONE)
     for n in [n for n in pending if n.parent not in ids]:  # a sub-goal goes with what is under it
         try:
-            P.drop(store, n.id, P.caller(), waiting=waited)
+            P.drop(store, n.id, who or P.caller(), waiting=waited)
         except P.Refused:
             pass  # something accepted waits on it: it stays, and the person sees both
     return {i for i in ids if (store.node_row(i) or {}).get("state") in P.GONE}
@@ -367,6 +367,7 @@ def _what_stands(store, session: str | None) -> list[str] | None:
         return kept[0]
 
 
+@P.ctrl_c_on_hangup()  # a closed terminal or a `kill` is Ctrl-C: the planner's hold settles, and it stops
 def ask(
     store,
     root: Path,
@@ -421,9 +422,17 @@ def ask(
         meter = M.Meter("claude", attempt, M.model_in(argv), paid) if M.kind(argv) == "claude" else None
         say(f"asking the planner ({argv0}){' again' if attempt > 1 else ''}…")
         try:
-            done = subprocess.run(
-                argv, cwd=root, env=env, stdin=subprocess.DEVNULL, capture_output=True, text=True
-            )
+            # in a session of its own, as an executor is: a stop reaches Graphene alone, which tells the
+            # planner to end (TERM) and gives it its time, so Graphene's own settles what it holds
+            proc = subprocess.Popen(argv, cwd=root, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                    stderr=subprocess.PIPE, text=True, start_new_session=True)  # fmt: skip
+            try:
+                stdout, stderr = proc.communicate()
+            except BaseException:
+                with _no_interrupt():
+                    _end(proc)
+                raise
+            done = subprocess.CompletedProcess(argv, proc.returncode, stdout, stderr)
             for line in done.stdout.splitlines() if meter else []:
                 meter.feed(line)
         except OSError as no:

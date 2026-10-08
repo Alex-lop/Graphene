@@ -963,6 +963,23 @@ def test_a_sibling_once_taken_is_offered_no_more(repo):
         assert plan.offers(store, plan.get(store, "a")) == []
 
 
+def test_the_sibling_offered_for_a_directory_is_taken_as_the_widen_is(repo):
+    """The fourth review of 8 October: `b` was offered for tests/, where another leaf writes one file,
+    and refused when taken, while `w` for the same paths was taken. An offer is not judged (decision 171):
+    the person took it, as they answer the board."""
+    (repo / "tests").mkdir()
+    (repo / "tests" / "test_b.py").write_text("")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", "a test")
+    with Store.open(repo) as store:
+        plan.propose(store, [leaf("a", "a.txt"), leaf("b", "tests/test_b.py")], ALEX)
+        plan.start(store, "a", BOT, repo)
+        plan.release(store, "a", BOT, "it needs a test", wants=["tests"])
+        assert [k for k, _, _ in plan.offers(store, plan.get(store, "a"))][:2] == ["w", "b"]
+        made = plan.sibling(store, "a", [], ALEX, files=plan.tracked(repo))
+        assert made.scope == ["tests"] and plan.get(store, "a").needs == [made.id]
+
+
 def test_undoing_a_sibling_or_a_widen_puts_back_the_leaf_that_came_back_with_its_offers(repo):
     """Walk 2026-09-28 (judge 8): after `b` then `u` the leaf read `ready`, not came back, and w and b
     were no longer offered. The undo put back its row, but its log still ended with the edit."""

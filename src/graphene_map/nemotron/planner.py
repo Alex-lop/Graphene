@@ -218,7 +218,7 @@ def _refused(root: Path, text: str, files: list[str]) -> str | None:
     replaces = os.environ.get("GRAPHENE_REPLACES") or None
     try:
         with Store.open(repo_root(root)) as store, store.claim():
-            _drop_last(store, replaces)
+            _drop_last(store, replaces, P.Caller(P.person_name(), True))  # as `graphene ask`: the person
             left = {n.id for n in _pending(store, replaces)}  # what of the last tree stays
             beside = {*os.environ.get("GRAPHENE_BESIDE", "").split(), *left}
             T.apply(store, text, P.Caller("planner:nemotron", False), None, files=files, beside=beside)

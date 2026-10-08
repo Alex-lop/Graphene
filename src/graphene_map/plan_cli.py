@@ -581,7 +581,8 @@ def register(cli: typer.Typer, root, open_store, fail):
             view = V.VIEWS[chosen]
             noted = {"meter": V.billed(store.node_log())} if getattr(view, "METER", False) else {}
             if getattr(view, "EVENTS", False):
-                noted["events"] = V.happened(store.node_log(), P.caller().name)
+                who = P.caller()  # the person's lane, whoever prints it: an agent's acts are not theirs
+                noted["events"] = V.happened(store.node_log(), who.name if who.person else P.person_name())
             drawn = view.draw(nodes, words, goal, wide, high, None, **noted) if view else None
             if drawn is None or not nodes:
                 if chosen != "outline" and nodes:
@@ -807,8 +808,8 @@ def register(cli: typer.Typer, root, open_store, fail):
 
         def go(store):
             by_id = {n.id: n for n in P.nodes(store)}
-            goal_was = P.goal(store)
-            accepted = P.accept(store, ids or [], P.caller())
+            goal_was, told = P.goal(store), []
+            accepted = P.accept(store, ids or [], P.caller(), files=files, told=told)
             took = None
             if not P.nodes(store, (P.PROPOSED,)):  # the whole plan is accepted: what the person left
                 took = B.took(B.defaults(store, P.caller(), files), B.left(store))  # open takes its default
@@ -816,6 +817,8 @@ def register(cli: typer.Typer, root, open_store, fail):
                 out(f"accepted {', '.join(n.id for n in accepted)}" + (f"; {took}" if took else ""))
             for n in accepted:
                 out(one_row(store, n, len(P.above(n, by_id))))
+            for line in told:  # what in the plan now waits on what was accepted
+                out(line)
             if P.goal(store) != goal_was:
                 out(f"the plan: {P.goal(store)}  (the planner's sentence, accepted with its tree)")
             now = P.nodes(store)

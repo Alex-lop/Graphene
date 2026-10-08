@@ -7,11 +7,12 @@ now while a leaf runs, else to the last row. One cell is one slice: the span ove
 cells, a span under a minute drawn as a minute. A leaf's lane is a bar for each attempt. Each cell is
 what most of the slice's rows say the executor did: editing █, running a command ▓, reading or
 searching ▒, talking ░. A slice with no row carries the last one on until it is a minute old. Then,
-and before the first row, the executor is idle (─). A hold with no attempt, or an attempt with no
-meter, is a plain bar (━): the meter never sees a Claude Code session, nor an executor that writes no
-stream it reads. Marks sit at their moment: a
-write refused !, a check passed ✓ or failed ✗, came back ↩, landed ◆, running now ●. A mark that falls
-on another moves right. The glyph says it alone, so the plain print reads too. A pure function of the
+and before the first row, the executor is idle (─). A hold with no attempt, an attempt with no meter,
+or one that ended with no row the meter read, is a plain bar (━): the meter never sees a Claude Code
+session, nor an executor that writes no stream it reads, nor what one did before the meter (its bill
+alone). Marks sit at their moment: a write refused !, a check passed ✓ or failed ✗, came back ↩,
+landed ◆, running now ●. A mark that falls on another moves right. The glyph says it alone, so the
+plain print reads too. The note's clocks are this plan's, as the lanes are. A pure function of the
 nodes and the log's rows the screen already read (`views.happened`).
 """
 
@@ -132,7 +133,7 @@ def draw(
         for a, mine in _tries(rows, now):
             ats, t0 = [sec(e["timestamp"]) for e in mine], sec(a["started"])
             t1 = max([t0 + a["seconds"], *ats])  # `seconds` is whole: a row in its last half second counts
-            if not a["meter"] and not mine:  # no stream the meter reads: held, its doings unseen
+            if not mine and not (a["meter"] and a["running"]):  # nothing the meter read: held, unseen
                 out[x(t0) : x(t1) + 1] = [(HELD, colour)] * (x(t1) - x(t0) + 1)
                 live = x(t1) if a["running"] else live
                 continue
@@ -183,7 +184,8 @@ def draw(
     for line in lines:
         line.rstrip()
     back = sum(_came_back(e) for n in lanes for e in by.get(n.id, []))
-    said = note(len(lanes), stop, back, M.agents(flat, now), M.you(flat, events["person"]), width)
+    since = [e for e in flat if sec(e["timestamp"]) >= 0]  # this plan's clocks, as its lanes are
+    said = note(len(lanes), stop, back, M.agents(since, now), M.you(since, events["person"]), width)
     return Drawn(lines=lines, at=at, order=[n.id for n in lanes], note=said)
 
 

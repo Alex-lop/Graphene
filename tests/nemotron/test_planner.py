@@ -318,6 +318,24 @@ def test_a_reask_is_tried_with_the_tree_it_replaces_dropped(repo, fake):
     assert len(f.requests) == 4  # nothing was sent back
 
 
+def test_a_reask_is_tried_with_the_last_tree_dropped_as_the_person_drops_it(repo, fake, monkeypatch):
+    """`graphene ask` is the person's, and drops the last tree with a node of theirs under it. The dry
+    run dropped it as the planner, which may not drop the person's node: it kept the tree, and sent
+    the model back for an id it used again."""
+    for name in ("CLAUDECODE", "CLAUDE_CODE_SESSION_ID", "AI_AGENT", "CODEX_SESSION_ID", "CODEX_SANDBOX"):
+        monkeypatch.delenv(name, raising=False)  # the person, as `graphene ask` runs only for them
+    finer = {**ANSWER, "nodes": [node("greeting", "the greeting"), {**HELLO, "check": "true"}]}
+    f = fake([{"content": PROPOSAL}, answer(ANSWER), {"content": PROPOSAL}, answer(finer), answer(finer)])
+    with Store.open(repo) as store:
+        ask(store, repo, "make it say hello", named("nemotron"), say=lambda s: None)
+        mine = {"id": "mine", "title": "mine", "parent": "greeting", "scope": ["mine.py"], "check": "true"}
+        plan.propose(store, [mine], plan.caller())
+        ask(store, repo, "make it say hello", named("nemotron"), say=lambda s: None, size="finer")
+        assert {n.id: n.state for n in plan.nodes(store) if n.state == "dropped"}.keys() == {
+            "greeting", "hello", "mine"}  # fmt: skip
+    assert len(f.requests) == 4  # nothing was sent back
+
+
 def test_a_merge_is_tried_beside_the_leaves_it_would_replace(repo, fake):
     """`graphene talk merge` proposes one leaf whose scope takes in the leaves it would replace. The dry
     run lets it share their paths, as `graphene ask` does, so it is not sent back for that."""

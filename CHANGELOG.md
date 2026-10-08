@@ -5,8 +5,9 @@
 The timeline (8 October). A fourth view, and fixes for what the meter night's runs stopped on.
 - A fourth view, `time`: a lane for each leaf that was held, what its executor did when, and marks for a refused
   write, the check, a hand-back and a landing. Tab in `graphene watch`, or run `graphene plan --view time`.
-- A check that runs a file another leaf writes waits on that leaf, and the proposal says so in one line. Two leaves
-  that write one path are refused, by their lines. Run `graphene plan propose`, `plan edit` or `node set --check`.
+- A check that runs a file another leaf writes waits on that leaf, whichever came first, and the plan says so in one
+  line. Two leaves that write one path are refused, by their lines. Run `graphene plan propose`, `plan accept`,
+  `plan edit` or `node set`.
 - A check that runs a file only a later leaf makes is refused: it could never pass. Run `graphene plan propose`.
 - The Nemotron planner answers in a strict JSON schema (prompt version 5). A refused answer goes back once, with
   Graphene's words; the second answer is the answer. Run `graphene ask --with nemotron '…'`.

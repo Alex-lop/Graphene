@@ -1305,9 +1305,10 @@ class Watch(App):
 
     def pane_room(self) -> tuple[int, int]:
         """The node pane's width and height, from the layout this screen sets (known before Textual
-        has laid it out): its text is wrapped to it, and a leaf that came back fitted to it. Under a view
-        its note is a third line at the bottom."""
-        width, height = self.size.width, self.size.height - self.metered - (self.drawn is not None)
+        has laid it out): its text is wrapped to it, and a leaf that came back fitted to it. The bottom
+        lines under the two (a view's note, what a command said) are taken off it (``said_lines``)."""
+        under = sum(len(line.plain.splitlines()) for line in self.said_lines(max(self.size.width - 2, 20)))
+        width, height = self.size.width, self.size.height - self.metered - under
         kind, amount = (self.sized or ("narrow", 10))[:2]
         if kind == "wide":
             return max(width - amount - 4, 20), max(height - 3, 5)
@@ -1465,8 +1466,15 @@ class Watch(App):
         forms = (*keyed[:1], named, *keyed[1:], long, [*long[:1], *short[1:3], *long[3:]])  # clocks short
         fits = [form for form in forms if len(" · ".join(text for text, _ in form)) <= room]
         top = fit([*self.news(), *short] if self.news() else fits[0] if fits else short, room)
-        lines = [top, fit([(k, "") for k in self.keys()], room)]
-        said = self.busy or self.message
+        lines = [top, fit([(k, "") for k in self.keys()], room), *self.said_lines(room)]
+        status = self.query_one("#status", Static)
+        status.styles.height = sum(len(line.plain.splitlines()) for line in lines)
+        status.update(Text("\n").join(lines))
+
+    def said_lines(self, room: int) -> list[Text]:
+        """The bottom lines under the plan's and the keys': in a view what it shows at a glance, then what
+        the last command said. The node pane is fitted above them (``pane_room``)."""
+        lines, said = [], self.busy or self.message
         note = self.drawn.note if self.drawn is not None else ""
         if note and note not in said:  # a view's glance stays in sight whatever a command said after it
             lines.append(Text(T.elide(note, room)))
@@ -1480,9 +1488,7 @@ class Watch(App):
             if bottom.plain.startswith("✗"):  # red is for a command that failed, and only its mark
                 bottom.stylize("red", 0, 1)
             lines.append(bottom)
-        status = self.query_one("#status", Static)
-        status.styles.height = sum(len(line.plain.splitlines()) for line in lines)
-        status.update(Text("\n").join(lines))
+        return lines
 
     def keys(self) -> list[str]:
         """What the keys do on the row under the cursor, for the bottom line. In a view the outline's

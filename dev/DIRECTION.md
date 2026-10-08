@@ -1703,8 +1703,9 @@ any of them.
      other waits on it, the check sees the path as it is at the base: one tests leaf waiting on the code works.
 170. **A check that runs a new file only a later leaf writes is refused.** It could never pass. Found on the night's
      first live Ultra ask; it is last night's take 9. Two leaves that write one path are refused too.
-171. **The rule is checked at propose, plan edit and node set.** A board answer, `widen` and the sibling offer are
-     not judged: an answer the person gave is not refused by this.
+171. **The rule is checked at propose, accept, plan edit and node set.** A leaf joining, or a new scope, makes a leaf
+     already there wait too; a proposal binds nobody until accepted. A board answer, `widen` and the sibling offer
+     are not judged: an answer the person gave is not refused by this.
 172. **The rule is said where every planner reads it:** `ask.RULES`, the Nemotron prompt, and `gate.TEACH`, which the
      Claude Code sessions that plan read. In tonight's statements runs the planners kept it; the check added nothing.
 173. **Ultra answers in a strict JSON schema, on the answer only.** With tools in the same request it calls no tool.
