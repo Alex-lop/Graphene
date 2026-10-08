@@ -2,7 +2,10 @@
 
 Run on 8 October between 02:15 and 05:00, each run on a wheel of the branch installed as a tool. A build is named
 by the commit it was built from; at 02:49 that history was folded into fewer commits with the same tree, and the
-commits before the fold are on the branch `timeline-before-shape`, where every build named here resolves. Counted the way `before.md` counts. Every run's ledger rows are on
+commits before the fold are on the branch `timeline-before-shape`, where every build named here resolves. The
+whole-branch review's fixes came after every run here (`0c66e10`, 05:35): a leaf already in the plan now waits on one
+that joins, a `plan edit` is judged once, and the check holds the lock a third as long. A proposal is judged and
+refused as it was on the measured builds. Counted the way `before.md` counts. Every run's ledger rows are on
 the night's ledger under the purpose named below. The raw material (each run's repo, store, log and screens)
 stayed in the run's scratch directory; what a run printed is quoted here.
 
