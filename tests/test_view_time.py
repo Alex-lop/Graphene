@@ -117,7 +117,7 @@ def test_time_starts_at_this_plans_ask_never_at_an_archived_ones():
 def test_a_plan_a_session_proposed_starts_at_your_acceptance_so_your_y_is_drawn():
     """No `graphene ask`: a Claude Code session proposed the leaf, and your y accepted it a moment before
     it started. Time starts at that acceptance, so the act that started the work has its tick."""
-    rows = [row("*", 0, "accepted", actor="alex"), row("a", 1, "started"),
+    rows = [row("a", 0, "accepted", actor="alex"), row("a", 1, "started"),  # accepted: on the node
             row("a", 1, "attempt", {"attempt": 1}), did("a", 2, "editing")]  # fmt: skip
     out, _ = drawn([leaf("a")], rows, 74)
     assert out.lines[1].plain.startswith(" you  |")

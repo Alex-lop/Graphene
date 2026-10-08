@@ -110,7 +110,8 @@ def draw(
     flat = [e for rows in by.values() for e in rows]
     star = by.get("*", [])  # what an archived plan asked is not this one's
     asked = star[max((k + 1 for k, e in enumerate(star) if e["kind"] == "archived"), default=0) :]
-    begun = [e["timestamp"] for e in asked if e["kind"] in ("asked", "accepted")]  # a session's plan: your y
+    begun = [e["timestamp"] for e in asked if e["kind"] == "asked"]
+    begun += [e["timestamp"] for n in nodes for e in by.get(n.id, []) if e["kind"] == "accepted"]  # your y
     begun += [e["timestamp"] for n in lanes for e in by.get(n.id, []) if e["kind"] == "started"]
     running = now is not None and any(n.state == P.RUNNING for n in lanes)
     end = now if running else datetime.fromisoformat(max(e["timestamp"] for e in flat)) if flat else EPOCH
