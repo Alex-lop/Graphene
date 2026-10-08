@@ -188,7 +188,8 @@ def test_an_agent_cannot_take_a_persons_node_and_the_person_can(store, repo):
 
 
 def test_two_running_nodes_never_claim_the_same_path_in_one_checkout(store, repo):
-    plan.propose(store, [api_node(id="a"), api_node(id="b", scope=["src/**"])], ALEX)
+    plan.propose(store, [api_node(id="a"), api_node(id="b", scope=["docs/**"])], ALEX)
+    store.put_node({**store.node_row("b"), "scope": ["src/**"]})  # an older plan's two writers of one path
     plan.start(store, "a", BOT, repo)
     with pytest.raises(Refused, match="both claim .*one writer at a time"):
         plan.start(store, "b", BOT2, repo)

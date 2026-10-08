@@ -391,7 +391,8 @@ n = len(open(os.environ["SEEN"]).read().splitlines())
 if role == "planner":  # a leaf of its own, under the leaf it was asked to split
     pad = "  " if "Split ids" in sys.argv[-1] else ""
     head = "- users returns ids  [ids]\\n" if pad else ""
-    leaf = f"{pad}? by {sys.argv[1]}  [{sys.argv[1]}-{n}]\\n{pad}    scope: api.py\\n{pad}    check: true"
+    ident = f"{sys.argv[1]}-{n}"  # a file of its own: a path has one leaf that writes it
+    leaf = f"{pad}? by {sys.argv[1]}  [{ident}]\\n{pad}    scope: {ident}.py\\n{pad}    check: true"
     print(f"```plan\\n{head}{leaf}\\n```")
 """
 
@@ -434,7 +435,7 @@ def test_with_nothing_chosen_ask_run_split_and_talk_refuse_and_start_nothing_unt
     `--with claude` is a choice, and starts it."""
     bin, seen = tmp_path_factory.mktemp("bin"), tmp_path_factory.mktemp("seen") / "claude.txt"
     (bin / "git").symlink_to(shutil.which("git"))
-    plan = "```plan\\n? users carry ids  [ids-users]\\n    scope: api.py\\n    check: false\\n```"
+    plan = "```plan\\n? users carry ids  [ids-users]\\n    scope: schema.py\\n    check: false\\n```"
     result = f'{{"type": "result", "result": "{plan}", "total_cost_usd": 0}}'  # the stream's last line
     (bin / "claude").write_text(f"#!/bin/sh\necho \"claude $1\" >> {seen}\nprintf '%s\\n' '{result}'\n")
     (bin / "claude").chmod(0o755)

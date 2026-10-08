@@ -108,7 +108,7 @@ def test_a_blank_check_is_not_written_as_none_and_a_round_trip_keeps_it(store):
 # finding 6 (fixed)
 def test_a_save_that_moves_no_sibling_does_not_reorder(store):
     leaf = {"scope": ["README.md"], "check": "true"}
-    plan.propose(store, [{"id": "p", "title": "parent"}, {"id": "b", "title": "leaf b", **leaf}], ALEX)
+    plan.propose(store, [{"id": "p", "title": "parent"}, {"id": "b", "title": "leaf b", **leaf, "scope": ["b.md"]}], ALEX)
     plan.propose(store, [{"id": "c", "title": "leaf c", "parent": "p", **leaf}], ALEX)  # c after b
     seqs = store.node_seqs()
     text, opened = T.render(store)  # p, c under it, then b: depth-first is not the order they were added
@@ -397,7 +397,7 @@ def test_an_agent_cannot_reserve_its_leaf_for_a_person_by_writing_its_own_name_a
 
 # finding 27 (fixed)
 def test_a_markdown_checkbox_before_a_title_is_not_part_of_it(store):
-    T.apply(store, "- [ ] render one invoice  [render]\n    scope: README.md\n    check: true\n"
+    T.apply(store, "- [ ] render one invoice  [render]\n    scope: render.py\n    check: true\n"
                    "* [x] write the README\n    scope: README.md\n    check: true\n", BOT, None)  # fmt: skip
     assert [(n.id, n.title) for n in plan.nodes(store)] == [
         ("render", "render one invoice"),

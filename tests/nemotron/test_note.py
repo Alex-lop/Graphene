@@ -5,6 +5,7 @@ Nothing changes until the person runs it."""
 
 import json
 import shlex
+import subprocess
 
 from test_plan_cli import agent, person, repo, runner  # noqa: F401  (fixtures)
 from test_planner import fake  # noqa: F401  (fixture)
@@ -32,6 +33,13 @@ def answer(target, scope_add=(), scope_remove=(), check=None, goal_add=False, wh
 def planned(repo):
     with Store.open(repo) as store:
         P.propose(store, LEAVES, ALEX)
+
+
+def unowned(repo, path="cli.py") -> str:
+    """A file git tracks and no leaf writes: a new leaf's scope, as a path has one leaf that writes it."""
+    (repo / path).write_text("")
+    subprocess.run(["git", "add", path], cwd=repo, check=True)
+    return path
 
 
 def routed(repo):
@@ -112,10 +120,10 @@ def test_a_glob_on_a_tracked_file_is_taken_and_one_to_remove_must_be_in_the_scop
 
 def test_new_prints_a_node_add_and_one_the_plan_would_refuse_is_not_shown(repo, fake):
     planned(repo)
-    fake([answer(note.NEW, scope_add=["api.py"], check="python3 -c 'import api'"), answer(note.NEW),
+    fake([answer(note.NEW, scope_add=[unowned(repo)], check="python3 -c 'import api'"), answer(note.NEW),
           answer("ids", scope_add=["api.py/{a,b}"])])  # fmt: skip
     offer, _, _, _ = routed(repo)
-    add = ["graphene", "node", "add", "--scope", "api.py", "--check", "python3 -c 'import api'", "--"]
+    add = ["graphene", "node", "add", "--scope", "cli.py", "--check", "python3 -c 'import api'", "--"]
     add.append("ids come back sorted")
     assert offer.command == shlex.join(add)
     offer, said, _, _ = routed(repo)
@@ -249,23 +257,23 @@ def test_an_answer_cut_off_at_the_token_limit_says_so(repo, fake):
 
 def test_a_new_leaf_whose_note_starts_with_a_dash_prints_a_command_that_runs(repo, fake):
     planned(repo)
-    fake([answer(note.NEW, scope_add=["api.py"], check="grep -q quiet api.py")])
+    fake([answer(note.NEW, scope_add=[unowned(repo)], check="grep -q quiet api.py")])
     with Store.open(repo) as store:
         offer = note.route(store, repo, "-v flag should be quiet")
     took = person(*shlex.split(offer.command)[1:])
     assert took.exit_code == 0, took.output
     with Store.open(repo) as store:
-        assert [n.scope for n in P.nodes(store) if n.title == "-v flag should be quiet"] == [["api.py"]]
+        assert [n.scope for n in P.nodes(store) if n.title == "-v flag should be quiet"] == [["cli.py"]]
 
 
 def test_leaves_named_new_and_none_are_leaves_not_the_special_answers(repo, fake):
     with Store.open(repo) as store:
         P.propose(store, [{**LEAVES[0], "id": "new"}, {**LEAVES[1], "id": "none"}], ALEX)
     fake([answer("none", goal_add=True), answer("new", goal_add=True),
-          answer(note.NEW, scope_add=["api.py"], check="true"), answer(note.NONE)])  # fmt: skip
+          answer(note.NEW, scope_add=[unowned(repo)], check="true"), answer(note.NONE)])  # fmt: skip
     assert routed(repo)[0].command.startswith("graphene node set none --goal")
     assert routed(repo)[0].command.startswith("graphene node set new --goal")
-    assert routed(repo)[0].command.startswith("graphene node add --scope api.py")
+    assert routed(repo)[0].command.startswith("graphene node add --scope cli.py")
     offer, said, _, _ = routed(repo)
     assert offer is None and said[0].startswith("it constrains no leaf")
 

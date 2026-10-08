@@ -577,7 +577,7 @@ def test_the_log_says_values_in_words_not_python(repo):
     said = person("plan", "log").stdout
     assert "scope: api.py → api.py, schema.py" in said and "signoff: no → yes" in said
     assert "['" not in said and "->" not in said
-    accepted = agent("plan", "propose", "-", input="- b  [b]\n    scope: schema.py\n    check: true\n")
+    accepted = agent("plan", "propose", "-", input="- b  [b]\n    scope: README.md\n    check: true\n")
     assert accepted.exit_code == 0
     assert person("plan", "accept").stdout.splitlines()[0] == "accepted b"
 
@@ -599,6 +599,24 @@ def test_node_set_adds_to_a_scope_or_a_goal_without_retyping_it(repo):
     assert person("plan", "undo").exit_code == 0
     [shown] = json.loads(person("plan", "--json").stdout)["nodes"]
     assert (shown["goal"], shown["scope"]) == ("ids", ["api.py"])
+
+
+def test_propose_add_and_set_say_which_leaf_a_check_now_waits_on_and_set_refuses_a_second_writer(repo):
+    runs = "python3 -m pytest tests/test_api.py -q"
+    tests = {"id": "tests", "title": "its tests", "scope": ["tests/test_api.py"], "check": "true"}
+    proposal = {"nodes": [{"id": "api", "title": "ids", "scope": ["api.py"], "check": runs}, tests]}
+    said = agent("plan", "propose", "-", input=json.dumps(proposal))
+    why = "its check runs tests/test_api.py, which tests writes"
+    assert said.exit_code == 0 and f"api waits on tests: {why}" in said.stdout.splitlines(), said.output
+    added = person("node", "add", "the schema", "--id", "schema", "--scope", "schema.py", "--check", runs)
+    assert f"schema waits on tests: {why}" in added.stdout.splitlines()
+    person("node", "add", "the docs", "--id", "docs", "--scope", "README.md", "--check", "true")
+    edited = person("node", "set", "docs", "--check", runs)
+    assert edited.stdout.splitlines()[1:] == [
+        f"  check: true \u2192 {runs}", "  needs: none \u2192 tests", f"docs waits on tests: {why}"
+    ]
+    refused = person("node", "set", "docs", "--add-scope", "tests/test_api.py")
+    assert refused.exit_code == 1 and "docs and tests both write tests/test_api.py" in refused.stderr
 
 
 def test_a_leaf_that_came_back_reads_came_back_in_every_view_and_in_the_next_line(repo):

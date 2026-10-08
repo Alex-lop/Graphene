@@ -945,7 +945,7 @@ def test_a_persons_edit_asks_git_before_the_write_lock_is_taken(repo, monkeypatc
     monkeypatch.setattr(plan, "_git", asked)
     assert person("node", "add", "b", "--id", "b", "--scope", "b.txt", "--check", "true").exit_code == 0
     assert person("node", "set", "b", "--scope", "b.txt", "--scope", "c.txt").exit_code == 0
-    text = "- c  [c]\n    scope: c.txt\n    check: true\n"
+    text = "- c  [c]\n    scope: d.txt\n    check: true\n"  # b writes c.txt
     assert person("plan", "propose", "-", input=text).exit_code == 0
     assert seen and not any(seen)
 

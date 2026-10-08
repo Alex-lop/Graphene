@@ -165,6 +165,16 @@ def test_another_way_is_proposed_beside_it_and_the_board_asks_which(repo, talker
     assert (states(repo)["schema"], states(repo)["migration"]) == ("dropped", "proposed")
 
 
+def test_another_way_may_write_what_the_leaf_it_would_replace_writes(repo, talker, tmp_path):
+    """Its scope may take in the leaf's, as a merge's takes in theirs: the answer drops one of them."""
+    accepted(repo)
+    wider = TALKER.replace("scope: migrations/**", "scope: schema.py, migrations/**")
+    (tmp_path / "talker.py").write_text(wider)
+    said = person("talk", "another", "schema", "--with", talker)
+    assert said.exit_code == 0, said.output
+    assert states(repo)["migration"] == "proposed"
+
+
 def test_nemotron_answers_why_and_its_note_lands_as_its_own(repo, monkeypatch):
     accepted(repo)
     note = "```plan\nnote: ids is the leaf the docs wait on  [why-ids]\n    about: ids\n```"

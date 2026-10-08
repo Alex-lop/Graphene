@@ -114,10 +114,44 @@ def test_a_reask_drops_only_the_last_asks_proposals_not_a_split_or_another_way(r
     other.write_text(TALKER)
     assert person("talk", "another", "ids", "--with", f"{sys.executable} {other}").exit_code == 0
     assert states(repo)["migration"] == "proposed"
-    again = person("ask", "add ids", "--finer", "--with", planner(tmp_path, FINER, monkeypatch))
+    finer = FINER.replace("api.py", "schema.py")  # ids was accepted, and api.py is its path
+    again = person("ask", "add ids", "--finer", "--with", planner(tmp_path, finer, monkeypatch))
     assert again.exit_code == 0, again.output
     assert states(repo)["migration"] == "proposed"  # another way's leaf is not the last ask's tree
     assert "This replaces the tree you proposed last" not in prompts(tmp_path)[-1]  # its tree was accepted
+
+
+WAITING = """
+print("```plan")
+print("? users returns ids  [ids]\\n    scope: api.py\\n    check: grep -q ids api.py")
+print("? the schema has ids  [schema-ids]\\n    scope: schema.py\\n    check: true\\n    needs: ids")
+print("```")
+"""
+
+
+def test_a_reask_drops_the_last_tree_whole_though_its_leaves_wait_on_each_other(repo, tmp_path, monkeypatch):
+    """The old tree was dropped a node at a time, and a node that another node of it waited on stayed.
+    The new tree, on the same paths, was then refused as a second writer of them."""
+    assert person("ask", "add ids", "--with", planner(tmp_path, WAITING, monkeypatch)).exit_code == 0
+    finer = WAITING.replace("ids]", "ids2]").replace("needs: ids", "needs: ids2")
+    again = person("ask", "add ids", "--finer", "--with", planner(tmp_path, finer, monkeypatch))
+    assert again.exit_code == 0, again.output
+    assert states(repo) == {
+        "ids": "dropped", "schema-ids": "dropped", "ids2": "proposed", "schema-ids2": "proposed"
+    }
+
+
+def test_a_reask_keeps_what_an_accepted_node_waits_on_and_what_that_waits_on(repo, tmp_path, monkeypatch):
+    assert person("ask", "add ids", "--with", planner(tmp_path, WAITING, monkeypatch)).exit_code == 0
+    docs = ["--id", "docs", "--scope", "README.md", "--check", "true", "--needs", "schema-ids"]
+    assert person("node", "add", "the docs", *docs).exit_code == 0
+    finer = WAITING.replace("ids]", "ids2]").replace("needs: ids", "needs: ids2").replace("api.py", "app.py")
+    finer = finer.replace("schema.py", "db.py")  # the old leaves stay, and keep their paths
+    again = person("ask", "add ids", "--finer", "--with", planner(tmp_path, finer, monkeypatch))
+    assert again.exit_code == 0, again.output
+    assert states(repo) == {"ids": "proposed", "schema-ids": "proposed", "docs": "open"} | {
+        "ids2": "proposed", "schema-ids2": "proposed"
+    }  # the person sees both trees
 
 
 def test_a_reask_after_a_failed_one_still_replaces_the_tree(repo, tmp_path, monkeypatch):
