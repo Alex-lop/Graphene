@@ -39,6 +39,7 @@ from . import board as B
 from . import extra
 from . import meter as M
 from . import plan as P
+from .plan import may_collide
 
 # An executor may edit files and run `graphene node …` and `graphene plan …` (its done, its release, a
 # look at the plan), and nothing else unless the person says so with --with. Not `graphene run` or
@@ -908,22 +909,6 @@ def _unmerge(target: Path, branch: str, staged_ours: bool = False) -> None:
             _git(target, "merge", "--abort", ok=True)
     elif staged_ours:
         _git(target, "reset", "-q", "--merge", ok=True)
-
-
-def may_collide(a: list[str], b: list[str]) -> bool:
-    """Could two scopes ever claim one path? Asked of the globs themselves, not of the files that
-    exist: `**/*.py` and `src/**` share no tracked file in a repo with no Python under src/, and both
-    leaves then wrote src/new.py. Two globs may meet unless the directories they name before their
-    first wildcard are different branches of the tree. Exclusions are ignored: holding a leaf back
-    costs minutes, and a collision costs the person a merge."""
-
-    def fixed(glob: str) -> list[str]:
-        parts = glob.strip().removeprefix("./").rstrip("/").split("/")
-        upto = next((k for k, part in enumerate(parts) if any(c in part for c in "*?")), len(parts))
-        return parts[:upto]
-
-    pairs = [(fixed(x), fixed(y)) for x in a if not x.startswith("!") for y in b if not y.startswith("!")]
-    return any(x[: len(y)] == y[: len(x)] for x, y in pairs)
 
 
 def _only_run(root: Path):

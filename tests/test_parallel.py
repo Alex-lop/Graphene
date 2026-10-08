@@ -110,8 +110,10 @@ def test_leaves_run_at_once_in_their_own_worktrees_land_as_merges_and_done_rolls
 
 def test_leaves_whose_scopes_overlap_are_never_in_flight_together_so_both_land(repo):
     shared = {"scope": ["shared.txt", "x.txt"], "check": "true"}
-    with Store.open(repo) as store:
-        plan.propose(store, [{"id": "x", "title": "x", **shared}, {"id": "y", "title": "y", **shared}], ALEX)
+    with Store.open(repo) as store:  # two writers of one path, as an older plan has them: propose refuses it
+        plan.propose(store, [{"id": i, "title": i, **shared, "scope": [i]} for i in "xy"], ALEX)
+        for i in "xy":
+            store.put_node({**store.node_row(i), **shared})
     script = repo.parent / "w2.py"
     script.write_text(WORKER.replace('(here / f"{node}.txt")', '(here / "shared.txt")'))
     said = []

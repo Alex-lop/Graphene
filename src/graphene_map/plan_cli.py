@@ -717,10 +717,13 @@ def register(cli: typer.Typer, root, open_store, fail):
             items = raw.get("nodes") if isinstance(raw, dict) else raw
             if not isinstance(items, list) or not items:
                 raise P.Refused('expected {"nodes": [ … ]} with at least one node')
-            added = P.propose(store, items, who, files=files)
+            told: list[str] = []
+            added = P.propose(store, items, who, files=files, told=told)
             by_id = {n.id: n for n in P.nodes(store)}
             for n in added:
                 out(one_row(store, n, len(P.above(n, by_id))))
+            for line in told:
+                out(line)
             return added
 
         def as_text(store) -> list[P.Node]:
@@ -1124,8 +1127,11 @@ def register(cli: typer.Typer, root, open_store, fail):
         files = tracked()
 
         def go(store):
-            [n] = P.propose(store, [item], P.caller(), files=files)
+            told: list[str] = []
+            [n] = P.propose(store, [item], P.caller(), files=files, told=told)
             out(one_row(store, n))
+            for line in told:
+                out(line)
             return [n.id]
 
         warn_unreachable(write(f"node add {title!r}", go), files)
@@ -1163,6 +1169,7 @@ def register(cli: typer.Typer, root, open_store, fail):
                  "--needs, --owner, --signoff or --parent", 1)  # fmt: skip
 
         files = tracked()
+        told: list[str] = []
 
         def go(store):
             now = P.get(store, node_id)  # added to as it is at this moment, so an edit made since stays
@@ -1171,7 +1178,7 @@ def register(cli: typer.Typer, root, open_store, fail):
                 edits["scope"] = [*now.scope, *(g for g in dict.fromkeys(add_scope) if g not in now.scope)]
             if add_goal:
                 edits["goal"] = P.goal_plus(now.goal, add_goal) or now.goal
-            node = P.edit(store, node_id, edits, P.caller(), files=files)
+            node = P.edit(store, node_id, edits, P.caller(), files=files, told=told)
             last = store.node_log(node_id, ("edited",))[-1] if node.rev != before else None
             return node, last
 
@@ -1183,6 +1190,8 @@ def register(cli: typer.Typer, root, open_store, fail):
         out(f"{n.id} is now revision {n.rev}:")
         for name, (before, after) in last["detail"]["changed"].items():
             out(f"  {name}: {value(before)} → {value(after)}")
+        for line in told:
+            out(line)
         if n.state == P.RUNNING:
             out(f"{n.id} is running on revision {n.told_rev}: its next write is held to the new scope, and "
                 "its `done` to the new check")  # fmt: skip

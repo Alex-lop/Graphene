@@ -283,7 +283,7 @@ def test_a_split_that_repeats_a_goal_of_two_lines_lands_with_nothing_sent_back(r
         node("hello", "say hello", mark="-", goal="greet returns hello.\nIt keeps the old name.",
              scope=["app.py"], check="true"),
         node("hello-def", "define greet", "hello", scope=["app.py"], check="true"),
-        node("hello-word", "return hello", "hello", scope=["app.py"], check="true", needs=["hello-def"]),
+        node("hello-word", "return hello", "hello", scope=["words.py"], check="true", needs=["hello-def"]),
     ]}  # fmt: skip
     f = fake([{"content": "I have read enough."}, answer(split)])
     with Store.open(repo) as store:

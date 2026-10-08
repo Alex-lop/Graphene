@@ -572,11 +572,13 @@ def apply(
     files: list[str] | None = None,
     now: str | None = None,
     alone: bool = False,
+    beside: frozenset[str] | set[str] = frozenset(),
 ) -> Said:
     """Make the plan say what the text says. ``opened`` is what ``render`` wrote (an edit: a node
     it held that the text no longer has is dropped); None is a proposal (only new lines count, and
     a line with the id of a node already in the plan is where the new ones hang). ``alone``: the text
-    held one node without its children. Returns one line per change made, for whoever applied it."""
+    held one node without its children. ``beside``: the leaves a proposal would replace (a merge, or
+    another way), which it may overlap. Returns one line per change made, for whoever applied it."""
     now = now or P._now()
     text, board = B.split(text)  # the board's lines, read by board.py; every other line keeps its number
     goal, lines = parse(text, strict=opened is not None)
@@ -611,16 +613,18 @@ def apply(
         if fresh:
             containers = {lines[ln.parent].id for ln in lines if ln.parent is not None}
             items = [{"id": ln.id, "parent": parent_of[ln.id], **_fields(ln)} for ln in fresh]
+            told: list[str] = []
             try:
                 added = P.propose(
                     store, items, who, now, files, proposals={ln.id for ln in fresh if ln.proposal},
-                    containers=containers,
+                    containers=containers, beside=beside, told=told, edits_follow=opened is not None,
                 )  # fmt: skip
             except P.Refused as no:
                 raise _on_line(no, lines) from None
             for n in added:
                 said.append(f"{'proposed' if n.state == P.PROPOSED else 'added'} {n.id}: {n.title}")
                 said.ids.append(n.id)
+            said += told
         if opened is not None:
             edited = _edits(store, kept, parent_of, opened, who, now, files)
             said += edited
@@ -633,6 +637,8 @@ def apply(
         if board or (opened or {}).get("*board"):
             said += B.apply(store, board, who, None if opened is None else opened["*board"], files, now)
         try:
+            if opened is not None:  # judged once every edit is in, so a path moved is not two writers
+                P.one_writer(P.nodes(store), set(said.ids), files or [], everything)
             P.validate(P.nodes(store), set(said.ids))  # the tree as it is now, after every move
         except P.Refused as no:
             raise _on_line(no, lines) from None
@@ -870,15 +876,16 @@ def _edits(store, kept, parent_of, opened, who, now, files) -> list[str]:
             )
         if "parent" in changes:
             changes["parent"] = changes["parent"] or "none"
+        told: list[str] = []
         try:
-            P.edit(store, ln.id, changes, who, now, files, check=False)
+            P.edit(store, ln.id, changes, who, now, files, check=False, told=told)
         except P.Refused as no:
             raise _at(ln, no) from None
         moved = f"moved under {parent_of[ln.id] or 'the goal'}" if "parent" in changes else ""
         rest = [k for k in changes if k != "parent"]
-        said.append(
-            f"{ln.id}: " + "; ".join(filter(None, [moved, ", ".join(rest) + (" changed" if rest else "")]))
-        )
+        changed = ", ".join(rest) + (" changed" if rest else "")
+        # one line a node, with what it now waits on: `apply` reads the id back from before the colon
+        said.append(f"{ln.id}: " + "; ".join(filter(None, [moved, changed, *told])))
     return said
 
 

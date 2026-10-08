@@ -57,7 +57,8 @@ def nano(monkeypatch):
 
 def leaves(store, *checks, who=BOT):
     nodes = [
-        {"id": f"l{k}", "title": f"leaf {k}", "scope": ["app.py"], "check": c} for k, c in enumerate(checks)
+        {"id": f"l{k}", "title": f"leaf {k}", "scope": [f"app{k}.py"], "check": c}  # one writer a path
+        for k, c in enumerate(checks)
     ]
     P.propose(store, nodes, who)
 
@@ -213,7 +214,7 @@ def test_the_flag_runs_it_as_a_proposal_lands(repo, monkeypatch, tmp_path):
     from graphene_map.ask import ask
 
     script = tmp_path / "planner.py"
-    script.write_text('print("```plan\\n? say hello  [hello]\\n    scope: app.py\\n    check: false\\n```")')
+    script.write_text('print("```plan\\n? say hello  [hello]\\n    scope: hello\\n    check: false\\n```")')
     with Store.open(repo) as store:
         leaves(store, f"touch {tmp_path}/ran-here", who=ME)  # an accepted leaf: never run by an ask
         ask(store, repo, "say hello", f"{sys.executable} {script}", say=lambda _: None)
@@ -413,7 +414,7 @@ def test_the_precheck_flag_puts_each_weak_check_on_the_board_after_an_ask(repo, 
     monkeypatch.setattr(C, "_forks", lambda *_: (fork, None))
     script = tmp_path / "planner.py"
     script.write_text('print("```plan\\n? one  [one]\\n    scope: app.py\\n    check: true\\n'
-                      '? two  [two]\\n    scope: app.py\\n    check: false\\n```")')  # fmt: skip
+                      '? two  [two]\\n    scope: app2.py\\n    check: false\\n```")')  # fmt: skip
     monkeypatch.setenv("GRAPHENE_SHAPE", "precheck")
     with Store.open(repo) as store:
         lines = ask(store, repo, "two leaves", f"{sys.executable} {script}", say=lambda _: None)

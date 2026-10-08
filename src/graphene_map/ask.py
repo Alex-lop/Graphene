@@ -80,6 +80,9 @@ risk: what could make a check pass on nothing, or a leaf go wrong  [short-id]
   that exits 0 only when the leaf is done, and that can pass with what its scope and its needs write.
   Use the repo's own test runner and files that exist or that the leaf creates.
 - A leaf whose check needs another leaf's work says so with needs:. Two leaves never share a path.
+- A leaf's check runs only files in its own scope and files already in the repository. A leaf that
+  needs a test another leaf writes waits on it with needs:. Two leaves never share a test file: give
+  each leaf its own, or make one tests leaf that waits on all of them.
 - To put new lines under a node already in the plan, write that node's line as it is above, with its
   [id], and your lines under it. You cannot change a node that is there; say what should change in a
   sentence after the block, and the person decides.
@@ -228,15 +231,18 @@ def _last_ask(store) -> str | None:
 def _drop_last(store, session: str | None) -> set[str]:
     """Drop what the last ask of the whole plan proposed that still waits on the person (a split's or
     another way's proposals are not its): `ask --finer/--coarser` gives one tree to prune in its
-    place, not a second beside it. Returns the ids dropped, with those under them."""
+    place, not a second beside it. It goes whole though its leaves wait on each other, unless a node
+    outside it waits on a part: a part left would share the new tree's paths. Returns the ids dropped,
+    with those under them."""
     mine = {
         r["node_id"] for r in store.node_log(None, ("proposed",)) if session and r["session_id"] == session
     }
     pending = [n for n in P.nodes(store, (P.PROPOSED,)) if n.id in mine]
     ids = {n.id for n in pending}
+    waited = any(ids & set(m.needs) for m in P.nodes(store) if m.id not in ids and m.state not in P.GONE)
     for n in [n for n in pending if n.parent not in ids]:  # a sub-goal goes with what is under it
         try:
-            P.drop(store, n.id, P.caller())
+            P.drop(store, n.id, P.caller(), waiting=waited)
         except P.Refused:
             pass  # something accepted waits on it: it stays, and the person sees both
     return {i for i in ids if (store.node_row(i) or {}).get("state") in P.GONE}
@@ -366,11 +372,13 @@ def ask(
     size: str | None = None,
     talk: str | None = None,
     planner: str | None = None,
+    beside: frozenset[str] | set[str] = frozenset(),
 ) -> list[str]:
     """Start the planner, read its proposal, add it to the plan as the planner's. Returns what was
     proposed, one line each. A proposal Graphene cannot read goes back to the planner once, with the
     refusal, as a refused executor does. ``planner`` is what --with named, kept with the ask so that
-    asking it again finer or coarser starts the same one."""
+    asking it again finer or coarser starts the same one. ``beside``: the leaves the proposal would
+    replace (`graphene talk`), which it may overlap."""
     _splits(template)  # bad quoting in --with is one refused line, as it is for `graphene run`
     if about is not None:
         P.get(store, about)  # an unknown id is refused before anything is spent
@@ -434,7 +442,7 @@ def ask(
             try:
                 with store.claim():
                     gone = _drop_last(store, last) if stands is not None else set()
-                    said = T.apply(store, text, who, None, files=files)
+                    said = T.apply(store, text, who, None, files=files, beside=beside)
                     if gone:
                         _carry(store, gone, said, heard.append, files)
             except P.Refused as no:

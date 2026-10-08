@@ -62,7 +62,7 @@ def test_an_agent_proposes_in_the_same_text_and_its_goal_waits_for_the_person(st
 
 def test_an_agent_hangs_new_lines_under_a_node_already_in_the_plan(store):
     shaped(store)
-    T.apply(store, "- the PDF renderer  [pdf]\n  ? fonts embedded  [fonts]\n      scope: src/pdf/fonts/**\n"
+    T.apply(store, "- the PDF renderer  [pdf]\n  ? fonts embedded  [fonts]\n      scope: assets/fonts/**\n"
                    "      check: true\n", BOT, None)  # fmt: skip
     fonts = plan.get(store, "fonts")
     assert (fonts.parent, fonts.state) == ("pdf", PROPOSED)
@@ -74,7 +74,7 @@ def test_an_agent_hangs_new_lines_under_a_node_already_in_the_plan(store):
 
 def test_an_edit_adds_changes_moves_accepts_and_drops_in_one_save(store):
     T.apply(store, TREE, ALEX, None)
-    T.apply(store, "- the PDF renderer  [pdf]\n  ? page numbers  [pages]\n      scope: src/pdf/p.py\n"
+    T.apply(store, "- the PDF renderer  [pdf]\n  ? page numbers  [pages]\n      scope: src/pages.py\n"
                    "      check: true\n", BOT, None)  # fmt: skip
     text, opened = T.render(store)
     text = (
@@ -354,9 +354,9 @@ def test_a_sub_goal_whose_children_are_all_proposals_is_not_asked_the_leaf_rule(
 # -- every key the text reads: honoured, or refused by its line; never turned into prose -----------
 
 
-def leaf(title: str, *lines: str, check: bool = True) -> str:
+def leaf(title: str, *lines: str, check: bool = True, scope: str = "calc.py") -> str:
     """A node's line and its own lines under it, and a scope and a check unless told otherwise."""
-    tail = ("scope: calc.py", "check: true") if check else ()
+    tail = (f"scope: {scope}", "check: true") if check else ()
     return "".join(f"{'    ' if k else ''}{line}\n" for k, line in enumerate((f"- {title}", *lines, *tail)))
 
 
@@ -364,13 +364,14 @@ def test_parent_places_a_node_under_a_node_of_the_text_or_of_the_plan(store):
     """A proposal said `parent: wire` under a leaf; it was read as the leaf's goal and the leaf landed
     at the root."""
     wire = "- wire it in  [wire]\n  - add is kept  [keep]\n      scope: calc.py\n      check: true\n"
-    T.apply(store, wire + leaf("sub is added  [sub]", "parent: wire"), BOT, None)
+    T.apply(store, wire + leaf("sub is added  [sub]", "parent: wire", scope="sub.py"), BOT, None)
     sub = plan.get(store, "sub")
     assert (sub.parent, sub.goal) == ("wire", "")
     plan.accept(store, [], ALEX)
-    T.apply(store, leaf("mul is added  [mul]", "parent: wire"), BOT, None)
+    T.apply(store, leaf("mul is added  [mul]", "parent: wire", scope="mul.py"), BOT, None)
     assert plan.get(store, "mul").parent == "wire"  # a node already in the plan
-    powers = leaf("powers  [pow]", "parent: wire", check=False) + leaf("neg  [neg]", "parent: pow")
+    neg = leaf("neg  [neg]", "parent: pow", scope="neg.py")
+    powers = leaf("powers  [pow]", "parent: wire", check=False) + neg
     T.apply(store, powers, BOT, None)
     assert (plan.get(store, "pow").parent, plan.get(store, "neg").parent) == ("wire", "pow")
     assert "parent:" not in T.render(store)[0]  # the tree is said by indentation, not as anyone's goal
@@ -413,3 +414,99 @@ def test_a_person_moves_a_node_with_parent_in_an_edit(store):
     moved = text.replace(docs, docs + "    parent: pdf\n")
     assert T.apply(store, moved, ALEX, opened) == ["docs: moved under pdf"]
     assert plan.get(store, "docs").parent == "pdf"
+
+
+
+
+# -- a check never runs another leaf's file -------------------------------------------------------------
+
+
+def top(node_id: str, scope: str, check: str = "true", *more: str) -> str:
+    """A leaf at the top, named by its id, with its scope, its check and any more lines of its own."""
+    lines = (f"- {node_id}  [{node_id}]", f"    scope: {scope}", f"    check: {check}")
+    return "".join(f"{line}\n" for line in (*lines, *(f"    {m}" for m in more)))
+
+
+def test_a_check_that_runs_another_leafs_file_waits_on_it_and_the_proposal_says_so(store):
+    reader = top("reader", "src/xml.py", "python3 -m pytest tests/test_xml.py -q")
+    said = T.apply(store, reader + top("tests", "tests/test_xml.py"), BOT, None)
+    assert plan.get(store, "reader").needs == ["tests"]
+    assert said[-1] == "reader waits on tests: its check runs tests/test_xml.py, which tests writes"
+
+
+def test_a_check_that_runs_a_module_by_name_waits_on_the_leaf_that_writes_its_file(store):
+    """Statements run 3 stopped on this form: `unittest tests.test_dunning`, a file another leaf wrote."""
+    check = "python3 -m unittest tests.test_dunning.TestDunning.test_fee"
+    T.apply(store, top("sections", "src/x.py", check) + top("reports", "tests/test_dunning.py"), BOT, None)
+    assert plan.get(store, "sections").needs == ["reports"]
+
+
+def test_a_check_that_runs_a_directory_waits_on_the_leaves_that_write_in_it(store):
+    """A directory names what git tracks in it and what a scope makes in it: neither file is there yet."""
+    code = top("code", "src/code.py", "python3 -m unittest discover -q tests") + top("x", "tests/test_x.py")
+    more = top("more", "src/more.py", "python3 -m pytest spec/") + top("y", "spec/test_y.py")
+    T.apply(store, code + more, BOT, None)
+    assert (plan.get(store, "code").needs, plan.get(store, "more").needs) == (["x"], ["y"])
+
+
+def test_a_tests_leaf_that_waits_on_the_code_adds_nothing_and_refuses_nothing(store):
+    """The shape the rule asks for: the code's check runs the tests directory, and one tests leaf that
+    waits on the code writes the test file. The code's check sees tests/ as it is at the base."""
+    check = "python3 -m unittest discover tests"
+    tests = top("tests", "tests/test_x.py", check, "needs: code")
+    more = top("more", "src/more.py", check, "needs: tests")  # it waits on the tests leaf already
+    said = T.apply(store, top("code", "src/code.py", check) + tests + more, BOT, None)
+    assert [n.needs for n in plan.nodes(store)] == [[], ["code"], ["tests"]]
+    assert not [line for line in said if " waits on " in line]
+
+
+def test_a_check_that_runs_a_new_file_a_later_leaf_writes_is_refused_by_its_line(store):
+    """Take 9, and tonight's first Ultra ask: the tests leaf waits on the code, and the code's check runs
+    the tests leaf's new file. It could never pass: the file is not there when the check runs."""
+    code = top("feed", "ingest/xml.py", "python3 -m pytest tests/test_xml.py -q")
+    says = r"^line 1 \[feed\]: feed: its check runs tests/test_xml\.py, which tests writes after it\. "
+    with pytest.raises(Refused, match=says):
+        T.apply(store, code + top("tests", "tests/test_xml.py", "true", "needs: feed"), BOT, None)
+    assert plan.nodes(store) == []
+
+
+def test_two_leaves_that_write_one_path_are_refused_by_the_line_and_an_old_pair_is_not_judged_again(store):
+    said = r"^line 1 \[a\]: a and b both write README\.md\. A path has one leaf that writes it: give it to "
+    with pytest.raises(Refused, match=said + "one, and let the other wait on it$"):
+        T.apply(store, top("a", "README.md") + top("b", "docs/**, README.md"), BOT, None)
+    assert plan.nodes(store) == []
+    T.apply(store, top("a", "README.md"), ALEX, None)
+    with pytest.raises(Refused, match=r"^line 1 \[c\]: c and a both write README\.md\. "):
+        T.apply(store, top("c", "src/c.py, README.md"), BOT, None)
+    # a plan made before the rule may hold two writers of one path: an edit that adds no shared path stands
+    plan.propose(store, [{"id": "old", "title": "old", "scope": ["NOTES.md"], "check": "true"}], ALEX)
+    store.put_node({**store.node_row("old"), "scope": ["README.md"]})
+    text, opened = T.render(store)
+    T.apply(store, text.replace("scope: README.md", "scope: README.md, CHANGELOG.md", 1), ALEX, opened)
+    assert plan.get(store, "a").scope == ["README.md", "CHANGELOG.md"]
+
+
+def test_a_word_that_names_nothing_is_ignored_and_a_check_that_moves_is_not_judged(store):
+    """pytest is a program, `-k name` and --cov=src are flags, PYTHONPATH=src sets a variable, and `test`
+    first in a command is the shell's: none is a path, though a scope covers each. After cd, no path is
+    from the top."""
+    checker = "PYTHONPATH=src test -f lib/c.py && python3 -m pytest -q -k name --cov=src"
+    web = top("web", "web/x.py", "cd web && python3 -m pytest tests/test_z.py") + top("z", "tests/test_z.py")
+    checker = top("top", "*, src/new.py, test/test_y.py") + top("checker", "lib/c.py", checker)
+    T.apply(store, checker + web, BOT, None)
+    assert [n.needs for n in plan.nodes(store)] == [[], [], [], []]
+
+
+def test_a_plan_edit_that_changes_a_check_says_what_it_waits_on_and_a_moved_path_is_no_clash(store):
+    T.apply(store, top("docs", "docs/**") + top("code", "src/code.py, README.md"), ALEX, None)
+    text, opened = T.render(store)
+    checked = text.replace("README.md\n    check: true", "README.md\n    check: test -f docs/x.md")
+    said = T.apply(store, checked, ALEX, opened)
+    assert said == ["code: check changed; code waits on docs: its check runs docs/x.md, which docs writes"]
+    text, opened = T.render(store)  # README.md goes from code to a new leaf, in one save
+    moved = text.replace("src/code.py, README.md", "src/code.py") + top("readme", "README.md")
+    T.apply(store, moved, ALEX, opened)
+    assert [plan.get(store, i).scope for i in ("code", "readme")] == [["src/code.py"], ["README.md"]]
+    text, opened = T.render(store)
+    with pytest.raises(Refused, match=r"^line \d+ \[docs\]: docs and readme both write README\.md\. "):
+        T.apply(store, text.replace("scope: docs/**", "scope: docs/**, README.md"), ALEX, opened)

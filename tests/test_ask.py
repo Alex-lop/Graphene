@@ -199,7 +199,7 @@ def test_a_planner_with_no_vendor_mark_is_an_agent_and_not_the_person(repo):
     planner_env = {"GRAPHENE_PLANNER": "1"}
     said = runner.invoke(build(), ["node", "start", "ids"], env=planner_env)
     assert said.exit_code == 1 and "you are the planner" in said.stderr
-    text = "- divide  [div]\n    scope: api.py\n    check: true\n"
+    text = "- divide  [div]\n    scope: schema.py\n    check: true\n"
     assert runner.invoke(build(), ["plan", "propose", "-"], env=planner_env, input=text).exit_code == 0
     with Store.open(repo) as store:
         assert plan.get(store, "ids").state == "open"
@@ -273,6 +273,17 @@ print("    scope: api.py")
 print("    check: grep -q ids api.py")
 print("```")
 """
+
+
+def test_the_planner_and_a_session_are_told_a_check_runs_its_own_files_and_what_is_there():
+    from graphene_map import gate
+
+    rule = (
+        "A leaf's check runs only files in its own scope and files already in the repository. A leaf that "
+        "needs a test another leaf writes waits on it with needs:. Two leaves never share a test file: give "
+        "each leaf its own, or make one tests leaf that waits on all of them."
+    )
+    assert rule in " ".join(A.RULES.split()) and rule in " ".join(gate.TEACH.split())
 
 
 def test_the_planner_is_told_the_board_carries_only_what_changes_the_tree(repo, tmp_path, monkeypatch):

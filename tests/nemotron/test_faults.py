@@ -52,7 +52,7 @@ def test_a_retired_id_falls_back_within_the_family_and_says_which_instead_of_whi
 
 
 def test_a_list_that_has_lost_ultra_plans_with_the_largest_left_and_says_so_in_one_line(repo, monkeypatch):
-    proposal = "```plan\n? say hello  [{}]\n    scope: app.py\n    check: true\n```"
+    proposal = "```plan\n? say hello  [{0}]\n    scope: {0}.py\n    check: true\n```"  # a file each
     no_ultra = [m for m in MODELS if "Ultra" not in m["id"]]
     said, again = [], []
     replies = [{"content": proposal.format(i)} for i in ("hello", "hello", "hello-again", "hello-again")]
