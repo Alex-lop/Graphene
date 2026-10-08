@@ -41,6 +41,9 @@ Written with the 30 minutes.
 - **00:34** The suite on `main` as it is: 1,631 passed, 21 skipped, in 17.6 minutes.
 - **00:38** Ultra with a strict JSON schema, live: it answers JSON in the schema. With tools in the same request it
   calls no tool, so the schema goes on the final answer only. $0.0016.
-- **00:50** Lanes 1 to 4 started, one builder each in a worktree of their own, each reviewed from two sides before
+- **00:42** Lanes 1 to 4 started, one builder each in a worktree of their own, each reviewed from two sides before
   it merges.
-- **00:58** Token Factory reached, 4 NVIDIA models; Sandboxes work (`graphene key check`).
+- **00:45** Token Factory reached, 4 NVIDIA models; Sandboxes work (`graphene key check`).
+- **01:55** Lane 2 merged: the Nemotron planner answers in a strict JSON schema, tried by Graphene's own validator
+  before it prints, sent back once with Graphene's words. Its review found one real fault (a node's goal of two
+  lines was written as one), fixed with a test.

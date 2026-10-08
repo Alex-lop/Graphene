@@ -371,8 +371,10 @@ def test_a_claude_code_planner_that_stopped_says_why(repo, tmp_path):
     for n in (1, 2):  # out of budget: a result with no text, only why it stopped
         stop = {"type": "result", "subtype": "error_max_budget_usd", "is_error": True, "total_cost_usd": n}
         (tmp_path / f"try{n}.jsonl").write_text(json.dumps(stop) + "\n")
-    with Store.open(repo) as store, pytest.raises(Refused, match="error_max_budget_usd"):
-        A.ask(store, repo, "ids", planner, say=lambda _: None)
+    said = []
+    with Store.open(repo) as store, pytest.raises(Refused, match="each was refused as above"):
+        A.ask(store, repo, "ids", planner, say=said.append)
+    assert "no proposal (exit 0): error_max_budget_usd" in said  # why it stopped, not "it said nothing"
 
 
 def test_a_planner_the_night_refuses_is_never_started(repo, tmp_path, monkeypatch):
