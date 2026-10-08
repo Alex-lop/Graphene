@@ -45,7 +45,8 @@ def repo(tmp_path, monkeypatch):
 
 def test_the_nemotron_planner_never_sees_a_protected_path(repo, monkeypatch):
     replies = [call("read", path="secrets/prod.txt"), call("list", path="."), call("list", path="secrets"),
-               call("glob", pattern="**"), call("grep", pattern="KEY"), {"content": PROPOSAL}]  # fmt: skip
+               call("glob", pattern="**"), call("grep", pattern="KEY"), {"content": PROPOSAL},
+               {"content": PROPOSAL}]  # fmt: skip  (its draft, then its answer)
     with Fake(replies) as f:
         for k, v in f.env().items():
             monkeypatch.setenv(k, v)

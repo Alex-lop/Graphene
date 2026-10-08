@@ -1,19 +1,23 @@
 """The Nemotron planner, driven by `graphene ask` against the recorded fake: it reads the repository
-with tools that only read, prints the fenced plan block, and what it proposed is in the plan for the
-person to prune; the bill is in the plan's log."""
+with tools that only read, answers in a strict JSON schema, prints the fenced plan block, and what it
+proposed is in the plan for the person to prune; the bill is in the plan's log."""
 
 import json
 
 import pytest
 from fake_tokenfactory import Fake, call
 
+from graphene_map import board as B
 from graphene_map import plan
+from graphene_map import plan_text as T
 from graphene_map.ask import ask, label, named
+from graphene_map.nemotron import planner
 from graphene_map.nemotron import tokenfactory as tf
 from graphene_map.plan import PROPOSED
 from graphene_map.store import Store
 
 ULTRA = "nvidia/Nemotron-3-Ultra-fake"
+NOW = "Answer now with the proposal. Write it as JSON."  # the ask for the answer, with no tools
 PROPOSAL = """Here is the tree.
 
 ```plan
@@ -26,6 +30,24 @@ goal: the app greets properly
 ```
 
 The README still says hi; I left it."""
+
+
+def node(id, title, parent=None, mark="?", goal="", scope=(), check=None, needs=()):
+    """A node of the JSON answer: every field, as the strict schema has it."""
+    return {"id": id, "title": title, "goal": goal, "scope": list(scope), "check": check,
+            "needs": list(needs), "parent": parent, "mark": mark}  # fmt: skip
+
+
+HELLO = node("hello", "say hello", "greeting", goal="greet returns hello", scope=["app.py"],
+             check="python3 -c 'import app; assert app.greet() == \"hello\"'")  # fmt: skip
+# PROPOSAL, as the JSON the strict schema asks for
+ANSWER = {"goal": "the app greets properly", "board": [], "nodes": [node("greeting", "the greeting"), HELLO],
+          "says": "The README still says hi; I left it."}  # fmt: skip
+WRONG = {**ANSWER, "nodes": [node("greeting", "the greeting"), {**HELLO, "needs": ["nope"]}]}
+
+
+def answer(p: dict) -> dict:
+    return {"content": json.dumps(p)}
 
 
 @pytest.fixture
@@ -72,6 +94,7 @@ def test_it_reads_only_and_what_it_prints_is_proposed_for_the_person(repo, fake)
         call("read", path="../../etc/passwd"),
         call("write", path="app.py", content="gone"),
         {"content": PROPOSAL},
+        answer(ANSWER),
     ])  # fmt: skip
     said = []
     with Store.open(repo) as store:
@@ -79,7 +102,7 @@ def test_it_reads_only_and_what_it_prints_is_proposed_for_the_person(repo, fake)
         assert any("hello" in line for line in proposed)
         assert plan.get(store, "hello").state == PROPOSED and plan.get(store, "hello").scope == ["app.py"]
         [bill] = store.node_log("*", ("usage",))
-        assert bill["actor"] == "planner:nemotron" and bill["detail"]["calls"] == 7
+        assert bill["actor"] == "planner:nemotron" and bill["detail"]["calls"] == 8  # the strict answer too
         asked = store.node_log("hello", ("proposed",))[-1]
         assert asked["actor"] == "planner:nemotron"
     assert f.requests[0]["model"] == ULTRA  # the largest Nemotron the live list has, by default
@@ -99,7 +122,7 @@ def test_a_tool_call_written_as_text_is_read_as_one_not_as_the_answer(repo, fake
     """On 7 October Ultra wrote `<tool_call>{…}</tool_call>` in its text, twice in a row, and the planner
     took it for the proposal: "no proposal". It is a call: run it, answer it, and go on."""
     written = '<tool_call>\n{"name": "read", "arguments": {"path": "app.py"}}\n</tool_call>'
-    f = fake([{"content": written}, {"content": PROPOSAL}])
+    f = fake([{"content": written}, {"content": PROPOSAL}, answer(ANSWER)])
     with Store.open(repo) as store:
         ask(store, repo, "make it say hello", named("nemotron"), say=lambda s: None)
         assert plan.get(store, "hello").state == PROPOSED
@@ -111,8 +134,178 @@ def test_out_of_steps_it_is_asked_to_answer_without_tools(repo, fake):
     f = fake([call("list", path=".")] * 2 + [{"content": PROPOSAL}])
     with Store.open(repo) as store:
         ask(store, repo, "make it say hello", named("nemotron --steps 3"), say=lambda s: None)
-    assert "tools" in f.requests[0] and "tools" not in f.requests[2]
-    assert f.requests[2]["messages"][-1]["content"] == "Answer now with the proposal."
+        assert plan.get(store, "hello").state == PROPOSED  # an answer that is not JSON is read as text
+    assert "tools" in f.requests[0] and "tools" not in f.requests[2] and "response_format" in f.requests[2]
+    assert f.requests[2]["messages"][-1]["content"] == NOW
+
+
+def test_the_answer_is_asked_in_a_strict_schema_and_no_tool_step_carries_it(repo, fake):
+    f = fake([call("list", path="."), {"content": PROPOSAL}, answer(ANSWER)])
+    with Store.open(repo) as store:
+        ask(store, repo, "make it say hello", named("nemotron"), say=lambda s: None)
+    *steps, last = f.requests
+    assert len(steps) == 2 and all("tools" in r and "response_format" not in r for r in steps)
+    assert "tools" not in last and last["response_format"]["type"] == "json_schema"
+    assert last["response_format"]["json_schema"]["name"] == "proposal"
+    assert last["response_format"]["json_schema"]["strict"] is True
+    assert last["messages"][-2:] == [{"role": "assistant", "content": PROPOSAL},  # its draft, then the ask
+                                     {"role": "user", "content": NOW}]  # fmt: skip
+
+
+def test_an_answer_cut_off_at_the_token_limit_is_asked_again_with_twice_the_room(repo, fake):
+    """A cut-off answer is broken JSON: it is asked again, not read and sent back."""
+    cut = {"content": json.dumps(ANSWER)[:40], "_finish": "length"}
+    f = fake([{"content": PROPOSAL}, cut, answer(ANSWER)])
+    with Store.open(repo) as store:
+        ask(store, repo, "make it say hello", named("nemotron"), say=lambda s: None)
+        assert plan.get(store, "hello").state == PROPOSED
+    assert [r["max_tokens"] for r in f.requests] == [8192, 8192, 16384]
+    assert f.requests[2]["messages"][-1]["content"] == NOW  # the same ask, with room
+
+
+def test_the_schema_is_strict_all_the_way_down():
+    objects = []
+
+    def walk(s: dict) -> None:
+        if s["type"] == "object":
+            assert s["additionalProperties"] is False and s["required"] == list(s["properties"])
+            objects.append(s["required"])
+            for v in s["properties"].values():
+                walk(v)
+        elif s["type"] == "array":
+            walk(s["items"])
+        else:
+            assert s["type"] in ("string", ["string", "null"]) and set(s) <= {"type", "enum"}
+
+    walk(planner.FORMAT["json_schema"]["schema"])
+    assert objects == [["goal", "board", "nodes", "says"],
+                       ["kind", "id", "text", "default", "then", "options", "about"], ["text", "then"],
+                       ["id", "title", "goal", "scope", "check", "needs", "parent", "mark"]]  # fmt: skip
+    assert planner.FORMAT["json_schema"]["schema"]["properties"]["board"]["items"]["properties"]["kind"][
+        "enum"] == list(B.KINDS)  # fmt: skip
+
+
+BOARD = {
+    "goal": "the app greets,\nand says goodbye",
+    "board": [
+        {"kind": "question", "id": "bye-word", "text": "what does\nbye say?", "default": "goodbye",
+         "then": ["goal bye + It says goodbye."], "about": "bye", "options": [
+             {"text": "see you", "then": ["goal bye + It says see you.", "check bye: grep -q see app.py"]}]},
+        {"kind": "leave out", "id": "no-flag", "text": "a --name flag", "default": None, "then": [],
+         "options": [], "about": None},
+    ],
+    "nodes": [
+        node("words", "the words"),
+        node("hello", "say hello", "words", goal="greet returns hello", scope=["app.py"], check="true"),
+        node("bye", "say goodbye", "words", goal="bye returns goodbye.\nIn src.",
+             scope=["src/deep.py", "docs/my notes/*.md"], check="cd src\ntest -f deep.py", needs=["hello"]),
+    ],
+    "says": "Two leaves under one sub-goal.",
+}  # fmt: skip
+
+
+def test_the_json_reads_as_the_plan_text_and_lands_field_for_field(repo):
+    """Every string but a node's goal is one line in the text, a goal keeps its lines, a check's lines
+    run one after another, and a node's parent places it."""
+    with Store.open(repo) as store:
+        T.apply(store, planner.as_text(BOARD), plan.Caller("planner:nemotron", False), None)
+        assert store.meta("goal:proposed") == "the app greets, and says goodbye"
+        got = {n.id: (n.title, n.goal, n.scope, n.check, n.needs, n.parent) for n in plan.nodes(store)}
+        assert got == {
+            "words": ("the words", "", [], None, [], None),
+            "hello": ("say hello", "greet returns hello", ["app.py"], "true", [], "words"),
+            "bye": ("say goodbye", "bye returns goodbye.\nIn src.", ["src/deep.py", "docs/my notes/*.md"],
+                    "cd src; test -f deep.py", ["hello"], "words"),
+        }  # fmt: skip
+        fields = ("kind", "id", "text", "default", "then", "options", "about")
+        assert [{k: it[k] for k in fields} for it in B.items(store)] == [
+            {**BOARD["board"][0], "text": "what does bye say?"}, BOARD["board"][1]
+        ]  # fmt: skip
+
+
+def test_a_json_proposal_lands_through_ask_with_its_board_goal_and_needs(repo, fake):
+    fake([call("list", path="."), {"content": "I have read enough."}, answer(BOARD)])
+    said = []
+    with Store.open(repo) as store:
+        ask(store, repo, "greet and say goodbye", named("nemotron"), say=said.append)
+        [session] = {r["detail"]["session"] for r in store.node_log("*", ("asked",))}
+        assert {r["session_id"] for r in store.node_log(None, ("proposed",))} == {session}  # not the dry run
+        proposed = {n.id: n.state for n in plan.nodes(store)}
+        assert proposed == dict.fromkeys(("words", "hello", "bye"), PROPOSED)
+        assert plan.get(store, "bye").needs == ["hello"] and plan.get(store, "bye").parent == "words"
+        assert [it["id"] for it in B.items(store)] == ["bye-word", "no-flag"]
+        B.pick(store, "bye-word", 1, plan.Caller("alex", True))
+        assert plan.get(store, "bye").check == "grep -q see app.py"
+    assert said[-2:] == ["the planner says:", "  Two leaves under one sub-goal."]
+
+
+def test_a_refused_proposal_goes_back_once_with_graphenes_words_and_the_second_lands(repo, fake):
+    f = fake([{"content": PROPOSAL}, answer(WRONG), answer(ANSWER)])
+    said = []
+    with Store.open(repo) as store:
+        ask(store, repo, "make it say hello", named("nemotron"), say=said.append)
+        assert plan.get(store, "hello").state == PROPOSED and plan.get(store, "hello").needs == []
+        [bill] = store.node_log("*", ("usage",))
+        assert bill["detail"]["calls"] == 3
+    assert said[0] == "asking the planner (nemotron)…" and not [s for s in said if "again" in s]  # one start
+    words = ("line 7: needs: 'nope' is not the id of a node (the line was read as needs:, which names the "
+             "[id]s it waits on)")  # fmt: skip
+    lines = "\n".join(f"{k:>5}  {line}" for k, line in enumerate(planner.as_text(WRONG).splitlines(), 1))
+    assert "    7      needs: nope" in lines
+    assert f.requests[2]["messages"][-2:] == [
+        {"role": "assistant", "content": json.dumps(WRONG)},
+        {"role": "user", "content": f"Graphene could not read the proposal: {words}\nIt read your JSON as:\n"
+                                    f"{lines}\nAnswer again with the whole proposal."},
+    ]  # fmt: skip
+    assert bill["detail"]["sent_back"] == words
+
+
+def test_a_second_refused_answer_is_the_answer_and_nothing_is_added(repo, fake):
+    f = fake([{"content": PROPOSAL}, answer(WRONG), answer(WRONG)])
+    said = []
+    with Store.open(repo) as store:
+        with pytest.raises(plan.Refused, match="no proposal") as no:
+            ask(store, repo, "make it say hello", named("nemotron"), say=said.append)
+        assert plan.nodes(store) == []
+    assert "needs: 'nope' is not the id of a node" in str(no.value)
+    assert [bool(r.get("response_format")) for r in f.requests] == [False, True, True]
+    assert said == ["asking the planner (nemotron)…"]  # one start: the planner sent it back itself
+
+
+def test_a_split_that_repeats_a_goal_of_two_lines_lands_with_nothing_sent_back(repo, fake):
+    """A split writes the node's line again, and the schema has it fill the goal. The goal a text-form
+    planner wrote has two lines; copied whole, it is the node's own goal, not a change to its contract."""
+    text = ("? say hello  [hello]\n    goal: greet returns hello.\n    goal: It keeps the old name.\n"
+            "    scope: app.py\n    check: true\n")  # fmt: skip
+    with Store.open(repo) as store:
+        T.apply(store, text, plan.Caller("planner:claude", False), None)  # a text-form planner wrote it
+    split = {"goal": None, "board": [], "says": "", "nodes": [
+        node("hello", "say hello", mark="-", goal="greet returns hello.\nIt keeps the old name.",
+             scope=["app.py"], check="true"),
+        node("hello-def", "define greet", "hello", scope=["app.py"], check="true"),
+        node("hello-word", "return hello", "hello", scope=["app.py"], check="true", needs=["hello-def"]),
+    ]}  # fmt: skip
+    f = fake([{"content": "I have read enough."}, answer(split)])
+    with Store.open(repo) as store:
+        ask(store, repo, "split it", named("nemotron"), about="hello", split=True, say=lambda s: None)
+        assert plan.get(store, "hello-word").parent == "hello"
+        assert plan.get(store, "hello").goal == "greet returns hello.\nIt keeps the old name."
+    assert len(f.requests) == 2  # one strict call: nothing was sent back
+
+
+def test_a_reask_is_tried_with_the_tree_it_replaces_dropped(repo, fake):
+    """`ask --finer` drops the last tree in the claim that adds the new one. The dry run drops it too,
+    else a tree that uses an id of the last one again would be sent back for nothing."""
+    finer = {**ANSWER, "nodes": [node("greeting", "the greeting"), {**HELLO, "check": "true"}]}
+    f = fake([{"content": PROPOSAL}, answer(ANSWER), {"content": PROPOSAL}, answer(finer)])
+    with Store.open(repo) as store:
+        ask(store, repo, "make it say hello", named("nemotron"), say=lambda s: None)
+        ask(store, repo, "make it say hello", named("nemotron"), say=lambda s: None, size="finer")
+        assert plan.get(store, "hello").state == "dropped"
+        [greeting, new] = plan.nodes(store, (PROPOSED,))
+        assert (greeting.title, new.title, new.check, new.parent) == ("the greeting", "say hello", "true",
+                                                                       greeting.id)  # fmt: skip
+    assert len(f.requests) == 4  # nothing was sent back
 
 
 def test_named_planners():
@@ -148,7 +341,7 @@ def test_what_git_ignores_is_never_read_and_so_never_sent(repo, fake):
     (repo / ".gitignore").write_text(".graphene/\n.env\n")
     (repo / ".env").write_text("AWS_SECRET_ACCESS_KEY=do-not-send\n")
     f = fake([call("read", path=".env"), call("list", path="."), call("grep", pattern="SECRET"),
-              call("read", path=".graphene/graphene.db"), {"content": PROPOSAL}])  # fmt: skip
+              call("read", path=".graphene/graphene.db"), {"content": PROPOSAL}, answer(ANSWER)])  # fmt: skip
     with Store.open(repo) as store:
         ask(store, repo, "make it say hello", named("nemotron"), say=lambda s: None)
     sent = json.dumps(f.requests)
