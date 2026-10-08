@@ -178,7 +178,7 @@ def test_the_schema_is_strict_all_the_way_down():
             assert s["type"] in ("string", ["string", "null"]) and set(s) <= {"type", "enum"}
 
     walk(planner.FORMAT["json_schema"]["schema"])
-    assert objects == [["goal", "board", "nodes", "says"],
+    assert objects == [["says", "goal", "board", "nodes"],  # says first: the object can end after its nodes
                        ["kind", "id", "text", "default", "then", "options", "about"], ["text", "then"],
                        ["id", "title", "goal", "scope", "check", "needs", "parent", "mark"]]  # fmt: skip
     assert planner.FORMAT["json_schema"]["schema"]["properties"]["board"]["items"]["properties"]["kind"][
@@ -221,6 +221,15 @@ def test_the_json_reads_as_the_plan_text_and_lands_field_for_field(repo):
         assert [{k: it[k] for k in fields} for it in B.items(store)] == [
             {**BOARD["board"][0], "text": "what does bye say?"}, BOARD["board"][1]
         ]  # fmt: skip
+
+
+def test_a_board_item_whose_id_the_text_cannot_read_gets_one_it_can(repo):
+    """Ultra named risks with ids of 33 letters and more; an item's id is a handle nothing names."""
+    long = {**BOARD["board"][1], "kind": "risk", "id": "validation-change-breaks-csv-and-json-feeds"}
+    with Store.open(repo) as store:
+        text = planner.as_text({**BOARD, "board": [long]})
+        T.apply(store, text, plan.Caller("planner:nemotron", False), None)
+        assert [it["id"] for it in B.items(store)] == ["validation-change-breaks"]
 
 
 def test_a_json_proposal_lands_through_ask_with_its_board_goal_and_needs(repo, fake):
