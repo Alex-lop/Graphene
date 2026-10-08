@@ -158,7 +158,6 @@ class _Graph:
     leaves: list[P.Node]  # in the outline's order
     level: dict[str, int]  # the column
     needs: dict[str, list[str]]  # the leaves each one waits on, none implied by another
-    rank: dict[str, int]  # `plan.order`'s place: what breaks a tie
 
 
 def _graph(nodes: list[P.Node]) -> _Graph:
@@ -174,7 +173,7 @@ def _graph(nodes: list[P.Node]) -> _Graph:
     for i in sorted(raw, key=level.__getitem__):
         upstream[i] = set(raw[i]).union(*(upstream[x] for x in raw[i]))
     needs = {i: [x for x in r if not any(x in upstream[y] for y in r)] for i, r in raw.items()}
-    return _Graph(leaves, level, needs, {n.id: k for k, n in enumerate(P.order(waits))})
+    return _Graph(leaves, level, needs)
 
 
 def note(nodes: list[P.Node], words: dict[str, str], width: int | None = None) -> str:

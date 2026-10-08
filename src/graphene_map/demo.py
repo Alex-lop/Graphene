@@ -100,12 +100,11 @@ def hider(root: Path) -> tuple:
         for text, instead in said:  # as written, and as JSON writes it inside a node's or a log row's detail
             for form in {text, json.dumps(text)[1:-1], json.dumps(text, ensure_ascii=False)[1:-1]}:
                 value = value.replace(form, instead)
-        return unkeyed(value)
+        return P.unkeyed(value)
 
     return hide, said
 
 
-unkeyed = P.unkeyed  # anything shaped like a key taken out, whole word by whole word
 # a path under a home directory, anyone's but the sandbox's own user's (sandbox.USER, "leaf"), unless the
 # path climbs out of it (`..`); the home of the machine that counts is counted apart, whatever it is
 HOMES = re.compile(r"""/(?:Users/|home/(?!leaf(?![\w.-])(?![^\s"']*\.\.)))""")  # not /home/leaf/../x

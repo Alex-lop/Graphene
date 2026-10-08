@@ -547,6 +547,7 @@ def plan_status(store) -> dict | None:
     """The plan in force, rolled up: what waits on the person, what runs, what is next, and the bill
     when Graphene knows one (its Nemotron executors' and planner's usage rows)."""
     from . import board as B
+    from .board_rows import VERB
     from .node_record import bill
 
     alive = [n for n in P.order(P.nodes(store)) if n.state not in P.GONE]
@@ -580,7 +581,7 @@ def plan_status(store) -> dict | None:
         for n in tops
     ]
     board = [it for name, group in B.groups(store) if name in dict(B.GROUPS) for it in group]
-    waiting += [{"id": it["id"], "title": it["text"], "word": BOARD_VERB.get(it["kind"], "asks"),
+    waiting += [{"id": it["id"], "title": it["text"], "word": VERB.get(it["kind"], "asks"),
                  "do": f"`graphene board` ({it['kind']})"} for it in board]  # fmt: skip
     running = [
         {"id": n.id, "title": n.title, "by": P.said_by(n.executor), "_held": (n.session_id, n.agent_id)}
@@ -665,13 +666,6 @@ def status(store, d: Direction | None, now: datetime | None = None) -> dict:
 
 # -- rows: the one row grammar (decision 41) -----------------------------------------------------------
 
-BOARD_VERB = {
-    "question": "asks",
-    "assume": "assumes",
-    "risk": "risk",
-    "leave out": "leaves out",
-    "note": "note",
-}
 WORD_LOOK = {
     "asks": "yours",
     "assumes": "yours",

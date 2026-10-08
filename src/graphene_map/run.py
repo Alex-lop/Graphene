@@ -40,6 +40,7 @@ from . import extra
 from . import meter as M
 from . import plan as P
 from .plan import may_collide
+from .record import seconds as _seconds
 
 # An executor may edit files and run `graphene node …` and `graphene plan …` (its done, its release, a
 # look at the plan), and nothing else unless the person says so with --with. Not `graphene run` or
@@ -584,14 +585,11 @@ def summary(store, since: int, stopped: bool = False) -> str:
     back = [i for i in back if i not in handed]
     freed = [n.id for n in ran if n.state == P.OPEN and let_go.get(n.id, {}).get("person")]
 
-    def named(ids: list[str]) -> str:
-        return ", ".join(ids[:3]) + (f" and {len(ids) - 3} more" if len(ids) > 3 else "")
-
     said = [f"{len(done)} done"] if done else []
-    said += [f"{len(back)} came back ({named(back)})"] if back else []
-    said += [f"{len(review)} in review ({named(review)})"] if review else []
-    said += [f"{named(handed)} handed back, ready again"] if handed else []
-    said += [f"{named(freed)} released by you, ready again"] if freed else []
+    said += [f"{len(back)} came back ({P._few(back)})"] if back else []
+    said += [f"{len(review)} in review ({P._few(review)})"] if review else []
+    said += [f"{P._few(handed)} handed back, ready again"] if handed else []
+    said += [f"{P._few(freed)} released by you, ready again"] if freed else []
     cost = clocks(log)
     if stopped:
         return "run stopped: " + (", ".join(said) or "nothing was finished") + cost
@@ -723,12 +721,6 @@ def live(store, node: P.Node, now: float | None = None) -> dict:
 def _spoke(log: str | None) -> str:
     """The log's last line that is not one of the stream's JSON events (stderr shares the file)."""
     return next((line for line in reversed(tail(log, 40)) if not line.lstrip().startswith("{")), "")
-
-
-def _seconds(stamp: str) -> float:
-    from datetime import datetime
-
-    return datetime.fromisoformat(stamp.replace("Z", "+00:00")).timestamp()
 
 
 def _came_back(store, only: list[str] | None, say: Callable[[str], None]) -> set[str]:

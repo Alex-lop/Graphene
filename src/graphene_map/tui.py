@@ -50,6 +50,7 @@ from . import plan_text as T
 from . import run as R
 from . import views as V
 from .node_record import bill, forks, models, sandbox
+from .plan_text import clock as _clock
 from .view_time import activity
 from .views import money
 
@@ -2116,16 +2117,6 @@ def _sentence(argv: list[str]) -> list[str]:
 
 
 # -- the node pane -----------------------------------------------------------------------------------
-
-
-def _clock(stamp: str | None, seconds: bool = False) -> str:
-    if not stamp:
-        return ""
-    try:
-        at = datetime.fromisoformat(stamp.replace("Z", "+00:00")).astimezone()
-    except ValueError:
-        return stamp[11 : 19 if seconds else 16]
-    return at.strftime("%H:%M:%S" if seconds else "%H:%M")
 
 
 def _where(checkout: str | None, root: Path) -> str:

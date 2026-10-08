@@ -406,16 +406,17 @@ def _plain(said: str) -> bool:
         return False
 
 
-def clock(stamp: str | None) -> str:
-    """A stored UTC time as the person's own clock, hours and minutes."""
+def clock(stamp: str | None, seconds: bool = False) -> str:
+    """A stored UTC time as the person's own clock, hours and minutes (and seconds, with ``seconds``)."""
     from datetime import datetime
 
     if not stamp:
         return ""
+    form = "%H:%M:%S" if seconds else "%H:%M"
     try:
-        return datetime.fromisoformat(stamp.replace("Z", "+00:00")).astimezone().strftime("%H:%M")
+        return datetime.fromisoformat(stamp.replace("Z", "+00:00")).astimezone().strftime(form)
     except ValueError:
-        return stamp[11:16]
+        return stamp[11 : 19 if seconds else 16]
 
 
 def elide(text: str, wide: int) -> str:

@@ -16,7 +16,6 @@ runs only when the person types it, so turning it off is leaving the word out.
 
 from __future__ import annotations
 
-import json
 import os
 from collections.abc import Callable
 from pathlib import Path
@@ -30,7 +29,6 @@ from . import cover
 
 ACTOR = "lookup:nemotron"
 FLAG = "lookup"
-BRIEF = 30  # seconds Nano is given, asked once: nobody waits on it
 CAP = 40_000  # characters of the repository sent, the files the board names first
 LEAST = 12  # characters a quoted line must have: shorter ones (`}`, `pass`) prove nothing
 SYSTEM = """\
@@ -142,8 +140,6 @@ def kept(item: dict, answer: dict, sent: dict[str, str]) -> tuple[str, int | Non
 def lookup(store, root: Path, say: Callable[[str], None] = print) -> list[dict]:
     """Ask Nano once about every open question; settle each whose answer holds (``kept``), as the
     person. Returns the items settled. Refused when there is nothing to ask or Nano cannot be asked."""
-    from . import tokenfactory as tf
-
     who = P.caller()
     P._person_only(who, "looking up the board's answers in the repository (it spends)")
     asked = questions(store)
@@ -154,23 +150,8 @@ def lookup(store, root: Path, say: Callable[[str], None] = print) -> list[dict]:
     say = cover.plain(say)
     model = cover._nano()
     ask = [{"role": "system", "content": SYSTEM}, {"role": "user", "content": shown(asked, sent)}]
-    try:
-        said = tf.chat(model, ask, tag="lookup", tries=1, timeout=BRIEF, response_format=FORMAT,
-                       reasoning_effort="low", temperature=0, max_tokens=2048)  # fmt: skip
-    except tf.Unreachable as no:
-        raise P.Refused(f"Nano could not be asked: {no}") from None
-    usage, whose = said["usage"], tf.endpoint()
-    bill = {"model": model, "calls": 1, "prompt_tokens": usage.get("prompt_tokens") or 0,
-            "completion_tokens": usage.get("completion_tokens") or 0, "dollars": round(said["dollars"], 6),
-            "endpoint": whose}  # fmt: skip
-    store.log_node("*", P._now(), "usage", ACTOR, None, None, bill)
-    by = "Token Factory" if whose == "token factory" else "a stand-in, not Token Factory"
-    say(f"Nano ({model}, answered by {by}): {bill['prompt_tokens']} in, {bill['completion_tokens']} out, "
-        f"${bill['dollars']:.4f} at list price")  # fmt: skip
-    try:
-        answers = json.loads(said["message"].get("content") or "")["answers"]
-        assert isinstance(answers, list)
-    except (ValueError, KeyError, TypeError, AssertionError):
+    answers = cover.ask_nano(store, model, ask, "lookup", ACTOR, FORMAT, 2048, say)
+    if answers is None:
         say("its answer is not the JSON asked for: every question stays open")
         return []
     by_id, settled = {it["id"]: it for it in asked}, []
@@ -195,8 +176,8 @@ def lookup(store, root: Path, say: Callable[[str], None] = print) -> list[dict]:
     return settled
 
 
-def shaped() -> bool:
-    return FLAG in os.environ.get("GRAPHENE_SHAPE", "").replace(" ", "").split(",")
+def shaped(flag: str = FLAG) -> bool:
+    return flag in os.environ.get("GRAPHENE_SHAPE", "").replace(" ", "").split(",")
 
 
 def after_proposal(store, root: Path, say: Callable[[str], None]) -> None:

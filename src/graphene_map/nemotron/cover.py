@@ -111,6 +111,32 @@ def _nano() -> str:
     return found["nano"]
 
 
+def ask_nano(store, model: str, ask: list, tag: str, actor: str, form: dict, tokens: int, say) -> list | None:
+    """Nano asked once, nobody waiting on it: its usage row on the plan's log as ``actor``, a line saying
+    what it cost, and the list its answer holds under the schema's name; None when it holds none."""
+    from . import tokenfactory as tf  # here, not above: the CLI starts without the client
+
+    try:
+        said = tf.chat(model, ask, tag=tag, tries=1, timeout=BRIEF, response_format=form,
+                       reasoning_effort="low", temperature=0, max_tokens=tokens)  # fmt: skip
+    except tf.Unreachable as no:
+        raise P.Refused(f"Nano could not be asked: {no}") from None
+    usage, whose = said["usage"], tf.endpoint()
+    bill = {"model": model, "calls": 1, "prompt_tokens": usage.get("prompt_tokens") or 0,
+            "completion_tokens": usage.get("completion_tokens") or 0, "dollars": round(said["dollars"], 6),
+            "endpoint": whose}  # fmt: skip
+    store.log_node("*", P._now(), "usage", actor, None, None, bill)
+    by = "Token Factory" if whose == "token factory" else "a stand-in, not Token Factory"
+    say(f"Nano ({model}, answered by {by}): {bill['prompt_tokens']} in, {bill['completion_tokens']} out, "
+        f"${bill['dollars']:.4f} at list price")  # fmt: skip
+    try:
+        found = json.loads(said["message"].get("content") or "")[form["json_schema"]["name"]]
+        assert isinstance(found, list)
+    except (ValueError, KeyError, TypeError, AssertionError):
+        return None
+    return found
+
+
 def take(store, u: dict, who: P.Caller) -> str:
     """Put an uncovered clause, as the person wrote it, at the end of its nearest leaf's goal as that
     goal is now (read at this moment, so an edit made since the cover ran stays). Says what changed."""
@@ -137,23 +163,8 @@ def cover(store, paragraph: str | None = None, say: Callable[[str], None] = prin
     model, text = _nano(), T.render(store)[0]
     shown = f"The paragraph:\n{paragraph.strip()}\n\nThe plan:\n{text}"
     ask = [{"role": "system", "content": SYSTEM}, {"role": "user", "content": shown}]
-    try:
-        said = tf.chat(model, ask, tag="cover", tries=1, timeout=BRIEF, response_format=FORMAT,
-                       reasoning_effort="low", temperature=0, max_tokens=4096)  # fmt: skip
-    except tf.Unreachable as no:
-        raise P.Refused(f"Nano could not be asked: {no}") from None
-    usage, whose = said["usage"], tf.endpoint()
-    bill = {"model": model, "calls": 1, "prompt_tokens": usage.get("prompt_tokens") or 0,
-            "completion_tokens": usage.get("completion_tokens") or 0, "dollars": round(said["dollars"], 6),
-            "endpoint": whose}  # fmt: skip
-    store.log_node("*", P._now(), "usage", ACTOR, None, None, bill)
-    by = "Token Factory" if whose == "token factory" else "a stand-in, not Token Factory"
-    say(f"Nano ({model}, answered by {by}): {bill['prompt_tokens']} in, {bill['completion_tokens']} out, "
-        f"${bill['dollars']:.4f} at list price")  # fmt: skip
-    try:
-        clauses = json.loads(said["message"].get("content") or "")["clauses"]
-        assert isinstance(clauses, list)
-    except (ValueError, KeyError, TypeError, AssertionError):
+    clauses = ask_nano(store, model, ask, "cover", ACTOR, FORMAT, 4096, say)
+    if clauses is None:
         say("its answer is not the JSON asked for: nothing is recorded")
         return []
     flat = tf.unkeyed(CONTROL.sub("", " ".join(paragraph.split())))
@@ -189,8 +200,9 @@ def cover(store, paragraph: str | None = None, say: Callable[[str], None] = prin
             uncovered.append({"note": clause, "nearest": near})
     run = P._now()
     # what the model made up is counted whole, and a little of it kept to read: never a large row
-    read = {"run": run, "endpoint": whose, "clauses": kept, "dropped": [d[:200] for d in dropped[:20]],
-            "invented": len(dropped), "pieces": pieces}  # fmt: skip
+    read = {"run": run, "endpoint": tf.endpoint(), "clauses": kept,
+            "dropped": [d[:200] for d in dropped[:20]], "invented": len(dropped),
+            "pieces": pieces}  # fmt: skip
     with store.claim():
         store.log_node("*", run, "covered", ACTOR, None, None, read)
         for u in uncovered:

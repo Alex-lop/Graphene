@@ -334,16 +334,14 @@ def on_board(store, rows: list[tuple[P.Node, dict]], board=None) -> list[str]:
     return lines
 
 
-def shaped() -> bool:
-    return FLAG in os.environ.get("GRAPHENE_SHAPE", "").replace(" ", "").split(",")
-
-
 def after_proposal(store, root: Path, ids) -> list[str]:
     """`graphene ask` with GRAPHENE_SHAPE=precheck: the lines saying the checks of the leaves this
     proposal just proposed (``ids``), each run first in a sandbox fork, and each that cannot tell its
     leaf is done put on the board as a risk (``on_board``). An accepted leaf's check is never
     run by an ask; it runs here only when the person says `graphene plan precheck`."""
-    if not shaped():
+    from .lookup import shaped  # lookup's reading of GRAPHENE_SHAPE, asked of this module's FLAG
+
+    if not shaped(FLAG):
         return []
     try:
         new = [i for i in dict.fromkeys(ids) if (store.node_row(i) or {}).get("state") == P.PROPOSED]
