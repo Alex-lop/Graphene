@@ -4,32 +4,87 @@ Rollback: `main` is untouched at `a96fb48`. To drop the night: close the PR, `gi
 
 ## Your 30 minutes
 
-Not ready yet. This file is rewritten at every milestone; this section is written once the branch is pushed,
-and run once from the pushed branch before 07:55.
+A fresh terminal, with nothing but `uv` and `git`. Nothing here needs a key. Each step says what it prints.
+
+1. **Install the branch as a tool, in a directory of its own** (2 min). Your own `graphene` stays as it is.
+
+   ```sh
+   mkdir ~/graphene-timeline && cd ~/graphene-timeline
+   UV_TOOL_DIR=$PWD/tools UV_TOOL_BIN_DIR=$PWD/bin uv tool install 'git+https://github.com/Alex-lop/Graphene@timeline'
+   export PATH=$PWD/bin:$PATH
+   graphene --version                                    # graphene 0.5.0
+   git clone -q --depth 1 -b timeline https://github.com/Alex-lop/Graphene src
+   ```
+
+2. **The numbers, before and after** (5 min). `less src/dev/process/timeline/before.md src/dev/process/timeline/after.md`.
+   Each file leads with the same three numbers.
+
+3. **The timeline** (5 min). `graphene demo src/tests/recordings/timeline-claude.jsonl`. When the tree shows, press
+   Tab three times: tree, dag, then `time`. Each lane grows as its leaf ran. ✓ is a passed check, ◆ a landing.
+   `j` onto a lane, and the pane under it lists what that leaf did, with the seconds. `q` quits.
+
+4. **Five minutes on a scratch repo** (8 min; it uses your Claude Code login, about $0.30).
+
+   ```sh
+   uv run -q --no-project --python 3.13 python src/dev/test/make_task.py report ~/graphene-timeline/report > /dev/null
+   cd ~/graphene-timeline/report
+   graphene init --planner claude --executor claude       # plan first: on. Every ask in a session is proposed…
+   graphene ask 'Finance wants the sales report as JSON: make render(rows, "json") in app/report.py give a list with one object per data row (region, units, revenue), no TOTAL row, and leave the text report as it is.'
+   graphene watch
+   ```
+
+   The proposal waits for you. One leaf is one row: `y` accepts it and runs it. A tree: `y` on the goal accepts it
+   all, then `R` runs it. Tab to `time` while it runs. Then `q`, and `graphene node show <leaf>`.
+
+5. **Decide** (5 min): the questions in the brief below, each with my default.
+
+6. **Merge** (1 min): `gh pr merge PRNUM -R Alex-lop/Graphene --merge`.
 
 ## Your practice run
 
-Written with the 30 minutes.
+One hour, on a repo of yours, the way you would use Graphene.
+
+1. In the terminal from step 1: `cd ~/<your repo> && graphene init --planner claude --executor claude`. Plan first
+   is `on`.
+2. Two panes: `claude` on the left, `graphene watch` on the right.
+3. On the left, say a paragraph of your own: something you want done that is bigger than one change.
+4. On the right, prune the tree (`d` drops, `e` edits, `y` accepts), then `R`. Tab to `time` while it runs. Enter
+   on a lane gives its record.
+5. As you go, write in `~/graphene-timeline/practice.md`, under these headings, to paste into Issues:
+   - **Where the tree misread me:** the leaf, and what I meant.
+   - **What I pruned or edited, and why.**
+   - **What came back**, and whether its reason was fair.
+   - **What the timeline showed** that the live row did not.
+   - **What I looked for and could not find.**
+6. At the end: `graphene plan record > ~/graphene-timeline/record.txt`, then `graphene plan archive`.
 
 ## The brief
 
-1. **The three numbers**, before (last night's records, `dev/process/timeline/before.md`) and after
-   (`dev/process/timeline/after.md`):
-   - hand-backs over another leaf's file: 8 in 10 trees (6 over a test file) · tonight, so far: 3 in 8 trees (1
-     over a test file). The statements task: 20 of 22 leaves landed in 3 runs, none left unrun.
-   - Nemotron proposals: 7 in 34 asks (21%) · tonight: 10 in 20 (50%), then the round on the fixed schema (running).
-   - the feeds paragraph under `on`: a tree, waiting for you, 3 times in 3 · under `auto`: 1 in 3.
-2. **Watch first:** `graphene demo tests/recordings/timeline-claude.jsonl`, then Tab three times: the timeline.
-3. **The bill:** $17 of $40 so far (see the end of the night for the final figure).
+1. **The three numbers**, before → after (`dev/process/timeline/before.md`, `after.md`):
+   - Hand-backs over another leaf's file: 8 in last night's 10 trees, 6 over a test file → 4 in tonight's 13 trees,
+     1 over a test file. The statements task: 20 of 22 leaves landed in three runs, none left unrun.
+   - Nemotron proposals: 7 in 34 asks (21%) → 10 in 20 (50%), then 12 in 20 (60%) after the first schema fix. The
+     third round, on the second fix, is running.
+   - The feeds paragraph: a tree 1 time in 3 under `auto` → a tree, waiting for you, 3 times in 3 under `on`.
+2. **Watch first:** `graphene demo tests/recordings/timeline-claude.jsonl`, Tab three times to `time`. Nemotron's
+   first clean take: `graphene demo tests/recordings/timeline-nemotron-take-6.jsonl`. The GIF ends on the timeline.
+3. **The bill:** $26.43 of $40 so far: `planner` $12.78 · `scopes` $8.45 · `takes` $2.10 · `first` $1.83 ·
+   `timeline` $1.27.
 4. **Decide:** written at the end.
 5. **Broken or risky:** written at the end.
 
 ---
 
+Tonight's decisions are in `dev/DIRECTION.md`, 166 to 180. The evidence: `dev/process/timeline/` (`before.md`,
+`after.md`, `takes.md`, `lane0.txt`, `screens/`).
+
 ## Branches
 
 - `main`: `a96fb48`, untouched, local and on GitHub.
-- `timeline`: the night, in a clone outside your checkout. Not pushed yet.
+- `timeline`: the night, pushed; the PR is the only one.
+- `timeline-before-shape`: the night's commits before 02:49, pushed so the builds the evidence names resolve.
+  Delete it when you merge: `git push origin --delete timeline-before-shape`.
+- In this run's clone only: `l1`, `l2`, `l3`, `l4` (the lanes, squashed into `timeline`), `off` (the offset).
 
 ## What was done, in order
 
@@ -69,3 +124,15 @@ Written with the 30 minutes.
 - **02:40** Lane 2's first round: 10 proposals in 20 asks. 12 of 41 answers had stuck after the nodes, because the
   schema asked for `says` last. Fixed (`674754d`): `says` first, and a board item's unreadable id made readable.
   The second round started.
+- **02:49** The history folded into 11 commits with the same tree, and `timeline` pushed; CI started. The commits
+  before the fold are on `timeline-before-shape`, so every build named in the evidence resolves.
+- **02:22-03:03** Six Nemotron takes: Ultra planned four; takes 1, 3 and 6 ran clean, take 6 landing every leaf (the
+  first that has). `dev/process/timeline/takes.md`.
+- **02:55** Lane 2's second round: 12 proposals in 20. The most common refusal on feeds was a board line naming a node
+  the answer had not given an id yet: the schema asked for the board before the nodes. Fixed (`674b32c`): nodes first.
+  The third round started.
+- **03:00** The GIF again, on real agents, ending on the time view. Its planning session ($0.47, priced from its own
+  turns) went on the ledger by hand: a `claude -p` session writes nothing to it.
+- **03:13** Lane 1's review fixes ported (`32c6d4f`): a glob is read as written, a re-ask may write the paths of old
+  leaves that stay, changed checks are judged last in one save, and the Nemotron planner's dry run is given what a
+  merge replaces.

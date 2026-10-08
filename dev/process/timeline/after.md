@@ -1,7 +1,8 @@
 # The numbers, after
 
-Run on 8 October between 02:15 and 05:00 on the `timeline` branch, each run on a wheel of the branch installed
-as a tool (the build is named on each table). Counted the way `before.md` counts. Every run's ledger rows are on
+Run on 8 October between 02:15 and 05:00, each run on a wheel of the branch installed as a tool. A build is named
+by the commit it was built from; at 02:49 that history was folded into fewer commits with the same tree, and the
+commits before the fold are on the branch `timeline-before-shape`, where every build named here resolves. Counted the way `before.md` counts. Every run's ledger rows are on
 the night's ledger under the purpose named below. The raw material (each run's repo, store, log and screens)
 stayed in the run's scratch directory; what a run printed is quoted here.
 
@@ -30,14 +31,90 @@ the leaves). Then the feeds task twice (`meter_live.py`, Claude Code's planner a
 - Last night, at the same size: run 2 stopped at 3 of 7 leaves with 3 never started; run 3 landed 6 of 9 with 2
   never started.
 
+**Every tree that ran tonight, counted the same way: 13 trees, 4 stopped on another leaf's file, 1 of them a test
+file. No leaf was left unrun.** Last night: 8 of 10 trees, 6 over a test file.
+
+| tree | leaves | landed | over another leaf's file |
+|---|---|---|---|
+| statements 1, 2, 3 | 10, 5, 7 | 10, 4, 6 | statements 2: `tests/test_dunning.py`, a stale figure its owner left |
+| feeds 1, 2 (Claude Code) | 3, 3 | 3, 3 | none |
+| take 1 (Nemotron, feeds) | 4 | 3 | `ingest/xmlfeed.py`: the tests leaf found the reader's field names wrong |
+| take 2 (Nemotron, report) | 3 | 2 | `app/report.py`: Nano asked for a file another leaf had already landed |
+| take 3 (Nemotron, feeds) | 2 | 1 | `ingest/xmlfeed.py`: the tests leaf found price 0 not skipped |
+| take 6 (Nemotron, report) | 2 | 2 | none |
+| the recording, the GIF's run, two Tuesday asks | 2, 2, 1, 1 | 2, 2, 1, 0 | none (the Tuesday ask that came back met a Python 3.9 on my pane's PATH) |
+
+What stops a tree now is different in kind: a tests leaf finding a fault in the code another leaf landed, which is
+the check doing its job, not one leaf's check running a file another leaf had not written yet.
+
 ## 2. The Nemotron planner's proposal rate (lane 2, purpose `planner`)
 
 `graphene ask` with `nemotron --steps 60` (Ultra), ten times on feeds (nemotron.sh's paragraph, the one the takes
 used) and ten on report (`dev/test/tasks/report/paragraph.md`), each in a fresh repo, one after another.
 
-ROUND1
+### Round 1, the JSON planner as built
 
-ROUND2
+Build `4490656`. **10 proposals in 20 asks** (feeds 2 of 10, report 8 of 10); 41 strict answers, 12 of them stalled to the token limit; $4.90.
+
+| task | ask | proposal | leaves | board | answers | stalled | $ | s | what Graphene said |
+|---|---|---|---|---|---|---|---|---|---|
+| feeds | 1 | no |  |  | 2 |  | 0.20 | 72 | line 28: option: is a question's; a risk has a default: at most |
+| feeds | 2 | no |  |  | 2 |  | 0.15 | 107 | line 15: then: scope csvfeed-leaf + ingest/csvfeed.py names csvfeed-leaf, which is not a node in the plan |
+| feeds | 3 | no |  |  | 2 |  | 0.35 | 88 | line 11: about: xml-feed, xml-test, which is not a node in the plan |
+| feeds | 4 | no |  |  | 2 |  | 0.45 | 119 | line 35 [wiring]: wiring and sample-test both write tests/cli/test_main.py. A path has one leaf that writes it |
+| feeds | 5 | yes | 2 | 2 | 2 |  | 0.30 | 203 | after a send-back: line 19 [xmlfeed]: xmlfeed and normalize both write normalize/fields.py. A path has one le |
+| feeds | 6 | no |  |  | 3 | 1 | 0.32 | 92 | line 18: [validation-change-breaks-csv-json] is not an id: letters, digits, '-', '_' and '.', at most 32 |
+| feeds | 7 | no |  |  | 2 |  | 0.51 | 137 | line 8: then: 'about xmlfeed' is not read; an effect is scope NODE + GLOB, check NODE: COMMAND, goal NODE + TE |
+| feeds | 8 | no |  |  | 2 |  | 0.53 | 244 | line 4: then: goal validate-zero + "Reject price_cents <= 0 in validation for all sources" names validate-zero |
+| feeds | 9 | no |  |  | 2 |  | 0.06 | 36 | line 8: then: scope normalize + normalize/fields.py names normalize, which is not a node in the plan |
+| feeds | 10 | yes | 3 | 3 | 1 |  | 0.27 | 70 |  |
+| report | 1 | yes | 3 |  | 2 | 1 | 0.10 | 48 |  |
+| report | 2 | yes | 3 |  | 2 |  | 0.10 | 66 | after a send-back: line 11 [regress-text]: regress-text: a leaf needs a scope (the paths it may touch), e.g.  |
+| report | 3 | no |  |  | 4 | 4 | 0.37 | 245 | its answers stalled to the token limit: no JSON to read |
+| report | 4 | yes | 2 |  | 3 | 1 | 0.26 | 100 | after a send-back: line 2 [json-render]: json-render: its check runs tests/test_report_json.py, which test-js |
+| report | 5 | yes | 4 | 2 | 1 |  | 0.22 | 121 |  |
+| report | 6 | yes | 3 |  | 1 |  | 0.09 | 50 |  |
+| report | 7 | no |  |  | 4 | 4 | 0.34 | 306 | its answers stalled to the token limit: no JSON to read |
+| report | 8 | yes | 2 | 3 | 1 |  | 0.09 | 98 |  |
+| report | 9 | yes | 2 |  | 2 | 1 | 0.12 | 67 |  |
+| report | 10 | yes | 3 |  | 1 |  | 0.06 | 37 |  |
+
+12 of the 41 answers stalled: Ultra closed the nodes, the schema asked for one more key (`says`, last), and it
+wrote spaces to the token limit. Fixed (`674754d`): `says` first; and a board item's id the text cannot read
+is made one it can (a handle nothing in the answer names).
+
+### Round 2, `says` first
+
+Build `674754d`. **12 proposals in 20 asks** (feeds 4 of 10, report 8 of 10); 34 strict answers, 5 of them stalled to the token limit; $4.83.
+
+| task | ask | proposal | leaves | board | answers | stalled | $ | s | what Graphene said |
+|---|---|---|---|---|---|---|---|---|---|
+| feeds | 1 | yes | 3 | 1 | 1 |  | 0.05 | 32 |  |
+| feeds | 2 | yes | 1 |  | 1 |  | 0.25 | 212 |  |
+| feeds | 3 | no |  |  | 2 | 1 | 0.40 | 275 | line 16: parent: 'plan' is not the id of a node, in this text or in the plan |
+| feeds | 4 | no |  |  | 3 | 1 | 0.36 | 109 | line 11: about: validate/rules, which is not a node in the plan |
+| feeds | 5 | yes | 1 |  | 1 |  | 0.25 | 147 |  |
+| feeds | 6 | no |  |  | 2 |  | 0.23 | 62 | line 7: then: scope xmlfeed-leaf + ingest/xmlfeed.py names xmlfeed-leaf, which is not a node in the plan |
+| feeds | 7 | no |  |  | 2 |  | 0.36 | 125 | line 11: about: validation, which is not a node in the plan |
+| feeds | 8 | no |  |  | 2 | 1 | 0.58 | 229 | line 31 [xml-reader]: xml-reader and xml-normalize both write ingest/__init__.py. A path has one leaf that wri |
+| feeds | 9 | no |  |  | 2 |  | 0.09 | 60 | line 20 [xmlfeed-leaf]: xmlfeed-leaf and normalize-leaf both write normalize/fields.py. A path has one leaf th |
+| feeds | 10 | yes | 3 |  | 1 |  | 0.25 | 160 |  |
+| report | 1 | yes | 3 |  | 1 |  | 0.08 | 55 |  |
+| report | 2 | yes | 3 |  | 2 |  | 0.10 | 53 | after a send-back: line 7 [test-json]: test-json and test-all both write tests/test_report_json.py. A path ha |
+| report | 3 | yes | 2 |  | 2 |  | 0.23 | 121 | after a send-back: line 2 [report-json-impl]: report-json-impl: its check runs tests/test_report_json.py, whi |
+| report | 4 | yes | 4 |  | 3 | 1 | 0.26 | 95 | after a send-back: line 6 [test-json]: test-json and full-suite both write tests/test_report_json.py. A path  |
+| report | 5 | no |  |  | 2 |  | 0.31 | 98 | line 20: then: leaf leaf-verify-text under root names root, which is not a node in the plan |
+| report | 6 | yes | 3 |  | 1 |  | 0.08 | 84 |  |
+| report | 7 | yes | 3 |  | 1 |  | 0.08 | 35 |  |
+| report | 8 | no |  |  | 3 | 1 | 0.51 | 149 | line 18 [json-leaf]: json-leaf: its check runs tests/test_report_json.py, which json-test-leaf writes after it |
+| report | 9 | yes | 3 |  | 1 |  | 0.28 | 79 |  |
+| report | 10 | yes | 2 | 1 | 1 |  | 0.08 | 43 |  |
+
+Stalls fell to 5 of 34 answers; each now stops before another trailing key (`about`, `parent`, an option's
+`then`). The most common refusal on feeds was a board line naming a node the answer had not given an id yet:
+the schema asked for the board before the nodes. Fixed (`674b32c`): the nodes first.
+
+ROUND3
 
 ## 3. The feeds paragraph under `on` (lane 3, purpose `first`)
 
