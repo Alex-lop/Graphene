@@ -4,7 +4,7 @@
 edit as binding: it reads this before it reads the code. It is the same shape as the product: you
 shape the plan, the agents execute it. First written 2026-09-20 by the agent that ran the
 collaboration directive (`dev/process/directives/COLLABORATION_DIRECTIVE.md`); last added to on
-2026-10-05, by the agent that ran the cut directive.*
+2026-10-08, by the agent that ran the timeline directive.*
 
 *The process archive moved off `main` on the cut night. It is the orphan branch `process`, at `fb6a408`.*
 
@@ -1690,6 +1690,39 @@ any of them.
      PREREG voids a changed repo: the registered runs need a new commit.
 165. **The Nemotron planner reads a tool call written as text.** Ultra wrote `<tool_call>{…}</tool_call>`
      and the planner took it for the proposal. Of 19 takes, Ultra planned 7; take 11 is kept.
+
+## Decisions taken on the night of the timeline directive (7 to 8 October)
+
+166. **The directive's $40 line was the opening, as 151 read last night's.** Nothing new started past $35: the run
+     read the bill before each start (Graphene's own stop is 90%, $36). Every row names its purpose.
+167. **Each live run used a build of its own.** A wheel of the branch, installed as a tool in a directory named for
+     its commit. A fix made mid-night never changed the code under a run already going.
+168. **What a check names.** A file git tracks; a test module (`tests.test_x` is `tests/test_x.py`); a directory,
+     which names every file under it, tracked or made by a scope; a new file a scope covers. Nothing else.
+169. **A leaf whose check names another leaf's path waits on it, unless the two are already in order.** When the
+     other waits on it, the check sees the path as it is at the base: one tests leaf waiting on the code works.
+170. **A check that runs a new file only a later leaf writes is refused.** It could never pass. Found on the night's
+     first live Ultra ask; it is last night's take 9. Two leaves that write one path are refused too.
+171. **The rule is checked at propose, plan edit and node set.** A board answer, `widen` and the sibling offer are
+     not judged: an answer the person gave is not refused by this.
+172. **The rule is said where every planner reads it:** `ask.RULES`, the Nemotron prompt, and `gate.TEACH`, which the
+     Claude Code sessions that plan read. In tonight's statements runs the planners kept it; the check added nothing.
+173. **Ultra answers in a strict JSON schema, on the answer only.** With tools in the same request it calls no tool.
+     `anyOf` and `pattern` make it write spaces or break a string on Token Factory; types and enums hold.
+174. **The schema is the text form's fields:** `says`, `goal`, `board` (kind, id, text, default, then, options,
+     about), `nodes` (id, title, goal, scope, check, needs, parent, mark). `says` is first: last, Ultra stalled.
+175. **One validator.** The JSON is written as the plan's text and tried by `T.apply`. A refusal goes back once, in
+     the same conversation, with its exact words. The planner starts once; the second answer is the answer.
+176. **New repos plan first `on`.** `init` writes it; a store on `auto` stays `auto`; one never set is unchanged.
+     Under `on` the feeds paragraph was a tree three times in three, and Tuesday asks were trees four times in six.
+177. **One leaf proposed is one row, in every mode.** `y` accepts it, and runs it when an executor is chosen and
+     it could start. `R` still runs every ready leaf.
+178. **The Claude Code planner is held like an executor's attempt:** `--max-budget-usd` (else $3) before it starts,
+     settled at its stream's result. Tonight $1.50 holds settled at $0.10 to $0.11.
+179. **The timeline:** █ editing, ▓ running, ▒ reading, ░ talking, ─ idle after 60 s, ━ held unseen; marks ! ✓ ✗ ↩ ◆
+     ●. One cell is the span over the columns, from the first ask, acceptance or start. A replay's time is its own.
+180. **The shipped demo stays the scripted stand-in.** Tests pin it and it needs no network. Tonight's Claude Code
+     run is `tests/recordings/timeline-claude.jsonl`, which the 30 minutes replays.
 
 ## What does not bind (say it wherever you sell it)
 

@@ -1,0 +1,6 @@
+Load the Northwind XML feed with the same `load` command as csv and json…
+ you        |                         |
+ zero-rule                            ────▓▓▓▓█▓▓▓✓▓░◆
+ xml-wire                                            ──▓▓▓▓▓▓▓▓▓░████████▓✓▓▓◆
+            0s          15s         30s         45s         60s         75s
+2 lanes · 1 min · agents <1 min $0.38 · you 2 acts ~2 min

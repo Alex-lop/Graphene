@@ -1,0 +1,36 @@
+ the plan of …pez-Desktop-AllThingsAgenticHackathon/15308b85-9c57-486e-ac86-ff05438c32d4/scratchpad/live/takes/t1-feeds
+add the Northwind XML feed so it loads with the same `load` command and emits the same JSONL as csv and json; prices…
+ you          |                |                           |
+ xmlfeed-re…                   ──▒▒▒▒███▓✓◆
+ wire-xml-f…                             ──▒▒▒▒▓▒▒▒▒▒▒███▒!↩─▒▒▒▒▒▒███▓██████✓◆
+ validate-z…                   ──▒▒▒███▓█████▓▓✓◆
+ test-xmlfe…                                                                 ──▒██████✗▒▓▓▓▓▓▒▒▒▒▒▒▓▓▓▓▓▓▓▓▓▒▒▓▓▒▒▓▓▓↩
+              0m              2m               4m               6m               8m               10m              12m
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ add the Northwind XML feed so it loads with the same `load` command and emits the same JSONL as csv and json; prices
+ are already in cents, the summary element is not a product, and a price of 0 means skip for every supplier
+ the goal · 3/4 done
+
+ ✓ xmlfeed-reader                                                                       xmlfeed-reader       done
+ ✓ wire-xml-feed                                                                        wire-xml-feed        done
+ ✓ validate-zero-price                                                                  validate-zero-price  done
+ ↩ test-xmlfeed-e2e                                                                     test-xmlfeed-e2e     came back
+
+ waiting  test-xmlfeed-e2e came back
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 1 on you · agents 0 · 12m · $0.46 · you 6 acts ~3m · none ready · 1 came back · 3/4 done · plan first: on
+ E edit the plan as text · Tab view · ? help · q quit
+ 4 lanes · 12 min · 2 came back · agents 12 min $0.46 · you 6 acts ~3 min
