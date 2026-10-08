@@ -50,6 +50,7 @@ from . import plan_text as T
 from . import run as R
 from . import views as V
 from .node_record import bill, forks, models, sandbox
+from .view_time import activity
 from .views import money
 
 RUN_WITH = "--parallel 4"  # `R` and `r`: ready leaves at once, a worktree each, landed here as they pass
@@ -817,6 +818,7 @@ class Watch(App):
         self.opened: list[str] = []  # board: the open items' ids when the tree was last built
         self.skips: set[tuple[str, int]] = set()  # the views Tab went past, and at what width, said once
         self.billed: dict[str, str] = {}  # what each leaf an executor held spent and took (views.billed)
+        self.events: dict | None = None  # the log's rows, for a view that draws time (views.happened)
         self.metered = 0  # the rows the meter's strip takes
 
     # -- the screen ----------------------------------------------------------------------------------
@@ -958,7 +960,7 @@ class Watch(App):
                 self.message = f"{n.id} stepped up to {_short(step['model'])}: {step['why']}"
         executor = (store.meta("executor") or "").split()  # what R starts, when `graphene init` chose it
         everything = store.node_log()  # ponytail: all of it each tick; read on from the last id if it slows
-        now = self.clock(everything)
+        now, person = self.clock(everything), self.person(everything)
         usage = [e for e in everything if e["kind"] == "usage"]  # what the planners and executors cost
         self.counts = {
             "you": len(tops) + len(yours),
@@ -975,9 +977,10 @@ class Watch(App):
             "with": f" with {Path(executor[0]).name}" if executor else "",
             "spent": sum(e["detail"].get("dollars") or 0 for e in usage) if usage else None,
             "agents": M.agents(everything, now),  # the two clocks
-            "mine": M.you(everything, P.caller().name),
+            "mine": M.you(everything, person),
         }
         self.billed = V.billed(everything, now)
+        self.events = V.happened(everything, person, now)
         self.draw_meter(store, everything, now)
         goal_word = "proposed" if proposed and not goal else self.counts["done"]
         if self.counts["finished"]:  # what `graphene` says; the goal row reads done, as a sub-goal does
@@ -1017,6 +1020,10 @@ class Watch(App):
     def clock(self, everything: list[dict]) -> datetime:
         """Now, for the clocks and a leaf's minutes."""
         return datetime.now(UTC)
+
+    def person(self, everything: list[dict]) -> str:
+        """The person, for their clock and the time view's ticks: whoever watches."""
+        return P.caller().name
 
     def draw_meter(self, store, everything: list[dict], now: datetime) -> None:
         """The meter's strip, between the plan and the bottom lines: a block for each running leaf whose
@@ -1115,11 +1122,13 @@ class Watch(App):
             return None
         (width, height), goal = self.view_room(), BR.goal(self.goal_text, self.board)  # board: its count
         noted = {"meter": self.billed} if getattr(view, "METER", False) else {}  # a view that takes them
+        if getattr(view, "EVENTS", False):
+            noted["events"] = self.events
         drawn = view.draw(self.nodes, self.words, goal, width, height, self.here, **noted)
         if drawn is not None and self.here is not None and self.here not in drawn.at:
             was, self.here = self.here, self.stand_in(drawn)
-            if was in self.by_id and self.here is not None:
-                self.mapped = (was, self.here)  # Tab from the stand-in goes back to the node itself
+            if was in self.by_id:  # Tab from the stand-in, or from the goal, goes back to the node itself
+                self.mapped = (was, self.here)
             drawn = view.draw(self.nodes, self.words, goal, width, height, self.here, **noted)
         return drawn
 
@@ -1291,8 +1300,9 @@ class Watch(App):
 
     def pane_room(self) -> tuple[int, int]:
         """The node pane's width and height, from the layout this screen sets (known before Textual
-        has laid it out): its text is wrapped to it, and a leaf that came back fitted to it."""
-        width, height = self.size.width, self.size.height - self.metered
+        has laid it out): its text is wrapped to it, and a leaf that came back fitted to it. Under a view
+        its note is a third line at the bottom."""
+        width, height = self.size.width, self.size.height - self.metered - (self.drawn is not None)
         kind, amount = (self.sized or ("narrow", 10))[:2]
         if kind == "wide":
             return max(width - amount - 4, 20), max(height - 3, 5)
@@ -1553,6 +1563,12 @@ class Watch(App):
             key += (int(time.monotonic() // 10),) if node.state == P.RUNNING else ()  # its tree moves
             pane.update(self.recorded(key, lambda: record_pane(store, node, self, wide)))
             return
+        # under the time view a leaf whose executor did or said something says it; one that came back keeps
+        # its offers in sight, and one with nothing on record (a stand-in, a script) its contract
+        word = self.word(node.id)
+        did = activity(store.node_log(node.id)) if self.showing == "time" and word not in WHOSE[:3] else []
+        if any(said for _, said in did):
+            return pane.update(activity_pane(node, word, did, wide, high))
         if time.monotonic() - self.files_at > 10:
             self.files, self.files_at = P.tracked(self.root_path), time.monotonic()
         pane.update(detail(store, node, self, self.files, (wide, high)))
@@ -2439,6 +2455,28 @@ def tail_pane(store, node: P.Node, root: Path, wide: int) -> Text:
         pane.line(
             Text.assemble((_clock(call["timestamp"], True), "dim"), "  ", T.elide(R.said_by(call), wide - 10))
         )
+    return pane.render()
+
+
+def activity_pane(node: P.Node, word: str, did: list, wide: int, high: int) -> Text:
+    """Under the time view, what a leaf's executor did and said, live (`view_time.activity`). Each
+    attempt has a dim heading. Each phrase says how long after its attempt began it came, and a run of
+    one phrase is said once (`editing cli/main.py ×4`). The last rows that fit show, under their
+    attempt's heading."""
+    pane = Pane(wide)
+    _header(pane, node, word)
+    pane.gap()
+    rows = []
+    for a, said in did:
+        head = Text(f"attempt {a['attempt'] or 1} · {a['executor']} · {_clock(a['started'])}", "dim")
+        rows.append((head, None))
+        for seconds, phrase, count in said:
+            times = f" ×{count}" if count > 1 else ""
+            rows.append((head, Text(f"{'+' + elapsed(seconds):>7}  {T.elide(phrase, wide - 9 - len(times))}"
+                                    + times)))
+    used = sum(len(item[1].wrap(WRAP, pane.wide)) for item in pane.items if item[0] == "text")
+    for k, (head, row) in enumerate(rows[-max(high - used - 1, 2) :]):  # under the header and a gap
+        pane.line(head if row is None or k == 0 else row)
     return pane.render()
 
 

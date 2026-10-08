@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """`graphene watch`, headless, at 80 and at 120 columns: a text file and an SVG of each.
 
-    dev/screens/meter_shot.py REPO OUT_PREFIX
+    dev/screens/meter_shot.py REPO OUT_PREFIX [VIEW]
 
 The screen as the person sees it at that moment, drawn by Textual's pilot the way tests/test_tui.py
-drives it. Run it with the graphene under test (a wheel installed as a tool) and from the person's
-shell, with no agent's mark, so the `you` clock is theirs."""
+drives it, in VIEW when one is named (`graphene watch --view time`). Run it with the graphene under
+test (a wheel installed as a tool) and from the person's shell, with no agent's mark, so the `you`
+clock is theirs."""
 
 from __future__ import annotations
 
@@ -19,9 +20,9 @@ from graphene_map.tui import Watch
 SIZES = {"80": (80, 24), "120": (120, 36)}
 
 
-def shoot(repo: Path, out: Path) -> None:
+def shoot(repo: Path, out: Path, view: str | None = None) -> None:
     for name, size in SIZES.items():
-        app = Watch(repo, lambda: Store.open(repo), every=60)
+        app = Watch(repo, lambda: Store.open(repo), every=60, view=view)
 
         async def go(app=app, name=name, size=size):
             async with app.run_test(size=size) as pilot:
@@ -36,6 +37,6 @@ def shoot(repo: Path, out: Path) -> None:
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 3:
-        sys.exit("usage: meter_shot.py REPO OUT_PREFIX")
-    shoot(Path(sys.argv[1]).resolve(), Path(sys.argv[2]).resolve())
+    if len(sys.argv) not in (3, 4):
+        sys.exit("usage: meter_shot.py REPO OUT_PREFIX [VIEW]")
+    shoot(Path(sys.argv[1]).resolve(), Path(sys.argv[2]).resolve(), *sys.argv[3:])
