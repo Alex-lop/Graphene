@@ -151,6 +151,7 @@ def one(executor: str, rnd: int, a, env: dict) -> dict:
                     str(HERE.parent / "screens" / "meter_shot.py"),
                     str(repo),
                     str(shots / f"{n:02d}"),
+                    *([a.view] if a.view else []),
                 ],
                 env=env,
                 capture_output=True,
@@ -225,6 +226,7 @@ def main() -> int:
     ap.add_argument("--rounds", type=int, default=2)
     ap.add_argument("--every", type=float, default=20.0, help="seconds between screens")
     ap.add_argument("--paragraph", type=Path, help="what the person asks, instead of the feeds paragraph")
+    ap.add_argument("--view", help="the view the screens are drawn in (time), else the one watch opens")
     a = ap.parse_args()
     if not os.environ.get("GRAPHENE_AGENT_LIVE_USD"):
         sys.exit(
