@@ -4,14 +4,15 @@ Rollback: `main` is untouched at `a96fb48`. To drop the night: close the PR, `gi
 
 ## Your 30 minutes
 
-A fresh terminal, with nothing but `uv` and `git`. Nothing here needs a key. Each step says what it prints.
+A fresh terminal, with nothing but `uv` and `git`. Nothing here needs a key. Each step says what it prints. Run as
+written from the pushed branch at 05:42 (`b4b338c`): 5 minutes of commands and waiting; the reading is the rest.
 
 1. **Install the branch as a tool, in a directory of its own** (2 min). Your own `graphene` stays as it is.
 
    ```sh
    mkdir ~/graphene-timeline && cd ~/graphene-timeline
    UV_TOOL_DIR=$PWD/tools UV_TOOL_BIN_DIR=$PWD/bin uv tool install 'git+https://github.com/Alex-lop/Graphene@timeline'
-   export PATH=$PWD/bin:$PATH
+   export PATH=$PWD/bin:$PATH                            # uv warned that bin is not on PATH; now it is
    graphene --version                                    # graphene 0.5.0
    git clone -q --depth 1 -b timeline https://github.com/Alex-lop/Graphene src
    ```
@@ -23,7 +24,7 @@ A fresh terminal, with nothing but `uv` and `git`. Nothing here needs a key. Eac
    Tab three times: tree, dag, then `time`. Each lane grows as its leaf ran. ✓ is a passed check, ◆ a landing.
    `j` onto a lane, and the pane under it lists what that leaf did, with the seconds. `q` quits.
 
-4. **Five minutes on a scratch repo** (8 min; it uses your Claude Code login, about $0.30).
+4. **Five minutes on a scratch repo** (8 min; it uses your Claude Code login, about $0.80 on its default model).
 
    ```sh
    uv run -q --no-project --python 3.13 python src/dev/test/make_task.py report ~/graphene-timeline/report > /dev/null
@@ -68,8 +69,8 @@ One hour, on a repo of yours, the way you would use Graphene.
    - The feeds paragraph: a tree 1 time in 3 under `auto` → a tree, waiting for you, 3 times in 3 under `on`.
 2. **Watch first:** `graphene demo tests/recordings/timeline-claude.jsonl`, Tab three times to `time`. Nemotron's
    first clean take: `graphene demo tests/recordings/timeline-nemotron-take-6.jsonl`. The GIF ends on the timeline.
-3. **The bill:** $28.90 of $40: `planner` $14.46 · `scopes` $8.45 · `takes` $2.10 · `first` $1.83 · `timeline`
-   $1.27 · `dogfood` $0.78 (the 30 minutes' dry run, put on by hand: a tool from GitHub writes no ledger rows).
+3. **The bill:** $29.70 of $40: `planner` $14.46 · `scopes` $8.45 · `takes` $2.10 · `first` $1.83 · `dogfood`
+   $1.58 (the 30 minutes, twice, put on by hand: a tool from GitHub writes no ledger rows) · `timeline` $1.27.
 4. **Decide:** 1. Keep `auto` at all? Default: yes, as the opt-in it is: under `on` Tuesday asks became trees 4
    times in 6, and `auto` is the one way a one-change ask runs with nothing to press. 2. Take 6 for the video?
    Default: yes, the first clean take. 3. Run the registered arms? Default: not yet: the doubled task still needs a
@@ -82,15 +83,16 @@ One hour, on a repo of yours, the way you would use Graphene.
 ---
 
 Tonight's decisions are in `dev/DIRECTION.md`, 166 to 180. The evidence: `dev/process/timeline/` (`before.md`,
-`after.md`, `takes.md`, `lane0.txt`, `screens/`).
+`after.md`, `takes.md`, `first-evidence.md`, `lane0.txt`, `screens/`).
 
 ## Branches
 
 - `main`: `a96fb48`, untouched, local and on GitHub.
-- `timeline`: the night, pushed; the PR is the only one.
+- `timeline`: the night, pushed; PR #43 is the only one.
 - `timeline-before-shape`: the night's commits before 02:49, pushed so the builds the evidence names resolve.
   Delete it when you merge: `git push origin --delete timeline-before-shape`.
-- In this run's clone only: `l1`, `l2`, `l3`, `l4` (the lanes, squashed into `timeline`), `off` (the offset).
+- In this run's clone only: `l1`, `l2`, `l3`, `l4` (the lanes, squashed into `timeline`), `off` (the offset), `rev`
+  (the whole-branch review's fixes, ported), `timeline-before-fold2` (the 05:01 fold's backup).
 
 ## What was done, in order
 
@@ -155,6 +157,15 @@ Tonight's decisions are in `dev/DIRECTION.md`, 166 to 180. The evidence: `dev/pr
   still reaches them); they stayed.
 - **04:59** CI's second run: Python 3.12 on Ubuntu and macOS took 0.26 s of CPU in the twelve-leaf timing test,
   over its 0.25. The test now allows CI 0.5, as the hook's own budget test does; the code is unchanged.
-- **05:00** The branch review's 16 high or medium findings, each tried by two skeptics: the fixer is on them. Six
-  were mine, in this file and DIRECTION; corrected here.
+- **05:00** The branch review's 16 high or medium findings, each tried by two skeptics: 15 confirmed, 1 refuted.
+  Five were in this file and DIRECTION; corrected here.
+- **05:35** The review's fixes ported (`0c66e10`), all 15: a leaf already in the plan waits on one that joins and
+  writes what its check runs; a `plan edit` is judged once, after every edit and answer; the check holds the plan's
+  lock 0.09 s where it held 0.31; `ask` settles its planner's hold when its terminal closes; the Nemotron dry run
+  drops the old tree as you would; `watch` counts its message line when it fits the pane; the time view's note
+  counts only this plan. The suite: 1,687 passed; the 11 that fail only in parallel pass alone.
+- **05:41** Pushed; PR #43 opened. CI's third run, on the offset and the timing budget: five of six jobs green,
+  macOS 3.13 still running.
+- **05:42-05:47** Your 30 minutes, as written, from the pushed branch: every step printed what it says. $0.80, put on
+  the ledger by hand with the dry run's $0.78.
 
