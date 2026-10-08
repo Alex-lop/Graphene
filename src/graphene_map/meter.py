@@ -375,9 +375,14 @@ def agents(rows: list[dict], now: datetime) -> dict:
     }
 
 
-def you(rows: list[dict], person: str) -> dict:
-    """The person's clock, by their keys: acts are their own rows, once per timestamp; minutes are the
-    distinct minutes holding at least one act."""
+def acts(rows: list[dict], person: str | None) -> list[str]:
+    """The person's acts: the timestamps of their own rows, once each, oldest first."""
     # talk.mine's rule, mirrored: talk imports typer, and this module is the core's
-    stamps = {e["timestamp"] for e in rows if (e["actor"] or "").split(" (")[0] == person}
+    return sorted({e["timestamp"] for e in rows if (e["actor"] or "").split(" (")[0] == person})
+
+
+def you(rows: list[dict], person: str) -> dict:
+    """The person's clock, by their keys: acts are their own rows, once per timestamp (`acts`); minutes
+    are the distinct minutes holding at least one act."""
+    stamps = acts(rows, person)
     return {"acts": len(stamps), "minutes": len({s[:16] for s in stamps})}

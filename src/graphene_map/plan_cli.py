@@ -580,6 +580,8 @@ def register(cli: typer.Typer, root, open_store, fail):
             chosen = V.choose(nodes, words, goal, wide, high) if name == "auto" else name
             view = V.VIEWS[chosen]
             noted = {"meter": V.billed(store.node_log())} if getattr(view, "METER", False) else {}
+            if getattr(view, "EVENTS", False):
+                noted["events"] = V.happened(store.node_log(), P.caller().name)
             drawn = view.draw(nodes, words, goal, wide, high, None, **noted) if view else None
             if drawn is None or not nodes:
                 if chosen != "outline" and nodes:

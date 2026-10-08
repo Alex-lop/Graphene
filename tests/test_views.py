@@ -84,6 +84,7 @@ def look(repo, keys, size, view=None):
                 "status": str(app.query_one("#status").render()),
                 "detail": str(app.query_one("#detail").render()),
                 "view": shown(app, box.region) if box.display else [],
+                "side": shown(app, app.query_one("#side").region),
                 "tree": app.tree.display,
                 "focus": app.focused.id if app.focused else None,
             }
@@ -519,18 +520,21 @@ def test_a_click_on_either_line_of_a_tree_cell_puts_the_cursor_there(repo, monke
 
 
 @pytest.mark.parametrize("size", SIZES)
-def test_the_tree_and_the_graph_are_registered_and_tab_cycles_outline_tree_dag(repo, size):
-    """The views were built but not registered: Tab said "the only view" and --view knew neither."""
-    assert list(V.VIEWS) == ["outline", "tree", "dag"]
+def test_the_views_are_registered_and_tab_cycles_outline_tree_dag_time(repo, size):
+    """The views were built but not registered: Tab said "the only view" and --view knew neither. In
+    the time view ids, never held, has no lane: the cursor is on the goal, and Tab back on ids again
+    (it landed on the goal)."""
+    assert list(V.VIEWS) == ["outline", "tree", "dag", "time"]
     proposed(repo)
-    seen = [look(repo, ["j", "j", *["tab"] * k], size) for k in range(4)]
-    assert [s["showing"] for s in seen] == ["outline", "tree", "dag", "outline"]
-    assert {s["cursor"] for s in seen} == {"ids"}  # Tab keeps the node
+    seen = [look(repo, ["j", "j", *["tab"] * k], size) for k in range(5)]
+    assert [s["showing"] for s in seen] == ["outline", "tree", "dag", "time", "outline"]
+    assert [s["cursor"] for s in seen] == ["ids", "ids", "ids", None, "ids"]  # Tab keeps the node
     assert "graphene watch --view tree" in seen[1]["status"]
     assert "graphene watch --view dag" in seen[2]["status"]
+    assert "graphene watch --view time: 0 lanes" in seen[3]["status"]
     assert seen[1]["view"][0].strip().startswith("users come back with their ids")  # the goal's line
     said = person("plan", "--help").output
-    assert "auto, outline, tree, dag" in " ".join(said.split())
+    assert "auto, outline, tree, dag, time." in " ".join(said.replace("│", " ").split())  # wrapped in a box
 
 
 def test_a_view_opened_from_the_outline_keeps_the_goal_line_in_sight(repo, grid):

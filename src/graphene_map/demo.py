@@ -317,7 +317,7 @@ class Replay(Watch):
 
     BINDINGS = [
         Binding("space", "pause", show=False, priority=True),  # before the tree's own space (a fold)
-        Binding("full_stop", "step", show=False),
+        Binding("full_stop", "next_change", show=False),  # not "step": in a view, j and k are watch's step
         Binding("r", "again", show=False),
     ]
     HELP_END = "A key that would change the plan or start anything says so here, and does nothing."
@@ -377,7 +377,7 @@ class Replay(Watch):
             self.began, self.paused = self.began + now - self.paused, None
         self.refresh_plan()
 
-    def action_step(self) -> None:
+    def action_next_change(self) -> None:
         """`.`: the next change, now, and the replay stays paused there."""
         if self.next < len(self.lines):
             self.paused = self.paused or time.monotonic()
@@ -402,6 +402,11 @@ class Replay(Watch):
         """The recording's own: its newest row, so a leaf's minutes are what they were as it played."""
         stamps = [e["timestamp"] for e in everything]
         return datetime.fromisoformat(max(stamps)) if stamps else super().clock(everything)
+
+    def person(self, everything: list[dict]) -> str:
+        """The recording's own: who asked for the plan, whoever watches it played."""
+        asked = next((e["actor"] for e in everything if e["kind"] == "asked"), None)
+        return asked.split(" (")[0] if asked else super().person(everything)
 
     def draw(self, store) -> None:
         """As `graphene watch` draws it, the top line the replay's: what it is, a wait being cut short
