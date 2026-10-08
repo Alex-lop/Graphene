@@ -73,7 +73,9 @@ def reply(body, scripts=SCRIPTS):
     key = "planner" if "Ultra" in body["model"] else next((k for k in scripts if k in first), None)
     steps = scripts.get(key, [])
     k = sum(1 for m in body["messages"] if m["role"] == "assistant")
-    return steps[k] if k < len(steps) else {"content": "nothing more"}
+    if body.get("response_format"):  # the planner's answer, asked in its JSON schema: a stand-in's text
+        k = len(steps) - 1
+    return steps[k] if 0 <= k < len(steps) else {"content": "nothing more"}
 
 
 def script(tmp_path, answer, prune: str, **more: str):

@@ -1,126 +1,172 @@
-# morning.md — 2026-10-07 — the meter
+# morning.md — 2026-10-08 — the timeline
 
-Rollback: `main` is untouched at `af3da2c`. To drop the night: close the PR, `git push origin --delete meter`.
+Rollback: `main` is untouched at `a96fb48`. To drop the night: close the PR, `git push origin --delete timeline`.
+
+## Your 30 minutes
+
+A fresh terminal, with nothing but `uv` and `git`. Nothing here needs a key. Each step says what it prints. Run as
+written from the pushed branch at 05:42 (`b4b338c`): 5 minutes of commands and waiting; the reading is the rest.
+
+1. **Install the branch as a tool, in a directory of its own** (2 min). Your own `graphene` stays as it is.
+
+   ```sh
+   mkdir ~/graphene-timeline && cd ~/graphene-timeline
+   UV_TOOL_DIR=$PWD/tools UV_TOOL_BIN_DIR=$PWD/bin uv tool install 'git+https://github.com/Alex-lop/Graphene@timeline'
+   export PATH=$PWD/bin:$PATH                            # uv warned that bin is not on PATH; now it is
+   graphene --version                                    # graphene 0.5.0
+   git clone -q --depth 1 -b timeline https://github.com/Alex-lop/Graphene src
+   ```
+
+2. **The numbers, before and after** (5 min). `less src/dev/process/timeline/before.md src/dev/process/timeline/after.md`.
+   Each file leads with the same three numbers.
+
+3. **The timeline** (5 min). `graphene demo src/tests/recordings/timeline-claude.jsonl`. When the tree shows, press
+   Tab three times: tree, dag, then `time`. Each lane grows as its leaf ran. ✓ is a passed check, ◆ a landing.
+   `j` onto a lane, and the pane under it lists what that leaf did, with the seconds. `q` quits.
+
+4. **Five minutes on a scratch repo** (8 min; it uses your Claude Code login, about $0.80 on its default model).
+
+   ```sh
+   uv run -q --no-project --python 3.13 python src/dev/test/make_task.py report ~/graphene-timeline/report > /dev/null
+   cd ~/graphene-timeline/report
+   graphene init --planner claude --executor claude       # plan first: on. Every ask in a session is proposed…
+   graphene ask 'Finance wants the sales report as JSON: make render(rows, "json") in app/report.py give a list with one object per data row (region, units, revenue), no TOTAL row, and leave the text report as it is.'
+   graphene watch
+   ```
+
+   The proposal waits for you. One leaf is one row: `y` accepts it and runs it. A tree: `y` on the goal accepts it
+   all, then `R` runs it. Tab to `time` while it runs. Then `q`, and `graphene node show <leaf>`.
+
+5. **Decide** (5 min): the questions in the brief below, each with my default.
+
+6. **Merge** (1 min): `gh pr merge timeline -R Alex-lop/Graphene --merge`.
+
+## Your practice run
+
+One hour, on a repo of yours, the way you would use Graphene.
+
+1. In the terminal from step 1: `cd ~/<your repo> && graphene init --planner claude --executor claude`, then
+   `graphene plan first on`: a repo you set up before tonight keeps its `auto` until you change it.
+2. Two panes: `claude` on the left, `graphene watch` on the right.
+3. On the left, say a paragraph of your own: something you want done that is bigger than one change.
+4. On the right, prune the tree (`d` drops, `e` edits, `y` accepts), then `R`. Tab to `time` while it runs. Enter
+   on a lane gives its record.
+5. As you go, write in `~/graphene-timeline/practice.md`, under these headings, to paste into Issues:
+   - **Where the tree misread me:** the leaf, and what I meant.
+   - **What I pruned or edited, and why.**
+   - **What came back**, and whether its reason was fair.
+   - **What the timeline showed** that the live row did not.
+   - **What I looked for and could not find.**
+6. At the end: `graphene plan record > ~/graphene-timeline/record.txt`, then `graphene plan archive`.
 
 ## The brief
 
-**1. Watch first:** `graphene demo tests/recordings/meter-claude.jsonl`: the feeds run on Claude Code, each leaf's
-  live row climbing; the live screen at 80 columns is `dev/process/meter/screens/claude-80.txt`.
-  Nemotron: `graphene demo tests/recordings/meter-nemotron-take-11.jsonl` (Ultra planned; Nano landed 2 of 4).
-**2. The bill:** $41.22 of $50, final. `meter` $17.28 · `nemotron-take` $7.22 · `statements-practice` $7.01 ·
-  `dogfood` $5.77 · `auto` $3.94. $15.00 of it is planners held at their worst case: they report no cost.
-**3. `auto`:** Tuesday asks: 8 of 12 yours at once and done; 4 waited on a board item they put up.
-  The feeds paragraph: a tree once in three; twice one leaf of 8 paths, no question, taken at once.
-  Transcripts, both kinds, every run: `dev/process/meter/auto-evidence.md`.
-**4. Run in five minutes:** `uv tool install --force git+https://github.com/Alex-lop/Graphene@meter`, then in
-  your repo `graphene init`, `graphene ask "…"`, `graphene watch` (`y`, then `R`), `graphene node show <leaf>`.
-  Run as written from GitHub at 02:05: `dev/process/meter/five-minutes.md`.
-**5. The README:** 790 words. Least sure are yours: "which is exactly what I'd have checked first"; "the
-  second number is the one I care about"; "because that's the whole game".
-**6. Decide:** 1. Take 11 for the video? Default: no; none of 19 ran clean. 2. Run the registered arms? Default:
-  not yet: a run lasts minutes, not hours, and the doubled task needs a commit named for them. 3. What should
-  the meter show next? Default: the planner's dollars (the ledger holds its worst case).
-**7. Broken or risky:** Codex's ChatGPT login is revoked: `codex logout && codex login` (Codex ran on Nemotron
-  Super tonight). Most runs that stopped had a leaf whose check runs a file another leaf writes. CI's
-  statements rehearsal failed 1 Ubuntu job on 2 of 13 runs, never here; it now prints why when it does.
+1. **The three numbers**, before → after (`dev/process/timeline/before.md`, `after.md`):
+   - Hand-backs over another leaf's file: 8 in last night's 10 trees, 6 over a test file → 4 in tonight's 13 trees,
+     1 over a test file. The statements task: 20 of 22 leaves landed in three runs, none left unrun.
+   - Nemotron proposals: 7 in 34 answers (21%) → 15 in 30 (50%) on the final schema; by ask with its one
+     send-back, 7 in 19 → 15 in 20. Takes: 3 of 6 ran clean, take 6 landing every leaf; last night none of 19.
+   - The feeds paragraph: a tree 1 time in 3 under `auto` → a tree, waiting for you, 3 times in 3 under `on`.
+2. **Watch first:** `graphene demo tests/recordings/timeline-claude.jsonl`, Tab three times to `time`. Nemotron's
+   first clean take: `graphene demo tests/recordings/timeline-nemotron-take-6.jsonl`. The GIF ends on the timeline.
+3. **The bill:** $29.70 of $40: `planner` $14.46 · `scopes` $8.45 · `takes` $2.10 · `first` $1.83 · `dogfood`
+   $1.58 (the 30 minutes, twice, put on by hand: a tool from GitHub writes no ledger rows) · `timeline` $1.27.
+4. **Decide:** 1. Keep `auto` at all? Default: yes, as the opt-in it is: under `on` Tuesday asks became trees 4
+   times in 6, and `auto` is the one way a one-change ask runs with nothing to press. 2. Take 6 for the video?
+   Default: yes, the first clean take. 3. Run the registered arms? Default: not yet: the doubled task still needs a
+   commit named for them. Nothing the new check refused tonight looked like something you would have wanted.
+5. **Broken or risky:** Source grew 701 lines where the directive allowed the timeline (296) and the check (287):
+   lanes 2 and 3 added 157, 39 duplicated lines came out, so 118 are over. The validator says one fault at a time,
+   so a Nemotron answer with two ends the ask after its one send-back: most of tonight's misses. In a 22,000-file
+   repo, twelve new leaves each checking `tests/` held the plan's lock 0.26 s on a slow CI runner; now 0.09 s here.
 
 ---
 
-The decisions taken tonight are in `dev/DIRECTION.md`, 151 to 165. Every review finding, fixed or left:
-`dev/process/meter/review.md`.
-
-## Verified before the PR, the directive's list
-
-1. The suite on the CI matrix (Ubuntu and macOS, Python 3.12 to 3.14): 6 of 6 jobs green on the final code
-   (`5a8c091`); of the night's 13 runs, 2 lost one Ubuntu job each to the statements rehearsal. `ruff check` clean;
-   `uv build`; the wheel installed outside the source tree runs `graphene demo --once`.
-2. Lane 1's transcripts, both kinds, every run: `dev/process/meter/auto-evidence.md`.
-3. Lane 2's screens at 80 and 120 on Claude Code, Codex and Nemotron, the bill lines, each beside its ledger rows:
-   `dev/process/meter/meter-evidence.md`. Again on the final code at 05:27: Claude $0.4582, ledger $0.4582.
-4. The cut's lane 0 still leaves the checkout clean, on the wheel of 05:27 (`722f71a`): `dev/process/meter/lane0.txt`.
-5. The README is 790 words, and every command in it ran tonight.
-6. The suite is green after the move. The grep for the old paths finds only links into the `process` branch, the
-   two pre-registered records (decision 163) and the directives' own words.
-7. The ledger is under $50, by purpose in the brief.
-
-## The dogfood bill
-
-Graphene wrote its own `docs/HOW_IT_WORKS.md` with plan first on and the meter on itself: 7 acts of mine
-(~4 min), 8 agent-minutes, $4.27, plus the planner's $1.50 worst case. One leaf came back once (its check
-had no `.venv` in the run's worktree) and landed after `node set --check`. Lanes 1 and 2 were built by
-sub-agents outside Graphene. `dev/process/meter/dogfood.md`.
+Tonight's decisions are in `dev/DIRECTION.md`, 166 to 180. The evidence: `dev/process/timeline/` (`before.md`,
+`after.md`, `takes.md`, `first-evidence.md`, `lane0.txt`, `screens/`).
 
 ## Branches
 
-- `main`: `af3da2c`, untouched, local and on GitHub. Rollback: close PR #40.
-- `meter`: the night, pushed; PR #40 is the only one. 120 commits, 71 on its first-parent line, more than the
-  30 to 50 you like; the directive rules out a force-push, so a reshape is yours to ask for.
-- In this run's clone only, all merged into `meter`: `meter-core`, `meter-l1`, `meter-l1b`, `meter-move`,
-  `meter-record`, `meter-run`, `meter-size`, `meter-watch`, `dogfood`, and the reviews' `meter-fix-ledger`,
-  `meter-fix-screens`, `meter-fix-edges`, `meter-fix-ledger2`, `meter-fix-codexpath`, `meter-fix-toolcall`.
+- `main`: `a96fb48`, untouched, local and on GitHub.
+- `timeline`: the night, pushed; PR #43 is the only one.
+- `timeline-before-shape`: the night's commits before 02:49, pushed so the builds the evidence names resolve.
+  Delete it when you merge: `git push origin --delete timeline-before-shape`.
+- In this run's clone only: `l1`, `l2`, `l3`, `l4` (the lanes, squashed into `timeline`), `off` (the offset), `rev`
+  (the whole-branch review's fixes, ported), `timeline-before-fold2` (the 05:01 fold's backup).
 
 ## What was done, in order
 
-- **23:26** Read the directive. Branch `meter` from origin/main `af3da2c`, in a clone outside your checkout.
-  The directive is committed at `dev/process/directives/METER_DIRECTIVE.md`.
-- **23:40** The night's ledger: $50 cap, nothing new past $45, a purpose on every row. The session was not
-  started with `GRAPHENE_AGENT_LIVE_USD`; the directive's $50 line is the opening, so this run sets it to 50
-  for its own live commands.
-- **23:45** Real stream shapes, live: Claude Code 2.1.292 `stream-json` (Sonnet 5.5, 4 turns, $0.0623) and
-  `codex exec --json` 0.151.0 (Nemotron Super on Token Factory, $0.0150).
-- **00:03** The statements check: one tree-arm planning session put "half-even" and "vendor/" in the plan's
-  goal and three conflicts on the board as plan-wide items, so all four conditions reached every leaf's
-  contract. Nothing was changed. `dev/process/meter/standing-check.md`.
-- **00:18** Lane 1 merged: under `auto` every ask is proposed; one leaf with no board item and at most 8
-  paths is yours at once.
-- **00:20** Live, the old node count made a leaf in a sub-goal of its own wait. Fixed: the rule counts
-  leaves (`c0d8379`). Three more rounds ran on the fix.
-- **00:25** The move: `docs/` keeps what you need to use Graphene, `dev/` holds how it gets built.
-- **00:30** `meter` pushed for CI.
-- **00:31** Statements practice 1, at the registered size: planned in 2.5 min, ran 9.5 min, 0 traps, 19/24
-  and 8/12. Two hand-backs, both real conflicts. The task is about 8 times short of its 1-3 hours.
-- **00:58** The meter merged: run reads each executor's stream; watch has a live row per leaf and two
-  clocks; node show has each attempt; Nemotron writes a row per call.
-- **01:04** Live, Claude Code: `run: 3 done · agents 2 min, $0.4560 at list price`; Claude Code's own report
-  and the ledger both say $0.456. Codex on Nemotron Super: $0.3669, ledger $0.3669. Nemotron: $0.2258,
-  ledger $0.2258.
-- **01:10** The dogfood: Graphene wrote its own HOW_IT_WORKS (2,849 words) with plan first on: 7 acts of
-  mine, 8 agent-minutes, $4.27. `dev/process/meter/dogfood.md`.
-- **01:12** Fixed what the runs showed: Claude's output tokens settle at its result; Nemotron's per-call
-  rows broke arm A; Ultra's `<tool_call>` text was read as its answer, so the planner proposed nothing.
-- **01:15** The statements task at twice the size (2,658 lines, eight subsystems).
-- **01:17** Practice 2: the planner kept the new code out with a board default; it stopped at 3 of 7 leaves
-  on a test file another leaf owned.
-- **01:00-01:40** Eight Nemotron takes. Ultra planned a tree in 3; take 6 was the best. `dev/process/meter/takes.md`.
-- **01:35** Practice 3 asked for every report per currency: 6 leaves in 4 minutes, the biggest 16 files in
-  2. Size does not set a run's length. `dev/process/meter/statements-practice.md`.
-- **01:40** A recording hid your home directory as a path but not as Claude Code spells it, with dashes.
-  Fixed, and `meter-claude.jsonl` hidden again: the leak check counts nothing.
-- **01:42** The full suite: 1,589 passed in parallel; the 11 width tests that fail only in parallel pass alone.
-- **01:55** The README gets the run's `git log --graph`, as the directive's shape has it.
-- **02:00** PR #40 opened. CI: the statements rehearsal failed 1 Ubuntu job on two pushes running, as once
-  on the cut night. Never here: 3 rehearsals, the trip-all suite 40 times, and in Linux containers 6
-  rehearsals and the whole suite twice (Python 3.13 and 3.14, 1,602 passed each). The test now runs a
-  came-back leaf's check again and prints what it said, so the next failure says why.
-- **02:05** The brief's five minutes, from GitHub `@meter`: install, init, ask (two board questions, so it
-  waited), accept, run (`run: 1 done · agents <1 min, $0.2359`), node show. `dev/process/meter/five-minutes.md`.
-- **02:25** A replay drew no meter strip: Graphene's own recording predates the meter. Turned on, the strip
-  said "no meter" before a leaf's first turn and "-2706 s ago", and `.` stalled at change 31 of 63. All
-  three fixed at the root; the Claude Code recording made again at 02:30 on the code of that hour ($0.3230).
-- **02:00-03:00** Takes 9 to 21: Ultra planned a tree in 4 of 11; take 11 replaces take 6. Each tree stopped
-  where a leaf's check or code needed a file another leaf writes. `nemotron.sh` now widens and runs again up
-  to three times, as a person pressing `w` again would.
-- **02:50** On a wheel of that hour: the cut's lane 0 still leaves the checkout clean (`dev/process/meter/lane0.txt`,
-  unchanged), and the wheel installed outside the source tree runs `graphene demo --once`.
-- **03:00-04:15** A review of the whole branch: four readers, a skeptic each for the top six, 19 distinct
-  findings, none refuted. 17 fixed, each with a test that fails without its fix; the worst two were the
-  ledger's: a stopped attempt settled its hold at $0, and a run killed outright left its holds in flight all
-  night. The 2 left, and why: `dev/process/meter/review.md`. A resumed result's `usage` was checked live first.
-- **04:30-05:20** A second review, of the fixes themselves: 7 findings, none refuted, all fixed. Two were
-  regressions of the dead-run fix, caught before they shipped: a dead run's hold was settled into the next
-  night's ledger, and an orphaned executor that had already finished escaped the sweep.
-- **05:27** On the final meter code (`722f71a`; after it only the auto rule changed): live, Claude's bill line,
-  its ledger rows and its own report all say $0.4582; lane 0 leaves the checkout clean; the wheel replays
-  `graphene demo --once`.
-- **05:30-06:00** A third review, of the second round's fixes: one finding refuted, one fixed. One leaf whose new
-  question reused a settled item's [id] was taken at once, its question never on the board; it waits now.
+- **00:13** Read the directive. Branch `timeline` from origin/main `a96fb48`, in a clone outside your checkout.
+  The directive is committed at `dev/process/directives/TIMELINE_DIRECTIVE.md`.
+- **00:20** The night's ledger: $40 cap. Nothing new starts past $35 (Graphene's own stop is 90%, $36: the
+  run checks the bill before it starts anything). The session was not started with `GRAPHENE_AGENT_LIVE_USD`;
+  the directive's $40 line is the opening, as decision 151 read last night's, so this run sets it to 40 for its
+  own live commands.
+- **00:30** Lane 0, from last night's records: `dev/process/timeline/before.md`.
+- **00:34** The suite on `main` as it is: 1,631 passed, 21 skipped, in 17.6 minutes.
+- **00:38** Ultra with a strict JSON schema, live: it answers JSON in the schema. With tools in the same request it
+  calls no tool, so the schema goes on the final answer only. $0.0016.
+- **00:42** Lanes 1 to 4 started, one builder each in a worktree of their own, each reviewed from two sides before
+  it merges.
+- **00:45** Token Factory reached, 4 NVIDIA models; Sandboxes work (`graphene key check`).
+- **01:55** Lane 2 merged: the Nemotron planner answers in a strict JSON schema, tried by Graphene's own validator
+  before it prints, sent back once with Graphene's words. Its review found one real fault (a node's goal of two
+  lines was written as one), fixed with a test.
+- **02:06** Lane 4 merged: the `time` view. Its review found one high and two medium faults (the pane hid its
+  newest row; a pane of bare headings for an executor with no meter; a replay never drew the recording's person),
+  all fixed with tests. Two more fixed after: an attempt the meter cannot read is a held bar, not an idle one, and
+  a leaf that waits on you keeps its usual pane.
+- **02:10** Lane 3 merged: plan first `on` for new repos, one row for a one-leaf proposal, the Claude Code
+  planner's stream on the ledger. Its review found five medium faults (among them: `y` would start a paid run on
+  the last leaf of a pruned tree), all fixed with tests.
+- **02:14** Lane 1 merged before its review ended, to start the live work; its review's fixes follow.
+- **02:16** The live measurements started on build `b4fbf60`.
+- **02:18** The first Ultra ask proposed take 9's shape again: the tests leaf waited on the code, and the code's check
+  ran the tests leaf's new file. The rule let it through. Stopped everything, refused that case (`4490656`), and
+  started again. The stopped session's hold settled at its own turns' list price, $0.18.
+- **02:22-02:46** Lane 1 measured: three statements runs (20 of 22 leaves landed, 1 hand-back over another leaf's
+  test file), two feeds runs (6 of 6). Lane 3: the paragraph under `on` was a tree three times in three; one Tuesday
+  ask was one row, `y`, done in 40 seconds.
+- **02:24** Ultra with `anyOf` in a strict schema wrote spaces to the token limit; with `pattern` it broke a
+  string. Types and enums hold. The schema stays plain.
+- **02:40** Lane 2's first round: 10 proposals in 20 asks. 12 of 41 answers had stuck after the nodes, because the
+  schema asked for `says` last. Fixed (`674754d`): `says` first, and a board item's unreadable id made readable.
+  The second round started.
+- **02:49** The history folded into 11 commits with the same tree, and `timeline` pushed; CI started. The commits
+  before the fold are on `timeline-before-shape`, so every build named in the evidence resolves.
+- **02:22-03:03** Six Nemotron takes: Ultra planned four; takes 1, 3 and 6 ran clean, take 6 landing every leaf (the
+  first that has). `dev/process/timeline/takes.md`.
+- **02:55** Lane 2's second round: 12 proposals in 20. The most common refusal on feeds was a board line naming a node
+  the answer had not given an id yet: the schema asked for the board before the nodes. Fixed (`674b32c`): nodes first.
+  The third round started.
+- **03:00** The GIF again, on real agents, ending on the time view. Its planning session ($0.47, priced from its own
+  turns) went on the ledger by hand: a `claude -p` session writes nothing to it.
+- **03:13** Lane 1's review fixes ported (`32c6d4f`): a glob is read as written, a re-ask may write the paths of old
+  leaves that stay, changed checks are judged last in one save, and the Nemotron planner's dry run is given what a
+  merge replaces.
+- **03:16** The suite on the merged branch: 1,674 passed in parallel; the 11 that fail only in parallel pass alone.
+  Pushed; CI's first run on the branch had passed, all six jobs.
+- **03:20** Lane 2's third round, on the nodes-first schema: 15 proposals in 20. The wheel, installed outside the
+  source tree, replays `graphene demo --once`.
+- **03:22-03:26** Your 30 minutes, dry run from GitHub, as written: the tool from `@timeline`, the shallow clone, the
+  replay with Tab to `time`, the scratch repo (`ask`, `watch`, `y` on the goal, `R`, 2 of 2 done, Tab to `time`,
+  `node show`). $0.78. It goes again, timed, from the final push.
+- **03:29** A review of the whole merged branch started: four readers where the lanes meet, two skeptics a finding.
+- **04:47** The offset: helpers copied across nine modules kept once, 39 lines fewer, against what lanes 2 and 3
+  added. Two skeptics refuted the removal of two Nemotron executor options (`--inline`, `--map`: a `--with` spec
+  still reaches them); they stayed.
+- **04:59** CI's second run: Python 3.12 on Ubuntu and macOS took 0.26 s of CPU in the twelve-leaf timing test,
+  over its 0.25. The test now allows CI 0.5, as the hook's own budget test does; the code is unchanged.
+- **05:00** The branch review's 16 high or medium findings, each tried by two skeptics: 15 confirmed, 1 refuted.
+  Five were in this file and DIRECTION; corrected here.
+- **05:35** The review's fixes ported (`0c66e10`), all 15: a leaf already in the plan waits on one that joins and
+  writes what its check runs; a `plan edit` is judged once, after every edit and answer; the check holds the plan's
+  lock 0.09 s where it held 0.31; `ask` settles its planner's hold when its terminal closes; the Nemotron dry run
+  drops the old tree as you would; `watch` counts its message line when it fits the pane; the time view's note
+  counts only this plan. The suite: 1,687 passed; the 11 that fail only in parallel pass alone.
+- **05:41** Pushed; PR #43 opened. CI's third run, on the offset and the timing budget, passed all six jobs.
+- **05:42-05:47** Your 30 minutes, as written, from the pushed branch: every step printed what it says. $0.80, put on
+  the ledger by hand with the dry run's $0.78.
+- **06:08** CI on the final code (`b4b338c`): all six jobs green, Ubuntu and macOS, Python 3.12 to 3.14. What came
+  after it is the morning and the evidence, no code.
+

@@ -201,7 +201,7 @@ def build():
                 return
             empty(NO_PLAN if initialised() else f"{NO_PLAN}. {NOT_INIT}")
 
-    from .plan_cli import NO_PLAN, NOT_INIT, register
+    from .plan_cli import FIRST_SAID, NO_PLAN, NOT_INIT, register
 
     def initialised() -> bool:
         db = root() / ".graphene" / "graphene.db"
@@ -351,7 +351,8 @@ def build():
             chosen = choose(store, given, asking)
             specs = [store.meta(k) or "claude" for k in WHO]  # none chosen: the person's own Claude Code
             if store.meta("plan_first") is None:  # a repository set up for Graphene plans first
-                store.set_meta("plan_first", "auto")
+                store.set_meta("plan_first", "on")
+            first = P.plan_first(store)  # one set before stays as it is: init says which
             for k in (*S.GLOBS, "never", "size"):  # each setting's default, so `graphene config` has it
                 if store.meta(f"settings:{k}") is None:
                     store.set_meta(f"settings:{k}", "auto" if k == "size" else "[]")
@@ -361,7 +362,7 @@ def build():
         except ValueError as exc:
             fail(f"cannot update {SETTINGS}: {exc}", 1)
         settings = Path(os.path.relpath(hooks_file(r), Path.cwd()))
-        say("plan first is auto: every ask is proposed first; one small leaf is yours at once, more waits")
+        say(f"plan first: {first}. {FIRST_SAID[first]}")
         if not any(s.split()[:1] == ["claude"] for s in specs):  # Claude Code is not how this repo works
             say(f"the Claude Code hooks are in {settings} too, for a Claude Code session you may run here"
                 + ("" if added else " (already there)"))  # fmt: skip

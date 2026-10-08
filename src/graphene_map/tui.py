@@ -50,6 +50,8 @@ from . import plan_text as T
 from . import run as R
 from . import views as V
 from .node_record import bill, forks, models, sandbox
+from .plan_text import clock as _clock
+from .view_time import activity
 from .views import money
 
 RUN_WITH = "--parallel 4"  # `R` and `r`: ready leaves at once, a worktree each, landed here as they pass
@@ -810,6 +812,7 @@ class Watch(App):
         self.sized: tuple = ()
         self.by_id: dict[str, P.Node] = {}
         self.under: dict = {}
+        self.lone: tuple | None = None  # one leaf proposed: it, and the sub-goals its row stands for
         self.offered: dict[str, list[str]] = {}  # the keys each leaf that came back offers
         self.forks: dict[str, list[dict]] = {}  # a leaf's forks in its last attempt: rows under it
         self.heard: set = set()  # the steps up the ladder the bottom line has said
@@ -817,6 +820,7 @@ class Watch(App):
         self.opened: list[str] = []  # board: the open items' ids when the tree was last built
         self.skips: set[tuple[str, int]] = set()  # the views Tab went past, and at what width, said once
         self.billed: dict[str, str] = {}  # what each leaf an executor held spent and took (views.billed)
+        self.events: dict | None = None  # the log's rows, for a view that draws time (views.happened)
         self.metered = 0  # the rows the meter's strip takes
 
     # -- the screen ----------------------------------------------------------------------------------
@@ -931,11 +935,13 @@ class Watch(App):
         self.words = {n.id: P.reads(n, nodes, self.back) for n in nodes}
         leaves = P.counted(nodes)  # what `graphene` counts: "3 leaves, 0 done" is "0/3 done" here
         done = sum(n.state == P.DONE for n in leaves)
-        tops = [
-            n
-            for n in nodes
-            if n.state == P.PROPOSED and (n.parent not in by_id or by_id[n.parent].state != P.PROPOSED)
-        ]
+        proposals = [n for n in nodes if n.state == P.PROPOSED]
+        tops = [n for n in proposals if n.parent not in by_id or by_id[n.parent].state != P.PROPOSED]
+        # one leaf proposed, with at most the proposed sub-goals above it: its row stands for them all
+        taken = {n.created_at for n in nodes if n.state != P.PROPOSED}  # one `plan propose`, one stamp
+        whole = [n for n in proposals if n.created_at not in taken]  # none of its proposal accepted
+        chains = ((n.id, [a.id for a in P.above(n, by_id) if a.state == P.PROPOSED]) for n in whole)
+        self.lone = next((c for c in chains if len(c[1]) == len(proposals) - 1), None)
         yours = [i for i, w in self.words.items() if w in ("came back", "review", "yours")]
         logs: dict[str, list[dict]] = {}
         for e in store.node_log(kinds=("started", "model", "fork")):  # what the Nemotron executors noted
@@ -958,7 +964,7 @@ class Watch(App):
                 self.message = f"{n.id} stepped up to {_short(step['model'])}: {step['why']}"
         executor = (store.meta("executor") or "").split()  # what R starts, when `graphene init` chose it
         everything = store.node_log()  # ponytail: all of it each tick; read on from the last id if it slows
-        now = self.clock(everything)
+        now, person = self.clock(everything), self.person(everything)
         usage = [e for e in everything if e["kind"] == "usage"]  # what the planners and executors cost
         self.counts = {
             "you": len(tops) + len(yours),
@@ -975,9 +981,10 @@ class Watch(App):
             "with": f" with {Path(executor[0]).name}" if executor else "",
             "spent": sum(e["detail"].get("dollars") or 0 for e in usage) if usage else None,
             "agents": M.agents(everything, now),  # the two clocks
-            "mine": M.you(everything, P.caller().name),
+            "mine": M.you(everything, person),
         }
         self.billed = V.billed(everything, now)
+        self.events = V.happened(everything, person, now)
         self.draw_meter(store, everything, now)
         goal_word = "proposed" if proposed and not goal else self.counts["done"]
         if self.counts["finished"]:  # what `graphene` says; the goal row reads done, as a sub-goal does
@@ -988,8 +995,9 @@ class Watch(App):
         tree = self.tree
         with self.prevent(Tree.NodeHighlighted):  # the tree moved, not the person
             show = bool(nodes or goal or proposed or self.board)
-            if tree.show_root != show:
-                tree.show_root = show
+            # one leaf proposed, and nothing else planned: its row is the plan, with no goal row above it
+            alone = self.lone and not goal and len(nodes) == 1 + len(self.lone[1])
+            tree.show_root = show and not alone  # a reactive: set to what it is, nothing happens
             hidden = not tree.display
             tree.display = show and self.drawn is None  # no plan yet: the pane says so, across the screen
             if hidden and tree.display and not self.query_one("#line").has_class("-open"):
@@ -1017,6 +1025,10 @@ class Watch(App):
     def clock(self, everything: list[dict]) -> datetime:
         """Now, for the clocks and a leaf's minutes."""
         return datetime.now(UTC)
+
+    def person(self, everything: list[dict]) -> str:
+        """The person, for their clock and the time view's ticks: whoever watches."""
+        return P.caller().name
 
     def draw_meter(self, store, everything: list[dict], now: datetime) -> None:
         """The meter's strip, between the plan and the bottom lines: a block for each running leaf whose
@@ -1115,11 +1127,13 @@ class Watch(App):
             return None
         (width, height), goal = self.view_room(), BR.goal(self.goal_text, self.board)  # board: its count
         noted = {"meter": self.billed} if getattr(view, "METER", False) else {}  # a view that takes them
+        if getattr(view, "EVENTS", False):
+            noted["events"] = self.events
         drawn = view.draw(self.nodes, self.words, goal, width, height, self.here, **noted)
         if drawn is not None and self.here is not None and self.here not in drawn.at:
             was, self.here = self.here, self.stand_in(drawn)
-            if was in self.by_id and self.here is not None:
-                self.mapped = (was, self.here)  # Tab from the stand-in goes back to the node itself
+            if was in self.by_id:  # Tab from the stand-in, or from the goal, goes back to the node itself
+                self.mapped = (was, self.here)
             drawn = view.draw(self.nodes, self.words, goal, width, height, self.here, **noted)
         return drawn
 
@@ -1275,7 +1289,7 @@ class Watch(App):
             ) + 2 + ids + 2 + words + 2  # fmt: skip
             sized = ("wide", max(30, min(need, width - PANE - 3)))
         else:
-            lines = tree.last_line + 1 if tree.show_root else 0
+            lines = tree.last_line + 1
             sized = ("narrow", max(3, min(lines, self.tree_room())))
         if sized != self.sized:
             self.sized = sized
@@ -1291,8 +1305,10 @@ class Watch(App):
 
     def pane_room(self) -> tuple[int, int]:
         """The node pane's width and height, from the layout this screen sets (known before Textual
-        has laid it out): its text is wrapped to it, and a leaf that came back fitted to it."""
-        width, height = self.size.width, self.size.height - self.metered
+        has laid it out): its text is wrapped to it, and a leaf that came back fitted to it. The bottom
+        lines under the two (a view's note, what a command said) are taken off it (``said_lines``)."""
+        under = sum(len(line.plain.splitlines()) for line in self.said_lines(max(self.size.width - 2, 20)))
+        width, height = self.size.width, self.size.height - self.metered - under
         kind, amount = (self.sized or ("narrow", 10))[:2]
         if kind == "wide":
             return max(width - amount - 4, 20), max(height - 3, 5)
@@ -1307,11 +1323,16 @@ class Watch(App):
         tree.clear()
         placed, finished, new = {}, set(), []
         by_id = {n.id: n for n in nodes}
+        skip = set(self.lone[1] if self.lone else ())  # one leaf proposed: its row stands for these
         placed.update(self.board_rows(was_open))  # board: its rows, under the goal and before the tree
         queue = [n for n in nodes if n.parent not in by_id]  # the tops, then each one's children
         while queue:
             node = queue.pop(0)
             parent = placed.get(node.parent) if node.parent in by_id else tree.root
+            queue[:0] = [c for c in under.get(node.id, []) if c.id in by_id]
+            if node.id in skip:
+                placed[node.id] = parent
+                continue
             has_kids, mine = bool(under.get(node.id)), self.forks.get(node.id, [])
             if has_kids and all(c.state == P.DONE for c in P.below(node.id, nodes)):
                 finished.add(node.id)
@@ -1329,11 +1350,10 @@ class Watch(App):
                 placed[fork] = placed[node.id].add_leaf(Text(f"fork {f['fork']}"), data=fork)
             if node.id not in self.known:
                 new.append(placed[node.id])
-            queue[:0] = [c for c in under.get(node.id, []) if c.id in by_id]
         tree.root.allow_expand = bool(nodes or self.board)
         if self.shape is None:
             tree.root.expand()  # the goal's row starts open
-        self.known, self.complete = {n.id for n in nodes}, finished
+        self.known, self.complete = {n.id for n in nodes} - skip, finished  # once shown, a skipped one is new
         self.outline(new)  # when the screen opens every node is new; later, what a planner adds
         _ = tree.last_line  # lays the new tree out, so the line of each node is known
         # the row it was on; one that folded away (a fork's row with its finished leaf, a leaf with its
@@ -1446,8 +1466,15 @@ class Watch(App):
         forms = (*keyed[:1], named, *keyed[1:], long, [*long[:1], *short[1:3], *long[3:]])  # clocks short
         fits = [form for form in forms if len(" · ".join(text for text, _ in form)) <= room]
         top = fit([*self.news(), *short] if self.news() else fits[0] if fits else short, room)
-        lines = [top, fit([(k, "") for k in self.keys()], room)]
-        said = self.busy or self.message
+        lines = [top, fit([(k, "") for k in self.keys()], room), *self.said_lines(room)]
+        status = self.query_one("#status", Static)
+        status.styles.height = sum(len(line.plain.splitlines()) for line in lines)
+        status.update(Text("\n").join(lines))
+
+    def said_lines(self, room: int) -> list[Text]:
+        """The bottom lines under the plan's and the keys': in a view what it shows at a glance, then what
+        the last command said. The node pane is fitted above them (``pane_room``)."""
+        lines, said = [], self.busy or self.message
         note = self.drawn.note if self.drawn is not None else ""
         if note and note not in said:  # a view's glance stays in sight whatever a command said after it
             lines.append(Text(T.elide(note, room)))
@@ -1461,9 +1488,7 @@ class Watch(App):
             if bottom.plain.startswith("✗"):  # red is for a command that failed, and only its mark
                 bottom.stylize("red", 0, 1)
             lines.append(bottom)
-        status = self.query_one("#status", Static)
-        status.styles.height = sum(len(line.plain.splitlines()) for line in lines)
-        status.update(Text("\n").join(lines))
+        return lines
 
     def keys(self) -> list[str]:
         """What the keys do on the row under the cursor, for the bottom line. In a view the outline's
@@ -1478,7 +1503,8 @@ class Watch(App):
         tail = [*(["Tab view"] if len(V.VIEWS) > 1 else []), "? talk" if self.selected() else "? help"]
         tail.append("q quit")
         if self.anchor is not None:
-            return ["VISUAL", "y accept", "d drop", "? m merge", "j k widen it", "Esc ends"]
+            yes = "y accept and run" if self.runs_on_y(self.chosen()) else "y accept"
+            return ["VISUAL", yes, "d drop", "? m merge", "j k widen it", "Esc ends"]
         if self.view == "record":
             offers = [OFFERED[k] for k in self.offer_keys()]
             ask = ["? ask the planner", "q quit"] if offers else tail  # there ? is no help: it spends
@@ -1515,7 +1541,8 @@ class Watch(App):
             return [*on, *offers, "? ask the planner", "r run it again", "Enter record", "q quit"]
         shut = ["za unfold"] if node is not None and node.allow_expand and not node.is_expanded else []
         if word in KEYS:
-            return [*on, *shut, *KEYS[word], *tail]
+            keys = ["y accept and run", *KEYS[word][1:]] if self.runs_on_y(self.chosen()) else KEYS[word]
+            return [*on, *shut, *keys, *tail]
         return [*(shut or ["za fold"]), "r run what is ready here", "E edit it as text", *tail]  # a sub-goal
 
     def offer_keys(self) -> list[str]:
@@ -1553,6 +1580,12 @@ class Watch(App):
             key += (int(time.monotonic() // 10),) if node.state == P.RUNNING else ()  # its tree moves
             pane.update(self.recorded(key, lambda: record_pane(store, node, self, wide)))
             return
+        # under the time view a leaf whose executor did or said something says it; one that came back keeps
+        # its offers in sight, and one with nothing on record (a stand-in, a script) its contract
+        word = self.word(node.id)
+        did = activity(store.node_log(node.id)) if self.showing == "time" and word not in WHOSE[:3] else []
+        if any(said for _, said in did):
+            return pane.update(activity_pane(node, word, did, wide, high))
         if time.monotonic() - self.files_at > 10:
             self.files, self.files_at = P.tracked(self.root_path), time.monotonic()
         pane.update(detail(store, node, self, self.files, (wide, high)))
@@ -1747,8 +1780,9 @@ class Watch(App):
         self.refresh_plan()
 
     def action_yes(self) -> None:
-        """y: accept a proposal (or the selection); on a leaf in review, sign it off; on a person's
-        own leaf, it is done; on the goal, accept all that is proposed."""
+        """y: accept a proposal (or the selection); on the one leaf proposed, with an executor chosen,
+        accept it and run it; on a leaf in review, sign it off; on a person's own leaf, it is done; on
+        the goal, accept all that is proposed."""
         if self.anchor is None and self.board_row() is not None:
             return self.action_board("y")
         word = self.word(self.selected())
@@ -1764,9 +1798,17 @@ class Watch(App):
             lambda s: [i for i in ids if s.node_row(i) and s.node_row(i)["state"] == P.PROPOSED], []
         )
         if ids:  # none a proposal: the command runs as chosen, and its refusal says why
-            self.did(["plan", "accept", *(fresh or ids)], quiet=True)  # one act: u undoes all of it
+            code = self.did(["plan", "accept", *(fresh or ids)], quiet=True)  # one act: u undoes all of it
+            if code == 0 and self.runs_on_y(ids):  # one leaf, accepted: it starts, as r starts it
+                self.background(["run", *shlex.split(RUN_WITH), "--node", ids[0]])
         self.anchor = None
         self.refresh_plan()
+
+    def runs_on_y(self, ids: list[str]) -> bool:
+        """y on the one leaf proposed also runs it, when `graphene init` chose an executor and the leaf,
+        once accepted, is ready: an agent's, with a scope, waiting on nothing."""
+        leaf = self.by_id[ids[0]] if self.lone and ids == [self.lone[0]] and self.counts.get("with") else None
+        return bool(leaf and leaf.owner == P.AGENT and leaf.scope and not P.unmet(leaf, self.by_id))
 
     def action_drop(self) -> None:
         if self.anchor is None and self.board_row() is not None:
@@ -2081,16 +2123,6 @@ def _sentence(argv: list[str]) -> list[str]:
 
 
 # -- the node pane -----------------------------------------------------------------------------------
-
-
-def _clock(stamp: str | None, seconds: bool = False) -> str:
-    if not stamp:
-        return ""
-    try:
-        at = datetime.fromisoformat(stamp.replace("Z", "+00:00")).astimezone()
-    except ValueError:
-        return stamp[11 : 19 if seconds else 16]
-    return at.strftime("%H:%M:%S" if seconds else "%H:%M")
 
 
 def _where(checkout: str | None, root: Path) -> str:
@@ -2439,6 +2471,28 @@ def tail_pane(store, node: P.Node, root: Path, wide: int) -> Text:
         pane.line(
             Text.assemble((_clock(call["timestamp"], True), "dim"), "  ", T.elide(R.said_by(call), wide - 10))
         )
+    return pane.render()
+
+
+def activity_pane(node: P.Node, word: str, did: list, wide: int, high: int) -> Text:
+    """Under the time view, what a leaf's executor did and said, live (`view_time.activity`). Each
+    attempt has a dim heading. Each phrase says how long after its attempt began it came, and a run of
+    one phrase is said once (`editing cli/main.py ×4`). The last rows that fit show, under their
+    attempt's heading."""
+    pane = Pane(wide)
+    _header(pane, node, word)
+    pane.gap()
+    rows = []
+    for a, said in did:
+        head = Text(f"attempt {a['attempt'] or 1} · {a['executor']} · {_clock(a['started'])}", "dim")
+        rows.append((head, None))
+        for seconds, phrase, count in said:
+            times = f" ×{count}" if count > 1 else ""
+            rows.append((head, Text(f"{'+' + elapsed(seconds):>7}  {T.elide(phrase, wide - 9 - len(times))}"
+                                    + times)))
+    used = sum(len(item[1].wrap(WRAP, pane.wide)) for item in pane.items if item[0] == "text")
+    for k, (head, row) in enumerate(rows[-max(high - used - 1, 2) :]):  # under the header and a gap
+        pane.line(head if row is None or k == 0 else row)
     return pane.render()
 
 

@@ -261,7 +261,7 @@ def test_archive_never_puts_a_parent_away_over_a_child_that_stays(store, repo):
     plan.edit(store, "docs", {"needs": ["b"]}, ALEX)  # unfinished work waits on b, so b stays
     gone = {n.id for n in plan.archive(store, ALEX)}
     assert "api" not in gone and "b" not in gone
-    plan.propose(store, [{"title": "still editable", "scope": ["README.md"], "check": "true"}], ALEX)
+    plan.propose(store, [{"title": "still editable", "scope": ["NOTES.md"], "check": "true"}], ALEX)
 
 
 def test_what_a_sub_goals_check_leaves_behind_is_nobodys_change(store, repo):
@@ -292,7 +292,7 @@ def test_undoing_the_split_of_a_checked_sub_goal_does_not_brick_the_plan(store):
     plan.edit(store, "b", {"needs": []}, ALEX)
     plan.drop(store, "a", ALEX)
     plan.drop(store, "b", ALEX)  # api now has a check and no scope and no children
-    plan.propose(store, [{"title": "later work", "scope": ["README.md"], "check": "true"}], ALEX)
+    plan.propose(store, [{"title": "later work", "scope": ["NOTES.md"], "check": "true"}], ALEX)
     plan.edit(store, "docs", {"title": "still editable"}, ALEX)
     assert "api" not in [n.id for n in plan.ready(plan.nodes(store))]
 

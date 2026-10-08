@@ -5,8 +5,9 @@ plans), then each leaf's contract exactly as `graphene run` would send it, searc
 
     dev/test/standing_check.py OUT --graphene BIN_DIR [--model sonnet]
 
-On the night's ledger, purpose `statements-practice`: the session reserves its --max-budget-usd and
-settles at the total_cost_usd it reports. Needs GRAPHENE_AGENT_LIVE_USD.
+On the night's ledger, purpose `statements-practice` unless GRAPHENE_NIGHT_PURPOSE names another: the
+session reserves its --max-budget-usd and settles at the total_cost_usd it reports. Needs
+GRAPHENE_AGENT_LIVE_USD.
 """
 
 from __future__ import annotations
@@ -71,7 +72,7 @@ def main() -> int:
         sh("graphene", "plan", "first", "on"),
     ]
     paragraph = (TEST / "tasks" / "statements" / "paragraph.md").read_text().strip()
-    os.environ[night.PURPOSE] = "statements-practice"
+    os.environ[night.PURPOSE] = os.environ.get(night.PURPOSE) or "statements-practice"
     held = night.reserve(f"claude:{a.model}", 2.0, "statements-practice: the tree arm plans", "claude code")
     out = sh(
         "claude",

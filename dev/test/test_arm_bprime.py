@@ -127,7 +127,8 @@ def test_every_proposal_is_taken_whole_the_change_goes_verbatim_and_evidence_cou
     assert said[0]["text"] == PARAGRAPH.rstrip("\n") and said[5]["text"] == CHANGE.rstrip("\n")
     assert said[5]["mandated"] is True
     assert said[7]["text"].endswith("--node cfg")  # only what the change added
-    asked = [r["messages"][1]["content"] for r in f.requests if r["model"] == ULTRA]
+    answers = [r for r in f.requests if r["model"] == ULTRA and r.get("response_format")]  # one per ask
+    asked = [r["messages"][1]["content"] for r in answers]
     assert (
         len(asked) == 2
         and f"The person said: {PARAGRAPH}" in asked[0]
@@ -160,7 +161,7 @@ def test_every_proposal_is_taken_whole_the_change_goes_verbatim_and_evidence_cou
     assert row["accept"] == {"passed": 2, "failed": 0, "error": False} and row["quality"] is None
     assert (row["landed"], row["handed_back"], row["failed"]) == (2, 1, 0)  # bye came back once, then landed
     assert (row["forks"], row["escalations"], row["unpriced"]) == (0, 0, 0)
-    assert row["endpoints"] == ["a stand-in"] and row["usage_calls"] == len(f.requests) == 10
+    assert row["endpoints"] == ["a stand-in"] and row["usage_calls"] == len(f.requests) == 12
     assert row["restarts"] == 1 and row["restarts_unmandated"] == 0
     assert row["modelled_seconds"] > 0 and row["files_outside_intent"] == []
     assert (

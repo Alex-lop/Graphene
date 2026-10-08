@@ -1,0 +1,36 @@
+ replay · as it ran, live · 2026-10-08 · 13 of 57 · the plan of claude-feeds-1
+Load the Northwind XML feed with the same `load` command as csv and json, writing the same JSONL, and skip any record…
+ you        |                                                        |
+ zero-rule                                                           ────────▓▓▓▓▓▓▓▓●
+            0s               10s               20s               30s              40s               50s
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ Load the Northwind XML feed with the same `load` command as csv and json, writing the same JSONL, and skip any record
+ with a price of 0 for every supplier.
+ the goal · 0/2 done
+
+ ○ Skip zero-priced records for every supplier                                                    zero-price  0/1 done
+ ○ Wire in the Northwind XML source                                                               xml-source  0/1 done
+
+ waiting  xml-wire on zero-rule (running)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ ● zero-rule · claude sonnet-5-5 · 9s · $0.09 · running cat validate/rules.py; ls… · 4 s ago · 2 turns · 0 files
+ 0 on you · 1 running · none ready · 0/2 done · bill $0.19
+ space pause · . next · r again · Enter record · l output · ? help · q quit · j k move · za fold
+ 1 lane · <1 min · agents <1 min $0.19 · you 2 acts ~2 min
+ an executor's output

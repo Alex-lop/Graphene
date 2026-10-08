@@ -18,9 +18,10 @@ import os
 import re
 import sys
 import time
+from bisect import bisect_left
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass, field
-from functools import lru_cache
+from functools import lru_cache, partial
 from pathlib import Path
 
 AGENT = "agent"  # the owner of a node any agent may take; every other owner is a person's name
@@ -206,13 +207,22 @@ def in_scope(path: str, scope: list[str]) -> bool:
     return inside
 
 
+def _fixed(glob: str) -> list[str]:
+    """The directories a glob names before its first wildcard: every path it covers starts with them."""
+    parts = glob.strip().removeprefix("./").rstrip("/").split("/")
+    upto = next((k for k, part in enumerate(parts) if any(c in part for c in "*?")), len(parts))
+    return parts[:upto]
+
+
 def overlap(a: list[str], b: list[str], files: list[str]) -> list[str]:
     """Paths both scopes claim: the tracked files either matches, and a glob one scope spells that
-    the other also covers. TODO: a file neither scope names literally and that does not exist
+    the other also covers, read as it is written: `src/new/**` beside `src/new/**`, but not beside
+    `src/**, !src/new/**`. TODO: a file neither scope names literally and that does not exist
     yet is not seen; the write-time refusal still holds for it, since no scope is ever widened."""
-    both = [f for f in files if in_scope(f, a) and in_scope(f, b)]
-    literal = [g for g in a if not g.startswith("!") and in_scope(g.rstrip("/*") or g, b)]
-    literal += [g for g in b if not g.startswith("!") and in_scope(g.rstrip("/*") or g, a)]
+    na, nb = (tuple("/".join(_fixed(g)) for g in s if not g.startswith("!")) for s in (a, b))
+    both = [f for f in files if f.startswith(na) and f.startswith(nb) and in_scope(f, a) and in_scope(f, b)]
+    literal = [g for g in a if not g.startswith("!") and in_scope(g, b)]
+    literal += [g for g in b if not g.startswith("!") and in_scope(g, a)]
     return sorted(set(both + literal))
 
 
@@ -249,8 +259,7 @@ def binds(path: str, node: Node, conditions: list[tuple[str, str]]) -> bool:
 
 def _keeps_standing(node: Node, conditions: list[tuple[str, str]], files: list[str]) -> None:
     """Refuse a scope that covers a path a standing condition keeps out, naming the setting and path.
-    ponytail: judged by ``overlap`` (tracked files and literal globs), so a scope that covers the path
-    and then takes it out again with a '!' glob is still refused; say the scope without it."""
+    Judged by ``overlap``, so a scope that takes the path out again with a '!' glob is not refused."""
     if not node.scope or (node.aside and node.scope == ["**"]):  # an aside's untyped `**` leaves them out
         return
     for setting, glob in conditions:
@@ -1054,6 +1063,25 @@ _EXTENSIONS = tuple(f".{e}" for e in _KINDS.split())
 
 
 _BUILT = ("dist/", "build/", "out/", "target/", "node_modules/", ".venv/", "coverage/")
+_MOVES = r"(^|[;&|(\s])(cd|pushd)\s|--prefix[\s=]|(^|\s)-C\s"
+
+
+def check_words(check: str) -> list[str]:
+    """The words of a check that may be paths, once each, in order. A flag (`-k`, `--cov=src`) is not
+    one, nor a VAR=value, nor a program the PATH finds (a command's first word with no / in it), nor a
+    path from / or one that starts with a dot; `./a` is a. A check that changes directory (cd, pushd,
+    `--prefix`, `-C <dir>`) has none: its paths are not from the top."""
+    out: list[str] = []
+    if re.search(_MOVES, check):
+        return out
+    for command in re.split(r"[;&|()]", check):
+        words = [w for w in command.split() if not w.startswith("-") and not re.match(r"\w+=", w)]
+        for part in words[1:] if words and "/" not in words[0] else words:
+            for word in re.findall(r"[\w./-]+", part):
+                word = word.removeprefix("./").rstrip(".")
+                if word and not word.startswith(("/", "-", ".")) and word not in out:
+                    out.append(word)
+    return out
 
 
 def unreachable(
@@ -1065,9 +1093,8 @@ def unreachable(
     cover every typo. It is a guess (a person typed `test/test_csvfeed.py` for `tests/`), said when the
     leaf is written, before anything is spent. A path on disk that git does not track comes back
     marked, because a run's worktree will not have it. A check that changes directory
-    (cd, pushd, `--prefix`, `-C <dir>`), and what a build makes, are not judged."""
-    moves = r"(^|[;&|(\s])(cd|pushd)\s|--prefix[\s=]|(^|\s)-C\s"
-    if not node.check or not node.scope or re.search(moves, node.check):
+    (cd, pushd, `--prefix`, `-C <dir>`), and what a build makes, are not judged (``check_words``)."""
+    if not node.check or not node.scope:
         return []
     live = (OPEN, RUNNING, PROPOSED)
     covered = [
@@ -1078,11 +1105,10 @@ def unreachable(
         if g != "**"
     ]
     out: list[str] = []
-    for word in re.findall(r"[\w./-]+", node.check):
-        word = word.removeprefix("./").rstrip(".")
-        if word.startswith(("/", "-", ".")) or ("/" not in word and not word.endswith(_EXTENSIONS)):
+    for word in check_words(node.check):
+        if "/" not in word and not word.endswith(_EXTENSIONS):
             continue
-        if word in out or word.startswith(_BUILT) or in_scope(word, [*node.scope, *covered]):
+        if word.startswith(_BUILT) or in_scope(word, [*node.scope, *covered]):
             continue
         if any(f == word or f.startswith(word.rstrip("/") + "/") for f in files):
             continue
@@ -1102,6 +1128,185 @@ def unreachable_said(missing: list[str]) -> str:
         f"names {', '.join(missing)}, which {'is' if one else 'are'} not in the repo and no leaf's scope may "
         f"create {'it' if one else 'them'}: check the spelling"
     )
+
+
+# -- one leaf writes a path, and a check runs only what is there or what it waits on ------------------
+
+
+def may_collide(a: list[str], b: list[str]) -> bool:
+    """Could two scopes ever claim one path? Asked of the globs themselves, not of the files that
+    exist: `**/*.py` and `src/**` share no tracked file in a repo with no Python under src/, and both
+    leaves then wrote src/new.py. Two globs may meet unless the directories they name before their
+    first wildcard are different branches of the tree. Exclusions are ignored: holding a leaf back
+    costs minutes, and a collision costs the person a merge."""
+    pairs = [(_fixed(x), _fixed(y)) for x in a if not x.startswith("!") for y in b if not y.startswith("!")]
+    return any(x[: len(y)] == y[: len(x)] for x, y in pairs)
+
+
+def _live(nodes: list[Node]) -> list[Node]:
+    """The leaves that write: the leaves of the tree as it is drawn (a proposed child makes its parent
+    a sub-goal), not done or dropped, and not made from a prompt (an aside's `**` is as it was typed)."""
+    under = kids(nodes, drawn=True)
+    return [n for n in nodes if n.state not in (DONE, *GONE) and not n.aside and not under.get(n.id)]
+
+
+def _few(paths: list[str]) -> str:
+    return ", ".join(paths[:3]) + (f" and {len(paths) - 3} more" if len(paths) > 3 else "")
+
+
+def _prefixes(scope: list[str]) -> list[str]:
+    """What every path a scope covers starts with: its globs' directories before their first wildcard."""
+    return ["/".join(_fixed(g)) for g in scope if not g.startswith("!")]
+
+
+def _within(files: list[str], prefixes: list[str]) -> list[str]:
+    """The paths of a sorted list that start with one of ``prefixes``, a slice each, found by bisection:
+    a directory of a large repo is found without reading every path in it (the lock a hook waits on is
+    held meanwhile)."""
+    out, taken = [], ""
+    for p in sorted(set(prefixes)):
+        if out and p.startswith(taken):
+            continue  # its paths are in the slice already
+        taken = p
+        out += files[bisect_left(files, p) : bisect_left(files, p + "\U0010ffff")]
+    return out
+
+
+def _waits(by_id: dict[str, Node], under: dict, start: str, targets: set[str]) -> bool:
+    """Does ``start`` wait on one of ``targets`` already: through the needs of it and of every node above
+    it, and through children (a sub-goal waits on them), as ``validate`` follows them."""
+    seen, todo = set(), [start]
+    while todo:
+        i = todo.pop()
+        if i in seen or i not in by_id:
+            continue
+        seen.add(i)
+        nxt = [*all_needs(by_id[i], by_id), *(c.id for c in under.get(i, []))]
+        if targets.intersection(nxt):
+            return True
+        todo += nxt
+    return False
+
+
+def one_writer(everything: list[Node], ids: set[str], files: list[str], before: dict[str, Node] | None = None,
+               beside: frozenset[str] | set[str] = frozenset()) -> None:  # fmt: skip
+    """Refuse a leaf of ``ids`` whose scope covers a path another leaf that writes (``_live``) covers. A
+    pair that shared it ``before`` (the plan as it was) is not judged again, nor a leaf of ``beside``:
+    what a merge or another way would replace, whose scope it takes in on purpose."""
+    live, before, files = _live(everything), before or {}, sorted(files)  # sorted: a scope's are a slice
+    for leaf in [n for n in live if n.id in ids]:
+        for other in [n for n in live if n.id != leaf.id and n.id not in beside]:
+            if not may_collide(leaf.scope, other.scope):
+                continue
+            hit = overlap(leaf.scope, other.scope, _within(files, _prefixes(other.scope)))
+            if leaf.id in before and other.id in before:
+                was = overlap(before[leaf.id].scope, before[other.id].scope,
+                              _within(files, _prefixes(before[other.id].scope)))  # fmt: skip
+                hit = [p for p in hit if p not in was]
+            if hit:
+                raise Refused(
+                    f"{leaf.id} and {other.id} both write {_few(hit)}. A path has one leaf that writes it: "
+                    "give it to one, and let the other wait on it"
+                )
+
+
+def check_paths(check: str, files: list[str], live: list[Node]) -> list[tuple[str, list[str]]]:
+    """What a check runs, as (a path, the tracked files it names). A word of it (``check_words``) is a
+    path when it is a file git tracks; a directory, with tracked files in it or a scope in ``live``
+    that names a path in it; a path with a / or a known extension that a scope covers (a file a leaf
+    will make); or a module, `tests.test_x` as tests/test_x.py or the package tests/test_x/, by the
+    longest of its prefixes that is one of these. Any other word names nothing (pytest, discover).
+    ``files``: sorted, as git lists them."""
+    globs = [g for n in live for g in n.scope if not g.startswith("!")]
+
+    def names(path: str, loose: bool) -> list[str] | None:
+        inside = path.rstrip("/") + "/"
+        at = bisect_left(files, path)
+        under = [path] if files[at : at + 1] == [path] else []
+        under += _within(files, [inside])
+        if under or any(g == path or g.startswith(inside) for g in globs):
+            return under
+        shaped = "/" in path or path.endswith(_EXTENSIONS)
+        return under if loose and shaped and any(in_scope(path, n.scope) for n in live) else None
+
+    out: list[tuple[str, list[str]]] = []
+    for word in check_words(check):
+        parts, tries = word.split("."), [word]
+        if "/" not in word and len(parts) > 1 and not word.endswith(_EXTENSIONS):  # tests.test_x.TestY
+            stems = ["/".join(parts[:k]) for k in range(len(parts), 1, -1)]
+            tries = [p for stem in stems for p in (f"{stem}.py", stem)]
+        for loose, path in [(False, p) for p in tries] + [(True, p) for p in tries]:  # what is there, first
+            under = names(path, loose)
+            if under is not None:
+                out.append((path, under))
+                break
+    return out
+
+
+def wait_on_checks(
+    everything: list[Node], ids: set[str], files: list[str], beside: frozenset[str] | set[str] = frozenset(),
+    writers: frozenset[str] | set[str] = frozenset(),
+) -> list[str]:
+    """Each leaf of ``ids``, in order, waits on every other leaf that writes a path its check runs
+    (``check_paths``) outside its own scope, unless one already waits on the other (``_waits``). When
+    the other waits on it, the check sees the path as it is at the base; a file it names that is not
+    there yet (the tests leaf's new test) is refused: the check could never pass. ``writers``: leaves
+    that joined the plan, or whose scope changed. Every other leaf no one has started (a proposal too)
+    is judged against them alone, so a pair judged before is not judged again; a proposal is no writer
+    until it is accepted, since it binds nobody. Returns a line a leaf it added to."""
+    live, said, files = _live(everything), [], sorted(files)  # sorted: what a path names is a slice
+    there, by_id = set(files), {n.id: n for n in everything if n.state not in GONE}
+    under = kids(everything, drawn=True)
+    writers = {n.id for n in live if n.id in writers and n.state != PROPOSED}
+    for leaf in [n for n in live if n.check]:
+        judged = leaf.id in ids
+        others = [
+            n for n in live if n.id != leaf.id and n.id not in beside
+            and (judged or n.id in writers and leaf.state in (OPEN, PROPOSED))
+        ]  # fmt: skip
+        if not others:
+            continue
+        named, waits = check_paths(leaf.check, files, live), {}
+        for other in others:
+            hit = sorted({
+                p for path, in_it in named if may_collide([path], other.scope)
+                for p in overlap([path], other.scope, _within(in_it, _prefixes(other.scope)))
+                if not in_scope(p, leaf.scope)
+            })  # fmt: skip
+            if not hit or _waits(by_id, under, leaf.id, {other.id}):  # none, or it waits on other already
+                continue
+            if not _waits(by_id, under, other.id, {leaf.id}):
+                leaf.needs.append(other.id)
+                waits[other.id] = hit
+                continue
+            new = [p for p in hit if p not in there and any(p == path for path, _ in named)]
+            if new:
+                raise Refused(
+                    f"{leaf.id}: its check runs {_few(new)}, which {other.id} writes after it. Give "
+                    f"{leaf.id} a check that passes without it, or let {other.id}'s check run it"
+                )
+        if waits:
+            why = ", and ".join(f"{_few(paths)}, which {other} writes" for other, paths in waits.items())
+            said.append(f"{leaf.id} waits on {', '.join(waits)}: its check runs {why}")
+    return said
+
+
+def judge(store, ids: set[str], writers: set[str], files: list[str], who: Caller, now: str,
+          beside: frozenset[str] | set[str] = frozenset()) -> list[str]:  # fmt: skip
+    """``wait_on_checks`` over the plan as it stands, each need it adds saved as an edit of its leaf."""
+    everything = nodes(store)
+    was = {n.id: list(n.needs) for n in everything}
+    said = wait_on_checks(everything, ids, files, beside, writers)
+    _waited(store, was, everything, who, now)
+    return said
+
+
+def _waited(store, was: dict[str, list[str]], everything: list[Node], who: Caller, now: str) -> None:
+    """Each node of ``was`` whose needs ``wait_on_checks`` grew since, saved as an edit of its contract."""
+    for n in everything:
+        if n.id in was and n.needs != was[n.id]:
+            n.rev += 1
+            _save(store, n, "edited", who, now, changed={"needs": [was[n.id], n.needs]}, rev=n.rev)
 
 
 def _owner(name: str) -> str:
@@ -1202,6 +1407,14 @@ def _held(store, node: Node) -> str:
     return f"; {held(store, node)}" if held(store, node) else ""
 
 
+def acyclic(everything: list[Node], node_id: str, ids: list[str]) -> bool:
+    """Could the node wait on ``ids`` as well, and the plan still have no cycle? Not when one of them is
+    it or under it, or waits on it or on what is under it already (``_waits``)."""
+    by_id, under = {n.id: n for n in everything if n.state not in GONE}, kids(everything, drawn=True)
+    mine = {node_id, *(n.id for n in below(node_id, everything))}
+    return not any(i in mine or _waits(by_id, under, i, mine) for i in ids)
+
+
 def offers(store, node: Node) -> list[tuple[str, str, list[str]]]:
     """What a leaf that came back offers the person, as (key in `graphene watch`, what it does, the
     command that does it): widen its scope to the paths it wanted, a sibling leaf for those paths,
@@ -1214,7 +1427,7 @@ def offers(store, node: Node) -> list[tuple[str, str, list[str]]]:
     by_id = {n.id: n for n in everything}
     paths = offerable(store, node, everything)
     if paths:
-        listed = ", ".join(paths[:3]) + (f" and {len(paths) - 3} more" if len(paths) > 3 else "")
+        listed = _few(paths)
         out.append(("w", f"widen {node.id}'s scope to {listed}", ["node", "widen", node.id]))
         out.append((
             "b", f"a sibling leaf for {listed} (its check: true); {node.id} waits on it",
@@ -1232,20 +1445,10 @@ def offers(store, node: Node) -> list[tuple[str, str, list[str]]]:
         and n.id not in all_needs(node, by_id)
         and (n.id in held.values() or re.search(rf"(?<![\w.-]){re.escape(n.id)}(?![\w-])", why))
     ]
-
-    def acyclic(ids: list[str]) -> bool:  # waiting on them must not make a cycle
-        trial = [
-            Node(**{**to_dict(x), "needs": [*x.needs, *ids]}) if x.id == node.id else x for x in everything
-        ]
-        try:
-            validate(trial, set())
-        except Refused:
-            return False
-        return True
-
+    fits = partial(acyclic, everything, node.id)  # waiting on them must not make a cycle
     # one check for all of them, the usual case; one each only when that fails (a reason naming 100
     # nodes of 300 cost a validate each, on every refresh of the screen)
-    named = candidates if not candidates or acyclic(candidates) else [i for i in candidates if acyclic([i])]
+    named = candidates if not candidates or fits(candidates) else [i for i in candidates if fits([i])]
     if named:
         argv = ["node", "set", node.id, *(x for i in [*node.needs, *named] for x in ("--needs", i))]
         def whose(i: str) -> str:
@@ -1296,8 +1499,8 @@ def sibling(store, node_id: str, paths: list[str], who: Caller, files: list[str]
         "check": "true",
         "parent": node.parent,
     }
-    with store.claim():
-        [made] = propose(store, [item], who, files=files)
+    with store.claim():  # not judged, as an answer the person gave is not (decision 171)
+        [made] = propose(store, [item], who, files=files, edits_follow=True)
         edit(store, node.id, {"needs": [*node.needs, made.id]}, who, files=files)
     return made
 
@@ -1336,10 +1539,17 @@ def propose(
     aside: bool = False,
     proposals: frozenset[str] | set[str] = frozenset(),
     containers: frozenset[str] | set[str] = frozenset(),
+    beside: frozenset[str] | set[str] = frozenset(),
+    told: list[str] | None = None,
+    edits_follow: bool = False,
 ) -> list[Node]:
     """Add nodes. From a person they are part of the plan at once; from an agent they are proposals,
     which nobody can start until a person accepts them. ``proposals``: ids a person wrote as
-    proposals themselves (a "?" line in the text), which stay proposals."""
+    proposals themselves (a "?" line in the text), which stay proposals. A new leaf whose check runs
+    another leaf's file waits on it (``wait_on_checks``), said in ``told``, one line a leaf, and so does
+    a leaf in the plan whose check runs a file a new one of the person's writes; one that writes
+    another leaf's path is refused (``one_writer``, with ``beside``). Unless ``edits_follow``: the
+    caller edits other nodes in the same act, and judges both once they are in."""
     now = now or _now()
     with store.claim():
         existing = nodes(store)
@@ -1381,7 +1591,14 @@ def propose(
             added.append(node)
         # ``containers``: new nodes the same text gives children (existing nodes moved under them come
         # after): they are sub-goals, and the leaf rule is asked of the tree once they are in place
-        validate(existing + added, {n.id for n in added} - set(containers), standing(store), files or [])
+        fresh = {n.id for n in added} - set(containers)
+        was = {n.id: list(n.needs) for n in existing}
+        if not edits_follow:
+            one_writer(existing + added, fresh, files or [], beside=beside)
+            waits = wait_on_checks(existing + added, fresh, files or [], beside, {n.id for n in added})
+            if told is not None:
+                told += waits
+        validate(existing + added, fresh, standing(store), files or [])
         held = {n.id: n for n in existing if n.state == RUNNING}
         for node in added:
             if node.state == OPEN and node.parent in held:
@@ -1392,15 +1609,19 @@ def propose(
                 raise Refused(f"{node.id}: {wrong}; spell the scope as git does")
         for node in added:
             _save(store, node, "added" if who.person else "proposed", who, now)
+        _waited(store, was, existing, who, now)
         _settle(store, who, now)
     return added
 
 
 def accept(
-    store, ids: list[str], who: Caller, now: str | None = None, exact: bool = False, **detail
+    store, ids: list[str], who: Caller, now: str | None = None, exact: bool = False,
+    files: list[str] | None = None, told: list[str] | None = None, **detail,
 ) -> list[Node]:
     """``exact``: the nodes named and the proposals above them, not the ones under them (the text
-    form says each node's mark, so a child left as a proposal stays one)."""
+    form says each node's mark, so a child left as a proposal stays one). ``told``: the person accepts
+    them (`plan accept`, `y`): a leaf whose check runs a file one of them writes now waits on it, said
+    there (``wait_on_checks``); a proposal bound nobody until now."""
     _person_only(who, "accepting a proposal")
     now = now or _now()
     with store.claim():
@@ -1422,6 +1643,8 @@ def accept(
                 raise _under_hands(parent, node.id)
             node.state = OPEN
             _save(store, node, "accepted", who, now, **detail)
+        if told is not None:
+            told += judge(store, set(), {n.id for n in chosen}, files or [], who, now)
         proposed_goal, by = store.meta("goal:proposed"), store.meta("goal:proposed:by")
         if proposed_goal and any(n.proposed_by == by for n in chosen) and not goal(store):
             set_goal(store, proposed_goal, who, now)  # the planner's echo of the paragraph, with its tree
@@ -1437,9 +1660,14 @@ def edit(
     now: str | None = None,
     files: list[str] | None = None,
     check: bool = True,
+    told: list[str] | None = None,
 ) -> Node:
     """Change a node's contract. The hook reads the row on every event, so a tighter scope binds the
-    very next write, even on a node that is running; what waits to start is told the new contract."""
+    very next write, even on a node that is running; what waits to start is told the new contract.
+    ``told``: the person edits the leaf itself (`node set`, `plan edit`), not by a board's answer or an
+    offer. A new check then waits on what writes the files it runs, a leaf whose check runs a file a new
+    scope takes in waits on it, both said in ``told``, and a new scope over another leaf's path is
+    refused. With ``check`` off the caller judges all of it, once its edits are in (a text saved whole)."""
     _person_only(who, "editing a node's contract")
     now = now or _now()
     with store.claim():
@@ -1461,6 +1689,17 @@ def edit(
         changed = {f: [before[f], getattr(node, f)] for f in EDITABLE if before[f] != getattr(node, f)}
         if not changed:
             return node
+        others: dict[str, list[str]] = {}  # the needs of the rest of the plan, which a new scope may grow
+        if told is not None and check and {"scope", "check"} & changed.keys():
+            was = nodes(store)
+            everything = [node if n.id == node.id else n for n in was]
+            if "scope" in changed:
+                one_writer(everything, {node.id}, files or [], {n.id: n for n in was})
+            others = {n.id: list(n.needs) for n in was if n.id != node.id}
+            told += wait_on_checks(everything, {node.id} if "check" in changed else set(), files or [],
+                                   writers={node.id} if "scope" in changed else set())  # fmt: skip
+            if node.needs != before["needs"]:
+                changed["needs"] = [before["needs"], node.needs]
         if check:  # else the caller validates once every edit it makes is in (a text saved whole)
             validate([node if n.id == node.id else n for n in nodes(store)], {node.id})
         if "scope" in changed:  # asked even when the caller validates later: the text form does
@@ -1473,6 +1712,8 @@ def edit(
             raise Refused(f"{node.id}: {wrong}; spell the scope as git does")
         node.rev += 1
         _save(store, node, "edited", who, now, changed=changed, rev=node.rev)
+        if others:
+            _waited(store, others, everything, who, now)
         _settle(store, who, now)
     return node
 
@@ -2736,8 +2977,8 @@ def plan_first(store) -> str:
     """Plan first, as the person set it: on, auto or off (`graphene plan first`, `P` in graphene
     watch). On: every ask is proposed and waits for the person. Auto: every ask is proposed, and one
     small leaf with nothing on the board is the person's at once (``gate.one_line_ask``); anything
-    else waits. Off: nothing is proposed first. `graphene init` sets auto; never set, it is auto
-    while a plan is in force and off otherwise."""
+    else waits. Off: nothing is proposed first. `graphene init` sets on, and keeps what was set
+    before; never set, it is auto while a plan is in force and off otherwise."""
     said = store.meta("plan_first")
     return said if said in FIRST else "auto" if in_force(store) else "off"
 

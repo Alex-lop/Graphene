@@ -115,6 +115,7 @@ class Meter:
         self.begun = 0  # Codex's turns started: one not completed spent what no row says
         self.dollars, self.priced, self.reported = 0.0, True, None
         self.last: str | None = None
+        self.result = ""  # Claude's answer, as `claude -p` prints it with no stream: its result's text
         self.cwd = cwd
         self._seen: set[str] = set()  # Claude's message ids counted, Codex's commands logged
 
@@ -193,6 +194,7 @@ class Meter:
         dollars and its tokens (the stream counts a message's output tokens before it is written). After
         --resume its total_cost_usd is the session's running total, so what earlier attempts paid comes
         off; its usage is the call's own (dev/test/results-2026-09-23.md)."""
+        self.result = str(event.get("result") or event.get("subtype") or "")  # a stop says why it stopped
         reported = event.get("total_cost_usd")
         if not isinstance(reported, (int, float)):
             return []
@@ -375,9 +377,14 @@ def agents(rows: list[dict], now: datetime) -> dict:
     }
 
 
-def you(rows: list[dict], person: str) -> dict:
-    """The person's clock, by their keys: acts are their own rows, once per timestamp; minutes are the
-    distinct minutes holding at least one act."""
+def acts(rows: list[dict], person: str | None) -> list[str]:
+    """The person's acts: the timestamps of their own rows, once each, oldest first."""
     # talk.mine's rule, mirrored: talk imports typer, and this module is the core's
-    stamps = {e["timestamp"] for e in rows if (e["actor"] or "").split(" (")[0] == person}
+    return sorted({e["timestamp"] for e in rows if (e["actor"] or "").split(" (")[0] == person})
+
+
+def you(rows: list[dict], person: str) -> dict:
+    """The person's clock, by their keys: acts are their own rows, once per timestamp (`acts`); minutes
+    are the distinct minutes holding at least one act."""
+    stamps = acts(rows, person)
     return {"acts": len(stamps), "minutes": len({s[:16] for s in stamps})}

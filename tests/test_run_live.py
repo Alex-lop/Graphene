@@ -945,7 +945,7 @@ def test_a_persons_edit_asks_git_before_the_write_lock_is_taken(repo, monkeypatc
     monkeypatch.setattr(plan, "_git", asked)
     assert person("node", "add", "b", "--id", "b", "--scope", "b.txt", "--check", "true").exit_code == 0
     assert person("node", "set", "b", "--scope", "b.txt", "--scope", "c.txt").exit_code == 0
-    text = "- c  [c]\n    scope: c.txt\n    check: true\n"
+    text = "- c  [c]\n    scope: d.txt\n    check: true\n"  # b writes c.txt
     assert person("plan", "propose", "-", input=text).exit_code == 0
     assert seen and not any(seen)
 
@@ -961,6 +961,23 @@ def test_a_sibling_once_taken_is_offered_no_more(repo):
         assert [k for k, _, _ in plan.offers(store, plan.get(store, "a"))] == ["w", "b"]
         plan.sibling(store, "a", [], ALEX)
         assert plan.offers(store, plan.get(store, "a")) == []
+
+
+def test_the_sibling_offered_for_a_directory_is_taken_as_the_widen_is(repo):
+    """The fourth review of 8 October: `b` was offered for tests/, where another leaf writes one file,
+    and refused when taken, while `w` for the same paths was taken. An offer is not judged (decision 171):
+    the person took it, as they answer the board."""
+    (repo / "tests").mkdir()
+    (repo / "tests" / "test_b.py").write_text("")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", "a test")
+    with Store.open(repo) as store:
+        plan.propose(store, [leaf("a", "a.txt"), leaf("b", "tests/test_b.py")], ALEX)
+        plan.start(store, "a", BOT, repo)
+        plan.release(store, "a", BOT, "it needs a test", wants=["tests"])
+        assert [k for k, _, _ in plan.offers(store, plan.get(store, "a"))][:2] == ["w", "b"]
+        made = plan.sibling(store, "a", [], ALEX, files=plan.tracked(repo))
+        assert made.scope == ["tests"] and plan.get(store, "a").needs == [made.id]
 
 
 def test_undoing_a_sibling_or_a_widen_puts_back_the_leaf_that_came_back_with_its_offers(repo):

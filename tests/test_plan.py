@@ -84,6 +84,34 @@ def test_two_scopes_overlap_on_a_tracked_file_or_on_a_glob_one_of_them_spells():
     assert plan.overlap(["src/**"], ["src/api/**"], files) == ["src/api/**", "src/api/users.py"]
     assert plan.overlap(["src/api/**"], ["src/db/**"], files) == []
     assert plan.overlap(["docs/new.md"], ["docs/**"], files) == ["docs/new.md"]  # not written yet, still seen
+    assert plan.overlap(["docs/**"], ["docs/"], files) == ["docs/", "docs/**"]  # nor is a new directory
+    assert plan.overlap(["src/**", "!src/api/**"], ["src/api/**"], files) == []  # one takes it out
+
+
+def test_twelve_new_leaves_are_judged_well_inside_what_a_hook_waits_for_the_plan(tmp_path):
+    """propose judges new leaves under the plan's lock, and a hook gives up on the lock after 0.25 s.
+    Each of the twelve checks runs tests/, with 10,000 of the repo's 22,000 files in it, in a plan where
+    30 leaves each write a test there and 100 are done. The whole propose is timed: the fourth review of
+    8 October timed the judging alone, on a plan with nothing else in it, and found the lock held 0.37 s."""
+    files = [f"src/pkg{d}/m{i}.py" for d in range(60) for i in range(200)]
+    files += [f"tests/unit/test_{d}_{i}.py" for d in range(50) for i in range(200)]
+    done = [{"id": f"d{k}", "title": "d", "scope": [f"done/d{k}.py"], "check": "true"} for k in range(100)]
+    live = [{"id": f"t{k}", "title": "t", "scope": [f"src/t{k}/**", f"tests/unit/test_t{k}.py"],
+             "check": "true"} for k in range(30)]  # fmt: skip
+    new = [{"id": f"l{k}", "title": "l", "scope": [f"src/pkg{k}/**", f"tests/unit/test_{k}_new.py"],
+            "check": "python3 -m pytest tests -q"} for k in range(12)]  # fmt: skip
+    spent = []
+    for k in range(3):
+        git(tmp_path, "init", "-q", f"r{k}")
+        with Store.open(tmp_path / f"r{k}") as store:
+            plan.propose(store, done + live, ALEX, files=files)
+            for d in done:
+                store.put_node({**store.node_row(d["id"]), "state": DONE})
+            start = time.process_time()
+            plan.propose(store, new, ALEX, files=files)
+            spent.append(time.process_time() - start)
+            assert {f"t{i}" for i in range(30)} <= set(plan.get(store, "l0").needs)  # on every test there
+    assert min(spent) < (0.5 if os.environ.get("CI") else 0.25)  # a shared runner on 3.12 is slower
 
 
 # -- shaping the plan -------------------------------------------------------------------------------
@@ -118,7 +146,7 @@ def test_a_node_that_cannot_run_is_refused_with_the_reason(store, bad, says):
 
 
 def test_a_cycle_is_refused(store):
-    plan.propose(store, [api_node(id="a"), api_node(id="b", needs=["a"])], ALEX)
+    plan.propose(store, [api_node(id="a"), api_node(id="b", needs=["a"], scope=["README.md"])], ALEX)
     with pytest.raises(Refused, match="cycle: a -> b -> a"):
         plan.edit(store, "a", {"needs": ["b"]}, ALEX)
 
@@ -188,7 +216,8 @@ def test_an_agent_cannot_take_a_persons_node_and_the_person_can(store, repo):
 
 
 def test_two_running_nodes_never_claim_the_same_path_in_one_checkout(store, repo):
-    plan.propose(store, [api_node(id="a"), api_node(id="b", scope=["src/**"])], ALEX)
+    plan.propose(store, [api_node(id="a"), api_node(id="b", scope=["docs/**"])], ALEX)
+    store.put_node({**store.node_row("b"), "scope": ["src/**"]})  # an older plan's two writers of one path
     plan.start(store, "a", BOT, repo)
     with pytest.raises(Refused, match="both claim .*one writer at a time"):
         plan.start(store, "b", BOT2, repo)
@@ -552,7 +581,8 @@ def test_a_person_starting_over_loose_changes_has_seen_them_and_the_log_keeps_th
 
 
 def test_a_released_nodes_own_work_is_not_loose_but_its_stray_file_is(store, repo, finish):
-    plan.propose(store, [api_node(id="a"), api_node(id="b"), api_node(id="c", scope=["README.md"])], ALEX)
+    a, c = api_node(id="a", scope=["docs/**"]), api_node(id="c", scope=["README.md"])
+    plan.propose(store, [a, api_node(id="b"), c], ALEX)
     plan.start(store, "a", BOT, repo)
     finish(store, repo, "a", BOT)
     plan.start(store, "b", BOT, repo)
@@ -708,8 +738,8 @@ def test_a_reason_naming_many_nodes_is_checked_for_cycles_once(tmp_path, monkeyp
         plan.propose(store, [*items, {"id": "x", "title": "x", "scope": ["x.py"], "check": "true"}], alex)
         plan.start(store, "x", bot, tmp_path)
         plan.release(store, "x", bot, "waits on " + " ".join(f"m{i}" for i in range(40)))
-        calls, real = [], plan.validate
-        monkeypatch.setattr(plan, "validate", lambda *a: calls.append(1) or real(*a))
+        calls, real = [], plan.acyclic
+        monkeypatch.setattr(plan, "acyclic", lambda *a: calls.append(1) or real(*a))
         [(key, _, argv)] = plan.offers(store, plan.get(store, "x"))
         assert key == "n" and argv.count("--needs") == 40 and len(calls) == 1
 

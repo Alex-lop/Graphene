@@ -21,16 +21,17 @@ from pathlib import Path
 
 from . import board as B
 from . import extra
+from . import meter as M
 from . import plan as P
 from . import plan_text as T
-from .run import _splits, command_for, unchosen
+from .run import _end, _no_interrupt, _settle, _splits, command_for, held, unchosen
 from .run import label as run_label
 
 # Read-only: Claude Code's built-in tools cut to the three that read (`--tools`), and none of the MCP
 # servers the person has connected (`--strict-mcp-config` with no config: some of them send mail and
-# write documents), so its only way to say anything is what it prints. Codex: `codex exec --sandbox
-# read-only`.
-DEFAULT_PLANNER = "claude -p --tools Read,Grep,Glob --strict-mcp-config"
+# write documents), so its only way to say anything is what it prints. Its stream (`stream-json`, which
+# needs `--verbose`) says what it cost, as an executor's does. Codex: `codex exec --sandbox read-only`.
+DEFAULT_PLANNER = "claude -p --tools Read,Grep,Glob --strict-mcp-config --output-format stream-json --verbose"
 ATTEMPTS = 2
 
 
@@ -79,6 +80,9 @@ risk: what could make a check pass on nothing, or a leaf go wrong  [short-id]
   that exits 0 only when the leaf is done, and that can pass with what its scope and its needs write.
   Use the repo's own test runner and files that exist or that the leaf creates.
 - A leaf whose check needs another leaf's work says so with needs:. Two leaves never share a path.
+- A leaf's check runs only files in its own scope and files already in the repository. A leaf that
+  needs a test another leaf writes waits on it with needs:. Two leaves never share a test file: give
+  each leaf its own, or make one tests leaf that waits on all of them.
 - To put new lines under a node already in the plan, write that node's line as it is above, with its
   [id], and your lines under it. You cannot change a node that is there; say what should change in a
   sentence after the block, and the person decides.
@@ -224,18 +228,27 @@ def _last_ask(store) -> str | None:
     return next((a["session"] for a in reversed(asked) if a.get("session") in proposing), None)
 
 
-def _drop_last(store, session: str | None) -> set[str]:
-    """Drop what the last ask of the whole plan proposed that still waits on the person (a split's or
-    another way's proposals are not its): `ask --finer/--coarser` gives one tree to prune in its
-    place, not a second beside it. Returns the ids dropped, with those under them."""
+def _pending(store, session: str | None) -> list[P.Node]:
+    """What the ask of this session proposed that still waits on the person."""
     mine = {
         r["node_id"] for r in store.node_log(None, ("proposed",)) if session and r["session_id"] == session
     }
-    pending = [n for n in P.nodes(store, (P.PROPOSED,)) if n.id in mine]
+    return [n for n in P.nodes(store, (P.PROPOSED,)) if n.id in mine]
+
+
+def _drop_last(store, session: str | None, who: P.Caller | None = None) -> set[str]:
+    """Drop what the last ask of the whole plan proposed that still waits on the person (a split's or
+    another way's proposals are not its): `ask --finer/--coarser` gives one tree to prune in its
+    place, not a second beside it. It goes whole though its leaves wait on each other, unless a node
+    outside it waits on a part, or on a node the person put under it. ``who`` drops it, the caller by
+    default: `graphene ask` is the person's. Returns the ids dropped, with those under them."""
+    pending, everything = _pending(store, session), P.nodes(store)
     ids = {n.id for n in pending}
+    going = ids | {m.id for n in pending for m in P.below(n.id, everything)}
+    waited = any(going & set(m.needs) for m in everything if m.id not in going and m.state not in P.GONE)
     for n in [n for n in pending if n.parent not in ids]:  # a sub-goal goes with what is under it
         try:
-            P.drop(store, n.id, P.caller())
+            P.drop(store, n.id, who or P.caller(), waiting=waited)
         except P.Refused:
             pass  # something accepted waits on it: it stays, and the person sees both
     return {i for i in ids if (store.node_row(i) or {}).get("state") in P.GONE}
@@ -354,6 +367,7 @@ def _what_stands(store, session: str | None) -> list[str] | None:
         return kept[0]
 
 
+@P.ctrl_c_on_hangup()  # a closed terminal or a `kill` is Ctrl-C: the planner's hold settles, and it stops
 def ask(
     store,
     root: Path,
@@ -365,11 +379,13 @@ def ask(
     size: str | None = None,
     talk: str | None = None,
     planner: str | None = None,
+    beside: frozenset[str] | set[str] = frozenset(),
 ) -> list[str]:
     """Start the planner, read its proposal, add it to the plan as the planner's. Returns what was
     proposed, one line each. A proposal Graphene cannot read goes back to the planner once, with the
     refusal, as a refused executor does. ``planner`` is what --with named, kept with the ask so that
-    asking it again finer or coarser starts the same one."""
+    asking it again finer or coarser starts the same one. ``beside``: the leaves the proposal would
+    replace (`graphene talk`), which it may overlap."""
     _splits(template)  # bad quoting in --with is one refused line, as it is for `graphene run`
     if about is not None:
         P.get(store, about)  # an unknown id is refused before anything is spent
@@ -383,29 +399,56 @@ def ask(
     # gives up after a quarter of a second, and lets the call through
     files = P.tracked(root)
     asked = prompt = prompt_for(store, sentence, about, split, root, files, size, talk)
-    stands = _what_stands(store, last) if size and about is None and not split else None
+    reask = size and about is None and not split
+    stands = _what_stands(store, last) if reask else None
     if stands is not None:  # asked again, finer or coarser
         stand = "".join(f"\n- {line}" for line in stands)
         stand = f" These answers of the person's stand, for the whole new tree:{stand}" if stand else ""
         asked = prompt = prompt.replace(
             RULES, f"This replaces the tree you proposed last, which the person wants {size}; it is "
             f"dropped, so propose the whole tree afresh.{stand}\n\n" + RULES)  # fmt: skip
-    before = None
-    for attempt in range(1, ATTEMPTS + 1):
+    before, paid = None, 0.0  # paid: what the session cost so far; a resumed one reports its running total
+    tries = 1 if argv0 == "nemotron" else ATTEMPTS  # Graphene's own planner sends a refusal back itself
+    for attempt in range(1, tries + 1):
         argv = command_for(template, prompt, session, attempt > 1)
         env = {**os.environ, "GRAPHENE_PLANNER": "1"}
+        env["GRAPHENE_REPLACES"] = (last or "") if reask else ""  # the tree a re-ask drops
+        env["GRAPHENE_BESIDE"] = " ".join(sorted(beside))  # what a merge would replace: its paths are free
         if argv0 != "nemotron":  # only Graphene's own planner calls Token Factory
             env["GRAPHENE_KEYCHAIN"] = "off"
         env.pop("GRAPHENE_AS", None)
         env.pop("GRAPHENE_NODE", None)
+        night, hold = held(argv0, argv, paid, f"ask: the planner, attempt {attempt}")  # as an executor's
+        meter = M.Meter("claude", attempt, M.model_in(argv), paid) if M.kind(argv) == "claude" else None
         say(f"asking the planner ({argv0}){' again' if attempt > 1 else ''}…")
         try:
-            done = subprocess.run(
-                argv, cwd=root, env=env, stdin=subprocess.DEVNULL, capture_output=True, text=True
-            )
+            # in a session of its own, as an executor is: a stop reaches Graphene alone, which tells the
+            # planner to end (TERM) and gives it its time, so Graphene's own settles what it holds
+            proc = subprocess.Popen(argv, cwd=root, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                    stderr=subprocess.PIPE, text=True, start_new_session=True)  # fmt: skip
+            try:
+                stdout, stderr = proc.communicate()
+            except BaseException:
+                with _no_interrupt():
+                    _end(proc)
+                raise
+            done = subprocess.CompletedProcess(argv, proc.returncode, stdout, stderr)
+            for line in done.stdout.splitlines() if meter else []:
+                meter.feed(line)
         except OSError as no:
+            if hold:  # nothing ran
+                night.settle(hold["id"], hold["model"], 0.0, ledger=hold["ledger"])
             raise P.Refused(f"cannot run `{argv0}`: {no.strerror}; name a planner with --with") from None
-        printed = done.stdout.strip()
+        finally:
+            if hold:  # once: at what Claude's result says it cost, else at its worst case
+                _settle(night, hold, meter)
+        if meter:  # its bill, on the plan, as the Nemotron planner's is
+            paid += meter.dollars
+            store.log_node("*", P._now(), "usage", who.label, None, None, {
+                "model": meter.model, "calls": meter.turns, "prompt_tokens": meter.prompt_tokens,
+                "completion_tokens": meter.completion_tokens, "dollars": meter.dollars,
+                "endpoint": M.ENDPOINT["claude"], "reported": meter.reported})  # fmt: skip
+        printed = (meter.result if meter else done.stdout).strip()  # the answer, never the stream
         text = proposal_in(printed)
         if not text.strip():
             said = [line for line in done.stderr.splitlines() if line.strip()]  # its last word, whole
@@ -416,7 +459,10 @@ def ask(
             try:
                 with store.claim():
                     gone = _drop_last(store, last) if stands is not None else set()
-                    said = T.apply(store, text, who, None, files=files)
+                    # the last tree's leaves that stay (a node outside waits on them): the new tree
+                    # replaces them, so it may write their paths, as a merge may
+                    left = {n.id for n in _pending(store, last)} if reask else set()
+                    said = T.apply(store, text, who, None, files=files, beside={*beside, *left})
                     if gone:
                         _carry(store, gone, said, heard.append, files)
             except P.Refused as no:
@@ -439,7 +485,7 @@ def ask(
                 return said
         if done.returncode == 3 and not text.strip():  # it could not work at all; again would not help
             raise P.Refused(f"nothing was added. {refusal}")
-        if attempt < ATTEMPTS:  # the last try's refusal is said once, in the line that ends the ask
+        if attempt < tries:  # the last try's refusal is said once, in the line that ends the ask
             say(refusal)
             before = refusal
         # whole again: a planner other than Claude Code starts afresh and knows nothing of the first try

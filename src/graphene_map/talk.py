@@ -168,7 +168,7 @@ def merge(store, root, ids: list[str], template: str, say=print) -> tuple[list[s
     if subgoals:
         raise P.Refused(f"{', '.join(subgoals)} has leaves under it: merge takes leaves")
     said = A.ask(store, root, f"merge {' and '.join(ids)} into one leaf", template, ids[0], say=say,
-                 talk=A.talking(store, "merge", ids))  # fmt: skip
+                 talk=A.talking(store, "merge", ids), beside=set(ids))  # fmt: skip
     made = _new(store, said)
     order, left = [], list(found)  # a leaf that needs another of them drops first, or that drop is refused
     while left:
@@ -186,8 +186,9 @@ def merge(store, root, ids: list[str], template: str, say=print) -> tuple[list[s
 def another(store, root, node_id: str, template: str, say=print) -> tuple[list[str], dict]:
     """Another way, proposed beside the node, and the question: which way?"""
     _todo(store, [node_id], "another way")
+    instead = {node_id, *(n.id for n in P.below(node_id, P.nodes(store)))}  # what the other way replaces
     said = A.ask(store, root, f"another way for {node_id}", template, node_id, say=say,
-                 talk=A.talking(store, "another", [node_id]))  # fmt: skip
+                 talk=A.talking(store, "another", [node_id]), beside=instead)  # fmt: skip
     made = _new(store, said)
     names = ", ".join(n.id for n in made)
     return said, B.add(

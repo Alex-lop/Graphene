@@ -25,7 +25,10 @@ Type "export PATH=$PWD/.venv/bin:$PATH" Enter
 # the prune, scripted: E on the goal opens the whole plan, and cli/main.py goes from every scope (a
 # person would type it); which leaf wanted it depends on the planner, so it is taken from all
 Type `export EDITOR="sed -i.bak -e 's#, cli/main.py##' -e 's#cli/main.py, ##'"` Enter
-Type "D=$HOME/graphene-demo; rm -rf $D; bash dev/proof/try.sh $D/feeds > /dev/null && cd $D/feeds && clear" Enter
+Type "D=$HOME/graphene-demo; rm -rf $D; bash dev/proof/try.sh $D/feeds > /dev/null && cd $D/feeds" Enter
+Sleep 3s
+# try.sh's init chooses nothing where claude, codex and a Nemotron key are all here: name both, Sonnet doing the leaves
+Type `graphene init --planner claude --executor "claude -p --permission-mode acceptEdits --allowedTools 'Bash(graphene node *)' 'Bash(graphene plan *)' --output-format stream-json --verbose --model sonnet --max-budget-usd 2" > /dev/null && clear` Enter
 Sleep 4s
 Type `G=$(command -v graphene); tmux -L graphene-demo -f /dev/null new-session -s demo -x 180 -y 48 "bash --norc --noprofile" \; set -g status off \; split-window -h -l 48% -c "$PWD" "$G watch" \; select-pane -L` Enter
 Sleep 4s
@@ -74,6 +77,13 @@ Show
 Sleep 4s
 Type "gg"
 Sleep 4s
+# the time view: what each leaf's executor did, and when
+Tab
+Sleep 1s
+Tab
+Sleep 1s
+Tab
+Sleep 7s
 Type "q"
 Sleep 1s
 Ctrl+B

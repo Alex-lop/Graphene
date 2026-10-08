@@ -6,6 +6,10 @@ argument and GRAPHENE_PLANNER set, and it prints its answer: the fenced ``plan``
 already reads, with any sentence after it, and a line when the model it used is not the one it was given
 (``tokenfactory.resolve``). Only stdout is the answer; what it did and what it cost go to stderr, and
 the bill into the plan's log.
+
+Once the model stops calling tools, it is asked for the proposal in a strict JSON schema (``FORMAT``),
+written as the plan's text (``as_text``) and tried, rolled back. A proposal Graphene refuses goes back to
+the model once, with Graphene's words. The second answer is the answer.
 """
 
 from __future__ import annotations
@@ -20,13 +24,17 @@ import signal
 import sys
 from pathlib import Path
 
+from .. import board as B
 from .. import plan as P
+from .. import plan_text as T
+from ..ask import _drop_last, _pending, _Rehearsed, proposal_in
 from ..store import Store, repo_root
 from . import tokenfactory as tf
 from .executor import text_calls
 
-PROMPT_VERSION = 4  # 2: the board (questions with a default, assumptions, risks, leave-outs); 3: then:
-# lines; 4: at most three items, each a question or a risk that changes the tree; assumptions in goals
+PROMPT_VERSION = 5  # 2: the board (questions with a default, assumptions, risks, leave-outs); 3: then:
+# lines; 4: at most three items, each a question or a risk that changes the tree; assumptions in goals;
+# 5: a check runs only its own files; the proposal is asked for as JSON in a strict schema
 SYSTEM = """\
 You are the planner for Graphene: a person said what they want, and you propose the tree of work that
 coding agents will do, which the person prunes before anything runs. Read the repository with the tools
@@ -39,8 +47,29 @@ of is not an item but a sentence in the goal of the leaf it bears on, and never 
 answer would change nothing. Write each leaf as the default has it; every option, and every default the
 leaves do not already follow, that changes what a leaf does, which files it may touch or how it is
 checked carries the then: lines that make that change (goal, scope, check, drop, leaf), so the person's
-choice changes the tree. Then answer with the proposal in the form the request gives, and nothing else
-but one or two sentences after it. You write no file and run nothing."""
+choice changes the tree. A leaf's check runs only files in its own scope and files already in the
+repository. A leaf that needs a test another leaf writes waits on it with needs:. Two leaves never share a
+test file: give each leaf its own, or make one tests leaf that waits on all of them. When you have read
+enough, stop calling tools. You are then asked for the proposal as JSON, with the fields of the form the
+request gives. Put one or two sentences to the person in says. To put lines under a node already in the
+plan, name that node as their parent. You write no file and run nothing."""
+_S, _N, _L = {"type": "string"}, {"type": ["string", "null"]}, {"type": "array", "items": {"type": "string"}}
+
+
+def _obj(**p) -> dict:
+    """An object of a strict schema: every key required, and no other."""
+    return {"type": "object", "additionalProperties": False, "required": list(p), "properties": p}
+
+
+_ITEM = _obj(kind={"type": "string", "enum": list(B.KINDS)}, id=_S, text=_S, default=_N, then=_L,
+             options={"type": "array", "items": _obj(text=_S, then=_L)}, about=_N)  # fmt: skip
+_NODE = _obj(id=_S, title=_S, goal=_S, scope=_L, check=_N, needs=_L, parent=_N,
+             mark={"type": "string", "enum": ["?", "-"]})  # fmt: skip
+# The order Ultra writes in. says first: last, it closed the nodes, could not end the object, and wrote
+# spaces to the token limit (12 of the first 41 answers, 8 October). nodes before board: after, its then:
+# and about: lines named nodes it had not given ids yet (9 of the first 20 asks)
+FORMAT = {"type": "json_schema", "json_schema": {"name": "proposal", "strict": True, "schema": _obj(
+    says=_S, goal=_N, nodes={"type": "array", "items": _NODE}, board={"type": "array", "items": _ITEM})}}
 
 
 def _tool(name: str, description: str, required: tuple[str, ...] = (), **properties: str) -> dict:
@@ -145,6 +174,64 @@ def _protected(here: Path) -> list[str]:
         return []
 
 
+def _flat(v):
+    """Every string in it as one line: a line break would end its line in the plan's text."""
+    if isinstance(v, dict | list):
+        return {k: _flat(x) for k, x in v.items()} if isinstance(v, dict) else [_flat(x) for x in v]
+    return B._one(v) if isinstance(v, str) else v
+
+
+def as_text(p: dict) -> str:
+    """A proposal in ``FORMAT`` as the plan's text, which `graphene ask` reads from every planner. A
+    node's place is its parent: line. A node's goal keeps its lines, as the plan keeps them."""
+    goals = [T._norm_goal(n["goal"] or "") for n in p["nodes"]]
+    p = _flat({**p, "nodes": [{**n, "check": T._norm_check(n["check"])} for n in p["nodes"]]})
+    out, taken = [f"goal: {p['goal']}"] if p["goal"] else [], {n["id"] for n in p["nodes"]}
+    for it in p["board"]:  # an item's id is a handle nothing in the answer names: made one when it is not
+        it = it if T._VALID_ID.fullmatch(it["id"]) else {**it, "id": T.slug(it["id"], taken, "item")}
+        taken.add(it["id"])
+        out += B.lines({**it, "state": "open"})
+    for n, goal in zip(p["nodes"], goals, strict=True):
+        out.append(f"{'-' if n['mark'] == '-' else '?'} {n['title']}  [{n['id']}]")
+        own = {"scope": T._globs(n["scope"]), "check": n["check"], "needs": ", ".join(n["needs"]),
+               "parent": n["parent"]}  # fmt: skip
+        out += [f"    goal: {line}" for line in goal]
+        out += [f"    {key}: {value}" for key, value in own.items() if value]
+    return "\n".join(out) + "\n"
+
+
+def _answer(raw: str) -> tuple[str, str]:
+    """The proposal's text, and what to print: the fenced block with says after it, or an answer that is
+    not that JSON (a stand-in's) as it is."""
+    try:
+        p = json.loads(raw)
+        text = as_text(p)
+        return text, f"```plan\n{text}```\n{B._one(p['says'])}"
+    except (ValueError, TypeError, KeyError, AttributeError):
+        return proposal_in(raw), raw
+
+
+def _refused(root: Path, text: str, files: list[str]) -> str | None:
+    """Graphene's refusal of the proposal, applied as `graphene ask` applies it and rolled back, or None.
+    A re-ask drops the tree it replaces first (GRAPHENE_REPLACES), and what a merge or a re-ask replaces
+    may share the new leaves' paths (GRAPHENE_BESIDE), as `graphene ask` has it."""
+    replaces = os.environ.get("GRAPHENE_REPLACES") or None
+    try:
+        with Store.open(repo_root(root)) as store, store.claim():
+            _drop_last(store, replaces, P.Caller(P.person_name(), True))  # as `graphene ask`: the person
+            left = {n.id for n in _pending(store, replaces)}  # what of the last tree stays
+            beside = {*os.environ.get("GRAPHENE_BESIDE", "").split(), *left}
+            T.apply(store, text, P.Caller("planner:nemotron", False), None, files=files, beside=beside)
+            raise _Rehearsed
+    except _Rehearsed:
+        return None
+    except P.Refused as no:
+        return str(no)
+    except Exception as no:  # noqa: BLE001  (the answer is paid for: `graphene ask` reads it either way)
+        print(f"(the proposal was not tried: {no})", file=sys.stderr)
+        return None
+
+
 def plan(args: argparse.Namespace, prompt: str) -> int:
     here = Path.cwd()
     repo = Repo(here, _protected(here))
@@ -164,29 +251,34 @@ def plan(args: argparse.Namespace, prompt: str) -> int:
     bill = {"model": model, "calls": 0, "prompt_tokens": 0, "completion_tokens": 0, "dollars": 0.0,
             "prompt": PROMPT_VERSION, "endpoint": tf.endpoint()}  # fmt: skip
     print(f"nemotron planner · {model}", file=say, flush=True)
-    answer, stopped = "", None
-    try:
-        for step in range(1, args.steps + 1):
-            last = step == args.steps
-            said = tf.chat(model, messages, None if last else TOOLS, tag="planner", **params)
+
+    def asked(tools: list | None = None, **strict) -> tuple[dict, list]:
+        """One call, on the bill, and its tool calls. Cut off with no call, it is asked again with room."""
+        while True:
+            said = tf.chat(model, messages, tools, tag="planner", **params, **strict)
             bill["calls"] += 1
             bill["prompt_tokens"] += said["usage"].get("prompt_tokens") or 0
             bill["completion_tokens"] += said["usage"].get("completion_tokens") or 0
             bill["dollars"] += said["dollars"]
             message = said["message"]
+            calls = message.get("tool_calls") or (text_calls(message.get("content")) if tools else [])
+            if calls or said.get("finish") != "length":
+                return message, calls
+            if params["max_tokens"] >= 32_768:
+                print("the answer was cut off at the token limit, even with more room", file=say)
+                return message, calls
+            params["max_tokens"] = min(params["max_tokens"] * 2, 32_768)
+            print(f"cut off at the token limit; again with {params['max_tokens']}", file=say)
+
+    answer, stopped = "", None
+    try:
+        for step in range(1, args.steps):
+            message, calls = asked(TOOLS)
             native = message.get("tool_calls") or []
-            calls = native or ([] if last else text_calls(message.get("content")))  # one written as text, too
-            if not calls and said.get("finish") == "length" and params["max_tokens"] < 32_768:
-                params["max_tokens"] = min(params["max_tokens"] * 2, 32_768)  # cut off: ask again, with room
-                print(f"{step:>3} cut off at the token limit; again with {params['max_tokens']}", file=say)
-                continue
-            if not calls:
-                answer = message.get("content") or ""
-                if said.get("finish") == "length":
-                    print("the answer was cut off at the token limit, even with more room", file=say)
-                break
             messages.append({"role": "assistant", "content": message.get("content") or "",
                              **({"tool_calls": native} if native else {})})
+            if not calls:
+                break  # its draft: the proposal is asked for next, as JSON
             for c in calls:
                 result = repo.call(c["function"]["name"], c["function"].get("arguments"))
                 given = str(c["function"].get("arguments", ""))[:120]
@@ -196,8 +288,17 @@ def plan(args: argparse.Namespace, prompt: str) -> int:
                 else:  # as the executor answers a call written as text
                     said_back = f"Result of {c['function']['name']}:\n{result}"
                     messages.append({"role": "user", "content": said_back})
-            if step == args.steps - 1:
-                messages.append({"role": "user", "content": "Answer now with the proposal."})
+        messages.append({"role": "user", "content": "Answer now with the proposal. Write it as JSON."})
+        raw = asked(response_format=FORMAT)[0].get("content") or ""
+        text, answer = _answer(raw)
+        no = _refused(here, text, P.tracked(here))  # git first, never under the plan's lock
+        if no:  # once, with Graphene's words; the second answer is the answer
+            bill["sent_back"] = no
+            lines = "\n".join(f"{k:>5}  {line}" for k, line in enumerate(text.splitlines(), 1))
+            messages += [{"role": "assistant", "content": raw}, {"role": "user", "content": (
+                f"Graphene could not read the proposal: {no}\nIt read your JSON as:\n{lines}\n"
+                "Answer again with the whole proposal.")}]  # fmt: skip
+            text, answer = _answer(asked(response_format=FORMAT)[0].get("content") or "")
     except tf.Unreachable as no:
         stopped = no
     finally:
@@ -222,7 +323,7 @@ def plan(args: argparse.Namespace, prompt: str) -> int:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="graphene-nemotron-planner", description=__doc__.split("\n")[0])
     parser.add_argument("--model", help="a model id in Token Factory's list (default: the largest Nemotron)")
-    parser.add_argument("--steps", type=int, default=30, help="model calls at most")
+    parser.add_argument("--steps", type=int, default=30, help="tool steps at most, then the answer")
     parser.add_argument("--temperature", type=float, default=0.3)
     parser.add_argument("--max-tokens", type=int, default=8192)
     parser.add_argument("--param", action="append", default=[], help="KEY=JSON, sent in the request as is")

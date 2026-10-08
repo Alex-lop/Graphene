@@ -1,0 +1,36 @@
+ the plan of …Desktop-AllThingsAgenticHackathon/15308b85-9c57-486e-ac86-ff05438c32d4/scratchpad/live/rec/claude-feeds-1
+Load the Northwind XML feed with the same `load` command as csv and json, writing the same JSONL, and skip any record…
+ you        |                                        |
+ zero-rule                                            ──────▓▓▓▓▓▓██▓▓▓▓▓✓▓▓▓░◆
+ xml-wire                                                                     ────▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░█████████████▓✓▓▓▓▓◆
+            0s          10s          20s          30s          40s          50s          60s          70s          80s
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ Load the Northwind XML feed with the same `load` command as csv and json, writing the same JSONL, and skip any record
+ with a price of 0 for every supplier.
+ the goal · 2/2 done, finished
+
+ ✓ Skip zero-priced records for every supplier                                                        zero-price  done
+ ✓ Wire in the Northwind XML source                                                                   xml-source  done
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 0 on you · agents 0 · <1m · $0.38 · you 2 acts ~2m · none ready · 2/2 done, finished · plan first: on
+ :plan archive puts it away · E edit the plan as text · Tab view · ? help · q quit
+ 2 lanes · 1 min · agents <1 min $0.38 · you 2 acts ~2 min

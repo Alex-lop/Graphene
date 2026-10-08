@@ -580,6 +580,9 @@ def register(cli: typer.Typer, root, open_store, fail):
             chosen = V.choose(nodes, words, goal, wide, high) if name == "auto" else name
             view = V.VIEWS[chosen]
             noted = {"meter": V.billed(store.node_log())} if getattr(view, "METER", False) else {}
+            if getattr(view, "EVENTS", False):
+                who = P.caller()  # the person's lane, whoever prints it: an agent's acts are not theirs
+                noted["events"] = V.happened(store.node_log(), who.name if who.person else P.person_name())
             drawn = view.draw(nodes, words, goal, wide, high, None, **noted) if view else None
             if drawn is None or not nodes:
                 if chosen != "outline" and nodes:
@@ -715,10 +718,13 @@ def register(cli: typer.Typer, root, open_store, fail):
             items = raw.get("nodes") if isinstance(raw, dict) else raw
             if not isinstance(items, list) or not items:
                 raise P.Refused('expected {"nodes": [ … ]} with at least one node')
-            added = P.propose(store, items, who, files=files)
+            told: list[str] = []
+            added = P.propose(store, items, who, files=files, told=told)
             by_id = {n.id: n for n in P.nodes(store)}
             for n in added:
                 out(one_row(store, n, len(P.above(n, by_id))))
+            for line in told:
+                out(line)
             return added
 
         def as_text(store) -> list[P.Node]:
@@ -802,8 +808,8 @@ def register(cli: typer.Typer, root, open_store, fail):
 
         def go(store):
             by_id = {n.id: n for n in P.nodes(store)}
-            goal_was = P.goal(store)
-            accepted = P.accept(store, ids or [], P.caller())
+            goal_was, told = P.goal(store), []
+            accepted = P.accept(store, ids or [], P.caller(), files=files, told=told)
             took = None
             if not P.nodes(store, (P.PROPOSED,)):  # the whole plan is accepted: what the person left
                 took = B.took(B.defaults(store, P.caller(), files), B.left(store))  # open takes its default
@@ -811,6 +817,8 @@ def register(cli: typer.Typer, root, open_store, fail):
                 out(f"accepted {', '.join(n.id for n in accepted)}" + (f"; {took}" if took else ""))
             for n in accepted:
                 out(one_row(store, n, len(P.above(n, by_id))))
+            for line in told:  # what in the plan now waits on what was accepted
+                out(line)
             if P.goal(store) != goal_was:
                 out(f"the plan: {P.goal(store)}  (the planner's sentence, accepted with its tree)")
             now = P.nodes(store)
@@ -1122,8 +1130,11 @@ def register(cli: typer.Typer, root, open_store, fail):
         files = tracked()
 
         def go(store):
-            [n] = P.propose(store, [item], P.caller(), files=files)
+            told: list[str] = []
+            [n] = P.propose(store, [item], P.caller(), files=files, told=told)
             out(one_row(store, n))
+            for line in told:
+                out(line)
             return [n.id]
 
         warn_unreachable(write(f"node add {title!r}", go), files)
@@ -1161,6 +1172,7 @@ def register(cli: typer.Typer, root, open_store, fail):
                  "--needs, --owner, --signoff or --parent", 1)  # fmt: skip
 
         files = tracked()
+        told: list[str] = []
 
         def go(store):
             now = P.get(store, node_id)  # added to as it is at this moment, so an edit made since stays
@@ -1169,7 +1181,7 @@ def register(cli: typer.Typer, root, open_store, fail):
                 edits["scope"] = [*now.scope, *(g for g in dict.fromkeys(add_scope) if g not in now.scope)]
             if add_goal:
                 edits["goal"] = P.goal_plus(now.goal, add_goal) or now.goal
-            node = P.edit(store, node_id, edits, P.caller(), files=files)
+            node = P.edit(store, node_id, edits, P.caller(), files=files, told=told)
             last = store.node_log(node_id, ("edited",))[-1] if node.rev != before else None
             return node, last
 
@@ -1181,6 +1193,8 @@ def register(cli: typer.Typer, root, open_store, fail):
         out(f"{n.id} is now revision {n.rev}:")
         for name, (before, after) in last["detail"]["changed"].items():
             out(f"  {name}: {value(before)} → {value(after)}")
+        for line in told:
+            out(line)
         if n.state == P.RUNNING:
             out(f"{n.id} is running on revision {n.told_rev}: its next write is held to the new scope, and "
                 "its `done` to the new check")  # fmt: skip

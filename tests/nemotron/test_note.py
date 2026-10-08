@@ -5,6 +5,7 @@ Nothing changes until the person runs it."""
 
 import json
 import shlex
+import subprocess
 
 from test_plan_cli import agent, person, repo, runner  # noqa: F401  (fixtures)
 from test_planner import fake  # noqa: F401  (fixture)
@@ -32,6 +33,13 @@ def answer(target, scope_add=(), scope_remove=(), check=None, goal_add=False, wh
 def planned(repo):
     with Store.open(repo) as store:
         P.propose(store, LEAVES, ALEX)
+
+
+def unowned(repo, path="cli.py") -> str:
+    """A file git tracks and no leaf writes: a new leaf's scope, as a path has one leaf that writes it."""
+    (repo / path).write_text("")
+    subprocess.run(["git", "add", path], cwd=repo, check=True)
+    return path
 
 
 def routed(repo):
@@ -103,19 +111,25 @@ def test_null_written_as_a_string_for_the_check_is_no_check(repo, fake):
 
 def test_a_glob_on_a_tracked_file_is_taken_and_one_to_remove_must_be_in_the_scope(repo, fake):
     planned(repo)
-    fake([answer("ids", scope_add=["schema.py"]), answer("ids", scope_remove=["web.py"])])
+    fake([answer("ids", scope_add=[unowned(repo)]), answer("ids", scope_add=["schema.py"]),
+          answer("ids", scope_remove=["web.py"])])  # fmt: skip
     offer, said, _, _ = routed(repo)
-    assert offer.command == "graphene node set ids --scope api.py --scope schema.py"
+    assert offer.command == "graphene node set ids --scope api.py --scope cli.py"
+    offer, said, _, _ = routed(repo)  # tables writes schema.py: `node set` would refuse it
+    assert offer is None and said == [
+        "the plan would refuse it (ids and tables both write schema.py. A path has one leaf that writes it: "
+        "give it to one, and let the other wait on it); nothing is offered"
+    ]
     offer, said, _, _ = routed(repo)
     assert offer is None and said == ["web.py is not in ids's scope; nothing is offered"]
 
 
 def test_new_prints_a_node_add_and_one_the_plan_would_refuse_is_not_shown(repo, fake):
     planned(repo)
-    fake([answer(note.NEW, scope_add=["api.py"], check="python3 -c 'import api'"), answer(note.NEW),
+    fake([answer(note.NEW, scope_add=[unowned(repo)], check="python3 -c 'import api'"), answer(note.NEW),
           answer("ids", scope_add=["api.py/{a,b}"])])  # fmt: skip
     offer, _, _, _ = routed(repo)
-    add = ["graphene", "node", "add", "--scope", "api.py", "--check", "python3 -c 'import api'", "--"]
+    add = ["graphene", "node", "add", "--scope", "cli.py", "--check", "python3 -c 'import api'", "--"]
     add.append("ids come back sorted")
     assert offer.command == shlex.join(add)
     offer, said, _, _ = routed(repo)
@@ -249,23 +263,23 @@ def test_an_answer_cut_off_at_the_token_limit_says_so(repo, fake):
 
 def test_a_new_leaf_whose_note_starts_with_a_dash_prints_a_command_that_runs(repo, fake):
     planned(repo)
-    fake([answer(note.NEW, scope_add=["api.py"], check="grep -q quiet api.py")])
+    fake([answer(note.NEW, scope_add=[unowned(repo)], check="grep -q quiet api.py")])
     with Store.open(repo) as store:
         offer = note.route(store, repo, "-v flag should be quiet")
     took = person(*shlex.split(offer.command)[1:])
     assert took.exit_code == 0, took.output
     with Store.open(repo) as store:
-        assert [n.scope for n in P.nodes(store) if n.title == "-v flag should be quiet"] == [["api.py"]]
+        assert [n.scope for n in P.nodes(store) if n.title == "-v flag should be quiet"] == [["cli.py"]]
 
 
 def test_leaves_named_new_and_none_are_leaves_not_the_special_answers(repo, fake):
     with Store.open(repo) as store:
         P.propose(store, [{**LEAVES[0], "id": "new"}, {**LEAVES[1], "id": "none"}], ALEX)
     fake([answer("none", goal_add=True), answer("new", goal_add=True),
-          answer(note.NEW, scope_add=["api.py"], check="true"), answer(note.NONE)])  # fmt: skip
+          answer(note.NEW, scope_add=[unowned(repo)], check="true"), answer(note.NONE)])  # fmt: skip
     assert routed(repo)[0].command.startswith("graphene node set none --goal")
     assert routed(repo)[0].command.startswith("graphene node set new --goal")
-    assert routed(repo)[0].command.startswith("graphene node add --scope api.py")
+    assert routed(repo)[0].command.startswith("graphene node add --scope cli.py")
     offer, said, _, _ = routed(repo)
     assert offer is None and said[0].startswith("it constrains no leaf")
 
@@ -306,7 +320,7 @@ def test_to_board_puts_the_offer_up_as_a_note_whose_default_makes_the_change(rep
 
     monkeypatch.setattr(graphene_map, "board", board, raising=False)  # the CLI has loaded the real one
     planned(repo)
-    fake([answer("ids", scope_add=["schema.py"], check="grep -q sorted api.py"),
+    fake([answer("ids", scope_add=[unowned(repo)], check="grep -q sorted api.py"),
           answer("ids", goal_add=True), answer("sorting")])  # fmt: skip
     with Store.open(repo) as store:
         item = note.to_board(store, repo, "ids come back sorted")
@@ -314,8 +328,8 @@ def test_to_board_puts_the_offer_up_as_a_note_whose_default_makes_the_change(rep
             "kind": "note", "by": "shaper:nemotron", "agent": True, "about": "ids",
             "text": "you said 'ids come back sorted'; a stand-in, not Token Factory, places it on ids: "
             "it says so",
-            "default": "take it: scope ids + schema.py; check ids: grep -q sorted api.py",
-            "then": ["scope ids + schema.py", "check ids: grep -q sorted api.py"],
+            "default": "take it: scope ids + cli.py; check ids: grep -q sorted api.py",
+            "then": ["scope ids + cli.py", "check ids: grep -q sorted api.py"],
         }  # fmt: skip
         item = note.to_board(store, repo, "ids come back sorted")  # a goal is in the board's forms now
         assert item["then"] == ['goal ids + "ids come back sorted"']
@@ -343,14 +357,14 @@ def test_a_board_note_with_the_note_flag_is_routed_and_its_offer_taken_changes_t
     """GRAPHENE_SHAPE=note: `graphene board note` puts the person's note up as written, then the offer
     by shaper:nemotron (a stand-in here, and said so), whose default, taken, makes the whole change."""
     planned(repo)
-    fake([answer("ids", scope_add=["schema.py"], goal_add=True)])
+    fake([answer("ids", scope_add=[unowned(repo)], goal_add=True)])
     assert person("board", "note", "ids come back sorted").exit_code == 0  # no flag: no model is asked
     monkeypatch.setenv("GRAPHENE_SHAPE", "note")
     said = person("board", "note", "ids come back sorted")
     assert said.exit_code == 0, said.output
     offer = [line for line in said.stdout.splitlines() if line.startswith("put up ")]
     assert offer and "a stand-in, not Token Factory, places it on ids" in offer[0], said.stdout
-    assert 'take it: scope ids + schema.py; goal ids + "ids come back sorted"' in said.stdout
+    assert 'take it: scope ids + cli.py; goal ids + "ids come back sorted"' in said.stdout
     item_id = offer[0].split()[2].rstrip(":")
     from graphene_map import board as B
 
@@ -359,5 +373,5 @@ def test_a_board_note_with_the_note_flag_is_routed_and_its_offer_taken_changes_t
     assert person("board", "take", item_id).exit_code == 0
     with Store.open(repo) as store:
         ids = P.get(store, "ids")
-        assert (ids.scope, ids.goal) == (["api.py", "schema.py"], "ids come back sorted")
+        assert (ids.scope, ids.goal) == (["api.py", "cli.py"], "ids come back sorted")
     assert agent("board", "note", "later").exit_code == 0  # an agent's note is never routed: nothing spent

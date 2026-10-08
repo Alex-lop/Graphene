@@ -137,7 +137,10 @@ TEACH = (
     "EOF\n"
     "A leaf's scope is every path it may write: look at the repo, never guess one. Its check is a command "
     "that exits 0 only when the leaf is done, and that can pass with what its scope and its needs write. "
-    "`needs` orders leaves that build on each other. Ask instead of guessing, and only what changes the "
+    "`needs` orders leaves that build on each other. A leaf's check runs only files in its own scope and "
+    "files already in the repository. A leaf that needs a test another leaf writes waits on it with "
+    "needs:. Two leaves never share a test file: give each leaf its own, or make one tests leaf that "
+    "waits on all of them. Ask instead of guessing, and only what changes the "
     "tree: put up on the board, at the left edge before the tree, at most three items, each a question: "
     "with its default (and option: lines) or a risk: with its default, for what the repo cannot answer, "
     "never what a file answers. An assumption you are confident of is not an item but a sentence in the "
@@ -414,7 +417,7 @@ def one_line_ask(
     me, said = _me(sid), store.meta(f"prompt:{sid}") or ""
     try:
         with P.undoable(store, me, f"a one-line ask in the session: {said[:40]}"):
-            P.accept(store, [node.id], me, by="prompt", prompt=said[:80])
+            P.accept(store, [node.id], me, told=[], by="prompt", prompt=said[:80])  # as the person's accept
     except P.Refused:
         return None  # its parent is held, say: it waits for the person like any proposal
     return (

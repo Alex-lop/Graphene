@@ -162,12 +162,12 @@ def test_the_flag_runs_it_once_the_proposal_has_landed(repo, fake, monkeypatch, 
     from graphene_map.ask import ask, named
 
     monkeypatch.setenv("GRAPHENE_SHAPE", flag)
-    f = fake([{"content": f"```plan\n{PLAN}```"}, nano(ANSWER)])
+    f = fake([{"content": f"```plan\n{PLAN}```"}] * 2 + [nano(ANSWER)])  # the planner's draft and answer
     said = []
     with Store.open(repo) as store:
         ask(store, repo, PARAGRAPH, named("nemotron"), say=said.append)
         assert P.get(store, "xml-wiring").state == P.PROPOSED  # the proposal stands either way
-    assert len(f.requests) == (2 if flag else 1)
+    assert len(f.requests) == (3 if flag else 2)
     assert any(f"You said '{SAID}'" in line for line in said) == bool(flag)
 
 
@@ -189,7 +189,7 @@ def test_an_item_of_the_wrong_shape_is_one_line_and_crashes_nothing(repo, fake, 
     assert said[-1] == "cover: items of its answer that are not a clause, passed over: 6"
     monkeypatch.setenv("GRAPHENE_SHAPE", "cover")
     monkeypatch.setattr(C, "cover", lambda *a: 1 / 0)  # whatever breaks in it, the ask stands
-    fake([{"content": f"```plan\n{PLAN}```"}])
+    fake([{"content": f"```plan\n{PLAN}```"}] * 2)
     said = []
     with Store.open(repo) as store:
         ask(store, repo, PARAGRAPH, named("nemotron"), say=said.append)

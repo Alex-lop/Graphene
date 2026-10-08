@@ -39,6 +39,8 @@ from . import board as B
 from . import extra
 from . import meter as M
 from . import plan as P
+from .plan import may_collide
+from .record import seconds as _seconds
 
 # An executor may edit files and run `graphene node …` and `graphene plan …` (its done, its release, a
 # look at the plan), and nothing else unless the person says so with --with. Not `graphene run` or
@@ -367,6 +369,23 @@ def _worst(argv: list[str]) -> float:
         return WORST
 
 
+def held(name: str, argv: list[str], paid: float, tag: str) -> tuple:
+    """Under the opening, an attempt's worst case held on the night's ledger before it starts: (the
+    night, the hold). The hold is None when the night is not open or ``name`` is no agent the meter
+    knows. Past the cap it is refused in the ledger's words, and nothing starts."""
+    night = extra.load("night") if name in M.ENDPOINT else None
+    if not night or night.cap() is None:
+        return night, None
+    model = f"{name}:{M.model_in(argv) or ('default' if name == 'claude' else 'codex')}"
+    # the ledger it is held in goes with it: it settles there, should it end after noon
+    hold = {"model": model, "worst": _worst(argv), "paid": paid, "ledger": str(night.where())}
+    try:
+        hold["id"] = night.reserve(model, hold["worst"], tag, M.ENDPOINT[name], hold["ledger"])
+    except night.Refused as no:
+        raise P.Refused(str(no)) from None
+    return night, hold
+
+
 def _settle(night, hold: dict, meter: M.Meter | None) -> None:
     """A held attempt, settled on the night's ledger. At what its stream says only when the stream gave
     the whole figure: Claude Code's result was read, or every Codex turn that started completed. A Codex
@@ -448,18 +467,12 @@ def run_node(
             if logs is not None:  # streamed as it runs, so its tail can be read while it works
                 logs.mkdir(parents=True, exist_ok=True)
                 log = logs / f"{node.id}-{stamp}-{session[:8]}-{attempt}.txt"
-            hold, night = None, extra.load("night") if name in M.ENDPOINT else None
-            if night and night.cap() is not None:  # under the opening: the attempt's worst case, held first
-                model = f"{name}:{M.model_in(argv) or ('default' if name == 'claude' else 'codex')}"
-                # the ledger it is held in goes with it: it settles there, should it end after noon
-                hold = {"model": model, "worst": _worst(argv), "paid": paid, "ledger": str(night.where())}
-                try:
-                    hold["id"] = night.reserve(model, hold["worst"], f"run: {node.id} attempt {attempt}",
-                                               M.ENDPOINT[name], hold["ledger"])  # fmt: skip
-                except night.Refused as no:
-                    P.release(store, node.id, who, str(no))
-                    say(f"{node.id} came back: {no}")
-                    return None
+            try:  # under the opening: the attempt's worst case, held first
+                night, hold = held(name, argv, paid, f"run: {node.id} attempt {attempt}")
+            except P.Refused as no:
+                P.release(store, node.id, who, str(no))
+                say(f"{node.id} came back: {no}")
+                return None
             sink = open(log, "w", encoding="utf-8") if log else subprocess.DEVNULL  # noqa: SIM115
             try:
                 proc = subprocess.Popen(
@@ -572,14 +585,11 @@ def summary(store, since: int, stopped: bool = False) -> str:
     back = [i for i in back if i not in handed]
     freed = [n.id for n in ran if n.state == P.OPEN and let_go.get(n.id, {}).get("person")]
 
-    def named(ids: list[str]) -> str:
-        return ", ".join(ids[:3]) + (f" and {len(ids) - 3} more" if len(ids) > 3 else "")
-
     said = [f"{len(done)} done"] if done else []
-    said += [f"{len(back)} came back ({named(back)})"] if back else []
-    said += [f"{len(review)} in review ({named(review)})"] if review else []
-    said += [f"{named(handed)} handed back, ready again"] if handed else []
-    said += [f"{named(freed)} released by you, ready again"] if freed else []
+    said += [f"{len(back)} came back ({P._few(back)})"] if back else []
+    said += [f"{len(review)} in review ({P._few(review)})"] if review else []
+    said += [f"{P._few(handed)} handed back, ready again"] if handed else []
+    said += [f"{P._few(freed)} released by you, ready again"] if freed else []
     cost = clocks(log)
     if stopped:
         return "run stopped: " + (", ".join(said) or "nothing was finished") + cost
@@ -711,12 +721,6 @@ def live(store, node: P.Node, now: float | None = None) -> dict:
 def _spoke(log: str | None) -> str:
     """The log's last line that is not one of the stream's JSON events (stderr shares the file)."""
     return next((line for line in reversed(tail(log, 40)) if not line.lstrip().startswith("{")), "")
-
-
-def _seconds(stamp: str) -> float:
-    from datetime import datetime
-
-    return datetime.fromisoformat(stamp.replace("Z", "+00:00")).timestamp()
 
 
 def _came_back(store, only: list[str] | None, say: Callable[[str], None]) -> set[str]:
@@ -897,22 +901,6 @@ def _unmerge(target: Path, branch: str, staged_ours: bool = False) -> None:
             _git(target, "merge", "--abort", ok=True)
     elif staged_ours:
         _git(target, "reset", "-q", "--merge", ok=True)
-
-
-def may_collide(a: list[str], b: list[str]) -> bool:
-    """Could two scopes ever claim one path? Asked of the globs themselves, not of the files that
-    exist: `**/*.py` and `src/**` share no tracked file in a repo with no Python under src/, and both
-    leaves then wrote src/new.py. Two globs may meet unless the directories they name before their
-    first wildcard are different branches of the tree. Exclusions are ignored: holding a leaf back
-    costs minutes, and a collision costs the person a merge."""
-
-    def fixed(glob: str) -> list[str]:
-        parts = glob.strip().removeprefix("./").rstrip("/").split("/")
-        upto = next((k for k, part in enumerate(parts) if any(c in part for c in "*?")), len(parts))
-        return parts[:upto]
-
-    pairs = [(fixed(x), fixed(y)) for x in a if not x.startswith("!") for y in b if not y.startswith("!")]
-    return any(x[: len(y)] == y[: len(x)] for x, y in pairs)
 
 
 def _only_run(root: Path):

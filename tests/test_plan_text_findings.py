@@ -108,7 +108,7 @@ def test_a_blank_check_is_not_written_as_none_and_a_round_trip_keeps_it(store):
 # finding 6 (fixed)
 def test_a_save_that_moves_no_sibling_does_not_reorder(store):
     leaf = {"scope": ["README.md"], "check": "true"}
-    plan.propose(store, [{"id": "p", "title": "parent"}, {"id": "b", "title": "leaf b", **leaf}], ALEX)
+    plan.propose(store, [{"id": "p", "title": "parent"}, {"id": "b", "title": "leaf b", **leaf, "scope": ["b.md"]}], ALEX)
     plan.propose(store, [{"id": "c", "title": "leaf c", "parent": "p", **leaf}], ALEX)  # c after b
     seqs = store.node_seqs()
     text, opened = T.render(store)  # p, c under it, then b: depth-first is not the order they were added
@@ -189,11 +189,11 @@ def test_sign_off_spelled_as_the_product_spells_it_keeps_the_gate(store, key):
 
 # finding 12 (partly)
 def test_a_key_written_with_equals_bold_or_as_a_bullet_is_the_key_and_a_near_miss_is_refused_by_line(store):
-    for k, body in enumerate(["scope = src/pdf/**\n    check = true", "**Scope:** src/pdf/**\n    **Check:** true",
-                              "- scope: src/pdf/**\n    - check: true"]):  # fmt: skip
+    for k, body in enumerate(["scope = src/pdf0/**\n    check = true", "**Scope:** src/pdf1/**\n    **Check:** true",
+                              "- scope: src/pdf2/**\n    - check: true"]):  # fmt: skip
         T.apply(store, f"- render  [r{k}]\n    {body}\n", BOT, None)
         node = plan.get(store, f"r{k}")
-        assert (node.scope, node.check, node.goal) == (["src/pdf/**"], "true", "")
+        assert (node.scope, node.check, node.goal) == ([f"src/pdf{k}/**"], "true", "")
     for near, key, no in (
         ("Paths", "scope", 2),
         ("files", "scope", 2),
@@ -294,8 +294,8 @@ def test_a_quoted_check_or_scope_is_read_without_its_quotes_and_none_is_no_check
     )
     assert (copy.check, copy.signoff) == (None, True)  # sign-off only, as the text meant
     # backticks around a glob are markdown: read without them (a glob stored with one is refused)
-    T.apply(store, "- render again  [pdf]\n    scope: `src/pdf/**`\n    check: true\n", BOT, None)
-    assert plan.get(store, "pdf").scope == ["src/pdf/**"]
+    T.apply(store, "- render again  [pdf]\n    scope: `src/csv/**`\n    check: true\n", BOT, None)
+    assert plan.get(store, "pdf").scope == ["src/csv/**"]
     with pytest.raises(Refused, match="is not a path"):
         plan.propose(store, [{"id": "q", "title": "q", "scope": ["`x`"], "check": "true"}], ALEX)
 
@@ -397,7 +397,7 @@ def test_an_agent_cannot_reserve_its_leaf_for_a_person_by_writing_its_own_name_a
 
 # finding 27 (fixed)
 def test_a_markdown_checkbox_before_a_title_is_not_part_of_it(store):
-    T.apply(store, "- [ ] render one invoice  [render]\n    scope: README.md\n    check: true\n"
+    T.apply(store, "- [ ] render one invoice  [render]\n    scope: render.py\n    check: true\n"
                    "* [x] write the README\n    scope: README.md\n    check: true\n", BOT, None)  # fmt: skip
     assert [(n.id, n.title) for n in plan.nodes(store)] == [
         ("render", "render one invoice"),

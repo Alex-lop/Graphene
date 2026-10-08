@@ -245,7 +245,7 @@ def test_a_tree_or_a_second_proposal_or_a_split_waits_for_the_person(repo, monke
     with Store.open(repo) as store:
         plan.set_plan_first(store, "auto", ALEX)
     tree = (
-        "- load the feed  [feed]\n  - read xml  [xml]\n      scope: src/api/**\n      check: true\n"
+        "- load the feed  [feed]\n  - read xml  [xml]\n      scope: src/xml/**\n      check: true\n"
         "  - skip zeros  [zero]\n      scope: src/db/**\n      check: true\n"
     )
     waits = [
@@ -309,7 +309,7 @@ def test_one_leaf_with_a_board_item_already_open_on_the_board_still_waits(repo, 
     hook(repo, "UserPromptSubmit", prompt="fix the header")
     assert waits in propose(repo, monkeypatch, asked + LEAF).stdout
     hook(repo, "UserPromptSubmit", prompt="and the footer")
-    said = propose(repo, monkeypatch, asked + "- the footer  [footer]\n    scope: README.md\n    check: true")
+    said = propose(repo, monkeypatch, asked + "- the footer  [footer]\n    scope: FOOTER.md\n    check: true")
     assert "on the board already (open)" in said.stdout and waits in said.stdout, said.output
     with Store.open(repo) as store:
         assert plan.get(store, "footer").state == PROPOSED
@@ -333,7 +333,7 @@ def test_one_leaf_with_board_items_the_person_settled_is_theirs_at_once(repo, mo
         board.take(store, "which", ALEX)
         board.drop(store, "where", ALEX)
     hook(repo, "UserPromptSubmit", prompt="and the footer")
-    said = propose(repo, monkeypatch, asked + "- the footer  [footer]\n    scope: README.md\n    check: true")
+    said = propose(repo, monkeypatch, asked + "- the footer  [footer]\n    scope: FOOTER.md\n    check: true")
     assert "footer is accepted, as the person's" in said.stdout, said.output
 
 
@@ -352,7 +352,7 @@ def test_one_leaf_whose_new_question_reuses_a_settled_items_id_waits(repo, monke
         board.take(store, "q-id", ALEX)
     hook(repo, "UserPromptSubmit", prompt="and the footer")
     other = "question: may the footer drop the license line?  [q-id]\n    default: keep it\n"
-    said = propose(repo, monkeypatch, other + "- the footer  [footer]\n    scope: README.md\n    check: true")
+    said = propose(repo, monkeypatch, other + "- the footer  [footer]\n    scope: FOOTER.md\n    check: true")
     assert "it waits for the person: it put up a board item" in said.stdout, said.output
 
 

@@ -15,13 +15,14 @@ where the outline shows the plan in one look) unless it shows what the outline c
 waits on which (a view that draws `needs` says so with `NEEDS = True`). A tie goes to the outline.
 
 A view that notes what each leaf an executor held spent and took (`billed`) says so with `METER = True`,
-and its draw takes ``meter``: node id -> the note (`$0.42 · 6m`).
+and its draw takes ``meter``: node id -> the note (`$0.42 · 6m`). A view that draws time says so with
+`EVENTS = True`, and its draw takes ``events`` (`happened`): the log's rows by node, the person, and now.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 
 from rich.cells import cell_len
 from rich.text import Text
@@ -146,6 +147,16 @@ def billed(rows: list[dict], now: datetime | None = None) -> dict[str, str]:
     return out
 
 
+def happened(rows: list[dict], person: str | None, now: datetime | None = None) -> dict:
+    """What a view that draws time is given: the log's rows by node, oldest first ("*" is the plan's
+    own), the person whose acts are ticks, and now. Now is the caller's: watch's clock, or a replay's,
+    so a recording from yesterday draws its own span."""
+    by: dict[str, list[dict]] = {}
+    for e in rows:
+        by.setdefault(e["node_id"], []).append(e)
+    return {"by": by, "person": person, "now": now or datetime.now(UTC)}
+
+
 def shown(store) -> list[P.Node]:
     """The nodes a view draws: what is gone is not there, and a done aside (a request typed into a
     session, finished) is its record's, not the plan's shape."""
@@ -160,7 +171,8 @@ def inputs(store) -> tuple[list[P.Node], dict[str, str], str]:
     return nodes, {n.id: P.reads(n, nodes, back) for n in nodes}, goal
 
 
-from . import view_dag, view_tree  # noqa: E402  (they import Drawn and elide from here)
+from . import view_dag, view_time, view_tree  # noqa: E402  (they import Drawn and elide from here)
 
 VIEWS["tree"] = view_tree
 VIEWS["dag"] = view_dag
+VIEWS["time"] = view_time

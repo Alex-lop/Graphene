@@ -165,10 +165,27 @@ def test_another_way_is_proposed_beside_it_and_the_board_asks_which(repo, talker
     assert (states(repo)["schema"], states(repo)["migration"]) == ("dropped", "proposed")
 
 
+@pytest.mark.parametrize("was, now", [
+    ("scope: migrations/**", "scope: schema.py, migrations/**"),
+    ("check: test -d migrations", "check: grep -q ids schema.py"),  # it does not wait on the leaf
+])  # fmt: skip
+def test_another_way_may_write_what_the_leaf_it_would_replace_writes(repo, talker, tmp_path, was, now):
+    """Its scope may take in the leaf's, as a merge's takes in theirs, and its check may run the leaf's
+    file: the answer drops one of them."""
+    accepted(repo)
+    (tmp_path / "talker.py").write_text(TALKER.replace(was, now))
+    said = person("talk", "another", "schema", "--with", talker)
+    assert said.exit_code == 0, said.output
+    with Store.open(repo) as store:
+        [q] = B.items(store)
+    assert person("board", "pick", q["id"], "1").exit_code == 0  # the other way: the planned one goes
+    assert (states(repo)["schema"], states(repo)["migration"]) == ("dropped", "proposed")
+
+
 def test_nemotron_answers_why_and_its_note_lands_as_its_own(repo, monkeypatch):
     accepted(repo)
     note = "```plan\nnote: ids is the leaf the docs wait on  [why-ids]\n    about: ids\n```"
-    with Fake([{"content": note}]) as f:
+    with Fake([{"content": note}] * 2) as f:  # its draft, then its answer
         for k, v in f.env().items():
             monkeypatch.setenv(k, v)
         tf._listed.cache_clear()

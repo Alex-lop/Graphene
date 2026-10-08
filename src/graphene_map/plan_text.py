@@ -406,16 +406,17 @@ def _plain(said: str) -> bool:
         return False
 
 
-def clock(stamp: str | None) -> str:
-    """A stored UTC time as the person's own clock, hours and minutes."""
+def clock(stamp: str | None, seconds: bool = False) -> str:
+    """A stored UTC time as the person's own clock, hours and minutes (and seconds, with ``seconds``)."""
     from datetime import datetime
 
     if not stamp:
         return ""
+    form = "%H:%M:%S" if seconds else "%H:%M"
     try:
-        return datetime.fromisoformat(stamp.replace("Z", "+00:00")).astimezone().strftime("%H:%M")
+        return datetime.fromisoformat(stamp.replace("Z", "+00:00")).astimezone().strftime(form)
     except ValueError:
-        return stamp[11:16]
+        return stamp[11 : 19 if seconds else 16]
 
 
 def elide(text: str, wide: int) -> str:
@@ -572,11 +573,13 @@ def apply(
     files: list[str] | None = None,
     now: str | None = None,
     alone: bool = False,
+    beside: frozenset[str] | set[str] = frozenset(),
 ) -> Said:
     """Make the plan say what the text says. ``opened`` is what ``render`` wrote (an edit: a node
     it held that the text no longer has is dropped); None is a proposal (only new lines count, and
     a line with the id of a node already in the plan is where the new ones hang). ``alone``: the text
-    held one node without its children. Returns one line per change made, for whoever applied it."""
+    held one node without its children. ``beside``: the leaves a proposal would replace (a merge, or
+    another way), which it may overlap. Returns one line per change made, for whoever applied it."""
     now = now or P._now()
     text, board = B.split(text)  # the board's lines, read by board.py; every other line keeps its number
     goal, lines = parse(text, strict=opened is not None)
@@ -606,21 +609,25 @@ def apply(
     _guard_shape(lines, fresh, everything, opened, parent_of, who)
     said = Said()
     said.renamed = {old: line.id for old, line in renamed.items()}
+    new: list[str] = []
     with store.claim():
         said += _goal(store, goal, who, now, opened)
         if fresh:
             containers = {lines[ln.parent].id for ln in lines if ln.parent is not None}
             items = [{"id": ln.id, "parent": parent_of[ln.id], **_fields(ln)} for ln in fresh]
+            told: list[str] = []
             try:
                 added = P.propose(
                     store, items, who, now, files, proposals={ln.id for ln in fresh if ln.proposal},
-                    containers=containers,
+                    containers=containers, beside=beside, told=told, edits_follow=opened is not None,
                 )  # fmt: skip
             except P.Refused as no:
                 raise _on_line(no, lines) from None
             for n in added:
                 said.append(f"{'proposed' if n.state == P.PROPOSED else 'added'} {n.id}: {n.title}")
                 said.ids.append(n.id)
+                new.append(n.id)
+            said += told
         if opened is not None:
             edited = _edits(store, kept, parent_of, opened, who, now, files)
             said += edited
@@ -633,6 +640,13 @@ def apply(
         if board or (opened or {}).get("*board"):
             said += B.apply(store, board, who, None if opened is None else opened["*board"], files, now)
         try:
+            if opened is not None:  # judged once every edit is in: a path moved is not two writers, and a
+                # check runs what the scopes the whole save gives write, a board's answers among them
+                P.one_writer(P.nodes(store), set(said.ids), files or [], everything)
+                checks = {ln.id for ln in kept if _fields(ln)["check"] != opened[ln.id]["check"]}
+                writers = {ln.id for ln in kept if _fields(ln)["scope"] != opened[ln.id]["scope"]
+                           or opened[ln.id]["proposal"] and not ln.proposal}  # a new scope, or accepted
+                _told(said, P.judge(store, {*new, *checks}, {*new, *writers}, files or [], who, now))
             P.validate(P.nodes(store), set(said.ids))  # the tree as it is now, after every move
         except P.Refused as no:
             raise _on_line(no, lines) from None
@@ -855,7 +869,8 @@ def _stored(node: P.Node) -> dict:
 
 def _edits(store, kept, parent_of, opened, who, now, files) -> list[str]:
     """Only what the person changed in the text (against the text as it was opened) is changed; a
-    node someone else changed since then is refused, never written over."""
+    node someone else changed since then is refused, never written over. What a changed check waits
+    on is judged by ``apply``, once the whole save is in."""
     said = []
     for ln in kept:
         base = opened[ln.id]
@@ -876,10 +891,21 @@ def _edits(store, kept, parent_of, opened, who, now, files) -> list[str]:
             raise _at(ln, no) from None
         moved = f"moved under {parent_of[ln.id] or 'the goal'}" if "parent" in changes else ""
         rest = [k for k in changes if k != "parent"]
-        said.append(
+        said.append(  # one line a node: `apply` reads the id back from before the colon
             f"{ln.id}: " + "; ".join(filter(None, [moved, ", ".join(rest) + (" changed" if rest else "")]))
         )
     return said
+
+
+def _told(said: Said, waits: list[str]) -> None:
+    """What a leaf now waits on (``P.judge``), on the leaf's own line of the save when it has one."""
+    for line in waits:
+        leaf = line.split(" waits on ", 1)[0]
+        at = next((k for k, done in enumerate(said) if done.startswith(f"{leaf}: ")), None)
+        if at is None:
+            said.append(line)
+        else:
+            said[at] += f"; {line}"
 
 
 def _accepts(store, kept, opened, who, now) -> list[str]:

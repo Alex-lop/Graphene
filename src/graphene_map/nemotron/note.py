@@ -66,15 +66,9 @@ class Offer:
 _CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f]")  # ESC, CR, BEL...: what could redraw a terminal line
 
 
-def _unkeyed(text: str) -> str:
-    from ..demo import unkeyed  # here, not above: demo loads the screen's library
-
-    return unkeyed(text)
-
-
 def _shown(text) -> str:
     """Text as it may reach a terminal or the store: one line, no control character, no key."""
-    return _unkeyed(" ".join(_CONTROL.sub(" ", str(text)).split()))
+    return P.unkeyed(" ".join(_CONTROL.sub(" ", str(text)).split()))
 
 
 class _Tried(Exception):
@@ -150,7 +144,7 @@ def _offer(store, root, sentence, a, target, why, leaves, files, everything, end
     if any(_CONTROL.search(w) for w in (*add, *remove, check)):  # a command must be what it looks like
         say("the model's answer holds control characters; nothing is offered")
         return None
-    if any(_unkeyed(w) != w for w in (*add, *remove, check)):
+    if any(P.unkeyed(w) != w for w in (*add, *remove, check)):
         say("the model's answer holds something shaped like a key; nothing is offered")
         return None
     for g in add:
@@ -199,8 +193,8 @@ def _offer(store, root, sentence, a, target, why, leaves, files, everything, end
                 return None
             if node is None:
                 P.propose(store, [changes], person, files=files)
-            else:
-                P.edit(store, target, changes, person, files=files)
+            else:  # told, as `node set` makes it: one leaf writes a path
+                P.edit(store, target, changes, person, files=files, told=[])
             raise _Tried
     except _Tried:
         pass

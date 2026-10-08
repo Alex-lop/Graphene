@@ -4,13 +4,17 @@ only output is a proposal in the plan's text. The planner here is a script that 
 would, so every ending is on purpose."""
 
 import json
+import os
+import signal
+import subprocess
 import sys
 
 import pytest
 from test_plan_cli import AGENT_ENV, person, repo, runner  # noqa: F401  (fixtures)
+from test_run_live import CLI, ended, wait_for
 
 from graphene_map import ask as A
-from graphene_map import plan
+from graphene_map import meter, plan
 from graphene_map.cli import build
 from graphene_map.plan import PROPOSED, Caller, Refused
 from graphene_map.store import Store
@@ -199,7 +203,7 @@ def test_a_planner_with_no_vendor_mark_is_an_agent_and_not_the_person(repo):
     planner_env = {"GRAPHENE_PLANNER": "1"}
     said = runner.invoke(build(), ["node", "start", "ids"], env=planner_env)
     assert said.exit_code == 1 and "you are the planner" in said.stderr
-    text = "- divide  [div]\n    scope: api.py\n    check: true\n"
+    text = "- divide  [div]\n    scope: schema.py\n    check: true\n"
     assert runner.invoke(build(), ["plan", "propose", "-"], env=planner_env, input=text).exit_code == 0
     with Store.open(repo) as store:
         assert plan.get(store, "ids").state == "open"
@@ -211,6 +215,7 @@ def test_a_planner_with_no_vendor_mark_is_an_agent_and_not_the_person(repo):
 def test_the_default_planner_reads_and_has_none_of_the_persons_mcp_servers():
     argv = A.command_for(A.DEFAULT_PLANNER, "the prompt", "s1", False)
     assert argv[argv.index("--tools") + 1] == "Read,Grep,Glob" and "--strict-mcp-config" in argv
+    assert meter.kind(argv) == "claude" and "--verbose" in argv  # the stream that says what it cost
 
 
 # Recheck 64 (fixed)
@@ -274,6 +279,17 @@ print("```")
 """
 
 
+def test_the_planner_and_a_session_are_told_a_check_runs_its_own_files_and_what_is_there():
+    from graphene_map import gate
+
+    rule = (
+        "A leaf's check runs only files in its own scope and files already in the repository. A leaf that "
+        "needs a test another leaf writes waits on it with needs:. Two leaves never share a test file: give "
+        "each leaf its own, or make one tests leaf that waits on all of them."
+    )
+    assert rule in " ".join(A.RULES.split()) and rule in " ".join(gate.TEACH.split())
+
+
 def test_the_planner_is_told_the_board_carries_only_what_changes_the_tree(repo, tmp_path, monkeypatch):
     """Study 2: answering the board cost about twice the outline's attention, mostly in reading. The
     planner is told: at most three items, each a question or a risk whose answers carry then: lines,
@@ -324,3 +340,104 @@ def test_a_refusal_the_planner_repeats_is_said_to_the_person_once(repo, tmp_path
     assert said.exit_code == 1
     assert said.output.count("signoff is yes or no") == 1, said.output
     assert "no proposal after 2 tries; nothing was added (each was refused as above)" in said.output
+
+
+def claude_planner(tmp_path, *answers: tuple[str, float]) -> str:
+    """A stand-in named `claude` that prints Claude Code's stream: one turn, then a result with the
+    answer's text and the session's total so far; each try the next answer."""
+    for n, (text, total) in enumerate(answers, 1):
+        turn = {"type": "assistant", "message": {"id": f"m{n}", "model": "claude-sonnet-5-5", "content": [],
+                                                 "usage": {"input_tokens": 900, "output_tokens": 80}}}
+        result = {"type": "result", "subtype": "success", "result": text, "total_cost_usd": total}
+        (tmp_path / f"try{n}.jsonl").write_text(f"{json.dumps(turn)}\n{json.dumps(result)}\n")
+    claude = tmp_path / "claude"
+    claude.write_text("#!/bin/sh\nif [ -e tried ]; then cat try2.jsonl; else touch tried; cat try1.jsonl; fi")
+    claude.chmod(0o755)
+    return f"{claude} -p --output-format stream-json --verbose --max-budget-usd 1.5"
+
+
+def test_a_claude_code_planner_is_held_on_the_night_and_its_stream_says_what_it_cost(
+    repo, tmp_path, monkeypatch
+):
+    """The meter night: $15 of $41 was planners held at $1.50 each, since a text answer says no cost. A
+    second try resumes the session, whose result reports its running total."""
+    monkeypatch.setenv("GRAPHENE_AGENT_LIVE_USD", "10")
+    bad = "```plan\n- ids  [ids]\n    scope: api.py\n    signoff: perhaps\n```"
+    good = "I read api.py.\n```plan\n? users returns ids  [ids]\n    scope: api.py\n    check: true\n```"
+    with Store.open(repo) as store:
+        said = []
+        added = A.ask(store, repo, "ids", claude_planner(tmp_path, (bad, 0.25), (good, 0.4)), say=said.append)
+        assert added == ["proposed ids: users returns ids"] and plan.get(store, "ids").state == PROPOSED
+        assert said[-2:] == ["the planner says:", "  I read api.py."]  # the result's text, not the stream
+        bills = [(e["actor"], e["detail"]) for e in store.node_log("*", ("usage",))]
+    assert [(who, bill["dollars"]) for who, bill in bills] == [
+        ("planner:claude", pytest.approx(0.25)), ("planner:claude", pytest.approx(0.15))]
+    assert bills[1][1] | {"dollars": 0} == {"model": "claude-sonnet-5-5", "calls": 1, "prompt_tokens": 900,
+                                           "completion_tokens": 80, "dollars": 0, "endpoint": "claude code",
+                                           "reported": 0.4, "practice": True}  # fmt: skip
+    rows = [json.loads(line) for line in (tmp_path / "night.jsonl").read_text().splitlines()]
+    assert [(r["kind"], r.get("tag"), r["dollars"]) for r in rows] == [
+        ("reserve", "ask: the planner, attempt 1", 1.5), ("settle", None, pytest.approx(0.25)),
+        ("reserve", "ask: the planner, attempt 2", 1.5), ("settle", None, pytest.approx(0.15))]
+
+
+def test_a_claude_code_planner_that_stopped_says_why(repo, tmp_path):
+    planner = claude_planner(tmp_path, ("", 0.3), ("", 0.6))
+    for n in (1, 2):  # out of budget: a result with no text, only why it stopped
+        stop = {"type": "result", "subtype": "error_max_budget_usd", "is_error": True, "total_cost_usd": n}
+        (tmp_path / f"try{n}.jsonl").write_text(json.dumps(stop) + "\n")
+    said = []
+    with Store.open(repo) as store, pytest.raises(Refused, match="each was refused as above"):
+        A.ask(store, repo, "ids", planner, say=said.append)
+    assert "no proposal (exit 0): error_max_budget_usd" in said  # why it stopped, not "it said nothing"
+
+
+def test_a_planner_the_night_refuses_is_never_started(repo, tmp_path, monkeypatch):
+    monkeypatch.setenv("GRAPHENE_AGENT_LIVE_USD", "1")  # less than the planner's --max-budget-usd
+    with Store.open(repo) as store:
+        with pytest.raises(Refused, match=r"may cost up to \$1\.5000.*nothing was sent"):
+            A.ask(store, repo, "ids", claude_planner(tmp_path, ("", 0.0)), say=lambda _: None)
+    assert not (tmp_path / "tried").exists()
+
+
+# A planner named `claude` that says it is up and waits; told to stop (TERM), it says so and ends.
+WAITS = """#!{python}
+import os, pathlib, signal, sys, time
+def stopped(*_):
+    pathlib.Path("told").write_text("TERM")
+    sys.exit(143)
+signal.signal(signal.SIGTERM, stopped)
+pathlib.Path("up").write_text(str(os.getpid()))
+time.sleep(60)
+"""
+
+
+@pytest.mark.parametrize("sig", [signal.SIGTERM, signal.SIGHUP])
+def test_an_ask_ended_by_a_closed_terminal_or_a_kill_stops_its_planner_and_settles_its_hold(
+    repo, tmp_path, monkeypatch, sig
+):
+    """The fourth review of 8 October: `graphene ask` died where it stood on a hangup or a `kill`. Its
+    planner's hold stayed in flight on the night until noon, and the planner worked on. Taken as Ctrl-C,
+    the planner is told to stop (TERM, so Graphene's own settles what it holds) and the hold settles."""
+    monkeypatch.setenv("GRAPHENE_AGENT_LIVE_USD", "10")
+    claude = tmp_path / "bin" / "claude"
+    claude.parent.mkdir()
+    claude.write_text(WAITS.format(python=sys.executable))
+    claude.chmod(0o755)
+    planner = f"{claude} -p --output-format stream-json --verbose --max-budget-usd 1.5"
+    asking = subprocess.Popen([*CLI, "ask", "ids", "--with", planner], cwd=repo, stdout=subprocess.PIPE,
+                              stderr=subprocess.STDOUT, text=True)  # fmt: skip
+    up = tmp_path / "up"
+    try:
+        assert wait_for(up.exists), asking.stdout
+        asking.send_signal(sig)
+        asking.communicate(timeout=30)
+        assert asking.returncode == 130
+        assert wait_for(lambda: ended(int(up.read_text())), 5)
+    finally:
+        asking.kill()
+        if up.exists() and not ended(int(up.read_text())):
+            os.kill(int(up.read_text()), signal.SIGKILL)
+    rows = [json.loads(line) for line in (tmp_path / "night.jsonl").read_text().splitlines()]
+    assert [(r["kind"], r["dollars"]) for r in rows] == [("reserve", 1.5), ("settle", 1.5)]  # its worst case
+    assert (tmp_path / "told").read_text() == "TERM"  # told, not killed: it had its time to settle

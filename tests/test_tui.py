@@ -131,6 +131,89 @@ def test_visual_selects_several_and_y_accepts_them_all(repo):
     assert states(repo)["schema"] == "proposed"
 
 
+ONE = """\
+goal: users come back with their ids
+- the API  [api]
+  - users returns ids  [ids]
+      scope: api.py
+      check: grep -q ids api.py
+"""
+TWO = """\
+- the schema  [schema]
+  - its tables  [tables]
+      scope: tables.py
+      check: true
+  - an ids column  [column]
+      scope: column.py
+      check: true
+"""
+
+
+def test_one_leaf_proposed_is_one_row_y_takes_it_and_runs_it_when_an_executor_is_chosen(repo, monkeypatch):
+    """A one-leaf ask was three rows to read, the goal, a sub-goal and the leaf, and y left it ready."""
+    asked = []
+    monkeypatch.setattr(Watch, "background", lambda self, argv: asked.append(argv))
+    assert agent("plan", "propose", "-", input=ONE).exit_code == 0  # under a proposed sub-goal and goal
+    seen, _ = watch(repo, [], size=(120, 36))
+    [one] = [r.strip() for r in seen["tree"] if r.strip()]
+    assert one.startswith("? users returns ids") and seen["cursor"] == "ids"
+    assert "waiting on you: 1 · " in seen["status"] and "\ny accept · d drop" in seen["status"]
+    watch(repo, ["y"])
+    assert states(repo) == {"api": "open", "ids": "open"} and asked == []  # no executor chosen: no run
+    with Store.open(repo) as store:
+        store.set_meta("executor", "claude")
+    assert agent("plan", "propose", "-", input=TWO).exit_code == 0
+    seen, _ = watch(repo, ["G", "k"], size=(120, 36))  # a tree of two leaves keeps its rows
+    assert len([r for r in seen["tree"] if r.strip()]) == 6 and seen["cursor"] == "tables"
+    assert "\ny accept · d drop" in seen["status"]
+    watch(repo, ["G", "d"])  # one leaf is left: its row stands for the sub-goal above it
+    seen, _ = watch(repo, ["G"], size=(120, 36))
+    assert len([r for r in seen["tree"] if r.strip()]) == 4 and seen["cursor"] == "tables"
+    assert "\ny accept and run · d drop" in seen["status"]
+    seen, _ = watch(repo, ["G", "V"])  # that row selected: y runs it too, and says so
+    assert "VISUAL · y accept and run" in seen["status"]
+    watch(repo, ["G", "y"])
+    assert states(repo)["schema"] == states(repo)["tables"] == "open"
+    assert asked == [["run", "--parallel", "4", "--node", "tables"]]
+    cols = "- its columns  [cols]\n    scope: cols.py\n    check: true\n    needs: tables\n"
+    assert agent("plan", "propose", "-", input=cols).exit_code == 0  # one leaf, waiting on one not done
+    seen, _ = watch(repo, ["G"])
+    assert seen["cursor"] == "cols" and "\ny accept · d drop" in seen["status"]  # a run would start nothing
+    watch(repo, ["G", "y"])
+    assert states(repo)["cols"] == "open" and len(asked) == 1
+
+
+def test_y_runs_no_leaf_left_of_a_tree_partly_accepted_nor_one_whose_accept_is_refused(repo, monkeypatch):
+    """The last leaf of a tree partly accepted read as a one-leaf proposal, and y started it alone."""
+    asked = []
+    monkeypatch.setattr(Watch, "background", lambda self, argv: asked.append(argv))
+    with Store.open(repo) as store:
+        store.set_meta("executor", "claude")
+    proposed(repo)
+    watch(repo, ["j", "j", "y"])  # ids, with the api above it
+    watch(repo, ["j", "j", "j", "d"])  # docs: schema is all that is proposed now
+    seen, _ = watch(repo, ["G"])
+    assert seen["cursor"] == "schema" and "\ny accept · d drop" in seen["status"]
+    watch(repo, ["G", "y"])
+    assert states(repo)["schema"] == "open" and asked == []
+    assert agent("node", "start", "schema").exit_code == 0
+    cols = "- its columns  [cols]\n    parent: schema\n    scope: cols.py\n    check: true\n"
+    assert agent("plan", "propose", "-", input=cols).exit_code == 0  # under the leaf the agent holds
+    seen, _ = watch(repo, ["G", "y"])
+    assert "✗ graphene plan accept cols" in seen["status"] and states(repo)["cols"] == "proposed"
+    assert asked == []  # refused: nothing runs
+
+
+def test_at_80_columns_one_leaf_proposed_keeps_its_row_under_the_board(repo):
+    """With no goal row, the tree was given three rows below 110 columns: three board rows filled them,
+    and the one leaf to act on was under them."""
+    board = "question: which id format?  [fmt]\nquestion: where do ids live?  [where]\n"
+    board += "risk: a check that passes on nothing  [rk]\n"
+    assert agent("plan", "propose", "-", input=ONE + board).exit_code == 0
+    seen, _ = watch(repo, [])
+    assert [r for r in seen["tree"] if r.strip()][-1].lstrip().startswith("? users returns ids")
+
+
 def test_search_moves_to_the_match_and_n_to_the_next(repo):
     proposed(repo)
     seen, _ = watch(repo, ["slash", *"doc", "enter"])
