@@ -1204,9 +1204,11 @@ def wait_on_checks(
     everything: list[Node], ids: set[str], files: list[str], beside: frozenset[str] | set[str] = frozenset()
 ) -> list[str]:
     """Each leaf of ``ids``, in order, waits on every other leaf that writes a path its check runs
-    (``check_paths``) outside its own scope, unless one already waits on the other (``acyclic``): the
-    other way round, the check sees the path as it is at the base. Returns a line a leaf it added to."""
-    live, said = _live(everything), []
+    (``check_paths``) outside its own scope, unless one already waits on the other (``acyclic``). When
+    the other waits on it, the check sees the path as it is at the base; a file it names that is not
+    there yet (the tests leaf's new test) is refused: the check could never pass. Returns a line a leaf
+    it added to."""
+    live, said, there = _live(everything), [], set(files)
     for leaf in [n for n in live if n.id in ids and n.check]:
         named, waits = check_paths(leaf.check, files, live), {}
         for other in [n for n in live if n.id != leaf.id and n.id not in beside]:
@@ -1214,9 +1216,18 @@ def wait_on_checks(
                 p for path, under in named if may_collide([path], other.scope)
                 for p in overlap([path], other.scope, under) if not in_scope(p, leaf.scope)
             })  # fmt: skip
-            if hit and acyclic(everything, leaf.id, [other.id]) and acyclic(everything, other.id, [leaf.id]):
+            if not hit or not acyclic(everything, other.id, [leaf.id]):  # none, or it waits on other already
+                continue
+            if acyclic(everything, leaf.id, [other.id]):
                 leaf.needs.append(other.id)
                 waits[other.id] = hit
+                continue
+            new = [p for p in hit if p not in there and any(p == path for path, _ in named)]
+            if new:
+                raise Refused(
+                    f"{leaf.id}: its check runs {_few(new)}, which {other.id} writes after it. Give "
+                    f"{leaf.id} a check that passes without it, or let {other.id}'s check run it"
+                )
         if waits:
             why = ", and ".join(f"{_few(paths)}, which {other} writes" for other, paths in waits.items())
             said.append(f"{leaf.id} waits on {', '.join(waits)}: its check runs {why}")

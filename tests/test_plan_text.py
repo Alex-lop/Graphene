@@ -460,6 +460,16 @@ def test_a_tests_leaf_that_waits_on_the_code_adds_nothing_and_refuses_nothing(st
     assert not [line for line in said if " waits on " in line]
 
 
+def test_a_check_that_runs_a_new_file_a_later_leaf_writes_is_refused_by_its_line(store):
+    """Take 9, and tonight's first Ultra ask: the tests leaf waits on the code, and the code's check runs
+    the tests leaf's new file. It could never pass: the file is not there when the check runs."""
+    code = top("feed", "ingest/xml.py", "python3 -m pytest tests/test_xml.py -q")
+    says = r"^line 1 \[feed\]: feed: its check runs tests/test_xml\.py, which tests writes after it\. "
+    with pytest.raises(Refused, match=says):
+        T.apply(store, code + top("tests", "tests/test_xml.py", "true", "needs: feed"), BOT, None)
+    assert plan.nodes(store) == []
+
+
 def test_two_leaves_that_write_one_path_are_refused_by_the_line_and_an_old_pair_is_not_judged_again(store):
     said = r"^line 1 \[a\]: a and b both write README\.md\. A path has one leaf that writes it: give it to "
     with pytest.raises(Refused, match=said + "one, and let the other wait on it$"):
