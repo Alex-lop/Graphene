@@ -67,10 +67,10 @@ Code's and Nemotron's, were changed to ask this way (prompt version 2, cut to th
 4; for Nemotron, `test_nemotron_is_told_to_ask_and_its_board_lands`, against the scripted stand-in).
 
 **The graph: what runs at once and what waits.** You read the plan in `graphene watch`, a terminal
-screen with vim keys. Tab cycles the outline, a top-down tree, and a left-to-right graph of the
-leaves' needs, with the critical path drawn heavy and a note under it:
+screen with vim keys. Tab cycles the outline, a top-down tree, a left-to-right graph of the
+leaves' needs, and a timeline of what each executor did when. The graph draws the critical path heavy, with a note under it:
 `critical ━ xml-reader > xml-wire > xml-e2e (3) · none ready · 2 once accepted · 2 wait` on a
-scratch plan of four proposed leaves. `graphene plan --view tree`, `dag`, `outline` or `auto` prints the same as text.
+scratch plan of four proposed leaves. `graphene plan --view tree`, `dag`, `time`, `outline` or `auto` prints the same as text.
 
 **You prune.** Drop a leaf you did not mean, take a path out of a scope, accept the rest, each with a
 key (`d`, `e`, `y`).
@@ -179,10 +179,11 @@ None of them runs unless you run it, or set `GRAPHENE_SHAPE` to run them after e
   call at a time: view, edit, write, run, done, or release. The reasoning budget is each call's
   `max_tokens`, doubled up to 32,768 when a reply is cut off at the limit. Any other model parameter
   passes through with `--param`. Nemotron's `<TOOLCALL>` text and common tool-name spellings are read
-  as the calls they mean. Since prompt version 5, Ultra is also told to read the repository first,
+  as the calls they mean. Since prompt version 4, Ultra is also told to read the repository first,
   never to ask what a file answers, and to put up only what changes the tree, at most three items,
   each a question with a default or a risk; an assumption it is sure of goes in the goal of the leaf
-  it bears on (`planner.py`, `PROMPT_VERSION`).
+  it bears on. Since prompt version 5, Ultra answers in a strict JSON schema, and a check runs only
+  its own leaf's files (`planner.py`, `PROMPT_VERSION`).
 - **Nano, while you shape.** Each of the three prototypes is one Nano call through
   `tokenfactory.chat`, with a JSON schema for its answer. Graphene checks the answer before showing
   anything: a clause must be in your paragraph, a leaf must exist and be open, a glob must match a

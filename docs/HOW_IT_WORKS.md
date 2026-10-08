@@ -18,7 +18,9 @@ A node with children is a **sub-goal**: it needs only a title, and nobody takes 
 - what it **needs**: other nodes that must be done first;
 - an **owner**: any agent, or a person's name; and whether a person must **sign it off**.
 
-A leaf waits on what it needs and on what every node above it needs. A cycle is refused. When the last leaf under a
+A leaf waits on what it needs and on what every node above it needs. A cycle is refused. Two leaves never write one
+path. A check that runs another leaf's file waits on that leaf, and the proposal says so; a directory names every file
+under it. A check that runs a file only a later leaf makes is refused. When the last leaf under a
 sub-goal is done, the sub-goal's own check runs, if it has one, and it is done too.
 
 | State | Means |
@@ -75,16 +77,19 @@ reads as (proposed, ready, waiting, running, came back, review, done). Finished 
   then gives up.
 - `dag` (`view_dag.py`) draws only leaves, left to right, by the chain of `needs` before each. One column can run at
   once. The critical path is bold.
+- `time` (`view_time.py`) draws a lane for each leaf that has been held, under one for your acts. Each cell is what
+  the executor mostly did then: editing █, running ▓, reading ▒, talking ░, idle ─; a hold the meter cannot see is ━.
+  Marks: ! refused, ✓ ✗ the check, ↩ came back, ◆ landed, ● running.
 
 ## Plan first
 
 Plan first decides what happens when you ask a Claude Code session for something. Set it with `graphene plan first
-on|auto|off`, or `P` in `graphene watch`. `graphene init` sets it to auto.
+on|auto|off`, or `P` in `graphene watch`. `graphene init` sets it to on; a repository already on auto stays auto.
 
 - **On**: every ask is proposed in the plan first, and waits for you. The session cannot write until it holds a leaf.
-- **Auto**: every ask is proposed. One leaf, with a scope and a check, no board item, and a scope of at most 8 paths,
-  is yours at once: the log says it was accepted "by their prompt in the session", and the session goes on. Anything
-  else, a tree or a wider leaf, waits for you in `graphene watch`.
+  One leaf proposed is one row in `graphene watch`: `y` takes it, and runs it when an executor is chosen.
+- **Auto**: every ask is proposed. One leaf with a scope and a check, no board item and at most 8 paths is yours at
+  once, accepted "by their prompt in the session". Anything else waits for you in `graphene watch`.
 - **Off**: nothing is proposed. What you ask for is done at once and recorded as a leaf made from your prompt.
 
 Nothing reads your words to decide this.
@@ -98,6 +103,9 @@ prints a tree in the plan's text. Graphene adds it as proposals. `graphene node 
 The planner's prompt (`ask.RULES`, and the Nemotron planner's system prompt, version 5) tells it to read the
 repository first, ask only what the code cannot settle, and put up at most three items, each a question or a risk. An
 assumption it is sure of goes in the goal of the leaf it bears on.
+
+The Nemotron planner answers in a strict JSON schema. A refused answer goes back once, with Graphene's words; the
+second is final. The Claude Code planner's stream says what it cost.
 
 How many leaves it is asked for follows the repository's size: 1 to 3 under 2,000 lines, up to 6 under 20,000, up to
 10 past that. The `size` setting makes that finer or coarser.
@@ -227,8 +235,8 @@ reads no transcript.
 does not say why an item is there, what it may touch, or what proves it finished. Here every leaf hangs from the goal
 it serves, names its files and its check, and says what it waits on. The executors are held to all of it.
 
-**Isn't a tree overkill for a one-line fix?** Ask for "fix the typo in the header" and the agent proposes one leaf,
-which is yours at once, and then does it. Nothing to press. `P` in `graphene watch` turns plan first off if you would
+**Isn't a tree overkill for a one-line fix?** Ask for "fix the typo in the header" and the agent proposes one leaf:
+one row in `graphene watch`, and `y` takes it. Under auto it is yours at once. `P` turns plan first off if you would
 rather it just act.
 
 **What doesn't it catch?** The hooks that stop a write before it happens are Claude Code's; Codex or any other
