@@ -174,12 +174,12 @@ None of them runs unless you run it, or set `GRAPHENE_SHAPE` to run them after e
   with its seconds, at $0 until its price is read. Every row is marked practice, and
   `dev/test/evidence.py` refuses practice (`night.py`, `tests/nemotron/test_night.py`).
 - **Nemotron's roles.** Ultra is the planner (`planner.py`). It has read-only tools (list, glob, grep,
-  read) that run on the person's machine and read only what git shows, and it answers in Graphene's
-  plan text. Nano, then Super, is the executor (`executor.py`). Graphene's own loop asks for one tool
+  read) that run on the person's machine and read only what git shows, and it answers in a strict JSON
+  schema. Nano, then Super, is the executor (`executor.py`). Graphene's own loop asks for one tool
   call at a time: view, edit, write, run, done, or release. The reasoning budget is each call's
   `max_tokens`, doubled up to 32,768 when a reply is cut off at the limit. Any other model parameter
   passes through with `--param`. Nemotron's `<TOOLCALL>` text and common tool-name spellings are read
-  as the calls they mean. Since prompt version 4, Ultra is also told to read the repository first,
+  as the calls they mean. Since prompt version 5, Ultra is also told to read the repository first,
   never to ask what a file answers, and to put up only what changes the tree, at most three items,
   each a question with a default or a risk; an assumption it is sure of goes in the goal of the leaf
   it bears on (`planner.py`, `PROMPT_VERSION`).

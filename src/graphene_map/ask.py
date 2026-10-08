@@ -391,9 +391,11 @@ def ask(
             RULES, f"This replaces the tree you proposed last, which the person wants {size}; it is "
             f"dropped, so propose the whole tree afresh.{stand}\n\n" + RULES)  # fmt: skip
     before = None
-    for attempt in range(1, ATTEMPTS + 1):
+    tries = 1 if argv0 == "nemotron" else ATTEMPTS  # Graphene's own planner sends a refusal back itself
+    for attempt in range(1, tries + 1):
         argv = command_for(template, prompt, session, attempt > 1)
         env = {**os.environ, "GRAPHENE_PLANNER": "1"}
+        env["GRAPHENE_REPLACES"] = (last or "") if stands is not None else ""  # the tree a re-ask drops
         if argv0 != "nemotron":  # only Graphene's own planner calls Token Factory
             env["GRAPHENE_KEYCHAIN"] = "off"
         env.pop("GRAPHENE_AS", None)
@@ -439,7 +441,7 @@ def ask(
                 return said
         if done.returncode == 3 and not text.strip():  # it could not work at all; again would not help
             raise P.Refused(f"nothing was added. {refusal}")
-        if attempt < ATTEMPTS:  # the last try's refusal is said once, in the line that ends the ask
+        if attempt < tries:  # the last try's refusal is said once, in the line that ends the ask
             say(refusal)
             before = refusal
         # whole again: a planner other than Claude Code starts afresh and knows nothing of the first try

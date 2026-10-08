@@ -168,7 +168,7 @@ def test_another_way_is_proposed_beside_it_and_the_board_asks_which(repo, talker
 def test_nemotron_answers_why_and_its_note_lands_as_its_own(repo, monkeypatch):
     accepted(repo)
     note = "```plan\nnote: ids is the leaf the docs wait on  [why-ids]\n    about: ids\n```"
-    with Fake([{"content": note}]) as f:
+    with Fake([{"content": note}] * 2) as f:  # its draft, then its answer
         for k, v in f.env().items():
             monkeypatch.setenv(k, v)
         tf._listed.cache_clear()

@@ -848,6 +848,13 @@ def scripted(body: dict) -> dict:
             "note": {"target": "xmlfeed", "scope_add": [], "scope_remove": [], "check": None,
                      "goal_add": True, "why": "it constrains the XML reader"},
             "precheck": {"verdict": "red-right-reason", "why": "the work is not done yet"},
+            "proposal": {"goal": "two practice leaves", "board": [], "says": "", "nodes": [
+                {"id": "practice", "title": "practice", "goal": "", "scope": [], "check": None, "needs": [],
+                 "parent": None, "mark": "-"},
+                *({"id": i, "title": i, "goal": f"practice_{i}.py, with VALUE = 42",
+                   "scope": [f"practice_{i}.py"], "needs": [], "parent": "practice", "mark": "?",
+                   "check": f"python3 -c 'import practice_{i} as m; assert m.VALUE == 42'"}
+                  for i in ("one", "two"))]},
         }[schema])}  # fmt: skip
     if any((t.get("function") or {}).get("name") == "get_current_weather" for t in body.get("tools") or []):
         return call("get_current_weather", city="Dallas", unit="fahrenheit")

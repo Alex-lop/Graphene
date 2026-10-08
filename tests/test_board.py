@@ -389,7 +389,7 @@ assume: ids are integers  [int-ids]
 
 
 def test_nemotron_is_told_to_ask_and_its_board_lands(repo, monkeypatch):
-    with Fake([{"content": NEMOTRON}]) as f:
+    with Fake([{"content": NEMOTRON}] * 2) as f:  # its draft, then its answer
         for k, v in f.env().items():
             monkeypatch.setenv(k, v)
         tf._listed.cache_clear()
@@ -399,7 +399,7 @@ def test_nemotron_is_told_to_ask_and_its_board_lands(repo, monkeypatch):
                 ("which-id", "planner:nemotron"), ("int-ids", "planner:nemotron")
             ]  # fmt: skip
             [bill] = store.node_log("*", ("usage",))
-            assert bill["detail"]["prompt"] == 4
+            assert bill["detail"]["prompt"] == 5
     system = " ".join(f.requests[0]["messages"][0]["content"].split())
     assert "put a question on the board with the default" in system and "at most three" in system
     assert "An assumption you are confident of is not an item but a sentence in the goal" in system
@@ -677,7 +677,7 @@ def test_a_script_planner_is_told_that_an_option_carries_its_then_lines_and_the_
 def test_nemotron_is_told_that_an_option_carries_its_then_lines_and_the_pick_reaches_the_leaf(
     repo, monkeypatch
 ):
-    with Fake([{"content": PICKED}]) as f:
+    with Fake([{"content": PICKED}] * 2) as f:  # its draft, then its answer
         for k, v in f.env().items():
             monkeypatch.setenv(k, v)
         tf._listed.cache_clear()

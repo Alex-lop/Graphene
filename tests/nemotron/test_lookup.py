@@ -157,13 +157,13 @@ def test_the_flag_looks_up_once_the_proposal_has_landed(repo, fake, monkeypatch)
     from graphene_map.ask import ask, named
 
     monkeypatch.setenv("GRAPHENE_SHAPE", "lookup")
-    f = fake([{"content": f"```plan\n{PLAN}```"}, nano({"answers": [CENTS]})])
+    f = fake([{"content": f"```plan\n{PLAN}```"}] * 2 + [nano({"answers": [CENTS]})])  # draft, answer
     said = []
     with Store.open(repo) as store:
         ask(store, repo, "load the prices", named("nemotron"), say=said.append)
         assert B.get(store, "units")["from"] == "app.py:2" and B.get(store, "empty")["state"] == "open"
         assert P.get(store, "prices").state == P.PROPOSED  # the proposal stands
-    assert len(f.requests) == 2
+    assert len(f.requests) == 3
 
 
 def test_on_the_screen_a_repo_answer_says_where_and_p_asks_you_again(repo, fake):

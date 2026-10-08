@@ -55,14 +55,14 @@ def test_a_list_that_has_lost_ultra_plans_with_the_largest_left_and_says_so_in_o
     proposal = "```plan\n? say hello  [{}]\n    scope: app.py\n    check: true\n```"
     no_ultra = [m for m in MODELS if "Ultra" not in m["id"]]
     said, again = [], []
-    replies = [{"content": proposal.format("hello")}, {"content": proposal.format("hello-again")}]
+    replies = [{"content": proposal.format(i)} for i in ("hello", "hello", "hello-again", "hello-again")]
     with Fake(replies, models=no_ultra) as f, Store.open(repo) as store:
         for k, v in f.env().items():
             monkeypatch.setenv(k, v)
         ask(store, repo, "make it say hello", planner("nemotron"), say=said.append)
         # the id `graphene init` wrote when Ultra was listed
         ask(store, repo, "and again", planner(f"nemotron --model {ULTRA}"), say=again.append)
-    assert [r["model"] for r in f.requests] == [SUPER, SUPER]
+    assert [r["model"] for r in f.requests] == [SUPER] * 4  # each ask: a draft, then the answer
     [line] = [s for s in said if "Ultra" in s]
     assert line.strip() == (f"Token Factory lists no Nemotron Ultra; the planner uses {SUPER}, the largest "
                             "Nemotron listed")  # fmt: skip

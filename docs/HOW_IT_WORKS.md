@@ -95,7 +95,7 @@ Nothing reads your words to decide this.
 prints a tree in the plan's text. Graphene adds it as proposals. `graphene node split ID` asks it to cut a leaf;
 `--about ID` asks about one.
 
-The planner's prompt (`ask.RULES`, and the Nemotron planner's system prompt, version 4) tells it to read the
+The planner's prompt (`ask.RULES`, and the Nemotron planner's system prompt, version 5) tells it to read the
 repository first, ask only what the code cannot settle, and put up at most three items, each a question or a risk. An
 assumption it is sure of goes in the goal of the leaf it bears on.
 
