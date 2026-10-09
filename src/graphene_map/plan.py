@@ -2736,10 +2736,15 @@ def reopen(store, node_id: str | list[str], who: Caller, note: str, now: str | N
 
 
 def notes(store, node_id: str) -> list[str]:
-    """What the person said when sending a node back, newest last: part of what its next executor is told."""
-    return [
-        e["detail"].get("note", "") for e in store.node_log(node_id, ("reopened",)) if e["detail"].get("note")
-    ]
+    """What the person said when sending a node back, newest last: part of what its next executor is told.
+    A reopen undone since was never said (`let_go` reads an undone act so too)."""
+    kept: list[dict] = []
+    for e in store.node_log(node_id, ("reopened", "undone")):
+        if e["kind"] == "reopened":
+            kept.append(e)
+        elif (since := e["detail"].get("since")) is not None:
+            kept = [k for k in kept if k["id"] <= since]
+    return [e["detail"]["note"] for e in kept if e["detail"].get("note")]
 
 
 def archive(store, who: Caller, now: str | None = None) -> list[Node]:

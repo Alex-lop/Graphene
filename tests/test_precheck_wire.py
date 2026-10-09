@@ -5,6 +5,9 @@ from __future__ import annotations
 import test_plan_cli
 from test_plan_cli import agent, person
 
+from graphene_map import plan as P
+from graphene_map.store import Store
+
 repo = test_plan_cli.repo  # the fixture
 
 
@@ -57,3 +60,25 @@ def test_the_plain_prints_keys_line_has_one_r(repo):
     said = agent("plan", "--view", "outline").stdout.splitlines()[-1]
     keys = said.rsplit("; ", 1)[1].removesuffix(" in `graphene watch`").split(", ")
     assert keys.count("r") == 1, said
+
+
+def test_plan_undo_after_r_takes_back_the_reopen_and_the_leaf_came_back_again(repo):
+    """`r` is an act on the plan's shape, as w and b are: `plan undo` after it undid the act before."""
+    for i in ("a", "x", "y"):
+        person("node", "add", i, "--id", i, "--scope", f"{i}.txt", "--check", "true")
+    person("node", "start", "a")
+    (repo / "a.txt").write_text("x")
+    person("node", "done", "a")
+    person("node", "signoff", "a")
+    agent("node", "start", "x")
+    agent("node", "release", "x", "--why", "a is wrong", "--wants", "a.txt")
+    person("node", "set", "y", "--title", "y two")
+    with Store.open(repo) as store:
+        [argv] = [argv for key, _, argv in P.offers(store, P.get(store, "x")) if key == "r"]
+    assert person(*argv).exit_code == 0
+    undone = person("plan", "undo")
+    assert "undid: node reopen a" in undone.stdout, undone.output
+    with Store.open(repo) as store:
+        a, x, y = (P.get(store, i) for i in "axy")
+        assert (a.state, x.needs, y.title) == ("done", [], "y two") and P.came_back(store, x)
+        assert P.notes(store, "a") == []  # what the undone reopen said reaches no executor

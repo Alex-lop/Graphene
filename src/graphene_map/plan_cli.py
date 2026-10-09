@@ -1366,8 +1366,12 @@ def register(cli: typer.Typer, root, open_store, fail):
             lambda s: P.get(s, node_id[0]).state in (P.DONE, P.REVIEW)
         ):  # else its refusal
             note = asked(f"graphene node reopen {node_id[0]}", "--note", "what is wrong")
-        run(lambda s: P.reopen(s, node_id, P.caller(), note or "", for_leaf=for_leaf))
+
+        def go(store):
+            P.reopen(store, node_id, P.caller(), note or "", for_leaf=for_leaf)
+
         names = ", ".join(node_id)
+        write(f"node reopen {names}", go)  # kept for `plan undo`, as w and b are: r runs this command
         one = len(node_id) == 1
         out(f"{names} {'is' if one else 'are'} open again; whoever takes {'it' if one else 'them'} next is "
             f"shown your note ({'its' if one else 'their'} contract is as it was: "
