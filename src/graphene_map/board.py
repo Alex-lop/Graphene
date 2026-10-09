@@ -222,8 +222,7 @@ def _there(store, node_id: str | None, what: str) -> None:
 
 
 def _apply(store, line: str, who: P.Caller, now: str, files, conditions: list[str], told: list[str]) -> str:
-    """One effect, made as the person's edit; returns what it changed, in a line. A check or a scope is
-    judged as `node set` judges it: what now waits on what goes in ``told``, and one writer a path."""
+    """One effect, made as the person's edit; returns what it changed, in a line."""
     from . import plan_text as T
 
     verb, node_id, what = effect(line)
@@ -475,20 +474,18 @@ def defaults(store, who: P.Caller, files: list[str] | None = None, told=None) ->
     """Every open item that has a default takes it, as the person's take (``unchanged`` on the log
     row: nobody changed it), so a person who agrees with every default answers nothing. An item that
     cannot be taken (about a node that left the plan) stays open, and so does one whose default drops
-    a node (``left``). Returns what was taken; ``told`` gets what a default makes wait on what, and why
-    one that cannot be taken stays open."""
+    a node (``left``). Returns what was taken. ``told`` gets what each made wait, and why one stays open."""
     taken, told = [], [] if told is None else told
     for item in [it for it in items(store) if has_default(it)]:
         store.conn.execute("SAVEPOINT take")  # each take all or none, inside the act that takes them all
-        said: list[str] = []
+        at = len(told)
         try:
-            taken.append(settle(store, item["id"], "taken", who, files=files, told=said, unchanged=True))
+            taken.append(settle(store, item["id"], "taken", who, files=files, told=told, unchanged=True))
         except P.Refused as no:
             store.conn.execute("ROLLBACK TO take")  # its state and whatever of its effects was made
-            said = [f"left for you: {item['id']} (its default is refused: {_one(str(no))})"]
+            told[at:] = [f"left for you: {item['id']} (its default is refused: {_one(str(no))})"]
         finally:
             store.conn.execute("RELEASE take")
-        told += said
     return taken
 
 

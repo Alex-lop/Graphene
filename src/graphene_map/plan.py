@@ -25,6 +25,7 @@ from functools import lru_cache, partial
 from pathlib import Path
 
 AGENT = "agent"  # the owner of a node any agent may take; every other owner is a person's name
+GRAPHENE = "graphene"  # who logs a need `wait_on_checks` adds: never the person (`_waited`, `let_go`)
 PROPOSED, OPEN, RUNNING, REVIEW, DONE, DROPPED = "proposed", "open", "running", "review", "done", "dropped"
 ARCHIVED = "archived"  # done or dropped, and put away by the person: no longer part of the plan
 # A plan with a node in one of these is in force. Done counts: the first real agent run against this
@@ -1301,15 +1302,13 @@ def judge(store, ids: set[str], writers: set[str], files: list[str], now: str,
     return said
 
 
-GRAPHENE = Caller("graphene", False)  # who adds a need: never the person, so `plan changes` and ~ show it
-
-
 def _waited(store, was: dict[str, list[str]], everything: list[Node], now: str) -> None:
     """Each node of ``was`` whose needs ``wait_on_checks`` grew since, saved as an edit of its contract."""
+    graphene = Caller(GRAPHENE, False)  # not the person's edit: `plan changes` and the screen's ~ show it
     for n in everything:
         if n.id in was and n.needs != was[n.id]:
             n.rev += 1
-            _save(store, n, "edited", GRAPHENE, now, changed={"needs": [was[n.id], n.needs]}, rev=n.rev)
+            _save(store, n, "edited", graphene, now, changed={"needs": [was[n.id], n.needs]}, rev=n.rev)
 
 
 def _owner(name: str) -> str:
@@ -2904,7 +2903,7 @@ def let_go(store, node: Node) -> dict:
     if node.state != OPEN:
         return {}
     log = [e for e in store.node_log(node.id, ("started", "released", "reopened", "edited", "undone"))
-           if e["actor"] != GRAPHENE.label]  # fmt: skip
+           if e["actor"] != GRAPHENE]  # fmt: skip
     while log and log[-1]["kind"] == "undone":
         since = log.pop()["detail"].get("since")
         log = log if since is None else [e for e in log if e["id"] <= since]
