@@ -596,6 +596,8 @@ def _acts(log: list[dict]) -> list[Act]:
         if kind == "edited":
             changed = detail.get("changed", {})
             said = "; ".join(f"{f}: {a!r} -> {b!r}" for f, (a, b) in changed.items())
+            if detail.get("reopened"):  # the person's r: the owner reopened for it
+                said = f"reopened {', '.join(detail['reopened'])} for it" + (f"; {said}" if said else "")
             said = f"{said} (revision {detail.get('rev')})"
         elif kind == "overruled":
             said = str(detail.get("override", ""))
