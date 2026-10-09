@@ -8,8 +8,8 @@ already reads, with any sentence after it, and a line when the model it used is 
 the bill into the plan's log.
 
 Once the model stops calling tools, it is asked for the proposal in a strict JSON schema (``FORMAT``),
-written as the plan's text (``as_text``) and tried, rolled back. A proposal Graphene refuses goes back to
-the model once, with Graphene's words. The second answer is the answer.
+written as the plan's text (``as_text``) and tried, rolled back. What Graphene refuses goes back to the
+model, every fault at once (``plan_text.faults``), at most twice. The third answer is the answer.
 """
 
 from __future__ import annotations
@@ -32,9 +32,10 @@ from ..store import Store, repo_root
 from . import tokenfactory as tf
 from .executor import text_calls
 
-PROMPT_VERSION = 5  # 2: the board (questions with a default, assumptions, risks, leave-outs); 3: then:
+PROMPT_VERSION = 6  # 2: the board (questions with a default, assumptions, risks, leave-outs); 3: then:
 # lines; 4: at most three items, each a question or a risk that changes the tree; assumptions in goals;
-# 5: a check runs only its own files; the proposal is asked for as JSON in a strict schema
+# 5: a check runs only its own files; the proposal is asked for as JSON in a strict schema; 6: every
+# fault at once, sent back at most twice
 SYSTEM = """\
 You are the planner for Graphene: a person said what they want, and you propose the tree of work that
 coding agents will do, which the person prunes before anything runs. Read the repository with the tools
@@ -211,25 +212,24 @@ def _answer(raw: str) -> tuple[str, str]:
         return proposal_in(raw), raw
 
 
-def _refused(root: Path, text: str, files: list[str]) -> str | None:
-    """Graphene's refusal of the proposal, applied as `graphene ask` applies it and rolled back, or None.
-    A re-ask drops the tree it replaces first (GRAPHENE_REPLACES), and what a merge or a re-ask replaces
-    may share the new leaves' paths (GRAPHENE_BESIDE), as `graphene ask` has it."""
-    replaces = os.environ.get("GRAPHENE_REPLACES") or None
+def _tried(root: Path, raw: str, files: list[str]) -> tuple[str, str, list[str]]:
+    """The answer as `graphene ask` reads it (``_answer``), and every fault Graphene refuses in it: tried
+    as `graphene ask` tries it, and rolled back. A re-ask drops the tree it replaces first
+    (GRAPHENE_REPLACES), and what a merge or a re-ask replaces may share the new leaves' paths
+    (GRAPHENE_BESIDE), as `graphene ask` has it."""
+    replaces, (text, said), faults = os.environ.get("GRAPHENE_REPLACES") or None, _answer(raw), []
     try:
         with Store.open(repo_root(root)) as store, store.claim():
             _drop_last(store, replaces, P.Caller(P.person_name(), True))  # as `graphene ask`: the person
             left = {n.id for n in _pending(store, replaces)}  # what of the last tree stays
             beside = {*os.environ.get("GRAPHENE_BESIDE", "").split(), *left}
-            T.apply(store, text, P.Caller("planner:nemotron", False), None, files=files, beside=beside)
+            faults = T.faults(store, text, P.Caller("planner:nemotron", False), files, beside)
             raise _Rehearsed
     except _Rehearsed:
-        return None
-    except P.Refused as no:
-        return str(no)
+        pass
     except Exception as no:  # noqa: BLE001  (the answer is paid for: `graphene ask` reads it either way)
         print(f"(the proposal was not tried: {no})", file=sys.stderr)
-        return None
+    return text, said, faults
 
 
 def plan(args: argparse.Namespace, prompt: str) -> int:
@@ -289,16 +289,18 @@ def plan(args: argparse.Namespace, prompt: str) -> int:
                     said_back = f"Result of {c['function']['name']}:\n{result}"
                     messages.append({"role": "user", "content": said_back})
         messages.append({"role": "user", "content": "Answer now with the proposal. Write it as JSON."})
-        raw = asked(response_format=FORMAT)[0].get("content") or ""
-        text, answer = _answer(raw)
-        no = _refused(here, text, P.tracked(here))  # git first, never under the plan's lock
-        if no:  # once, with Graphene's words; the second answer is the answer
-            bill["sent_back"] = no
+        files = P.tracked(here)  # git first, never under the plan's lock
+        for sent in range(3):  # with every fault in Graphene's words, at most twice: the third is the answer
+            raw = asked(response_format=FORMAT)[0].get("content") or ""
+            text, answer, faults = _tried(here, raw, files)
+            if not faults or sent == 2:
+                break
+            no = "\n".join(faults)
+            bill.setdefault("sent_back", []).append(no)
             lines = "\n".join(f"{k:>5}  {line}" for k, line in enumerate(text.splitlines(), 1))
             messages += [{"role": "assistant", "content": raw}, {"role": "user", "content": (
                 f"Graphene could not read the proposal: {no}\nIt read your JSON as:\n{lines}\n"
                 "Answer again with the whole proposal.")}]  # fmt: skip
-            text, answer = _answer(asked(response_format=FORMAT)[0].get("content") or "")
     except tf.Unreachable as no:
         stopped = no
     finally:

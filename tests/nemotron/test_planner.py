@@ -43,7 +43,9 @@ HELLO = node("hello", "say hello", "greeting", goal="greet returns hello", scope
 # PROPOSAL, as the JSON the strict schema asks for
 ANSWER = {"goal": "the app greets properly", "board": [], "nodes": [node("greeting", "the greeting"), HELLO],
           "says": "The README still says hi; I left it."}  # fmt: skip
-WRONG = {**ANSWER, "nodes": [node("greeting", "the greeting"), {**HELLO, "needs": ["nope"]}]}
+WRONG = {**ANSWER, "nodes": [node("greeting", "the greeting"), {**HELLO, "scope": []}]}  # no scope
+NO_SCOPE = ("line 3 [hello]: hello: a leaf needs a scope (the paths it may touch), e.g. --scope "
+            "'src/api/**'; or give it children, and it is a sub-goal")  # fmt: skip
 
 
 def answer(p: dict) -> dict:
@@ -249,37 +251,54 @@ def test_a_json_proposal_lands_through_ask_with_its_board_goal_and_needs(repo, f
     assert said[-2:] == ["the planner says:", "  Two leaves under one sub-goal."]
 
 
-def test_a_refused_proposal_goes_back_once_with_graphenes_words_and_the_second_lands(repo, fake):
+def test_a_refused_proposal_goes_back_with_graphenes_words_and_the_second_lands(repo, fake):
     f = fake([{"content": PROPOSAL}, answer(WRONG), answer(ANSWER)])
     said = []
     with Store.open(repo) as store:
         ask(store, repo, "make it say hello", named("nemotron"), say=said.append)
-        assert plan.get(store, "hello").state == PROPOSED and plan.get(store, "hello").needs == []
+        assert plan.get(store, "hello").state == PROPOSED and plan.get(store, "hello").scope == ["app.py"]
         [bill] = store.node_log("*", ("usage",))
         assert bill["detail"]["calls"] == 3
     assert said[0] == "asking the planner (nemotron)…" and not [s for s in said if "again" in s]  # one start
-    words = ("line 7: needs: 'nope' is not the id of a node (the line was read as needs:, which names the "
-             "[id]s it waits on)")  # fmt: skip
     lines = "\n".join(f"{k:>5}  {line}" for k, line in enumerate(planner.as_text(WRONG).splitlines(), 1))
-    assert "    7      needs: nope" in lines
+    assert "    3  ? say hello  [hello]" in lines
+    told = f"Graphene could not read the proposal: {NO_SCOPE}\nIt read your JSON as:\n{lines}\n"
     assert f.requests[2]["messages"][-2:] == [
         {"role": "assistant", "content": json.dumps(WRONG)},
-        {"role": "user", "content": f"Graphene could not read the proposal: {words}\nIt read your JSON as:\n"
-                                    f"{lines}\nAnswer again with the whole proposal."},
-    ]  # fmt: skip
-    assert bill["detail"]["sent_back"] == words
+        {"role": "user", "content": told + "Answer again with the whole proposal."},
+    ]
+    assert bill["detail"]["sent_back"] == [NO_SCOPE]
 
 
-def test_a_second_refused_answer_is_the_answer_and_nothing_is_added(repo, fake):
-    f = fake([{"content": PROPOSAL}, answer(WRONG), answer(WRONG)])
+def test_a_fault_goes_back_twice_at_most_and_the_third_answer_is_the_answer(repo, fake):
+    f = fake([{"content": PROPOSAL}, answer(WRONG), answer(WRONG), answer(WRONG)])
     said = []
     with Store.open(repo) as store:
         with pytest.raises(plan.Refused, match="no proposal") as no:
             ask(store, repo, "make it say hello", named("nemotron"), say=said.append)
         assert plan.nodes(store) == []
-    assert "needs: 'nope' is not the id of a node" in str(no.value)
-    assert [bool(r.get("response_format")) for r in f.requests] == [False, True, True]
+        [bill] = store.node_log("*", ("usage",))
+    assert "hello: a leaf needs a scope" in str(no.value) and bill["detail"]["sent_back"] == [NO_SCOPE] * 2
+    assert [bool(r.get("response_format")) for r in f.requests] == [False, True, True, True]
     assert said == ["asking the planner (nemotron)…"]  # one start: the planner sent it back itself
+
+
+BYE = node("bye", "say bye", "greeting", scope=["bye.py"], check="true")
+
+
+def test_an_answer_with_two_faults_gets_both_in_one_send_back(repo, fake):
+    """Last night's misses: Graphene said one fault, and the second answer mended it and kept the other."""
+    two = {**ANSWER, "nodes": [*WRONG["nodes"], BYE, {**BYE, "id": "wave", "title": "wave"}]}
+    f = fake([{"content": PROPOSAL}, answer(two), answer(ANSWER)])
+    with Store.open(repo) as store:
+        ask(store, repo, "make it say hello", named("nemotron"), say=lambda s: None)
+        assert plan.get(store, "hello").state == PROPOSED
+        [bill] = store.node_log("*", ("usage",))
+    [sent] = bill["detail"]["sent_back"]
+    both = "line 7 [bye]: bye and wave both write bye.py. A path has one leaf that writes it: give it to one"
+    assert sent.split("\n") == [f"{both}, and let the other wait on it", NO_SCOPE]
+    told = f.requests[2]["messages"][-1]["content"]
+    assert told.startswith(f"Graphene could not read the proposal: {sent}\nIt read your JSON as:\n")
 
 
 def test_a_split_that_repeats_a_goal_of_two_lines_lands_with_nothing_sent_back(repo, fake):
