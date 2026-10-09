@@ -9,8 +9,8 @@ The loop (9 October). A leaf that finds a landed leaf's fault reopens it with on
   there proves nothing, one that fails on a file outside the leaf's scope names it. `--no-precheck` skips it.
 - `graphene node show` says when a check ran a file a later leaf rewrites, with the file and the base commit.
 - An executor whose check fails on a file another leaf landed releases with `--wants` naming it and the fault.
-- `graphene run`'s last line says how wide the run went: `width 2 of 3` is at most two leaves at once, of three that
-  ran. The time view and `graphene plan record` say it too. Run `graphene run --parallel 3`.
+- `graphene run`'s last line says how wide the run went: `width 2 of 3` is three leaves, at most two at once. So do
+  `plan record`, `node show` on a sub-goal, and the time view when its line has room. Run `graphene run --parallel 3`.
 
 The timeline (8 October). A fourth view, and fixes for what the meter night's runs stopped on.
 - A fourth view, `time`: a lane for each leaf that was held, what its executor did when, and marks for a refused
