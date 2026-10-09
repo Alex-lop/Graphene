@@ -77,7 +77,7 @@ def test_each_cell_is_what_the_executor_mostly_did_idle_past_a_minute_a_session_
     assert out.lines[1].plain == " you  |" + " " * 29 + "|"  # alex's acts, with or without a terminal
     axis = "".join(f"{k * 15}s".ljust(15) for k in range(5)).rstrip()  # a label each 15 s: 10 s left 7 cells
     assert out.lines[-1].plain == " " * 6 + axis
-    assert out.note == "3 lanes · 1 min · agents 1 min · you 2 acts ~1 min"
+    assert out.note == "3 lanes · 1 min · agents 1 min · you 2 acts ~1 min · width 1 of 1"  # b, c: sessions
     assert {s.style for s in out.lines[2].spans} == {"green", "dim"}  # a done leaf's bar; idle dim
 
 
@@ -128,7 +128,7 @@ def test_the_note_counts_this_plans_clocks_never_an_archived_ones():
            row("a", 1580, "ended", {"attempt": 1, "exit": 0, "meter": "claude"})]  # fmt: skip
     out, _ = drawn([leaf("a")], old + new, 1590)
     assert out.lines[1].plain.count("|") == 1  # this plan's ask, its one act
-    assert out.note == "1 lane · <1 min · agents <1 min · you 1 act ~1 min"
+    assert out.note == "1 lane · <1 min · agents <1 min · you 1 act ~1 min · width 1 of 1"
 
 
 def test_a_plan_a_session_proposed_starts_at_your_acceptance_so_your_y_is_drawn():
@@ -163,6 +163,9 @@ def test_the_note_says_lanes_minutes_hand_backs_and_both_clocks_and_drops_pieces
     agents, you = {"seconds": 1860, "running": 1, "dollars": 2.41}, {"acts": 4, "minutes": 3}
     said = "3 lanes · 12 min · 1 came back · agents 31 min $2.41 · you 4 acts ~3 min"
     assert VT.note(3, 725, 1, agents, you) == said
+    ran = {"most": 2, "lanes": 3, "alone": 0.4}  # meter.width
+    assert VT.note(3, 725, 1, agents, you, None, ran) == said + " · width 2 of 3"
+    assert VT.note(3, 725, 1, agents, you, len(said) + 14, ran) == said  # the width goes first
     assert VT.note(3, 725, 1, agents, you, 60) == "3 lanes · 12 min · 1 came back · agents 31 min $2.41"
     assert VT.note(3, 725, 1, agents, you, 20) == "3 lanes · 12 min"
     quiet = {"seconds": 0, "running": 0, "dollars": 0}  # no dollars said when there are none
@@ -231,8 +234,10 @@ def test_plan_view_time_prints_the_lanes_the_axis_and_the_note(repo, finish, mon
         " ids       ───▒▒▒▒▒▒▒▒▒▒▒▒██████░░░░░░░░░░░✓◆",
         " schema                                          ──────▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓↩",
         "         0m                                1m",
-        "2 lanes · 2 min · 1 came back · agents 1 min · you 2 acts ~1 min",
+        "2 lanes · 2 min · 1 came back · agents 1 min · you 2 acts ~1 min",  # in 78 cells: the width gave way
     ]
+    wide = person("plan", "--view", "time", "--width", "100", "--height", "24").stdout.splitlines()[-1]
+    assert wide == printed.stdout.splitlines()[-1] + " · width 1 of 2"  # one leaf at a time, of the two
 
 
 def test_an_agent_prints_the_persons_lane_and_clock_not_its_own(repo, finish, monkeypatch):

@@ -185,7 +185,8 @@ def draw(
         line.rstrip()
     back = sum(_came_back(e) for n in lanes for e in by.get(n.id, []))
     since = [e for e in flat if sec(e["timestamp"]) >= 0]  # this plan's clocks, as its lanes are
-    said = note(len(lanes), stop, back, M.agents(since, now), M.you(since, events["person"]), width)
+    said = note(len(lanes), stop, back, M.agents(since, now), M.you(since, events["person"]), width,
+                M.width(since, now))
     return Drawn(lines=lines, at=at, order=[n.id for n in lanes], note=said)
 
 
@@ -212,14 +213,16 @@ def _axis(span: float, per: float, cells: int) -> str:
     return line
 
 
-def note(lanes: int, seconds: float, back: int, agents: dict, you: dict, width: int | None = None) -> str:
-    """What the lanes say at a glance: `3 lanes · 12 min · 1 came back · agents 31 min $2.41 · you 4
-    acts ~3 min`. Whole pieces go from the end until it fits ``width``."""
+def note(lanes: int, seconds: float, back: int, agents: dict, you: dict, width: int | None = None,
+         ran: dict | None = None) -> str:
+    """What the lanes say at a glance: `3 lanes · 12 min · 1 came back · agents 31 min $2.41 · you 4 acts
+    ~3 min · width 2 of 3` (``ran``: `meter.width`). Whole pieces go from the end until it fits ``width``."""
     took = agents["seconds"] // 60 or ("<1" if agents["seconds"] or agents["running"] else 0)
     said = [f"{lanes} lane{'s' * (lanes != 1)}", f"{int(seconds // 60) or '<1'} min"]
     said += [f"{back} came back"] if back else []
     said += [f"agents {took} min" + (f" {money(agents['dollars'])}" if agents["dollars"] else "")]
     said += [f"you {you['acts']} act{'s' * (you['acts'] != 1)} ~{you['minutes']} min"]
+    said += [f"width {ran['most']} of {ran['lanes']}"] if ran else []
     while len(said) > 1 and width is not None and cell_len(" · ".join(said)) > width:
         said.pop()
     return " · ".join(said)
