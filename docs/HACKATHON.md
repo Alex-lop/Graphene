@@ -184,7 +184,7 @@ None of them runs unless you run it, or set `GRAPHENE_SHAPE` to run them after e
   each a question with a default or a risk; an assumption it is sure of goes in the goal of the leaf
   it bears on. Since prompt version 5, Ultra answers in a strict JSON schema, and a check runs only
   its own leaf's files. Since prompt version 6, Ultra hears every fault of an answer at once, at most
-  twice (`planner.py`, `PROMPT_VERSION`).
+  twice, and Graphene repairs what needs no judgement itself (`planner.py`, `PROMPT_VERSION`).
 - **Nano, while you shape.** Each of the three prototypes is one Nano call through
   `tokenfactory.chat`, with a JSON schema for its answer. Graphene checks the answer before showing
   anything: a clause must be in your paragraph, a leaf must exist and be open, a glob must match a

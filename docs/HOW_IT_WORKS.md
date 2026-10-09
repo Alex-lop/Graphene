@@ -104,8 +104,8 @@ The planner's prompt (`ask.RULES`, and the Nemotron planner's system prompt, ver
 repository first, ask only what the code cannot settle, and put up at most three items, each a question or a risk. An
 assumption it is sure of goes in the goal of the leaf it bears on.
 
-The Nemotron planner answers in a strict JSON schema. A refused answer goes back with every fault, at most twice.
-The Claude Code planner's stream says what it cost.
+The Nemotron planner answers in a strict JSON schema. Graphene repairs what needs no judgement; other faults go
+back together, at most twice. The Claude Code planner's stream says what it cost.
 
 How many leaves it is asked for follows the repository's size: 1 to 3 under 2,000 lines, up to 6 under 20,000, up to
 10 past that. The `size` setting makes that finer or coarser.

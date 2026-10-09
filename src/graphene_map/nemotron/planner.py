@@ -7,14 +7,17 @@ already reads, with any sentence after it, and a line when the model it used is 
 (``tokenfactory.resolve``). Only stdout is the answer; what it did and what it cost go to stderr, and
 the bill into the plan's log.
 
-Once the model stops calling tools, it is asked for the proposal in a strict JSON schema (``FORMAT``),
-written as the plan's text (``as_text``) and tried, rolled back. What Graphene refuses goes back to the
-model, every fault at once (``plan_text.faults``), at most twice. The third answer is the answer.
+Once the model stops calling tools, it is asked for the proposal in a strict JSON schema (``FORMAT``).
+What needs no judgement is repaired, with a line for each repair after the proposal (``_repaired``). The
+proposal is written as the plan's text (``as_text``) and tried, rolled back. What Graphene still refuses
+goes back to the model, every fault at once (``plan_text.faults``), at most twice. The third answer is
+the answer.
 """
 
 from __future__ import annotations
 
 import argparse
+import contextlib
 import fnmatch
 import json
 import os
@@ -35,7 +38,7 @@ from .executor import text_calls
 PROMPT_VERSION = 6  # 2: the board (questions with a default, assumptions, risks, leave-outs); 3: then:
 # lines; 4: at most three items, each a question or a risk that changes the tree; assumptions in goals;
 # 5: a check runs only its own files; the proposal is asked for as JSON in a strict schema; 6: every
-# fault at once, sent back at most twice
+# fault at once, sent back at most twice; what needs no judgement is repaired, not sent back
 SYSTEM = """\
 You are the planner for Graphene: a person said what they want, and you propose the tree of work that
 coding agents will do, which the person prunes before anything runs. Read the repository with the tools
@@ -201,20 +204,68 @@ def as_text(p: dict) -> str:
     return "\n".join(out) + "\n"
 
 
-def _answer(raw: str) -> tuple[str, str]:
-    """The proposal's text, and what to print: the fenced block with says after it, or an answer that is
-    not that JSON (a stand-in's) as it is."""
+def _repaired(p: dict, plan: list[P.Node], files: list[str]) -> list[str]:
+    """Mend in ``p`` what needs no judgement, and say each mend in a line. An id the text form refuses is
+    slugged. A needs: that names no node is dropped. So is a parent: that names no other node, a needs:
+    that closes a cycle (the cycle's last edge in the answer's order), and a then: or about: that names a
+    file."""
+    by_id = {n.id: n for n in plan if n.state not in P.GONE}
+    ids, new, said = {*by_id, *(n["id"] for n in p["nodes"])}, {}, []
+    for bad in dict.fromkeys(n["id"] for n in p["nodes"] if not T._VALID_ID.fullmatch(n["id"])):
+        ids.add(new.setdefault(bad, T.slug(bad, ids)))
+        said.append(f"[{bad}] is not an id; it is [{new[bad]}] now")
+    for n in p["nodes"]:
+        n["id"], n["parent"] = new.get(n["id"], n["id"]), new.get(n["parent"], n["parent"])
+        n["needs"] = [new.get(i, i) for i in n["needs"]]
+        if n["parent"] is not None and (n["parent"] == n["id"] or n["parent"] not in ids):
+            said.append(f"[{n['id']}] parent: {n['parent']!r} is not the id of another node; dropped")
+            n["parent"] = None
+        by_id.setdefault(n["id"], P.Node(n["id"], n["title"], parent=n["parent"]))
+    under = P.kids(list(by_id.values()), drawn=True)
+    for n in p["nodes"]:  # each need in the answer's order: the one that closes a cycle is the last of it
+        mine = {i for i, m in by_id.items() if n["id"] in (i, *(a.id for a in P.above(m, by_id)))}
+        for need in list(n["needs"]):
+            if need in by_id and need not in mine and not P._waits(by_id, under, need, mine):
+                by_id[n["id"]].needs.append(need)
+                continue
+            n["needs"].remove(need)
+            why = "closes a cycle" if need in by_id else "is not the id of a node"
+            said.append(f"[{n['id']}] needs: {need!r} {why}; dropped")
+
+    def file(name: str) -> bool:
+        return name not in ids and ("/" in name or name.endswith(P._EXTENSIONS) or name in files)
+
+    for it in p["board"]:
+        it["about"] = new.get(it["about"], it["about"])
+        if it["about"] and file(it["about"]):
+            said.append(f"about: {it['about']} names a file, not a node; dropped")
+            it["about"] = None
+        for c in (it, *it["options"]):
+            for old, slug in new.items():
+                c["then"] = [B._renamed(line, old, slug) for line in c["then"]]
+            for line in list(c["then"]):
+                with contextlib.suppress(P.Refused):  # a then: Graphene cannot read is the model's to fix
+                    if file(named := B.effect(line)[1] or ""):
+                        c["then"].remove(line)
+                        said.append(f"then: {line} names {named}, a file, not a node; dropped")
+    return said
+
+
+def _answer(raw: str, mend=lambda p: []) -> tuple[str, str]:
+    """The proposal's text, and what to print: the fenced block with says after it, and a line for each
+    repair (``mend``); or an answer that is not that JSON (a stand-in's) as it is."""
     try:
         p = json.loads(raw)
+        said = [f"repaired: {line}" for line in mend(p)]
         text = as_text(p)
-        return text, f"```plan\n{text}```\n{B._one(p['says'])}"
+        return text, "\n".join([f"```plan\n{text}```", B._one(p["says"]), *said])
     except (ValueError, TypeError, KeyError, AttributeError):
         return proposal_in(raw), raw
 
 
 def _tried(root: Path, raw: str, files: list[str]) -> tuple[str, str, list[str]]:
-    """The answer as `graphene ask` reads it (``_answer``), and every fault Graphene refuses in it: tried
-    as `graphene ask` tries it, and rolled back. A re-ask drops the tree it replaces first
+    """The answer, repaired, as `graphene ask` reads it (``_answer``), and every fault Graphene refuses in
+    it: tried as `graphene ask` tries it, and rolled back. A re-ask drops the tree it replaces first
     (GRAPHENE_REPLACES), and what a merge or a re-ask replaces may share the new leaves' paths
     (GRAPHENE_BESIDE), as `graphene ask` has it."""
     replaces, (text, said), faults = os.environ.get("GRAPHENE_REPLACES") or None, _answer(raw), []
@@ -223,6 +274,7 @@ def _tried(root: Path, raw: str, files: list[str]) -> tuple[str, str, list[str]]
             _drop_last(store, replaces, P.Caller(P.person_name(), True))  # as `graphene ask`: the person
             left = {n.id for n in _pending(store, replaces)}  # what of the last tree stays
             beside = {*os.environ.get("GRAPHENE_BESIDE", "").split(), *left}
+            text, said = _answer(raw, lambda p: _repaired(p, P.nodes(store), files))
             faults = T.faults(store, text, P.Caller("planner:nemotron", False), files, beside)
             raise _Rehearsed
     except _Rehearsed:

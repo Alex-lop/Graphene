@@ -283,6 +283,7 @@ def test_a_fault_goes_back_twice_at_most_and_the_third_answer_is_the_answer(repo
     assert said == ["asking the planner (nemotron)…"]  # one start: the planner sent it back itself
 
 
+GREETING = node("greeting", "the greeting")
 BYE = node("bye", "say bye", "greeting", scope=["bye.py"], check="true")
 
 
@@ -299,6 +300,54 @@ def test_an_answer_with_two_faults_gets_both_in_one_send_back(repo, fake):
     assert sent.split("\n") == [f"{both}, and let the other wait on it", NO_SCOPE]
     told = f.requests[2]["messages"][-1]["content"]
     assert told.startswith(f"Graphene could not read the proposal: {sent}\nIt read your JSON as:\n")
+
+
+def item(kind: str, id: str, then=(), about=None) -> dict:
+    """A board item of the JSON answer, with a default."""
+    return {"kind": kind, "id": id, "text": id, "default": "yes", "then": list(then), "options": [],
+            "about": about}  # fmt: skip
+
+
+REPAIRS = [  # nodes and a board with a fault that needs no judgement, the line saying its repair, what landed
+    ([GREETING, {**HELLO, "needs": ["nope"]}], [], "[hello] needs: 'nope' is not the id of a node; dropped",
+     lambda s: plan.get(s, "hello").needs == []),
+    ([GREETING, {**HELLO, "needs": ["bye"]}, {**BYE, "needs": ["hello"]}], [],
+     "[bye] needs: 'hello' closes a cycle; dropped",
+     lambda s: [n.needs for n in plan.nodes(s)] == [[], ["bye"], []]),
+    ([GREETING, HELLO], [item("question", "which", ["scope app.py + src/deep.py"])],
+     "then: scope app.py + src/deep.py names app.py, a file, not a node; dropped",
+     lambda s: B.items(s)[0]["then"] == []),
+    ([node("The Greeting", "the greeting"), {**HELLO, "parent": "The Greeting"}], [],
+     "[The Greeting] is not an id; it is [greeting] now",
+     lambda s: plan.get(s, "hello").parent == "greeting"),
+    ([{**HELLO, "parent": "plan"}], [], "[hello] parent: 'plan' is not the id of another node; dropped",
+     lambda s: plan.get(s, "hello").parent is None),
+    ([GREETING, HELLO], [item("risk", "slow", about="app.py")],
+     "about: app.py names a file, not a node; dropped", lambda s: B.items(s)[0]["about"] is None),
+]
+
+
+@pytest.mark.parametrize("case", REPAIRS)
+def test_a_fault_that_needs_no_judgement_is_repaired_and_said_not_sent_back(repo, fake, case):
+    nodes, board, repaired, landed = case
+    f = fake([{"content": "I have read enough."}, answer({**ANSWER, "nodes": nodes, "board": board})])
+    said = []
+    with Store.open(repo) as store:
+        ask(store, repo, "make it say hello", named("nemotron"), say=said.append)
+        assert plan.get(store, "hello").state == PROPOSED and landed(store)
+    assert len(f.requests) == 2  # one strict answer: nothing was sent back
+    assert said[1:4] == ["the planner says:", f"  {ANSWER['says']}", f"  repaired: {repaired}"]
+
+
+def test_a_repair_never_hides_a_fault_that_needs_the_models_judgement(repo, fake):
+    both = {**ANSWER, "nodes": [GREETING, {**HELLO, "scope": [], "needs": ["nope"]}]}
+    f = fake([{"content": PROPOSAL}, answer(both), answer(ANSWER)])
+    with Store.open(repo) as store:
+        ask(store, repo, "make it say hello", named("nemotron"), say=lambda s: None)
+        assert plan.get(store, "hello").scope == ["app.py"]
+        [bill] = store.node_log("*", ("usage",))
+    assert bill["detail"]["sent_back"] == [NO_SCOPE]
+    assert "nope" not in f.requests[2]["messages"][-1]["content"]  # it reads back the repaired text
 
 
 def test_a_split_that_repeats_a_goal_of_two_lines_lands_with_nothing_sent_back(repo, fake):
