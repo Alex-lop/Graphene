@@ -339,14 +339,17 @@ def test_a_fault_that_needs_no_judgement_is_repaired_and_said_not_sent_back(repo
     assert said[1:4] == ["the planner says:", f"  {ANSWER['says']}", f"  repaired: {repaired}"]
 
 
-def test_spaces_around_an_id_are_no_fault_to_repair(repo, fake):
-    """The text writes every id on one line with no space around it, so the repairs read it that way."""
-    spaced = {**ANSWER, "nodes": [node(" greeting", "the greeting"), {**HELLO, "parent": "greeting\n"}]}
+def test_a_name_the_text_form_reads_is_no_fault_to_repair(repo, fake):
+    """The repairs read an id, a parent: and needs: as the text form reads them back: on one line, with
+    no space around, "[greeting]" as greeting, and "hello, none" as hello."""
+    bye = {**BYE, "parent": "`greeting`", "needs": ["[hello], none"]}
+    spaced = {**ANSWER, "nodes": [node(" greeting", "the greeting"), {**HELLO, "parent": "greeting\n"}, bye]}
     f = fake([{"content": "I have read enough."}, answer(spaced)])
     said = []
     with Store.open(repo) as store:
         ask(store, repo, "make it say hello", named("nemotron"), say=said.append)
-        assert plan.get(store, "hello").parent == "greeting"
+        assert plan.get(store, "hello").parent == "greeting" == plan.get(store, "bye").parent
+        assert plan.get(store, "bye").needs == ["hello"]
     assert len(f.requests) == 2 and not [line for line in said if "repaired" in line]
 
 

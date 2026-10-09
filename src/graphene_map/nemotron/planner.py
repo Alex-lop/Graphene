@@ -210,8 +210,12 @@ def _repaired(p: dict, plan: list[P.Node], files: list[str]) -> list[str]:
     dropped too: the cycle's last edge, in the answer's order. A node that needs a node above it keeps the
     need. The tree says the opposite, and only the model knows which is wrong. A then: or about: that
     names a file is dropped."""
-    for n in p["nodes"]:  # as the text writes them: on one line, with no space around
-        n["id"], n["parent"], n["needs"] = _flat([n["id"], n["parent"], n["needs"]])
+    for n in p["nodes"]:  # as the text form reads them back: "[a]" is a, "none" is none, "a, b" is two
+        parent = T._uncomment(B._one(n["parent"] or "")).strip("[]`* ")
+        n["id"], n["parent"] = B._one(n["id"]), None if parent.lower() in T._NONE else parent
+        with contextlib.suppress(P.Refused):  # a quote left open: no need it names is a node, so each goes
+            needs = T._words(B._one(", ".join(n["needs"])), 0)
+            n["needs"] = [w.strip("[]") for w in needs if w.strip("[]").lower() not in T._NONE]
     by_id = {n.id: n for n in plan if n.state not in P.GONE}
     ids, new, said = {*by_id, *(n["id"] for n in p["nodes"])}, {}, []
     for bad in dict.fromkeys(n["id"] for n in p["nodes"] if not T._VALID_ID.fullmatch(n["id"])):
