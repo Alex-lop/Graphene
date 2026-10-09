@@ -813,12 +813,12 @@ def register(cli: typer.Typer, root, open_store, fail):
             accepted = P.accept(store, ids or [], P.caller(), files=files, told=told)
             took = None
             if not P.nodes(store, (P.PROPOSED,)):  # the whole plan is accepted: what the person left
-                took = B.took(B.defaults(store, P.caller(), files), B.left(store))  # open takes its default
+                took = B.took(B.defaults(store, P.caller(), files, told), B.left(store))
             if accepted:  # first, in a line: what the screen's bottom line gives of it, the defaults too
                 out(f"accepted {', '.join(n.id for n in accepted)}" + (f"; {took}" if took else ""))
             for n in accepted:
                 out(one_row(store, n, len(P.above(n, by_id))))
-            for line in told:  # what in the plan now waits on what was accepted
+            for line in told:  # what in the plan now waits on what was accepted, or on a default taken
                 out(line)
             if P.goal(store) != goal_was:
                 out(f"the plan: {P.goal(store)}  (the planner's sentence, accepted with its tree)")
@@ -996,14 +996,14 @@ def register(cli: typer.Typer, root, open_store, fail):
                         return False
                     return True
 
-                took = None
+                took, told = None, []
                 with contextlib.suppress(NothingStarts), P.undoable(store, who, "board take"):
-                    said = B.took(B.defaults(store, who, files), B.left(store))
+                    said = B.took(B.defaults(store, who, files, told), B.left(store))
                     if not any(startable(n) for n in starts):
                         raise NothingStarts  # rolls the takes back: the run then says why nothing starts
-                    took = said
-                if took:
-                    out(took)
+                    took = [line for line in [said, *told] if line]  # and what a default made wait
+                for line in took or []:
+                    out(line)
             logs = r / ".graphene" / "runs"
             since = len(store.node_log())  # what this run did is what the log says after this
             try:
@@ -1188,22 +1188,21 @@ def register(cli: typer.Typer, root, open_store, fail):
 
         def go(store):
             now = P.get(store, node_id)  # added to as it is at this moment, so an edit made since stays
-            before = now.rev
+            seen = len(store.node_log(node_id, ("edited",)))
             if add_scope:
                 edits["scope"] = [*now.scope, *(g for g in dict.fromkeys(add_scope) if g not in now.scope)]
             if add_goal:
                 edits["goal"] = P.goal_plus(now.goal, add_goal) or now.goal
             node = P.edit(store, node_id, edits, P.caller(), files=files, told=told)
-            last = store.node_log(node_id, ("edited",))[-1] if node.rev != before else None
-            return node, last
+            return node, store.node_log(node_id, ("edited",))[seen:]  # yours, then a need Graphene added
 
-        n, last = write(f"node set {node_id}", go)
-        if last is None:
+        n, rows = write(f"node set {node_id}", go)
+        if not rows:
             out(f"{n.id} is unchanged (revision {n.rev})")
             said_where()
             return
         out(f"{n.id} is now revision {n.rev}:")
-        for name, (before, after) in last["detail"]["changed"].items():
+        for name, (before, after) in (c for e in rows for c in e["detail"]["changed"].items()):
             out(f"  {name}: {value(before)} → {value(after)}")
         for line in told:
             out(line)

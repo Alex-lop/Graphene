@@ -9,6 +9,11 @@ The loop (9 October). A leaf that finds a landed leaf's fault reopens it with on
   there proves nothing, one that fails on a file outside the leaf's scope names it. `--no-precheck` skips it.
 - `graphene node show` says when a check ran a file a later leaf rewrites, with the file and the base commit.
 - An executor whose check fails on a file another leaf landed releases with `--wants` naming it and the fault.
+- The time view draws every id whole. Its label column fits the longest id. Run `graphene plan --view time`.
+- A board answer that changes a check or a scope is judged as `node set` is. The check waits on the leaf
+  that writes its file, and a second writer of a path is refused. Run `graphene board take`.
+- A need Graphene adds to a leaf is logged as Graphene's edit, not yours. `graphene plan changes` lists it, and
+  `graphene watch` marks the leaf ~. A leaf that came back still waits on you. Run `graphene node set`.
 
 The timeline (8 October). A fourth view, and fixes for what the meter night's runs stopped on.
 - A fourth view, `time`: a lane for each leaf that was held, what its executor did when, and marks for a refused

@@ -23,8 +23,8 @@ SIZES = ((80, 24), (120, 36))
 BOARD = """\
 question: which id: the row id or a new uuid?  [which-id]
     default: the row id; schema.py already has it
-    option: a uuid column, added to schema.py
-    then: scope ids + schema.py
+    option: a uuid, from a new uuid.py
+    then: scope ids + uuid.py
     about: ids
 assume: ids are integers  [int-ids]
 risk: the check could pass on an empty list  [empty-check]
@@ -122,10 +122,10 @@ def test_each_key_answers_the_item_under_the_cursor_and_says_its_command(repo, s
     seen = drive(repo, steps, size)
     board = items(repo)
     assert [board[i]["state"] for i in OPEN] == ["picked", "taken", "parked", "dropped", "answered"]
-    assert board["which-id"]["answer"] == "a uuid column, added to schema.py"
+    assert board["which-id"]["answer"] == "a uuid, from a new uuid.py"
     assert board["shape"]["answer"] == "keep it"
     with Store.open(repo) as store:
-        assert "schema.py" in P.get(store, "ids").scope  # the option's then: applied
+        assert "uuid.py" in P.get(store, "ids").scope  # the option's then: applied
     said = [s["status"] for s in seen]
     assert said[0].startswith("graphene board pick which-id 1: picked which-id")
     assert said[1].startswith("graphene board take int-ids: taken int-ids")
@@ -176,14 +176,14 @@ def test_the_side_pane_shows_the_item_whole_and_what_its_answer_changed(repo, si
     for said in (
         "which id: the row id or a new uuid?", "which-id · question · open",
         "put up by a Claude Code session (5e55105e)", "y default the row id; schema.py already has it",
-        "1 a uuid column, added to schema.py then: scope ids + schema.py", "about ids users returns ids",
+        "1 a uuid, from a new uuid.py then: scope ids + uuid.py", "about ids users returns ids",
     ):  # fmt: skip
         assert said in pane, (said, pane)
     assert after["at"] == "which-id"  # in the fold, opened
     pane = " ".join(after["detail"].split())
     for said in (
-        "which-id · question · picked", "decided a uuid column, added to schema.py (option 1)",
-        "changed ids: scope + schema.py", "told to the executors of ids and under it, as a decided: line",
+        "which-id · question · picked", "decided a uuid, from a new uuid.py (option 1)",
+        "changed ids: scope + uuid.py", "told to the executors of ids and under it, as a decided: line",
     ):  # fmt: skip
         assert said in pane, (said, pane)
     assert fold["at"] == "fold"
@@ -227,7 +227,7 @@ def test_a_board_that_asks_nothing_has_no_rows_no_line_and_no_count(repo, size):
 
 def test_with_board_auto_the_board_shows_only_while_a_question_is_open(repo):
     planned(repo, BOARD.replace("question: which id", "assume: which id").replace(
-        "    option: a uuid column, added to schema.py\n    then: scope ids + schema.py\n", "").replace(
+        "    option: a uuid, from a new uuid.py\n    then: scope ids + uuid.py\n", "").replace(
         "note: keep the response shape  [shape]\n", ""))  # a session's note would ask (see below)
     with Store.open(repo) as store:
         S.apply(store, "board: auto\n", ALEX)
