@@ -1,0 +1,31 @@
+# graphene demo tests/recordings/loop-claude-3.jsonl, paused at the frame where e2e-xml came back (frame 91 of 138), j onto its row, at 80x24 (headless, replay_shot.py)
+
+came back at frame 91 of 138
+selected e2e-xml
+keys line: space play · . next · r again · Enter record · l output · ? help · q quit
+pane:
+the XML feed end to end
+e2e-xml · came back
+normalize/fields.py FIELD_MAPS["xml"] maps sku to "xcode" but
+samples/prices.xml uses attribute "code" (commit 34c444d), so every record
+normalizes to None and load emits nothing; sku key must be "code"
+  w  widen its scope to normalize/fields.py
+     graphene node widen e2e-xml
+  b  a sibling leaf for normalize/fields.py (its check: true), which it waits
+     on
+     graphene node sibling e2e-xml
+  r  reopen xml-source with this reason, which it waits on
+     graphene node reopen xml-source --note 'came back from e2e-xml…
+  ?  ask the planner
+     graphene ask 'e2e-xml came back: propose what would let it be done'…
+
+goal   tests/test_e2e_xml.py runs the real load on samples/prices.xml through
+       the same path csv takes and asserts each JSONL record has sku, name,
+       price_cents and source "xml" with the sample's values; it passes. If
+       the test fails because a file another leaf already landed is wrong, do
+       not fix that file: release this leaf with --wants naming it and a why
+       that names the fault.
+scope  tests/test_e2e_xml.py
+check  python3 -m pytest -q tests/test_e2e_xml.py
+bill   $0.1129 at list price for this leaf's 5 calls · claude-sonnet-5-5
+final view: contract | status: graphene watch --view time: 3 lanes · 2 min · 1 came back · agents 1 min…
