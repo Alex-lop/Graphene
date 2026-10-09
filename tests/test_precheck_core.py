@@ -150,3 +150,15 @@ def test_a_check_whose_output_is_not_utf8_is_judged_here_and_at_done(repo):
         [(_, d)] = K.run(store, repo)
     assert d["verdict"] == "passes"
     assert P.run_check("printf 'caf\\351'; exit 1", repo)[:2] == (False, "caf�")
+
+
+@pytest.mark.parametrize("why, runs", [("timed out after 1800 s", 1), ("could not be run: no git", 2)])
+def test_a_check_not_run_to_its_end_is_said_and_one_that_timed_out_is_kept(repo, monkeypatch, why, runs):
+    """A check that hangs at the base made every run wait CHECK_TIMEOUT again, and said nothing of it."""
+    asked = []
+    monkeypatch.setattr(K, "_here", lambda command, root, committed: asked.append(command) or (None, why))
+    with Store.open(repo) as store:
+        leaves(store, ("hang", ["new.py"], "sleep 9999"))
+        rows = K.run(store, repo)
+        K.run(store, repo)
+    assert len(asked) == runs and K.said(rows)[0] == f"hang: its check at {rows[0][1]['base'][:7]} {why}"

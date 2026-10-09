@@ -63,8 +63,10 @@ def current(store, node: P.Node, base: str | None, tree: str | None) -> dict | N
     last = rows[-1] if rows else None
     now = (node.rev, node.check, base, tree)
     fresh = last and tree and (last["rev"], last["check"], last["base"], last.get("tree")) == now
-    unfinished = last and (last["verdict"] == "not-run" or last["why"].startswith("not read"))
-    return last if fresh and not unfinished else None  # a check not run, or a red not read: try again
+    unfinished = last and (last["verdict"] == "not-run" and not last["why"].startswith("timed out")
+                           or last["why"].startswith("not read"))  # fmt: skip
+    # a check that could not be run, or a red not read: try again. One that timed out would time out again
+    return last if fresh and not unfinished else None
 
 
 def _here(command: str, root: Path, committed: bool = False) -> tuple[int | None, str]:
@@ -143,7 +145,7 @@ def judge(node: P.Node, code: int | None, text: str, files: list[str],
     """(verdict, why, paths) of a check that was run: passes, outside or red."""
     if code == 0:
         return "passes", "it exits 0 before any work is done", []
-    if code is None:  # it timed out or could not be run: no verdict, and it is tried again next time
+    if code is None:  # it timed out or could not be run: no verdict (`current` says which is run again)
         return "not-run", _gist(text), []
     paths = _outside(node, text, files, live)
     if paths:
@@ -206,8 +208,8 @@ def run(store, root: Path, ids=(), again: bool = False, say=None, committed: boo
 
 
 def said(rows) -> list[str]:
-    """The lines a run prints: none for a red, a line each for a check that passes or names a path outside
-    its scope, then the header."""
+    """The lines a run prints: none for a red, a line each for a check that passes, names a path outside
+    its scope, or did not run to its end, then the header."""
     base = next((d["base"] for _, d in rows if d.get("base")), None)
     if not base:
         return []
@@ -218,5 +220,7 @@ def said(rows) -> list[str]:
                          f"`graphene node set {node.id} --check '…'` or e in watch")  # fmt: skip
         elif d["verdict"] == "outside":
             lines.append(f"{node.id}: its check names {', '.join(d['paths'])}, outside its scope, at {at}")
+        elif d["verdict"] == "not-run":
+            lines.append(f"{node.id}: its check at {at} {d['why']}")
     seconds = getattr(rows, "seconds", 0.0)
     return [*lines, f"red first: {len(rows)} check{'s' * (len(rows) != 1)} at {at} in {seconds:.0f} s"]

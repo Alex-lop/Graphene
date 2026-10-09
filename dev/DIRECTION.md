@@ -1744,7 +1744,8 @@ any of them.
 186. **Three verdicts, by behaviour.** `passes` (exit 0 at the base: the check proves nothing; `e` is the fix),
      `outside` (a red whose failure names a path no scope of the leaf covers: the output's paths, or the
      command's when it names nothing of the leaf's own), `red` (the leaf's own, said of nothing). A check that
-     did not run is `not-run`, tried again next time. A sub-goal's check is not run first.
+     could not run, or timed out, is `not-run`, said in a line; it is tried again next time, unless it timed
+     out. A sub-goal's check is not run first.
 187. **Red first is a warning, not a gate.** The run prints one line a flagged leaf and goes on. A stop while the
      checks run ends them with all they started, and the run says it stopped.
 188. **The mark.** A flagged leaf shows `∅` after its title in `watch`; its pane says why in one line.
