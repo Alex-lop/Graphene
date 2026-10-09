@@ -315,7 +315,7 @@ REPAIRS = [  # nodes and a board with a fault that needs no judgement, the line 
      "[bye] needs: 'hello' closes a cycle; dropped",
      lambda s: [n.needs for n in plan.nodes(s)] == [[], ["bye"], []]),
     ([GREETING, HELLO], [item("question", "which", ["scope app.py + src/deep.py"])],
-     "then: scope app.py + src/deep.py names app.py, a file, not a node; dropped",
+     "[which] then: scope app.py + src/deep.py names app.py, a file, not a node; dropped",
      lambda s: B.items(s)[0]["then"] == []),
     ([node("The Greeting", "the greeting"), {**HELLO, "parent": "The Greeting"}], [],
      "[The Greeting] is not an id; it is [greeting] now",
@@ -328,7 +328,7 @@ REPAIRS = [  # nodes and a board with a fault that needs no judgement, the line 
     ([{**HELLO, "parent": "plan"}], [], "[hello] parent: 'plan' is not the id of another node; dropped",
      lambda s: plan.get(s, "hello").parent is None),
     ([GREETING, HELLO], [item("risk", "slow", about="app.py")],
-     "about: app.py names a file, not a node; dropped", lambda s: B.items(s)[0]["about"] is None),
+     "[slow] about: app.py names a file, not a node; dropped", lambda s: B.items(s)[0]["about"] is None),
 ]
 
 

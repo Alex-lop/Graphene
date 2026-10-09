@@ -247,7 +247,7 @@ def _repaired(p: dict, plan: list[P.Node], files: list[str]) -> list[str]:
     for it in p["board"]:
         it["about"] = new.get(it["about"], it["about"]) if it["about"] else None  # "" names no node
         if it["about"] and file(it["about"]):
-            said.append(f"about: {it['about']} names a file, not a node; dropped")
+            said.append(f"[{it['id']}] about: {it['about']} names a file, not a node; dropped")
             it["about"] = None
         for c in (it, *it["options"]):
             for old, slug in new.items():
@@ -256,7 +256,7 @@ def _repaired(p: dict, plan: list[P.Node], files: list[str]) -> list[str]:
                 with contextlib.suppress(P.Refused):  # a then: Graphene cannot read is the model's to fix
                     if file(named := B.effect(line)[1] or ""):
                         c["then"].remove(line)
-                        said.append(f"then: {line} names {named}, a file, not a node; dropped")
+                        said.append(f"[{it['id']}] then: {line} names {named}, a file, not a node; dropped")
     return said
 
 
