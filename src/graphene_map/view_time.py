@@ -60,13 +60,10 @@ def _came_back(e: dict) -> bool:
 def _tries(rows: list[dict], now: datetime | None) -> list[tuple[dict, list[dict]]]:
     """Each attempt (`meter.attempts`) and its did and said rows: its number's, from its start to the
     next attempt's, as the screen's `l` takes them."""
-    tries, out = M.attempts(rows, now=now), []
-    talk = [e for e in rows if e["kind"] in ("did", "said")]
-    ends = [*(a["started"] for a in tries[1:]), "9"][: len(tries)]  # "9" sorts after every timestamp
-    for a, end in zip(tries, ends, strict=True):
-        out.append((a, [e for e in talk if e["detail"].get("attempt") == a["attempt"]
-                        and a["started"] <= e["timestamp"] < end]))  # fmt: skip
-    return out
+    talk, tries = [e for e in rows if e["kind"] in ("did", "said")], M.attempts(rows, now=now)
+    return [(a, [e for e in talk if e["detail"].get("attempt") == a["attempt"]
+                 and a["started"] <= e["timestamp"] < b["started"]])
+            for a, b in itertools.pairwise([*tries, {"started": "9"}])]  # "9" sorts after every timestamp
 
 
 def _phrase(e: dict) -> str:
