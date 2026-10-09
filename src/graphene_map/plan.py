@@ -1244,6 +1244,16 @@ def check_paths(check: str, files: list[str], live: list[Node]) -> list[tuple[st
     return out
 
 
+def check_runs(leaf: Node, other: Node, named: list[tuple[str, list[str]]]) -> list[str]:
+    """The paths ``leaf``'s check runs (``named``: its ``check_paths``) that ``other`` writes and the
+    leaf's own scope does not cover, sorted."""
+    return sorted({
+        p for path, in_it in named if may_collide([path], other.scope)
+        for p in overlap([path], other.scope, _within(in_it, _prefixes(other.scope)))
+        if not in_scope(p, leaf.scope)
+    })  # fmt: skip
+
+
 def wait_on_checks(
     everything: list[Node], ids: set[str], files: list[str], beside: frozenset[str] | set[str] = frozenset(),
     writers: frozenset[str] | set[str] = frozenset(),
@@ -1269,11 +1279,7 @@ def wait_on_checks(
             continue
         named, waits = check_paths(leaf.check, files, live), {}
         for other in others:
-            hit = sorted({
-                p for path, in_it in named if may_collide([path], other.scope)
-                for p in overlap([path], other.scope, _within(in_it, _prefixes(other.scope)))
-                if not in_scope(p, leaf.scope)
-            })  # fmt: skip
+            hit = check_runs(leaf, other, named)
             if not hit or _waits(by_id, under, leaf.id, {other.id}):  # none, or it waits on other already
                 continue
             if not _waits(by_id, under, other.id, {leaf.id}):
@@ -1392,6 +1398,20 @@ def owners(node: Node, everything: list[Node], paths: list[str]) -> dict[str, st
     }
 
 
+def done_owners(node: Node, everything: list[Node], paths: list[str]) -> list[str]:
+    """The first done leaf (not dropped or archived, not a sub-goal) whose scope has each of ``paths``,
+    once each, in the order of the paths: who the `r` offer reopens."""
+    parents = {n.parent for n in everything if n.state not in GONE}
+    done = [n for n in everything
+            if n.id != node.id and n.id not in parents and n.state == DONE and not n.aside]
+    out: list[str] = []
+    for p in paths:
+        i = next((n.id for n in done if in_scope(p, n.scope)), None)
+        if i and i not in out:
+            out.append(i)
+    return out
+
+
 def held(store, node: Node) -> str:
     """What the node wanted that other leaves own, said (`a.txt is a's and b.txt is b's`), or ""."""
     return " and ".join(f"{p} is {i}'s" for p, i in owners(node, nodes(store), wanted(store, node)).items())
@@ -1421,8 +1441,8 @@ def offers(store, node: Node) -> list[tuple[str, str, list[str]]]:
     command that does it): widen its scope to the paths it wanted, a sibling leaf for those paths,
     or make it wait on the nodes its reason names. Each is a command that exists on its own."""
     last = (store.node_log(node.id, ("started", "released", "reopened")) or [{"kind": ""}])[-1]
-    if node.state != OPEN or last["kind"] != "released":
-        return []
+    if node.state != OPEN or last["kind"] != "released" or not came_back(store, node):
+        return []  # after w, b or r it is waiting or ready, not came back: nothing to offer
     out: list[tuple[str, str, list[str]]] = []
     everything = nodes(store)
     by_id = {n.id: n for n in everything}
@@ -1457,6 +1477,17 @@ def offers(store, node: Node) -> list[tuple[str, str, list[str]]]:
             return f"{i}, whose scope has {', '.join(has)}" if has else i
 
         out.append(("n", f"make {node.id} wait on {', '.join(map(whose, named))}", argv))
+    # a path a live leaf holds is that leaf's (the n offer): r reopens done owners of the rest, and never
+    # one the leaf could not wait on without a cycle
+    back = done_owners(node, everything, [p for p in wanted(store, node) if p not in held])
+    back = [i for i in back if acyclic(everything, node.id, [i])]
+    if back:
+        note = f"came back from {node.id}: {' '.join(why.split())}"
+        many = len(back) > 1
+        out.insert(len(out) - bool(named), (
+            "r", f"reopen {', '.join(back)} with this reason; {node.id} waits on {'them' if many else 'it'}",
+            ["node", "reopen", *back, "--note", note, "--for", node.id],
+        ))  # fmt: skip
     return out
 
 
@@ -2663,19 +2694,44 @@ def signoff(
     return node
 
 
-def reopen(store, node_id: str, who: Caller, note: str, now: str | None = None) -> Node:
-    """Not good enough: back to open, with what is wrong. The note is printed to whoever takes it next."""
+def reopen(store, node_id: str | list[str], who: Caller, note: str, now: str | None = None,
+           for_leaf: str | None = None) -> Node:  # fmt: skip
+    """Not good enough: back to open, with what is wrong. The note is printed to whoever takes it next.
+    Several ids are reopened together; ``for_leaf`` (a leaf that came back on their fault) then waits on
+    each, saved as an edit of its contract. Returns the first node reopened."""
     _person_only(who, "reopening a node")
     now = now or _now()
+    ids = [node_id] if isinstance(node_id, str) else list(dict.fromkeys(node_id))  # an id named twice is one
     with store.claim():
-        node = get(store, node_id)
-        if node.state not in (REVIEW, DONE):
-            raise Refused(f"{node.id} is {node.state}; only a finished node is reopened")
-        node.state, node.executor, node.session_id, node.agent_id = OPEN, None, None, None
-        node.rev += 1
-        _save(store, node, "reopened", who, now, note=note, rev=node.rev)
+        leaf = get(store, for_leaf) if for_leaf else None
+        if leaf and (leaf.id in ids or leaf.state == RUNNING):
+            raise Refused(f"{leaf.id} cannot wait on {', '.join(ids)}: " + (
+                "it is one of them" if leaf.id in ids else "it is running"))  # fmt: skip
+        if leaf and not acyclic(nodes(store), leaf.id, ids):
+            raise Refused(f"{leaf.id} cannot wait on {', '.join(ids)}: the plan would have a cycle")
+        picked = [get(store, i) for i in ids]
+        for node in picked:
+            if node.state not in (REVIEW, DONE):
+                raise Refused(f"{node.id} is {node.state}; only a finished node is reopened")
+        for node in picked:
+            node.state, node.executor, node.session_id, node.agent_id = OPEN, None, None, None
+            node.rev += 1
+            _save(store, node, "reopened", who, now, note=note, rev=node.rev)
+        if leaf:
+            everything = nodes(store)
+            by_id, under = {n.id: n for n in everything if n.state not in GONE}, kids(everything, drawn=True)
+            was = list(leaf.needs)
+            for n in picked:
+                if not _waits(by_id, under, leaf.id, {n.id}):
+                    leaf.needs.append(n.id)
+                    by_id[leaf.id] = leaf
+            # the person's answer to the hand-back, as w and b are: after it the leaf is waiting, not came
+            # back (`let_go`), so the next run takes it once what it waits on has landed again
+            changed = {"needs": [was, leaf.needs]} if leaf.needs != was else {}
+            leaf.rev += bool(changed)
+            _save(store, leaf, "edited", who, now, changed=changed, rev=leaf.rev, reopened=ids)
         _settle(store, who, now)
-    return node
+    return picked[0]
 
 
 def notes(store, node_id: str) -> list[str]:

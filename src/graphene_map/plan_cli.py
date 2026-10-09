@@ -144,7 +144,8 @@ def register(cli: typer.Typer, root, open_store, fail):
             offers = P.offers(store, n)
             said = [f"`graphene {' '.join(argv)}` ({what})" for _, what, argv in offers]
             said.append(f"{'or ' if said else ''}`graphene run --node {n.id}` (run it again)")
-            said[-1] += f"; {', '.join([*(k for k, _, _ in offers), 'r'])} in `graphene watch`"
+            keys = [k for k, _, _ in offers]
+            said[-1] += f"; {', '.join(keys + ['r'] * ('r' not in keys))} in `graphene watch`"
             also = f", and {more} more did" if more else ""
             return [f"next: {n.id} ({n.title}) came back{also}: {', '.join(said)}"]
 
@@ -953,6 +954,9 @@ def register(cli: typer.Typer, root, open_store, fail):
         here: bool = typer.Option(
             False, "--here", help="Run in your checkout and commit nothing; the checkout is exposed."
         ),
+        precheck: bool = typer.Option(
+            True, "--precheck/--no-precheck", help="Skip the checks at the base commit."
+        ),
     ) -> None:
         """Run every ready leaf in its own worktree, one executor per leaf.
 
@@ -1003,6 +1007,14 @@ def register(cli: typer.Typer, root, open_store, fail):
             logs = r / ".graphene" / "runs"
             since = len(store.node_log())  # what this run did is what the log says after this
             try:
+                if precheck and (starts or not node):  # a warning, not a gate: if it raises, the run goes on
+                    from . import precheck as pre
+
+                    try:
+                        for line in pre.said(pre.run(store, r, [n.id for n in starts] if node else [])):
+                            out(line)
+                    except Exception as no:
+                        out(f"red first: not run: {' '.join(str(no).split())[:200]}")
                 if here:
                     out("--here: your checkout is exposed. The executor writes in it. Nothing is committed")
                     run_plan(store, checkout(), template, attempts, node or None, out, logs)
@@ -1249,9 +1261,9 @@ def register(cli: typer.Typer, root, open_store, fail):
 
         def go(store):
             n = P.start(store, node_id, P.caller(), checkout())
+            for note in P.notes(store, n.id):  # first, as the run's prompt tells them
+                out(note)
             out(P.contract(n, P.trail(store, n), B.decided(store, n)))
-            for note in P.notes(store, n.id):
-                out(f"  sent back with: {note}")
 
         run(go)
         said_where()
@@ -1342,17 +1354,25 @@ def register(cli: typer.Typer, root, open_store, fail):
 
     @node_cli.command(hidden=True)
     def reopen(
-        node_id: str = typer.Argument(...),
+        node_id: list[str] = typer.Argument(...),
         note: str = typer.Option(
             None, "--note", help="What is wrong, told to whoever takes it next; asked for at a terminal."
         ),
+        for_leaf: str = typer.Option(
+            None, "--for", help="The leaf that came back: it waits on what is reopened."
+        ),
     ) -> None:
         """Send a finished node back, with what is wrong."""
-        if note is None and run(lambda s: P.get(s, node_id).state in (P.DONE, P.REVIEW)):  # else its refusal
-            note = asked(f"graphene node reopen {node_id}", "--note", "what is wrong")
-        run(lambda s: P.reopen(s, node_id, P.caller(), note or ""))
-        out(f"{node_id} is open again; whoever takes it next is shown your note (its contract is as it was: "
-            f"`graphene node edit {node_id}` changes it)")  # fmt: skip
+        if note is None and len(node_id) == 1 and run(
+            lambda s: P.get(s, node_id[0]).state in (P.DONE, P.REVIEW)
+        ):  # else its refusal
+            note = asked(f"graphene node reopen {node_id[0]}", "--note", "what is wrong")
+        run(lambda s: P.reopen(s, node_id, P.caller(), note or "", for_leaf=for_leaf))
+        names = ", ".join(node_id)
+        one = len(node_id) == 1
+        out(f"{names} {'is' if one else 'are'} open again; whoever takes {'it' if one else 'them'} next is "
+            f"shown your note ({'its' if one else 'their'} contract is as it was: "
+            f"`graphene node edit {node_id[0]}` changes it)")  # fmt: skip
         said_where()
 
     @node_cli.command()
@@ -1385,7 +1405,7 @@ def register(cli: typer.Typer, root, open_store, fail):
             why = (store.node_log(n.id, ("released",)) or [{"detail": {}}])[-1]["detail"].get("why", "")
             lines.append(f"  came back: {' '.join(str(why).split())}")
             for _key, what, command in offers:
-                lines.append(f"    {what}: `graphene {' '.join(command)}`")
+                lines.append(f"    {what}: `graphene {shlex.join(command)}`")
         if n.state == P.OPEN and P.not_offered(store, n):
             lines.append(f"    {P.not_offered(store, n)}")
         if n.state == P.OPEN and P.RUN_TREE in (n.checkout or "") and Path(n.checkout or "").is_dir():
