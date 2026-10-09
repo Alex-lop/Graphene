@@ -111,3 +111,33 @@ def test_the_header_line_has_the_count_the_commit_and_the_wall_time(repo):
     assert "`graphene node set a --check" in lines[0]
     assert lines[-1].startswith("red first: 2 checks at ") and lines[-1].endswith(" s")
     assert f" in {rows.seconds:.0f} s" in lines[-1]
+
+
+def test_a_check_that_runs_its_own_new_test_and_a_passing_outside_one_is_red_not_outside(repo):
+    (repo / "tests" / "test_fine.py").write_text("print('fine')\n")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", "a test that passes")
+    with Store.open(repo) as store:
+        both = "python3 tests/test_fine.py && python3 tests/test_new.py"
+        leaves(store, ("a", ["new.py", "tests/test_new.py"], both))
+        [(_, d)] = K.run(store, repo)
+    assert d["verdict"] == "red" and d["paths"] == []  # its own test is what is missing
+
+
+def test_a_check_whose_output_names_a_failing_outside_file_is_outside_by_the_output(repo):
+    with Store.open(repo) as store:
+        both = "python3 tests/test_other.py && python3 tests/test_new.py"
+        leaves(store, ("a", ["new.py", "tests/test_new.py"], both))
+        [(_, d)] = K.run(store, repo)
+    assert d["verdict"] == "outside" and d["paths"] == ["tests/test_other.py"]
+
+
+def test_the_whole_suite_is_outside_by_the_file_that_fails(repo):
+    (repo / "tests" / "__init__.py").write_text("")
+    (repo / "tests" / "test_other.py").write_text("def test_other():\n    assert False, 'other is broken'\n")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", "a suite with one failing test")
+    with Store.open(repo) as store:
+        leaves(store, ("a", ["new.py", "tests/test_new.py"], "python3 -m pytest -q"))
+        [(_, d)] = K.run(store, repo)
+    assert d["verdict"] == "outside" and d["paths"] == ["tests/test_other.py"]

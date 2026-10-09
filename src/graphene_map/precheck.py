@@ -101,16 +101,22 @@ def _gist(text: str) -> str:
 
 
 def _outside(node: P.Node, text: str, files: list[str], live: list[P.Node]) -> list[str]:
-    """The paths the check's words and the output's lines name that no scope of the leaf covers, and
-    that are a tracked file, a tracked directory, or a path a live leaf's scope covers (``check_paths``).
-    A directory that holds a glob of the leaf's own scope is the leaf's own."""
-    lines = ["x " + line for line in text[-P.TAIL :].splitlines()]  # "x": a line's first word counts
+    """The paths a red check fails on that no scope of the leaf covers: those the output's lines name
+    (a failing test's file), and those the command names when it names nothing of the leaf's own (a
+    whole suite, another leaf's file). A command that runs a file of its own (its new test, not there
+    yet) is red for its own reason, unless the output says otherwise. A path is one ``check_paths``
+    reads: a tracked file, a tracked directory, or a path a live leaf's scope covers. A directory that
+    holds a glob of the leaf's own scope is the leaf's own."""
     mine = [g for g in node.scope if not g.startswith("!")]
-    found: list[str] = []
-    for line in [node.check, *lines]:
-        for path, _ in P.check_paths(line, files, live):
-            own = P.in_scope(path, node.scope) or any(g.startswith(path.rstrip("/") + "/") for g in mine)
-            if not own and path not in found:
+
+    def own(path: str) -> bool:
+        return P.in_scope(path, node.scope) or any(g.startswith(path.rstrip("/") + "/") for g in mine)
+
+    named = [path for path, _ in P.check_paths(node.check, files, live)]
+    found = [] if any(own(p) for p in named) else [p for p in named if not own(p)]
+    for line in text[-P.TAIL :].splitlines():
+        for path, _ in P.check_paths("x " + line, files, live):  # "x": a line's first word counts
+            if not own(path) and path not in found:
                 found.append(path)
     return found
 
