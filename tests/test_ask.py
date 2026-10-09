@@ -95,6 +95,29 @@ def test_a_proposal_it_cannot_read_goes_back_to_the_planner_once(repo, tmp_path,
         assert any("Graphene could not read the proposal: line 3: signoff is yes or no" in s for s in said)
 
 
+TWO_FAULTS = """
+import json, os, sys
+seen = os.environ["SEEN"]
+first = not os.path.exists(seen)
+open(seen, "a").write(json.dumps(sys.argv[-1]) + "\\n")
+print("```plan")
+print("? one  [one]\\n    check: true\\n? two  [two]\\n    scope: b.py" if first else
+      "? one  [one]\\n    scope: a.py\\n    check: true")
+print("```")
+"""
+
+
+def test_every_fault_of_a_proposal_goes_back_to_the_planner_at_once(repo, tmp_path, monkeypatch):
+    """The dry run, 9 October: told one fault, the planner mended it and kept the other, and the ask
+    ended with nothing. A text planner is told every fault at once, as the Nemotron planner is."""
+    with Store.open(repo) as store:
+        added = A.ask(store, repo, "ids", planner(tmp_path, TWO_FAULTS, monkeypatch), say=lambda _: None)
+    assert added == ["proposed one: one"]
+    [_, again] = [json.loads(line) for line in (tmp_path / "seen.jsonl").read_text().splitlines()]
+    assert "line 1 [one]: one: a leaf needs a scope" in again
+    assert "line 3 [two]: two: a leaf needs a check" in again
+
+
 def test_a_planner_that_proposes_nothing_adds_nothing(repo, tmp_path, monkeypatch):
     with Store.open(repo) as store:
         with pytest.raises(Refused, match="no proposal after 2 tries; nothing was added"):

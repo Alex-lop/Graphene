@@ -462,6 +462,8 @@ def ask(
                     # the last tree's leaves that stay (a node outside waits on them): the new tree
                     # replaces them, so it may write their paths, as a merge may
                     left = {n.id for n in _pending(store, last)} if reask else set()
+                    if wrong := T.faults(store, text, who, files, {*beside, *left}):  # every one, at once
+                        raise P.Refused("\n".join(wrong))
                     said = T.apply(store, text, who, None, files=files, beside={*beside, *left})
                     if gone:
                         _carry(store, gone, said, heard.append, files)
