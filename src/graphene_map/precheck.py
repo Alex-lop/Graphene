@@ -114,11 +114,28 @@ def _outside(node: P.Node, text: str, files: list[str], live: list[P.Node]) -> l
 
     named = [path for path, _ in P.check_paths(node.check, files, live)]
     found = [] if any(own(p) for p in named) else [p for p in named if not own(p)]
+    there = set(files)
     for line in text[-P.TAIL :].splitlines():
-        for path, _ in P.check_paths("x " + line, files, live):  # "x": a line's first word counts
+        read = [path for path, _ in P.check_paths("x " + line, files, live)]  # "x": the first word counts
+        read += _tails(line, there)
+        for path in read:
             if not own(path) and path not in found:
                 found.append(path)
     return found
+
+
+def _tails(line: str, there: set[str]) -> list[str]:
+    """A tracked file named by its absolute path (a traceback's `File "/…/tree/tests/test_x.py"`), as
+    its longest tail that is one: a check runs in a clean worktree, whose path is nobody's."""
+    out = []
+    for word in re.findall(r"[\w./-]+", line):
+        parts = word.split("/")
+        if len(parts) < 2 or word in there:
+            continue
+        tail = next(("/".join(parts[k:]) for k in range(1, len(parts)) if "/".join(parts[k:]) in there), None)
+        if tail and tail not in out:
+            out.append(tail)
+    return out
 
 
 def judge(node: P.Node, code: int | None, text: str, files: list[str],

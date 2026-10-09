@@ -27,7 +27,7 @@ def repo(tmp_path, monkeypatch):
     (tmp_path / ".gitignore").write_text(".graphene/\n")
     (tmp_path / "tests").mkdir()
     (tmp_path / "app.py").write_text("x = 1\n")
-    (tmp_path / "tests" / "test_other.py").write_text("raise SystemExit('other is broken')\n")
+    (tmp_path / "tests" / "test_other.py").write_text("assert False, 'other is broken'\n")
     git(tmp_path, "add", "-A")
     git(tmp_path, "commit", "-qm", "start")
     monkeypatch.chdir(tmp_path)
