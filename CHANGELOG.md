@@ -14,6 +14,8 @@ The loop (9 October). A leaf that finds a landed leaf's fault reopens it with on
   that writes its file, and a second writer of a path is refused. Run `graphene board take`.
 - A need Graphene adds to a leaf is logged as Graphene's edit, not yours. `graphene plan changes` lists it, and
   `graphene watch` marks the leaf ~. A leaf that came back still waits on you. Run `graphene node set`.
+- The Nemotron planner repairs what needs no judgement and says each repair in a `repaired:` line. It sends the
+  other faults back together, one per node, at most twice. Run `graphene ask --with nemotron '…'`.
 
 The timeline (8 October). A fourth view, and fixes for what the meter night's runs stopped on.
 - A fourth view, `time`: a lane for each leaf that was held, what its executor did when, and marks for a refused

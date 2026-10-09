@@ -399,7 +399,7 @@ def test_nemotron_is_told_to_ask_and_its_board_lands(repo, monkeypatch):
                 ("which-id", "planner:nemotron"), ("int-ids", "planner:nemotron")
             ]  # fmt: skip
             [bill] = store.node_log("*", ("usage",))
-            assert bill["detail"]["prompt"] == 5
+            assert bill["detail"]["prompt"] == 6
     system = " ".join(f.requests[0]["messages"][0]["content"].split())
     assert "put a question on the board with the default" in system and "at most three" in system
     assert "An assumption you are confident of is not an item but a sentence in the goal" in system

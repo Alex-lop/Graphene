@@ -7,14 +7,17 @@ already reads, with any sentence after it, and a line when the model it used is 
 (``tokenfactory.resolve``). Only stdout is the answer; what it did and what it cost go to stderr, and
 the bill into the plan's log.
 
-Once the model stops calling tools, it is asked for the proposal in a strict JSON schema (``FORMAT``),
-written as the plan's text (``as_text``) and tried, rolled back. A proposal Graphene refuses goes back to
-the model once, with Graphene's words. The second answer is the answer.
+Once the model stops calling tools, it is asked for the proposal in a strict JSON schema (``FORMAT``).
+What needs no judgement is repaired, with a line for each repair after the proposal (``_repaired``). The
+proposal is written as the plan's text (``as_text``) and tried, rolled back. What Graphene still refuses
+goes back to the model at most twice, every fault it found in one message, one per node or board item
+(``plan_text.faults``). The third answer is the answer.
 """
 
 from __future__ import annotations
 
 import argparse
+import contextlib
 import fnmatch
 import json
 import os
@@ -32,9 +35,10 @@ from ..store import Store, repo_root
 from . import tokenfactory as tf
 from .executor import text_calls
 
-PROMPT_VERSION = 5  # 2: the board (questions with a default, assumptions, risks, leave-outs); 3: then:
+PROMPT_VERSION = 6  # 2: the board (questions with a default, assumptions, risks, leave-outs); 3: then:
 # lines; 4: at most three items, each a question or a risk that changes the tree; assumptions in goals;
-# 5: a check runs only its own files; the proposal is asked for as JSON in a strict schema
+# 5: a check runs only its own files; the proposal is asked for as JSON in a strict schema; 6: what needs
+# no judgement is repaired, not sent back; the faults go back together, one per node, at most twice
 SYSTEM = """\
 You are the planner for Graphene: a person said what they want, and you propose the tree of work that
 coding agents will do, which the person prunes before anything runs. Read the repository with the tools
@@ -200,36 +204,94 @@ def as_text(p: dict) -> str:
     return "\n".join(out) + "\n"
 
 
-def _answer(raw: str) -> tuple[str, str]:
-    """The proposal's text, and what to print: the fenced block with says after it, or an answer that is
-    not that JSON (a stand-in's) as it is."""
+def _repaired(p: dict, plan: list[P.Node], files: list[str]) -> list[str]:
+    """Mend in ``p`` what needs no judgement, and say each mend in a line. An id Graphene refuses is
+    slugged. A needs: or a parent: that names no other node is dropped. A needs: that closes a cycle is
+    dropped too: the cycle's last edge, in the answer's order. A node that needs a node above it keeps the
+    need. The tree says the opposite, and only the model knows which is wrong. A board item with options
+    is a question. A then: or about: that names a file is dropped."""
+    for n in p["nodes"]:  # as the text form reads them back: "[a]" is a, "none" is none, "a, b" is two
+        parent = T._uncomment(B._one(n["parent"] or "")).strip("[]`* ")
+        n["id"], n["parent"] = B._one(n["id"]), None if parent.lower() in T._NONE else parent
+        with contextlib.suppress(P.Refused):  # a quote left open: no need it names is a node, so each goes
+            needs = T._words(B._one(", ".join(n["needs"])), 0)
+            n["needs"] = [w.strip("[]") for w in needs if w.strip("[]").lower() not in T._NONE]
+    by_id = {n.id: n for n in plan if n.state not in P.GONE}
+    ids, new, said = {*by_id, *(n["id"] for n in p["nodes"])}, {}, []
+    for bad in dict.fromkeys(n["id"] for n in p["nodes"] if not P.USABLE.fullmatch(n["id"])):
+        ids.add(new.setdefault(bad, T.slug(bad, ids)))
+        said.append(f"[{bad}] is not an id; it is [{new[bad]}] now")
+    for n in p["nodes"]:
+        n["id"], n["parent"] = new.get(n["id"], n["id"]), new.get(n["parent"], n["parent"])
+        n["needs"] = [new.get(i, i) for i in n["needs"]]
+        if n["parent"] is not None and (n["parent"] == n["id"] or n["parent"] not in ids):
+            said.append(f"[{n['id']}] parent: {n['parent']!r} is not the id of another node; dropped")
+            n["parent"] = None
+        by_id.setdefault(n["id"], P.Node(n["id"], n["title"], parent=n["parent"]))
+    for n in p["nodes"]:  # each need in the answer's order: the one that closes a cycle is the last of it
+        for need in list(n["needs"]):
+            if need in (a.id for a in P.above(by_id[n["id"]], by_id)):
+                continue  # the tree says the opposite: the model's to mend
+            if need in by_id and P.acyclic(list(by_id.values()), n["id"], [need]):
+                by_id[n["id"]].needs.append(need)
+                continue
+            n["needs"].remove(need)
+            why = "closes a cycle" if need in by_id else "is not the id of a node"
+            said.append(f"[{n['id']}] needs: {need!r} {why}; dropped")
+
+    def file(name: str) -> bool:
+        return name not in ids and ("/" in name or name.endswith(P._EXTENSIONS) or name in files)
+
+    for it in p["board"]:
+        if it["options"] and it["kind"] != "question":  # Graphene's rule: an option is a question's
+            said.append(f"[{it['id']}] is a {it['kind']} with options; it is a question now")
+            it["kind"] = "question"
+        it["about"] = new.get(it["about"], it["about"]) if it["about"] else None  # "" names no node
+        if it["about"] and file(it["about"]):
+            said.append(f"[{it['id']}] about: {it['about']} names a file, not a node; dropped")
+            it["about"] = None
+        for c in (it, *it["options"]):
+            for old, slug in new.items():
+                c["then"] = [B._renamed(line, old, slug) for line in c["then"]]
+            for line in list(c["then"]):
+                with contextlib.suppress(P.Refused):  # a then: Graphene cannot read is the model's to fix
+                    if file(named := B.effect(line)[1] or ""):
+                        c["then"].remove(line)
+                        said.append(f"[{it['id']}] then: {line} names {named}, a file, not a node; dropped")
+    return said
+
+
+def _answer(raw: str, mend=lambda p: []) -> tuple[str, str]:
+    """The proposal's text, and what to print. A JSON answer prints as the fenced block, its says line,
+    and a line for each repair (``mend``). Any other answer, a stand-in's, prints as it is."""
     try:
         p = json.loads(raw)
+        said = [f"repaired: {line}" for line in mend(p)]
         text = as_text(p)
-        return text, f"```plan\n{text}```\n{B._one(p['says'])}"
+        return text, "\n".join([f"```plan\n{text}```", B._one(p["says"]), *said])
     except (ValueError, TypeError, KeyError, AttributeError):
         return proposal_in(raw), raw
 
 
-def _refused(root: Path, text: str, files: list[str]) -> str | None:
-    """Graphene's refusal of the proposal, applied as `graphene ask` applies it and rolled back, or None.
-    A re-ask drops the tree it replaces first (GRAPHENE_REPLACES), and what a merge or a re-ask replaces
-    may share the new leaves' paths (GRAPHENE_BESIDE), as `graphene ask` has it."""
-    replaces = os.environ.get("GRAPHENE_REPLACES") or None
+def _tried(root: Path, raw: str, files: list[str]) -> tuple[str, str, list[str]]:
+    """Repair the answer and try it as `graphene ask` does, rolled back. Returns its text, what to print
+    (``_answer``), and the faults Graphene finds in it. A re-ask drops the tree it replaces first
+    (GRAPHENE_REPLACES). What a merge or a re-ask replaces may share the new leaves' paths
+    (GRAPHENE_BESIDE)."""
+    replaces, (text, said), faults = os.environ.get("GRAPHENE_REPLACES") or None, _answer(raw), []
     try:
         with Store.open(repo_root(root)) as store, store.claim():
             _drop_last(store, replaces, P.Caller(P.person_name(), True))  # as `graphene ask`: the person
             left = {n.id for n in _pending(store, replaces)}  # what of the last tree stays
             beside = {*os.environ.get("GRAPHENE_BESIDE", "").split(), *left}
-            T.apply(store, text, P.Caller("planner:nemotron", False), None, files=files, beside=beside)
+            text, said = _answer(raw, lambda p: _repaired(p, P.nodes(store), files))
+            faults = T.faults(store, text, P.Caller("planner:nemotron", False), files, beside)
             raise _Rehearsed
     except _Rehearsed:
-        return None
-    except P.Refused as no:
-        return str(no)
+        pass
     except Exception as no:  # noqa: BLE001  (the answer is paid for: `graphene ask` reads it either way)
         print(f"(the proposal was not tried: {no})", file=sys.stderr)
-        return None
+    return text, said, faults
 
 
 def plan(args: argparse.Namespace, prompt: str) -> int:
@@ -289,16 +351,18 @@ def plan(args: argparse.Namespace, prompt: str) -> int:
                     said_back = f"Result of {c['function']['name']}:\n{result}"
                     messages.append({"role": "user", "content": said_back})
         messages.append({"role": "user", "content": "Answer now with the proposal. Write it as JSON."})
-        raw = asked(response_format=FORMAT)[0].get("content") or ""
-        text, answer = _answer(raw)
-        no = _refused(here, text, P.tracked(here))  # git first, never under the plan's lock
-        if no:  # once, with Graphene's words; the second answer is the answer
-            bill["sent_back"] = no
+        files = P.tracked(here)  # git first, never under the plan's lock
+        for sent in range(3):  # with every fault in Graphene's words, at most twice: the third is the answer
+            raw = asked(response_format=FORMAT)[0].get("content") or ""
+            text, answer, faults = _tried(here, raw, files)
+            if not faults or sent == 2:
+                break
+            no = "\n".join(faults)
+            bill.setdefault("sent_back", []).append(no)
             lines = "\n".join(f"{k:>5}  {line}" for k, line in enumerate(text.splitlines(), 1))
             messages += [{"role": "assistant", "content": raw}, {"role": "user", "content": (
                 f"Graphene could not read the proposal: {no}\nIt read your JSON as:\n{lines}\n"
                 "Answer again with the whole proposal.")}]  # fmt: skip
-            text, answer = _answer(asked(response_format=FORMAT)[0].get("content") or "")
     except tf.Unreachable as no:
         stopped = no
     finally:
