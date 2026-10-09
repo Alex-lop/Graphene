@@ -1301,16 +1301,13 @@ def judge(store, ids: set[str], writers: set[str], files: list[str], now: str,
     return said
 
 
-GRAPHENE = Caller("graphene", False)  # who adds a need a check's files ask for: never the person
-
-
 def _waited(store, was: dict[str, list[str]], everything: list[Node], now: str) -> None:
-    """Each node of ``was`` whose needs ``wait_on_checks`` grew since, saved as Graphene's edit of its
-    contract. The person did not add the need, so `plan changes` and the screen's ~ show it."""
+    """Each node of ``was`` whose needs ``wait_on_checks`` grew since, saved as an edit of its contract."""
+    graphene = Caller("graphene", False)  # not the person's edit: `plan changes` and the screen's ~ show it
     for n in everything:
         if n.id in was and n.needs != was[n.id]:
             n.rev += 1
-            _save(store, n, "edited", GRAPHENE, now, changed={"needs": [was[n.id], n.needs]}, rev=n.rev)
+            _save(store, n, "edited", graphene, now, changed={"needs": [was[n.id], n.needs]}, rev=n.rev)
 
 
 def _owner(name: str) -> str:
