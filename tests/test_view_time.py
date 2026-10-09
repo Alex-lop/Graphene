@@ -158,6 +158,7 @@ def test_an_id_is_never_cut_the_goal_is_and_none_under_thirty_cells_of_time():
         assert out.lines[2].spans[0].style == "green reverse"  # the cursor's label
         steps = {80: ["0m", "5m"], 120: ["0m", "2m", "4m", "6m", "8m"]}  # 8 cells apart
         assert out.lines[-1].plain.split() == steps[width]
+    assert len(drawn(nodes, rows, 600, V.room(80, 24)[0], words=words)[1]["b"]) == 43  # an 80-column terminal
     bare = VT.draw(nodes, words, "g", 80, 24, None)  # what `choose` draws: no events, the lanes bare
     assert [line.plain.strip() for line in bare.lines[2:4]] == [long, "b"]
 
