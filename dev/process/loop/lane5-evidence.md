@@ -1,7 +1,7 @@
 # Lane 5 evidence: ids, the ~ mark, re-judge
 
 Items A, C and D of the loop directive's lane 5, as the person sees them. Before is commit 7fe75af,
-where `loop` stood when the lane began. After is commit 3e18e82 on `l5`. Each case is a fresh git
+where `loop` stood when the lane began. After is commit 64eaa77 on `l5`. Each case is a fresh git
 repo in a scratch directory, written `<tmp>`. Your commands ran through subprocess with no agent's mark in
 their environment: CLAUDECODE, CLAUDE_CODE_SESSION_ID, CLAUDE_CODE_ENTRYPOINT, AI_AGENT, GRAPHENE_NODE and
 GRAPHENE_PLANNER were removed. With no terminal, the log names you `alex (no terminal)`. The planner's
@@ -38,7 +38,7 @@ no goal yet
 2 lanes · <1 min · agents 0 min · you 0 acts ~0 min
 ```
 
-After (3e18e82):
+After (64eaa77):
 
 ```
 [you] $ graphene plan --view time --width 80 --height 24
@@ -137,7 +137,7 @@ leaf-a  leaf a
   every entry, check runs included: `graphene plan log` (2 for leaf-a)
 ```
 
-After (3e18e82):
+After (64eaa77):
 
 ```
 [you] $ graphene node set leaf-a --check 'python3 -m pytest tests/test_b.py -q'
@@ -150,7 +150,7 @@ leaf-a waits on leaf-b: its check runs tests/test_b.py, which leaf-b writes
 ```
 [you] $ graphene plan changes
 1 changed since you last looked (graphene plan seen marks them seen):
-  05:06  leaf-a: edited needs by graphene
+  05:16  leaf-a: edited needs by graphene
 ```
 
 ```
@@ -196,8 +196,8 @@ leaf-a  leaf a
   coverage: not computed — nobody has held this node, so there is no window for git to answer for
   refused: nothing
   what people did to it:
-    2026-10-09T05:06:15.987Z  edited  alex (no terminal)  check: 'true' -> 'python3 -m pytest tests/test_b.py -q' (revision 2)
-    2026-10-09T05:06:15.987Z  edited  graphene            needs: [] -> ['leaf-b'] (revision 3)
+    2026-10-09T05:16:19.049Z  edited  alex (no terminal)  check: 'true' -> 'python3 -m pytest tests/test_b.py -q' (revision 2)
+    2026-10-09T05:16:19.049Z  edited  graphene            needs: [] -> ['leaf-b'] (revision 3)
   every entry, check runs included: `graphene plan log` (3 for leaf-a)
 ```
 
@@ -246,7 +246,7 @@ nothing changed since you last looked
  R run all ready · E edit the plan as text · za fold all · Tab view · ? help
 ```
 
-After (3e18e82):
+After (64eaa77):
 
 ```
 [you] $ graphene plan edit
@@ -256,7 +256,7 @@ leaf-a: check changed; leaf-a waits on leaf-b: its check runs tests/test_b.py, w
 ```
 [you] $ graphene plan changes
 1 changed since you last looked (graphene plan seen marks them seen):
-  05:06  leaf-a: edited needs by graphene
+  05:16  leaf-a: edited needs by graphene
 ```
 
 ```
@@ -348,7 +348,7 @@ nothing changed since you last looked
  R run all ready · E edit the plan as text · za fold all · Tab view · ? help
 ```
 
-After (3e18e82):
+After (64eaa77):
 
 ```
 [you] $ graphene node set leaf-b --add-scope tests/test_shared.py
@@ -360,7 +360,7 @@ leaf-a waits on leaf-b: its check runs tests/test_shared.py, which leaf-b writes
 ```
 [you] $ graphene plan changes
 1 changed since you last looked (graphene plan seen marks them seen):
-  05:06  leaf-a: edited needs by graphene
+  05:16  leaf-a: edited needs by graphene
 ```
 
 ```
@@ -449,7 +449,7 @@ leaf-a: needs none; scope a.py, tests/test_a.py
 leaf-b: needs none; scope b.py, tests/test_b.py
 ```
 
-After (3e18e82):
+After (64eaa77):
 
 ```
 [you] $ graphene board take a-runs
@@ -460,7 +460,7 @@ taken a-runs
 ```
 [you] $ graphene plan changes
 1 changed since you last looked (graphene plan seen marks them seen):
-  05:06  leaf-a: edited needs by graphene
+  05:16  leaf-a: edited needs by graphene
 ```
 
 The plan then:
@@ -492,7 +492,7 @@ leaf-a: needs none; scope a.py, tests/test_a.py, tests/test_shared.py
 leaf-b: needs none; scope b.py, tests/test_b.py
 ```
 
-After (3e18e82):
+After (64eaa77):
 
 ```
 [you] $ graphene board take a-writes
@@ -503,7 +503,7 @@ taken a-writes
 ```
 [you] $ graphene plan changes
 1 changed since you last looked (graphene plan seen marks them seen):
-  05:06  leaf-b: edited needs by graphene
+  05:16  leaf-b: edited needs by graphene
 ```
 
 The plan then:
@@ -535,7 +535,7 @@ leaf-a: needs none; scope a.py, tests/test_a.py, tests/test_b.py
 leaf-b: needs none; scope b.py, tests/test_b.py
 ```
 
-After (3e18e82):
+After (64eaa77):
 
 ```
 [you] $ graphene board take a-takes
