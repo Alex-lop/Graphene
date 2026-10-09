@@ -148,8 +148,27 @@ a leaf with no scope (report 8); a check that runs a file a later leaf writes (f
 answers all stalled to the token limit (feeds 13). 12 of 82 answers stalled, against 3 of 30 last night: the
 send-backs with every fault listed are longer, and Ultra writes spaces to the limit more often after one.
 
-Report is at 90% by ask. Feeds, the paragraph with the board items, is at 60%: half its misses are faults a
-repair could take (a `then:` or `about:` naming no node, options under a risk), which round 2 adds.
+Report is at 90% by ask. Feeds, the paragraph with the board items, is at 60%.
+
+### Round 2: the final build (`ed97b4e`), after lane 3's review
+
+**35 proposals in 40 asks (87%): feeds 17 of 20, report 18 of 20. By answer: 35 of 62 (56%). $8.20.** 25 proposals
+came at the first answer, 8 after one send-back, 2 after two. Seven repairs (six `parent:` lines naming the node
+itself, dropped; one risk with options, read as a question). 2 of 62 answers stalled to the token limit, against
+12 of 82 in round 1 (the send-back's text is shorter once each fault is said once). The table: `asks-round2.md`.
+
+| | last night (round 3) | tonight, round 1 | tonight, round 2 |
+|---|---|---|---|
+| per ask, with its send-backs | 15 of 20 (75%) | 30 of 40 (75%) | **35 of 40 (87%)**: feeds 17 of 20, report 18 of 20 |
+| per answer | 15 of 30 (50%) | 30 of 82 (37%) | 35 of 62 (56%) |
+
+The five that missed: an `about:` naming a node not in the plan (feeds 7, report 9); two leaves writing one path
+after two send-backs (feeds 9); a board question written as a node (feeds 16); one `[id]` on two lines (report
+11). Lane 3's fixer tried dropping an `about:` or `then:` that names no node and reverted it by evidence: on round
+1's answers it landed a tree whose leaves were board questions.
+
+**The rate reached 80% by ask, so `docs/HACKATHON.md`'s planner line stays as it is.** The number beside it is
+this one: 35 of 40 on the final code, 18 of 20 on report and 17 of 20 on feeds.
 
 ## 4. Width (lane 4)
 
