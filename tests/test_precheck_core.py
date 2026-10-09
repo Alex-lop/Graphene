@@ -162,3 +162,16 @@ def test_a_check_not_run_to_its_end_is_said_and_one_that_timed_out_is_kept(repo,
         rows = K.run(store, repo)
         K.run(store, repo)
     assert len(asked) == runs and K.said(rows)[0] == f"hang: its check at {rows[0][1]['base'][:7]} {why}"
+
+
+def test_a_failing_file_named_like_a_key_is_outside_all_the_same(repo):
+    """The output was hidden before it was judged: the hider took the file's name, and it read as red."""
+    (repo / "tests" / "__init__.py").write_text("")
+    (repo / "tests" / "test_other.py").unlink()
+    (repo / "tests" / "test_OAuth2CallbackHandlerV2.py").write_text("def test_cb():\n    assert False\n")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", "a suite whose failing file is named like a key")
+    with Store.open(repo) as store:
+        leaves(store, ("a", ["new.py", "tests/test_new.py"], "python3 -m pytest -q"))
+        [(_, d)] = K.run(store, repo)
+    assert d["verdict"] == "outside" and "OAuth2" not in str(d)

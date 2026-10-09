@@ -141,16 +141,17 @@ def _tails(line: str, there: set[str]) -> list[str]:
 
 
 def judge(node: P.Node, code: int | None, text: str, files: list[str],
-          live: list[P.Node]) -> tuple[str, str, list[str]]:  # fmt: skip
-    """(verdict, why, paths) of a check that was run: passes, outside or red."""
+          live: list[P.Node], hide=str) -> tuple[str, str, list[str]]:  # fmt: skip
+    """(verdict, why, paths) of a check that was run: passes, outside or red. The output is judged as it
+    is (a path named like a key is a path still), and ``hide`` takes from it, whole, the gist it keeps."""
     if code == 0:
         return "passes", "it exits 0 before any work is done", []
     if code is None:  # it timed out or could not be run: no verdict (`current` says which is run again)
-        return "not-run", _gist(text), []
+        return "not-run", _gist(hide(text)), []
     paths = _outside(node, text, files, live)
     if paths:
         return "outside", f"it fails and names {', '.join(paths)}, which no scope of the leaf covers", paths
-    return "red", _gist(text), []
+    return "red", _gist(hide(text)), []
 
 
 def run(store, root: Path, ids=(), again: bool = False, say=None, committed: bool = False) -> Rows:
@@ -197,7 +198,7 @@ def run(store, root: Path, ids=(), again: bool = False, say=None, committed: boo
             out.append((node, {**kept[node.id], "kept": True}))  # never logged again
             continue
         code, text = ran[node.check]
-        found, why, paths = judge(node, code, hide(text), files, live)  # hidden whole, before any cut
+        found, why, paths = judge(node, code, text, files, live, hide)  # why and paths are hidden below
         detail = {"rev": node.rev, "check": node.check, "base": base, "tree": tree, "verdict": found,
                   "why": _plain(hide(why)), "paths": [_plain(hide(p)) for p in paths], "exit": code,
                   "where": "here", "by": None}  # fmt: skip
