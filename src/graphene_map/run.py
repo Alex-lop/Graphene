@@ -738,6 +738,23 @@ def _came_back(store, only: list[str] | None, say: Callable[[str], None]) -> set
     return set(back)
 
 
+def _red_first(store, target: Path, only: list[str] | None, say: Callable[[str], None], committed: bool):
+    """Red first (precheck.py), once the run's own refusals have passed: the check of each open leaf it
+    may start (``only``: what --node named, a sub-goal's leaves, a leaf that came back), run at the commit
+    its leaves start from (``committed``: HEAD alone, which a leaf's worktree is cut from). A warning,
+    not a gate: if it breaks, the run goes on."""
+    from . import precheck as pre
+
+    ids = [i for i in only or () if (store.node_row(i) or {}).get("state") == P.OPEN]
+    if only and not ids:
+        return
+    try:
+        for line in pre.said(pre.run(store, target, ids, committed=committed)):
+            say(line)
+    except Exception as no:
+        say(f"red first: not run: {' '.join(str(no).split())[:200]}")
+
+
 def _said_done(node: P.Node, say: Callable[[str], None]) -> None:
     say(f"{node.id} is {'done' if node.state == P.DONE else 'finished; it waits for a sign-off'}")
 
@@ -751,12 +768,16 @@ def run_plan(
     only: list[str] | None = None,
     say: Callable[[str], None] = print,
     logs: Path | None = None,
+    precheck: bool = False,
 ) -> list[P.Node]:
-    """Run every leaf an agent can reach, in order. Returns the ones that ended done (or in review)."""
+    """Run every leaf an agent can reach, in order. Returns the ones that ended done (or in review).
+    ``precheck``: red first, before the first leaf starts."""
     _splits(template)
     sweep(store, say, store.path.parent.parent)  # the repo's root, where a parallel run's lock is
     _begins(template)
     only = leaves_of(store, only)
+    if precheck:
+        _red_first(store, checkout, only, say, committed=False)  # the leaves run in the checkout as it is
     finished: list[P.Node] = []
     tried: set[str] = _came_back(store, only, say)  # never tried: the person's to run again
     # The nodes that exist when the run starts are the run: a plan that grows while it is going (a
@@ -929,10 +950,11 @@ def run_parallel(
     only: list[str] | None = None,
     say: Callable[[str], None] = print,
     logs: Path | None = None,
+    precheck: bool = False,
 ) -> list[P.Node]:
     """Every leaf an agent can reach, up to ``workers`` at once, each in its own worktree; landed one
     at a time, here, as they finish. A leaf never starts while something it needs has not landed, or
-    while a leaf whose scope overlaps its own is in flight."""
+    while a leaf whose scope overlaps its own is in flight. ``precheck``: red first, before any starts."""
     _splits(template)
     if _git(target, "symbolic-ref", "-q", "HEAD", ok=True).returncode != 0:
         raise P.Refused(
@@ -941,16 +963,19 @@ def run_parallel(
         )
     lock = _only_run(root)
     try:
-        return _run_parallel(open_store, root, target, workers, template, attempts, only, say, logs)
+        return _run_parallel(open_store, root, target, workers, template, attempts, only, say, logs, precheck)
     finally:
         lock.unlink(missing_ok=True)
 
 
-def _run_parallel(open_store, root, target, workers, template, attempts, only, say, logs) -> list[P.Node]:
+def _run_parallel(open_store, root, target, workers, template, attempts, only, say, logs,
+                  precheck) -> list[P.Node]:  # fmt: skip
     store = open_store()
     sweep(store, say, root)  # a leaf a dead run still holds would never be ready again
     _begins(template)
     only = leaves_of(store, only)
+    if precheck:
+        _red_first(store, target, only, say, committed=True)
     planned = {n.id for n in P.nodes(store) if n.state not in P.GONE}
     files = P.tracked(target)
     tried: set[str] = _came_back(store, only, say)  # never tried: the person's to run again

@@ -771,7 +771,7 @@ def _ended(
 
 
 @contextmanager
-def _clean_tree(checkout: str | Path, leave_out: list[str] | tuple, began: float):
+def _clean_tree(checkout: str | Path, leave_out: list[str] | tuple, began: float, committed: bool = False):
     """A worktree of ``checkout`` as git sees it now, whether committed or not (what it tracks, as it
     is on disk, and the new files it does not ignore), but for ``leave_out``: cut from a commit on no
     branch, under the run's own worktrees (which ``elsewhere`` never asks about), and removed when
@@ -779,7 +779,7 @@ def _clean_tree(checkout: str | Path, leave_out: list[str] | tuple, began: float
     and runs none of the person's git hooks (a post-checkout hook that failed made every check "could
     not be run"). What git ignores is not there: a .venv linked in from the checkout was the check's
     to change, and `uv run` in the worktree re-installed the project into it, pointing the checkout's
-    .venv at a worktree that was then deleted."""
+    .venv at a worktree that was then deleted. ``committed``: its HEAD alone, as a leaf's worktree is."""
     import shutil  # here: the hook imports this module on every event and never runs a check
     import subprocess
     import tempfile
@@ -803,7 +803,7 @@ def _clean_tree(checkout: str | Path, leave_out: list[str] | tuple, began: float
         # ignore rule matches, a sparse checkout's), and then everything else git sees on disk
         with suppress(OSError):  # a repo where nothing was ever added has no index yet
             shutil.copyfile(Path(checkout, had), index)
-        git("add", "-A", index=index)
+        git(*(("read-tree", "HEAD") if committed else ("add", "-A")), index=index)
         if leave_out:
             out = "".join(f"{p}\0" for p in leave_out)
             git("update-index", "-z", "--force-remove", "--stdin", index=index, given=out)

@@ -74,7 +74,7 @@ def test_a_check_naming_another_leafs_new_test_file_is_outside(repo):
 
 def test_a_kept_verdict_is_not_run_again_but_a_commit_or_an_edited_check_runs_it(repo, monkeypatch):
     asked = []
-    monkeypatch.setattr(K, "_here", lambda command, root: asked.append(command) or (0, ""))
+    monkeypatch.setattr(K, "_here", lambda command, root, committed: asked.append(command) or (0, ""))
     with Store.open(repo) as store:
         leaves(store, ("a", ["new.py"], "true"))
         K.run(store, repo)
@@ -93,7 +93,7 @@ def test_a_kept_verdict_is_not_run_again_but_a_commit_or_an_edited_check_runs_it
 
 def test_two_leaves_with_one_check_run_it_once_and_a_proposed_leaf_is_skipped(repo, monkeypatch):
     asked = []
-    monkeypatch.setattr(K, "_here", lambda command, root: asked.append(command) or (1, "nope"))
+    monkeypatch.setattr(K, "_here", lambda command, root, committed: asked.append(command) or (1, "nope"))
     with Store.open(repo) as store:
         leaves(store, ("a", ["a.py"], FAILS), ("b", ["b.py"], FAILS))
         leaves(store, ("p", ["p.py"], "false"), who=BOT)

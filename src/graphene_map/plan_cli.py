@@ -1006,22 +1006,14 @@ def register(cli: typer.Typer, root, open_store, fail):
                     out(line)
             logs = r / ".graphene" / "runs"
             since = len(store.node_log())  # what this run did is what the log says after this
-            try:
-                if precheck and (starts or not node):  # a warning, not a gate: if it raises, the run goes on
-                    from . import precheck as pre
-
-                    try:
-                        for line in pre.said(pre.run(store, r, [n.id for n in starts] if node else [])):
-                            out(line)
-                    except Exception as no:
-                        out(f"red first: not run: {' '.join(str(no).split())[:200]}")
+            try:  # red first runs in the runner, once its refusals (a lock, a detached HEAD, the cap) pass
                 if here:
                     out("--here: your checkout is exposed. The executor writes in it. Nothing is committed")
-                    run_plan(store, checkout(), template, attempts, node or None, out, logs)
+                    run_plan(store, checkout(), template, attempts, node or None, out, logs, precheck)
                 else:
                     run_parallel(
                         lambda: open_store(r), r, checkout(), max(parallel, 1), template,
-                        attempts, node or None, out, logs,
+                        attempts, node or None, out, logs, precheck,
                     )  # fmt: skip
             except P.Refused as no:
                 fail(str(no), 1)

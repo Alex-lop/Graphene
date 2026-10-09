@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import shlex
+import subprocess
 
+import pytest
 import test_plan_cli
 from test_plan_cli import agent, person
 
@@ -11,6 +13,16 @@ from graphene_map import plan as P
 from graphene_map.store import Store
 
 repo = test_plan_cli.repo  # the fixture
+
+
+def git(where, *args):
+    subprocess.run(["git", "-c", "user.email=t@e", "-c", "user.name=T", *args], cwd=where, check=True,
+                   capture_output=True)  # fmt: skip
+
+
+def verdicts(repo, node_id: str) -> list[str]:
+    with Store.open(repo) as store:
+        return [e["detail"]["verdict"] for e in store.node_log(node_id, ("precheck",))]
 
 
 def test_a_check_that_passes_at_base_is_said_and_the_leaf_still_runs(repo):
@@ -35,6 +47,45 @@ def test_a_run_of_two_leaves_prints_one_header(repo):
     ran = person("run", "--here", "--with", "true")
     assert ran.exit_code == 0, ran.output
     assert ran.stdout.count("red first:") == 1 and "red first: 2 checks at" in ran.stdout
+
+
+@pytest.mark.parametrize("back", [False, True])
+def test_run_node_checks_first_a_sub_goals_leaf_and_a_leaf_that_came_back(repo, back):
+    """`--node` ran red first only on a ready leaf named itself: these two started with no check first."""
+    l1 = {"id": "l1", "title": "l1", "scope": ["api.py"], "check": "true", "parent": "g"}
+    with Store.open(repo) as store:
+        P.propose(store, [{"id": "g", "title": "g"}, l1], P.Caller("alex", True))
+    if back:
+        agent("node", "start", "l1")
+        agent("node", "release", "l1", "--why", "cannot")
+    person("run", "--here", "--attempts", "1", "--node", "l1" if back else "g", "--with", "true")
+    assert verdicts(repo, "l1") == ["passes"]
+
+
+def test_a_run_refused_on_a_detached_head_runs_no_check_first(repo):
+    person("node", "add", "leaf", "--id", "l1", "--scope", "api.py", "--check", "true")
+    git(repo, "checkout", "-q", "--detach")
+    ran = person("run", "--with", "true")
+    assert ran.exit_code == 1 and "detached HEAD" in ran.stderr
+    assert "red first" not in ran.stdout and verdicts(repo, "l1") == []
+
+
+def test_red_first_runs_at_the_commit_a_parallel_runs_leaves_start_from(repo):
+    """A leaf's worktree is cut from HEAD. An uncommitted change made its check pass at "the base commit"."""
+    person("node", "add", "ids", "--id", "ids", "--scope", "api.py", "--check", "grep -q ids api.py")
+    (repo / "api.py").write_text("ids = []\n")
+    person("run", "--parallel", "1", "--attempts", "1", "--with", "true")
+    assert verdicts(repo, "ids") == ["red"]
+
+
+def test_red_first_from_a_linked_worktree_runs_at_its_commit_not_the_main_checkouts(repo, monkeypatch):
+    (repo / "api.py").write_text("ids = []\n")
+    git(repo, "commit", "-qam", "main has ids")
+    git(repo, "worktree", "add", "-q", "-b", "feature", str(repo.parent / "linked"), "HEAD~1")
+    monkeypatch.chdir(repo.parent / "linked")
+    person("node", "add", "ids", "--id", "ids", "--scope", "api.py", "--check", "grep -q ids api.py")
+    person("run", "--here", "--attempts", "1", "--with", "true")
+    assert verdicts(repo, "ids") == ["red"]
 
 
 def test_reopen_takes_several_ids_and_the_leaf_that_came_back_waits_on_them(repo):

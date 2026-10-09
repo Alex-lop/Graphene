@@ -32,11 +32,11 @@ class Rows(list):
     seconds = 0.0
 
 
-def state(root: Path) -> tuple[str | None, str | None]:
+def state(root: Path, committed: bool = False) -> tuple[str | None, str | None]:
     """(HEAD, the checkout as git sees it now as one tree id): what a check runs on (tracked files as
-    they are on disk, and new files git does not ignore, as `_clean_tree` takes them), so a commit or
-    an uncommitted change makes a verdict stale. The tree is written from a copy of the index, so the
-    checkout's own index is never touched."""
+    they are on disk, and new files git does not ignore, as `_clean_tree` takes them; ``committed``:
+    HEAD's own tree), so a commit or an uncommitted change makes a verdict stale. The tree is written
+    from a copy of the index, so the checkout's own index is never touched."""
     import shutil  # here: only a precheck needs them
     import tempfile
     from contextlib import suppress
@@ -48,7 +48,7 @@ def state(root: Path) -> tuple[str | None, str | None]:
             with suppress(OSError):  # a repo where nothing was ever added has no index yet
                 shutil.copyfile(Path(root, P._git(root, "rev-parse", "--git-path", "index").strip()), index)
             env = {**os.environ, "GIT_INDEX_FILE": str(index), "GIT_OPTIONAL_LOCKS": "0"}
-            for args in (["add", "-A"], ["write-tree"]):
+            for args in (["read-tree", "HEAD"] if committed else ["add", "-A"], ["write-tree"]):
                 done = subprocess.run(["git", "-c", "core.hooksPath=/dev/null", "-C", str(root), *args],
                                       env=env, capture_output=True, text=True, timeout=30)  # fmt: skip
             return base, (done.stdout.strip() if done.returncode == 0 else None)
@@ -67,12 +67,12 @@ def current(store, node: P.Node, base: str | None, tree: str | None) -> dict | N
     return last if fresh and not unfinished else None  # a check not run, or a red not read: try again
 
 
-def _here(command: str, root: Path) -> tuple[int | None, str]:
+def _here(command: str, root: Path, committed: bool = False) -> tuple[int | None, str]:
     """An accepted check, run as `node done` runs it: in a clean worktree, without the key."""
     began = time.monotonic()
     env = P.check_env()
     try:
-        with P._clean_tree(root, (), began) as tree:
+        with P._clean_tree(root, (), began, committed) as tree:
             code, out, err = P._ended(command, tree, env, began)
     except subprocess.TimeoutExpired:
         return None, f"timed out after {P.CHECK_TIMEOUT:g} s"
@@ -151,16 +151,17 @@ def judge(node: P.Node, code: int | None, text: str, files: list[str],
     return "red", _gist(text), []
 
 
-def run(store, root: Path, ids=(), again: bool = False, say=None) -> Rows:
-    """The check of every open leaf (or of ``ids``) at the checkout as it stands, each distinct command
-    once, up to four at a time, each verdict a row. A leaf whose verdict is current is not run again;
-    a proposed leaf's check is never run here. ``say`` is called with a line as a check starts."""
+def run(store, root: Path, ids=(), again: bool = False, say=None, committed: bool = False) -> Rows:
+    """The check of every open leaf (or of ``ids``) at the checkout ``root`` as it stands (``committed``:
+    at its HEAD alone, where a parallel run's leaves start), each distinct command once, up to four at a
+    time, each verdict a row. A leaf whose verdict is current is not run again; a proposed leaf's check
+    is never run here. ``say`` is called with a line as a check starts."""
     everything = [n for n in P.nodes(store) if n.state not in P.GONE]
     todo = [P.get(store, i) for i in dict.fromkeys(ids)] or [n for n in everything if n.state == P.OPEN]
     for n in todo:
         if n.state not in (P.PROPOSED, P.OPEN):
             raise P.Refused(f"{n.id} is {n.state}: a check is run first only before its work starts")
-    began, (base, tree), out = time.monotonic(), state(root), Rows()
+    began, (base, tree), out = time.monotonic(), state(root, committed), Rows()
     under = P.kids(everything, drawn=True)  # a sub-goal's check runs once its leaves are done, not here
     todo = [n for n in todo if n.check and n.state == P.OPEN and not under.get(n.id)]
     kept = {} if again else {n.id: current(store, n, base, tree) for n in todo}
@@ -170,7 +171,7 @@ def run(store, root: Path, ids=(), again: bool = False, say=None) -> Rows:
         if say:
             say(f"running {command}")
         try:
-            return _here(command, root)
+            return _here(command, root, committed)
         except Exception as no:  # one check that breaks its runner is its own line
             return None, f"could not be run: {' '.join(str(no).split())[:200]}"
 
@@ -187,7 +188,7 @@ def run(store, root: Path, ids=(), again: bool = False, say=None) -> Rows:
         pool.shutdown(wait=True, cancel_futures=True)
         raise
     pool.shutdown(wait=True)
-    hide = _hider(root) if ran else str
+    hide = _hider(store.path.parent.parent) if ran else str  # the repo's path: every clean tree is under it
     files, live = sorted(P.tracked(root)), P._live(everything)
     for node in todo:
         if kept.get(node.id):
