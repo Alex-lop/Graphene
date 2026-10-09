@@ -379,10 +379,9 @@ def agents(rows: list[dict], now: datetime) -> dict:
 
 
 def width(rows: list[dict], now: datetime | None = None) -> dict | None:
-    """How wide a whole log ran: the most leaves with an attempt running at one moment (``most``), how
-    many made one (``lanes``), and the share of agent seconds with one running alone (``alone``). None
-    when none ran. An attempt runs over [start, end), to the millisecond: one that ends as another starts
-    does not overlap it, in the same second or not. One that ends later does, however briefly."""
+    """How wide a whole log ran. ``most``: the most leaves with an attempt running at once. ``lanes``: the
+    leaves that made one. ``alone``: the share of agent seconds with one running alone. None when none ran.
+    An attempt runs over [start, end), to the millisecond: one ending as another starts is not beside it."""
     tries = [a for log in by_node(rows).values() for a in attempts(log, now=now)]
     spans = [(datetime.fromisoformat(a["started"]).timestamp(), a["until"].timestamp()) for a in tries]
     points = sorted({x for span in spans for x in span})

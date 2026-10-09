@@ -213,7 +213,7 @@ def _axis(span: float, per: float, cells: int) -> str:
 def note(lanes: int, seconds: float, back: int, agents: dict, you: dict, width: int | None = None,
          ran: dict | None = None) -> str:
     """What the lanes say at a glance: `3 lanes · 12 min · 1 came back · agents 31 min $2.41 · you 4 acts
-    ~3 min · width 2 of 3` (``ran``: `meter.width`). Whole pieces go from the end until it fits ``width``."""
+    ~3 min · width 2 of 3` (``ran``: `meter.width`). Whole pieces go from the end to fit ``width`` cells."""
     took = agents["seconds"] // 60 or ("<1" if agents["seconds"] or agents["running"] else 0)
     said = [f"{lanes} lane{'s' * (lanes != 1)}", f"{int(seconds // 60) or '<1'} min"]
     said += [f"{back} came back"] if back else []
