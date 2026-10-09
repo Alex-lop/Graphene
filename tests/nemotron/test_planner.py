@@ -339,6 +339,17 @@ def test_a_fault_that_needs_no_judgement_is_repaired_and_said_not_sent_back(repo
     assert said[1:4] == ["the planner says:", f"  {ANSWER['says']}", f"  repaired: {repaired}"]
 
 
+def test_spaces_around_an_id_are_no_fault_to_repair(repo, fake):
+    """The text writes every id on one line with no space around it, so the repairs read it that way."""
+    spaced = {**ANSWER, "nodes": [node(" greeting", "the greeting"), {**HELLO, "parent": "greeting\n"}]}
+    f = fake([{"content": "I have read enough."}, answer(spaced)])
+    said = []
+    with Store.open(repo) as store:
+        ask(store, repo, "make it say hello", named("nemotron"), say=said.append)
+        assert plan.get(store, "hello").parent == "greeting"
+    assert len(f.requests) == 2 and not [line for line in said if "repaired" in line]
+
+
 def test_a_repair_never_hides_a_fault_that_needs_the_models_judgement(repo, fake):
     both = {**ANSWER, "nodes": [GREETING, {**HELLO, "scope": [], "needs": ["nope"]}]}
     f = fake([{"content": PROPOSAL}, answer(both), answer(ANSWER)])

@@ -209,6 +209,8 @@ def _repaired(p: dict, plan: list[P.Node], files: list[str]) -> list[str]:
     slugged. A needs: that names no node is dropped. So is a parent: that names no other node, a needs:
     that closes a cycle (the cycle's last edge in the answer's order), and a then: or about: that names a
     file."""
+    for n in p["nodes"]:  # as the text writes them: on one line, with no space around
+        n["id"], n["parent"], n["needs"] = _flat([n["id"], n["parent"], n["needs"]])
     by_id = {n.id: n for n in plan if n.state not in P.GONE}
     ids, new, said = {*by_id, *(n["id"] for n in p["nodes"])}, {}, []
     for bad in dict.fromkeys(n["id"] for n in p["nodes"] if not T._VALID_ID.fullmatch(n["id"])):
