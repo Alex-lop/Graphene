@@ -57,7 +57,7 @@ Rollback: `main` is untouched at `af6ff38`. To drop the night: close the PR, `gi
   (`7ce64e4`), with a test for a stop during red first.
 - **01:38** Two skeptics a leaf on the dogfood's code: 44 findings, 13 distinct real ones fixed (`49297e6`); the
   rest are nits listed in `dev/process/loop/review.md`.
-- **01:45** The suite green on lanes 1 and 2 (1,737 passed); the tag `statements-prereg-2` at `eb9696f`. Lane 6
+- **01:45** The suite green on lanes 1 and 2 (1,737 passed); the tag `statements-prereg-2` at `803f2c2`. Lane 6
   started on it; lane 3's 40 asks and the first four takes started on lane 3's build.
 - **02:06** Lane 6 merged: PREREG names the tag and the four new blobs, PROVE.md builds the wheel from the tag,
   and its Once block ran from a fresh install: the rehearsal reads 5, 5, 0, 0 (`dev/process/loop/prove-run.md`).

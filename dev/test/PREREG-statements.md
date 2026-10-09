@@ -16,7 +16,7 @@ a 1,328-line service, five traps, three executors at once, and the person away w
 
 ## What is fixed before any run
 
-- **The commit**: the tag `statements-prereg-2`, commit `eb9696f`. The arms run against it, and
+- **The commit**: the tag `statements-prereg-2`, commit `803f2c2`. The arms run against it, and
   "this commit" below means it. At the tag the blobs are `make_task.py` `f19c320fa58e`, `accept.py`
   `300d2934e128`, `quality.py` `c9c82780be6c` and `traps.py` `3adbfbfe7aea`. Added on 9 October,
   before any run.

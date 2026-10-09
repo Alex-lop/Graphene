@@ -2,7 +2,7 @@
 
 Four runs of the task a paragraph should lose, with you as the person. `PREREG-statements.md` says
 what is measured and what would make the tree lose. Read it first. Every run uses the tag
-`statements-prereg-2`, commit `eb9696f`: the wheel built from it, its `newrun.sh`, its checks. A run
+`statements-prereg-2`, commit `803f2c2`: the wheel built from it, its `newrun.sh`, its checks. A run
 on any other commit is void. Then do this, in order.
 
 **Time.** About 30 minutes to set up and rehearse. Each run is up to 10 minutes of you at the start,
@@ -32,7 +32,7 @@ $G/.venv/bin/python $G/dev/test/prove.py rehearse ~/graphene-prove/rehearsal
 `~/graphene-prove/dist/graphene_map-0.5.0-py3-none-any.whl`, and `graphene --version` prints
 `graphene 0.5.0`. Write down both: they go in each run's notes.
 
-The rehearsal takes a minute. It names the commit it ran at: `at eb9696f`. Its traps column must
+The rehearsal takes a minute. It names the commit it ran at: `at 803f2c2`. Its traps column must
 read 5, 5, 0, 0. If it does not, stop: the harness is broken. Then read the card, once. It is the one
 page of the task you read. Read nothing else in that directory:
 `less $G/dev/test/tasks/statements/intent.md`.

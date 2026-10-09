@@ -4,7 +4,7 @@
 order, a fresh tool install in an empty directory. Nothing in it calls a model. Two paths are written as
 PROVE.md writes them: the scratch directory as `~/graphene-prove`, and the clone the tag was cut in as
 `~/Desktop/AllThingsAgenticHackathon`. `$G` is a worktree of that clone at `statements-prereg-2`, commit
-`eb9696f`. Each command is followed by what it printed. A command with no lines under it printed nothing.
+`803f2c2`. Each command is followed by what it printed. A command with no lines under it printed nothing.
 
 ```
 $ cd ~/Desktop/AllThingsAgenticHackathon && git fetch -q --tags origin
@@ -91,7 +91,7 @@ graphene  ~/graphene-prove/bin/graphene
 version   graphene 0.5.0
 # Rehearsal: the statements task, scripted, no model
 
-`dev/test/prove.py rehearse` on 2026-10-09, at eb9696f, with graphene 0.5.0 first on PATH. No model ran. A script
+`dev/test/prove.py rehearse` on 2026-10-09, at 803f2c2, with graphene 0.5.0 first on PATH. No model ran. A script
 played the person, the planner and three executors, and applied the task's own patches: trip-all
 is reference.patch then tripall.patch, trip-none is reference.patch alone. The minutes are near zero
 because a script waits seconds, not hours. Each run's whole count is its tally.json.
@@ -112,4 +112,4 @@ What it shows:
 - The wheel is `~/graphene-prove/dist/graphene_map-0.5.0-py3-none-any.whl`, built in the tag's worktree.
   It prints `graphene 0.5.0`.
 - `newrun.sh` found `~/graphene-prove/bin/graphene` in all four runs.
-- The rehearsal's heading says `at eb9696f`. Its traps column reads 5, 5, 0, 0. It took 74 seconds.
+- The rehearsal's heading says `at 803f2c2`. Its traps column reads 5, 5, 0, 0. It took 74 seconds.
