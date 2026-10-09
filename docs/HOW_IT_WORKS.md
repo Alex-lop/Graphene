@@ -19,7 +19,7 @@ A node with children is a **sub-goal**: it needs only a title, and nobody takes 
 - an **owner**: any agent, or a person's name; and whether a person must **sign it off**.
 
 A leaf waits on what it needs and on what every node above it needs. A cycle is refused. Two leaves never write one
-path, except by an offer or answer you take. A check that runs another leaf's file waits on that leaf, and the plan
+path, except by an offer you take. A check that runs another leaf's file waits on that leaf, and the plan
 says so; a directory names every file under it. A check that runs a file only a later leaf makes is refused. When
 the last leaf under a sub-goal is done, the sub-goal's own check runs, if it has one, and it is done too.
 

@@ -25,6 +25,7 @@ from functools import lru_cache, partial
 from pathlib import Path
 
 AGENT = "agent"  # the owner of a node any agent may take; every other owner is a person's name
+GRAPHENE = "graphene"  # who logs a need `wait_on_checks` adds: never the person (`_waited`, `let_go`)
 PROPOSED, OPEN, RUNNING, REVIEW, DONE, DROPPED = "proposed", "open", "running", "review", "done", "dropped"
 ARCHIVED = "archived"  # done or dropped, and put away by the person: no longer part of the plan
 # A plan with a node in one of these is in force. Done counts: the first real agent run against this
@@ -1297,22 +1298,23 @@ def wait_on_checks(
     return said
 
 
-def judge(store, ids: set[str], writers: set[str], files: list[str], who: Caller, now: str,
+def judge(store, ids: set[str], writers: set[str], files: list[str], now: str,
           beside: frozenset[str] | set[str] = frozenset()) -> list[str]:  # fmt: skip
     """``wait_on_checks`` over the plan as it stands, each need it adds saved as an edit of its leaf."""
     everything = nodes(store)
     was = {n.id: list(n.needs) for n in everything}
     said = wait_on_checks(everything, ids, files, beside, writers)
-    _waited(store, was, everything, who, now)
+    _waited(store, was, everything, now)
     return said
 
 
-def _waited(store, was: dict[str, list[str]], everything: list[Node], who: Caller, now: str) -> None:
+def _waited(store, was: dict[str, list[str]], everything: list[Node], now: str) -> None:
     """Each node of ``was`` whose needs ``wait_on_checks`` grew since, saved as an edit of its contract."""
+    graphene = Caller(GRAPHENE, False)  # not the person's edit: `plan changes` and the screen's ~ show it
     for n in everything:
         if n.id in was and n.needs != was[n.id]:
             n.rev += 1
-            _save(store, n, "edited", who, now, changed={"needs": [was[n.id], n.needs]}, rev=n.rev)
+            _save(store, n, "edited", graphene, now, changed={"needs": [was[n.id], n.needs]}, rev=n.rev)
 
 
 def _owner(name: str) -> str:
@@ -1530,7 +1532,7 @@ def sibling(store, node_id: str, paths: list[str], who: Caller, files: list[str]
         "check": "true",
         "parent": node.parent,
     }
-    with store.claim():  # not judged, as an answer the person gave is not (decision 171)
+    with store.claim():  # not judged, as `widen` is not (decision 171): an offer is the person's to take
         [made] = propose(store, [item], who, files=files, edits_follow=True)
         edit(store, node.id, {"needs": [*node.needs, made.id]}, who, files=files)
     return made
@@ -1623,7 +1625,7 @@ def propose(
         # ``containers``: new nodes the same text gives children (existing nodes moved under them come
         # after): they are sub-goals, and the leaf rule is asked of the tree once they are in place
         fresh = {n.id for n in added} - set(containers)
-        was = {n.id: list(n.needs) for n in existing}
+        was = {n.id: list(n.needs) for n in [*existing, *added]}  # a need Graphene adds is its own edit
         if not edits_follow:
             one_writer(existing + added, fresh, files or [], beside=beside)
             waits = wait_on_checks(existing + added, fresh, files or [], beside, {n.id for n in added})
@@ -1640,7 +1642,7 @@ def propose(
                 raise Refused(f"{node.id}: {wrong}; spell the scope as git does")
         for node in added:
             _save(store, node, "added" if who.person else "proposed", who, now)
-        _waited(store, was, existing, who, now)
+        _waited(store, was, [*existing, *added], now)
         _settle(store, who, now)
     return added
 
@@ -1675,7 +1677,7 @@ def accept(
             node.state = OPEN
             _save(store, node, "accepted", who, now, **detail)
         if told is not None:
-            told += judge(store, set(), {n.id for n in chosen}, files or [], who, now)
+            told += judge(store, set(), {n.id for n in chosen}, files or [], now)
         proposed_goal, by = store.meta("goal:proposed"), store.meta("goal:proposed:by")
         if proposed_goal and any(n.proposed_by == by for n in chosen) and not goal(store):
             set_goal(store, proposed_goal, who, now)  # the planner's echo of the paragraph, with its tree
@@ -1695,8 +1697,8 @@ def edit(
 ) -> Node:
     """Change a node's contract. The hook reads the row on every event, so a tighter scope binds the
     very next write, even on a node that is running; what waits to start is told the new contract.
-    ``told``: the person edits the leaf itself (`node set`, `plan edit`), not by a board's answer or an
-    offer. A new check then waits on what writes the files it runs, a leaf whose check runs a file a new
+    ``told``: the person edits the leaf (`node set`, `plan edit`, a board's answer), not an offer. A new
+    check then waits on what writes the files it runs, a leaf whose check runs a file a new
     scope takes in waits on it, both said in ``told``, and a new scope over another leaf's path is
     refused. With ``check`` off the caller judges all of it, once its edits are in (a text saved whole)."""
     _person_only(who, "editing a node's contract")
@@ -1720,17 +1722,16 @@ def edit(
         changed = {f: [before[f], getattr(node, f)] for f in EDITABLE if before[f] != getattr(node, f)}
         if not changed:
             return node
-        others: dict[str, list[str]] = {}  # the needs of the rest of the plan, which a new scope may grow
+        waited: dict[str, list[str]] = {}  # every leaf's needs, which a new check or scope may grow
         if told is not None and check and {"scope", "check"} & changed.keys():
             was = nodes(store)
             everything = [node if n.id == node.id else n for n in was]
             if "scope" in changed:
                 one_writer(everything, {node.id}, files or [], {n.id: n for n in was})
-            others = {n.id: list(n.needs) for n in was if n.id != node.id}
+            node.needs = list(node.needs)  # a list of its own: the person's row keeps the needs they gave
+            waited = {n.id: list(n.needs) for n in everything}
             told += wait_on_checks(everything, {node.id} if "check" in changed else set(), files or [],
                                    writers={node.id} if "scope" in changed else set())  # fmt: skip
-            if node.needs != before["needs"]:
-                changed["needs"] = [before["needs"], node.needs]
         if check:  # else the caller validates once every edit it makes is in (a text saved whole)
             validate([node if n.id == node.id else n for n in nodes(store)], {node.id})
         if "scope" in changed:  # asked even when the caller validates later: the text form does
@@ -1743,8 +1744,8 @@ def edit(
             raise Refused(f"{node.id}: {wrong}; spell the scope as git does")
         node.rev += 1
         _save(store, node, "edited", who, now, changed=changed, rev=node.rev)
-        if others:
-            _waited(store, others, everything, who, now)
+        if waited:
+            _waited(store, waited, everything, now)
         _settle(store, who, now)
     return node
 
@@ -2953,11 +2954,12 @@ def goal_plus(goal: str, sentence: str) -> str | None:
 def let_go(store, node: Node) -> dict:
     """How its last hold ended, while it is open and the person has not changed it since: its
     `released` entry (``person``: the person let it go; ``stopped``: the run did), else {}. A widen
-    or a sibling is an edit: after it, it is ready or waiting again. An act undone since reads as
-    never made: what it logged is passed over."""
+    or a sibling is an edit: after it, it is ready or waiting again. A need Graphene added is not.
+    An act undone since reads as never made: what it logged is passed over."""
     if node.state != OPEN:
         return {}
-    log = store.node_log(node.id, ("started", "released", "reopened", "edited", "undone"))
+    log = [e for e in store.node_log(node.id, ("started", "released", "reopened", "edited", "undone"))
+           if e["actor"] != GRAPHENE]  # fmt: skip
     while log and log[-1]["kind"] == "undone":
         since = log.pop()["detail"].get("since")
         log = log if since is None else [e for e in log if e["id"] <= since]

@@ -65,7 +65,7 @@ def rows(store, everything: bool = False) -> list[str]:
             if name == "settled":
                 out += _hang("      → ", item["answer"]) if item.get("answer") else []
                 out += [f"      from the repo: {item['from']}"] if item.get("from") else []
-                out += [ln for line in item["became"] for ln in _hang("      ", _became(line))]
+                out += [ln for line in item["became"] for ln in _hang("      ", f"changed: {line}")]
                 continue
             effects = _then if everything else lambda _: []
             if item["default"] or (item["then"] and everything):
@@ -108,11 +108,6 @@ def _wide() -> int:
     return max(40, shutil.get_terminal_size((WIDE, 24)).columns)
 
 
-def _became(line: str) -> str:
-    """What an answer did to the plan, or to what a leaf may write."""
-    return f"changed: {line}"
-
-
 def _then(effects: list[str]) -> list[str]:
     return [ln for line in effects for ln in _hang("         then: ", line)]
 
@@ -126,7 +121,7 @@ def register(cli: typer.Typer, root, open_store, fail) -> None:
     )
     cli.add_typer(board_cli, name="board")
 
-    def act(what: str, operation) -> None:
+    def act(what: str, operation, told: list[str] | tuple = ()) -> None:
         """One act on the board, kept for `graphene plan undo` with everything its answer changed."""
         who = P.caller()
         files = P.tracked(root())  # asked before the plan's write lock is taken, never under it
@@ -141,8 +136,8 @@ def register(cli: typer.Typer, root, open_store, fail) -> None:
         # one short line: the person just read the item, and chose the answer
         said = f": option {item['option']}" if item["state"] == "picked" else ""
         out(f"{B.reads(item)} {item['id']}{said}")
-        for line in item["became"] if item["state"] in B.DECIDED else []:
-            out(f"  {_became(line)}")
+        for line in [f"  changed: {b}" for b in item["became"] if item["state"] in B.DECIDED] + [*told]:
+            out(line)  # then what the answer made wait on what, as `node set` says it
         if item["state"] == "answered" and item.get("then"):  # words carry no `then:`, a default does
             out(f"  your words go to executors as written and change no leaf; `graphene plan undo`, then "
                 f"`graphene board take {item['id']}`, applies the default's change")  # fmt: skip
@@ -180,19 +175,21 @@ def register(cli: typer.Typer, root, open_store, fail) -> None:
         """Take an item's default.
 
         With no id, every open default is taken, except one that drops a node."""
+        told: list[str] = []
         if item_id:
-            return act(f"board take {item_id}", lambda s, who, files: B.take(s, item_id, who, files))
+            return act(f"board take {item_id}", lambda s, w, f: B.take(s, item_id, w, f, told), told)
         who, files = P.caller(), P.tracked(root())
         with open_store(root()) as store:
             try:
                 if not who.person:
                     raise P.Refused(f"answering the board is the person's, not {who.name}'s")
                 with P.undoable(store, who, "board take"):
-                    taken = B.defaults(store, who, files)
+                    taken = B.defaults(store, who, files, told)
                 kept = B.left(store)  # a default that drops a node waits for the person's key
             except P.Refused as no:
                 fail(str(no), 1)
-        out(B.took(taken, kept) or "nothing open on the board has a default to take")
+        said = "\n".join(line for line in [B.took(taken, kept), *told] if line)  # a refused default too
+        out(said or "nothing open on the board has a default to take")
         typer.echo(f"  (the plan of {P.where(root())})", err=True)
 
     @board_cli.command()
@@ -201,7 +198,8 @@ def register(cli: typer.Typer, root, open_store, fail) -> None:
         option: int = typer.Argument(..., help="The option's number, from 1."),
     ) -> None:
         """Pick one of a question's options."""
-        act(f"board pick {item_id} {option}", lambda s, who, files: B.pick(s, item_id, option, who, files))
+        told: list[str] = []
+        act(f"board pick {item_id} {option}", lambda s, w, f: B.pick(s, item_id, option, w, f, told), told)
 
     @board_cli.command()
     def drop(item_id: str = typer.Argument(...)) -> None:

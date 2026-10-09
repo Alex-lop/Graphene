@@ -646,7 +646,7 @@ def apply(
                 checks = {ln.id for ln in kept if _fields(ln)["check"] != opened[ln.id]["check"]}
                 writers = {ln.id for ln in kept if _fields(ln)["scope"] != opened[ln.id]["scope"]
                            or opened[ln.id]["proposal"] and not ln.proposal}  # a new scope, or accepted
-                _told(said, P.judge(store, {*new, *checks}, {*new, *writers}, files or [], who, now))
+                _told(said, P.judge(store, {*new, *checks}, {*new, *writers}, files or [], now))
             P.validate(P.nodes(store), set(said.ids))  # the tree as it is now, after every move
         except P.Refused as no:
             raise _on_line(no, lines) from None

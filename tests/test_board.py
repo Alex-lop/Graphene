@@ -1058,3 +1058,71 @@ def test_the_print_keeps_the_words_at_40_columns_whatever_the_id(repo, monkeypat
     assert shown.exit_code == 0, shown.output
     row = next(line for line in shown.stdout.splitlines() if ident in line)
     assert "which id" in row
+
+
+JUDGED = """\
+question: what does leaf-a's check run?  [a-runs]
+    default: leaf-b's test
+    then: check leaf-a: python3 -m pytest tests/test_b.py
+question: who writes tests/test_a.py?  [a-writes]
+    default: leaf-a
+    then: scope leaf-a + tests/test_a.py
+question: may leaf-a write tests/test_b.py too?  [a-takes]
+    default: yes
+    then: scope leaf-a + tests/test_b.py
+"""
+A_WAITS = "leaf-a waits on leaf-b: its check runs tests/test_b.py, which leaf-b writes"
+B_WAITS = "leaf-b waits on leaf-a: its check runs tests/test_a.py, which leaf-a writes"
+
+
+@pytest.mark.parametrize(
+    "item, said, needs",
+    [
+        ("a-runs", f"  changed: leaf-a: check is now python3 -m pytest tests/test_b.py\n{A_WAITS}\n",
+         {"leaf-a": ["leaf-b"], "leaf-b": []}),
+        ("a-writes", f"  changed: leaf-a: scope + tests/test_a.py\n{B_WAITS}\n",
+         {"leaf-a": [], "leaf-b": ["leaf-a"]}),
+        ("a-takes", "leaf-a and leaf-b both write tests/test_b.py. A path has one leaf that writes it",
+         {"leaf-a": [], "leaf-b": []}),
+    ],
+)  # fmt: skip
+def test_an_answer_that_changes_a_check_or_a_scope_is_judged_as_the_persons_edit_would_be(
+    repo, item, said, needs
+):
+    """The loop directive, lane 5: a `then:` line was applied unjudged (decision 171). A leaf whose check
+    then ran another leaf's file did not wait on it, and a scope could take in another leaf's path."""
+    judged(repo)
+    refused = item == "a-takes"
+    took = person("board", "take", item)
+    assert took.exit_code == int(refused) and said in took.output, took.output
+    with Store.open(repo) as store:
+        assert {n.id: n.needs for n in P.nodes(store)} == needs
+        assert B.get(store, item)["state"] == ("open" if refused else "taken")  # refused: none of it
+
+
+def judged(repo):
+    with Store.open(repo) as store:
+        P.propose(store, [{"id": "leaf-a", "title": "a", "scope": ["a.py"], "check": "true"},
+                          {"id": "leaf-b", "title": "b", "scope": ["b.py", "tests/test_b.py"],
+                           "check": "python3 -m pytest tests/test_a.py"}], ALEX)  # fmt: skip
+        T.apply(store, JUDGED, PLANNER, None)
+
+
+def test_taking_every_default_says_what_now_waits_and_why_a_default_stays_open(repo):
+    """Review of lane 5: every default was judged, and `graphene board take` said neither the need one
+    added nor why one that was refused stayed open."""
+    judged(repo)
+    took = person("board", "take")
+    assert took.exit_code == 0 and took.stdout.splitlines() == [
+        "took the default of a-runs, left open on the board (`graphene plan undo` takes them back)",
+        A_WAITS,
+        "left for you: a-writes (its default is refused: leaf-b: its check runs tests/test_a.py, which "
+        "leaf-a writes after it. Give leaf-b a check that passes without it, or let leaf-a's check run it)",
+        "left for you: a-takes (its default is refused: leaf-a and leaf-b both write tests/test_b.py. A path "
+        "has one leaf that writes it: give it to one, and let the other wait on it)",
+    ], took.output
+    with Store.open(repo) as store:
+        assert {it["id"]: it["state"] for it in B.items(store)} == {
+            "a-runs": "taken", "a-writes": "open", "a-takes": "open"
+        }  # fmt: skip
+        assert {n.id: n.needs for n in P.nodes(store)} == {"leaf-a": ["leaf-b"], "leaf-b": []}
