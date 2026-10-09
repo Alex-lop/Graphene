@@ -1078,9 +1078,9 @@ B_WAITS = "leaf-b waits on leaf-a: its check runs tests/test_a.py, which leaf-a 
 @pytest.mark.parametrize(
     "item, said, needs",
     [
-        ("a-runs", f"leaf-a: check is now python3 -m pytest tests/test_b.py; {A_WAITS}",
+        ("a-runs", f"  changed: leaf-a: check is now python3 -m pytest tests/test_b.py\n{A_WAITS}\n",
          {"leaf-a": ["leaf-b"], "leaf-b": []}),
-        ("a-writes", f"leaf-a: scope + tests/test_a.py; {B_WAITS}",
+        ("a-writes", f"  changed: leaf-a: scope + tests/test_a.py\n{B_WAITS}\n",
          {"leaf-a": [], "leaf-b": ["leaf-a"]}),
         ("a-takes", "leaf-a and leaf-b both write tests/test_b.py. A path has one leaf that writes it",
          {"leaf-a": [], "leaf-b": []}),

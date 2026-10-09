@@ -286,6 +286,31 @@ def test_a_reask_says_what_it_could_not_carry_and_why(repo, tmp_path, monkeypatc
         assert B.get(store, "id-type")["about"] is None
 
 
+ASKED_WAITS = ASKED_SCOPE.replace(
+    'print("    then: scope ids + schema.py")\n',
+    "",
+).replace(
+    'print("question:', 'print("  ? the schema has string ids  [schema]")\nprint("      scope: schema.py")\n'
+    'print("      check: true")\nprint("question:',
+)
+
+
+def test_an_answer_that_makes_a_leaf_wait_is_carried_as_the_check_it_gave(repo, tmp_path, monkeypatch):
+    """Review of the loop directive, lane 5: the answer's waits line was kept in what it changed. A re-ask
+    read the line as part of the check, and told both the person and the planner a check that cannot
+    pass."""
+    assert person("ask", "add ids", "--with", planner(tmp_path, ASKED_WAITS, monkeypatch)).exit_code == 0
+    picked = person("board", "pick", "id-type", "1")
+    again = person("ask", "add ids", "--finer", "--with", planner(tmp_path, ELSEWHERE, monkeypatch))
+    assert again.exit_code == 0, again.output
+    assert "`graphene node set LEAF --check 'grep -q str schema.py'` puts it on one" in again.output
+    assert "(it changed ids: check is now grep -q str schema.py)\n" in prompts(tmp_path)[-1]
+    assert picked.stdout.splitlines()[1:] == [
+        "  changed: ids: check is now grep -q str schema.py",
+        "ids waits on schema: its check runs schema.py, which schema writes",  # apart, as node set says it
+    ], picked.output
+
+
 ASKED_LEAF = ASKED.replace(
     'then: goal ids + \\"ids stay numbers\\"', 'then: leaf \\"a sample user\\" under ids'
 )

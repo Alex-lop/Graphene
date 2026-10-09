@@ -221,21 +221,21 @@ def _there(store, node_id: str | None, what: str) -> None:
         raise P.Refused(f"{what} {node_id}, which is not a node in the plan")
 
 
-def _apply(store, line: str, who: P.Caller, now: str, files, conditions: list[str]) -> str:
-    """One effect, made as the person's edit; returns what it changed, in a line."""
+def _apply(store, line: str, who: P.Caller, now: str, files, conditions: list[str], told: list[str]) -> str:
+    """One effect, made as the person's edit; returns what it changed, in a line. A check or a scope is
+    judged as `node set` judges it: what now waits on what goes in ``told``, and one writer a path."""
     from . import plan_text as T
 
     verb, node_id, what = effect(line)
     _there(store, node_id, f"then: {line} names")
-    told: list[str] = []  # judged as `node set` is: a check waits on what writes its files, one writer a path
     if verb == "scope":
         node = P.get(store, node_id)
         new = [g for g in what if g not in node.scope]
         P.edit(store, node_id, {"scope": [*node.scope, *new]}, who, now, files, told=told)
-        return "; ".join([f"{node_id}: scope + {', '.join(new) or 'nothing new'}", *told])
+        return f"{node_id}: scope + {', '.join(new) or 'nothing new'}"
     if verb == "check":
         P.edit(store, node_id, {"check": what}, who, now, files, told=told)
-        return "; ".join([f"{node_id}: check is now {what}", *told])
+        return f"{node_id}: check is now {what}"
     if verb == "goal":
         goal = P.goal_plus(P.get(store, node_id).goal, what)
         if goal is None:
@@ -379,16 +379,17 @@ def settle(
     words: str | None = None,
     files: list[str] | None = None,
     now: str | None = None,
+    told: list[str] | None = None,
     **detail,
 ) -> dict:
     """The person answers an item: ``state`` is taken (the default, or yes), picked (``option``, from
     1), answered (``words``), parked, dropped, or open again (from parked, or from an answer the
     repository gave: ``from``). What the chosen default or option says `then:` is applied in the same
-    transaction, as the person's edit. ``detail`` goes on the act's log row (``from``, ``unchanged``);
-    ``from`` is kept on the item too, the file that answered it."""
+    transaction, as the person's edit, and ``told`` gets what it makes wait. ``detail`` goes on the
+    act's log row (``from``, ``unchanged``); ``from`` is kept on the item too, the file that answered it."""
     if not who.person:
         raise P.Refused(f"answering the board is the person's, not {who.name}'s")
-    now = now or P._now()
+    now, told = now or P._now(), [] if told is None else told
     with store.claim():
         board = items(store)
         item = next((it for it in board if it["id"] == item_id), None) or get(store, item_id)
@@ -439,7 +440,7 @@ def settle(
         became = [""] * len(effects)
         first = [i for i, line in enumerate(effects) if effect(line)[0] == "condition"]
         for i in first:
-            became[i] = _apply(store, effects[i], who, now, files, conditions)
+            became[i] = _apply(store, effects[i], who, now, files, conditions, told)
         item.update(
             state=state, answer=answer, option=option if state == "picked" else None, rev=item["rev"] + 1,
             updated_at=now, conditions=conditions or item["conditions"],
@@ -448,7 +449,7 @@ def settle(
             item["from"] = detail["from"]
         _put(store, board)  # the answer's own conditions bind its other effects, as a later answer's would
         for i in (i for i in range(len(effects)) if i not in first):
-            became[i] = _apply(store, effects[i], who, now, files, conditions)
+            became[i] = _apply(store, effects[i], who, now, files, conditions, told)
         item.update(became=became or item["became"])
         _put(store, board)
         _log(store, item, {"taken": "took", "open": "unparked"}.get(state, state), who, now, became=became,
@@ -515,12 +516,12 @@ def lifted(item: dict) -> list[str]:
     ]
 
 
-def take(store, item_id: str, who: P.Caller, files: list[str] | None = None) -> dict:
-    return settle(store, item_id, "taken", who, files=files)
+def take(store, item_id: str, who: P.Caller, files: list[str] | None = None, told=None) -> dict:
+    return settle(store, item_id, "taken", who, files=files, told=told)
 
 
-def pick(store, item_id: str, option: int, who: P.Caller, files: list[str] | None = None) -> dict:
-    return settle(store, item_id, "picked", who, option=option, files=files)
+def pick(store, item_id: str, option: int, who: P.Caller, files: list[str] | None = None, told=None) -> dict:
+    return settle(store, item_id, "picked", who, option=option, files=files, told=told)
 
 
 def answer(store, item_id: str, words: str, who: P.Caller) -> dict:
@@ -596,14 +597,15 @@ def carry(store, old: str, new: str, who: P.Caller, files=None, now: str | None 
                 gone = made is not None and (store.node_row(made) or {}).get("state") in P.GONE
                 if node_id == new and (verb in ("scope", "check", "goal") or gone):
                     store.conn.execute("SAVEPOINT carry")  # a refused edit leaves the new tree as it landed
+                    told: list[str] = []
                     try:
-                        became[i] = _apply(store, line, who, now, files, [])
+                        became[i] = _apply(store, line, who, now, files, [], told)
                     except P.Refused as no:
                         store.conn.execute("ROLLBACK TO carry")
                         carried.append(f"not carried: {line} (from {item['id']}): {_one(str(no))}; "
                                        f"`graphene node set {new}` puts it on by hand")
                     else:
-                        carried.append(f"carried: {became[i]} (from {item['id']})")
+                        carried += [f"carried: {became[i]} (from {item['id']})", *told]
                     store.conn.execute("RELEASE carry")
             item["became"] = became if chosen else item.get("became") or []
             if json.dumps(item, sort_keys=True) != before:
@@ -843,11 +845,12 @@ def _orphans(found: list[dict], opened: dict[str, dict]) -> None:
 
 def _answered(store, item_id: str, spelled_: str | None, who, files, now, at: dict) -> list[str]:
     state, option, words = answer_of(spelled_) if spelled_ else ("open", None, None)
+    told: list[str] = []
     try:
-        item = settle(store, item_id, state, who, option, words, files, now)
+        item = settle(store, item_id, state, who, option, words, files, now, told)
     except P.Refused as no:
         raise P.Refused(f"{_line(at, 'answer') or _line(at, 'item')}{no}") from None
-    return [f"{reads(item)} {item_id}" + (f": {'; '.join(item['became'])}" if item["became"] else "")]
+    return [f"{reads(item)} {item_id}" + (f": {'; '.join(item['became'])}" if item["became"] else ""), *told]
 
 
 def _reword(store, found: dict, who: P.Caller, now: str) -> None:
