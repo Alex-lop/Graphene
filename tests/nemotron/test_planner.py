@@ -344,6 +344,17 @@ def test_a_fault_that_needs_no_judgement_is_repaired_and_said_not_sent_back(repo
     assert said[1:4] == ["the planner says:", f"  {ANSWER['says']}", f"  repaired: {repaired}"]
 
 
+def test_past_twelve_lines_what_the_planner_says_counts_the_lines_not_shown(repo, fake):
+    """Twelve ids with a space are twelve repairs: with the says line, thirteen lines. The last was cut
+    with no word."""
+    leaves = [node(f"Leaf {k}", f"leaf {k}", scope=[f"f{k}.py"], check="true") for k in range(1, 13)]
+    fake([{"content": "I have read enough."}, answer({**ANSWER, "nodes": leaves})])
+    said = []
+    with Store.open(repo) as store:
+        ask(store, repo, "make it say hello", named("nemotron"), say=said.append)
+    assert said[-2:] == ["  repaired: [Leaf 11] is not an id; it is [leaf-11] now", "  (and 1 more)"]
+
+
 def test_a_name_the_text_form_reads_is_no_fault_to_repair(repo, fake):
     """The repairs read an id, a parent: and needs: as the text form reads them back: on one line, with
     no space around, "[greeting]" as greeting, and "hello, none" as hello."""

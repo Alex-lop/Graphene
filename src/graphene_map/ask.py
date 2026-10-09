@@ -473,9 +473,10 @@ def ask(
                 rest = _FENCE.sub("", printed).strip() if _FENCE.search(printed) else ""
                 if rest:  # its lines as it wrote them (a list stays a list), not run together
                     lines = [" ".join(line.split()).replace("**", "") for line in rest.splitlines()]
-                    said_lines = [line for line in lines if line][:12]
+                    said_lines = [line for line in lines if line]
+                    cut = len(said_lines) - 12  # past twelve lines, a count of the rest
                     say("the planner says:")
-                    for line in said_lines:
+                    for line in said_lines[:12] + [f"(and {cut} more)"] * (cut > 0):
                         say(f"  {line[:300]}")
                 if cover := extra.load("cover"):  # GRAPHENE_SHAPE: what reads the proposal once it has landed
                     if about is None:
