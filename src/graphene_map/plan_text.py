@@ -574,17 +574,22 @@ def apply(
     now: str | None = None,
     alone: bool = False,
     beside: frozenset[str] | set[str] = frozenset(),
+    faulty: frozenset[int] = frozenset(),
 ) -> Said:
     """Make the plan say what the text says. ``opened`` is what ``render`` wrote (an edit: a node
     it held that the text no longer has is dropped); None is a proposal (only new lines count, and
     a line with the id of a node already in the plan is where the new ones hang). ``alone``: the text
     held one node without its children. ``beside``: the leaves a proposal would replace (a merge, or
-    another way), which it may overlap. Returns one line per change made, for whoever applied it."""
+    another way), which it may overlap. ``faulty``: the lines of the nodes and board items ``faults``
+    set aside. Returns one line per change made, for whoever applied it."""
     now = now or P._now()
     text, board = B.split(text)  # the board's lines, read by board.py; every other line keeps its number
     goal, lines = parse(text, strict=opened is not None)
     if not lines and goal is None and not board:
         raise P.Refused("the text has no node in it, so nothing was applied")
+    board = [f for f in board if f["no"] not in faulty]
+    for ln in (ln for ln in lines if ln.no in faulty):  # still in the tree, and judged by nothing
+        ln.scope, ln.check, ln.needs, ln.signoff, ln.owner, ln.said = [], None, [], False, P.AGENT, set()
     if board and opened is not None and "*board" not in opened:
         raise P.Refused(
             f"line {board[0]['no']}: the board is edited with the whole plan (`graphene plan edit`), not "
@@ -606,7 +611,7 @@ def apply(
     }
     fresh = [ln for ln in lines if ln.id not in everything]
     kept = [ln for ln in lines if ln.id in everything]
-    _guard_shape(lines, fresh, everything, opened, parent_of, who)
+    _guard_shape(lines, fresh, everything, opened, parent_of, who, faulty)
     said = Said()
     said.renamed = {old: line.id for old, line in renamed.items()}
     new: list[str] = []
@@ -653,6 +658,33 @@ def apply(
     return said
 
 
+def faults(store, text: str, who: P.Caller, files: list[str] | None = None, beside=frozenset()) -> list[str]:
+    """Every refusal ``apply`` makes of a proposal, in its words, with nothing applied. The node or board
+    item a refusal is on is set aside, and the rest is tried again. A line Graphene cannot read ends it."""
+    try:
+        rest, board = B.split(text)
+        starts = [*(f["no"] for f in board), *(ln.no for ln in parse(rest)[1])]
+    except P.Refused as no:
+        return [str(no)]
+    said: list[str] = []
+    faulty: set[int] = set()
+    while True:
+        store.conn.execute("SAVEPOINT faults")
+        try:
+            apply(store, text, who, None, files=files, beside=beside, faulty=frozenset(faulty))
+            return said
+        except P.Refused as no:
+            said.append(str(no))
+            at = re.match(r"line (\d+)", str(no))
+            on = max((s for s in starts if at and s <= int(at[1])), default=None)
+            if on is None or on in faulty:
+                return said
+            faulty.add(on)
+        finally:
+            store.conn.execute("ROLLBACK TO faults")
+            store.conn.execute("RELEASE faults")
+
+
 def _ids(lines: list[Line], everything: dict[str, P.Node], opened: dict | None) -> dict[str, Line]:
     """Refuse an [id] the text cannot use. Returns the lines of a proposal that reused a dropped or
     archived id, by that id: they get a new one, and a need that names it follows."""
@@ -685,7 +717,7 @@ def _ids(lines: list[Line], everything: dict[str, P.Node], opened: dict | None) 
     return renamed
 
 
-def _guard_shape(lines, fresh, everything, opened, parent_of, who) -> None:
+def _guard_shape(lines, fresh, everything, opened, parent_of, who, faulty=frozenset()) -> None:
     """What a text says that it probably did not mean, refused with how to say it."""
     ids = {ln.id for ln in lines} | set(everything)
     for k, ln in enumerate(lines):
@@ -709,7 +741,7 @@ def _guard_shape(lines, fresh, everything, opened, parent_of, who) -> None:
         contract = parent is not None and bool(
             parent.scope or parent.check or (stored is not None and (stored.scope or stored.check))
         )
-        empty = not (ln.scope or ln.check or ln.signoff or has_kids)
+        empty = not (ln.scope or ln.check or ln.signoff or has_kids or ln.no in faulty)
         if empty and (contract or not who.person):
             unread = next((g for g in ln.goal if re.match(r"[`*_]*\w[\w ]{0,20}[`*_]*\s*[:=]", g)), None)
             raise P.Refused(
