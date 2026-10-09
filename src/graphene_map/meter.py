@@ -248,11 +248,6 @@ class Meter:
         return []
 
 
-def _seconds(start: str, end: str | datetime) -> int:
-    end = end if isinstance(end, datetime) else datetime.fromisoformat(end)
-    return max(0, round((end - datetime.fromisoformat(start)).total_seconds()))
-
-
 def attempts(rows: list[dict], scope: list[str] | None = None, now: datetime | None = None) -> list[dict]:
     """One leaf's attempts, oldest first, from its node_log rows: what each spent, did and said. A row
     without an attempt number (a usage row from before the meter, a denied path) is the attempt's that
@@ -322,7 +317,7 @@ def _attempt(a: dict, nxt: dict | None, scope: list[str] | None, now: datetime) 
         "model": next((u["model"] for u in reversed(usage) if u.get("model")), None),
         "started": start,
         "log": a["row"]["detail"].get("log"),
-        "seconds": _seconds(start, end),
+        "seconds": max(0, round((end - datetime.fromisoformat(start)).total_seconds())),
         "until": end,  # its end, or now while it runs: a datetime
         "running": until is None and nxt is None,
         "exit": ended["detail"].get("exit") if ended else None,
