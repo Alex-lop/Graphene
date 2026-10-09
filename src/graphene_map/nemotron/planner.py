@@ -10,8 +10,8 @@ the bill into the plan's log.
 Once the model stops calling tools, it is asked for the proposal in a strict JSON schema (``FORMAT``).
 What needs no judgement is repaired, with a line for each repair after the proposal (``_repaired``). The
 proposal is written as the plan's text (``as_text``) and tried, rolled back. What Graphene still refuses
-goes back to the model, every fault at once (``plan_text.faults``), at most twice. The third answer is
-the answer.
+goes back to the model at most twice, every fault it found in one message, one per node or board item
+(``plan_text.faults``). The third answer is the answer.
 """
 
 from __future__ import annotations
@@ -37,8 +37,8 @@ from .executor import text_calls
 
 PROMPT_VERSION = 6  # 2: the board (questions with a default, assumptions, risks, leave-outs); 3: then:
 # lines; 4: at most three items, each a question or a risk that changes the tree; assumptions in goals;
-# 5: a check runs only its own files; the proposal is asked for as JSON in a strict schema; 6: every
-# fault at once, sent back at most twice; what needs no judgement is repaired, not sent back
+# 5: a check runs only its own files; the proposal is asked for as JSON in a strict schema; 6: what needs
+# no judgement is repaired, not sent back; the faults go back together, one per node, at most twice
 SYSTEM = """\
 You are the planner for Graphene: a person said what they want, and you propose the tree of work that
 coding agents will do, which the person prunes before anything runs. Read the repository with the tools
@@ -261,8 +261,8 @@ def _repaired(p: dict, plan: list[P.Node], files: list[str]) -> list[str]:
 
 
 def _answer(raw: str, mend=lambda p: []) -> tuple[str, str]:
-    """The proposal's text, and what to print: the fenced block with says after it, and a line for each
-    repair (``mend``); or an answer that is not that JSON (a stand-in's) as it is."""
+    """The proposal's text, and what to print. A JSON answer prints as the fenced block, its says line,
+    and a line for each repair (``mend``). Any other answer, a stand-in's, prints as it is."""
     try:
         p = json.loads(raw)
         said = [f"repaired: {line}" for line in mend(p)]
@@ -273,10 +273,10 @@ def _answer(raw: str, mend=lambda p: []) -> tuple[str, str]:
 
 
 def _tried(root: Path, raw: str, files: list[str]) -> tuple[str, str, list[str]]:
-    """The answer, repaired, as `graphene ask` reads it (``_answer``), and every fault Graphene refuses in
-    it: tried as `graphene ask` tries it, and rolled back. A re-ask drops the tree it replaces first
-    (GRAPHENE_REPLACES), and what a merge or a re-ask replaces may share the new leaves' paths
-    (GRAPHENE_BESIDE), as `graphene ask` has it."""
+    """Repair the answer and try it as `graphene ask` does, rolled back. Returns its text, what to print
+    (``_answer``), and the faults Graphene finds in it. A re-ask drops the tree it replaces first
+    (GRAPHENE_REPLACES). What a merge or a re-ask replaces may share the new leaves' paths
+    (GRAPHENE_BESIDE)."""
     replaces, (text, said), faults = os.environ.get("GRAPHENE_REPLACES") or None, _answer(raw), []
     try:
         with Store.open(repo_root(root)) as store, store.claim():

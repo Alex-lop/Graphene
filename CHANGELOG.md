@@ -3,8 +3,8 @@
 ## 0.5.0 (not published yet: the tag is Alex's)
 
 The loop (9 October).
-- The Nemotron planner repairs what needs no judgement and says each repair in a `repaired:` line. It sends every
-  other fault back at once, at most twice. Run `graphene ask --with nemotron '…'`.
+- The Nemotron planner repairs what needs no judgement and says each repair in a `repaired:` line. It sends the
+  other faults back together, one per node, at most twice. Run `graphene ask --with nemotron '…'`.
 
 The timeline (8 October). A fourth view, and fixes for what the meter night's runs stopped on.
 - A fourth view, `time`: a lane for each leaf that was held, what its executor did when, and marks for a refused
