@@ -2544,7 +2544,7 @@ def record_pane(store, node: P.Node, s, wide: int) -> Text:
     if kids:  # a sub-goal: its leaves' records added up
         pane.gap()
         pane.text("its leaves", "bold")
-        for line in rolled_up(store, s.root_path, kids):
+        for line in rolled_up(store, s.root_path, kids, s.events["now"].isoformat()):  # the screen's clock
             pane.text(_plain(line.strip().removesuffix(":")), indent=2 if line.startswith("    ") else 0)
         return pane.render()
     if word == "came back":

@@ -644,3 +644,16 @@ def test_the_record_of_several_leaves_says_how_wide_they_ran_and_a_leafs_own_doe
     lines = NR.rolled_up(store, repo, plan.leaves(plan.nodes(store)))
     assert lines[-1] == "    width 2 of 2 · 50% of agent minutes alone"
     assert not any("width" in line for line in NR.render(NR.node_record(store, repo, plan.get(store, "api"))))
+
+
+def test_the_width_in_a_record_is_taken_at_the_records_moment(store, repo):
+    """An attempt still running runs up to the record's ``at`` (a replay's clock), not to the wall's."""
+    run = Caller("run:claude", False, "s-1")
+    plan.propose(store, [api_node(id="api"), api_node(id="db", scope=["src/db/**"])], ALEX, now=T(0))
+    for leaf, start in (("api", T(1)), ("db", T(2))):
+        plan.start(store, leaf, run, repo, now=start)
+        store.log_node(leaf, start, "attempt", run.label, run.session_id, None, {"attempt": 1})
+    store.log_node("api", T(3), "ended", run.label, run.session_id, None, {"attempt": 1, "exit": 0})
+    # at 01:05 db has run 3 minutes, 1 of them beside api: 3 of 5 agent minutes alone
+    lines = NR.rolled_up(store, repo, plan.leaves(plan.nodes(store)), T(5))
+    assert lines[-1] == "    width 2 of 2 · 60% of agent minutes alone"

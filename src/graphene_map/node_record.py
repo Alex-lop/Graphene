@@ -892,6 +892,6 @@ def rolled_up(store, root: str | Path, leaves: list[P.Node], at: str | None = No
         total["models"] = sorted({m for b in bills for m in b["models"]})
         total["endpoint"] = _whose(bills)
         lines += bill_line(total, "    ")
-    if ran := meter.width([e for n in held for e in store.node_log(n.id)]):  # how many leaves ran at once
+    if ran := meter.width([e for n in held for e in store.node_log(n.id)], at and datetime.fromisoformat(at)):
         lines.append(f"    width {ran['most']} of {ran['lanes']} · {ran['alone']:.0%} of agent minutes alone")
     return lines
