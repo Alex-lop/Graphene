@@ -2,6 +2,14 @@
 
 ## 0.5.0 (not published yet: the tag is Alex's)
 
+The loop (9 October). A leaf that finds a landed leaf's fault reopens it with one key, and every check runs red first.
+- A leaf that came back wanting a file a done leaf owns offers `r`: reopen that leaf with the reason, and wait on it.
+  `R` then runs the owner again on top of what landed, its executor told the note first. Press `r` in `graphene watch`.
+- Before `graphene run` starts anything, every accepted leaf's check runs once at the base commit: one that passes
+  there proves nothing, one that fails on a file outside the leaf's scope names it. `--no-precheck` skips it.
+- `graphene node show` says when a check ran a file a later leaf rewrites, with the file and the base commit.
+- An executor whose check fails on a file another leaf landed releases with `--wants` naming it and the fault.
+
 The timeline (8 October). A fourth view, and fixes for what the meter night's runs stopped on.
 - A fourth view, `time`: a lane for each leaf that was held, what its executor did when, and marks for a refused
   write, the check, a hand-back and a landing. Tab in `graphene watch`, or run `graphene plan --view time`.
