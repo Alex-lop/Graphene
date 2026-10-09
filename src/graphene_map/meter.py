@@ -361,13 +361,18 @@ def unpriced(rows: list[dict]) -> int:
                for e in usage if e["detail"].get("priced") is False and whose(e) not in settled)  # fmt: skip
 
 
+def by_node(rows) -> dict[str, list[dict]]:
+    """A log's rows by node id ("*" is the plan's own), oldest first."""
+    out: dict[str, list[dict]] = {}
+    for e in rows:
+        out.setdefault(e["node_id"], []).append(e)
+    return out
+
+
 def agents(rows: list[dict], now: datetime) -> dict:
     """The agents' clock over a whole log: attempts running, their seconds summed, the dollars of every
     usage row, and the tokens no list price covers."""
-    leaves: dict[str, list[dict]] = {}
-    for e in rows:
-        leaves.setdefault(e["node_id"], []).append(e)
-    tries = [a for log in leaves.values() for a in attempts(log, now=now)]
+    tries = [a for log in by_node(rows).values() for a in attempts(log, now=now)]
     usage = [e["detail"] for e in rows if e["kind"] == "usage"]
     return {
         "running": sum(a["running"] for a in tries),

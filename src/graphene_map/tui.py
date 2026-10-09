@@ -943,9 +943,7 @@ class Watch(App):
         chains = ((n.id, [a.id for a in P.above(n, by_id) if a.state == P.PROPOSED]) for n in whole)
         self.lone = next((c for c in chains if len(c[1]) == len(proposals) - 1), None)
         yours = [i for i, w in self.words.items() if w in ("came back", "review", "yours")]
-        logs: dict[str, list[dict]] = {}
-        for e in store.node_log(kinds=("started", "model", "fork")):  # what the Nemotron executors noted
-            logs.setdefault(e["node_id"], []).append(e)
+        logs = M.by_node(store.node_log(kinds=("started", "model", "fork")))  # what Nemotron executors noted
         held = [
             n
             for n in nodes
@@ -1034,10 +1032,7 @@ class Watch(App):
         """The meter's strip, between the plan and the bottom lines: a block for each running leaf whose
         executor `graphene run` started (`live_row`), METERED at most, the rest counted."""
         running = {n.id: n for n in self.nodes if n.state == P.RUNNING}
-        logs: dict[str, list[dict]] = {}
-        for e in everything:
-            if e["node_id"] in running:
-                logs.setdefault(e["node_id"], []).append(e)
+        logs = M.by_node(e for e in everything if e["node_id"] in running)
         going = {i: M.going(logs.get(i, []), n.scope, now) for i, n in running.items() if self.METERS}
         held = [i for i in going if going[i]]  # a person or a session that took it after a run has none
         room, one = max(self.size.width - 2, 20), self.size.width >= WIDE
