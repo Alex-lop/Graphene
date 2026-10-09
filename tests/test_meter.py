@@ -158,7 +158,7 @@ def test_attempts_of_one_leaf():
     assert first == {
         "attempt": 1, "executor": "claude", "meter": "claude", "model": "claude-sonnet-5-5",
         "started": "2026-10-07T04:00:00.000Z", "log": "x.txt", "seconds": 90, "running": False, "exit": 1,
-        "turns": 3,
+        "until": datetime(2026, 10, 7, 4, 1, 30, tzinfo=UTC), "turns": 3,
         "prompt_tokens": 107, "completion_tokens": 13, "dollars": pytest.approx(0.26), "priced": True,
         "endpoints": ["", "claude code"],
         "read": ["src/a.py"], "edited": ["src/a.py", "docs/b.md"], "ran": [], "runs": {}, "searched": [],
@@ -167,7 +167,7 @@ def test_attempts_of_one_leaf():
                  "docs/b.md was refused"],
         "last_at": "2026-10-07T04:00:50.000Z", "files_in": ["src/a.py"], "files_out": ["docs/b.md"],
         "refused": ["docs/b.md"]}  # fmt: skip
-    assert second["running"] and second["seconds"] == 60 and second["exit"] is None
+    assert second["running"] and second["seconds"] == 60 and second["exit"] is None and second["until"] == NOW
     assert second["last"] == "running python3 -m pytest -q" and second["ran"] == ["python3 -m pytest -q"]
     assert (second["turns"], second["dollars"], second["refused"]) == (1, 0.05, [])
     assert second["runs"] == {"python3 -m pytest -q": 1} and second["log"] == "y.txt"
@@ -200,6 +200,48 @@ def test_a_leaf_never_attempted_has_no_attempts_and_the_clock_still_reads():
     planned = [row("00:00", "proposed", {}, actor="alex", node="c"), row("00:01", "accepted", {}, "alex")]
     assert M.attempts(planned[:1]) == []
     assert M.agents(planned, NOW) == {"running": 0, "seconds": 0, "dollars": 0, "unpriced": 0}
+    held = [row("00:02", "started", {}, actor="claude:aaaa1111", node="c"),
+            row("00:09", "finished", {}, actor="claude:aaaa1111", node="c")]  # fmt: skip
+    assert M.width(planned + held, NOW) is None  # a session's hold makes no attempt: nothing ran, no width
+
+
+def at(stamp: str, kind: str, node: str, attempt: int = 1) -> dict:
+    """An attempt's row on ``node`` at `MM:SS.mmm` after 04:00, to the millisecond as the log stamps it."""
+    return row("00:00", kind, {"attempt": attempt}, node=node) | {"timestamp": f"2026-10-07T04:{stamp}Z"}
+
+
+def test_width_is_the_most_leaves_at_once_and_the_share_of_agent_seconds_with_one_alone():
+    # a from 0 to 60 s, b from 30 to 90 s: each ran 30 s alone, of 120 agent seconds
+    rows = [at("00:00.000", "attempt", "a"), at("00:30.000", "attempt", "b"), at("01:00.000", "ended", "a"),
+            at("01:30.000", "ended", "b")]  # fmt: skip
+    assert M.width(rows, NOW) == {"most": 2, "lanes": 2, "alone": 0.5}
+
+
+@pytest.mark.parametrize("starts", ["00:10.000", "00:10.882"])
+def test_an_attempt_that_ends_as_another_starts_does_not_overlap_it(starts):
+    """[start, end): b starts the moment a ends, or later in the same second, as a run hands over."""
+    rows = [at("00:00.000", "attempt", "a"), at("00:10.000", "ended", "a"), at(starts, "attempt", "b"),
+            at("00:20.000", "ended", "b")]  # fmt: skip
+    assert M.width(rows, NOW) == {"most": 1, "lanes": 2, "alone": 1.0}
+    rows[2] = at("00:09.900", "attempt", "b")  # b began before a ended: a tenth of a second at once
+    assert M.width(rows, NOW)["most"] == 2
+
+
+def test_width_reads_both_ends_to_the_millisecond_not_to_the_second():
+    """b starts 0.3 s before a ends, inside one second: at once, though whole seconds say not. b starts
+    0.3 s after a ends: not at once, though a's start plus its rounded 11 seconds says so."""
+    a = [at("00:00.000", "attempt", "a"), at("00:10.500", "ended", "a")]
+    assert M.width([*a, at("00:10.200", "attempt", "b"), at("00:20.000", "ended", "b")], NOW)["most"] == 2
+    a[1] = at("00:10.600", "ended", "a")
+    assert M.width([*a, at("00:10.900", "attempt", "b"), at("00:20.000", "ended", "b")], NOW)["most"] == 1
+
+
+def test_a_leaf_that_tried_twice_is_one_lane_and_an_attempt_running_now_runs_until_now():
+    rows = [at("00:00.000", "attempt", "a"), at("00:20.000", "ended", "a"),
+            at("00:25.000", "attempt", "a", 2), at("00:40.000", "ended", "a", 2),
+            at("00:30.000", "attempt", "b")]  # fmt: skip  (b runs on)
+    # a: 0-20 s and 25-40 s; b: 30 s to now, 180 s in. At once from 30 to 40 s: 165 of 185 agent seconds alone
+    assert M.width(rows, NOW) == {"most": 2, "lanes": 2, "alone": pytest.approx(165 / 185)}
 
 
 def test_an_attempt_from_before_the_meter_ends_where_its_hold_did():

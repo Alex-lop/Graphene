@@ -304,7 +304,7 @@ def test_start_done_signoff_reopen_and_run_name_the_repository(repo):
     assert all("(the plan of " in a.stderr for a in acts), [a.stderr for a in acts]
     # a run names it first (it runs for long), and ends with what it did, for the person
     last = acts[-1].stdout.splitlines()[-1]
-    assert last == "run: 1 came back (l2) · agents <1 min, no meter · you 0 acts, 0 min"
+    assert last == "run: 1 came back (l2) · agents <1 min, no meter · width 1 of 1 · you 0 acts, 0 min"
 
 
 # -- the recheck of the closing review: its regression tests --------------------
@@ -349,8 +349,8 @@ def test_a_finished_plan_says_when_its_leaves_work_is_not_committed_and_what_com
     assert ran.exit_code == 0, ran.output
     assert "--here: your checkout is exposed" in ran.stdout
     assert ran.stdout.splitlines()[-1] == (
-        "run: 1 done · agents <1 min, no meter · you 0 acts, 0 min · the work of ids is not committed "
-        "(`git status`): `graphene run --here` commits "
+        "run: 1 done · agents <1 min, no meter · width 1 of 1 · you 0 acts, 0 min · the work of ids is not "
+        "committed (`git status`): `graphene run --here` commits "
         "nothing, `graphene run` and watch's R commit and merge each leaf"
     )
     head = person().stdout.splitlines()[0]
@@ -661,3 +661,22 @@ def test_a_proposal_and_an_open_board_are_named_as_what_waits_not_stop_and_run_s
     assert "nothing to run: the tree is a proposal (1 leaf) nobody has accepted: `graphene plan accept`" in (
         ran.stderr
     ), ran.stderr
+
+
+def test_plan_record_and_node_show_on_a_sub_goal_say_how_wide_its_leaves_ran(repo):
+    """a runs from 01:00 to 01:02, b from 01:01 to 01:03: two at once, half of the agent minutes alone."""
+    from graphene_map import plan
+    from graphene_map.store import Store
+
+    run = plan.Caller("run:sh", False, "s-1")
+    leaves = [{"id": k, "title": f"leaf {k}", "scope": [f"{k}.txt"], "check": "true"} for k in "ab"]
+    tree = [{"id": "api", "title": "the surface", "children": leaves}]
+    with Store.open(repo) as store:
+        plan.propose(store, tree, plan.Caller("alex", True))
+        for leaf, start, end in (("a", 0, 2), ("b", 1, 3)):
+            plan.start(store, leaf, run, repo, now=f"2026-01-05T01:0{start}:00.000Z")
+            for minute, kind in ((start, "attempt"), (end, "ended")):
+                stamp = f"2026-01-05T01:0{minute}:00.000Z"
+                store.log_node(leaf, stamp, kind, run.label, run.session_id, None, {"attempt": 1})
+    for args in (("plan", "record"), ("node", "show", "api")):
+        assert "    width 2 of 2 · 50% of agent minutes alone" in person(*args).stdout.splitlines(), args
