@@ -471,20 +471,24 @@ def drops(item: dict) -> list[str]:
     return [node for line in item["then"] for verb, node, _ in [effect(line)] if verb == "drop" and node]
 
 
-def defaults(store, who: P.Caller, files: list[str] | None = None) -> list[dict]:
+def defaults(store, who: P.Caller, files: list[str] | None = None, told=None) -> list[dict]:
     """Every open item that has a default takes it, as the person's take (``unchanged`` on the log
     row: nobody changed it), so a person who agrees with every default answers nothing. An item that
     cannot be taken (about a node that left the plan) stays open, and so does one whose default drops
-    a node (``left``). Returns what was taken."""
-    taken = []
+    a node (``left``). Returns what was taken; ``told`` gets what a default makes wait on what, and why
+    one that cannot be taken stays open."""
+    taken, told = [], [] if told is None else told
     for item in [it for it in items(store) if has_default(it)]:
         store.conn.execute("SAVEPOINT take")  # each take all or none, inside the act that takes them all
+        said: list[str] = []
         try:
-            taken.append(settle(store, item["id"], "taken", who, files=files, unchanged=True))
-        except P.Refused:
+            taken.append(settle(store, item["id"], "taken", who, files=files, told=said, unchanged=True))
+        except P.Refused as no:
             store.conn.execute("ROLLBACK TO take")  # its state and whatever of its effects was made
+            said = [f"left for you: {item['id']} (its default is refused: {_one(str(no))})"]
         finally:
             store.conn.execute("RELEASE take")
+        told += said
     return taken
 
 

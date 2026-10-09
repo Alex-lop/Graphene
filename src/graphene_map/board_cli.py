@@ -192,11 +192,13 @@ def register(cli: typer.Typer, root, open_store, fail) -> None:
                 if not who.person:
                     raise P.Refused(f"answering the board is the person's, not {who.name}'s")
                 with P.undoable(store, who, "board take"):
-                    taken = B.defaults(store, who, files)
+                    taken = B.defaults(store, who, files, told)
                 kept = B.left(store)  # a default that drops a node waits for the person's key
             except P.Refused as no:
                 fail(str(no), 1)
-        out(B.took(taken, kept) or "nothing open on the board has a default to take")
+        said = [line for line in [B.took(taken, kept), *told] if line]  # a refused default is said, not taken
+        for line in said or ["nothing open on the board has a default to take"]:
+            out(line)
         typer.echo(f"  (the plan of {P.where(root())})", err=True)
 
     @board_cli.command()
