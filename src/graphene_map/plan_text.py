@@ -659,8 +659,10 @@ def apply(
 
 
 def faults(store, text: str, who: P.Caller, files: list[str] | None = None, beside=frozenset()) -> list[str]:
-    """Every refusal ``apply`` makes of a proposal, in its words, with nothing applied. The node or board
-    item a refusal is on is set aside, and the rest is tried again. A line Graphene cannot read ends it."""
+    """Every refusal ``apply`` makes of a proposal, in its words, once each, with nothing applied. The node
+    or board item a refusal is on is set aside, and the rest is tried again. The reading ends at a line
+    Graphene cannot read, or at a refusal that setting its node aside does not clear: two nodes with one
+    [id], or a parent cycle."""
     try:
         rest, board = B.split(text)
         starts = [*(f["no"] for f in board), *(ln.no for ln in parse(rest)[1])]
@@ -674,7 +676,8 @@ def faults(store, text: str, who: P.Caller, files: list[str] | None = None, besi
             apply(store, text, who, None, files=files, beside=beside, faulty=frozenset(faulty))
             return said
         except P.Refused as no:
-            said.append(str(no))
+            if str(no) not in said:  # set aside, and refused again: said once, and the reading ends
+                said.append(str(no))
             at = re.match(r"line (\d+)", str(no))
             on = max((s for s in starts if at and s <= int(at[1])), default=None)
             if on is None or on in faulty:

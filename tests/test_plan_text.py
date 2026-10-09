@@ -502,6 +502,9 @@ def test_every_fault_of_a_proposal_is_said_at_once_until_a_line_cannot_be_read(s
     assert T.faults(store, top("d", "d.py"), BOT) == [] and plan.nodes(store) == []
     [unread] = T.faults(store, "scope: src/**\n" + text, BOT)
     assert unread.startswith("line 1: 'scope: src/**' is not under a node")
+    # the copy of [e], set aside, keeps its id: the refusal is said once, and the reading ends before g
+    [twice] = T.faults(store, top("e", "e.py") + top("e", "f.py") + top("g", ""), BOT)
+    assert twice.startswith("line 4: [e] is on line 1 too.")
 
 
 def test_a_word_that_names_nothing_is_ignored_and_a_check_that_moves_is_not_judged(store):
