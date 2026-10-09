@@ -310,11 +310,14 @@ def above(node: Node, by_id: dict[str, Node]) -> list[Node]:
 
 
 def below(node_id: str, nodes: list[Node]) -> list[Node]:
-    """Everything under a node, proposals included, parents before their children."""
+    """Everything under a node, proposals included, parents before their children. A parent cycle
+    (refused by ``validate``, and in a planner's answer before it is judged) ends the walk."""
     under = kids(nodes, drawn=True)
     out, queue = [], list(under.get(node_id, []))
     while queue:
         n = queue.pop(0)
+        if n.id == node_id:  # back round to where it began: only a cycle that holds the node does that
+            continue
         out.append(n)
         queue[:0] = under.get(n.id, [])
     return out

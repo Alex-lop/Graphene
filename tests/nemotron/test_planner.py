@@ -3,6 +3,7 @@ with tools that only read, answers in a strict JSON schema, prints the fenced pl
 proposed is in the plan for the person to prune; the bill is in the plan's log."""
 
 import json
+import signal
 
 import pytest
 from fake_tokenfactory import Fake, call
@@ -383,6 +384,23 @@ def test_a_need_on_the_node_above_goes_back_and_is_not_repaired(repo, fake):
         [bill] = store.node_log("*", ("usage",))
     assert "the plan has a cycle: hello -> hello-test -> hello" in bill["detail"].get("sent_back", [""])[0]
     assert "needs: hello" in f.requests[2]["messages"][-1]["content"]  # as the model wrote it
+
+
+def test_two_nodes_each_others_parent_go_back_as_a_cycle_and_the_repairs_end(repo):
+    """One of them with a need: the repairs walked the tree down for ever, the plan's write lock held."""
+
+    def late(*_):
+        raise TimeoutError("the repairs never ended")
+
+    cycle = {**ANSWER, "nodes": [node("a", "a", "b"), node("b", "b", "a", needs=["c"]), node("c", "c")]}
+    was = signal.signal(signal.SIGALRM, late)
+    signal.alarm(5)
+    try:
+        _, _, faults = planner._tried(repo, json.dumps(cycle), ["app.py"])
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, was)
+    assert any("the plan has a cycle" in f for f in faults), faults
 
 
 def test_a_repair_never_hides_a_fault_that_needs_the_models_judgement(repo, fake):
