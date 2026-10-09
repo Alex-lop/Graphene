@@ -133,8 +133,8 @@ Ctrl-C stops the executors and hands back every leaf that had not passed. `graph
 checkout and commits nothing.
 
 **What the scopes buy and cost.** A path has one writer. A check runs only what its leaf owns or what exists at the
-base. That is the contract, and it caps the width: how the repository's files split decides how many leaves run at
-once. The typical shape is a few leaves side by side, then a chain.
+base. That is the contract. It caps the width. How the repository's files split decides how many leaves run at once.
+The typical shape is a few leaves side by side, then a chain.
 
 ## The executors
 
@@ -172,8 +172,8 @@ Claude Code's final report settles the dollars to what it says it cost. A Codex 
   counted by your keys: what you did, not what you read.
 
 **The bill line**: `graphene run` ends with one line, for every executor:
-`run: 3 done · agents 41 min, $2.8700 at list price · width 2 of 3 · you 4 acts, 2 min`. With no meter, the dollars
-say "no meter".
+`run: 3 done · agents 41 min, $2.8700 at list price · width 2 of 3 · you 4 acts, 2 min`. `width 2 of 3`: three leaves
+ran, at most two at once. With no meter, the dollars say "no meter".
 
 **`graphene node show`** lists each attempt: executor and model, time, turns, tokens, dollars, exit, then what it
 read, edited and ran, what was refused, and what it said last.
@@ -185,8 +185,8 @@ only the hooks' record, and the meter says nothing about it.
 
 ## Where each mechanism ends
 
-- A script that opens files itself is not seen by the hooks. Git catches it at `done`.
-- Writes through an MCP server are not seen by the hooks. Git catches them at `done`, but only while a leaf is held.
+- A script that opens files itself, or a write through an MCP server, is not seen by the hooks. Git catches both at
+  `done`, but only while a leaf is held.
 - A hook that crashes or times out lets the call through. That is the vendor's rule.
 - "Only a person" rests on the environment. An agent that unsets its CLI's variables passes for you.
 - The store is a file. A script that writes it directly is neither stopped nor noticed.
