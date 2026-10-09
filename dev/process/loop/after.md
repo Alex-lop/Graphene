@@ -92,7 +92,7 @@ still expecting half-up; its check (`scripts/close_month.sh`) was flagged *outsi
 | run | leaves | landed | came back | flagged | passes at base | outside |
 |---|---|---|---|---|---|---|
 | statements b1 | 8 | 8 | 0 | 2 of 8 (`legacy-keep`, `e2e`) | 2 | 0 |
-| statements b2 | 11 | (running) | | 10 of 11 | 10 | 0 |
+| statements b2 | 11 | 11 | 0 | 10 of 11 | 10 | 0 |
 
 b2's planner gave ten leaves checks of existing tests alone (`python3 -m unittest tests.test_ledger`): each
 passes at the base and proves nothing of the new work, and the run said so, one line a leaf, before it started.
