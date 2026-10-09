@@ -126,7 +126,30 @@ statements runs: 1 s, 3 s, 1 s, 3 s; every feeds run: 0 or 1 s.
 
 ## 3. The Nemotron planner (lane 3, purpose `planner`)
 
-(after lane 3 lands)
+`asks.sh`: `graphene ask` with `nemotron --steps 60` (Ultra), twenty times on feeds and twenty on report, each in a
+fresh repo, one after another, counted as `before.md` counts: an ask is one start; tonight it has at most three
+answers, the second and third after a send-back with every fault listed. The table of every ask: `asks-round1.md`.
+
+### Round 1: lane 3's build before its review (`7b6d2f6`)
+
+**30 proposals in 40 asks (75%): feeds 12 of 20, report 18 of 20. By answer: 30 of 82 (37%). $10.23.** Six
+repairs landed proposals that last night's validator would have sent back: four `parent:` lines naming the node
+itself or `root`, one `then: drop` naming a file, one `needs:` that closed a cycle; each said under the board as
+`repaired: …`.
+
+| | last night (round 3) | tonight, round 1 |
+|---|---|---|
+| per ask, with its send-backs | 15 of 20 (75%): feeds 6 of 10, report 9 of 10 | 30 of 40 (75%): feeds 12 of 20, report 18 of 20 |
+| per answer | 15 of 30 (50%) | 30 of 82 (37%) |
+
+Why the ten missed, from the table: two leaves writing one path, after two send-backs (feeds 5, 16; report 3);
+a `then:` or an `about:` naming a node not in the plan (feeds 8, 14); an `option:` under a `risk:` (feeds 10, 17);
+a leaf with no scope (report 8); a check that runs a file a later leaf writes (feeds 15); and one ask whose three
+answers all stalled to the token limit (feeds 13). 12 of 82 answers stalled, against 3 of 30 last night: the
+send-backs with every fault listed are longer, and Ultra writes spaces to the limit more often after one.
+
+Report is at 90% by ask. Feeds, the paragraph with the board items, is at 60%: half its misses are faults a
+repair could take (a `then:` or `about:` naming no node, options under a risk), which round 2 adds.
 
 ## 4. Width (lane 4)
 
