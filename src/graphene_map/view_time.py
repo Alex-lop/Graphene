@@ -30,7 +30,7 @@ from .view_dag import outline
 from .views import BASELINE, Drawn, elide, money
 
 EVENTS = True  # its draw takes the log's rows (views.happened)
-LABEL, LEAST, IDLE = 14, 30, 60  # the label column's most cells; the time column's least; idle after (s)
+LEAST, IDLE = 30, 60  # the time column's least cells; idle after (s)
 BLOCK = {"editing": "█", "running": "▓", "reading": "▒", "searching": "▒"}  # by a did row's verb: else ▓
 TALK, QUIET, HELD, NOW = "░", "─", "━", "●"  # a said row; idle; a hold with no attempt; running now
 MARKS = {"denied": ("!", "magenta"), "breach": ("!", "magenta"), "refused": ("!", "magenta"),
@@ -102,7 +102,7 @@ def draw(
     column has fewer than LEAST cells; taller than ``height`` is the screen's to scroll. ``events``:
     the log's rows (`views.happened`); with none, the lanes are drawn bare."""
     lanes = held(nodes)
-    label = min(LABEL, 3 + max(cell_len(i) for i in ["you", *(n.id for n in lanes)]))
+    label = 3 + max(cell_len(i) for i in ["you", *(n.id for n in lanes)])  # an id is never cut
     cells = width - label
     if cells < LEAST:
         return None
@@ -177,7 +177,7 @@ def draw(
     lines, at = [Text(elide(goal, width), "bold"), Text(" you".ljust(label)) + _text(you)], {}
     for n in lanes:
         how, line = P.look(words.get(n.id, ""))[1], Text()
-        line.append(f" {elide(n.id, label - 3)} ", f"{how} reverse".strip() if n.id == cursor else how)
+        line.append(f" {n.id} ", f"{how} reverse".strip() if n.id == cursor else how)
         at[n.id] = (len(lines), 0, line.cell_len - 1)
         lines.append(line + " " * (label - line.cell_len) + _text(lane(n)))
     lines.append(Text(" " * label + _axis(span, per, cells), "dim"))
