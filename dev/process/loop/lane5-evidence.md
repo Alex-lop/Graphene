@@ -1,0 +1,556 @@
+# Lane 5 evidence: ids, the ~ mark, re-judge
+
+Items A, C and D of the loop directive's lane 5, as the person sees them. Before is commit 7fe75af,
+where `loop` stood when the lane began. After is commit 3e18e82 on `l5`. Each case is a fresh git
+repo in a scratch directory, written `<tmp>`. Your commands ran through subprocess with no agent's mark in
+their environment: CLAUDECODE, CLAUDE_CODE_SESSION_ID, CLAUDE_CODE_ENTRYPOINT, AI_AGENT, GRAPHENE_NODE and
+GRAPHENE_PLANNER were removed. With no terminal, the log names you `alex (no terminal)`. The planner's
+commands ran as a Claude Code session. `graphene watch` is the headless screen at 80 columns, drawn as
+`dev/screens/meter_shot.py` draws it.
+
+## A. Ids are never cut
+
+The time view's label column held 14 cells at most, so a longer id was cut. Now the column fits the
+longest id. At 80 columns a 32-character id leaves 45 cells of time. The goal line is still cut to fit.
+`tests/test_view_time.py` pins both.
+
+Two leaves, one with a 32-character id. A Claude Code session starts both, so each has a lane.
+
+```
+[you] $ graphene node add 'a long id' --id label-column-fits-the-longest-id --scope a.py --check true
+○ a long id  label-column-fits-the-longest-id  ready
+```
+
+```
+[you] $ graphene node add 'a short id' --id b --scope b.py --check true
+○ a short id  b  ready
+```
+
+Before (7fe75af):
+
+```
+[you] $ graphene plan --view time --width 80 --height 24
+no goal yet
+ you
+ label-colu…  ●
+ b            ●
+              0s              15s             30s             45s
+2 lanes · <1 min · agents 0 min · you 0 acts ~0 min
+```
+
+After (3e18e82):
+
+```
+[you] $ graphene plan --view time --width 80 --height 24
+no goal yet
+ you
+ label-column-fits-the-longest-id  ●
+ b                                 ●
+                                   0s        15s        30s        45s
+2 lanes · <1 min · agents 0 min · you 0 acts ~0 min
+```
+
+## C. The ~ mark
+
+Graphene adds a need when a check runs a file another leaf writes. It logged that need under your name.
+`graphene plan changes` and the screen's ~ pass over your own acts, so neither showed it. Each command
+printed its `waits on` line, before and after. Now Graphene logs the need as its own edit, in a row after
+yours. `node set` prints both rows, and its revision counts both, as `plan edit`'s already did.
+`tests/test_talk.py` pins the three commands.
+
+### `graphene node set --check`: leaf-a's new check runs leaf-b's file
+
+```
+[you] $ graphene node add 'leaf a' --id leaf-a --scope a.py --scope tests/test_a.py --check true
+○ leaf a  leaf-a  ready
+```
+
+```
+[you] $ graphene node add 'leaf b' --id leaf-b --scope b.py --scope tests/test_b.py --check true
+○ leaf b  leaf-b  ready
+```
+
+```
+[you] $ graphene plan seen
+0 changes marked as seen; what anyone else changes next is marked
+```
+
+Before (7fe75af):
+
+```
+[you] $ graphene node set leaf-a --check 'python3 -m pytest tests/test_b.py -q'
+leaf-a is now revision 2:
+  check: true → python3 -m pytest tests/test_b.py -q
+  needs: none → leaf-b
+leaf-a waits on leaf-b: its check runs tests/test_b.py, which leaf-b writes
+```
+
+```
+[you] $ graphene plan changes
+nothing changed since you last looked
+```
+
+```
+[you] $ graphene watch   (80 columns, headless)
+ the plan of <tmp>/c-node-set
+▼ ○ no goal yet                                                        0/2 done
+├   ◌ leaf a                                                   leaf-a  waiting
+└   ○ leaf b                                                   leaf-b  ready
+────────────────────────────────────────────────────────────────────────────────
+ no goal yet
+ the goal · 0/2 done
+ the root of the tree, in your words: :plan goal '…' says why any of this is
+ done
+
+ ◌ leaf a                                                      leaf-a  waiting
+ ○ leaf b                                                      leaf-b  ready
+
+ waiting  leaf-a on leaf-b (ready)
+
+
+
+
+
+
+
+
+ 0 on you · agents 0 · you 3 acts ~1m · R: 1 ready · 0/2 done
+ R run all ready · E edit the plan as text · za fold all · Tab view · ? help
+```
+
+```
+[you] $ graphene node show leaf-a
+leaf-a (revision 2): leaf a
+  goal:   leaf a
+  scope:  a.py, tests/test_a.py   (a write anywhere else is refused, and blocks `done`)
+  needs:  leaf-b   (it cannot start until they are done)
+  done:   `python3 -m pytest tests/test_b.py -q` passes
+  finish: graphene node done leaf-a   (runs the check and asks git what changed)
+  stuck:  graphene node release leaf-a --why '<what is in the way>' [--wants <paths it needs>]   (hands it back; say why)
+leaf-a  leaf a
+  state: open · owner agent
+  nobody has held this node yet, so no window and nothing changed under it
+  coverage: not computed — nobody has held this node, so there is no window for git to answer for
+  refused: nothing
+  what people did to it:
+    2026-10-09T05:06:07.301Z  edited  alex (no terminal)  check: 'true' -> 'python3 -m pytest tests/test_b.py -q'; needs: [] -> ['leaf-b'] (revision 2)
+  every entry, check runs included: `graphene plan log` (2 for leaf-a)
+```
+
+After (3e18e82):
+
+```
+[you] $ graphene node set leaf-a --check 'python3 -m pytest tests/test_b.py -q'
+leaf-a is now revision 3:
+  check: true → python3 -m pytest tests/test_b.py -q
+  needs: none → leaf-b
+leaf-a waits on leaf-b: its check runs tests/test_b.py, which leaf-b writes
+```
+
+```
+[you] $ graphene plan changes
+1 changed since you last looked (graphene plan seen marks them seen):
+  05:06  leaf-a: edited needs by graphene
+```
+
+```
+[you] $ graphene watch   (80 columns, headless)
+ the plan of <tmp>/c-node-set
+▼ ○ no goal yet                                                        0/2 done
+├   ◌ leaf a                                                  ~leaf-a  waiting
+└   ○ leaf b                                                   leaf-b  ready
+────────────────────────────────────────────────────────────────────────────────
+ no goal yet
+ the goal · 0/2 done
+ the root of the tree, in your words: :plan goal '…' says why any of this is
+ done
+
+ ◌ leaf a                                                      leaf-a  waiting
+ ○ leaf b                                                      leaf-b  ready
+
+ waiting  leaf-a on leaf-b (ready)
+
+
+
+
+
+
+
+
+ 1 changed since you last looked · graphene plan changes · m seen · 0 on you
+ R run all ready · E edit the plan as text · za fold all · Tab view · ? help
+```
+
+```
+[you] $ graphene node show leaf-a
+leaf-a (revision 3): leaf a
+  goal:   leaf a
+  scope:  a.py, tests/test_a.py   (a write anywhere else is refused, and blocks `done`)
+  needs:  leaf-b   (it cannot start until they are done)
+  done:   `python3 -m pytest tests/test_b.py -q` passes
+  finish: graphene node done leaf-a   (runs the check and asks git what changed)
+  stuck:  graphene node release leaf-a --why '<what is in the way>' [--wants <paths it needs>]   (hands it back; say why)
+leaf-a  leaf a
+  state: open · owner agent
+  nobody has held this node yet, so no window and nothing changed under it
+  coverage: not computed — nobody has held this node, so there is no window for git to answer for
+  refused: nothing
+  what people did to it:
+    2026-10-09T05:06:15.987Z  edited  alex (no terminal)  check: 'true' -> 'python3 -m pytest tests/test_b.py -q' (revision 2)
+    2026-10-09T05:06:15.987Z  edited  graphene            needs: [] -> ['leaf-b'] (revision 3)
+  every entry, check runs included: `graphene plan log` (3 for leaf-a)
+```
+
+### `graphene plan edit`: the same change, saved in the editor
+
+The same two leaves and `graphene plan seen`. $EDITOR is a script that turns leaf-a's `check: true` into
+the new check.
+
+Before (7fe75af):
+
+```
+[you] $ graphene plan edit
+leaf-a: check changed; leaf-a waits on leaf-b: its check runs tests/test_b.py, which leaf-b writes
+```
+
+```
+[you] $ graphene plan changes
+nothing changed since you last looked
+```
+
+```
+[you] $ graphene watch   (80 columns, headless)
+ the plan of <tmp>/c-plan-edit
+▼ ○ no goal yet                                                        0/2 done
+├   ◌ leaf a                                                   leaf-a  waiting
+└   ○ leaf b                                                   leaf-b  ready
+────────────────────────────────────────────────────────────────────────────────
+ no goal yet
+ the goal · 0/2 done
+ the root of the tree, in your words: :plan goal '…' says why any of this is
+ done
+
+ ◌ leaf a                                                      leaf-a  waiting
+ ○ leaf b                                                      leaf-b  ready
+
+ waiting  leaf-a on leaf-b (ready)
+
+
+
+
+
+
+
+
+ 0 on you · agents 0 · you 3 acts ~1m · R: 1 ready · 0/2 done
+ R run all ready · E edit the plan as text · za fold all · Tab view · ? help
+```
+
+After (3e18e82):
+
+```
+[you] $ graphene plan edit
+leaf-a: check changed; leaf-a waits on leaf-b: its check runs tests/test_b.py, which leaf-b writes
+```
+
+```
+[you] $ graphene plan changes
+1 changed since you last looked (graphene plan seen marks them seen):
+  05:06  leaf-a: edited needs by graphene
+```
+
+```
+[you] $ graphene watch   (80 columns, headless)
+ the plan of <tmp>/c-plan-edit
+▼ ○ no goal yet                                                        0/2 done
+├   ◌ leaf a                                                  ~leaf-a  waiting
+└   ○ leaf b                                                   leaf-b  ready
+────────────────────────────────────────────────────────────────────────────────
+ no goal yet
+ the goal · 0/2 done
+ the root of the tree, in your words: :plan goal '…' says why any of this is
+ done
+
+ ◌ leaf a                                                      leaf-a  waiting
+ ○ leaf b                                                      leaf-b  ready
+
+ waiting  leaf-a on leaf-b (ready)
+
+
+
+
+
+
+
+
+ 1 changed since you last looked · graphene plan changes · m seen · 0 on you
+ R run all ready · E edit the plan as text · za fold all · Tab view · ? help
+```
+
+### `graphene node set --add-scope`: leaf-b takes in the file leaf-a's check runs
+
+The need lands on leaf-a, a leaf the command did not name.
+
+```
+[you] $ graphene node add 'leaf a' --id leaf-a --scope a.py --scope tests/test_a.py --check 'python3 -m pytest tests/test_shared.py -q'
+○ leaf a  leaf-a  ready
+```
+
+```
+[you] $ graphene node add 'leaf b' --id leaf-b --scope b.py --scope tests/test_b.py --check true
+○ leaf b  leaf-b  ready
+```
+
+```
+[you] $ graphene plan seen
+0 changes marked as seen; what anyone else changes next is marked
+```
+
+Before (7fe75af):
+
+```
+[you] $ graphene node set leaf-b --add-scope tests/test_shared.py
+leaf-b is now revision 2:
+  scope: b.py, tests/test_b.py → b.py, tests/test_b.py, tests/test_shared.py
+leaf-a waits on leaf-b: its check runs tests/test_shared.py, which leaf-b writes
+```
+
+```
+[you] $ graphene plan changes
+nothing changed since you last looked
+```
+
+```
+[you] $ graphene watch   (80 columns, headless)
+ the plan of <tmp>/c-add-scope
+▼ ○ no goal yet                                                        0/2 done
+├   ◌ leaf a                                                   leaf-a  waiting
+└   ○ leaf b                                                   leaf-b  ready
+────────────────────────────────────────────────────────────────────────────────
+ no goal yet
+ the goal · 0/2 done
+ the root of the tree, in your words: :plan goal '…' says why any of this is
+ done
+
+ ◌ leaf a                                                      leaf-a  waiting
+ ○ leaf b                                                      leaf-b  ready
+
+ waiting  leaf-a on leaf-b (ready)
+
+
+
+
+
+
+
+
+ 0 on you · agents 0 · you 3 acts ~1m · R: 1 ready · 0/2 done
+ R run all ready · E edit the plan as text · za fold all · Tab view · ? help
+```
+
+After (3e18e82):
+
+```
+[you] $ graphene node set leaf-b --add-scope tests/test_shared.py
+leaf-b is now revision 2:
+  scope: b.py, tests/test_b.py → b.py, tests/test_b.py, tests/test_shared.py
+leaf-a waits on leaf-b: its check runs tests/test_shared.py, which leaf-b writes
+```
+
+```
+[you] $ graphene plan changes
+1 changed since you last looked (graphene plan seen marks them seen):
+  05:06  leaf-a: edited needs by graphene
+```
+
+```
+[you] $ graphene watch   (80 columns, headless)
+ the plan of <tmp>/c-add-scope
+▼ ○ no goal yet                                                        0/2 done
+├   ◌ leaf a                                                  ~leaf-a  waiting
+└   ○ leaf b                                                   leaf-b  ready
+────────────────────────────────────────────────────────────────────────────────
+ no goal yet
+ the goal · 0/2 done
+ the root of the tree, in your words: :plan goal '…' says why any of this is
+ done
+
+ ◌ leaf a                                                      leaf-a  waiting
+ ○ leaf b                                                      leaf-b  ready
+
+ waiting  leaf-a on leaf-b (ready)
+
+
+
+
+
+
+
+
+ 1 changed since you last looked · graphene plan changes · m seen · 0 on you
+ R run all ready · E edit the plan as text · za fold all · Tab view · ? help
+```
+
+## D. Re-judge after a board answer
+
+A board answer's `then:` line was applied unjudged (decision 171). Now a new check or scope is judged as
+`node set` judges it. A check waits on the leaf that writes its file, and a second writer of a path is
+refused. The `waits on` line is said on the answer's `changed:` line. The need is Graphene's edit, so
+`plan changes` lists it (item C). `tests/test_board.py` pins the three answers.
+
+In each of three fresh repos: the same two leaves, the planner's three questions, and `graphene plan seen`.
+
+```
+[you] $ graphene node add 'leaf a' --id leaf-a --scope a.py --scope tests/test_a.py --check true
+○ leaf a  leaf-a  ready
+```
+
+```
+[you] $ graphene node add 'leaf b' --id leaf-b --scope b.py --scope tests/test_b.py --check 'python3 -m pytest tests/test_shared.py -q'
+○ leaf b  leaf-b  ready
+```
+
+```
+[the planner, a Claude Code session] $ graphene plan propose - < the text below
+question: what does leaf-a's check run?  [a-runs]
+    default: leaf-b's test
+    then: check leaf-a: python3 -m pytest tests/test_b.py -q
+question: who writes tests/test_shared.py?  [a-writes]
+    default: leaf-a
+    then: scope leaf-a + tests/test_shared.py
+question: may leaf-a write tests/test_b.py too?  [a-takes]
+    default: yes
+    then: scope leaf-a + tests/test_b.py
+---
+put up a-runs: what does leaf-a's check run?
+put up a-writes: who writes tests/test_shared.py?
+put up a-takes: may leaf-a write tests/test_b.py too?
+```
+
+### `graphene board take a-runs`: leaf-a's check runs leaf-b's file
+
+Before (7fe75af):
+
+```
+[you] $ graphene board take a-runs
+taken a-runs
+  changed: leaf-a: check is now python3 -m pytest tests/test_b.py -q
+```
+
+```
+[you] $ graphene plan changes
+nothing changed since you last looked
+```
+
+The plan then:
+
+```
+leaf-a: needs none; scope a.py, tests/test_a.py
+leaf-b: needs none; scope b.py, tests/test_b.py
+```
+
+After (3e18e82):
+
+```
+[you] $ graphene board take a-runs
+taken a-runs
+  changed: leaf-a: check is now python3 -m pytest tests/test_b.py -q; leaf-a waits on leaf-b: its check runs tests/test_b.py, which leaf-b writes
+```
+
+```
+[you] $ graphene plan changes
+1 changed since you last looked (graphene plan seen marks them seen):
+  05:06  leaf-a: edited needs by graphene
+```
+
+The plan then:
+
+```
+leaf-a: needs leaf-b; scope a.py, tests/test_a.py
+leaf-b: needs none; scope b.py, tests/test_b.py
+```
+
+### `graphene board take a-writes`: leaf-a takes in the file leaf-b's check runs
+
+Before (7fe75af):
+
+```
+[you] $ graphene board take a-writes
+taken a-writes
+  changed: leaf-a: scope + tests/test_shared.py
+```
+
+```
+[you] $ graphene plan changes
+nothing changed since you last looked
+```
+
+The plan then:
+
+```
+leaf-a: needs none; scope a.py, tests/test_a.py, tests/test_shared.py
+leaf-b: needs none; scope b.py, tests/test_b.py
+```
+
+After (3e18e82):
+
+```
+[you] $ graphene board take a-writes
+taken a-writes
+  changed: leaf-a: scope + tests/test_shared.py; leaf-b waits on leaf-a: its check runs tests/test_shared.py, which leaf-a writes
+```
+
+```
+[you] $ graphene plan changes
+1 changed since you last looked (graphene plan seen marks them seen):
+  05:06  leaf-b: edited needs by graphene
+```
+
+The plan then:
+
+```
+leaf-a: needs none; scope a.py, tests/test_a.py, tests/test_shared.py
+leaf-b: needs leaf-a; scope b.py, tests/test_b.py
+```
+
+### `graphene board take a-takes`: leaf-a takes in a path leaf-b writes
+
+Before (7fe75af):
+
+```
+[you] $ graphene board take a-takes
+taken a-takes
+  changed: leaf-a: scope + tests/test_b.py
+```
+
+```
+[you] $ graphene plan changes
+nothing changed since you last looked
+```
+
+The plan then:
+
+```
+leaf-a: needs none; scope a.py, tests/test_a.py, tests/test_b.py
+leaf-b: needs none; scope b.py, tests/test_b.py
+```
+
+After (3e18e82):
+
+```
+[you] $ graphene board take a-takes
+leaf-a and leaf-b both write tests/test_b.py. A path has one leaf that writes it: give it to one, and let the other wait on it
+[exit 1]
+```
+
+```
+[you] $ graphene plan changes
+nothing changed since you last looked
+```
+
+The plan then:
+
+```
+leaf-a: needs none; scope a.py, tests/test_a.py
+leaf-b: needs none; scope b.py, tests/test_b.py
+```
