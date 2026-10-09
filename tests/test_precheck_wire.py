@@ -13,7 +13,7 @@ def test_a_check_that_passes_at_base_is_said_and_the_leaf_still_runs(repo):
     ran = person("run", "--here", "--with", "true")
     assert ran.exit_code == 0, ran.output
     assert "l1: its check passes at the base commit" in ran.stdout
-    assert "red first: 1 checks at" in ran.stdout
+    assert "red first: 1 check at" in ran.stdout
     assert "run:" in ran.stdout.splitlines()[-1]  # the run went on to its summary
 
 

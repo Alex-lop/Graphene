@@ -24,3 +24,11 @@ def test_release_sentence_names_wants():
 def test_executor_system_names_release_wants_landed_file():
     for word in ("release", "wants", "landed"):
         assert word in executor.SYSTEM
+
+
+def test_claude_code_takes_the_prompt_after_a_double_dash_so_a_note_may_begin_with_a_dash():
+    from graphene_map.run import command_for
+
+    argv = command_for("claude -p --model sonnet", "- the note first\n\nYou are doing one leaf", "S", False)
+    assert argv[-3:] == ["S", "--", "- the note first\n\nYou are doing one leaf"]
+    assert "--" not in command_for("/tmp/executor.sh", "- note", "S", False)

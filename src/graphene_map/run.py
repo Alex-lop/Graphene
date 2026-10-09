@@ -352,7 +352,7 @@ def prompt_for(
         f"`graphene node done {node.id}`; if it refuses, it says what is wrong. If the leaf cannot be done "
         "as written, run the `release` command above and say why, naming with --wants each path outside "
         "the scope it needs. If your check cannot pass because a file another leaf already landed is wrong, "
-        "do not work around it in your own files. Run the release command with --wants naming that file "
+        "do not work around it in your own files: run the release command with --wants naming that file "
         "and a why that names the fault, so the person can reopen that leaf. Do not start any other node.",
     ]
     if refusal:
@@ -412,8 +412,8 @@ def command_for(template: str, prompt: str, session: str, again: bool) -> list[s
     node from its first call and a second attempt resumes with what the first one learned; any other
     executor gets the prompt (refusal included) as its last argument, fresh each time."""
     argv = shlex.split(template)
-    if argv and Path(argv[0]).name == "claude":
-        argv += ["--resume", session] if again else ["--session-id", session]
+    if argv and Path(argv[0]).name == "claude":  # `--`: a prompt that begins with a note's "-" is no option
+        argv += [*(["--resume", session] if again else ["--session-id", session]), "--"]
     return [*argv, prompt]
 
 

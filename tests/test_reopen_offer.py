@@ -87,3 +87,23 @@ def test_r_on_a_leaf_that_already_waits_on_the_owner_makes_it_waiting_not_came_b
     [edit] = store.node_log("x", ("edited",))
     assert edit["detail"] == {"changed": {}, "rev": 1, "reopened": ["a"]}
     assert plan.reads(x, plan.nodes(store)) == "waiting"
+
+
+def test_after_r_the_leaf_offers_nothing_and_a_done_aside_is_no_owner(store, repo, finish):
+    came_back(store, repo, finish, [("a", "a.py")], ["a.py"])
+    plan.reopen(store, ["a", "a"], ALEX, "fix it", for_leaf="x")  # an id named twice is one
+    assert plan.notes(store, "a") == ["fix it"] and plan.offers(store, plan.get(store, "x")) == []
+
+
+def test_r_is_not_offered_when_waiting_on_the_owner_would_make_a_cycle(store, repo, finish):
+    plan.propose(store, [leaf("x", ["x.py"]), leaf("a", ["a.py"], needs=["x"])], ALEX)
+    plan.start(store, "x", BOT, repo)
+    finish(store, repo, "x", BOT)
+    plan.start(store, "a", BOT, repo)
+    finish(store, repo, "a", BOT)
+    plan.reopen(store, "x", ALEX, "again")
+    plan.start(store, "x", BOT2, repo)
+    plan.release(store, "x", BOT2, "a's file is wrong", wants=["a.py"])
+    assert [k for k, *_ in plan.offers(store, plan.get(store, "x"))] == ["w", "b"]  # a waits on x: no r
+    with pytest.raises(Refused, match="cycle"):
+        plan.reopen(store, "a", ALEX, "fix it", for_leaf="x")
