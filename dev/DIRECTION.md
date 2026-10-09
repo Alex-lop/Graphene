@@ -1756,9 +1756,9 @@ any of them.
      note carry `width 2 of 3`.
 191. **Mechanical faults are repaired, not sent back,** each said as `repaired: …` under the board: an id
      Graphene refuses is slugged; a `needs:` or `parent:` naming no other node is dropped; a `needs:` that closes
-     a cycle is dropped at the cycle's last edge, in the answer's order; a `then:` or `about:` naming a file, or
-     no node, is dropped; options under a risk are dropped. A need on the node above goes back: only the model
-     knows which is wrong.
+     a cycle is dropped at the cycle's last edge, in the answer's order; a `then:` naming a file is dropped, and
+     an `about:` naming a file or no node; a risk with options is a question. A need on the node above, and a
+     `then:` naming no node, go back: only the model knows which is wrong.
 192. **Every fault at once, sent back at most twice.** `plan_text.faults` reads the whole answer and judges the
      whole; the third answer is the answer.
 193. **A need Graphene adds is Graphene's own edit** (actor `graphene`), so `~` and `plan changes` show it; a

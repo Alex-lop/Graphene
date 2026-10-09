@@ -209,7 +209,8 @@ def _repaired(p: dict, plan: list[P.Node], files: list[str]) -> list[str]:
     slugged. A needs: or a parent: that names no other node is dropped. A needs: that closes a cycle is
     dropped too: the cycle's last edge, in the answer's order. A node that needs a node above it keeps the
     need. The tree says the opposite, and only the model knows which is wrong. A board item with options
-    is a question. A then: or about: that names a file is dropped."""
+    is a question. A then: that names a file is dropped, and an about: that names a file or no node. A
+    then: that names no node goes back: dropped, it would change what the choice does."""
     for n in p["nodes"]:  # as the text form reads them back: "[a]" is a, "none" is none, "a, b" is two
         parent = T._uncomment(B._one(n["parent"] or "")).strip("[]`* ")
         n["id"], n["parent"] = B._one(n["id"]), None if parent.lower() in T._NONE else parent
@@ -248,8 +249,9 @@ def _repaired(p: dict, plan: list[P.Node], files: list[str]) -> list[str]:
             said.append(f"[{it['id']}] is a {it['kind']} with options; it is a question now")
             it["kind"] = "question"
         it["about"] = new.get(it["about"], it["about"]) if it["about"] else None  # "" names no node
-        if it["about"] and file(it["about"]):
-            said.append(f"[{it['id']}] about: {it['about']} names a file, not a node; dropped")
+        if it["about"] and it["about"] not in ids:  # it says who is told the answer: none is the whole plan
+            why = "names a file, not a node" if file(it["about"]) else "is not the id of a node"
+            said.append(f"[{it['id']}] about: {it['about']} {why}; dropped")
             it["about"] = None
         for c in (it, *it["options"]):
             for old, slug in new.items():
