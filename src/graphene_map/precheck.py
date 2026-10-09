@@ -171,8 +171,19 @@ def run(store, root: Path, ids=(), again: bool = False, say=None) -> Rows:
         except Exception as no:  # one check that breaks its runner is its own line
             return None, f"could not be run: {' '.join(str(no).split())[:200]}"
 
-    with ThreadPoolExecutor(WORKERS) as pool:
-        ran = dict(zip(commands, pool.map(one, commands), strict=True))
+    # a Ctrl-C, a closed terminal or a `kill` while the checks run ends them with everything they started
+    # (`end_checks`), as `node done`'s check is ended: nothing a run begins outlives it. The pool is shut
+    # after the kill, not before: shut first, it waited for a check that was never told to stop
+    pool = ThreadPoolExecutor(WORKERS)
+    try:
+        with P.ctrl_c_on_hangup():
+            futures = {c: pool.submit(one, c) for c in commands}
+            ran = {c: f.result() for c, f in futures.items()}
+    except BaseException:
+        P.end_checks()
+        pool.shutdown(wait=True, cancel_futures=True)
+        raise
+    pool.shutdown(wait=True)
     hide = _hider(root) if ran else str
     files, live = sorted(P.tracked(root)), P._live(everything)
     for node in todo:
