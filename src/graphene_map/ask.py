@@ -473,9 +473,10 @@ def ask(
                 rest = _FENCE.sub("", printed).strip() if _FENCE.search(printed) else ""
                 if rest:  # its lines as it wrote them (a list stays a list), not run together
                     lines = [" ".join(line.split()).replace("**", "") for line in rest.splitlines()]
-                    said_lines = [line for line in lines if line][:12]
+                    said_lines = [line for line in lines if line]
+                    cut = len(said_lines) - 12  # past twelve lines, a count of the rest
                     say("the planner says:")
-                    for line in said_lines:
+                    for line in said_lines[:12] + [f"(and {cut} more)"] * (cut > 0):
                         say(f"  {line[:300]}")
                 if cover := extra.load("cover"):  # GRAPHENE_SHAPE: what reads the proposal once it has landed
                     if about is None:
@@ -492,4 +493,4 @@ def ask(
         prompt = f"{asked}\n\nYour last answer was not accepted: {refusal}\nPrint the whole proposal again."
     if refusal == before:
         raise P.Refused(f"no proposal after {ATTEMPTS} tries; nothing was added (each was refused as above)")
-    raise P.Refused(f"no proposal after {ATTEMPTS} tries; nothing was added. {refusal}")
+    raise P.Refused(f"no proposal{f' after {tries} tries' * (tries > 1)}; nothing was added. {refusal}")

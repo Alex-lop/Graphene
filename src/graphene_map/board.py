@@ -564,7 +564,7 @@ def _renamed(line: str, old: str, new: str) -> str:
     for _, form in _EFFECTS:
         found = form.fullmatch(line)
         if found:
-            if (found.groupdict().get("node") or "").strip("[]`") != old:
+            if not old or (found.groupdict().get("node") or "").strip("[]`") != old:  # none names ""
                 return line
             start, end = found.span("node")
             return line[:start] + new + line[end:]
