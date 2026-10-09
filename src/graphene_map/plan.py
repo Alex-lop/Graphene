@@ -1301,13 +1301,15 @@ def judge(store, ids: set[str], writers: set[str], files: list[str], now: str,
     return said
 
 
+GRAPHENE = Caller("graphene", False)  # who adds a need: never the person, so `plan changes` and ~ show it
+
+
 def _waited(store, was: dict[str, list[str]], everything: list[Node], now: str) -> None:
     """Each node of ``was`` whose needs ``wait_on_checks`` grew since, saved as an edit of its contract."""
-    graphene = Caller("graphene", False)  # not the person's edit: `plan changes` and the screen's ~ show it
     for n in everything:
         if n.id in was and n.needs != was[n.id]:
             n.rev += 1
-            _save(store, n, "edited", graphene, now, changed={"needs": [was[n.id], n.needs]}, rev=n.rev)
+            _save(store, n, "edited", GRAPHENE, now, changed={"needs": [was[n.id], n.needs]}, rev=n.rev)
 
 
 def _owner(name: str) -> str:
@@ -2897,11 +2899,12 @@ def goal_plus(goal: str, sentence: str) -> str | None:
 def let_go(store, node: Node) -> dict:
     """How its last hold ended, while it is open and the person has not changed it since: its
     `released` entry (``person``: the person let it go; ``stopped``: the run did), else {}. A widen
-    or a sibling is an edit: after it, it is ready or waiting again. An act undone since reads as
-    never made: what it logged is passed over."""
+    or a sibling is an edit: after it, it is ready or waiting again. A need Graphene added is not.
+    An act undone since reads as never made: what it logged is passed over."""
     if node.state != OPEN:
         return {}
-    log = store.node_log(node.id, ("started", "released", "reopened", "edited", "undone"))
+    log = [e for e in store.node_log(node.id, ("started", "released", "reopened", "edited", "undone"))
+           if e["actor"] != GRAPHENE.label]  # fmt: skip
     while log and log[-1]["kind"] == "undone":
         since = log.pop()["detail"].get("since")
         log = log if since is None else [e for e in log if e["id"] <= since]
