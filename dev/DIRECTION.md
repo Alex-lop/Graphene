@@ -1729,7 +1729,8 @@ any of them.
 
 181. **`r` reopens the owner.** A leaf that came back wanting a path a done leaf's scope holds offers `r` beside
      `w` and `b`: `graphene node reopen <owner> --note 'came back from <leaf>: <why>' --for <leaf>`. Several
-     owners are one `r`. The leaf waits on them, and reads as waiting, not came back, after it.
+     owners are one `r`. The leaf waits on them, and reads as waiting, not came back, after it. `r` is the
+     person's act, as `w` and `b` are: `plan undo` takes it back, and the withdrawn note reaches no executor.
 182. **Nothing is reverted by a reopen.** The owner goes back to open with the note and a new revision; its fix
      lands as a new commit on top, and its record says `reopened after landing; the fix is a new commit`.
 183. **The note is the executor's first line.** `prompt_for` puts each note above the contract, verbatim. Claude
@@ -1737,9 +1738,11 @@ any of them.
 184. **An executor releases on a landed fault.** When its check cannot pass because a file another leaf landed is
      wrong, it runs `release --wants <that file>` with a why that names the fault. One sentence in `run.py`'s
      prompt and in the Nemotron executor's system prompt (version 2).
-185. **Red first lives in core.** `src/graphene_map/precheck.py` runs every accepted leaf's check once at the base
-     commit before `graphene run` starts anything, each distinct command once, four at a time, each in a clean
-     worktree, under `CHECK_TIMEOUT`. `--no-precheck` skips it. The extra keeps `plan precheck`, the sandbox fork
+185. **Red first lives in core.** `src/graphene_map/precheck.py` runs every accepted leaf's check once at the
+     commit its leaves start from (a parallel run's HEAD; `--here`, the checkout as it is), inside the runner,
+     once the run's own refusals have passed (the lock, a detached HEAD, the cap) and before it starts anything:
+     each distinct command once, four at a time, each in a clean worktree, under `CHECK_TIMEOUT`. `--no-precheck`
+     skips it. The extra keeps `plan precheck`, the sandbox fork
      for proposals and Nano's reading, and imports the rest.
 186. **Three verdicts, by behaviour.** `passes` (exit 0 at the base: the check proves nothing; `e` is the fix),
      `outside` (a red whose failure names a path no scope of the leaf covers: the output's paths, or the

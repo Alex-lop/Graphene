@@ -230,3 +230,11 @@ $ as_person graphene node show json-shape
 no node json-shape in the plan (nodes: json-report, json-branch, json-test)
 ended: 85 s
 ```
+
+## What the first run hit, afterwards
+
+The first run's answer had two faults (line 7's `then: about …`, line 12's `then: scope …` on an id of its own)
+and was told one; the second answer mended the first and kept the second, and the ask ended with nothing. The
+branch review found the cause, `ask.py` sending a text planner one fault a send-back where the Nemotron planner
+gets them all, and fixed it at `c4bb66d`, with a test. The scratch step was not run again on the fix: it costs
+about $1 an ask on Claude Code, and the night stands at $42.5 of its $50.

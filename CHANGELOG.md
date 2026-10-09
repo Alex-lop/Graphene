@@ -5,8 +5,12 @@
 The loop (9 October). A leaf that finds a landed leaf's fault reopens it with one key, and every check runs red first.
 - A leaf that came back wanting a file a done leaf owns offers `r`: reopen that leaf with the reason, and wait on it.
   `R` then runs the owner again on top of what landed, its executor told the note first. Press `r` in `graphene watch`.
-- Before `graphene run` starts anything, every accepted leaf's check runs once at the base commit: one that passes
-  there proves nothing, one that fails on a file outside the leaf's scope names it. `--no-precheck` skips it.
+  `u` takes `r` back as it does `w` and `b`: the owner is done again, and the withdrawn note reaches no executor.
+- Before `graphene run` starts anything, every accepted leaf's check runs once at the commit its leaves start from:
+  one that passes there proves nothing, one that fails on a file outside the leaf's scope names it, one that does
+  not end is said once and not waited on again. `--no-precheck` skips it.
+- A planner that answers in text (Claude Code, Codex) is told every fault of its proposal at once, as the Nemotron
+  planner is, instead of one a send-back. Run `graphene ask '…'`.
 - `graphene node show` says when a check ran a file a later leaf rewrites, with the file and the base commit.
 - An executor whose check fails on a file another leaf landed releases with `--wants` naming it and the fault.
 - The time view draws every id whole. Its label column fits the longest id. Run `graphene plan --view time`.

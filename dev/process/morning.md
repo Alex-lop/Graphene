@@ -45,7 +45,8 @@ the scratch repo 1 to 3 minutes; the reading is the rest (`dev/process/loop/thir
    nothing`) or names a file outside its scope; a leaf so marked shows `∅` after its title. Then `q`, and
    `graphene node show <leaf>`. If `ask` says `no proposal after 2 tries`, ask again: it is the planner's text, not
    the repo. Tonight 3 of 4 asks on this paragraph proposed a tree at once (the first did not, twice over a
-   `then:` line).
+   `then:` line: its answer had two faults and was told one; since `c4bb66d` a text planner is told every fault
+   at once).
 
 5. **Decide** (5 min): the three questions in the brief below, each with my default.
 
@@ -69,28 +70,26 @@ fresh install). The arms are P1, T1, T2, P2, on the tag, nothing else. Your pred
 
 ## The brief
 
-1. **The numbers**, before → after (`dev/process/loop/before.md`, `after.md`):
-   - Nemotron proposals by ask: 15 of 20 → 35 of 40 (87%) (feeds 17 of 20, report 18 of 20) on the final
-     code; 30 of 40 on lane 3's build before its review. By answer: 15 of 30 → 35 of 62 (56%).
-   - Trees stopped on another leaf's file: 4 of 13 → 2 of 23 trees came back on a landed leaf's fault, and both
-     closed the loop with `r`.
-   - Width: not measured → the dogfood 4 of 5, feeds 1 or 2 of 2 or 3, statements 3 of 8 to 12; last night's
-     recordings 1 of 2, 1 of 2, 1 of 2 and 2 of 3.
-   - Loops closed: 0 → 2 live (Nemotron, natural; Claude Code, planted at 01:13:42) and the scripted one; one
-     attempt per owner; $0.02 and $0.24 for the closing round.
-2. **Watch first:** `graphene demo tests/recordings/loop-claude-3.jsonl` (the planted loop, `j` onto `e2e-xml`
-   when it comes back) and `loop-nemotron-2.jsonl` (the natural one). The best take: `loop-nemotron-take-2.jsonl`
-   (Ultra planned three leaves, Nano landed all three in Sandboxes, $0.11).
-3. **The bill:** $35.55 on the ledger, about $40 with the 30 minutes put on by hand of $50: `planner` $15.85 · `precheck` $11.92 · `reopen` $4.07 · `dogfood` $2.07 · `takes` $1.63; the four runs of the 30 minutes (a tool from GitHub writes no ledger rows) about $4.4 on Claude Code's default model.
+1. **The numbers**, before → after (`dev/process/loop/before.md`, `after.md`): Nemotron proposals by ask 15 of 20 →
+   35 of 40 (87%; feeds 17, report 18) on the final code, by answer 15 of 30 → 35 of 62; trees stopped on another
+   leaf's file 4 of 13 → 2 of 23, both closed with `r`; width not measured → the dogfood 4 of 5, feeds 1 or 2 of 2
+   or 3, statements 3 of 8 to 12, last night's recordings 1 of 2 three times and 2 of 3; loops closed 0 → 2 live
+   (Nemotron, natural; Claude Code, planted at 01:13:42) and the scripted one, one attempt per owner, $0.02 and $0.24.
+2. **Watch first:** `graphene demo tests/recordings/loop-claude-3.jsonl` (the planted loop, `j` onto `e2e-xml` when
+   it comes back) and `loop-nemotron-2.jsonl` (the natural one). The best take: `loop-nemotron-take-2.jsonl` ($0.11).
+3. **The bill:** $38.12 on the ledger, about $42.5 with the 30 minutes put on by hand, of $50: `planner` $18.43
+   (lane 3's 80 asks $15.85, the review's probes $2.58) · `precheck` $11.92 · `reopen` $4.07 · `dogfood` $2.07 ·
+   `takes` $1.63; the four 30-minutes runs about $4.4 on Claude Code (a tool from GitHub writes no ledger rows).
 4. **Your practice notes:** `~/graphene-timeline/practice.md` does not exist on this machine: nothing to answer.
-5. **Decide:** 1. Take 2 as the Nemotron demo recording instead of last night's take 6? Default: yes, it lands
-   one leaf more and ran as clean. 2. Keep `r` offered whenever a wanted path has a done owner, even when the
-   reason is a scope too narrow? Default: yes, the person reads the reason, and `w` and `b` sit beside it.
-   3. The planner reached 87% by ask on the final code (round 2), so `docs/HACKATHON.md`'s planner line stays: Ultra plans, Nemotron executes. Keep it as the pitch? Default: yes, with the number beside it in the brief; the stretch stays what it was.
-6. **Broken or risky:** The Claude Code text planner proposed nothing twice in a row on the morning's scratch
-   paragraph once in four asks (a `then:` line the text form cannot read); lane 3's repairs are the Nemotron
-   planner's only. 12 of 82 Ultra answers stalled to the token limit in round 1 (3 of 30 last night): longer
-   send-backs. Net source lines: +406 (lanes 1 and 2 +297, lane 3 +100, lane 4 +5, lane 5 +4).
+5. **Decide:** 1. Take 2 as the Nemotron demo recording instead of last night's take 6? Default: yes, one leaf more,
+   ran clean. 2. Keep `r` offered whenever a wanted path has a done owner, even for a scope too narrow? Default: yes,
+   the person reads the reason, `w` and `b` sit beside it. 3. The planner reached 87% by ask, so `docs/HACKATHON.md`'s
+   line stays (Ultra plans, Nemotron executes)? Default: yes, with the number beside it; the stretch stays.
+6. **Broken or risky:** the Claude Code text planner proposed nothing twice on the morning's scratch paragraph (an
+   answer with two faults, told one; fixed at `c4bb66d`); 12 of 82 Ultra answers stalled to the token limit in round
+   1. The branch review fixed two high faults the lanes made: `r` could not be undone, and a parent cycle hung the
+   planner holding the plan's lock (`review.md`). A reopened owner's check passes at the base, so red first marks it
+   `∅`: expected. Net source lines +455 (lanes 1 and 2 +297, lane 3 +100, lane 4 +5, lane 5 +4, the review +49).
 
 ---
 
@@ -104,7 +103,9 @@ Lanes 1 and 2 were built through Graphene itself: one tree of five leaves propos
 as the person, four Sonnet executors at once in worktrees, the meter on, `watch` on `time` shot every minute. **0
 acts of mine after the accept, 12 agent-minutes, 310 s of wall time, $2.07 at list price, width 4 of 5.** Every
 leaf landed on its first attempt; `r` was not used on Graphene itself, since no leaf came back. Two skeptics a leaf
-then found 44 things about the executors' code, 13 distinct real ones fixed (`dev/process/loop/review.md`).
+then found 44 things about the executors' code, 13 distinct real ones fixed (`dev/process/loop/review.md`). A
+second review, of the whole branch where the lanes meet (three readers, two skeptics a finding, a fixer on a
+branch), found 22, 13 of them real, all fixed in 12 commits with a test each: the same file lists them.
 
 ## Branches
 
@@ -157,3 +158,9 @@ then found 44 things about the executors' code, 13 distinct real ones fixed (`de
   fixer on a branch.
 - **03:43** Lane 3's round 2 on the final build: 35 proposals in 40 asks (feeds 17, report 18), $8.20. CI: the first
   seven jobs green, the rest running.
+- **05:04** CI green on the 03:45 push: 12 jobs, and CodeRabbit.
+- **05:29** The branch review ended: 22 findings, 13 real after two skeptics each, all fixed by its fixer in 12
+  commits on a branch of the clone, each fix with a test that failed first; the suite green on its tree (1,791).
+- **05:33** The 12 commits fast-forwarded onto `loop`, `ruff` clean, the full suite started on the merged tree.
+- **05:39** The review's commits pushed (`62699a3`); CI started on them.
+- **05:52** The suite green on the merged tree: 1,791 passed, 21 skipped, in 19 min.

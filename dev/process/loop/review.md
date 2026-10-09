@@ -53,3 +53,37 @@ terminal (`7ce64e4`, the suite's own finding).
 | 42 | rows:correctness | low | The ∅ mark shifts a flagged row's id and state columns two cells left and goes after the state word, not after the id or title | `tui.py:646` | fixed: 49297e6 |
 | 43 | rows:correctness | low | A sub-goal with a check gets a precheck verdict and the ∅ mark, but its pane never explains it | `tui.py:942` | fixed: 49297e6 |
 | 44 | rows:correctness | low | x on a came-back leaf still says 'r runs it again' when r reopens the owner; the help lists only w b n | `tui.py:1880` | fixed: 49297e6 |
+
+# The review of the whole branch, where the lanes meet
+
+Started at 03:20 on the pushed branch (`8c84602`), after every lane had merged: three readers, each on one seam
+(`r` and the needs it adds; the planners' text and repairs; red first inside a run), two skeptics a finding, told to
+refute it, and one fixer on a branch of its own, each fix with a test that failed first. 22 findings, 13 survived
+both skeptics; all 13 fixed in 12 commits, fast-forwarded onto `loop` at 05:33, the suite green on the fixer's
+tree (1,791 passed, 21 skipped, 19 min). Its live probes cost $2.58 on the `planner` purpose.
+Two of the high ones were regressions tonight's lanes made: `r` was the one offer `plan undo` could not take back,
+and lane 3's repairs walked a parent cycle for ever while holding the plan's write lock.
+
+| # | seam | severity | finding | where | fixed or left |
+|---|---|---|---|---|---|
+| 1 | r | high | `r` cannot be undone: `u` and `plan undo` after `r` undo the act before it; the owner stays open with the leaf waiting | `plan_cli.py:1369` | fixed: 84038b5 (`node reopen` runs through `write`, as `w` and `b` do; an undone reopen's note reaches no executor) |
+| 2 | r | medium | The `next:` line prints the r command with `' '.join`: the executor's why is unquoted, and a pasted command splits at `;` | `plan_cli.py:145` | fixed: 2717272 (`shlex.join`, as `node show` had) |
+| 3 | r | low | The leaf's own pane names it by its id in the r row when there are several owners | `tui.py:2397` | fixed: 8958135 |
+| 4 | planner | high | Two answer nodes each other's parent, plus one need, hang the Nemotron planner while it holds the plan's write lock (`below` walked the cycle for ever) | `planner.py:235` | fixed: d8814f9 (`plan.below` ends when the walk comes back to its start; the cycle goes back as `the plan has a cycle`) |
+| 5 | planner | medium | A text planner still gets one fault per send-back, which is what lost the morning's dry-run ask | `ask.py:469` | fixed: c4bb66d (`ask` judges the whole with `plan_text.faults` before it applies; no prompt changed) |
+| 6 | planner | medium | A need on an id with a space is split into words and dropped, while that same id is slugged | `planner.py:217` | fixed: c1495aa (needs are read after the slugs, each whole) |
+| 7 | planner | medium | An `about:` naming no node is sent back, though decision 191 says it is dropped; round 2's report 9 failed on that alone | `planner.py:250` | fixed: 779512e (dropped, said in a `repaired:` line; a `then:` naming no node still goes back; 191 reworded) |
+| 8 | planner | medium | A re-ask whose tree reuses a dropped id is refused for its own board lines | `plan_text.py:606` | fixed: 0107dbd (the board's `about:` and `then:` follow the renamed id); left: the `repaired:` line names the first slug where the node lands as the second |
+| 9 | precheck | high | A check that cannot finish at the base commit makes red first a silent wait of up to `CHECK_TIMEOUT` on every run; output that is not UTF-8 counted as a check that could not run, and `node done` raised on it | `precheck.py:66` | fixed: 5067580 (a timed-out row is kept and said in a line, not run again until the leaf, its check or the commit changes), 2a94ce0 (`errors="replace"`); left: the first wait, once, as decision 185 has it |
+| 10 | precheck | medium | Red first ran on a tree the leaves never start from: the checkout's uncommitted changes in a parallel run, or the main checkout when run from a linked worktree | `plan_cli.py:1014` | fixed: b139644 (in the runner: a parallel run's checks at its HEAD, `--here`'s at the checkout as it is) |
+| 11 | precheck | medium | `graphene run --node` skipped red first for a sub-goal and for a leaf that came back | `plan_cli.py:1010` | fixed: b139644 (after `leaves_of`) |
+| 12 | precheck | medium | Red first ran before the run's own refusals: another run holding the lock, a detached HEAD, the night's cap | `plan_cli.py:1010` | fixed: b139644 |
+| 13 | precheck | low | Hiding the output before judging it turned an outside failure into a silent red when the file's name looked like a key | `precheck.py:197` | fixed: 62699a3 (judged as it is; the why and the paths hidden before they are kept or said); left: the line names such a file as `[removed: shaped like a key]`, the hider's job |
+
+The nine the skeptics refuted, each on the ground that it reproduces but is the design the docs describe, was on
+`main` before the branch, or shows in none of the night's 80 recorded asks: a came-back leaf that a Graphene need
+makes wait loses its offers; `node show` on a leaf answered by `r` still prints `not offered`; `plan log` shows
+`r`'s row on the leaf as a bare `edited`; a `parent:` with a typo is dropped and the sub-goal's waits go unsaid;
+repairs past the eleventh show as `(and N more)`; `faults()` says one fault per node; a run that starts nothing
+still logs red first; the only `∅` in the demo is on a reopened owner (its check passes at the base once its first
+fix landed, which the line says); the extra's `plan precheck` runs `_here` without the core's stop handling.
