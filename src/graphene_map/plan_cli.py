@@ -142,7 +142,7 @@ def register(cli: typer.Typer, root, open_store, fail):
             """A leaf that came back: what `graphene watch` offers on it, as the commands its keys run,
             not a `start` (the screen offered w, b and r while this line said `node start`)."""
             offers = P.offers(store, n)
-            said = [f"`graphene {' '.join(argv)}` ({what})" for _, what, argv in offers]
+            said = [f"`graphene {shlex.join(argv)}` ({what})" for _, what, argv in offers]  # r's note: words
             said.append(f"{'or ' if said else ''}`graphene run --node {n.id}` (run it again)")
             keys = [k for k, _, _ in offers]
             said[-1] += f"; {', '.join(keys + ['r'] * ('r' not in keys))} in `graphene watch`"

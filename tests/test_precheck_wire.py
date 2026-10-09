@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import shlex
+
 import test_plan_cli
 from test_plan_cli import agent, person
 
@@ -62,19 +64,26 @@ def test_the_plain_prints_keys_line_has_one_r(repo):
     assert keys.count("r") == 1, said
 
 
-def test_plan_undo_after_r_takes_back_the_reopen_and_the_leaf_came_back_again(repo):
-    """`r` is an act on the plan's shape, as w and b are: `plan undo` after it undid the act before."""
-    for i in ("a", "x", "y"):
+def r_on(repo, why: str) -> list[str]:
+    """Leaf a done, and x came back wanting a's file, with ``why``: the r offer's command."""
+    for i in ("a", "x"):
         person("node", "add", i, "--id", i, "--scope", f"{i}.txt", "--check", "true")
     person("node", "start", "a")
     (repo / "a.txt").write_text("x")
     person("node", "done", "a")
     person("node", "signoff", "a")
     agent("node", "start", "x")
-    agent("node", "release", "x", "--why", "a is wrong", "--wants", "a.txt")
-    person("node", "set", "y", "--title", "y two")
+    agent("node", "release", "x", "--why", why, "--wants", "a.txt")
     with Store.open(repo) as store:
         [argv] = [argv for key, _, argv in P.offers(store, P.get(store, "x")) if key == "r"]
+    return argv
+
+
+def test_plan_undo_after_r_takes_back_the_reopen_and_the_leaf_came_back_again(repo):
+    """`r` is an act on the plan's shape, as w and b are: `plan undo` after it undid the act before."""
+    argv = r_on(repo, "a is wrong")
+    person("node", "add", "y", "--id", "y", "--scope", "y.txt", "--check", "true")
+    person("node", "set", "y", "--title", "y two")
     assert person(*argv).exit_code == 0
     undone = person("plan", "undo")
     assert "undid: node reopen a" in undone.stdout, undone.output
@@ -82,3 +91,10 @@ def test_plan_undo_after_r_takes_back_the_reopen_and_the_leaf_came_back_again(re
         a, x, y = (P.get(store, i) for i in "axy")
         assert (a.state, x.needs, y.title) == ("done", [], "y two") and P.came_back(store, x)
         assert P.notes(store, "a") == []  # what the undone reopen said reaches no executor
+
+
+def test_the_next_line_quotes_the_r_command_as_the_offer_has_it(repo):
+    """r carries an executor's words. Joined with spaces, a pasted `;` in them ran as a command."""
+    argv = r_on(repo, "the parse is wrong; echo PWNED")
+    [line] = [line for line in agent("plan").stdout.splitlines() if line.startswith("next:")]
+    assert f"`graphene {shlex.join(argv)}`" in line, line
