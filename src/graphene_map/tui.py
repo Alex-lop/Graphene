@@ -110,7 +110,7 @@ KEYS = {  # the bottom line, when no command has just spoken: what the keys do o
     "waiting": ["e edit", "d drop", "Enter record"],
     "to fill in": ["s split it (the planner)", "e edit"],
 }
-OFFERED = {"w": "w widen", "b": "b sibling", "n": "n wait"}
+OFFERED = {"w": "w widen", "b": "b sibling", "r": "r reopen", "n": "n wait"}
 FOLDED = 20  # the columns a folded row's count of states takes, as a rule: whole states, the rest "n more"
 WHOSE = ("came back", "review", "yours", "proposed", "running", "ready", "waiting", "to fill in", "done")
 # A fork's words (executor.Fork.outcome), its glyph and its colour, whose move as a node's are: running is
@@ -623,6 +623,7 @@ class PlanTree(Tree[str]):
     rows: dict = {}  # a node's data (None: the goal) -> (glyph, word, title, id, bold, inside when folded)
     ids = words = 0  # the widths of the id column and of the state column
     chosen: frozenset = frozenset()  # a visual selection, drawn reversed
+    flagged: frozenset = frozenset()  # leaves whose precheck passes or is outside: a dim mark (see detail)
 
     def _room(self, node) -> int:
         depth, up = 0, node
@@ -641,7 +642,11 @@ class PlanTree(Tree[str]):
         # its id and word stay in their columns as deep as its leaf's do
         least = 1 if isinstance(node.data, tuple) else 4
         mark = self.app.mark(node)
-        label = row(glyph, word, title, node_id, wide - 2, self.ids, self.words, bold, folded, least, mark)
+        flag = node.data in self.flagged
+        room = wide - 2 - 2 * flag  # the dim mark after the title is two columns
+        label = row(glyph, word, title, node_id, room, self.ids, self.words, bold, folded, least, mark)
+        if flag:
+            label.append(" ∅", "dim")
         if node.data in self.chosen:
             label.stylize("reverse")
         label.stylize(style)
@@ -813,6 +818,7 @@ class Watch(App):
         self.by_id: dict[str, P.Node] = {}
         self.under: dict = {}
         self.lone: tuple | None = None  # one leaf proposed: it, and the sub-goals its row stands for
+        self.prechecked: dict[str, dict] = {}  # leaf -> its precheck row, when it proves nothing
         self.offered: dict[str, list[str]] = {}  # the keys each leaf that came back offers
         self.forks: dict[str, list[dict]] = {}  # a leaf's forks in its last attempt: rows under it
         self.heard: set = set()  # the steps up the ladder the bottom line has said
@@ -933,6 +939,7 @@ class Watch(App):
         self.back = {n.id for n in nodes if P.came_back(store, n)}
         self.offered = {i: [k for k, _, _ in P.offers(store, by_id[i])] for i in self.back}
         self.words = {n.id: P.reads(n, nodes, self.back) for n in nodes}
+        self.prechecked = {n.id: v for n in nodes if (v := precheck(store, n))}
         leaves = P.counted(nodes)  # what `graphene` counts: "3 leaves, 0 done" is "0/3 done" here
         done = sum(n.state == P.DONE for n in leaves)
         proposals = [n for n in nodes if n.state == P.PROPOSED]
@@ -1098,8 +1105,10 @@ class Watch(App):
         ids = max(len(r[3]) for r in rows.values())
         words = max(len(r[5] or r[1]) for r in rows.values())  # what each row shows in the word's column
         chosen = frozenset(self.chosen()) if self.anchor is not None else frozenset()
-        if (rows, ids, words, chosen) != (tree.rows, tree.ids, tree.words, tree.chosen):
-            tree.rows, tree.ids, tree.words, tree.chosen = rows, ids, words, chosen
+        flagged = frozenset(self.prechecked)
+        was = (tree.rows, tree.ids, tree.words, tree.chosen, tree.flagged)
+        if (rows, ids, words, chosen, flagged) != was:
+            tree.rows, tree.ids, tree.words, tree.chosen, tree.flagged = rows, ids, words, chosen, flagged
             tree._invalidate()  # every row is laid out again: a column may have changed width
 
     # -- a view other than the outline ---------------------------------------------------------------
@@ -1538,7 +1547,8 @@ class Watch(App):
         on = [f"fork {fork[1]}: keys act on {fork[0]}"] if fork else []  # its row is its leaf's to act on
         if word == "came back":
             offers = [OFFERED[k] for k in self.offer_keys()]
-            return [*on, *offers, "? ask the planner", "r run it again", "Enter record", "q quit"]
+            again = [] if "r" in self.offer_keys() else ["r run it again"]  # else r is the offer
+            return [*on, *offers, "? ask the planner", *again, "Enter record", "q quit"]
         shut = ["za unfold"] if node is not None and node.allow_expand and not node.is_expanded else []
         if word in KEYS:
             keys = ["y accept and run", *KEYS[word][1:]] if self.runs_on_y(self.chosen()) else KEYS[word]
@@ -1843,6 +1853,8 @@ class Watch(App):
 
     def action_run(self, here: bool) -> None:
         node_id = self.selected()
+        if here and "r" in self.offer_keys():  # a leaf that came back on a landed leaf's fault offers r
+            return self.action_offer("r")
         argv = ["run", *shlex.split(RUN_WITH), *(["--node", node_id] if here and node_id else [])]
         self.background(argv)
 
@@ -2240,6 +2252,14 @@ def goal_pane(store, s, wide: int) -> Text:
     return pane.render()
 
 
+def precheck(store, node: P.Node) -> dict | None:
+    """The leaf's last precheck row's detail, when it is about its current rev and says it passes at
+    the base (its check proves nothing) or names paths outside its scope; else None."""
+    rows = store.node_log(node.id, ("precheck",))
+    d = rows[-1]["detail"] if rows else {}
+    return d if d.get("rev") == node.rev and d.get("verdict") in ("passes", "outside") else None
+
+
 def detail(store, node: P.Node, s, files: list[str] | None = None, room: tuple[int, int] = (60, 0)) -> Text:
     """The node under the cursor, for the person: a pane for each kind of node, none of it blank and
     nothing said twice. ``room``: the pane's width and height; a leaf that came back is fitted to it,
@@ -2284,6 +2304,13 @@ def detail(store, node: P.Node, s, files: list[str] | None = None, room: tuple[i
             "it has no scope and no leaves yet: the planner can split it, or you give it a scope and a check",
             "dim",
         )
+    if (pre := precheck(store, node)) is not None:
+        base = str(pre.get("base", ""))[:7]
+        if pre["verdict"] == "passes":
+            says = f"its check passes at the base commit {base}, so it proves nothing: e edits the check"
+        else:
+            says = f"its check names {', '.join(pre.get('paths') or [])} outside its scope, at {base}"
+        pane.text(says, "dim")
     pane.gap()
     _why(pane, store, node, s.by_id)
     _contract(pane, store, node, s, s.root_path, files)

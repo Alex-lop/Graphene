@@ -587,8 +587,10 @@ def _refusals(log: list[dict]) -> Refusals:
 def _acts(log: list[dict]) -> list[Act]:
     """What was decided about the node, with the words that came with the decision."""
     out: list[Act] = []
+    landed = False
     for entry in log:
         kind, detail = entry["kind"], entry["detail"]
+        landed = landed or kind == "landed"
         if kind not in ACTS:
             continue
         if kind == "edited":
@@ -602,6 +604,8 @@ def _acts(log: list[dict]) -> list[Act]:
             said += "" if detail.get("check_passed", True) else " (and its check had failed)"
         else:
             said = str(detail.get("why") or detail.get("note") or "")
+        if kind == "reopened" and landed:
+            said += " (reopened after landing; the fix is a new commit)"
         out.append(Act(entry["timestamp"], kind, entry["actor"], said))
     return out
 
