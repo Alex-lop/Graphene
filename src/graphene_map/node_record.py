@@ -93,6 +93,7 @@ class NodeRecord:
     acts: list[Act] = field(default_factory=list)
     bill: dict | None = None  # what its model calls cost, from its usage rows (``bill``)
     attempts: list[dict] = field(default_factory=list)  # what each executor's attempt did (meter.attempts)
+    against: list[str] = field(default_factory=list)  # paths its check ran as at the base (``_against_base``)
 
 
 def node_record(store, root: str | Path, node: P.Node, at: str | None = None) -> NodeRecord:
@@ -133,7 +134,33 @@ def node_record(store, root: str | Path, node: P.Node, at: str | None = None) ->
         _acts(log),
         bill(log),
         meter.attempts(log, scope),
+        _against_base(store, root, node, windows),
     )
+
+
+def _against_base(store, root: str | Path, node: P.Node, windows: list[Window]) -> list[str]:
+    """One line a leaf that writes, after this one, a path this one's check ran: the check saw that
+    path as it was at the base (`wait_on_checks`'s cycle case: the other leaf waits on this one), and
+    the record says so, with the file and the base commit."""
+    base = next((w.base_sha for w in reversed(windows) if w.base_sha), None)
+    if not node.check or not base:
+        return []
+    everything = P.nodes(store)
+    by_id = {n.id: n for n in everything if n.state not in P.GONE}
+    under = P.kids(everything, drawn=True)
+    others = [n for n in by_id.values() if n.id != node.id and not under.get(n.id) and not n.aside]
+    try:
+        named = P.check_paths(node.check, sorted(P.tracked(root)), others)
+    except (P.Refused, OSError):
+        return []
+    out = []
+    for other in others:
+        hit = P.check_runs(node, other, named)
+        if hit and P._waits(by_id, under, other.id, {node.id}):
+            verb = "rewrote" if other.state == P.DONE else "writes"
+            out.append(f"against base: its check ran {P._few(hit)} as at {base[:7]}; {other.id} {verb} "
+                       f"{'it' if len(hit) == 1 else 'them'} after")  # fmt: skip
+    return out
 
 
 def _has(root: str | Path, sha: str) -> bool:
@@ -628,6 +655,7 @@ def render(record: NodeRecord) -> list[str]:
     ]
     lines += _window_lines(record)
     lines += _coverage_lines(record.coverage, record.refusals.last_check)
+    lines += [f"    {line}" for line in record.against]
     lines += _refusal_lines(record.refusals)
     lines += _attempt_lines(record)
     lines += bill_line(record.bill)

@@ -1243,6 +1243,16 @@ def check_paths(check: str, files: list[str], live: list[Node]) -> list[tuple[st
     return out
 
 
+def check_runs(leaf: Node, other: Node, named: list[tuple[str, list[str]]]) -> list[str]:
+    """The paths ``leaf``'s check runs (``named``: its ``check_paths``) that ``other`` writes and the
+    leaf's own scope does not cover, sorted."""
+    return sorted({
+        p for path, in_it in named if may_collide([path], other.scope)
+        for p in overlap([path], other.scope, _within(in_it, _prefixes(other.scope)))
+        if not in_scope(p, leaf.scope)
+    })  # fmt: skip
+
+
 def wait_on_checks(
     everything: list[Node], ids: set[str], files: list[str], beside: frozenset[str] | set[str] = frozenset(),
     writers: frozenset[str] | set[str] = frozenset(),
@@ -1268,11 +1278,7 @@ def wait_on_checks(
             continue
         named, waits = check_paths(leaf.check, files, live), {}
         for other in others:
-            hit = sorted({
-                p for path, in_it in named if may_collide([path], other.scope)
-                for p in overlap([path], other.scope, _within(in_it, _prefixes(other.scope)))
-                if not in_scope(p, leaf.scope)
-            })  # fmt: skip
+            hit = check_runs(leaf, other, named)
             if not hit or _waits(by_id, under, leaf.id, {other.id}):  # none, or it waits on other already
                 continue
             if not _waits(by_id, under, other.id, {leaf.id}):
