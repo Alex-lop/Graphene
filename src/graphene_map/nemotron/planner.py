@@ -206,9 +206,10 @@ def as_text(p: dict) -> str:
 
 def _repaired(p: dict, plan: list[P.Node], files: list[str]) -> list[str]:
     """Mend in ``p`` what needs no judgement, and say each mend in a line. An id the text form refuses is
-    slugged. A needs: that names no node is dropped. So is a parent: that names no other node, a needs:
-    that closes a cycle (the cycle's last edge in the answer's order), and a then: or about: that names a
-    file."""
+    slugged. A needs: or a parent: that names no other node is dropped. A needs: that closes a cycle is
+    dropped too: the cycle's last edge, in the answer's order. A node that needs a node above it keeps the
+    need. The tree says the opposite, and only the model knows which is wrong. A then: or about: that
+    names a file is dropped."""
     for n in p["nodes"]:  # as the text writes them: on one line, with no space around
         n["id"], n["parent"], n["needs"] = _flat([n["id"], n["parent"], n["needs"]])
     by_id = {n.id: n for n in plan if n.state not in P.GONE}
@@ -227,6 +228,8 @@ def _repaired(p: dict, plan: list[P.Node], files: list[str]) -> list[str]:
     for n in p["nodes"]:  # each need in the answer's order: the one that closes a cycle is the last of it
         mine = {i for i, m in by_id.items() if n["id"] in (i, *(a.id for a in P.above(m, by_id)))}
         for need in list(n["needs"]):
+            if need in (a.id for a in P.above(by_id[n["id"]], by_id)):
+                continue  # the tree says the opposite: the model's to mend
             if need in by_id and need not in mine and not P._waits(by_id, under, need, mine):
                 by_id[n["id"]].needs.append(need)
                 continue

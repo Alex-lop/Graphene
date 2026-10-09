@@ -350,6 +350,19 @@ def test_spaces_around_an_id_are_no_fault_to_repair(repo, fake):
     assert len(f.requests) == 2 and not [line for line in said if "repaired" in line]
 
 
+def test_a_need_on_the_node_above_goes_back_and_is_not_repaired(repo, fake):
+    """report 9, 9 October: a tests leaf under the leaf it tests, and waiting on it. Dropping the need
+    made the tested leaf a sub-goal with a scope that no leaf writes; which edge is wrong is the model's."""
+    under = node("hello-test", "test hello", "hello", scope=["test_app.py"], check="true", needs=["hello"])
+    f = fake([{"content": PROPOSAL}, answer({**ANSWER, "nodes": [*ANSWER["nodes"], under]}), answer(ANSWER)])
+    with Store.open(repo) as store:
+        ask(store, repo, "make it say hello", named("nemotron"), say=lambda s: None)
+        assert plan.get(store, "hello").scope == ["app.py"] and len(plan.nodes(store)) == 2
+        [bill] = store.node_log("*", ("usage",))
+    assert "the plan has a cycle: hello -> hello-test -> hello" in bill["detail"].get("sent_back", [""])[0]
+    assert "needs: hello" in f.requests[2]["messages"][-1]["content"]  # as the model wrote it
+
+
 def test_a_repair_never_hides_a_fault_that_needs_the_models_judgement(repo, fake):
     both = {**ANSWER, "nodes": [GREETING, {**HELLO, "scope": [], "needs": ["nope"]}]}
     f = fake([{"content": PROPOSAL}, answer(both), answer(ANSWER)])
