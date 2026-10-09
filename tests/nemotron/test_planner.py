@@ -274,7 +274,7 @@ def test_a_fault_goes_back_twice_at_most_and_the_third_answer_is_the_answer(repo
     f = fake([{"content": PROPOSAL}, answer(WRONG), answer(WRONG), answer(WRONG)])
     said = []
     with Store.open(repo) as store:
-        with pytest.raises(plan.Refused, match="no proposal") as no:
+        with pytest.raises(plan.Refused, match="^no proposal; nothing was added") as no:  # one start
             ask(store, repo, "make it say hello", named("nemotron"), say=said.append)
         assert plan.nodes(store) == []
         [bill] = store.node_log("*", ("usage",))

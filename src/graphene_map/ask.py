@@ -492,4 +492,4 @@ def ask(
         prompt = f"{asked}\n\nYour last answer was not accepted: {refusal}\nPrint the whole proposal again."
     if refusal == before:
         raise P.Refused(f"no proposal after {ATTEMPTS} tries; nothing was added (each was refused as above)")
-    raise P.Refused(f"no proposal after {ATTEMPTS} tries; nothing was added. {refusal}")
+    raise P.Refused(f"no proposal{f' after {tries} tries' * (tries > 1)}; nothing was added. {refusal}")
