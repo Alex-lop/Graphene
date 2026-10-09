@@ -605,6 +605,13 @@ def apply(
     for line in lines:  # a need (or a parent:) of the same text follows its line's new id
         line.needs = [renamed[i].id if i in renamed else i for i in line.needs]
         line.under = renamed[line.under].id if line.under in renamed else line.under
+    for f in board:  # and so does the board's about: and then:, each then: line keeping its number
+        f["about"] = renamed[f["about"]].id if f["about"] in renamed else f["about"]
+        for c in (f, *f["options"]):
+            for k, then in enumerate(c["then"]):
+                for old, line in renamed.items():
+                    c["then"][k] = B._renamed(c["then"][k], old, line.id)
+                f["at"][f"then {c['then'][k]}"] = f["at"][f"then {then}"]
     _placed(lines)
     parent_of = {
         ln.id: (lines[ln.parent].id if ln.parent is not None else (ln.under or base_parent)) for ln in lines

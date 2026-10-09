@@ -8,6 +8,7 @@ import sys
 import pytest
 from test_plan import ALEX, BOT, repo, store  # noqa: F401  (fixtures)
 
+from graphene_map import board as B
 from graphene_map import plan
 from graphene_map import plan_text as T
 from graphene_map.plan import DONE, DROPPED, OPEN, PROPOSED, Refused
@@ -267,6 +268,18 @@ class store_ctx:
 
     def __exit__(self, *exc):
         return False
+
+
+def test_a_proposal_that_uses_a_dropped_id_again_has_its_board_follow_the_new_one(store):
+    """A re-ask's planner sees the tree it replaces, and writes its ids again. The new node gets an id of
+    its own: a need on it followed, and the board's about: and then: were refused for naming the old."""
+    T.apply(store, "? greet  [greet]\n    scope: app.py\n    check: true\n", BOT, None)
+    plan.drop(store, "greet", ALEX)
+    again = ('question: hello or hey?  [words]\n    default: hello\n    then: goal greet + "say hello"\n'
+             "    about: greet\n? greet  [greet]\n    scope: app.py\n    check: true\n")
+    new = T.apply(store, again, BOT, None).renamed["greet"]
+    [item] = B.items(store)
+    assert (new, item["about"], item["then"]) == ("greet-2", new, [f'goal {new} + "say hello"'])
 
 
 def test_undo_puts_back_the_persons_last_act_unless_it_moved_on(store, repo):
