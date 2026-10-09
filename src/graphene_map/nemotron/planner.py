@@ -205,7 +205,7 @@ def as_text(p: dict) -> str:
 
 
 def _repaired(p: dict, plan: list[P.Node], files: list[str]) -> list[str]:
-    """Mend in ``p`` what needs no judgement, and say each mend in a line. An id the text form refuses is
+    """Mend in ``p`` what needs no judgement, and say each mend in a line. An id Graphene refuses is
     slugged. A needs: or a parent: that names no other node is dropped. A needs: that closes a cycle is
     dropped too: the cycle's last edge, in the answer's order. A node that needs a node above it keeps the
     need. The tree says the opposite, and only the model knows which is wrong. A then: or about: that
@@ -218,7 +218,7 @@ def _repaired(p: dict, plan: list[P.Node], files: list[str]) -> list[str]:
             n["needs"] = [w.strip("[]") for w in needs if w.strip("[]").lower() not in T._NONE]
     by_id = {n.id: n for n in plan if n.state not in P.GONE}
     ids, new, said = {*by_id, *(n["id"] for n in p["nodes"])}, {}, []
-    for bad in dict.fromkeys(n["id"] for n in p["nodes"] if not T._VALID_ID.fullmatch(n["id"])):
+    for bad in dict.fromkeys(n["id"] for n in p["nodes"] if not P.USABLE.fullmatch(n["id"])):
         ids.add(new.setdefault(bad, T.slug(bad, ids)))
         said.append(f"[{bad}] is not an id; it is [{new[bad]}] now")
     for n in p["nodes"]:

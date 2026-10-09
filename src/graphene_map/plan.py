@@ -37,6 +37,7 @@ TAIL = 2000  # characters of a check's output kept in the log
 BASH = next((b for b in ("/bin/bash", "/usr/bin/bash") if os.path.exists(b)), None)  # a check's shell
 KEPT_PATHS = 200  # changed paths kept in a node's log when it ends; the count of the rest is kept too
 EDITABLE = ("title", "goal", "scope", "check", "signoff", "needs", "owner", "parent")
+USABLE = re.compile(r"(?!.*\.\.|.*\.(lock)?$)[A-Za-z0-9][\w.-]{0,31}")  # an id: graphene/<id> is a branch
 # Environment variables an agent's shell carries. GRAPHENE_NODE is ours: `graphene run` sets it for
 # every executor it starts. TODO: the last two are from the vendors' docs, not yet seen on a real run.
 AGENT_MARKS = ("GRAPHENE_NODE", "GRAPHENE_PLANNER", "GEMINI_CLI", "CURSOR_AGENT")
@@ -1570,8 +1571,7 @@ def propose(
                 raise refusal(
                     f"{node.id} is already in the plan", do=f"graphene node set {node.id} … edits it"
                 )
-            bad = ".." in node.id or node.id.endswith((".", ".lock"))  # graphene/<id> is a branch name
-            if bad or not re.fullmatch(r"[A-Za-z0-9][\w.-]{0,31}", node.id):
+            if not USABLE.fullmatch(node.id):
                 raise Refused(
                     f"{node.id!r} is not a usable id: letters, digits, '-', '_' and '.', at most 32, "
                     "no '..', and not ending in '.' or '.lock'"
