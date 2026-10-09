@@ -245,7 +245,7 @@ def _repaired(p: dict, plan: list[P.Node], files: list[str]) -> list[str]:
         return name not in ids and ("/" in name or name.endswith(P._EXTENSIONS) or name in files)
 
     for it in p["board"]:
-        it["about"] = new.get(it["about"], it["about"])
+        it["about"] = new.get(it["about"], it["about"]) if it["about"] else None  # "" names no node
         if it["about"] and file(it["about"]):
             said.append(f"about: {it['about']} names a file, not a node; dropped")
             it["about"] = None

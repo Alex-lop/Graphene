@@ -322,6 +322,9 @@ REPAIRS = [  # nodes and a board with a fault that needs no judgement, the line 
      lambda s: plan.get(s, "hello").parent == "greeting"),
     ([GREETING, {**HELLO, "id": "hello."}], [], "[hello.] is not an id; it is [hello] now",
      lambda s: plan.get(s, "hello").scope == ["app.py"]),  # a branch name cannot end in "."
+    ([GREETING, HELLO, {**BYE, "id": ""}], [item("question", "which", ["condition docs/**"], about="")],
+     "[] is not an id; it is [node] now",  # and the item, which names no node, is about none still
+     lambda s: plan.get(s, "node").title == "say bye" and B.items(s)[0]["about"] is None),
     ([{**HELLO, "parent": "plan"}], [], "[hello] parent: 'plan' is not the id of another node; dropped",
      lambda s: plan.get(s, "hello").parent is None),
     ([GREETING, HELLO], [item("risk", "slow", about="app.py")],
