@@ -2395,6 +2395,7 @@ def _its(does: str, node_id: str) -> str:
         does.replace(f"make {node_id} wait on", "wait on")
         .replace(f"{node_id}'s ", "its ")
         .replace(f"; {node_id} waits on it", ", which it waits on")
+        .replace(f"; {node_id} waits on them", "; it waits on them")  # r, with several owners
     )
 
 

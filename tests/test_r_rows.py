@@ -8,7 +8,7 @@ from test_tui import proposed, watch
 from graphene_map import node_record as NR
 from graphene_map import plan
 from graphene_map.store import Store
-from graphene_map.tui import Watch
+from graphene_map.tui import Watch, _its
 
 R_ARGV = ["plan", "first", "auto"]  # a harmless command standing for `node reopen`
 STAND_IN = [("r", "reopen schema: the landed fix was wrong", R_ARGV)]
@@ -91,3 +91,9 @@ def test_a_reopen_after_landing_says_the_fix_is_a_new_commit():
     said = [a.said for a in NR._acts(log("landed", "reopened"))]
     assert said == ["wrong (reopened after landing; the fix is a new commit)"]
     assert [a.said for a in NR._acts(log("finished", "reopened"))] == ["wrong"]
+
+
+def test_the_leafs_own_pane_calls_it_it_whether_r_reopens_one_owner_or_two():
+    one, two = "reopen a with this reason; x waits on it", "reopen a, b with this reason; x waits on them"
+    assert _its(one, "x") == "reopen a with this reason, which it waits on"
+    assert _its(two, "x") == "reopen a, b with this reason; it waits on them"
