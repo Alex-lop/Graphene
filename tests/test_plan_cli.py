@@ -303,7 +303,7 @@ def test_start_done_signoff_reopen_and_run_name_the_repository(repo):
     assert all("(the plan of " in a.stderr for a in acts), [a.stderr for a in acts]
     # a run names it first (it runs for long), and ends with what it did, for the person
     last = acts[-1].stdout.splitlines()[-1]
-    assert last == "run: 1 came back (l2) · agents <1 min, no meter · you 0 acts, 0 min"
+    assert last == "run: 1 came back (l2) · agents <1 min, no meter · width 1 of 1 · you 0 acts, 0 min"
 
 
 # -- the recheck of the closing review: its regression tests --------------------
@@ -348,8 +348,8 @@ def test_a_finished_plan_says_when_its_leaves_work_is_not_committed_and_what_com
     assert ran.exit_code == 0, ran.output
     assert "--here: your checkout is exposed" in ran.stdout
     assert ran.stdout.splitlines()[-1] == (
-        "run: 1 done · agents <1 min, no meter · you 0 acts, 0 min · the work of ids is not committed "
-        "(`git status`): `graphene run --here` commits "
+        "run: 1 done · agents <1 min, no meter · width 1 of 1 · you 0 acts, 0 min · the work of ids is not "
+        "committed (`git status`): `graphene run --here` commits "
         "nothing, `graphene run` and watch's R commit and merge each leaf"
     )
     head = person().stdout.splitlines()[0]
