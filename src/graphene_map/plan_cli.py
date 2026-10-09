@@ -1176,22 +1176,21 @@ def register(cli: typer.Typer, root, open_store, fail):
 
         def go(store):
             now = P.get(store, node_id)  # added to as it is at this moment, so an edit made since stays
-            before = now.rev
+            seen = len(store.node_log(node_id, ("edited",)))
             if add_scope:
                 edits["scope"] = [*now.scope, *(g for g in dict.fromkeys(add_scope) if g not in now.scope)]
             if add_goal:
                 edits["goal"] = P.goal_plus(now.goal, add_goal) or now.goal
             node = P.edit(store, node_id, edits, P.caller(), files=files, told=told)
-            last = store.node_log(node_id, ("edited",))[-1] if node.rev != before else None
-            return node, last
+            return node, store.node_log(node_id, ("edited",))[seen:]  # yours, then a need Graphene added
 
-        n, last = write(f"node set {node_id}", go)
-        if last is None:
+        n, rows = write(f"node set {node_id}", go)
+        if not rows:
             out(f"{n.id} is unchanged (revision {n.rev})")
             said_where()
             return
         out(f"{n.id} is now revision {n.rev}:")
-        for name, (before, after) in last["detail"]["changed"].items():
+        for name, (before, after) in (c for e in rows for c in e["detail"]["changed"].items()):
             out(f"  {name}: {value(before)} → {value(after)}")
         for line in told:
             out(line)

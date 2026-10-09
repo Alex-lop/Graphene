@@ -6,6 +6,8 @@ The loop (9 October).
 - The time view draws every id whole. Its label column fits the longest id. Run `graphene plan --view time`.
 - A board answer that changes a check or a scope is judged as `node set` is. The check waits on the leaf
   that writes its file, and a second writer of a path is refused. Run `graphene board take`.
+- A need Graphene adds to a leaf is logged as Graphene's edit, not yours. `graphene plan changes` lists it, and
+  `graphene watch` marks the leaf ~. Run `graphene node set <id> --check '…'`.
 
 The timeline (8 October). A fourth view, and fixes for what the meter night's runs stopped on.
 - A fourth view, `time`: a lane for each leaf that was held, what its executor did when, and marks for a refused

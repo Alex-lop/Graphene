@@ -1291,22 +1291,26 @@ def wait_on_checks(
     return said
 
 
-def judge(store, ids: set[str], writers: set[str], files: list[str], who: Caller, now: str,
+def judge(store, ids: set[str], writers: set[str], files: list[str], now: str,
           beside: frozenset[str] | set[str] = frozenset()) -> list[str]:  # fmt: skip
     """``wait_on_checks`` over the plan as it stands, each need it adds saved as an edit of its leaf."""
     everything = nodes(store)
     was = {n.id: list(n.needs) for n in everything}
     said = wait_on_checks(everything, ids, files, beside, writers)
-    _waited(store, was, everything, who, now)
+    _waited(store, was, everything, now)
     return said
 
 
-def _waited(store, was: dict[str, list[str]], everything: list[Node], who: Caller, now: str) -> None:
-    """Each node of ``was`` whose needs ``wait_on_checks`` grew since, saved as an edit of its contract."""
+GRAPHENE = Caller("graphene", False)  # who adds a need a check's files ask for: never the person
+
+
+def _waited(store, was: dict[str, list[str]], everything: list[Node], now: str) -> None:
+    """Each node of ``was`` whose needs ``wait_on_checks`` grew since, saved as Graphene's edit of its
+    contract. The person did not add the need, so `plan changes` and the screen's ~ show it."""
     for n in everything:
         if n.id in was and n.needs != was[n.id]:
             n.rev += 1
-            _save(store, n, "edited", who, now, changed={"needs": [was[n.id], n.needs]}, rev=n.rev)
+            _save(store, n, "edited", GRAPHENE, now, changed={"needs": [was[n.id], n.needs]}, rev=n.rev)
 
 
 def _owner(name: str) -> str:
@@ -1609,7 +1613,7 @@ def propose(
                 raise Refused(f"{node.id}: {wrong}; spell the scope as git does")
         for node in added:
             _save(store, node, "added" if who.person else "proposed", who, now)
-        _waited(store, was, existing, who, now)
+        _waited(store, was, existing, now)
         _settle(store, who, now)
     return added
 
@@ -1644,7 +1648,7 @@ def accept(
             node.state = OPEN
             _save(store, node, "accepted", who, now, **detail)
         if told is not None:
-            told += judge(store, set(), {n.id for n in chosen}, files or [], who, now)
+            told += judge(store, set(), {n.id for n in chosen}, files or [], now)
         proposed_goal, by = store.meta("goal:proposed"), store.meta("goal:proposed:by")
         if proposed_goal and any(n.proposed_by == by for n in chosen) and not goal(store):
             set_goal(store, proposed_goal, who, now)  # the planner's echo of the paragraph, with its tree
@@ -1689,17 +1693,16 @@ def edit(
         changed = {f: [before[f], getattr(node, f)] for f in EDITABLE if before[f] != getattr(node, f)}
         if not changed:
             return node
-        others: dict[str, list[str]] = {}  # the needs of the rest of the plan, which a new scope may grow
+        waited: dict[str, list[str]] = {}  # every leaf's needs, which a new check or scope may grow
         if told is not None and check and {"scope", "check"} & changed.keys():
             was = nodes(store)
             everything = [node if n.id == node.id else n for n in was]
             if "scope" in changed:
                 one_writer(everything, {node.id}, files or [], {n.id: n for n in was})
-            others = {n.id: list(n.needs) for n in was if n.id != node.id}
+            node.needs = list(node.needs)  # a list of its own: the person's row keeps the needs they gave
+            waited = {n.id: list(n.needs) for n in everything}
             told += wait_on_checks(everything, {node.id} if "check" in changed else set(), files or [],
                                    writers={node.id} if "scope" in changed else set())  # fmt: skip
-            if node.needs != before["needs"]:
-                changed["needs"] = [before["needs"], node.needs]
         if check:  # else the caller validates once every edit it makes is in (a text saved whole)
             validate([node if n.id == node.id else n for n in nodes(store)], {node.id})
         if "scope" in changed:  # asked even when the caller validates later: the text form does
@@ -1712,8 +1715,8 @@ def edit(
             raise Refused(f"{node.id}: {wrong}; spell the scope as git does")
         node.rev += 1
         _save(store, node, "edited", who, now, changed=changed, rev=node.rev)
-        if others:
-            _waited(store, others, everything, who, now)
+        if waited:
+            _waited(store, waited, everything, now)
         _settle(store, who, now)
     return node
 
