@@ -661,3 +661,22 @@ def test_a_proposal_and_an_open_board_are_named_as_what_waits_not_stop_and_run_s
     assert "nothing to run: the tree is a proposal (1 leaf) nobody has accepted: `graphene plan accept`" in (
         ran.stderr
     ), ran.stderr
+
+
+def test_plan_record_and_node_show_on_a_sub_goal_say_how_wide_its_leaves_ran(repo):
+    """a runs from 01:00 to 01:02, b from 01:01 to 01:03: two at once, half of the agent minutes alone."""
+    from graphene_map import plan
+    from graphene_map.store import Store
+
+    run = plan.Caller("run:sh", False, "s-1")
+    leaves = [{"id": k, "title": f"leaf {k}", "scope": [f"{k}.txt"], "check": "true"} for k in "ab"]
+    tree = [{"id": "api", "title": "the surface", "children": leaves}]
+    with Store.open(repo) as store:
+        plan.propose(store, tree, plan.Caller("alex", True))
+        for leaf, start, end in (("a", 0, 2), ("b", 1, 3)):
+            plan.start(store, leaf, run, repo, now=f"2026-01-05T01:0{start}:00.000Z")
+            for minute, kind in ((start, "attempt"), (end, "ended")):
+                stamp = f"2026-01-05T01:0{minute}:00.000Z"
+                store.log_node(leaf, stamp, kind, run.label, run.session_id, None, {"attempt": 1})
+    for args in (("plan", "record"), ("node", "show", "api")):
+        assert "    width 2 of 2 · 50% of agent minutes alone" in person(*args).stdout.splitlines(), args
