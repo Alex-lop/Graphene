@@ -130,4 +130,45 @@ statements runs: 1 s, 3 s, 1 s, 3 s; every feeds run: 0 or 1 s.
 
 ## 4. Width (lane 4)
 
-(after lane 4 lands)
+Width is the most leaves with an executor's attempt running at one instant, over `[start, end)` to the
+millisecond: an attempt that ends as another starts does not overlap it. Beside it, the share of agent minutes
+spent with one attempt running alone. The bill line, `plan record` and the time view's note carry `width 2 of 3`
+(`meter.width`, lane 4). Measured after the fact from each run's own store (`width_store.py`, the same function),
+and on last night's recordings with `dev/process/loop/width.py`.
+
+### The before: last night's four recordings
+
+| recording | width | alone |
+|---|---|---|
+| `timeline-claude.jsonl` | 1 of 2 | 100% |
+| `timeline-nemotron-take-6.jsonl` | 1 of 2 | 100% |
+| `meter-claude.jsonl` | 1 of 2 | 100% |
+| `meter-nemotron-take-11.jsonl` | 2 of 3 | 18% |
+
+Three of the four shipped recordings ran one leaf at a time, whatever `--parallel` said: their trees were chains.
+
+### Every run tonight
+
+| run | width | alone | the shape |
+|---|---|---|---|
+| the dogfood (lanes 1 and 2, `--parallel 4`) | 4 of 5 | 20% | four leaves side by side, then `wire` |
+| nemotron 1 | 2 of 4 | 68% | |
+| nemotron 2 | 1 of 2 | 100% | the tests leaf waits on the reader |
+| nemotron 3 | 1 of 1 | 100% | one `explore` leaf |
+| claude 1, 2, 4, 5 | 1 of 2 | 100% | the wiring leaf waits on the zero rule |
+| claude 3 | 2 of 3 | 50% | |
+| claude planted 1, 3 | 1 of 3 | 100% | |
+| planted suite | 2 of 2 | 20% | |
+| statements 1 | 2 of 3 | 32% | |
+| statements 2 | 3 of 8 | 36% | `--parallel 3` |
+| statements 3 | 3 of 11 | 36% | `--parallel 3` |
+| statements b1 | 2 of 8 | 55% | |
+| statements b2 | 3 of 12 | 54% | |
+| take 2 (report) | 2 of 3 | 73% | |
+| take 4 (report) | 2 of 3 | 46% | |
+
+**The honest line:** on the feeds task, with `--parallel 4` allowed, the planners' trees ran one or two leaves at
+once in 10 of 11 runs, because the wiring leaf waits on the reader and the tests leaf on both: the repo's files
+split that way. The statements task, eight subsystems and three executors, ran three at once; the dogfood, whose
+five leaves owned five disjoint sets of files, ran four. Width is set by how the files split, not by the flag;
+`docs/HOW_IT_WORKS.md` says so in one paragraph.
