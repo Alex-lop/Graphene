@@ -228,13 +228,11 @@ def _repaired(p: dict, plan: list[P.Node], files: list[str]) -> list[str]:
             said.append(f"[{n['id']}] parent: {n['parent']!r} is not the id of another node; dropped")
             n["parent"] = None
         by_id.setdefault(n["id"], P.Node(n["id"], n["title"], parent=n["parent"]))
-    under = P.kids(list(by_id.values()), drawn=True)
     for n in p["nodes"]:  # each need in the answer's order: the one that closes a cycle is the last of it
-        mine = {i for i, m in by_id.items() if n["id"] in (i, *(a.id for a in P.above(m, by_id)))}
         for need in list(n["needs"]):
             if need in (a.id for a in P.above(by_id[n["id"]], by_id)):
                 continue  # the tree says the opposite: the model's to mend
-            if need in by_id and need not in mine and not P._waits(by_id, under, need, mine):
+            if need in by_id and P.acyclic(list(by_id.values()), n["id"], [need]):
                 by_id[n["id"]].needs.append(need)
                 continue
             n["needs"].remove(need)
