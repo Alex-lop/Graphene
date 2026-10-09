@@ -1595,7 +1595,7 @@ def propose(
         # ``containers``: new nodes the same text gives children (existing nodes moved under them come
         # after): they are sub-goals, and the leaf rule is asked of the tree once they are in place
         fresh = {n.id for n in added} - set(containers)
-        was = {n.id: list(n.needs) for n in existing}
+        was = {n.id: list(n.needs) for n in [*existing, *added]}  # a need Graphene adds is its own edit
         if not edits_follow:
             one_writer(existing + added, fresh, files or [], beside=beside)
             waits = wait_on_checks(existing + added, fresh, files or [], beside, {n.id for n in added})
@@ -1612,7 +1612,7 @@ def propose(
                 raise Refused(f"{node.id}: {wrong}; spell the scope as git does")
         for node in added:
             _save(store, node, "added" if who.person else "proposed", who, now)
-        _waited(store, was, existing, now)
+        _waited(store, was, [*existing, *added], now)
         _settle(store, who, now)
     return added
 
