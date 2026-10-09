@@ -697,8 +697,6 @@ def live(store, node: P.Node, now: float | None = None) -> dict:
     said), else the hooks' last tool call for its session, else its log's last line that is not the
     stream's JSON; the log's age, too, says when it last spoke. The attempt is its hold's
     (`meter.going`): a session that took the leaf after a run has none."""
-    from . import meter as M
-
     metered = M.going(store.node_log(node.id)) or {}
     log = metered.get("log")
     last = store.last_events(node.session_id) if node.session_id else []
