@@ -7,7 +7,8 @@ loop-before-fold`, and `git push origin --delete statements-prereg-2` (the tag i
 
 A fresh terminal, with nothing but `uv` and `git`. Nothing here needs a key. Each step says what it prints. Run as
 written from the pushed branch at 03:18 (`4eb0bed`): the install, the clone and the two replays took 45 seconds;
-the scratch repo 1 to 3 minutes; the reading is the rest (`dev/process/loop/thirty.md`).
+the scratch repo 1 to 3 minutes; the reading is the rest (`dev/process/loop/thirty.md`). Step 1 and the replays
+again from the final push (`7ac059f`) at 05:53: 4 seconds, uv's cache warm.
 
 1. **Install the branch as a tool, in a directory of its own** (2 min). Your own `graphene` stays as it is.
 
@@ -70,11 +71,10 @@ fresh install). The arms are P1, T1, T2, P2, on the tag, nothing else. Your pred
 
 ## The brief
 
-1. **The numbers**, before → after (`dev/process/loop/before.md`, `after.md`): Nemotron proposals by ask 15 of 20 →
-   35 of 40 (87%; feeds 17, report 18) on the final code, by answer 15 of 30 → 35 of 62; trees stopped on another
-   leaf's file 4 of 13 → 2 of 23, both closed with `r`; width not measured → the dogfood 4 of 5, feeds 1 or 2 of 2
-   or 3, statements 3 of 8 to 12, last night's recordings 1 of 2 three times and 2 of 3; loops closed 0 → 2 live
-   (Nemotron, natural; Claude Code, planted at 01:13:42) and the scripted one, one attempt per owner, $0.02 and $0.24.
+1. **The numbers**, before → after (`before.md`, `after.md`): Nemotron proposals by ask 15 of 20 → 35 of 40 (87%;
+   feeds 17, report 18), by answer 15 of 30 → 35 of 62; trees stopped on another leaf's file 4 of 13 → 2 of 23, both
+   closed with `r`; width not measured → dogfood 4 of 5, feeds 1 or 2 of 2 or 3, statements 3 of 8 to 12; loops
+   closed 0 → 2 live (Nemotron natural, Claude Code planted) and the scripted one, one attempt an owner, $0.02, $0.24.
 2. **Watch first:** `graphene demo tests/recordings/loop-claude-3.jsonl` (the planted loop, `j` onto `e2e-xml` when
    it comes back) and `loop-nemotron-2.jsonl` (the natural one). The best take: `loop-nemotron-take-2.jsonl` ($0.11).
 3. **The bill:** $38.12 on the ledger, about $42.5 with the 30 minutes put on by hand, of $50: `planner` $18.43
@@ -89,7 +89,8 @@ fresh install). The arms are P1, T1, T2, P2, on the tag, nothing else. Your pred
    answer with two faults, told one; fixed at `c4bb66d`); 12 of 82 Ultra answers stalled to the token limit in round
    1. The branch review fixed two high faults the lanes made: `r` could not be undone, and a parent cycle hung the
    planner holding the plan's lock (`review.md`). A reopened owner's check passes at the base, so red first marks it
-   `∅`: expected. Net source lines +455 (lanes 1 and 2 +297, lane 3 +100, lane 4 +5, lane 5 +4, the review +49).
+   `∅`: expected. One macOS CI job flaked once on a precheck test (`not-run` where it expects `outside`; green in 3
+   other runs). Net source lines +455 (lanes 1 and 2 +297, lane 3 +100, lane 4 +5, lane 5 +4, the review +49).
 
 ---
 
@@ -110,12 +111,16 @@ branch), found 22, 13 of them real, all fixed in 12 commits with a test each: th
 ## Branches
 
 - `main`: `af6ff38`, untouched, local and on GitHub.
-- `loop`: the night, pushed; PR #44 is the only one. 31 commits (the directive's 30 to 50): the history was folded before its first
-  push (every lane one commit, the tree byte for byte the unfolded one).
+- `loop`: the night, pushed; PR #44 is the only one. 49 commits (the directive's 30 to 50): the history was folded
+  before its first push to 31 (every lane one commit, the tree byte for byte the unfolded one), then the evidence,
+  the branch review's 12 and this morning's two.
 - `loop-before-fold`: the 87 commits before the fold, pushed so every build the evidence names resolves. Delete it
   when you merge.
 - `statements-prereg-2`: the tag, at `803f2c2` on `loop`, pushed.
 - In this run's clone only: nothing else; the lanes' worktrees are gone.
+- Your checkout: untouched but for one untracked file, `tests/test_probe_seam.py`, a reader's probe of the branch
+  review written there at 04:01 against the rule (the work was to stay in the clone). It is nobody's: delete it.
+  Your checkout's own hook refused my moving it out (plan first is on there, and this session holds no leaf).
 
 ## What was done, in order
 
@@ -163,4 +168,12 @@ branch), found 22, 13 of them real, all fixed in 12 commits with a test each: th
   commits on a branch of the clone, each fix with a test that failed first; the suite green on its tree (1,791).
 - **05:33** The 12 commits fast-forwarded onto `loop`, `ruff` clean, the full suite started on the merged tree.
 - **05:39** The review's commits pushed (`62699a3`); CI started on them.
-- **05:52** The suite green on the merged tree: 1,791 passed, 21 skipped, in 19 min.
+- **05:52** The suite green on the merged tree: 1,791 passed, 21 skipped, in 19 min. The review's record, the
+  CHANGELOG, DIRECTION 181 and 185 and this morning committed (`7ac059f`) and pushed; the PR's description current.
+- **05:53** Your 30 minutes' first step from the pushed branch again: the install (uv's cache), the clone and the
+  two replays in 4 s.
+- **06:06** One of CI's two runs on `62699a3` failed on one job, macOS 3.12: `test_precheck_core.py`'s
+  `test_a_check_naming_another_leafs_new_test_file_is_outside` saw `not-run` where it expects `outside` (the log
+  keeps only the assertion). The same code passed that job in the other run, and in both runs on `7ac059f`.
+- **06:58** CI green on the final push, `7ac059f`: two runs, 12 jobs each, and CodeRabbit.
+- **07:05** This line, committed and pushed; 49 commits on the branch. Nothing started after 07:00.
