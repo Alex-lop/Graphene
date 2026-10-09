@@ -227,14 +227,15 @@ def _apply(store, line: str, who: P.Caller, now: str, files, conditions: list[st
 
     verb, node_id, what = effect(line)
     _there(store, node_id, f"then: {line} names")
+    told: list[str] = []  # judged as `node set` is: a check waits on what writes its files, one writer a path
     if verb == "scope":
         node = P.get(store, node_id)
         new = [g for g in what if g not in node.scope]
-        P.edit(store, node_id, {"scope": [*node.scope, *new]}, who, now, files)
-        return f"{node_id}: scope + {', '.join(new) or 'nothing new'}"
+        P.edit(store, node_id, {"scope": [*node.scope, *new]}, who, now, files, told=told)
+        return "; ".join([f"{node_id}: scope + {', '.join(new) or 'nothing new'}", *told])
     if verb == "check":
-        P.edit(store, node_id, {"check": what}, who, now, files)
-        return f"{node_id}: check is now {what}"
+        P.edit(store, node_id, {"check": what}, who, now, files, told=told)
+        return "; ".join([f"{node_id}: check is now {what}", *told])
     if verb == "goal":
         goal = P.goal_plus(P.get(store, node_id).goal, what)
         if goal is None:

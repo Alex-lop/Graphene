@@ -1499,7 +1499,7 @@ def sibling(store, node_id: str, paths: list[str], who: Caller, files: list[str]
         "check": "true",
         "parent": node.parent,
     }
-    with store.claim():  # not judged, as an answer the person gave is not (decision 171)
+    with store.claim():  # not judged, as `widen` is not (decision 171): an offer is the person's to take
         [made] = propose(store, [item], who, files=files, edits_follow=True)
         edit(store, node.id, {"needs": [*node.needs, made.id]}, who, files=files)
     return made
@@ -1664,8 +1664,8 @@ def edit(
 ) -> Node:
     """Change a node's contract. The hook reads the row on every event, so a tighter scope binds the
     very next write, even on a node that is running; what waits to start is told the new contract.
-    ``told``: the person edits the leaf itself (`node set`, `plan edit`), not by a board's answer or an
-    offer. A new check then waits on what writes the files it runs, a leaf whose check runs a file a new
+    ``told``: the person edits the leaf (`node set`, `plan edit`, a board's answer), not an offer. A new
+    check then waits on what writes the files it runs, a leaf whose check runs a file a new
     scope takes in waits on it, both said in ``told``, and a new scope over another leaf's path is
     refused. With ``check`` off the caller judges all of it, once its edits are in (a text saved whole)."""
     _person_only(who, "editing a node's contract")
