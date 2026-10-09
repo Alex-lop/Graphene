@@ -2,6 +2,9 @@
 
 ## 0.5.0 (not published yet: the tag is Alex's)
 
+- `graphene run`'s last line says how wide the run went: `width 2 of 3` is at most two leaves at once, of three that
+  ran. The time view and `graphene plan record` say it too. Run `graphene run --parallel 3`.
+
 The timeline (8 October). A fourth view, and fixes for what the meter night's runs stopped on.
 - A fourth view, `time`: a lane for each leaf that was held, what its executor did when, and marks for a refused
   write, the check, a hand-back and a landing. Tab in `graphene watch`, or run `graphene plan --view time`.
