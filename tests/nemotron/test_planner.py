@@ -329,6 +329,9 @@ REPAIRS = [  # nodes and a board with a fault that needs no judgement, the line 
      lambda s: plan.get(s, "hello").parent is None),
     ([GREETING, HELLO], [item("risk", "slow", about="app.py")],
      "[slow] about: app.py names a file, not a node; dropped", lambda s: B.items(s)[0]["about"] is None),
+    ([GREETING, HELLO], [{**item("risk", "slow"), "options": [{"text": "cache it", "then": []}]}],
+     "[slow] is a risk with options; it is a question now",  # feeds 10 and 17, 9 October: thrice each
+     lambda s: [(it["kind"], it["options"][0]["text"]) for it in B.items(s)] == [("question", "cache it")]),
 ]
 
 
