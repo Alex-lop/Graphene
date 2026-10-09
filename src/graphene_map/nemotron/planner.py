@@ -213,15 +213,16 @@ def _repaired(p: dict, plan: list[P.Node], files: list[str]) -> list[str]:
     for n in p["nodes"]:  # as the text form reads them back: "[a]" is a, "none" is none, "a, b" is two
         parent = T._uncomment(B._one(n["parent"] or "")).strip("[]`* ")
         n["id"], n["parent"] = B._one(n["id"]), None if parent.lower() in T._NONE else parent
-        with contextlib.suppress(P.Refused):  # a quote left open: no need it names is a node, so each goes
-            needs = T._words(B._one(", ".join(n["needs"])), 0)
-            n["needs"] = [w.strip("[]") for w in needs if w.strip("[]").lower() not in T._NONE]
     by_id = {n.id: n for n in plan if n.state not in P.GONE}
     ids, new, said = {*by_id, *(n["id"] for n in p["nodes"])}, {}, []
     for bad in dict.fromkeys(n["id"] for n in p["nodes"] if not P.USABLE.fullmatch(n["id"])):
         ids.add(new.setdefault(bad, T.slug(bad, ids)))
         said.append(f"[{bad}] is not an id; it is [{new[bad]}] now")
     for n in p["nodes"]:
+        with contextlib.suppress(P.Refused):  # a quote left open: no need it names is a node, so each goes
+            # a need naming an id slugged above names it whole, before its words are split
+            needs = T._words(B._one(", ".join(new.get(B._one(i), i) for i in n["needs"])), 0)
+            n["needs"] = [w.strip("[]") for w in needs if w.strip("[]").lower() not in T._NONE]
         n["id"], n["parent"] = new.get(n["id"], n["id"]), new.get(n["parent"], n["parent"])
         n["needs"] = [new.get(i, i) for i in n["needs"]]
         if n["parent"] is not None and (n["parent"] == n["id"] or n["parent"] not in ids):
