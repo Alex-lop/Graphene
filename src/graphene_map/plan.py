@@ -1391,6 +1391,19 @@ def owners(node: Node, everything: list[Node], paths: list[str]) -> dict[str, st
     }
 
 
+def done_owners(node: Node, everything: list[Node], paths: list[str]) -> list[str]:
+    """The first done leaf (not dropped or archived, not a sub-goal) whose scope has each of ``paths``,
+    once each, in the order of the paths: who the `r` offer reopens."""
+    parents = {n.parent for n in everything if n.state not in GONE}
+    done = [n for n in everything if n.id != node.id and n.id not in parents and n.state == DONE]
+    out: list[str] = []
+    for p in paths:
+        i = next((n.id for n in done if in_scope(p, n.scope)), None)
+        if i and i not in out:
+            out.append(i)
+    return out
+
+
 def held(store, node: Node) -> str:
     """What the node wanted that other leaves own, said (`a.txt is a's and b.txt is b's`), or ""."""
     return " and ".join(f"{p} is {i}'s" for p, i in owners(node, nodes(store), wanted(store, node)).items())
@@ -1456,6 +1469,14 @@ def offers(store, node: Node) -> list[tuple[str, str, list[str]]]:
             return f"{i}, whose scope has {', '.join(has)}" if has else i
 
         out.append(("n", f"make {node.id} wait on {', '.join(map(whose, named))}", argv))
+    back = done_owners(node, everything, wanted(store, node))
+    if back:
+        note = f"came back from {node.id}: {' '.join(why.split())}"
+        many = len(back) > 1
+        out.insert(len(out) - bool(named), (
+            "r", f"reopen {', '.join(back)} with this reason; {node.id} waits on {'them' if many else 'it'}",
+            ["node", "reopen", *back, "--note", note, "--for", node.id],
+        ))  # fmt: skip
     return out
 
 
@@ -2663,19 +2684,40 @@ def signoff(
     return node
 
 
-def reopen(store, node_id: str, who: Caller, note: str, now: str | None = None) -> Node:
-    """Not good enough: back to open, with what is wrong. The note is printed to whoever takes it next."""
+def reopen(store, node_id: str | list[str], who: Caller, note: str, now: str | None = None,
+           for_leaf: str | None = None) -> Node:  # fmt: skip
+    """Not good enough: back to open, with what is wrong. The note is printed to whoever takes it next.
+    Several ids are reopened together; ``for_leaf`` (a leaf that came back on their fault) then waits on
+    each, saved as an edit of its contract. Returns the first node reopened."""
     _person_only(who, "reopening a node")
     now = now or _now()
+    ids = [node_id] if isinstance(node_id, str) else list(node_id)
     with store.claim():
-        node = get(store, node_id)
-        if node.state not in (REVIEW, DONE):
-            raise Refused(f"{node.id} is {node.state}; only a finished node is reopened")
-        node.state, node.executor, node.session_id, node.agent_id = OPEN, None, None, None
-        node.rev += 1
-        _save(store, node, "reopened", who, now, note=note, rev=node.rev)
+        leaf = get(store, for_leaf) if for_leaf else None
+        if leaf and (leaf.id in ids or leaf.state == RUNNING):
+            raise Refused(f"{leaf.id} cannot wait on {', '.join(ids)}: " + (
+                "it is one of them" if leaf.id in ids else "it is running"))  # fmt: skip
+        picked = [get(store, i) for i in ids]
+        for node in picked:
+            if node.state not in (REVIEW, DONE):
+                raise Refused(f"{node.id} is {node.state}; only a finished node is reopened")
+        for node in picked:
+            node.state, node.executor, node.session_id, node.agent_id = OPEN, None, None, None
+            node.rev += 1
+            _save(store, node, "reopened", who, now, note=note, rev=node.rev)
+        if leaf:
+            everything = nodes(store)
+            by_id, under = {n.id: n for n in everything if n.state not in GONE}, kids(everything, drawn=True)
+            was = list(leaf.needs)
+            for n in picked:
+                if not _waits(by_id, under, leaf.id, {n.id}):
+                    leaf.needs.append(n.id)
+                    by_id[leaf.id] = leaf
+            if leaf.needs != was:
+                leaf.rev += 1
+                _save(store, leaf, "edited", who, now, changed={"needs": [was, leaf.needs]}, rev=leaf.rev)
         _settle(store, who, now)
-    return node
+    return picked[0]
 
 
 def notes(store, node_id: str) -> list[str]:
