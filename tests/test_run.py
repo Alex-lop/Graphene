@@ -104,12 +104,13 @@ def test_an_executor_that_hands_the_node_back_is_believed(repo):
 
 def test_claude_is_told_which_session_it_is_and_resumed_on_a_second_attempt():
     first = command_for("claude -p --model sonnet", "do it", "abc", again=False)
-    assert first == ["claude", "-p", "--model", "sonnet", "--session-id", "abc", "do it"]
+    assert first == ["claude", "-p", "--model", "sonnet", "--session-id", "abc", "--", "do it"]
     assert command_for("claude -p", "again", "abc", again=True) == [
         "claude",
         "-p",
         "--resume",
         "abc",
+        "--",
         "again",
     ]
     assert command_for("codex exec --sandbox workspace-write", "do it", "abc", again=True)[-1] == "do it"
