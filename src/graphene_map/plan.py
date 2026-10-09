@@ -747,6 +747,7 @@ def _ended(
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
+        errors="replace",  # what a check prints is its own: bytes that are not UTF-8 are no failure to run it
         env=env,
         start_new_session=True,
     ) as proc:

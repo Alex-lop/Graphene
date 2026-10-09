@@ -141,3 +141,12 @@ def test_the_whole_suite_is_outside_by_the_file_that_fails(repo):
         leaves(store, ("a", ["new.py", "tests/test_new.py"], "python3 -m pytest -q"))
         [(_, d)] = K.run(store, repo)
     assert d["verdict"] == "outside" and d["paths"] == ["tests/test_other.py"]
+
+
+def test_a_check_whose_output_is_not_utf8_is_judged_here_and_at_done(repo):
+    """Its bytes broke the reading: the check that passed was "could not be run", and `node done` raised."""
+    with Store.open(repo) as store:
+        leaves(store, ("a", ["new.py"], "printf 'caf\\351'"))
+        [(_, d)] = K.run(store, repo)
+    assert d["verdict"] == "passes"
+    assert P.run_check("printf 'caf\\351'; exit 1", repo)[:2] == (False, "caf�")
