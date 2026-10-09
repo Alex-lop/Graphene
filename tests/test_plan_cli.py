@@ -137,7 +137,8 @@ def test_sign_off_reopen_and_release_each_leave_a_line_in_the_nodes_record(repo)
     assert agent("node", "signoff", "n1").exit_code == 1
     assert "n1 (review)" in person("plan").stdout
     person("node", "reopen", "n1", "--note", "return a dict, not a list")
-    assert "sent back with: return a dict, not a list" in agent("node", "start", "n1").stdout
+    # the note comes first, above the contract, as the run's prompt tells it
+    assert agent("node", "start", "n1").stdout.startswith("return a dict, not a list\n")
     agent("node", "release", "n1", "--why", "needs schema.py, which is outside my scope")
     assert "handed back: needs schema.py, which is outside my scope" in person("plan").stdout
     shown = person("node", "show", "n1").stdout
@@ -517,7 +518,7 @@ def test_reopen_and_release_ask_at_a_terminal_and_refuse_in_one_line_without_one
     assert _cli(["node", "reopen", "n1"]) == (2, "graphene node reopen n1 needs --note: what is wrong")
     said = at_terminal(repo, ["node", "reopen", "n1"], "return a dict")
     assert said.startswith("what is wrong: return a dict\nn1 is open again")  # asked in one line
-    assert "sent back with: return a dict" in agent("node", "start", "n1").stdout
+    assert agent("node", "start", "n1").stdout.startswith("return a dict")
     said = at_terminal(repo, ["node", "release", "n1"], "the schema is in the way")
     assert said.startswith("what is in the way: the schema is in the way\nn1 handed back: the schema")
     refused = person("node", "release", "n1")  # nothing to hand back: that is said, and nothing asked

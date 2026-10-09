@@ -44,14 +44,17 @@ from ..run import GRACE, REFUSED, _alive
 from ..store import Store, repo_root
 from . import tokenfactory as tf
 
-PROMPT_VERSION = 1
+PROMPT_VERSION = 2  # 2: release, with wants, on a landed leaf's fault
 SYSTEM = """\
 You are an executor for Graphene: you do exactly one leaf of a plan a person shaped, in a git repository.
 You work only through the tools. Read what you need (view, run); change files with edit or write, only
 inside the leaf's scope (a write outside it is refused). Run the leaf's check yourself with run before you
 finish. When the check passes, call done: Graphene runs the check again and asks git what changed. If
 done refuses, read why, fix it, and call done again. If the leaf cannot be done inside its scope, call
-release with the reason and the paths you would need; the person decides. Keep each step small."""
+release with the reason and the paths you would need; the person decides. If the check cannot pass
+because a file another leaf already landed is wrong, do not work around it in your own files: call
+release with wants naming that file and a why that names the fault, so the person can reopen that leaf.
+Keep each step small."""
 
 NUDGE = "Use a tool. When the leaf is done call done; if it cannot be done inside its scope, call release."
 CUT = "Your answer was cut off at the token limit. Think less, and call one tool."

@@ -642,7 +642,8 @@ def test_a_stop_during_a_check_ends_it_and_all_it_started_and_is_no_failed_check
     started = repo.parent / "check.started"
     with Store.open(repo) as store:
         plan.propose(store, [leaf("a", "a.txt", check=f"sleep 30 & echo $! > {started}; wait")], ALEX)
-    run = graphene_run(repo, "--with", executor(repo, WRITES_A), "--parallel", parallel, session=True)
+    run = graphene_run(repo, "--with", executor(repo, WRITES_A), "--parallel", parallel, "--no-precheck",
+                       session=True)  # the attempt's check is the one stopped here, not red first's
     sleeper = None
     try:
         assert wait_for(lambda: started.exists() and started.read_text().strip(), 30)
@@ -657,6 +658,34 @@ def test_a_stop_during_a_check_ends_it_and_all_it_started_and_is_no_failed_check
         with Store.open(repo) as store:
             kinds = [e["kind"] for e in store.node_log("a")]
         assert "check_failed" not in kinds and kinds.count("attempt") == 1 and states(repo) == {"a": OPEN}
+    finally:
+        run.kill()
+        if sleeper and not ended(sleeper):
+            os.kill(sleeper, signal.SIGKILL)
+
+
+@pytest.mark.parametrize("parallel", ["1", "2"])
+def test_a_stop_while_red_first_runs_the_checks_ends_them_and_starts_nothing(repo, parallel):
+    """Red first runs every check before the first leaf starts: a stop then ends the check with all it
+    started, no attempt is made, and no verdict is written for a check that was never finished."""
+    started = repo.parent / "check.started"
+    with Store.open(repo) as store:
+        plan.propose(store, [leaf("a", "a.txt", check=f"sleep 30 & echo $! > {started}; wait")], ALEX)
+    run = graphene_run(repo, "--with", executor(repo, WRITES_A), "--parallel", parallel, session=True)
+    sleeper = None
+    try:
+        assert wait_for(lambda: started.exists() and started.read_text().strip(), 30)
+        sleeper = int(started.read_text())
+        if parallel == "1":
+            run.send_signal(signal.SIGINT)
+        else:
+            os.killpg(run.pid, signal.SIGINT)
+        said, _ = run.communicate(timeout=30)
+        assert run.returncode == 130 and "run stopped" in said, said
+        assert wait_for(lambda: ended(sleeper), 10)
+        with Store.open(repo) as store:
+            kinds = [e["kind"] for e in store.node_log("a")]
+        assert kinds == ["added"] and states(repo) == {"a": OPEN}
     finally:
         run.kill()
         if sleeper and not ended(sleeper):
