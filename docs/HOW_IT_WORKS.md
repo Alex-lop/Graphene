@@ -116,17 +116,21 @@ How many leaves it is asked for follows the repository's size: 1 to 3 under 2,00
 
 1. cuts a worktree, `.graphene/worktrees/<id>` on branch `graphene/<id>`, from where your checkout stands;
 2. starts the executor there, with the leaf's contract and `GRAPHENE_NODE` set;
-3. when the executor ends, looks at the leaf, not the exit code. If the leaf is not done, Graphene runs `done`
-   itself. Refused, the executor gets the refusal and tries again, up to three attempts;
+3. when the executor ends, looks at the leaf, not the exit code. If it is not done, Graphene runs `done` itself;
+   refused, the executor tries again, up to three attempts;
 4. commits the leaf's paths on its branch and merges it `--no-ff` into your checkout, with the leaf's why in the
    message.
+
+First, each check runs once at the base: one that passes there proves nothing, and the run says so
+(`--no-precheck` skips it).
 
 **Done** is the gate. Graphene asks git what changed since the leaf started. A path outside the scope is refused. Then
 it runs the check in a fresh worktree of the leaf's state, so nothing the check writes lands in yours. If nothing in
 the scope changed, it is not done. Otherwise the leaf is done, or in review.
 
 A leaf that comes back says why, and offers the fix: `w` widens its scope, `b` adds a sibling leaf for the paths it
-needed. Two leaves whose scopes overlap never run at once. A leaf waits until what it needs has landed. If git cannot
+needed, `r` reopens the done leaf it found wrong, and waits on it. Two leaves whose scopes overlap
+never run at once. A leaf waits until what it needs has landed. If git cannot
 merge, the leaf stops in review with its branch named.
 
 Ctrl-C stops the executors and hands back every leaf that had not passed. `graphene run --here` runs one leaf in your own
@@ -236,20 +240,18 @@ reads no transcript.
 
 ## FAQ
 
-**Isn't this just a plan in a markdown file, or a todo list?** A plan in prose is read once. A todo list is flat: it
-does not say why an item is there, what it may touch, or what proves it finished. Here every leaf hangs from the goal
-it serves, names its files and its check, and says what it waits on. The executors are held to all of it.
+**Isn't this just a plan in a markdown file, or a todo list?** A todo list is flat: it does not say why an item is
+there, what it may touch, or what proves it finished. Here every leaf hangs from the goal it serves, names its files
+and its check, and says what it waits on, and the executors are held to it.
 
 **Isn't a tree overkill for a one-line fix?** Ask for "fix the typo in the header" and the agent proposes one leaf:
-one row in `graphene watch`, and `y` takes it. Under auto it is yours at once. `P` turns plan first off if you would
-rather it just act.
+one row in `graphene watch`, and `y` takes it. Under auto it is yours at once. `P` turns plan first off.
 
 **What doesn't it catch?** Every limit is listed under "Where each mechanism ends".
 
 ## The rest
 
 `graphene --help` lists nine commands. These work too, and `--help` after any of them says more.
-Agents call some of them, such as `plan propose` and `node start`.
 
 - `graphene plan propose -` adds a tree, written as `graphene plan --text` prints it.
 - `graphene plan goal` sets the plan's goal, or prints it.
