@@ -143,7 +143,9 @@ def judge(node: P.Node, code: int | None, text: str, files: list[str],
     """(verdict, why, paths) of a check that was run: passes, outside or red."""
     if code == 0:
         return "passes", "it exits 0 before any work is done", []
-    paths = _outside(node, text, files, live) if code is not None else []
+    if code is None:  # it timed out or could not be run: no verdict, and it is tried again next time
+        return "not-run", _gist(text), []
+    paths = _outside(node, text, files, live)
     if paths:
         return "outside", f"it fails and names {', '.join(paths)}, which no scope of the leaf covers", paths
     return "red", _gist(text), []
@@ -159,7 +161,8 @@ def run(store, root: Path, ids=(), again: bool = False, say=None) -> Rows:
         if n.state not in (P.PROPOSED, P.OPEN):
             raise P.Refused(f"{n.id} is {n.state}: a check is run first only before its work starts")
     began, (base, tree), out = time.monotonic(), state(root), Rows()
-    todo = [n for n in todo if n.check and n.state == P.OPEN]
+    under = P.kids(everything, drawn=True)  # a sub-goal's check runs once its leaves are done, not here
+    todo = [n for n in todo if n.check and n.state == P.OPEN and not under.get(n.id)]
     kept = {} if again else {n.id: current(store, n, base, tree) for n in todo}
     commands = list(dict.fromkeys(n.check for n in todo if not kept.get(n.id)))
 
@@ -191,7 +194,7 @@ def run(store, root: Path, ids=(), again: bool = False, say=None) -> Rows:
             out.append((node, {**kept[node.id], "kept": True}))  # never logged again
             continue
         code, text = ran[node.check]
-        found, why, paths = judge(node, code, text, files, live)
+        found, why, paths = judge(node, code, hide(text), files, live)  # hidden whole, before any cut
         detail = {"rev": node.rev, "check": node.check, "base": base, "tree": tree, "verdict": found,
                   "why": _plain(hide(why)), "paths": [_plain(hide(p)) for p in paths], "exit": code,
                   "where": "here", "by": None}  # fmt: skip
@@ -215,4 +218,4 @@ def said(rows) -> list[str]:
         elif d["verdict"] == "outside":
             lines.append(f"{node.id}: its check names {', '.join(d['paths'])}, outside its scope, at {at}")
     seconds = getattr(rows, "seconds", 0.0)
-    return [*lines, f"red first: {len(rows)} checks at {at} in {seconds:.0f} s"]
+    return [*lines, f"red first: {len(rows)} check{'s' * (len(rows) != 1)} at {at} in {seconds:.0f} s"]

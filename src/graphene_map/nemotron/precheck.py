@@ -29,6 +29,7 @@ FLAG = "precheck"
 SHAPER = "shaper:nemotron"  # who puts the shaping prototypes' output on the board
 PROMPT_VERSION = "precheck-1"
 SAID = {"passes": "passes already", "cannot-run": "cannot run", "not-run": "not run",
+        "outside": "red: names a path outside its scope",  # the core's (graphene_map.precheck), kept here
         "red-right-reason": "red, for the right reason", "red": "red", "environment": "red: the environment",
         "typo": "red: a typo", "other": "red: another reason"}  # fmt: skip
 QUIET = ("red-right-reason", "red")  # the verdicts a check should have before the work: no mark

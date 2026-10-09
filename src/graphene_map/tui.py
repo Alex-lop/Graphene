@@ -86,7 +86,7 @@ HELP = (  # what answering the board needs first: at 80x24 the first screen ends
              ("x", "release it; send it back; reopen it"), ("P", "plan first: on, auto, off"))),
     ("see", (("Enter l D", "the record; the executor's output; the direction"),
              ("ctrl-d -u", "scroll the pane"))),
-    ("came back", (("w b n", "widen its scope; a sibling first; wait on those"),
+    ("came back", (("w b r n", "widen its scope; a sibling first; reopen the owner; wait on those"),
                    ("?", "ask the planner what would let it be done"))),
 )  # fmt: skip
 HELP_END = (
@@ -176,20 +176,24 @@ def _cli(argv: list[str]) -> tuple[int, str]:
 
 def row(
     glyph: str, word: str, title: str, node_id: str, wide: int, ids: int, words: int, bold=False, inside="",
-    least=4, mark="",
+    least=4, mark="", flag="",
 ) -> Text:
     """One row: glyph, the title cut at a word, the id (dim) and the state word in its colour, in
     fixed columns so ids line up with ids and words with words, whatever the depth. ``wide`` is
     what the row may take; an id is never cut, the title gives way, to ``least`` columns. ``inside``:
     a folded row's count of its leaves by state, in the word's column, each state in its own colour.
-    ``mark``: `+` or `~` in the gap before the id, when it changed since the person last looked."""
+    ``mark``: `+` or `~` in the gap before the id, when it changed since the person last looked.
+    ``flag``: a dim glyph after the title (the precheck's ∅), in the title's room."""
     colour = _look(word or glyph)[1]  # board: its fold row has no word, and its glyph's colour
     title_w = max(wide - 2 - (2 + ids if ids else 0) - (2 + words), least)
     if not node_id:  # the goal's row: no id, so its title takes the id's column too
         title_w += 2 + ids if ids else 0
     out = Text()
     out.append(f"{glyph} ", colour)
-    out.append(T.elide(title, title_w).ljust(title_w), "bold" if bold else "")
+    room = title_w - 2 * bool(flag)
+    out.append(T.elide(title, room).ljust(room), "bold" if bold else "")
+    if flag:
+        out.append(f" {flag}", "dim")
     if ids and node_id and mark:
         out.append(" ")
         out.append(mark, "bold")
@@ -642,11 +646,9 @@ class PlanTree(Tree[str]):
         # its id and word stay in their columns as deep as its leaf's do
         least = 1 if isinstance(node.data, tuple) else 4
         mark = self.app.mark(node)
-        flag = node.data in self.flagged
-        room = wide - 2 - 2 * flag  # the dim mark after the title is two columns
-        label = row(glyph, word, title, node_id, room, self.ids, self.words, bold, folded, least, mark)
-        if flag:
-            label.append(" ∅", "dim")
+        flag = "∅" if node.data in self.flagged else ""  # its check proves nothing: the pane says why
+        label = row(glyph, word, title, node_id, wide - 2, self.ids, self.words, bold, folded, least, mark,
+                    flag)
         if node.data in self.chosen:
             label.stylize("reverse")
         label.stylize(style)
@@ -1877,7 +1879,8 @@ class Watch(App):
 
             self.push_screen(Ask(f"reopen {node_id}: what is wrong (its next executor is told)"), reopened)
         elif state is not None:
-            again = "; r runs it again" if node_id in self.back else ""
+            again = ("; r reopens the owner" if "r" in self.offered.get(node_id, []) else "; r runs it again"
+                     ) if node_id in self.back else ""
             self.message = f"x releases a running leaf or reopens a finished one; {node_id} is neither{again}"
             self.say_status()
 
@@ -2255,6 +2258,8 @@ def goal_pane(store, s, wide: int) -> Text:
 def precheck(store, node: P.Node) -> dict | None:
     """The leaf's last precheck row's detail, when it is about its current rev and says it passes at
     the base (its check proves nothing) or names paths outside its scope; else None."""
+    if node.state not in (P.OPEN, P.PROPOSED):  # done, it proved what it proved; running, it is being run
+        return None
     rows = store.node_log(node.id, ("precheck",))
     d = rows[-1]["detail"] if rows else {}
     return d if d.get("rev") == node.rev and d.get("verdict") in ("passes", "outside") else None

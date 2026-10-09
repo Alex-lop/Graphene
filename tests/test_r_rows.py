@@ -31,7 +31,8 @@ def test_the_r_row_shows_in_the_record_pane_the_offers_field_and_the_keys(repo, 
     assert "graphene plan first auto" in seen["detail"]
     assert "r reopen" in seen["status"] and "r run it again" not in seen["status"]
     seen, _ = watch(repo, ["G", "enter"], size=(120, 36))
-    assert "offers" in seen["detail"] and "r  reopen schema" in " ".join(seen["detail"].split()).replace("r reopen", "r  reopen")
+    detail = " ".join(seen["detail"].split()).replace("r reopen", "r  reopen")
+    assert "offers" in seen["detail"] and "r  reopen schema" in detail
 
 
 def test_r_takes_the_offer_when_there_is_one_and_runs_the_leaf_again_when_not(repo, monkeypatch):

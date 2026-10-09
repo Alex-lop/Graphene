@@ -44,7 +44,7 @@ from ..run import GRACE, REFUSED, _alive
 from ..store import Store, repo_root
 from . import tokenfactory as tf
 
-PROMPT_VERSION = 1
+PROMPT_VERSION = 2  # 2: release, with wants, on a landed leaf's fault
 SYSTEM = """\
 You are an executor for Graphene: you do exactly one leaf of a plan a person shaped, in a git repository.
 You work only through the tools. Read what you need (view, run); change files with edit or write, only

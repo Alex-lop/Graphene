@@ -1261,9 +1261,9 @@ def register(cli: typer.Typer, root, open_store, fail):
 
         def go(store):
             n = P.start(store, node_id, P.caller(), checkout())
+            for note in P.notes(store, n.id):  # first, as the run's prompt tells them
+                out(note)
             out(P.contract(n, P.trail(store, n), B.decided(store, n)))
-            for note in P.notes(store, n.id):
-                out(f"  sent back with: {note}")
 
         run(go)
         said_where()
@@ -1405,7 +1405,7 @@ def register(cli: typer.Typer, root, open_store, fail):
             why = (store.node_log(n.id, ("released",)) or [{"detail": {}}])[-1]["detail"].get("why", "")
             lines.append(f"  came back: {' '.join(str(why).split())}")
             for _key, what, command in offers:
-                lines.append(f"    {what}: `graphene {' '.join(command)}`")
+                lines.append(f"    {what}: `graphene {shlex.join(command)}`")
         if n.state == P.OPEN and P.not_offered(store, n):
             lines.append(f"    {P.not_offered(store, n)}")
         if n.state == P.OPEN and P.RUN_TREE in (n.checkout or "") and Path(n.checkout or "").is_dir():

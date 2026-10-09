@@ -1401,7 +1401,8 @@ def done_owners(node: Node, everything: list[Node], paths: list[str]) -> list[st
     """The first done leaf (not dropped or archived, not a sub-goal) whose scope has each of ``paths``,
     once each, in the order of the paths: who the `r` offer reopens."""
     parents = {n.parent for n in everything if n.state not in GONE}
-    done = [n for n in everything if n.id != node.id and n.id not in parents and n.state == DONE]
+    done = [n for n in everything
+            if n.id != node.id and n.id not in parents and n.state == DONE and not n.aside]
     out: list[str] = []
     for p in paths:
         i = next((n.id for n in done if in_scope(p, n.scope)), None)
@@ -1439,8 +1440,8 @@ def offers(store, node: Node) -> list[tuple[str, str, list[str]]]:
     command that does it): widen its scope to the paths it wanted, a sibling leaf for those paths,
     or make it wait on the nodes its reason names. Each is a command that exists on its own."""
     last = (store.node_log(node.id, ("started", "released", "reopened")) or [{"kind": ""}])[-1]
-    if node.state != OPEN or last["kind"] != "released":
-        return []
+    if node.state != OPEN or last["kind"] != "released" or not came_back(store, node):
+        return []  # after w, b or r it is waiting or ready, not came back: nothing to offer
     out: list[tuple[str, str, list[str]]] = []
     everything = nodes(store)
     by_id = {n.id: n for n in everything}
@@ -1475,7 +1476,10 @@ def offers(store, node: Node) -> list[tuple[str, str, list[str]]]:
             return f"{i}, whose scope has {', '.join(has)}" if has else i
 
         out.append(("n", f"make {node.id} wait on {', '.join(map(whose, named))}", argv))
-    back = done_owners(node, everything, wanted(store, node))
+    # a path a live leaf holds is that leaf's (the n offer): r reopens done owners of the rest, and never
+    # one the leaf could not wait on without a cycle
+    back = done_owners(node, everything, [p for p in wanted(store, node) if p not in held])
+    back = [i for i in back if acyclic(everything, node.id, [i])]
     if back:
         note = f"came back from {node.id}: {' '.join(why.split())}"
         many = len(back) > 1
@@ -2697,12 +2701,14 @@ def reopen(store, node_id: str | list[str], who: Caller, note: str, now: str | N
     each, saved as an edit of its contract. Returns the first node reopened."""
     _person_only(who, "reopening a node")
     now = now or _now()
-    ids = [node_id] if isinstance(node_id, str) else list(node_id)
+    ids = [node_id] if isinstance(node_id, str) else list(dict.fromkeys(node_id))  # an id named twice is one
     with store.claim():
         leaf = get(store, for_leaf) if for_leaf else None
         if leaf and (leaf.id in ids or leaf.state == RUNNING):
             raise Refused(f"{leaf.id} cannot wait on {', '.join(ids)}: " + (
                 "it is one of them" if leaf.id in ids else "it is running"))  # fmt: skip
+        if leaf and not acyclic(nodes(store), leaf.id, ids):
+            raise Refused(f"{leaf.id} cannot wait on {', '.join(ids)}: the plan would have a cycle")
         picked = [get(store, i) for i in ids]
         for node in picked:
             if node.state not in (REVIEW, DONE):
