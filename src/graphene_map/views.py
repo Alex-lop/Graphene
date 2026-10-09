@@ -131,13 +131,9 @@ def billed(rows: list[dict], now: datetime | None = None) -> dict[str, str]:
     """What each leaf an executor held spent and took, from the log's rows, as a view notes it on the
     leaf's cell: `$0.42 · 6m` (whole minutes, or `<1m`). A leaf no list price covers, with no meter, or
     with no usage yet (Codex says its tokens as its turn ends) has its minutes alone."""
-    logs: dict[str, list[dict]] = {}
-    for e in rows:
-        logs.setdefault(e["node_id"], []).append(e)
     out = {}
-    for node_id, log in logs.items():
-        tries = M.attempts(log, now=now) if any(e["kind"] == "attempt" for e in log) else []
-        if not tries:
+    for node_id, log in M.by_node(rows).items():
+        if not (tries := M.attempts(log, now=now)):
             continue
         minutes = sum(a["seconds"] for a in tries) // 60
         took = f"{minutes}m" if minutes else "<1m"
@@ -151,10 +147,7 @@ def happened(rows: list[dict], person: str | None, now: datetime | None = None) 
     """What a view that draws time is given: the log's rows by node, oldest first ("*" is the plan's
     own), the person whose acts are ticks, and now. Now is the caller's: watch's clock, or a replay's,
     so a recording from yesterday draws its own span."""
-    by: dict[str, list[dict]] = {}
-    for e in rows:
-        by.setdefault(e["node_id"], []).append(e)
-    return {"by": by, "person": person, "now": now or datetime.now(UTC)}
+    return {"by": M.by_node(rows), "person": person, "now": now or datetime.now(UTC)}
 
 
 def shown(store) -> list[P.Node]:

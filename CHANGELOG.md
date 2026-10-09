@@ -16,6 +16,8 @@ The loop (9 October). A leaf that finds a landed leaf's fault reopens it with on
   `graphene watch` marks the leaf ~. A leaf that came back still waits on you. Run `graphene node set`.
 - The Nemotron planner repairs what needs no judgement and says each repair in a `repaired:` line. It sends the
   other faults back together, one per node, at most twice. Run `graphene ask --with nemotron '…'`.
+- `graphene run`'s last line says how wide the run went: `width 2 of 3` is three leaves, at most two at once. So do
+  `plan record`, `node show` on a sub-goal, and the time view when its line has room. Run `graphene run --parallel 3`.
 
 The timeline (8 October). A fourth view, and fixes for what the meter night's runs stopped on.
 - A fourth view, `time`: a lane for each leaf that was held, what its executor did when, and marks for a refused

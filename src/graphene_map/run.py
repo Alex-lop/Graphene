@@ -602,9 +602,9 @@ def summary(store, since: int, stopped: bool = False) -> str:
 
 
 def clocks(log: list[dict]) -> str:
-    """The run's two clocks, from its own rows: " · agents 41 min, $2.8700 at list price · you 4 acts, 2 min".
-    With no usage row, the agents' dollars are "no meter": nothing is invented."""
-    agents, you = M.agents(log, datetime.now(UTC)), M.you(log, P.person_name())
+    """The run's two clocks and its width, from its own rows: " · agents 41 min, $2.8700 at list price ·
+    width 2 of 3 · you 4 acts, 2 min". With no usage row, the dollars are "no meter": nothing is invented."""
+    agents, you, ran = M.agents(log, datetime.now(UTC)), M.you(log, P.person_name()), M.width(log)
     took = f"{round(agents['seconds'] / 60)} min" if agents["seconds"] >= 60 else "<1 min"
     spent, n = "no meter", agents["unpriced"]
     if any(e["kind"] == "usage" for e in log):
@@ -612,7 +612,8 @@ def clocks(log: list[dict]) -> str:
     if n:
         spent += f" + {f'{round(n / 1000)}k' if n >= 1000 else n} tokens with no list price"
     acts = f"{you['acts']} act{'s' * (you['acts'] != 1)}"
-    return f" · agents {took}, {spent} · you {acts}, {you['minutes']} min"
+    wide = f" · width {ran['most']} of {ran['lanes']}" if ran else ""
+    return f" · agents {took}, {spent}{wide} · you {acts}, {you['minutes']} min"
 
 
 @contextlib.contextmanager
@@ -696,8 +697,6 @@ def live(store, node: P.Node, now: float | None = None) -> dict:
     said), else the hooks' last tool call for its session, else its log's last line that is not the
     stream's JSON; the log's age, too, says when it last spoke. The attempt is its hold's
     (`meter.going`): a session that took the leaf after a run has none."""
-    from . import meter as M
-
     metered = M.going(store.node_log(node.id)) or {}
     log = metered.get("log")
     last = store.last_events(node.session_id) if node.session_id else []
