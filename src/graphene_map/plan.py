@@ -2713,9 +2713,11 @@ def reopen(store, node_id: str | list[str], who: Caller, note: str, now: str | N
                 if not _waits(by_id, under, leaf.id, {n.id}):
                     leaf.needs.append(n.id)
                     by_id[leaf.id] = leaf
-            if leaf.needs != was:
-                leaf.rev += 1
-                _save(store, leaf, "edited", who, now, changed={"needs": [was, leaf.needs]}, rev=leaf.rev)
+            # the person's answer to the hand-back, as w and b are: after it the leaf is waiting, not came
+            # back (`let_go`), so the next run takes it once what it waits on has landed again
+            changed = {"needs": [was, leaf.needs]} if leaf.needs != was else {}
+            leaf.rev += bool(changed)
+            _save(store, leaf, "edited", who, now, changed=changed, rev=leaf.rev, reopened=ids)
         _settle(store, who, now)
     return picked[0]
 

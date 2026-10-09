@@ -72,3 +72,18 @@ def test_a_running_for_leaf_is_refused(store, repo, finish):
     with pytest.raises(Refused, match="x cannot wait on a: it is running"):
         plan.reopen(store, "a", ALEX, "fix it", for_leaf="x")
     assert plan.get(store, "a").state == "done"
+
+
+def test_r_on_a_leaf_that_already_waits_on_the_owner_makes_it_waiting_not_came_back(store, repo, finish):
+    plan.propose(store, [leaf("a", ["a.py"]), leaf("x", ["x.py"], needs=["a"])], ALEX)
+    plan.start(store, "a", BOT, repo)
+    finish(store, repo, "a", BOT)
+    plan.start(store, "x", BOT2, repo)
+    plan.release(store, "x", BOT2, "a's field names are wrong", wants=["a.py"])
+    assert plan.came_back(store, plan.get(store, "x"))
+    plan.reopen(store, ["a"], ALEX, "came back from x: a's field names are wrong", for_leaf="x")
+    x = plan.get(store, "x")
+    assert (x.needs, x.rev) == (["a"], 1) and not plan.came_back(store, x)  # nothing of its contract changed
+    [edit] = store.node_log("x", ("edited",))
+    assert edit["detail"] == {"changed": {}, "rev": 1, "reopened": ["a"]}
+    assert plan.reads(x, plan.nodes(store)) == "waiting"
