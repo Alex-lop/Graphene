@@ -20,11 +20,10 @@ import json
 import os
 import re
 import shlex
-import subprocess
-import time
 from pathlib import Path
 
 from .. import plan as P
+from ..precheck import _gist, _here, _hider, _plain, current, state  # noqa: F401
 
 FLAG = "precheck"
 SHAPER = "shaper:nemotron"  # who puts the shaping prototypes' output on the board
@@ -37,10 +36,6 @@ SCHEMA = {"type": "object", "additionalProperties": False, "required": ["verdict
     "verdict": {"type": "string", "enum": ["red-right-reason", "environment", "typo", "other"]},
     "why": {"type": "string"}}}  # fmt: skip
 QUICK = 30  # seconds Nano gets for one reading, asked once: it runs behind `ask`, and must not wait a minute
-# an escape sequence (CSI, OSC) or any other control character: what a check or a model wrote must not
-# move the person's cursor, clear a line or draw a verdict of its own over the real one
-_CONTROL = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)?|[\x00-\x1f\x7f-\x9f]")
-_USER = re.compile(r"(//)[^/@\s]+@")  # a URL's user and password (a proxy's): never stored or said
 _MISSING = re.compile(r"No module named '?([\w.]+)")
 
 
@@ -62,41 +57,6 @@ def verdict(code: int | None, out: str, command: str, scopes: list[str]) -> str 
     return None
 
 
-def state(root: Path) -> tuple[str | None, str | None]:
-    """(HEAD, the checkout as git sees it now as one tree id): what a check runs on (tracked files as
-    they are on disk, and new files git does not ignore, as `_clean_tree` takes them), so a commit or
-    an uncommitted change makes a verdict stale. The tree is written from a copy of the index, so the
-    checkout's own index is never touched."""
-    import shutil  # here: only a precheck needs them
-    import tempfile
-    from contextlib import suppress
-
-    base = P.head(root)
-    try:
-        with tempfile.TemporaryDirectory() as tmp:
-            index = Path(tmp, "index")
-            with suppress(OSError):  # a repo where nothing was ever added has no index yet
-                shutil.copyfile(Path(root, P._git(root, "rev-parse", "--git-path", "index").strip()), index)
-            env = {**os.environ, "GIT_INDEX_FILE": str(index), "GIT_OPTIONAL_LOCKS": "0"}
-            for args in (["add", "-A"], ["write-tree"]):
-                done = subprocess.run(["git", "-c", "core.hooksPath=/dev/null", "-C", str(root), *args],
-                                      env=env, capture_output=True, text=True, timeout=30)  # fmt: skip
-            return base, (done.stdout.strip() if done.returncode == 0 else None)
-    except (P.Refused, OSError, subprocess.TimeoutExpired):
-        return base, None
-
-
-def current(store, node: P.Node, base: str | None, tree: str | None) -> dict | None:
-    """The leaf's last verdict, while it is about this rev, this check, this commit and this state of
-    the checkout (``state``), and finished."""
-    rows = [r["detail"] for r in store.node_log(node.id, ("precheck",))]
-    last = rows[-1] if rows else None
-    now = (node.rev, node.check, base, tree)
-    fresh = last and tree and (last["rev"], last["check"], last["base"], last.get("tree")) == now
-    unfinished = last and (last["verdict"] == "not-run" or last["why"].startswith("not read"))
-    return last if fresh and not unfinished else None  # a check not run, or a red not read: try again
-
-
 def _prepare(exe: str) -> str | None:
     """The executor setting's ``--prepare X`` or ``--prepare=X``, else None."""
     try:
@@ -109,20 +69,6 @@ def _prepare(exe: str) -> str | None:
         if word == "--prepare" and i + 1 < len(words):
             return words[i + 1]
     return None
-
-
-def _here(command: str, root: Path) -> tuple[int | None, str]:
-    """An accepted check, run as `node done` runs it: in a clean worktree, without the key."""
-    began = time.monotonic()
-    env = P.check_env()
-    try:
-        with P._clean_tree(root, (), began) as tree:
-            code, out, err = P._ended(command, tree, env, began)
-    except subprocess.TimeoutExpired:
-        return None, f"timed out after {P.CHECK_TIMEOUT:g} s"
-    except (P.Refused, OSError) as no:
-        return None, f"could not be run: {no}"
-    return code, out + err
 
 
 def _forks(root: Path, prepare: str | None):
@@ -166,15 +112,6 @@ def _nano() -> str:
     if not listed:
         raise tf.Unreachable("Token Factory lists no Nemotron model")
     return listed[0]
-
-
-def _hider(root: Path):
-    """demo.py's hider (the key in the environment, anything shaped like a key, the repository's path)
-    and a URL's user and password: for what Nano is sent, and every verdict stored or said."""
-    from ..demo import hider  # here: it brings the screen's imports, which only a run that reads needs
-
-    hide = hider(root)[0]
-    return lambda text: hide(_USER.sub(r"\1", str(text)))
 
 
 def _read(store, node: P.Node, tail: str, model: str, hide=str) -> tuple[str, str]:
@@ -278,16 +215,6 @@ def run(store, root: Path, ids=(), fork=None, prepare: str | None = None,
         store.log_node(node.id, P._now(), "precheck", "graphene:precheck", None, None, detail)
         out.append((node, detail))
     return out
-
-
-def _plain(text) -> str:
-    """One line, with no escape sequence or control character in it."""
-    return " ".join(_CONTROL.sub(" ", str(text)).split())
-
-
-def _gist(text: str) -> str:
-    lines = [line.strip() for line in text.strip().splitlines() if line.strip()]
-    return lines[-1][:200] if lines else "no output"
 
 
 def said(rows: list[tuple[P.Node, dict]]) -> list[str]:
