@@ -340,17 +340,20 @@ def prompt_for(
     node: P.Node, notes: list[str], refusal: str | None, why: list[str] | None = None, decided: list[str] = ()
 ) -> str:
     lines = [
+        *notes,
+        *([""] if notes else []),
         "You are doing one leaf of a plan that a person and their agents share. `why` is the path from "
         "the plan's goal down to your leaf, in the person's words: it is what your work is for. The "
         "leaf is the whole of what you are asked to do.",
         "",
         P.contract(node, why, decided),
-        *(f"  sent back with: {note}" for note in notes),
         "",
         "Read anything you need; write only inside the scope. When it is done, run "
         f"`graphene node done {node.id}`; if it refuses, it says what is wrong. If the leaf cannot be done "
         "as written, run the `release` command above and say why, naming with --wants each path outside "
-        "the scope it needs. Do not start any other node.",
+        "the scope it needs. If your check cannot pass because a file another leaf already landed is wrong, "
+        "do not work around it in your own files. Run the release command with --wants naming that file "
+        "and a why that names the fault, so the person can reopen that leaf. Do not start any other node.",
     ]
     if refusal:
         lines += ["", REFUSED, refusal]
