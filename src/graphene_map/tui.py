@@ -86,7 +86,7 @@ HELP = (  # what answering the board needs first: at 80x24 the first screen ends
              ("x", "release it; send it back; reopen it"), ("P", "plan first: on, auto, off"))),
     ("see", (("Enter l D", "the record; the executor's output; the direction"),
              ("ctrl-d -u", "scroll the pane"))),
-    ("came back", (("w b r n", "widen its scope; a sibling first; reopen the owner; wait on those"),
+    ("came back", (("w b r n", "widen its scope; a sibling; reopen; wait on those"),
                    ("?", "ask the planner what would let it be done"))),
 )  # fmt: skip
 HELP_END = (
