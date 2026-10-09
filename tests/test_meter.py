@@ -227,6 +227,15 @@ def test_an_attempt_that_ends_as_another_starts_does_not_overlap_it(starts):
     assert M.width(rows, NOW)["most"] == 2
 
 
+def test_width_reads_both_ends_to_the_millisecond_not_to_the_second():
+    """b starts 0.3 s before a ends, inside one second: at once, though whole seconds say not. b starts
+    0.3 s after a ends: not at once, though a's start plus its rounded 11 seconds says so."""
+    a = [at("00:00.000", "attempt", "a"), at("00:10.500", "ended", "a")]
+    assert M.width([*a, at("00:10.200", "attempt", "b"), at("00:20.000", "ended", "b")], NOW)["most"] == 2
+    a[1] = at("00:10.600", "ended", "a")
+    assert M.width([*a, at("00:10.900", "attempt", "b"), at("00:20.000", "ended", "b")], NOW)["most"] == 1
+
+
 def test_a_leaf_that_tried_twice_is_one_lane_and_an_attempt_running_now_runs_until_now():
     rows = [at("00:00.000", "attempt", "a"), at("00:20.000", "ended", "a"),
             at("00:25.000", "attempt", "a", 2), at("00:40.000", "ended", "a", 2),
