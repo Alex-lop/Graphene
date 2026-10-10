@@ -16,6 +16,7 @@ import typer
 from typer.testing import CliRunner
 
 from graphene_map.cli import build
+from graphene_map.store import Store
 from graphene_map.tui import _cli
 
 runner = CliRunner()
@@ -323,6 +324,15 @@ def test_a_run_says_first_where_it_lands_with_what_and_that_uncommitted_work_sta
     assert landing.startswith(f"landing into {branch} at ") and "--no-verify" in landing, landing
     assert "your uncommitted changes are not in the executors' worktrees: they start from HEAD" in lines
     assert lines.index(landing) == 0 and lines[-1].startswith("run: ")  # the summary is still the last
+
+
+def test_a_runs_last_line_is_kept_as_a_row_of_the_plan(repo):
+    """What a run did was said once, on a terminal that may be gone: the plan kept no line of it."""
+    person("node", "add", "leaf two", "--id", "l2", "--scope", "schema.py", "--check", "true")
+    ran = person("run", "--with", "true")
+    with Store.open(repo) as store:
+        [row] = store.node_log("*", ("run",))
+    assert row["actor"] == "graphene run" and row["detail"] == {"summary": ran.stdout.splitlines()[-1]}
 
 
 def test_an_accept_whose_output_pipe_closes_is_made_all_the_same(repo, monkeypatch):
