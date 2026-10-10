@@ -2005,7 +2005,8 @@ def test_a_run_that_could_start_more_than_one_leaf_asks_first_and_one_leaf_start
 
 
 def test_the_helps_first_line_names_the_mark_of_a_check_that_proves_nothing(repo):
-    """∅ marks a leaf whose check passes before any work (the precheck), and the legend never said so."""
+    """∅ marks a leaf whose check red first flagged, and the legend never said so; it said "proves nothing",
+    which is untrue of a check that fails on a path outside its leaf's scope, which ∅ marks too."""
     proposed(repo)
     for size, first in (((120, 36), 0), ((80, 24), 1)):  # at 80 columns its own line, under the states
 
@@ -2013,7 +2014,7 @@ def test_the_helps_first_line_names_the_mark_of_a_check_that_proves_nothing(repo
             await pilot.press("question_mark")
             await pilot.pause()
             legend = shown(app, app.screen.query_one("#legend").region)
-            assert "∅ proves nothing" in legend[first] and "━ critical" in legend[0], legend
+            assert "∅ check flagged" in legend[first] and "━ critical" in legend[0], legend
 
         watch(repo, [], size=size, before=before)
 

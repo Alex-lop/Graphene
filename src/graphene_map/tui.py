@@ -428,12 +428,13 @@ class Ask(ModalScreen[str | None]):
 
 
 def legend(wide: int) -> Text:
-    """The glyphs and colours, one line: what each state reads as, ∅ (a check that passes on nothing, the
-    precheck's) and the graph's heavy line; where the words do not fit, the person's move (magenta: yours,
-    review, came back) as one, and where they still do not, ∅ on a line of its own under them."""
+    """The glyphs and colours, one line: what each state reads as, ∅ (a check red first flagged: it passes
+    at the base, or fails outside the leaf's scope) and the graph's heavy line; where the words do not fit,
+    the person's move (magenta: yours, review, came back) as one, and where they still do not, ∅ on a line
+    of its own under them."""
     looks = [(P.look(w)[0], P.look(w)[1], w) for w in LEGEND]
     short = [("".join(g for g, _, _ in looks[:3]), P.look("yours")[1], "yours"), *looks[3:]]
-    nothing = Text.assemble(("∅", "dim"), " proves nothing")
+    nothing = Text.assemble(("∅", "dim"), " check flagged")  # which way, the pane says
     for form in (looks, short):
         out = Text()
         for glyph, colour, word in form:
@@ -648,7 +649,7 @@ class PlanTree(Tree[str]):
         # its id and word stay in their columns as deep as its leaf's do
         least = 1 if isinstance(node.data, tuple) else 4
         mark = self.app.mark(node)
-        flag = "∅" if node.data in self.flagged else ""  # its check proves nothing: the pane says why
+        flag = "∅" if node.data in self.flagged else ""  # red first flagged its check: the pane says why
         label = row(glyph, word, title, node_id, wide - 2, self.ids, self.words, bold, folded, least, mark,
                     flag)
         if node.data in self.chosen:
@@ -824,7 +825,7 @@ class Watch(App):
         self.by_id: dict[str, P.Node] = {}
         self.under: dict = {}
         self.lone: tuple | None = None  # one leaf proposed: it, and the sub-goals its row stands for
-        self.prechecked: dict[str, dict] = {}  # leaf -> its precheck row, when it proves nothing
+        self.prechecked: dict[str, dict] = {}  # leaf -> its precheck row, when red first flagged it
         self.offered: dict[str, list[str]] = {}  # the keys each leaf that came back offers
         self.forks: dict[str, list[dict]] = {}  # a leaf's forks in its last attempt: rows under it
         self.heard: set = set()  # the steps up the ladder the bottom line has said
