@@ -50,8 +50,8 @@ Two holes, then, on 907a7d0, and the run said nothing about either:
    file. Reproduced outside Graphene in `dev/process/prove/probes/racy.md`: commit, edit the file in the same second
    keeping its size, copy the index with a later date, `git add -A` on the copy writes the committed content; dating
    the copy at epoch+1 makes every entry racily clean and the content is read (a zero date disables git's racy
-   check; `git update-index --really-refresh` does not help). The executor's own `done` in the same second as the
-   edit failed correctly; the run's own `done` a second later passed, and the leaf landed broken.
+   check; `git update-index --really-refresh` does not help). The executor's own `done` passed on the committed file
+   (b's one check row, `check_passed`; its log: "b is done (check passed, …)"), and the leaf landed broken.
 
 ## X1: the first ask (n = 40: feeds 20, report 20)
 
@@ -167,7 +167,7 @@ fields.py` maps the xml sku key to `xcode` but `samples/prices.xml` uses the att
 normalises to None and load emits nothing") and handed the leaf back wanting `normalize/fields.py`; the run printed
 the three offers; `r` reopened `xml-wiring` with the note; the next run landed the owner's fix and then the
 end-to-end leaf. Against the plain session (X2 b): the same scores, about twice the dollars ($0.62–0.75 against
-$0.34–0.38) and about three times the wall clock (141–187 s against 58–65 s), 14–20 shell commands refused to the
+$0.34–0.38) and about three times the wall clock (151–187 s against 59–64 s), 14–20 shell commands refused to the
 executors (the shipped allow list is `graphene node/plan` only) against 2–5. What differs in kind: here the fault's
 diagnosis and the fix's reason are rows in the plan's log and the reopen note, with the leaf that found it and the
 leaf that owned it named; in the plain session they are a paragraph in a transcript, and the fix was left
