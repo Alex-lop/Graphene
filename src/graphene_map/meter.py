@@ -199,7 +199,11 @@ class Meter:
         whole = self.result.strip()  # its last words: as a text block, its row stopped at SAID
         said = [("said", {"attempt": self.attempt, "text": whole})] if len(whole) > SAID else []
         refused = []  # what Claude Code refused its executor; a write is the hooks' to record (theirs win)
+        # ponytail: a shell command the hook refused for writing outside the scope may be listed here too
+        # (unprobed); then one call is counted as the hook's write and the executor's command
         for d in event.get("permission_denials") or []:
+            if not isinstance(d, dict):
+                continue
             tool = d.get("tool_name") or ""
             if VERBS.get(tool) != "editing":  # "command", never "path": plan.wanted offers a path to widen to
                 command = self._target(d.get("tool_input") or {}).strip().split("\n")[0][:TARGET] or tool
@@ -293,12 +297,26 @@ def going(rows: list[dict], scope: list[str] | None = None, now: datetime | None
     return (attempts(hold, scope, now) or [None])[-1]
 
 
+def whole_said(rows: list[dict]) -> list[dict]:
+    """Claude Code streams the last message as a text block (its row stopped at SAID) and again as the
+    result (kept whole): the block is dropped when the whole row that follows it begins with it."""
+    kept: list[dict] = []
+    for e in rows:
+        last = kept[-1] if kept else None
+        if (last is not None and last["kind"] == e["kind"] == "said"
+                and str(e["detail"].get("text") or "").startswith(str(last["detail"].get("text") or ""))):
+            kept[-1] = e
+        else:
+            kept.append(e)
+    return kept
+
+
 def _attempt(a: dict, nxt: dict | None, scope: list[str] | None, now: datetime) -> dict:
     rows, ended, start = a["rows"], a["ended"], a["row"]["timestamp"]
     usage = [e["detail"] for e in rows if e["kind"] == "usage"]
     did = [e["detail"] for e in rows if e["kind"] == "did"]
-    talk = [e for e in rows if e["kind"] in ("did", "said")]
-    said = [e["detail"].get("text") for e in rows if e["kind"] == "said"]
+    talk = whole_said([e for e in rows if e["kind"] in ("did", "said")])
+    said = [e["detail"].get("text") for e in talk if e["kind"] == "said"]
     executor = (a["row"]["actor"] or "").removeprefix("run:")
     checkout = a["row"]["detail"].get("checkout")
 

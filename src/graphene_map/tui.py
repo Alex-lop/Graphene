@@ -1541,7 +1541,8 @@ class Watch(App):
             ended = ended or (["R run all ready"] if self.counts.get("ready") else [])  # as the status says
             keys = ["y accept it all"] if self.counts.get("proposed") else ended
             fold = "za fold all" if self.tree.root.is_expanded else "za unfold"
-            return [*keys, "E edit the plan as text", fold, *tail]
+            record = ["Enter record"] if P.leaves(self.nodes) else []  # the plan's checks and bills
+            return [*keys, "E edit the plan as text", *record, fold, *tail]
         word, node = self.word(self.selected()), self.tree.cursor_node if self.drawn is None else None
         fork = node.data if node is not None and isinstance(node.data, tuple) else None
         on = [f"fork {fork[1]}: keys act on {fork[0]}"] if fork else []  # its row is its leaf's to act on
@@ -2270,8 +2271,9 @@ def goal_pane(store, s, wide: int) -> Text:
     pane.text(Text.assemble(("the goal", "dim"), " · ", (word, P.look(word)[1]), extra))
     if not goal and not proposed:
         pane.text("the root of the tree, in your words: :plan goal '…' says why any of this is done", "dim")
-    for ran in store.node_log("*", ("run",))[-1:]:  # what the last run said as it ended
-        pane.field("last run", str(ran["detail"].get("summary") or ""))
+    runs = store.node_log("*", ("run", "archived"))  # this plan's last run, not an archived plan's
+    if runs and runs[-1]["kind"] == "run" and runs[-1]["detail"].get("summary"):
+        pane.field("last run", str(runs[-1]["detail"]["summary"]))
     tops = s.under.get(None, [])
     if tops:
         pane.gap()
@@ -2341,7 +2343,8 @@ def detail(store, node: P.Node, s, files: list[str] | None = None, room: tuple[i
     if (pre := precheck(store, node)) is not None:
         base = str(pre.get("base", ""))[:7]
         if pre["verdict"] == "passes" and node.state in (P.DONE, P.REVIEW):
-            says = (f"its check also passed at the base commit {base}, before any work: what landed is not "
+            what = "what landed" if node.state == P.DONE else "what it did"
+            says = (f"its check also passed at the base commit {base}, before any work: {what} is not "
                     "verified by it")  # fmt: skip
         elif pre["verdict"] == "passes":
             says = f"its check passes at the base commit {base}, so it proves nothing: e edits the check"
@@ -2510,8 +2513,9 @@ def tail_pane(store, node: P.Node, root: Path, wide: int) -> Text:
             log = str(Path(log).relative_to(root))
         pane.text(log, "dim")
     pane.gap()
-    rows = [e for e in store.node_log(node.id, ("did", "said")) if a and e["timestamp"] >= a["started"]
-            and e["detail"].get("attempt") == a["attempt"]][-200:]  # fmt: skip  (its number, since it began)
+    talk = store.node_log(node.id, ("did", "said"))
+    rows = M.whole_said([e for e in talk if a and e["timestamp"] >= a["started"]
+                         and e["detail"].get("attempt") == a["attempt"]])[-200:]  # fmt: skip  (its number)
     for e in rows:
         d, at = e["detail"], (_clock(e["timestamp"], True), "dim")
         if e["kind"] == "did":
@@ -2648,6 +2652,8 @@ def record_pane(store, node: P.Node, s, wide: int) -> Text:
     said += [f"a change refused after the fact: {p}" for p in sorted(set(no.breaches))]
     said += [f"done refused over {', '.join(stray) or 'a failing check'}" for stray in no.done]
     said += [f"{no.checks_failed} failed check{'s' * (no.checks_failed != 1)}"] if no.checks_failed else []
+    if no.commands:  # what Claude Code refused the executor itself: a shell its allow list does not cover
+        said += [f"{len(no.commands)} command{'s' * (len(no.commands) != 1)} refused to the executor"]
     pane.gap()
     pane.field("refused", "; ".join(said) or "nothing")
     coverage = [

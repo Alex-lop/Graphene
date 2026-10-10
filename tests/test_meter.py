@@ -333,3 +333,18 @@ def test_the_agents_last_words_are_kept_whole():
     assert [d for k, d in rows if k == "said"] == [{"attempt": 1, "text": words}]
     short = {"type": "result", "result": "done", "total_cost_usd": 0.01}
     assert [k for k, _ in M.Meter("claude", 1).feed(json.dumps(short))] == ["usage"]  # as its text block
+
+
+def test_a_last_message_streamed_as_a_block_and_as_the_result_is_one_said_row_in_the_record():
+    """Lane D's checker, 10 October: the whole result became a second said row after the block cut at SAID,
+    and node show printed a long last message three times."""
+    block = "x" * M.SAID
+    whole = block + " and the rest of what it said"
+    rows = [
+        {"kind": "said", "timestamp": "2026-10-10T00:00:01Z", "detail": {"attempt": 1, "text": block}},
+        {"kind": "said", "timestamp": "2026-10-10T00:00:02Z", "detail": {"attempt": 1, "text": whole}},
+        {"kind": "did", "timestamp": "2026-10-10T00:00:03Z",
+         "detail": {"attempt": 1, "verb": "reading", "target": "a.py"}},
+    ]
+    kept = M.whole_said(rows)
+    assert [e["kind"] for e in kept] == ["said", "did"] and kept[0]["detail"]["text"] == whole
