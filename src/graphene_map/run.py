@@ -44,10 +44,13 @@ from .record import seconds as _seconds
 
 # An executor may edit files and run `graphene node …` and `graphene plan …` (its done, its release, a
 # look at the plan), and nothing else unless the person says so with --with. Not `graphene run` or
-# `graphene ask`: through their own --with, either would be any command at all.
+# `graphene ask`: through their own --with, either would be any command at all. None of the person's MCP
+# servers (`--strict-mcp-config`, as the planner), and Claude Code stops it at CAP_USD dollars CAP_UNIT.
+CAP_USD, CAP_UNIT = 2, "an attempt"  # --max-budget-usd counts one invocation, not the resumed session
 DEFAULT_WITH = (
     "claude -p --permission-mode acceptEdits --allowedTools 'Bash(graphene node *)' 'Bash(graphene plan *)' "
     "--output-format stream-json --verbose"  # the stream the meter reads: turns, tokens, tool calls, cost
+    f" --max-budget-usd {CAP_USD} --strict-mcp-config"
 )
 ATTEMPTS = 3
 WORST = 3.0  # dollars the night's ledger holds for a Claude Code or Codex attempt with no --max-budget-usd
@@ -336,8 +339,20 @@ def _let_go(store, node_id: str) -> bool:
     return last is not None and (last["kind"] == "dropped" or bool(last["detail"].get("person")))
 
 
+def graphene_shell(argv: list[str]) -> bool:
+    """Is the executor Claude Code with a shell that runs Graphene alone: every `Bash(…)` it is allowed
+    names graphene, as the default's two do? Then it is told so (``prompt_for``)."""
+    allowed = [a for arg in argv for a in re.findall(r"Bash\(([^)]*)\)", arg)]
+    return bool(allowed) and all(a.split()[:1] == ["graphene"] for a in allowed) and M.kind(argv) == "claude"
+
+
 def prompt_for(
-    node: P.Node, notes: list[str], refusal: str | None, why: list[str] | None = None, decided: list[str] = ()
+    node: P.Node,
+    notes: list[str],
+    refusal: str | None,
+    why: list[str] | None = None,
+    decided: list[str] = (),
+    shell: bool = False,
 ) -> str:
     lines = [
         *notes,
@@ -355,6 +370,9 @@ def prompt_for(
         "do not work around it in your own files: run the release command with --wants naming that file "
         "and a why that names the fault, so the person can reopen that leaf. Do not start any other node.",
     ]
+    if shell:  # ``graphene_shell``: a test runner of its own would be refused; `done` is the one it has
+        lines += ["", "Your shell runs only `graphene node …` and `graphene plan …`: `graphene node done "
+                  f"{node.id}` runs the check and prints why it failed; call it as often as you need."]
     if refusal:
         lines += ["", REFUSED, refusal]
     return "\n".join(lines)
@@ -445,18 +463,14 @@ def run_node(
     proc: subprocess.Popen | None = None
     hold: dict | None = None  # the attempt's on the night's ledger
     paid = 0.0  # what this hold's attempts settled: a resumed Claude Code reports the session's total
+    shell = graphene_shell(shlex.split(template))
     try:
         for attempt in range(1, attempts + 1):
             if stop.event.is_set():  # stopped while the last attempt's check ran: nothing starts again
                 raise KeyboardInterrupt
-            argv = command_for(
-                template,
-                prompt_for(
-                    node, P.notes(store, node.id), refusal, P.trail(store, node), B.decided(store, node)
-                ),
-                session,
-                attempt > 1,
-            )
+            told = prompt_for(node, P.notes(store, node.id), refusal, P.trail(store, node),
+                              B.decided(store, node), shell)  # fmt: skip
+            argv = command_for(template, told, session, attempt > 1)
             # GRAPHENE_EXECUTOR: its own `done` is logged under the name the run's acts are (plan.caller)
             # GRAPHENE_TRY: which attempt this is, told rather than read back from the log, whose row
             # for it is written only once the process is running
@@ -524,7 +538,9 @@ def run_node(
                             "meter": metered, "unread": meter.unread if meter else 0})  # fmt: skip
             if stop.event.is_set():
                 raise KeyboardInterrupt
-            say(f"{node.id} attempt {attempt}: the executor ended (exit {code})")
+            capped = meter is not None and meter.result == "error_max_budget_usd"  # its result's subtype
+            say(f"{node.id} attempt {attempt}: the executor "
+                + ("stopped at its --max-budget-usd" if capped else f"ended (exit {code})"))  # fmt: skip
             current = P.get(store, node.id)
             if current.state in (P.DONE, P.REVIEW):  # it ran `done` itself, and the boundary agreed
                 return current
@@ -554,7 +570,7 @@ def run_node(
         told = "\n".join(ln for ln in refusal.splitlines() if "graphene node release" not in ln)
         crashed = f"; the executor itself exited {code}" if code else ""
         P.release(store, node.id, who, f"{tries}, the last one refused: {told}{crashed}")
-        say(f"{node.id} came back after {tries}")
+        say(f"{node.id} came back after {tries}: `graphene node show {node.id}` says why")
         return None
     except KeyboardInterrupt:
         with _no_interrupt():  # a second Ctrl-C must not leave the leaf running and its executor alive

@@ -2,6 +2,7 @@
 executor here is a script, so every ending is on purpose: stray write then repair, never repairs,
 hands the node back, finishes by itself."""
 
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -10,7 +11,7 @@ import pytest
 
 from graphene_map import plan
 from graphene_map.plan import DONE, OPEN, Caller
-from graphene_map.run import command_for, run_plan, summary
+from graphene_map.run import DEFAULT_WITH, command_for, graphene_shell, run_plan, summary
 from graphene_map.store import Store
 
 ALEX = Caller("alex", True)
@@ -116,6 +117,13 @@ def test_claude_is_told_which_session_it_is_and_resumed_on_a_second_attempt():
     assert command_for("codex exec --sandbox workspace-write", "do it", "abc", again=True)[-1] == "do it"
 
 
+def test_only_claude_code_whose_shell_runs_graphene_alone_is_told_so():
+    assert graphene_shell(shlex.split(DEFAULT_WITH + " --model sonnet"))
+    more = DEFAULT_WITH.replace("'Bash(graphene plan *)'", "'Bash(graphene plan *)' 'Bash(python3 *)'")
+    assert not graphene_shell(shlex.split(more))  # the person let it run python3: it is told nothing
+    assert not graphene_shell(["claude", "-p", "--allowedTools", "Bash(graphene node *)"])  # no stream
+
+
 def test_an_executor_that_is_not_installed_is_one_line_and_the_node_is_handed_back(repo):
     with Store.open(repo) as store:
         plan.propose(store, [users_node()], ALEX)
@@ -168,7 +176,7 @@ def test_a_run_ends_with_one_line_for_the_person_saying_what_it_did(repo, monkey
         clocks = " · agents <1 min, no meter · width 1 of 2 · you 0 acts, 0 min"  # a script: no meter
         assert summary(store, since) == "run: 1 done, 1 came back (n2)" + clocks  # one leaf at a time
         assert said[-2:] == ["n2 attempt 1 refused: n2 is not done: `test -s docs.md` failed",
-                             "n2 came back after 1 attempt"]  # fmt: skip
+                             "n2 came back after 1 attempt: `graphene node show n2` says why"]  # fmt: skip
         again = len(store.node_log())
         assert summary(store, again) == "run: nothing started (graphene plan says what each leaf waits on)"
         assert summary(store, since, stopped=True) == "run stopped: 1 done, 1 came back (n2)" + clocks
