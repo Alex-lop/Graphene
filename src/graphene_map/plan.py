@@ -1047,7 +1047,8 @@ def _person_only(who: Caller, what: str) -> None:
     if not who.person:
         raise refusal(
             f"{what} is the person's to do, and this call comes from {who.name}",
-            do="say what you need and why; they decide",
+            do="if you are the person, run it in a terminal outside Claude Code; an agent says what it "
+            "needs and why, and the person decides",
         )
 
 
