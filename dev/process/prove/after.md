@@ -16,7 +16,7 @@ which picked the account's default model as a stranger's would.
 | first refusals, by class | none | 5: `then:` effects 3 (an id not in the plan; a quoted goal effect ×2), indentation 2 | the text grammar's classes, every one accepted on the second try |
 | checks by runner (unittest / pytest / other) | 79 / 24 / 8 | 98 / 9 / 4 | the clean-tree sentence (A5) moved the planner toward the repo's own runner on these stdlib repos |
 | median seconds; median planner dollars | 26.5 s; $0.077 | 29.0 s; $0.086 | about the same |
-| the ask's last line names the planner, its calls and its dollars | never | 40 of 40 (`the planner (claude sonnet-5-5): 5 calls, $0.11 at list price`) | A2 |
+| after its proposal lines the ask names the planner, its calls and its dollars (then `prune it:`, or the board first) | never | 40 of 40 (`the planner (claude sonnet-5-5): 5 calls, $0.11 at list price`) | A2 |
 
 The A1 gate is read on `$A`, which had no first refusal, so the schema planner was not built. On the branch, 3 of
 the 5 first refusals (60%) fall in the rule's classes (the `then:` slips; the other two are indentation slips, which

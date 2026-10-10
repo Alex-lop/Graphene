@@ -50,7 +50,7 @@ mkdir -p ~/graphene-morning && cd ~/graphene-morning
 env UV_TOOL_DIR=$PWD/tools UV_TOOL_BIN_DIR=$PWD/bin uv tool install 'git+https://github.com/Alex-lop/Graphene@night/prove-it'
 export PATH=$PWD/bin:$PATH && graphene --version          # the branch, in its own directory: your checkout's hooks still run af3da2c5
 cd <your repo> && graphene init                            # it asks the plan-first mode; read what it says about the hooks and the record
-graphene ask "<the change you want, in a paragraph>"      # the last line is the planner, its calls and its dollars
+graphene ask "<the change you want, in a paragraph>"      # after its proposal: the planner, its calls and its dollars
 graphene watch                                            # y on the goal, R: it asks before it starts; ? is help; Esc closes it
 graphene node show <a landed leaf> && graphene node diff <it>   # the check's last line, the at-base verdict, the landed sha, the diff
 git log --format='%s%n%b' -3                              # the merge's body: the check, the executor, the attempts, the dollars
