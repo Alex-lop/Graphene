@@ -70,6 +70,28 @@ def test_red_first_judges_only_the_leaves_this_run_can_start_now(repo):
     assert verdicts(repo, "a") == ["passes"] and verdicts(repo, "b") == []
 
 
+def test_red_first_on_a_named_sub_goal_judges_only_the_leaves_this_run_can_start_now(repo):
+    """--node on a sub-goal (r in watch) judged a leaf waiting on its sibling, at a commit the sibling had
+    not landed in: a false ∅, or a false "outside", on a leaf with nothing wrong."""
+    a = {"id": "a", "title": "a", "scope": ["a.txt"], "check": "true", "parent": "g"}
+    b = {"id": "b", "title": "b", "scope": ["b.txt"], "check": "true", "parent": "g", "needs": ["a"]}
+    with Store.open(repo) as store:
+        P.propose(store, [{"id": "g", "title": "g"}, a, b], P.Caller("alex", True))
+    person("run", "--here", "--attempts", "1", "--node", "g", "--with", "true")
+    assert verdicts(repo, "a") == ["passes"] and verdicts(repo, "b") == []
+
+
+def test_a_parallel_runs_red_first_skips_a_leaf_whose_need_is_done_here_and_not_committed(repo):
+    """The run itself says b waits on a, not committed where it was done; red first judged b all the same."""
+    person("node", "add", "a", "--id", "a", "--scope", "a.txt", "--check", "true")
+    person("node", "add", "b", "--id", "b", "--scope", "b.txt", "--check", "true", "--needs", "a")
+    person("node", "start", "a")
+    (repo / "a.txt").write_text("a\n")
+    assert person("node", "done", "a").exit_code == 0  # done in place, not committed
+    person("run", "--parallel", "1", "--attempts", "1", "--with", "true")
+    assert verdicts(repo, "b") == []
+
+
 def test_a_run_refused_on_a_detached_head_runs_no_check_first(repo):
     person("node", "add", "leaf", "--id", "l1", "--scope", "api.py", "--check", "true")
     git(repo, "checkout", "-q", "--detach")
