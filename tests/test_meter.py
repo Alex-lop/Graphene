@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from graphene_map import meter as M
-from graphene_map.run import CODEX, DEFAULT_WITH, WORST, _worst
+from graphene_map.run import CAP_USD, CODEX, DEFAULT_WITH, WORST, _worst
 
 FIXTURES = Path(__file__).parent / "fixtures" / "meter"
 
@@ -110,6 +110,11 @@ def test_kind_and_model_on_real_command_lines():
     assert M.kind(["python3", "bin/executor.py"]) is None and M.kind([]) is None
     assert M.model_in([*claude, "--model=claude-opus-5-5"]) == "claude-opus-5-5"
     assert M.model_in(claude) is None
+
+
+def test_the_default_executor_holds_its_cap_and_starts_no_mcp_server():
+    claude = shlex.split(DEFAULT_WITH)
+    assert _worst(claude) == CAP_USD and "--strict-mcp-config" in claude and M.kind(claude) == "claude"
 
 
 def test_an_option_joined_by_equals_reads_as_the_spaced_one():

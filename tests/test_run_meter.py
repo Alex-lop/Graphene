@@ -203,6 +203,22 @@ def test_an_executor_with_no_stream_has_no_meter_and_its_attempt_still_ends(repo
     assert ended["meter"] is None and ended["unread"] == 0 and ended["exit"] == 0
 
 
+# Claude Code stopped at its --max-budget-usd, as it says so: that subtype, an empty result, exit 1
+CAPPED = f"""#!{sys.executable}
+print('{{"type": "result", "subtype": "error_max_budget_usd", "is_error": true, "total_cost_usd": 2.01}}')
+raise SystemExit(1)
+"""
+
+
+def test_an_attempt_stopped_at_its_budget_is_said_so(repo):
+    said: list[str] = []
+    script = stand_in(repo, "claude", CAPPED)
+    with Store.open(repo) as store:
+        R.run_plan(store, repo, f"{script} --output-format stream-json --max-budget-usd 2", attempts=1,
+                   say=said.append, logs=repo / ".graphene" / "runs")  # fmt: skip
+    assert "a attempt 1: the executor stopped at its --max-budget-usd" in said, said
+
+
 def test_codex_is_priced_from_token_factorys_list_when_it_names_a_listed_model(repo, monkeypatch):
     script, go = printing(repo, "codex", "codex.jsonl", -1)
     monkeypatch.setattr(R, "_listed", lambda: {"nvidia/super": (1e-7, 5e-7)})
