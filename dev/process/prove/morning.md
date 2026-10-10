@@ -84,6 +84,18 @@ Design questions the night wrote up and left, with where they bite:
   and tells the planner about the clean tree (A5); only you can decide whether Graphene should run checks through
   the repo's own runner.
 
+## What the night did to this machine, and undid
+
+- The stranger transcripts (X6) ran `uv tool install <wheel>` with no tool directory of their own, so each replaced
+  the `graphene` on your default PATH (`~/.local/bin/graphene`, the uv tool `graphene-map`): first with 907a7d0's
+  wheel, then with the branch's. The plan's rule was never to touch it; the harness let the stranger's shell do what
+  the person's would. It was put back at 19:2xZ from `git+https://github.com/Alex-lop/Graphene@af3da2c5`, the commit
+  it had held (the receipt's source string now names that commit rather than whatever yours named). Check with
+  `uv tool list` and `cat ~/.local/share/uv/tools/graphene-map/uv-receipt.toml`. Your checkout's hooks ran the
+  replaced builds for about two and a half hours; nothing in their path changed the store's schema.
+- Everything else lived under the session's scratchpad: the clone, the worktrees, the two tool directories, every
+  fixture and run.
+
 ## Yours: publishing and the stale words
 
 - The tag and PyPI are yours: `0.5.0` is in CHANGELOG as "not published yet". PyPI still has 0.2.0 with the map-era

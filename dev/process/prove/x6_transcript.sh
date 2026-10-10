@@ -20,6 +20,8 @@ git -C "$OUT/repo" remote remove origin 2> /dev/null || true
 [ -z "$(git -C "$OUT/repo" remote)" ] || { echo "the repo still has a remote" >&2; exit 2; }
 cat > "$OUT/repo/me" <<EOF
 #!/bin/sh
+# a uv tool install the stranger runs lands here, never in the default tool directory on this machine
+export UV_TOOL_DIR="$OUT/tools" UV_TOOL_BIN_DIR="$OUT/bin"
 # your terminal: runs what you give it as you, the developer
 exec env $UNMARK GRAPHENE_AS="person:\$(id -un)" "\$@"
 EOF

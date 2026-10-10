@@ -47,12 +47,20 @@ Per question, 907a7d0: the record missed q3 (refused commands) in every run; git
 
 | measure | 907a7d0 | branch |
 |---|---|---|
-| proposal by first answer; the tree | yes; 1 sub-goal, 2 leaves, 2 board items | — |
-| checks written (`python3 -m pytest` / `uv run`) | 3 / 0 | — |
-| red first | `tags-output`'s check passes at the base | — |
-| landed; came back; attempts | 2; 0; 1 each | — |
-| the repo's own suite afterwards | 148 passed | — |
-| wall; dollars | 87 s; $0.265 | — |
+| proposal by first answer; the tree | yes; 1 sub-goal, 2 leaves, 2 board items | no (a `then: goal …` effect was quoted and refused; the second answer was taken); 1 sub-goal, 1 leaf, 2 board items |
+| checks written (`python3 -m pytest` / `uv run`) | 3 / 0 | 2 / 0 (the clean-tree sentence did not move the planner on this repo) |
+| red first | `tags-output`'s check passes at the base | `tags-report`'s check passes at the base, **and** `python3 on your PATH has pytest-bdd installed editable from this repo: a check that imports it tests your checkout, not the leaf's worktree; uv run pytest … builds the worktree's own` |
+| landed; came back; attempts | 2; 0; 1 each | **0; 1; 1**: the leaf came back with the executor's own diagnosis: "the check cannot pass: python3 -m pytest imports pytest_bdd from the editable install at repo/.venv → repo/src/pytest_bdd (main checkout), not from the worktree copy, so the check run … executes the unmodified reporter and the new tag test sees no (tags: …) line" |
+| the repo's own suite afterwards | 148 passed | 146 passed (nothing landed) |
+| wall; dollars | 87 s; $0.265 | 125 s; $0.357 |
+
+What the pair shows: the editable hole is real on a real repository and the branch names it before the run. On
+907a7d0 it was masked by luck: the planner cut the work in two, the implementation landed into the checkout
+first, and the tests leaf's check then imported the new code from the checkout. On the branch the planner put
+implementation and tests in one leaf, so the check imported the checkout's old reporter and `done` refused it; the
+executor read the same hole the warning named and handed the leaf back. The fix is the person's (`e` edits the
+check to `uv run pytest …`, as the stranger in X6 did on 907a7d0 by itself), and the night's rule keeps red first a
+warning. n = 1 on each build; the two trees differ, so the pair is two facts, not a difference.
 
 ## X5: the editable-install hole, no model
 
@@ -60,7 +68,7 @@ Per question, 907a7d0: the record missed q3 (refused commands) in every run; git
 |---|---|---|---|
 | `python3 -m pytest`, no pytest on PATH | no (3 attempts, `No module named pytest` in the hand-back) | no (3 attempts) | before the run: `b: its check cannot run here: No module named 'pytest'. Checks run in a clean worktree with your PATH and nothing git ignores; a runner that makes its own environment (…) brings pytest with it` |
 | `python3 -m pytest`, the venv first on PATH | **yes** (the check imported the checkout) | **yes** (named, not closed, as the rules expected) | `python3 on your PATH has pkg installed editable from this repo: a check that imports it tests your checkout, not the leaf's worktree; uv run pytest … builds the worktree's own` |
-| `uv run pytest`, the venv first on PATH | **yes** (the copied index's stat data) | **no**: `b came back after 3 attempts`, each refused with `uv run pytest -q tests/test_b.py failed` | the clean tree now reads the edit (the one-line fix) |
+| `uv run pytest`, the venv first on PATH | **yes** (the copied index's stat data) | **no**: `b came back after 3 attempts`, each refused with `uv run pytest -q tests/test_b.py failed` | the clean tree now reads the edit (the one-line fix); the same on the frozen SHA |
 
 Also on the branch, in every combination: the run's first line (`landing into main at <sha>: x5_exec.py, up to 2 at
 once; each leaf is committed with --no-verify … and merged --no-ff; checks run in a clean worktree with your PATH;
@@ -74,14 +82,30 @@ environment line; C4 wrong if the editable line is missing) did not fire.
 | build | landed | median minutes to the first merge | dead ends by regex |
 |---|---|---|---|
 | 907a7d0 | 2 of 2, 2 of 2, 2 of 2 | 0.5 | 0, 0, 0 |
-| branch | — | — | — |
+| branch | 2 of 2, 2 of 2, 2 of 2 | 0.5 | 0, 0, 0 |
+
+On the branch the walks read, in order: `plan first: on. … You accept in graphene watch, in another terminal; graphene
+plan first off, typed outside Claude Code, stops it.`; `the next Claude Code session here is recorded into the store
+(its prompts, its tool calls and what they returned, the files it edits; on this machine only); graphene init --remove
+takes the hooks out`; the ask's last line `the planner (claude sonnet-5-5): 3 calls, $0.05 at list price`; the
+run's first line `landing into main at 5d0a6af: claude (sonnet), up to 2 at once, $2 an attempt at most; …`; and the
+bill line `you 2 acts, 2 min` (the accept and the ask) where 907a7d0 read `you 0 acts, 0 min`. `node show` on a
+sub-goal still prints an empty `scope:` line (listed in `morning.md`).
 
 ## X6: one stranger transcript a build (a fact)
 
 | build | landed | its session | Graphene's runs cost | dead ends, in its words |
 |---|---|---|---|---|
 | 907a7d0 | yes, at the second run | 19 turns, 258 s, $0.196 | $1.05 + $0.95 (the default model) | a wheel the harness misnamed; a check whose runner the PATH lacked (it rewrote the check to `uv run pytest`); a read refused for naming the store |
-| branch | — | — | — | — |
+| branch | yes, at the first run: two leaves (`impl`, `test`), both landed | 10 turns, 171 s, $0.100 | $1.32 + $0.52 planner (the default model) | none met: "The graphene binary isn't on your PATH, so I called it by full path"; it noted "Graphene flagged that itself" of the `impl` leaf's check passing at the base, and that "`graphene init --remove` takes them out" |
+
+A fact a build, not a rate: on 907a7d0 the stranger's first run came back for want of pytest on the PATH and it
+rewrote the check; on the branch its `uv sync` put pytest on the PATH first and both leaves landed at once. The
+branch's stranger read the ∅ warning and repeated it in its report. **A harness fault, both builds:** the stranger's
+`uv tool install <wheel>` ran with no tool directory of its own and replaced the `graphene` on this machine's default
+PATH (the tool `graphene-map`), twice; the receipt showed the branch's wheel. It was put back from
+`git+https://github.com/Alex-lop/Graphene@af3da2c5`, the build it had held, at 19:2xZ, and the script now gives
+the stranger `UV_TOOL_DIR`/`UV_TOOL_BIN_DIR` under its own directory. `morning.md` says so.
 
 ## X7: plan first auto against on (branch only, for decision 176)
 
