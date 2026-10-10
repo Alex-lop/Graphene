@@ -173,18 +173,37 @@ def test_a_run_ends_with_one_line_for_the_person_saying_what_it_did(repo, monkey
         plan.propose(store, [users_node(), docs], ALEX)
         since = len(store.node_log())
         run_plan(store, repo, executor(repo, ONLY_N1), attempts=1, say=said.append)
-        clocks = " · agents <1 min, no meter · width 1 of 2 · you 0 acts, 0 min"  # a script: no meter
+        clocks = " · agents <1 min, no meter · width 1 of 2 · you 1 act, 1 min"  # no meter; the propose
         assert summary(store, since) == "run: 1 done, 1 came back (n2)" + clocks  # one leaf at a time
         assert said[-2:] == ["n2 attempt 1 refused: n2 is not done: `test -s docs.md` failed",
                              "n2 came back after 1 attempt: `graphene node show n2` says why"]  # fmt: skip
         again = len(store.node_log())
         assert summary(store, again) == "run: nothing started (graphene plan says what each leaf waits on)"
         assert summary(store, since, stopped=True) == "run stopped: 1 done, 1 came back (n2)" + clocks
+        store.log_node("*", plan._now(), "run", "graphene run", None, None, {"summary": "…"})  # as run does
         mark = len(store.node_log())  # seen in WezTerm: x during a run, and the run said "nothing finished"
         plan.start(store, "n2", plan.Caller("run:sh", False, "s-1"), repo)
         plan.release(store, "n2", ALEX, "the person released it, from graphene watch")
         mine = " · agents <1 min, no meter · you 1 act, 1 min"  # the person's release: no attempt, no width
         assert summary(store, mark) == "run: n2 released by you, ready again" + mine
+
+
+def test_the_bill_counts_your_acts_that_led_to_this_run_and_none_twice(repo, monkeypatch):
+    """The meter's evidence: the person accepted the tree and ran it, and the bill said `you 0 acts`, for
+    the accept came before the run's first row. It counts the acts since the last run ended."""
+    monkeypatch.setenv("GRAPHENE_PERSON", "alex")
+    docs = users_node(title="docs", scope=["docs.md"], check="test -s docs.md")
+    with Store.open(repo) as store:
+        plan.propose(store, [users_node(), docs], Caller("planner:script", False, "s-1"))
+        plan.accept(store, [], ALEX)
+        since = len(store.node_log())
+        run_plan(store, repo, executor(repo, ONLY_N1), attempts=1, only=["n1"], say=lambda _: None)
+        first = summary(store, since)
+        store.log_node("*", plan._now(), "run", "graphene run", None, None, {"summary": first})  # as run does
+        again = len(store.node_log())
+        run_plan(store, repo, executor(repo, ONLY_N1), attempts=1, only=["n2"], say=lambda _: None)
+        second = summary(store, again)
+    assert first.endswith(" · you 1 act, 1 min") and second.endswith(" · you 0 acts, 0 min"), (first, second)
 
 
 def test_a_leaf_that_came_back_waits_on_the_person_and_runs_again_only_when_named(repo):

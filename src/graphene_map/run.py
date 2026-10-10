@@ -592,8 +592,12 @@ def summary(store, since: int, stopped: bool = False) -> str:
     """What a run did, in one line for the person, read from what the plan logged after entry
     ``since``: what it finished, what came back to them, what waits in review, and the two clocks (the
     agents' minutes and dollars, the person's acts and minutes). `graphene watch` shows this line when
-    the run ends, so it is the run's last."""
-    log = store.node_log()[since:]
+    the run ends, so it is the run's last. The person's clock counts what led to the run too: their acts
+    since the last run ended (its kept line) or the plan was archived, else since the plan began."""
+    whole = store.node_log()
+    log = whole[since:]
+    begun = max((k + 1 for k, e in enumerate(whole[:since])
+                 if e["node_id"] == "*" and e["kind"] in ("run", "archived")), default=0)  # fmt: skip
     started = {e["node_id"] for e in log if e["kind"] == "started" and e["actor"].startswith("run:")}
     let_go = {e["node_id"]: e["detail"] for e in log if e["kind"] == "released"}
     ran = [n for n in P.order(P.nodes(store)) if n.id in started]  # in the plan's order, not the race's
@@ -609,7 +613,7 @@ def summary(store, since: int, stopped: bool = False) -> str:
     said += [f"{len(review)} in review ({P._few(review)})"] if review else []
     said += [f"{P._few(handed)} handed back, ready again"] if handed else []
     said += [f"{P._few(freed)} released by you, ready again"] if freed else []
-    cost = clocks(log)
+    cost = clocks(log, M.you(whole[begun:], P.person_name()))
     if stopped:
         return "run stopped: " + (", ".join(said) or "nothing was finished") + cost
     if not ran:
@@ -617,10 +621,12 @@ def summary(store, since: int, stopped: bool = False) -> str:
     return "run: " + (", ".join(said) or "nothing finished") + cost
 
 
-def clocks(log: list[dict]) -> str:
+def clocks(log: list[dict], you: dict | None = None) -> str:
     """The run's two clocks and its width, from its own rows: " · agents 41 min, $2.8700 at list price ·
-    width 2 of 3 · you 4 acts, 2 min". With no usage row, the dollars are "no meter": nothing is invented."""
-    agents, you, ran = M.agents(log, datetime.now(UTC)), M.you(log, P.person_name()), M.width(log)
+    width 2 of 3 · you 4 acts, 2 min". With no usage row, the dollars are "no meter": nothing is invented.
+    ``you``: the person's clock over more rows than the run's own (``summary``)."""
+    agents, ran = M.agents(log, datetime.now(UTC)), M.width(log)
+    you = you or M.you(log, P.person_name())
     took = f"{round(agents['seconds'] / 60)} min" if agents["seconds"] >= 60 else "<1 min"
     spent, n = "no meter", agents["unpriced"]
     if any(e["kind"] == "usage" for e in log):
