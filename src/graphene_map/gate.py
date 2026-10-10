@@ -448,12 +448,13 @@ def _context(event: str, text: str) -> dict:
     return {"hookSpecificOutput": {"hookEventName": event, "additionalContext": text}}
 
 
-def _close(store, node: P.Node, sid: str) -> str | None:
-    """End a leaf made from a prompt. Returns what is wrong when the person gave a check and it fails."""
+def _close(store, node: P.Node, sid: str, final: bool = False) -> str | None:
+    """End a leaf made from a prompt. Returns what is wrong when the person gave a check and it fails
+    (``final``: the session is let stop, so the leaf closes with the failure on its record)."""
     import subprocess
 
     try:
-        P.close_aside(store, node.id, P.Caller(node.executor or f"claude:{sid[:8]}", False, sid))
+        P.close_aside(store, node.id, P.Caller(node.executor or f"claude:{sid[:8]}", False, sid), final=final)
     except P.Refused as no:
         return str(no)
     except (OSError, subprocess.SubprocessError, sqlite3.OperationalError):
@@ -677,10 +678,9 @@ def decide(store, event: dict, root: Path) -> dict | None:
         again = event.get("stop_hook_active") is True and not os.environ.get("GRAPHENE_NODE")
         held = _held(store, sid)
         for n in [h for h in held if h.aside]:
-            wrong = _close(store, n, sid)  # the turn is over: the leaf made from the prompt is too
+            wrong = _close(store, n, sid, final=again)  # the turn is over: the leaf made from its prompt too
             if wrong:
-                said = f"{n.id} ({n.title}) is not done: {wrong}"
-                return None if again else {"decision": "block", "reason": said}
+                return {"decision": "block", "reason": f"{n.id} ({n.title}) is not done: {wrong}"}
         held = [h for h in held if not h.aside]
         if not held or again:
             return None

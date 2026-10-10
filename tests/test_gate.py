@@ -343,6 +343,22 @@ def test_a_prompt_lost_to_a_busy_store_never_lets_the_last_prompts_contract_make
         assert not plan.nodes(store, (plan.RUNNING,))
 
 
+def test_a_repeated_stop_closes_an_aside_leaf_whose_check_fails_there_for_the_first_time(repo):
+    """A stop that follows a refused one is let go; an aside leaf whose check failed for the first time on
+    it raised before it was closed, so the `**` leaf stayed running, held by a session that had stopped."""
+    with Store.open(repo) as store:
+        mine = {"title": "users", "scope": ["src/api/**"], "check": "true", "owner": "alex"}  # in force
+        plan.propose(store, [mine], ALEX)
+        plan.set_plan_first(store, "off", ALEX)
+    hook(repo, "UserPromptSubmit", prompt="fix the schema --check 'false'")
+    assert write(repo, "src/db/schema.py") is None  # an aside leaf made from the prompt
+    (repo / "src/db/schema.py").write_text("TABLES = ['users']\n")
+    assert hook(repo, "Stop", stop_hook_active=True) is None  # let go, as a repeated stop is
+    with Store.open(repo) as store:
+        [aside] = [n for n in plan.nodes(store) if n.aside]
+        assert aside.state == plan.DONE and store.node_log(aside.id, ("check_failed",))
+
+
 # -- what the closing review broke ---------------------------------------------------------------------
 
 
