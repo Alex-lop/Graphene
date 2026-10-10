@@ -244,3 +244,18 @@ def test_before_init_plain_graphene_names_init_and_init_names_the_next_step(repo
     assert "next: `graphene ask" in done.output
     again = run()
     assert "graphene init" not in again.output and "nothing is planned here yet" in again.output
+
+
+def test_claude_lacks_names_the_first_flag_this_claude_code_does_not_list(tmp_path, monkeypatch):
+    """At a terminal init asks `claude --help` once: an older Claude Code is told to update first."""
+    from graphene_map.cli import claude_lacks
+
+    claude = tmp_path / "claude"
+    claude.write_text("#!/bin/sh\necho '  -p, --print  Print response and exit'\n")
+    claude.chmod(0o755)
+    monkeypatch.setenv("PATH", str(tmp_path))
+    assert claude_lacks() == "--json-schema"
+    claude.write_text("#!/bin/sh\necho '  --json-schema <schema>'\necho '  --max-budget-usd <amount>'\n")
+    assert claude_lacks() is None
+    monkeypatch.setenv("PATH", str(tmp_path / "nowhere"))
+    assert claude_lacks() is None  # no claude here: nothing to update
