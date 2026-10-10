@@ -92,10 +92,10 @@ Claude Code: inside one, Graphene takes the caller for the agent.
   One leaf proposed is one row in `graphene watch`: `y` takes it, and runs it when an executor is chosen.
 - **Auto**: every ask is proposed. One leaf with a scope and a check, no board item and at most 8 paths is yours at
   once, accepted "by their prompt in the session". Anything else waits for you in `graphene watch`.
-- **Off**: a quick change is done at once, recorded as a leaf made from your prompt; bigger work, or an asked-for
-  plan, is still proposed first, by the session's judgement.
+- **Off**: a quick change is done at once, as a leaf made from your prompt while a plan is in force; the session
+  still proposes bigger work, or an asked-for plan, first.
 
-Nothing reads your words to decide this.
+Graphene reads none of your words to decide this.
 
 ## Ask
 
@@ -256,8 +256,8 @@ it serves, names its files and its check, says what it waits on, and the executo
 **Isn't a tree overkill for a one-line fix?** Ask for "fix the typo in the header" and the agent proposes one leaf:
 one row in `graphene watch`, and `y` takes it. Under auto it is yours at once. `P` turns plan first off.
 
-**How do I turn it off?** `graphene plan first off`, at a terminal, stops the proposing (a quick change is done at
-once; bigger work is still proposed); `graphene init --remove` takes the hooks out, and the recording with them.
+**How do I turn it off?** `graphene plan first off`, at a terminal, lets a quick change through at once (bigger work
+is still proposed); `graphene init --remove` takes the hooks out, and the recording with them.
 
 **What doesn't it catch?** Every limit is listed under "Where each mechanism ends".
 
