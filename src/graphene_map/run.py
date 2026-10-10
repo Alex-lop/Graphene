@@ -455,7 +455,11 @@ def run_node(
     try:
         node = P.start(store, node_id, who, checkout)
     except P.Refused as no:
-        say(str(no) if "cannot start" in str(no) else f"{node_id} cannot start: {no}")
+        lines = (str(no) if "cannot start" in str(no) else f"{node_id} cannot start: {no}").splitlines()
+        if "no node made" in lines[0]:  # whoever ran the run reads it, never an agent: the person's way out
+            it, stand = ("it", "it stands") if "an uncommitted change" in lines[0] else ("them", "they stand")
+            lines[-1] = f"  yours as {stand}? `graphene plan ack`, or commit {it}; else put {it} back"
+        say("\n".join(lines))
         return None
     say(f"{node.id} started: {node.title}")
     refusal: str | None = None
