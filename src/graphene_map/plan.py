@@ -2011,17 +2011,17 @@ def start(
         mark_boundary(store, checkout, now)  # the first start in a checkout: the tree as it stands
     loose = unowned(store, checkout, but=node_id)
     if loose and not (who.person or attended):  # refused here, not under the claim: its rollback forgets
-        it, change, stand = (
-            ("it", "an uncommitted change", "it stands")
+        it, change, stand, are = (
+            ("it", "an uncommitted change", "it stands", "it is")
             if len(loose) == 1
-            else ("them", "uncommitted changes", "they stand")
+            else ("them", "uncommitted changes", "they stand", "they are")
         )
-        why = f" makes {it} theirs as {stand}, and so does committing {it}"
-        raise refusal(
+        why = f" as {stand}, and so does committing {it}"
+        raise refusal(  # an agent is not told first to put back what may be the person's unsaved work
             f"{node_id} cannot start: the checkout has {change} no node made",
             loose,
-            f"put {it} back, or ask the person: graphene plan ack"
-            + (why if first_time(store, who, first, "loose") else ""),
+            f"if you made {it}, put {it} back; if not, {are} the person's: ask them (graphene plan ack makes "
+            f"{it} theirs" + (why if first_time(store, who, first, "loose") else "") + ")",
         )
     away = not_here(store, first, checkout)
     files, base, was_dirty = tracked(checkout), head(checkout), dirty(checkout)
@@ -2313,7 +2313,8 @@ def _stray(store, node: Node, who: Caller, now: str, stray: list[str]) -> Refuse
         f" (git checkout {(node.base_sha or 'HEAD')[:10]} -- <path>, or delete a new file)" if first else ""
     )
     it = "it" if len(stray) == 1 else "them"
-    return refusal(what, stray, f"put {it} back{back}, or say why: graphene node release {node.id} --why '…'")
+    whose = f"say whose: graphene node release {node.id} --why '…'"
+    return refusal(what, stray, f"if you made {it}, put {it} back{back}; if not, {whose}")
 
 
 def _untracked(checkout: str | Path, paths: list[str]) -> list[str]:
