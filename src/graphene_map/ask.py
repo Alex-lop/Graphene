@@ -411,6 +411,7 @@ def ask(
     before, paid = None, 0.0  # paid: what the session cost so far; a resumed one reports its running total
     calls, bill = 0, ""  # bill: what the ask cost, after its proposal, when a meter or Nemotron counted it
     tries = 1 if argv0 == "nemotron" else ATTEMPTS  # Graphene's own planner sends a refusal back itself
+    paid_for = ""  # the last proposal a try printed: a try that prints none never loses it
     for attempt in range(1, tries + 1):
         argv = command_for(template, prompt, session, attempt > 1)
         env = {**os.environ, "GRAPHENE_PLANNER": "1"}
@@ -458,6 +459,7 @@ def ask(
             bill = f"the planner (nemotron): {own[-1].removeprefix('bill: ')}" if own else ""
         printed = (meter.result if meter else done.stdout).strip()  # the answer, never the stream
         text = proposal_in(printed)
+        paid_for = text if text.strip() else paid_for
         if not text.strip():
             said = [line for line in done.stderr.splitlines() if line.strip()]  # its last word, whole
             tail = printed[-300:] or (said[-1][:300] if said else "it said nothing")
@@ -506,10 +508,10 @@ def ask(
         # whole again: a planner other than Claude Code starts afresh and knows nothing of the first try
         prompt = f"{asked}\n\nYour last answer was not accepted: {refusal}\nPrint the whole proposal again."
     end = f"\n{bill}" * bool(bill)  # after the refusal's first line, which the screen's bottom line reads
-    if text.strip():  # what it paid for is kept: the block alone, as `graphene plan propose` reads it
+    if paid_for.strip():  # what it paid for is kept: the block alone, as `graphene plan propose` reads it
         kept = store.path.parent / "runs" / f"ask-{session[:8]}.txt"  # beside what `graphene run` logs
         kept.parent.mkdir(parents=True, exist_ok=True)
-        kept.write_text(text, encoding="utf-8")
+        kept.write_text(paid_for, encoding="utf-8")
         where = os.path.relpath(kept)  # from where the person stands: the next step runs there
         end = f"{end}\nits proposal is kept in {where}: mend it, then `graphene plan propose - < {where}`"
     if refusal == before:

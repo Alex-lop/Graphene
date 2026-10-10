@@ -442,6 +442,16 @@ def test_a_lost_ask_keeps_the_proposal_it_paid_for_and_says_what_it_cost(repo, t
     assert said.output.splitlines()[-1].startswith("its proposal is kept in")  # a talk's bottom line in watch
 
 
+def test_a_lost_ask_keeps_the_last_proposal_it_paid_for_though_its_last_try_printed_none(repo, tmp_path):
+    """The first try's proposal was refused and the second printed none (a stop, an answer in prose):
+    the ask kept nothing, though the first was paid for."""
+    bad = "```plan\n- ids  [ids]\n    scope: api.py\n    signoff: perhaps\n```"
+    said = person("ask", "ids", "--with", claude_planner(tmp_path, (bad, 0.25), ("", 0.5)))
+    assert said.exit_code == 1, said.output
+    kept = re.search(r"its proposal is kept in (\S+): mend it", said.stderr)
+    assert kept and (repo / kept[1]).read_text() == "- ids  [ids]\n    scope: api.py\n    signoff: perhaps\n"
+
+
 def test_a_lost_asks_kept_proposal_is_named_from_where_the_person_stands(repo, tmp_path, monkeypatch):
     """`graphene ask` runs from any directory of the checkout; the next step it prints must run there."""
     bad = "```plan\n- ids  [ids]\n    scope: api.py\n    signoff: perhaps\n```"
