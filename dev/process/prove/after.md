@@ -38,7 +38,11 @@ nothing outside the intent anywhere). Graphene's arm on the branch against 907a7
 commands a run instead of 14–20 (the executor is now told its shell runs only `graphene node` and `graphene plan`),
 took 30–34 turns instead of 43–54, cost $0.52–0.55 instead of $0.62–0.75, and the main round took 84–88 s instead of
 89–130 s (n = 3: medians, no interval). The plain session stays cheaper and faster ($0.34–0.38; 46–52 s), as the rules
-expected. What the contract adds is unchanged in kind and now also in git: each merge's body reads `Check: … passed`,
+expected. The wide-shell sensitivity row (one run on the branch with `Bash(python3 *)` allowed, as the recordings
+had): the main round landed four leaves for $0.26 with 2 refused commands, the end-to-end leaf came back with the
+same diagnosis, and then the harness failed, not Graphene: the executor's note held a backtick, `plant.sh`'s grep
+cut the printed `graphene node reopen …` command at it, nothing was reopened, and the scores (16 of 20, 1 of 12)
+are those of a repo whose planted fault was never fixed. The row says nothing about the shell and is not counted. What the contract adds is unchanged in kind and now also in git: each merge's body reads `Check: … passed`,
 `Executor: claude claude-sonnet-5-5 · 1 attempt · $0.0445 at list price`, and the reopened landing carries
 `Reopened: came back from e2e-xml: … sku key must be 'code'` under a subject ending `(xmlwire, reopened)`. The run's
 first line on the branch: `landing into main at b6ba009: claude (sonnet), up to 3 at once, $2 an attempt at most; …`.
@@ -47,11 +51,19 @@ first line on the branch: `landing into main at b6ba009: claude (sonnet), up to 
 
 | arm | 907a7d0, median of 8 | branch, median of 8 |
 |---|---|---|
-| A: Graphene's record | 7 ([6, 7, 7]) | — |
-| B: `git log -p` plus the executors' last words | 4 ([3, 4, 4]) | — |
+| A: Graphene's record | 7 ([6, 7, 7]) | 7 ([7, 7, 8]) |
+| B: `git log -p` plus the executors' last words | 4 ([3, 4, 4]) | 5 ([4, 5, 5]) |
 
-Per question, 907a7d0: the record missed q3 (refused commands) in every run; git missed q3, q5 (dollars), q6
-(width), q10 (leaves added after accept) in every run and q4 (the at-base verdict) in one.
+Per question. 907a7d0: the record missed q3 (refused commands) in every run; git missed q3, q5 (dollars), q6
+(width), q10 (leaves added after accept) in every run and q4 (the at-base verdict) in one. The branch: the record
+answers q3 in every run (`refused: 1 command refused to the executor` and the command itself), and misses q5 in two
+of three: both readers took the record's `bill: $0.4455` for the whole plan's dollars, where the record means the
+leaves' bill and prints `the planner's bill: $0.1067` on its own line; each figure they gave was right, the sum was
+not asked for by name (the third reader summed). That is a labelling finding for the morning (`morning.md`), not a
+regression. Git on the branch answers q4 in every run from the merge body's "and it passed at the base too" (the
+night's own addition, reported as git's gain, as the rules say), and still cannot say the width, the dollars as a
+whole, or the leaves added after acceptance. The record arm's rise is by construction; the comparison that counts,
+record against git on the same build, is 7 against 5.
 
 ## X4: pytest-bdd issue #476 through the tree (n = 1 a build)
 
