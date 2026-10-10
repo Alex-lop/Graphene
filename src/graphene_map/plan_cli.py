@@ -963,7 +963,8 @@ def register(cli: typer.Typer, root, open_store, fail):
         Graphene runs each leaf's check and merges what passes. A leaf that fails comes back."""
         if os.environ.get("GRAPHENE_NODE") or os.environ.get("GRAPHENE_PLANNER"):
             fail("an executor or a planner does not start runs: through --with a run is any command", 1)
-        from .run import named, run_parallel, run_plan, summary, sweep
+        from . import meter as M
+        from .run import CAP_UNIT, _splits, label, named, run_parallel, run_plan, summary, sweep
 
         r = root()
         with open_store(r) as store:
@@ -1011,8 +1012,24 @@ def register(cli: typer.Typer, root, open_store, fail):
                     out("--here: your checkout is exposed. The executor writes in it. Nothing is committed")
                     run_plan(store, checkout(), template, attempts, node or None, out, logs, precheck)
                 else:
+                    _splits(template)  # a --with that cannot be read is refused before anything is said
+                    here_ = checkout()
+                    on = subprocess.run(["git", "symbolic-ref", "--short", "-q", "HEAD"], cwd=here_,
+                                        capture_output=True, text=True).stdout.strip()  # fmt: skip
+                    if on and (at := P.head(here_)):  # on no branch, run_parallel refuses and says why
+                        argv = shlex.split(template)
+                        model, cap = M.model_in(argv), M.option(argv, "--max-budget-usd")
+                        what = label(template) + f" ({model})" * bool(model)
+                        most = f", ${cap} {CAP_UNIT} at most" * bool(cap)
+                        out(f"landing into {on} at {at[:7]}: {what}, up to {max(parallel, 1)} at once{most}; "
+                            "each leaf is committed with --no-verify (your pre-commit and commit-msg hooks "
+                            "skip it) and merged --no-ff; checks run in a clean worktree with your PATH; "
+                            "`graphene watch` in another terminal follows it live")  # fmt: skip
+                        if P.dirty(here_):
+                            out("your uncommitted changes are not in the executors' worktrees: they start "
+                                "from HEAD")  # fmt: skip
                     run_parallel(
-                        lambda: open_store(r), r, checkout(), max(parallel, 1), template,
+                        lambda: open_store(r), r, here_, max(parallel, 1), template,
                         attempts, node or None, out, logs, precheck,
                     )  # fmt: skip
             except P.Refused as no:
