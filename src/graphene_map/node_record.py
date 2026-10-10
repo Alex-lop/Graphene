@@ -68,7 +68,8 @@ class Refusals:
     stops: int = 0
     done: list[list[str]] = field(default_factory=list)  # the stray paths of each refused `done`
     checks_failed: int = 0
-    last_check: dict | None = None  # {"result": passed|failed, "at": …, "command": …}
+    last_check: dict | None = None  # {"result": passed|failed, "at": …, "command": …, "gist": its last line}
+    at_base: dict | None = None  # red first's last verdict when it was "passes": it proved nothing then
 
 
 @dataclass(slots=True)
@@ -610,7 +611,10 @@ def _refusals(log: list[dict]) -> Refusals:
                 "result": "failed" if kind == "check_failed" else "passed",
                 "at": entry["timestamp"],
                 "command": detail.get("command", ""),
+                "gist": (str(detail.get("output") or "").strip().splitlines() or [""])[-1].strip()[:200],
             }
+        elif kind == "precheck":
+            out.at_base = detail if detail.get("verdict") == "passes" else None
     return out
 
 
@@ -657,7 +661,8 @@ def render(record: NodeRecord) -> list[str]:
         f"  state: {record.state} · owner {record.owner}",
     ]
     lines += _window_lines(record)
-    lines += _coverage_lines(record.coverage, record.refusals.last_check)
+    lines += _in_short(record.coverage)
+    lines += _coverage_lines(record.coverage, record.refusals.last_check, record.refusals.at_base)
     lines += [f"    {line}" for line in record.against]
     lines += _refusal_lines(record.refusals)
     lines += _attempt_lines(record)
@@ -687,7 +692,22 @@ def _window_lines(record: NodeRecord) -> list[str]:
     return lines
 
 
-def _coverage_lines(counts: dict, check: dict | None) -> list[str]:
+def _in_short(counts: dict) -> list[str]:
+    """One plain sentence over the coverage lines when they count commits: the changed paths are traced,
+    and the commits graded, apart, so a commit no record grades takes nothing from what the paths say."""
+    n, k, out = counts["changed_files"], counts["commits"], counts["not_graded_commits"]
+    if not k:
+        return []
+    traced = counts["changed_edit"] + counts["changed_shell"]
+    paths = (f"{n} path{_s(n)} changed under it, {traced} traced to a recorded write"
+             if counts["changed_computed"] else "what changed under it is not computed")  # fmt: skip
+    which = f"its {k} commit{_s(k)}" if out in (0, k) else f"{out} of its {k} commits"
+    said = "graded below" if not out else (
+        "in no session's records, so not graded, which takes nothing from the paths")  # fmt: skip
+    return [f"  in short: {paths}; {which} {'is' if (out or k) == 1 else 'are'} {said}"]
+
+
+def _coverage_lines(counts: dict, check: dict | None, at_base: dict | None = None) -> list[str]:
     """The coverage block, in the same shape whoever did the work: what git said changed, what the
     grading was read from, what Graphene's own check said, and the commits inside the windows."""
     n, k = counts["changed_files"], counts["commits"]
@@ -710,6 +730,10 @@ def _coverage_lines(counts: dict, check: dict | None) -> list[str]:
         lines.append(
             f"    check: `{check['command']}` {check['result']} at {check['at']}, run by Graphene itself"
         )
+        lines += [f"      its last line: {check['gist']}"] if check.get("gist") else []
+        if at_base and at_base.get("check") == check["command"] and at_base.get("base"):
+            lines.append(f"      it also passed at the base commit {at_base['base'][:7]}, before any work: "
+                         "it shows nothing about this change")  # fmt: skip
     else:
         lines.append("    check: none has run for this node, so nothing here is verified by one")
     if not k and counts.get("commits_unread"):
