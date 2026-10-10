@@ -104,12 +104,13 @@ def test_an_executor_that_hands_the_node_back_is_believed(repo):
 
 def test_claude_is_told_which_session_it_is_and_resumed_on_a_second_attempt():
     first = command_for("claude -p --model sonnet", "do it", "abc", again=False)
-    assert first == ["claude", "-p", "--model", "sonnet", "--session-id", "abc", "do it"]
+    assert first == ["claude", "-p", "--model", "sonnet", "--session-id", "abc", "--", "do it"]
     assert command_for("claude -p", "again", "abc", again=True) == [
         "claude",
         "-p",
         "--resume",
         "abc",
+        "--",
         "again",
     ]
     assert command_for("codex exec --sandbox workspace-write", "do it", "abc", again=True)[-1] == "do it"
@@ -164,8 +165,8 @@ def test_a_run_ends_with_one_line_for_the_person_saying_what_it_did(repo, monkey
         plan.propose(store, [users_node(), docs], ALEX)
         since = len(store.node_log())
         run_plan(store, repo, executor(repo, ONLY_N1), attempts=1, say=said.append)
-        clocks = " · agents <1 min, no meter · you 0 acts, 0 min"  # a script: no stream, no meter
-        assert summary(store, since) == "run: 1 done, 1 came back (n2)" + clocks
+        clocks = " · agents <1 min, no meter · width 1 of 2 · you 0 acts, 0 min"  # a script: no meter
+        assert summary(store, since) == "run: 1 done, 1 came back (n2)" + clocks  # one leaf at a time
         assert said[-2:] == ["n2 attempt 1 refused: n2 is not done: `test -s docs.md` failed",
                              "n2 came back after 1 attempt"]  # fmt: skip
         again = len(store.node_log())
@@ -174,7 +175,7 @@ def test_a_run_ends_with_one_line_for_the_person_saying_what_it_did(repo, monkey
         mark = len(store.node_log())  # seen in WezTerm: x during a run, and the run said "nothing finished"
         plan.start(store, "n2", plan.Caller("run:sh", False, "s-1"), repo)
         plan.release(store, "n2", ALEX, "the person released it, from graphene watch")
-        mine = clocks.replace("0 acts, 0", "1 act, 1")  # the release is the person's act
+        mine = " · agents <1 min, no meter · you 1 act, 1 min"  # the person's release: no attempt, no width
         assert summary(store, mark) == "run: n2 released by you, ready again" + mine
 
 

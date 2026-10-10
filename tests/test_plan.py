@@ -744,6 +744,25 @@ def test_a_reason_naming_many_nodes_is_checked_for_cycles_once(tmp_path, monkeyp
         assert key == "n" and argv.count("--needs") == 40 and len(calls) == 1
 
 
+def test_a_need_graphene_adds_to_a_leaf_that_came_back_does_not_answer_it(tmp_path):
+    """Review of lane 5: the need was read as the person's change. The leaf read waiting, not came back,
+    and the next run would start it again on the fault it handed back."""
+    import subprocess
+
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    alex, bot = Caller("alex", True), Caller("claude:aaaa1111", False, "s1")
+    with Store.open(tmp_path) as store:
+        plan.propose(store, [{"id": "x", "title": "x", "scope": ["x.py"], "check": "pytest tests/test_y.py"},
+                             {"id": "y", "title": "y", "scope": ["y.py"], "check": "true"}], alex)
+        plan.start(store, "x", bot, tmp_path)
+        plan.release(store, "x", bot, "y's parser is wrong")
+        told: list[str] = []
+        plan.edit(store, "y", {"scope": ["y.py", "tests/test_y.py"]}, alex, told=told)  # x now waits on y
+        x = plan.get(store, "x")
+        assert told and x.needs == ["y"]
+        assert plan.came_back(store, x) and plan.reads(x, plan.nodes(store), {"x"}) == "came back"
+
+
 # -- what counts at the boundary, and how a refusal reads ----------------------------------------------
 
 

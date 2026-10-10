@@ -25,6 +25,7 @@ from functools import lru_cache, partial
 from pathlib import Path
 
 AGENT = "agent"  # the owner of a node any agent may take; every other owner is a person's name
+GRAPHENE = "graphene"  # who logs a need `wait_on_checks` adds: never the person (`_waited`, `let_go`)
 PROPOSED, OPEN, RUNNING, REVIEW, DONE, DROPPED = "proposed", "open", "running", "review", "done", "dropped"
 ARCHIVED = "archived"  # done or dropped, and put away by the person: no longer part of the plan
 # A plan with a node in one of these is in force. Done counts: the first real agent run against this
@@ -37,6 +38,7 @@ TAIL = 2000  # characters of a check's output kept in the log
 BASH = next((b for b in ("/bin/bash", "/usr/bin/bash") if os.path.exists(b)), None)  # a check's shell
 KEPT_PATHS = 200  # changed paths kept in a node's log when it ends; the count of the rest is kept too
 EDITABLE = ("title", "goal", "scope", "check", "signoff", "needs", "owner", "parent")
+USABLE = re.compile(r"(?!.*\.\.|.*\.(lock)?$)[A-Za-z0-9][\w.-]{0,31}")  # an id: graphene/<id> is a branch
 # Environment variables an agent's shell carries. GRAPHENE_NODE is ours: `graphene run` sets it for
 # every executor it starts. TODO: the last two are from the vendors' docs, not yet seen on a real run.
 AGENT_MARKS = ("GRAPHENE_NODE", "GRAPHENE_PLANNER", "GEMINI_CLI", "CURSOR_AGENT")
@@ -308,11 +310,14 @@ def above(node: Node, by_id: dict[str, Node]) -> list[Node]:
 
 
 def below(node_id: str, nodes: list[Node]) -> list[Node]:
-    """Everything under a node, proposals included, parents before their children."""
+    """Everything under a node, proposals included, parents before their children. A parent cycle
+    (refused by ``validate``, and in a planner's answer before it is judged) ends the walk."""
     under = kids(nodes, drawn=True)
     out, queue = [], list(under.get(node_id, []))
     while queue:
         n = queue.pop(0)
+        if n.id == node_id:  # back round to where it began: only a cycle that holds the node does that
+            continue
         out.append(n)
         queue[:0] = under.get(n.id, [])
     return out
@@ -742,6 +747,7 @@ def _ended(
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
+        errors="replace",  # what a check prints is its own: bytes that are not UTF-8 are no failure to run it
         env=env,
         start_new_session=True,
     ) as proc:
@@ -765,7 +771,7 @@ def _ended(
 
 
 @contextmanager
-def _clean_tree(checkout: str | Path, leave_out: list[str] | tuple, began: float):
+def _clean_tree(checkout: str | Path, leave_out: list[str] | tuple, began: float, committed: bool = False):
     """A worktree of ``checkout`` as git sees it now, whether committed or not (what it tracks, as it
     is on disk, and the new files it does not ignore), but for ``leave_out``: cut from a commit on no
     branch, under the run's own worktrees (which ``elsewhere`` never asks about), and removed when
@@ -773,7 +779,7 @@ def _clean_tree(checkout: str | Path, leave_out: list[str] | tuple, began: float
     and runs none of the person's git hooks (a post-checkout hook that failed made every check "could
     not be run"). What git ignores is not there: a .venv linked in from the checkout was the check's
     to change, and `uv run` in the worktree re-installed the project into it, pointing the checkout's
-    .venv at a worktree that was then deleted."""
+    .venv at a worktree that was then deleted. ``committed``: its HEAD alone, as a leaf's worktree is."""
     import shutil  # here: the hook imports this module on every event and never runs a check
     import subprocess
     import tempfile
@@ -797,7 +803,7 @@ def _clean_tree(checkout: str | Path, leave_out: list[str] | tuple, began: float
         # ignore rule matches, a sparse checkout's), and then everything else git sees on disk
         with suppress(OSError):  # a repo where nothing was ever added has no index yet
             shutil.copyfile(Path(checkout, had), index)
-        git("add", "-A", index=index)
+        git(*(("read-tree", "HEAD") if committed else ("add", "-A")), index=index)
         if leave_out:
             out = "".join(f"{p}\0" for p in leave_out)
             git("update-index", "-z", "--force-remove", "--stdin", index=index, given=out)
@@ -1243,6 +1249,16 @@ def check_paths(check: str, files: list[str], live: list[Node]) -> list[tuple[st
     return out
 
 
+def check_runs(leaf: Node, other: Node, named: list[tuple[str, list[str]]]) -> list[str]:
+    """The paths ``leaf``'s check runs (``named``: its ``check_paths``) that ``other`` writes and the
+    leaf's own scope does not cover, sorted."""
+    return sorted({
+        p for path, in_it in named if may_collide([path], other.scope)
+        for p in overlap([path], other.scope, _within(in_it, _prefixes(other.scope)))
+        if not in_scope(p, leaf.scope)
+    })  # fmt: skip
+
+
 def wait_on_checks(
     everything: list[Node], ids: set[str], files: list[str], beside: frozenset[str] | set[str] = frozenset(),
     writers: frozenset[str] | set[str] = frozenset(),
@@ -1268,11 +1284,7 @@ def wait_on_checks(
             continue
         named, waits = check_paths(leaf.check, files, live), {}
         for other in others:
-            hit = sorted({
-                p for path, in_it in named if may_collide([path], other.scope)
-                for p in overlap([path], other.scope, _within(in_it, _prefixes(other.scope)))
-                if not in_scope(p, leaf.scope)
-            })  # fmt: skip
+            hit = check_runs(leaf, other, named)
             if not hit or _waits(by_id, under, leaf.id, {other.id}):  # none, or it waits on other already
                 continue
             if not _waits(by_id, under, other.id, {leaf.id}):
@@ -1291,22 +1303,23 @@ def wait_on_checks(
     return said
 
 
-def judge(store, ids: set[str], writers: set[str], files: list[str], who: Caller, now: str,
+def judge(store, ids: set[str], writers: set[str], files: list[str], now: str,
           beside: frozenset[str] | set[str] = frozenset()) -> list[str]:  # fmt: skip
     """``wait_on_checks`` over the plan as it stands, each need it adds saved as an edit of its leaf."""
     everything = nodes(store)
     was = {n.id: list(n.needs) for n in everything}
     said = wait_on_checks(everything, ids, files, beside, writers)
-    _waited(store, was, everything, who, now)
+    _waited(store, was, everything, now)
     return said
 
 
-def _waited(store, was: dict[str, list[str]], everything: list[Node], who: Caller, now: str) -> None:
+def _waited(store, was: dict[str, list[str]], everything: list[Node], now: str) -> None:
     """Each node of ``was`` whose needs ``wait_on_checks`` grew since, saved as an edit of its contract."""
+    graphene = Caller(GRAPHENE, False)  # not the person's edit: `plan changes` and the screen's ~ show it
     for n in everything:
         if n.id in was and n.needs != was[n.id]:
             n.rev += 1
-            _save(store, n, "edited", who, now, changed={"needs": [was[n.id], n.needs]}, rev=n.rev)
+            _save(store, n, "edited", graphene, now, changed={"needs": [was[n.id], n.needs]}, rev=n.rev)
 
 
 def _owner(name: str) -> str:
@@ -1391,6 +1404,20 @@ def owners(node: Node, everything: list[Node], paths: list[str]) -> dict[str, st
     }
 
 
+def done_owners(node: Node, everything: list[Node], paths: list[str]) -> list[str]:
+    """The first done leaf (not dropped or archived, not a sub-goal) whose scope has each of ``paths``,
+    once each, in the order of the paths: who the `r` offer reopens."""
+    parents = {n.parent for n in everything if n.state not in GONE}
+    done = [n for n in everything
+            if n.id != node.id and n.id not in parents and n.state == DONE and not n.aside]
+    out: list[str] = []
+    for p in paths:
+        i = next((n.id for n in done if in_scope(p, n.scope)), None)
+        if i and i not in out:
+            out.append(i)
+    return out
+
+
 def held(store, node: Node) -> str:
     """What the node wanted that other leaves own, said (`a.txt is a's and b.txt is b's`), or ""."""
     return " and ".join(f"{p} is {i}'s" for p, i in owners(node, nodes(store), wanted(store, node)).items())
@@ -1420,8 +1447,8 @@ def offers(store, node: Node) -> list[tuple[str, str, list[str]]]:
     command that does it): widen its scope to the paths it wanted, a sibling leaf for those paths,
     or make it wait on the nodes its reason names. Each is a command that exists on its own."""
     last = (store.node_log(node.id, ("started", "released", "reopened")) or [{"kind": ""}])[-1]
-    if node.state != OPEN or last["kind"] != "released":
-        return []
+    if node.state != OPEN or last["kind"] != "released" or not came_back(store, node):
+        return []  # after w, b or r it is waiting or ready, not came back: nothing to offer
     out: list[tuple[str, str, list[str]]] = []
     everything = nodes(store)
     by_id = {n.id: n for n in everything}
@@ -1456,6 +1483,17 @@ def offers(store, node: Node) -> list[tuple[str, str, list[str]]]:
             return f"{i}, whose scope has {', '.join(has)}" if has else i
 
         out.append(("n", f"make {node.id} wait on {', '.join(map(whose, named))}", argv))
+    # a path a live leaf holds is that leaf's (the n offer): r reopens done owners of the rest, and never
+    # one the leaf could not wait on without a cycle
+    back = done_owners(node, everything, [p for p in wanted(store, node) if p not in held])
+    back = [i for i in back if acyclic(everything, node.id, [i])]
+    if back:
+        note = f"came back from {node.id}: {' '.join(why.split())}"
+        many = len(back) > 1
+        out.insert(len(out) - bool(named), (
+            "r", f"reopen {', '.join(back)} with this reason; {node.id} waits on {'them' if many else 'it'}",
+            ["node", "reopen", *back, "--note", note, "--for", node.id],
+        ))  # fmt: skip
     return out
 
 
@@ -1499,7 +1537,7 @@ def sibling(store, node_id: str, paths: list[str], who: Caller, files: list[str]
         "check": "true",
         "parent": node.parent,
     }
-    with store.claim():  # not judged, as an answer the person gave is not (decision 171)
+    with store.claim():  # not judged, as `widen` is not (decision 171): an offer is the person's to take
         [made] = propose(store, [item], who, files=files, edits_follow=True)
         edit(store, node.id, {"needs": [*node.needs, made.id]}, who, files=files)
     return made
@@ -1570,8 +1608,7 @@ def propose(
                 raise refusal(
                     f"{node.id} is already in the plan", do=f"graphene node set {node.id} … edits it"
                 )
-            bad = ".." in node.id or node.id.endswith((".", ".lock"))  # graphene/<id> is a branch name
-            if bad or not re.fullmatch(r"[A-Za-z0-9][\w.-]{0,31}", node.id):
+            if not USABLE.fullmatch(node.id):
                 raise Refused(
                     f"{node.id!r} is not a usable id: letters, digits, '-', '_' and '.', at most 32, "
                     "no '..', and not ending in '.' or '.lock'"
@@ -1592,7 +1629,7 @@ def propose(
         # ``containers``: new nodes the same text gives children (existing nodes moved under them come
         # after): they are sub-goals, and the leaf rule is asked of the tree once they are in place
         fresh = {n.id for n in added} - set(containers)
-        was = {n.id: list(n.needs) for n in existing}
+        was = {n.id: list(n.needs) for n in [*existing, *added]}  # a need Graphene adds is its own edit
         if not edits_follow:
             one_writer(existing + added, fresh, files or [], beside=beside)
             waits = wait_on_checks(existing + added, fresh, files or [], beside, {n.id for n in added})
@@ -1609,7 +1646,7 @@ def propose(
                 raise Refused(f"{node.id}: {wrong}; spell the scope as git does")
         for node in added:
             _save(store, node, "added" if who.person else "proposed", who, now)
-        _waited(store, was, existing, who, now)
+        _waited(store, was, [*existing, *added], now)
         _settle(store, who, now)
     return added
 
@@ -1644,7 +1681,7 @@ def accept(
             node.state = OPEN
             _save(store, node, "accepted", who, now, **detail)
         if told is not None:
-            told += judge(store, set(), {n.id for n in chosen}, files or [], who, now)
+            told += judge(store, set(), {n.id for n in chosen}, files or [], now)
         proposed_goal, by = store.meta("goal:proposed"), store.meta("goal:proposed:by")
         if proposed_goal and any(n.proposed_by == by for n in chosen) and not goal(store):
             set_goal(store, proposed_goal, who, now)  # the planner's echo of the paragraph, with its tree
@@ -1664,8 +1701,8 @@ def edit(
 ) -> Node:
     """Change a node's contract. The hook reads the row on every event, so a tighter scope binds the
     very next write, even on a node that is running; what waits to start is told the new contract.
-    ``told``: the person edits the leaf itself (`node set`, `plan edit`), not by a board's answer or an
-    offer. A new check then waits on what writes the files it runs, a leaf whose check runs a file a new
+    ``told``: the person edits the leaf (`node set`, `plan edit`, a board's answer), not an offer. A new
+    check then waits on what writes the files it runs, a leaf whose check runs a file a new
     scope takes in waits on it, both said in ``told``, and a new scope over another leaf's path is
     refused. With ``check`` off the caller judges all of it, once its edits are in (a text saved whole)."""
     _person_only(who, "editing a node's contract")
@@ -1689,17 +1726,16 @@ def edit(
         changed = {f: [before[f], getattr(node, f)] for f in EDITABLE if before[f] != getattr(node, f)}
         if not changed:
             return node
-        others: dict[str, list[str]] = {}  # the needs of the rest of the plan, which a new scope may grow
+        waited: dict[str, list[str]] = {}  # every leaf's needs, which a new check or scope may grow
         if told is not None and check and {"scope", "check"} & changed.keys():
             was = nodes(store)
             everything = [node if n.id == node.id else n for n in was]
             if "scope" in changed:
                 one_writer(everything, {node.id}, files or [], {n.id: n for n in was})
-            others = {n.id: list(n.needs) for n in was if n.id != node.id}
+            node.needs = list(node.needs)  # a list of its own: the person's row keeps the needs they gave
+            waited = {n.id: list(n.needs) for n in everything}
             told += wait_on_checks(everything, {node.id} if "check" in changed else set(), files or [],
                                    writers={node.id} if "scope" in changed else set())  # fmt: skip
-            if node.needs != before["needs"]:
-                changed["needs"] = [before["needs"], node.needs]
         if check:  # else the caller validates once every edit it makes is in (a text saved whole)
             validate([node if n.id == node.id else n for n in nodes(store)], {node.id})
         if "scope" in changed:  # asked even when the caller validates later: the text form does
@@ -1712,8 +1748,8 @@ def edit(
             raise Refused(f"{node.id}: {wrong}; spell the scope as git does")
         node.rev += 1
         _save(store, node, "edited", who, now, changed=changed, rev=node.rev)
-        if others:
-            _waited(store, others, everything, who, now)
+        if waited:
+            _waited(store, waited, everything, now)
         _settle(store, who, now)
     return node
 
@@ -2663,26 +2699,56 @@ def signoff(
     return node
 
 
-def reopen(store, node_id: str, who: Caller, note: str, now: str | None = None) -> Node:
-    """Not good enough: back to open, with what is wrong. The note is printed to whoever takes it next."""
+def reopen(store, node_id: str | list[str], who: Caller, note: str, now: str | None = None,
+           for_leaf: str | None = None) -> Node:  # fmt: skip
+    """Not good enough: back to open, with what is wrong. The note is printed to whoever takes it next.
+    Several ids are reopened together; ``for_leaf`` (a leaf that came back on their fault) then waits on
+    each, saved as an edit of its contract. Returns the first node reopened."""
     _person_only(who, "reopening a node")
     now = now or _now()
+    ids = [node_id] if isinstance(node_id, str) else list(dict.fromkeys(node_id))  # an id named twice is one
     with store.claim():
-        node = get(store, node_id)
-        if node.state not in (REVIEW, DONE):
-            raise Refused(f"{node.id} is {node.state}; only a finished node is reopened")
-        node.state, node.executor, node.session_id, node.agent_id = OPEN, None, None, None
-        node.rev += 1
-        _save(store, node, "reopened", who, now, note=note, rev=node.rev)
+        leaf = get(store, for_leaf) if for_leaf else None
+        if leaf and (leaf.id in ids or leaf.state == RUNNING):
+            raise Refused(f"{leaf.id} cannot wait on {', '.join(ids)}: " + (
+                "it is one of them" if leaf.id in ids else "it is running"))  # fmt: skip
+        if leaf and not acyclic(nodes(store), leaf.id, ids):
+            raise Refused(f"{leaf.id} cannot wait on {', '.join(ids)}: the plan would have a cycle")
+        picked = [get(store, i) for i in ids]
+        for node in picked:
+            if node.state not in (REVIEW, DONE):
+                raise Refused(f"{node.id} is {node.state}; only a finished node is reopened")
+        for node in picked:
+            node.state, node.executor, node.session_id, node.agent_id = OPEN, None, None, None
+            node.rev += 1
+            _save(store, node, "reopened", who, now, note=note, rev=node.rev)
+        if leaf:
+            everything = nodes(store)
+            by_id, under = {n.id: n for n in everything if n.state not in GONE}, kids(everything, drawn=True)
+            was = list(leaf.needs)
+            for n in picked:
+                if not _waits(by_id, under, leaf.id, {n.id}):
+                    leaf.needs.append(n.id)
+                    by_id[leaf.id] = leaf
+            # the person's answer to the hand-back, as w and b are: after it the leaf is waiting, not came
+            # back (`let_go`), so the next run takes it once what it waits on has landed again
+            changed = {"needs": [was, leaf.needs]} if leaf.needs != was else {}
+            leaf.rev += bool(changed)
+            _save(store, leaf, "edited", who, now, changed=changed, rev=leaf.rev, reopened=ids)
         _settle(store, who, now)
-    return node
+    return picked[0]
 
 
 def notes(store, node_id: str) -> list[str]:
-    """What the person said when sending a node back, newest last: part of what its next executor is told."""
-    return [
-        e["detail"].get("note", "") for e in store.node_log(node_id, ("reopened",)) if e["detail"].get("note")
-    ]
+    """What the person said when sending a node back, newest last: part of what its next executor is told.
+    A reopen undone since was never said (`let_go` reads an undone act so too)."""
+    kept: list[dict] = []
+    for e in store.node_log(node_id, ("reopened", "undone")):
+        if e["kind"] == "reopened":
+            kept.append(e)
+        elif (since := e["detail"].get("since")) is not None:
+            kept = [k for k in kept if k["id"] <= since]
+    return [e["detail"]["note"] for e in kept if e["detail"].get("note")]
 
 
 def archive(store, who: Caller, now: str | None = None) -> list[Node]:
@@ -2897,11 +2963,12 @@ def goal_plus(goal: str, sentence: str) -> str | None:
 def let_go(store, node: Node) -> dict:
     """How its last hold ended, while it is open and the person has not changed it since: its
     `released` entry (``person``: the person let it go; ``stopped``: the run did), else {}. A widen
-    or a sibling is an edit: after it, it is ready or waiting again. An act undone since reads as
-    never made: what it logged is passed over."""
+    or a sibling is an edit: after it, it is ready or waiting again. A need Graphene added is not.
+    An act undone since reads as never made: what it logged is passed over."""
     if node.state != OPEN:
         return {}
-    log = store.node_log(node.id, ("started", "released", "reopened", "edited", "undone"))
+    log = [e for e in store.node_log(node.id, ("started", "released", "reopened", "edited", "undone"))
+           if e["actor"] != GRAPHENE]  # fmt: skip
     while log and log[-1]["kind"] == "undone":
         since = log.pop()["detail"].get("since")
         log = log if since is None else [e for e in log if e["id"] <= since]

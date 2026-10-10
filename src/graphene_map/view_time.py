@@ -30,7 +30,7 @@ from .view_dag import outline
 from .views import BASELINE, Drawn, elide, money
 
 EVENTS = True  # its draw takes the log's rows (views.happened)
-LABEL, LEAST, IDLE = 14, 30, 60  # the label column's most cells; the time column's least; idle after (s)
+LEAST, IDLE = 30, 60  # the time column's least cells; idle after (s)
 BLOCK = {"editing": "█", "running": "▓", "reading": "▒", "searching": "▒"}  # by a did row's verb: else ▓
 TALK, QUIET, HELD, NOW = "░", "─", "━", "●"  # a said row; idle; a hold with no attempt; running now
 MARKS = {"denied": ("!", "magenta"), "breach": ("!", "magenta"), "refused": ("!", "magenta"),
@@ -60,13 +60,10 @@ def _came_back(e: dict) -> bool:
 def _tries(rows: list[dict], now: datetime | None) -> list[tuple[dict, list[dict]]]:
     """Each attempt (`meter.attempts`) and its did and said rows: its number's, from its start to the
     next attempt's, as the screen's `l` takes them."""
-    tries, out = M.attempts(rows, now=now), []
-    talk = [e for e in rows if e["kind"] in ("did", "said")]
-    ends = [*(a["started"] for a in tries[1:]), "9"][: len(tries)]  # "9" sorts after every timestamp
-    for a, end in zip(tries, ends, strict=True):
-        out.append((a, [e for e in talk if e["detail"].get("attempt") == a["attempt"]
-                        and a["started"] <= e["timestamp"] < end]))  # fmt: skip
-    return out
+    talk, tries = [e for e in rows if e["kind"] in ("did", "said")], M.attempts(rows, now=now)
+    return [(a, [e for e in talk if e["detail"].get("attempt") == a["attempt"]
+                 and a["started"] <= e["timestamp"] < b["started"]])
+            for a, b in itertools.pairwise([*tries, {"started": "9"}])]  # "9" sorts after every timestamp
 
 
 def _phrase(e: dict) -> str:
@@ -102,7 +99,7 @@ def draw(
     column has fewer than LEAST cells; taller than ``height`` is the screen's to scroll. ``events``:
     the log's rows (`views.happened`); with none, the lanes are drawn bare."""
     lanes = held(nodes)
-    label = min(LABEL, 3 + max(cell_len(i) for i in ["you", *(n.id for n in lanes)]))
+    label = 3 + max(cell_len(i) for i in ["you", *(n.id for n in lanes)])  # an id is never cut
     cells = width - label
     if cells < LEAST:
         return None
@@ -177,7 +174,7 @@ def draw(
     lines, at = [Text(elide(goal, width), "bold"), Text(" you".ljust(label)) + _text(you)], {}
     for n in lanes:
         how, line = P.look(words.get(n.id, ""))[1], Text()
-        line.append(f" {elide(n.id, label - 3)} ", f"{how} reverse".strip() if n.id == cursor else how)
+        line.append(f" {n.id} ", f"{how} reverse".strip() if n.id == cursor else how)
         at[n.id] = (len(lines), 0, line.cell_len - 1)
         lines.append(line + " " * (label - line.cell_len) + _text(lane(n)))
     lines.append(Text(" " * label + _axis(span, per, cells), "dim"))
@@ -185,7 +182,8 @@ def draw(
         line.rstrip()
     back = sum(_came_back(e) for n in lanes for e in by.get(n.id, []))
     since = [e for e in flat if sec(e["timestamp"]) >= 0]  # this plan's clocks, as its lanes are
-    said = note(len(lanes), stop, back, M.agents(since, now), M.you(since, events["person"]), width)
+    said = note(len(lanes), stop, back, M.agents(since, now), M.you(since, events["person"]), width,
+                M.width(since, now))
     return Drawn(lines=lines, at=at, order=[n.id for n in lanes], note=said)
 
 
@@ -212,14 +210,16 @@ def _axis(span: float, per: float, cells: int) -> str:
     return line
 
 
-def note(lanes: int, seconds: float, back: int, agents: dict, you: dict, width: int | None = None) -> str:
-    """What the lanes say at a glance: `3 lanes · 12 min · 1 came back · agents 31 min $2.41 · you 4
-    acts ~3 min`. Whole pieces go from the end until it fits ``width``."""
+def note(lanes: int, seconds: float, back: int, agents: dict, you: dict, width: int | None = None,
+         ran: dict | None = None) -> str:
+    """What the lanes say at a glance: `3 lanes · 12 min · 1 came back · agents 31 min $2.41 · you 4 acts
+    ~3 min · width 2 of 3` (``ran``: `meter.width`). Whole pieces go from the end to fit ``width`` cells."""
     took = agents["seconds"] // 60 or ("<1" if agents["seconds"] or agents["running"] else 0)
     said = [f"{lanes} lane{'s' * (lanes != 1)}", f"{int(seconds // 60) or '<1'} min"]
     said += [f"{back} came back"] if back else []
     said += [f"agents {took} min" + (f" {money(agents['dollars'])}" if agents["dollars"] else "")]
     said += [f"you {you['acts']} act{'s' * (you['acts'] != 1)} ~{you['minutes']} min"]
+    said += [f"width {ran['most']} of {ran['lanes']}"] if ran else []
     while len(said) > 1 and width is not None and cell_len(" · ".join(said)) > width:
         said.pop()
     return " · ".join(said)

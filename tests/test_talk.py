@@ -13,6 +13,7 @@ import sys
 import pytest
 from fake_tokenfactory import Fake
 from test_plan_cli import AGENT_ENV, agent, person, repo, runner  # noqa: F401  (fixtures)
+from test_plan_text_cli import editor
 from test_tui import SIZES, proposed, shown, states, watch
 
 from graphene_map import board as B
@@ -223,6 +224,30 @@ def test_changes_since_seen_are_others_and_only_after_the_mark(repo, talker):
     assert refused.exit_code == 1 and "the mark is the person's" in refused.stderr
     assert person("plan", "seen").stdout.startswith("2 changes marked as seen")
     assert person("plan", "changes").stdout == "nothing changed since you last looked\n"
+
+
+@pytest.mark.parametrize(
+    "how, leaf",
+    [(["node", "set", "a", "--check", "python3 -m pytest tests/test_b.py"], "a"), (["plan", "edit"], "a"),
+     (["node", "set", "b", "--add-scope", "tests/test_c.py"], "a"),
+     (["node", "add", "c", "--id", "c", "--scope", "c.py", "--check", "pytest tests/test_b.py"], "c")],
+)  # fmt: skip
+def test_a_need_graphene_adds_to_a_leaf_is_a_change_since_the_mark(repo, monkeypatch, tmp_path, how, leaf):
+    """The loop directive, lane 5: the need was logged as the person's own edit, so neither `plan changes`
+    nor the screen's ~ showed it. The command that made it says it, as before. A leaf `node add` makes is
+    judged as `plan edit` judges a new line (review of lane 5)."""
+    person("node", "add", "a", "--id", "a", "--scope", "a.py", "--check", "python3 -m pytest tests/test_c.py")
+    person("node", "add", "b", "--id", "b", "--scope", "b.py", "--scope", "tests/test_b.py",
+           "--check", "true")  # fmt: skip
+    person("plan", "seen")
+    editor(monkeypatch, tmp_path, "text = text.replace('tests/test_c.py', 'tests/test_b.py')")  # plan edit's
+    said = person(*how)
+    assert said.exit_code == 0 and f"{leaf} waits on b: its check runs tests/" in said.stdout, said.output
+    changes = person("plan", "changes").stdout.splitlines()
+    assert changes[0] == "1 changed since you last looked (graphene plan seen marks them seen):"
+    assert changes[1].endswith(f"  {leaf}: edited needs by graphene"), changes
+    with Store.open(repo) as store:
+        assert talk.marks(store, "alex") == ({leaf: "~"}, 1) and P.get(store, leaf).needs == ["b"]
 
 
 # -- the screen -----------------------------------------------------------------------------------

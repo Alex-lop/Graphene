@@ -142,9 +142,10 @@ def register(cli: typer.Typer, root, open_store, fail):
             """A leaf that came back: what `graphene watch` offers on it, as the commands its keys run,
             not a `start` (the screen offered w, b and r while this line said `node start`)."""
             offers = P.offers(store, n)
-            said = [f"`graphene {' '.join(argv)}` ({what})" for _, what, argv in offers]
+            said = [f"`graphene {shlex.join(argv)}` ({what})" for _, what, argv in offers]  # r's note: words
             said.append(f"{'or ' if said else ''}`graphene run --node {n.id}` (run it again)")
-            said[-1] += f"; {', '.join([*(k for k, _, _ in offers), 'r'])} in `graphene watch`"
+            keys = [k for k, _, _ in offers]
+            said[-1] += f"; {', '.join(keys + ['r'] * ('r' not in keys))} in `graphene watch`"
             also = f", and {more} more did" if more else ""
             return [f"next: {n.id} ({n.title}) came back{also}: {', '.join(said)}"]
 
@@ -812,12 +813,12 @@ def register(cli: typer.Typer, root, open_store, fail):
             accepted = P.accept(store, ids or [], P.caller(), files=files, told=told)
             took = None
             if not P.nodes(store, (P.PROPOSED,)):  # the whole plan is accepted: what the person left
-                took = B.took(B.defaults(store, P.caller(), files), B.left(store))  # open takes its default
+                took = B.took(B.defaults(store, P.caller(), files, told), B.left(store))
             if accepted:  # first, in a line: what the screen's bottom line gives of it, the defaults too
                 out(f"accepted {', '.join(n.id for n in accepted)}" + (f"; {took}" if took else ""))
             for n in accepted:
                 out(one_row(store, n, len(P.above(n, by_id))))
-            for line in told:  # what in the plan now waits on what was accepted
+            for line in told:  # what in the plan now waits on what was accepted, or on a default taken
                 out(line)
             if P.goal(store) != goal_was:
                 out(f"the plan: {P.goal(store)}  (the planner's sentence, accepted with its tree)")
@@ -953,6 +954,9 @@ def register(cli: typer.Typer, root, open_store, fail):
         here: bool = typer.Option(
             False, "--here", help="Run in your checkout and commit nothing; the checkout is exposed."
         ),
+        precheck: bool = typer.Option(
+            True, "--precheck/--no-precheck", help="Skip the checks at the base commit."
+        ),
     ) -> None:
         """Run every ready leaf in its own worktree, one executor per leaf.
 
@@ -992,24 +996,24 @@ def register(cli: typer.Typer, root, open_store, fail):
                         return False
                     return True
 
-                took = None
+                took, told = None, []
                 with contextlib.suppress(NothingStarts), P.undoable(store, who, "board take"):
-                    said = B.took(B.defaults(store, who, files), B.left(store))
+                    said = B.took(B.defaults(store, who, files, told), B.left(store))
                     if not any(startable(n) for n in starts):
                         raise NothingStarts  # rolls the takes back: the run then says why nothing starts
-                    took = said
-                if took:
-                    out(took)
+                    took = [line for line in [said, *told] if line]  # and what a default made wait
+                for line in took or []:
+                    out(line)
             logs = r / ".graphene" / "runs"
             since = len(store.node_log())  # what this run did is what the log says after this
-            try:
+            try:  # red first runs in the runner, once its refusals (a lock, a detached HEAD, the cap) pass
                 if here:
                     out("--here: your checkout is exposed. The executor writes in it. Nothing is committed")
-                    run_plan(store, checkout(), template, attempts, node or None, out, logs)
+                    run_plan(store, checkout(), template, attempts, node or None, out, logs, precheck)
                 else:
                     run_parallel(
                         lambda: open_store(r), r, checkout(), max(parallel, 1), template,
-                        attempts, node or None, out, logs,
+                        attempts, node or None, out, logs, precheck,
                     )  # fmt: skip
             except P.Refused as no:
                 fail(str(no), 1)
@@ -1176,22 +1180,21 @@ def register(cli: typer.Typer, root, open_store, fail):
 
         def go(store):
             now = P.get(store, node_id)  # added to as it is at this moment, so an edit made since stays
-            before = now.rev
+            seen = len(store.node_log(node_id, ("edited",)))
             if add_scope:
                 edits["scope"] = [*now.scope, *(g for g in dict.fromkeys(add_scope) if g not in now.scope)]
             if add_goal:
                 edits["goal"] = P.goal_plus(now.goal, add_goal) or now.goal
             node = P.edit(store, node_id, edits, P.caller(), files=files, told=told)
-            last = store.node_log(node_id, ("edited",))[-1] if node.rev != before else None
-            return node, last
+            return node, store.node_log(node_id, ("edited",))[seen:]  # yours, then a need Graphene added
 
-        n, last = write(f"node set {node_id}", go)
-        if last is None:
+        n, rows = write(f"node set {node_id}", go)
+        if not rows:
             out(f"{n.id} is unchanged (revision {n.rev})")
             said_where()
             return
         out(f"{n.id} is now revision {n.rev}:")
-        for name, (before, after) in last["detail"]["changed"].items():
+        for name, (before, after) in (c for e in rows for c in e["detail"]["changed"].items()):
             out(f"  {name}: {value(before)} → {value(after)}")
         for line in told:
             out(line)
@@ -1249,9 +1252,9 @@ def register(cli: typer.Typer, root, open_store, fail):
 
         def go(store):
             n = P.start(store, node_id, P.caller(), checkout())
+            for note in P.notes(store, n.id):  # first, as the run's prompt tells them
+                out(note)
             out(P.contract(n, P.trail(store, n), B.decided(store, n)))
-            for note in P.notes(store, n.id):
-                out(f"  sent back with: {note}")
 
         run(go)
         said_where()
@@ -1342,17 +1345,29 @@ def register(cli: typer.Typer, root, open_store, fail):
 
     @node_cli.command(hidden=True)
     def reopen(
-        node_id: str = typer.Argument(...),
+        node_id: list[str] = typer.Argument(...),
         note: str = typer.Option(
             None, "--note", help="What is wrong, told to whoever takes it next; asked for at a terminal."
         ),
+        for_leaf: str = typer.Option(
+            None, "--for", help="The leaf that came back: it waits on what is reopened."
+        ),
     ) -> None:
         """Send a finished node back, with what is wrong."""
-        if note is None and run(lambda s: P.get(s, node_id).state in (P.DONE, P.REVIEW)):  # else its refusal
-            note = asked(f"graphene node reopen {node_id}", "--note", "what is wrong")
-        run(lambda s: P.reopen(s, node_id, P.caller(), note or ""))
-        out(f"{node_id} is open again; whoever takes it next is shown your note (its contract is as it was: "
-            f"`graphene node edit {node_id}` changes it)")  # fmt: skip
+        if note is None and len(node_id) == 1 and run(
+            lambda s: P.get(s, node_id[0]).state in (P.DONE, P.REVIEW)
+        ):  # else its refusal
+            note = asked(f"graphene node reopen {node_id[0]}", "--note", "what is wrong")
+
+        def go(store):
+            P.reopen(store, node_id, P.caller(), note or "", for_leaf=for_leaf)
+
+        names = ", ".join(node_id)
+        write(f"node reopen {names}", go)  # kept for `plan undo`, as w and b are: r runs this command
+        one = len(node_id) == 1
+        out(f"{names} {'is' if one else 'are'} open again; whoever takes {'it' if one else 'them'} next is "
+            f"shown your note ({'its' if one else 'their'} contract is as it was: "
+            f"`graphene node edit {node_id[0]}` changes it)")  # fmt: skip
         said_where()
 
     @node_cli.command()
@@ -1385,7 +1400,7 @@ def register(cli: typer.Typer, root, open_store, fail):
             why = (store.node_log(n.id, ("released",)) or [{"detail": {}}])[-1]["detail"].get("why", "")
             lines.append(f"  came back: {' '.join(str(why).split())}")
             for _key, what, command in offers:
-                lines.append(f"    {what}: `graphene {' '.join(command)}`")
+                lines.append(f"    {what}: `graphene {shlex.join(command)}`")
         if n.state == P.OPEN and P.not_offered(store, n):
             lines.append(f"    {P.not_offered(store, n)}")
         if n.state == P.OPEN and P.RUN_TREE in (n.checkout or "") and Path(n.checkout or "").is_dir():

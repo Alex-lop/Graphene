@@ -40,11 +40,11 @@ def leaf(i, state=P.DONE, held=True):
     return P.Node(i, f"the {i} leaf", scope=[f"{i}.py"], check="true", state=state, started_at=held)
 
 
-def drawn(nodes, rows, s, width=80, cursor=None, words=None):
+def drawn(nodes, rows, s, width=80, cursor=None, words=None, goal="the goal"):
     """The view at ``width``, now ``s`` seconds after 04:00, and each lane's time column by id."""
     words = words or {n.id: P.reads(n, nodes) for n in nodes}
     now = datetime.fromisoformat(stamp(s))
-    out = VT.draw(nodes, words, "the goal", width, 24, cursor, V.happened(rows, "alex", now))
+    out = VT.draw(nodes, words, goal, width, 24, cursor, V.happened(rows, "alex", now))
     label = out.lines[-1].plain.index("0")  # the axis starts the time column
     return out, {i: out.lines[line].plain[label:] for i, (line, _, _) in out.at.items()}
 
@@ -77,7 +77,7 @@ def test_each_cell_is_what_the_executor_mostly_did_idle_past_a_minute_a_session_
     assert out.lines[1].plain == " you  |" + " " * 29 + "|"  # alex's acts, with or without a terminal
     axis = "".join(f"{k * 15}s".ljust(15) for k in range(5)).rstrip()  # a label each 15 s: 10 s left 7 cells
     assert out.lines[-1].plain == " " * 6 + axis
-    assert out.note == "3 lanes · 1 min · agents 1 min · you 2 acts ~1 min"
+    assert out.note == "3 lanes · 1 min · agents 1 min · you 2 acts ~1 min · width 1 of 1"  # b, c: sessions
     assert {s.style for s in out.lines[2].spans} == {"green", "dim"}  # a done leaf's bar; idle dim
 
 
@@ -128,7 +128,7 @@ def test_the_note_counts_this_plans_clocks_never_an_archived_ones():
            row("a", 1580, "ended", {"attempt": 1, "exit": 0, "meter": "claude"})]  # fmt: skip
     out, _ = drawn([leaf("a")], old + new, 1590)
     assert out.lines[1].plain.count("|") == 1  # this plan's ask, its one act
-    assert out.note == "1 lane · <1 min · agents <1 min · you 1 act ~1 min"
+    assert out.note == "1 lane · <1 min · agents <1 min · you 1 act ~1 min · width 1 of 1"
 
 
 def test_a_plan_a_session_proposed_starts_at_your_acceptance_so_your_y_is_drawn():
@@ -140,29 +140,36 @@ def test_a_plan_a_session_proposed_starts_at_your_acceptance_so_your_y_is_drawn(
     assert out.lines[1].plain.startswith(" you  |")
 
 
-def test_none_under_thirty_cells_of_time_and_no_line_wider_than_the_width():
-    long = "an-id-much-longer-than-the-label"
+def test_an_id_is_never_cut_the_goal_is_and_none_under_thirty_cells_of_time():
+    long = "an-id-much-longer-than-the-label"  # 32 characters: the most an id has (plan_text._VALID_ID)
     nodes = [leaf(long), leaf("b", P.RUNNING)]
     rows = [row(long, 0, "started"), row(long, 0, "attempt", {"attempt": 1}), did(long, 30, "editing"),
             row(long, 40, "check_passed"), row(long, 40, "landed"), row("b", 0, "started")]  # fmt: skip
     words = {long: "done", "b": "running"}
-    assert VT.draw(nodes, words, "g", 43, 24, None, V.happened(rows, "alex")) is None  # 14 + 29
-    assert VT.draw(nodes, words, "g", 44, 24, None, V.happened(rows, "alex")) is not None
+    assert VT.draw(nodes, words, "g", 64, 24, None, V.happened(rows, "alex")) is None  # 35 + 29
+    assert VT.draw(nodes, words, "g", 65, 24, None, V.happened(rows, "alex")) is not None
+    goal = " ".join(["users come back with their ids"] * 5)  # wider than either width
     for width in (80, 120):
-        out, _ = drawn(nodes, rows, 600, width, cursor=long, words=words)
+        out, lanes = drawn(nodes, rows, 600, width, cursor=long, words=words, goal=goal)
         assert max(line.cell_len for line in out.lines) <= width and len(out.note) <= width
-        assert out.lines[2].plain.startswith(" an-id-much…  ") and out.at[long] == (2, 0, 12)
+        assert out.lines[0].plain.endswith("…")  # the goal is cut
+        assert out.lines[2].plain.startswith(f" {long}  ") and out.at[long] == (2, 0, 33)  # the id is not
+        assert len(lanes["b"]) == {80: 45, 120: 85}[width]  # b runs to now: its bar fills the time column
         assert out.lines[2].spans[0].style == "green reverse"  # the cursor's label
-        steps = {80: ["0m", "2m", "4m", "6m", "8m"], 120: [f"{k}m" for k in range(10)]}  # 8 cells apart
+        steps = {80: ["0m", "5m"], 120: ["0m", "2m", "4m", "6m", "8m"]}  # 8 cells apart
         assert out.lines[-1].plain.split() == steps[width]
+    assert len(drawn(nodes, rows, 600, V.room(80, 24)[0], words=words)[1]["b"]) == 43  # an 80-column terminal
     bare = VT.draw(nodes, words, "g", 80, 24, None)  # what `choose` draws: no events, the lanes bare
-    assert [line.plain.strip() for line in bare.lines[2:4]] == [long[:10] + "…", "b"]
+    assert [line.plain.strip() for line in bare.lines[2:4]] == [long, "b"]
 
 
 def test_the_note_says_lanes_minutes_hand_backs_and_both_clocks_and_drops_pieces_to_fit():
     agents, you = {"seconds": 1860, "running": 1, "dollars": 2.41}, {"acts": 4, "minutes": 3}
     said = "3 lanes · 12 min · 1 came back · agents 31 min $2.41 · you 4 acts ~3 min"
     assert VT.note(3, 725, 1, agents, you) == said
+    ran = {"most": 2, "lanes": 3, "alone": 0.4}  # meter.width
+    assert VT.note(3, 725, 1, agents, you, None, ran) == said + " · width 2 of 3"
+    assert VT.note(3, 725, 1, agents, you, len(said) + 14, ran) == said  # the width goes first
     assert VT.note(3, 725, 1, agents, you, 60) == "3 lanes · 12 min · 1 came back · agents 31 min $2.41"
     assert VT.note(3, 725, 1, agents, you, 20) == "3 lanes · 12 min"
     quiet = {"seconds": 0, "running": 0, "dollars": 0}  # no dollars said when there are none
@@ -231,8 +238,10 @@ def test_plan_view_time_prints_the_lanes_the_axis_and_the_note(repo, finish, mon
         " ids       ───▒▒▒▒▒▒▒▒▒▒▒▒██████░░░░░░░░░░░✓◆",
         " schema                                          ──────▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓↩",
         "         0m                                1m",
-        "2 lanes · 2 min · 1 came back · agents 1 min · you 2 acts ~1 min",
+        "2 lanes · 2 min · 1 came back · agents 1 min · you 2 acts ~1 min",  # in 78 cells: the width gave way
     ]
+    wide = person("plan", "--view", "time", "--width", "100", "--height", "24").stdout.splitlines()[-1]
+    assert wide == printed.stdout.splitlines()[-1] + " · width 1 of 2"  # one leaf at a time, of the two
 
 
 def test_an_agent_prints_the_persons_lane_and_clock_not_its_own(repo, finish, monkeypatch):

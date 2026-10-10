@@ -1725,6 +1725,56 @@ any of them.
 180. **The shipped demo stays the scripted stand-in.** Tests pin it and it needs no network. Tonight's Claude Code
      run is `tests/recordings/timeline-claude.jsonl`, which the 30 minutes replays.
 
+## Decisions taken on the night of the loop directive (9 October)
+
+181. **`r` reopens the owner.** A leaf that came back wanting a path a done leaf's scope holds offers `r` beside
+     `w` and `b`: `graphene node reopen <owner> --note 'came back from <leaf>: <why>' --for <leaf>`. Several
+     owners are one `r`. The leaf waits on them, and reads as waiting, not came back, after it. `r` is the
+     person's act, as `w` and `b` are: `plan undo` takes it back, and the withdrawn note reaches no executor.
+182. **Nothing is reverted by a reopen.** The owner goes back to open with the note and a new revision; its fix
+     lands as a new commit on top, and its record says `reopened after landing; the fix is a new commit`.
+183. **The note is the executor's first line.** `prompt_for` puts each note above the contract, verbatim. Claude
+     Code gets the prompt after `--`, so a note that begins with `-` is no option.
+184. **An executor releases on a landed fault.** When its check cannot pass because a file another leaf landed is
+     wrong, it runs `release --wants <that file>` with a why that names the fault. One sentence in `run.py`'s
+     prompt and in the Nemotron executor's system prompt (version 2).
+185. **Red first lives in core.** `src/graphene_map/precheck.py` runs every accepted leaf's check once at the
+     commit its leaves start from (a parallel run's HEAD; `--here`, the checkout as it is), inside the runner,
+     once the run's own refusals have passed (the lock, a detached HEAD, the cap) and before it starts anything:
+     each distinct command once, four at a time, each in a clean worktree, under `CHECK_TIMEOUT`. `--no-precheck`
+     skips it. The extra keeps `plan precheck`, the sandbox fork
+     for proposals and Nano's reading, and imports the rest.
+186. **Three verdicts, by behaviour.** `passes` (exit 0 at the base: the check proves nothing; `e` is the fix),
+     `outside` (a red whose failure names a path no scope of the leaf covers: the output's paths, or the
+     command's when it names nothing of the leaf's own), `red` (the leaf's own, said of nothing). A check that
+     could not run, or timed out, is `not-run`, said in a line; it is tried again next time, unless it timed
+     out. A sub-goal's check is not run first.
+187. **Red first is a warning, not a gate.** The run prints one line a flagged leaf and goes on. A stop while the
+     checks run ends them with all they started, and the run says it stopped.
+188. **The mark.** A flagged leaf shows `∅` after its title in `watch`; its pane says why in one line.
+189. **`node show` says against base.** A check that ran a path a later leaf rewrites is said in one line with the
+     path and the base commit.
+190. **Width** is the most leaves with an executor's attempt running at one instant, over `[start, end)` to the
+     millisecond: an attempt that ends as another starts does not overlap it. Beside it, the share of agent
+     minutes with one attempt alone. The bill line, `plan record`, a sub-goal's `node show` and the time view's
+     note carry `width 2 of 3`.
+191. **Mechanical faults are repaired, not sent back,** each said as `repaired: …` under the board: an id
+     Graphene refuses is slugged; a `needs:` or `parent:` naming no other node is dropped; a `needs:` that closes
+     a cycle is dropped at the cycle's last edge, in the answer's order; a `then:` naming a file is dropped, and
+     an `about:` naming a file or no node; a risk with options is a question. A need on the node above, and a
+     `then:` naming no node, go back: only the model knows which is wrong.
+192. **Every fault at once, sent back at most twice.** `plan_text.faults` reads the whole answer and judges the
+     whole; the third answer is the answer.
+193. **A need Graphene adds is Graphene's own edit** (actor `graphene`), so `~` and `plan changes` show it; a
+     board answer's `then:` is judged as `node set` is. (lane 5)
+194. **Lanes 1 and 2 were built through Graphene** (five leaves, four Sonnet executors at once, $2.07, width 4 of
+     5) and reviewed by two skeptics a leaf afterwards; the executors' code is the branch's.
+195. **The opening.** The session had no `GRAPHENE_AGENT_LIVE_USD`; the directive's $50 line is the opening, as
+     decisions 151 and 166 read the last two nights'.
+
+Decisions 171 (a board answer is not judged) and 175 (a refusal goes back once) are superseded above by 193 and 192;
+the widen and the sibling offers stay unjudged, as 171 had them.
+
 ## What does not bind (say it wherever you sell it)
 
 - A shell command can write a file in a way nothing reads beforehand (a script that opens files

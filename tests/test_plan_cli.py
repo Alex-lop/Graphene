@@ -137,7 +137,8 @@ def test_sign_off_reopen_and_release_each_leave_a_line_in_the_nodes_record(repo)
     assert agent("node", "signoff", "n1").exit_code == 1
     assert "n1 (review)" in person("plan").stdout
     person("node", "reopen", "n1", "--note", "return a dict, not a list")
-    assert "sent back with: return a dict, not a list" in agent("node", "start", "n1").stdout
+    # the note comes first, above the contract, as the run's prompt tells it
+    assert agent("node", "start", "n1").stdout.startswith("return a dict, not a list\n")
     agent("node", "release", "n1", "--why", "needs schema.py, which is outside my scope")
     assert "handed back: needs schema.py, which is outside my scope" in person("plan").stdout
     shown = person("node", "show", "n1").stdout
@@ -303,7 +304,7 @@ def test_start_done_signoff_reopen_and_run_name_the_repository(repo):
     assert all("(the plan of " in a.stderr for a in acts), [a.stderr for a in acts]
     # a run names it first (it runs for long), and ends with what it did, for the person
     last = acts[-1].stdout.splitlines()[-1]
-    assert last == "run: 1 came back (l2) · agents <1 min, no meter · you 0 acts, 0 min"
+    assert last == "run: 1 came back (l2) · agents <1 min, no meter · width 1 of 1 · you 0 acts, 0 min"
 
 
 # -- the recheck of the closing review: its regression tests --------------------
@@ -348,8 +349,8 @@ def test_a_finished_plan_says_when_its_leaves_work_is_not_committed_and_what_com
     assert ran.exit_code == 0, ran.output
     assert "--here: your checkout is exposed" in ran.stdout
     assert ran.stdout.splitlines()[-1] == (
-        "run: 1 done · agents <1 min, no meter · you 0 acts, 0 min · the work of ids is not committed "
-        "(`git status`): `graphene run --here` commits "
+        "run: 1 done · agents <1 min, no meter · width 1 of 1 · you 0 acts, 0 min · the work of ids is not "
+        "committed (`git status`): `graphene run --here` commits "
         "nothing, `graphene run` and watch's R commit and merge each leaf"
     )
     head = person().stdout.splitlines()[0]
@@ -517,7 +518,7 @@ def test_reopen_and_release_ask_at_a_terminal_and_refuse_in_one_line_without_one
     assert _cli(["node", "reopen", "n1"]) == (2, "graphene node reopen n1 needs --note: what is wrong")
     said = at_terminal(repo, ["node", "reopen", "n1"], "return a dict")
     assert said.startswith("what is wrong: return a dict\nn1 is open again")  # asked in one line
-    assert "sent back with: return a dict" in agent("node", "start", "n1").stdout
+    assert agent("node", "start", "n1").stdout.startswith("return a dict")
     said = at_terminal(repo, ["node", "release", "n1"], "the schema is in the way")
     assert said.startswith("what is in the way: the schema is in the way\nn1 handed back: the schema")
     refused = person("node", "release", "n1")  # nothing to hand back: that is said, and nothing asked
@@ -660,3 +661,22 @@ def test_a_proposal_and_an_open_board_are_named_as_what_waits_not_stop_and_run_s
     assert "nothing to run: the tree is a proposal (1 leaf) nobody has accepted: `graphene plan accept`" in (
         ran.stderr
     ), ran.stderr
+
+
+def test_plan_record_and_node_show_on_a_sub_goal_say_how_wide_its_leaves_ran(repo):
+    """a runs from 01:00 to 01:02, b from 01:01 to 01:03: two at once, half of the agent minutes alone."""
+    from graphene_map import plan
+    from graphene_map.store import Store
+
+    run = plan.Caller("run:sh", False, "s-1")
+    leaves = [{"id": k, "title": f"leaf {k}", "scope": [f"{k}.txt"], "check": "true"} for k in "ab"]
+    tree = [{"id": "api", "title": "the surface", "children": leaves}]
+    with Store.open(repo) as store:
+        plan.propose(store, tree, plan.Caller("alex", True))
+        for leaf, start, end in (("a", 0, 2), ("b", 1, 3)):
+            plan.start(store, leaf, run, repo, now=f"2026-01-05T01:0{start}:00.000Z")
+            for minute, kind in ((start, "attempt"), (end, "ended")):
+                stamp = f"2026-01-05T01:0{minute}:00.000Z"
+                store.log_node(leaf, stamp, kind, run.label, run.session_id, None, {"attempt": 1})
+    for args in (("plan", "record"), ("node", "show", "api")):
+        assert "    width 2 of 2 · 50% of agent minutes alone" in person(*args).stdout.splitlines(), args

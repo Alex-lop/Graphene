@@ -8,6 +8,7 @@ import sys
 import pytest
 from test_plan import ALEX, BOT, repo, store  # noqa: F401  (fixtures)
 
+from graphene_map import board as B
 from graphene_map import plan
 from graphene_map import plan_text as T
 from graphene_map.plan import DONE, DROPPED, OPEN, PROPOSED, Refused
@@ -269,6 +270,18 @@ class store_ctx:
         return False
 
 
+def test_a_proposal_that_uses_a_dropped_id_again_has_its_board_follow_the_new_one(store):
+    """A re-ask's planner sees the tree it replaces, and writes its ids again. The new node gets an id of
+    its own: a need on it followed, and the board's about: and then: were refused for naming the old."""
+    T.apply(store, "? greet  [greet]\n    scope: app.py\n    check: true\n", BOT, None)
+    plan.drop(store, "greet", ALEX)
+    again = ('question: hello or hey?  [words]\n    default: hello\n    then: goal greet + "say hello"\n'
+             "    about: greet\n? greet  [greet]\n    scope: app.py\n    check: true\n")
+    new = T.apply(store, again, BOT, None).renamed["greet"]
+    [item] = B.items(store)
+    assert (new, item["about"], item["then"]) == ("greet-2", new, [f'goal {new} + "say hello"'])
+
+
 def test_undo_puts_back_the_persons_last_act_unless_it_moved_on(store, repo):
     shaped(store)
     with plan.undoable(store, ALEX, "node drop docs"):
@@ -487,6 +500,24 @@ def test_two_leaves_that_write_one_path_are_refused_by_the_line_and_an_old_pair_
     text, opened = T.render(store)
     T.apply(store, text.replace("scope: README.md", "scope: README.md, CHANGELOG.md", 1), ALEX, opened)
     assert plan.get(store, "a").scope == ["README.md", "CHANGELOG.md"]
+
+
+def test_every_fault_of_a_proposal_is_said_at_once_until_a_line_cannot_be_read(store):
+    """What the Nemotron planner sends back: the node a refusal is on is set aside and the rest is tried
+    again. Nothing is applied."""
+    text = top("a", "README.md") + top("b", "README.md") + top("c", "")
+    assert T.faults(store, text, BOT) == [
+        "line 1 [a]: a and b both write README.md. A path has one leaf that writes it: give it to one, and "
+        "let the other wait on it",
+        "line 7 [c]: c: a leaf needs a scope (the paths it may touch), e.g. --scope 'src/api/**'; or give it "
+        "children, and it is a sub-goal",
+    ]
+    assert T.faults(store, top("d", "d.py"), BOT) == [] and plan.nodes(store) == []
+    [unread] = T.faults(store, "scope: src/**\n" + text, BOT)
+    assert unread.startswith("line 1: 'scope: src/**' is not under a node")
+    # the copy of [e], set aside, keeps its id: the refusal is said once, and the reading ends before g
+    [twice] = T.faults(store, top("e", "e.py") + top("e", "f.py") + top("g", ""), BOT)
+    assert twice.startswith("line 4: [e] is on line 1 too.")
 
 
 def test_a_word_that_names_nothing_is_ignored_and_a_check_that_moves_is_not_judged(store):

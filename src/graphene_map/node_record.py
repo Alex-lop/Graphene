@@ -93,6 +93,7 @@ class NodeRecord:
     acts: list[Act] = field(default_factory=list)
     bill: dict | None = None  # what its model calls cost, from its usage rows (``bill``)
     attempts: list[dict] = field(default_factory=list)  # what each executor's attempt did (meter.attempts)
+    against: list[str] = field(default_factory=list)  # paths its check ran as at the base (``_against_base``)
 
 
 def node_record(store, root: str | Path, node: P.Node, at: str | None = None) -> NodeRecord:
@@ -133,7 +134,33 @@ def node_record(store, root: str | Path, node: P.Node, at: str | None = None) ->
         _acts(log),
         bill(log),
         meter.attempts(log, scope),
+        _against_base(store, root, node, windows),
     )
+
+
+def _against_base(store, root: str | Path, node: P.Node, windows: list[Window]) -> list[str]:
+    """One line a leaf that writes, after this one, a path this one's check ran: the check saw that
+    path as it was at the base (`wait_on_checks`'s cycle case: the other leaf waits on this one), and
+    the record says so, with the file and the base commit."""
+    base = next((w.base_sha for w in reversed(windows) if w.base_sha), None)
+    if not node.check or not base:
+        return []
+    everything = P.nodes(store)
+    by_id = {n.id: n for n in everything if n.state not in P.GONE}
+    under = P.kids(everything, drawn=True)
+    others = [n for n in by_id.values() if n.id != node.id and not under.get(n.id) and not n.aside]
+    try:
+        named = P.check_paths(node.check, sorted(P.tracked(root)), others)
+    except (P.Refused, OSError):
+        return []
+    out = []
+    for other in others:
+        hit = P.check_runs(node, other, named)
+        if hit and P._waits(by_id, under, other.id, {node.id}):
+            verb = "rewrote" if other.state == P.DONE else "writes"
+            out.append(f"against base: its check ran {P._few(hit)} as at {base[:7]}; {other.id} {verb} "
+                       f"{'it' if len(hit) == 1 else 'them'} after")  # fmt: skip
+    return out
 
 
 def _has(root: str | Path, sha: str) -> bool:
@@ -587,13 +614,17 @@ def _refusals(log: list[dict]) -> Refusals:
 def _acts(log: list[dict]) -> list[Act]:
     """What was decided about the node, with the words that came with the decision."""
     out: list[Act] = []
+    landed = False
     for entry in log:
         kind, detail = entry["kind"], entry["detail"]
+        landed = landed or kind == "landed"
         if kind not in ACTS:
             continue
         if kind == "edited":
             changed = detail.get("changed", {})
             said = "; ".join(f"{f}: {a!r} -> {b!r}" for f, (a, b) in changed.items())
+            if detail.get("reopened"):  # the person's r: the owner reopened for it
+                said = f"reopened {', '.join(detail['reopened'])} for it" + (f"; {said}" if said else "")
             said = f"{said} (revision {detail.get('rev')})"
         elif kind == "overruled":
             said = str(detail.get("override", ""))
@@ -602,6 +633,8 @@ def _acts(log: list[dict]) -> list[Act]:
             said += "" if detail.get("check_passed", True) else " (and its check had failed)"
         else:
             said = str(detail.get("why") or detail.get("note") or "")
+        if kind == "reopened" and landed:
+            said += " (reopened after landing; the fix is a new commit)"
         out.append(Act(entry["timestamp"], kind, entry["actor"], said))
     return out
 
@@ -622,6 +655,7 @@ def render(record: NodeRecord) -> list[str]:
     ]
     lines += _window_lines(record)
     lines += _coverage_lines(record.coverage, record.refusals.last_check)
+    lines += [f"    {line}" for line in record.against]
     lines += _refusal_lines(record.refusals)
     lines += _attempt_lines(record)
     lines += bill_line(record.bill)
@@ -858,4 +892,6 @@ def rolled_up(store, root: str | Path, leaves: list[P.Node], at: str | None = No
         total["models"] = sorted({m for b in bills for m in b["models"]})
         total["endpoint"] = _whose(bills)
         lines += bill_line(total, "    ")
+    if ran := meter.width([e for n in held for e in store.node_log(n.id)], at and datetime.fromisoformat(at)):
+        lines.append(f"    width {ran['most']} of {ran['lanes']} · {ran['alone']:.0%} of agent minutes alone")
     return lines

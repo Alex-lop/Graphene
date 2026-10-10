@@ -1,7 +1,7 @@
 # How Graphene works
 
 Graphene keeps a plan that you and your coding agents share, holds the agents to it, and keeps a record of each piece.
-This is the reference to read after the README: every part, in short sentences, and where each one stops.
+This is the reference to read after the README.
 
 ## The plan
 
@@ -19,7 +19,7 @@ A node with children is a **sub-goal**: it needs only a title, and nobody takes 
 - an **owner**: any agent, or a person's name; and whether a person must **sign it off**.
 
 A leaf waits on what it needs and on what every node above it needs. A cycle is refused. Two leaves never write one
-path, except by an offer or answer you take. A check that runs another leaf's file waits on that leaf, and the plan
+path, except by an offer you take. A check that runs another leaf's file waits on that leaf, and the plan
 says so; a directory names every file under it. A check that runs a file only a later leaf makes is refused. When
 the last leaf under a sub-goal is done, the sub-goal's own check runs, if it has one, and it is done too.
 
@@ -100,12 +100,12 @@ Nothing reads your words to decide this.
 prints a tree in the plan's text. Graphene adds it as proposals. `graphene node split ID` asks it to cut a leaf;
 `--about ID` asks about one.
 
-The planner's prompt (`ask.RULES`, and the Nemotron planner's system prompt, version 5) tells it to read the
+The planner's prompt (`ask.RULES`, and the Nemotron planner's system prompt, version 6) tells it to read the
 repository first, ask only what the code cannot settle, and put up at most three items, each a question or a risk. An
 assumption it is sure of goes in the goal of the leaf it bears on.
 
-The Nemotron planner answers in a strict JSON schema. A refused answer goes back once, with Graphene's words; the
-second is final. The Claude Code planner's stream says what it cost.
+The Nemotron planner answers in a strict JSON schema. Graphene repairs what needs no judgement; other faults go
+back together, at most twice. The Claude Code planner's stream says what it cost.
 
 How many leaves it is asked for follows the repository's size: 1 to 3 under 2,000 lines, up to 6 under 20,000, up to
 10 past that. The `size` setting makes that finer or coarser.
@@ -116,21 +116,29 @@ How many leaves it is asked for follows the repository's size: 1 to 3 under 2,00
 
 1. cuts a worktree, `.graphene/worktrees/<id>` on branch `graphene/<id>`, from where your checkout stands;
 2. starts the executor there, with the leaf's contract and `GRAPHENE_NODE` set;
-3. when the executor ends, looks at the leaf, not the exit code. If the leaf is not done, Graphene runs `done`
-   itself. Refused, the executor gets the refusal and tries again, up to three attempts;
+3. when the executor ends, looks at the leaf, not the exit code. If it is not done, Graphene runs `done` itself;
+   refused, the executor tries again, up to three attempts;
 4. commits the leaf's paths on its branch and merges it `--no-ff` into your checkout, with the leaf's why in the
    message.
+
+First, each check runs once at the base: one that passes there proves nothing, and the run says so
+(`--no-precheck` skips it).
 
 **Done** is the gate. Graphene asks git what changed since the leaf started. A path outside the scope is refused. Then
 it runs the check in a fresh worktree of the leaf's state, so nothing the check writes lands in yours. If nothing in
 the scope changed, it is not done. Otherwise the leaf is done, or in review.
 
 A leaf that comes back says why, and offers the fix: `w` widens its scope, `b` adds a sibling leaf for the paths it
-needed. Two leaves whose scopes overlap never run at once. A leaf waits until what it needs has landed. If git cannot
+needed, `r` reopens the done leaf it found wrong, and waits on it. Two leaves whose scopes overlap
+never run at once. A leaf waits until what it needs has landed. If git cannot
 merge, the leaf stops in review with its branch named.
 
 Ctrl-C stops the executors and hands back every leaf that had not passed. `graphene run --here` runs one leaf in your own
 checkout and commits nothing.
+
+**What the scopes buy and cost.** A path has one writer. A check runs only what its leaf owns or what exists at the
+base. That is the contract. It caps the width. How the repository's files split decides how many leaves run at once.
+The typical shape is a few leaves side by side, then a chain.
 
 ## The executors
 
@@ -168,7 +176,8 @@ Claude Code's final report settles the dollars to what it says it cost. A Codex 
   counted by your keys: what you did, not what you read.
 
 **The bill line**: `graphene run` ends with one line, for every executor:
-`run: 3 done · agents 41 min, $2.8700 at list price · you 4 acts, 2 min`. With no meter, the dollars say "no meter".
+`run: 3 done · agents 41 min, $2.8700 at list price · width 2 of 3 · you 4 acts, 2 min`. `width 2 of 3`: three leaves
+ran, at most two at once. With no meter, the dollars say "no meter".
 
 **`graphene node show`** lists each attempt: executor and model, time, turns, tokens, dollars, exit, then what it
 read, edited and ran, what was refused, and what it said last.
@@ -180,8 +189,8 @@ only the hooks' record, and the meter says nothing about it.
 
 ## Where each mechanism ends
 
-- A script that opens files itself is not seen by the hooks. Git catches it at `done`.
-- Writes through an MCP server are not seen by the hooks. Git catches them at `done`, but only while a leaf is held.
+- A script that opens files itself, or a write through an MCP server, is not seen by the hooks. Git catches both at
+  `done`, but only while a leaf is held.
 - A hook that crashes or times out lets the call through. That is the vendor's rule.
 - "Only a person" rests on the environment. An agent that unsets its CLI's variables passes for you.
 - The store is a file. A script that writes it directly is neither stopped nor noticed.
@@ -231,23 +240,18 @@ reads no transcript.
 
 ## FAQ
 
-**Isn't this just a plan in a markdown file, or a todo list?** A plan in prose is read once. A todo list is flat: it
-does not say why an item is there, what it may touch, or what proves it finished. Here every leaf hangs from the goal
-it serves, names its files and its check, and says what it waits on. The executors are held to all of it.
+**Isn't this just a plan in a markdown file, or a todo list?** A todo list is flat: it does not say why an item is
+there, what it may touch, or what proves it finished. Here every leaf hangs from the goal it serves, names its files
+and its check, and says what it waits on, and the executors are held to it.
 
 **Isn't a tree overkill for a one-line fix?** Ask for "fix the typo in the header" and the agent proposes one leaf:
-one row in `graphene watch`, and `y` takes it. Under auto it is yours at once. `P` turns plan first off if you would
-rather it just act.
+one row in `graphene watch`, and `y` takes it. Under auto it is yours at once. `P` turns plan first off.
 
-**What doesn't it catch?** The hooks that stop a write before it happens are Claude Code's; Codex or any other
-command is held at `done`, by the check and git. A script that opens files itself, or a write through an MCP server,
-is caught at `done`, and only while a leaf is held. "Only a person" rests on the environment. Every limit is listed
-under "Where each mechanism ends".
+**What doesn't it catch?** Every limit is listed under "Where each mechanism ends".
 
 ## The rest
 
 `graphene --help` lists nine commands. These work too, and `--help` after any of them says more.
-Agents call some of them, such as `plan propose` and `node start`.
 
 - `graphene plan propose -` adds a tree, written as `graphene plan --text` prints it.
 - `graphene plan goal` sets the plan's goal, or prints it.

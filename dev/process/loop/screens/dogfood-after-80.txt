@@ -1,0 +1,24 @@
+ the plan of …loop
+ the direction: the plan hangs from none of its nodes yet (`graphene direction
+ plan NODE`)
+A leaf that came back on a landed leaf's fault reopens the owner with one key…
+ you          |
+ r-offer          ─▒▒▓███░░▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓✓◆
+ r-told           ─▒▓░▓▓▓▓▓▓▓▓▓▓✓▓▓▓▓◆
+ rows             ─▒▒▒▒▒▒▒▒▓▓▓▓▓▓█▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓✓█◆
+ precheck-c…      ─▒▓▓▓▓▓▓▓▓▓▓▓▓░░░░▓▓▓▓▓▓▓▓▓▓▓▓▓✓▓◆
+ wire                                              ─▒▒██▒░▓▓▓▓▓▓██▓▓▓▓▓▓▓▓▓▓▓●
+              0m         1m          2m          3m         4m          5m
+────────────────────────────────────────────────────────────────────────────────
+ A leaf that came back on a landed leaf's fault reopens the owner with one key
+ (r), and every accepted leaf's check runs once at the base commit before a
+ run starts, in core, with no model.
+ the goal · 4/5 done
+
+ ✓ lane 1: r reopens the owner                         lane-r         done
+ ○ lane 2: red first, in core, with no model           lane-precheck  1/2 done
+ ● wire · claude sonnet-5-5 · attempt 1 · 2m16s · 8 turns · $0.23
+   running graphene node done wire 2>&1 | tail -15 · 3 s ago · 2 files
+ 0 on you · agents 1 · 11m · $1.98 · you 2 acts ~2m · none ready · 4/5 done
+ E edit the plan as text · Tab view · ? help · q quit
+ 5 lanes · 5 min · agents 11 min $1.98 · you 1 act ~1 min

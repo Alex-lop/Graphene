@@ -16,6 +16,10 @@ a 1,328-line service, five traps, three executors at once, and the person away w
 
 ## What is fixed before any run
 
+- **The commit**: the tag `statements-prereg-2`, commit `803f2c2`. The arms run against it, and
+  "this commit" below means it. At the tag the blobs are `make_task.py` `f19c320fa58e`, `accept.py`
+  `300d2934e128`, `quality.py` `c9c82780be6c` and `traps.py` `3adbfbfe7aea`. Added on 9 October,
+  before any run.
 - **The paragraph**: `docs/test/tasks/statements/paragraph.md`, 246 words, blob `ee677895af94`.
   Both arms open with it, byte for byte.
 - **The card**: `intent.md`, blob `f755d3cf168e`. Alex reads it once before run 1 and keeps it
@@ -25,7 +29,8 @@ a 1,328-line service, five traps, three executors at once, and the person away w
   shows any change to it after this commit, and a run on a changed repo is void.
 - **The checks**: `accept.py` (24 checks, blob `7a3676ec6e8c`), `quality.py` (12 held-out inputs,
   `af2fa5df291b`) and `traps.py` (5 traps, `acd78efd127d`). The reference patch passes all 36 with
-  0 traps; the trip-all patch scores 5 (`docs/test/test_statements.py`).
+  0 traps; the trip-all patch scores 5 (`docs/test/test_statements.py`). These three blobs are
+  those of 5 October, superseded by the tag's.
 - **The build**: one graphene wheel for all four runs. newrun.sh prints its path and version, and
   they go in each run's notes.
 - **The executor**: Claude Code, `claude -p` with the flags in `PROVE.md`, the same model in every

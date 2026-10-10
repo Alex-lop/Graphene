@@ -1,0 +1,24 @@
+ the plan of …live/loop/claude-1
+Load the Northwind XML feed with the same `load` command and JSONL output as…
+ you         |                         |
+ zero-rule                              ────▓▓▓▓▓▓▓▓░███▓✓▓▓◆
+ xml-source                                                 ─────▓▓▓▓▓▓▓▓▓▓██●
+             0s              15s             30s             45s
+────────────────────────────────────────────────────────────────────────────────
+ Load the Northwind XML feed with the same `load` command and JSONL output as
+ csv and json, skipping any record priced 0 for every supplier.
+ the goal · 1/2 done
+
+ ✓ Skip zero-priced records for every supplier            zero-price  done
+ ○ Wire in the Northwind XML source                       northwind   0/1 done
+
+
+
+
+
+
+ ● xml-source · claude sonnet-5-5 · attempt 1 · 16s · 4 turns · $0.11
+   editing ingest/xmlfeed.py · 0 s ago · 1 file · 128k in, 64 out
+ 0 on you · agents 1 · <1m · $0.34 · you 2 acts ~2m · none ready · 1/2 done
+ E edit the plan as text · Tab view · ? help · q quit
+ 2 lanes · 1 min · agents <1 min $0.34 · you 2 acts ~2 min

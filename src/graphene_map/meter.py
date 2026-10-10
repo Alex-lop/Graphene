@@ -2,10 +2,11 @@
 
 A `Meter` takes the stream one line at a time (Claude Code's `--output-format stream-json`, Codex's
 `exec --json`) and returns the rows `graphene run` logs on the leaf: `usage` per turn, `did` per tool
-call, `said` per thing the agent says. `attempts`, `going`, `agents` and `you` read those rows back for
-the screens. dev/process/meter/rows.md has the shapes. Standard library only; a line never raises.
+call, `said` per thing the agent says. `attempts`, `going`, `agents`, `width` and `you` read those rows
+back for the screens. dev/process/meter/rows.md has the shapes. Standard library only; a line never raises.
 """
 
+import itertools
 import json
 import os
 import shlex
@@ -247,11 +248,6 @@ class Meter:
         return []
 
 
-def _seconds(start: str, end: str | datetime) -> int:
-    end = end if isinstance(end, datetime) else datetime.fromisoformat(end)
-    return max(0, round((end - datetime.fromisoformat(start)).total_seconds()))
-
-
 def attempts(rows: list[dict], scope: list[str] | None = None, now: datetime | None = None) -> list[dict]:
     """One leaf's attempts, oldest first, from its node_log rows: what each spent, did and said. A row
     without an attempt number (a usage row from before the meter, a denied path) is the attempt's that
@@ -277,8 +273,7 @@ def attempts(rows: list[dict], scope: list[str] | None = None, now: datetime | N
         else:
             a["rows"].append(e)
             a["held"] = a["held"] or (e if e["kind"] in HOLD_ENDS else None)
-    after = [*tries[1:], None] if tries else []  # each attempt, and the one after it
-    return [_attempt(a, nxt, scope, now) for a, nxt in zip(tries, after, strict=True)]
+    return [_attempt(a, nxt, scope, now) for a, nxt in itertools.pairwise([*tries, None])]
 
 
 def going(rows: list[dict], scope: list[str] | None = None, now: datetime | None = None) -> dict | None:
@@ -312,7 +307,7 @@ def _attempt(a: dict, nxt: dict | None, scope: list[str] | None, now: datetime) 
             else e["detail"].get("text") for e in talk]  # fmt: skip
     last = talk[-1] if talk else None
     until = ended or a["held"]
-    end = until["timestamp"] if until else nxt["row"]["timestamp"] if nxt else now
+    end = datetime.fromisoformat((until or nxt["row"])["timestamp"]) if until or nxt else now
     return {
         "attempt": a["row"]["detail"].get("attempt"),
         "executor": executor,
@@ -322,7 +317,8 @@ def _attempt(a: dict, nxt: dict | None, scope: list[str] | None, now: datetime) 
         "model": next((u["model"] for u in reversed(usage) if u.get("model")), None),
         "started": start,
         "log": a["row"]["detail"].get("log"),
-        "seconds": _seconds(start, end),
+        "seconds": max(0, round((end - datetime.fromisoformat(start)).total_seconds())),
+        "until": end,  # its end, or now while it runs: a datetime
         "running": until is None and nxt is None,
         "exit": ended["detail"].get("exit") if ended else None,
         "turns": sum(u.get("calls") or 0 for u in usage),
@@ -361,13 +357,18 @@ def unpriced(rows: list[dict]) -> int:
                for e in usage if e["detail"].get("priced") is False and whose(e) not in settled)  # fmt: skip
 
 
+def by_node(rows) -> dict[str, list[dict]]:
+    """A log's rows by node id ("*" is the plan's own), oldest first."""
+    out: dict[str, list[dict]] = {}
+    for e in rows:
+        out.setdefault(e["node_id"], []).append(e)
+    return out
+
+
 def agents(rows: list[dict], now: datetime) -> dict:
     """The agents' clock over a whole log: attempts running, their seconds summed, the dollars of every
     usage row, and the tokens no list price covers."""
-    leaves: dict[str, list[dict]] = {}
-    for e in rows:
-        leaves.setdefault(e["node_id"], []).append(e)
-    tries = [a for log in leaves.values() for a in attempts(log, now=now)]
+    tries = [a for log in by_node(rows).values() for a in attempts(log, now=now)]
     usage = [e["detail"] for e in rows if e["kind"] == "usage"]
     return {
         "running": sum(a["running"] for a in tries),
@@ -375,6 +376,21 @@ def agents(rows: list[dict], now: datetime) -> dict:
         "dollars": sum(u.get("dollars") or 0 for u in usage),
         "unpriced": unpriced(rows),
     }
+
+
+def width(rows: list[dict], now: datetime | None = None) -> dict | None:
+    """How wide a whole log ran. ``most``: the most leaves with an attempt running at once. ``lanes``: the
+    leaves that made one. ``alone``: the share of agent seconds with one running alone. None when none ran.
+    An attempt runs over [start, end), to the millisecond: one ending as another starts is not beside it."""
+    tries = [a for log in by_node(rows).values() for a in attempts(log, now=now)]
+    spans = [(datetime.fromisoformat(a["started"]).timestamp(), a["until"].timestamp()) for a in tries]
+    points = sorted({x for span in spans for x in span})
+    # ponytail: each stretch between two moments counts every attempt, O(n²) in attempts; fine for a night
+    stretches = [(q - p, sum(s <= p < e for s, e in spans)) for p, q in itertools.pairwise(points)]
+    held = sum(d * n for d, n in stretches)
+    alone = sum(d for d, n in stretches if n == 1) / held if held else 1.0
+    lanes = len({e["node_id"] for e in rows if e["kind"] == "attempt"})
+    return {"most": max([1, *(n for _, n in stretches)]), "lanes": lanes, "alone": alone} if tries else None
 
 
 def acts(rows: list[dict], person: str | None) -> list[str]:

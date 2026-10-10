@@ -342,6 +342,26 @@ def test_the_replay_at_80x24_says_so_shows_a_record_and_refuses_what_would_run(t
     assert seen["help"] == "Help"
 
 
+def test_a_sub_goals_record_mid_replay_says_its_width_at_the_replays_clock(tmp_path, monkeypatch):
+    """Eight changes in, greet and farewell both run. The record of `friendly` measures them up to the
+    replay's clock, as the time view does: 37% of agent minutes alone, not days of the two at once."""
+    monkeypatch.setattr(demo, "LONG", 0.01)
+    head, lines = demo.load(demo.SHIPPED)
+    app = demo.Replay(demo.repository(tmp_path, head), head, lines[:8])
+
+    async def go():
+        async with app.run_test(size=(120, 40)) as pilot:
+            for _ in range(200):
+                if app.next == len(app.lines):
+                    break
+                await pilot.pause(0.05)
+            await pilot.press("/", *"friendly", "enter", "enter")  # search to the sub-goal, then its record
+            await pilot.pause()
+            return " ".join(str(app.query_one("#detail").render()).split())
+
+    assert "width 2 of 2 · 37% of agent minutes alone" in asyncio.run(go())
+
+
 def test_the_replay_ends_with_every_fold_open(tmp_path, monkeypatch):
     """It ended on the finished sub-goal folded to one row, "2 done": the last frame showed almost nothing.
     When the last change is applied every fold opens, as zR opens them, and every leaf is a row."""
