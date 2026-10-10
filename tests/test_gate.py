@@ -76,6 +76,13 @@ def test_without_a_plan_the_hook_refuses_nothing_and_a_new_session_learns_the_te
     assert "A plan is in force here" not in taught
 
 
+def test_a_new_session_is_told_a_check_runs_in_a_fresh_worktree(repo):
+    """Nothing git ignores is where a check runs (no .venv): a check that runs the checkout's own
+    .venv/bin/pytest fails there. A session is told so with the text it proposes in."""
+    taught = told(hook(repo, "SessionStart", source="startup"))
+    assert "A check runs in a fresh worktree of the leaf's files, with your PATH" in taught
+
+
 def test_the_word_ingest_in_a_reason_is_not_running_the_hook(repo):
     """Three hand-backs on 22 September were refused for naming ingest/__init__.py in their reason."""
     holding(repo)

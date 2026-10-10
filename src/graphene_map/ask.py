@@ -79,7 +79,7 @@ risk: what could make a check pass on nothing, or a leaf go wrong  [short-id]
 - A leaf is one piece of work one agent can finish in a sitting. Its scope is every path it may write:
   read the repo to find them, never guess. Its check is a command, run with bash from the repo root,
   that exits 0 only when the leaf is done, and that can pass with what its scope and its needs write.
-  Use the repo's own test runner and files that exist or that the leaf creates.
+  Use the repo's own test runner and files that exist or that the leaf creates. """ + P.CLEAN_TREE + """
 - A leaf whose check needs another leaf's work says so with needs:. Two leaves never share a path.
 - A leaf's check runs only files in its own scope and files already in the repository. A leaf that
   needs a test another leaf writes waits on it with needs:. Two leaves never share a test file: give
