@@ -1976,7 +1976,8 @@ def test_a_run_that_could_start_more_than_one_leaf_asks_first_and_one_leaf_start
     async def asked(app, pilot):
         await pilot.press("R")
         await pilot.pause()
-        assert app.screen.prompt == "run 2 ready, up to 4 at once? y and Enter start them", app.screen.prompt
+        said = "run up to 3 leaves (2 ready, 1 waiting), at most 4 at once? y and Enter start them"
+        assert app.screen.prompt == said, app.screen.prompt
 
     seen, _ = watch(repo, [], before=asked)
     assert seen["screen"] == "Ask" and started == []
@@ -1989,6 +1990,14 @@ def test_a_run_that_could_start_more_than_one_leaf_asks_first_and_one_leaf_start
     assert started == [["run", "--parallel", "4"]]
     watch(repo, ["j", "j", "r"])  # ids: one ready leaf
     assert started[-1] == ["run", "--parallel", "4", "--node", "ids"]
+    # api: one ready leaf, and docs waiting on it, which the run starts once ids lands: it asks
+    seen, _ = watch(repo, ["j", "r"])
+    assert seen["screen"] == "Ask" and len(started) == 2
+    with Store.open(repo) as store:  # and a leaf that came back, which `run --node api` starts again
+        plan.start(store, "ids", SESSION, repo)
+        plan.release(store, "ids", SESSION, "it needs more")
+    seen, _ = watch(repo, ["j", "r"])
+    assert seen["screen"] == "Ask" and len(started) == 2
 
 
 def test_the_helps_first_line_names_the_mark_of_a_check_that_proves_nothing(repo):

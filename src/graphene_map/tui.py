@@ -1857,16 +1857,21 @@ class Watch(App):
 
     def action_run(self, here: bool) -> None:
         """R, and r on the goal: every ready leaf; r on a node: the ready leaves under it. A run that could
-        start more than one leaf (each an executor that spends) asks first; one ready leaf starts at once."""
+        start more than one leaf (each an executor that spends) asks first; one leaf starts at once. It
+        could start a leaf waiting on what it lands, and, named with --node, one that came back."""
         node_id = self.selected() if here else None
         if here and "r" in self.offer_keys():  # a leaf that came back on a landed leaf's fault offers r
             return self.action_offer("r")
         argv = ["run", *shlex.split(RUN_WITH), *(["--node", node_id] if node_id else [])]
         under = {node_id, *(n.id for n in P.below(node_id, self.nodes))} if node_id else self.words
-        ready = sum(self.words.get(i) == "ready" for i in under)
-        if ready <= 1:  # nothing, or one leaf: no question; the run says what it did
+        words = [self.words.get(i) for i in under]
+        kinds = ("ready", "came back", "waiting") if node_id else ("ready", "waiting")
+        could = [(n, w) for w in kinds if (n := words.count(w))]
+        if sum(n for n, _ in could) <= 1:  # nothing, or one leaf: no question; the run says what it did
             return self.background(argv)
-        many = f"run {ready} ready, up to {shlex.split(RUN_WITH)[-1]} at once{self.counts.get('with', '')}"
+        which = ", ".join(f"{n} {w}" for n, w in could)
+        many = (f"run up to {sum(n for n, _ in could)} leaves ({which}), at most {shlex.split(RUN_WITH)[-1]} "
+                f"at once{self.counts.get('with', '')}")  # fmt: skip
 
         def answered(typed: str | None) -> None:
             if (typed or "").lower() in ("y", "yes"):
