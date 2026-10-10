@@ -267,6 +267,7 @@ def test_demo_once_needs_no_key_and_no_network_and_prints_the_banner_and_the_end
         ["✓", "greet", "says", "hello", "greet", "done", "·", "app.py,", "words.py"],
         ["✓", "bye", "says", "goodbye", "farewell", "done", "·", "bye.py"],
     ]
+    assert rest[-1] == demo.NEXT  # it ends with the reader's next step: their own repository
     assert not list((tmp_path / "tmp").iterdir())
 
 
@@ -285,7 +286,7 @@ def test_demo_once_leaves_out_the_plans_next_step_and_nothing_else(tmp_path, mon
     assert hint in watched and banner.startswith("replay · ")
     finished = "2 leaves, 2 done, 0 running · finished"
     ending = {hint: finished, "just now": demo.ENDING}
-    assert replayed == [ending.get(line, line) for line in watched]
+    assert replayed == [*(ending.get(line, line) for line in watched), demo.NEXT]  # then the reader's own
 
 
 def test_the_replay_at_80x24_says_so_shows_a_record_and_refuses_what_would_run(tmp_path, monkeypatch):
