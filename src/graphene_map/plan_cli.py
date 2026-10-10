@@ -1427,9 +1427,10 @@ def register(cli: typer.Typer, root, open_store, fail):
             raise P.Refused(f"{n.id} is {n.state}: {why}")
 
         where, said, span = run(go)
-        # captured, never fd 1: watch runs a command here, its output read back (tui._cli)
-        shown = subprocess.run(["git", "-C", where, "diff", *(["--stat"] if stat else []), *span],
-                               capture_output=True, text=True)  # fmt: skip
+        # captured, never fd 1: watch runs a command here, its output read back (tui._cli); and plain, for
+        # its pane, whatever git's colours (color.ui=always colours a pipe too)
+        argv = ["git", "-C", where, "diff", "--no-color", *(["--stat"] if stat else []), *span]
+        shown = subprocess.run(argv, capture_output=True, text=True)
         if shown.returncode:
             fail(f"git cannot show what {node_id} changed: {shown.stderr.strip()}", 1)
         for line in [*said, shown.stdout.rstrip("\n") or "git shows no difference"]:
