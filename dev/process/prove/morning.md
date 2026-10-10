@@ -89,7 +89,8 @@ Design questions the night wrote up and left, with where they bite:
 - The tag and PyPI are yours: `0.5.0` is in CHANGELOG as "not published yet". PyPI still has 0.2.0 with the map-era
   description.
 - The GitHub repository description is the taskmaster-era sentence.
-- `docs/HACKATHON.md` still says react/vite and quotes 2 October numbers.
+- `docs/HACKATHON.md` still says react/vite and quotes 2 October numbers, and its line 78 that `?` on a node asks the
+  planner: since a9ad438 that is `t`, and `?` is the help (the night left the file to you).
 - Your checkout holds `tests/test_probe_seam.py` (the loop night's stray) untracked, and the `graphene` on your PATH
   is a uv tool built from af3da2c5; your checkout's hooks run that build. After merging, `uv tool install --force
   git+https://github.com/Alex-lop/Graphene` brings it to main.
