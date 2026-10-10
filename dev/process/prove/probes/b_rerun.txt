@@ -1,0 +1,7 @@
+session 45B14AB2-EC9C-45E2-BE88-BA0461ACDCD8
+call 1 exit 0
+{'subtype': 'success', 'is_error': False, 'total_cost_usd': 0.0215313, 'num_turns': 1, 'stop_reason': 'end_turn', 'terminal_reason': 'completed'}
+words: 161
+call 2 exit 0
+{'subtype': 'success', 'is_error': False, 'total_cost_usd': 0.041606199999999996, 'num_turns': 1, 'stop_reason': 'end_turn', 'terminal_reason': 'completed'}
+words: 156
