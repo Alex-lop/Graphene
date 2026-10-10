@@ -463,7 +463,9 @@ def ask(
         paid_for = text if text.strip() else paid_for
         if not text.strip():
             said = [line for line in done.stderr.splitlines() if line.strip()]  # its last word, whole
-            tail = printed[-300:] or (said[-1][:300] if said else "it said nothing")
+            # its last word, unless that is its bill, which the ask says at the end
+            last = said[-1] if said and not (bill and said[-1].startswith("bill: ")) else ""
+            tail = printed[-300:] or (last[:300] or "it said nothing")
             refusal = f"no proposal (exit {done.returncode}): {tail}"
         else:
             heard: list[str] = []  # what the replacement says, said once it has been made
