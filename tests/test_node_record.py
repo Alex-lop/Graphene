@@ -301,6 +301,24 @@ def test_the_check_says_its_last_line_and_that_it_also_passed_at_the_base_before
                                 "the paths")  # fmt: skip
 
 
+def test_a_check_that_failed_after_passing_at_the_base_is_never_said_to_show_nothing(store, repo):
+    """A check that passed at the base and then failed read "failed", then "it also passed at the base
+    commit, before any work: it shows nothing about this change", though its failure is what the work did."""
+    codex, base = Caller("codex:deadbeef", False, None), head(repo)
+    check = "test ! -e src/api/new.py"
+    plan.propose(store, [api_node(check=check)], ALEX, now=T(0))
+    passes = {"rev": 1, "check": check, "base": base, "verdict": "passes", "why": "it exits 0"}
+    store.log_node("n1", T(0, 30), "precheck", "graphene:precheck", None, None, passes)
+    plan.start(store, "n1", codex, repo, now=T(1))
+    (repo / "src/api/new.py").write_text("x = 1\n")
+    with pytest.raises(plan.Refused):
+        plan.finish(store, "n1", codex, now=T(3))
+    lines = NR.render(NR.node_record(store, repo, plan.get(store, "n1"), at=T(9)))
+    assert any(line.startswith(f"    check: `{check}` failed at ") for line in lines), lines
+    assert f"      it passed at the base commit {base[:7]}, before any work" in lines
+    assert not any("shows nothing about this change" in line for line in lines)
+
+
 def test_a_commit_in_the_nodes_first_second_is_inside_its_window(store, repo):
     """The log keeps milliseconds and git keeps whole seconds, so a node started at …:34.160 and a
     commit stamped …:34 cannot be put in order. Comparing them as floats dropped every commit made

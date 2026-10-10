@@ -734,8 +734,10 @@ def _coverage_lines(counts: dict, check: dict | None, at_base: dict | None = Non
         )
         lines += [f"      its last line: {check['gist']}"] if check.get("gist") else []
         if at_base and at_base.get("check") == check["command"] and at_base.get("base"):
-            lines.append(f"      it also passed at the base commit {at_base['base'][:7]}, before any work: "
-                         "it shows nothing about this change")  # fmt: skip
+            passed = check["result"] == "passed"  # failed, the change is what it fails on: no "nothing"
+            nothing = ": it shows nothing about this change" if passed else ""
+            lines.append(f"      it {'also ' * passed}passed at the base commit {at_base['base'][:7]}, "
+                         f"before any work{nothing}")  # fmt: skip
     else:
         lines.append("    check: none has run for this node, so nothing here is verified by one")
     if not k and counts.get("commits_unread"):
