@@ -766,6 +766,12 @@ def _guard_shape(lines, fresh, everything, opened, parent_of, who, faulty=frozen
                     if contract
                     else ""
                 )
+                + (
+                    ". A board item is a line at the left edge with no - or ?, such as question: … [id], "
+                    "with its default:, option: and then: lines indented under it"
+                    if ln.title.startswith(tuple(f"{kind}:" for kind in B.KINDS))
+                    else ""
+                )
             )
         if not who.person and P._owner(ln.owner) not in (P.AGENT, "me", P.person_name()):
             raise P.Refused(
