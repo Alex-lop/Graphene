@@ -96,3 +96,13 @@ account default, as a stranger's would). Estimates: X0 $1.50; X1 $16; X2 $13; X2
 X6 $6; X7 $3; seam re-checks $3. `ledger.md` is updated after every experiment from each session's
 `total_cost_usd` and each repo's `graphene plan record`. Checkpoints: the end of Phase 1 (about $22) and before the
 after arms. Cut order: X2(d); the walks to 2 a build; X2's a-wide row; X4's after arm to one issue.
+
+## Addendum, written after the harness's dry run and before any paid number (16:50Z)
+
+The harness's dry run of X5 on 907a7d0 found a second hole behind the first: under `uv run pytest`, where the
+worktree's own package is imported, the broken leaf still landed, because the clean tree is built from a copy of
+the index that git then trusts (see `before.md`, X5). So X5's expected result changes before the runs: on `$A` the
+broken leaf lands in both venv combinations; on `$B`, with the copied index dated at epoch+1 (one line in
+`_clean_tree`), `uv run pytest` refuses it, and `python3 -m pytest` still lands it while the run names the editable
+install. The decision rule for that line: if X5's `uv run` combination on `$B` lands the broken leaf, the line did
+not fix the hole and the PR says so.
