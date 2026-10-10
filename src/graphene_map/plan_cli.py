@@ -1414,6 +1414,8 @@ def register(cli: typer.Typer, root, open_store, fail):
                 return here, [], [n.base_sha, d["branch"]]
             if kind and P.RUN_TREE not in (n.checkout or ""):  # a session's `done`, auto's ask, `run --here`
                 where, kept = n.checkout or here, d.get("blobs") or {}
+                # ponytail: shown as the checkout is now, not as it was left: finish hashes its blobs without
+                # -w, so git seldom has them; a path changed since is named. Exact once finish writes them
                 now = P._blobs(where, list(kept))  # what it left, against what is there now
                 moved = ", ".join(p for p in kept if now.get(p) != kept[p])
                 said = ["done in your checkout; Graphene committed nothing"]
