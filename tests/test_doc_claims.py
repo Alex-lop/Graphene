@@ -209,12 +209,23 @@ def test_first_lights_403_for_a_made_up_key_names_its_source_and_says_it_is_no_p
 
 def test_the_readme_says_what_init_does_to_claude_code_and_how_to_undo_it():
     """The first-hour readers of 10 October 2026 found 'plan first' 0 times in the README, no uninstall
-    anywhere, and a demo called a recorded run that replays a scripted stand-in."""
+    anywhere, and a demo called a recorded run that replays a scripted stand-in. The commands named are
+    held to the CLI; R's question is held to its keys by test_tui's
+    test_a_run_that_could_start_more_than_one_leaf_asks_first_and_one_leaf_starts_at_once."""
+    from typer.testing import CliRunner
+
+    from graphene_map.cli import build
+
     readme = doc("README.md")
-    said = ("`graphene init --remove`", "`graphene plan first off`", "scripted replay", "it asks first")
+    said = ("`graphene init --remove`", "`graphene plan first off`", "scripted replay",
+            "it asks first when more than one leaf could start")  # fmt: skip
     for phrase in said:
         assert phrase in readme, phrase
     how = doc("docs/HOW_IT_WORKS.md")
     told = ("`graphene init --remove`", "`graphene node diff", "outside Claude Code", "installed editable")
     for phrase in told:
         assert phrase in how, phrase
+    runner = CliRunner()
+    assert "--remove" in runner.invoke(build(), ["init", "--help"], env={"COLUMNS": "200"}).stdout
+    for words in (["node", "diff"], ["plan", "first"]):  # each a command, not only words
+        assert runner.invoke(build(), [*words, "--help"]).exit_code == 0, words
