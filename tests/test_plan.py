@@ -1094,3 +1094,32 @@ def test_a_refusal_lists_the_paths_that_fit_and_counts_the_rest():
     assert what == "x is not done" and do == "  do this"
     assert paths.startswith("  src/module_0/file.py, ") and paths.endswith(" more")
     assert len(paths) <= plan.WIDE + 2
+
+
+def test_a_checks_clean_tree_reads_an_edit_made_in_the_second_the_file_was_written(repo, monkeypatch):
+    """X5 on 907a7d0: under `uv run pytest` the broken leaf landed. The clean tree is built from a copy of the
+    index, dated when it is copied, so git trusts every entry's stat data; an edit of the same size made in
+    the second the file was written out then reads as the committed file, and the check passes on code that
+    is not the leaf's. Dated at epoch+1, every entry is racily clean and its content is read."""
+    import shutil
+    import time as clock
+
+    f = repo / "src/db/schema.py"
+    for _ in range(10):  # the edit must land in the second the commit stamped the file: a boundary retries
+        f.write_text("TABLES = [1]\n")
+        git(repo, "add", "-A")
+        git(repo, "commit", "-qm", "v1", "--allow-empty")
+        stamped = (repo / ".git" / "index").stat().st_mtime
+        f.write_text("TABLES = [2]\n")  # the same size, the same inode
+        if int(stamped) == int(f.stat().st_mtime):
+            break
+    real = shutil.copyfile
+
+    def later(src, dst, *a, **k):  # the run's own `done`, seconds after the executor's edit
+        out = real(src, dst, *a, **k)
+        os.utime(dst, (clock.time() + 10, clock.time() + 10))
+        return out
+
+    monkeypatch.setattr(shutil, "copyfile", later)
+    with plan._clean_tree(repo, [], clock.monotonic()) as tree:
+        assert (tree / "src/db/schema.py").read_text() == "TABLES = [2]\n"
