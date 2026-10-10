@@ -422,6 +422,9 @@ def test_plan_first_is_a_setting_the_person_sees_and_sets(repo):
 def test_init_sets_plan_first_on_and_keeps_an_auto_set_before(repo):
     said = person("init")
     assert said.exit_code == 0 and "plan first: on. Every ask in a session is proposed" in said.stdout
+    # what init did, what it records, how to stop each, and no advice about a file git already leaves out
+    assert "`graphene plan first off`" in said.stdout and "`graphene init --remove`" in said.stdout
+    assert "its prompts" in said.stdout and ".gitignore" not in said.stdout
     assert "plan first: on" in person("plan", "first").stdout
     person("plan", "first", "auto")
     again = person("init")  # a repository on auto stays on auto until the person changes it
