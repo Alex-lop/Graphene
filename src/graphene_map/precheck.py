@@ -2,16 +2,18 @@
 
 A check tells a leaf is done only if it fails now and passes after the work. `run` runs each distinct
 check of the open leaves once, in a clean worktree as `node done` runs it, and writes a `precheck` row
-a leaf: "passes" (it proves nothing), "outside" (it fails on a path no scope of the leaf covers), or
-"red", the red a check should have. A proposed leaf's check was written by a planner and is never run
-here (the Nemotron extra runs it in a sandbox fork). Output and why are hidden by demo.hider (the key,
-anything shaped like a key, the repository's path) and a URL's user and password.
+a leaf: "passes" (it proves nothing), "outside" (it fails on a path no scope of the leaf covers),
+"environment" (what it runs is not here: `_probe`), "landed" (a reopened leaf's check, which passed when
+it landed), or "red", the red a check should have. A proposed leaf's check was written by a planner and
+is never run here (the Nemotron extra runs it in a sandbox fork). Output and why are hidden by demo.hider
+(the key, anything shaped like a key, the repository's path) and a URL's user and password.
 """
 
 from __future__ import annotations
 
 import os
 import re
+import shlex
 import subprocess
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -26,10 +28,47 @@ _CONTROL = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\
 _USER = re.compile(r"(//)[^/@\s]+@")  # a URL's user and password (a proxy's): never stored or said
 
 
+CANNOT = "cannot run here: "  # what `_here` says, with the shell's 127, of a check `_probe` cannot run
+LANDED = "it passed this check when it landed; reopened, it passes until the check says what the note asks"
+# What a python3 has installed editable from the repository (argv[1]): a distribution whose PEP 610
+# direct_url.json says so (uv's and pip's editable installs write one), else a .pth file on its sys.path
+# with a line under it. It prints the first one's name, or nothing.
+EDITABLE = """
+import glob, json, os, sys, urllib.parse
+from importlib import metadata
+
+root = os.path.realpath(sys.argv[1])
+
+
+def under(path):
+    path = os.path.realpath(path)
+    return path == root or path.startswith(root + os.sep)
+
+
+hits = []
+for dist in metadata.distributions():
+    try:
+        said = json.loads(dist.read_text("direct_url.json") or "{}")
+    except ValueError:
+        continue
+    url = said.get("url") or ""
+    if (said.get("dir_info") or {}).get("editable") and url.startswith("file:"):
+        hits += [dist.metadata["Name"]] * under(urllib.parse.unquote(urllib.parse.urlparse(url).path))
+for where in filter(os.path.isdir, sys.path):
+    for pth in sorted(glob.glob(os.path.join(glob.escape(where), "*.pth"))):
+        lines = [line.strip() for line in open(pth, errors="replace")]
+        if any(ln and not ln.startswith(("#", "import")) and under(os.path.join(where, ln)) for ln in lines):
+            hits.append(os.path.basename(pth))
+print(hits[0] if hits else "")
+"""
+
+
 class Rows(list):
-    """The (node, detail) rows of a run, and the wall time it took."""
+    """The (node, detail) rows of a run, the wall time it took, and what the python3 a check finds has
+    installed editable from the repository (`_editable`)."""
 
     seconds = 0.0
+    editable = None
 
 
 def state(root: Path, committed: bool = False) -> tuple[str | None, str | None]:
@@ -70,17 +109,58 @@ def current(store, node: P.Node, base: str | None, tree: str | None) -> dict | N
 
 
 def _here(command: str, root: Path, committed: bool = False) -> tuple[int | None, str]:
-    """An accepted check, run as `node done` runs it: in a clean worktree, without the key."""
+    """An accepted check, run as `node done` runs it: in a clean worktree, without the key. What it runs
+    is asked for first (`_probe`): missing, the check is not run, and exits 127 saying CANNOT and why. Not
+    None: the Nemotron extra's precheck shares this, and a None there is a not-run, run again every time."""
     began = time.monotonic()
     env = P.check_env()
     try:
         with P._clean_tree(root, (), began, committed) as tree:
+            if missing := _probe(command, tree, env, began):
+                return 127, CANNOT + missing  # the shell's exit for what it cannot find
             code, out, err = P._ended(command, tree, env, began)
     except subprocess.TimeoutExpired:
         return None, f"timed out after {P.CHECK_TIMEOUT:g} s"
     except (P.Refused, OSError) as no:
         return None, f"could not be run: {no}"
     return code, out + err
+
+
+def _probe(command: str, tree: Path, env: dict, began: float) -> str | None:
+    """What this environment lacks to run the check, in the probe's own last line, or None: its first
+    program on the PATH (`command -v`), and for `python3 -m X` the package X (`import X`), asked in the
+    check's own worktree. A program by a path in the repository (a script the leaf writes) or the shell's
+    own syntax is not asked about, and neither is a module under the package: a leaf's new test is its red."""
+    try:
+        words = shlex.split(command)
+    except ValueError:
+        return None
+    first = next((w for w in words if "=" not in w), "")
+    if not re.fullmatch(r"/[\w./+-]*|[\w.+-]+", first):
+        return None
+    probes, rest = [f"command -v {shlex.quote(first)}"], words[words.index(first) + 1 :]
+    if re.fullmatch(r"python[\d.]*", Path(first).name) and rest[:1] == ["-m"] and rest[1:]:
+        # ponytail: a package the leaf itself makes reads as missing here; ask the scopes, as the
+        # Nemotron extra's verdict does, if that shows up
+        probes.append(f"{shlex.quote(first)} -c {shlex.quote('import ' + rest[1].split('.')[0])}")
+    for probe in probes:
+        code, out, err = P._ended(probe, tree, env, began)
+        if code:
+            said = [line.strip() for line in (out + err).splitlines() if line.strip()]
+            return said[-1].removeprefix("ModuleNotFoundError: ") if said else f"{first}: not found"
+    return None
+
+
+def _editable(root: Path) -> str | None:
+    """What the python3 on the check's PATH has installed editable from this repository, or None: a check
+    that imports it tests the person's checkout, whatever the leaf's worktree holds. A warning, asked once
+    a red first, and only when a check is run with python or pytest."""
+    try:
+        said = subprocess.run(["python3", "-c", EDITABLE, str(root)], env=P.check_env(), capture_output=True,
+                              text=True, timeout=30)  # fmt: skip
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return said.stdout.strip() or None
 
 
 def _hider(root: Path):
@@ -146,6 +226,8 @@ def judge(node: P.Node, code: int | None, text: str, files: list[str],
     is (a path named like a key is a path still), and ``hide`` takes from it, whole, the gist it keeps."""
     if code == 0:
         return "passes", "it exits 0 before any work is done", []
+    if code == 127 and text.startswith(CANNOT):  # what it runs is not here (`_probe`): it was not run
+        return "environment", _gist(hide(text.removeprefix(CANNOT))), []
     if code is None:  # it timed out or could not be run: no verdict (`current` says which is run again)
         return "not-run", _gist(hide(text)), []
     paths = _outside(node, text, files, live)
@@ -191,6 +273,8 @@ def run(store, root: Path, ids=(), again: bool = False, say=None, committed: boo
         pool.shutdown(wait=True, cancel_futures=True)
         raise
     pool.shutdown(wait=True)
+    if any(re.match(r"(python3?|pytest)\b", c) for c in commands):
+        out.editable = _editable(root)
     hide = _hider(store.path.parent.parent) if ran else str  # the repo's path: every clean tree is under it
     files, live = sorted(P.tracked(root)), P._live(everything)
     for node in todo:
@@ -199,9 +283,16 @@ def run(store, root: Path, ids=(), again: bool = False, say=None, committed: boo
             continue
         code, text = ran[node.check]
         found, why, paths = judge(node, code, text, files, live, hide)  # why and paths are hidden below
+        ended = store.node_log(node.id, ("finished", "check_passed")) if found == "passes" else []
+        if any(e["kind"] == "finished" for e in ended) and any(
+            e["kind"] == "check_passed" and e["detail"].get("command") == node.check for e in ended
+        ):  # reopened: it passes until its check is made to say what the note asks
+            found, why = "landed", LANDED
         detail = {"rev": node.rev, "check": node.check, "base": base, "tree": tree, "verdict": found,
                   "why": _plain(hide(why)), "paths": [_plain(hide(p)) for p in paths], "exit": code,
                   "where": "here", "by": None}  # fmt: skip
+        if found not in ("passes", "landed"):  # what it said last, for the leaf's record
+            detail["gist"] = _plain(_gist(hide(text.removeprefix(CANNOT))))
         store.log_node(node.id, P._now(), "precheck", "graphene:precheck", None, None, detail)
         out.append((node, detail))
     out.seconds = time.monotonic() - began
@@ -209,19 +300,34 @@ def run(store, root: Path, ids=(), again: bool = False, say=None, committed: boo
 
 
 def said(rows) -> list[str]:
-    """The lines a run prints: none for a red, a line each for a check that passes, names a path outside
-    its scope, or did not run to its end, then the header."""
+    """The lines a run prints: none for a red, one for the leaves whose one check passes, one a leaf for a
+    check that names a path outside its scope, cannot run here, passed when it landed or did not run to its
+    end, then the header, with the distinct commands when there are fewer of them than checks."""
     base = next((d["base"] for _, d in rows if d.get("base")), None)
     if not base:
         return []
     at, lines = base[:7], []
     for node, d in rows:
         if d["verdict"] == "passes":
-            lines.append(f"{node.id}: its check passes at the base commit {at}: it proves nothing; "
-                         f"`graphene node set {node.id} --check '…'` or e in watch")  # fmt: skip
+            ids = [n.id for n, e in rows if e["verdict"] == "passes" and e["check"] == d["check"]]
+            if ids[0] == node.id:  # one line a command, said at its first leaf
+                its, one = ("its", node.id) if len(ids) == 1 else ("their", "<id>")
+                lines.append(f"{', '.join(ids)}: {its} check passes at the base commit {at}: it proves "
+                             f"nothing; `graphene node set {one} --check '…'` or e in watch")  # fmt: skip
         elif d["verdict"] == "outside":
             lines.append(f"{node.id}: its check names {', '.join(d['paths'])}, outside its scope, at {at}")
+        elif d["verdict"] == "environment":
+            lines.append(f"{node.id}: its check cannot run here: {d['why']}. Checks run in a clean worktree "
+                         "with your PATH and nothing git ignores; a runner that makes its own environment "
+                         "(`uv run pytest …`, `npm ci && npm test`) brings pytest with it")  # fmt: skip
+        elif d["verdict"] == "landed":
+            lines.append(f"{node.id}: {d['why']}")
         elif d["verdict"] == "not-run":
             lines.append(f"{node.id}: its check at {at} {d['why']}")
-    seconds = getattr(rows, "seconds", 0.0)
+    if getattr(rows, "editable", None):
+        lines.append(f"python3 on your PATH has {rows.editable} installed editable from this repo: a check "
+                     "that imports it tests your checkout, not the leaf's worktree; `uv run pytest …` builds "
+                     "the worktree's own")  # fmt: skip
+    seconds, commands = getattr(rows, "seconds", 0.0), len({d["check"] for _, d in rows})
+    at += f" ({commands} command{'s' * (commands != 1)})" if commands < len(rows) else ""
     return [*lines, f"red first: {len(rows)} check{'s' * (len(rows) != 1)} at {at} in {seconds:.0f} s"]

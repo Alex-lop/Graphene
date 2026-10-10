@@ -47,7 +47,10 @@ FIRST_SAID = {
 
 
 def register(cli: typer.Typer, root, open_store, fail):
-    out = typer.echo
+    held: list[list[str]] = []  # the lines of a person's act, said once it is committed (`write`)
+
+    def out(line: str = "") -> None:
+        (held[-1].append if held else typer.echo)(line)
 
     def checkout() -> Path:
         """The working tree the caller stands in: a worktree is its own checkout, with one shared plan."""
@@ -65,14 +68,23 @@ def register(cli: typer.Typer, root, open_store, fail):
     def write(what: str, operation):
         """A person's act on the plan's shape: kept for `graphene plan undo`. What git tracks is asked
         before the plan's write lock is taken (``tracked``), never under it: a hook waiting on the
-        lock gives up after a quarter of a second, and lets the call through."""
+        lock gives up after a quarter of a second, and lets the call through. What the act says is
+        said once it is committed: a pipe closed under it (`| head -1`) had rolled it back after it
+        said it was made. An act rolled back takes its lines with it."""
         who = P.caller()
 
         def go(store):
             with P.undoable(store, who, what):
                 return operation(store)
 
-        return run(go)
+        held.append([])
+        try:
+            result = run(go)
+        finally:
+            lines = held.pop()
+        for line in lines:
+            typer.echo(line)
+        return result
 
     def tracked() -> list[str]:
         return P.tracked(checkout())
@@ -953,14 +965,17 @@ def register(cli: typer.Typer, root, open_store, fail):
             "--with",
             help="Use this executor, not init's: claude, codex, nemotron or a command.",
         ),
-        attempts: int = typer.Option(3, "--attempts", help="How often a refused executor is sent back."),
+        attempts: int = typer.Option(
+            3, "--attempts", min=1, help="How often a refused executor is sent back."
+        ),
         node: list[str] = typer.Option(None, "--node", help="Only this node; repeat it."),
         parallel: int = typer.Option(1, "--parallel", help="How many leaves run at once."),
         here: bool = typer.Option(
             False, "--here", help="Run in your checkout and commit nothing; the checkout is exposed."
         ),
         precheck: bool = typer.Option(
-            True, "--precheck/--no-precheck", help="Skip the checks at the base commit."
+            True, "--precheck/--no-precheck", help="Run each leaf's check at the base commit first; "
+            "--no-precheck skips it."
         ),
     ) -> None:
         """Run every ready leaf in its own worktree, one executor per leaf.
@@ -968,7 +983,8 @@ def register(cli: typer.Typer, root, open_store, fail):
         Graphene runs each leaf's check and merges what passes. A leaf that fails comes back."""
         if os.environ.get("GRAPHENE_NODE") or os.environ.get("GRAPHENE_PLANNER"):
             fail("an executor or a planner does not start runs: through --with a run is any command", 1)
-        from .run import named, run_parallel, run_plan, summary, sweep
+        from . import meter as M
+        from .run import CAP_UNIT, _splits, label, named, run_parallel, run_plan, summary, sweep
 
         r = root()
         with open_store(r) as store:
@@ -1011,22 +1027,43 @@ def register(cli: typer.Typer, root, open_store, fail):
                     out(line)
             logs = r / ".graphene" / "runs"
             since = len(store.node_log())  # what this run did is what the log says after this
+
+            def end(line: str) -> None:  # the run's last line, said, then kept: nobody's act, and no change
+                out(line)
+                store.log_node("*", P._now(), "run", "graphene run", None, None, {"summary": line})
+
             try:  # red first runs in the runner, once its refusals (a lock, a detached HEAD, the cap) pass
                 if here:
                     out("--here: your checkout is exposed. The executor writes in it. Nothing is committed")
                     run_plan(store, checkout(), template, attempts, node or None, out, logs, precheck)
                 else:
+                    _splits(template)  # a --with that cannot be read is refused before anything is said
+                    here_ = checkout()
+                    on = subprocess.run(["git", "symbolic-ref", "--short", "-q", "HEAD"], cwd=here_,
+                                        capture_output=True, text=True).stdout.strip()  # fmt: skip
+                    if on and (at := P.head(here_)):  # on no branch, run_parallel refuses and says why
+                        argv = shlex.split(template)
+                        model, cap = M.model_in(argv), M.option(argv, "--max-budget-usd")
+                        what = label(template) + f" ({model})" * bool(model)
+                        most = f", ${cap} {CAP_UNIT} at most" * bool(cap)
+                        out(f"landing into {on} at {at[:7]}: {what}, up to {max(parallel, 1)} at once{most}; "
+                            "each leaf is committed with --no-verify (your pre-commit and commit-msg hooks "
+                            "skip it) and merged --no-ff; checks run in a clean worktree with your PATH; "
+                            "`graphene watch` in another terminal follows it live")  # fmt: skip
+                        if P.dirty(here_):
+                            out("your uncommitted changes are not in the executors' worktrees: they start "
+                                "from HEAD")  # fmt: skip
                     run_parallel(
-                        lambda: open_store(r), r, checkout(), max(parallel, 1), template,
+                        lambda: open_store(r), r, here_, max(parallel, 1), template,
                         attempts, node or None, out, logs, precheck,
                     )  # fmt: skip
             except P.Refused as no:
                 fail(str(no), 1)
             except KeyboardInterrupt:
-                out(summary(store, since, stopped=True))
+                end(summary(store, since, stopped=True))
                 raise typer.Exit(130) from None
             left = P.uncommitted(store, checkout()) if here else []  # a worktree's leaf committed its own
-            out(summary(store, since) + (f" · the work of {', '.join(left)} is {P.UNCOMMITTED}" * bool(left)))
+            end(summary(store, since) + (f" · the work of {', '.join(left)} is {P.UNCOMMITTED}" * bool(left)))
 
     def planner(
         sentence: str, executor: str | None, about: str | None, split: bool, size: str | None = None

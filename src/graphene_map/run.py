@@ -44,10 +44,13 @@ from .record import seconds as _seconds
 
 # An executor may edit files and run `graphene node …` and `graphene plan …` (its done, its release, a
 # look at the plan), and nothing else unless the person says so with --with. Not `graphene run` or
-# `graphene ask`: through their own --with, either would be any command at all.
+# `graphene ask`: through their own --with, either would be any command at all. None of the person's MCP
+# servers (`--strict-mcp-config`, as the planner), and Claude Code stops it at CAP_USD dollars CAP_UNIT.
+CAP_USD, CAP_UNIT = 2, "an attempt"  # --max-budget-usd counts one invocation, not the resumed session
 DEFAULT_WITH = (
     "claude -p --permission-mode acceptEdits --allowedTools 'Bash(graphene node *)' 'Bash(graphene plan *)' "
     "--output-format stream-json --verbose"  # the stream the meter reads: turns, tokens, tool calls, cost
+    f" --max-budget-usd {CAP_USD} --strict-mcp-config"
 )
 ATTEMPTS = 3
 WORST = 3.0  # dollars the night's ledger holds for a Claude Code or Codex attempt with no --max-budget-usd
@@ -336,8 +339,20 @@ def _let_go(store, node_id: str) -> bool:
     return last is not None and (last["kind"] == "dropped" or bool(last["detail"].get("person")))
 
 
+def graphene_shell(argv: list[str]) -> bool:
+    """Is the executor Claude Code with a shell that runs Graphene alone: every `Bash(…)` it is allowed
+    names graphene, as the default's two do? Then it is told so (``prompt_for``)."""
+    allowed = [a for arg in argv for a in re.findall(r"Bash\(([^)]*)\)", arg)]
+    return bool(allowed) and all(a.split()[:1] == ["graphene"] for a in allowed) and M.kind(argv) == "claude"
+
+
 def prompt_for(
-    node: P.Node, notes: list[str], refusal: str | None, why: list[str] | None = None, decided: list[str] = ()
+    node: P.Node,
+    notes: list[str],
+    refusal: str | None,
+    why: list[str] | None = None,
+    decided: list[str] = (),
+    shell: bool = False,
 ) -> str:
     lines = [
         *notes,
@@ -355,6 +370,9 @@ def prompt_for(
         "do not work around it in your own files: run the release command with --wants naming that file "
         "and a why that names the fault, so the person can reopen that leaf. Do not start any other node.",
     ]
+    if shell:  # ``graphene_shell``: a test runner of its own would be refused; `done` is the one it has
+        lines += ["", "Your shell runs only `graphene node …` and `graphene plan …`: `graphene node done "
+                  f"{node.id}` runs the check and prints why it failed; call it as often as you need."]
     if refusal:
         lines += ["", REFUSED, refusal]
     return "\n".join(lines)
@@ -445,18 +463,14 @@ def run_node(
     proc: subprocess.Popen | None = None
     hold: dict | None = None  # the attempt's on the night's ledger
     paid = 0.0  # what this hold's attempts settled: a resumed Claude Code reports the session's total
+    shell = graphene_shell(shlex.split(template))
     try:
         for attempt in range(1, attempts + 1):
             if stop.event.is_set():  # stopped while the last attempt's check ran: nothing starts again
                 raise KeyboardInterrupt
-            argv = command_for(
-                template,
-                prompt_for(
-                    node, P.notes(store, node.id), refusal, P.trail(store, node), B.decided(store, node)
-                ),
-                session,
-                attempt > 1,
-            )
+            told = prompt_for(node, P.notes(store, node.id), refusal, P.trail(store, node),
+                              B.decided(store, node), shell)  # fmt: skip
+            argv = command_for(template, told, session, attempt > 1)
             # GRAPHENE_EXECUTOR: its own `done` is logged under the name the run's acts are (plan.caller)
             # GRAPHENE_TRY: which attempt this is, told rather than read back from the log, whose row
             # for it is written only once the process is running
@@ -524,7 +538,9 @@ def run_node(
                             "meter": metered, "unread": meter.unread if meter else 0})  # fmt: skip
             if stop.event.is_set():
                 raise KeyboardInterrupt
-            say(f"{node.id} attempt {attempt}: the executor ended (exit {code})")
+            capped = meter is not None and meter.result == "error_max_budget_usd"  # its result's subtype
+            say(f"{node.id} attempt {attempt}: the executor "
+                + ("stopped at its --max-budget-usd" if capped else f"ended (exit {code})"))  # fmt: skip
             current = P.get(store, node.id)
             if current.state in (P.DONE, P.REVIEW):  # it ran `done` itself, and the boundary agreed
                 return current
@@ -554,7 +570,7 @@ def run_node(
         told = "\n".join(ln for ln in refusal.splitlines() if "graphene node release" not in ln)
         crashed = f"; the executor itself exited {code}" if code else ""
         P.release(store, node.id, who, f"{tries}, the last one refused: {told}{crashed}")
-        say(f"{node.id} came back after {tries}")
+        say(f"{node.id} came back after {tries}: `graphene node show {node.id}` says why")
         return None
     except KeyboardInterrupt:
         with _no_interrupt():  # a second Ctrl-C must not leave the leaf running and its executor alive
@@ -576,8 +592,12 @@ def summary(store, since: int, stopped: bool = False) -> str:
     """What a run did, in one line for the person, read from what the plan logged after entry
     ``since``: what it finished, what came back to them, what waits in review, and the two clocks (the
     agents' minutes and dollars, the person's acts and minutes). `graphene watch` shows this line when
-    the run ends, so it is the run's last."""
-    log = store.node_log()[since:]
+    the run ends, so it is the run's last. The person's clock counts what led to the run too: their acts
+    since the last run ended (its kept line) or the plan was archived, else since the plan began."""
+    whole = store.node_log()
+    log = whole[since:]
+    begun = max((k + 1 for k, e in enumerate(whole[:since])
+                 if e["node_id"] == "*" and e["kind"] in ("run", "archived")), default=0)  # fmt: skip
     started = {e["node_id"] for e in log if e["kind"] == "started" and e["actor"].startswith("run:")}
     let_go = {e["node_id"]: e["detail"] for e in log if e["kind"] == "released"}
     ran = [n for n in P.order(P.nodes(store)) if n.id in started]  # in the plan's order, not the race's
@@ -593,7 +613,7 @@ def summary(store, since: int, stopped: bool = False) -> str:
     said += [f"{len(review)} in review ({P._few(review)})"] if review else []
     said += [f"{P._few(handed)} handed back, ready again"] if handed else []
     said += [f"{P._few(freed)} released by you, ready again"] if freed else []
-    cost = clocks(log)
+    cost = clocks(log, M.you(whole[begun:], P.person_name()))
     if stopped:
         return "run stopped: " + (", ".join(said) or "nothing was finished") + cost
     if not ran:
@@ -601,10 +621,12 @@ def summary(store, since: int, stopped: bool = False) -> str:
     return "run: " + (", ".join(said) or "nothing finished") + cost
 
 
-def clocks(log: list[dict]) -> str:
+def clocks(log: list[dict], you: dict | None = None) -> str:
     """The run's two clocks and its width, from its own rows: " · agents 41 min, $2.8700 at list price ·
-    width 2 of 3 · you 4 acts, 2 min". With no usage row, the dollars are "no meter": nothing is invented."""
-    agents, you, ran = M.agents(log, datetime.now(UTC)), M.you(log, P.person_name()), M.width(log)
+    width 2 of 3 · you 4 acts, 2 min". With no usage row, the dollars are "no meter": nothing is invented.
+    ``you``: the person's clock over more rows than the run's own (``summary``)."""
+    agents, ran = M.agents(log, datetime.now(UTC)), M.width(log)
+    you = you or M.you(log, P.person_name())
     took = f"{round(agents['seconds'] / 60)} min" if agents["seconds"] >= 60 else "<1 min"
     spent, n = "no meter", agents["unpriced"]
     if any(e["kind"] == "usage" for e in log):
@@ -740,13 +762,16 @@ def _came_back(store, only: list[str] | None, say: Callable[[str], None]) -> set
 
 def _red_first(store, target: Path, only: list[str] | None, say: Callable[[str], None], committed: bool):
     """Red first (precheck.py), once the run's own refusals have passed: the check of each open leaf it
-    may start (``only``: what --node named, a sub-goal's leaves, a leaf that came back), run at the commit
-    its leaves start from (``committed``: HEAD alone, which a leaf's worktree is cut from). A warning,
-    not a gate: if it breaks, the run goes on."""
+    may start (``only``: what --node named, a sub-goal's leaves, a leaf that came back; else each leaf
+    ready now that did not come back: one that waits on another would be judged before what it needs has
+    landed), run at the commit its leaves start from (``committed``: HEAD alone, which a leaf's worktree
+    is cut from). A warning, not a gate: if it breaks, the run goes on."""
     from . import precheck as pre
 
     ids = [i for i in only or () if (store.node_row(i) or {}).get("state") == P.OPEN]
-    if only and not ids:
+    if not only:
+        ids = [n.id for n in P.ready(P.nodes(store), P.Caller("agent", False)) if not P.came_back(store, n)]
+    if not ids:
         return
     try:
         for line in pre.said(pre.run(store, target, ids, committed=committed)):

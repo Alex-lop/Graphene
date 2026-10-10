@@ -21,6 +21,15 @@ def test_release_sentence_names_wants():
     assert "--wants naming that file" in prompt_for(NODE, [], None)
 
 
+def test_a_shell_of_graphenes_commands_alone_is_said_after_the_notes_and_the_contract():
+    """The executor reached for pytest, which its shell does not run, and never for `done`, which does."""
+    told = prompt_for(NODE, ["first note"], None, shell=True)
+    assert told.startswith("first note\n\nYou are doing one leaf")
+    assert told.index("scope:") < told.index("Your shell runs only `graphene node …` and `graphene plan …`")
+    assert "`graphene node done n1` runs the check and prints why it failed" in told
+    assert "Your shell runs only" not in prompt_for(NODE, ["first note"], None)
+
+
 def test_executor_system_names_release_wants_landed_file():
     for word in ("release", "wants", "landed"):
         assert word in executor.SYSTEM

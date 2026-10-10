@@ -1,6 +1,7 @@
 """`graphene plan` and `graphene node`, end to end: a person shapes, an agent executes, and the
 boundary is where the person's change to the next node takes hold."""
 
+import errno
 import io
 import json
 import os
@@ -11,9 +12,11 @@ import subprocess
 import sys
 
 import pytest
+import typer
 from typer.testing import CliRunner
 
 from graphene_map.cli import build
+from graphene_map.store import Store
 from graphene_map.tui import _cli
 
 runner = CliRunner()
@@ -303,8 +306,62 @@ def test_start_done_signoff_reopen_and_run_name_the_repository(repo):
     assert [a.exit_code for a in acts] == [0] * 5, [a.output for a in acts]
     assert all("(the plan of " in a.stderr for a in acts), [a.stderr for a in acts]
     # a run names it first (it runs for long), and ends with what it did, for the person
-    last = acts[-1].stdout.splitlines()[-1]
-    assert last == "run: 1 came back (l2) · agents <1 min, no meter · width 1 of 1 · you 0 acts, 0 min"
+    last = acts[-1].stdout.splitlines()[-1]  # the bill counts the six acts that led to the run
+    said = r"run: 1 came back \(l2\) · agents <1 min, no meter · width 1 of 1 · you 6 acts, [12] min"
+    assert re.fullmatch(said, last), last  # a minute may turn between the acts
+
+
+def test_a_run_says_first_where_it_lands_with_what_and_that_uncommitted_work_stays_out(repo):
+    """A stranger's first run merged leaves into their branch, unasked, with their hooks skipped, from
+    worktrees that never had their uncommitted files: none of it was said before it happened."""
+    person("node", "add", "leaf two", "--id", "l2", "--scope", "schema.py", "--check", "true")
+    (repo / "notes.txt").write_text("mine, not committed\n")
+    ran = person("run", "--with", "true")
+    assert ran.exit_code == 0, ran.output
+    branch = subprocess.run(["git", "symbolic-ref", "--short", "HEAD"], cwd=repo, capture_output=True,
+                            text=True).stdout.strip()  # fmt: skip
+    lines = ran.stdout.splitlines()
+    [landing] = [line for line in lines if line.startswith("landing into ")]
+    assert landing.startswith(f"landing into {branch} at ") and "--no-verify" in landing, landing
+    assert "your uncommitted changes are not in the executors' worktrees: they start from HEAD" in lines
+    assert lines.index(landing) == 0 and lines[-1].startswith("run: ")  # the summary is still the last
+
+
+def test_a_run_of_no_attempts_is_refused_before_anything_starts(repo):
+    """`--attempts 0` took the leaf, tried nothing, and ended in a traceback with the leaf left running."""
+    person("node", "add", "leaf two", "--id", "l2", "--scope", "schema.py", "--check", "true")
+    ran = person("run", "--attempts", "0", "--with", "true")
+    assert ran.exit_code == 2 and "--attempts" in ran.stderr, ran.output
+    assert [n["state"] for n in json.loads(person("plan", "--json").stdout)["nodes"]] == ["open"]
+
+
+def test_a_runs_last_line_is_kept_as_a_row_of_the_plan(repo):
+    """What a run did was said once, on a terminal that may be gone: the plan kept no line of it."""
+    person("node", "add", "leaf two", "--id", "l2", "--scope", "schema.py", "--check", "true")
+    ran = person("run", "--with", "true")
+    with Store.open(repo) as store:
+        [row] = store.node_log("*", ("run",))
+    assert row["actor"] == "graphene run" and row["detail"] == {"summary": ran.stdout.splitlines()[-1]}
+
+
+def test_an_accept_whose_output_pipe_closes_is_made_all_the_same(repo, monkeypatch):
+    """`graphene plan accept | head -1`: the pipe closed after the first line, the next line raised inside
+    the act's transaction, and the accept it had just announced was rolled back."""
+    two = [{"title": t, "scope": [f"{t}.py"], "check": "true"} for t in ("api", "schema")]
+    assert agent("plan", "propose", "-", input=json.dumps({"nodes": two})).exit_code == 0
+    echo, calls = typer.echo, []
+
+    def closed(*args, **kwargs):
+        calls.append(args)
+        if len(calls) > 1:
+            raise BrokenPipeError(errno.EPIPE, "Broken pipe")
+        return echo(*args, **kwargs)
+
+    monkeypatch.setattr(typer, "echo", closed)
+    person("plan", "accept")
+    monkeypatch.setattr(typer, "echo", echo)
+    states = [n["state"] for n in json.loads(person("plan", "--json").stdout)["nodes"]]
+    assert len(calls) > 1 and states == ["open", "open"]
 
 
 # -- the recheck of the closing review: its regression tests --------------------
@@ -349,7 +406,7 @@ def test_a_finished_plan_says_when_its_leaves_work_is_not_committed_and_what_com
     assert ran.exit_code == 0, ran.output
     assert "--here: your checkout is exposed" in ran.stdout
     assert ran.stdout.splitlines()[-1] == (
-        "run: 1 done · agents <1 min, no meter · width 1 of 1 · you 0 acts, 0 min · the work of ids is not "
+        "run: 1 done · agents <1 min, no meter · width 1 of 1 · you 1 act, 1 min · the work of ids is not "
         "committed (`git status`): `graphene run --here` commits "
         "nothing, `graphene run` and watch's R commit and merge each leaf"
     )
