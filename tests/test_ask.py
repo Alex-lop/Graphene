@@ -5,6 +5,7 @@ would, so every ending is on purpose."""
 
 import json
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -390,7 +391,11 @@ def test_a_claude_code_planner_is_held_on_the_night_and_its_stream_says_what_it_
     with Store.open(repo) as store:
         said = []
         added = A.ask(store, repo, "ids", claude_planner(tmp_path, (bad, 0.25), (good, 0.4)), say=said.append)
-        assert added == ["proposed ids: users returns ids"] and plan.get(store, "ids").state == PROPOSED
+        assert added == [  # what both tries cost, after the proposal lines
+            "proposed ids: users returns ids",
+            "the planner (claude sonnet-5-5): 2 calls, $0.40 at list price",
+        ]
+        assert plan.get(store, "ids").state == PROPOSED
         assert said[-2:] == ["the planner says:", "  I read api.py."]  # the result's text, not the stream
         bills = [(e["actor"], e["detail"]) for e in store.node_log("*", ("usage",))]
     assert [(who, bill["dollars"]) for who, bill in bills] == [
@@ -413,6 +418,34 @@ def test_a_claude_code_planner_that_stopped_says_why(repo, tmp_path):
     with Store.open(repo) as store, pytest.raises(Refused, match="each was refused as above"):
         A.ask(store, repo, "ids", planner, say=said.append)
     assert "no proposal (exit 0): error_max_budget_usd" in said  # why it stopped, not "it said nothing"
+
+
+def test_a_lost_ask_keeps_the_proposal_it_paid_for_and_says_what_it_cost(repo, tmp_path):
+    """Two answers refused, and the ask ended with nothing: what the person paid for was gone. The
+    proposal is kept (the block alone, which `plan propose` reads), and the ask's last line says what
+    it cost, after the refusal's own first line."""
+    bad = "I read api.py.\n```plan\n- ids  [ids]\n    scope: api.py\n    signoff: perhaps\n```"
+    said = person("ask", "ids", "--with", claude_planner(tmp_path, (bad, 0.25), (bad, 0.5)))
+    assert said.exit_code == 1, said.output
+    kept = re.search(r"its proposal is kept in (\S+/runs/ask-\w+\.txt): mend it, then "
+                     r"`graphene plan propose - < \1`", said.stderr)  # fmt: skip
+    bill = "the planner (claude sonnet-5-5): 2 calls, $0.50 at list price"
+    order = f"(each was refused as above)\n{bill}\nits proposal is kept in"
+    assert kept and order in said.stderr, said.stderr
+    assert (repo / kept[1]).read_text() == "- ids  [ids]\n    scope: api.py\n    signoff: perhaps\n"
+    assert said.output.splitlines()[-1].startswith("its proposal is kept in")  # a talk's bottom line in watch
+
+
+def test_a_lost_asks_kept_proposal_is_named_from_where_the_person_stands(repo, tmp_path, monkeypatch):
+    """`graphene ask` runs from any directory of the checkout; the next step it prints must run there."""
+    bad = "```plan\n- ids  [ids]\n    scope: api.py\n    signoff: perhaps\n```"
+    (repo / "src").mkdir(exist_ok=True)
+    monkeypatch.chdir(repo / "src")
+    said = person("ask", "ids", "--with", claude_planner(tmp_path, (bad, 0.25), (bad, 0.5)))
+    assert said.exit_code == 1, said.output
+    kept = re.search(r"its proposal is kept in (\S+): mend it", said.stderr)
+    assert kept and kept[1].startswith("../"), said.stderr
+    assert (repo / "src" / kept[1]).read_text().startswith("- ids  [ids]")
 
 
 def test_a_planner_the_night_refuses_is_never_started(repo, tmp_path, monkeypatch):
