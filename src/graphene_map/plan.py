@@ -572,7 +572,8 @@ def _hash(checkout: str | Path, path: str) -> str | None:
 
 def dirty(checkout: str | Path) -> dict[str, str | None]:
     """Every path git calls modified, staged, deleted or untracked right now, with its content hash,
-    so that a later look can tell "was already like that" from "changed since"."""
+    so that a later look can tell "was already like that" from "changed since". Python's bytecode is
+    nobody's change, in a repo that does not ignore it: never offered, counted or committed."""
     out = _git(checkout, "status", "--porcelain", "-z", "--untracked-files=all")
     paths, fields = [], out.split("\0")
     i = 0
@@ -586,7 +587,9 @@ def dirty(checkout: str | Path) -> dict[str, str | None]:
             if i < len(fields) and fields[i]:
                 paths.append(fields[i])
             i += 1
-    return {p: _hash(checkout, p) for p in paths if not _ours(p)}
+    # ponytail: Python's cache only; ask git check-ignore with a default list if other toolchains'
+    # caches show up
+    return {p: _hash(checkout, p) for p in paths if not _ours(p) and "__pycache__" not in p.split("/")}
 
 
 def _ours(path: str) -> bool:
