@@ -64,7 +64,10 @@ def kind(argv: list[str]) -> str | None:
 
 
 def model_in(argv: list[str]) -> str | None:
-    """The model the command names with -m or --model, or None."""
+    """The model the command names with -m or --model, or None. An interpreter's own -m names a module
+    (`python3 -m graphene_map.nemotron.executor`, Graphene's own executor), never a model."""
+    if argv[1:2] == ["-m"] and os.path.basename(argv[0]).startswith("python"):
+        argv = argv[2:]  # the module, then what it is given
     return option(argv, "-m", "--model")
 
 

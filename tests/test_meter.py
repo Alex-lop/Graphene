@@ -348,3 +348,14 @@ def test_a_last_message_streamed_as_a_block_and_as_the_result_is_one_said_row_in
     ]
     kept = M.whole_said(rows)
     assert [e["kind"] for e in kept] == ["said", "did"] and kept[0]["detail"]["text"] == whole
+
+
+def test_an_interpreters_own_dash_m_names_a_module_and_never_the_model():
+    """The run's first line read "nemotron (graphene_map.nemotron.executor)", the model the person named
+    with --model lost: the first -m was the interpreter's."""
+    from graphene_map.run import named
+
+    assert M.model_in(shlex.split(named("nemotron"))) is None
+    assert M.model_in(shlex.split(named("nemotron --model nvidia/X"))) == "nvidia/X"
+    assert M.model_in(["python3", "-m", "pkg.agent", "--model", "m"]) == "m"
+    assert M.model_in(["codex", "exec", "-m", "o3"]) == "o3" and M.model_in(shlex.split(DEFAULT_WITH)) is None
