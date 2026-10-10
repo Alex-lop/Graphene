@@ -54,7 +54,7 @@ from .tui import Pane, Watch, fit, help_groups
 
 SHIPPED = Path(__file__).with_name("demo.jsonl")
 ENDED = "ended: last frame"
-NEXT = "the end · try it on your repo: graphene init, then graphene ask, with what you want"
+NEXT = "the end · on your repo: graphene init, then graphene ask, with what you want"  # under 78 columns
 REFUSED = "a replay: nothing runs here"
 LIVE, STAND_IN = "as it ran, live", "a scripted stand-in, not Nemotron"  # what the top line says made it
 NO_CALLS = "a run with no model calls on record"

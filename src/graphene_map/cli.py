@@ -24,17 +24,19 @@ def app() -> None:
 
 
 def claude_lacks() -> str | None:
-    """The first of --json-schema and --max-budget-usd that this machine's `claude --help` does not
-    list (a Claude Code older than Graphene needs); None when it lists both, or when no claude answers."""
+    """The flag Graphene's defaults pass that this machine's `claude --help` does not list (a Claude Code
+    older than Graphene needs); None when it lists it, or when no claude answers."""
     import subprocess
 
     try:
-        said = subprocess.run(
+        done = subprocess.run(
             ["claude", "--help"], stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=10
-        ).stdout
+        )
     except (OSError, subprocess.SubprocessError):
         return None
-    return next((flag for flag in ("--json-schema", "--max-budget-usd") if flag not in said), None)
+    if done.returncode:  # a claude that cannot even print its help is not told to update
+        return None
+    return next((flag for flag in ("--max-budget-usd",) if flag not in done.stdout), None)
 
 
 def build():

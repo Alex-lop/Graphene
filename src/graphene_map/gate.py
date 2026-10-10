@@ -480,11 +480,12 @@ def _aside(store, sid: str, cwd: str | None, root: Path) -> P.Node | None:
         top = subprocess.run(argv, capture_output=True, text=True, timeout=5).stdout.strip() or str(root)
         [made] = P.propose(store, [item], _me(sid), files=P.tracked(top), aside=True)
         return P.start(store, made.id, P.Caller(f"claude:{sid[:8]}", False, sid), top, attended=True)
-    except (P.Refused, OSError, subprocess.SubprocessError) as no:
+    except (P.Refused, OSError, subprocess.SubprocessError, sqlite3.OperationalError) as no:
         if made is not None:  # it could not start: never leave a `**` leaf open for whoever comes next
-            P.drop(store, made.id, _me(sid))
-        store.log_node("*", P._now(), "denied", None, sid, None, {"note": f"no leaf from the prompt: {no}"})
-        return None
+            _write(P.drop, store, made.id, _me(sid))
+        _write(store.log_node, "*", P._now(), "denied", None, sid, None,
+               {"note": f"no leaf from the prompt: {no}"})  # fmt: skip
+        return None  # a busy store: no leaf, so the write is refused as if no prompt had been typed
 
 
 def _check_write(

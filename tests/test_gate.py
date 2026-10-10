@@ -305,8 +305,10 @@ def test_a_busy_store_never_turns_a_refusal_into_a_pass(repo):
         assert "the plan's own store" in reason(write(repo, ".graphene/direction.txt", "Write"))
     write(repo, "src/db/schema.py")  # the lecture said, with the store free
     plan_first(repo, "off")
+    hook(repo, "UserPromptSubmit", session_id="someone-else", prompt="change the users api")  # an aside's way
     with busy(repo):
         assert reason(write(repo, "src/db/schema.py")).endswith("hands it back")  # the short way out: a row
+        # the aside leaf the prompt would make cannot be proposed on a busy store: still a deny, not a pass
         assert "no node is ready" in reason(hook(repo, "PreToolUse", **other))
 
 
