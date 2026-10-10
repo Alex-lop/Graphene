@@ -1,6 +1,7 @@
 """Red first in core (graphene_map.precheck): every accepted leaf's check run once at the base commit,
 with no model. The verdict is passes, outside or red, read from the exit code and the output."""
 
+import json
 import shlex
 import subprocess
 import sys
@@ -231,3 +232,30 @@ def test_a_reopened_leaf_whose_check_passed_when_it_landed_is_landed_until_the_c
         P.edit(store, "a", {"check": "test -s new.py"}, ME)
         [(_, d)] = K.run(store, repo)
     assert d["verdict"] == "passes"
+
+
+@pytest.mark.parametrize(
+    "installed, check, named",
+    [("editable", FAILS, True), ("elsewhere", FAILS, False), ("editable", "true", False),
+     ("pth", FAILS, True)],  # fmt: skip
+)
+def test_a_python_with_this_repo_installed_editable_is_said(repo, tmp_path_factory, monkeypatch, installed,
+                                                             check, named):  # fmt: skip
+    """The person's venv had the project installed editable from their checkout: a check that imported it
+    tested the checkout, whatever the leaf's worktree held, and passed at the base."""
+    site = tmp_path_factory.mktemp("site")
+    info = site / "fake_pkg-0.1.dist-info"
+    info.mkdir()
+    (info / "METADATA").write_text("Metadata-Version: 2.1\nName: fake_pkg\nVersion: 0.1\n")
+    where = repo if installed != "elsewhere" else tmp_path_factory.mktemp("elsewhere")
+    if installed == "pth":  # no direct_url.json: a path line, as an old `setup.py develop` leaves
+        (site / "_fake_pkg.pth").write_text(f"{repo / 'src'}\n")
+    else:
+        said = {"url": where.as_uri(), "dir_info": {"editable": True}}  # PEP 610, as uv and pip write it
+        (info / "direct_url.json").write_text(json.dumps(said))
+    monkeypatch.setenv("PYTHONPATH", str(site))
+    with Store.open(repo) as store:
+        leaves(store, ("a", ["new.py"], check))
+        rows = K.run(store, repo)
+    said = [line for line in K.said(rows) if "installed editable from this repo" in line]
+    assert len(said) == named and all("fake_pkg" in line and "`uv run pytest …`" in line for line in said)

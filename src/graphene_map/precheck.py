@@ -30,12 +30,45 @@ _USER = re.compile(r"(//)[^/@\s]+@")  # a URL's user and password (a proxy's): n
 
 CANNOT = "cannot run here: "  # what `_here` says, with no exit code, of a check `_probe` found no way to run
 LANDED = "it passed this check when it landed; reopened, it passes until the check says what the note asks"
+# What a python3 has installed editable from the repository (argv[1]): a distribution whose PEP 610
+# direct_url.json says so (uv's and pip's editable installs write one), else a .pth file on its sys.path
+# with a line under it. It prints the first one's name, or nothing.
+EDITABLE = """
+import glob, json, os, sys, urllib.parse
+from importlib import metadata
+
+root = os.path.realpath(sys.argv[1])
+
+
+def under(path):
+    path = os.path.realpath(path)
+    return path == root or path.startswith(root + os.sep)
+
+
+hits = []
+for dist in metadata.distributions():
+    try:
+        said = json.loads(dist.read_text("direct_url.json") or "{}")
+    except ValueError:
+        continue
+    url = said.get("url") or ""
+    if (said.get("dir_info") or {}).get("editable") and url.startswith("file:"):
+        hits += [dist.metadata["Name"]] * under(urllib.parse.unquote(urllib.parse.urlparse(url).path))
+for where in filter(os.path.isdir, sys.path):
+    for pth in sorted(glob.glob(os.path.join(glob.escape(where), "*.pth"))):
+        lines = [line.strip() for line in open(pth, errors="replace")]
+        if any(ln and not ln.startswith(("#", "import")) and under(os.path.join(where, ln)) for ln in lines):
+            hits.append(os.path.basename(pth))
+print(hits[0] if hits else "")
+"""
 
 
 class Rows(list):
-    """The (node, detail) rows of a run, and the wall time it took."""
+    """The (node, detail) rows of a run, the wall time it took, and what the python3 a check finds has
+    installed editable from the repository (`_editable`)."""
 
     seconds = 0.0
+    editable = None
 
 
 def state(root: Path, committed: bool = False) -> tuple[str | None, str | None]:
@@ -115,6 +148,18 @@ def _probe(command: str, tree: Path, env: dict, began: float) -> str | None:
             said = [line.strip() for line in (out + err).splitlines() if line.strip()]
             return said[-1].removeprefix("ModuleNotFoundError: ") if said else f"{first}: not found"
     return None
+
+
+def _editable(root: Path) -> str | None:
+    """What the python3 on the check's PATH has installed editable from this repository, or None: a check
+    that imports it tests the person's checkout, whatever the leaf's worktree holds. A warning, asked once
+    a red first, and only when a check is run with python or pytest."""
+    try:
+        said = subprocess.run(["python3", "-c", EDITABLE, str(root)], env=P.check_env(), capture_output=True,
+                              text=True, timeout=30)  # fmt: skip
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return said.stdout.strip() or None
 
 
 def _hider(root: Path):
@@ -227,6 +272,8 @@ def run(store, root: Path, ids=(), again: bool = False, say=None, committed: boo
         pool.shutdown(wait=True, cancel_futures=True)
         raise
     pool.shutdown(wait=True)
+    if any(re.match(r"(python3?|pytest)\b", c) for c in commands):
+        out.editable = _editable(root)
     hide = _hider(store.path.parent.parent) if ran else str  # the repo's path: every clean tree is under it
     files, live = sorted(P.tracked(root)), P._live(everything)
     for node in todo:
@@ -276,6 +323,10 @@ def said(rows) -> list[str]:
             lines.append(f"{node.id}: {d['why']}")
         elif d["verdict"] == "not-run":
             lines.append(f"{node.id}: its check at {at} {d['why']}")
+    if getattr(rows, "editable", None):
+        lines.append(f"python3 on your PATH has {rows.editable} installed editable from this repo: a check "
+                     "that imports it tests your checkout, not the leaf's worktree; `uv run pytest …` builds "
+                     "the worktree's own")  # fmt: skip
     seconds, commands = getattr(rows, "seconds", 0.0), len({d["check"] for _, d in rows})
     at += f" ({commands} command{'s' * (commands != 1)})" if commands < len(rows) else ""
     return [*lines, f"red first: {len(rows)} check{'s' * (len(rows) != 1)} at {at} in {seconds:.0f} s"]
