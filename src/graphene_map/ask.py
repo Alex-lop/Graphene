@@ -26,6 +26,7 @@ from . import plan as P
 from . import plan_text as T
 from .run import _end, _no_interrupt, _settle, _splits, command_for, held, unchosen
 from .run import label as run_label
+from .views import money
 
 # Read-only: Claude Code's built-in tools cut to the three that read (`--tools`), and none of the MCP
 # servers the person has connected (`--strict-mcp-config` with no config: some of them send mail and
@@ -78,7 +79,7 @@ risk: what could make a check pass on nothing, or a leaf go wrong  [short-id]
 - A leaf is one piece of work one agent can finish in a sitting. Its scope is every path it may write:
   read the repo to find them, never guess. Its check is a command, run with bash from the repo root,
   that exits 0 only when the leaf is done, and that can pass with what its scope and its needs write.
-  Use the repo's own test runner and files that exist or that the leaf creates.
+  Use the repo's own test runner and files that exist or that the leaf creates. """ + P.CLEAN_TREE + """
 - A leaf whose check needs another leaf's work says so with needs:. Two leaves never share a path.
 - A leaf's check runs only files in its own scope and files already in the repository. A leaf that
   needs a test another leaf writes waits on it with needs:. Two leaves never share a test file: give
@@ -408,6 +409,7 @@ def ask(
             RULES, f"This replaces the tree you proposed last, which the person wants {size}; it is "
             f"dropped, so propose the whole tree afresh.{stand}\n\n" + RULES)  # fmt: skip
     before, paid = None, 0.0  # paid: what the session cost so far; a resumed one reports its running total
+    calls, bill = 0, ""  # bill: what the ask cost, its last line, said only when a meter read it
     tries = 1 if argv0 == "nemotron" else ATTEMPTS  # Graphene's own planner sends a refusal back itself
     for attempt in range(1, tries + 1):
         argv = command_for(template, prompt, session, attempt > 1)
@@ -443,11 +445,13 @@ def ask(
             if hold:  # once: at what Claude's result says it cost, else at its worst case
                 _settle(night, hold, meter)
         if meter:  # its bill, on the plan, as the Nemotron planner's is
-            paid += meter.dollars
+            paid, calls = paid + meter.dollars, calls + meter.turns
             store.log_node("*", P._now(), "usage", who.label, None, None, {
                 "model": meter.model, "calls": meter.turns, "prompt_tokens": meter.prompt_tokens,
                 "completion_tokens": meter.completion_tokens, "dollars": meter.dollars,
                 "endpoint": M.ENDPOINT["claude"], "reported": meter.reported})  # fmt: skip
+            by = f"{argv0} {meter.model.removeprefix('claude-')}" if meter.model else argv0
+            bill = f"the planner ({by}): {calls} call{'s' * (calls != 1)}, {money(paid)} at list price"
         printed = (meter.result if meter else done.stdout).strip()  # the answer, never the stream
         text = proposal_in(printed)
         if not text.strip():
@@ -485,6 +489,7 @@ def ask(
                         cover.after_ask(store, sentence, say)
                     said += extra.need("precheck").after_proposal(store, root, said.ids)  # =precheck
                     extra.need("lookup").after_proposal(store, root, say)  # =lookup: what the repo answers
+                said += [bill] * bool(bill)  # last, after the proposal lines the screen's gist is read from
                 return said
         if done.returncode == 3 and not text.strip():  # it could not work at all; again would not help
             raise P.Refused(f"nothing was added. {refusal}")
@@ -493,6 +498,15 @@ def ask(
             before = refusal
         # whole again: a planner other than Claude Code starts afresh and knows nothing of the first try
         prompt = f"{asked}\n\nYour last answer was not accepted: {refusal}\nPrint the whole proposal again."
+    end = f"\n{bill}" * bool(bill)  # after the refusal's first line, which the screen's bottom line reads
+    if text.strip():  # what it paid for is kept: the block alone, as `graphene plan propose` reads it
+        kept = store.path.parent / "runs" / f"ask-{session[:8]}.txt"  # beside what `graphene run` logs
+        kept.parent.mkdir(parents=True, exist_ok=True)
+        kept.write_text(text, encoding="utf-8")
+        where = os.path.relpath(kept, root)
+        end = f"\nits proposal is kept in {where}: mend it, then `graphene plan propose - < {where}`{end}"
     if refusal == before:
-        raise P.Refused(f"no proposal after {ATTEMPTS} tries; nothing was added (each was refused as above)")
-    raise P.Refused(f"no proposal{f' after {tries} tries' * (tries > 1)}; nothing was added. {refusal}")
+        raise P.Refused(
+            f"no proposal after {ATTEMPTS} tries; nothing was added (each was refused as above){end}"
+        )
+    raise P.Refused(f"no proposal{f' after {tries} tries' * (tries > 1)}; nothing was added. {refusal}{end}")

@@ -5,6 +5,7 @@ would, so every ending is on purpose."""
 
 import json
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -313,6 +314,12 @@ def test_the_planner_and_a_session_are_told_a_check_runs_its_own_files_and_what_
     assert rule in " ".join(A.RULES.split()) and rule in " ".join(gate.TEACH.split())
 
 
+def test_the_planner_is_told_a_check_runs_in_a_fresh_worktree(repo, tmp_path, monkeypatch):
+    assert person("ask", "ids", "--with", planner(tmp_path, GOOD, monkeypatch)).exit_code == 0
+    [seen] = [json.loads(line) for line in (tmp_path / "seen.jsonl").read_text().splitlines()]
+    assert "A check runs in a fresh worktree of the leaf's files" in " ".join(seen["prompt"].split())
+
+
 def test_the_planner_is_told_the_board_carries_only_what_changes_the_tree(repo, tmp_path, monkeypatch):
     """Study 2: answering the board cost about twice the outline's attention, mostly in reading. The
     planner is told: at most three items, each a question or a risk whose answers carry then: lines,
@@ -390,7 +397,11 @@ def test_a_claude_code_planner_is_held_on_the_night_and_its_stream_says_what_it_
     with Store.open(repo) as store:
         said = []
         added = A.ask(store, repo, "ids", claude_planner(tmp_path, (bad, 0.25), (good, 0.4)), say=said.append)
-        assert added == ["proposed ids: users returns ids"] and plan.get(store, "ids").state == PROPOSED
+        assert added == [  # what both tries cost, after the proposal lines
+            "proposed ids: users returns ids",
+            "the planner (claude sonnet-5-5): 2 calls, $0.40 at list price",
+        ]
+        assert plan.get(store, "ids").state == PROPOSED
         assert said[-2:] == ["the planner says:", "  I read api.py."]  # the result's text, not the stream
         bills = [(e["actor"], e["detail"]) for e in store.node_log("*", ("usage",))]
     assert [(who, bill["dollars"]) for who, bill in bills] == [
@@ -413,6 +424,20 @@ def test_a_claude_code_planner_that_stopped_says_why(repo, tmp_path):
     with Store.open(repo) as store, pytest.raises(Refused, match="each was refused as above"):
         A.ask(store, repo, "ids", planner, say=said.append)
     assert "no proposal (exit 0): error_max_budget_usd" in said  # why it stopped, not "it said nothing"
+
+
+def test_a_lost_ask_keeps_the_proposal_it_paid_for_and_says_what_it_cost(repo, tmp_path):
+    """Two answers refused, and the ask ended with nothing: what the person paid for was gone. The
+    proposal is kept (the block alone, which `plan propose` reads), and the ask's last line says what
+    it cost, after the refusal's own first line."""
+    bad = "I read api.py.\n```plan\n- ids  [ids]\n    scope: api.py\n    signoff: perhaps\n```"
+    said = person("ask", "ids", "--with", claude_planner(tmp_path, (bad, 0.25), (bad, 0.5)))
+    assert said.exit_code == 1, said.output
+    kept = re.search(r"its proposal is kept in (\S+/runs/ask-\w+\.txt): mend it, then "
+                     r"`graphene plan propose - < \1`", said.stderr)  # fmt: skip
+    assert kept and "(each was refused as above)\nits proposal is kept in" in said.stderr, said.stderr
+    assert (repo / kept[1]).read_text() == "- ids  [ids]\n    scope: api.py\n    signoff: perhaps\n"
+    assert said.output.splitlines()[-1] == "the planner (claude sonnet-5-5): 2 calls, $0.50 at list price"
 
 
 def test_a_planner_the_night_refuses_is_never_started(repo, tmp_path, monkeypatch):

@@ -137,6 +137,7 @@ TEACH = (
     "EOF\n"
     "A leaf's scope is every path it may write: look at the repo, never guess one. Its check is a command "
     "that exits 0 only when the leaf is done, and that can pass with what its scope and its needs write. "
+    f"{P.CLEAN_TREE} "
     "`needs` orders leaves that build on each other. A leaf's check runs only files in its own scope and "
     "files already in the repository. A leaf that needs a test another leaf writes waits on it with "
     "needs:. Two leaves never share a test file: give each leaf its own, or make one tests leaf that "
