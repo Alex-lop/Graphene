@@ -55,9 +55,16 @@ Per question, 907a7d0: the record missed q3 (refused commands) in every run; git
 
 | combination | 907a7d0: `b` (broken) landed | branch: `b` landed | what red first said on the branch |
 |---|---|---|---|
-| `python3 -m pytest`, no pytest on PATH | no (3 attempts, `No module named pytest` in the hand-back) | — | — |
-| `python3 -m pytest`, the venv first on PATH | **yes** (the check imported the checkout) | — | — |
-| `uv run pytest`, the venv first on PATH | **yes** (the copied index's stat data) | — | — |
+| `python3 -m pytest`, no pytest on PATH | no (3 attempts, `No module named pytest` in the hand-back) | no (3 attempts) | before the run: `b: its check cannot run here: No module named 'pytest'. Checks run in a clean worktree with your PATH and nothing git ignores; a runner that makes its own environment (…) brings pytest with it` |
+| `python3 -m pytest`, the venv first on PATH | **yes** (the check imported the checkout) | **yes** (named, not closed, as the rules expected) | `python3 on your PATH has pkg installed editable from this repo: a check that imports it tests your checkout, not the leaf's worktree; uv run pytest … builds the worktree's own` |
+| `uv run pytest`, the venv first on PATH | **yes** (the copied index's stat data) | **no**: `b came back after 3 attempts`, each refused with `uv run pytest -q tests/test_b.py failed` | the clean tree now reads the edit (the one-line fix) |
+
+Also on the branch, in every combination: the run's first line (`landing into main at <sha>: x5_exec.py, up to 2 at
+once; each leaf is committed with --no-verify … and merged --no-ff; checks run in a clean worktree with your PATH;
+graphene watch in another terminal follows it live`), the dirty-checkout warning, and the came-back line ending
+"`graphene node show b` says why". Red first judged only `b`: `a` waits on `b` (Graphene added the need), so it is
+not judged at a commit it never starts from. The rules' two reverts (C3 wrong if a test-first leaf gets an
+environment line; C4 wrong if the editable line is missing) did not fire.
 
 ## The walks: the README's commands in order (n = 3 a build)
 
