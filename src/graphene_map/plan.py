@@ -3025,6 +3025,17 @@ def look(word: str) -> tuple[str, str]:
     return LOOK.get(word, ("○", ""))
 
 
+def value(v) -> str:
+    """A logged value as a person reads it: a list is its items, nothing is "none", not a repr."""
+    if isinstance(v, list | tuple):
+        return ", ".join(value(x) for x in v) or "none"
+    if v is None or v == "":
+        return "none"
+    if isinstance(v, bool):
+        return "yes" if v else "no"
+    return " ".join(str(v).split())
+
+
 def said_by(label: str | None) -> str:
     """Who an actor on the plan is, in a person's words: `run:claude` is claude started by `graphene
     run`, `claude:5940…` a Claude Code session, `planner` the planner `graphene ask` started."""

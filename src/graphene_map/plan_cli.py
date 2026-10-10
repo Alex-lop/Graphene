@@ -444,15 +444,7 @@ def register(cli: typer.Typer, root, open_store, fail):
         for line in plan_lines(store, who, everything, width=room()):
             out(line)
 
-    def value(v) -> str:
-        """A logged value as a person reads it: a list is its items, nothing is "none", not a repr."""
-        if isinstance(v, list | tuple):
-            return ", ".join(value(x) for x in v) or "none"
-        if v is None or v == "":
-            return "none"
-        if isinstance(v, bool):
-            return "yes" if v else "no"
-        return " ".join(str(v).split())
+    value = P.value  # a logged value as a person reads it, as node show and watch say it too
 
     def one_row(store, n: P.Node, depth: int = 0) -> str:
         """A node the command just made or moved, in the row grammar `graphene plan` and the screen

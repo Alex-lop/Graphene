@@ -562,7 +562,7 @@ def test_the_persons_acts_are_kept_with_what_they_said(store, repo, finish):
         (T(5), "reopened", "alex"),
         (T(7), "overruled", "alex"),
     ]
-    assert acts[1].said == "scope: ['src/api/**'] -> ['src/api/users.py'] (revision 2)"
+    assert acts[1].said == "scope: src/api/** → src/api/users.py (revision 2)"  # as `plan log` says it
     assert acts[2].said == "returns a list, I asked for a dict"
     assert acts[3].said == "the README edit was mine (outside its scope: README.md)"
 
