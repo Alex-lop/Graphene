@@ -21,6 +21,7 @@ window says so and names what was read instead. A count that cannot be computed 
 
 from __future__ import annotations
 
+import re
 import subprocess
 import textwrap
 from collections import Counter
@@ -732,7 +733,10 @@ def _coverage_lines(counts: dict, check: dict | None, at_base: dict | None = Non
         lines.append(
             f"    check: `{check['command']}` {check['result']} at {check['at']}, run by Graphene itself"
         )
-        lines += [f"      its last line: {check['gist']}"] if check.get("gist") else []
+        if re.fullmatch(r"exit -?\d+, no output", check.get("gist") or ""):  # run_check's words, not its
+            lines.append("      it printed nothing")
+        elif check.get("gist"):
+            lines.append(f"      its last line: {check['gist']}")
         if at_base and at_base.get("check") == check["command"] and at_base.get("base"):
             passed = check["result"] == "passed"  # failed, the change is what it fails on: no "nothing"
             nothing = ": it shows nothing about this change" if passed else ""

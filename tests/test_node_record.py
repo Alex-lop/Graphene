@@ -319,6 +319,17 @@ def test_a_check_that_failed_after_passing_at_the_base_is_never_said_to_show_not
     assert not any("shows nothing about this change" in line for line in lines)
 
 
+def test_a_check_that_printed_nothing_is_said_so_not_given_graphenes_placeholder_as_its_line(store, repo):
+    codex = Caller("codex:deadbeef", False, None)
+    plan.propose(store, [api_node(check="true")], ALEX, now=T(0))
+    plan.start(store, "n1", codex, repo, now=T(1))
+    (repo / "src/api/users.py").write_text("def users():\n    return [1]\n")
+    plan.finish(store, "n1", codex, now=T(3))
+    lines = NR.render(NR.node_record(store, repo, plan.get(store, "n1"), at=T(9)))
+    at = next(k for k, line in enumerate(lines) if line.startswith("    check: "))
+    assert lines[at + 1] == "      it printed nothing" and "no output" not in "\n".join(lines)
+
+
 def test_a_commit_in_the_nodes_first_second_is_inside_its_window(store, repo):
     """The log keeps milliseconds and git keeps whole seconds, so a node started at …:34.160 and a
     commit stamped …:34 cannot be put in order. Comparing them as floats dropped every commit made
