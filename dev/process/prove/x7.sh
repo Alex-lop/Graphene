@@ -22,9 +22,27 @@ PARAGRAPH=$(cat "$TEST/tasks/feeds/paragraph.md")
 TYPO="fix the typo in the README's first heading"
 stamp "x7 start: $BIN, $REPS a cell"
 
+plant_typo() {  # the typo ask needs a typo: the first heading of the README loses a letter, committed as the person
+  local repo=$1 readme
+  readme=$(cd "$repo" && ls README.md README.rst 2>/dev/null | head -1)
+  [ -n "$readme" ] || return 0
+  ( cd "$repo" && python3 - "$readme" <<'PY2'
+import re, sys
+p = sys.argv[1]; s = open(p).read().splitlines(keepends=True)
+for i, line in enumerate(s):
+    if re.match(r"^#+ \w|^[A-Za-z]", line) and len(line.split()) >= 1:
+        word = re.search(r"[A-Za-z]{4,}", line)
+        if word:
+            w = word.group(0); s[i] = line.replace(w, w[:2] + w[3:], 1); break
+open(p, "w").write("".join(s))
+PY2
+    git add "$readme" && git -c user.name=person -c user.email=person@localhost commit -qm "the heading, typed in a hurry" )
+}
+
 session() {  # session REPO MODE PROMPT RUN: one Claude Code session in REPO, the plan's state after it
   local repo=$1 mode=$2 prompt=$3 run=$4
   mkdir -p "$run"
+  case "$prompt" in "$TYPO") plant_typo "$repo" ;; esac
   ( cd "$repo" && me graphene init --planner "$PLANNER" --executor "$WITH" > "$run/init.txt" 2>&1 || true
     me graphene plan first "$mode" > "$run/first.txt" 2>&1 || true )
   local t0; t0=$(date +%s)
