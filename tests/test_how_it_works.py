@@ -1,7 +1,7 @@
 """docs/HOW_IT_WORKS.md is the reference a user reads after the README: under 3,300 words, with every
-section it promises, in order. The cap was 3,000 until 10 October 2026, when the reference gained what init does
-to a Claude Code session and how to undo it, the run's first line and red first's warnings, and what the record
-and the merge message now say; it was raised once, on purpose, after the words that no claim pinned were cut."""
+section it promises, in order. The cap was 3,000 until 10 October 2026, when the reference gained what init
+does to a Claude Code session and how to undo it, the run's first line and red first's warnings, and what the
+record and the merge message now say; raised once, on purpose, after the words no claim pinned were cut."""
 
 from pathlib import Path
 
