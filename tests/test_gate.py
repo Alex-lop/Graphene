@@ -373,7 +373,7 @@ def test_plan_first_on_tells_every_prompt_and_refuses_the_write_whatever_the_wor
     assert refused.startswith("plan first: this session holds no leaf, so it writes nothing yet")
     assert "P in graphene watch or `graphene plan first off`" in refused
     assert refused.endswith("`graphene plan first off`, in a terminal outside Claude Code")
-    heredoc ="graphene plan propose - <<'EOF'\n- a  [a]\n    scope: x\n    check: true\nEOF"
+    heredoc = "graphene plan propose - <<'EOF'\n- a  [a]\n    scope: x\n    check: true\nEOF"
     assert hook(repo, "PreToolUse", tool_name="Bash", tool_input={"command": heredoc}) is None
     assert hook(repo, "PreToolUse", tool_name="Read", tool_input={"file_path": str(repo / "x")}) is None
     with Store.open(repo) as store:
