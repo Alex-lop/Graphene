@@ -2261,11 +2261,14 @@ def goal_pane(store, s, wide: int) -> Text:
 
 def precheck(store, node: P.Node) -> dict | None:
     """The leaf's last precheck row's detail, when it is about its current rev and says it passes at
-    the base (its check proves nothing) or names paths outside its scope; else None."""
-    if node.state not in (P.OPEN, P.PROPOSED):  # done, it proved what it proved; running, it is being run
+    the base (its check proves nothing) or names paths outside its scope; else None. Done or in review,
+    when it passed at the base with the check the leaf has now: what it finished on proved no more."""
+    if node.state not in (P.OPEN, P.PROPOSED, P.DONE, P.REVIEW):  # running, it is being run
         return None
     rows = store.node_log(node.id, ("precheck",))
     d = rows[-1]["detail"] if rows else {}
+    if node.state in (P.DONE, P.REVIEW):  # by the check's own words, whatever the rev is since
+        return d if d.get("verdict") == "passes" and d.get("check") == node.check else None
     return d if d.get("rev") == node.rev and d.get("verdict") in ("passes", "outside") else None
 
 
@@ -2315,7 +2318,10 @@ def detail(store, node: P.Node, s, files: list[str] | None = None, room: tuple[i
         )
     if (pre := precheck(store, node)) is not None:
         base = str(pre.get("base", ""))[:7]
-        if pre["verdict"] == "passes":
+        if pre["verdict"] == "passes" and node.state in (P.DONE, P.REVIEW):
+            says = (f"its check also passed at the base commit {base}, before any work: what landed is not "
+                    "verified by it")  # fmt: skip
+        elif pre["verdict"] == "passes":
             says = f"its check passes at the base commit {base}, so it proves nothing: e edits the check"
         else:
             says = f"its check names {', '.join(pre.get('paths') or [])} outside its scope, at {base}"

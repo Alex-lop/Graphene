@@ -82,6 +82,23 @@ def test_a_red_or_stale_precheck_is_not_marked(repo):
     assert not any("∅" in row for row in seen["tree"]) and "proves nothing" not in seen["detail"]
 
 
+def test_a_leaf_whose_check_passed_at_the_base_keeps_its_mark_once_it_is_done(repo):
+    """The ∅ went once the leaf left open, though done its check proved no more than it did at the base."""
+    proposed(repo)
+    person("plan", "accept")
+    precheck(repo, "schema", verdict="passes", why="exit 0")
+    with Store.open(repo) as store:
+        bot = plan.Caller("claude:aaaa1111", False, "aaaa1111-session")
+        plan.start(store, "schema", bot, repo)
+        (repo / "schema.py").write_text("TABLES = ['users']\n")
+        plan.finish(store, "schema", bot)
+    seen, _ = watch(repo, ["G"], size=(120, 36))
+    said = " ".join(seen["detail"].split())
+    assert ("its check also passed at the base commit abcdef0, before any work: what landed is not verified "
+            "by it") in said
+    assert any("schema" in row and "∅" in row for row in seen["tree"]), seen["tree"]
+
+
 def log(*kinds):
     return [{"timestamp": f"t{i}", "kind": k, "actor": "alex", "detail": {"note": "wrong"}}
             for i, k in enumerate(kinds)]  # fmt: skip
