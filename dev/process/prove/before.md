@@ -102,3 +102,26 @@ it, and the plain sessions left their fix uncommitted ("that one line is the onl
 running the batch/worker flow, since it is eight small edits to tightly coupled files"; no subagent, no branch, no
 worktree, no PR. On this task the vendor's loop is a plain session with a longer preamble (23 turns, $0.20 against
 $0.16 for the plain session's first message).
+
+## The walks: the README's commands in order, as the person (n = 3, a scripted person on Sonnet)
+
+`walks.sh`, 2026-10-10 16:52Z: `graphene demo --once`, a fresh report repo, `init --planner … --executor …` (Sonnet,
+the isolation flags), `graphene ask "<the report paragraph>"`, `graphene plan`, `graphene plan accept`, `graphene run
+--parallel 2`, `graphene node show <sub-goal>`, `graphene plan record`, `git log --merges`.
+
+| walk | landed | minutes to the first merge | dead ends by regex (refused, is the person's, hook error, nothing to run, no proposal, could not read, not chosen, nothing is planned, cannot start, came back, exit≠0) |
+|---|---|---|---|
+| 1 | 2 of 2 | 0.5 | 0 |
+| 2 | 2 of 2 | 0.6 | 0 |
+| 3 | 2 of 2 | 0.5 | 0 |
+
+The whole walk ran in 48 s for about $0.16 (planner $0.048, executors $0.116). Each ask proposed a sub-goal, two
+leaves and one board question with a default; `plan accept` took the default; both leaves landed on their first
+attempt. **No dead end on this path on 907a7d0.** What a stranger reads on it, from `walk-1.txt`: `init` prints the
+two command lines it chose, `plan first: on. Every ask in a session is proposed, one leaf included, and waits for
+you.` with no word of where to accept or how to turn it off, a `.gitignore` sentence that `.git/info/exclude` already
+makes moot, and `recorded live into` the store; `plan accept` prints `took the default of json-types`; the run's first
+printed line is `red first: 2 checks at fead50f in 0 s` with no word of where it lands; the bill line reads `you 0
+acts, 0 min` after the person accepted; `node show` on a sub-goal prints an empty `scope:` and `done:` line; the two
+merges carry empty bodies. The dead ends the readers found are not on this scripted path: they are in what `init`
+leaves unsaid about the person's own Claude Code sessions, in `watch`'s keys, and in what the record does not print.
