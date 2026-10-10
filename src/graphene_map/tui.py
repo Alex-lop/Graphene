@@ -1863,7 +1863,7 @@ class Watch(App):
         argv = ["run", *shlex.split(RUN_WITH), *(["--node", node_id] if node_id else [])]
         under = {node_id, *(n.id for n in P.below(node_id, self.nodes))} if node_id else self.words
         ready = sum(self.words.get(i) == "ready" for i in under)
-        if node_id and ready <= 1:
+        if ready <= 1:  # nothing, or one leaf: no question; the run says what it did
             return self.background(argv)
         many = f"run {ready} ready, up to {shlex.split(RUN_WITH)[-1]} at once{self.counts.get('with', '')}"
 

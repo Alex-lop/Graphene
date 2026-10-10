@@ -254,8 +254,10 @@ def test_claude_lacks_names_the_first_flag_this_claude_code_does_not_list(tmp_pa
     claude.write_text("#!/bin/sh\necho '  -p, --print  Print response and exit'\n")
     claude.chmod(0o755)
     monkeypatch.setenv("PATH", str(tmp_path))
-    assert claude_lacks() == "--json-schema"
+    assert claude_lacks() == "--max-budget-usd"
     claude.write_text("#!/bin/sh\necho '  --json-schema <schema>'\necho '  --max-budget-usd <amount>'\n")
     assert claude_lacks() is None
+    claude.write_text("#!/bin/sh\nexit 1\n")
+    assert claude_lacks() is None  # a claude that cannot print its help is not told to update
     monkeypatch.setenv("PATH", str(tmp_path / "nowhere"))
     assert claude_lacks() is None  # no claude here: nothing to update
