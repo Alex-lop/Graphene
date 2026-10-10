@@ -1,6 +1,7 @@
 """`graphene plan` and `graphene node`, end to end: a person shapes, an agent executes, and the
 boundary is where the person's change to the next node takes hold."""
 
+import errno
 import io
 import json
 import os
@@ -11,6 +12,7 @@ import subprocess
 import sys
 
 import pytest
+import typer
 from typer.testing import CliRunner
 
 from graphene_map.cli import build
@@ -321,6 +323,26 @@ def test_a_run_says_first_where_it_lands_with_what_and_that_uncommitted_work_sta
     assert landing.startswith(f"landing into {branch} at ") and "--no-verify" in landing, landing
     assert "your uncommitted changes are not in the executors' worktrees: they start from HEAD" in lines
     assert lines.index(landing) == 0 and lines[-1].startswith("run: ")  # the summary is still the last
+
+
+def test_an_accept_whose_output_pipe_closes_is_made_all_the_same(repo, monkeypatch):
+    """`graphene plan accept | head -1`: the pipe closed after the first line, the next line raised inside
+    the act's transaction, and the accept it had just announced was rolled back."""
+    two = [{"title": t, "scope": [f"{t}.py"], "check": "true"} for t in ("api", "schema")]
+    assert agent("plan", "propose", "-", input=json.dumps({"nodes": two})).exit_code == 0
+    echo, calls = typer.echo, []
+
+    def closed(*args, **kwargs):
+        calls.append(args)
+        if len(calls) > 1:
+            raise BrokenPipeError(errno.EPIPE, "Broken pipe")
+        return echo(*args, **kwargs)
+
+    monkeypatch.setattr(typer, "echo", closed)
+    person("plan", "accept")
+    monkeypatch.setattr(typer, "echo", echo)
+    states = [n["state"] for n in json.loads(person("plan", "--json").stdout)["nodes"]]
+    assert len(calls) > 1 and states == ["open", "open"]
 
 
 # -- the recheck of the closing review: its regression tests --------------------

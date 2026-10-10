@@ -46,7 +46,10 @@ FIRST_SAID = {
 
 
 def register(cli: typer.Typer, root, open_store, fail):
-    out = typer.echo
+    held: list[list[str]] = []  # the lines of a person's act, said once it is committed (`write`)
+
+    def out(line: str = "") -> None:
+        (held[-1].append if held else typer.echo)(line)
 
     def checkout() -> Path:
         """The working tree the caller stands in: a worktree is its own checkout, with one shared plan."""
@@ -64,14 +67,23 @@ def register(cli: typer.Typer, root, open_store, fail):
     def write(what: str, operation):
         """A person's act on the plan's shape: kept for `graphene plan undo`. What git tracks is asked
         before the plan's write lock is taken (``tracked``), never under it: a hook waiting on the
-        lock gives up after a quarter of a second, and lets the call through."""
+        lock gives up after a quarter of a second, and lets the call through. What the act says is
+        said once it is committed: a pipe closed under it (`| head -1`) had rolled it back after it
+        said it was made. An act rolled back takes its lines with it."""
         who = P.caller()
 
         def go(store):
             with P.undoable(store, who, what):
                 return operation(store)
 
-        return run(go)
+        held.append([])
+        try:
+            result = run(go)
+        finally:
+            lines = held.pop()
+        for line in lines:
+            typer.echo(line)
+        return result
 
     def tracked() -> list[str]:
         return P.tracked(checkout())
