@@ -191,8 +191,8 @@ the last.
 read, edited and ran, what was refused, and what it said last.
 
 **Which record wins.** A Claude Code executor is seen by the hooks and by its stream. For the meter the stream wins
-(turns, tokens, dollars, tool calls); for the gate the hooks win (what was refused and written). Each tool call is
-counted once. A session of yours, with no stream, has only the hooks' record.
+(turns, tokens, dollars, tool calls); for the gate the hooks win (what was refused and written). A refused shell
+write may count twice. A session of yours, with no stream, has only the hooks' record.
 
 ## Where each mechanism ends
 
