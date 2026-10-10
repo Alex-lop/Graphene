@@ -10,16 +10,19 @@ which picked the account's default model as a stranger's would.
 
 | measure | 907a7d0 | branch | shown |
 |---|---|---|---|
-| proposals by ask | 40 of 40 [0.91, 1.00] | — | — |
-| proposals by first answer | 40 of 40 [0.91, 1.00] | — | — |
-| asks lost | 0 of 40 | — | — |
-| first refusals, by class | none | — | — |
-| checks by runner (unittest / pytest / other) | 79 / 24 / 8 | — | — |
-| median seconds; median planner dollars | 26.5 s; $0.077 | — | — |
+| proposals by ask | 40 of 40 [0.91, 1.00] | 40 of 40 [0.91, 1.00] | no difference |
+| proposals by first answer | 40 of 40 [0.91, 1.00] | 35 of 40 [0.74, 0.95] | the intervals overlap: no difference shown |
+| asks lost | 0 of 40 | 0 of 40 | no difference |
+| first refusals, by class | none | 5: `then:` effects 3 (an id not in the plan; a quoted goal effect ×2), indentation 2 | the text grammar's classes, every one accepted on the second try |
+| checks by runner (unittest / pytest / other) | 79 / 24 / 8 | 98 / 9 / 4 | the clean-tree sentence (A5) moved the planner toward the repo's own runner on these stdlib repos |
+| median seconds; median planner dollars | 26.5 s; $0.077 | 29.0 s; $0.086 | about the same |
+| the ask's last line names the planner, its calls and its dollars | never | 40 of 40 (`the planner (claude sonnet-5-5): 5 calls, $0.11 at list price`) | A2 |
 
-The A1 gate: no refusal on `$A`, so the schema planner was deferred and not measured. What the branch adds to an
-ask (A2, A5) is read from the asks' output: the cost line present, and the clean-tree sentence in the planner's
-prompt.
+The A1 gate held on `$A` (no refusal), so the schema planner was not built. The branch's five first refusals are
+the classes a schema would reach (three `then:` slips) or not (two indentation slips, which the schema also makes
+impossible); over both builds that is 5 of 80 first answers, 6%, under the 10% the rule set. Nothing was lost: the
+second try took every one. The branch's X1 ran on the build at d6cd8e9; the ask's code did not change after it
+(the one later edit to gate.py is the hook's aside path, not the SessionStart text the planner reads).
 
 ## X2: the price of the contract on feeds (n = 3 a build; the plain session and `/batch` once)
 
