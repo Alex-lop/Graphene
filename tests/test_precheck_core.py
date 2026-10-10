@@ -284,6 +284,26 @@ def test_a_reopened_leaf_done_again_on_its_landed_check_is_said_to_have_passed_a
         assert NR._refusals(store.node_log("a")).at_base is not None
 
 
+def test_a_review_leaf_keeps_its_mark_when_its_check_is_edited_since_nothing_ran_the_new_one(repo):
+    """The mark was keyed on the check the leaf has now: `node set --check` on a leaf in review, which runs
+    nothing, took the ∅ away, and signed off it was done with no mark, though nothing verified its work."""
+    from graphene_map import tui
+
+    bot = P.Caller("claude:aaaa1111", False, "aaaa1111-session")
+    with Store.open(repo) as store:
+        leaf = {"id": "a", "title": "a", "scope": ["new.py"], "check": "true", "signoff": "alex"}
+        P.propose(store, [leaf], ME)
+        K.run(store, repo)
+        P.start(store, "a", bot, repo)
+        (repo / "new.py").write_text("x = 1\n")
+        P.finish(store, "a", bot)
+        assert P.get(store, "a").state == P.REVIEW and tui.precheck(store, P.get(store, "a"))
+        P.edit(store, "a", {"check": "test -s new.py"}, ME)
+        assert tui.precheck(store, P.get(store, "a")) is not None
+        P.signoff(store, "a", ME, checkout=repo)
+        assert P.get(store, "a").state == P.DONE and tui.precheck(store, P.get(store, "a")) is not None
+
+
 @pytest.mark.parametrize(
     "installed, check, named",
     [("editable", FAILS, True), ("elsewhere", FAILS, False), ("editable", "true", False),
