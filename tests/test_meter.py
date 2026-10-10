@@ -317,3 +317,14 @@ def test_a_command_claude_code_refused_its_executor_is_refused_not_ran():
     log = [row("00:00", "attempt", {"attempt": 1}), *(row("00:10", k, d) for k, d in rows)]
     [a] = M.attempts(log, now=NOW)
     assert (a["ran"], a["refused"]) == ([], [command])
+
+
+def test_the_agents_last_words_are_kept_whole():
+    """What it said last is its result: as a text block its said row stops at 400 characters, and the
+    record said 160 of them. Longer than a row, the result is a said row of its own, whole."""
+    words = ("word " * 120).strip() + "!"  # 600 characters
+    meter = M.Meter("claude", 1)
+    rows = meter.feed(json.dumps({"type": "result", "result": words, "total_cost_usd": 0.01}))
+    assert [d for k, d in rows if k == "said"] == [{"attempt": 1, "text": words}]
+    short = {"type": "result", "result": "done", "total_cost_usd": 0.01}
+    assert [k for k, _ in M.Meter("claude", 1).feed(json.dumps(short))] == ["usage"]  # as its text block

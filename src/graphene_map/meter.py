@@ -196,6 +196,8 @@ class Meter:
         --resume its total_cost_usd is the session's running total, so what earlier attempts paid comes
         off; its usage is the call's own (dev/test/results-2026-09-23.md)."""
         self.result = str(event.get("result") or event.get("subtype") or "")  # a stop says why it stopped
+        whole = self.result.strip()  # its last words: as a text block, its row stopped at SAID
+        said = [("said", {"attempt": self.attempt, "text": whole})] if len(whole) > SAID else []
         refused = []  # what Claude Code refused its executor; a write is the hooks' to record (theirs win)
         for d in event.get("permission_denials") or []:
             tool = d.get("tool_name") or ""
@@ -205,7 +207,7 @@ class Meter:
                                            "how": "refused to the executor"}))  # fmt: skip
         reported = event.get("total_cost_usd")
         if not isinstance(reported, (int, float)):
-            return refused
+            return [*said, *refused]
         self.reported = reported
         rest = reported - self.paid_before - self.dollars
         self.dollars += rest
@@ -215,7 +217,7 @@ class Meter:
         more_out = max(0, (used.get("output_tokens") or 0) - self.completion_tokens)
         self.prompt_tokens += more_in
         self.completion_tokens += more_out
-        return [*refused, ("usage", {"model": self.model, "calls": 0, "prompt_tokens": more_in,
+        return [*said, *refused, ("usage", {"model": self.model, "calls": 0, "prompt_tokens": more_in,
                            "completion_tokens": more_out, "dollars": rest, "endpoint": ENDPOINT[self.kind],
                            "attempt": self.attempt,
                            "turns": self.turns, "reported": reported})]  # fmt: skip

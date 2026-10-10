@@ -648,6 +648,21 @@ def test_a_command_claude_code_refused_its_executor_is_in_the_record_and_offered
     assert plan.wanted(store, plan.get(store, "n1")) == []
 
 
+def test_what_an_attempt_said_last_is_whole_and_wrapped_when_it_is_long(store, repo):
+    run, words = Caller("run:claude", False, "s-1"), ("word " * 120).strip() + "!"  # 600 characters
+    plan.propose(store, [api_node()], ALEX, now=T(0))
+    plan.start(store, "n1", run, repo, now=T(1))
+    ended = {"attempt": 1, "exit": 0, "meter": "claude", "unread": 0}
+    meter_rows(store, run, [(T(2), "attempt", {"attempt": 1, "log": None}),
+                            (T(3), "said", {"attempt": 1, "text": words}),
+                            (T(4), "ended", ended)])  # fmt: skip
+    plan.release(store, "n1", run, "it stops here", now=T(5))
+    lines = NR.render(NR.node_record(store, repo, plan.get(store, "n1"), at=T(6)))
+    start = lines.index("    said last:")
+    wrapped = [line.removeprefix("      ") for line in lines[start + 1 : lines.index("    the last it did:")]]
+    assert " ".join(wrapped) == words and all(len(line) <= 100 for line in wrapped), wrapped
+
+
 def test_an_attempt_with_no_meter_shows_the_tail_of_its_log(store, repo, tmp_path):
     run = Caller("run:sh", False, "s-1")
     log = tmp_path / "n1-1.txt"

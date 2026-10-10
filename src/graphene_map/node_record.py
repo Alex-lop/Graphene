@@ -22,6 +22,7 @@ window says so and names what was read instead. A count that cannot be computed 
 from __future__ import annotations
 
 import subprocess
+import textwrap
 from collections import Counter
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -830,8 +831,11 @@ def _attempt_lines(record: NodeRecord) -> list[str]:
             lines.append(f"    ran: {_few(ran)}")
         if a["refused"]:
             lines.append(f"    refused: {', '.join(a['refused'])}")
-        if a["said"]:
-            lines.append(f"    said last: {' '.join(a['said'].split())[:SAID_LAST]}")
+        said = " ".join((a["said"] or "").split())
+        if said and len(said) <= SAID_LAST:
+            lines.append(f"    said last: {said}")
+        elif said:  # whole, wrapped: its last words are what it says it did
+            lines += ["    said last:", *(f"      {line}" for line in textwrap.wrap(said, 100))]
         told = a["told"] if a["meter"] else _log_tail(a["log"])
         text = "\n".join(" ".join(t.split()) if a["meter"] else t for t in told)[-P.TAIL :]
         if text.strip():
@@ -840,7 +844,7 @@ def _attempt_lines(record: NodeRecord) -> list[str]:
     return lines
 
 
-SAID_LAST = 160  # characters of what an attempt said last, on its one line
+SAID_LAST = 160  # characters of what an attempt said last on one line; longer, it is wrapped under it
 SHOWN = 3  # paths or commands named on one line before "and N more"
 
 
