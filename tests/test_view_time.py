@@ -198,6 +198,17 @@ def test_activity_runs_a_repeat_together_and_says_when_after_its_attempt_began()
     assert again == [(65, "reading a.py", 1)]
 
 
+def test_activity_says_a_last_message_streamed_then_whole_once_as_l_and_node_show_do():
+    """Claude Code streams its last message as a block (its row cut at 400 characters) and again as the
+    result, kept whole: the time view's pane listed both, where `l` and node show say it once."""
+    whole = ("word " * 120).strip()
+    rows = [row("a", 0, "attempt", {"attempt": 1}), row("a", 5, "said", {"attempt": 1, "text": whole[:400]}),
+            row("a", 6, "said", {"attempt": 1, "text": whole}),
+            row("a", 7, "ended", {"attempt": 1, "exit": 0})]  # fmt: skip
+    [(_, said)] = VT.activity(rows)
+    assert said == [(6, whole, 1)]
+
+
 def ran(repo, finish, monkeypatch, title="users returns ids"):
     """ids ran and landed: it read, edited twice, said so; schema ran and came back. The plan's clock
     is the scenario's: `finish` stamps its check with it."""
