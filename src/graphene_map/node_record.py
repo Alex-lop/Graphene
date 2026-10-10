@@ -705,8 +705,9 @@ def _in_short(counts: dict) -> list[str]:
     traced = counts["changed_edit"] + counts["changed_shell"]
     paths = (f"{n} path{_s(n)} changed under it, {traced} traced to a recorded write"
              if counts["changed_computed"] else "what changed under it is not computed")  # fmt: skip
-    which = f"its {k} commit{_s(k)}" if out in (0, k) else f"{out} of its {k} commits"
-    said = "graded below" if not out else "in no session's records, so not graded" + (
+    # the commits inside its windows, whoever made them; not graded: in no record of a holding session's
+    which = f"the {k} commit{_s(k)} inside its windows" if out in (0, k) else f"{out} of the {k} commits"
+    said = "graded below" if not out else "in no record of a session that held it, so not graded" + (
         ", which takes nothing from the paths" if counts["changed_computed"] else "")  # fmt: skip
     return [f"  in short: {paths}; {which} {'is' if (out or k) == 1 else 'are'} {said}"]
 
@@ -766,10 +767,11 @@ def _coverage_lines(counts: dict, check: dict | None, at_base: dict | None = Non
             f"{counts['how'].removeprefix('not computed: ')}"
         )
     if counts["computed"] and counts["not_graded_commits"]:
+        n = counts["not_graded_commits"]
         lines.append(
-            f"    {counts['not_graded_commits']} commit{_s(counts['not_graded_commits'])} inside its "
-            f"windows ({counts['not_graded_files']} file{_s(counts['not_graded_files'])}) are in no "
-            "session's records: not graded, and not counted above"
+            f"    {n} commit{_s(n)} inside its windows ({counts['not_graded_files']} "
+            f"file{_s(counts['not_graded_files'])}) {'is' if n == 1 else 'are'} in no record of a session "
+            "that held it: not graded, and not counted above"
         )
     return lines
 

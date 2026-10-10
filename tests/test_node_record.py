@@ -296,9 +296,9 @@ def test_the_check_says_its_last_line_and_that_it_also_passed_at_the_base_before
     paths = ("  coverage: of the 1 path git said had changed under this node, 1 inside its scope; 0 to a "
              "recorded edit, 0 to a recorded shell command, 1 to git alone")  # fmt: skip
     start = lines.index(paths)
-    assert lines[start - 1] == ("  in short: 1 path changed under it, 0 traced to a recorded write; its 1 "
-                                "commit is in no session's records, so not graded, which takes nothing from "
-                                "the paths")  # fmt: skip
+    assert lines[start - 1] == ("  in short: 1 path changed under it, 0 traced to a recorded write; the 1 "
+                                "commit inside its windows is in no record of a session that held it, so not "
+                                "graded, which takes nothing from the paths")  # fmt: skip
 
 
 def test_a_check_that_failed_after_passing_at_the_base_is_never_said_to_show_nothing(store, repo):
@@ -338,6 +338,24 @@ def test_every_denied_and_breached_path_is_named_and_only_the_refused_commands_a
     assert "    denied: docs/a.md, docs/b.md, src/c.py, src/d.py ×2" in said
     assert "    refused after the fact: docs/a.md, docs/b.md, src/c.py, src/d.py" in said
     assert "    refused to the executor: w, x and 2 more" in said
+
+
+def test_another_sessions_commit_inside_the_window_is_not_called_the_nodes_nor_said_to_be_unrecorded(
+    store, repo
+):
+    """A commit another recorded session made inside n1's window read "its 1 commit is in no session's
+    records": it was session bbbb2222's, and the store held its record."""
+    session(store, repo, S1, T(0))
+    session(store, repo, S2, T(0))
+    plan.propose(store, [api_node()], ALEX, now=T(0))
+    plan.start(store, "n1", BOT, repo, now=T(1))
+    (repo / "README.md").write_text("# someone else's\n")
+    committed(store, repo, S2, "someone else, inside the window", T(2), 1)
+    lines = NR.render(NR.node_record(store, repo, plan.get(store, "n1"), at=T(3)))
+    [short] = [line for line in lines if line.startswith("  in short: ")]
+    assert "the 1 commit inside its windows is in no record of a session that held it" in short, short
+    below = "    1 commit inside its windows (1 file) is in no record of a session that held it: not graded, "
+    assert below + "and not counted above" in lines
 
 
 def test_a_commit_in_the_nodes_first_second_is_inside_its_window(store, repo):
