@@ -2,6 +2,7 @@
 2.1.292 with Sonnet 5.5; codex-cli 0.151.0 against Nemotron Super on Token Factory; a Codex run whose
 login was revoked)."""
 
+import json
 import shlex
 from datetime import UTC, datetime
 from pathlib import Path
@@ -303,3 +304,21 @@ def test_a_codex_edit_named_by_its_absolute_path_is_judged_from_its_checkout():
     [a] = M.attempts(log, ["ingest/**"], NOW)
     assert a["files_in"] == ["ingest/feed.py"] and a["files_out"] == ["/repo/ingest/feed.py"]
     assert a["last"] == "editing /repo/ingest/feed.py" and a["told"][0] == "editing ingest/feed.py"
+
+
+def test_a_command_claude_code_refused_its_executor_is_refused_not_ran():
+    """Claude Code refuses a -p executor a command its permission mode does not allow (`python3 -m unittest
+    -q` under acceptEdits): node show listed it under ran and said "refused: nothing". Its result lists each
+    call it refused; a write it refused is the hooks' to record, so only the others become rows."""
+    meter, command = M.Meter("claude", 1), "python3 -m unittest -q"
+    call = {"type": "assistant", "message": {"id": "msg_1", "model": "claude-sonnet-5-5", "content": [
+        {"type": "tool_use", "id": "toolu_1", "name": "Bash", "input": {"command": command}}]}}
+    denials = [{"tool_name": "Bash", "tool_input": {"command": command}, "tool_use_id": "toolu_1"},
+               {"tool_name": "Edit", "tool_input": {"file_path": "/w/a/x.py"}, "tool_use_id": "toolu_2"}]
+    result = {"type": "result", "result": "stopped", "total_cost_usd": 0.01, "permission_denials": denials}
+    rows = meter.feed(json.dumps(call)) + meter.feed(json.dumps(result))
+    assert [k for k, _ in rows] == ["usage", "did", "denied", "usage"]
+    assert rows[2][1] == {"attempt": 1, "command": command, "tool": "Bash", "how": "refused to the executor"}
+    log = [row("00:00", "attempt", {"attempt": 1}), *(row("00:10", k, d) for k, d in rows)]
+    [a] = M.attempts(log, now=NOW)
+    assert (a["ran"], a["refused"]) == ([], [command])
