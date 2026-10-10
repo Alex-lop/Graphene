@@ -680,3 +680,18 @@ def test_plan_record_and_node_show_on_a_sub_goal_say_how_wide_its_leaves_ran(rep
                 store.log_node(leaf, stamp, kind, run.label, run.session_id, None, {"attempt": 1})
     for args in (("plan", "record"), ("node", "show", "api")):
         assert "    width 2 of 2 · 50% of agent minutes alone" in person(*args).stdout.splitlines(), args
+
+
+def test_plan_log_and_plan_record_say_what_the_last_run_said(repo):
+    """A run's last line said what it did, and was gone with the terminal it was printed in."""
+    from graphene_map import plan
+    from graphene_map.store import Store
+
+    summary = "run: 1 done · agents 2 min, $0.0400 at list price · width 1 of 1 · you 1 act, 1 min"
+    with Store.open(repo) as store:
+        plan.propose(store, [{"id": "a", "title": "a", "scope": ["a.txt"], "check": "true"}],
+                     plan.Caller("alex", True))  # fmt: skip
+        store.log_node("*", "2026-01-05T01:00:00.000Z", "run", "graphene run", detail={"summary": summary})
+    logged = person("plan", "log").stdout.splitlines()[-1]
+    assert logged.endswith(f"run           graphene run      {summary}"), logged
+    assert f"    last run: {summary}" in person("plan", "record").stdout.splitlines()

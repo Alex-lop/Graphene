@@ -1895,7 +1895,10 @@ class Watch(App):
     def action_record(self) -> None:
         if self.board_row() is not None:
             return self.action_board("enter")
-        if self.on_goal():  # the goal has no record of its own: its pane already says what is under it
+        if self.on_goal():  # the goal's record is the plan's: every leaf's added up
+            said = self.did(["plan", "record"], quiet=True, keep=True)
+            if said is not None:  # a replay refuses every command, and has said so
+                self.finished("graphene plan record", said)
             return
         self.view = "contract" if self.view == "record" else "record"
         self.query_one("#side", VerticalScroll).scroll_home(animate=False)
@@ -2250,6 +2253,8 @@ def goal_pane(store, s, wide: int) -> Text:
     pane.text(Text.assemble(("the goal", "dim"), " · ", (word, P.look(word)[1]), extra))
     if not goal and not proposed:
         pane.text("the root of the tree, in your words: :plan goal '…' says why any of this is done", "dim")
+    for ran in store.node_log("*", ("run",))[-1:]:  # what the last run said as it ended
+        pane.field("last run", str(ran["detail"].get("summary") or ""))
     tops = s.under.get(None, [])
     if tops:
         pane.gap()
