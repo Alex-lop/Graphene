@@ -479,6 +479,7 @@ def register(cli: typer.Typer, root, open_store, fail):
             or ", ".join(detail.get("outside") or detail.get("paths") or detail.get("unowned") or [])
             or "; ".join(f"{k}: {value(a)} → {value(b)}" for k, (a, b) in fields)
             or (f"changed: {', '.join(changed)}" if isinstance(changed, list) and changed else "")
+            or detail.get("summary")  # a run's last line
             or detail.get("command")
             or ""
         )
@@ -879,6 +880,8 @@ def register(cli: typer.Typer, root, open_store, fail):
                 whose = "the planner's" if actor.startswith("planner") else f"{actor}'s"
                 for line in bill_line(bill([e for e in usage if e["actor"] == actor]), "    "):
                     out(line.replace("bill:", f"{whose} bill:"))
+            for ran in store.node_log("*", ("run",))[-1:]:  # what the last run said as it ended
+                out(f"    last run: {ran['detail'].get('summary')}")
 
         run(go)
 

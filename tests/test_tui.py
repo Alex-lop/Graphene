@@ -2413,3 +2413,18 @@ def test_c_on_a_landed_leaf_puts_its_diff_in_the_pane(repo):
     run_parallel(lambda: Store.open(repo), repo, repo, 1, "sh -c 'echo a > a.txt'", say=[].append)
     seen, _ = at(repo, "a", (120, 36), keys=["c"])
     assert "a.txt |" in seen["detail"] and "graphene node diff a --stat" in seen["status"], seen
+
+
+def test_the_goal_says_the_last_run_and_enter_on_it_is_the_plans_record(repo):
+    """What a run said last was gone with the terminal it printed in, and Enter on the goal did nothing."""
+    proposed(repo)
+    person("plan", "accept")
+    summary = "run: 1 done · agents 2 min, $0.0400 at list price"
+    with Store.open(repo) as store:
+        store.log_node("*", plan._now(), "run", "graphene run", detail={"summary": summary})
+    seen, _ = watch(repo, [], size=(120, 36))
+    assert seen["cursor"] is None and f"last run {summary}" in " ".join(seen["detail"].split()), seen
+    seen, _ = watch(repo, ["enter"], size=(120, 36))
+    said = " ".join(seen["detail"].split())
+    assert "checks run by Graphene itself" in said and f"last run: {summary}" in said, said
+    assert "graphene plan record" in seen["status"]
