@@ -99,7 +99,8 @@ def run_cli(repo: Path, executor: str) -> subprocess.Popen:
     [("claude", "--output-format stream-json --verbose", "claude.jsonl", 3),
      ("codex", "exec --json", "codex.jsonl", 11)],  # fmt: skip
 )
-def test_the_stream_lands_on_the_leaf_while_the_executor_runs(repo, name, with_, fixture, gate):
+def test_the_stream_lands_on_the_leaf_while_the_executor_runs(repo, name, with_, fixture, gate, monkeypatch):
+    monkeypatch.setenv("GRAPHENE_PERSON", "the-tester")  # the pins count the person's acts, whoever runs this
     script, go = printing(repo, name, fixture, gate)
     run = run_cli(repo, f"{script} {with_}")
     try:
@@ -139,7 +140,8 @@ pathlib.Path("a.txt").write_text("done\\n")
 """
 
 
-def test_a_stream_the_meter_cannot_read_leaves_the_run_as_it_was(repo):
+def test_a_stream_the_meter_cannot_read_leaves_the_run_as_it_was(repo, monkeypatch):
+    monkeypatch.setenv("GRAPHENE_PERSON", "the-tester")  # the pins count the person's acts, whoever runs this
     script = stand_in(repo, "claude", GARBAGE.format(python=sys.executable))
     run = run_cli(repo, f"{script} --output-format stream-json")
     said, _ = run.communicate(timeout=60)

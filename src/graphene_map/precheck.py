@@ -126,6 +126,10 @@ def _here(command: str, root: Path, committed: bool = False) -> tuple[int | None
     return code, out + err
 
 
+RUNNERS = ("pytest", "unittest", "doctest", "coverage", "tox", "nox", "nose2", "mypy", "pyright", "ruff",
+           "flake8", "pylint", "black", "isort", "pip", "build", "twine", "poetry", "hatch")  # fmt: skip
+
+
 def _probe(command: str, tree: Path, env: dict, began: float) -> str | None:
     """What this environment lacks to run the check, in the probe's own last line, or None: its first
     program on the PATH (`command -v`), and for `python3 -m X` the package X (`import X`), asked in the
@@ -140,9 +144,10 @@ def _probe(command: str, tree: Path, env: dict, began: float) -> str | None:
         return None
     probes, rest = [f"command -v {shlex.quote(first)}"], words[words.index(first) + 1 :]
     if re.fullmatch(r"python[\d.]*", Path(first).name) and rest[:1] == ["-m"] and rest[1:]:
-        # ponytail: a package the leaf itself makes reads as missing here; ask the scopes, as the
-        # Nemotron extra's verdict does, if that shows up
-        probes.append(f"{shlex.quote(first)} -c {shlex.quote('import ' + rest[1].split('.')[0])}")
+        # ponytail: only a runner a repository installs is asked for; a package the leaf itself makes
+        # would read as missing here, and its import error is the leaf's red, not the environment's
+        if rest[1].split(".")[0] in RUNNERS:
+            probes.append(f"{shlex.quote(first)} -c {shlex.quote('import ' + rest[1].split('.')[0])}")
     for probe in probes:
         code, out, err = P._ended(probe, tree, env, began)
         if code:
