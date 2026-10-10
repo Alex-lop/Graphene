@@ -880,8 +880,9 @@ def register(cli: typer.Typer, root, open_store, fail):
                 whose = "the planner's" if actor.startswith("planner") else f"{actor}'s"
                 for line in bill_line(bill([e for e in usage if e["actor"] == actor]), "    "):
                     out(line.replace("bill:", f"{whose} bill:"))
-            for ran in store.node_log("*", ("run",))[-1:]:  # what the last run said as it ended
-                out(f"    last run: {ran['detail'].get('summary')}")
+            runs = store.node_log("*", ("run", "archived"))  # this plan's last run, not an archived plan's
+            if runs and runs[-1]["kind"] == "run" and runs[-1]["detail"].get("summary"):
+                out(f"    last run: {runs[-1]['detail']['summary']}")
 
         run(go)
 
@@ -1448,12 +1449,17 @@ def register(cli: typer.Typer, root, open_store, fail):
 
         def go(store):
             n, here = P.get(store, node_id), str(root())
+            if any(m.parent == n.id for m in P.nodes(store)):
+                raise P.Refused(f"{n.id} is a sub-goal: each of its leaves has its own diff")
             ends = store.node_log(n.id, ("landed", "unlanded", "finished", "overruled"))
             kind, d = (ends[-1]["kind"], ends[-1]["detail"]) if ends else (None, {})
             if kind == "landed":  # the merge: what it brought in over its first parent
                 return here, [], [f"{d['commit']}^1", d["commit"]]
             if kind == "unlanded":  # passed and not merged: its branch waits for the person
                 return here, [], [n.base_sha, d["branch"]]
+            if kind and (not n.base_sha or not d.get("changed")):  # done by hand, or overruled: no change
+                how = "overruled" if kind == "overruled" else "done"
+                raise P.Refused(f"{n.id} was {how} with no change of its own to show")
             if kind and P.RUN_TREE not in (n.checkout or ""):  # a session's `done`, auto's ask, `run --here`
                 where, kept = n.checkout or here, d.get("blobs") or {}
                 # ponytail: shown as the checkout is now, not as it was left: finish hashes its blobs without
@@ -1464,8 +1470,6 @@ def register(cli: typer.Typer, root, open_store, fail):
                 said += [f"changed since it finished, shown as it is now: {moved}"] if moved else []
                 tree = state(Path(where))[1]  # the checkout as git sees it, its new files too
                 return where, said, [n.base_sha, *([tree] if tree else []), "--", *(d.get("changed") or [])]
-            if any(m.parent == n.id for m in P.nodes(store)):
-                raise P.Refused(f"{n.id} is a sub-goal: each of its leaves has its own diff")
             why = ("its work has not landed yet" if n.state in (P.DONE, P.REVIEW) else "nothing of it is done"
                    ) if store.node_log(n.id, ("started",)) else "nothing has run yet"  # fmt: skip
             raise P.Refused(f"{n.id} is {n.state}: {why}")
@@ -1474,7 +1478,7 @@ def register(cli: typer.Typer, root, open_store, fail):
         # captured, never fd 1: watch runs a command here, its output read back (tui._cli); and plain, for
         # its pane, whatever git's colours (color.ui=always colours a pipe too)
         argv = ["git", "-C", where, "diff", "--no-color", *(["--stat"] if stat else []), *span]
-        shown = subprocess.run(argv, capture_output=True, text=True)
+        shown = subprocess.run(argv, capture_output=True, text=True, errors="replace")
         if shown.returncode:
             fail(f"git cannot show what {node_id} changed: {shown.stderr.strip()}", 1)
         for line in [*said, shown.stdout.rstrip("\n") or "git shows no difference"]:

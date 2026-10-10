@@ -790,7 +790,7 @@ def _refusal_lines(refusals: Refusals) -> list[str]:
         if counted:
             lines.append(
                 f"    {label}: "
-                + ", ".join(f"{p}{'' if n == 1 else f' ×{n}'}" for p, n in sorted(counted.items()))
+                + _few([f"{p}{'' if n == 1 else f' ×{n}'}" for p, n in sorted(counted.items())])
             )
     # the same paths refused again (each attempt's own `done`, then the run's) are one line, counted
     for stray, n in Counter(", ".join(stray) or "a failing check" for stray in refusals.done).items():
@@ -831,7 +831,7 @@ def _attempt_lines(record: NodeRecord) -> list[str]:
             ran = [f"{r} ({a['runs'][r]} times)" if a["runs"][r] > 1 else r for r in a["ran"]]
             lines.append(f"    ran: {_few(ran)}")
         if a["refused"]:
-            lines.append(f"    refused: {', '.join(a['refused'])}")
+            lines.append(f"    refused: {_few(a['refused'])}")
         said = " ".join((a["said"] or "").split())
         if said and len(said) <= SAID_LAST:
             lines.append(f"    said last: {said}")

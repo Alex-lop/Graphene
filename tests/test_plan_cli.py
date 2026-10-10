@@ -764,3 +764,19 @@ def test_plan_log_and_plan_record_say_what_the_last_run_said(repo):
     logged = person("plan", "log").stdout.splitlines()[-1]
     assert logged.endswith(f"run           graphene run      {summary}"), logged
     assert f"    last run: {summary}" in person("plan", "record").stdout.splitlines()
+
+
+def test_node_diff_refuses_in_words_a_done_leaf_that_never_had_a_base(repo):
+    """Lane D's checker, 10 October: a to-do done by hand has no base commit; the diff passed None to git
+    and raised a TypeError, which c in watch then put in the pane."""
+    from graphene_map import plan
+
+    with Store.open(repo) as store:
+        todo = {"title": "todo", "scope": ["notes.md"], "check": "true"}
+        plan.propose(store, [todo], plan.Caller("alex", True))
+    person("plan", "accept")
+    with Store.open(repo) as store:
+        store.log_node("n1", plan._now(), "finished", "alex", None, None, {"changed": []})
+    said = person("node", "diff", "n1")
+    assert said.exit_code == 1 and "n1 was done with no change of its own to show" in said.stderr, said.output
+    assert "TypeError" not in said.output
