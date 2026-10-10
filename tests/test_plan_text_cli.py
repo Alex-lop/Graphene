@@ -56,6 +56,15 @@ def test_an_agent_proposes_in_text_and_the_person_reads_it_back(repo):
     )
 
 
+def test_a_proposal_with_two_faults_is_told_both_at_once(repo):
+    """A session proposes through the heredoc it is taught, and was told one fault a Bash call. It is
+    told every fault at once, as `graphene ask` tells its planner."""
+    proposed = agent("plan", "propose", "-", input="? one  [one]\n? two  [two]\n    scope: api.py\n")
+    assert proposed.exit_code == 1, proposed.output
+    assert "line 1: 'one' is a new leaf with no scope and no check" in proposed.stderr
+    assert "line 2 [two]: two: a leaf needs a check" in proposed.stderr, proposed.stderr
+
+
 def test_a_person_edits_the_plan_in_their_editor_and_the_save_is_applied(repo, monkeypatch, tmp_path):
     agent("plan", "propose", "-", input=TEXT)
     editor(
