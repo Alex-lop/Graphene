@@ -320,3 +320,22 @@ def test_node_show_says_where_a_leaf_landed_and_how_to_see_it(repo):
     merge = git_in(repo, "rev-parse", "--short=7", "HEAD").strip()
     shown = person("node", "show", "a")
     assert f"  landed: {merge}: `graphene node diff a` shows it" in shown.stdout.splitlines(), shown.output
+
+
+def test_the_merge_says_what_landed_and_a_leaf_landed_again_says_it_was_reopened(repo):
+    """A merge said `write a (a)` and no more: not the check that proved it, who did it for how much,
+    nor, landed again after a reopen, why. The first landing's subject is as it was."""
+    with Store.open(repo) as store:
+        plan.propose(store, [leaf("a")], ALEX)
+    go(repo)
+    body = git_in(repo, "log", "-1", "--merges", "--format=%b")
+    said = ["Check: `test -s a.txt` passed", "Executor: worker.py · 1 attempt · no meter", "Graphene-Node: a"]
+    assert body.strip().splitlines() == said, body
+    with Store.open(repo) as store:
+        plan.reopen(store, "a", ALEX, "the format is wrong")
+    go(repo)
+    subjects = git_in(repo, "log", "--merges", "--format=%s").splitlines()
+    assert subjects == ["write a (a, reopened)", "write a (a)"]
+    note = "Reopened: the format is wrong\nGraphene-Node: a"
+    assert note in git_in(repo, "log", "-1", "--merges", "--format=%b")
+    assert note in git_in(repo, "log", "-1", "--format=%b", "HEAD^2")  # the leaf's own commit, merged
