@@ -104,7 +104,7 @@ KEYS = {  # the bottom line, when no command has just spoken: what the keys do o
     "proposed": ["y accept", "d drop", "e edit", "E edit with what is under it"],
     "review": ["y sign off", "x send back", "Enter record"],
     "running": ["l output", "x release", "Enter record"],
-    "done": ["x reopen", "Enter record"],
+    "done": ["x reopen", "Enter record", "c diff"],
     "ready": ["R run all ready", "r run this", "e edit"],
     "yours": ["y done", "e edit", "Enter record"],
     "waiting": ["e edit", "d drop", "Enter record"],
@@ -781,6 +781,7 @@ class Watch(App):
         Binding("b", "offer('b')", show=False),
         Binding("P", "plan_first", show=False),
         Binding("D", "direction", show=False),  # direction: the tree above the plans, in the pane
+        Binding("c", "diff", show=False),  # what a done leaf changed: `graphene node diff --stat`
         Binding("m", "seen", show=False),
         Binding("plus", "reask('finer')", show=False),
         Binding("minus", "reask('coarser')", show=False),
@@ -1882,6 +1883,14 @@ class Watch(App):
     def action_tail(self) -> None:
         self.view = "contract" if self.view == "tail" else "tail"
         self.refresh_plan()
+
+    def action_diff(self) -> None:
+        node_id = self.selected()
+        if node_id is None:
+            return
+        said = self.did(["node", "diff", node_id, "--stat"], quiet=True, keep=True)
+        if said is not None:  # a replay refuses every command, and has said so
+            self.finished(f"graphene node diff {node_id} --stat", said)
 
     def action_record(self) -> None:
         if self.board_row() is not None:
