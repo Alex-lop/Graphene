@@ -569,6 +569,9 @@ def run_node(
         # the refusal for the person: its `graphene node release` step was the executor's to take
         told = "\n".join(ln for ln in refusal.splitlines() if "graphene node release" not in ln)
         crashed = f"; the executor itself exited {code}" if code else ""
+        if capped:  # no crash: its result said the budget ran out
+            crashed = ("; its last attempt stopped at its --max-budget-usd (a larger cap in --with, or a "
+                       "smaller leaf)")
         P.release(store, node.id, who, f"{tries}, the last one refused: {told}{crashed}")
         say(f"{node.id} came back after {tries}: `graphene node show {node.id}` says why")
         return None
