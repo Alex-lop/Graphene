@@ -10,8 +10,10 @@ branch (`dev/process/prove/after.md`).
   terminal, and the two ways out. At a terminal it asks the plan-first mode, one line per mode, and keeps `on` when
   it cannot ask. A repository with no commit is told to commit once first. Run `graphene init`.
 - `graphene init --remove` takes out exactly the hooks init added and leaves every other setting; only a person may.
-- A person-only act refused inside Claude Code says "if you are the person, run it in a terminal outside Claude
-  Code". A held leaf blocks a session's stop once, then lets it stop; `graphene run`'s executors are held as before.
+- A person-only act on the plan or the settings (accepting, editing, signing off, plan first, init) refused inside
+  Claude Code says "if you are the person, run it in a terminal outside Claude Code"; answering the board, `ask` and
+  `talk` still say only that they are the person's. A held leaf blocks a session's stop once, then lets it stop;
+  `graphene run`'s executors are held as before.
 - A store another process is writing never turns the hook's deny into an allow: every write on the way to a refusal
   is guarded, the aside leaf a prompt makes included.
 - An agent is told to put back only what it made; what may be the person's unsaved work is asked about instead.
