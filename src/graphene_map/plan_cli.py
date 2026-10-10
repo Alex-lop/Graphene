@@ -1024,6 +1024,11 @@ def register(cli: typer.Typer, root, open_store, fail):
                     out(line)
             logs = r / ".graphene" / "runs"
             since = len(store.node_log())  # what this run did is what the log says after this
+
+            def end(line: str) -> None:  # the run's last line, said, then kept: nobody's act, and no change
+                out(line)
+                store.log_node("*", P._now(), "run", "graphene run", None, None, {"summary": line})
+
             try:  # red first runs in the runner, once its refusals (a lock, a detached HEAD, the cap) pass
                 if here:
                     out("--here: your checkout is exposed. The executor writes in it. Nothing is committed")
@@ -1052,10 +1057,10 @@ def register(cli: typer.Typer, root, open_store, fail):
             except P.Refused as no:
                 fail(str(no), 1)
             except KeyboardInterrupt:
-                out(summary(store, since, stopped=True))
+                end(summary(store, since, stopped=True))
                 raise typer.Exit(130) from None
             left = P.uncommitted(store, checkout()) if here else []  # a worktree's leaf committed its own
-            out(summary(store, since) + (f" · the work of {', '.join(left)} is {P.UNCOMMITTED}" * bool(left)))
+            end(summary(store, since) + (f" · the work of {', '.join(left)} is {P.UNCOMMITTED}" * bool(left)))
 
     def planner(
         sentence: str, executor: str | None, about: str | None, split: bool, size: str | None = None
