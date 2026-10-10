@@ -112,7 +112,7 @@ Takes, clips and videos are git-ignored: the script is committed, never the vide
   The numbers in the narration are read off the screen, never written in advance, and the model named
   for the executors is the one the frozen configuration uses (Nano, Super, or Nano then Super).
 - The board and the questions on it are Nemotron's, from that run.
-- Nemotron's shaping prototypes (`graphene plan cover`, `note`, `precheck`) and `?` talk appear only if
+- Nemotron's shaping prototypes (`graphene plan cover`, `note`, `precheck`) and `t` talk appear only if
   they ran live in that recording. Until then they are not on camera.
 - Nothing recorded in the Docker stand-in is shown or described as a Token Factory Sandbox.
 - The final video has the narration as audio; the subtitles are the rough cut's stand-in for it, and
