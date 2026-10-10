@@ -173,3 +173,31 @@ diagnosis and the fix's reason are rows in the plan's log and the reopen note, w
 leaf that owned it named; in the plain session they are a paragraph in a transcript, and the fix was left
 uncommitted. Red first said `xml-wiring: its check passes at the base commit … it proves nothing` in run 1 (its
 check was the existing suite) and named checks outside their scope in run 3; the leaves ran anyway, by decision.
+
+## X3: ten questions about a finished run (n = 3 runs × 2 arms, one Sonnet reader each)
+
+`x3.sh`, 2026-10-10 17:2xZ, on X2 (a)'s three planted runs. Arm A got `graphene plan record`, `graphene node show`
+for every leaf, `graphene plan log` and `git log --graph --oneline` (907a7d0 has no `node diff`). Arm B got `git log
+-p base..HEAD` and each attempt's final words from the executors' own run logs. Each reader: `claude -p --tools ''
+--json-schema x3_schema.json`, $0.50 cap, the isolation flags; eight factual questions scored by script against
+`truth.json` (ids and counts exact, shas by 7-character prefix, dollars within a cent, files as a set); the two
+others (why; what waits on you) printed for a person to read.
+
+| run | arm | of 8 | q1 files the fix changed | q3 commands refused to the executors | q4 a check that passed at the base | q5 planner and total dollars | q6 width | q7 came back, reopened | q9 the fix's merge | q10 leaves added after accept |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | A record | 7 | ✓ | ✗ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| 1 | B git + last words | 3 | ✓ | ✗ | ✗ | ✗ | ✗ | ✓ | ✓ | ✗ |
+| 2 | A | 7 | ✓ | ✗ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| 2 | B | 4 | ✓ | ✗ | ✓ | ✗ | ✗ | ✓ | ✓ | ✗ |
+| 3 | A | 6 | ✓ | ✗ | ✓ | ✗ | ✓ | ✓ | ✓ | ✓ |
+| 3 | B | 4 | ✓ | ✗ | ✓ | ✗ | ✗ | ✓ | ✓ | ✗ |
+
+Medians: **the record 7 of 8; git plus last words 4 of 8.** Every reader, both arms, missed q3: the record on
+907a7d0 says `refused: nothing` under attempts whose own result events hold 14 to 20 `permission_denials`, and git
+knows nothing of it (this is what D1 changes). Arm B also lacks what git never held: the at-base verdict, the
+dollars, the width, the leaves added after acceptance (D5 puts the first two into the merge message, so on the
+branch git itself should answer more; `after.md` reports that as git's own gain). Both arms found the fix's files
+and its merge and named the leaf that came back and the one reopened; on 907a7d0 the two landings of `xml-wiring`
+share one subject ("Wire xml in as an enabled source with cents prices (xml-wiring)"), and the readers told them
+apart by order. Readers cost $0.07–0.14 each. The questions were drawn from the gaps the night's changes fill, so
+Arm A's rise on the branch is by construction; the comparison that counts is with Arm B on the same build.
