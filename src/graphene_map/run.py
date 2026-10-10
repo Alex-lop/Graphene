@@ -762,13 +762,16 @@ def _came_back(store, only: list[str] | None, say: Callable[[str], None]) -> set
 
 def _red_first(store, target: Path, only: list[str] | None, say: Callable[[str], None], committed: bool):
     """Red first (precheck.py), once the run's own refusals have passed: the check of each open leaf it
-    may start (``only``: what --node named, a sub-goal's leaves, a leaf that came back), run at the commit
-    its leaves start from (``committed``: HEAD alone, which a leaf's worktree is cut from). A warning,
-    not a gate: if it breaks, the run goes on."""
+    may start (``only``: what --node named, a sub-goal's leaves, a leaf that came back; else each leaf
+    ready now that did not come back: one that waits on another would be judged before what it needs has
+    landed), run at the commit its leaves start from (``committed``: HEAD alone, which a leaf's worktree
+    is cut from). A warning, not a gate: if it breaks, the run goes on."""
     from . import precheck as pre
 
     ids = [i for i in only or () if (store.node_row(i) or {}).get("state") == P.OPEN]
-    if only and not ids:
+    if not only:
+        ids = [n.id for n in P.ready(P.nodes(store), P.Caller("agent", False)) if not P.came_back(store, n)]
+    if not ids:
         return
     try:
         for line in pre.said(pre.run(store, target, ids, committed=committed)):

@@ -965,14 +965,17 @@ def register(cli: typer.Typer, root, open_store, fail):
             "--with",
             help="Use this executor, not init's: claude, codex, nemotron or a command.",
         ),
-        attempts: int = typer.Option(3, "--attempts", help="How often a refused executor is sent back."),
+        attempts: int = typer.Option(
+            3, "--attempts", min=1, help="How often a refused executor is sent back."
+        ),
         node: list[str] = typer.Option(None, "--node", help="Only this node; repeat it."),
         parallel: int = typer.Option(1, "--parallel", help="How many leaves run at once."),
         here: bool = typer.Option(
             False, "--here", help="Run in your checkout and commit nothing; the checkout is exposed."
         ),
         precheck: bool = typer.Option(
-            True, "--precheck/--no-precheck", help="Skip the checks at the base commit."
+            True, "--precheck/--no-precheck", help="Run each leaf's check at the base commit first; "
+            "--no-precheck skips it."
         ),
     ) -> None:
         """Run every ready leaf in its own worktree, one executor per leaf.
