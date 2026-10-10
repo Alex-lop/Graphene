@@ -581,6 +581,28 @@ def test_each_change_stays_on_the_screen_and_space_dot_and_r_pause_step_and_play
     assert seen["again"][:3] == (1, {}, None)
 
 
+def test_the_replays_footer_offers_enter_record_only_where_enter_shows_one(tmp_path):
+    """On the goal Enter is `graphene plan record`, a command the replay refuses ("a replay: nothing runs
+    here"); its footer offered "Enter record" there all the same."""
+    head, lines = demo.load(demo.SHIPPED)
+    app = demo.Replay(demo.repository(tmp_path, head), head, lines)
+    seen = {}
+
+    async def go():
+        async with app.run_test(size=(80, 24)) as pilot:
+            await pilot.press("space", *["full_stop"] * len(lines))  # paused, then to the last change
+            await pilot.press("g", "g")
+            await pilot.pause(0.3)
+            seen["goal"] = (app.on_goal(), str(app.query_one("#status").render()))
+            await pilot.press("j")
+            await pilot.pause(0.3)
+            seen["node"] = (app.on_goal(), str(app.query_one("#status").render()))
+
+    asyncio.run(go())
+    assert seen["goal"][0] and "Enter record" not in seen["goal"][1], seen
+    assert not seen["node"][0] and "Enter record" in seen["node"][1], seen
+
+
 def test_the_replays_help_names_its_own_keys_and_none_it_refuses(tmp_path):
     head, lines = demo.load(demo.SHIPPED)
     app = demo.Replay(demo.repository(tmp_path, head), head, lines)
