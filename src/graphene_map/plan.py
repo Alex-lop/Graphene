@@ -803,6 +803,10 @@ def _clean_tree(checkout: str | Path, leave_out: list[str] | tuple, began: float
         # ignore rule matches, a sparse checkout's), and then everything else git sees on disk
         with suppress(OSError):  # a repo where nothing was ever added has no index yet
             shutil.copyfile(Path(checkout, had), index)
+            # dated at epoch+1: the copy's own date would make git trust every entry's stat data, and an
+            # edit of the same size made in the second the file was written out would read as the
+            # committed file (X5, 10 October); dated this early, every entry is racily clean and is read
+            os.utime(index, (1, 1))
         git(*(("read-tree", "HEAD") if committed else ("add", "-A")), index=index)
         if leave_out:
             out = "".join(f"{p}\0" for p in leave_out)
