@@ -493,7 +493,8 @@ def test_plan_first_is_a_setting_the_person_sees_and_sets(repo):
     # with no plan in force the gate makes no leaf of a quick change (decision 18): off says when it does
     assert "as a leaf of its own while a plan is in force" in person("plan", "first", "off").stdout
     person("plan", "first", "auto")
-    assert "One leaf of at most 8 paths, with nothing on the board" in person("plan", "first").stdout
+    # the ask's own items: an open item from another tree does not stop it (gate.one_line_ask)
+    assert "One leaf of at most 8 paths that puts nothing on the board" in person("plan", "first").stdout
     assert person("plan", "first", "sideways").exit_code == 1
 
 
