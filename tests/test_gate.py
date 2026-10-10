@@ -329,6 +329,20 @@ def test_a_busy_store_at_a_stop_still_refuses_it_for_the_planned_leaf_beside_an_
         assert [n.state for n in plan.nodes(store) if n.aside] == [plan.RUNNING]
 
 
+def test_a_prompt_lost_to_a_busy_store_never_lets_the_last_prompts_contract_make_a_leaf(repo):
+    """Plan first on: the store was busy when the second prompt came, so the first one's words, whose
+    --scope and --check had made their leaf, made another at the next write, and it passed unproposed."""
+    plan_first(repo, "on")
+    hook(repo, "UserPromptSubmit", prompt="tidy the schema --scope 'src/db/**' --check 'true'")
+    assert write(repo, "src/db/schema.py") is None  # the person's own contract: done at once
+    hook(repo, "Stop")  # the turn ends, and its leaf closes
+    with busy(repo):
+        hook(repo, "UserPromptSubmit", prompt="now rework the users api and the schema")
+    assert "holds no leaf" in reason(write(repo, "src/db/schema.py"))
+    with Store.open(repo) as store:
+        assert not plan.nodes(store, (plan.RUNNING,))
+
+
 # -- what the closing review broke ---------------------------------------------------------------------
 
 

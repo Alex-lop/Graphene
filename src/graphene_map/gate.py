@@ -320,6 +320,13 @@ def _contract(text: str | None) -> bool:
     return bool(text and _SCOPE.search(text) and _CHECK.search(text))
 
 
+def _spent(store, sid: str) -> bool:
+    """This session made a leaf from its last kept prompt already: the --scope and --check it typed plan
+    one leaf, once. A prompt the store was too busy to keep leaves the one before it there, spent."""
+    since = store.meta(f"prompt_at:{sid}") or ""
+    return any(n.aside and n.session_id == sid and (n.created_at or "") >= since for n in P.nodes(store))
+
+
 def _on_prompt(store, sid: str, text: str) -> dict | None:
     """A prompt is remembered: with plan first off the next write may become a leaf made from it, and
     either way a one-leaf proposal made after it is the person's ask (``one_line_ask``). With plan
@@ -335,8 +342,8 @@ def _on_prompt(store, sid: str, text: str) -> dict | None:
     for n in _held(store, sid):
         if n.aside:  # the turn before ended without a Stop (interrupted): its record closes here
             _close(store, n, sid)
-    store.set_meta(f"prompt_at:{sid}", P._now())
     store.set_meta(f"prompt:{sid}", text)  # TODO: two rows a session, never pruned
+    store.set_meta(f"prompt_at:{sid}", P._now())  # after it: a prompt the store lost is never timed as kept
     if not first or _held(store, sid) or _contract(text):
         return None
     take = _take(store)
@@ -646,7 +653,7 @@ def decide(store, event: dict, root: Path) -> dict | None:
         written = _first_write(event, root)
         cwd = event.get("cwd") if isinstance(event.get("cwd"), str) else None
         # a prompt that typed its own --scope and --check planned its leaf: made at its first write
-        planned = first and _contract(store.meta(f"prompt:{sid}"))
+        planned = first and _contract(store.meta(f"prompt:{sid}")) and not _spent(store, sid)
         if written is not None and not (planned and _aside(store, sid, cwd, root)):
             how = "planner" if planner else "plan first"
             _write(store.log_node, "*", P._now(), "denied", None, sid, None, {"path": written, "how": how})
