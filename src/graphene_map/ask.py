@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import os
 import re
+import shlex
 import subprocess
 import uuid
 from collections.abc import Callable
@@ -512,7 +513,9 @@ def ask(
         kept = store.path.parent / "runs" / f"ask-{session[:8]}.txt"  # beside what `graphene run` logs
         kept.parent.mkdir(parents=True, exist_ok=True)
         kept.write_text(paid_for, encoding="utf-8")
-        where = os.path.relpath(kept)  # from where the person stands: the next step runs there
+        # from where the person stands: the next step runs there. Under `graphene watch` this runs in the
+        # repo's root, not where the person started watch: the whole path, quoted, runs from anywhere
+        where = shlex.quote(str(kept)) if "GRAPHENE_WATCH" in os.environ else os.path.relpath(kept)
         # what it was proposed in place of (a merge's leaves, the node another way replaces, a re-ask's last
         # tree): `plan propose` replaces nothing, so they are dropped first, by hand
         instead = {*beside, *(n.id for n in _pending(store, last) if reask)}

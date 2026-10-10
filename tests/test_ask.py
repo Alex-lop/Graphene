@@ -9,6 +9,7 @@ import re
 import signal
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 from test_plan_cli import AGENT_ENV, person, repo, runner  # noqa: F401  (fixtures)
@@ -521,6 +522,17 @@ def test_a_lost_asks_kept_proposal_is_named_from_where_the_person_stands(repo, t
     kept = re.search(r"its proposal is kept in (\S+): mend it", said.stderr)
     assert kept and kept[1].startswith("../"), said.stderr
     assert (repo / "src" / kept[1]).read_text().startswith("- ids  [ids]")
+
+
+def test_a_lost_asks_kept_proposal_is_named_whole_when_watch_ran_it(repo, tmp_path, monkeypatch):
+    """watch runs an ask in the repo's root, wherever the person started it: a path relative to the root
+    failed once they quit watch, back in src/. Under watch the kept file is named by its whole path."""
+    bad = "```plan\n- ids  [ids]\n    scope: api.py\n    signoff: perhaps\n```"
+    monkeypatch.setenv("GRAPHENE_WATCH", "")  # as watch's own commands carry it, a terminal or none
+    said = person("ask", "ids", "--with", claude_planner(tmp_path, (bad, 0.25), (bad, 0.5)))
+    assert said.exit_code == 1, said.output
+    kept = re.search(r"its proposal is kept in (\S+): mend it", said.stderr)
+    assert kept and Path(kept[1]).is_absolute() and Path(kept[1]).read_text().startswith("- ids  [ids]")
 
 
 def test_a_planner_the_night_refuses_is_never_started(repo, tmp_path, monkeypatch):
