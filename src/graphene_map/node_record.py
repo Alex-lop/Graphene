@@ -616,7 +616,7 @@ def _refusals(log: list[dict]) -> Refusals:
                 "gist": _plain((str(detail.get("output") or "").strip().splitlines() or [""])[-1])[:200],
             }
         elif kind == "precheck":
-            out.at_base = detail if detail.get("verdict") == "passes" else None
+            out.at_base = detail if detail.get("verdict") in ("passes", "landed") else None
     return out
 
 

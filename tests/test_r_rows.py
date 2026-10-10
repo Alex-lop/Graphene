@@ -2,6 +2,7 @@
 """The r row: shown wherever a came-back leaf's offers are, r takes it (else runs the leaf again),
 the precheck mark and its line, and the record's line for a reopen after landing."""
 
+import pytest
 from test_plan_cli import person, repo  # noqa: F401  (fixtures)
 from test_tui import proposed, watch
 
@@ -82,11 +83,12 @@ def test_a_red_or_stale_precheck_is_not_marked(repo):
     assert not any("∅" in row for row in seen["tree"]) and "proves nothing" not in seen["detail"]
 
 
-def test_a_leaf_whose_check_passed_at_the_base_keeps_its_mark_once_it_is_done(repo):
+@pytest.mark.parametrize("verdict", ["passes", "landed"])  # landed: reopened, done again on that check
+def test_a_leaf_whose_check_passed_at_the_base_keeps_its_mark_once_it_is_done(repo, verdict):
     """The ∅ went once the leaf left open, though done its check proved no more than it did at the base."""
     proposed(repo)
     person("plan", "accept")
-    precheck(repo, "schema", verdict="passes", why="exit 0")
+    precheck(repo, "schema", verdict=verdict, why="exit 0")
     with Store.open(repo) as store:
         bot = plan.Caller("claude:aaaa1111", False, "aaaa1111-session")
         plan.start(store, "schema", bot, repo)

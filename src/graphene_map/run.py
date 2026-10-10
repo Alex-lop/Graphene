@@ -883,7 +883,8 @@ def _merged(store, node: P.Node) -> str:
     if node.check:
         red = [e["detail"] for e in store.node_log(node.id, ("precheck",))]  # red first, at the base
         red = [d for d in red if d.get("check") == node.check]
-        too = ", and it passed at the base too" if red and red[-1].get("verdict") == "passes" else ""
+        at_base = red and red[-1].get("verdict") in ("passes", "landed")  # landed: reopened, done on it again
+        too = ", and it passed at the base too" if at_base else ""
         lines.append(f"Check: `{node.check}` passed{too}")
     if tries:
         a = tries[-1]

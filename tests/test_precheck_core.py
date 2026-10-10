@@ -241,6 +241,32 @@ def test_a_reopened_leaf_whose_check_passed_when_it_landed_is_landed_until_the_c
     assert d["verdict"] == "passes"
 
 
+def test_a_reopened_leaf_done_again_on_its_landed_check_is_said_to_have_passed_at_the_base(repo):
+    """Lane D's readers took only "passes": a reopened leaf done again on its unchanged check ("landed")
+    lost its ∅, the merge's "passed at the base too" and the record's line, though nothing verified it."""
+    from graphene_map import node_record as NR
+    from graphene_map import run as R
+    from graphene_map import tui
+
+    with Store.open(repo) as store:
+        leaves(store, ("a", ["new.py"], "test -f new.py"))
+        P.start(store, "a", ME, repo)
+        (repo / "new.py").write_text("x = 1\n")
+        P.finish(store, "a", ME)
+        git(repo, "add", "-A")
+        git(repo, "commit", "-qm", "a landed")
+        P.reopen(store, "a", ME, "it must also say y")
+        [(_, d)] = K.run(store, repo)
+        P.start(store, "a", ME, repo)
+        (repo / "new.py").write_text("x = 2\n")
+        P.finish(store, "a", ME)
+        node = P.get(store, "a")
+        assert d["verdict"] == "landed" and node.state == P.DONE
+        assert tui.precheck(store, node) is not None
+        assert "Check: `test -f new.py` passed, and it passed at the base too" in R._merged(store, node)
+        assert NR._refusals(store.node_log("a")).at_base is not None
+
+
 @pytest.mark.parametrize(
     "installed, check, named",
     [("editable", FAILS, True), ("elsewhere", FAILS, False), ("editable", "true", False),

@@ -2291,8 +2291,9 @@ def precheck(store, node: P.Node) -> dict | None:
         return None
     rows = store.node_log(node.id, ("precheck",))
     d = rows[-1]["detail"] if rows else {}
-    if node.state in (P.DONE, P.REVIEW):  # by the check's own words, whatever the rev is since
-        return d if d.get("verdict") == "passes" and d.get("check") == node.check else None
+    if node.state in (P.DONE, P.REVIEW):  # by the check's own words, whatever the rev is since; a
+        # reopened leaf done again on the check it landed with ("landed") was verified by it no more
+        return d if d.get("verdict") in ("passes", "landed") and d.get("check") == node.check else None
     return d if d.get("rev") == node.rev and d.get("verdict") in ("passes", "outside") else None
 
 
@@ -2342,7 +2343,7 @@ def detail(store, node: P.Node, s, files: list[str] | None = None, room: tuple[i
         )
     if (pre := precheck(store, node)) is not None:
         base = str(pre.get("base", ""))[:7]
-        if pre["verdict"] == "passes" and node.state in (P.DONE, P.REVIEW):
+        if pre["verdict"] in ("passes", "landed") and node.state in (P.DONE, P.REVIEW):
             what = "what landed" if node.state == P.DONE else "what it did"
             says = (f"its check also passed at the base commit {base}, before any work: {what} is not "
                     "verified by it")  # fmt: skip
