@@ -593,6 +593,31 @@ def test_a_metered_attempt_that_came_back_says_what_it_ran_and_where_it_was_refu
                            "claude-sonnet-5-5 (Claude Code's report)")  # fmt: skip
 
 
+def test_a_command_claude_code_refused_its_executor_is_in_the_record_and_offered_to_no_scope(store, repo):
+    """Claude Code's own refusal of a command (its result's permission_denials) read "refused: nothing". It is
+    a command, not a path: the hand-back offers no scope to widen to it."""
+    from graphene_map import meter as M
+
+    run, command, meter = Caller("run:claude", False, "s-1"), "python3 -m unittest -q", M.Meter("claude", 1)
+    plan.propose(store, [api_node()], ALEX, now=T(0))
+    plan.start(store, "n1", run, repo, now=T(1))
+    bash = {"command": command}
+    stream = [{"type": "assistant", "message": {"id": "m1", "content": [
+                  {"type": "tool_use", "id": "t1", "name": "Bash", "input": bash}]}},
+              {"type": "result", "total_cost_usd": 0.01, "permission_denials": [
+                  {"tool_name": "Bash", "tool_input": bash, "tool_use_id": "t1"}]}]  # fmt: skip
+    ended = {"attempt": 1, "exit": 0, "meter": "claude", "unread": 0}
+    meter_rows(store, run, [(T(2), "attempt", {"attempt": 1, "log": None}),
+                            *((T(3), k, d) for e in stream for k, d in meter.feed(json.dumps(e))),
+                            (T(4), "ended", ended)])  # fmt: skip
+    plan.release(store, "n1", run, "it cannot run its tests", now=T(5))
+    lines = NR.render(NR.node_record(store, repo, plan.get(store, "n1"), at=T(6)))
+    assert "  refused: 1 command refused to the executor" in lines
+    assert f"    refused to the executor: {command}" in lines
+    assert f"    refused: {command}" in lines and not any(line.startswith("    ran: ") for line in lines)
+    assert plan.wanted(store, plan.get(store, "n1")) == []
+
+
 def test_an_attempt_with_no_meter_shows_the_tail_of_its_log(store, repo, tmp_path):
     run = Caller("run:sh", False, "s-1")
     log = tmp_path / "n1-1.txt"

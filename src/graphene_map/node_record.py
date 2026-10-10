@@ -63,6 +63,7 @@ class Refusals:
     """What the plan said no to while the node was held, counted from the log."""
 
     denied: list[str] = field(default_factory=list)  # one path per write refused before it happened
+    commands: list[str] = field(default_factory=list)  # one per command Claude Code refused its executor
     breaches: list[str] = field(default_factory=list)  # one path per change refused after the fact
     stops: int = 0
     done: list[list[str]] = field(default_factory=list)  # the stray paths of each refused `done`
@@ -593,7 +594,9 @@ def _refusals(log: list[dict]) -> Refusals:
     out = Refusals()
     for entry in log:
         kind, detail = entry["kind"], entry["detail"]
-        if kind == "denied":
+        if kind == "denied" and "command" in detail:
+            out.commands.append(str(detail["command"]))
+        elif kind == "denied":
             out.denied.append(str(detail.get("path", "?")))
         elif kind == "breach":
             out.breaches.extend(str(p) for p in detail.get("paths", []))
@@ -744,6 +747,8 @@ def _refusal_lines(refusals: Refusals) -> list[str]:
         head.append(f"{len(refusals.denied)} write{_s(len(refusals.denied))} denied")
     if refusals.breaches:
         head.append(f"{len(refusals.breaches)} change{_s(len(refusals.breaches))} refused after the fact")
+    if refusals.commands:
+        head.append(f"{len(refusals.commands)} command{_s(len(refusals.commands))} refused to the executor")
     if refusals.stops:
         head.append(f"{refusals.stops} stop{_s(refusals.stops)} refused")
     if refusals.done:
@@ -753,7 +758,8 @@ def _refusal_lines(refusals: Refusals) -> list[str]:
     if not head:
         return ["  refused: nothing"]
     lines = [f"  refused: {', '.join(head) or 'nothing'}"]
-    for label, paths in (("denied", refusals.denied), ("refused after the fact", refusals.breaches)):
+    for label, paths in (("denied", refusals.denied), ("refused after the fact", refusals.breaches),
+                         ("refused to the executor", refusals.commands)):  # fmt: skip
         counted = Counter(paths)
         if counted:
             lines.append(
