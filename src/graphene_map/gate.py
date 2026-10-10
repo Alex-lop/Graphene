@@ -11,7 +11,8 @@ The holes, which the README and the map print beside the controls:
 - a shell command can write a file in a way no parser reads (a script that opens files itself);
   when the vendor reports what a command changed it is refused after the fact, and ``finish`` asks
   git, which sees every write however it was made;
-- the vendor lets a session stop after 8 refused stops in a row; the node then stays open, visibly;
+- a session is refused one stop, and may stop after it (to ask the person); an executor is refused
+  until the vendor lets it stop after 8 refused stops in a row; the node then stays open, visibly;
 - the refusals that read a command's text (GRAPHENE_AS, .graphene/) stop the ordinary spellings and
   not a determined one. What holds against that is elsewhere: ``plan.caller`` ranks an agent's own
   environment above the variable, and the store is the one thing nothing here can defend against a
@@ -653,13 +654,17 @@ def decide(store, event: dict, root: Path) -> dict | None:
     cwd = event.get("cwd") if isinstance(event.get("cwd"), str) else None
 
     if name == "Stop":
+        # reminded once: the stop after a refused one is let go, so a session can stop to ask the person
+        # something; an executor `graphene run` started is held until its leaf is done or handed back
+        again = event.get("stop_hook_active") is True and not os.environ.get("GRAPHENE_NODE")
         held = _held(store, sid)
         for n in [h for h in held if h.aside]:
             wrong = _close(store, n, sid)  # the turn is over: the leaf made from the prompt is too
             if wrong:
-                return {"decision": "block", "reason": f"{n.id} ({n.title}) is not done: {wrong}"}
+                said = f"{n.id} ({n.title}) is not done: {wrong}"
+                return None if again else {"decision": "block", "reason": said}
         held = [h for h in held if not h.aside]
-        if not held:
+        if not held or again:
             return None
         n = held[0]
         store.log_node(n.id, P._now(), "stop_refused", n.executor, sid, None, None)

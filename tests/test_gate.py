@@ -170,6 +170,16 @@ def test_a_stop_is_refused_while_a_node_is_held_and_allowed_once_it_is_done_or_h
     assert hook(repo, "Stop", stop_hook_active=False) is None
 
 
+def test_a_session_is_reminded_once_of_the_leaf_it_holds_and_an_executor_is_held_as_ever(repo, monkeypatch):
+    """A person's session that stopped to ask them something was refused the stop about 8 times in a row
+    by the vendor's count. Reminded once (stop_hook_active: the stop follows a refused one), it may stop;
+    an executor `graphene run` started is held until the leaf is done or handed back."""
+    holding(repo)
+    assert hook(repo, "Stop", stop_hook_active=True) is None
+    monkeypatch.setenv("GRAPHENE_NODE", "n1")
+    assert hook(repo, "Stop", stop_hook_active=True)["decision"] == "block"
+
+
 def test_another_session_is_not_held_by_a_node_it_does_not_hold(repo):
     holding(repo)
     plan_first(repo, "off")  # decision 4's refusal, which says who holds what
