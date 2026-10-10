@@ -126,9 +126,9 @@ How many leaves it is asked for follows the repository's size; the `size` settin
    executor, its attempts and dollars, and the note a reopened leaf was sent back with.
 
 The run's first line says where it lands, with what, how wide and under what cap; `graphene watch` in another
-terminal follows it live. Then each check runs once at the base: one that passes there proves nothing; one whose
-runner is missing cannot run here; one that an editable install would run against your checkout is named; a reopened leaf's check, which passed when it landed, is said as such. Each is a warning, said
-before the leaf starts anyway (`--no-precheck` skips the checks).
+terminal follows it live. Then ready leaves' checks run at the base: one that passes there proves nothing; one whose
+runner is missing cannot run here; an editable install a check would import is named; a reopened leaf's, which
+passed when it landed, is said so. Each is a warning, said before the leaf starts anyway (`--no-precheck` skips them).
 
 **Done** is the gate. Graphene asks git what changed since the leaf started; a path outside the scope is refused. Then
 it runs the check in a fresh worktree of the leaf's state, so nothing the check writes lands in yours. If nothing in
