@@ -74,7 +74,7 @@ HELP = (  # what answering the board needs first: at 80x24 the first screen ends
     ("shape", (
         ("y d", "accept, sign off, it is done; drop"), ("e E", "edit it in $EDITOR; with what is under it"),
         ("a A s", "add a sibling, a child; the planner splits it"),
-        ("?", "ask the planner why, split, merge, another way"),
+        ("t", "ask the planner why, split, merge, another way"),
         ("+ -", "the plan asked again, finer, coarser"), ("V u", "select several, then y or d; undo"),
         ("m", "mark all seen: then + and ~ show what changed"),
     )),
@@ -87,7 +87,7 @@ HELP = (  # what answering the board needs first: at 80x24 the first screen ends
     ("see", (("Enter l D", "the record; the executor's output; the direction"),
              ("ctrl-d -u", "scroll the pane"))),
     ("came back", (("w b r n", "widen its scope; a sibling; reopen; wait on those"),
-                   ("?", "ask the planner what would let it be done"))),
+                   ("t", "ask the planner what would let it be done"))),
 )  # fmt: skip
 HELP_END = (
     "The status line counts agents: what runs, its minutes, its dollars at list price; and you: your acts "
@@ -428,18 +428,20 @@ class Ask(ModalScreen[str | None]):
 
 
 def legend(wide: int) -> Text:
-    """The glyphs and colours, one line: what each state reads as, and the graph's heavy line; where
-    the words do not fit, the person's move (magenta: yours, review, came back) as one."""
+    """The glyphs and colours, one line: what each state reads as, ∅ (a check that passes on nothing, the
+    precheck's) and the graph's heavy line; where the words do not fit, the person's move (magenta: yours,
+    review, came back) as one, and where they still do not, ∅ on a line of its own under them."""
     looks = [(P.look(w)[0], P.look(w)[1], w) for w in LEGEND]
     short = [("".join(g for g, _, _ in looks[:3]), P.look("yours")[1], "yours"), *looks[3:]]
+    nothing = Text.assemble(("∅", "dim"), " proves nothing")
     for form in (looks, short):
         out = Text()
         for glyph, colour, word in form:
             out.append(glyph, colour).append(f" {word}  ")
-        out.append("━", "bold").append(" critical path" if form is looks else " critical")
-        if out.cell_len <= wide or form is short:
-            return out
-    return out
+        heavy = Text.assemble(("━", "bold"), " critical path" if form is looks else " critical")
+        if out.cell_len + nothing.cell_len + 2 + heavy.cell_len <= wide:
+            return Text.assemble(out, nothing, "  ", heavy)
+    return Text.assemble(out, heavy, "\n", nothing)
 
 
 def help_text(groups, wide: int) -> Text:
@@ -759,7 +761,8 @@ class Watch(App):
     ENABLE_COMMAND_PALETTE = False
     BINDINGS = [
         Binding("q", "quit", show=False),
-        Binding("question_mark", "help_or_ask", show=False),
+        Binding("question_mark", "help", show=False),
+        Binding("t", "talk", show=False),
         Binding("colon", "line(':')", show=False),
         Binding("slash", "line('/')", show=False),
         Binding("escape", "escape", show=False),
@@ -1506,14 +1509,13 @@ class Watch(App):
         return ["Esc back" if k == "l back" else k for k in keys]
 
     def row_keys(self) -> list[str]:
-        tail = [*(["Tab view"] if len(V.VIEWS) > 1 else []), "? talk" if self.selected() else "? help"]
-        tail.append("q quit")
+        tail = [*(["Tab view"] if len(V.VIEWS) > 1 else []), "? help", "q quit"]
         if self.anchor is not None:
             yes = "y accept and run" if self.runs_on_y(self.chosen()) else "y accept"
-            return ["VISUAL", yes, "d drop", "? m merge", "j k widen it", "Esc ends"]
+            return ["VISUAL", yes, "d drop", "t m merge", "j k widen it", "Esc ends"]
         if self.view == "record":
             offers = [OFFERED[k] for k in self.offer_keys()]
-            ask = ["? ask the planner", "q quit"] if offers else tail  # there ? is no help: it spends
+            ask = ["t ask the planner", "q quit"] if offers else tail
             return ["ctrl-d ctrl-u scroll", "Enter back", *offers, *ask]
         if self.view == "tail":
             return ["ctrl-d ctrl-u scroll", "l back", *tail]
@@ -1545,7 +1547,7 @@ class Watch(App):
         if word == "came back":
             offers = [OFFERED[k] for k in self.offer_keys()]
             again = [] if "r" in self.offer_keys() else ["r run it again"]  # else r is the offer
-            return [*on, *offers, "? ask the planner", *again, "Enter record", "q quit"]
+            return [*on, *offers, "t ask the planner", *again, "e edit its check", "Enter record", "q quit"]
         shut = ["za unfold"] if node is not None and node.allow_expand and not node.is_expanded else []
         if word in KEYS:
             keys = ["y accept and run", *KEYS[word][1:]] if self.runs_on_y(self.chosen()) else KEYS[word]
@@ -1635,9 +1637,12 @@ class Watch(App):
         if self.shape is not None:
             self.call_after_refresh(self.refresh_plan)  # below 110 columns the tree is as tall as its rows
 
-    def action_help_or_ask(self) -> None:
+    def action_help(self) -> None:
+        self.push_screen(Help())
+
+    def action_talk(self) -> None:
         node_id = self.selected()
-        if node_id is not None and node_id in self.back:  # there ? asks the planner, which spends
+        if node_id is not None and node_id in self.back:  # there t asks the planner, which spends
             self.background(asked_about(node_id))
         elif node_id is not None:
             self.talk_to()
@@ -1849,11 +1854,23 @@ class Watch(App):
         self.background(["ask", f"--{size}", *argv[2:-1]])  # the flag first: a cut line still names it
 
     def action_run(self, here: bool) -> None:
-        node_id = self.selected()
+        """R, and r on the goal: every ready leaf; r on a node: the ready leaves under it. A run that could
+        start more than one leaf (each an executor that spends) asks first; one ready leaf starts at once."""
+        node_id = self.selected() if here else None
         if here and "r" in self.offer_keys():  # a leaf that came back on a landed leaf's fault offers r
             return self.action_offer("r")
-        argv = ["run", *shlex.split(RUN_WITH), *(["--node", node_id] if here and node_id else [])]
-        self.background(argv)
+        argv = ["run", *shlex.split(RUN_WITH), *(["--node", node_id] if node_id else [])]
+        under = {node_id, *(n.id for n in P.below(node_id, self.nodes))} if node_id else self.words
+        ready = sum(self.words.get(i) == "ready" for i in under)
+        if node_id and ready <= 1:
+            return self.background(argv)
+        many = f"run {ready} ready, up to {shlex.split(RUN_WITH)[-1]} at once{self.counts.get('with', '')}"
+
+        def answered(typed: str | None) -> None:
+            if (typed or "").lower() in ("y", "yes"):
+                self.background(argv)
+
+        self.push_screen(Ask(f"{many}? y and Enter start them"), answered)
 
     def action_plan_first(self) -> None:
         now = self.counts.get("first", "off")  # on, auto, off: strictest to loosest, then round
@@ -1914,13 +1931,13 @@ class Watch(App):
         side = self.query_one("#side", VerticalScroll)
         side.scroll_relative(y=way * max(side.size.height - 2, 3), animate=False)
 
-    # -- talking on the tree: `?` on a node (graphene talk), `m` (graphene plan seen) -----------------
+    # -- talking on the tree: `t` on a node (graphene talk), `m` (graphene plan seen) -----------------
 
     TALK = {"w": "why", "s": "split", "m": "merge", "a": "another", "another way": "another", "?": "help"}
     changed: tuple[dict[str, str], int] = ({}, 0)  # talk.marks: what changed since the person last looked
 
     def talk_to(self) -> None:
-        """`?` on a node: one line saying what to ask the planner about it, or about the selection."""
+        """`t` on a node: one line saying what to ask the planner about it, or about the selection."""
         ids, here = self.chosen(), self.selected()
         about = ", ".join(ids) if len(ids) > 1 else here
         choices = "w why · s split · m merge · a another way · ? help · or your words"
@@ -2121,7 +2138,7 @@ def _node(data):
 
 def _sentence(argv: list[str]) -> list[str]:
     """`:ask` as the shell reads it, its words one sentence: `:ask --about ids fix it` is `graphene ask
-    'fix it' --about ids`, what `?` builds; `:ask add a login page` needs no quotes. Only ask's own
+    'fix it' --about ids`, what `t` builds; `:ask add a login page` needs no quotes. Only ask's own
     options are options: `:ask add a --dry-run flag` asks for a --dry-run flag."""
     words, options, rest = [], [], iter(argv[1:])
     for word in rest:
@@ -2340,7 +2357,7 @@ def as_typed(argv: list[str]) -> str:
 
 
 def asked_about(node_id: str) -> list[str]:
-    """What ? on a leaf that came back runs, and its pane shows as the command it is."""
+    """What t on a leaf that came back runs, and its pane shows as the command it is."""
     return ["ask", f"{node_id} came back: propose what would let it be done", "--about", node_id]
 
 
@@ -2348,7 +2365,7 @@ def _came_back(pane: Pane, store, node: P.Node, high: int) -> None:
     """Why it came back, then the fixes it offers as rows of one shape (key, what it does, the
     command), fitted so that at 80×24 every key is in sight: the reason gives way first."""
     why = (store.node_log(node.id, ("released",)) or [{"detail": {}}])[-1]["detail"].get("why", "")
-    offers = [*P.offers(store, node), ("?", "ask the planner", asked_about(node.id))]
+    offers = [*P.offers(store, node), ("t", "ask the planner", asked_about(node.id))]
     rows = [(key, _its(does, node.id), f"graphene {as_typed(argv)}") for key, does, argv in offers]
     # one line each when every one fits whole; else two each, all alike: what the key does, then the
     # command under it (at 120 columns the pane is narrow, and the commands had gone)
