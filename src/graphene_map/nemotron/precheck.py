@@ -30,9 +30,10 @@ SHAPER = "shaper:nemotron"  # who puts the shaping prototypes' output on the boa
 PROMPT_VERSION = "precheck-1"
 SAID = {"passes": "passes already", "cannot-run": "cannot run", "not-run": "not run",
         "outside": "red: names a path outside its scope",  # the core's (graphene_map.precheck), kept here
+        "landed": "passed when it landed",  # the core's, for a reopened leaf: it passes until the note is met
         "red-right-reason": "red, for the right reason", "red": "red", "environment": "red: the environment",
         "typo": "red: a typo", "other": "red: another reason"}  # fmt: skip
-QUIET = ("red-right-reason", "red")  # the verdicts a check should have before the work: no mark
+QUIET = ("red-right-reason", "red", "landed")  # the verdicts a check should have before the work: no mark
 SCHEMA = {"type": "object", "additionalProperties": False, "required": ["verdict", "why"], "properties": {
     "verdict": {"type": "string", "enum": ["red-right-reason", "environment", "typo", "other"]},
     "why": {"type": "string"}}}  # fmt: skip

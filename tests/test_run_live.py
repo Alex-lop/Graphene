@@ -98,8 +98,9 @@ def states(repo):
 
 
 @pytest.mark.parametrize("parallel", ["1", "2"])
-def test_ctrl_c_hands_back_what_the_run_started_and_stops_its_executors(repo, parallel):
+def test_ctrl_c_hands_back_what_the_run_started_and_stops_its_executors(repo, parallel, monkeypatch):
     """On 22 September a Ctrl-C left a leaf `running` for good, and in worktrees a run kept going."""
+    monkeypatch.setenv("GRAPHENE_PERSON", "the-tester")  # the pins count the person's acts, whoever runs this
     with Store.open(repo) as store:
         plan.propose(store, [leaf("a", "a.txt"), leaf("b", "b.txt")], ALEX)
     run = graphene_run(repo, "--with", executor(repo, SLOW), "--parallel", parallel)
@@ -563,11 +564,12 @@ def test_ctrl_c_after_a_leaf_landed_leaves_it_done_and_landed(repo):
 
 
 @pytest.mark.parametrize("hook", ["pre-merge-commit", "post-merge"])
-def test_ctrl_c_while_a_merge_hook_runs_undoes_or_keeps_the_merge_as_it_stands(repo, hook):
+def test_ctrl_c_while_a_merge_hook_runs_undoes_or_keeps_the_merge_as_it_stands(repo, hook, monkeypatch):
     """Recheck: stopped in a pre-merge-commit hook, before git wrote MERGE_HEAD, the leaf's file was
     left staged in the person's checkout; stopped in a post-merge hook, after the merge commit, the
     leaf that had landed was parked and told to merge again. And the last line said all was handed
     back and ready again, of a leaf parked in review."""
+    monkeypatch.setenv("GRAPHENE_PERSON", "the-tester")  # the pins count the person's acts, whoever runs this
     started = repo.parent / "hook.started"
     script = repo / ".git" / "hooks" / hook
     script.parent.mkdir(exist_ok=True)

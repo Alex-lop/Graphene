@@ -191,9 +191,10 @@ def test_leaves_with_one_check_that_passes_are_one_line_and_the_header_counts_th
     assert header.startswith("red first: 3 checks at ") and " (1 command) in " in header
 
 
-@pytest.mark.parametrize("check", ["nosuchtool-zz --version", "python3 -m nosuchmodule_zz"])
-def test_a_check_this_environment_cannot_run_is_said_so_and_its_gist_kept(repo, check):
+@pytest.mark.parametrize("check", ["nosuchtool-zz --version", "python3 -m pytest -q tests"])
+def test_a_check_this_environment_cannot_run_is_said_so_and_its_gist_kept(repo, check, monkeypatch):
     """Red first read `python3 -m pytest` with pytest missing as a red, or as outside: by its output."""
+    monkeypatch.setenv("PATH", "/usr/bin:/bin")  # the system python3, which has no pytest; git is there
     with Store.open(repo) as store:
         leaves(store, ("a", ["new.py"], check))
         rows = K.run(store, repo)
