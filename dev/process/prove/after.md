@@ -156,5 +156,5 @@ its leaf, was refused, and it then started the leaf and landed it.
 | the full suite | — | — |
 | ruff | clean | — |
 | the wheel smoke (`graphene --version`, `graphene demo --once`) | ok | — |
-| the night's spend (ledger.md) | $8.06 after the before arms | — |
+| the night's spend (ledger.md, from every session's own report) | $8.06 after the before arms | $20.61 for every experiment on both builds, plus about $0.32 for X7's first typo attempt whose runs were deleted and rerun (every planner, executor, walker and reader on Sonnet; the two strangers' own init on the account's default model). The plan's estimate was $52 under a $60 ceiling; Sonnet asks cost about $0.08, not the $0.20 the estimate used |
 | the SHA the after arms ran on | 907a7d0 | — |
