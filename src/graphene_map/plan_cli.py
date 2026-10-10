@@ -69,7 +69,8 @@ def register(cli: typer.Typer, root, open_store, fail):
     def write(what: str, operation):
         """A person's act on the plan's shape: kept for `graphene plan undo`. What git tracks is asked
         before the plan's write lock is taken (``tracked``), never under it: a hook waiting on the
-        lock gives up after a quarter of a second, and lets the call through. What the act says is
+        lock gives up after a quarter of a second and loses its row (the deny holds, ``gate._write``),
+        and a leaf a prompt would make is not made, so that write is refused. What the act says is
         said once it is committed: a pipe closed under it (`| head -1`) had rolled it back after it
         said it was made. An act rolled back takes its lines with it."""
         who = P.caller()

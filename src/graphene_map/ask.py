@@ -398,7 +398,7 @@ def ask(
     row = {"note": sentence, "about": about, "with": planner, "session": session}
     store.log_node("*", P._now(), "asked", P.person_name(), None, None, row)
     # git is asked before the plan's write lock is taken, never under it: a hook waiting on the lock
-    # gives up after a quarter of a second, and lets the call through
+    # gives up after a quarter of a second and loses its row, and a write that needed a leaf is refused
     files = P.tracked(root)
     asked = prompt = prompt_for(store, sentence, about, split, root, files, size, talk)
     reask = size and about is None and not split
