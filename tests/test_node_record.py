@@ -688,8 +688,27 @@ def test_what_an_attempt_said_last_is_whole_and_wrapped_when_it_is_long(store, r
     plan.release(store, "n1", run, "it stops here", now=T(5))
     lines = NR.render(NR.node_record(store, repo, plan.get(store, "n1"), at=T(6)))
     start = lines.index("    said last:")
-    wrapped = [line.removeprefix("      ") for line in lines[start + 1 : lines.index("    the last it did:")]]
+    end = next(k for k in range(start + 1, len(lines)) if not lines[k].startswith("      "))
+    wrapped = [line.removeprefix("      ") for line in lines[start + 1 : end]]
     assert " ".join(wrapped) == words and all(len(line) <= 100 for line in wrapped), wrapped
+
+
+def test_a_long_last_message_is_said_once_and_the_last_it_did_is_what_it_did(store, repo):
+    """`told` ends with the whole result: node show printed it under "said last" and again as the end of
+    "the last it did", cut to its last 2,000 characters, which a long summary filled with itself."""
+    run, words = Caller("run:claude", False, "s-1"), ("step done; " * 240).strip()  # 2,639 characters
+    plan.propose(store, [api_node()], ALEX, now=T(0))
+    plan.start(store, "n1", run, repo, now=T(1))
+    edit = {"attempt": 1, "tool": "Edit", "target": "src/api/users.py", "verb": "editing"}
+    ended = {"attempt": 1, "exit": 0, "meter": "claude", "unread": 0}
+    meter_rows(store, run, [(T(2), "attempt", {"attempt": 1, "log": None}), (T(3), "did", edit),
+                            (T(4), "said", {"attempt": 1, "text": words}),
+                            (T(5), "ended", ended)])  # fmt: skip
+    plan.release(store, "n1", run, "it stops here", now=T(6))
+    lines = NR.render(NR.node_record(store, repo, plan.get(store, "n1"), at=T(7)))
+    did = lines.index("    the last it did:")
+    assert lines[did + 1] == "      editing src/api/users.py", lines[did:]
+    assert not any("step done" in line for line in lines[did:])
 
 
 def test_an_attempt_with_no_meter_shows_the_tail_of_its_log(store, repo, tmp_path):

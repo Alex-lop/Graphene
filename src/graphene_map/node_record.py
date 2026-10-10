@@ -844,6 +844,8 @@ def _attempt_lines(record: NodeRecord) -> list[str]:
         elif said:  # whole, wrapped: its last words are what it says it did
             lines += ["    said last:", *(f"      {line}" for line in textwrap.wrap(said, 100))]
         told = a["told"] if a["meter"] else _log_tail(a["log"])
+        if a["meter"] and told and told[-1] == a["said"]:  # its last words, said above whole: not again
+            told = told[:-1]
         text = "\n".join(" ".join(t.split()) if a["meter"] else t for t in told)[-P.TAIL :]
         if text.strip():
             lines.append("    its last lines:" if not a["meter"] else "    the last it did:")
