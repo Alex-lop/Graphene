@@ -513,7 +513,13 @@ def ask(
         kept.parent.mkdir(parents=True, exist_ok=True)
         kept.write_text(paid_for, encoding="utf-8")
         where = os.path.relpath(kept)  # from where the person stands: the next step runs there
-        end = f"{end}\nits proposal is kept in {where}: mend it, then `graphene plan propose - < {where}`"
+        # what it was proposed in place of (a merge's leaves, the node another way replaces, a re-ask's last
+        # tree): `plan propose` replaces nothing, so they are dropped first, by hand
+        instead = {*beside, *(n.id for n in _pending(store, last) if reask)}
+        tops = sorted(n.id for n in P.nodes(store) if n.id in instead and n.parent not in instead)
+        drop = f"`graphene node drop {' '.join(tops)}`, then " if tops else ""
+        then = f"{drop}`graphene plan propose - < {where}`"
+        end = f"{end}\nits proposal is kept in {where}: mend it, then {then}"
     if refusal == before:
         raise P.Refused(
             f"no proposal after {ATTEMPTS} tries; nothing was added (each was refused as above){end}"

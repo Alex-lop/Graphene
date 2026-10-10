@@ -475,6 +475,33 @@ def test_a_lost_ask_keeps_the_last_proposal_it_paid_for_though_its_last_try_prin
     assert kept and (repo / kept[1]).read_text() == "- ids  [ids]\n    scope: api.py\n    signoff: perhaps\n"
 
 
+def test_a_lost_merges_kept_proposal_says_to_drop_what_it_replaces_first(repo, tmp_path):
+    """`plan propose` replaces nothing: a lost merge's proposal, mended, collided with the leaves it was
+    proposed beside, and the one command printed was refused. The kept line drops them first."""
+    for i, path in (("a", "api.py"), ("b", "schema.py")):
+        assert person("node", "add", i, "--id", i, "--scope", path, "--check", "true").exit_code == 0
+    bad = "```plan\n? both  [both]\n    scope: api.py, schema.py\n    check: true\n    signoff: perhaps\n```"
+    said = person("talk", "merge", "a", "b", "--with", claude_planner(tmp_path, (bad, 0.25), (bad, 0.5)))
+    assert said.exit_code == 1, said.output
+    kept = re.search(r"its proposal is kept in (\S+): mend it, then `graphene node drop a b`, then "
+                     r"`graphene plan propose - < \1`", said.stderr)  # fmt: skip
+    assert kept, said.stderr
+    mended = (repo / kept[1]).read_text().replace("    signoff: perhaps\n", "")
+    assert person("node", "drop", "a", "b").exit_code == 0
+    again = runner.invoke(build(), ["plan", "propose", "-"], env={"GRAPHENE_AS": "person:alex"}, input=mended)
+    assert again.exit_code == 0, again.output
+
+
+def test_a_lost_reasks_kept_proposal_says_to_drop_the_last_tree_first(repo, tmp_path):
+    good = "```plan\n? users returns ids  [ids]\n    scope: api.py\n    check: true\n```"
+    assert person("ask", "ids", "--with", claude_planner(tmp_path, (good, 0.2))).exit_code == 0
+    os.remove(repo / "tried")  # the stand-in answers from its first answer again
+    bad = "```plan\n? users read ids  [ids-read]\n    scope: api.py\n    signoff: perhaps\n```"
+    said = person("ask", "ids", "--with", claude_planner(tmp_path, (bad, 0.25), (bad, 0.5)), "--finer")
+    assert said.exit_code == 1, said.output
+    assert "mend it, then `graphene node drop ids`, then `graphene plan propose - < " in said.stderr
+
+
 def test_a_lost_asks_kept_proposal_is_named_from_where_the_person_stands(repo, tmp_path, monkeypatch):
     """`graphene ask` runs from any directory of the checkout; the next step it prints must run there."""
     bad = "```plan\n- ids  [ids]\n    scope: api.py\n    signoff: perhaps\n```"
