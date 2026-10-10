@@ -36,6 +36,12 @@ GONE = (DROPPED, ARCHIVED)
 CHECK_TIMEOUT = 1800  # seconds; TODO: one fixed cap, a per-node value when a real check needs longer
 TAIL = 2000  # characters of a check's output kept in the log
 BASH = next((b for b in ("/bin/bash", "/usr/bin/bash") if os.path.exists(b)), None)  # a check's shell
+# Where a check runs (``_clean_tree``), as the planner (`ask.RULES`) and every session (`gate.TEACH`) hear it
+CLEAN_TREE = (
+    "A check runs in a fresh worktree of the leaf's files, with your PATH: nothing git ignores is there "
+    "(no .venv, no node_modules), so it uses the repo's own runner and makes its environment where the "
+    "repo has one (`uv run pytest …` beside a pyproject, `npm ci && npm test`), else the system python3."
+)
 KEPT_PATHS = 200  # changed paths kept in a node's log when it ends; the count of the rest is kept too
 EDITABLE = ("title", "goal", "scope", "check", "signoff", "needs", "owner", "parent")
 USABLE = re.compile(r"(?!.*\.\.|.*\.(lock)?$)[A-Za-z0-9][\w.-]{0,31}")  # an id: graphene/<id> is a branch

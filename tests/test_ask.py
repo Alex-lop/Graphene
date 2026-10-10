@@ -314,6 +314,12 @@ def test_the_planner_and_a_session_are_told_a_check_runs_its_own_files_and_what_
     assert rule in " ".join(A.RULES.split()) and rule in " ".join(gate.TEACH.split())
 
 
+def test_the_planner_is_told_a_check_runs_in_a_fresh_worktree(repo, tmp_path, monkeypatch):
+    assert person("ask", "ids", "--with", planner(tmp_path, GOOD, monkeypatch)).exit_code == 0
+    [seen] = [json.loads(line) for line in (tmp_path / "seen.jsonl").read_text().splitlines()]
+    assert "A check runs in a fresh worktree of the leaf's files" in " ".join(seen["prompt"].split())
+
+
 def test_the_planner_is_told_the_board_carries_only_what_changes_the_tree(repo, tmp_path, monkeypatch):
     """Study 2: answering the board cost about twice the outline's attention, mostly in reading. The
     planner is told: at most three items, each a question or a risk whose answers carry then: lines,
