@@ -314,6 +314,15 @@ def test_the_planner_and_a_session_are_told_a_check_runs_its_own_files_and_what_
     assert rule in " ".join(A.RULES.split()) and rule in " ".join(gate.TEACH.split())
 
 
+def test_the_example_check_the_planner_and_a_session_copy_is_the_runner_the_clean_tree_names():
+    """The example's checks were `python3 -m pytest` in a repo whose pyproject its own then: line names,
+    right before the sentence that says a check beside a pyproject runs `uv run pytest …`."""
+    from graphene_map import gate
+
+    for taught in (A.RULES, gate.TEACH):
+        assert "python3 -m pytest" not in taught and taught.count("uv run pytest tests/pdf -q") == 2
+
+
 def test_the_planner_is_told_a_check_runs_in_a_fresh_worktree(repo, tmp_path, monkeypatch):
     assert person("ask", "ids", "--with", planner(tmp_path, GOOD, monkeypatch)).exit_code == 0
     [seen] = [json.loads(line) for line in (tmp_path / "seen.jsonl").read_text().splitlines()]
