@@ -131,11 +131,23 @@ the stranger `UV_TOOL_DIR`/`UV_TOOL_BIN_DIR` under its own directory. `morning.m
 
 ## X7: plan first auto against on (branch only, for decision 176)
 
-| repo | ask | auto: reached the person as a tree | auto: taken at once | on: reached the person as a tree |
-|---|---|---|---|---|
-| feeds | the paragraph (3) | — | — | — |
-| feeds | a typo (3) | — | — | — |
-| pytest-bdd | a typo (1) | — | — | — |
+`x7.sh` on the branch, each cell a fresh repo with the hooks installed, the session `claude -p` with `auto_live.py`'s
+argv (Sonnet, `acceptEdits`, its allow list, `--max-turns 25`, the isolation flags, $1.50). The typo ask is "fix the
+typo in the README's first heading", with a letter dropped from that heading first (the fixtures had no typo; the
+first attempt measured nothing and was rerun).
+
+| repo | ask | auto: reached the person as a tree | auto: taken at once and done in the session | on: reached the person as a tree | dollars (median) auto / on |
+|---|---|---|---|---|---|
+| feeds | the paragraph (3) | 0 of 3 | 3 of 3, as one leaf of exactly 8 paths (WIDE), 15–22 turns | 3 of 3 (4–5 leaves, 1 board item) | $0.23 / $0.10 |
+| feeds | a typo (3) | 0 of 3 | 3 of 3, one leaf of 1 path, about 10 s | 3 of 3: the one-path leaf waits for the person | $0.06 / $0.04 |
+| pytest-bdd | a typo (1) | 0 of 1 | 1 of 1 | 1 of 1: waits | $0.05 / $0.04 |
+
+Both sides of decision 176, measured: under `on`, a one-line typo waits for the person in another terminal (the
+first-hour cost every reader named); under `auto`, the typo is done at once and the whole feeds paragraph is also
+done at once as one 8-path leaf, never reaching the person as a tree (the 7 October count was 1 of 3; tonight 0 of
+3; WIDE = 8 was tuned on feeds, and on pytest-bdd only the typo was asked). The default stays `on`; `init` now asks
+at a terminal. The one `auto` typo run also shows the gate at work: the session's first edit, before it had started
+its leaf, was refused, and it then started the leaf and landed it.
 
 ## The suite, the spend, the SHA
 
