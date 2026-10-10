@@ -13,6 +13,7 @@ import contextlib
 import json
 import os
 import re
+import sqlite3
 import sys
 from datetime import UTC, datetime
 from functools import lru_cache
@@ -402,9 +403,10 @@ def hook_main(stdin=None, cwd: Path | None = None, stdout=None) -> int:
             ours = into_ours(event, root)
             if ours is not None:
                 sid = event.get("session_id")
-                store.log_node(
-                    "*", now_iso(), "denied", None, sid, None, {"path": ours, "how": "graphene's own"}
-                )
+                with contextlib.suppress(sqlite3.OperationalError):  # busy: the row is lost, not the deny
+                    store.log_node(
+                        "*", now_iso(), "denied", None, sid, None, {"path": ours, "how": "graphene's own"}
+                    )
                 answer = {
                     "hookSpecificOutput": {
                         "hookEventName": "PreToolUse",
