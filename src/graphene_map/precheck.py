@@ -162,9 +162,10 @@ def _editable(root: Path) -> str | None:
     """What the python3 on the check's PATH has installed editable from this repository, or None: a check
     that imports it tests the person's checkout, whatever the leaf's worktree holds. A warning, asked once
     a red first, and only when a check is run with python or pytest."""
-    try:
+    try:  # from a directory with no modules: `-c` puts the working directory first on its path, where a
+        # json.py of the checkout's would run, and shadow the module the script needs
         said = subprocess.run(["python3", "-c", EDITABLE, str(root)], env=P.check_env(), capture_output=True,
-                              text=True, timeout=30)  # fmt: skip
+                              text=True, timeout=30, cwd=os.sep)  # fmt: skip
     except (OSError, subprocess.TimeoutExpired):
         return None
     return said.stdout.strip() or None
@@ -280,7 +281,7 @@ def run(store, root: Path, ids=(), again: bool = False, say=None, committed: boo
         pool.shutdown(wait=True, cancel_futures=True)
         raise
     pool.shutdown(wait=True)
-    if any(re.match(r"(python3?|pytest)\b", c) for c in commands):
+    if any(re.match(r"(python3?|pytest)\b", n.check) for n in todo):  # whether or not its verdict was kept
         out.editable = _editable(root)
     hide = _hider(store.path.parent.parent) if ran else str  # the repo's path: every clean tree is under it
     files, live = sorted(P.tracked(root)), P._live(everything)

@@ -348,5 +348,18 @@ def test_a_python_with_this_repo_installed_editable_is_said(repo, tmp_path_facto
     with Store.open(repo) as store:
         leaves(store, ("a", ["new.py"], check))
         rows = K.run(store, repo)
-    said = [line for line in K.said(rows) if "installed editable from this repo" in line]
-    assert len(said) == named and all("fake_pkg" in line and "`uv run pytest …`" in line for line in said)
+        again = K.run(store, repo)  # every verdict kept: the install is there all the same
+    for run in (rows, again):
+        said = [line for line in K.said(run) if "installed editable from this repo" in line]
+        assert len(said) == named and all("fake_pkg" in ln and "`uv run pytest …`" in ln for ln in said)
+
+
+def test_what_python3_installed_editable_is_asked_from_no_directory_of_yours(repo, tmp_path, monkeypatch):
+    """`python3 -c` puts its working directory first on its path: a json.py where graphene was run ran
+    outside the clean tree, and shadowing the module the script needs, lost the warning in silence."""
+    here = tmp_path / "here"
+    here.mkdir()
+    (here / "json.py").write_text("import pathlib\npathlib.Path(__file__).with_name('RAN').touch()\n")
+    monkeypatch.chdir(here)
+    K._editable(repo)
+    assert not (here / "RAN").exists()
