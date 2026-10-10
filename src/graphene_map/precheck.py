@@ -330,7 +330,7 @@ def said(rows) -> list[str]:
         elif d["verdict"] == "environment":
             lines.append(f"{node.id}: its check cannot run here: {d['why']}. Checks run in a clean worktree "
                          "with your PATH and nothing git ignores; a runner that makes its own environment "
-                         "(`uv run pytest …`, `npm ci && npm test`) brings pytest with it")  # fmt: skip
+                         "(`uv run pytest …`, `npm ci && npm test`) brings what the check runs")  # fmt: skip
         elif d["verdict"] == "landed":
             lines.append(f"{node.id}: {d['why']}")
         elif d["verdict"] == "not-run":

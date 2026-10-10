@@ -202,6 +202,7 @@ def test_a_check_this_environment_cannot_run_is_said_so_and_its_gist_kept(repo, 
     assert d["verdict"] == "environment" and d["gist"] and d["why"] in K.said(rows)[0]
     assert K.said(rows)[0].startswith("a: its check cannot run here: ")
     assert "nothing git ignores" in K.said(rows)[0]
+    assert K.said(rows)[0].endswith("brings what the check runs")  # not "pytest", whatever was missing
 
 
 def test_a_check_that_could_not_run_here_is_asked_again_once_the_person_installs_what_it_runs(
