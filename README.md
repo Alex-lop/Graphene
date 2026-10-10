@@ -11,7 +11,7 @@ See your coding agents' plan and change it before any code.
 
 `uv tool install git+https://github.com/Alex-lop/Graphene`
 
-<sub>then <code>graphene demo</code> to watch a recorded run, no API key needed</sub>
+<sub>then <code>graphene demo</code> to watch a scripted replay, no API key needed</sub>
 
 <br>
 
@@ -79,7 +79,9 @@ graphene ask "what you want, in a paragraph"
 graphene watch
 ```
 
-In `watch`: `y` accepts the plan, `d` drops a leaf you don't want, `R` runs what's ready. `?` shows the rest.
+Heads up: `init` installs Claude Code hooks in that repo. They record its sessions on your machine (prompts, tool calls, the files it edits), and from your next session Claude proposes a plan before it writes anything; you accept it in `graphene watch`, in another terminal. `graphene plan first off` stops the proposing, and `graphene init --remove` takes the hooks out.
+
+In `watch`: `y` accepts the plan, `d` drops a leaf you don't want, `R` runs what's ready (it asks first). `?` shows the rest.
 
 ## Where it's at
 
