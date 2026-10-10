@@ -64,13 +64,14 @@ the one first-hour number with a person in it; the walks (`before.md`, `after.md
 
 Design questions the night wrote up and left, with where they bite:
 
-- The command guard refuses read-only commands that merely name the store directory (`gate.py:536-552`): the
-  stranger in X6 hit it with a `ls`. It decides what an agent may read in a store that holds recorded prompts and
-  file contents; your call.
-- A subagent of a Claude Code session carries the session's id (`gate.py:357-358`): a `/batch` or agent-team worker
+- The command guard refuses read-only commands that merely name the store directory (`gate._guard_command`'s store
+  check): the stranger in X6 hit it with `git -C <store>/worktrees/report-tags status --short`, chained after
+  `graphene plan show`. It decides what an agent may read in a store that holds recorded prompts and file contents;
+  your call.
+- A subagent of a Claude Code session carries the session's id (`gate.one_line_ask`'s docstring): a `/batch` or agent-team worker
   is judged against whatever leaf the main session holds. X2(c) found `/batch` declines to batch on feeds, so it was
   not exercised.
-- A session's writes in another worktree block `done` with "put it back" (`plan.py:2137-2149`).
+- A session's writes in another worktree block `done` with "put it back" (`plan.elsewhere`, read by `plan._stray`).
 - Plan mode is mentioned nowhere.
 - There is no way to stop the recording short of `graphene init --remove`; `init` now says what is recorded.
 - A run lands into the branch you have checked out; every competitor puts a diff or a PR in front of the person
