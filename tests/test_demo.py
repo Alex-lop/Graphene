@@ -321,7 +321,7 @@ def test_the_replay_at_80x24_says_so_shows_a_record_and_refuses_what_would_run(t
             await pilot.press("escape")  # the search ends: n is the offer again, not the next match
             monkeypatch.setattr(subprocess, "Popen", no_start)
             seen["before"] = states()
-            for key in ["R", "y", "d", "e", "E", "a", "A", "s", "P", "w", "b", "n", ":", "x", "u", "V"]:
+            for key in ["R", "y", "d", "e", "E", "a", "A", "s", "P", "w", "b", "n", ":", "x", "u", "V", "t"]:
                 await pilot.press(key)
                 await pilot.pause()
                 said = str(app.query_one("#status").render()).splitlines()[-1]

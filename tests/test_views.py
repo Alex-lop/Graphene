@@ -244,8 +244,8 @@ def test_enter_the_colon_line_and_help_work_from_the_view(repo, grid, size):
 
     async def go():
         async with app.run_test(size=size) as pilot:
-            # ? on a node opens the chooser, and ? Enter there the help
-            await pilot.press("tab", "j", "question_mark", "question_mark", "enter")
+            # t on a node opens the chooser, and ? Enter there the help
+            await pilot.press("tab", "j", "t", "question_mark", "enter")
             await pilot.pause()
             return type(app.screen).__name__
 

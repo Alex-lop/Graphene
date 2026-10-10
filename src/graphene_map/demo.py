@@ -50,7 +50,7 @@ from . import __version__, extra
 from . import plan as P
 from .node_record import WHOSE
 from .store import Store
-from .tui import Help, Pane, Watch, fit, help_groups
+from .tui import Pane, Watch, fit, help_groups
 
 SHIPPED = Path(__file__).with_name("demo.jsonl")
 ENDED = "ended: last frame"
@@ -436,16 +436,13 @@ class Replay(Watch):
     # every key that would change the plan or start anything, and every way a key reaches a command
     action_add = action_edit = action_drop = action_yes = action_split = action_undo = refuse
     action_run = action_release_or_reopen = action_offer = action_plan_first = action_visual = refuse
-    action_board = action_reask = refuse  # every key on a board item answers it or puts up a note
+    action_board = action_reask = action_talk = refuse  # a board item's key answers it; t asks a planner
     did = background = edit_with = stop_runs = refuse
 
     def action_line(self, kind: str) -> None:
         if kind == ":":  # `/` searches; `:` would run a command
             return self.refuse()
         super().action_line(kind)
-
-    def action_help_or_ask(self) -> None:
-        self.push_screen(Help())  # the help everywhere: on a leaf that came back it would start a planner
 
     def show_detail(self, store) -> None:
         """Before the plan has a row: what the person asked for, where watch would say nothing is planned
@@ -474,4 +471,4 @@ class Replay(Watch):
         mine = [("space play" if self.paused else KEYS[0]), *KEYS[1:]] if playing else KEYS[2:]
         if self.view == "contract":
             return [*mine, "Enter record", "l output", "? help", "q quit", "j k move", "za fold"]
-        return [*mine, *("? help" if k[0] == "?" else k for k in super().keys() if k.startswith(WORK))]
+        return [*mine, *(k for k in super().keys() if k.startswith(WORK))]
