@@ -107,3 +107,16 @@ def test_r_is_not_offered_when_waiting_on_the_owner_would_make_a_cycle(store, re
     assert [k for k, *_ in plan.offers(store, plan.get(store, "x"))] == ["w", "b"]  # a waits on x: no r
     with pytest.raises(Refused, match="cycle"):
         plan.reopen(store, "a", ALEX, "fix it", for_leaf="x")
+
+
+def test_pythons_cache_is_never_wanted_nor_offered(store, repo):
+    """A repo with no .gitignore: the executor's own test run left __pycache__, and its hand-back
+    offered to widen the leaf to the bytecode, or to make a sibling leaf of it."""
+    plan.propose(store, [leaf("x", ["x.py"])], ALEX)
+    plan.start(store, "x", BOT2, repo)
+    (repo / "__pycache__").mkdir()
+    (repo / "__pycache__" / "reader.cpython-313.pyc").write_bytes(b"compiled by the executor's tests")
+    plan.release(store, "x", BOT2, "it needs a.py", wants=["a.py"])
+    x = plan.get(store, "x")
+    assert plan.wanted(store, x) == ["a.py"]
+    assert not [offer for offer in plan.offers(store, x) if "__pycache__" in str(offer)]
