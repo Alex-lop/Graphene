@@ -31,6 +31,7 @@ from pathlib import Path
 from . import meter
 from . import plan as P
 from .commits import window as commits_in
+from .precheck import _plain  # one line and no control character: what a check printed draws over nothing
 from .record import RANK, Change, Coverage, changes, coverage, seconds, window_commits
 
 # a window ends when the node does, however it ended; ``reopened`` comes after one, never inside it
@@ -612,7 +613,7 @@ def _refusals(log: list[dict]) -> Refusals:
                 "result": "failed" if kind == "check_failed" else "passed",
                 "at": entry["timestamp"],
                 "command": detail.get("command", ""),
-                "gist": (str(detail.get("output") or "").strip().splitlines() or [""])[-1].strip()[:200],
+                "gist": _plain((str(detail.get("output") or "").strip().splitlines() or [""])[-1])[:200],
             }
         elif kind == "precheck":
             out.at_base = detail if detail.get("verdict") == "passes" else None
@@ -703,8 +704,8 @@ def _in_short(counts: dict) -> list[str]:
     paths = (f"{n} path{_s(n)} changed under it, {traced} traced to a recorded write"
              if counts["changed_computed"] else "what changed under it is not computed")  # fmt: skip
     which = f"its {k} commit{_s(k)}" if out in (0, k) else f"{out} of its {k} commits"
-    said = "graded below" if not out else (
-        "in no session's records, so not graded, which takes nothing from the paths")  # fmt: skip
+    said = "graded below" if not out else "in no session's records, so not graded" + (
+        ", which takes nothing from the paths" if counts["changed_computed"] else "")  # fmt: skip
     return [f"  in short: {paths}; {which} {'is' if (out or k) == 1 else 'are'} {said}"]
 
 
