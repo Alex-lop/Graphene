@@ -307,6 +307,22 @@ def test_start_done_signoff_reopen_and_run_name_the_repository(repo):
     assert last == "run: 1 came back (l2) · agents <1 min, no meter · width 1 of 1 · you 0 acts, 0 min"
 
 
+def test_a_run_says_first_where_it_lands_with_what_and_that_uncommitted_work_stays_out(repo):
+    """A stranger's first run merged leaves into their branch, unasked, with their hooks skipped, from
+    worktrees that never had their uncommitted files: none of it was said before it happened."""
+    person("node", "add", "leaf two", "--id", "l2", "--scope", "schema.py", "--check", "true")
+    (repo / "notes.txt").write_text("mine, not committed\n")
+    ran = person("run", "--with", "true")
+    assert ran.exit_code == 0, ran.output
+    branch = subprocess.run(["git", "symbolic-ref", "--short", "HEAD"], cwd=repo, capture_output=True,
+                            text=True).stdout.strip()  # fmt: skip
+    lines = ran.stdout.splitlines()
+    [landing] = [line for line in lines if line.startswith("landing into ")]
+    assert landing.startswith(f"landing into {branch} at ") and "--no-verify" in landing, landing
+    assert "your uncommitted changes are not in the executors' worktrees: they start from HEAD" in lines
+    assert lines.index(landing) == 0 and lines[-1].startswith("run: ")  # the summary is still the last
+
+
 # -- the recheck of the closing review: its regression tests --------------------
 
 
