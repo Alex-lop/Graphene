@@ -78,6 +78,9 @@ environment line; C4 wrong if the editable line is missing) did not fire.
 
 ## X6: one stranger transcript a build (a fact)
 
+Both strangers were given the branch's README (020eb7d's text: `x6_transcript.sh` read the clone's copy, whichever
+build ran), so the README's own changes were not measured here, and both reported `graphene init --remove` from it.
+
 | build | landed | its session | Graphene's runs cost | dead ends, in its words |
 |---|---|---|---|---|
 | 907a7d0 | yes, at the second run | 19 turns, 258 s, $0.196 | $1.05 + $0.95 (the default model) | a wheel the harness misnamed; a check whose runner the PATH lacked (it rewrote the check to `uv run pytest`); a read refused for naming the store |

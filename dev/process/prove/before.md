@@ -128,8 +128,8 @@ leaves unsaid about the person's own Claude Code sessions, in `watch`'s keys, an
 
 ## X6: one stranger transcript (n = 1, a fact, not a rate)
 
-`x6_transcript.sh`, 2026-10-10 17:0xZ: a Sonnet session given only 907a7d0's README (its install line pointing at the
-build's wheel), a fresh copy of the pytest-bdd clone with no remote, issue #476, and a `./me` wrapper that runs its
+`x6_transcript.sh`, 2026-10-10 17:0xZ: a Sonnet session given only a README, the branch's (020eb7d's text: the script
+read this clone's copy, not 907a7d0's; its install line pointing at the build's wheel), a fresh copy of the pytest-bdd clone with no remote, issue #476, and a `./me` wrapper that runs its
 commands without an agent's marks; told to narrate every command and stop at a landed leaf or when stuck. `codex`
 hidden from its PATH; `gh` and `git push` denied; GitHub unreachable. Its own `init` picked bare `claude`, so its
 planner and executors ran on the account's default model, as a stranger's would.
