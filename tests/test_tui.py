@@ -1972,11 +1972,15 @@ def test_a_run_that_could_start_more_than_one_leaf_asks_first_and_one_leaf_start
     person("plan", "accept")  # ids and schema are ready; docs waits on ids
     started = []
     monkeypatch.setattr(Watch, "background", lambda self, argv: started.append(argv))
+    seen, _ = watch(repo, ["R"])  # no executor chosen: the run refuses at once, so nothing is asked
+    assert seen["screen"] == "Screen" and started.pop() == ["run", "--parallel", "4"]
+    with Store.open(repo) as store:
+        store.set_meta("executor", "true")
 
     async def asked(app, pilot):
         await pilot.press("R")
         await pilot.pause()
-        said = "run up to 3 leaves (2 ready, 1 waiting), at most 4 at once? y and Enter start them"
+        said = "run up to 3 leaves (2 ready, 1 waiting), at most 4 at once with true? y and Enter start them"
         assert app.screen.prompt == said, app.screen.prompt
 
     seen, _ = watch(repo, [], before=asked)

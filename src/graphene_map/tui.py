@@ -1867,7 +1867,8 @@ class Watch(App):
         words = [self.words.get(i) for i in under]
         kinds = ("ready", "came back", "waiting") if node_id else ("ready", "waiting")
         could = [(n, w) for w in kinds if (n := words.count(w))]
-        if sum(n for n, _ in could) <= 1:  # nothing, or one leaf: no question; the run says what it did
+        # nothing, one leaf, or no executor chosen (the run refuses): no question; the run says what it did
+        if sum(n for n, _ in could) <= 1 or not self.counts.get("with"):
             return self.background(argv)
         which = ", ".join(f"{n} {w}" for n, w in could)
         many = (f"run up to {sum(n for n, _ in could)} leaves ({which}), at most {shlex.split(RUN_WITH)[-1]} "
