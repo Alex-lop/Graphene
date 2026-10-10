@@ -14,7 +14,7 @@ which picked the account's default model as a stranger's would.
 | proposals by first answer | 40 of 40 [0.91, 1.00] | 35 of 40 [0.74, 0.95] | the intervals overlap: no difference shown |
 | asks lost | 0 of 40 | 0 of 40 | no difference |
 | first refusals, by class | none | 5: `then:` effects 3 (an id not in the plan; a quoted goal effect ×2), indentation 2 | the text grammar's classes, every one accepted on the second try |
-| checks by runner (unittest / pytest / other) | 79 / 24 / 8 | 98 / 9 / 4 | the clean-tree sentence (A5) moved the planner toward the repo's own runner on these stdlib repos |
+| checks by runner (unittest / pytest / other) | 79 / 24 / 8 | 98 / 9 / 4 | no rule names it; by ask, a pytest check in 12 of 40 [0.18, 0.45] against 5 of 40 [0.05, 0.26]: the intervals overlap, no difference shown |
 | median seconds; median planner dollars | 26.5 s; $0.077 | 29.0 s; $0.086 | about the same |
 | after its proposal lines the ask names the planner, its calls and its dollars (then `prune it:`, or the board first) | never | 40 of 40 (`the planner (claude sonnet-5-5): 5 calls, $0.11 at list price`) | A2 |
 
