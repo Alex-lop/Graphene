@@ -435,9 +435,23 @@ def test_a_lost_ask_keeps_the_proposal_it_paid_for_and_says_what_it_cost(repo, t
     assert said.exit_code == 1, said.output
     kept = re.search(r"its proposal is kept in (\S+/runs/ask-\w+\.txt): mend it, then "
                      r"`graphene plan propose - < \1`", said.stderr)  # fmt: skip
-    assert kept and "(each was refused as above)\nits proposal is kept in" in said.stderr, said.stderr
+    bill = "the planner (claude sonnet-5-5): 2 calls, $0.50 at list price"
+    order = f"(each was refused as above)\n{bill}\nits proposal is kept in"
+    assert kept and order in said.stderr, said.stderr
     assert (repo / kept[1]).read_text() == "- ids  [ids]\n    scope: api.py\n    signoff: perhaps\n"
-    assert said.output.splitlines()[-1] == "the planner (claude sonnet-5-5): 2 calls, $0.50 at list price"
+    assert said.output.splitlines()[-1].startswith("its proposal is kept in")  # a talk's bottom line in watch
+
+
+def test_a_lost_asks_kept_proposal_is_named_from_where_the_person_stands(repo, tmp_path, monkeypatch):
+    """`graphene ask` runs from any directory of the checkout; the next step it prints must run there."""
+    bad = "```plan\n- ids  [ids]\n    scope: api.py\n    signoff: perhaps\n```"
+    (repo / "src").mkdir(exist_ok=True)
+    monkeypatch.chdir(repo / "src")
+    said = person("ask", "ids", "--with", claude_planner(tmp_path, (bad, 0.25), (bad, 0.5)))
+    assert said.exit_code == 1, said.output
+    kept = re.search(r"its proposal is kept in (\S+): mend it", said.stderr)
+    assert kept and kept[1].startswith("../"), said.stderr
+    assert (repo / "src" / kept[1]).read_text().startswith("- ids  [ids]")
 
 
 def test_a_planner_the_night_refuses_is_never_started(repo, tmp_path, monkeypatch):

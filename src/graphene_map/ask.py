@@ -105,7 +105,7 @@ risk: what could make a check pass on nothing, or a leaf go wrong  [short-id]
   change (goal for what the leaf does instead, scope, check, drop, leaf), so choosing it changes the
   tree and the person never rewrites a leaf by hand. An item none of whose answers carries a then:
   line changes nothing: do not put it up.
-- Write no file and start no work: what you print is all of your answer."""
+- Write no file and start no work: what you print is all of your answer."""  # fmt: skip
 
 
 def prompt_for(
@@ -452,6 +452,7 @@ def ask(
                 "endpoint": M.ENDPOINT["claude"], "reported": meter.reported})  # fmt: skip
             by = f"{argv0} {meter.model.removeprefix('claude-')}" if meter.model else argv0
             bill = f"the planner ({by}): {calls} call{'s' * (calls != 1)}, {money(paid)} at list price"
+            bill *= bool(calls)  # a planner that never ran has no bill
         printed = (meter.result if meter else done.stdout).strip()  # the answer, never the stream
         text = proposal_in(printed)
         if not text.strip():
@@ -489,7 +490,10 @@ def ask(
                         cover.after_ask(store, sentence, say)
                     said += extra.need("precheck").after_proposal(store, root, said.ids)  # =precheck
                     extra.need("lookup").after_proposal(store, root, say)  # =lookup: what the repo answers
-                said += [bill] * bool(bill)  # last, after the proposal lines the screen's gist is read from
+                if bill and said:  # last, after the proposal lines the screen's gist is read from
+                    said += [bill]
+                elif bill:  # nothing was added: said alone, so the caller prints no next step
+                    say(bill)
                 return said
         if done.returncode == 3 and not text.strip():  # it could not work at all; again would not help
             raise P.Refused(f"nothing was added. {refusal}")
@@ -503,8 +507,8 @@ def ask(
         kept = store.path.parent / "runs" / f"ask-{session[:8]}.txt"  # beside what `graphene run` logs
         kept.parent.mkdir(parents=True, exist_ok=True)
         kept.write_text(text, encoding="utf-8")
-        where = os.path.relpath(kept, root)
-        end = f"\nits proposal is kept in {where}: mend it, then `graphene plan propose - < {where}`{end}"
+        where = os.path.relpath(kept)  # from where the person stands: the next step runs there
+        end = f"{end}\nits proposal is kept in {where}: mend it, then `graphene plan propose - < {where}`"
     if refusal == before:
         raise P.Refused(
             f"no proposal after {ATTEMPTS} tries; nothing was added (each was refused as above){end}"
