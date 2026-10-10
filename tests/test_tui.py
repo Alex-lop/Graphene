@@ -421,7 +421,8 @@ def test_at_80_columns_a_long_reason_leaves_every_fix_in_sight_and_the_bottom_li
     side = "\n".join(seen["side"])
     for key in ("w  widen its scope", "b  a sibling leaf", "n  wait on ids", "t  ask the planner"):
         assert key in side, side
-    assert "t ask the planner" in seen["status"] and "? ask the planner" not in seen["status"]
+    assert "? ask the planner" not in seen["status"]  # t asks it, in the pane above with its command
+    assert "e edit its check" in seen["status"] and "? help" in seen["status"]  # the free fix, and the help
     seen, _ = watch(repo, ["G", "enter"])
     assert "Widen the scope, or add a leaf for it." in seen["detail"]  # the whole reason, in its record
 
