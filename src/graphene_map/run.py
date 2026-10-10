@@ -591,6 +591,9 @@ def run_node(
 STOPPED = "the run was stopped before this leaf was finished"  # by Ctrl-C, `:stop` or a closed terminal
 
 
+NOTHING = "run: nothing started (graphene plan says what each leaf waits on)"  # a last line kept as no row
+
+
 def summary(store, since: int, stopped: bool = False) -> str:
     """What a run did, in one line for the person, read from what the plan logged after entry
     ``since``: what it finished, what came back to them, what waits in review, and the two clocks (the
@@ -620,7 +623,7 @@ def summary(store, since: int, stopped: bool = False) -> str:
     if stopped:
         return "run stopped: " + (", ".join(said) or "nothing was finished") + cost
     if not ran:
-        return "run: nothing started (graphene plan says what each leaf waits on)"
+        return NOTHING
     return "run: " + (", ".join(said) or "nothing finished") + cost
 
 
