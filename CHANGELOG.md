@@ -28,7 +28,7 @@ and on the branch (`dev/process/prove/after.md`).
   changes are not in the executors' worktrees. Its last line is kept as a row: `graphene plan log` lists it, the goal's
   pane shows the last, and Enter on the goal is the plan's record. `you` counts the acts since the plan's last run.
 - Red first asks the environment before it judges: a check whose runner the PATH lacks (`No module named pytest`)
-  is said as such, never as a red; leaves sharing one command get one line and the header counts the commands; a
+  is said as such, never as a red; leaves whose shared check passes get one line and the header counts the commands; a
   reopened leaf whose check passed when it landed is said so, not flagged; a python3 with this repository installed
   editable is named, because a check that imports it tests the checkout, not the leaf's worktree; only the leaves
   this run can start are judged. All warnings: nothing holds a leaf.
