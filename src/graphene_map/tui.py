@@ -104,7 +104,7 @@ KEYS = {  # the bottom line, when no command has just spoken: what the keys do o
     "proposed": ["y accept", "d drop", "e edit", "E edit with what is under it"],
     "review": ["y sign off", "x send back", "Enter record"],
     "running": ["l output", "x release", "Enter record"],
-    "done": ["x reopen", "Enter record"],
+    "done": ["x reopen", "Enter record", "c diff"],
     "ready": ["R run all ready", "r run this", "e edit"],
     "yours": ["y done", "e edit", "Enter record"],
     "waiting": ["e edit", "d drop", "Enter record"],
@@ -784,6 +784,7 @@ class Watch(App):
         Binding("b", "offer('b')", show=False),
         Binding("P", "plan_first", show=False),
         Binding("D", "direction", show=False),  # direction: the tree above the plans, in the pane
+        Binding("c", "diff", show=False),  # what a done leaf changed: `graphene node diff --stat`
         Binding("m", "seen", show=False),
         Binding("plus", "reask('finer')", show=False),
         Binding("minus", "reask('coarser')", show=False),
@@ -1900,10 +1901,21 @@ class Watch(App):
         self.view = "contract" if self.view == "tail" else "tail"
         self.refresh_plan()
 
+    def action_diff(self) -> None:
+        node_id = self.selected()
+        if node_id is None:
+            return
+        said = self.did(["node", "diff", node_id, "--stat"], quiet=True, keep=True)
+        if said is not None:  # a replay refuses every command, and has said so
+            self.finished(f"graphene node diff {node_id} --stat", said)
+
     def action_record(self) -> None:
         if self.board_row() is not None:
             return self.action_board("enter")
-        if self.on_goal():  # the goal has no record of its own: its pane already says what is under it
+        if self.on_goal():  # the goal's record is the plan's: every leaf's added up
+            said = self.did(["plan", "record"], quiet=True, keep=True)
+            if said is not None:  # a replay refuses every command, and has said so
+                self.finished("graphene plan record", said)
             return
         self.view = "contract" if self.view == "record" else "record"
         self.query_one("#side", VerticalScroll).scroll_home(animate=False)
@@ -2258,6 +2270,8 @@ def goal_pane(store, s, wide: int) -> Text:
     pane.text(Text.assemble(("the goal", "dim"), " · ", (word, P.look(word)[1]), extra))
     if not goal and not proposed:
         pane.text("the root of the tree, in your words: :plan goal '…' says why any of this is done", "dim")
+    for ran in store.node_log("*", ("run",))[-1:]:  # what the last run said as it ended
+        pane.field("last run", str(ran["detail"].get("summary") or ""))
     tops = s.under.get(None, [])
     if tops:
         pane.gap()
@@ -2269,11 +2283,14 @@ def goal_pane(store, s, wide: int) -> Text:
 
 def precheck(store, node: P.Node) -> dict | None:
     """The leaf's last precheck row's detail, when it is about its current rev and says it passes at
-    the base (its check proves nothing) or names paths outside its scope; else None."""
-    if node.state not in (P.OPEN, P.PROPOSED):  # done, it proved what it proved; running, it is being run
+    the base (its check proves nothing) or names paths outside its scope; else None. Done or in review,
+    when it passed at the base with the check the leaf has now: what it finished on proved no more."""
+    if node.state not in (P.OPEN, P.PROPOSED, P.DONE, P.REVIEW):  # running, it is being run
         return None
     rows = store.node_log(node.id, ("precheck",))
     d = rows[-1]["detail"] if rows else {}
+    if node.state in (P.DONE, P.REVIEW):  # by the check's own words, whatever the rev is since
+        return d if d.get("verdict") == "passes" and d.get("check") == node.check else None
     return d if d.get("rev") == node.rev and d.get("verdict") in ("passes", "outside") else None
 
 
@@ -2323,7 +2340,10 @@ def detail(store, node: P.Node, s, files: list[str] | None = None, room: tuple[i
         )
     if (pre := precheck(store, node)) is not None:
         base = str(pre.get("base", ""))[:7]
-        if pre["verdict"] == "passes":
+        if pre["verdict"] == "passes" and node.state in (P.DONE, P.REVIEW):
+            says = (f"its check also passed at the base commit {base}, before any work: what landed is not "
+                    "verified by it")  # fmt: skip
+        elif pre["verdict"] == "passes":
             says = f"its check passes at the base commit {base}, so it proves nothing: e edits the check"
         else:
             says = f"its check names {', '.join(pre.get('paths') or [])} outside its scope, at {base}"

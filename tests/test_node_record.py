@@ -271,6 +271,36 @@ def test_a_node_done_by_an_executor_no_vendor_records_still_has_a_coverage_line(
     assert "not computed" not in "\n".join(printed)  # every count here has evidence behind it
 
 
+def test_the_check_says_its_last_line_and_that_it_also_passed_at_the_base_before_any_work(store, repo):
+    """The check line said "passed" and no more: not what it printed last, nor that red first saw it pass
+    at the base commit, before any work, where it shows nothing about the change. And three coverage
+    sentences (7 paths traced; 0 files of 1 commit traced; 1 commit not graded) read as a contradiction to
+    a stranger: one plain sentence opens them."""
+    codex, base = Caller("codex:deadbeef", False, None), head(repo)
+    check = "printf 'collected 12 items\\n\\n\\033[32m12 passed\\033[0m\\n\\n'"  # its colour is not said
+    plan.propose(store, [api_node(check=check)], ALEX, now=T(0))
+    passes = {"rev": 1, "check": check, "base": base, "verdict": "passes", "why": "it exits 0"}
+    store.log_node("n1", T(0, 30), "precheck", "graphene:precheck", None, None, passes)
+    plan.start(store, "n1", codex, repo, now=T(1))
+    (repo / "src/api/users.py").write_text("def users():\n    return [1]\n")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", "the endpoint", at=T(2))
+    plan.finish(store, "n1", codex, now=T(3))
+    lines = NR.render(NR.node_record(store, repo, plan.get(store, "n1"), at=T(9)))
+    at = next(k for k, line in enumerate(lines) if line.startswith("    check: "))
+    assert lines[at + 1 : at + 3] == [
+        "      its last line: 12 passed",
+        f"      it also passed at the base commit {base[:7]}, before any work: it shows nothing about "
+        "this change",
+    ]
+    paths = ("  coverage: of the 1 path git said had changed under this node, 1 inside its scope; 0 to a "
+             "recorded edit, 0 to a recorded shell command, 1 to git alone")  # fmt: skip
+    start = lines.index(paths)
+    assert lines[start - 1] == ("  in short: 1 path changed under it, 0 traced to a recorded write; its 1 "
+                                "commit is in no session's records, so not graded, which takes nothing from "
+                                "the paths")  # fmt: skip
+
+
 def test_a_commit_in_the_nodes_first_second_is_inside_its_window(store, repo):
     """The log keeps milliseconds and git keeps whole seconds, so a node started at …:34.160 and a
     commit stamped …:34 cannot be put in order. Comparing them as floats dropped every commit made
@@ -591,6 +621,46 @@ def test_a_metered_attempt_that_came_back_says_what_it_ran_and_where_it_was_refu
     assert lines[start - 1].startswith("    denied: ") and bill > start  # after the refusals, before the bill
     assert lines[bill] == ("  bill: $0.4200 at list price · 2 model calls · 412,000 tokens in, 9,000 out · "
                            "claude-sonnet-5-5 (Claude Code's report)")  # fmt: skip
+
+
+def test_a_command_claude_code_refused_its_executor_is_in_the_record_and_offered_to_no_scope(store, repo):
+    """Claude Code's own refusal of a command (its result's permission_denials) read "refused: nothing". It is
+    a command, not a path: the hand-back offers no scope to widen to it."""
+    from graphene_map import meter as M
+
+    run, command, meter = Caller("run:claude", False, "s-1"), "python3 -m unittest -q", M.Meter("claude", 1)
+    plan.propose(store, [api_node()], ALEX, now=T(0))
+    plan.start(store, "n1", run, repo, now=T(1))
+    bash = {"command": command}
+    stream = [{"type": "assistant", "message": {"id": "m1", "content": [
+                  {"type": "tool_use", "id": "t1", "name": "Bash", "input": bash}]}},
+              {"type": "result", "total_cost_usd": 0.01, "permission_denials": [
+                  {"tool_name": "Bash", "tool_input": bash, "tool_use_id": "t1"}]}]  # fmt: skip
+    ended = {"attempt": 1, "exit": 0, "meter": "claude", "unread": 0}
+    meter_rows(store, run, [(T(2), "attempt", {"attempt": 1, "log": None}),
+                            *((T(3), k, d) for e in stream for k, d in meter.feed(json.dumps(e))),
+                            (T(4), "ended", ended)])  # fmt: skip
+    plan.release(store, "n1", run, "it cannot run its tests", now=T(5))
+    lines = NR.render(NR.node_record(store, repo, plan.get(store, "n1"), at=T(6)))
+    assert "  refused: 1 command refused to the executor" in lines
+    assert f"    refused to the executor: {command}" in lines
+    assert f"    refused: {command}" in lines and not any(line.startswith("    ran: ") for line in lines)
+    assert plan.wanted(store, plan.get(store, "n1")) == []
+
+
+def test_what_an_attempt_said_last_is_whole_and_wrapped_when_it_is_long(store, repo):
+    run, words = Caller("run:claude", False, "s-1"), ("word " * 120).strip() + "!"  # 600 characters
+    plan.propose(store, [api_node()], ALEX, now=T(0))
+    plan.start(store, "n1", run, repo, now=T(1))
+    ended = {"attempt": 1, "exit": 0, "meter": "claude", "unread": 0}
+    meter_rows(store, run, [(T(2), "attempt", {"attempt": 1, "log": None}),
+                            (T(3), "said", {"attempt": 1, "text": words}),
+                            (T(4), "ended", ended)])  # fmt: skip
+    plan.release(store, "n1", run, "it stops here", now=T(5))
+    lines = NR.render(NR.node_record(store, repo, plan.get(store, "n1"), at=T(6)))
+    start = lines.index("    said last:")
+    wrapped = [line.removeprefix("      ") for line in lines[start + 1 : lines.index("    the last it did:")]]
+    assert " ".join(wrapped) == words and all(len(line) <= 100 for line in wrapped), wrapped
 
 
 def test_an_attempt_with_no_meter_shows_the_tail_of_its_log(store, repo, tmp_path):

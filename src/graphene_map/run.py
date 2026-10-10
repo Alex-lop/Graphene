@@ -864,12 +864,37 @@ def _commit(store, tree: Path, node: P.Node) -> list[str]:
     Returns the paths its boundary said had changed."""
     entry = (store.node_log(node.id, ("finished", "overruled")) or [{"detail": {}}])[-1]["detail"]
     paths = entry.get("changed") or []
-    why = " > ".join(P.trail(store, node))
+    why, notes = " > ".join(P.trail(store, node)), P.notes(store, node.id)
     message = f"{node.title}\n\n{node.goal or node.title}\n\n" + (f"Why: {why}\n" if why else "")
+    message += f"Reopened: {notes[-1]}\n" if notes else ""
     _git(tree, "add", "-A", "--", *(paths if paths and not entry.get("more_changed") else ["."]))
     if _git(tree, "diff", "--cached", "--quiet", ok=True).returncode != 0:  # else it committed itself
         _git(tree, *_ident(tree), "commit", "-q", "--no-verify", "-m", f"{message}Graphene-Node: {node.id}\n")
     return paths
+
+
+def _merged(store, node: P.Node) -> str:
+    """The merge's message: the leaf, then the check that proved it (and that it passed at the base too,
+    where it proved nothing), who did it in how many attempts for how much, and, landed again after a
+    reopen, the person's last note."""
+    from .node_record import _hold  # the rows of its last hold: this run's attempts
+
+    notes, tries, lines = P.notes(store, node.id), M.attempts(_hold(store.node_log(node.id))), []
+    if node.check:
+        red = [e["detail"] for e in store.node_log(node.id, ("precheck",))]  # red first, at the base
+        red = [d for d in red if d.get("check") == node.check]
+        too = ", and it passed at the base too" if red and red[-1].get("verdict") == "passes" else ""
+        lines.append(f"Check: `{node.check}` passed{too}")
+    if tries:
+        a = tries[-1]
+        who = " ".join(filter(None, (a["executor"], a["model"] and a["model"].rsplit("/", 1)[-1])))
+        spent = f"${sum(t['dollars'] for t in tries):.4f} at list price"
+        if not all(t["meter"] and t["priced"] for t in tries):  # no dollars where nothing counted them
+            spent = "no meter" if not all(t["meter"] for t in tries) else "no list price"
+        lines.append(f"Executor: {who} · {len(tries)} attempt{'s' * (len(tries) != 1)} · {spent}")
+    lines += [f"Reopened: {notes[-1]}"] if notes else []
+    subject = f"{node.title} ({node.id}{', reopened' if notes else ''})"
+    return "\n".join([subject, "", *lines, f"Graphene-Node: {node.id}"])
 
 
 def land(
@@ -905,7 +930,7 @@ def land(
         before = P.head(target)
         clean = _git(target, "diff", "--cached", "--quiet", ok=True).returncode == 0
         try:
-            _git(target, *ident, "merge", "--no-ff", "--no-edit", "-m", f"{node.title} ({node.id})", branch)
+            _git(target, *ident, "merge", "--no-ff", "--no-edit", "-m", _merged(store, node), branch)
         except KeyboardInterrupt:  # stopped while git merged: a hook of the person's was running
             with _no_interrupt():
                 made = P.head(target) != before  # the merge commit (a post-merge hook was cut short)

@@ -22,6 +22,7 @@ window says so and names what was read instead. A count that cannot be computed 
 from __future__ import annotations
 
 import subprocess
+import textwrap
 from collections import Counter
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -30,6 +31,7 @@ from pathlib import Path
 from . import meter
 from . import plan as P
 from .commits import window as commits_in
+from .precheck import _plain  # one line and no control character: what a check printed draws over nothing
 from .record import RANK, Change, Coverage, changes, coverage, seconds, window_commits
 
 # a window ends when the node does, however it ended; ``reopened`` comes after one, never inside it
@@ -63,11 +65,13 @@ class Refusals:
     """What the plan said no to while the node was held, counted from the log."""
 
     denied: list[str] = field(default_factory=list)  # one path per write refused before it happened
+    commands: list[str] = field(default_factory=list)  # one per command Claude Code refused its executor
     breaches: list[str] = field(default_factory=list)  # one path per change refused after the fact
     stops: int = 0
     done: list[list[str]] = field(default_factory=list)  # the stray paths of each refused `done`
     checks_failed: int = 0
-    last_check: dict | None = None  # {"result": passed|failed, "at": …, "command": …}
+    last_check: dict | None = None  # {"result": passed|failed, "at": …, "command": …, "gist": its last line}
+    at_base: dict | None = None  # red first's last verdict when it was "passes": it proved nothing then
 
 
 @dataclass(slots=True)
@@ -593,7 +597,9 @@ def _refusals(log: list[dict]) -> Refusals:
     out = Refusals()
     for entry in log:
         kind, detail = entry["kind"], entry["detail"]
-        if kind == "denied":
+        if kind == "denied" and "command" in detail:
+            out.commands.append(str(detail["command"]))
+        elif kind == "denied":
             out.denied.append(str(detail.get("path", "?")))
         elif kind == "breach":
             out.breaches.extend(str(p) for p in detail.get("paths", []))
@@ -607,7 +613,10 @@ def _refusals(log: list[dict]) -> Refusals:
                 "result": "failed" if kind == "check_failed" else "passed",
                 "at": entry["timestamp"],
                 "command": detail.get("command", ""),
+                "gist": _plain((str(detail.get("output") or "").strip().splitlines() or [""])[-1])[:200],
             }
+        elif kind == "precheck":
+            out.at_base = detail if detail.get("verdict") == "passes" else None
     return out
 
 
@@ -654,7 +663,8 @@ def render(record: NodeRecord) -> list[str]:
         f"  state: {record.state} · owner {record.owner}",
     ]
     lines += _window_lines(record)
-    lines += _coverage_lines(record.coverage, record.refusals.last_check)
+    lines += _in_short(record.coverage)
+    lines += _coverage_lines(record.coverage, record.refusals.last_check, record.refusals.at_base)
     lines += [f"    {line}" for line in record.against]
     lines += _refusal_lines(record.refusals)
     lines += _attempt_lines(record)
@@ -684,7 +694,22 @@ def _window_lines(record: NodeRecord) -> list[str]:
     return lines
 
 
-def _coverage_lines(counts: dict, check: dict | None) -> list[str]:
+def _in_short(counts: dict) -> list[str]:
+    """One plain sentence over the coverage lines when they count commits: the changed paths are traced,
+    and the commits graded, apart, so a commit no record grades takes nothing from what the paths say."""
+    n, k, out = counts["changed_files"], counts["commits"], counts["not_graded_commits"]
+    if not k:
+        return []
+    traced = counts["changed_edit"] + counts["changed_shell"]
+    paths = (f"{n} path{_s(n)} changed under it, {traced} traced to a recorded write"
+             if counts["changed_computed"] else "what changed under it is not computed")  # fmt: skip
+    which = f"its {k} commit{_s(k)}" if out in (0, k) else f"{out} of its {k} commits"
+    said = "graded below" if not out else "in no session's records, so not graded" + (
+        ", which takes nothing from the paths" if counts["changed_computed"] else "")  # fmt: skip
+    return [f"  in short: {paths}; {which} {'is' if (out or k) == 1 else 'are'} {said}"]
+
+
+def _coverage_lines(counts: dict, check: dict | None, at_base: dict | None = None) -> list[str]:
     """The coverage block, in the same shape whoever did the work: what git said changed, what the
     grading was read from, what Graphene's own check said, and the commits inside the windows."""
     n, k = counts["changed_files"], counts["commits"]
@@ -707,6 +732,10 @@ def _coverage_lines(counts: dict, check: dict | None) -> list[str]:
         lines.append(
             f"    check: `{check['command']}` {check['result']} at {check['at']}, run by Graphene itself"
         )
+        lines += [f"      its last line: {check['gist']}"] if check.get("gist") else []
+        if at_base and at_base.get("check") == check["command"] and at_base.get("base"):
+            lines.append(f"      it also passed at the base commit {at_base['base'][:7]}, before any work: "
+                         "it shows nothing about this change")  # fmt: skip
     else:
         lines.append("    check: none has run for this node, so nothing here is verified by one")
     if not k and counts.get("commits_unread"):
@@ -744,6 +773,8 @@ def _refusal_lines(refusals: Refusals) -> list[str]:
         head.append(f"{len(refusals.denied)} write{_s(len(refusals.denied))} denied")
     if refusals.breaches:
         head.append(f"{len(refusals.breaches)} change{_s(len(refusals.breaches))} refused after the fact")
+    if refusals.commands:
+        head.append(f"{len(refusals.commands)} command{_s(len(refusals.commands))} refused to the executor")
     if refusals.stops:
         head.append(f"{refusals.stops} stop{_s(refusals.stops)} refused")
     if refusals.done:
@@ -753,7 +784,8 @@ def _refusal_lines(refusals: Refusals) -> list[str]:
     if not head:
         return ["  refused: nothing"]
     lines = [f"  refused: {', '.join(head) or 'nothing'}"]
-    for label, paths in (("denied", refusals.denied), ("refused after the fact", refusals.breaches)):
+    for label, paths in (("denied", refusals.denied), ("refused after the fact", refusals.breaches),
+                         ("refused to the executor", refusals.commands)):  # fmt: skip
         counted = Counter(paths)
         if counted:
             lines.append(
@@ -800,8 +832,11 @@ def _attempt_lines(record: NodeRecord) -> list[str]:
             lines.append(f"    ran: {_few(ran)}")
         if a["refused"]:
             lines.append(f"    refused: {', '.join(a['refused'])}")
-        if a["said"]:
-            lines.append(f"    said last: {' '.join(a['said'].split())[:SAID_LAST]}")
+        said = " ".join((a["said"] or "").split())
+        if said and len(said) <= SAID_LAST:
+            lines.append(f"    said last: {said}")
+        elif said:  # whole, wrapped: its last words are what it says it did
+            lines += ["    said last:", *(f"      {line}" for line in textwrap.wrap(said, 100))]
         told = a["told"] if a["meter"] else _log_tail(a["log"])
         text = "\n".join(" ".join(t.split()) if a["meter"] else t for t in told)[-P.TAIL :]
         if text.strip():
@@ -810,7 +845,7 @@ def _attempt_lines(record: NodeRecord) -> list[str]:
     return lines
 
 
-SAID_LAST = 160  # characters of what an attempt said last, on its one line
+SAID_LAST = 160  # characters of what an attempt said last on one line; longer, it is wrapped under it
 SHOWN = 3  # paths or commands named on one line before "and N more"
 
 

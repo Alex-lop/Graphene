@@ -479,6 +479,7 @@ def register(cli: typer.Typer, root, open_store, fail):
             or ", ".join(detail.get("outside") or detail.get("paths") or detail.get("unowned") or [])
             or "; ".join(f"{k}: {value(a)} → {value(b)}" for k, (a, b) in fields)
             or (f"changed: {', '.join(changed)}" if isinstance(changed, list) and changed else "")
+            or detail.get("summary")  # a run's last line
             or detail.get("command")
             or ""
         )
@@ -879,6 +880,8 @@ def register(cli: typer.Typer, root, open_store, fail):
                 whose = "the planner's" if actor.startswith("planner") else f"{actor}'s"
                 for line in bill_line(bill([e for e in usage if e["actor"] == actor]), "    "):
                     out(line.replace("bill:", f"{whose} bill:"))
+            for ran in store.node_log("*", ("run",))[-1:]:  # what the last run said as it ended
+                out(f"    last run: {ran['detail'].get('summary')}")
 
         run(go)
 
@@ -1428,10 +1431,54 @@ def register(cli: typer.Typer, root, open_store, fail):
             under = [c for c in P.below(n.id, everything) if c in P.leaves(everything)]
             for line in rolled_up(store, root(), under) if under else render(node_record(store, root(), n)):
                 out(line)
+            for landed in store.node_log(n.id, ("landed",))[-1:]:
+                out(f"  landed: {landed['detail']['commit'][:7]}: `graphene node diff {n.id}` shows it")
             entries = len(store.node_log(n.id))
             out(f"  every entry, check runs included: `graphene plan log` ({entries} for {n.id})")
 
         run(go)
+
+    @node_cli.command(hidden=True)
+    def diff(
+        node_id: str = typer.Argument(...),
+        stat: bool = typer.Option(False, "--stat", help="Only each file and how much of it changed."),
+    ) -> None:
+        """Show what a leaf changed: the merge that landed it, or what it left."""
+        from .precheck import state
+
+        def go(store):
+            n, here = P.get(store, node_id), str(root())
+            ends = store.node_log(n.id, ("landed", "unlanded", "finished", "overruled"))
+            kind, d = (ends[-1]["kind"], ends[-1]["detail"]) if ends else (None, {})
+            if kind == "landed":  # the merge: what it brought in over its first parent
+                return here, [], [f"{d['commit']}^1", d["commit"]]
+            if kind == "unlanded":  # passed and not merged: its branch waits for the person
+                return here, [], [n.base_sha, d["branch"]]
+            if kind and P.RUN_TREE not in (n.checkout or ""):  # a session's `done`, auto's ask, `run --here`
+                where, kept = n.checkout or here, d.get("blobs") or {}
+                # ponytail: shown as the checkout is now, not as it was left: finish hashes its blobs without
+                # -w, so git seldom has them; a path changed since is named. Exact once finish writes them
+                now = P._blobs(where, list(kept))  # what it left, against what is there now
+                moved = ", ".join(p for p in kept if now.get(p) != kept[p])
+                said = ["done in your checkout; Graphene committed nothing"]
+                said += [f"changed since it finished, shown as it is now: {moved}"] if moved else []
+                tree = state(Path(where))[1]  # the checkout as git sees it, its new files too
+                return where, said, [n.base_sha, *([tree] if tree else []), "--", *(d.get("changed") or [])]
+            if any(m.parent == n.id for m in P.nodes(store)):
+                raise P.Refused(f"{n.id} is a sub-goal: each of its leaves has its own diff")
+            why = ("its work has not landed yet" if n.state in (P.DONE, P.REVIEW) else "nothing of it is done"
+                   ) if store.node_log(n.id, ("started",)) else "nothing has run yet"  # fmt: skip
+            raise P.Refused(f"{n.id} is {n.state}: {why}")
+
+        where, said, span = run(go)
+        # captured, never fd 1: watch runs a command here, its output read back (tui._cli); and plain, for
+        # its pane, whatever git's colours (color.ui=always colours a pipe too)
+        argv = ["git", "-C", where, "diff", "--no-color", *(["--stat"] if stat else []), *span]
+        shown = subprocess.run(argv, capture_output=True, text=True)
+        if shown.returncode:
+            fail(f"git cannot show what {node_id} changed: {shown.stderr.strip()}", 1)
+        for line in [*said, shown.stdout.rstrip("\n") or "git shows no difference"]:
+            out(line)
 
     def came_back(store, n: P.Node) -> list[str]:
         """A leaf that came back: why, what it wanted, where its last attempt is, and the fixes on
