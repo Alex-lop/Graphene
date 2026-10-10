@@ -730,6 +730,9 @@ def register(cli: typer.Typer, root, open_store, fail):
 
         def as_text(store) -> list[P.Node]:
             before = {n.id for n in P.nodes(store)}
+            with store.claim():  # every fault at once, as `graphene ask` tells its planner (and rolled back)
+                if wrong := T.faults(store, text, who, files):
+                    raise P.Refused("\n".join(wrong))
             for line in T.apply(store, text, who, None, files=files):
                 out(line)
             return [n for n in P.nodes(store) if n.id not in before]
