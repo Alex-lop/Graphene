@@ -427,6 +427,15 @@ def test_at_80_columns_a_long_reason_leaves_every_fix_in_sight_and_the_bottom_li
     assert "Widen the scope, or add a leaf for it." in seen["detail"]  # the whole reason, in its record
 
 
+def test_the_record_view_carried_onto_the_goal_never_says_enter_goes_back(repo):
+    """Enter on a leaf, then gg: the view stayed "record", and the goal's line said "Enter back", where
+    Enter runs `graphene plan record`."""
+    proposed(repo)
+    person("plan", "accept")
+    seen, _ = watch(repo, ["j", "j", "enter", "g", "g"], size=(120, 36))
+    assert seen["cursor"] is None and "Enter back" not in seen["status"], seen["status"]
+
+
 def test_help_wraps_to_the_screen_and_sits_in_the_middle_of_it(repo):
     """Recheck: at 80 columns the help was 106 wide from x=0, and its last 26 columns were cut off with
     no way to scroll to them. The stand-ins then found it 5 screens long at 80x24 with no legend. It

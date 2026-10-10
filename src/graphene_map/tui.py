@@ -1515,7 +1515,7 @@ class Watch(App):
         if self.anchor is not None:
             yes = "y accept and run" if self.runs_on_y(self.chosen()) else "y accept"
             return ["VISUAL", yes, "d drop", "t m merge", "j k widen it", "Esc ends"]
-        if self.view == "record":
+        if self.view == "record" and not self.on_goal() and self.board_row() is None:  # their Enter is theirs
             offers = [OFFERED[k] for k in self.offer_keys()]
             ask = ["t ask the planner", "q quit"] if offers else tail
             return ["ctrl-d ctrl-u scroll", "Enter back", *offers, *ask]
