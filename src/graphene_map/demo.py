@@ -54,6 +54,7 @@ from .tui import Help, Pane, Watch, fit, help_groups
 
 SHIPPED = Path(__file__).with_name("demo.jsonl")
 ENDED = "ended: last frame"
+NEXT = "the end · try it on your repo: graphene init, then graphene ask, with what you want"
 REFUSED = "a replay: nothing runs here"
 LIVE, STAND_IN = "as it ran, live", "a scripted stand-in, not Nemotron"  # what the top line says made it
 NO_CALLS = "a run with no model calls on record"
@@ -416,6 +417,11 @@ class Replay(Watch):
         state = (ENDED if self.next == len(self.lines) else f"paused at {at}" if self.paused
                  else f"×{round(cut, 1):g}: a wait, cut" if cut else at)  # fmt: skip
         self.query_one("#where", Static).update(fit(banner(self.head, state), max(self.size.width - 2, 20)))
+
+    def said_lines(self, room: int) -> list:
+        """At the end, the reader's next step on a line of its own, above what the last change was."""
+        said = super().said_lines(room)
+        return [fit([(NEXT, "")], room), *said] if self.next == len(self.lines) else said
 
     def refuse(self, *_, **__) -> None:
         self.message = REFUSED

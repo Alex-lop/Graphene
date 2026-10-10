@@ -123,3 +123,24 @@ def test_a_recording_made_with_the_meter_draws_its_strip_and_the_shipped_one_doe
     *rows, ended = strips["meter"]
     assert ended and any("claude" in s and "$" in s for s in rows), rows
     assert not any("no meter" in s or re.search(r"-\d+ s ago", s) for s in rows), rows  # 7 October's two
+
+
+def test_the_end_says_the_next_step_above_what_the_last_change_was(tmp_path):
+    """The replay stopped on its last change and said nothing of what to do next. At the end a line of
+    its own says it, the reader's own repository, and the last change still says what it was."""
+    head, lines = demo.load(demo.SHIPPED)
+    app, seen = demo.Replay(demo.repository(tmp_path, head), head, lines), {}
+
+    async def go():
+        async with app.run_test(size=(80, 24)) as pilot:
+            await pilot.pause(0.3)
+            await pilot.press("space")
+            seen["first"] = str(app.query_one("#status").render())
+            await pilot.press(*["full_stop"] * len(lines))
+            await pilot.pause(0.2)
+            seen["end"] = str(app.query_one("#status").render()).splitlines()
+
+    asyncio.run(go())
+    assert "graphene init" not in seen["first"]
+    assert "try it on your repo: graphene init" in seen["end"][-2]
+    assert seen["end"][-1] == demo.what(lines[-1])
