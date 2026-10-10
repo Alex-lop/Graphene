@@ -29,9 +29,19 @@ second try took every one. The branch's X1 ran on the build at d6cd8e9; the ask'
 | arm | accept | held-out | the six untouched | wall seconds (main; plant) | dollars | denials; turns | the fix landed in the owner's file; why recorded |
 |---|---|---|---|---|---|---|---|
 | Graphene on 907a7d0 (median of 3) | 18 of 20 | 12 of 12 | 6 | 109; 57 | $0.628 | 18; 51 | yes; yes (the reopen note) |
-| Graphene on the branch (median of 3) | — | — | — | — | — | — | — |
+| Graphene on the branch (median of 3) | 18 of 20 | 12 of 12 | 6 | 88; 47 | $0.533 | 4; 31 | yes; yes (the reopen note, now in the merge's body too) |
 | the plain session (median of 3) | 18 of 20 | 12 of 12 | 6 | 47; 12 | $0.353 | 5; 21 | yes; in the reply only |
 | `/batch` (2, declined to batch) | 18 of 20 | 12 of 12 | 6 | 59; 16 | $0.457 | 6; 30 | yes; in the reply only |
+
+Three runs a build, the same scores on every arm (the two misses are the change of mind the person never sent;
+nothing outside the intent anywhere). Graphene's arm on the branch against 907a7d0: the executors were refused 3–4
+commands a run instead of 14–20 (the executor is now told its shell runs only `graphene node` and `graphene plan`),
+took 30–34 turns instead of 43–54, cost $0.52–0.55 instead of $0.62–0.75, and the main round took 84–88 s instead of
+89–130 s (n = 3: medians, no interval). The plain session stays cheaper and faster ($0.34–0.38; 46–52 s), as the rules
+expected. What the contract adds is unchanged in kind and now also in git: each merge's body reads `Check: … passed`,
+`Executor: claude claude-sonnet-5-5 · 1 attempt · $0.0445 at list price`, and the reopened landing carries
+`Reopened: came back from e2e-xml: … sku key must be 'code'` under a subject ending `(xmlwire, reopened)`. The run's
+first line on the branch: `landing into main at b6ba009: claude (sonnet), up to 3 at once, $2 an attempt at most; …`.
 
 ## X3: ten questions about a finished run (3 runs × 2 arms a build, one reader each)
 

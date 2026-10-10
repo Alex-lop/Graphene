@@ -17,6 +17,8 @@ WITH=$("$TOOLPY" -c 'from graphene_map.run import DEFAULT_WITH; print(DEFAULT_WI
 for flag in "--model sonnet" "--max-budget-usd 2" "--strict-mcp-config" "--setting-sources project,local"; do
   case " $WITH " in *" ${flag%% *} "*) ;; *) WITH="$WITH $flag" ;; esac
 done
+# X2_WIDE=1: the sensitivity row, with the shell the recordings allowed (python3), beside graphene's own
+[ "${X2_WIDE:-}" = 1 ] && WITH=${WITH/"'Bash(graphene plan *)'"/"'Bash(graphene plan *)' 'Bash(python3 *)'"}
 echo "executor: $WITH" | tee "$OUT/executor.txt"
 for i in $(seq 1 "$REPS"); do
   RUN="$OUT/runs/feeds-sealed-x2-$i"
