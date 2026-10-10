@@ -101,7 +101,9 @@ it, and the plain sessions left their fix uncommitted ("that one line is the onl
 **`/batch` did not batch:** both runs read the repo, then said "I made the change directly in this checkout rather than
 running the batch/worker flow, since it is eight small edits to tightly coupled files"; no subagent, no branch, no
 worktree, no PR. On this task the vendor's loop is a plain session with a longer preamble (23 turns, $0.20 against
-$0.16 for the plain session's first message).
+$0.16 for the plain session's first message). x0.md(f) had set this arm a rule (send the approval; if no worker
+starts, report "could not run headless" and score nothing); it was set aside because neither session stopped to ask:
+both did the work directly, so their rows are kept and labelled "declined to batch".
 
 ## The walks: the README's commands in order, as the person (n = 3, a scripted person on Sonnet)
 
