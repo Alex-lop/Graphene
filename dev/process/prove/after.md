@@ -18,10 +18,10 @@ which picked the account's default model as a stranger's would.
 | median seconds; median planner dollars | 26.5 s; $0.077 | 29.0 s; $0.086 | about the same |
 | the ask's last line names the planner, its calls and its dollars | never | 40 of 40 (`the planner (claude sonnet-5-5): 5 calls, $0.11 at list price`) | A2 |
 
-The A1 gate held on `$A` (no refusal), so the schema planner was not built. The branch's five first refusals are
-the classes a schema would reach (three `then:` slips) or not (two indentation slips, which the schema also makes
-impossible); over both builds that is 5 of 80 first answers, 6%, under the 10% the rule set. Nothing was lost: the
-second try took every one. The branch's X1 ran on the build at d6cd8e9; the ask's code did not change after it
+The A1 gate is read on `$A`, which had no first refusal, so the schema planner was not built. On the branch, 3 of
+the 5 first refusals (60%) fall in the rule's classes (the `then:` slips; the other two are indentation slips, which
+a schema would also make impossible): taken there, the gate would have been met, which goes to decision 3
+(`morning.md`). Nothing was lost: the second try took every one. The branch's X1 ran on the build at d6cd8e9; the ask's code did not change after it
 (the one later edit to gate.py is the hook's aside path, not the SessionStart text the planner reads).
 
 ## X2: the price of the contract on feeds (n = 3 a build; the plain session and `/batch` once)
