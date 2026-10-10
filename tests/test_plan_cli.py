@@ -341,6 +341,8 @@ def test_a_run_says_first_where_it_lands_with_what_and_that_uncommitted_work_sta
     assert landing.startswith(f"landing into {branch} at ") and "--no-verify" in landing, landing
     assert "your uncommitted changes are not in the executors' worktrees: they start from HEAD" in lines
     assert lines.index(landing) == 0 and lines[-1].startswith("run: ")  # the summary is still the last
+    capped = person("run", "--with", "true --max-budget-usd 2").stdout.splitlines()[0]
+    assert "an attempt stops once it passes $2" in capped and "at most;" not in capped  # a stop, no ceiling
 
 
 def test_a_run_of_no_attempts_is_refused_before_anything_starts(repo):

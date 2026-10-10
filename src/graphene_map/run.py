@@ -382,7 +382,8 @@ REFUSED = "Your last attempt was not accepted:"  # the Nemotron executor reads w
 
 
 def _worst(argv: list[str]) -> float:
-    """What one attempt may spend: the command's --max-budget-usd, else WORST."""
+    """What one attempt may spend: the command's --max-budget-usd, else WORST. Claude Code stops after the
+    turn that passes its cap, so an attempt may spend that turn more (b1.json: $0.0510 under $0.05)."""
     said = M.option(argv, "--max-budget-usd")
     try:
         return float(said) if said else WORST

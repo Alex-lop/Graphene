@@ -1043,7 +1043,8 @@ def register(cli: typer.Typer, root, open_store, fail):
                         argv = shlex.split(template)
                         model, cap = M.model_in(argv), M.option(argv, "--max-budget-usd")
                         what = label(template) + f" ({model})" * bool(model)
-                        most = f", ${cap} {CAP_UNIT} at most" * bool(cap)
+                        # Claude Code stops after the turn that passes the cap: no ceiling, a stop
+                        most = f", {CAP_UNIT} stops once it passes ${cap}" * bool(cap)
                         out(f"landing into {on} at {at[:7]}: {what}, up to {max(parallel, 1)} at once{most}; "
                             "each leaf is committed with --no-verify (your pre-commit and commit-msg hooks "
                             "skip it) and merged --no-ff; checks run in a clean worktree with your PATH; "
