@@ -3,8 +3,8 @@
 ## 0.5.0 (not published yet: the tag is Alex's)
 
 The first hour and the morning after (10 October). What a stranger meets in the first hour said plainly, and what a
-person reads the morning after printed from what was already stored; every change measured on 907a7d0 and on the
-branch (`dev/process/prove/after.md`).
+person reads the morning after printed from what was already stored; the night's experiments measured on 907a7d0
+and on the branch (`dev/process/prove/after.md`).
 - `graphene init` says what it did: the hooks it installed, that the next Claude Code session is recorded (prompts,
   tool calls and what they returned, the files it edits; on this machine only), that accepting happens in `graphene
   watch` in another terminal, and the two ways out. At a terminal it asks the plan-first mode, one line per mode,
@@ -48,7 +48,8 @@ branch (`dev/process/prove/after.md`).
   the ask prints the commands that add it once mended. `graphene plan propose -` reports every
   fault at once. A board item written as a node is told how the board is written. The planner and every session
   are told that a check runs in a fresh worktree with nothing git ignores.
-- `docs/HOW_IT_WORKS.md` says all of the above; its word cap is 3,300.
+- `docs/HOW_IT_WORKS.md` says what init does and how to undo it, the run's first line and red first's warnings, and
+  what the record and the merge message now say; its word cap is 3,300.
 
 The loop (9 October). A leaf that finds a landed leaf's fault reopens it with one key, and every check runs red first.
 - A leaf that came back wanting a file a done leaf owns offers `r`: reopen that leaf with the reason, and wait on it.
