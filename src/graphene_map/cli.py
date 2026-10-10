@@ -57,7 +57,7 @@ def build():
         from click.exceptions import MissingParameter, UsageError
 
     from . import __version__
-    from .hooks import SETTINGS, git_head, hooks_file, install_hooks
+    from .hooks import SETTINGS, git_head, hooks_file, install_hooks, remove_hooks
     from .store import StaleStore, Store, repo_root
 
     SHELL_LISTS_HINT = (
@@ -340,6 +340,7 @@ def build():
     def init(
         planner: str = typer.Option(None, help="The planner: claude, codex, nemotron or a command."),
         executor: str = typer.Option(None, help="The executor: claude, codex, nemotron or a command."),
+        remove: bool = typer.Option(False, "--remove", help="Take the Claude Code hooks out of this repo."),
     ) -> None:
         """Pick a planner and an executor, and install the Claude Code hooks.
 
@@ -349,7 +350,21 @@ def build():
         if os.environ.get("GRAPHENE_NODE") or os.environ.get("GRAPHENE_PLANNER"):
             fail("an executor or a planner does not install hooks; that is the person's", 1)
         who = P.caller()
-        given = {k: v for k, v in (("planner", planner), ("executor", executor)) if v is not None}
+        if remove:  # the hooks are what hold an agent, and a `graphene ` command passes the gate
+            try:
+                P._person_only(who, "taking the hooks out")
+            except P.Refused as no:
+                fail(str(no), 1)
+            r = root()
+            settings = Path(os.path.relpath(hooks_file(r), Path.cwd()))
+            try:
+                gone = remove_hooks(r)
+            except ValueError as exc:
+                fail(f"cannot update {settings}: {exc}", 1)
+            say(f"hooks removed from {settings}: {', '.join(gone) or 'none were there'}")
+            say("the plan in .graphene/ is yours to keep or delete")
+            return
+        given ={k: v for k, v in (("planner", planner), ("executor", executor)) if v is not None}
         if given:  # they are started as you, with your permissions, and they spend
             try:
                 P._person_only(who, "choosing the planner and the executor")
