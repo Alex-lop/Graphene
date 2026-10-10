@@ -205,3 +205,16 @@ def test_first_lights_403_for_a_made_up_key_names_its_source_and_says_it_is_no_p
     assert "a harness slip, not from the ladder and not practice" in said
     assert "Its only record is the message of commit e5efb4f" in said
     assert "No log of that run was kept" in said
+
+
+def test_the_readme_says_what_init_does_to_claude_code_and_how_to_undo_it():
+    """The first-hour readers of 10 October 2026 found 'plan first' 0 times in the README, no uninstall
+    anywhere, and a demo called a recorded run that replays a scripted stand-in."""
+    readme = doc("README.md")
+    said = ("`graphene init --remove`", "`graphene plan first off`", "scripted replay", "it asks first")
+    for phrase in said:
+        assert phrase in readme, phrase
+    how = doc("docs/HOW_IT_WORKS.md")
+    told = ("`graphene init --remove`", "`graphene node diff", "outside Claude Code", "installed editable")
+    for phrase in told:
+        assert phrase in how, phrase
