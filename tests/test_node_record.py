@@ -271,6 +271,36 @@ def test_a_node_done_by_an_executor_no_vendor_records_still_has_a_coverage_line(
     assert "not computed" not in "\n".join(printed)  # every count here has evidence behind it
 
 
+def test_the_check_says_its_last_line_and_that_it_also_passed_at_the_base_before_any_work(store, repo):
+    """The check line said "passed" and no more: not what it printed last, nor that red first saw it pass
+    at the base commit, before any work, where it shows nothing about the change. And three coverage
+    sentences (7 paths traced; 0 files of 1 commit traced; 1 commit not graded) read as a contradiction to
+    a stranger: one plain sentence opens them."""
+    codex, base = Caller("codex:deadbeef", False, None), head(repo)
+    check = "printf 'collected 12 items\\n\\n12 passed\\n\\n'"
+    plan.propose(store, [api_node(check=check)], ALEX, now=T(0))
+    passes = {"rev": 1, "check": check, "base": base, "verdict": "passes", "why": "it exits 0"}
+    store.log_node("n1", T(0, 30), "precheck", "graphene:precheck", None, None, passes)
+    plan.start(store, "n1", codex, repo, now=T(1))
+    (repo / "src/api/users.py").write_text("def users():\n    return [1]\n")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", "the endpoint", at=T(2))
+    plan.finish(store, "n1", codex, now=T(3))
+    lines = NR.render(NR.node_record(store, repo, plan.get(store, "n1"), at=T(9)))
+    at = next(k for k, line in enumerate(lines) if line.startswith("    check: "))
+    assert lines[at + 1 : at + 3] == [
+        "      its last line: 12 passed",
+        f"      it also passed at the base commit {base[:7]}, before any work: it shows nothing about "
+        "this change",
+    ]
+    paths = ("  coverage: of the 1 path git said had changed under this node, 1 inside its scope; 0 to a "
+             "recorded edit, 0 to a recorded shell command, 1 to git alone")  # fmt: skip
+    start = lines.index(paths)
+    assert lines[start - 1] == ("  in short: 1 path changed under it, 0 traced to a recorded write; its 1 "
+                                "commit is in no session's records, so not graded, which takes nothing from "
+                                "the paths")  # fmt: skip
+
+
 def test_a_commit_in_the_nodes_first_second_is_inside_its_window(store, repo):
     """The log keeps milliseconds and git keeps whole seconds, so a node started at …:34.160 and a
     commit stamped …:34 cannot be put in order. Comparing them as floats dropped every commit made

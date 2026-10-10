@@ -1386,6 +1386,8 @@ def register(cli: typer.Typer, root, open_store, fail):
             under = [c for c in P.below(n.id, everything) if c in P.leaves(everything)]
             for line in rolled_up(store, root(), under) if under else render(node_record(store, root(), n)):
                 out(line)
+            for landed in store.node_log(n.id, ("landed",))[-1:]:
+                out(f"  landed: {landed['detail']['commit'][:7]}: `graphene node diff {n.id}` shows it")
             entries = len(store.node_log(n.id))
             out(f"  every entry, check runs included: `graphene plan log` ({entries} for {n.id})")
 

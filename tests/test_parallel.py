@@ -311,3 +311,12 @@ def test_node_diff_shows_what_landed_and_what_a_leaf_left_in_your_checkout(repo)
     assert "changed since it finished, shown as it is now: b.txt" in person("node", "diff", "b").stdout
     never = person("node", "diff", "c")
     assert never.exit_code == 1 and "c is open: nothing has run yet" in never.output
+
+
+def test_node_show_says_where_a_leaf_landed_and_how_to_see_it(repo):
+    with Store.open(repo) as store:
+        plan.propose(store, [leaf("a")], ALEX)
+    go(repo)
+    merge = git_in(repo, "rev-parse", "--short=7", "HEAD").strip()
+    shown = person("node", "show", "a")
+    assert f"  landed: {merge}: `graphene node diff a` shows it" in shown.stdout.splitlines(), shown.output
