@@ -277,7 +277,7 @@ def test_the_check_says_its_last_line_and_that_it_also_passed_at_the_base_before
     sentences (7 paths traced; 0 files of 1 commit traced; 1 commit not graded) read as a contradiction to
     a stranger: one plain sentence opens them."""
     codex, base = Caller("codex:deadbeef", False, None), head(repo)
-    check = "printf 'collected 12 items\\n\\n12 passed\\n\\n'"
+    check = "printf 'collected 12 items\\n\\n\\033[32m12 passed\\033[0m\\n\\n'"  # its colour is not said
     plan.propose(store, [api_node(check=check)], ALEX, now=T(0))
     passes = {"rev": 1, "check": check, "base": base, "verdict": "passes", "why": "it exits 0"}
     store.log_node("n1", T(0, 30), "precheck", "graphene:precheck", None, None, passes)
