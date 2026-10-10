@@ -224,7 +224,7 @@ def _first_refused(store) -> str:
     return (
         "plan first: this session holds no leaf, so it writes nothing yet. Propose what you will do "
         f"(`graphene plan propose -`){f', or {take}' if take else ''}. The person turns plan first off "
-        "with P in graphene watch or `graphene plan first off`"
+        "with P in graphene watch or `graphene plan first off`, in a terminal outside Claude Code"
     )
 
 

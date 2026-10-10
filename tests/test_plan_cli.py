@@ -432,6 +432,15 @@ def test_init_sets_plan_first_on_and_keeps_an_auto_set_before(repo):
     assert "plan first: auto" in person("plan", "first").stdout
 
 
+def test_a_person_only_act_refused_inside_claude_code_says_where_the_person_runs_it(repo):
+    """The person who typed `graphene plan accept` into their own Claude Code session was refused as an
+    agent and told only to say what they needed. The refusal says where it works, and never names the
+    mark that makes a caller an agent (plan.caller): an agent that strips it passes for the person."""
+    refused = agent("plan", "accept")
+    assert refused.exit_code == 1 and "in a terminal outside Claude Code" in refused.stderr
+    assert "CLAUDECODE" not in refused.stderr and "CLAUDE_CODE_SESSION_ID" not in refused.stderr
+
+
 # -- the messages, read as whoever receives them --------------------------------------------------
 
 CLI = [
