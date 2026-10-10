@@ -23,6 +23,20 @@ def app() -> None:
     build()()
 
 
+def claude_lacks() -> str | None:
+    """The first of --json-schema and --max-budget-usd that this machine's `claude --help` does not
+    list (a Claude Code older than Graphene needs); None when it lists both, or when no claude answers."""
+    import subprocess
+
+    try:
+        said = subprocess.run(
+            ["claude", "--help"], stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=10
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return next((flag for flag in ("--json-schema", "--max-budget-usd") if flag not in said), None)
+
+
 def build():
     import inspect
     import json
@@ -43,7 +57,7 @@ def build():
         from click.exceptions import MissingParameter, UsageError
 
     from . import __version__
-    from .hooks import SETTINGS, hooks_file, install_hooks
+    from .hooks import SETTINGS, git_head, hooks_file, install_hooks, remove_hooks
     from .store import StaleStore, Store, repo_root
 
     SHELL_LISTS_HINT = (
@@ -326,6 +340,7 @@ def build():
     def init(
         planner: str = typer.Option(None, help="The planner: claude, codex, nemotron or a command."),
         executor: str = typer.Option(None, help="The executor: claude, codex, nemotron or a command."),
+        remove: bool = typer.Option(False, "--remove", help="Take the Claude Code hooks out of this repo."),
     ) -> None:
         """Pick a planner and an executor, and install the Claude Code hooks.
 
@@ -335,6 +350,20 @@ def build():
         if os.environ.get("GRAPHENE_NODE") or os.environ.get("GRAPHENE_PLANNER"):
             fail("an executor or a planner does not install hooks; that is the person's", 1)
         who = P.caller()
+        if remove:  # the hooks are what hold an agent, and a `graphene ` command passes the gate
+            try:
+                P._person_only(who, "taking the hooks out")
+            except P.Refused as no:
+                fail(str(no), 1)
+            r = root()
+            settings = Path(os.path.relpath(hooks_file(r), Path.cwd()))
+            try:
+                gone = remove_hooks(r)
+            except ValueError as exc:
+                fail(f"cannot update {settings}: {exc}", 1)
+            say(f"hooks removed from {settings}: {', '.join(gone) or 'none were there'}")
+            say("the plan in .graphene/ is yours to keep or delete")
+            return
         given = {k: v for k, v in (("planner", planner), ("executor", executor)) if v is not None}
         if given:  # they are started as you, with your permissions, and they spend
             try:
@@ -345,17 +374,33 @@ def build():
             if why := unreadable(v):
                 fail(f"--{k} {why}")
         # an agent is never asked, at a terminal or not: it would be choosing what the person runs
-        asking = not given and who.person and sys.stdin.isatty() and sys.stdout.isatty()
+        terminal = who.person and sys.stdin.isatty() and sys.stdout.isatty()
+        asking = not given and terminal
         r = root()
         with open_store(r) as store:  # the choice first: a question left unanswered installs nothing
             chosen = choose(store, given, asking)
             specs = [store.meta(k) or "claude" for k in WHO]  # none chosen: the person's own Claude Code
             if store.meta("plan_first") is None:  # a repository set up for Graphene plans first
                 store.set_meta("plan_first", "on")
+            if asking:  # a line a mode; Enter keeps what is set: on, in a repository new to it
+                from .gate import WIDE
+
+                say("what happens to an ask in a Claude Code session here?")
+                say("  on    every ask in a session is proposed and waits for you in graphene watch")
+                say(f"  auto  a one-leaf ask with at most {WIDE} paths and no board item is done at once; "
+                    "bigger work waits for you")  # fmt: skip
+                say("  off   a quick change is done at once; bigger work is still proposed first")
+                while (how := typer.prompt("plan first", default=P.plan_first(store))) not in P.FIRST:
+                    say("plan first is on, auto or off")
+                if how != P.plan_first(store):
+                    P.set_plan_first(store, how, who)
             first = P.plan_first(store)  # one set before stays as it is: init says which
             for k in (*S.GLOBS, "never", "size"):  # each setting's default, so `graphene config` has it
                 if store.meta(f"settings:{k}") is None:
                     store.set_meta(f"settings:{k}", "auto" if k == "size" else "[]")
+        if git_head(r) is None:
+            say("this repo has no commit yet: a run cuts each leaf's worktree from HEAD, so commit once "
+                "first")  # fmt: skip
         say(chosen)
         try:
             added = install_hooks(r)
@@ -368,22 +413,20 @@ def build():
                 + ("" if added else " (already there)"))  # fmt: skip
         else:
             say(f"hooks added to {settings}: {', '.join(added)}" if added else "hooks already installed")
-            if settings.name == Path(SETTINGS).name:
-                say(
-                    f"{settings} is your personal settings file (if your team shares .claude/, add that "
-                    "file to .gitignore)"
-                )
             say(
-                "the next Claude Code session in this repo is recorded live into .graphene/ (private to "
-                "you, ignores itself in git); then run `graphene`"
+                "the next Claude Code session here is recorded into .graphene/ (its prompts, its tool calls "
+                "and what they returned, the files it edits; on this machine only); `graphene init --remove` "
+                "takes the hooks out"
             )
             if not shell_lists_enabled():
                 say(SHELL_LISTS_HINT)
+            if terminal and (flag := claude_lacks()):  # at a terminal only: no test starts claude
+                say(f"this Claude Code has no {flag}: `claude update` first")
         say("next: `graphene ask '<what you want>'` proposes a plan; `graphene watch` shows it")
         if shutil.which("graphene") is None:
             console.print(
-                "[yellow]warning:[/yellow] `graphene` is not on PATH, so the hook will not run. "
-                "Install it with `uv tool install graphene-map` (or `--editable .`)."
+                "[yellow]warning:[/yellow] `graphene` is not on PATH, so the hook will not run. Install "
+                "it with `uv tool install git+https://github.com/Alex-lop/Graphene` (or `--editable .`)."
             )
 
     ingest = typer.Typer(help="Record what an agent did.\n\nThe installed hooks call this. Nobody types it.")

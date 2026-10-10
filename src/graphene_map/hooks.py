@@ -13,6 +13,7 @@ import contextlib
 import json
 import os
 import re
+import sqlite3
 import sys
 from datetime import UTC, datetime
 from functools import lru_cache
@@ -402,9 +403,10 @@ def hook_main(stdin=None, cwd: Path | None = None, stdout=None) -> int:
             ours = into_ours(event, root)
             if ours is not None:
                 sid = event.get("session_id")
-                store.log_node(
-                    "*", now_iso(), "denied", None, sid, None, {"path": ours, "how": "graphene's own"}
-                )
+                with contextlib.suppress(sqlite3.OperationalError):  # busy: the row is lost, not the deny
+                    store.log_node(
+                        "*", now_iso(), "denied", None, sid, None, {"path": ours, "how": "graphene's own"}
+                    )
                 answer = {
                     "hookSpecificOutput": {
                         "hookEventName": "PreToolUse",
@@ -487,6 +489,29 @@ def install_hooks(root: Path) -> list[str]:
         if path.name == Path(SETTINGS).name:
             _exclude_locally(root, SETTINGS)
     return added
+
+
+def remove_hooks(root: Path) -> list[str]:
+    """Take out the groups install_hooks added (each holds our one handler), and an event or 'hooks'
+    they leave empty, keeping everything else in the file. Returns the events they were taken out of."""
+    path = hooks_file(root)
+    settings = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    hooks = settings.get("hooks") if isinstance(settings, dict) else None
+    removed: list[str] = []
+    for event, groups in list(hooks.items()) if isinstance(hooks, dict) else []:
+        if not isinstance(groups, list):
+            continue
+        kept = [g for g in groups if not (isinstance(g, dict) and any(_is_ours(h) for h in _handlers(g)))]
+        if len(kept) < len(groups):
+            removed.append(event)
+            hooks[event] = kept
+            if not kept:
+                del hooks[event]
+    if removed:
+        if not hooks:
+            del settings["hooks"]
+        _write_atomically(path, json.dumps(settings, indent=2) + "\n")
+    return removed
 
 
 def _exclude_locally(root: Path, rel: str) -> None:

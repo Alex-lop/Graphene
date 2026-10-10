@@ -190,11 +190,13 @@ def test_the_side_pane_shows_the_item_whole_and_what_its_answer_changed(repo, si
     assert "the board: 1 settled" in fold["detail"]
 
 
-def test_question_mark_on_an_item_is_help_and_on_a_node_the_planners_chooser(repo):
+def test_question_mark_is_help_on_an_item_and_on_a_node_and_t_is_the_planners_chooser(repo):
     planned(repo)
-    item, _, node = drive(repo, [["?"], ["escape"], ["/", *"schema", "enter", "?"]], (80, 24))
+    steps = [["?"], ["escape"], ["/", *"schema", "enter", "?"], ["escape"], ["t"]]
+    item, _, node, _, talk = drive(repo, steps, (80, 24))
     assert item["at"] == "which-id" and item["screen"] == "Help"  # an item's own keys are on the bottom line
-    assert node["at"] == "schema" and node["screen"] == "Ask"  # talking on the tree: w s m a, or words
+    assert node["at"] == "schema" and node["screen"] == "Help"  # ? is the help on every row
+    assert talk["at"] == "schema" and talk["screen"] == "Ask"  # talking on the tree: w s m a, or words
 
 
 def test_the_views_goal_line_counts_the_open_items(repo, monkeypatch):

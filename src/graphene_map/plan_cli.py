@@ -38,10 +38,11 @@ NOT_INIT = (
 )
 # What `graphene plan first` says each setting does
 FIRST_SAID = {
-    "on": "Every ask in a session is proposed, one leaf included, and waits for you.",
+    "on": "Every ask in a session is proposed, one leaf included, and waits for you. You accept in "
+    "`graphene watch`, in another terminal; `graphene plan first off`, typed outside Claude Code, stops it.",
     "auto": f"Every ask is proposed first. One leaf of at most {G.WIDE} paths, with nothing on the board, "
     "is yours at once; anything else waits for you.",
-    "off": "What you ask for in a session is done at once, as a leaf of its own.",
+    "off": "A quick change is done at once, as a leaf of its own; bigger work is still proposed first.",
 }
 
 
@@ -689,6 +690,7 @@ def register(cli: typer.Typer, root, open_store, fail):
             out(D.fit(D.banner(head, D.ENDED), wide).plain)  # whole pieces, as the screen's top line
             with contextlib.chdir(repo):  # printed as `graphene watch --once` prints it, in the replay's repo
                 print_once(P.caller(), everything=False, archive=False, recent_as=D.ENDING, wide=wide)
+            out(D.fit([(D.NEXT, "")], wide).plain)  # cut at the width, as every row above it
 
     @plan_cli.command(hidden=True)
     def propose(

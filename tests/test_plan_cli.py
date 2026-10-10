@@ -422,11 +422,23 @@ def test_plan_first_is_a_setting_the_person_sees_and_sets(repo):
 def test_init_sets_plan_first_on_and_keeps_an_auto_set_before(repo):
     said = person("init")
     assert said.exit_code == 0 and "plan first: on. Every ask in a session is proposed" in said.stdout
+    # what init did, what it records, how to stop each, and no advice about a file git already leaves out
+    assert "`graphene plan first off`" in said.stdout and "`graphene init --remove`" in said.stdout
+    assert "its prompts" in said.stdout and ".gitignore" not in said.stdout
     assert "plan first: on" in person("plan", "first").stdout
     person("plan", "first", "auto")
     again = person("init")  # a repository on auto stays on auto until the person changes it
     assert "plan first: auto. Every ask is proposed first" in again.stdout
     assert "plan first: auto" in person("plan", "first").stdout
+
+
+def test_a_person_only_act_refused_inside_claude_code_says_where_the_person_runs_it(repo):
+    """The person who typed `graphene plan accept` into their own Claude Code session was refused as an
+    agent and told only to say what they needed. The refusal says where it works, and never names the
+    mark that makes a caller an agent (plan.caller): an agent that strips it passes for the person."""
+    refused = agent("plan", "accept")
+    assert refused.exit_code == 1 and "in a terminal outside Claude Code" in refused.stderr
+    assert "CLAUDECODE" not in refused.stderr and "CLAUDE_CODE_SESSION_ID" not in refused.stderr
 
 
 # -- the messages, read as whoever receives them --------------------------------------------------

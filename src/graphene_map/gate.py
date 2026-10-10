@@ -11,7 +11,8 @@ The holes, which the README and the map print beside the controls:
 - a shell command can write a file in a way no parser reads (a script that opens files itself);
   when the vendor reports what a command changed it is refused after the fact, and ``finish`` asks
   git, which sees every write however it was made;
-- the vendor lets a session stop after 8 refused stops in a row; the node then stays open, visibly;
+- a session is refused one stop, and may stop after it (to ask the person); an executor is refused
+  until the vendor lets it stop after 8 refused stops in a row; the node then stays open, visibly;
 - the refusals that read a command's text (GRAPHENE_AS, .graphene/) stop the ordinary spellings and
   not a determined one. What holds against that is elsewhere: ``plan.caller`` ranks an agent's own
   environment above the variable, and the store is the one thing nothing here can defend against a
@@ -20,8 +21,10 @@ The holes, which the README and the map print beside the controls:
 
 from __future__ import annotations
 
+import contextlib
 import os
 import re
+import sqlite3
 from pathlib import Path
 
 from . import plan as P
@@ -43,6 +46,13 @@ def _deny(reason: str) -> dict:
             "permissionDecisionReason": reason,
         }
     }
+
+
+def _write(write, *args) -> None:
+    """A row written on the way to a refusal: a store another process is writing loses the row, never
+    the refusal (hook_main lets through a call whose answer raised)."""
+    with contextlib.suppress(sqlite3.OperationalError):
+        write(*args)
 
 
 def _held(store, session_id: str) -> list[P.Node]:
@@ -105,7 +115,7 @@ def _how_out(store, sid: object, held: list[P.Node], paths: list[str]) -> str:
     if store.meta(told):
         wants = " ".join(f"--wants {shlex.quote(p)}" for p in paths[:3])
         return f"`graphene node release {n.id} --why '…' {wants}` hands it back"
-    store.set_meta(told, "1")
+    _write(store.set_meta, told, "1")
     return (
         f"If the work cannot be done inside that scope, do not work around it: "
         f"`graphene node release {n.id} --why '<what you need and why>' --wants <a path> --wants <another>` "
@@ -224,7 +234,7 @@ def _first_refused(store) -> str:
     return (
         "plan first: this session holds no leaf, so it writes nothing yet. Propose what you will do "
         f"(`graphene plan propose -`){f', or {take}' if take else ''}. The person turns plan first off "
-        "with P in graphene watch or `graphene plan first off`"
+        "with P in graphene watch or `graphene plan first off`, in a terminal outside Claude Code"
     )
 
 
@@ -488,9 +498,8 @@ def _check_write(
         made = _aside(store, str(event.get("session_id")), cwd, root)
         held = [made] if made else held
     if not held:  # "*" is the plan's own log: what happened that belongs to no node
-        store.log_node(
-            "*", P._now(), "denied", None, event.get("session_id"), agent_id, {"path": rel, "how": how}
-        )
+        _write(store.log_node, "*", P._now(), "denied", None, event.get("session_id"), agent_id,
+               {"path": rel, "how": how})  # fmt: skip
         if os.environ.get("GRAPHENE_PLANNER"):
             return _deny("you are the planner: your only output is the proposal you print. Write no file")
         return _deny(_claim_first(store))
@@ -513,7 +522,7 @@ def scope_refused(
     if any(P.binds(rel, n, standing) for n in held):
         return None
     n = held[0]
-    store.log_node(n.id, P._now(), "denied", n.executor, session, agent_id, {"path": rel, "how": how})
+    _write(store.log_node, n.id, P._now(), "denied", n.executor, session, agent_id, {"path": rel, "how": how})
     kept = P.kept_out_by(rel, standing)
     if kept:
         return (f"{rel} is kept out of every scope by the setting `{kept}` (`graphene config`); only the "
@@ -639,12 +648,13 @@ def decide(store, event: dict, root: Path) -> dict | None:
         planned = first and _contract(store.meta(f"prompt:{sid}"))
         if written is not None and not (planned and _aside(store, sid, cwd, root)):
             how = "planner" if planner else "plan first"
-            store.log_node("*", P._now(), "denied", None, sid, None, {"path": written, "how": how})
+            _write(store.log_node, "*", P._now(), "denied", None, sid, None, {"path": written, "how": how})
             return _deny("you are the planner: your only output is the proposal you print. Write no file"
                          if planner else _first_refused(store))  # fmt: skip
     hidden = _protected_read(store, event, root) if name == "PreToolUse" and planner else None
     if hidden is not None:
-        store.log_node("*", P._now(), "denied", None, sid, None, {"path": hidden, "how": "planner read"})
+        said = {"path": hidden, "how": "planner read"}
+        _write(store.log_node, "*", P._now(), "denied", None, sid, None, said)
         return _deny(f"{hidden} is protected (`graphene config`): the planner never reads it, and so "
                      "never sends it to a model. Search a narrower path, or a glob, that leaves it out")
     if not P.in_force(store):
@@ -654,16 +664,20 @@ def decide(store, event: dict, root: Path) -> dict | None:
     cwd = event.get("cwd") if isinstance(event.get("cwd"), str) else None
 
     if name == "Stop":
+        # reminded once: the stop after a refused one is let go, so a session can stop to ask the person
+        # something; an executor `graphene run` started is held until its leaf is done or handed back
+        again = event.get("stop_hook_active") is True and not os.environ.get("GRAPHENE_NODE")
         held = _held(store, sid)
         for n in [h for h in held if h.aside]:
             wrong = _close(store, n, sid)  # the turn is over: the leaf made from the prompt is too
             if wrong:
-                return {"decision": "block", "reason": f"{n.id} ({n.title}) is not done: {wrong}"}
+                said = f"{n.id} ({n.title}) is not done: {wrong}"
+                return None if again else {"decision": "block", "reason": said}
         held = [h for h in held if not h.aside]
-        if not held:
+        if not held or again:
             return None
         n = held[0]
-        store.log_node(n.id, P._now(), "stop_refused", n.executor, sid, None, None)
+        _write(store.log_node, n.id, P._now(), "stop_refused", n.executor, sid, None, None)
         return {
             "decision": "block",
             "reason": (
@@ -736,7 +750,8 @@ def decide(store, event: dict, root: Path) -> dict | None:
         if not stray:
             return None
         n = held[0]
-        store.log_node(n.id, P._now(), "breach", n.executor, sid, None, {"paths": stray, "how": "shell"})
+        breach = {"paths": stray, "how": "shell"}
+        _write(store.log_node, n.id, P._now(), "breach", n.executor, sid, None, breach)
         return {
             "decision": "block",
             "reason": (

@@ -1,8 +1,10 @@
 """What the hooks answer while a plan is in force: driven through hook_main, the one function Claude
 Code's hook really calls, with the vendor's event shapes in and the vendor's JSON out."""
 
+import contextlib
 import io
 import json
+import sqlite3
 import subprocess
 
 import pytest
@@ -177,6 +179,16 @@ def test_a_stop_is_refused_while_a_node_is_held_and_allowed_once_it_is_done_or_h
     assert hook(repo, "Stop", stop_hook_active=False) is None
 
 
+def test_a_session_is_reminded_once_of_the_leaf_it_holds_and_an_executor_is_held_as_ever(repo, monkeypatch):
+    """A person's session that stopped to ask them something was refused the stop about 8 times in a row
+    by the vendor's count. Reminded once (stop_hook_active: the stop follows a refused one), it may stop;
+    an executor `graphene run` started is held until the leaf is done or handed back."""
+    holding(repo)
+    assert hook(repo, "Stop", stop_hook_active=True) is None
+    monkeypatch.setenv("GRAPHENE_NODE", "n1")
+    assert hook(repo, "Stop", stop_hook_active=True)["decision"] == "block"
+
+
 def test_another_session_is_not_held_by_a_node_it_does_not_hold(repo):
     holding(repo)
     plan_first(repo, "off")  # decision 4's refusal, which says who holds what
@@ -268,6 +280,36 @@ def test_a_gate_that_crashes_lets_the_call_through_says_so_in_the_log_and_still_
         assert store.event_count(SID) == 1
 
 
+@contextlib.contextmanager
+def busy(repo):
+    """Another process holds the store's write lock, as a hook or a command does for a moment."""
+    other = sqlite3.connect(repo / ".graphene" / "graphene.db", isolation_level=None)
+    other.execute("BEGIN IMMEDIATE")
+    try:
+        yield
+    finally:
+        other.execute("ROLLBACK")
+        other.close()
+
+
+def test_a_busy_store_never_turns_a_refusal_into_a_pass(repo):
+    """Red team, 2026-10-10: with another process writing the store, the hook's first write on the way to
+    a deny (the refusal's row, the mark that its lecture was said) raised, hook_main let the call through,
+    and the write the scope refused happened. The deny holds; only its row is lost."""
+    holding(repo)
+    other = {"session_id": "someone-else", "tool_name": "Edit"}
+    other["tool_input"] = {"file_path": str(repo / "src/api/users.py")}
+    with busy(repo):
+        assert "Only they can widen it" in reason(write(repo, "src/db/schema.py"))  # its first: row, mark
+        assert "holds no leaf" in reason(hook(repo, "PreToolUse", **other))  # plan first
+        assert "the plan's own store" in reason(write(repo, ".graphene/direction.txt", "Write"))
+    write(repo, "src/db/schema.py")  # the lecture said, with the store free
+    plan_first(repo, "off")
+    with busy(repo):
+        assert reason(write(repo, "src/db/schema.py")).endswith("hands it back")  # the short way out: a row
+        assert "no node is ready" in reason(hook(repo, "PreToolUse", **other))
+
+
 # -- what the closing review broke ---------------------------------------------------------------------
 
 
@@ -337,6 +379,7 @@ def test_plan_first_on_tells_every_prompt_and_refuses_the_write_whatever_the_wor
     refused = reason(write(repo, "ingest/xmlfeed.py"))
     assert refused.startswith("plan first: this session holds no leaf, so it writes nothing yet")
     assert "P in graphene watch or `graphene plan first off`" in refused
+    assert refused.endswith("`graphene plan first off`, in a terminal outside Claude Code")
     heredoc = "graphene plan propose - <<'EOF'\n- a  [a]\n    scope: x\n    check: true\nEOF"
     assert hook(repo, "PreToolUse", tool_name="Bash", tool_input={"command": heredoc}) is None
     assert hook(repo, "PreToolUse", tool_name="Read", tool_input={"file_path": str(repo / "x")}) is None

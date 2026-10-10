@@ -1040,15 +1040,16 @@ def test_a_persons_commit_is_not_a_loose_change_and_an_uncommitted_one_is(store,
     said = (
         "b cannot start: the checkout has an uncommitted change no node made\n"
         "  notes.txt\n"
-        "  put it back, or ask the person: graphene plan ack makes it theirs as it stands, and so does "
-        "committing it"
-    )
+        "  if you made it, put it back; if not, it is the person's: ask them (graphene plan ack makes it "
+        "theirs as it stands, and so does committing it)"
+    )  # an agent is not told first to put back what may be the person's unsaved work
     with pytest.raises(Refused) as first:
         plan.start(store, "b", BOT, repo)
-    assert str(first.value) == said
+    assert str(first.value) == said and str(first.value).splitlines()[-1].startswith("  if you made it")
     with pytest.raises(Refused) as again:  # said once: the second time is short
         plan.start(store, "b", BOT, repo)
-    assert str(again.value).endswith("\n  put it back, or ask the person: graphene plan ack")
+    short = "if you made it, put it back; if not, it is the person's: ask them (graphene plan ack makes it "
+    assert str(again.value).endswith(f"\n  {short}theirs)")
     git(repo, "add", "notes.txt")
     git(repo, "commit", "-qm", "my notes")  # committing it does what ack does
     assert plan.start(store, "b", BOT, repo).state == RUNNING
@@ -1068,13 +1069,13 @@ def test_a_refusal_lectures_once_in_a_hold_and_again_in_the_next(store, repo):
     assert said[0] == (
         "n1 is not done: changed outside its scope (src/api/**, tests/**), which only the person widens\n"
         "  README.md\n"
-        f"  put it back (git checkout {base} -- <path>, or delete a new file), or say why: "
-        "graphene node release n1 --why '…'"
+        f"  if you made it, put it back (git checkout {base} -- <path>, or delete a new file); if not, say "
+        "whose: graphene node release n1 --why '…'"
     )
     assert said[1] == (
         "n1 is not done: changed outside its scope (src/api/**, tests/**)\n"
         "  README.md\n"
-        "  put it back, or say why: graphene node release n1 --why '…'"
+        "  if you made it, put it back; if not, say whose: graphene node release n1 --why '…'"
     )
     with pytest.raises(Refused) as other:  # another caller meets it for the first time
         plan.finish(store, "n1", ALEX)

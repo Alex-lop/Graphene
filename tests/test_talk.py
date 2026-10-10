@@ -284,7 +284,7 @@ def test_a_row_changed_since_the_person_looked_is_marked_until_m(repo, size):
 
 
 @pytest.mark.parametrize("size", SIZES)
-def test_question_mark_on_a_node_opens_the_chooser_and_each_choice_runs_its_command(repo, size, monkeypatch):
+def test_t_on_a_node_opens_the_chooser_and_each_choice_runs_its_command(repo, size, monkeypatch):
     accepted(repo)
     started = []
     monkeypatch.setattr(Watch, "background", lambda self, argv: started.append(argv))
@@ -293,8 +293,10 @@ def test_question_mark_on_a_node_opens_the_chooser_and_each_choice_runs_its_comm
     seen, _ = watch(repo, ["question_mark"], size)
     assert seen["screen"] == "Help"
     seen, _ = watch(repo, ["j", "j"], size)
-    assert "? talk" in seen["status"] and "? help" not in seen["status"]
+    assert "? help" in seen["status"] and "? talk" not in seen["status"]  # and on a node too
     seen, _ = watch(repo, ["j", "j", "question_mark"], size)
+    assert seen["screen"] == "Help" and started == []
+    seen, _ = watch(repo, ["j", "j", "t"], size)
     assert seen["screen"] == "Ask"
     for typed, argv in (
         (["w"], ["talk", "why", "ids"]),
@@ -304,15 +306,15 @@ def test_question_mark_on_a_node_opens_the_chooser_and_each_choice_runs_its_comm
         (list("make it faster"), ["ask", "make it faster", "--about", "ids"]),
     ):
         started.clear()
-        watch(repo, ["j", "j", "question_mark", *typed, "enter"], size)
+        watch(repo, ["j", "j", "t", *typed, "enter"], size)
         assert started == [argv], (typed, started)
     started.clear()
-    seen, _ = watch(repo, ["j", "j", "V", "j", "question_mark", "m", "enter"], size)  # the selection, merged
+    seen, _ = watch(repo, ["j", "j", "V", "j", "t", "m", "enter"], size)  # the selection, merged
     assert started == [["talk", "merge", "ids", "docs"]] and "VISUAL" not in seen["status"]
     started.clear()
-    seen, _ = watch(repo, ["j", "j", "question_mark", "question_mark", "enter"], size)
+    seen, _ = watch(repo, ["j", "j", "t", "question_mark", "enter"], size)
     assert seen["screen"] == "Help" and started == []
-    seen, _ = watch(repo, ["j", "j", "question_mark", "w", "escape"], size)
+    seen, _ = watch(repo, ["j", "j", "t", "w", "escape"], size)
     assert seen["screen"] == "Screen" and started == []
 
 
@@ -320,7 +322,7 @@ def test_the_chooser_says_its_choices_at_80_columns(repo):
     accepted(repo)
 
     async def before(app, pilot):
-        await pilot.press("j", "j", "question_mark")
+        await pilot.press("j", "j", "t")
         await pilot.pause()
         line = "\n".join(shown(app, app.screen.query_one("#ask").region))
         assert "ids: w why · s split · m merge · a another way · ? help · or your words" in line, line
@@ -334,7 +336,7 @@ def test_the_chooser_on_a_selection_names_it_and_every_choice_whole_at_80_column
     accepted(repo)
 
     async def before(app, pilot):
-        await pilot.press("j", "j", "V", "j", "question_mark")
+        await pilot.press("j", "j", "V", "j", "t")
         await pilot.pause()
         line = "\n".join(shown(app, app.screen.query_one("#ask").region))
         assert "w why · s split · m merge · a another way · ? help · or your words" in line, line
@@ -352,7 +354,7 @@ def test_why_from_the_screen_puts_the_note_on_the_board_and_says_so(repo, talker
     # runner it used to finish first, and "ended" had replaced "started" before the test looked
 
     async def before(app, pilot):
-        await pilot.press("j", "j", "question_mark", "w", "enter")
+        await pilot.press("j", "j", "t", "w", "enter")
         await pilot.pause()
         assert "graphene talk why ids: started" in str(app.query_one("#status").render())
         gate.touch()
