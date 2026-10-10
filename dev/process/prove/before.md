@@ -55,7 +55,7 @@ Two holes, then, on 907a7d0, and the run said nothing about either:
 
 ## X1: the first ask (n = 40: feeds 20, report 20)
 
-`x1.sh`, 2026-10-10 16:5xZ, the planner `claude -p --tools Read,Grep,Glob --strict-mcp-config --output-format
+`x1.sh`, 2026-10-10 16:45Z, the planner `claude -p --tools Read,Grep,Glob --strict-mcp-config --output-format
 stream-json --verbose --model sonnet --max-budget-usd 1.5 --setting-sources project,local`, two tries as shipped, four
 asks at a time, each in a fresh `make_task.py` repo as the person.
 
@@ -77,7 +77,7 @@ still fix is the dead end when a refusal does happen: the kept proposal, the nex
 
 ## X2 (b) and (c): the plain session and `/batch` on feeds, build-independent (n = 3 and n = 2)
 
-`x2_plain.sh` and `x2_batch.sh`, 2026-10-10 ~17:00Z. Each session: `claude -p --model sonnet --permission-mode
+`x2_plain.sh` and `x2_batch.sh`, 2026-10-10 16:46Z. Each session: `claude -p --model sonnet --permission-mode
 acceptEdits --allowedTools Read Edit Write Glob Grep 'Bash(python3 *)' 'Bash(git *)' 'Bash(ls *)' 'Bash(cat *)'
 --output-format json --max-budget-usd 3`, the isolation flags, the feeds paragraph (prefixed `/batch ` for (c), with
 `Agent Task EnterWorktree ExitWorktree` allowed and a $5 cap); the harness commits the session's uncommitted change
@@ -128,7 +128,7 @@ leaves unsaid about the person's own Claude Code sessions, in `watch`'s keys, an
 
 ## X6: one stranger transcript (n = 1, a fact, not a rate)
 
-`x6_transcript.sh`, 2026-10-10 17:0xZ: a Sonnet session given only a README, the branch's (020eb7d's text: the script
+`x6_transcript.sh`, 2026-10-10 16:52Z: a Sonnet session given only a README, the branch's (020eb7d's text: the script
 read this clone's copy, not 907a7d0's; its install line pointing at the build's wheel), a fresh copy of the pytest-bdd clone with no remote, issue #476, and a `./me` wrapper that runs its
 commands without an agent's marks; told to narrate every command and stop at a landed leaf or when stuck. `codex`
 hidden from its PATH; `gh` and `git push` denied; GitHub unreachable. Its own `init` picked bare `claude`, so its
@@ -149,7 +149,7 @@ pytest` buried in the hand-back. Nothing on 907a7d0 names that before the run.
 
 ## X2 (a): feeds through Graphene, planted (n = 3)
 
-`x2.sh`, 2026-10-10 17:1xZ. Per run: a fresh feeds repo, `init` with X1's planner and 907a7d0's `DEFAULT_WITH` plus
+`x2.sh`, 2026-10-10 16:52Z. Per run: a fresh feeds repo, `init` with X1's planner and 907a7d0's `DEFAULT_WITH` plus
 `--model sonnet --max-budget-usd 2 --strict-mcp-config --setting-sources project,local`; as the person: ask, accept,
 `run --parallel 3`; then the plant (`code`→`xcode` committed into the landed `normalize/fields.py`), an end-to-end
 leaf added and accepted (scope `tests/test_e2e_xml.py`, check `python3 -m unittest tests.test_e2e_xml -q`), a run,
@@ -176,7 +176,7 @@ check was the existing suite) and named checks outside their scope in run 3; the
 
 ## X3: ten questions about a finished run (n = 3 runs × 2 arms, one Sonnet reader each)
 
-`x3.sh`, 2026-10-10 17:2xZ, on X2 (a)'s three planted runs. Arm A got `graphene plan record`, `graphene node show`
+`x3.sh`, 2026-10-10 17:02Z, on X2 (a)'s three planted runs. Arm A got `graphene plan record`, `graphene node show`
 for every leaf, `graphene plan log` and `git log --graph --oneline` (907a7d0 has no `node diff`). Arm B got `git log
 -p base..HEAD` and each attempt's final words from the executors' own run logs. Each reader: `claude -p --tools ''
 --json-schema x3_schema.json`, $0.50 cap, the isolation flags; eight factual questions scored by script against
