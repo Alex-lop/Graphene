@@ -1541,8 +1541,9 @@ class Watch(App):
             ended = ended or (["R run all ready"] if self.counts.get("ready") else [])  # as the status says
             keys = ["y accept it all"] if self.counts.get("proposed") else ended
             fold = "za fold all" if self.tree.root.is_expanded else "za unfold"
-            record = ["Enter record"] if P.leaves(self.nodes) else []  # the plan's checks and bills
-            return [*keys, "E edit the plan as text", *record, fold, *tail]
+            # ponytail: Enter on the goal shows the plan's record, but its hint would push `? help` off an
+            # 80-column line (test_talk pins it); the help lists Enter, and the pane says so
+            return [*keys, "E edit the plan as text", fold, *tail]
         word, node = self.word(self.selected()), self.tree.cursor_node if self.drawn is None else None
         fork = node.data if node is not None and isinstance(node.data, tuple) else None
         on = [f"fork {fork[1]}: keys act on {fork[0]}"] if fork else []  # its row is its leaf's to act on
