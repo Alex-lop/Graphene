@@ -409,7 +409,7 @@ def ask(
             RULES, f"This replaces the tree you proposed last, which the person wants {size}; it is "
             f"dropped, so propose the whole tree afresh.{stand}\n\n" + RULES)  # fmt: skip
     before, paid = None, 0.0  # paid: what the session cost so far; a resumed one reports its running total
-    calls, bill = 0, ""  # bill: what the ask cost, its last line, said only when a meter read it
+    calls, bill = 0, ""  # bill: what the ask cost, after its proposal, when a meter or Nemotron counted it
     tries = 1 if argv0 == "nemotron" else ATTEMPTS  # Graphene's own planner sends a refusal back itself
     for attempt in range(1, tries + 1):
         argv = command_for(template, prompt, session, attempt > 1)
@@ -453,6 +453,9 @@ def ask(
             by = f"{argv0} {meter.model.removeprefix('claude-')}" if meter.model else argv0
             bill = f"the planner ({by}): {calls} call{'s' * (calls != 1)}, {money(paid)} at list price"
             bill *= bool(calls)  # a planner that never ran has no bill
+        elif argv0 == "nemotron":  # Graphene's own planner logs its bill itself, and prints it last
+            own = [line for line in done.stderr.splitlines() if line.startswith("bill: ")]
+            bill = f"the planner (nemotron): {own[-1].removeprefix('bill: ')}" if own else ""
         printed = (meter.result if meter else done.stdout).strip()  # the answer, never the stream
         text = proposal_in(printed)
         if not text.strip():

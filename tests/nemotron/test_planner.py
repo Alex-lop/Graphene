@@ -121,6 +121,16 @@ def test_it_reads_only_and_what_it_prints_is_proposed_for_the_person(repo, fake)
     assert any("The README still says hi" in line for line in said)  # what it could not settle
 
 
+def test_a_nemotron_ask_says_its_bill_after_what_it_proposed_as_a_claude_code_ask_does(repo, fake):
+    """The reference says the ask's bill line right after the Nemotron planner, and a Nemotron ask never
+    said one: its bill went to a stderr the ask showed only in a refusal."""
+    fake([{"content": "Read enough."}, answer(ANSWER)])
+    with Store.open(repo) as store:
+        proposed = ask(store, repo, "make it say hello", named("nemotron"), say=lambda _: None)
+    bill = proposed[-1]
+    assert bill.startswith("the planner (nemotron): 2 calls, ") and bill.endswith(" at list price"), proposed
+
+
 def test_a_tool_call_written_as_text_is_read_as_one_not_as_the_answer(repo, fake):
     """On 7 October Ultra wrote `<tool_call>{…}</tool_call>` in its text, twice in a row, and the planner
     took it for the proposal: "no proposal". It is a call: run it, answer it, and go on."""
