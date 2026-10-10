@@ -6,9 +6,9 @@ The first hour and the morning after (10 October). What a stranger meets in the 
 person reads the morning after printed from what was already stored; every change measured on 907a7d0 and on the
 branch (`dev/process/prove/after.md`).
 - `graphene init` says what it did: the hooks it installed, that the next Claude Code session is recorded (prompts,
-  tool calls, the files it edits; on this machine only), that accepting happens in `graphene watch` in another
-  terminal, and the two ways out. At a terminal it asks the plan-first mode, one line per mode, and keeps `on` when
-  it cannot ask. A repository with no commit is told to commit once first. Run `graphene init`.
+  tool calls and what they returned, the files it edits; on this machine only), that accepting happens in `graphene
+  watch` in another terminal, and the two ways out. At a terminal it asks the plan-first mode, one line per mode,
+  and keeps `on` when it cannot ask. A repository with no commit is told to commit once first. Run `graphene init`.
 - `graphene init --remove` takes out exactly the hooks init added and leaves every other setting; only a person may.
 - A person-only act on the plan or the settings (accepting, editing, signing off, plan first, init) refused inside
   Claude Code says "if you are the person, run it in a terminal outside Claude Code"; answering the board, `ask` and
