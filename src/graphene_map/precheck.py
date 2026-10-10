@@ -290,10 +290,14 @@ def run(store, root: Path, ids=(), again: bool = False, say=None, committed: boo
             continue
         code, text = ran[node.check]
         found, why, paths = judge(node, code, text, files, live, hide)  # why and paths are hidden below
-        ended = store.node_log(node.id, ("finished", "check_passed")) if found == "passes" else []
-        if any(e["kind"] == "finished" for e in ended) and any(
-            e["kind"] == "check_passed" and e["detail"].get("command") == node.check for e in ended
-        ):  # reopened: it passes until its check is made to say what the note asks
+        ended = store.node_log(node.id, ("finished", "check_passed", "precheck")) if found == "passes" else []
+        landed = any(e["kind"] == "finished" for e in ended) and any(
+            e["kind"] == "check_passed" and e["detail"].get("command") == node.check for e in ended)
+        nothing = any(e["kind"] == "precheck" and e["detail"].get("check") == node.check
+                      and e["detail"].get("verdict") == "passes" for e in ended)  # fmt: skip
+        # reopened: it passes until its check is made to say what the note asks; one that passed at the base
+        # before the leaf ever finished proved nothing then, and proves nothing now
+        if landed and not nothing:
             found, why = "landed", LANDED
         detail = {"rev": node.rev, "check": node.check, "base": base, "tree": tree, "verdict": found,
                   "why": _plain(hide(why)), "paths": [_plain(hide(p)) for p in paths], "exit": code,

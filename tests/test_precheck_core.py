@@ -258,6 +258,26 @@ def test_a_reopened_leaf_whose_check_passed_when_it_landed_is_landed_until_the_c
     assert d["verdict"] == "passes"
 
 
+def test_a_check_that_passed_at_the_base_before_any_work_still_proves_nothing_once_reopened(repo):
+    """'landed' was read from the leaf's history alone: `true`, which passed at the base before the leaf
+    ever ran, read "it passed this check when it landed" once it finished and was reopened, and lost its ∅."""
+    from graphene_map import tui
+
+    with Store.open(repo) as store:
+        leaves(store, ("a", ["new.py"], "true"))
+        [(_, first)] = K.run(store, repo)
+        P.start(store, "a", ME, repo)
+        (repo / "new.py").write_text("x = 1\n")
+        P.finish(store, "a", ME)
+        git(repo, "add", "-A")
+        git(repo, "commit", "-qm", "a landed")
+        P.reopen(store, "a", ME, "wrong")
+        rows = K.run(store, repo)
+        [(_, d)] = rows
+        assert first["verdict"] == d["verdict"] == "passes" and tui.precheck(store, P.get(store, "a"))
+    assert "proves nothing" in K.said(rows)[0]
+
+
 def test_a_reopened_leaf_done_again_on_its_landed_check_is_said_to_have_passed_at_the_base(repo):
     """Lane D's readers took only "passes": a reopened leaf done again on its unchanged check ("landed")
     lost its ∅, the merge's "passed at the base too" and the record's line, though nothing verified it."""
