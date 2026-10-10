@@ -1,7 +1,9 @@
 """Red first in core (graphene_map.precheck): every accepted leaf's check run once at the base commit,
 with no model. The verdict is passes, outside or red, read from the exit code and the output."""
 
+import shlex
 import subprocess
+import sys
 
 import pytest
 
@@ -132,13 +134,14 @@ def test_a_check_whose_output_names_a_failing_outside_file_is_outside_by_the_out
     assert d["verdict"] == "outside" and d["paths"] == ["tests/test_other.py"]
 
 
-def test_the_whole_suite_is_outside_by_the_file_that_fails(repo):
+def test_the_whole_suite_is_outside_by_the_file_that_fails(repo, monkeypatch):
     (repo / "tests" / "__init__.py").write_text("")
     (repo / "tests" / "test_other.py").write_text("def test_other():\n    assert False, 'other is broken'\n")
     git(repo, "add", "-A")
     git(repo, "commit", "-qm", "a suite with one failing test")
+    monkeypatch.setenv("PATH", "/usr/bin:/bin")  # a python3 there may have no pytest: this one does
     with Store.open(repo) as store:
-        leaves(store, ("a", ["new.py", "tests/test_new.py"], "python3 -m pytest -q"))
+        leaves(store, ("a", ["new.py", "tests/test_new.py"], f"{shlex.quote(sys.executable)} -m pytest -q"))
         [(_, d)] = K.run(store, repo)
     assert d["verdict"] == "outside" and d["paths"] == ["tests/test_other.py"]
 
@@ -164,14 +167,67 @@ def test_a_check_not_run_to_its_end_is_said_and_one_that_timed_out_is_kept(repo,
     assert len(asked) == runs and K.said(rows)[0] == f"hang: its check at {rows[0][1]['base'][:7]} {why}"
 
 
-def test_a_failing_file_named_like_a_key_is_outside_all_the_same(repo):
+def test_a_failing_file_named_like_a_key_is_outside_all_the_same(repo, monkeypatch):
     """The output was hidden before it was judged: the hider took the file's name, and it read as red."""
     (repo / "tests" / "__init__.py").write_text("")
     (repo / "tests" / "test_other.py").unlink()
     (repo / "tests" / "test_OAuth2CallbackHandlerV2.py").write_text("def test_cb():\n    assert False\n")
     git(repo, "add", "-A")
     git(repo, "commit", "-qm", "a suite whose failing file is named like a key")
+    monkeypatch.setenv("PATH", "/usr/bin:/bin")
     with Store.open(repo) as store:
-        leaves(store, ("a", ["new.py", "tests/test_new.py"], "python3 -m pytest -q"))
+        leaves(store, ("a", ["new.py", "tests/test_new.py"], f"{shlex.quote(sys.executable)} -m pytest -q"))
         [(_, d)] = K.run(store, repo)
     assert d["verdict"] == "outside" and "OAuth2" not in str(d)
+
+
+def test_leaves_with_one_check_that_passes_are_one_line_and_the_header_counts_the_commands(repo):
+    with Store.open(repo) as store:
+        leaves(store, ("a", ["a.py"], "true"), ("b", ["b.py"], "true"), ("c", ["c.py"], "true"))
+        rows = K.run(store, repo)
+    first, header = K.said(rows)
+    assert first.startswith("a, b, c: their check passes at the base commit ") and "proves nothing" in first
+    assert header.startswith("red first: 3 checks at ") and " (1 command) in " in header
+
+
+@pytest.mark.parametrize("check", ["nosuchtool-zz --version", "python3 -m nosuchmodule_zz"])
+def test_a_check_this_environment_cannot_run_is_said_so_and_its_gist_kept(repo, check):
+    """Red first read `python3 -m pytest` with pytest missing as a red, or as outside: by its output."""
+    with Store.open(repo) as store:
+        leaves(store, ("a", ["new.py"], check))
+        rows = K.run(store, repo)
+    [(_, d)] = rows
+    assert d["verdict"] == "environment" and d["gist"] and d["why"] in K.said(rows)[0]
+    assert K.said(rows)[0].startswith("a: its check cannot run here: ")
+    assert "nothing git ignores" in K.said(rows)[0]
+
+
+def test_a_test_first_red_whose_module_the_leaf_writes_is_no_environment(repo):
+    with Store.open(repo) as store:
+        leaves(store, ("a", ["tests/test_nosuch_zz.py"], "python3 -m unittest tests.test_nosuch_zz"))
+        rows = K.run(store, repo)
+    [(_, d)] = rows
+    assert d["verdict"] == "red" and d["gist"]  # every check that does not pass keeps its gist
+    assert not [line for line in K.said(rows) if "cannot run here" in line]
+
+
+def test_a_reopened_leaf_whose_check_passed_when_it_landed_is_landed_until_the_check_changes(repo):
+    """A reopened leaf's check passes at the base by nature: it passed when the leaf landed."""
+    from graphene_map import tui
+
+    with Store.open(repo) as store:
+        leaves(store, ("a", ["new.py"], "test -f new.py"))
+        P.start(store, "a", ME, repo)
+        (repo / "new.py").write_text("x = 1\n")
+        P.finish(store, "a", ME)
+        git(repo, "add", "-A")
+        git(repo, "commit", "-qm", "a landed")
+        P.reopen(store, "a", ME, "say why it is wrong")
+        rows = K.run(store, repo)
+        [(_, d)] = rows
+        assert d["verdict"] == "landed" and tui.precheck(store, P.get(store, "a")) is None
+        assert K.said(rows)[0].startswith("a: it passed this check when it landed; reopened, it passes until")
+        assert not [line for line in K.said(rows) if "proves nothing" in line]
+        P.edit(store, "a", {"check": "test -s new.py"}, ME)
+        [(_, d)] = K.run(store, repo)
+    assert d["verdict"] == "passes"
