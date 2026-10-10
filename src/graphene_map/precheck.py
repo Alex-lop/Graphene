@@ -103,8 +103,10 @@ def current(store, node: P.Node, base: str | None, tree: str | None) -> dict | N
     now = (node.rev, node.check, base, tree)
     fresh = last and tree and (last["rev"], last["check"], last["base"], last.get("tree")) == now
     unfinished = last and (last["verdict"] == "not-run" and not last["why"].startswith("timed out")
-                           or last["why"].startswith("not read"))  # fmt: skip
-    # a check that could not be run, or a red not read: try again. One that timed out would time out again
+                           or last["why"].startswith("not read")
+                           or last["verdict"] == "environment" and not last.get("by"))  # fmt: skip
+    # a check that could not be run, or a red not read: try again. One that timed out would time out again.
+    # What the PATH lacked is asked again (`_probe`, cheap): the person may have installed it since
     return last if fresh and not unfinished else None
 
 

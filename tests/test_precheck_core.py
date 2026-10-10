@@ -204,6 +204,23 @@ def test_a_check_this_environment_cannot_run_is_said_so_and_its_gist_kept(repo, 
     assert "nothing git ignores" in K.said(rows)[0]
 
 
+def test_a_check_that_could_not_run_here_is_asked_again_once_the_person_installs_what_it_runs(
+    repo, tmp_path_factory, monkeypatch
+):
+    """An "environment" verdict was kept until a commit or an edit: installed, the tool was still said to
+    be missing, and the person was told the fix had not worked."""
+    monkeypatch.setenv("PATH", "/usr/bin:/bin")
+    with Store.open(repo) as store:
+        leaves(store, ("a", ["new.py"], "zzprobe-tool --version"))
+        [(_, first)] = K.run(store, repo)
+        bin_ = tmp_path_factory.mktemp("bin")
+        (bin_ / "zzprobe-tool").write_text("#!/bin/sh\nexit 1\n")
+        (bin_ / "zzprobe-tool").chmod(0o755)
+        monkeypatch.setenv("PATH", f"{bin_}:/usr/bin:/bin")  # the person installs it
+        [(_, again)] = K.run(store, repo)
+    assert first["verdict"] == "environment" and not again.get("kept") and again["verdict"] == "red"
+
+
 def test_a_check_that_cannot_run_here_is_not_run_and_exits_as_the_shell_would(repo):
     """The Nemotron extra's precheck runs an accepted check through `_here` too: no exit code there is a
     not-run, run again at every precheck; 127, the shell's for what it cannot find, is its kept cannot-run."""
