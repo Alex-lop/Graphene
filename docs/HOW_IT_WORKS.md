@@ -121,9 +121,9 @@ How many leaves it is asked for follows the repository's size; the `size` settin
 2. starts the executor there, with the leaf's contract and `GRAPHENE_NODE` set;
 3. when the executor ends, looks at the leaf, not the exit code. If it is not done, Graphene runs `done` itself;
    refused, the executor tries again, up to three attempts;
-4. commits the leaf's paths on its branch (`--no-verify`: your own git hooks do not run) and merges it `--no-ff`
-   into the branch you have checked out. The merge's message says what landed: the check and its result, the
-   executor, its attempts and dollars, and the note a reopened leaf was sent back with.
+4. commits the leaf's paths on its branch (`--no-verify`: your pre-commit and commit-msg hooks skip it) and merges
+   it `--no-ff` into the branch you have checked out (your merge hooks run). The merge's message says what landed:
+   the check and its result, the executor, its attempts and dollars, and the note a reopened leaf was sent back with.
 
 The run's first line says where it lands, with what, how wide and under what cap; `graphene watch` in another
 terminal follows it live. Then ready leaves' checks run at the base: one that passes there proves nothing; one whose
