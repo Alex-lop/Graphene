@@ -797,7 +797,10 @@ def _clean_tree(checkout: str | Path, leave_out: list[str] | tuple, began: float
     def git(*args: str, index: Path | None = None, given: str | None = None) -> str:
         # ``index`` is the check's own, so the checkout's index lock is never taken
         env = {**os.environ, "GIT_OPTIONAL_LOCKS": "0", **({"GIT_INDEX_FILE": str(index)} if index else {})}
-        argv = ["git", "-c", "core.hooksPath=/dev/null", "-C", str(checkout), *args]
+        # a sparse checkout's cone is not the check's: `add -A` refused a new file outside it, and the
+        # worktree held only the cone, so a leaf whose scope lies outside could never pass
+        quiet = ("-c", "core.hooksPath=/dev/null", "-c", "core.sparseCheckout=false")
+        argv = ["git", *quiet, "-C", str(checkout), *args]
         code, out, err = _ended(argv, checkout, env, began, given)
         if code:
             raise Refused(f"git {' '.join(args)} failed in {checkout}: {err.strip()[:200]}")
@@ -824,8 +827,8 @@ def _clean_tree(checkout: str | Path, leave_out: list[str] | tuple, began: float
         state, base = git("write-tree", index=index).strip(), head(checkout)
         nobody = ("-c", "user.name=graphene", "-c", "user.email=graphene@localhost")  # on no branch
         commit = git(*nobody, "commit-tree", state, *(("-p", base) if base else ()), "-m", "check")
-        # ponytail: a whole checkout per check, which grows with the repository; a kept worktree moved
-        # to each commit (`git checkout --detach`) if a large repository needs it
+        # ponytail: a whole checkout per check, a sparse checkout's included, which grows with the
+        # repository; a kept worktree moved to each commit (`git checkout --detach`) if a large one needs it
         git("worktree", "add", "--quiet", "--detach", str(tree), commit.strip())
         yield tree
     finally:

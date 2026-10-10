@@ -878,7 +878,8 @@ def _commit(store, tree: Path, node: P.Node) -> list[str]:
     why, notes = " > ".join(P.trail(store, node)), P.notes(store, node.id)
     message = f"{node.title}\n\n{node.goal or node.title}\n\n" + (f"Why: {why}\n" if why else "")
     message += f"Reopened: {notes[-1]}\n" if notes else ""
-    _git(tree, "add", "-A", "--", *(paths if paths and not entry.get("more_changed") else ["."]))
+    sparse = ("-c", "core.sparseCheckout=false")  # a leaf may write outside a sparse checkout's cone
+    _git(tree, *sparse, "add", "-A", "--", *(paths if paths and not entry.get("more_changed") else ["."]))
     if _git(tree, "diff", "--cached", "--quiet", ok=True).returncode != 0:  # else it committed itself
         _git(tree, *_ident(tree), "commit", "-q", "--no-verify", "-m", f"{message}Graphene-Node: {node.id}\n")
     return paths
