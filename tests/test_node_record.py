@@ -330,6 +330,16 @@ def test_a_check_that_printed_nothing_is_said_so_not_given_graphenes_placeholder
     assert lines[at + 1] == "      it printed nothing" and "no output" not in "\n".join(lines)
 
 
+def test_every_denied_and_breached_path_is_named_and_only_the_refused_commands_are_capped():
+    """The cap meant for the commands an executor was refused cut every refusal list at three, and the
+    paths a hand-back is about were hidden behind "and 2 more"."""
+    paths = ["docs/a.md", "docs/b.md", "src/c.py", "src/d.py", "src/d.py"]
+    said = NR._refusal_lines(NR.Refusals(denied=paths, breaches=paths[:4], commands=["w", "x", "y", "z"]))
+    assert "    denied: docs/a.md, docs/b.md, src/c.py, src/d.py ×2" in said
+    assert "    refused after the fact: docs/a.md, docs/b.md, src/c.py, src/d.py" in said
+    assert "    refused to the executor: w, x and 2 more" in said
+
+
 def test_a_commit_in_the_nodes_first_second_is_inside_its_window(store, repo):
     """The log keeps milliseconds and git keeps whole seconds, so a node started at …:34.160 and a
     commit stamped …:34 cannot be put in order. Comparing them as floats dropped every commit made

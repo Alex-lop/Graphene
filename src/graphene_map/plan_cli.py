@@ -1,8 +1,8 @@
 """`graphene plan` and `graphene node`: the plan in a terminal, for a person and for an agent alike.
 
 Plain text, never wrapped or cut: an agent reads these lines as its contract, and a person greps them.
-The one exception is the plan itself (`graphene`, `graphene plan`, `watch --once`) at a terminal or
-under $COLUMNS: it fits that width (`room`).
+The exceptions are the plan itself (`graphene`, `graphene plan`, `watch --once`) at a terminal or under
+$COLUMNS, which fits that width (`room`), and what `node show` says an attempt said and did last.
 """
 
 from __future__ import annotations

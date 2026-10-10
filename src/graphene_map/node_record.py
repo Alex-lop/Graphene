@@ -657,8 +657,9 @@ def _s(n: int) -> str:
 
 
 def render(record: NodeRecord) -> list[str]:
-    """The record as plain lines, never wrapped and never cut but for what an attempt said and did last:
-    an agent reads them as evidence about the node it holds, and a person greps them."""
+    """The record as plain lines, never wrapped and never cut but for what an attempt said and did last,
+    and the commands an executor was refused, three named: an agent reads them as evidence about the node
+    it holds, and a person greps them."""
     lines = [
         f"{record.node_id}  {record.title}",
         f"  state: {record.state} · owner {record.owner}",
@@ -793,11 +794,10 @@ def _refusal_lines(refusals: Refusals) -> list[str]:
     for label, paths in (("denied", refusals.denied), ("refused after the fact", refusals.breaches),
                          ("refused to the executor", refusals.commands)):  # fmt: skip
         counted = Counter(paths)
+        named = [f"{p}{'' if n == 1 else f' ×{n}'}" for p, n in sorted(counted.items())]
+        cut = _few if label == "refused to the executor" else ", ".join  # paths whole; the commands capped
         if counted:
-            lines.append(
-                f"    {label}: "
-                + _few([f"{p}{'' if n == 1 else f' ×{n}'}" for p, n in sorted(counted.items())])
-            )
+            lines.append(f"    {label}: {cut(named)}")
     # the same paths refused again (each attempt's own `done`, then the run's) are one line, counted
     for stray, n in Counter(", ".join(stray) or "a failing check" for stray in refusals.done).items():
         lines.append(f"    `done` refused {f'{n} times ' if n > 1 else ''}over: {stray}")
