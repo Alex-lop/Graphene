@@ -449,8 +449,8 @@ def _close(store, node: P.Node, sid: str) -> str | None:
         P.close_aside(store, node.id, P.Caller(node.executor or f"claude:{sid[:8]}", False, sid))
     except P.Refused as no:
         return str(no)
-    except (OSError, subprocess.SubprocessError):
-        pass  # git could not answer: the leaf stays open on the plan, which is how it is seen
+    except (OSError, subprocess.SubprocessError, sqlite3.OperationalError):
+        pass  # git could not answer, or the store is busy: the leaf stays open on the plan, as it is seen
     return None
 
 

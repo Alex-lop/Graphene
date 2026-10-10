@@ -312,6 +312,23 @@ def test_a_busy_store_never_turns_a_refusal_into_a_pass(repo):
         assert "no node is ready" in reason(hook(repo, "PreToolUse", **other))
 
 
+def test_a_busy_store_at_a_stop_still_refuses_it_for_the_planned_leaf_beside_an_aside(repo):
+    """Seam review, 2026-10-10: a Stop closes the session's aside leaf first, and that close raised on a
+    busy store, so the stop the planned leaf refuses was let through. The aside stays open instead."""
+    with Store.open(repo) as store:
+        plan.propose(store, [{"id": "n1", "title": "users", "scope": ["src/api/**"], "check": "true"}], ALEX)
+        plan.set_plan_first(store, "off", ALEX)
+    hook(repo, "UserPromptSubmit", prompt="fix the schema")
+    assert write(repo, "src/db/schema.py") is None  # an aside leaf made from the prompt, held by this session
+    with Store.open(repo) as store:
+        plan.start(store, "n1", BOT, repo)
+    with busy(repo):
+        said = hook(repo, "Stop", stop_hook_active=False)
+    assert said and said["decision"] == "block" and "You hold n1" in said["reason"]
+    with Store.open(repo) as store:
+        assert [n.state for n in plan.nodes(store) if n.aside] == [plan.RUNNING]
+
+
 # -- what the closing review broke ---------------------------------------------------------------------
 
 
