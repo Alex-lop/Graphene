@@ -108,9 +108,8 @@ repository first, ask only what the code cannot settle, and put up at most three
 assumption it is sure of goes in the goal of the leaf it bears on.
 
 The Nemotron planner answers in a strict JSON schema. Graphene repairs what needs no judgement; other faults go
-back together, at most twice. The ask ends with one line: the planner, its calls and its dollars at list price.
-When every answer is refused, the last proposal is kept in the store's runs directory and the ask prints the command
-that adds it by hand, once mended.
+back together, at most twice. A Claude Code or Nemotron ask then names its planner, calls and dollars at list price.
+When every answer is refused, the last proposal is kept, and the ask prints the commands that add it, once mended.
 
 How many leaves it is asked for follows the repository's size; the `size` setting makes that finer or coarser.
 

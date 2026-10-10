@@ -41,8 +41,9 @@ branch (`dev/process/prove/after.md`).
   what it finished in your checkout); `c` in `graphene watch` shows it. ∅ stays on a done leaf whose check also
   passed at the base. The merge's message carries the check and its result, the executor, its attempts and dollars,
   and the note a reopened leaf was sent back with, and a second landing says `(id, reopened)`.
-- `graphene ask` ends with one line: the planner, its calls and its dollars at list price. A proposal refused on the
-  last try is kept, and the ask prints the command that adds it once mended. `graphene plan propose -` reports every
+- `graphene ask` with Claude Code or Nemotron says, after what it proposed, one line: the planner, its calls and its
+  dollars at list price (Codex and a command of your own say none). A proposal refused on the last try is kept, and
+  the ask prints the commands that add it once mended. `graphene plan propose -` reports every
   fault at once. A board item written as a node is told how the board is written. The planner and every session
   are told that a check runs in a fresh worktree with nothing git ignores.
 - `docs/HOW_IT_WORKS.md` says all of the above; its word cap is 3,300.
