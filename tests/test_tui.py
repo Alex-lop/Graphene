@@ -2401,3 +2401,15 @@ def test_a_leaf_whose_executor_has_said_no_usage_yet_says_so_never_zero_dollars(
     for one in (False, True):
         text = " ".join(r.plain for r in live_row("xml", a, {"last": "running cat a.py"}, 78, one))
         assert "no usage yet" in text and "$0.00" not in text and "0 in, 0 out" not in text, text
+
+
+def test_c_on_a_landed_leaf_puts_its_diff_in_the_pane(repo):
+    """What a leaf changed was a merge to find in git's log: c shows it, as `graphene node diff --stat`."""
+    from graphene_map.run import run_parallel
+
+    with Store.open(repo) as store:
+        a = {"id": "a", "title": "write a", "scope": ["a.txt"], "check": "test -s a.txt"}
+        plan.propose(store, [a], plan.Caller("alex", True))
+    run_parallel(lambda: Store.open(repo), repo, repo, 1, "sh -c 'echo a > a.txt'", say=[].append)
+    seen, _ = at(repo, "a", (120, 36), keys=["c"])
+    assert "a.txt |" in seen["detail"] and "graphene node diff a --stat" in seen["status"], seen

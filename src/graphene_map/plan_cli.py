@@ -1433,6 +1433,47 @@ def register(cli: typer.Typer, root, open_store, fail):
 
         run(go)
 
+    @node_cli.command(hidden=True)
+    def diff(
+        node_id: str = typer.Argument(...),
+        stat: bool = typer.Option(False, "--stat", help="Only each file and how much of it changed."),
+    ) -> None:
+        """Show what a leaf changed: the merge that landed it, or what it left."""
+        from .precheck import state
+
+        def go(store):
+            n, here = P.get(store, node_id), str(root())
+            ends = store.node_log(n.id, ("landed", "unlanded", "finished", "overruled"))
+            kind, d = (ends[-1]["kind"], ends[-1]["detail"]) if ends else (None, {})
+            if kind == "landed":  # the merge: what it brought in over its first parent
+                return here, [], [f"{d['commit']}^1", d["commit"]]
+            if kind == "unlanded":  # passed and not merged: its branch waits for the person
+                return here, [], [n.base_sha, d["branch"]]
+            if kind and P.RUN_TREE not in (n.checkout or ""):  # a session's `done`, auto's ask, `run --here`
+                where, kept = n.checkout or here, d.get("blobs") or {}
+                # ponytail: shown as the checkout is now, not as it was left: finish hashes its blobs without
+                # -w, so git seldom has them; a path changed since is named. Exact once finish writes them
+                now = P._blobs(where, list(kept))  # what it left, against what is there now
+                moved = ", ".join(p for p in kept if now.get(p) != kept[p])
+                said = ["done in your checkout; Graphene committed nothing"]
+                said += [f"changed since it finished, shown as it is now: {moved}"] if moved else []
+                tree = state(Path(where))[1]  # the checkout as git sees it, its new files too
+                return where, said, [n.base_sha, *([tree] if tree else []), "--", *(d.get("changed") or [])]
+            if any(m.parent == n.id for m in P.nodes(store)):
+                raise P.Refused(f"{n.id} is a sub-goal: each of its leaves has its own diff")
+            why = ("its work has not landed yet" if n.state in (P.DONE, P.REVIEW) else "nothing of it is done"
+                   ) if store.node_log(n.id, ("started",)) else "nothing has run yet"  # fmt: skip
+            raise P.Refused(f"{n.id} is {n.state}: {why}")
+
+        where, said, span = run(go)
+        # captured, never fd 1: watch runs a command here, its output read back (tui._cli)
+        shown = subprocess.run(["git", "-C", where, "diff", *(["--stat"] if stat else []), *span],
+                               capture_output=True, text=True)  # fmt: skip
+        if shown.returncode:
+            fail(f"git cannot show what {node_id} changed: {shown.stderr.strip()}", 1)
+        for line in [*said, shown.stdout.rstrip("\n") or "git shows no difference"]:
+            out(line)
+
     def came_back(store, n: P.Node) -> list[str]:
         """A leaf that came back: why, what it wanted, where its last attempt is, and the fixes on
         offer, each a command."""
