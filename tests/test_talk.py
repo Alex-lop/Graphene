@@ -183,6 +183,20 @@ def test_another_way_may_write_what_the_leaf_it_would_replace_writes(repo, talke
     assert (states(repo)["schema"], states(repo)["migration"]) == ("dropped", "proposed")
 
 
+def test_why_says_what_the_planner_cost_and_its_note_stays_the_last_line(repo, tmp_path):
+    """A t w that put its note up never said its bill: ask() returned it among the lines why() reduced to
+    the notes it put up."""
+    from test_ask import claude_planner
+
+    accepted(repo)
+    note = "```plan\nnote: ids is the leaf the docs wait on  [why-ids]\n    about: ids\n```"
+    said = person("talk", "why", "ids", "--with", claude_planner(tmp_path, (note, 0.3)))
+    assert said.exit_code == 0, said.output
+    out = said.stdout.splitlines()
+    assert "the planner (claude sonnet-5-5): 1 call, $0.30 at list price" in out, out
+    assert out[-1] == "the planner on ids: ids is the leaf the docs wait on"  # the screen's bottom line
+
+
 def test_nemotron_answers_why_and_its_note_lands_as_its_own(repo, monkeypatch):
     accepted(repo)
     note = "```plan\nnote: ids is the leaf the docs wait on  [why-ids]\n    about: ids\n```"
