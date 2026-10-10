@@ -146,3 +146,30 @@ planner and executors ran on the account's default model, as a stranger's would.
 The stranger's second dead end is the one X4 and X1 also show: the planner writes `python3 -m pytest` and the
 check runs with the person's PATH; with no pytest there, the leaf costs a run and comes back with `No module named
 pytest` buried in the hand-back. Nothing on 907a7d0 names that before the run.
+
+## X2 (a): feeds through Graphene, planted (n = 3)
+
+`x2.sh`, 2026-10-10 17:1xZ. Per run: a fresh feeds repo, `init` with X1's planner and 907a7d0's `DEFAULT_WITH` plus
+`--model sonnet --max-budget-usd 2 --strict-mcp-config --setting-sources project,local`; as the person: ask, accept,
+`run --parallel 3`; then the plant (`code`→`xcode` committed into the landed `normalize/fields.py`), an end-to-end
+leaf added and accepted (scope `tests/test_e2e_xml.py`, check `python3 -m unittest tests.test_e2e_xml -q`), a run,
+the `r` offer taken by its printed command, a run.
+
+| run | accept | held-out | the six untouched | seconds (main; plant) | dollars (planner and executors) | executor denials; turns | width | came back | the fix landed in the owner's file | why recorded |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | 18 of 20 | 12 of 12 | 6 of 6 | 130; 57 | $0.749 | 20; 54 | 2 of 5 | `e2e-xml`, once | yes: `xml-wiring` reopened, landed again | yes: the reopen note |
+| 2 | 18 of 20 | 12 of 12 | 6 of 6 | 89; 62 | $0.622 | 18; 51 | 2 of 4 | `e2e-xml`, once | yes | yes |
+| 3 | 18 of 20 | 12 of 12 | 6 of 6 | 109; 52 | $0.628 | 14; 43 | 2 of 5 | `e2e-xml`, once | yes | yes |
+
+The same two `accept` misses as every other arm (the change of mind never sent); nothing outside the intent. The
+loop closed in all three runs the same way: the end-to-end leaf's executor found the fault, named it ("`normalize/
+fields.py` maps the xml sku key to `xcode` but `samples/prices.xml` uses the attribute `code`, so every xml record
+normalises to None and load emits nothing") and handed the leaf back wanting `normalize/fields.py`; the run printed
+the three offers; `r` reopened `xml-wiring` with the note; the next run landed the owner's fix and then the
+end-to-end leaf. Against the plain session (X2 b): the same scores, about twice the dollars ($0.62–0.75 against
+$0.34–0.38) and about three times the wall clock (141–187 s against 58–65 s), 14–20 shell commands refused to the
+executors (the shipped allow list is `graphene node/plan` only) against 2–5. What differs in kind: here the fault's
+diagnosis and the fix's reason are rows in the plan's log and the reopen note, with the leaf that found it and the
+leaf that owned it named; in the plain session they are a paragraph in a transcript, and the fix was left
+uncommitted. Red first said `xml-wiring: its check passes at the base commit … it proves nothing` in run 1 (its
+check was the existing suite) and named checks outside their scope in run 3; the leaves ran anyway, by decision.
