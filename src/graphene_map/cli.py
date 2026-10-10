@@ -364,7 +364,7 @@ def build():
             say(f"hooks removed from {settings}: {', '.join(gone) or 'none were there'}")
             say("the plan in .graphene/ is yours to keep or delete")
             return
-        given ={k: v for k, v in (("planner", planner), ("executor", executor)) if v is not None}
+        given = {k: v for k, v in (("planner", planner), ("executor", executor)) if v is not None}
         if given:  # they are started as you, with your permissions, and they spend
             try:
                 P._person_only(who, "choosing the planner and the executor")
