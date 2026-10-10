@@ -203,6 +203,12 @@ def test_a_check_this_environment_cannot_run_is_said_so_and_its_gist_kept(repo, 
     assert "nothing git ignores" in K.said(rows)[0]
 
 
+def test_a_check_that_cannot_run_here_is_not_run_and_exits_as_the_shell_would(repo):
+    """The Nemotron extra's precheck runs an accepted check through `_here` too: no exit code there is a
+    not-run, run again at every precheck; 127, the shell's for what it cannot find, is its kept cannot-run."""
+    assert K._here("nosuchtool-zz --version", repo) == (127, "cannot run here: nosuchtool-zz: not found")
+
+
 def test_a_test_first_red_whose_module_the_leaf_writes_is_no_environment(repo):
     with Store.open(repo) as store:
         leaves(store, ("a", ["tests/test_nosuch_zz.py"], "python3 -m unittest tests.test_nosuch_zz"))

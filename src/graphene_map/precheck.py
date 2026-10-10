@@ -28,7 +28,7 @@ _CONTROL = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\
 _USER = re.compile(r"(//)[^/@\s]+@")  # a URL's user and password (a proxy's): never stored or said
 
 
-CANNOT = "cannot run here: "  # what `_here` says, with no exit code, of a check `_probe` found no way to run
+CANNOT = "cannot run here: "  # what `_here` says, with the shell's 127, of a check `_probe` cannot run
 LANDED = "it passed this check when it landed; reopened, it passes until the check says what the note asks"
 # What a python3 has installed editable from the repository (argv[1]): a distribution whose PEP 610
 # direct_url.json says so (uv's and pip's editable installs write one), else a .pth file on its sys.path
@@ -110,13 +110,14 @@ def current(store, node: P.Node, base: str | None, tree: str | None) -> dict | N
 
 def _here(command: str, root: Path, committed: bool = False) -> tuple[int | None, str]:
     """An accepted check, run as `node done` runs it: in a clean worktree, without the key. What it runs
-    is asked for first (`_probe`): missing, the check is not run, and says CANNOT and why."""
+    is asked for first (`_probe`): missing, the check is not run, and exits 127 saying CANNOT and why. Not
+    None: the Nemotron extra's precheck shares this, and a None there is a not-run, run again every time."""
     began = time.monotonic()
     env = P.check_env()
     try:
         with P._clean_tree(root, (), began, committed) as tree:
             if missing := _probe(command, tree, env, began):
-                return None, CANNOT + missing
+                return 127, CANNOT + missing  # the shell's exit for what it cannot find
             code, out, err = P._ended(command, tree, env, began)
     except subprocess.TimeoutExpired:
         return None, f"timed out after {P.CHECK_TIMEOUT:g} s"
@@ -225,7 +226,7 @@ def judge(node: P.Node, code: int | None, text: str, files: list[str],
     is (a path named like a key is a path still), and ``hide`` takes from it, whole, the gist it keeps."""
     if code == 0:
         return "passes", "it exits 0 before any work is done", []
-    if code is None and text.startswith(CANNOT):  # what it runs is not here (`_probe`): it was not run
+    if code == 127 and text.startswith(CANNOT):  # what it runs is not here (`_probe`): it was not run
         return "environment", _gist(hide(text.removeprefix(CANNOT))), []
     if code is None:  # it timed out or could not be run: no verdict (`current` says which is run again)
         return "not-run", _gist(hide(text)), []
