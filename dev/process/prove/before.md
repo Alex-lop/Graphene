@@ -125,3 +125,24 @@ printed line is `red first: 2 checks at fead50f in 0 s` with no word of where it
 acts, 0 min` after the person accepted; `node show` on a sub-goal prints an empty `scope:` and `done:` line; the two
 merges carry empty bodies. The dead ends the readers found are not on this scripted path: they are in what `init`
 leaves unsaid about the person's own Claude Code sessions, in `watch`'s keys, and in what the record does not print.
+
+## X6: one stranger transcript (n = 1, a fact, not a rate)
+
+`x6_transcript.sh`, 2026-10-10 17:0xZ: a Sonnet session given only 907a7d0's README (its install line pointing at the
+build's wheel), a fresh copy of the pytest-bdd clone with no remote, issue #476, and a `./me` wrapper that runs its
+commands without an agent's marks; told to narrate every command and stop at a landed leaf or when stuck. `codex`
+hidden from its PATH; `gh` and `git push` denied; GitHub unreachable. Its own `init` picked bare `claude`, so its
+planner and executors ran on the account's default model, as a stranger's would.
+
+| measure | 907a7d0 |
+|---|---|
+| landed | **yes**: merge `6abd049` "Print tags after the scenario status, add a test file and a changelog line (report-tags)", at the second run |
+| its own session | 19 turns, 258 s, $0.196 |
+| what Graphene's runs cost | $1.05 (the first run, which came back) and $0.95 (the second, which landed), at the default model |
+| dead ends it met, in its words | (1) the install: "uv rejects a wheel filename with no version" (the harness had named the wheel `A.whl`; the stranger renamed it and went on: a harness fault, fixed for the after arm); (2) "the leaf came back unlanded because its check was `python3 -m pytest`, and the system python3 has no pytest. I changed only the check to `uv run pytest …` with `graphene node set` … The second run landed it"; (3) one Bash command refused by the hook for naming the store directory ("the plan's own store is not an agent's to read around or write: use `graphene plan`, `graphene node show`, `graphene plan log`") |
+| what it did not do | run the test suite itself ("the pass came from Graphene's own check"); answer the two board questions (left on their defaults) |
+| what it noticed | "`graphene init` added hooks to `.claude/settings.local.json` and created the store; `./me graphene init --remove` takes the hooks out" (a command that does not exist on 907a7d0: it inferred it from the README it was given, which is the branch's) |
+
+The stranger's second dead end is the one X4 and X1 also show: the planner writes `python3 -m pytest` and the
+check runs with the person's PATH; with no pytest there, the leaf costs a run and comes back with `No module named
+pytest` buried in the hand-back. Nothing on 907a7d0 names that before the run.
