@@ -507,7 +507,7 @@ def ask(
             before = refusal
         # whole again: a planner other than Claude Code starts afresh and knows nothing of the first try
         prompt = f"{asked}\n\nYour last answer was not accepted: {refusal}\nPrint the whole proposal again."
-    end = f"\n{bill}" * bool(bill)  # after the refusal's first line, which the screen's bottom line reads
+    end = f"\n{bill}" * bool(bill)  # after the refusal's lines: watch's bottom line passes over it
     if paid_for.strip():  # what it paid for is kept: the block alone, as `graphene plan propose` reads it
         kept = store.path.parent / "runs" / f"ask-{session[:8]}.txt"  # beside what `graphene run` logs
         kept.parent.mkdir(parents=True, exist_ok=True)

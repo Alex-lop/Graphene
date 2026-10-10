@@ -2085,7 +2085,9 @@ class Watch(App):
         said = R.tail(log, 400)
         tried = max((k for k, line in enumerate(said) if line.startswith("asking the planner")), default=-1)
         news = [line.strip() for line in said[tried + 1 :] if line.strip() and "(the plan of " not in line]
-        gist = (news[-1] if argv[0] in ("run", "talk") else news[0]) if news else ""
+        # a talk's last line, past the planner's bill (`the planner (claude …): 2 calls, …`): why it ended
+        last = [line for line in news if not line.startswith("the planner (")] if argv[0] == "talk" else news
+        gist = ((last or news)[-1] if argv[0] in ("run", "talk") else news[0]) if news else ""
         named = argv[: next((k for k, word in enumerate(argv) if word.startswith("-")), len(argv))]
         mark = "✗ " if code else ""  # its options were on the bottom line when it started: room for the gist
         whole = [f"{mark}graphene {as_typed(argv)} ended (exit {code}); all it said, kept in "

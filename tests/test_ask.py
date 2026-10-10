@@ -428,8 +428,8 @@ def test_a_claude_code_planner_that_stopped_says_why(repo, tmp_path):
 
 def test_a_lost_ask_keeps_the_proposal_it_paid_for_and_says_what_it_cost(repo, tmp_path):
     """Two answers refused, and the ask ended with nothing: what the person paid for was gone. The
-    proposal is kept (the block alone, which `plan propose` reads), and the ask's last line says what
-    it cost, after the refusal's own first line."""
+    proposal is kept (the block alone, which `plan propose` reads); the ask says what it cost after the
+    refusal, then where the proposal is kept, its last line."""
     bad = "I read api.py.\n```plan\n- ids  [ids]\n    scope: api.py\n    signoff: perhaps\n```"
     said = person("ask", "ids", "--with", claude_planner(tmp_path, (bad, 0.25), (bad, 0.5)))
     assert said.exit_code == 1, said.output
@@ -440,6 +440,29 @@ def test_a_lost_ask_keeps_the_proposal_it_paid_for_and_says_what_it_cost(repo, t
     assert kept and order in said.stderr, said.stderr
     assert (repo / kept[1]).read_text() == "- ids  [ids]\n    scope: api.py\n    signoff: perhaps\n"
     assert said.output.splitlines()[-1].startswith("its proposal is kept in")  # a talk's bottom line in watch
+
+
+def test_a_lost_talk_that_kept_nothing_says_why_on_watchs_bottom_line_not_what_it_cost(repo, tmp_path):
+    """A lost `t w` whose planner printed no proposal ended on its bill, and watch's bottom line, a talk's
+    last line, said what it cost and not why nothing came back."""
+    from graphene_map.tui import Watch
+
+    assert person("node", "add", "ids", "--id", "ids", "--scope", "api.py", "--check", "true").exit_code == 0
+    planner = claude_planner(tmp_path, ("I would rather not.", 0.25), ("Still no.", 0.5))
+    said = person("talk", "why", "ids", "--with", planner)
+    assert said.exit_code == 1 and said.output.splitlines()[-1].startswith("the planner (claude sonnet-5-5)")
+    log = tmp_path / "talk.txt"
+    log.write_text(said.output)
+    app, told = Watch(repo, lambda: Store.open(repo), every=60), []
+    app.call_from_thread = lambda fn, message, whole: told.append(message)
+
+    class Lost:
+        def wait(self):
+            return 1
+
+    app.follow(Lost(), ["talk", "why", "ids"], log)
+    assert told[0].startswith("✗ graphene talk why ids ended: no proposal after 2 tries"), told
+    assert told[0].endswith("no proposal (exit 0): Still no."), told
 
 
 def test_a_lost_ask_keeps_the_last_proposal_it_paid_for_though_its_last_try_printed_none(repo, tmp_path):
