@@ -62,6 +62,14 @@ def test_run_node_checks_first_a_sub_goals_leaf_and_a_leaf_that_came_back(repo, 
     assert verdicts(repo, "l1") == ["passes"]
 
 
+def test_red_first_judges_only_the_leaves_this_run_can_start_now(repo):
+    """b needs a: its check, run at a commit a has not landed in, said nothing of b's own work."""
+    person("node", "add", "a", "--id", "a", "--scope", "a.txt", "--check", "true")
+    person("node", "add", "b", "--id", "b", "--scope", "b.txt", "--check", "true", "--needs", "a")
+    person("run", "--here", "--attempts", "1", "--with", "true")
+    assert verdicts(repo, "a") == ["passes"] and verdicts(repo, "b") == []
+
+
 def test_a_run_refused_on_a_detached_head_runs_no_check_first(repo):
     person("node", "add", "leaf", "--id", "l1", "--scope", "api.py", "--check", "true")
     git(repo, "checkout", "-q", "--detach")

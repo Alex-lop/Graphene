@@ -327,6 +327,14 @@ def test_a_run_says_first_where_it_lands_with_what_and_that_uncommitted_work_sta
     assert lines.index(landing) == 0 and lines[-1].startswith("run: ")  # the summary is still the last
 
 
+def test_a_run_of_no_attempts_is_refused_before_anything_starts(repo):
+    """`--attempts 0` took the leaf, tried nothing, and ended in a traceback with the leaf left running."""
+    person("node", "add", "leaf two", "--id", "l2", "--scope", "schema.py", "--check", "true")
+    ran = person("run", "--attempts", "0", "--with", "true")
+    assert ran.exit_code == 2 and "--attempts" in ran.stderr, ran.output
+    assert [n["state"] for n in json.loads(person("plan", "--json").stdout)["nodes"]] == ["open"]
+
+
 def test_a_runs_last_line_is_kept_as_a_row_of_the_plan(repo):
     """What a run did was said once, on a terminal that may be gone: the plan kept no line of it."""
     person("node", "add", "leaf two", "--id", "l2", "--scope", "schema.py", "--check", "true")
