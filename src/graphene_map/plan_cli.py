@@ -972,7 +972,7 @@ def register(cli: typer.Typer, root, open_store, fail):
             False, "--here", help="Run in your checkout and commit nothing; the checkout is exposed."
         ),
         precheck: bool = typer.Option(
-            True, "--precheck/--no-precheck", help="Run each leaf's check at the base commit first; "
+            True, "--precheck/--no-precheck", help="Run each ready leaf's check at the base commit first; "
             "--no-precheck skips it."
         ),
     ) -> None:
