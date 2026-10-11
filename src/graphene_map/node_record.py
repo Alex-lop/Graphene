@@ -21,6 +21,7 @@ window says so and names what was read instead. A count that cannot be computed 
 
 from __future__ import annotations
 
+import re
 import subprocess
 import textwrap
 from collections import Counter
@@ -631,7 +632,7 @@ def _acts(log: list[dict]) -> list[Act]:
             continue
         if kind == "edited":
             changed = detail.get("changed", {})
-            said = "; ".join(f"{f}: {a!r} -> {b!r}" for f, (a, b) in changed.items())
+            said = "; ".join(f"{f}: {P.value(a)} → {P.value(b)}" for f, (a, b) in changed.items())
             if detail.get("reopened"):  # the person's r: the owner reopened for it
                 said = f"reopened {', '.join(detail['reopened'])} for it" + (f"; {said}" if said else "")
             said = f"{said} (revision {detail.get('rev')})"
@@ -656,8 +657,9 @@ def _s(n: int) -> str:
 
 
 def render(record: NodeRecord) -> list[str]:
-    """The record as plain lines, never wrapped and never cut but for what an attempt said and did last:
-    an agent reads them as evidence about the node it holds, and a person greps them."""
+    """The record as plain lines, never wrapped and never cut but for what an attempt said and did last,
+    and the commands an executor was refused, three named: an agent reads them as evidence about the node
+    it holds, and a person greps them."""
     lines = [
         f"{record.node_id}  {record.title}",
         f"  state: {record.state} · owner {record.owner}",
@@ -703,8 +705,9 @@ def _in_short(counts: dict) -> list[str]:
     traced = counts["changed_edit"] + counts["changed_shell"]
     paths = (f"{n} path{_s(n)} changed under it, {traced} traced to a recorded write"
              if counts["changed_computed"] else "what changed under it is not computed")  # fmt: skip
-    which = f"its {k} commit{_s(k)}" if out in (0, k) else f"{out} of its {k} commits"
-    said = "graded below" if not out else "in no session's records, so not graded" + (
+    # the commits inside its windows, whoever made them; not graded: in no record of a holding session's
+    which = f"the {k} commit{_s(k)} inside its windows" if out in (0, k) else f"{out} of the {k} commits"
+    said = "graded below" if not out else "in no record of a session that held it, so not graded" + (
         ", which takes nothing from the paths" if counts["changed_computed"] else "")  # fmt: skip
     return [f"  in short: {paths}; {which} {'is' if (out or k) == 1 else 'are'} {said}"]
 
@@ -732,10 +735,15 @@ def _coverage_lines(counts: dict, check: dict | None, at_base: dict | None = Non
         lines.append(
             f"    check: `{check['command']}` {check['result']} at {check['at']}, run by Graphene itself"
         )
-        lines += [f"      its last line: {check['gist']}"] if check.get("gist") else []
+        if re.fullmatch(r"exit -?\d+, no output", check.get("gist") or ""):  # run_check's words, not its
+            lines.append("      it printed nothing")
+        elif check.get("gist"):
+            lines.append(f"      its last line: {check['gist']}")
         if at_base and at_base.get("check") == check["command"] and at_base.get("base"):
-            lines.append(f"      it also passed at the base commit {at_base['base'][:7]}, before any work: "
-                         "it shows nothing about this change")  # fmt: skip
+            passed = check["result"] == "passed"  # failed, the change is what it fails on: no "nothing"
+            nothing = ": it shows nothing about this change" if passed else ""
+            lines.append(f"      it {'also ' * passed}passed at the base commit {at_base['base'][:7]}, "
+                         f"before any work{nothing}")  # fmt: skip
     else:
         lines.append("    check: none has run for this node, so nothing here is verified by one")
     if not k and counts.get("commits_unread"):
@@ -759,10 +767,11 @@ def _coverage_lines(counts: dict, check: dict | None, at_base: dict | None = Non
             f"{counts['how'].removeprefix('not computed: ')}"
         )
     if counts["computed"] and counts["not_graded_commits"]:
+        n = counts["not_graded_commits"]
         lines.append(
-            f"    {counts['not_graded_commits']} commit{_s(counts['not_graded_commits'])} inside its "
-            f"windows ({counts['not_graded_files']} file{_s(counts['not_graded_files'])}) are in no "
-            "session's records: not graded, and not counted above"
+            f"    {n} commit{_s(n)} inside its windows ({counts['not_graded_files']} "
+            f"file{_s(counts['not_graded_files'])}) {'is' if n == 1 else 'are'} in no record of a session "
+            "that held it: not graded, and not counted above"
         )
     return lines
 
@@ -787,11 +796,10 @@ def _refusal_lines(refusals: Refusals) -> list[str]:
     for label, paths in (("denied", refusals.denied), ("refused after the fact", refusals.breaches),
                          ("refused to the executor", refusals.commands)):  # fmt: skip
         counted = Counter(paths)
+        named = [f"{p}{'' if n == 1 else f' ×{n}'}" for p, n in sorted(counted.items())]
+        cut = _few if label == "refused to the executor" else ", ".join  # paths whole; the commands capped
         if counted:
-            lines.append(
-                f"    {label}: "
-                + _few([f"{p}{'' if n == 1 else f' ×{n}'}" for p, n in sorted(counted.items())])
-            )
+            lines.append(f"    {label}: {cut(named)}")
     # the same paths refused again (each attempt's own `done`, then the run's) are one line, counted
     for stray, n in Counter(", ".join(stray) or "a failing check" for stray in refusals.done).items():
         lines.append(f"    `done` refused {f'{n} times ' if n > 1 else ''}over: {stray}")
@@ -838,6 +846,8 @@ def _attempt_lines(record: NodeRecord) -> list[str]:
         elif said:  # whole, wrapped: its last words are what it says it did
             lines += ["    said last:", *(f"      {line}" for line in textwrap.wrap(said, 100))]
         told = a["told"] if a["meter"] else _log_tail(a["log"])
+        if a["meter"] and told and told[-1] == a["said"]:  # its last words, said above whole: not again
+            told = told[:-1]
         text = "\n".join(" ".join(t.split()) if a["meter"] else t for t in told)[-P.TAIL :]
         if text.strip():
             lines.append("    its last lines:" if not a["meter"] else "    the last it did:")

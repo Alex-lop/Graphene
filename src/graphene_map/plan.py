@@ -736,14 +736,15 @@ def _ended(
     args: str | list[str], cwd: str | Path, env: dict, began: float, given: str | None = None
 ) -> tuple[int, str, str]:
     """Run a step of the check begun at ``began`` (the check itself, a string bash runs, or one of
-    git's, a list): its exit code and what it said on stdout and on stderr. It runs in a session of
-    its own and is ended with everything it started when the check's time is up (TimeoutExpired), on
-    a Ctrl-C, a closed terminal or a `kill`, and when a run is stopped (``end_checks``), which says
-    nothing of the work, so it is not taken as a result (KeyboardInterrupt), whether the stop came
-    while it ran or before it started. Killing bash alone had left its `sleep` running; killing git
-    alone left the `git reset` it had started writing a worktree after the check was over; a stop
-    that came while the worktree was being made was lost, and the check ran to its end; and a
-    terminal's Ctrl-C that reached the check itself had been recorded as the executor's failed check."""
+    git's, a list): its exit code and what it said on stdout and on stderr (a string's stderr is in its
+    stdout, in the order it was written, so its last line is its own and not uv's setup line). It runs
+    in a session of its own and is ended with everything it started when the check's time is up
+    (TimeoutExpired), on a Ctrl-C, a closed terminal or a `kill`, and when a run is stopped
+    (``end_checks``), which says nothing of the work, so it is not taken as a result (KeyboardInterrupt),
+    whether the stop came while it ran or before it started. Killing bash alone had left its `sleep`
+    running; killing git alone left the `git reset` it had started writing a worktree after the check was
+    over; a stop that came while the worktree was being made was lost, and the check ran to its end; and
+    a terminal's Ctrl-C that reached the check itself had been recorded as the executor's failed check."""
     import subprocess
 
     shell = isinstance(args, str)
@@ -754,7 +755,7 @@ def _ended(
         cwd=cwd,
         stdin=None if given is None else subprocess.PIPE,
         stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        stderr=subprocess.STDOUT if shell else subprocess.PIPE,  # git's own stderr is a refusal's words
         text=True,
         errors="replace",  # what a check prints is its own: bytes that are not UTF-8 are no failure to run it
         env=env,
@@ -776,7 +777,7 @@ def _ended(
         _end_check(proc)
     if began <= _stopped:
         raise KeyboardInterrupt
-    return proc.returncode, out, err
+    return proc.returncode, out, err or ""
 
 
 @contextmanager
@@ -3022,6 +3023,17 @@ def reads(node: Node, everything: list[Node], back: set[str] | frozenset[str] = 
 def look(word: str) -> tuple[str, str]:
     """The glyph and the colour (a Rich style) of a word `reads` returns."""
     return LOOK.get(word, ("○", ""))
+
+
+def value(v) -> str:
+    """A logged value as a person reads it: a list is its items, nothing is "none", not a repr."""
+    if isinstance(v, list | tuple):
+        return ", ".join(value(x) for x in v) or "none"
+    if v is None or v == "":
+        return "none"
+    if isinstance(v, bool):
+        return "yes" if v else "no"
+    return " ".join(str(v).split())
 
 
 def said_by(label: str | None) -> str:

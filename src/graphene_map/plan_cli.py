@@ -1,8 +1,8 @@
 """`graphene plan` and `graphene node`: the plan in a terminal, for a person and for an agent alike.
 
 Plain text, never wrapped or cut: an agent reads these lines as its contract, and a person greps them.
-The one exception is the plan itself (`graphene`, `graphene plan`, `watch --once`) at a terminal or
-under $COLUMNS: it fits that width (`room`).
+The exceptions are the plan itself (`graphene`, `graphene plan`, `watch --once`) at a terminal or under
+$COLUMNS, which fits that width (`room`), and what `node show` says an attempt said and did last.
 """
 
 from __future__ import annotations
@@ -445,15 +445,7 @@ def register(cli: typer.Typer, root, open_store, fail):
         for line in plan_lines(store, who, everything, width=room()):
             out(line)
 
-    def value(v) -> str:
-        """A logged value as a person reads it: a list is its items, nothing is "none", not a repr."""
-        if isinstance(v, list | tuple):
-            return ", ".join(value(x) for x in v) or "none"
-        if v is None or v == "":
-            return "none"
-        if isinstance(v, bool):
-            return "yes" if v else "no"
-        return " ".join(str(v).split())
+    value = P.value  # a logged value as a person reads it, as node show and watch say it too
 
     def one_row(store, n: P.Node, depth: int = 0) -> str:
         """A node the command just made or moved, in the row grammar `graphene plan` and the screen
@@ -1433,8 +1425,10 @@ def register(cli: typer.Typer, root, open_store, fail):
             under = [c for c in P.below(n.id, everything) if c in P.leaves(everything)]
             for line in rolled_up(store, root(), under) if under else render(node_record(store, root(), n)):
                 out(line)
-            for landed in store.node_log(n.id, ("landed",))[-1:]:
-                out(f"  landed: {landed['detail']['commit'][:7]}: `graphene node diff {n.id}` shows it")
+            # the row `node diff` reads: a leaf reopened and done again since its merge did not land that
+            for landed in store.node_log(n.id, ("landed", "unlanded", "finished", "overruled"))[-1:]:
+                if landed["kind"] == "landed":
+                    out(f"  landed: {landed['detail']['commit'][:7]}: `graphene node diff {n.id}` shows it")
             entries = len(store.node_log(n.id))
             out(f"  every entry, check runs included: `graphene plan log` ({entries} for {n.id})")
 
