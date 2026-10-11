@@ -382,7 +382,8 @@ REFUSED = "Your last attempt was not accepted:"  # the Nemotron executor reads w
 
 
 def _worst(argv: list[str]) -> float:
-    """What one attempt may spend: the command's --max-budget-usd, else WORST."""
+    """What one attempt may spend: the command's --max-budget-usd, else WORST. Claude Code stops after the
+    turn that passes its cap, so an attempt may spend that turn more (b1.json: $0.0510 under $0.05)."""
     said = M.option(argv, "--max-budget-usd")
     try:
         return float(said) if said else WORST
@@ -455,7 +456,11 @@ def run_node(
     try:
         node = P.start(store, node_id, who, checkout)
     except P.Refused as no:
-        say(str(no) if "cannot start" in str(no) else f"{node_id} cannot start: {no}")
+        lines = (str(no) if "cannot start" in str(no) else f"{node_id} cannot start: {no}").splitlines()
+        if "no node made" in lines[0]:  # whoever ran the run reads it, never an agent: the person's way out
+            it, stand = ("it", "it stands") if "an uncommitted change" in lines[0] else ("them", "they stand")
+            lines[-1] = f"  yours as {stand}? `graphene plan ack`, or commit {it}; else put {it} back"
+        say("\n".join(lines))
         return None
     say(f"{node.id} started: {node.title}")
     refusal: str | None = None
@@ -569,6 +574,9 @@ def run_node(
         # the refusal for the person: its `graphene node release` step was the executor's to take
         told = "\n".join(ln for ln in refusal.splitlines() if "graphene node release" not in ln)
         crashed = f"; the executor itself exited {code}" if code else ""
+        if capped:  # no crash: its result said the budget ran out
+            crashed = ("; its last attempt stopped at its --max-budget-usd (a larger cap in --with, or a "
+                       "smaller leaf)")
         P.release(store, node.id, who, f"{tries}, the last one refused: {told}{crashed}")
         say(f"{node.id} came back after {tries}: `graphene node show {node.id}` says why")
         return None
@@ -586,6 +594,9 @@ def run_node(
 
 
 STOPPED = "the run was stopped before this leaf was finished"  # by Ctrl-C, `:stop` or a closed terminal
+
+
+NOTHING = "run: nothing started (graphene plan says what each leaf waits on)"  # a last line kept as no row
 
 
 def summary(store, since: int, stopped: bool = False) -> str:
@@ -617,7 +628,7 @@ def summary(store, since: int, stopped: bool = False) -> str:
     if stopped:
         return "run stopped: " + (", ".join(said) or "nothing was finished") + cost
     if not ran:
-        return "run: nothing started (graphene plan says what each leaf waits on)"
+        return NOTHING
     return "run: " + (", ".join(said) or "nothing finished") + cost
 
 
@@ -868,7 +879,8 @@ def _commit(store, tree: Path, node: P.Node) -> list[str]:
     why, notes = " > ".join(P.trail(store, node)), P.notes(store, node.id)
     message = f"{node.title}\n\n{node.goal or node.title}\n\n" + (f"Why: {why}\n" if why else "")
     message += f"Reopened: {notes[-1]}\n" if notes else ""
-    _git(tree, "add", "-A", "--", *(paths if paths and not entry.get("more_changed") else ["."]))
+    sparse = ("-c", "core.sparseCheckout=false")  # a leaf may write outside a sparse checkout's cone
+    _git(tree, *sparse, "add", "-A", "--", *(paths if paths and not entry.get("more_changed") else ["."]))
     if _git(tree, "diff", "--cached", "--quiet", ok=True).returncode != 0:  # else it committed itself
         _git(tree, *_ident(tree), "commit", "-q", "--no-verify", "-m", f"{message}Graphene-Node: {node.id}\n")
     return paths

@@ -51,6 +51,22 @@ def agent(*args, input=None):
     return runner.invoke(build(), list(args), env=AGENT_ENV, input=input)
 
 
+def test_a_run_that_started_nothing_keeps_no_row_so_the_acts_before_it_are_billed(repo, monkeypatch):
+    """A run that started nothing kept its line as a run row: the next run's `you` began after it, so the
+    acts before it were in no bill, and `plan record`'s last run read "run: nothing started"."""
+    monkeypatch.setenv("GRAPHENE_PERSON", "alex")
+    assert person("node", "add", "ours", "--id", "l1", "--scope", "api.py", "--check", "true").exit_code == 0
+    mine = person("node", "add", "mine", "--id", "l2", "--scope", "b.py", "--check", "true", "--owner", "me")
+    assert mine.exit_code == 0
+    idle = person("run", "--with", "true", "--node", "l2")  # l2 is the person's: nothing starts
+    assert idle.stdout.splitlines()[-1].startswith("run: nothing started")
+    ran = person("run", "--with", "true", "--node", "l1")
+    assert "· you 2 acts, " in ran.stdout.splitlines()[-1], ran.stdout
+    person("run", "--with", "true", "--node", "l2")  # nothing starts again
+    [last] = [line for line in person("plan", "record").stdout.splitlines() if "last run:" in line]
+    assert "nothing started" not in last and "you 2 acts" in last
+
+
 def test_no_plan_says_paragraph_in_and_never_the_node_add_flags(repo):
     """`graphene plan` and plain `graphene`, with nothing planned: say it to your agent in a paragraph,
     or `graphene ask`. Both taught typing the tree with `node add` flags, each in its own words."""
@@ -325,6 +341,8 @@ def test_a_run_says_first_where_it_lands_with_what_and_that_uncommitted_work_sta
     assert landing.startswith(f"landing into {branch} at ") and "--no-verify" in landing, landing
     assert "your uncommitted changes are not in the executors' worktrees: they start from HEAD" in lines
     assert lines.index(landing) == 0 and lines[-1].startswith("run: ")  # the summary is still the last
+    capped = person("run", "--with", "true --max-budget-usd 2").stdout.splitlines()[0]
+    assert "an attempt stops once it passes $2" in capped and "at most;" not in capped  # a stop, no ceiling
 
 
 def test_a_run_of_no_attempts_is_refused_before_anything_starts(repo):

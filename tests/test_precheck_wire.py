@@ -92,6 +92,19 @@ def test_a_parallel_runs_red_first_skips_a_leaf_whose_need_is_done_here_and_not_
     assert verdicts(repo, "b") == []
 
 
+def test_run_here_tells_whoever_ran_it_how_to_keep_their_change_not_to_put_it_back(repo):
+    """`run --here` starts each leaf as the run, unattended, and printed an agent's words to the person who
+    ran it: "if you made it, put it back; … ask them", about their own unsaved notes."""
+    person("node", "add", "users", "--id", "n1", "--scope", "api.py", "--check", "true")
+    with Store.open(repo) as store:
+        P.mark_boundary(store, repo)  # the tree as it stood when the last leaf closed
+    (repo / "notes.md").write_text("my own unsaved notes\n")
+    said = person("run", "--here", "--with", "true", "--no-precheck").output
+    assert "n1 cannot start: the checkout has an uncommitted change no node made" in said
+    assert "yours as it stands? `graphene plan ack`, or commit it; else put it back" in said
+    assert "ask them" not in said and (repo / "notes.md").exists()
+
+
 def test_a_run_refused_on_a_detached_head_runs_no_check_first(repo):
     person("node", "add", "leaf", "--id", "l1", "--scope", "api.py", "--check", "true")
     git(repo, "checkout", "-q", "--detach")

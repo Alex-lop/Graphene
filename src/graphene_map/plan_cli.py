@@ -981,7 +981,7 @@ def register(cli: typer.Typer, root, open_store, fail):
         if os.environ.get("GRAPHENE_NODE") or os.environ.get("GRAPHENE_PLANNER"):
             fail("an executor or a planner does not start runs: through --with a run is any command", 1)
         from . import meter as M
-        from .run import CAP_UNIT, _splits, label, named, run_parallel, run_plan, summary, sweep
+        from .run import CAP_UNIT, NOTHING, _splits, label, named, run_parallel, run_plan, summary, sweep
 
         r = root()
         with open_store(r) as store:
@@ -1027,7 +1027,8 @@ def register(cli: typer.Typer, root, open_store, fail):
 
             def end(line: str) -> None:  # the run's last line, said, then kept: nobody's act, and no change
                 out(line)
-                store.log_node("*", P._now(), "run", "graphene run", None, None, {"summary": line})
+                if not line.startswith(NOTHING):  # else the next bill's `you`, and the last run, began here
+                    store.log_node("*", P._now(), "run", "graphene run", None, None, {"summary": line})
 
             try:  # red first runs in the runner, once its refusals (a lock, a detached HEAD, the cap) pass
                 if here:
@@ -1042,7 +1043,8 @@ def register(cli: typer.Typer, root, open_store, fail):
                         argv = shlex.split(template)
                         model, cap = M.model_in(argv), M.option(argv, "--max-budget-usd")
                         what = label(template) + f" ({model})" * bool(model)
-                        most = f", ${cap} {CAP_UNIT} at most" * bool(cap)
+                        # Claude Code stops after the turn that passes the cap: no ceiling, a stop
+                        most = f", {CAP_UNIT} stops once it passes ${cap}" * bool(cap)
                         out(f"landing into {on} at {at[:7]}: {what}, up to {max(parallel, 1)} at once{most}; "
                             "each leaf is committed with --no-verify (your pre-commit and commit-msg hooks "
                             "skip it) and merged --no-ff; checks run in a clean worktree with your PATH; "
