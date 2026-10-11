@@ -202,6 +202,24 @@ def test_a_check_this_environment_cannot_run_is_said_so_and_its_gist_kept(repo, 
     assert d["verdict"] == "environment" and d["gist"] and d["why"] in K.said(rows)[0]
     assert K.said(rows)[0].startswith("a: its check cannot run here: ")
     assert "nothing git ignores" in K.said(rows)[0]
+    assert K.said(rows)[0].endswith("brings what the check runs")  # not "pytest", whatever was missing
+
+
+def test_a_check_that_could_not_run_here_is_asked_again_once_the_person_installs_what_it_runs(
+    repo, tmp_path_factory, monkeypatch
+):
+    """An "environment" verdict was kept until a commit or an edit: installed, the tool was still said to
+    be missing, and the person was told the fix had not worked."""
+    monkeypatch.setenv("PATH", "/usr/bin:/bin")
+    with Store.open(repo) as store:
+        leaves(store, ("a", ["new.py"], "zzprobe-tool --version"))
+        [(_, first)] = K.run(store, repo)
+        bin_ = tmp_path_factory.mktemp("bin")
+        (bin_ / "zzprobe-tool").write_text("#!/bin/sh\nexit 1\n")
+        (bin_ / "zzprobe-tool").chmod(0o755)
+        monkeypatch.setenv("PATH", f"{bin_}:/usr/bin:/bin")  # the person installs it
+        [(_, again)] = K.run(store, repo)
+    assert first["verdict"] == "environment" and not again.get("kept") and again["verdict"] == "red"
 
 
 def test_a_check_that_cannot_run_here_is_not_run_and_exits_as_the_shell_would(repo):
@@ -241,6 +259,72 @@ def test_a_reopened_leaf_whose_check_passed_when_it_landed_is_landed_until_the_c
     assert d["verdict"] == "passes"
 
 
+def test_a_check_that_passed_at_the_base_before_any_work_still_proves_nothing_once_reopened(repo):
+    """'landed' was read from the leaf's history alone: `true`, which passed at the base before the leaf
+    ever ran, read "it passed this check when it landed" once it finished and was reopened, and lost its ∅."""
+    from graphene_map import tui
+
+    with Store.open(repo) as store:
+        leaves(store, ("a", ["new.py"], "true"))
+        [(_, first)] = K.run(store, repo)
+        P.start(store, "a", ME, repo)
+        (repo / "new.py").write_text("x = 1\n")
+        P.finish(store, "a", ME)
+        git(repo, "add", "-A")
+        git(repo, "commit", "-qm", "a landed")
+        P.reopen(store, "a", ME, "wrong")
+        rows = K.run(store, repo)
+        [(_, d)] = rows
+        assert first["verdict"] == d["verdict"] == "passes" and tui.precheck(store, P.get(store, "a"))
+    assert "proves nothing" in K.said(rows)[0]
+
+
+def test_a_reopened_leaf_done_again_on_its_landed_check_is_said_to_have_passed_at_the_base(repo):
+    """Lane D's readers took only "passes": a reopened leaf done again on its unchanged check ("landed")
+    lost its ∅, the merge's "passed at the base too" and the record's line, though nothing verified it."""
+    from graphene_map import node_record as NR
+    from graphene_map import run as R
+    from graphene_map import tui
+
+    with Store.open(repo) as store:
+        leaves(store, ("a", ["new.py"], "test -f new.py"))
+        P.start(store, "a", ME, repo)
+        (repo / "new.py").write_text("x = 1\n")
+        P.finish(store, "a", ME)
+        git(repo, "add", "-A")
+        git(repo, "commit", "-qm", "a landed")
+        P.reopen(store, "a", ME, "it must also say y")
+        [(_, d)] = K.run(store, repo)
+        P.start(store, "a", ME, repo)
+        (repo / "new.py").write_text("x = 2\n")
+        P.finish(store, "a", ME)
+        node = P.get(store, "a")
+        assert d["verdict"] == "landed" and node.state == P.DONE
+        assert tui.precheck(store, node) is not None
+        assert "Check: `test -f new.py` passed, and it passed at the base too" in R._merged(store, node)
+        assert NR._refusals(store.node_log("a")).at_base is not None
+
+
+def test_a_review_leaf_keeps_its_mark_when_its_check_is_edited_since_nothing_ran_the_new_one(repo):
+    """The mark was keyed on the check the leaf has now: `node set --check` on a leaf in review, which runs
+    nothing, took the ∅ away, and signed off it was done with no mark, though nothing verified its work."""
+    from graphene_map import tui
+
+    bot = P.Caller("claude:aaaa1111", False, "aaaa1111-session")
+    with Store.open(repo) as store:
+        leaf = {"id": "a", "title": "a", "scope": ["new.py"], "check": "true", "signoff": "alex"}
+        P.propose(store, [leaf], ME)
+        K.run(store, repo)
+        P.start(store, "a", bot, repo)
+        (repo / "new.py").write_text("x = 1\n")
+        P.finish(store, "a", bot)
+        assert P.get(store, "a").state == P.REVIEW and tui.precheck(store, P.get(store, "a"))
+        P.edit(store, "a", {"check": "test -s new.py"}, ME)
+        assert tui.precheck(store, P.get(store, "a")) is not None
+        P.signoff(store, "a", ME, checkout=repo)
+        assert P.get(store, "a").state == P.DONE and tui.precheck(store, P.get(store, "a")) is not None
+
+
 @pytest.mark.parametrize(
     "installed, check, named",
     [("editable", FAILS, True), ("elsewhere", FAILS, False), ("editable", "true", False),
@@ -264,5 +348,18 @@ def test_a_python_with_this_repo_installed_editable_is_said(repo, tmp_path_facto
     with Store.open(repo) as store:
         leaves(store, ("a", ["new.py"], check))
         rows = K.run(store, repo)
-    said = [line for line in K.said(rows) if "installed editable from this repo" in line]
-    assert len(said) == named and all("fake_pkg" in line and "`uv run pytest …`" in line for line in said)
+        again = K.run(store, repo)  # every verdict kept: the install is there all the same
+    for run in (rows, again):
+        said = [line for line in K.said(run) if "installed editable from this repo" in line]
+        assert len(said) == named and all("fake_pkg" in ln and "`uv run pytest …`" in ln for ln in said)
+
+
+def test_what_python3_installed_editable_is_asked_from_no_directory_of_yours(repo, tmp_path, monkeypatch):
+    """`python3 -c` puts its working directory first on its path: a json.py where graphene was run ran
+    outside the clean tree, and shadowing the module the script needs, lost the warning in silence."""
+    here = tmp_path / "here"
+    here.mkdir()
+    (here / "json.py").write_text("import pathlib\npathlib.Path(__file__).with_name('RAN').touch()\n")
+    monkeypatch.chdir(here)
+    K._editable(repo)
+    assert not (here / "RAN").exists()
