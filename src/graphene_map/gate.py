@@ -320,6 +320,13 @@ def _contract(text: str | None) -> bool:
     return bool(text and _SCOPE.search(text) and _CHECK.search(text))
 
 
+def _spent(store, sid: str) -> bool:
+    """This session made a leaf from its last kept prompt already: the --scope and --check it typed plan
+    one leaf, once. A prompt the store was too busy to keep leaves the one before it there, spent."""
+    since = store.meta(f"prompt_at:{sid}") or ""
+    return any(n.aside and n.session_id == sid and (n.created_at or "") >= since for n in P.nodes(store))
+
+
 def _on_prompt(store, sid: str, text: str) -> dict | None:
     """A prompt is remembered: with plan first off the next write may become a leaf made from it, and
     either way a one-leaf proposal made after it is the person's ask (``one_line_ask``). With plan
@@ -335,8 +342,8 @@ def _on_prompt(store, sid: str, text: str) -> dict | None:
     for n in _held(store, sid):
         if n.aside:  # the turn before ended without a Stop (interrupted): its record closes here
             _close(store, n, sid)
-    store.set_meta(f"prompt_at:{sid}", P._now())
     store.set_meta(f"prompt:{sid}", text)  # TODO: two rows a session, never pruned
+    store.set_meta(f"prompt_at:{sid}", P._now())  # after it: a prompt the store lost is never timed as kept
     if not first or _held(store, sid) or _contract(text):
         return None
     take = _take(store)
@@ -441,16 +448,17 @@ def _context(event: str, text: str) -> dict:
     return {"hookSpecificOutput": {"hookEventName": event, "additionalContext": text}}
 
 
-def _close(store, node: P.Node, sid: str) -> str | None:
-    """End a leaf made from a prompt. Returns what is wrong when the person gave a check and it fails."""
+def _close(store, node: P.Node, sid: str, final: bool = False) -> str | None:
+    """End a leaf made from a prompt. Returns what is wrong when the person gave a check and it fails
+    (``final``: the session is let stop, so the leaf closes with the failure on its record)."""
     import subprocess
 
     try:
-        P.close_aside(store, node.id, P.Caller(node.executor or f"claude:{sid[:8]}", False, sid))
+        P.close_aside(store, node.id, P.Caller(node.executor or f"claude:{sid[:8]}", False, sid), final=final)
     except P.Refused as no:
         return str(no)
-    except (OSError, subprocess.SubprocessError):
-        pass  # git could not answer: the leaf stays open on the plan, which is how it is seen
+    except (OSError, subprocess.SubprocessError, sqlite3.OperationalError):
+        pass  # git could not answer, or the store is busy: the leaf stays open on the plan, as it is seen
     return None
 
 
@@ -646,7 +654,7 @@ def decide(store, event: dict, root: Path) -> dict | None:
         written = _first_write(event, root)
         cwd = event.get("cwd") if isinstance(event.get("cwd"), str) else None
         # a prompt that typed its own --scope and --check planned its leaf: made at its first write
-        planned = first and _contract(store.meta(f"prompt:{sid}"))
+        planned = first and _contract(store.meta(f"prompt:{sid}")) and not _spent(store, sid)
         if written is not None and not (planned and _aside(store, sid, cwd, root)):
             how = "planner" if planner else "plan first"
             _write(store.log_node, "*", P._now(), "denied", None, sid, None, {"path": written, "how": how})
@@ -670,10 +678,9 @@ def decide(store, event: dict, root: Path) -> dict | None:
         again = event.get("stop_hook_active") is True and not os.environ.get("GRAPHENE_NODE")
         held = _held(store, sid)
         for n in [h for h in held if h.aside]:
-            wrong = _close(store, n, sid)  # the turn is over: the leaf made from the prompt is too
+            wrong = _close(store, n, sid, final=again)  # the turn is over: the leaf made from its prompt too
             if wrong:
-                said = f"{n.id} ({n.title}) is not done: {wrong}"
-                return None if again else {"decision": "block", "reason": said}
+                return {"decision": "block", "reason": f"{n.id} ({n.title}) is not done: {wrong}"}
         held = [h for h in held if not h.aside]
         if not held or again:
             return None

@@ -492,8 +492,9 @@ def install_hooks(root: Path) -> list[str]:
 
 
 def remove_hooks(root: Path) -> list[str]:
-    """Take out the groups install_hooks added (each holds our one handler), and an event or 'hooks'
-    they leave empty, keeping everything else in the file. Returns the events they were taken out of."""
+    """Take out our handler from each group that holds it (install_hooks added it), a group it leaves
+    empty, and an event or 'hooks' they leave empty, keeping everything else in the file: another
+    handler the person put in our group stays. Returns the events it was taken out of."""
     path = hooks_file(root)
     settings = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
     hooks = settings.get("hooks") if isinstance(settings, dict) else None
@@ -501,8 +502,11 @@ def remove_hooks(root: Path) -> list[str]:
     for event, groups in list(hooks.items()) if isinstance(hooks, dict) else []:
         if not isinstance(groups, list):
             continue
-        kept = [g for g in groups if not (isinstance(g, dict) and any(_is_ours(h) for h in _handlers(g)))]
-        if len(kept) < len(groups):
+        ours = [g for g in groups if isinstance(g, dict) and any(_is_ours(h) for h in _handlers(g))]
+        for g in ours:
+            g["hooks"] = [h for h in _handlers(g) if not _is_ours(h)]
+        kept = [g for g in groups if not (g in ours and not g["hooks"])]
+        if ours:
             removed.append(event)
             hooks[event] = kept
             if not kept:

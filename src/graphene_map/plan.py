@@ -2585,10 +2585,11 @@ def _finish_subgoal(
     return get(store, node.id)
 
 
-def close_aside(store, node_id: str, who: Caller, now: str | None = None) -> Node:
+def close_aside(store, node_id: str, who: Caller, now: str | None = None, final: bool = False) -> Node:
     """The end of a leaf made from a prompt, when the turn it was typed for ends. It is a record,
     not a gate: git says what changed under it, and its check runs if the person gave one. Nothing
-    changed, nothing kept: the leaf goes, so a question that led to no edit leaves no trace."""
+    changed, nothing kept: the leaf goes, so a question that led to no edit leaves no trace.
+    ``final``: the session is let stop now, so a first failure closes it too, on its record."""
     now = now or _now()
     node = get(store, node_id)
     checkout = node.checkout or "."
@@ -2599,7 +2600,7 @@ def close_aside(store, node_id: str, who: Caller, now: str | None = None) -> Nod
         kind = "check_passed" if passed else "check_failed"
         store.log_node(node.id, _now(), kind, who.label, who.session_id, None,
                        {"command": node.check, "output": output})  # fmt: skip
-        if not passed and len(store.node_log(node.id, ("check_failed",))) == 1:
+        if not passed and not final and len(store.node_log(node.id, ("check_failed",))) == 1:
             # said once, so the agent can put it right; asked to stop again, the leaf closes with the
             # failure on its record. It is a record, not a gate: a session is never trapped by it
             raise refusal(
@@ -3073,7 +3074,7 @@ FIRST = ("on", "auto", "off")
 def plan_first(store) -> str:
     """Plan first, as the person set it: on, auto or off (`graphene plan first`, `P` in graphene
     watch). On: every ask is proposed and waits for the person. Auto: every ask is proposed, and one
-    small leaf with nothing on the board is the person's at once (``gate.one_line_ask``); anything
+    small leaf that puts nothing on the board is the person's at once (``gate.one_line_ask``); anything
     else waits. Off: nothing is proposed first. `graphene init` sets on, and keeps what was set
     before; never set, it is auto while a plan is in force and off otherwise."""
     said = store.meta("plan_first")

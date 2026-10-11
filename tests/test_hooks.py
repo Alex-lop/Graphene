@@ -6,7 +6,7 @@ import json
 import pytest
 
 from graphene_map import plan
-from graphene_map.hooks import HOOK_EVENTS, hook_main, ingest_hook_event, install_hooks
+from graphene_map.hooks import HOOK_EVENTS, hook_main, ingest_hook_event, install_hooks, remove_hooks
 from graphene_map.store import Store, ignore_store_dir
 
 T0 = "2026-01-01T10:00:00.000Z"
@@ -291,6 +291,19 @@ def test_init_remove_takes_out_only_what_init_added_and_an_agent_may_not(repo, m
     assert all(name in said.stdout.splitlines()[0] for name in HOOK_EVENTS)
     assert json.loads(settings.read_text()) == theirs
     assert "none were there" in person("init", "--remove").stdout
+
+
+def test_remove_hooks_keeps_a_handler_the_person_put_in_our_group(repo):
+    """remove_hooks dropped a whole group holding our handler, and with it a Stop notification the person
+    had added beside it, though init --remove is said to take out exactly what init added."""
+    install_hooks(repo)
+    settings = repo / ".claude" / "settings.local.json"
+    merged = json.loads(settings.read_text())
+    mine = {"type": "command", "command": "afplay ~/done.aiff"}
+    merged["hooks"]["Stop"][0]["hooks"].append(mine)
+    settings.write_text(json.dumps(merged))
+    assert "Stop" in remove_hooks(repo)
+    assert json.loads(settings.read_text()) == {"hooks": {"Stop": [{"hooks": [mine]}]}}
 
 
 def test_ignore_store_dir_writes_inside_the_store_only(repo):

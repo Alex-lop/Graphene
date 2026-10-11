@@ -489,7 +489,8 @@ def test_with_nemotron_chosen_init_reads_as_nemotron_and_the_choice_comes_first(
     said = person("init", "--planner", "nemotron", "--executor", "nemotron").output
     lines = [line for line in said.splitlines() if line.strip()]
     assert lines[0].startswith("planner: nemotron --model")
-    assert any("the Claude Code hooks are in" in line for line in lines)
+    [hooks] = [line for line in lines if "the Claude Code hooks are in" in line]  # one line, and it says
+    assert hooks.endswith(": they record it on this machine, and `graphene init --remove` takes them out")
     assert "bashEditDiffEnabled" not in said and "next Claude Code session" not in said
     again = person("init", "--planner", "claude", "--executor", "claude").output
     assert "next Claude Code session" in again  # with Claude Code as the planner, its lines come back

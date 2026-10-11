@@ -40,9 +40,10 @@ NOT_INIT = (
 FIRST_SAID = {
     "on": "Every ask in a session is proposed, one leaf included, and waits for you. You accept in "
     "`graphene watch`, in another terminal; `graphene plan first off`, typed outside Claude Code, stops it.",
-    "auto": f"Every ask is proposed first. One leaf of at most {G.WIDE} paths, with nothing on the board, "
-    "is yours at once; anything else waits for you.",
-    "off": "A quick change is done at once, as a leaf of its own; bigger work is still proposed first.",
+    "auto": f"Every ask is proposed first. One leaf of at most {G.WIDE} paths that puts nothing on the "
+    "board is yours at once; anything else waits for you.",
+    "off": "A quick change is done at once, as a leaf of its own while a plan is in force; bigger work is "
+    "still proposed first.",
 }
 
 
