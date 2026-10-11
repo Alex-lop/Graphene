@@ -109,7 +109,7 @@ def menu(said: str) -> list[str]:
 
 def test_at_a_terminal_each_choice_says_what_it_needs_and_enter_takes_the_one_found(repo, fake, on_path):
     on_path()  # a key Token Factory answers, and no claude or codex
-    said = at_terminal(repo, ["init"], "")  # Enter: the one found
+    said = at_terminal(repo, ["init"], "", "")  # Enter: the one found; Enter: plan first stays on
     assert menu(said) == [
         "  1  Claude Code                needs claude on the PATH  not found",
         "  2  Codex                      needs codex on the PATH   not found",
@@ -122,20 +122,26 @@ def test_at_a_terminal_each_choice_says_what_it_needs_and_enter_takes_the_one_fo
     flat = " ".join(said.split())  # a terminal wraps a long line at a word
     assert f"planner: nemotron --model {ULTRA} · executor: nemotron --model {NANO}" in flat
     assert (repo / ".claude" / "settings.local.json").exists()  # the hooks, as before
-    again = at_terminal(repo, ["init"], "4", "'unclosed", "claude", "codex")  # asked again, with what is set
+    # plan first is asked too, a line a mode, and Enter keeps on
+    for line in ("on every ask in a session is proposed and waits for you in graphene watch",
+                 "auto a one-leaf ask with at most 8 paths and no board item is done at once; bigger work",
+                 "off a quick change is done at once; bigger work is still proposed first",
+                 "plan first [on]:", "plan first: on."):  # fmt: skip
+        assert line in flat, line
+    again = at_terminal(repo, ["init"], "4", "'unclosed", "claude", "codex", "auto")  # asked again
     assert "Error: \"'unclosed\" cannot be read as a command: No closing quotation" in again  # and again
     flat = " ".join(again.split())
     assert f"planner now: nemotron --model {ULTRA} · executor now: nemotron --model {NANO}" in flat
-    assert "choose (Enter keeps them): " in again
+    assert "choose (Enter keeps them): " in again and "plan first: auto." in flat
     assert chosen(repo) == {"planner": "claude", "executor": "codex"}
-    at_terminal(repo, ["init"], "")  # Enter keeps them
-    assert chosen(repo) == {"planner": "claude", "executor": "codex"}
+    kept = at_terminal(repo, ["init"], "", "")  # Enter keeps them, and plan first as it is set
+    assert chosen(repo) == {"planner": "claude", "executor": "codex"} and "plan first [auto]: " in kept
 
 
 @pytest.mark.parametrize("agent, number", [("claude", 1), ("codex", 2)])
 def test_at_a_terminal_with_only_claude_or_only_codex_found_enter_takes_it(repo, on_path, agent, number):
     on_path(agent)  # and no key
-    said = at_terminal(repo, ["init"], "")
+    said = at_terminal(repo, ["init"], "", "")
     shown = menu(said)
     assert shown[number - 1].endswith("  found") and shown[2].startswith("  3  a command of your own")
     assert "Nemotron" not in said and NO_KEY not in said  # no key: Nemotron is not offered, and no signup
@@ -145,7 +151,7 @@ def test_at_a_terminal_with_only_claude_or_only_codex_found_enter_takes_it(repo,
 
 def test_at_a_terminal_with_two_found_enter_takes_neither_and_the_person_types_one(repo, fake, on_path):
     on_path("claude")  # and a key Token Factory answers
-    said = at_terminal(repo, ["init"], "", "1")
+    said = at_terminal(repo, ["init"], "", "1", "")
     shown = menu(said)
     assert shown[0].endswith("  found") and shown[1].endswith("not found") and shown[2].endswith("  found")
     assert said.count("choose: ") == 2 and "choose 1, 2, 3 or 4" in said and "choose [" not in said
@@ -154,7 +160,7 @@ def test_at_a_terminal_with_two_found_enter_takes_neither_and_the_person_types_o
 
 def test_at_a_terminal_with_nothing_found_each_is_listed_with_what_it_needs(repo, on_path):
     on_path()  # no key, and no claude or codex
-    said = at_terminal(repo, ["init"], "", "1")
+    said = at_terminal(repo, ["init"], "", "1", "")
     assert menu(said) == [
         "  1  Claude Code                needs claude on the PATH  not found",
         "  2  Codex                      needs codex on the PATH   not found",
@@ -181,11 +187,11 @@ def test_without_the_nemotron_extra_init_offers_no_nemotron_and_refuses_it_by_na
 def test_the_offer_names_the_sizes_the_list_has_and_writes_their_ids(repo, fake, on_path):
     on_path()
     fake.models = [m for m in MODELS if "Ultra" not in m["id"]]
-    said = at_terminal(repo, ["init"], "")
+    said = at_terminal(repo, ["init"], "", "")
     assert "     Super plans, Nano then Super do the leaves, on this machine\n" in said
     assert chosen(repo) == {"planner": f"nemotron --model {SUPER}", "executor": NEMOTRON["executor"]}
     fake.models = [m for m in MODELS if "Nemotron" not in m["id"]]
-    said = at_terminal(repo, ["init"], "3")
+    said = at_terminal(repo, ["init"], "3", "")
     assert "Token Factory lists no NVIDIA Nemotron model for this key\n" in said
     assert "  3  Nemotron on Token Factory  needs NEBIUS_API_KEY      not reached\n" in said  # a key
     assert "     largest plans, smallest does the leaves, on this machine\n" in said
@@ -483,7 +489,8 @@ def test_with_nemotron_chosen_init_reads_as_nemotron_and_the_choice_comes_first(
     said = person("init", "--planner", "nemotron", "--executor", "nemotron").output
     lines = [line for line in said.splitlines() if line.strip()]
     assert lines[0].startswith("planner: nemotron --model")
-    assert any("the Claude Code hooks are in" in line for line in lines)
+    [hooks] = [line for line in lines if "the Claude Code hooks are in" in line]  # one line, and it says
+    assert hooks.endswith(": they record it on this machine, and `graphene init --remove` takes them out")
     assert "bashEditDiffEnabled" not in said and "next Claude Code session" not in said
     again = person("init", "--planner", "claude", "--executor", "claude").output
     assert "next Claude Code session" in again  # with Claude Code as the planner, its lines come back

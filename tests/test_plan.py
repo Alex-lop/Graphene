@@ -907,6 +907,27 @@ def test_a_check_runs_none_of_the_persons_git_hooks(store, repo):
     assert not ran.exists() and no_check_tree_left(store, repo)
 
 
+def test_a_checks_output_is_kept_in_the_order_it_was_written_so_its_last_line_is_its_own(store, repo):
+    """Kept as stdout then stderr, the last line of `uv run pytest` in a tree with no .venv was uv's
+    "Creating virtual environment at: .venv", printed before the tests ran, and never pytest's summary."""
+    said = plan.run_check("echo 'Creating virtual environment at: .venv' >&2; echo '12 passed'", repo)
+    assert said[1].splitlines() == ["Creating virtual environment at: .venv", "12 passed"]
+
+
+def test_a_check_runs_in_a_sparse_checkout_on_a_new_file_outside_its_cone(store, repo):
+    """`git add -A` on the check's copy of the index refused a path outside the sparse-checkout definition,
+    so a leaf whose scope lies outside the cone came back with "the check could not be run", every time."""
+    (repo / "b").mkdir()
+    (repo / "b/y.py").write_text("Y = 1\n")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", "b")
+    git(repo, "sparse-checkout", "set", "--cone", "src")
+    assert not (repo / "b/y.py").exists()
+    (repo / "b").mkdir(exist_ok=True)
+    (repo / "b/new.py").write_text("N = 1\n")  # what a leaf scoped to b/** writes
+    assert plan.run_check("test -f b/new.py && test -f b/y.py", repo)[:2] == (True, "exit 0, no output")
+
+
 def slow_checkout(repo, said, began=None) -> None:
     """Every checkout of the repo now takes a second and a half, and then writes ``said``: a stand-in
     for a repository large enough that making a worktree takes a while (300,000 files: 39 s). With
@@ -1040,15 +1061,16 @@ def test_a_persons_commit_is_not_a_loose_change_and_an_uncommitted_one_is(store,
     said = (
         "b cannot start: the checkout has an uncommitted change no node made\n"
         "  notes.txt\n"
-        "  put it back, or ask the person: graphene plan ack makes it theirs as it stands, and so does "
-        "committing it"
-    )
+        "  if you made it, put it back; if not, it is the person's: ask them (graphene plan ack makes it "
+        "theirs as it stands, and so does committing it)"
+    )  # an agent is not told first to put back what may be the person's unsaved work
     with pytest.raises(Refused) as first:
         plan.start(store, "b", BOT, repo)
-    assert str(first.value) == said
+    assert str(first.value) == said and str(first.value).splitlines()[-1].startswith("  if you made it")
     with pytest.raises(Refused) as again:  # said once: the second time is short
         plan.start(store, "b", BOT, repo)
-    assert str(again.value).endswith("\n  put it back, or ask the person: graphene plan ack")
+    short = "if you made it, put it back; if not, it is the person's: ask them (graphene plan ack makes it "
+    assert str(again.value).endswith(f"\n  {short}theirs)")
     git(repo, "add", "notes.txt")
     git(repo, "commit", "-qm", "my notes")  # committing it does what ack does
     assert plan.start(store, "b", BOT, repo).state == RUNNING
@@ -1068,13 +1090,13 @@ def test_a_refusal_lectures_once_in_a_hold_and_again_in_the_next(store, repo):
     assert said[0] == (
         "n1 is not done: changed outside its scope (src/api/**, tests/**), which only the person widens\n"
         "  README.md\n"
-        f"  put it back (git checkout {base} -- <path>, or delete a new file), or say why: "
-        "graphene node release n1 --why '…'"
+        f"  if you made it, put it back (git checkout {base} -- <path>, or delete a new file); if not, say "
+        "whose: graphene node release n1 --why '…'"
     )
     assert said[1] == (
         "n1 is not done: changed outside its scope (src/api/**, tests/**)\n"
         "  README.md\n"
-        "  put it back, or say why: graphene node release n1 --why '…'"
+        "  if you made it, put it back; if not, say whose: graphene node release n1 --why '…'"
     )
     with pytest.raises(Refused) as other:  # another caller meets it for the first time
         plan.finish(store, "n1", ALEX)
@@ -1093,3 +1115,32 @@ def test_a_refusal_lists_the_paths_that_fit_and_counts_the_rest():
     assert what == "x is not done" and do == "  do this"
     assert paths.startswith("  src/module_0/file.py, ") and paths.endswith(" more")
     assert len(paths) <= plan.WIDE + 2
+
+
+def test_a_checks_clean_tree_reads_an_edit_made_in_the_second_the_file_was_written(repo, monkeypatch):
+    """X5 on 907a7d0: under `uv run pytest` the broken leaf landed. The clean tree is built from a copy of the
+    index, dated when it is copied, so git trusts every entry's stat data; an edit of the same size made in
+    the second the file was written out then reads as the committed file, and the check passes on code that
+    is not the leaf's. Dated at epoch+1, every entry is racily clean and its content is read."""
+    import shutil
+    import time as clock
+
+    f = repo / "src/db/schema.py"
+    for _ in range(10):  # the edit must land in the second the commit stamped the file: a boundary retries
+        f.write_text("TABLES = [1]\n")
+        git(repo, "add", "-A")
+        git(repo, "commit", "-qm", "v1", "--allow-empty")
+        stamped = (repo / ".git" / "index").stat().st_mtime
+        f.write_text("TABLES = [2]\n")  # the same size, the same inode
+        if int(stamped) == int(f.stat().st_mtime):
+            break
+    real = shutil.copyfile
+
+    def later(src, dst, *a, **k):  # the run's own `done`, seconds after the executor's edit
+        out = real(src, dst, *a, **k)
+        os.utime(dst, (clock.time() + 10, clock.time() + 10))
+        return out
+
+    monkeypatch.setattr(shutil, "copyfile", later)
+    with plan._clean_tree(repo, [], clock.monotonic()) as tree:
+        assert (tree / "src/db/schema.py").read_text() == "TABLES = [2]\n"

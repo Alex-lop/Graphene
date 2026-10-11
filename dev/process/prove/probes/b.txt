@@ -1,0 +1,8 @@
+session 20567EA9-39DA-4E2A-9430-BA6D97B70931
+b1 exit 1
+{'subtype': 'error_max_budget_usd', 'is_error': True, 'total_cost_usd': 0.050981799999999994, 'num_turns': 1, 'duration_ms': 28769}
+result words: 0
+b2 exit 1
+{'subtype': 'error_max_budget_usd', 'is_error': True, 'total_cost_usd': 0.1023871, 'num_turns': 1, 'duration_ms': 30047}
+result words: 0
+keys: ['duration_api_ms', 'duration_ms', 'errors', 'fast_mode_disabled_reason', 'fast_mode_state', 'is_error', 'modelUsage', 'num_turns', 'permission_denials', 'queued_turn_count', 'result_index', 'safety_stops', 'session_id', 'stop_reason', 'subagent_stats', 'subtype', 'terminal_reason', 'total_cost_usd', 'type', 'usage', 'uuid']

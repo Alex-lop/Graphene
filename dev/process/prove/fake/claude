@@ -1,0 +1,99 @@
+#!/usr/bin/env python3
+"""A stand-in `claude` for FAKE=1 runs: prints what `claude -p` would, spends nothing.
+
+As a planner (GRAPHENE_PLANNER=1, stream-json) it answers a two-leaf proposal in the plan's text form.
+A session id ending in 0-3 gets a bad first answer (signoff: perhaps) and a good second one; one
+ending in f is bad every time, so x1_score.py sees asks by first answer, by second answer and lost.
+As an executor (GRAPHENE_NODE set) it edits the one file its leaf owns and runs `graphene node done`.
+The plant's e2e-xml leaf hands itself back once, naming normalize/fields.py, so plant.sh's r path
+runs; every result carries one permission denial, so truth.py's count is exercised.
+As anything else (a plain session, /batch, a reader, a stranger) it writes nothing and says so.
+Runs on the system python3 (3.9) too, which a stranger's bare PATH resolves to."""
+from __future__ import annotations
+
+import json
+import os
+import pathlib
+import subprocess
+import sys
+import time
+
+argv = sys.argv[1:]
+fmt = argv[argv.index("--output-format") + 1] if "--output-format" in argv else "text"
+resumed = "--resume" in argv
+session = "fake0000-0000-4000-8000-00000000000a"
+for flag in ("--session-id", "--resume"):
+    if flag in argv:
+        session = argv[argv.index(flag) + 1]
+MODEL = "claude-sonnet-5-5"
+denials: list[dict] = []
+
+
+def emit(obj: dict) -> None:
+    sys.stdout.write(json.dumps(obj) + "\n")
+    sys.stdout.flush()
+
+
+def stream(text: str, tool: str | None = None) -> None:
+    cost = 0.0123 * (2 if resumed else 1)  # a resumed session reports its running total
+    if fmt == "json":
+        emit({"type": "result", "subtype": "success", "result": text, "session_id": session,
+              "total_cost_usd": cost, "permission_denials": denials,
+              "usage": {"input_tokens": 900, "output_tokens": 80}})
+        return
+    if fmt != "stream-json":
+        print(text)
+        return
+    emit({"type": "system", "subtype": "init", "cwd": os.getcwd(), "model": MODEL, "session_id": session,
+          "tools": ["Read", "Edit", "Bash"]})
+    content: list[dict] = [{"type": "text", "text": text}]
+    if tool:
+        content.append({"type": "tool_use", "id": "t1", "name": "Bash", "input": {"command": tool}})
+    emit({"type": "assistant", "message": {"id": f"m-{session[:8]}-{int(time.time() * 1000) % 100000}",
+                                           "model": MODEL, "content": content,
+                                           "usage": {"input_tokens": 900, "output_tokens": 80}}})
+    emit({"type": "result", "subtype": "success", "result": text, "session_id": session,
+          "total_cost_usd": cost, "usage": {"input_tokens": 900, "output_tokens": 80},
+          "permission_denials": denials})
+
+
+def proposal() -> str:
+    leaves = ["  ? name the new source in the README  [readme]\n      scope: README.md\n      check: true"]
+    if pathlib.Path("normalize/fields.py").exists():
+        leaves.insert(0, "  ? map the xml fields  [fields]\n      scope: normalize/fields.py\n      check: true")
+    body = "\n".join(leaves)
+    return f"I read the repo.\n```plan\ngoal: the new feed loads like the others\n- the new feed  [feed]\n{body}\n```\n"
+
+
+if os.environ.get("GRAPHENE_PLANNER"):
+    last = session[-1].lower()
+    bad = last == "f" or (last in "0123" and not resumed)
+    stream(proposal().replace("check: true", "signoff: perhaps", 1) if bad else proposal())
+    sys.exit(0)
+
+node = os.environ.get("GRAPHENE_NODE")
+if node:
+    owned = {"fields": "normalize/fields.py", "readme": "README.md", "e2e-xml": "tests/test_e2e_xml.py"}
+    tried = pathlib.Path(os.environ.get("TMPDIR", "/tmp")) / f"fake-tried-{node}"
+    denials.append({"tool_name": "Bash", "tool_input": {"command": "python3 -m unittest -q tests"}})
+    if node == "e2e-xml" and not tried.exists():
+        tried.write_text("1")
+        why = ('normalize/fields.py FIELD_MAPS["xml"] maps sku to "xcode" but samples/prices.xml uses '
+               '"code", so every record normalizes to None')
+        subprocess.run(["graphene", "node", "release", node, "--why", why, "--wants", "normalize/fields.py"],
+                       capture_output=True, text=True)
+        stream("the field map is wrong; handed back", f"graphene node release {node}")
+        sys.exit(0)
+    path = pathlib.Path(owned.get(node, "README.md"))
+    if node == "e2e-xml":
+        path.write_text("import unittest\n\n\nclass E2E(unittest.TestCase):\n    def test_loads(self):\n"
+                        "        self.assertTrue(True)\n")
+    elif path.exists():
+        with path.open("a", encoding="utf-8") as f:
+            f.write(f"\n# {node}: edited by the fake executor\n")
+    done = subprocess.run(["graphene", "node", "done", node], capture_output=True, text=True)
+    said = (done.stdout.strip() or done.stderr.strip())[-200:]
+    stream(f"done: {said}", f"graphene node done {node}")
+    sys.exit(0)
+
+stream("fake: nothing was done here (FAKE=1)")

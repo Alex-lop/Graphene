@@ -5,9 +5,11 @@ would, so every ending is on purpose."""
 
 import json
 import os
+import re
 import signal
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 from test_plan_cli import AGENT_ENV, person, repo, runner  # noqa: F401  (fixtures)
@@ -313,6 +315,12 @@ def test_the_planner_and_a_session_are_told_a_check_runs_its_own_files_and_what_
     assert rule in " ".join(A.RULES.split()) and rule in " ".join(gate.TEACH.split())
 
 
+def test_the_planner_is_told_a_check_runs_in_a_fresh_worktree(repo, tmp_path, monkeypatch):
+    assert person("ask", "ids", "--with", planner(tmp_path, GOOD, monkeypatch)).exit_code == 0
+    [seen] = [json.loads(line) for line in (tmp_path / "seen.jsonl").read_text().splitlines()]
+    assert "A check runs in a fresh worktree of the leaf's files" in " ".join(seen["prompt"].split())
+
+
 def test_the_planner_is_told_the_board_carries_only_what_changes_the_tree(repo, tmp_path, monkeypatch):
     """Study 2: answering the board cost about twice the outline's attention, mostly in reading. The
     planner is told: at most three items, each a question or a risk whose answers carry then: lines,
@@ -390,7 +398,11 @@ def test_a_claude_code_planner_is_held_on_the_night_and_its_stream_says_what_it_
     with Store.open(repo) as store:
         said = []
         added = A.ask(store, repo, "ids", claude_planner(tmp_path, (bad, 0.25), (good, 0.4)), say=said.append)
-        assert added == ["proposed ids: users returns ids"] and plan.get(store, "ids").state == PROPOSED
+        assert added == [  # what both tries cost, after the proposal lines
+            "proposed ids: users returns ids",
+            "the planner (claude sonnet-5-5): 2 calls, $0.40 at list price",
+        ]
+        assert plan.get(store, "ids").state == PROPOSED
         assert said[-2:] == ["the planner says:", "  I read api.py."]  # the result's text, not the stream
         bills = [(e["actor"], e["detail"]) for e in store.node_log("*", ("usage",))]
     assert [(who, bill["dollars"]) for who, bill in bills] == [
@@ -413,6 +425,105 @@ def test_a_claude_code_planner_that_stopped_says_why(repo, tmp_path):
     with Store.open(repo) as store, pytest.raises(Refused, match="each was refused as above"):
         A.ask(store, repo, "ids", planner, say=said.append)
     assert "no proposal (exit 0): error_max_budget_usd" in said  # why it stopped, not "it said nothing"
+
+
+def test_a_lost_ask_keeps_the_proposal_it_paid_for_and_says_what_it_cost(repo, tmp_path):
+    """Two answers refused, and the ask ended with nothing: what the person paid for was gone. The
+    proposal is kept (the block alone, which `plan propose` reads); the ask says what it cost after the
+    refusal, then where the proposal is kept, its last line."""
+    bad = "I read api.py.\n```plan\n- ids  [ids]\n    scope: api.py\n    signoff: perhaps\n```"
+    said = person("ask", "ids", "--with", claude_planner(tmp_path, (bad, 0.25), (bad, 0.5)))
+    assert said.exit_code == 1, said.output
+    kept = re.search(r"its proposal is kept in (\S+/runs/ask-\w+\.txt): mend it, then "
+                     r"`graphene plan propose - < \1`", said.stderr)  # fmt: skip
+    bill = "the planner (claude sonnet-5-5): 2 calls, $0.50 at list price"
+    order = f"(each was refused as above)\n{bill}\nits proposal is kept in"
+    assert kept and order in said.stderr, said.stderr
+    assert (repo / kept[1]).read_text() == "- ids  [ids]\n    scope: api.py\n    signoff: perhaps\n"
+    assert said.output.splitlines()[-1].startswith("its proposal is kept in")  # a talk's bottom line in watch
+
+
+def test_a_lost_talk_that_kept_nothing_says_why_on_watchs_bottom_line_not_what_it_cost(repo, tmp_path):
+    """A lost `t w` whose planner printed no proposal ended on its bill, and watch's bottom line, a talk's
+    last line, said what it cost and not why nothing came back."""
+    from graphene_map.tui import Watch
+
+    assert person("node", "add", "ids", "--id", "ids", "--scope", "api.py", "--check", "true").exit_code == 0
+    planner = claude_planner(tmp_path, ("I would rather not.", 0.25), ("Still no.", 0.5))
+    said = person("talk", "why", "ids", "--with", planner)
+    assert said.exit_code == 1 and said.output.splitlines()[-1].startswith("the planner (claude sonnet-5-5)")
+    log = tmp_path / "talk.txt"
+    log.write_text(said.output)
+    app, told = Watch(repo, lambda: Store.open(repo), every=60), []
+    app.call_from_thread = lambda fn, message, whole: told.append(message)
+
+    class Lost:
+        def wait(self):
+            return 1
+
+    app.follow(Lost(), ["talk", "why", "ids"], log)
+    assert told[0].startswith("✗ graphene talk why ids ended: no proposal after 2 tries"), told
+    assert told[0].endswith("no proposal (exit 0): Still no."), told
+
+
+def test_a_lost_ask_keeps_the_last_proposal_it_paid_for_though_its_last_try_printed_none(repo, tmp_path):
+    """The first try's proposal was refused and the second printed none (a stop, an answer in prose):
+    the ask kept nothing, though the first was paid for."""
+    bad = "```plan\n- ids  [ids]\n    scope: api.py\n    signoff: perhaps\n```"
+    said = person("ask", "ids", "--with", claude_planner(tmp_path, (bad, 0.25), ("", 0.5)))
+    assert said.exit_code == 1, said.output
+    kept = re.search(r"its proposal is kept in (\S+): mend it", said.stderr)
+    assert kept and (repo / kept[1]).read_text() == "- ids  [ids]\n    scope: api.py\n    signoff: perhaps\n"
+
+
+def test_a_lost_merges_kept_proposal_says_to_drop_what_it_replaces_first(repo, tmp_path):
+    """`plan propose` replaces nothing: a lost merge's proposal, mended, collided with the leaves it was
+    proposed beside, and the one command printed was refused. The kept line drops them first."""
+    for i, path in (("a", "api.py"), ("b", "schema.py")):
+        assert person("node", "add", i, "--id", i, "--scope", path, "--check", "true").exit_code == 0
+    bad = "```plan\n? both  [both]\n    scope: api.py, schema.py\n    check: true\n    signoff: perhaps\n```"
+    said = person("talk", "merge", "a", "b", "--with", claude_planner(tmp_path, (bad, 0.25), (bad, 0.5)))
+    assert said.exit_code == 1, said.output
+    kept = re.search(r"its proposal is kept in (\S+): mend it, then `graphene node drop a b`, then "
+                     r"`graphene plan propose - < \1`", said.stderr)  # fmt: skip
+    assert kept, said.stderr
+    mended = (repo / kept[1]).read_text().replace("    signoff: perhaps\n", "")
+    assert person("node", "drop", "a", "b").exit_code == 0
+    again = runner.invoke(build(), ["plan", "propose", "-"], env={"GRAPHENE_AS": "person:alex"}, input=mended)
+    assert again.exit_code == 0, again.output
+
+
+def test_a_lost_reasks_kept_proposal_says_to_drop_the_last_tree_first(repo, tmp_path):
+    good = "```plan\n? users returns ids  [ids]\n    scope: api.py\n    check: true\n```"
+    assert person("ask", "ids", "--with", claude_planner(tmp_path, (good, 0.2))).exit_code == 0
+    os.remove(repo / "tried")  # the stand-in answers from its first answer again
+    bad = "```plan\n? users read ids  [ids-read]\n    scope: api.py\n    signoff: perhaps\n```"
+    said = person("ask", "ids", "--with", claude_planner(tmp_path, (bad, 0.25), (bad, 0.5)), "--finer")
+    assert said.exit_code == 1, said.output
+    assert "mend it, then `graphene node drop ids`, then `graphene plan propose - < " in said.stderr
+
+
+def test_a_lost_asks_kept_proposal_is_named_from_where_the_person_stands(repo, tmp_path, monkeypatch):
+    """`graphene ask` runs from any directory of the checkout; the next step it prints must run there."""
+    bad = "```plan\n- ids  [ids]\n    scope: api.py\n    signoff: perhaps\n```"
+    (repo / "src").mkdir(exist_ok=True)
+    monkeypatch.chdir(repo / "src")
+    said = person("ask", "ids", "--with", claude_planner(tmp_path, (bad, 0.25), (bad, 0.5)))
+    assert said.exit_code == 1, said.output
+    kept = re.search(r"its proposal is kept in (\S+): mend it", said.stderr)
+    assert kept and kept[1].startswith("../"), said.stderr
+    assert (repo / "src" / kept[1]).read_text().startswith("- ids  [ids]")
+
+
+def test_a_lost_asks_kept_proposal_is_named_whole_when_watch_ran_it(repo, tmp_path, monkeypatch):
+    """watch runs an ask in the repo's root, wherever the person started it: a path relative to the root
+    failed once they quit watch, back in src/. Under watch the kept file is named by its whole path."""
+    bad = "```plan\n- ids  [ids]\n    scope: api.py\n    signoff: perhaps\n```"
+    monkeypatch.setenv("GRAPHENE_WATCH", "")  # as watch's own commands carry it, a terminal or none
+    said = person("ask", "ids", "--with", claude_planner(tmp_path, (bad, 0.25), (bad, 0.5)))
+    assert said.exit_code == 1, said.output
+    kept = re.search(r"its proposal is kept in (\S+): mend it", said.stderr)
+    assert kept and Path(kept[1]).is_absolute() and Path(kept[1]).read_text().startswith("- ids  [ids]")
 
 
 def test_a_planner_the_night_refuses_is_never_started(repo, tmp_path, monkeypatch):

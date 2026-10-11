@@ -6,7 +6,7 @@ import json
 import pytest
 
 from graphene_map import plan
-from graphene_map.hooks import HOOK_EVENTS, hook_main, ingest_hook_event, install_hooks
+from graphene_map.hooks import HOOK_EVENTS, hook_main, ingest_hook_event, install_hooks, remove_hooks
 from graphene_map.store import Store, ignore_store_dir
 
 T0 = "2026-01-01T10:00:00.000Z"
@@ -268,6 +268,42 @@ def test_install_hooks_refuses_to_clobber_malformed_settings(repo):
     with pytest.raises(ValueError):
         install_hooks(repo)
     assert settings.read_text() == "[]"
+
+
+def test_init_remove_takes_out_only_what_init_added_and_an_agent_may_not(repo, monkeypatch):
+    """The hooks are what hold an agent to the plan: only the person takes them out, and only Graphene's
+    own; another tool's hook and the rest of the file stay as they were."""
+    from test_plan_cli import agent, person
+
+    for name in ("CLAUDECODE", "CLAUDE_CODE_SESSION_ID", "AI_AGENT"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.chdir(repo)
+    settings = repo / ".claude" / "settings.local.json"
+    settings.parent.mkdir()
+    hook = {"matcher": "Bash", "hooks": [{"type": "command", "command": "echo hi"}]}
+    theirs = {"permissions": {"allow": ["Bash(ls)"]}, "hooks": {"PostToolUse": [hook]}}
+    settings.write_text(json.dumps(theirs))
+    install_hooks(repo)
+    assert agent("init", "--remove").exit_code == 1 and "graphene ingest hook" in settings.read_text()
+    said = person("init", "--remove")
+    assert said.exit_code == 0, said.output
+    assert said.stdout.startswith("hooks removed from .claude/settings.local.json: ")
+    assert all(name in said.stdout.splitlines()[0] for name in HOOK_EVENTS)
+    assert json.loads(settings.read_text()) == theirs
+    assert "none were there" in person("init", "--remove").stdout
+
+
+def test_remove_hooks_keeps_a_handler_the_person_put_in_our_group(repo):
+    """remove_hooks dropped a whole group holding our handler, and with it a Stop notification the person
+    had added beside it, though init --remove is said to take out exactly what init added."""
+    install_hooks(repo)
+    settings = repo / ".claude" / "settings.local.json"
+    merged = json.loads(settings.read_text())
+    mine = {"type": "command", "command": "afplay ~/done.aiff"}
+    merged["hooks"]["Stop"][0]["hooks"].append(mine)
+    settings.write_text(json.dumps(merged))
+    assert "Stop" in remove_hooks(repo)
+    assert json.loads(settings.read_text()) == {"hooks": {"Stop": [{"hooks": [mine]}]}}
 
 
 def test_ignore_store_dir_writes_inside_the_store_only(repo):

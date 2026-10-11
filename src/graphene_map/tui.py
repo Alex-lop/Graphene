@@ -74,7 +74,7 @@ HELP = (  # what answering the board needs first: at 80x24 the first screen ends
     ("shape", (
         ("y d", "accept, sign off, it is done; drop"), ("e E", "edit it in $EDITOR; with what is under it"),
         ("a A s", "add a sibling, a child; the planner splits it"),
-        ("?", "ask the planner why, split, merge, another way"),
+        ("t", "ask the planner why, split, merge, another way"),
         ("+ -", "the plan asked again, finer, coarser"), ("V u", "select several, then y or d; undo"),
         ("m", "mark all seen: then + and ~ show what changed"),
     )),
@@ -87,7 +87,7 @@ HELP = (  # what answering the board needs first: at 80x24 the first screen ends
     ("see", (("Enter l D", "the record; the executor's output; the direction"),
              ("ctrl-d -u", "scroll the pane"))),
     ("came back", (("w b r n", "widen its scope; a sibling; reopen; wait on those"),
-                   ("?", "ask the planner what would let it be done"))),
+                   ("t", "ask the planner what would let it be done"))),
 )  # fmt: skip
 HELP_END = (
     "The status line counts agents: what runs, its minutes, its dollars at list price; and you: your acts "
@@ -104,7 +104,7 @@ KEYS = {  # the bottom line, when no command has just spoken: what the keys do o
     "proposed": ["y accept", "d drop", "e edit", "E edit with what is under it"],
     "review": ["y sign off", "x send back", "Enter record"],
     "running": ["l output", "x release", "Enter record"],
-    "done": ["x reopen", "Enter record"],
+    "done": ["x reopen", "Enter record", "c diff"],
     "ready": ["R run all ready", "r run this", "e edit"],
     "yours": ["y done", "e edit", "Enter record"],
     "waiting": ["e edit", "d drop", "Enter record"],
@@ -428,18 +428,21 @@ class Ask(ModalScreen[str | None]):
 
 
 def legend(wide: int) -> Text:
-    """The glyphs and colours, one line: what each state reads as, and the graph's heavy line; where
-    the words do not fit, the person's move (magenta: yours, review, came back) as one."""
+    """The glyphs and colours, one line: what each state reads as, ∅ (a check red first flagged: it passes
+    at the base, or fails outside the leaf's scope) and the graph's heavy line; where the words do not fit,
+    the person's move (magenta: yours, review, came back) as one, and where they still do not, ∅ on a line
+    of its own under them."""
     looks = [(P.look(w)[0], P.look(w)[1], w) for w in LEGEND]
     short = [("".join(g for g, _, _ in looks[:3]), P.look("yours")[1], "yours"), *looks[3:]]
+    nothing = Text.assemble(("∅", "dim"), " check flagged")  # which way, the pane says
     for form in (looks, short):
         out = Text()
         for glyph, colour, word in form:
             out.append(glyph, colour).append(f" {word}  ")
-        out.append("━", "bold").append(" critical path" if form is looks else " critical")
-        if out.cell_len <= wide or form is short:
-            return out
-    return out
+        heavy = Text.assemble(("━", "bold"), " critical path" if form is looks else " critical")
+        if out.cell_len + nothing.cell_len + 2 + heavy.cell_len <= wide:
+            return Text.assemble(out, nothing, "  ", heavy)
+    return Text.assemble(out, heavy, "\n", nothing)
 
 
 def help_text(groups, wide: int) -> Text:
@@ -646,7 +649,7 @@ class PlanTree(Tree[str]):
         # its id and word stay in their columns as deep as its leaf's do
         least = 1 if isinstance(node.data, tuple) else 4
         mark = self.app.mark(node)
-        flag = "∅" if node.data in self.flagged else ""  # its check proves nothing: the pane says why
+        flag = "∅" if node.data in self.flagged else ""  # red first flagged its check: the pane says why
         label = row(glyph, word, title, node_id, wide - 2, self.ids, self.words, bold, folded, least, mark,
                     flag)
         if node.data in self.chosen:
@@ -759,7 +762,8 @@ class Watch(App):
     ENABLE_COMMAND_PALETTE = False
     BINDINGS = [
         Binding("q", "quit", show=False),
-        Binding("question_mark", "help_or_ask", show=False),
+        Binding("question_mark", "help", show=False),
+        Binding("t", "talk", show=False),
         Binding("colon", "line(':')", show=False),
         Binding("slash", "line('/')", show=False),
         Binding("escape", "escape", show=False),
@@ -781,6 +785,7 @@ class Watch(App):
         Binding("b", "offer('b')", show=False),
         Binding("P", "plan_first", show=False),
         Binding("D", "direction", show=False),  # direction: the tree above the plans, in the pane
+        Binding("c", "diff", show=False),  # what a done leaf changed: `graphene node diff --stat`
         Binding("m", "seen", show=False),
         Binding("plus", "reask('finer')", show=False),
         Binding("minus", "reask('coarser')", show=False),
@@ -820,7 +825,7 @@ class Watch(App):
         self.by_id: dict[str, P.Node] = {}
         self.under: dict = {}
         self.lone: tuple | None = None  # one leaf proposed: it, and the sub-goals its row stands for
-        self.prechecked: dict[str, dict] = {}  # leaf -> its precheck row, when it proves nothing
+        self.prechecked: dict[str, dict] = {}  # leaf -> its precheck row, when red first flagged it
         self.offered: dict[str, list[str]] = {}  # the keys each leaf that came back offers
         self.forks: dict[str, list[dict]] = {}  # a leaf's forks in its last attempt: rows under it
         self.heard: set = set()  # the steps up the ladder the bottom line has said
@@ -1506,14 +1511,13 @@ class Watch(App):
         return ["Esc back" if k == "l back" else k for k in keys]
 
     def row_keys(self) -> list[str]:
-        tail = [*(["Tab view"] if len(V.VIEWS) > 1 else []), "? talk" if self.selected() else "? help"]
-        tail.append("q quit")
+        tail = [*(["Tab view"] if len(V.VIEWS) > 1 else []), "? help", "q quit"]
         if self.anchor is not None:
             yes = "y accept and run" if self.runs_on_y(self.chosen()) else "y accept"
-            return ["VISUAL", yes, "d drop", "? m merge", "j k widen it", "Esc ends"]
-        if self.view == "record":
+            return ["VISUAL", yes, "d drop", "t m merge", "j k widen it", "Esc ends"]
+        if self.view == "record" and not self.on_goal() and self.board_row() is None:  # their Enter is theirs
             offers = [OFFERED[k] for k in self.offer_keys()]
-            ask = ["? ask the planner", "q quit"] if offers else tail  # there ? is no help: it spends
+            ask = ["t ask the planner", "q quit"] if offers else tail
             return ["ctrl-d ctrl-u scroll", "Enter back", *offers, *ask]
         if self.view == "tail":
             return ["ctrl-d ctrl-u scroll", "l back", *tail]
@@ -1538,6 +1542,8 @@ class Watch(App):
             ended = ended or (["R run all ready"] if self.counts.get("ready") else [])  # as the status says
             keys = ["y accept it all"] if self.counts.get("proposed") else ended
             fold = "za fold all" if self.tree.root.is_expanded else "za unfold"
+            # ponytail: Enter on the goal shows the plan's record, but its hint would push `? help` off an
+            # 80-column line (test_talk pins it); the help lists Enter, and the pane says so
             return [*keys, "E edit the plan as text", fold, *tail]
         word, node = self.word(self.selected()), self.tree.cursor_node if self.drawn is None else None
         fork = node.data if node is not None and isinstance(node.data, tuple) else None
@@ -1545,7 +1551,10 @@ class Watch(App):
         if word == "came back":
             offers = [OFFERED[k] for k in self.offer_keys()]
             again = [] if "r" in self.offer_keys() else ["r run it again"]  # else r is the offer
-            return [*on, *offers, "? ask the planner", *again, "Enter record", "q quit"]
+            # the free fix, running it again and the help before t, which the pane lists with its command:
+            # with three offers at 80 columns, t is the one that gives way
+            return [*on, *offers, "e edit its check", *again, "? help", "t ask the planner", "Enter record",
+                    "q quit"]  # fmt: skip
         shut = ["za unfold"] if node is not None and node.allow_expand and not node.is_expanded else []
         if word in KEYS:
             keys = ["y accept and run", *KEYS[word][1:]] if self.runs_on_y(self.chosen()) else KEYS[word]
@@ -1635,9 +1644,12 @@ class Watch(App):
         if self.shape is not None:
             self.call_after_refresh(self.refresh_plan)  # below 110 columns the tree is as tall as its rows
 
-    def action_help_or_ask(self) -> None:
+    def action_help(self) -> None:
+        self.push_screen(Help())
+
+    def action_talk(self) -> None:
         node_id = self.selected()
-        if node_id is not None and node_id in self.back:  # there ? asks the planner, which spends
+        if node_id is not None and node_id in self.back:  # there t asks the planner, which spends
             self.background(asked_about(node_id))
         elif node_id is not None:
             self.talk_to()
@@ -1849,11 +1861,29 @@ class Watch(App):
         self.background(["ask", f"--{size}", *argv[2:-1]])  # the flag first: a cut line still names it
 
     def action_run(self, here: bool) -> None:
-        node_id = self.selected()
+        """R, and r on the goal: every ready leaf; r on a node: the ready leaves under it. A run that could
+        start more than one leaf (each an executor that spends) asks first; one leaf starts at once. It
+        could start a leaf waiting on what it lands, and, named with --node, one that came back."""
+        node_id = self.selected() if here else None
         if here and "r" in self.offer_keys():  # a leaf that came back on a landed leaf's fault offers r
             return self.action_offer("r")
-        argv = ["run", *shlex.split(RUN_WITH), *(["--node", node_id] if here and node_id else [])]
-        self.background(argv)
+        argv = ["run", *shlex.split(RUN_WITH), *(["--node", node_id] if node_id else [])]
+        under = {node_id, *(n.id for n in P.below(node_id, self.nodes))} if node_id else self.words
+        words = [self.words.get(i) for i in under]
+        kinds = ("ready", "came back", "waiting") if node_id else ("ready", "waiting")
+        could = [(n, w) for w in kinds if (n := words.count(w))]
+        # nothing, one leaf, or no executor chosen (the run refuses): no question; the run says what it did
+        if sum(n for n, _ in could) <= 1 or not self.counts.get("with"):
+            return self.background(argv)
+        which = ", ".join(f"{n} {w}" for n, w in could)
+        many = (f"run up to {sum(n for n, _ in could)} leaves ({which}), at most {shlex.split(RUN_WITH)[-1]} "
+                f"at once{self.counts.get('with', '')}")  # fmt: skip
+
+        def answered(typed: str | None) -> None:
+            if (typed or "").lower() in ("y", "yes"):
+                self.background(argv)
+
+        self.push_screen(Ask(f"{many}? y and Enter start them"), answered)
 
     def action_plan_first(self) -> None:
         now = self.counts.get("first", "off")  # on, auto, off: strictest to loosest, then round
@@ -1883,10 +1913,21 @@ class Watch(App):
         self.view = "contract" if self.view == "tail" else "tail"
         self.refresh_plan()
 
+    def action_diff(self) -> None:
+        node_id = self.selected()
+        if node_id is None:
+            return
+        said = self.did(["node", "diff", node_id, "--stat"], quiet=True, keep=True)
+        if said is not None:  # a replay refuses every command, and has said so
+            self.finished(f"graphene node diff {node_id} --stat", said)
+
     def action_record(self) -> None:
         if self.board_row() is not None:
             return self.action_board("enter")
-        if self.on_goal():  # the goal has no record of its own: its pane already says what is under it
+        if self.on_goal():  # the goal's record is the plan's: every leaf's added up
+            said = self.did(["plan", "record"], quiet=True, keep=True)
+            if said is not None:  # a replay refuses every command, and has said so
+                self.finished("graphene plan record", said)
             return
         self.view = "contract" if self.view == "record" else "record"
         self.query_one("#side", VerticalScroll).scroll_home(animate=False)
@@ -1914,13 +1955,13 @@ class Watch(App):
         side = self.query_one("#side", VerticalScroll)
         side.scroll_relative(y=way * max(side.size.height - 2, 3), animate=False)
 
-    # -- talking on the tree: `?` on a node (graphene talk), `m` (graphene plan seen) -----------------
+    # -- talking on the tree: `t` on a node (graphene talk), `m` (graphene plan seen) -----------------
 
     TALK = {"w": "why", "s": "split", "m": "merge", "a": "another", "another way": "another", "?": "help"}
     changed: tuple[dict[str, str], int] = ({}, 0)  # talk.marks: what changed since the person last looked
 
     def talk_to(self) -> None:
-        """`?` on a node: one line saying what to ask the planner about it, or about the selection."""
+        """`t` on a node: one line saying what to ask the planner about it, or about the selection."""
         ids, here = self.chosen(), self.selected()
         about = ", ".join(ids) if len(ids) > 1 else here
         choices = "w why · s split · m merge · a another way · ? help · or your words"
@@ -2050,7 +2091,9 @@ class Watch(App):
         said = R.tail(log, 400)
         tried = max((k for k, line in enumerate(said) if line.startswith("asking the planner")), default=-1)
         news = [line.strip() for line in said[tried + 1 :] if line.strip() and "(the plan of " not in line]
-        gist = (news[-1] if argv[0] in ("run", "talk") else news[0]) if news else ""
+        # a talk's last line, past the planner's bill (`the planner (claude …): 2 calls, …`): why it ended
+        last = [line for line in news if not line.startswith("the planner (")] if argv[0] == "talk" else news
+        gist = ((last or news)[-1] if argv[0] in ("run", "talk") else news[0]) if news else ""
         named = argv[: next((k for k, word in enumerate(argv) if word.startswith("-")), len(argv))]
         mark = "✗ " if code else ""  # its options were on the bottom line when it started: room for the gist
         whole = [f"{mark}graphene {as_typed(argv)} ended (exit {code}); all it said, kept in "
@@ -2121,7 +2164,7 @@ def _node(data):
 
 def _sentence(argv: list[str]) -> list[str]:
     """`:ask` as the shell reads it, its words one sentence: `:ask --about ids fix it` is `graphene ask
-    'fix it' --about ids`, what `?` builds; `:ask add a login page` needs no quotes. Only ask's own
+    'fix it' --about ids`, what `t` builds; `:ask add a login page` needs no quotes. Only ask's own
     options are options: `:ask add a --dry-run flag` asks for a --dry-run flag."""
     words, options, rest = [], [], iter(argv[1:])
     for word in rest:
@@ -2241,6 +2284,9 @@ def goal_pane(store, s, wide: int) -> Text:
     pane.text(Text.assemble(("the goal", "dim"), " · ", (word, P.look(word)[1]), extra))
     if not goal and not proposed:
         pane.text("the root of the tree, in your words: :plan goal '…' says why any of this is done", "dim")
+    runs = store.node_log("*", ("run", "archived"))  # this plan's last run, not an archived plan's
+    if runs and runs[-1]["kind"] == "run" and runs[-1]["detail"].get("summary"):
+        pane.field("last run", str(runs[-1]["detail"]["summary"]))
     tops = s.under.get(None, [])
     if tops:
         pane.gap()
@@ -2252,11 +2298,17 @@ def goal_pane(store, s, wide: int) -> Text:
 
 def precheck(store, node: P.Node) -> dict | None:
     """The leaf's last precheck row's detail, when it is about its current rev and says it passes at
-    the base (its check proves nothing) or names paths outside its scope; else None."""
-    if node.state not in (P.OPEN, P.PROPOSED):  # done, it proved what it proved; running, it is being run
+    the base (its check proves nothing) or names paths outside its scope; else None. Done or in review,
+    when it passed at the base with the check it finished on: what that check passed proved no more."""
+    if node.state not in (P.OPEN, P.PROPOSED, P.DONE, P.REVIEW):  # running, it is being run
         return None
     rows = store.node_log(node.id, ("precheck",))
     d = rows[-1]["detail"] if rows else {}
+    if node.state in (P.DONE, P.REVIEW):  # by the check's own words, whatever the rev or the check is since;
+        # a reopened leaf done again on the check it landed with ("landed") was verified by it no more
+        ran = store.node_log(node.id, ("check_passed",))  # an edit since ran nothing
+        on = ran[-1]["detail"].get("command") if ran else node.check
+        return d if d.get("verdict") in ("passes", "landed") and d.get("check") == on else None
     return d if d.get("rev") == node.rev and d.get("verdict") in ("passes", "outside") else None
 
 
@@ -2306,7 +2358,11 @@ def detail(store, node: P.Node, s, files: list[str] | None = None, room: tuple[i
         )
     if (pre := precheck(store, node)) is not None:
         base = str(pre.get("base", ""))[:7]
-        if pre["verdict"] == "passes":
+        if pre["verdict"] in ("passes", "landed") and node.state in (P.DONE, P.REVIEW):
+            what = "what landed" if node.state == P.DONE else "what it did"
+            says = (f"its check also passed at the base commit {base}, before any work: {what} is not "
+                    "verified by it")  # fmt: skip
+        elif pre["verdict"] == "passes":
             says = f"its check passes at the base commit {base}, so it proves nothing: e edits the check"
         else:
             says = f"its check names {', '.join(pre.get('paths') or [])} outside its scope, at {base}"
@@ -2340,7 +2396,7 @@ def as_typed(argv: list[str]) -> str:
 
 
 def asked_about(node_id: str) -> list[str]:
-    """What ? on a leaf that came back runs, and its pane shows as the command it is."""
+    """What t on a leaf that came back runs, and its pane shows as the command it is."""
     return ["ask", f"{node_id} came back: propose what would let it be done", "--about", node_id]
 
 
@@ -2348,7 +2404,7 @@ def _came_back(pane: Pane, store, node: P.Node, high: int) -> None:
     """Why it came back, then the fixes it offers as rows of one shape (key, what it does, the
     command), fitted so that at 80×24 every key is in sight: the reason gives way first."""
     why = (store.node_log(node.id, ("released",)) or [{"detail": {}}])[-1]["detail"].get("why", "")
-    offers = [*P.offers(store, node), ("?", "ask the planner", asked_about(node.id))]
+    offers = [*P.offers(store, node), ("t", "ask the planner", asked_about(node.id))]
     rows = [(key, _its(does, node.id), f"graphene {as_typed(argv)}") for key, does, argv in offers]
     # one line each when every one fits whole; else two each, all alike: what the key does, then the
     # command under it (at 120 columns the pane is narrow, and the commands had gone)
@@ -2473,8 +2529,9 @@ def tail_pane(store, node: P.Node, root: Path, wide: int) -> Text:
             log = str(Path(log).relative_to(root))
         pane.text(log, "dim")
     pane.gap()
-    rows = [e for e in store.node_log(node.id, ("did", "said")) if a and e["timestamp"] >= a["started"]
-            and e["detail"].get("attempt") == a["attempt"]][-200:]  # fmt: skip  (its number, since it began)
+    talk = store.node_log(node.id, ("did", "said"))
+    rows = M.whole_said([e for e in talk if a and e["timestamp"] >= a["started"]
+                         and e["detail"].get("attempt") == a["attempt"]])[-200:]  # fmt: skip  (its number)
     for e in rows:
         d, at = e["detail"], (_clock(e["timestamp"], True), "dim")
         if e["kind"] == "did":
@@ -2611,6 +2668,8 @@ def record_pane(store, node: P.Node, s, wide: int) -> Text:
     said += [f"a change refused after the fact: {p}" for p in sorted(set(no.breaches))]
     said += [f"done refused over {', '.join(stray) or 'a failing check'}" for stray in no.done]
     said += [f"{no.checks_failed} failed check{'s' * (no.checks_failed != 1)}"] if no.checks_failed else []
+    if no.commands:  # what Claude Code refused the executor itself: a shell its allow list does not cover
+        said += [f"{len(no.commands)} command{'s' * (len(no.commands) != 1)} refused to the executor"]
     pane.gap()
     pane.field("refused", "; ".join(said) or "nothing")
     coverage = [

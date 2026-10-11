@@ -50,10 +50,11 @@ from . import __version__, extra
 from . import plan as P
 from .node_record import WHOSE
 from .store import Store
-from .tui import Help, Pane, Watch, fit, help_groups
+from .tui import Pane, Watch, fit, help_groups
 
 SHIPPED = Path(__file__).with_name("demo.jsonl")
 ENDED = "ended: last frame"
+NEXT = "the end · try it on your repo: graphene init, then graphene ask what you want"  # 77 columns
 REFUSED = "a replay: nothing runs here"
 LIVE, STAND_IN = "as it ran, live", "a scripted stand-in, not Nemotron"  # what the top line says made it
 NO_CALLS = "a run with no model calls on record"
@@ -417,6 +418,11 @@ class Replay(Watch):
                  else f"×{round(cut, 1):g}: a wait, cut" if cut else at)  # fmt: skip
         self.query_one("#where", Static).update(fit(banner(self.head, state), max(self.size.width - 2, 20)))
 
+    def said_lines(self, room: int) -> list:
+        """At the end, the reader's next step on a line of its own, above what the last change was."""
+        said = super().said_lines(room)
+        return [fit([(NEXT, "")], room), *said] if self.next == len(self.lines) else said
+
     def refuse(self, *_, **__) -> None:
         self.message = REFUSED
         self.say_status()
@@ -430,16 +436,13 @@ class Replay(Watch):
     # every key that would change the plan or start anything, and every way a key reaches a command
     action_add = action_edit = action_drop = action_yes = action_split = action_undo = refuse
     action_run = action_release_or_reopen = action_offer = action_plan_first = action_visual = refuse
-    action_board = action_reask = refuse  # every key on a board item answers it or puts up a note
+    action_board = action_reask = action_talk = refuse  # a board item's key answers it; t asks a planner
     did = background = edit_with = stop_runs = refuse
 
     def action_line(self, kind: str) -> None:
         if kind == ":":  # `/` searches; `:` would run a command
             return self.refuse()
         super().action_line(kind)
-
-    def action_help_or_ask(self) -> None:
-        self.push_screen(Help())  # the help everywhere: on a leaf that came back it would start a planner
 
     def show_detail(self, store) -> None:
         """Before the plan has a row: what the person asked for, where watch would say nothing is planned
@@ -466,6 +469,7 @@ class Replay(Watch):
         """What the keys do here, for the bottom line: the replay's own, then those of watch's that work."""
         playing = self.next < len(self.lines)
         mine = [("space play" if self.paused else KEYS[0]), *KEYS[1:]] if playing else KEYS[2:]
-        if self.view == "contract":
-            return [*mine, "Enter record", "l output", "? help", "q quit", "j k move", "za fold"]
-        return [*mine, *("? help" if k[0] == "?" else k for k in super().keys() if k.startswith(WORK))]
+        if self.view == "contract":  # Enter on the goal is `graphene plan record`, a command it refuses
+            record = [] if self.on_goal() else ["Enter record"]
+            return [*mine, *record, "l output", "? help", "q quit", "j k move", "za fold"]
+        return [*mine, *(k for k in super().keys() if k.startswith(WORK))]

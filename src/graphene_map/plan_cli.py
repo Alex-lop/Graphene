@@ -1,8 +1,8 @@
 """`graphene plan` and `graphene node`: the plan in a terminal, for a person and for an agent alike.
 
 Plain text, never wrapped or cut: an agent reads these lines as its contract, and a person greps them.
-The one exception is the plan itself (`graphene`, `graphene plan`, `watch --once`) at a terminal or
-under $COLUMNS: it fits that width (`room`).
+The exceptions are the plan itself (`graphene`, `graphene plan`, `watch --once`) at a terminal or under
+$COLUMNS, which fits that width (`room`), and what `node show` says an attempt said and did last.
 """
 
 from __future__ import annotations
@@ -38,15 +38,20 @@ NOT_INIT = (
 )
 # What `graphene plan first` says each setting does
 FIRST_SAID = {
-    "on": "Every ask in a session is proposed, one leaf included, and waits for you.",
-    "auto": f"Every ask is proposed first. One leaf of at most {G.WIDE} paths, with nothing on the board, "
-    "is yours at once; anything else waits for you.",
-    "off": "What you ask for in a session is done at once, as a leaf of its own.",
+    "on": "Every ask in a session is proposed, one leaf included, and waits for you. You accept in "
+    "`graphene watch`, in another terminal; `graphene plan first off`, typed outside Claude Code, stops it.",
+    "auto": f"Every ask is proposed first. One leaf of at most {G.WIDE} paths that puts nothing on the "
+    "board is yours at once; anything else waits for you.",
+    "off": "A quick change is done at once, as a leaf of its own while a plan is in force; bigger work is "
+    "still proposed first.",
 }
 
 
 def register(cli: typer.Typer, root, open_store, fail):
-    out = typer.echo
+    held: list[list[str]] = []  # the lines of a person's act, said once it is committed (`write`)
+
+    def out(line: str = "") -> None:
+        (held[-1].append if held else typer.echo)(line)
 
     def checkout() -> Path:
         """The working tree the caller stands in: a worktree is its own checkout, with one shared plan."""
@@ -64,14 +69,24 @@ def register(cli: typer.Typer, root, open_store, fail):
     def write(what: str, operation):
         """A person's act on the plan's shape: kept for `graphene plan undo`. What git tracks is asked
         before the plan's write lock is taken (``tracked``), never under it: a hook waiting on the
-        lock gives up after a quarter of a second, and lets the call through."""
+        lock gives up after a quarter of a second and loses its row (the deny holds, ``gate._write``),
+        and a leaf a prompt would make is not made, so that write is refused. What the act says is
+        said once it is committed: a pipe closed under it (`| head -1`) had rolled it back after it
+        said it was made. An act rolled back takes its lines with it."""
         who = P.caller()
 
         def go(store):
             with P.undoable(store, who, what):
                 return operation(store)
 
-        return run(go)
+        held.append([])
+        try:
+            result = run(go)
+        finally:
+            lines = held.pop()
+        for line in lines:
+            typer.echo(line)
+        return result
 
     def tracked() -> list[str]:
         return P.tracked(checkout())
@@ -431,15 +446,7 @@ def register(cli: typer.Typer, root, open_store, fail):
         for line in plan_lines(store, who, everything, width=room()):
             out(line)
 
-    def value(v) -> str:
-        """A logged value as a person reads it: a list is its items, nothing is "none", not a repr."""
-        if isinstance(v, list | tuple):
-            return ", ".join(value(x) for x in v) or "none"
-        if v is None or v == "":
-            return "none"
-        if isinstance(v, bool):
-            return "yes" if v else "no"
-        return " ".join(str(v).split())
+    value = P.value  # a logged value as a person reads it, as node show and watch say it too
 
     def one_row(store, n: P.Node, depth: int = 0) -> str:
         """A node the command just made or moved, in the row grammar `graphene plan` and the screen
@@ -466,6 +473,7 @@ def register(cli: typer.Typer, root, open_store, fail):
             or ", ".join(detail.get("outside") or detail.get("paths") or detail.get("unowned") or [])
             or "; ".join(f"{k}: {value(a)} → {value(b)}" for k, (a, b) in fields)
             or (f"changed: {', '.join(changed)}" if isinstance(changed, list) and changed else "")
+            or detail.get("summary")  # a run's last line
             or detail.get("command")
             or ""
         )
@@ -689,6 +697,7 @@ def register(cli: typer.Typer, root, open_store, fail):
             out(D.fit(D.banner(head, D.ENDED), wide).plain)  # whole pieces, as the screen's top line
             with contextlib.chdir(repo):  # printed as `graphene watch --once` prints it, in the replay's repo
                 print_once(P.caller(), everything=False, archive=False, recent_as=D.ENDING, wide=wide)
+            out(D.fit([(D.NEXT, "")], wide).plain)  # cut at the width, as every row above it
 
     @plan_cli.command(hidden=True)
     def propose(
@@ -730,6 +739,9 @@ def register(cli: typer.Typer, root, open_store, fail):
 
         def as_text(store) -> list[P.Node]:
             before = {n.id for n in P.nodes(store)}
+            with store.claim():  # every fault at once, as `graphene ask` tells its planner (and rolled back)
+                if wrong := T.faults(store, text, who, files):
+                    raise P.Refused("\n".join(wrong))
             for line in T.apply(store, text, who, None, files=files):
                 out(line)
             return [n for n in P.nodes(store) if n.id not in before]
@@ -862,6 +874,9 @@ def register(cli: typer.Typer, root, open_store, fail):
                 whose = "the planner's" if actor.startswith("planner") else f"{actor}'s"
                 for line in bill_line(bill([e for e in usage if e["actor"] == actor]), "    "):
                     out(line.replace("bill:", f"{whose} bill:"))
+            runs = store.node_log("*", ("run", "archived"))  # this plan's last run, not an archived plan's
+            if runs and runs[-1]["kind"] == "run" and runs[-1]["detail"].get("summary"):
+                out(f"    last run: {runs[-1]['detail']['summary']}")
 
         run(go)
 
@@ -948,14 +963,17 @@ def register(cli: typer.Typer, root, open_store, fail):
             "--with",
             help="Use this executor, not init's: claude, codex, nemotron or a command.",
         ),
-        attempts: int = typer.Option(3, "--attempts", help="How often a refused executor is sent back."),
+        attempts: int = typer.Option(
+            3, "--attempts", min=1, help="How often a refused executor is sent back."
+        ),
         node: list[str] = typer.Option(None, "--node", help="Only this node; repeat it."),
         parallel: int = typer.Option(1, "--parallel", help="How many leaves run at once."),
         here: bool = typer.Option(
             False, "--here", help="Run in your checkout and commit nothing; the checkout is exposed."
         ),
         precheck: bool = typer.Option(
-            True, "--precheck/--no-precheck", help="Skip the checks at the base commit."
+            True, "--precheck/--no-precheck", help="Run each ready leaf's check at the base commit first; "
+            "--no-precheck skips it."
         ),
     ) -> None:
         """Run every ready leaf in its own worktree, one executor per leaf.
@@ -963,7 +981,8 @@ def register(cli: typer.Typer, root, open_store, fail):
         Graphene runs each leaf's check and merges what passes. A leaf that fails comes back."""
         if os.environ.get("GRAPHENE_NODE") or os.environ.get("GRAPHENE_PLANNER"):
             fail("an executor or a planner does not start runs: through --with a run is any command", 1)
-        from .run import named, run_parallel, run_plan, summary, sweep
+        from . import meter as M
+        from .run import CAP_UNIT, NOTHING, _splits, label, named, run_parallel, run_plan, summary, sweep
 
         r = root()
         with open_store(r) as store:
@@ -1006,22 +1025,45 @@ def register(cli: typer.Typer, root, open_store, fail):
                     out(line)
             logs = r / ".graphene" / "runs"
             since = len(store.node_log())  # what this run did is what the log says after this
+
+            def end(line: str) -> None:  # the run's last line, said, then kept: nobody's act, and no change
+                out(line)
+                if not line.startswith(NOTHING):  # else the next bill's `you`, and the last run, began here
+                    store.log_node("*", P._now(), "run", "graphene run", None, None, {"summary": line})
+
             try:  # red first runs in the runner, once its refusals (a lock, a detached HEAD, the cap) pass
                 if here:
                     out("--here: your checkout is exposed. The executor writes in it. Nothing is committed")
                     run_plan(store, checkout(), template, attempts, node or None, out, logs, precheck)
                 else:
+                    _splits(template)  # a --with that cannot be read is refused before anything is said
+                    here_ = checkout()
+                    on = subprocess.run(["git", "symbolic-ref", "--short", "-q", "HEAD"], cwd=here_,
+                                        capture_output=True, text=True).stdout.strip()  # fmt: skip
+                    if on and (at := P.head(here_)):  # on no branch, run_parallel refuses and says why
+                        argv = shlex.split(template)
+                        model, cap = M.model_in(argv), M.option(argv, "--max-budget-usd")
+                        what = label(template) + f" ({model})" * bool(model)
+                        # Claude Code stops after the turn that passes the cap: no ceiling, a stop
+                        most = f", {CAP_UNIT} stops once it passes ${cap}" * bool(cap)
+                        out(f"landing into {on} at {at[:7]}: {what}, up to {max(parallel, 1)} at once{most}; "
+                            "each leaf is committed with --no-verify (your pre-commit and commit-msg hooks "
+                            "skip it) and merged --no-ff; checks run in a clean worktree with your PATH; "
+                            "`graphene watch` in another terminal follows it live")  # fmt: skip
+                        if P.dirty(here_):
+                            out("your uncommitted changes are not in the executors' worktrees: they start "
+                                "from HEAD")  # fmt: skip
                     run_parallel(
-                        lambda: open_store(r), r, checkout(), max(parallel, 1), template,
+                        lambda: open_store(r), r, here_, max(parallel, 1), template,
                         attempts, node or None, out, logs, precheck,
                     )  # fmt: skip
             except P.Refused as no:
                 fail(str(no), 1)
             except KeyboardInterrupt:
-                out(summary(store, since, stopped=True))
+                end(summary(store, since, stopped=True))
                 raise typer.Exit(130) from None
             left = P.uncommitted(store, checkout()) if here else []  # a worktree's leaf committed its own
-            out(summary(store, since) + (f" · the work of {', '.join(left)} is {P.UNCOMMITTED}" * bool(left)))
+            end(summary(store, since) + (f" · the work of {', '.join(left)} is {P.UNCOMMITTED}" * bool(left)))
 
     def planner(
         sentence: str, executor: str | None, about: str | None, split: bool, size: str | None = None
@@ -1386,10 +1428,59 @@ def register(cli: typer.Typer, root, open_store, fail):
             under = [c for c in P.below(n.id, everything) if c in P.leaves(everything)]
             for line in rolled_up(store, root(), under) if under else render(node_record(store, root(), n)):
                 out(line)
+            # the row `node diff` reads: a leaf reopened and done again since its merge did not land that
+            for landed in store.node_log(n.id, ("landed", "unlanded", "finished", "overruled"))[-1:]:
+                if landed["kind"] == "landed":
+                    out(f"  landed: {landed['detail']['commit'][:7]}: `graphene node diff {n.id}` shows it")
             entries = len(store.node_log(n.id))
             out(f"  every entry, check runs included: `graphene plan log` ({entries} for {n.id})")
 
         run(go)
+
+    @node_cli.command(hidden=True)
+    def diff(
+        node_id: str = typer.Argument(...),
+        stat: bool = typer.Option(False, "--stat", help="Only each file and how much of it changed."),
+    ) -> None:
+        """Show what a leaf changed: the merge that landed it, or what it left."""
+        from .precheck import state
+
+        def go(store):
+            n, here = P.get(store, node_id), str(root())
+            if any(m.parent == n.id for m in P.nodes(store)):
+                raise P.Refused(f"{n.id} is a sub-goal: each of its leaves has its own diff")
+            ends = store.node_log(n.id, ("landed", "unlanded", "finished", "overruled"))
+            kind, d = (ends[-1]["kind"], ends[-1]["detail"]) if ends else (None, {})
+            if kind == "landed":  # the merge: what it brought in over its first parent
+                return here, [], [f"{d['commit']}^1", d["commit"]]
+            if kind == "unlanded":  # passed and not merged: its branch waits for the person
+                return here, [], [n.base_sha, d["branch"]]
+            if kind and (not n.base_sha or not d.get("changed")):  # done by hand, or overruled: no change
+                how = "overruled" if kind == "overruled" else "done"
+                raise P.Refused(f"{n.id} was {how} with no change of its own to show")
+            if kind and P.RUN_TREE not in (n.checkout or ""):  # a session's `done`, auto's ask, `run --here`
+                where, kept = n.checkout or here, d.get("blobs") or {}
+                # ponytail: shown as the checkout is now, not as it was left: finish hashes its blobs without
+                # -w, so git seldom has them; a path changed since is named. Exact once finish writes them
+                now = P._blobs(where, list(kept))  # what it left, against what is there now
+                moved = ", ".join(p for p in kept if now.get(p) != kept[p])
+                said = ["done in your checkout; Graphene committed nothing"]
+                said += [f"changed since it finished, shown as it is now: {moved}"] if moved else []
+                tree = state(Path(where))[1]  # the checkout as git sees it, its new files too
+                return where, said, [n.base_sha, *([tree] if tree else []), "--", *(d.get("changed") or [])]
+            why = ("its work has not landed yet" if n.state in (P.DONE, P.REVIEW) else "nothing of it is done"
+                   ) if store.node_log(n.id, ("started",)) else "nothing has run yet"  # fmt: skip
+            raise P.Refused(f"{n.id} is {n.state}: {why}")
+
+        where, said, span = run(go)
+        # captured, never fd 1: watch runs a command here, its output read back (tui._cli); and plain, for
+        # its pane, whatever git's colours (color.ui=always colours a pipe too)
+        argv = ["git", "-C", where, "diff", "--no-color", *(["--stat"] if stat else []), *span]
+        shown = subprocess.run(argv, capture_output=True, text=True, errors="replace")
+        if shown.returncode:
+            fail(f"git cannot show what {node_id} changed: {shown.stderr.strip()}", 1)
+        for line in [*said, shown.stdout.rstrip("\n") or "git shows no difference"]:
+            out(line)
 
     def came_back(store, n: P.Node) -> list[str]:
         """A leaf that came back: why, what it wanted, where its last attempt is, and the fixes on

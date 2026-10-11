@@ -43,7 +43,8 @@ does not.
 | `usage` | `{"model", "calls": 1, "prompt_tokens", "completion_tokens", "dollars", "endpoint", "attempt", "turn"}` | each turn: a Claude message, a Codex `turn.completed`, a Nemotron call |
 | `usage` | `{"model", "calls": 0, "prompt_tokens": 0, "completion_tokens": 0, "dollars": reported − counted, "endpoint", "attempt", "turns", "reported"}` | Claude's `result`: settles the turns to what Claude Code reports. No `turn` key. |
 | `did` | `{"attempt", "tool", "target", "verb"}` | each tool call: `verb` is reading, editing, running or searching |
-| `said` | `{"attempt", "text"}` | each thing the agent says, cut to 400 characters |
+| `said` | `{"attempt", "text"}` | each thing the agent says, cut to 400 characters; Claude's `result` longer than that is a second row, whole, which `whole_said` keeps in place of the cut one |
+| `denied` | `{"attempt", "command", "tool", "how": "refused to the executor"}` | Claude's `result`: one per permission denial that is not an edit, a command and never a `path` |
 | `ended` | `{"attempt", "exit", "seconds", "meter": "claude"\|"codex"\|"nemotron"\|null, "unread": n}` | when the executor's process ends |
 
 - `prompt_tokens` counts every input token: Claude's `input_tokens + cache_creation_input_tokens +
@@ -65,9 +66,11 @@ A Claude Code executor in a run worktree is also seen by the hooks: each tool ca
 (the hook's record, keyed by `tool_use_id`). The stream's `did` rows are the meter's record. **For the
 meter, the stream wins**: turns, tokens, dollars, tool calls and said text are counted from the stream
 rows only, and the meter never counts `tool_events`. **For the gate, the hooks win**: what was refused
-(`denied`, `refused`, `breach` rows) and what was written are the gate's, and the meter only reads them.
-So each tool call is counted once. A session with no stream (a person's own Claude Code session) has
-only the hooks' record, and the meter says nothing about it.
+(`denied` rows with a `path`, `refused`, `breach` rows) and what was written are the gate's; the meter
+writes only the `denied` rows with a `command`, the commands Claude Code refused its executor. So each
+tool call is counted once, but for a shell write the hook refused, which Claude Code may list as a refused
+command too (unprobed): it is then one write denied and one command refused. A session with no stream (a
+person's own Claude Code session) has only the hooks' record, and the meter says nothing about it.
 
 ## The two clocks
 

@@ -1,6 +1,7 @@
 """`graphene plan` and `graphene node`, end to end: a person shapes, an agent executes, and the
 boundary is where the person's change to the next node takes hold."""
 
+import errno
 import io
 import json
 import os
@@ -11,9 +12,11 @@ import subprocess
 import sys
 
 import pytest
+import typer
 from typer.testing import CliRunner
 
 from graphene_map.cli import build
+from graphene_map.store import Store
 from graphene_map.tui import _cli
 
 runner = CliRunner()
@@ -46,6 +49,22 @@ def person(*args):
 
 def agent(*args, input=None):
     return runner.invoke(build(), list(args), env=AGENT_ENV, input=input)
+
+
+def test_a_run_that_started_nothing_keeps_no_row_so_the_acts_before_it_are_billed(repo, monkeypatch):
+    """A run that started nothing kept its line as a run row: the next run's `you` began after it, so the
+    acts before it were in no bill, and `plan record`'s last run read "run: nothing started"."""
+    monkeypatch.setenv("GRAPHENE_PERSON", "alex")
+    assert person("node", "add", "ours", "--id", "l1", "--scope", "api.py", "--check", "true").exit_code == 0
+    mine = person("node", "add", "mine", "--id", "l2", "--scope", "b.py", "--check", "true", "--owner", "me")
+    assert mine.exit_code == 0
+    idle = person("run", "--with", "true", "--node", "l2")  # l2 is the person's: nothing starts
+    assert idle.stdout.splitlines()[-1].startswith("run: nothing started")
+    ran = person("run", "--with", "true", "--node", "l1")
+    assert "· you 2 acts, " in ran.stdout.splitlines()[-1], ran.stdout
+    person("run", "--with", "true", "--node", "l2")  # nothing starts again
+    [last] = [line for line in person("plan", "record").stdout.splitlines() if "last run:" in line]
+    assert "nothing started" not in last and "you 2 acts" in last
 
 
 def test_no_plan_says_paragraph_in_and_never_the_node_add_flags(repo):
@@ -303,8 +322,64 @@ def test_start_done_signoff_reopen_and_run_name_the_repository(repo):
     assert [a.exit_code for a in acts] == [0] * 5, [a.output for a in acts]
     assert all("(the plan of " in a.stderr for a in acts), [a.stderr for a in acts]
     # a run names it first (it runs for long), and ends with what it did, for the person
-    last = acts[-1].stdout.splitlines()[-1]
-    assert last == "run: 1 came back (l2) · agents <1 min, no meter · width 1 of 1 · you 0 acts, 0 min"
+    last = acts[-1].stdout.splitlines()[-1]  # the bill counts the six acts that led to the run
+    said = r"run: 1 came back \(l2\) · agents <1 min, no meter · width 1 of 1 · you 6 acts, [12] min"
+    assert re.fullmatch(said, last), last  # a minute may turn between the acts
+
+
+def test_a_run_says_first_where_it_lands_with_what_and_that_uncommitted_work_stays_out(repo):
+    """A stranger's first run merged leaves into their branch, unasked, with their hooks skipped, from
+    worktrees that never had their uncommitted files: none of it was said before it happened."""
+    person("node", "add", "leaf two", "--id", "l2", "--scope", "schema.py", "--check", "true")
+    (repo / "notes.txt").write_text("mine, not committed\n")
+    ran = person("run", "--with", "true")
+    assert ran.exit_code == 0, ran.output
+    branch = subprocess.run(["git", "symbolic-ref", "--short", "HEAD"], cwd=repo, capture_output=True,
+                            text=True).stdout.strip()  # fmt: skip
+    lines = ran.stdout.splitlines()
+    [landing] = [line for line in lines if line.startswith("landing into ")]
+    assert landing.startswith(f"landing into {branch} at ") and "--no-verify" in landing, landing
+    assert "your uncommitted changes are not in the executors' worktrees: they start from HEAD" in lines
+    assert lines.index(landing) == 0 and lines[-1].startswith("run: ")  # the summary is still the last
+    capped = person("run", "--with", "true --max-budget-usd 2").stdout.splitlines()[0]
+    assert "an attempt stops once it passes $2" in capped and "at most;" not in capped  # a stop, no ceiling
+
+
+def test_a_run_of_no_attempts_is_refused_before_anything_starts(repo):
+    """`--attempts 0` took the leaf, tried nothing, and ended in a traceback with the leaf left running."""
+    person("node", "add", "leaf two", "--id", "l2", "--scope", "schema.py", "--check", "true")
+    ran = person("run", "--attempts", "0", "--with", "true")
+    assert ran.exit_code == 2 and "--attempts" in ran.stderr, ran.output
+    assert [n["state"] for n in json.loads(person("plan", "--json").stdout)["nodes"]] == ["open"]
+
+
+def test_a_runs_last_line_is_kept_as_a_row_of_the_plan(repo):
+    """What a run did was said once, on a terminal that may be gone: the plan kept no line of it."""
+    person("node", "add", "leaf two", "--id", "l2", "--scope", "schema.py", "--check", "true")
+    ran = person("run", "--with", "true")
+    with Store.open(repo) as store:
+        [row] = store.node_log("*", ("run",))
+    assert row["actor"] == "graphene run" and row["detail"] == {"summary": ran.stdout.splitlines()[-1]}
+
+
+def test_an_accept_whose_output_pipe_closes_is_made_all_the_same(repo, monkeypatch):
+    """`graphene plan accept | head -1`: the pipe closed after the first line, the next line raised inside
+    the act's transaction, and the accept it had just announced was rolled back."""
+    two = [{"title": t, "scope": [f"{t}.py"], "check": "true"} for t in ("api", "schema")]
+    assert agent("plan", "propose", "-", input=json.dumps({"nodes": two})).exit_code == 0
+    echo, calls = typer.echo, []
+
+    def closed(*args, **kwargs):
+        calls.append(args)
+        if len(calls) > 1:
+            raise BrokenPipeError(errno.EPIPE, "Broken pipe")
+        return echo(*args, **kwargs)
+
+    monkeypatch.setattr(typer, "echo", closed)
+    person("plan", "accept")
+    monkeypatch.setattr(typer, "echo", echo)
+    states = [n["state"] for n in json.loads(person("plan", "--json").stdout)["nodes"]]
+    assert len(calls) > 1 and states == ["open", "open"]
 
 
 # -- the recheck of the closing review: its regression tests --------------------
@@ -349,7 +424,7 @@ def test_a_finished_plan_says_when_its_leaves_work_is_not_committed_and_what_com
     assert ran.exit_code == 0, ran.output
     assert "--here: your checkout is exposed" in ran.stdout
     assert ran.stdout.splitlines()[-1] == (
-        "run: 1 done · agents <1 min, no meter · width 1 of 1 · you 0 acts, 0 min · the work of ids is not "
+        "run: 1 done · agents <1 min, no meter · width 1 of 1 · you 1 act, 1 min · the work of ids is not "
         "committed (`git status`): `graphene run --here` commits "
         "nothing, `graphene run` and watch's R commit and merge each leaf"
     )
@@ -415,18 +490,34 @@ def test_plan_first_is_a_setting_the_person_sees_and_sets(repo):
         assert turned.exit_code == 0 and f"plan first: {how}. " in turned.stdout
         assert "(the plan of" in turned.stderr
     assert agent("plan", "first", "off").exit_code == 1
-    assert "One leaf of at most 8 paths, with nothing on the board" in person("plan", "first").stdout
+    # with no plan in force the gate makes no leaf of a quick change (decision 18): off says when it does
+    assert "as a leaf of its own while a plan is in force" in person("plan", "first", "off").stdout
+    person("plan", "first", "auto")
+    # the ask's own items: an open item from another tree does not stop it (gate.one_line_ask)
+    assert "One leaf of at most 8 paths that puts nothing on the board" in person("plan", "first").stdout
     assert person("plan", "first", "sideways").exit_code == 1
 
 
 def test_init_sets_plan_first_on_and_keeps_an_auto_set_before(repo):
     said = person("init")
     assert said.exit_code == 0 and "plan first: on. Every ask in a session is proposed" in said.stdout
+    # what init did, what it records, how to stop each, and no advice about a file git already leaves out
+    assert "`graphene plan first off`" in said.stdout and "`graphene init --remove`" in said.stdout
+    assert "its prompts" in said.stdout and ".gitignore" not in said.stdout
     assert "plan first: on" in person("plan", "first").stdout
     person("plan", "first", "auto")
     again = person("init")  # a repository on auto stays on auto until the person changes it
     assert "plan first: auto. Every ask is proposed first" in again.stdout
     assert "plan first: auto" in person("plan", "first").stdout
+
+
+def test_a_person_only_act_refused_inside_claude_code_says_where_the_person_runs_it(repo):
+    """The person who typed `graphene plan accept` into their own Claude Code session was refused as an
+    agent and told only to say what they needed. The refusal says where it works, and never names the
+    mark that makes a caller an agent (plan.caller): an agent that strips it passes for the person."""
+    refused = agent("plan", "accept")
+    assert refused.exit_code == 1 and "in a terminal outside Claude Code" in refused.stderr
+    assert "CLAUDECODE" not in refused.stderr and "CLAUDE_CODE_SESSION_ID" not in refused.stderr
 
 
 # -- the messages, read as whoever receives them --------------------------------------------------
@@ -680,3 +771,34 @@ def test_plan_record_and_node_show_on_a_sub_goal_say_how_wide_its_leaves_ran(rep
                 store.log_node(leaf, stamp, kind, run.label, run.session_id, None, {"attempt": 1})
     for args in (("plan", "record"), ("node", "show", "api")):
         assert "    width 2 of 2 · 50% of agent minutes alone" in person(*args).stdout.splitlines(), args
+
+
+def test_plan_log_and_plan_record_say_what_the_last_run_said(repo):
+    """A run's last line said what it did, and was gone with the terminal it was printed in."""
+    from graphene_map import plan
+    from graphene_map.store import Store
+
+    summary = "run: 1 done · agents 2 min, $0.0400 at list price · width 1 of 1 · you 1 act, 1 min"
+    with Store.open(repo) as store:
+        plan.propose(store, [{"id": "a", "title": "a", "scope": ["a.txt"], "check": "true"}],
+                     plan.Caller("alex", True))  # fmt: skip
+        store.log_node("*", "2026-01-05T01:00:00.000Z", "run", "graphene run", detail={"summary": summary})
+    logged = person("plan", "log").stdout.splitlines()[-1]
+    assert logged.endswith(f"run           graphene run      {summary}"), logged
+    assert f"    last run: {summary}" in person("plan", "record").stdout.splitlines()
+
+
+def test_node_diff_refuses_in_words_a_done_leaf_that_never_had_a_base(repo):
+    """Lane D's checker, 10 October: a to-do done by hand has no base commit; the diff passed None to git
+    and raised a TypeError, which c in watch then put in the pane."""
+    from graphene_map import plan
+
+    with Store.open(repo) as store:
+        todo = {"title": "todo", "scope": ["notes.md"], "check": "true"}
+        plan.propose(store, [todo], plan.Caller("alex", True))
+    person("plan", "accept")
+    with Store.open(repo) as store:
+        store.log_node("n1", plan._now(), "finished", "alex", None, None, {"changed": []})
+    said = person("node", "diff", "n1")
+    assert said.exit_code == 1 and "n1 was done with no change of its own to show" in said.stderr, said.output
+    assert "TypeError" not in said.output

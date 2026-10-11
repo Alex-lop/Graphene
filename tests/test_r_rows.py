@@ -2,6 +2,7 @@
 """The r row: shown wherever a came-back leaf's offers are, r takes it (else runs the leaf again),
 the precheck mark and its line, and the record's line for a reopen after landing."""
 
+import pytest
 from test_plan_cli import person, repo  # noqa: F401  (fixtures)
 from test_tui import proposed, watch
 
@@ -80,6 +81,24 @@ def test_a_red_or_stale_precheck_is_not_marked(repo):
     precheck(repo, "ids", verdict="passes", why="exit 0", rev=99)
     seen, _ = watch(repo, ["G"], size=(120, 36))
     assert not any("∅" in row for row in seen["tree"]) and "proves nothing" not in seen["detail"]
+
+
+@pytest.mark.parametrize("verdict", ["passes", "landed"])  # landed: reopened, done again on that check
+def test_a_leaf_whose_check_passed_at_the_base_keeps_its_mark_once_it_is_done(repo, verdict):
+    """The ∅ went once the leaf left open, though done its check proved no more than it did at the base."""
+    proposed(repo)
+    person("plan", "accept")
+    precheck(repo, "schema", verdict=verdict, why="exit 0")
+    with Store.open(repo) as store:
+        bot = plan.Caller("claude:aaaa1111", False, "aaaa1111-session")
+        plan.start(store, "schema", bot, repo)
+        (repo / "schema.py").write_text("TABLES = ['users']\n")
+        plan.finish(store, "schema", bot)
+    seen, _ = watch(repo, ["G"], size=(120, 36))
+    said = " ".join(seen["detail"].split())
+    assert ("its check also passed at the base commit abcdef0, before any work: what landed is not verified "
+            "by it") in said
+    assert any("schema" in row and "∅" in row for row in seen["tree"]), seen["tree"]
 
 
 def log(*kinds):

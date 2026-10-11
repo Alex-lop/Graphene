@@ -36,6 +36,12 @@ GONE = (DROPPED, ARCHIVED)
 CHECK_TIMEOUT = 1800  # seconds; TODO: one fixed cap, a per-node value when a real check needs longer
 TAIL = 2000  # characters of a check's output kept in the log
 BASH = next((b for b in ("/bin/bash", "/usr/bin/bash") if os.path.exists(b)), None)  # a check's shell
+# Where a check runs (``_clean_tree``), as the planner (`ask.RULES`) and every session (`gate.TEACH`) hear it
+CLEAN_TREE = (
+    "A check runs in a fresh worktree of the leaf's files, with your PATH: nothing git ignores is there "
+    "(no .venv, no node_modules), so it uses the repo's own runner and makes its environment where the "
+    "repo has one (`uv run pytest …` beside a pyproject, `npm ci && npm test`), else the system python3."
+)
 KEPT_PATHS = 200  # changed paths kept in a node's log when it ends; the count of the rest is kept too
 EDITABLE = ("title", "goal", "scope", "check", "signoff", "needs", "owner", "parent")
 USABLE = re.compile(r"(?!.*\.\.|.*\.(lock)?$)[A-Za-z0-9][\w.-]{0,31}")  # an id: graphene/<id> is a branch
@@ -566,7 +572,8 @@ def _hash(checkout: str | Path, path: str) -> str | None:
 
 def dirty(checkout: str | Path) -> dict[str, str | None]:
     """Every path git calls modified, staged, deleted or untracked right now, with its content hash,
-    so that a later look can tell "was already like that" from "changed since"."""
+    so that a later look can tell "was already like that" from "changed since". Python's bytecode is
+    nobody's change, in a repo that does not ignore it: never offered, counted or committed."""
     out = _git(checkout, "status", "--porcelain", "-z", "--untracked-files=all")
     paths, fields = [], out.split("\0")
     i = 0
@@ -580,7 +587,9 @@ def dirty(checkout: str | Path) -> dict[str, str | None]:
             if i < len(fields) and fields[i]:
                 paths.append(fields[i])
             i += 1
-    return {p: _hash(checkout, p) for p in paths if not _ours(p)}
+    # ponytail: Python's cache only; ask git check-ignore with a default list if other toolchains'
+    # caches show up
+    return {p: _hash(checkout, p) for p in paths if not _ours(p) and "__pycache__" not in p.split("/")}
 
 
 def _ours(path: str) -> bool:
@@ -727,14 +736,15 @@ def _ended(
     args: str | list[str], cwd: str | Path, env: dict, began: float, given: str | None = None
 ) -> tuple[int, str, str]:
     """Run a step of the check begun at ``began`` (the check itself, a string bash runs, or one of
-    git's, a list): its exit code and what it said on stdout and on stderr. It runs in a session of
-    its own and is ended with everything it started when the check's time is up (TimeoutExpired), on
-    a Ctrl-C, a closed terminal or a `kill`, and when a run is stopped (``end_checks``), which says
-    nothing of the work, so it is not taken as a result (KeyboardInterrupt), whether the stop came
-    while it ran or before it started. Killing bash alone had left its `sleep` running; killing git
-    alone left the `git reset` it had started writing a worktree after the check was over; a stop
-    that came while the worktree was being made was lost, and the check ran to its end; and a
-    terminal's Ctrl-C that reached the check itself had been recorded as the executor's failed check."""
+    git's, a list): its exit code and what it said on stdout and on stderr (a string's stderr is in its
+    stdout, in the order it was written, so its last line is its own and not uv's setup line). It runs
+    in a session of its own and is ended with everything it started when the check's time is up
+    (TimeoutExpired), on a Ctrl-C, a closed terminal or a `kill`, and when a run is stopped
+    (``end_checks``), which says nothing of the work, so it is not taken as a result (KeyboardInterrupt),
+    whether the stop came while it ran or before it started. Killing bash alone had left its `sleep`
+    running; killing git alone left the `git reset` it had started writing a worktree after the check was
+    over; a stop that came while the worktree was being made was lost, and the check ran to its end; and
+    a terminal's Ctrl-C that reached the check itself had been recorded as the executor's failed check."""
     import subprocess
 
     shell = isinstance(args, str)
@@ -745,7 +755,7 @@ def _ended(
         cwd=cwd,
         stdin=None if given is None else subprocess.PIPE,
         stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        stderr=subprocess.STDOUT if shell else subprocess.PIPE,  # git's own stderr is a refusal's words
         text=True,
         errors="replace",  # what a check prints is its own: bytes that are not UTF-8 are no failure to run it
         env=env,
@@ -767,7 +777,7 @@ def _ended(
         _end_check(proc)
     if began <= _stopped:
         raise KeyboardInterrupt
-    return proc.returncode, out, err
+    return proc.returncode, out, err or ""
 
 
 @contextmanager
@@ -787,7 +797,10 @@ def _clean_tree(checkout: str | Path, leave_out: list[str] | tuple, began: float
     def git(*args: str, index: Path | None = None, given: str | None = None) -> str:
         # ``index`` is the check's own, so the checkout's index lock is never taken
         env = {**os.environ, "GIT_OPTIONAL_LOCKS": "0", **({"GIT_INDEX_FILE": str(index)} if index else {})}
-        argv = ["git", "-c", "core.hooksPath=/dev/null", "-C", str(checkout), *args]
+        # a sparse checkout's cone is not the check's: `add -A` refused a new file outside it, and the
+        # worktree held only the cone, so a leaf whose scope lies outside could never pass
+        quiet = ("-c", "core.hooksPath=/dev/null", "-c", "core.sparseCheckout=false")
+        argv = ["git", *quiet, "-C", str(checkout), *args]
         code, out, err = _ended(argv, checkout, env, began, given)
         if code:
             raise Refused(f"git {' '.join(args)} failed in {checkout}: {err.strip()[:200]}")
@@ -803,6 +816,10 @@ def _clean_tree(checkout: str | Path, leave_out: list[str] | tuple, began: float
         # ignore rule matches, a sparse checkout's), and then everything else git sees on disk
         with suppress(OSError):  # a repo where nothing was ever added has no index yet
             shutil.copyfile(Path(checkout, had), index)
+            # dated at epoch+1: the copy's own date would make git trust every entry's stat data, and an
+            # edit of the same size made in the second the file was written out would read as the
+            # committed file (X5, 10 October); dated this early, every entry is racily clean and is read
+            os.utime(index, (1, 1))
         git(*(("read-tree", "HEAD") if committed else ("add", "-A")), index=index)
         if leave_out:
             out = "".join(f"{p}\0" for p in leave_out)
@@ -810,8 +827,8 @@ def _clean_tree(checkout: str | Path, leave_out: list[str] | tuple, began: float
         state, base = git("write-tree", index=index).strip(), head(checkout)
         nobody = ("-c", "user.name=graphene", "-c", "user.email=graphene@localhost")  # on no branch
         commit = git(*nobody, "commit-tree", state, *(("-p", base) if base else ()), "-m", "check")
-        # ponytail: a whole checkout per check, which grows with the repository; a kept worktree moved
-        # to each commit (`git checkout --detach`) if a large repository needs it
+        # ponytail: a whole checkout per check, a sparse checkout's included, which grows with the
+        # repository; a kept worktree moved to each commit (`git checkout --detach`) if a large one needs it
         git("worktree", "add", "--quiet", "--detach", str(tree), commit.strip())
         yield tree
     finally:
@@ -1047,7 +1064,8 @@ def _person_only(who: Caller, what: str) -> None:
     if not who.person:
         raise refusal(
             f"{what} is the person's to do, and this call comes from {who.name}",
-            do="say what you need and why; they decide",
+            do="if you are the person, run it in a terminal outside Claude Code; an agent says what it "
+            "needs and why, and the person decides",
         )
 
 
@@ -2010,17 +2028,17 @@ def start(
         mark_boundary(store, checkout, now)  # the first start in a checkout: the tree as it stands
     loose = unowned(store, checkout, but=node_id)
     if loose and not (who.person or attended):  # refused here, not under the claim: its rollback forgets
-        it, change, stand = (
-            ("it", "an uncommitted change", "it stands")
+        it, change, stand, are = (
+            ("it", "an uncommitted change", "it stands", "it is")
             if len(loose) == 1
-            else ("them", "uncommitted changes", "they stand")
+            else ("them", "uncommitted changes", "they stand", "they are")
         )
-        why = f" makes {it} theirs as {stand}, and so does committing {it}"
-        raise refusal(
+        why = f" as {stand}, and so does committing {it}"
+        raise refusal(  # an agent is not told first to put back what may be the person's unsaved work
             f"{node_id} cannot start: the checkout has {change} no node made",
             loose,
-            f"put {it} back, or ask the person: graphene plan ack"
-            + (why if first_time(store, who, first, "loose") else ""),
+            f"if you made {it}, put {it} back; if not, {are} the person's: ask them (graphene plan ack makes "
+            f"{it} theirs" + (why if first_time(store, who, first, "loose") else "") + ")",
         )
     away = not_here(store, first, checkout)
     files, base, was_dirty = tracked(checkout), head(checkout), dirty(checkout)
@@ -2312,7 +2330,8 @@ def _stray(store, node: Node, who: Caller, now: str, stray: list[str]) -> Refuse
         f" (git checkout {(node.base_sha or 'HEAD')[:10]} -- <path>, or delete a new file)" if first else ""
     )
     it = "it" if len(stray) == 1 else "them"
-    return refusal(what, stray, f"put {it} back{back}, or say why: graphene node release {node.id} --why '…'")
+    whose = f"say whose: graphene node release {node.id} --why '…'"
+    return refusal(what, stray, f"if you made {it}, put {it} back{back}; if not, {whose}")
 
 
 def _untracked(checkout: str | Path, paths: list[str]) -> list[str]:
@@ -2566,10 +2585,11 @@ def _finish_subgoal(
     return get(store, node.id)
 
 
-def close_aside(store, node_id: str, who: Caller, now: str | None = None) -> Node:
+def close_aside(store, node_id: str, who: Caller, now: str | None = None, final: bool = False) -> Node:
     """The end of a leaf made from a prompt, when the turn it was typed for ends. It is a record,
     not a gate: git says what changed under it, and its check runs if the person gave one. Nothing
-    changed, nothing kept: the leaf goes, so a question that led to no edit leaves no trace."""
+    changed, nothing kept: the leaf goes, so a question that led to no edit leaves no trace.
+    ``final``: the session is let stop now, so a first failure closes it too, on its record."""
     now = now or _now()
     node = get(store, node_id)
     checkout = node.checkout or "."
@@ -2580,7 +2600,7 @@ def close_aside(store, node_id: str, who: Caller, now: str | None = None) -> Nod
         kind = "check_passed" if passed else "check_failed"
         store.log_node(node.id, _now(), kind, who.label, who.session_id, None,
                        {"command": node.check, "output": output})  # fmt: skip
-        if not passed and len(store.node_log(node.id, ("check_failed",))) == 1:
+        if not passed and not final and len(store.node_log(node.id, ("check_failed",))) == 1:
             # said once, so the agent can put it right; asked to stop again, the leaf closes with the
             # failure on its record. It is a record, not a gate: a session is never trapped by it
             raise refusal(
@@ -3009,6 +3029,17 @@ def look(word: str) -> tuple[str, str]:
     return LOOK.get(word, ("○", ""))
 
 
+def value(v) -> str:
+    """A logged value as a person reads it: a list is its items, nothing is "none", not a repr."""
+    if isinstance(v, list | tuple):
+        return ", ".join(value(x) for x in v) or "none"
+    if v is None or v == "":
+        return "none"
+    if isinstance(v, bool):
+        return "yes" if v else "no"
+    return " ".join(str(v).split())
+
+
 def said_by(label: str | None) -> str:
     """Who an actor on the plan is, in a person's words: `run:claude` is claude started by `graphene
     run`, `claude:5940…` a Claude Code session, `planner` the planner `graphene ask` started."""
@@ -3043,7 +3074,7 @@ FIRST = ("on", "auto", "off")
 def plan_first(store) -> str:
     """Plan first, as the person set it: on, auto or off (`graphene plan first`, `P` in graphene
     watch). On: every ask is proposed and waits for the person. Auto: every ask is proposed, and one
-    small leaf with nothing on the board is the person's at once (``gate.one_line_ask``); anything
+    small leaf that puts nothing on the board is the person's at once (``gate.one_line_ask``); anything
     else waits. Off: nothing is proposed first. `graphene init` sets on, and keeps what was set
     before; never set, it is auto while a plan is in force and off otherwise."""
     said = store.meta("plan_first")

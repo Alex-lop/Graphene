@@ -7,8 +7,10 @@ import subprocess
 import sys
 
 import pytest
+from typer.testing import CliRunner
 
 from graphene_map import plan
+from graphene_map.cli import build
 from graphene_map.plan import DONE, REVIEW, Caller
 from graphene_map.run import run_parallel
 from graphene_map.store import Store
@@ -67,6 +69,10 @@ def go(repo, workers=3, **kw):
     done = run_parallel(lambda: Store.open(repo), repo, repo, workers, command, say=said.append, **kw)
     ran = [json.loads(line) for line in (repo.parent / "times.log").read_text().splitlines()]
     return done, {r["node"]: r for r in ran}, said
+
+
+def person(*args):
+    return CliRunner().invoke(build(), list(args), env={"GRAPHENE_AS": "person:alex"})
 
 
 def leaf(node_id, **extra):
@@ -284,3 +290,59 @@ def test_a_leaf_that_did_not_land_is_signed_off_only_once_its_branch_is_merged_h
     git_in(repo, "commit", "-qam", "merged")
     with Store.open(repo) as store:
         assert plan.signoff(store, "a", ALEX, checkout=repo).state == DONE
+
+
+def test_node_diff_shows_what_landed_and_what_a_leaf_left_in_your_checkout(repo):
+    """c in watch, `graphene node diff`: what a leaf changed was in git's log only, under a merge to find,
+    and a leaf done in the person's own checkout (a session's `node done`, `run --here`) is in no commit."""
+    with Store.open(repo) as store:
+        plan.propose(store, [leaf("a"), leaf("b"), leaf("c")], ALEX)
+    go(repo, only=["a"])
+    landed = person("node", "diff", "a", "--stat")
+    assert landed.exit_code == 0 and "a.txt | 1 +" in landed.stdout, landed.output
+    with Store.open(repo) as store:
+        plan.start(store, "b", ALEX, repo)
+        (repo / "b.txt").write_text("by hand\n")
+        plan.finish(store, "b", ALEX)
+    mine = person("node", "diff", "b")
+    assert mine.stdout.startswith("done in your checkout; Graphene committed nothing\n"), mine.output
+    assert "+by hand" in mine.stdout
+    (repo / "b.txt").write_text("by hand, then by someone else\n")
+    assert "changed since it finished, shown as it is now: b.txt" in person("node", "diff", "b").stdout
+    never = person("node", "diff", "c")
+    assert never.exit_code == 1 and "c is open: nothing has run yet" in never.output
+
+
+def test_node_show_says_where_a_leaf_landed_and_how_to_see_it(repo):
+    with Store.open(repo) as store:
+        plan.propose(store, [leaf("a")], ALEX)
+    go(repo)
+    merge = git_in(repo, "rev-parse", "--short=7", "HEAD").strip()
+    shown = person("node", "show", "a")
+    assert f"  landed: {merge}: `graphene node diff a` shows it" in shown.stdout.splitlines(), shown.output
+    with Store.open(repo) as store:  # reopened and done in the person's checkout: node diff shows that
+        plan.reopen(store, "a", ALEX, "the format is wrong")
+        plan.start(store, "a", ALEX, repo)
+        (repo / "a.txt").write_text("by hand\n")
+        plan.finish(store, "a", ALEX)
+    assert "  landed: " not in person("node", "show", "a").stdout
+    assert person("node", "diff", "a").stdout.startswith("done in your checkout; Graphene committed nothing")
+
+
+def test_the_merge_says_what_landed_and_a_leaf_landed_again_says_it_was_reopened(repo):
+    """A merge said `write a (a)` and no more: not the check that proved it, who did it for how much,
+    nor, landed again after a reopen, why. The first landing's subject is as it was."""
+    with Store.open(repo) as store:
+        plan.propose(store, [leaf("a")], ALEX)
+    go(repo)
+    body = git_in(repo, "log", "-1", "--merges", "--format=%b")
+    said = ["Check: `test -s a.txt` passed", "Executor: worker.py · 1 attempt · no meter", "Graphene-Node: a"]
+    assert body.strip().splitlines() == said, body
+    with Store.open(repo) as store:
+        plan.reopen(store, "a", ALEX, "the format is wrong")
+    go(repo)
+    subjects = git_in(repo, "log", "--merges", "--format=%s").splitlines()
+    assert subjects == ["write a (a, reopened)", "write a (a)"]
+    note = "Reopened: the format is wrong\nGraphene-Node: a"
+    assert note in git_in(repo, "log", "-1", "--merges", "--format=%b")
+    assert note in git_in(repo, "log", "-1", "--format=%b", "HEAD^2")  # the leaf's own commit, merged

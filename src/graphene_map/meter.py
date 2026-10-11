@@ -2,8 +2,9 @@
 
 A `Meter` takes the stream one line at a time (Claude Code's `--output-format stream-json`, Codex's
 `exec --json`) and returns the rows `graphene run` logs on the leaf: `usage` per turn, `did` per tool
-call, `said` per thing the agent says. `attempts`, `going`, `agents`, `width` and `you` read those rows
-back for the screens. dev/process/meter/rows.md has the shapes. Standard library only; a line never raises.
+call, `said` per thing the agent says, `denied` per command Claude Code refused its executor.
+`attempts`, `going`, `agents`, `width` and `you` read those rows back for the screens.
+dev/process/meter/rows.md has the shapes. Standard library only; a line never raises.
 """
 
 import itertools
@@ -64,7 +65,10 @@ def kind(argv: list[str]) -> str | None:
 
 
 def model_in(argv: list[str]) -> str | None:
-    """The model the command names with -m or --model, or None."""
+    """The model the command names with -m or --model, or None. An interpreter's own -m names a module
+    (`python3 -m graphene_map.nemotron.executor`, Graphene's own executor), never a model."""
+    if argv[1:2] == ["-m"] and os.path.basename(argv[0]).startswith("python"):
+        argv = argv[2:]  # the module, then what it is given
     return option(argv, "-m", "--model")
 
 
@@ -196,9 +200,22 @@ class Meter:
         --resume its total_cost_usd is the session's running total, so what earlier attempts paid comes
         off; its usage is the call's own (dev/test/results-2026-09-23.md)."""
         self.result = str(event.get("result") or event.get("subtype") or "")  # a stop says why it stopped
+        whole = self.result.strip()  # its last words: as a text block, its row stopped at SAID
+        said = [("said", {"attempt": self.attempt, "text": whole})] if len(whole) > SAID else []
+        refused = []  # what Claude Code refused its executor; a write is the hooks' to record (theirs win)
+        # ponytail: a shell command the hook refused for writing outside the scope may be listed here too
+        # (unprobed); then one call is counted as the hook's write and the executor's command
+        for d in event.get("permission_denials") or []:
+            if not isinstance(d, dict):
+                continue
+            tool = d.get("tool_name") or ""
+            if VERBS.get(tool) != "editing":  # "command", never "path": plan.wanted offers a path to widen to
+                command = self._target(d.get("tool_input") or {}).strip().split("\n")[0][:TARGET] or tool
+                refused.append(("denied", {"attempt": self.attempt, "command": command, "tool": tool,
+                                           "how": "refused to the executor"}))  # fmt: skip
         reported = event.get("total_cost_usd")
         if not isinstance(reported, (int, float)):
-            return []
+            return [*said, *refused]
         self.reported = reported
         rest = reported - self.paid_before - self.dollars
         self.dollars += rest
@@ -208,7 +225,7 @@ class Meter:
         more_out = max(0, (used.get("output_tokens") or 0) - self.completion_tokens)
         self.prompt_tokens += more_in
         self.completion_tokens += more_out
-        return [("usage", {"model": self.model, "calls": 0, "prompt_tokens": more_in,
+        return [*said, *refused, ("usage", {"model": self.model, "calls": 0, "prompt_tokens": more_in,
                            "completion_tokens": more_out, "dollars": rest, "endpoint": ENDPOINT[self.kind],
                            "attempt": self.attempt,
                            "turns": self.turns, "reported": reported})]  # fmt: skip
@@ -284,12 +301,26 @@ def going(rows: list[dict], scope: list[str] | None = None, now: datetime | None
     return (attempts(hold, scope, now) or [None])[-1]
 
 
+def whole_said(rows: list[dict]) -> list[dict]:
+    """Claude Code streams the last message as a text block (its row stopped at SAID) and again as the
+    result (kept whole): the block is dropped when the whole row that follows it begins with it."""
+    kept: list[dict] = []
+    for e in rows:
+        last = kept[-1] if kept else None
+        if (last is not None and last["kind"] == e["kind"] == "said"
+                and str(e["detail"].get("text") or "").startswith(str(last["detail"].get("text") or ""))):
+            kept[-1] = e
+        else:
+            kept.append(e)
+    return kept
+
+
 def _attempt(a: dict, nxt: dict | None, scope: list[str] | None, now: datetime) -> dict:
     rows, ended, start = a["rows"], a["ended"], a["row"]["timestamp"]
     usage = [e["detail"] for e in rows if e["kind"] == "usage"]
     did = [e["detail"] for e in rows if e["kind"] == "did"]
-    talk = [e for e in rows if e["kind"] in ("did", "said")]
-    said = [e["detail"].get("text") for e in rows if e["kind"] == "said"]
+    talk = whole_said([e for e in rows if e["kind"] in ("did", "said")])
+    said = [e["detail"].get("text") for e in talk if e["kind"] == "said"]
     executor = (a["row"]["actor"] or "").removeprefix("run:")
     checkout = a["row"]["detail"].get("checkout")
 
@@ -303,6 +334,8 @@ def _attempt(a: dict, nxt: dict | None, scope: list[str] | None, now: datetime) 
         return list(dict.fromkeys(target(d) for d in did if d.get("verb") == verb and d.get("target")))
 
     edited = targets("editing")
+    refused = [r for r in dict.fromkeys(e["detail"].get("path") or e["detail"].get("command")
+                                        for e in rows if e["kind"] == "denied") if r]  # fmt: skip
     told = [doing(e["detail"].get("verb") or "", target(e["detail"])) if e["kind"] == "did"
             else e["detail"].get("text") for e in talk]  # fmt: skip
     last = talk[-1] if talk else None
@@ -329,7 +362,7 @@ def _attempt(a: dict, nxt: dict | None, scope: list[str] | None, now: datetime) 
         "endpoints": sorted({u.get("endpoint") or "" for u in usage}),  # who answered; "" when a row says not
         "read": targets("reading"),
         "edited": edited,
-        "ran": targets("running"),
+        "ran": [r for r in targets("running") if r not in refused],
         "runs": Counter(d["target"] for d in did if d.get("verb") == "running" and d.get("target")),
         "searched": targets("searching"),
         "said": said[-1] if said else None,
@@ -338,8 +371,7 @@ def _attempt(a: dict, nxt: dict | None, scope: list[str] | None, now: datetime) 
         "last_at": last["timestamp"] if last else None,
         "files_in": [f for f in edited if scope is None or P.in_scope(f, scope)],
         "files_out": [f for f in edited if scope is not None and not P.in_scope(f, scope)],
-        "refused": list(dict.fromkeys(e["detail"]["path"] for e in rows
-                                      if e["kind"] == "denied" and e["detail"].get("path"))),  # fmt: skip
+        "refused": refused,
     }
 
 

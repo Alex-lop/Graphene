@@ -2,6 +2,7 @@
 2.1.292 with Sonnet 5.5; codex-cli 0.151.0 against Nemotron Super on Token Factory; a Codex run whose
 login was revoked)."""
 
+import json
 import shlex
 from datetime import UTC, datetime
 from pathlib import Path
@@ -9,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from graphene_map import meter as M
-from graphene_map.run import CODEX, DEFAULT_WITH, WORST, _worst
+from graphene_map.run import CAP_USD, CODEX, DEFAULT_WITH, WORST, _worst
 
 FIXTURES = Path(__file__).parent / "fixtures" / "meter"
 
@@ -110,6 +111,11 @@ def test_kind_and_model_on_real_command_lines():
     assert M.kind(["python3", "bin/executor.py"]) is None and M.kind([]) is None
     assert M.model_in([*claude, "--model=claude-opus-5-5"]) == "claude-opus-5-5"
     assert M.model_in(claude) is None
+
+
+def test_the_default_executor_holds_its_cap_and_starts_no_mcp_server():
+    claude = shlex.split(DEFAULT_WITH)
+    assert _worst(claude) == CAP_USD and "--strict-mcp-config" in claude and M.kind(claude) == "claude"
 
 
 def test_an_option_joined_by_equals_reads_as_the_spaced_one():
@@ -298,3 +304,58 @@ def test_a_codex_edit_named_by_its_absolute_path_is_judged_from_its_checkout():
     [a] = M.attempts(log, ["ingest/**"], NOW)
     assert a["files_in"] == ["ingest/feed.py"] and a["files_out"] == ["/repo/ingest/feed.py"]
     assert a["last"] == "editing /repo/ingest/feed.py" and a["told"][0] == "editing ingest/feed.py"
+
+
+def test_a_command_claude_code_refused_its_executor_is_refused_not_ran():
+    """Claude Code refuses a -p executor a command its permission mode does not allow (`python3 -m unittest
+    -q` under acceptEdits): node show listed it under ran and said "refused: nothing". Its result lists each
+    call it refused; a write it refused is the hooks' to record, so only the others become rows."""
+    meter, command = M.Meter("claude", 1), "python3 -m unittest -q"
+    call = {"type": "assistant", "message": {"id": "msg_1", "model": "claude-sonnet-5-5", "content": [
+        {"type": "tool_use", "id": "toolu_1", "name": "Bash", "input": {"command": command}}]}}
+    denials = [{"tool_name": "Bash", "tool_input": {"command": command}, "tool_use_id": "toolu_1"},
+               {"tool_name": "Edit", "tool_input": {"file_path": "/w/a/x.py"}, "tool_use_id": "toolu_2"}]
+    result = {"type": "result", "result": "stopped", "total_cost_usd": 0.01, "permission_denials": denials}
+    rows = meter.feed(json.dumps(call)) + meter.feed(json.dumps(result))
+    assert [k for k, _ in rows] == ["usage", "did", "denied", "usage"]
+    assert rows[2][1] == {"attempt": 1, "command": command, "tool": "Bash", "how": "refused to the executor"}
+    log = [row("00:00", "attempt", {"attempt": 1}), *(row("00:10", k, d) for k, d in rows)]
+    [a] = M.attempts(log, now=NOW)
+    assert (a["ran"], a["refused"]) == ([], [command])
+
+
+def test_the_agents_last_words_are_kept_whole():
+    """What it said last is its result: as a text block its said row stops at 400 characters, and the
+    record said 160 of them. Longer than a row, the result is a said row of its own, whole."""
+    words = ("word " * 120).strip() + "!"  # 600 characters
+    meter = M.Meter("claude", 1)
+    rows = meter.feed(json.dumps({"type": "result", "result": words, "total_cost_usd": 0.01}))
+    assert [d for k, d in rows if k == "said"] == [{"attempt": 1, "text": words}]
+    short = {"type": "result", "result": "done", "total_cost_usd": 0.01}
+    assert [k for k, _ in M.Meter("claude", 1).feed(json.dumps(short))] == ["usage"]  # as its text block
+
+
+def test_a_last_message_streamed_as_a_block_and_as_the_result_is_one_said_row_in_the_record():
+    """Lane D's checker, 10 October: the whole result became a second said row after the block cut at SAID,
+    and node show printed a long last message three times."""
+    block = "x" * M.SAID
+    whole = block + " and the rest of what it said"
+    rows = [
+        {"kind": "said", "timestamp": "2026-10-10T00:00:01Z", "detail": {"attempt": 1, "text": block}},
+        {"kind": "said", "timestamp": "2026-10-10T00:00:02Z", "detail": {"attempt": 1, "text": whole}},
+        {"kind": "did", "timestamp": "2026-10-10T00:00:03Z",
+         "detail": {"attempt": 1, "verb": "reading", "target": "a.py"}},
+    ]
+    kept = M.whole_said(rows)
+    assert [e["kind"] for e in kept] == ["said", "did"] and kept[0]["detail"]["text"] == whole
+
+
+def test_an_interpreters_own_dash_m_names_a_module_and_never_the_model():
+    """The run's first line read "nemotron (graphene_map.nemotron.executor)", the model the person named
+    with --model lost: the first -m was the interpreter's."""
+    from graphene_map.run import named
+
+    assert M.model_in(shlex.split(named("nemotron"))) is None
+    assert M.model_in(shlex.split(named("nemotron --model nvidia/X"))) == "nvidia/X"
+    assert M.model_in(["python3", "-m", "pkg.agent", "--model", "m"]) == "m"
+    assert M.model_in(["codex", "exec", "-m", "o3"]) == "o3" and M.model_in(shlex.split(DEFAULT_WITH)) is None

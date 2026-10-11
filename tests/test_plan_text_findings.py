@@ -986,3 +986,11 @@ def test_an_undo_and_an_edit_meanwhile_are_not_written_over_by_a_text_left_open(
     with pytest.raises(Refused, match="changed by someone else"):
         T.apply(store, text.replace("scope: src/a/**", "scope: src/a/**, docs/**"), ALEX, opened)
     assert plan.get(store, "x").scope == ["lib/**"]
+
+
+def test_a_board_item_written_as_a_node_is_told_how_the_board_is_written(store):
+    """`- question: …` is a node's line, and was refused only as a leaf with no scope and no check: the
+    refusal says how a board item is written too, after the words it had."""
+    [said] = T.faults(store, "goal: invoices as PDF\n- question: which format?  [q]\n", BOT)
+    assert said.startswith("line 2: 'question: which format?' is a new leaf with no scope and no check")
+    assert "A board item is a line at the left edge with no - or ?, such as question: … [id]" in said

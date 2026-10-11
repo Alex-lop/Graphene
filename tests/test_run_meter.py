@@ -99,7 +99,8 @@ def run_cli(repo: Path, executor: str) -> subprocess.Popen:
     [("claude", "--output-format stream-json --verbose", "claude.jsonl", 3),
      ("codex", "exec --json", "codex.jsonl", 11)],  # fmt: skip
 )
-def test_the_stream_lands_on_the_leaf_while_the_executor_runs(repo, name, with_, fixture, gate):
+def test_the_stream_lands_on_the_leaf_while_the_executor_runs(repo, name, with_, fixture, gate, monkeypatch):
+    monkeypatch.setenv("GRAPHENE_PERSON", "the-tester")  # the pins count the person's acts, whoever runs this
     script, go = printing(repo, name, fixture, gate)
     run = run_cli(repo, f"{script} {with_}")
     try:
@@ -139,7 +140,8 @@ pathlib.Path("a.txt").write_text("done\\n")
 """
 
 
-def test_a_stream_the_meter_cannot_read_leaves_the_run_as_it_was(repo):
+def test_a_stream_the_meter_cannot_read_leaves_the_run_as_it_was(repo, monkeypatch):
+    monkeypatch.setenv("GRAPHENE_PERSON", "the-tester")  # the pins count the person's acts, whoever runs this
     script = stand_in(repo, "claude", GARBAGE.format(python=sys.executable))
     run = run_cli(repo, f"{script} --output-format stream-json")
     said, _ = run.communicate(timeout=60)
@@ -201,6 +203,26 @@ def test_an_executor_with_no_stream_has_no_meter_and_its_attempt_still_ends(repo
         assert not store.node_log("a", ("usage", "did", "said"))
         [ended] = [e["detail"] for e in store.node_log("a", ("ended",))]
     assert ended["meter"] is None and ended["unread"] == 0 and ended["exit"] == 0
+
+
+# Claude Code stopped at its --max-budget-usd, as it says so: that subtype, an empty result, exit 1
+CAPPED = f"""#!{sys.executable}
+print('{{"type": "result", "subtype": "error_max_budget_usd", "is_error": true, "total_cost_usd": 2.01}}')
+raise SystemExit(1)
+"""
+
+
+def test_an_attempt_stopped_at_its_budget_is_said_so(repo):
+    said: list[str] = []
+    script = stand_in(repo, "claude", CAPPED)
+    with Store.open(repo) as store:
+        R.run_plan(store, repo, f"{script} --output-format stream-json --max-budget-usd 2", attempts=1,
+                   say=said.append, logs=repo / ".graphene" / "runs")  # fmt: skip
+    assert "a attempt 1: the executor stopped at its --max-budget-usd" in said, said
+    with Store.open(repo) as store:  # and so says the hand-back `graphene node show` reads: no crash
+        why = store.node_log("a", ("released",))[-1]["detail"]["why"]
+    assert why.endswith("; its last attempt stopped at its --max-budget-usd (a larger cap in --with, or a "
+                        "smaller leaf)") and "exited" not in why, why
 
 
 def test_codex_is_priced_from_token_factorys_list_when_it_names_a_listed_model(repo, monkeypatch):

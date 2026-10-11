@@ -106,7 +106,8 @@ def tool_results(request: dict) -> list[str]:
     return [m["content"] for m in request["messages"] if m["role"] == "tool"]
 
 
-def test_a_leaf_lands_its_check_decides_and_the_bill_is_in_the_record(repo, fake):
+def test_a_leaf_lands_its_check_decides_and_the_bill_is_in_the_record(repo, fake, monkeypatch):
+    monkeypatch.setenv("GRAPHENE_PERSON", "the-tester")  # the pins count the person's acts, whoever runs this
     f = fake([script({"greet": [
         call("view", path="app.py"),
         call("edit", path="app.py", old='"hi"', new='"hello"'),

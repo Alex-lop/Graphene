@@ -267,6 +267,7 @@ def test_demo_once_needs_no_key_and_no_network_and_prints_the_banner_and_the_end
         ["✓", "greet", "says", "hello", "greet", "done", "·", "app.py,", "words.py"],
         ["✓", "bye", "says", "goodbye", "farewell", "done", "·", "bye.py"],
     ]
+    assert rest[-1] == demo.NEXT  # it ends with the reader's next step: their own repository
     assert not list((tmp_path / "tmp").iterdir())
 
 
@@ -285,7 +286,7 @@ def test_demo_once_leaves_out_the_plans_next_step_and_nothing_else(tmp_path, mon
     assert hint in watched and banner.startswith("replay · ")
     finished = "2 leaves, 2 done, 0 running · finished"
     ending = {hint: finished, "just now": demo.ENDING}
-    assert replayed == [ending.get(line, line) for line in watched]
+    assert replayed == [*(ending.get(line, line) for line in watched), demo.NEXT]  # then the reader's own
 
 
 def test_the_replay_at_80x24_says_so_shows_a_record_and_refuses_what_would_run(tmp_path, monkeypatch):
@@ -320,7 +321,7 @@ def test_the_replay_at_80x24_says_so_shows_a_record_and_refuses_what_would_run(t
             await pilot.press("escape")  # the search ends: n is the offer again, not the next match
             monkeypatch.setattr(subprocess, "Popen", no_start)
             seen["before"] = states()
-            for key in ["R", "y", "d", "e", "E", "a", "A", "s", "P", "w", "b", "n", ":", "x", "u", "V"]:
+            for key in ["R", "y", "d", "e", "E", "a", "A", "s", "P", "w", "b", "n", ":", "x", "u", "V", "t"]:
                 await pilot.press(key)
                 await pilot.pause()
                 said = str(app.query_one("#status").render()).splitlines()[-1]
@@ -578,6 +579,28 @@ def test_each_change_stays_on_the_screen_and_space_dot_and_r_pause_step_and_play
     assert seen["end"][:3] == (n, ("✓", "done"), f"replay · {head['shown']} · {head['day']} · {demo.ENDED}")
     assert seen["end"][3].startswith("r again")
     assert seen["again"][:3] == (1, {}, None)
+
+
+def test_the_replays_footer_offers_enter_record_only_where_enter_shows_one(tmp_path):
+    """On the goal Enter is `graphene plan record`, a command the replay refuses ("a replay: nothing runs
+    here"); its footer offered "Enter record" there all the same."""
+    head, lines = demo.load(demo.SHIPPED)
+    app = demo.Replay(demo.repository(tmp_path, head), head, lines)
+    seen = {}
+
+    async def go():
+        async with app.run_test(size=(80, 24)) as pilot:
+            await pilot.press("space", *["full_stop"] * len(lines))  # paused, then to the last change
+            await pilot.press("g", "g")
+            await pilot.pause(0.3)
+            seen["goal"] = (app.on_goal(), str(app.query_one("#status").render()))
+            await pilot.press("j")
+            await pilot.pause(0.3)
+            seen["node"] = (app.on_goal(), str(app.query_one("#status").render()))
+
+    asyncio.run(go())
+    assert seen["goal"][0] and "Enter record" not in seen["goal"][1], seen
+    assert not seen["node"][0] and "Enter record" in seen["node"][1], seen
 
 
 def test_the_replays_help_names_its_own_keys_and_none_it_refuses(tmp_path):

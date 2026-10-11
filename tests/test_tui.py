@@ -419,11 +419,21 @@ def test_at_80_columns_a_long_reason_leaves_every_fix_in_sight_and_the_bottom_li
         plan.release(store, "schema", bot, LONG, wants=["migrations/001.sql"])
     seen, _ = watch(repo, ["G"])
     side = "\n".join(seen["side"])
-    for key in ("w  widen its scope", "b  a sibling leaf", "n  wait on ids", "?  ask the planner"):
+    for key in ("w  widen its scope", "b  a sibling leaf", "n  wait on ids", "t  ask the planner"):
         assert key in side, side
-    assert "? ask the planner" in seen["status"] and "? help" not in seen["status"]
+    assert "? ask the planner" not in seen["status"]  # t asks it, in the pane above with its command
+    assert "e edit its check" in seen["status"] and "? help" in seen["status"]  # the free fix, and the help
     seen, _ = watch(repo, ["G", "enter"])
     assert "Widen the scope, or add a leaf for it." in seen["detail"]  # the whole reason, in its record
+
+
+def test_the_record_view_carried_onto_the_goal_never_says_enter_goes_back(repo):
+    """Enter on a leaf, then gg: the view stayed "record", and the goal's line said "Enter back", where
+    Enter runs `graphene plan record`."""
+    proposed(repo)
+    person("plan", "accept")
+    seen, _ = watch(repo, ["j", "j", "enter", "g", "g"], size=(120, 36))
+    assert seen["cursor"] is None and "Enter back" not in seen["status"], seen["status"]
 
 
 def test_help_wraps_to_the_screen_and_sits_in_the_middle_of_it(repo):
@@ -962,7 +972,7 @@ def test_the_node_pane_has_a_section_for_each_kind_and_nothing_blank_or_twice(re
         "api": ["api · 0/5 done", "users returns ids", "more on ids (running)", "mine is yours"],
         "ids": ["ids · running", "executor claude, started by graphene run", "worktree", "cat api.py"],
         "docs": ["docs · came back", "it needs docs/api.md", "w widen its scope to docs/api.md",
-                 "b a sibling leaf for docs/api.md", "n wait on ids", "? ask the planner"],
+                 "b a sibling leaf for docs/api.md", "n wait on ids", "t ask the planner"],
         "more": ["more · waiting", "needs ids (running)"],
         "later": ["later · to fill in", "no scope and no leaves yet"],
         "mine": ["mine · yours", "owner alex"],
@@ -1001,8 +1011,8 @@ def test_the_offers_are_rows_of_one_shape_with_the_command_at_the_right(repo):
     for size in [*SIZES, (220, 40)]:
         seen, _ = at(repo, "docs", size)
         lines = [ln.rstrip() for ln in seen["detail"].splitlines()]
-        keys = [k for k, ln in enumerate(lines) if re.match(r"  [wbn?]  ", ln)]
-        assert [lines[k][2] for k in keys] == ["w", "b", "n", "?"], size
+        keys = [k for k, ln in enumerate(lines) if re.match(r"  [wbnt]  ", ln)]
+        assert [lines[k][2] for k in keys] == ["w", "b", "n", "t"], size
         on_row = [any(lines[k].endswith(c) for c in commands) for k in keys]
         if all(on_row):
             assert len({len(lines[k]) for k in keys}) == 1  # the commands at one edge
@@ -1074,7 +1084,7 @@ def test_the_status_line_is_two_lines_fitted_at_a_word_at_80_and_120(repo):
     # the clocks short, the rest long; the proposal counted, as `graphene` counts it
     clocks = r"waiting on you: 4 · agents 1 · <1m · you \d+ acts? ~\d+m · R runs 1 ready · "
     assert re.fullmatch(clocks + r"1 came back · 1/9 done · plan first: auto \(P\)", top), top
-    assert bottom == "y sign off · x send back · Enter record · Tab view · ? talk · q quit"  # ? on a node
+    assert bottom == "y sign off · x send back · Enter record · Tab view · ? help · q quit"  # ? everywhere
     narrow, _ = at(repo, "rule", (80, 24))
     top, bottom = narrow["status"].splitlines()
     assert re.fullmatch(r"4 on you · agents 1 · <1m · you \d+ acts? ~\d+m · R: 1 ready · 1 came back", top)
@@ -1937,12 +1947,86 @@ def test_a_leaf_its_run_stopped_reads_ready_and_its_forks_still_read_stopped(rep
             assert r.endswith(f"fork {k}  stopped"), rows
 
 
-def test_on_a_node_question_mark_twice_is_help_without_enter(repo):
-    """Walk 2026-09-28: on a node ? opens talk, whose line offers `? help`; the second ? only typed
+def test_on_a_node_question_mark_in_the_talk_line_is_help_without_enter(repo):
+    """Walk 2026-09-28: on a node ? opened talk (t now), whose line offers `? help`; a ? there only typed
     a ? into the line, and help took ?, ?, Enter."""
     proposed(repo)
-    seen, _ = watch(repo, ["j", "question_mark", "question_mark"])
+    seen, _ = watch(repo, ["j", "t", "question_mark"])
     assert seen["screen"] == "Help"
+
+
+def test_question_mark_is_help_even_on_a_leaf_that_came_back_where_t_asks_the_planner(repo, monkeypatch):
+    """? was the help on the goal and a board item, the planner's chooser on a node, and on a leaf that came
+    back it started a planner at once, which spends. ? is the help on every row; t talks to the planner;
+    and the leaf's row offers e too, the free fix when its check itself is wrong."""
+    proposed(repo)
+    person("plan", "accept")
+    with Store.open(repo) as store:
+        plan.start(store, "schema", SESSION, repo)
+        plan.release(store, "schema", SESSION, "the check itself is wrong")
+    started = []
+    monkeypatch.setattr(Watch, "background", lambda self, argv: started.append(argv))
+    seen, _ = watch(repo, ["G", "question_mark"], size=(120, 36))
+    assert seen["screen"] == "Help" and started == []
+    seen, _ = watch(repo, ["G"], size=(120, 36))
+    assert "t ask the planner" in seen["status"] and "e edit its check" in seen["status"]
+    watch(repo, ["G", "t"])
+    assert started == [["ask", "schema came back: propose what would let it be done", "--about", "schema"]]
+
+
+def test_a_run_that_could_start_more_than_one_leaf_asks_first_and_one_leaf_starts_at_once(repo, monkeypatch):
+    """R started `graphene run --parallel 4` on one key: up to four executors at once, each spending. A
+    run that could start more than one leaf (R, r on the goal, r on a sub-goal with several ready) asks
+    first, in a line, and y and Enter start it; r on one ready leaf stays one key."""
+    proposed(repo)
+    person("plan", "accept")  # ids and schema are ready; docs waits on ids
+    started = []
+    monkeypatch.setattr(Watch, "background", lambda self, argv: started.append(argv))
+    seen, _ = watch(repo, ["R"])  # no executor chosen: the run refuses at once, so nothing is asked
+    assert seen["screen"] == "Screen" and started.pop() == ["run", "--parallel", "4"]
+    with Store.open(repo) as store:
+        store.set_meta("executor", "true")
+
+    async def asked(app, pilot):
+        await pilot.press("R")
+        await pilot.pause()
+        said = "run up to 3 leaves (2 ready, 1 waiting), at most 4 at once with true? y and Enter start them"
+        assert app.screen.prompt == said, app.screen.prompt
+
+    seen, _ = watch(repo, [], before=asked)
+    assert seen["screen"] == "Ask" and started == []
+    for keys in (["R", "n", "enter"], ["R", "escape"], ["r", "escape"]):  # anything but y starts nothing
+        seen, _ = watch(repo, keys)
+        assert started == [], keys
+    seen, _ = watch(repo, ["r"])  # on the goal, r is every ready leaf, as R is
+    assert seen["screen"] == "Ask" and started == []
+    watch(repo, ["R", "y", "enter"])
+    assert started == [["run", "--parallel", "4"]]
+    watch(repo, ["j", "j", "r"])  # ids: one ready leaf
+    assert started[-1] == ["run", "--parallel", "4", "--node", "ids"]
+    # api: one ready leaf, and docs waiting on it, which the run starts once ids lands: it asks
+    seen, _ = watch(repo, ["j", "r"])
+    assert seen["screen"] == "Ask" and len(started) == 2
+    with Store.open(repo) as store:  # and a leaf that came back, which `run --node api` starts again
+        plan.start(store, "ids", SESSION, repo)
+        plan.release(store, "ids", SESSION, "it needs more")
+    seen, _ = watch(repo, ["j", "r"])
+    assert seen["screen"] == "Ask" and len(started) == 2
+
+
+def test_the_helps_first_line_names_the_mark_of_a_check_that_proves_nothing(repo):
+    """∅ marks a leaf whose check red first flagged, and the legend never said so; it said "proves nothing",
+    which is untrue of a check that fails on a path outside its leaf's scope, which ∅ marks too."""
+    proposed(repo)
+    for size, first in (((120, 36), 0), ((80, 24), 1)):  # at 80 columns its own line, under the states
+
+        async def before(app, pilot, first=first):
+            await pilot.press("question_mark")
+            await pilot.pause()
+            legend = shown(app, app.screen.query_one("#legend").region)
+            assert "∅ check flagged" in legend[first] and "━ critical" in legend[0], legend
+
+        watch(repo, [], size=size, before=before)
 
 
 def test_a_leaf_that_came_back_offers_r_to_run_it_again_and_its_ask_command_can_be_typed(repo):
@@ -2341,3 +2425,30 @@ def test_a_leaf_whose_executor_has_said_no_usage_yet_says_so_never_zero_dollars(
     for one in (False, True):
         text = " ".join(r.plain for r in live_row("xml", a, {"last": "running cat a.py"}, 78, one))
         assert "no usage yet" in text and "$0.00" not in text and "0 in, 0 out" not in text, text
+
+
+def test_c_on_a_landed_leaf_puts_its_diff_in_the_pane(repo):
+    """What a leaf changed was a merge to find in git's log: c shows it, as `graphene node diff --stat`."""
+    from graphene_map.run import run_parallel
+
+    with Store.open(repo) as store:
+        a = {"id": "a", "title": "write a", "scope": ["a.txt"], "check": "test -s a.txt"}
+        plan.propose(store, [a], plan.Caller("alex", True))
+    run_parallel(lambda: Store.open(repo), repo, repo, 1, "sh -c 'echo a > a.txt'", say=[].append)
+    seen, _ = at(repo, "a", (120, 36), keys=["c"])
+    assert "a.txt |" in seen["detail"] and "graphene node diff a --stat" in seen["status"], seen
+
+
+def test_the_goal_says_the_last_run_and_enter_on_it_is_the_plans_record(repo):
+    """What a run said last was gone with the terminal it printed in, and Enter on the goal did nothing."""
+    proposed(repo)
+    person("plan", "accept")
+    summary = "run: 1 done · agents 2 min, $0.0400 at list price"
+    with Store.open(repo) as store:
+        store.log_node("*", plan._now(), "run", "graphene run", detail={"summary": summary})
+    seen, _ = watch(repo, [], size=(120, 36))
+    assert seen["cursor"] is None and f"last run {summary}" in " ".join(seen["detail"].split()), seen
+    seen, _ = watch(repo, ["enter"], size=(120, 36))
+    said = " ".join(seen["detail"].split())
+    assert "checks run by Graphene itself" in said and f"last run: {summary}" in said, said
+    assert "graphene plan record" in seen["status"]
