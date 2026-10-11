@@ -1,0 +1,22 @@
+{
+  "type": "object",
+  "properties": {
+    "q1_files_changed_by_fix": {"type": "array", "items": {"type": "string"}, "description": "repo-relative paths the leaf that fixed the planted fault changed; [] if unknown"},
+    "q2_why_in_agents_words": {"type": ["string", "null"], "description": "the reason the fixing agent gave, quoted or closely paraphrased; null if the material does not say"},
+    "q3_refused_commands_count": {"type": ["integer", "null"], "description": "how many shell commands the executors themselves were refused (not writes the hooks refused); null if unknown"},
+    "q3_refused_command_example": {"type": ["string", "null"], "description": "one such command, verbatim; null if none or unknown"},
+    "q4_check_passed_at_base_leaf": {"type": ["string", "null"], "description": "the id of a leaf whose check already passed at the base commit before any work; null if none or unknown"},
+    "q5_planner_dollars": {"type": ["number", "null"], "description": "the planner's dollars at list price; null if unknown"},
+    "q5_total_dollars": {"type": ["number", "null"], "description": "the whole plan's dollars at list price (planner and executors); null if unknown"},
+    "q6_max_leaves_at_once": {"type": ["integer", "null"], "description": "the most leaves that ran at the same time; null if unknown"},
+    "q7_came_back_leaf": {"type": ["string", "null"], "description": "the id of the leaf that came back (was handed back by its executor); null if none or unknown"},
+    "q7_came_back_why": {"type": ["string", "null"], "description": "why it came back, in a sentence; null if unknown"},
+    "q7_reopened_leaf": {"type": ["string", "null"], "description": "the id of the leaf that was reopened to fix the fault; null if none or unknown"},
+    "q8_waits_on_person": {"type": ["string", "null"], "description": "what waits on the person now (proposals to accept, board items, leaves in review, a leaf that came back), in a sentence; null if nothing or unknown"},
+    "q9_fix_merge_sha": {"type": ["string", "null"], "description": "the sha (7 or more hex characters) of the merge commit that landed the fix; null if unknown"},
+    "q10_leaves_added_after_accept": {"type": ["integer", "null"], "description": "how many leaves were added to the plan after the person first accepted it; null if unknown"},
+    "cited": {"type": "array", "items": {"type": "string"}, "description": "for each answer, the line or file you read it from, briefly"}
+  },
+  "required": ["q1_files_changed_by_fix", "q2_why_in_agents_words", "q3_refused_commands_count", "q3_refused_command_example", "q4_check_passed_at_base_leaf", "q5_planner_dollars", "q5_total_dollars", "q6_max_leaves_at_once", "q7_came_back_leaf", "q7_came_back_why", "q7_reopened_leaf", "q8_waits_on_person", "q9_fix_merge_sha", "q10_leaves_added_after_accept", "cited"],
+  "additionalProperties": false
+}
