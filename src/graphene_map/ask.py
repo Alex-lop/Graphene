@@ -68,12 +68,12 @@ question: what the words leave open and the repository cannot settle  [short-id]
     about: leaf-id
 risk: what could make a check pass on nothing, or a leaf go wrong  [short-id]
     default: what you would do about it
-    then: check leaf-id: uv run pytest tests/pdf -q
+    then: check leaf-id: python3 -m pytest tests/pdf -q
 - a sub-goal  [short-id]
   ? a leaf: one piece of work  [leaf-id]
       what it should achieve, in a line or two; what you assumed for it, in a sentence
       scope: src/pdf/**, tests/pdf/**
-      check: uv run pytest tests/pdf -q
+      check: python3 -m pytest tests/pdf -q
       needs: other-leaf-id
 ```
 
