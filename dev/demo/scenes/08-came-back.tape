@@ -29,6 +29,9 @@ Sleep 6s
 Type "w"
 Sleep 3s
 Type "R"
+Sleep 1s
+Type "y"
+Enter
 Sleep 5s
 Hide
 Ctrl+B
