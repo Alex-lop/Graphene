@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import os
 import re
+import shlex
 import subprocess
 import uuid
 from collections.abc import Callable
@@ -397,7 +398,7 @@ def ask(
     row = {"note": sentence, "about": about, "with": planner, "session": session}
     store.log_node("*", P._now(), "asked", P.person_name(), None, None, row)
     # git is asked before the plan's write lock is taken, never under it: a hook waiting on the lock
-    # gives up after a quarter of a second, and lets the call through
+    # gives up after a quarter of a second and loses its row, and a write that needed a leaf is refused
     files = P.tracked(root)
     asked = prompt = prompt_for(store, sentence, about, split, root, files, size, talk)
     reask = size and about is None and not split
@@ -409,8 +410,9 @@ def ask(
             RULES, f"This replaces the tree you proposed last, which the person wants {size}; it is "
             f"dropped, so propose the whole tree afresh.{stand}\n\n" + RULES)  # fmt: skip
     before, paid = None, 0.0  # paid: what the session cost so far; a resumed one reports its running total
-    calls, bill = 0, ""  # bill: what the ask cost, its last line, said only when a meter read it
+    calls, bill = 0, ""  # bill: what the ask cost, after its proposal, when a meter or Nemotron counted it
     tries = 1 if argv0 == "nemotron" else ATTEMPTS  # Graphene's own planner sends a refusal back itself
+    paid_for = ""  # the last proposal a try printed: a try that prints none never loses it
     for attempt in range(1, tries + 1):
         argv = command_for(template, prompt, session, attempt > 1)
         env = {**os.environ, "GRAPHENE_PLANNER": "1"}
@@ -453,11 +455,17 @@ def ask(
             by = f"{argv0} {meter.model.removeprefix('claude-')}" if meter.model else argv0
             bill = f"the planner ({by}): {calls} call{'s' * (calls != 1)}, {money(paid)} at list price"
             bill *= bool(calls)  # a planner that never ran has no bill
+        elif argv0 == "nemotron":  # Graphene's own planner logs its bill itself, and prints it last
+            own = [line for line in done.stderr.splitlines() if line.startswith("bill: ")]
+            bill = f"the planner (nemotron): {own[-1].removeprefix('bill: ')}" if own else ""
         printed = (meter.result if meter else done.stdout).strip()  # the answer, never the stream
         text = proposal_in(printed)
+        paid_for = text if text.strip() else paid_for
         if not text.strip():
             said = [line for line in done.stderr.splitlines() if line.strip()]  # its last word, whole
-            tail = printed[-300:] or (said[-1][:300] if said else "it said nothing")
+            # its last word, unless that is its bill, which the ask says at the end
+            last = said[-1] if said and not (bill and said[-1].startswith("bill: ")) else ""
+            tail = printed[-300:] or (last[:300] or "it said nothing")
             refusal = f"no proposal (exit {done.returncode}): {tail}"
         else:
             heard: list[str] = []  # what the replacement says, said once it has been made
@@ -502,13 +510,21 @@ def ask(
             before = refusal
         # whole again: a planner other than Claude Code starts afresh and knows nothing of the first try
         prompt = f"{asked}\n\nYour last answer was not accepted: {refusal}\nPrint the whole proposal again."
-    end = f"\n{bill}" * bool(bill)  # after the refusal's first line, which the screen's bottom line reads
-    if text.strip():  # what it paid for is kept: the block alone, as `graphene plan propose` reads it
+    end = f"\n{bill}" * bool(bill)  # after the refusal's lines: watch's bottom line passes over it
+    if paid_for.strip():  # what it paid for is kept: the block alone, as `graphene plan propose` reads it
         kept = store.path.parent / "runs" / f"ask-{session[:8]}.txt"  # beside what `graphene run` logs
         kept.parent.mkdir(parents=True, exist_ok=True)
-        kept.write_text(text, encoding="utf-8")
-        where = os.path.relpath(kept)  # from where the person stands: the next step runs there
-        end = f"{end}\nits proposal is kept in {where}: mend it, then `graphene plan propose - < {where}`"
+        kept.write_text(paid_for, encoding="utf-8")
+        # from where the person stands: the next step runs there. Under `graphene watch` this runs in the
+        # repo's root, not where the person started watch: the whole path, quoted, runs from anywhere
+        where = shlex.quote(str(kept)) if "GRAPHENE_WATCH" in os.environ else os.path.relpath(kept)
+        # what it was proposed in place of (a merge's leaves, the node another way replaces, a re-ask's last
+        # tree): `plan propose` replaces nothing, so they are dropped first, by hand
+        instead = {*beside, *(n.id for n in _pending(store, last) if reask)}
+        tops = sorted(n.id for n in P.nodes(store) if n.id in instead and n.parent not in instead)
+        drop = f"`graphene node drop {' '.join(tops)}`, then " if tops else ""
+        then = f"{drop}`graphene plan propose - < {where}`"
+        end = f"{end}\nits proposal is kept in {where}: mend it, then {then}"
     if refusal == before:
         raise P.Refused(
             f"no proposal after {ATTEMPTS} tries; nothing was added (each was refused as above){end}"

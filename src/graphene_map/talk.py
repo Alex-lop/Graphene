@@ -152,6 +152,9 @@ def why(store, root, node_id: str, template: str, say=print) -> list[dict]:
     said = A.ask(store, root, f"why is {node_id} in the plan?", template, node_id, say=say,
                  talk=A.talking(store, "why", [node_id]))  # fmt: skip
     put = [line.split(":", 1)[0].removeprefix("put up ") for line in said if line.startswith("put up ")]
+    for line in said:  # what else it returned (its bill): said here, the notes are said by the caller
+        if not line.startswith("put up "):
+            say(line)
     notes = [it for it in (B.get(store, i) for i in put) if it["kind"] == "note"]
     if not notes:
         raise P.Refused("the planner put no note on the board; what it said is above")
