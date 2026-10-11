@@ -1,0 +1,45 @@
+f exit 0
+{'subtype': 'success', 'is_error': False, 'total_cost_usd': 0.05528179999999999, 'num_turns': 5, 'stop_reason': 'end_turn', 'terminal_reason': 'completed'}
+subagent_stats: {'spawned': 0, 'requested': {'background': 0, 'foreground': 0, 'unset': 0}, 'started_in_background': 0, 'max_depth': 0, 'spawned_by_subagents': 0, 'completed': 0, 'failed': 0, 'killed': {'parent': 0, 'user': 0, 'system': 0}, 'refused': {'depth_limit': 0, 'concurrency_limit': 0, 'budget': 0}, 'by_type': {}}
+denials: [{"tool_name": "Bash", "tool_use_id": "toolu_018GUorkidA8pP8nA5UjKjiv", "tool_input": {"command": "find app -name '*.py' | while read f; do printf '%s\\t%s\\n' \"$(wc -c <\"$f\")\" \"$f\"; done; ls; git status --short | head"}}]
+result: Only one file needs a change, so the batch comes down to a single unit. I couldn't enter plan mode (the tool isn't available in this session), so the plan is below for your approval before I spawn anything.
+
+## Research
+
+`app/` has 5 `.py` files:
+
+| File | Module docstring |
+|---|---|
+| `app/__init__.py` | **missing** (the file is empty) |
+| `app/report.py` | present |
+| `app/rows.py` | present |
+| `app/stats.py` | present |
+| `app/util.py` | present |
+
+The existing docstrings are single-line triple-quoted strings at the top of each file, ending in a period.
+
+## Work units
+
+1. **`app/__init__.py`**: add a one-line module docstring, e.g. `"""The app package: loading rows, computing stats, and rendering reports."""`
+
+This is below the 5–30 unit range because only one file lacks a docstring, and splitting further would be artificial.
+
+## E2E recipe
+
+No UI or server is involved. The worker should run:
+
+- `python -c "import app; print(app.__doc__)"` to confirm the docstring is picked up.
+- `python -m pytest tests` to confirm nothing regressed.
+
+## Worker instructions
+
+The worker prompt would contain the goal, the unit above, the docstring convention, the e2e recipe, and the standard 5-step block (code-review, unit tests, e2e, commit/push/`gh pr create`, `PR: <url>` report).
+
+## Decision for you
+
+For one empty file, spawning a worktree agent plus a PR is heavy. I can:
+
+- **(a)** run the batch as planned with one worker, or
+- **(b)** just make the edit here directly.
+
+Which do you p

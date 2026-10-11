@@ -1,0 +1,8 @@
+session 46B8A3AA-2BF5-44A6-981C-C151EB40B578 cap 0.03
+call 1 exit 0
+{'subtype': 'success', 'is_error': False, 'total_cost_usd': 0.018532899999999998, 'num_turns': 1}
+words: 157
+call 2 exit 0
+{'subtype': 'success', 'is_error': False, 'total_cost_usd': 0.0385878, 'num_turns': 1}
+words: 153
+errors: None
