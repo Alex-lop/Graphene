@@ -14,14 +14,14 @@ which picked the account's default model as a stranger's would.
 | proposals by first answer | 40 of 40 [0.91, 1.00] | 35 of 40 [0.74, 0.95] | the intervals overlap: no difference shown |
 | asks lost | 0 of 40 | 0 of 40 | no difference |
 | first refusals, by class | none | 5: `then:` effects 3 (an id not in the plan; a quoted goal effect ×2), indentation 2 | the text grammar's classes, every one accepted on the second try |
-| checks by runner (unittest / pytest / other) | 79 / 24 / 8 | 98 / 9 / 4 | the clean-tree sentence (A5) moved the planner toward the repo's own runner on these stdlib repos |
+| checks by runner (unittest / pytest / other) | 79 / 24 / 8 | 98 / 9 / 4 | no rule names it; by ask, a pytest check in 12 of 40 [0.18, 0.45] against 5 of 40 [0.05, 0.26]: the intervals overlap, no difference shown |
 | median seconds; median planner dollars | 26.5 s; $0.077 | 29.0 s; $0.086 | about the same |
-| the ask's last line names the planner, its calls and its dollars | never | 40 of 40 (`the planner (claude sonnet-5-5): 5 calls, $0.11 at list price`) | A2 |
+| after its proposal lines the ask names the planner, its calls and its dollars (then `prune it:`, or the board first) | never | 40 of 40 (`the planner (claude sonnet-5-5): 5 calls, $0.11 at list price`) | A2 |
 
-The A1 gate held on `$A` (no refusal), so the schema planner was not built. The branch's five first refusals are
-the classes a schema would reach (three `then:` slips) or not (two indentation slips, which the schema also makes
-impossible); over both builds that is 5 of 80 first answers, 6%, under the 10% the rule set. Nothing was lost: the
-second try took every one. The branch's X1 ran on the build at d6cd8e9; the ask's code did not change after it
+The A1 gate is read on `$A`, which had no first refusal, so the schema planner was not built. On the branch, 3 of
+the 5 first refusals (60%) fall in the rule's classes (the `then:` slips; the other two are indentation slips, which
+a schema would also make impossible): taken there, the gate would have been met, which goes to decision 3
+(`morning.md`). Nothing was lost: the second try took every one. The branch's X1 ran on the build at d6cd8e9; the ask's code did not change after it
 (the one later edit to gate.py is the hook's aside path, not the SessionStart text the planner reads).
 
 ## X2: the price of the contract on feeds (n = 3 a build; the plain session and `/batch` once)
@@ -115,6 +115,9 @@ bill line `you 2 acts, 2 min` (the accept and the ask) where 907a7d0 read `you 0
 sub-goal still prints an empty `scope:` line (listed in `morning.md`).
 
 ## X6: one stranger transcript a build (a fact)
+
+Both strangers were given the branch's README (020eb7d's text: `x6_transcript.sh` read the clone's copy, whichever
+build ran), so the README's own changes were not measured here, and both reported `graphene init --remove` from it.
 
 | build | landed | its session | Graphene's runs cost | dead ends, in its words |
 |---|---|---|---|---|

@@ -22,6 +22,9 @@ Ctrl+B
 Type "M"
 Show
 Type "R"
+Sleep 1s
+Type "y"
+Enter
 Sleep 2s
 Type "/running"
 Enter

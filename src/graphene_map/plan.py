@@ -736,14 +736,15 @@ def _ended(
     args: str | list[str], cwd: str | Path, env: dict, began: float, given: str | None = None
 ) -> tuple[int, str, str]:
     """Run a step of the check begun at ``began`` (the check itself, a string bash runs, or one of
-    git's, a list): its exit code and what it said on stdout and on stderr. It runs in a session of
-    its own and is ended with everything it started when the check's time is up (TimeoutExpired), on
-    a Ctrl-C, a closed terminal or a `kill`, and when a run is stopped (``end_checks``), which says
-    nothing of the work, so it is not taken as a result (KeyboardInterrupt), whether the stop came
-    while it ran or before it started. Killing bash alone had left its `sleep` running; killing git
-    alone left the `git reset` it had started writing a worktree after the check was over; a stop
-    that came while the worktree was being made was lost, and the check ran to its end; and a
-    terminal's Ctrl-C that reached the check itself had been recorded as the executor's failed check."""
+    git's, a list): its exit code and what it said on stdout and on stderr (a string's stderr is in its
+    stdout, in the order it was written, so its last line is its own and not uv's setup line). It runs
+    in a session of its own and is ended with everything it started when the check's time is up
+    (TimeoutExpired), on a Ctrl-C, a closed terminal or a `kill`, and when a run is stopped
+    (``end_checks``), which says nothing of the work, so it is not taken as a result (KeyboardInterrupt),
+    whether the stop came while it ran or before it started. Killing bash alone had left its `sleep`
+    running; killing git alone left the `git reset` it had started writing a worktree after the check was
+    over; a stop that came while the worktree was being made was lost, and the check ran to its end; and
+    a terminal's Ctrl-C that reached the check itself had been recorded as the executor's failed check."""
     import subprocess
 
     shell = isinstance(args, str)
@@ -754,7 +755,7 @@ def _ended(
         cwd=cwd,
         stdin=None if given is None else subprocess.PIPE,
         stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        stderr=subprocess.STDOUT if shell else subprocess.PIPE,  # git's own stderr is a refusal's words
         text=True,
         errors="replace",  # what a check prints is its own: bytes that are not UTF-8 are no failure to run it
         env=env,
@@ -776,7 +777,7 @@ def _ended(
         _end_check(proc)
     if began <= _stopped:
         raise KeyboardInterrupt
-    return proc.returncode, out, err
+    return proc.returncode, out, err or ""
 
 
 @contextmanager
@@ -796,7 +797,10 @@ def _clean_tree(checkout: str | Path, leave_out: list[str] | tuple, began: float
     def git(*args: str, index: Path | None = None, given: str | None = None) -> str:
         # ``index`` is the check's own, so the checkout's index lock is never taken
         env = {**os.environ, "GIT_OPTIONAL_LOCKS": "0", **({"GIT_INDEX_FILE": str(index)} if index else {})}
-        argv = ["git", "-c", "core.hooksPath=/dev/null", "-C", str(checkout), *args]
+        # a sparse checkout's cone is not the check's: `add -A` refused a new file outside it, and the
+        # worktree held only the cone, so a leaf whose scope lies outside could never pass
+        quiet = ("-c", "core.hooksPath=/dev/null", "-c", "core.sparseCheckout=false")
+        argv = ["git", *quiet, "-C", str(checkout), *args]
         code, out, err = _ended(argv, checkout, env, began, given)
         if code:
             raise Refused(f"git {' '.join(args)} failed in {checkout}: {err.strip()[:200]}")
@@ -823,8 +827,8 @@ def _clean_tree(checkout: str | Path, leave_out: list[str] | tuple, began: float
         state, base = git("write-tree", index=index).strip(), head(checkout)
         nobody = ("-c", "user.name=graphene", "-c", "user.email=graphene@localhost")  # on no branch
         commit = git(*nobody, "commit-tree", state, *(("-p", base) if base else ()), "-m", "check")
-        # ponytail: a whole checkout per check, which grows with the repository; a kept worktree moved
-        # to each commit (`git checkout --detach`) if a large repository needs it
+        # ponytail: a whole checkout per check, a sparse checkout's included, which grows with the
+        # repository; a kept worktree moved to each commit (`git checkout --detach`) if a large one needs it
         git("worktree", "add", "--quiet", "--detach", str(tree), commit.strip())
         yield tree
     finally:
@@ -2581,10 +2585,11 @@ def _finish_subgoal(
     return get(store, node.id)
 
 
-def close_aside(store, node_id: str, who: Caller, now: str | None = None) -> Node:
+def close_aside(store, node_id: str, who: Caller, now: str | None = None, final: bool = False) -> Node:
     """The end of a leaf made from a prompt, when the turn it was typed for ends. It is a record,
     not a gate: git says what changed under it, and its check runs if the person gave one. Nothing
-    changed, nothing kept: the leaf goes, so a question that led to no edit leaves no trace."""
+    changed, nothing kept: the leaf goes, so a question that led to no edit leaves no trace.
+    ``final``: the session is let stop now, so a first failure closes it too, on its record."""
     now = now or _now()
     node = get(store, node_id)
     checkout = node.checkout or "."
@@ -2595,7 +2600,7 @@ def close_aside(store, node_id: str, who: Caller, now: str | None = None) -> Nod
         kind = "check_passed" if passed else "check_failed"
         store.log_node(node.id, _now(), kind, who.label, who.session_id, None,
                        {"command": node.check, "output": output})  # fmt: skip
-        if not passed and len(store.node_log(node.id, ("check_failed",))) == 1:
+        if not passed and not final and len(store.node_log(node.id, ("check_failed",))) == 1:
             # said once, so the agent can put it right; asked to stop again, the leaf closes with the
             # failure on its record. It is a record, not a gate: a session is never trapped by it
             raise refusal(
@@ -3024,6 +3029,17 @@ def look(word: str) -> tuple[str, str]:
     return LOOK.get(word, ("○", ""))
 
 
+def value(v) -> str:
+    """A logged value as a person reads it: a list is its items, nothing is "none", not a repr."""
+    if isinstance(v, list | tuple):
+        return ", ".join(value(x) for x in v) or "none"
+    if v is None or v == "":
+        return "none"
+    if isinstance(v, bool):
+        return "yes" if v else "no"
+    return " ".join(str(v).split())
+
+
 def said_by(label: str | None) -> str:
     """Who an actor on the plan is, in a person's words: `run:claude` is claude started by `graphene
     run`, `claude:5940…` a Claude Code session, `planner` the planner `graphene ask` started."""
@@ -3058,7 +3074,7 @@ FIRST = ("on", "auto", "off")
 def plan_first(store) -> str:
     """Plan first, as the person set it: on, auto or off (`graphene plan first`, `P` in graphene
     watch). On: every ask is proposed and waits for the person. Auto: every ask is proposed, and one
-    small leaf with nothing on the board is the person's at once (``gate.one_line_ask``); anything
+    small leaf that puts nothing on the board is the person's at once (``gate.one_line_ask``); anything
     else waits. Off: nothing is proposed first. `graphene init` sets on, and keeps what was set
     before; never set, it is auto while a plan is in force and off otherwise."""
     said = store.meta("plan_first")

@@ -11,7 +11,7 @@ no model calls on record" when it logged none. In a stand-in's replay the names 
 the planner and the executor read as the stand-in's (`run:stand-in`, `stand-in-Nano`), never as
 Nemotron's. Before the first proposal the pane says what the planner was asked. A key that would
 change the plan or start anything (`y d e E a A s R P w b n : x u V`) says "a replay: nothing runs
-here" and does nothing; moving, folding, `/`, Enter (the record), `l` (the output) and `?` work.
+here" and does nothing; moving, folding, `/`, Enter (a node's record), `l` (the output) and `?` work.
 Each change stays on the screen for 2 s at least, and a wait longer than 3 s is played in 3 s, the top
 line saying by how much (`×10: a wait, cut`); `--speed 2` plays it twice as fast. Space pauses (`paused
 at 3 of 12`) and plays on, `.` shows the next change and stays paused, and `r` plays it again from the

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # X2 arm (c) · Claude Code's /batch on the feeds paragraph, once, independent of the build. Gated on
-# X0F=1 (the X0(f) probe found /batch runs headless); otherwise it says so and exits 0.
+# X0F=1: the X0(f) probe found /batch stops to ask, and X0F=1 runs the arm anyway, with no approval
+# message (x0.md(f) planned one); otherwise it says so and exits 0.
 #
 #   X0F=1 dev/process/prove/x2_batch.sh OUT [REPS]      REPS default 2; FAKE=1 spends nothing
 #
@@ -10,7 +11,7 @@
 set -euo pipefail
 . "$(dirname "$0")/common.sh"
 [ $# -ge 1 ] || { sed -n '2,10p' "$0"; exit 2; }
-[ "${X0F:-}" = 1 ] || { echo "X2(c) skipped: X0F is not 1 (the /batch probe did not run headless)"; exit 0; }
+[ "${X0F:-}" = 1 ] || { echo "X2(c) skipped: X0F is not 1 (X0(f): /batch stops to ask)"; exit 0; }
 OUT=$(mkdir -p "$1/runs" && cd "$1" && pwd); REPS=${2:-2}
 [ "${FAKE:-}" = 1 ] && export PATH="$PROVE/fake:$PATH"
 FOLLOW="I broke something after your change: XML records now come out empty. Find it, fix it in the file that owns it, and say why."

@@ -2,8 +2,9 @@
 
 A `Meter` takes the stream one line at a time (Claude Code's `--output-format stream-json`, Codex's
 `exec --json`) and returns the rows `graphene run` logs on the leaf: `usage` per turn, `did` per tool
-call, `said` per thing the agent says. `attempts`, `going`, `agents`, `width` and `you` read those rows
-back for the screens. dev/process/meter/rows.md has the shapes. Standard library only; a line never raises.
+call, `said` per thing the agent says, `denied` per command Claude Code refused its executor.
+`attempts`, `going`, `agents`, `width` and `you` read those rows back for the screens.
+dev/process/meter/rows.md has the shapes. Standard library only; a line never raises.
 """
 
 import itertools
@@ -64,7 +65,10 @@ def kind(argv: list[str]) -> str | None:
 
 
 def model_in(argv: list[str]) -> str | None:
-    """The model the command names with -m or --model, or None."""
+    """The model the command names with -m or --model, or None. An interpreter's own -m names a module
+    (`python3 -m graphene_map.nemotron.executor`, Graphene's own executor), never a model."""
+    if argv[1:2] == ["-m"] and os.path.basename(argv[0]).startswith("python"):
+        argv = argv[2:]  # the module, then what it is given
     return option(argv, "-m", "--model")
 
 

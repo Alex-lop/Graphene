@@ -103,8 +103,10 @@ def current(store, node: P.Node, base: str | None, tree: str | None) -> dict | N
     now = (node.rev, node.check, base, tree)
     fresh = last and tree and (last["rev"], last["check"], last["base"], last.get("tree")) == now
     unfinished = last and (last["verdict"] == "not-run" and not last["why"].startswith("timed out")
-                           or last["why"].startswith("not read"))  # fmt: skip
-    # a check that could not be run, or a red not read: try again. One that timed out would time out again
+                           or last["why"].startswith("not read")
+                           or last["verdict"] == "environment" and not last.get("by"))  # fmt: skip
+    # a check that could not be run, or a red not read: try again. One that timed out would time out again.
+    # What the PATH lacked is asked again (`_probe`, cheap): the person may have installed it since
     return last if fresh and not unfinished else None
 
 
@@ -160,9 +162,10 @@ def _editable(root: Path) -> str | None:
     """What the python3 on the check's PATH has installed editable from this repository, or None: a check
     that imports it tests the person's checkout, whatever the leaf's worktree holds. A warning, asked once
     a red first, and only when a check is run with python or pytest."""
-    try:
+    try:  # from a directory with no modules: `-c` puts the working directory first on its path, where a
+        # json.py of the checkout's would run, and shadow the module the script needs
         said = subprocess.run(["python3", "-c", EDITABLE, str(root)], env=P.check_env(), capture_output=True,
-                              text=True, timeout=30)  # fmt: skip
+                              text=True, timeout=30, cwd=os.sep)  # fmt: skip
     except (OSError, subprocess.TimeoutExpired):
         return None
     return said.stdout.strip() or None
@@ -278,7 +281,7 @@ def run(store, root: Path, ids=(), again: bool = False, say=None, committed: boo
         pool.shutdown(wait=True, cancel_futures=True)
         raise
     pool.shutdown(wait=True)
-    if any(re.match(r"(python3?|pytest)\b", c) for c in commands):
+    if any(re.match(r"(python3?|pytest)\b", n.check) for n in todo):  # whether or not its verdict was kept
         out.editable = _editable(root)
     hide = _hider(store.path.parent.parent) if ran else str  # the repo's path: every clean tree is under it
     files, live = sorted(P.tracked(root)), P._live(everything)
@@ -288,10 +291,14 @@ def run(store, root: Path, ids=(), again: bool = False, say=None, committed: boo
             continue
         code, text = ran[node.check]
         found, why, paths = judge(node, code, text, files, live, hide)  # why and paths are hidden below
-        ended = store.node_log(node.id, ("finished", "check_passed")) if found == "passes" else []
-        if any(e["kind"] == "finished" for e in ended) and any(
-            e["kind"] == "check_passed" and e["detail"].get("command") == node.check for e in ended
-        ):  # reopened: it passes until its check is made to say what the note asks
+        ended = store.node_log(node.id, ("finished", "check_passed", "precheck")) if found == "passes" else []
+        landed = any(e["kind"] == "finished" for e in ended) and any(
+            e["kind"] == "check_passed" and e["detail"].get("command") == node.check for e in ended)
+        nothing = any(e["kind"] == "precheck" and e["detail"].get("check") == node.check
+                      and e["detail"].get("verdict") == "passes" for e in ended)  # fmt: skip
+        # reopened: it passes until its check is made to say what the note asks; one that passed at the base
+        # before the leaf ever finished proved nothing then, and proves nothing now
+        if landed and not nothing:
             found, why = "landed", LANDED
         detail = {"rev": node.rev, "check": node.check, "base": base, "tree": tree, "verdict": found,
                   "why": _plain(hide(why)), "paths": [_plain(hide(p)) for p in paths], "exit": code,
@@ -324,7 +331,7 @@ def said(rows) -> list[str]:
         elif d["verdict"] == "environment":
             lines.append(f"{node.id}: its check cannot run here: {d['why']}. Checks run in a clean worktree "
                          "with your PATH and nothing git ignores; a runner that makes its own environment "
-                         "(`uv run pytest …`, `npm ci && npm test`) brings pytest with it")  # fmt: skip
+                         "(`uv run pytest …`, `npm ci && npm test`) brings what the check runs")  # fmt: skip
         elif d["verdict"] == "landed":
             lines.append(f"{node.id}: {d['why']}")
         elif d["verdict"] == "not-run":

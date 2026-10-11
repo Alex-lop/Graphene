@@ -61,8 +61,8 @@ mkdir -p ~/graphene-morning && cd ~/graphene-morning
 env UV_TOOL_DIR=$PWD/tools UV_TOOL_BIN_DIR=$PWD/bin uv tool install 'git+https://github.com/Alex-lop/Graphene@night/prove-it'
 export PATH=$PWD/bin:$PATH && graphene --version          # the branch, in its own directory: your checkout's hooks still run af3da2c5
 cd <your repo> && graphene init                            # it asks the plan-first mode; read what it says about the hooks and the record
-graphene ask "<the change you want, in a paragraph>"      # the last line is the planner, its calls and its dollars
-graphene watch                                            # y on the goal, R: it asks before it starts; ? is help; Esc closes it
+graphene ask "<the change you want, in a paragraph>"      # after its proposal: the planner, its calls and its dollars
+graphene watch                                            # y on the goal, R: it asks first when more than one leaf could start; ? is help
 graphene node show <a landed leaf> && graphene node diff <it>   # the check's last line, the at-base verdict, the landed sha, the diff
 git log --format='%s%n%b' -3                              # the merge's body: the check, the executor, the attempts, the dollars
 graphene init --remove                                    # the hooks come out; the plan is yours to keep or delete
@@ -75,13 +75,14 @@ the one first-hour number with a person in it; the walks (`before.md`, `after.md
 
 Design questions the night wrote up and left, with where they bite:
 
-- The command guard refuses read-only commands that merely name the store directory (`gate.py:536-552`): the
-  stranger in X6 hit it with a `ls`. It decides what an agent may read in a store that holds recorded prompts and
-  file contents; your call.
-- A subagent of a Claude Code session carries the session's id (`gate.py:357-358`): a `/batch` or agent-team worker
+- The command guard refuses read-only commands that merely name the store directory (`gate._guard_command`'s store
+  check): the stranger in X6 hit it with `git -C <store>/worktrees/report-tags status --short`, chained after
+  `graphene plan show`. It decides what an agent may read in a store that holds recorded prompts and file contents;
+  your call.
+- A subagent of a Claude Code session carries the session's id (`gate.one_line_ask`'s docstring): a `/batch` or agent-team worker
   is judged against whatever leaf the main session holds. X2(c) found `/batch` declines to batch on feeds, so it was
   not exercised.
-- A session's writes in another worktree block `done` with "put it back" (`plan.py:2137-2149`).
+- A session's writes in another worktree block `done` with "put it back" (`plan.elsewhere`, read by `plan._stray`).
 - Plan mode is mentioned nowhere.
 - There is no way to stop the recording short of `graphene init --remove`; `init` now says what is recorded.
 - A run lands into the branch you have checked out; every competitor puts a diff or a PR in front of the person
@@ -112,7 +113,8 @@ Design questions the night wrote up and left, with where they bite:
 - The tag and PyPI are yours: `0.5.0` is in CHANGELOG as "not published yet". PyPI still has 0.2.0 with the map-era
   description.
 - The GitHub repository description is the taskmaster-era sentence.
-- `docs/HACKATHON.md` still says react/vite and quotes 2 October numbers.
+- `docs/HACKATHON.md` still says react/vite and quotes 2 October numbers, and its line 78 that `?` on a node asks the
+  planner: since a9ad438 that is `t`, and `?` is the help (the night left the file to you).
 - Your checkout holds `tests/test_probe_seam.py` (the loop night's stray) untracked, and the `graphene` on your PATH
   is a uv tool built from af3da2c5; your checkout's hooks run that build. After merging, `uv tool install --force
   git+https://github.com/Alex-lop/Graphene` brings it to main.

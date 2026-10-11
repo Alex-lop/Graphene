@@ -36,13 +36,13 @@ for trial in range(4):
 ```
 
 ```
-trial 0: same second=True | copy: 'x = a * b  # 0' | utime(1): 'x = a / b  # 0' | really-refresh rc=0: 'x = a * b  # 0'
-trial 1: same second=True | copy: 'x = a * b  # 1' | utime(1): 'x = a / b  # 1' | really-refresh rc=0: 'x = a * b  # 1'
-trial 2: same second=True | copy: 'x = a * b  # 2' | utime(1): 'x = a / b  # 2' | really-refresh rc=0: 'x = a * b  # 2'
-trial 3: same second=True | copy: 'x = a * b  # 3' | utime(1): 'x = a / b  # 3' | really-refresh rc=0: 'x = a * b  # 3'
+trial 0: same second=True | copy: 'x = a * b  # 0' | utime(1): 'x = a / b  # 0' | really-refresh: 'x = a * b  # 0'
+trial 1: same second=True | copy: 'x = a * b  # 1' | utime(1): 'x = a / b  # 1' | really-refresh: 'x = a * b  # 1'
+trial 2: same second=True | copy: 'x = a * b  # 2' | utime(1): 'x = a / b  # 2' | really-refresh: 'x = a * b  # 2'
+trial 3: same second=True | copy: 'x = a * b  # 3' | utime(1): 'x = a / b  # 3' | really-refresh: 'x = a * b  # 3'
 ```
 
 In Graphene's flow the worktree is checked out at T0 and its index written then; an executor's first edit often lands
 in the same second (a fake executor does; a model's first edit arrives later, so the model runs seen so far were not
-hit). The executor's own `graphene node done` in that second read the content (racy against the copy made in the
-same second) and failed the check correctly; the run's own `done`, a second later, trusted the stat data and passed.
+hit). A `done` in that second reads the content (racy against a copy made in the same second) and fails the check;
+one a second or more later trusts the stat data and passes, as the executor's own `done` did in X5's run on 907a7d0.

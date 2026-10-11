@@ -43,7 +43,7 @@ Sleep 75s
 Show
 Sleep 5s
 
-# to the plan: prune a scope too far (cli/main.py goes), accept everything, run
+# to the plan: prune a scope too far (cli/main.py goes), accept everything, run (R asks first: y, Enter)
 Ctrl+B
 Type "o"
 Sleep 1s
@@ -56,6 +56,9 @@ Sleep 1s
 Enter
 Sleep 3s
 Type "R"
+Sleep 1s
+Type "y"
+Enter
 Sleep 8s
 Hide
 Sleep 150s
@@ -66,10 +69,14 @@ Enter
 Sleep 1s
 Escape
 Sleep 5s
-# it came back wanting cli/main.py: take the offer, run again
+# it came back wanting cli/main.py: take the offer, run again (R asks when a leaf waits on it; if
+# it does not, y on the leaf does nothing and Enter shows its record)
 Type "w"
 Sleep 3s
 Type "R"
+Sleep 1s
+Type "y"
+Enter
 Sleep 6s
 Hide
 Sleep 120s

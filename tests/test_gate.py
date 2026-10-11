@@ -312,6 +312,53 @@ def test_a_busy_store_never_turns_a_refusal_into_a_pass(repo):
         assert "no node is ready" in reason(hook(repo, "PreToolUse", **other))
 
 
+def test_a_busy_store_at_a_stop_still_refuses_it_for_the_planned_leaf_beside_an_aside(repo):
+    """Seam review, 2026-10-10: a Stop closes the session's aside leaf first, and that close raised on a
+    busy store, so the stop the planned leaf refuses was let through. The aside stays open instead."""
+    with Store.open(repo) as store:
+        plan.propose(store, [{"id": "n1", "title": "users", "scope": ["src/api/**"], "check": "true"}], ALEX)
+        plan.set_plan_first(store, "off", ALEX)
+    hook(repo, "UserPromptSubmit", prompt="fix the schema")
+    assert write(repo, "src/db/schema.py") is None  # an aside leaf made from the prompt, held by this session
+    with Store.open(repo) as store:
+        plan.start(store, "n1", BOT, repo)
+    with busy(repo):
+        said = hook(repo, "Stop", stop_hook_active=False)
+    assert said and said["decision"] == "block" and "You hold n1" in said["reason"]
+    with Store.open(repo) as store:
+        assert [n.state for n in plan.nodes(store) if n.aside] == [plan.RUNNING]
+
+
+def test_a_prompt_lost_to_a_busy_store_never_lets_the_last_prompts_contract_make_a_leaf(repo):
+    """Plan first on: the store was busy when the second prompt came, so the first one's words, whose
+    --scope and --check had made their leaf, made another at the next write, and it passed unproposed."""
+    plan_first(repo, "on")
+    hook(repo, "UserPromptSubmit", prompt="tidy the schema --scope 'src/db/**' --check 'true'")
+    assert write(repo, "src/db/schema.py") is None  # the person's own contract: done at once
+    hook(repo, "Stop")  # the turn ends, and its leaf closes
+    with busy(repo):
+        hook(repo, "UserPromptSubmit", prompt="now rework the users api and the schema")
+    assert "holds no leaf" in reason(write(repo, "src/db/schema.py"))
+    with Store.open(repo) as store:
+        assert not plan.nodes(store, (plan.RUNNING,))
+
+
+def test_a_repeated_stop_closes_an_aside_leaf_whose_check_fails_there_for_the_first_time(repo):
+    """A stop that follows a refused one is let go; an aside leaf whose check failed for the first time on
+    it raised before it was closed, so the `**` leaf stayed running, held by a session that had stopped."""
+    with Store.open(repo) as store:
+        mine = {"title": "users", "scope": ["src/api/**"], "check": "true", "owner": "alex"}  # in force
+        plan.propose(store, [mine], ALEX)
+        plan.set_plan_first(store, "off", ALEX)
+    hook(repo, "UserPromptSubmit", prompt="fix the schema --check 'false'")
+    assert write(repo, "src/db/schema.py") is None  # an aside leaf made from the prompt
+    (repo / "src/db/schema.py").write_text("TABLES = ['users']\n")
+    assert hook(repo, "Stop", stop_hook_active=True) is None  # let go, as a repeated stop is
+    with Store.open(repo) as store:
+        [aside] = [n for n in plan.nodes(store) if n.aside]
+        assert aside.state == plan.DONE and store.node_log(aside.id, ("check_failed",))
+
+
 # -- what the closing review broke ---------------------------------------------------------------------
 
 

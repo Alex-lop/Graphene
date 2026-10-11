@@ -320,6 +320,13 @@ def test_node_show_says_where_a_leaf_landed_and_how_to_see_it(repo):
     merge = git_in(repo, "rev-parse", "--short=7", "HEAD").strip()
     shown = person("node", "show", "a")
     assert f"  landed: {merge}: `graphene node diff a` shows it" in shown.stdout.splitlines(), shown.output
+    with Store.open(repo) as store:  # reopened and done in the person's checkout: node diff shows that
+        plan.reopen(store, "a", ALEX, "the format is wrong")
+        plan.start(store, "a", ALEX, repo)
+        (repo / "a.txt").write_text("by hand\n")
+        plan.finish(store, "a", ALEX)
+    assert "  landed: " not in person("node", "show", "a").stdout
+    assert person("node", "diff", "a").stdout.startswith("done in your checkout; Graphene committed nothing")
 
 
 def test_the_merge_says_what_landed_and_a_leaf_landed_again_says_it_was_reopened(repo):

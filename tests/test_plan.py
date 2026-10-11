@@ -907,6 +907,27 @@ def test_a_check_runs_none_of_the_persons_git_hooks(store, repo):
     assert not ran.exists() and no_check_tree_left(store, repo)
 
 
+def test_a_checks_output_is_kept_in_the_order_it_was_written_so_its_last_line_is_its_own(store, repo):
+    """Kept as stdout then stderr, the last line of `uv run pytest` in a tree with no .venv was uv's
+    "Creating virtual environment at: .venv", printed before the tests ran, and never pytest's summary."""
+    said = plan.run_check("echo 'Creating virtual environment at: .venv' >&2; echo '12 passed'", repo)
+    assert said[1].splitlines() == ["Creating virtual environment at: .venv", "12 passed"]
+
+
+def test_a_check_runs_in_a_sparse_checkout_on_a_new_file_outside_its_cone(store, repo):
+    """`git add -A` on the check's copy of the index refused a path outside the sparse-checkout definition,
+    so a leaf whose scope lies outside the cone came back with "the check could not be run", every time."""
+    (repo / "b").mkdir()
+    (repo / "b/y.py").write_text("Y = 1\n")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", "b")
+    git(repo, "sparse-checkout", "set", "--cone", "src")
+    assert not (repo / "b/y.py").exists()
+    (repo / "b").mkdir(exist_ok=True)
+    (repo / "b/new.py").write_text("N = 1\n")  # what a leaf scoped to b/** writes
+    assert plan.run_check("test -f b/new.py && test -f b/y.py", repo)[:2] == (True, "exit 0, no output")
+
+
 def slow_checkout(repo, said, began=None) -> None:
     """Every checkout of the repo now takes a second and a half, and then writes ``said``: a stand-in
     for a repository large enough that making a worktree takes a while (300,000 files: 39 s). With

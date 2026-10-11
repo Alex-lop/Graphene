@@ -26,7 +26,9 @@ export UV_TOOL_DIR="$OUT/tools" UV_TOOL_BIN_DIR="$OUT/bin"
 exec env $UNMARK GRAPHENE_AS="person:\$(id -un)" "\$@"
 EOF
 chmod +x "$OUT/repo/me"
-sed "s#git+https://github.com/Alex-lop/Graphene#'$WHEEL'#g" "$CLONE/README.md" > "$OUT/README.md"
+# that build's README, as its wheel carries it: this clone's own is the branch's, whichever build runs
+if [ -f "$WHEEL" ]; then unzip -p "$WHEEL" '*.dist-info/METADATA' | sed '1,/^$/d'; else cat "$CLONE/README.md"; fi \
+  | sed "s#git+https://github.com/Alex-lop/Graphene#'$WHEEL'#g" > "$OUT/README.md"
 {
   echo "You are a developer at a terminal who has never seen Graphene. You want this done in the repository you are in:"
   echo; cat "$ISSUE"; echo

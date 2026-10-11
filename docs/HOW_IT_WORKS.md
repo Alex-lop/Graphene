@@ -78,8 +78,8 @@ reads as (proposed, ready, waiting, running, came back, review, done). Finished 
   once. The critical path is bold.
 - `time` (`view_time.py`) draws a lane for each leaf that has been held, under one for your acts. Each cell is what
   the executor mostly did then: editing █, running ▓, reading ▒, talking ░, idle ─; a hold the meter cannot see is ━.
-  Marks: ! refused, ✓ ✗ the check, ↩ came back, ◆ landed, ● running. In the outline, ∅ after a title is a check
-  that passes at the base.
+  Marks: ! refused, ✓ ✗ the check, ↩ came back, ◆ landed, ● running. In the outline, ∅ after a title flags a
+  check: it passes at the base, or fails outside its scope.
 
 ## Plan first
 
@@ -92,10 +92,10 @@ Claude Code: inside one, Graphene takes the caller for the agent.
   One leaf proposed is one row in `graphene watch`: `y` takes it, and runs it when an executor is chosen.
 - **Auto**: every ask is proposed. One leaf with a scope and a check, no board item and at most 8 paths is yours at
   once, accepted "by their prompt in the session". Anything else waits for you in `graphene watch`.
-- **Off**: a quick change is done at once, recorded as a leaf made from your prompt; bigger work, or an asked-for
-  plan, is still proposed first, by the session's judgement.
+- **Off**: a quick change is done at once, as a leaf made from your prompt while a plan is in force; the session
+  still proposes bigger work, or an asked-for plan, first.
 
-Nothing reads your words to decide this.
+Graphene reads none of your words to decide this.
 
 ## Ask
 
@@ -108,9 +108,8 @@ repository first, ask only what the code cannot settle, and put up at most three
 assumption it is sure of goes in the goal of the leaf it bears on.
 
 The Nemotron planner answers in a strict JSON schema. Graphene repairs what needs no judgement; other faults go
-back together, at most twice. The ask ends with one line: the planner, its calls and its dollars at list price.
-When every answer is refused, the last proposal is kept in the store's runs directory and the ask prints the command
-that adds it by hand, once mended.
+back together, at most twice. A Claude Code or Nemotron ask then names its planner, calls and dollars at list price.
+When every answer is refused, the last proposal is kept, and the ask prints the commands that add it, once mended.
 
 How many leaves it is asked for follows the repository's size; the `size` setting makes that finer or coarser.
 
@@ -122,14 +121,14 @@ How many leaves it is asked for follows the repository's size; the `size` settin
 2. starts the executor there, with the leaf's contract and `GRAPHENE_NODE` set;
 3. when the executor ends, looks at the leaf, not the exit code. If it is not done, Graphene runs `done` itself;
    refused, the executor tries again, up to three attempts;
-4. commits the leaf's paths on its branch (`--no-verify`: your own git hooks do not run) and merges it `--no-ff`
-   into the branch you have checked out. The merge's message says what landed: the check and its result, the
-   executor, its attempts and dollars, and the note a reopened leaf was sent back with.
+4. commits the leaf's paths on its branch (`--no-verify`: your pre-commit and commit-msg hooks skip it) and merges
+   it `--no-ff` into the branch you have checked out (your merge hooks run). The merge's message says what landed:
+   the check and its result, the executor, its attempts and dollars, and the note a reopened leaf was sent back with.
 
 The run's first line says where it lands, with what, how wide and under what cap; `graphene watch` in another
-terminal follows it live. Then each check runs once at the base: one that passes there proves nothing; one whose
-runner is missing cannot run here; one that an editable install would run against your checkout is named; a reopened leaf's check, which passed when it landed, is said as such. Each is a warning, said
-before the leaf starts anyway (`--no-precheck` skips the checks).
+terminal follows it live. Then ready leaves' checks run at the base: one that passes there proves nothing; one whose
+runner is missing cannot run here; an editable install a check would import is named; a reopened leaf's, which
+passed when it landed, is said so. Each is a warning, said before the leaf starts anyway (`--no-precheck` skips them).
 
 **Done** is the gate. Graphene asks git what changed since the leaf started; a path outside the scope is refused. Then
 it runs the check in a fresh worktree of the leaf's state, so nothing the check writes lands in yours. If nothing in
@@ -192,8 +191,8 @@ the last.
 read, edited and ran, what was refused, and what it said last.
 
 **Which record wins.** A Claude Code executor is seen by the hooks and by its stream. For the meter the stream wins
-(turns, tokens, dollars, tool calls); for the gate the hooks win (what was refused and written). Each tool call is
-counted once. A session of yours, with no stream, has only the hooks' record.
+(turns, tokens, dollars, tool calls); for the gate the hooks win (what was refused and written). A refused shell
+write may count twice. A session of yours, with no stream, has only the hooks' record.
 
 ## Where each mechanism ends
 
@@ -257,8 +256,8 @@ it serves, names its files and its check, says what it waits on, and the executo
 **Isn't a tree overkill for a one-line fix?** Ask for "fix the typo in the header" and the agent proposes one leaf:
 one row in `graphene watch`, and `y` takes it. Under auto it is yours at once. `P` turns plan first off.
 
-**How do I turn it off?** `graphene plan first off`, at a terminal, stops the proposing (a quick change is done at
-once; bigger work is still proposed); `graphene init --remove` takes the hooks out, and the recording with them.
+**How do I turn it off?** `graphene plan first off`, at a terminal, lets a quick change through at once (bigger work
+is still proposed); `graphene init --remove` takes the hooks out, and the recording with them.
 
 **What doesn't it catch?** Every limit is listed under "Where each mechanism ends".
 

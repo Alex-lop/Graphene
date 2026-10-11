@@ -421,9 +421,19 @@ def test_at_80_columns_a_long_reason_leaves_every_fix_in_sight_and_the_bottom_li
     side = "\n".join(seen["side"])
     for key in ("w  widen its scope", "b  a sibling leaf", "n  wait on ids", "t  ask the planner"):
         assert key in side, side
-    assert "t ask the planner" in seen["status"] and "? ask the planner" not in seen["status"]
+    assert "? ask the planner" not in seen["status"]  # t asks it, in the pane above with its command
+    assert "e edit its check" in seen["status"] and "? help" in seen["status"]  # the free fix, and the help
     seen, _ = watch(repo, ["G", "enter"])
     assert "Widen the scope, or add a leaf for it." in seen["detail"]  # the whole reason, in its record
+
+
+def test_the_record_view_carried_onto_the_goal_never_says_enter_goes_back(repo):
+    """Enter on a leaf, then gg: the view stayed "record", and the goal's line said "Enter back", where
+    Enter runs `graphene plan record`."""
+    proposed(repo)
+    person("plan", "accept")
+    seen, _ = watch(repo, ["j", "j", "enter", "g", "g"], size=(120, 36))
+    assert seen["cursor"] is None and "Enter back" not in seen["status"], seen["status"]
 
 
 def test_help_wraps_to_the_screen_and_sits_in_the_middle_of_it(repo):
@@ -1972,11 +1982,16 @@ def test_a_run_that_could_start_more_than_one_leaf_asks_first_and_one_leaf_start
     person("plan", "accept")  # ids and schema are ready; docs waits on ids
     started = []
     monkeypatch.setattr(Watch, "background", lambda self, argv: started.append(argv))
+    seen, _ = watch(repo, ["R"])  # no executor chosen: the run refuses at once, so nothing is asked
+    assert seen["screen"] == "Screen" and started.pop() == ["run", "--parallel", "4"]
+    with Store.open(repo) as store:
+        store.set_meta("executor", "true")
 
     async def asked(app, pilot):
         await pilot.press("R")
         await pilot.pause()
-        assert app.screen.prompt == "run 2 ready, up to 4 at once? y and Enter start them", app.screen.prompt
+        said = "run up to 3 leaves (2 ready, 1 waiting), at most 4 at once with true? y and Enter start them"
+        assert app.screen.prompt == said, app.screen.prompt
 
     seen, _ = watch(repo, [], before=asked)
     assert seen["screen"] == "Ask" and started == []
@@ -1989,10 +2004,19 @@ def test_a_run_that_could_start_more_than_one_leaf_asks_first_and_one_leaf_start
     assert started == [["run", "--parallel", "4"]]
     watch(repo, ["j", "j", "r"])  # ids: one ready leaf
     assert started[-1] == ["run", "--parallel", "4", "--node", "ids"]
+    # api: one ready leaf, and docs waiting on it, which the run starts once ids lands: it asks
+    seen, _ = watch(repo, ["j", "r"])
+    assert seen["screen"] == "Ask" and len(started) == 2
+    with Store.open(repo) as store:  # and a leaf that came back, which `run --node api` starts again
+        plan.start(store, "ids", SESSION, repo)
+        plan.release(store, "ids", SESSION, "it needs more")
+    seen, _ = watch(repo, ["j", "r"])
+    assert seen["screen"] == "Ask" and len(started) == 2
 
 
 def test_the_helps_first_line_names_the_mark_of_a_check_that_proves_nothing(repo):
-    """∅ marks a leaf whose check passes before any work (the precheck), and the legend never said so."""
+    """∅ marks a leaf whose check red first flagged, and the legend never said so; it said "proves nothing",
+    which is untrue of a check that fails on a path outside its leaf's scope, which ∅ marks too."""
     proposed(repo)
     for size, first in (((120, 36), 0), ((80, 24), 1)):  # at 80 columns its own line, under the states
 
@@ -2000,7 +2024,7 @@ def test_the_helps_first_line_names_the_mark_of_a_check_that_proves_nothing(repo
             await pilot.press("question_mark")
             await pilot.pause()
             legend = shown(app, app.screen.query_one("#legend").region)
-            assert "∅ proves nothing" in legend[first] and "━ critical" in legend[0], legend
+            assert "∅ check flagged" in legend[first] and "━ critical" in legend[0], legend
 
         watch(repo, [], size=size, before=before)
 

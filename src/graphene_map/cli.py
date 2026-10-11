@@ -411,8 +411,9 @@ def build():
         settings = Path(os.path.relpath(hooks_file(r), Path.cwd()))
         say(f"plan first: {first}. {FIRST_SAID[first]}")
         if not any(s.split()[:1] == ["claude"] for s in specs):  # Claude Code is not how this repo works
+            out = "they record it on this machine, and `graphene init --remove` takes them out"
             say(f"the Claude Code hooks are in {settings} too, for a Claude Code session you may run here"
-                + ("" if added else " (already there)"))  # fmt: skip
+                + ("" if added else " (already there)") + f": {out}")  # fmt: skip
         else:
             say(f"hooks added to {settings}: {', '.join(added)}" if added else "hooks already installed")
             say(

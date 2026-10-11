@@ -296,9 +296,66 @@ def test_the_check_says_its_last_line_and_that_it_also_passed_at_the_base_before
     paths = ("  coverage: of the 1 path git said had changed under this node, 1 inside its scope; 0 to a "
              "recorded edit, 0 to a recorded shell command, 1 to git alone")  # fmt: skip
     start = lines.index(paths)
-    assert lines[start - 1] == ("  in short: 1 path changed under it, 0 traced to a recorded write; its 1 "
-                                "commit is in no session's records, so not graded, which takes nothing from "
-                                "the paths")  # fmt: skip
+    assert lines[start - 1] == ("  in short: 1 path changed under it, 0 traced to a recorded write; the 1 "
+                                "commit inside its windows is in no record of a session that held it, so not "
+                                "graded, which takes nothing from the paths")  # fmt: skip
+
+
+def test_a_check_that_failed_after_passing_at_the_base_is_never_said_to_show_nothing(store, repo):
+    """A check that passed at the base and then failed read "failed", then "it also passed at the base
+    commit, before any work: it shows nothing about this change", though its failure is what the work did."""
+    codex, base = Caller("codex:deadbeef", False, None), head(repo)
+    check = "test ! -e src/api/new.py"
+    plan.propose(store, [api_node(check=check)], ALEX, now=T(0))
+    passes = {"rev": 1, "check": check, "base": base, "verdict": "passes", "why": "it exits 0"}
+    store.log_node("n1", T(0, 30), "precheck", "graphene:precheck", None, None, passes)
+    plan.start(store, "n1", codex, repo, now=T(1))
+    (repo / "src/api/new.py").write_text("x = 1\n")
+    with pytest.raises(plan.Refused):
+        plan.finish(store, "n1", codex, now=T(3))
+    lines = NR.render(NR.node_record(store, repo, plan.get(store, "n1"), at=T(9)))
+    assert any(line.startswith(f"    check: `{check}` failed at ") for line in lines), lines
+    assert f"      it passed at the base commit {base[:7]}, before any work" in lines
+    assert not any("shows nothing about this change" in line for line in lines)
+
+
+def test_a_check_that_printed_nothing_is_said_so_not_given_graphenes_placeholder_as_its_line(store, repo):
+    codex = Caller("codex:deadbeef", False, None)
+    plan.propose(store, [api_node(check="true")], ALEX, now=T(0))
+    plan.start(store, "n1", codex, repo, now=T(1))
+    (repo / "src/api/users.py").write_text("def users():\n    return [1]\n")
+    plan.finish(store, "n1", codex, now=T(3))
+    lines = NR.render(NR.node_record(store, repo, plan.get(store, "n1"), at=T(9)))
+    at = next(k for k, line in enumerate(lines) if line.startswith("    check: "))
+    assert lines[at + 1] == "      it printed nothing" and "no output" not in "\n".join(lines)
+
+
+def test_every_denied_and_breached_path_is_named_and_only_the_refused_commands_are_capped():
+    """The cap meant for the commands an executor was refused cut every refusal list at three, and the
+    paths a hand-back is about were hidden behind "and 2 more"."""
+    paths = ["docs/a.md", "docs/b.md", "src/c.py", "src/d.py", "src/d.py"]
+    said = NR._refusal_lines(NR.Refusals(denied=paths, breaches=paths[:4], commands=["w", "x", "y", "z"]))
+    assert "    denied: docs/a.md, docs/b.md, src/c.py, src/d.py ×2" in said
+    assert "    refused after the fact: docs/a.md, docs/b.md, src/c.py, src/d.py" in said
+    assert "    refused to the executor: w, x and 2 more" in said
+
+
+def test_another_sessions_commit_inside_the_window_is_not_called_the_nodes_nor_said_to_be_unrecorded(
+    store, repo
+):
+    """A commit another recorded session made inside n1's window read "its 1 commit is in no session's
+    records": it was session bbbb2222's, and the store held its record."""
+    session(store, repo, S1, T(0))
+    session(store, repo, S2, T(0))
+    plan.propose(store, [api_node()], ALEX, now=T(0))
+    plan.start(store, "n1", BOT, repo, now=T(1))
+    (repo / "README.md").write_text("# someone else's\n")
+    committed(store, repo, S2, "someone else, inside the window", T(2), 1)
+    lines = NR.render(NR.node_record(store, repo, plan.get(store, "n1"), at=T(3)))
+    [short] = [line for line in lines if line.startswith("  in short: ")]
+    assert "the 1 commit inside its windows is in no record of a session that held it" in short, short
+    below = "    1 commit inside its windows (1 file) is in no record of a session that held it: not graded, "
+    assert below + "and not counted above" in lines
 
 
 def test_a_commit_in_the_nodes_first_second_is_inside_its_window(store, repo):
@@ -505,7 +562,7 @@ def test_the_persons_acts_are_kept_with_what_they_said(store, repo, finish):
         (T(5), "reopened", "alex"),
         (T(7), "overruled", "alex"),
     ]
-    assert acts[1].said == "scope: ['src/api/**'] -> ['src/api/users.py'] (revision 2)"
+    assert acts[1].said == "scope: src/api/** → src/api/users.py (revision 2)"  # as `plan log` says it
     assert acts[2].said == "returns a list, I asked for a dict"
     assert acts[3].said == "the README edit was mine (outside its scope: README.md)"
 
@@ -659,8 +716,27 @@ def test_what_an_attempt_said_last_is_whole_and_wrapped_when_it_is_long(store, r
     plan.release(store, "n1", run, "it stops here", now=T(5))
     lines = NR.render(NR.node_record(store, repo, plan.get(store, "n1"), at=T(6)))
     start = lines.index("    said last:")
-    wrapped = [line.removeprefix("      ") for line in lines[start + 1 : lines.index("    the last it did:")]]
+    end = next(k for k in range(start + 1, len(lines)) if not lines[k].startswith("      "))
+    wrapped = [line.removeprefix("      ") for line in lines[start + 1 : end]]
     assert " ".join(wrapped) == words and all(len(line) <= 100 for line in wrapped), wrapped
+
+
+def test_a_long_last_message_is_said_once_and_the_last_it_did_is_what_it_did(store, repo):
+    """`told` ends with the whole result: node show printed it under "said last" and again as the end of
+    "the last it did", cut to its last 2,000 characters, which a long summary filled with itself."""
+    run, words = Caller("run:claude", False, "s-1"), ("step done; " * 240).strip()  # 2,639 characters
+    plan.propose(store, [api_node()], ALEX, now=T(0))
+    plan.start(store, "n1", run, repo, now=T(1))
+    edit = {"attempt": 1, "tool": "Edit", "target": "src/api/users.py", "verb": "editing"}
+    ended = {"attempt": 1, "exit": 0, "meter": "claude", "unread": 0}
+    meter_rows(store, run, [(T(2), "attempt", {"attempt": 1, "log": None}), (T(3), "did", edit),
+                            (T(4), "said", {"attempt": 1, "text": words}),
+                            (T(5), "ended", ended)])  # fmt: skip
+    plan.release(store, "n1", run, "it stops here", now=T(6))
+    lines = NR.render(NR.node_record(store, repo, plan.get(store, "n1"), at=T(7)))
+    did = lines.index("    the last it did:")
+    assert lines[did + 1] == "      editing src/api/users.py", lines[did:]
+    assert not any("step done" in line for line in lines[did:])
 
 
 def test_an_attempt_with_no_meter_shows_the_tail_of_its_log(store, repo, tmp_path):

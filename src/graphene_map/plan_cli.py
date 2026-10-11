@@ -1,8 +1,8 @@
 """`graphene plan` and `graphene node`: the plan in a terminal, for a person and for an agent alike.
 
 Plain text, never wrapped or cut: an agent reads these lines as its contract, and a person greps them.
-The one exception is the plan itself (`graphene`, `graphene plan`, `watch --once`) at a terminal or
-under $COLUMNS: it fits that width (`room`).
+The exceptions are the plan itself (`graphene`, `graphene plan`, `watch --once`) at a terminal or under
+$COLUMNS, which fits that width (`room`), and what `node show` says an attempt said and did last.
 """
 
 from __future__ import annotations
@@ -40,9 +40,10 @@ NOT_INIT = (
 FIRST_SAID = {
     "on": "Every ask in a session is proposed, one leaf included, and waits for you. You accept in "
     "`graphene watch`, in another terminal; `graphene plan first off`, typed outside Claude Code, stops it.",
-    "auto": f"Every ask is proposed first. One leaf of at most {G.WIDE} paths, with nothing on the board, "
-    "is yours at once; anything else waits for you.",
-    "off": "A quick change is done at once, as a leaf of its own; bigger work is still proposed first.",
+    "auto": f"Every ask is proposed first. One leaf of at most {G.WIDE} paths that puts nothing on the "
+    "board is yours at once; anything else waits for you.",
+    "off": "A quick change is done at once, as a leaf of its own while a plan is in force; bigger work is "
+    "still proposed first.",
 }
 
 
@@ -68,7 +69,8 @@ def register(cli: typer.Typer, root, open_store, fail):
     def write(what: str, operation):
         """A person's act on the plan's shape: kept for `graphene plan undo`. What git tracks is asked
         before the plan's write lock is taken (``tracked``), never under it: a hook waiting on the
-        lock gives up after a quarter of a second, and lets the call through. What the act says is
+        lock gives up after a quarter of a second and loses its row (the deny holds, ``gate._write``),
+        and a leaf a prompt would make is not made, so that write is refused. What the act says is
         said once it is committed: a pipe closed under it (`| head -1`) had rolled it back after it
         said it was made. An act rolled back takes its lines with it."""
         who = P.caller()
@@ -444,15 +446,7 @@ def register(cli: typer.Typer, root, open_store, fail):
         for line in plan_lines(store, who, everything, width=room()):
             out(line)
 
-    def value(v) -> str:
-        """A logged value as a person reads it: a list is its items, nothing is "none", not a repr."""
-        if isinstance(v, list | tuple):
-            return ", ".join(value(x) for x in v) or "none"
-        if v is None or v == "":
-            return "none"
-        if isinstance(v, bool):
-            return "yes" if v else "no"
-        return " ".join(str(v).split())
+    value = P.value  # a logged value as a person reads it, as node show and watch say it too
 
     def one_row(store, n: P.Node, depth: int = 0) -> str:
         """A node the command just made or moved, in the row grammar `graphene plan` and the screen
@@ -978,7 +972,7 @@ def register(cli: typer.Typer, root, open_store, fail):
             False, "--here", help="Run in your checkout and commit nothing; the checkout is exposed."
         ),
         precheck: bool = typer.Option(
-            True, "--precheck/--no-precheck", help="Run each leaf's check at the base commit first; "
+            True, "--precheck/--no-precheck", help="Run each ready leaf's check at the base commit first; "
             "--no-precheck skips it."
         ),
     ) -> None:
@@ -988,7 +982,7 @@ def register(cli: typer.Typer, root, open_store, fail):
         if os.environ.get("GRAPHENE_NODE") or os.environ.get("GRAPHENE_PLANNER"):
             fail("an executor or a planner does not start runs: through --with a run is any command", 1)
         from . import meter as M
-        from .run import CAP_UNIT, _splits, label, named, run_parallel, run_plan, summary, sweep
+        from .run import CAP_UNIT, NOTHING, _splits, label, named, run_parallel, run_plan, summary, sweep
 
         r = root()
         with open_store(r) as store:
@@ -1034,7 +1028,8 @@ def register(cli: typer.Typer, root, open_store, fail):
 
             def end(line: str) -> None:  # the run's last line, said, then kept: nobody's act, and no change
                 out(line)
-                store.log_node("*", P._now(), "run", "graphene run", None, None, {"summary": line})
+                if not line.startswith(NOTHING):  # else the next bill's `you`, and the last run, began here
+                    store.log_node("*", P._now(), "run", "graphene run", None, None, {"summary": line})
 
             try:  # red first runs in the runner, once its refusals (a lock, a detached HEAD, the cap) pass
                 if here:
@@ -1049,7 +1044,8 @@ def register(cli: typer.Typer, root, open_store, fail):
                         argv = shlex.split(template)
                         model, cap = M.model_in(argv), M.option(argv, "--max-budget-usd")
                         what = label(template) + f" ({model})" * bool(model)
-                        most = f", ${cap} {CAP_UNIT} at most" * bool(cap)
+                        # Claude Code stops after the turn that passes the cap: no ceiling, a stop
+                        most = f", {CAP_UNIT} stops once it passes ${cap}" * bool(cap)
                         out(f"landing into {on} at {at[:7]}: {what}, up to {max(parallel, 1)} at once{most}; "
                             "each leaf is committed with --no-verify (your pre-commit and commit-msg hooks "
                             "skip it) and merged --no-ff; checks run in a clean worktree with your PATH; "
@@ -1432,8 +1428,10 @@ def register(cli: typer.Typer, root, open_store, fail):
             under = [c for c in P.below(n.id, everything) if c in P.leaves(everything)]
             for line in rolled_up(store, root(), under) if under else render(node_record(store, root(), n)):
                 out(line)
-            for landed in store.node_log(n.id, ("landed",))[-1:]:
-                out(f"  landed: {landed['detail']['commit'][:7]}: `graphene node diff {n.id}` shows it")
+            # the row `node diff` reads: a leaf reopened and done again since its merge did not land that
+            for landed in store.node_log(n.id, ("landed", "unlanded", "finished", "overruled"))[-1:]:
+                if landed["kind"] == "landed":
+                    out(f"  landed: {landed['detail']['commit'][:7]}: `graphene node diff {n.id}` shows it")
             entries = len(store.node_log(n.id))
             out(f"  every entry, check runs included: `graphene plan log` ({entries} for {n.id})")
 
