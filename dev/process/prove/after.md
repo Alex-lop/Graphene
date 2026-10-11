@@ -158,8 +158,8 @@ its leaf, was refused, and it then started the leaf and landed it.
 
 | | 907a7d0 | branch |
 |---|---|---|
-| the full suite | — | — |
-| ruff | clean | — |
-| the wheel smoke (`graphene --version`, `graphene demo --once`) | ok | — |
+| the full suite | 1,841 passed, 21 skipped on the trial merge of the four lanes; main's own suite is CI's | at the frozen SHA 58186ad: 1,841 passed, 2 failed (both my edits after the lanes' checks: the goal row's footer hint, the replay's wording; fixed at 89b407c); at the final tip after the seam review's fixes: **1,876 passed, 21 skipped, 0 failed** (20 min) |
+| ruff | clean | clean at the final tip |
+| the wheel smoke (`graphene --version`, `graphene demo --once`) | ok | ok: the walks ran both on each build |
 | the night's spend (ledger.md, from every session's own report) | $10.64 after the before arms (the 19:04:53Z ledger's rows other than the branch's; the 17:00:20Z $8.06 was taken before X2(a) and X3 finished) | $20.61 for every experiment on both builds, plus about $0.32 for X7's first typo attempt whose runs were deleted and rerun (every planner, executor, walker and reader on Sonnet; the two strangers' own init on the account's default model). The plan's estimate was $52 under a $60 ceiling; Sonnet asks cost about $0.08, not the $0.20 the estimate used |
-| the SHA the after arms ran on | 907a7d0 | — |
+| the SHA the after arms ran on | 907a7d0 | 58186ad (X1 on d6cd8e9, whose ask path is the same). The seam review's fixes landed after it; per the rules, the no-cost X5 ran again on the final tip (the same three results) and one walk ran as the spot check (2 of 2 landed in 0.6 min, the bill line and the new first line on screen). Every other after number is older than the seam fixes and is read as the frozen SHA's |
