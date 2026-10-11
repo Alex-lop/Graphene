@@ -3,15 +3,17 @@
 ## 0.5.0 (not published yet: the tag is Alex's)
 
 The first hour and the morning after (10 October). What a stranger meets in the first hour said plainly, and what a
-person reads the morning after printed from what was already stored; every change measured on 907a7d0 and on the
-branch (`dev/process/prove/after.md`).
+person reads the morning after printed from what was already stored; the night's experiments measured on 907a7d0
+and on the branch (`dev/process/prove/after.md`).
 - `graphene init` says what it did: the hooks it installed, that the next Claude Code session is recorded (prompts,
-  tool calls, the files it edits; on this machine only), that accepting happens in `graphene watch` in another
-  terminal, and the two ways out. At a terminal it asks the plan-first mode, one line per mode, and keeps `on` when
-  it cannot ask. A repository with no commit is told to commit once first. Run `graphene init`.
+  tool calls and what they returned, the files it edits; on this machine only), that accepting happens in `graphene
+  watch` in another terminal, and the two ways out. At a terminal it asks the plan-first mode, one line per mode,
+  and keeps `on` when it cannot ask. A repository with no commit is told to commit once first. Run `graphene init`.
 - `graphene init --remove` takes out exactly the hooks init added and leaves every other setting; only a person may.
-- A person-only act refused inside Claude Code says "if you are the person, run it in a terminal outside Claude
-  Code". A held leaf blocks a session's stop once, then lets it stop; `graphene run`'s executors are held as before.
+- A person-only act on the plan or the settings (accepting, editing, signing off, plan first, init) refused inside
+  Claude Code says "if you are the person, run it in a terminal outside Claude Code"; answering the board, `ask` and
+  `talk` still say only that they are the person's. A held leaf blocks a session's stop once, then lets it stop;
+  `graphene run`'s executors are held as before.
 - A store another process is writing never turns the hook's deny into an allow: every write on the way to a refusal
   is guarded, the aside leaf a prompt makes included.
 - An agent is told to put back only what it made; what may be the person's unsaved work is asked about instead.
@@ -26,7 +28,7 @@ branch (`dev/process/prove/after.md`).
   changes are not in the executors' worktrees. Its last line is kept as a row: `graphene plan log` lists it, the goal's
   pane shows the last, and Enter on the goal is the plan's record. `you` counts the acts since the plan's last run.
 - Red first asks the environment before it judges: a check whose runner the PATH lacks (`No module named pytest`)
-  is said as such, never as a red; leaves sharing one command get one line and the header counts the commands; a
+  is said as such, never as a red; leaves whose shared check passes get one line and the header counts the commands; a
   reopened leaf whose check passed when it landed is said so, not flagged; a python3 with this repository installed
   editable is named, because a check that imports it tests the checkout, not the leaf's worktree; only the leaves
   this run can start are judged. All warnings: nothing holds a leaf.
@@ -41,11 +43,13 @@ branch (`dev/process/prove/after.md`).
   what it finished in your checkout); `c` in `graphene watch` shows it. ∅ stays on a done leaf whose check also
   passed at the base. The merge's message carries the check and its result, the executor, its attempts and dollars,
   and the note a reopened leaf was sent back with, and a second landing says `(id, reopened)`.
-- `graphene ask` ends with one line: the planner, its calls and its dollars at list price. A proposal refused on the
-  last try is kept, and the ask prints the command that adds it once mended. `graphene plan propose -` reports every
+- `graphene ask` with Claude Code or Nemotron says, after what it proposed, one line: the planner, its calls and its
+  dollars at list price (Codex and a command of your own say none). A proposal refused on the last try is kept, and
+  the ask prints the commands that add it once mended. `graphene plan propose -` reports every
   fault at once. A board item written as a node is told how the board is written. The planner and every session
   are told that a check runs in a fresh worktree with nothing git ignores.
-- `docs/HOW_IT_WORKS.md` says all of the above; its word cap is 3,300.
+- `docs/HOW_IT_WORKS.md` says what init does and how to undo it, the run's first line and red first's warnings, and
+  what the record and the merge message now say; its word cap is 3,300.
 
 The loop (9 October). A leaf that finds a landed leaf's fault reopens it with one key, and every check runs red first.
 - A leaf that came back wanting a file a done leaf owns offers `r`: reopen that leaf with the reason, and wait on it.
