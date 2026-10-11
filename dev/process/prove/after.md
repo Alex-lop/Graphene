@@ -60,9 +60,11 @@ answers q3 in every run (`refused: 1 command refused to the executor` and the co
 of three: both readers took the record's `bill: $0.4455` for the whole plan's dollars, where the record means the
 leaves' bill and prints `the planner's bill: $0.1067` on its own line; each figure they gave was right, the sum was
 not asked for by name (the third reader summed). That is a labelling finding for the morning (`morning.md`), not a
-regression. Git on the branch answers q4 in every run from the merge body's "and it passed at the base too" (the
-night's own addition, reported as git's gain, as the rules say), and still cannot say the width, the dollars as a
-whole, or the leaves added after acceptance. The record arm's rise is by construction; the comparison that counts,
+regression. No branch run had a leaf whose check passed at the base (each `truth.json`'s red-first rows are header
+lines only), so q4's truth was null and git scored it by answering null, as on 907a7d0's runs 2 and 3: X3 never
+exercised the merge body's "and it passed at the base too". Git's rise to 5 is q6, the width, which the readers of
+runs 1 and 3 took from the run logs' timestamps (✗ in all three 907a7d0 runs); it still cannot say the dollars as a
+whole or the leaves added after acceptance. The record arm's rise is by construction; the comparison that counts,
 record against git on the same build, is 7 against 5.
 
 ## X4: pytest-bdd issue #476 through the tree (n = 1 a build)
@@ -109,7 +111,7 @@ environment line; C4 wrong if the editable line is missing) did not fire.
 On the branch the walks read, in order: `plan first: on. … You accept in graphene watch, in another terminal; graphene
 plan first off, typed outside Claude Code, stops it.`; `the next Claude Code session here is recorded into the store
 (its prompts, its tool calls and what they returned, the files it edits; on this machine only); graphene init --remove
-takes the hooks out`; the ask's last line `the planner (claude sonnet-5-5): 3 calls, $0.05 at list price`; the
+takes the hooks out`; the ask's bill line `the planner (claude sonnet-5-5): 3 calls, $0.05 at list price` (after the proposal lines, before the next step); the
 run's first line `landing into main at 5d0a6af: claude (sonnet), up to 2 at once, $2 an attempt at most; …`; and the
 bill line `you 2 acts, 2 min` (the accept and the ask) where 907a7d0 read `you 0 acts, 0 min`. `node show` on a
 sub-goal still prints an empty `scope:` line (listed in `morning.md`).
@@ -122,7 +124,7 @@ build ran), so the README's own changes were not measured here, and both reporte
 | build | landed | its session | Graphene's runs cost | dead ends, in its words |
 |---|---|---|---|---|
 | 907a7d0 | yes, at the second run | 19 turns, 258 s, $0.196 | $1.05 + $0.95 (the default model) | a wheel the harness misnamed; a check whose runner the PATH lacked (it rewrote the check to `uv run pytest`); a read refused for naming the store |
-| branch | yes, at the first run: two leaves (`impl`, `test`), both landed | 10 turns, 171 s, $0.100 | $1.32 + $0.52 planner (the default model) | none met: "The graphene binary isn't on your PATH, so I called it by full path"; it noted "Graphene flagged that itself" of the `impl` leaf's check passing at the base, and that "`graphene init --remove` takes them out" |
+| branch | yes, at the first run: two leaves (`impl`, `test`), both landed (both strangers read the branch's README: a harness fault, said in `before.md`) | 10 turns, 171 s, $0.100 | $1.32 + $0.52 planner (the default model) | none met: "The graphene binary isn't on your PATH, so I called it by full path"; it noted "Graphene flagged that itself" of the `impl` leaf's check passing at the base, and that "`graphene init --remove` takes them out" |
 
 A fact a build, not a rate: on 907a7d0 the stranger's first run came back for want of pytest on the PATH and it
 rewrote the check; on the branch its `uv sync` put pytest on the PATH first and both leaves landed at once. The
@@ -159,5 +161,5 @@ its leaf, was refused, and it then started the leaf and landed it.
 | the full suite | — | — |
 | ruff | clean | — |
 | the wheel smoke (`graphene --version`, `graphene demo --once`) | ok | — |
-| the night's spend (ledger.md, from every session's own report) | $8.06 after the before arms | $20.61 for every experiment on both builds, plus about $0.32 for X7's first typo attempt whose runs were deleted and rerun (every planner, executor, walker and reader on Sonnet; the two strangers' own init on the account's default model). The plan's estimate was $52 under a $60 ceiling; Sonnet asks cost about $0.08, not the $0.20 the estimate used |
+| the night's spend (ledger.md, from every session's own report) | $10.64 after the before arms (the 19:04:53Z ledger's rows other than the branch's; the 17:00:20Z $8.06 was taken before X2(a) and X3 finished) | $20.61 for every experiment on both builds, plus about $0.32 for X7's first typo attempt whose runs were deleted and rerun (every planner, executor, walker and reader on Sonnet; the two strangers' own init on the account's default model). The plan's estimate was $52 under a $60 ceiling; Sonnet asks cost about $0.08, not the $0.20 the estimate used |
 | the SHA the after arms ran on | 907a7d0 | — |

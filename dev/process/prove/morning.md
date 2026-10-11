@@ -40,11 +40,11 @@ The plan named these as yours to veto before anything ran. The PR opens with the
 | X1, the first ask, 40 Sonnet asks a build | 40 of 40 by first answer | 35 of 40 (intervals overlap: no difference shown); 40 of 40 by ask; the cost line on every ask |
 | X2, feeds planted, 3 runs a build | the loop closed 3 of 3; 14–20 commands refused to the executors; $0.62–0.75; 43–54 turns | the loop closed 3 of 3; 3–4 refused; $0.52–0.55; 30–34 turns; the merge body carries the check, the executor, the dollars, the reopen note |
 | X2, the plain session (3) and `/batch` (2, which declined to batch) | 18 of 20, 12 of 12, $0.34–0.46, the fix's reason in the reply only | the same arms; Graphene's arm scores the same and costs more, as the rules expected |
-| X3, ten questions: the record against git plus last words | the record 7 of 8; git 4 of 8; both missed the refused commands | the record 7 of 8 with the refused commands answered; git 5 of 8 (the merge body's at-base verdict) |
+| X3, ten questions: the record against git plus last words | the record 7 of 8; git 4 of 8; both missed the refused commands | the record 7 of 8 with the refused commands answered; git 5 of 8 (the width, read off the run logs; no branch run had a leaf whose check passed at the base, so the merge body's at-base phrase was never exercised) |
 | X4, pytest-bdd #476 | both leaves landed; the check imported the checkout by luck of ordering | red first named the editable install before the run; the one leaf came back with the executor's own diagnosis of that hole |
 | X5, the editable hole, $0 | the broken leaf landed under `python3 -m pytest` and under `uv run pytest` | named before the run; `uv run pytest` refuses it (the clean-tree fix); `python3 -m pytest` still lands it, as the rules expected |
 | the walks, the README's commands in order, 3 a build | 3 of 3 landed, 0.5 min, no dead end | the same, with init's hooks/record/remove lines, the ask's bill, the run's first line, `you 2 acts` |
-| X6, one stranger with the README | landed at the second run (its check had no pytest on the PATH; it rewrote the check itself) | landed at the first run; it repeated the ∅ warning in its report |
+| X6, one stranger with the README | landed at the second run (its check had no pytest on the PATH; it rewrote the check itself) | landed at the first run; it repeated the ∅ warning in its report (both strangers read the branch's README: a harness fault, said in `before.md`) |
 | X7, plan first (branch only) | | `auto`: the paragraph taken at once as one 8-path leaf 3 of 3, the typo done at once 3 of 3; `on`: both wait for you 3 of 3 |
 | spend | | $20.61 for every experiment on both builds (estimate $52, ceiling $60) |
 
