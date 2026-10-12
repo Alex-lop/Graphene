@@ -2412,8 +2412,12 @@ def test_the_legend_names_every_glyph_once_and_the_time_view_has_a_key_of_its_ow
         await pilot.pause()
         await pilot.press("question_mark")
         await pilot.pause()
-        key = " ".join(" ".join(shown(app, app.screen.query_one("#legend-time").region)).split())
+        lines = [line.strip() for line in shown(app, app.screen.query_one("#legend-time").region)]
+        key = " ".join(" ".join(lines).split())
         assert key == "█ edit ▓ run ▒ read ░ talk ─ idle ═ held ✓ ✗ check ! refused ■ landed | you", key
+        assert [line for line in lines if line] == [  # at 80 the key breaks between entries, never inside one
+            "█ edit  ▓ run  ▒ read  ░ talk  ─ idle  ═ held", "✓ ✗ check  ! refused  ■ landed  | you"
+        ], lines  # fmt: skip
 
     watch(repo, [], size=(80, 24), before=timed)
     # a fork that lost, gave up or stopped is marked with no leaf's glyph (passed shares done's ✓ by design)
