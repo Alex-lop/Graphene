@@ -8,6 +8,7 @@
 The patterns are the lines Graphene prints when it stops someone: a refusal (plan.py), a person-only
 act (plan.py:1046), a hook error, nothing to run / no proposal / could not read the proposal (run.py,
 ask.py), an init that chose nothing (cli.py:308), an empty plan (plan_cli.py)."""
+
 import json
 import re
 import subprocess
@@ -39,13 +40,25 @@ def walk(out: Path, path: Path) -> dict:
     text = path.read_text(encoding="utf-8", errors="replace")
     repo = out / "runs" / f"report-sealed-walk-{i}" / "repo"
     t0_file = out / f"walk-{i}.t0"
-    merges = subprocess.run(["git", "-C", str(repo), "log", "--merges", "--reverse", "--format=%ct %s"],
-                            capture_output=True, text=True).stdout.splitlines() if repo.exists() else []
+    merges = (
+        subprocess.run(
+            ["git", "-C", str(repo), "log", "--merges", "--reverse", "--format=%ct %s"],
+            capture_output=True,
+            text=True,
+        ).stdout.splitlines()
+        if repo.exists()
+        else []
+    )
     minutes = None
     if merges and t0_file.exists():
         minutes = round((int(merges[0].split()[0]) - int(t0_file.read_text().strip())) / 60, 1)
-    return {"walk": path.name, "landed": len(merges), "minutes_to_first_merge": minutes,
-            "dead_ends": counts(text), "dead_end_total": sum(counts(text).values())}
+    return {
+        "walk": path.name,
+        "landed": len(merges),
+        "minutes_to_first_merge": minutes,
+        "dead_ends": counts(text),
+        "dead_end_total": sum(counts(text).values()),
+    }
 
 
 def main(argv: list[str]) -> int:
@@ -58,10 +71,15 @@ def main(argv: list[str]) -> int:
         print("| walk | landed | min to 1st merge | " + " | ".join(names) + " |")
         print("|---|---|---|" + "---|" * len(names))
         for r in rows:
-            print(f"| {r['walk']} | {r['landed']} | {r['minutes_to_first_merge']} | "
-                  + " | ".join(str(r["dead_ends"][n]) for n in names) + " |")
+            print(
+                f"| {r['walk']} | {r['landed']} | {r['minutes_to_first_merge']} | "
+                + " | ".join(str(r["dead_ends"][n]) for n in names)
+                + " |"
+            )
         return 0
-    print(json.dumps({p: counts(Path(p).read_text(encoding="utf-8", errors="replace")) for p in argv}, indent=2))
+    print(
+        json.dumps({p: counts(Path(p).read_text(encoding="utf-8", errors="replace")) for p in argv}, indent=2)
+    )
     return 0
 
 

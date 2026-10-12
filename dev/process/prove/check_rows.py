@@ -3,6 +3,7 @@
 
 Read through Graphene's own Store (run it with the build's interpreter, $TOOLPY), so the row that
 `node show` sums up as "1 check failed" is printed whole: who ran it, when, the command, the tail."""
+
 import sys
 from pathlib import Path
 
@@ -12,7 +13,9 @@ repo = Path(sys.argv[1]).resolve()
 only = set(sys.argv[2:])
 with Store.open(repo) as store:
     for e in store.node_log():
-        if e["kind"] not in ("check_passed", "check_failed", "precheck") or (only and e["node_id"] not in only):
+        if e["kind"] not in ("check_passed", "check_failed", "precheck") or (
+            only and e["node_id"] not in only
+        ):
             continue
         d = e["detail"]
         print(f"== {e['timestamp']} {e['node_id']} {e['kind']} by {e['actor']}")

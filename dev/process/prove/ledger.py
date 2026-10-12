@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """ledger.py OUT... : the spend under each directory, from the sessions' own results (see ledger.sh)."""
+
 import json
 import os
 import re
@@ -8,8 +9,14 @@ import sys
 import time
 from pathlib import Path
 
-UNMARK = ("CLAUDECODE", "CLAUDE_CODE_SESSION_ID", "CLAUDE_CODE_ENTRYPOINT", "AI_AGENT", "GRAPHENE_NODE",
-          "GRAPHENE_PLANNER")
+UNMARK = (
+    "CLAUDECODE",
+    "CLAUDE_CODE_SESSION_ID",
+    "CLAUDE_CODE_ENTRYPOINT",
+    "AI_AGENT",
+    "GRAPHENE_NODE",
+    "GRAPHENE_PLANNER",
+)
 
 
 def results(path: Path):
@@ -54,7 +61,9 @@ def planner_bills(root: Path) -> tuple[float, int]:
     total, n = 0.0, 0
     for db in root.rglob(".graphene/graphene.db"):
         repo = db.parent.parent
-        done = subprocess.run(["graphene", "plan", "record"], cwd=repo, env=env, capture_output=True, text=True)
+        done = subprocess.run(
+            ["graphene", "plan", "record"], cwd=repo, env=env, capture_output=True, text=True
+        )
         for m in re.finditer(r"the planner's bill: \$([0-9.]+) at list price", done.stdout):
             total += float(m.group(1))
             n += 1
@@ -64,7 +73,10 @@ def planner_bills(root: Path) -> tuple[float, int]:
 def main(dirs: list[str]) -> int:
     stamp = time.strftime("%Y-%m-%d %H:%M:%SZ", time.gmtime())
     print(f"\n## ledger at {stamp}\n")
-    print("| directory | sessions ($, max per session id) | results read | planner bills ($) | plans | total ($) |")
+    print(
+        "| directory | sessions ($, max per session id) | results read | planner bills ($) | plans "
+        "| total ($) |"
+    )
     print("|---|---|---|---|---|---|")
     grand = 0.0
     for d in dirs:
