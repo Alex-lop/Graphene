@@ -3,6 +3,7 @@
 
 FILE is `--output-format json`'s one object, or a stream-json file whose last `result` line is
 read. Prints the value (JSON for a list or an object), nothing when it is absent."""
+
 import json
 import sys
 

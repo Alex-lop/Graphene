@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Run a command in a session of its own and kill its whole process group after N seconds.
 
-    pgtimeout.py N command [args...]      exit: the command's, or 124 when it was killed"""
+pgtimeout.py N command [args...]      exit: the command's, or 124 when it was killed"""
+
 import os
 import signal
 import subprocess

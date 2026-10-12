@@ -1,11 +1,24 @@
 #!/usr/bin/env python3
-"""The X2 table from an OUT directory's runs: x2_table.py OUT   (reads OUT/runs/*/score.json, prints markdown)"""
+"""The X2 table from an OUT directory's runs: x2_table.py OUT
+
+(reads OUT/runs/*/score.json, prints markdown)"""
+
 import json
 import sys
 from pathlib import Path
 
-COLS = ("accept", "held_out", "six_unchanged", "seconds", "dollars_total", "denials", "turns", "handed_back",
-        "fix_landed_in_owner", "why_recorded")
+COLS = (
+    "accept",
+    "held_out",
+    "six_unchanged",
+    "seconds",
+    "dollars_total",
+    "denials",
+    "turns",
+    "handed_back",
+    "fix_landed_in_owner",
+    "why_recorded",
+)
 
 
 def main(out: Path) -> int:

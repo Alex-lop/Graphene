@@ -15,11 +15,13 @@ class, by the strings Graphene prints (src/graphene_map at 907a7d0):
   board-as-node     '(question|risk|assume|note|leave out):.*' is a new leaf with no scope and no check
                                                                            plan_text.py:757
   check-runs-later  its check runs .*, which .* writes after it            plan.py:1297
-  then-about        \\b(then|about): .*(is not read|not a node|names no node|not read)   plan_text.py:260, board then: lines
+  then-about        \\b(then|about): .*(is not read|not a node|names no node|not read)
+                    (plan_text.py:260, board then: lines)
   option-risk       option: is a question's                                board.py:284
   no-answer         no proposal \\(exit                                     ask.py:456 (nothing printed)
   other             any other "could not read the proposal:" line
 """
+
 import json
 import re
 import statistics
@@ -28,22 +30,28 @@ from pathlib import Path
 
 CLASSES = [
     ("one-writer", re.compile(r"both write .* A path has one leaf")),
-    ("board-as-node", re.compile(r"'(question|risk|assume|note|leave out):[^']*' is a new leaf with no scope and no check")),
+    (
+        "board-as-node",
+        re.compile(r"'(question|risk|assume|note|leave out):[^']*' is a new leaf with no scope and no check"),
+    ),
     ("check-runs-later", re.compile(r"its check runs .*, which .* writes after it")),
     ("then-about", re.compile(r"\b(then|about): .*(is not read|not a node|names no node|not read)")),
     ("option-risk", re.compile(r"option: is a question's")),
     ("no-answer", re.compile(r"no proposal \(exit")),
 ]
-RUNNERS = [("python3 -m pytest", re.compile(r"python3? -m pytest|^pytest\b")),
-           ("uv run", re.compile(r"^uv run\b")),
-           ("python3 -m unittest", re.compile(r"python3? -m unittest")),
-           ("other", re.compile(r"."))]
+RUNNERS = [
+    ("python3 -m pytest", re.compile(r"python3? -m pytest|^pytest\b")),
+    ("uv run", re.compile(r"^uv run\b")),
+    ("python3 -m unittest", re.compile(r"python3? -m unittest")),
+    ("other", re.compile(r".")),
+]
 
 
 def wilson(x: int, n: int) -> str:
     if not n:
         return "n=0"
     import math
+
     z, p = 1.96, x / n
     d = 1 + z * z / n
     c = (p + z * z / (2 * n)) / d
@@ -68,7 +76,9 @@ def one(run: Path) -> dict:
     secs = float(read(run / "ask.seconds").strip() or 0)
     by_ask = rc == 0 and bool(re.search(r"^proposed ", out, re.M))
     again = bool(re.search(r"^asking the planner \([^)]*\) again", out, re.M))
-    refusal = next((line for line in (out + "\n" + err).splitlines() if "could not read the proposal:" in line), "")
+    refusal = next(
+        (line for line in (out + "\n" + err).splitlines() if "could not read the proposal:" in line), ""
+    )
     if not refusal and rc != 0:
         tail = [line for line in err.splitlines() if line.strip()]
         refusal = tail[-1] if tail else "(nothing on stderr)"
@@ -81,11 +91,20 @@ def one(run: Path) -> dict:
         runners[name] = runners.get(name, 0) + 1
     bill = re.search(r"the planner's bill: \$([0-9.]+)", read(run / "record.txt"))
     return {
-        "run": run.name, "task": run.name.split("-")[0], "rc": rc, "seconds": secs,
-        "by_ask": by_ask, "by_first_answer": by_ask and not again, "again": again, "lost": rc != 0,
-        "first_refusal": refusal[:300], "class": classify(refusal) if refusal else None,
+        "run": run.name,
+        "task": run.name.split("-")[0],
+        "rc": rc,
+        "seconds": secs,
+        "by_ask": by_ask,
+        "by_first_answer": by_ask and not again,
+        "again": again,
+        "lost": rc != 0,
+        "first_refusal": refusal[:300],
+        "class": classify(refusal) if refusal else None,
         "repaired": len(re.findall(r"^repaired:", out, re.M)),
-        "leaves": len(checks), "shared_checks": shared, "runners": runners,
+        "leaves": len(checks),
+        "shared_checks": shared,
+        "runners": runners,
         "dollars": float(bill.group(1)) if bill else None,
     }
 
@@ -106,22 +125,32 @@ def table(rows: list[dict], name: str) -> tuple[dict, list[str]]:
     secs = [r["seconds"] for r in rows if r["seconds"] is not None]
     dollars = [r["dollars"] for r in rows if r["dollars"] is not None]
     summary = {
-        "n": n, "by_ask": by_ask, "by_first_answer": first, "lost": lost,
-        "by_ask_wilson": wilson(by_ask, n), "by_first_answer_wilson": wilson(first, n), "lost_wilson": wilson(lost, n),
-        "first_refusal_classes": classes, "repaired_lines": sum(r["repaired"] for r in rows),
+        "n": n,
+        "by_ask": by_ask,
+        "by_first_answer": first,
+        "lost": lost,
+        "by_ask_wilson": wilson(by_ask, n),
+        "by_first_answer_wilson": wilson(first, n),
+        "lost_wilson": wilson(lost, n),
+        "first_refusal_classes": classes,
+        "repaired_lines": sum(r["repaired"] for r in rows),
         "asks_with_a_shared_check": sum(1 for r in rows if r["shared_checks"]),
         "checks_by_runner": runners,
         "median_seconds": statistics.median(secs) if secs else None,
         "median_dollars": round(statistics.median(dollars), 4) if dollars else None,
     }
-    lines = [f"### {name} (n = {n})", "",
-             f"- proposals by ask: {summary['by_ask_wilson']}",
-             f"- proposals by first answer: {summary['by_first_answer_wilson']}",
-             f"- asks lost: {summary['lost_wilson']}",
-             f"- first refusal classes: {classes or 'none'}",
-             f"- `repaired:` lines: {summary['repaired_lines']}; asks with a check two leaves share: "
-             f"{summary['asks_with_a_shared_check']}; checks by runner: {runners or 'none'}",
-             f"- median seconds: {summary['median_seconds']}; median planner dollars: {summary['median_dollars']}", ""]
+    lines = [
+        f"### {name} (n = {n})",
+        "",
+        f"- proposals by ask: {summary['by_ask_wilson']}",
+        f"- proposals by first answer: {summary['by_first_answer_wilson']}",
+        f"- asks lost: {summary['lost_wilson']}",
+        f"- first refusal classes: {classes or 'none'}",
+        f"- `repaired:` lines: {summary['repaired_lines']}; asks with a check two leaves share: "
+        f"{summary['asks_with_a_shared_check']}; checks by runner: {runners or 'none'}",
+        f"- median seconds: {summary['median_seconds']}; median planner dollars: {summary['median_dollars']}",
+        "",
+    ]
     return summary, lines
 
 

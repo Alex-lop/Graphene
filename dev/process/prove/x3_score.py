@@ -6,6 +6,7 @@
 Exact for ids, shas (7-character prefix) and counts, within one cent for dollars, a set match for the files.
 Questions 2 (why) and 8 (what waits) are not scored: the reader's words are printed for a person to read.
 """
+
 import json
 import re
 import sys
@@ -27,7 +28,9 @@ def answers(path: Path) -> dict:
 def truth_of(d: Path) -> dict:
     t = json.loads((d / "truth.json").read_text())
     fix = json.loads((d / "fix.json").read_text()) if (d / "fix.json").exists() else {}
-    base_pass = [re.match(r"([a-z0-9-]+): its check passes at the base", line) for line in t.get("red_first", [])]
+    base_pass = [
+        re.match(r"([a-z0-9-]+): its check passes at the base", line) for line in t.get("red_first", [])
+    ]
     bills = t.get("bills") or {}
     return {
         "q1": set(fix.get("files") or []),
@@ -52,12 +55,17 @@ def score(a: dict, t: dict) -> dict:
     s = {}
     s["q1"] = set(a.get("q1_files_changed_by_fix") or []) == t["q1"] and bool(t["q1"])
     s["q3"] = a.get("q3_refused_commands_count") == t["q3_count"] and (
-        t["q3_count"] == 0 or any((a.get("q3_refused_command_example") or "").strip()[:40] in c for c in t["q3_examples"])
+        t["q3_count"] == 0
+        or any((a.get("q3_refused_command_example") or "").strip()[:40] in c for c in t["q3_examples"])
     )
     s["q4"] = (a.get("q4_check_passed_at_base_leaf") or None) == t["q4"]
-    s["q5"] = near(a.get("q5_planner_dollars"), t["q5_planner"]) and near(a.get("q5_total_dollars"), t["q5_total"])
+    s["q5"] = near(a.get("q5_planner_dollars"), t["q5_planner"]) and near(
+        a.get("q5_total_dollars"), t["q5_total"]
+    )
     s["q6"] = a.get("q6_max_leaves_at_once") == t["q6"]
-    s["q7"] = (a.get("q7_came_back_leaf") or None) == t["q7_came_back"] and (a.get("q7_reopened_leaf") or None) == t["q7_reopened"]
+    s["q7"] = (a.get("q7_came_back_leaf") or None) == t["q7_came_back"] and (
+        a.get("q7_reopened_leaf") or None
+    ) == t["q7_reopened"]
     s["q9"] = bool(t["q9"]) and (a.get("q9_fix_merge_sha") or "")[:7] == t["q9"]
     s["q10"] = a.get("q10_leaves_added_after_accept") == t["q10"]
     return s
@@ -65,7 +73,11 @@ def score(a: dict, t: dict) -> dict:
 
 def main(out: Path) -> int:
     print(f"# X3 · ten questions, the record against git ({out})\n")
-    print("| run | arm | score of 8 | " + " | ".join(FACTUAL) + " | q2 why (the reader's words) | q8 waits (the reader's words) |")
+    print(
+        "| run | arm | score of 8 | "
+        + " | ".join(FACTUAL)
+        + " | q2 why (the reader's words) | q8 waits (the reader's words) |"
+    )
     print("|---|---|---|" + "---|" * len(FACTUAL) + "---|---|")
     totals = {"A": [], "B": []}
     for d in sorted(p for p in out.iterdir() if p.is_dir() and (p / "truth.json").exists()):
@@ -87,7 +99,10 @@ def main(out: Path) -> int:
         if xs:
             xs.sort()
             print(f"\narm {arm}: median {xs[len(xs) // 2]} of 8 over {len(xs)} readers ({xs})")
-    print("\nTruth per run is in <run>/truth.json and fix.json; the readers' full answers in armA.json and armB.json.")
+    print(
+        "\nTruth per run is in <run>/truth.json and fix.json; the readers' full answers in armA.json "
+        "and armB.json."
+    )
     return 0
 
 
