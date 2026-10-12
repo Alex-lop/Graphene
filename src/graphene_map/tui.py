@@ -103,7 +103,7 @@ EMPTY = (
     "here. Or :ask <what you want>. ? lists the keys."
 )
 KEYS = {  # the bottom line, when no command has just spoken: what the keys do on this row
-    "proposed": ["y accept", "d drop", "e edit", "E edit with what is under it"],
+    "proposed": ["y accept", "d drop", "e edit", "E edit with children"],
     "review": ["y sign off", "x send back", "Enter record"],
     "running": ["l output", "x release", "Enter record"],
     "done": ["x reopen", "Enter record", "c diff"],
@@ -517,8 +517,9 @@ class Help(ModalScreen[None]):
             box.border_subtitle = "Esc closes this · j k G gg scroll"  # on the border: in sight when scrolled
             yield Static(legend(column * (2 if two else 1)), id="legend")
             if getattr(self.app, "showing", None) == "time":  # the time view's own glyphs, under the states'
-                key = textwrap.wrap(TIME_KEY, column * (2 if two else 1))
-                yield Static(Text("\n".join(key)), id="legend-time")
+                key = "  ".join(TIME_KEY)  # the cells, then the marks: a line each where one holds not both
+                yield Static(Text(key if len(key) <= column * (2 if two else 1) else "\n".join(TIME_KEY)),
+                             id="legend-time")  # fmt: skip
             with Horizontal(id="help"):
                 if two:
                     yield Static(help_text(groups[:5], column))
@@ -990,10 +991,12 @@ class Watch(App):
         everything = store.node_log()  # ponytail: all of it each tick; read on from the last id if it slows
         now, person = self.clock(everything), self.person(everything)
         usage = [e for e in everything if e["kind"] == "usage"]  # what the planners and executors cost
-        # the planner's half-minute: the last ask, while no row of the planner's has landed since it; a
+        # the planner's half-minute: the last ask, while no row of the planner's has landed since it (its
+        # usage rows aside: one lands after every try, and a refused try is still the same wait); a
         # failed or stopped ask never gets one, so a counter past ASKING is dead and dropped
-        last = next((e for e in reversed(everything)
-                     if e["kind"] == "asked" or (e["actor"] or "").startswith("planner")), None)  # fmt: skip
+        rows = (e for e in reversed(everything) if e["kind"] != "usage")  # a try's bill is not its answer
+        last = next((e for e in rows if e["kind"] == "asked" or (e["actor"] or "").startswith("planner")),
+                    None)  # fmt: skip
         waits = last is not None and last["kind"] == "asked"
         since = (now - datetime.fromisoformat(last["timestamp"])).total_seconds() if waits else ASKING
         self.counts = {
@@ -1550,18 +1553,19 @@ class Watch(App):
             return ["VISUAL", yes, "d drop", "t m merge", "j k widen it", "Esc ends"]
         if self.view == "record" and not self.on_goal() and self.board_row() is None:  # their Enter is theirs
             offers = [OFFERED[k] for k in self.offer_keys()]
-            ask = ["t ask the planner", "q quit"] if offers else tail
-            return ["ctrl-d ctrl-u scroll", "Enter back", *offers, *ask]
+            ask = ["t ask the planner", "? help", "q quit"] if offers else tail
+            return ["ctrl-d -u scroll", "Enter back", *offers, *ask]  # the help's spelling: 60 at 80 with n
         if self.view == "tail":
-            return ["ctrl-d ctrl-u scroll", "l back", *tail]
+            return ["ctrl-d -u scroll", "l back", *tail]
         if self.view == "said":
-            return ["ctrl-d ctrl-u scroll", "Esc back", *tail]
+            return ["ctrl-d -u scroll", "Esc back", *tail]
         if self.view == "direction":  # D: what attaches and accepts is typed at `:`
-            return ["D back", ":direction attach SESSION NODE", ":direction accept ID", "ctrl-d -u scroll"]
+            return ["D back", ":direction attach SESSION NODE", ":direction accept ID", "ctrl-d -u scroll",
+                    "? help", "q quit"]  # fmt: skip
         row = self.board_row()
         if row is not None:  # board: what each key would do on this item, in words
             item = self.board.get(row)
-            if item is not None:  # its words give way to Tab, ? and q, which the key line keeps whole
+            if item is not None:  # its words give way; with none left, Tab view does, before ? and q
                 room = max(self.size.width - 2, 20) - sum(len(k) + 3 for k in tail)
                 return [*BR.hints(item, room), *tail]
             if row == BR.STANDING:
@@ -1584,9 +1588,8 @@ class Watch(App):
         if word == "came back":
             offers = [OFFERED[k] for k in self.offer_keys()]
             again = [] if "r" in self.offer_keys() else ["r run it again"]  # else r is the offer
-            # the free fix, running it again and the help before t, which the pane lists with its command:
-            # with three offers at 80 columns, t is the one that gives way
-            return [*on, *offers, "e edit its check", *again, "? help", "t ask the planner", "Enter record",
+            # the free fix and running it again before t, which the pane lists with its command
+            return [*on, *offers, "e edit check", *again, "? help", "t ask the planner", "Enter record",
                     "q quit"]  # fmt: skip
         shut = ["za unfold"] if node is not None and node.allow_expand and not node.is_expanded else []
         if word in KEYS:

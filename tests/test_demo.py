@@ -281,6 +281,19 @@ def test_demo_once_needs_no_key_and_no_network_and_prints_the_banner_and_the_end
     assert not list((tmp_path / "tmp").iterdir())
 
 
+def test_the_top_lines_day_is_the_one_the_rows_under_it_are_stamped_with(monkeypatch):
+    """The shipped recording is stamped 2026-10-12T03:16:50Z: in any American zone the top line said
+    2026-10-11 over rows that say 2026-10-12, and the tests saw one day only because TZ is pinned to UTC."""
+    monkeypatch.setenv("TZ", "America/New_York")
+    time.tzset()
+    try:
+        head, _ = demo.load(demo.SHIPPED)
+        assert head["day"] == head["recorded"][:10], (head["day"], head["recorded"])
+    finally:
+        monkeypatch.setenv("TZ", "UTC")
+        time.tzset()
+
+
 def test_demo_once_leaves_out_the_plans_next_step_and_nothing_else(tmp_path, monkeypatch):
     """It printed "finished; `graphene plan archive` puts it away", a command for the replay's repository,
     which is gone by then. Everything else is what `graphene watch --once` prints of the same store, the
@@ -537,6 +550,8 @@ def test_demo_once_fits_80_columns_and_calls_its_last_rows_the_end_of_the_runs_l
     assert max(len(line) for line in lines) <= 80, [line for line in lines if len(line) > 80]
     assert "just now" not in lines and demo.ENDING in lines
     assert any(line.endswith("…") and "landed" in line for line in lines)
+    rows = [line for line in lines if line.startswith("  20")]  # no log identifier (`rolled_up`) on a row
+    assert rows and not any(re.search(r"\b\w+_\w+\b", line) for line in rows), rows
 
 
 def test_each_change_stays_on_the_screen_and_space_dot_and_r_pause_step_and_play_again(tmp_path):
@@ -580,7 +595,7 @@ def test_each_change_stays_on_the_screen_and_space_dot_and_r_pause_step_and_play
     asyncio.run(go())
     n = len(lines)
     assert seen["first"][:2] == (1, f"replay · {head['shown']} · {head['day']} · 1 of {n}")
-    assert seen["first"][2].startswith("space pause · . next · r again · Enter record · l output · ? help")
+    assert seen["first"][2].startswith("space pause · . next · r again · l output · j k move · ? help")
     assert "Nothing is planned yet in this recording. What is planned is next." in seen["first"][3]
     assert seen["paused"][:2] == (1, f"replay · {head['shown']} · {head['day']} · paused at 1 of {n}")
     assert seen["paused"][2].startswith("space play · . next")

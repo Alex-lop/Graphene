@@ -13,8 +13,9 @@ session, nor an executor that writes no stream it reads, nor what one did before
 alone). Marks sit at their moment: a write refused !, a check passed ✓ or failed ✗, came back ↩,
 landed ■, running now ●. A mark that falls on another moves right. The glyph says it alone, so the
 plain print reads too. No glyph is one the outline or the graph gives another meaning (━ is the critical
-path there, ◆ review): LEGEND is the key the help shows under the time view. The note's clocks are this
-plan's, as the lanes are. A pure function of the nodes and the log's rows the screen already read
+path there, ◆ review), save ✓: a check that passed is what done means, so the two share it on purpose.
+LEGEND is the key the help shows under the time view. The note's clocks are this plan's, as the lanes
+are. A pure function of the nodes and the log's rows the screen already read
 (`views.happened`).
 """
 
@@ -38,10 +39,13 @@ TALK, QUIET, HELD, NOW = "░", "─", "═", "●"  # a said row; idle; a hold 
 MARKS = {"denied": ("!", "magenta"), "breach": ("!", "magenta"), "refused": ("!", "magenta"),
          "check_passed": ("✓", "green"), "check_failed": ("✗", "magenta"), "released": ("↩", "magenta"),
          "landed": ("■", "green")}  # fmt: skip
-# the view's key, from its own glyphs (decision 179's ═ held and ■ landed are Alex's to flip, here alone)
+# the view's key, from its own glyphs (decision 179's ═ held and ■ landed are Alex's to flip, here alone):
+# the cells, then the marks; the help puts them on one line where it holds both, else one each, so a
+# glyph never parts from its word
 LEGEND = (f"{BLOCK['editing']} edit  {BLOCK['running']} run  {BLOCK['reading']} read  {TALK} talk  "
-          f"{QUIET} idle  {HELD} held  {MARKS['check_passed'][0]} {MARKS['check_failed'][0]} check  "
-          f"{MARKS['refused'][0]} refused  {MARKS['landed'][0]} landed  | you")  # fmt: skip
+          f"{QUIET} idle  {HELD} held",
+          f"{MARKS['check_passed'][0]} {MARKS['check_failed'][0]} check  {MARKS['refused'][0]} refused  "
+          f"{MARKS['landed'][0]} landed  | you")  # fmt: skip
 STEPS = (1, 2, 5, 10, 15, 30, 60)  # the axis's, in minutes; in seconds under two minutes
 EPOCH = datetime.fromtimestamp(0, UTC)  # the end of a log with no row: only the axis is drawn then
 

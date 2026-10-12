@@ -267,6 +267,11 @@ def test_inits_first_screen_is_in_the_persons_words_and_its_next_step_fits_what_
     assert said.exit_code == 0, said.output
     [then] = [line for line in said.output.splitlines() if line.startswith("next:")]
     assert then == "next: install claude or codex, then `graphene init` again; `graphene ask` after that"
+    on_path("claude", "codex")  # two found, none chosen: the next step is to name one, not to install
+    [then] = [line for line in person("init").output.splitlines() if line.startswith("next:")]
+    assert then.startswith("next: `graphene init --planner claude --executor claude` chooses them; ") and (
+        "install" not in then
+    ), then
     assert "plan first: on. Claude proposes a plan here before it writes; you accept it in" in said.output
     assert "(8 Claude Code hooks)" in said.output and "SessionStart, UserPromptSubmit" not in said.output
     assert "each Claude Code session here is recorded on this machine only (its prompts" in said.output

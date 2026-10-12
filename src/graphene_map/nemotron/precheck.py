@@ -229,10 +229,12 @@ def said(rows: list[tuple[P.Node, dict]]) -> list[str]:
         mark = " " if d["verdict"] in QUIET else "!"
         where = f" · {d['where']}" if d.get("where") not in (None, "here") else ""
         by = f" (read by {_plain(d['by'])})" if d.get("by") else ""
-        lines.append(f"{mark} {node.id:<16} {SAID[d['verdict']]:<26} {_plain(d['why'])}{by}{where}")
+        check = d["check"] if len(d["check"]) <= 40 else d["check"][:39] + "…"  # named, as the run's line
+        why = (f"(`{check}`) " if d["verdict"] == "passes" else "") + _plain(d["why"])
+        lines.append(f"{mark} {node.id:<16} {SAID[d['verdict']]:<26} {why}{by}{where}")
     if any(d["verdict"] not in QUIET for _, d in rows):
         lines.append("! a check that passes now, or is red for another reason, cannot tell the work is done: "
-                     "`graphene node set <id> --check '…'`")  # fmt: skip
+                     "`graphene node set <id> --check '<a real one>'`")  # fmt: skip
     return lines
 
 

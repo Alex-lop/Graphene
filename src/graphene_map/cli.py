@@ -428,8 +428,12 @@ def build():
                 say(SHELL_LISTS_HINT)
             if terminal and (flag := claude_lacks()):  # at a terminal only: no test starts claude
                 say(f"this Claude Code has no {flag}: `claude update` first")
-        if "not chosen" in chosen:  # `ask` and `run` refuse until then, as the line above said
+        found = [w for w in ("claude", "codex") if shutil.which(w)]
+        if "not chosen" in chosen and not found:  # `ask` and `run` refuse until then, as the line above said
             say("next: install claude or codex, then `graphene init` again; `graphene ask` after that")
+        elif "not chosen" in chosen:  # more than one found: the line above named them, so name the command
+            say(f"next: `graphene init --planner {found[0]} --executor {found[0]}` chooses them; "
+                "`graphene ask` after that")  # fmt: skip
         else:
             say("next: `graphene ask '<what you want>'` proposes a plan; `graphene watch` shows it")
         if shutil.which("graphene") is None:

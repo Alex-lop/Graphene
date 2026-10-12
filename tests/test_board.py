@@ -694,7 +694,7 @@ def test_an_ask_that_puts_up_board_items_names_the_board_as_what_waits(repo, tmp
     typed at watch's `:` it told the person to open the screen they were on."""
     said = planned(repo, tmp_path)
     assert "the board waits on you (5): `graphene board`, or `graphene watch`" in said.stdout
-    assert "next: `graphene plan accept`, or prune it in `graphene watch`" in said.stdout  # a leaf too
+    assert "next: `graphene plan accept`, or prune in `graphene watch`" in said.stdout  # a leaf too
     monkeypatch.setenv("GRAPHENE_WATCH", "")
     again = planned(repo, tmp_path)
     assert "at the top, y takes, d drops" in again.stdout and "`graphene watch`" not in again.stdout

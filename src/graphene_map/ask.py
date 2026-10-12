@@ -445,6 +445,8 @@ def ask(
                 with _no_interrupt():
                     _end(proc)
                 raise
+            finally:
+                proc.stdout.close()  # as communicate() did; after _end, so a TERMed planner never gets EPIPE
             if shown > SHOWN:
                 say(f"  … and {shown - SHOWN} more")
             errs.seek(0)

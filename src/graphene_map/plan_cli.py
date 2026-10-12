@@ -481,9 +481,8 @@ def register(cli: typer.Typer, root, open_store, fail):
         )
         who = e["actor"] or (f"claude:{e['session_id'][:8]}" if e["session_id"] else "")
         node = f"{e['node_id'].ljust(with_node)}  " if with_node else ""
-        return (
-            f"  {e['timestamp'][:19]}Z  {node}{e['kind'].ljust(12)}  {who.ljust(who_wide)}  {said}".rstrip()
-        )
+        kind = e["kind"].replace("_", " ")  # the log's identifier, read as words (the record pane's way)
+        return f"  {e['timestamp'][:19]}Z  {node}{kind.ljust(12)}  {who.ljust(who_wide)}  {said}".rstrip()
 
     # -- graphene plan ----------------------------------------------------------------------------
 
@@ -840,8 +839,8 @@ def register(cli: typer.Typer, root, open_store, fail):
             runs, waits = P.forecast(now, {n.id for n in now if P.came_back(store, n)})
             if not accepted:  # said, and still exit 0: the README chains `plan accept && run`
                 out("nothing to accept: no proposal is open")
-            reach = f"{', '.join(n.id for n in runs)}  (R in graphene watch)" if runs else "nothing"
-            out(f"next: `graphene run` reaches {reach}")
+            reach = f"next: `graphene run` reaches {', '.join(n.id for n in runs)}  (R in graphene watch)"
+            out(reach if runs else "next: nothing is ready for `graphene run`")  # it refuses with nothing
             for n, why in waits:
                 out(f"  {n.id} will wait: {'; '.join(why)}")
             return [n.id for n in accepted]
@@ -1094,7 +1093,7 @@ def register(cli: typer.Typer, root, open_store, fail):
                 hint = (
                     "y accepts, d drops"
                     if here
-                    else "`graphene plan accept`, or prune it in `graphene watch` (y accepts, d drops)"
+                    else "`graphene plan accept`, or prune in `graphene watch` (y accepts, d drops)"
                 )
                 out(f"next: {hint}")
             return ids

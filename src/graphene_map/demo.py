@@ -12,7 +12,7 @@ tracks once a leaf has landed (the check a contract names is judged against it).
 written `{repo}`, and the replay puts its own there; the home directory is `~`; the key and the project
 in the environment, anything shaped like a key, and each sandbox image the run names are taken out.
 
-demo.jsonl, beside this file, is the recording Graphene ships. It was made on 11 October 2026 by
+demo.jsonl, beside this file, is the recording Graphene ships. It was made on 12 October 2026 (UTC) by
 tests/test_demo_script.py (dev/proof/nemotron.sh on a tiny repository against the scripted fake,
 tests/fake_tokenfactory.py), with a planner that puts up a board and a key taking each item, and with the
 meter on, so a running leaf's row shows; its first line says it is a scripted stand-in, which the screen
@@ -208,7 +208,7 @@ def _snapshot(conn: sqlite3.Connection, after: int) -> tuple[dict, list[dict], d
 
 
 def load(path: Path, speed: float = 1.0) -> tuple[dict, list[dict]]:
-    """A recording's first line, with ``day``: the day it was recorded, local as the screen's clocks are;
+    """A recording's first line, with ``day``: the day it was recorded, UTC as the rows' stamps are;
     and its changes, each with ``at``: when the replay applies it (the first at once, each wait after it
     as recorded but at least HOLD seconds, or LONG seconds for a longer one, all divided by ``speed``)
     and ``cut``: how many times faster that wait is played (0 when it is not cut); ``shown``, what made
@@ -217,7 +217,7 @@ def load(path: Path, speed: float = 1.0) -> tuple[dict, list[dict]]:
     head, *lines = [json.loads(line) for line in path.read_text(encoding="utf-8").split("\n") if line]
     if not isinstance(head, dict) or not {"graphene demo", "recorded", "shown", "repository"} <= head.keys():
         raise ValueError("it is not a recording `graphene demo --record` made")
-    head["day"] = str(datetime.fromisoformat(head["recorded"].replace("Z", "+00:00")).astimezone().date())
+    head["day"] = head["recorded"][:10]  # the rows under it are stamped in UTC: one day on the screen
     # the run says what made it, not the terminal that recorded it: live only when every model call on
     # record says who really answered it, Token Factory, Claude Code or Codex (a row from before rows said
     # so is a stand-in's)
@@ -471,6 +471,6 @@ class Replay(Watch):
         playing = self.next < len(self.lines)
         mine = [("space play" if self.paused else KEYS[0]), *KEYS[1:]] if playing else KEYS[2:]
         if self.view == "contract":  # Enter on the goal is `graphene plan record`, a command it refuses
-            record = [] if self.on_goal() else ["Enter record"]
+            record = [] if self.on_goal() or not self.nodes else ["Enter record"]  # no row, no record
             return [*mine, *record, "l output", "? help", "q quit", "j k move", "za fold"]
         return [*mine, *(k for k in super().keys() if k.startswith(WORK))]

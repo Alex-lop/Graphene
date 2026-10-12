@@ -87,7 +87,7 @@ def test_j_and_k_move_after_the_replay_is_played_again(tmp_path):
     assert seen["moved"] == seen["at"] + 2
 
 
-def test_the_replays_clock_is_its_recordings_and_it_draws_no_meter_strip():
+def test_the_replays_clock_is_its_recordings_and_no_strip_unless_its_rows_say_the_meter_was_on():
     """A replay's clock is its recording's: a leaf's minutes run to its newest row, not to today. No replay
     draws a strip unless its own rows say the meter was on."""
     from datetime import datetime
@@ -98,8 +98,8 @@ def test_the_replays_clock_is_its_recordings_and_it_draws_no_meter_strip():
 
 
 def test_a_recording_made_with_the_meter_draws_its_strip_while_a_leaf_runs(tmp_path):
-    """The shipped recording, made again with the meter on 11 October 2026, and the night's Claude Code run
-    on feeds: while a leaf of either runs, its live row shows, with the dollars it had reached then."""
+    """The shipped recording, made again with the meter on 12 October 2026 (UTC), and the night's Claude Code
+    run on feeds: while a leaf of either runs, its live row shows, with the dollars it had reached then."""
     strips = {}
     for name, path in (("shipped", demo.SHIPPED), ("meter", RECORDINGS / "meter-claude.jsonl")):
         head, lines = demo.load(path)

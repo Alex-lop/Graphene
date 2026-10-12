@@ -422,7 +422,7 @@ def test_at_80_columns_a_long_reason_leaves_every_fix_in_sight_and_the_bottom_li
     for key in ("w  widen its scope", "b  a sibling leaf", "n  wait on ids", "t  ask the planner"):
         assert key in side, side
     assert "? ask the planner" not in seen["status"]  # t asks it, in the pane above with its command
-    assert "e edit its check" in seen["status"] and "? help" in seen["status"]  # the free fix, and the help
+    assert "e edit check" in seen["status"] and "? help" in seen["status"]  # the free fix, and the help
     seen, _ = watch(repo, ["G", "enter"])
     assert "Widen the scope, or add a leaf for it." in seen["detail"]  # the whole reason, in its record
 
@@ -1043,7 +1043,9 @@ def test_the_record_is_a_laid_out_pane_not_node_show_pasted(repo):
             assert re.search(rf"^{section}\b", record, re.M), (size, section, record)
         assert "`" not in record and "graphene node" not in record  # the keys are on the status line
         assert "a Claude Code session (aaaa1111)" in record and "handed back" in record
-        assert seen["status"].splitlines()[1].startswith("ctrl-d ctrl-u scroll · Enter back · w widen")
+        keys = seen["status"].splitlines()[1]  # the offers whole at 80; ? help and q quit on it too
+        assert keys.startswith("ctrl-d -u scroll · Enter back · w widen") and "n wait" in keys, keys
+        assert keys.endswith(" · ? help · q quit") and ("t ask the planner" in keys) == (size[0] >= 120), keys
 
 
 def test_l_shows_the_hooks_tool_calls_while_the_executors_log_is_empty(repo):
@@ -1971,7 +1973,7 @@ def test_question_mark_is_help_even_on_a_leaf_that_came_back_where_t_asks_the_pl
     seen, _ = watch(repo, ["G", "question_mark"], size=(120, 36))
     assert seen["screen"] == "Help" and started == []
     seen, _ = watch(repo, ["G"], size=(120, 36))
-    assert "t ask the planner" in seen["status"] and "e edit its check" in seen["status"]
+    assert "t ask the planner" in seen["status"] and "e edit check" in seen["status"]
     watch(repo, ["G", "t"])
     assert started == [["ask", "schema came back: propose what would let it be done", "--about", "schema"]]
 
@@ -2031,17 +2033,26 @@ def test_the_helps_first_line_names_the_mark_of_a_check_that_proves_nothing(repo
         watch(repo, [], size=size, before=before)
 
 
+def test_the_direction_pane_ends_its_key_line_with_help_and_quit(repo):
+    """A seam reader: D on a leaf (the help's `see  Enter l D`) was the one pane whose bottom line did not
+    say how to get help or leave, and at 80 its scroll key fell off with no held tail."""
+    every_state(repo)
+    for size, keys in (
+        ((80, 24), "D back · :direction attach SESSION NODE · ? help · q quit"),
+        ((120, 36), "D back · :direction attach SESSION NODE · :direction accept ID · ctrl-d -u scroll · "
+                    "? help · q quit"),
+    ):  # fmt: skip
+        seen, _ = at(repo, "docs", size, keys=["D"])
+        assert seen["status"].splitlines()[1] == keys, (size, seen["status"])
+
+
 def test_a_leaf_that_came_back_offers_r_to_run_it_again_and_its_ask_command_can_be_typed(repo):
     """Walk 2026-09-28: a leaf that came back with no --wants showed no way to run again, x said
     "docs is came back: … reopens a…", and the ? row's command was `graphene ask … --about docs`."""
     every_state(repo)
     for size in SIZES:
         seen, _ = at(repo, "docs", size)
-        if size[0] >= 120:
-            assert "r run it again" in seen["status"], (size, seen["status"])
-        else:  # at 80 with three offers r gives way: ? help and q quit end every key line (the feel pass)
-            keys = seen["status"].splitlines()[1]
-            assert keys == "w widen · b sibling · n wait · e edit its check · ? help · q quit", keys
+        assert "r run it again" in seen["status"], (size, seen["status"])
         flat = " ".join(seen["detail"].split())
         assert "graphene ask … --about" not in flat and "graphene ask 'docs came back: propose" in flat
     seen, _ = at(repo, "docs", (120, 36), keys=["x"])
@@ -2082,7 +2093,7 @@ def test_help_and_quit_never_fall_off_the_key_line_and_the_empty_plan_opens_on_t
     keys = watch(repo, [])[0]["status"].splitlines()[1]
     assert keys == "y accept it all · E edit as text · za fold all · Tab view · ? help · q quit", keys
     keys = watch(repo, ["j", "j"])[0]["status"].splitlines()[1]  # a proposed leaf: its long key gives way
-    assert keys.endswith(" · ? help · q quit") and "Tab view" not in keys and len(keys) <= 78, keys
+    assert keys == "y accept · d drop · e edit · E edit with children · Tab view · ? help · q quit", keys
     person("plan", "accept")
     with Store.open(repo) as store:
         land(repo, store, "ids", "api.py", "def users():\n    return ['ids']\n")
@@ -2188,7 +2199,7 @@ def test_the_planners_tool_calls_under_the_asking_line_are_no_gist(repo):
     proposed(repo)
     log = repo / ".graphene" / "runs" / "ask.txt"
     log.parent.mkdir(parents=True, exist_ok=True)
-    log.write_text("asking the planner (claude)…\n  reading api.py\n  searching 'def load'\n"
+    log.write_text("asking the planner (claude)…\n  reading api.py\n  searching def load\n"
                    "the planner says:\n  it cannot be done in this scope\n")  # fmt: skip
 
     class Ended:
@@ -2223,6 +2234,10 @@ def test_while_the_planner_is_asked_the_agents_slot_counts_the_seconds_since(rep
     with Store.open(repo) as store:
         store.log_node("*", plan._now(), "usage", "planner:claude", None, None,
                        {"model": "claude-sonnet-5-5", "calls": 1, "dollars": 0.05})  # fmt: skip
+    top = watch(repo, [])[0]["status"].splitlines()[0]  # a try's bill lands before its answer: still asked
+    assert re.search(r" · planner asked 1[2-9] s ago · you", top) and "bill" not in top, top
+    with Store.open(repo) as store:
+        store.log_node("*", plan._now(), "proposed", "planner:claude", None, None, {"ids": ["ids"]})
     top = watch(repo, [])[0]["status"].splitlines()[0]
     assert "planner" not in top and " · bill $0.05 · you" in top, top  # answered: the ask's bill, no agent
     with Store.open(repo) as store:
@@ -2416,8 +2431,12 @@ def test_the_legend_names_every_glyph_once_and_the_time_view_has_a_key_of_its_ow
         await pilot.pause()
         await pilot.press("question_mark")
         await pilot.pause()
-        key = " ".join(" ".join(shown(app, app.screen.query_one("#legend-time").region)).split())
+        lines = [line.strip() for line in shown(app, app.screen.query_one("#legend-time").region)]
+        key = " ".join(" ".join(lines).split())
         assert key == "█ edit ▓ run ▒ read ░ talk ─ idle ═ held ✓ ✗ check ! refused ■ landed | you", key
+        assert [line for line in lines if line] == [  # at 80 the key breaks between entries, never inside one
+            "█ edit  ▓ run  ▒ read  ░ talk  ─ idle  ═ held", "✓ ✗ check  ! refused  ■ landed  | you"
+        ], lines  # fmt: skip
 
     watch(repo, [], size=(80, 24), before=timed)
     # a fork that lost, gave up or stopped is marked with no leaf's glyph (passed shares done's ✓ by design)

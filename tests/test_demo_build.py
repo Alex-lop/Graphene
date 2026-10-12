@@ -41,6 +41,17 @@ def test_every_tape_attaches_to_the_take_and_sets_what_build_rewrites():
             assert len(f" {build.BANNER} ") + len(label) <= 80, (tape.name, label)
 
 
+def test_scene_03_waits_for_the_line_the_ask_ends_on():
+    """A seam reader: the tape waited 20 minutes for `prune it:`, which no command prints since the ask ends
+    on `next: `graphene plan accept`, or prune …` (tests/test_ask.py pins the line); the film could never
+    reach scene 03."""
+    import re
+
+    [wait] = build.WAIT.finditer((DEMO / "scenes" / "03-plan.tape").read_text())
+    last = "next: `graphene plan accept`, or prune in `graphene watch` (y accepts, d drops)"
+    assert re.search(wait["text"], last, re.M), wait["text"]
+
+
 def test_the_narration_is_spread_over_each_scenes_own_footage_in_order():
     scenes = [{"narration": "One. Two words here.", "filmed": 4.0}, {"narration": "Three.", "filmed": 2.5}]
     cues = [c.split("\n") for c in build.srt(scenes).strip().split("\n\n")]
