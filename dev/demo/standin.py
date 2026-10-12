@@ -1,6 +1,6 @@
 """The rehearsal's Nemotron: a scripted stand-in for Token Factory that plans and builds the feeds task the
 way the demo run needs it filmed, so every scene of the storyboard has something on screen. It is never
-Nemotron: `graphene demo` reads the run's usage rows and says "a scripted stand-in, not Nemotron", and
+Nemotron: `graphene demo` reads the run's usage rows and says "a scripted stand-in, no model ran", and
 build.py refuses to make rough.mp4 from it.
 
 The planner (any model named Ultra) lists and reads, then puts up one sub-goal, four leaves and two board

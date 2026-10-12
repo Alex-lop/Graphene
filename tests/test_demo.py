@@ -66,7 +66,7 @@ def test_a_recording_holds_no_path_of_yours_and_nothing_shaped_like_a_key(tmp_pa
     detail = json.dumps({"checkout": f"{root}/.graphene/worktrees/greet", "token": f"Bearer {JWT}"})
     assert json.loads(hide({"detail": detail})["detail"]) == {
         "checkout": "{repo}/.graphene/worktrees/greet", "token": f"Bearer {demo.REMOVED}"
-    }
+    }  # fmt: skip
 
 
 def test_the_home_directory_spelled_with_dashes_goes_too(tmp_path, monkeypatch):
@@ -120,12 +120,22 @@ def test_the_recording_graphene_ships_says_what_made_it_and_holds_no_path_and_no
     directory, its home another) or anything shaped like a key."""
     said = demo.SHIPPED.read_text(encoding="utf-8")
     head, lines = demo.load(demo.SHIPPED)
-    assert head["shown"] == ("a scripted stand-in, not Nemotron" if head["stand_in"] else "as it ran, live")
+    assert head["shown"] == (demo.STAND_IN if head["stand_in"] else "as it ran, live")
     assert lines
     assert len(said.encode()) < 300_000
     assert str(Path.home()) not in said and not re.findall(r"/(?:Users|home|private|var|tmp|opt|root)/", said)
     assert not [word for word in demo.WORD.findall(said) if demo.KEY.search(word)] and "fake-key" not in said
     assert not demo.BASE64.search(said)
+
+
+def test_the_replays_words_name_no_model_and_speak_without_underscores():
+    """The feel readers of 11 October: the top line opened on a name a stranger does not know (`not
+    Nemotron`), and the bottom line spoke the log's identifiers (`goal_proposed`, `friendly rolled_up`).
+    The top line says no model ran; a kind reads with spaces, as the record pane says it."""
+    assert "Nemotron" not in demo.STAND_IN and "stand-in" in demo.STAND_IN
+    assert demo.what({"node_log": [{"node_id": "*", "kind": "goal_proposed"}]}) == "goal proposed"
+    _, lines = demo.load(demo.SHIPPED)
+    assert not [said for said in map(demo.what, lines) if "_" in said]
 
 
 def test_the_recorder_waits_for_the_store_goes_on_past_what_it_cannot_read_and_stops_on_term(tmp_path):
@@ -211,7 +221,7 @@ def test_the_replay_says_live_only_when_every_model_call_on_record_went_to_token
     says that."""
     live = {"graphene demo": 1, "recorded": "2026-09-26T03:47:14.410Z", "graphene": "0.5.0",
             "repository": "r", "stand_in": False, "shown": "as it ran, live"}  # fmt: skip
-    stand_in = live | {"stand_in": True, "shown": "a scripted stand-in, not Nemotron"}
+    stand_in = live | {"stand_in": True, "shown": demo.STAND_IN}
 
     def usage(**where):
         return {"id": 1, "node_id": "*", "kind": "usage", "detail": json.dumps({"dollars": 0.01} | where)}
@@ -221,10 +231,10 @@ def test_the_replay_says_live_only_when_every_model_call_on_record_went_to_token
     cases = [
         (live, [[tf], [], [tf]], "as it ran, live"),
         (live, [[claude], [codex, tf]], "as it ran, live"),  # Claude Code's run is no stand-in's
-        (live, [[claude, fake]], "a scripted stand-in, not Nemotron"),
-        (live, [[tf], [fake]], "a scripted stand-in, not Nemotron"),
-        (live, [[tf, usage()]], "a scripted stand-in, not Nemotron"),
-        (stand_in, [[tf]], "a scripted stand-in, not Nemotron"),
+        (live, [[claude, fake]], demo.STAND_IN),
+        (live, [[tf], [fake]], demo.STAND_IN),
+        (live, [[tf, usage()]], demo.STAND_IN),
+        (stand_in, [[tf]], demo.STAND_IN),
         (live, [[]], "a run with no model calls on record"),
         (stand_in, [[]], "a run with no model calls on record"),
     ]
@@ -462,7 +472,7 @@ def test_a_long_wait_is_cut_to_three_seconds_and_the_top_line_says_by_how_much(t
             return str(app.query_one("#where").render()), app.next
 
     where, applied = asyncio.run(go())
-    assert applied == 1 and where.endswith(f"not Nemotron · {head['day']} · ×10: a wait, cut")
+    assert applied == 1 and where.endswith(f"no model ran · {head['day']} · ×10: a wait, cut")
 
 
 def test_a_recording_carries_the_board(tmp_path):
@@ -504,7 +514,8 @@ def test_a_stand_in_replay_names_the_stand_in_wherever_the_recording_named_nemot
     assert '"actor": "run:stand-in"' in said and '"actor": "planner:stand-in"' in said
     assert "stand-in-Nano answered" in said and "stand-in --model stand-in-Ultra" in said
     usage = {"id": 1, "node_id": "g", "kind": "usage", "actor": "run:nemotron",
-             "detail": json.dumps({"model": "nvidia/Nemotron-3-Nano", "endpoint": "token factory"})}
+             "detail": json.dumps({"model": "nvidia/Nemotron-3-Nano",
+                                   "endpoint": "token factory"})}  # fmt: skip
     live = {"graphene demo": 1, "recorded": "2026-09-26T03:47:14.410Z", "graphene": "0.5.0",
             "repository": "r", "stand_in": False, "shown": demo.LIVE}  # fmt: skip
     recording = tmp_path / "live.jsonl"
