@@ -1,0 +1,24 @@
+| the plan of …5-4976-a41d-71ab2ec13bc9/scratchpad/feel-screen-shots/repos/empty |
+| Nothing is planned here yet. Tell your agent what you want, in a paragraph:    |
+| it proposes the tree here. Or :ask <what you want>. ? lists the keys.          |
+|                                                                                |
+|                                                                                |
+|                                                                                |
+|                                                                                |
+|                                                                                |
+|                                                                                |
+|                                                                                |
+|                                                                                |
+|                                                                                |
+|                                                                                |
+|                                                                                |
+|                                                                                |
+|                                                                                |
+|                                                                                |
+|                                                                                |
+|                                                                                |
+|                                                                                |
+|                                                                                |
+|                                                                                |
+| plan first: off                                                                |
+| :ask what you want · ? help · q quit                                           |
