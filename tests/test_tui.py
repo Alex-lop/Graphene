@@ -2186,7 +2186,7 @@ def test_the_planners_tool_calls_under_the_asking_line_are_no_gist(repo):
     proposed(repo)
     log = repo / ".graphene" / "runs" / "ask.txt"
     log.parent.mkdir(parents=True, exist_ok=True)
-    log.write_text("asking the planner (claude)…\n  reading api.py\n  searching 'def load'\n"
+    log.write_text("asking the planner (claude)…\n  reading api.py\n  searching def load\n"
                    "the planner says:\n  it cannot be done in this scope\n")  # fmt: skip
 
     class Ended:
