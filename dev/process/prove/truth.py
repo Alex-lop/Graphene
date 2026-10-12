@@ -174,7 +174,9 @@ def main(run: Path) -> int:
         "denials": sum(a["denials"] for a in logs),
         "turns": sum(a["turns"] for a in logs),
         "red_first": [
-            line.strip() for line in lines if line.startswith("red first:") or ": its check " in line
+            line.strip()
+            for line in lines
+            if line.startswith("red first:") or "passes before any work" in line  # `its` and `their` check
         ],
         "handed_back": [line.strip() for line in lines if "handed back by" in line],
         "run_lines": [line.strip() for line in lines if line.startswith(("run:", "run stopped:"))],

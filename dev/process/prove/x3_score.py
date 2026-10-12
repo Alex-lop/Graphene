@@ -28,8 +28,8 @@ def answers(path: Path) -> dict:
 def truth_of(d: Path) -> dict:
     t = json.loads((d / "truth.json").read_text())
     fix = json.loads((d / "fix.json").read_text()) if (d / "fix.json").exists() else {}
-    base_pass = [
-        re.match(r"([a-z0-9-]+): its check \(`.*`\) passes before any work", line)
+    base_pass = [  # one leaf (`its check`) or several that share one (`a, b: their check`)
+        re.match(r"([a-z0-9-]+(?:, [a-z0-9-]+)*): (?:its|their) check \(`.*`\) passes before any work", line)
         for line in t.get("red_first", [])
     ]
     bills = t.get("bills") or {}
@@ -37,7 +37,7 @@ def truth_of(d: Path) -> dict:
         "q1": set(fix.get("files") or []),
         "q3_count": t.get("denials"),
         "q3_examples": {c for a in t.get("attempts", []) for c in a.get("denied", [])},
-        "q4": next((m.group(1) for m in base_pass if m), None),
+        "q4": next((set(m.group(1).split(", ")) for m in base_pass if m), None),
         "q5_planner": bills.get("the planner's bill"),
         "q5_total": t.get("dollars_total"),
         "q6": (t.get("width") or {}).get("peak"),
@@ -59,7 +59,7 @@ def score(a: dict, t: dict) -> dict:
         t["q3_count"] == 0
         or any((a.get("q3_refused_command_example") or "").strip()[:40] in c for c in t["q3_examples"])
     )
-    s["q4"] = (a.get("q4_check_passed_at_base_leaf") or None) == t["q4"]
+    s["q4"] = (a.get("q4_check_passed_at_base_leaf") or None) in (t["q4"] or ())  # any of the set is right
     s["q5"] = near(a.get("q5_planner_dollars"), t["q5_planner"]) and near(
         a.get("q5_total_dollars"), t["q5_total"]
     )
