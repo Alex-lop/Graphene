@@ -1043,7 +1043,9 @@ def test_the_record_is_a_laid_out_pane_not_node_show_pasted(repo):
             assert re.search(rf"^{section}\b", record, re.M), (size, section, record)
         assert "`" not in record and "graphene node" not in record  # the keys are on the status line
         assert "a Claude Code session (aaaa1111)" in record and "handed back" in record
-        assert seen["status"].splitlines()[1].startswith("ctrl-d ctrl-u scroll · Enter back · w widen")
+        keys = seen["status"].splitlines()[1]  # the offers whole at 80; ? help and q quit on it too
+        assert keys.startswith("ctrl-d -u scroll · Enter back · w widen") and "n wait" in keys, keys
+        assert keys.endswith(" · ? help · q quit") and ("t ask the planner" in keys) == (size[0] >= 120), keys
 
 
 def test_l_shows_the_hooks_tool_calls_while_the_executors_log_is_empty(repo):
