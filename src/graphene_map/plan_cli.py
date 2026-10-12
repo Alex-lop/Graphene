@@ -293,7 +293,7 @@ def register(cli: typer.Typer, root, open_store, fail):
         lines = (
             [f"the plan: {P.goal(store)}"]
             if P.goal(store)
-            else [f"the plan (proposed with the tree, accepted with it): {proposed}"]
+            else [f"the plan (proposed): {proposed}"]
             if proposed
             else []
         )
@@ -347,6 +347,8 @@ def register(cli: typer.Typer, root, open_store, fail):
                 else ""
             )
             lines.append("waiting on you: " + ", ".join(told if everything else told[:8]) + more)
+            if any(n.state == P.PROPOSED for n in yours):  # the one command, said once, not a row at a time
+                lines.append("  `graphene plan accept` takes all of it; y in graphene watch")
         # One row grammar, as on the screen: glyph and title (cut at a word) in one column, the id in the
         # next, the state word in the next, whatever the depth; then what the print adds.
         heads = {n.id: 2 * len(P.above(n, by_id)) + 2 for n in alive}  # the indent, the glyph and a space
@@ -833,10 +835,13 @@ def register(cli: typer.Typer, root, open_store, fail):
             for line in told:  # what in the plan now waits on what was accepted, or on a default taken
                 out(line)
             if P.goal(store) != goal_was:
-                out(f"the plan: {P.goal(store)}  (the planner's sentence, accepted with its tree)")
+                out(f"the plan: {P.goal(store)}")
             now = P.nodes(store)
             runs, waits = P.forecast(now, {n.id for n in now if P.came_back(store, n)})
-            out("left alone, agents can reach: " + (", ".join(n.id for n in runs) or "nothing"))
+            if not accepted:  # said, and still exit 0: the README chains `plan accept && run`
+                out("nothing to accept: no proposal is open")
+            reach = f"{', '.join(n.id for n in runs)}  (R in graphene watch)" if runs else "nothing"
+            out(f"next: `graphene run` reaches {reach}")
             for n, why in waits:
                 out(f"  {n.id} will wait: {'; '.join(why)}")
             return [n.id for n in accepted]
@@ -1089,9 +1094,9 @@ def register(cli: typer.Typer, root, open_store, fail):
                 hint = (
                     "y accepts, d drops"
                     if here
-                    else "`graphene watch` (y accepts, d drops), or `graphene plan edit`"
+                    else "`graphene plan accept`, or prune it in `graphene watch` (y accepts, d drops)"
                 )
-                out(f"prune it: {hint}")
+                out(f"next: {hint}")
             return ids
 
         proposed = run(go)

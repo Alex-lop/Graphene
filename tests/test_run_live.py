@@ -1116,5 +1116,5 @@ def test_the_forecast_says_a_leaf_that_came_back_waits_on_the_person_as_r_leaves
         plan.release(store, "a", BOT, "it needs src/util.py", wants=["src/util.py"])
         plan.propose(store, [leaf("c", "c.txt")], BOT)  # an agent's proposal, for the person to accept
     said, _ = graphene(repo, "plan", "accept").communicate(timeout=60)
-    assert "left alone, agents can reach: c\n" in said, said
+    assert "next: `graphene run` reaches c  (R in graphene watch)\n" in said, said
     assert "  a will wait: a came back to you" in said and "  b will wait: a came back to you" in said
