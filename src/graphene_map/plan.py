@@ -3062,10 +3062,22 @@ def where(root: str | Path) -> str:
 
 
 def where_said(root: str | Path) -> str | None:
-    """The last line of every command that changes the plan: which repository's plan it changed, so a
-    stray `cd` cannot fool anyone. None in `graphene watch`'s pane (GRAPHENE_WATCH, set on the commands
-    it runs), whose top line names the plan already: at 80 columns the line took three rows there."""
-    return None if "GRAPHENE_WATCH" in os.environ else f"  (the plan of {where(root)})"
+    """The last line of a command that changes the plan from outside the plan's own checkout (a linked
+    worktree, as an executor's `node done` runs in; a nested checkout): which repository's plan it
+    changed. Standing in that checkout the path is the prompt's own, and the line took three rows at 80
+    columns after every act, so it is None there; None too in `graphene watch`'s pane (GRAPHENE_WATCH,
+    set on the commands it runs), whose top line names the plan already."""
+    import subprocess
+
+    if "GRAPHENE_WATCH" in os.environ:
+        return None
+    try:
+        top = _git(Path.cwd(), "rev-parse", "--show-toplevel").strip()
+    except (Refused, OSError, subprocess.TimeoutExpired):
+        top = ""
+    if top and Path(top).resolve() == Path(root).resolve():
+        return None
+    return f"  (the plan of {where(root)})"
 
 
 FIRST = ("on", "auto", "off")

@@ -105,10 +105,7 @@ def test_the_demo_script_runs_from_nothing_to_the_bill(tmp_path):
     assert done.returncode == 0, said
     assert "$ graphene init --planner nemotron --executor nemotron" in said
     assert "$ graphene node widen greet" in said  # the came-back leaf's offer, taken
-    # what SHOW_DEMO prints reads as the terminal did: each step's notes under it, none after the bill
-    at = said.index("$ graphene node widen greet")
-    widen = said[at : said.index("$ graphene run", at)]
-    assert "(the plan of ~/demo)" in widen and said.rindex("(the plan of") < said.index("$ git log --graph")
+    assert "(the plan of" not in said  # the demo stands in its own checkout: no act names it
     graph = subprocess.run(["git", "-C", str(tmp_path / "demo"), "log", "--merges", "--format=%s"],
                            capture_output=True, text=True).stdout.split("\n")  # fmt: skip
     assert "greet says hello (greet)" in graph and "bye says goodbye (farewell)" in graph

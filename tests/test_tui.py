@@ -697,7 +697,7 @@ def test_a_command_watch_runs_leaves_out_the_plan_of_line_its_top_line_says(repo
     assert "the plan: ship invoices" in said and "noted prices-are-cents" in said
     assert "(the plan of" not in said, said
     shell = person("plan", "goal", "ship invoices by email")
-    assert shell.stderr.splitlines()[-1] == f"  (the plan of {plan.where(repo)})"
+    assert "(the plan of" not in shell.stderr  # nor the shell now, standing in the plan's own checkout
 
 
 # Recheck 37 (partly)

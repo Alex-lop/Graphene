@@ -307,9 +307,10 @@ def test_graphene_plan_reads_its_rows_as_the_screen_does(repo):
     assert "waiting on you: idea (proposed), mine (yours)" in shown
 
 
-def test_start_done_signoff_reopen_and_run_name_the_repository(repo):
+def test_start_done_signoff_reopen_and_run_say_nothing_of_the_repository_they_stand_in(repo):
     """Recheck: node reopen and node signoff (and start, done and run) changed the plan and said
-    nothing of which repository's plan they changed."""
+    nothing of which repository's plan they changed. Then the feel pass: standing in that repository,
+    its path ended every act, three rows at 80 columns (a worktree's act still says it)."""
     person("node", "add", "leaf one", "--id", "l1", "--scope", "api.py", "--check", "true", "--signoff")
     person("node", "add", "leaf two", "--id", "l2", "--scope", "schema.py", "--check", "true")
     acts = [person("node", "start", "l1")]
@@ -320,7 +321,7 @@ def test_start_done_signoff_reopen_and_run_name_the_repository(repo):
         person("run", "--with", "true", "--node", "l2"),
     ]
     assert [a.exit_code for a in acts] == [0] * 5, [a.output for a in acts]
-    assert all("(the plan of " in a.stderr for a in acts), [a.stderr for a in acts]
+    assert all("(the plan of " not in a.stderr for a in acts), [a.stderr for a in acts]
     # a run names it first (it runs for long), and ends with what it did, for the person
     last = acts[-1].stdout.splitlines()[-1]  # the bill counts the six acts that led to the run
     said = r"run: 1 came back \(l2\) · agents <1 min, no meter · width 1 of 1 · you 6 acts, [12] min"
@@ -386,15 +387,16 @@ def test_an_accept_whose_output_pipe_closes_is_made_all_the_same(repo, monkeypat
 
 
 # Recheck 75 (partly)
-def test_pause_resume_prompts_ack_archive_and_release_name_the_repository(repo):
-    """Every write names the repository: pause, which turns enforcement off, said nothing of where."""
+def test_pause_resume_prompts_ack_archive_and_release_say_nothing_of_the_repository_they_stand_in(repo):
+    """Every write named the repository: pause, which turns enforcement off, said nothing of where.
+    Since the feel pass none says it from the plan's own checkout, pause included."""
     person("node", "add", "leaf one", "--id", "l1", "--scope", "api.py", "--check", "true")
     agent("node", "start", "l1")
     acts = [agent("node", "release", "l1", "--why", "needs schema.py")]
     for args in ("pause", "resume", "prompts strict", "ack", "archive"):
         acts.append(person("plan", *args.split()))
     assert [a.exit_code for a in acts] == [0] * 6
-    assert all("(the plan of " in a.stderr for a in acts), [a.stderr for a in acts]
+    assert all("(the plan of " not in a.stderr for a in acts), [a.stderr for a in acts]
 
 
 def test_after_the_last_node_is_archived_the_plan_the_board_and_the_next_ask_start_clean(repo):
@@ -488,7 +490,7 @@ def test_plan_first_is_a_setting_the_person_sees_and_sets(repo):
     for how in ("on", "off", "auto"):
         turned = person("plan", "first", how)
         assert turned.exit_code == 0 and f"plan first: {how}. " in turned.stdout
-        assert "(the plan of" in turned.stderr
+        assert "(the plan of" not in turned.stderr  # the plan's own checkout: no write names it
     assert agent("plan", "first", "off").exit_code == 1
     # with no plan in force the gate makes no leaf of a quick change (decision 18): off says when it does
     assert "as a leaf of its own while a plan is in force" in person("plan", "first", "off").stdout
@@ -616,9 +618,11 @@ def test_reopen_and_release_ask_at_a_terminal_and_refuse_in_one_line_without_one
     assert (refused.exit_code, refused.stderr) == (1, "n1 is open, not running\n")
 
 
-def test_every_write_ends_with_which_repository_the_same_way(repo):
+def test_no_write_in_the_plans_own_checkout_names_the_repository(repo):
     """The repository came first on some writes, last on others, and between a hand-back and its
-    `next:` on a release. The screen's top line says it in the same words."""
+    `next:` on a release; then it ended every one of them the same way, three rows at 80 columns, while
+    the person stood in it. Now none of these says it there; the worktree case, where it is still said,
+    is the next test."""
     acts = [
         person("plan", "goal", "users come back with their ids"),
         person("node", "add", "leaf one", "--id", "l1", "--scope", "api.py", "--check", "true"),
@@ -635,9 +639,23 @@ def test_every_write_ends_with_which_repository_the_same_way(repo):
     ]
     for act in acts:
         assert act.exit_code == 0, act.output
-        last = act.output.splitlines()[-1]
-        assert last.startswith("  (the plan of ") and last == act.stderr.splitlines()[-1], act.output
-    assert all(act.output.count("(the plan of ") == 1 for act in acts)
+        assert "(the plan of" not in act.output, act.output
+
+
+def test_a_write_from_a_linked_worktree_still_names_the_plans_repository(repo, monkeypatch):
+    """Three readers: `  (the plan of /the/path/you/stand/in)` ended every act while the person stood in
+    that very directory. It is said where it carries something: an executor's `node done` runs in a
+    linked worktree, whose plan is the main checkout's."""
+    from graphene_map import plan
+
+    person("node", "add", "leaf one", "--id", "l1", "--scope", "api.py", "--check", "true")
+    assert "(the plan of" not in person("plan", "accept").stderr
+    wt = repo.parent / f"{repo.name}-wt"
+    subprocess.run(["git", "worktree", "add", "-q", str(wt)], cwd=repo, check=True, capture_output=True)
+    monkeypatch.chdir(wt)
+    started = person("node", "start", "l1")
+    assert started.exit_code == 0, started.output
+    assert started.stderr.splitlines()[-1] == f"  (the plan of {plan.where(repo)})"
 
 
 def test_refusals_say_what_was_refused_and_the_command_in_a_line(repo):
