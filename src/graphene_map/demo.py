@@ -471,6 +471,6 @@ class Replay(Watch):
         playing = self.next < len(self.lines)
         mine = [("space play" if self.paused else KEYS[0]), *KEYS[1:]] if playing else KEYS[2:]
         if self.view == "contract":  # Enter on the goal is `graphene plan record`, a command it refuses
-            record = [] if self.on_goal() else ["Enter record"]
+            record = [] if self.on_goal() or not self.nodes else ["Enter record"]  # no row, no record
             return [*mine, *record, "l output", "? help", "q quit", "j k move", "za fold"]
         return [*mine, *(k for k in super().keys() if k.startswith(WORK))]

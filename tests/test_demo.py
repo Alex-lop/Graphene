@@ -595,7 +595,7 @@ def test_each_change_stays_on_the_screen_and_space_dot_and_r_pause_step_and_play
     asyncio.run(go())
     n = len(lines)
     assert seen["first"][:2] == (1, f"replay · {head['shown']} · {head['day']} · 1 of {n}")
-    assert seen["first"][2].startswith("space pause · . next · r again · Enter record · l output · ? help")
+    assert seen["first"][2].startswith("space pause · . next · r again · l output · j k move · ? help")
     assert "Nothing is planned yet in this recording. What is planned is next." in seen["first"][3]
     assert seen["paused"][:2] == (1, f"replay · {head['shown']} · {head['day']} · paused at 1 of {n}")
     assert seen["paused"][2].startswith("space play · . next")
