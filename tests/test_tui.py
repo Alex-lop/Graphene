@@ -2219,6 +2219,10 @@ def test_while_the_planner_is_asked_the_agents_slot_counts_the_seconds_since(rep
     with Store.open(repo) as store:
         store.log_node("*", plan._now(), "usage", "planner:claude", None, None,
                        {"model": "claude-sonnet-5-5", "calls": 1, "dollars": 0.05})  # fmt: skip
+    top = watch(repo, [])[0]["status"].splitlines()[0]  # a try's bill lands before its answer: still asked
+    assert re.search(r" · planner asked 1[2-9] s ago · you", top) and "bill" not in top, top
+    with Store.open(repo) as store:
+        store.log_node("*", plan._now(), "proposed", "planner:claude", None, None, {"ids": ["ids"]})
     top = watch(repo, [])[0]["status"].splitlines()[0]
     assert "planner" not in top and " · bill $0.05 · you" in top, top  # answered: the ask's bill, no agent
     with Store.open(repo) as store:

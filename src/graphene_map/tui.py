@@ -991,10 +991,12 @@ class Watch(App):
         everything = store.node_log()  # ponytail: all of it each tick; read on from the last id if it slows
         now, person = self.clock(everything), self.person(everything)
         usage = [e for e in everything if e["kind"] == "usage"]  # what the planners and executors cost
-        # the planner's half-minute: the last ask, while no row of the planner's has landed since it; a
+        # the planner's half-minute: the last ask, while no row of the planner's has landed since it (its
+        # usage rows aside: one lands after every try, and a refused try is still the same wait); a
         # failed or stopped ask never gets one, so a counter past ASKING is dead and dropped
-        last = next((e for e in reversed(everything)
-                     if e["kind"] == "asked" or (e["actor"] or "").startswith("planner")), None)  # fmt: skip
+        rows = (e for e in reversed(everything) if e["kind"] != "usage")  # a try's bill is not its answer
+        last = next((e for e in rows if e["kind"] == "asked" or (e["actor"] or "").startswith("planner")),
+                    None)  # fmt: skip
         waits = last is not None and last["kind"] == "asked"
         since = (now - datetime.fromisoformat(last["timestamp"])).total_seconds() if waits else ASKING
         self.counts = {
