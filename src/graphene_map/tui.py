@@ -517,8 +517,9 @@ class Help(ModalScreen[None]):
             box.border_subtitle = "Esc closes this · j k G gg scroll"  # on the border: in sight when scrolled
             yield Static(legend(column * (2 if two else 1)), id="legend")
             if getattr(self.app, "showing", None) == "time":  # the time view's own glyphs, under the states'
-                key = textwrap.wrap(TIME_KEY, column * (2 if two else 1))
-                yield Static(Text("\n".join(key)), id="legend-time")
+                key = "  ".join(TIME_KEY)  # the cells, then the marks: a line each where one holds not both
+                yield Static(Text(key if len(key) <= column * (2 if two else 1) else "\n".join(TIME_KEY)),
+                             id="legend-time")  # fmt: skip
             with Horizontal(id="help"):
                 if two:
                     yield Static(help_text(groups[:5], column))
