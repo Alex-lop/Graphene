@@ -507,7 +507,7 @@ def test_plan_first_is_a_setting_the_person_sees_and_sets(repo):
 
 def test_init_sets_plan_first_on_and_keeps_an_auto_set_before(repo):
     said = person("init")
-    assert said.exit_code == 0 and "plan first: on. Every ask in a session is proposed" in said.stdout
+    assert said.exit_code == 0 and "plan first: on. Claude proposes a plan here" in said.stdout
     # what init did, what it records, how to stop each, and no advice about a file git already leaves out
     assert "`graphene plan first off`" in said.stdout and "`graphene init --remove`" in said.stdout
     assert "its prompts" in said.stdout and ".gitignore" not in said.stdout
