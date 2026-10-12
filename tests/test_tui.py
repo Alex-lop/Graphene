@@ -2037,7 +2037,11 @@ def test_a_leaf_that_came_back_offers_r_to_run_it_again_and_its_ask_command_can_
     every_state(repo)
     for size in SIZES:
         seen, _ = at(repo, "docs", size)
-        assert "r run it again" in seen["status"], (size, seen["status"])
+        if size[0] >= 120:
+            assert "r run it again" in seen["status"], (size, seen["status"])
+        else:  # at 80 with three offers r gives way: ? help and q quit end every key line (the feel pass)
+            keys = seen["status"].splitlines()[1]
+            assert keys == "w widen · b sibling · n wait · e edit its check · ? help · q quit", keys
         flat = " ".join(seen["detail"].split())
         assert "graphene ask … --about" not in flat and "graphene ask 'docs came back: propose" in flat
     seen, _ = at(repo, "docs", (120, 36), keys=["x"])
@@ -2055,6 +2059,40 @@ def test_when_every_leaf_is_done_watch_says_finished_and_what_puts_it_away(repo)
         top, keys = seen["status"].splitlines()[:2]
         assert "3/3 done, finished" in top, (size, top)
         assert keys.startswith(":plan archive puts it away") and "R run" not in keys, (size, keys)
+
+
+def test_help_and_quit_never_fall_off_the_key_line_and_the_empty_plan_opens_on_two_calm_lines(repo):
+    """The feel pass (S12, S15): at 80 columns the goal's key line ended `… · za fold all · Tab view · ? help`
+    with no q (a finished plan's lost both), and the empty plan opened on `0 on you · agents 0 · you 0 acts
+    ~0m · none ready · 0/0 done · plan first: off` over `:ask what you want · Tab view · ? help · q quit`,
+    where Tab only says nothing is planned. The two keys a stranger needs most end every key line now,
+    and the empty plan is two calm lines, the planner's half-minute counted on the first (the first ask
+    is made there)."""
+    import time
+
+    seen, _ = watch(repo, [])
+    first, keys = seen["status"].splitlines()[:2]
+    assert first == "plan first: off" and keys == ":ask what you want · ? help · q quit", (first, keys)
+    with Store.open(repo) as store:
+        stamp = time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime(time.time() - 12))
+        store.log_node("*", stamp, "asked", "alex", None, None, {"note": "users come back with their ids"})
+    first = watch(repo, [])[0]["status"].splitlines()[0]
+    assert re.fullmatch(r"plan first: off · planner asked 1[2-9] s ago", first), first
+    proposed(repo)  # the stranger's first screen: the proposal, nothing accepted
+    keys = watch(repo, [])[0]["status"].splitlines()[1]
+    assert keys == "y accept it all · E edit as text · za fold all · Tab view · ? help · q quit", keys
+    keys = watch(repo, ["j", "j"])[0]["status"].splitlines()[1]  # a proposed leaf: its long key gives way
+    assert keys.endswith(" · ? help · q quit") and "Tab view" not in keys and len(keys) <= 78, keys
+    person("plan", "accept")
+    with Store.open(repo) as store:
+        land(repo, store, "ids", "api.py", "def users():\n    return ['ids']\n")
+        land(repo, store, "docs", "README.md", "users come back with their ids\n")
+    keys = watch(repo, [])[0]["status"].splitlines()[1]
+    assert keys == "R run all ready · E edit as text · za fold all · Tab view · ? help · q quit", keys
+    with Store.open(repo) as store:
+        land(repo, store, "schema", "schema.py", "TABLES = ['users']\n")
+    keys = watch(repo, [])[0]["status"].splitlines()[1]
+    assert keys == ":plan archive puts it away · E edit as text · za fold all · ? help · q quit", keys
 
 
 def test_when_every_leaf_is_done_the_goal_row_reads_done_by_its_glyph_too(repo):
