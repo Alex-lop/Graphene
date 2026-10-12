@@ -4,6 +4,7 @@ turn, tool call and thing said lands on the leaf as it happens. The executors he
 
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -128,6 +129,29 @@ def test_the_stream_lands_on_the_leaf_while_the_executor_runs(repo, name, with_,
                           "priced": False}]  # fmt: skip
     with Store.open(repo) as store:
         assert plan.get(store, "a").state == DONE
+
+
+def test_the_run_says_every_heartbeat_what_each_metered_leaf_is_doing(repo, monkeypatch):
+    """The feel pass (D9): `graphene run` said `a started: leaf a` and then nothing for the executor's
+    minutes (X2's real main round: 84-130 s). Every HEARTBEAT a metered leaf is one line, its id first:
+    seconds, turns, dollars and the last thing its stream said. The stand-in waits for `go` after its
+    first turn, and `say` writes it on hearing the line: a run that says none waits out the 30 s."""
+    monkeypatch.setattr(R, "HEARTBEAT", 0.6)
+    script, go = printing(repo, "claude", "claude.jsonl", 3)  # its first turn, a Read; then it waits
+    said: list[str] = []
+    beat = re.compile(r"a · \d+ s · 1 turn · \$[\d.]+ · reading hello\.py")
+
+    def heard(line: str) -> None:
+        said.append(line)
+        if beat.fullmatch(line):
+            go.write_text("go")
+
+    with Store.open(repo) as store:
+        R.run_plan(store, repo, f"{script} --output-format stream-json", say=heard,
+                   logs=repo / ".graphene" / "runs")  # fmt: skip
+        assert plan.get(store, "a").state == DONE
+    beats = [line for line in said if beat.fullmatch(line)]
+    assert beats and said.index(beats[0]) < said.index("a attempt 1: the executor ended (exit 0)"), said
 
 
 GARBAGE = """#!{python}
