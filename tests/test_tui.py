@@ -2381,6 +2381,49 @@ def test_each_running_leaf_has_a_live_row_two_lines_at_80_one_at_120(repo):
     assert re.fullmatch(script, rows[1]), rows
 
 
+def test_the_legend_names_every_glyph_once_and_the_time_view_has_a_key_of_its_own(repo):
+    """The feel pass (S3, S7, S8, S16): the legend lumped `◇◆↩ yours` at both sizes, so review and came
+    back were never named; the time view borrowed ━ (the critical path) for a hold the meter cannot see
+    and ◆ (review) for landed, with no key at all; fork rows borrowed · (to fill in) and ↩ (came back);
+    the help box at 80 was 79 columns wide, the screen peeking through its right edge."""
+    from graphene_map.tui import FORK
+
+    every_state(repo)
+    states = "◇ yours  ◆ review  ↩ came back  ? proposed  ○ ready  ● running  ◌ waiting  ✓ done"
+
+    async def wide(app, pilot):
+        await pilot.press("question_mark")
+        await pilot.pause()
+        legend = shown(app, app.screen.query_one("#legend").region)
+        assert legend[0].strip() == f"{states}  ∅ check flagged  ━ critical", legend
+        assert not app.screen.query("#legend-time")  # the outline is open: no key of the time view's
+
+    watch(repo, [], size=(120, 36), before=wide)
+
+    async def narrow(app, pilot):
+        await pilot.press("question_mark")
+        await pilot.pause()
+        legend = [line.strip() for line in shown(app, app.screen.query_one("#legend").region)]
+        assert legend == ["◇ yours  ? proposed  ○ ready  ● running  ◌ waiting  ✓ done  ━ critical",
+                          "◆ review  ↩ came back  ∅ check flagged"], legend  # fmt: skip
+        assert app.screen.query_one("VerticalScroll").region.width == 80  # the box fills the screen
+
+    watch(repo, [], size=(80, 24), before=narrow)
+
+    async def timed(app, pilot):
+        app.showing = "time"
+        app.refresh_plan()
+        await pilot.pause()
+        await pilot.press("question_mark")
+        await pilot.pause()
+        key = " ".join(" ".join(shown(app, app.screen.query_one("#legend-time").region)).split())
+        assert key == "█ edit ▓ run ▒ read ░ talk ─ idle ═ held ✓ ✗ check ! refused ■ landed | you", key
+
+    watch(repo, [], size=(80, 24), before=timed)
+    # a fork that lost, gave up or stopped is marked with no leaf's glyph (passed shares done's ✓ by design)
+    assert not {FORK[w][0] for w in ("lost", "gave up", "stopped")} & {g for g, _ in plan.LOOK.values()}
+
+
 def test_past_four_running_leaves_the_strip_counts_the_rest(repo):
     with Store.open(repo) as store:
         leaf = {"title": "a leaf", "check": "true"}
