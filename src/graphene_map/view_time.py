@@ -13,8 +13,9 @@ session, nor an executor that writes no stream it reads, nor what one did before
 alone). Marks sit at their moment: a write refused !, a check passed ✓ or failed ✗, came back ↩,
 landed ■, running now ●. A mark that falls on another moves right. The glyph says it alone, so the
 plain print reads too. No glyph is one the outline or the graph gives another meaning (━ is the critical
-path there, ◆ review): LEGEND is the key the help shows under the time view. The note's clocks are this
-plan's, as the lanes are. A pure function of the nodes and the log's rows the screen already read
+path there, ◆ review), save ✓: a check that passed is what done means, so the two share it on purpose.
+LEGEND is the key the help shows under the time view. The note's clocks are this plan's, as the lanes
+are. A pure function of the nodes and the log's rows the screen already read
 (`views.happened`).
 """
 
