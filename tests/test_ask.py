@@ -427,6 +427,33 @@ def test_a_claude_code_planner_that_stopped_says_why(repo, tmp_path):
     assert "no proposal (exit 0): error_max_budget_usd" in said  # why it stopped, not "it said nothing"
 
 
+def test_a_claude_code_planners_tool_calls_are_said_as_they_happen(repo, tmp_path):
+    """The feel pass (D7): `graphene ask` went dark for the planner's half-minute, its stream read once it
+    had ended and its tool calls never said. Each is one indented line as it arrives, in the strip's
+    words; past 40 a try, a count. The stand-in prints its tool calls and waits for `go`, which `say`
+    writes on hearing the first: a line said only once the planner had ended would leave it waiting,
+    and the ask with no proposal."""
+    good = "I read api.py.\n```plan\n? users returns ids  [ids]\n    scope: api.py\n    check: true\n```"
+    planner = claude_planner(tmp_path, (good, 0.2))
+    call = {"type": "tool_use", "id": "t1", "name": "Read", "input": {"file_path": "api.py"}}
+    read = {"type": "assistant", "message": {"id": "m0", "content": [call] * 41}}
+    (tmp_path / "try1.jsonl").write_text(f"{json.dumps(read)}\n{(tmp_path / 'try1.jsonl').read_text()}")
+    (tmp_path / "claude").write_text("#!/bin/sh\nhead -1 try1.jsonl\n"
+                                     "for i in $(seq 100); do [ -e go ] && break; sleep 0.05; done\n"
+                                     "[ -e go ] && tail -n +2 try1.jsonl\n")  # fmt: skip
+    said: list[str] = []
+
+    def heard(line: str) -> None:
+        said.append(line)
+        if line == "  reading api.py":
+            (tmp_path / "go").write_text("go")
+
+    with Store.open(repo) as store:
+        assert A.ask(store, repo, "ids", planner, say=heard)[0] == "proposed ids: users returns ids"
+    assert said[:2] == ["asking the planner (claude)…", "  reading api.py"]
+    assert said.count("  reading api.py") == 40 and said[41:43] == ["  … and 1 more", "the planner says:"]
+
+
 def test_a_lost_ask_keeps_the_proposal_it_paid_for_and_says_what_it_cost(repo, tmp_path):
     """Two answers refused, and the ask ended with nothing: what the person paid for was gone. The
     proposal is kept (the block alone, which `plan propose` reads); the ask says what it cost after the
