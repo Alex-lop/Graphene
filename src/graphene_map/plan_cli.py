@@ -983,7 +983,8 @@ def register(cli: typer.Typer, root, open_store, fail):
     ) -> None:
         """Run every ready leaf in its own worktree, one executor per leaf.
 
-        Graphene runs each leaf's check and merges what passes. A leaf that fails comes back."""
+        Graphene runs each leaf's check and merges what passes (--no-ff; the leaf's commit skips your
+        hooks). A leaf that fails comes back."""
         if os.environ.get("GRAPHENE_NODE") or os.environ.get("GRAPHENE_PLANNER"):
             fail("an executor or a planner does not start runs: through --with a run is any command", 1)
         from . import meter as M
@@ -1050,11 +1051,10 @@ def register(cli: typer.Typer, root, open_store, fail):
                         model, cap = M.model_in(argv), M.option(argv, "--max-budget-usd")
                         what = label(template) + f" ({model})" * bool(model)
                         # Claude Code stops after the turn that passes the cap: no ceiling, a stop
-                        most = f", {CAP_UNIT} stops once it passes ${cap}" * bool(cap)
-                        out(f"landing into {on} at {at[:7]}: {what}, up to {max(parallel, 1)} at once{most}; "
-                            "each leaf is committed with --no-verify (your pre-commit and commit-msg hooks "
-                            "skip it) and merged --no-ff; checks run in a clean worktree with your PATH; "
-                            "`graphene watch` in another terminal follows it live")  # fmt: skip
+                        most = f"; {CAP_UNIT} stops once it passes ${cap}" * bool(cap)
+                        out(f"landing into {on} at {at[:7]}: {what}, up to {max(parallel, 1)} at once{most}")
+                        out("`graphene watch` in another terminal follows it (each leaf lands as its own "
+                            "merge; your commit hooks are skipped)")  # fmt: skip
                         if P.dirty(here_):
                             out("your uncommitted changes are not in the executors' worktrees: they start "
                                 "from HEAD")  # fmt: skip

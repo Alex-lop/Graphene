@@ -23,10 +23,11 @@ and on the branch (`dev/process/prove/after.md`).
 - The default Claude Code executor carries `--max-budget-usd 2` (an attempt) and `--strict-mcp-config`, and is told
   that its shell runs only `graphene node` and `graphene plan`. A stop at the budget is said on its attempt's line;
   a leaf that came back ends with "`graphene node show ID` says why".
-- `graphene run` says first where it lands, with what, how wide, under what cap, that each leaf is committed with
-  `--no-verify` and merged `--no-ff`, and that `graphene watch` follows it live; a dirty checkout is warned that its
-  changes are not in the executors' worktrees. Its last line is kept as a row: `graphene plan log` lists it, the goal's
-  pane shows the last, and Enter on the goal is the plan's record. `you` counts the acts since the plan's last run.
+- `graphene run` says first where it lands, with what, how wide and under what cap, then that `graphene watch` in
+  another terminal follows it (each leaf lands as its own merge; your commit hooks are skipped); `run --help` names
+  the git flags. A dirty checkout is warned that its changes are not in the executors' worktrees. Its last line is
+  kept as a row: `graphene plan log` lists it, the goal's pane shows the last, and Enter on the goal is the plan's
+  record. `you` counts the acts since the plan's last run.
 - Red first asks the environment before it judges: a check whose runner the PATH lacks (`No module named pytest`)
   is said as such, never as a red; leaves whose shared check passes get one line and the header counts the commands; a
   reopened leaf whose check passed when it landed is said so, not flagged; a python3 with this repository installed
