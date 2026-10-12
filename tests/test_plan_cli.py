@@ -96,7 +96,7 @@ def test_the_loop_a_person_shapes_an_agent_executes_and_the_boundary_carries_the
     assert refused.exit_code == 1 and "person's to do" in refused.stderr
 
     accepted = person("plan", "accept")
-    assert "left alone, agents can reach: n1, n2" in accepted.stdout
+    assert "next: `graphene run` reaches n1, n2  (R in graphene watch)" in accepted.stdout
 
     told = agent("node", "start", "n1")
     assert "n1 (revision 1): users returns ids" in told.stdout and "scope:  api.py" in told.stdout
@@ -656,6 +656,28 @@ def test_a_write_from_a_linked_worktree_still_names_the_plans_repository(repo, m
     started = person("node", "start", "l1")
     assert started.exit_code == 0, started.output
     assert started.stderr.splitlines()[-1] == f"  (the plan of {plan.where(repo)})"
+
+
+def test_accept_and_the_plan_on_a_proposal_name_the_next_command_not_a_rule(repo):
+    """Three readers: `graphene plan` on a proposal explained a rule in its header, `(proposed with the
+    tree, accepted with it)`, and offered `graphene plan accept <id>` a row at a time, never the plain
+    one; after the accept the goal came with `(the planner's sentence, accepted with its tree)`, and the
+    last line before the person needed `graphene run` was `left alone, agents can reach: …`."""
+    text = "goal: users come back with their ids\n- one  [one]\n    scope: api.py\n    check: true\n"
+    assert agent("plan", "propose", "-", input=text).exit_code == 0
+    shown = person("plan").stdout.splitlines()
+    assert shown[0] == "the plan (proposed): users come back with their ids"
+    waiting = shown.index("waiting on you: one (proposed)")
+    assert shown[waiting + 1] == "  `graphene plan accept` takes all of it; y in graphene watch"
+    said = person("plan", "accept").stdout
+    assert "the plan: users come back with their ids\n" in said and "left alone" not in said
+    assert said.splitlines()[-1] == "next: `graphene run` reaches one  (R in graphene watch)"
+    again = person("plan", "accept")  # nothing proposed: said, and exit 0 (the README chains `&& run`)
+    assert again.exit_code == 0 and again.stdout.splitlines()[:2] == [
+        "nothing to accept: no proposal is open",
+        "next: `graphene run` reaches one  (R in graphene watch)",
+    ]
+    assert "accepted with" not in person("plan").stdout and "takes all of it" not in person("plan").stdout
 
 
 def test_refusals_say_what_was_refused_and_the_command_in_a_line(repo):
