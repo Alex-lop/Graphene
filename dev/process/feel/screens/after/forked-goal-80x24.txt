@@ -1,4 +1,4 @@
-| the plan of …-4976-a41d-71ab2ec13bc9/scratchpad/feel-screen-shots/repos/forked |
+| the plan of …4-ecd5-4976-a41d-71ab2ec13bc9/scratchpad/final-shots/repos/forked |
 |▼ ○ a friendlier app                                               0/3 done     |
 |├ ▼ ● say hello                                            greet   running      |
 |│ ├   ● Nemotron-3-Nano-fake                               fork 1  running      |

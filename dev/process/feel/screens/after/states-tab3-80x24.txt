@@ -1,7 +1,7 @@
-| the plan of …-4976-a41d-71ab2ec13bc9/scratchpad/feel-screen-shots/repos/states |
+| the plan of …4-ecd5-4976-a41d-71ab2ec13bc9/scratchpad/final-shots/repos/states |
 |users come back with their ids, and the schema says so                          |
 | you                                                                            |
-| ids     ══════════════════════════════════════●                                |
+| ids     ═══════════════════════════════════════●                               |
 | docs   !↩                                                                      |
 | rule   ✓                                                                       |
 | table  ✓                                                                       |
@@ -17,8 +17,8 @@
 | waiting  docs came back · more on ids (running) · mine is yours · rule is in   |
 |          review · idea is proposed, for you to accept or prune                 |
 |                                                                                |
-| ● ids · claude · attempt 1 · 33s · no meter                                    |
-|   Bash cat api.py · 33 s ago                                                   |
+| ● ids · claude · attempt 1 · 34s · no meter                                    |
+|   Bash cat api.py · 34 s ago                                                   |
 | 4 on you · agents 1 <1m · you 1 act ~1m · R: 1 ready · 1 came back · 1/9 done  |
 | y accept it all · E edit as text · Tab view · ? help · q quit                  |
 | graphene watch --view time: 4 lanes · <1 min · 1 came back · agents <1 min…    |

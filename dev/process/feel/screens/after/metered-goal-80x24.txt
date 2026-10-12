@@ -1,4 +1,4 @@
-| the plan of …4976-a41d-71ab2ec13bc9/scratchpad/feel-screen-shots/repos/metered |
+| the plan of …-ecd5-4976-a41d-71ab2ec13bc9/scratchpad/final-shots/repos/metered |
 |▼ ○ users come back with their ids, and the schema says so  1/9 done            |
 |├ ▶ ○ the API                                       api     1 came back, 4 more |
 |├ ▶ ○ the schema                                    schema  1 review, 2 more    |
