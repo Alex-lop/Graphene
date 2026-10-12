@@ -196,7 +196,8 @@ def test_leaves_with_one_check_that_passes_are_one_line_and_the_header_counts_no
         rows = K.run(store, repo)
     first, header = K.said(rows)
     assert first.startswith("a, b, c: their check (`true`) passes before any work: it would pass with")
-    assert first.endswith("; `graphene node set <id> --check '<a real one>'`, or e in `graphene watch`")
+    assert first.endswith("; `graphene node set <id> --check '<a real one>'`"), first  # watch's pane says e
+    assert len(first) <= 160, first  # two rows at 80, not three: the after-walk found it 167
     assert header.startswith("red first: 3 checks ran at ") and " before any work, in " in header
     assert "(1 command)" not in header and "proves nothing" not in first
 
