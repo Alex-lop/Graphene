@@ -8,12 +8,14 @@ cells, a span under a minute drawn as a minute. A leaf's lane is a bar for each 
 what most of the slice's rows say the executor did: editing █, running a command ▓, reading or
 searching ▒, talking ░. A slice with no row carries the last one on until it is a minute old. Then,
 and before the first row, the executor is idle (─). A hold with no attempt, an attempt with no meter,
-or one that ended with no row the meter read, is a plain bar (━): the meter never sees a Claude Code
+or one that ended with no row the meter read, is a plain bar (═): the meter never sees a Claude Code
 session, nor an executor that writes no stream it reads, nor what one did before the meter (its bill
 alone). Marks sit at their moment: a write refused !, a check passed ✓ or failed ✗, came back ↩,
-landed ◆, running now ●. A mark that falls on another moves right. The glyph says it alone, so the
-plain print reads too. The note's clocks are this plan's, as the lanes are. A pure function of the
-nodes and the log's rows the screen already read (`views.happened`).
+landed ■, running now ●. A mark that falls on another moves right. The glyph says it alone, so the
+plain print reads too. No glyph is one the outline or the graph gives another meaning (━ is the critical
+path there, ◆ review): LEGEND is the key the help shows under the time view. The note's clocks are this
+plan's, as the lanes are. A pure function of the nodes and the log's rows the screen already read
+(`views.happened`).
 """
 
 from __future__ import annotations
@@ -32,10 +34,14 @@ from .views import BASELINE, Drawn, elide, money
 EVENTS = True  # its draw takes the log's rows (views.happened)
 LEAST, IDLE = 30, 60  # the time column's least cells; idle after (s)
 BLOCK = {"editing": "█", "running": "▓", "reading": "▒", "searching": "▒"}  # by a did row's verb: else ▓
-TALK, QUIET, HELD, NOW = "░", "─", "━", "●"  # a said row; idle; a hold with no attempt; running now
+TALK, QUIET, HELD, NOW = "░", "─", "═", "●"  # a said row; idle; a hold with no attempt; running now
 MARKS = {"denied": ("!", "magenta"), "breach": ("!", "magenta"), "refused": ("!", "magenta"),
          "check_passed": ("✓", "green"), "check_failed": ("✗", "magenta"), "released": ("↩", "magenta"),
-         "landed": ("◆", "green")}  # fmt: skip
+         "landed": ("■", "green")}  # fmt: skip
+# the view's key, from its own glyphs (decision 179's ═ held and ■ landed are Alex's to flip, here alone)
+LEGEND = (f"{BLOCK['editing']} edit  {BLOCK['running']} run  {BLOCK['reading']} read  {TALK} talk  "
+          f"{QUIET} idle  {HELD} held  {MARKS['check_passed'][0]} {MARKS['check_failed'][0]} check  "
+          f"{MARKS['refused'][0]} refused  {MARKS['landed'][0]} landed  | you")  # fmt: skip
 STEPS = (1, 2, 5, 10, 15, 30, 60)  # the axis's, in minutes; in seconds under two minutes
 EPOCH = datetime.fromtimestamp(0, UTC)  # the end of a log with no row: only the axis is drawn then
 

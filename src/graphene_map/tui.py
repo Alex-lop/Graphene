@@ -51,6 +51,7 @@ from . import run as R
 from . import views as V
 from .node_record import bill, forks, models, sandbox
 from .plan_text import clock as _clock
+from .view_time import LEGEND as TIME_KEY
 from .view_time import activity
 from .views import money
 
@@ -117,8 +118,9 @@ WHOSE = ("came back", "review", "yours", "proposed", "running", "ready", "waitin
 # A fork's words (executor.Fork.outcome), its glyph and its colour, whose move as a node's are: running is
 # the executor's, passed is done work, and a fork that ended any other way is nobody's move (dim): what
 # is next is its leaf's row, which came back to the person when every fork failed
-FORK = {"passed": ("✓", "green"), "lost": ("·", "dim"), "check failed": ("✗", "dim"), "gave up": ("↩", "dim"),
-        "no tool call": ("·", "dim"), "out of steps": ("·", "dim"), "stopped": ("·", "dim")}  # fmt: skip
+FORK = {"passed": ("✓", "green"), "lost": ("–", "dim"), "check failed": ("✗", "dim"), "gave up": ("⊘", "dim"),
+        "no tool call": ("–", "dim"), "out of steps": ("–", "dim"), "stopped": ("–", "dim")}  # fmt: skip
+# – and ⊘ are no leaf's glyph: · is `to fill in` and ↩ `came back` two rows away (the word says which fork)
 
 
 def _look(word: str) -> tuple[str, str]:
@@ -431,19 +433,24 @@ class Ask(ModalScreen[str | None]):
 def legend(wide: int) -> Text:
     """The glyphs and colours, one line: what each state reads as, ∅ (a check red first flagged: it passes
     at the base, or fails outside the leaf's scope) and the graph's heavy line; where the words do not fit,
-    the person's move (magenta: yours, review, came back) as one, and where they still do not, ∅ on a line
-    of its own under them."""
+    the person's move (magenta: yours, review, came back) as one, and where they still do not, two lines:
+    the states and the heavy line, then review, came back and ∅, so every glyph is named once."""
     looks = [(P.look(w)[0], P.look(w)[1], w) for w in LEGEND]
     short = [("".join(g for g, _, _ in looks[:3]), P.look("yours")[1], "yours"), *looks[3:]]
     nothing = Text.assemble(("∅", "dim"), " check flagged")  # which way, the pane says
-    for form in (looks, short):
+    heavy = Text.assemble(("━", "bold"), " critical")
+
+    def line(form) -> Text:
         out = Text()
         for glyph, colour, word in form:
             out.append(glyph, colour).append(f" {word}  ")
-        heavy = Text.assemble(("━", "bold"), " critical path" if form is looks else " critical")
+        return out
+
+    for form in (looks, short):
+        out = line(form)
         if out.cell_len + nothing.cell_len + 2 + heavy.cell_len <= wide:
             return Text.assemble(out, nothing, "  ", heavy)
-    return Text.assemble(out, heavy, "\n", nothing)
+    return Text.assemble(line([looks[0], *looks[3:]]), heavy, "\n", line(looks[1:3]), nothing)
 
 
 def help_text(groups, wide: int) -> Text:
@@ -494,7 +501,8 @@ class Help(ModalScreen[None]):
     Help #help { width: auto; height: auto; }
     Help #help > Static { width: auto; padding: 0 1; }
     Help #end { width: auto; padding: 0 1; color: $text-muted; }
-    Help #legend { width: auto; padding: 0 1; }
+    Help #legend, Help #legend-time { width: auto; padding: 0 1; }
+    Help.-narrow > VerticalScroll { width: 100%; }
     """
 
     def compose(self) -> ComposeResult:
@@ -508,6 +516,9 @@ class Help(ModalScreen[None]):
         with VerticalScroll() as box:
             box.border_subtitle = "Esc closes this · j k G gg scroll"  # on the border: in sight when scrolled
             yield Static(legend(column * (2 if two else 1)), id="legend")
+            if getattr(self.app, "showing", None) == "time":  # the time view's own glyphs, under the states'
+                key = textwrap.wrap(TIME_KEY, column * (2 if two else 1))
+                yield Static(Text("\n".join(key)), id="legend-time")
             with Horizontal(id="help"):
                 if two:
                     yield Static(help_text(groups[:5], column))

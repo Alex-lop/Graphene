@@ -77,8 +77,8 @@ reads as (proposed, ready, waiting, running, came back, review, done). Finished 
 - `dag` (`view_dag.py`) draws only leaves, left to right, by the chain of `needs` before each. One column can run at
   once. The critical path is bold.
 - `time` (`view_time.py`) draws a lane for each leaf that has been held, under one for your acts. Each cell is what
-  the executor mostly did then: editing █, running ▓, reading ▒, talking ░, idle ─; a hold the meter cannot see is ━.
-  Marks: ! refused, ✓ ✗ the check, ↩ came back, ◆ landed, ● running. In the outline, ∅ after a title flags a
+  the executor mostly did then: editing █, running ▓, reading ▒, talking ░, idle ─; a hold the meter cannot see is ═.
+  Marks: ! refused, ✓ ✗ the check, ↩ came back, ■ landed, ● running. In the outline, ∅ after a title flags a
   check: it passes at the base, or fails outside its scope.
 
 ## Plan first
