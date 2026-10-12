@@ -15,7 +15,7 @@ Graphene's first hour reads like its own source code. Words: the last or first l
 
 *Where:* src/graphene_map/plan_cli.py:97-99 (said_where, the 25 call sites), src/graphene_map/plan.py:3063-3068 (where_said), src/graphene_map/board_cli.py:193 (its own echo); cli.root() at src/graphene_map/cli.py:151-157 is repo_root(Path.cwd()), always an ancestor of cwd
 
-*What:* Before, the last line of `graphene ask`, `plan accept`, `node start`, `node done`, `plan first off`, `board take` and the FIRST line of `graphene run`: `  (the plan of /private/tmp/claude-501/-Users-alexlopez-Desktop-AllThingsAgenticHackathon/e37ef5e4-ecd5-4976-a41d-71ab2ec13bc9/scratchpad/feel/words/runs/feeds-plain-fake-1/repo)` on stderr, 181 characters, three rows at 80 columns, every time. After: nothing when `git rev-parse --show-toplevel` of where you stand is the plan's root; the same line stays when it is not (a linked worktree under the store's worktrees directory, where an executor's `node done` runs; a nested checkout), which is the one case it carries information.
+*What:* Before, the last line of `graphene ask`, `plan accept`, `node start`, `node done`, `plan first off`, `board take` and the FIRST line of `graphene run`: `  (the plan of /private/tmp/claude-501/-Users-alexlopez-Desktop-AllThingsAgenticHackathon/e37ef5e4-ecd5-4976-a41d-71ab2ec13bc9/scratchpad/feel/words/runs/feeds-plain-fake-1/repo)` on stderr, 181 characters, three rows at 80 columns, every time. After: nothing when `git rev-parse --show-toplevel` of where you stand is the plan's root; the same line stays when it is not (a linked worktree under the store's worktrees directory, where an executor's `node done` runs), which is the one case it carries information.
 
 *Smallest diff:* plan_cli.py:97-99: `def said_where(): if checkout().resolve() != root().resolve() and (line := P.where_said(root())): typer.echo(line, err=True)` (checkout() already exists at plan_cli.py:60 and runs the same git call). board_cli.py:193: delete the echo (`board take` is one command and watch's pane strips the line anyway), or route it through the same rule. plan.py's where_said and the three strips in tui.py:1621/1710/2093 stay as they are.
 
@@ -268,7 +268,7 @@ Verdict on the twelve: keep eleven, cut nothing wholesale, cut two of change 6's
 ## Decisions this pass moves, for Alex to flip (one line each)
 
 1. **Decision 43** (every write's last line names the plan): the `(the plan of …)` trailer now prints only when
-   you stand outside the plan's repository (a linked worktree, a nested checkout). Veto: the trailer everywhere.
+   you stand outside the plan's repository (a linked worktree). Veto: the trailer everywhere.
 2. **Decision 179** (the timeline's glyphs): a hold the meter cannot see is `═` and a landing `■`, so `━` means
    only the critical path and `◆` only review. Veto: the old glyphs, one constant each.
 3. **Decision 186's gloss** (red first's words): `proves nothing` becomes `it would pass with nothing done`, and

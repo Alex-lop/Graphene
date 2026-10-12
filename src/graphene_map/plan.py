@@ -3075,10 +3075,11 @@ def where(root: str | Path) -> str:
 
 def where_said(root: str | Path) -> str | None:
     """The last line of a command that changes the plan from outside the plan's own checkout (a linked
-    worktree, as an executor's `node done` runs in; a nested checkout): which repository's plan it
-    changed. Standing in that checkout the path is the prompt's own, and the line took three rows at 80
-    columns after every act, so it is None there; None too in `graphene watch`'s pane (GRAPHENE_WATCH,
-    set on the commands it runs), whose top line names the plan already."""
+    worktree, as an executor's `node done` runs in; a nested checkout is a repository of its own, with
+    its own store, so it never prints there): which repository's plan it changed. Standing in that
+    checkout the path is the prompt's own, and the line took three rows at 80 columns after every act,
+    so it is None there; None too in `graphene watch`'s pane (GRAPHENE_WATCH, set on the commands it
+    runs), whose top line names the plan already."""
     import subprocess
 
     if "GRAPHENE_WATCH" in os.environ:
