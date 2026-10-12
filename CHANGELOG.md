@@ -2,6 +2,45 @@
 
 ## 0.5.0 (not published yet: the tag is Alex's)
 
+The feel pass (11 October). What the first hour reads, said in the person's words: three readers walked the first
+hour and the morning after, a designer chose twelve things, a judge argued each, and four lanes built them; the
+evidence is `dev/process/feel/`. Four decisions move with it (43, 179, 186's gloss, 44's letter on an empty plan):
+Alex's to flip.
+- The `(the plan of /full/path)` trailer prints only from outside the plan's own checkout (a linked worktree, where
+  an executor's `node done` runs); standing in the repository it is quiet. Run `graphene node add` from the
+  checkout, then from a worktree.
+- `graphene ask` ends `next: `graphene plan accept`, or prune in `graphene watch` (y accepts, d drops)`, and
+  `graphene plan accept` ends `next: `graphene run` reaches fields, readme` with a line for each leaf that will wait
+  and why, or `next: nothing is ready for `graphene run``; `graphene plan` on a proposal says `graphene plan accept`
+  takes all of it. Run `graphene ask` and `graphene plan accept`.
+- `graphene watch`'s status line says its clock in one phrase (`agents 1 <1m`), so `1/9 done` is back at 80 columns;
+  dollars with no agent run read `bill $0.03`; while the planner works the agents' slot reads `planner asked 12 s
+  ago` until its proposal lands. Run `graphene ask` with `graphene watch` beside it.
+- `graphene init`'s first screen: `plan first: on. Claude proposes a plan here before it writes; you accept it in
+  `graphene watch``, `(8 Claude Code hooks)` for the eight names, and a `next:` that fits what line one said
+  (install, or `graphene init --planner claude --executor claude`). Run `graphene init`.
+- `graphene demo`'s top line says `a scripted stand-in, no model ran`; its bottom line and every printed log row say
+  a kind with spaces (`rolled up`, `check passed`). The shipped recording was made again on 12 October (UTC) from
+  the stand-in with the meter on, so a running leaf's row shows. Run `graphene demo`.
+- `graphene ask` with Claude Code says each of the planner's tool calls as it happens, one indented line (`  reading
+  api.py`), 40 a try and then a count. Run `graphene ask` with Claude Code.
+- In `graphene watch` every key line ends `? help · q quit` (a proposed leaf keeps `Tab view`, a leaf that came back
+  `r run it again`), and the empty plan opens on `plan first: on` over `:ask what you want · ? help · q quit`. Run
+  `graphene watch` in a repository with no plan.
+- While a metered leaf works (Claude Code, Codex, Nemotron), `graphene run` says every 30 s what it is doing, in the
+  strip's words (`fields · 30 s · 4 turns · $0.08 · editing normalize/fields.py`); a script executor still says
+  nothing between started and ended. Run `graphene run`.
+- Red first names the check: `fields, readme: their check (`true`) passes before any work: it would pass with
+  nothing done; `graphene node set <id> --check '<a real one>'`, or e in `graphene watch``, then `red first: 2
+  checks ran at cc9b19a before any work, in 1 s`; the pane under a flagged leaf says the same, and `graphene plan
+  precheck` names it too. Run `graphene run` on a plan whose checks are `true`.
+- `graphene node show` for a person has no `finish:` and `stuck:` orders and `landed:` under the contract; a
+  sub-goal's blank slots are gone; the finished plan's last line says `in your checkout, uncommitted (`git status`):
+  commit it yourself`. Run `graphene node show <id>` on a landed leaf.
+- The help's legend names every glyph once (`◆ review`, `↩ came back`); the time view has a key of its own under
+  `?`, with `═` for a hold the meter cannot see and `■` for a landing, so `━` means only the critical path and `◆`
+  only review; a fork that lost, gave up or stopped is `–` or `⊘`, no leaf's glyph. Tab to the time view, then `?`.
+
 The first hour and the morning after (10 October). What a stranger meets in the first hour said plainly, and what a
 person reads the morning after printed from what was already stored; the night's experiments measured on 907a7d0
 and on the branch (`dev/process/prove/after.md`).

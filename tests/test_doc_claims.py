@@ -161,6 +161,16 @@ def test_the_readme_and_changelog_name_what_first_light_added():
         assert live in " ".join(said.split()), path
 
 
+def test_the_changelog_names_what_the_feel_pass_changed():
+    """A seam reader: the unreleased 0.5.0 entry admitted one of the feel pass's twelve changes; decisions.md
+    gave lane C one entry for the pass, a draft in the owner's voice, and none landed."""
+    from graphene_map import demo
+    from graphene_map import view_time as VT
+
+    said = doc("CHANGELOG.md").split("## 0.4.0")[0]
+    assert demo.STAND_IN in said and VT.HELD in said and "planner asked" in said and "the plan of" in said
+
+
 def test_the_changelogs_red_first_bullet_says_what_the_lines_say_now():
     """A seam reader: the unreleased 0.5.0 entry said the header counts the commands, a clause the feel pass
     cut from the header, and nothing of the gloss the per-command line says now."""
