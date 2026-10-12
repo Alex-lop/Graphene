@@ -103,7 +103,7 @@ EMPTY = (
     "here. Or :ask <what you want>. ? lists the keys."
 )
 KEYS = {  # the bottom line, when no command has just spoken: what the keys do on this row
-    "proposed": ["y accept", "d drop", "e edit", "E edit with what is under it"],
+    "proposed": ["y accept", "d drop", "e edit", "E edit with children"],
     "review": ["y sign off", "x send back", "Enter record"],
     "running": ["l output", "x release", "Enter record"],
     "done": ["x reopen", "Enter record", "c diff"],
@@ -1562,7 +1562,7 @@ class Watch(App):
         row = self.board_row()
         if row is not None:  # board: what each key would do on this item, in words
             item = self.board.get(row)
-            if item is not None:  # its words give way to Tab, ? and q, which the key line keeps whole
+            if item is not None:  # its words give way; with none left, Tab view does, before ? and q
                 room = max(self.size.width - 2, 20) - sum(len(k) + 3 for k in tail)
                 return [*BR.hints(item, room), *tail]
             if row == BR.STANDING:

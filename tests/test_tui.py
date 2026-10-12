@@ -2078,7 +2078,7 @@ def test_help_and_quit_never_fall_off_the_key_line_and_the_empty_plan_opens_on_t
     keys = watch(repo, [])[0]["status"].splitlines()[1]
     assert keys == "y accept it all · E edit as text · za fold all · Tab view · ? help · q quit", keys
     keys = watch(repo, ["j", "j"])[0]["status"].splitlines()[1]  # a proposed leaf: its long key gives way
-    assert keys.endswith(" · ? help · q quit") and "Tab view" not in keys and len(keys) <= 78, keys
+    assert keys == "y accept · d drop · e edit · E edit with children · Tab view · ? help · q quit", keys
     person("plan", "accept")
     with Store.open(repo) as store:
         land(repo, store, "ids", "api.py", "def users():\n    return ['ids']\n")
