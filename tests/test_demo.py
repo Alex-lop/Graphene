@@ -281,6 +281,19 @@ def test_demo_once_needs_no_key_and_no_network_and_prints_the_banner_and_the_end
     assert not list((tmp_path / "tmp").iterdir())
 
 
+def test_the_top_lines_day_is_the_one_the_rows_under_it_are_stamped_with(monkeypatch):
+    """The shipped recording is stamped 2026-10-12T03:16:50Z: in any American zone the top line said
+    2026-10-11 over rows that say 2026-10-12, and the tests saw one day only because TZ is pinned to UTC."""
+    monkeypatch.setenv("TZ", "America/New_York")
+    time.tzset()
+    try:
+        head, _ = demo.load(demo.SHIPPED)
+        assert head["day"] == head["recorded"][:10], (head["day"], head["recorded"])
+    finally:
+        monkeypatch.setenv("TZ", "UTC")
+        time.tzset()
+
+
 def test_demo_once_leaves_out_the_plans_next_step_and_nothing_else(tmp_path, monkeypatch):
     """It printed "finished; `graphene plan archive` puts it away", a command for the replay's repository,
     which is gone by then. Everything else is what `graphene watch --once` prints of the same store, the
