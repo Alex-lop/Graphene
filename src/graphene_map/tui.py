@@ -1444,12 +1444,15 @@ class Watch(App):
             unpriced = f"{tokens(agents['unpriced'])} tokens unpriced"
             spent = f"{spent} + {unpriced}" if c.get("spent") else unpriced
         mine = c.get("mine") or {"acts": 0, "minutes": 0}
-        ran, acts = agents["running"] or agents["seconds"] or spent, _s(mine["acts"], "act")
+        ran, acts = agents["running"] or agents["seconds"], _s(mine["acts"], "act")
         took = agents["seconds"] // 60 or ("<1" if agents["seconds"] or agents["running"] else 0)
-        clock = " · ".join([f"{agents['running']} running", f"{took} min", *([spent] if spent else [])])
+        clock = " ".join([f"{agents['running']} running", f"{took} min", *([spent] if spent else [])])
+        # one phrase: a dot between a clock's fields read as a dot between facts; the planner's dollars,
+        # before any agent ran, are the plan's bill, not an agents' clock at 0
+        tick, bill = clock.replace(" running", "").replace(" min", "m"), f"bill {spent}" if spent else ""
         long = [
             (f"waiting on you: {c['you']}{board}", you),
-            (f"agents: {clock}" if ran else "agents: none", busy),
+            (f"agents: {clock}" if ran else bill or "agents: none", busy),
             (f"you: {acts} · ~{mine['minutes']} min", ""),
             (f"R runs {c['ready']} ready" if c["ready"] else "nothing ready to run", ""),
             *([(f"{c['back']} came back", "")] if c.get("back") else []),
@@ -1458,7 +1461,7 @@ class Watch(App):
         ]
         short = [
             (f"{c['you']} on you{board}", you),  # the graph's note says it so too
-            (f"agents {clock.replace(' running', '').replace(' min', 'm')}" if ran else "agents 0", busy),
+            (f"agents {tick}" if ran else bill or "agents 0", busy),
             (f"you {acts} ~{mine['minutes']}m", ""),
             (f"R: {c['ready']} ready" if c["ready"] else "none ready", ""),
             *([(f"{c['back']} came back", "")] if c.get("back") else []),
