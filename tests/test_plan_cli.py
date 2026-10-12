@@ -96,7 +96,7 @@ def test_the_loop_a_person_shapes_an_agent_executes_and_the_boundary_carries_the
     assert refused.exit_code == 1 and "person's to do" in refused.stderr
 
     accepted = person("plan", "accept")
-    assert "left alone, agents can reach: n1, n2" in accepted.stdout
+    assert "next: `graphene run` reaches n1, n2  (R in graphene watch)" in accepted.stdout
 
     told = agent("node", "start", "n1")
     assert "n1 (revision 1): users returns ids" in told.stdout and "scope:  api.py" in told.stdout
@@ -163,9 +163,9 @@ def test_sign_off_reopen_and_release_each_leave_a_line_in_the_nodes_record(repo)
     shown = person("node", "show", "n1").stdout
     assert "window 2:" in shown and "released: needs schema.py" in shown  # the contract, then the record
     assert "`graphene plan log` (8 for n1)" in shown
-    kinds = [line.split()[2] for line in person("plan", "log").stdout.splitlines()]
-    assert kinds == [
-        "added", "started", "check_passed", "check_passed", "finished", "reopened", "started", "released"
+    kinds = [re.split(r"  +", line.strip())[2] for line in person("plan", "log").stdout.splitlines()]
+    assert kinds == [  # a kind reads with spaces, as the record pane and the replay's bottom line say it
+        "added", "started", "check passed", "check passed", "finished", "reopened", "started", "released"
     ]  # fmt: skip
 
 
@@ -307,9 +307,10 @@ def test_graphene_plan_reads_its_rows_as_the_screen_does(repo):
     assert "waiting on you: idea (proposed), mine (yours)" in shown
 
 
-def test_start_done_signoff_reopen_and_run_name_the_repository(repo):
+def test_start_done_signoff_reopen_and_run_say_nothing_of_the_repository_they_stand_in(repo):
     """Recheck: node reopen and node signoff (and start, done and run) changed the plan and said
-    nothing of which repository's plan they changed."""
+    nothing of which repository's plan they changed. Then the feel pass: standing in that repository,
+    its path ended every act, three rows at 80 columns (a worktree's act still says it)."""
     person("node", "add", "leaf one", "--id", "l1", "--scope", "api.py", "--check", "true", "--signoff")
     person("node", "add", "leaf two", "--id", "l2", "--scope", "schema.py", "--check", "true")
     acts = [person("node", "start", "l1")]
@@ -320,7 +321,7 @@ def test_start_done_signoff_reopen_and_run_name_the_repository(repo):
         person("run", "--with", "true", "--node", "l2"),
     ]
     assert [a.exit_code for a in acts] == [0] * 5, [a.output for a in acts]
-    assert all("(the plan of " in a.stderr for a in acts), [a.stderr for a in acts]
+    assert all("(the plan of " not in a.stderr for a in acts), [a.stderr for a in acts]
     # a run names it first (it runs for long), and ends with what it did, for the person
     last = acts[-1].stdout.splitlines()[-1]  # the bill counts the six acts that led to the run
     said = r"run: 1 came back \(l2\) · agents <1 min, no meter · width 1 of 1 · you 6 acts, [12] min"
@@ -329,7 +330,9 @@ def test_start_done_signoff_reopen_and_run_name_the_repository(repo):
 
 def test_a_run_says_first_where_it_lands_with_what_and_that_uncommitted_work_stays_out(repo):
     """A stranger's first run merged leaves into their branch, unasked, with their hooks skipped, from
-    worktrees that never had their uncommitted files: none of it was said before it happened."""
+    worktrees that never had their uncommitted files: none of it was said before it happened. Then the
+    feel pass: one 297-character line said it all; now the first line is this run's four facts, the
+    second how to follow it with the two consent facts, and the git flags are `run --help`'s."""
     person("node", "add", "leaf two", "--id", "l2", "--scope", "schema.py", "--check", "true")
     (repo / "notes.txt").write_text("mine, not committed\n")
     ran = person("run", "--with", "true")
@@ -338,7 +341,10 @@ def test_a_run_says_first_where_it_lands_with_what_and_that_uncommitted_work_sta
                             text=True).stdout.strip()  # fmt: skip
     lines = ran.stdout.splitlines()
     [landing] = [line for line in lines if line.startswith("landing into ")]
-    assert landing.startswith(f"landing into {branch} at ") and "--no-verify" in landing, landing
+    assert landing.startswith(f"landing into {branch} at ") and len(landing) < 100, landing
+    assert lines[1].startswith("`graphene watch` in another terminal follows it") and "hooks" in lines[1]
+    assert "--no-verify" not in ran.stdout and "--no-ff" not in ran.stdout  # the git flags: `run --help`
+    assert "--no-ff" in runner.invoke(build(), ["run", "--help"]).output
     assert "your uncommitted changes are not in the executors' worktrees: they start from HEAD" in lines
     assert lines.index(landing) == 0 and lines[-1].startswith("run: ")  # the summary is still the last
     capped = person("run", "--with", "true --max-budget-usd 2").stdout.splitlines()[0]
@@ -386,15 +392,16 @@ def test_an_accept_whose_output_pipe_closes_is_made_all_the_same(repo, monkeypat
 
 
 # Recheck 75 (partly)
-def test_pause_resume_prompts_ack_archive_and_release_name_the_repository(repo):
-    """Every write names the repository: pause, which turns enforcement off, said nothing of where."""
+def test_pause_resume_prompts_ack_archive_and_release_say_nothing_of_the_repository_they_stand_in(repo):
+    """Every write named the repository: pause, which turns enforcement off, said nothing of where.
+    Since the feel pass none says it from the plan's own checkout, pause included."""
     person("node", "add", "leaf one", "--id", "l1", "--scope", "api.py", "--check", "true")
     agent("node", "start", "l1")
     acts = [agent("node", "release", "l1", "--why", "needs schema.py")]
     for args in ("pause", "resume", "prompts strict", "ack", "archive"):
         acts.append(person("plan", *args.split()))
     assert [a.exit_code for a in acts] == [0] * 6
-    assert all("(the plan of " in a.stderr for a in acts), [a.stderr for a in acts]
+    assert all("(the plan of " not in a.stderr for a in acts), [a.stderr for a in acts]
 
 
 def test_after_the_last_node_is_archived_the_plan_the_board_and_the_next_ask_start_clean(repo):
@@ -424,15 +431,13 @@ def test_a_finished_plan_says_when_its_leaves_work_is_not_committed_and_what_com
     assert ran.exit_code == 0, ran.output
     assert "--here: your checkout is exposed" in ran.stdout
     assert ran.stdout.splitlines()[-1] == (
-        "run: 1 done · agents <1 min, no meter · width 1 of 1 · you 1 act, 1 min · the work of ids is not "
-        "committed (`git status`): `graphene run --here` commits "
-        "nothing, `graphene run` and watch's R commit and merge each leaf"
-    )
+        "run: 1 done · agents <1 min, no meter · width 1 of 1 · you 1 act, 1 min · the work of ids is "
+        "in your checkout, uncommitted (`git status`): commit it yourself"
+    )  # the merge `graphene run` would have made is run --help's to say: the after-walk read 228 characters
     head = person().stdout.splitlines()[0]
     assert head == (
-        "the plan: 1 leaf, 1 done, 0 running · finished; the work of 1 leaf is not committed (`git status`): "
-        "`graphene run --here` commits nothing, `graphene run` and watch's R commit and merge each leaf; "
-        "`graphene plan archive` puts it away"
+        "the plan: 1 leaf, 1 done, 0 running · finished; the work of 1 leaf is in your checkout, "
+        "uncommitted (`git status`): commit it yourself; `graphene plan archive` puts it away"
     )
     subprocess.run(["git", "-c", "user.email=t@example.com", "-c", "user.name=T", "commit", "-qam", "ids"],
                    cwd=repo, check=True)  # fmt: skip
@@ -488,7 +493,7 @@ def test_plan_first_is_a_setting_the_person_sees_and_sets(repo):
     for how in ("on", "off", "auto"):
         turned = person("plan", "first", how)
         assert turned.exit_code == 0 and f"plan first: {how}. " in turned.stdout
-        assert "(the plan of" in turned.stderr
+        assert "(the plan of" not in turned.stderr  # the plan's own checkout: no write names it
     assert agent("plan", "first", "off").exit_code == 1
     # with no plan in force the gate makes no leaf of a quick change (decision 18): off says when it does
     assert "as a leaf of its own while a plan is in force" in person("plan", "first", "off").stdout
@@ -500,7 +505,7 @@ def test_plan_first_is_a_setting_the_person_sees_and_sets(repo):
 
 def test_init_sets_plan_first_on_and_keeps_an_auto_set_before(repo):
     said = person("init")
-    assert said.exit_code == 0 and "plan first: on. Every ask in a session is proposed" in said.stdout
+    assert said.exit_code == 0 and "plan first: on. Claude proposes a plan here" in said.stdout
     # what init did, what it records, how to stop each, and no advice about a file git already leaves out
     assert "`graphene plan first off`" in said.stdout and "`graphene init --remove`" in said.stdout
     assert "its prompts" in said.stdout and ".gitignore" not in said.stdout
@@ -616,9 +621,11 @@ def test_reopen_and_release_ask_at_a_terminal_and_refuse_in_one_line_without_one
     assert (refused.exit_code, refused.stderr) == (1, "n1 is open, not running\n")
 
 
-def test_every_write_ends_with_which_repository_the_same_way(repo):
+def test_no_write_in_the_plans_own_checkout_names_the_repository(repo):
     """The repository came first on some writes, last on others, and between a hand-back and its
-    `next:` on a release. The screen's top line says it in the same words."""
+    `next:` on a release; then it ended every one of them the same way, three rows at 80 columns, while
+    the person stood in it. Now none of these says it there; the worktree case, where it is still said,
+    is the next test."""
     acts = [
         person("plan", "goal", "users come back with their ids"),
         person("node", "add", "leaf one", "--id", "l1", "--scope", "api.py", "--check", "true"),
@@ -635,9 +642,80 @@ def test_every_write_ends_with_which_repository_the_same_way(repo):
     ]
     for act in acts:
         assert act.exit_code == 0, act.output
-        last = act.output.splitlines()[-1]
-        assert last.startswith("  (the plan of ") and last == act.stderr.splitlines()[-1], act.output
-    assert all(act.output.count("(the plan of ") == 1 for act in acts)
+        assert "(the plan of" not in act.output, act.output
+
+
+def test_a_write_from_a_linked_worktree_still_names_the_plans_repository(repo, monkeypatch):
+    """Three readers: `  (the plan of /the/path/you/stand/in)` ended every act while the person stood in
+    that very directory. It is said where it carries something: an executor's `node done` runs in a
+    linked worktree, whose plan is the main checkout's."""
+    from graphene_map import plan
+
+    person("node", "add", "leaf one", "--id", "l1", "--scope", "api.py", "--check", "true")
+    assert "(the plan of" not in person("plan", "accept").stderr
+    wt = repo.parent / f"{repo.name}-wt"
+    subprocess.run(["git", "worktree", "add", "-q", str(wt)], cwd=repo, check=True, capture_output=True)
+    monkeypatch.chdir(wt)
+    started = person("node", "start", "l1")
+    assert started.exit_code == 0, started.output
+    assert started.stderr.splitlines()[-1] == f"  (the plan of {plan.where(repo)})"
+
+
+def test_accept_and_the_plan_on_a_proposal_name_the_next_command_not_a_rule(repo):
+    """Three readers: `graphene plan` on a proposal explained a rule in its header, `(proposed with the
+    tree, accepted with it)`, and offered `graphene plan accept <id>` a row at a time, never the plain
+    one; after the accept the goal came with `(the planner's sentence, accepted with its tree)`, and the
+    last line before the person needed `graphene run` was `left alone, agents can reach: …`."""
+    text = "goal: users come back with their ids\n- one  [one]\n    scope: api.py\n    check: true\n"
+    assert agent("plan", "propose", "-", input=text).exit_code == 0
+    shown = person("plan").stdout.splitlines()
+    assert shown[0] == "the plan (proposed): users come back with their ids"
+    waiting = shown.index("waiting on you: one (proposed)")
+    assert shown[waiting + 1] == "  `graphene plan accept` takes all of it; y in graphene watch"
+    said = person("plan", "accept").stdout
+    assert "the plan: users come back with their ids\n" in said and "left alone" not in said
+    assert said.splitlines()[-1] == "next: `graphene run` reaches one  (R in graphene watch)"
+    again = person("plan", "accept")  # nothing proposed: said, and exit 0 (the README chains `&& run`)
+    assert again.exit_code == 0 and again.stdout.splitlines()[:2] == [
+        "nothing to accept: no proposal is open",
+        "next: `graphene run` reaches one  (R in graphene watch)",
+    ]
+    assert "accepted with" not in person("plan").stdout and "takes all of it" not in person("plan").stdout
+
+
+def test_accept_never_says_the_run_reaches_a_leaf_it_never_starts(repo):
+    """Two readers: `next: graphene run reaches …` named a sub-goal added with no scope (a run starts only
+    leaves with one, so it said nothing of it), and on an empty plan said `reaches nothing` where the run
+    then refuses with `nothing to run`."""
+    said = person("plan", "accept").stdout.splitlines()
+    assert said[:2] == ["nothing to accept: no proposal is open", "next: nothing is ready for `graphene run`"]
+    text = "goal: users come back with their ids\n- one  [one]\n    scope: api.py\n    check: true\n"
+    assert agent("plan", "propose", "-", input=text).exit_code == 0
+    person("node", "add", "split the parser")  # the README's way to add a sub-goal to fill in: no scope
+    said = person("plan", "accept").stdout
+    assert "next: `graphene run` reaches one  (R in graphene watch)" in said, said
+    assert "  n2 will wait: n2 has no scope and no leaves yet" in said, said
+
+
+def test_node_show_for_a_person_has_no_agent_orders_and_names_the_landing_first(repo, tmp_path):
+    """Three readers: `node show` on a landed leaf opened with `finish:` and `stuck:`, orders to an
+    executor that had left, `landed:` was line 33 of 35, and a sub-goal's `scope:` and `done:` slots
+    were blank, the scope's parenthesis refusing writes against nothing."""
+    text = ("goal: users come back with their ids\n- the API  [api]\n  - users returns ids  [ids]\n"
+            "      scope: api.py\n      check: true\n")  # fmt: skip
+    assert agent("plan", "propose", "-", input=text).exit_code == 0
+    person("plan", "accept")
+    script = tmp_path.parent / f"{tmp_path.name}-ids.py"  # an executor that writes in the scope
+    script.write_text("open('api.py', 'w').write('def users():\\n    return [\"ids\"]\\n')\n")
+    ran = person("run", "--with", f"{sys.executable} {script}")
+    assert ran.exit_code == 0 and "run: 1 done" in ran.stdout, ran.output
+    lines = person("node", "show", "ids").stdout.splitlines()
+    assert not [line for line in lines if line.startswith(("  finish:", "  stuck:"))]
+    [at] = [k for k, line in enumerate(lines) if line.startswith("  landed: ")]
+    assert lines[at - 1].startswith("  done:   `true` passes")  # right under the contract
+    assert "  finish: graphene node done ids" in agent("node", "show", "ids").stdout  # the executor keeps it
+    sub = person("node", "show", "api").stdout
+    assert "  scope:  none yet\n" in sub and "  done:   no check yet\n" in sub and "anywhere else" not in sub
 
 
 def test_refusals_say_what_was_refused_and_the_command_in_a_line(repo):

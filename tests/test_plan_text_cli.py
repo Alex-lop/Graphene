@@ -75,7 +75,7 @@ def test_a_person_edits_the_plan_in_their_editor_and_the_save_is_applied(repo, m
     edited = person("plan", "edit")
     assert edited.exit_code == 0, edited.output
     assert "accepted api" in edited.stdout and "docs: check changed" in edited.stdout
-    assert "(the plan of" in edited.stderr  # which repository, on every write
+    assert "(the plan of" not in edited.stderr  # the plan's own checkout: no write names it
     assert "- document it  [docs]" in person("plan", "--text").stdout
     assert not list((repo / ".graphene" / "edits").iterdir())
     undone = person("plan", "undo")

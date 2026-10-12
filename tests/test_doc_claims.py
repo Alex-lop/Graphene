@@ -161,6 +161,23 @@ def test_the_readme_and_changelog_name_what_first_light_added():
         assert live in " ".join(said.split()), path
 
 
+def test_the_changelog_names_what_the_feel_pass_changed():
+    """A seam reader: the unreleased 0.5.0 entry admitted one of the feel pass's twelve changes; decisions.md
+    gave lane C one entry for the pass, a draft in the owner's voice, and none landed."""
+    from graphene_map import demo
+    from graphene_map import view_time as VT
+
+    said = doc("CHANGELOG.md").split("## 0.4.0")[0]
+    assert demo.STAND_IN in said and VT.HELD in said and "planner asked" in said and "the plan of" in said
+
+
+def test_the_changelogs_red_first_bullet_says_what_the_lines_say_now():
+    """A seam reader: the unreleased 0.5.0 entry said the header counts the commands, a clause the feel pass
+    cut from the header, and nothing of the gloss the per-command line says now."""
+    said = doc("CHANGELOG.md").split("## 0.4.0")[0]
+    assert "the header counts the commands" not in said and "would pass with nothing done" in said
+
+
 def test_the_docs_say_what_accept_and_r_leave_open_and_that_d_attaches_nothing():
     """Review 2026-09-29 (26, 27, 28): the docs said accept, R and `board take` take every open default
     and leave an agent's note open, and that D attaches a session or opens `:direction attach`."""

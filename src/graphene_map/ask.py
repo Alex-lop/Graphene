@@ -16,6 +16,7 @@ import os
 import re
 import shlex
 import subprocess
+import tempfile
 import uuid
 from collections.abc import Callable
 from pathlib import Path
@@ -35,6 +36,7 @@ from .views import money
 # needs `--verbose`) says what it cost, as an executor's does. Codex: `codex exec --sandbox read-only`.
 DEFAULT_PLANNER = "claude -p --tools Read,Grep,Glob --strict-mcp-config --output-format stream-json --verbose"
 ATTEMPTS = 2
+SHOWN = 40  # tool calls said as they happen, a try; past them a count, so a long planner does not scroll
 
 
 def named(spec: str | None) -> str:
@@ -425,25 +427,36 @@ def ask(
         night, hold = held(argv0, argv, paid, f"ask: the planner, attempt {attempt}")  # as an executor's
         meter = M.Meter("claude", attempt, M.model_in(argv), paid) if M.kind(argv) == "claude" else None
         say(f"asking the planner ({argv0}){' again' if attempt > 1 else ''}…")
+        errs = tempfile.TemporaryFile("w+", errors="replace")  # a pipe would fill while stdout is read
         try:
             # in a session of its own, as an executor is: a stop reaches Graphene alone, which tells the
             # planner to end (TERM) and gives it its time, so Graphene's own settles what it holds
             proc = subprocess.Popen(argv, cwd=root, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                                    stderr=subprocess.PIPE, text=True, start_new_session=True)  # fmt: skip
+                                    stderr=errs, text=True, start_new_session=True)  # fmt: skip
+            stream, shown = [], 0  # what it printed, whole; the tool calls said so far
             try:
-                stdout, stderr = proc.communicate()
+                for line in proc.stdout:  # read as it writes, not once it has ended: each tool call is said
+                    stream.append(line)
+                    for kind, d in meter.feed(line) if meter else []:
+                        if kind == "did" and (shown := shown + 1) <= SHOWN:
+                            say(f"  {M.doing(d['verb'], d['target'])}")
+                proc.wait()
             except BaseException:
                 with _no_interrupt():
                     _end(proc)
                 raise
-            done = subprocess.CompletedProcess(argv, proc.returncode, stdout, stderr)
-            for line in done.stdout.splitlines() if meter else []:
-                meter.feed(line)
+            finally:
+                proc.stdout.close()  # as communicate() did; after _end, so a TERMed planner never gets EPIPE
+            if shown > SHOWN:
+                say(f"  … and {shown - SHOWN} more")
+            errs.seek(0)
+            done = subprocess.CompletedProcess(argv, proc.returncode, "".join(stream), errs.read())
         except OSError as no:
             if hold:  # nothing ran
                 night.settle(hold["id"], hold["model"], 0.0, ledger=hold["ledger"])
             raise P.Refused(f"cannot run `{argv0}`: {no.strerror}; name a planner with --with") from None
         finally:
+            errs.close()
             if hold:  # once: at what Claude's result says it cost, else at its worst case
                 _settle(night, hold, meter)
         if meter:  # its bill, on the plan, as the Nemotron planner's is

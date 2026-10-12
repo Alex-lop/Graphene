@@ -502,6 +502,8 @@ def waits_on_person(
                 reasons.append(f"{n.id} needs a sign-off")
         elif n.owner != AGENT:
             reasons.append(f"{n.id} is {n.owner}'s")
+        elif not n.scope:  # a sub-goal whose leaves are to come: `ready` skips it, so a run never starts it
+            reasons.append(f"{n.id} has no scope and no leaves yet")
         elif n.signoff and n.id != node.id:
             reasons.append(f"{n.id} needs a sign-off")
         for need in all_needs(n, by_id):
@@ -950,26 +952,36 @@ def _end_check(proc) -> None:  # a subprocess.Popen
 # -- the operations -------------------------------------------------------------------------------
 
 
-def contract(node: Node, why: list[str] | None = None, decided: list[str] | tuple = ()) -> str:
+def contract(
+    node: Node, why: list[str] | None = None, decided: list[str] | tuple = (), person: bool = False
+) -> str:
     """The node as its executor is told it: the whole of what they are bound to, and why it is being
     done at all (``trail``: from the plan's goal down to this node, in the person's words), and what
-    the person decided on the board that bears on it (``board.decided``)."""
+    the person decided on the board that bears on it (``board.decided``). ``person``: read by the
+    person (`node show`), who gets the facts and not the executor's two commands."""
     lines = [
         f"{node.id} (revision {node.rev}): {node.title}",
         *(f"  {'why:' if k == 0 else '    '}    {'  ' * k}{line}" for k, line in enumerate(why or [])),
         f"  goal:   {node.goal or node.title}",
         *(["  decided:"] if decided else []),  # its lines start where every other key's value does
         *(f"          {line}" for line in decided),
-        f"  scope:  {', '.join(node.scope)}   (a write anywhere else is refused, and blocks `done`)",
+        f"  scope:  {', '.join(node.scope) or 'none yet'}"
+        + ("   (a write anywhere else is refused, and blocks `done`)" if node.scope else ""),
         *(
             [f"  needs:  {', '.join(node.needs)}   (it cannot start until they are done)"]
             if node.needs
             else []
         ),
-        f"  done:   {done_means(node)}",
-        f"  finish: graphene node done {node.id}   (runs the check and asks git what changed)",
-        f"  stuck:  graphene node release {node.id} --why '<what is in the way>' [--wants <paths it needs>]"
-        "   (hands it back; say why)",
+        f"  done:   {done_means(node) or 'no check yet'}",
+        *(
+            []
+            if person
+            else [
+                f"  finish: graphene node done {node.id}   (runs the check and asks git what changed)",
+                f"  stuck:  graphene node release {node.id} --why '<what is in the way>' "
+                "[--wants <paths it needs>]   (hands it back; say why)",
+            ]
+        ),
     ]
     return "\n".join(lines)
 
@@ -1903,10 +1915,7 @@ def uncommitted(store, checkout: str | Path) -> list[str]:
     return [n.id for n in done if set(ended[n.id]["detail"].get("changed") or []) & set(changed)]
 
 
-UNCOMMITTED = (
-    "not committed (`git status`): `graphene run --here` commits nothing, `graphene run` and watch's R "
-    "commit and merge each leaf"
-)
+UNCOMMITTED = "in your checkout, uncommitted (`git status`): commit it yourself"  # run --help says the merge
 
 
 def acknowledge(store, checkout: str | Path, who: Caller, now: str | None = None) -> list[str]:
@@ -3062,10 +3071,23 @@ def where(root: str | Path) -> str:
 
 
 def where_said(root: str | Path) -> str | None:
-    """The last line of every command that changes the plan: which repository's plan it changed, so a
-    stray `cd` cannot fool anyone. None in `graphene watch`'s pane (GRAPHENE_WATCH, set on the commands
-    it runs), whose top line names the plan already: at 80 columns the line took three rows there."""
-    return None if "GRAPHENE_WATCH" in os.environ else f"  (the plan of {where(root)})"
+    """The last line of a command that changes the plan from outside the plan's own checkout (a linked
+    worktree, as an executor's `node done` runs in; a nested checkout is a repository of its own, with
+    its own store, so it never prints there): which repository's plan it changed. Standing in that
+    checkout the path is the prompt's own, and the line took three rows at 80 columns after every act,
+    so it is None there; None too in `graphene watch`'s pane (GRAPHENE_WATCH, set on the commands it
+    runs), whose top line names the plan already."""
+    import subprocess
+
+    if "GRAPHENE_WATCH" in os.environ:
+        return None
+    try:
+        top = _git(Path.cwd(), "rev-parse", "--show-toplevel").strip()
+    except (Refused, OSError, subprocess.TimeoutExpired):
+        top = ""
+    if top and Path(top).resolve() == Path(root).resolve():
+        return None
+    return f"  (the plan of {where(root)})"
 
 
 FIRST = ("on", "auto", "off")

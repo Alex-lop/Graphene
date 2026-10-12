@@ -245,7 +245,7 @@ def test_without_a_terminal_none_or_several_found_leave_the_choice_unset_and_say
         "`run` and `ask` refuse"
     ]
     assert "planner: not chosen · executor: not chosen" in said.output
-    assert "next Claude Code session" in said.output  # none chosen: a person's own Claude Code session
+    assert "each Claude Code session here is recorded" in said.output  # none chosen: the person's own
     monkeypatch.delenv("NEBIUS_API_KEY")
     tf._listed.cache_clear()
     on_path()  # nothing found
@@ -256,6 +256,26 @@ def test_without_a_terminal_none_or_several_found_leave_the_choice_unset_and_say
     on_path("claude")
     assert person("init").exit_code == 0
     assert chosen(repo) == {"planner": "claude", "executor": "codex"}  # kept, and the one found fills the gap
+
+
+def test_inits_first_screen_is_in_the_persons_words_and_its_next_step_fits_what_it_said(repo, on_path):
+    """Three readers: init's first screen named eight Claude Code hook events, explained `--with` before
+    `ask` or `run` had been seen, said plan first in six undefined terms, and off a terminal with nothing
+    found said on line one that `ask` refuses and on the last `next: graphene ask`."""
+    on_path()  # git alone: nothing is chosen
+    said = person("init")
+    assert said.exit_code == 0, said.output
+    [then] = [line for line in said.output.splitlines() if line.startswith("next:")]
+    assert then == "next: install claude or codex, then `graphene init` again; `graphene ask` after that"
+    on_path("claude", "codex")  # two found, none chosen: the next step is to name one, not to install
+    [then] = [line for line in person("init").output.splitlines() if line.startswith("next:")]
+    assert then.startswith("next: `graphene init --planner claude --executor claude` chooses them; ") and (
+        "install" not in then
+    ), then
+    assert "plan first: on. Claude proposes a plan here before it writes; you accept it in" in said.output
+    assert "(8 Claude Code hooks)" in said.output and "SessionStart, UserPromptSubmit" not in said.output
+    assert "each Claude Code session here is recorded on this machine only (its prompts" in said.output
+    assert "--with changes one command" not in said.output and "(`graphene init` changes them)" in said.output
 
 
 def test_init_help_says_none_is_offered_first():
@@ -491,6 +511,6 @@ def test_with_nemotron_chosen_init_reads_as_nemotron_and_the_choice_comes_first(
     assert lines[0].startswith("planner: nemotron --model")
     [hooks] = [line for line in lines if "the Claude Code hooks are in" in line]  # one line, and it says
     assert hooks.endswith(": they record it on this machine, and `graphene init --remove` takes them out")
-    assert "bashEditDiffEnabled" not in said and "next Claude Code session" not in said
+    assert "bashEditDiffEnabled" not in said and "each Claude Code session here is recorded" not in said
     again = person("init", "--planner", "claude", "--executor", "claude").output
-    assert "next Claude Code session" in again  # with Claude Code as the planner, its lines come back
+    assert "each Claude Code session here is recorded" in again  # Claude Code the planner: its lines return

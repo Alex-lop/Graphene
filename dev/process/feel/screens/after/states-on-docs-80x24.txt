@@ -1,0 +1,24 @@
+| the plan of …4-ecd5-4976-a41d-71ab2ec13bc9/scratchpad/final-shots/repos/states |
+|▼ ○ users come back with their ids, and the schema says so     1/9 done         |
+|├ ▼ ○ the API                                          api     0/5 done         |
+|│ ├   ● users returns ids                              ids     running          |
+|│ ├   ↩ document it                                    docs    came back        |
+|│ ├   ◌ the contract test names every enabled source…  more    waiting          |
+|│ ├   · the rest, to be split                          later   to fill in       |
+|│ └   ◇ read it over                                   mine    yours            |
+|├ ▶ ○ the schema                                       schema  1 review, 2 more |
+|└   ? an idea                                          idea    proposed         |
+|────────────────────────────────────────────────────────────────────────────────|
+| document it                                                                    |
+| docs · came back                                                               |
+| it needs docs/api.md, and ids has to land first                                |
+|   w  widen its scope to docs/api.md                                            |
+|      graphene node widen docs                                                  |
+|   b  a sibling leaf for docs/api.md (its check: true), which it waits on     ▇ |
+|      graphene node sibling docs                                                |
+|   n  wait on ids                                                               |
+|      graphene node set docs --needs ids                                        |
+| ● ids · claude · attempt 1 · 6s · no meter                                     |
+|   Bash cat api.py · 5 s ago                                                    |
+| 4 on you · agents 1 <1m · you 1 act ~1m · R: 1 ready · 1 came back · 1/9 done  |
+| w widen · b sibling · n wait · e edit check · r run it again · ? help · q quit |

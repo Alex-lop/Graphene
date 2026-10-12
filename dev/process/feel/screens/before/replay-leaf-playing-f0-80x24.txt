@@ -1,0 +1,24 @@
+| replay · a scripted stand-in, not Nemotron · 2026-09-29 · 1 of 18              |
+| the script asked the planner: “make the app friendlier”. What it proposes is   |
+| next.                                                                          |
+|                                                                                |
+|                                                                                |
+|                                                                                |
+|                                                                                |
+|                                                                                |
+|                                                                                |
+|                                                                                |
+|                                                                                |
+|                                                                                |
+|                                                                                |
+|                                                                                |
+|                                                                                |
+|                                                                                |
+|                                                                                |
+|                                                                                |
+|                                                                                |
+|                                                                                |
+|                                                                                |
+| 0 on you · 0 running · none ready · 0/0 done                                   |
+| space pause · . next · r again · Enter record · l output · ? help · q quit     |
+| asked                                                                          |

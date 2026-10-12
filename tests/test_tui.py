@@ -422,7 +422,7 @@ def test_at_80_columns_a_long_reason_leaves_every_fix_in_sight_and_the_bottom_li
     for key in ("w  widen its scope", "b  a sibling leaf", "n  wait on ids", "t  ask the planner"):
         assert key in side, side
     assert "? ask the planner" not in seen["status"]  # t asks it, in the pane above with its command
-    assert "e edit its check" in seen["status"] and "? help" in seen["status"]  # the free fix, and the help
+    assert "e edit check" in seen["status"] and "? help" in seen["status"]  # the free fix, and the help
     seen, _ = watch(repo, ["G", "enter"])
     assert "Widen the scope, or add a leaf for it." in seen["detail"]  # the whole reason, in its record
 
@@ -697,7 +697,7 @@ def test_a_command_watch_runs_leaves_out_the_plan_of_line_its_top_line_says(repo
     assert "the plan: ship invoices" in said and "noted prices-are-cents" in said
     assert "(the plan of" not in said, said
     shell = person("plan", "goal", "ship invoices by email")
-    assert shell.stderr.splitlines()[-1] == f"  (the plan of {plan.where(repo)})"
+    assert "(the plan of" not in shell.stderr  # nor the shell now, standing in the plan's own checkout
 
 
 # Recheck 37 (partly)
@@ -1043,7 +1043,9 @@ def test_the_record_is_a_laid_out_pane_not_node_show_pasted(repo):
             assert re.search(rf"^{section}\b", record, re.M), (size, section, record)
         assert "`" not in record and "graphene node" not in record  # the keys are on the status line
         assert "a Claude Code session (aaaa1111)" in record and "handed back" in record
-        assert seen["status"].splitlines()[1].startswith("ctrl-d ctrl-u scroll · Enter back · w widen")
+        keys = seen["status"].splitlines()[1]  # the offers whole at 80; ? help and q quit on it too
+        assert keys.startswith("ctrl-d -u scroll · Enter back · w widen") and "n wait" in keys, keys
+        assert keys.endswith(" · ? help · q quit") and ("t ask the planner" in keys) == (size[0] >= 120), keys
 
 
 def test_l_shows_the_hooks_tool_calls_while_the_executors_log_is_empty(repo):
@@ -1082,12 +1084,13 @@ def test_the_status_line_is_two_lines_fitted_at_a_word_at_80_and_120(repo):
     wide, _ = at(repo, "rule", (120, 36))
     top, bottom = wide["status"].splitlines()
     # the clocks short, the rest long; the proposal counted, as `graphene` counts it
-    clocks = r"waiting on you: 4 · agents 1 · <1m · you \d+ acts? ~\d+m · R runs 1 ready · "
+    clocks = r"waiting on you: 4 · agents 1 <1m · you \d+ acts? ~\d+m · R runs 1 ready · "
     assert re.fullmatch(clocks + r"1 came back · 1/9 done · plan first: auto \(P\)", top), top
     assert bottom == "y sign off · x send back · Enter record · Tab view · ? help · q quit"  # ? everywhere
     narrow, _ = at(repo, "rule", (80, 24))
     top, bottom = narrow["status"].splitlines()
-    assert re.fullmatch(r"4 on you · agents 1 · <1m · you \d+ acts? ~\d+m · R: 1 ready · 1 came back", top)
+    narrow_top = r"4 on you · agents 1 <1m · you \d+ acts? ~\d+m · R: 1 ready · 1 came back · 1/9 done"
+    assert re.fullmatch(narrow_top, top), top  # the clock one phrase: how much is done is back at 80
     long = "graphene node edit rule: " + "the scope changed from one path to a longer list of them " * 3
 
     async def said(app, pilot):
@@ -1644,7 +1647,8 @@ def test_the_bill_is_on_the_status_line_and_in_the_leafs_pane(repo):
         store.log_node("*", plan._now(), "usage", "planner:nemotron", None, None,
                        {"model": "nvidia/Nemotron-3-Ultra-fake", "calls": 2, "dollars": 0.02})  # fmt: skip
     seen, _ = watch(repo, ["j"], size=(120, 36))
-    assert "agents 0 · 0m · $0.03 · you " in seen["status"].splitlines()[0]  # the planner's too
+    top = seen["status"].splitlines()[0]  # the planner's too: the plan's bill, with no agent run to clock
+    assert "bill $0.03 · you" in top and "agents 0" not in top, top
     leaf = "bill $0.0123 at list price for this leaf's 6 calls · Nemotron-3-Nano-fake"
     assert leaf in " ".join(seen["detail"].split())
 
@@ -1969,7 +1973,7 @@ def test_question_mark_is_help_even_on_a_leaf_that_came_back_where_t_asks_the_pl
     seen, _ = watch(repo, ["G", "question_mark"], size=(120, 36))
     assert seen["screen"] == "Help" and started == []
     seen, _ = watch(repo, ["G"], size=(120, 36))
-    assert "t ask the planner" in seen["status"] and "e edit its check" in seen["status"]
+    assert "t ask the planner" in seen["status"] and "e edit check" in seen["status"]
     watch(repo, ["G", "t"])
     assert started == [["ask", "schema came back: propose what would let it be done", "--about", "schema"]]
 
@@ -2029,6 +2033,19 @@ def test_the_helps_first_line_names_the_mark_of_a_check_that_proves_nothing(repo
         watch(repo, [], size=size, before=before)
 
 
+def test_the_direction_pane_ends_its_key_line_with_help_and_quit(repo):
+    """A seam reader: D on a leaf (the help's `see  Enter l D`) was the one pane whose bottom line did not
+    say how to get help or leave, and at 80 its scroll key fell off with no held tail."""
+    every_state(repo)
+    for size, keys in (
+        ((80, 24), "D back · :direction attach SESSION NODE · ? help · q quit"),
+        ((120, 36), "D back · :direction attach SESSION NODE · :direction accept ID · ctrl-d -u scroll · "
+                    "? help · q quit"),
+    ):  # fmt: skip
+        seen, _ = at(repo, "docs", size, keys=["D"])
+        assert seen["status"].splitlines()[1] == keys, (size, seen["status"])
+
+
 def test_a_leaf_that_came_back_offers_r_to_run_it_again_and_its_ask_command_can_be_typed(repo):
     """Walk 2026-09-28: a leaf that came back with no --wants showed no way to run again, x said
     "docs is came back: … reopens a…", and the ? row's command was `graphene ask … --about docs`."""
@@ -2053,6 +2070,42 @@ def test_when_every_leaf_is_done_watch_says_finished_and_what_puts_it_away(repo)
         top, keys = seen["status"].splitlines()[:2]
         assert "3/3 done, finished" in top, (size, top)
         assert keys.startswith(":plan archive puts it away") and "R run" not in keys, (size, keys)
+
+
+def test_help_and_quit_never_fall_off_the_key_line_and_the_empty_plan_opens_on_two_calm_lines(repo):
+    """The feel pass (S12, S15): at 80 columns the goal's key line ended `… · za fold all · Tab view · ? help`
+    with no q (a finished plan's lost both), and the empty plan opened on `0 on you · agents 0 · you 0 acts
+    ~0m · none ready · 0/0 done · plan first: off` over `:ask what you want · Tab view · ? help · q quit`,
+    where Tab only says nothing is planned. The two keys a stranger needs most end every key line now,
+    and the empty plan is two calm lines, the planner's half-minute counted on the first (the first ask
+    is made there)."""
+    import time
+
+    seen, _ = watch(repo, [])
+    first, keys = seen["status"].splitlines()[:2]
+    assert first == "plan first: off" and keys == ":ask what you want · ? help · q quit", (first, keys)
+    with Store.open(repo) as store:
+        stamp = time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime(time.time() - 12))
+        store.log_node("*", stamp, "asked", "alex", None, None, {"note": "users come back with their ids"})
+    first = watch(repo, [])[0]["status"].splitlines()[0]
+    assert re.fullmatch(r"plan first: off · planner asked 1[2-9] s ago", first), first
+    proposed(repo)  # the stranger's first screen: the proposal, nothing accepted
+    keys = watch(repo, [])[0]["status"].splitlines()[1]
+    assert keys == "y accept it all · E edit as text · za fold all · Tab view · ? help · q quit", keys
+    keys = watch(repo, ["j", "j"])[0]["status"].splitlines()[1]  # a proposed leaf: its long key gives way
+    assert keys == "y accept · d drop · e edit · E edit as text · Tab view · ? help · q quit", keys
+    person("plan", "accept")
+    keys = watch(repo, ["j"])[0]["status"].splitlines()[1]  # a sub-goal: E reads as it does on the goal
+    assert "E edit as text" in keys and "edit it as" not in keys and "with children" not in keys, keys
+    with Store.open(repo) as store:
+        land(repo, store, "ids", "api.py", "def users():\n    return ['ids']\n")
+        land(repo, store, "docs", "README.md", "users come back with their ids\n")
+    keys = watch(repo, [])[0]["status"].splitlines()[1]
+    assert keys == "R run all ready · E edit as text · za fold all · Tab view · ? help · q quit", keys
+    with Store.open(repo) as store:
+        land(repo, store, "schema", "schema.py", "TABLES = ['users']\n")
+    keys = watch(repo, [])[0]["status"].splitlines()[1]
+    assert keys == ":plan archive puts it away · E edit as text · za fold all · ? help · q quit", keys
 
 
 def test_when_every_leaf_is_done_the_goal_row_reads_done_by_its_glyph_too(repo):
@@ -2140,6 +2193,80 @@ def test_an_ask_whose_board_the_repo_answered_says_which_on_the_bottom_line(repo
     said = seen["status"].splitlines()[-1]
     assert said.startswith("the planner proposed users and put units on the board and found units answered "
                            "in the repo"), said  # fmt: skip
+
+
+def test_the_planners_tool_calls_under_the_asking_line_are_no_gist(repo):
+    """The ask's terminal prints one indented line per planner tool call now (`  reading api.py`); the
+    bottom line's gist for an ask that failed is the planner's own first line after them, as it was."""
+    proposed(repo)
+    log = repo / ".graphene" / "runs" / "ask.txt"
+    log.parent.mkdir(parents=True, exist_ok=True)
+    log.write_text("asking the planner (claude)…\n  reading api.py\n  searching def load\n"
+                   "the planner says:\n  it cannot be done in this scope\n")  # fmt: skip
+
+    class Ended:
+        def wait(self):
+            return 1
+
+    async def ask_ends(app, pilot):
+        await asyncio.to_thread(app.follow, Ended(), ["ask", "users"], log)
+        await pilot.pause(0.2)
+
+    seen, _ = watch(repo, [], size=(160, 40), before=ask_ends)
+    said = seen["status"].splitlines()[-1]
+    assert said.startswith("✗ the planner: the planner says:") and "reading" not in said, said
+
+
+def test_while_the_planner_is_asked_the_agents_slot_counts_the_seconds_since(repo):
+    """The feel pass (R1): the first command the README has a stranger type went dark for half a minute,
+    while `graphene watch` beside it read `agents 0`. Its `asked` row is read now: until a row of the
+    planner's lands the agents' slot counts up, and a counter three minutes old is dead (a failed or
+    stopped ask never gets its row)."""
+    import time
+
+    def stamp(ago):
+        return time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime(time.time() - ago))
+
+    proposed(repo)
+    with Store.open(repo) as store:
+        store.log_node("*", stamp(12), "asked", "alex", None, None, {"note": "make it faster"})
+    for size in SIZES:
+        top = watch(repo, [], size=size)[0]["status"].splitlines()[0]
+        assert re.search(r" · planner asked 1[2-9] s ago · you", top) and "agents" not in top, (size, top)
+    with Store.open(repo) as store:
+        store.log_node("*", plan._now(), "usage", "planner:claude", None, None,
+                       {"model": "claude-sonnet-5-5", "calls": 1, "dollars": 0.05})  # fmt: skip
+    top = watch(repo, [])[0]["status"].splitlines()[0]  # a try's bill lands before its answer: still asked
+    assert re.search(r" · planner asked 1[2-9] s ago · you", top) and "bill" not in top, top
+    with Store.open(repo) as store:
+        store.log_node("*", plan._now(), "proposed", "planner:claude", None, None, {"ids": ["ids"]})
+    top = watch(repo, [])[0]["status"].splitlines()[0]
+    assert "planner" not in top and " · bill $0.05 · you" in top, top  # answered: the ask's bill, no agent
+    with Store.open(repo) as store:
+        store.log_node("*", stamp(200), "asked", "alex", None, None, {"note": "and faster still"})
+    top = watch(repo, [])[0]["status"].splitlines()[0]
+    assert "planner" not in top, top
+
+
+def test_a_finished_run_that_took_a_minute_reads_its_bill_not_an_agents_clock_at_0(repo):
+    """The after-walk: once a run had taken a minute the finished plan's status read `agents 0 1m $0.04`,
+    an agents' clock at 0 beside a time nothing was running. Nothing running reads the bill, whatever
+    the seconds; the minutes a run took stay in the time view's note."""
+    import time
+
+    proposed(repo)
+    person("plan", "accept")
+    with Store.open(repo) as store:
+        land(repo, store, "ids", "api.py", "def users():\n    return ['ids']\n")
+        ago = time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime(time.time() - 61))
+        store.log_node("ids", ago, "attempt", RUN.label, None, None, {"attempt": 1, "meter": "claude"})
+        store.log_node("ids", plan._now(), "usage", RUN.label, None, None,
+                       {"model": "claude-sonnet-5-5", "calls": 2, "dollars": 0.04, "attempt": 1})  # fmt: skip
+        store.log_node("ids", plan._now(), "ended", RUN.label, None, None,
+                       {"attempt": 1, "exit": 0, "seconds": 61})  # fmt: skip
+    for size in SIZES:
+        top = watch(repo, [], size=size)[0]["status"].splitlines()[0]
+        assert "bill $0.04" in top and "agents" not in top, (size, top)
 
 
 def test_on_the_goal_y_is_offered_only_when_something_is_proposed(repo):
@@ -2292,6 +2419,62 @@ def test_each_running_leaf_has_a_live_row_two_lines_at_80_one_at_120(repo):
     assert re.fullmatch(script, rows[1]), rows
 
 
+def test_the_legend_names_every_glyph_once_and_the_time_view_has_a_key_of_its_own(repo):
+    """The feel pass (S3, S7, S8, S16): the legend lumped `◇◆↩ yours` at both sizes, so review and came
+    back were never named; the time view borrowed ━ (the critical path) for a hold the meter cannot see
+    and ◆ (review) for landed, with no key at all; fork rows borrowed · (to fill in) and ↩ (came back);
+    the help box at 80 was 79 columns wide, the screen peeking through its right edge."""
+    from graphene_map.tui import FORK
+
+    every_state(repo)
+    states = "◇ yours  ◆ review  ↩ came back  ? proposed  ○ ready  ● running  ◌ waiting  ✓ done"
+
+    async def wide(app, pilot):
+        await pilot.press("question_mark")
+        await pilot.pause()
+        legend = shown(app, app.screen.query_one("#legend").region)
+        assert legend[0].strip() == f"{states}  ∅ check flagged  ━ critical", legend
+        assert not app.screen.query("#legend-time")  # the outline is open: no key of the time view's
+
+    watch(repo, [], size=(120, 36), before=wide)
+
+    async def narrow(app, pilot):
+        await pilot.press("question_mark")
+        await pilot.pause()
+        legend = [line.strip() for line in shown(app, app.screen.query_one("#legend").region)]
+        assert legend == ["◇ yours  ? proposed  ○ ready  ● running  ◌ waiting  ✓ done  ━ critical",
+                          "◆ review  ↩ came back  ∅ check flagged"], legend  # fmt: skip
+        assert app.screen.query_one("VerticalScroll").region.width == 80  # the box fills the screen
+
+    watch(repo, [], size=(80, 24), before=narrow)
+
+    async def middle(app, pilot):  # the after-walk: at 100 the legend still lumped `◇◆↩ yours`
+        await pilot.press("question_mark")
+        await pilot.pause()
+        legend = [line.strip() for line in shown(app, app.screen.query_one("#legend").region)]
+        assert legend[:2] == ["◇ yours  ? proposed  ○ ready  ● running  ◌ waiting  ✓ done  ━ critical",
+                              "◆ review  ↩ came back  ∅ check flagged"], legend  # fmt: skip
+
+    watch(repo, [], size=(100, 30), before=middle)
+
+    async def timed(app, pilot):
+        app.showing = "time"
+        app.refresh_plan()
+        await pilot.pause()
+        await pilot.press("question_mark")
+        await pilot.pause()
+        lines = [line.strip() for line in shown(app, app.screen.query_one("#legend-time").region)]
+        key = " ".join(" ".join(lines).split())
+        assert key == "█ edit ▓ run ▒ read ░ talk ─ idle ═ held ✓ ✗ check ! refused ■ landed | you", key
+        assert [line for line in lines if line] == [  # at 80 the key breaks between entries, never inside one
+            "█ edit  ▓ run  ▒ read  ░ talk  ─ idle  ═ held", "✓ ✗ check  ! refused  ■ landed  | you"
+        ], lines  # fmt: skip
+
+    watch(repo, [], size=(80, 24), before=timed)
+    # a fork that lost, gave up or stopped is marked with no leaf's glyph (passed shares done's ✓ by design)
+    assert not {FORK[w][0] for w in ("lost", "gave up", "stopped")} & {g for g, _ in plan.LOOK.values()}
+
+
 def test_past_four_running_leaves_the_strip_counts_the_rest(repo):
     with Store.open(repo) as store:
         leaf = {"title": "a leaf", "check": "true"}
@@ -2302,7 +2485,7 @@ def test_past_four_running_leaves_the_strip_counts_the_rest(repo):
             store.log_node(f"l{k}", plan._now(), "attempt", RUN.label, RUN.session_id, None, {"attempt": 1})
     seen, _ = watch(repo, [], size=(120, 36))
     assert [r.split(" · ")[0].strip() for r in seen["meter"]] == ["● l0", "● l1", "● l2", "● l3", "+2 more"]
-    assert "agents 6 · <1m · " in seen["status"] or "agents: 6 running · <1 min" in seen["status"]
+    assert "agents 6 <1m · " in seen["status"] or "agents: 6 running <1 min" in seen["status"]
 
 
 def test_the_status_line_has_the_two_clocks_and_help_says_they_count_by_your_keys(repo):
@@ -2312,9 +2495,20 @@ def test_the_status_line_has_the_two_clocks_and_help_says_they_count_by_your_key
     for size in SIZES:
         seen, _ = watch(repo, [], size=size)
         top = seen["status"].splitlines()[0]
-        assert re.search(r" · agents 2 · <1m · \$0\.42 · you \d+ acts? ~\d+m · ", top), (size, top)
+        assert re.search(r" · agents 2 <1m \$0\.42 · you \d+ acts? ~\d+m · ", top), (size, top)
         assert len(top) <= size[0] - 2
     assert "by your keys, not by what you read" in " ".join(HELP_END.split())
+
+
+def test_a_clock_is_one_phrase_so_how_much_is_done_comes_back_at_80_columns(repo):
+    """The feel pass (S2): at 80 columns the top line read `4 on you · agents 1 · <1m · you 1 act ~1m · R: 1
+    ready · 1 came back` and `1/9 done` had fallen off it: a clock's fields were joined as separate facts
+    are, and `agents 1 · <1m` read as two of them. One phrase gives the 80-column screen back how much is
+    done (with only the planner billed, the bill is a piece of its own: the test of the bill says so)."""
+    every_state(repo)
+    top = watch(repo, [], size=(80, 24))[0]["status"].splitlines()[0]
+    assert " · agents 1 <1m · you " in top and top.endswith(" · 1 came back · 1/9 done"), top
+    assert " · <1m" not in top and len(top) <= 78, top
 
 
 def test_tokens_with_no_list_price_are_said_so_never_priced_at_nothing(repo):
@@ -2334,7 +2528,7 @@ def test_tokens_with_no_list_price_are_said_so_never_priced_at_nothing(repo):
     for size in SIZES:
         seen, _ = at(repo, "schema", size)
         top, flat = seen["status"].splitlines()[0], " ".join(seen["detail"].split())
-        assert "$0.00" not in top and "agents 1 · <1m · 1.2M tokens unpriced · you " in top, (size, top)
+        assert "$0.00" not in top and "agents 1 <1m 1.2M tokens unpriced · you " in top, (size, top)
         assert "no list price" in seen["meter"][0], seen["meter"]
         assert "bill $0.0000 at list price + 1.2M tokens with no list price for this leaf's" in flat, flat
 

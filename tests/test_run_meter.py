@@ -4,6 +4,7 @@ turn, tool call and thing said lands on the leaf as it happens. The executors he
 
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -128,6 +129,111 @@ def test_the_stream_lands_on_the_leaf_while_the_executor_runs(repo, name, with_,
                           "priced": False}]  # fmt: skip
     with Store.open(repo) as store:
         assert plan.get(store, "a").state == DONE
+
+
+def test_the_run_says_every_heartbeat_what_each_metered_leaf_is_doing(repo, monkeypatch):
+    """The feel pass (D9): `graphene run` said `a started: leaf a` and then nothing for the executor's
+    minutes (X2's real main round: 84-130 s). Every HEARTBEAT a metered leaf is one line, its id first:
+    seconds, turns, dollars and the last thing its stream said. The stand-in waits for `go` after its
+    first turn, and `say` writes it on hearing the line: a run that says none waits out the 30 s."""
+    monkeypatch.setattr(R, "HEARTBEAT", 0.6)
+    script, go = printing(repo, "claude", "claude.jsonl", 3)  # its first turn, a Read; then it waits
+    said: list[str] = []
+    beat = re.compile(r"a · \d+ s · 1 turn · \$[\d.]+ · reading hello\.py")
+
+    def heard(line: str) -> None:
+        said.append(line)
+        if beat.fullmatch(line):
+            go.write_text("go")
+
+    with Store.open(repo) as store:
+        R.run_plan(store, repo, f"{script} --output-format stream-json", say=heard,
+                   logs=repo / ".graphene" / "runs")  # fmt: skip
+        assert plan.get(store, "a").state == DONE
+    beats = [line for line in said if beat.fullmatch(line)]
+    assert beats and said.index(beats[0]) < said.index("a attempt 1: the executor ended (exit 0)"), said
+
+
+# Says nothing for a while, then does the leaf: a quiet executor the meter has read nothing from.
+QUIET = """#!{python}
+import pathlib, time
+time.sleep(1.5)
+pathlib.Path("a.txt").write_text("done\\n")
+"""
+
+
+def test_a_quiet_leafs_heartbeat_says_one_thing_not_two_nothings(repo, monkeypatch):
+    """The after-walk: a leaf the meter had read nothing from beat `fields · 30 s · no usage yet ·
+    nothing yet`, nothing said twice. With no usage and nothing read it says it is still running and
+    nothing has been read from it, once."""
+    monkeypatch.setattr(R, "HEARTBEAT", 0.6)
+    script = stand_in(repo, "claude", QUIET.format(python=sys.executable))
+    said: list[str] = []
+    with Store.open(repo) as store:
+        R.run_plan(store, repo, f"{script} --output-format stream-json", say=said.append,
+                   logs=repo / ".graphene" / "runs")  # fmt: skip
+        assert plan.get(store, "a").state == DONE
+    quiet = re.compile(r"a · \d+ s · still running, nothing read from it yet")
+    assert [line for line in said if quiet.fullmatch(line)], said
+    assert not [line for line in said if "nothing yet" in line or "no usage yet" in line], said
+
+
+# Prints the fixture's lines, works a while, and does the leaf only when resumed (its second attempt).
+AGAIN = """#!{python}
+import pathlib, sys, time
+for line in pathlib.Path({fixture!r}).read_text().splitlines():
+    print(line, flush=True)
+time.sleep(1.5)
+pathlib.Path("a.txt").write_text("done\\n" if "--resume" in sys.argv else "again\\n")
+"""
+
+
+def test_the_heartbeat_names_the_attempt_past_the_first(repo, monkeypatch):
+    """A seam reader: after `a attempt 1 refused: …` the next line read `a · 1 s · 0 turns · $0.00 ·
+    nothing yet`, the same attempt having lost its count unless the reader connected it to the refusal.
+    Past the first the line names the attempt, as the pane does (`attempt 2`)."""
+    monkeypatch.setattr(R, "HEARTBEAT", 0.6)
+    source = AGAIN.format(python=sys.executable, fixture=str(FIXTURES / "claude.jsonl"))
+    script = stand_in(repo, "claude", source)
+    said: list[str] = []
+    with Store.open(repo) as store:
+        R.run_plan(store, repo, f"{script} --output-format stream-json", say=said.append, attempts=2,
+                   logs=repo / ".graphene" / "runs")  # fmt: skip
+        assert plan.get(store, "a").state == DONE
+    second = re.compile(r"a · attempt 2 · \d+ s · \d+ turns? · \$[\d.]+ · .+")
+    refused = next(k for k, line in enumerate(said) if line.startswith("a attempt 1 refused: "))
+    beats = [k for k, line in enumerate(said) if second.fullmatch(line)]
+    assert beats and refused < beats[0] < said.index("a attempt 2: the executor ended (exit 0)"), said
+    assert not any(line.startswith("a · attempt 1") for line in said), said  # the first is unnumbered
+
+
+# Graphene's own executor has no stream the meter reads: it writes its rows to the store itself. This one
+# writes one `did` row for its leaf (the store's path is its first argument), then works for a while.
+OWN_ROWS = """#!{python}
+import os, pathlib, sys, time
+from graphene_map import plan
+from graphene_map.store import Store
+time.sleep(0.2)
+with Store.open(pathlib.Path(sys.argv[1])) as store:
+    store.log_node(os.environ["GRAPHENE_NODE"], plan._now(), "did", "run:nemotron", None, None,
+                   {{"verb": "editing", "target": "a.txt"}})
+time.sleep(2.5)
+pathlib.Path("a.txt").write_text("done\\n")
+"""
+
+
+def test_a_nemotron_leaf_gets_the_heartbeat_from_the_rows_it_writes_itself(repo, monkeypatch):
+    """The feel pass (D9) metered only an executor with a stream (Claude Code, Codex): a Nemotron leaf,
+    Graphene's own executor, said `a started` and then nothing, the silence D9 was written to end, while
+    `graphene watch` showed its row. Its heartbeat reads the rows it writes, as the strip does."""
+    monkeypatch.setattr(R, "HEARTBEAT", 0.6)
+    script = stand_in(repo, "own", OWN_ROWS.format(python=sys.executable))
+    said: list[str] = []
+    with Store.open(repo) as store:  # the module's name in argv is what makes the run call it nemotron
+        R.run_plan(store, repo, f"{script} {repo} graphene_map.nemotron.executor", say=said.append)
+        assert plan.get(store, "a").state == DONE
+    beat = re.compile(r"a · \d+ s · .* · editing a\.txt")
+    assert any(beat.fullmatch(line) for line in said), said
 
 
 GARBAGE = """#!{python}

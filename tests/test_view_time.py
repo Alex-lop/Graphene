@@ -72,8 +72,8 @@ def test_each_cell_is_what_the_executor_mostly_did_idle_past_a_minute_a_session_
     # idle before the first row; reading, searching (reading too), editing (two rows of three), running,
     # talking, carried on until the said row is a minute old; nothing between attempts
     assert lanes["a"] == "─▒▒█▓" + "░" * 60 + "──" + "  " + "─███"
-    assert lanes["b"] == " " * 10 + "━" * 11  # the session's hold: no meter, a plain bar
-    assert lanes["c"] == " " * 60 + "━" * 13 + "●"  # held now: to now, running
+    assert lanes["b"] == " " * 10 + "═" * 11  # the session's hold: no meter, a plain bar
+    assert lanes["c"] == " " * 60 + "═" * 13 + "●"  # held now: to now, running
     assert out.lines[1].plain == " you  |" + " " * 29 + "|"  # alex's acts, with or without a terminal
     axis = "".join(f"{k * 15}s".ljust(15) for k in range(5)).rstrip()  # a label each 15 s: 10 s left 7 cells
     assert out.lines[-1].plain == " " * 6 + axis
@@ -94,12 +94,12 @@ def test_the_marks_sit_at_their_moment_and_the_later_of_two_moves_right():
             row("b", 0, "attempt", {"attempt": 1}), did("b", 1, "running")]  # fmt: skip
     nodes = [leaf("a"), leaf("b", P.RUNNING)]
     out, lanes = drawn(nodes, rows, 74)
-    marks = {k: c for k, c in enumerate(lanes["a"]) if c in "!✗✓↩◆●"}
-    assert marks == {10: "!", 12: "!", 14: "!", 20: "✗", 30: "↩", 50: "✓", 51: "◆"}  # landed: one right
+    marks = {k: c for k, c in enumerate(lanes["a"]) if c in "!✗✓↩■●"}
+    assert marks == {10: "!", 12: "!", 14: "!", 20: "✗", 30: "↩", 50: "✓", 51: "■"}  # landed: one right
     assert lanes["b"].endswith("●") and len(lanes["b"]) == 74  # running now: its last cell
     line = out.lines[2]
     styles = {line.plain[6 + k]: s.style for s in line.spans for k in marks if s.start <= 6 + k < s.end}
-    assert styles == {"!": "magenta", "✗": "magenta", "↩": "magenta", "✓": "green", "◆": "green"}
+    assert styles == {"!": "magenta", "✗": "magenta", "↩": "magenta", "✓": "green", "■": "green"}
     assert [s.style for s in out.lines[3].spans if s.end == len(out.lines[3])] == ["yellow bold"]
     assert "1 came back" in out.note  # the person's and the stopped run's are not hand-backs
 
@@ -246,7 +246,7 @@ def test_plan_view_time_prints_the_lanes_the_axis_and_the_note(repo, finish, mon
     assert printed.stdout.splitlines() == [
         "users come back with their ids",
         " you     |",  # the ask and the goal, then the plan, in its first slice
-        " ids       ───▒▒▒▒▒▒▒▒▒▒▒▒██████░░░░░░░░░░░✓◆",
+        " ids       ───▒▒▒▒▒▒▒▒▒▒▒▒██████░░░░░░░░░░░✓■",
         " schema                                          ──────▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓↩",
         "         0m                                1m",
         "2 lanes · 2 min · 1 came back · agents 1 min · you 2 acts ~1 min",  # in 78 cells: the width gave way
@@ -320,7 +320,7 @@ def test_an_attempt_the_meter_cannot_read_is_a_plain_bar_not_idle(bill):
     rows = [row("a", 0, "started"), row("a", 0, "attempt", {"attempt": 1}), *bill,
             row("a", 20, "ended", {"attempt": 1, "exit": 0})]  # fmt: skip
     _, lanes = drawn([leaf("a")], rows, 74)
-    assert set(lanes["a"].strip()) == {"━"}  # held, its doings unseen: never drawn as an idle executor
+    assert set(lanes["a"].strip()) == {"═"}  # held, its doings unseen: never drawn as an idle executor
 
 
 def test_a_running_attempt_the_meter_reads_is_idle_until_its_first_row():
@@ -399,5 +399,5 @@ def test_the_replay_draws_what_each_executor_did_at_its_moment_and_a_running_bar
             grew.add(i)
         before = {i: sum(c != " " for c in lane) for i, lane in lanes.items()}
     assert grew == {"zero-rule", "xml-source"} and list(lanes) == ["zero-rule", "xml-source"]
-    assert all("✓" in lanes[i] and lanes[i].rstrip().endswith("◆") for i in grew), lanes
+    assert all("✓" in lanes[i] and lanes[i].rstrip().endswith("■") for i in grew), lanes
     assert "|" in out.lines[1].plain and "you 2 acts" in out.note, (out.lines[1], out.note)  # alexlopez's

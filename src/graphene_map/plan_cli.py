@@ -38,8 +38,8 @@ NOT_INIT = (
 )
 # What `graphene plan first` says each setting does
 FIRST_SAID = {
-    "on": "Every ask in a session is proposed, one leaf included, and waits for you. You accept in "
-    "`graphene watch`, in another terminal; `graphene plan first off`, typed outside Claude Code, stops it.",
+    "on": "Claude proposes a plan here before it writes; you accept it in `graphene watch`, in another "
+    "terminal. `graphene plan first off` turns it off.",
     "auto": f"Every ask is proposed first. One leaf of at most {G.WIDE} paths that puts nothing on the "
     "board is yours at once; anything else waits for you.",
     "off": "A quick change is done at once, as a leaf of its own while a plan is in force; bigger work is "
@@ -293,7 +293,7 @@ def register(cli: typer.Typer, root, open_store, fail):
         lines = (
             [f"the plan: {P.goal(store)}"]
             if P.goal(store)
-            else [f"the plan (proposed with the tree, accepted with it): {proposed}"]
+            else [f"the plan (proposed): {proposed}"]
             if proposed
             else []
         )
@@ -347,6 +347,8 @@ def register(cli: typer.Typer, root, open_store, fail):
                 else ""
             )
             lines.append("waiting on you: " + ", ".join(told if everything else told[:8]) + more)
+            if any(n.state == P.PROPOSED for n in yours):  # the one command, said once, not a row at a time
+                lines.append("  `graphene plan accept` takes all of it; y in graphene watch")
         # One row grammar, as on the screen: glyph and title (cut at a word) in one column, the id in the
         # next, the state word in the next, whatever the depth; then what the print adds.
         heads = {n.id: 2 * len(P.above(n, by_id)) + 2 for n in alive}  # the indent, the glyph and a space
@@ -479,9 +481,8 @@ def register(cli: typer.Typer, root, open_store, fail):
         )
         who = e["actor"] or (f"claude:{e['session_id'][:8]}" if e["session_id"] else "")
         node = f"{e['node_id'].ljust(with_node)}  " if with_node else ""
-        return (
-            f"  {e['timestamp'][:19]}Z  {node}{e['kind'].ljust(12)}  {who.ljust(who_wide)}  {said}".rstrip()
-        )
+        kind = e["kind"].replace("_", " ")  # the log's identifier, read as words (the record pane's way)
+        return f"  {e['timestamp'][:19]}Z  {node}{kind.ljust(12)}  {who.ljust(who_wide)}  {said}".rstrip()
 
     # -- graphene plan ----------------------------------------------------------------------------
 
@@ -833,10 +834,13 @@ def register(cli: typer.Typer, root, open_store, fail):
             for line in told:  # what in the plan now waits on what was accepted, or on a default taken
                 out(line)
             if P.goal(store) != goal_was:
-                out(f"the plan: {P.goal(store)}  (the planner's sentence, accepted with its tree)")
+                out(f"the plan: {P.goal(store)}")
             now = P.nodes(store)
             runs, waits = P.forecast(now, {n.id for n in now if P.came_back(store, n)})
-            out("left alone, agents can reach: " + (", ".join(n.id for n in runs) or "nothing"))
+            if not accepted:  # said, and still exit 0: the README chains `plan accept && run`
+                out("nothing to accept: no proposal is open")
+            reach = f"next: `graphene run` reaches {', '.join(n.id for n in runs)}  (R in graphene watch)"
+            out(reach if runs else "next: nothing is ready for `graphene run`")  # it refuses with nothing
             for n, why in waits:
                 out(f"  {n.id} will wait: {'; '.join(why)}")
             return [n.id for n in accepted]
@@ -978,7 +982,8 @@ def register(cli: typer.Typer, root, open_store, fail):
     ) -> None:
         """Run every ready leaf in its own worktree, one executor per leaf.
 
-        Graphene runs each leaf's check and merges what passes. A leaf that fails comes back."""
+        Graphene runs each leaf's check and merges what passes (--no-ff; the leaf's commit skips your
+        hooks). A leaf that fails comes back."""
         if os.environ.get("GRAPHENE_NODE") or os.environ.get("GRAPHENE_PLANNER"):
             fail("an executor or a planner does not start runs: through --with a run is any command", 1)
         from . import meter as M
@@ -1045,11 +1050,10 @@ def register(cli: typer.Typer, root, open_store, fail):
                         model, cap = M.model_in(argv), M.option(argv, "--max-budget-usd")
                         what = label(template) + f" ({model})" * bool(model)
                         # Claude Code stops after the turn that passes the cap: no ceiling, a stop
-                        most = f", {CAP_UNIT} stops once it passes ${cap}" * bool(cap)
-                        out(f"landing into {on} at {at[:7]}: {what}, up to {max(parallel, 1)} at once{most}; "
-                            "each leaf is committed with --no-verify (your pre-commit and commit-msg hooks "
-                            "skip it) and merged --no-ff; checks run in a clean worktree with your PATH; "
-                            "`graphene watch` in another terminal follows it live")  # fmt: skip
+                        most = f"; {CAP_UNIT} stops once it passes ${cap}" * bool(cap)
+                        out(f"landing into {on} at {at[:7]}: {what}, up to {max(parallel, 1)} at once{most}")
+                        out("`graphene watch` in another terminal follows it (each leaf lands as its own "
+                            "merge; your commit hooks are skipped)")  # fmt: skip
                         if P.dirty(here_):
                             out("your uncommitted changes are not in the executors' worktrees: they start "
                                 "from HEAD")  # fmt: skip
@@ -1089,9 +1093,9 @@ def register(cli: typer.Typer, root, open_store, fail):
                 hint = (
                     "y accepts, d drops"
                     if here
-                    else "`graphene watch` (y accepts, d drops), or `graphene plan edit`"
+                    else "`graphene plan accept`, or prune in `graphene watch` (y accepts, d drops)"
                 )
-                out(f"prune it: {hint}")
+                out(f"next: {hint}")
             return ids
 
         proposed = run(go)
@@ -1421,17 +1425,18 @@ def register(cli: typer.Typer, root, open_store, fail):
 
         def go(store):
             n = P.get(store, node_id)
-            out(P.contract(n, P.trail(store, n), B.decided(store, n)))
+            out(P.contract(n, P.trail(store, n), B.decided(store, n), person=P.caller().person))
+            # right under the contract, the row `node diff` reads: a leaf reopened and done again since
+            # its merge did not land that
+            for landed in store.node_log(n.id, ("landed", "unlanded", "finished", "overruled"))[-1:]:
+                if landed["kind"] == "landed":
+                    out(f"  landed: {landed['detail']['commit'][:7]}: `graphene node diff {n.id}` shows it")
             for line in came_back(store, n):
                 out(line)
             everything = P.nodes(store)
             under = [c for c in P.below(n.id, everything) if c in P.leaves(everything)]
             for line in rolled_up(store, root(), under) if under else render(node_record(store, root(), n)):
                 out(line)
-            # the row `node diff` reads: a leaf reopened and done again since its merge did not land that
-            for landed in store.node_log(n.id, ("landed", "unlanded", "finished", "overruled"))[-1:]:
-                if landed["kind"] == "landed":
-                    out(f"  landed: {landed['detail']['commit'][:7]}: `graphene node diff {n.id}` shows it")
             entries = len(store.node_log(n.id))
             out(f"  every entry, check runs included: `graphene plan log` ({entries} for {n.id})")
 

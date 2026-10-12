@@ -87,7 +87,7 @@ for d in sorted(p for p in out.iterdir() if p.is_dir()):
     origin = (d / "origin.txt").read_text(errors="replace") if (d / "origin.txt").exists() else ""
     where = "<br>".join(sorted({("the checkout" if "/worktrees/" not in l.split("pkg imported from ")[-1] else "its worktree")
                                 + (" (" + l.split(" in ")[0] + ")") for l in origin.splitlines() if "imported from" in l}))
-    red = "<br>".join(l.strip() for l in run.splitlines() if l.startswith("red first") or ": its check" in l)
+    red = "<br>".join(l.strip() for l in run.splitlines() if l.startswith("red first") or "passes before any work" in l)
     print(f"| {d.name} | {'yes' if '(a)' in merges else 'no'} | {'yes' if '(b)' in merges else 'no'} | {where or '?'} | "
           f"{run.count('handed back')} | {len(re.findall(r'attempt \\d+:', run))} | {red or 'none'} |")
 for d in sorted(p for p in out.iterdir() if p.is_dir()):

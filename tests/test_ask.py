@@ -65,7 +65,9 @@ def test_a_planner_reads_the_repo_and_its_proposal_is_added_for_the_person_to_pr
     assert said.exit_code == 0, said.output
     assert "proposed ids: users returns ids" in said.stdout
     assert "the planner says:\n  I read api.py and schema.py" in said.stdout  # its prose, a line each
-    assert "prune it: `graphene watch`" in said.stdout
+    last = said.stdout.splitlines()[-1]  # one row at 80 columns, where the ask is read (the judge sized it)
+    assert last == "next: `graphene plan accept`, or prune in `graphene watch` (y accepts, d drops)"
+    assert len(last) <= 80, len(last)
     with Store.open(repo) as store:
         ids = plan.get(store, "ids")
         assert (ids.state, ids.parent) == (PROPOSED, "users-api") and ids.proposed_by.startswith("planner:")
@@ -84,7 +86,7 @@ def test_under_plan_first_auto_one_small_leaf_from_ask_waits_for_the_person(repo
     assert person("plan", "first", "auto").exit_code == 0
     one = 'print("```plan")\nprint("- ids  [ids]\\n    scope: api.py\\n    check: true")\nprint("```")\n'
     said = person("ask", "add ids", "--with", planner(tmp_path, one, monkeypatch))
-    assert said.exit_code == 0 and "prune it: `graphene watch`" in said.stdout, said.output
+    assert said.exit_code == 0 and "next: `graphene plan accept`, or prune in" in said.stdout, said.output
     with Store.open(repo) as store:
         assert plan.get(store, "ids").state == PROPOSED and not store.node_log("ids", ("accepted",))
 
@@ -425,6 +427,41 @@ def test_a_claude_code_planner_that_stopped_says_why(repo, tmp_path):
     with Store.open(repo) as store, pytest.raises(Refused, match="each was refused as above"):
         A.ask(store, repo, "ids", planner, say=said.append)
     assert "no proposal (exit 0): error_max_budget_usd" in said  # why it stopped, not "it said nothing"
+
+
+def test_a_claude_code_planners_tool_calls_are_said_as_they_happen(repo, tmp_path):
+    """The feel pass (D7): `graphene ask` went dark for the planner's half-minute, its stream read once it
+    had ended and its tool calls never said. Each is one indented line as it arrives, in the strip's
+    words; past 40 a try, a count. The stand-in prints its tool calls and waits for `go`, which `say`
+    writes on hearing the first: a line said only once the planner had ended would leave it waiting,
+    and the ask with no proposal."""
+    good = "I read api.py.\n```plan\n? users returns ids  [ids]\n    scope: api.py\n    check: true\n```"
+    planner = claude_planner(tmp_path, (good, 0.2))
+    call = {"type": "tool_use", "id": "t1", "name": "Read", "input": {"file_path": "api.py"}}
+    read = {"type": "assistant", "message": {"id": "m0", "content": [call] * 41}}
+    (tmp_path / "try1.jsonl").write_text(f"{json.dumps(read)}\n{(tmp_path / 'try1.jsonl').read_text()}")
+    (tmp_path / "claude").write_text("#!/bin/sh\nhead -1 try1.jsonl\n"
+                                     "for i in $(seq 400); do [ -e go ] && break; sleep 0.05; done\n"
+                                     "[ -e go ] && tail -n +2 try1.jsonl\n")  # fmt: skip
+    said: list[str] = []
+
+    def heard(line: str) -> None:
+        said.append(line)
+        if line == "  reading api.py":
+            (tmp_path / "go").write_text("go")
+
+    import gc
+    import warnings
+
+    gc.collect()  # earlier tests' garbage, collected now, is not this ask's leak (the full suite showed one)
+    with warnings.catch_warnings(record=True) as leaked, Store.open(repo) as store:
+        warnings.simplefilter("always", ResourceWarning)  # the read end is closed, as communicate() did
+        assert A.ask(store, repo, "ids", planner, say=heard)[0] == "proposed ids: users returns ids"
+        gc.collect()
+    unclosed = [str(w.message) for w in leaked if issubclass(w.category, ResourceWarning)]
+    assert not unclosed, unclosed
+    assert said[:2] == ["asking the planner (claude)…", "  reading api.py"]
+    assert said.count("  reading api.py") == 40 and said[41:43] == ["  … and 1 more", "the planner says:"]
 
 
 def test_a_lost_ask_keeps_the_proposal_it_paid_for_and_says_what_it_cost(repo, tmp_path):

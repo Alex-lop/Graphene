@@ -12,11 +12,11 @@ tracks once a leaf has landed (the check a contract names is judged against it).
 written `{repo}`, and the replay puts its own there; the home directory is `~`; the key and the project
 in the environment, anything shaped like a key, and each sandbox image the run names are taken out.
 
-demo.jsonl, beside this file, is the recording Graphene ships. It was made on 29 September 2026 by
-dev/proof/nemotron.sh on a tiny repository against the scripted fake (tests/fake_tokenfactory.py), with a
-planner that puts up a board and a key taking each item, and its first line says it is a scripted
-stand-in, which the screen shows.
-It is made again from the fake with
+demo.jsonl, beside this file, is the recording Graphene ships. It was made on 12 October 2026 (UTC) by
+tests/test_demo_script.py (dev/proof/nemotron.sh on a tiny repository against the scripted fake,
+tests/fake_tokenfactory.py), with a planner that puts up a board and a key taking each item, and with the
+meter on, so a running leaf's row shows; its first line says it is a scripted stand-in, which the screen
+shows. It is made again from the fake with
 
     RECORD_DEMO=src/graphene_map/demo.jsonl uv run pytest tests/test_demo_script.py
 
@@ -56,7 +56,7 @@ SHIPPED = Path(__file__).with_name("demo.jsonl")
 ENDED = "ended: last frame"
 NEXT = "the end · try it on your repo: graphene init, then graphene ask what you want"  # 77 columns
 REFUSED = "a replay: nothing runs here"
-LIVE, STAND_IN = "as it ran, live", "a scripted stand-in, not Nemotron"  # what the top line says made it
+LIVE, STAND_IN = "as it ran, live", "a scripted stand-in, no model ran"  # what the top line says made it
 NO_CALLS = "a run with no model calls on record"
 EVERY = 0.2  # seconds between the recorder's looks at the store
 LONG = 3.0  # seconds: a longer wait is replayed in this long, and the top line says by how much
@@ -208,7 +208,7 @@ def _snapshot(conn: sqlite3.Connection, after: int) -> tuple[dict, list[dict], d
 
 
 def load(path: Path, speed: float = 1.0) -> tuple[dict, list[dict]]:
-    """A recording's first line, with ``day``: the day it was recorded, local as the screen's clocks are;
+    """A recording's first line, with ``day``: the day it was recorded, UTC as the rows' stamps are;
     and its changes, each with ``at``: when the replay applies it (the first at once, each wait after it
     as recorded but at least HOLD seconds, or LONG seconds for a longer one, all divided by ``speed``)
     and ``cut``: how many times faster that wait is played (0 when it is not cut); ``shown``, what made
@@ -217,7 +217,7 @@ def load(path: Path, speed: float = 1.0) -> tuple[dict, list[dict]]:
     head, *lines = [json.loads(line) for line in path.read_text(encoding="utf-8").split("\n") if line]
     if not isinstance(head, dict) or not {"graphene demo", "recorded", "shown", "repository"} <= head.keys():
         raise ValueError("it is not a recording `graphene demo --record` made")
-    head["day"] = str(datetime.fromisoformat(head["recorded"].replace("Z", "+00:00")).astimezone().date())
+    head["day"] = head["recorded"][:10]  # the rows under it are stamped in UTC: one day on the screen
     # the run says what made it, not the terminal that recorded it: live only when every model call on
     # record says who really answered it, Token Factory, Claude Code or Codex (a row from before rows said
     # so is a stand-in's)
@@ -288,16 +288,17 @@ def banner(head: dict, state: str = "") -> list[tuple[str, str]]:
 
 def what(line: dict) -> str:
     """One recorded change in words, for the bottom line: the rows the plan's log gained, else the nodes
-    that changed and their state, else an executor's output; so a step never looks like nothing."""
+    that changed and their state, else an executor's output; so a step never looks like nothing. A kind
+    reads with spaces, as the record pane says it."""
 
     def row(r: dict) -> str:
         detail = json.loads(r.get("detail") or "{}") if r["kind"] == "board" else {}
-        said = f"{r['node_id']} {r['kind']}".removeprefix("* ")
+        said = f"{r['node_id']} {r['kind'].replace('_', ' ')}".removeprefix("* ")
         return f"{said}: {detail.get('act', '')} {detail.get('item', '')}".strip() if detail else said
 
     said = [row(r) for r in line.get("node_log") or []]
     said = said or [f"{i} {row['state'] if row else 'gone'}" for i, row in (line.get("nodes") or {}).items()]
-    return " · ".join(said) or ("an executor's output" if line.get("runs") else "the plan's settings")
+    return " · ".join(said) or ("an executor's output" if line.get("runs") else "settings recorded")
 
 
 def last_frame(repo: Path, lines: list[dict]) -> None:
@@ -396,7 +397,7 @@ class Replay(Watch):
         self.next, self.began, self.paused, self.files = 0, time.monotonic(), None, []
         self.play()
 
-    METERS = False  # the shipped recording is from before the meter; each replay looks at its own
+    METERS = False  # no strip unless a replay's own rows say the meter was on (see __init__)
 
     def clock(self, everything: list[dict]) -> datetime:
         """The recording's own: its newest row, so a leaf's minutes are what they were as it played."""
@@ -470,6 +471,6 @@ class Replay(Watch):
         playing = self.next < len(self.lines)
         mine = [("space play" if self.paused else KEYS[0]), *KEYS[1:]] if playing else KEYS[2:]
         if self.view == "contract":  # Enter on the goal is `graphene plan record`, a command it refuses
-            record = [] if self.on_goal() else ["Enter record"]
+            record = [] if self.on_goal() or not self.nodes else ["Enter record"]  # no row, no record
             return [*mine, *record, "l output", "? help", "q quit", "j k move", "za fold"]
         return [*mine, *(k for k in super().keys() if k.startswith(WORK))]

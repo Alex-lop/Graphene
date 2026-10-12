@@ -190,7 +190,6 @@ def register(cli: typer.Typer, root, open_store, fail) -> None:
                 fail(str(no), 1)
         said = "\n".join(line for line in [B.took(taken, kept), *told] if line)  # a refused default too
         out(said or "nothing open on the board has a default to take")
-        typer.echo(f"  (the plan of {P.where(root())})", err=True)
 
     @board_cli.command()
     def pick(

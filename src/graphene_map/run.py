@@ -41,6 +41,7 @@ from . import meter as M
 from . import plan as P
 from .plan import may_collide
 from .record import seconds as _seconds
+from .views import elide, money
 
 # An executor may edit files and run `graphene node …` and `graphene plan …` (its done, its release, a
 # look at the plan), and nothing else unless the person says so with --with. Not `graphene run` or
@@ -93,6 +94,7 @@ def label(template: str, own: str = "graphene_map.nemotron.executor") -> str:
     return Path((script or argv)[0]).name
 WORKTREES = "worktrees"  # under .graphene/, which git ignores: the run's own, one a leaf
 POLL = 0.5  # seconds between looks at a running executor: the person may have released its leaf
+HEARTBEAT = 30.0  # seconds between the run's lines on what a metered leaf is doing: Alex's number
 GRACE = 10  # seconds an executor is given to end after TERM, before KILL
 
 
@@ -469,6 +471,30 @@ def run_node(
     hold: dict | None = None  # the attempt's on the night's ledger
     paid = 0.0  # what this hold's attempts settled: a resumed Claude Code reports the session's total
     shell = graphene_shell(shlex.split(template))
+    due = 0.0  # when the terminal next says what the leaf is doing: HEARTBEAT after an attempt begins
+
+    def each() -> None:  # every POLL of the attempt going (its read, meter and began are set below)
+        nonlocal due
+        if read:
+            read()
+        if metered and time.monotonic() >= due:  # one line, the id first: two lanes interleave readably
+            due = time.monotonic() + HEARTBEAT
+            # Nemotron has no stream to meter: it writes its own rows, read as the watch strip reads them
+            m = vars(meter) if meter else M.going(store.node_log(node.id)) or {}
+            turns, dollars = m.get("turns", 0), m.get("dollars", 0.0)
+            used = f"{turns} turn{'s' * (turns != 1)} · " + (
+                money(dollars) if m.get("priced", True) else "no list price"
+            )
+            if not (turns or m.get("prompt_tokens") or dollars):  # Codex: only as a turn ends
+                used = "no usage yet"
+            tries = f"attempt {attempt} · " if attempt > 1 else ""  # named past the first, as the pane does
+            head = f"{node.id} · {tries}{round(time.monotonic() - began)} s · "
+            if used == "no usage yet" and not m.get("last"):  # a quiet leaf: one fact, not two nothings
+                say(head + "still running, nothing read from it yet")
+            else:
+                head += f"{used} · "
+                say(head + elide(m.get("last") or "nothing yet", max(80 - len(head), 20)))  # one row at 80
+
     try:
         for attempt in range(1, attempts + 1):
             if stop.event.is_set():  # stopped while the last attempt's check ran: nothing starts again
@@ -514,6 +540,7 @@ def run_node(
                     sink.close()
             stop.add(node.id, proc)
             began = time.monotonic()
+            due = began + HEARTBEAT
             kind = M.kind(argv) if log else None
             metered = kind or ("nemotron" if name == "nemotron" else None)  # Nemotron writes its own rows
             # the hold rides on the attempt: should this run die, the next one's sweep settles it (_close)
@@ -529,7 +556,7 @@ def run_node(
                 read = Reader(log, meter, lambda k, d: store.log_node(node.id, P._now(), k, who.label,
                                                                       session, None, d))  # fmt: skip
             try:
-                code = _waited(proc, store, node.id, stop, read)
+                code = _waited(proc, store, node.id, stop, each)
             finally:
                 stop.remove(node.id)
                 if read:

@@ -51,6 +51,7 @@ from . import run as R
 from . import views as V
 from .node_record import bill, forks, models, sandbox
 from .plan_text import clock as _clock
+from .view_time import LEGEND as TIME_KEY
 from .view_time import activity
 from .views import money
 
@@ -59,6 +60,7 @@ WIDE = 110  # columns: from here the node pane sits beside the tree, below it un
 HELP_WIDE = 72  # a help row's columns: from twice this the groups sit in two columns
 PANE = 44  # beside the tree, the node pane keeps at least this many columns
 QUIET = 120  # seconds without a sign of life before a running leaf reads "quiet for n min"
+ASKING = 180  # seconds an ask is counted up on the status line with no row of the planner's yet: then dead
 METERED = 4  # the running leaves the meter's strip has rows for: the rest are counted
 WRAP = Console(width=400, color_system=None)  # only for Text.wrap: styled text wrapped at words
 
@@ -101,7 +103,7 @@ EMPTY = (
     "here. Or :ask <what you want>. ? lists the keys."
 )
 KEYS = {  # the bottom line, when no command has just spoken: what the keys do on this row
-    "proposed": ["y accept", "d drop", "e edit", "E edit with what is under it"],
+    "proposed": ["y accept", "d drop", "e edit", "E edit as text"],  # one label on every row: ? explains it
     "review": ["y sign off", "x send back", "Enter record"],
     "running": ["l output", "x release", "Enter record"],
     "done": ["x reopen", "Enter record", "c diff"],
@@ -116,8 +118,9 @@ WHOSE = ("came back", "review", "yours", "proposed", "running", "ready", "waitin
 # A fork's words (executor.Fork.outcome), its glyph and its colour, whose move as a node's are: running is
 # the executor's, passed is done work, and a fork that ended any other way is nobody's move (dim): what
 # is next is its leaf's row, which came back to the person when every fork failed
-FORK = {"passed": ("✓", "green"), "lost": ("·", "dim"), "check failed": ("✗", "dim"), "gave up": ("↩", "dim"),
-        "no tool call": ("·", "dim"), "out of steps": ("·", "dim"), "stopped": ("·", "dim")}  # fmt: skip
+FORK = {"passed": ("✓", "green"), "lost": ("–", "dim"), "check failed": ("✗", "dim"), "gave up": ("⊘", "dim"),
+        "no tool call": ("–", "dim"), "out of steps": ("–", "dim"), "stopped": ("–", "dim")}  # fmt: skip
+# – and ⊘ are no leaf's glyph: · is `to fill in` and ↩ `came back` two rows away (the word says which fork)
 
 
 def _look(word: str) -> tuple[str, str]:
@@ -430,19 +433,22 @@ class Ask(ModalScreen[str | None]):
 def legend(wide: int) -> Text:
     """The glyphs and colours, one line: what each state reads as, ∅ (a check red first flagged: it passes
     at the base, or fails outside the leaf's scope) and the graph's heavy line; where the words do not fit,
-    the person's move (magenta: yours, review, came back) as one, and where they still do not, ∅ on a line
-    of its own under them."""
+    two lines: the states and the heavy line, then review, came back and ∅, so every glyph is named once
+    (never `◇◆↩ yours` as one: at 100 columns that left review and came back unnamed)."""
     looks = [(P.look(w)[0], P.look(w)[1], w) for w in LEGEND]
-    short = [("".join(g for g, _, _ in looks[:3]), P.look("yours")[1], "yours"), *looks[3:]]
     nothing = Text.assemble(("∅", "dim"), " check flagged")  # which way, the pane says
-    for form in (looks, short):
+    heavy = Text.assemble(("━", "bold"), " critical")
+
+    def line(form) -> Text:
         out = Text()
         for glyph, colour, word in form:
             out.append(glyph, colour).append(f" {word}  ")
-        heavy = Text.assemble(("━", "bold"), " critical path" if form is looks else " critical")
-        if out.cell_len + nothing.cell_len + 2 + heavy.cell_len <= wide:
-            return Text.assemble(out, nothing, "  ", heavy)
-    return Text.assemble(out, heavy, "\n", nothing)
+        return out
+
+    out = line(looks)
+    if out.cell_len + nothing.cell_len + 2 + heavy.cell_len <= wide:
+        return Text.assemble(out, nothing, "  ", heavy)
+    return Text.assemble(line([looks[0], *looks[3:]]), heavy, "\n", line(looks[1:3]), nothing)
 
 
 def help_text(groups, wide: int) -> Text:
@@ -493,7 +499,8 @@ class Help(ModalScreen[None]):
     Help #help { width: auto; height: auto; }
     Help #help > Static { width: auto; padding: 0 1; }
     Help #end { width: auto; padding: 0 1; color: $text-muted; }
-    Help #legend { width: auto; padding: 0 1; }
+    Help #legend, Help #legend-time { width: auto; padding: 0 1; }
+    Help.-narrow > VerticalScroll { width: 100%; }
     """
 
     def compose(self) -> ComposeResult:
@@ -507,6 +514,10 @@ class Help(ModalScreen[None]):
         with VerticalScroll() as box:
             box.border_subtitle = "Esc closes this · j k G gg scroll"  # on the border: in sight when scrolled
             yield Static(legend(column * (2 if two else 1)), id="legend")
+            if getattr(self.app, "showing", None) == "time":  # the time view's own glyphs, under the states'
+                key = "  ".join(TIME_KEY)  # the cells, then the marks: a line each where one holds not both
+                yield Static(Text(key if len(key) <= column * (2 if two else 1) else "\n".join(TIME_KEY)),
+                             id="legend-time")  # fmt: skip
             with Horizontal(id="help"):
                 if two:
                     yield Static(help_text(groups[:5], column))
@@ -978,6 +989,14 @@ class Watch(App):
         everything = store.node_log()  # ponytail: all of it each tick; read on from the last id if it slows
         now, person = self.clock(everything), self.person(everything)
         usage = [e for e in everything if e["kind"] == "usage"]  # what the planners and executors cost
+        # the planner's half-minute: the last ask, while no row of the planner's has landed since it (its
+        # usage rows aside: one lands after every try, and a refused try is still the same wait); a
+        # failed or stopped ask never gets one, so a counter past ASKING is dead and dropped
+        rows = (e for e in reversed(everything) if e["kind"] != "usage")  # a try's bill is not its answer
+        last = next((e for e in rows if e["kind"] == "asked" or (e["actor"] or "").startswith("planner")),
+                    None)  # fmt: skip
+        waits = last is not None and last["kind"] == "asked"
+        since = (now - datetime.fromisoformat(last["timestamp"])).total_seconds() if waits else ASKING
         self.counts = {
             "you": len(tops) + len(yours),
             "proposed": len(tops),  # what y on the goal accepts: `you` counts leaves that came back too
@@ -992,6 +1011,7 @@ class Watch(App):
             "first": P.plan_first(store),
             "with": f" with {Path(executor[0]).name}" if executor else "",
             "spent": sum(e["detail"].get("dollars") or 0 for e in usage) if usage else None,
+            "asking": int(since) if since < ASKING else None,  # seconds the planner has been asked
             "agents": M.agents(everything, now),  # the two clocks
             "mine": M.you(everything, person),
         }
@@ -1444,12 +1464,15 @@ class Watch(App):
             unpriced = f"{tokens(agents['unpriced'])} tokens unpriced"
             spent = f"{spent} + {unpriced}" if c.get("spent") else unpriced
         mine = c.get("mine") or {"acts": 0, "minutes": 0}
-        ran, acts = agents["running"] or agents["seconds"] or spent, _s(mine["acts"], "act")
+        ran, acts = agents["running"], _s(mine["acts"], "act")  # the minutes a run took: the time view's note
         took = agents["seconds"] // 60 or ("<1" if agents["seconds"] or agents["running"] else 0)
-        clock = " · ".join([f"{agents['running']} running", f"{took} min", *([spent] if spent else [])])
+        clock = " ".join([f"{agents['running']} running", f"{took} min", *([spent] if spent else [])])
+        # one phrase: a dot between a clock's fields read as a dot between facts; the planner's dollars,
+        # before any agent ran, are the plan's bill, not an agents' clock at 0
+        tick, bill = clock.replace(" running", "").replace(" min", "m"), f"bill {spent}" if spent else ""
         long = [
             (f"waiting on you: {c['you']}{board}", you),
-            (f"agents: {clock}" if ran else "agents: none", busy),
+            (f"agents: {clock}" if ran else bill or "agents: none", busy),
             (f"you: {acts} · ~{mine['minutes']} min", ""),
             (f"R runs {c['ready']} ready" if c["ready"] else "nothing ready to run", ""),
             *([(f"{c['back']} came back", "")] if c.get("back") else []),
@@ -1458,13 +1481,17 @@ class Watch(App):
         ]
         short = [
             (f"{c['you']} on you{board}", you),  # the graph's note says it so too
-            (f"agents {clock.replace(' running', '').replace(' min', 'm')}" if ran else "agents 0", busy),
+            (f"agents {tick}" if ran else bill or "agents 0", busy),
             (f"you {acts} ~{mine['minutes']}m", ""),
             (f"R: {c['ready']} ready" if c["ready"] else "none ready", ""),
             *([(f"{c['back']} came back", "")] if c.get("back") else []),
             (c["done"], ""),
             (f"plan first: {c['first']}", ""),
         ]
+        if c.get("asking") is not None:  # the planner's half-minute, in the agents' slot: an agent at work
+            said = ago(c["asking"])[0]  # past two minutes `quiet for 2 min`, as a running leaf's row says
+            said = f"planner {said}" if "quiet" in said else f"planner asked {said}"
+            long[1] = short[1] = (said, P.look("running")[1])
         named = [*long[:3], (long[3][0] + (c.get("with", "") if c["ready"] else ""), ""), *long[4:]]
         keyed = [[(f"{text} by your keys" if k == 2 else text, how) for k, (text, how) in enumerate(form)]
                  for form in (named, long)]  # fmt: skip
@@ -1476,8 +1503,15 @@ class Watch(App):
             keyed = []
         forms = (*keyed[:1], named, *keyed[1:], long, [*long[:1], *short[1:3], *long[3:]])  # clocks short
         fits = [form for form in forms if len(" · ".join(text for text, _ in form)) <= room]
+        if not (self.nodes or board or self.news()) and self.RUNS_HERE:  # the empty plan: two calm lines,
+            # not six zeros (decision 44's five pieces, all 0 here); the planner's half-minute still counts
+            fits = [[(f"plan first: {c['first']}", ""), *([short[1]] if c.get("asking") is not None else [])]]
         top = fit([*self.news(), *short] if self.news() else fits[0] if fits else short, room)
-        lines = [top, fit([(k, "") for k in self.keys()], room), *self.said_lines(room)]
+        keys, tail = self.keys(), ("? help", "q quit")  # the two a stranger needs most never give way
+        held = fit([(k, "") for k in keys if k in tail], room)
+        line = fit([(k, "") for k in keys if k not in tail], room - held.cell_len - 3)
+        line = Text.assemble(line, (" · ", "dim"), held) if held.plain else line
+        lines = [top, line, *self.said_lines(room)]
         status = self.query_one("#status", Static)
         status.styles.height = sum(len(line.plain.splitlines()) for line in lines)
         status.update(Text("\n").join(lines))
@@ -1517,49 +1551,49 @@ class Watch(App):
             return ["VISUAL", yes, "d drop", "t m merge", "j k widen it", "Esc ends"]
         if self.view == "record" and not self.on_goal() and self.board_row() is None:  # their Enter is theirs
             offers = [OFFERED[k] for k in self.offer_keys()]
-            ask = ["t ask the planner", "q quit"] if offers else tail
-            return ["ctrl-d ctrl-u scroll", "Enter back", *offers, *ask]
+            ask = ["t ask the planner", "? help", "q quit"] if offers else tail
+            return ["ctrl-d -u scroll", "Enter back", *offers, *ask]  # the help's spelling: 60 at 80 with n
         if self.view == "tail":
-            return ["ctrl-d ctrl-u scroll", "l back", *tail]
+            return ["ctrl-d -u scroll", "l back", *tail]
         if self.view == "said":
-            return ["ctrl-d ctrl-u scroll", "Esc back", *tail]
+            return ["ctrl-d -u scroll", "Esc back", *tail]
         if self.view == "direction":  # D: what attaches and accepts is typed at `:`
-            return ["D back", ":direction attach SESSION NODE", ":direction accept ID", "ctrl-d -u scroll"]
+            return ["D back", ":direction attach SESSION NODE", ":direction accept ID", "ctrl-d -u scroll",
+                    "? help", "q quit"]  # fmt: skip
         row = self.board_row()
         if row is not None:  # board: what each key would do on this item, in words
             item = self.board.get(row)
-            if item is not None:  # its words give way to Tab and ? (q quit, last, is the first to go)
-                room = max(self.size.width - 2, 20) - sum(len(k) + 3 for k in tail[:-1])
+            if item is not None:  # its words give way; with none left, Tab view does, before ? and q
+                room = max(self.size.width - 2, 20) - sum(len(k) + 3 for k in tail)
                 return [*BR.hints(item, room), *tail]
             if row == BR.STANDING:
                 return ["standing conditions: graphene config shows them", *tail]
             fold = ["za fold" if self.tree.cursor_node.is_expanded else "za unfold"] if row == BR.FOLD else []
             return [*fold, "a note", *tail]
-        if not self.nodes:
-            return [":ask what you want", *tail]
+        if not self.nodes:  # Tab would only say nothing is planned yet
+            return [":ask what you want", "? help", "q quit"]
         if self.on_goal():
             ended = [":plan archive puts it away"] if self.counts.get("finished") else []
             ended = ended or (["R run all ready"] if self.counts.get("ready") else [])  # as the status says
             keys = ["y accept it all"] if self.counts.get("proposed") else ended
             fold = "za fold all" if self.tree.root.is_expanded else "za unfold"
-            # ponytail: Enter on the goal shows the plan's record, but its hint would push `? help` off an
-            # 80-column line (test_talk pins it); the help lists Enter, and the pane says so
-            return [*keys, "E edit the plan as text", fold, *tail]
+            # ponytail: Enter on the goal shows the plan's record, but its hint would push a key off an
+            # 80-column line (test_talk pins `? help`); the help lists Enter, and the pane says so
+            return [*keys, "E edit as text", fold, *tail]
         word, node = self.word(self.selected()), self.tree.cursor_node if self.drawn is None else None
         fork = node.data if node is not None and isinstance(node.data, tuple) else None
         on = [f"fork {fork[1]}: keys act on {fork[0]}"] if fork else []  # its row is its leaf's to act on
         if word == "came back":
             offers = [OFFERED[k] for k in self.offer_keys()]
             again = [] if "r" in self.offer_keys() else ["r run it again"]  # else r is the offer
-            # the free fix, running it again and the help before t, which the pane lists with its command:
-            # with three offers at 80 columns, t is the one that gives way
-            return [*on, *offers, "e edit its check", *again, "? help", "t ask the planner", "Enter record",
+            # the free fix and running it again before t, which the pane lists with its command
+            return [*on, *offers, "e edit check", *again, "? help", "t ask the planner", "Enter record",
                     "q quit"]  # fmt: skip
         shut = ["za unfold"] if node is not None and node.allow_expand and not node.is_expanded else []
         if word in KEYS:
             keys = ["y accept and run", *KEYS[word][1:]] if self.runs_on_y(self.chosen()) else KEYS[word]
             return [*on, *shut, *keys, *tail]
-        return [*(shut or ["za fold"]), "r run what is ready here", "E edit it as text", *tail]  # a sub-goal
+        return [*(shut or ["za fold"]), "r run what is ready here", "E edit as text", *tail]  # a sub-goal
 
     def offer_keys(self) -> list[str]:
         return self.offered.get(self.selected() or "", [])
@@ -2090,7 +2124,8 @@ class Watch(App):
         code = proc.wait()
         said = R.tail(log, 400)
         tried = max((k for k, line in enumerate(said) if line.startswith("asking the planner")), default=-1)
-        news = [line.strip() for line in said[tried + 1 :] if line.strip() and "(the plan of " not in line]
+        news = [line.strip() for line in said[tried + 1 :]  # the planner's tool calls, indented, are no gist
+                if line.strip() and not line.startswith("  ") and "(the plan of " not in line]  # fmt: skip
         # a talk's last line, past the planner's bill (`the planner (claude …): 2 calls, …`): why it ended
         last = [line for line in news if not line.startswith("the planner (")] if argv[0] == "talk" else news
         gist = ((last or news)[-1] if argv[0] in ("run", "talk") else news[0]) if news else ""
@@ -2362,8 +2397,9 @@ def detail(store, node: P.Node, s, files: list[str] | None = None, room: tuple[i
             what = "what landed" if node.state == P.DONE else "what it did"
             says = (f"its check also passed at the base commit {base}, before any work: {what} is not "
                     "verified by it")  # fmt: skip
-        elif pre["verdict"] == "passes":
-            says = f"its check passes at the base commit {base}, so it proves nothing: e edits the check"
+        elif pre["verdict"] == "passes":  # the planner's placeholder is on screen: the scolding lands on it
+            says = (f"its check (`{T.elide(node.check or '', 40)}`) passes before any work: it would pass "
+                    "with nothing done; e edits it")  # fmt: skip
         else:
             says = f"its check names {', '.join(pre.get('paths') or [])} outside its scope, at {base}"
         pane.text(says, "dim")

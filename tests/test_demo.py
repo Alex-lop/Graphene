@@ -66,7 +66,7 @@ def test_a_recording_holds_no_path_of_yours_and_nothing_shaped_like_a_key(tmp_pa
     detail = json.dumps({"checkout": f"{root}/.graphene/worktrees/greet", "token": f"Bearer {JWT}"})
     assert json.loads(hide({"detail": detail})["detail"]) == {
         "checkout": "{repo}/.graphene/worktrees/greet", "token": f"Bearer {demo.REMOVED}"
-    }
+    }  # fmt: skip
 
 
 def test_the_home_directory_spelled_with_dashes_goes_too(tmp_path, monkeypatch):
@@ -120,12 +120,23 @@ def test_the_recording_graphene_ships_says_what_made_it_and_holds_no_path_and_no
     directory, its home another) or anything shaped like a key."""
     said = demo.SHIPPED.read_text(encoding="utf-8")
     head, lines = demo.load(demo.SHIPPED)
-    assert head["shown"] == ("a scripted stand-in, not Nemotron" if head["stand_in"] else "as it ran, live")
+    assert head["shown"] == (demo.STAND_IN if head["stand_in"] else "as it ran, live")
     assert lines
     assert len(said.encode()) < 300_000
     assert str(Path.home()) not in said and not re.findall(r"/(?:Users|home|private|var|tmp|opt|root)/", said)
     assert not [word for word in demo.WORD.findall(said) if demo.KEY.search(word)] and "fake-key" not in said
     assert not demo.BASE64.search(said)
+
+
+def test_the_replays_words_name_no_model_and_speak_without_underscores():
+    """The feel readers of 11 October: the top line opened on a name a stranger does not know (`not
+    Nemotron`), and the bottom line spoke the log's identifiers (`goal_proposed`, `friendly rolled_up`).
+    The top line says no model ran; a kind reads with spaces, as the record pane says it."""
+    assert "Nemotron" not in demo.STAND_IN and "stand-in" in demo.STAND_IN
+    assert demo.what({"node_log": [{"node_id": "*", "kind": "goal_proposed"}]}) == "goal proposed"
+    assert demo.what({}) == "settings recorded"  # the first frame: a verb, not `the plan's settings`
+    _, lines = demo.load(demo.SHIPPED)
+    assert not [said for said in map(demo.what, lines) if "_" in said]
 
 
 def test_the_recorder_waits_for_the_store_goes_on_past_what_it_cannot_read_and_stops_on_term(tmp_path):
@@ -211,7 +222,7 @@ def test_the_replay_says_live_only_when_every_model_call_on_record_went_to_token
     says that."""
     live = {"graphene demo": 1, "recorded": "2026-09-26T03:47:14.410Z", "graphene": "0.5.0",
             "repository": "r", "stand_in": False, "shown": "as it ran, live"}  # fmt: skip
-    stand_in = live | {"stand_in": True, "shown": "a scripted stand-in, not Nemotron"}
+    stand_in = live | {"stand_in": True, "shown": demo.STAND_IN}
 
     def usage(**where):
         return {"id": 1, "node_id": "*", "kind": "usage", "detail": json.dumps({"dollars": 0.01} | where)}
@@ -221,10 +232,10 @@ def test_the_replay_says_live_only_when_every_model_call_on_record_went_to_token
     cases = [
         (live, [[tf], [], [tf]], "as it ran, live"),
         (live, [[claude], [codex, tf]], "as it ran, live"),  # Claude Code's run is no stand-in's
-        (live, [[claude, fake]], "a scripted stand-in, not Nemotron"),
-        (live, [[tf], [fake]], "a scripted stand-in, not Nemotron"),
-        (live, [[tf, usage()]], "a scripted stand-in, not Nemotron"),
-        (stand_in, [[tf]], "a scripted stand-in, not Nemotron"),
+        (live, [[claude, fake]], demo.STAND_IN),
+        (live, [[tf], [fake]], demo.STAND_IN),
+        (live, [[tf, usage()]], demo.STAND_IN),
+        (stand_in, [[tf]], demo.STAND_IN),
         (live, [[]], "a run with no model calls on record"),
         (stand_in, [[]], "a run with no model calls on record"),
     ]
@@ -269,6 +280,19 @@ def test_demo_once_needs_no_key_and_no_network_and_prints_the_banner_and_the_end
     ]
     assert rest[-1] == demo.NEXT  # it ends with the reader's next step: their own repository
     assert not list((tmp_path / "tmp").iterdir())
+
+
+def test_the_top_lines_day_is_the_one_the_rows_under_it_are_stamped_with(monkeypatch):
+    """The shipped recording is stamped 2026-10-12T03:16:50Z: in any American zone the top line said
+    2026-10-11 over rows that say 2026-10-12, and the tests saw one day only because TZ is pinned to UTC."""
+    monkeypatch.setenv("TZ", "America/New_York")
+    time.tzset()
+    try:
+        head, _ = demo.load(demo.SHIPPED)
+        assert head["day"] == head["recorded"][:10], (head["day"], head["recorded"])
+    finally:
+        monkeypatch.setenv("TZ", "UTC")
+        time.tzset()
 
 
 def test_demo_once_leaves_out_the_plans_next_step_and_nothing_else(tmp_path, monkeypatch):
@@ -344,8 +368,8 @@ def test_the_replay_at_80x24_says_so_shows_a_record_and_refuses_what_would_run(t
 
 
 def test_a_sub_goals_record_mid_replay_says_its_width_at_the_replays_clock(tmp_path, monkeypatch):
-    """Eight changes in, greet and farewell both run. The record of `friendly` measures them up to the
-    replay's clock, as the time view does: 37% of agent minutes alone, not days of the two at once."""
+    """Eight changes in, farewell runs and greet has come back. The record of `friendly` measures them up to
+    the replay's clock, as the time view does: 48% of agent minutes alone, not days of the two at once."""
     monkeypatch.setattr(demo, "LONG", 0.01)
     head, lines = demo.load(demo.SHIPPED)
     app = demo.Replay(demo.repository(tmp_path, head), head, lines[:8])
@@ -360,7 +384,7 @@ def test_a_sub_goals_record_mid_replay_says_its_width_at_the_replays_clock(tmp_p
             await pilot.pause()
             return " ".join(str(app.query_one("#detail").render()).split())
 
-    assert "width 2 of 2 · 37% of agent minutes alone" in asyncio.run(go())
+    assert "width 2 of 2 · 48% of agent minutes alone" in asyncio.run(go())
 
 
 def test_the_replay_ends_with_every_fold_open(tmp_path, monkeypatch):
@@ -462,7 +486,7 @@ def test_a_long_wait_is_cut_to_three_seconds_and_the_top_line_says_by_how_much(t
             return str(app.query_one("#where").render()), app.next
 
     where, applied = asyncio.run(go())
-    assert applied == 1 and where.endswith(f"not Nemotron · {head['day']} · ×10: a wait, cut")
+    assert applied == 1 and where.endswith(f"no model ran · {head['day']} · ×10: a wait, cut")
 
 
 def test_a_recording_carries_the_board(tmp_path):
@@ -504,7 +528,8 @@ def test_a_stand_in_replay_names_the_stand_in_wherever_the_recording_named_nemot
     assert '"actor": "run:stand-in"' in said and '"actor": "planner:stand-in"' in said
     assert "stand-in-Nano answered" in said and "stand-in --model stand-in-Ultra" in said
     usage = {"id": 1, "node_id": "g", "kind": "usage", "actor": "run:nemotron",
-             "detail": json.dumps({"model": "nvidia/Nemotron-3-Nano", "endpoint": "token factory"})}
+             "detail": json.dumps({"model": "nvidia/Nemotron-3-Nano",
+                                   "endpoint": "token factory"})}  # fmt: skip
     live = {"graphene demo": 1, "recorded": "2026-09-26T03:47:14.410Z", "graphene": "0.5.0",
             "repository": "r", "stand_in": False, "shown": demo.LIVE}  # fmt: skip
     recording = tmp_path / "live.jsonl"
@@ -525,7 +550,9 @@ def test_demo_once_fits_80_columns_and_calls_its_last_rows_the_end_of_the_runs_l
     assert lines[0] == f"replay · {head['shown']} · {head['day']} · {demo.ENDED}"
     assert max(len(line) for line in lines) <= 80, [line for line in lines if len(line) > 80]
     assert "just now" not in lines and demo.ENDING in lines
-    assert any(line.endswith("…") and "check_passed" in line for line in lines)
+    assert any(line.endswith("…") and "landed" in line for line in lines)
+    rows = [line for line in lines if line.startswith("  20")]  # no log identifier (`rolled_up`) on a row
+    assert rows and not any(re.search(r"\b\w+_\w+\b", line) for line in rows), rows
 
 
 def test_each_change_stays_on_the_screen_and_space_dot_and_r_pause_step_and_play_again(tmp_path):
@@ -533,7 +560,8 @@ def test_each_change_stays_on_the_screen_and_space_dot_and_r_pause_step_and_play
     least HOLD seconds (`--speed` divides that); space pauses where it is and plays on, `.` applies the next
     change and stays paused, `r` empties the replay and plays it from the start; the top line says which
     change it is at, and the bottom line names the three keys. Before the plan has a row the pane says
-    what was asked for, not "Or :ask", which a replay refuses. A finished plan's goal row reads done."""
+    nothing is planned yet (the recording's first change is init's settings, a look before `asked`), not
+    "Or :ask", which a replay refuses. A finished plan's goal row reads done."""
     head, lines = demo.load(demo.SHIPPED)
     gaps = [b["at"] - a["at"] for a, b in zip(lines, lines[1:], strict=False)]
     assert lines[0]["at"] == 0 and min(gaps) >= demo.HOLD and len(lines) * demo.HOLD > 20
@@ -568,9 +596,8 @@ def test_each_change_stays_on_the_screen_and_space_dot_and_r_pause_step_and_play
     asyncio.run(go())
     n = len(lines)
     assert seen["first"][:2] == (1, f"replay · {head['shown']} · {head['day']} · 1 of {n}")
-    assert seen["first"][2].startswith("space pause · . next · r again · Enter record · l output · ? help")
-    asked = "the script asked the planner: “make the app friendlier”. What it proposes is next."
-    assert asked in seen["first"][3]
+    assert seen["first"][2].startswith("space pause · . next · r again · l output · j k move · ? help")
+    assert "Nothing is planned yet in this recording. What is planned is next." in seen["first"][3]
     assert seen["paused"][:2] == (1, f"replay · {head['shown']} · {head['day']} · paused at 1 of {n}")
     assert seen["paused"][2].startswith("space play · . next")
     proposed = dict.fromkeys(("friendly", "greet", "farewell"), "proposed")

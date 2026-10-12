@@ -100,9 +100,11 @@ def test_the_open_items_are_rows_under_the_goal_and_the_screen_opens_on_the_firs
     assert "the API" in rows[6] and " api " in rows[6]  # then the tree, after the board
     assert seen["at"] == "which-id"  # the person meets the questions before the tree
     status = seen["status"]
-    # at 80 columns the default's words give way to Tab and ? (walk 2026-09-28, first 16)
+    # at 80 columns the default's words give way to ? and q, which end every key line (walk 2026-09-28,
+    # first 16; the feel pass): with no words left to give, Tab view goes before them
     take = "y take: the row id" if size[0] >= 120 else "y take"
-    for said in (take, "1 pick", "d drop", "p park", "Enter answer", "a note", "Tab view", "? help"):
+    tab = ["Tab view"] if size[0] >= 120 else []
+    for said in (take, "1 pick", "d drop", "p park", "Enter answer", "a note", *tab, "? help", "q quit"):
         assert said in status, (said, status)
 
 
