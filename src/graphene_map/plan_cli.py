@@ -1426,17 +1426,18 @@ def register(cli: typer.Typer, root, open_store, fail):
 
         def go(store):
             n = P.get(store, node_id)
-            out(P.contract(n, P.trail(store, n), B.decided(store, n)))
+            out(P.contract(n, P.trail(store, n), B.decided(store, n), person=P.caller().person))
+            # right under the contract, the row `node diff` reads: a leaf reopened and done again since
+            # its merge did not land that
+            for landed in store.node_log(n.id, ("landed", "unlanded", "finished", "overruled"))[-1:]:
+                if landed["kind"] == "landed":
+                    out(f"  landed: {landed['detail']['commit'][:7]}: `graphene node diff {n.id}` shows it")
             for line in came_back(store, n):
                 out(line)
             everything = P.nodes(store)
             under = [c for c in P.below(n.id, everything) if c in P.leaves(everything)]
             for line in rolled_up(store, root(), under) if under else render(node_record(store, root(), n)):
                 out(line)
-            # the row `node diff` reads: a leaf reopened and done again since its merge did not land that
-            for landed in store.node_log(n.id, ("landed", "unlanded", "finished", "overruled"))[-1:]:
-                if landed["kind"] == "landed":
-                    out(f"  landed: {landed['detail']['commit'][:7]}: `graphene node diff {n.id}` shows it")
             entries = len(store.node_log(n.id))
             out(f"  every entry, check runs included: `graphene plan log` ({entries} for {n.id})")
 

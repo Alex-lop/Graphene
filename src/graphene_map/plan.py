@@ -950,26 +950,36 @@ def _end_check(proc) -> None:  # a subprocess.Popen
 # -- the operations -------------------------------------------------------------------------------
 
 
-def contract(node: Node, why: list[str] | None = None, decided: list[str] | tuple = ()) -> str:
+def contract(
+    node: Node, why: list[str] | None = None, decided: list[str] | tuple = (), person: bool = False
+) -> str:
     """The node as its executor is told it: the whole of what they are bound to, and why it is being
     done at all (``trail``: from the plan's goal down to this node, in the person's words), and what
-    the person decided on the board that bears on it (``board.decided``)."""
+    the person decided on the board that bears on it (``board.decided``). ``person``: read by the
+    person (`node show`), who gets the facts and not the executor's two commands."""
     lines = [
         f"{node.id} (revision {node.rev}): {node.title}",
         *(f"  {'why:' if k == 0 else '    '}    {'  ' * k}{line}" for k, line in enumerate(why or [])),
         f"  goal:   {node.goal or node.title}",
         *(["  decided:"] if decided else []),  # its lines start where every other key's value does
         *(f"          {line}" for line in decided),
-        f"  scope:  {', '.join(node.scope)}   (a write anywhere else is refused, and blocks `done`)",
+        f"  scope:  {', '.join(node.scope) or 'none yet'}"
+        + ("   (a write anywhere else is refused, and blocks `done`)" if node.scope else ""),
         *(
             [f"  needs:  {', '.join(node.needs)}   (it cannot start until they are done)"]
             if node.needs
             else []
         ),
-        f"  done:   {done_means(node)}",
-        f"  finish: graphene node done {node.id}   (runs the check and asks git what changed)",
-        f"  stuck:  graphene node release {node.id} --why '<what is in the way>' [--wants <paths it needs>]"
-        "   (hands it back; say why)",
+        f"  done:   {done_means(node) or 'no check yet'}",
+        *(
+            []
+            if person
+            else [
+                f"  finish: graphene node done {node.id}   (runs the check and asks git what changed)",
+                f"  stuck:  graphene node release {node.id} --why '<what is in the way>' "
+                "[--wants <paths it needs>]   (hands it back; say why)",
+            ]
+        ),
     ]
     return "\n".join(lines)
 
@@ -1904,8 +1914,8 @@ def uncommitted(store, checkout: str | Path) -> list[str]:
 
 
 UNCOMMITTED = (
-    "not committed (`git status`): `graphene run --here` commits nothing, `graphene run` and watch's R "
-    "commit and merge each leaf"
+    "in your checkout, uncommitted (`git status`): commit it yourself; `graphene run` would have landed "
+    "each leaf as its own merge"
 )
 
 

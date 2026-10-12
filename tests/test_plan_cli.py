@@ -431,15 +431,15 @@ def test_a_finished_plan_says_when_its_leaves_work_is_not_committed_and_what_com
     assert ran.exit_code == 0, ran.output
     assert "--here: your checkout is exposed" in ran.stdout
     assert ran.stdout.splitlines()[-1] == (
-        "run: 1 done · agents <1 min, no meter · width 1 of 1 · you 1 act, 1 min · the work of ids is not "
-        "committed (`git status`): `graphene run --here` commits "
-        "nothing, `graphene run` and watch's R commit and merge each leaf"
+        "run: 1 done · agents <1 min, no meter · width 1 of 1 · you 1 act, 1 min · the work of ids is "
+        "in your checkout, uncommitted (`git status`): commit it yourself; `graphene run` would have "
+        "landed each leaf as its own merge"
     )
     head = person().stdout.splitlines()[0]
     assert head == (
-        "the plan: 1 leaf, 1 done, 0 running · finished; the work of 1 leaf is not committed (`git status`): "
-        "`graphene run --here` commits nothing, `graphene run` and watch's R commit and merge each leaf; "
-        "`graphene plan archive` puts it away"
+        "the plan: 1 leaf, 1 done, 0 running · finished; the work of 1 leaf is in your checkout, "
+        "uncommitted (`git status`): commit it yourself; `graphene run` would have landed each leaf as "
+        "its own merge; `graphene plan archive` puts it away"
     )
     subprocess.run(["git", "-c", "user.email=t@example.com", "-c", "user.name=T", "commit", "-qam", "ids"],
                    cwd=repo, check=True)  # fmt: skip
@@ -683,6 +683,27 @@ def test_accept_and_the_plan_on_a_proposal_name_the_next_command_not_a_rule(repo
         "next: `graphene run` reaches one  (R in graphene watch)",
     ]
     assert "accepted with" not in person("plan").stdout and "takes all of it" not in person("plan").stdout
+
+
+def test_node_show_for_a_person_has_no_agent_orders_and_names_the_landing_first(repo, tmp_path):
+    """Three readers: `node show` on a landed leaf opened with `finish:` and `stuck:`, orders to an
+    executor that had left, `landed:` was line 33 of 35, and a sub-goal's `scope:` and `done:` slots
+    were blank, the scope's parenthesis refusing writes against nothing."""
+    text = ("goal: users come back with their ids\n- the API  [api]\n  - users returns ids  [ids]\n"
+            "      scope: api.py\n      check: true\n")  # fmt: skip
+    assert agent("plan", "propose", "-", input=text).exit_code == 0
+    person("plan", "accept")
+    script = tmp_path.parent / f"{tmp_path.name}-ids.py"  # an executor that writes in the scope
+    script.write_text("open('api.py', 'w').write('def users():\\n    return [\"ids\"]\\n')\n")
+    ran = person("run", "--with", f"{sys.executable} {script}")
+    assert ran.exit_code == 0 and "run: 1 done" in ran.stdout, ran.output
+    lines = person("node", "show", "ids").stdout.splitlines()
+    assert not [line for line in lines if line.startswith(("  finish:", "  stuck:"))]
+    [at] = [k for k, line in enumerate(lines) if line.startswith("  landed: ")]
+    assert lines[at - 1].startswith("  done:   `true` passes")  # right under the contract
+    assert "  finish: graphene node done ids" in agent("node", "show", "ids").stdout  # the executor keeps it
+    sub = person("node", "show", "api").stdout
+    assert "  scope:  none yet\n" in sub and "  done:   no check yet\n" in sub and "anywhere else" not in sub
 
 
 def test_refusals_say_what_was_refused_and_the_command_in_a_line(repo):
