@@ -1491,8 +1491,15 @@ class Watch(App):
             keyed = []
         forms = (*keyed[:1], named, *keyed[1:], long, [*long[:1], *short[1:3], *long[3:]])  # clocks short
         fits = [form for form in forms if len(" · ".join(text for text, _ in form)) <= room]
+        if not (self.nodes or board or self.news()) and self.RUNS_HERE:  # the empty plan: two calm lines,
+            # not six zeros (decision 44's five pieces, all 0 here); the planner's half-minute still counts
+            fits = [[(f"plan first: {c['first']}", ""), *([short[1]] if c.get("asking") is not None else [])]]
         top = fit([*self.news(), *short] if self.news() else fits[0] if fits else short, room)
-        lines = [top, fit([(k, "") for k in self.keys()], room), *self.said_lines(room)]
+        keys, tail = self.keys(), ("? help", "q quit")  # the two a stranger needs most never give way
+        held = fit([(k, "") for k in keys if k in tail], room)
+        line = fit([(k, "") for k in keys if k not in tail], room - held.cell_len - 3)
+        line = Text.assemble(line, (" · ", "dim"), held) if held.plain else line
+        lines = [top, line, *self.said_lines(room)]
         status = self.query_one("#status", Static)
         status.styles.height = sum(len(line.plain.splitlines()) for line in lines)
         status.update(Text("\n").join(lines))
@@ -1543,23 +1550,23 @@ class Watch(App):
         row = self.board_row()
         if row is not None:  # board: what each key would do on this item, in words
             item = self.board.get(row)
-            if item is not None:  # its words give way to Tab and ? (q quit, last, is the first to go)
-                room = max(self.size.width - 2, 20) - sum(len(k) + 3 for k in tail[:-1])
+            if item is not None:  # its words give way to Tab, ? and q, which the key line keeps whole
+                room = max(self.size.width - 2, 20) - sum(len(k) + 3 for k in tail)
                 return [*BR.hints(item, room), *tail]
             if row == BR.STANDING:
                 return ["standing conditions: graphene config shows them", *tail]
             fold = ["za fold" if self.tree.cursor_node.is_expanded else "za unfold"] if row == BR.FOLD else []
             return [*fold, "a note", *tail]
-        if not self.nodes:
-            return [":ask what you want", *tail]
+        if not self.nodes:  # Tab would only say nothing is planned yet
+            return [":ask what you want", "? help", "q quit"]
         if self.on_goal():
             ended = [":plan archive puts it away"] if self.counts.get("finished") else []
             ended = ended or (["R run all ready"] if self.counts.get("ready") else [])  # as the status says
             keys = ["y accept it all"] if self.counts.get("proposed") else ended
             fold = "za fold all" if self.tree.root.is_expanded else "za unfold"
-            # ponytail: Enter on the goal shows the plan's record, but its hint would push `? help` off an
-            # 80-column line (test_talk pins it); the help lists Enter, and the pane says so
-            return [*keys, "E edit the plan as text", fold, *tail]
+            # ponytail: Enter on the goal shows the plan's record, but its hint would push a key off an
+            # 80-column line (test_talk pins `? help`); the help lists Enter, and the pane says so
+            return [*keys, "E edit as text", fold, *tail]
         word, node = self.word(self.selected()), self.tree.cursor_node if self.drawn is None else None
         fork = node.data if node is not None and isinstance(node.data, tuple) else None
         on = [f"fork {fork[1]}: keys act on {fork[0]}"] if fork else []  # its row is its leaf's to act on

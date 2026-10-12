@@ -136,7 +136,7 @@ def test_the_views_first_line_is_the_goal_and_its_keys_are_the_goal_rows(repo, g
     proposed(repo)
     seen = look(repo, ["tab", "j", "k"], size)
     assert seen["cursor"] is None and seen["view"][0].startswith("users come back with their ids")
-    assert "y accept it all" in seen["status"] and "E edit the plan as text" in seen["status"]
+    assert "y accept it all" in seen["status"] and "E edit as text" in seen["status"]
     assert "za" not in seen["status"]  # folding is the outline's
     look(repo, ["tab", "y"], size)
     assert set(states(repo).values()) == {"open"}  # the whole plan accepted, as y on the goal row does
