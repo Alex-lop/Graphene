@@ -62,7 +62,8 @@ def test_a_check_that_passes_at_the_base_is_marked_and_said(repo):
     precheck(repo, "schema", verdict="passes", why="exit 0")
     seen, _ = watch(repo, ["G"], size=(120, 36))
     said = " ".join(seen["detail"].split())
-    assert "its check passes at the base commit abcdef0, so it proves nothing: e edits the check" in said
+    # the planner's `true` is on screen, so the scolding lands on the right party (the feel pass, D10)
+    assert "its check (`true`) passes before any work: it would pass with nothing done; e edits it" in said
     assert any("schema" in row and "∅" in row for row in seen["tree"])
     assert not any("∅" in row for row in seen["tree"] if "ids" in row)
 
@@ -80,7 +81,7 @@ def test_a_red_or_stale_precheck_is_not_marked(repo):
     precheck(repo, "schema", verdict="red", why="exit 1")
     precheck(repo, "ids", verdict="passes", why="exit 0", rev=99)
     seen, _ = watch(repo, ["G"], size=(120, 36))
-    assert not any("∅" in row for row in seen["tree"]) and "proves nothing" not in seen["detail"]
+    assert not any("∅" in row for row in seen["tree"]) and "with nothing done" not in seen["detail"]
 
 
 @pytest.mark.parametrize("verdict", ["passes", "landed"])  # landed: reopened, done again on that check

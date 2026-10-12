@@ -2385,8 +2385,9 @@ def detail(store, node: P.Node, s, files: list[str] | None = None, room: tuple[i
             what = "what landed" if node.state == P.DONE else "what it did"
             says = (f"its check also passed at the base commit {base}, before any work: {what} is not "
                     "verified by it")  # fmt: skip
-        elif pre["verdict"] == "passes":
-            says = f"its check passes at the base commit {base}, so it proves nothing: e edits the check"
+        elif pre["verdict"] == "passes":  # the planner's placeholder is on screen: the scolding lands on it
+            says = (f"its check (`{T.elide(node.check or '', 40)}`) passes before any work: it would pass "
+                    "with nothing done; e edits it")  # fmt: skip
         else:
             says = f"its check names {', '.join(pre.get('paths') or [])} outside its scope, at {base}"
         pane.text(says, "dim")
