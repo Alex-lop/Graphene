@@ -29,7 +29,8 @@ def truth_of(d: Path) -> dict:
     t = json.loads((d / "truth.json").read_text())
     fix = json.loads((d / "fix.json").read_text()) if (d / "fix.json").exists() else {}
     base_pass = [
-        re.match(r"([a-z0-9-]+): its check passes at the base", line) for line in t.get("red_first", [])
+        re.match(r"([a-z0-9-]+): its check \(`.*`\) passes before any work", line)
+        for line in t.get("red_first", [])
     ]
     bills = t.get("bills") or {}
     return {
