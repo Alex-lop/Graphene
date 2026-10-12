@@ -1,0 +1,24 @@
+| replay · a scripted stand-in, no model ran · 2026-10-12 · paused at 7 of 16    |
+|▼ ○ a friendlier app                                                  0/2 done  |
+|├ ▶ ✓ 3 settled                                                                 |
+|└ ▼ ○ say hello                                           friendly    0/2 done  |
+|  ├   ↩ greet says hello                                  greet       came back |
+|  └   ● bye says goodbye                                  farewell    running   |
+|────────────────────────────────────────────────────────────────────────────────|
+| a friendlier app                                                               |
+| the goal · 0/2 done                                                            |
+|                                                                                |
+| ○ say hello                                                friendly  0/2 done  |
+|                                                                                |
+| waiting  greet came back                                                       |
+|                                                                                |
+|                                                                                |
+|                                                                                |
+|                                                                                |
+|                                                                                |
+|                                                                                |
+| ● farewell · stand-in Nano · attempt 1 · 0s · 2 turns · $0.0001                |
+|   running graphene node done farewell · 0 s ago · 1 file · 1k in, 81 out       |
+| 1 on you · 1 running · none ready · 1 came back · 0/2 done · bill $0.0056      |
+| space play · . next · r again · l output · j k move · ? help · q quit          |
+| greet started · greet attempt · greet model · greet usage · greet did · greet… |

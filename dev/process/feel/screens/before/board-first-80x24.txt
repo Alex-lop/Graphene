@@ -1,0 +1,24 @@
+| the plan of …e4-ecd5-4976-a41d-71ab2ec13bc9/scratchpad/feel/screen/repos/board |
+|▼ ? users come back with their ids                                   proposed   |
+|├   ◇ which id: the row id or a new uuid?               which-id     asks       |
+|├   ◇ ids are integers                                  int-ids      assumes    |
+|├   ◇ the check could pass on an empty list             empty-check  risk       |
+|├   ◇ pagination; nobody asked for it                   paging       leaves out |
+|├   ◇ keep the response shape                           shape        note       |
+|├ ▼ ? the API                                           api          proposed   |
+|│ ├   ? users returns ids                               ids          proposed   |
+|│ └   ? document it                                     docs         proposed   |
+|└   ? the schema                                        schema       proposed   |
+|────────────────────────────────────────────────────────────────────────────────|
+| which id: the row id or a new uuid?                                            |
+| which-id · question · open · put up by a Claude Code session (5e55105e)        |
+|                                                                                |
+| y default  the row id; schema.py already has it                                |
+| 1          a uuid, from a new uuid.py                                          |
+|            then: scope ids + uuid.py                                           |
+| about      ids  users returns ids                                              |
+|                                                                                |
+|                                                                                |
+|                                                                                |
+| 2 on you + 5 on the board · agents 0 · you 1 act ~1m · none ready · 0/3 done   |
+| y take · 1 pick · d drop · p park · Enter answer · a note · Tab view · ? help  |

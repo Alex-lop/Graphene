@@ -1,4 +1,4 @@
-| the plan of …4976-a41d-71ab2ec13bc9/scratchpad/feel-screen-shots/repos/metered |
+| the plan of …-ecd5-4976-a41d-71ab2ec13bc9/scratchpad/final-shots/repos/metered |
 |▼ ○ users come back with their ids, and the schema says so  1/9 done            |
 |├ ▶ ○ the API                                       api     1 came back, 4 more |
 |├ ▶ ○ the schema                                    schema  1 review, 2 more    |
@@ -23,9 +23,9 @@
 | 4 on you · agents 2 <1m $0.42 · you 2 acts ~1m · none ready · 1 came back      |
 | y accept it all · E edit as text · za fold all · Tab view · ? help · q quit    |
 -- time (forced) --
- the plan of …4976-a41d-71ab2ec13bc9/scratchpad/feel-screen-shots/repos/metered
+ the plan of …-ecd5-4976-a41d-71ab2ec13bc9/scratchpad/final-shots/repos/metered
 users come back with their ids, and the schema says so
- you     |
+ you
  ids      █▓▓▓●
  docs    !↩
  rule    ✓
@@ -46,4 +46,4 @@ users come back with their ids, and the schema says so
    step 3 of 5 · 3 s ago
  4 on you · agents 2 <1m $0.42 · you 2 acts ~1m · none ready · 1 came back
  y accept it all · E edit as text · Tab view · ? help · q quit
- 5 lanes · <1 min · 1 came back · agents <1 min $0.42 · you 1 act ~1 min
+ 5 lanes · <1 min · 1 came back · agents <1 min $0.42 · you 0 acts ~0 min
