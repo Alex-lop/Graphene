@@ -450,8 +450,15 @@ def test_a_claude_code_planners_tool_calls_are_said_as_they_happen(repo, tmp_pat
         if line == "  reading api.py":
             (tmp_path / "go").write_text("go")
 
-    with Store.open(repo) as store:
+    import gc
+    import warnings
+
+    with warnings.catch_warnings(record=True) as leaked, Store.open(repo) as store:
+        warnings.simplefilter("always", ResourceWarning)  # the read end is closed, as communicate() did
         assert A.ask(store, repo, "ids", planner, say=heard)[0] == "proposed ids: users returns ids"
+        gc.collect()
+    unclosed = [str(w.message) for w in leaked if issubclass(w.category, ResourceWarning)]
+    assert not unclosed, unclosed
     assert said[:2] == ["asking the planner (claude)…", "  reading api.py"]
     assert said.count("  reading api.py") == 40 and said[41:43] == ["  … and 1 more", "the planner says:"]
 
