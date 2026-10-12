@@ -481,9 +481,8 @@ def register(cli: typer.Typer, root, open_store, fail):
         )
         who = e["actor"] or (f"claude:{e['session_id'][:8]}" if e["session_id"] else "")
         node = f"{e['node_id'].ljust(with_node)}  " if with_node else ""
-        return (
-            f"  {e['timestamp'][:19]}Z  {node}{e['kind'].ljust(12)}  {who.ljust(who_wide)}  {said}".rstrip()
-        )
+        kind = e["kind"].replace("_", " ")  # the log's identifier, read as words (the record pane's way)
+        return f"  {e['timestamp'][:19]}Z  {node}{kind.ljust(12)}  {who.ljust(who_wide)}  {said}".rstrip()
 
     # -- graphene plan ----------------------------------------------------------------------------
 

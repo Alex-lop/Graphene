@@ -550,6 +550,8 @@ def test_demo_once_fits_80_columns_and_calls_its_last_rows_the_end_of_the_runs_l
     assert max(len(line) for line in lines) <= 80, [line for line in lines if len(line) > 80]
     assert "just now" not in lines and demo.ENDING in lines
     assert any(line.endswith("…") and "landed" in line for line in lines)
+    rows = [line for line in lines if line.startswith("  20")]  # no log identifier (`rolled_up`) on a row
+    assert rows and not any(re.search(r"\b\w+_\w+\b", line) for line in rows), rows
 
 
 def test_each_change_stays_on_the_screen_and_space_dot_and_r_pause_step_and_play_again(tmp_path):

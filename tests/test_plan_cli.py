@@ -163,9 +163,9 @@ def test_sign_off_reopen_and_release_each_leave_a_line_in_the_nodes_record(repo)
     shown = person("node", "show", "n1").stdout
     assert "window 2:" in shown and "released: needs schema.py" in shown  # the contract, then the record
     assert "`graphene plan log` (8 for n1)" in shown
-    kinds = [line.split()[2] for line in person("plan", "log").stdout.splitlines()]
-    assert kinds == [
-        "added", "started", "check_passed", "check_passed", "finished", "reopened", "started", "released"
+    kinds = [re.split(r"  +", line.strip())[2] for line in person("plan", "log").stdout.splitlines()]
+    assert kinds == [  # a kind reads with spaces, as the record pane and the replay's bottom line say it
+        "added", "started", "check passed", "check passed", "finished", "reopened", "started", "released"
     ]  # fmt: skip
 
 
