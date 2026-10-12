@@ -88,7 +88,8 @@ def test_j_and_k_move_after_the_replay_is_played_again(tmp_path):
 
 
 def test_the_replays_clock_is_its_recordings_and_it_draws_no_meter_strip():
-    """The recording is from before the meter: a leaf's minutes run to its newest row, not to today."""
+    """A replay's clock is its recording's: a leaf's minutes run to its newest row, not to today. No replay
+    draws a strip unless its own rows say the meter was on."""
     from datetime import datetime
 
     rows = [{"timestamp": "2026-09-29T07:58:47.069Z"}, {"timestamp": "2026-09-29T08:01:00.000Z"}]
@@ -96,9 +97,9 @@ def test_the_replays_clock_is_its_recordings_and_it_draws_no_meter_strip():
     assert demo.Replay.METERS is False
 
 
-def test_a_recording_made_with_the_meter_draws_its_strip_and_the_shipped_one_does_not(tmp_path):
-    """The shipped recording is from before the meter; the night's Claude Code run on feeds is not. While a
-    leaf of it runs, its live row shows, with the dollars it had reached then."""
+def test_a_recording_made_with_the_meter_draws_its_strip_while_a_leaf_runs(tmp_path):
+    """The shipped recording, made again with the meter on 11 October 2026, and the night's Claude Code run
+    on feeds: while a leaf of either runs, its live row shows, with the dollars it had reached then."""
     strips = {}
     for name, path in (("shipped", demo.SHIPPED), ("meter", RECORDINGS / "meter-claude.jsonl")):
         head, lines = demo.load(path)
@@ -119,10 +120,10 @@ def test_a_recording_made_with_the_meter_draws_its_strip_and_the_shipped_one_doe
 
         asyncio.run(go())
         strips[name] = shown
-    assert strips["shipped"] == [True]
-    *rows, ended = strips["meter"]
-    assert ended and any("claude" in s and "$" in s for s in rows), rows
-    assert not any("no meter" in s or re.search(r"-\d+ s ago", s) for s in rows), rows  # 7 October's two
+    for name, who in (("shipped", "stand-in"), ("meter", "claude")):
+        *rows, ended = strips[name]
+        assert ended and any(who in s and "$" in s for s in rows), rows
+        assert not any("no meter" in s or re.search(r"-\d+ s ago", s) for s in rows), rows  # 7 October's two
 
 
 def test_the_end_says_the_next_step_above_what_the_last_change_was(tmp_path):

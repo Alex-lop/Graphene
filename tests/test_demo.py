@@ -354,8 +354,8 @@ def test_the_replay_at_80x24_says_so_shows_a_record_and_refuses_what_would_run(t
 
 
 def test_a_sub_goals_record_mid_replay_says_its_width_at_the_replays_clock(tmp_path, monkeypatch):
-    """Eight changes in, greet and farewell both run. The record of `friendly` measures them up to the
-    replay's clock, as the time view does: 37% of agent minutes alone, not days of the two at once."""
+    """Eight changes in, farewell runs and greet has come back. The record of `friendly` measures them up to
+    the replay's clock, as the time view does: 48% of agent minutes alone, not days of the two at once."""
     monkeypatch.setattr(demo, "LONG", 0.01)
     head, lines = demo.load(demo.SHIPPED)
     app = demo.Replay(demo.repository(tmp_path, head), head, lines[:8])
@@ -370,7 +370,7 @@ def test_a_sub_goals_record_mid_replay_says_its_width_at_the_replays_clock(tmp_p
             await pilot.pause()
             return " ".join(str(app.query_one("#detail").render()).split())
 
-    assert "width 2 of 2 · 37% of agent minutes alone" in asyncio.run(go())
+    assert "width 2 of 2 · 48% of agent minutes alone" in asyncio.run(go())
 
 
 def test_the_replay_ends_with_every_fold_open(tmp_path, monkeypatch):
@@ -536,7 +536,7 @@ def test_demo_once_fits_80_columns_and_calls_its_last_rows_the_end_of_the_runs_l
     assert lines[0] == f"replay · {head['shown']} · {head['day']} · {demo.ENDED}"
     assert max(len(line) for line in lines) <= 80, [line for line in lines if len(line) > 80]
     assert "just now" not in lines and demo.ENDING in lines
-    assert any(line.endswith("…") and "check_passed" in line for line in lines)
+    assert any(line.endswith("…") and "landed" in line for line in lines)
 
 
 def test_each_change_stays_on_the_screen_and_space_dot_and_r_pause_step_and_play_again(tmp_path):
@@ -544,7 +544,8 @@ def test_each_change_stays_on_the_screen_and_space_dot_and_r_pause_step_and_play
     least HOLD seconds (`--speed` divides that); space pauses where it is and plays on, `.` applies the next
     change and stays paused, `r` empties the replay and plays it from the start; the top line says which
     change it is at, and the bottom line names the three keys. Before the plan has a row the pane says
-    what was asked for, not "Or :ask", which a replay refuses. A finished plan's goal row reads done."""
+    nothing is planned yet (the recording's first change is init's settings, a look before `asked`), not
+    "Or :ask", which a replay refuses. A finished plan's goal row reads done."""
     head, lines = demo.load(demo.SHIPPED)
     gaps = [b["at"] - a["at"] for a, b in zip(lines, lines[1:], strict=False)]
     assert lines[0]["at"] == 0 and min(gaps) >= demo.HOLD and len(lines) * demo.HOLD > 20
@@ -580,8 +581,7 @@ def test_each_change_stays_on_the_screen_and_space_dot_and_r_pause_step_and_play
     n = len(lines)
     assert seen["first"][:2] == (1, f"replay · {head['shown']} · {head['day']} · 1 of {n}")
     assert seen["first"][2].startswith("space pause · . next · r again · Enter record · l output · ? help")
-    asked = "the script asked the planner: “make the app friendlier”. What it proposes is next."
-    assert asked in seen["first"][3]
+    assert "Nothing is planned yet in this recording. What is planned is next." in seen["first"][3]
     assert seen["paused"][:2] == (1, f"replay · {head['shown']} · {head['day']} · paused at 1 of {n}")
     assert seen["paused"][2].startswith("space play · . next")
     proposed = dict.fromkeys(("friendly", "greet", "farewell"), "proposed")
