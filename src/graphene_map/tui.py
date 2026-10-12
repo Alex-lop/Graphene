@@ -433,10 +433,9 @@ class Ask(ModalScreen[str | None]):
 def legend(wide: int) -> Text:
     """The glyphs and colours, one line: what each state reads as, ∅ (a check red first flagged: it passes
     at the base, or fails outside the leaf's scope) and the graph's heavy line; where the words do not fit,
-    the person's move (magenta: yours, review, came back) as one, and where they still do not, two lines:
-    the states and the heavy line, then review, came back and ∅, so every glyph is named once."""
+    two lines: the states and the heavy line, then review, came back and ∅, so every glyph is named once
+    (never `◇◆↩ yours` as one: at 100 columns that left review and came back unnamed)."""
     looks = [(P.look(w)[0], P.look(w)[1], w) for w in LEGEND]
-    short = [("".join(g for g, _, _ in looks[:3]), P.look("yours")[1], "yours"), *looks[3:]]
     nothing = Text.assemble(("∅", "dim"), " check flagged")  # which way, the pane says
     heavy = Text.assemble(("━", "bold"), " critical")
 
@@ -446,10 +445,9 @@ def legend(wide: int) -> Text:
             out.append(glyph, colour).append(f" {word}  ")
         return out
 
-    for form in (looks, short):
-        out = line(form)
-        if out.cell_len + nothing.cell_len + 2 + heavy.cell_len <= wide:
-            return Text.assemble(out, nothing, "  ", heavy)
+    out = line(looks)
+    if out.cell_len + nothing.cell_len + 2 + heavy.cell_len <= wide:
+        return Text.assemble(out, nothing, "  ", heavy)
     return Text.assemble(line([looks[0], *looks[3:]]), heavy, "\n", line(looks[1:3]), nothing)
 
 

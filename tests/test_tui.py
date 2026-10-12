@@ -2425,6 +2425,15 @@ def test_the_legend_names_every_glyph_once_and_the_time_view_has_a_key_of_its_ow
 
     watch(repo, [], size=(80, 24), before=narrow)
 
+    async def middle(app, pilot):  # the after-walk: at 100 the legend still lumped `◇◆↩ yours`
+        await pilot.press("question_mark")
+        await pilot.pause()
+        legend = [line.strip() for line in shown(app, app.screen.query_one("#legend").region)]
+        assert legend[:2] == ["◇ yours  ? proposed  ○ ready  ● running  ◌ waiting  ✓ done  ━ critical",
+                              "◆ review  ↩ came back  ∅ check flagged"], legend  # fmt: skip
+
+    watch(repo, [], size=(100, 30), before=middle)
+
     async def timed(app, pilot):
         app.showing = "time"
         app.refresh_plan()
