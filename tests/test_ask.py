@@ -65,9 +65,9 @@ def test_a_planner_reads_the_repo_and_its_proposal_is_added_for_the_person_to_pr
     assert said.exit_code == 0, said.output
     assert "proposed ids: users returns ids" in said.stdout
     assert "the planner says:\n  I read api.py and schema.py" in said.stdout  # its prose, a line each
-    assert said.stdout.splitlines()[-1] == (
-        "next: `graphene plan accept`, or prune it in `graphene watch` (y accepts, d drops)"
-    )
+    last = said.stdout.splitlines()[-1]  # one row at 80 columns, where the ask is read (the judge sized it)
+    assert last == "next: `graphene plan accept`, or prune in `graphene watch` (y accepts, d drops)"
+    assert len(last) <= 80, len(last)
     with Store.open(repo) as store:
         ids = plan.get(store, "ids")
         assert (ids.state, ids.parent) == (PROPOSED, "users-api") and ids.proposed_by.startswith("planner:")
@@ -86,7 +86,7 @@ def test_under_plan_first_auto_one_small_leaf_from_ask_waits_for_the_person(repo
     assert person("plan", "first", "auto").exit_code == 0
     one = 'print("```plan")\nprint("- ids  [ids]\\n    scope: api.py\\n    check: true")\nprint("```")\n'
     said = person("ask", "add ids", "--with", planner(tmp_path, one, monkeypatch))
-    assert said.exit_code == 0 and "next: `graphene plan accept`, or prune it" in said.stdout, said.output
+    assert said.exit_code == 0 and "next: `graphene plan accept`, or prune in" in said.stdout, said.output
     with Store.open(repo) as store:
         assert plan.get(store, "ids").state == PROPOSED and not store.node_log("ids", ("accepted",))
 

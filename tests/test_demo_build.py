@@ -48,7 +48,7 @@ def test_scene_03_waits_for_the_line_the_ask_ends_on():
     import re
 
     [wait] = build.WAIT.finditer((DEMO / "scenes" / "03-plan.tape").read_text())
-    last = "next: `graphene plan accept`, or prune it in `graphene watch` (y accepts, d drops)"
+    last = "next: `graphene plan accept`, or prune in `graphene watch` (y accepts, d drops)"
     assert re.search(wait["text"], last, re.M), wait["text"]
 
 

@@ -1093,7 +1093,7 @@ def register(cli: typer.Typer, root, open_store, fail):
                 hint = (
                     "y accepts, d drops"
                     if here
-                    else "`graphene plan accept`, or prune it in `graphene watch` (y accepts, d drops)"
+                    else "`graphene plan accept`, or prune in `graphene watch` (y accepts, d drops)"
                 )
                 out(f"next: {hint}")
             return ids
