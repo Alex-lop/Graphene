@@ -422,7 +422,7 @@ def test_at_80_columns_a_long_reason_leaves_every_fix_in_sight_and_the_bottom_li
     for key in ("w  widen its scope", "b  a sibling leaf", "n  wait on ids", "t  ask the planner"):
         assert key in side, side
     assert "? ask the planner" not in seen["status"]  # t asks it, in the pane above with its command
-    assert "e edit its check" in seen["status"] and "? help" in seen["status"]  # the free fix, and the help
+    assert "e edit check" in seen["status"] and "? help" in seen["status"]  # the free fix, and the help
     seen, _ = watch(repo, ["G", "enter"])
     assert "Widen the scope, or add a leaf for it." in seen["detail"]  # the whole reason, in its record
 
@@ -1971,7 +1971,7 @@ def test_question_mark_is_help_even_on_a_leaf_that_came_back_where_t_asks_the_pl
     seen, _ = watch(repo, ["G", "question_mark"], size=(120, 36))
     assert seen["screen"] == "Help" and started == []
     seen, _ = watch(repo, ["G"], size=(120, 36))
-    assert "t ask the planner" in seen["status"] and "e edit its check" in seen["status"]
+    assert "t ask the planner" in seen["status"] and "e edit check" in seen["status"]
     watch(repo, ["G", "t"])
     assert started == [["ask", "schema came back: propose what would let it be done", "--about", "schema"]]
 
@@ -2037,11 +2037,7 @@ def test_a_leaf_that_came_back_offers_r_to_run_it_again_and_its_ask_command_can_
     every_state(repo)
     for size in SIZES:
         seen, _ = at(repo, "docs", size)
-        if size[0] >= 120:
-            assert "r run it again" in seen["status"], (size, seen["status"])
-        else:  # at 80 with three offers r gives way: ? help and q quit end every key line (the feel pass)
-            keys = seen["status"].splitlines()[1]
-            assert keys == "w widen · b sibling · n wait · e edit its check · ? help · q quit", keys
+        assert "r run it again" in seen["status"], (size, seen["status"])
         flat = " ".join(seen["detail"].split())
         assert "graphene ask … --about" not in flat and "graphene ask 'docs came back: propose" in flat
     seen, _ = at(repo, "docs", (120, 36), keys=["x"])

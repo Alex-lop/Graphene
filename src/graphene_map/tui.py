@@ -1585,9 +1585,8 @@ class Watch(App):
         if word == "came back":
             offers = [OFFERED[k] for k in self.offer_keys()]
             again = [] if "r" in self.offer_keys() else ["r run it again"]  # else r is the offer
-            # the free fix, running it again and the help before t, which the pane lists with its command:
-            # with three offers at 80 columns, t is the one that gives way
-            return [*on, *offers, "e edit its check", *again, "? help", "t ask the planner", "Enter record",
+            # the free fix and running it again before t, which the pane lists with its command
+            return [*on, *offers, "e edit check", *again, "? help", "t ask the planner", "Enter record",
                     "q quit"]  # fmt: skip
         shut = ["za unfold"] if node is not None and node.allow_expand and not node.is_expanded else []
         if word in KEYS:
