@@ -487,7 +487,8 @@ def run_node(
             )
             if not (turns or m.get("prompt_tokens") or dollars):  # Codex: only as a turn ends
                 used = "no usage yet"
-            head = f"{node.id} · {round(time.monotonic() - began)} s · {used} · "
+            tries = f"attempt {attempt} · " if attempt > 1 else ""  # named past the first, as the pane does
+            head = f"{node.id} · {tries}{round(time.monotonic() - began)} s · {used} · "
             say(head + elide(m.get("last") or "nothing yet", max(80 - len(head), 20)))  # one row at 80
 
     try:
