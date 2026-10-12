@@ -58,16 +58,25 @@ def stream(text: str, tool: str | None = None) -> None:
 
 
 def proposal() -> str:
-    leaves = ["  ? name the new source in the README  [readme]\n      scope: README.md\n      check: true"]
+    leaves = ["  ? name the new source in the README  [readme]\n      scope: README.md\n"
+              "      check: true"]  # fmt: skip
     if pathlib.Path("normalize/fields.py").exists():
-        leaves.insert(0, "  ? map the xml fields  [fields]\n      scope: normalize/fields.py\n      check: true")
+        leaves.insert(0, "  ? map the xml fields  [fields]\n      scope: normalize/fields.py\n"
+                         "      check: true")  # fmt: skip
     body = "\n".join(leaves)
-    return f"I read the repo.\n```plan\ngoal: the new feed loads like the others\n- the new feed  [feed]\n{body}\n```\n"
+    head = "I read the repo.\n```plan\ngoal: the new feed loads like the others\n- the new feed  [feed]\n"
+    return f"{head}{body}\n```\n"
 
 
 if os.environ.get("GRAPHENE_PLANNER"):
     last = session[-1].lower()
     bad = last == "f" or (last in "0123" and not resumed)
+    if fmt == "stream-json":  # two looks at the repo first, as a planner makes: `ask` says each as it happens
+        seen = "normalize/fields.py" if pathlib.Path("normalize/fields.py").exists() else "README.md"
+        emit({"type": "assistant", "message": {"id": f"m-{session[:8]}-look", "model": MODEL, "content": [
+            {"type": "tool_use", "id": "t-read", "name": "Read", "input": {"file_path": seen}},
+            {"type": "tool_use", "id": "t-grep", "name": "Grep", "input": {"pattern": "def load"}}],
+            "usage": {"input_tokens": 300, "output_tokens": 20}}})  # fmt: skip
     stream(proposal().replace("check: true", "signoff: perhaps", 1) if bad else proposal())
     sys.exit(0)
 
