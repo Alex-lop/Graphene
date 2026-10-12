@@ -59,6 +59,7 @@ WIDE = 110  # columns: from here the node pane sits beside the tree, below it un
 HELP_WIDE = 72  # a help row's columns: from twice this the groups sit in two columns
 PANE = 44  # beside the tree, the node pane keeps at least this many columns
 QUIET = 120  # seconds without a sign of life before a running leaf reads "quiet for n min"
+ASKING = 180  # seconds an ask is counted up on the status line with no row of the planner's yet: then dead
 METERED = 4  # the running leaves the meter's strip has rows for: the rest are counted
 WRAP = Console(width=400, color_system=None)  # only for Text.wrap: styled text wrapped at words
 
@@ -978,6 +979,12 @@ class Watch(App):
         everything = store.node_log()  # ponytail: all of it each tick; read on from the last id if it slows
         now, person = self.clock(everything), self.person(everything)
         usage = [e for e in everything if e["kind"] == "usage"]  # what the planners and executors cost
+        # the planner's half-minute: the last ask, while no row of the planner's has landed since it; a
+        # failed or stopped ask never gets one, so a counter past ASKING is dead and dropped
+        last = next((e for e in reversed(everything)
+                     if e["kind"] == "asked" or (e["actor"] or "").startswith("planner")), None)  # fmt: skip
+        waits = last is not None and last["kind"] == "asked"
+        since = (now - datetime.fromisoformat(last["timestamp"])).total_seconds() if waits else ASKING
         self.counts = {
             "you": len(tops) + len(yours),
             "proposed": len(tops),  # what y on the goal accepts: `you` counts leaves that came back too
@@ -992,6 +999,7 @@ class Watch(App):
             "first": P.plan_first(store),
             "with": f" with {Path(executor[0]).name}" if executor else "",
             "spent": sum(e["detail"].get("dollars") or 0 for e in usage) if usage else None,
+            "asking": int(since) if since < ASKING else None,  # seconds the planner has been asked
             "agents": M.agents(everything, now),  # the two clocks
             "mine": M.you(everything, person),
         }
@@ -1468,6 +1476,10 @@ class Watch(App):
             (c["done"], ""),
             (f"plan first: {c['first']}", ""),
         ]
+        if c.get("asking") is not None:  # the planner's half-minute, in the agents' slot: an agent at work
+            said = ago(c["asking"])[0]  # past two minutes `quiet for 2 min`, as a running leaf's row says
+            said = f"planner {said}" if "quiet" in said else f"planner asked {said}"
+            long[1] = short[1] = (said, P.look("running")[1])
         named = [*long[:3], (long[3][0] + (c.get("with", "") if c["ready"] else ""), ""), *long[4:]]
         keyed = [[(f"{text} by your keys" if k == 2 else text, how) for k, (text, how) in enumerate(form)]
                  for form in (named, long)]  # fmt: skip
@@ -2093,7 +2105,8 @@ class Watch(App):
         code = proc.wait()
         said = R.tail(log, 400)
         tried = max((k for k, line in enumerate(said) if line.startswith("asking the planner")), default=-1)
-        news = [line.strip() for line in said[tried + 1 :] if line.strip() and "(the plan of " not in line]
+        news = [line.strip() for line in said[tried + 1 :]  # the planner's tool calls, indented, are no gist
+                if line.strip() and not line.startswith("  ") and "(the plan of " not in line]  # fmt: skip
         # a talk's last line, past the planner's bill (`the planner (claude …): 2 calls, …`): why it ended
         last = [line for line in news if not line.startswith("the planner (")] if argv[0] == "talk" else news
         gist = ((last or news)[-1] if argv[0] in ("run", "talk") else news[0]) if news else ""

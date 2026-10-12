@@ -2144,6 +2144,55 @@ def test_an_ask_whose_board_the_repo_answered_says_which_on_the_bottom_line(repo
                            "in the repo"), said  # fmt: skip
 
 
+def test_the_planners_tool_calls_under_the_asking_line_are_no_gist(repo):
+    """The ask's terminal prints one indented line per planner tool call now (`  reading api.py`); the
+    bottom line's gist for an ask that failed is the planner's own first line after them, as it was."""
+    proposed(repo)
+    log = repo / ".graphene" / "runs" / "ask.txt"
+    log.parent.mkdir(parents=True, exist_ok=True)
+    log.write_text("asking the planner (claude)…\n  reading api.py\n  searching 'def load'\n"
+                   "the planner says:\n  it cannot be done in this scope\n")  # fmt: skip
+
+    class Ended:
+        def wait(self):
+            return 1
+
+    async def ask_ends(app, pilot):
+        await asyncio.to_thread(app.follow, Ended(), ["ask", "users"], log)
+        await pilot.pause(0.2)
+
+    seen, _ = watch(repo, [], size=(160, 40), before=ask_ends)
+    said = seen["status"].splitlines()[-1]
+    assert said.startswith("✗ the planner: the planner says:") and "reading" not in said, said
+
+
+def test_while_the_planner_is_asked_the_agents_slot_counts_the_seconds_since(repo):
+    """The feel pass (R1): the first command the README has a stranger type went dark for half a minute,
+    while `graphene watch` beside it read `agents 0`. Its `asked` row is read now: until a row of the
+    planner's lands the agents' slot counts up, and a counter three minutes old is dead (a failed or
+    stopped ask never gets its row)."""
+    import time
+
+    def stamp(ago):
+        return time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime(time.time() - ago))
+
+    proposed(repo)
+    with Store.open(repo) as store:
+        store.log_node("*", stamp(12), "asked", "alex", None, None, {"note": "make it faster"})
+    for size in SIZES:
+        top = watch(repo, [], size=size)[0]["status"].splitlines()[0]
+        assert re.search(r" · planner asked 1[2-9] s ago · you", top) and "agents" not in top, (size, top)
+    with Store.open(repo) as store:
+        store.log_node("*", plan._now(), "usage", "planner:claude", None, None,
+                       {"model": "claude-sonnet-5-5", "calls": 1, "dollars": 0.05})  # fmt: skip
+    top = watch(repo, [])[0]["status"].splitlines()[0]
+    assert "planner" not in top and " · bill $0.05 · you" in top, top  # answered: the ask's bill, no agent
+    with Store.open(repo) as store:
+        store.log_node("*", stamp(200), "asked", "alex", None, None, {"note": "and faster still"})
+    top = watch(repo, [])[0]["status"].splitlines()[0]
+    assert "planner" not in top, top
+
+
 def test_on_the_goal_y_is_offered_only_when_something_is_proposed(repo):
     """Walk 2026-09-28: after a run, with a leaf that came back and nothing proposed, the goal's key
     line offered `y accept it all`."""
