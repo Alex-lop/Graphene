@@ -441,7 +441,7 @@ def test_a_claude_code_planners_tool_calls_are_said_as_they_happen(repo, tmp_pat
     read = {"type": "assistant", "message": {"id": "m0", "content": [call] * 41}}
     (tmp_path / "try1.jsonl").write_text(f"{json.dumps(read)}\n{(tmp_path / 'try1.jsonl').read_text()}")
     (tmp_path / "claude").write_text("#!/bin/sh\nhead -1 try1.jsonl\n"
-                                     "for i in $(seq 100); do [ -e go ] && break; sleep 0.05; done\n"
+                                     "for i in $(seq 400); do [ -e go ] && break; sleep 0.05; done\n"
                                      "[ -e go ] && tail -n +2 try1.jsonl\n")  # fmt: skip
     said: list[str] = []
 
@@ -453,6 +453,7 @@ def test_a_claude_code_planners_tool_calls_are_said_as_they_happen(repo, tmp_pat
     import gc
     import warnings
 
+    gc.collect()  # earlier tests' garbage, collected now, is not this ask's leak (the full suite showed one)
     with warnings.catch_warnings(record=True) as leaked, Store.open(repo) as store:
         warnings.simplefilter("always", ResourceWarning)  # the read end is closed, as communicate() did
         assert A.ask(store, repo, "ids", planner, say=heard)[0] == "proposed ids: users returns ids"
