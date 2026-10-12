@@ -204,6 +204,8 @@ def test_graphene_plan_precheck_is_the_persons_and_says_each_leaf(repo):
     assert (
         "l0" in shown.stdout and "passes already" in shown.stdout and "node set <id> --check" in shown.stdout
     )
+    assert "passes already             (`true`) " in shown.stdout  # the check it judged, as the run names it
+    assert "--check '<a real one>'" in shown.stdout  # the run's and watch's placeholder, not a third
     refused = runner.invoke(build(), ["plan", "precheck"], env={"GRAPHENE_AS": "agent:bot"})
     assert refused.exit_code == 1 and "the person's" in refused.output
 
