@@ -1,0 +1,24 @@
+| the plan of …4976-a41d-71ab2ec13bc9/scratchpad/feel-screen-shots/repos/metered |
+|▼ ○ users come back with their ids, and the schema says so  1/9 done            |
+|├ ▶ ○ the API                                       api     1 came back, 4 more |
+|├ ▶ ○ the schema                                    schema  1 review, 2 more    |
+|└   ? an idea                                       idea    proposed            |
+|────────────────────────────────────────────────────────────────────────────────|
+| users come back with their ids, and the schema says so                         |
+| the goal · 1/9 done                                                            |
+|                                                                                |
+| ○ the API                                                    api     0/5 done  |
+| ○ the schema                                                 schema  1/3 done  |
+| ? an idea                                                    idea    proposed  |
+|                                                                                |
+| waiting  docs came back · more on ids (running) · mine is yours · rule is in   |
+|          review · idea is proposed, for you to accept or prune                 |
+|                                                                                |
+|                                                                                |
+|                                                                                |
+| ● ids · claude sonnet-5-5 · attempt 1 · 0s · 1 turn · $0.42                    |
+|   running pytest -q · 0 s ago · 2 files, 1 outside · 412k in, 9k out           |
+| ● ready1 · script.sh · attempt 1 · 0s · no meter                               |
+|   step 3 of 5 · 0 s ago                                                        |
+| 4 on you · agents 2 <1m $0.42 · you 2 acts ~1m · none ready · 1 came back      |
+| y accept it all · E edit as text · za fold all · Tab view · ? help · q quit    |

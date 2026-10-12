@@ -1,0 +1,36 @@
+| the plan of …esktop-AllThingsAgenticHackathon/e37ef5e4-ecd5-4976-a41d-71ab2ec13bc9/scratchpad/feel/screen/repos/states |
+|▼ ○ users come back with their ids, and the schema says so    1/9 done   │ users come back with their ids, and the      |
+|├ ▼ ○ the API                                         api     0/5 done   │ schema says so                               |
+|│ ├   ● users returns ids                             ids     running    │ the goal · 1/9 done                          |
+|│ ├   ↩ document it                                   docs    came back  │                                              |
+|│ ├   ◌ the contract test names every enabled…        more    waiting    │ ○ the API                  api     0/5 done  |
+|│ ├   · the rest, to be split                         later   to fill in │ ○ the schema               schema  1/3 done  |
+|│ └   ◇ read it over                                  mine    yours      │ ? an idea                  idea    proposed  |
+|├ ▼ ○ the schema                                      schema  1/3 done   │                                              |
+|│ ├   ◆ a rule for ids                                rule    review     │ waiting  docs came back · more on ids        |
+|│ ├   ✓ the users table                               table   done       │          (running) · mine is yours · rule    |
+|│ └   ○ a sample                                      ready1  ready      │          is in review · idea is proposed,    |
+|└   ? an idea                                         idea    proposed   │          for you to accept or prune          |
+|                                                                         │                                              |
+|                                                                         │                                              |
+|                                                                         │                                              |
+|                                                                         │                                              |
+|                                                                         │                                              |
+|                                                                         │                                              |
+|                                                                         │                                              |
+|                                                                         │                                              |
+|                                                                         │                                              |
+|                                                                         │                                              |
+|                                                                         │                                              |
+|                                                                         │                                              |
+|                                                                         │                                              |
+|                                                                         │                                              |
+|                                                                         │                                              |
+|                                                                         │                                              |
+|                                                                         │                                              |
+|                                                                         │                                              |
+|                                                                         │                                              |
+|                                                                         │                                              |
+| ● ids · claude · 0s · no meter · Bash cat api.py · 0 s ago · attempt 1                                                 |
+| waiting on you: 4 · agents 1 · <1m · you 1 act ~1m · R runs 1 ready · 1 came back · 1/9 done · plan first: auto (P)    |
+| y accept it all · E edit the plan as text · za fold all · Tab view · ? help · q quit                                   |

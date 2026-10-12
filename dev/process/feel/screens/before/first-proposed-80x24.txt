@@ -1,0 +1,24 @@
+| the plan of …e4-ecd5-4976-a41d-71ab2ec13bc9/scratchpad/feel/screen/repos/first |
+|▼ ? users come back with their ids                                     proposed |
+|├ ▼ ? the API                                                  api     proposed |
+|│ ├   ? users returns ids                                      ids     proposed |
+|│ └   ? document it                                            docs    proposed |
+|└   ? the schema                                               schema  proposed |
+|────────────────────────────────────────────────────────────────────────────────|
+| users come back with their ids                                                 |
+| the goal · proposed with the tree: accepting any of it accepts it              |
+|                                                                                |
+| ? the API                                                    api     proposed  |
+| ? the schema                                                 schema  proposed  |
+|                                                                                |
+| waiting  api and schema are proposed, for you to accept or prune               |
+|                                                                                |
+|                                                                                |
+|                                                                                |
+|                                                                                |
+|                                                                                |
+|                                                                                |
+|                                                                                |
+|                                                                                |
+| 2 on you · agents 0 · you 0 acts ~0m · none ready · 0/3 done · plan first: off |
+| y accept it all · E edit the plan as text · za fold all · Tab view · ? help    |

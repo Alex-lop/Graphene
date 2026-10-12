@@ -1,0 +1,24 @@
+| the plan of …-4976-a41d-71ab2ec13bc9/scratchpad/feel-screen-shots/repos/forked |
+|▼ ○ a friendlier app                                               0/3 done     |
+|├ ▼ ● say hello                                            greet   running      |
+|│ ├   ● Nemotron-3-Nano-fake                               fork 1  running      |
+|│ ├   – Nemotron-3-Nano-fake                               fork 2  lost         |
+|│ ├   ✗ Nemotron-3-Nano-fake                               fork 3  check failed |
+|│ └   ⊘ Nemotron-3-Nano-fake                               fork 4  gave up      |
+|├   ↩ the schema                                           schema  came back    |
+|└   · the rest, to be split                                later   to fill in   |
+|────────────────────────────────────────────────────────────────────────────────|
+| a friendlier app                                                               |
+| the goal · 0/3 done                                                            |
+|                                                                                |
+| ● say hello                                                greet   running     |
+| ↩ the schema                                               schema  came back   |
+| · the rest, to be split                                    later   to fill in  |
+|                                                                                |
+| waiting  schema came back                                                      |
+|                                                                                |
+|                                                                                |
+|                                                                                |
+|                                                                                |
+| 1 on you · agents 0 · you 2 acts ~1m · none ready · 1 came back · 0/3 done     |
+| E edit as text · za fold all · Tab view · ? help · q quit                      |
