@@ -2246,6 +2246,27 @@ def test_while_the_planner_is_asked_the_agents_slot_counts_the_seconds_since(rep
     assert "planner" not in top, top
 
 
+def test_a_finished_run_that_took_a_minute_reads_its_bill_not_an_agents_clock_at_0(repo):
+    """The after-walk: once a run had taken a minute the finished plan's status read `agents 0 1m $0.04`,
+    an agents' clock at 0 beside a time nothing was running. Nothing running reads the bill, whatever
+    the seconds; the minutes a run took stay in the time view's note."""
+    import time
+
+    proposed(repo)
+    person("plan", "accept")
+    with Store.open(repo) as store:
+        land(repo, store, "ids", "api.py", "def users():\n    return ['ids']\n")
+        ago = time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime(time.time() - 61))
+        store.log_node("ids", ago, "attempt", RUN.label, None, None, {"attempt": 1, "meter": "claude"})
+        store.log_node("ids", plan._now(), "usage", RUN.label, None, None,
+                       {"model": "claude-sonnet-5-5", "calls": 2, "dollars": 0.04, "attempt": 1})  # fmt: skip
+        store.log_node("ids", plan._now(), "ended", RUN.label, None, None,
+                       {"attempt": 1, "exit": 0, "seconds": 61})  # fmt: skip
+    for size in SIZES:
+        top = watch(repo, [], size=size)[0]["status"].splitlines()[0]
+        assert "bill $0.04" in top and "agents" not in top, (size, top)
+
+
 def test_on_the_goal_y_is_offered_only_when_something_is_proposed(repo):
     """Walk 2026-09-28: after a run, with a leaf that came back and nothing proposed, the goal's key
     line offered `y accept it all`."""

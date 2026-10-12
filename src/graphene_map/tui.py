@@ -1464,7 +1464,7 @@ class Watch(App):
             unpriced = f"{tokens(agents['unpriced'])} tokens unpriced"
             spent = f"{spent} + {unpriced}" if c.get("spent") else unpriced
         mine = c.get("mine") or {"acts": 0, "minutes": 0}
-        ran, acts = agents["running"] or agents["seconds"], _s(mine["acts"], "act")
+        ran, acts = agents["running"], _s(mine["acts"], "act")  # the minutes a run took: the time view's note
         took = agents["seconds"] // 60 or ("<1" if agents["seconds"] or agents["running"] else 0)
         clock = " ".join([f"{agents['running']} running", f"{took} min", *([spent] if spent else [])])
         # one phrase: a dot between a clock's fields read as a dot between facts; the planner's dollars,
