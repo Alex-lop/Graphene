@@ -6,7 +6,7 @@
 key. It needs no key, no network and no Docker, only git, and nothing in it runs. The top line says it
 is a replay, what made it, the day, and which change it is at (`3 of 12`). What made it is read from
 the run: "as it ran, live" only when every model call it logged (each `usage` row) says it went to
-Token Factory, "a scripted stand-in, not Nemotron" when any did not or does not say, and "a run with
+Token Factory, "a scripted stand-in, no model ran" when any did not or does not say, and "a run with
 no model calls on record" when it logged none. In a stand-in's replay the names the run gave the model,
 the planner and the executor read as the stand-in's (`run:stand-in`, `stand-in-Nano`), never as
 Nemotron's. Before the first proposal the pane says what the planner was asked. A key that would

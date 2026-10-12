@@ -56,7 +56,7 @@ SHIPPED = Path(__file__).with_name("demo.jsonl")
 ENDED = "ended: last frame"
 NEXT = "the end · try it on your repo: graphene init, then graphene ask what you want"  # 77 columns
 REFUSED = "a replay: nothing runs here"
-LIVE, STAND_IN = "as it ran, live", "a scripted stand-in, not Nemotron"  # what the top line says made it
+LIVE, STAND_IN = "as it ran, live", "a scripted stand-in, no model ran"  # what the top line says made it
 NO_CALLS = "a run with no model calls on record"
 EVERY = 0.2  # seconds between the recorder's looks at the store
 LONG = 3.0  # seconds: a longer wait is replayed in this long, and the top line says by how much
@@ -288,11 +288,12 @@ def banner(head: dict, state: str = "") -> list[tuple[str, str]]:
 
 def what(line: dict) -> str:
     """One recorded change in words, for the bottom line: the rows the plan's log gained, else the nodes
-    that changed and their state, else an executor's output; so a step never looks like nothing."""
+    that changed and their state, else an executor's output; so a step never looks like nothing. A kind
+    reads with spaces, as the record pane says it."""
 
     def row(r: dict) -> str:
         detail = json.loads(r.get("detail") or "{}") if r["kind"] == "board" else {}
-        said = f"{r['node_id']} {r['kind']}".removeprefix("* ")
+        said = f"{r['node_id']} {r['kind'].replace('_', ' ')}".removeprefix("* ")
         return f"{said}: {detail.get('act', '')} {detail.get('item', '')}".strip() if detail else said
 
     said = [row(r) for r in line.get("node_log") or []]
