@@ -103,7 +103,7 @@ EMPTY = (
     "here. Or :ask <what you want>. ? lists the keys."
 )
 KEYS = {  # the bottom line, when no command has just spoken: what the keys do on this row
-    "proposed": ["y accept", "d drop", "e edit", "E edit with children"],
+    "proposed": ["y accept", "d drop", "e edit", "E edit as text"],  # one label on every row: ? explains it
     "review": ["y sign off", "x send back", "Enter record"],
     "running": ["l output", "x release", "Enter record"],
     "done": ["x reopen", "Enter record", "c diff"],
@@ -433,10 +433,9 @@ class Ask(ModalScreen[str | None]):
 def legend(wide: int) -> Text:
     """The glyphs and colours, one line: what each state reads as, ∅ (a check red first flagged: it passes
     at the base, or fails outside the leaf's scope) and the graph's heavy line; where the words do not fit,
-    the person's move (magenta: yours, review, came back) as one, and where they still do not, two lines:
-    the states and the heavy line, then review, came back and ∅, so every glyph is named once."""
+    two lines: the states and the heavy line, then review, came back and ∅, so every glyph is named once
+    (never `◇◆↩ yours` as one: at 100 columns that left review and came back unnamed)."""
     looks = [(P.look(w)[0], P.look(w)[1], w) for w in LEGEND]
-    short = [("".join(g for g, _, _ in looks[:3]), P.look("yours")[1], "yours"), *looks[3:]]
     nothing = Text.assemble(("∅", "dim"), " check flagged")  # which way, the pane says
     heavy = Text.assemble(("━", "bold"), " critical")
 
@@ -446,10 +445,9 @@ def legend(wide: int) -> Text:
             out.append(glyph, colour).append(f" {word}  ")
         return out
 
-    for form in (looks, short):
-        out = line(form)
-        if out.cell_len + nothing.cell_len + 2 + heavy.cell_len <= wide:
-            return Text.assemble(out, nothing, "  ", heavy)
+    out = line(looks)
+    if out.cell_len + nothing.cell_len + 2 + heavy.cell_len <= wide:
+        return Text.assemble(out, nothing, "  ", heavy)
     return Text.assemble(line([looks[0], *looks[3:]]), heavy, "\n", line(looks[1:3]), nothing)
 
 
@@ -1466,7 +1464,7 @@ class Watch(App):
             unpriced = f"{tokens(agents['unpriced'])} tokens unpriced"
             spent = f"{spent} + {unpriced}" if c.get("spent") else unpriced
         mine = c.get("mine") or {"acts": 0, "minutes": 0}
-        ran, acts = agents["running"] or agents["seconds"], _s(mine["acts"], "act")
+        ran, acts = agents["running"], _s(mine["acts"], "act")  # the minutes a run took: the time view's note
         took = agents["seconds"] // 60 or ("<1" if agents["seconds"] or agents["running"] else 0)
         clock = " ".join([f"{agents['running']} running", f"{took} min", *([spent] if spent else [])])
         # one phrase: a dot between a clock's fields read as a dot between facts; the planner's dollars,
@@ -1595,7 +1593,7 @@ class Watch(App):
         if word in KEYS:
             keys = ["y accept and run", *KEYS[word][1:]] if self.runs_on_y(self.chosen()) else KEYS[word]
             return [*on, *shut, *keys, *tail]
-        return [*(shut or ["za fold"]), "r run what is ready here", "E edit it as text", *tail]  # a sub-goal
+        return [*(shut or ["za fold"]), "r run what is ready here", "E edit as text", *tail]  # a sub-goal
 
     def offer_keys(self) -> list[str]:
         return self.offered.get(self.selected() or "", [])

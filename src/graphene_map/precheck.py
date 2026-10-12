@@ -326,8 +326,8 @@ def said(rows) -> list[str]:
                 its, one = ("its", node.id) if len(ids) == 1 else ("their", "<id>")
                 check = d["check"] if len(d["check"]) <= 40 else d["check"][:39] + "…"
                 lines.append(f"{', '.join(ids)}: {its} check (`{check}`) passes before any work: it would "
-                             f"pass with nothing done; `graphene node set {one} --check '<a real one>'`, or "
-                             "e in `graphene watch`")  # fmt: skip
+                             f"pass with nothing done; `graphene node set {one} --check '<a real one>'`"
+                             )  # fmt: skip  (watch's own pane says e edits it)
         elif d["verdict"] == "outside":
             lines.append(f"{node.id}: its check names {', '.join(d['paths'])}, outside its scope, at {at}")
         elif d["verdict"] == "environment":

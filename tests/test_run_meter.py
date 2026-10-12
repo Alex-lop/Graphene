@@ -154,6 +154,30 @@ def test_the_run_says_every_heartbeat_what_each_metered_leaf_is_doing(repo, monk
     assert beats and said.index(beats[0]) < said.index("a attempt 1: the executor ended (exit 0)"), said
 
 
+# Says nothing for a while, then does the leaf: a quiet executor the meter has read nothing from.
+QUIET = """#!{python}
+import pathlib, time
+time.sleep(1.5)
+pathlib.Path("a.txt").write_text("done\\n")
+"""
+
+
+def test_a_quiet_leafs_heartbeat_says_one_thing_not_two_nothings(repo, monkeypatch):
+    """The after-walk: a leaf the meter had read nothing from beat `fields · 30 s · no usage yet ·
+    nothing yet`, nothing said twice. With no usage and nothing read it says it is still running and
+    nothing has been read from it, once."""
+    monkeypatch.setattr(R, "HEARTBEAT", 0.6)
+    script = stand_in(repo, "claude", QUIET.format(python=sys.executable))
+    said: list[str] = []
+    with Store.open(repo) as store:
+        R.run_plan(store, repo, f"{script} --output-format stream-json", say=said.append,
+                   logs=repo / ".graphene" / "runs")  # fmt: skip
+        assert plan.get(store, "a").state == DONE
+    quiet = re.compile(r"a · \d+ s · still running, nothing read from it yet")
+    assert [line for line in said if quiet.fullmatch(line)], said
+    assert not [line for line in said if "nothing yet" in line or "no usage yet" in line], said
+
+
 # Prints the fixture's lines, works a while, and does the leaf only when resumed (its second attempt).
 AGAIN = """#!{python}
 import pathlib, sys, time

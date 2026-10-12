@@ -134,6 +134,7 @@ def test_the_replays_words_name_no_model_and_speak_without_underscores():
     The top line says no model ran; a kind reads with spaces, as the record pane says it."""
     assert "Nemotron" not in demo.STAND_IN and "stand-in" in demo.STAND_IN
     assert demo.what({"node_log": [{"node_id": "*", "kind": "goal_proposed"}]}) == "goal proposed"
+    assert demo.what({}) == "settings recorded"  # the first frame: a verb, not `the plan's settings`
     _, lines = demo.load(demo.SHIPPED)
     assert not [said for said in map(demo.what, lines) if "_" in said]
 
