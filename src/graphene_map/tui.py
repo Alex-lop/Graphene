@@ -103,7 +103,7 @@ EMPTY = (
     "here. Or :ask <what you want>. ? lists the keys."
 )
 KEYS = {  # the bottom line, when no command has just spoken: what the keys do on this row
-    "proposed": ["y accept", "d drop", "e edit", "E edit with children"],
+    "proposed": ["y accept", "d drop", "e edit", "E edit as text"],  # one label on every row: ? explains it
     "review": ["y sign off", "x send back", "Enter record"],
     "running": ["l output", "x release", "Enter record"],
     "done": ["x reopen", "Enter record", "c diff"],
@@ -1593,7 +1593,7 @@ class Watch(App):
         if word in KEYS:
             keys = ["y accept and run", *KEYS[word][1:]] if self.runs_on_y(self.chosen()) else KEYS[word]
             return [*on, *shut, *keys, *tail]
-        return [*(shut or ["za fold"]), "r run what is ready here", "E edit it as text", *tail]  # a sub-goal
+        return [*(shut or ["za fold"]), "r run what is ready here", "E edit as text", *tail]  # a sub-goal
 
     def offer_keys(self) -> list[str]:
         return self.offered.get(self.selected() or "", [])
