@@ -477,15 +477,18 @@ def run_node(
         nonlocal due
         if read:
             read()
-        if meter and time.monotonic() >= due:  # one line, the id first: two lanes interleave readably
+        if metered and time.monotonic() >= due:  # one line, the id first: two lanes interleave readably
             due = time.monotonic() + HEARTBEAT
-            used = f"{meter.turns} turn{'s' * (meter.turns != 1)} · " + (
-                money(meter.dollars) if meter.priced else "no list price"
+            # Nemotron has no stream to meter: it writes its own rows, read as the watch strip reads them
+            m = vars(meter) if meter else M.going(store.node_log(node.id)) or {}
+            turns, dollars = m.get("turns", 0), m.get("dollars", 0.0)
+            used = f"{turns} turn{'s' * (turns != 1)} · " + (
+                money(dollars) if m.get("priced", True) else "no list price"
             )
-            if not (meter.turns or meter.prompt_tokens or meter.dollars):  # Codex: only as a turn ends
+            if not (turns or m.get("prompt_tokens") or dollars):  # Codex: only as a turn ends
                 used = "no usage yet"
             head = f"{node.id} · {round(time.monotonic() - began)} s · {used} · "
-            say(head + elide(meter.last or "nothing yet", max(80 - len(head), 20)))  # one row at 80
+            say(head + elide(m.get("last") or "nothing yet", max(80 - len(head), 20)))  # one row at 80
 
     try:
         for attempt in range(1, attempts + 1):

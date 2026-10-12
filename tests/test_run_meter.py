@@ -154,6 +154,35 @@ def test_the_run_says_every_heartbeat_what_each_metered_leaf_is_doing(repo, monk
     assert beats and said.index(beats[0]) < said.index("a attempt 1: the executor ended (exit 0)"), said
 
 
+# Graphene's own executor has no stream the meter reads: it writes its rows to the store itself. This one
+# writes one `did` row for its leaf (the store's path is its first argument), then works for a while.
+OWN_ROWS = """#!{python}
+import os, pathlib, sys, time
+from graphene_map import plan
+from graphene_map.store import Store
+time.sleep(0.2)
+with Store.open(pathlib.Path(sys.argv[1])) as store:
+    store.log_node(os.environ["GRAPHENE_NODE"], plan._now(), "did", "run:nemotron", None, None,
+                   {{"verb": "editing", "target": "a.txt"}})
+time.sleep(2.5)
+pathlib.Path("a.txt").write_text("done\\n")
+"""
+
+
+def test_a_nemotron_leaf_gets_the_heartbeat_from_the_rows_it_writes_itself(repo, monkeypatch):
+    """The feel pass (D9) metered only an executor with a stream (Claude Code, Codex): a Nemotron leaf,
+    Graphene's own executor, said `a started` and then nothing, the silence D9 was written to end, while
+    `graphene watch` showed its row. Its heartbeat reads the rows it writes, as the strip does."""
+    monkeypatch.setattr(R, "HEARTBEAT", 0.6)
+    script = stand_in(repo, "own", OWN_ROWS.format(python=sys.executable))
+    said: list[str] = []
+    with Store.open(repo) as store:  # the module's name in argv is what makes the run call it nemotron
+        R.run_plan(store, repo, f"{script} {repo} graphene_map.nemotron.executor", say=said.append)
+        assert plan.get(store, "a").state == DONE
+    beat = re.compile(r"a · \d+ s · .* · editing a\.txt")
+    assert any(beat.fullmatch(line) for line in said), said
+
+
 GARBAGE = """#!{python}
 import pathlib
 print("Reading additional input from stdin...", flush=True)
