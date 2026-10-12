@@ -12,11 +12,11 @@ tracks once a leaf has landed (the check a contract names is judged against it).
 written `{repo}`, and the replay puts its own there; the home directory is `~`; the key and the project
 in the environment, anything shaped like a key, and each sandbox image the run names are taken out.
 
-demo.jsonl, beside this file, is the recording Graphene ships. It was made on 29 September 2026 by
-dev/proof/nemotron.sh on a tiny repository against the scripted fake (tests/fake_tokenfactory.py), with a
-planner that puts up a board and a key taking each item, and its first line says it is a scripted
-stand-in, which the screen shows.
-It is made again from the fake with
+demo.jsonl, beside this file, is the recording Graphene ships. It was made on 11 October 2026 by
+tests/test_demo_script.py (dev/proof/nemotron.sh on a tiny repository against the scripted fake,
+tests/fake_tokenfactory.py), with a planner that puts up a board and a key taking each item, and with the
+meter on, so a running leaf's row shows; its first line says it is a scripted stand-in, which the screen
+shows. It is made again from the fake with
 
     RECORD_DEMO=src/graphene_map/demo.jsonl uv run pytest tests/test_demo_script.py
 
@@ -397,7 +397,7 @@ class Replay(Watch):
         self.next, self.began, self.paused, self.files = 0, time.monotonic(), None, []
         self.play()
 
-    METERS = False  # the shipped recording is from before the meter; each replay looks at its own
+    METERS = False  # no strip unless a replay's own rows say the meter was on (see __init__)
 
     def clock(self, everything: list[dict]) -> datetime:
         """The recording's own: its newest row, so a leaf's minutes are what they were as it played."""
