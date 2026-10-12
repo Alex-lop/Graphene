@@ -298,7 +298,7 @@ def what(line: dict) -> str:
 
     said = [row(r) for r in line.get("node_log") or []]
     said = said or [f"{i} {row['state'] if row else 'gone'}" for i, row in (line.get("nodes") or {}).items()]
-    return " · ".join(said) or ("an executor's output" if line.get("runs") else "the plan's settings")
+    return " · ".join(said) or ("an executor's output" if line.get("runs") else "settings recorded")
 
 
 def last_frame(repo: Path, lines: list[dict]) -> None:
