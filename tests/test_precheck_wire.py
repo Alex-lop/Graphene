@@ -29,8 +29,8 @@ def test_a_check_that_passes_at_base_is_said_and_the_leaf_still_runs(repo):
     person("node", "add", "leaf", "--id", "l1", "--scope", "api.py", "--check", "true")
     ran = person("run", "--here", "--with", "true")
     assert ran.exit_code == 0, ran.output
-    assert "l1: its check passes at the base commit" in ran.stdout
-    assert "red first: 1 check at" in ran.stdout
+    assert "l1: its check (`true`) passes before any work" in ran.stdout
+    assert "red first: 1 check ran at" in ran.stdout
     assert "run:" in ran.stdout.splitlines()[-1]  # the run went on to its summary
 
 
@@ -38,7 +38,7 @@ def test_no_precheck_prints_no_red_first_line(repo):
     person("node", "add", "leaf", "--id", "l1", "--scope", "api.py", "--check", "true")
     ran = person("run", "--here", "--no-precheck", "--with", "true")
     assert ran.exit_code == 0, ran.output
-    assert "red first" not in ran.stdout and "base commit" not in ran.stdout
+    assert "red first" not in ran.stdout and "before any work" not in ran.stdout
 
 
 def test_a_run_of_two_leaves_prints_one_header(repo):
@@ -46,7 +46,7 @@ def test_a_run_of_two_leaves_prints_one_header(repo):
         person("node", "add", f"leaf {k}", "--id", f"l{k}", "--scope", f"f{k}.txt", "--check", "true")
     ran = person("run", "--here", "--with", "true")
     assert ran.exit_code == 0, ran.output
-    assert ran.stdout.count("red first:") == 1 and "red first: 2 checks at" in ran.stdout
+    assert ran.stdout.count("red first:") == 1 and "red first: 2 checks ran at" in ran.stdout
 
 
 @pytest.mark.parametrize("back", [False, True])

@@ -83,7 +83,7 @@ summary = {
     "leaves proposed": len(re.findall(r"^\s*[?-] .*\[[a-z0-9-]+\]", plan, re.M)),
     "checks python3 -m pytest": plan.count("python3 -m pytest"),
     "checks uv run": plan.count("uv run"),
-    "red first lines": [l for l in lines if "red first" in l or "proves nothing" in l or "cannot run" in l or "editable" in l or "outside its scope" in l],
+    "red first lines": [l for l in lines if "red first" in l or "would pass with nothing done" in l or "cannot run" in l or "editable" in l or "outside its scope" in l],
     "landed": [l.split()[0] for l in lines if re.match(r"^[a-z0-9-]+ (is done|landed)", l)],
     "came back": [l.split()[0] for l in lines if "handed back" in l],
     "last line": lines[-3] if len(lines) >= 3 else "",

@@ -126,7 +126,7 @@ How many leaves it is asked for follows the repository's size; the `size` settin
    the check and its result, the executor, its attempts and dollars, and the note a reopened leaf was sent back with.
 
 The run's first line says where it lands, with what, how wide and under what cap; `graphene watch` in another
-terminal follows it live. Then ready leaves' checks run at the base: one that passes there proves nothing; one whose
+terminal follows it live. Then ready leaves' checks run at the base: one that passes there tests nothing; one whose
 runner is missing cannot run here; an editable install a check would import is named; a reopened leaf's, which
 passed when it landed, is said so. Each is a warning, said before the leaf starts anyway (`--no-precheck` skips them).
 

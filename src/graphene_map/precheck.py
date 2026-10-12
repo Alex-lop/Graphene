@@ -314,7 +314,7 @@ def run(store, root: Path, ids=(), again: bool = False, say=None, committed: boo
 def said(rows) -> list[str]:
     """The lines a run prints: none for a red, one for the leaves whose one check passes, one a leaf for a
     check that names a path outside its scope, cannot run here, passed when it landed or did not run to its
-    end, then the header, with the distinct commands when there are fewer of them than checks."""
+    end, then the header."""
     base = next((d["base"] for _, d in rows if d.get("base")), None)
     if not base:
         return []
@@ -324,8 +324,10 @@ def said(rows) -> list[str]:
             ids = [n.id for n, e in rows if e["verdict"] == "passes" and e["check"] == d["check"]]
             if ids[0] == node.id:  # one line a command, said at its first leaf
                 its, one = ("its", node.id) if len(ids) == 1 else ("their", "<id>")
-                lines.append(f"{', '.join(ids)}: {its} check passes at the base commit {at}: it proves "
-                             f"nothing; `graphene node set {one} --check '…'` or e in watch")  # fmt: skip
+                check = d["check"] if len(d["check"]) <= 40 else d["check"][:39] + "…"
+                lines.append(f"{', '.join(ids)}: {its} check (`{check}`) passes before any work: it would "
+                             f"pass with nothing done; `graphene node set {one} --check '<a real one>'`, or "
+                             "e in `graphene watch`")  # fmt: skip
         elif d["verdict"] == "outside":
             lines.append(f"{node.id}: its check names {', '.join(d['paths'])}, outside its scope, at {at}")
         elif d["verdict"] == "environment":
@@ -340,6 +342,5 @@ def said(rows) -> list[str]:
         lines.append(f"python3 on your PATH has {rows.editable} installed editable from this repo: a check "
                      "that imports it tests your checkout, not the leaf's worktree; `uv run pytest …` builds "
                      "the worktree's own")  # fmt: skip
-    seconds, commands = getattr(rows, "seconds", 0.0), len({d["check"] for _, d in rows})
-    at += f" ({commands} command{'s' * (commands != 1)})" if commands < len(rows) else ""
-    return [*lines, f"red first: {len(rows)} check{'s' * (len(rows) != 1)} at {at} in {seconds:.0f} s"]
+    seconds, n = getattr(rows, "seconds", 0.0), len(rows)
+    return [*lines, f"red first: {n} check{'s' * (n != 1)} ran at {at} before any work, in {seconds:.0f} s"]

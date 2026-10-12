@@ -110,10 +110,10 @@ def test_the_header_line_has_the_count_the_commit_and_the_wall_time(repo):
         leaves(store, ("a", ["a.py"], "true"), ("b", ["b.py"], "false"))
         rows = K.run(store, repo)
     lines = K.said(rows)
-    assert lines[0].startswith("a: its check passes at the base commit ")
+    assert lines[0].startswith("a: its check (`true`) passes before any work: it would pass with nothing")
     assert "`graphene node set a --check" in lines[0]
-    assert lines[-1].startswith("red first: 2 checks at ") and lines[-1].endswith(" s")
-    assert f" in {rows.seconds:.0f} s" in lines[-1]
+    assert lines[-1].startswith("red first: 2 checks ran at ") and lines[-1].endswith(" s")
+    assert f" before any work, in {rows.seconds:.0f} s" in lines[-1]
 
 
 def test_a_check_that_runs_its_own_new_test_and_a_passing_outside_one_is_red_not_outside(repo):
@@ -182,13 +182,28 @@ def test_a_failing_file_named_like_a_key_is_outside_all_the_same(repo, monkeypat
     assert d["verdict"] == "outside" and "OAuth2" not in str(d)
 
 
-def test_leaves_with_one_check_that_passes_are_one_line_and_the_header_counts_the_commands(repo):
+def test_leaves_with_one_check_that_passes_are_one_line_and_the_header_counts_no_commands(repo):
+    """Three readers: `it proves nothing` was a verdict with no object, the check it judged (the planner's
+    `true`) was never on the screen, and `(1 command)` counted what nobody asked about: the line above
+    had grouped the leaves by command already."""
     with Store.open(repo) as store:
         leaves(store, ("a", ["a.py"], "true"), ("b", ["b.py"], "true"), ("c", ["c.py"], "true"))
         rows = K.run(store, repo)
     first, header = K.said(rows)
-    assert first.startswith("a, b, c: their check passes at the base commit ") and "proves nothing" in first
-    assert header.startswith("red first: 3 checks at ") and " (1 command) in " in header
+    assert first.startswith("a, b, c: their check (`true`) passes before any work: it would pass with")
+    assert first.endswith("; `graphene node set <id> --check '<a real one>'`, or e in `graphene watch`")
+    assert header.startswith("red first: 3 checks ran at ") and " before any work, in " in header
+    assert "(1 command)" not in header and "proves nothing" not in first
+
+
+def test_a_long_passing_check_is_named_cut_at_forty_characters(repo):
+    long = "echo 'a check long enough to be cut at forty' >/dev/null"  # 56 characters
+    with Store.open(repo) as store:
+        leaves(store, ("a", ["a.py"], long))
+        rows = K.run(store, repo)
+    first, header = K.said(rows)
+    assert first.startswith(f"a: its check (`{long[:39]}…`) passes before any work: ")
+    assert header.startswith("red first: 1 check ran at ")
 
 
 @pytest.mark.parametrize("check", ["nosuchtool-zz --version", "python3 -m pytest -q tests"])
@@ -253,7 +268,7 @@ def test_a_reopened_leaf_whose_check_passed_when_it_landed_is_landed_until_the_c
         [(_, d)] = rows
         assert d["verdict"] == "landed" and tui.precheck(store, P.get(store, "a")) is None
         assert K.said(rows)[0].startswith("a: it passed this check when it landed; reopened, it passes until")
-        assert not [line for line in K.said(rows) if "proves nothing" in line]
+        assert not [line for line in K.said(rows) if "would pass with nothing done" in line]
         P.edit(store, "a", {"check": "test -s new.py"}, ME)
         [(_, d)] = K.run(store, repo)
     assert d["verdict"] == "passes"
@@ -276,7 +291,7 @@ def test_a_check_that_passed_at_the_base_before_any_work_still_proves_nothing_on
         rows = K.run(store, repo)
         [(_, d)] = rows
         assert first["verdict"] == d["verdict"] == "passes" and tui.precheck(store, P.get(store, "a"))
-    assert "proves nothing" in K.said(rows)[0]
+    assert "it would pass with nothing done" in K.said(rows)[0]
 
 
 def test_a_reopened_leaf_done_again_on_its_landed_check_is_said_to_have_passed_at_the_base(repo):
