@@ -336,7 +336,7 @@ def build():
         for k, v in given.items():
             store.set_meta(k, v)
         told = " · ".join(f"{k}: {store.meta(k) or 'not chosen'}" for k in WHO)
-        return f"{told}  (`graphene init` changes them; --with changes one command)"
+        return f"{told}  (`graphene init` changes them)"
 
     @cli.command()
     def init(
@@ -415,17 +415,23 @@ def build():
             say(f"the Claude Code hooks are in {settings} too, for a Claude Code session you may run here"
                 + ("" if added else " (already there)") + f": {out}")  # fmt: skip
         else:
-            say(f"hooks added to {settings}: {', '.join(added)}" if added else "hooks already installed")
             say(
-                "the next Claude Code session here is recorded into .graphene/ (its prompts, its tool calls "
-                "and what they returned, the files it edits; on this machine only); `graphene init --remove` "
-                "takes the hooks out"
+                f"hooks added to {settings} ({len(added)} Claude Code hooks)"
+                if added
+                else "hooks already installed"
+            )
+            say(
+                "each Claude Code session here is recorded on this machine only (its prompts, tool calls and "
+                "what they returned, the files it edits); `graphene init --remove` takes the hooks out"
             )
             if not shell_lists_enabled():
                 say(SHELL_LISTS_HINT)
             if terminal and (flag := claude_lacks()):  # at a terminal only: no test starts claude
                 say(f"this Claude Code has no {flag}: `claude update` first")
-        say("next: `graphene ask '<what you want>'` proposes a plan; `graphene watch` shows it")
+        if "not chosen" in chosen:  # `ask` and `run` refuse until then, as the line above said
+            say("next: install claude or codex, then `graphene init` again; `graphene ask` after that")
+        else:
+            say("next: `graphene ask '<what you want>'` proposes a plan; `graphene watch` shows it")
         if shutil.which("graphene") is None:
             console.print(
                 "[yellow]warning:[/yellow] `graphene` is not on PATH, so the hook will not run. Install "
