@@ -1560,7 +1560,8 @@ class Watch(App):
         if self.view == "said":
             return ["ctrl-d -u scroll", "Esc back", *tail]
         if self.view == "direction":  # D: what attaches and accepts is typed at `:`
-            return ["D back", ":direction attach SESSION NODE", ":direction accept ID", "ctrl-d -u scroll"]
+            return ["D back", ":direction attach SESSION NODE", ":direction accept ID", "ctrl-d -u scroll",
+                    "? help", "q quit"]  # fmt: skip
         row = self.board_row()
         if row is not None:  # board: what each key would do on this item, in words
             item = self.board.get(row)

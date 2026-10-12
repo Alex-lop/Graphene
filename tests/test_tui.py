@@ -2033,6 +2033,19 @@ def test_the_helps_first_line_names_the_mark_of_a_check_that_proves_nothing(repo
         watch(repo, [], size=size, before=before)
 
 
+def test_the_direction_pane_ends_its_key_line_with_help_and_quit(repo):
+    """A seam reader: D on a leaf (the help's `see  Enter l D`) was the one pane whose bottom line did not
+    say how to get help or leave, and at 80 its scroll key fell off with no held tail."""
+    every_state(repo)
+    for size, keys in (
+        ((80, 24), "D back · :direction attach SESSION NODE · ? help · q quit"),
+        ((120, 36), "D back · :direction attach SESSION NODE · :direction accept ID · ctrl-d -u scroll · "
+                    "? help · q quit"),
+    ):  # fmt: skip
+        seen, _ = at(repo, "docs", size, keys=["D"])
+        assert seen["status"].splitlines()[1] == keys, (size, seen["status"])
+
+
 def test_a_leaf_that_came_back_offers_r_to_run_it_again_and_its_ask_command_can_be_typed(repo):
     """Walk 2026-09-28: a leaf that came back with no --wants showed no way to run again, x said
     "docs is came back: … reopens a…", and the ? row's command was `graphene ask … --about docs`."""
