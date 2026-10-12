@@ -1082,12 +1082,13 @@ def test_the_status_line_is_two_lines_fitted_at_a_word_at_80_and_120(repo):
     wide, _ = at(repo, "rule", (120, 36))
     top, bottom = wide["status"].splitlines()
     # the clocks short, the rest long; the proposal counted, as `graphene` counts it
-    clocks = r"waiting on you: 4 · agents 1 · <1m · you \d+ acts? ~\d+m · R runs 1 ready · "
+    clocks = r"waiting on you: 4 · agents 1 <1m · you \d+ acts? ~\d+m · R runs 1 ready · "
     assert re.fullmatch(clocks + r"1 came back · 1/9 done · plan first: auto \(P\)", top), top
     assert bottom == "y sign off · x send back · Enter record · Tab view · ? help · q quit"  # ? everywhere
     narrow, _ = at(repo, "rule", (80, 24))
     top, bottom = narrow["status"].splitlines()
-    assert re.fullmatch(r"4 on you · agents 1 · <1m · you \d+ acts? ~\d+m · R: 1 ready · 1 came back", top)
+    narrow_top = r"4 on you · agents 1 <1m · you \d+ acts? ~\d+m · R: 1 ready · 1 came back · 1/9 done"
+    assert re.fullmatch(narrow_top, top), top  # the clock one phrase: how much is done is back at 80
     long = "graphene node edit rule: " + "the scope changed from one path to a longer list of them " * 3
 
     async def said(app, pilot):
@@ -1644,7 +1645,8 @@ def test_the_bill_is_on_the_status_line_and_in_the_leafs_pane(repo):
         store.log_node("*", plan._now(), "usage", "planner:nemotron", None, None,
                        {"model": "nvidia/Nemotron-3-Ultra-fake", "calls": 2, "dollars": 0.02})  # fmt: skip
     seen, _ = watch(repo, ["j"], size=(120, 36))
-    assert "agents 0 · 0m · $0.03 · you " in seen["status"].splitlines()[0]  # the planner's too
+    top = seen["status"].splitlines()[0]  # the planner's too: the plan's bill, with no agent run to clock
+    assert "bill $0.03 · you" in top and "agents 0" not in top, top
     leaf = "bill $0.0123 at list price for this leaf's 6 calls · Nemotron-3-Nano-fake"
     assert leaf in " ".join(seen["detail"].split())
 
@@ -2302,7 +2304,7 @@ def test_past_four_running_leaves_the_strip_counts_the_rest(repo):
             store.log_node(f"l{k}", plan._now(), "attempt", RUN.label, RUN.session_id, None, {"attempt": 1})
     seen, _ = watch(repo, [], size=(120, 36))
     assert [r.split(" · ")[0].strip() for r in seen["meter"]] == ["● l0", "● l1", "● l2", "● l3", "+2 more"]
-    assert "agents 6 · <1m · " in seen["status"] or "agents: 6 running · <1 min" in seen["status"]
+    assert "agents 6 <1m · " in seen["status"] or "agents: 6 running <1 min" in seen["status"]
 
 
 def test_the_status_line_has_the_two_clocks_and_help_says_they_count_by_your_keys(repo):
@@ -2312,9 +2314,20 @@ def test_the_status_line_has_the_two_clocks_and_help_says_they_count_by_your_key
     for size in SIZES:
         seen, _ = watch(repo, [], size=size)
         top = seen["status"].splitlines()[0]
-        assert re.search(r" · agents 2 · <1m · \$0\.42 · you \d+ acts? ~\d+m · ", top), (size, top)
+        assert re.search(r" · agents 2 <1m \$0\.42 · you \d+ acts? ~\d+m · ", top), (size, top)
         assert len(top) <= size[0] - 2
     assert "by your keys, not by what you read" in " ".join(HELP_END.split())
+
+
+def test_a_clock_is_one_phrase_so_how_much_is_done_comes_back_at_80_columns(repo):
+    """The feel pass (S2): at 80 columns the top line read `4 on you · agents 1 · <1m · you 1 act ~1m · R: 1
+    ready · 1 came back` and `1/9 done` had fallen off it: a clock's fields were joined as separate facts
+    are, and `agents 1 · <1m` read as two of them. One phrase gives the 80-column screen back how much is
+    done (with only the planner billed, the bill is a piece of its own: the test of the bill says so)."""
+    every_state(repo)
+    top = watch(repo, [], size=(80, 24))[0]["status"].splitlines()[0]
+    assert " · agents 1 <1m · you " in top and top.endswith(" · 1 came back · 1/9 done"), top
+    assert " · <1m" not in top and len(top) <= 78, top
 
 
 def test_tokens_with_no_list_price_are_said_so_never_priced_at_nothing(repo):
@@ -2334,7 +2347,7 @@ def test_tokens_with_no_list_price_are_said_so_never_priced_at_nothing(repo):
     for size in SIZES:
         seen, _ = at(repo, "schema", size)
         top, flat = seen["status"].splitlines()[0], " ".join(seen["detail"].split())
-        assert "$0.00" not in top and "agents 1 · <1m · 1.2M tokens unpriced · you " in top, (size, top)
+        assert "$0.00" not in top and "agents 1 <1m 1.2M tokens unpriced · you " in top, (size, top)
         assert "no list price" in seen["meter"][0], seen["meter"]
         assert "bill $0.0000 at list price + 1.2M tokens with no list price for this leaf's" in flat, flat
 
