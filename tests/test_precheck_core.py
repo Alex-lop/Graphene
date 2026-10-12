@@ -81,8 +81,13 @@ def test_a_kept_verdict_is_not_run_again_but_a_commit_or_an_edited_check_runs_it
     with Store.open(repo) as store:
         leaves(store, ("a", ["new.py"], "true"))
         K.run(store, repo)
-        [(_, kept)] = K.run(store, repo)
+        second = K.run(store, repo)
+        [(_, kept)] = second
         assert asked == ["true"] and kept["kept"] and len(store.node_log("a", ("precheck",))) == 1
+        header = K.said(second)[-1]  # the header says what ran, and the kept one apart
+        assert header.startswith("red first: 0 checks ran at ") and header.endswith(
+            " s (1 kept from the last run at this commit)"
+        ), header
         (repo / "app.py").write_text("x = 2\n")
         git(repo, "commit", "-qam", "next")
         K.run(store, repo)

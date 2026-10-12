@@ -151,6 +151,8 @@ Graphene's first hour reads like its own source code. Words: the last or first l
 
 *Felt difference:* medium: the run's second and third lines stop being two undefined verdicts and name the planner's placeholder check (keeping `red first` is the owner's vocabulary; `before any work` is the gloss)
 
+*Seam fix (after the lanes):* the header counts the checks that ran; verdicts kept from the last run at this commit are said apart (`red first: 1 check ran at cc9b19a before any work, in 0 s (1 kept from the last run at this commit)`), so a second run after a Ctrl-C never says N checks ran in 0 s.
+
 ### 11. `node show` for a person: no agent instructions, no blank slots, the landing near the top; the finished plan's last line says what to do
 
 *Where:* src/graphene_map/plan.py:952-972 (contract(): `finish:` and `stuck:` written for the executor, plan.py:954 says so), src/graphene_map/plan_cli.py:1424 (show prints it to whoever asks), :1430-1432 (the `landed:` line, after a 30-line record); src/graphene_map/plan.py:1906-1909 (UNCOMMITTED), plan_cli.py:318-320 and :1061 (its two uses)

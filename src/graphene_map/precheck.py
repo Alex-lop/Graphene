@@ -342,5 +342,7 @@ def said(rows) -> list[str]:
         lines.append(f"python3 on your PATH has {rows.editable} installed editable from this repo: a check "
                      "that imports it tests your checkout, not the leaf's worktree; `uv run pytest …` builds "
                      "the worktree's own")  # fmt: skip
-    seconds, n = getattr(rows, "seconds", 0.0), len(rows)
-    return [*lines, f"red first: {n} check{'s' * (n != 1)} ran at {at} before any work, in {seconds:.0f} s"]
+    seconds, ran = getattr(rows, "seconds", 0.0), [d for _, d in rows if not d.get("kept")]
+    n, kept = len(ran), len(rows) - len(ran)  # a verdict kept from the last run at this commit ran nothing
+    return [*lines, f"red first: {n} check{'s' * (n != 1)} ran at {at} before any work, in {seconds:.0f} s"
+            + (f" ({kept} kept from the last run at this commit)" if kept else "")]  # fmt: skip
