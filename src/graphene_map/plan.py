@@ -1915,10 +1915,7 @@ def uncommitted(store, checkout: str | Path) -> list[str]:
     return [n.id for n in done if set(ended[n.id]["detail"].get("changed") or []) & set(changed)]
 
 
-UNCOMMITTED = (
-    "in your checkout, uncommitted (`git status`): commit it yourself; `graphene run` would have landed "
-    "each leaf as its own merge"
-)
+UNCOMMITTED = "in your checkout, uncommitted (`git status`): commit it yourself"  # run --help says the merge
 
 
 def acknowledge(store, checkout: str | Path, who: Caller, now: str | None = None) -> list[str]:

@@ -432,14 +432,12 @@ def test_a_finished_plan_says_when_its_leaves_work_is_not_committed_and_what_com
     assert "--here: your checkout is exposed" in ran.stdout
     assert ran.stdout.splitlines()[-1] == (
         "run: 1 done · agents <1 min, no meter · width 1 of 1 · you 1 act, 1 min · the work of ids is "
-        "in your checkout, uncommitted (`git status`): commit it yourself; `graphene run` would have "
-        "landed each leaf as its own merge"
-    )
+        "in your checkout, uncommitted (`git status`): commit it yourself"
+    )  # the merge `graphene run` would have made is run --help's to say: the after-walk read 228 characters
     head = person().stdout.splitlines()[0]
     assert head == (
         "the plan: 1 leaf, 1 done, 0 running · finished; the work of 1 leaf is in your checkout, "
-        "uncommitted (`git status`): commit it yourself; `graphene run` would have landed each leaf as "
-        "its own merge; `graphene plan archive` puts it away"
+        "uncommitted (`git status`): commit it yourself; `graphene plan archive` puts it away"
     )
     subprocess.run(["git", "-c", "user.email=t@example.com", "-c", "user.name=T", "commit", "-qam", "ids"],
                    cwd=repo, check=True)  # fmt: skip
