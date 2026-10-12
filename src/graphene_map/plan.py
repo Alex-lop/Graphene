@@ -502,6 +502,8 @@ def waits_on_person(
                 reasons.append(f"{n.id} needs a sign-off")
         elif n.owner != AGENT:
             reasons.append(f"{n.id} is {n.owner}'s")
+        elif not n.scope:  # a sub-goal whose leaves are to come: `ready` skips it, so a run never starts it
+            reasons.append(f"{n.id} has no scope and no leaves yet")
         elif n.signoff and n.id != node.id:
             reasons.append(f"{n.id} needs a sign-off")
         for need in all_needs(n, by_id):

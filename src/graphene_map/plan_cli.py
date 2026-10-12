@@ -840,8 +840,8 @@ def register(cli: typer.Typer, root, open_store, fail):
             runs, waits = P.forecast(now, {n.id for n in now if P.came_back(store, n)})
             if not accepted:  # said, and still exit 0: the README chains `plan accept && run`
                 out("nothing to accept: no proposal is open")
-            reach = f"{', '.join(n.id for n in runs)}  (R in graphene watch)" if runs else "nothing"
-            out(f"next: `graphene run` reaches {reach}")
+            reach = f"next: `graphene run` reaches {', '.join(n.id for n in runs)}  (R in graphene watch)"
+            out(reach if runs else "next: nothing is ready for `graphene run`")  # it refuses with nothing
             for n, why in waits:
                 out(f"  {n.id} will wait: {'; '.join(why)}")
             return [n.id for n in accepted]

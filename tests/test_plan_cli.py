@@ -685,6 +685,20 @@ def test_accept_and_the_plan_on_a_proposal_name_the_next_command_not_a_rule(repo
     assert "accepted with" not in person("plan").stdout and "takes all of it" not in person("plan").stdout
 
 
+def test_accept_never_says_the_run_reaches_a_leaf_it_never_starts(repo):
+    """Two readers: `next: graphene run reaches …` named a sub-goal added with no scope (a run starts only
+    leaves with one, so it said nothing of it), and on an empty plan said `reaches nothing` where the run
+    then refuses with `nothing to run`."""
+    said = person("plan", "accept").stdout.splitlines()
+    assert said[:2] == ["nothing to accept: no proposal is open", "next: nothing is ready for `graphene run`"]
+    text = "goal: users come back with their ids\n- one  [one]\n    scope: api.py\n    check: true\n"
+    assert agent("plan", "propose", "-", input=text).exit_code == 0
+    person("node", "add", "split the parser")  # the README's way to add a sub-goal to fill in: no scope
+    said = person("plan", "accept").stdout
+    assert "next: `graphene run` reaches one  (R in graphene watch)" in said, said
+    assert "  n2 will wait: n2 has no scope and no leaves yet" in said, said
+
+
 def test_node_show_for_a_person_has_no_agent_orders_and_names_the_landing_first(repo, tmp_path):
     """Three readers: `node show` on a landed leaf opened with `finish:` and `stuck:`, orders to an
     executor that had left, `landed:` was line 33 of 35, and a sub-goal's `scope:` and `done:` slots
