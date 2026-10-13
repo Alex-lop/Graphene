@@ -9,7 +9,7 @@
 
 See your coding agents' plan and change it before any code.
 
-`uv tool install git+https://github.com/Alex-lop/Graphene`
+`uv tool install graphene-map`
 
 <sub>then <code>graphene demo</code> to watch a scripted replay, no API key needed</sub>
 
@@ -73,10 +73,14 @@ While the agents work, `graphene watch` shows what each one is doing and what it
 ## Try it on your repo
 
 ```
-uv tool install git+https://github.com/Alex-lop/Graphene
-cd your-repo && graphene init        # picks a planner and an executor: claude or codex
+uv tool install graphene-map         # 0.5.0 on PyPI; git+https://github.com/Alex-lop/Graphene for main
+cd your-repo && graphene demo        # a replay first: no key, nothing spent
+graphene init                        # picks a planner and an executor: claude or codex
 graphene ask "what you want, in a paragraph"
-graphene watch
+graphene watch                       # in another terminal: y accepts, d drops a leaf, R runs what's ready
+graphene plan accept && graphene run --parallel 2
+graphene node show <a landed leaf>   # what it changed, what its check proved, what it cost
+graphene init --remove               # the way out: takes the hooks out of that repo
 ```
 
 Heads up: `init` installs Claude Code hooks in that repo. They record its sessions on your machine (prompts, tool calls and what they returned, the files it edits), and from your next session Claude proposes a plan before it writes anything; you accept it in `graphene watch`, in another terminal. `graphene plan first off` lets a quick change through at once (bigger work is still proposed), and `graphene init --remove` takes the hooks out.

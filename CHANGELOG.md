@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.5.0 (not published yet: the tag is Alex's)
+## 0.5.0 (13 October 2026)
 
 The feel pass (11 October). What the first hour reads, said in the person's words: three readers walked the first
 hour and the morning after, a designer chose twelve things, a judge argued each, and four lanes built them; the
