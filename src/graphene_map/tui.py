@@ -866,6 +866,8 @@ class Watch(App):
         yield Input(id="line", select_on_focus=False)  # else the first key typed replaces the ":"
 
     def on_mount(self) -> None:
+        if self.RUNS_HERE and not self.message:  # opened after a run: what the run said is the first line
+            self.message = self.read(ran_last, "") or ""
         self.refresh_plan()
         self.call_after_refresh(self.refresh_plan)  # the panes have their sizes now
         self.set_interval(self.every, self.refresh_plan)
@@ -2730,6 +2732,17 @@ def record_pane(store, node: P.Node, s, wide: int) -> Text:
         pane.text(f"{_clock(a.at)}  {a.kind.replace('_', ' ').ljust(kinds)}  {P.said_by(a.actor)}"
                   + (f": {a.said}" if a.said else ""), indent=2)  # fmt: skip
     return pane.render()
+
+
+def ran_last(store) -> str:
+    """The run's last line, when the run is the newest thing in the plan's log: a person who opens
+    watch after a run reads what it said, not a folded tree with the summary gone. Anything done since
+    (an accept, an ask) is newer, and the line is not repeated."""
+    rows = store.node_log()
+    last = rows[-1] if rows else None
+    if last is not None and last["kind"] == "run" and last["node_id"] == "*":
+        return str((last.get("detail") or {}).get("summary") or "")
+    return ""
 
 
 def _plain(line: str) -> str:

@@ -1042,6 +1042,24 @@ def test_at_80_columns_the_offers_come_before_the_reason_so_every_way_out_is_on_
     assert reason < next(k for k, ln in enumerate(rows) if re.match(r"  w  ", ln)), rows  # room: why first
 
 
+def test_watch_opened_after_a_run_says_what_the_run_said_first(repo):
+    """The first-hour readers: after a run, watch opened folded with the run's summary gone. When the
+    run's row is the newest thing in the log, its line is the screen's first bottom line; once anything
+    is done after it, it is not repeated."""
+    every_state(repo)
+    line = "run: 2 done · agents <1 min, $0.0246 at list price · width 2 of 2 · you 2 acts, 1 min"
+    with Store.open(repo) as store:
+        store.log_node("*", plan._now(), "run", "graphene run", None, None, {"summary": line})
+    seen, _ = watch(repo, [])
+    assert "run: 2 done · agents <1 min, $0.0246" in seen["status"], seen["status"]  # cut at 80, as any line
+    seen, _ = watch(repo, [], size=(120, 36))
+    assert line in seen["status"], seen["status"]
+    with Store.open(repo) as store:
+        store.log_node("*", plan._now(), "asked", "alex", None, None, {"note": "and now a typo"})
+    seen, _ = watch(repo, [])
+    assert "run: 2 done" not in seen["status"], seen["status"]
+
+
 def test_enter_on_the_goal_says_the_plans_record_in_the_panes_words(repo):
     """The screen reader of 11 October: Enter on the goal pasted `plan record`'s print into the pane,
     backticks and `<id>` included, where every other record is laid out. It goes through the pane's
