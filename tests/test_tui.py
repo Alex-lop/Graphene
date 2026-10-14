@@ -1042,6 +1042,17 @@ def test_at_80_columns_the_offers_come_before_the_reason_so_every_way_out_is_on_
     assert reason < next(k for k, ln in enumerate(rows) if re.match(r"  w  ", ln)), rows  # room: why first
 
 
+def test_enter_on_the_goal_says_the_plans_record_in_the_panes_words(repo):
+    """The screen reader of 11 October: Enter on the goal pasted `plan record`'s print into the pane,
+    backticks and `<id>` included, where every other record is laid out. It goes through the pane's
+    own words now, as a sub-goal's record does: Enter shows a leaf's own, and a window is a hold."""
+    every_state(repo)
+    seen, _ = watch(repo, ["enter"])
+    detail = seen["detail"]
+    assert "the record of the" in detail and "Enter on one shows its own" in detail, detail
+    assert "`" not in detail and "<id>" not in detail and "window" not in detail, detail
+
+
 def test_the_record_is_a_laid_out_pane_not_node_show_pasted(repo):
     every_state(repo)
     for size in SIZES:

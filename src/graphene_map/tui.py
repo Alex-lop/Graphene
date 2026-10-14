@@ -1961,7 +1961,8 @@ class Watch(App):
         if self.on_goal():  # the goal's record is the plan's: every leaf's added up
             said = self.did(["plan", "record"], quiet=True, keep=True)
             if said is not None:  # a replay refuses every command, and has said so
-                self.finished("graphene plan record", said)
+                # in the pane's words, as a sub-goal's record is: no command to type where Enter does it
+                self.finished("graphene plan record", "\n".join(_plain(line) for line in said.splitlines()))
             return
         self.view = "contract" if self.view == "record" else "record"
         self.query_one("#side", VerticalScroll).scroll_home(animate=False)
