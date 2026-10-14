@@ -75,7 +75,7 @@ scratch plan of four proposed leaves. `graphene plan --view tree`, `dag`, `time`
 **You prune.** Drop a leaf you did not mean, take a path out of a scope, accept the rest, each with a
 key (`d`, `e`, `y`).
 
-**Talking on the tree.** `?` on a node asks the planner about it: `w` why, `s` split, `m` merge the
+**Talking on the tree.** `t` on a node asks the planner about it: `w` why, `s` split, `m` merge the
 nodes you selected, `a` another way, or your own words. A why comes back as the planner's note on the
 board. A merge or another way comes back as proposed leaves and a question on the board whose default
 drops the way not taken, all one act you can undo. A row someone else changed since you last looked
@@ -343,7 +343,7 @@ README, the video and here, whatever it says.
 ## Built with
 
 python · textual · rich · typer · sqlite · git · nvidia-nemotron (3 Ultra, Super, Nano) ·
-nebius-token-factory · token-factory-sandboxes (contree-sdk) · react · vite · github-actions
+nebius-token-factory · token-factory-sandboxes (contree-sdk) · github-actions
 
 ## What changed during the Submission Period
 
