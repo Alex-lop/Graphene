@@ -465,8 +465,8 @@ def test_at_80_columns_every_line_of_the_plan_fits_and_ids_state_words_and_comma
     why = "3 attempts, the last one refused: " + "it changed samples/prices.xml, outside its scope; " * 3
     agent("node", "release", "test-xml-reader", "--why", why, "--wants", "samples/prices.xml")
     wide = person().stdout  # no terminal and no $COLUMNS: each row whole on its line, for grep
-    row = "xml-reader        proposed   · ingest/xmlfeed.py, +1 more · `graphene plan accept xml-reader`"
-    assert row in wide
+    row = "xml-reader        proposed   · ingest/xmlfeed.py, +1 more"  # under a proposed sub-goal: no command
+    assert row in wide and "`graphene plan accept xml-reader`" not in wide and "takes all of it" in wide
     for columns in (80, 120):
         for args, env in (([], {"GRAPHENE_AS": "person:alex"}), (["plan"], AGENT_ENV)):
             said = runner.invoke(build(), args, env={**env, "COLUMNS": str(columns)}).stdout
@@ -475,7 +475,8 @@ def test_at_80_columns_every_line_of_the_plan_fits_and_ids_state_words_and_comma
             back = r"↩ a test for the XML reader +test-xml-reader +came back"
             for cells in (r"\? an xml reader +xml-reader +proposed", back):  # title, id and word on one line
                 assert any(re.match(rf"  +{cells}( |$)", line) for line in lines), (cells, said)
-            assert re.search(r"(^| )`graphene plan accept readme-lists-xml`$", said, re.M), said
+            assert "`graphene plan accept readme-lists-xml`" not in said, said  # the one line above names it
+            assert env is AGENT_ENV or "takes all of it" in said, said  # the person's line, not an agent's
             [reason] = [line for line in lines if "handed back: 3 attempts" in line]
             assert reason.endswith("…")  # cut, and where the rest is, on the next line
             assert "(`graphene node show test-xml-reader` has all of it)" in said

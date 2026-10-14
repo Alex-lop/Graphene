@@ -231,7 +231,8 @@ def register(cli: typer.Typer, root, open_store, fail):
             said.append(f"its check passed: `graphene node signoff {n.id}`")
         elif n.state == P.PROPOSED:
             said += [f"would wait on {', '.join(n.needs)}"] if n.needs else []
-            said.append(f"`graphene plan accept {n.id}`")
+            parent = by_id.get(n.parent or "")  # under a proposed parent the one line above names the accept
+            said += [f"`graphene plan accept {n.id}`"] if parent is None or parent.state != P.PROPOSED else []
         elif word == "waiting":
             said.append("waits on " + ", ".join(f"{b.id} ({T.blocker(b, words)})" for b in P.unmet(n, by_id)))
         elif word == "yours" and n.owner != who.name:
@@ -365,7 +366,9 @@ def register(cli: typer.Typer, root, open_store, fail):
             if under.get(n.id):
                 of = sum(1 for c in P.below(n.id, alive) if not under.get(c.id))
                 what = [f"then `{n.check}`"] if n.check and n.state != P.DONE else []
-                what += [f"`graphene plan accept {n.id}`"] if n.state == P.PROPOSED else []
+                top = by_id.get(n.parent or "")  # a proposed sub-goal under a proposed one: the line above
+                if n.state == P.PROPOSED and (top is None or top.state != P.PROPOSED):
+                    what.append(f"`graphene plan accept {n.id}`")
                 if n.id in closed:
                     inside = [c for c in P.below(n.id, alive) if c.id in ready_ids]
                     what += [f"{len(inside)} ready"] if inside else []
