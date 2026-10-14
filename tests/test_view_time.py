@@ -77,7 +77,7 @@ def test_each_cell_is_what_the_executor_mostly_did_idle_past_a_minute_a_session_
     assert out.lines[1].plain == " you  |" + " " * 29 + "|"  # alex's acts, with or without a terminal
     axis = "".join(f"{k * 15}s".ljust(15) for k in range(5)).rstrip()  # a label each 15 s: 10 s left 7 cells
     assert out.lines[-1].plain == " " * 6 + axis
-    assert out.note == "3 lanes · 1 min · agents 1 min · you 2 acts ~1 min · width 1 of 1"  # b, c: sessions
+    assert out.note == "3 lanes · 1m · agents 1m · you: 2 moves 1m · 1 of 1 at once"  # b, c: sessions
     assert {s.style for s in out.lines[2].spans} == {"green", "dim"}  # a done leaf's bar; idle dim
 
 
@@ -128,7 +128,7 @@ def test_the_note_counts_this_plans_clocks_never_an_archived_ones():
            row("a", 1580, "ended", {"attempt": 1, "exit": 0, "meter": "claude"})]  # fmt: skip
     out, _ = drawn([leaf("a")], old + new, 1590)
     assert out.lines[1].plain.count("|") == 1  # this plan's ask, its one act
-    assert out.note == "1 lane · <1 min · agents <1 min · you 1 act ~1 min · width 1 of 1"
+    assert out.note == "1 lane · <1m · agents <1m · you: 1 move 1m · 1 of 1 at once"
 
 
 def test_a_plan_a_session_proposed_starts_at_your_acceptance_so_your_y_is_drawn():
@@ -165,15 +165,15 @@ def test_an_id_is_never_cut_the_goal_is_and_none_under_thirty_cells_of_time():
 
 def test_the_note_says_lanes_minutes_hand_backs_and_both_clocks_and_drops_pieces_to_fit():
     agents, you = {"seconds": 1860, "running": 1, "dollars": 2.41}, {"acts": 4, "minutes": 3}
-    said = "3 lanes · 12 min · 1 came back · agents 31 min $2.41 · you 4 acts ~3 min"
+    said = "3 lanes · 12m · 1 came back · agents 31m $2.41 · you: 4 moves 3m"
     assert VT.note(3, 725, 1, agents, you) == said
     ran = {"most": 2, "lanes": 3, "alone": 0.4}  # meter.width
-    assert VT.note(3, 725, 1, agents, you, None, ran) == said + " · width 2 of 3"
+    assert VT.note(3, 725, 1, agents, you, None, ran) == said + " · 2 of 3 at once"
     assert VT.note(3, 725, 1, agents, you, len(said) + 14, ran) == said  # the width goes first
-    assert VT.note(3, 725, 1, agents, you, 60) == "3 lanes · 12 min · 1 came back · agents 31 min $2.41"
-    assert VT.note(3, 725, 1, agents, you, 20) == "3 lanes · 12 min"
+    assert VT.note(3, 725, 1, agents, you, 60) == "3 lanes · 12m · 1 came back · agents 31m $2.41"
+    assert VT.note(3, 725, 1, agents, you, 20) == "3 lanes · 12m"
     quiet = {"seconds": 0, "running": 0, "dollars": 0}  # no dollars said when there are none
-    said = "1 lane · <1 min · agents 0 min · you 1 act ~1 min"
+    said = "1 lane · <1m · agents 0m · you: 1 move 1m"
     assert VT.note(1, 20, 0, quiet, {"acts": 1, "minutes": 1}) == said
 
 
@@ -249,10 +249,10 @@ def test_plan_view_time_prints_the_lanes_the_axis_and_the_note(repo, finish, mon
         " ids       ───▒▒▒▒▒▒▒▒▒▒▒▒██████░░░░░░░░░░░✓■",
         " schema                                          ──────▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓↩",
         "         0m                                1m",
-        "2 lanes · 2 min · 1 came back · agents 1 min · you 2 acts ~1 min",  # in 78 cells: the width gave way
+        "2 lanes · 2m · 1 came back · agents 1m · you: 2 moves 1m · 1 of 2 at once",  # one leaf at a time
     ]
     wide = person("plan", "--view", "time", "--width", "100", "--height", "24").stdout.splitlines()[-1]
-    assert wide == printed.stdout.splitlines()[-1] + " · width 1 of 2"  # one leaf at a time, of the two
+    assert wide == printed.stdout.splitlines()[-1]  # the whole note fits in 78 cells since the clocks shrank
 
 
 def test_an_agent_prints_the_persons_lane_and_clock_not_its_own(repo, finish, monkeypatch):
@@ -262,7 +262,7 @@ def test_an_agent_prints_the_persons_lane_and_clock_not_its_own(repo, finish, mo
     args = ("plan", "--view", "time", "--width", "80", "--height", "24")
     printed, theirs = agent(*args), person(*args)
     assert printed.exit_code == 0, printed.output
-    assert printed.stdout == theirs.stdout and "you 2 acts ~1 min" in printed.stdout
+    assert printed.stdout == theirs.stdout and "you: 2 moves 1m" in printed.stdout
 
 
 @pytest.mark.parametrize("size", [(80, 24), (120, 36)])
@@ -400,4 +400,4 @@ def test_the_replay_draws_what_each_executor_did_at_its_moment_and_a_running_bar
         before = {i: sum(c != " " for c in lane) for i, lane in lanes.items()}
     assert grew == {"zero-rule", "xml-source"} and list(lanes) == ["zero-rule", "xml-source"]
     assert all("✓" in lanes[i] and lanes[i].rstrip().endswith("■") for i in grew), lanes
-    assert "|" in out.lines[1].plain and "you 2 acts" in out.note, (out.lines[1], out.note)  # alexlopez's
+    assert "|" in out.lines[1].plain and "you: 2 moves" in out.note, (out.lines[1], out.note)  # alexlopez's

@@ -53,7 +53,7 @@ from .node_record import bill, forks, models, sandbox
 from .plan_text import clock as _clock
 from .view_time import LEGEND as TIME_KEY
 from .view_time import activity
-from .views import money
+from .views import elapsed, money
 
 RUN_WITH = "--parallel 4"  # `R` and `r`: ready leaves at once, a worktree each, landed here as they pass
 WIDE = 110  # columns: from here the node pane sits beside the tree, below it under the tree
@@ -92,9 +92,9 @@ HELP = (  # what answering the board needs first: at 80x24 the first screen ends
                    ("t", "ask the planner what would let it be done"))),
 )  # fmt: skip
 HELP_END = (
-    "The status line counts agents: what runs, its minutes, its dollars at list price; and you: your acts "
-    "and their minutes, by your keys, not by what you read. Every key is a graphene command. The bottom "
-    "line says which it ran."
+    "The status line counts agents: what runs, its minutes, its dollars at list price; and you: your "
+    "moves and their minutes, by your keys, not by what you read. Every key is a graphene command. The "
+    "bottom line says which it ran."
 )
 # the glyphs and colours every row, view and pane uses, the help's first line
 LEGEND = ("yours", "review", "came back", "proposed", "ready", "running", "waiting", "done")
@@ -248,10 +248,10 @@ def ago(seconds: int | None) -> tuple[str, str]:
     if seconds is None:
         return "no sign of it yet", "dim"
     if seconds < 60:
-        return f"{seconds} s ago", ""
+        return f"{seconds}s ago", ""
     if seconds < QUIET:
-        return f"{seconds // 60} min ago", ""
-    return f"quiet for {seconds // 60} min", P.look("running")[1]
+        return f"{seconds // 60}m ago", ""
+    return f"quiet for {seconds // 60}m", P.look("running")[1]
 
 
 def fit(pieces: list[tuple[str, str]], room: int) -> Text:
@@ -264,15 +264,6 @@ def fit(pieces: list[tuple[str, str]], room: int) -> Text:
             out.append(" · ", "dim")
         out.append(text if len(text) <= room else T.elide(text, room), style)
     return out
-
-
-def elapsed(seconds: int) -> str:
-    """A running time as a clock reads it, to the second: `12s`, `6m12s`, `1h04m`."""
-    if seconds < 60:
-        return f"{seconds}s"
-    if seconds < 3600:
-        return f"{seconds // 60}m{seconds % 60:02d}s"
-    return f"{seconds // 3600}h{seconds % 3600 // 60:02d}m"
 
 
 def tokens(n: int) -> str:
@@ -1467,16 +1458,16 @@ class Watch(App):
             unpriced = f"{tokens(agents['unpriced'])} tokens unpriced"
             spent = f"{spent} + {unpriced}" if c.get("spent") else unpriced
         mine = c.get("mine") or {"acts": 0, "minutes": 0}
-        ran, acts = agents["running"], _s(mine["acts"], "act")  # the minutes a run took: the time view's note
+        ran, acts = agents["running"], _s(mine["acts"], "move")  # the run's minutes: the time view's note
         took = agents["seconds"] // 60 or ("<1" if agents["seconds"] or agents["running"] else 0)
-        clock = " ".join([f"{agents['running']} running", f"{took} min", *([spent] if spent else [])])
+        clock = " ".join([f"{agents['running']} running", f"{took}m", *([spent] if spent else [])])
         # one phrase: a dot between a clock's fields read as a dot between facts; the planner's dollars,
         # before any agent ran, are the plan's bill, not an agents' clock at 0
-        tick, bill = clock.replace(" running", "").replace(" min", "m"), f"bill {spent}" if spent else ""
+        tick, bill = clock.replace(" running", ""), f"bill {spent}" if spent else ""
         long = [
             (f"waiting on you: {c['you']}{board}", you),
             (f"agents: {clock}" if ran else bill or "agents: none", busy),
-            (f"you: {acts} · ~{mine['minutes']} min", ""),
+            (f"you: {acts} {mine['minutes']}m", ""),
             (f"R runs {c['ready']} ready" if c["ready"] else "nothing ready to run", ""),
             *([(f"{c['back']} came back", "")] if c.get("back") else []),
             (c["done"], ""),
@@ -1485,7 +1476,7 @@ class Watch(App):
         short = [
             (f"{c['you']} on you{board}", you),  # the graph's note says it so too
             (f"agents {tick}" if ran else bill or "agents 0", busy),
-            (f"you {acts} ~{mine['minutes']}m", ""),
+            (f"you {acts} {mine['minutes']}m", ""),
             (f"R: {c['ready']} ready" if c["ready"] else "none ready", ""),
             *([(f"{c['back']} came back", "")] if c.get("back") else []),
             (c["done"], ""),

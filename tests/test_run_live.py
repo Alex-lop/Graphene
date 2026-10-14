@@ -112,7 +112,7 @@ def test_ctrl_c_hands_back_what_the_run_started_and_stops_its_executors(repo, pa
     said, _ = run.communicate(timeout=30)
     assert run.returncode == 130, said
     last = said.strip().splitlines()[-1]
-    clocks = f" · agents <1 min, no meter · width {running} of {running} · you 0 acts, 0 min"  # no meter
+    clocks = f" · agents <1m, no meter · {running} of {running} at once · you: 0 moves, 0m"  # no meter
     assert last == f"run stopped: {'a, b' if parallel == '2' else 'a'} handed back, ready again{clocks}", said
     assert set(states(repo).values()) == {OPEN}  # nothing left running, nothing said done
     with Store.open(repo) as store:
@@ -226,7 +226,7 @@ def test_what_a_leaf_did_last_is_the_meters_row_then_its_logs_last_line_not_the_
         # a replay's clock is its recording's newest row, and its log is written as it plays: from after it
         newest = R._seconds(store.node_log("a")[-1]["timestamp"])
         os.utime(log, (newest + 2700, newest + 2700))
-        assert R.live(store, node, newest)["idle"] == 0  # it read -2700 s ago, on 7 October
+        assert R.live(store, node, newest)["idle"] == 0  # it read -2700s ago, on 7 October
 
 
 def test_the_executors_output_is_a_tail_while_it_runs(repo):
@@ -587,7 +587,7 @@ def test_ctrl_c_while_a_merge_hook_runs_undoes_or_keeps_the_merge_as_it_stands(r
     assert run.returncode == 130, said
     assert git(repo, "status", "--porcelain") == "" and not (repo / ".git" / "MERGE_HEAD").exists()
     last = said.strip().splitlines()[-1]
-    clocks = " · agents <1 min, no meter · width 1 of 1 · you 0 acts, 0 min"
+    clocks = " · agents <1m, no meter · 1 of 1 at once · you: 0 moves, 0m"
     if hook == "pre-merge-commit":  # no merge commit: undone here, and the leaf waits in review
         assert states(repo) == {"a": REVIEW} and (repo / "a.txt").read_text() == "a\n"
         assert "a, by its executor" in git(repo, "show", "graphene/a:a.txt")

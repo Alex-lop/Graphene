@@ -660,20 +660,20 @@ def summary(store, since: int, stopped: bool = False) -> str:
 
 
 def clocks(log: list[dict], you: dict | None = None) -> str:
-    """The run's two clocks and its width, from its own rows: " · agents 41 min, $2.8700 at list price ·
-    width 2 of 3 · you 4 acts, 2 min". With no usage row, the dollars are "no meter": nothing is invented.
+    """The run's two clocks and its width, from its own rows: " · agents 41m, $2.8700 at list price ·
+    2 of 3 at once · you: 4 moves, 2m". With no usage row, the dollars are "no meter": nothing is invented.
     ``you``: the person's clock over more rows than the run's own (``summary``)."""
     agents, ran = M.agents(log, datetime.now(UTC)), M.width(log)
     you = you or M.you(log, P.person_name())
-    took = f"{round(agents['seconds'] / 60)} min" if agents["seconds"] >= 60 else "<1 min"
+    took = f"{round(agents['seconds'] / 60)}m" if agents["seconds"] >= 60 else "<1m"
     spent, n = "no meter", agents["unpriced"]
     if any(e["kind"] == "usage" for e in log):
         spent = f"${agents['dollars']:.4f} at list price"
     if n:
         spent += f" + {f'{round(n / 1000)}k' if n >= 1000 else n} tokens with no list price"
-    acts = f"{you['acts']} act{'s' * (you['acts'] != 1)}"
-    wide = f" · width {ran['most']} of {ran['lanes']}" if ran else ""
-    return f" · agents {took}, {spent}{wide} · you {acts}, {you['minutes']} min"
+    acts = f"{you['acts']} move{'s' * (you['acts'] != 1)}"
+    wide = f" · {ran['most']} of {ran['lanes']} at once" if ran else ""
+    return f" · agents {took}, {spent}{wide} · you: {acts}, {you['minutes']}m"
 
 
 @contextlib.contextmanager

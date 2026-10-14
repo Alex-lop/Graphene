@@ -659,7 +659,7 @@ def test_a_metered_attempt_that_came_back_says_what_it_ran_and_where_it_was_refu
     ])  # fmt: skip
     plan.release(store, "n1", run, "it needs README.md", now=T(8))
     lines = NR.render(NR.node_record(store, repo, plan.get(store, "n1"), at=T(9)))
-    start = lines.index("  attempt 1 · claude claude-sonnet-5-5 · 6 min · 2 turns · 412k in, 9k out · "
+    start = lines.index("  attempt 1 · claude claude-sonnet-5-5 · 6m · 2 turns · 412k in, 9k out · "
                         "$0.42 at list price · exit 1")
     assert lines[start + 1 : start + 7] == [
         "    read: src/api/users.py, src/db/schema.py",
@@ -750,7 +750,7 @@ def test_an_attempt_with_no_meter_shows_the_tail_of_its_log(store, repo, tmp_pat
         (T(3), "ended", {"attempt": 1, "exit": 1, "seconds": 120, "meter": None, "unread": 0}),
     ])  # fmt: skip
     lines = NR.render(NR.node_record(store, repo, plan.get(store, "n1"), at=T(4)))
-    start = lines.index("  attempt 1 · sh · 2 min · no meter · exit 1")
+    start = lines.index("  attempt 1 · sh · 2m · no meter · exit 1")
     assert lines[start + 1] == "    its last lines:"
     shown = [line for line in lines[start + 2 :] if line.startswith("      ")]
     assert shown[-1].startswith("      line 199 of what the executor wrote")
@@ -788,7 +788,7 @@ def test_the_record_of_several_leaves_says_how_wide_they_ran_and_a_leafs_own_doe
         store.log_node(leaf, start, "attempt", run.label, run.session_id, None, {"attempt": 1})
         store.log_node(leaf, end, "ended", run.label, run.session_id, None, {"attempt": 1, "exit": 0})
     lines = NR.rolled_up(store, repo, plan.leaves(plan.nodes(store)))
-    assert lines[-1] == "    width 2 of 2 · 50% of agent minutes alone"
+    assert lines[-1] == "    2 of 2 at once · 50% of agent minutes alone"
     assert not any("width" in line for line in NR.render(NR.node_record(store, repo, plan.get(store, "api"))))
 
 
@@ -802,4 +802,4 @@ def test_the_width_in_a_record_is_taken_at_the_records_moment(store, repo):
     store.log_node("api", T(3), "ended", run.label, run.session_id, None, {"attempt": 1, "exit": 0})
     # at 01:05 db has run 3 minutes, 1 of them beside api: 3 of 5 agent minutes alone
     lines = NR.rolled_up(store, repo, plan.leaves(plan.nodes(store)), T(5))
-    assert lines[-1] == "    width 2 of 2 · 60% of agent minutes alone"
+    assert lines[-1] == "    2 of 2 at once · 60% of agent minutes alone"

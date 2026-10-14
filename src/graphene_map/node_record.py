@@ -872,7 +872,7 @@ def _few(names: list[str]) -> str:
 
 
 def _took(seconds: int) -> str:
-    return f"{seconds // 60} min" if seconds >= 60 else f"{seconds} s"
+    return f"{seconds // 60}m" if seconds >= 60 else f"{seconds}s"  # the clocks' spelling (views.elapsed)
 
 
 def _k(n: int) -> str:
@@ -938,5 +938,6 @@ def rolled_up(store, root: str | Path, leaves: list[P.Node], at: str | None = No
         total["endpoint"] = _whose(bills)
         lines += bill_line(total, "    ")
     if ran := meter.width([e for n in held for e in store.node_log(n.id)], at and datetime.fromisoformat(at)):
-        lines.append(f"    width {ran['most']} of {ran['lanes']} · {ran['alone']:.0%} of agent minutes alone")
+        at_once = f"{ran['most']} of {ran['lanes']} at once"
+        lines.append(f"    {at_once} · {ran['alone']:.0%} of agent minutes alone")
     return lines

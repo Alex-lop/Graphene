@@ -123,7 +123,7 @@ def test_a_recording_made_with_the_meter_draws_its_strip_while_a_leaf_runs(tmp_p
     for name, who in (("shipped", "stand-in"), ("meter", "claude")):
         *rows, ended = strips[name]
         assert ended and any(who in s and "$" in s for s in rows), rows
-        assert not any("no meter" in s or re.search(r"-\d+ s ago", s) for s in rows), rows  # 7 October's two
+        assert not any("no meter" in s or re.search(r"-\d+s ago", s) for s in rows), rows  # 7 October's two
 
 
 def test_the_end_says_the_next_step_above_what_the_last_change_was(tmp_path):

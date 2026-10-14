@@ -222,14 +222,14 @@ def _axis(span: float, per: float, cells: int) -> str:
 
 def note(lanes: int, seconds: float, back: int, agents: dict, you: dict, width: int | None = None,
          ran: dict | None = None) -> str:
-    """What the lanes say at a glance: `3 lanes · 12 min · 1 came back · agents 31 min $2.41 · you 4 acts
-    ~3 min · width 2 of 3` (``ran``: `meter.width`). Whole pieces go from the end to fit ``width`` cells."""
+    """What the lanes say at a glance: `3 lanes · 12m · 1 came back · agents 31m $2.41 · you: 4 moves
+    3m · 2 of 3 at once` (``ran``: `meter.width`). Whole pieces go from the end to fit ``width`` cells."""
     took = agents["seconds"] // 60 or ("<1" if agents["seconds"] or agents["running"] else 0)
-    said = [f"{lanes} lane{'s' * (lanes != 1)}", f"{int(seconds // 60) or '<1'} min"]
+    said = [f"{lanes} lane{'s' * (lanes != 1)}", f"{int(seconds // 60) or '<1'}m"]
     said += [f"{back} came back"] if back else []
-    said += [f"agents {took} min" + (f" {money(agents['dollars'])}" if agents["dollars"] else "")]
-    said += [f"you {you['acts']} act{'s' * (you['acts'] != 1)} ~{you['minutes']} min"]
-    said += [f"width {ran['most']} of {ran['lanes']}"] if ran else []
+    said += [f"agents {took}m" + (f" {money(agents['dollars'])}" if agents["dollars"] else "")]
+    said += [f"you: {you['acts']} move{'s' * (you['acts'] != 1)} {you['minutes']}m"]
+    said += [f"{ran['most']} of {ran['lanes']} at once"] if ran else []
     while len(said) > 1 and width is not None and cell_len(" · ".join(said)) > width:
         said.pop()
     return " · ".join(said)

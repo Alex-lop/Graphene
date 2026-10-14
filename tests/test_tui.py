@@ -85,10 +85,11 @@ def test_the_top_line_says_whose_plan_and_the_goal_is_the_first_row(repo):
     assert seen["where"].endswith(repo.name) and len(seen["where"]) <= 78
     assert seen["tree"][0].startswith("▼ ? users come back with their ids") and "proposed" in seen["tree"][0]
     assert seen["cursor"] is None and "users come back with their ids" in seen["detail"]  # the goal's pane
-    assert "planner:" not in seen["status"] and "2 on you · agents 0 · you 0 acts" in seen["status"]
+    assert "planner:" not in seen["status"] and "2 on you · agents 0 · you 0 moves" in seen["status"]
     assert seen["classes"] == ["-narrow"]  # 80 columns: the tree above, the node below it
     wide, _ = watch(repo, [], size=(120, 30))
-    assert wide["classes"] == ["-wide"] and "waiting on you: 2 · agents: none · you: 0 acts" in wide["status"]
+    assert wide["classes"] == ["-wide"]
+    assert "waiting on you: 2 · agents: none · you: 0 moves" in wide["status"]
     person("plan", "accept")
     seen, _ = watch(repo, [])
     assert seen["tree"][0].startswith("▼ ○ users come back with their ids") and "0/3 done" in seen["tree"][0]
@@ -1066,11 +1067,11 @@ def test_watch_opened_after_a_run_says_what_the_run_said_first(repo):
     run's row is the newest thing in the log, its line is the screen's first bottom line; once anything
     is done after it, it is not repeated."""
     every_state(repo)
-    line = "run: 2 done · agents <1 min, $0.0246 at list price · width 2 of 2 · you 2 acts, 1 min"
+    line = "run: 2 done · agents <1m, $0.0246 at list price · 2 of 2 at once · you: 2 moves, 1m"
     with Store.open(repo) as store:
         store.log_node("*", plan._now(), "run", "graphene run", None, None, {"summary": line})
     seen, _ = watch(repo, [])
-    assert "run: 2 done · agents <1 min, $0.0246" in seen["status"], seen["status"]  # cut at 80, as any line
+    assert "run: 2 done · agents <1m, $0.0246" in seen["status"], seen["status"]  # cut at 80, as any line
     seen, _ = watch(repo, [], size=(120, 36))
     assert line in seen["status"], seen["status"]
     with Store.open(repo) as store:
@@ -1149,12 +1150,12 @@ def test_the_status_line_is_two_lines_fitted_at_a_word_at_80_and_120(repo):
     wide, _ = at(repo, "rule", (120, 36))
     top, bottom = wide["status"].splitlines()
     # the clocks short, the rest long; the proposal counted, as `graphene` counts it
-    clocks = r"waiting on you: 4 · agents 1 <1m · you \d+ acts? ~\d+m · R runs 1 ready · "
+    clocks = r"waiting on you: 4 · agents 1 <1m · you \d+ moves? \d+m · R runs 1 ready · "
     assert re.fullmatch(clocks + r"1 came back · 1/9 done · plan first: auto \(P\)", top), top
     assert bottom == "y sign off · x send back · Enter record · Tab view · ? help · q quit"  # ? everywhere
     narrow, _ = at(repo, "rule", (80, 24))
     top, bottom = narrow["status"].splitlines()
-    narrow_top = r"4 on you · agents 1 <1m · you \d+ acts? ~\d+m · R: 1 ready · 1 came back · 1/9 done"
+    narrow_top = r"4 on you · agents 1 <1m · you \d+ moves? \d+m · R: 1 ready · 1 came back · 1/9 done"
     assert re.fullmatch(narrow_top, top), top  # the clock one phrase: how much is done is back at 80
     long = "graphene node edit rule: " + "the scope changed from one path to a longer list of them " * 3
 
@@ -2155,7 +2156,7 @@ def test_help_and_quit_never_fall_off_the_key_line_and_the_empty_plan_opens_on_t
         stamp = time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime(time.time() - 12))
         store.log_node("*", stamp, "asked", "alex", None, None, {"note": "users come back with their ids"})
     first = watch(repo, [])[0]["status"].splitlines()[0]
-    assert re.fullmatch(r"plan first: off · planner asked 1[2-9] s ago", first), first
+    assert re.fullmatch(r"plan first: off · planner asked 1[2-9]s ago", first), first
     proposed(repo)  # the stranger's first screen: the proposal, nothing accepted
     keys = watch(repo, [])[0]["status"].splitlines()[1]
     assert keys == "y accept it all · E edit as text · za fold all · Tab view · ? help · q quit", keys
@@ -2195,8 +2196,8 @@ def test_the_status_line_counts_done_as_graphene_does_and_says_on_you_in_words(r
 
     proposed(repo)
     assert person("node", "add", "a price of 0 means skip it").exit_code == 0  # to fill in
-    for size, said in (((80, 24), "2 on you · agents 0 · you 1 act ~1m · none ready · 0/4 done"),
-                       ((120, 36), "waiting on you: 2 · agents: none · you: 1 act · ~1 min · "
+    for size, said in (((80, 24), "2 on you · agents 0 · you 1 move 1m · none ready · 0/4 done"),
+                       ((120, 36), "waiting on you: 2 · agents: none · you: 1 move 1m · "
                                    "nothing ready to run · 0/4 done")):
         seen, _ = watch(repo, [], size=size)
         assert seen["status"].splitlines()[0].startswith(said), (size, seen["status"])
@@ -2299,12 +2300,12 @@ def test_while_the_planner_is_asked_the_agents_slot_counts_the_seconds_since(rep
         store.log_node("*", stamp(12), "asked", "alex", None, None, {"note": "make it faster"})
     for size in SIZES:
         top = watch(repo, [], size=size)[0]["status"].splitlines()[0]
-        assert re.search(r" · planner asked 1[2-9] s ago · you", top) and "agents" not in top, (size, top)
+        assert re.search(r" · planner asked 1[2-9]s ago · you", top) and "agents" not in top, (size, top)
     with Store.open(repo) as store:
         store.log_node("*", plan._now(), "usage", "planner:claude", None, None,
                        {"model": "claude-sonnet-5-5", "calls": 1, "dollars": 0.05})  # fmt: skip
     top = watch(repo, [])[0]["status"].splitlines()[0]  # a try's bill lands before its answer: still asked
-    assert re.search(r" · planner asked 1[2-9] s ago · you", top) and "bill" not in top, top
+    assert re.search(r" · planner asked 1[2-9]s ago · you", top) and "bill" not in top, top
     with Store.open(repo) as store:
         store.log_node("*", plan._now(), "proposed", "planner:claude", None, None, {"ids": ["ids"]})
     top = watch(repo, [])[0]["status"].splitlines()[0]
@@ -2472,17 +2473,17 @@ def test_each_running_leaf_has_a_live_row_two_lines_at_80_one_at_120(repo):
     rows = narrow["meter"]
     assert len(rows) == 4 and all(len(r) <= 80 for r in rows), rows
     assert re.fullmatch(r" ● ids · claude sonnet-5-5 · attempt 1 · \d+s · 1 turn · \$0\.42", rows[0]), rows
-    said = r"   running pytest -q · \d+ s ago · 2 files, 1 outside · 412k in, 9k out"
+    said = r"   running pytest -q · \d+s ago · 2 files, 1 outside · 412k in, 9k out"
     assert re.fullmatch(said, rows[1]), rows
     assert re.fullmatch(r" ● ready1 · script\.sh · attempt 1 · \d+s · no meter", rows[2]), rows
-    assert re.fullmatch(r"   step 3 of 5 · \d+ s ago", rows[3]), rows  # its log's last line
+    assert re.fullmatch(r"   step 3 of 5 · \d+s ago", rows[3]), rows  # its log's last line
     assert len([r for r in narrow["tree"] if r.strip()]) <= (24 - 3 - 4) // 2  # less the strip's rows
     wide, _ = watch(repo, [], size=(120, 36))
     rows = wide["meter"]
     assert len(rows) == 2 and all(len(r) <= 120 for r in rows), rows
-    first = r" ● ids · claude sonnet-5-5 · \d+s · \$0\.42 · running pytest -q · \d+ s ago · 1 turn · 2 files"
+    first = r" ● ids · claude sonnet-5-5 · \d+s · \$0\.42 · running pytest -q · \d+s ago · 1 turn · 2 files"
     assert re.match(first, rows[0]), rows
-    script = r" ● ready1 · script\.sh · \d+s · no meter · step 3 of 5 · \d+ s ago · attempt 1"
+    script = r" ● ready1 · script\.sh · \d+s · no meter · step 3 of 5 · \d+s ago · attempt 1"
     assert re.fullmatch(script, rows[1]), rows
 
 
@@ -2552,7 +2553,7 @@ def test_past_four_running_leaves_the_strip_counts_the_rest(repo):
             store.log_node(f"l{k}", plan._now(), "attempt", RUN.label, RUN.session_id, None, {"attempt": 1})
     seen, _ = watch(repo, [], size=(120, 36))
     assert [r.split(" · ")[0].strip() for r in seen["meter"]] == ["● l0", "● l1", "● l2", "● l3", "+2 more"]
-    assert "agents 6 <1m · " in seen["status"] or "agents: 6 running <1 min" in seen["status"]
+    assert "agents 6 <1m · " in seen["status"] or "agents: 6 running <1m" in seen["status"]
 
 
 def test_the_status_line_has_the_two_clocks_and_help_says_they_count_by_your_keys(repo):
@@ -2562,7 +2563,7 @@ def test_the_status_line_has_the_two_clocks_and_help_says_they_count_by_your_key
     for size in SIZES:
         seen, _ = watch(repo, [], size=size)
         top = seen["status"].splitlines()[0]
-        assert re.search(r" · agents 2 <1m \$0\.42 · you \d+ acts? ~\d+m · ", top), (size, top)
+        assert re.search(r" · agents 2 <1m \$0\.42 · you \d+ moves? \d+m · ", top), (size, top)
         assert len(top) <= size[0] - 2
     assert "by your keys, not by what you read" in " ".join(HELP_END.split())
 
@@ -2704,7 +2705,7 @@ def test_the_goal_says_the_last_run_and_enter_on_it_is_the_plans_record(repo):
     """What a run said last was gone with the terminal it printed in, and Enter on the goal did nothing."""
     proposed(repo)
     person("plan", "accept")
-    summary = "run: 1 done · agents 2 min, $0.0400 at list price"
+    summary = "run: 1 done · agents 2m, $0.0400 at list price"
     with Store.open(repo) as store:
         store.log_node("*", plan._now(), "run", "graphene run", detail={"summary": summary})
     seen, _ = watch(repo, [], size=(120, 36))

@@ -61,10 +61,10 @@ def test_a_run_that_started_nothing_keeps_no_row_so_the_acts_before_it_are_bille
     idle = person("run", "--with", "true", "--node", "l2")  # l2 is the person's: nothing starts
     assert idle.stdout.splitlines()[-1].startswith("run: nothing started")
     ran = person("run", "--with", "true", "--node", "l1")
-    assert "· you 2 acts, " in ran.stdout.splitlines()[-1], ran.stdout
+    assert "· you: 2 moves, " in ran.stdout.splitlines()[-1], ran.stdout
     person("run", "--with", "true", "--node", "l2")  # nothing starts again
     [last] = [line for line in person("plan", "record").stdout.splitlines() if "last run:" in line]
-    assert "nothing started" not in last and "you 2 acts" in last
+    assert "nothing started" not in last and "you: 2 moves" in last
 
 
 def test_no_plan_says_paragraph_in_and_never_the_node_add_flags(repo):
@@ -74,7 +74,7 @@ def test_no_plan_says_paragraph_in_and_never_the_node_add_flags(repo):
     assert shown.exit_code == 0 and plain.exit_code == 1  # plain `graphene` has nothing to show
     for said in (shown.stdout, plain.stderr):
         assert said.startswith("nothing is planned here yet. `graphene ask '<what you want")
-        assert "graphene ask '<what you want>'" in said and "graphene watch" in said
+        assert "graphene ask '<what you want, in a paragraph>'" in said and "graphene watch" in said
         assert "--scope" not in said and "node add" not in said
     assert shown.stdout == plain.stderr  # said once, the same way
 
@@ -324,7 +324,7 @@ def test_start_done_signoff_reopen_and_run_say_nothing_of_the_repository_they_st
     assert all("(the plan of " not in a.stderr for a in acts), [a.stderr for a in acts]
     # a run names it first (it runs for long), and ends with what it did, for the person
     last = acts[-1].stdout.splitlines()[-1]  # the bill counts the six acts that led to the run
-    said = r"run: 1 came back \(l2\) · agents <1 min, no meter · width 1 of 1 · you 6 acts, [12] min"
+    said = r"run: 1 came back \(l2\) · agents <1m, no meter · 1 of 1 at once · you: 6 moves, [12]m"
     assert re.fullmatch(said, last), last  # a minute may turn between the acts
 
 
@@ -431,7 +431,7 @@ def test_a_finished_plan_says_when_its_leaves_work_is_not_committed_and_what_com
     assert ran.exit_code == 0, ran.output
     assert "--here: your checkout is exposed" in ran.stdout
     assert ran.stdout.splitlines()[-1] == (
-        "run: 1 done · agents <1 min, no meter · width 1 of 1 · you 1 act, 1 min · the work of ids is "
+        "run: 1 done · agents <1m, no meter · 1 of 1 at once · you: 1 move, 1m · the work of ids is "
         "in your checkout, uncommitted (`git status`): commit it yourself"
     )  # the merge `graphene run` would have made is run --help's to say: the after-walk read 228 characters
     head = person().stdout.splitlines()[0]
@@ -849,7 +849,7 @@ def test_plan_record_and_node_show_on_a_sub_goal_say_how_wide_its_leaves_ran(rep
                 stamp = f"2026-01-05T01:0{minute}:00.000Z"
                 store.log_node(leaf, stamp, kind, run.label, run.session_id, None, {"attempt": 1})
     for args in (("plan", "record"), ("node", "show", "api")):
-        assert "    width 2 of 2 · 50% of agent minutes alone" in person(*args).stdout.splitlines(), args
+        assert "    2 of 2 at once · 50% of agent minutes alone" in person(*args).stdout.splitlines(), args
 
 
 def test_plan_log_and_plan_record_say_what_the_last_run_said(repo):
@@ -857,7 +857,7 @@ def test_plan_log_and_plan_record_say_what_the_last_run_said(repo):
     from graphene_map import plan
     from graphene_map.store import Store
 
-    summary = "run: 1 done · agents 2 min, $0.0400 at list price · width 1 of 1 · you 1 act, 1 min"
+    summary = "run: 1 done · agents 2m, $0.0400 at list price · 1 of 1 at once · you: 1 move, 1m"
     with Store.open(repo) as store:
         plan.propose(store, [{"id": "a", "title": "a", "scope": ["a.txt"], "check": "true"}],
                      plan.Caller("alex", True))  # fmt: skip

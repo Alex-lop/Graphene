@@ -384,7 +384,7 @@ def test_a_sub_goals_record_mid_replay_says_its_width_at_the_replays_clock(tmp_p
             await pilot.pause()
             return " ".join(str(app.query_one("#detail").render()).split())
 
-    assert "width 2 of 2 · 48% of agent minutes alone" in asyncio.run(go())
+    assert "2 of 2 at once · 48% of agent minutes alone" in asyncio.run(go())
 
 
 def test_the_replay_ends_with_every_fold_open(tmp_path, monkeypatch):

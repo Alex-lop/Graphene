@@ -127,6 +127,16 @@ def money(dollars: float) -> str:
     return f"${dollars:.2f}" if dollars >= 0.01 or not dollars else f"${dollars:.4f}"
 
 
+def elapsed(seconds: int) -> str:
+    """A span as a clock reads it, one spelling on every surface: `12s`, `6m12s`, `1h04m`; a whole
+    number of minutes, where seconds would be noise, is the same letter (`6m`, `<1m`)."""
+    if seconds < 60:
+        return f"{seconds}s"
+    if seconds < 3600:
+        return f"{seconds // 60}m{seconds % 60:02d}s"
+    return f"{seconds // 3600}h{seconds % 3600 // 60:02d}m"
+
+
 def billed(rows: list[dict], now: datetime | None = None) -> dict[str, str]:
     """What each leaf an executor held spent and took, from the log's rows, as a view notes it on the
     leaf's cell: `$0.42 · 6m` (whole minutes, or `<1m`). A leaf no list price covers, with no meter, or
