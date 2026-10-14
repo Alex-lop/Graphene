@@ -34,37 +34,38 @@ holds the rules, `after.md` every pair with its file and its n.
 
 What it changed, by the hour a stranger meets it:
 
-- **The first ask** says what it cost, after its proposal lines (`the planner (claude sonnet-5-5): 5 calls, $0.11 at
-  list price`), and a refused ask keeps the proposal it paid for and names the next step; `plan propose -` reports
-  every fault at once instead of one per round.
+- **The first ask** says what it cost, after its proposal lines (`the planner (claude sonnet-5-5): 5 calls, $0.11 at list price`), and a refused ask keeps the proposal it paid for and names the next step; `plan propose -` reports
+every fault at once instead of one per round.
 - **init** says what it did and how to undo it: the hooks it installed, that Claude Code sessions in that repository
-  are recorded on this machine, that accepting happens in `graphene watch` in another terminal; at a terminal it asks
-  the plan-first mode; `graphene init --remove` takes the hooks out.
+are recorded on this machine, that accepting happens in `graphene watch` in another terminal; at a terminal it asks
+the plan-first mode; `graphene init --remove` takes the hooks out.
 - **The shipped executor** gained a spend cap (`--max-budget-usd 2`, an attempt) and `--strict-mcp-config`, and is
-  told its shell runs only `graphene node` and `graphene plan`, so it stops guessing.
+told its shell runs only `graphene node` and `graphene plan`, so it stops guessing.
 - **The run** says first where it lands and under what cap; red first asks the environment before it judges (a
-  missing runner is said as such, never as a red; a Python installed editable from the repository is named, because
-  a check that imports it tests the checkout, not the leaf); the merge body carries the check, the executor, the
-  dollars and the reopen note; `graphene node diff` shows what a leaf changed; the record counts the commands an
-  executor was refused and keeps its last words whole.
+missing runner is said as such, never as a red; a Python installed editable from the repository is named, because
+a check that imports it tests the checkout, not the leaf); the merge body carries the check, the executor, the
+dollars and the reopen note; `graphene node diff` shows what a leaf changed; the record counts the commands an
+executor was refused and keeps its last words whole.
 - **A correctness fix outside the plan:** `done`'s clean tree was cut from a copy of the index that git trusted, so
-  an edit of the same size made in the second the file was checked out read as the committed file, and a broken leaf
-  could land. One line (the copy dated at epoch+1) closes it; `dev/process/prove/probes/racy.md` reproduces it
-  outside Graphene.
+an edit of the same size made in the second the file was checked out read as the committed file, and a broken leaf
+could land. One line (the copy dated at epoch+1) closes it; `dev/process/prove/probes/racy.md` reproduces it
+outside Graphene.
 
 What the numbers said (907a7d0 against the branch):
 
-| measure | 907a7d0 | the branch |
-|---|---|---|
-| X1, the first ask, 40 Sonnet asks a build: proposals by first answer | 40 of 40 [0.91, 1.00] | 35 of 40 [0.74, 0.95]: the intervals overlap, no difference shown; 40 of 40 by ask on both |
-| X2, the feeds task with a planted fault, median of 3 runs: hidden checks; dollars; commands refused to the executors; turns | 18 of 20; $0.628; 18; 51 | 18 of 20; $0.533; 4; 31 |
-| X2, the plain Claude Code session on the same task (median of 3) | 18 of 20; $0.353; 5 refusals; 21 turns; the fix said in the reply only | the same arm on both builds |
-| X3, ten morning-after questions, median of 8 readers: Graphene's record; `git log -p` plus the agents' last words | 7; 4 | 7; 5 (the merge body made git answer one more) |
-| X4, pytest-bdd issue #476 on a real repository | 2 landed by luck of import order; 148 of its tests pass | 0 landed: the leaf came back with the executor's own diagnosis of the editable install; nothing broken |
-| X5, the editable-install hole, $0 | the broken leaf landed with `python3 -m pytest` and with `uv run pytest` | named before the run; `uv run pytest` refuses it; `python3 -m pytest` still lands it, as the rules expected |
-| X7, plan first on new repositories | | `auto` took the feeds paragraph at once as one 8-path leaf 3 of 3 times; `on` made it wait for the person 3 of 3 |
-| the suite at the tip | | 1,876 passed, 21 skipped |
-| spend, every experiment on both builds | | $20.61 by the sessions' own reports |
+
+| measure                                                                                                                     | 907a7d0                                                                  | the branch                                                                                                       |
+| --------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
+| X1, the first ask, 40 Sonnet asks a build: proposals by first answer                                                        | 40 of 40 [0.91, 1.00]                                                    | 35 of 40 [0.74, 0.95]: the intervals overlap, no difference shown; 40 of 40 by ask on both                       |
+| X2, the feeds task with a planted fault, median of 3 runs: hidden checks; dollars; commands refused to the executors; turns | 18 of 20; $0.628; 18; 51                                                 | 18 of 20; $0.533; 4; 31                                                                                          |
+| X2, the plain Claude Code session on the same task (median of 3)                                                            | 18 of 20; $0.353; 5 refusals; 21 turns; the fix said in the reply only   | the same arm on both builds                                                                                      |
+| X3, ten morning-after questions, median of 8 readers: Graphene's record; `git log -p` plus the agents' last words           | 7; 4                                                                     | 7; 5 (the merge body made git answer one more)                                                                   |
+| X4, pytest-bdd issue #476 on a real repository                                                                              | 2 landed by luck of import order; 148 of its tests pass                  | 0 landed: the leaf came back with the executor's own diagnosis of the editable install; nothing broken           |
+| X5, the editable-install hole, $0                                                                                           | the broken leaf landed with `python3 -m pytest` and with `uv run pytest` | named before the run; `uv run pytest` refuses it; `python3 -m pytest` still lands it, as the rules expected      |
+| X7, plan first on new repositories                                                                                          |                                                                          | `auto` took the feeds paragraph at once as one 8-path leaf 3 of 3 times; `on` made it wait for the person 3 of 3 |
+| the suite at the tip                                                                                                        |                                                                          | 1,876 passed, 21 skipped                                                                                         |
+| spend, every experiment on both builds                                                                                      |                                                                          | $20.61 by the sessions' own reports                                                                              |
+
 
 **What was not shown.** The bet that a tree beats a paragraph was not tested and is not settled: the plain session
 did the feeds task as well for less, as the rules expected. What the contract buys on that task is in kind, not in
@@ -87,27 +88,21 @@ the merged branch at its seams and a fixer landed 26 fixes; an after-walk repeat
 What a stranger reads now, before and after:
 
 - **After init:** `plan first: on. Every ask in a session is proposed, one leaf included, and waits for you…`
-  (206 characters, six undefined words) became `plan first: on. Claude proposes a plan here before it writes; you
-  accept it in `graphene watch`, in another terminal. `graphene plan first off` turns it off.` Eight Claude Code
-  event names became `(8 Claude Code hooks)`.
-- **While the planner works:** nothing for half a minute became one line per tool call as it happens (`  reading
-  normalize/fields.py`, `  searching def load`), and `graphene watch` counts the seconds since the planner was asked.
-- **After ask and after accept:** `prune it: …` and `left alone, agents can reach: fields, readme` became `next:
-  `graphene plan accept`, or prune in `graphene watch` (y accepts, d drops)` and `next: `graphene run` reaches
-  fields, readme  (R in graphene watch)`.
-- **The run:** the 297-character line became `landing into main at cc9b19a: claude, up to 2 at once; an attempt
-  stops once it passes $2` and one line on how to follow it; the git flags live in `run --help`; every 30 seconds the
-  terminal says what each metered leaf is doing (`fields · 30 s · 4 turns · $0.08 · editing normalize/fields.py`);
-  red first names the check it flags: `their check (`true`) passes before any work: it would pass with nothing done`.
-- **Every command's last line:** `  (the plan of /Users/you/…/repo)` became nothing, in the repository you stand in.
+(206 characters, six undefined words) became `plan first: on. Claude proposes a plan here before it writes; you accept it in` graphene watch`, in another terminal.` graphene plan first off `turns it off.` Eight Claude Code
+event names became `(8 Claude Code hooks)`.
+- **While the planner works:** nothing for half a minute became one line per tool call as it happens (  `reading normalize/fields.py`,   `searching def load`), and `graphene watch` counts the seconds since the planner was asked.
+- **After ask and after accept:** `prune it: …` and `left alone, agents can reach: fields, readme` became `next:` graphene plan accept`, or prune in` graphene watch `(y accepts, d drops)` and `next:` graphene run `reaches fields, readme  (R in graphene watch)`.
+- **The run:** the 297-character line became `landing into main at cc9b19a: claude, up to 2 at once; an attempt stops once it passes $2` and one line on how to follow it; the git flags live in `run --help`; every 30 seconds the
+terminal says what each metered leaf is doing (`fields · 30 s · 4 turns · $0.08 · editing normalize/fields.py`);
+red first names the check it flags: `their check (`true`) passes before any work: it would pass with nothing done`.
+- **Every command's last line:**   `(the plan of /Users/you/…/repo)` became nothing, in the repository you stand in.
 - **node show, for a person:** the agent's `finish:` and `stuck:` orders are gone, and `landed:` sits right under
-  the contract.
+the contract.
 - **The watch screen at 80 columns:** the status clock is one phrase (`agents 1 <1m`), so `1/9 done` is back on the
-  line; `? help · q quit` end every key line (they were the first to fall off); the empty plan opens on `plan first:
-  on` and three keys instead of six zeros; the legend names every glyph once, and the time view has a key of its own.
+line; `? help · q quit` end every key line (they were the first to fall off); the empty plan opens on `plan first: on` and three keys instead of six zeros; the legend names every glyph once, and the time view has a key of its own.
 - **The demo:** `a scripted stand-in, not Nemotron` became `a scripted stand-in, no model ran`; the shipped recording
-  was made again with the meter on, so the strip shows while a leaf runs; a live run on Fable is recorded beside it
-  at `tests/recordings/feel-fable.jsonl`.
+was made again with the meter on, so the strip shows while a leaf runs; a live run on Fable is recorded beside it
+at `tests/recordings/feel-fable.jsonl`.
 
 The after-walk's verdict on the 36 (`dev/process/feel/after.md`): 16 mended, 14 partly, 6 unchanged, none worse. The
 six unchanged were left out on purpose, each with its reason in `decisions.md`: the record's `in short` and
@@ -137,8 +132,7 @@ still does the feeds task as well for less, and that is written down rather than
 ## Decisions that are Alex's (each one commit to drop)
 
 From the prove night: plan first `on` for new repositories (init asks at a terminal); the shipped executor's
-`--strict-mcp-config` and `--max-budget-usd 2`; `?` as help on every row, `t` to talk, a run that could start more
-than one leaf asking first; the Stop hook blocking an interactive session once; the bill line's `you` counting since
+`--strict-mcp-config` and `--max-budget-usd 2`; `?` as help on every row, `t` to talk, a run that could start more than one leaf asking first; the Stop hook blocking an interactive session once; the bill line's `you` counting since
 the last run; the HOW_IT_WORKS word cap at 3,300; the demo staying a scripted replay.
 
 From the feel night: the `(the plan of …)` trailer printing only from outside the repository (decision 43); the
@@ -165,3 +159,4 @@ graphene plan accept && graphene run --parallel 2
 graphene node show <a landed leaf> && graphene plan record
 graphene init --remove                    # the way out
 ```
+
