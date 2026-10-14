@@ -222,6 +222,17 @@ def test_a_yaml_list_under_an_empty_scope_or_needs_is_its_values_not_child_nodes
     assert [n.id for n in plan.ready(plan.nodes(store))] == ["render"]
 
 
+def test_the_proposed_rows_indent_by_depth_so_the_trees_shape_shows_at_once(store):
+    """The words reader (W4): the ask's `proposed id: title` rows were flat, so the shape (two leaves under a
+    sub-goal) was lost until `graphene plan` drew it. A row under a proposed parent indents two spaces a level;
+    the top rows stay as they were, which every pin reads."""
+    said = T.apply(store, "- the new feed  [feed]\n  - map the xml fields  [fields]\n      scope: a.py\n"
+                          "      check: true\n  - name it  [readme]\n      scope: R.md\n      check: true\n",
+                   BOT, None)  # fmt: skip
+    assert said == ["proposed feed: the new feed", "  proposed fields: map the xml fields",
+                    "  proposed readme: name it"]  # fmt: skip
+
+
 # finding 14 (fixed)
 def test_bullets_under_a_leaf_are_its_keys_or_refused_never_contractless_children(store):
     said = T.apply(

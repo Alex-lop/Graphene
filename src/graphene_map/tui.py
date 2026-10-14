@@ -102,6 +102,7 @@ EMPTY = (  # two lines at 80 columns, with the pane the whole width
     "Nothing is planned yet. Tell your agent what you want: it proposes the tree here. Or :ask what you "
     "want (:ask alone opens your editor). ? lists the keys."
 )
+ROWS = ("proposed ", "added ")  # an ask's rows, indented under a proposed parent: kept in the gist
 ASK_HINT = "# what you want, in a paragraph; lines that start with # are left out\n"  # `:ask` alone opens it
 KEYS = {  # the bottom line, when no command has just spoken: what the keys do on this row
     "proposed": ["y accept", "d drop", "e edit", "E edit as text"],  # one label on every row: ? explains it
@@ -2146,7 +2147,8 @@ class Watch(App):
         said = R.tail(log, 400)
         tried = max((k for k, line in enumerate(said) if line.startswith("asking the planner")), default=-1)
         news = [line.strip() for line in said[tried + 1 :]  # the planner's tool calls, indented, are no gist
-                if line.strip() and not line.startswith("  ") and "(the plan of " not in line]  # fmt: skip
+                if line.strip() and "(the plan of " not in line
+                and (not line.startswith("  ") or line.strip().startswith(ROWS))]  # fmt: skip
         # a talk's last line, past the planner's bill (`the planner (claude …): 2 calls, …`): why it ended
         last = [line for line in news if not line.startswith("the planner (")] if argv[0] == "talk" else news
         gist = ((last or news)[-1] if argv[0] in ("run", "talk") else news[0]) if news else ""
@@ -2158,7 +2160,8 @@ class Watch(App):
         told = f"{mark}{gist}" if re.match(rf"{re.escape(argv[0])}\b", gist) else (
             f"{mark}graphene {as_typed(named)} ended: {gist}"
         )  # fmt: skip
-        made = [line.removeprefix("proposed ").split(":")[0] for line in news if line.startswith("proposed ")]
+        made = [line.strip().removeprefix("proposed ").split(":")[0] for line in news
+                if line.strip().startswith("proposed ")]  # a row under a proposed parent is indented
         put = [line.removeprefix("put up ").split(":")[0] for line in news if line.startswith("put up ")]
         repo = [line.split()[1] for line in news if line.startswith("settled ") and " from the repo " in line]
         kept = [line.split()[0 if " is on the board already " in line else 1] for line in news

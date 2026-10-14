@@ -635,8 +635,13 @@ def apply(
                 )  # fmt: skip
             except P.Refused as no:
                 raise _on_line(no, lines) from None
-            for n in added:
-                said.append(f"{'proposed' if n.state == P.PROPOSED else 'added'} {n.id}: {n.title}")
+            fresh_ids = {n.id for n in added}
+            for n in added:  # indented by depth within what was proposed, so the tree's shape shows at once
+                depth, above = 0, parent_of.get(n.id)
+                while above in fresh_ids:
+                    depth, above = depth + 1, parent_of.get(above)
+                row = f"{'proposed' if n.state == P.PROPOSED else 'added'} {n.id}: {n.title}"
+                said.append("  " * depth + row)
                 said.ids.append(n.id)
                 new.append(n.id)
             said += told
