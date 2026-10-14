@@ -76,7 +76,7 @@ reads as (proposed, ready, waiting, running, came back, review, done). Finished 
   drops the titles, folds finished sub-goals, then lists each sub-goal's leaves down.
 - `dag` (`view_dag.py`) draws only leaves, left to right, by the chain of `needs` before each. One column can run at
   once. The critical path is bold.
-- `time` (`view_time.py`) draws a lane for each leaf that has been held, under one for your acts. Each cell is what
+- `time` (`view_time.py`) draws a lane for each leaf that has been held, under one for your moves. Each cell is what
   the executor mostly did then: editing █, running ▓, reading ▒, talking ░, idle ─; a hold the meter cannot see is ═.
   Marks: ! refused, ✓ ✗ the check, ↩ came back, ■ landed, ● running. In the outline, ∅ after a title flags a
   check: it passes at the base, or fails outside its scope.
@@ -101,17 +101,17 @@ Graphene reads none of your words to decide this.
 
 `graphene ask "…"` sends your paragraph to the planner, which reads the repository with read-only tools and answers
 with a tree; Graphene adds it as proposals. `graphene node split ID` asks it to cut a leaf;
-`--about ID` asks about one.
+`--about ID` asks about one. In `graphene watch`, `:ask` alone opens your editor for the paragraph.
 
 The planner's prompt (`ask.RULES`, and the Nemotron planner's system prompt, version 6) tells it to read the
-repository first, ask only what the code cannot settle, and put up at most three items, each a question or a risk. An
-assumption it is sure of goes in the goal of the leaf it bears on.
+repository first, ask only what the code cannot settle, and put up at most three items, each a question or a risk. What
+it is sure of goes in the leaf's goal.
 
 The Nemotron planner answers in a strict JSON schema. Graphene repairs what needs no judgement; other faults go
 back together, at most twice. A Claude Code or Nemotron ask then names its planner, calls and dollars at list price.
 When every answer is refused, the last proposal is kept, and the ask prints the commands that add it, once mended.
 
-How many leaves it is asked for follows the repository's size; the `size` setting makes that finer or coarser.
+The `size` setting asks for a finer or coarser tree.
 
 ## Run
 
@@ -168,8 +168,8 @@ The meter reads each executor's own event stream as it runs (`src/graphene_map/m
 `stream-json` and Codex's `--json` line by line; Nemotron writes its own rows. Any other command has no meter: it
 shows time and its log's tail, and says "no meter".
 
-It logs rows on the leaf: `usage` for each turn (model, tokens, dollars at list price), `did` for each tool call
-(reading, editing, running, searching), `said` for what the agent says, and `ended` with the exit and seconds.
+It logs rows on the leaf: `usage` for each turn (model, tokens, dollars at list price), `did` for each tool call,
+`said` for what the agent says, and `ended` with the exit and seconds.
 Claude Code's final report settles the dollars to what it says it cost. A Codex model with no list price says so.
 
 **In `graphene watch`**, each running leaf has a live row: executor and model, time, dollars, turns, files touched
@@ -178,12 +178,12 @@ Claude Code's final report settles the dollars to what it says it cost. A Codex 
 **The two clocks**, in the status line:
 
 - **agents**: how many run now, their minutes summed over every attempt, and the plan's dollars at list price;
-- **you**: your acts (accepted, dropped, edited, answered, a setting) and the minutes that hold at least one: what
+- **you**: your moves (accepted, dropped, edited, answered, a setting) and the minutes that hold at least one: what
   you did, not what you read.
 
 **The bill line**: `graphene run` ends with one line, for every executor:
-`run: 3 done · agents 41 min, $2.8700 at list price · width 2 of 3 · you 4 acts, 2 min`. `width 2 of 3`: three leaves
-ran, at most two at once. `you` counts your acts since the plan's last run, or since it began. With no meter, the
+`run: 3 done · agents 41m, $2.8700 at list price · 2 of 3 at once · you: 4 moves, 2m`. `2 of 3 at once`: three
+leaves ran, at most two together. `you` counts your moves since the plan's last run, or since it began. With no meter, the
 dollars say "no meter". `graphene plan log` keeps the line as a row, and the goal's pane in `graphene watch` shows
 the last.
 
@@ -191,7 +191,7 @@ the last.
 read, edited and ran, what was refused, and what it said last.
 
 **Which record wins.** A Claude Code executor is seen by the hooks and by its stream. For the meter the stream wins
-(turns, tokens, dollars, tool calls); for the gate the hooks win (what was refused and written). A refused shell
+; for the gate the hooks win. A refused shell
 write may count twice. A session of yours, with no stream, has only the hooks' record.
 
 ## Where each mechanism ends
@@ -220,7 +220,7 @@ write may count twice. A session of yours, with no stream, has only the hooks' r
 how it ended); what changed, from git, and the commit that landed it (`graphene node diff ID` prints the diff); its
 attempts, from the meter, with the agent's last words whole; the writes the hooks refused and, apart from them, the
 commands the executor was refused; the check's result and its last line, and whether it also passed at the base; and
-your acts on it. It works for any executor, because it stands on the log, on git, and on the check Graphene ran itself.
+your moves on it. `graphene plan record` opens with one row a leaf: what it changed, where it landed, what it cost. It works for any executor, because it stands on the log, on git, and on the check Graphene ran itself.
 
 Claude Code's hooks add one thing: which changed path traces to a recorded write. Without them every path is graded
 "to git alone"; a count that cannot be supported says "not computed" and why.
