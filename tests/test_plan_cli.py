@@ -689,7 +689,7 @@ def test_accept_never_says_the_run_reaches_a_leaf_it_never_starts(repo):
     leaves with one, so it said nothing of it), and on an empty plan said `reaches nothing` where the run
     then refuses with `nothing to run`."""
     said = person("plan", "accept").stdout.splitlines()
-    assert said[:2] == ["nothing to accept: no proposal is open", "next: nothing is ready for `graphene run`"]
+    assert said == ["nothing to accept: no proposal is open"]  # one line: nothing to accept, nothing to run
     text = "goal: users come back with their ids\n- one  [one]\n    scope: api.py\n    check: true\n"
     assert agent("plan", "propose", "-", input=text).exit_code == 0
     person("node", "add", "split the parser")  # the README's way to add a sub-goal to fill in: no scope
