@@ -147,7 +147,8 @@ def test_an_asides_record_never_calls_a_standing_path_in_scope(ruled, repo):
     lines = NR.render(NR.node_record(ruled, repo, plan.get(ruled, "t")))
     assert "    outside the scope: src/db/schema.py  (git, when it ended)" in lines
     assert "    in scope: src/api/users.py  (git, when it ended)" in lines
-    assert any("had changed under this node, 1 inside its scope" in line for line in lines)
+    # nothing traced to a recorded write: the coverage sentence is left out, the window's two lines say it
+    assert not any(line.startswith("  coverage:") for line in lines), lines
     rolled = NR.rolled_up(ruled, repo, [plan.get(ruled, "t")])
     assert any("2 paths git said had changed under them, 1 inside the scope" in line for line in rolled)
 
