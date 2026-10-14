@@ -1042,6 +1042,25 @@ def test_at_80_columns_the_offers_come_before_the_reason_so_every_way_out_is_on_
     assert reason < next(k for k, ln in enumerate(rows) if re.match(r"  w  ", ln)), rows  # room: why first
 
 
+def test_ask_alone_at_the_colon_opens_the_editor_and_asks_what_was_written(repo, monkeypatch, tmp_path):
+    """The rhythm reader: the first ask is the one most worth a paragraph, and watch's `:` line is one
+    line. `:ask` with nothing after it opens $EDITOR on a file with one line of guidance (as `E` does for
+    the plan's text); what is written there, its # lines left out, is the ask. An empty file asks
+    nothing and says so."""
+    started = []
+    monkeypatch.setattr(Watch, "background", lambda self, argv: started.append(argv))
+    script = tmp_path / "write.py"
+    script.write_text("import sys\nopen(sys.argv[1], 'a').write('add a login page\\nwith a test for it\\n')")
+    monkeypatch.setenv("EDITOR", f"{sys.executable} {script}")
+    seen, _ = watch(repo, [], before=burst(":ask\r"))
+    assert started == [["ask", "add a login page\nwith a test for it"]], (started, seen["status"])
+    started.clear()
+    monkeypatch.setenv("EDITOR", "true")  # an editor that writes nothing
+    seen, _ = watch(repo, [], before=burst(":ask\r"))
+    assert started == [] and "nothing asked" in seen["status"], seen["status"]
+    assert ":ask what you want (alone: your editor)" in seen["status"], seen["status"]
+
+
 def test_watch_opened_after_a_run_says_what_the_run_said_first(repo):
     """The first-hour readers: after a run, watch opened folded with the run's summary gone. When the
     run's row is the newest thing in the log, its line is the screen's first bottom line; once anything
@@ -1155,8 +1174,8 @@ def test_an_empty_plan_says_what_to_do_in_two_lines(repo):
         seen, _ = watch(repo, [], size=size)
         said = seen["detail"].splitlines()
         assert len(said) <= 2 and " ".join(ln.strip() for ln in said) == (
-            "Nothing is planned here yet. Tell your agent what you want, in a paragraph: it proposes the "
-            "tree here. Or :ask <what you want>. ? lists the keys."
+            "Nothing is planned yet. Tell your agent what you want: it proposes the tree here. Or :ask what "
+            "you want (:ask alone opens your editor). ? lists the keys."
         )  # one paragraph wrapped to the pane, which has the whole width: there is no tree to show
 
 
@@ -2130,7 +2149,8 @@ def test_help_and_quit_never_fall_off_the_key_line_and_the_empty_plan_opens_on_t
 
     seen, _ = watch(repo, [])
     first, keys = seen["status"].splitlines()[:2]
-    assert first == "plan first: off" and keys == ":ask what you want · ? help · q quit", (first, keys)
+    assert first == "plan first: off", first
+    assert keys == ":ask what you want (alone: your editor) · ? help · q quit", keys
     with Store.open(repo) as store:
         stamp = time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime(time.time() - 12))
         store.log_node("*", stamp, "asked", "alex", None, None, {"note": "users come back with their ids"})

@@ -98,10 +98,11 @@ HELP_END = (
 )
 # the glyphs and colours every row, view and pane uses, the help's first line
 LEGEND = ("yours", "review", "came back", "proposed", "ready", "running", "waiting", "done")
-EMPTY = (
-    "Nothing is planned here yet. Tell your agent what you want, in a paragraph: it proposes the tree "
-    "here. Or :ask <what you want>. ? lists the keys."
+EMPTY = (  # two lines at 80 columns, with the pane the whole width
+    "Nothing is planned yet. Tell your agent what you want: it proposes the tree here. Or :ask what you "
+    "want (:ask alone opens your editor). ? lists the keys."
 )
+ASK_HINT = "# what you want, in a paragraph; lines that start with # are left out\n"  # `:ask` alone opens it
 KEYS = {  # the bottom line, when no command has just spoken: what the keys do on this row
     "proposed": ["y accept", "d drop", "e edit", "E edit as text"],  # one label on every row: ? explains it
     "review": ["y sign off", "x send back", "Enter record"],
@@ -1573,7 +1574,7 @@ class Watch(App):
             fold = ["za fold" if self.tree.cursor_node.is_expanded else "za unfold"] if row == BR.FOLD else []
             return [*fold, "a note", *tail]
         if not self.nodes:  # Tab would only say nothing is planned yet
-            return [":ask what you want", "? help", "q quit"]
+            return [":ask what you want (alone: your editor)", "? help", "q quit"]
         if self.on_goal():
             ended = [":plan archive puts it away"] if self.counts.get("finished") else []
             ended = ended or (["R run all ready"] if self.counts.get("ready") else [])  # as the status says
@@ -1716,6 +1717,8 @@ class Watch(App):
             self.find(self.search)
             return
         words = text[1:].strip().removeprefix("graphene ").strip()
+        if words == "ask":  # alone: a paragraph is written in your editor, not on a one-line prompt
+            return self.ask_in_editor()
         if not words:
             return
         read = words  # `:ask don't … isn't`: apostrophes, not a quote, unless the sentence is in "…"
@@ -1833,6 +1836,30 @@ class Watch(App):
             self.did(argv, quiet=True)
         self.shape = None
         self.refresh_plan()
+
+    def ask_in_editor(self) -> None:
+        """`:ask` with nothing after it: your editor opens on a file with one line of guidance, as `E`
+        opens the plan's text, and what you write there is the ask. A paragraph does not fit the one-line
+        prompt, and the first ask is the one most worth a paragraph."""
+        from textual.app import SuspendNotSupported
+
+        path = T.edit_path(self.root_path, "ask")
+        path.write_text(ASK_HINT, encoding="utf-8")
+        try:
+            try:
+                with self.suspend():
+                    T.run_editor(path)
+            except SuspendNotSupported:  # no terminal to hand over (a test): the editor runs without one
+                T.run_editor(path)
+        except P.Refused as no:
+            self.message = f"✗ {no}"
+            return self.say_status()
+        lines = [ln.rstrip() for ln in path.read_text(encoding="utf-8").splitlines()]
+        text = "\n".join(ln for ln in lines if ln.strip() and not ln.lstrip().startswith("#")).strip()
+        if not text:
+            self.message = "nothing asked: the file had no line of yours (:ask what you want asks in a line)"
+            return self.say_status()
+        self.background(["ask", text])
 
     def action_yes(self) -> None:
         """y: accept a proposal (or the selection); on the one leaf proposed, with an executor chosen,
