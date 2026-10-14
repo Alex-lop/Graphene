@@ -1582,7 +1582,7 @@ class Watch(App):
             return [*keys, "E edit as text", fold, *tail]
         word, node = self.word(self.selected()), self.tree.cursor_node if self.drawn is None else None
         fork = node.data if node is not None and isinstance(node.data, tuple) else None
-        on = [f"fork {fork[1]}: keys act on {fork[0]}"] if fork else []  # its row is its leaf's to act on
+        on = [f"fork {fork[1]} of {fork[0]}"] if fork else []  # its row is its leaf's to act on: 15 columns at 80
         if word == "came back":
             offers = [OFFERED[k] for k in self.offer_keys()]
             again = [] if "r" in self.offer_keys() else ["r run it again"]  # else r is the offer

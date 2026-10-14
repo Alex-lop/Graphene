@@ -1776,7 +1776,7 @@ def test_every_key_on_a_fork_row_acts_on_its_leaf_or_says_why_not(repo, monkeypa
     on_fork = ["j", "j"]  # the goal, greet, its fork 1
     seen, _ = watch(repo, on_fork)
     assert seen["cursor"] == "greet" and "greet · running" in seen["detail"]
-    assert seen["status"].splitlines()[1].startswith("fork 1: keys act on greet · l output · x hand it back")
+    assert seen["status"].splitlines()[1].startswith("fork 1 of greet · l output · x hand it back · Enter record")
     seen, _ = watch(repo, [*on_fork, "enter"])
     assert seen["detail"].startswith("record · it scrolls") and "greet · running" in seen["detail"]
     seen, _ = watch(repo, [*on_fork, "l"])
