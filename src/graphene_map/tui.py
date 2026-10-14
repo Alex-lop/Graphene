@@ -1582,7 +1582,7 @@ class Watch(App):
             return [*keys, "E edit as text", fold, *tail]
         word, node = self.word(self.selected()), self.tree.cursor_node if self.drawn is None else None
         fork = node.data if node is not None and isinstance(node.data, tuple) else None
-        on = [f"fork {fork[1]} of {fork[0]}"] if fork else []  # its row is its leaf's to act on: 15 columns at 80
+        on = [f"fork {fork[1]} of {fork[0]}"] if fork else []  # its row is its leaf's to act on; 15 columns
         if word == "came back":
             offers = [OFFERED[k] for k in self.offer_keys()]
             again = [] if "r" in self.offer_keys() else ["r run it again"]  # else r is the offer
@@ -1940,7 +1940,7 @@ class Watch(App):
         elif state is not None:
             again = ("; r reopens the owner" if "r" in self.offered.get(node_id, []) else "; r runs it again"
                      ) if node_id in self.back else ""
-            self.message = f"x hands back a running leaf or reopens a finished one; {node_id} is neither{again}"
+            self.message = f"x hands back a running leaf or reopens a done one; {node_id} is neither{again}"
             self.say_status()
 
     def action_tail(self) -> None:
@@ -2459,10 +2459,16 @@ def _came_back(pane: Pane, store, node: P.Node, high: int) -> None:
     lines = max(1, high - used - len(shaped)) if high else 99
     wrapped = textwrap.wrap(" ".join(str(why).split()), pane.wide, max_lines=lines,
                             placeholder=" … (Enter: all of it)", break_on_hyphens=False)  # fmt: skip
-    for line in wrapped:
+    # the offers before the reason where the pane cannot hold both: at 80x24 the fourth way out (t)
+    # sat below the fold with only a scrollbar to say so; the reason is then a scroll away (and in the
+    # record), while every key is on the screen
+    short = bool(high) and used + len(wrapped) + len(shaped) > high
+    for line in [] if short else wrapped:
         pane.text(line)
     for line in shaped:
         pane.line(line)
+    for line in wrapped if short else []:
+        pane.text(line)
     if P.not_offered(store, node):
         pane.text(P.not_offered(store, node), "dim")
 

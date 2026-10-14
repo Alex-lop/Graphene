@@ -1025,6 +1025,23 @@ def test_the_offers_are_rows_of_one_shape_with_the_command_at_the_right(repo):
     assert all(on_row)  # at 220 columns every one fits on its row
 
 
+def test_at_80_columns_the_offers_come_before_the_reason_so_every_way_out_is_on_the_screen(repo):
+    """The screen reader of 11 October: at 80x24 the came-back pane gave each offer two rows and the
+    fourth way out (t ask the planner) sat below the fold, a scrollbar the only sign of it. Where the
+    pane cannot hold the reason and every offer, the offers come first and the reason follows them;
+    where it can (120x36), the reason still comes first."""
+    every_state(repo)
+    seen, _ = at(repo, "docs", (80, 24))
+    rows = [ln.rstrip() for ln in seen["detail"].splitlines()]
+    keys = [k for k, ln in enumerate(rows) if re.match(r"  [wbnt]  ", ln)]
+    reason = next(k for k, ln in enumerate(rows) if "it needs docs/api.md" in ln)
+    assert len(keys) == 4 and keys[-1] <= 8 and reason > keys[-1], rows  # t within the pane's nine rows
+    seen, _ = at(repo, "docs", (120, 36))
+    rows = [ln.rstrip() for ln in seen["detail"].splitlines()]
+    reason = next(k for k, ln in enumerate(rows) if "it needs docs/api.md" in ln)
+    assert reason < next(k for k, ln in enumerate(rows) if re.match(r"  w  ", ln)), rows  # room: why first
+
+
 def test_the_record_is_a_laid_out_pane_not_node_show_pasted(repo):
     every_state(repo)
     for size in SIZES:
@@ -1776,7 +1793,8 @@ def test_every_key_on_a_fork_row_acts_on_its_leaf_or_says_why_not(repo, monkeypa
     on_fork = ["j", "j"]  # the goal, greet, its fork 1
     seen, _ = watch(repo, on_fork)
     assert seen["cursor"] == "greet" and "greet · running" in seen["detail"]
-    assert seen["status"].splitlines()[1].startswith("fork 1 of greet · l output · x hand it back · Enter record")
+    keys = seen["status"].splitlines()[1]
+    assert keys.startswith("fork 1 of greet · l output · x hand it back · Enter record"), keys
     seen, _ = watch(repo, [*on_fork, "enter"])
     assert seen["detail"].startswith("record · it scrolls") and "greet · running" in seen["detail"]
     seen, _ = watch(repo, [*on_fork, "l"])
