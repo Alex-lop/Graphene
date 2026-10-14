@@ -4,7 +4,8 @@ Graphene's mark is a small tree with one branch pruned, in two colours: ink `#14
 muted tones are `#AEADA7` on ink and `#5E5D59` on ivory). Every file here comes in those two directions; `-on-ivory`
 and `-on-ink` carry their own background, the plain ones are transparent.
 
-- `mark/`: the mark alone, 64 by 64 (`docs/assets/graphene-mark-ink.svg` and `-ivory.svg` in the README are copies).
+- `mark/`: the mark alone, 64 by 64, in one colour. The README's `docs/assets/graphene-mark-ink.svg` and `-ivory.svg`
+  are a two-tone cut of it (the pruned branch in the muted tone), not copies.
 - `mark-small/`: the mark cut for small sizes (favicons, tab bars); `graphene-mark-small-currentColor.svg` takes the
   colour of the text around it.
 - `lockup/`: the mark with the word, in a full and a small cut.
