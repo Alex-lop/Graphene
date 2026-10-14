@@ -73,7 +73,7 @@ def test_no_plan_says_paragraph_in_and_never_the_node_add_flags(repo):
     shown, plain = person("plan"), person()
     assert shown.exit_code == 0 and plain.exit_code == 1  # plain `graphene` has nothing to show
     for said in (shown.stdout, plain.stderr):
-        assert said.startswith("nothing is planned here yet. Say what you want to your agent, in a paragraph")
+        assert said.startswith("nothing is planned here yet. `graphene ask '<what you want")
         assert "graphene ask '<what you want>'" in said and "graphene watch" in said
         assert "--scope" not in said and "node add" not in said
     assert shown.stdout == plain.stderr  # said once, the same way

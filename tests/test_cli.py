@@ -122,7 +122,7 @@ def test_nothing_planned_and_nothing_recorded(repo, tmp_path):
 def test_in_an_empty_repo_plain_graphene_leads_with_the_plan(repo):
     result = run()
     assert result.exit_code == 1
-    assert one_line(result).startswith("nothing is planned here yet. Say what you want to your agent")
+    assert one_line(result).startswith("nothing is planned here yet. `graphene ask '<what you want")
 
 
 def test_a_missing_argument_or_option_anywhere_is_one_plain_line(repo):

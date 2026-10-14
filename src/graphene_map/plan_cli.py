@@ -29,8 +29,8 @@ from . import views as V
 
 # What `graphene` and `graphene plan` say in a repository with nothing planned: paragraph in, tree out.
 NO_PLAN = (
-    "nothing is planned here yet. Say what you want to your agent, in a paragraph: it proposes the "
-    "tree, and you prune it in `graphene watch`. Or `graphene ask '<what you want>'`"
+    "nothing is planned here yet. `graphene ask '<what you want, in a paragraph>'` proposes a plan (or "
+    "ask Claude Code here: its hooks propose one too); `graphene watch` shows it"
 )
 # ... and in a repository `graphene init` never set up, what comes before either
 NOT_INIT = (
