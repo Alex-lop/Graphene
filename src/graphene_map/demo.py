@@ -38,6 +38,7 @@ import re
 import signal
 import sqlite3
 import subprocess
+import tempfile
 import threading
 import time
 from datetime import datetime
@@ -90,6 +91,8 @@ def hider(root: Path) -> tuple:
     home = str(Path.home())
     said = [(p, "{repo}") for p in sorted({str(root), str(root.resolve())}, key=len, reverse=True)]
     said += [(home, "~"), (DASHED.sub("-", home), "-~")] if len(home) > 1 else []  # Claude Code dashes it
+    # the machine's scratch too (the live recording of 12 October carried its tool directory's path there)
+    said += [(t, "{tmp}") for t in sorted(_temps() | {"/tmp"}, key=len, reverse=True)]
     found = {os.getenv(k, "") for k in ("NEBIUS_API_KEY", "NEBIUS_PROJECT_ID")} | {_kept()}  # keychain's too
     said += [(k, "[removed]") for k in sorted(found, key=len, reverse=True) if len(k) > 7]
 
@@ -111,6 +114,14 @@ def hider(root: Path) -> tuple:
 HOMES = re.compile(r"""/(?:Users/|home/(?!leaf(?![\w.-])(?![^\s"']*\.\.)))""")  # not /home/leaf/../x
 
 
+def _temps() -> set[str]:
+    """The temp directory as Python names it and as the file system does (/private on a Mac), and the
+    plain /private/tmp; the bare /tmp is hidden by the hider but not counted, since recordings made before
+    carry Claude Code's socket paths there."""
+    temp = tempfile.gettempdir()
+    return {t for t in (temp, os.path.realpath(temp), "/private/tmp") if len(t) > 4}
+
+
 def leaks(text: str) -> dict[str, int]:
     """What a recording must not hold, counted, never shown: the key and the project in the environment (and
     the keychain's key), the home directory, a path under anyone's, and words shaped like a key. The ladder's
@@ -123,6 +134,7 @@ def leaks(text: str) -> dict[str, int]:
     mine = text.count(home) + text.count(DASHED.sub("-", home)) if len(home) > 1 else 0
     return counts | {"the home directory": mine,
                      "a path under a home directory": len(HOMES.findall(text)),
+                     "a path under the temp directory": sum(text.count(t) for t in _temps()),
                      "words shaped like a key": shaped}  # fmt: skip
 
 
