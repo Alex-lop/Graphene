@@ -85,7 +85,7 @@ HELP = (  # what answering the board needs first: at 80x24 the first screen ends
     ("fold", (("za zo zc", "fold or unfold, unfold, fold (on the goal: all)"),
               ("zR zM zx", "all open, all closed, as it opened"))),
     ("run", (("R r", "run every ready leaf; the ready ones under this"),
-             ("x", "release it; send it back; reopen it"), ("P", "plan first: on, auto, off"))),
+             ("x", "hand it back; send it back; reopen it"), ("P", "plan first: on, auto, off"))),
     ("see", (("Enter l D", "the record; the executor's output; the direction"),
              ("ctrl-d -u", "scroll the pane"))),
     ("came back", (("w b r n", "widen its scope; a sibling; reopen; wait on those"),
@@ -105,7 +105,7 @@ EMPTY = (
 KEYS = {  # the bottom line, when no command has just spoken: what the keys do on this row
     "proposed": ["y accept", "d drop", "e edit", "E edit as text"],  # one label on every row: ? explains it
     "review": ["y sign off", "x send back", "Enter record"],
-    "running": ["l output", "x release", "Enter record"],
+    "running": ["l output", "x hand it back", "Enter record"],
     "done": ["x reopen", "Enter record", "c diff"],
     "ready": ["R run all ready", "r run this", "e edit"],
     "yours": ["y done", "e edit", "Enter record"],
@@ -1940,7 +1940,7 @@ class Watch(App):
         elif state is not None:
             again = ("; r reopens the owner" if "r" in self.offered.get(node_id, []) else "; r runs it again"
                      ) if node_id in self.back else ""
-            self.message = f"x releases a running leaf or reopens a finished one; {node_id} is neither{again}"
+            self.message = f"x hands back a running leaf or reopens a finished one; {node_id} is neither{again}"
             self.say_status()
 
     def action_tail(self) -> None:
