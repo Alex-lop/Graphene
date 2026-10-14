@@ -113,7 +113,7 @@ KEYS = {  # the bottom line, when no command has just spoken: what the keys do o
     "to fill in": ["s split it (the planner)", "e edit"],
 }
 OFFERED = {"w": "w widen", "b": "b sibling", "r": "r reopen", "n": "n wait"}
-FOLDED = 20  # the columns a folded row's count of states takes, as a rule: whole states, the rest "n more"
+FOLDED = 22  # the columns a folded row's count of states takes, as a rule: whole states, the rest "n others"
 WHOSE = ("came back", "review", "yours", "proposed", "running", "ready", "waiting", "to fill in", "done")
 # A fork's words (executor.Fork.outcome), its glyph and its colour, whose move as a node's are: running is
 # the executor's, passed is done work, and a fork that ended any other way is nobody's move (dim): what
@@ -216,13 +216,13 @@ def row(
 
 def inside(words: list[str]) -> str:
     """What a folded row says in its word's column: how many leaves are inside and in which states,
-    whose move first (`1 came back, 4 more`, `12 done`), as many whole states as fit FOLDED; the
+    whose move first (`1 came back, 4 others`, `12 done`), as many whole states as fit FOLDED; the
     rest is counted, never cut."""
     order = sorted(set(words), key=lambda w: WHOSE.index(w) if w in WHOSE else len(WHOSE))
     counts = [(words.count(w), w) for w in order]
     for k in range(len(counts), 0, -1):
         rest = sum(n for n, _ in counts[k:])
-        said = ", ".join([f"{n} {w}" for n, w in counts[:k]] + ([f"{rest} more"] if rest else []))
+        said = ", ".join([f"{n} {w}" for n, w in counts[:k]] + ([f"{rest} others"] if rest else []))
         if len(said) <= FOLDED or k == 1:
             return said
     return ""

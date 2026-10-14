@@ -1329,20 +1329,20 @@ def test_a_folded_row_says_whose_move_is_inside_first_and_counts_the_rest(repo):
 
     assert inside(["done"] * 12) == "12 done"
     assert inside(["done", "running", "done", "done"]) == "1 running, 3 done"
-    assert inside(["done", "running", "came back", "waiting", "proposed", "done"]) == "1 came back, 5 more"
-    label = row("○", "0/5 done", "the API", "api", 60, 3, 19, inside="1 came back, 4 more")
+    assert inside(["done", "running", "came back", "waiting", "proposed", "done"]) == "1 came back, 5 others"
+    label = row("○", "0/5 done", "the API", "api", 60, 3, 19, inside="1 came back, 4 others")
     styles = {label.plain[s.start : s.end].strip(): str(s.style) for s in label.spans}
-    assert styles.get("1 came back") == "magenta" and "4 more" not in styles and "○" not in styles
+    assert styles.get("1 came back") == "magenta" and "4 others" not in styles and "○" not in styles
     every_state(repo)
     for size in SIZES:
         seen, _ = watch(repo, ["j", "z", "c"], size=size)  # the API: running, came back, waiting, …
         rows = rows_of(seen)
         api = next(r for r in rows if "the API" in r)
-        assert api.endswith("  1 came back, 4 more") and api.lstrip("├└│ ").startswith("▶ ○ the API"), rows
+        assert api.endswith("  1 came back, 4 others") and api.lstrip("├└│ ").startswith("▶ ○ the API"), rows
         assert rows[0].index("1/9 done") == api.index("1 came back")  # the goal's word, above it
         seen, _ = at(repo, "schema", size, keys=["z", "c"])
         schema = next(r for r in rows_of(seen) if "  schema " in r)
-        assert schema.endswith("  1 review, 2 more"), schema
+        assert schema.endswith("  1 review, 2 others"), schema
 
 
 def test_a_subtree_folds_when_it_finishes_on_screen_and_opens_when_it_is_reopened(repo):
@@ -1556,7 +1556,7 @@ def test_a_leaf_with_a_proposal_under_it_is_counted_and_shown_as_the_leaf_it_is(
                               "scope": ["sku.py"], "check": "true"}], SESSION)  # fmt: skip
         plan.release(store, "s3-0", SESSION, "it needs the sku table, proposed under it")
     seen, _ = watch(repo, [])
-    assert next(r for r in rows_of(seen) if "  s3 " in r).endswith("  1 came back, 5 more")
+    assert next(r for r in rows_of(seen) if "  s3 " in r).endswith("  1 came back, 5 others")
     seen, _ = at(repo, "s3", (80, 24), keys=["z", "o"])
     assert any("  s3-0a " in r and r.endswith("  proposed") for r in rows_of(seen)), rows_of(seen)
 
