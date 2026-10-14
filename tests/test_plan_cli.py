@@ -849,7 +849,9 @@ def test_plan_record_and_node_show_on_a_sub_goal_say_how_wide_its_leaves_ran(rep
                 stamp = f"2026-01-05T01:0{minute}:00.000Z"
                 store.log_node(leaf, stamp, kind, run.label, run.session_id, None, {"attempt": 1})
     for args in (("plan", "record"), ("node", "show", "api")):
-        assert "    2 of 2 at once · 50% of agent minutes alone" in person(*args).stdout.splitlines(), args
+        lines = person(*args).stdout.splitlines()
+        assert "    2 of 2 at once · 50% of agent minutes alone" in lines, args
+        assert "    ● a · running" in lines and "    ● b · running" in lines, (args, lines)  # a row a leaf
 
 
 def test_plan_log_and_plan_record_say_what_the_last_run_said(repo):

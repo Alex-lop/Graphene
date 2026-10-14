@@ -257,10 +257,10 @@ def test_a_node_done_by_an_executor_no_vendor_records_still_has_a_coverage_line(
     assert counts["commits"] == 1  # asked of git: the store never held this commit
 
     printed = NR.render(NR.node_record(store, repo, plan.get(store, "n1"), at=T(9)))
-    assert (
-        "  coverage: of the 1 path git said had changed under this node, 1 inside its scope; "
-        "0 to a recorded edit, 0 to a recorded shell command, 1 to git alone"
-    ) in printed
+    [short] = [line for line in printed if line.startswith("  in short: ")]
+    alone = "  in short: 1 file changed, inside its scope; no record of who edited it, so git's word alone"
+    assert short.startswith(alone), short
+    assert not any(line.startswith("  coverage:") for line in printed)  # nothing traced: in short said it
     assert (
         "    read from: the node's log and git. No vendor keeps records for codex:deadbeef, so "
         in "\n".join(printed)
@@ -293,12 +293,10 @@ def test_the_check_says_its_last_line_and_that_it_also_passed_at_the_base_before
         f"      it also passed at the base commit {base[:7]}, before any work: it shows nothing about "
         "this change",
     ]
-    paths = ("  coverage: of the 1 path git said had changed under this node, 1 inside its scope; 0 to a "
-             "recorded edit, 0 to a recorded shell command, 1 to git alone")  # fmt: skip
-    start = lines.index(paths)
-    assert lines[start - 1] == ("  in short: 1 path changed under it, 0 traced to a recorded write; the 1 "
-                                "commit inside its windows is in no record of a session that held it, so not "
-                                "graded, which takes nothing from the paths")  # fmt: skip
+    assert not any(line.startswith("  coverage:") for line in lines)  # nothing traced: in short says so
+    [short] = [line for line in lines if line.startswith("  in short: ")]
+    assert short == ("  in short: 1 file changed, inside its scope; no record of who edited it, so git's "
+                     "word alone; the 1 commit inside its windows is in no record of a session that held it")
 
 
 def test_a_check_that_failed_after_passing_at_the_base_is_never_said_to_show_nothing(store, repo):
@@ -626,6 +624,28 @@ def test_a_fork_still_running_on_a_leaf_that_is_not_reads_stopped():
 def meter_rows(store, run: Caller, rows: list[tuple[str, str, dict]]) -> None:
     for at, kind, detail in rows:
         store.log_node("n1", at, kind, run.label, run.session_id, None, detail)
+
+
+def test_an_attempts_last_words_are_said_once_even_when_it_did_more_after_them(store, repo):
+    """The after walk (R7): `said last:` and `the last it did:` carried one sentence twice when the executor
+    said its last words before its last tool call (`graphene node done`): only the log's last line had been
+    taken out of what it did. Its last words are taken out wherever they sit."""
+    run = Caller("run:claude", False, "s-1")
+    plan.propose(store, [api_node()], ALEX, now=T(0))
+    plan.start(store, "n1", run, repo, now=T(1))
+    said = "done: n1 is done (check passed, nothing outside its scope)"
+    meter_rows(store, run, [
+        (T(1, 30), "attempt", {"attempt": 1, "log": None}),
+        (T(2), "usage", {"model": "claude-sonnet-5-5", "calls": 1, "prompt_tokens": 900,
+                         "completion_tokens": 80, "dollars": 0.01, "endpoint": "claude code", "attempt": 1,
+                         "turn": 1}),
+        (T(2), "said", {"attempt": 1, "text": said}),
+        (T(3), "did", {"attempt": 1, "tool": "Bash", "target": "graphene node done n1", "verb": "running"}),
+        (T(4), "ended", {"attempt": 1, "exit": 0, "seconds": 150, "meter": "claude", "unread": 0}),
+    ])  # fmt: skip
+    lines = NR.render(NR.node_record(store, repo, plan.get(store, "n1"), at=T(5)))
+    assert f"    said last: {said}" in lines and f"      {said}" not in lines, lines
+    assert "      running graphene node done n1" in lines, lines
 
 
 def test_a_metered_attempt_that_came_back_says_what_it_ran_and_where_it_was_refused(store, repo):

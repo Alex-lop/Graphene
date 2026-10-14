@@ -34,6 +34,7 @@ from . import plan as P
 from .commits import window as commits_in
 from .precheck import _plain  # one line and no control character: what a check printed draws over nothing
 from .record import RANK, Change, Coverage, changes, coverage, seconds, window_commits
+from .views import money
 
 # a window ends when the node does, however it ended; ``reopened`` comes after one, never inside it
 ENDS = ("finished", "overruled", "released")
@@ -702,14 +703,21 @@ def _in_short(counts: dict) -> list[str]:
     n, k, out = counts["changed_files"], counts["commits"], counts["not_graded_commits"]
     if not k:
         return []
-    traced = counts["changed_edit"] + counts["changed_shell"]
-    paths = (f"{n} path{_s(n)} changed under it, {traced} traced to a recorded write"
-             if counts["changed_computed"] else "what changed under it is not computed")  # fmt: skip
+    traced, inside = counts["changed_edit"] + counts["changed_shell"], counts["changed_in_scope"]
+    if not counts["changed_computed"]:
+        files = "what changed under it is not computed"
+    elif not n:
+        files = "nothing changed under it"
+    else:  # the files, where they sit, and who the record says touched them: git alone is the common case
+        where = "inside its scope" if inside == n else f"{n - inside} outside its scope"
+        some = "every one" if traced == n else f"{traced} of them"
+        who = (f"no record of who edited {'it' if n == 1 else 'them'}, so git's word alone" if not traced
+               else f"{some} traced to a recorded edit or command")
+        files = f"{n} file{_s(n)} changed, {where}; {who}"
     # the commits inside its windows, whoever made them; not graded: in no record of a holding session's
     which = f"the {k} commit{_s(k)} inside its windows" if out in (0, k) else f"{out} of the {k} commits"
-    said = "graded below" if not out else "in no record of a session that held it, so not graded" + (
-        ", which takes nothing from the paths" if counts["changed_computed"] else "")  # fmt: skip
-    return [f"  in short: {paths}; {which} {'is' if (out or k) == 1 else 'are'} {said}"]
+    said = "graded below" if not out else "in no record of a session that held it"
+    return [f"  in short: {files}; {which} {'is' if (out or k) == 1 else 'are'} {said}"]
 
 
 def _coverage_lines(counts: dict, check: dict | None, at_base: dict | None = None) -> list[str]:
@@ -720,13 +728,15 @@ def _coverage_lines(counts: dict, check: dict | None, at_base: dict | None = Non
         lines = [f"  coverage: not computed — {counts['why_not']}"]
         if not k:
             return lines
-    elif n:
+    elif n and counts["changed_edit"] + counts["changed_shell"]:  # else `in short` has said: git alone
         lines = [
             f"  coverage: of the {n} path{_s(n)} git said had changed under this node, "
             f"{counts['changed_in_scope']} inside its scope; {counts['changed_edit']} to a recorded "
             f"edit, {counts['changed_shell']} to a recorded shell command, "
             f"{counts['changed_nothing']} to git alone"
         ]
+    elif n:
+        lines = []
     else:
         lines = ["  coverage: git says nothing changed under this node"]
     if n or k:
@@ -846,8 +856,8 @@ def _attempt_lines(record: NodeRecord) -> list[str]:
         elif said:  # whole, wrapped: its last words are what it says it did
             lines += ["    said last:", *(f"      {line}" for line in textwrap.wrap(said, 100))]
         told = a["told"] if a["meter"] else _log_tail(a["log"])
-        if a["meter"] and told and told[-1] == a["said"]:  # its last words, said above whole: not again
-            told = told[:-1]
+        if a["meter"] and a["said"]:  # its last words, said above whole: not again among what it did
+            told = [t for t in told if t != a["said"]]
         text = "\n".join(" ".join(t.split()) if a["meter"] else t for t in told)[-P.TAIL :]
         if text.strip():
             lines.append("    its last lines:" if not a["meter"] else "    the last it did:")
@@ -909,6 +919,16 @@ def rolled_up(store, root: str | Path, leaves: list[P.Node], at: str | None = No
         f"  the record of the {len(leaves)} lea{'f' if len(leaves) == 1 else 'ves'} under it "
         f"({done} done; each has its own: `graphene node show <id>`):"
     ]
+    by_leaf = {n.id: r for n, r in records}
+    for n in leaves:  # one row a leaf: what it changed, where it landed, what it cost, before any count
+        r = by_leaf.get(n.id)
+        changed = _few(sorted({p for w in r.windows for p in (w.under or [])})) if r else ""
+        landed = store.node_log(n.id, ("landed",))
+        word = {P.DONE: "done", P.RUNNING: "running", P.REVIEW: "review"}.get(n.state, "ready")
+        where = f"landed {landed[-1]['detail']['commit'][:7]}" if landed else word if r else "not started"
+        cost = f" · {money(r.bill['dollars'])}" if r and r.bill and r.bill.get("dollars") else ""
+        head = f"    {P.look(word)[0]} {n.id}" + (f" · {changed}" if changed else "")
+        lines.append(f"{head} · {where}{cost}")
     if counted:
         alone = max(len(paths) - total["changed_edit"] - total["changed_shell"], 0)
         lines.append(
@@ -936,7 +956,7 @@ def rolled_up(store, root: str | Path, leaves: list[P.Node], at: str | None = No
         total = {k: sum(b.get(k) or 0 for b in bills) for k in kinds}
         total["models"] = sorted({m for b in bills for m in b["models"]})
         total["endpoint"] = _whose(bills)
-        lines += bill_line(total, "    ")
+        lines += [ln.replace("bill:", "the leaves' bill:", 1) for ln in bill_line(total, "    ")]
     if ran := meter.width([e for n in held for e in store.node_log(n.id)], at and datetime.fromisoformat(at)):
         at_once = f"{ran['most']} of {ran['lanes']} at once"
         lines.append(f"    {at_once} · {ran['alone']:.0%} of agent minutes alone")
