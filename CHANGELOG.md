@@ -1,5 +1,25 @@
 # Changelog
 
+## Unreleased
+
+Watch as the home, and one word for one thing (13 October). Alex asked for an honest direction after the feel
+pass and for a README a stranger can take in; this is the part that touches the product. Each line is one commit.
+- In `graphene watch`, `:ask` with nothing after it opens your editor for the paragraph; the empty plan's sentence
+  and its key say so.
+- Opened after a run, watch's first bottom line is what the run said; a leaf that came back puts its offers before
+  the reason where the pane is short, every command whole; Enter on the goal says the plan's record in the pane's
+  words; a folded row counts the rest as `others`; the x key says `hand it back`; a fork row reads `fork 1 of greet`.
+- One spelling for a span on every surface (`12s`, `6m12s`, `<1m`, `42s ago`); a person's act is a move (`you 2
+  moves 1m`, `you: 4 moves, 2m`); `width 2 of 3` reads `2 of 3 at once`, in the closing line, the time view's note
+  and the record.
+- The plan's record and a sub-goal's open with one row a leaf (`✓ fields · normalize/fields.py · landed 3ba9990 ·
+  $0.01`); `in short` is one sentence in the person's words; the coverage sentence is left out when nothing was
+  traced; an attempt's last words are said once; the leaves' bill is named as the planner's is.
+- The ask's proposed rows indent by depth; a proposed row under a proposed parent drops its own accept command;
+  `plan accept` on an empty plan says one line; bare `graphene` names the ask command first.
+- A recording hides paths under the machine's temp directory as it hides the home, and `demo.leaks` counts them.
+- The brand assets live at `docs/brand/`, tracked, with a README naming each.
+
 ## 0.5.0 (13 October 2026)
 
 The feel pass (11 October). What the first hour reads, said in the person's words: three readers walked the first
