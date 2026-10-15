@@ -949,21 +949,27 @@ def land(
     node: P.Node,
     say: Callable[[str], None],
     not_here: set[str] = frozenset(),
+    ran: list[tuple[str, str, str]] | None = None,
 ) -> bool:
     """Commit the leaf's work on its branch and merge it into the checkout the run was started from.
     True when it landed. When the merge is not clean nothing in the target is touched: the leaf waits
-    for the person in review, on its branch, and what needs it waits with it."""
+    for the person in review, on its branch, and what needs it waits with it. ``ran``: the checks of
+    what this run has landed (command, whose, the commit it landed at); when the target has moved since
+    the leaf's base, its own and those of what landed since then run on the merge first, and one that
+    fails parks it as an unclean merge does."""
     branch = f"graphene/{node.id}"
     who = P.Caller("graphene run", False)
     ident = _ident(tree)
     # a merge of the person's own, half done: theirs to finish, and never ours to abort
     theirs = _git(target, "rev-parse", "-q", "--verify", "MERGE_HEAD", ok=True).returncode == 0
     paths: list[str] = []
+    on_merge: list[str] = []
 
     def landed() -> None:
         store.log_node(node.id, P._now(), "landed", who.label, None, None,
                        {"commit": P.head(target), "branch": branch, "into": str(target.resolve()),
-                        "paths": paths[: P.KEPT_PATHS]})  # fmt: skip
+                        "paths": paths[: P.KEPT_PATHS],
+                        **({"on_merge": on_merge} if on_merge else {})})  # fmt: skip
         _git(target, "worktree", "remove", "--force", str(tree), ok=True)
         _git(target, "branch", "-D", branch, ok=True)
         P.mark_boundary(store, target)
@@ -973,6 +979,8 @@ def land(
             raise P.Refused(f"a merge of your own is in progress in {target}; finish it or abort it first")
         paths = _commit(store, tree, node)
         before = P.head(target)
+        if ran is not None:
+            on_merge += _red_on_merge(target, branch, before, node, ran, ident, say)
         clean = _git(target, "diff", "--cached", "--quiet", ok=True).returncode == 0
         try:
             _git(target, *ident, "merge", "--no-ff", "--no-edit", "-m", _merged(store, node), branch)
@@ -1003,6 +1011,38 @@ def land(
         say(f"{up.id} is {'done' if up.state == P.DONE else 'finished; it waits for a sign-off'}: "
             "everything under it is" + (f", and `{up.check}` passes" if up.check else ""))  # fmt: skip
     return True
+
+
+def _red_on_merge(target: Path, branch: str, before: str | None, node: P.Node,
+                  ran: list[tuple[str, str, str]], ident: list[str],
+                  say: Callable[[str], None]) -> list[str]:  # fmt: skip
+    """When the target has moved since ``branch`` was cut, the leaf's check and the checks of what this
+    run landed since (``ran``) run on the merge made as a commit of its own, nowhere in the checkout: the
+    leaf and what landed meanwhile have never been checked together, and one can turn the other's red.
+    What landed before the leaf was cut is under its own check already. Returns the commands run; one
+    that fails is refused, naming whose and on top of what."""
+    base = _git(target, "merge-base", "HEAD", branch, ok=True).stdout.strip()
+    if not before or base == before:
+        return []  # not moved: what it passed on is what it lands on
+    made = _git(target, "merge-tree", "--write-tree", "HEAD", branch, ok=True)
+    if made.returncode == 1:
+        return []  # a conflict: the merge itself refuses it
+    if made.returncode:  # git before 2.38 has no --write-tree
+        why = ((made.stderr or made.stdout).strip().splitlines() or ["no output"])[0]
+        say(f"{node.id}: not checked on the merge: `git merge-tree --write-tree` (git 2.38) failed: {why}")
+        return []
+    merge = _git(target, *ident, "commit-tree", made.stdout.split()[0], "-p", "HEAD", "-p", branch,
+                 "-m", "check").stdout.strip()  # fmt: skip
+    checks = {node.check: node.id} if node.check else {}
+    for command, whose, at in ran:  # landed since the leaf was cut: its commit is not under the base
+        under = _git(target, "merge-base", "--is-ancestor", at, base, ok=True).returncode == 0
+        if command not in checks and not under:
+            checks[command] = whose
+    for command, whose in checks.items():
+        if not P.run_check(command, target, at=merge)[0]:
+            raise P.Refused(f"it passes on its base, and {whose}'s check `{command}` fails on top of "
+                            f"{before[:8]}, which has moved since")  # fmt: skip
+    return list(checks)
 
 
 def _unmerge(target: Path, branch: str, staged_ours: bool = False) -> None:
@@ -1078,6 +1118,7 @@ def _run_parallel(open_store, root, target, workers, template, attempts, only, s
     unlanded: set[str] = set()
     finished: list[P.Node] = []
     waiting: dict[str, str] = {}  # a leaf whose needs are done elsewhere and not here yet: said once
+    ran: list[tuple[str, str, str]] = []  # what this run landed: its check, whose, where it landed
     stop = Stop()
 
     def work(node_id: str, tree: Path) -> P.Node | None:
@@ -1129,13 +1170,15 @@ def _run_parallel(open_store, root, target, workers, template, attempts, only, s
             unlanded.add(node.id)
             return
         try:
-            landed = land(store, target, tree, node, say, {n.id for n, _ in flying.values()} | unlanded)
+            landed = land(store, target, tree, node, say, {n.id for n, _ in flying.values()} | unlanded, ran)
         except KeyboardInterrupt:
             with _no_interrupt():  # after it landed (a sub-goal's check ran) it stays done and landed
                 if (store.node_log(node.id, ("started", "landed")) or [{}])[-1].get("kind") != "landed":
                     park(store, tree, P.get(store, node.id), say)
             raise
         if landed:
+            if node.check:
+                ran.append((node.check, node.id, P.head(target) or ""))
             finished.append(P.get(store, node.id))
             _said_done(store, finished[-1], say)
             files = P.tracked(target)
