@@ -176,8 +176,9 @@ def test_model_written_code_and_a_check_never_find_the_keychain_key(tmp_path, mo
 
 def test_a_keychain_that_hangs_is_given_up_on_and_asked_once_per_process(keychain, monkeypatch):
     tool = "security" if keys.PLATFORM == "darwin" else "secret-tool"
-    (keychain / tool).write_text(f"#!/bin/sh\necho x >> {keychain}/spawns\nsleep 3\n")
-    monkeypatch.setattr(keys, "TIMEOUT", 0.3)
+    # PATH is the fixture's bin alone, so the fake names /bin/sleep
+    (keychain / tool).write_text(f"#!/bin/sh\necho x >> {keychain}/spawns\nexec /bin/sleep 3\n")
+    monkeypatch.setattr(keys, "TIMEOUT", 1.5)  # a fresh script's first exec can take 0.4 s at -n 3
     assert [keys.find() for _ in range(3)] == [None] * 3  # no TimeoutExpired, and no wait each time
     assert (keychain / "spawns").read_text() == "x\n"
 
