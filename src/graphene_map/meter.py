@@ -176,8 +176,10 @@ class Meter:
             self._seen.add(message.get("id"))
             usage = message.get("usage") or {}
             self.model = message.get("model") or self.model
-            prompt = sum(usage.get(k) or 0 for k in PROMPT)
-            rows.append(self._usage(prompt, usage.get("output_tokens") or 0, list_price(self.model, usage)))
+            split = {k: usage.get(k) or 0 for k in PROMPT}  # kept on the row as it comes
+            rows.append(self._usage(sum(split.values()), usage.get("output_tokens") or 0,
+                                    list_price(self.model, usage)))
+            rows[-1][1].update(split)
         for block in message.get("content") or []:
             if block.get("type") == "tool_use":
                 name, given = block.get("name") or "", block.get("input") or {}
@@ -221,6 +223,7 @@ class Meter:
         self.dollars += rest
         used = event.get("usage") or {}
         given = sum(used.get(k) or 0 for k in PROMPT)
+        # ponytail: what the result adds past the turns' prompt has no cache split; split it if that grows
         more_in = max(0, given - self.prompt_tokens)
         more_out = max(0, (used.get("output_tokens") or 0) - self.completion_tokens)
         self.prompt_tokens += more_in

@@ -47,6 +47,17 @@ def test_the_list_price_of_the_whole_claude_run_is_its_reported_total():
     assert M.list_price("gpt-9", total) is None
 
 
+def test_the_usage_row_keeps_the_cache_split_as_claude_code_gives_it():
+    """A Claude prompt is its input, what it wrote to the cache and what it read from it: the row keeps
+    the three beside their sum, which the pane and the bill read. Codex reports none of them."""
+    rows = fed("claude.jsonl", M.Meter("claude", 1))
+    turns = [d for k, d in rows if k == "usage" and "turn" in d]
+    assert [[d[k] for k in M.PROMPT] for d in turns] == [[2, 6001, 10481], [2, 5192, 16482], [2, 589, 21674]]
+    assert all(d["prompt_tokens"] == sum(d[k] for k in M.PROMPT) for d in turns)
+    codex = fed("codex.jsonl", M.Meter("codex", 1, model="m"))
+    assert not any(k in d for _, d in codex for k in M.PROMPT)
+
+
 def test_a_message_split_over_events_is_counted_once():
     meter = M.Meter("claude", 1)
     usage = '"usage": {"input_tokens": 10, "output_tokens": 5}'
