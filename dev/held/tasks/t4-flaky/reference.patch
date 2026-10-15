@@ -1,0 +1,19 @@
+diff --git a/logtool/cli.py b/logtool/cli.py
+index 6d60860..126e721 100644
+--- a/logtool/cli.py
++++ b/logtool/cli.py
+@@ -7,10 +7,13 @@ import sys
+ def main(argv=None):
+     parser = argparse.ArgumentParser(prog="logtool")
+     parser.add_argument("path")
++    parser.add_argument("--since", help="print only the lines at or after this ISO time")
+     args = parser.parse_args(argv)
+     with open(args.path, encoding="utf-8") as fh:
+         for line in fh:
+-            sys.stdout.write(line)
++            # ISO timestamps sort as text, and a date alone sorts before every time on that day.
++            if args.since is None or line.split(" ", 1)[0] >= args.since:
++                sys.stdout.write(line)
+     return 0
+ 
+ 

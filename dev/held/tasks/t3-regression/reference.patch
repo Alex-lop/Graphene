@@ -1,0 +1,21 @@
+diff --git a/prices/parse.py b/prices/parse.py
+index 7e2412c..296f75f 100644
+--- a/prices/parse.py
++++ b/prices/parse.py
+@@ -1,6 +1,6 @@
+ """Prices as written on receipts, to (currency, cents)."""
+ 
+-SYMBOLS = {"$": "USD", "€": "EUR", "£": "GBP"}
++SYMBOLS = {"$": "USD", "€": "EUR", "£": "GBP", "CHF ": "CHF"}
+ 
+ 
+ def parse_price(text):
+@@ -9,4 +9,7 @@ def parse_price(text):
+     sign = 1
+     if text.startswith("-"):
+         sign, text = -1, text[1:]
+-    return SYMBOLS[text[0]], sign * round(float(text[1:]) * 100)
++    for symbol, currency in SYMBOLS.items():
++        if text.startswith(symbol):
++            return currency, sign * round(float(text[len(symbol) :]) * 100)
++    raise KeyError(text)

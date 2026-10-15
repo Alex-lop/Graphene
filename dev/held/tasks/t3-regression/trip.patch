@@ -1,0 +1,24 @@
+diff --git a/prices/parse.py b/prices/parse.py
+index 7e2412c..877102d 100644
+--- a/prices/parse.py
++++ b/prices/parse.py
+@@ -1,12 +1,12 @@
+ """Prices as written on receipts, to (currency, cents)."""
+ 
+-SYMBOLS = {"$": "USD", "€": "EUR", "£": "GBP"}
++import re
++
++SYMBOLS = {"$": "USD", "€": "EUR", "£": "GBP", "CHF": "CHF"}
++PRICE = re.compile(r"(?P<symbol>[^\d\s]+)\s?(?P<amount>\d+(?:\.\d+)?)")
+ 
+ 
+ def parse_price(text):
+-    """'$12.50' -> ('USD', 1250). A leading '-' is a refund: '-$3.00' -> ('USD', -300)."""
+-    text = text.strip()
+-    sign = 1
+-    if text.startswith("-"):
+-        sign, text = -1, text[1:]
+-    return SYMBOLS[text[0]], sign * round(float(text[1:]) * 100)
++    """'$12.50' -> ('USD', 1250), 'CHF 12.50' -> ('CHF', 1250)."""
++    match = PRICE.fullmatch(text.strip())
++    return SYMBOLS[match["symbol"]], round(float(match["amount"]) * 100)

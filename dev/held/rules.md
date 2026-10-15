@@ -51,7 +51,7 @@ Secondary, G only: a proposed scope that named a forbidden path.
   each seed, on one day and one Claude Code version, then the ledger, then RESULTS.md, published whatever it says.
 - **Pilot.** One seed per task per arm, on seeds of its own. It may change only the harness. Its numbers are
   printed, marked "pilot", and never pooled.
-- **T4's flake.** `tests/test_clock.py` fails on about 30% of seeds (0.29 over 10,000 seeds). G's check runs once
+- **T4's flake.** `tests/test_clock.py` fails on about 30% of runs (0.30 over 10,000 seeds; `CLOCK_SEED` replays one). G's check runs once
   in a clean worktree, so a lucky green can land a leaf; the rate is printed with every T4 row.
 
 ## Spend
