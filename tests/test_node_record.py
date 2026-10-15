@@ -724,6 +724,36 @@ def test_a_metered_attempt_that_came_back_says_what_it_ran_and_where_it_was_refu
                            "claude-sonnet-5-5 (Claude Code's report)")  # fmt: skip
 
 
+def test_node_show_says_what_an_attempt_wrote_to_the_cache_and_read_from_it(store, repo):
+    """Each attempt says its cache's raw numbers under its head, and no cause; an attempt whose usage rows
+    are older than the split says nothing about the cache."""
+    run = Caller("run:claude", False, "s-1")
+    plan.propose(store, [api_node()], ALEX, now=T(0))
+    plan.start(store, "n1", run, repo, now=T(1))
+
+    def turn(attempt, **split):
+        return {"model": "claude-sonnet-5-5", "calls": 1, "prompt_tokens": sum(split.values()),
+                "completion_tokens": 100, "dollars": 0.01, "endpoint": "claude code", "attempt": attempt,
+                "turn": 1, **split}  # fmt: skip
+
+    meter_rows(store, run, [
+        (T(1, 30), "attempt", {"attempt": 1, "log": None}),
+        (T(2), "usage", turn(1, prompt_tokens=5_000)),  # before the split: one prompt number
+        (T(2, 30), "ended", {"attempt": 1, "exit": 1, "seconds": 60, "meter": "claude", "unread": 0}),
+        (T(3), "attempt", {"attempt": 2, "log": None}),
+        (T(4), "usage", turn(2, input_tokens=3, cache_creation_input_tokens=30_000,
+                             cache_read_input_tokens=0)),
+        (T(5), "usage", turn(2, input_tokens=2, cache_creation_input_tokens=8_000,
+                             cache_read_input_tokens=0)),
+        (T(5, 30), "ended", {"attempt": 2, "exit": 0, "seconds": 150, "meter": "claude", "unread": 0}),
+    ])  # fmt: skip
+    lines = NR.render(NR.node_record(store, repo, plan.get(store, "n1"), at=T(6)))
+    first = next(k for k, line in enumerate(lines) if line.startswith("  attempt 1 · "))
+    second = next(k for k, line in enumerate(lines) if line.startswith("  attempt 2 · "))
+    assert lines[second + 1] == "    38k tokens written to the cache, 0 read", lines
+    assert not any("cache" in line for line in lines[first:second]), lines
+
+
 def test_a_command_claude_code_refused_its_executor_is_in_the_record_and_offered_to_no_scope(store, repo):
     """Claude Code's own refusal of a command (its result's permission_denials) read "refused: nothing". It is
     a command, not a path: the hand-back offers no scope to widen to it."""

@@ -887,6 +887,8 @@ def _attempt_lines(record: NodeRecord) -> list[str]:
         elif a["running"] and record.state == P.RUNNING:
             head.append("running")
         lines.append("  " + " · ".join(head))
+        if a["cache"]:  # the raw numbers, never why
+            lines.append(f"    {_k(a['cache'][0])} tokens written to the cache, {_k(a['cache'][1])} read")
         if a["read"]:
             lines.append(f"    read: {_few(a['read'])}")
         if a["edited"]:

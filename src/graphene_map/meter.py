@@ -321,6 +321,7 @@ def whole_said(rows: list[dict]) -> list[dict]:
 def _attempt(a: dict, nxt: dict | None, scope: list[str] | None, now: datetime) -> dict:
     rows, ended, start = a["rows"], a["ended"], a["row"]["timestamp"]
     usage = [e["detail"] for e in rows if e["kind"] == "usage"]
+    split = [u for u in usage if PROMPT[1] in u]  # Claude's turns that kept the cache split
     did = [e["detail"] for e in rows if e["kind"] == "did"]
     talk = whole_said([e for e in rows if e["kind"] in ("did", "said")])
     said = [e["detail"].get("text") for e in talk if e["kind"] == "said"]
@@ -360,6 +361,7 @@ def _attempt(a: dict, nxt: dict | None, scope: list[str] | None, now: datetime) 
         "turns": sum(u.get("calls") or 0 for u in usage),
         "prompt_tokens": sum(u.get("prompt_tokens") or 0 for u in usage),
         "completion_tokens": sum(u.get("completion_tokens") or 0 for u in usage),
+        "cache": [sum(u[k] for u in split) for k in PROMPT[1:]] if split else None,  # written, read
         "dollars": sum(u.get("dollars") or 0 for u in usage),
         "priced": not unpriced(rows),
         "endpoints": sorted({u.get("endpoint") or "" for u in usage}),  # who answered; "" when a row says not
