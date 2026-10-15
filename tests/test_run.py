@@ -78,7 +78,8 @@ def test_a_refused_executor_is_sent_back_with_the_refusal_and_the_node_is_done_w
         "n1 attempt 1 refused: n1 is not done: changed outside its scope (api.py), which only the person "
         "widens · schema.py" in said[2]
     )
-    assert said[-1] == "n1 is done"
+    assert said[-2] == "n1 is done"  # then the flag: its check reads api.py, which the leaf changed
+    assert said[-1].startswith("its check runs api.py, which this leaf changed")
     assert len(list((repo / ".graphene/runs").glob("n1-*-2.txt"))) == 1
 
 
