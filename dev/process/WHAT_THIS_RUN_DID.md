@@ -1,5 +1,10 @@
 # What this run did, and why it matters
 
+*Moved under `dev/process/` on 14 October 2026, and corrected the same day in three places the evidence does not hold: the product
+scan is not kept in this repository; the reader count in the X3 row is three runs with one AI reader each, scored on eight factual
+questions; and the install line, with the claim that a stranger gets from `uv tool install` to a landed leaf on the README's words
+alone, hold from 0.5.1, because the 0.5.0 on PyPI is the 7 October tag. Nothing else changed.*
+
 Two nights of work landed on `main` on 12 and 13 October 2026: **PR #45** (the prove-it night, 10 October, 51
 commits) and **PR #48** (the feel night, 11 and 12 October, 26 commits). Both were built on branches by agents,
 reviewed at their seams by other agents, and merged by Alex. This file is the account for someone who did not watch:
@@ -14,8 +19,8 @@ easy. **Real and unique:** a write scope per leaf, refused before the write by a
 git when the leaf is declared done; a check that Graphene runs itself, in a clean worktree, not the agent's word for
 it; red first, which runs that check before any work so a check that already passes is flagged; a failure sent back
 to the leaf that owns the file, with the reason as a row and an offer (`w` widen, `b` sibling, `r` reopen, `n` wait);
-and a meter of the person's own acts beside the agents' minutes and dollars. A scan of 37 products found none that
-does these; they ship the loop (plan, approve, parallel subagents, PR) without the contract.
+and a meter of the person's own acts beside the agents' minutes and dollars. A scan of products at the time (the scan itself is not kept in this repository; the market section of
+`dev/PRODUCT_THESIS.md` is what is, and now names two partial ones) found none that does all of these for Claude Code; they ship the loop (plan, approve, parallel subagents, PR) without the contract.
 
 **Not yet easy:** the first paid ask could end with nothing when the planner's text form had one fault; `graphene run`
 opened with a 297-character line of git flags; every command ended with the repository's full path on stderr; the
@@ -59,7 +64,7 @@ What the numbers said (907a7d0 against the branch):
 | X1, the first ask, 40 Sonnet asks a build: proposals by first answer                                                        | 40 of 40 [0.91, 1.00]                                                    | 35 of 40 [0.74, 0.95]: the intervals overlap, no difference shown; 40 of 40 by ask on both                       |
 | X2, the feeds task with a planted fault, median of 3 runs: hidden checks; dollars; commands refused to the executors; turns | 18 of 20; $0.628; 18; 51                                                 | 18 of 20; $0.533; 4; 31                                                                                          |
 | X2, the plain Claude Code session on the same task (median of 3)                                                            | 18 of 20; $0.353; 5 refusals; 21 turns; the fix said in the reply only   | the same arm on both builds                                                                                      |
-| X3, ten morning-after questions, median of 8 readers: Graphene's record; `git log -p` plus the agents' last words           | 7; 4                                                                     | 7; 5 (the merge body made git answer one more)                                                                   |
+| X3, ten morning-after questions (eight factual, scored by script), median of 3 runs, one AI reader each: Graphene's record; `git log -p` plus the agents' last words           | 7; 4                                                                     | 7; 5 (the merge body made git answer one more)                                                                   |
 | X4, pytest-bdd issue #476 on a real repository                                                                              | 2 landed by luck of import order; 148 of its tests pass                  | 0 landed: the leaf came back with the executor's own diagnosis of the editable install; nothing broken           |
 | X5, the editable-install hole, $0                                                                                           | the broken leaf landed with `python3 -m pytest` and with `uv run pytest` | named before the run; `uv run pytest` refuses it; `python3 -m pytest` still lands it, as the rules expected      |
 | X7, plan first on new repositories                                                                                          |                                                                          | `auto` took the feeds paragraph at once as one 8-path leaf 3 of 3 times; `on` made it wait for the person 3 of 3 |
@@ -124,8 +129,8 @@ write and by git at `done`, where the check is Graphene's and runs in a clean tr
 leaf that owns the file with its reason kept, and where the person's own time and acts sit on the same line as the
 agents' minutes and dollars. The two nights did not add to that list. They made it reachable: a stranger now gets
 from `uv tool install` to a landed leaf on the README's words alone, with a cost line after every ask, a next step
-after every act, a terminal that speaks while agents work, and a morning-after record that answered 7 of 8 factual
-questions where `git log -p` answered 4 to 5. And two holes in `done` that could land a broken leaf are closed or
+after every act, a terminal that speaks while agents work, and a morning-after record that answered seven of the eight factual
+questions where `git log -p` answered four or five (median of three runs, one AI reader each). And two holes in `done` that could land a broken leaf are closed or
 named before the run. What it does not claim is that a tree beats a paragraph on a small task; the plain session
 still does the feeds task as well for less, and that is written down rather than argued away.
 
@@ -150,7 +155,7 @@ more often; `docs/HACKATHON.md`'s stale lines; and the one human number worth ha
 ## To see it yourself
 
 ```
-uv tool install graphene-map              # 0.5.0 on PyPI
+uv tool install graphene-map              # 0.5.1 once published; the 0.5.0 on PyPI is the 7 October tag
 cd a-small-repo && graphene demo          # the replay first; no key needed
 graphene init                             # at a terminal: Claude Code, plan first on
 graphene ask "what you want, in a paragraph"
