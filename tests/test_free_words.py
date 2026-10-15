@@ -42,3 +42,9 @@ def test_a_run_says_its_worst_case_for_claude_code_and_no_cap_for_a_script(repo,
     assert "no spend cap" not in said
     said = person("run", "--with", "true", "--attempts", "1", "--no-precheck").stdout
     assert "worst case: no spend cap on this executor" in said, said
+
+
+def test_plan_pause_says_a_run_going_is_not_stopped_and_what_stops_it(repo):
+    """`plan pause` lifts the rules; a run already going went on, and nothing said so."""
+    said = person("plan", "pause").stdout
+    assert "a run already going is not stopped: `graphene run --stop` stops it" in said, said

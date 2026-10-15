@@ -923,9 +923,11 @@ def register(cli: typer.Typer, root, open_store, fail):
     def pause() -> None:
         """Pause the plan: nothing starts and no write is refused.
 
-        `graphene plan resume` puts the plan back in force."""
+        A run already going goes on: `graphene run --stop` stops it. `graphene plan resume` puts the plan
+        back in force."""
         run(lambda s: P.set_paused(s, True, P.caller()))
         out("paused: nothing starts and nothing is enforced until `graphene plan resume`")
+        out("a run already going is not stopped: `graphene run --stop` stops it")
         said_where()
 
     @plan_cli.command(hidden=True)
