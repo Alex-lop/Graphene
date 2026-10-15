@@ -53,6 +53,7 @@ graphene = "graphene_map.cli:app"
 dev = [
   "graphene-map[nemotron]",  # the tests cover the extra: `uv run pytest` installs it
   "pytest>=8",
+  "pytest-xdist>=3.6",  # CI runs the suite with -n auto
   "ruff>=0.8",
 ]
 

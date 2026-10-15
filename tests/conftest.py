@@ -45,6 +45,13 @@ def no_agent_marks(monkeypatch):
         monkeypatch.delenv(name, raising=False)
 
 
+@pytest.fixture(autouse=True)
+def no_terminal_size(monkeypatch):
+    """xdist's workers set COLUMNS=80 and LINES=24, which the CLI reads as a terminal: the suite has none."""
+    monkeypatch.delenv("COLUMNS", raising=False)
+    monkeypatch.delenv("LINES", raising=False)
+
+
 @pytest.fixture
 def finish():
     """Do a node's work and finish it: a node with nothing changed inside its scope is not done, so
