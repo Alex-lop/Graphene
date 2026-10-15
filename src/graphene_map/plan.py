@@ -2707,6 +2707,20 @@ def signoff(
     landed = None
     if left:  # asked of git before the write lock is taken
         branch = left.get("branch", f"graphene/{node_id}")
+        on = subprocess.run(["git", "-C", str(checkout), "symbolic-ref", "-q", "HEAD"], capture_output=True,
+                            text=True).stdout.strip()  # fmt: skip
+        if not on:  # land() would merge onto no branch and delete graphene/<id>
+            raise refusal(
+                f"{checkout} is on no branch (a detached HEAD): leaves merged here would belong to no "
+                "branch and be lost at the next checkout",
+                do=f"git switch <branch>, then graphene node signoff {node_id}",
+            )
+        if on == f"refs/heads/{branch}":  # its own branch: trivially merged, and nothing reaches yours
+            raise refusal(
+                f"{checkout} is inside {node_id}'s own worktree: signed off here, it would read as landed "
+                "with nothing on your branch",
+                do=f"cd to your checkout, then graphene node signoff {node_id}",
+            )
         try:
             sha = _git(checkout, "rev-parse", "-q", "--verify", branch).strip()
         except (Refused, OSError, subprocess.TimeoutExpired):
