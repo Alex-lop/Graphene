@@ -639,6 +639,40 @@ shutdown note ("couldn't find a business model") is the honest ceiling: this is 
 love and nobody may pay for. Alex's stated goal is a real product people use, and the thesis is
 sized to that.
 
+### What moved by 14 October 2026
+
+Added by the controller session from vendor docs, releases and public issues read on the day (the readers'
+record is `dev/process/controller/findings.md` once that leaf lands). Each row names its page and what was seen.
+
+| Product | What it gives of control | Seen |
+| --- | --- | --- |
+| Claude Code | plan mode (no edits until approved) that its own docs say is not enforced in interactive sessions where bypass is available; static allow and deny rules; hooks that can deny, and since 2.1.295 `onFailure: "block"` so a crashed hook stops the action instead of letting it through; `claude agents`, a worktree per background session grouped by Ready for review, Needs input, Working | 2.1.299, 14 Oct; code.claude.com/docs permission-modes, hooks, agent-view |
+| Entire 0.11.5 | records sessions in git; trails (intent across repositories and branches) and `entire trail merge`, which checks gates before merging; dropped its AI and human line labels; the gates are evaluated server side | 14 Oct; CHANGELOG, PR #2566; 5,182★ |
+| my-pi (Pi agent harness) | a per-task editable scope, hooks that block edits outside it and changes to tests that were not part of the task, deterministic validation scripts, and a stop for human review before commit | scottspence.com, 25 Jul 2026; npm @spences10/pi-harness |
+| Ralon 0.1.7 | a kernel-enforced write lock from one `agent.lock` for nine agents: stronger than a hook, one static list | docs.rs, 28 Aug 2026 |
+| Kiro | specs, then a task graph that runs in parallel waves; no file limit and no check the tool runs are documented | kiro.dev/docs/specs, 2 Oct |
+| Spec Kit 1.2.0 | spec templates and a CLI; its file helper polices its own CLI's writes, not the agent's | 13 Oct; 141,309★ |
+| GitHub Copilot cloud agent | required checks run by GitHub and a requester who cannot approve their own PR; no per-file limit | docs.github.com, risks and mitigations |
+| Conductor 0.90.0, Vibe Kanban, claude-squad | a worktree per agent, a diff viewer and merge (Conductor); no plan, no file limit | conductor.build; Vibe Kanban community-run since 10 Apr (28,367★) |
+
+What the claim can be after this reading, and what it cannot: for Claude Code, a plan where every piece names the
+files it may change and the check it must pass, a write outside those files refused as it happens, the check run by
+the tool in a clean copy, and a piece landed only when it passes, on your machine with no account. "The only tool
+that" is false in general (my-pi, Ralon), so the claim is scoped to Claude Code and to a plan of several pieces.
+Graphene's refusal is a hook with a five second timeout that fails open; `onFailure: "block"` closes that where
+Claude Code supports it, at the price of blocking every call when `graphene` is missing (a decision, on the board).
+
+What several of them have that Graphene lacks: a person looks at a diff or a pull request before the merge
+(Conductor's viewer, Copilot's human-merged PR, Codex cloud's diff-to-PR, Claude Code's Ready for review group,
+Entire's trail merge gates), and running the agents off the laptop. Plan approval, the thing this repository first
+led with, is now built into Claude Code, Cursor, Kiro, Cline and Spec Kit: it is no longer what is different.
+
+The words people use for this problem are not Graphene's (leaf, contract, red first, landed, scope as a noun):
+"Claude modified files I didn't ask it to modify" (the first option on Anthropic's own bug form; 238 of the 811
+issues labelled `model` match "Claude modified files" on 14 Oct, a search count, not a hand count), "reports ALL
+PASSED when tests are FAILING" (claude-code issue 46940), "System-level enforcement that prevents Claude from
+modifying any files except those explicitly authorized" (issue 4452).
+
 ## 13. Red teams
 
 Two adversarial sub-agents attacked the first draft of this thesis and the directive, with a fact
