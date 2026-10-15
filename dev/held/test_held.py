@@ -98,16 +98,24 @@ def held(*args, tmp_path, **env):
 
 
 def test_run_sh_runs_each_arm_once_at_zero_dollars_with_fake_claude(tmp_path):
-    for arm in ("P", "P+", "G"):
-        done = held(arm, "t2-contract", "1", tmp_path=tmp_path, FAKE="1")
-        assert done.returncode == 0, done.stderr
-        assert "Ceiling $45 (FAKE=1: $0)" in done.stdout
-        row = json.loads((tmp_path / "out" / f"t2-contract-{arm}-1" / "score.json").read_text())
-        assert row["arm"] == arm and row["false_done"] == (row["claimed_done"] and not row["hidden_passes"])
     out = tmp_path / "out"
+    # The fake planner's session id is random, and one ending in f is bad every time (fake/claude): one run in
+    # sixteen proposes nothing. A G run that proposed nothing is tried again on the next seed: three in a row
+    # is one in 4096, which a test under CI's parallel workers can bear.
+    for arm, seeds in (("P", "1"), ("P+", "1"), ("G", "123")):
+        for seed in seeds:
+            done = held(arm, "t2-contract", seed, tmp_path=tmp_path, FAKE="1")
+            assert done.returncode == 0, done.stderr
+            assert "Ceiling $45 (FAKE=1: $0)" in done.stdout
+            run = out / f"t2-contract-{arm}-{seed}"
+            row = json.loads((run / "score.json").read_text())
+            wrong = row["claimed_done"] and not row["hidden_passes"]
+            assert row["arm"] == arm and row["false_done"] == wrong
+            if arm != "G" or "run: 1 done" in (run / "said.txt").read_text():
+                break
     deny = json.loads((out / "t2-contract-P+-1" / "repo" / ".claude" / "settings.json").read_text())
     assert deny == {"permissions": {"deny": ["Edit(tests/test_contract.py)"]}}
-    assert "run: 1 done" in (out / "t2-contract-G-1" / "said.txt").read_text()  # the fake's leaf
+    assert "run: 1 done" in (run / "said.txt").read_text()  # the fake's leaf
 
 
 def test_run_sh_refuses_a_live_run_the_person_has_not_opened_and_says_the_ceiling(tmp_path):
