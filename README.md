@@ -23,6 +23,10 @@ uvx --from graphene-map graphene demo
 
 <sub>Needs [uv](https://docs.astral.sh/uv/getting-started/installation/), a free installer for Python tools.</sub>
 
+Watch the locks hold: `graphene demo --cheat` tries seven ways round them.
+
+<img src="https://raw.githubusercontent.com/Alex-lop/Graphene/main/docs/assets/watch.gif" alt="graphene demo: a plan is proposed, a leaf comes back with its reason, it lands" width="720" />
+
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Alex-lop/Graphene/main/docs/assets/loop-ivory.svg" />
   <img src="https://raw.githubusercontent.com/Alex-lop/Graphene/main/docs/assets/loop-ink.svg" alt="The loop: you shape the plan, your agents do the work, Graphene checks it" width="720" />
@@ -36,8 +40,8 @@ uvx --from graphene-map graphene demo
 
 ## In your hands
 
-- **Stop:** Ctrl-C, or `:stop` in watch.
-- **Cost:** with Claude Code, $2 an attempt, three at most. Codex has no cap, and nothing caps the total yet. A real two-leaf run cost $0.30.
+- **Stop:** Ctrl-C, `graphene run --stop`, or `:stop` in watch.
+- **Cost:** with Claude Code, $2 an attempt, three at most, and a run says its worst case first. Codex has no cap, and nothing caps the total yet. A real two-leaf run cost $0.30.
 - **Undo:** `git revert -m 1 <id>`, with the `landed:` id from `graphene node show <leaf>`.
 - **Leave:** `graphene init --remove`.
 
@@ -54,7 +58,7 @@ graphene plan accept
 graphene run --parallel 2                  # two leaves at a time
 ```
 
-With Claude Code, skip `ask`: type what you want as usual and it proposes a plan first. In watch, `y` accepts, `d` drops a leaf, `e` edits one, `R` runs what is ready (it asks first when more than one leaf could start). `graphene plan first off` lets a quick change through at once.
+With Claude Code, skip `ask`: type what you want and it proposes a plan first. In watch, `y` accepts, `d` drops a leaf, `R` runs what is ready (it asks first when more than one leaf could start). `graphene plan first off` lets a quick change through at once.
 
 <details>
 <summary><b>Does anything leave my computer?</b></summary>
@@ -66,11 +70,11 @@ With Claude Code or Codex, Graphene itself sends nothing anywhere. `graphene ini
 <details>
 <summary><b>Claude Code already shows plans. What does Graphene enforce?</b></summary>
 
-So do Cursor, Kiro and Cline. Graphene enforces it:
+So do Cursor, Kiro and Cline ([compared, gaps included](https://github.com/Alex-lop/Graphene/blob/main/docs/COMPARE.md)). Graphene enforces it:
 
 - Refused before the write: Claude Code only, shell redirects included. With Codex, or if the add-on cannot run, git finds it when the leaf finishes.
-- A leaf allowed to edit its own test can weaken it: read `graphene node diff <leaf>`.
-- Not yet: approving a diff before it lands. [Every limit](https://github.com/Alex-lop/Graphene/blob/main/docs/HOW_IT_WORKS.md#where-each-mechanism-ends).
+- A leaf allowed to edit its own test can weaken it: `done` flags it, and a sign-off lets you read the diff first.
+- Not yet: a look at every diff before it lands. A leaf marked for sign-off waits for you, and `c` in watch shows its diff; the rest land when their check passes. [Every limit](https://github.com/Alex-lop/Graphene/blob/main/docs/HOW_IT_WORKS.md#where-each-mechanism-ends).
 - Honestly, in the three comparisons so far a plain paragraph to the same agent did just as well for less. What I'm betting on is when you find out what it understood: before the work, not after.
 
 </details>
@@ -82,6 +86,6 @@ I believe the limit on building software won't be tokens or cost. It'll be the h
 
 </details>
 
-Honestly, it's early, and I'm building it in the open. If you try it on a real repo, what I most want to hear is where the plan misread what you meant: [open an issue](https://github.com/Alex-lop/Graphene/issues).
+Honestly, it's early, and I'm building it in the open. If you try it on a real repo, what I most want to hear is where the plan misread what you meant: [tell me in two minutes](https://github.com/Alex-lop/Graphene/issues/new?template=first-hour.yml), or [open an issue](https://github.com/Alex-lop/Graphene/issues).
 
 [How it works](https://github.com/Alex-lop/Graphene/blob/main/docs/HOW_IT_WORKS.md) · [A real run](https://github.com/Alex-lop/Graphene/blob/main/docs/A_RUN.md) · [Alex Lopez](https://alex-lop.github.io/Alex_Lopez_Website/) · Apache-2.0
