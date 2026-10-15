@@ -13,6 +13,7 @@ import os
 import re
 import shlex
 import shutil
+import signal
 import subprocess
 import sys
 from pathlib import Path
@@ -995,6 +996,9 @@ def register(cli: typer.Typer, root, open_store, fail):
             True, "--precheck/--no-precheck", help="Run each ready leaf's check at the base commit first; "
             "--no-precheck skips it."
         ),
+        stop: bool = typer.Option(
+            False, "--stop", help="Stop the run going here: what it holds goes back to the plan."
+        ),
     ) -> None:
         """Run every ready leaf in its own worktree, one executor per leaf.
 
@@ -1006,6 +1010,14 @@ def register(cli: typer.Typer, root, open_store, fail):
         from .run import CAP_UNIT, NOTHING, _splits, label, named, run_parallel, run_plan, summary, sweep
 
         r = root()
+        if stop:  # Ctrl-C to the run, as `:stop` in `graphene watch` sends it: it hands back what it holds
+            from .run import run_holding
+
+            pid = run_holding(r)  # by pid and start time: a reused pid is no run
+            if pid is not None:
+                os.kill(pid, signal.SIGINT)
+            out("stopping the run: what it holds goes back to the plan" if pid else "no run is going here")
+            return
         with open_store(r) as store:
             if not P.nodes(store, (P.OPEN, P.RUNNING)):
                 sweep(store, out, r)  # a dead parallel run's finished leaves are parked, and said, first
