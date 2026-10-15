@@ -1157,7 +1157,8 @@ def test_the_status_line_is_two_lines_fitted_at_a_word_at_80_and_120(repo):
     # the clocks short, the rest long; the proposal counted, as `graphene` counts it
     clocks = r"waiting on you: 4 · agents 1 <1m · you \d+ moves? \d+m · R runs 1 ready · "
     assert re.fullmatch(clocks + r"1 came back · 1/9 done · plan first: auto \(P\)", top), top
-    assert bottom == "y sign off · x send back · Enter record · Tab view · ? help · q quit"  # ? everywhere
+    keys = "y sign off · x send back · c diff · Enter record · Tab view · ? help · q quit"
+    assert bottom == keys  # ? everywhere
     narrow, _ = at(repo, "rule", (80, 24))
     top, bottom = narrow["status"].splitlines()
     narrow_top = r"4 on you · agents 1 <1m · you \d+ moves? \d+m · R: 1 ready · 1 came back · 1/9 done"

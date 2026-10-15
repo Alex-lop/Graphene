@@ -80,14 +80,14 @@ HELP = (  # what answering the board needs first: at 80x24 the first screen ends
         ("+ -", "the plan asked again, finer, coarser"), ("V u", "select several, then y or d; undo"),
         ("m", "mark all seen: then + and ~ show what changed"),
     )),
-    (":", ((":<command>", "any graphene command (:ask, :stop, :node set)"),
+    (":", ((":<command>", "any graphene command (:ask); :stop stops the run"),
            ("q", "quit; a run started here goes on"))),
     ("fold", (("za zo zc", "fold or unfold, unfold, fold (on the goal: all)"),
               ("zR zM zx", "all open, all closed, as it opened"))),
     ("run", (("R r", "run every ready leaf; the ready ones under this"),
              ("x", "hand it back; send it back; reopen it"), ("P", "plan first: on, auto, off"))),
     ("see", (("Enter l D", "the record; the executor's output; the direction"),
-             ("ctrl-d -u", "scroll the pane"))),
+             ("c", "what it changed, whole; ctrl-d -u scroll a pane"))),  # one row: 120x36 is full
     ("came back", (("w b r n", "widen its scope; a sibling; reopen; wait on those"),
                    ("t", "ask the planner what would let it be done"))),
 )  # fmt: skip
@@ -106,7 +106,7 @@ ROWS = ("proposed ", "added ")  # an ask's rows, indented under a proposed paren
 ASK_HINT = "# what you want, in a paragraph; lines that start with # are left out\n"  # `:ask` alone opens it
 KEYS = {  # the bottom line, when no command has just spoken: what the keys do on this row
     "proposed": ["y accept", "d drop", "e edit", "E edit as text"],  # one label on every row: ? explains it
-    "review": ["y sign off", "x send back", "Enter record"],
+    "review": ["y sign off", "x send back", "c diff", "Enter record"],  # 77 of 78 columns at 80
     "running": ["l output", "x hand it back", "Enter record"],
     "done": ["x reopen", "Enter record", "c diff"],
     "ready": ["R run all ready", "r run this", "e edit"],
