@@ -1081,6 +1081,8 @@ def _run_parallel(open_store, root, target, workers, template, attempts, only, s
             return run_node(mine, node_id, tree, template, attempts, say, logs, stop)
 
     def launch(pool: ThreadPoolExecutor) -> None:
+        # one the person signed off since it parked has landed: still held here, its parent never closed
+        unlanded.difference_update([i for i in unlanded if P.unlanded(store, i) is None])
         everything = P.nodes(store)
         by_id = {n.id: n for n in everything}
         busy = {n.id for n, _ in flying.values()} | unlanded
@@ -1108,6 +1110,7 @@ def _run_parallel(open_store, root, target, workers, template, attempts, only, s
 
     def collect(future: Future) -> None:
         nonlocal files
+        unlanded.difference_update([i for i in unlanded if P.unlanded(store, i) is None])
         was, tree = flying.pop(future)
         try:
             node = future.result()
