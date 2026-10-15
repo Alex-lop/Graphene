@@ -71,9 +71,9 @@ def test_no_plan_says_paragraph_in_and_never_the_node_add_flags(repo):
     """`graphene plan` and plain `graphene`, with nothing planned: say it to your agent in a paragraph,
     or `graphene ask`. Both taught typing the tree with `node add` flags, each in its own words."""
     shown, plain = person("plan"), person()
-    assert shown.exit_code == 0 and plain.exit_code == 1  # plain `graphene` has nothing to show
+    assert shown.exit_code == 0 and plain.exit_code == 0  # nothing to show is no error
     for said in (shown.stdout, plain.stderr):
-        assert said.startswith("nothing is planned here yet. `graphene ask '<what you want")
+        assert said.startswith("nothing is planned here yet. Start with `graphene init`")
         assert "graphene ask '<what you want, in a paragraph>'" in said and "graphene watch" in said
         assert "--scope" not in said and "node add" not in said
     assert shown.stdout == plain.stderr  # said once, the same way
@@ -127,7 +127,7 @@ def test_the_loop_a_person_shapes_an_agent_executes_and_the_boundary_carries_the
     (repo / "README.md").unlink()
     (repo / "docs").mkdir()
     (repo / "docs" / "api.md").write_text("users() returns ids\n")
-    assert "next: nothing; every node is done" in agent("node", "done", "n2").stdout
+    assert "next: nothing; every leaf is done" in agent("node", "done", "n2").stdout
 
 
 def test_a_persons_node_makes_the_agent_stop_and_shows_the_person_why(repo):
@@ -415,7 +415,7 @@ def test_after_the_last_node_is_archived_the_plan_the_board_and_the_next_ask_sta
     assert agent("node", "done", "l1").exit_code == 0
     assert "archived l1" in person("plan", "archive").stdout
     plain = person()
-    assert plain.exit_code == 1 and plain.stderr.startswith("nothing is planned here yet")
+    assert plain.exit_code == 0 and plain.stderr.startswith("nothing is planned here yet")
     assert "ids are ints" not in person("board").stdout
     assert "users come back with their ids" in person("plan", "log").stdout  # kept, in the log
 

@@ -28,13 +28,15 @@ from . import plan_text as T
 from . import views as V
 
 # What `graphene` and `graphene plan` say in a repository with nothing planned: paragraph in, tree out.
-NO_PLAN = (
-    "nothing is planned here yet. `graphene ask '<what you want, in a paragraph>'` proposes a plan (or "
-    "ask Claude Code here: its hooks propose one too); `graphene watch` shows it"
+ASK = (
+    "`graphene ask '<what you want, in a paragraph>'` proposes a plan (or ask Claude Code here: its hooks "
+    "propose one too); `graphene watch` shows it"
 )
-# ... and in a repository `graphene init` never set up, what comes before either
+NO_PLAN = f"nothing is planned here yet. {ASK}"
+# ... and in a repository `graphene init` never set up: init first, since until then `ask` refuses
 NOT_INIT = (
-    "Before either, `graphene init` chooses who plans and who runs (until then, `ask` and `run` refuse)"
+    "nothing is planned here yet. Start with `graphene init`: it chooses who plans and who runs (until "
+    f"then, `ask` and `run` refuse). Then {ASK}"
 )
 # What `graphene plan first` says each setting does
 FIRST_SAID = {
@@ -142,7 +144,7 @@ def register(cli: typer.Typer, root, open_store, fail):
                 f"it back with `graphene node release {n.id} --why '…'`"
             ]
         if not [n for n in everything if n.state in (P.PROPOSED, P.OPEN, P.RUNNING, P.REVIEW)]:
-            return ["next: nothing; every node is done"]
+            return ["next: nothing; every leaf is done"]
         # a leaf that came back reads so, as on the screen and in `plan --view`: it is said after the
         # leaves that are ready, and in its own word, since its next move is the person's
         back = {n.id for n in everything if P.came_back(store, n)}
@@ -283,7 +285,7 @@ def register(cli: typer.Typer, root, open_store, fail):
         alive = [n for n in P.order(P.nodes(store)) if n.state not in P.GONE]
         asked, board = B.waiting(store)  # what the board waits on the person for
         if not alive:
-            none = NO_PLAN if store.meta("plan_first") is not None else f"{NO_PLAN}. {NOT_INIT}"
+            none = NO_PLAN if store.meta("plan_first") is not None else NOT_INIT
             return [board, none] if board else [none]
         by_id = {n.id: n for n in alive}
         under = P.kids(alive, drawn=True)  # proposals are drawn where they would go; they bind nothing

@@ -180,11 +180,6 @@ def build():
             line.rstrip()
             console.print(line, no_wrap=True, crop=False, overflow="ignore")
 
-    def empty(message: str) -> None:
-        """Nothing to show yet is not an error: plain text, exit 1 so scripts can tell."""
-        note(message, None)
-        raise typer.Exit(1)
-
     def open_store(r: Path) -> Store:
         try:
             store = Store.open(r)
@@ -215,7 +210,7 @@ def build():
         if ctx.invoked_subcommand is None:
             if plan_or_nothing():
                 return
-            empty(NO_PLAN if initialised() else f"{NO_PLAN}. {NOT_INIT}")
+            note(NO_PLAN if initialised() else NOT_INIT, None)  # nothing planned yet is no error
 
     from .plan_cli import FIRST_SAID, NO_PLAN, NOT_INIT, register
 

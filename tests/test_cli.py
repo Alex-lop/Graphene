@@ -113,16 +113,16 @@ def test_nothing_planned_and_nothing_recorded(repo, tmp_path):
     said |= {"message": {"role": "user", "content": "greet people with hello"}}
     (transcripts / f"{SID}.jsonl").write_text(json.dumps(said) + "\n")
     result = run()
-    assert result.exit_code == 1
+    assert result.exit_code == 0
     assert one_line(result).startswith("nothing is planned here yet")
     assert run("ingest").exit_code == 2  # the hooks call `graphene ingest hook`; there is nothing else
     assert not (repo / ".graphene").exists()  # nothing to record, nothing written
 
 
-def test_in_an_empty_repo_plain_graphene_leads_with_the_plan(repo):
+def test_in_an_empty_repo_plain_graphene_leads_with_init(repo):
     result = run()
-    assert result.exit_code == 1
-    assert one_line(result).startswith("nothing is planned here yet. `graphene ask '<what you want")
+    assert result.exit_code == 0
+    assert one_line(result).startswith("nothing is planned here yet. Start with `graphene init`")
 
 
 def test_a_missing_argument_or_option_anywhere_is_one_plain_line(repo):
@@ -218,7 +218,7 @@ def test_a_corrupt_store_is_rebuilt(repo):
     output = result.output + result.stderr
     assert (repo / ".graphene" / "graphene.db.corrupt.bak").exists()
     assert "store rebuilt" in output and "Traceback" not in output
-    assert result.exit_code == 1  # an empty store has no plan: the usual one-line message
+    assert result.exit_code == 0  # an empty store has no plan: the usual one-line message
     assert "nothing is planned here yet" in output
 
 
@@ -236,9 +236,9 @@ def test_before_init_plain_graphene_names_init_and_init_names_the_next_step(repo
     """Walk 2026-09-28: bare `graphene` in a repository never set up did not name `graphene init`,
     and `init` ended without a next step."""
     result = run()
-    assert result.exit_code == 1
+    assert result.exit_code == 0
     said = one_line(result)
-    assert said.startswith("nothing is planned here yet") and "`graphene init` chooses who plans" in said
+    assert said.startswith("nothing is planned here yet") and "`graphene init`: it chooses who plans" in said
     done = run("init")
     assert done.exit_code == 0, done.output
     assert "next: install claude or codex, then `graphene init` again" in done.output  # nothing is chosen
