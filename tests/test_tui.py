@@ -2707,6 +2707,69 @@ def test_c_on_a_landed_leaf_puts_its_diff_in_the_pane(repo):
     assert "a.txt |" in seen["detail"] and "graphene node diff a --stat" in seen["status"], seen
 
 
+def test_c_shows_a_leafs_whole_diff_before_and_after_it_lands(repo):
+    """c showed `a.txt | 2 ++` and no line of what changed, on a leaf already merged before y signed it
+    off, and the next refresh wiped it. Now c is the whole diff, coloured, and says where the work is;
+    j and k carry it, and it stays while the plan changes under it."""
+    import subprocess
+
+    from graphene_map import run as R
+    from graphene_map.run import run_parallel
+
+    alex = plan.Caller("alex", True)
+    long = 'printf "%s " $(seq 40) > a.txt; echo >> a.txt; echo hi >> a.txt'  # a line longer than 80
+    leaves = [{"id": "a", "title": "write a", "scope": ["a.txt"], "check": "test -s a.txt", "signoff": True},
+              {"id": "big", "title": "write big", "scope": ["big.txt"], "check": "true"},
+              {"id": "p", "title": "parked", "scope": ["p.txt"], "check": "true"}]  # fmt: skip
+    with Store.open(repo) as store:
+        plan.propose(store, leaves, alex)
+    run_parallel(lambda: Store.open(repo), repo, repo, 1, f"sh -c '{long}'", only=["a"], say=[].append)
+    run_parallel(lambda: Store.open(repo), repo, repo, 1, "sh -c 'seq 3000 > big.txt'", only=["big"],
+                 say=[].append)  # fmt: skip
+    tree = repo.parent / f"{repo.name}-p"  # p: passed in its worktree, and the run stopped before it landed
+    subprocess.run(["git", "worktree", "add", "-q", "-b", "graphene/p", str(tree)], cwd=repo, check=True)
+    with Store.open(repo) as store:
+        plan.start(store, "p", RUN, tree)
+        (tree / "p.txt").write_text("parked\n")
+        R.park(store, tree, plan.finish(store, "p", RUN), lambda _: None)
+    assert states(repo)["a"] == "review" and (repo / "a.txt").exists()  # signed off later, merged already
+    async def green(app, pilot):  # the long added line's end, on its continuation at 80, is green too
+        for key in ["slash", "a", "enter", "escape", "c"]:
+            await pilot.press(key)
+            await pilot.pause()
+        text = app.query_one("#detail").render()
+        end = text.plain.index(" 40 \n") + 1
+        assert [s for s in text.spans if s.start <= end < s.end and "green" in str(s.style)], text.spans
+
+    for size in SIZES:
+        seen, _ = watch(repo, [], size=size, before=green)
+        said = seen["detail"]
+        assert "already in your checkout (merge " in said and "a.txt | 2 ++" in said and "\n+hi" in said, said
+        assert "a.txt (new file)" in said and "diff --git" not in said and "+++" not in said, said
+        assert seen["cursor"] == "a" and "y sign off · x send back · c back" in seen["status"], seen
+    assert "\n    " in said.split("+1 2 3")[1].split("+hi")[0]  # at 80 it wrapped under itself
+    seen, _ = at(repo, "p", (80, 24), keys=["c"])
+    assert "not merged yet: on graphene/p. git merge graphene/p, then y signs it off" in seen["detail"], seen
+    assert "+parked" in seen["detail"]
+    seen, _ = watch(repo, ["slash", "a", "enter", "escape", "c", "j"])  # j: the next leaf's diff
+    assert seen["cursor"] == "big" and seen["detail"].rstrip().endswith(
+        "… 1006 more lines: graphene node diff big, in a terminal"
+    ), seen["detail"][-300:]
+
+    async def changed(app, pilot):  # the plan changes under the view: it stays
+        for key in ["slash", "a", "enter", "escape", "c"]:
+            await pilot.press(key)
+            await pilot.pause()
+        with Store.open(repo) as store:
+            plan.propose(store, [{"id": "more", "title": "more", "scope": ["m.txt"], "check": "true"}], alex)
+        app.refresh_plan()
+        await pilot.pause()
+        assert "more" in app.by_id and "+hi" in str(app.query_one("#detail").render())
+
+    seen, _ = watch(repo, [], before=changed)
+    assert seen["cursor"] == "a" and "+hi" in seen["detail"], seen
+
+
 def test_the_goal_says_the_last_run_and_enter_on_it_is_the_plans_record(repo):
     """What a run said last was gone with the terminal it printed in, and Enter on the goal did nothing."""
     proposed(repo)

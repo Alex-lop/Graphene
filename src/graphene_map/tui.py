@@ -789,7 +789,7 @@ class Watch(App):
         Binding("b", "offer('b')", show=False),
         Binding("P", "plan_first", show=False),
         Binding("D", "direction", show=False),  # direction: the tree above the plans, in the pane
-        Binding("c", "diff", show=False),  # what a done leaf changed: `graphene node diff --stat`
+        Binding("c", "diff", show=False),  # what a leaf changed, whole: `graphene node diff`
         Binding("m", "seen", show=False),
         Binding("plus", "reask('finer')", show=False),
         Binding("minus", "reask('coarser')", show=False),
@@ -809,7 +809,7 @@ class Watch(App):
         self.here: str | None = None  # the node under that view's cursor; None: its first line, the goal
         self.mapped: tuple[str, str] | None = None  # a node the view has no cell for, and its stand-in
         self.goal_text = ""
-        self.view = "contract"  # or "tail", "record", "said": what the side pane shows for the selected node
+        self.view = "contract"  # or "tail", "record", "diff", "said": what the side pane shows for the node
         self.message = ""  # what the last command said: the bottom line's, until the cursor moves
         self.busy = ""  # why the last look at the plan failed; the next tick tries again
         self.search = ""
@@ -1552,6 +1552,9 @@ class Watch(App):
             return ["ctrl-d -u scroll", "l back", *tail]
         if self.view == "said":
             return ["ctrl-d -u scroll", "Esc back", *tail]
+        if self.view == "diff":  # y and x still answer a leaf waiting for you; no Tab: 70 of 78 at 80
+            mine = KEYS["review"][:2] if self.word(self.selected()) == "review" else []
+            return [*mine, "c back", "ctrl-d -u scroll", "? help", "q quit"]
         if self.view == "direction":  # D: what attaches and accepts is typed at `:`
             return ["D back", ":direction attach SESSION NODE", ":direction accept ID", "ctrl-d -u scroll",
                     "? help", "q quit"]  # fmt: skip
@@ -1619,6 +1622,10 @@ class Watch(App):
         node = P.get(store, node_id)
         if self.view == "tail":
             pane.update(tail_pane(store, node, self.root_path, wide))
+            return
+        if self.view == "diff":  # git asked again only when the leaf's log moves on
+            key = ("diff", node.id, len(store.node_log(node.id)), wide)
+            pane.update(self.recorded(key, lambda: diff_pane(store, node, self.word(node.id), wide)))
             return
         if self.view == "record":
             key = (node.id, node.rev, node.state, node.updated_at, len(store.node_log(node.id)), wide)
@@ -1970,11 +1977,11 @@ class Watch(App):
 
     def action_diff(self) -> None:
         node_id = self.selected()
-        if node_id is None:
-            return
-        said = self.did(["node", "diff", node_id, "--stat"], quiet=True, keep=True)
-        if said is not None:  # a replay refuses every command, and has said so
-            self.finished(f"graphene node diff {node_id} --stat", said)
+        if self.view == "diff":
+            self.view = "contract"
+        elif node_id and self.did(["node", "diff", node_id, "--stat"], quiet=True) is not None:  # replay: no
+            self.view = "diff"  # the whole diff, as j and k move: c or Esc goes back
+        self.refresh_plan()
 
     def action_record(self) -> None:
         if self.board_row() is not None:
@@ -2648,6 +2655,47 @@ def activity_pane(node: P.Node, word: str, did: list, wide: int, high: int) -> T
 
 
 # -- the record (Enter) ------------------------------------------------------------------------------
+
+
+DIFF_CAP = 2000  # a patch's lines the pane renders: the rest is a terminal's
+
+
+def diff_pane(store, node: P.Node, word: str, wide: int) -> Text:
+    """c: what a leaf changed, whole, as `graphene node diff` shows it: whether it is in the checkout
+    yet, git's stat, then each file under one heading, added lines green and removed red, a long
+    line wrapped under itself in its colour."""
+    pane = Pane(wide)
+    _header(pane, node, word)
+    ends = store.node_log(node.id, ("landed", "unlanded", "finished", "overruled"))  # as node diff reads it
+    end = ends[-1] if ends else {"kind": None, "detail": {}}
+    if end["kind"] == "landed":
+        pane.text(f"already in your checkout (merge {end['detail']['commit'][:7]})")
+    elif end["kind"] == "unlanded":
+        branch = end["detail"]["branch"]
+        pane.text(f"not merged yet: on {branch}. git merge {branch}, then y signs it off")
+    code, stat = _cli(["node", "diff", node.id, "--stat"])
+    pane.text(stat)
+    if code:  # running, open, a sub-goal: node diff says why in words
+        return pane.render()
+    lines = _cli(["node", "diff", node.id])[1].splitlines()
+    lines = lines[next((k for k, line in enumerate(lines) if line.startswith("diff --git")), len(lines)) :]
+    head, plumbing = None, False
+    for line in lines[:DIFF_CAP]:
+        if line.startswith("diff --git"):  # git's lines up to the first @@ fold into one heading
+            pane.gap()
+            head, plumbing = Text(line.rpartition(" b/")[2], "bold"), True
+            pane.line(head)
+        elif plumbing and not line.startswith("@@"):
+            what = {"new file": " (new file)", "deleted file": " (deleted)", "Binary": " (binary)"}
+            head.append(next((v for k, v in what.items() if line.startswith(k)), ""), "dim")
+        else:
+            plumbing = False
+            style = {"+": P.look("done")[1], "-": "red", "@": "dim"}.get(line[:1], "")
+            for k, piece in enumerate(Text(line, style).wrap(WRAP, wide - 4)):
+                pane.line(Text("    ") + piece if k else piece)
+    if len(lines) > DIFF_CAP:
+        pane.text(f"… {len(lines) - DIFF_CAP} more lines: graphene node diff {node.id}, in a terminal", "dim")
+    return pane.render()
 
 
 def record_pane(store, node: P.Node, s, wide: int) -> Text:
