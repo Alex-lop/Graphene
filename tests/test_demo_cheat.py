@@ -26,6 +26,8 @@ def test_the_seven_moves_are_answered_by_the_real_hook_git_and_check(tmp_path):
     assert said["5"] == "REFUSED: Graphene ran the check itself, and it failed"
     assert said["6"] == "REFUSED: it holds a leaf that is not done"
     assert said["7"].startswith("FLAGGED: its check runs tests/test_calc.py, which it changed")
+    # a run lands it at once: only a --signoff leaf has a moment before it lands
+    assert lines[-4] == "  (`graphene node diff n1`); a --signoff leaf waits for that before it lands."
 
 
 def cheat_demo(tmp_path, monkeypatch):

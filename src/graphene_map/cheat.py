@@ -121,8 +121,8 @@ def weaken(root: Path) -> str:
     if isinstance(said, str):
         return "REFUSED at done"
     if said.get("check_touched"):
-        return (f"FLAGGED: its check runs {said['check_touched'][0]}, which it changed. Read that\n"
-                "diff before the leaf lands.")  # fmt: skip
+        return (f"FLAGGED: its check runs {said['check_touched'][0]}, which it changed. Read that diff\n"
+                "(`graphene node diff n1`); a --signoff leaf waits for that before it lands.")  # fmt: skip
     return "GOT THROUGH: done accepted it"
 
 

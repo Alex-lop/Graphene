@@ -819,8 +819,12 @@ def _red_first(store, target: Path, only: list[str] | None, say: Callable[[str],
         say(f"red first: not run: {' '.join(str(no).split())[:200]}")
 
 
-def _said_done(node: P.Node, say: Callable[[str], None]) -> None:
+def _said_done(store, node: P.Node, say: Callable[[str], None]) -> None:
+    from .node_record import _touched
+
     say(f"{node.id} is {'done' if node.state == P.DONE else 'finished; it waits for a sign-off'}")
+    for line in _touched(store.node_log(node.id, ("finished",)), node.id):  # flagged, as node done says
+        say(line)
 
 
 @P.ctrl_c_on_hangup()
@@ -859,7 +863,7 @@ def run_plan(
         node = run_node(store, ready[0].id, checkout, template, attempts, say, logs, Stop())
         if node is not None:
             finished.append(node)
-            _said_done(node, say)
+            _said_done(store, node, say)
 
 
 # -- in parallel, a worktree a leaf ---------------------------------------------------------------------
@@ -1133,7 +1137,7 @@ def _run_parallel(open_store, root, target, workers, template, attempts, only, s
             raise
         if landed:
             finished.append(P.get(store, node.id))
-            _said_done(finished[-1], say)
+            _said_done(store, finished[-1], say)
             files = P.tracked(target)
         else:
             unlanded.add(node.id)
