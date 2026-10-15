@@ -2720,19 +2720,23 @@ def test_c_shows_a_leafs_whole_diff_before_and_after_it_lands(repo):
     long = 'printf "%s " $(seq 40) > a.txt; echo >> a.txt; echo hi >> a.txt'  # a line longer than 80
     leaves = [{"id": "a", "title": "write a", "scope": ["a.txt"], "check": "test -s a.txt", "signoff": True},
               {"id": "big", "title": "write big", "scope": ["big.txt"], "check": "true"},
-              {"id": "p", "title": "parked", "scope": ["p.txt"], "check": "true"}]  # fmt: skip
+              {"id": "p", "title": "parked", "scope": ["p.txt"], "check": "true"},
+              {"id": "q", "title": "refused", "scope": ["q.txt"], "check": "true"}]  # fmt: skip
     with Store.open(repo) as store:
         plan.propose(store, leaves, alex)
     run_parallel(lambda: Store.open(repo), repo, repo, 1, f"sh -c '{long}'", only=["a"], say=[].append)
     run_parallel(lambda: Store.open(repo), repo, repo, 1, "sh -c 'seq 3000 > big.txt'", only=["big"],
                  say=[].append)  # fmt: skip
-    tree = repo.parent / f"{repo.name}-p"  # p: passed in its worktree, and the run stopped before it landed
-    subprocess.run(["git", "worktree", "add", "-q", "-b", "graphene/p", str(tree)], cwd=repo, check=True)
-    with Store.open(repo) as store:
-        plan.start(store, "p", RUN, tree)
-        (tree / "p.txt").write_text("parked\n")
-        R.park(store, tree, plan.finish(store, "p", RUN), lambda _: None)
-    assert states(repo)["a"] == "review" and (repo / "a.txt").exists()  # signed off later, merged already
+    for leaf, why in (("p", "the run was stopped before it landed"),
+                      ("q", "its change to q.txt conflicts: Merge conflict in q.txt")):  # fmt: skip
+        tree = repo.parent / f"{repo.name}-{leaf}"  # passed in its worktree, and did not land
+        add = ["git", "worktree", "add", "-q", "-b", f"graphene/{leaf}", str(tree)]
+        subprocess.run(add, cwd=repo, check=True)
+        with Store.open(repo) as store:
+            plan.start(store, leaf, RUN, tree)
+            (tree / f"{leaf}.txt").write_text("parked\n" if leaf == "p" else "refused\n")
+            R.park(store, tree, plan.finish(store, leaf, RUN), lambda _: None, why)
+    assert states(repo)["a"] == "review" and not (repo / "a.txt").exists()  # waits on its branch for y
     async def green(app, pilot):  # the long added line's end, on its continuation at 80, is green too
         for key in ["slash", "a", "enter", "escape", "c"]:
             await pilot.press(key)
@@ -2744,13 +2748,18 @@ def test_c_shows_a_leafs_whole_diff_before_and_after_it_lands(repo):
     for size in SIZES:
         seen, _ = watch(repo, [], size=size, before=green)
         said = seen["detail"]
-        assert "already in your checkout (merge " in said and "a.txt | 2 ++" in said and "\n+hi" in said, said
+        assert "not merged yet: on graphene/a. y signs it off and merges it" in said, said
+        assert "a.txt | 2 ++" in said and "\n+hi" in said, said
         assert "a.txt (new file)" in said and "diff --git" not in said and "+++" not in said, said
         assert seen["cursor"] == "a" and "y sign off · x send back · c back" in seen["status"], seen
     assert "\n    " in said.split("+1 2 3")[1].split("+hi")[0]  # at 80 it wrapped under itself
-    seen, _ = at(repo, "p", (80, 24), keys=["c"])
-    assert "not merged yet: on graphene/p. git merge graphene/p, then y signs it off" in seen["detail"], seen
+    seen, _ = at(repo, "p", (80, 24), keys=["c"])  # a stopped run's leaf: y merges it
+    assert "not merged yet: on graphene/p. y signs it off and merges it" in seen["detail"], seen
     assert "+parked" in seen["detail"]
+    seen, _ = at(repo, "q", (80, 24), keys=["c"])  # git said no: it is merged by hand first
+    assert "not merged yet: on graphene/q. git merge graphene/q, then y signs it off" in seen["detail"], seen
+    seen, _ = at(repo, "big", (80, 24), keys=["c"])  # landed by the run: already here
+    assert "already in your checkout (merge " in seen["detail"], seen
     seen, _ = watch(repo, ["slash", "a", "enter", "escape", "c", "j"])  # j: the next leaf's diff
     assert seen["cursor"] == "big" and seen["detail"].rstrip().endswith(
         "… 1006 more lines: graphene node diff big, in a terminal"

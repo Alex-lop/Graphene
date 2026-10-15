@@ -2411,8 +2411,12 @@ def detail(store, node: P.Node, s, files: list[str] | None = None, room: tuple[i
         _running(pane, store, node, s)
     elif word == "review" and P.unlanded(store, node.id) is not None:
         left = P.unlanded(store, node.id) or {}
-        pane.text(f"it passed its check, and did not land here: {_unmerged(left)}", "magenta")
-        pane.field("then", f"git merge {left.get('branch', 'graphene/' + node.id)}, and y signs it off")
+        if _by_hand(left):
+            pane.text(f"it passed its check, and did not land here: {_unmerged(left)}", "magenta")
+            pane.field("then", f"git merge {left.get('branch', 'graphene/' + node.id)}, and y signs it off")
+        else:
+            pane.text(f"it passed its check, and is not in your checkout yet: {_unmerged(left)}", "magenta")
+            pane.field("then", "y signs it off and merges it; c shows what it changed")
     elif word == "review":
         pane.text("its check passed; it waits for your sign-off", "magenta")
     elif word == "yours":
@@ -2502,6 +2506,13 @@ def _came_back(pane: Pane, store, node: P.Node, high: int) -> None:
         pane.text(line)
     if P.not_offered(store, node):
         pane.text(P.not_offered(store, node), "dim")
+
+
+def _by_hand(left: dict) -> bool:
+    """Did the leaf stay on its branch because git said no? Then y cannot merge it either: the person
+    merges it first. A sign-off wait or a stopped run is a leaf y merges itself."""
+    said = " ".join(str(w) for w in left.get("why") or [])
+    return bool(re.search(r"overwritten by merge|Merge conflict|CONFLICT|did not merge", said))
 
 
 def _unmerged(left: dict) -> str:
@@ -2672,7 +2683,9 @@ def diff_pane(store, node: P.Node, word: str, wide: int) -> Text:
         pane.text(f"already in your checkout (merge {end['detail']['commit'][:7]})")
     elif end["kind"] == "unlanded":
         branch = end["detail"]["branch"]
-        pane.text(f"not merged yet: on {branch}. git merge {branch}, then y signs it off")
+        by_hand = _by_hand(end["detail"])
+        how = f"git merge {branch}, then y signs it off" if by_hand else "y signs it off and merges it"
+        pane.text(f"not merged yet: on {branch}. {how}")
     code, stat = _cli(["node", "diff", node.id, "--stat"])
     pane.text(stat)
     if code:  # running, open, a sub-goal: node diff says why in words
