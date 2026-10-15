@@ -1080,6 +1080,17 @@ def register(cli: typer.Typer, root, open_store, fail):
                         # Claude Code stops after the turn that passes the cap: no ceiling, a stop
                         most = f"; {CAP_UNIT} stops once it passes ${cap}" * bool(cap)
                         out(f"landing into {on} at {at[:7]}: {what}, up to {max(parallel, 1)} at once{most}")
+                        from .run import _worst, leaves_of
+
+                        # every leaf the run may reach, not only the ready ones: it goes on to the next
+                        only = leaves_of(store, node or None)
+                        reach = sum(
+                            n.state == P.OPEN and (not only or n.id in only) and not P.came_back(store, n)
+                            for n in P.leaves(P.nodes(store))
+                        )
+                        each, tries = _worst(argv), f"{attempts} attempt" + "s" * (attempts != 1)
+                        worst = f"{_leaves(reach)} x {tries} x ${each:g} = ${reach * attempts * each:g}"
+                        out(f"worst case: {worst if cap else 'no spend cap on this executor'}")
                         out("`graphene watch` in another terminal follows it (each leaf lands as its own "
                             "merge; your commit hooks are skipped)")  # fmt: skip
                         if P.dirty(here_):

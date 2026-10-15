@@ -332,7 +332,8 @@ def test_a_run_says_first_where_it_lands_with_what_and_that_uncommitted_work_sta
     """A stranger's first run merged leaves into their branch, unasked, with their hooks skipped, from
     worktrees that never had their uncommitted files: none of it was said before it happened. Then the
     feel pass: one 297-character line said it all; now the first line is this run's four facts, the
-    second how to follow it with the two consent facts, and the git flags are `run --help`'s."""
+    second its worst case, the third how to follow it with the two consent facts, and the git flags are
+    `run --help`'s."""
     person("node", "add", "leaf two", "--id", "l2", "--scope", "schema.py", "--check", "true")
     (repo / "notes.txt").write_text("mine, not committed\n")
     ran = person("run", "--with", "true")
@@ -342,7 +343,8 @@ def test_a_run_says_first_where_it_lands_with_what_and_that_uncommitted_work_sta
     lines = ran.stdout.splitlines()
     [landing] = [line for line in lines if line.startswith("landing into ")]
     assert landing.startswith(f"landing into {branch} at ") and len(landing) < 100, landing
-    assert lines[1].startswith("`graphene watch` in another terminal follows it") and "hooks" in lines[1]
+    assert lines[1] == "worst case: no spend cap on this executor"
+    assert lines[2].startswith("`graphene watch` in another terminal follows it") and "hooks" in lines[2]
     assert "--no-verify" not in ran.stdout and "--no-ff" not in ran.stdout  # the git flags: `run --help`
     assert "--no-ff" in runner.invoke(build(), ["run", "--help"]).output
     assert "your uncommitted changes are not in the executors' worktrees: they start from HEAD" in lines
