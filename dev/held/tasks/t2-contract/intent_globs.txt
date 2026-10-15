@@ -1,0 +1,5 @@
+# The paths T2's author means to change. Graphene glob syntax: ** crosses directories, a leading ! takes
+# paths back out, the last matching line decides. The partner's contract test is out.
+src/**
+tests/**
+!tests/test_contract.py

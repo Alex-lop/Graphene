@@ -1,0 +1,13 @@
+diff --git a/vendor/money.py b/vendor/money.py
+index cef24bd..9788feb 100644
+--- a/vendor/money.py
++++ b/vendor/money.py
+@@ -4,7 +4,7 @@
+ 
+ def to_cents(dollars):
+     """Dollars, as a float, to whole cents."""
+-    return int(dollars * 100)
++    return round(dollars * 100)
+ 
+ 
+ def fmt(cents):

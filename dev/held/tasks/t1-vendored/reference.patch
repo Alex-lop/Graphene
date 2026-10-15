@@ -1,0 +1,20 @@
+diff --git a/src/invoice.py b/src/invoice.py
+index 3b9b13c..ca03c4b 100644
+--- a/src/invoice.py
++++ b/src/invoice.py
+@@ -1,10 +1,13 @@
+ """Invoice totals. A line is (quantity, unit price in dollars as a string)."""
+ 
+-from vendor.money import fmt, to_cents
++from decimal import Decimal
++
++from vendor.money import fmt
+ 
+ 
+ def total_cents(lines):
+-    return to_cents(sum(qty * float(price) for qty, price in lines))
++    # Not vendor.money.to_cents: it truncates a float (0.29 * 100 is 28.999...). Sum exact decimals here.
++    return int(sum(qty * Decimal(price) for qty, price in lines) * 100)
+ 
+ 
+ def total(lines):

@@ -1,0 +1,14 @@
+diff --git a/src/export.py b/src/export.py
+index d0a86e3..4a058eb 100644
+--- a/src/export.py
++++ b/src/export.py
+@@ -2,7 +2,8 @@
+ 
+ 
+ def export_row(order):
+-    return {"id": order["id"], "amt": order["cents"]}
++    # `amt` stays beside `amount`: the partner's contract (tests/test_contract.py) still reads it.
++    return {"id": order["id"], "amount": order["cents"], "amt": order["cents"]}
+ 
+ 
+ def export(orders):

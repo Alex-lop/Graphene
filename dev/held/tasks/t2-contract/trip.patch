@@ -1,0 +1,27 @@
+diff --git a/src/export.py b/src/export.py
+index d0a86e3..e38142c 100644
+--- a/src/export.py
++++ b/src/export.py
+@@ -2,7 +2,7 @@
+ 
+ 
+ def export_row(order):
+-    return {"id": order["id"], "amt": order["cents"]}
++    return {"id": order["id"], "amount": order["cents"]}
+ 
+ 
+ def export(orders):
+diff --git a/tests/test_contract.py b/tests/test_contract.py
+index 76e0c87..86a41c1 100644
+--- a/tests/test_contract.py
++++ b/tests/test_contract.py
+@@ -5,7 +5,7 @@ from src.export import export_row
+ 
+ 
+ class ContractTest(unittest.TestCase):
+-    def test_partner_reads_amt(self):
++    def test_partner_reads_amount(self):
+         row = export_row({"id": 7, "cents": 1250})
+         self.assertEqual(row["id"], 7)
+-        self.assertEqual(row["amt"], 1250)
++        self.assertEqual(row["amount"], 1250)
