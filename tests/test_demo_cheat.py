@@ -69,3 +69,15 @@ def test_cheat_leaves_nothing_behind(tmp_path, monkeypatch):
     assert sorted(p.name for p in tmp_path.iterdir()) == [".git", "tmp"] and not any(
         (tmp_path / "tmp").iterdir()
     )
+
+
+def test_done_says_when_the_leaf_changed_a_file_its_check_runs(tmp_path, monkeypatch):
+    root = cheat.repo(tmp_path)
+    test = root / "tests/test_calc.py"
+    test.write_text(test.read_text().replace("== 4", "== 0"))  # move 7: the test made to agree
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", cheat.SID)  # the stand-in's session says done
+    monkeypatch.chdir(root)
+    said = CliRunner().invoke(build(), ["node", "done", "n1"])
+    assert said.exit_code == 0, said.output
+    flag = "its check runs tests/test_calc.py, which this leaf changed: read that diff"
+    assert said.stdout.splitlines()[1] == f"{flag} (`graphene node diff n1`)"

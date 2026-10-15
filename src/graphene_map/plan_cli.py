@@ -1344,6 +1344,10 @@ def register(cli: typer.Typer, root, open_store, fail):
                 else "check passed, nothing outside its scope"
             )  # fmt: skip
             out(f"{n.id} is {'done' if n.state == P.DONE else 'finished and waits for a sign-off'} ({how})")
+            from .node_record import _touched
+
+            for line in _touched(store.node_log(n.id, ("finished",)), n.id):  # flagged, not refused
+                out(line)
             for line in next_lines(store, who):
                 out(line)
 
