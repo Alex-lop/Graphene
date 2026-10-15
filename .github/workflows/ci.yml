@@ -2,7 +2,12 @@ name: CI
 
 on:
   push:
+    branches: [main]  # a pull request's commits build once, as the pull request
   pull_request:
+
+concurrency:  # a new push to a pull request cancels its earlier run
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
@@ -19,7 +24,7 @@ jobs:
           python-version: ${{ matrix.python }}
       - run: uv sync --all-extras
       - run: uv run ruff check
-      - run: uv run pytest -q
+      - run: uv run pytest -q -n auto
       - run: uv build
       - name: Smoke the wheel outside the source tree
         run: |
