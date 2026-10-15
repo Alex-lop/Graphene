@@ -783,7 +783,13 @@ def _ended(
 
 
 @contextmanager
-def _clean_tree(checkout: str | Path, leave_out: list[str] | tuple, began: float, committed: bool = False):
+def _clean_tree(
+    checkout: str | Path,
+    leave_out: list[str] | tuple,
+    began: float,
+    committed: bool = False,
+    at: str | None = None,
+):
     """A worktree of ``checkout`` as git sees it now, whether committed or not (what it tracks, as it
     is on disk, and the new files it does not ignore), but for ``leave_out``: cut from a commit on no
     branch, under the run's own worktrees (which ``elsewhere`` never asks about), and removed when
@@ -791,7 +797,8 @@ def _clean_tree(checkout: str | Path, leave_out: list[str] | tuple, began: float
     and runs none of the person's git hooks (a post-checkout hook that failed made every check "could
     not be run"). What git ignores is not there: a .venv linked in from the checkout was the check's
     to change, and `uv run` in the worktree re-installed the project into it, pointing the checkout's
-    .venv at a worktree that was then deleted. ``committed``: its HEAD alone, as a leaf's worktree is."""
+    .venv at a worktree that was then deleted. ``committed``: its HEAD alone, as a leaf's worktree is;
+    ``at``: that commit's tree alone (a merge not yet made in the checkout)."""
     import shutil  # here: the hook imports this module on every event and never runs a check
     import subprocess
     import tempfile
@@ -822,7 +829,7 @@ def _clean_tree(checkout: str | Path, leave_out: list[str] | tuple, began: float
             # edit of the same size made in the second the file was written out would read as the
             # committed file (X5, 10 October); dated this early, every entry is racily clean and is read
             os.utime(index, (1, 1))
-        git(*(("read-tree", "HEAD") if committed else ("add", "-A")), index=index)
+        git(*(("read-tree", at or "HEAD") if committed or at else ("add", "-A")), index=index)
         if leave_out:
             out = "".join(f"{p}\0" for p in leave_out)
             git("update-index", "-z", "--force-remove", "--stdin", index=index, given=out)
@@ -853,7 +860,7 @@ def check_env() -> dict[str, str]:
 
 @ctrl_c_on_hangup()
 def run_check(
-    command: str, checkout: str | Path, leave_out: list[str] | tuple = ()
+    command: str, checkout: str | Path, leave_out: list[str] | tuple = (), at: str | None = None
 ) -> tuple[bool, str, list[str]]:
     """Run a check on the state of ``checkout``: whether it passed, the tail of what it said, and
     which of ``leave_out`` (new files, left out of what it runs on) it made again. This is the one
@@ -861,7 +868,8 @@ def run_check(
     the repo and not a sentence in somebody's summary. It runs in a clean worktree of that state
     (``_clean_tree``), never in the checkout itself: run in place, a check left its caches in the
     executor's tree, to be counted as its change and committed with its leaf. Its time limit and its
-    stop (``_ended``) are the whole of it, the making of that worktree included."""
+    stop (``_ended``) are the whole of it, the making of that worktree included. ``at``: on that
+    commit's tree instead of the checkout's state."""
     import subprocess
 
     began = time.monotonic()
@@ -870,7 +878,7 @@ def run_check(
     # It runs code an executor wrote, so it never gets the Token Factory key.
     env = check_env()
     try:
-        with _clean_tree(checkout, leave_out, began) as tree:
+        with _clean_tree(checkout, leave_out, began, at=at) as tree:
             code, out, err = _ended(command, tree, env, began)
             made = [p for p in leave_out if os.path.lexists(tree / p)]
     except subprocess.TimeoutExpired:
