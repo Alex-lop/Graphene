@@ -1,6 +1,11 @@
 # Changelog
 
-## Unreleased
+## 0.5.1 (14 October 2026)
+
+Everything since the v0.5.0 tag. The wheel on PyPI as 0.5.0 was uploaded on 13 October from that tag, which is
+the commit of 7 October (`a96fb48`), so it holds none of what follows: the timeline view, `r` to reopen the
+owner, red first in the core, `init` saying what it did and `init --remove`, `node diff`, the $2 cap on an
+attempt, and the feel pass's words. Install from this version to have them.
 
 Watch as the home, and one word for one thing (13 October). Alex asked for an honest direction after the feel
 pass and for a README a stranger can take in; this is the part that touches the product. Each line is one commit.
@@ -19,8 +24,6 @@ pass and for a README a stranger can take in; this is the part that touches the 
   `plan accept` on an empty plan says one line; bare `graphene` names the ask command first.
 - A recording hides paths under the machine's temp directory as it hides the home, and `demo.leaks` counts them.
 - The brand assets live at `docs/brand/`, tracked, with a README naming each.
-
-## 0.5.0 (13 October 2026)
 
 The feel pass (11 October). What the first hour reads, said in the person's words: three readers walked the first
 hour and the morning after, a designer chose twelve things, a judge argued each, and four lanes built them; the
@@ -147,6 +150,10 @@ The timeline (8 October). A fourth view, and fixes for what the meter night's ru
 - The Claude Code planner writes its stream: the plan logs its bill, and the night's ledger settles it at what it
   spent instead of its worst case. Run `graphene plan record`.
 - In `graphene demo`, j and k move in a view again. Press Tab, then j.
+
+## 0.5.0 (13 October 2026)
+
+Uploaded to PyPI on 13 October from the tag of 7 October (`a96fb48`): the meter and what came before it.
 
 The meter (7 October). What the agents do and spend, on the screen while they work.
 - `graphene run` reads each executor's own stream as it runs: Claude Code's `stream-json`, Codex's `--json`,
