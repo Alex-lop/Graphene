@@ -2509,10 +2509,12 @@ def _came_back(pane: Pane, store, node: P.Node, high: int) -> None:
 
 
 def _by_hand(left: dict) -> bool:
-    """Did the leaf stay on its branch because git said no? Then y cannot merge it either: the person
-    merges it first. A sign-off wait or a stopped run is a leaf y merges itself."""
+    """Did the leaf stay on its branch because git said no, or is its worktree gone? Then y cannot merge
+    it either: the person merges it first. A sign-off wait or a stopped run is a leaf y merges itself."""
     said = " ".join(str(w) for w in left.get("why") or [])
-    return bool(re.search(r"overwritten by merge|Merge conflict|CONFLICT|did not merge", said))
+    tree = left.get("worktree")
+    gone = not (tree and Path(tree).is_dir())  # signoff has nothing to merge from: git merge first
+    return gone or bool(re.search(r"overwritten by merge|Merge conflict|CONFLICT|did not merge", said))
 
 
 def _unmerged(left: dict) -> str:

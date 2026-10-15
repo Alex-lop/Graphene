@@ -100,7 +100,7 @@ class NodeRecord:
     bill: dict | None = None  # what its model calls cost, from its usage rows (``bill``)
     attempts: list[dict] = field(default_factory=list)  # what each executor's attempt did (meter.attempts)
     against: list[str] = field(default_factory=list)  # paths its check ran as at the base (``_against_base``)
-    waits_on: str | None = None  # the branch its work waits on, in review and not merged here yet
+    waits_on: str | None = None  # where its work waits, in review and not merged here yet (``_waits_on``)
     landed: str | None = None  # the merge that landed it, when that is where it ended (``_landed``)
 
 
@@ -143,7 +143,7 @@ def node_record(store, root: str | Path, node: P.Node, at: str | None = None) ->
         bill(log),
         meter.attempts(log, scope),
         _against_base(store, root, node, windows) + _touched(log, node.id),
-        (P.unlanded(store, node.id) or {}).get("branch") if node.state == P.REVIEW else None,
+        _waits_on(store, root, node),
         _landed(log, root),
     )
 
@@ -178,6 +178,27 @@ def _touched(log: list[dict], node_id: str) -> list[str]:
     touched = next((e["detail"].get("check_touched") for e in reversed(log) if e["kind"] == "finished"), None)
     return [f"its check runs {P._few(touched)}, which this leaf changed: read that diff "
             f"(`graphene node diff {node_id}`)"] if touched else []  # fmt: skip
+
+
+def _waits_on(store, root: str | Path, node: P.Node) -> str | None:
+    """Where a leaf in review that did not land has its work, and how it gets here: none once its branch
+    is in HEAD (merged by hand, or gone), and the person's merge when its worktree is gone, as signoff
+    then says."""
+    left = P.unlanded(store, node.id) if node.state == P.REVIEW else None
+    if not left:
+        return None
+    branch = left.get("branch", f"graphene/{node.id}")
+    try:
+        said = subprocess.run(["git", "-C", str(root), "merge-base", "--is-ancestor", branch, "HEAD"],
+                              capture_output=True, timeout=20).returncode  # fmt: skip
+    except (OSError, subprocess.SubprocessError):
+        said = 1
+    if said != 1:  # an ancestor, or no such branch: merged and deleted, as signoff reads it
+        return None
+    if left.get("worktree") and Path(left["worktree"]).is_dir():
+        return f"its work is on {branch}; `graphene node signoff {node.id}` merges it"
+    return (f"its work is on {branch} and its worktree is gone; `git merge {branch}`, "
+            f"then `graphene node signoff {node.id}`")  # fmt: skip
 
 
 def _landed(log: list[dict], root: str | Path) -> str | None:
@@ -690,8 +711,7 @@ def render(record: NodeRecord) -> list[str]:
         f"  state: {record.state} · owner {record.owner}",
     ]
     if record.waits_on:
-        lines.append(f"  not in your branch yet: its work is on {record.waits_on}; "
-                     f"`graphene node signoff {record.node_id}` merges it")  # fmt: skip
+        lines.append(f"  not in your branch yet: {record.waits_on}")
     if record.landed:
         lines.append(f"  take it back: git revert -m 1 {record.landed[:7]}")
     lines += _window_lines(record)

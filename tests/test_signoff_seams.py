@@ -60,3 +60,22 @@ def test_a_yes_while_the_run_still_goes_lets_the_parent_close(repo, tmp_path):
         run.join()
     with Store.open(repo) as store:
         assert {n.id: n.state for n in plan.nodes(store)} == {"g": "done", "a": "done", "b": "done"}
+
+
+def test_the_words_when_its_worktree_is_gone_or_it_was_merged_by_hand(repo):
+    import shutil
+
+    from graphene_map.node_record import node_record, render
+    from graphene_map.tui import _by_hand
+
+    ran(repo, ("a", {"signoff": True}))
+    with Store.open(repo) as store:
+        left = plan.unlanded(store, "a")
+        shutil.rmtree(left["worktree"])
+        shown = render(node_record(store, repo, plan.get(store, "a")))
+        assert ("  not in your branch yet: its work is on graphene/a and its worktree is gone; "
+                "`git merge graphene/a`, then `graphene node signoff a`") in shown, shown  # fmt: skip
+        assert _by_hand(left)  # the pane and c say git merge first, as signoff's refusal does
+        git(repo, "merge", "--no-ff", "-m", "by hand", "graphene/a")
+        shown = render(node_record(store, repo, plan.get(store, "a")))
+        assert not any("not in your branch yet" in line for line in shown), shown
