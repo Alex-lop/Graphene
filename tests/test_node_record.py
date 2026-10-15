@@ -599,6 +599,30 @@ def test_every_line_of_the_record_is_whole(store, repo):
     assert all(line == line.rstrip() and "…" not in line for line in NR.render(record))
 
 
+def test_a_leaf_a_run_landed_says_how_to_take_it_back_and_the_command_does(repo):
+    """Each leaf lands as one --no-ff merge, so `git revert -m 1` takes back exactly it; nothing said so."""
+    from graphene_map.run import run_parallel
+
+    (repo / ".gitignore").write_text(".graphene/\n")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", "the store is not the code")
+    with Store.open(repo) as store:
+        a = {"id": "a", "title": "write a", "scope": ["a.txt"], "check": "test -s a.txt"}
+        plan.propose(store, [a, {**a, "id": "b", "scope": ["b.txt"], "check": "test -s b.txt"}], ALEX)
+    run_parallel(lambda: Store.open(repo), repo, repo, 1, "sh -c 'echo a > a.txt'", only=["a"], say=[].append)
+    with Store.open(repo) as store:
+        merge = store.node_log("a", ("landed",))[-1]["detail"]["commit"]
+        lines = NR.render(NR.node_record(store, repo, plan.get(store, "a")))
+        assert f"  take it back: git revert -m 1 {merge[:7]}" in lines, lines
+        plan.start(store, "b", BOT, repo)
+        (repo / "b.txt").write_text("b\n")
+        plan.finish(store, "b", BOT)  # done in place: no merge of its own to take back
+        lines = NR.render(NR.node_record(store, repo, plan.get(store, "b")))
+        assert not any("take it back" in line for line in lines), lines
+    git(repo, "revert", "-m", "1", "--no-edit", merge[:7])
+    assert not (repo / "a.txt").exists()
+
+
 def test_a_fork_still_running_on_a_leaf_that_is_not_reads_stopped():
     """:stop or Ctrl-C mid-fork ends the fork threads before they write their end, so the leaf came back
     and its forks still said running while nothing ran. Read against the leaf's state, such a fork was

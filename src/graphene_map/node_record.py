@@ -101,6 +101,7 @@ class NodeRecord:
     attempts: list[dict] = field(default_factory=list)  # what each executor's attempt did (meter.attempts)
     against: list[str] = field(default_factory=list)  # paths its check ran as at the base (``_against_base``)
     waits_on: str | None = None  # the branch its work waits on, in review and not merged here yet
+    landed: str | None = None  # the merge that landed it, when that is where it ended (``_landed``)
 
 
 def node_record(store, root: str | Path, node: P.Node, at: str | None = None) -> NodeRecord:
@@ -143,6 +144,7 @@ def node_record(store, root: str | Path, node: P.Node, at: str | None = None) ->
         meter.attempts(log, scope),
         _against_base(store, root, node, windows) + _touched(log, node.id),
         (P.unlanded(store, node.id) or {}).get("branch") if node.state == P.REVIEW else None,
+        _landed(log, root),
     )
 
 
@@ -176,6 +178,19 @@ def _touched(log: list[dict], node_id: str) -> list[str]:
     touched = next((e["detail"].get("check_touched") for e in reversed(log) if e["kind"] == "finished"), None)
     return [f"its check runs {P._few(touched)}, which this leaf changed: read that diff "
             f"(`graphene node diff {node_id}`)"] if touched else []  # fmt: skip
+
+
+def _landed(log: list[dict], root: str | Path) -> str | None:
+    """The merge commit that landed it, when that is its last end: a run lands a leaf as one --no-ff
+    merge, so `git revert -m 1` takes back exactly that leaf. None for one merged by hand, or not at all."""
+    ends = [e for e in log if e["kind"] in ("landed", "unlanded", "finished", "overruled")]
+    sha = ends[-1]["detail"].get("commit") if ends and ends[-1]["kind"] == "landed" else None
+    try:
+        merge = sha and subprocess.run(["git", "-C", str(root), "rev-parse", "-q", "--verify", f"{sha}^2"],
+                                       capture_output=True, timeout=20).returncode == 0  # fmt: skip
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return sha if merge else None
 
 
 def _has(root: str | Path, sha: str) -> bool:
@@ -677,6 +692,8 @@ def render(record: NodeRecord) -> list[str]:
     if record.waits_on:
         lines.append(f"  not in your branch yet: its work is on {record.waits_on}; "
                      f"`graphene node signoff {record.node_id}` merges it")  # fmt: skip
+    if record.landed:
+        lines.append(f"  take it back: git revert -m 1 {record.landed[:7]}")
     lines += _window_lines(record)
     lines += _in_short(record.coverage)
     lines += _coverage_lines(record.coverage, record.refusals.last_check, record.refusals.at_base)
