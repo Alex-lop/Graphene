@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: How it works
+    url: https://github.com/Alex-lop/Graphene/blob/main/docs/HOW_IT_WORKS.md
+    about: The reference: the plan, the screen, what is held and where that ends.

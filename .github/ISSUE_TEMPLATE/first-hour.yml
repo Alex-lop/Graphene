@@ -1,0 +1,49 @@
+name: My first hour with Graphene
+description: You tried it. Tell me where it stopped you, in your own words. Two minutes.
+title: "First hour: "
+labels: [first-hour]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you. Nothing here tests you: the question is where the page, the commands or the screen did not say
+        what you needed. Quote the words that stopped you if you can.
+  - type: textarea
+    id: tried
+    attributes:
+      label: What you tried
+      description: What you wanted from it, and what you ran (the demo, a real project, both).
+    validations:
+      required: true
+  - type: input
+    id: minutes
+    attributes:
+      label: How long until something worked
+      description: Minutes from the README to the demo's end or to the first leaf that landed. "It never did" is an answer.
+  - type: textarea
+    id: stalled
+    attributes:
+      label: The first place you stalled
+      description: Where you stopped, and what you did next (searched, guessed, gave up).
+    validations:
+      required: true
+  - type: textarea
+    id: word
+    attributes:
+      label: A word or a sentence you did not know
+      description: Anything the page or the screen said that you had to guess at.
+  - type: dropdown
+    id: again
+    attributes:
+      label: Would you use it again on a real project?
+      options:
+        - Yes
+        - Maybe
+        - No
+    validations:
+      required: true
+  - type: textarea
+    id: friend
+    attributes:
+      label: What you would tell a friend about it
+      description: One or two sentences, as you would say them.
