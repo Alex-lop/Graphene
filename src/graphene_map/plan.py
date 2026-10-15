@@ -2686,9 +2686,10 @@ def unlanded(store, node_id: str) -> dict | None:
 def signoff(
     store, node_id: str, who: Caller, now: str | None = None, checkout: str | Path | None = None
 ) -> Node:
-    """A person's say-so: a node waiting in review is done. One that did not land was merged by hand,
-    as they were told, and where it landed is recorded, or what needs it waits for ever. ``checkout``:
-    where they merged it; with none, the repo the store belongs to is meant."""
+    """A person's say-so: a node waiting in review is done. One that did not land is merged here first,
+    as the run would have (refused when the merge is not clean), or was merged by hand, and where it
+    landed is recorded, or what needs it waits for ever. ``checkout``: where it lands; with none, the
+    repo the store belongs to is meant."""
     import subprocess
 
     _person_only(who, "signing a node off")
@@ -2705,13 +2706,22 @@ def signoff(
         merged = not sha or subprocess.run(
             ["git", "-C", str(checkout), "merge-base", "--is-ancestor", sha, "HEAD"], capture_output=True
         ).returncode == 0  # fmt: skip
+        tree = left.get("worktree")  # gone (cleared by hand): merged by hand, as before
+        tried = not merged and bool(tree) and Path(tree).is_dir() and get(store, node_id).state == REVIEW
+        if tried:  # the clean merge the run would have made, made now; land() records where it landed
+            from .run import land  # run imports this module
+
+            merged = land(store, Path(checkout), Path(tree), get(store, node_id), lambda _: None)
         if not merged:  # signed off unmerged, it read as landed and what needed it went ahead without it
             raise refusal(
-                f"{node_id}'s work is on {branch} and not in this checkout yet",
+                f"{node_id}'s work is on {branch} and not in this checkout yet"
+                + (": it did not merge cleanly here, so it stays in review" if tried else ""),
                 do=f"git merge {branch} (commit or stash first what git says is in the way), "
                 f"then graphene node signoff {node_id}",
             )
-        landed = {"commit": sha or head(checkout), "branch": branch, "into": str(Path(checkout).resolve())}
+        if not tried:  # merged by hand, as they were told
+            landed = {"commit": sha or head(checkout), "branch": branch,
+                      "into": str(Path(checkout).resolve())}  # fmt: skip
     with store.claim():
         node = get(store, node_id)
         if node.state != REVIEW:

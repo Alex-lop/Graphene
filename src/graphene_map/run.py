@@ -1117,6 +1117,10 @@ def _run_parallel(open_store, root, target, workers, template, attempts, only, s
         if node is None:  # handed back: its worktree stays, with whatever it tried, for the person
             say(f"{was.id}: what it tried is kept in {tree} until the next run takes {was.id} again")
             return
+        if node.state == P.REVIEW:  # a sign-off holds the merge: its work waits on its branch for the yes
+            park(store, tree, node, say, "it waits for your sign-off before it lands")
+            unlanded.add(node.id)
+            return
         try:
             landed = land(store, target, tree, node, say, {n.id for n, _ in flying.values()} | unlanded)
         except KeyboardInterrupt:
@@ -1149,19 +1153,21 @@ def _run_parallel(open_store, root, target, workers, template, attempts, only, s
             raise
 
 
-def park(store, tree: Path, node: P.Node, say: Callable[[str], None]) -> None:
-    """A leaf that passed its boundary in its worktree when the run was stopped, before it could
-    land: its work is committed on its branch, and it waits for the person in review, as a leaf
-    whose merge was not clean does. The store never says done for work that is nowhere here."""
+def park(store, tree: Path, node: P.Node, say: Callable[[str], None],
+         why: str = "the run was stopped before it landed") -> None:  # fmt: skip
+    """A leaf that passed its boundary in its worktree and is not to land now (the run was stopped
+    before it could, or it waits for a sign-off): its work is committed on its branch, and it waits
+    for the person in review, as a leaf whose merge was not clean does. The store never says done
+    for work that is nowhere here."""
     branch = f"graphene/{node.id}"
     try:
         _commit(store, tree, node)
-        why = "the run was stopped before it landed"
     except P.Refused as no:
-        why = f"the run was stopped before it landed, and its work could not be committed: {no}"
+        why = f"{why}, and its work could not be committed: {no}"
     with store.claim():
         fresh = P.get(store, node.id)
         fresh.state = P.REVIEW
         P._save(store, fresh, "unlanded", P.Caller("graphene run", False), P._now(), branch=branch,
                 worktree=str(tree), why=[why])  # fmt: skip
-    say(f"{node.id} passed; {why}\n  `git merge {branch}`, then `graphene node signoff {node.id}`")
+    say(f"{node.id} passed; {why}\n  its work: {branch}. `graphene node diff {node.id}` shows it; "
+        f"`graphene node signoff {node.id}` merges it")

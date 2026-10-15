@@ -100,6 +100,7 @@ class NodeRecord:
     bill: dict | None = None  # what its model calls cost, from its usage rows (``bill``)
     attempts: list[dict] = field(default_factory=list)  # what each executor's attempt did (meter.attempts)
     against: list[str] = field(default_factory=list)  # paths its check ran as at the base (``_against_base``)
+    waits_on: str | None = None  # the branch its work waits on, in review and not merged here yet
 
 
 def node_record(store, root: str | Path, node: P.Node, at: str | None = None) -> NodeRecord:
@@ -141,6 +142,7 @@ def node_record(store, root: str | Path, node: P.Node, at: str | None = None) ->
         bill(log),
         meter.attempts(log, scope),
         _against_base(store, root, node, windows),
+        (P.unlanded(store, node.id) or {}).get("branch") if node.state == P.REVIEW else None,
     )
 
 
@@ -665,6 +667,9 @@ def render(record: NodeRecord) -> list[str]:
         f"{record.node_id}  {record.title}",
         f"  state: {record.state} · owner {record.owner}",
     ]
+    if record.waits_on:
+        lines.append(f"  not in your branch yet: its work is on {record.waits_on}; "
+                     f"`graphene node signoff {record.node_id}` merges it")  # fmt: skip
     lines += _window_lines(record)
     lines += _in_short(record.coverage)
     lines += _coverage_lines(record.coverage, record.refusals.last_check, record.refusals.at_base)

@@ -306,7 +306,7 @@ def test_a_finished_leaf_the_run_was_stopped_before_it_landed_waits_in_review(re
         node = plan.finish(store, "a", BOT)
         said = []
         R.park(store, tree, node, said.append)
-        assert plan.get(store, "a").state == REVIEW and "git merge graphene/a" in said[0]
+        assert plan.get(store, "a").state == REVIEW and "`graphene node signoff a` merges it" in said[0]
         assert "a, in its worktree" in git(repo, "show", "graphene/a:a.txt")
 
 
