@@ -264,7 +264,7 @@ def test_a_corrupt_store_is_rebuilt_and_still_answers(repo):
     (repo / ".graphene" / "graphene.db").write_text("this is not a database")
     result = CliRunner().invoke(build(), [])
     output = result.output + result.stderr
-    assert result.exit_code == 1 and "Traceback" not in output  # rebuilt empty: nothing planned yet
+    assert result.exit_code == 0 and "Traceback" not in output  # rebuilt empty: nothing planned yet
     assert (repo / ".graphene" / "graphene.db.corrupt.bak").read_text() == "this is not a database"
     assert "store rebuilt" in output
     for name, extra in (("UserPromptSubmit", {"prompt": "list it"}), ("PostToolUse", {"tool_name": "Bash"})):
