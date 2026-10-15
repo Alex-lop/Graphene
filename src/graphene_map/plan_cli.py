@@ -1098,7 +1098,8 @@ def register(cli: typer.Typer, root, open_store, fail):
                         worst = f"{_leaves(reach)} x {tries} x ${each:g} = ${reach * attempts * each:g}"
                         worst = worst if cap else "no spend cap on this executor"
                         if max_usd is not None:  # a ceiling on starts, not a kill: an attempt going runs on
-                            held = "" if cap else f" (${each:g} an attempt until it is metered)"
+                            counts = f"each attempt counts ${each:g}, or what its stream says it spent"
+                            held = "" if cap else f" ({counts})"
                             worst += f"; --max-usd ${max_usd:g} starts nothing past it{held}"
                         out(f"worst case: {worst}")
                         out("`graphene watch` in another terminal follows it (each leaf lands as its own "

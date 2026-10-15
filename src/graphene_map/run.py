@@ -442,6 +442,8 @@ class Budget:
     so a start that does not fit while others hold their worst case waits for them: the run stops starting
     only when one could not fit with nothing held."""
 
+    EPS = 1e-9  # dollars: a running sum of floats ($0.45 three times over) leaves 1e-16, which is no hold
+
     def __init__(self, cap: float, say: Callable[[str], None]) -> None:
         self.cap, self.say, self.spent, self.held, self.stopped = cap, say, 0.0, 0.0, False
         self.room = threading.Condition()
@@ -454,10 +456,10 @@ class Budget:
             while True:
                 if self.stopped:
                     return False
-                if self.spent + self.held + worst <= self.cap:
+                if self.spent + self.held + worst <= self.cap + self.EPS:
                     self.held += worst
                     return True
-                if self.spent + worst > self.cap:  # not even with nothing going
+                if self.spent + worst > self.cap + self.EPS:  # not even with nothing going
                     self.stopped = True
                     self.say(f"stopped starting: {money(self.spent)} spent, {money(self.held)} held, "
                              f"cap {money(self.cap)}")  # fmt: skip
@@ -470,7 +472,8 @@ class Budget:
 
     def settle(self, worst: float, spent: float) -> None:
         with self.room:
-            self.held, self.spent = self.held - worst, self.spent + spent
+            self.held = max(0.0, round(self.held - worst, 9))
+            self.spent = round(self.spent + spent, 9)
             self.room.notify_all()
 
 
@@ -558,6 +561,10 @@ def run_node(
                     say(f"{node.id} came back: the run's --max-usd stopped it before attempt {attempt}")
                     return None
                 owed = worst
+                current = P.get(store, node.id)  # the wait can be a whole attempt of another leaf's
+                if current.state != P.RUNNING:
+                    say(f"{node.id} handed back while it waited for room under --max-usd")
+                    return current if current.state in (P.DONE, P.REVIEW) else None
             told = prompt_for(node, P.notes(store, node.id), refusal, P.trail(store, node),
                               B.decided(store, node), shell)  # fmt: skip
             argv = command_for(template, told, session, attempt > 1)
@@ -1046,8 +1053,19 @@ def land(
             raise P.Refused(f"a merge of your own is in progress in {target}; finish it or abort it first")
         paths = _commit(store, tree, node)
         before = P.head(target)
-        if ran is not None:
-            on_merge += _red_on_merge(target, branch, before, node, ran, ident, say)
+        if ran is not None and _in_sandbox(store, node):
+            say(f"{node.id}: not checked on the merge: it ran in a sandbox, and its check runs there")
+        elif ran is not None:
+            for _ in range(3):  # the checkout moves while a check runs (a commit of yours, a sign-off)
+                checked = _red_on_merge(target, branch, before, node, ran, ident, say)
+                now = P.head(target)
+                if now == before:
+                    on_merge += checked
+                    break
+                before = now  # checked on a merge that is not the one that would land: again
+            else:
+                raise P.Refused("the branch moved three times while its check ran, so no merge of it was "
+                                "checked that could land")  # fmt: skip
         clean = _git(target, "diff", "--cached", "--quiet", ok=True).returncode == 0
         try:
             _git(target, *ident, "merge", "--no-ff", "--no-edit", "-m", _merged(store, node), branch)
@@ -1080,6 +1098,11 @@ def land(
     return True
 
 
+def _in_sandbox(store, node: P.Node) -> bool:
+    """Did this leaf work in a sandbox? Its check then runs there (``P.finish``), not on this machine."""
+    return bool(P.sandboxed(store, node))
+
+
 def _red_on_merge(target: Path, branch: str, before: str | None, node: P.Node,
                   ran: list[tuple[str, str, str]], ident: list[str],
                   say: Callable[[str], None]) -> list[str]:  # fmt: skip
@@ -1105,11 +1128,19 @@ def _red_on_merge(target: Path, branch: str, before: str | None, node: P.Node,
         under = _git(target, "merge-base", "--is-ancestor", at, base, ok=True).returncode == 0
         if command not in checks and not under:
             checks[command] = whose
+    passed: list[str] = []
     for command, whose in checks.items():
-        if not P.run_check(command, target, at=merge)[0]:
+        ok, tail, _ = P.run_check(command, target, at=merge)
+        if not ok and whose != node.id and not P.run_check(command, target, at=before)[0]:
+            say(f"{node.id}: {whose}'s check `{command}` already fails on {before[:8]}, so it is not held "
+                f"against {node.id}")  # fmt: skip
+            continue  # red without this leaf: whatever turned it red is the leaf that landed before
+        if not ok:
+            last = next((ln.strip() for ln in reversed(tail.splitlines()) if ln.strip()), "")
             raise P.Refused(f"it passes on its base, and {whose}'s check `{command}` fails on top of "
-                            f"{before[:8]}, which has moved since")  # fmt: skip
-    return list(checks)
+                            f"{before[:8]}, which has moved since" + (f": {last[:160]}" if last else ""))
+        passed.append(command)
+    return passed
 
 
 def _unmerge(target: Path, branch: str, staged_ours: bool = False) -> None:
@@ -1251,7 +1282,7 @@ def _run_parallel(open_store, root, target, workers, template, attempts, only, s
                     park(store, tree, P.get(store, node.id), say)
             raise
         if landed:
-            if node.check:
+            if node.check and not _in_sandbox(store, node):  # its check runs where it ran, not here
                 ran.append((node.check, node.id, P.head(target) or ""))
             finished.append(P.get(store, node.id))
             _said_done(store, finished[-1], say)

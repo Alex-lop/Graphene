@@ -192,3 +192,110 @@ def test_the_merge_runs_the_checks_of_what_landed_since_the_leaf_was_cut_and_no_
     said: list[str] = []
     done = run._red_on_merge(root, "graphene/c", b_at, node, ran, [], said.append)
     assert seen == ["check c", "check b"] and done == seen and not said
+
+
+# a skeptic's findings: a red already on the target is nobody's fault on the next landing, the checkout may
+# move while a merge is checked, a failing check says what it said, and a sandboxed leaf is not run here.
+LIB = "def f():\n    return 1\n"
+CHECK_A = (
+    "import pathlib, lib\nassert pathlib.Path('a.txt').exists()\n"
+    "assert lib.f() == 1, 'lib.f() changed under a'\n"
+)
+WRITES = """
+import os, pathlib, time
+node = os.environ["GRAPHENE_NODE"]
+if node == os.environ.get("GRAPHENE_SLOW"):
+    time.sleep(2)
+if node == "c":
+    pathlib.Path("lib.py").write_text("def f():\\n    return 2\\n")
+else:
+    pathlib.Path(node + ".txt").write_text("done\\n")
+"""
+
+
+def small_repo(tmp_path, monkeypatch, leaves, slow=""):
+    root = tmp_path / "repo"
+    root.mkdir()
+    git(root, "init", "-q", "-b", "main")
+    git(root, "config", "user.email", "t@example.com")
+    git(root, "config", "user.name", "T")
+    (root / "x.txt").write_text("x\n")
+    (root / "lib.py").write_text(LIB)
+    (root / "check_a.py").write_text(CHECK_A)
+    git(root, "add", "-A")
+    git(root, "commit", "-qm", "start")
+    monkeypatch.chdir(root)
+    monkeypatch.setenv("GRAPHENE_SLOW", slow)
+    (tmp_path / "ex.py").write_text(WRITES)
+    with Store.open(root) as store:
+        plan.propose(store, leaves, ALEX)
+    return root, f"{sys.executable} {tmp_path / 'ex.py'}"
+
+
+def test_a_check_already_red_on_the_target_is_not_held_against_the_next_leaf(tmp_path, monkeypatch):
+    """c (cut after a landed) breaks a's check and lands, the target not having moved under it. b (cut
+    before a) is then checked on a merge where a's check is red with or without b: it lands, and the run
+    says whose red it was already."""
+    check_a = f"{sys.executable} check_a.py"
+    leaves = [
+        {"id": "a", "title": "a", "scope": ["a.txt"], "check": check_a},
+        {"id": "b", "title": "b", "scope": ["b.txt"], "check": "test -f b.txt"},
+        {"id": "c", "title": "c", "scope": ["lib.py"], "check": "grep -q 'return 2' lib.py", "needs": ["a"]},
+    ]
+    root, executor = small_repo(tmp_path, monkeypatch, leaves, slow="b")
+    said: list[str] = []
+    run_parallel(lambda: Store.open(root), root, root, 2, executor, say=said.append)
+    with Store.open(root) as store:
+        assert {n.id: n.state for n in plan.nodes(store)} == {"a": DONE, "b": DONE, "c": DONE}
+        on_merge = store.node_log("b", ("landed",))[-1]["detail"]["on_merge"]
+    head = git(root, "rev-parse", "HEAD~1").strip()  # the target b's merge was checked on top of
+    assert any(f"a's check `{check_a}` already fails on {head[:8]}" in s for s in said), said
+    # what passed on the merge: b's own, then c's (landed since b was cut); not the red that was there
+    assert on_merge == ["test -f b.txt", "grep -q 'return 2' lib.py"]
+
+
+def test_the_checkout_moving_while_a_merge_is_checked_is_checked_again(tmp_path, monkeypatch):
+    """A commit of the person's, made while d's merge was being checked, would have landed unchecked."""
+    d_check = "test -f d.txt && test ! -f bad.txt"
+    leaves = [{"id": "e", "title": "e", "scope": ["e.txt"], "check": "test -f e.txt"},
+              {"id": "d", "title": "d", "scope": ["d.txt"], "check": d_check}]  # fmt: skip
+    root, executor = small_repo(tmp_path, monkeypatch, leaves, slow="d")
+    real = plan.run_check
+
+    def run_check(command, checkout, leave_out=(), at=None):
+        out = real(command, checkout, leave_out, at)
+        if at and not (root / "bad.txt").exists():  # your commit, while the merge is checked
+            (root / "bad.txt").write_text("x\n")
+            git(root, "add", "bad.txt")
+            git(root, "commit", "-qm", "the person commits while the merge is checked")
+        return out
+
+    monkeypatch.setattr(plan, "run_check", run_check)
+    run_parallel(lambda: Store.open(root), root, root, 2, executor, say=lambda _: None)
+    with Store.open(root) as store:
+        states = {n.id: n.state for n in plan.nodes(store)}
+        assert not store.node_log("d", ("landed",))
+    assert states == {"e": DONE, "d": REVIEW}  # parked: on the merge that would have landed, d's check is red
+    assert subprocess.run(d_check, shell=True, cwd=root).returncode != 0  # the checkout has what you made
+
+
+def test_a_failing_check_on_the_merge_says_what_it_said(tmp_path, monkeypatch):
+    root, executor = repo_with(tmp_path, monkeypatch, [A, B], "b")
+    said: list[str] = []
+    run_parallel(lambda: Store.open(root), root, root, 2, executor, say=said.append)
+    told = next(s for s in said if s.startswith("b passed and did not land"))
+    assert "a.f() changed under b" in told, told
+
+
+def test_a_leaf_that_ran_in_a_sandbox_is_not_checked_on_the_host(tmp_path, monkeypatch):
+    from graphene_map import run
+
+    monkeypatch.setattr(run, "_in_sandbox", lambda store, node: node.id == "d")
+    root, executor = repo_with(tmp_path, monkeypatch, [C, D], "d")
+    ran = counted(monkeypatch)
+    said: list[str] = []
+    run_parallel(lambda: Store.open(root), root, root, 2, executor, say=said.append)
+    with Store.open(root) as store:
+        assert {n.id: n.state for n in plan.nodes(store)} == {"c": DONE, "d": DONE}
+    assert not [cmd for cmd, at in ran if at]  # d's merge was not checked here, nor c's check on it
+    assert "d: not checked on the merge: it ran in a sandbox, and its check runs there" in said

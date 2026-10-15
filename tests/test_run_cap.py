@@ -164,3 +164,62 @@ def test_an_attempt_after_the_first_that_does_not_fit_is_not_started_and_its_lea
         assert [e["detail"]["attempt"] for e in store.node_log("c", ("attempt",))] == [1]
     assert "stopped starting: $0.06 spent, $0.00 held, cap $1.05" in said
     assert "c came back: the run's --max-usd stopped it before attempt 2" in said
+
+
+def test_a_budget_of_amounts_a_float_cannot_hold_is_not_stranded_by_what_is_left_over():
+    budget = R.Budget(2.25, lambda _: None)
+    for _ in range(3):
+        assert budget.take(0.45) is True
+    for _ in range(3):
+        budget.settle(0.45, 0.45)
+    assert budget.held == 0.0
+    assert budget.take(0.45) is True  # $1.35 spent, and $0.45 fits $2.25
+    budget.settle(0.45, 0.45)
+    assert budget.take(0.45, R.Stop()) is True  # $1.80 and $0.45 fit $2.25: nothing waits for nothing
+    assert budget.take(0.45) is None  # $0.45 is held now, and the next would fit if it settled at nothing
+    budget.settle(0.45, 0.45)
+    assert budget.take(0.45) is False  # $2.25 spent: the next could never fit
+
+
+def test_a_leaf_handed_back_while_its_worker_waits_for_room_is_not_started_or_charged(repo):
+    """Its first attempt refused, its second waits for the other leaf's room; you hand it back meanwhile.
+    When the room comes it does not start, and what is held for it is given back unspent."""
+    with Store.open(repo) as store:
+        plan.propose(store, [{"id": "w", "title": "leaf w", "scope": ["w.txt"], "check": "false"}], ALEX)
+    budget = R.Budget(2.05, lambda _: None)
+    assert budget.take(1.0) is True  # w's first attempt, as its caller takes it
+    assert budget.take(1.0) is True  # another leaf's attempt, going
+    said: list[str] = []
+
+    def work() -> None:
+        with Store.open(repo) as store:
+            R.run_node(store, "w", repo, executor(repo), 2, said.append, repo.parent / "logs",
+                       R.Stop(), budget)  # fmt: skip
+
+    worker = threading.Thread(target=work)
+    worker.start()
+    deadline = time.time() + 60
+    while not any("attempt 1 refused" in s for s in said) and time.time() < deadline:
+        time.sleep(0.1)
+    time.sleep(1.5)  # its worker waits in take() for room
+    with Store.open(repo) as store:
+        plan.release(store, "w", ALEX, "I will do this one myself")
+    budget.settle(1.0, 0.0)  # the other leaf's attempt ends: room
+    worker.join(60)
+    with Store.open(repo) as store:
+        assert [e["detail"]["attempt"] for e in store.node_log("w", ("attempt",))] == [1]
+    assert round(budget.spent, 4) == 0.0623 and budget.held == 0.0  # attempt 1's own dollars, and no more
+    assert "w handed back while it waited for room under --max-usd" in said
+
+
+def test_an_executor_with_no_cap_of_its_own_says_what_each_attempt_counts_for(repo, tmp_path):
+    script = tmp_path / "agent.py"
+    script.write_text("import os, pathlib\n"
+                      "pathlib.Path(os.environ['GRAPHENE_NODE'] + '.txt').write_text('done\\n')\n")
+    env = {**os.environ, "GRAPHENE_AS": "person:alex"}
+    argv = [*CLI, "run", "--with", f"{sys.executable} {script}", "--max-usd", "9"]
+    said = subprocess.run(argv, cwd=repo, env=env, capture_output=True, text=True, timeout=120)
+    assert said.returncode == 0, said.stdout + said.stderr
+    worst = next(line for line in said.stdout.splitlines() if line.startswith("worst case: "))
+    assert worst == ("worst case: no spend cap on this executor; --max-usd $9 starts nothing past it "
+                     "(each attempt counts $3, or what its stream says it spent)")  # fmt: skip
