@@ -3,11 +3,12 @@ name: CI
 on:
   push:
     branches: [main]  # a pull request's commits build once, as the pull request
+    tags: ["v*"]  # the commit a release tag names gets its suite
   pull_request:
 
-concurrency:  # a new push to a pull request cancels its earlier run
+concurrency:  # a new push to a pull request cancels its earlier run; main and tags are not cancelled
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   test:
