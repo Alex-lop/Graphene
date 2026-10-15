@@ -2471,6 +2471,14 @@ def finish(
     # where it ended and what git said had changed by then: what the node's record reads, asked of
     # git before the write lock is taken (hundreds of files are hashed while every hook would wait)
     detail = {"head": head(checkout), "changed": changed[:KEPT_PATHS]}
+    if node.check and passed and node.base_sha:  # a test made to agree with the code: flagged, never refused
+        import subprocess
+
+        with suppress(Refused, OSError, subprocess.SubprocessError):  # a reading: it takes nothing from done
+            at_base = _git(checkout, "ls-tree", "-r", "-z", "--name-only", node.base_sha).split("\0")[:-1]
+            ran = {f for _, under in check_paths(node.check, at_base, [node]) for f in under}
+            if touched := [p for p in changed if p in ran]:  # a file new since the base is in no list there
+                detail["check_touched"] = touched[:KEPT_PATHS]
     blobs = _blobs(checkout, [p for p in changed if in_scope(p, node.scope)][:KEPT_PATHS])
     with store.claim():
         node = get(store, node_id)

@@ -141,7 +141,7 @@ def node_record(store, root: str | Path, node: P.Node, at: str | None = None) ->
         _acts(log),
         bill(log),
         meter.attempts(log, scope),
-        _against_base(store, root, node, windows),
+        _against_base(store, root, node, windows) + _touched(log, node.id),
         (P.unlanded(store, node.id) or {}).get("branch") if node.state == P.REVIEW else None,
     )
 
@@ -169,6 +169,13 @@ def _against_base(store, root: str | Path, node: P.Node, windows: list[Window]) 
             out.append(f"against base: its check ran {P._few(hit)} as at {base[:7]}; {other.id} {verb} "
                        f"{'it' if len(hit) == 1 else 'them'} after")  # fmt: skip
     return out
+
+
+def _touched(log: list[dict], node_id: str) -> list[str]:
+    """The files its check runs that it changed, from its last `finished` row: the check passed on them."""
+    touched = next((e["detail"].get("check_touched") for e in reversed(log) if e["kind"] == "finished"), None)
+    return [f"its check runs {P._few(touched)}, which this leaf changed: read that diff "
+            f"(`graphene node diff {node_id}`)"] if touched else []  # fmt: skip
 
 
 def _has(root: str | Path, sha: str) -> bool:
