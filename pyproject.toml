@@ -70,4 +70,4 @@ select = ["E", "F", "I", "UP", "B"]
 ignore = ["B008"]  # typer.Option() in defaults is the Typer idiom
 
 [tool.pytest.ini_options]
-testpaths = ["tests", "dev/test"]
+testpaths = ["tests", "dev/test", "dev/held/test_held.py", "dev/held/test_tasks.py"]  # the files, not dev/held: its tasks hold fixture repos with their own tests
