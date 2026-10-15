@@ -7,6 +7,40 @@ the commit of 7 October (`a96fb48`), so it holds none of what follows: the timel
 owner, red first in the core, `init` saying what it did and `init --remove`, `node diff`, the $2 cap on an
 attempt, and the feel pass's words. Install from this version to have them.
 
+The controller night (14 and 15 October). What an agent may not do, shown; what a person can see and stop. Thirteen
+read-only readers and a README tournament set the order (`dev/process/controller/`); seven lanes were built in
+clones and landed under leaf holds; three seam readers then reproduced what the lanes had left loose, and it is
+fixed. Each line is one commit.
+- A leaf marked for sign-off waits on its own branch, and `y` or `graphene node signoff` merges it. It used to land
+  first and ask afterwards. Run `graphene run` on a plan with `--signoff`.
+- A leaf that changes a file its own check runs is flagged, in `graphene node done`, in the run and in
+  `graphene node show`: a check the leaf can edit can be made to agree. It is a flag, not a refusal.
+- `graphene node show` on a leaf a run landed says how to take it back: `git revert -m 1 <sha>`.
+- In `graphene watch`, `c` shows the leaf's whole diff, coloured, with a top line that says whether it is in your
+  checkout yet; `c` is on the review key line, and `:stop` is named in the help.
+- `graphene demo --cheat`: a script plays an agent that tries seven ways round the locks against the real hook,
+  git and check; six are refused, one is flagged, none gets through. A script, not a model, and it says so.
+- `graphene run --stop` stops the run this repository has going from any terminal; a run says its worst case (leaves,
+  attempts, the cap) before it starts, or that the executor has no cap; `graphene plan pause` says it does not stop
+  a run that is going.
+- Bare `graphene` with nothing planned puts `graphene init` first and exits 0; a finished plan says every leaf is done.
+- The sign-off wait's loose ends: signing off on a detached HEAD or from inside the leaf's own worktree is refused;
+  `y` during a run no longer leaves the parent sub-goal open; node show and the pane say the right thing when the
+  worktree is gone or the leaf was merged by hand; `graphene run` says a leaf changed its own check's file.
+- A stray file that blocks `node start` is refused with what an agent can do about it: the person removes it, or
+  `graphene plan ack`.
+- The replay's recorded run summary says `2 of 2 at once` and `you: 6 moves`, and its GIF is shot again from a tape
+  anyone can run (`vhs docs/assets/watch.tape`).
+- CI: the suite runs in parallel (`pytest -n auto`, an autouse fixture clears COLUMNS and LINES), a push builds main,
+  a tag push gets a run, a pull request cancels its own earlier run; a hanging-keychain test no longer fails at three
+  workers on macOS; the bench's 63 tests are collected.
+- The package says in plain words what it is, its keywords lead with `claude-code`, and `graphene-map` is a command
+  beside `graphene`, so `uvx graphene-map demo` works from 0.5.1 on.
+- A bench (`dev/held/`): a decision rule written before any number, four tasks that tempt, scripted agents that
+  prove the scorers at $0. No live run has been made.
+- The README, SECURITY, CONTRIBUTING, a bug form and the first-hour form are for people who are not all engineers;
+  `docs/COMPARE.md` compares Graphene with eleven others, its gaps in the same table.
+
 Watch as the home, and one word for one thing (13 October). Alex asked for an honest direction after the feel
 pass and for a README a stranger can take in; this is the part that touches the product. Each line is one commit.
 - In `graphene watch`, `:ask` with nothing after it opens your editor for the paragraph; the empty plan's sentence
