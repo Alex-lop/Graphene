@@ -791,8 +791,10 @@ def test_visual_from_a_sub_goal_accepts_it_and_its_leaves_with_no_refusal(repo):
 
 
 # Recheck 77 (partly)
-def test_the_readme_shows_the_screen_from_a_file_the_repo_holds():
-    """Review finding 77: the README embedded docs/assets/watch.gif, which no commit held."""
+def test_the_readme_shows_its_pictures_and_links_from_files_the_repo_holds():
+    """Review finding 77: the README embedded docs/assets/watch.gif, which no commit held. PyPI serves no
+    relative path, so the README links by absolute URL on main (14 October 2026); each one names a file git
+    tracks, and none is left relative."""
     import re
     import subprocess
     from pathlib import Path
@@ -803,9 +805,12 @@ def test_the_readme_shows_the_screen_from_a_file_the_repo_holds():
     listed = subprocess.run(["git", "-C", str(root), "ls-files"], capture_output=True, text=True, check=True)
     held = set(listed.stdout.split())
     readme = (root / "README.md").read_text(encoding="utf-8")
-    links = re.findall(r"(?:\]\(|src=\"|srcset=\")(?!https?:|#)([^)#\s\"]+)", readme)  # markdown and HTML
-    assert "docs/assets/watch.gif" in links and "docs/assets/graphene-mark-ink.svg" in links
-    assert not [p for p in links if p not in held]
+    links = re.findall(r"(?:\]\(|src=\"|srcset=\")(?!#)([^)#\s\"]+)", readme)  # markdown and HTML
+    here = re.compile(r"https://(?:raw\.githubusercontent\.com/Alex-lop/Graphene|github\.com/Alex-lop/Graphene/blob)/main/")
+    ours = [here.sub("", u) for u in links if here.match(u)]
+    assert "docs/assets/graphene-mark-ink.svg" in ours and "docs/assets/loop-ink.svg" in ours
+    assert not [p for p in ours if p not in held]
+    assert not [u for u in links if not u.startswith("http")], "PyPI shows no relative path"
 
 
 # -- the polish: one grammar, a pane per kind, the status line, the keys (driven at 80 and at 120) ----

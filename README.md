@@ -1,68 +1,87 @@
 <div align="center">
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/graphene-mark-ivory.svg" />
-  <img src="docs/assets/graphene-mark-ink.svg" alt="The Graphene mark: a small tree with one branch pruned" width="96" />
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Alex-lop/Graphene/main/docs/assets/graphene-mark-ivory.svg" />
+  <img src="https://raw.githubusercontent.com/Alex-lop/Graphene/main/docs/assets/graphene-mark-ink.svg" alt="The Graphene mark" width="72" />
 </picture>
 
 # Graphene
 
-See your coding agents' plan and change it before any code.
-
-`uv tool install graphene-map`
-
-<sub>then <code>graphene demo</code> to watch a scripted replay, no API key needed</sub>
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/loop-ivory.svg" />
-  <img src="docs/assets/loop-ink.svg" alt="The loop: you, the plan, your agents, and what Graphene holds" width="840" />
-</picture>
+**Your AI coding agent stays inside the files you agreed to. "Done" means your tests passed, not that the agent said so.**
 
 </div>
 
-## Why I built this
+You ask your assistant for one small change. It edits files you didn't ask it to touch and says all tests pass. They don't. You find out in the diff, after the money is spent.
 
-I believe that whether it comes from new models, better harnesses or something off the LLM frame entirely, the limit on building software won't be tokens or cost. It'll be the human direction it takes to actually get the software out. I know that sounds a little wild. But no matter how many tokens you have, if you don't say which direction the application should go, the agent has to infer most of it, and you find out what it inferred in the diff, after the time and money are spent. Graphene tries to bridge that: the agent shows you what it understood, as a plan, and you shape it before anything runs.
+Graphene sits between you and Claude Code or Codex, on your computer, no account. You see the agent's plan and fix it before any code is written.
 
-## In Claude Code, or at the shell
-
-Type what you want into Claude Code. With Graphene's hooks in the repo, Claude proposes a plan before it writes: a tree of leaves, each with its files and its check. `graphene watch` in another terminal shows it; `y` accepts, `d` drops a leaf. Your agents work inside it, and a leaf lands as its own merge when its check passes.
-
-![A real recording: a paragraph into Claude Code; graphene watch draws the tree](docs/assets/watch.gif)
-
-From a shell: `graphene ask`, `graphene watch`, `graphene plan accept && graphene run`. A real run is kept whole in [docs/A_RUN.md](docs/A_RUN.md). Honestly, in the three comparisons so far a plain paragraph to the same agent did just as well for less ([the latest](dev/test/results-2026-09-23.md)). What I'm betting on is *when* you find out what it understood: before the work, not after.
-
-## What's different
-
-- It's held by git and the check, not by the agent promising to behave.
-- It runs whatever executor you like: Claude Code, Codex, Nemotron, or any command.
-- Your history reads like the plan: every leaf lands as its own merge.
-
-## The meter
-
-While the agents work, `graphene watch` shows what each one is doing and what it has spent, and every run ends with one line: the agents' minutes and dollars, next to your own moves. Not claiming it makes the work any better (it just makes it visible), but honestly, the second number is the one I care about.
-
-<img src="docs/assets/meter.svg" alt="graphene watch at 80 columns: one leaf done, one running, the two clocks" width="640">
-
-## Try it on your repo
+**Try it.** A scripted replay: no AI, no API key, nothing written to your project.
 
 ```
-uv tool install graphene-map         # or git+https://github.com/Alex-lop/Graphene
-cd your-repo && graphene demo        # a replay, no key needed
-graphene init                        # claude or codex
+uvx --from graphene-map graphene demo
+```
+
+<sub>Needs [uv](https://docs.astral.sh/uv/getting-started/installation/), a free installer for Python tools.</sub>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Alex-lop/Graphene/main/docs/assets/loop-ivory.svg" />
+  <img src="https://raw.githubusercontent.com/Alex-lop/Graphene/main/docs/assets/loop-ink.svg" alt="The loop: you shape the plan, your agents do the work, Graphene checks it" width="720" />
+</picture>
+
+## How it works
+
+1. **A plan you can edit.** Its small pieces are called leaves. Each names the files it may change and a check: a command that passes only when the leaf is done, like your tests. The agent proposes them; you can change any.
+2. **Held to those files.** With Claude Code, a write to any other file is refused before it happens. With Codex, git catches it when the leaf finishes, and the leaf comes back to you instead of landing.
+3. **Done is checked.** Graphene runs the check itself, in a clean temporary copy, then merges the leaf into your current branch as one merge.
+
+## In your hands
+
+- **Stop:** Ctrl-C, or `:stop` in watch.
+- **Cost:** with Claude Code, $2 an attempt, three at most. Codex has no cap, and nothing caps the total yet. A real two-leaf run cost $0.30.
+- **Undo:** `git revert -m 1 <id>`, with the `landed:` id from `graphene node show <leaf>`.
+- **Leave:** `graphene init --remove`.
+
+## On your project
+
+You need a git folder, and Claude Code or Codex signed in.
+
+```
+uv tool install graphene-map
+graphene init                              # pick Claude Code or Codex
 graphene ask "what you want, in a paragraph"
-graphene watch                       # another terminal: y accepts, d drops, R runs
-graphene plan accept && graphene run --parallel 2
-graphene node show <a landed leaf>   # what changed, what it cost
-graphene init --remove               # the way out
+graphene watch                             # in a second terminal
+graphene plan accept
+graphene run --parallel 2                  # two leaves at a time
 ```
 
-Heads up: `init` installs Claude Code hooks in that repo. They record its sessions on your machine (prompts, tool calls and what they returned, the files it edits), and from your next session Claude proposes a plan before it writes anything; you accept it in `graphene watch`, in another terminal. `graphene plan first off` lets a quick change through at once (bigger work is still proposed), and `graphene init --remove` takes the hooks out.
+With Claude Code, skip `ask`: type what you want as usual and it proposes a plan first. In watch, `y` accepts, `d` drops a leaf, `e` edits one, `R` runs what is ready (it asks first when more than one leaf could start). `graphene plan first off` lets a quick change through at once.
 
-In `watch`: `y` accepts the plan, `d` drops a leaf, `R` runs what's ready (it asks first when more than one leaf could start). `?` shows the rest.
+<details>
+<summary><b>Does anything leave my computer?</b></summary>
 
-## Where it's at
+With Claude Code or Codex, Graphene itself sends nothing anywhere. `graphene init` adds small add-ons (hooks) to your project, so Claude Code asks Graphene before it writes. They record its sessions on your machine only: prompts, tool calls, results, edited files.
 
-Honestly, it's early, and I'm building it in the open. If you try it on a real repo, what I most want to hear is where the plan misread what you meant, because that's the whole game. Bugs and ideas go in [Issues](https://github.com/Alex-lop/Graphene/issues).
+</details>
 
-[How it works](docs/HOW_IT_WORKS.md) · [Nemotron on Token Factory](docs/HACKATHON.md) · [my site](https://alex-lop.github.io/Alex_Lopez_Website/) · Apache-2.0
+<details>
+<summary><b>Claude Code already shows plans. What does Graphene enforce?</b></summary>
+
+So do Cursor, Kiro and Cline. Graphene enforces it:
+
+- Refused before the write: Claude Code only, shell redirects included. With Codex, or if the add-on cannot run, git finds it when the leaf finishes.
+- A leaf allowed to edit its own test can weaken it: read `graphene node diff <leaf>`.
+- Not yet: approving a diff before it lands. [Every limit](https://github.com/Alex-lop/Graphene/blob/main/docs/HOW_IT_WORKS.md#where-each-mechanism-ends).
+- Honestly, in the three comparisons so far a plain paragraph to the same agent did just as well for less. What I'm betting on is when you find out what it understood: before the work, not after.
+
+</details>
+
+<details>
+<summary><b>Why I built this</b></summary>
+
+I believe the limit on building software won't be tokens or cost. It'll be the human direction it takes. If you don't say which direction the application should go, the agent has to infer most of it, and you find out what it inferred in the diff. Graphene tries to bridge that.
+
+</details>
+
+Honestly, it's early, and I'm building it in the open. If you try it on a real repo, what I most want to hear is where the plan misread what you meant: [open an issue](https://github.com/Alex-lop/Graphene/issues).
+
+[How it works](https://github.com/Alex-lop/Graphene/blob/main/docs/HOW_IT_WORKS.md) · [A real run](https://github.com/Alex-lop/Graphene/blob/main/docs/A_RUN.md) · [Alex Lopez](https://alex-lop.github.io/Alex_Lopez_Website/) · Apache-2.0
