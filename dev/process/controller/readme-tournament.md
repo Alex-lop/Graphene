@@ -27,6 +27,8 @@ Six persona stand-ins (a designer who builds with an assistant, a product manage
 
 ## The fact-check (it blocked the synthesis until two things were fixed)
 
+In one line: the published 0.5.0 is the 7 October tag, 184 commits behind main, so the README described commands a stranger's wheel does not have (checked with `uvx --isolated`, which ignores the tool installed on the person's own PATH).
+
 Don't commit this README yet. Two problems block it.
 
 1. **It describes code that isn't released.** The published 0.5.0 (PyPI, the same code as tag v0.5.0 from 7 Oct) does not have `init --remove`, `node diff`, the $2-per-attempt cap, the `landed: <sha>` line in `node show`, or R asking first. They exist only in the repo source, which still says 0.5.0. Release first, or mark them as unreleased. Plain `uvx --from graphene-map` on Alex's machine resolves to his git-installed tool (commit 3e59d24, also labelled 0.5.0), so local checks hide this. Use `uvx --isolated` to see what a stranger gets.
