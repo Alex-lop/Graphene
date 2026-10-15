@@ -1,3 +1,23 @@
+# morning.md — 2026-10-15 — the controller night
+
+**What happened.** The README was written for people who are not all engineers (stand-in readers: 4.9 to 7.2 of 10
+understood); `main` is green on Linux again; a leaf marked for sign-off now waits on its branch and `c` shows its
+diff; `graphene demo --cheat` plays seven ways round the locks (six refused, one flagged); `run --stop`, a worst-case
+line, a flag for a leaf that edits its own check's test; CI in parallel; a bench's rule, tasks and scorers; the
+first-hour form. About 55 commits, each authored as you, none pushed past `origin/main` by me.
+**The one thing that is not true yet:** PyPI's `graphene-map 0.5.0` is the 7 October tag. The README's commands
+(`init --remove`, `node diff`, `demo --cheat`, `run --stop`) are in 0.5.1, which is prepared and not tagged:
+`git tag v0.5.1 && git push origin v0.5.1`, then `uvx --isolated --from graphene-map graphene init --help`.
+**Verified:** the whole suite 2000 passed, 21 skipped under `-n 6` and `TMPDIR=/tmp` on the combined tree; three seam
+readers reproduced what the lanes left loose and it is fixed. **Not verified:** CI on GitHub's runners (the parallel
+speed is an 11-core Mac's), any real person's first hour, any live run of the bench.
+**Yours:** the tag and PyPI; the README's headline ("stays inside" and not "changes only"); "Why I built this" in a
+fold; whether the live bench runs (about $30); whether the hook fails closed; posting (`dev/launch/`, nothing sent).
+Rollback: `git revert` any commit; the plan's whole record is `graphene plan record`.
+
+The evidence is `dev/process/controller/`; the order and the rules are
+`dev/process/directives/CONTROLLER_DIRECTIVE.md`. What follows is the loop night's brief (9 October), kept.
+
 # morning.md — 2026-10-09 — the loop
 
 Rollback: `main` is untouched at `af6ff38`. To drop the night: close PR #44, `git push origin --delete loop

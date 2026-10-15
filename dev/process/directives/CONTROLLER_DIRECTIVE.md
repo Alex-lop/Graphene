@@ -50,6 +50,15 @@ Graphene refuses two live leaves that write one path, `needs:` or not (run `grap
 | 3 | `follow-docs` | CHANGELOG, the reference, the README lines the new features earned (the cheat demo, the picture, the first-hour form, "approving a diff before it lands" once it is true), the brief | `CHANGELOG.md`, `docs/HOW_IT_WORKS.md`, `README.md` | everything above | the two doc test files |
 | 3 | `release-prep` | 0.5.2: version, dated heading, plain release notes; the tag is Alex's | `pyproject.toml`, `CHANGELOG.md` | `follow-docs`, `packaging-and-ci` done | tomllib; the heading |
 
+**Where the queue stood on 15 October (about 02:00).** Landed, each through its leaf's own check: everything in
+waves 0 and 1; in wave 2 `cli-words` (this table's `unattended` and `free-path-words`, with the pinned store test),
+`replay-says-today` and `launch-kit`; and, from the seam review, `signoff-fixes` (the sign-off wait's loose ends and
+the stray file's refusal, with `put-it-back` folded in as wording), `ci-fixes`, `compare` and this record. Open:
+`seam-tests` (Alex's own node), and the two board answers (both taken at their default: no live bench, the hook
+stays as documented). Not done and not proposed: `release-prep` (the version is already 0.5.1, so a tag after wave 2
+is the release; bump to 0.5.2 only if 0.5.1 went out earlier). The sign-off wait is now the behaviour the flag's name
+promised; a separate `put-it-back` code fix was not built (a stray file's owner is a person; the refusal now says so).
+
 On the board, both with a default: whether to run the live bench (about $30 of Claude at list price, 72 runs on Sonnet, held against plain Claude Code with the same rule as a deny setting; the scripted layer is $0), and whether the refusing hook should fail closed where Claude Code supports it (an answer adds a leaf under `proof` or `holds`).
 
 ## Gates
@@ -62,7 +71,7 @@ On the board, both with a default: whether to run the live bench (about $30 of C
 
 Commands, in the order that makes sense. None is run by an agent.
 
-1. `git push origin main` (after reading the commits; every commit is authored as you), then `git tag v0.5.1 && git push origin v0.5.1`. The Release workflow builds, smokes the wheel and publishes (`docs/RELEASING.md`). Check what a stranger gets: `uvx --isolated --from graphene-map graphene init --help | grep remove`. Then `uv tool install --force graphene-map` replaces the build on your PATH.
+1. `git push origin main` (after reading the commits; every commit is authored as you), then `git tag v0.5.1 && git push origin v0.5.1`. Tag in the same breath as the push: until 0.5.1 is on PyPI the README names commands the published 0.5.0 does not have. The Release workflow builds, smokes the wheel and publishes (`docs/RELEASING.md`). Check what a stranger gets: `uvx --isolated --from graphene-map graphene init --help | grep remove`. Then `uv tool install --force graphene-map` replaces the build on your PATH.
 2. `gh release edit v0.5.0 --title "Graphene 0.5.0" --notes "The meter and what came before it; see 0.5.1 for the rest."` and a release for v0.5.1 from the plain notes.
 3. Close as superseded or evidence-only, with a one-line comment: #32, #35, #41, #42; #13 to #22 (check #12's LICENSE line first); merge or close #25 (imgbot) after `pictures` lands. Closing a PR keeps its branch, and the `*-before-fold`, `*-full-history`, `timeline-before-shape` and `main-before-reshape` branches hold SHAs the evidence cites: do not delete them.
 4. `gh repo edit --description "A shared plan for you and your coding agents. Claude Code hooks keep them to it."`
