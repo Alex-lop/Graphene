@@ -3,10 +3,10 @@ name: CI
 on:
   push:
     branches: [main]  # a pull request's commits build once, as the pull request
-    tags: ["v*"]  # the commit a release tag names gets its suite
   pull_request:
+  workflow_call:  # release.yml runs the suite on the tagged commit and publishes only if it passes
 
-concurrency:  # a new push to a pull request cancels its earlier run; main and tags are not cancelled
+concurrency:  # a new push to a pull request cancels its earlier run; main and a release's are not cancelled
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
@@ -25,7 +25,7 @@ jobs:
           python-version: ${{ matrix.python }}
       - run: uv sync --all-extras
       - run: uv run ruff check
-      - run: uv run pytest -q -n auto
+      - run: uv run pytest -q -n auto -rs  # each leg's log lists what it skipped, and why
       - run: uv build
       - name: Smoke the wheel outside the source tree
         run: |
