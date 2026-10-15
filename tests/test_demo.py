@@ -676,13 +676,15 @@ def test_the_shipped_replay_puts_up_the_board_and_one_key_per_item_answers_it(tm
     assert "what does bye say? → goodbye, as the paragraph's friendlier app would" in decided
 
 
-def test_a_recording_hides_the_machines_temp_paths_as_it_hides_the_home(tmp_path):
+def test_a_recording_hides_the_machines_temp_paths_as_it_hides_the_home(tmp_path, monkeypatch):
     """The live recording of 12 October carried `/private/tmp/claude-501/…`, the harness's tool directory: the
     hider knew the repository and the home, not the machine's scratch. A path under the temp directory reads
     `{tmp}`, and leaks() counts the ones left; the bare /tmp is hidden but not counted, since the recordings
-    made before carry Claude Code's socket paths there."""
+    made before carry Claude Code's socket paths there. The machine's own temp directory is pinned, so the
+    test reads the same on a Mac and on Linux, where the temp directory is the bare /tmp."""
     import tempfile
 
+    monkeypatch.setattr(tempfile, "tempdir", "/scratch/T")
     hide, _ = demo.hider(tmp_path / "repo")
     scratch = f"ls /private/tmp/claude-501/x {tempfile.gettempdir()}/y /tmp/socks/1.sock"
     assert hide(scratch) == "ls {tmp}/claude-501/x {tmp}/y {tmp}/socks/1.sock"
