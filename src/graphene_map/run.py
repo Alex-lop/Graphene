@@ -420,12 +420,58 @@ def _settle(night, hold: dict, meter: M.Meter | None) -> None:
     if meter is None:
         night.settle(hold["id"], hold["model"], hold["worst"], ledger=hold.get("ledger"))
         return
-    whole = meter.reported is not None if meter.kind == "claude" else meter.begun == meter.turns
-    dollars = meter.dollars if whole else hold["worst"]
-    if meter.kind == "codex" and not (meter.price and meter.price(meter.model)):
-        dollars = 0.0  # no list price: the bill says its tokens
     used = {"prompt_tokens": meter.prompt_tokens, "completion_tokens": meter.completion_tokens}
-    night.settle(hold["id"], hold["model"], dollars, used, hold.get("ledger"))
+    night.settle(hold["id"], hold["model"], _spent(meter, hold["worst"]), used, hold.get("ledger"))
+
+
+def _spent(meter: M.Meter | None, worst: float, unpriced: float = 0.0) -> float:
+    """What an attempt held at ``worst`` settles at (``_settle``). ``unpriced``: what a Codex attempt with
+    no list price counts as: the night's ledger says its tokens (0), a cap on dollars cannot (``worst``)."""
+    if meter is None:
+        return worst
+    whole = meter.reported is not None if meter.kind == "claude" else meter.begun == meter.turns
+    if meter.kind == "codex" and not (meter.price and meter.price(meter.model)):
+        return unpriced
+    return meter.dollars if whole else worst
+
+
+class Budget:
+    """`graphene run --max-usd`: a cap on what the run starts, in this process. An attempt starts only
+    while its worst case (``_worst``) and what is held and spent fit under it, and what is going is never
+    stopped. Each attempt settles at what it spent (``_spent``), which is usually far under its worst case,
+    so a start that does not fit while others hold their worst case waits for them: the run stops starting
+    only when one could not fit with nothing held."""
+
+    def __init__(self, cap: float, say: Callable[[str], None]) -> None:
+        self.cap, self.say, self.spent, self.held, self.stopped = cap, say, 0.0, 0.0, False
+        self.room = threading.Condition()
+
+    def take(self, worst: float, stop: Stop | None = None) -> bool | None:
+        """True: ``worst`` is held. False: it can never fit (said once), so nothing new starts. None: not
+        now, though it would fit if what is going settled at nothing; ask again as each ends. With ``stop``
+        it waits for that here (a worker's second attempt) and raises KeyboardInterrupt when the run stops."""
+        with self.room:
+            while True:
+                if self.stopped:
+                    return False
+                if self.spent + self.held + worst <= self.cap:
+                    self.held += worst
+                    return True
+                if self.spent + worst > self.cap:  # not even with nothing going
+                    self.stopped = True
+                    self.say(f"stopped starting: {money(self.spent)} spent, {money(self.held)} held, "
+                             f"cap {money(self.cap)}")  # fmt: skip
+                    return False
+                if stop is None:
+                    return None
+                if stop.event.is_set():
+                    raise KeyboardInterrupt
+                self.room.wait(1.0)
+
+    def settle(self, worst: float, spent: float) -> None:
+        with self.room:
+            self.held, self.spent = self.held - worst, self.spent + spent
+            self.room.notify_all()
 
 
 def command_for(template: str, prompt: str, session: str, again: bool) -> list[str]:
@@ -447,17 +493,24 @@ def run_node(
     say: Callable[[str], None],
     logs: Path | None,
     stop: Stop | None = None,
+    budget: Budget | None = None,
 ) -> P.Node | None:
     """One leaf, start to boundary, in ``checkout``. Returns it when it ended done (or in review);
     None when it could not start, was handed back, or ran out of attempts. Interrupted (Ctrl-C, or
-    ``stop``), the leaf is handed back before its executor is stopped, and the interruption goes on."""
+    ``stop``), the leaf is handed back before its executor is stopped, and the interruption goes on.
+    ``budget``: the caller has taken its first attempt's worst case there; each attempt after is taken
+    here, and each settles there when it ends."""
     session = str(uuid.uuid4())
     name = label(template)
     who = P.Caller(f"run:{name}", False, session)
     stop = stop or Stop()
+    worst = _worst(shlex.split(template))
+    owed = worst if budget else 0.0  # held on the budget for the attempt about to start
     try:
         node = P.start(store, node_id, who, checkout)
     except P.Refused as no:
+        if owed:
+            budget.settle(owed, 0.0)
         lines = (str(no) if "cannot start" in str(no) else f"{node_id} cannot start: {no}").splitlines()
         if "no node made" in lines[0]:  # whoever ran the run reads it, never an agent: the person's way out
             it, stand = ("it", "it stands") if "an uncommitted change" in lines[0] else ("them", "they stand")
@@ -499,6 +552,12 @@ def run_node(
         for attempt in range(1, attempts + 1):
             if stop.event.is_set():  # stopped while the last attempt's check ran: nothing starts again
                 raise KeyboardInterrupt
+            if budget and not owed:
+                if not budget.take(worst, stop):
+                    P.release(store, node.id, who, f"the run's --max-usd stopped it before attempt {attempt}")
+                    say(f"{node.id} came back: the run's --max-usd stopped it before attempt {attempt}")
+                    return None
+                owed = worst
             told = prompt_for(node, P.notes(store, node.id), refusal, P.trail(store, node),
                               B.decided(store, node), shell)  # fmt: skip
             argv = command_for(template, told, session, attempt > 1)
@@ -564,6 +623,9 @@ def run_node(
                     paid += meter.dollars
                 if hold:
                     _settle(night, hold, meter)
+                if owed:
+                    budget.settle(owed, _spent(meter, owed, owed))
+                    owed = 0.0
             # not an "attempt" row: readers take the last of those as the attempt going now
             store.log_node(node.id, P._now(), "ended", who.label, session, None,
                            {"attempt": attempt, "exit": code, "seconds": round(time.monotonic() - began, 1),
@@ -618,6 +680,9 @@ def run_node(
                 P.release(store, node.id, who, STOPPED, stopped=True)
                 say(f"{node.id} handed back: the run was stopped")
         raise
+    finally:
+        if owed:  # held, and no attempt ran on it (refused by the night, or not startable)
+            budget.settle(owed, 0.0)
 
 
 STOPPED = "the run was stopped before this leaf was finished"  # by Ctrl-C, `:stop` or a closed terminal
@@ -837,9 +902,10 @@ def run_plan(
     say: Callable[[str], None] = print,
     logs: Path | None = None,
     precheck: bool = False,
+    max_usd: float | None = None,
 ) -> list[P.Node]:
     """Run every leaf an agent can reach, in order. Returns the ones that ended done (or in review).
-    ``precheck``: red first, before the first leaf starts."""
+    ``precheck``: red first, before the first leaf starts. ``max_usd``: a cap on what starts (``Budget``)."""
     _splits(template)
     sweep(store, say, store.path.parent.parent)  # the repo's root, where a parallel run's lock is
     _begins(template)
@@ -851,16 +917,17 @@ def run_plan(
     # The nodes that exist when the run starts are the run: a plan that grows while it is going (a
     # proposal accepted, or an executor adding nodes) does not make an unattended run unbounded.
     planned = {n.id for n in P.nodes(store) if n.state not in P.GONE}
+    budget = Budget(max_usd, say) if max_usd is not None else None
     while True:
         ready = [
             n
             for n in P.ready(P.nodes(store), P.Caller("agent", False))
             if n.id in planned and n.id not in tried and (not only or n.id in only)
         ]
-        if not ready:
+        if not ready or (budget and not budget.take(_worst(shlex.split(template)))):
             return finished
         tried.add(ready[0].id)
-        node = run_node(store, ready[0].id, checkout, template, attempts, say, logs, Stop())
+        node = run_node(store, ready[0].id, checkout, template, attempts, say, logs, Stop(), budget)
         if node is not None:
             finished.append(node)
             _said_done(store, node, say)
@@ -1086,10 +1153,12 @@ def run_parallel(
     say: Callable[[str], None] = print,
     logs: Path | None = None,
     precheck: bool = False,
+    max_usd: float | None = None,
 ) -> list[P.Node]:
     """Every leaf an agent can reach, up to ``workers`` at once, each in its own worktree; landed one
     at a time, here, as they finish. A leaf never starts while something it needs has not landed, or
-    while a leaf whose scope overlaps its own is in flight. ``precheck``: red first, before any starts."""
+    while a leaf whose scope overlaps its own is in flight. ``precheck``: red first, before any starts.
+    ``max_usd``: a cap on what starts (``Budget``)."""
     _splits(template)
     if _git(target, "symbolic-ref", "-q", "HEAD", ok=True).returncode != 0:
         raise P.Refused(
@@ -1098,13 +1167,14 @@ def run_parallel(
         )
     lock = _only_run(root)
     try:
-        return _run_parallel(open_store, root, target, workers, template, attempts, only, say, logs, precheck)
+        return _run_parallel(open_store, root, target, workers, template, attempts, only, say, logs, precheck,
+                             max_usd)  # fmt: skip
     finally:
         lock.unlink(missing_ok=True)
 
 
 def _run_parallel(open_store, root, target, workers, template, attempts, only, say, logs,
-                  precheck) -> list[P.Node]:  # fmt: skip
+                  precheck, max_usd) -> list[P.Node]:  # fmt: skip
     store = open_store()
     sweep(store, say, root)  # a leaf a dead run still holds would never be ready again
     _begins(template)
@@ -1120,10 +1190,11 @@ def _run_parallel(open_store, root, target, workers, template, attempts, only, s
     waiting: dict[str, str] = {}  # a leaf whose needs are done elsewhere and not here yet: said once
     ran: list[tuple[str, str, str]] = []  # what this run landed: its check, whose, where it landed
     stop = Stop()
+    budget = Budget(max_usd, say) if max_usd is not None else None
 
     def work(node_id: str, tree: Path) -> P.Node | None:
         with open_store() as mine:  # a thread, a connection
-            return run_node(mine, node_id, tree, template, attempts, say, logs, stop)
+            return run_node(mine, node_id, tree, template, attempts, say, logs, stop, budget)
 
     def launch(pool: ThreadPoolExecutor) -> None:
         # one the person signed off since it parked has landed: still held here, its parent never closed
@@ -1149,6 +1220,9 @@ def _run_parallel(open_store, root, target, workers, template, attempts, only, s
                 for o, _ in flying.values()
             ):
                 continue  # one writer a path: it starts when that one has landed, on top of it
+            if budget and not budget.take(_worst(shlex.split(template))):
+                return  # None: what is going holds the room, asked again as each ends; False: past the
+                # cap, and what is not started stays open
             tried.add(n.id)
             tree = worktree_for(store, root, target, n.id)
             flying[pool.submit(work, n.id, tree)] = (n, tree)
@@ -1191,7 +1265,7 @@ def _run_parallel(open_store, root, target, workers, template, attempts, only, s
                 launch(pool)
                 if not flying:
                     return finished
-                for future in wait(flying, return_when=FIRST_COMPLETED).done:
+                for future in wait(flying, timeout=1.0 if budget else None, return_when=FIRST_COMPLETED).done:
                     collect(future)
         except KeyboardInterrupt:
             stop.halt()  # every executor stopped, every worker told: each hands its leaf back

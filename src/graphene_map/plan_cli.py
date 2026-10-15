@@ -1001,6 +1001,9 @@ def register(cli: typer.Typer, root, open_store, fail):
         stop: bool = typer.Option(
             False, "--stop", help="Stop the run going here: what it holds goes back to the plan."
         ),
+        max_usd: float = typer.Option(
+            None, "--max-usd", min=0, help="Start no attempt past these dollars; one going is not stopped."
+        ),
     ) -> None:
         """Run every ready leaf in its own worktree, one executor per leaf.
 
@@ -1069,7 +1072,8 @@ def register(cli: typer.Typer, root, open_store, fail):
             try:  # red first runs in the runner, once its refusals (a lock, a detached HEAD, the cap) pass
                 if here:
                     out("--here: your checkout is exposed. The executor writes in it. Nothing is committed")
-                    run_plan(store, checkout(), template, attempts, node or None, out, logs, precheck)
+                    run_plan(store, checkout(), template, attempts, node or None, out, logs, precheck,
+                             max_usd)  # fmt: skip
                 else:
                     _splits(template)  # a --with that cannot be read is refused before anything is said
                     here_ = checkout()
@@ -1092,7 +1096,11 @@ def register(cli: typer.Typer, root, open_store, fail):
                         )
                         each, tries = _worst(argv), f"{attempts} attempt" + "s" * (attempts != 1)
                         worst = f"{_leaves(reach)} x {tries} x ${each:g} = ${reach * attempts * each:g}"
-                        out(f"worst case: {worst if cap else 'no spend cap on this executor'}")
+                        worst = worst if cap else "no spend cap on this executor"
+                        if max_usd is not None:  # a ceiling on starts, not a kill: an attempt going runs on
+                            held = "" if cap else f" (${each:g} an attempt until it is metered)"
+                            worst += f"; --max-usd ${max_usd:g} starts nothing past it{held}"
+                        out(f"worst case: {worst}")
                         out("`graphene watch` in another terminal follows it (each leaf lands as its own "
                             "merge; your commit hooks are skipped)")  # fmt: skip
                         if P.dirty(here_):
@@ -1100,7 +1108,7 @@ def register(cli: typer.Typer, root, open_store, fail):
                                 "from HEAD")  # fmt: skip
                     run_parallel(
                         lambda: open_store(r), r, here_, max(parallel, 1), template,
-                        attempts, node or None, out, logs, precheck,
+                        attempts, node or None, out, logs, precheck, max_usd,
                     )  # fmt: skip
             except P.Refused as no:
                 fail(str(no), 1)
