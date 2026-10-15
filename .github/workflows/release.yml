@@ -6,6 +6,9 @@ on:
       - "v*"
 
 jobs:
+  test:
+    uses: ./.github/workflows/ci.yml  # the full suite on the tagged commit, which publish waits for
+
   build:
     runs-on: ubuntu-latest
     steps:
@@ -26,7 +29,7 @@ jobs:
           path: dist/
 
   publish:
-    needs: build
+    needs: [build, test]
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
@@ -37,3 +40,13 @@ jobs:
           name: dist
           path: dist/
       - uses: pypa/gh-action-pypi-publish@release/v1
+      - uses: astral-sh/setup-uv@v6
+      - name: Run the published version as a stranger would
+        # after the upload, so it cannot un-publish: a failure here is loud, and the fix is a new version
+        run: |
+          export HOME=$(mktemp -d) UV_TOOL_DIR=$(mktemp -d) UV_CACHE_DIR=$(mktemp -d)
+          for try in 1 2 3 4 5; do  # PyPI's index can lag the upload by a minute or two
+            uvx --isolated --refresh --from "graphene-map==${GITHUB_REF_NAME#v}" graphene demo --cheat && exit 0
+            sleep 30
+          done
+          exit 1

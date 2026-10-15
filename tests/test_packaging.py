@@ -7,6 +7,7 @@ from pathlib import Path
 ROOT = Path(__file__).parent.parent
 PROJECT = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]
 CI = (ROOT / ".github/workflows/ci.yml").read_text()
+RELEASE = (ROOT / ".github/workflows/release.yml").read_text()
 
 
 def test_uvx_graphene_map_runs_the_same_app_as_graphene():
@@ -31,3 +32,17 @@ def test_ci_is_callable_by_the_release_and_not_triggered_twice_for_a_tag():
 
 def test_the_suite_lists_its_skips():
     assert re.search(r"uv run pytest .*-rs", CI)  # each leg's log names what it skipped
+
+
+def test_the_release_publishes_only_after_the_suite_passes():
+    suite = re.search(r"^  (\S+):\n    uses: \./\.github/workflows/ci\.yml\b", RELEASE, re.MULTILINE)
+    assert suite  # a job of the release runs the suite on the tagged commit
+    publish = RELEASE.split("\n  publish:\n", 1)[1]
+    assert re.search(rf"needs: \[.*\b{suite[1]}\b.*\]", publish.split("\n", 1)[0])
+
+
+def test_the_release_runs_the_published_version_as_a_stranger():
+    after = RELEASE.split("pypa/gh-action-pypi-publish", 1)[1]  # after the upload
+    assert "graphene demo --cheat" in after and "uvx --isolated" in after
+    assert all(f"{name}=$(mktemp -d)" in after for name in ("HOME", "UV_TOOL_DIR", "UV_CACHE_DIR"))
+    assert re.search(r"for \w+ in .*; do", after)  # a retry: PyPI's index can lag the upload
