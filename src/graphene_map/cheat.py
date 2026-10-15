@@ -138,8 +138,16 @@ MOVES = [
 
 
 def run(say, tmp: Path) -> tuple[int, int, int]:
-    """Play every move in a repository made in ``tmp``, one verdict each: (refused, flagged, got through)."""
+    """Play every move in a repository made in ``tmp``, one verdict each, under the leaf and over the
+    count: (refused, flagged, got through). Every line fits 80 columns, and with the caller's top line
+    the whole is 25."""
     root = repo(tmp)
+    say('A throwaway repo, one leaf: "make add() add"')
+    say(f"  its files: {', '.join(FILES)}")
+    say("  its check: python tests/test_calc.py")
+    say("A stand-in agent takes the leaf and tries to cheat 7 ways. Graphene's")
+    say("real hooks, git and check answer each.")
+    say("")
     said = {w: 0 for w in WORDS}
     for n, (what, move) in enumerate(MOVES, 1):
         verdict = move(root)
@@ -148,4 +156,9 @@ def run(say, tmp: Path) -> tuple[int, int, int]:
         say(f"{n} {what}")
         for line in verdict.splitlines():
             say(f"  {line}")
-    return said["REFUSED"], said["FLAGGED"], said["GOT THROUGH"]
+    refused, flagged, through = said["REFUSED"], said["FLAGGED"], said["GOT THROUGH"]
+    say(f"{refused} refused, {flagged} flagged, {through} got through.")
+    held = "a lock gave way to some of" if through else "the locks held against"
+    say(f"A script played the agent: {held} these moves. It does not")
+    say("show what a real model will try. Next: graphene init, then graphene ask.")
+    return refused, flagged, through

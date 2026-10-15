@@ -668,15 +668,25 @@ def register(cli: typer.Typer, root, open_store, fail):
             max=20.0,
             help="Play this many times faster, such as 2, or slower, such as 0.5.",
         ),
+        cheat: bool = typer.Option(
+            False, "--cheat", help="A scripted agent tries seven ways to cheat, and the real locks answer."
+        ),
     ) -> None:
         """Replay a recorded run in `graphene watch`, change by change.
 
-        The replay needs no key, no network and no Docker. Nothing in it runs."""
+        Neither it nor --cheat needs a key, a network or Docker. Nothing in the replay runs."""
         import contextlib
         import tempfile
 
         from . import demo as D
 
+        if cheat:  # computed live in a repository of its own, which goes with the directory
+            from . import cheat as C
+
+            out(f"graphene demo --cheat · {D.STAND_IN} · $0")
+            with tempfile.TemporaryDirectory(prefix="graphene-cheat-") as tmp:
+                through = C.run(out, Path(tmp).resolve())[2]
+            raise typer.Exit(1 if through else 0)
         if record is not None:
             try:
                 n = D.record(root(), record)
