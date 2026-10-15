@@ -102,7 +102,7 @@ def test_run_here_tells_whoever_ran_it_how_to_keep_their_change_not_to_put_it_ba
     said = person("run", "--here", "--with", "true", "--no-precheck").output
     assert "n1 cannot start: the checkout has an uncommitted change no node made" in said
     assert "yours as it stands? `graphene plan ack`, or commit it; else put it back" in said
-    assert "ask them" not in said and (repo / "notes.md").exists()
+    assert "ask them" not in said and "no leaf is held" not in said and (repo / "notes.md").exists()
 
 
 def test_a_run_refused_on_a_detached_head_runs_no_check_first(repo):

@@ -2047,7 +2047,10 @@ def start(
             f"{node_id} cannot start: the checkout has {change} no node made",
             loose,
             f"if you made {it}, put {it} back; if not, {are} the person's: ask them (graphene plan ack makes "
-            f"{it} theirs" + (why if first_time(store, who, first, "loose") else "") + ")",
+            f"{it} theirs" + (why if first_time(store, who, first, "loose") else "") + ")"
+            # the gate refuses an agent's write while it holds no leaf, the putting back too
+            f"; if putting {it} back is refused because no leaf is held, ask the person to remove {it}, "
+            f"or `graphene plan ack` makes {it} theirs",
         )
     away = not_here(store, first, checkout)
     files, base, was_dirty = tracked(checkout), head(checkout), dirty(checkout)
