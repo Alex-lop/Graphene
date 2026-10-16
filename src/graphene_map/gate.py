@@ -13,6 +13,9 @@ The holes, which the README and the map print beside the controls:
   git, which sees every write however it was made;
 - a session is refused one stop, and may stop after it (to ask the person); an executor is refused
   until the vendor lets it stop after 8 refused stops in a row; the node then stays open, visibly;
+- what the person says reaches a session with its next write or shell command, or when a command that
+  ran while they spoke ends (``_heard``); a note said after the session's last call is on the board
+  and reaches nobody, and a session that ignores it is not stopped: the log says it was heard;
 - the refusals that read a command's text (GRAPHENE_AS, .graphene/) stop the ordinary spellings and
   not a determined one. What holds against that is elsewhere: ``plan.caller`` ranks an agent's own
   environment above the variable, and the store is the one thing nothing here can defend against a
@@ -22,6 +25,7 @@ The holes, which the README and the map print beside the controls:
 from __future__ import annotations
 
 import contextlib
+import json
 import os
 import re
 import sqlite3
@@ -594,6 +598,48 @@ def _first_write(event: dict, root: Path) -> str | None:
     return None
 
 
+def _heard(store, held: list[P.Node], event: dict) -> dict | None:
+    """What the person said since the session took its leaf, as the answer to one more call of it: a
+    note of theirs or an answer on the board (``board.told``) about the leaf, a sub-goal above it or the
+    whole plan, changed after the hold began (what came before is in the contract ``node start`` showed).
+    Told once, to whichever agent of the session calls first (a subagent, if it is first), and logged
+    as ``told`` on the leaf: the person is shown that it was heard, never that it was done. The ledger
+    is written first, so a store too busy to keep it says nothing now rather than twice.
+    TODO: one meta row a hold that was told something, never pruned."""
+    held = [n for n in held if not n.aside]  # a leaf made from a prompt: the person is talking to it already
+    if not held:
+        return None
+    from . import board as B  # here, not at the top: only a call of a session that holds a leaf reads it
+
+    since = min(n.started_at or "" for n in held)
+    new = [it for it in B.items(store) if B.told(it) and it["updated_at"] > since]  # a tie is in the contract
+    if not new:
+        return None
+    name, tool = event.get("hook_event_name"), event.get("tool_name")
+    how = "shell ended" if name == "PostToolUse" else "shell" if tool == "Bash" else "write"
+    agent_id = event.get("agent_id") if isinstance(event.get("agent_id"), str) else None
+    by_id, said = {n.id: n for n in P.nodes(store)}, []
+    try:
+        with store.claim():  # two calls of one batch run two hooks at once: one of them tells
+            for n in held:
+                key = f"told:{n.session_id}:{n.id}:{n.started_at}"
+                seen, on = json.loads(store.meta(key) or "[]"), {None, n.id, *(a.id for a in P.above(n, by_id))}
+                fresh = [it for it in new if it.get("about") in on and it["updated_at"] > (n.started_at or "")
+                         and f"{it['id']}@{it['rev']}" not in seen]  # fmt: skip
+                if fresh:
+                    store.set_meta(key, json.dumps([*seen, *(f"{it['id']}@{it['rev']}" for it in fresh)]))
+                    detail = {"items": [it["id"] for it in fresh], "how": how}
+                    store.log_node(n.id, P._now(), "told", n.executor, n.session_id, agent_id, detail)
+                    said += [B.said(it) for it in fresh]
+    except sqlite3.OperationalError:
+        return None
+    if not said:
+        return None
+    lines = "\n".join(f"- {line}" for line in said)
+    return _context(str(name), f"Graphene: the person said this since you took {', '.join(n.id for n in held)}; "
+                    f"let it change your next step:\n{lines}")  # fmt: skip
+
+
 READ_TOOLS = {"Read", "Grep", "Glob"}
 
 
@@ -704,15 +750,17 @@ def decide(store, event: dict, root: Path) -> dict | None:
         if _leaves(path, root, cwd):
             return _link(_leaves(path, root, cwd))
         rel = _rel(path, root, cwd)
-        return None if rel is None else _check_write(store, _held(store, sid), rel, event, tool, root)
+        held = _held(store, sid)
+        answer = None if rel is None else _check_write(store, held, rel, event, tool, root)
+        return answer or _heard(store, held, event)
 
     if name == "PreToolUse" and tool == "Bash":
         command = str(tool_input.get("command") or "")
-        if len(command) > PARSED:
-            return None  # TODO: too long to parse inside the hook's time; `done` asks git anyway
+        held = _held(store, sid)
+        if len(command) > PARSED:  # TODO: too long to parse inside the hook's time; `done` asks git anyway
+            return _heard(store, held, event)
         from .shell import bash_written_paths
 
-        held = _held(store, sid)
         standing = P.standing(store)
         rels = []
         for written, _kind in bash_written_paths(command, Path(cwd or root)):
@@ -740,14 +788,15 @@ def decide(store, event: dict, root: Path) -> dict | None:
             if answer is not None:
                 return answer
             held = _held(store, sid)  # a leaf was just made from the prompt: it covers the rest
-        return None
+        return _heard(store, held, event)
 
     if name == "PostToolUse" and tool == "Bash":
         held = _held(store, sid)
+        heard = _heard(store, held, event)  # said while the command ran: it is told as it ends
         response = event.get("tool_response") if isinstance(event.get("tool_response"), dict) else {}
         diff = response.get("bashEditDiff") if isinstance(response.get("bashEditDiff"), dict) else {}
         if not held or diff.get("shared"):  # a list another command's changes leaked into proves nothing
-            return None
+            return heard
         changed = [_rel(p, root, cwd) for p in diff.get("changedFiles") or [] if isinstance(p, str)]
         standing = P.standing(store)
         # Graphene's own directory is written by `graphene` (a proposal to the direction): never a stray
@@ -756,7 +805,7 @@ def decide(store, event: dict, root: Path) -> dict | None:
         ignored = {r for r in _ignored(root, stray) if not P.kept_out_by(r, standing)}
         stray = [r for r in stray if r not in ignored]
         if not stray:
-            return None
+            return heard
         n = held[0]
         breach = {"paths": stray, "how": "shell"}
         _write(store.log_node, n.id, P._now(), "breach", n.executor, sid, None, breach)
@@ -767,5 +816,6 @@ def decide(store, event: dict, root: Path) -> dict | None:
                 f"({n.id}: {', '.join(n.scope)}). Put it back as it was now; `graphene node done` asks "
                 f"git and will refuse while it differs. {_how_out(store, sid, held, stray)}"
             ),
+            **(heard or {}),
         }
     return None

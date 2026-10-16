@@ -23,7 +23,7 @@ from pathlib import Path
 
 import pytest
 
-from graphene_map import gate, hooks, plan
+from graphene_map import board, gate, hooks, plan
 from graphene_map.store import Store
 
 RUNS = 20
@@ -119,6 +119,30 @@ def test_refusing_a_write_stays_inside_the_same_budget(tmp_path, capsys):
 
     pre_tool_use("src/api/users.py")
     within_budget("gate", [pre_tool_use(("src/api/a.py", "src/db/b.py")[n % 2]) for n in range(RUNS)], capsys)
+
+
+def test_telling_a_note_stays_inside_the_same_budget(tmp_path, capsys):
+    """The path that answers with something: what the person said since the leaf was taken is read,
+    kept as told and logged, once, and the agent waits for that as well."""
+    repo = tmp_path / "repo"
+    (repo / ".git").mkdir(parents=True)
+    node = plan.Node(
+        "n1", "users", scope=["src/api/**"], check="true", state=plan.RUNNING, session_id="budget"
+    )
+    with Store.open(repo) as store:
+        store.put_node(plan.to_dict(node))
+
+    def told(n: int) -> tuple[float, float]:
+        with Store.open(repo) as store:  # said between two calls, outside the timing
+            board.note(store, f"use {n} spaces", plan.Caller("alex", True), about="n1")
+        edit = {"file_path": str(repo / "src/api/a.py")}
+        event = {"hook_event_name": "PreToolUse", "session_id": "budget", "cwd": str(repo)}
+        cpu, wall, said = run_hook(repo, {**event, "tool_name": "Edit", "tool_input": edit})
+        assert f"use {n} spaces" in said
+        return cpu, wall
+
+    told(0)
+    within_budget("tell", [told(n + 1) for n in range(RUNS)], capsys)
 
 
 def test_plan_first_stays_inside_the_same_budget(tmp_path, capsys):
@@ -225,9 +249,13 @@ WORK = {
     ("plan", "SessionStart"): (GATE, 13, 0),
     ("plan", "UserPromptSubmit"): (GATE, 17, 0),
     ("plan", "PreToolUse Read"): (RECORD, 5, 0),
-    ("plan", "PreToolUse Edit"): (IN_FORCE | PATH, 19, 0),
+    # a write or a command's end reads the board once more for what the person said since the leaf was taken
+    ("plan", "PreToolUse Edit"): (IN_FORCE | PATH, 20, 0),
     ("plan", "PostToolUse Read"): (RECORD, 8, 0),
-    ("plan", "PostToolUse Bash"): (IN_FORCE, 15, 0),
+    ("plan", "PostToolUse Bash"): (IN_FORCE, 16, 0),
+    # ...and when there is something to tell: the plan's nodes, one claim, the ledger row and the log row
+    ("heard", "PreToolUse Edit"): (IN_FORCE | PATH, 26, 0),
+    ("heard-ended", "PostToolUse Bash"): (IN_FORCE, 24, 0),
     ("plan", "SubagentStart"): (RECORD, 7, 0),
     ("plan", "Stop"): (GATE, 12, 0),
     ("plan", "PreToolUse Edit .graphene/direction.txt"): (RECORD, 6, 0),
@@ -242,10 +270,12 @@ def _repo(tmp_path: Path, kind: str) -> Path:
     with Store.open(repo) as store:
         if kind == "first":
             plan.set_plan_first(store, "auto", plan.Caller("alex", True))
-        if kind == "plan":
+        if kind == "plan" or kind.startswith("heard"):
             node = plan.Node("n1", "api", scope=["src/api/**"], check="true", state=plan.RUNNING)
             node.session_id = "s"
             store.put_node(plan.to_dict(node))
+        if kind.startswith("heard"):  # the person said something about the leaf since it was taken
+            board.note(store, "use spaces", plan.Caller("alex", True), about="n1")
     return repo
 
 
@@ -272,7 +302,7 @@ def test_each_event_imports_runs_and_starts_only_what_it_did(tmp_path, monkeypat
     monkeypatch.delenv("GRAPHENE_PLANNER", raising=False)
     monkeypatch.delenv("GRAPHENE_NODE", raising=False)
     found = {}
-    for kind in ("none", "first", "plan"):
+    for kind in ("none", "first", "plan", "heard", "heard-ended"):
         repo = _repo(tmp_path, kind)
         for state, label in WORK:
             if state != kind:
