@@ -82,7 +82,9 @@ So do Cursor, Kiro and Cline ([compared, gaps included](https://github.com/Alex-
 <details>
 <summary><b>Why I built this</b></summary>
 
-I believe the limit on building software won't be tokens or cost. It'll be the human direction it takes. If you don't say which direction the application should go, the agent has to infer most of it, and you find out what it inferred in the diff. Graphene tries to bridge that.
+I believe that in the near future, whether through new models, better harnesses, or a shift off the LLM frame entirely, the limit on building software won't be tokens or cost. The limiting factor will be the human intervention and drive it takes to actually get the software out. I know this sounds a little wild. The conversation is still mostly "who has the better model?" and "what's the best harness?" For most applications, though, I think the current models are already completely capable of debugging and fixing the work.
+
+Ok, but not to ramble on too long, that idea is what drove me to build Graphene. No matter how many tokens you have, if you don't say which direction the application should go, the agent has to infer most of it. Graphene tries to bridge that connection between you and the agent. So, not claiming it magically saves 397% of your tokens but (ideally) it should help guide you and the agent toward that perfect idolized application you actually had in mind from the start.
 
 </details>
 
