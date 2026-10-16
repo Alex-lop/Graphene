@@ -8,8 +8,9 @@
 
 Keys: c cockpit, g graph (flow), m map (territory), Tab next screen, j/k or arrows move, Enter takes the
 default / signs off, t tells the selected agent one line, w or a allows the last stopped write, x pulls
-an agent back, b big numbers, v lens, p paint a folder, s speed, r restart, q quit. Everything is also
-clickable. Nothing here talks to an agent or writes to your repository.
+an agent back, v lens, p paint a folder, s speed, r restart, q quit. Everything is also clickable, and a
+screen longer than the terminal scrolls (the wheel; j/k keep the selected row in view). Nothing here
+talks to an agent or writes to your repository.
 """
 
 from __future__ import annotations
@@ -25,14 +26,15 @@ import views as V  # noqa: E402
 from model import Model, demo_model, repo_model  # noqa: E402
 from rich.text import Text  # noqa: E402
 from textual.app import App, ComposeResult  # noqa: E402
-from textual.containers import Vertical  # noqa: E402
+from textual.containers import ScrollableContainer  # noqa: E402
 from textual.events import Click  # noqa: E402
+from textual.geometry import Region  # noqa: E402
 from textual.widget import Widget  # noqa: E402
 from textual.widgets import Input, Static  # noqa: E402
 
 SCREENS = ("cockpit", "flow", "territory")
 KEYS = {
-    "cockpit": "j/k move · ⏎ take · t tell · w allow · x pull back · b big · g graph · m map · q quit",
+    "cockpit": "j/k move · ⏎ take · t tell · w allow · x pull back · g graph · m map · q quit",
     "flow": "arrows move · ⏎ take · t tell · w allow · c cockpit · m map · q quit",
     "territory": "j/k folder · ←/→ task · p paint · v lens · a allow · c cockpit · g graph · q quit",
 }
@@ -41,7 +43,7 @@ KEYS = {
 class Canvas(Widget):
     """Paints lines of segments and turns a click on a segment into that segment's action."""
 
-    DEFAULT_CSS = "Canvas { height: 1fr; width: 1fr; }"
+    DEFAULT_CSS = "Canvas { height: auto; width: auto; }"
 
     def __init__(self) -> None:
         super().__init__()
@@ -49,7 +51,7 @@ class Canvas(Widget):
 
     def set_lines(self, lines: list[V.Line]) -> None:
         self.lines = lines
-        self.refresh()
+        self.refresh(layout=True)
 
     def render(self) -> Text:
         out = Text(no_wrap=True, overflow="crop")
@@ -82,7 +84,7 @@ class Playground(App):
         super().__init__()
         self.model = model
         self.view = screen
-        self.big = False
+        self.shown = ""  # the row the screen was last scrolled to
         self.tell_open = False
         self.cursor = 0  # the territory's folder cursor
         self.paint_mode = False
@@ -92,7 +94,7 @@ class Playground(App):
 
     def compose(self) -> ComposeResult:
         yield Static(id="bar")
-        with Vertical():
+        with ScrollableContainer():
             yield Canvas()
         yield Static(id="feed")
         yield Input(placeholder="tell the agent one line, Enter sends, Esc cancels", id="tell")
@@ -123,7 +125,7 @@ class Playground(App):
         )
         lines: list[V.Line]
         if self.view == "cockpit":
-            lines = V.build_cockpit(m, w, big_numbers=self.big, tell="" if self.tell_open else None)
+            lines = V.build_cockpit(m, w, tell="" if self.tell_open else None)
         elif self.view == "territory":
             lines, self.groups = V.build_territory(m, w, self.cursor)
         else:
@@ -157,6 +159,9 @@ class Playground(App):
             else:
                 lines.append(V.Line([V.Seg(" amber lane = a retry loop (bounded) · ◀▶ two-way", "grey50")]))
         self.query_one(Canvas).set_lines(lines)
+        if m.selected != self.shown:  # follow the selection when it moves, not on every tick
+            self.shown = m.selected
+            self.call_after_refresh(self.follow, lines)
         feed = m.latest()
         legend = "✎ files touched of allowed · ✓ proofs · ! writes stopped · ⏸ quiet · ▁▃▅ activity"
         note = Text()
@@ -167,6 +172,13 @@ class Playground(App):
             + ("paint mode: click or Enter on folders · p to stop · " if self.paint_mode else "")
             + KEYS[self.view]
         )
+
+    def follow(self, lines: list[V.Line]) -> None:
+        """Scroll so the selected row, all its lines, is on screen."""
+        at = [k for k, line in enumerate(lines) if line.row and line.row == self.model.selected]
+        if at:
+            region = Region(0, at[0], 1, at[-1] - at[0] + 1)
+            self.query_one(ScrollableContainer).scroll_to_region(region, animate=False)
 
     # -- moves -------------------------------------------------------------------------------------
 
@@ -236,8 +248,6 @@ class Playground(App):
             self.view = {"c": "cockpit", "g": "flow", "m": "territory"}[key]
         elif key == "tab":
             self.view = SCREENS[(SCREENS.index(self.view) + 1) % 3]
-        elif key == "b":
-            self.big = not self.big
         elif key == "v":
             m.lens = T_next(m.lens)
         elif key == "s":

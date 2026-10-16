@@ -12,6 +12,7 @@ import hashlib
 import subprocess
 import sys
 import tempfile
+from dataclasses import replace
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -22,6 +23,7 @@ import territory as T  # noqa: E402
 import views as V  # noqa: E402
 from fixtures import PASTED_EDGES, PASTED_NODES  # noqa: E402
 from model import demo_model, repo_model  # noqa: E402
+from textual.containers import ScrollableContainer  # noqa: E402
 
 REPORT: list[str] = []
 
@@ -214,7 +216,7 @@ async def drive() -> None:
         a3 = A.Playground(m3)
         async with a3.run_test(size=size) as p3:
             warm(m3, 20)
-            for key in ("g", "m", "v", "v", "c", "b", "b"):
+            for key in ("g", "m", "v", "v", "c"):
                 await p3.press(key)
             await p3.pause(0.1)
     say("screens: cockpit, flow and territory run at 80x24, 120x36 and 60x20")
@@ -222,6 +224,28 @@ async def drive() -> None:
 
 def check_screens() -> None:
     asyncio.run(drive())
+
+
+async def scrolls() -> None:
+    """A plan longer than the screen scrolls, and j keeps the selected row on screen."""
+    m = demo_model(simulate=False)
+    for i in range(30):
+        m.tasks[f"t{i}"] = replace(m.tasks["docs"], id=f"t{i}", title=f"task {i}", state="waiting")
+    app = A.Playground(m)
+    async with app.run_test(size=(80, 24)) as pilot:
+        await pilot.pause(0.1)
+        box = app.query_one(ScrollableContainer)
+        ok(box.max_scroll_y > 0, "a plan longer than the screen scrolls")
+        for _ in range(len(m.order()) - 1):
+            await pilot.press("j")
+        await pilot.pause(0.1)
+        at = next(k for k, line in enumerate(app.query_one(A.Canvas).lines) if line.row == m.selected)
+        ok(0 < box.scroll_y <= at < box.scroll_y + box.size.height, "j keeps the selected row in view")
+    say(f"scroll: {len(m.order())} rows at 80x24, the last one in view after j")
+
+
+def check_scroll() -> None:
+    asyncio.run(scrolls())
 
 
 # -- real data: a throwaway repository and its plan ------------------------------------------------
@@ -299,6 +323,7 @@ def check_real_plan() -> None:
 def main() -> None:
     check_layout()
     check_screens()
+    check_scroll()
     check_real_plan()
     print("\nplayground check: all hold")
 

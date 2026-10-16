@@ -73,58 +73,27 @@ def ago(seconds: float) -> str:
 
 # -- cockpit ---------------------------------------------------------------------------------------
 
-BIG = {
-    "0": ("┏━┓", "┃ ┃", "┗━┛"), "1": ("╺┓ ", " ┃ ", "╺┻╸"), "2": ("╺━┓", "┏━┛", "┗━╸"),
-    "3": ("╺━┓", " ━┫", "╺━┛"), "4": ("╻ ╻", "┗━┫", "  ╹"), "5": ("┏━╸", "┗━┓", "╺━┛"),
-    "6": ("┏━╸", "┣━┓", "┗━┛"), "7": ("╺━┓", "  ┃", "  ╹"),
-    "8": ("┏━┓", "┣━┫", "┗━┛"), "9": ("┏━┓", "┗━┫", "╺━┛"),
-}  # fmt: skip
-
-
-def big(number: int) -> list[str]:
-    parts = [BIG[c] for c in str(number)]
-    return [" ".join(p[i] for p in parts) for i in range(3)]
-
-
-def build_cockpit(m: Model, width: int, *, big_numbers: bool = False, tell: str | None = None) -> list[Line]:
+def build_cockpit(m: Model, width: int, *, tell: str | None = None) -> list[Line]:
     out: list[Line] = []
     need, running, done, total = m.scoreboard()
     tag = "replay" if m.source == "demo" else ("replay" if m.simulate else "your plan")
     head = [Seg(" " + fit(m.goal, width - len(tag) - 4), "bold"), Seg(" " * 1), Seg(tag, "grey50")]
     out.append(Line(pad(head, width)))
-    if big_numbers:
-        a, b, c = big(need), big(running), big(done)
-        for i in range(3):
-            row = [
-                Seg("  " + a[i].ljust(16), "bold #c77dff"),
-                Seg(b[i].ljust(16), "bold #e9c46a"),
-                Seg(c[i], "bold #8ab17d"),
-            ]
-            if i == 1:
-                row += [Seg(f"  of {total}", "grey50")]
-            out.append(Line(pad(row, width)))
-        labels = [
-            Seg("  " + "need you".ljust(16), "#c77dff"),
-            Seg("running".ljust(16), "#e9c46a"),
-            Seg("proven", "#8ab17d"),
-        ]
-        out.append(Line(pad(labels, width)))
-    else:
-        out.append(
-            Line(
-                pad(
-                    [
-                        Seg(f" {need}", "bold #c77dff"),
-                        Seg(" need you   ", "#c77dff"),
-                        Seg(str(running), "bold #e9c46a"),
-                        Seg(" running   ", "#e9c46a"),
-                        Seg(f"{done}/{total}", "bold #8ab17d"),
-                        Seg(" proven", "#8ab17d"),
-                    ],
-                    width,
-                )
+    out.append(
+        Line(
+            pad(
+                [
+                    Seg(f" {need}", "bold #c77dff"),
+                    Seg(" need you   ", "#c77dff"),
+                    Seg(str(running), "bold #e9c46a"),
+                    Seg(" running   ", "#e9c46a"),
+                    Seg(f"{done}/{total}", "bold #8ab17d"),
+                    Seg(" proven", "#8ab17d"),
+                ],
+                width,
             )
         )
+    )
     cells = max(10, min(width - 12, 40))
     fill = round(cells * done / max(total, 1))
     out.append(Line(pad([Seg(" " + "▰" * fill, "#8ab17d"), Seg("▱" * (cells - fill), "grey35")], width)))
