@@ -56,7 +56,7 @@ with you on the loop.
 
 **Tell works, mostly.** Real `claude -p` agents (Haiku, half a cent a run) followed a note on their next step in
 12 runs of 14 when it came with their next write, and in 1 of 12 when it came as a command ended
-(`dev/ui/playground/probe/`; the gate's side is the leaf `tell`, and `tell-pre` drops the second). A cheap
+(`dev/ui/playground/probe/`; the gate now tells only with the next write). A cheap
 model sometimes ignores a note, so the screen shows "heard" and the live tail, not "done". Not proven: a live
 agent on these screens (a simulator drives the numbers), and Codex.
 

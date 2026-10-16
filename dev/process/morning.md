@@ -1,14 +1,5 @@
 # morning.md — 2026-10-16 — the live loop
 
-**Fixed after the docs leaf (`pins-fix`).** The docs leaf cut `(view_tree.py)`, `(view_dag.py)` and `(view_time.py)`
-from the three view bullets of `docs/HOW_IT_WORKS.md` to keep under its word cap, and `tests/test_view_tree.py` finds
-the tree bullet by that name, so `main` had one red test. The bullets name their files again: 3277 words, under the
-3300 cap. The docs leaf's check ran three of the four docs tests (`test_how_it_works`, `test_doc_claims`,
-`test_free_words`) and not `test_view_tree.py`, which is how it landed green. **Measured:** those four files, 152
-passed and 1 failed without the names, 153 passed with them. **Not measured:** the whole suite, with or without the
-names; this leaf's shell runs only `graphene node` and `graphene plan`, so the 2043 passed below is from before the cut.
-Run `uv run pytest -q -n 6` on `main` once to put the number here.
-
 **What happened.** You said the run was going backwards, and it was: cost caps, cache splits and demos, none of them
 the gap between what you mean and what your agents do. So the README opens with your own "Why I built this" again
 (your 15 October text, word for word, and no cost talk), the cost and demo work is parked (your drop of
@@ -18,19 +9,26 @@ the gap between what you mean and what your agents do. So the README opens with 
 - `dev/ui/playground/`: the thing to play with. `uv run python dev/ui/playground/app.py` (`--graph pasted` is your
   diagram laid out in characters, `--repo .` is this repo's real plan; `c` `g` `m` switch screens, `t` tells).
 - **Tell** is in: what you say while a Claude Code session holds a leaf (`graphene board note --about ID`, or an
-  answer) reaches it with its next write or shell command, once, and `node show` records it as told. A Claude Code
-  run you started with "accept them all" built it (6 minutes); I checked it against real `claude -p` agents.
+  answer) reaches it with its next write or shell command, once, and `node show` records it as told.
 
-**Waits for one key.** `tell-pre`, in `graphene watch`. The run also tells a note when a shell command ends, and
-real agents hardly follow it there: 1 run in 12, against 12 in 14 when it comes with the next write (one script,
-Haiku, 8 runs on each build tonight). A note told at a command's end is not told again with the write, so it
-spends the delivery that works. The fix drops it; it is small, and proposed, not landed.
-**Verified:** the whole suite, 2043 passed and 21 skipped in 5 minutes on a clean clone of `main` with Tell in; the
-playground, headless at 80x24, 120x36 and 60x20 and in a real terminal; Tell, against real agents (Haiku, half a
-cent a run). **Not verified:** a live agent behind the new screens (a simulator moves their numbers), and none of
-them is in `graphene watch` yet; Codex; GitHub's runners for the release.
-**Yours:** `git push origin main` (what is new since your last push, `939e98af`); the tag, `git tag v0.5.1 && git
-push origin v0.5.1`, since PyPI still has 0.5.0; play with the playground, then say which screen goes into `watch`.
+**After you woke** (each a leaf, each a commit as you):
+- `pins-fix`, landed by a run: my docs leaf had cut three file names a test reads, so `main` had one red test for a
+  while. Its check ran three of the four docs tests.
+- `tell-pre`: Tell no longer speaks when a shell command ends. Real agents followed it there in 1 run of 12, against
+  12 of 14 with the next write (one script, Haiku). It also wraps five lines Tell had left over ruff's 110 columns,
+  which would have failed CI.
+- `ui-scroll`: you called `b big` unnecessary, and it was: five rows of digits for numbers the header already shows.
+  The key and its code are gone, and the screen scrolls instead (the wheel; `j` and `k` keep the selected row in
+  view), so a plan longer than the screen, like this repo's, is reachable. Your message authorized this leaf at once;
+  you had accepted the other two yourself.
+
+**Verified:** the whole suite on a clean clone of this tree, ruff clean: 2043 passed and 21 skipped in 5 minutes; the
+playground's own check, and in a real terminal (100x24, 36 rows) the last row scrolls into view; Tell against real
+agents (Haiku, half a cent a run); the wheel builds and its demo runs.
+**Not verified:** a live agent behind the new screens (a simulator moves their numbers), and none of them is in
+`graphene watch` yet; Codex; GitHub's runners for the release.
+**Yours:** `git push origin main` (what is new since your last push, `939e98af`); the tag, `git tag v0.5.1 && git push
+origin v0.5.1`, since PyPI still has 0.5.0; play with the playground, then say which screen goes into `watch`.
 Rollback: `git revert` any commit.
 
 The controller night's brief (15 October) follows, kept.
