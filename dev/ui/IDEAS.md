@@ -1,6 +1,6 @@
 # Graphene, talking to your agents with almost no text
 
-A three-minute read. All of it is built in `dev/ui/playground/` so you can judge the feel:
+All of it is built in `dev/ui/playground/` so you can judge the feel:
 `uv run python dev/ui/playground/app.py` (`--repo .` for this repo's real plan, `--graph pasted` for your diagram).
 
 ## The problem, in one line
@@ -35,7 +35,7 @@ task, which the planner can write.
 **2. Territory.** Which folders each task may write. Only Graphene can show this, because scopes never overlap.
 Before you accept a plan: "13 of 636 files may be touched (2%)", plus where new files may appear. Live: touches,
 stopped writes, "oak waits for fox: it owns the same files". After: what changed, and anything outside. Press `p`
-and click a folder to give it or take it away (the widen and edit-scope Graphene already has).
+and click a folder to give it or take it away.
 
 ![territory](playground/shots/territory-real.png)
 
@@ -45,7 +45,7 @@ two-way arrows, click a box). Your pasted diagram lays out on its own: 10 nodes,
 ![flow](playground/shots/flow-pasted.png)
 
 Honest limits: busier than your hand-drawn one (terminals want right angles); it needs about 120 columns, and
-at 80 shows one node and its neighbours. jcode's prettier diagrams are images (Kitty, Sixel), which break in tmux.
+at 80 shows a node and its neighbours. jcode's prettier diagrams are images, which break in tmux.
 
 ## The graph idea, straight
 
@@ -55,11 +55,13 @@ diagram). Start with execution, live, agents on the boxes; the planner proposes 
 keys. No free-form editor, no rebuilding LangGraph's state machinery: our edge is that each box is file-scoped,
 proof-checked work with you on the loop. Later, opt-in: bounded loops.
 
-## Not proven
+## What is proven, and what is not
 
-Nothing here talks to a live agent; the numbers come from a simulator. **Tell** (a note that reaches a running
-agent) rests on Claude Code's hook docs ("next to the tool result"), which do not say it holds for `claude -p`:
-it needs one cheap probe. Dollars are parked; nothing here counts them.
+**Tell works, mostly.** A hook put a note next to a tool result and a real `claude -p` agent (Haiku, half a
+cent a run) followed it on its next step in 5 of 5 plain runs, and in 6 of 8 through Graphene's own hook
+(`dev/ui/playground/probe/`). A cheap model sometimes ignores a note, and a note cannot help calls already in
+flight; so the screen should show "heard" and the live tail, not "done". Not proven: a live agent on these
+screens (the numbers come from a simulator), and Codex.
 
 ## What I need from you
 
@@ -72,5 +74,5 @@ it needs one cheap probe. Dollars are parked; nothing here counts them.
 
 ## Next, if you like it
 
-An added screen in `graphene watch` behind a key, not a new default (124 tests pin today's 80-column strings):
-Look, then Answer (rows drive the existing take and sign-off), then Tell.
+An added screen in `graphene watch` behind a key, not a new default (124 tests pin today's strings): Look, then
+Answer (rows drive the existing take and sign-off), then Tell.
