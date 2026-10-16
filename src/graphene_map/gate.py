@@ -13,9 +13,10 @@ The holes, which the README and the map print beside the controls:
   git, which sees every write however it was made;
 - a session is refused one stop, and may stop after it (to ask the person); an executor is refused
   until the vendor lets it stop after 8 refused stops in a row; the node then stays open, visibly;
-- what the person says reaches a session with its next write or shell command, or when a command that
-  ran while they spoke ends (``_heard``); a note said after the session's last call is on the board
-  and reaches nobody, and a session that ignores it is not stopped: the log says it was heard;
+- what the person says reaches a session with its next write or shell command (``_heard``), not when a
+  command ends: told there, real agents followed a note in 1 run of 12, with a write in 12 of 14, and
+  told once it cannot be told again; a note said after the session's last call is on the board and
+  reaches nobody, and a session that ignores it is not stopped: the log says it was heard;
 - the refusals that read a command's text (GRAPHENE_AS, .graphene/) stop the ordinary spellings and
   not a determined one. What holds against that is elsewhere: ``plan.caller`` ranks an agent's own
   environment above the variable, and the store is the one thing nothing here can defend against a
@@ -616,14 +617,15 @@ def _heard(store, held: list[P.Node], event: dict) -> dict | None:
     if not new:
         return None
     name, tool = event.get("hook_event_name"), event.get("tool_name")
-    how = "shell ended" if name == "PostToolUse" else "shell" if tool == "Bash" else "write"
+    how = "shell" if tool == "Bash" else "write"
     agent_id = event.get("agent_id") if isinstance(event.get("agent_id"), str) else None
     by_id, said = {n.id: n for n in P.nodes(store)}, []
     try:
         with store.claim():  # two calls of one batch run two hooks at once: one of them tells
             for n in held:
                 key = f"told:{n.session_id}:{n.id}:{n.started_at}"
-                seen, on = json.loads(store.meta(key) or "[]"), {None, n.id, *(a.id for a in P.above(n, by_id))}
+                seen = json.loads(store.meta(key) or "[]")
+                on = {None, n.id, *(a.id for a in P.above(n, by_id))}
                 fresh = [it for it in new if it.get("about") in on and it["updated_at"] > (n.started_at or "")
                          and f"{it['id']}@{it['rev']}" not in seen]  # fmt: skip
                 if fresh:
@@ -636,7 +638,8 @@ def _heard(store, held: list[P.Node], event: dict) -> dict | None:
     if not said:
         return None
     lines = "\n".join(f"- {line}" for line in said)
-    return _context(str(name), f"Graphene: the person said this since you took {', '.join(n.id for n in held)}; "
+    took = ", ".join(n.id for n in held)
+    return _context(str(name), f"Graphene: the person said this since you took {took}; "
                     f"let it change your next step:\n{lines}")  # fmt: skip
 
 
@@ -792,11 +795,10 @@ def decide(store, event: dict, root: Path) -> dict | None:
 
     if name == "PostToolUse" and tool == "Bash":
         held = _held(store, sid)
-        heard = _heard(store, held, event)  # said while the command ran: it is told as it ends
         response = event.get("tool_response") if isinstance(event.get("tool_response"), dict) else {}
         diff = response.get("bashEditDiff") if isinstance(response.get("bashEditDiff"), dict) else {}
         if not held or diff.get("shared"):  # a list another command's changes leaked into proves nothing
-            return heard
+            return None
         changed = [_rel(p, root, cwd) for p in diff.get("changedFiles") or [] if isinstance(p, str)]
         standing = P.standing(store)
         # Graphene's own directory is written by `graphene` (a proposal to the direction): never a stray
@@ -805,7 +807,7 @@ def decide(store, event: dict, root: Path) -> dict | None:
         ignored = {r for r in _ignored(root, stray) if not P.kept_out_by(r, standing)}
         stray = [r for r in stray if r not in ignored]
         if not stray:
-            return heard
+            return None
         n = held[0]
         breach = {"paths": stray, "how": "shell"}
         _write(store.log_node, n.id, P._now(), "breach", n.executor, sid, None, breach)
@@ -816,6 +818,5 @@ def decide(store, event: dict, root: Path) -> dict | None:
                 f"({n.id}: {', '.join(n.scope)}). Put it back as it was now; `graphene node done` asks "
                 f"git and will refuse while it differs. {_how_out(store, sid, held, stray)}"
             ),
-            **(heard or {}),
         }
     return None

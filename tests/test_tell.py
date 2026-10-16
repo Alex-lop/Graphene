@@ -1,8 +1,9 @@
 """What the person says while an agent works reaches it with its next call: driven through hook_main,
 the one function Claude Code's hook really calls. A note of theirs, or their answer to a board
 question, about the leaf a session holds comes back as the vendor's additionalContext with the next
-write or shell command (or when a command that ran while they spoke ends), once, logged as told on
-the leaf, and never for what the session was already shown when it took the leaf."""
+write or shell command, once, logged as told on the leaf, and never for what the session was already
+shown when it took the leaf. Not when a command ends: told there, real agents followed a note in 1 run of
+12, with the next write in 12 of 14."""
 
 import io
 import json
@@ -50,7 +51,8 @@ def bash(repo, command="pytest -q"):
 
 def ended(repo, **response):
     done = {"stdout": "1 passed\n", **response}
-    return hook(repo, "PostToolUse", tool_name="Bash", tool_input={"command": "pytest -q"}, tool_response=done)
+    command = {"command": "pytest -q"}
+    return hook(repo, "PostToolUse", tool_name="Bash", tool_input=command, tool_response=done)
 
 
 def said(answer) -> str:
@@ -86,7 +88,7 @@ def test_a_note_about_the_leaf_is_told_with_the_next_write_once_and_logged_as_to
     assert write(repo) is None and bash(repo) is None  # once
     [row] = log(repo)
     assert row["detail"] == {"items": [note["id"]], "how": "write"}
-    assert row["session_id"] == SID and row["actor"] == "claude:7e117e11"  # who held the leaf when it was told
+    assert row["session_id"] == SID and row["actor"] == "claude:7e117e11"  # who held the leaf then
 
 
 def test_an_answer_to_a_board_question_is_told_with_the_next_shell_command(repo):
@@ -124,7 +126,8 @@ def test_what_the_session_was_shown_when_it_took_the_leaf_is_never_told_again(re
 def test_a_note_is_told_when_it_is_about_the_leaf_a_sub_goal_above_it_or_the_whole_plan_and_no_other(repo):
     with Store.open(repo) as store:
         plan.propose(store, [{"id": "g", "title": "g"}], ALEX)
-        plan.propose(store, [{"id": "n1", "title": "n1", "parent": "g", "scope": ["src/api/**"], "check": "true"}], ALEX)
+        n1 = {"id": "n1", "title": "n1", "parent": "g", "scope": ["src/api/**"], "check": "true"}
+        plan.propose(store, [n1], ALEX)
         plan.propose(store, [{"id": "n2", "title": "n2", "scope": ["src/db/**"], "check": "true"}], ALEX)
         plan.start(store, "n1", BOT, repo)
     say(repo, "about the sibling leaf", about="n2")
@@ -150,23 +153,27 @@ def test_a_refused_write_does_not_carry_the_note_and_the_next_call_does(repo):
     assert "keep it small" in said(write(repo))
 
 
-def test_a_command_that_ran_while_they_spoke_tells_it_when_it_ends(repo):
+def test_a_note_said_while_a_command_ran_is_not_told_as_it_ends_but_with_the_next_call(repo):
+    """Told as a command ended, real agents followed a note in 1 run of 12; with the next write, in 12 of 14.
+    And told once at the end it could not be told again with the write: the end of a command says nothing."""
     holding(repo)
     assert bash(repo, "pytest -q") is None  # the command starts; nothing is said yet
     say(repo, "stop after the first failure")
-    answer = ended(repo)
-    assert answer["hookSpecificOutput"]["hookEventName"] == "PostToolUse"
+    assert ended(repo) is None
+    answer = write(repo)
+    assert answer["hookSpecificOutput"]["hookEventName"] == "PreToolUse"
     assert "stop after the first failure" in said(answer)
-    assert ended(repo) is None and write(repo) is None
-    assert log(repo)[0]["detail"]["how"] == "shell ended"
+    assert write(repo) is None
+    assert log(repo)[0]["detail"]["how"] == "write"
 
 
-def test_a_command_refused_after_the_fact_still_carries_the_note(repo):
+def test_a_command_refused_after_the_fact_says_its_reason_and_the_note_waits_for_the_next_call(repo):
     holding(repo)
     say(repo, "mind the schema")
     answer = ended(repo, bashEditDiff={"changedFiles": [str(repo / "src/db/schema.py")]})
     assert answer["decision"] == "block" and "outside the scope" in answer["reason"]
-    assert "mind the schema" in said(answer)
+    assert "additionalContext" not in json.dumps(answer) and log(repo) == []
+    assert "mind the schema" in said(write(repo))
 
 
 def test_a_session_that_holds_no_leaf_is_told_nothing(repo):

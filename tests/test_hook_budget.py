@@ -249,13 +249,12 @@ WORK = {
     ("plan", "SessionStart"): (GATE, 13, 0),
     ("plan", "UserPromptSubmit"): (GATE, 17, 0),
     ("plan", "PreToolUse Read"): (RECORD, 5, 0),
-    # a write or a command's end reads the board once more for what the person said since the leaf was taken
+    # a write or a command reads the board once more for what the person said since the leaf was taken
     ("plan", "PreToolUse Edit"): (IN_FORCE | PATH, 20, 0),
     ("plan", "PostToolUse Read"): (RECORD, 8, 0),
-    ("plan", "PostToolUse Bash"): (IN_FORCE, 16, 0),
+    ("plan", "PostToolUse Bash"): (IN_FORCE, 15, 0),
     # ...and when there is something to tell: the plan's nodes, one claim, the ledger row and the log row
     ("heard", "PreToolUse Edit"): (IN_FORCE | PATH, 26, 0),
-    ("heard-ended", "PostToolUse Bash"): (IN_FORCE, 24, 0),
     ("plan", "SubagentStart"): (RECORD, 7, 0),
     ("plan", "Stop"): (GATE, 12, 0),
     ("plan", "PreToolUse Edit .graphene/direction.txt"): (RECORD, 6, 0),
@@ -270,11 +269,11 @@ def _repo(tmp_path: Path, kind: str) -> Path:
     with Store.open(repo) as store:
         if kind == "first":
             plan.set_plan_first(store, "auto", plan.Caller("alex", True))
-        if kind == "plan" or kind.startswith("heard"):
+        if kind in ("plan", "heard"):
             node = plan.Node("n1", "api", scope=["src/api/**"], check="true", state=plan.RUNNING)
             node.session_id = "s"
             store.put_node(plan.to_dict(node))
-        if kind.startswith("heard"):  # the person said something about the leaf since it was taken
+        if kind == "heard":  # the person said something about the leaf since it was taken
             board.note(store, "use spaces", plan.Caller("alex", True), about="n1")
     return repo
 
@@ -302,7 +301,7 @@ def test_each_event_imports_runs_and_starts_only_what_it_did(tmp_path, monkeypat
     monkeypatch.delenv("GRAPHENE_PLANNER", raising=False)
     monkeypatch.delenv("GRAPHENE_NODE", raising=False)
     found = {}
-    for kind in ("none", "first", "plan", "heard", "heard-ended"):
+    for kind in ("none", "first", "plan", "heard"):
         repo = _repo(tmp_path, kind)
         for state, label in WORK:
             if state != kind:
