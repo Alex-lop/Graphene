@@ -39,8 +39,8 @@ one static list. Nobody here is "the only one".
 
 What Graphene lacks, in this table: it holds a write before it happens only for Claude Code (for Codex and any other
 command, git finds it when the leaf is declared done); its hook fails open if it cannot run; a run says its worst
-case before it starts and a Claude Code attempt stops at $2, but no spend cap covers a whole run's total and Codex
-has no cap at all; a leaf allowed to edit the test its own check runs can weaken it, and `done` flags that and does
+case before it starts, a Claude Code attempt stops at $2 and `--max-usd N` starts nothing past N dollars (an
+attempt going is not stopped), but Codex has no cap of its own; a leaf allowed to edit the test its own check runs can weaken it, and `done` flags that and does
 not refuse it; and it is local, so nothing runs off your laptop.
 
 Plan approval, which this project first led with, is in Claude Code, Cursor, Kiro, Cline and Spec Kit. It is no

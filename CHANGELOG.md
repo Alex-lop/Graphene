@@ -32,7 +32,7 @@ fixed. Each line is one commit.
 - The replay's recorded run summary says `2 of 2 at once` and `you: 6 moves`, and its GIF is shot again from a tape
   anyone can run (`vhs docs/assets/watch.tape`).
 - CI: the suite runs in parallel (`pytest -n auto`, an autouse fixture clears COLUMNS and LINES), a push builds main,
-  a tag push gets a run, a pull request cancels its own earlier run; a hanging-keychain test no longer fails at three
+  a release tag runs the suite once, inside the release, a pull request cancels its own earlier run; a hanging-keychain test no longer fails at three
   workers on macOS; the bench's 63 tests are collected.
 - The package says in plain words what it is, its keywords lead with `claude-code`, and `graphene-map` is a command
   beside `graphene`, so `uvx graphene-map demo` works from 0.5.1 on.
@@ -40,6 +40,33 @@ fixed. Each line is one commit.
   prove the scorers at $0. No live run has been made.
 - The README, SECURITY, CONTRIBUTING, a bug form and the first-hour form are for people who are not all engineers;
   `docs/COMPARE.md` compares Graphene with eleven others, its gaps in the same table.
+
+What the controller night learned from jcode (15 October). Four readers took apart an agent harness with twenty
+thousand stars; three changes followed, and `dev/ui/IDEAS.md` says what it taught. Each line is one commit.
+- A leaf whose branch moved while it was built is checked on the merge before it lands: its check and the checks of
+  what this run landed since run on the merge, in a copy, and one that fails leaves the leaf in review with its
+  branch named. Two leaves green on their own base and red together used to land as two "done"s. A check that was
+  already red on the branch is said, and not held against the leaf; if the checkout moves while a merge is
+  checked, it is checked again. A leaf you sign off by hand, or one that ran in a sandbox, lands without it.
+- `graphene run --max-usd N` starts no attempt past N dollars: each is held at its worst case and settled at what it
+  spent, a start that does not fit waits for what is going, and one going is not stopped. A Codex attempt with no
+  list price counts at its worst case.
+- A release waits for the whole suite on the tagged commit, then runs the published version in a throwaway home
+  with `graphene demo --cheat`; CI lists what it skipped.
+- `graphene node show` says what a Claude Code attempt wrote to the cache and read from it, as the stream gave it.
+
+The live loop (16 October). Alex said the run was going backwards: it had hardened guarantees while the gap he set
+out to fix, between what a person means and what agents do, stayed open. The direction now is a person and their
+agents talking through one screen, with almost no text. Each line is one commit.
+- `dev/ui/playground/`: a standalone Textual app, not wired into `graphene`, with a cockpit (numbers on each row,
+  a live tail, the verbs), a territory map (which folders each task may write: before, live and after) and a flow
+  graph (a layered layout in box-drawing characters). `uv run python dev/ui/playground/app.py`.
+- `dev/ui/IDEAS.md`: a three-minute read of the problem, what jcode gets right, the three screens, the graph
+  idea, and five decisions made while Alex slept, each one line to flip.
+- What the person says while an agent works reaches it: a note (`graphene board note --about LEAF`) or an answer
+  on the board, about the leaf a Claude Code session holds, is told with the session's next write or shell command,
+  once, and logged as `told` on the leaf. In real `claude -p` runs (Haiku, half a cent each) a note told with a
+  write was followed on the next step in 12 runs of 14; one told as a command ended, in 1 of 12.
 
 Watch as the home, and one word for one thing (13 October). Alex asked for an honest direction after the feel
 pass and for a README a stranger can take in; this is the part that touches the product. Each line is one commit.

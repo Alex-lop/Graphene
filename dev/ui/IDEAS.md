@@ -54,11 +54,11 @@ with you on the loop.
 
 ## What is proven, and what is not
 
-**Tell works, mostly.** A hook put a note next to a tool result and a real `claude -p` agent (Haiku, half a
-cent a run) followed it on its next step in 5 of 5 plain runs, and in 6 of 8 through Graphene's own hook
-(`dev/ui/playground/probe/`; the gate's side is the leaf `tell`). A cheap model sometimes ignores a note, so the
-screen shows "heard" and the live tail, not "done". Not proven: a live agent on these screens (a simulator drives
-the numbers), and Codex.
+**Tell works, mostly.** Real `claude -p` agents (Haiku, half a cent a run) followed a note on their next step in
+12 runs of 14 when it came with their next write, and in 1 of 12 when it came as a command ended
+(`dev/ui/playground/probe/`; the gate's side is the leaf `tell`, and `tell-pre` drops the second). A cheap
+model sometimes ignores a note, so the screen shows "heard" and the live tail, not "done". Not proven: a live
+agent on these screens (a simulator drives the numbers), and Codex.
 
 ## Decided while you slept
 

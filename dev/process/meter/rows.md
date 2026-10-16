@@ -49,6 +49,9 @@ does not.
 
 - `prompt_tokens` counts every input token: Claude's `input_tokens + cache_creation_input_tokens +
   cache_read_input_tokens`, Codex's `input_tokens` (cached ones are inside it).
+- A Claude turn's row also keeps the three fields as they come (since 15 October): `input_tokens`,
+  `cache_creation_input_tokens`, `cache_read_input_tokens`. `node show` prints an attempt's written and read
+  sums; a row without them, or a Codex row, says nothing about the cache.
 - `endpoint` is `"claude code"`, `"codex"`, `"token factory"` or `"a stand-in"`.
 - `dollars` is at list price. Claude: the model's list price from `meter.PRICES` (cache writes at 1.25× input
   for 5 minutes, 2× for an hour; cache reads at the listed rate), so a turn's dollars climb as it runs; the

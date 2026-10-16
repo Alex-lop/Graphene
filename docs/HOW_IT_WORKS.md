@@ -1,7 +1,6 @@
 # How Graphene works
 
 Graphene keeps a plan that you and your coding agents share, holds the agents to it, and keeps a record of each piece.
-This is the reference to read after the README.
 
 ## The plan
 
@@ -63,8 +62,8 @@ You can answer nothing. What is left open takes its default when you accept the 
 `graphene board take` with no id. A question with no default stays open, and so does a default that drops a node: it
 waits for your own key.
 
-When it shows is the `board` setting. Unset, `board: auto`: only while a question is open. `board: on`: while any
-item is open. In `graphene watch` the open items are the first rows under the goal.
+`board: auto` (the default) shows it only while a question is open, `board: on` while any item is. In
+`graphene watch` the open items are the first rows under the goal.
 
 ## The views
 
@@ -72,11 +71,11 @@ The outline is `graphene plan`'s print and `graphene watch`'s tree: one row a no
 reads as (proposed, ready, waiting, running, came back, review, done). Finished sub-goals fold into one row. `Tab` in
 `graphene watch`, or `graphene plan --view NAME`, shows the others:
 
-- `tree` (`view_tree.py`) draws the plan top-down, each parent centred over its children; too wide, it drops the
+- `tree` draws the plan top-down, each parent centred over its children; too wide, it drops the
   titles, folds finished sub-goals, then lists each sub-goal's leaves down.
-- `dag` (`view_dag.py`) draws only leaves, left to right, by the chain of `needs` before each. One column can run at
+- `dag` draws only leaves, left to right, by the chain of `needs` before each. One column can run at
   once. The critical path is bold.
-- `time` (`view_time.py`) draws a lane for each leaf that has been held, under one for your moves. Each cell is what
+- `time` draws a lane for each leaf that has been held, under one for your moves. Each cell is what
   the executor mostly did then: editing █, running ▓, reading ▒, talking ░, idle ─; a hold the meter cannot see is ═.
   Marks: ! refused, ✓ ✗ the check, ↩ came back, ■ landed, ● running. In the outline, ∅ after a title flags a
   check that passes at the base, or fails outside its scope.
@@ -105,12 +104,12 @@ Graphene reads none of your words to decide this.
 with a tree; Graphene adds it as proposals. `graphene node split ID` asks it to cut a leaf;
 `--about ID` asks about one. In `graphene watch`, `:ask` alone opens your editor for the paragraph.
 
-The planner's prompt (`ask.RULES`, and the Nemotron planner's system prompt, version 6) tells it to read the
+The planner's prompt (Nemotron's system prompt, version 6) tells it to read the
 repository first, ask only what the code cannot settle, and put up at most three items, each a question or a risk. What
 it is sure of goes in the leaf's goal.
 
-The Nemotron planner answers in a strict JSON schema. Graphene repairs what needs no judgement; other faults go
-back together, at most twice. A Claude Code or Nemotron ask then names its planner, calls and dollars at list price.
+The Nemotron planner answers in a strict JSON schema; Graphene repairs what needs no judgement and sends other
+faults back, at most twice. An ask names its planner, calls and dollars at list price.
 If every answer is refused, the last proposal is kept and the commands that add it are printed.
 
 The `size` setting asks for a finer or coarser tree.
@@ -126,11 +125,13 @@ The `size` setting asks for a finer or coarser tree.
 4. commits the leaf's paths on its branch (`--no-verify`: your pre-commit and commit-msg hooks skip it) and merges
    it `--no-ff` into the branch you have checked out (your merge hooks run). The merge's message says what landed:
    the check and its result, the executor, its attempts and dollars, and the note a reopened leaf was sent back with.
-   A leaf that needs a sign-off is committed on its branch and waits in review: `y`, or `graphene node signoff`,
-   makes the merge.
+   If other leaves landed since this one was cut, its check and theirs run on the merge first; one that
+   fails leaves it in review. A leaf that needs a sign-off is committed on its branch and waits in review: `y`, or
+   `graphene node signoff`, makes the merge.
 
 The run's first line says where it lands, with what, how wide and under what cap; its second says the worst case
-(leaves, attempts, the cap) or that the executor has no cap. `graphene watch` in another terminal follows it live.
+(leaves, attempts, the cap) or that the executor has no cap. `--max-usd N` starts nothing past N dollars (each attempt
+is held at its worst case, then settled at what it spent). `graphene watch` in another terminal follows it live.
 Then ready leaves' checks run at the base: one that passes there tests nothing; one whose runner is missing cannot
 run here; an editable install a check would import is named; a reopened leaf's, which passed when it landed, is said
 so. Each is a warning, said before the leaf starts anyway (`--no-precheck` skips them).
@@ -143,11 +144,14 @@ A leaf that comes back says why and offers the fix: `w` widens its scope, `b` ad
 needed, `r` reopens the done leaf it found wrong and waits on it. Leaves whose scopes overlap never run at once; a
 leaf waits until what it needs has landed; if git cannot merge, the leaf stops in review with its branch named.
 
+What you say while a Claude Code session holds a leaf (`graphene board note --about ID`, or an answer) reaches
+it with its next write or shell command, once; `node show` records it as told.
+
 Ctrl-C, or `graphene run --stop` from another terminal, stops the executors and hands back every leaf that had not
 passed; `graphene run --here` runs one leaf in your own checkout and commits nothing.
 
-**What the scopes buy and cost.** A path has one writer, and a check runs only what its leaf owns or what exists at
-the base: that is the contract, and it caps the width.
+**What the scopes cost.** A path has one writer, and a check runs only what its leaf owns or what exists at the
+base: that caps the width.
 
 ## The executors
 
@@ -168,9 +172,9 @@ Whoever executes, a person included, is held at `done` by the check and git.
 
 ## The meter
 
-The meter reads each executor's own event stream as it runs (`src/graphene_map/meter.py`): Claude Code's
+The meter reads each executor's own event stream as it runs: Claude Code's
 `stream-json` and Codex's `--json` line by line; Nemotron writes its own rows. Any other command has no meter: it
-shows time and its log's tail, and says "no meter".
+shows time and its log's tail.
 
 It logs rows on the leaf: `usage` for each turn (model, tokens, dollars at list price), `did` for each tool call,
 `said` for what the agent says, and `ended` with the exit and seconds.
@@ -179,15 +183,15 @@ Claude Code's final report settles the dollars to what it says it cost. A Codex 
 **In `graphene watch`**, each running leaf has a live row: executor and model, time, dollars, turns, files touched
 (and how many outside the scope), tokens, and what it did last. **The two clocks**, in the status line, are
 **agents** (how many run now, their minutes over every attempt, the plan's dollars at list price) and **you** (your
-moves: accepted, dropped, edited, answered, a setting; and the minutes that hold at least one).
+moves, and the minutes that hold at least one).
 
 **The bill line**: `graphene run` ends with one line, for every executor:
 `run: 3 done · agents 41m, $2.8700 at list price · 2 of 3 at once · you: 4 moves, 2m`. `2 of 3 at once`: three
 leaves ran, at most two together. With no meter, the dollars say "no meter". `graphene plan log` keeps the line as a
 row; the goal's pane in watch shows the last.
 
-**`graphene node show`** lists each attempt: executor and model, time, turns, tokens, dollars, exit, then what it
-read, edited and ran, what was refused, and what it said last. A Claude Code executor is seen by the hooks and by
+**`graphene node show`** lists each attempt: executor and model, time, turns, tokens, dollars, exit, what it wrote to the cache and
+read from it (Claude Code), then what it read, edited and ran, what was refused, and what it said last. A Claude Code executor is seen by the hooks and by
 its stream: for the meter the stream wins, for the gate the hooks do, so a refused shell write may count twice.
 
 ## Where each mechanism ends
@@ -213,7 +217,9 @@ its stream: for the meter the stream wins, for the gate the hooks do, so a refus
   change what it sees.
 - A leaf that may edit a file its own check runs can make the check agree: `done` flags it, in the run and the
   record, and does not refuse it. Mark the leaf for sign-off to read the diff first.
-- No cap covers a whole run's total: an attempt stops at $2 with Claude Code, and Codex has none.
+- `--max-usd` stops starts, not an attempt going: Claude Code may end a turn past its $2; Codex with no cap counts
+  $3 an attempt until it is metered.
+- The merge is not checked for a sign-off (that is your yes) or a sandboxed leaf.
 
 ## The record
 
@@ -221,7 +227,7 @@ its stream: for the meter the stream wins, for the gate the hooks do, so a refus
 how it ended); what changed, from git, and the commit that landed it, with the `git revert -m 1` that takes it back
 (`graphene node diff ID` prints the diff); its attempts, from the meter, with the agent's last words whole; the writes
 the hooks refused and, apart from them, the commands the executor was refused; the check's result and its last line,
-whether it also passed at the base, and a file the check runs that the leaf changed; and your moves on it. `graphene plan record` opens with one row a leaf: what it changed, where it landed, what it cost. It works for any executor: it stands on the log, git, and the check Graphene ran itself.
+whether it also passed at the base, and a file the check runs that the leaf changed; and your moves on it. `graphene plan record` opens with one row a leaf: what it changed, where it landed, what it cost. It works for any executor.
 
 Claude Code's hooks add one thing: which changed path traces to a recorded write. Without them every path is graded
 "to git alone"; a count that cannot be supported says "not computed" and why.
@@ -241,8 +247,7 @@ reads no transcript.
 | `size: auto\|finer\|coarser` | How many leaves the planner is asked for |
 | `board: auto\|on` | When the board shows |
 
-`graphene config` also names the planner, the executor and plan first; the Token Factory key lives in
-`NEBIUS_API_KEY` or the keychain (`graphene key set`), never in a file.
+`graphene config` also names the planner, the executor and plan first.
 
 ## Privacy
 
@@ -260,8 +265,6 @@ it. Under auto it is yours at once.
 **How do I turn it off?** `graphene plan first off` lets a quick change through at once; `graphene init --remove`
 takes the hooks out, and the recording with them.
 
-**What doesn't it catch?** Every limit is listed under "Where each mechanism ends".
-
 ## The rest
 
 `graphene --help` lists nine commands. These work too, and `--help` after any of them says more.
@@ -270,10 +273,8 @@ takes the hooks out, and the recording with them.
 - `graphene demo --cheat` plays a script that tries seven ways round the locks against the real hook, git and check:
   six refused, one flagged, at $0. A script, not a model.
 - `graphene plan goal` sets the plan's goal, or prints it.
-- `graphene plan record` prints the record of the whole plan.
 - `graphene plan prompts leaf|strict` sets what a prompt typed into a session means.
 - `graphene plan ack` makes the uncommitted changes no leaf made yours.
-- `graphene plan seen` marks the plan as seen by you; `graphene plan changes` lists what others changed since.
 - `graphene node start <id>` takes a node and prints its contract. An executor runs it first.
 - `graphene node signoff <id>` signs off a node that waits for a person.
 - `graphene node reopen <id>` sends a finished node back, with what is wrong.
@@ -281,6 +282,5 @@ takes the hooks out, and the recording with them.
 - `graphene board park <id>` sets an item aside, told to nobody; `graphene board unpark <id>` opens it again.
 - `graphene talk why|split|merge|another` asks the planner about a node.
 - `graphene direction` prints the goals above your plans. Its subcommands change them.
-- Nemotron extra only: `graphene key set|check|remove` keeps the Token Factory key in the keychain; `graphene plan
-  cover`, `plan note` and `plan precheck` and `graphene board lookup` put a question to Nano: which leaf carries a
-  clause or a note, whether a check passes before any work, which open questions the repo answers.
+- Nemotron extra only: `graphene key set|check|remove` keeps the Token Factory key; `plan cover`, `plan note`,
+  `plan precheck` and `board lookup` put a question to Nano ([HACKATHON.md](HACKATHON.md)).

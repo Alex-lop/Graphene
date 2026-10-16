@@ -7,9 +7,15 @@
 
 # Graphene
 
-**Your AI coding agent stays inside the files you agreed to. "Done" means your tests passed, not that the agent said so.**
-
 </div>
+
+## Why I built this
+
+I believe that in the near future, whether through new models, better harnesses, or a shift off the LLM frame entirely, the limit on building software won't be tokens or cost. The limiting factor will be the human intervention and drive it takes to actually get the software out. I know this sounds a little wild. The conversation is still mostly "who has the better model?" and "what's the best harness?" For most applications, though, I think the current models are already completely capable of debugging and fixing the work.
+
+Ok, but not to ramble on too long, that idea is what drove me to build Graphene. No matter how many tokens you have, if you don't say which direction the application should go, the agent has to infer most of it. Graphene tries to bridge that connection between you and the agent. So, not claiming it magically saves 397% of your tokens but (ideally) it should help guide you and the agent toward that perfect idolized application you actually had in mind from the start.
+
+**Your AI coding agent stays inside the files you agreed to. "Done" means your tests passed, not that the agent said so.**
 
 You ask your assistant for one small change. It edits files you didn't ask it to touch and says all tests pass. They don't. You find out in the diff, after the money is spent.
 
@@ -41,7 +47,6 @@ Watch the locks hold: `graphene demo --cheat` tries seven ways round them.
 ## In your hands
 
 - **Stop:** Ctrl-C, `graphene run --stop`, or `:stop` in watch.
-- **Cost:** with Claude Code, $2 an attempt, three at most, and a run says its worst case first. Codex has no cap, and nothing caps the total yet. A real two-leaf run cost $0.30.
 - **Undo:** `git revert -m 1 <id>`, with the `landed:` id from `graphene node show <leaf>`.
 - **Leave:** `graphene init --remove`.
 
@@ -76,13 +81,6 @@ So do Cursor, Kiro and Cline ([compared, gaps included](https://github.com/Alex-
 - A leaf allowed to edit its own test can weaken it: `done` flags it, and a sign-off lets you read the diff first.
 - Not yet: a look at every diff before it lands. A leaf marked for sign-off waits for you, and `c` in watch shows its diff; the rest land when their check passes. [Every limit](https://github.com/Alex-lop/Graphene/blob/main/docs/HOW_IT_WORKS.md#where-each-mechanism-ends).
 - Honestly, in the three comparisons so far a plain paragraph to the same agent did just as well for less. What I'm betting on is when you find out what it understood: before the work, not after.
-
-</details>
-
-<details>
-<summary><b>Why I built this</b></summary>
-
-I believe the limit on building software won't be tokens or cost. It'll be the human direction it takes. If you don't say which direction the application should go, the agent has to infer most of it, and you find out what it inferred in the diff. Graphene tries to bridge that.
 
 </details>
 

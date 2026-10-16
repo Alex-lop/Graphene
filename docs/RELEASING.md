@@ -21,8 +21,13 @@ Publishing is driven by a git tag: push the tag, GitHub Actions builds and publi
    gh run watch
    ```
 
-   The workflow builds the wheel, installs it into a clean virtualenv and runs
-   `graphene --version` from it. Only if that passes does it publish.
+   The release first runs the whole suite on the tagged commit (`release.yml` calls `ci.yml`), builds the wheel,
+   installs it into a clean virtualenv and runs `graphene --version` from it. Only if all of that passes does it
+   publish. A tag push no longer starts a second CI run.
+
+   After the upload it runs the published version, `uvx --isolated --from graphene-map==<version> graphene demo
+   --cheat`, in a throwaway home, retrying while PyPI's index catches up. If that step fails the version is already
+   on PyPI: the fix is a new version, and `gh run watch` shows the CI legs nested under the release run.
 
 ## First time only
 

@@ -1,3 +1,31 @@
+# morning.md — 2026-10-16 — the live loop
+
+**What happened.** You said the run was going backwards, and it was: cost caps, cache splits and demos, none of them
+the gap between what you mean and what your agents do. So the README opens with your own "Why I built this" again
+(your 15 October text, word for word, and no cost talk), the cost and demo work is parked (your drop of
+`together-demo` and `record-study` stands), and the night went to the live loop.
+- `dev/ui/IDEAS.md`: the three-minute read. The problem, what jcode gets right, three screens, the graph idea, and
+  your five questions, each answered with a default so nothing waits on you; each flips with one line.
+- `dev/ui/playground/`: the thing to play with. `uv run python dev/ui/playground/app.py` (`--graph pasted` is your
+  diagram laid out in characters, `--repo .` is this repo's real plan; `c` `g` `m` switch screens, `t` tells).
+- **Tell** is in: what you say while a Claude Code session holds a leaf (`graphene board note --about ID`, or an
+  answer) reaches it with its next write or shell command, once, and `node show` records it as told. A Claude Code
+  run you started with "accept them all" built it (6 minutes); I checked it against real `claude -p` agents.
+
+**Waits for one key.** `tell-pre`, in `graphene watch`. The run also tells a note when a shell command ends, and
+real agents hardly follow it there: 1 run in 12, against 12 in 14 when it comes with the next write (one script,
+Haiku, 8 runs on each build tonight). A note told at a command's end is not told again with the write, so it
+spends the delivery that works. The fix drops it; it is small, and proposed, not landed.
+**Verified:** the whole suite, 2043 passed and 21 skipped in 5 minutes on a clean clone of `main` with Tell in; the
+playground, headless at 80x24, 120x36 and 60x20 and in a real terminal; Tell, against real agents (Haiku, half a
+cent a run). **Not verified:** a live agent behind the new screens (a simulator moves their numbers), and none of
+them is in `graphene watch` yet; Codex; GitHub's runners for the release.
+**Yours:** `git push origin main` (what is new since your last push, `939e98af`); the tag, `git tag v0.5.1 && git
+push origin v0.5.1`, since PyPI still has 0.5.0; play with the playground, then say which screen goes into `watch`.
+Rollback: `git revert` any commit.
+
+The controller night's brief (15 October) follows, kept.
+
 # morning.md — 2026-10-15 — the controller night
 
 **What happened.** The README was written for people who are not all engineers (stand-in readers: 4.9 to 7.2 of 10
