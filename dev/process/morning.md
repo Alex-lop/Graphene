@@ -1,5 +1,14 @@
 # morning.md — 2026-10-16 — the live loop
 
+**Fixed after the docs leaf (`pins-fix`).** The docs leaf cut `(view_tree.py)`, `(view_dag.py)` and `(view_time.py)`
+from the three view bullets of `docs/HOW_IT_WORKS.md` to keep under its word cap, and `tests/test_view_tree.py` finds
+the tree bullet by that name, so `main` had one red test. The bullets name their files again: 3277 words, under the
+3300 cap. The docs leaf's check ran three of the four docs tests (`test_how_it_works`, `test_doc_claims`,
+`test_free_words`) and not `test_view_tree.py`, which is how it landed green. **Measured:** those four files, 152
+passed and 1 failed without the names, 153 passed with them. **Not measured:** the whole suite, with or without the
+names; this leaf's shell runs only `graphene node` and `graphene plan`, so the 2043 passed below is from before the cut.
+Run `uv run pytest -q -n 6` on `main` once to put the number here.
+
 **What happened.** You said the run was going backwards, and it was: cost caps, cache splits and demos, none of them
 the gap between what you mean and what your agents do. So the README opens with your own "Why I built this" again
 (your 15 October text, word for word, and no cost talk), the cost and demo work is parked (your drop of

@@ -71,11 +71,11 @@ The outline is `graphene plan`'s print and `graphene watch`'s tree: one row a no
 reads as (proposed, ready, waiting, running, came back, review, done). Finished sub-goals fold into one row. `Tab` in
 `graphene watch`, or `graphene plan --view NAME`, shows the others:
 
-- `tree` draws the plan top-down, each parent centred over its children; too wide, it drops the
+- `tree` (`view_tree.py`) draws the plan top-down, each parent centred over its children; too wide, it drops the
   titles, folds finished sub-goals, then lists each sub-goal's leaves down.
-- `dag` draws only leaves, left to right, by the chain of `needs` before each. One column can run at
+- `dag` (`view_dag.py`) draws only leaves, left to right, by the chain of `needs` before each. One column can run at
   once. The critical path is bold.
-- `time` draws a lane for each leaf that has been held, under one for your moves. Each cell is what
+- `time` (`view_time.py`) draws a lane for each leaf that has been held, under one for your moves. Each cell is what
   the executor mostly did then: editing █, running ▓, reading ▒, talking ░, idle ─; a hold the meter cannot see is ═.
   Marks: ! refused, ✓ ✗ the check, ↩ came back, ■ landed, ● running. In the outline, ∅ after a title flags a
   check that passes at the base, or fails outside its scope.
