@@ -285,7 +285,7 @@ class Cockpit(App):
             else:
                 d.run_ready(sel if task is not None else None)
         elif action == "run-all":
-            d.run_ready()
+            self.run_all()
         elif action == "answer":
             q = next((q for q in m.questions if q.id == sel), None)
             if q is None:
@@ -303,6 +303,25 @@ class Cockpit(App):
         elif action == "command":
             self.push_screen(Ask("graphene "), lambda text: text and d.command(text))
         self.paint()
+
+    def run_all(self) -> None:
+        """R: every ready leaf. A run that could start more than one (each an executor that spends) asks
+        first; one leaf starts at once, and so does a run when no executor is chosen (it says so)."""
+        m, d = self.model, self.doer
+        could = [(n, w) for w in ("ready", "waiting") if (n := sum(t.state == w for t in m.tasks.values()))]
+        total = sum(n for n, _ in could)
+        if total <= 1 or not m.executor:
+            d.run_ready()
+            return
+        which = ", ".join(f"{n} {w}" for n, w in could)
+        said = f"run up to {total} leaves ({which}), at most 4 at once with {m.executor}"
+        said += "? y and Enter start them"
+
+        def answered(typed: str | None) -> None:
+            if (typed or "").lower() in ("y", "yes"):
+                d.run_ready()
+
+        self.push_screen(Ask(said), answered)
 
     def edit_with(self, argv: list[str]) -> None:
         """e and E: the node's contract, or the plan's text, in your $EDITOR: the screen steps aside."""

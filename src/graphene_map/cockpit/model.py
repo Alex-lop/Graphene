@@ -75,6 +75,7 @@ class Model:
         self.moved = False  # the person has chosen a row: until then the selection follows what needs them
         self.lens = "plan"
         self.first = ""  # plan first, as the person set it: on, auto or off
+        self.executor = ""  # who a run starts, when `graphene init` chose one (claude, codex...)
         self.banner = ""  # what the top row says it is, when it is not "your plan" (a replay)
         self.feed: list[tuple[float, str]] = []
         self.names: dict[str, str] = {}  # an agent's key (its session) -> its name, kept across looks

@@ -185,3 +185,31 @@ def test_s_splits_only_a_leaf_still_to_do(repo):
         assert app.model.latest().startswith("✗ ids is running")
 
     drive(repo, steps, running=True)
+
+
+def test_a_run_that_could_start_more_than_one_leaf_asks_first_and_one_leaf_starts_at_once(repo):
+    """The README says R asks first when more than one leaf could start: the cockpit holds it to that."""
+    make_plan(repo)  # ids is ready, docs waits on it: two leaves could start
+    with Store.open(repo) as store:
+        store.set_meta("executor", "claude -p")
+    app = cockpit(repo)
+    started = []
+
+    async def go():
+        async with app.run_test(size=(110, 30)) as pilot:
+            await pilot.pause(0.1)
+            app.doer.background = lambda argv: started.append(argv)
+            await pilot.press("R")
+            await pilot.pause(0.3)
+            assert type(app.screen).__name__ == "Ask" and not started  # it asked, and started nothing
+            await type_in(pilot, "y")
+            await pilot.press("enter")
+            await pilot.pause(0.3)
+            assert started and started[0][0] == "run"
+            started.clear()
+            app.model.tasks.pop("docs")  # one leaf left that could start: no question
+            await pilot.press("R")
+            await pilot.pause(0.2)
+            assert started and type(app.screen).__name__ != "Ask"
+
+    asyncio.run(go())

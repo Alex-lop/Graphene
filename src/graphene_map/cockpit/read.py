@@ -79,6 +79,8 @@ def read(
         m.files, m.files_at = P.tracked(root), now
     m.protected = S.protected(store) + S.readonly(store)
     m.first = P.plan_first(store)
+    chosen = (store.meta("executor") or "").split()  # what R starts, when `graphene init` chose it
+    m.executor = Path(chosen[0]).name if chosen else ""
     leaves = [n for n in nodes if not kids.get(n.id)]
     keep = {n.id for n in leaves}
     for n in leaves:
