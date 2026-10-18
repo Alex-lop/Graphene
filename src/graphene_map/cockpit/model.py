@@ -79,7 +79,8 @@ class Model:
         self.banner = ""  # what the top row says it is, when it is not "your plan" (a replay)
         self.feed: list[tuple[float, str]] = []
         self.names: dict[str, str] = {}  # an agent's key (its session) -> its name, kept across looks
-        self.seen: dict[str, tuple[float, list[str]]] = {}  # a leaf -> when git was asked, what it said
+        # a leaf -> when git was asked, the files it said, and which of them are outside the leaf's scope
+        self.seen: dict[str, tuple[float, list[str], list[str]]] = {}
         self._allowed: dict[tuple[str, tuple[str, ...]], int] = {}
 
     # -- reading ---------------------------------------------------------------------------------

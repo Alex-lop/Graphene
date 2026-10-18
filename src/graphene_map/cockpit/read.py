@@ -191,7 +191,7 @@ def live(store, m: Model, t: Task, node: P.Node) -> None:
                 t.stopped.append((str(d["path"]), at))
     if not t.events and sign["last"]:  # no rows and no calls: the last thing its log says
         t.events.append(Ev(m.clock - (t.idle or 0), "said", text=" ".join(str(sign["last"]).split())[:80]))
-    touched_by_git(m, t, node)
+    touched_by_git(store, m, t, node)
 
 
 def proofs(t: Task, node: P.Node) -> None:
@@ -258,23 +258,30 @@ def calls(store, t: Task, node: P.Node, count: int = 40) -> None:
             t.touched[path] = at
 
 
-def touched_by_git(m: Model, t: Task, node: P.Node) -> None:
+def touched_by_git(store, m: Model, t: Task, node: P.Node) -> None:
     """The files this leaf has changed so far, as the plan itself counts them (`plan.changed_since`: what
     differs from when it began, however it was written, a shell command included), asked of git at most
-    every few seconds for each leaf; and the ones its scope does not cover."""
+    every few seconds for each leaf; and the ones outside its scope as `node done` counts them
+    (`plan.outside_scope`: not what a leaf running beside it in the checkout may write, nor what a run
+    landed)."""
     if not (node.checkout and node.base_sha):
         t.outside = [p for p in t.touched if not P.in_scope(p, node.scope)]
         return
-    when, files = m.seen.get(t.id, (0.0, []))
+    when, files, outside = m.seen.get(t.id, (0.0, [], []))
     if m.clock - when >= GIT_EVERY or when > m.clock:
         try:
             files = P.changed_since(node.checkout, node.base_sha, node.dirty_at_start)
         except (P.Refused, OSError, subprocess.TimeoutExpired):
             files = list(t.touched)
-        m.seen[t.id] = (m.clock, files)
+        both = sorted({*files, *t.touched})
+        try:
+            outside = P.outside_scope(store, node, both)
+        except (P.Refused, OSError, subprocess.TimeoutExpired):
+            outside = [p for p in both if not P.in_scope(p, node.scope)]
+        m.seen[t.id] = (m.clock, files, outside)
     both = sorted({*files, *t.touched})  # what git sees, and what its own record says it edited
     t.touched = {p: t.touched.get(p, m.clock) for p in both}
-    t.outside = [p for p in both if not P.in_scope(p, node.scope)]
+    t.outside = [p for p in both if p in outside or (p not in files and not P.in_scope(p, node.scope))]
 
 
 def agent_key(store, node: P.Node) -> str:

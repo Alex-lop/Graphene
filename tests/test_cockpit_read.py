@@ -406,3 +406,19 @@ def test_a_leaf_with_proposed_children_is_still_a_task_as_the_engine_counts_it(r
     m = look(repo)
     assert m.tasks["ids"].state == "running" and m.tasks["ids_a"].state == "proposed"
     assert m.scoreboard()[1] == 1  # one running
+
+
+def test_a_file_another_leaf_in_the_same_checkout_may_write_is_not_outside_this_ones_scope(repo):
+    """`node done` leaves out what a leaf that ran beside this one was entitled to change; so does the row."""
+    plan_of(repo)
+    start(repo)  # ids, scope api.py
+    other = Caller("claude:7a7a7a7a", False, "7a7a7a7a-0000-4000-8000-0000000000a2")
+    with Store.open(repo) as store:
+        plan.start(store, "schema", other, repo)  # scope schema.py, in the same checkout
+    edit(repo, "schema.py")  # written while both are going: git cannot say by whom
+    m = look(repo)
+    assert m.tasks["ids"].outside == [] and m.tasks["schema"].outside == []
+    edit(repo, "stray.txt")  # in nobody's scope
+    with Store.open(repo) as store:
+        later = read(store, repo, m, now=m.clock + 6)
+    assert later.tasks["ids"].outside == ["stray.txt"]
