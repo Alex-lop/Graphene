@@ -64,3 +64,15 @@ def test_a_cycle_among_plain_edges_becomes_one_back_edge():
     ring = [GNode(x, x) for x in "abc"]
     lay = F.layout(ring, [GEdge("a", "b"), GEdge("b", "c"), GEdge("c", "a")], label_w=8)
     assert len(lay.rects) == 3 and len(lay.back) == 1
+
+
+def test_a_flat_list_wraps_into_columns_when_asked_and_keeps_its_order():
+    nodes = [F.GNode(f"n{i}", f"task {i}") for i in range(6)]
+    one = F.layout(nodes, [])
+    two = F.layout(nodes, [], columns=2)
+    assert len({r[0] for r in one.rects.values()}) == 1 and len({r[0] for r in two.rects.values()}) == 2
+    assert two.height < one.height
+    first = sorted(two.rects, key=lambda n: (two.rects[n][0], two.rects[n][1]))
+    assert first == [f"n{i}" for i in range(6)]  # the first column first, top to bottom
+    edged = F.layout(nodes, [F.GEdge("n0", "n1")], columns=2)  # an edge means layers: no wrapping
+    assert edged.layers["n1"] == 1 and edged.layers["n2"] == 0

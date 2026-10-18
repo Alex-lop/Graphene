@@ -3,6 +3,7 @@
 from cockpit_scene import scene
 
 from graphene_map.cockpit import flow_view as FV
+from graphene_map.cockpit import flowlayout as F
 from graphene_map.cockpit.model import Task
 
 
@@ -33,3 +34,11 @@ def test_a_graph_too_wide_for_the_terminal_shows_the_selected_tasks_neighbourhoo
     assert note.startswith("showing ") and "c3" in note
     assert "c3" in layout.rects and len(layout.rects) < len(nodes)
     assert all(line.width() <= 60 for line in lines)
+
+
+def test_a_plan_with_no_edges_is_laid_out_in_columns_not_one_long_column():
+    nodes = [F.GNode(f"t{i}", f"task {i}") for i in range(6)]
+    lines, lay, _note = FV.build_flow(nodes, [], 120, "t0")
+    assert len({r[0] for r in lay.rects.values()}) == 2 and len(lines) < len(F.layout(nodes, []).cells)
+    _lines, lay, _note = FV.build_flow(nodes, [], 20, "t0")  # too narrow for two: one column, as before
+    assert len({r[0] for r in lay.rects.values()}) == 1

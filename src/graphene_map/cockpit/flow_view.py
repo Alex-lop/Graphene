@@ -12,6 +12,8 @@ from .lines import Line, Seg
 from .look import FLOW_STYLES
 from .model import Model
 
+PER_COLUMN, MOST_COLUMNS = 4, 4  # boxes a column holds before a flat list starts another; most columns
+
 
 def flow_graph(m: Model) -> tuple[list[F.GNode], list[F.GEdge]]:
     nodes = [
@@ -28,8 +30,14 @@ def build_flow(
     """Lay the graph out as wide as it will go, then shrink labels, then show the neighbourhood."""
     note = ""
     lay = None
+    wrap = min(MOST_COLUMNS, -(-len(nodes) // PER_COLUMN)) if not edges else 1  # a flat list: a page of boxes
     for label_w in (18, 14, 12, 10):
-        lay = F.layout(nodes, edges, label_w=label_w, selected=selected, styles=FLOW_STYLES)
+        for columns in range(wrap, 0, -1):
+            lay = F.layout(
+                nodes, edges, label_w=label_w, selected=selected, styles=FLOW_STYLES, columns=columns
+            )
+            if lay.width <= width:
+                break
         if lay.width <= width:
             break
     if lay is not None and lay.width > width and selected and len(nodes) > 5:

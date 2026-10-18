@@ -80,8 +80,10 @@ def layout(
     label_w: int = 18,
     selected: str | None = None,
     styles: dict[str, str] | None = None,
+    columns: int = 1,
 ) -> Layout:
-    """Lay ``nodes`` out left to right and draw them. ``styles`` maps a node state to a style string."""
+    """Lay ``nodes`` out left to right and draw them. ``styles`` maps a node state to a style string. With no
+    edges there is nothing to order, so ``columns`` wraps the list into that many (the first column first)."""
     styles = styles or {}
     ids = [n.id for n in nodes]
     if not ids:
@@ -90,6 +92,9 @@ def layout(
     edges = [e for e in edges if e.a in by_id and e.b in by_id and e.a != e.b]
     forward, back = _split(ids, edges)
     layer = _layers(ids, forward)
+    if columns > 1 and not edges:
+        per = -(-len(ids) // columns)
+        layer = {n: k // per for k, n in enumerate(ids)}
     rows = _order(ids, forward, layer)  # layer -> [id or dummy]
     boxes = {n.id: _box(n, label_w) for n in nodes}
     return _draw(nodes, boxes, edges, forward, back, layer, rows, selected, styles)
