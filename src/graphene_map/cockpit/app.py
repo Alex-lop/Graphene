@@ -9,6 +9,8 @@ exists on its own (verbs.py), and the line at the bottom says what the last one 
 
 from __future__ import annotations
 
+import re
+import shlex
 from collections.abc import Callable
 from functools import partial
 from pathlib import Path
@@ -335,8 +337,11 @@ class Cockpit(App):
         """The line typed after `:`. `ask` alone is a paragraph, written in your editor, not on one line."""
         if not text or self.doer is None:
             return
-        if text.strip().removeprefix("graphene ").strip() == "ask":
+        words = text.strip().removeprefix("graphene ").strip()
+        if words == "ask":
             self.ask_in_editor()
+        elif re.match(r"(plan|node)\s+edit(\s|$)", words):  # an editor needs the terminal: this steps aside
+            self.edit_with(shlex.split(words))
         else:
             self.doer.command(text)
         self.paint()

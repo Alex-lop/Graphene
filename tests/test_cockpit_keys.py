@@ -264,3 +264,23 @@ def test_an_answer_goes_to_the_question_it_was_opened_on_though_the_selection_mo
     drive(repo, steps, question=True)
     [item] = [it for it in items(repo) if it["kind"] == "question"]
     assert item["answer"] == "use tabs"
+
+
+def test_colon_plan_edit_and_node_edit_hand_the_terminal_to_the_editor_as_e_does(repo):
+    make_plan(repo)
+    app = cockpit(repo)
+    edited = []
+
+    async def go():
+        async with app.run_test(size=(110, 30)) as pilot:
+            await pilot.pause(0.1)
+            app.edit_with = lambda argv: edited.append(argv)
+            for line in ("plan edit", "node edit ids"):
+                await pilot.press("colon")
+                await pilot.pause(0.2)
+                await type_in(pilot, line)
+                await pilot.press("enter")
+                await pilot.pause(0.2)
+
+    asyncio.run(go())
+    assert edited == [["plan", "edit"], ["node", "edit", "ids"]]
