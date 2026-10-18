@@ -19,7 +19,8 @@ def build_cockpit(m: Model, width: int, *, tell: str | None = None) -> list[Line
     need, running, done, total = m.scoreboard()
     tag = m.banner or ("replay" if m.source == "replay" else "your plan")
     parts = tag.split(" · ")
-    while len(" · ".join(parts)) > max(16, width // 2) and len(parts) > 2:
+    room = width - min(len(m.goal), 24) - 6  # the goal keeps what it needs, the banner the rest
+    while len(" · ".join(parts)) > max(16, room) and len(parts) > 2:
         parts.pop(1)  # narrow: what it is and where it is, the days and the models dropped
     tag = " · ".join(parts)
     head = [Seg(" " + fit(m.goal, width - len(tag) - 4), "bold"), Seg(" " * 1), Seg(tag, "grey50")]
