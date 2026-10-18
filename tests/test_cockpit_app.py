@@ -5,7 +5,7 @@ from dataclasses import replace
 
 import pytest
 from cockpit_scene import scene
-from textual.containers import ScrollableContainer
+from textual.containers import ScrollableContainer, VerticalScroll
 from textual.widgets import Static
 
 from graphene_map.cockpit.app import Canvas, Cockpit
@@ -144,6 +144,7 @@ def test_question_mark_opens_the_keys_on_one_screen_and_escape_closes_it():
             await pilot.press("question_mark")
             await pilot.pause(0.3)
             assert isinstance(app.screen, Help), [type(s).__name__ for s in app.screen_stack]
+            assert app.screen.query_one(VerticalScroll).max_scroll_y == 0  # all of it, on 80 by 24
             await pilot.press("escape")
             await pilot.pause(0.3)
             assert not isinstance(app.screen, Help)
@@ -224,5 +225,24 @@ def test_the_three_screens_open_on_a_plan_with_nothing_in_it():
                 await pilot.press(key)
                 await pilot.pause(0.05)
             assert app.is_running and app.view in ("cockpit", "flow", "territory")
+
+    run(go())
+
+
+def test_the_help_scrolls_from_the_keyboard_where_the_terminal_is_shorter_than_it():
+    async def go():
+        app = app_of(scene())
+        async with app.run_test(size=(80, 12)) as pilot:
+            await pilot.pause(0.1)
+            await pilot.press("question_mark")
+            await pilot.pause(0.3)
+            box = app.screen.query_one(VerticalScroll)
+            assert box.max_scroll_y > 0 and box.scroll_y == 0
+            await pilot.press("j", "j", "down")
+            await pilot.pause(0.2)
+            assert box.scroll_y > 0
+            await pilot.press("k", "k", "k", "k")
+            await pilot.pause(0.2)
+            assert box.scroll_y == 0
 
     run(go())
