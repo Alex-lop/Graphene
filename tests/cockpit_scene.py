@@ -19,6 +19,6 @@ def scene() -> Model:
         "docs": Task("docs", "docs for ids", "proposed"),
         "schema": Task("schema", "the schema", "done", changed=["db/schema.py", "db/m.py", "db/n.py"]),
     }
-    m.questions = [Question("q", "Keep old ids working?", "keep both", ["keep both", "drop old"])]
+    m.questions = [Question("q", "Keep old ids working?", "keep both", ["drop old"])]
     m.selected = "ids"
     return m

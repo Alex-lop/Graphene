@@ -11,7 +11,7 @@ from __future__ import annotations
 from . import territory as T
 from .lines import Line, Seg, ago, fit, pad
 from .look import STATE_GLYPH, color_of
-from .model import Model, Task
+from .model import Model, Question, Task
 
 
 def build_cockpit(m: Model, width: int, *, tell: str | None = None) -> list[Line]:
@@ -43,32 +43,31 @@ def build_cockpit(m: Model, width: int, *, tell: str | None = None) -> list[Line
     cols = max((sum(len(s.text) for s in right_of(m, t, width)) for t in m.tasks.values()), default=0)
     for kind, rid in m.order():
         if kind == "question":
-            q = next(q for q in m.questions if q.id == rid)
-            on = rid == sel
-            room = max(width - 6, 20)
-            keep = fit("⏎ " + q.default, max(room // 3, 12))
-            others = [fit(f"   {k + 1} {o}", 16) for k, o in enumerate(q.options) if o != q.default][:2]
-            spare = room - len(keep) - sum(len(o) for o in others)
-            segs = [
-                Seg(" ? ", "bold #c77dff"),
-                Seg(fit(q.text, max(spare, 12)), "bold" if on else ""),
-                Seg("  "),
-            ]
-            segs += [Seg(keep, "bold #c77dff", "take")]
-            for k, o in enumerate(q.options):
-                if (
-                    o != q.default
-                    and f"   {k + 1} {o}" in [x for x in others] + [fit(f"   {k + 1} {o}", 16)]
-                    and len(segs) < 8
-                ):
-                    segs += [Seg(fit(f"   {k + 1} {o}", 16), "#c77dff", f"pick:{k}")]
-            out.append(Line(pad(segs, width, "reverse" if on else ""), rid))
+            out.append(question_line(next(q for q in m.questions if q.id == rid), width, rid == sel))
             continue
         t = m.tasks[rid]
         out += task_lines(m, t, width, expanded=(rid == sel), tell=tell if rid == sel else None, cols=cols)
     if m.folded_done:
         out.append(Line([Seg(f"   ✓ {m.folded_done} more proven", "grey50")]))
     return out
+
+
+def question_line(q: Question, width: int, on: bool) -> Line:
+    """? the question, ⏎ its default, and the other options by the numbers `graphene board pick` takes."""
+    room = max(width - 6, 20)
+    keep = fit("⏎ " + q.default, max(room // 3, 12))
+    options = [(k, fit(f"   {k} {o}", 16)) for k, o in enumerate(q.options, 1)][:2]  # the first two fit
+    spare = room - len(keep) - sum(len(text) for _, text in options)
+    segs = [
+        Seg(" ? ", "bold #c77dff"),
+        Seg(fit(q.text, max(spare, 12)), "bold" if on else ""),
+        Seg("  "),
+        Seg(keep, "bold #c77dff", "take"),
+        *(Seg(text, "#c77dff", f"pick:{k}") for k, text in options),
+    ]
+    if on:
+        segs = [Seg(s.text, (s.style + FOCUS_BG).strip(), s.action) for s in segs]
+    return Line(pad(segs, width, FOCUS_BG.strip() if on else ""), q.id)
 
 
 LEAD = 12  # "▶ ● fox    "
