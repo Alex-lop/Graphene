@@ -1,5 +1,25 @@
 # Changelog
 
+## Unreleased
+
+The new watch (17 October). 0.5.1 holds the older screen; `graphene watch` now opens the one Alex judged in
+`dev/ui/playground/`, fed by the real plan and wired to the real commands. Each line is one change.
+- `graphene watch` is a cockpit: a row a task, with its agent's name, what it did last, files touched of files
+  allowed, checks passed, and how long it has been quiet. What waits for you is on top and Enter takes it.
+  `--classic` is the older outline, and `--view` (tree, dag, time) still picks among its views.
+- The keys talk to an agent: `t` tells a running one a line (it hears it with its next write or command, and the
+  row says when it has), `w` gives it the path the gate stopped, `x` hands it back or reopens a finished one
+  with what is wrong, `r` and `R` run a leaf or every ready one, `D` shows the direction. Each is an ordinary
+  `graphene` command, and the line under the rows says which one ran.
+- `g` is the plan as boxes and arrows; `m` is the map of the folders each task may write, with `v` for its lens
+  (plan, live, changed) and `p` to paint a folder to a task. Tab goes on, `c` returns to the cockpit.
+- Enter on a row opens everything about it in four panes (contract, output, changes, record); `c` there shows
+  the leaf's whole diff, as `graphene node diff` does.
+- `graphene demo` plays its recording in the cockpit (space pauses, `.` is the next change, `r` plays it again);
+  `graphene demo --classic` plays it in the older outline. The README's GIF and stills are that screen.
+- The cockpit reads a plan in a few milliseconds (53 ms at 22,000 log rows), and a closed terminal ends it.
+- Help text no longer fails on GitHub's runners, which force colour: an autouse fixture turns it off.
+
 ## 0.5.1 (14 October 2026)
 
 Everything since the v0.5.0 tag. The wheel on PyPI as 0.5.0 was uploaded on 13 October from that tag, which is
