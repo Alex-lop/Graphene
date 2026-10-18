@@ -5,7 +5,7 @@ import asyncio
 from graphene_map import demo as D
 from graphene_map.cockpit.app import Canvas
 from graphene_map.cockpit.help import Help
-from graphene_map.cockpit.replay import CockpitReplay, banner
+from graphene_map.cockpit.replay import CockpitReplay, banner, news
 
 
 def replay(tmp_path):
@@ -89,3 +89,21 @@ def test_the_help_adds_the_replays_own_keys_and_the_banner_names_the_day():
 
     with tempfile.TemporaryDirectory() as tmp:
         asyncio.run(go(Path(tmp)))
+
+
+def test_the_news_says_what_an_agent_did_and_why_a_leaf_came_back_not_the_bookkeeping():
+    import json
+
+    def row(node, kind, **detail):
+        return {"node_id": node, "kind": kind, "detail": json.dumps(detail)}
+
+    line = {"node_log": [
+        row("greet", "usage", model="x", calls=1), row("greet", "did", verb="editing", target="app.py"),
+        row("greet", "said", text="the word\n lives in words.py"),
+        row("greet", "released", why="it needs words.py"), row("greet", "ended", exit=0),
+    ]}  # fmt: skip
+    said = ["greet: editing app.py", "greet: the word lives in words.py"]
+    said += ["greet came back: it needs words.py"]
+    assert news(line) == " · ".join(said)
+    assert news({"node_log": [row("bye", "landed")]}) == "bye landed"
+    assert news({"nodes": {"bye": {"state": "done"}}}) == "bye done"  # nothing in words: the replay's own

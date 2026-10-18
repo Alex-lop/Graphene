@@ -11,6 +11,7 @@ it again from the start.
 from __future__ import annotations
 
 import asyncio
+import json
 import signal
 import time
 from pathlib import Path
@@ -27,6 +28,29 @@ from .read import epoch, read
 REFUSED = "a replay: nothing runs here"
 REPLAY_KEYS = (("space", "pause, or play on"), (".", "the next change, and stay paused"),
                ("r", "play it again from the start"))  # fmt: skip
+
+
+MILESTONES = ("finished", "landed", "signed_off", "accepted", "proposed", "added", "reopened", "rolled_up")
+
+
+def news(line: dict) -> str:
+    """One recorded change in a person's words: what an agent did or said, why a leaf came back, what landed;
+    not the bookkeeping rows (usage, model, attempt, ended) the log also holds. The last three, if more."""
+    said = []
+    for row in line.get("node_log") or []:
+        detail = json.loads(row.get("detail") or "{}")
+        kind, node = row["kind"], row["node_id"]
+        if kind == "did":
+            said.append(f"{node}: {detail.get('verb', '')} {detail.get('target', '')}".strip())
+        elif kind == "said":
+            said.append(f"{node}: {' '.join(str(detail.get('text', '')).split())[:60]}")
+        elif kind == "released":
+            said.append(f"{node} came back: {' '.join(str(detail.get('why', '')).split())[:60]}")
+        elif kind in MILESTONES:
+            said.append(f"{node} {kind.replace('_', ' ')}")
+        elif kind == "board":
+            said.append(f"{detail.get('act', 'board')} {detail.get('item', '')}".strip())
+    return " · ".join(said[-3:]) or D.what(line)
 
 
 def banner(head: dict, state: str = "") -> str:
@@ -81,7 +105,7 @@ class CockpitReplay(Cockpit):
         with Store.open(self.root) as store:
             while self.next < len(self.lines) and self.lines[self.next]["at"] <= due:
                 D.apply(store, self.lines[self.next], self.root)
-                said.append(D.what(self.lines[self.next]))
+                said.append(news(self.lines[self.next]))
                 self.files = self.lines[self.next].get("tracked", self.files)
                 self.next += 1
         of = f"{self.next} of {len(self.lines)}"
