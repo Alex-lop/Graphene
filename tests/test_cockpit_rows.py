@@ -3,7 +3,7 @@
 from cockpit_scene import scene
 
 from graphene_map.cockpit import rows
-from graphene_map.cockpit.model import Model
+from graphene_map.cockpit.model import Model, Task
 
 
 def plain(lines) -> list[str]:
@@ -116,3 +116,18 @@ def test_a_narrow_banner_keeps_what_it_is_and_where_it_is():
     narrow = plain(rows.build_cockpit(m, 60))[0]
     assert "as it ran, live · 2026-10-09" in wide
     assert narrow.rstrip().endswith("replay · 120 of 138") and len(narrow) <= 60
+
+
+def test_a_long_reason_a_leaf_came_back_with_is_cut_on_its_row_and_whole_when_the_row_is_open():
+    m = scene()
+    note = "I need README.md and tests/test_api.py, but my scope covers only src/ and the gate stopped both"
+    back = Task("back", "retry the migration", "came back", agent="wren", note=note)
+    m.tasks["back"] = back
+    for width in (60, 80, 120):
+        lines = rows.build_cockpit(m, width)
+        assert all(line.width() <= width for line in lines)
+        row = next(line for line in lines if line.row == "back")
+        assert "retry the" in row.plain() and "…" in row.plain() and "⏎ try again" in row.plain()
+    m.selected = "back"
+    text = " ".join(line.plain() for line in rows.build_cockpit(m, 80))
+    assert "gate stopped both" in " ".join(text.replace("┊", " ").split())

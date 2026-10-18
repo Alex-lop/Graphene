@@ -8,6 +8,8 @@ opens: the last lines of what the agent did, what the person told it and whether
 
 from __future__ import annotations
 
+import textwrap
+
 from . import territory as T
 from .lines import Line, Seg, ago, fit, pad
 from .look import STATE_GLYPH, color_of
@@ -120,8 +122,9 @@ def right_of(m: Model, t: Task, width: int) -> list[Seg]:
     if t.state == "review":
         proof = f"✓{t.passed}/{t.checks}  " if t.checks else ""
         return [Seg(proof, "#8ab17d"), Seg("⏎ sign off", "bold #c77dff", "take")]
-    if t.state == "came back":
-        return [Seg(t.note or "stuck", "#ef476f"), Seg("   ⏎ try again", "bold #c77dff", "take")]
+    if t.state == "came back":  # the reason is cut to a third of the row: the open row says all of it
+        why = fit(t.note or "stuck", max(width // 3, 16))
+        return [Seg(why, "#ef476f"), Seg("   ⏎ try again", "bold #c77dff", "take")]
     if t.state == "proposed":
         return [Seg("⏎ accept", "bold #4cc9f0", "take")]
     if t.state == "yours":
@@ -176,6 +179,9 @@ def _outside(m: Model, t: Task) -> list[str]:
 
 def expansion(m: Model, t: Task, width: int, tell: str | None) -> list[Line]:
     out: list[Line] = []
+    if t.state == "came back" and len(t.note) > max(width // 3, 16):  # what the row had to cut
+        for part in textwrap.wrap(t.note, max(width - 12, 20))[:3]:
+            out.append(Line([Seg("      ┊ ", "grey35"), Seg(part, "#ef476f")], t.id))
     for line in m.tail(t, 3):
         style = "#e76f51" if line.startswith("stopped") else "grey70"
         out.append(Line([Seg("      ┊ ", "grey35"), Seg(fit(line, width - 10), style)], t.id))
