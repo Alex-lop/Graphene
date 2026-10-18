@@ -282,3 +282,18 @@ def test_the_graph_and_the_map_scroll_to_what_is_selected_when_there_are_more_th
 
     run(go())
     run(folders())
+
+
+def test_a_line_wider_than_the_screen_is_cut_and_never_wraps_under_the_rows_below_it():
+    from graphene_map.cockpit.lines import Line, Seg
+
+    async def go():
+        app = app_of(scene())
+        async with app.run_test(size=(80, 24)) as pilot:
+            await pilot.pause(0.1)
+            canvas = app.query_one(Canvas)
+            canvas.set_lines([Line([Seg("x" * 300)]), Line([Seg("second")])])
+            await pilot.pause(0.2)
+            assert canvas.virtual_size.height == 2 and canvas.size.height == 2
+
+    run(go())

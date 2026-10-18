@@ -55,7 +55,8 @@ LEGEND = "✎ files touched of allowed · ✓ proofs · ! writes stopped · ⏸ 
 class Canvas(Widget):
     """Paints lines of segments and turns a click on a segment into that segment's action."""
 
-    DEFAULT_CSS = "Canvas { height: auto; width: auto; }"
+    # a line wider than the screen is cut, not wrapped: wrapped, it would shift every row and click under it
+    DEFAULT_CSS = "Canvas { height: auto; width: auto; text-wrap: nowrap; text-overflow: clip; }"
 
     def __init__(self) -> None:
         super().__init__()
