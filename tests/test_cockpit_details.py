@@ -104,3 +104,27 @@ def test_the_keys_line_fits_80_columns_and_keeps_esc_and_a_single_pane_has_no_ju
             assert "Tab" not in foot and "contract" not in foot and foot.rstrip().endswith("Esc back")
 
     asyncio.run(go())
+
+
+def test_enter_then_c_shows_what_a_landed_leaf_changed(repo):
+    """README: Enter on a row, then c, is the leaf's diff, as `graphene node diff` has it."""
+    from graphene_map.run import run_parallel
+
+    with Store.open(repo) as store:
+        leaf = {"id": "a", "title": "write a", "scope": ["a.txt"], "check": "test -s a.txt"}
+        plan.propose(store, [leaf], plan.Caller("alex", True))
+    run_parallel(lambda: Store.open(repo), repo, repo, 1, "sh -c 'echo a > a.txt'", say=[].append)
+    app = cockpit(repo)
+    app.open_store = lambda: Store.open(repo)
+
+    async def go():
+        async with app.run_test(size=(100, 30)) as pilot:
+            await pilot.pause(0.3)
+            app.model.selected = "a"
+            await pilot.press("enter")
+            await pilot.pause(0.3)
+            await pilot.press("c")
+            await pilot.pause(0.3)
+            assert app.screen.which == "changes" and "a.txt" in text_of(app)
+
+    asyncio.run(go())
