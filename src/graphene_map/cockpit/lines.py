@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from rich.cells import cell_len, set_cell_size
+
 
 @dataclass
 class Seg:
@@ -26,25 +28,50 @@ class Line:
         return "".join(s.text for s in self.segs)
 
     def width(self) -> int:
-        return sum(len(s.text) for s in self.segs)
+        return span(self.segs)
+
+
+def span(segs: list[Seg]) -> int:
+    """Terminal cells the segments take: a CJK character or an emoji is two, so it is not `len`."""
+    return sum(cell_len(s.text) for s in segs)
 
 
 def seg_at(line: Line, x: int) -> Seg | None:
     at = 0
     for s in line.segs:
-        if at <= x < at + len(s.text):
+        if at <= x < at + cell_len(s.text):
             return s
-        at += len(s.text)
+        at += cell_len(s.text)
     return None
 
 
 def pad(segs: list[Seg], width: int, style: str = "") -> list[Seg]:
-    used = sum(len(s.text) for s in segs)
+    used = span(segs)
     return segs + ([Seg(" " * (width - used), style)] if used < width else [])
 
 
+def ljust(text: str, width: int) -> str:
+    """`str.ljust` in cells."""
+    return text + " " * (width - cell_len(text))
+
+
 def fit(text: str, width: int) -> str:
-    return text if len(text) <= width else text[: max(width - 1, 0)] + "…"
+    """The text in ``width`` cells: whole, or cut and ending in an ellipsis."""
+    if cell_len(text) <= width:
+        return text
+    return set_cell_size(text, max(width - 1, 0)).rstrip() + "…"
+
+
+def fit_end(text: str, width: int) -> str:
+    """The end of the text in ``width`` cells, with an ellipsis in front: a folder keeps its last part."""
+    if cell_len(text) <= width:
+        return text
+    kept, used = "", 1
+    for ch in reversed(text):
+        if used + cell_len(ch) > width:
+            break
+        kept, used = ch + kept, used + cell_len(ch)
+    return "…" + kept
 
 
 def ago(seconds: float) -> str:

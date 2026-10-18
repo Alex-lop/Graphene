@@ -15,6 +15,8 @@ from __future__ import annotations
 import textwrap
 from dataclasses import dataclass, field
 
+from rich.cells import cell_len
+
 N, E, S, W = 1, 2, 4, 8
 JOIN = {
     0: " ", N: "│", S: "│", N | S: "│", E: "─", W: "─", E | W: "─",
@@ -199,8 +201,17 @@ def _box(n: GNode, label_w: int) -> Box:
     lines = textwrap.wrap(n.label, label_w, break_long_words=True) or [n.id]
     if len(lines) > 3:
         lines = [*lines[:2], lines[2][: label_w - 1] + "…"]
-    inner = max(max(len(x) for x in lines), len(n.badge) + 4, 6)
-    return Box([x.ljust(inner) for x in lines], inner + 4, len(lines) + 2)
+    inner = max(max(cell_len(x) for x in lines), len(n.badge) + 4, 6)  # in cells: a wide character is two
+    return Box([x + " " * (inner - cell_len(x)) for x in lines], inner + 4, len(lines) + 2)
+
+
+def spread(text: str) -> list[str]:
+    """One entry for each terminal cell the text covers: a wide character is itself, then an empty cell."""
+    out: list[str] = []
+    for ch in text:
+        out.append(ch)
+        out += [""] * (cell_len(ch) - 1)
+    return out
 
 
 # -- drawing -----------------------------------------------------------------------------------------
@@ -408,7 +419,7 @@ def _draw(nodes, boxes, edges, forward, back, layer, rows, selected, styles) -> 
             cells[by][bx + dx] = (ch, sel)
         for dy, text in enumerate(b.lines, 1):
             cells[by + dy][bx] = (vt, sel)
-            for dx, ch in enumerate(" " + text + " "):
+            for dx, ch in enumerate(spread(" " + text + " ")):
                 cells[by + dy][bx + 1 + dx] = (
                     ch,
                     sel if n.id == selected else styles.get(f"label:{n.state}", ""),

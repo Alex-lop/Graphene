@@ -76,3 +76,13 @@ def test_a_flat_list_wraps_into_columns_when_asked_and_keeps_its_order():
     assert first == [f"n{i}" for i in range(6)]  # the first column first, top to bottom
     edged = F.layout(nodes, [F.GEdge("n0", "n1")], columns=2)  # an edge means layers: no wrapping
     assert edged.layers["n1"] == 1 and edged.layers["n2"] == 0
+
+
+def test_a_box_whose_label_has_wide_characters_keeps_its_borders_in_line():
+    from rich.cells import cell_len
+
+    lay = F.layout([F.GNode("a", "日本語のタスク"), F.GNode("b", "ok")], [])
+    x0, y0, x1, y1 = lay.rects["a"]
+    rows = ["".join(c for c, _ in lay.cells[y]) for y in range(y0, y1 + 1)]
+    assert {cell_len(r.rstrip()) for r in rows} == {x1 + 1}  # every row of the box ends in its border's cell
+    assert len(lay.cells[y0]) == len(lay.cells[y1])

@@ -9,8 +9,10 @@ was outside the scope.
 
 from __future__ import annotations
 
+from rich.cells import cell_len
+
 from . import territory as T
-from .lines import Line, Seg, pad
+from .lines import Line, Seg, fit_end, ljust, pad
 from .model import Model
 
 HEAD = 3  # lines above the first folder: the total, the lens, the rule
@@ -36,17 +38,16 @@ def build_territory(m: Model, width: int, cursor: int = 0) -> tuple[list[Line], 
         note += [Seg("   protected: " + " ".join(summary["protected"]), "#ef476f")]
     out.append(Line(pad(note, width)))
     out.append(Line([Seg("─" * width, "grey30")]))
-    namew = min(28, max(16, max((len(g.name) for g in groups), default=16)))
+    namew = min(28, max(16, max((cell_len(g.name) for g in groups), default=16)))
     barw = max(12, min(30, width - namew - 30))
     sel = m.tasks.get(m.selected)
     for k, g in enumerate(groups):
         mine = bool(sel) and g.owners.get(sel.id, 0) > 0
         runs = T.bar(g, barw, m.lens, m.color)
-        label = g.name if len(g.name) <= namew else "…" + g.name[-(namew - 1) :]
-        segs = [
-            Seg("▶" if k == cursor else " ", "bold"),
-            Seg(f" {label:<{namew}} ", "bold" if k == cursor else ("#e9c46a" if mine else ""), f"group:{k}"),
-        ]
+        label = fit_end(g.name, namew)
+        name_style = "bold" if k == cursor else ("#e9c46a" if mine else "")
+        name = Seg(f" {ljust(label, namew)} ", name_style, f"group:{k}")
+        segs = [Seg("▶" if k == cursor else " ", "bold"), name]
         segs += [Seg(text, style, f"group:{k}") for text, style in runs]
         segs += [Seg("  ")]
         if m.lens == "changed":

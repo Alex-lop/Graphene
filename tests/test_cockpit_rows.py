@@ -131,3 +131,15 @@ def test_a_long_reason_a_leaf_came_back_with_is_cut_on_its_row_and_whole_when_th
     m.selected = "back"
     text = " ".join(line.plain() for line in rows.build_cockpit(m, 80))
     assert "gate stopped both" in " ".join(text.replace("┊", " ").split())
+
+
+def test_a_title_with_wide_characters_is_measured_in_cells_so_no_row_is_wider_than_the_screen():
+    from rich.cells import cell_len
+
+    m = scene()
+    m.tasks["ids"].title = "ユーザーのIDを返す ✅ 日本語のタスク"
+    m.tasks["migrate"].title = "emoji 🎉🎉🎉 in a title"
+    for width in (60, 80, 120):
+        lines = rows.build_cockpit(m, width)
+        assert all(cell_len(line.plain()) <= width for line in lines)  # counted by the terminal, not by len
+        assert len({cell_len(line.plain()) for line in lines if line.row in ("ids", "migrate", "tests")}) == 1

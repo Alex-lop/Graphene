@@ -10,8 +10,10 @@ from __future__ import annotations
 
 import textwrap
 
+from rich.cells import cell_len
+
 from . import territory as T
-from .lines import Line, Seg, ago, fit, pad
+from .lines import Line, Seg, ago, fit, ljust, pad, span
 from .look import STATE_GLYPH, color_of
 from .model import Model, Question, Task
 
@@ -21,11 +23,11 @@ def build_cockpit(m: Model, width: int, *, tell: str | None = None) -> list[Line
     need, running, done, total = m.scoreboard()
     tag = m.banner or ("replay" if m.source == "replay" else "your plan")
     parts = tag.split(" · ")
-    room = width - min(len(m.goal), 24) - 6  # the goal keeps what it needs, the banner the rest
-    while len(" · ".join(parts)) > max(16, room) and len(parts) > 2:
+    room = width - min(cell_len(m.goal), 24) - 6  # the goal keeps what it needs, the banner the rest
+    while cell_len(" · ".join(parts)) > max(16, room) and len(parts) > 2:
         parts.pop(1)  # narrow: what it is and where it is, the days and the models dropped
     tag = " · ".join(parts)
-    head = [Seg(" " + fit(m.goal, width - len(tag) - 4), "bold"), Seg(" " * 1), Seg(tag, "grey50")]
+    head = [Seg(" " + fit(m.goal, width - cell_len(tag) - 4), "bold"), Seg(" " * 1), Seg(tag, "grey50")]
     out.append(Line(pad(head, width)))
     out.append(
         Line(
@@ -47,7 +49,7 @@ def build_cockpit(m: Model, width: int, *, tell: str | None = None) -> list[Line
     out.append(Line(pad([Seg(" " + "▰" * fill, "#8ab17d"), Seg("▱" * (cells - fill), "grey35")], width)))
     out.append(Line([Seg("─" * width, "grey30")]))
     sel = m.selected
-    cols = max((sum(len(s.text) for s in right_of(m, t, width)) for t in m.tasks.values()), default=0)
+    cols = max((span(right_of(m, t, width)) for t in m.tasks.values()), default=0)
     if not m.order() and not m.folded_done:
         return out + empty(width)
     for kind, rid in m.order():
@@ -79,7 +81,7 @@ def question_line(q: Question, width: int, on: bool) -> Line:
     room = max(width - 6, 20)
     keep = fit("⏎ " + q.default, max(room // 3, 12))
     options = [(k, fit(f"   {k} {o}", 16)) for k, o in enumerate(q.options, 1)][:2]  # the first two fit
-    spare = room - len(keep) - sum(len(text) for _, text in options)
+    spare = room - cell_len(keep) - sum(cell_len(text) for _, text in options)
     segs = [
         Seg(" ? ", "bold #c77dff"),
         Seg(fit(q.text, max(spare, 12)), "bold" if on else ""),
@@ -154,10 +156,9 @@ def task_lines(
     ]
     right = right_of(m, t, width)
     room = max(12, width - LEAD - cols - 1)
-    gap = [Seg(" " * max(0, cols - sum(len(s.text) for s in right)))] if cols else []
-    segs = (
-        lead + [Seg(fit(t.title, room - 1).ljust(room), "bold" if on else "", f"select:{t.id}")] + right + gap
-    )
+    gap = [Seg(" " * max(0, cols - span(right)))] if cols else []
+    title = Seg(ljust(fit(t.title, room - 1), room), "bold" if on else "", f"select:{t.id}")
+    segs = lead + [title] + right + gap
     line = Line(pad(segs, width), t.id)
     out = [line]
     if on and t.state in ("running", "review", "came back"):
@@ -211,7 +212,7 @@ def expansion(m: Model, t: Task, width: int, tell: str | None) -> list[Line]:
     if t.state == "running":
         verbs += [Seg("   x pull back", "grey70", "back")]
     verbs += [Seg("   i everything", "grey50", "details")]
-    while sum(len(v.text) for v in verbs) > width and len(verbs) > 2:  # the last verbs give way first
+    while span(verbs) > width and len(verbs) > 2:  # the last verbs give way first
         verbs.pop()
     out.append(Line(verbs, t.id))
     if tell is not None:
