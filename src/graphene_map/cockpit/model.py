@@ -44,6 +44,7 @@ class Task:
     full: str = ""  # the whole title
     why: str = ""  # the path down from the goal
     started: float = 0.0  # when its agent took it, on the model's clock; 0 before
+    offers: dict[str, list[str]] = field(default_factory=dict)  # a came-back leaf: key -> command
 
 
 @dataclass

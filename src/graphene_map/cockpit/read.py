@@ -7,11 +7,13 @@ news they were last told survive from one look to the next. The screens never se
 
 from __future__ import annotations
 
+import json
 import time
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 
+from .. import board as B
 from .. import board_rows as BR
 from .. import plan as P
 from .. import settings as S
@@ -77,9 +79,18 @@ def read(store, root: Path, previous: Model | None = None, now: float | None = N
             why=" › ".join(short(a.title) for a in reversed(above)),
         )
     fold_done(m, by_id)
+    items = {it["id"]: it for it in B.items(store)}
     for t in m.tasks.values():
+        node = by_id[t.id]
+        proofs(t, node)
         if t.state in LIVE:
-            live(store, m, t, by_id[t.id])
+            live(store, m, t, node)
+        if t.state == "running":
+            told(store, t, node, by_id, items)
+        if t.state == "came back":
+            came_back(store, t, node)
+        if t.state == "done":
+            t.changed = changed(store, t.id)
     m.questions = [question_of(item) for item in BR.read(store).open]
     if m.selected not in {rid for _, rid in m.order()}:
         rows = m.order()
@@ -155,3 +166,46 @@ def live(store, m: Model, t: Task, node: P.Node) -> None:
             t.events.append(Ev(at, "stop", path=str(d["path"])))
             if not P.in_scope(str(d["path"]), node.scope):  # a scope that has taken it in has not stopped it
                 t.stopped.append((str(d["path"]), at))
+
+
+def proofs(t: Task, node: P.Node) -> None:
+    """A leaf is proved by its check: one command, or several joined by &&. They have passed once the leaf
+    is in review or done (Graphene runs the check itself before either)."""
+    t.checks = max(1, len([c for c in (node.check or "").split("&&") if c.strip()]))
+    t.passed = t.checks if t.state in ("review", "done") else 0
+
+
+def changed(store, node_id: str) -> list[str]:
+    """What a finished leaf changed, as its last `finished` row says."""
+    done = recent(store, node_id, ("finished",), 1)
+    return list(done[-1]["detail"].get("changed") or []) if done else []
+
+
+def came_back(store, t: Task, node: P.Node) -> None:
+    """Why a leaf came back, in the agent's words, and what that offers the person (widen, a sibling,
+    wait on another, reopen the owner): each a command."""
+    t.note = " ".join(str(P.let_go(store, node).get("why") or "").split())[:80]
+    t.offers = {key: argv for key, _what, argv in P.offers(store, node)}
+
+
+def told(store, t: Task, node: P.Node, by_id: dict[str, P.Node], items: dict[str, dict]) -> None:
+    """What the person told this agent and whether it heard: a note about the leaf, a sub-goal above it
+    or the whole plan, since the leaf was taken. It is heard when the hook put it next to a tool result
+    (a `told` row); until then it is sending."""
+    on = {None, node.id, *(a.id for a in P.above(node, by_id))}
+    since = node.started_at or ""
+    for r in recent(store, t.id, ("told",)):
+        for item_id in r["detail"].get("items") or []:
+            if item_id in items:
+                it = items[item_id]
+                t.told.append((" ".join(B.said(it).split()), epoch(it["updated_at"]), epoch(r["timestamp"])))
+    ledger = set(json.loads(store.meta(f"told:{node.session_id}:{node.id}:{node.started_at}") or "[]"))
+    for it in items.values():
+        key = f"{it['id']}@{it['rev']}"
+        if B.told(it) and it.get("about") in on and (it["updated_at"] or "") > since and key not in ledger:
+            if not any(epoch(it["updated_at"]) == sent for _, sent, _ in t.told):
+                t.told.append((" ".join(B.said(it).split()), epoch(it["updated_at"]), 0.0))  # not heard yet
+    t.told.sort(key=lambda x: x[1])
+    for text, sent, _heard in t.told[-2:]:
+        t.events.append(Ev(sent, "you", text=f"“{text}”"))
+    t.events.sort(key=lambda e: e.t)

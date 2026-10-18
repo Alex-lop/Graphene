@@ -1,6 +1,7 @@
 # ruff: noqa: F811  (pytest fixtures imported from test_plan_cli are named again as arguments)
 """Reading a real plan's store into the cockpit's model."""
 
+import json
 import sqlite3
 import time
 from datetime import UTC, datetime, timedelta
@@ -204,3 +205,64 @@ def test_an_agent_keeps_its_name_from_one_look_to_the_next(repo):
     start(repo)
     first = look(repo)
     assert look(repo, first).tasks["ids"].agent == first.tasks["ids"].agent
+
+
+def say(repo, words, about="ids"):
+    with Store.open(repo) as store:
+        return board.note(store, words, ALEX, about=about)
+
+
+def test_a_note_to_a_running_agent_is_sending_until_the_hook_delivers_it_and_then_heard(repo):
+    plan_of(repo)
+    start(repo)
+    note = say(repo, "keep ids as strings")
+    t = look(repo).tasks["ids"]
+    assert [(text, heard) for text, _sent, heard in t.told] == [("keep ids as strings", 0.0)]  # sending…
+    assert t.events[-1].kind == "you" and "keep ids as strings" in t.events[-1].text
+    with Store.open(repo) as store:  # what the gate writes when it tells the session: the row and the ledger
+        node = plan.get(store, "ids")
+        store.log_node("ids", ago(0), "told", node.executor, node.session_id, None,
+                       {"items": [note["id"]], "how": "write"})  # fmt: skip
+        ledger = f"told:{node.session_id}:ids:{node.started_at}"
+        store.set_meta(ledger, json.dumps([f"{note['id']}@{note['rev']}"]))
+    told = look(repo).tasks["ids"].told
+    assert len(told) == 1 and told[0][0] == "keep ids as strings" and told[0][2] > 0  # heard
+
+
+def test_a_note_about_another_task_is_not_this_agents(repo):
+    plan_of(repo)
+    start(repo)
+    say(repo, "for the schema only", about="schema")
+    assert look(repo).tasks["ids"].told == []
+
+
+def test_proofs_count_the_commands_of_the_check_and_pass_once_it_is_in_review_or_done(repo):
+    plan_of(repo)
+    with Store.open(repo) as store:
+        node = plan.get(store, "schema")
+        node.check = "pytest -q && ruff check"
+        store.put_node(plan.to_dict(node))
+        done = plan.Node("fin", "finished", scope=["x"], check="true", state=plan.DONE)
+        store.put_node(plan.to_dict(done))
+    m = look(repo)
+    assert (m.tasks["schema"].checks, m.tasks["schema"].passed) == (2, 0)
+    assert (m.tasks["fin"].checks, m.tasks["fin"].passed) == (1, 1)
+
+
+def test_a_leaf_that_came_back_says_why_and_offers_what_it_wanted(repo):
+    plan_of(repo)
+    with Store.open(repo) as store:
+        plan.start(store, "ids", BOT, repo)
+        plan.release(store, "ids", BOT, "the id lives in db/models.py", wants=["db/models.py"])
+    t = look(repo).tasks["ids"]
+    assert t.state == "came back" and t.note == "the id lives in db/models.py"
+    assert "w" in t.offers and t.offers["w"][:2] == ["node", "widen"]
+
+
+def test_what_a_finished_task_changed_is_what_its_last_finished_row_says(repo):
+    plan_of(repo)
+    with Store.open(repo) as store:
+        done = plan.Node("fin", "finished", scope=["x"], check="true", state=plan.DONE)
+        store.put_node(plan.to_dict(done))
+        store.log_node("fin", ago(5), "finished", "alex", None, None, {"changed": ["a.py", "b.py"]})
+    assert look(repo).tasks["fin"].changed == ["a.py", "b.py"]
