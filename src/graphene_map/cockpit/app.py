@@ -22,7 +22,8 @@ from textual.widget import Widget
 from textual.widgets import Input, Static
 
 from .. import plan as P
-from ..tui import Ask
+from .. import plan_text as PT
+from ..tui import ASK_HINT, Ask
 from . import flow_view as FV
 from . import flowlayout as F
 from . import territory as T
@@ -301,8 +302,41 @@ class Cockpit(App):
         elif action in ("edit", "edit-plan"):
             self.edit_with(["node", "edit", sel] if action == "edit" and task else ["plan", "edit"])
         elif action == "command":
-            self.push_screen(Ask("graphene "), lambda text: text and d.command(text))
+            self.push_screen(Ask("graphene "), self.commanded)
         self.paint()
+
+    def commanded(self, text: str | None) -> None:
+        """The line typed after `:`. `ask` alone is a paragraph, written in your editor, not on one line."""
+        if not text or self.doer is None:
+            return
+        if text.strip().removeprefix("graphene ").strip() == "ask":
+            self.ask_in_editor()
+        else:
+            self.doer.command(text)
+        self.paint()
+
+    def ask_in_editor(self) -> None:
+        """Your editor opens on a file with one line of guidance, and what you write there is the ask: a
+        paragraph does not fit a one-line prompt, and the first ask is the one most worth a paragraph."""
+        from textual.app import SuspendNotSupported
+
+        path = PT.edit_path(self.root, "ask")
+        path.write_text(ASK_HINT, encoding="utf-8")
+        try:
+            try:
+                with self.suspend():
+                    PT.run_editor(path)
+            except SuspendNotSupported:  # no terminal to hand over (a test): the editor runs without one
+                PT.run_editor(path)
+        except P.Refused as no:
+            self.model.say(f"✗ {no}")
+            return
+        lines = [ln.rstrip() for ln in path.read_text(encoding="utf-8").splitlines()]
+        text = "\n".join(ln for ln in lines if ln.strip() and not ln.lstrip().startswith("#")).strip()
+        if text:
+            self.doer.background(["ask", text])
+        else:
+            self.model.say("nothing asked: the file had no line of yours (:ask what you want asks in a line)")
 
     def run_all(self) -> None:
         """R: every ready leaf. A run that could start more than one (each an executor that spends) asks

@@ -213,3 +213,28 @@ def test_a_run_that_could_start_more_than_one_leaf_asks_first_and_one_leaf_start
             assert started and type(app.screen).__name__ != "Ask"
 
     asyncio.run(go())
+
+
+def test_colon_ask_alone_opens_the_editor_for_a_paragraph_and_asks_what_was_written(repo, monkeypatch):
+    from graphene_map import plan_text
+
+    def editor(path):  # the person writes a paragraph under the hint line
+        path.write_text(path.read_text() + "add a farewell command\nthat says goodbye\n")
+        return 0
+
+    monkeypatch.setattr(plan_text, "run_editor", editor)
+    make_plan(repo)
+    app = cockpit(repo)
+    asked = []
+
+    async def go():
+        async with app.run_test(size=(110, 30)) as pilot:
+            await pilot.pause(0.1)
+            app.doer.background = lambda argv: asked.append(argv)
+            await pilot.press("colon")
+            await type_in(pilot, "ask")
+            await pilot.press("enter")
+            await pilot.pause(0.3)
+
+    asyncio.run(go())
+    assert asked == [["ask", "add a farewell command\nthat says goodbye"]]
