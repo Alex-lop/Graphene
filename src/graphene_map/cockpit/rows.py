@@ -174,12 +174,18 @@ def expansion(m: Model, t: Task, width: int, tell: str | None) -> list[Line]:
             )
         )
     verbs = [Seg("      ", ""), Seg("t tell", "bold #4cc9f0", "tell")]
-    if t.stopped:
-        folder = t.stopped[-1][0].rsplit("/", 1)[0] + "/"
-        verbs += [Seg("   w give it " + folder, "bold #e9a23b", "allow")]
+    if t.stopped:  # `graphene node widen` gives what the gate stopped: say which path, not a guess
+        path, more = t.stopped[-1][0], len(t.stopped) - 1
+        give = f"   w give it {fit(path, 28)}" + (f" +{more}" if more else "")
+        verbs += [Seg(give, "bold #e9a23b", "allow")]
+    for key, what in (("w", "widen it"), ("b", "a sibling"), ("n", "wait on it"), ("r", "reopen")):
+        if key in t.offers and not (key == "w" and t.stopped):  # what a leaf that came back offers
+            verbs += [Seg(f"   {key} {what}", "bold #e9a23b", "allow" if key == "w" else f"offer:{key}")]
     if t.state == "running":
         verbs += [Seg("   x pull back", "grey70", "back")]
     verbs += [Seg("   ⏎ everything", "grey50")]
+    while sum(len(v.text) for v in verbs) > width and len(verbs) > 2:  # the last verbs give way first
+        verbs.pop()
     out.append(Line(verbs, t.id))
     if tell is not None:
         out.append(

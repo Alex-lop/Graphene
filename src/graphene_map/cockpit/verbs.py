@@ -147,16 +147,25 @@ class Doer:
         self.run(["board", "note", words.strip(), "--about", t.id])
 
     def widen(self, m: Model, sel: str) -> None:
-        """Give a task the folder of the last write the gate stopped."""
+        """Give a task the paths its gate stopped (or, for a leaf that came back, the ones it wanted):
+        `graphene node widen`, which takes exactly what is on record and nothing more."""
         t = m.tasks.get(sel)
         if t is None:
             return
-        if not t.stopped:
+        if not t.stopped and "w" not in t.offers:
             self.say("nothing was stopped, so nothing to allow")
             return
-        path = t.stopped[-1][0]
-        folder = path.rsplit("/", 1)[0] + "/" if "/" in path else ""
-        self.run(["node", "set", t.id, "--add-scope", folder + "**" if folder else "*"])
+        self.run(t.offers.get("w") or ["node", "widen", t.id])
+
+    def offer(self, m: Model, sel: str, key: str) -> None:
+        """A key a leaf that came back offers (b a sibling for what it wanted, n wait on another, r reopen
+        the owner): the command it names."""
+        t = m.tasks.get(sel)
+        if t is None or key not in t.offers:
+            who = (t.agent or t.title) if t else "this"
+            self.say(f"{who} has no '{key}' to offer: it did not come back wanting one")
+            return
+        self.run(t.offers[key])
 
     def pull_back(self, m: Model, sel: str) -> None:
         t = m.tasks.get(sel)

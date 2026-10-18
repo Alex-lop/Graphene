@@ -95,16 +95,30 @@ def test_take_on_a_proposal_accepts_it(repo, doer):
         assert plan.get(store, "notes").state != plan.PROPOSED
 
 
-def test_widen_gives_a_task_the_folder_of_the_write_that_was_stopped(repo, doer):
+def test_widen_gives_a_task_the_paths_the_gate_stopped_and_nothing_more(repo, doer):
     plan_of(repo)
-    m = model_of()
+    with Store.open(repo) as store:
+        plan.start(store, "ids", BOT, repo)
+        denied = {"path": "db/ids_2.py", "how": "Write"}
+        store.log_node("ids", plan._now(), "denied", BOT.name, BOT.session_id, None, denied)
+    m = model_of(ids="running")
     m.tasks["ids"].stopped = [("db/ids_2.py", 1.0)]
     doer.widen(m, "ids")
     with Store.open(repo) as store:
-        assert "db/**" in plan.get(store, "ids").scope
+        assert plan.get(store, "ids").scope == ["api.py", "db/ids_2.py"]  # the path, not its folder
     m.tasks["ids"].stopped = []
     doer.widen(m, "ids")
     assert doer.said[-1] == "nothing was stopped, so nothing to allow"
+
+
+def test_a_leaf_that_came_back_offers_its_own_commands(repo, doer):
+    plan_of(repo)
+    m = model_of(ids="came back")
+    doer.offer(m, "ids", "b")
+    assert doer.said[-1].endswith("has no 'b' to offer: it did not come back wanting one")
+    m.tasks["ids"].offers = {"n": ["plan"]}
+    doer.offer(m, "ids", "n")
+    assert doer.said[-1].startswith("graphene plan")
 
 
 def test_pull_back_hands_a_running_leaf_back(repo, doer):

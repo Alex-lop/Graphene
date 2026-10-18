@@ -32,7 +32,7 @@ def test_a_running_row_has_its_agent_and_its_numbers_and_the_selected_one_opens(
     m = scene()
     text = "\n".join(plain(rows.build_cockpit(m, 100)))
     assert "fox" in text and "✎2/9" in text and "✓1/3" in text and "!1" in text
-    assert "t tell" in text and "w give it db/" in text and "x pull back" in text
+    assert "t tell" in text and "w give it db/ids_2.py" in text and "x pull back" in text
     m.selected = "docs"  # a proposed row does not open with an agent's verbs
     assert "t tell" not in "\n".join(plain(rows.build_cockpit(m, 100)))
 
@@ -78,3 +78,14 @@ def test_files_outside_the_scope_are_flagged_and_a_note_that_cannot_be_heard_say
     assert "sending…" in "\n".join(plain(rows.build_cockpit(m, 120)))
     m.tasks["ids"].hears = False
     assert "it reads this when it next starts" in "\n".join(plain(rows.build_cockpit(m, 120)))
+
+
+def test_a_leaf_that_came_back_shows_what_it_offers_as_keys():
+    m = scene()
+    m.selected = "migrate"
+    m.tasks["migrate"].state = "came back"
+    m.tasks["migrate"].offers = {"w": ["node", "widen", "migrate"], "b": ["node", "sibling", "migrate"]}
+    text = "\n".join(plain(rows.build_cockpit(m, 120)))
+    assert "w widen it" in text and "b a sibling" in text and "n wait on it" not in text
+    line = next(line for line in rows.build_cockpit(m, 120) if "b a sibling" in line.plain())
+    assert "offer:b" in [s.action for s in line.segs]
