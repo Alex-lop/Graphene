@@ -75,7 +75,7 @@ class CockpitReplay(Cockpit):
         self.doer = None  # nothing runs here: every verb says so
         self.refusal = REFUSED
         self.keys = {name: line for name, line in KEYS.items()}
-        self.keys["cockpit"] = "space pause · . next · r again · ⏎ everything · g graph · m map · ? keys · q"
+        self.keys["cockpit"] = "space pause · . next · r again · i everything · g graph · m map · ? keys · q"
 
     def look_at(self, previous: Model | None) -> Model:
         """The replay's store as the recording had it by now: the recording's clock is its newest row."""

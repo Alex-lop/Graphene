@@ -13,8 +13,8 @@ The new watch (17 October). 0.5.1 holds the older screen; `graphene watch` now o
   `graphene` command, and the line under the rows says which one ran.
 - `g` is the plan as boxes and arrows; `m` is the map of the folders each task may write, with `v` for its lens
   (plan, live, changed) and `p` to paint a folder to a task. Tab goes on, `c` returns to the cockpit.
-- Enter on a row opens everything about it in four panes (contract, output, changes, record); `c` there shows
-  the leaf's whole diff, as `graphene node diff` does.
+- `i` on a row (Enter, on one that waits for nothing) opens everything about it in four panes (contract, output,
+  changes, record); `c` there shows the leaf's whole diff, as `graphene node diff` does.
 - `graphene demo` plays its recording in the cockpit (space pauses, `.` is the next change, `r` plays it again);
   `graphene demo --classic` plays it in the older outline. The README's GIF and stills are that screen.
 - The cockpit reads a plan in a few milliseconds (53 ms at 22,000 log rows), and a closed terminal ends it.

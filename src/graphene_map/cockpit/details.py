@@ -1,4 +1,5 @@
-"""⏎ on a row: everything about one task, in four panes the old watch already knew how to write.
+"""`i` on a row (⏎, on one that waits for nothing): everything about one task, in four panes the old watch
+already knew how to write.
 
 contract (what it is for, its scope and check, why it came back), output (what the agent did and said,
 newest last), changes (what it changed, whole, as `graphene node diff` shows it) and record (each hold: who,

@@ -107,3 +107,26 @@ def test_the_news_says_what_an_agent_did_and_why_a_leaf_came_back_not_the_bookke
     assert news(line) == " · ".join(said)
     assert news({"node_log": [row("bye", "landed")]}) == "bye landed"
     assert news({"nodes": {"bye": {"state": "done"}}}) == "bye done"  # nothing in words: the replay's own
+
+
+def test_i_opens_everything_about_the_leaf_that_came_back_in_a_replay_too(tmp_path):
+    from graphene_map.cockpit.details import Details
+
+    async def go():
+        app, head, lines = replay(tmp_path)
+        async with app.run_test(size=(100, 30)) as pilot:
+            await pilot.pause(0.2)
+            await pilot.press("space")
+            while app.next < len(lines) and not any(t.state == "came back" for t in app.model.tasks.values()):
+                await pilot.press("full_stop")
+            back = next(t for t in app.model.tasks.values() if t.state == "came back")
+            app.model.selected = back.id
+            await pilot.press("i")
+            await pilot.pause(0.3)
+            assert isinstance(app.screen, Details)
+            await pilot.press("escape")
+            await pilot.pause(0.2)
+            await pilot.press("enter")  # Enter would take it: a replay says nothing runs here
+            assert "nothing runs here" in app.model.latest()
+
+    asyncio.run(go())

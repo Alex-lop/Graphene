@@ -33,7 +33,7 @@ Type "." Sleep 2s Type "." Sleep 2s Type "." Sleep 2s Type "." Sleep 3s
 # the plan as boxes and arrows, the folders each task may write, and back to the rows
 Type "g" Sleep 3s Type "m" Sleep 3s Type "c" Sleep 1s
 # the leaf that came back: everything about it, then its record
-Enter
+Type "i"
 Sleep 3s
 Type "r"
 Sleep 4s

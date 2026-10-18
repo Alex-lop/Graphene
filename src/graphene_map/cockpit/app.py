@@ -38,14 +38,14 @@ from .verbs import Doer
 
 SCREENS = ("cockpit", "flow", "territory")
 KEYS = {  # one line each, at most 79 columns: the screen's own keys, then the ones every screen has
-    "cockpit": "⏎ take · t tell · w allow · x back · g graph · m map · : cmd · ? keys · q quit",
+    "cockpit": "⏎ take · i all · t tell · w allow · x back · g graph · m map · ? keys · q quit",
     "flow": "arrows · ⏎ take · t tell · w allow · c cockpit · m map · ? keys · q quit",
     "territory": "j/k folder · ←/→ task · p paint · v lens · w allow · c cockpit · ? keys · q",
 }
 KEYS_TO_VERBS = {  # a key, and the verb it asks for (`act`)
     "t": "tell", "w": "allow", "x": "back", "d": "drop", "r": "run", "R": "run-all", "a": "answer",
     "b": "offer:b", "n": "offer:n", "colon": "command", "y": "take", "s": "split", "P": "first", "u": "undo",
-    "e": "edit", "E": "edit-plan", "D": "direction",
+    "e": "edit", "E": "edit-plan", "D": "direction", "i": "details",
 }  # fmt: skip
 LEGEND = "✎ files touched of allowed · ✓ proofs · ! writes stopped · ⏸ quiet · ▁▃▅ activity"
 

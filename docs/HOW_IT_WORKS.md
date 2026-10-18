@@ -70,8 +70,8 @@ waits for your own key.
 `graphene watch` opens the cockpit: one row a task, what waits for you first. A row says who is on it and, in
 numbers, whether it is on track: pace, files touched of allowed, proofs, writes the gate stopped, seconds
 quiet. The row under the cursor opens to its agent's last moves and the verbs: `t` tells it a line, which it hears
-with its next write; `w` gives it what the gate stopped; `x` hands it back; `Enter` takes what waits for you, or
-opens it up. `g` draws the plan as boxes and arrows, `m` the folders each task may write.
+with its next write; `w` gives it what the gate stopped; `x` hands it back; `Enter` takes what waits for you;
+`i` opens it up. `g` draws the plan as boxes and arrows, `m` the folders each task may write.
 
 `--classic` (or a `--view`) opens the older screen, whose outline is `graphene plan`'s print: a row a node, with its
 state's word. `Tab` there, or `graphene plan --view NAME`, shows the others:

@@ -205,7 +205,7 @@ def expansion(m: Model, t: Task, width: int, tell: str | None) -> list[Line]:
             verbs += [Seg(f"   {key} {what}", "bold #e9a23b", "allow" if key == "w" else f"offer:{key}")]
     if t.state == "running":
         verbs += [Seg("   x pull back", "grey70", "back")]
-    verbs += [Seg("   ⏎ everything", "grey50", "details")]
+    verbs += [Seg("   i everything", "grey50", "details")]
     while sum(len(v.text) for v in verbs) > width and len(verbs) > 2:  # the last verbs give way first
         verbs.pop()
     out.append(Line(verbs, t.id))

@@ -28,6 +28,7 @@ GROUPS = (
     )),
     ("screens", (
         ("j k", "move; ← → the task on the map, the box on the graph"),
+        ("i", "everything about the row: contract, output, changes, record; Esc goes back"),
         ("c g m", "cockpit, graph of the plan, map of the folders each task may write; Tab goes on"),
         ("v p", "the map's lens (plan, live, changed); paint a folder to the selected task"),
     )),

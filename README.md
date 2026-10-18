@@ -87,7 +87,7 @@ So do Cursor, Kiro and Cline ([compared, gaps included](https://github.com/Alex-
 
 - Refused before the write: Claude Code only, shell redirects included. With Codex, or if the add-on cannot run, git finds it when the leaf finishes.
 - A leaf allowed to edit its own test can weaken it: `done` flags it, and a sign-off lets you read the diff first.
-- Not yet: a look at every diff before it lands. A leaf marked for sign-off waits for you, and Enter then `c` in watch shows its diff; the rest land when their check passes. [Every limit](https://github.com/Alex-lop/Graphene/blob/main/docs/HOW_IT_WORKS.md#where-each-mechanism-ends).
+- Not yet: a look at every diff before it lands. A leaf marked for sign-off waits for you, and `i` then `c` in watch shows its diff; the rest land when their check passes. [Every limit](https://github.com/Alex-lop/Graphene/blob/main/docs/HOW_IT_WORKS.md#where-each-mechanism-ends).
 - Honestly, in the three comparisons so far a plain paragraph to the same agent did just as well for less. What I'm betting on is when you find out what it understood: before the work, not after.
 
 </details>

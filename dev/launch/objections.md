@@ -8,7 +8,7 @@
    person-seconds 2,626 against 3,869; $0.97 against $1.47: dev/test/results-2026-09-23.md). What the tree adds is
    timing (you see the misunderstanding before the money is spent) and a record: seven of eight factual questions
    answered where `git log -p` answered five, with AI readers (dev/process/prove/after.md).
-3. **Where is the diff before the merge?** A leaf marked for sign-off waits on its branch, Enter then `c` in `graphene watch`
+3. **Where is the diff before the merge?** A leaf marked for sign-off waits on its branch, `i` then `c` in `graphene watch`
    shows its whole diff, and `y` merges it. A leaf without sign-off lands when its check passes, as one merge you
    can `git revert -m 1`. Other tools put a diff or a pull request in front of every change; this does for the
    leaves you mark.

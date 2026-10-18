@@ -1,5 +1,5 @@
 # ruff: noqa: F811  (pytest fixtures imported from test_plan_cli are named again as arguments)
-"""⏎ on a row that is not waiting for you opens everything about the task: four panes, the classic ones."""
+"""`i` (or ⏎, on a row that waits for nothing) opens everything about a task: four panes, the classic ones."""
 
 import asyncio
 
@@ -151,5 +151,30 @@ def test_keys_under_the_details_do_not_reach_the_rows_and_q_closes_only_the_deta
             await pilot.press("q")
             await pilot.pause(0.2)
             assert app.is_running and not isinstance(app.screen, Details)
+
+    asyncio.run(go())
+
+
+def test_i_opens_the_details_of_a_row_that_waits_for_you_and_takes_nothing(repo):
+    """Enter on a proposal accepts it; i is how to read it first (README: `i` then `c` is a diff)."""
+    make_plan(repo, proposal=True)
+    app = cockpit(repo)
+    app.open_store = lambda: Store.open(repo)
+
+    async def go():
+        async with app.run_test(size=(100, 30)) as pilot:
+            await pilot.pause(0.2)
+            app.model.selected = "notes"
+            await pilot.press("i")
+            await pilot.pause(0.3)
+            assert isinstance(app.screen, Details) and "notes" in text_of(app)
+            await pilot.press("escape")
+            await pilot.pause(0.2)
+            with Store.open(repo) as store:
+                assert plan.get(store, "notes").state == plan.PROPOSED  # looked at, not accepted
+            await pilot.press("enter")
+            await pilot.pause(0.3)
+            with Store.open(repo) as store:
+                assert plan.get(store, "notes").state == plan.OPEN
 
     asyncio.run(go())
