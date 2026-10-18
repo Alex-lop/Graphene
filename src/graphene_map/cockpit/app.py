@@ -10,6 +10,7 @@ exists on its own (verbs.py), and the line at the bottom says what the last one 
 from __future__ import annotations
 
 from collections.abc import Callable
+from pathlib import Path
 
 from rich.text import Text
 from textual.app import App, ComposeResult
@@ -26,6 +27,7 @@ from .lines import Line, Seg, seg_at
 from .model import Model
 from .rows import build_cockpit
 from .territory_view import build_territory
+from .verbs import Doer
 
 SCREENS = ("cockpit", "flow", "territory")
 KEYS = {
@@ -77,11 +79,18 @@ class Cockpit(App):
     """
 
     def __init__(
-        self, looker: Callable[[Model | None], Model], every: float = 1.0, screen: str = "cockpit"
+        self,
+        looker: Callable[[Model | None], Model],
+        every: float = 1.0,
+        screen: str = "cockpit",
+        root: Path | None = None,
     ) -> None:
         super().__init__()
         self.looker, self.every = looker, every
         self.model = looker(None)
+        # the verbs need a repository to run their commands in: a test without one only looks
+        say = lambda said: self.model.say(said)  # noqa: E731  (the model is a new one each look)
+        self.doer = Doer(root, say, self.look, self.call_from_thread) if root else None
         self.view = screen if screen in SCREENS else "cockpit"
         self.cursor = 0  # the territory's folder cursor
         self.tell_open = False
@@ -121,7 +130,7 @@ class Cockpit(App):
             Text.from_markup(" " + tabs.replace("[b]", "[bold #4cc9f0]").replace("[dim]", "[grey50]"))
         )
         if self.view == "cockpit":
-            lines = build_cockpit(m, w, tell="" if self.tell_open else None)
+            lines = build_cockpit(m, w, tell=self.query_one("#tell", Input).value if self.tell_open else None)
         elif self.view == "territory":
             lines, self.groups = build_territory(m, w, self.cursor)
         else:
@@ -201,10 +210,48 @@ class Cockpit(App):
             self.cursor = int(action.split(":", 1)[1])
         self.paint()
 
+    # -- tell --------------------------------------------------------------------------------------
+
+    def open_tell(self) -> None:
+        t = self.model.tasks.get(self.model.selected)
+        if t is None:
+            self.model.say("select a task to tell")
+            return
+        box = self.query_one("#tell", Input)
+        box.add_class("on")
+        box.value = ""
+        box.focus()
+        self.tell_open = True
+
+    def close_tell(self) -> None:
+        self.query_one("#tell", Input).remove_class("on")
+        self.tell_open = False
+        self.set_focus(None)
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        if self.tell_open:
+            self.paint()  # the row shows what is typed
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        words, sel = event.value, self.model.selected
+        self.close_tell()
+        if self.doer:
+            self.doer.tell(self.model, sel, words)
+        self.paint()
+
     def on_key(self, event) -> None:
         key = event.key
+        if self.tell_open:
+            if key == "escape":
+                self.close_tell()
+                self.paint()
+            return
         if key == "q":
             self.exit()
+            return
+        if key == "t":
+            self.open_tell()
+            self.paint()
             return
         if key in ("c", "g", "m"):
             self.view = {"c": "cockpit", "g": "flow", "m": "territory"}[key]
