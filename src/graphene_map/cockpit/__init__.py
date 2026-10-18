@@ -15,4 +15,4 @@ def run(root: Path, open_store: Callable, every: float = 1.0) -> None:
     from .app import Cockpit
     from .read import looker
 
-    Cockpit(looker(root, open_store), every, root=root).run()
+    Cockpit(looker(root, open_store), every, root=root, open_store=open_store).run()

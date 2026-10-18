@@ -26,6 +26,7 @@ from ..tui import Ask
 from . import flow_view as FV
 from . import flowlayout as F
 from . import territory as T
+from .details import Details
 from .help import Help
 from .lines import Line, Seg, seg_at
 from .model import Model
@@ -93,9 +94,10 @@ class Cockpit(App):
         every: float = 1.0,
         screen: str = "cockpit",
         root: Path | None = None,
+        open_store: Callable | None = None,
     ) -> None:
         super().__init__()
-        self.looker, self.every, self.root = looker, every, root
+        self.looker, self.every, self.root, self.open_store = looker, every, root, open_store
         self.model = looker(None)
         # the verbs need a repository to run their commands in: a test without one only looks
         say = lambda said: self.model.say(said)  # noqa: E731  (the model is a new one each look)
@@ -246,6 +248,12 @@ class Cockpit(App):
         task = m.tasks.get(sel)
         if action == "tell":
             self.open_tell()
+        elif action == "details":
+            if task is None or self.open_store is None or self.root is None:
+                m.say("select a task to see everything about it")
+            else:
+                name = f"{task.agent} {task.title}".strip()
+                self.push_screen(Details(self.open_store, self.root, sel, name))
         elif d is None:
             m.say("there is no repository here to act on")
         elif action == "take":
@@ -350,6 +358,8 @@ class Cockpit(App):
                 self.doer.paint(self.model, self.model.selected, self.groups[self.cursor].name)
             elif self.takes():
                 self.act("take")
+            else:
+                self.act("details")
         elif key == "v":
             self.model.lens = T.LENSES[(T.LENSES.index(self.model.lens) + 1) % len(T.LENSES)]
         elif key == "p":
