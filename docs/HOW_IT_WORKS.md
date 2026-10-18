@@ -50,9 +50,9 @@ Only you answer:
 | --- | --- | --- |
 | `graphene board take ID` | `y` | `taken`: its default |
 | `graphene board pick ID N` | `1`..`9` | `picked`: option N |
-| `graphene board answer ID WORDS` | `Enter` | `answered`, in your words |
+| `graphene board answer ID WORDS` | `a` | `answered`, in your words |
 | `graphene board drop ID` | `d` | `dropped`: told to no one |
-| `graphene board note WORDS` | `a` | a note of yours |
+| `graphene board note WORDS` | `t` | a note of yours |
 
 A default or an option may carry `then:` lines that change the plan when it is chosen: widen a scope, set a check,
 add to a goal, drop a node, add a leaf. What you decide reaches every leaf it is about as a `decided:` line in that
@@ -91,7 +91,7 @@ repository already on auto stays auto. Accepting, `plan first off` and the other
 terminal outside Claude Code: inside one, Graphene takes the caller for the agent.
 
 - **On**: every ask is proposed and waits for you; the session cannot write until it holds a leaf. One leaf is one
-  row in `graphene watch`: `y` takes it, and runs it when an executor is chosen.
+  row in `graphene watch`: `y` takes it; `R` runs what is ready.
 - **Auto**: every ask is proposed. One leaf with a scope and a check, no board item and at most 8 paths is yours at
   once, accepted "by their prompt in the session". Anything else waits for you in `graphene watch`.
 - **Off**: a quick change is done at once, as a leaf made from your prompt while a plan is in force; the session

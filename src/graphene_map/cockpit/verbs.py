@@ -188,9 +188,6 @@ class Doer:
         else:
             self.run(["node", "set", t.id, "--add-scope", glob])
 
-    def accept_all(self) -> None:
-        self.run(["plan", "accept"])
-
     def run_ready(self, node_id: str | None = None) -> None:
         self.background(["run", *RUN_WITH, *(["--node", node_id] if node_id else [])])
 
