@@ -20,6 +20,7 @@ from textual.geometry import Region
 from textual.widget import Widget
 from textual.widgets import Input, Static
 
+from .. import plan as P
 from ..tui import Ask
 from . import flow_view as FV
 from . import flowlayout as F
@@ -91,7 +92,7 @@ class Cockpit(App):
         root: Path | None = None,
     ) -> None:
         super().__init__()
-        self.looker, self.every = looker, every
+        self.looker, self.every, self.root = looker, every, root
         self.model = looker(None)
         # the verbs need a repository to run their commands in: a test without one only looks
         say = lambda said: self.model.say(said)  # noqa: E731  (the model is a new one each look)
@@ -114,7 +115,14 @@ class Cockpit(App):
 
     def on_mount(self) -> None:
         self.set_interval(self.every, self.look)
+        self.set_interval(0.5, self.terminal_gone)
         self.paint()
+
+    def terminal_gone(self) -> None:
+        """A terminal that closed without the hangup ends the screen as `q` does (``P.terminal_closed``):
+        Textual would read its end of file as no key, again and again, at full speed, forever."""
+        if not self.is_headless and P.terminal_closed():
+            self.exit()
 
     # -- looking and painting --------------------------------------------------------------------
 
@@ -131,9 +139,10 @@ class Cockpit(App):
         tabs = "  ".join(
             f"[{'b' if s == self.view else 'dim'}]{k} {s}[/]" for k, s in zip("cgm", SCREENS, strict=True)
         )
-        self.query_one("#bar", Static).update(
-            Text.from_markup(" " + tabs.replace("[b]", "[bold #4cc9f0]").replace("[dim]", "[grey50]"))
-        )
+        bar = Text.from_markup(" " + tabs.replace("[b]", "[bold #4cc9f0]").replace("[dim]", "[grey50]"))
+        name = self.root.name if self.root else ""
+        bar.append(" " * max(2, w - bar.cell_len - len(name) - 1) + name, style="grey42")  # whose plan
+        self.query_one("#bar", Static).update(bar)
         if self.view == "cockpit":
             lines = build_cockpit(m, w, tell=self.query_one("#tell", Input).value if self.tell_open else None)
         elif self.view == "territory":

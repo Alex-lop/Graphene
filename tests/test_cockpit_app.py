@@ -116,3 +116,17 @@ def test_q_quits():
         assert app.return_code in (0, None)
 
     run(go())
+
+
+def test_the_top_line_says_whose_plan_this_is_and_an_empty_plan_says_what_to_do(tmp_path):
+    from graphene_map.cockpit.model import Model
+
+    async def go():
+        app = Cockpit(lambda previous: previous or Model("no goal yet"), root=tmp_path / "watched")
+        async with app.run_test(size=(80, 24)) as pilot:
+            await pilot.pause(0.1)
+            assert "watched" in str(app.query_one("#bar").render())
+            shown = "\n".join(line.plain() for line in app.query_one(Canvas).lines)
+            assert "Nothing is planned yet." in shown
+
+    run(go())

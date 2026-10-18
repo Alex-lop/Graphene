@@ -41,6 +41,8 @@ def build_cockpit(m: Model, width: int, *, tell: str | None = None) -> list[Line
     out.append(Line([Seg("─" * width, "grey30")]))
     sel = m.selected
     cols = max((sum(len(s.text) for s in right_of(m, t, width)) for t in m.tasks.values()), default=0)
+    if not m.order() and not m.folded_done:
+        return out + empty(width)
     for kind, rid in m.order():
         if kind == "question":
             out.append(question_line(next(q for q in m.questions if q.id == rid), width, rid == sel))
@@ -50,6 +52,19 @@ def build_cockpit(m: Model, width: int, *, tell: str | None = None) -> list[Line
     if m.folded_done:
         out.append(Line([Seg(f"   ✓ {m.folded_done} more proven", "grey50")]))
     return out
+
+
+EMPTY = (
+    "Nothing is planned yet.",
+    "Tell your agent what you want, and it proposes the tasks here for you to accept.",
+    "Or type :ask and what you want.",
+)
+
+
+def empty(width: int) -> list[Line]:
+    """A plan with nothing in it: what to do, in three short lines."""
+    said = [Line([Seg(" " + fit(t, width - 2), "grey62" if k else "bold")]) for k, t in enumerate(EMPTY)]
+    return [Line([]), *said]
 
 
 def question_line(q: Question, width: int, on: bool) -> Line:

@@ -3,6 +3,7 @@
 from cockpit_scene import scene
 
 from graphene_map.cockpit import rows
+from graphene_map.cockpit.model import Model
 
 
 def plain(lines) -> list[str]:
@@ -89,3 +90,11 @@ def test_a_leaf_that_came_back_shows_what_it_offers_as_keys():
     assert "w widen it" in text and "b a sibling" in text and "n wait on it" not in text
     line = next(line for line in rows.build_cockpit(m, 120) if "b a sibling" in line.plain())
     assert "offer:b" in [s.action for s in line.segs]
+
+
+def test_a_plan_with_nothing_in_it_says_what_to_do_in_three_short_lines():
+    m = Model("no goal yet")
+    lines = plain(rows.build_cockpit(m, 80))
+    text = "\n".join(lines)
+    assert "Nothing is planned yet." in text and "Or type :ask" in text
+    assert all(len(line) <= 80 for line in lines)
