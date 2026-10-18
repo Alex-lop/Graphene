@@ -24,7 +24,7 @@ GROUPS = (
     )),
     ("plan", (
         ("e E", "edit the task, or the whole plan, in your $EDITOR"),
-        ("P u", "plan first: on, auto, off; undo your last act"),
+        ("P u D", "plan first: on, auto, off; undo your last act; the direction above your plans"),
     )),
     ("screens", (
         ("j k", "move; ← → the task on the map, the box on the graph"),

@@ -60,3 +60,25 @@ def test_the_output_pane_shows_what_the_executor_did_in_words(repo):
                        {"attempt": 1, "tool": "Edit", "target": "api.py", "verb": "editing"})  # fmt: skip
         text = pane_text(store, repo, "ids", "output", 80).plain
     assert "output of attempt 1" in text and "editing api.py" in text
+
+
+def test_d_shows_the_direction_in_a_pane_of_its_own(repo):
+    make_plan(repo)
+    app = cockpit(repo)
+    app.open_store = lambda: Store.open(repo)
+
+    async def go():
+        async with app.run_test(size=(100, 30)) as pilot:
+            await pilot.pause(0.1)
+            await pilot.press("D")
+            await pilot.pause(0.3)
+            assert isinstance(app.screen, Details) and app.screen.which == "direction"
+            assert app.screen.panes == ("direction",) and text_of(app).strip()
+            await pilot.press("tab")  # one pane: Tab stays on it
+            await pilot.pause(0.1)
+            assert app.screen.which == "direction"
+            await pilot.press("escape")
+            await pilot.pause(0.2)
+            assert not isinstance(app.screen, Details)
+
+    asyncio.run(go())

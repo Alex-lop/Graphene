@@ -27,7 +27,7 @@ from ..tui import ASK_HINT, Ask
 from . import flow_view as FV
 from . import flowlayout as F
 from . import territory as T
-from .details import Details
+from .details import DIRECTION, Details
 from .help import Help
 from .lines import Line, Seg, seg_at
 from .model import Model
@@ -44,7 +44,7 @@ KEYS = {  # one line each, at most 79 columns: the screen's own keys, then the o
 KEYS_TO_VERBS = {  # a key, and the verb it asks for (`act`)
     "t": "tell", "w": "allow", "x": "back", "d": "drop", "r": "run", "R": "run-all", "a": "answer",
     "b": "offer:b", "n": "offer:n", "colon": "command", "y": "take", "s": "split", "P": "first", "u": "undo",
-    "e": "edit", "E": "edit-plan",
+    "e": "edit", "E": "edit-plan", "D": "direction",
 }  # fmt: skip
 LEGEND = "✎ files touched of allowed · ✓ proofs · ! writes stopped · ⏸ quiet · ▁▃▅ activity"
 
@@ -256,6 +256,13 @@ class Cockpit(App):
         task = m.tasks.get(sel)
         if action == "tell":
             self.open_tell()
+        elif action == "direction":
+            if self.open_store is None or self.root is None:
+                m.say("there is no repository here to read a direction from")
+            else:
+                self.push_screen(
+                    Details(self.open_store, self.root, "", "the direction", "direction", DIRECTION)
+                )
         elif action == "details":
             if task is None or self.open_store is None or self.root is None:
                 m.say("select a task to see everything about it")

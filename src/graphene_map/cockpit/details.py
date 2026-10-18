@@ -25,12 +25,15 @@ from .. import tui
 from .. import views as V
 
 PANES = ("contract", "output", "changes", "record")
+DIRECTION = ("direction",)  # D: the goals above your plans, a pane of its own
 KEYS = {"l": "output", "c": "changes", "r": "record", "d": "contract"}
 
 
 def pane_text(store, root: Path, node_id: str, which: str, wide: int, high: int = 20) -> Text:
     """One pane for one node, as the person at this terminal would read it. A node that has left the plan,
     or a pane that cannot be made (git, a missing file), says so in a line: it never crashes the screen."""
+    if which == "direction":
+        return tui.direction_pane(store, root, wide)
     nodes, words, _goal = V.inputs(store)
     by_id = {n.id: n for n in nodes}
     node = by_id.get(node_id)
@@ -69,11 +72,14 @@ class Details(ModalScreen[None]):
     #foot { height: 1; background: #181b22; color: #7d8492; padding: 0 1; }
     """
 
-    def __init__(self, open_store: Callable, root: Path, node_id: str, title: str, which: str = "contract"):
+    def __init__(
+        self, open_store: Callable, root: Path, node_id: str, title: str, which: str = "contract",
+        panes: tuple[str, ...] = PANES,
+    ):  # fmt: skip
         super().__init__()
-        self.open_store, self.root, self.node_id, self.title_text, self.which = (
-            open_store, root, node_id, title, which if which in PANES else "contract",
-        )  # fmt: skip
+        self.open_store, self.root, self.node_id, self.title_text = open_store, root, node_id, title
+        self.panes = panes
+        self.which = which if which in panes else panes[0]
 
     def compose(self) -> ComposeResult:
         yield Static(id="title")
@@ -89,7 +95,7 @@ class Details(ModalScreen[None]):
     def show(self, which: str) -> None:
         self.which = which
         tabs = Text(" ")
-        for name in PANES:
+        for name in self.panes:
             tabs.append(f" {name} ", style="bold reverse #4cc9f0" if name == which else "grey62")
             tabs.append(" ")
         tabs.append(f" {self.title_text}", style="bold")
@@ -107,10 +113,11 @@ class Details(ModalScreen[None]):
         self.query_one("#pane", Static).update(text)
 
     def action_show(self, which: str) -> None:
-        self.show(which)
+        if which in self.panes:
+            self.show(which)
 
     def action_next(self) -> None:
-        self.show(PANES[(PANES.index(self.which) + 1) % len(PANES)])
+        self.show(self.panes[(self.panes.index(self.which) + 1) % len(self.panes)])
 
     def action_scroll(self, lines: int) -> None:
         self.query_one("#body", VerticalScroll).scroll_relative(y=lines, animate=False)
