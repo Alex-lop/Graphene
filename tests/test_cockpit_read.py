@@ -367,3 +367,11 @@ def test_the_selection_follows_what_needs_you_until_you_choose_a_row(repo):
     again.selected, again.moved = "docs", True  # the person chose
     with Store.open(repo) as store:
         assert read(store, repo, again).selected == "docs"
+
+
+def test_files_the_agents_own_record_says_it_edited_count_even_when_git_cannot_say(repo):
+    plan_of(repo)
+    start(repo)
+    row(repo, "ids", "did", {"attempt": 1, "tool": "Edit", "target": "api.py", "verb": "editing"}, 5)
+    # nothing is changed on disk (a replay's checkout is not there): the record is what there is
+    assert list(look(repo).tasks["ids"].touched) == ["api.py"]

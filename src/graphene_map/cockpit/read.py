@@ -270,5 +270,6 @@ def touched_by_git(m: Model, t: Task, node: P.Node) -> None:
         except (P.Refused, OSError, subprocess.TimeoutExpired):
             files = list(t.touched)
         m.seen[t.id] = (m.clock, files)
-    t.touched = {p: t.touched.get(p, m.clock) for p in files}
-    t.outside = [p for p in files if not P.in_scope(p, node.scope)]
+    both = sorted({*files, *t.touched})  # what git sees, and what its own record says it edited
+    t.touched = {p: t.touched.get(p, m.clock) for p in both}
+    t.outside = [p for p in both if not P.in_scope(p, node.scope)]
