@@ -422,3 +422,27 @@ def test_a_file_another_leaf_in_the_same_checkout_may_write_is_not_outside_this_
     with Store.open(repo) as store:
         later = read(store, repo, m, now=m.clock + 6)
     assert later.tasks["ids"].outside == ["stray.txt"]
+
+
+def test_a_leaf_the_person_finished_over_its_check_is_done_but_not_proven_and_stays_in_view(repo):
+    plan_of(repo)
+    with Store.open(repo) as store:
+        plan.propose(store, [{"id": "x", "title": "x", "scope": ["x.txt"], "check": "false"}], ALEX)
+        plan.start(store, "x", ALEX, repo)
+    (repo / "x.txt").write_text("done by hand\n")
+    with Store.open(repo) as store:
+        plan.finish(store, "x", ALEX, override="the check is wrong, the file is right")
+    m = look(repo)
+    x = m.tasks["x"]
+    assert x.state == "done" and x.overruled and x.passed == 0 and x.checks == 1 and x.changed == ["x.txt"]
+    assert m.scoreboard()[2] == 0  # nothing here is proven
+    for k in range(FOLD_AFTER + 1):  # and properly finished leaves fold away around it, not it
+        leaf = {"id": f"d{k}", "title": f"d{k}", "scope": [f"d{k}.txt"], "check": "true"}
+        with Store.open(repo) as store:
+            plan.propose(store, [leaf], ALEX)
+            plan.start(store, f"d{k}", ALEX, repo)
+        (repo / f"d{k}.txt").write_text("done\n")
+        with Store.open(repo) as store:
+            plan.finish(store, f"d{k}", ALEX)
+    m = look(repo)
+    assert "x" in m.tasks and m.folded_done > 0 and m.scoreboard()[2] == m.folded_done + KEEP_DONE

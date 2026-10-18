@@ -48,6 +48,7 @@ class Task:
     idle: float | None = None  # seconds since its last sign of life (`run.live`); None: no sign at all
     outside: list[str] = field(default_factory=list)  # touched files its scope does not cover
     offers: dict[str, list[str]] = field(default_factory=dict)  # a came-back leaf: key -> command
+    overruled: bool = False  # done because the person said so, over a check that had not passed
 
 
 @dataclass
@@ -106,10 +107,11 @@ class Model:
         return rows
 
     def scoreboard(self) -> tuple[int, int, int, int]:
-        """(need you, running, proven, total): proven counts finished tasks, folded ones included."""
+        """(need you, running, proven, total): proven counts finished tasks, folded ones included, and not
+        the ones the person finished over a check."""
         need = len(self.questions) + sum(1 for t in self.tasks.values() if t.state in NEEDS_YOU)
         running = sum(1 for t in self.tasks.values() if t.state == "running")
-        done = self.folded_done + sum(1 for t in self.tasks.values() if t.state == "done")
+        done = self.folded_done + sum(1 for t in self.tasks.values() if t.state == "done" and not t.overruled)
         return need, running, done, self.folded_done + len(self.tasks)
 
     def allowed(self, t: Task) -> int:

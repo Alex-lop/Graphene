@@ -94,11 +94,17 @@ def read(
             full=n.title,
             why=" › ".join(short(a.title) for a in reversed(above)),
         )
+    for node_id in {r["node_id"] for r in store.node_log(kinds=("overruled",))}:  # rare: a person's override
+        t = m.tasks.get(node_id)
+        if t is not None and t.state == "done":
+            row = ended(store, node_id)
+            t.overruled = bool(row and row["kind"] == "overruled")  # not since finished properly
     fold_done(m, by_id)
     items = {it["id"]: it for it in B.items(store)}
     for t in m.tasks.values():
         node = by_id[t.id]
-        proofs(t, node)
+        last = ended(store, t.id) if t.state == "done" else None
+        proofs(t, node, last)
         if t.state in LIVE:
             live(store, m, t, node)
         if t.state == "running":
@@ -106,7 +112,7 @@ def read(
         if t.state == "came back":
             came_back(store, t, node)
         if t.state == "done":
-            t.changed = changed(store, t.id)
+            t.changed = list((last or {"detail": {}})["detail"].get("changed") or [])
             t.agent = m.agent_name(agent_key(store, node))  # who did it, by the name it had while it ran
     m.questions = [question_of(item) for item in BR.read(store).open]
     rows = m.order()
@@ -125,7 +131,7 @@ def fold_done(m: Model, by_id: dict[str, P.Node]) -> None:
         return
     latest = sorted(done, key=lambda t: by_id[t.id].finished_at or "")[-KEEP_DONE:]
     for t in done:
-        if t not in latest:
+        if t not in latest and not t.overruled:  # one the person finished over its check stays in view
             m.tasks.pop(t.id)
             m.folded_done += 1
 
@@ -194,12 +200,15 @@ def live(store, m: Model, t: Task, node: P.Node) -> None:
     touched_by_git(store, m, t, node)
 
 
-def proofs(t: Task, node: P.Node) -> None:
+def proofs(t: Task, node: P.Node, ended: dict | None = None) -> None:
     """A leaf is proved by its check, and by the person's sign-off when it asks for one: at most two. The
     check has passed once the leaf is in review (it waits for the sign-off) or done; there is no partial
-    progress inside a check."""
+    progress inside a check. A leaf the person finished over its check (`--override`) is done, and proved by
+    nothing: the row that ended it says whether the check had passed, and sign-off was skipped."""
     t.checks = int(bool(node.check)) + int(node.signoff)
-    if t.state == "done":
+    if t.state == "done" and ended and ended["kind"] == "overruled":
+        t.passed = int(bool(node.check and ended["detail"].get("check_passed")))
+    elif t.state == "done":
         t.passed = t.checks
     elif t.state == "review":
         t.passed = t.checks - int(node.signoff)
@@ -207,10 +216,10 @@ def proofs(t: Task, node: P.Node) -> None:
         t.passed = 0
 
 
-def changed(store, node_id: str) -> list[str]:
-    """What a finished leaf changed, as its last `finished` row says."""
-    done = recent(store, node_id, ("finished",), 1)
-    return list(done[-1]["detail"].get("changed") or []) if done else []
+def ended(store, node_id: str) -> dict | None:
+    """The row that ended a leaf: `finished`, or `overruled` when the person made it done over its check."""
+    rows = recent(store, node_id, ("finished", "overruled"), 1)
+    return rows[-1] if rows else None
 
 
 def came_back(store, t: Task, node: P.Node) -> None:

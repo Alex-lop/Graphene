@@ -133,12 +133,11 @@ def right_of(m: Model, t: Task, width: int) -> list[Seg]:
         return [Seg("ready", "#d0d0d0")]
     n = len(t.changed)
     outside = bool(_outside(m, t))
-    return [
-        Seg(
-            f"{n} file{'s' if n != 1 else ''}" + (" · OUTSIDE" if outside else ""),
-            "bold #ef476f" if outside else "grey50",
-        )
-    ]
+    said = Seg(
+        f"{n} file{'s' if n != 1 else ''}" + (" · OUTSIDE" if outside else ""),
+        "bold #ef476f" if outside else "grey50",
+    )
+    return [said, Seg(" · overruled", "bold #e9a23b")] if t.overruled else [said]
 
 
 def task_lines(
