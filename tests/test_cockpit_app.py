@@ -130,3 +130,23 @@ def test_the_top_line_says_whose_plan_this_is_and_an_empty_plan_says_what_to_do(
             assert "Nothing is planned yet." in shown
 
     run(go())
+
+
+def test_question_mark_opens_the_keys_on_one_screen_and_escape_closes_it():
+    from graphene_map.cockpit.help import Help, help_text
+
+    async def go():
+        app = app_of(scene())
+        async with app.run_test(size=(80, 24)) as pilot:
+            await pilot.pause(0.1)
+            await pilot.press("question_mark")
+            await pilot.pause(0.3)
+            assert isinstance(app.screen, Help), [type(s).__name__ for s in app.screen_stack]
+            await pilot.press("escape")
+            await pilot.pause(0.3)
+            assert not isinstance(app.screen, Help)
+
+    run(go())
+    text = help_text(80).plain.splitlines()
+    assert len(text) <= 22 and all(len(line) <= 100 for line in text)
+    assert "tell it one line" in help_text(80).plain and "any graphene command" in help_text(80).plain

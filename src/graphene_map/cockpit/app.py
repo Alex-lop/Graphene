@@ -14,6 +14,7 @@ from pathlib import Path
 
 from rich.text import Text
 from textual.app import App, ComposeResult
+from textual.binding import Binding
 from textual.containers import ScrollableContainer
 from textual.events import Click
 from textual.geometry import Region
@@ -25,6 +26,7 @@ from ..tui import Ask
 from . import flow_view as FV
 from . import flowlayout as F
 from . import territory as T
+from .help import Help
 from .lines import Line, Seg, seg_at
 from .model import Model
 from .rows import build_cockpit
@@ -75,6 +77,7 @@ class Canvas(Widget):
 class Cockpit(App):
     AUTO_FOCUS = None  # the hidden tell box must not take the keys
     ENABLE_COMMAND_PALETTE = False
+    BINDINGS = [Binding("question_mark", "help", show=False)]  # a binding, so the key that opens it is spent
     CSS = """
     Screen { background: #0e1014; }
     #bar { height: 1; background: #181b22; color: #9aa0ad; }
@@ -318,6 +321,10 @@ class Cockpit(App):
         if self.doer:
             self.doer.tell(self.model, sel, words)
         self.paint()
+
+    def action_help(self) -> None:
+        if not isinstance(self.screen, (Ask, Help)):
+            self.push_screen(Help())
 
     def on_key(self, event) -> None:
         key = event.key
