@@ -352,7 +352,7 @@ def register(cli: typer.Typer, root, open_store, fail):
             )
             lines.append("waiting on you: " + ", ".join(told if everything else told[:8]) + more)
             if any(n.state == P.PROPOSED for n in yours):  # the one command, said once, not a row at a time
-                lines.append("  `graphene plan accept` takes all of it; y in graphene watch")
+                lines.append("  `graphene plan accept` takes all of it; y in graphene watch takes one")
         # One row grammar, as on the screen: glyph and title (cut at a word) in one column, the id in the
         # next, the state word in the next, whatever the depth; then what the print adds.
         heads = {n.id: 2 * len(P.above(n, by_id)) + 2 for n in alive}  # the indent, the glyph and a space
@@ -627,7 +627,7 @@ def register(cli: typer.Typer, root, open_store, fail):
         view: str = typer.Option(
             None,
             "--view",
-            help=f"Classic view ({', '.join(['auto', *V.VIEWS])}); the outline if left out.",
+            help=f"Classic view ({', '.join(['auto', *V.VIEWS])}); naming one implies --classic.",
         ),
         classic: bool = typer.Option(
             False, "--classic", help="Open the older screen: the plan as an outline, with a pane."
@@ -1046,7 +1046,7 @@ def register(cli: typer.Typer, root, open_store, fail):
             if not P.nodes(store, (P.OPEN, P.RUNNING)):
                 waiting = len(P.leaves(P.nodes(store, (P.PROPOSED,))))
                 fail(f"nothing to run: the tree is a proposal ({_leaves(waiting)}) nobody has accepted: "
-                     "`graphene plan accept`, or y on the goal in `graphene watch`, accepts it"
+                     "`graphene plan accept`, or y on each proposal in `graphene watch`, accepts it"
                      if waiting else "nothing to run: the plan has no open leaf", 1)  # fmt: skip
             try:  # --with, else the repo's (`graphene init`); neither, and nothing starts
                 template = named(executor or store.meta("executor"))
