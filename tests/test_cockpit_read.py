@@ -159,6 +159,11 @@ def start(repo, node_id="ids"):
         plan.start(store, node_id, BOT, repo)
 
 
+def edit(repo, name="api.py"):
+    """What an agent's edit did to the checkout: git is what counts the files touched."""
+    (repo / name).write_text(f"changed {name}\n")
+
+
 def test_what_an_executor_did_is_the_agents_tail_pace_touched_files_and_stopped_writes(repo):
     plan_of(repo)
     start(repo)
@@ -167,6 +172,7 @@ def test_what_an_executor_did_is_the_agents_tail_pace_touched_files_and_stopped_
     row(repo, "ids", "did", {"attempt": 1, "tool": "Bash", "target": "pytest -q", "verb": "running"}, 10)
     row(repo, "ids", "said", {"attempt": 1, "text": "tests pass locally"}, 6)
     row(repo, "ids", "denied", {"attempt": 1, "path": "db/ids_2.py", "how": "outside scope"}, 3)
+    edit(repo)
     t = look(repo).tasks["ids"]
     assert [e.kind for e in t.events] == ["read", "edit", "run", "said", "stop"]
     assert list(t.touched) == ["api.py"] and [p for p, _ in t.stopped] == ["db/ids_2.py"]
@@ -183,7 +189,9 @@ def test_only_the_attempt_that_is_going_now_counts(repo):
     start(repo)
     row(repo, "ids", "did", {"attempt": 1, "tool": "Edit", "target": "old.py", "verb": "editing"}, 50)
     row(repo, "ids", "did", {"attempt": 2, "tool": "Edit", "target": "api.py", "verb": "editing"}, 5)
-    assert list(look(repo).tasks["ids"].touched) == ["api.py"]
+    edit(repo)
+    t = look(repo).tasks["ids"]
+    assert list(t.touched) == ["api.py"] and [e.path for e in t.events] == ["api.py"]  # old.py is attempt 1's
 
 
 def test_a_write_the_scope_has_since_taken_in_is_no_longer_stopped(repo):
@@ -279,6 +287,41 @@ def test_a_leaf_a_sessions_own_hooks_saw_is_read_from_the_tool_calls_they_record
         ):
             at = ago(30 - 10 * i)
             store.add_event(ToolEvent(f"e{i}", sid, None, at, tool, data, None, True, None, path))
+    edit(repo)
     t = look(repo).tasks["ids"]
     assert [e.kind for e in t.events] == ["read", "edit", "run"]
     assert list(t.touched) == ["api.py"] and t.events[-1].text == "pytest -q"
+
+
+def test_files_touched_are_what_git_says_a_leaf_changed_and_the_ones_outside_its_scope_are_flagged(repo):
+    plan_of(repo)
+    start(repo)
+    edit(repo, "api.py")
+    edit(repo, "schema.py")  # the scope of `ids` is api.py: a shell command may write what the hook never saw
+    m = look(repo)
+    t = m.tasks["ids"]
+    assert sorted(t.touched) == ["api.py", "schema.py"] and t.outside == ["schema.py"]
+    assert m.allowed(t) == 1
+
+
+def test_git_is_asked_again_only_after_a_few_seconds(repo):
+    plan_of(repo)
+    start(repo)
+    edit(repo, "api.py")
+    first = look(repo)
+    edit(repo, "schema.py")
+    assert sorted(look(repo, first).tasks["ids"].touched) == ["api.py"]  # not yet: a look a second later
+    with Store.open(repo) as store:
+        later = read(store, repo, first, now=first.clock + 6)
+    assert sorted(later.tasks["ids"].touched) == ["api.py", "schema.py"]
+
+
+def test_quiet_is_what_the_plan_counts_for_a_running_leaf_and_a_protected_folder_is_not_allowed(repo):
+    plan_of(repo)
+    start(repo)
+    row(repo, "ids", "did", {"attempt": 1, "tool": "Read", "target": "api.py", "verb": "reading"}, 20)
+    m = look(repo)
+    assert 19 <= m.quiet(m.tasks["ids"]) <= 23
+    m.protected = ["api.py"]
+    m._allowed.clear()
+    assert m.allowed(m.tasks["ids"]) == 0

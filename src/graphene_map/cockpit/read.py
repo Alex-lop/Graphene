@@ -8,6 +8,7 @@ news they were last told survive from one look to the next. The screens never se
 from __future__ import annotations
 
 import json
+import subprocess
 import time
 from collections.abc import Callable
 from datetime import datetime
@@ -16,6 +17,7 @@ from pathlib import Path
 from .. import board as B
 from .. import board_rows as BR
 from .. import plan as P
+from .. import run as R
 from .. import settings as S
 from .. import views as V
 from .look import short
@@ -30,6 +32,7 @@ STATE = {
 FOLD_AFTER = 8  # more finished tasks than this, and the rows keep the latest few: the rest are counted
 KEEP_DONE = 4
 FILES_EVERY = 30.0  # seconds between looks at what git tracks: a big repository's list is not free
+GIT_EVERY = 5.0  # seconds between asks of git, for each running leaf: it costs three of its commands
 ROWS = 200  # the latest rows of a leaf's log the cockpit reads each look: a run's log can be long
 LIVE = ("running", "review", "came back")  # the tasks whose agent the rows are read for
 KINDS = {"reading": "read", "editing": "edit", "running": "run", "searching": "search"}  # a did row's verb
@@ -63,7 +66,7 @@ def read(store, root: Path, previous: Model | None = None, now: float | None = N
     m.clock = now
     if previous is not None:  # what is the person's survives a look: the selection, the lens, the news
         m.selected, m.lens, m.feed, m.names = previous.selected, previous.lens, previous.feed, previous.names
-        m.files, m.files_at = previous.files, previous.files_at
+        m.files, m.files_at, m.seen = previous.files, previous.files_at, previous.seen
     if not m.files or now - m.files_at > FILES_EVERY:
         m.files, m.files_at = P.tracked(root), now
     m.protected = S.protected(store) + S.readonly(store)
@@ -149,6 +152,8 @@ def live(store, m: Model, t: Task, node: P.Node) -> None:
     t.started = epoch(node.started_at)
     key = node.session_id or node.executor or t.id
     t.agent = m.agent_name(key)
+    sign = R.live(store, node, m.clock)  # the meter's last row, the hooks' last call, the log's age
+    t.idle = sign["idle"]
     rows = recent(store, t.id, ("did", "said", "denied"))
     if not any(r["kind"] == "did" for r in rows) and node.session_id:
         calls(store, t, node)  # no stream: a person's own Claude Code session, seen by its hooks only
@@ -170,6 +175,9 @@ def live(store, m: Model, t: Task, node: P.Node) -> None:
             t.events.append(Ev(at, "stop", path=str(d["path"])))
             if not P.in_scope(str(d["path"]), node.scope):  # a scope that has taken it in has not stopped it
                 t.stopped.append((str(d["path"]), at))
+    if not t.events and sign["last"]:  # no rows and no calls: the last thing its log says
+        t.events.append(Ev(m.clock - (t.idle or 0), "said", text=" ".join(str(sign["last"]).split())[:80]))
+    touched_by_git(m, t, node)
 
 
 def proofs(t: Task, node: P.Node) -> None:
@@ -228,3 +236,21 @@ def calls(store, t: Task, node: P.Node, count: int = 40) -> None:
         t.events.append(Ev(at, kind, text=command, path="" if kind == "run" else path))
         if kind == "edit" and path and call["success"] is not False:
             t.touched[path] = at
+
+
+def touched_by_git(m: Model, t: Task, node: P.Node) -> None:
+    """The files this leaf has changed so far, as the plan itself counts them (`plan.changed_since`: what
+    differs from when it began, however it was written, a shell command included), asked of git at most
+    every few seconds for each leaf; and the ones its scope does not cover."""
+    if not (node.checkout and node.base_sha):
+        t.outside = [p for p in t.touched if not P.in_scope(p, node.scope)]
+        return
+    when, files = m.seen.get(t.id, (0.0, []))
+    if m.clock - when >= GIT_EVERY or when > m.clock:
+        try:
+            files = P.changed_since(node.checkout, node.base_sha, node.dirty_at_start)
+        except (P.Refused, OSError, subprocess.TimeoutExpired):
+            files = list(t.touched)
+        m.seen[t.id] = (m.clock, files)
+    t.touched = {p: t.touched.get(p, m.clock) for p in files}
+    t.outside = [p for p in files if not P.in_scope(p, node.scope)]

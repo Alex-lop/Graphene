@@ -44,6 +44,8 @@ class Task:
     full: str = ""  # the whole title
     why: str = ""  # the path down from the goal
     started: float = 0.0  # when its agent took it, on the model's clock; 0 before
+    idle: float | None = None  # seconds since its last sign of life (`run.live`); None: no sign at all
+    outside: list[str] = field(default_factory=list)  # touched files its scope does not cover
     offers: dict[str, list[str]] = field(default_factory=dict)  # a came-back leaf: key -> command
 
 
@@ -72,6 +74,7 @@ class Model:
         self.lens = "plan"
         self.feed: list[tuple[float, str]] = []
         self.names: dict[str, str] = {}  # an agent's key (its session) -> its name, kept across looks
+        self.seen: dict[str, tuple[float, list[str]]] = {}  # a leaf -> when git was asked, what it said
         self._allowed: dict[tuple[str, tuple[str, ...]], int] = {}
 
     # -- reading ---------------------------------------------------------------------------------
@@ -104,10 +107,13 @@ class Model:
         return need, running, done, self.folded_done + len(self.tasks)
 
     def allowed(self, t: Task) -> int:
-        """How many tracked files the task's scope covers."""
+        """How many tracked files the task's scope covers, the protected folders left out as they are for
+        the gate."""
         key = (t.id, tuple(t.scope))
         if key not in self._allowed:
-            self._allowed[key] = sum(1 for f in self.files if T._in(f, tuple(t.scope))) if t.scope else 0
+            scope, held = tuple(t.scope), tuple(self.protected)
+            covered = (f for f in self.files if T._in(f, scope) and not (held and T._in(f, held)))
+            self._allowed[key] = sum(1 for _ in covered) if t.scope else 0
         return self._allowed[key]
 
     def pace(self, t: Task, buckets: int = 12, width: float = 5.0) -> str:
@@ -120,7 +126,11 @@ class Model:
         return "".join(SPARK[min(7, int(c * 8 / (top + 1)))] if c else "▁" for c in counts)
 
     def quiet(self, t: Task) -> float:
-        last = max((e.t for e in t.events), default=t.started) or self.clock  # no sign yet: since it began
+        """Seconds since the agent's last sign of life, as `run.live` counts them (its meter, its hooks, its
+        log), else since its last event, else since it began."""
+        if t.idle is not None:
+            return float(t.idle)
+        last = max((e.t for e in t.events), default=t.started) or self.clock
         return self.clock - last
 
     def tail(self, t: Task, n: int = 3) -> list[str]:
