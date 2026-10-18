@@ -6,8 +6,8 @@ import fcntl
 import os
 import pty
 import select
-import signal
 import struct
+import subprocess
 import sys
 import termios
 import time
@@ -18,14 +18,17 @@ CLI = "import sys; from graphene_map.cli import app; sys.argv[0] = 'graphene'; a
 
 
 def spawn(repo, *args):
-    """`graphene ARGS` in the repository, in an 80x24 terminal of its own: (pid, the terminal's end)."""
-    pid, fd = pty.fork()
-    if pid == 0:
-        os.chdir(repo)
-        os.environ["TERM"] = "xterm-256color"
-        os.execv(sys.executable, [sys.executable, "-c", CLI, *args])
-    fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", 24, 80, 0, 0))
-    return pid, fd
+    """`graphene ARGS` in the repository, in an 80x24 terminal of its own: (the process, the terminal's end).
+    The terminal is only where it reads and writes, as a test's is: it is not its controlling terminal, so
+    closing it sends no hangup. (`subprocess`, not `pty.fork`: a test runs in a worker with threads.)"""
+    main, tty = pty.openpty()
+    fcntl.ioctl(tty, termios.TIOCSWINSZ, struct.pack("HHHH", 24, 80, 0, 0))
+    env = {**os.environ, "TERM": "xterm-256color"}
+    argv = [sys.executable, "-c", CLI, *args]
+    std = {"stdin": tty, "stdout": tty, "stderr": tty}
+    proc = subprocess.Popen(argv, cwd=repo, env=env, start_new_session=True, **std)
+    os.close(tty)
+    return proc, main
 
 
 def read_until(fd, needle: bytes, seconds: float = 30.0) -> bytes:
@@ -40,47 +43,45 @@ def read_until(fd, needle: bytes, seconds: float = 30.0) -> bytes:
     return out
 
 
-def close(pid, fd) -> bool:
+def close(proc, fd) -> bool:
     """The terminal goes away with no hangup sent; True when the process was gone within five seconds."""
     os.close(fd)
-    end = time.time() + 5
-    while time.time() < end:
-        done, _ = os.waitpid(pid, os.WNOHANG)
-        if done:
-            return True
-        time.sleep(0.1)
-    os.kill(pid, signal.SIGKILL)
-    os.waitpid(pid, 0)
-    return False
+    try:
+        proc.wait(timeout=5)
+        return True
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait()
+        return False
 
 
 def test_watch_opens_the_cockpit_with_the_repositorys_name_and_leaves_with_its_terminal(repo):
-    pid, fd = spawn(repo, "watch")
+    proc, fd = spawn(repo, "watch")
     seen = read_until(fd, repo.name.encode())
     assert b"cockpit" in seen and repo.name.encode() in seen and b"the plan of" not in seen
-    assert close(pid, fd), "the screen outlived its terminal"
+    assert close(proc, fd), "the screen outlived its terminal"
 
 
 def test_watch_classic_opens_the_older_screen(repo):
-    pid, fd = spawn(repo, "watch", "--classic")
+    proc, fd = spawn(repo, "watch", "--classic")
     seen = read_until(fd, b"the plan of")
     assert b"the plan of" in seen and b"cockpit" not in seen
-    assert close(pid, fd)
+    assert close(proc, fd)
 
 
 def test_naming_a_classic_view_opens_the_older_screen(repo):
-    pid, fd = spawn(repo, "watch", "--view", "tree")
+    proc, fd = spawn(repo, "watch", "--view", "tree")
     seen = read_until(fd, b"the plan of")
     assert b"the plan of" in seen and b"cockpit" not in seen
-    assert close(pid, fd)
+    assert close(proc, fd)
 
 
 def test_demo_replays_in_the_cockpit_and_demo_classic_in_the_older_screen(tmp_path):
-    pid, fd = spawn(tmp_path, "demo")
+    proc, fd = spawn(tmp_path, "demo")
     seen = read_until(fd, b"replay")
     assert b"replay" in seen and b"cockpit" in seen
-    assert close(pid, fd), "the replay outlived its terminal"
-    pid, fd = spawn(tmp_path, "demo", "--classic")
+    assert close(proc, fd), "the replay outlived its terminal"
+    proc, fd = spawn(tmp_path, "demo", "--classic")
     seen = read_until(fd, b"replay") + read_until(fd, b"\0", 3.0)  # then a moment for the rest of the screen
     assert b"replay" in seen and b"cockpit" not in seen
-    assert close(pid, fd)
+    assert close(proc, fd)
