@@ -155,6 +155,8 @@ def task_lines(
     out = [line]
     if on and t.state in ("running", "review", "came back"):
         out += expansion(m, t, width, tell)
+    elif t.state == "running" and t.events:  # its last move in one dim line: alive or stuck, at a glance
+        out.append(Line([Seg("      ┊ ", "grey35"), Seg(fit(m.tail(t, 1)[0], width - 10), "grey58")], t.id))
     if on:
         for ln in out:
             for s in ln.segs:

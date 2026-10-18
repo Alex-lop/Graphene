@@ -72,6 +72,7 @@ class Model:
         self.folded_done = 0  # finished tasks the rows leave out, counted
         self.clock = 0.0  # now, as the events' times are told
         self.selected = ""  # a task id or a question id
+        self.moved = False  # the person has chosen a row: until then the selection follows what needs them
         self.lens = "plan"
         self.first = ""  # plan first, as the person set it: on, auto or off
         self.banner = ""  # what the top row says it is, when it is not "your plan" (a replay)

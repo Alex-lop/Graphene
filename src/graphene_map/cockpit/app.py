@@ -77,6 +77,7 @@ class Canvas(Widget):
 
 
 class Cockpit(App):
+    TITLE = "graphene watch"
     AUTO_FOCUS = None  # the hidden tell box must not take the keys
     ENABLE_COMMAND_PALETTE = False
     BINDINGS = [Binding("question_mark", "help", show=False)]  # a binding, so the key that opens it is spent
@@ -203,6 +204,7 @@ class Cockpit(App):
 
     def move(self, key: str) -> None:
         m = self.model
+        m.moved = True  # from here the selection is the person's
         down = key in ("j", "down", "right", "l")
         if self.view == "territory":
             if key in ("j", "down", "k", "up"):
@@ -225,7 +227,7 @@ class Cockpit(App):
     def clicked(self, line: Line, seg: Seg | None) -> None:
         m = self.model
         if line.row:
-            m.selected = line.row
+            m.selected, m.moved = line.row, True
         action = seg.action if seg else ""
         if action.startswith("select:"):
             m.selected = action.split(":", 1)[1]

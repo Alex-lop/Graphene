@@ -33,3 +33,11 @@ def test_a_sentence_title_gets_a_short_name():
     assert short("The account's note says what it corrected, and only that") == "account's note says what it"
     assert short("Docs: a long explanation after the colon") == "Docs"
     assert short("") == ""
+
+
+def test_a_short_name_ends_where_a_phrase_ends():
+    assert short("Add an XML reader and a test for it") == "Add an XML reader"
+    assert short("Reject price 0 in validation") == "Reject price 0 in validation"
+    assert short("Wire the reader - then check it") == "Wire the reader"
+    assert short("users returns ids: each user has its id") == "users returns ids"
+    assert short("The whole of it") == "whole of it"

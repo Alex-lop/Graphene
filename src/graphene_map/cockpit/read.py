@@ -71,6 +71,7 @@ def read(
     m.clock = now
     if previous is not None:  # what is the person's survives a look: the selection, the lens, the news
         m.selected, m.lens, m.feed, m.names = previous.selected, previous.lens, previous.feed, previous.names
+        m.moved = previous.moved
         m.files, m.files_at, m.seen = previous.files, previous.files_at, previous.seen
     if files is not None:  # told (a replay's, from its recording): git is never asked
         m.files, m.files_at = files, now
@@ -105,9 +106,11 @@ def read(
         if t.state == "done":
             t.changed = changed(store, t.id)
     m.questions = [question_of(item) for item in BR.read(store).open]
-    if m.selected not in {rid for _, rid in m.order()}:
-        rows = m.order()
-        m.selected = rows[0][1] if rows else ""
+    rows = m.order()
+    if rows and (not m.moved or m.selected not in {rid for _, rid in rows}):
+        m.selected = rows[0][1]  # the first row is what needs the person most, until they choose one
+    elif not rows:
+        m.selected = ""
     return m
 
 

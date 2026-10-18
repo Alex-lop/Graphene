@@ -98,3 +98,12 @@ def test_a_plan_with_nothing_in_it_says_what_to_do_in_three_short_lines():
     text = "\n".join(lines)
     assert "Nothing is planned yet." in text and "Or type :ask" in text
     assert all(len(line) <= 80 for line in lines)
+
+
+def test_a_running_agent_that_is_not_selected_shows_its_last_move_in_one_dim_line():
+    m = scene()
+    m.selected = "docs"
+    text = "\n".join(plain(rows.build_cockpit(m, 100)))
+    assert "┊ edit models/m0.py" in text  # fox's last event, under its row
+    m.selected = "ids"  # selected, it opens into three lines and the verbs instead
+    assert "┊ edit models/m0.py" in "\n".join(plain(rows.build_cockpit(m, 100)))

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 
 NAMES = [
     "fox", "oak", "river", "bee", "crab", "hen", "elm", "ant", "owl", "ivy", "jay", "koi", "lynx", "moth",
@@ -46,11 +47,19 @@ def color_of(name: str) -> str:
     return PALETTE[NAMES.index(name) % len(PALETTE)] if name in NAMES else "white"
 
 
+TRAILING = {"a", "an", "the", "and", "or", "of", "to", "for", "in", "on", "with", "so", "as", "by"}
+
+
 def short(title: str, words: int = 5) -> str:
-    """A glanceable name for a sentence-long title: what comes before a colon, without a leading article,
-    at most ``words`` words. A plan's titles are sentences; a screen with almost no text needs a name."""
-    head = title.split(":")[0].strip()
+    """A glanceable name for a sentence-long title: what comes before a colon, a semicolon or a dash,
+    without a leading article, at most ``words`` words, and never ending on a word that wants another
+    ("Add an XML reader and" is "Add an XML reader"). A plan's titles are sentences; a screen with almost
+    no text needs a name."""
+    head = re.split(r"[:;]|\s[-–—]\s", title, maxsplit=1)[0].strip()
     parts = head.split()
     if parts and parts[0].lower() in ("the", "a", "an"):
         parts = parts[1:]
-    return " ".join(parts[:words]) or title
+    parts = parts[:words]
+    while len(parts) > 1 and parts[-1].lower().strip(",.") in TRAILING:
+        parts.pop()
+    return " ".join(parts) or title

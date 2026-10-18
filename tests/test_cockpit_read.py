@@ -82,7 +82,7 @@ def test_many_finished_tasks_are_a_count_and_the_latest_few_stay(repo):
 def test_what_the_person_chose_survives_the_next_look(repo):
     plan_of(repo)
     first = look(repo)
-    first.selected, first.lens = "schema", "live"
+    first.selected, first.moved, first.lens = "schema", True, "live"
     first.say("told fox")
     again = look(repo, first)
     assert again.selected == "schema" and again.lens == "live" and again.latest() == "told fox"
@@ -353,3 +353,17 @@ def test_the_opener_graphene_watch_hands_in_may_say_exit_and_the_screen_stays_up
         raise typer.Exit(1)
 
     assert looker(repo, refuses)(first) is first
+
+
+def test_the_selection_follows_what_needs_you_until_you_choose_a_row(repo):
+    plan_of(repo)
+    first = look(repo)
+    assert first.selected == first.order()[0][1]  # nothing chosen: the first row
+    with Store.open(repo) as store:
+        plan.start(store, "schema", BOT, repo)
+        plan.release(store, "schema", BOT, "it needs db/models.py", wants=["db/models.py"])
+    again = look(repo, first)
+    assert again.tasks["schema"].state == "came back" and again.selected == "schema"  # yours now
+    again.selected, again.moved = "docs", True  # the person chose
+    with Store.open(repo) as store:
+        assert read(store, repo, again).selected == "docs"
