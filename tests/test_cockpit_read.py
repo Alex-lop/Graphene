@@ -245,17 +245,33 @@ def test_a_note_about_another_task_is_not_this_agents(repo):
     assert look(repo).tasks["ids"].told == []
 
 
-def test_proofs_count_the_commands_of_the_check_and_pass_once_it_is_in_review_or_done(repo):
+def test_a_leafs_proofs_are_its_check_and_the_sign_off_it_asks_for(repo):
     plan_of(repo)
     with Store.open(repo) as store:
+        asks = plan.get(store, "schema")
+        asks.signoff = True
+        store.put_node(plan.to_dict(asks))
+        made = (("rev", plan.REVIEW, True), ("fin", plan.DONE, True), ("bare", plan.DONE, False))
+        for node_id, state, signoff in made:
+            leaf = plan.Node(node_id, node_id, scope=["x"], check="true", signoff=signoff, state=state)
+            store.put_node(plan.to_dict(leaf))
+    t = look(repo).tasks
+    assert (t["ids"].checks, t["ids"].passed) == (1, 0)  # a check, not run yet
+    assert (t["schema"].checks, t["schema"].passed) == (2, 0)  # the check, then you
+    assert (t["rev"].checks, t["rev"].passed) == (2, 1)  # the check passed; your sign-off is the second
+    assert (t["fin"].checks, t["fin"].passed) == (2, 2) and (t["bare"].checks, t["bare"].passed) == (1, 1)
+
+
+def test_only_a_hooked_claude_code_agent_hears_a_note_while_it_works(repo):
+    plan_of(repo)
+    start(repo)
+    assert look(repo).tasks["ids"].hears
+    with Store.open(repo) as store:
         node = plan.get(store, "schema")
-        node.check = "pytest -q && ruff check"
+        node.state, node.executor, node.session_id = plan.RUNNING, "run:nemotron", None
+        node.started_at = ago(5)
         store.put_node(plan.to_dict(node))
-        done = plan.Node("fin", "finished", scope=["x"], check="true", state=plan.DONE)
-        store.put_node(plan.to_dict(done))
-    m = look(repo)
-    assert (m.tasks["schema"].checks, m.tasks["schema"].passed) == (2, 0)
-    assert (m.tasks["fin"].checks, m.tasks["fin"].passed) == (1, 1)
+    assert not look(repo).tasks["schema"].hears
 
 
 def test_a_leaf_that_came_back_says_why_and_offers_what_it_wanted(repo):

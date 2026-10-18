@@ -82,9 +82,13 @@ def right_of(m: Model, t: Task, width: int) -> list[Seg]:
         right = [Seg(m.pace(t) + "  ", colour)] if width >= 70 else []
         if width >= 78:
             right += [Seg(f"✎{len(t.touched)}/{m.allowed(t)}".ljust(8), "grey62")]
-        right += [Seg(f"✓{t.passed}/{t.checks}".ljust(6), "#8ab17d" if t.passed == t.checks else "grey62")]
+        if t.checks:
+            proven = "#8ab17d" if t.passed == t.checks else "grey62"
+            right += [Seg(f"✓{t.passed}/{t.checks}".ljust(6), proven)]
         if t.stopped:
             right += [Seg(f"!{len(t.stopped)} ", "bold #ef476f", "allow")]
+        if t.outside:
+            right += [Seg(f"{len(t.outside)} OUTSIDE ", "bold #ef476f")]
         if quiet > 8:
             right += [Seg(f"⏸{ago(quiet)}", "bold #e9a23b")]
         return right
@@ -94,7 +98,8 @@ def right_of(m: Model, t: Task, width: int) -> list[Seg]:
         )
         return [Seg("← " + after if after else "", "grey50")]
     if t.state == "review":
-        return [Seg(f"✓{t.passed}/{t.checks}  ", "#8ab17d"), Seg("⏎ sign off", "bold #c77dff", "take")]
+        proof = f"✓{t.passed}/{t.checks}  " if t.checks else ""
+        return [Seg(proof, "#8ab17d"), Seg("⏎ sign off", "bold #c77dff", "take")]
     if t.state == "came back":
         return [Seg(t.note or "stuck", "#ef476f"), Seg("   ⏎ try again", "bold #c77dff", "take")]
     if t.state == "proposed":
@@ -159,7 +164,9 @@ def expansion(m: Model, t: Task, width: int, tell: str | None) -> list[Line]:
                     Seg("      ┊ ", "grey35"),
                     Seg(f"you “{fit(text, 40)}”  ", "#4cc9f0"),
                     Seg(
-                        "heard " + ago(m.clock - heard) + " ago" if heard else "sending…",
+                        "heard " + ago(m.clock - heard) + " ago"
+                        if heard
+                        else ("sending…" if t.hears else "it reads this when it next starts"),
                         "#8ab17d" if heard else "grey50",
                     ),
                 ],

@@ -33,7 +33,7 @@ class Task:
     scope: list[str] = field(default_factory=list)
     needs: list[str] = field(default_factory=list)
     agent: str = ""  # the name its agent goes by while it holds the leaf
-    checks: int = 1  # proofs this task has to pass
+    checks: int = 1  # the proofs it has to pass: its check, and your sign-off when it asks for one
     passed: int = 0
     events: list[Ev] = field(default_factory=list)
     touched: dict[str, float] = field(default_factory=dict)  # path -> when, for the files edited so far
@@ -43,6 +43,7 @@ class Task:
     note: str = ""  # why it came back
     full: str = ""  # the whole title
     why: str = ""  # the path down from the goal
+    hears: bool = True  # whether its executor is told a note mid-run (a Claude Code session with hooks)
     started: float = 0.0  # when its agent took it, on the model's clock; 0 before
     idle: float | None = None  # seconds since its last sign of life (`run.live`); None: no sign at all
     outside: list[str] = field(default_factory=list)  # touched files its scope does not cover

@@ -150,6 +150,7 @@ def live(store, m: Model, t: Task, node: P.Node) -> None:
     """What the agent holding this task is doing, from the rows its executor logged: what it read,
     edited, ran and said (`did`, `said`), and the writes the gate stopped (`denied` with a path)."""
     t.started = epoch(node.started_at)
+    t.hears = "claude" in (node.executor or "claude")  # only a hooked Claude Code session is told mid-run
     key = node.session_id or node.executor or t.id
     t.agent = m.agent_name(key)
     sign = R.live(store, node, m.clock)  # the meter's last row, the hooks' last call, the log's age
@@ -181,10 +182,16 @@ def live(store, m: Model, t: Task, node: P.Node) -> None:
 
 
 def proofs(t: Task, node: P.Node) -> None:
-    """A leaf is proved by its check: one command, or several joined by &&. They have passed once the leaf
-    is in review or done (Graphene runs the check itself before either)."""
-    t.checks = max(1, len([c for c in (node.check or "").split("&&") if c.strip()]))
-    t.passed = t.checks if t.state in ("review", "done") else 0
+    """A leaf is proved by its check, and by the person's sign-off when it asks for one: at most two. The
+    check has passed once the leaf is in review (it waits for the sign-off) or done; there is no partial
+    progress inside a check."""
+    t.checks = int(bool(node.check)) + int(node.signoff)
+    if t.state == "done":
+        t.passed = t.checks
+    elif t.state == "review":
+        t.passed = t.checks - int(node.signoff)
+    else:
+        t.passed = 0
 
 
 def changed(store, node_id: str) -> list[str]:

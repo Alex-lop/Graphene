@@ -68,3 +68,13 @@ def test_finished_tasks_the_rows_left_out_are_counted():
 def test_the_tell_box_shows_under_the_selected_agent_while_it_is_open():
     text = "\n".join(plain(rows.build_cockpit(scene(), 100, tell="keep ids as strings")))
     assert "tell fox: keep ids as strings▌" in text
+
+
+def test_files_outside_the_scope_are_flagged_and_a_note_that_cannot_be_heard_says_when_it_is_read():
+    m = scene()
+    m.tasks["ids"].outside = ["db/schema.py"]
+    assert "1 OUTSIDE" in "\n".join(plain(rows.build_cockpit(m, 120)))
+    m.tasks["ids"].told = [("keep ids as strings", 90.0, 0.0)]
+    assert "sending…" in "\n".join(plain(rows.build_cockpit(m, 120)))
+    m.tasks["ids"].hears = False
+    assert "it reads this when it next starts" in "\n".join(plain(rows.build_cockpit(m, 120)))
