@@ -42,3 +42,8 @@ def test_a_plan_with_no_edges_is_laid_out_in_columns_not_one_long_column():
     assert len({r[0] for r in lay.rects.values()}) == 2 and len(lines) < len(F.layout(nodes, []).cells)
     _lines, lay, _note = FV.build_flow(nodes, [], 20, "t0")  # too narrow for two: one column, as before
     assert len({r[0] for r in lay.rects.values()}) == 1
+
+
+def test_a_plan_with_no_tasks_has_an_empty_graph_and_g_on_it_does_not_crash():
+    lines, lay, note = FV.build_flow([], [], 80, None)
+    assert lines == [] and lay.width == 0 and note == ""

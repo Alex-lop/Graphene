@@ -30,7 +30,7 @@ def build_flow(
     """Lay the graph out as wide as it will go, then shrink labels, then show the neighbourhood."""
     note = ""
     lay = None
-    wrap = min(MOST_COLUMNS, -(-len(nodes) // PER_COLUMN)) if not edges else 1  # a flat list: a page of boxes
+    wrap = max(1, min(MOST_COLUMNS, -(-len(nodes) // PER_COLUMN))) if not edges else 1  # a flat list: a page
     for label_w in (18, 14, 12, 10):
         for columns in range(wrap, 0, -1):
             lay = F.layout(

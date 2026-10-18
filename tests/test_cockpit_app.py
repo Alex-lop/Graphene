@@ -212,3 +212,17 @@ def test_keys_under_the_help_do_not_reach_the_rows_and_q_closes_only_the_help():
             assert app.is_running and not isinstance(app.screen, Help)
 
     run(go())
+
+
+def test_the_three_screens_open_on_a_plan_with_nothing_in_it():
+    from graphene_map.cockpit.model import Model
+
+    async def go():
+        app = Cockpit(lambda previous: previous or Model("nothing yet"))
+        async with app.run_test(size=(80, 24)) as pilot:
+            for key in ("g", "m", "tab", "c", "tab", "tab"):
+                await pilot.press(key)
+                await pilot.pause(0.05)
+            assert app.is_running and app.view in ("cockpit", "flow", "territory")
+
+    run(go())
