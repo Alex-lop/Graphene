@@ -3,10 +3,12 @@
 
 import sqlite3
 import time
+from datetime import UTC, datetime, timedelta
 
 from test_plan_cli import repo  # noqa: F401  (fixture)
 
 from graphene_map import board, plan
+from graphene_map.cockpit.look import NAMES
 from graphene_map.cockpit.model import Model
 from graphene_map.cockpit.read import FOLD_AFTER, KEEP_DONE, looker, read
 from graphene_map.plan import Caller
@@ -138,3 +140,67 @@ def test_the_board_asks_nothing_while_only_an_assumption_is_open(repo):
     plan_of(repo)
     put_up(repo, "assume", "ids stay strings")
     assert look(repo).questions == []
+
+
+def ago(seconds):
+    """A log timestamp this many seconds ago, as the store keeps them."""
+    return (datetime.now(UTC) - timedelta(seconds=seconds)).isoformat().replace("+00:00", "Z")
+
+
+def row(repo, node_id, kind, detail, seconds):
+    with Store.open(repo) as store:
+        store.log_node(node_id, ago(seconds), kind, "run:claude", BOT.session_id, None, detail)
+
+
+def start(repo, node_id="ids"):
+    with Store.open(repo) as store:
+        plan.start(store, node_id, BOT, repo)
+
+
+def test_what_an_executor_did_is_the_agents_tail_pace_touched_files_and_stopped_writes(repo):
+    plan_of(repo)
+    start(repo)
+    row(repo, "ids", "did", {"attempt": 1, "tool": "Read", "target": "api.py", "verb": "reading"}, 30)
+    row(repo, "ids", "did", {"attempt": 1, "tool": "Edit", "target": "api.py", "verb": "editing"}, 20)
+    row(repo, "ids", "did", {"attempt": 1, "tool": "Bash", "target": "pytest -q", "verb": "running"}, 10)
+    row(repo, "ids", "said", {"attempt": 1, "text": "tests pass locally"}, 6)
+    row(repo, "ids", "denied", {"attempt": 1, "path": "db/ids_2.py", "how": "outside scope"}, 3)
+    t = look(repo).tasks["ids"]
+    assert [e.kind for e in t.events] == ["read", "edit", "run", "said", "stop"]
+    assert list(t.touched) == ["api.py"] and [p for p, _ in t.stopped] == ["db/ids_2.py"]
+    assert t.agent in NAMES
+    m = look(repo)
+    said = ["edit api.py", "run  pytest -q", "says tests pass locally", "stopped db/ids_2.py"]
+    assert m.tail(m.tasks["ids"], 4) == said
+    assert 2 < m.quiet(m.tasks["ids"]) < 8
+    assert m.pace(m.tasks["ids"]) != "▁" * 12
+
+
+def test_only_the_attempt_that_is_going_now_counts(repo):
+    plan_of(repo)
+    start(repo)
+    row(repo, "ids", "did", {"attempt": 1, "tool": "Edit", "target": "old.py", "verb": "editing"}, 50)
+    row(repo, "ids", "did", {"attempt": 2, "tool": "Edit", "target": "api.py", "verb": "editing"}, 5)
+    assert list(look(repo).tasks["ids"].touched) == ["api.py"]
+
+
+def test_a_write_the_scope_has_since_taken_in_is_no_longer_stopped(repo):
+    plan_of(repo)
+    start(repo)
+    row(repo, "ids", "denied", {"attempt": 1, "path": "api.py", "how": "outside scope"}, 5)  # in scope now
+    assert look(repo).tasks["ids"].stopped == []
+
+
+def test_a_task_with_no_move_yet_is_quiet_from_when_it_began_and_a_ready_one_has_no_agent(repo):
+    plan_of(repo)
+    start(repo)
+    m = look(repo)
+    assert m.tasks["ids"].events == [] and m.tasks["ids"].started > 0 and m.quiet(m.tasks["ids"]) < 5
+    assert m.tasks["schema"].agent == "" and m.tasks["schema"].events == []
+
+
+def test_an_agent_keeps_its_name_from_one_look_to_the_next(repo):
+    plan_of(repo)
+    start(repo)
+    first = look(repo)
+    assert look(repo, first).tasks["ids"].agent == first.tasks["ids"].agent

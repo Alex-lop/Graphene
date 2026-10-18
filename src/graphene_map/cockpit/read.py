@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable
+from datetime import datetime
 from pathlib import Path
 
 from .. import board_rows as BR
@@ -16,7 +17,7 @@ from .. import plan as P
 from .. import settings as S
 from .. import views as V
 from .look import short
-from .model import Model, Question, Task
+from .model import Ev, Model, Question, Task
 
 # what a person reads a leaf as (plan.reads), and the state the cockpit draws it in
 STATE = {
@@ -27,6 +28,9 @@ STATE = {
 FOLD_AFTER = 8  # more finished tasks than this, and the rows keep the latest few: the rest are counted
 KEEP_DONE = 4
 FILES_EVERY = 30.0  # seconds between looks at what git tracks: a big repository's list is not free
+ROWS = 200  # the latest rows of a leaf's log the cockpit reads each look: a run's log can be long
+LIVE = ("running", "review", "came back")  # the tasks whose agent the rows are read for
+KINDS = {"reading": "read", "editing": "edit", "running": "run", "searching": "search"}  # a did row's verb
 
 
 def looker(root: Path, open_store: Callable) -> Callable[[Model | None], Model]:
@@ -73,6 +77,9 @@ def read(store, root: Path, previous: Model | None = None, now: float | None = N
             why=" › ".join(short(a.title) for a in reversed(above)),
         )
     fold_done(m, by_id)
+    for t in m.tasks.values():
+        if t.state in LIVE:
+            live(store, m, t, by_id[t.id])
     m.questions = [question_of(item) for item in BR.read(store).open]
     if m.selected not in {rid for _, rid in m.order()}:
         rows = m.order()
@@ -101,3 +108,50 @@ def question_of(item: dict) -> Question:
         item["id"], item["text"], default, [o["text"] for o in item["options"]], item.get("about") or "",
         item["kind"],
     )  # fmt: skip
+
+
+def epoch(stamp: str | None) -> float:
+    """An ISO timestamp of the log's as seconds since the epoch; 0 for none."""
+    try:
+        return datetime.fromisoformat((stamp or "").replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return 0.0
+
+
+def recent(store, node_id: str, kinds: tuple[str, ...], limit: int = ROWS) -> list[dict]:
+    """The latest rows of these kinds on a leaf, oldest first, their detail as a dict."""
+    import json
+
+    rows = store.conn.execute(
+        f"SELECT * FROM node_log WHERE node_id = ? AND kind IN ({', '.join('?' for _ in kinds)}) "
+        "ORDER BY id DESC LIMIT ?",
+        (node_id, *kinds, limit),
+    ).fetchall()
+    return [{**dict(r), "detail": json.loads(r["detail"]) if r["detail"] else {}} for r in reversed(rows)]
+
+
+def live(store, m: Model, t: Task, node: P.Node) -> None:
+    """What the agent holding this task is doing, from the rows its executor logged: what it read,
+    edited, ran and said (`did`, `said`), and the writes the gate stopped (`denied` with a path)."""
+    t.started = epoch(node.started_at)
+    key = node.session_id or node.executor or t.id
+    t.agent = m.agent_name(key)
+    rows = recent(store, t.id, ("did", "said", "denied"))
+    attempt = max((r["detail"].get("attempt") or 0 for r in rows), default=0)
+    for r in rows:
+        d, at = r["detail"], epoch(r["timestamp"])
+        if (d.get("attempt") or 0) != attempt:
+            continue  # only the attempt that is going now
+        if r["kind"] == "did":
+            kind = KINDS.get(d.get("verb", ""), "run")
+            target = str(d.get("target") or "")
+            shell = kind == "run"  # a command is words; anything else names a file
+            t.events.append(Ev(at, kind, text=target if shell else "", path="" if shell else target))
+            if kind == "edit" and target:
+                t.touched[target] = at
+        elif r["kind"] == "said":
+            t.events.append(Ev(at, "said", text=str(d.get("text") or "")[:80]))
+        elif r["kind"] == "denied" and d.get("path"):
+            t.events.append(Ev(at, "stop", path=str(d["path"])))
+            if not P.in_scope(str(d["path"]), node.scope):  # a scope that has taken it in has not stopped it
+                t.stopped.append((str(d["path"]), at))

@@ -43,6 +43,7 @@ class Task:
     note: str = ""  # why it came back
     full: str = ""  # the whole title
     why: str = ""  # the path down from the goal
+    started: float = 0.0  # when its agent took it, on the model's clock; 0 before
 
 
 @dataclass
@@ -118,7 +119,7 @@ class Model:
         return "".join(SPARK[min(7, int(c * 8 / (top + 1)))] if c else "▁" for c in counts)
 
     def quiet(self, t: Task) -> float:
-        last = max((e.t for e in t.events), default=self.clock)
+        last = max((e.t for e in t.events), default=t.started) or self.clock  # no sign yet: since it began
         return self.clock - last
 
     def tail(self, t: Task, n: int = 3) -> list[str]:
