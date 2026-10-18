@@ -104,6 +104,8 @@ class Cockpit(App):
         say = lambda said: self.model.say(said)  # noqa: E731  (the model is a new one each look)
         self.doer = Doer(root, say, self.look, self.call_from_thread) if root else None
         self.view = screen if screen in SCREENS else "cockpit"
+        self.keys = dict(KEYS)  # a replay says its own
+        self.refusal = "there is no repository here to act on"  # what a verb says when it cannot act
         self.cursor = 0  # the territory's folder cursor
         self.tell_open = False
         self.paint_mode = False
@@ -167,7 +169,7 @@ class Cockpit(App):
         self.query_one("#keys", Static).update(
             " "
             + ("paint mode: click or Enter on folders · p to stop · " if self.paint_mode else "")
-            + KEYS[self.view]
+            + self.keys[self.view]
         )
 
     def flow_lines(self, width: int) -> list[Line]:
@@ -257,7 +259,7 @@ class Cockpit(App):
                 name = f"{task.agent} {task.title}".strip()
                 self.push_screen(Details(self.open_store, self.root, sel, name))
         elif d is None:
-            m.say("there is no repository here to act on")
+            m.say(self.refusal)
         elif action == "take":
             d.take(m, sel)
         elif action.startswith("pick:"):
@@ -325,6 +327,9 @@ class Cockpit(App):
         t = self.model.tasks.get(self.model.selected)
         if t is None:
             self.model.say("select a task to tell")
+            return
+        if self.doer is None:
+            self.model.say(self.refusal)
             return
         box = self.query_one("#tell", Input)
         box.add_class("on")

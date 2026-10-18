@@ -59,7 +59,10 @@ def looker(root: Path, open_store: Callable) -> Callable[[Model | None], Model]:
     return look
 
 
-def read(store, root: Path, previous: Model | None = None, now: float | None = None) -> Model:
+def read(
+    store, root: Path, previous: Model | None = None, now: float | None = None,
+    files: list[str] | None = None,
+) -> Model:
     now = time.time() if now is None else now
     nodes, words, goal = V.inputs(store)
     by_id = {n.id: n for n in nodes}
@@ -69,7 +72,9 @@ def read(store, root: Path, previous: Model | None = None, now: float | None = N
     if previous is not None:  # what is the person's survives a look: the selection, the lens, the news
         m.selected, m.lens, m.feed, m.names = previous.selected, previous.lens, previous.feed, previous.names
         m.files, m.files_at, m.seen = previous.files, previous.files_at, previous.seen
-    if not m.files or now - m.files_at > FILES_EVERY:
+    if files is not None:  # told (a replay's, from its recording): git is never asked
+        m.files, m.files_at = files, now
+    elif not m.files or now - m.files_at > FILES_EVERY:
         m.files, m.files_at = P.tracked(root), now
     m.protected = S.protected(store) + S.readonly(store)
     m.first = P.plan_first(store)

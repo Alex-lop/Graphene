@@ -683,6 +683,9 @@ def register(cli: typer.Typer, root, open_store, fail):
         cheat: bool = typer.Option(
             False, "--cheat", help="A scripted agent tries seven ways to cheat, and the real locks answer."
         ),
+        classic: bool = typer.Option(
+            False, "--classic", help="Replay it in the older screen: the plan as an outline, with a pane."
+        ),
     ) -> None:
         """Replay a recorded run in `graphene watch`, change by change.
 
@@ -716,7 +719,12 @@ def register(cli: typer.Typer, root, open_store, fail):
             except (OSError, subprocess.CalledProcessError) as no:
                 fail(f"graphene demo makes a git repository for the replay, and could not: {no}", 1)
             if not once and sys.stdout.isatty():
-                D.Replay(repo, head, lines).run()  # the temporary repository goes when the screen closes
+                if classic:
+                    D.Replay(repo, head, lines).run()  # the temporary repository goes when the screen closes
+                else:
+                    from .cockpit.replay import CockpitReplay
+
+                    CockpitReplay(repo, head, lines).run()
                 return
             D.last_frame(repo, lines)
             wide = shutil.get_terminal_size().columns

@@ -73,3 +73,14 @@ def test_naming_a_classic_view_opens_the_older_screen(repo):
     seen = read_until(fd, b"the plan of")
     assert b"the plan of" in seen and b"cockpit" not in seen
     assert close(pid, fd)
+
+
+def test_demo_replays_in_the_cockpit_and_demo_classic_in_the_older_screen(tmp_path):
+    pid, fd = spawn(tmp_path, "demo")
+    seen = read_until(fd, b"replay")
+    assert b"replay" in seen and b"cockpit" in seen
+    assert close(pid, fd), "the replay outlived its terminal"
+    pid, fd = spawn(tmp_path, "demo", "--classic")
+    seen = read_until(fd, b"replay") + read_until(fd, b"\0", 3.0)  # then a moment for the rest of the screen
+    assert b"replay" in seen and b"cockpit" not in seen
+    assert close(pid, fd)

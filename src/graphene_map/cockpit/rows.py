@@ -17,7 +17,7 @@ from .model import Model, Question, Task
 def build_cockpit(m: Model, width: int, *, tell: str | None = None) -> list[Line]:
     out: list[Line] = []
     need, running, done, total = m.scoreboard()
-    tag = "replay" if m.source == "replay" else "your plan"
+    tag = m.banner or ("replay" if m.source == "replay" else "your plan")
     head = [Seg(" " + fit(m.goal, width - len(tag) - 4), "bold"), Seg(" " * 1), Seg(tag, "grey50")]
     out.append(Line(pad(head, width)))
     out.append(

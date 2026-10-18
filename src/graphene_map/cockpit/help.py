@@ -36,9 +36,9 @@ GROUPS = (
 )  # fmt: skip
 
 
-def help_text(width: int) -> Text:
+def help_text(width: int, extra: tuple = ()) -> Text:
     out = Text()
-    for name, keys in GROUPS:
+    for name, keys in (*extra, *GROUPS):
         for k, (key, what) in enumerate(keys):
             out.append(f" {name if k == 0 else '':<9}", style="bold #4cc9f0")
             out.append_text(Text.assemble((key.strip("`").ljust(6), "bold"), (what, "grey70")))
@@ -51,6 +51,10 @@ def help_text(width: int) -> Text:
 class Help(ModalScreen[None]):
     BINDINGS = [Binding("escape", "close", show=False), Binding("q", "close", show=False),
                 Binding("question_mark", "close", show=False)]  # fmt: skip
+    def __init__(self, extra: tuple = ()) -> None:
+        super().__init__()
+        self.extra = extra  # groups a screen adds in front (a replay's)
+
     DEFAULT_CSS = """
     Help { align: center middle; }
     Help > VerticalScroll { width: 96; max-width: 100%; height: auto; max-height: 100%;
@@ -59,7 +63,7 @@ class Help(ModalScreen[None]):
 
     def compose(self) -> ComposeResult:
         with VerticalScroll():
-            yield Static(help_text(80))
+            yield Static(help_text(80, self.extra))
 
     def action_close(self) -> None:
         self.dismiss(None)
