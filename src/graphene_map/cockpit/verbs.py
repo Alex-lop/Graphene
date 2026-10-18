@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import contextlib
 import os
+import re
+import shlex
 import signal
 import subprocess
 import sys
@@ -191,3 +193,38 @@ class Doer:
 
     def run_ready(self, node_id: str | None = None) -> None:
         self.background(["run", *RUN_WITH, *(["--node", node_id] if node_id else [])])
+
+    def drop(self, m: Model, sel: str) -> None:
+        """d on a proposal drops it; on a question, the board drops it."""
+        if any(q.id == sel for q in m.questions):
+            self.run(["board", "drop", sel])
+        elif sel in m.tasks:
+            self.run(["node", "drop", sel])
+
+    def reopen(self, m: Model, sel: str, note: str) -> None:
+        """Send a finished or reviewed leaf back, with what is wrong: its next executor is told."""
+        if sel in m.tasks and note.strip():
+            self.run(["node", "reopen", sel, "--note", note.strip()])
+
+    def command(self, text: str) -> None:
+        """The `:` line: any graphene command as typed. What can take minutes is a process of its own,
+        `stop` stops the runs, and what needs a terminal (watch, init) says so."""
+        words = text.strip().removeprefix(":").strip().removeprefix("graphene ").strip()
+        if not words:
+            return
+        if re.match(r"ask\s", words):  # a sentence, not shell words: apostrophes are the person's
+            self.background(["ask", words[3:].strip()])
+            return
+        try:
+            argv = shlex.split(words)
+        except ValueError as no:
+            self.say(f"✗ {no}")
+            return
+        if argv[:1] == ["stop"]:
+            self.stop()
+        elif argv[:1] in (["watch"], ["ingest"], ["init"]):
+            self.say(f"✗ `graphene {argv[0]}` takes a terminal of its own: run it outside this screen")
+        elif any(argv[: len(slow)] == slow for slow in SLOW):
+            self.background(argv)
+        else:
+            self.run(argv)

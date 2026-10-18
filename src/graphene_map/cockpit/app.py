@@ -20,6 +20,7 @@ from textual.geometry import Region
 from textual.widget import Widget
 from textual.widgets import Input, Static
 
+from ..tui import Ask
 from . import flow_view as FV
 from . import flowlayout as F
 from . import territory as T
@@ -30,11 +31,15 @@ from .territory_view import build_territory
 from .verbs import Doer
 
 SCREENS = ("cockpit", "flow", "territory")
-KEYS = {
-    "cockpit": "j/k move · ⏎ take · t tell · w allow · x pull back · g graph · m map · q quit",
-    "flow": "arrows move · ⏎ take · t tell · w allow · c cockpit · m map · q quit",
-    "territory": "j/k folder · ←/→ task · p paint · v lens · a allow · c cockpit · g graph · q quit",
+KEYS = {  # one line each, at most 79 columns: the screen's own keys, then the ones every screen has
+    "cockpit": "⏎ take · t tell · w allow · x back · g graph · m map · : cmd · ? keys · q quit",
+    "flow": "arrows · ⏎ take · t tell · w allow · c cockpit · m map · ? keys · q quit",
+    "territory": "j/k folder · ←/→ task · p paint · v lens · w allow · c cockpit · ? keys · q",
 }
+KEYS_TO_VERBS = {  # a key, and the verb it asks for (`act`)
+    "t": "tell", "w": "allow", "x": "back", "d": "drop", "r": "run", "R": "run-all", "a": "answer",
+    "b": "offer:b", "n": "offer:n", "colon": "command",
+}  # fmt: skip
 LEGEND = "✎ files touched of allowed · ✓ proofs · ! writes stopped · ⏸ quiet · ▁▃▅ activity"
 
 
@@ -208,6 +213,70 @@ class Cockpit(App):
             m.selected = action.split(":", 1)[1]
         elif action.startswith("group:"):
             self.cursor = int(action.split(":", 1)[1])
+            if self.paint_mode and self.groups and self.doer:
+                self.doer.paint(m, m.selected, self.groups[self.cursor].name)
+        elif action:
+            self.act(action)
+        self.paint()
+
+    # -- verbs -------------------------------------------------------------------------------------
+
+    TAKES = ("review", "proposed", "yours", "came back")  # the states a row's Enter acts on
+
+    def takes(self) -> bool:
+        m = self.model
+        task = m.tasks.get(m.selected)
+        return any(q.id == m.selected for q in m.questions) or (task is not None and task.state in self.TAKES)
+
+    def act(self, action: str) -> None:
+        """What a key or a click asks for: a verb, run as the command it is."""
+        m, sel, d = self.model, self.model.selected, self.doer
+        task = m.tasks.get(sel)
+        if action == "tell":
+            self.open_tell()
+        elif d is None:
+            m.say("there is no repository here to act on")
+        elif action == "take":
+            d.take(m, sel)
+        elif action.startswith("pick:"):
+            d.pick(m, sel, int(action.split(":", 1)[1]))
+        elif action == "allow":
+            d.widen(m, sel)
+        elif action.startswith("offer:"):
+            d.offer(m, sel, action.split(":", 1)[1])
+        elif action == "back":
+            if task is not None and task.state in ("review", "done"):
+                ask = Ask(f"reopen {sel}: what is wrong? its next executor is told")
+                self.push_screen(ask, self.reopened)
+            else:
+                d.pull_back(m, sel)
+        elif action == "drop":
+            d.drop(m, sel)
+        elif action == "run":
+            if task is not None and "r" in task.offers:
+                d.offer(m, sel, "r")
+            else:
+                d.run_ready(sel if task is not None else None)
+        elif action == "run-all":
+            d.run_ready()
+        elif action == "answer":
+            q = next((q for q in m.questions if q.id == sel), None)
+            if q is None:
+                m.say("a answers a question in your own words: select one")
+            else:
+                self.push_screen(Ask(f"answer {q.id} in your own words: {q.text}"), self.answered)
+        elif action == "command":
+            self.push_screen(Ask("graphene "), lambda text: text and d.command(text))
+        self.paint()
+
+    def answered(self, words: str | None) -> None:
+        if words and self.doer:
+            self.doer.answer(self.model, self.model.selected, words)
+        self.paint()
+
+    def reopened(self, note: str | None) -> None:
+        if note and self.doer:
+            self.doer.reopen(self.model, self.model.selected, note)
         self.paint()
 
     # -- tell --------------------------------------------------------------------------------------
@@ -229,10 +298,12 @@ class Cockpit(App):
         self.set_focus(None)
 
     def on_input_changed(self, event: Input.Changed) -> None:
-        if self.tell_open:
+        if event.input.id == "tell" and self.tell_open:
             self.paint()  # the row shows what is typed
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
+        if event.input.id != "tell":  # a line typed into a prompt (Ask) is that prompt's, not a tell
+            return
         words, sel = event.value, self.model.selected
         self.close_tell()
         if self.doer:
@@ -241,6 +312,9 @@ class Cockpit(App):
 
     def on_key(self, event) -> None:
         key = event.key
+        if isinstance(self.screen, Ask):  # a key queued before the prompt it opened was up: the prompt's
+            self.screen.typed(event)
+            return
         if self.tell_open:
             if key == "escape":
                 self.close_tell()
@@ -249,18 +323,28 @@ class Cockpit(App):
         if key == "q":
             self.exit()
             return
-        if key == "t":
-            self.open_tell()
-            self.paint()
-            return
         if key in ("c", "g", "m"):
             self.view = {"c": "cockpit", "g": "flow", "m": "territory"}[key]
         elif key == "tab":
             self.view = SCREENS[(SCREENS.index(self.view) + 1) % len(SCREENS)]
         elif key in ("j", "down", "k", "up", "left", "right", "h", "l"):
             self.move(key)
+        elif key == "enter":
+            if self.view == "territory" and self.paint_mode and self.groups and self.doer:
+                self.doer.paint(self.model, self.model.selected, self.groups[self.cursor].name)
+            elif self.takes():
+                self.act("take")
+        elif key == "v":
+            self.model.lens = T.LENSES[(T.LENSES.index(self.model.lens) + 1) % len(T.LENSES)]
+        elif key == "p":
+            self.paint_mode = not self.paint_mode
+            if self.paint_mode:
+                self.view = "territory"
+        elif key.isdigit() and key != "0":
+            self.act(f"pick:{key}")
+        elif key in KEYS_TO_VERBS:
+            self.act(KEYS_TO_VERBS[key])
         self.paint()
-
 
 def nearest(lay: F.Layout, current: str, key: str) -> str | None:
     """The node nearest in a direction, by the centres of the boxes."""
