@@ -341,3 +341,15 @@ def test_quiet_is_what_the_plan_counts_for_a_running_leaf_and_a_protected_folder
     m.protected = ["api.py"]
     m._allowed.clear()
     assert m.allowed(m.tasks["ids"]) == 0
+
+
+def test_the_opener_graphene_watch_hands_in_may_say_exit_and_the_screen_stays_up(repo):
+    import typer
+
+    plan_of(repo)
+    first = look(repo)
+
+    def refuses():
+        raise typer.Exit(1)
+
+    assert looker(repo, refuses)(first) is first

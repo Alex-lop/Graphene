@@ -45,11 +45,13 @@ def looker(root: Path, open_store: Callable) -> Callable[[Model | None], Model]:
     A store too busy to open leaves the last model as it was, with a word on the news."""
     import sqlite3
 
+    import typer
+
     def look(previous: Model | None) -> Model:
         try:
             with open_store() as store:
                 return read(store, root, previous)
-        except (sqlite3.Error, OSError) as no:
+        except (sqlite3.Error, OSError, typer.Exit) as no:  # the CLI's opener says Exit when it fails
             model = previous or Model("the plan's store did not open")
             model.say(f"✗ the plan's store did not open ({no}); the screen is as it was")
             return model
