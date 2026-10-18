@@ -105,6 +105,7 @@ def read(
             came_back(store, t, node)
         if t.state == "done":
             t.changed = changed(store, t.id)
+            t.agent = m.agent_name(agent_key(store, node))  # who did it, by the name it had while it ran
     m.questions = [question_of(item) for item in BR.read(store).open]
     rows = m.order()
     if rows and (not m.moved or m.selected not in {rid for _, rid in rows}):
@@ -162,8 +163,7 @@ def live(store, m: Model, t: Task, node: P.Node) -> None:
     edited, ran and said (`did`, `said`), and the writes the gate stopped (`denied` with a path)."""
     t.started = epoch(node.started_at)
     t.hears = "claude" in (node.executor or "claude")  # only a hooked Claude Code session is told mid-run
-    key = node.session_id or node.executor or t.id
-    t.agent = m.agent_name(key)
+    t.agent = m.agent_name(agent_key(store, node))
     sign = R.live(store, node, m.clock)  # the meter's last row, the hooks' last call, the log's age
     t.idle = sign["idle"]
     rows = recent(store, t.id, ("did", "said", "denied"))
@@ -273,3 +273,14 @@ def touched_by_git(m: Model, t: Task, node: P.Node) -> None:
     both = sorted({*files, *t.touched})  # what git sees, and what its own record says it edited
     t.touched = {p: t.touched.get(p, m.clock) for p in both}
     t.outside = [p for p in both if not P.in_scope(p, node.scope)]
+
+
+def agent_key(store, node: P.Node) -> str:
+    """What names an agent: its session while it holds the leaf, else the session or the executor its last
+    `started` row names (a release or a finish clears them from the node, not from the log), so a leaf has
+    the same name running, back, in review and done."""
+    if node.session_id:
+        return node.session_id
+    started = recent(store, node.id, ("started",), 1)
+    last = started[-1] if started else {}
+    return last.get("session_id") or last.get("actor") or node.executor or node.id

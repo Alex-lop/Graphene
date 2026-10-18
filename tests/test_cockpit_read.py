@@ -375,3 +375,18 @@ def test_files_the_agents_own_record_says_it_edited_count_even_when_git_cannot_s
     row(repo, "ids", "did", {"attempt": 1, "tool": "Edit", "target": "api.py", "verb": "editing"}, 5)
     # nothing is changed on disk (a replay's checkout is not there): the record is what there is
     assert list(look(repo).tasks["ids"].touched) == ["api.py"]
+
+
+def test_an_agent_has_the_same_name_running_back_and_done(repo):
+    plan_of(repo)
+    start(repo)
+    running = look(repo).tasks["ids"].agent
+    assert running in NAMES
+    with Store.open(repo) as store:
+        plan.release(store, "ids", BOT, "it needs db/models.py", wants=["db/models.py"])
+    assert look(repo).tasks["ids"].state == "came back" and look(repo).tasks["ids"].agent == running
+    with Store.open(repo) as store:  # finished: the node holds no session any more, its log still says who
+        node = plan.get(store, "ids")
+        node.state, node.session_id, node.executor = plan.DONE, None, None
+        store.put_node(plan.to_dict(node))
+    assert look(repo).tasks["ids"].agent == running

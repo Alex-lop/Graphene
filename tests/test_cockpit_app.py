@@ -161,3 +161,19 @@ def test_the_keys_line_keeps_help_and_quit_when_the_terminal_is_narrow():
             assert len(fitted) <= width and "? keys" in fitted
             assert fitted.rstrip().endswith("q") or fitted.rstrip().endswith("quit")
     assert fit_keys(KEYS["cockpit"], 200) == KEYS["cockpit"]
+
+
+def test_the_graph_says_what_the_selected_task_is_for():
+    from graphene_map.cockpit.model import Model, Task
+
+    async def go():
+        m = Model("goal")
+        m.tasks["a"] = Task("a", "users return ids", "running", why="API", agent="fox", checks=1)
+        m.selected = "a"
+        app = app_of(m, screen="flow")
+        async with app.run_test(size=(100, 24)) as pilot:
+            await pilot.pause(0.1)
+            shown = "\n".join(line.plain() for line in app.query_one(Canvas).lines)
+            assert "users return ids  ·  running · fox · proof 0/1 · for API" in shown
+
+    run(go())

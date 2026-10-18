@@ -181,7 +181,8 @@ class Cockpit(App):
         info = f" {sel.title}" if sel else ""
         if sel:
             info += f"  ·  {sel.state}" + (f" · {sel.agent}" if sel.agent else "")
-            info += f" · proof {sel.passed}/{sel.checks}"
+            info += f" · proof {sel.passed}/{sel.checks}" if sel.checks else ""
+            info += f" · for {sel.why}" if sel.why else ""
         lines += [
             Line([]),
             Line([Seg(info, "bold")]),
