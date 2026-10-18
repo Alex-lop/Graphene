@@ -31,7 +31,7 @@ uvx --from graphene-map graphene demo
 
 Watch the locks hold: `graphene demo --cheat` tries seven ways round them.
 
-<img src="https://raw.githubusercontent.com/Alex-lop/Graphene/main/docs/assets/watch.gif" alt="graphene demo: the cockpit replays a run: a leaf comes back with its reason, is tried again, lands" width="720" />
+<img src="https://raw.githubusercontent.com/Alex-lop/Graphene/main/docs/assets/watch.gif" alt="graphene demo: the cockpit replays a run: a leaf comes back with its reason, is tried again, lands" width="800" />
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Alex-lop/Graphene/main/docs/assets/loop-ivory.svg" />
