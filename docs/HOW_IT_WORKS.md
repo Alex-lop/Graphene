@@ -67,20 +67,21 @@ waits for your own key.
 
 ## The views
 
-The outline is `graphene plan`'s print and `graphene watch`'s tree: one row a node, indented, with the word its state
-reads as (proposed, ready, waiting, running, came back, review, done). Finished sub-goals fold into one row. `Tab` in
-`graphene watch`, or `graphene plan --view NAME`, shows the others:
+`graphene watch` opens the cockpit: one row a task, what waits for you first. A row says who is on it and, in
+numbers, whether it is on track: pace, files touched of allowed, proofs, writes the gate stopped, seconds
+quiet. The row under the cursor opens to its agent's last moves and the verbs: `t` tells it a line, which it hears
+with its next write; `w` gives it what the gate stopped; `x` hands it back; `Enter` takes what waits for you, or
+opens it up. `g` draws the plan as boxes and arrows, `m` the folders each task may write.
 
-- `tree` (`view_tree.py`) draws the plan top-down, each parent centred over its children; too wide, it drops the
-  titles, folds finished sub-goals, then lists each sub-goal's leaves down.
-- `dag` (`view_dag.py`) draws only leaves, left to right, by the chain of `needs` before each. One column can run at
-  once. The critical path is bold.
-- `time` (`view_time.py`) draws a lane for each leaf that has been held, under one for your moves. Each cell is what
-  the executor mostly did then: editing █, running ▓, reading ▒, talking ░, idle ─; a hold the meter cannot see is ═.
-  Marks: ! refused, ✓ ✗ the check, ↩ came back, ■ landed, ● running. In the outline, ∅ after a title flags a
-  check that passes at the base, or fails outside its scope.
+`--classic` (or a `--view`) opens the older screen, whose outline is `graphene plan`'s print: a row a node, with its
+state's word. `Tab` there, or `graphene plan --view NAME`, shows the others:
 
-`c` shows the cursor's leaf's whole diff, coloured, and whether it is in your checkout yet.
+- `tree` (`view_tree.py`) draws the plan top-down; too wide, it drops the titles, folds finished sub-goals, then
+  lists each sub-goal's leaves down.
+- `dag` (`view_dag.py`) draws only leaves, left to right, by the chain of `needs` before each; the critical path is bold.
+- `time` (`view_time.py`) draws a lane for each leaf that has been held, under one for your moves; each cell is what
+  the executor mostly did then. In the outline, ∅ after a title
+  flags a check that passes at the base, or fails outside its scope.
 
 ## Plan first
 
@@ -180,15 +181,15 @@ It logs rows on the leaf: `usage` for each turn (model, tokens, dollars at list 
 `said` for what the agent says, and `ended` with the exit and seconds.
 Claude Code's final report settles the dollars to what it says it cost. A Codex model with no list price says so.
 
-**In `graphene watch`**, each running leaf has a live row: executor and model, time, dollars, turns, files touched
-(and how many outside the scope), tokens, and what it did last. **The two clocks**, in the status line, are
+**In the classic watch**, each running leaf has a live row: executor and model, time, dollars, turns, files touched,
+tokens, and what it did last. **The two clocks**, in the status line, are
 **agents** (how many run now, their minutes over every attempt, the plan's dollars at list price) and **you** (your
 moves, and the minutes that hold at least one).
 
 **The bill line**: `graphene run` ends with one line, for every executor:
 `run: 3 done · agents 41m, $2.8700 at list price · 2 of 3 at once · you: 4 moves, 2m`. `2 of 3 at once`: three
 leaves ran, at most two together. With no meter, the dollars say "no meter". `graphene plan log` keeps the line as a
-row; the goal's pane in watch shows the last.
+row; the classic goal's pane shows the last.
 
 **`graphene node show`** lists each attempt: executor and model, time, turns, tokens, dollars, exit, what it wrote to the cache and
 read from it (Claude Code), then what it read, edited and ran, what was refused, and what it said last. A Claude Code executor is seen by the hooks and by
