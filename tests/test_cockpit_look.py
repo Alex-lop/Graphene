@@ -41,3 +41,10 @@ def test_a_short_name_ends_where_a_phrase_ends():
     assert short("Wire the reader - then check it") == "Wire the reader"
     assert short("users returns ids: each user has its id") == "users returns ids"
     assert short("The whole of it") == "whole of it"
+
+
+def test_a_name_does_not_end_on_a_possessive_that_wants_its_noun():
+    assert short("The reference names the three views' files again, as a test pins them") == (
+        "reference names the three views' files"
+    )
+    assert short("Fix Alex's bug in the parser and the lexer") == "Fix Alex's bug"

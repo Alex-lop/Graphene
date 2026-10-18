@@ -54,12 +54,13 @@ def short(title: str, words: int = 5) -> str:
     """A glanceable name for a sentence-long title: what comes before a colon, a semicolon or a dash,
     without a leading article, at most ``words`` words, and never ending on a word that wants another
     ("Add an XML reader and" is "Add an XML reader"). A plan's titles are sentences; a screen with almost
-    no text needs a name."""
+    no text needs a name. A word that owns the next one ("views'") brings it."""
     head = re.split(r"[:;]|\s[-–—]\s", title, maxsplit=1)[0].strip()
     parts = head.split()
     if parts and parts[0].lower() in ("the", "a", "an"):
         parts = parts[1:]
-    parts = parts[:words]
+    keep = words + (len(parts) > words and parts[words - 1].endswith(("'", "’", "'s", "’s")))  # views' files
+    parts = parts[:keep]
     while len(parts) > 1 and parts[-1].lower().strip(",.") in TRAILING:
         parts.pop()
     return " ".join(parts) or title
