@@ -13,6 +13,8 @@ from . import territory as T
 from .lines import Line, Seg, pad
 from .model import Model
 
+HEAD = 3  # lines above the first folder: the total, the lens, the rule
+
 
 def build_territory(m: Model, width: int, cursor: int = 0) -> tuple[list[Line], list[T.Group]]:
     groups, summary = T.compute(m.files, m.tasks_dict(), m.protected, lens=m.lens)

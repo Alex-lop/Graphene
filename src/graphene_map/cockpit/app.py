@@ -33,7 +33,7 @@ from .help import Help
 from .lines import Line, Seg, fit_keys, seg_at
 from .model import Model
 from .rows import build_cockpit
-from .territory_view import build_territory
+from .territory_view import HEAD, build_territory
 from .verbs import Doer
 
 SCREENS = ("cockpit", "flow", "territory")
@@ -112,7 +112,7 @@ class Cockpit(App):
         self.cursor = 0  # the territory's folder cursor
         self.tell_open, self.tell_for = False, ""
         self.paint_mode = False
-        self.shown = ""  # the row the screen was last scrolled to
+        self.shown: tuple = ()  # the screen, row and folder the canvas was last scrolled to
         self.flow_layout: F.Layout | None = None
         self.groups: list[T.Group] = []
 
@@ -166,8 +166,9 @@ class Cockpit(App):
         else:
             lines = self.flow_lines(w)
         self.query_one(Canvas).set_lines(lines)
-        if m.selected != self.shown:  # follow the selection when it moves, not on every tick
-            self.shown = m.selected
+        at = (self.view, m.selected, self.cursor if self.view == "territory" else 0)
+        if at != self.shown:  # follow the selection when it moves, not on every tick
+            self.shown = at
             self.call_after_refresh(self.follow, lines)
         feed = m.latest()
         note = Text()
@@ -197,11 +198,20 @@ class Cockpit(App):
         return lines
 
     def follow(self, lines: list[Line]) -> None:
-        """Scroll so the selected row, all its lines, is on screen."""
+        """Scroll so what is selected is on screen: a task's row, all its lines; the box on the graph; the
+        folder under the cursor on the map."""
+        box = self.query_one(ScrollableContainer)
+        if self.view == "flow":
+            rect = self.flow_layout.rects.get(self.model.selected) if self.flow_layout else None
+            if rect:
+                box.scroll_to_region(Region(0, rect[1], 1, rect[3] - rect[1] + 1), animate=False)
+            return
+        if self.view == "territory":
+            box.scroll_to_region(Region(0, HEAD + self.cursor, 1, 1), animate=False)
+            return
         at = [k for k, line in enumerate(lines) if line.row and line.row == self.model.selected]
         if at:
-            region = Region(0, at[0], 1, at[-1] - at[0] + 1)
-            self.query_one(ScrollableContainer).scroll_to_region(region, animate=False)
+            box.scroll_to_region(Region(0, at[0], 1, at[-1] - at[0] + 1), animate=False)
 
     # -- moves -----------------------------------------------------------------------------------
 

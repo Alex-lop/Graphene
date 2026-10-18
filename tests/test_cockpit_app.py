@@ -246,3 +246,39 @@ def test_the_help_scrolls_from_the_keyboard_where_the_terminal_is_shorter_than_i
             assert box.scroll_y == 0
 
     run(go())
+
+
+def test_the_graph_and_the_map_scroll_to_what_is_selected_when_there_are_more_than_fit():
+    from graphene_map.cockpit.model import Model, Task
+
+    m = Model("a long plan")
+    m.files = [f"d{i}/f{j}.py" for i in range(12) for j in range(5)]
+    m.tasks = {f"t{i}": Task(f"t{i}", f"task {i}", "ready", [f"d{i}/**"]) for i in range(40)}
+    m.selected = "t0"
+
+    async def go():
+        app = app_of(m)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await pilot.pause(0.1)
+            box = app.query_one(ScrollableContainer)
+            await pilot.press("g")
+            await pilot.pause(0.2)
+            for _ in range(39):
+                await pilot.press("down")  # on the graph the arrows go to the next box down
+            await pilot.pause(0.3)
+            top, bottom = app.flow_layout.rects[m.selected][1], app.flow_layout.rects[m.selected][3]
+            assert box.max_scroll_y > 0 and box.scroll_y <= top and bottom < box.scroll_y + box.size.height
+
+    async def folders():
+        app = app_of(m)
+        async with app.run_test(size=(80, 10)) as pilot:  # the map's rows do not fit this height
+            await pilot.pause(0.1)
+            box = app.query_one(ScrollableContainer)
+            await pilot.press("m")
+            await pilot.pause(0.2)
+            await pilot.press("k")  # wraps to the last folder, below the first screen
+            await pilot.pause(0.3)
+            assert box.scroll_y > 0 and 3 + app.cursor < box.scroll_y + box.size.height
+
+    run(go())
+    run(folders())
