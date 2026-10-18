@@ -14,6 +14,7 @@ from . import territory as T
 from .look import PALETTE, SPARK, color_of, name_for
 
 LIVE_STATES = ("running", "ready", "review", "proposed", "came back", "waiting", "yours")
+NEEDS_YOU = ("review", "came back", "yours")  # where the move is the person's
 
 
 @dataclass
@@ -58,6 +59,7 @@ class Model:
     def __init__(self, goal: str = "", source: str = "plan") -> None:
         self.source, self.goal = source, goal
         self.files: list[str] = []
+        self.files_at = 0.0  # when `files` was read (seconds, on the model's clock)
         self.protected: list[str] = []
         self.tasks: dict[str, Task] = {}
         self.questions: list[Question] = []
@@ -82,7 +84,7 @@ class Model:
     def order(self) -> list[tuple[str, str]]:
         """The cockpit's rows in the order a person should look at them: (kind, id)."""
         rows: list[tuple[str, str]] = [("question", q.id) for q in self.questions]
-        need = [t for t in self.tasks.values() if t.state in ("review", "came back")]
+        need = [t for t in self.tasks.values() if t.state in NEEDS_YOU]
         rest = {
             s: [t for t in self.tasks.values() if t.state == s]
             for s in ("running", "ready", "waiting", "proposed", "done")
@@ -94,7 +96,7 @@ class Model:
 
     def scoreboard(self) -> tuple[int, int, int, int]:
         """(need you, running, proven, total): proven counts finished tasks, folded ones included."""
-        need = len(self.questions) + sum(1 for t in self.tasks.values() if t.state in ("review", "came back"))
+        need = len(self.questions) + sum(1 for t in self.tasks.values() if t.state in NEEDS_YOU)
         running = sum(1 for t in self.tasks.values() if t.state == "running")
         done = self.folded_done + sum(1 for t in self.tasks.values() if t.state == "done")
         return need, running, done, self.folded_done + len(self.tasks)

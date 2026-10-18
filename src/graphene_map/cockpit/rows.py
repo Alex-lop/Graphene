@@ -99,6 +99,8 @@ def right_of(m: Model, t: Task, width: int) -> list[Seg]:
         return [Seg(t.note or "stuck", "#ef476f"), Seg("   ⏎ try again", "bold #c77dff", "take")]
     if t.state == "proposed":
         return [Seg("⏎ accept", "bold #4cc9f0", "take")]
+    if t.state == "yours":
+        return [Seg("yours", "#c77dff"), Seg("   ⏎ mark done", "bold #c77dff", "take")]
     if t.state == "ready":
         return [Seg("ready", "#d0d0d0")]
     n = len(t.changed)
