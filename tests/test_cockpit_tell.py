@@ -72,3 +72,24 @@ def test_a_task_nobody_is_on_can_be_told_too_but_with_nothing_selected_it_says_s
             assert not app.tell_open and app.model.latest() == "select a task to tell"
 
     asyncio.run(go())
+
+
+def test_the_line_goes_to_the_task_it_was_opened_on_though_the_selection_moves(repo):
+    with Store.open(repo) as store:
+        plan.propose(store, [{"id": "docs", "title": "docs", "scope": ["README.md"], "check": "true"}], ALEX)
+
+    async def go():
+        app = cockpit(repo)
+        async with app.run_test(size=(100, 30)) as pilot:
+            await pilot.pause(0.1)
+            app.model.selected = "ids"
+            await pilot.press("t")
+            await type_in(pilot, "for ids")
+            app.model.selected = "docs"  # what a look does when something else needs you more
+            await pilot.press("enter")
+            await pilot.pause(0.1)
+
+    asyncio.run(go())
+    with Store.open(repo) as store:
+        [note] = [it for it in board.items(store) if it["kind"] == "note"]
+    assert note["text"] == "for ids" and note["about"] == "ids"

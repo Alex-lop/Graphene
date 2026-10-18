@@ -10,6 +10,7 @@ exists on its own (verbs.py), and the line at the bottom says what the last one 
 from __future__ import annotations
 
 from collections.abc import Callable
+from functools import partial
 from pathlib import Path
 
 from rich.text import Text
@@ -109,7 +110,7 @@ class Cockpit(App):
         self.keys = dict(KEYS)  # a replay says its own
         self.refusal = "there is no repository here to act on"  # what a verb says when it cannot act
         self.cursor = 0  # the territory's folder cursor
-        self.tell_open = False
+        self.tell_open, self.tell_for = False, ""
         self.paint_mode = False
         self.shown = ""  # the row the screen was last scrolled to
         self.flow_layout: F.Layout | None = None
@@ -146,6 +147,8 @@ class Cockpit(App):
 
     def paint(self) -> None:
         m, w = self.model, self.width()
+        if self.tell_open and m.selected != self.tell_for:  # a click moved on: the line was for the other row
+            self.close_tell()
         tabs = "  ".join(
             f"[{'b' if s == self.view else 'dim'}]{k} {s}[/]" for k, s in zip("cgm", SCREENS, strict=True)
         )
@@ -283,16 +286,19 @@ class Cockpit(App):
         elif action == "back":
             if task is not None and task.state in ("review", "done"):
                 ask = Ask(f"reopen {sel}: what is wrong? its next executor is told")
-                self.push_screen(ask, self.reopened)
+                m.moved = True  # opening it is choosing the row: the selection stays here until you move
+                self.push_screen(ask, partial(self.reopened, sel))
             else:
                 d.pull_back(m, sel)
         elif action == "drop":
             d.drop(m, sel)
         elif action == "run":
-            if task is not None and "r" in task.offers:
+            if task is None:
+                m.say("select a task to run: r runs the one under the cursor, R every ready leaf")
+            elif "r" in task.offers:
                 d.offer(m, sel, "r")
             else:
-                d.run_ready(sel if task is not None else None)
+                d.run_ready(sel)
         elif action == "run-all":
             self.run_all()
         elif action == "answer":
@@ -300,7 +306,9 @@ class Cockpit(App):
             if q is None:
                 m.say("a answers a question in your own words: select one")
             else:
-                self.push_screen(Ask(f"answer {q.id} in your own words: {q.text}"), self.answered)
+                m.moved = True
+                ask = Ask(f"answer {q.id} in your own words: {q.text}")
+                self.push_screen(ask, partial(self.answered, q.id))
         elif action == "split":
             d.split(m, sel)
         elif action == "first":
@@ -375,14 +383,14 @@ class Cockpit(App):
         except SuspendNotSupported:  # no terminal to hand over (a test): the editor runs without one
             self.doer.run(argv)
 
-    def answered(self, words: str | None) -> None:
+    def answered(self, qid: str, words: str | None) -> None:
         if words and self.doer:
-            self.doer.answer(self.model, self.model.selected, words)
+            self.doer.answer(self.model, qid, words)
         self.paint()
 
-    def reopened(self, note: str | None) -> None:
+    def reopened(self, node_id: str, note: str | None) -> None:
         if note and self.doer:
-            self.doer.reopen(self.model, self.model.selected, note)
+            self.doer.reopen(self.model, node_id, note)
         self.paint()
 
     # -- tell --------------------------------------------------------------------------------------
@@ -399,11 +407,12 @@ class Cockpit(App):
         box.add_class("on")
         box.value = ""
         box.focus()
-        self.tell_open = True
+        self.tell_open, self.tell_for = True, t.id  # the line is for this task, wherever the selection goes
+        self.model.moved = True
 
     def close_tell(self) -> None:
         self.query_one("#tell", Input).remove_class("on")
-        self.tell_open = False
+        self.tell_open, self.tell_for = False, ""
         self.set_focus(None)
 
     def on_input_changed(self, event: Input.Changed) -> None:
@@ -413,7 +422,7 @@ class Cockpit(App):
     def on_input_submitted(self, event: Input.Submitted) -> None:
         if event.input.id != "tell":  # a line typed into a prompt (Ask) is that prompt's, not a tell
             return
-        words, sel = event.value, self.model.selected
+        words, sel = event.value, self.tell_for
         self.close_tell()
         if self.doer:
             self.doer.tell(self.model, sel, words)

@@ -238,3 +238,29 @@ def test_colon_ask_alone_opens_the_editor_for_a_paragraph_and_asks_what_was_writ
 
     asyncio.run(go())
     assert asked == [["ask", "add a farewell command\nthat says goodbye"]]
+
+
+def test_r_with_a_question_under_the_cursor_starts_nothing(repo):
+    started = []
+
+    async def steps(app, pilot):
+        app.doer.background = lambda argv: started.append(argv)
+        assert app.model.selected == app.model.questions[0].id
+        await pilot.press("r")
+        assert not started and app.model.latest().startswith("select a task to run")
+
+    drive(repo, steps, question=True)
+    assert not started
+
+
+def test_an_answer_goes_to_the_question_it_was_opened_on_though_the_selection_moves(repo):
+    async def steps(app, pilot):
+        await pilot.press("a")
+        await type_in(pilot, "use tabs")
+        app.model.selected = "ids"  # what a look does when something else needs you more
+        await pilot.press("enter")
+        await pilot.pause(0.3)
+
+    drive(repo, steps, question=True)
+    [item] = [it for it in items(repo) if it["kind"] == "question"]
+    assert item["answer"] == "use tabs"
