@@ -123,7 +123,7 @@ class Doer:
         elif t.state == "came back":
             self.background(["run", *RUN_WITH, "--node", t.id])
         elif t.state == "ready":
-            self.background(["run", *RUN_WITH, "--node", t.id])
+            self.say(f"{t.title} is ready and waits for no one: r runs it, R runs every ready leaf")
         else:
             self.say(f"{t.agent or t.title} is {t.state}: nothing to take")
 
@@ -195,11 +195,15 @@ class Doer:
         self.background(["run", *RUN_WITH, *(["--node", node_id] if node_id else [])])
 
     def drop(self, m: Model, sel: str) -> None:
-        """d on a proposal drops it; on a question, the board drops it."""
+        """d on a proposal drops it; on a question, the board drops it. Work already accepted is never one key
+        away from leaving the plan: typed, `:node drop ID` does it, and the engine says what waits on it."""
+        t = m.tasks.get(sel)
         if any(q.id == sel for q in m.questions):
             self.run(["board", "drop", sel])
-        elif sel in m.tasks:
+        elif t is not None and t.state == "proposed":
             self.run(["node", "drop", sel])
+        elif t is not None:
+            self.say(f"d drops a proposal or a question; {t.title} is {t.state}: `:node drop {t.id}` does")
 
     def reopen(self, m: Model, sel: str, note: str) -> None:
         """Send a finished or reviewed leaf back, with what is wrong: its next executor is told."""

@@ -160,3 +160,28 @@ def test_a_slow_command_runs_as_a_process_of_its_own_and_says_when_it_ended(repo
 def test_the_gist_names_the_command_and_says_the_first_line_it_said():
     assert gist(["board", "take", "q1"], 0, "q1: taken\nmore") == "graphene board take q1: taken"
     assert gist(["node", "drop", "x"], 1, "") == "✗ graphene node drop x"
+
+
+def test_d_drops_a_proposal_or_a_question_and_never_an_accepted_leaf(repo, doer):
+    plan_of(repo)
+    qid = question(repo)
+    m = model_of(qid, ids="running", docs="ready")
+    m.tasks["notes"] = Task("notes", "notes", "proposed", ["NOTES.md"])
+    doer.drop(m, "ids")
+    doer.drop(m, "docs")
+    assert "d drops a proposal or a question" in doer.said[-1] and ":node drop docs` does" in doer.said[-1]
+    with Store.open(repo) as store:
+        assert {n.id: n.state for n in plan.nodes(store)} == {
+            "ids": plan.OPEN, "docs": plan.OPEN, "notes": plan.PROPOSED,
+        }  # fmt: skip
+    doer.drop(m, "notes")
+    doer.drop(m, qid)
+    with Store.open(repo) as store:
+        assert plan.get(store, "notes").state == plan.DROPPED
+    assert B.reads(items(repo)[0]) == "dropped"
+
+
+def test_y_on_a_ready_leaf_starts_nothing_and_points_at_r(repo, doer):
+    plan_of(repo)
+    doer.take(model_of(ids="ready"), "ids")
+    assert "r runs it" in doer.said[-1] and not any("graphene run" in line for line in doer.said)
