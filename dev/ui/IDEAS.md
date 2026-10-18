@@ -1,7 +1,8 @@
 # Graphene, talking to your agents with almost no text
 
-All of it is built in `dev/ui/playground/` so you can judge the feel:
-`uv run python dev/ui/playground/app.py` (`--repo .` for this repo's real plan, `--graph pasted` for your diagram).
+The feel was judged in `dev/ui/playground/` (`uv run python dev/ui/playground/app.py`), which stays a simulator to
+try ideas in. What you liked is now `graphene watch` (`src/graphene_map/cockpit/`), on the real plan, with the older
+outline behind `--classic`. The shots below are the playground's; the README has the real ones.
 
 ## The problem, in one line
 
@@ -24,7 +25,8 @@ Move the cursor in one and the others follow.
 
 **1. Cockpit.** Numbers, not paragraphs: `✎ 9/42` files touched of allowed, `✓ 1/3` proofs, `!2` writes stopped,
 `⏸ 79s` quiet, a live tail. The verbs sit on the row: `⏎` take the default, `t` tell it one line, `w` give it the
-folder it was stopped at, `x` pull back. About 50 words at 80x24; the watch screen runs about 145.
+folder it was stopped at, `x` pull back. Measured on the shipped recording at 80x24, frame by frame: the cockpit shows a median of 56 words (at most 88),
+the classic screen 98 (at most 135).
 
 ![cockpit](playground/shots/cockpit.png)
 
@@ -62,10 +64,10 @@ agent on these screens (a simulator drives the numbers), and Codex.
 
 ## Decided while you slept
 
-You said to do what I think is best. Each flips with one line; none is in code yet.
+You said to do what I think is best. Each flips with one line; the new watch follows all five.
 
-1. **Carry on, and say so.** An unanswered question takes its default, as today; the row will say so, and Tell
-   reaches the agent if you change your mind. Stopping an unattended run costs the night.
+1. **Carry on, and say so.** An unanswered question takes its default, as today; its row shows the default beside
+   Enter, and Tell reaches the agent if you change your mind. Stopping an unattended run costs the night.
 2. **One window, many agents,** one repository.
 3. **Plain words on the new screens** (task, may touch, proof, stuck); the engine and docs keep leaf, scope, check.
 4. **Keep the agent names:** a task keeps its name, and "fox is stuck" is sayable.
@@ -73,5 +75,5 @@ You said to do what I think is best. Each flips with one line; none is in code y
 
 ## Next
 
-An added screen in `graphene watch` behind a key, not a new default (124 tests pin today's strings): Look, then
-Answer, then the `t` key for Tell.
+Not done: sub-goal boxes in the flow view; an hour of real agents on these screens (recordings and throwaway
+plans only); Tell on Codex.
