@@ -88,6 +88,7 @@ class Cockpit(App):
     BINDINGS = [Binding("question_mark", "help", show=False)]  # a binding, so the key that opens it is spent
     CSS = """
     Screen { background: #0e1014; }
+    Ask { background: #0e1014 55%; }
     #bar { height: 1; background: #181b22; color: #9aa0ad; }
     #feed { height: 1; }
     #keys { height: 1; background: #181b22; color: #7d8492; }
@@ -128,6 +129,7 @@ class Cockpit(App):
         yield Static(id="keys")
 
     def on_mount(self) -> None:
+        self.query_one(ScrollableContainer).can_focus = False  # the wheel scrolls it; the keys are the app's
         self.set_interval(self.every, self.look)
         self.set_interval(0.5, self.terminal_gone)
         self.paint()
@@ -298,7 +300,8 @@ class Cockpit(App):
             d.offer(m, sel, action.split(":", 1)[1])
         elif action == "back":
             if task is not None and task.state in ("review", "done"):
-                ask = Ask(f"reopen {sel}: what is wrong? its next executor is told")
+                about = f"{task.agent} {task.title}".strip()
+                ask = Ask(f"reopen {sel}: what is wrong? its next executor is told", about=about)
                 m.moved = True  # opening it is choosing the row: the selection stays here until you move
                 self.push_screen(ask, partial(self.reopened, sel))
             else:
@@ -320,7 +323,7 @@ class Cockpit(App):
                 m.say("a answers a question in your own words: select one")
             else:
                 m.moved = True
-                ask = Ask(f"answer {q.id} in your own words: {q.text}")
+                ask = Ask(f"answer {q.id} in your own words", about=q.text)
                 self.push_screen(ask, partial(self.answered, q.id))
         elif action == "split":
             d.split(m, sel)

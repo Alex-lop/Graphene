@@ -93,3 +93,18 @@ def test_the_line_goes_to_the_task_it_was_opened_on_though_the_selection_moves(r
     with Store.open(repo) as store:
         [note] = [it for it in board.items(store) if it["kind"] == "note"]
     assert note["text"] == "for ids" and note["about"] == "ids"
+
+
+def test_tab_in_the_tell_box_does_not_move_the_typing_away_from_it(repo):
+    from textual.widgets import Input
+
+    async def go():
+        app = cockpit(repo)
+        async with app.run_test(size=(100, 30)) as pilot:
+            await pilot.pause(0.1)
+            await pilot.press("t")
+            await pilot.press("tab")
+            await type_in(pilot, "still here")
+            assert app.query_one("#tell", Input).value == "still here" and app.tell_open
+
+    asyncio.run(go())
