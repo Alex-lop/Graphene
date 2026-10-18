@@ -151,6 +151,8 @@ class Cockpit(App):
         bar = Text.from_markup(" " + tabs.replace("[b]", "[bold #4cc9f0]").replace("[dim]", "[grey50]"))
         name = self.root.name if self.root else ""
         name += f" · plan first {m.first}" if m.first else ""
+        if bar.cell_len + len(name) + 3 > w:  # narrow: just whose plan this is, cut, or nothing
+            name = name.split(" · ")[0][: max(w - bar.cell_len - 3, 0)]
         bar.append(" " * max(2, w - bar.cell_len - len(name) - 1) + name, style="grey42")  # whose plan
         self.query_one("#bar", Static).update(bar)
         if self.view == "cockpit":
@@ -167,11 +169,9 @@ class Cockpit(App):
         note = Text()
         note.append(" " + (feed or LEGEND), style="bold #e9c46a" if feed else "grey42")
         self.query_one("#feed", Static).update(note)
-        self.query_one("#keys", Static).update(
-            " "
-            + ("paint mode: click or Enter on folders · p to stop · " if self.paint_mode else "")
-            + self.keys[self.view]
-        )
+        painting = "paint mode: click or Enter on folders · p to stop · " if self.paint_mode else ""
+        keys = painting + self.keys[self.view]
+        self.query_one("#keys", Static).update(" " + fit_keys(keys, w - 1))
 
     def flow_lines(self, width: int) -> list[Line]:
         m = self.model
@@ -398,6 +398,19 @@ class Cockpit(App):
         elif key in KEYS_TO_VERBS:
             self.act(KEYS_TO_VERBS[key])
         self.paint()
+
+def fit_keys(keys: str, width: int) -> str:
+    """The keys line in the room there is: whole keys from the left, and the last two (`? keys`, `q`) always,
+    so a narrow terminal still says how to get help and how to leave."""
+    if len(keys) <= width:
+        return keys
+    pieces = keys.split(" · ")
+    tail = [p for p in pieces if p.startswith("? ") or p in ("q", "q quit")][-2:]
+    head = [p for p in pieces if p not in tail]
+    while head and len(" · ".join([*head, *tail])) > width:
+        head.pop()
+    return " · ".join([*head, *tail])[:width]
+
 
 def nearest(lay: F.Layout, current: str, key: str) -> str | None:
     """The node nearest in a direction, by the centres of the boxes."""

@@ -107,3 +107,12 @@ def test_a_running_agent_that_is_not_selected_shows_its_last_move_in_one_dim_lin
     assert "┊ edit models/m0.py" in text  # fox's last event, under its row
     m.selected = "ids"  # selected, it opens into three lines and the verbs instead
     assert "┊ edit models/m0.py" in "\n".join(plain(rows.build_cockpit(m, 100)))
+
+
+def test_a_narrow_banner_keeps_what_it_is_and_where_it_is():
+    m = scene()
+    m.banner = "replay · as it ran, live · 2026-10-09 · 120 of 138"
+    wide = plain(rows.build_cockpit(m, 120))[0]
+    narrow = plain(rows.build_cockpit(m, 60))[0]
+    assert "as it ran, live · 2026-10-09" in wide
+    assert narrow.rstrip().endswith("replay · 120 of 138") and len(narrow) <= 60

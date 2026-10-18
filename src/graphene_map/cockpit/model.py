@@ -111,13 +111,16 @@ class Model:
         return need, running, done, self.folded_done + len(self.tasks)
 
     def allowed(self, t: Task) -> int:
-        """How many tracked files the task's scope covers, the protected folders left out as they are for
-        the gate."""
+        """How many files the task's scope allows: the tracked ones it covers (protected folders left out, as
+        for the gate), and one for each glob that covers none, a file still to be made."""
         key = (t.id, tuple(t.scope))
         if key not in self._allowed:
             scope, held = tuple(t.scope), tuple(self.protected)
-            covered = (f for f in self.files if T._in(f, scope) and not (held and T._in(f, held)))
-            self._allowed[key] = sum(1 for _ in covered) if t.scope else 0
+            covered = sum(1 for f in self.files if T._in(f, scope) and not (held and T._in(f, held)))
+            still = sum(  # a glob that matches no tracked file is a file still to be made: one more allowed
+                1 for g in scope if not g.startswith("!") and not any(T._in(f, (g,)) for f in self.files)
+            )
+            self._allowed[key] = covered + still if t.scope else 0
         return self._allowed[key]
 
     def pace(self, t: Task, buckets: int = 12, width: float = 5.0) -> str:

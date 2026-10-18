@@ -60,3 +60,10 @@ def test_an_agent_keeps_its_name_between_looks_and_two_agents_differ():
     m = model()
     first = m.agent_name("session-a")
     assert m.agent_name("session-a") == first and m.agent_name("session-b") != first
+
+
+def test_a_glob_that_matches_no_tracked_file_is_a_file_still_to_be_made_and_counts_one_allowed():
+    m = model()
+    t = Task("new", "new test", "running", ["models/**", "tests/test_new.py", "!models/m0.py"])
+    m.tasks["new"] = t
+    assert m.allowed(t) == 4 + 1  # four models files (m0 taken out), and the test file still to come
