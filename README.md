@@ -31,12 +31,20 @@ uvx --from graphene-map graphene demo
 
 Watch the locks hold: `graphene demo --cheat` tries seven ways round them.
 
-<img src="https://raw.githubusercontent.com/Alex-lop/Graphene/main/docs/assets/watch.gif" alt="graphene demo: a plan is proposed, a leaf comes back with its reason, it lands" width="720" />
+<img src="https://raw.githubusercontent.com/Alex-lop/Graphene/main/docs/assets/watch.gif" alt="graphene demo: the cockpit replays a run: a leaf comes back with its reason, is tried again, lands" width="720" />
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Alex-lop/Graphene/main/docs/assets/loop-ivory.svg" />
   <img src="https://raw.githubusercontent.com/Alex-lop/Graphene/main/docs/assets/loop-ink.svg" alt="The loop: you shape the plan, your agents do the work, Graphene checks it" width="720" />
 </picture>
+
+## What you see
+
+`graphene watch` is one screen for talking to your agents. A row a task: who is on it, and in numbers whether it is alive and on track (files touched of allowed, proofs, writes stopped, seconds quiet), with its last move under it. What waits for you comes first, and Enter takes it. `t` tells an agent one line, and it hears it with its next write. `w` gives it what the gate stopped, `g` draws the plan as boxes and arrows, `m` the folders each task may write.
+
+<img src="https://raw.githubusercontent.com/Alex-lop/Graphene/main/docs/assets/cockpit.png" alt="graphene watch: an agent has just handed its leaf back and says why; two finished leaves below" width="720" />
+
+<img src="https://raw.githubusercontent.com/Alex-lop/Graphene/main/docs/assets/map.png" alt="the map: which folders each task may write, a bar for each, and who owns it" width="720" />
 
 ## How it works
 
@@ -63,7 +71,7 @@ graphene plan accept
 graphene run --parallel 2                  # two leaves at a time
 ```
 
-With Claude Code, skip `ask`: type what you want and it proposes a plan first. In watch, `y` accepts, `d` drops a leaf, `R` runs what is ready (it asks first when more than one leaf could start). `graphene plan first off` lets a quick change through at once.
+With Claude Code, skip `ask`: type what you want and it proposes a plan first. In watch, `y` accepts, `d` drops a leaf, `R` runs what is ready (it asks first when more than one leaf could start). `graphene plan first off` lets a quick change through at once. `graphene watch --classic` opens the older outline.
 
 <details>
 <summary><b>Does anything leave my computer?</b></summary>
@@ -79,7 +87,7 @@ So do Cursor, Kiro and Cline ([compared, gaps included](https://github.com/Alex-
 
 - Refused before the write: Claude Code only, shell redirects included. With Codex, or if the add-on cannot run, git finds it when the leaf finishes.
 - A leaf allowed to edit its own test can weaken it: `done` flags it, and a sign-off lets you read the diff first.
-- Not yet: a look at every diff before it lands. A leaf marked for sign-off waits for you, and `c` in watch shows its diff; the rest land when their check passes. [Every limit](https://github.com/Alex-lop/Graphene/blob/main/docs/HOW_IT_WORKS.md#where-each-mechanism-ends).
+- Not yet: a look at every diff before it lands. A leaf marked for sign-off waits for you, and Enter then `c` in watch shows its diff; the rest land when their check passes. [Every limit](https://github.com/Alex-lop/Graphene/blob/main/docs/HOW_IT_WORKS.md#where-each-mechanism-ends).
 - Honestly, in the three comparisons so far a plain paragraph to the same agent did just as well for less. What I'm betting on is when you find out what it understood: before the work, not after.
 
 </details>
