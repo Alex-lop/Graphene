@@ -29,7 +29,7 @@ from . import flowlayout as F
 from . import territory as T
 from .details import DIRECTION, Details
 from .help import Help
-from .lines import Line, Seg, seg_at
+from .lines import Line, Seg, fit_keys, seg_at
 from .model import Model
 from .rows import build_cockpit
 from .territory_view import build_territory
@@ -460,19 +460,6 @@ class Cockpit(App):
         elif key in KEYS_TO_VERBS:
             self.act(KEYS_TO_VERBS[key])
         self.paint()
-
-def fit_keys(keys: str, width: int) -> str:
-    """The keys line in the room there is: whole keys from the left, and the last two (`? keys`, `q`) always,
-    so a narrow terminal still says how to get help and how to leave."""
-    if len(keys) <= width:
-        return keys
-    pieces = keys.split(" · ")
-    tail = [p for p in pieces if p.startswith("? ") or p in ("q", "q quit")][-2:]
-    head = [p for p in pieces if p not in tail]
-    while head and len(" · ".join([*head, *tail])) > width:
-        head.pop()
-    return " · ".join([*head, *tail])[:width]
-
 
 def nearest(lay: F.Layout, current: str, key: str) -> str | None:
     """The node nearest in a direction, by the centres of the boxes."""

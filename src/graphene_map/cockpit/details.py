@@ -23,10 +23,11 @@ from textual.widgets import Static
 from .. import plan as P
 from .. import tui
 from .. import views as V
+from .lines import fit_keys
 
 PANES = ("contract", "output", "changes", "record")
 DIRECTION = ("direction",)  # D: the goals above your plans, a pane of its own
-KEYS = {"l": "output", "c": "changes", "r": "record", "d": "contract"}
+KEYS = {"d": "contract", "l": "output", "c": "changes", "r": "record"}  # a key, and the pane it shows
 
 
 def pane_text(store, root: Path, node_id: str, which: str, wide: int, high: int = 20) -> Text:
@@ -85,12 +86,24 @@ class Details(ModalScreen[None]):
         yield Static(id="title")
         with VerticalScroll(id="body"):
             yield Static(id="pane", markup=False)
-        keys = " Tab next pane · d contract · l output · c changes · r record · j k scroll · Esc back"
-        yield Static(keys, id="foot")
+        yield Static(id="foot")
 
     def on_mount(self) -> None:
         self.show(self.which)
+        self.feet()
         self.set_interval(1.0, self.refresh_pane)  # an agent's output moves
+
+    def on_resize(self) -> None:
+        self.feet()
+
+    def feet(self) -> None:
+        """The keys this screen has, in the room there is (Esc back always); a lone pane has no Tab."""
+        many = len(self.panes) > 1
+        pieces = ["Tab next pane"] if many else []
+        pieces += [f"{key} {pane}" for key, pane in KEYS.items() if many and pane in self.panes]
+        pieces += ["j k scroll", "Esc back"]
+        room = max(self.size.width - 3, 20)
+        self.query_one("#foot", Static).update(" " + fit_keys(" · ".join(pieces), room))
 
     def show(self, which: str) -> None:
         self.which = which

@@ -82,3 +82,25 @@ def test_d_shows_the_direction_in_a_pane_of_its_own(repo):
             assert not isinstance(app.screen, Details)
 
     asyncio.run(go())
+
+
+def test_the_keys_line_fits_80_columns_and_keeps_esc_and_a_single_pane_has_no_jumps(repo):
+    make_plan(repo, running=True)
+    app = cockpit(repo)
+    app.open_store = lambda: Store.open(repo)
+
+    async def go():
+        async with app.run_test(size=(80, 24)) as pilot:
+            await pilot.pause(0.1)
+            await pilot.press("enter")
+            await pilot.pause(0.3)
+            foot = str(app.screen.query_one("#foot", Static).render())
+            assert len(foot) <= 80 and foot.rstrip().endswith("Esc back") and "Tab" in foot
+            await pilot.press("escape")
+            await pilot.pause(0.2)
+            await pilot.press("D")
+            await pilot.pause(0.3)
+            foot = str(app.screen.query_one("#foot", Static).render())
+            assert "Tab" not in foot and "contract" not in foot and foot.rstrip().endswith("Esc back")
+
+    asyncio.run(go())

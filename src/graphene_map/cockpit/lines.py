@@ -49,3 +49,16 @@ def fit(text: str, width: int) -> str:
 
 def ago(seconds: float) -> str:
     return f"{int(seconds)}s" if seconds < 90 else f"{int(seconds // 60)}m"
+
+
+def fit_keys(keys: str, width: int) -> str:
+    """The keys line in the room there is: whole keys from the left, and the ones that say how to get help and
+    how to leave (`? keys`, `q`, `Esc back`) always, so a narrow terminal still says both."""
+    if len(keys) <= width:
+        return keys
+    pieces = keys.split(" · ")
+    tail = [p for p in pieces if p.startswith("? ") or p in ("q", "q quit", "Esc back")][-2:]
+    head = [p for p in pieces if p not in tail]
+    while head and len(" · ".join([*head, *tail])) > width:
+        head.pop()
+    return " · ".join([*head, *tail])[:width]
