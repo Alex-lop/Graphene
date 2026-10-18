@@ -66,7 +66,7 @@ answers: an agent that tries is refused in one line (`tests/test_board.py`). Bot
 Code's and Nemotron's, were changed to ask this way (prompt version 2, cut to three items in version
 4; for Nemotron, `test_nemotron_is_told_to_ask_and_its_board_lands`, against the scripted stand-in).
 
-**The graph: what runs at once and what waits.** You read the plan in `graphene watch`, a terminal
+**The graph: what runs at once and what waits.** You read the plan in `graphene watch --classic`, a terminal
 screen with vim keys. Tab cycles the outline, a top-down tree, a left-to-right graph of the
 leaves' needs, and a timeline of what each executor did when. The graph draws the critical path heavy, with a note under it:
 `critical ━ xml-reader > xml-wire > xml-e2e (3) · none ready · 2 once accepted · 2 wait` on a
@@ -122,7 +122,7 @@ there are refused while a plan is in force or plan first is on. Every plan hangs
 one node (`graphene direction plan NODE`), and so does every Claude Code session the hooks recorded:
 through the plan when it held or proposed one of the plan's nodes, where the person attached it
 (`graphene direction attach`, also typed at `:` in `graphene watch`), or else it is shown as not in
-the direction; `D` in `graphene watch` shows the direction under the tree.
+the direction; `D` in `graphene watch` shows the direction.
 Each row says what waits on you, what runs and what is next, read from the rows the hooks already
 write; no transcript is read. It is shown above the plan in `graphene plan` and `graphene watch`.
 Graphene's own direction is in its repository, every node proposed until Alex accepts it. It is
@@ -477,7 +477,7 @@ With the agent you have (Claude Code or Codex, no Token Factory key), in a repos
 graphene init
 graphene ask "…what you want…"    # the planner proposes a tree and puts up its board
 graphene board                    # what it asks you; answer with take, pick, drop, park or answer
-graphene watch                    # Tab for the tree and the graph
+graphene watch                    # Tab for the graph and the map
 ```
 
 With a key for Token Factory (it spends at list price, and prints the bill at the end):

@@ -1,0 +1,18 @@
+"""The cockpit: `graphene watch` as a person talking to their agents, in numbers and a few verbs.
+
+It reads the plan's store and draws one row a task with what the agent is doing (files touched of allowed,
+proofs, stopped writes, quiet seconds), puts the questions that wait for the person first, and answers
+with the commands that exist on their own. Two more screens share its selection: which folders each task
+may write (territory), and the plan as boxes and arrows (flow).
+"""
+
+from collections.abc import Callable  # noqa: E402
+from pathlib import Path  # noqa: E402
+
+
+def run(root: Path, open_store: Callable, every: float = 1.0) -> None:
+    """`graphene watch`: the cockpit on this repository's plan, looked at every ``every`` seconds."""
+    from .app import Cockpit
+    from .read import looker
+
+    Cockpit(looker(root, open_store), every, root=root, open_store=open_store).run()

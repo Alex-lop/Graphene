@@ -1,5 +1,5 @@
-# The README's picture: `graphene demo`, the scripted replay, stepped with its own keys (space pauses,
-# `.` is the next change) in an empty directory. No model, no key, no network, $0.
+# The README's picture: `graphene demo`, the scripted replay in the cockpit, stepped with its own
+# keys (space pauses, `.` is the next change) in an empty directory. No model, no key, no network, $0.
 #
 #   vhs docs/assets/watch.tape        (from the repository root; writes docs/assets/watch.gif, ~2 minutes)
 #
@@ -9,8 +9,8 @@
 Output docs/assets/watch.gif
 Set Shell "bash"
 Set FontSize 16
-Set Width 1200
-Set Height 700
+Set Width 1000
+Set Height 480
 Set TypingSpeed 40ms
 
 Hide
@@ -26,13 +26,18 @@ Sleep 2s
 Space
 Sleep 1s
 # one `.` a change; the first is on screen when it opens, and a `.` past the last does nothing
-Type "." Sleep 2.5s Type "." Sleep 2.5s Type "." Sleep 2.5s Type "." Sleep 2.5s
-Type "." Sleep 2.5s Type "." Sleep 2.5s Type "." Sleep 2.5s Type "." Sleep 2.5s
-Type "." Sleep 2.5s Type "." Sleep 2.5s Type "." Sleep 2.5s Type "." Sleep 2.5s
-Type "." Sleep 2.5s Type "." Sleep 2.5s Type "." Sleep 2.5s Type "." Sleep 4s
-# the leaf that came back: the last row, then one up, and its record
-Type "G" Sleep 1s Type "k" Sleep 1.5s
-Enter
-Sleep 8s
+Type "." Sleep 2s Type "." Sleep 2s Type "." Sleep 2s Type "." Sleep 2s
+Type "." Sleep 2s Type "." Sleep 2s Type "." Sleep 2s Type "." Sleep 2s
+Type "." Sleep 2s Type "." Sleep 2s Type "." Sleep 2s Type "." Sleep 2s
+Type "." Sleep 2s Type "." Sleep 2s Type "." Sleep 2s Type "." Sleep 3s
+# the plan as boxes and arrows, the folders each task may write, and back to the rows
+Type "g" Sleep 3s Type "m" Sleep 3s Type "c" Sleep 1s
+# the leaf that came back: everything about it, then its record
+Type "i"
+Sleep 3s
+Type "r"
+Sleep 4s
+Escape
+Sleep 500ms
 Type "q"
 Sleep 500ms

@@ -674,7 +674,7 @@ def test_accept_and_the_plan_on_a_proposal_name_the_next_command_not_a_rule(repo
     shown = person("plan").stdout.splitlines()
     assert shown[0] == "the plan (proposed): users come back with their ids"
     waiting = shown.index("waiting on you: one (proposed)")
-    assert shown[waiting + 1] == "  `graphene plan accept` takes all of it; y in graphene watch"
+    assert shown[waiting + 1] == "  `graphene plan accept` takes all of it; y in graphene watch takes one"
     said = person("plan", "accept").stdout
     assert "the plan: users come back with their ids\n" in said and "left alone" not in said
     assert said.splitlines()[-1] == "next: `graphene run` reaches one  (R in graphene watch)"

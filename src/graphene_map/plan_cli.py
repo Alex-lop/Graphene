@@ -352,7 +352,7 @@ def register(cli: typer.Typer, root, open_store, fail):
             )
             lines.append("waiting on you: " + ", ".join(told if everything else told[:8]) + more)
             if any(n.state == P.PROPOSED for n in yours):  # the one command, said once, not a row at a time
-                lines.append("  `graphene plan accept` takes all of it; y in graphene watch")
+                lines.append("  `graphene plan accept` takes all of it; y in graphene watch takes one")
         # One row grammar, as on the screen: glyph and title (cut at a word) in one column, the id in the
         # next, the state word in the next, whatever the depth; then what the print adds.
         heads = {n.id: 2 * len(P.above(n, by_id)) + 2 for n in alive}  # the indent, the glyph and a space
@@ -627,12 +627,15 @@ def register(cli: typer.Typer, root, open_store, fail):
         view: str = typer.Option(
             None,
             "--view",
-            help=f"Open in this view ({', '.join(['auto', *V.VIEWS])}); the outline if left out.",
+            help=f"Classic view ({', '.join(['auto', *V.VIEWS])}); naming one implies --classic.",
+        ),
+        classic: bool = typer.Option(
+            False, "--classic", help="Open the older screen: the plan as an outline, with a pane."
         ),
     ) -> None:
-        """Show the plan on one screen, live, with vim keys.
+        """Watch your agents work, and answer them, on one screen.
 
-        Every key runs a graphene command. Press ? for the keys and q to leave. In a script, use --once."""
+        Every key runs a graphene command. ? lists the keys, q leaves. In a script, use --once."""
         who = P.caller()
         if view:
             known_view(view)
@@ -641,7 +644,10 @@ def register(cli: typer.Typer, root, open_store, fail):
         if once or not sys.stdout.isatty():
             return print_once(who, everything)
         try:
-            from .tui import run as watch_tui
+            if classic or view:  # the views are the classic screen's: naming one opens it
+                from .tui import run as watch_tui
+            else:
+                from .cockpit import run as cockpit_run
         except ImportError as missing:  # an install from before the screen: code new, dependencies old
             fail(
                 f"graphene watch needs {missing.name or 'textual'}, which this install lacks\n"
@@ -651,7 +657,10 @@ def register(cli: typer.Typer, root, open_store, fail):
             )
 
         r = root()
-        watch_tui(r, lambda: open_store(r), every, view)
+        if classic or view:
+            watch_tui(r, lambda: open_store(r), every, view)
+        else:
+            cockpit_run(r, lambda: open_store(r), every)
 
     @cli.command()
     def demo(
@@ -673,6 +682,9 @@ def register(cli: typer.Typer, root, open_store, fail):
         ),
         cheat: bool = typer.Option(
             False, "--cheat", help="A scripted agent tries seven ways to cheat, and the real locks answer."
+        ),
+        classic: bool = typer.Option(
+            False, "--classic", help="Replay it in the older screen: the plan as an outline, with a pane."
         ),
     ) -> None:
         """Replay a recorded run in `graphene watch`, change by change.
@@ -707,7 +719,12 @@ def register(cli: typer.Typer, root, open_store, fail):
             except (OSError, subprocess.CalledProcessError) as no:
                 fail(f"graphene demo makes a git repository for the replay, and could not: {no}", 1)
             if not once and sys.stdout.isatty():
-                D.Replay(repo, head, lines).run()  # the temporary repository goes when the screen closes
+                if classic:
+                    D.Replay(repo, head, lines).run()  # the temporary repository goes when the screen closes
+                else:
+                    from .cockpit.replay import CockpitReplay
+
+                    CockpitReplay(repo, head, lines).run()
                 return
             D.last_frame(repo, lines)
             wide = shutil.get_terminal_size().columns
@@ -1029,7 +1046,7 @@ def register(cli: typer.Typer, root, open_store, fail):
             if not P.nodes(store, (P.OPEN, P.RUNNING)):
                 waiting = len(P.leaves(P.nodes(store, (P.PROPOSED,))))
                 fail(f"nothing to run: the tree is a proposal ({_leaves(waiting)}) nobody has accepted: "
-                     "`graphene plan accept`, or y on the goal in `graphene watch`, accepts it"
+                     "`graphene plan accept`, or y on each proposal in `graphene watch`, accepts it"
                      if waiting else "nothing to run: the plan has no open leaf", 1)  # fmt: skip
             try:  # --with, else the repo's (`graphene init`); neither, and nothing starts
                 template = named(executor or store.meta("executor"))

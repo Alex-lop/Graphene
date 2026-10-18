@@ -13,7 +13,7 @@ reader, not a person), or **not shown**. Written 15 October 2026 for the 0.5.1 l
 | With Codex or any command, a change outside the files is caught when the leaf is declared done, by git | docs/HOW_IT_WORKS.md "The executors"; `graphene demo --cheat` move 3 | shown |
 | Graphene runs the check itself, in a clean copy, not on the agent's word | plan.finish; dev/process/prove/after.md X5 | shown in the suite; one hole closed, one named |
 | A leaf that changes the test its own check runs is flagged, not refused | tests/test_check_touched.py; `graphene demo --cheat` move 7 | shown |
-| A leaf marked for sign-off waits on its own branch; `c` in watch shows its diff; `y` merges it | tests/test_signoff_holds.py, tests/test_signoff_seams.py, tests/test_tui.py | shown |
+| A leaf marked for sign-off waits on its own branch; `i` then `c` in watch shows its diff; `y` merges it | tests/test_signoff_holds.py, tests/test_signoff_seams.py, tests/test_tui.py, tests/test_cockpit_details.py | shown |
 | Each leaf lands as one merge, and `git revert -m 1 <id>` takes it back | `graphene node show`; docs/A_RUN.md | shown |
 | A run can be stopped by name (`graphene run --stop`) and says its worst case before it starts | tests/test_run_stop.py, tests/test_free_words.py | shown; the worst case is a number, not a cap |
 | The record answers more of eight factual morning-after questions than `git log -p` (7 against 5) | dev/process/prove/after.md X3 | stand-in: three runs, one AI reader each |

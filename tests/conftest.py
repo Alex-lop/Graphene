@@ -22,6 +22,15 @@ def utc(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def plain_help(monkeypatch):
+    """Typer forces coloured output when GITHUB_ACTIONS, FORCE_COLOR or PY_COLORS is set (it reads them as
+    it is imported), so on a runner every --help the tests read as text has escape codes in it: plain here."""
+    from typer import rich_utils
+
+    monkeypatch.setattr(rich_utils, "FORCE_TERMINAL", False)
+
+
+@pytest.fixture(autouse=True)
 def no_token_factory(monkeypatch, tmp_path):
     """Nothing in the suite reaches the real Token Factory or Sandboxes, whatever the shell or the home
     directory has: a test that wants an endpoint starts the recorded fake (`fake_tokenfactory`)."""

@@ -1,3 +1,45 @@
+# morning.md — 2026-10-18 — the new watch
+
+**What happened.** You said the playground's cockpit looked right and could replace the whole watch, and asked for
+the real UI and a README that shows it. It is on a branch, `watch-ui` (69 commits past `main`, each authored as
+you, nothing pushed). `graphene watch` opens the cockpit on the real plan and `graphene demo` replays in it;
+`--classic` is the older outline, and `--view` still picks its views.
+- A row a task: its agent's name, what it did last, files touched of allowed, proofs, seconds quiet. What waits for
+  you is on top (a question, a proposal, a sign-off, a leaf that came back), `⏎` takes it, `i` opens everything about
+  a row (contract, output, changes, record).
+- The keys talk to an agent: `t` tells it a line, `w` gives it the path the gate stopped, `x` hands it back or
+  reopens it, `r` `R` run, `s` splits, `D` the direction, `:` any graphene command. `g` is the plan as a graph, `m` the
+  map of folders each task may write. Each key is an ordinary command, and the line under the rows says which.
+- README, HOW_IT_WORKS, CHANGELOG (Unreleased), IDEAS and the launch claims say the same; the README's GIF is filmed
+  from `docs/assets/watch.tape` in a real terminal, its stills are a real Claude Code run (9 October).
+
+**Reviewed, then fixed.** Three readers and three skeptics (Fable, 35 minutes) found 23 faults, a few of them twice;
+22 were real. Each is answered in a commit of its own with a test, from "keys typed on the help or the details" on.
+The worst: keys typed on the help or the details acted on the rows
+underneath (`q` quit the app, `x` handed an agent back); `d` dropped any leaf; a prompt acted on whatever the
+selection had moved to; `g` on an empty plan crashed (my own change); a long reason made every row wider than the
+screen; a leaf with proposed children vanished from the rows; the README said Enter then `c` shows a sign-off's diff,
+and Enter signs it off.
+
+**Verified:** the whole suite on the branch, `GITHUB_ACTIONS` set, `-n 6`: 2,199 passed, 21 skipped (main had 2,043)
+and ruff clean; the wheel holds the cockpit and `graphene demo --once` runs from a throwaway venv; a look costs 3 ms on
+a copy of this repository's plan (55 ms at 22,000 log rows); in a pty the screen ends within 5 s of its terminal
+closing with no hangup sent; the tape runs end to end in vhs.
+**Not verified:** an hour of real agents behind it (a recording of one real run, and throwaway plans); Tell on Codex;
+GitHub's runners (Actions has never run).
+**Yours:**
+- `git switch watch-ui`: your uncommitted `README.md` conflicts on one line (the GIF's image tag: keep your syntax,
+  take my alt text). Commit or stash it first.
+- The pending `ci-plain` leaf duplicates the branch's first commit; drop it after merging.
+- 0.5.1 has the old screen. This is for the next release (0.5.2, or 0.6.0: it changes the default screen). The tag
+  `v0.5.1` is on a commit whose CI was red (four help tests failed on GitHub's colour; commit 1 fixes them).
+- Decisions I made, each one line to flip: the cockpit is the default; `d` drops a proposal or a question only
+  (`:node drop ID` for the rest); `y` and Enter on a proposal accept that one (`:plan accept` takes all); proposals
+  count as "need you"; Enter in a replay says nothing runs there.
+Rollback: `git revert` any commit, or `graphene watch --classic`.
+
+The live loop's brief (16 October) follows, kept.
+
 # morning.md — 2026-10-16 — the live loop
 
 **What happened.** You said the run was going backwards, and it was: cost caps, cache splits and demos, none of them
