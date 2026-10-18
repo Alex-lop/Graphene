@@ -33,6 +33,8 @@ FILES_EVERY = 30.0  # seconds between looks at what git tracks: a big repository
 ROWS = 200  # the latest rows of a leaf's log the cockpit reads each look: a run's log can be long
 LIVE = ("running", "review", "came back")  # the tasks whose agent the rows are read for
 KINDS = {"reading": "read", "editing": "edit", "running": "run", "searching": "search"}  # a did row's verb
+TOOLS = {"Read": "read", "NotebookRead": "read", "Grep": "search", "Glob": "search", "Edit": "edit",
+         "Write": "edit", "MultiEdit": "edit", "NotebookEdit": "edit", "Bash": "run"}  # a hook's tool call
 
 
 def looker(root: Path, open_store: Callable) -> Callable[[Model | None], Model]:
@@ -148,6 +150,8 @@ def live(store, m: Model, t: Task, node: P.Node) -> None:
     key = node.session_id or node.executor or t.id
     t.agent = m.agent_name(key)
     rows = recent(store, t.id, ("did", "said", "denied"))
+    if not any(r["kind"] == "did" for r in rows) and node.session_id:
+        calls(store, t, node)  # no stream: a person's own Claude Code session, seen by its hooks only
     attempt = max((r["detail"].get("attempt") or 0 for r in rows), default=0)
     for r in rows:
         d, at = r["detail"], epoch(r["timestamp"])
@@ -209,3 +213,18 @@ def told(store, t: Task, node: P.Node, by_id: dict[str, P.Node], items: dict[str
     for text, sent, _heard in t.told[-2:]:
         t.events.append(Ev(sent, "you", text=f"“{text}”"))
     t.events.sort(key=lambda e: e.t)
+
+
+def calls(store, t: Task, node: P.Node, count: int = 40) -> None:
+    """The session's latest tool calls, from what the hooks recorded: the agent of a leaf a person's own
+    Claude Code session holds has no executor stream, only these."""
+    for call in store.last_events(node.session_id, count):
+        kind = TOOLS.get(call["tool"])
+        if kind is None:
+            continue
+        at = epoch(call["timestamp"])
+        path = call["file_path"] or ""
+        command = str(call["input"].get("command") or "")[:60] if kind == "run" else ""
+        t.events.append(Ev(at, kind, text=command, path="" if kind == "run" else path))
+        if kind == "edit" and path and call["success"] is not False:
+            t.touched[path] = at

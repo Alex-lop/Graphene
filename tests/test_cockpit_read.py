@@ -12,6 +12,7 @@ from graphene_map import board, plan
 from graphene_map.cockpit.look import NAMES
 from graphene_map.cockpit.model import Model
 from graphene_map.cockpit.read import FOLD_AFTER, KEEP_DONE, looker, read
+from graphene_map.model import ToolEvent
 from graphene_map.plan import Caller
 from graphene_map.store import Store
 
@@ -266,3 +267,18 @@ def test_what_a_finished_task_changed_is_what_its_last_finished_row_says(repo):
         store.put_node(plan.to_dict(done))
         store.log_node("fin", ago(5), "finished", "alex", None, None, {"changed": ["a.py", "b.py"]})
     assert look(repo).tasks["fin"].changed == ["a.py", "b.py"]
+
+
+def test_a_leaf_a_sessions_own_hooks_saw_is_read_from_the_tool_calls_they_recorded(repo):
+    plan_of(repo)
+    start(repo)
+    sid = BOT.session_id
+    with Store.open(repo) as store:
+        for i, (tool, data, path) in enumerate(
+            [("Read", {}, "api.py"), ("Edit", {}, "api.py"), ("Bash", {"command": "pytest -q"}, None)]
+        ):
+            at = ago(30 - 10 * i)
+            store.add_event(ToolEvent(f"e{i}", sid, None, at, tool, data, None, True, None, path))
+    t = look(repo).tasks["ids"]
+    assert [e.kind for e in t.events] == ["read", "edit", "run"]
+    assert list(t.touched) == ["api.py"] and t.events[-1].text == "pytest -q"
