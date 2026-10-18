@@ -40,7 +40,7 @@ Watch the locks hold: `graphene demo --cheat` tries seven ways round them.
 
 ## What you see
 
-`graphene watch` is one screen for talking to your agents. A row a task: who is on it, and in numbers whether it is alive and on track (files touched of allowed, proofs, writes stopped, seconds quiet), with its last move under it. What waits for you comes first, and Enter takes it. `t` tells an agent one line, and it hears it with its next write. `w` gives it what the gate stopped, `g` draws the plan as boxes and arrows, `m` the folders each task may write.
+`graphene watch` is one screen for talking to your agents. A row a task: who is on it, and in numbers whether it is alive and on track (files touched of allowed, proofs, writes stopped, seconds quiet), with its last move under it. What waits for you comes first, and Enter takes it; `i` opens everything about a row. `t` tells an agent one line, and it hears it with its next write. `w` gives it what the gate stopped, `g` draws the plan as boxes and arrows, `m` the folders each task may write.
 
 <img src="https://raw.githubusercontent.com/Alex-lop/Graphene/main/docs/assets/cockpit.png" alt="graphene watch: an agent has just handed its leaf back and says why; two finished leaves below" width="720" />
 
