@@ -14,7 +14,8 @@ from . import territory as T
 from .look import PALETTE, SPARK, color_of, name_for
 
 LIVE_STATES = ("running", "ready", "review", "proposed", "came back", "waiting", "yours")
-NEEDS_YOU = ("review", "came back", "yours")  # where the move is the person's
+NEEDS_YOU = ("review", "came back", "yours", "proposed")  # where the move is the person's
+ORDER = ("running", "ready", "waiting", "done")  # then the rest, as they are going
 
 
 @dataclass
@@ -97,12 +98,9 @@ class Model:
         """The cockpit's rows in the order a person should look at them: (kind, id)."""
         rows: list[tuple[str, str]] = [("question", q.id) for q in self.questions]
         need = [t for t in self.tasks.values() if t.state in NEEDS_YOU]
-        rest = {
-            s: [t for t in self.tasks.values() if t.state == s]
-            for s in ("running", "ready", "waiting", "proposed", "done")
-        }
+        rest = {s: [t for t in self.tasks.values() if t.state == s] for s in ORDER}
         rows += [("task", t.id) for t in need]
-        for s in ("running", "ready", "waiting", "proposed", "done"):
+        for s in ORDER:
             rows += [("task", t.id) for t in rest[s]]
         return rows
 

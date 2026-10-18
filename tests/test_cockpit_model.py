@@ -22,15 +22,15 @@ def model() -> Model:
 
 def test_rows_run_from_what_needs_the_person_down_to_what_is_done():
     m = model()
-    assert [rid for _, rid in m.order()] == ["q1", "rev1", "back1", "run1", "wait1", "prop1", "done1"]
+    assert [rid for _, rid in m.order()] == ["q1", "rev1", "back1", "prop1", "run1", "wait1", "done1"]
     assert m.order()[0][0] == "question"
 
 
 def test_the_scoreboard_counts_need_running_and_proven_with_folded_tasks_in_the_total():
     m = model()
-    assert m.scoreboard() == (3, 1, 1, 6)  # a question, a review and a came-back need the person
+    assert m.scoreboard() == (4, 1, 1, 6)  # a question, a review, a came-back, a proposal: all wait on you
     m.folded_done = 4
-    assert m.scoreboard() == (3, 1, 5, 10)
+    assert m.scoreboard() == (4, 1, 5, 10)
 
 
 def test_allowed_counts_the_tracked_files_a_scope_covers():
