@@ -428,6 +428,8 @@ class Cockpit(App):
         if isinstance(self.screen, Ask):  # a key queued before the prompt it opened was up: the prompt's
             self.screen.typed(event)
             return
+        if isinstance(self.screen, (Help, Details)):  # a screen over this one has its own keys
+            return
         if self.tell_open:
             if key == "escape":
                 self.close_tell()

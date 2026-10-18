@@ -128,3 +128,28 @@ def test_enter_then_c_shows_what_a_landed_leaf_changed(repo):
             assert app.screen.which == "changes" and "a.txt" in text_of(app)
 
     asyncio.run(go())
+
+
+def test_keys_under_the_details_do_not_reach_the_rows_and_q_closes_only_the_details(repo):
+    make_plan(repo, running=True)
+    app = cockpit(repo)
+    app.open_store = lambda: Store.open(repo)
+
+    async def go():
+        async with app.run_test(size=(100, 30)) as pilot:
+            await pilot.pause(0.2)
+            app.model.selected = "ids"
+            await pilot.press("enter")
+            await pilot.pause(0.3)
+            assert isinstance(app.screen, Details)
+            before = (app.model.selected, app.view)
+            await pilot.press("j", "g", "m", "x", "r")  # x would hand the running leaf back, under the screen
+            await pilot.pause(0.2)
+            assert (app.model.selected, app.view) == before and isinstance(app.screen, Details)
+            with Store.open(repo) as store:
+                assert plan.get(store, "ids").state == plan.RUNNING
+            await pilot.press("q")
+            await pilot.pause(0.2)
+            assert app.is_running and not isinstance(app.screen, Details)
+
+    asyncio.run(go())

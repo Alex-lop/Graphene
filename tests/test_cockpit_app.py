@@ -9,6 +9,7 @@ from textual.containers import ScrollableContainer
 from textual.widgets import Static
 
 from graphene_map.cockpit.app import Canvas, Cockpit
+from graphene_map.cockpit.help import Help
 
 
 def run(coro):
@@ -190,5 +191,24 @@ def test_a_long_news_line_ends_in_an_ellipsis_at_the_screens_width():
             await pilot.pause(0.1)
             line = str(app.query_one("#feed", Static).render())
             assert line.endswith("…") and len(line) <= 60
+
+    run(go())
+
+
+def test_keys_under_the_help_do_not_reach_the_rows_and_q_closes_only_the_help():
+    async def go():
+        m = scene()
+        app = app_of(m)
+        async with app.run_test(size=(100, 30)) as pilot:
+            await pilot.press("question_mark")
+            await pilot.pause(0.2)
+            assert isinstance(app.screen, Help)
+            before = (m.selected, app.view)
+            await pilot.press("j", "g", "m", "tab", "d", "r")
+            await pilot.pause(0.1)
+            assert (m.selected, app.view) == before and isinstance(app.screen, Help)
+            await pilot.press("q")
+            await pilot.pause(0.2)
+            assert app.is_running and not isinstance(app.screen, Help)
 
     run(go())
