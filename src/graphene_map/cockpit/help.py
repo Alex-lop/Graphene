@@ -11,9 +11,8 @@ from textual.screen import ModalScreen
 from textual.widgets import Static
 
 GROUPS = (
-    ("move", (("j k", "down, up the rows"), ("← →", "the task (territory), the box (graph)"))),
     ("answer", (
-        ("⏎", "take what waits for you: a default, a proposal, a sign-off, a leaf to try again"),
+        ("⏎ y", "take what waits for you: a default, a proposal, a sign-off, a leaf to try again"),
         ("1-9", "pick that option"), ("a", "answer in your own words"),
         ("d", "drop a proposal or a question"),
     )),
@@ -21,13 +20,18 @@ GROUPS = (
         ("t", "tell it one line: it hears it with its next write"),
         ("w", "give it the path the gate stopped (a leaf that came back also offers b n r)"),
         ("x", "hand a running agent back; reopen a finished one with what is wrong"),
-        ("r R", "run this leaf; run every ready one"),
+        ("r R", "run this leaf; run every ready one"), ("s", "the planner splits a leaf still to do"),
+    )),
+    ("plan", (
+        ("e E", "edit the task, or the whole plan, in your $EDITOR"),
+        ("P u", "plan first: on, auto, off; undo your last act"),
     )),
     ("screens", (
+        ("j k", "move; ← → the task on the map, the box on the graph"),
         ("c g m", "cockpit, graph of the plan, map of the folders each task may write; Tab goes on"),
         ("v p", "the map's lens (plan, live, changed); paint a folder to the selected task"),
     )),
-    ("anything", ((":", "any graphene command as typed (:stop stops the runs, :ask what you want)"),
+    ("anything", (("`:`", "any graphene command as typed (:stop stops the runs, :ask what you want)"),
                   ("q", "quit; a run started here goes on"))),
 )  # fmt: skip
 
@@ -35,10 +39,9 @@ GROUPS = (
 def help_text(width: int) -> Text:
     out = Text()
     for name, keys in GROUPS:
-        out.append(f" {name}\n", style="bold #4cc9f0")
-        for key, what in keys:
-            line = Text.assemble(("   " + key.ljust(6), "bold"), (what, "grey70"))
-            out.append_text(line)
+        for k, (key, what) in enumerate(keys):
+            out.append(f" {name if k == 0 else '':<9}", style="bold #4cc9f0")
+            out.append_text(Text.assemble((key.strip("`").ljust(6), "bold"), (what, "grey70")))
             out.append("\n")
     closing = "\n a row's words are buttons: click them. Every key is a graphene command, and the line\n"
     out.append(closing + " under the rows says which one ran.", style="grey50")
@@ -50,7 +53,7 @@ class Help(ModalScreen[None]):
                 Binding("question_mark", "close", show=False)]  # fmt: skip
     DEFAULT_CSS = """
     Help { align: center middle; }
-    Help > VerticalScroll { width: 84; max-width: 100%; height: auto; max-height: 100%;
+    Help > VerticalScroll { width: 96; max-width: 100%; height: auto; max-height: 100%;
                             background: #14171d; border: round #4cc9f0; padding: 0 1; }
     """
 

@@ -228,3 +228,23 @@ class Doer:
             self.background(argv)
         else:
             self.run(argv)
+
+    def split(self, m: Model, sel: str) -> None:
+        """s: the planner splits a leaf still to do. It spends, so never one that runs, waits for sign-off
+        or is done."""
+        t = m.tasks.get(sel)
+        if t is None:
+            self.say("select a leaf to split")
+        elif t.state in ("running", "review", "done"):
+            self.say(f"✗ {t.title} is {t.state}: s splits a leaf still to do, so no planner was started")
+        else:
+            self.background(["node", "split", t.id])
+
+    def plan_first(self, m: Model) -> None:
+        """P: plan first goes on, auto, off, round (strictest to loosest)."""
+        order = ("on", "auto", "off")
+        now = m.first if m.first in order else "off"
+        self.run(["plan", "first", order[(order.index(now) + 1) % 3]])
+
+    def undo(self) -> None:
+        self.run(["plan", "undo"])

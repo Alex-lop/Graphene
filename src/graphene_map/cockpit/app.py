@@ -42,7 +42,8 @@ KEYS = {  # one line each, at most 79 columns: the screen's own keys, then the o
 }
 KEYS_TO_VERBS = {  # a key, and the verb it asks for (`act`)
     "t": "tell", "w": "allow", "x": "back", "d": "drop", "r": "run", "R": "run-all", "a": "answer",
-    "b": "offer:b", "n": "offer:n", "colon": "command",
+    "b": "offer:b", "n": "offer:n", "colon": "command", "y": "take", "s": "split", "P": "first", "u": "undo",
+    "e": "edit", "E": "edit-plan",
 }  # fmt: skip
 LEGEND = "✎ files touched of allowed · ✓ proofs · ! writes stopped · ⏸ quiet · ▁▃▅ activity"
 
@@ -146,6 +147,7 @@ class Cockpit(App):
         )
         bar = Text.from_markup(" " + tabs.replace("[b]", "[bold #4cc9f0]").replace("[dim]", "[grey50]"))
         name = self.root.name if self.root else ""
+        name += f" · plan first {m.first}" if m.first else ""
         bar.append(" " * max(2, w - bar.cell_len - len(name) - 1) + name, style="grey42")  # whose plan
         self.query_one("#bar", Static).update(bar)
         if self.view == "cockpit":
@@ -285,9 +287,27 @@ class Cockpit(App):
                 m.say("a answers a question in your own words: select one")
             else:
                 self.push_screen(Ask(f"answer {q.id} in your own words: {q.text}"), self.answered)
+        elif action == "split":
+            d.split(m, sel)
+        elif action == "first":
+            d.plan_first(m)
+        elif action == "undo":
+            d.undo()
+        elif action in ("edit", "edit-plan"):
+            self.edit_with(["node", "edit", sel] if action == "edit" and task else ["plan", "edit"])
         elif action == "command":
             self.push_screen(Ask("graphene "), lambda text: text and d.command(text))
         self.paint()
+
+    def edit_with(self, argv: list[str]) -> None:
+        """e and E: the node's contract, or the plan's text, in your $EDITOR: the screen steps aside."""
+        from textual.app import SuspendNotSupported
+
+        try:
+            with self.suspend():
+                self.doer.run(argv)
+        except SuspendNotSupported:  # no terminal to hand over (a test): the editor runs without one
+            self.doer.run(argv)
 
     def answered(self, words: str | None) -> None:
         if words and self.doer:

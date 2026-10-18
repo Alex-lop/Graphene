@@ -73,6 +73,7 @@ class Model:
         self.clock = 0.0  # now, as the events' times are told
         self.selected = ""  # a task id or a question id
         self.lens = "plan"
+        self.first = ""  # plan first, as the person set it: on, auto or off
         self.feed: list[tuple[float, str]] = []
         self.names: dict[str, str] = {}  # an agent's key (its session) -> its name, kept across looks
         self.seen: dict[str, tuple[float, list[str]]] = {}  # a leaf -> when git was asked, what it said

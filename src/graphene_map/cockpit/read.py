@@ -72,6 +72,7 @@ def read(store, root: Path, previous: Model | None = None, now: float | None = N
     if not m.files or now - m.files_at > FILES_EVERY:
         m.files, m.files_at = P.tracked(root), now
     m.protected = S.protected(store) + S.readonly(store)
+    m.first = P.plan_first(store)
     leaves = [n for n in nodes if not kids.get(n.id)]
     keep = {n.id for n in leaves}
     for n in leaves:

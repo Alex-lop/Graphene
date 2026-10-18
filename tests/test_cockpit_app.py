@@ -148,5 +148,5 @@ def test_question_mark_opens_the_keys_on_one_screen_and_escape_closes_it():
 
     run(go())
     text = help_text(80).plain.splitlines()
-    assert len(text) <= 22 and all(len(line) <= 100 for line in text)
+    assert len(text) <= 22 and all(len(line) <= 96 for line in text)
     assert "tell it one line" in help_text(80).plain and "any graphene command" in help_text(80).plain

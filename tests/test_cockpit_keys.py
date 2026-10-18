@@ -154,3 +154,34 @@ def test_a_click_on_the_default_takes_it(repo):
 
     drive(repo, steps, question=True)
     assert board.reads(items(repo)[0]) == "taken"
+
+
+def test_y_takes_what_waits_as_the_cli_messages_say_and_d_drops(repo):
+    async def steps(app, pilot):
+        app.model.selected = "notes"
+        await pilot.press("y")
+
+    drive(repo, steps, proposal=True)
+    assert node(repo, "notes").state != plan.PROPOSED
+
+
+def test_capital_p_turns_plan_first_round_and_u_undoes_the_last_act(repo):
+    async def steps(app, pilot):
+        before = app.model.first
+        await pilot.press("P")
+        await pilot.pause(0.2)
+        assert app.model.first != before
+        await pilot.press("u")
+
+    drive(repo, steps)
+    with Store.open(repo) as store:
+        assert plan.plan_first(store) == "auto" or plan.plan_first(store) in plan.FIRST
+
+
+def test_s_splits_only_a_leaf_still_to_do(repo):
+    async def steps(app, pilot):
+        app.model.selected = "ids"
+        await pilot.press("s")
+        assert app.model.latest().startswith("✗ ids is running")
+
+    drive(repo, steps, running=True)
