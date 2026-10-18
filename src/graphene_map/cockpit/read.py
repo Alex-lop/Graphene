@@ -66,7 +66,7 @@ def read(
     now = time.time() if now is None else now
     nodes, words, goal = V.inputs(store)
     by_id = {n.id: n for n in nodes}
-    kids = P.kids(nodes, drawn=True)
+    kids = P.kids(nodes)  # as the engine counts: a proposed child does not make its parent a sub-goal
     m = Model(goal, "plan")
     m.clock = now
     if previous is not None:  # what is the person's survives a look: the selection, the lens, the news

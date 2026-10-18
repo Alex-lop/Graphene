@@ -390,3 +390,19 @@ def test_an_agent_has_the_same_name_running_back_and_done(repo):
         node.state, node.session_id, node.executor = plan.DONE, None, None
         store.put_node(plan.to_dict(node))
     assert look(repo).tasks["ids"].agent == running
+
+
+def test_a_leaf_with_proposed_children_is_still_a_task_as_the_engine_counts_it(repo):
+    """`s` and a planner's split propose children under a leaf; until they are accepted the leaf is still the
+    work an agent holds, and the row, the counters and x, t and w must reach it."""
+    plan_of(repo)
+    with Store.open(repo) as store:
+        plan.start(store, "ids", BOT, repo)
+        parts = [
+            {"id": f"ids_{k}", "title": f"part {k}", "parent": "ids", "scope": [f"{k}.py"], "check": "true"}
+            for k in "ab"
+        ]
+        plan.propose(store, parts, BOT)
+    m = look(repo)
+    assert m.tasks["ids"].state == "running" and m.tasks["ids_a"].state == "proposed"
+    assert m.scoreboard()[1] == 1  # one running
