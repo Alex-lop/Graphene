@@ -6,7 +6,7 @@ import time
 
 from test_plan_cli import repo  # noqa: F401  (fixture)
 
-from graphene_map import plan
+from graphene_map import board, plan
 from graphene_map.cockpit.model import Model
 from graphene_map.cockpit.read import FOLD_AFTER, KEEP_DONE, looker, read
 from graphene_map.plan import Caller
@@ -104,3 +104,37 @@ def test_the_clock_is_now_unless_a_look_is_told_otherwise(repo):
     with Store.open(repo) as store:
         assert abs(read(store, repo).clock - time.time()) < 5
         assert read(store, repo, now=42.0).clock == 42.0
+
+
+def put_up(repo, kind, text, **more):
+    with Store.open(repo) as store:
+        return board.add(store, kind, text, BOT, **more)["id"]
+
+
+def test_what_waits_on_the_board_is_a_question_row_with_its_default_and_numbered_options(repo):
+    plan_of(repo)
+    tabs = [{"text": "tabs"}]
+    asked = put_up(repo, "question", "tabs or spaces?", default="spaces", options=tabs, about="ids")
+    [q] = look(repo).questions
+    assert (q.id, q.text, q.default, q.options, q.about, q.kind) == (
+        asked, "tabs or spaces?", "spaces", ["tabs"], "ids", "question",
+    )  # fmt: skip
+    assert look(repo).order()[0] == ("question", asked)  # before every task
+
+
+def test_an_assumption_and_a_risk_read_as_confirm_and_noted_and_a_settled_item_is_not_a_row(repo):
+    plan_of(repo)
+    asking = put_up(repo, "question", "anything else?")  # with `board: auto` the others show once one asks
+    assumed = put_up(repo, "assume", "ids stay strings")
+    risky = put_up(repo, "risk", "the migration may lose rows")
+    by_id = {q.id: q for q in look(repo).questions}
+    assert by_id[assumed].default == "confirm" and by_id[risky].default == "noted"
+    with Store.open(repo) as store:
+        board.take(store, assumed, ALEX)
+    assert {q.id for q in look(repo).questions} == {asking, risky}
+
+
+def test_the_board_asks_nothing_while_only_an_assumption_is_open(repo):
+    plan_of(repo)
+    put_up(repo, "assume", "ids stay strings")
+    assert look(repo).questions == []

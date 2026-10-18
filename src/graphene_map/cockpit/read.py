@@ -11,11 +11,12 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
+from .. import board_rows as BR
 from .. import plan as P
 from .. import settings as S
 from .. import views as V
 from .look import short
-from .model import Model, Task
+from .model import Model, Question, Task
 
 # what a person reads a leaf as (plan.reads), and the state the cockpit draws it in
 STATE = {
@@ -72,6 +73,7 @@ def read(store, root: Path, previous: Model | None = None, now: float | None = N
             why=" › ".join(short(a.title) for a in reversed(above)),
         )
     fold_done(m, by_id)
+    m.questions = [question_of(item) for item in BR.read(store).open]
     if m.selected not in {rid for _, rid in m.order()}:
         rows = m.order()
         m.selected = rows[0][1] if rows else ""
@@ -89,3 +91,13 @@ def fold_done(m: Model, by_id: dict[str, P.Node]) -> None:
         if t not in latest:
             m.tasks.pop(t.id)
             m.folded_done += 1
+
+
+def question_of(item: dict) -> Question:
+    """A board item the person has not settled, as a row: its words, the default `y` takes (an assumption's
+    is "confirm", a risk's "noted"), and the other options, numbered as `graphene board pick` numbers them."""
+    default = item["default"] or BR.YES[item["kind"]].split(" ", 1)[1]
+    return Question(
+        item["id"], item["text"], default, [o["text"] for o in item["options"]], item.get("about") or "",
+        item["kind"],
+    )  # fmt: skip
