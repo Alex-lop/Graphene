@@ -627,12 +627,15 @@ def register(cli: typer.Typer, root, open_store, fail):
         view: str = typer.Option(
             None,
             "--view",
-            help=f"Open in this view ({', '.join(['auto', *V.VIEWS])}); the outline if left out.",
+            help=f"Classic view ({', '.join(['auto', *V.VIEWS])}); the outline if left out.",
+        ),
+        classic: bool = typer.Option(
+            False, "--classic", help="Open the older screen: the plan as an outline, with a pane."
         ),
     ) -> None:
-        """Show the plan on one screen, live, with vim keys.
+        """Watch your agents work, and answer them, on one screen.
 
-        Every key runs a graphene command. Press ? for the keys and q to leave. In a script, use --once."""
+        Every key runs a graphene command. ? lists the keys, q leaves. In a script, use --once."""
         who = P.caller()
         if view:
             known_view(view)
@@ -641,7 +644,10 @@ def register(cli: typer.Typer, root, open_store, fail):
         if once or not sys.stdout.isatty():
             return print_once(who, everything)
         try:
-            from .tui import run as watch_tui
+            if classic or view:  # the views are the classic screen's: naming one opens it
+                from .tui import run as watch_tui
+            else:
+                from .cockpit import run as cockpit_run
         except ImportError as missing:  # an install from before the screen: code new, dependencies old
             fail(
                 f"graphene watch needs {missing.name or 'textual'}, which this install lacks\n"
@@ -651,7 +657,10 @@ def register(cli: typer.Typer, root, open_store, fail):
             )
 
         r = root()
-        watch_tui(r, lambda: open_store(r), every, view)
+        if classic or view:
+            watch_tui(r, lambda: open_store(r), every, view)
+        else:
+            cockpit_run(r, lambda: open_store(r), every)
 
     @cli.command()
     def demo(
