@@ -169,6 +169,7 @@ class Cockpit(App):
         feed = m.latest()
         note = Text()
         note.append(" " + (feed or LEGEND), style="bold #e9c46a" if feed else "grey42")
+        note.truncate(w, overflow="ellipsis")  # a long line ends in …, not mid-word
         self.query_one("#feed", Static).update(note)
         painting = "paint mode: click or Enter on folders · p to stop · " if self.paint_mode else ""
         keys = painting + self.keys[self.view]

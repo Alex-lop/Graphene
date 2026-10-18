@@ -6,6 +6,7 @@ from dataclasses import replace
 import pytest
 from cockpit_scene import scene
 from textual.containers import ScrollableContainer
+from textual.widgets import Static
 
 from graphene_map.cockpit.app import Canvas, Cockpit
 
@@ -175,5 +176,19 @@ def test_the_graph_says_what_the_selected_task_is_for():
             await pilot.pause(0.1)
             shown = "\n".join(line.plain() for line in app.query_one(Canvas).lines)
             assert "users return ids  ·  running · fox · proof 0/1 · for API" in shown
+
+    run(go())
+
+
+def test_a_long_news_line_ends_in_an_ellipsis_at_the_screens_width():
+    async def go():
+        m = scene()
+        app = app_of(m)
+        async with app.run_test(size=(60, 20)) as pilot:
+            m.say("farewell: editing bye.py · farewell: running node done farewell · greet came back")
+            app.paint()
+            await pilot.pause(0.1)
+            line = str(app.query_one("#feed", Static).render())
+            assert line.endswith("…") and len(line) <= 60
 
     run(go())
