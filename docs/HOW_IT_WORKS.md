@@ -167,8 +167,8 @@ so. Each is a warning, said before the leaf starts anyway (`--no-precheck` skips
 it runs the check in a fresh worktree of the leaf's state, so nothing the check writes lands in yours. If nothing in
 the scope changed, it is not done; otherwise the leaf is done, or in review.
 
-A leaf that comes back says why and offers the fix: `w` widens its scope, `b` adds a sibling leaf for the paths it
-needed, `r` reopens the done leaf it found wrong and waits on it. Leaves whose scopes overlap never run at once; a
+A leaf that comes back says why and offers the fix: `w` widens its scope, `b` adds a new task for the paths it
+needed, `r` reopens the done leaf it found wrong and waits on it (it asks first). Leaves whose scopes overlap never run at once; a
 leaf waits until what it needs has landed; if git cannot merge, the leaf stops in review with its branch named.
 
 What you say while a Claude Code session holds a leaf (`graphene board note --about ID`, or an answer) reaches

@@ -371,11 +371,14 @@ def test_the_replay_at_80x24_says_so_shows_a_record_and_refuses_what_would_run(t
 
 
 def test_a_sub_goals_record_mid_replay_says_its_width_at_the_replays_clock(tmp_path, monkeypatch):
-    """Eleven changes in, farewell runs and greet has come back. The record of `friendly` measures them up
-    to the replay's clock, as the time view does: 6% of agent minutes alone, not days of the two at once."""
+    """Up to the change where greet comes back, while farewell runs. The record of `friendly` measures them
+    up to the replay's clock, as the time view does: 2% of agent minutes alone, not days of the two at
+    once."""
     monkeypatch.setattr(demo, "LONG", 0.01)
     head, lines = demo.load(demo.SHIPPED)
-    app = demo.Replay(demo.repository(tmp_path, head), head, lines[:11])
+    back = next(k for k, line in enumerate(lines, 1)
+                for r in line.get("node_log") or [] if r["kind"] == "released")  # fmt: skip
+    app = demo.Replay(demo.repository(tmp_path, head), head, lines[:back])
 
     async def go():
         async with app.run_test(size=(120, 40)) as pilot:
@@ -387,7 +390,7 @@ def test_a_sub_goals_record_mid_replay_says_its_width_at_the_replays_clock(tmp_p
             await pilot.pause()
             return " ".join(str(app.query_one("#detail").render()).split())
 
-    assert "2 of 2 at once · 6% of agent minutes alone" in asyncio.run(go())
+    assert "2 of 2 at once · 2% of agent minutes alone" in asyncio.run(go())
 
 
 def test_the_replay_ends_with_every_fold_open(tmp_path, monkeypatch):

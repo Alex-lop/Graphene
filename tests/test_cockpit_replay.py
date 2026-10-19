@@ -90,7 +90,7 @@ def test_the_help_adds_the_replays_own_keys_and_the_banner_names_the_day():
             await pilot.pause(0.2)
             await pilot.press("question_mark")
             await pilot.pause(0.3)
-            assert isinstance(app.screen, Help) and app.screen.extra
+            assert isinstance(app.screen, Help) and app.screen.groups[0][0] == "replay"
 
     import tempfile
     from pathlib import Path
@@ -152,6 +152,10 @@ def test_the_news_says_an_edit_as_what_it_changed():
     assert news({"node_log": [widened]}, GREET) == "greet says hello may now write words.py"
     narrowed = row("greet", "edited", changed={"scope": [["app.py", "words.py"], ["app.py"]]}, rev=2)
     assert news({"node_log": [narrowed]}, GREET) == "greet says hello may no longer write words.py"
+    # a task's goal, in its own terms: "goal" is the headline's word for yours
+    goal = row("farewell", "edited", changed={"goal": ["", "It says goodbye, in full."]}, rev=2)
+    said = "bye says goodbye: it should now achieve “It says goodbye, in full.”"
+    assert news({"node_log": [goal]}, {"farewell": "bye says goodbye"}) == said
 
 
 def test_i_opens_everything_about_the_leaf_that_came_back_in_a_replay_too(tmp_path):
@@ -237,6 +241,7 @@ def test_the_replay_names_tasks_by_their_titles_and_a_change_of_bookkeeping_leav
         {"t": 0.2, "nodes": {"greet": node_row("greet", "greet says hello", "proposed")},
          "node_log": [logged(1, "greet", "proposed")]},
         {"t": 0.4, "node_log": [logged(2, "*", "usage", calls=1)]},
+        {"t": 0.6, "node_log": [logged(3, "greet", "accepted")]},  # not the end, which says the next step
     )  # fmt: skip
 
     async def go():
@@ -308,4 +313,151 @@ def test_the_changes_pane_of_a_replay_writes_nothing_where_the_demo_was_started(
 
     asyncio.run(go())
     assert sorted(os.listdir(mine)) == before
+
+
+def test_the_end_keeps_its_state_and_its_keys_and_says_the_next_step_and_r_opens_on_what_needs_you(tmp_path):
+    """At the last change the key line still offered space and `.`, space turned "ended: last frame" into
+    "paused at 28 of 28", and at 80 columns, where the head has no room for "ended", nothing said the replay
+    had ended or what to do next. `.` while paused said "3 of 28", and `r` opened on the row last selected,
+    not on the plan's question."""
+
+    async def go():
+        app, _, lines = replay(tmp_path)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await pilot.pause(0.2)
+            opened = app.model.selected
+            await pilot.press("space", "full_stop")
+            assert app.state == f"paused at {app.next} of {len(lines)}"
+            await pilot.press("j", *["full_stop"] * len(lines))  # a row of your own, then to the end
+            ended = "r again · i details · g graph · m map · ? keys · q"
+            for key in ("full_stop", "space", "space"):  # nothing is left to play: neither plays it on
+                await pilot.press(key)
+                assert (app.state, str(app.query_one("#feed").render()).strip()) == (D.ENDED, D.NEXT), key
+                assert str(app.query_one("#keys").render()).strip() == ended, key
+            await pilot.press("r")
+            assert app.model.selected == opened and app.model.latest() != D.NEXT  # the plan, as it opened
+
+    asyncio.run(go())
+
+
+def test_the_replays_keys_fit_80_by_24_and_list_only_what_works_there_and_d_has_no_direction(tmp_path):
+    """The replay's `?` put its keys in front of every key of the live help: at 80x24 it scrolled, three lines
+    wrapped, q and the marks were below the fold, and it listed every key that answers "a replay: nothing runs
+    here". D showed the direction of the replay's temporary repository, and told you to write a file there."""
+    from textual.containers import VerticalScroll
+    from textual.widgets import Static
+
+    from graphene_map.cockpit.details import Details
+
+    async def go():
+        app, _, _ = replay(tmp_path)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await pilot.pause(0.2)
+            await pilot.press("space", "question_mark")
+            await pilot.pause(0.3)
+            assert isinstance(app.screen, Help) and app.screen.query_one(VerticalScroll).max_scroll_y == 0
+            said = str(app.screen.query_one(Static).render())
+            keys = [line[10:16].strip() for line in said.splitlines() if line[10:16].strip()]
+            assert keys[:4] == ["space", ".", "r", "q"] and "c g m" in keys and "i" in keys, keys
+            assert not {"⏎ y", "1-9 a", "t", "w", "x", "r R s", "e E", "D", ":", "v p"} & set(keys), keys
+            assert all(len(line) <= 76 for line in said.splitlines()) and "● running" in said
+            assert said.count("in your own repo") == 1  # where every other key acts, said once
+            await pilot.press("escape", "D")
+            await pilot.pause(0.3)
+            assert not isinstance(app.screen, Details)
+            assert app.model.latest().startswith("a replay has no direction")
+
+    asyncio.run(go())
+
+
+def test_each_board_row_of_the_shipped_replay_leaves_the_screen_only_with_the_persons_act_on_it(tmp_path):
+    """The recording took the question first, and under `board: auto` an assumption and a leave-out show only
+    while a question is open: the first `.` took all three rows off the screen (7 need you became 4), and the
+    next two narrated acts on rows that had already gone."""
+
+    def acted(line):  # the items the person's acts in this change were on
+        acts = [json.loads(r["detail"]) for r in line.get("node_log") or [] if r["kind"] == "board"]
+        return {a["item"] for a in acts if a["act"] != "put up"}
+
+    async def go():
+        app, _, lines = replay(tmp_path)
+        async with app.run_test(size=(100, 30)) as pilot:
+            await pilot.pause(0.2)
+            await pilot.press("space")
+            shown, gone = {q.id: q.kind for q in app.model.questions}, []
+            assert sorted(shown.values()) == ["assume", "leave out", "question"]
+            while app.next < len(lines):
+                line = lines[app.next]
+                await pilot.press("full_stop")
+                now = {q.id: q.kind for q in app.model.questions}
+                assert shown.keys() - now.keys() <= acted(line), (app.next, shown, now)
+                gone += [shown[i] for i in shown.keys() - now.keys()]
+                shown = now
+            assert sorted(gone) == ["assume", "leave out", "question"]
+
+    asyncio.run(go())
+
+
+def test_the_shipped_replay_shows_agent_1_stopped_then_back_while_two_agents_still_run(tmp_path):
+    """What the README's GIF and cockpit.png show, kept when the recording is made again: agent 1's write is
+    stopped in a change of its own, where it needs you while three run, and in the next it is back with its
+    reason while agents 2 and 3 still run."""
+
+    async def go():
+        app, _, lines = replay(tmp_path)
+        async with app.run_test(size=(100, 30)) as pilot:
+            await pilot.pause(0.2)
+            await pilot.press("space")
+            seen = []
+            while app.next < len(lines):
+                await pilot.press("full_stop")
+                greet, (need, running, _, _) = app.model.tasks["greet"], app.model.scoreboard()
+                stopped = bool(greet.stopped) if greet.state == "running" else None
+                seen.append((greet.state, stopped, need, running))
+            stopped = seen.index(("running", True, 1, 3))
+            assert seen[stopped + 1] == ("came back", None, 1, 2) and greet.agent == "1"
+
+    asyncio.run(go())
+
+
+def test_at_80_columns_the_news_says_your_answer_before_what_it_changed(tmp_path):
+    """board.py logs the edits an answer makes before the answer, and the news said them in that order: at 80
+    columns the question left the shipped replay under "bye says goodbye: it should now achieve “It says
+    goodbye, in full.” · you took…", the answer cut off. What you answered comes first, then what it
+    changed."""
+
+    def took(line):  # the change that takes the question's default
+        acts = [json.loads(r["detail"]) for r in line.get("node_log") or [] if r["kind"] == "board"]
+        return any(a["act"] == "took" and a["item"] == "bye-word" for a in acts)
+
+    async def go():
+        app, _, lines = replay(tmp_path)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await pilot.pause(0.2)
+            await pilot.press("space")
+            while not took(lines[app.next - 1]):
+                await pilot.press("full_stop")
+            said = str(app.query_one("#feed").render()).strip()
+            answer = "you took the default: goodbye, as the paragraph's friendlier app would"
+            assert said == f"{answer} · bye s…", said  # then what it changed, cut at 80
+
+    asyncio.run(go())
+
+
+def test_the_replays_map_offers_only_what_reads_there_and_p_paints_nothing(tmp_path):
+    """The replay's map kept the live map's key line ("p paint · w widen"), and p turned on a paint mode where
+    a click did nothing: a replay's scopes are the recording's."""
+    from graphene_map.cockpit.replay import REFUSED
+
+    async def go():
+        app, _, _ = replay(tmp_path)
+        async with app.run_test(size=(100, 30)) as pilot:
+            await pilot.pause(0.2)
+            await pilot.press("space", "m", "p")
+            await pilot.pause(0.2)
+            keys = str(app.query_one("#keys").render())
+            assert "paint" not in keys and "widen" not in keys and "v lens" in keys
+            assert not app.paint_mode and app.model.latest() == REFUSED
+
+    asyncio.run(go())
 

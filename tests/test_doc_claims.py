@@ -562,7 +562,7 @@ def test_the_demo_docs_describe_the_recording_graphene_ships_as_it_is(tmp_path):
 
 def test_the_videos_step_4_plays_what_it_narrates_within_its_seconds():
     """Step 4 narrates the shipped replay up to the task that waits on two starting, which `graphene demo`
-    reaches 42 s after it opens, at its own speed, in a step of 20 s: it names a speed that gets there."""
+    reaches 48 s after it opens, at its own speed, in a step of 20 s: it names a speed that gets there."""
     from graphene_map import demo as D
     from graphene_map.cockpit.replay import opening
 

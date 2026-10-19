@@ -48,9 +48,13 @@ def build_head(m: Model, width: int) -> list[Line]:
 
 def tag_of(m: Model, room: int) -> str:
     """What the screens say it is when it is not your live plan (a replay's banner; the live plan needs no
-    word), in ``room`` cells: narrow, the day goes, then where it is; never what it is and what made it."""
+    word), in ``room`` cells: narrow, the day goes, then "paused at" (the key bar's `space play` says
+    it), then where it is; never what it is and what made it."""
     parts = [p for p in (m.banner or ("replay" if m.source == "replay" else "")).split(" · ") if p]
     while cell_len(" · ".join(parts)) > max(16, room) and len(parts) > 2:
+        if parts[2].startswith("paused at "):  # stepping is done paused: where it is is what it needs
+            parts[2] = parts[2].removeprefix("paused at ")
+            continue
         parts.pop(2)
     return " · ".join(parts)
 

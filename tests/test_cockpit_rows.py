@@ -395,3 +395,14 @@ def test_a_title_with_wide_characters_is_measured_in_cells_so_no_row_is_wider_th
         lines = rows.build_cockpit(m, width)
         assert all(cell_len(line.plain()) <= width for line in lines)  # counted by the terminal, not by len
         assert len({cell_len(line.plain()) for line in lines if line.row in ("ids", "migrate", "tests")}) == 1
+
+
+def test_a_narrow_paused_replay_keeps_where_it_is_and_drops_the_words_paused_at():
+    """The replays walk (third review): at 80 columns, paused (as stepping with . always is), the head lost
+    "paused at 2 of 29" whole, so the number was never on screen while it was useful. "paused at" goes first:
+    the key bar's `space play` already says it."""
+    m = Model("a friendlier app")
+    m.source = "replay"
+    m.banner = "replay · a scripted stand-in, no model ran · 2026-10-19 · paused at 2 of 29"
+    assert rows.tag_of(m, 60) == "replay · a scripted stand-in, no model ran · 2 of 29"
+    assert rows.tag_of(m, 200) == m.banner

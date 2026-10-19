@@ -8,7 +8,7 @@ One screen beside Claude Code or Codex: see what every agent is doing, tell it w
 
 [![PyPI](https://img.shields.io/pypi/v/graphene-map?color=5e5d59)](https://pypi.org/project/graphene-map/) [![Python](https://img.shields.io/pypi/pyversions/graphene-map?color=5e5d59)](https://pypi.org/project/graphene-map/) [![CI](https://github.com/Alex-lop/Graphene/actions/workflows/ci.yml/badge.svg)](https://github.com/Alex-lop/Graphene/actions/workflows/ci.yml) [![License](https://img.shields.io/badge/license-Apache--2.0-5e5d59)](https://github.com/Alex-lop/Graphene/blob/main/LICENSE)
 
-![graphene demo: four tasks proposed with three questions, three agents at once, agent 1 stopped at a file outside its task and handing it back with its reason, the retry, everything proven, then the plan as a graph](https://raw.githubusercontent.com/Alex-lop/Graphene/main/docs/assets/watch.gif)
+![graphene demo: four tasks proposed with a question, an assumption and a leave-out, three agents at once, agent 1 stopped at a file outside its task and handing it back with its reason, the retry, everything proven, then the plan as a graph](https://raw.githubusercontent.com/Alex-lop/Graphene/main/docs/assets/watch.gif)
 
 ## Try it
 

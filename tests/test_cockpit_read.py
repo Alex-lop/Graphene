@@ -459,6 +459,7 @@ def test_a_leaf_that_came_back_says_why_and_offers_what_it_wanted(repo):
     t = look(repo).tasks["ids"]
     assert t.state == "came back" and t.note == "the id lives in db/models.py"
     assert "w" in t.offers and t.offers["w"][:2] == ["node", "widen"]
+    assert t.offers["w"][3:] == t.offers["b"][3:] == ["db/models.py"]  # named: its row says what each takes
 
 
 def test_what_an_agent_said_is_kept_whole_on_one_line_for_the_screen_to_cut(repo):

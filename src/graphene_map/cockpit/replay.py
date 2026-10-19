@@ -5,7 +5,7 @@ it to a store of its own, so the cockpit reads it as it reads a live plan: the s
 Its clock is the recording's, so a leaf is as quiet or as old as it was. Every key that would change the
 plan or start anything answers with one line and does nothing; moving, the details and the help work, and
 the replay's own keys: space pauses and plays on, `.` applies the next change and stays paused, `r` plays
-it again from the start.
+it again from the start. At the end nothing is left to play, and the news line says what to do next.
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ from .. import demo as D
 from .. import plan as P
 from ..store import Store
 from .app import KEYS, Cockpit
-from .help import Help
+from .help import GROUPS, Help
 from .lines import fit
 from .look import short
 from .model import Model
@@ -30,7 +30,15 @@ from .read import OURS, epoch, read
 
 REFUSED = "a replay: nothing runs here"
 REPLAY_KEYS = (("space", "pause, or play on"), (".", "the next change, and stay paused"),
-               ("r", "play it again from the start"))  # fmt: skip
+               ("r", "play it again from the start"), ("q", "quit"))  # fmt: skip
+# `?` in a replay: its own keys, then only the cockpit's that work in one, the screens (but p, which paints a
+# folder to a task) and the marks; every other key acts in your own repo
+HELP = (("replay", REPLAY_KEYS),
+        ("screens", tuple(("v", "on the map: changes the lens") if key == "v p" else (key, what)
+                          for key, what in dict(GROUPS)["screens"])),
+        ("marks", dict(GROUPS)["marks"]))  # fmt: skip
+HELP_END = "Every other key acts in your own repo, in graphene watch."
+NO_DIRECTION = "a replay has no direction: in your own repo, D shows the goals above your plan"
 
 
 # a row of the plan's log as a narrator says it of its task, the task's title in {}; a kind in none of these
@@ -48,6 +56,7 @@ ASKS = {"question": "asks", "assume": "assumes", "risk": "flags a risk", "leave 
 TAKES = {"question": "you took the default", "assume": "you confirmed", "risk": "you noted",
          "leave out": "you agreed to leave out"}  # fmt: skip
 LISTS = {"scope": ("may now write", "may no longer write"), "needs": ("now waits on", "no longer waits on")}
+FIELDS = {"goal": "it should now achieve"}  # in a task's own terms: "goal" is the headline's word for yours
 
 
 def words(text) -> str:
@@ -61,11 +70,14 @@ def news(line: dict, titles: dict[str, str] | None = None) -> str:
     an edit changed, what was accepted, proven and landed. Bookkeeping (precheck, usage, model, attempt,
     ended, an executor's output, the settings, the agent's own `graphene node` commands) says nothing, so
     the last news stays up. Three at most, in the order they happened: the latest of the rest before an
-    agent's moves, so a hand-back is not crowded out by the edits that came before it."""
+    agent's moves, so a hand-back is not crowded out by the edits that came before it; and your answer
+    before the edits it made, which the log has first."""
     titles = titles or {}
     items = {it["id"]: it for it in json.loads((line.get("plan_meta") or {}).get("board") or "[]")}
     said: list[str] = []
     moves: set[int] = set()  # which of them are an agent's own moves: what it did or said
+    first: dict[int, int] = {}  # an answer that edited the plan -> where the edits it made begin
+    edits = 0  # where the edits said just before this row begin
     for row in line.get("node_log") or []:
         d, kind = json.loads(row.get("detail") or "{}"), row["kind"]
         title = titles.get(row["node_id"], row["node_id"])
@@ -82,6 +94,8 @@ def news(line: dict, titles: dict[str, str] | None = None) -> str:
         elif kind == "refused" and d.get("outside"):
             said.append(f"{title} is not done: {words(', '.join(d['outside']))} is outside its scope")
         elif kind == "board":
+            if d.get("became"):  # what it changed is in the rows just before it
+                first[len(said)] = edits
             said.append(board_act(d, items))
         elif kind == "edited":
             said += edit_said(title, d.get("changed") or {}, titles)
@@ -89,7 +103,10 @@ def news(line: dict, titles: dict[str, str] | None = None) -> str:
             said.append(f"{GOALS[kind]}: {words(d.get('note'))}")
         elif kind in MILESTONES:
             said.append(MILESTONES[kind].format(title))
-    kept = sorted(sorted(range(len(said)), key=lambda k: (k not in moves, k))[-3:])
+        if kind != "edited":
+            edits = len(said)
+    kept = sorted(range(len(said)), key=lambda k: (k not in moves, k))[-3:]
+    kept.sort(key=lambda k: (first.get(k, k), k not in first))  # as they happened, an answer before its edits
     return " · ".join(said[k] for k in kept)
 
 
@@ -109,11 +126,11 @@ def board_act(d: dict, items: dict[str, dict]) -> str:
 
 def edit_said(title: str, changed: dict, titles: dict[str, str]) -> list[str]:
     """An edit as what it changed: the files the task may write now or no longer, the tasks it waits on now or
-    no longer, else the field and its new value."""
+    no longer, what it should achieve, else the field and its new value."""
     out = []
     for field, (was, now) in changed.items():
         if field not in LISTS:
-            out.append(f"{title}: its {field} is now “{words(now)}”")
+            out.append(f"{title}: {FIELDS.get(field, f'its {field} is now')} “{words(now)}”")
             continue
         gained = [x for x in now or [] if x not in (was or [])]
         lost = [x for x in was or [] if x not in (now or [])]
@@ -138,6 +155,7 @@ def opening(lines: list[dict]) -> float:
 # the replay's own keys first; paused, space says it plays on (a narrow head drops "paused at"; this keeps it)
 KEYS_PLAYING = "space pause · . next · r again · i details · g graph · m map · ? keys · q"
 KEYS_PAUSED = "space play · . next · r again · i details · g graph · m map · ? keys · q"
+KEYS_ENDED = "r again · i details · g graph · m map · ? keys · q"  # the end: nothing is left to play
 
 
 def banner(head: dict, state: str = "") -> str:
@@ -163,6 +181,7 @@ class CockpitReplay(Cockpit):
         self.refusal, self.replay = REFUSED, True
         self.keys = {name: line for name, line in KEYS.items()}
         self.keys["cockpit"] = KEYS_PLAYING
+        self.keys["territory"] = "j/k folder · ←/→ task · v lens · c cockpit · ? keys · q"  # no paint
 
     def look_at(self, previous: Model | None) -> Model:
         """The replay's store as the recording had it by now: the recording's clock is its newest row."""
@@ -196,12 +215,16 @@ class CockpitReplay(Cockpit):
                 self.files = self.lines[self.next].get("tracked", self.files)
                 self.next += 1
             titles = {n.id: short(n.title) for n in P.nodes(store)}
-        of = f"{self.next} of {len(self.lines)}"
-        self.state = "ended: last frame" if self.next == len(self.lines) else of
+        of, ended = f"{self.next} of {len(self.lines)}", self.next == len(self.lines)
+        self.state = D.ENDED if ended else of if self.paused is None else f"paused at {of}"
+        if ended:
+            self.keys["cockpit"] = KEYS_ENDED
         self.look()
         said = " · ".join(filter(None, (news(line, titles) for line in applied)))
         if said:  # what changed, in the news; bookkeeping says nothing, and the last news stays up
             self.model.say(said)
+        if ended:  # then the reader's next step: at 80 columns the head has no room for "ended"
+            self.model.say(D.NEXT)
         self.paint()
 
     def action_help(self) -> None:
@@ -209,10 +232,20 @@ class CockpitReplay(Cockpit):
         from .details import Details
 
         if not isinstance(self.screen, (Ask, Help, Details)):
-            self.push_screen(Help(extra=(("replay", REPLAY_KEYS),)))
+            self.push_screen(Help(HELP, HELP_END))
+
+    def act(self, action: str) -> None:
+        """As the cockpit acts, but D: the direction is a file of your own repo's, and a replay's has none."""
+        if action != "direction":
+            return super().act(action)
+        self.model.say(NO_DIRECTION)
+        self.paint()
 
     def action_pause(self) -> None:
-        """Space: paused, the replay's clock stops where it is; again, it goes on from there."""
+        """Space: paused, the replay's clock stops where it is; again, it goes on from there. Ended, it stays
+        ended."""
+        if self.next == len(self.lines):
+            return
         now = time.monotonic()
         if self.paused is None:
             self.paused = now
@@ -241,5 +274,7 @@ class CockpitReplay(Cockpit):
             output.unlink()
         self.next, self.paused, self.files, self.state = 0, None, [], ""
         self.keys["cockpit"] = KEYS_PLAYING
+        self.model.moved = False  # it opens as it first did: on what needs you, with no news of its end
+        self.model.feed.clear()
         self.began = time.monotonic() - opening(self.lines)
         self.play()

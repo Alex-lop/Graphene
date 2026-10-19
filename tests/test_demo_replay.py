@@ -144,5 +144,5 @@ def test_the_end_says_the_next_step_above_what_the_last_change_was(tmp_path):
 
     asyncio.run(go())
     assert "graphene init" not in seen["first"]
-    assert "try it on your repo: graphene init" in seen["end"][-2]
+    assert seen["end"][-2] == demo.NEXT and "graphene init, then tell Claude Code" in demo.NEXT
     assert seen["end"][-1] == demo.what(lines[-1])

@@ -148,7 +148,7 @@ runs unless you run it, or set `GRAPHENE_SHAPE` to run them after each `graphene
   35 of 40 asks then ended in a plan (`dev/process/loop/after.md`).
 - **A task that needs a file another task writes.** Every plan of 7 October stopped where one task needed a file
   another one writes, mostly a test file its check runs. So a task that comes back says what it wanted, and its row
-  offers the fix: `w` widens it, `b` writes a sibling task for the file, `n` waits on the task that owns it, `r`
+  offers the fix: `w` widens it, `b` adds a new task for the file, `n` waits on the task that owns it, `r`
   reopens that owner.
 - **A check that cannot fail on the wrong work.** Take 1 on 2 October landed code that read prices already in
   cents as dollars (`129900` for `1299`), under checks that ran the command and asserted nothing about a price

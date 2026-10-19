@@ -44,3 +44,21 @@ def test_an_empty_plan_says_one_line_on_the_graph_and_on_the_map():
             assert app.is_running
 
     asyncio.run(go())
+
+
+def test_the_graphs_head_cuts_a_long_title_and_never_the_state_and_agent_after_it():
+    """The graph's head fitted its whole line to the width, so a long title pushed the selected task's state,
+    agent and checks off the end at 80 columns: the title is what is cut."""
+    from graphene_map.cockpit.app import Cockpit as App
+
+    async def go():
+        m = scene()
+        m.tasks["ids"].full = "users return their ids as strings everywhere the API answers, in every handler"
+        app = App(lambda previous: previous or m, screen="flow")
+        async with app.run_test(size=(80, 24)) as pilot:
+            await pilot.pause(0.1)
+            head = str(app.query_one("#head").render()).splitlines()[0]
+            assert "running · agent 1" in head and "✓1/3" in head and len(head.rstrip()) <= 80, head
+
+    asyncio.run(go())
+

@@ -1,5 +1,6 @@
 """`?`: the keys, on one screen of 80 by 24. Every key is a `graphene` command; the line under the rows says
-which one ran, and the words on a row are buttons you can click."""
+which one ran, and the words on a row are buttons you can click. A replay shows its own keys and the ones
+that work in it."""
 
 from __future__ import annotations
 
@@ -22,7 +23,7 @@ GROUPS = (
         ("t", "tell its agent one line: it hears it with its next write"),
         ("w", "widen: give the task the path the gate stopped"),
         ("x", "hand back a running task; reopen a finished one (say why)"),
-        ("b n", "came back: a sibling for what it wanted; wait on another"),
+        ("b n r", "came back: a new task, wait on another, reopen the one named"),
         ("r R s", "run this task, or every ready one; s: the planner splits one"),
     )),
     ("plan", (
@@ -43,12 +44,14 @@ GROUPS = (
                ("", "✎ files written of allowed  ✓ checks  ⏸ quiet  ▁▃▅ activity"))),
 )  # fmt: skip
 INDENT = 16  # the group name and the key, before the words
+END = "A row's words are buttons. The keys' commands call a task a leaf."
 
 
-def help_text(width: int, extra: tuple = ()) -> Text:
-    """Every key, one row each, in ``width`` columns: words that do not fit wrap under themselves."""
+def help_text(width: int, groups: tuple = GROUPS, end: str = END) -> Text:
+    """The keys of ``groups``, one row each, in ``width`` columns: words that do not fit wrap under
+    themselves. ``end`` is the line under them."""
     out = Text()
-    for name, keys in (*extra, *GROUPS):
+    for name, keys in groups:
         for k, (key, what) in enumerate(keys):
             first, *more = textwrap.wrap(what, max(width - INDENT, 20)) or [""]
             out.append(f" {name if k == 0 else '':<9}", style="bold #4cc9f0")
@@ -56,7 +59,7 @@ def help_text(width: int, extra: tuple = ()) -> Text:
             for line in more:
                 out.append("\n" + " " * INDENT + line, style="grey70")
             out.append("\n")
-    out.append("\n A row's words are buttons. The keys' commands call a task a leaf.", style="grey50")
+    out.append("\n " + end, style="grey50")
     return out
 
 
@@ -66,9 +69,9 @@ class Help(ModalScreen[None]):
                 Binding("k", "scroll(-1)", show=False)]  # fmt: skip
     AUTO_FOCUS = "VerticalScroll"  # the arrows and PageDown scroll it, where it is taller than the screen
 
-    def __init__(self, extra: tuple = ()) -> None:
+    def __init__(self, groups: tuple = GROUPS, end: str = END) -> None:
         super().__init__()
-        self.extra = extra  # groups a screen adds in front (a replay's)
+        self.groups, self.end = groups, end  # a replay's: its own keys, and only the ones that work in it
 
     DEFAULT_CSS = """
     Help { align: center middle; }
@@ -78,7 +81,7 @@ class Help(ModalScreen[None]):
 
     def compose(self) -> ComposeResult:
         with VerticalScroll():
-            yield Static(help_text(max(min(96, self.app.size.width) - 4, 40), self.extra))
+            yield Static(help_text(max(min(96, self.app.size.width) - 4, 40), self.groups, self.end))
 
     def action_scroll(self, lines: int) -> None:
         self.query_one(VerticalScroll).scroll_relative(y=lines, animate=False)

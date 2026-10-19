@@ -15,6 +15,7 @@ from collections.abc import Callable
 from functools import partial
 from pathlib import Path
 
+from rich.cells import cell_len
 from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -305,21 +306,23 @@ class Cockpit(App):
         it asks); then the graph, and under it what it leaves out and what its marks mean."""
         m = self.model
         nodes, edges = FV.flow_graph(m)
-        lines, self.flow_layout, note = FV.build_flow(nodes, edges, width, m.selected)
+        # one column kept for the scrollbar a tall graph shows, so a box at the right edge keeps its border
+        lines, self.flow_layout, note = FV.build_flow(nodes, edges, width - 1, m.selected)
         if not nodes:  # the graph's own sentence says what it will show (flow_view.EMPTY)
             return [], lines
         sel = m.tasks.get(m.selected)
         whole = lambda t: short(t.full, 0) or t.title  # noqa: E731  (the line has the room a box has not)
-        info = whole(sel) if sel else ""
+        title = whole(sel) if sel else ""
         q = next((q for q in m.questions if q.id == m.selected), None)
         if q:  # a question has no box: what it asks, and the task it is about
             about = m.tasks.get(q.about)
-            info = f"{'!' if q.kind == 'risk' else '?'} {q.text}"
-            info += f"  ·  about {whole(about)}" if about else ""
-        if sel:
-            info += f"  ·  {sel.state}" + (f" · {who(sel.agent)}" if sel.agent else "")
-            info += f" · ✓{sel.passed}/{sel.checks}" if sel.checks else ""
-            info += f" · for {sel.why}" if sel.why else ""
+            title = f"{'!' if q.kind == 'risk' else '?'} {q.text}"
+            title += f"  ·  about {whole(about)}" if about else ""
+        bits = [sel.state, who(sel.agent), f"✓{sel.passed}/{sel.checks}" if sel.checks else ""] if sel else []
+        rest = "  ·  " + " · ".join(b for b in bits if b) if sel else ""
+        info = fit(title, max(width - 2 - cell_len(rest), 12)) + rest  # a long title is cut, never its state
+        if sel and sel.why and cell_len(info) + cell_len(sel.why) + 7 <= width - 2:
+            info += f" · for {sel.why}"
         top = [Line([Seg(" " + fit(info, width - 2), "bold")]), Line([Seg("─" * width, "grey30")])]
         drawn = [cell for row in self.flow_layout.cells for cell in row]
         legend = [said for said, there in (  # what the graph's own marks mean, only those it drew
@@ -448,7 +451,7 @@ class Cockpit(App):
                 self.push_screen(ask, partial(self.reopened, sel))
             elif task is not None and task.state == "running":  # its agent stops: asked first, as R is
                 whose = who(task.agent) or "its agent"
-                said = f"hand {whose}'s task back? it stops, and the task waits for a run · y and Enter"
+                said = f"hand {whose}'s task back? it stops · y and Enter"
                 ask = Ask(said, about=task.title)
                 self.push_screen(ask, partial(self.handed_back, sel))
             else:
@@ -685,6 +688,8 @@ class Cockpit(App):
                 self.act("details")
         elif key == "v":
             self.model.lens = T.LENSES[(T.LENSES.index(self.model.lens) + 1) % len(T.LENSES)]
+        elif key == "p" and self.replay:  # a replay's scopes are the recording's: nothing is painted
+            self.model.say(self.refusal)
         elif key == "p":
             self.paint_mode = not self.paint_mode
             if self.paint_mode:

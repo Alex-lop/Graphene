@@ -160,5 +160,5 @@ def run(say, tmp: Path) -> tuple[int, int, int]:
     say(f"{refused} refused, {flagged} flagged, {through} got through.")
     held = "a lock gave way to some of" if through else "the locks held against"
     say(f"A script played the agent: {held} these moves. It does not")
-    say("show what a real model will try. Next: graphene init, then graphene ask.")
+    say("show what a real model will try. Next: graphene init, in your own repo.")
     return refused, flagged, through

@@ -68,8 +68,12 @@ leave out: a --name flag; nobody asked for one  [name-flag]
 GREET_CHECK = "python3 -c 'import app; assert app.greet() == \"hello\"'"
 MAIN = ("from app import greet\nfrom bye import bye\n\ndef start():\n    return greet()\n\n"
         "def stop():\n    return bye()\n")  # what the leaf that waits writes
-# the three the first run starts think before their second step, so they are seen at work at once
-AT_ONCE, THINK = ("greet (revision 2", "farewell (revision", "banner (revision"), 1.5
+# seconds a stand-in thinks before a step (its script, the step's number): the three the first run starts
+# think before their second, so they are seen at work at once; greet hands its task back a look of the
+# recorder's after the write it was stopped at, before the other two are done, so a recording sees the write
+# stopped, then the task back while two agents still run
+THINKS = {("greet (revision 2", 1): 1.5, ("greet (revision 2", 2): 0.4,
+          ("farewell (revision", 1): 2.5, ("banner (revision", 1): 2.5}  # fmt: skip
 SCRIPTS = {
     "planner": [call("list", path="."), call("read", path="app.py"), {"content": PLAN}],
     # the prune took words.py from greet's scope: its first hold comes back wanting it
@@ -96,8 +100,7 @@ def reply(body, scripts=SCRIPTS):
     k = sum(1 for m in body["messages"] if m["role"] == "assistant")
     if body.get("response_format"):  # the planner's answer, asked in its JSON schema: a stand-in's text
         k = len(steps) - 1
-    if k == 1 and key in AT_ONCE:
-        time.sleep(THINK)
+    time.sleep(THINKS.get((key, k), 0))
     return steps[k] if 0 <= k < len(steps) else {"content": "nothing more"}
 
 
@@ -121,9 +124,11 @@ def script(tmp_path, answer, prune: str, **more: str):
 def test_the_demo_script_runs_from_nothing_to_the_bill(tmp_path):
     print_it, ship = os.environ.get("SHOW_DEMO"), os.environ.get("RECORD_DEMO")
     prune = "sed -i.bak -e 's#app.py, words.py#app.py#'"
-    # the board read, then y on each item (its default): the read is also what keeps the board whole in a
-    # look of the recording's own, before the first answer lands
-    board = "--all\ntake bye-word\ntake hello-home\ntake name-flag"
+    # the board read, then y on each item (its default): a read before each answer and after the last is also
+    # what puts the board whole, then each answer, in a look of the recording's own. The question last: under
+    # `board: auto` an assumption and a leave-out show only while a question is open, so each leaves with its
+    # own answer
+    board = "--all\ntake hello-home\n--all\ntake name-flag\n--all\ntake bye-word\n--all"
     done, said, f = script(tmp_path, reply, prune, RECORD=str(tmp_path / "demo.jsonl"), BOARD=board)
     if print_it:
         print(said)
