@@ -3,27 +3,54 @@
 ## 0.6.0
 
 The first release on PyPI since 0.5.0: it holds everything under 0.5.1 below (never published) as well as this.
+`graphene watch` is a new screen, which is why the minor version moves. Each line is one change.
 
-The new watch (17 October). 0.5.1 had the older screen; `graphene watch` now opens the one Alex judged in
-`dev/ui/playground/`, fed by the real plan and wired to the real commands. Each line is one change.
-- `graphene watch` is a cockpit: a row a task, with its agent's number, what it did last, files touched of files
-  allowed, checks passed, and how long it has been quiet. What waits for you is on top and Enter takes it.
-  `--classic` is the older outline, and `--view` (tree, dag, time) still picks among its views.
-- The keys talk to an agent: `t` tells a running one a line (it hears it with its next write or command, and the
-  row says when it has), `w` gives it the path the gate stopped, `x` hands it back or reopens a finished one
-  with what is wrong, `r` and `R` run a leaf or every ready one, `D` shows the direction. Each is an ordinary
-  `graphene` command, and the line under the rows says which one ran.
-- `g` is the plan as boxes and arrows; `m` is the map of the folders each task may write, with `v` for its lens
-  (plan, live, changed) and `p` to paint a folder to a task. Tab goes on, `c` returns to the cockpit.
-- `i` on a row (Enter, on one that waits for nothing) opens everything about it in four panes (contract, output,
-  changes, record); `c` there shows the leaf's whole diff, as `graphene node diff` does.
-- `graphene demo` plays its recording in the cockpit (space pauses, `.` is the next change, `r` plays it again);
-  `graphene demo --classic` plays it in the older outline. The README's GIF and stills are that screen.
-- The cockpit reads a plan in a few milliseconds (53 ms at 22,000 log rows), and a closed terminal ends it.
-- Help text no longer fails on GitHub's runners, which force colour: an autouse fixture turns it off.
-- On macOS, `graphene run` on a terminal that is not its session's own (an agent's pty) no longer stops itself
-  half a second in: its check's bash took that terminal and revoked it as it exited. A check gets no terminal.
-- The cockpit no longer fails on a tick that lands while it closes (`NoMatches: #bar`).
+The new watch (17 to 19 October). `graphene watch` opens a cockpit, first judged in `dev/ui/playground/`, fed by the
+real plan and wired to the real commands; `graphene watch --classic` is the older outline, and `--view` picks its views.
+- A row a task, with the number of the agent on it: agent 1 is on the first task anyone took, and a task keeps its
+  number when it comes back and is tried again (the animal names are gone). What needs you is on top, and the head
+  (your goal, what needs you, what runs, what is proven) stays while the rows scroll.
+- Enter does the row's own move: accept, try again, sign off. `A` accepts every proposal after one line; a
+  proposal opens to show the files it may change, its check and what it waits on; a write the gate stopped needs
+  you, and its row says `w widen <path>`.
+- The keys talk to an agent: `t` tells it a line (a Claude Code session hears it with its next write; a task
+  nobody is on yet reads it when it starts), `w` widens a task to what the gate stopped, `x` hands back a running
+  task or reopens a finished one, `r` and `R` run, `D` shows the direction, `:` runs any command. Each is an
+  ordinary `graphene` command; the key bar says what the keys do for the selected row, and the line above it
+  what the last one did.
+- `g` is the plan as a graph from your goal down: the goal, its sub-goals, the tasks under them, and arrows for
+  what waits on what. `m` is the map of the folders each task may write; its lens (plan, live, changed) follows
+  the plan's stage until you turn it with `v`, and its top line says what is true in each.
+- `i` opens everything about a row in four panes, on 1 to 4 (contract, output, changes, record); `c` there shows
+  the task's whole diff, as `graphene node diff` does.
+- When something new needs you, the terminal rings and a notification says why; `notify: off` in
+  `graphene config edit` keeps it quiet.
+- Colour means state: an agent's colour never borrows proven green, running amber, need-you purple or came-back
+  red. Rows show whole titles where they fit; one word for one thing (task, check, proven, graph, map, widen, hand
+  back, details), and `?` explains the marks.
+- A running row shows the attempt going now and nothing from the last one; a widened task is asked of git again at
+  once, so it is never flagged OUTSIDE for the file it was given; a look that fails leaves the screen as it was
+  and says why. The cockpit reads a plan in a few milliseconds (53 ms at 22,000 log rows), and a closed terminal
+  ends it.
+- `graphene demo` replays a richer run of the Nemotron path against its scripted stand-in: a goal with two
+  sub-goals and four tasks, three agents at once, a hand-back that is widened and tried again under the same
+  number, a task that waits on two. It opens on the plan, its news line narrates, and at 80 columns its top line
+  still says no model ran. The README's GIF and stills are filmed from it (`docs/assets/watch.tape`).
+
+Review every task before it lands (19 October).
+- `review: every` in `graphene config edit` holds every task whose check passes for your sign-off, which lands it
+  (Enter in the cockpit, or `graphene node signoff`). A run says so before it starts, and `plan accept` says
+  what will wait.
+- A sign-off is checked on its merge with what landed since the task was cut, as a run's landing is: a red check
+  keeps it in review. Sign-offs take turns.
+
+The release.
+- On macOS, `graphene run` on a terminal that is not its own session's (an agent's pty) no longer stops itself
+  half a second in: a check's bash took that terminal and revoked it as it exited. A check gets no terminal. This
+  was the red CI that kept 0.5.1 off PyPI.
+- Two races a loaded runner loses are gone (a leaf told to land second, and a cockpit tick after it closes), and
+  help text no longer fails on GitHub's runners, which force colour.
+- `graphene demo --once` lines a long task id up with the rest, and a recording keeps `review: every`.
 
 ## 0.5.1 (tagged 16 October 2026, never published)
 

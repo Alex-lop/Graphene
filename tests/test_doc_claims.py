@@ -214,7 +214,7 @@ def test_the_readme_says_what_init_does_to_claude_code_and_how_to_undo_it():
 
     readme = doc("README.md")
     said = ("`graphene init --remove`", "`graphene plan first off`", "scripted replay",
-            "it asks first when more than one leaf could start")  # fmt: skip
+            "it asks first when more than one task could start")  # fmt: skip
     for phrase in said:
         assert phrase in readme, phrase
     how = doc("docs/HOW_IT_WORKS.md")

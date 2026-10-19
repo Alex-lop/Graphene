@@ -332,7 +332,7 @@ checked again since.
 | 20/20 and 12/12, 2,626 against 3,869 modelled person-seconds | `dev/test/results-2026-09-23.md` (stand-in runs, frontier agent) |
 | 3 of 3 against 0 of 3; 5.2 to 6.1 times the characters | `dev/test/spikes/harness_there/RESULTS.md` (stand-ins) |
 | the questions against editing the plan: +356.7 to +637.3 modelled person-seconds (study 2), +272.8 to +398.6 (study 3), board higher on 4 of 4 tasks | `dev/test/results-2026-09-28-shaping.md`, H1 of studies 2 and 3 (Claude model stand-ins, one Claude Code proposal per task, nothing run, one run each) |
-| 53 ms at 22,000 log rows | `CHANGELOG.md`, Unreleased |
+| 53 ms at 22,000 log rows | `CHANGELOG.md`, 0.6.0 |
 | 27,469 lines, none before the period; 181 and 971 commits | git, the commands above, at `921834de` |
 | the questions against the paragraph; the plan against the paragraph with Nemotron | none yet: registered in `dev/test/results-2026-09-28-shaping.md` and `dev/test/results-2026-09-28-live-prereg.md` |
 

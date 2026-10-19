@@ -808,7 +808,7 @@ def test_the_readme_shows_its_pictures_and_links_from_files_the_repo_holds():
     links = re.findall(r"(?:\]\(|src=\"|srcset=\")(?!#)([^)#\s\"]+)", readme)  # markdown and HTML
     here = re.compile(r"https://(?:raw\.githubusercontent\.com/Alex-lop/Graphene|github\.com/Alex-lop/Graphene/blob)/main/")
     ours = [here.sub("", u) for u in links if here.match(u)]
-    assert "docs/assets/graphene-mark-ink.svg" in ours and "docs/assets/loop-ink.svg" in ours
+    assert "docs/assets/graphene-mark.svg" in ours and "docs/assets/loop-ink.svg" in ours  # either theme
     assert not [p for p in ours if p not in held]
     assert not [u for u in links if not u.startswith("http")], "PyPI shows no relative path"
 
