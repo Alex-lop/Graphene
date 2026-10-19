@@ -134,6 +134,9 @@ def test_nothing_graphene_starts_outlives_its_terminal(tmp_path, window):
     try:
         assert until(up, said), (pids, said)
         until(lambda: False, said, 1)  # the screens settle: each reads keys by now
+        # all three still running: a run that took its own terminal for closed stopped itself here, and
+        # this test passed whenever its check was seen in the half second before
+        assert [name for name, (proc, _) in started.items() if proc.poll() is not None] == [], said
         while said:
             os.close(said.popitem()[0])  # the terminal is gone
         assert until(lambda: not left(), seconds=5), "\n".join(left())
@@ -146,6 +149,34 @@ def test_nothing_graphene_starts_outlives_its_terminal(tmp_path, window):
         for gone in left():
             with contextlib.suppress(OSError):
                 os.kill(int(gone.split(":")[0]), signal.SIGKILL)
+
+
+def test_a_check_leaves_the_terminal_it_was_run_under_open(tmp_path):
+    """On macOS a bash in a session of its own, given a terminal no session holds, takes it as its
+    own, and its exit revokes it: every write to it fails after (EIO). A check run under a terminal that
+    is not its session's (an agent's pty, or the `window=False` case above) did that, and the run took
+    its own terminal for closed and stopped itself within half a second. A check gets no terminal."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    git(repo, "init", "-q", "-b", "main")
+    git(repo, "config", "user.email", "t@example.com")
+    git(repo, "config", "user.name", "T")
+    (repo / "a.txt").write_text("a\n")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", "start")
+    probe = (
+        "import sys; from graphene_map import plan; "
+        "assert plan.run_check('true', sys.argv[1])[0]; "
+        "print('closed' if plan.terminal_closed() else 'open', file=sys.stderr)"
+    )
+    proc, main = on_a_terminal([sys.executable, "-c", probe, str(repo)], repo, os.environ, window=False)
+    said = {main: b""}
+    try:
+        assert until(lambda: proc.poll() is not None, said, 60) and proc.returncode == 0, said
+        until(lambda: False, said, 0.2)  # the rest of what it wrote
+        assert b"open" in said[main], said
+    finally:
+        os.close(main)
 
 
 def ended(pid: int, seconds: float = 5) -> bool:

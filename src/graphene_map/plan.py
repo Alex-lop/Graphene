@@ -755,7 +755,9 @@ def _ended(
         shell=shell,
         executable=BASH if shell else None,  # people write bash (`[[ ]]`, `set -o pipefail`); else sh
         cwd=cwd,
-        stdin=None if given is None else subprocess.PIPE,
+        # never the terminal: on macOS a bash in a session of its own takes a terminal no session holds
+        # as its own, and its exit revokes it, so the run's next write failed and it stopped itself
+        stdin=subprocess.DEVNULL if given is None else subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT if shell else subprocess.PIPE,  # git's own stderr is a refusal's words
         text=True,
