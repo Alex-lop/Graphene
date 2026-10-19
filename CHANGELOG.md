@@ -67,6 +67,33 @@ confirmed:
   with the next step, writes nothing where it was started, and shows each answer before the edits it made.
 - A refused command says why first, and an ask that ends says what the planner proposed.
 
+After three more reviews (four fresh readers: a hackathon judge, a stranger's first hour, a copy editor, a release
+engineer; then a regressions hunt, the README as GitHub shows it, and both replays walked key by key; then the
+reference against the code and first commands in odd places), each fault confirmed by a skeptic (19 October):
+- A task that comes back wanting a file of a finished task it waits on is offered it (`w`, `b`), beside `r`, which
+  reopens that task; `w` with nothing to widen says why, never that nothing was stopped.
+- A finished task whose check passed before any work says so on its row ("check passed before the work"), as its
+  details did; it still counts as proven, since its check did pass.
+- A row quotes its agent's last words, never what Graphene's own commands printed into its log.
+- The map names a small project's folders; one-file folders fold into "other" only when they outnumber the rows.
+- The Nemotron extra installs on a machine whose Python is older than 3.12: its install lines pass `--python 3.12`,
+  as uv fetches a Python for the package but not for the package with an extra.
+- The README's loop diagram fits its labels between its boxes in a browser, and its mark has a size: it filled
+  the first screen.
+- A stopped write is said once on its row, as stopped, never as an edit first.
+- The record pane flags a check that runs a file its task changed, as `graphene node show` does; a done refused
+  because nothing in its scope changed says so, in the record and in a replay.
+- What the Nemotron executor or Graphene's own commands print into a log is never shown as what an agent says, and
+  a multi-line command shows what it runs.
+- `w` on a task that came back says whose file it wanted when it cannot take it.
+- The map counts a new file being written in the row where it is made; a paused replay keeps its position at 80
+  columns, and its last news stays up between changes.
+- A check that runs the directory its own scope will fill (`scope: tests/pdf/**`, `check: pytest tests/pdf`, the
+  shape the hook teaches) is no longer warned of as a misspelling.
+- `graphene run` in a repository with no commit says to commit once first, as init does; `node show` names no
+  Claude Code records for a run's sessions; an id an undo or a drop freed says it stays taken; `plan record` says
+  came back; an act refused to an agent's shell leads with where to run it; narrow screens clip, never wrap.
+
 The release.
 - On macOS, `graphene run` on a terminal that is not its own session's (an agent's pty) no longer stops itself
   half a second in: a check's bash took that terminal and revoked it as it exited. A check gets no terminal. This

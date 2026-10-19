@@ -1,3 +1,106 @@
+# morning.md — 2026-10-19 — ready to publish
+
+**Watch first.** `git stash && git switch night/publish && uv run graphene demo` (the stash keeps your uncommitted
+README edit, which the switch would otherwise refuse over; space pauses, `.` steps; then `g`, `m`, `i`, `?`), and
+`uv run graphene demo --live`, a real Nemotron run replayed as it ran.
+
+**What happened.** You asked for a plan to finish the watch and the README and make them ready to publish, judged by
+your idea (the limit is the direction a person gives, not tokens), with agents turned from names into numbers, and
+about 50 commits by 10 AM while you slept. The plan is `dev/process/publish/plan.md`, written after eight readers
+looked (`dev/process/publish/readers/`). It is all on the local branch `night/publish`: 56 commits past
+`origin/main`, each authored as you, built in a clone of my own, nothing pushed, no Graphene accept needed. The
+unfolded history (209 commits) is on `night/publish-before-fold`.
+- **Agents are numbers.** Agent 1 took the first task; a task keeps its number through a hand-back and a retry, and
+  numbers start at 1 again after the last plan is put away. The graph carries them too.
+- **The cockpit is ready to show.** Your goal on top, staying while the rows scroll; what needs you first; a proposal
+  opens to its files and check, `A` accepts all; a question opens to every option, by the number that picks it; a
+  stopped write says `w widen <path>`; the key bar says what each key does to the row you are on; the terminal
+  rings, with the reason, when something new needs you. `g` is the graph from your goal down, `m` the map.
+- **`review: every`** (`graphene config edit`): every task that passes waits for your sign-off, which lands it,
+  checked on its merge with what landed since.
+- **The demo tells the story** (two sub-goals, three agents at once, agent 1 stopped and handing back, the widen,
+  the retry, the graph). The README's GIF and stills are filmed from it by `docs/assets/watch.tape`, and
+  `graphene demo --live` replays the 9 October take on Token Factory from the wheel: Ultra's plan, Nano's three tasks
+  in a Sandbox each, and their bills.
+- **The README** is your 16 October edit made true and finished: the promise first, try it in one line, how it
+  works, the cockpit, your project in three commands, what stays in your hands, the limits, the Nemotron section
+  the hackathon asks for, and your short why. Your own sentences are kept as you wrote them (a stray quote mark
+  in "direction" fixed, your video linked after them).
+- **Why 0.5.1 never reached PyPI**, found and fixed: its release run failed on Typer's forced colour in GitHub's
+  help output; then `main` went red because on macOS a check's bash took the run's terminal and revoked it. 0.6.0
+  has both fixes, and RELEASING now names every step, the third file that holds the version included.
+
+**Reviewed, then fixed.** After the lanes merged, readers followed each seam and skeptics argued each finding: 22
+real, all fixed. Then four fresh readers (a hackathon judge, a stranger's first hour on a real project, a copy
+editor, a release engineer) and a skeptic for each list: 20 of 26 confirmed, 17 fixed, each code fix with a test,
+and `graphene demo --live` from the judge's idea. The worst:
+a task that came back wanting a file its finished prerequisite owns could not be widened, and `w` said "nothing was
+stopped"; the README's Nemotron install line failed on a Mac whose Python is the system's 3.9 (it now passes
+`--python 3.12`); the loop diagram's labels ran into its boxes in a browser; the hackathon page the README links
+opened as a draft addressed to you. A third round on the folded branch (a regressions hunt, the README as GitHub
+renders it, both replays key by key): 8 of 9 confirmed, all fixed, each in the commit it belongs to. The worst: the
+logo's SVG had no size, so on GitHub it filled the whole first screen; Graphene's own lines (Nemotron's narration,
+the "plan of" trailer, a refused check's output) still read as "says …" from an agent; a done refused because
+nothing in its scope changed was logged nowhere, so the live take said "its check passed"; and the cockpit's record
+pane never showed the flag for a check that runs a file its own task changed. A fourth round (the reference against
+the code, first commands in odd places): 11 of 11 confirmed, all fixed. The worst: the reference's own example, the
+shape the hook teaches (`scope: tests/pdf/**`, `check: pytest tests/pdf`), drew a false "check the spelling"
+warning at every propose; `graphene run` in a repo with no commit died with git's words. A fifth round, an
+adversarial pass at the write gate (104 crafted Claude Code calls fed to the real hook): git caught every write it
+got past the hook, at `done`; but the hook missed some before the write (after a `#` comment line, to a target in a
+variable, after a `cd` it cannot follow, from a cwd that is its own checkout), and a quoted `>` reads as a write.
+That is not fixed tonight (see Not done); the README and HOW_IT_WORKS now say it.
+
+**Verified:** the whole suite on the folded branch as CI runs it (`GITHUB_ACTIONS` set), under Python 3.12, 3.13 and
+3.14 on this Mac, CI's three macOS legs: 2,396 passed, 21 skipped (Docker only) each, ruff clean; the folded tree
+is byte for byte the unfolded one; the wheel and the sdist pass
+`twine check`; from the wheel, in a clean environment, `graphene demo --once`, `demo --live --once` and
+`demo --cheat` (6 refused, 1 flagged, 0 got through); the GIF and stills re-filmed by vhs and read frame by
+frame; the loop diagram read in headless Chrome; the extra installed with `--python 3.12` in a home whose only
+Python is 3.9. **Not verified:** a real agent behind the new screens (scripted runs and recordings only);
+Tell on Codex; CI's three Linux legs (no Linux here; pushing is yours). **Not done:** the sdist still carries `dev/` and `docs/`
+(public on GitHub already; an exclude list must keep what the tests read); the record pane says sibling and review
+where the cockpit says new task and sign-off; the live take (recorded on 0.5.0, before the flag existed) has a
+leaf that rewrites its own test, and its record cannot flag it; **the gate's shell parser**: the holes above are a
+rework of `shell.py` (quote-aware masking, comments per line, a cwd stack, the store chosen by where a write lands),
+too much to land unreviewed in the last hour. The review, with every event and a prototype that keeps the parser's
+own cases, is in `dev/process/publish/gate/`: a session of its own, before you lean on "refused before the write".
+
+**Yours, in order**
+1. Your local `main` has two commits `origin/main` holds in another form (`ci-plain`: `origin/main`'s `plain_help`
+   fixture does the same) and your uncommitted 16 October README edit, which the branch's README is built on. Keep
+   both, put `main` where GitHub has it, and take the night (skip the stash if you made it above):
+   `git stash; git switch main && git branch main-before-publish && git reset --hard origin/main && git merge
+   --ff-only night/publish` (or `git push -u origin night/publish` and a PR, for CI first). Your README edit stays
+   in `git stash list`.
+2. Release: `git push origin main`, then `git tag v0.6.0 && git push origin v0.6.0`, then `gh release create v0.6.0
+   --title "Graphene 0.6.0" --notes-file dev/launch/release-notes.md` once the run is green (docs/RELEASING.md). The
+   changelog's heading says 19 October: change it if you tag another day.
+3. Hackathon, before Friday 30 October, 10:00 PT: the video (`dev/demo/STORYBOARD.md`), the Devpost form
+   (`dev/launch/hackathon.md`, `docs/HACKATHON.md`, whose note to you is now an HTML comment), the About box
+   (topics nemotron and nvidia).
+
+**Decisions I made for you** (each flips with one line)
+- Numbers are per task, in the order tasks were first taken (`numbers()`, `cockpit/read.py`): one session taking
+  tasks in turn shows 1, 2, 3.
+- `notify` is on by default; a batch of proposals with no question rings once.
+- A task of yours that nobody started is done on your word once its check passes.
+- A second `graphene run`, or `R`, hands its tasks to the run going; one with its own `--with`, `--attempts` or
+  `--max-usd` is refused, as before.
+- A task that came back is offered a finished prerequisite's files (`w`, `b`) beside `r`, which reopens it.
+- A task whose check passed before any work still counts as proven; its row says "check passed before the work".
+- `x` on a running task, `r` on a task that came back, and Enter on the last proposal when it takes the open
+  questions' defaults ask first; a replay lists only the keys that work in it.
+- The README is plain markdown with its pictures on `main`; HOW_IT_WORKS' cap is 3,600 words (its test says why).
+- The demo's prune goes too far on purpose, as the September tapes' does: you narrow greet's scope, agent 1 is
+  stopped and hands back, you widen. A reader found it reads as staged; the other way is a planner that proposes
+  greet without words.py (`PLAN` in tests/test_demo_script.py, then `RECORD_DEMO=…` and `vhs docs/assets/watch.tape`).
+
+Rollback: nothing is merged. `git branch -D night/publish` drops the night; after a merge, `git reset --hard
+main-before-publish`, or `git revert -m 1` on a merge.
+
+The new watch's brief (18 October) follows, kept.
+
 # morning.md — 2026-10-18 — the new watch
 
 **What happened.** You said the playground's cockpit looked right and could replace the whole watch, and asked for
