@@ -137,17 +137,17 @@ class Model:
         counts = [0] * buckets
         for e in t.events:
             age = self.clock - e.t
-            if 0 <= age < buckets * width:
+            if 0 <= age < buckets * width and e.kind != "you":  # a note the person sent is not its pace
                 counts[buckets - 1 - int(age // width)] += 1
         top = max(max(counts), 4)
         return "".join(SPARK[min(7, int(c * 8 / (top + 1)))] if c else "▁" for c in counts)
 
     def quiet(self, t: Task) -> float:
         """Seconds since the agent's last sign of life, as `run.live` counts them (its meter, its hooks, its
-        log), else since its last event, else since it began."""
+        log), else since its last move (a note the person sent it is not one), else since it began."""
         if t.idle is not None:
             return float(t.idle)
-        last = max((e.t for e in t.events), default=t.started) or self.clock
+        last = max((e.t for e in t.events if e.kind != "you"), default=t.started) or self.clock
         return self.clock - last
 
     def tail(self, t: Task, n: int = 3) -> list[str]:

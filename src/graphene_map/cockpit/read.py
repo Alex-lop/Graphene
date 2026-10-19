@@ -74,7 +74,9 @@ def read(
     m.clock = now
     if previous is not None:  # what is the person's survives a look: the selection, the lens, the news
         m.selected, m.lens, m.feed = previous.selected, previous.lens, previous.feed
-        m.moved, m.lens_chosen = previous.moved, previous.lens_chosen
+        m.moved = previous.moved
+        # `v` turns the lens and nothing else: one the plan's stage did not give it last look is the person's
+        m.lens_chosen = previous.lens_chosen or previous.lens != lens_for(previous.tasks.values())
         m.files, m.files_at, m.seen = previous.files, previous.files_at, previous.seen
     if files is not None:  # told (a replay's, from its recording): git is never asked
         m.files, m.files_at = files, now
@@ -207,9 +209,12 @@ def live(store, m: Model, t: Task, node: P.Node) -> None:
     sign = R.live(store, node, m.clock)  # the meter's last row, the hooks' last call, the log's age
     t.idle = sign["idle"]
     rows = recent(store, t.id, ("started", "attempt", "did", "said", "denied"))
-    rows = rows[max((k for k, r in enumerate(rows) if r["kind"] in ("started", "attempt")), default=-1) + 1 :]
+    begun = max((k for k, r in enumerate(rows) if r["kind"] in ("started", "attempt")), default=-1)
+    tried = [epoch(r["timestamp"]) for r in rows[begun : begun + 1] if r["kind"] == "attempt"]
+    since = max([t.started, *tried])  # when the attempt going now began: its hold, or a run's retry in it
+    rows = rows[begun + 1 :]
     if not any(r["kind"] == "did" for r in rows) and node.session_id:
-        calls(store, t, node)  # no stream: a person's own Claude Code session, seen by its hooks only
+        calls(store, t, node, since)  # no stream: a person's own Claude Code session, seen by its hooks only
     for r in rows:
         d, at = r["detail"], epoch(r["timestamp"])
         if r["kind"] == "did":
@@ -228,8 +233,13 @@ def live(store, m: Model, t: Task, node: P.Node) -> None:
             t.touched.pop(str(d["path"]), None)  # a write it stopped did not happen: git says if another did
             if not P.in_scope(str(d["path"]), node.scope):  # a scope that has taken it in has not stopped it
                 t.stopped.append((str(d["path"]), at))
-    if not t.events and sign["last"]:  # no rows and no calls: the last thing its log says
-        t.events.append(Ev(m.clock - (t.idle or 0), "said", text=" ".join(str(sign["last"]).split())[:SAYS]))
+    # no rows and no calls: the last thing its log says, unless the rows above left it out: the agent's own
+    # `graphene node` command, or the session's newest call when that is from before this attempt
+    last = " ".join(str(sign["last"] or "").split())[:SAYS]
+    if not t.events and last and not OURS.search(last):
+        newest = store.last_events(node.session_id) if node.session_id else []
+        if all(epoch(c["timestamp"]) >= since for c in newest):
+            t.events.append(Ev(m.clock - (t.idle or 0), "said", text=last))
     touched_by_git(store, m, t, node)
 
 
@@ -285,13 +295,14 @@ def told(store, t: Task, node: P.Node, by_id: dict[str, P.Node], items: dict[str
     t.events.sort(key=lambda e: e.t)
 
 
-def calls(store, t: Task, node: P.Node, count: int = 40) -> None:
-    """The session's latest tool calls since it took the leaf, from what the hooks recorded: the agent of a
-    leaf a person's own Claude Code session holds has no executor stream, only these."""
+def calls(store, t: Task, node: P.Node, since: float, count: int = 40) -> None:
+    """The session's latest tool calls since the attempt going now began (``since``), from what the hooks
+    recorded: the agent of a leaf a person's own Claude Code session holds has no executor stream, only
+    these."""
     for call in store.last_events(node.session_id, count):
         kind, at = TOOLS.get(call["tool"]), epoch(call["timestamp"])
         command = " ".join(str(call["input"].get("command") or "").split())[:SAYS] if kind == "run" else ""
-        if kind is None or at < t.started or OURS.search(command):  # before this hold: not this leaf's
+        if kind is None or at < since or OURS.search(command):  # before this attempt: not what it is doing
             continue
         path = call["file_path"] or ""
         t.events.append(Ev(at, kind, text=command, path="" if kind == "run" else path))

@@ -112,6 +112,18 @@ def test_the_maps_lens_follows_the_plans_stage_until_the_person_chooses_one(repo
     assert look(repo, m).lens == "plan" and look(repo, m).lens_chosen
 
 
+def test_a_lens_the_person_turned_to_holds_through_the_next_look(repo):
+    """`v` turns the model's lens and nothing else: a lens the plan's stage did not give is the person's."""
+    with Store.open(repo) as store:
+        plan.propose(store, [{"id": "x", "title": "x", "scope": ["x.txt"], "check": "true"}], ALEX)
+        plan.start(store, "x", ALEX, repo)
+    m = look(repo)
+    assert m.lens == "live"
+    m.lens = "changed"  # v, as the cockpit turns it
+    m = look(repo, m)  # the next second's look
+    assert m.lens == "changed" and look(repo, m).lens == "changed"
+
+
 def test_a_store_too_busy_to_open_leaves_the_screen_as_it_was_and_says_so(repo):
     plan_of(repo)
     first = look(repo)
@@ -217,6 +229,25 @@ def test_only_the_attempt_that_is_going_now_counts_and_a_write_the_gate_stopped_
     t = look(repo).tasks["ids"]
     assert list(t.touched) == ["api.py"] and [e.path for e in t.events] == ["api.py", "db/x.py"]  # not old.py
     assert [p for p, _ in t.stopped] == ["db/x.py"]
+
+
+def test_a_retry_with_no_move_yet_does_not_show_the_calls_its_session_made_in_the_attempt_before(repo):
+    plan_of(repo)
+    start(repo)
+    sid = BOT.session_id  # a run's Claude Code session: its hooks record its calls, a retry resumes it
+    with Store.open(repo) as store:
+        node = plan.get(store, "ids")
+        node.started_at = ago(70)
+        store.put_node(plan.to_dict(node))
+    row(repo, "ids", "attempt", {"attempt": 1}, 60)
+    row(repo, "ids", "did", {"attempt": 1, "tool": "Edit", "target": "api.py", "verb": "editing"}, 50)
+    with Store.open(repo) as store:
+        store.add_event(ToolEvent("e0", sid, None, ago(50), "Edit", {}, None, True, None, "api.py"))
+        ran = {"command": "pytest -q"}
+        store.add_event(ToolEvent("e1", sid, None, ago(40), "Bash", ran, None, True, None, None))
+    row(repo, "ids", "attempt", {"attempt": 2}, 10)  # its check refused it: tried again, no move yet
+    m = look(repo)
+    assert m.tasks["ids"].events == [] and m.pace(m.tasks["ids"]) == "▁" * 12
 
 
 def test_a_leaf_taken_again_shows_only_this_holds_moves_and_not_its_own_graphene_commands(repo):
@@ -351,7 +382,7 @@ def test_what_an_agent_said_is_kept_whole_on_one_line_for_the_screen_to_cut(repo
     asked = "find every place the old integer ids are parsed, in the API and in the scripts that import them"
     with Store.open(repo) as store:
         plan.start(store, "schema", other, repo)  # its session's hooks saw one call, of a tool not read here
-        store.add_event(ToolEvent("e0", other.session_id, None, ago(1), "Task", {"description": asked}, None,
+        store.add_event(ToolEvent("e0", other.session_id, None, ago(0), "Task", {"description": asked}, None,
                                   True, None, None))  # fmt: skip
     assert look(repo).tasks["schema"].events[-1].text == f"Task {asked}"  # its last call, whole
 
@@ -391,6 +422,22 @@ def test_a_leaf_a_sessions_own_hooks_saw_is_read_from_the_tool_calls_they_record
     t = look(repo).tasks["ids"]
     assert [e.kind for e in t.events] == ["read", "edit", "run"]  # schema.py was before it took this leaf
     assert list(t.touched) == ["api.py"] and t.events[-1].text == "pytest -q" and t.outside == []
+
+
+def test_a_call_the_tail_leaves_out_does_not_come_back_as_what_the_agent_said(repo):
+    plan_of(repo)
+    start(repo)
+    sid = BOT.session_id
+    with Store.open(repo) as store:
+        node = plan.get(store, "ids")
+        node.started_at = ago(60)  # taken a minute ago
+        store.put_node(plan.to_dict(node))
+        store.add_event(ToolEvent("e0", sid, None, ago(90), "Edit", {}, None, True, None, "schema.py"))
+    assert look(repo).tasks["ids"].events == []  # an earlier leaf's edit: not this one's, nor something said
+    with Store.open(repo) as store:
+        took = {"command": "graphene node start ids"}
+        store.add_event(ToolEvent("e1", sid, None, ago(59), "Bash", took, None, True, None, None))
+    assert look(repo).tasks["ids"].events == []  # its own bookkeeping, as the tail leaves it out
 
 
 def test_files_touched_are_what_git_says_a_leaf_changed_and_the_ones_outside_its_scope_are_flagged(repo):

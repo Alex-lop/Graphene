@@ -56,6 +56,13 @@ def test_pace_is_a_sparkline_of_recent_events_and_quiet_is_the_time_since_the_la
     assert m.quiet(m.tasks["wait1"]) == 0  # nothing happened: it is not quiet, it has not begun
 
 
+def test_a_note_you_sent_is_not_the_agents_pace_and_does_not_make_it_less_quiet():
+    m = model()
+    t = m.tasks["run1"]
+    t.events = [Ev(m.clock - 50, "edit", path="models/m0.py"), Ev(m.clock - 2, "you", text="“keep ids”")]
+    assert m.quiet(t) == 50 and m.pace(t)[-1] == "▁"  # the agent has done nothing since its edit
+
+
 def test_the_tail_names_what_the_agent_did_in_words():
     m = model()
     t = m.tasks["run1"]
