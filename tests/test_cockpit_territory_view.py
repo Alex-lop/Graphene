@@ -54,6 +54,22 @@ def test_at_80_columns_the_live_lens_says_what_happens_first_and_w_widens_a_stop
     assert any(s.action == "select:ids" for s in db.segs)
 
 
+def test_at_80_columns_a_protected_folder_keeps_its_flag_when_a_file_is_written_and_one_stopped_there():
+    m = scene()
+    m.lens = "live"
+    m.files = ["README.md", "pyproject.toml", "setup.cfg", *m.files]  # (root): written to, and protected
+    m.protected = ["pyproject.toml", "setup.cfg"]
+    m.tasks["ids"].scope = ["models/**", "*.md"]
+    m.tasks["ids"].touched = {"README.md": 90.0}
+    m.tasks["migrate"].state = "running"
+    m.tasks["migrate"].stopped = [("setup.cfg", 97.0)]
+    for selected in ("ids", "migrate"):  # someone else's stopped write, then the selected task's own
+        m.selected = selected
+        root = next(line for line in TV.build_territory(m, 80)[0] if line.plain()[2:].startswith("(root)"))
+        assert "● 1 now  !1 stopped" in root.plain() and root.plain().rstrip().endswith("PROTECTED")
+        assert root.width() <= 80
+
+
 def test_an_owner_is_named_by_its_agent_or_else_its_title_never_by_its_id():
     m = scene()
     m.tasks["docs"].scope = ["db/**"]  # a proposal: no agent yet

@@ -12,7 +12,7 @@ from __future__ import annotations
 from itertools import product
 
 from . import flowlayout as F
-from .lines import Line, Seg
+from .lines import Line, Seg, fit
 from .look import FLOW_STYLES
 from .model import Model
 
@@ -72,15 +72,19 @@ def build_flow(
         if lay.width <= width:
             break
     ids = [n.id for n in nodes]
-    focus = selected if selected in ids else GOAL if GOAL in ids else None  # a question selected: the goal
-    if lay is not None and lay.width > width and focus:  # the goal's layer makes even five boxes too wide
-        for hops, label_w in product((2, 1), LABELS):  # the more around it the better, then the wider
-            n2, e2 = F.neighbourhood(nodes, edges, focus, hops)  # with the goals over it
+    focus = selected if selected in ids else GOAL if GOAL in ids else ids[0]  # a question: the goal, or top
+    if lay is not None and lay.width > width:  # the goal's layer makes even five boxes too wide
+        # a goal's steps are the lines drawn under it: by every task's own line, each would be one step away
+        along = shown if nodes[ids.index(focus)].state in TREE else edges
+        # the more around it the better, then the wider; last, the goals over it give way to what waits on it
+        for (hops, up), label_w in product(((2, True), (1, True), (1, False)), LABELS):
+            n2, e2 = F.neighbourhood(nodes, along, focus, hops, up)  # with the goals over it, while they fit
             lay = F.layout(n2, drawn(e2), label_w=label_w, selected=selected, styles=STYLES)
             lay.hidden = len(nodes) - len(n2)
             steps = f"{hops} step{'s' * (hops > 1)}"
-            name = nodes[ids.index(focus)].label
-            note = f"showing {len(n2)} of {len(nodes)}: {name} and what is within {steps}"
+            head, tail = f"showing {len(n2)} of {len(nodes)}: ", f" and what is within {steps}"
+            room = max(30, width - 1 - len(head) - len(tail))  # a task's short title whole; a long goal cut
+            note = head + fit(nodes[ids.index(focus)].label, room) + tail
             if lay.width <= width:
                 break
     assert lay is not None

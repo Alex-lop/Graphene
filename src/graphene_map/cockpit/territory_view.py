@@ -53,8 +53,10 @@ def build_territory(m: Model, width: int, cursor: int = 0) -> tuple[list[Line], 
         if m.lens == "live" and g.touched:  # what happens at the folder comes first: a narrow screen keeps it
             segs += [Seg(f"● {g.touched} now  ", "#e9c46a")]
         if m.lens == "live" and g.stopped:
-            stopper = m.tasks[g.stopped_by[-1]]
             segs += [Seg(f"!{g.stopped} stopped  ", "bold #ef476f")]
+        keep = len(segs)  # what happens here stays; who stopped it, then the owners, give way at the edge
+        if m.lens == "live" and g.stopped:
+            stopper = m.tasks[g.stopped_by[-1]]
             if stopper is sel:  # w gives the selected task what its gate stopped
                 segs += [Seg("w widen  ", "bold #e9a23b", "allow")]
             else:  # someone else's: a click selects it
@@ -64,7 +66,6 @@ def build_territory(m: Model, width: int, cursor: int = 0) -> tuple[list[Line], 
             flag = [Seg(f"{g.outside} OUTSIDE", "bold #ef476f")]
         elif g.protected and m.lens != "changed":
             flag = [Seg("PROTECTED", "bold #ef476f")]
-        keep = len(segs)
         counts = g.changed if m.lens == "changed" else g.owners
         for tid, n in counts.most_common(3):
             segs += [Seg(f"{name_of(m.tasks[tid])} ({n})  ", m.color(tid))]

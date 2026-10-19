@@ -61,6 +61,52 @@ def test_a_graph_too_wide_for_the_terminal_shows_the_selected_tasks_neighbourhoo
     assert note.startswith("showing ") and "users come back with their ids" in note
 
 
+def test_a_question_selected_on_a_graph_too_wide_shows_the_goal_and_what_is_drawn_under_it_and_it_fits():
+    m = scene()  # every task under the goal, eight of them in a row: the goal is a step from each
+    for i in range(8):
+        m.tasks[f"c{i}"] = Task(f"c{i}", f"step {i}", "waiting", needs=["ids"] if i == 0 else [f"c{i - 1}"])
+    nodes, edges = FV.flow_graph(m)
+    _lines, layout, note = FV.build_flow(nodes, edges, 80, "q")
+    assert layout.width <= 80 and layout.hidden > 0 and note.startswith("showing ")
+
+
+def test_a_question_selected_in_a_plan_with_no_goal_centres_a_graph_too_wide_on_its_first_box():
+    for over, first in [([], "users return ids"), ([("api", "the API")], "the API")]:  # a task, a sub-goal
+        m = scene()
+        m.goal = "no goal yet"
+        for i in range(8):
+            m.tasks[f"c{i}"] = Task(f"c{i}", f"step {i}", "waiting", needs=[f"c{i - 1}" if i else "ids"])
+        for t in m.tasks.values():
+            t.above = over
+        nodes, edges = FV.flow_graph(m)
+        _lines, layout, note = FV.build_flow(nodes, edges, 80, "q")  # no goal to centre on: the first box
+        assert layout.width <= 80 and note.startswith("showing ") and first in note
+
+
+def test_the_line_under_a_neighbourhood_keeps_how_far_it_reaches_at_80_columns_when_the_goal_is_long():
+    from rich.cells import cell_len
+
+    m = scene()
+    m.goal = "Customers get their invoices by email every month, and every invoice sent is kept for support"
+    for i in range(8):
+        m.tasks[f"c{i}"] = Task(f"c{i}", f"step {i}", "waiting", needs=["ids"] if i == 0 else [f"c{i - 1}"])
+    nodes, edges = FV.flow_graph(m)
+    _lines, _layout, note = FV.build_flow(nodes, edges, 80, "q")
+    assert note.startswith("showing ") and "Customers get their" in note and note.endswith("within 2 steps")
+    assert cell_len(" " + note) <= 80  # the screen draws it after one space
+
+
+def test_under_a_sub_goal_in_a_sub_goal_a_neighbourhood_at_80_columns_still_shows_what_waits_on_the_task():
+    m = scene()
+    for tid, title, needs in [("login", "log in", []), ("tokens", "refresh tokens", ["login"]),
+                              ("logout", "log out", ["tokens"])]:  # fmt: skip
+        m.tasks[tid] = Task(tid, title, "waiting", needs=needs, above=[("api", "API"), ("auth", "Auth")])
+    nodes, edges = FV.flow_graph(m)
+    _lines, layout, note = FV.build_flow(nodes, edges, 80, "tokens")
+    assert note.startswith("showing ") and {"login", "tokens", "logout"} <= set(layout.rects)
+    assert layout.width <= 80  # log out, which waits on it, is not cut off at the right
+
+
 def test_a_wide_screen_gives_a_title_its_whole_line_and_80_columns_still_fit():
     m = scene()
     m.tasks["ids"].title = "Render the invoice template"  # 27 cells

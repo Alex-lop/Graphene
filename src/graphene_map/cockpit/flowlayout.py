@@ -67,16 +67,16 @@ class Layout:
 
 
 def neighbourhood(
-    nodes: list[GNode], edges: list[GEdge], focus: str, hops: int
+    nodes: list[GNode], edges: list[GEdge], focus: str, hops: int, up: bool = True
 ) -> tuple[list[GNode], list[GEdge]]:
     """The nodes within ``hops`` of ``focus``, either direction, the goals over ``focus`` by `tree` edges, up
-    to the top (why it is there), and the edges among them."""
+    to the top (why it is there) unless ``up`` is False, and the edges among them."""
     near, front = {focus}, {focus}
     for _ in range(hops):
         front = {y for e in edges for x, y in ((e.a, e.b), (e.b, e.a)) if x in front} - near
         near |= front
     parent, at = {e.b: e.a for e in edges if e.kind == "tree"}, focus
-    for _ in nodes:  # a tree has no cycle; this is the most steps up there can be if one slipped in
+    for _ in nodes if up else ():  # a tree has no cycle; this is the most steps up there can be if one did
         if (at := parent.get(at)) is None:
             break
         near.add(at)
