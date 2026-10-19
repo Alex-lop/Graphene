@@ -10,10 +10,10 @@
 
 Output docs/assets/watch.gif
 Set Shell "bash"
-Set FontSize 16
-Set Width 1120
-Set Height 600
-Set Padding 14
+Set FontSize 32
+Set Width 2240
+Set Height 1200
+Set Padding 28
 Set TypingSpeed 40ms
 
 Hide
