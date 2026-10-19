@@ -5,7 +5,8 @@ barycentre sweeps; edges are right-angled and run in lanes between layers, so a 
 fan-out is a trunk with branches. An edge that would close a cycle (found by a depth-first search, or
 declared `loop`) is a "back edge": it leaves the right of its source, drops to a lane under every node,
 runs back and comes in at the left of its target, so no line ever crosses a box. A `two` edge has an
-arrowhead at both ends. Positions are a function of the graph alone, so a recolour never moves a node.
+arrowhead at both ends; a `tree` edge (a goal over what serves it) has none, and is drawn quieter than any
+other. Positions are a function of the graph alone, so a recolour never moves a node.
 
 The result is cells: (char, style) per position, plus each node's rectangle for mouse hit-testing.
 """
@@ -23,9 +24,9 @@ JOIN = {
     E | S: "┌", S | W: "┐", N | E: "└", N | W: "┘", N | S | E: "├", N | S | W: "┤",
     E | W | S: "┬", E | W | N: "┴", N | E | S | W: "┼",
 }  # fmt: skip
-RANK = {"": 0, "edge": 1, "edge_hot": 2, "edge_loop": 3}  # when two edges share a cell, the louder wins
+RANK = {"": 0, "edge_tree": 1, "edge": 2, "edge_hot": 3, "edge_loop": 4}  # two edges in a cell: the louder
 BOX = {
-    "light": "╭╮╰╯─│", "heavy": "┏┓┗┛━┃", "double": "╔╗╚╝═║",
+    "light": "╭╮╰╯─│", "heavy": "┏┓┗┛━┃", "double": "╔╗╚╝═║", "square": "┌┐└┘─│",
 }  # fmt: skip
 
 
@@ -42,6 +43,7 @@ class GEdge:
     a: str
     b: str
     kind: str = "needs"  # needs: a to b · two: a and b, both ways · loop: a to b, always drawn as a back edge
+    # · tree: b is under a (a goal over what serves it): a line with no arrowhead
 
 
 @dataclass
@@ -67,11 +69,17 @@ class Layout:
 def neighbourhood(
     nodes: list[GNode], edges: list[GEdge], focus: str, hops: int
 ) -> tuple[list[GNode], list[GEdge]]:
-    """The nodes within ``hops`` of ``focus``, either direction, and the edges among them."""
+    """The nodes within ``hops`` of ``focus``, either direction, the goals over ``focus`` by `tree` edges, up
+    to the top (why it is there), and the edges among them."""
     near, front = {focus}, {focus}
     for _ in range(hops):
         front = {y for e in edges for x, y in ((e.a, e.b), (e.b, e.a)) if x in front} - near
         near |= front
+    parent, at = {e.b: e.a for e in edges if e.kind == "tree"}, focus
+    for _ in nodes:  # a tree has no cycle; this is the most steps up there can be if one slipped in
+        if (at := parent.get(at)) is None:
+            break
+        near.add(at)
     return [n for n in nodes if n.id in near], [e for e in edges if e.a in near and e.b in near]
 
 
@@ -199,6 +207,11 @@ class Box:
 
 def _box(n: GNode, label_w: int) -> Box:
     lines = textwrap.wrap(n.label, label_w, break_long_words=True) or [n.id]
+    for w in range(-(-len(n.label) // len(lines)), label_w) if 1 < len(lines) <= 3 else ():
+        even = textwrap.wrap(n.label, w, break_long_words=False)  # a word longer than w is never cut for it
+        if len(even) == len(lines) and max(map(len, even)) <= w:
+            lines = even  # as many lines, as even as they go: no word left alone on the last
+            break
     if len(lines) > 3:
         lines = [*lines[:2], lines[2][: label_w - 1] + "…"]
     inner = max(max(cell_len(x) for x in lines), len(n.badge) + 4, 6)  # in cells: a wide character is two
@@ -334,10 +347,13 @@ def _draw(nodes, boxes, edges, forward, back, layer, rows, selected, styles) -> 
                     break
 
     loops = {(e.a, e.b) for e in edges if e.kind == "loop"}
+    trees = {(e.a, e.b) for e in edges if e.kind == "tree"}
 
     def hot(a: str, b: str) -> str:
         if (a, b) in loops:
             return "edge_loop"
+        if (a, b) in trees:  # the tree stays quiet: what lights up is what the selected task waits on
+            return "edge_tree"
         return "edge_hot" if selected in (a, b) else "edge"
 
     # forward edges
@@ -359,9 +375,12 @@ def _draw(nodes, boxes, edges, forward, back, layer, rows, selected, styles) -> 
             else:  # through a dummy: across its layer
                 pts += [(x_of(b), yb), (x_of(b) + width_of[layer_of(b, layer, None, rows)], yb)]
         st = hot(e.a, e.b)
-        line(_dedupe(pts), st)
         end = (x_of(last) - 1, int(mid(last)))
-        mark[end] = ("▶", st)
+        if e.kind == "tree":  # no arrowhead: the line runs on to the box
+            pts.append(end)
+        line(_dedupe(pts), st)
+        if e.kind != "tree":
+            mark[end] = ("▶", st)
         if e.kind == "two":
             mark[(sx, int(mid(first)))] = ("◀", st)
     # back edges
@@ -405,7 +424,8 @@ def _draw(nodes, boxes, edges, forward, back, layer, rows, selected, styles) -> 
         b = boxes[n.id]
         bx, by = x_of(n.id), y[n.id]
         rects[n.id] = (bx, by, bx + b.w - 1, by + b.h - 1)
-        look = "double" if n.id == selected else "heavy" if n.state == "running" else "light"
+        look = styles.get(f"box:{n.state}", "light")  # its own shape, when the style table gives one
+        look = "double" if n.id == selected else "heavy" if n.state == "running" else look
         tl, tr, bl, br, hz, vt = BOX[look]
         st = styles.get(n.state, "")
         sel = "node_sel" if n.id == selected else st or "node"

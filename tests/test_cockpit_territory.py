@@ -37,6 +37,18 @@ def test_a_stopped_write_is_counted_at_the_folder_it_was_stopped_at():
     assert docs.stopped == 1 and docs.stopped_by == ["ids"]
 
 
+def test_the_summary_counts_what_is_being_written_what_was_stopped_and_what_changed_where():
+    tasks = {
+        "ids": running(["models/**"], touched=["models/m0.py", "models/new.py"], stopped=["docs/c.md"]),
+        "api": {"state": "review", "scope": ["api/**"], "touched": ["api/a0.py"]},  # its agent has finished
+        "old": {"state": "done", "scope": ["api/**"], "changed": ["api/a1.py", "docs/a.md", "gone/x.py"]},
+    }
+    groups, summary = T.compute(FILES, tasks, lens="live")
+    assert (summary["writing"], summary["stopped"]) == (2, 1)  # a file still to be made is being written too
+    assert sum(g.touched for g in groups) == 1  # models/m0.py: what waits for sign-off is not written now
+    assert (summary["changed"], summary["folders"], summary["outside"]) == (3, 3, 2)  # gone/x.py is gone
+
+
 def test_protected_folders_are_flagged():
     groups, summary = T.compute(FILES, {}, protected=["docs/**"])
     assert summary["protected"] == ["docs/"]

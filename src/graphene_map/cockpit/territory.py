@@ -104,7 +104,7 @@ def compute(
                 where[p].changed[tid] += 1
                 if scope and not _in(p, scope):
                     where[p].outside += 1
-        for p in t.get("touched") or ():
+        for p in (t.get("touched") or ()) if t["state"] == "running" else ():  # being written now
             if p in where:
                 where[p].touched += 1
         for p in t.get("stopped") or ():
@@ -129,13 +129,19 @@ def compute(
                 groups.append(g)
             g.owners[tid] += 1
     total = len(files)
+    done = [(p, tuple(t.get("scope") or ())) for t in tasks.values() for p in t.get("changed") or ()]
+    running = [t for t in tasks.values() if t["state"] == "running"]
     summary = {
         "files": total,
         "may": len(claimed),
         "new": sum(1 for g in groups if g.new),
         "percent": round(100 * len(claimed) / total) if total else 0,
         "protected": [g.name for g in groups if g.protected],
-        "outside": sum(g.outside for g in groups),
+        "outside": sum(1 for p, scope in done if scope and not _in(p, scope)),
+        "writing": len({p for t in running for p in t.get("touched") or ()}),
+        "stopped": sum(len(t.get("stopped") or ()) for t in tasks.values()),
+        "changed": len({p for p, _ in done}),
+        "folders": len({p.rpartition("/")[0] for p, _ in done}),  # the folders those files are in
     }
     return groups, summary
 

@@ -99,6 +99,7 @@ def read(
             [x for x in n.needs if x in keep],
             full=n.title,
             why=" › ".join(short(a.title) for a in reversed(above)),
+            above=[(a.id, short(a.title)) for a in reversed(above)],
         )
     for node_id in {r["node_id"] for r in store.node_log(kinds=("overruled",))}:  # rare: a person's override
         t = m.tasks.get(node_id)

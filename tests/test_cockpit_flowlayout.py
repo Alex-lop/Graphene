@@ -60,6 +60,28 @@ def test_a_neighbourhood_fits_where_the_whole_does_not():
     assert len(near_nodes) < 10 and narrow.width < lay.width
 
 
+def test_a_neighbourhood_keeps_the_goals_over_its_focus_up_to_the_top():
+    nodes = [GNode(x, x) for x in ("goal", "api", "web", "ids", "docs", "far")]
+    edges = [GEdge("goal", "api", "tree"), GEdge("goal", "web", "tree"), GEdge("api", "docs", "tree")]
+    edges += [GEdge("web", "ids", "tree"), GEdge("ids", "docs"), GEdge("goal", "far", "tree")]
+    near, near_edges = F.neighbourhood(nodes, edges, "docs", 1)
+    assert {n.id for n in near} == {"docs", "ids", "api", "goal"}  # its own way up; not web, not far
+    assert all("far" not in (e.a, e.b) for e in near_edges)
+
+
+def test_a_tree_edge_runs_to_its_box_with_no_arrowhead_and_gives_way_to_an_arrow():
+    nodes = [GNode("g", "the goal", "goal"), GNode("a", "first"), GNode("b", "then")]
+    lay = F.layout(nodes, [GEdge("g", "a", "tree"), GEdge("g", "b", "tree"), GEdge("a", "b")], label_w=8)
+
+    def left_of(n: str) -> tuple[str, str]:
+        x0, y0, _x1, y1 = lay.rects[n]
+        return lay.cells[(y0 + y1) // 2][x0 - 1]
+
+    assert left_of("a") == ("─", "edge_tree")  # the goal's line reaches a's border, quietly
+    assert left_of("b") == ("▶", "edge")  # b waits on a: that arrow is drawn over the goal's line
+    assert lay.text().count("▶") == 1
+
+
 def test_a_cycle_among_plain_edges_becomes_one_back_edge():
     ring = [GNode(x, x) for x in "abc"]
     lay = F.layout(ring, [GEdge("a", "b"), GEdge("b", "c"), GEdge("c", "a")], label_w=8)
@@ -76,6 +98,20 @@ def test_a_flat_list_wraps_into_columns_when_asked_and_keeps_its_order():
     assert first == [f"n{i}" for i in range(6)]  # the first column first, top to bottom
     edged = F.layout(nodes, [F.GEdge("n0", "n1")], columns=2)  # an edge means layers: no wrapping
     assert edged.layers["n1"] == 1 and edged.layers["n2"] == 0
+
+
+def test_a_label_on_two_lines_is_wrapped_evenly_with_no_word_left_alone():
+    rows = F.layout([GNode("g", "users come back with their ids")], [], label_w=28).text().splitlines()
+    assert rows[1].strip("│ ") == "users come back" and rows[2].strip("│ ") == "with their ids"
+
+
+def test_a_label_wrapped_evenly_never_cuts_a_word_in_two():
+    for label, label_w, want in [
+        ("a friendlier app", 14, ["a friendlier", "app"]),  # not "a friend" over "lier app"
+        ("Add parse_invoice_records tests", 28, ["Add parse_invoice_records", "tests"]),
+    ]:
+        rows = F.layout([GNode("g", label)], [], label_w=label_w).text().splitlines()
+        assert [row.strip("│ ") for row in rows[1:3]] == want
 
 
 def test_a_box_whose_label_has_wide_characters_keeps_its_borders_in_line():
