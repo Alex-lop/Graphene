@@ -18,7 +18,8 @@ def test_every_line_fits_the_width_asked():
 def test_the_header_says_what_waits_for_the_person_what_runs_and_what_is_proven():
     top = plain(rows.build_cockpit(scene(), 80))
     assert "users come back with their ids" in top[0] and "your plan" in top[0]
-    assert top[1].split() == ["3", "need", "you", "1", "running", "1/5", "proven"]  # a proposal counts
+    assert top[1].split() == ["4", "need", "you", "1", "running", "1/5", "proven"]  # a proposal counts, and
+    # so does the running task with a write the gate stopped (`ids`)
 
 
 def test_the_question_comes_first_and_the_default_and_the_options_are_buttons():

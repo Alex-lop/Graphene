@@ -183,14 +183,48 @@ def test_what_an_executor_did_is_the_agents_tail_pace_touched_files_and_stopped_
     assert m.pace(m.tasks["ids"]) != "▁" * 12
 
 
-def test_only_the_attempt_that_is_going_now_counts(repo):
+def test_only_the_attempt_that_is_going_now_counts_and_a_write_the_gate_stopped_in_it_is_its(repo):
+    plan_of(repo)
+    start(repo)
+    row(repo, "ids", "attempt", {"attempt": 1}, 60)  # what `graphene run` logs as it starts an executor
+    row(repo, "ids", "did", {"attempt": 1, "tool": "Edit", "target": "old.py", "verb": "editing"}, 50)
+    row(repo, "ids", "attempt", {"attempt": 2}, 10)  # tried again in the same hold
+    row(repo, "ids", "did", {"attempt": 2, "tool": "Edit", "target": "api.py", "verb": "editing"}, 5)
+    row(repo, "ids", "denied", {"path": "db/x.py", "how": "write"}, 4)  # the gate's row has no attempt number
+    edit(repo)
+    t = look(repo).tasks["ids"]
+    assert list(t.touched) == ["api.py"] and [e.path for e in t.events] == ["api.py", "db/x.py"]  # not old.py
+    assert [p for p, _ in t.stopped] == ["db/x.py"]
+
+
+def test_a_leaf_taken_again_shows_only_this_holds_moves_and_not_its_own_graphene_commands(repo):
     plan_of(repo)
     start(repo)
     row(repo, "ids", "did", {"attempt": 1, "tool": "Edit", "target": "old.py", "verb": "editing"}, 50)
-    row(repo, "ids", "did", {"attempt": 2, "tool": "Edit", "target": "api.py", "verb": "editing"}, 5)
-    edit(repo)
+    row(repo, "ids", "did", {"attempt": 1, "tool": "release", "target": "graphene node release ids",
+                             "verb": "running"}, 45)  # fmt: skip
+    again = Caller("claude:9c0d", False, "9c0d0000-0000-4000-8000-0000000000c3")
+    with Store.open(repo) as store:
+        plan.release(store, "ids", BOT, "it needs db/models.py", wants=["db/models.py"])
+        plan.start(store, "ids", again, repo)  # a run numbers its attempts from 1 again
+    row(repo, "ids", "did", {"attempt": 1, "tool": "Edit", "target": "api.py", "verb": "editing"}, 5)
+    row(repo, "ids", "did", {"attempt": 1, "tool": "done", "target": "graphene node done ids",
+                             "verb": "running"}, 2)  # fmt: skip
     t = look(repo).tasks["ids"]
-    assert list(t.touched) == ["api.py"] and [e.path for e in t.events] == ["api.py"]  # old.py is attempt 1's
+    assert [e.path or e.text for e in t.events] == ["api.py"] and list(t.touched) == ["api.py"]
+
+
+def test_a_write_the_gate_stopped_is_not_a_file_touched_and_not_outside_until_git_says_it_changed(repo):
+    plan_of(repo)
+    start(repo)
+    row(repo, "ids", "did", {"attempt": 1, "tool": "Edit", "target": "schema.py", "verb": "editing"}, 6)
+    row(repo, "ids", "denied", {"attempt": 1, "path": "schema.py", "how": "outside scope"}, 5)  # the gate: no
+    m = look(repo)
+    t = m.tasks["ids"]
+    assert [p for p, _ in t.stopped] == ["schema.py"] and t.touched == {} and t.outside == []
+    edit(repo, "schema.py")  # then a shell command wrote it anyway: git sees that
+    with Store.open(repo) as store:
+        assert read(store, repo, m, now=m.clock + 6).tasks["ids"].outside == ["schema.py"]
 
 
 def test_a_write_the_scope_has_since_taken_in_is_no_longer_stopped(repo):
@@ -283,6 +317,32 @@ def test_a_leaf_that_came_back_says_why_and_offers_what_it_wanted(repo):
     assert "w" in t.offers and t.offers["w"][:2] == ["node", "widen"]
 
 
+def test_what_an_agent_said_is_kept_whole_on_one_line_for_the_screen_to_cut(repo):
+    """The screen fits a line to its width and ends a cut one in "…"; a cut made here was silent, and a line
+    break inside what an agent said broke the row."""
+    plan_of(repo)
+    start(repo)
+    said = "I read the schema first.\n\nThe ids are strings in db/models.py, so the API returns strings too"
+    row(repo, "ids", "said", {"attempt": 1, "text": said}, 5)
+    assert look(repo).tasks["ids"].events[-1].text == " ".join(said.split())
+    other = Caller("claude:7a11", False, "7a110000-0000-4000-8000-0000000000b2")
+    asked = "find every place the old integer ids are parsed, in the API and in the scripts that import them"
+    with Store.open(repo) as store:
+        plan.start(store, "schema", other, repo)  # its session's hooks saw one call, of a tool not read here
+        store.add_event(ToolEvent("e0", other.session_id, None, ago(1), "Task", {"description": asked}, None,
+                                  True, None, None))  # fmt: skip
+    assert look(repo).tasks["schema"].events[-1].text == f"Task {asked}"  # its last call, whole
+
+
+def test_why_a_leaf_came_back_is_kept_whole_for_the_open_row_to_wrap(repo):
+    plan_of(repo)
+    why = "the ids are parsed in db/models.py and in scripts/import_users.py, and my scope covers only api.py"
+    with Store.open(repo) as store:
+        plan.start(store, "ids", BOT, repo)
+        plan.release(store, "ids", BOT, why, wants=["db/models.py"])
+    assert look(repo).tasks["ids"].note == why
+
+
 def test_what_a_finished_task_changed_is_what_its_last_finished_row_says(repo):
     plan_of(repo)
     with Store.open(repo) as store:
@@ -297,15 +357,18 @@ def test_a_leaf_a_sessions_own_hooks_saw_is_read_from_the_tool_calls_they_record
     start(repo)
     sid = BOT.session_id
     with Store.open(repo) as store:
-        for i, (tool, data, path) in enumerate(
-            [("Read", {}, "api.py"), ("Edit", {}, "api.py"), ("Bash", {"command": "pytest -q"}, None)]
-        ):
-            at = ago(30 - 10 * i)
-            store.add_event(ToolEvent(f"e{i}", sid, None, at, tool, data, None, True, None, path))
+        node = plan.get(store, "ids")
+        node.started_at = ago(60)  # taken a minute ago
+        store.put_node(plan.to_dict(node))
+        calls = [("Edit", {}, "schema.py", 90), ("Read", {}, "api.py", 30), ("Edit", {}, "api.py", 20),
+                 ("Bash", {"command": "graphene node show ids"}, None, 15),
+                 ("Bash", {"command": "pytest -q"}, None, 10)]  # fmt: skip
+        for i, (tool, data, path, seconds) in enumerate(calls):
+            store.add_event(ToolEvent(f"e{i}", sid, None, ago(seconds), tool, data, None, True, None, path))
     edit(repo)
     t = look(repo).tasks["ids"]
-    assert [e.kind for e in t.events] == ["read", "edit", "run"]
-    assert list(t.touched) == ["api.py"] and t.events[-1].text == "pytest -q"
+    assert [e.kind for e in t.events] == ["read", "edit", "run"]  # schema.py was before it took this leaf
+    assert list(t.touched) == ["api.py"] and t.events[-1].text == "pytest -q" and t.outside == []
 
 
 def test_files_touched_are_what_git_says_a_leaf_changed_and_the_ones_outside_its_scope_are_flagged(repo):
@@ -329,6 +392,31 @@ def test_git_is_asked_again_only_after_a_few_seconds(repo):
     with Store.open(repo) as store:
         later = read(store, repo, first, now=first.clock + 6)
     assert sorted(later.tasks["ids"].touched) == ["api.py", "schema.py"]
+
+
+def test_a_scope_widened_while_it_runs_is_asked_of_git_again_at_once_so_what_it_took_in_is_not_outside(repo):
+    plan_of(repo)
+    start(repo)
+    edit(repo, "stray.txt")  # in nobody's scope
+    first = look(repo)
+    assert first.tasks["ids"].outside == ["stray.txt"]
+    with Store.open(repo) as store:
+        plan.widen(store, "ids", ["stray.txt"], ALEX)  # w: its scope takes the file in
+        later = read(store, repo, first, now=first.clock + 1)  # git was asked only a second ago
+    assert later.tasks["ids"].outside == []
+
+
+def test_a_leaf_taken_again_is_asked_of_git_again_at_once(repo):
+    plan_of(repo)
+    start(repo)
+    edit(repo, "stray.txt")
+    first = look(repo)
+    assert first.tasks["ids"].outside == ["stray.txt"]
+    with Store.open(repo) as store:
+        plan.release(store, "ids", BOT, "stray.txt was a mistake", wants=["db/models.py"])
+        plan.start(store, "ids", ALEX, repo)  # the file was there when it began: not this attempt's change
+        later = read(store, repo, first, now=first.clock + 1)
+    assert later.tasks["ids"].outside == []
 
 
 def test_quiet_is_what_the_plan_counts_for_a_running_leaf_and_a_protected_folder_is_not_allowed(repo):

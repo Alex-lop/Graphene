@@ -33,6 +33,13 @@ def test_the_scoreboard_counts_need_running_and_proven_with_folded_tasks_in_the_
     assert m.scoreboard() == (4, 1, 5, 10)
 
 
+def test_a_running_task_with_a_write_the_gate_stopped_needs_you_and_sorts_with_what_does():
+    m = model()
+    m.tasks["run1"].stopped = [("db/x.py", 99.0)]  # only the person can widen its scope
+    assert m.scoreboard() == (5, 1, 1, 6)  # and it is still running
+    assert [rid for _, rid in m.order()] == ["q1", "run1", "rev1", "back1", "prop1", "wait1", "done1"]
+
+
 def test_allowed_counts_the_tracked_files_a_scope_covers():
     m = model()
     assert m.allowed(m.tasks["run1"]) == 5 and m.allowed(m.tasks["wait1"]) == 3

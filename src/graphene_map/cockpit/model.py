@@ -18,6 +18,12 @@ NEEDS_YOU = ("review", "came back", "yours", "proposed")  # where the move is th
 ORDER = ("running", "ready", "waiting", "done")  # then the rest, as they are going
 
 
+def needs_you(t: Task) -> bool:
+    """The move is the person's: a sign-off, a hand-back, their own task, a proposal, or a running task with
+    a write the gate stopped, which only the person can widen its scope to."""
+    return t.state in NEEDS_YOU or (t.state == "running" and bool(t.stopped))
+
+
 @dataclass
 class Ev:
     t: float  # seconds, on the model's clock
@@ -81,8 +87,9 @@ class Model:
         self.banner = ""  # what the top row says it is, when it is not "your plan" (a replay)
         self.feed: list[tuple[float, str]] = []
         self.names: dict[str, str] = {}  # a task -> the number its agent goes by, in the order of the log
-        # a leaf -> when git was asked, the files it said, and which of them are outside the leaf's scope
-        self.seen: dict[str, tuple[float, list[str], list[str]]] = {}
+        # a leaf -> when git was asked, the files it said, which of them are outside the leaf's scope, and the
+        # hold and the scope it was asked for: a leaf taken again or widened is asked again
+        self.seen: dict[str, tuple[float, list[str], list[str], tuple]] = {}
         self._allowed: dict[tuple[str, tuple[str, ...]], int] = {}
 
     # -- reading ---------------------------------------------------------------------------------
@@ -97,8 +104,8 @@ class Model:
     def order(self) -> list[tuple[str, str]]:
         """The cockpit's rows in the order a person should look at them: (kind, id)."""
         rows: list[tuple[str, str]] = [("question", q.id) for q in self.questions]
-        need = [t for t in self.tasks.values() if t.state in NEEDS_YOU]
-        rest = {s: [t for t in self.tasks.values() if t.state == s] for s in ORDER}
+        need = [t for t in self.tasks.values() if needs_you(t)]
+        rest = {s: [t for t in self.tasks.values() if t.state == s and not needs_you(t)] for s in ORDER}
         rows += [("task", t.id) for t in need]
         for s in ORDER:
             rows += [("task", t.id) for t in rest[s]]
@@ -107,7 +114,7 @@ class Model:
     def scoreboard(self) -> tuple[int, int, int, int]:
         """(need you, running, proven, total): proven counts finished tasks, folded ones included, and not
         the ones the person finished over a check."""
-        need = len(self.questions) + sum(1 for t in self.tasks.values() if t.state in NEEDS_YOU)
+        need = len(self.questions) + sum(1 for t in self.tasks.values() if needs_you(t))
         running = sum(1 for t in self.tasks.values() if t.state == "running")
         done = self.folded_done + sum(1 for t in self.tasks.values() if t.state == "done" and not t.overruled)
         return need, running, done, self.folded_done + len(self.tasks)

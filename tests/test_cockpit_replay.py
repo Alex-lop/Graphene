@@ -106,6 +106,8 @@ def test_the_news_says_what_an_agent_did_and_why_a_leaf_came_back_not_the_bookke
     said += ["greet came back: it needs words.py"]
     assert news(line) == " · ".join(said)
     assert news({"node_log": [row("bye", "landed")]}) == "bye landed"
+    long = "the word lives in words.py, which my scope does not cover, so the check cannot pass"
+    assert news({"node_log": [row("greet", "released", why=long)]}).endswith("cover,…")  # cut, and says so
     assert news({"nodes": {"bye": {"state": "done"}}}) == "bye done"  # nothing in words: the replay's own
 
 

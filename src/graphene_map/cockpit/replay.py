@@ -22,6 +22,7 @@ from .. import demo as D
 from ..store import Store
 from .app import KEYS, Cockpit
 from .help import Help
+from .lines import fit
 from .model import Model
 from .read import epoch, read
 
@@ -43,9 +44,9 @@ def news(line: dict) -> str:
         if kind == "did":
             said.append(f"{node}: {detail.get('verb', '')} {detail.get('target', '')}".strip())
         elif kind == "said":
-            said.append(f"{node}: {' '.join(str(detail.get('text', '')).split())[:60]}")
+            said.append(f"{node}: {fit(' '.join(str(detail.get('text', '')).split()), 60)}")
         elif kind == "released":
-            said.append(f"{node} came back: {' '.join(str(detail.get('why', '')).split())[:60]}")
+            said.append(f"{node} came back: {fit(' '.join(str(detail.get('why', '')).split()), 60)}")
         elif kind in MILESTONES:
             said.append(f"{node} {kind.replace('_', ' ')}")
         elif kind == "board":

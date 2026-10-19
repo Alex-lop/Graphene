@@ -8,6 +8,7 @@ news they were last told survive from one look to the next. The screens never se
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import time
 from collections.abc import Callable
@@ -34,10 +35,12 @@ KEEP_DONE = 4
 FILES_EVERY = 30.0  # seconds between looks at what git tracks: a big repository's list is not free
 GIT_EVERY = 5.0  # seconds between asks of git, for each running leaf: it costs three of its commands
 ROWS = 200  # the latest rows of a leaf's log the cockpit reads each look: a run's log can be long
+SAYS = 400  # characters kept of what an agent said or ran: the screen cuts it to its width, with an ellipsis
 LIVE = ("running", "review", "came back")  # the tasks whose agent the rows are read for
 KINDS = {"reading": "read", "editing": "edit", "running": "run", "searching": "search"}  # a did row's verb
 TOOLS = {"Read": "read", "NotebookRead": "read", "Grep": "search", "Glob": "search", "Edit": "edit",
          "Write": "edit", "MultiEdit": "edit", "NotebookEdit": "edit", "Bash": "run"}  # a hook's tool call
+OURS = re.compile(r"(?:^|[\s/])graphene node ")  # an agent's own `graphene node done …`: bookkeeping
 
 
 def looker(root: Path, open_store: Callable) -> Callable[[Model | None], Model]:
@@ -182,36 +185,39 @@ def recent(store, node_id: str, kinds: tuple[str, ...], limit: int = ROWS) -> li
 
 
 def live(store, m: Model, t: Task, node: P.Node) -> None:
-    """What the agent holding this task is doing, from the rows its executor logged: what it read,
-    edited, ran and said (`did`, `said`), and the writes the gate stopped (`denied` with a path)."""
+    """What the agent holding this task is doing, from the rows logged in the attempt going now (after the
+    leaf's last `started` or `attempt` row, as `meter.going` reads it: an earlier hold's or attempt's are
+    not this one's, and the gate's `denied` rows carry no attempt number): what it read, edited, ran and said
+    (`did`, `said`), and the writes the gate stopped (`denied` with a path)."""
     t.started = epoch(node.started_at)
     t.hears = "claude" in (node.executor or "claude")  # only a hooked Claude Code session is told mid-run
     t.agent = m.agent_name(t.id)
     sign = R.live(store, node, m.clock)  # the meter's last row, the hooks' last call, the log's age
     t.idle = sign["idle"]
-    rows = recent(store, t.id, ("did", "said", "denied"))
+    rows = recent(store, t.id, ("started", "attempt", "did", "said", "denied"))
+    rows = rows[max((k for k, r in enumerate(rows) if r["kind"] in ("started", "attempt")), default=-1) + 1 :]
     if not any(r["kind"] == "did" for r in rows) and node.session_id:
         calls(store, t, node)  # no stream: a person's own Claude Code session, seen by its hooks only
-    attempt = max((r["detail"].get("attempt") or 0 for r in rows), default=0)
     for r in rows:
         d, at = r["detail"], epoch(r["timestamp"])
-        if (d.get("attempt") or 0) != attempt:
-            continue  # only the attempt that is going now
         if r["kind"] == "did":
             kind = KINDS.get(d.get("verb", ""), "run")
             target = str(d.get("target") or "")
             shell = kind == "run"  # a command is words; anything else names a file
+            if shell and OURS.search(target):
+                continue
             t.events.append(Ev(at, kind, text=target if shell else "", path="" if shell else target))
             if kind == "edit" and target:
                 t.touched[target] = at
         elif r["kind"] == "said":
-            t.events.append(Ev(at, "said", text=str(d.get("text") or "")[:80]))
+            t.events.append(Ev(at, "said", text=" ".join(str(d.get("text") or "").split())[:SAYS]))
         elif r["kind"] == "denied" and d.get("path"):
             t.events.append(Ev(at, "stop", path=str(d["path"])))
+            t.touched.pop(str(d["path"]), None)  # a write it stopped did not happen: git says if another did
             if not P.in_scope(str(d["path"]), node.scope):  # a scope that has taken it in has not stopped it
                 t.stopped.append((str(d["path"]), at))
     if not t.events and sign["last"]:  # no rows and no calls: the last thing its log says
-        t.events.append(Ev(m.clock - (t.idle or 0), "said", text=" ".join(str(sign["last"]).split())[:80]))
+        t.events.append(Ev(m.clock - (t.idle or 0), "said", text=" ".join(str(sign["last"]).split())[:SAYS]))
     touched_by_git(store, m, t, node)
 
 
@@ -240,7 +246,7 @@ def ended(store, node_id: str) -> dict | None:
 def came_back(store, t: Task, node: P.Node) -> None:
     """Why a leaf came back, in the agent's words, and what that offers the person (widen, a sibling,
     wait on another, reopen the owner): each a command."""
-    t.note = " ".join(str(P.let_go(store, node).get("why") or "").split())[:80]
+    t.note = " ".join(str(P.let_go(store, node).get("why") or "").split())[:SAYS]
     t.offers = {key: argv for key, _what, argv in P.offers(store, node)}
 
 
@@ -268,15 +274,14 @@ def told(store, t: Task, node: P.Node, by_id: dict[str, P.Node], items: dict[str
 
 
 def calls(store, t: Task, node: P.Node, count: int = 40) -> None:
-    """The session's latest tool calls, from what the hooks recorded: the agent of a leaf a person's own
-    Claude Code session holds has no executor stream, only these."""
+    """The session's latest tool calls since it took the leaf, from what the hooks recorded: the agent of a
+    leaf a person's own Claude Code session holds has no executor stream, only these."""
     for call in store.last_events(node.session_id, count):
-        kind = TOOLS.get(call["tool"])
-        if kind is None:
+        kind, at = TOOLS.get(call["tool"]), epoch(call["timestamp"])
+        command = " ".join(str(call["input"].get("command") or "").split())[:SAYS] if kind == "run" else ""
+        if kind is None or at < t.started or OURS.search(command):  # before this hold: not this leaf's
             continue
-        at = epoch(call["timestamp"])
         path = call["file_path"] or ""
-        command = str(call["input"].get("command") or "")[:60] if kind == "run" else ""
         t.events.append(Ev(at, kind, text=command, path="" if kind == "run" else path))
         if kind == "edit" and path and call["success"] is not False:
             t.touched[path] = at
@@ -285,14 +290,16 @@ def calls(store, t: Task, node: P.Node, count: int = 40) -> None:
 def touched_by_git(store, m: Model, t: Task, node: P.Node) -> None:
     """The files this leaf has changed so far, as the plan itself counts them (`plan.changed_since`: what
     differs from when it began, however it was written, a shell command included), asked of git at most
-    every few seconds for each leaf; and the ones outside its scope as `node done` counts them
+    every few seconds for each leaf, and at once when it is taken again or its scope changes (a widen must
+    not leave the file it gave flagged); and the ones outside its scope as `node done` counts them
     (`plan.outside_scope`: not what a leaf running beside it in the checkout may write, nor what a run
     landed)."""
     if not (node.checkout and node.base_sha):
         t.outside = [p for p in t.touched if not P.in_scope(p, node.scope)]
         return
-    when, files, outside = m.seen.get(t.id, (0.0, [], []))
-    if m.clock - when >= GIT_EVERY or when > m.clock:
+    hold = (node.started_at, tuple(node.scope))  # what git's answer was for
+    when, files, outside, asked = m.seen.get(t.id, (0.0, [], [], None))
+    if asked != hold or m.clock - when >= GIT_EVERY or when > m.clock:
         try:
             files = P.changed_since(node.checkout, node.base_sha, node.dirty_at_start)
         except (P.Refused, OSError, subprocess.TimeoutExpired):
@@ -302,7 +309,7 @@ def touched_by_git(store, m: Model, t: Task, node: P.Node) -> None:
             outside = P.outside_scope(store, node, both)
         except (P.Refused, OSError, subprocess.TimeoutExpired):
             outside = [p for p in both if not P.in_scope(p, node.scope)]
-        m.seen[t.id] = (m.clock, files, outside)
+        m.seen[t.id] = (m.clock, files, outside, hold)
     both = sorted({*files, *t.touched})  # what git sees, and what its own record says it edited
     t.touched = {p: t.touched.get(p, m.clock) for p in both}
     t.outside = [p for p in both if p in outside or (p not in files and not P.in_scope(p, node.scope))]
