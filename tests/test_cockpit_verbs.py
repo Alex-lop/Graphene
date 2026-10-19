@@ -160,6 +160,19 @@ def test_painting_a_folder_gives_it_and_painting_it_again_takes_it_back(repo, do
         assert "docs/**" not in plan.get(store, "ids").scope
 
 
+def test_painting_the_maps_made_up_rows_or_a_tasks_last_place_changes_nothing_and_says_why(repo, doer):
+    plan_of(repo)
+    m = model_of()
+    for folder in ("other", "tests/ (new)"):  # "other" is many small folders; a "(new)" row has no files yet
+        doer.paint(m, "ids", folder)
+        assert "is not one folder" in doer.said[-1]
+    m.tasks["ids"].scope = ["api/**"]
+    doer.paint(m, "ids", "api/")  # its only place: taking it back would leave nothing to write
+    assert "keeps one place at least" in doer.said[-1]
+    with Store.open(repo) as store:
+        assert plan.get(store, "ids").scope == ["api.py"]  # nothing was run
+
+
 def test_a_slow_command_runs_as_a_process_of_its_own_and_says_when_it_ended(repo, doer):
     plan_of(repo)
     ended = []
@@ -172,6 +185,27 @@ def test_a_slow_command_runs_as_a_process_of_its_own_and_says_when_it_ended(repo
     assert ended and "started" in doer.said[0]
     assert any("plan" in line for line in doer.said[1:])
     assert list((repo / ".graphene" / "runs").glob("plan-*.txt"))
+
+
+def test_an_ask_that_ends_says_what_the_planner_proposed_not_the_paragraph(repo, doer, tmp_path):
+    """The news repeated the whole typed paragraph and ended with the CLI's "next:" hint; the classic screen
+    said what the planner proposed. An ask's end now says that, in one line."""
+    log = tmp_path / "ask.txt"
+    said = [
+        "asking the planner (claude)",
+        "proposed greet: greet says hello",
+        "  proposed bye: bye says goodbye",
+        "put up q1: which word?",
+        "next: y accepts, d drops",
+    ]
+    log.write_text("\n".join(said) + "\n")
+    doer.later = lambda fn: fn()
+    done = type("Done", (), {"wait": lambda self: 0})()
+    doer._follow(done, ["ask", "add a farewell command\nthat says goodbye"], log)
+    assert doer.said[-1] == "the planner proposed greet, bye and put q1 on the board"
+    log.write_text("asking the planner (claude)\nnext: nothing to accept\n")
+    doer._follow(done, ["ask", "nothing much"], log)
+    assert doer.said[-1] == "the planner proposed nothing and put nothing on the board"
 
 
 def test_the_gist_names_the_command_and_says_the_first_line_it_said():

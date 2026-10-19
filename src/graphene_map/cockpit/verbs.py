@@ -82,7 +82,17 @@ class Doer:
         lines = [line.strip() for line in R.tail(log, 400) if line.strip() and "(the plan of " not in line]
         last = lines[-1] if lines else ""
         mark = "✗ " if code else ""
-        told = last if last.startswith(argv[0]) else f"{mark}graphene {as_typed(argv[:2])} ended: {last}"
+        named = argv[0] if argv[0] == "ask" else as_typed(argv[:2])  # an ask's paragraph is not its name
+        told = last if last.startswith(argv[0]) else f"{mark}graphene {named} ended: {last}"
+        if argv[0] == "ask" or argv[:2] == ["node", "split"]:  # what the planner did, not its last hint
+            made = [x.removeprefix("proposed ").split(":")[0] for x in lines if x.startswith("proposed ")]
+            put = [x.removeprefix("put up ").split(":")[0] for x in lines if x.startswith("put up ")]
+            did = [f"proposed {', '.join(made)}"] if made else []
+            did += [f"put {', '.join(put)} on the board"] if put else []
+            if did:
+                told = mark + "the planner " + " and ".join(did)
+            elif not code:
+                told = "the planner proposed nothing and put nothing on the board"
         with contextlib.suppress(Exception):  # the screen may be gone by now
             self.later(lambda: (self.say(told), self.look()))
 
@@ -188,9 +198,16 @@ class Doer:
         if t is None or not folder:
             self.say("select a task first")
             return
+        if folder == "other" or folder.endswith(" (new)"):  # made-up rows: many folders, or none yet
+            self.say(f"{folder} is not one folder: give a path with :node set {t.id} --add-scope GLOB")
+            return
         glob = folder + "**" if folder != "(root)" else "*"
         if glob in t.scope:
-            self.run(["node", "set", t.id, *[a for g in t.scope if g != glob for a in ("--scope", g)]])
+            rest = [a for g in t.scope if g != glob for a in ("--scope", g)]
+            if not rest:
+                self.say(f"{folder} is all {t.id} may write, and a task keeps one place at least")
+                return
+            self.run(["node", "set", t.id, *rest])
         else:
             self.run(["node", "set", t.id, "--add-scope", glob])
 

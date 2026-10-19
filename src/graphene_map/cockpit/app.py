@@ -387,7 +387,8 @@ class Cockpit(App):
             q = next((q for q in m.questions if q.id == sel), None)
             node = q.about if q else sel  # a question's details are those of the task it is about
             if q and not q.about:
-                keys = "1 2 pick an option, " if q.options else ""
+                n = len(q.options)  # the numbers that pick one, as its key bar has them
+                keys = "" if not n else "1 picks its option, " if n == 1 else f"1-{n} pick an option, "
                 m.say(f"it is about the whole plan: ⏎ takes its default, {keys}a answers in your own words")
             elif not (node in m.tasks or q) or self.open_store is None or self.root is None:
                 m.say("select a task to see its details")
@@ -411,6 +412,11 @@ class Cockpit(App):
                 ask = Ask("what is wrong? the agent that takes it next is told", about=about)
                 m.moved = True  # opening it is choosing the row: the selection stays here until you move
                 self.push_screen(ask, partial(self.reopened, sel))
+            elif task is not None and task.state == "running":  # its agent stops: asked first, as R is
+                whose = who(task.agent) or "its agent"
+                said = f"hand {whose}'s task back? it stops, and the task waits for a run · y and Enter"
+                ask = Ask(said, about=task.title)
+                self.push_screen(ask, partial(self.handed_back, sel))
             else:
                 d.pull_back(m, sel)
         elif action == "drop":
@@ -538,6 +544,11 @@ class Cockpit(App):
             self.doer.answer(self.model, qid, words)
         self.paint()
 
+    def handed_back(self, node_id: str, typed: str | None) -> None:
+        if (typed or "").strip().lower() in ("y", "yes") and self.doer:
+            self.doer.pull_back(self.model, node_id)
+        self.paint()
+
     def reopened(self, node_id: str, note: str | None) -> None:
         if note and self.doer:
             self.doer.reopen(self.model, node_id, note)
@@ -547,19 +558,22 @@ class Cockpit(App):
 
     def open_tell(self) -> None:
         t = self.model.tasks.get(self.model.selected)
-        if t is None:
-            self.model.say("select a task to tell")
-            return
-        if self.doer is None:  # a replay, or no repository: nothing is told, whatever the task
+        if self.doer is None:  # a replay, or no repository: nothing is told, whatever the row
             self.model.say(self.refusal)
+            return
+        if t is None and any(q.id == self.model.selected for q in self.model.questions):
+            self.act("answer")  # a question is told its answer, in your own words
             return
         nobody = {  # no agent is on it, nor still to take it
             "review": "waits for your sign-off: x reopens it, and its next agent is told why",
             "done": "is done: x reopens it, and its next agent is told why",
             "yours": "is yours to do: no agent takes it",
-        }.get(t.state)
-        if nobody:
-            self.model.say(f"{t.title} {nobody}")
+        }.get(t.state if t else "")
+        if t is None or nobody:
+            said = f"{t.title} {nobody}" if t else "select a task to tell"
+            self.model.say(said)
+            # what is typed next was meant as words: a line that sends nothing keeps it from running as keys
+            self.push_screen(Ask("nothing typed here is sent · Esc closes", about=said), lambda _typed: None)
             return
         box = self.query_one("#tell", Input)
         box.add_class("on")

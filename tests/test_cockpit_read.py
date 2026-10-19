@@ -56,6 +56,13 @@ def test_the_tasks_are_the_leaves_with_a_state_a_short_name_what_they_wait_on_an
     assert m.tasks["ids"].scope == ["api.py"] and set(m.files) == {"api.py", "schema.py"}
 
 
+def test_a_task_carries_the_command_that_proves_it_so_a_proposal_can_say_what_you_agree_to(repo):
+    plan_of(repo)
+    tasks = look(repo).tasks
+    assert tasks["ids"].check == "true"
+    assert tasks["notes"].state == "proposed" and tasks["notes"].check == "true"
+
+
 def test_a_leaf_an_agent_holds_reads_as_running(repo):
     plan_of(repo)
     with Store.open(repo) as store:

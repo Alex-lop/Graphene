@@ -57,6 +57,7 @@ class Task:
     offers: dict[str, list[str]] = field(default_factory=dict)  # a came-back leaf: key -> command
     overruled: bool = False  # done because the person said so, over a check that had not passed
     above: list[tuple[str, str]] = field(default_factory=list)  # the sub-goals over it, top first: id, name
+    check: str = ""  # the command that proves it done, as the plan says it
 
 
 @dataclass

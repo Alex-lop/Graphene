@@ -323,6 +323,21 @@ def test_the_graphs_legend_says_only_what_it_drew():
     run(go())
 
 
+def test_i_on_a_question_about_the_whole_plan_names_only_the_numbers_that_pick_an_option():
+    async def go():
+        m = scene()  # its question is about the whole plan, and has one option: 1 drop old
+        app = app_of(m)
+        async with app.run_test(size=(100, 30)) as pilot:
+            m.selected = "q"
+            await pilot.press("i")
+            assert "1 picks its option" in m.latest() and "1 2" not in m.latest()  # as its key bar: 1 pick
+            m.questions[0].options = ["drop old", "keep old", "ask later"]
+            await pilot.press("i")
+            assert "1-3 pick an option" in m.latest()
+
+    run(go())
+
+
 def test_on_the_graph_a_selected_question_says_what_it_asks_and_what_it_is_about():
     async def go():
         m = scene()

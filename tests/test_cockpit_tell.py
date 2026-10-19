@@ -74,6 +74,52 @@ def test_a_task_nobody_is_on_can_be_told_too_but_with_nothing_selected_it_says_s
     asyncio.run(go())
 
 
+def test_a_t_that_cannot_tell_takes_what_is_typed_next_so_no_letter_runs_as_a_key(repo):
+    """t on no task opened nothing, so a sentence typed after it ran letter by letter as the cockpit's keys:
+    u undid, d dropped, x handed back, s split. The line that opens instead sends nothing."""
+    from graphene_map.tui import Ask
+
+    async def go():
+        app = cockpit(repo)
+        async with app.run_test(size=(100, 30)) as pilot:
+            await pilot.pause(0.1)
+            app.model.selected, app.model.moved = "nothing", True
+            await pilot.press("t")
+            assert isinstance(app.screen, Ask)
+            await type_in(pilot, "use dx")
+            await pilot.press("enter")
+            await pilot.pause(0.1)
+            assert not isinstance(app.screen, Ask) and app.model.tasks["ids"].state == "running"
+
+    asyncio.run(go())
+    with Store.open(repo) as store:
+        assert board.items(store) == [] and plan.get(store, "ids").state == plan.RUNNING
+
+
+def test_x_on_a_running_task_asks_first_and_only_y_hands_it_back(repo):
+    from graphene_map.tui import Ask
+
+    async def go():
+        app = cockpit(repo)
+        async with app.run_test(size=(100, 30)) as pilot:
+            await pilot.pause(0.1)
+            app.model.selected, app.model.moved = "ids", True
+            await pilot.press("x")
+            assert isinstance(app.screen, Ask)
+            await pilot.press("escape")  # not handed back
+            await pilot.pause(0.1)
+            with Store.open(repo) as store:
+                assert plan.get(store, "ids").state == plan.RUNNING
+            await pilot.press("x")
+            await type_in(pilot, "y")
+            await pilot.press("enter")
+            await pilot.pause(0.3)
+
+    asyncio.run(go())
+    with Store.open(repo) as store:
+        assert plan.get(store, "ids").state != plan.RUNNING
+
+
 def test_the_line_goes_to_the_task_it_was_opened_on_though_the_selection_moves(repo):
     with Store.open(repo) as store:
         plan.propose(store, [{"id": "docs", "title": "docs", "scope": ["README.md"], "check": "true"}], ALEX)

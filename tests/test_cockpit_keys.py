@@ -103,7 +103,7 @@ def test_w_gives_a_running_agent_the_path_the_gate_stopped(repo):
 def test_x_pulls_back_a_running_agent(repo):
     async def steps(app, pilot):
         app.model.selected = "ids"
-        await pilot.press("x")
+        await pilot.press("x", "y", "enter")  # it asks first: its agent stops
 
     drive(repo, steps, running=True)
     assert node(repo, "ids").state != plan.RUNNING
@@ -147,7 +147,9 @@ def test_colon_runs_any_graphene_command_and_the_news_says_which(repo):
 def test_a_click_on_the_default_takes_it(repo):
     async def steps(app, pilot):
         lines = app.query_one(Canvas).lines
-        y = next(k for k, line in enumerate(lines) if line.row == app.model.questions[0].id)
+        qid = app.model.questions[0].id  # its default is on its row, or on the line under it when it is open
+        takes = [k for k, line in enumerate(lines) if any(s.action == "take" for s in line.segs)]
+        y = next(k for k in takes if lines[k].row == qid)
         segs = lines[y].segs
         x = next(sum(len(s.text) for s in segs[:i]) for i, s in enumerate(segs) if s.action == "take")
         await pilot.click(Canvas, offset=(x + 1, y))

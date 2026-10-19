@@ -60,7 +60,9 @@ def build_cockpit(m: Model, width: int, *, tell: str | None = None) -> list[Line
         return empty(m, width)
     for kind, rid in m.order():
         if kind == "question":
-            out.append(question_line(next(q for q in m.questions if q.id == rid), width, rid == sel))
+            q = next(q for q in m.questions if q.id == rid)
+            out.append(question_line(q, width, rid == sel))
+            out += question_open(q, width) if rid == sel else []
             continue
         t = m.tasks[rid]
         out += task_lines(m, t, width, expanded=(rid == sel), tell=tell if rid == sel else None, cols=cols)
@@ -109,9 +111,30 @@ def question_line(q: Question, width: int, on: bool) -> Line:
         Seg(keep, "bold #c77dff", "take"),
         *(Seg(text, "#c77dff", f"pick:{k}") for k, text in options),
     ]
+    if on:  # opened (question_open lists the default and every option): the row is the question's words
+        segs = segs[:2] + [Seg(fit(q.text, room), "bold")]
     if on:
         segs = [Seg(s.text, (s.style + FOCUS_BG).strip(), s.action) for s in segs]
     return Line(pad(segs, width, FOCUS_BG.strip() if on else ""), q.id)
+
+
+def question_open(q: Question, width: int) -> list[Line]:
+    """A selected question opens: its whole words, its default and every option by the number that picks it
+    (the row has room for two at most), then how to answer it otherwise."""
+
+    def lit(segs: list[Seg]) -> Line:  # on the selected row's ground, as the row above it
+        return Line(pad([Seg(s.text, (s.style + FOCUS_BG).strip(), s.action) for s in segs], width,
+                        FOCUS_BG.strip()), q.id)  # fmt: skip
+
+    bar, room = Seg("      ┊ ", "grey35"), max(width - 10, 20)
+    cut = cell_len(q.text) > max(width - LEAD - 2, 20)  # the row says the words whole when they fit
+    out = [lit([bar, Seg(part)]) for part in textwrap.wrap(q.text, room)[:3]] if cut else []
+    out.append(lit([bar, Seg(fit(f"⏎ {q.default}", room), "bold #c77dff", "take")]))
+    for k, option in enumerate(q.options, 1):
+        out.append(lit([bar, Seg(fit(f"{k} {option}", room), "#c77dff", f"pick:{k}")]))
+    keys = [Seg("      a answer in your words", "grey70", "answer"), Seg("   d drop", "grey70", "drop")]
+    out.append(lit(keys))
+    return out
 
 
 LEAD = 8  # "▶ ● 12 ": the arrow, the state, the number of the agent on it
@@ -218,9 +241,8 @@ def proposal(m: Model, t: Task, width: int) -> list[Line]:
         return Line([Seg("      ┊ ", "grey35"), *words], t.id)
 
     out = [said([Seg("files  ", "grey50"), Seg(fit(", ".join(t.scope) or "none yet", width - 17), "grey70")])]
-    check = getattr(t, "check", "")  # its command, once the plan's reader gives it (read.py)
-    if check:
-        out.append(said([Seg("check  ", "grey50"), Seg(fit(check, width - 17), "grey70")]))
+    if t.check:
+        out.append(said([Seg("check  ", "grey50"), Seg(fit(t.check, width - 17), "grey70")]))
     elif not t.checks:
         out.append(said([Seg("no check yet: nothing can prove it done", "#e9a23b")]))
     before = [o.title for x in t.needs if (o := m.tasks.get(x)) and o.state != "done"]

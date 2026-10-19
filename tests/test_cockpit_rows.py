@@ -3,7 +3,7 @@
 from cockpit_scene import scene
 
 from graphene_map.cockpit import rows
-from graphene_map.cockpit.model import Model, Task
+from graphene_map.cockpit.model import Model, Question, Task
 
 
 def plain(lines) -> list[str]:
@@ -117,6 +117,23 @@ def test_a_row_waiting_for_sign_off_and_a_proposal_name_their_key():
     assert {keys["⏎ accept"], keys["⏎ sign off"], keys["⏎ keep both"]} == {"bold #c77dff"}  # each, your move
 
 
+def test_a_selected_question_opens_to_every_option_by_the_number_that_picks_it():
+    """A row has room for two options, and keys 3 to 9 picked options nobody could see: selected, the question
+    opens to its whole words, its default and every option, each a button."""
+    m = scene()
+    m.questions = [Question("q", "Which store?", "sqlite", ["postgres", "duckdb", "a json file", "redis"])]
+    m.selected = "q"
+    opened = rows.build_cockpit(m, 80)
+    text = "\n".join(line.plain() for line in opened)
+    for k, option in enumerate(m.questions[0].options, 1):
+        assert f"{k} {option}" in text
+    picks = [s.action for line in opened for s in line.segs if s.action.startswith("pick:")]
+    assert {"pick:3", "pick:4"} <= set(picks) and "a answer in your words" in text
+    assert all(line.width() <= 80 for line in opened)
+    m.selected = "ids"  # not selected: the one row
+    assert "4 redis" not in "\n".join(line.plain() for line in rows.build_cockpit(m, 80))
+
+
 def test_a_selected_proposal_opens_to_show_what_accepting_it_agrees_to():
     m = scene()
     docs = m.tasks["docs"]
@@ -130,7 +147,7 @@ def test_a_selected_proposal_opens_to_show_what_accepting_it_agrees_to():
     assert "no check" not in text  # it has one; a proposal with none says so
     docs.checks = 0
     assert "no check yet: nothing can prove it done" in "\n".join(plain(rows.build_cockpit(m, 100)))
-    docs.check = "pytest -q tests/test_docs.py"  # its words, once the plan's reader gives them
+    docs.check = "pytest -q tests/test_docs.py"  # its words, as the plan's reader gives them
     assert "check  pytest -q tests/test_docs.py" in "\n".join(plain(rows.build_cockpit(m, 100)))
     keys = next(line for line in rows.build_cockpit(m, 100) if "d drop" in line.plain())
     assert [s.action for s in keys.segs if s.action] == ["take", "drop", "edit", "details"]
