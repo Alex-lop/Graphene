@@ -26,6 +26,7 @@ from textual.widgets import Input, Static
 
 from .. import plan as P
 from .. import plan_text as PT
+from .. import settings as S
 from ..tui import ASK_HINT, Ask
 from . import flow_view as FV
 from . import flowlayout as F
@@ -61,6 +62,23 @@ KEYS_TO_VERBS = {  # a key, and the verb it asks for (`act`)
     "b": "offer:b", "n": "offer:n", "colon": "command", "y": "take", "s": "split", "P": "first", "u": "undo",
     "e": "edit", "E": "edit-plan", "D": "direction", "i": "details", "A": "accept-all",
 }  # fmt: skip
+
+
+def needs(m: Model) -> dict[str, str]:
+    """What needs the person now that the terminal should say, each with the line it says: a question, a
+    task that came back, one that waits for a sign-off, a write the gate stopped. Keyed so that each is
+    said once (a task that comes back again, from a new attempt, is a new one); a proposal is not here:
+    the planner's questions come with it."""
+    out = {f"q:{q.id}": f"{'a risk' if q.kind == 'risk' else 'a question'}: {q.text}" for q in m.questions}
+    for t in m.tasks.values():
+        name = who(t.agent) or t.title
+        if t.state == "came back":
+            out[f"back:{t.id}:{t.started}"] = f"{name} came back" + (f": {t.note}" if t.note else "")
+        elif t.state == "review":
+            out[f"review:{t.id}:{t.started}"] = f"{t.title} passed its check and waits for your sign-off"
+        for path, _when in t.stopped if t.state == "running" else []:
+            out[f"stop:{t.id}:{path}"] = f"{name} was stopped writing {path}: w widens it"
+    return out
 
 
 def text_of(lines: list[Line]) -> Text:
@@ -138,6 +156,8 @@ class Cockpit(App):
         self.shown: tuple = ()  # the screen, row and folder the canvas was last scrolled to
         self.flow_layout: F.Layout | None = None
         self.groups: list[T.Group] = []
+        self.told = set(needs(self.model))  # what needed you when the screen opened: you see it, unrung
+        self.writer: Callable[[str], None] | None = None  # where the bell goes; None: this terminal
 
     def compose(self) -> ComposeResult:
         yield Static(id="bar")
@@ -168,7 +188,32 @@ class Cockpit(App):
         if not self.is_running:
             return
         self.model = self.looker(self.model)
+        self.ring()
         self.paint()
+
+    def ring(self) -> None:
+        """When something new needs you, the terminal says so: its bell, and a desktop notification with the
+        reason in one line (OSC 9), once for each (``needs``). Never in a replay, nor with `notify: off`,
+        nor with no terminal to say it in (a test's, unless it hands a writer)."""
+        now = needs(self.model)
+        new = [said for key, said in now.items() if key not in self.told]
+        self.told |= set(now)
+        write = self.writer or (self._driver.write if self._driver and not self.is_headless else None)
+        if not new or write is None or self.model.source == "replay" or self.quiet():
+            return
+        said = new[0] + (f" (and {len(new) - 1} more)" if len(new) > 1 else "")
+        said = "".join(ch for ch in " ".join(said.split()) if ch.isprintable())[:200]  # no escape of its own
+        write(f"\a\x1b]9;graphene: {said}\a")
+
+    def quiet(self) -> bool:
+        """`notify: off` in graphene config. A store that does not open now says nothing to the contrary."""
+        if self.open_store is None:
+            return False
+        try:
+            with self.open_store() as store:
+                return S.notify(store) == "off"
+        except Exception:  # the screen stays up whatever the store says; the bell is not worth a crash
+            return False
 
     def width(self) -> int:
         return max(self.size.width, 40)
