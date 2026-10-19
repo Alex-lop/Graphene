@@ -771,6 +771,17 @@ def test_a_done_refused_because_nothing_in_its_scope_changed_is_logged_and_recor
     assert "`done` refused over: nothing in its scope changed" in said
 
 
+def test_a_check_that_runs_the_directory_its_own_scope_will_fill_is_not_a_misspelling(repo):
+    """The reference's own example (fourth review): `scope: src/pdf/**, tests/pdf/**` with `check:
+    pytest tests/pdf`, the shape the hook teaches, drew "names tests/pdf, which is not in the repo and
+    no leaf's scope may create it: check the spelling" at every propose and accept: a `dir/**` glob
+    covers what is under dir, not dir."""
+    leaf = plan.Node("render", "render", scope=["src/pdf/**", "tests/pdf/**"], check="pytest tests/pdf")
+    assert plan.unreachable(leaf, ["README.md"], repo) == []
+    typo = plan.Node("render", "render", scope=["src/pdf/**", "tests/pdf/**"], check="pytest test/pdf")
+    assert plan.unreachable(typo, ["README.md"], repo) == ["test/pdf"]  # a real misspelling still is one
+
+
 def test_a_reason_naming_many_nodes_is_checked_for_cycles_once(tmp_path, monkeypatch):
     """Recheck 44: a validate for every node the reason named, on every refresh of the screen."""
     import subprocess

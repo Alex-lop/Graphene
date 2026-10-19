@@ -1156,7 +1156,11 @@ def unreachable(
     for word in check_words(node.check):
         if "/" not in word and not word.endswith(_EXTENSIONS):
             continue
-        if word.startswith(_BUILT) or in_scope(word, [*node.scope, *covered]):
+        scopes = [*node.scope, *covered]
+        inside = word.rstrip("/") + "/"  # a directory a `dir/**` scope will fill: that glob covers what is
+        if word.startswith(_BUILT) or in_scope(word, scopes) or any(  # under dir, never dir (check_paths)
+            g.startswith(inside) for g in scopes if not g.startswith("!")
+        ):
             continue
         if any(f == word or f.startswith(word.rstrip("/") + "/") for f in files):
             continue
