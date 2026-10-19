@@ -29,9 +29,9 @@ real plan and wired to the real commands; `graphene watch --classic` is the olde
   red. Rows show whole titles where they fit; one word for one thing (task, check, proven, graph, map, widen, hand
   back, details), and `?` explains the marks.
 - A running row shows the attempt going now and nothing from the last one; a widened task is asked of git again at
-  once, so it is never flagged OUTSIDE for the file it was given; a look that fails leaves the screen as it was
-  and says why. The cockpit reads a plan in a few milliseconds (53 ms at 22,000 log rows), and a closed terminal
-  ends it.
+  once, so it is never flagged OUTSIDE for the file it was given; a look that fails leaves the screen as it was and
+  says why. The cockpit reads a plan in a few milliseconds (2 ms on this repository's plan, 53 ms at 22,000 log
+  rows), and a closed terminal ends it.
 - `graphene demo` replays a richer run of the Nemotron path against its scripted stand-in: a goal with two
   sub-goals and four tasks, three agents at once, a hand-back that is widened and tried again under the same
   number, a task that waits on two. It opens on the plan, its news line narrates, and at 80 columns its top line

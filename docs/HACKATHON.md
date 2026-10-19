@@ -1,11 +1,12 @@
-# Graphene for the Nebius × NVIDIA Global AI Hackathon: the Devpost fields (a draft)
+# Graphene for the Nebius × NVIDIA Global AI Hackathon
 
-**Submissions close Friday 30 October 2026, 10:00 PT.** Devpost takes no edits after that. Judging runs from 1 to
-15 December, and the project has to stay free to try until it ends.
+<!-- For Alex: the Devpost fields, a draft to put in your own words before it goes anywhere (first written on 26
+September, brought up to the cockpit on 18 October). The README links this page, so it reads to a judge as it is.
+Submissions close Friday 30 October 2026, 10:00 PT; Devpost takes no edits after that. Judging runs from 1 to 15
+December, and the project has to stay free to try until it ends. -->
 
-*A draft for Alex to put in his own words before it goes anywhere: first written on 26 September, brought up to
-the cockpit on 18 October. Track: Coding and Agentic Engineering. Every sentence is meant to be true and
-traceable, and every number names its source.*
+*Track: Coding and Agentic Engineering. Every sentence is meant to be true and traceable, and every number names
+its source.*
 
 **What ran live on Token Factory, and what did not.** Each live run is written down in the repository, most with
 what it cost at list price. They were practice and takes for the video; none was a pre-registered study.
@@ -131,11 +132,11 @@ runs unless you run it, or set `GRAPHENE_SHAPE` to run them after each `graphene
   tries every way out (a redirect, `sed -i`, `python open(w)`, `mv`, `rm`, git, a symlink, `chmod`) and each fails
   (`tests/nemotron/test_escape.py`, in the Docker stand-in). It passed once in ConTree too, as practice on 2
   October: 10 ways out failed or were refused, 2 ways in came back (`dev/test/first-light.md`).
-- **The cockpit** is built with Textual over the plan's SQLite store, which lives in the repository, ignored by
-  git. It reads a plan in a few milliseconds (53 ms at 22,000 log rows, `CHANGELOG.md`). Every key is an ordinary
-  `graphene` command, and the line under the rows says which one ran. Tasks run in parallel, each in a git
-  worktree of its own, and are merged `--no-ff`. CI runs the suite on Linux and macOS, on Python 3.12, 3.13 and
-  3.14.
+- **The cockpit** is built with Textual over the plan's SQLite store, which lives in the repository, ignored by git.
+  It reads a plan in a few milliseconds (2 ms on this repository's own plan, 53 ms at 22,000 log rows,
+  `tests/test_cockpit_cost.py`). Every key is an ordinary `graphene` command, and the line under the rows says which
+  one ran. Tasks run in parallel, each in a git worktree of its own, and are merged `--no-ff`. CI runs the suite on
+  Linux and macOS, on Python 3.12, 3.13 and 3.14.
 - **Built the way it is meant to be used.** I set the direction and coding agents do much of the writing, in lanes,
   overnight; each night's plan, readers' reports and brief are in `dev/process/`. On 9 October two of those lanes
   were built through Graphene itself: five tasks, four agents at once, all five proven on their first attempt
@@ -163,8 +164,9 @@ runs unless you run it, or set `GRAPHENE_SHAPE` to run them after each `graphene
   (`dev/test/spikes/harness_there/RESULTS.md`, against the stand-ins).
 - **The judging period outlives model ids.** Judges may test until 15 December, and Token Factory retires models on
   notice, so the roles come from the live list and a retired id falls back within the family.
-- **The one honest comparison we have did not favour the plan.** On 23 September, with a frontier agent on a small
-  task, a plain paragraph passed 20 of 20 hidden acceptance checks and 12 of 12 held-out ones, and cost less of the
+- **The comparisons we have did not favour the plan.** Three ran in September, and in each a plain paragraph did as
+  well for less; the third survived its own audit whole. On 23 September, with a frontier agent on a small task, a
+  plain paragraph passed 20 of 20 hidden acceptance checks and 12 of 12 held-out ones, and cost less of the
   person's modelled time than the plan: 2,626 modelled person-seconds against 3,869, medians of two runs
   (`dev/test/results-2026-09-23.md`). So the claim is not that a plan beats a paragraph. What I'm betting on is
   when you find out what the agent understood: before the work, not after.
@@ -332,7 +334,7 @@ checked again since.
 | 20/20 and 12/12, 2,626 against 3,869 modelled person-seconds | `dev/test/results-2026-09-23.md` (stand-in runs, frontier agent) |
 | 3 of 3 against 0 of 3; 5.2 to 6.1 times the characters | `dev/test/spikes/harness_there/RESULTS.md` (stand-ins) |
 | the questions against editing the plan: +356.7 to +637.3 modelled person-seconds (study 2), +272.8 to +398.6 (study 3), board higher on 4 of 4 tasks | `dev/test/results-2026-09-28-shaping.md`, H1 of studies 2 and 3 (Claude model stand-ins, one Claude Code proposal per task, nothing run, one run each) |
-| 53 ms at 22,000 log rows | `CHANGELOG.md`, 0.6.0 |
+| 2 ms on this repository's plan, 53 ms at 22,000 log rows | `tests/test_cockpit_cost.py`, its docstring |
 | 27,469 lines, none before the period; 181 and 971 commits | git, the commands above, at `921834de` |
 | the questions against the paragraph; the plan against the paragraph with Nemotron | none yet: registered in `dev/test/results-2026-09-28-shaping.md` and `dev/test/results-2026-09-28-live-prereg.md` |
 

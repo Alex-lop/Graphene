@@ -13,9 +13,9 @@ margins, 16:9. The motif is Graphene's mark: a small tree whose one branch is pr
 
 Three nodes in a row. On the left a person at a terminal, labelled `you`. In the middle a small tree of five nodes
 labelled `the plan`, one node marked with a check, one branch pruned. On the right two agents drawn as plain
-terminals, labelled `your agents`. Arrows: from you to the plan, `accept · prune · run`; from the agents to the plan,
-`propose · do · done`; from the plan back to you, `what landed, what it cost`; from the plan to the agents, `a leaf:
-scope, check`. Along the plan's lower edge four short labels: `scope: refused before the write`, `check: run by
+terminals, labelled `your agents`. Arrows: from you to the plan, `accept, prune, run`; from the agents to the plan,
+`propose, do, done`; from the plan back to you, `what landed, what it cost`; from the plan to the agents, `a task:
+its files, its check`. Each label fits between the two boxes in a browser (checked in Chrome). Along the plan's lower edge four short labels: `scope: refused before the write`, `check: run by
 Graphene in a clean worktree`, `red first: a check that already passes is flagged`, `done: git says what changed`.
 Caption: `You shape the plan. Your agents work inside it. Graphene holds the edges.`
 
