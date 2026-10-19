@@ -112,11 +112,12 @@ def read(
             t.overruled = bool(row and row["kind"] == "overruled")  # not since finished properly
     fold_done(m, by_id)
     items = {it["id"]: it for it in B.items(store)}
+    every = S.review(store) == "every"  # a task that passes waits for the person's sign-off: a second proof
     for t in m.tasks.values():
         node = by_id[t.id]
         t.agent = m.names.get(t.id, "")  # a task taken once keeps its number, back, ready again and done
         last = ended(store, t.id) if t.state == "done" else None
-        proofs(t, node, last)
+        proofs(t, node, last, every)
         if t.state in LIVE:
             live(store, m, t, node)
         if t.state == "running":
@@ -248,18 +249,20 @@ def live(store, m: Model, t: Task, node: P.Node) -> None:
     touched_by_git(store, m, t, node)
 
 
-def proofs(t: Task, node: P.Node, ended: dict | None = None) -> None:
-    """A leaf is proved by its check, and by the person's sign-off when it asks for one: at most two. The
-    check has passed once the leaf is in review (it waits for the sign-off) or done; there is no partial
-    progress inside a check. A leaf the person finished over its check (`--override`) is done, and proved by
-    nothing: the row that ended it says whether the check had passed, and sign-off was skipped."""
-    t.checks = int(bool(node.check)) + int(node.signoff)
+def proofs(t: Task, node: P.Node, ended: dict | None = None, every: bool = False) -> None:
+    """A leaf is proved by its check, and by the person's sign-off when it asks for one, or while
+    `review: every` is set and it is not done yet: at most two. The check has passed once the leaf is in
+    review (it waits for the sign-off) or done; there is no partial progress inside a check. A leaf the person
+    finished over its check (`--override`) is done, and proved by nothing: the row that ended it says whether
+    the check had passed, and sign-off was skipped."""
+    signs = node.signoff or (every and t.state != "done")
+    t.checks = int(bool(node.check)) + int(signs)
     if t.state == "done" and ended and ended["kind"] == "overruled":
         t.passed = int(bool(node.check and ended["detail"].get("check_passed")))
     elif t.state == "done":
         t.passed = t.checks
     elif t.state == "review":
-        t.passed = t.checks - int(node.signoff)
+        t.passed = t.checks - int(signs)
     else:
         t.passed = 0
 

@@ -66,3 +66,21 @@ def test_a_leaf_that_comes_back_rings_and_notify_off_in_the_settings_keeps_the_s
             assert len(said) == 1
 
     asyncio.run(go())
+
+
+def test_a_write_stopped_again_by_a_new_attempt_rings_again():
+    async def go():
+        m = scene()  # agent 1 was stopped writing db/ids_2.py when the screen opened: shown, unrung
+        app = Cockpit(lambda previous: previous or m)
+        said = []
+        app.writer = said.append
+        async with app.run_test(size=(100, 30)):
+            ids = m.tasks["ids"]
+            ids.state, ids.stopped, ids.note = "came back", [], "I need db/ids_2.py"
+            app.look()
+            ids.state, ids.started, ids.note = "running", 120.0, ""  # tried again, with its scope as it was
+            ids.stopped = [("db/ids_2.py", 130.0)]  # and stopped on the same path: new, so it rings
+            app.look()
+            assert said[-1] == "\a\x1b]9;graphene: agent 1 was stopped writing db/ids_2.py: w widens it\a"
+
+    asyncio.run(go())

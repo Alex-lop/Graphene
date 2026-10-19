@@ -67,8 +67,8 @@ KEYS_TO_VERBS = {  # a key, and the verb it asks for (`act`)
 def needs(m: Model) -> dict[str, str]:
     """What needs the person now that the terminal should say, each with the line it says: a question, a
     task that came back, one that waits for a sign-off, a write the gate stopped. Keyed so that each is
-    said once (a task that comes back again, from a new attempt, is a new one); a proposal is not here:
-    the planner's questions come with it."""
+    said once (a task that comes back again, or is stopped again, in a new attempt, is a new one); a
+    proposal is not here: the planner's questions come with it."""
     out = {f"q:{q.id}": f"{'a risk' if q.kind == 'risk' else 'a question'}: {q.text}" for q in m.questions}
     for t in m.tasks.values():
         name = who(t.agent) or t.title
@@ -77,7 +77,7 @@ def needs(m: Model) -> dict[str, str]:
         elif t.state == "review":
             out[f"review:{t.id}:{t.started}"] = f"{t.title} passed its check and waits for your sign-off"
         for path, _when in t.stopped if t.state == "running" else []:
-            out[f"stop:{t.id}:{path}"] = f"{name} was stopped writing {path}: w widens it"
+            out[f"stop:{t.id}:{t.started}:{path}"] = f"{name} was stopped writing {path}: w widens it"
     return out
 
 
@@ -567,6 +567,7 @@ class Cockpit(App):
         box.focus()
         self.tell_open, self.tell_for = True, t.id  # the line is for this task, wherever the selection goes
         self.model.moved = True
+        self.view, self.paint_mode, self.shown = "cockpit", False, ()  # typed under its row: the row, in view
 
     def close_tell(self) -> None:
         self.query_one("#tell", Input).remove_class("on")

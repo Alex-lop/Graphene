@@ -362,6 +362,19 @@ def test_a_leafs_proofs_are_its_check_and_the_sign_off_it_asks_for(repo):
     assert (t["fin"].checks, t["fin"].passed) == (2, 2) and (t["bare"].checks, t["bare"].passed) == (1, 1)
 
 
+def test_under_review_every_a_task_waiting_for_its_sign_off_shows_the_sign_off_still_to_come(repo):
+    """Under `review: every` a task that passed its check waits in review for the person, and its row said
+    ✓1/1, as if it were proven: the sign-off is a second proof, still to come, until it is done."""
+    plan_of(repo)
+    with Store.open(repo) as store:
+        store.set_meta("settings:review", "every")
+        for node_id, state in (("rev", plan.REVIEW), ("fin", plan.DONE)):
+            store.put_node(plan.to_dict(plan.Node(node_id, node_id, scope=["x"], check="true", state=state)))
+    t = look(repo).tasks
+    assert (t["rev"].checks, t["rev"].passed) == (2, 1)  # the check passed; your sign-off is the second
+    assert (t["ids"].checks, t["fin"].checks, t["fin"].passed) == (2, 1, 1)  # one landed before: its check
+
+
 def test_only_a_hooked_claude_code_agent_hears_a_note_while_it_works(repo):
     plan_of(repo)
     start(repo)

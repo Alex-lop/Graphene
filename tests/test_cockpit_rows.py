@@ -102,6 +102,13 @@ def test_a_row_whose_write_was_stopped_says_on_its_right_the_key_that_widens_it_
     assert "w widen db/other.py +1" in row.plain()  # the last one stopped, and how many more
 
 
+def test_a_path_the_gate_stopped_twice_is_one_path_to_widen_on_the_row_and_in_its_keys():
+    m = scene()  # ids is open: its row and the keys under it both name what w widens
+    m.tasks["ids"].stopped.append(("db/ids_2.py", 98.0))  # the agent tried the same file again
+    widen = [s.text for line in rows.build_cockpit(m, 120) for s in line.segs if s.action == "allow"]
+    assert len(widen) == 2 and all("db/ids_2.py" in said and "+" not in said for said in widen)
+
+
 def test_a_row_waiting_for_sign_off_and_a_proposal_name_their_key():
     text = "\n".join(plain(rows.build_cockpit(scene(), 100)))
     assert "⏎ sign off" in text and "⏎ accept" in text
@@ -231,6 +238,13 @@ def test_a_leaf_that_came_back_shows_what_it_offers_as_keys():
     m.tasks["migrate"].state = "came back"
     line = next(line for line in rows.build_cockpit(m, 120) if "b a sibling" in line.plain())
     assert "offer:b" in [s.action for s in line.segs]
+
+
+def test_the_open_row_of_a_task_waiting_for_sign_off_offers_no_t_as_nobody_is_on_it_to_tell():
+    m = scene()
+    m.selected = "migrate"  # t on it says x reopens it and tells its next agent why, as its key bar does
+    [keys] = [line for line in rows.build_cockpit(m, 100) if "x reopen" in line.plain()]
+    assert "tell" not in [s.action for s in keys.segs] and keys.plain().startswith("      x reopen")
 
 
 def test_a_plan_with_nothing_in_it_says_what_to_do_next_in_lines_that_fit_80_columns_and_counts_nothing():

@@ -126,6 +126,8 @@ class Doer:
             self.background(["run", *RUN_WITH, "--node", t.id])
         elif t.state == "ready":
             self.say(f"{t.title} is ready and waits for no one: r runs it, R runs every ready task")
+        elif t.state == "running" and t.stopped:  # the move is yours, and its key is w, as the row says
+            self.say(f"{who(t.agent) or t.title} was stopped writing {t.stopped[-1][0]}: w widens it")
         else:
             self.say(f"{who(t.agent) or t.title} is {t.state}: it waits for nothing from you")
 

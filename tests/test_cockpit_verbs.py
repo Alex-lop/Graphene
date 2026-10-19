@@ -105,6 +105,13 @@ def test_take_on_a_proposal_accepts_it(repo, doer):
         assert plan.get(store, "notes").state != plan.PROPOSED
 
 
+def test_take_on_a_running_task_the_gate_stopped_says_w_widens_it_and_never_that_it_waits_for_nothing(doer):
+    m = model_of(ids="running")
+    m.tasks["ids"].agent, m.tasks["ids"].stopped = "1", [("db/ids_2.py", 1.0)]
+    doer.take(m, "ids")  # y on its row: the move is yours, and it has a key of its own, as the row says
+    assert doer.said[-1] == "agent 1 was stopped writing db/ids_2.py: w widens it"
+
+
 def test_widen_gives_a_task_the_paths_the_gate_stopped_and_nothing_more(repo, doer):
     plan_of(repo)
     with Store.open(repo) as store:

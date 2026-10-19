@@ -146,6 +146,29 @@ def test_the_line_being_told_shows_on_its_row_only_and_the_rows_do_not_jump(tmp_
     run(go())
 
 
+def test_the_line_being_told_is_on_screen_from_the_graph_the_map_and_the_last_row_that_fits(tmp_path):
+    async def go():
+        m = scene()
+        for i in range(30):  # more rows than the screen has room for
+            m.tasks[f"t{i}"] = replace(m.tasks["tests"], id=f"t{i}", title=f"task {i}")
+        app = Cockpit(lambda previous: previous or m, root=tmp_path)
+        async with app.run_test(size=(80, 24)) as pilot:
+            box = app.query_one(ScrollableContainer)
+            for keys, sel in ((("g",), "ids"), (("m",), "ids"), ((), "t20")):  # t20: the last row on screen
+                m.selected = sel
+                app.paint()
+                await pilot.press(*keys)
+                await pilot.pause(0.1)
+                await pilot.press("t", "u", "s", "e")
+                await pilot.pause(0.1)
+                at = [k for k, line in enumerate(app.query_one(Canvas).lines) if "use▌" in line.plain()]
+                assert app.view == "cockpit" and at, keys  # the rows: only they have a line to type on
+                assert box.scroll_y <= at[0] < box.scroll_y + box.size.height, keys
+                await pilot.press("escape")
+
+    run(go())
+
+
 def test_the_colon_line_says_what_it_takes_before_anything_is_typed(tmp_path):
     async def go():
         app = Cockpit(lambda previous: previous or scene(), root=tmp_path)

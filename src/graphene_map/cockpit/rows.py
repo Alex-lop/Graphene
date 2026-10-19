@@ -131,7 +131,7 @@ def right_of(m: Model, t: Task, width: int) -> list[Seg]:
             proven = "#8ab17d" if t.passed == t.checks else "grey62"
             right += [Seg(f"✓{t.passed}/{t.checks}".ljust(6), proven)]
         if t.stopped:  # what the gate stopped, and the key that gives it: the fix, not a count
-            path, room, more = t.stopped[-1][0], max(12, width // 5), len(t.stopped) - 1
+            path, room, more = t.stopped[-1][0], max(12, width // 5), len({p for p, _ in t.stopped}) - 1
             path = path if cell_len(path) <= room else fit_end(path.rsplit("/", 1)[-1], room)  # else its name
             right += [Seg(f"w widen {path}" + (f" +{more} " if more else " "), "bold #e9a23b", "allow")]
         if t.outside:
@@ -267,8 +267,10 @@ def expansion(m: Model, t: Task, width: int) -> list[Line]:
             )
         )
     verbs = [Seg("      ", ""), Seg("t tell", "bold #4cc9f0", "tell")]
+    if t.state == "review":  # nobody is on it to tell: x reopens it, and its next agent is told why
+        verbs = [Seg("   ", "")]
     if t.stopped:  # `graphene node widen` gives what the gate stopped: say which path, not a guess
-        path, more = t.stopped[-1][0], len(t.stopped) - 1
+        path, more = t.stopped[-1][0], len({p for p, _ in t.stopped}) - 1  # paths: a retry is no new one
         give = f"   w widen {fit(path, 28)}" + (f" +{more}" if more else "")
         verbs += [Seg(give, "bold #e9a23b", "allow")]
     for key, what in (("w", "widen"), ("b", "a sibling"), ("n", "wait on it"), ("r", "reopen")):
