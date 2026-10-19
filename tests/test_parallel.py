@@ -293,6 +293,17 @@ def test_a_detached_head_and_a_second_run_are_refused_in_words(repo):
         go(repo)
 
 
+def test_a_run_in_a_repo_with_no_commit_is_refused_in_inits_words(tmp_path):
+    """First commands in odd places (fourth review): `git init`, a plan accepted, `graphene run`, and git's
+    own words came back: "git worktree add --quiet failed … fatal: not a valid object name: 'HEAD'". init
+    says it already; run says it too, before anything is cut."""
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    with Store.open(tmp_path) as store:
+        plan.propose(store, [leaf("a")], ALEX)
+    with pytest.raises(plan.Refused, match="this repo has no commit yet: .* so commit once first"):
+        run_parallel(lambda: Store.open(tmp_path), tmp_path, tmp_path, 1, "true", say=lambda _: None)
+
+
 def test_a_leaf_that_did_not_land_is_signed_off_only_once_its_branch_is_merged_here(repo):
     """Recorded in the feeds run: a leaf that passed and did not land (the person's README edit was
     uncommitted) was signed off mid-merge, with a conflict open, and read as landed."""

@@ -138,7 +138,7 @@ class Cockpit(App):
     Screen { background: #0e1014; }
     Ask { background: #0e1014 55%; }
     #bar { height: 1; background: #181b22; color: #9aa0ad; }
-    #head { height: auto; }
+    #head { height: auto; text-wrap: nowrap; text-overflow: clip; }  /* a wrapped head moves every row */
     ScrollableContainer { scrollbar-size-vertical: 1; scrollbar-background: #0e1014; scrollbar-color: #2b3242;
                           scrollbar-color-hover: #3a4357; scrollbar-color-active: #4cc9f0; }
     #feed { height: 1; }

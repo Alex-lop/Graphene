@@ -977,7 +977,8 @@ def rolled_up(store, root: str | Path, leaves: list[P.Node], at: str | None = No
         r = by_leaf.get(n.id)
         changed = _few(sorted({p for w in r.windows for p in (w.under or [])})) if r else ""
         landed = store.node_log(n.id, ("landed",))
-        word = {P.DONE: "done", P.RUNNING: "running", P.REVIEW: "review"}.get(n.state, "ready")
+        word = "came back" if n.state == P.OPEN and P.came_back(store, n) else {  # not ready: yours to answer
+            P.DONE: "done", P.RUNNING: "running", P.REVIEW: "review"}.get(n.state, "ready")
         where = f"landed {landed[-1]['detail']['commit'][:7]}" if landed else word if r else "not started"
         cost = f" · {money(r.bill['dollars'])}" if r and r.bill and r.bill.get("dollars") else ""
         head = f"    {P.look(word)[0]} {n.id}" + (f" · {changed}" if changed else "")

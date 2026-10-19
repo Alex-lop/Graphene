@@ -77,7 +77,8 @@ class Help(ModalScreen[None]):
     Help { align: center middle; }
     Help > VerticalScroll { width: 96; max-width: 100%; height: auto; max-height: 100%;
                             background: #14171d; border: round #4cc9f0; padding: 0 1; }
-    """
+    Help Static { text-wrap: nowrap; text-overflow: clip; }
+    """  # a box taller than the screen scrolls, and its bar takes a column: a wrapped line shifts every key
 
     def compose(self) -> ComposeResult:
         with VerticalScroll():

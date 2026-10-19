@@ -1243,6 +1243,10 @@ def run_parallel(
     while a leaf whose scope overlaps its own is in flight. ``precheck``: red first, before any starts.
     ``max_usd``: a cap on what starts (``Budget``)."""
     _splits(template)
+    if _git(target, "rev-parse", "-q", "--verify", "HEAD", ok=True).returncode != 0:  # as init says it
+        raise P.Refused(
+            "this repo has no commit yet: a run cuts each leaf's worktree from HEAD, so commit once first"
+        )
     if _git(target, "symbolic-ref", "-q", "HEAD", ok=True).returncode != 0:
         raise P.Refused(
             f"{target} is on no branch (a detached HEAD): leaves merged here would belong to no branch "

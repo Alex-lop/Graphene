@@ -287,6 +287,16 @@ def test_a_runs_sessions_with_no_records_are_never_called_claude_codes_records(s
     assert "read from: the node's log and git. No vendor keeps records for run:doer.sh" in printed
 
 
+def test_the_plans_record_calls_a_leaf_that_came_back_came_back_never_ready(store, repo):
+    """First commands in odd places (fourth review): after a run in which `ids` came back, `graphene` said
+    "came back · waiting on you" and `graphene plan record` "○ ids · ready": a plain run leaves it alone."""
+    plan.propose(store, [api_node(id="ids")], ALEX)
+    plan.start(store, "ids", BOT, repo)
+    plan.release(store, "ids", BOT, "it needs schema.py")
+    said = "\n".join(NR.rolled_up(store, repo, [plan.get(store, "ids")]))
+    assert "ids · came back" in said and "ids · ready" not in said
+
+
 def test_the_check_says_its_last_line_and_that_it_also_passed_at_the_base_before_any_work(store, repo):
     """The check line said "passed" and no more: not what it printed last, nor that red first saw it pass
     at the base commit, before any work, where it shows nothing about the change. And three coverage

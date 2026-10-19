@@ -1086,10 +1086,10 @@ def _under_hands(held: Node, child: str | None = None) -> Refused:
 
 def _person_only(who: Caller, what: str) -> None:
     if not who.person:
-        raise refusal(
-            f"{what} is the person's to do, and this call comes from {who.name}",
-            do="if you are the person, run it in a terminal outside Claude Code; an agent says what it "
-            "needs and why, and the person decides",
+        raise refusal(  # what to do first: a screen that shows one line shows that one (the cockpit's)
+            f"{what} is the person's to do: run it in a terminal outside Claude Code (this call comes from "
+            f"{who.name})",
+            do="an agent says what it needs and why, and the person decides",
         )
 
 
