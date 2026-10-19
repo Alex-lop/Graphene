@@ -1,119 +1,101 @@
-# The video: under three minutes, the moment before anything runs
+# The video: under three minutes, a pitch on the cockpit
 
-A draft for Alex. The rules ([`docs/process/field.md`](https://github.com/Alex-lop/Graphene/blob/process/docs/process/field.md)) ask for a public video under three minutes, with
-footage of Graphene functioning, and audio on how Token Factory and Nemotron are used. So the narration
-says what runs where, and nothing about why software should be written this way.
+A draft for Alex. The Devpost rules want a public YouTube video under three minutes, with footage of Graphene
+working, that says how Nebius Token Factory and NVIDIA Nemotron are used; judges need not watch past three
+minutes, and the organisers' advice is to treat it as a pitch, not a tutorial. Submissions close Friday 30
+October, 10:00 PT. So this is a pitch in your voice, over the cockpit: the idea first, then a real Nemotron run on
+Token Factory, the moments where you steer it, and what it cost.
 
-Every scene is one VHS tape under `dev/demo/scenes/`, filmed in real time by `dev/demo/build.sh`
-against one take of the demo run: rung 7's `dev/proof/nemotron.sh` on feeds, played by a person's keys
-in `graphene watch` at 120x36. Nothing is sped up. A wait for the model is waited for, not shortened, and
-cut between two scenes; the top line of the next scene says how long was cut and what it was
-(`cut 1:32 of the planner at work`, beside the REHEARSAL line in a rehearsal; both fit in 80 columns).
-`build.sh` reads this table: the narration column becomes the subtitles, spread over each scene's own
-footage, and the length column is what each scene is measured against.
+Most of the footage costs nothing. The repository keeps recordings of live Nemotron runs on Token Factory, and
+`graphene demo` replays them in today's cockpit, with "as it ran, live" and the day on the top line. Only the
+scenes marked *live* spend your key.
 
-**Kinds.** *live*: filmed as it happened, keys and screen in real time. *live, after a cut*: the same,
-following a wait that was cut and is labelled on screen. *only if*: filmed only when the screen shows
-what the scene is about (a board, a leaf that came back); otherwise the take goes on without it and
-`build.sh` says so. No scene is a replay: `graphene demo` of the take's recording is how anyone without a
-key watches the same run afterwards.
+**Kinds.** *voice*: your narration over a frame from the scene after it. *replay*: a recording replayed with
+`graphene demo <file>` from the root of a clone (the recordings are in `tests/recordings/`, not in the wheel);
+keep its top line in the frame. *live*: your own run on your key, in a terminal of yours. *script*: `graphene demo
+--cheat`, a script and not a model, as its own screen says.
 
 | # | Scene | Length | Kind | On screen | Narration |
 | --- | --- | --- | --- | --- | --- |
-| 01 | the opening | 9 s | live | `graphene config` in feeds: the settings, the planner and the executor (Nemotron) and where the key was found, never the key. | "This is Graphene on a small Python repository. The planner and the executors are NVIDIA Nemotron models on Nebius Token Factory." |
-| 02 | the ask | 14 s | live | `graphene ask "…"`, the paragraph pasted in the shell, wrapping over three lines and held there to be read; Enter; `asking the planner (nemotron)…`. | "I ask for a feature in one paragraph. Nemotron 3 Ultra plans it through Token Factory's OpenAI-compatible API, reading the repository with read-only tools: list, grep and read." |
-| 03 | the plan | 10 s | live, after a cut | What the ask proposed and put up, one line each; then `graphene watch`: the tree, every row `?` proposed, and the board's rows above it. | "It answers with a tree: sub-goals, and leaves that each name the files they may change and the command that proves them done." |
-| 04 | the board | 16 s | live; only if the planner asked | The cursor on the first board row, its default and options in the pane; `y` takes the default, what it changed is said under it, and the cursor goes to the next item; `y` again for each. | "What the code cannot tell it, it asks before anything runs: at most three questions or risks, each a row under the goal with a default. One key answers each, and the answer goes to that leaf's executor." |
-| 05 | the views | 18 s | live | `Tab`: the tree, top-down. `Tab`: the graph, the critical path heavy, and named on the bottom line. `Tab`: the outline again. | "Tab draws the same plan as a tree, and again as a graph of what waits on what. The heavy line is the critical path, and the bottom line names it." |
-| 06 | the prune | 14 s | live | `gg`, `E`: the plan as text in vim; one substitution takes `cli/main.py` out of every scope; `:wq`; `y` on the goal accepts the rest. | "Then I prune. In the plan's text I take one file out of every scope, and accept the rest." |
-| 07 | the run | 16 s | live | `R`, then `y` and Enter (it asks first): leaves turn yellow; `/running` puts the cursor on one, and its pane shows the executor, where it runs, its last step and the seconds since. | "R runs every ready leaf, each with a Nemotron Nano executor on Token Factory, in a git worktree of its own. Its tools refuse a write outside the scope, and a leaf is done only when its check passes." |
-| 08 | the leaf that came back | 16 s | live, after a cut; only if a leaf came back | `/came back`: the leaf, magenta, its reason and `w  widen …`. `w`, then `R`, `y` and Enter. | "This leaf needed the file I took away. It comes back with the reason and the fix already written. One key widens its scope, and it runs again." |
-| 09 | every leaf green | 8 s | live, after a cut | `gg`: every row green. | "Every leaf has landed, each passed by its own check." |
-| 10 | the history | 12 s | live | `q`, then `git log --graph --oneline`: one merge per leaf. | "Each leaf landed as a merge on my branch, with its reason in the message, so git's history reads as the tree." |
-| 11 | the bill | 12 s | live | `graphene plan record`: the checks Graphene ran, and the bill of the executors and of the planner at Token Factory's list price. | "Token Factory returns each call's token usage. Priced at the list price, this is what the leaves cost, and the plan." |
-| 12 | the direction | 15 s | live; only if `graphene direction` runs | In Graphene's own checkout, `graphene direction`: the goals above the plans, each plan and session hanging from one, with its status. | "Above the plans sits the direction, the goals I write. This is Graphene's own, with tonight's sessions attached to what they are doing, and their status." |
-| 13 | the end | 5 s | live | The repository's address. | "Graphene, on GitHub." |
+| 01 | the idea | 12 s | voice | The cockpit paused on a plan: `graphene demo tests/recordings/loop-nemotron-2.jsonl`, space at change 4 (two tasks under the goal). | "The limiting factor for software won't be the next model or harness. It's going to be you, and the direction you give it." |
+| 02 | the gap | 10 s | voice | The same replay playing on: agent 1's row comes alive. | "Tell an agent what you want and it fills in the blanks itself. You find out what it guessed in the diff." |
+| 03 | Nemotron on Token Factory | 14 s | live | `graphene key check` (it says Token Factory was reached), then `graphene init --planner nemotron --executor nemotron`: the planner and executor lines name the Nemotron models from Token Factory's list. | "Graphene is the plan you and your agents share. Here the agents are NVIDIA Nemotron on Nebius Token Factory: Ultra plans, Nano does the tasks, Super takes a retry." |
+| 04 | the ask | 14 s | live | `graphene ask "…"` with the paragraph below; `asking the planner (nemotron)…`; cut the wait; the proposed tasks and the planner's bill at list price. | "I say what I want in one paragraph. Nemotron 3 Ultra reads the repository through Token Factory and proposes tasks, each with the files it may change and a check." |
+| 05 | what needs you | 14 s | live | `graphene watch`: questions and proposed tasks on top under "need you"; `⏎` on each. | "What the code can't tell it, it asks me first, with a default. Everything that needs me is on top, and Enter takes it." |
+| 06 | a row an agent | 14 s | live | `R` (and `y`, Enter, when it asks): the ready tasks' rows turn amber, each with its agent's number, files touched of allowed, checks passed and seconds quiet. | "R runs every ready task, each a Nemotron Nano agent in its own worktree. One row an agent: what it touched, what it proved, how long it's been quiet." |
+| 07 | the task that came back | 16 s | replay | `tests/recordings/loop-nemotron-2.jsonl` at change 91: agent 1's row red, its reason in its own words, `⏎ try again`, `w widen it`; `.` to change 92. | "This is a real run from October. On its second try, on Nemotron Super, agent 1 needed a file outside its task, so it came back saying why. w widens it to that file." |
+| 08 | tell | 12 s | live | Only if a task came back in your take: `t`, one line, Enter; the line under its row; then `⏎`. Else leave the scene out and give 07 the time. | "t tells an agent one line. Claude Code hears it with its next write, and a Nemotron agent the next time its task starts." |
+| 09 | the fault's owner | 12 s | replay | The same recording at change 297: agent 2 came back, naming `normalize/fields.py`, agent 1's file; `r reopen`; `.` to change 298, agent 1 reopened with that reason. | "Agent 2 says the fault is in agent 1's file. r reopens the task that owns it, and tells it why." |
+| 10 | proven, with a bill | 14 s | replay | `tests/recordings/loop-nemotron-take-2.jsonl` at its end, 3/3 proven; `i` on the first task: its model, NVIDIA-Nemotron-3-Nano-30B-A3B, its Sandbox, its bill. | "Done means proven: Graphene ran each task's check itself. Token Factory reports every call's tokens, so every task has a bill. This one cost less than a tenth of a cent." |
+| 11 | the graph and the map | 14 s | replay | `g` on the same replay: the plan as boxes and arrows. Then the first recording at change 150, `m`: the folders agent 1 may write. | "g draws the plan as boxes and arrows, what waits on what. m shows the folders each agent may write, and nobody else's." |
+| 12 | the locks | 12 s | script | `graphene demo --cheat`: the seven moves and the closing line. | "A script plays an agent that tries seven ways round the locks. Six are refused, one is flagged, and none gets through." |
+| 13 | the end | 8 s | voice | `github.com/Alex-lop/Graphene` and `uvx --from graphene-map graphene demo`. | "You stay the one who decides where it goes. Graphene is open source; try it in one line." |
 
-165 seconds planned, fifteen seconds under the limit for the cut labels and the scenes that run long. The
-narration is at most 2.5 words a second of its scene, so it can be said aloud in the time; `build.sh`
-says which filmed scene is too short for its line.
+166 seconds planned, fourteen under the limit for a slow line. The narration is at most 2.5 words a second of its
+scene, so it can be said in the time. Name Token Factory and Nemotron aloud as written (scenes 03, 04, 06 and
+10); when the graph draws your goal at the top, say "from my goal down" in scene 11.
 
-## What changes with tonight's work
+## Recording it in one sitting
 
-- **The board (decision 84, and lane BOARD tonight).** The board is rows of the outline under the goal:
-  `asks`, `risk`, `assumes`, `leaves out`, each with its default; `y` takes the default, `1`-`9` picks an
-  option, `p` parks, `d` drops, `Enter` answers in your words. Tonight's changes: a default holds unless
-  it is changed, one key answers, and there is no board when there is nothing to ask. Scene 04 presses
-  `y` three times: the planner puts up at most three items, and a `y` past the last lands on the settled
-  fold, where it does nothing. When there is no board, the scene is not filmed and the take goes from
-  the plan to the views.
-- **The views (decisions 85 to 87).** `Tab` goes outline, tree, graph, and past a view that does not fit,
-  saying so once. The graph's note names the critical path first, so 80 columns never cut it. On the
-  scratch plan the shaping run drew (the four feeds leaves, and the board's new zero-price-product leaf,
-  which has no scope or check yet), `graphene plan --view dag --width 80` ends its note
-  `critical ━ xml-reader > xml-wire > xml-e2e (3) · none ready · 2 once accepted · 3 wait` here, and
-  `… · 2 wait` before the board's new leaf. In the rehearsal the heavy `━` of the path is only a pixel
-  heavier than a light line at this size, so the narration points at the bottom line, which names it.
-- **The direction (lane D tonight).** A small tree of goals above the plans that only the person
-  accepts, with every Claude Code session attached to a node and its state: alive, idle, waiting on
-  you, the last thing done, the bill. Scene 12 films Graphene's own, in its own checkout, read-only. Its
-  tape types `graphene direction`; when the direction has its own keys in `graphene watch`, the scene
-  moves there.
-- **Sandboxes.** Rung 1 was refused Sandboxes for Alex's project (ForbiddenError), so the leaves run in
-  git worktrees and scene 07 says so. If the project has Sandboxes by the recording night, rung 3 has
-  passed, and the node pane says `sandbox`, scene 07's narration becomes: "Each gets a Nemotron Nano
-  executor on Token Factory, and every tool call it makes runs in a Token Factory Sandbox forked from one
-  checkpoint of the repository."
+About an hour. Screen-record a terminal of your own at 120x36 (QuickTime, File, New Screen Recording, the
+terminal's window), record the narration after, and cut each scene to its length.
 
-## Filming a take
+Every command uses the `graphene` on your PATH: `graphene watch --help` should list `--classic`, which only the
+cockpit's version has.
 
-From a fresh terminal of your own (not Claude Code: a live take spends your key, and `build.sh` refuses
-an agent's shell), in a checkout of `first-light` (or `main` once it is merged), with the key in
-`NEBIUS_API_KEY` or the keychain:
+**1. The replays, at no cost** (from the root of a clone of the repository):
 
-    caffeinate -i env EXECUTOR='nemotron --placement local' dev/demo/build.sh
+    graphene demo tests/recordings/loop-nemotron-2.jsonl --speed 10       # scenes 01, 02, 07, 09, 11
+    graphene demo tests/recordings/loop-nemotron-take-2.jsonl             # scenes 10, 11
+    graphene demo --cheat                                                 # scene 12
 
-`EXECUTOR` is read as `dev/proof/nemotron.sh` reads it: while Sandboxes refuse the project, the leaves
-run in local worktrees; once rung 3 has passed, leave it out and `graphene init` puts them in Sandboxes.
-The `graphene` on PATH is the one filmed (yours is the checkout's own, installed editable).
+The first is a live run of 9 October (Ultra planned, Nano worked, Super on a retry): agent 1 comes back at change
+91 and is widened, agent 2 comes back at change 297 saying the fault is in agent 1's file, and agent 1 is
+reopened. Space pauses, `.` steps one change, and the top line counts them (`91 of 322`). The second is the run
+of 9 October in which Nano landed all three tasks on their first attempts in Sandboxes; `i` on a task shows its
+model and bill, and Esc comes back. Keys that would change the plan say "a replay: nothing runs here", so nothing
+you press can spend.
 
-A take builds feeds at `~/graphene-film/feeds` (`FILM_DIR` moves it), records the run with
-`graphene demo --record`, and films each scene into `dev/demo/takes/<time>/`. The seconds spent waiting
-for the planner and the executors go by un-filmed, so a take lasts as long as rung 7 does (10 to 30
-minutes) plus about a minute of VHS starting. Then it writes `dev/demo/rough.mp4` and `rough.srt` and
-prints each scene's length against this table, the cuts, and the total. The spend goes to the practice
-ladder's ledger, `.graphene/practice/ledger.jsonl`, under rung 7's $3 cap, unless the shell names
-`GRAPHENE_LEDGER` and `GRAPHENE_SPEND_CAP_USD`. Each take replaces `rough.mp4`; its clips stay in its
-own directory, and `dev/demo/build.sh --take dev/demo/takes/<time>` makes that take the cut again.
+**2. The live take, on your key** (scenes 03 to 06, and 08), after `graphene key set` once:
 
-Watch it with `open dev/demo/rough.mp4`. QuickTime shows the narration as subtitles (View, then
-Subtitles, then English, if they are not on).
+    python3 dev/test/make_task.py feeds ~/graphene-film/take-1 && cd ~/graphene-film/take-1 &&
+    graphene key check &&
+    graphene init --planner nemotron --executor nemotron &&
+    graphene ask "Look at this repo. I want the new Northwind XML feed to load the same way csv and json already do: same load command, same JSONL out. Prices in that feed are already in cents. The summary line at the end is not a product. A price of 0 means skip it, for every supplier. Don't touch vendored or legacy files that aren't ours this week." &&
+    graphene watch
 
-`rough.mp4` is written only when the take's run was live: `graphene demo <the take's run.jsonl> --once`
-must say "as it ran, live", which it does only when every model call the run logged went to Token
-Factory. A take that was not live stops there, with the recording's own words. The take's `run.jsonl` is
-also the live recording `graphene demo` can ship in place of the stand-in's (`src/graphene_map/demo.jsonl`,
-after `uv run pytest tests/test_demo.py`).
+Then `⏎` on each question and each proposed task, `R` (and `y`, Enter, when it asks), and let it run. Run it in
+your own terminal, not in a Claude Code session: an agent's process is refused a live call unless you opened it.
+Give each take a directory of its own (`take-2`, `take-3`): `make_task.py` refuses one that is not empty, and
+the `&&`s then stop the take there, before an init and a paid ask in whatever directory the shell is in.
 
-- `dev/demo/build.sh --rehearsal` films the same take against the stand-ins (the scripted Nemotron in
-  `dev/demo/standin.py`, and Docker for the sandbox when it is up) into `dev/demo/rehearsal.mp4`, with
-  "REHEARSAL: scripted stand-in, not live" on the top line of every frame. It never writes `rough.mp4`.
-  About eight minutes.
-- `--size 80x24` films at 80x24, to see what fits there.
-- Each clip is played at the length it took: every tape marks its start and end (`Ctrl+B M`), since VHS
-  catches fewer frames than it plays when the machine is busy (a 15-second clock filmed at 30 frames a
-  second played in 11 seconds).
+**3. What a take cost before** (list price, from the records):
+- 2 October: $0.38 for each of the two takes that ran to the end, the planner $0.30 to $0.37 of it
+  (`dev/test/first-light.md`).
+- 8 October: about $0.10 for the take that landed both its tasks, and $0.46 and $0.70 for the two others that
+  ran clean (`dev/process/timeline/takes.md`).
+- 9 October: $0.11 with the planner for the take that landed all three tasks (`dev/process/loop/takes.md`).
+- Ultra does not always answer with a plan: 35 of 40 asks did on 9 October, and an ask without one still cost
+  $0.06 to $0.43 (`dev/process/loop/asks-round2.md`). Budget three takes, about $2.
 
-Takes, clips and videos are git-ignored: the script is committed, never the video.
+If your take puts up no question, scene 05 shows the proposed tasks alone, or take the question rows from
+`graphene demo`, the replay Graphene ships, with its top line ("a scripted stand-in, no model ran") in the frame.
+If no task comes back, leave out scene 08: the replay's scene 07 carries the moment.
 
-## What must be true before the final recording
+## Filming it with build.sh
 
-- The demo run is live, with the frozen configuration, and every number on screen comes from that run.
-  The numbers in the narration are read off the screen, never written in advance, and the model named
-  for the executors is the one the frozen configuration uses (Nano, Super, or Nano then Super).
-- The board and the questions on it are Nemotron's, from that run.
-- Nemotron's shaping prototypes (`graphene plan cover`, `note`, `precheck`) and `t` talk appear only if
-  they ran live in that recording. Until then they are not on camera.
-- Nothing recorded in the Docker stand-in is shown or described as a Token Factory Sandbox.
-- The final video has the narration as audio; the subtitles are the rough cut's stand-in for it, and
-  `rough.srt` is the captions file YouTube takes.
+`dev/demo/build.sh` films each scene from its tape in `dev/demo/scenes/`, one tape a scene, and lays the
+narration column of this table under the footage as subtitles. The tapes were written for the September screen
+and still press its keys (`Tab`, `gg`, `E`, `/running`), so they do not film this table yet: until they are
+written again, record by hand as above. `build.sh` refuses an agent's shell, since a live take spends your key.
+
+## Before you upload
+
+- Under 3:00, public on YouTube, its link in the Devpost form.
+- Token Factory and Nemotron said aloud and seen on screen (the init line in 03, the model in 10).
+- Every replay keeps its top line in the frame. Say "a real run" only over a recording whose top line says "as it
+  ran, live"; the replay `graphene demo` ships says "a scripted stand-in, no model ran".
+- The cheat is a script, not a model, and the narration says so.
+- Nothing `dev/launch/claims.md` rules out: never "broadly tested live", never "the only".
+- The key never on screen: `graphene key set` reads it from a hidden prompt.
+- Captions: YouTube makes them, or paste the narration column as a subtitle file.

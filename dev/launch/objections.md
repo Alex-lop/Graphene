@@ -15,6 +15,7 @@
 4. **What does it record, and what can it cost me?** `graphene init` adds hooks to one project; they record that
    project's Claude Code sessions on your machine only, and `graphene init --remove` takes them out. With Claude
    Code an attempt stops at $2, three attempts at most, and `graphene run` says the worst case before it starts and
-   stops with `graphene run --stop`; Codex has no cap and nothing caps a whole run's total.
+   stops with `graphene run --stop`; Codex has no cap of its own, and a run's total is capped only by
+   `graphene run --max-usd`.
 5. **Has anyone but you used it?** No person has been timed. Every walk and measure used model sessions standing in
    for people (dev/process/controller/). It is early; the first-hour form is how a real hour reaches the repository.
