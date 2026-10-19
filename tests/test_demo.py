@@ -273,19 +273,22 @@ def test_demo_once_needs_no_key_and_no_network_and_prints_the_banner_and_the_end
     day = head["recorded"][:10]
     assert first == f"replay · {head['shown']} · {day} · {demo.ENDED} · the plan of {head['repository']}"
     assert ("stand-in" in first) == head["stand_in"]  # tonight's is the stand-in's: "a scripted stand-in"
-    assert "the plan: a friendlier app" in rest and "2 leaves, 2 done, 0 running" in said.stdout
+    assert "the plan: a friendlier app" in rest and "4 leaves, 4 done, 0 running" in said.stdout
     assert [r.split() for r in rest if r.startswith("    ✓")] == [
         ["✓", "greet", "says", "hello", "greet", "done", "·", "app.py,", "words.py"],
         ["✓", "bye", "says", "goodbye", "farewell", "done", "·", "bye.py"],
+        ["✓", "the", "banner", "says", "welcome", "banner", "done", "·", "cli/banner.py"],
+        ["✓", "the", "app", "says", "hello", "and", "goodbye", "hello-bye", "done", "·", "cli/main.py"],
     ]
     assert rest[-1] == demo.NEXT  # it ends with the reader's next step: their own repository
     assert not list((tmp_path / "tmp").iterdir())
 
 
 def test_the_top_lines_day_is_the_one_the_rows_under_it_are_stamped_with(monkeypatch):
-    """The shipped recording is stamped 2026-10-12T03:16:50Z: in any American zone the top line said
-    2026-10-11 over rows that say 2026-10-12, and the tests saw one day only because TZ is pinned to UTC."""
-    monkeypatch.setenv("TZ", "America/New_York")
+    """The shipped recording is stamped 2026-10-19T04:04:40Z: in Los Angeles the top line said 2026-10-18
+    (the local day) over rows that say 2026-10-19, and the tests saw one day only because TZ is pinned to
+    UTC. A zone far enough behind UTC that its day is another is the one that shows it."""
+    monkeypatch.setenv("TZ", "America/Los_Angeles")
     time.tzset()
     try:
         head, _ = demo.load(demo.SHIPPED)
@@ -306,9 +309,9 @@ def test_demo_once_leaves_out_the_plans_next_step_and_nothing_else(tmp_path, mon
     monkeypatch.chdir(repo)
     watched = CliRunner().invoke(build(), ["watch", "--once"]).stdout.splitlines()
     banner, *replayed = CliRunner().invoke(build(), ["demo", "--once"]).stdout.splitlines()
-    hint = "2 leaves, 2 done, 0 running · finished; `graphene plan archive` puts it away"
+    hint = "4 leaves, 4 done, 0 running · finished; `graphene plan archive` puts it away"
     assert hint in watched and banner.startswith("replay · ")
-    finished = "2 leaves, 2 done, 0 running · finished"
+    finished = "4 leaves, 4 done, 0 running · finished"
     ending = {hint: finished, "just now": demo.ENDING}
     assert replayed == [*(ending.get(line, line) for line in watched), demo.NEXT]  # then the reader's own
 
@@ -368,11 +371,11 @@ def test_the_replay_at_80x24_says_so_shows_a_record_and_refuses_what_would_run(t
 
 
 def test_a_sub_goals_record_mid_replay_says_its_width_at_the_replays_clock(tmp_path, monkeypatch):
-    """Eight changes in, farewell runs and greet has come back. The record of `friendly` measures them up to
-    the replay's clock, as the time view does: 48% of agent minutes alone, not days of the two at once."""
+    """Eleven changes in, farewell runs and greet has come back. The record of `friendly` measures them up
+    to the replay's clock, as the time view does: 6% of agent minutes alone, not days of the two at once."""
     monkeypatch.setattr(demo, "LONG", 0.01)
     head, lines = demo.load(demo.SHIPPED)
-    app = demo.Replay(demo.repository(tmp_path, head), head, lines[:8])
+    app = demo.Replay(demo.repository(tmp_path, head), head, lines[:11])
 
     async def go():
         async with app.run_test(size=(120, 40)) as pilot:
@@ -384,7 +387,7 @@ def test_a_sub_goals_record_mid_replay_says_its_width_at_the_replays_clock(tmp_p
             await pilot.pause()
             return " ".join(str(app.query_one("#detail").render()).split())
 
-    assert "2 of 2 at once · 48% of agent minutes alone" in asyncio.run(go())
+    assert "2 of 2 at once · 6% of agent minutes alone" in asyncio.run(go())
 
 
 def test_the_replay_ends_with_every_fold_open(tmp_path, monkeypatch):
@@ -403,7 +406,7 @@ def test_the_replay_ends_with_every_fold_open(tmp_path, monkeypatch):
             await pilot.pause()
             return [app.tree.get_node_at_line(k).data for k in range(app.tree.last_line + 1)]
 
-    assert asyncio.run(go()) == [None, "friendly", "greet", "farewell"]
+    assert asyncio.run(go()) == [None, "friendly", "greet", "farewell", "cli", "banner", "hello-bye"]
 
 
 def test_a_search_line_edited_into_a_command_is_refused_in_one_line(tmp_path, monkeypatch):
@@ -550,7 +553,7 @@ def test_demo_once_fits_80_columns_and_calls_its_last_rows_the_end_of_the_runs_l
     assert lines[0] == f"replay · {head['shown']} · {head['day']} · {demo.ENDED}"
     assert max(len(line) for line in lines) <= 80, [line for line in lines if len(line) > 80]
     assert "just now" not in lines and demo.ENDING in lines
-    assert any(line.endswith("…") and "landed" in line for line in lines)
+    assert any(line.endswith("…") and "finished" in line for line in lines)
     rows = [line for line in lines if line.startswith("  20")]  # no log identifier (`rolled_up`) on a row
     assert rows and not any(re.search(r"\b\w+_\w+\b", line) for line in rows), rows
 
@@ -560,8 +563,8 @@ def test_each_change_stays_on_the_screen_and_space_dot_and_r_pause_step_and_play
     least HOLD seconds (`--speed` divides that); space pauses where it is and plays on, `.` applies the next
     change and stays paused, `r` empties the replay and plays it from the start; the top line says which
     change it is at, and the bottom line names the three keys. Before the plan has a row the pane says
-    nothing is planned yet (the recording's first change is init's settings, a look before `asked`), not
-    "Or :ask", which a replay refuses. A finished plan's goal row reads done."""
+    what the person asked the planner for (the recording's first change is init's settings and the ask),
+    not "Or :ask", which a replay refuses. A finished plan's goal row reads done."""
     head, lines = demo.load(demo.SHIPPED)
     gaps = [b["at"] - a["at"] for a, b in zip(lines, lines[1:], strict=False)]
     assert lines[0]["at"] == 0 and min(gaps) >= demo.HOLD and len(lines) * demo.HOLD > 20
@@ -597,15 +600,33 @@ def test_each_change_stays_on_the_screen_and_space_dot_and_r_pause_step_and_play
     n = len(lines)
     assert seen["first"][:2] == (1, f"replay · {head['shown']} · {head['day']} · 1 of {n}")
     assert seen["first"][2].startswith("space pause · . next · r again · l output · j k move · ? help")
-    assert "Nothing is planned yet in this recording. What is planned is next." in seen["first"][3]
+    asked = "the script asked the planner: “make the app friendlier”. What it proposes is next."
+    assert asked in seen["first"][3]
     assert seen["paused"][:2] == (1, f"replay · {head['shown']} · {head['day']} · paused at 1 of {n}")
     assert seen["paused"][2].startswith("space play · . next")
-    proposed = dict.fromkeys(("friendly", "greet", "farewell"), "proposed")
+    proposed = dict.fromkeys(("friendly", "greet", "farewell", "cli", "banner", "hello-bye"), "proposed")
     top = f"replay · {head['shown']} · {head['day']}"
     assert seen["stepped"][:3] == (2, proposed, f"{top} · paused at 2 of {n}")
     assert seen["end"][:3] == (n, ("✓", "done"), f"replay · {head['shown']} · {head['day']} · {demo.ENDED}")
     assert seen["end"][3].startswith("r again")
     assert seen["again"][:3] == (1, {}, None)
+
+
+def test_a_recording_that_begins_before_the_ask_opens_saying_nothing_is_planned_in_it(tmp_path):
+    """The shipped recording's first change holds the ask. One whose recorder looked before the ask (a
+    slower machine's) begins with neither a plan nor an ask, and the pane says nothing is planned yet in
+    it, not "Or :ask", which a replay refuses."""
+    head, lines = demo.load(demo.SHIPPED)
+    first = {**lines[0], "node_log": [r for r in lines[0]["node_log"] if r["kind"] != "asked"]}
+    app = demo.Replay(demo.repository(tmp_path, head), head, [first, *lines[1:]])
+
+    async def go():
+        async with app.run_test(size=(80, 24)) as pilot:
+            await pilot.pause(0.3)
+            return app.next, " ".join(str(app.query_one("#detail").render()).split())
+
+    at, pane = asyncio.run(go())
+    assert at == 1 and "Nothing is planned yet in this recording. What is planned is next." in pane, pane
 
 
 def test_the_replays_footer_offers_enter_record_only_where_enter_shows_one(tmp_path):

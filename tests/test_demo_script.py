@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import sys
 import textwrap
+import time
 from pathlib import Path
 
 import pytest
@@ -27,6 +28,10 @@ MAKE = textwrap.dedent('''\
     (d / "app.py").write_text("from words import HELLO\\n\\ndef greet():\\n    return 'hi'\\n")
     (d / "words.py").write_text("HELLO = 'hi'\\n")
     (d / "bye.py").write_text("def bye():\\n    return 'bye'\\n")
+    (d / "cli").mkdir()  # a second folder, so the map has two with owners
+    (d / "cli" / "__init__.py").write_text("")
+    (d / "cli" / "banner.py").write_text("BANNER = 'hi'\\n")
+    (d / "cli" / "main.py").write_text("def start():\\n    return ''\\n\\ndef stop():\\n    return ''\\n")
     for a in (["init", "-q"], ["config", "user.email", "t@e.com"], ["config", "user.name", "T"],
               ["add", "-A"], ["commit", "-qm", "start"]):
         subprocess.run(["git", "-C", str(d), *a], check=True)
@@ -50,8 +55,21 @@ leave out: a --name flag; nobody asked for one  [name-flag]
   ? bye says goodbye  [farewell]
       scope: bye.py
       check: python3 -c 'import bye; assert bye.bye() == "goodbye"'
+- the command line  [cli]
+  ? the banner says welcome  [banner]
+      scope: cli/banner.py
+      check: python3 -c 'from cli.banner import BANNER; assert BANNER == "welcome"'
+  ? the app says hello and goodbye  [hello-bye]
+      the app's start and stop use greet and bye, once both say their words
+      scope: cli/main.py
+      needs: greet, farewell
+      check: python3 -c 'from cli.main import start, stop; assert (start(), stop()) == ("hello", "goodbye")'
 ```"""
 GREET_CHECK = "python3 -c 'import app; assert app.greet() == \"hello\"'"
+MAIN = ("from app import greet\nfrom bye import bye\n\ndef start():\n    return greet()\n\n"
+        "def stop():\n    return bye()\n")  # what the leaf that waits writes
+# the three the first run starts think before their second step, so they are seen at work at once
+AT_ONCE, THINK = ("greet (revision 2", "farewell (revision", "banner (revision"), 1.5
 SCRIPTS = {
     "planner": [call("list", path="."), call("read", path="app.py"), {"content": PLAN}],
     # the prune took words.py from greet's scope: its first hold comes back wanting it
@@ -62,10 +80,13 @@ SCRIPTS = {
                           call("edit", path="words.py", old="'hi'", new="'hello'"),
                           call("run", command=GREET_CHECK), call("done")],
     "farewell (revision": [call("edit", path="bye.py", old="'bye'", new="'goodbye'"), call("done")],
+    "banner (revision": [call("edit", path="cli/banner.py", old="'hi'", new="'welcome'"), call("done")],
+    # it starts once greet and farewell have landed: its check reads both
+    "hello-bye (revision": [call("write", path="cli/main.py", content=MAIN), call("done")],
 }  # fmt: skip
-# no prune: greet keeps words.py in its scope, and both leaves land on the first run
-IN_ONE_GO = {"planner": SCRIPTS["planner"], "greet (revision": SCRIPTS["greet (revision 3"],
-             "farewell (revision": SCRIPTS["farewell (revision"]}  # fmt: skip
+# no prune: greet keeps words.py in its scope, and every leaf lands on the first run (the first key is
+# the one every revision of greet's prompt meets)
+IN_ONE_GO = {"greet (revision": SCRIPTS["greet (revision 3"]} | SCRIPTS
 
 
 def reply(body, scripts=SCRIPTS):
@@ -75,6 +96,8 @@ def reply(body, scripts=SCRIPTS):
     k = sum(1 for m in body["messages"] if m["role"] == "assistant")
     if body.get("response_format"):  # the planner's answer, asked in its JSON schema: a stand-in's text
         k = len(steps) - 1
+    if k == 1 and key in AT_ONCE:
+        time.sleep(THINK)
     return steps[k] if 0 <= k < len(steps) else {"content": "nothing more"}
 
 
@@ -98,7 +121,9 @@ def script(tmp_path, answer, prune: str, **more: str):
 def test_the_demo_script_runs_from_nothing_to_the_bill(tmp_path):
     print_it, ship = os.environ.get("SHOW_DEMO"), os.environ.get("RECORD_DEMO")
     prune = "sed -i.bak -e 's#app.py, words.py#app.py#'"
-    board = "take bye-word\ntake hello-home\ntake name-flag"  # y on each item: its default
+    # the board read, then y on each item (its default): the read is also what keeps the board whole in a
+    # look of the recording's own, before the first answer lands
+    board = "--all\ntake bye-word\ntake hello-home\ntake name-flag"
     done, said, f = script(tmp_path, reply, prune, RECORD=str(tmp_path / "demo.jsonl"), BOARD=board)
     if print_it:
         print(said)
@@ -106,11 +131,16 @@ def test_the_demo_script_runs_from_nothing_to_the_bill(tmp_path):
     assert "$ graphene init --planner nemotron --executor nemotron" in said
     assert "$ graphene node widen greet" in said  # the came-back leaf's offer, taken
     assert "(the plan of" not in said  # the demo stands in its own checkout: no act names it
+    first, again = [line for line in said.splitlines() if line.startswith("run: ")]
+    assert first.startswith("run: 2 done, 1 came back (greet) · ") and " · 3 of 3 at once · " in first
+    assert again.startswith("run: 2 done · ")  # greet tried again, then the leaf that waited on it
+    assert said.index("farewell is done") < said.index("greet is done") < said.index("hello-bye started")
     graph = subprocess.run(["git", "-C", str(tmp_path / "demo"), "log", "--merges", "--format=%s"],
                            capture_output=True, text=True).stdout.split("\n")  # fmt: skip
-    assert "greet says hello (greet)" in graph and "bye says goodbye (farewell)" in graph
+    assert {"greet says hello (greet)", "bye says goodbye (farewell)", "the banner says welcome (banner)",
+            "the app says hello and goodbye (hello-bye)"} <= set(graph)  # fmt: skip
     assert "bill: $" in said and "at list price" in said  # the record's bill, at the end
-    assert "2 of 2 passed at last run, 0 runs failed on the way; 1 write refused" in said
+    assert "4 of 4 passed at last run, 0 runs failed on the way; 1 write refused" in said
     assert (tmp_path / "demo" / "words.py").read_text() == "HELLO = 'hello'\n"
     models = {r["model"] for r in f.requests}
     assert models == {"nvidia/Nemotron-3-Ultra-fake", "nvidia/Nemotron-3-Nano-fake"}
@@ -122,7 +152,7 @@ def test_the_demo_script_runs_from_nothing_to_the_bill(tmp_path):
     (tmp_path / "replay").mkdir()
     replay = demo.repository(tmp_path / "replay", head)
     demo.last_frame(replay, lines)
-    ended = dict.fromkeys(("friendly", "greet", "farewell"), "done")
+    ended = dict.fromkeys(("friendly", "greet", "farewell", "cli", "banner", "hello-bye"), "done")
     with Store.open(replay) as store:
         assert {n.id: n.state for n in plan.nodes(store)} == ended
         tail = run.live(store, plan.get(store, "greet"))["log"]
@@ -140,7 +170,7 @@ def test_when_no_leaf_comes_back_the_script_still_ends_with_the_graph_and_the_bi
     assert done.returncode == 0, said
     assert "$ graphene node widen" not in said and said.count("$ graphene run --parallel 4") == 1
     assert "$ git log --graph --oneline" in said and "bill: $" in said
-    assert "2 of 2 passed at last run, 0 runs failed on the way" in said
+    assert "4 of 4 passed at last run, 0 runs failed on the way" in said
 
 
 @pytest.mark.skipif(shutil.which("graphene") is None, reason="needs graphene on PATH (uv run puts it there)")

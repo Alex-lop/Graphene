@@ -98,8 +98,9 @@ def test_the_replays_clock_is_its_recordings_and_no_strip_unless_its_rows_say_th
 
 
 def test_a_recording_made_with_the_meter_draws_its_strip_while_a_leaf_runs(tmp_path):
-    """The shipped recording, made again with the meter on 12 October 2026 (UTC), and the night's Claude Code
-    run on feeds: while a leaf of either runs, its live row shows, with the dollars it had reached then."""
+    """The shipped recording, made with the meter on (last on 19 October 2026, UTC), and the night's Claude
+    Code run on feeds: while a leaf of either runs, its live row shows, with the dollars it had reached
+    then."""
     strips = {}
     for name, path in (("shipped", demo.SHIPPED), ("meter", RECORDINGS / "meter-claude.jsonl")):
         head, lines = demo.load(path)

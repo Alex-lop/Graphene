@@ -45,7 +45,7 @@ def test_a_recording_dropped_into_tests_recordings_replays_and_holds_no_secret(p
 
 
 def test_the_check_runs_on_the_recording_graphene_ships(tmp_path, monkeypatch):
-    assert "2 leaves, 2 done" in replays(demo.SHIPPED, tmp_path, monkeypatch)
+    assert "4 leaves, 4 done" in replays(demo.SHIPPED, tmp_path, monkeypatch)
 
 
 def test_the_sandboxs_own_home_is_no_persons_path():

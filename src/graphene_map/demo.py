@@ -12,11 +12,13 @@ tracks once a leaf has landed (the check a contract names is judged against it).
 written `{repo}`, and the replay puts its own there; the home directory is `~`; the key and the project
 in the environment, anything shaped like a key, and each sandbox image the run names are taken out.
 
-demo.jsonl, beside this file, is the recording Graphene ships. It was made on 12 October 2026 (UTC) by
+demo.jsonl, beside this file, is the recording Graphene ships. It was made on 19 October 2026 (UTC) by
 tests/test_demo_script.py (dev/proof/nemotron.sh on a tiny repository against the scripted fake,
-tests/fake_tokenfactory.py), with a planner that puts up a board and a key taking each item, and with the
-meter on, so a running leaf's row shows; its first line says it is a scripted stand-in, which the screen
-shows. It is made again from the fake with
+tests/fake_tokenfactory.py), with a planner that puts up a board and a key taking each item, and a plan of
+two sub-goals and four leaves: three run at once, one comes back wanting a file outside its scope and lands
+once widened, and one waits on two others until both have landed. The meter was on, so a running leaf's
+row shows; its first line says it is a scripted stand-in, which the screen shows. It is made again from
+the fake with
 
     RECORD_DEMO=src/graphene_map/demo.jsonl uv run pytest tests/test_demo_script.py
 
