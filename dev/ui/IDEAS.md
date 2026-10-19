@@ -70,8 +70,8 @@ You said to do what I think is best. Each flips with one line; the new watch fol
    Enter, and Tell reaches the agent if you change your mind. Stopping an unattended run costs the night.
 2. **One window, many agents,** one repository.
 3. **Plain words on the new screens** (task, may touch, proof, stuck); the engine and docs keep leaf, scope, check.
-4. **Agents go by numbers** (your call, 18 October, over my "keep the names"): agent 1 is the first to take a
-   task of the plan, a retry is a new number, and "agent 2 is stuck" is sayable.
+4. **Agents go by numbers** (your call, 18 October, over my "keep the names"): agent 1 is on the first task of
+   the plan anyone took, a task keeps its number when it is tried again, and "agent 2 is stuck" is sayable.
 5. **Execution graph first,** intent graph after.
 
 ## Next

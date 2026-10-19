@@ -1105,6 +1105,8 @@ def register(cli: typer.Typer, root, open_store, fail):
                         # Claude Code stops after the turn that passes the cap: no ceiling, a stop
                         most = f"; {CAP_UNIT} stops once it passes ${cap}" * bool(cap)
                         out(f"landing into {on} at {at[:7]}: {what}, up to {max(parallel, 1)} at once{most}")
+                        if S.review(store) == "every":  # said first: nothing it finishes will land by itself
+                            out("review: every: a task that passes waits for your sign-off before it lands")
                         from .run import _worst, leaves_of
 
                         # every leaf the run may reach, not only the ready ones: it goes on to the next

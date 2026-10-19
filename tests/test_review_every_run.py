@@ -48,6 +48,9 @@ def test_a_passed_task_waits_on_its_branch_and_the_sign_off_merges_it(repo, monk
     ran = person("run", "--with", WRITES, "--no-precheck")
     assert ran.exit_code == 0, ran.output
     assert "a passed; it waits for your sign-off before it lands" in ran.stdout
+    said = ran.stdout.splitlines()  # the run says so before anything, under the line that says where it lands
+    landing = next(k for k, line in enumerate(said) if line.startswith("landing into "))
+    assert said[landing + 1] == "review: every: a task that passes waits for your sign-off before it lands"
     assert ran.stdout.splitlines()[-1].startswith("run: 1 in review (a)")
     assert state(repo) == P.REVIEW and git(repo, "rev-parse", "HEAD") == head  # nothing merged
     assert not (repo / "a.txt").exists() and git(repo, "show", "graphene/a:a.txt") == "a\n"
