@@ -71,9 +71,12 @@ def news(line: dict, titles: dict[str, str] | None = None) -> str:
     ended, an executor's output, the settings, the agent's own `graphene node` commands) says nothing, so
     the last news stays up. Three at most, in the order they happened: the latest of the rest before an
     agent's moves, so a hand-back is not crowded out by the edits that came before it; and your answer
-    before the edits it made, which the log has first."""
+    before the edits it made, which the log has first. Tasks accepted together are one item, their count:
+    the last three of six accepts read as if two tasks were, and a sub-goal comes with its tasks."""
     titles = titles or {}
     items = {it["id"]: it for it in json.loads((line.get("plan_meta") or {}).get("board") or "[]")}
+    parents = {json.loads(n.get("data") or "{}").get("parent") for n in (line.get("nodes") or {}).values()}
+    accepted: list[int] = []  # where the accepts' one item is, once per accepted task
     said: list[str] = []
     moves: set[int] = set()  # which of them are an agent's own moves: what it did or said
     first: dict[int, int] = {}  # an answer that edited the plan -> where the edits it made begin
@@ -101,6 +104,14 @@ def news(line: dict, titles: dict[str, str] | None = None) -> str:
             said += edit_said(title, d.get("changed") or {}, titles)
         elif kind in GOALS:
             said.append(f"{GOALS[kind]}: {words(d.get('note'))}")
+        elif kind == "accepted" and row["node_id"] not in parents:
+            accepted.append(accepted[0] if accepted else len(said))
+            if len(accepted) == 1:
+                said.append(MILESTONES[kind].format(title))
+            else:
+                said[accepted[0]] = f"you accepted {len(accepted)} tasks"
+        elif kind == "accepted":
+            continue  # a sub-goal accepted with its tasks: they say it
         elif kind in MILESTONES:
             said.append(MILESTONES[kind].format(title))
         if kind != "edited":

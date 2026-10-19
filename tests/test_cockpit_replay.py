@@ -147,6 +147,18 @@ def test_the_news_says_the_boards_acts_in_the_items_own_words():
     assert news({"plan_meta": meta, "node_log": took}) == said
 
 
+def test_tasks_accepted_together_are_one_item_that_counts_them():
+    """The shipped replay's accept said "you accepted banner says welcome · you accepted app says hello and
+    goodbye · your goal: …", the last three of seven items: two of its four tasks, as if the others were not.
+    A sub-goal accepted with its tasks says nothing of its own."""
+    nodes = {n: {"data": json.dumps({"parent": up})} for n, up in
+             (("friendly", None), ("greet", "friendly"), ("bye", "friendly"))}  # fmt: skip
+    line = {"nodes": nodes, "node_log": [row("friendly", "accepted"), row("greet", "accepted"),
+                                         row("bye", "accepted"), row("*", "goal", note="a friendlier app")]}
+    assert news(line, GREET) == "you accepted 2 tasks · your goal: a friendlier app"
+    assert news({"node_log": [row("greet", "accepted")]}, GREET) == "you accepted greet says hello"
+
+
 def test_the_news_says_an_edit_as_what_it_changed():
     widened = row("greet", "edited", changed={"scope": [["app.py"], ["app.py", "words.py"]]}, rev=3)
     assert news({"node_log": [widened]}, GREET) == "greet says hello may now write words.py"
