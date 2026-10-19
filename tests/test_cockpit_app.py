@@ -249,6 +249,10 @@ def test_the_keys_line_says_what_the_keys_do_to_the_selected_row(tmp_path):
                 m.selected = sel
                 app.paint()
                 assert keys() == own + " · g graph · m map · ? keys · q"
+            m.source = "replay"  # a recording: only what reads it (the cockpit's line is the replay's own)
+            app.view = "flow"
+            assert app.row_keys() == "i details · c cockpit · m map · ? keys · q"
+            m.source, app.view = "plan", "cockpit"
             m.tasks["ids"].stopped = []  # nothing stopped: nothing to widen, so no w
             m.selected = "ids"
             app.paint()
@@ -292,6 +296,20 @@ def test_the_graphs_legend_says_only_what_it_drew():
             m.extra_edges = [("ids", "migrate", "two")]
             app.paint()
             assert "◀▶ two-way" in shown() and "retry loop" not in shown()
+
+    run(go())
+
+
+def test_on_the_graph_a_selected_question_says_what_it_asks_and_what_it_is_about():
+    async def go():
+        m = scene()
+        m.questions[0].about = "ids"
+        m.selected = "q"
+        app = app_of(m, screen="flow")
+        async with app.run_test(size=(120, 30)) as pilot:
+            await pilot.pause(0.1)
+            shown = "\n".join(line.plain() for line in app.query_one(Canvas).lines)
+            assert "? Keep old ids working?  ·  about users return ids" in shown
 
     run(go())
 

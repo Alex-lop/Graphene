@@ -259,7 +259,8 @@ def test_a_running_agent_that_is_not_selected_shows_its_last_move_in_one_dim_lin
     m.selected = "ids"  # selected, it opens into three lines and the verbs instead
     opened = plain(rows.build_cockpit(m, 100))
     assert "┊ edit models/m0.py" in "\n".join(opened)
-    assert sum("edit models/m0.py" in line for line in opened) == 1 and "t tell" in opened[-3]  # said once
+    assert sum("edit models/m0.py" in line for line in opened) == 1  # said once
+    assert any(line.lstrip().startswith("t tell") for line in opened)  # and the verbs under it
 
 
 def test_a_row_shows_the_whole_title_where_it_fits_and_cuts_it_with_an_ellipsis_where_it_does_not():
@@ -274,13 +275,18 @@ def test_a_row_shows_the_whole_title_where_it_fits_and_cuts_it_with_an_ellipsis_
     assert "Write the docs for" in narrow and "…" in narrow and len(narrow) <= 80
 
 
-def test_a_narrow_banner_keeps_what_it_is_and_where_it_is():
+def test_a_narrow_banner_keeps_what_it_is_and_what_made_it():
+    """A narrow head drops the day, then where the replay is, and never what made it: a demo that says "a
+    scripted stand-in, no model ran" at 120 columns says it at 60 too."""
     m = scene()
     m.banner = "replay · as it ran, live · 2026-10-09 · 120 of 138"
     wide = plain(rows.build_head(m, 120))[0]
+    middle = plain(rows.build_head(m, 80))[0]
     narrow = plain(rows.build_head(m, 60))[0]
     assert "as it ran, live · 2026-10-09" in wide
-    assert narrow.rstrip().endswith("replay · 120 of 138") and len(narrow) <= 60
+    assert "replay · as it ran, live" in middle and middle.rstrip().endswith("120 of 138")
+    assert len(middle) <= 80
+    assert narrow.rstrip().endswith("replay · as it ran, live") and len(narrow) <= 60
 
 
 def test_a_long_reason_a_leaf_came_back_with_is_cut_on_its_row_and_whole_when_the_row_is_open():
@@ -300,6 +306,17 @@ def test_a_long_reason_a_leaf_came_back_with_is_cut_on_its_row_and_whole_when_th
     assert "I need" not in row.plain() and "⏎ try again" in row.plain()  # said once, under it, not beside
     assert row.width() == 80 and "retry the migration" in row.plain()
     assert text.count("I need README.md") == 1
+
+
+def test_a_reason_longer_than_the_open_row_has_lines_for_ends_in_an_ellipsis_not_mid_word():
+    m = scene()
+    note = " ".join(f"the gate stopped path{k}.py" for k in range(30))  # a reason the agent kept whole
+    m.tasks["back"] = Task("back", "retry the migration", "came back", agent="3", note=note)
+    m.selected = "back"
+    reason = [line for line in rows.build_cockpit(m, 80) if line.row == "back" and "┊" in line.plain()][:3]
+    said = [line.plain().rstrip() for line in reason]
+    assert "path0.py" in said[0]
+    assert said[-1].endswith("…") and all(len(line) <= 80 for line in said)  # the rest of it: i details
 
 
 def test_a_title_with_wide_characters_is_measured_in_cells_so_no_row_is_wider_than_the_screen():

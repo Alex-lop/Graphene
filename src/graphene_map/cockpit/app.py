@@ -202,8 +202,8 @@ class Cockpit(App):
         if not new or write is None or self.model.source == "replay" or self.quiet():
             return
         said = new[0] + (f" (and {len(new) - 1} more)" if len(new) > 1 else "")
-        said = "".join(ch for ch in " ".join(said.split()) if ch.isprintable())[:200]  # no escape of its own
-        write(f"\a\x1b]9;graphene: {said}\a")
+        said = "".join(ch for ch in " ".join(said.split()) if ch.isprintable())  # no escape of its own
+        write(f"\a\x1b]9;graphene: {fit(said, 200)}\a")
 
     def quiet(self) -> bool:
         """`notify: off` in graphene config. A store that does not open now says nothing to the contrary."""
@@ -265,7 +265,9 @@ class Cockpit(App):
             return "Enter sends · Esc cancels"
         q = next((q for q in m.questions if q.id == m.selected), None)
         t = m.tasks.get(m.selected)
-        if q:
+        if m.source == "replay":  # a recording: what it shows can be read, nothing in it is yours to act on
+            own = ["i details"]
+        elif q:
             picks = {0: [], 1: ["1 pick"], 2: ["1 2 pick"]}.get(len(q.options), [f"1-{len(q.options)} pick"])
             own = [f"⏎ {fit(q.default, 12)}", *picks, "a answer", "d drop"]
         elif t:  # w only where there is something to widen
@@ -280,11 +282,15 @@ class Cockpit(App):
         m = self.model
         nodes, edges = FV.flow_graph(m)
         lines, self.flow_layout, note = FV.build_flow(nodes, edges, width, m.selected)
-        if not nodes:  # an empty screen says what it will show, not nothing at all
-            said = " Nothing is planned yet: the graph draws each task and what it waits on."
-            return [Line([]), Line([Seg(said, "grey62")])]
+        if not nodes:  # the graph's own sentence says what it will show (flow_view.EMPTY)
+            return lines
         sel = m.tasks.get(m.selected)
         info = f" {sel.title}" if sel else ""
+        q = next((q for q in m.questions if q.id == m.selected), None)
+        if q:  # a question has no box: what it asks, and the task it is about
+            about = m.tasks.get(q.about)
+            info = f" {'!' if q.kind == 'risk' else '?'} {q.text}"
+            info += f"  ·  about {about.title}" if about else ""
         if sel:
             info += f"  ·  {sel.state}" + (f" · {who(sel.agent)}" if sel.agent else "")
             info += f" · ✓{sel.passed}/{sel.checks}" if sel.checks else ""

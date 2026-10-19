@@ -33,10 +33,13 @@ def test_what_newly_needs_you_rings_once_with_its_reason_and_never_in_a_replay()
             m.questions.append(Question("q2", "Which PDF library?", "weasyprint", []))
             app.look()  # two at once: one bell, the first named (questions first, as on the rows), one more
             assert said[-1] == "\a\x1b]9;graphene: a question: Which PDF library? (and 1 more)\a"
+            m.tasks["docs"].state, m.tasks["docs"].note = "came back", "it needs " + "a/" * 200 + "b.py"
+            app.look()  # a reason kept whole is cut for the notification, and says so
+            assert len(said[-1]) < 230 and said[-1].endswith("…\a")
             m.source = "replay"  # a replay is a recording: nothing in it is yours to answer
             m.questions.append(Question("q3", "Tabs?", "spaces", []))
             app.look()
-            assert len(said) == 2
+            assert len(said) == 3
 
     asyncio.run(go())
 

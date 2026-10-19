@@ -16,7 +16,10 @@ def replay(tmp_path):
 
 
 def shown(app) -> str:
-    return "\n".join(line.plain() for line in app.query_one(Canvas).lines)
+    """What the screen shows under its tabs: the head that stays on top (the goal, what the replay is, the
+    counts), then the rows."""
+    head = str(app.query_one("#head").render())
+    return head + "\n" + "\n".join(line.plain() for line in app.query_one(Canvas).lines)
 
 
 def test_the_replay_says_what_it_is_and_plays_the_recording_into_rows(tmp_path):
@@ -242,3 +245,18 @@ def test_the_replay_names_tasks_by_their_titles_and_a_change_of_bookkeeping_leav
             assert app.next == 2 and app.model.latest() == "proposed: greet says hello"  # usage said nothing
 
     asyncio.run(go())
+
+
+def test_at_80_columns_the_top_line_still_says_no_model_ran(tmp_path):
+    """At 80 columns the head dropped "a scripted stand-in, no model ran" first, so the demo a stranger runs
+    in a default terminal never said it was a script. The day goes first, then where it is; never that."""
+
+    async def go():
+        app, head, _ = replay(tmp_path)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await pilot.pause(0.3)
+            top = str(app.query_one("#head").render()).splitlines()[0]
+            assert head["shown"] in top and "replay" in top and len(top.rstrip()) <= 80, top
+
+    asyncio.run(go())
+

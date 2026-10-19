@@ -31,7 +31,7 @@ def build_head(m: Model, width: int) -> list[Line]:
     parts = tag.split(" · ") if tag else []
     room = width - min(cell_len(goal or NO_GOAL), 24) - 6  # the goal keeps what it needs, the banner the rest
     while cell_len(" · ".join(parts)) > max(16, room) and len(parts) > 2:
-        parts.pop(1)  # narrow: what it is and where it is, the days and the models dropped
+        parts.pop(2)  # narrow: the day goes, then where it is; never what it is and what made it
     tag = " · ".join(parts)
     said = goal or (NO_GOAL if tag else INVITE)  # your goal on top; with none, how to give one (not a title)
     head = [Seg(" " + fit(said, width - (cell_len(tag) + 5 if tag else 2)), "bold" if goal else "grey62")]
@@ -243,8 +243,8 @@ def long_note(t: Task, width: int) -> bool:
 
 def expansion(m: Model, t: Task, width: int) -> list[Line]:
     out: list[Line] = []
-    if t.state == "came back" and long_note(t, width):  # what the row had to cut
-        for part in textwrap.wrap(t.note, max(width - 12, 20))[:3]:
+    if t.state == "came back" and long_note(t, width):  # what the row had to cut, in three lines at most
+        for part in textwrap.wrap(t.note, max(width - 12, 20), max_lines=3, placeholder=" …"):
             out.append(Line([Seg("      ┊ ", "grey35"), Seg(part, "#ef476f")], t.id))
     moves = [ln for ln in m.tail(t, 5) if not (t.told and ln.startswith("you "))][-3:]  # the note: below
     for line in moves:
