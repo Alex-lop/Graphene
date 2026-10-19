@@ -20,7 +20,7 @@ GROUPS = (
         ("d A", "drop a proposal or a question; accept every proposal"),
     )),
     ("agents", (
-        ("t", "tell its agent one line: it hears it with its next write"),
+        ("t", "tell its agent a line, heard with its next write or command"),
         ("w", "widen: give the task the path the gate stopped"),
         ("x", "hand back a running task; reopen a finished one (say why)"),
         ("b n r", "came back: a new task, wait on another, reopen the one named"),

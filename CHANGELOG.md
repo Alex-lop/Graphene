@@ -13,11 +13,11 @@ real plan and wired to the real commands; `graphene watch --classic` is the olde
 - Enter does the row's own move: accept, try again, sign off. `A` accepts every proposal after one line; a
   proposal opens to show the files it may change, its check and what it waits on; a write the gate stopped needs
   you, and its row says `w widen <path>`.
-- The keys talk to an agent: `t` tells it a line (a Claude Code session hears it with its next write; a task
-  nobody is on yet reads it when it starts), `w` widens a task to what the gate stopped, `x` hands back a running
-  task or reopens a finished one, `r` and `R` run, `D` shows the direction, `:` runs any command. Each is an
-  ordinary `graphene` command; the key bar says what the keys do for the selected row, and the line above it
-  what the last one did.
+- The keys talk to an agent: `t` tells it a line (a Claude Code session hears it with its next write or command; a
+  task nobody is on yet reads it when it starts), `w` widens a task to what the gate stopped, `x` hands back a
+  running task or reopens a finished one, `r` and `R` run, `D` shows the direction, `:` runs any command. Each is an
+  ordinary `graphene` command; the key bar says what the keys do for the selected row, and the line above it what
+  the last one did.
 - `g` is the plan as a graph from your goal down: the goal, its sub-goals, the tasks under them, and arrows for
   what waits on what. `m` is the map of the folders each task may write; its lens (plan, live, changed) follows
   the plan's stage until you turn it with `v`, and its top line says what is true in each.
@@ -50,9 +50,9 @@ confirmed:
   its row), and a second `graphene run`, or `R`, hands its tasks to the run going instead of being refused. One
   started with its own `--with`, `--attempts` or `--max-usd` is still refused.
 - A task of yours that nobody started is done by your word, once the check it has passes.
-- Three moves ask first: `x` on a running task (its agent stops), `r` on a finished one (it reopens), and Enter on
-  the last proposal when accepting it takes the open questions' defaults; Enter then accepts the task its line
-  named, never one proposed while the line was up.
+- Three moves ask first: `x` on a running task (its agent stops), `r` on a task that came back (it reopens the
+  finished task it names), and Enter on the last proposal when accepting it takes the open questions' defaults;
+  Enter then accepts the task its line named, never one proposed while the line was up.
 - A question opens to its whole words and every option, by the number that picks it; a proposal shows its check;
   a task that came back names the files `w` and `b` would give it; `t` on a question answers it, and words typed
   where nobody can hear them are said to go nowhere.
