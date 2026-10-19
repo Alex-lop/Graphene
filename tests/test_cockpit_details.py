@@ -68,14 +68,46 @@ def test_the_panes_are_on_1_to_4_and_d_l_and_r_never_show_one_as_they_drop_and_r
     asyncio.run(go())
 
 
-def test_a_leaf_that_came_back_offers_its_ways_out_without_the_classic_screens_t(repo):
+def test_a_task_that_came_back_lists_no_key_this_screen_does_not_bind_and_says_where_the_rows_keys_act(repo):
+    """The panes are the classic screen's: they listed its ways out of a task that came back as keys (w, b,
+    n, r and t, each with its command) and `l shows the tool calls`, and here none of those keys does
+    anything. They are left out, and a line says, once, where the row's keys act."""
+    from graphene_map.cockpit.details import ROW_KEYS
+
     make_plan(repo, running=True)
     with Store.open(repo) as store:
         plan.release(store, "ids", BOT, "the id lives in db/models.py", wants=["db/models.py"])
         for wide in (60, 120):  # the command on a line of its own, and beside its key
             said = pane_text(store, repo, "ids", "contract", wide).plain
             assert "ask the planner" not in said and "graphene ask" not in said
-            assert "graphene node widen ids" in said  # the ways out the cockpit's keys take are all there
+            assert "widen its scope" not in said and "graphene node" not in said and "sibling" not in said
+            assert said.count(ROW_KEYS) == 1 and "the id lives in db/models.py" in said and "scope" in said
+        plan.start(store, "ids", BOT, repo)  # a session takes it again: no stream, and `l` was its output
+        said = pane_text(store, repo, "ids", "contract", 80).plain
+        assert "l shows" not in said and "tool calls" not in said and ROW_KEYS not in said and "check" in said
+
+
+def test_from_the_graph_the_line_in_the_ways_outs_place_says_where_esc_goes_back_to(repo):
+    """i on the graph opens the same panes, and Esc goes back to the graph, where the row's keys act too: the
+    line that says where they act names the screen under the panes, not the cockpit."""
+    make_plan(repo, running=True)
+    with Store.open(repo) as store:
+        plan.release(store, "ids", BOT, "the id lives in db/models.py", wants=["db/models.py"])
+    app = cockpit(repo, screen="flow")
+    app.open_store = lambda: Store.open(repo)
+
+    async def go():
+        async with app.run_test(size=(100, 30)) as pilot:
+            await pilot.pause(0.1)
+            app.model.selected = "ids"
+            await pilot.press("i")
+            await pilot.pause(0.3)
+            [said] = [line for line in text_of(app).splitlines() if "Esc goes back" in line]
+            await pilot.press("escape")
+            await pilot.pause(0.2)
+            assert app.view == "flow" and "cockpit" not in said
+
+    asyncio.run(go())
 
 
 def test_a_pane_for_a_node_that_left_the_plan_says_so_and_a_pane_that_cannot_be_made_does_not_crash(repo):

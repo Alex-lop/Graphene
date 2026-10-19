@@ -82,3 +82,29 @@ def test_enter_on_the_last_proposal_asks_first_as_it_takes_the_defaults_of_the_o
 
     asyncio.run(go())
     assert node(repo, "more").state == plan.OPEN and board.reads(items(repo)[0]) == "taken"
+
+
+def test_enter_on_the_last_proposal_accepts_it_and_never_one_proposed_while_its_line_was_up(repo):
+    """⏎ is this proposal: the line it asks first on is A's, and y accepts the row's task, not every proposal
+    the store has by then. One an agent proposes while the line is up is the person's to read first, and with
+    it left, no default is taken."""
+    make_plan(repo, question=True, proposal=True)
+    app = cockpit(repo)
+
+    async def go():
+        async with app.run_test(size=(110, 30)) as pilot:
+            await pilot.pause(0.1)
+            app.model.selected = "notes"
+            await pilot.press("enter")
+            await pilot.pause(0.2)
+            assert app.screen.prompt == "accept 1 proposed task and the defaults of 1 question? y and Enter"
+            more = {"id": "more", "title": "more", "scope": ["MORE.md"], "check": "true"}
+            with Store.open(repo) as store:  # an agent proposes another while the line is up
+                plan.propose(store, [more], BOT)
+            await type_in(pilot, "y")
+            await pilot.press("enter")
+            await pilot.pause(0.3)
+
+    asyncio.run(go())
+    assert node(repo, "notes").state == plan.OPEN and node(repo, "more").state == plan.PROPOSED
+    assert board.reads(items(repo)[0]) == "open"

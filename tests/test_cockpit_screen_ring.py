@@ -10,7 +10,7 @@ from test_plan_cli import repo  # noqa: F401  (fixture)
 from graphene_map import board, plan
 from graphene_map import settings as S
 from graphene_map.cockpit.app import Cockpit
-from graphene_map.cockpit.model import Question
+from graphene_map.cockpit.model import Question, Task
 from graphene_map.store import Store
 
 
@@ -82,5 +82,37 @@ def test_a_write_stopped_again_by_a_new_attempt_rings_again():
             ids.stopped = [("db/ids_2.py", 130.0)]  # and stopped on the same path: new, so it rings
             app.look()
             assert said[-1] == "\a\x1b]9;graphene: agent 1 was stopped writing db/ids_2.py: w widens it\a"
+
+    asyncio.run(go())
+
+
+def test_new_proposals_ring_once_for_the_batch_when_no_question_comes_with_them():
+    """Proposals raised "need you" and nothing rang, because a planner's questions come with them; a Claude
+    Code `plan propose`, or an ask that asks nothing, brings none. Now a batch rings once, never per task."""
+
+    async def go():
+        m = scene()  # docs is proposed when the screen opens: shown, unrung
+        app = Cockpit(lambda previous: previous or m)
+        said = []
+        app.writer = said.append
+        async with app.run_test(size=(100, 30)):
+            app.look()
+            assert said == []
+            for k in range(3):
+                m.tasks[f"p{k}"] = Task(f"p{k}", f"proposal {k}", "proposed")
+            app.look()
+            app.look()  # once: the same proposals ring nothing again
+            assert said == ["\a\x1b]9;graphene: 3 tasks proposed\a"]
+            m.tasks["p3"] = Task("p3", "one more", "proposed")
+            m.questions.append(Question("q2", "Tabs?", "spaces", []))
+            app.look()  # a question came with it: the question rings, for both
+            assert said[1:] == ["\a\x1b]9;graphene: a question: Tabs?\a"]
+            m.tasks["p4"] = Task("p4", "the last one", "proposed")
+            app.look()
+            assert said[-1] == "\a\x1b]9;graphene: 1 task proposed\a"
+            m.source = "replay"  # a recording: nothing in it is yours to accept
+            m.tasks["p5"] = Task("p5", "replayed", "proposed")
+            app.look()
+            assert len(said) == 3
 
     asyncio.run(go())

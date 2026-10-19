@@ -72,8 +72,8 @@ KEYS_TO_VERBS = {  # a key, and the verb it asks for (`act`)
 def needs(m: Model) -> dict[str, str]:
     """What needs the person now that the terminal should say, each with the line it says: a question, a
     task that came back, one that waits for a sign-off, a write the gate stopped. Keyed so that each is
-    said once (a task that comes back again, or is stopped again, in a new attempt, is a new one); a
-    proposal is not here: the planner's questions come with it."""
+    said once (a task that comes back again, or is stopped again, in a new attempt, is a new one). Proposals
+    are not here: they ring once a batch (``proposals``), when nothing here comes with them."""
     out = {f"q:{q.id}": f"{'a risk' if q.kind == 'risk' else 'a question'}: {q.text}" for q in m.questions}
     for t in m.tasks.values():
         name = who(t.agent) or t.title
@@ -84,6 +84,12 @@ def needs(m: Model) -> dict[str, str]:
         for path, _when in t.stopped if t.state == "running" else []:
             out[f"stop:{t.id}:{t.started}:{path}"] = f"{name} was stopped writing {path}: w widens it"
     return out
+
+
+def proposals(m: Model) -> set[str]:
+    """The tasks proposed now, keyed apart from `needs`: a batch of new ones rings once ("3 tasks proposed")
+    when no question came with them (a planner's questions do; a Claude Code `plan propose` brings none)."""
+    return {f"proposed:{t.id}" for t in m.tasks.values() if t.state == "proposed"}
 
 
 def text_of(lines: list[Line]) -> Text:
@@ -162,7 +168,7 @@ class Cockpit(App):
         self.shown: tuple = ()  # the screen, row and folder the canvas was last scrolled to
         self.flow_layout: F.Layout | None = None
         self.groups: list[T.Group] = []
-        self.told = set(needs(self.model))  # what needed you when the screen opened: you see it, unrung
+        self.told = set(needs(self.model)) | proposals(self.model)  # what needed you on opening: seen, unrung
         self.writer: Callable[[str], None] | None = None  # where the bell goes; None: this terminal
 
     def compose(self) -> ComposeResult:
@@ -203,7 +209,10 @@ class Cockpit(App):
         nor with no terminal to say it in (a test's, unless it hands a writer)."""
         now = needs(self.model)
         new = [said for key, said in now.items() if key not in self.told]
-        self.told |= set(now)
+        offered = proposals(self.model) - self.told
+        self.told |= set(now) | offered
+        if offered and not new:  # the batch, once; with a question, the question says it
+            new = [f"{len(offered)} task{'s' * (len(offered) > 1)} proposed"]
         write = self.writer or (self._driver.write if self._driver and not self.is_headless else None)
         if not new or write is None or self.model.source == "replay" or self.quiet():
             return
@@ -418,7 +427,7 @@ class Cockpit(App):
         elif action == "take":
             proposed = [t.id for t in m.tasks.values() if t.state == "proposed"]
             if m.questions and proposed == [sel]:  # the last one takes the questions' defaults: it asks, as A
-                self.accept_all()
+                self.accept_all(sel)
             else:
                 d.take(m, sel)
         elif action.startswith("pick:"):
@@ -532,9 +541,10 @@ class Cockpit(App):
 
         self.push_screen(Ask(said), answered)
 
-    def accept_all(self) -> None:
+    def accept_all(self, *ids: str) -> None:
         """A: every proposal, as `graphene plan accept` takes them, once a line has said how many (and that
-        the questions still open then take their defaults, as they do when the whole plan is accepted)."""
+        the questions still open then take their defaults, as they do when the whole plan is accepted). ⏎ on
+        the last one names it (``ids``): one an agent proposes while the line is up is not accepted unread."""
         m, d = self.model, self.doer
         n = sum(t.state == "proposed" for t in m.tasks.values())
         if not n:
@@ -547,7 +557,7 @@ class Cockpit(App):
 
         def answered(typed: str | None) -> None:
             if (typed or "").lower() in ("y", "yes"):
-                d.run(["plan", "accept"])
+                d.run(["plan", "accept", *ids])
             self.paint()
 
         self.push_screen(Ask(said), answered)

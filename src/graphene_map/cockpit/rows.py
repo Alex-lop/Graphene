@@ -166,10 +166,11 @@ def right_of(m: Model, t: Task, width: int) -> list[Seg]:
         if quiet > 8:
             right += [Seg(f"⏸{ago(quiet)}", "bold #e9a23b")]
         return right
-    if t.state == "waiting":
+    if t.state == "waiting":  # who is on what it waits on, else what that is; one in review waits on you
         before = [m.tasks[n] for n in t.needs if n in m.tasks and m.tasks[n].state != "done"]
-        after = ", ".join(who(o.agent) or o.title for o in before)  # who is on it, else what it is
-        return [Seg("← " + after if after else "", "grey50")]
+        after = sorted(("your sign-off: " * (o.state == "review") + named(m, o.id) for o in before), key=len)
+        said = fit("← " + ", ".join(after), max(width // 3, 16))  # the short first: cut to a third of the row
+        return [Seg(said if after else "", "grey50")]
     if t.state == "review":
         proof = f"✓{t.passed}/{t.checks}  " if t.checks else ""
         return [Seg(proof, "#8ab17d"), Seg("⏎ sign off", "bold #c77dff", "take")]
@@ -277,12 +278,13 @@ def offered(m: Model, t: Task, key: str) -> str:
 
 
 def named(m: Model, task_id: str) -> str:
-    """Another task, as a row names it: by the agent on it, else (finished, or never taken) by its title; one
-    the rows leave out (a finished task counted, not shown) by its id, the word its command takes."""
+    """Another task, as a row names it: by the agent on it, else (finished, waiting for your sign-off, or
+    never taken) by its title; one the rows leave out (a finished task counted, not shown) by its id, the
+    word its command takes."""
     o = m.tasks.get(task_id)
     if o is None:
         return task_id
-    return who(o.agent) if o.agent and o.state != "done" else short(o.full, 0) or o.title
+    return who(o.agent) if o.agent and o.state not in ("done", "review") else short(o.full, 0) or o.title
 
 
 def _outside(m: Model, t: Task) -> list[str]:

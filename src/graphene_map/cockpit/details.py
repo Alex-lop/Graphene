@@ -6,12 +6,13 @@ newest last), changes (what it changed, whole, as `graphene node diff` shows it)
 when, how it ended, what the check said, what was refused). 1 to 4 show one, Tab goes on, Esc goes back: no
 key here means what it means one screen down (d drop, r run). They are the same builders the classic screen
 uses (`tui.detail`, `tail_pane`, `diff_pane`, `record_pane`), so a row reads the same here, but for the
-classic screen's `t ask the planner`: in the cockpit t tells the agent.
+classic screen's keys, which this screen does not bind (`untold`): the row's own keys act in the cockpit.
 """
 
 from __future__ import annotations
 
 import contextlib
+import re
 from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace
@@ -70,16 +71,28 @@ def pane_text(
         return Text(f"the {which} pane could not be made: {type(no).__name__}: {no}", style="#ef476f")
 
 
+OFFER = re.compile(r"  [wbnrt]  ")  # a way out of a task that came back, as the classic pane has it: its key
+ROW_KEYS = "the row's keys act on the screen under this one: Esc goes back to it"  # the cockpit, or the graph
+
+
 def untold(text: Text) -> Text:
-    """A leaf that came back, without the classic screen's `t ask the planner` row (and the command under
-    it, where the pane is narrow): the cockpit's t tells the agent, so the row would offer a key that does
-    something else. `:ask` asks the planner."""
-    kept, dropped = [], False
+    """A task's contract without the classic screen's keys, which this screen does not bind: the ways out of a
+    task that came back (w b n r, and t, which asks the planner there and tells the agent in the cockpit),
+    each with what it does and the command under it, and `l shows the tool calls`, which 2 shows here. In the
+    ways out's place, once, a line says where the row's keys act."""
+    kept, gone, at = [], "", None
     for line in text.split("\n", allow_blank=True):
-        said = line.plain.lstrip()
-        dropped = said.startswith("t  ask the planner") or (dropped and said.startswith("graphene ask"))
-        if not dropped:
+        said = line.plain
+        if OFFER.match(said):
+            gone, at = "offer", len(kept) if at is None else at
+        elif said.startswith("its output is the session's"):
+            gone = "sentence"
+        elif not (gone == "offer" and said.startswith("     ") or gone == "sentence" and said.strip()):
+            gone = ""  # past what it does and its command (indented), past the sentence (to its blank line)
+        if not gone:
             kept.append(line)
+    if at is not None:
+        kept.insert(at, Text(ROW_KEYS, style="dim"))
     return Text("\n").join(kept)
 
 

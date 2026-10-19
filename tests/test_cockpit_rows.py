@@ -155,11 +155,27 @@ def test_a_selected_proposal_opens_to_show_what_accepting_it_agrees_to():
 
 
 def test_a_task_that_waits_says_for_whom_and_a_finished_one_says_what_it_changed():
-    text = "\n".join(plain(rows.build_cockpit(scene(), 100)))
-    assert "← agent 1, agent 2" in text and "3 files" in text
+    text = "\n".join(plain(rows.build_cockpit(scene(), 140)))
+    assert "← agent 1, your sign-off: migrate old ids" in text and "3 files" in text
     m = scene()
     m.tasks["ids"].agent = ""  # nobody on it yet: it is named by what it is, never by its id
-    assert "← users return ids, agent 2" in "\n".join(plain(rows.build_cockpit(m, 100)))
+    assert "← users return ids, your sign-off" in "\n".join(plain(rows.build_cockpit(m, 140)))
+
+
+def test_a_task_waiting_on_one_that_waits_for_your_sign_off_says_so_and_not_its_finished_agent():
+    """It said "← agent 2", but agent 2 had finished: its check passed, and what the task waits on is your
+    sign-off. Said whole where the row has room, else cut to a third of it, so the titles keep theirs."""
+    m = scene()  # tests waits on ids (agent 1, running) and migrate (agent 2, waiting for your sign-off)
+    m.tasks["migrate"].full = "Migrate the old ids: both formats keep working"
+    row = next(line for line in rows.build_cockpit(m, 140) if line.row == "tests")
+    assert row.plain().rstrip().endswith("← agent 1, your sign-off: Migrate the old ids")
+    for width in (60, 80, 100):
+        row = next(line for line in rows.build_cockpit(m, width) if line.row == "tests")
+        said = row.plain()[row.plain().index("←") :].rstrip()
+        assert said.endswith("…") and len(said) <= max(width // 3, 16) and row.width() <= width
+    m.tasks["tests"].needs = ["migrate", "ids"]  # the short names first: a cut leaves out the fewest
+    row = next(line for line in rows.build_cockpit(m, 80) if line.row == "tests")
+    assert "← agent 1, your sign-off" in row.plain()
 
 
 def test_a_task_that_changed_a_file_outside_its_scope_says_so():
