@@ -290,6 +290,7 @@ def came_back(store, t: Task, node: P.Node) -> None:
     wait on another, reopen the owner): each a command."""
     t.note = " ".join(str(P.let_go(store, node).get("why") or "").split())[:SAYS]
     t.offers = {key: argv for key, _what, argv in P.offers(store, node)}
+    t.held = P.not_offered(store, node)
     if {"w", "b"} & set(t.offers):  # the paths they take, named in their commands, so its row can say them
         paths = P.offerable(store, node)
         named = {k: [*argv, *paths] for k, argv in t.offers.items() if k in ("w", "b") and len(argv) == 3}

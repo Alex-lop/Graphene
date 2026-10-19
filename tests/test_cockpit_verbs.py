@@ -128,6 +128,23 @@ def test_widen_gives_a_task_the_paths_the_gate_stopped_and_nothing_more(repo, do
     assert doer.said[-1] == "nothing was stopped, so nothing to widen"
 
 
+def test_w_on_a_task_that_came_back_with_nothing_to_widen_says_why_and_never_that_nothing_was_stopped(doer):
+    """A stranger's first hour (second review): w on a task that came back said "nothing was stopped", when
+    the gate had refused a file and the task had named it. What it wanted is another task's (n waits on
+    it), or it named nothing: the command that gives it a path."""
+    m = model_of(ids="came back")
+    m.tasks["ids"].offers = {"n": ["node", "set", "ids", "--needs", "docs"]}
+    doer.widen(m, "ids")
+    assert doer.said[-1] == "what it wanted is another task's: n makes it wait on that task"
+    m.tasks["ids"].offers = {}
+    doer.widen(m, "ids")
+    assert doer.said[-1] == "it named no file outside its scope: `:node widen ids <path>` gives it one"
+    # third review: a task it waits on, reopened, writes the file it named: never "it named no file"
+    m.tasks["ids"].held = "not offered: api.py is docs's (a path has one leaf that writes it)"
+    doer.widen(m, "ids")
+    assert doer.said[-1].startswith("not offered: api.py is docs's") and "tried again once" in doer.said[-1]
+
+
 def test_a_leaf_that_came_back_offers_its_own_commands(repo, doer):
     plan_of(repo)
     m = model_of(ids="came back")

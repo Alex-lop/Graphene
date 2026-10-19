@@ -737,6 +737,25 @@ def test_an_offer_takes_only_the_paths_it_showed(tmp_path):
         assert plan.widen(store, "x", [], alex).scope == ["x.py", "lib/b.py"]
 
 
+def test_a_done_needs_file_is_offered_to_the_task_that_came_back_wanting_it(store, repo, finish):
+    """A stranger's first hour (second review): `readme` waited on `mul`, which landed, then came back
+    wanting mul's file; the offer left out every path of a node it waits on, done ones too, so `w` said
+    "nothing was stopped" and `node widen readme` "nothing … is on record". A done need writes no more:
+    its file is offered, beside `r`, and taking the offer is not refused. A need still to land keeps its
+    paths (test_an_offer_takes_only_the_paths_it_showed)."""
+    plan.propose(store, [api_node(id="mul", scope=["src/api/**"]),
+                         api_node(id="readme", scope=["README.md"], needs=["mul"])], ALEX)  # fmt: skip
+    plan.start(store, "mul", BOT, repo)
+    finish(store, repo, "mul", BOT)
+    plan.start(store, "readme", BOT2, repo)
+    store.log_node("readme", plan._now(), "denied", None, None, None, {"path": "src/api/users.py"})
+    plan.release(store, "readme", BOT2, "the list must match a docstring in src/api/users.py")
+    readme = plan.get(store, "readme")
+    assert plan.offerable(store, readme) == ["src/api/users.py"]
+    assert [key for key, _, _ in plan.offers(store, readme)][:2] == ["w", "b"]
+    assert plan.widen(store, "readme", [], ALEX).scope == ["README.md", "src/api/users.py"]
+
+
 def test_a_reason_naming_many_nodes_is_checked_for_cycles_once(tmp_path, monkeypatch):
     """Recheck 44: a validate for every node the reason named, on every refresh of the screen."""
     import subprocess

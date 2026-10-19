@@ -177,7 +177,14 @@ class Doer:
         if t is None:
             return
         if not t.stopped and "w" not in t.offers:
-            self.say("nothing was stopped, so nothing to widen")
+            if t.state != "came back":
+                self.say("nothing was stopped, so nothing to widen")
+            elif "n" in t.offers:  # what it wanted is a task's that is still to land
+                self.say("what it wanted is another task's: n makes it wait on that task")
+            elif t.held:  # a task it already waits on writes it: it is tried again once that one lands
+                self.say(f"{t.held}; it is tried again once that task lands")
+            else:
+                self.say(f"it named no file outside its scope: `:node widen {t.id} <path>` gives it one")
             return
         self.run(t.offers.get("w") or ["node", "widen", t.id])
 

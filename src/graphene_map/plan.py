@@ -1418,12 +1418,15 @@ def wanted(store, node: Node) -> list[str]:
 
 
 def offerable(store, node: Node, everything: list[Node] | None = None) -> list[str]:
-    """What it wanted that a widen or a sibling can take: not what a node it waits on already may
-    write, and nothing a scope cannot hold (braces, `~`, a path from `/`). The offer shows these and
-    the command takes these, so an offer is never refused when taken."""
+    """What it wanted that a widen or a sibling can take: not what a node it waits on may still write,
+    and nothing a scope cannot hold (braces, `~`, a path from `/`). A done need's paths are offered: it
+    has landed and writes no more (``one_writer`` passes them), and a task that builds on its file is
+    the usual one, beside `r`, which reopens it. The offer shows these and the command takes these, so
+    an offer is never refused when taken."""
     everything = nodes(store) if everything is None else everything
     by_id = {n.id: n for n in everything}
-    waited = [g for i in all_needs(node, by_id) if i in by_id for g in by_id[i].scope]
+    waited = [g for i in all_needs(node, by_id) if i in by_id and by_id[i].state not in (DONE, *GONE)
+              for g in by_id[i].scope]  # fmt: skip
     paths = wanted(store, node)
     held = owners(node, everything, paths)
     return [
