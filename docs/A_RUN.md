@@ -1,5 +1,7 @@
 # A run on feeds, 7 October 2026
 
+*This run is from 7 October 2026, before the cockpit: its screens are the older ones.*
+
 The run the README showed until 13 October, kept whole. `feeds` is a small test repo I built: csv and json load, a new
 supplier's XML doesn't yet, and there are acceptance checks the agents never see. Claude Code (on Sonnet) planned and
 did the work. Trimmed where you see `…`:

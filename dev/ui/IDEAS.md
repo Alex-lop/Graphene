@@ -7,8 +7,8 @@ outline behind `--classic`. The shots below are the playground's; the README has
 ## The problem, in one line
 
 "I tell an AI what I want, it fills in the blanks itself, and I only learn which blanks when the work is done."
-Graphene asks before (the plan, the board) and checks after (proof). **In between, you watch a gauge you cannot
-talk to**, on a screen made for engineers: about 145 words a frame, nine state words, ids and paths.
+Graphene asks before (the plan, the board) and checks after. **In between, you watch a gauge you cannot talk
+to**, on a screen made for engineers: about 145 words a frame, nine state words, ids and paths.
 
 ## What jcode gets right, and what it never does
 
@@ -23,44 +23,40 @@ Copy the **feel**, skip the twelve overlapping surfaces. (Read from its code, no
 
 Move the cursor in one and the others follow.
 
-**1. Cockpit.** Numbers, not paragraphs: `✎ 9/42` files touched of allowed, `✓ 1/3` proofs, `!2` writes stopped,
-`⏸ 79s` quiet, a live tail. The verbs sit on the row: `⏎` take the default, `t` tell it one line, `w` give it the
-folder it was stopped at, `x` pull back. Measured on the shipped recording at 80x24, frame by frame: the cockpit shows a median of 56 words (at most 88),
-the classic screen 98 (at most 135).
+**1. Cockpit (`c`).** Numbers, not paragraphs: `✎ 9/42` files written of allowed, `✓ 1/3` checks, `⏸ 79s` quiet,
+a live tail. On the row: `⏎` its own move, `t` tell, `w` widen, `x` hand back. On 17 October's recording at
+80x24 the cockpit showed a median of 56 words a frame (at most 88), the classic screen 98 (at most 135).
 
 ![cockpit](playground/shots/cockpit.png)
 
-*Found while building it:* real plans have sentence-long titles; the screen needs a three-word name per task.
-
-**2. Territory.** Which folders each task may write. Only Graphene can show this, because scopes never overlap.
-Before you accept a plan: "13 of 636 files may be touched (2%)". Live: touches, stopped writes, "tests waits
-for agent 1: it owns the same files". After: what changed, and anything outside. Press `p`, click a folder: given or taken.
+**2. Map (`m`).** Which folders each task may write. Only Graphene can show this, because scopes never overlap.
+Before you accept: "13 of 636 files may be touched (2%)"; live: touches and stopped writes; after: what changed,
+and anything outside. The lens follows the plan's stage.
 
 ![territory](playground/shots/territory-real.png)
 
-**3. Flow.** The plan as boxes and arrows, from a small layout of mine (stable positions, loops in a lane,
-two-way arrows, click a box). Your pasted diagram lays out on its own: 10 nodes, 13 edges, 136 columns.
+**3. Graph (`g`).** Your goal at the top, its sub-goals under it, their tasks under those, an agent's number on
+its box. Your pasted diagram lays out on its own: 10 nodes, 13 edges, 136 columns.
 
 ![flow](playground/shots/flow-pasted.png)
 
-Honest limits: busier than your hand-drawn one (terminals want right angles); it needs about 120 columns, and
-at 80 shows a node and its neighbours. jcode's prettier diagrams are images, which break in tmux.
+Limits: busier than your hand-drawn one (terminals want right angles); too wide for the screen, it shows
+the selected task's neighbourhood. jcode's prettier diagrams are images, which break in tmux.
 
 ## The graph idea, straight
 
-I get it: a graph is the shortest form of direction. Two cautions. There are **two graphs**: *execution* (tasks
-and what they wait on; Graphene has it, without loops) and *intent* (what you care about and how it relates; your
-diagram). Start with execution, live, agents on the boxes; the planner proposes it and you reshape it with single
-keys. No free-form editor, no rebuilding LangGraph: our edge is that each box is file-scoped, proof-checked work
-with you on the loop.
+I get it: a graph is the shortest form of direction. There are **two graphs**: *execution* (tasks and what they
+wait on; Graphene has it, without loops) and *intent* (what you care about and how it relates; your diagram).
+Execution comes first, agents on its boxes: the planner proposes it, you reshape it with single keys. No
+free-form editor, no rebuilding LangGraph: our edge is that each box is file-scoped work its check proves, with
+you on the loop.
 
 ## What is proven, and what is not
 
 **Tell works, mostly.** Real `claude -p` agents (Haiku, half a cent a run) followed a note on their next step in
 12 runs of 14 when it came with their next write, and in 1 of 12 when it came as a command ended
-(`dev/ui/playground/probe/`; the gate now tells only with the next write). A cheap
-model sometimes ignores a note, so the screen shows "heard" and the live tail, not "done". Not proven: a live
-agent on these screens (a simulator drives the numbers), and Codex.
+(`dev/ui/playground/probe/`; the gate now never tells as a command ends). A cheap
+model sometimes ignores a note, so the screen shows "heard" and the live tail, not "done".
 
 ## Decided while you slept
 
@@ -76,5 +72,5 @@ You said to do what I think is best. Each flips with one line; the new watch fol
 
 ## Next
 
-Not done: sub-goal boxes in the flow view; an hour of real agents on these screens (recordings and throwaway
-plans only); Tell on Codex.
+Done on 18 October: the graph's sub-goal boxes, from your goal down, and agents by number. Not done: an hour of
+real agents on these screens (recordings and throwaway plans only), Tell on Codex, and the intent graph.

@@ -8,12 +8,17 @@ you have tried it, [the first-hour form](../../issues/new?template=first-hour.ym
 ```
 git clone https://github.com/Alex-lop/Graphene && cd Graphene
 uv sync --all-extras
-uv run graphene demo      # the scripted replay: no key, nothing runs
-uv run pytest -q          # about 18 minutes in one process; add -n auto where pytest-xdist is installed
+uv run graphene demo        # the scripted replay: no key, nothing runs
+uv run pytest -q -n auto    # the whole suite: about six minutes on an 11-core laptop
 uv run ruff check
 ```
 
-Python 3.12 or newer. The tests need no key and spend nothing.
+Python 3.12 or newer, on macOS or Linux. The tests need no key and spend nothing.
+
+To look at a screen with no terminal, do what the tests do: drive the app with `App.run_test(size=(80, 24))` and
+`pilot.press` (`tests/test_cockpit_app.py`), then `app.save_screenshot()` writes what it shows as an SVG
+(`dev/screens/meter_shot.py`). To record the demo Graphene ships again after a change to the run:
+`RECORD_DEMO=src/graphene_map/demo.jsonl uv run pytest tests/test_demo_script.py`.
 
 ## Where things are
 

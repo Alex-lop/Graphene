@@ -402,3 +402,103 @@ def test_the_storyboards_narration_gives_w_the_one_verb_the_screen_does():
     narration = " ".join(re.findall(r'^\| \d{2} \|.*\| "(.+)" \|$', text, re.M))
     verbs = re.findall(r"\bw (\w+)", narration)
     assert verbs and all(verb.startswith("widen") for verb in verbs), verbs
+
+
+def test_compare_says_where_the_diff_is_and_quotes_agent_view_and_agent_teams_as_their_docs_say():
+    """docs-audit (18 October): COMPARE said `c` in `graphene watch` shows a sign-off's diff, which is `i`
+    then `c` in the cockpit, and it had no row for Claude Code's Agent View or Agent Teams. Each quote in
+    their rows is one the field reader took from their docs (dev/process/publish/readers/field.md)."""
+    from graphene_map import settings as S
+    from graphene_map.cockpit import app as A
+    from graphene_map.cockpit import details as D
+
+    assert A.KEYS_TO_VERBS["i"] == "details" and D.KEYS["c"] == "changes" and "every" in S.REVIEWS
+    lines = (ROOT / "docs/COMPARE.md").read_text(encoding="utf-8").splitlines()
+    graphene = next(line for line in lines if line.startswith("| **Graphene**"))
+    assert "`review: every`" in graphene and "`i` then `c` in the cockpit shows its diff" in graphene
+    field = doc("dev/process/publish/readers/field.md")
+    for name in ("Claude Code Agent View", "Claude Code Agent Teams"):
+        row = next(line for line in lines if line.startswith(f"| {name} "))
+        quotes = re.findall(r'"([^"]+)"', row)
+        assert len(quotes) >= 2, name
+        for quote in quotes:
+            assert quote in field, quote
+
+
+def test_a_run_says_at_its_top_that_it_is_from_before_the_cockpit():
+    """The README links A_RUN as a real run, and a judge who opens it finds the tree view of 7 October, not
+    the cockpit the README shows: its first line under the title says so."""
+    text = (ROOT / "docs/A_RUN.md").read_text(encoding="utf-8")
+    title, first = [line for line in text.splitlines() if line.strip()][:2]
+    assert title == "# A run on feeds, 7 October 2026"
+    assert first == "*This run is from 7 October 2026, before the cockpit: its screens are the older ones.*"
+
+
+def test_ideas_next_says_what_the_night_did_and_what_is_still_not_done():
+    """dev/ui/IDEAS.md still listed sub-goal boxes as not done once the graph drew them from your goal down
+    (18 October); it stays a three-minute read, under 750 words."""
+    from graphene_map.cockpit import flow_view as FV
+    from graphene_map.cockpit.look import who
+
+    assert FV.TREE == ("goal", "sub-goal") and who("2") == "agent 2"  # boxes for the tree; agents by number
+    text = (ROOT / "dev/ui/IDEAS.md").read_text(encoding="utf-8")
+    assert len(text.split()) < 750
+    done, left = " ".join(text.split("## Next")[1].split()).split(" Not done: ")
+    assert "sub-goal boxes" in done and "agents by number" in done
+    for still in ("an hour of real agents on these screens", "Tell on Codex", "the intent graph"):
+        assert still in left, still
+
+
+def test_the_release_notes_are_this_versions_and_every_command_they_name_is_the_clis():
+    """dev/launch/release-notes.md is pasted into the GitHub release, and it was 0.5.1's, a version PyPI never
+    got. It names pyproject's version and says 0.5.1 was never published; the two install lines are the
+    package's and its `graphene-map` command's; it has six to ten bullets, the watch first; each command it
+    names, with each option, answers `--help`."""
+    import shlex
+    import tomllib
+    from itertools import takewhile
+
+    from typer.testing import CliRunner
+
+    from graphene_map.cli import build
+
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]
+    text = (ROOT / "dev/launch/release-notes.md").read_text(encoding="utf-8")
+    said = " ".join(text.split())
+    assert text.startswith(f"# Graphene {project['version']}\n")
+    assert "0.5.1 was tagged on 16 October and never published" in said
+    assert "graphene-map" in project["scripts"] and project["name"] == "graphene-map"
+    assert "`uv tool install graphene-map`" in said and "`uvx graphene-map demo`" in said
+    bullets = re.findall(r"^- \*\*(.+?)\*\*", text.split("## What you get")[1].split("## ")[0], re.M)
+    assert 6 <= len(bullets) <= 10 and "watch" in bullets[0]
+    runner, ran = CliRunner(), 0
+    for span in re.findall(r"`(graphene [^`]+)`", said):
+        words = shlex.split(span)
+        sub = list(takewhile(lambda w: re.fullmatch(r"[a-z]+", w), words[1:]))  # the command, not its words
+        helped = runner.invoke(build(), [*sub, "--help"], env={"COLUMNS": "200"})
+        assert helped.exit_code == 0, span
+        for option in [w for w in words if w.startswith("--")]:
+            assert option in helped.stdout, (span, option)
+        ran += 1
+    assert ran >= 6
+
+
+def test_contributing_runs_the_suite_as_ci_does_and_each_file_it_points_at_does_what_it_says():
+    """CONTRIBUTING said the suite takes about 18 minutes in one process, with -n auto "where pytest-xdist is
+    installed"; the dev group installs it and CI runs -n auto. Its Python is pyproject's, and the files its
+    lines on looking at a screen and recording the demo point at do what they say."""
+    import tomllib
+
+    pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text())
+    said = doc("CONTRIBUTING.md")
+    assert pyproject["project"]["requires-python"] == ">=3.12" and "Python 3.12 or newer" in said
+    assert any(dep.startswith("pytest-xdist") for dep in pyproject["dependency-groups"]["dev"])
+    ci = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    for command in ("uv sync --all-extras", "uv run ruff check", "uv run pytest -q -n auto"):
+        assert command in said and command in ci, command
+    assert "about 18 minutes" not in said
+    assert "app.run_test(size=" in (ROOT / "tests/test_cockpit_app.py").read_text(encoding="utf-8")
+    assert "app.save_screenshot(" in (ROOT / "dev/screens/meter_shot.py").read_text(encoding="utf-8")
+    recipe = "RECORD_DEMO=src/graphene_map/demo.jsonl uv run pytest tests/test_demo_script.py"
+    script = (ROOT / "tests/test_demo_script.py").read_text(encoding="utf-8")
+    assert recipe in said and 'os.environ.get("RECORD_DEMO")' in script
