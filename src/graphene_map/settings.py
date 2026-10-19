@@ -1,7 +1,8 @@
 """The settings a person states once: the standing conditions (protected paths no scope may include,
-read-only globs, what the planner must never propose) and how big a plan is. They live in the
-store's plan_meta; `graphene config` shows them as text and edits them the way `plan edit` edits
-the plan: a line that cannot be read is refused by its number, and the rest is written all or none.
+read-only globs, what the planner must never propose), how big a plan is, and whether every task waits
+for their sign-off once its check passes. They live in the store's plan_meta; `graphene config` shows
+them as text and edits them the way `plan edit` edits the plan: a line that cannot be read is refused
+by its number, and the rest is written all or none.
 
 plan.py imports this module inside functions only: this one imports plan."""
 
@@ -14,7 +15,8 @@ from graphene_map import plan as P
 
 SIZES = ("auto", "finer", "coarser")
 BOARDS = ("auto", "on")  # auto (unset, study 4): the board shows only for a question; on: every open item
-SCALARS = {"size": SIZES, "board": BOARDS}  # a key with one value of a few, the first when unset
+REVIEWS = ("off", "every")  # off (unset): the check decides; every: a proven task waits for the sign-off
+SCALARS = {"size": SIZES, "board": BOARDS, "review": REVIEWS}  # one value of a few, the first when unset
 GLOBS = ("protected", "readonly")  # a line of either holds globs, comma-separated; lines add up
 HEAD = """\
 # Graphene's settings. A line is `key: value`; a line starting with '#' is not read.
@@ -22,6 +24,7 @@ HEAD = """\
 # never: one thing the planner must never propose, a line each
 # size: auto, finer or coarser (how big a plan the planner proposes)
 # board: auto (only while a question is open) or on (every open item waits on you)
+# review: off (the check decides) or every (a proven task waits for your sign-off before it lands)
 """
 
 
@@ -54,6 +57,14 @@ def board(store) -> str:
     else is open takes its default at accept. on: they show every open item. Unset is auto by study 4
     (dev/test/results-2026-09-29-board.md): the board cost more than the outline on 3 of 4 tasks."""
     return store.meta("settings:board") or "auto"
+
+
+def review(store) -> str:
+    """off (unset): the check decides; a task whose check passes is done, and lands, unless it asks for a
+    sign-off of its own (`signoff: yes`). every: each one waits in review instead, for the person's
+    sign-off (⏎ in graphene watch, `graphene node signoff`), which lands it. `plan.finish` reads it as a
+    task passes, so it holds the tasks proposed before it was said too."""
+    return store.meta("settings:review") or "off"
 
 
 def conditions_for_planner(store) -> str:
@@ -101,9 +112,11 @@ def elsewhere(store) -> list[str]:
 
 def lines_for_screen(store) -> list[str]:
     """What `?` in graphene watch shows under the keys: every setting, a line each, then how to change
-    them. The key's whereabouts are left to `graphene config`: a screen never asks the keychain."""
+    them; review once it is every (off is the check deciding, as before there was a setting). The key's
+    whereabouts are left to `graphene config`: a screen never asks the keychain."""
     said = [line.removeprefix("# ") for line in elsewhere(store)]
     lines = [line for line in render(store).splitlines() if line and not line.startswith("#")]
+    lines = [line for line in lines if line != "review: off"]
     one = [line for line in lines if line.partition(":")[0] in SCALARS]  # one line for the one-value keys
     said += [line for line in lines if line not in one] + [" · ".join(one)]
     return [*said, "graphene config edit changes them"]
@@ -116,6 +129,7 @@ def render(store) -> str:
     out += [f"never: {n}" for n in never(store)]
     out.append(f"size: {size(store)}")
     out.append(f"board: {board(store)}")
+    out.append(f"review: {review(store)}")
     return "\n".join(out) + "\n"
 
 
@@ -150,7 +164,7 @@ def apply(
         if not colon or key not in (*got, *SCALARS):
             raise P.Refused(
                 f"line {no}: {body[:40]!r} is not a setting; the keys are protected, readonly, never, size, "
-                "board"
+                "board, review"
             )
         if key in SCALARS:
             if value not in SCALARS[key]:
@@ -180,7 +194,8 @@ def apply(
             now = "; ".join(line for line in now_said.splitlines() if not line.startswith("#"))
             raise P.Refused(f"the settings were changed by someone else since this text was opened; they now "
                             f"say: {now}. Keep what you want of theirs and save again")  # fmt: skip
-        was = {k: _list(store, k) for k in got} | {"size": size(store), "board": board(store)}
+        was = {k: _list(store, k) for k in got}
+        was |= {"size": size(store), "board": board(store), "review": review(store)}
         for key, values in got.items():
             store.set_meta(f"settings:{key}", json.dumps(values) if values else None)
         for key, values in SCALARS.items():  # unset is the first value; stored only when it is another

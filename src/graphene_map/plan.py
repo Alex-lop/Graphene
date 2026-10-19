@@ -477,12 +477,12 @@ def may_take(node: Node, who: Caller) -> bool:
 
 
 def waits_on_person(
-    node: Node, by_id: dict[str, Node], back: set[str] | frozenset[str] = frozenset()
+    node: Node, by_id: dict[str, Node], back: set[str] | frozenset[str] = frozenset(), every: bool = False
 ) -> list[str]:
     """Why an agent cannot get to this node without a person, as readable reasons; empty when it
     can. A person's node, a sign-off, an unaccepted proposal and a leaf that came back (``back``) each
     stop everything downstream. A proposal waits on its own acceptance alone: accepting it accepts
-    the proposals above it."""
+    the proposals above it. ``every``: `review: every` is set, so every leaf it waits on needs a sign-off."""
     reasons: list[str] = []
     seen: set[str] = set()
     under = kids(list(by_id.values()))
@@ -504,7 +504,7 @@ def waits_on_person(
             reasons.append(f"{n.id} is {n.owner}'s")
         elif not n.scope:  # a sub-goal whose leaves are to come: `ready` skips it, so a run never starts it
             reasons.append(f"{n.id} has no scope and no leaves yet")
-        elif n.signoff and n.id != node.id:
+        elif (n.signoff or every) and n.id != node.id:
             reasons.append(f"{n.id} needs a sign-off")
         for need in all_needs(n, by_id):
             if need in by_id:
@@ -519,17 +519,19 @@ def waits_on_person(
 
 
 def forecast(
-    nodes: list[Node], back: set[str] | frozenset[str] = frozenset()
+    nodes: list[Node], back: set[str] | frozenset[str] = frozenset(), every: bool = False
 ) -> tuple[list[Node], list[tuple[Node, list[str]]]]:
     """What an unattended run will do: the leaves agents can reach by themselves, in order, and the
     ones that will sit waiting, each with who it waits for. Said before the run, so that a plan that
-    stops at a person's node at 01:00 surprises nobody at 08:00. ``back``: the leaves that came back."""
+    stops at a person's node at 01:00 surprises nobody at 08:00. ``back``: the leaves that came back;
+    ``every``: `review: every` holds each leaf for a sign-off, so what waits on one waits for the person."""
     by_id = {n.id: n for n in nodes}
     runs, waits = [], []
     for n in order(leaves(nodes)):
         if n.state in (DONE, *GONE):
             continue
-        why = [f"{n.id} waits for a sign-off"] if n.state == REVIEW else waits_on_person(n, by_id, back)
+        held = n.state == REVIEW
+        why = [f"{n.id} waits for a sign-off"] if held else waits_on_person(n, by_id, back, every)
         if why:
             waits.append((n, why))
         else:
@@ -2391,10 +2393,13 @@ def finish(
     checkout: str | Path | None = None,
 ) -> Node:
     """The boundary. Graphene asks git what changed and runs the check; only then is the node done
-    (or waiting for its sign-off). A person may overrule either with a reason, and the log says so.
+    (or waiting for its sign-off: one it asks for, or every one while the person's setting is
+    `review: every`). A person may overrule either with a reason, and the log says so.
     What is decided after the check is stamped after it (``given``: a time the caller chose), so the
     log reads in time order: `finished` had carried the moment `done` was asked, and came after its own
     `check_passed` a second later."""
+    from graphene_map import settings as S  # it imports this module
+
     given, now = now, now or _now()
     node = get(store, node_id)
     began = node.started_at  # the hold this `done` answers for: it may be let go, and taken again, meanwhile
@@ -2502,7 +2507,8 @@ def finish(
                 f"{node.id} was {was.get(node.state, node.state)} while its check ran, so it is not done; "
                 "its work stays"
             )
-        node.state = REVIEW if node.signoff and override is None else DONE
+        held = node.signoff or S.review(store) == "every"  # read as it passes: what was proposed before too
+        node.state = REVIEW if held and override is None else DONE
         node.finished_at = now
         if blobs:  # the content it left: what a leaf that needs it asks for, wherever it starts
             detail["blobs"] = blobs
@@ -2708,12 +2714,23 @@ def signoff(
     store, node_id: str, who: Caller, now: str | None = None, checkout: str | Path | None = None
 ) -> Node:
     """A person's say-so: a node waiting in review is done. One that did not land is merged here first,
-    as the run would have (refused when the merge is not clean), or was merged by hand, and where it
-    landed is recorded, or what needs it waits for ever. ``checkout``: where it lands; with none, the
-    repo the store belongs to is meant."""
+    as the run would have (refused when the merge is not clean, or a check is red on it), or was merged
+    by hand, and where it landed is recorded, or what needs it waits for ever. ``checkout``: where it
+    lands; with none, the repo the store belongs to is meant. One sign-off at a time, the next waiting
+    for the last to end: each is checked on its merge with what landed before it, and one given while
+    another's check ran was checked without that one (⏎ down the review list landed two tasks red
+    together; ⏎ twice put a landed task back in review)."""
+    import fcntl
+
+    _person_only(who, "signing a node off")  # refused before it waits
+    with open(store.path.with_name("signoff.lock"), "w") as one:
+        fcntl.flock(one, fcntl.LOCK_EX)  # let go as it closes, however the process ends
+        return _signoff(store, node_id, who, now, checkout)
+
+
+def _signoff(store, node_id: str, who: Caller, now: str | None, checkout: str | Path | None) -> Node:
     import subprocess
 
-    _person_only(who, "signing a node off")
     given, now = now, now or _now()
     checkout = checkout if checkout is not None else store.path.parent.parent
     left = unlanded(store, node_id)
@@ -2746,7 +2763,18 @@ def signoff(
         if tried:  # the clean merge the run would have made, made now; land() records where it landed
             from .run import land  # run imports this module
 
-            merged = land(store, Path(checkout), Path(tree), get(store, node_id), lambda _: None)
+            # checked on the merge as a run lands it, with what landed since it was cut: under `review: every`
+            # each task is signed off alone, and two yeses must not land two green apart and red together
+            ran = [(n.check, n.id, e["detail"]["commit"]) for n in nodes(store, (DONE,)) if n.check
+                   and not sandboxed(store, n) for e in store.node_log(n.id, ("landed",))[-1:]]  # fmt: skip
+            merged = land(store, Path(checkout), Path(tree), get(store, node_id), lambda _: None, ran=ran)
+        why = (unlanded(store, node_id) or {}).get("why", [""])[0] if tried and not merged else ""
+        if why.startswith("it passes on its base"):  # run._red_on_merge's: it merges, and a check is red
+            raise refusal(
+                f"{node_id} stays in review: {why}",
+                do=f"graphene node reopen {node_id} has it done again on top of what is here now; or "
+                f"git merge {branch}, then graphene node signoff {node_id}, lands it as it is",
+            )
         if not merged:  # signed off unmerged, it read as landed and what needed it went ahead without it
             raise refusal(
                 f"{node_id}'s work is on {branch} and not in this checkout yet"

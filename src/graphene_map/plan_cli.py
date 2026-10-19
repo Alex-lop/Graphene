@@ -26,6 +26,7 @@ from . import extra
 from . import gate as G
 from . import plan as P
 from . import plan_text as T
+from . import settings as S
 from . import views as V
 
 # What `graphene` and `graphene plan` say in a repository with nothing planned: paragraph in, tree out.
@@ -869,7 +870,8 @@ def register(cli: typer.Typer, root, open_store, fail):
             if P.goal(store) != goal_was:
                 out(f"the plan: {P.goal(store)}")
             now = P.nodes(store)
-            runs, waits = P.forecast(now, {n.id for n in now if P.came_back(store, n)})
+            every = S.review(store) == "every"  # each leaf then waits for a sign-off: what needs it, too
+            runs, waits = P.forecast(now, {n.id for n in now if P.came_back(store, n)}, every)
             if not accepted:  # said, and still exit 0: the README chains `plan accept && run`
                 out("nothing to accept: no proposal is open")
             reach = f"next: `graphene run` reaches {', '.join(n.id for n in runs)}  (R in graphene watch)"

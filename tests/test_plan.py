@@ -183,6 +183,16 @@ def test_the_forecast_says_before_the_run_what_will_wait_for_a_person(store):
     ]
 
 
+def test_under_review_every_the_forecast_says_what_waits_on_a_leaf_waits_for_its_sign_off(store):
+    """With `review: every` each leaf that passes waits for the person, so a run reaches only the leaves
+    that wait on nothing: the forecast after `plan accept` must not say it reaches the rest."""
+    plan.propose(store, [api_node(id="api"), api_node(id="wire", needs=["api"], scope=["src/app.py"])], ALEX)
+    runs, waits = plan.forecast(plan.nodes(store), every=True)
+    assert [n.id for n in runs] == ["api"]
+    assert [(n.id, why) for n, why in waits] == [("wire", ["api needs a sign-off"])]
+    assert [n.id for n in plan.forecast(plan.nodes(store))[0]] == ["api", "wire"]  # off: the check decides
+
+
 def test_a_proposed_leaf_waits_on_its_own_acceptance_once_not_on_the_sub_goal_above_it_too(store):
     """walks.md judge 11: `x will wait: feed is a proposal nobody has accepted; x is a proposal nobody
     has accepted`. Accepting x accepts the proposals above it, so the one reason is x's own."""

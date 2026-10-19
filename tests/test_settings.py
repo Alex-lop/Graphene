@@ -22,7 +22,8 @@ size: finer
 def test_nothing_set_reads_as_empty_and_auto(store):
     assert (S.protected(store), S.readonly(store), S.never(store), S.size(store)) == ([], [], [], "auto")
     assert S.conditions_for_planner(store) == ""
-    assert S.render(store).endswith("size: auto\nboard: auto\n") and S.board(store) == "auto"
+    assert S.render(store).endswith("size: auto\nboard: auto\nreview: off\n") and S.board(store) == "auto"
+    assert S.review(store) == "off"
 
 
 def test_a_person_writes_them_and_they_read_back(store):
@@ -61,6 +62,8 @@ def test_a_setting_left_out_is_cleared(store):
         ("size: auto\nsize: finer", 3, "line 2"),
         ("board: off", 2, "board is auto or on"),
         ("board: auto\nboard: on", 3, "line 2"),
+        ("review: on", 2, "review is off or every"),
+        ("review: every\nreview: off", 3, "line 2"),
     ],
 )
 def test_a_bad_line_is_refused_by_its_number_and_nothing_is_written(store, bad, no, words):
@@ -94,3 +97,19 @@ def test_the_board_setting_is_auto_unset_and_on_once_said(store):
     assert store.node_log("*", ("settings",))[-1]["detail"]["changed"] == {"board": ["auto", "on"]}
     S.apply(store, "size: auto\n", ALEX)  # left out, it is cleared: auto, as before it was said
     assert S.board(store) == "auto"
+
+
+def test_review_is_off_unset_and_every_once_said(store):
+    assert S.review(store) == "off"  # the check decides, as it did before the setting
+    S.apply(store, "review: every\n", ALEX)
+    assert S.review(store) == "every" and "review: every\n" in S.render(store)
+    assert store.node_log("*", ("settings",))[-1]["detail"]["changed"] == {"review": ["off", "every"]}
+    assert "# review: off (the check decides) or every (" in S.render(store)  # what it does, in a line
+    S.apply(store, "size: auto\n", ALEX)  # left out, it is cleared: off, as before it was said
+    assert S.review(store) == "off"
+
+
+def test_the_help_screen_says_review_once_it_is_every(store):
+    assert not any("review" in line for line in S.lines_for_screen(store))  # off: as before the setting
+    S.apply(store, "review: every\n", ALEX)
+    assert "size: auto · board: auto · review: every" in S.lines_for_screen(store)  # no row more
