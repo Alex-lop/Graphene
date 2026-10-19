@@ -1,3 +1,3 @@
 """Graphene: a plan a person and their coding agents share, and the record of each node's work."""
 
-__version__ = "0.5.1"
+__version__ = "0.6.0"

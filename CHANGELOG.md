@@ -1,8 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.6.0
 
-The new watch (17 October). 0.5.1 holds the older screen; `graphene watch` now opens the one Alex judged in
+The first release on PyPI since 0.5.0: it holds everything under 0.5.1 below (never published) as well as this.
+
+The new watch (17 October). 0.5.1 had the older screen; `graphene watch` now opens the one Alex judged in
 `dev/ui/playground/`, fed by the real plan and wired to the real commands. Each line is one change.
 - `graphene watch` is a cockpit: a row a task, with its agent's number, what it did last, files touched of files
   allowed, checks passed, and how long it has been quiet. What waits for you is on top and Enter takes it.
@@ -19,8 +21,14 @@ The new watch (17 October). 0.5.1 holds the older screen; `graphene watch` now o
   `graphene demo --classic` plays it in the older outline. The README's GIF and stills are that screen.
 - The cockpit reads a plan in a few milliseconds (53 ms at 22,000 log rows), and a closed terminal ends it.
 - Help text no longer fails on GitHub's runners, which force colour: an autouse fixture turns it off.
+- On macOS, `graphene run` on a terminal that is not its session's own (an agent's pty) no longer stops itself
+  half a second in: its check's bash took that terminal and revoked it as it exited. A check gets no terminal.
+- The cockpit no longer fails on a tick that lands while it closes (`NoMatches: #bar`).
 
-## 0.5.1 (14 October 2026)
+## 0.5.1 (tagged 16 October 2026, never published)
+
+The v0.5.1 tag's release run failed its tests (help text on GitHub's runners, which force colour), so nothing
+was uploaded, and PyPI went from 0.5.0 to 0.6.0. What follows is in 0.6.0.
 
 Everything since the v0.5.0 tag. The wheel on PyPI as 0.5.0 was uploaded on 13 October from that tag, which is
 the commit of 7 October (`a96fb48`), so it holds none of what follows: the timeline view, `r` to reopen the

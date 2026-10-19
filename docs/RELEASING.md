@@ -29,6 +29,10 @@ Publishing is driven by a git tag: push the tag, GitHub Actions builds and publi
    --cheat`, in a throwaway home, retrying while PyPI's index catches up. If that step fails the version is already
    on PyPI: the fix is a new version, and `gh run watch` shows the CI legs nested under the release run.
 
+   If the run fails before the upload (a red leg, as v0.5.1's did), nothing reached PyPI, but the tag is public:
+   leave it where it is, fix main, bump to the next version and tag that. The changelog keeps the skipped version's
+   heading and says it was never published.
+
 ## First time only
 
 PyPI has to be told to trust this repository. On PyPI, add a trusted publisher

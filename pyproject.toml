@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "graphene-map"
-version = "0.5.1"
+version = "0.6.0"
 description = "Keep Claude Code and Codex inside the files you agreed to, and call a change done only when your tests pass."
 readme = "README.md"
 license = "Apache-2.0"
