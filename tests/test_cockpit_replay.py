@@ -266,3 +266,20 @@ def test_at_80_columns_the_top_line_still_says_no_model_ran(tmp_path):
 
     asyncio.run(go())
 
+
+def test_r_plays_the_replay_again_and_is_not_also_the_cockpits_run(tmp_path):
+    """r is the replay's "again", and the cockpit's r (run the task under the cursor) heard it too, so every
+    replay played again under the words "a replay: nothing runs here"."""
+    from graphene_map.cockpit.replay import REFUSED
+
+    async def go():
+        app, _, _ = replay(tmp_path)
+        async with app.run_test(size=(100, 30)) as pilot:
+            await pilot.pause(0.2)
+            await pilot.press("space", "full_stop", "full_stop")
+            await pilot.press("r")
+            await pilot.pause(0.3)
+            assert REFUSED not in [said for _, said in app.model.feed]
+
+    asyncio.run(go())
+

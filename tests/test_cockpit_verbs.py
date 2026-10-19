@@ -208,6 +208,15 @@ def test_an_ask_that_ends_says_what_the_planner_proposed_not_the_paragraph(repo,
     assert doer.said[-1] == "the planner proposed nothing and put nothing on the board"
 
 
+def test_a_talk_to_the_planner_typed_at_the_colon_runs_as_a_process_and_never_freezes_the_screen(doer):
+    """`:talk …` asks a planner (it can take a minute, and it spends), and it ran in the screen's own
+    process, so the screen froze until it ended. It goes where ask and run go."""
+    went = []
+    doer.background = lambda argv: went.append(argv)
+    doer.command("talk why ids")
+    assert went == [["talk", "why", "ids"]]
+
+
 def test_the_gist_names_the_command_and_says_the_first_line_it_said():
     assert gist(["board", "take", "q1"], 0, "q1: taken\nmore") == "graphene board take q1: taken"
     assert gist(["node", "drop", "x"], 1, "") == "✗ graphene node drop x"

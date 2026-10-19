@@ -27,7 +27,7 @@ from .look import who
 from .model import Model
 
 RUN_WITH = ["--parallel", "4"]  # ready leaves at once, a worktree each, landed here as they pass
-SLOW = (["run"], ["ask"], ["node", "split"], ["node", "done"], ["node", "signoff"])
+SLOW = (["run"], ["ask"], ["talk"], ["node", "split"], ["node", "done"], ["node", "signoff"])  # minutes long
 
 
 def gist(argv: list[str], code: int, said: str) -> str:

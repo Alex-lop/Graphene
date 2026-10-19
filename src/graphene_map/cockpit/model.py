@@ -13,7 +13,6 @@ from dataclasses import dataclass, field
 from . import territory as T
 from .look import PALETTE, SPARK, color_of
 
-LIVE_STATES = ("running", "ready", "review", "proposed", "came back", "waiting", "yours")
 NEEDS_YOU = ("review", "came back", "yours", "proposed")  # where the move is the person's
 ORDER = ("running", "ready", "waiting", "done")  # then the rest, as they are going
 

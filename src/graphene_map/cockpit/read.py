@@ -195,8 +195,6 @@ def epoch(stamp: str | None) -> float:
 
 def recent(store, node_id: str, kinds: tuple[str, ...], limit: int = ROWS) -> list[dict]:
     """The latest rows of these kinds on a leaf, oldest first, their detail as a dict."""
-    import json
-
     rows = store.conn.execute(
         f"SELECT * FROM node_log WHERE node_id = ? AND kind IN ({', '.join('?' for _ in kinds)}) "
         "ORDER BY id DESC LIMIT ?",

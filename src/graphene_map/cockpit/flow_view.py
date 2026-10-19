@@ -54,7 +54,7 @@ def drawn(edges: list[F.GEdge]) -> list[F.GEdge]:
 
 
 def build_flow(
-    nodes: list[F.GNode], edges: list[F.GEdge], width: int, selected: str | None, pan: int = 0
+    nodes: list[F.GNode], edges: list[F.GEdge], width: int, selected: str | None
 ) -> tuple[list[Line], F.Layout, str]:
     """Lay the graph out as wide as it will go, then shrink labels, then show the neighbourhood. Nothing to
     draw is one line that says so."""
@@ -94,8 +94,8 @@ def build_flow(
     lines = []
     for y, row in enumerate(lay.cells):
         segs: list[Seg] = []
-        for x, (ch, st) in enumerate(row[pan : pan + width]):
-            nid = lay.at(x + pan, y)
+        for x, (ch, st) in enumerate(row[:width]):
+            nid = lay.at(x, y)
             style = STYLES.get(st, st)
             if segs and segs[-1].style == style and segs[-1].action == (f"select:{nid}" if nid else ""):
                 segs[-1].text += ch

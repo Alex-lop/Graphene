@@ -150,7 +150,7 @@ class CockpitReplay(Cockpit):
         *Cockpit.BINDINGS,
         Binding("space", "pause", show=False, priority=True),
         Binding("full_stop", "next_change", show=False),
-        Binding("r", "again", show=False),
+        Binding("r", "again", show=False, priority=True),  # before the cockpit's own r, which would refuse
     ]
 
     def __init__(self, repo: Path, head: dict, lines: list[dict]) -> None:

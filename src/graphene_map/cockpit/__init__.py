@@ -6,8 +6,8 @@ with the commands that exist on their own. Two more screens share its selection:
 may write (territory), and the plan as boxes and arrows (flow).
 """
 
-from collections.abc import Callable  # noqa: E402
-from pathlib import Path  # noqa: E402
+from collections.abc import Callable
+from pathlib import Path
 
 
 def run(root: Path, open_store: Callable, every: float = 1.0) -> None:
