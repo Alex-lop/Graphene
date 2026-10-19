@@ -473,3 +473,24 @@ def test_the_replays_map_offers_only_what_reads_there_and_p_paints_nothing(tmp_p
 
     asyncio.run(go())
 
+
+
+def test_the_live_takes_news_stays_up_through_a_change_that_says_nothing(tmp_path):
+    """The replays walk (third review): stepping `graphene demo --live`, the news went blank at nine changes
+    of bookkeeping: the news fades six seconds after it was said on the model's clock, and a replay's clock
+    jumps with the recording's, 8 to 80 seconds between changes there. The last news stays up."""
+    head, lines = D.load(D.LIVE_TAKE, 1.0)
+
+    async def go():
+        app = CockpitReplay(D.repository(tmp_path, head), head, lines)
+        async with app.run_test(size=(120, 40)) as pilot:
+            await pilot.pause(0.2)
+            await pilot.press("space")
+            blank = []
+            while app.next < len(lines):
+                await pilot.press("full_stop")
+                if app.model.feed and not app.model.latest():
+                    blank.append(app.next)
+            assert blank == []
+
+    asyncio.run(go())

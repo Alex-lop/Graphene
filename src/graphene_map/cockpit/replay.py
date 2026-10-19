@@ -201,6 +201,8 @@ class CockpitReplay(Cockpit):
             stamps = [epoch(r["timestamp"]) for r in store.node_log()]
             m = read(store, self.root, previous, now=max(stamps) if stamps else 0.0, files=self.files)
         m.source, m.banner = "replay", banner(self.head, self.state)
+        if m.feed:  # the last news stays up: the clock jumps with the recording's, a quiet change too
+            m.feed[-1] = (m.clock, m.feed[-1][1])
         return m
 
     def on_mount(self) -> None:

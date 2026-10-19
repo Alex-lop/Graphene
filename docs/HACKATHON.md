@@ -344,6 +344,7 @@ No key, and nothing spent: the replays and the locks.
 
 ```
 uvx --from graphene-map graphene demo          # the scripted stand-in's run of the Nemotron path, in the cockpit
+uvx --from graphene-map graphene demo --live   # a live run on Token Factory, 9 October: Nano, its Sandbox, its bill
 uvx --from graphene-map graphene demo --cheat  # a script tries seven ways round the locks; the real ones answer
 ```
 
@@ -351,7 +352,7 @@ In the cockpit, `j` and `k` move, `i` opens the details, `g` the graph, `m` the 
 lists the keys and `q` leaves; in a replay, space pauses, `.` steps and `r` plays it again. Keys that would change
 the plan say "a replay: nothing runs here".
 
-Two live Nemotron runs on Token Factory, replayed with no key, from a clone:
+Both live Nemotron runs on Token Factory, replayed with no key, from a clone (`--live` is the first):
 
 ```
 git clone https://github.com/Alex-lop/Graphene && cd Graphene

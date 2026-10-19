@@ -689,6 +689,9 @@ def register(cli: typer.Typer, root, open_store, fail):
         classic: bool = typer.Option(
             False, "--classic", help="Replay it in the older screen: the plan as an outline, with a pane."
         ),
+        live: bool = typer.Option(
+            False, "--live", help="Replay a live run on Nemotron through Token Factory, as it ran."
+        ),
     ) -> None:
         """Replay a recorded run in `graphene watch`, change by change.
 
@@ -712,10 +715,11 @@ def register(cli: typer.Typer, root, open_store, fail):
                 fail(f"cannot write {record}: {no.strerror or no}", 1)
             typer.echo(f"recorded {n} changes to {record}", err=True)
             return
+        shown = recording or (D.LIVE_TAKE if live else D.SHIPPED)
         try:
-            head, lines = D.load(recording or D.SHIPPED, speed)
+            head, lines = D.load(shown, speed)
         except (OSError, ValueError, KeyError) as no:
-            fail(f"cannot replay {recording or D.SHIPPED}: {no}", 1)
+            fail(f"cannot replay {shown}: {no}", 1)
         with tempfile.TemporaryDirectory(prefix="graphene-demo-") as tmp:
             try:
                 repo = D.repository(Path(tmp), head)

@@ -303,7 +303,8 @@ takes the hooks out, which ends the recording; what they recorded stays until yo
 `graphene --help` lists nine commands. These work too, and `--help` after any of them says more.
 
 - `graphene demo --cheat` plays a script that tries seven ways round the locks against the real hook, git and check:
-  six refused, one flagged, at $0. A script, not a model.
+  six refused, one flagged, at $0. A script, not a model. `graphene demo --live` replays a live run on Nemotron
+  through Token Factory (9 October), as it ran.
 - `graphene plan prompts leaf|strict` sets what a prompt typed into a session means.
 - `graphene plan ack` makes the uncommitted changes no leaf made yours.
 - `graphene node start <id>` takes a node and prints its contract.

@@ -36,6 +36,8 @@ real plan and wired to the real commands; `graphene watch --classic` is the olde
   sub-goals and four tasks, three agents at once, a hand-back that is widened and tried again under the same
   number, a task that waits on two. It opens on the plan, its news line narrates, and at 80 columns its top line
   still says no model ran. The README's GIF and stills are filmed from it (`docs/assets/watch.tape`).
+- `graphene demo --live` replays a live run on Nemotron through Token Factory (9 October) as it ran, from the
+  package, with no key: Nano's three tasks in a Sandbox, each with its bill.
 
 Review every task before it lands (19 October).
 - `review: every` in `graphene config edit` holds every task whose check passes for your sign-off, which lands it

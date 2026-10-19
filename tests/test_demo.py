@@ -284,6 +284,26 @@ def test_demo_once_needs_no_key_and_no_network_and_prints_the_banner_and_the_end
     assert not list((tmp_path / "tmp").iterdir())
 
 
+def test_demo_live_replays_a_live_nemotron_take_shipped_in_the_package_as_it_ran(tmp_path, monkeypatch):
+    """A judge (second review): the one-command demo is the stand-in's, its model named "stand-in", and
+    the live takes needed a clone and a dev environment. `--live` replays one of them from the package, with
+    no key and no network: the take of 9 October, the very file tests/recordings keeps."""
+    def no_network(*_):
+        raise AssertionError("graphene demo reached for the network")
+
+    monkeypatch.setattr(socket.socket, "connect", no_network)
+    monkeypatch.delenv("NEBIUS_API_KEY", raising=False)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("COLUMNS", "200")
+    kept = Path(__file__).parent / "recordings" / "loop-nemotron-take-2.jsonl"
+    assert demo.LIVE_TAKE.read_bytes() == kept.read_bytes()
+    said = CliRunner().invoke(build(), ["demo", "--live", "--once"])
+    assert said.exit_code == 0, said.output
+    first = said.stdout.splitlines()[0]
+    assert first.startswith("replay · as it ran, live · 2026-10-09 · ") and "stand-in" not in said.stdout
+    assert "3 leaves, 3 done" in said.stdout
+
+
 def test_the_top_lines_day_is_the_one_the_rows_under_it_are_stamped_with(monkeypatch):
     """The shipped recording is stamped 2026-10-19T04:04:40Z: in Los Angeles the top line said 2026-10-18
     (the local day) over rows that say 2026-10-19, and the tests saw one day only because TZ is pinned to

@@ -78,7 +78,7 @@ graphene key set                                     # or NEBIUS_API_KEY
 graphene init --planner nemotron --executor nemotron
 ```
 
-Nemotron 3 Ultra reads your repository and plans, in a strict JSON schema, tasks Graphene can hold. Nemotron 3 Nano does them in Graphene's own tool loop, whose writes refuse a file outside the task, and a refused attempt steps up to Super. Token Factory made the split cheap: one endpoint, one family in three sizes, a price on every call, so each task has its own bill (408 calls in a night came to $1.80). It ran live in practice and in 31 demo takes on 7 to 9 October; the rest is tested against a scripted stand-in, which `graphene demo` replays. [Details, and every number's source.](https://github.com/Alex-lop/Graphene/blob/main/docs/HACKATHON.md)
+Nemotron 3 Ultra reads your repository and plans, in a strict JSON schema, tasks Graphene can hold. Nemotron 3 Nano does them in Graphene's own tool loop, whose writes refuse a file outside the task, and a refused attempt steps up to Super. Token Factory made the split cheap: one endpoint, one family in three sizes, a price on every call, so each task has its own bill (408 calls in a night came to $1.80). It ran live in practice and in 31 demo takes on 7 to 9 October, and `uvx graphene-map demo --live` replays one of them as it ran; the rest is tested against a scripted stand-in, which `graphene demo` replays. [Details, and every number's source.](https://github.com/Alex-lop/Graphene/blob/main/docs/HACKATHON.md)
 
 ## Does anything leave my computer?
 
