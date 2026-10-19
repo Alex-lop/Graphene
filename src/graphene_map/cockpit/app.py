@@ -129,7 +129,7 @@ class Cockpit(App):
                           scrollbar-color-hover: #3a4357; scrollbar-color-active: #4cc9f0; }
     #feed { height: 1; }
     #keys { height: 1; background: #181b22; color: #7d8492; }
-    #tell { display: none; height: 3; }
+    #tell { display: none; height: 0; border: none; padding: 0; }  /* it takes the keys; its row shows it */
     #tell.on { display: block; }
     """
 
@@ -261,6 +261,8 @@ class Cockpit(App):
         if self.tell_open:
             t = m.tasks.get(self.tell_for)
             return f"Enter sends to {who(t.agent) if t and t.agent else 'its agent'} · Esc cancels"
+        if self.screen_stack and isinstance(self.screen_stack[-1], Ask):  # a prompt has the keys
+            return "Enter sends · Esc cancels"
         q = next((q for q in m.questions if q.id == m.selected), None)
         t = m.tasks.get(m.selected)
         if q:
@@ -278,6 +280,9 @@ class Cockpit(App):
         m = self.model
         nodes, edges = FV.flow_graph(m)
         lines, self.flow_layout, note = FV.build_flow(nodes, edges, width, m.selected)
+        if not nodes:  # an empty screen says what it will show, not nothing at all
+            said = " Nothing is planned yet: the graph draws each task and what it waits on."
+            return [Line([]), Line([Seg(said, "grey62")])]
         sel = m.tasks.get(m.selected)
         info = f" {sel.title}" if sel else ""
         if sel:
@@ -438,6 +443,7 @@ class Cockpit(App):
     def commanded(self, text: str | None) -> None:
         """The line typed after `:`. `ask` alone is a paragraph, written in your editor, not on one line."""
         if not text or self.doer is None:
+            self.paint()  # the prompt is gone: the key bar says the row's keys again
             return
         words = text.strip().removeprefix("graphene ").strip()
         if words == "ask":
@@ -487,6 +493,7 @@ class Cockpit(App):
         def answered(typed: str | None) -> None:
             if (typed or "").lower() in ("y", "yes"):
                 d.run_ready()
+            self.paint()
 
         self.push_screen(Ask(said), answered)
 
@@ -506,6 +513,7 @@ class Cockpit(App):
         def answered(typed: str | None) -> None:
             if (typed or "").lower() in ("y", "yes"):
                 d.run(["plan", "accept"])
+            self.paint()
 
         self.push_screen(Ask(said), answered)
 

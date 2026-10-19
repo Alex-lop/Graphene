@@ -128,6 +128,24 @@ def test_in_flow_the_arrows_move_to_the_nearest_box():
     run(go())
 
 
+def test_the_line_being_told_shows_on_its_row_only_and_the_rows_do_not_jump(tmp_path):
+    from textual.widgets import Input
+
+    async def go():
+        app = Cockpit(lambda previous: previous or scene(), root=tmp_path)
+        async with app.run_test(size=(100, 30)) as pilot:
+            await pilot.pause(0.1)
+            high = app.query_one(ScrollableContainer).size.height
+            await pilot.press("t", "u", "s", "e")
+            await pilot.pause(0.1)
+            box = app.query_one("#tell", Input)
+            assert box.value == "use" and box.size.height == 0
+            assert app.query_one(ScrollableContainer).size.height == high  # no box pushes the rows up
+            assert any("tell agent 1: use▌" in line.plain() for line in app.query_one(Canvas).lines)
+
+    run(go())
+
+
 def test_the_colon_line_says_what_it_takes_before_anything_is_typed(tmp_path):
     async def go():
         app = Cockpit(lambda previous: previous or scene(), root=tmp_path)
@@ -135,6 +153,11 @@ def test_the_colon_line_says_what_it_takes_before_anything_is_typed(tmp_path):
             await pilot.press("colon")
             await pilot.pause(0.2)
             assert app.screen.prompt == "a graphene command: ask …, run, plan accept, stop"
+            keys = str(app.query_one("#keys", Static).render()).strip()
+            assert keys == "Enter sends · Esc cancels"  # the key bar says what the keys do while it is open
+            await pilot.press("escape")
+            await pilot.pause(0.2)
+            assert "Esc cancels" not in str(app.query_one("#keys", Static).render())
 
     run(go())
 
@@ -346,6 +369,9 @@ def test_the_three_screens_open_on_a_plan_with_nothing_in_it():
                 await pilot.press(key)
                 await pilot.pause(0.05)
             assert app.is_running and app.view in ("cockpit", "flow", "territory")
+            await pilot.press("g")  # the graph of nothing says what it will draw, in a line that fits
+            [said] = [line.plain() for line in app.query_one(Canvas).lines if line.plain().strip()]
+            assert said.strip().startswith("Nothing is planned yet") and len(said) <= 79
 
     run(go())
 

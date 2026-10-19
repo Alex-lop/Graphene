@@ -42,9 +42,11 @@ def build_head(m: Model, width: int) -> list[Line]:
         Seg(f"{done}/{total}", "bold #8ab17d"), Seg(" proven  ", "#8ab17d"),
     ]  # fmt: skip
     cells = min(width - span(counts) - 2, 30)
-    if cells >= 10:  # the bar, where it fits beside the numbers
+    if cells >= 10:  # the bar, where it fits beside the numbers: proven in green, running in amber
         fill = round(cells * done / max(total, 1))
-        counts += [Seg("▰" * fill, "#8ab17d"), Seg("▱" * (cells - fill), "grey35")]
+        busy = min(cells - fill, round(cells * running / max(total, 1)))
+        counts += [Seg("▰" * fill, "#8ab17d"), Seg("▰" * busy, RUNNING)]
+        counts += [Seg("▱" * (cells - fill - busy), "grey35")]
     counted = [Line(pad(counts, width))] if m.order() or m.folded_done else []  # nothing planned: no count
     return [Line(pad(head, width)), *counted, Line([Seg("─" * width, "grey30")])]
 
@@ -64,6 +66,10 @@ def build_cockpit(m: Model, width: int, *, tell: str | None = None) -> list[Line
         out += task_lines(m, t, width, expanded=(rid == sel), tell=tell if rid == sel else None, cols=cols)
     if m.folded_done:
         out.append(Line([Seg(f"   ✓ {m.folded_done} more proven", "grey50")]))
+    need, _running, done, total = m.scoreboard()
+    if done == total and not need:  # every task proven, nothing asked: the plan is done, so what next
+        said = "Every task is proven." + ("" if m.source == "replay" else " Next: :ask, or tell Claude Code.")
+        out += [Line([]), Line([Seg(" " + fit(said, width - 2), "grey62")])]
     return out
 
 
@@ -143,9 +149,9 @@ def right_of(m: Model, t: Task, width: int) -> list[Seg]:
     if t.state == "came back":  # the reason is cut to a third of the row: the open row says all of it
         why = fit(t.note or "stuck", max(width // 3, 16))
         return [Seg(why, "#ef476f"), Seg("   ⏎ try again", "bold #c77dff", "take")]
-    if t.state == "proposed":  # how many files accepting it lets an agent write
+    if t.state == "proposed":  # how many files accepting it lets an agent write; ⏎, yours, in need-you purple
         n = m.allowed(t)
-        return [Seg(f"{n} file{'s' * (n != 1)}".ljust(11), "grey50"), Seg("⏎ accept", "bold #4cc9f0", "take")]
+        return [Seg(f"{n} file{'s' * (n != 1)}".ljust(11), "grey50"), Seg("⏎ accept", "bold #c77dff", "take")]
     if t.state == "yours":
         return [Seg("yours", "#c77dff"), Seg("   ⏎ mark done", "bold #c77dff", "take")]
     if t.state == "ready":
@@ -171,9 +177,11 @@ def task_lines(
         Seg(f" {glyph} ", gstyle),
         Seg(f"{name:<2} ", f"bold {colour}" if name else ""),
     ]
-    right = right_of(m, t, width)
-    room = max(12, width - LEAD - cols - 1)
-    gap = [Seg(" " * max(0, cols - span(right)))] if cols else []
+    right, more = right_of(m, t, width), 0
+    if on and t.state == "came back" and long_note(t, width):  # the open row says it all, once, below:
+        more, right = span(right[:1]), right[1:]  # its cut reason gives the title its room
+    room = max(12, width - LEAD - cols - 1) + more
+    gap = [Seg(" " * max(0, cols - more - span(right)))] if cols else []
     whole = short(t.full, 0) or t.title  # the whole title, its article and what follows a colon left out
     title = Seg(ljust(fit(whole, room - 1), room), "bold" if on else "", f"select:{t.id}")
     segs = lead + [title] + right + gap
@@ -185,13 +193,15 @@ def task_lines(
         out += proposal(m, t, width)
     elif t.state == "running" and t.events:  # its last move in one dim line: alive or stuck, at a glance
         out.append(Line([Seg("      ┊ ", "grey35"), Seg(fit(m.tail(t, 1)[0], width - 10), "grey58")], t.id))
-    if tell is not None:  # the line being typed, under the row it is for
+    if tell is not None:  # the line being typed, under the row it is for: the only place it shows
         whom = who(t.agent) or "its agent"
-        typed = [Seg(f"      tell {whom}: ", "bold #4cc9f0"), Seg(tell + "▌", "bold")]
-        if t.state != "running" or not t.hears:  # its contract tells it (board.decided) when it starts
-            when = "starts" if t.state != "running" else "next starts"
-            typed.append(Seg(f"   {whom} reads this when it {when}", "grey50"))
-        out.append(Line(typed, t.id))
+        typed = [Seg(f"      tell {whom}: ", "bold #4cc9f0")]
+        room = width - span(typed) - 2
+        when = "" if t.state == "running" and t.hears else "starts" if t.state != "running" else "next starts"
+        hint = f"   {whom} reads this when it {when}" if when else ""  # its contract tells it (board.decided)
+        if cell_len(tell) + cell_len(hint) > room:  # a long line: its end, where you type, and no hint
+            tell, hint = fit_end(tell, room), ""
+        out.append(Line([*typed, Seg(tell + "▌", "bold"), Seg(hint, "grey50")], t.id))
     if on:
         for ln in out:
             for s in ln.segs:
@@ -216,7 +226,7 @@ def proposal(m: Model, t: Task, width: int) -> list[Line]:
     before = [o.title for x in t.needs if (o := m.tasks.get(x)) and o.state != "done"]
     if before:
         out.append(said([Seg("waits  ", "grey50"), Seg(fit(", ".join(before), width - 17), "grey70")]))
-    keys = [("⏎ accept", "bold #4cc9f0", "take"), ("d drop", "grey70", "drop"), ("e edit", "grey70", "edit"),
+    keys = [("⏎ accept", "bold #c77dff", "take"), ("d drop", "grey70", "drop"), ("e edit", "grey70", "edit"),
             ("i details", "grey50", "details")]  # fmt: skip
     out.append(Line([Seg("      ")] + [Seg(f"{k}   ", style, act) for k, style, act in keys], t.id))
     return out
@@ -226,12 +236,18 @@ def _outside(m: Model, t: Task) -> list[str]:
     return [p for p in t.changed if t.scope and not T._in(p, tuple(t.scope))]
 
 
+def long_note(t: Task, width: int) -> bool:
+    """Is the reason a task came back longer than its row shows (a third of it)?"""
+    return len(t.note) > max(width // 3, 16)
+
+
 def expansion(m: Model, t: Task, width: int) -> list[Line]:
     out: list[Line] = []
-    if t.state == "came back" and len(t.note) > max(width // 3, 16):  # what the row had to cut
+    if t.state == "came back" and long_note(t, width):  # what the row had to cut
         for part in textwrap.wrap(t.note, max(width - 12, 20))[:3]:
             out.append(Line([Seg("      ┊ ", "grey35"), Seg(part, "#ef476f")], t.id))
-    for line in m.tail(t, 3):
+    moves = [ln for ln in m.tail(t, 5) if not (t.told and ln.startswith("you "))][-3:]  # the note: below
+    for line in moves:
         style = "#e76f51" if line.startswith("stopped") else "grey70"
         out.append(Line([Seg("      ┊ ", "grey35"), Seg(fit(line, width - 10), style)], t.id))
     for text, _sent, heard in t.told[-1:]:

@@ -23,6 +23,8 @@ def test_the_head_says_what_waits_for_the_person_what_runs_and_what_is_proven_in
     assert top[1].split()[:7] == ["4", "need", "you", "1", "running", "1/5", "proven"]  # a proposal counts,
     # and so does the running task with a write the gate stopped (`ids`)
     assert top[1].split()[7].startswith("▰") and len(top) == 3  # the bar on the same line; then the rule
+    bar = [s for s in rows.build_head(scene(), 80)[1].segs if "▰" in s.text]
+    assert [s.style for s in bar] == ["#8ab17d", "#e9c46a"] and len(bar[0].text) == len(bar[1].text)  # 1, 1
     scrolled = plain(rows.build_cockpit(scene(), 80))  # the rows, which scroll, have neither
     assert not any("need you" in line or "users come back" in line for line in scrolled)
 
@@ -103,6 +105,9 @@ def test_a_row_whose_write_was_stopped_says_on_its_right_the_key_that_widens_it_
 def test_a_row_waiting_for_sign_off_and_a_proposal_name_their_key():
     text = "\n".join(plain(rows.build_cockpit(scene(), 100)))
     assert "⏎ sign off" in text and "⏎ accept" in text
+    lines = rows.build_cockpit(scene(), 100)
+    keys = {s.text.strip(): s.style for line in lines for s in line.segs if s.action == "take"}
+    assert {keys["⏎ accept"], keys["⏎ sign off"], keys["⏎ keep both"]} == {"bold #c77dff"}  # each, your move
 
 
 def test_a_selected_proposal_opens_to_show_what_accepting_it_agrees_to():
@@ -145,6 +150,19 @@ def test_the_cockpit_stays_light_at_80_columns_with_one_agent_open():
     assert words <= 110, words
 
 
+def test_when_every_task_is_proven_the_rows_say_so_and_what_comes_next():
+    m = scene()
+    m.questions = []
+    for t in m.tasks.values():
+        t.state = "done"
+    said = plain(rows.build_cockpit(m, 80))[-1].strip()
+    assert said == "Every task is proven. Next: :ask, or tell Claude Code."
+    m.source = "replay"  # nothing comes next in a recording
+    assert plain(rows.build_cockpit(m, 80))[-1].strip() == "Every task is proven."
+    m.tasks["ids"].overruled = True  # done over its check is not proven
+    assert "proven." not in plain(rows.build_cockpit(m, 80))[-1]
+
+
 def test_finished_tasks_the_rows_left_out_are_counted():
     m = scene()
     m.folded_done = 7
@@ -169,6 +187,15 @@ def test_the_tell_box_under_a_task_nobody_is_on_yet_says_its_agent_reads_it_when
     assert "reads this" not in "\n".join(plain(rows.build_cockpit(m, 120, tell="x")))
 
 
+def test_a_long_line_being_told_shows_its_end_where_you_type_and_fits_the_row():
+    m = scene()
+    long = "keep the ids as strings everywhere, the API returns them quoted and the tests expect that too"
+    for width in (60, 80):
+        [line] = [line for line in rows.build_cockpit(m, width, tell=long) if "tell agent 1:" in line.plain()]
+        said = line.plain().rstrip()
+        assert line.width() <= width and said.endswith("the tests expect that too▌") and "…" in said
+
+
 def test_files_outside_the_scope_are_flagged_and_a_note_that_cannot_be_heard_says_when_it_is_read():
     m = scene()
     m.tasks["ids"].outside = ["db/schema.py"]
@@ -177,6 +204,19 @@ def test_files_outside_the_scope_are_flagged_and_a_note_that_cannot_be_heard_say
     assert "sending…" in "\n".join(plain(rows.build_cockpit(m, 120)))
     m.tasks["ids"].hears = False
     assert "it reads this when it next starts" in "\n".join(plain(rows.build_cockpit(m, 120)))
+
+
+def test_a_note_told_to_an_agent_shows_once_in_its_open_row_with_whether_it_was_heard():
+    from graphene_map.cockpit.model import Ev
+
+    m = scene()
+    ids = m.tasks["ids"]
+    ids.told = [("keep ids as strings", 97.0, 98.0)]
+    ids.events.append(Ev(97.0, "you", text="“keep ids as strings”"))  # as the plan's reader adds it
+    shown = plain(rows.build_cockpit(m, 120))
+    told = [line for line in shown if "keep ids as strings" in line]
+    assert len(told) == 1 and "heard 2s ago" in told[0]
+    assert any("read tests/util.py" in line for line in shown)  # its own moves keep their place
 
 
 def test_a_leaf_that_came_back_shows_what_it_offers_as_keys():
@@ -256,6 +296,10 @@ def test_a_long_reason_a_leaf_came_back_with_is_cut_on_its_row_and_whole_when_th
     m.selected = "back"
     text = " ".join(line.plain() for line in rows.build_cockpit(m, 80))
     assert "gate stopped both" in " ".join(text.replace("┊", " ").split())
+    row = next(line for line in rows.build_cockpit(m, 80) if line.row == "back")
+    assert "I need" not in row.plain() and "⏎ try again" in row.plain()  # said once, under it, not beside
+    assert row.width() == 80 and "retry the migration" in row.plain()
+    assert text.count("I need README.md") == 1
 
 
 def test_a_title_with_wide_characters_is_measured_in_cells_so_no_row_is_wider_than_the_screen():
