@@ -19,39 +19,120 @@ from pathlib import Path
 from textual.binding import Binding
 
 from .. import demo as D
+from .. import plan as P
 from ..store import Store
 from .app import KEYS, Cockpit
 from .help import Help
 from .lines import fit
+from .look import short
 from .model import Model
-from .read import epoch, read
+from .read import OURS, epoch, read
 
 REFUSED = "a replay: nothing runs here"
 REPLAY_KEYS = (("space", "pause, or play on"), (".", "the next change, and stay paused"),
                ("r", "play it again from the start"))  # fmt: skip
 
 
-MILESTONES = ("finished", "landed", "signed_off", "accepted", "proposed", "added", "reopened", "rolled_up")
+# a row of the plan's log as a narrator says it of its task, the task's title in {}; a kind in none of these
+# tables (precheck, usage, model, attempt, ended, a run's summary) is bookkeeping and says nothing
+MILESTONES = {
+    "proposed": "proposed: {}", "accepted": "you accepted {}", "started": "{} started",
+    "check_passed": "{}: its check passed", "check_failed": "{}: its check failed", "finished": "{} is done",
+    "signed_off": "you signed off {}", "landed": "{} landed", "rolled_up": "{} is done",
+    "reopened": "{} reopened", "dropped": "{} dropped", "overruled": "{} is done over its check",
+    "added": "{} added",
+}  # fmt: skip
+GOALS = {"asked": "you asked", "goal_proposed": "proposed goal", "goal": "your goal"}  # its note is the words
+ASKS = {"question": "asks", "assume": "assumes", "risk": "flags a risk", "leave out": "leaves out",
+        "note": "a note"}  # fmt: skip
+TAKES = {"question": "you took the default", "assume": "you confirmed", "risk": "you noted",
+         "leave out": "you agreed to leave out"}  # fmt: skip
+LISTS = {"scope": ("may now write", "may no longer write"), "needs": ("now waits on", "no longer waits on")}
 
 
-def news(line: dict) -> str:
-    """One recorded change in a person's words: what an agent did or said, why a leaf came back, what landed;
-    not the bookkeeping rows (usage, model, attempt, ended) the log also holds. The last three, if more."""
-    said = []
+def words(text) -> str:
+    """What someone wrote, on one line, cut with an ellipsis to leave room for the rest of the news."""
+    return fit(" ".join(str(text or "").split()), 60)
+
+
+def news(line: dict, titles: dict[str, str] | None = None) -> str:
+    """One recorded change as a narrator says it, each task by its title (``titles``): what an agent did or
+    said, a write the gate stopped, why a task came back, what the board asks and what you answered, what
+    an edit changed, what was accepted, proven and landed. Bookkeeping (precheck, usage, model, attempt,
+    ended, an executor's output, the settings, the agent's own `graphene node` commands) says nothing, so
+    the last news stays up. Three at most, in the order they happened: the latest of the rest before an
+    agent's moves, so a hand-back is not crowded out by the edits that came before it."""
+    titles = titles or {}
+    items = {it["id"]: it for it in json.loads((line.get("plan_meta") or {}).get("board") or "[]")}
+    said: list[str] = []
+    moves: set[int] = set()  # which of them are an agent's own moves: what it did or said
     for row in line.get("node_log") or []:
-        detail = json.loads(row.get("detail") or "{}")
-        kind, node = row["kind"], row["node_id"]
-        if kind == "did":
-            said.append(f"{node}: {detail.get('verb', '')} {detail.get('target', '')}".strip())
+        d, kind = json.loads(row.get("detail") or "{}"), row["kind"]
+        title = titles.get(row["node_id"], row["node_id"])
+        if kind == "did" and not OURS.search(str(d.get("target") or "")):
+            moves.add(len(said))
+            said.append(f"{title}: {d.get('verb', '')} {words(d.get('target'))}")
         elif kind == "said":
-            said.append(f"{node}: {fit(' '.join(str(detail.get('text', '')).split()), 60)}")
+            moves.add(len(said))
+            said.append(f"{title}: {words(d.get('text'))}")
+        elif kind == "denied" and d.get("path"):
+            said.append(f"{title}: stopped writing {d['path']}")
         elif kind == "released":
-            said.append(f"{node} came back: {fit(' '.join(str(detail.get('why', '')).split()), 60)}")
-        elif kind in MILESTONES:
-            said.append(f"{node} {kind.replace('_', ' ')}")
+            said.append(f"{title} came back: {words(d.get('why'))}")
+        elif kind == "refused" and d.get("outside"):
+            said.append(f"{title} is not done: {words(', '.join(d['outside']))} is outside its scope")
         elif kind == "board":
-            said.append(f"{detail.get('act', 'board')} {detail.get('item', '')}".strip())
-    return " · ".join(said[-3:]) or D.what(line)
+            said.append(board_act(d, items))
+        elif kind == "edited":
+            said += edit_said(title, d.get("changed") or {}, titles)
+        elif kind in GOALS:
+            said.append(f"{GOALS[kind]}: {words(d.get('note'))}")
+        elif kind in MILESTONES:
+            said.append(MILESTONES[kind].format(title))
+    kept = sorted(sorted(range(len(said)), key=lambda k: (k not in moves, k))[-3:])
+    return " · ".join(said[k] for k in kept)
+
+
+def board_act(d: dict, items: dict[str, dict]) -> str:
+    """A board act in the item's own words: what an agent asks, assumes or leaves out, and what you answered.
+    Its row's note is `<act> <item>: <its text>`, and ` → <the answer>` once there is one."""
+    act, kind = d.get("act", ""), items.get(d.get("item"), {}).get("kind", "question")
+    text, _, answer = str(d.get("note") or "").partition(": ")[2].partition(" → ")
+    if act == "put up":
+        return f"{ASKS.get(kind, 'asks')}: {words(text)}"
+    if act == "took":
+        return f"{TAKES.get(kind, 'you took')}: {words(answer if kind == 'question' and answer else text)}"
+    if act in ("picked", "answered"):
+        return f"you {act}: {words(answer)}"
+    return f"{act}: {words(text)}"
+
+
+def edit_said(title: str, changed: dict, titles: dict[str, str]) -> list[str]:
+    """An edit as what it changed: the files the task may write now or no longer, the tasks it waits on now or
+    no longer, else the field and its new value."""
+    out = []
+    for field, (was, now) in changed.items():
+        if field not in LISTS:
+            out.append(f"{title}: its {field} is now “{words(now)}”")
+            continue
+        gained = [x for x in now or [] if x not in (was or [])]
+        lost = [x for x in was or [] if x not in (now or [])]
+        if field == "needs":
+            gained, lost = [titles.get(x, x) for x in gained], [titles.get(x, x) for x in lost]
+        for phrase, those in zip(LISTS[field], (gained, lost), strict=True):
+            if those:
+                out.append(f"{title} {phrase} {', '.join(those)}")
+    return out
+
+
+def opening(lines: list[dict]) -> float:
+    """When on the replay's clock its first frame is: the first change that puts up a task or a board item,
+    so the settings a recording begins with are applied before the screen is first drawn, and it opens on
+    the plan."""
+    for line in lines:
+        if line.get("nodes") or json.loads((line.get("plan_meta") or {}).get("board") or "[]"):
+            return line["at"]
+    return 0.0
 
 
 def banner(head: dict, state: str = "") -> str:
@@ -76,7 +157,7 @@ class CockpitReplay(Cockpit):
         self.doer = None  # nothing runs here: every verb says so
         self.refusal = REFUSED
         self.keys = {name: line for name, line in KEYS.items()}
-        self.keys["cockpit"] = "space pause · . next · r again · i everything · g graph · m map · ? keys · q"
+        self.keys["cockpit"] = "space pause · . next · r again · i details · g graph · m map · ? keys · q"
 
     def look_at(self, previous: Model | None) -> Model:
         """The replay's store as the recording had it by now: the recording's clock is its newest row."""
@@ -87,10 +168,10 @@ class CockpitReplay(Cockpit):
         return m
 
     def on_mount(self) -> None:
-        self.began = time.monotonic()
+        self.began = time.monotonic() - opening(self.lines)
         for sig in (signal.SIGHUP, signal.SIGTERM):  # its terminal closed, or a kill: an exit, which removes
             asyncio.get_running_loop().add_signal_handler(sig, self.exit)  # the replay's repository
-        self.play()  # the first change is there when the screen is first drawn
+        self.play()  # the plan is there when the screen is first drawn
         super().on_mount()
         self.set_interval(0.1, self.play)
 
@@ -102,17 +183,20 @@ class CockpitReplay(Cockpit):
         due = (self.paused or time.monotonic()) - self.began + 1e-6
         if self.next == len(self.lines) or self.lines[self.next]["at"] > due:
             return
-        said = []
+        applied = []
         with Store.open(self.root) as store:
             while self.next < len(self.lines) and self.lines[self.next]["at"] <= due:
                 D.apply(store, self.lines[self.next], self.root)
-                said.append(news(self.lines[self.next]))
+                applied.append(self.lines[self.next])
                 self.files = self.lines[self.next].get("tracked", self.files)
                 self.next += 1
+            titles = {n.id: short(n.title) for n in P.nodes(store)}
         of = f"{self.next} of {len(self.lines)}"
         self.state = "ended: last frame" if self.next == len(self.lines) else of
         self.look()
-        self.model.say(" · ".join(filter(None, said)))  # what changed, in the news
+        said = " · ".join(filter(None, (news(line, titles) for line in applied)))
+        if said:  # what changed, in the news; bookkeeping says nothing, and the last news stays up
+            self.model.say(said)
         self.paint()
 
     def action_help(self) -> None:
@@ -148,5 +232,6 @@ class CockpitReplay(Cockpit):
             store.conn.execute(f"DELETE FROM plan_meta WHERE key IN ({', '.join('?' * len(D.META))})", D.META)
         for output in (self.root / ".graphene" / "runs").glob("*"):
             output.unlink()
-        self.next, self.began, self.paused, self.files, self.state = 0, time.monotonic(), None, [], ""
+        self.next, self.paused, self.files, self.state = 0, None, [], ""
+        self.began = time.monotonic() - opening(self.lines)
         self.play()

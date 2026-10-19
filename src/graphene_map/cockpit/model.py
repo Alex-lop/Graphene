@@ -82,6 +82,7 @@ class Model:
         self.selected = ""  # a task id or a question id
         self.moved = False  # the person has chosen a row: until then the selection follows what needs them
         self.lens = "plan"
+        self.lens_chosen = False  # the person picked the lens (v): until then it follows the plan's stage
         self.first = ""  # plan first, as the person set it: on, auto or off
         self.executor = ""  # who a run starts, when `graphene init` chose one (claude, codex...)
         self.banner = ""  # what the top row says it is, when it is not "your plan" (a replay)

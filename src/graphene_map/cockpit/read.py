@@ -74,7 +74,7 @@ def read(
     m.clock = now
     if previous is not None:  # what is the person's survives a look: the selection, the lens, the news
         m.selected, m.lens, m.feed = previous.selected, previous.lens, previous.feed
-        m.moved = previous.moved
+        m.moved, m.lens_chosen = previous.moved, previous.lens_chosen
         m.files, m.files_at, m.seen = previous.files, previous.files_at, previous.seen
     if files is not None:  # told (a replay's, from its recording): git is never asked
         m.files, m.files_at = files, now
@@ -119,6 +119,8 @@ def read(
         if t.state == "done":
             t.changed = list((last or {"detail": {}})["detail"].get("changed") or [])
     m.questions = [question_of(item) for item in BR.read(store).open]
+    if not m.lens_chosen:
+        m.lens = lens_for(m.tasks.values())
     rows = m.order()
     if rows and (not m.moved or m.selected not in {rid for _, rid in rows}):
         m.selected = rows[0][1]  # the first row is what needs the person most, until they choose one
@@ -139,6 +141,16 @@ def numbers(store) -> dict[str, str]:
     for r in rows:
         out.setdefault(r["node_id"], str(len(out) + 1))
     return out
+
+
+def lens_for(tasks) -> str:
+    """The map's lens for the plan's stage, until the person picks one: what the tasks may touch while
+    anything is proposed or nothing has started, what is being touched while anything runs, and what
+    changed once every task is done."""
+    states = {t.state for t in tasks}
+    if "running" in states and "proposed" not in states:
+        return "live"
+    return "changed" if states == {"done"} else "plan"
 
 
 def fold_done(m: Model, by_id: dict[str, P.Node]) -> None:

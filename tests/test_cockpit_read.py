@@ -81,13 +81,35 @@ def test_many_finished_tasks_are_a_count_and_the_latest_few_stay(repo):
 def test_what_the_person_chose_survives_the_next_look(repo):
     plan_of(repo)
     first = look(repo)
-    first.selected, first.moved, first.lens = "schema", True, "live"
+    first.selected, first.moved, first.lens, first.lens_chosen = "schema", True, "live", True  # v chose it
     first.say("told agent 1")
     again = look(repo, first)
     assert again.selected == "schema" and again.lens == "live" and again.latest() == "told agent 1"
     assert again.files is first.files  # git's list is not read again within the minute
     first.selected = "gone"
     assert look(repo, first).selected in {rid for _, rid in again.order()}  # falls to the first row
+
+
+def test_the_maps_lens_follows_the_plans_stage_until_the_person_chooses_one(repo):
+    with Store.open(repo) as store:
+        plan.propose(store, [{"id": "x", "title": "x", "scope": ["x.txt"], "check": "true"}], BOT)
+    m = look(repo)
+    assert m.lens == "plan"  # proposed: what it may touch, before you accept
+    with Store.open(repo) as store:
+        plan.accept(store, ["x"], ALEX)
+    m = look(repo, m)
+    assert m.lens == "plan"  # nothing has started
+    with Store.open(repo) as store:
+        plan.start(store, "x", ALEX, repo)
+    m = look(repo, m)
+    assert m.lens == "live"  # what is being touched now
+    (repo / "x.txt").write_text("done\n")
+    with Store.open(repo) as store:
+        plan.finish(store, "x", ALEX)
+    m = look(repo, m)
+    assert m.lens == "changed"  # every task done: what changed
+    m.lens, m.lens_chosen = "plan", True  # v: the person's choice holds from here
+    assert look(repo, m).lens == "plan" and look(repo, m).lens_chosen
 
 
 def test_a_store_too_busy_to_open_leaves_the_screen_as_it_was_and_says_so(repo):
