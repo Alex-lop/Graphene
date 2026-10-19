@@ -1118,3 +1118,78 @@ def test_the_forecast_says_a_leaf_that_came_back_waits_on_the_person_as_r_leaves
     said, _ = graphene(repo, "plan", "accept").communicate(timeout=60)
     assert "next: `graphene run` reaches c  (R in graphene watch)\n" in said, said
     assert "  a will wait: a came back to you" in said and "  b will wait: a came back to you" in said
+
+
+COMES_BACK_ONCE = """
+import os, pathlib, sys, time
+node, beside = os.environ["GRAPHENE_NODE"], pathlib.Path(sys.argv[1])
+pathlib.Path(node + ".txt").write_text(node + "\\n")
+if node == "back" and not (beside / "back-tried").exists():  # its first take writes outside its scope
+    (beside / "back-tried").touch()
+    pathlib.Path("a.txt").write_text("outside its scope\\n")
+until = time.time() + 60
+while node == "slow" and not (beside / "go").exists() and time.time() < until:
+    time.sleep(0.05)  # it holds the run open until the test lets it go
+"""
+
+
+def came_back(repo, node_id):
+    with Store.open(repo) as store:
+        return plan.came_back(store, plan.get(store, node_id))
+
+
+def starts(repo, node_id):
+    with Store.open(repo) as store:
+        return len(store.node_log(node_id, ("started",)))
+
+
+def test_a_leaf_that_came_back_and_is_widened_while_the_run_goes_on_is_landed_by_that_run(repo):
+    """Seam review, 19 October: a leaf that came back stayed in the run's `tried` for good, and the run
+    woke only when one of its own leaves ended, so w mid-run waited for the whole run to end. The
+    person's act takes it back into the run that is going, with its attempts; with no act it waits."""
+    with Store.open(repo) as store:
+        plan.propose(store, [leaf("slow", "slow.txt"), leaf("back", "back.txt")], ALEX)
+    beside, said, done = repo.parent, [], []
+    command = f"{executor(repo, COMES_BACK_ONCE)} {beside}"
+    run = threading.Thread(target=lambda: done.extend(
+        R.run_parallel(lambda: Store.open(repo), repo, repo, 2, command, attempts=1, say=said.append)
+    ))  # fmt: skip
+    run.start()
+    try:
+        assert wait_for(lambda: came_back(repo, "back")), said
+        time.sleep(3 * R.POLL)
+        assert starts(repo, "back") == 1  # nothing of the person's since: it waits on them
+        with Store.open(repo) as store:
+            plan.widen(store, "back", [], ALEX)  # the offer, taken
+        assert wait_for(lambda: states(repo)["back"] == DONE), said
+        assert states(repo)["slow"] == RUNNING  # landed by the run that is still going
+    finally:
+        (beside / "go").touch()
+        run.join(timeout=60)
+    assert sorted(n.id for n in done) == ["back", "slow"] and starts(repo, "back") == 2, said
+
+
+def test_a_run_named_while_another_holds_the_repo_asks_that_run_for_the_leaf_and_it_lands_it(repo):
+    """Seam review, 19 October: ⏎ try again and r mid-run each started a second `graphene run`, which
+    was refused ("another `graphene run` is going here"), so a leaf that came back could not be tried
+    again until the run ended. Named while another run holds the repo, it is that run's to take."""
+    with Store.open(repo) as store:
+        plan.propose(store, [leaf("slow", "slow.txt"), leaf("back", "back.txt")], ALEX)
+    beside = repo.parent
+    command = f"{executor(repo, COMES_BACK_ONCE)} {beside}"
+    run = graphene_run(repo, "--with", command, "--parallel", "2", "--attempts", "1", "--no-precheck")
+    try:
+        assert wait_for(lambda: came_back(repo, "back"))
+        asked = graphene_run(repo, "--node", "back")
+        said, _ = asked.communicate(timeout=60)
+        assert asked.returncode == 0, said
+        pid = f"(pid {run.pid})"
+        assert said.splitlines()[-1] == f"run: the run going here {pid} takes back as soon as it can"
+        assert wait_for(lambda: states(repo)["back"] == DONE), said
+        assert states(repo)["slow"] == RUNNING  # the same run, still going, landed it
+        idle, _ = graphene_run(repo).communicate(timeout=60)  # R: nothing is ready that it has not taken
+        assert idle.splitlines()[-1] == f"run: a run is going here {pid}, and it has nothing more to take"
+    finally:
+        (beside / "go").touch()
+        out, _ = run.communicate(timeout=60)
+    assert out.splitlines()[-1].startswith("run: 2 done"), out

@@ -79,8 +79,12 @@ class Doer:
 
     def _follow(self, proc: subprocess.Popen, argv: list[str], log: Path) -> None:
         code = proc.wait()
-        lines = [line.strip() for line in R.tail(log, 400) if line.strip() and "(the plan of " not in line]
+        said = [line.rstrip() for line in R.tail(log, 400) if line.strip() and "(the plan of " not in line]
+        lines = [line.strip() for line in said]
         last = lines[-1] if lines else ""
+        if code and said:  # a refusal: its reason (its last line not indented) first, what to do after it
+            why = max((k for k, line in enumerate(said) if not line[:1].isspace()), default=0)
+            last = " · ".join(lines[why:])
         mark = "✗ " if code else ""
         named = argv[0] if argv[0] == "ask" else as_typed(argv[:2])  # an ask's paragraph is not its name
         told = last if last.startswith(argv[0]) else f"{mark}graphene {named} ended: {last}"

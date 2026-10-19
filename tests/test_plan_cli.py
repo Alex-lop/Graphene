@@ -578,6 +578,19 @@ def test_a_leaf_that_came_back_is_run_again_by_name_as_the_persons_next_line_say
                     "again")  # fmt: skip
 
 
+def test_a_widen_says_ready_again_of_an_open_leaf_and_of_a_running_one_what_its_agent_may_now_write(repo):
+    """Seam review, 19 October: w on a running task's stopped write said "it is ready again" while the row
+    showed the task running under its agent."""
+    person("node", "add", "leaf one", "--id", "l1", "--scope", "api.py", "--check", "true")
+    agent("node", "start", "l1")
+    running = person("node", "widen", "l1", "extra.py")
+    said = "l1's agent may now write extra.py; its scope is now api.py, extra.py"  # the act first: 80 columns
+    assert running.stdout.splitlines()[0] == said, running.output
+    agent("node", "release", "l1", "--why", "needs schema.py", "--wants", "schema.py")
+    back = person("node", "widen", "l1")
+    assert back.stdout.splitlines()[0] == "l1's scope is now api.py, extra.py, schema.py; it is ready again"
+
+
 def test_next_is_one_line_in_the_words_of_whoever_reads_it(repo):
     """A release printed a 500-character `next:` naming every leaf and why it was not ready, and a
     person was told, of themselves, that "the person" reads it and that they "can stop"."""

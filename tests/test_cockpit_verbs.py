@@ -208,6 +208,64 @@ def test_an_ask_that_ends_says_what_the_planner_proposed_not_the_paragraph(repo,
     assert doer.said[-1] == "the planner proposed nothing and put nothing on the board"
 
 
+def test_a_refused_slow_command_says_why_first_and_what_to_do_after_it(doer, tmp_path):
+    """Seam review, 19 October: a sign-off refused on its merge said only its last line, the remedy, cut at
+    the screen's edge, and never why. A refusal says its reason first, the rest of it after; a command that
+    worked says its last line, as before."""
+    log, ended = tmp_path / "node.txt", {"code": 1}
+    doer.later = lambda fn: fn()
+    proc = type("Done", (), {"wait": lambda self: ended["code"]})()
+    log.write_text("util stays in review: core's check fails on its merge\n  graphene node reopen util\n")
+    doer._follow(proc, ["node", "signoff", "util"], log)
+    why = "util stays in review: core's check fails on its merge · graphene node reopen util"
+    assert doer.said[-1] == f"✗ graphene node signoff ended: {why}"
+    said = ["landing into main at 2caf448: sh, up to 4 at once", "worst case: no spend cap on this executor",
+            "the plan is paused, so nothing starts", "  graphene plan resume (the person's)"]  # fmt: skip
+    log.write_text("\n".join(said) + "\n")
+    doer._follow(proc, ["run", "--parallel", "4"], log)  # what it said before it was refused is not why
+    why = "the plan is paused, so nothing starts · graphene plan resume (the person's)"
+    assert doer.said[-1] == f"✗ graphene run --parallel ended: {why}"
+    log.write_text("core is done (signed off)\n  (the plan of ~/elsewhere)\n")
+    ended["code"] = 0
+    doer._follow(proc, ["node", "signoff", "core"], log)
+    assert doer.said[-1] == "graphene node signoff ended: core is done (signed off)"
+
+
+def test_enter_on_a_task_of_yours_marks_it_done_by_your_word_with_its_check_run_first(repo, doer):
+    """Seam screens, 19 October: ⏎ mark done on a task of yours ran `graphene node done`, which refused one
+    with a scope nobody had started ("announce is ready, not running"): only a to-do with no scope could be
+    marked done. Your own task is done by your word, once the check it has passes."""
+    mine = {"owner": "alex", "title": "by hand"}
+    with Store.open(repo) as store:
+        plan.propose(store, [{**mine, "id": "announce", "scope": ["NOTES.md"], "signoff": True},
+                             {**mine, "id": "proof", "scope": ["api.py"], "check": "grep -q ids api.py"}],
+                     ALEX)  # fmt: skip
+    (repo / "NOTES.md").write_text("the export is here\n")  # done by hand, before ⏎
+    ended = []
+    doer.later = lambda fn: (fn(), ended.append(1))
+    m = Model("goal")
+    m.tasks = {i: Task(i, "by hand", "yours", scope) for i, scope in (("announce", ["NOTES.md"]),
+                                                                        ("proof", ["api.py"]))}  # fmt: skip
+
+    def enter(node_id):
+        ended.clear()
+        doer.take(m, node_id)
+        for _ in range(300):
+            if ended:
+                break
+            time.sleep(0.1)
+        with Store.open(repo) as store:
+            return plan.get(store, node_id).state
+
+    assert enter("announce") == plan.DONE, doer.said
+    assert enter("proof") == plan.OPEN and "proof is not done: `grep -q ids api.py` failed" in doer.said[-1]
+    (repo / "api.py").write_text("def users():\n    return ids\n")
+    assert enter("proof") == plan.DONE, doer.said
+    with Store.open(repo) as store:
+        assert [e["kind"] for e in store.node_log("proof", ("check_failed", "check_passed"))] == [
+            "check_failed", "check_passed"]  # fmt: skip
+
+
 def test_a_talk_to_the_planner_typed_at_the_colon_runs_as_a_process_and_never_freezes_the_screen(doer):
     """`:talk …` asks a planner (it can take a minute, and it spends), and it ran in the screen's own
     process, so the screen froze until it ended. It goes where ask and run go."""

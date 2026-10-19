@@ -2367,19 +2367,33 @@ def _untracked(checkout: str | Path, paths: list[str]) -> list[str]:
 
 
 def _done_by_hand(store, node: Node, who: Caller, given: str | None, checkout: str | Path | None) -> Node:
-    """A person's own leaf with no scope is their to-do: there is no check to run and nothing to ask
-    git, so `done` is their word, and the log says so."""
-    now = given or _now()
-    with store.claim():
-        node = get(store, node.id)
+    """A person's own leaf that nobody started is done by their word, scope or none: no hold was taken, so
+    git has nothing to say of it. The check it has runs first (never under the write lock), and one that
+    fails refuses it; a to-do has none to run. The log says it was their word."""
+
+    def may(node: Node) -> None:  # asked before the check and again under the lock: the plan may move
         everything = nodes(store)
         by_id = {n.id: n for n in everything}
         if node.state != OPEN or any(a.state == PROPOSED for a in above(node, by_id)):
             raise _as_it_stands(node, everything, who, "finish")
         if unmet(node, by_id):
             raise Refused(f"{node.id} waits on {_told(unmet(node, by_id))}")
+
+    if node.check:
+        may(node)
+        passed, output, _ = run_check(node.check, checkout or ".")
+        store.log_node(node.id, _now(), "check_passed" if passed else "check_failed", who.label,
+                       who.session_id, None, {"command": node.check, "output": output})  # fmt: skip
+        if not passed:  # what it said, indented under the reason: the screen's news says the reason first
+            said = "".join(f"\n  {line}" for line in output.splitlines())
+            raise Refused(f"{node.id} is not done: `{node.check}` failed{said}")
+    now = given or _now()
+    with store.claim():
+        node = get(store, node.id)
+        may(node)
         node.state, node.finished_at = DONE, now
-        _save(store, node, "finished", who, now, note="done by hand: the person's word, with no check to run")
+        said = "and its check passed" if node.check else "with no check to run"
+        _save(store, node, "finished", who, now, note=f"done by hand: the person's word, {said}")
     roll_up(store, who, checkout, given)
     return node
 
@@ -2407,7 +2421,7 @@ def finish(
         if override is not None:
             _person_only(who, "overruling a node's check or scope")
         return _finish_subgoal(store, node, who, given, checkout or ".", override)
-    if node.state == OPEN and not node.scope and node.owner != AGENT and who.person:
+    if node.state == OPEN and node.owner != AGENT and who.person:
         return _done_by_hand(store, node, who, given, checkout)
     if node.state != RUNNING:
         raise _as_it_stands(node, nodes(store), who, "finish")

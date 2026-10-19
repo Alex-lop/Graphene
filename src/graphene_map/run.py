@@ -857,6 +857,41 @@ def _spoke(log: str | None) -> str:
     return next((line for line in reversed(tail(log, 40)) if not line.lstrip().startswith("{")), "")
 
 
+QUEUED = "queued"  # a leaf a `graphene run` asked for while another run held the repo: that run takes it
+
+
+def hand_on(store, only: list[str] | None) -> list[str]:
+    """`graphene run` while another run holds the repo: what this one would start is that one's to take,
+    each leaf logged as asked for (``QUEUED``), however that run was started. Named (``only``), each open
+    leaf of an agent's, one that came back too; else each ready leaf that did not come back. Their ids."""
+    everything, who, named = P.nodes(store), P.caller(), leaves_of(store, only)
+    if named:
+        ids = [n.id for n in everything if n.id in named and n.state == P.OPEN and n.owner == P.AGENT]
+    else:
+        ids = [n.id for n in P.ready(everything, P.Caller("agent", False)) if not P.came_back(store, n)]
+    for node_id in ids:
+        store.log_node(node_id, P._now(), QUEUED, who.label, who.session_id, None, None)
+    return ids
+
+
+def _answered(store, node_id: str, after: int) -> str | None:
+    """The person's last word on a leaf, when it is theirs and came after log row ``after``: they changed
+    it (a widen is an edit), reopened it, or asked a run for it (``QUEUED``). A start or a hand-back since
+    is the last word instead, and an act undone reads as never made, as ``P.let_go`` reads them."""
+    log = [e for e in store.node_log(node_id, ("started", "released", "reopened", "edited", "undone", QUEUED))
+           if e["actor"] != P.GRAPHENE]  # fmt: skip
+    while log and log[-1]["kind"] == "undone":
+        since = log.pop()["detail"].get("since")
+        log = log if since is None else [e for e in log if e["id"] <= since]
+    last = log[-1] if log else {"kind": None, "id": 0}
+    return last["kind"] if last["kind"] in ("edited", "reopened", QUEUED) and last["id"] > after else None
+
+
+def _newest(store, node_id: str) -> int:
+    """The id of the newest row of a leaf's log: what is done to it after this is new."""
+    return (store.node_log(node_id) or [{"id": 0}])[-1]["id"]
+
+
 def _came_back(store, only: list[str] | None, say: Callable[[str], None]) -> set[str]:
     """The leaves that came back: they wait on the person, so a run not told which leaves to run
     (``only``, `--node`, `r` on one) leaves them alone, and says how to run one again."""
@@ -1214,7 +1249,9 @@ def _run_parallel(open_store, root, target, workers, template, attempts, only, s
         _red_first(store, target, only, say, committed=True)
     planned = {n.id for n in P.nodes(store) if n.state not in P.GONE}
     files = P.tracked(target)
-    tried: set[str] = _came_back(store, only, say)  # never tried: the person's to run again
+    # what this run took, or found came back, each with its log's newest row then: the person's act
+    # after it (``_answered``) is theirs to have it taken again, as a run they started now would
+    tried = {i: _newest(store, i) for i in _came_back(store, only, say)}
     flying: dict[Future, tuple[P.Node, Path]] = {}
     unlanded: set[str] = set()
     finished: list[P.Node] = []
@@ -1227,6 +1264,12 @@ def _run_parallel(open_store, root, target, workers, template, attempts, only, s
         with open_store() as mine:  # a thread, a connection
             return run_node(mine, node_id, tree, template, attempts, say, logs, stop, budget)
 
+    def again(node_id: str) -> bool:
+        """Taken again, or one this run was not started with: the person widened or changed it, or reopened
+        it, since this run took it, or a `graphene run` asked for it while this one held the repo."""
+        said = _answered(store, node_id, tried.get(node_id, 0))
+        return said == QUEUED or (said is not None and node_id in tried)
+
     def launch(pool: ThreadPoolExecutor) -> None:
         # one the person signed off since it parked has landed: still held here, its parent never closed
         unlanded.difference_update([i for i in unlanded if P.unlanded(store, i) is None])
@@ -1236,7 +1279,7 @@ def _run_parallel(open_store, root, target, workers, template, attempts, only, s
         for n in P.ready(everything, P.Caller("agent", False)):
             if len(flying) >= workers:
                 return
-            if n.id not in planned or n.id in tried or (only and n.id not in only):
+            if (n.id not in planned or n.id in tried or (only and n.id not in only)) and not again(n.id):
                 continue
             if busy & set(P.all_needs(n, by_id)):
                 continue  # done in its worktree is not yet here
@@ -1252,9 +1295,9 @@ def _run_parallel(open_store, root, target, workers, template, attempts, only, s
             ):
                 continue  # one writer a path: it starts when that one has landed, on top of it
             if budget and not budget.take(_worst(shlex.split(template))):
-                return  # None: what is going holds the room, asked again as each ends; False: past the
-                # cap, and what is not started stays open
-            tried.add(n.id)
+                return  # None: what is going holds the room, asked again at the next look; False: past
+                # the cap, and what is not started stays open
+            tried[n.id] = _newest(store, n.id)
             tree = worktree_for(store, root, target, n.id)
             flying[pool.submit(work, n.id, tree)] = (n, tree)
 
@@ -1268,7 +1311,7 @@ def _run_parallel(open_store, root, target, workers, template, attempts, only, s
             say(str(no))
             node = None
         if node is None:  # handed back: its worktree stays, with whatever it tried, for the person
-            say(f"{was.id}: what it tried is kept in {tree} until the next run takes {was.id} again")
+            say(f"{was.id}: what it tried is kept in {tree} until a run takes {was.id} again")
             return
         if node.state == P.REVIEW:  # a sign-off holds the merge: its work waits on its branch for the yes
             park(store, tree, node, say, "it waits for your sign-off before it lands")
@@ -1296,7 +1339,9 @@ def _run_parallel(open_store, root, target, workers, template, attempts, only, s
                 launch(pool)
                 if not flying:
                     return finished
-                for future in wait(flying, timeout=1.0 if budget else None, return_when=FIRST_COMPLETED).done:
+                # every POLL too: what the person did meanwhile (a sign-off, a widen, a leaf asked for) is
+                # taken up while the run goes on, not once one of its own leaves ends
+                for future in wait(flying, timeout=POLL, return_when=FIRST_COMPLETED).done:
                     collect(future)
         except KeyboardInterrupt:
             stop.halt()  # every executor stopped, every worker told: each hands its leaf back

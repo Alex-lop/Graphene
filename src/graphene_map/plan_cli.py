@@ -1045,6 +1045,15 @@ def register(cli: typer.Typer, root, open_store, fail):
             out("stopping the run: what it holds goes back to the plan" if pid else "no run is going here")
             return
         with open_store(r) as store:
+            from .run import hand_on, run_holding
+
+            going = None if here else run_holding(r)
+            if going is not None:  # one run a repo: the one going takes what this one would have started
+                ids = hand_on(store, node or None)
+                out(f"run: the run going here (pid {going}) takes {P._few(ids)} as soon as it can" if ids
+                    else f"run: a run is going here (pid {going}), and it has nothing more to take")
+                said_where()
+                return
             if not P.nodes(store, (P.OPEN, P.RUNNING)):
                 sweep(store, out, r)  # a dead parallel run's finished leaves are parked, and said, first
             if not P.nodes(store, (P.OPEN, P.RUNNING)):
@@ -1604,8 +1613,14 @@ def register(cli: typer.Typer, root, open_store, fail):
         files = tracked()
 
         def go(store):
+            was = P.get(store, node_id).scope
             n = P.widen(store, node_id, paths or [], P.caller(), files=files)
-            out(f"{n.id}'s scope is now {', '.join(n.scope)}; it is ready again")
+            scope = ", ".join(n.scope)
+            if n.state == P.RUNNING:  # its agent writes on, now with more: it is not ready again
+                new = ", ".join(p for p in n.scope if p not in was)
+                out(f"{n.id}'s agent may now write {new}; its scope is now {scope}")
+            else:
+                out(f"{n.id}'s scope is now {scope}" + "; it is ready again" * (n.state == P.OPEN))
 
         write(f"node widen {node_id}", go)
         said_where()
