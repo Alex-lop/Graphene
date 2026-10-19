@@ -869,8 +869,9 @@ def hand_on(store, only: list[str] | None) -> list[str]:
         ids = [n.id for n in everything if n.id in named and n.state == P.OPEN and n.owner == P.AGENT]
     else:
         ids = [n.id for n in P.ready(everything, P.Caller("agent", False)) if not P.came_back(store, n)]
+    now = P._now()  # one ask, one moment: the person's clock counts a move a moment (`meter.acts`)
     for node_id in ids:
-        store.log_node(node_id, P._now(), QUEUED, who.label, who.session_id, None, None)
+        store.log_node(node_id, now, QUEUED, who.label, who.session_id, None, None)
     return ids
 
 
@@ -887,8 +888,8 @@ def _answered(store, node_id: str, after: int) -> str | None:
     return last["kind"] if last["kind"] in ("edited", "reopened", QUEUED) and last["id"] > after else None
 
 
-def _newest(store, node_id: str) -> int:
-    """The id of the newest row of a leaf's log: what is done to it after this is new."""
+def _newest(store, node_id: str | None = None) -> int:
+    """The id of the newest row of a leaf's log, or of the whole log: what is done after it is new."""
     return (store.node_log(node_id) or [{"id": 0}])[-1]["id"]
 
 
@@ -1242,6 +1243,8 @@ def run_parallel(
 def _run_parallel(open_store, root, target, workers, template, attempts, only, say, logs,
                   precheck, max_usd) -> list[P.Node]:  # fmt: skip
     store = open_store()
+    began = _newest(store)  # it holds the repo from here: what is asked of it from now on (red first can
+    # take minutes) is asked of it, and nothing before
     sweep(store, say, root)  # a leaf a dead run still holds would never be ready again
     _begins(template)
     only = leaves_of(store, only)
@@ -1250,8 +1253,9 @@ def _run_parallel(open_store, root, target, workers, template, attempts, only, s
     planned = {n.id for n in P.nodes(store) if n.state not in P.GONE}
     files = P.tracked(target)
     # what this run took, or found came back, each with its log's newest row then: the person's act
-    # after it (``_answered``) is theirs to have it taken again, as a run they started now would
-    tried = {i: _newest(store, i) for i in _came_back(store, only, say)}
+    # after it (``_answered``) is theirs to have it taken again, as a run they started now would; a leaf
+    # asked for before this run began was asked of another run
+    tried = dict.fromkeys(_came_back(store, only, say), began)
     flying: dict[Future, tuple[P.Node, Path]] = {}
     unlanded: set[str] = set()
     finished: list[P.Node] = []
@@ -1267,7 +1271,7 @@ def _run_parallel(open_store, root, target, workers, template, attempts, only, s
     def again(node_id: str) -> bool:
         """Taken again, or one this run was not started with: the person widened or changed it, or reopened
         it, since this run took it, or a `graphene run` asked for it while this one held the repo."""
-        said = _answered(store, node_id, tried.get(node_id, 0))
+        said = _answered(store, node_id, tried.get(node_id, began))
         return said == QUEUED or (said is not None and node_id in tried)
 
     def launch(pool: ThreadPoolExecutor) -> None:

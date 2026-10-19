@@ -1,6 +1,7 @@
 """`graphene run --parallel`: ready leaves at once, a worktree each, landed in the checkout the run was
 started from when the merge is clean. The executor is a script that says when and where it ran."""
 
+import itertools
 import json
 import os
 import subprocess
@@ -12,7 +13,7 @@ from typer.testing import CliRunner
 from graphene_map import plan
 from graphene_map.cli import build
 from graphene_map.plan import DONE, REVIEW, Caller
-from graphene_map.run import run_parallel
+from graphene_map.run import QUEUED, hand_on, run_parallel
 from graphene_map.store import Store
 
 ALEX = Caller("alex", True)
@@ -247,6 +248,28 @@ def test_a_leaf_that_came_back_is_left_to_the_person_unless_it_is_named(repo):
     assert "a came back and waits on you: `graphene run --node a` runs it again" in said
     done, ran, said = go(repo, only=["a"])
     assert [n.id for n in done] == ["a"], said
+
+
+def test_a_leaf_asked_of_a_run_that_has_ended_is_not_taken_by_a_run_named_for_another(repo):
+    """A `graphene run` started while another held the repo asks that run for its leaves (`queued`). One
+    asked for before this run began was asked of another run: a run named for a leaf does not take it."""
+    with Store.open(repo) as store:
+        plan.propose(store, [leaf("a"), leaf("b")], ALEX)
+        store.log_node("b", plan._now(), QUEUED, "alex", None, None, None)  # the run asked ended first
+    done, ran, said = go(repo, only=["a"])
+    assert [n.id for n in done] == ["a"] and set(ran) == {"a"}, said
+
+
+def test_one_ask_of_the_going_run_is_one_move_of_the_persons_however_many_leaves_it_names(repo, monkeypatch):
+    """Seam review, 19 October: R while a run held the repo logged each leaf it asked that run for at a
+    moment of its own, and the person's clock counts a move a moment: one key was as many moves as leaves."""
+    with Store.open(repo) as store:
+        plan.propose(store, [leaf("a"), leaf("b"), leaf("c")], ALEX)
+    ticks = itertools.count()
+    monkeypatch.setattr(plan, "_now", lambda: f"2026-10-19T03:00:{next(ticks):02d}.000Z")
+    with Store.open(repo) as store:
+        assert len(hand_on(store, None)) == 3
+        assert len({e["timestamp"] for e in store.node_log(kinds=(QUEUED,))}) == 1
 
 
 def test_scopes_that_could_meet_are_kept_apart_even_when_no_tracked_file_shows_it():

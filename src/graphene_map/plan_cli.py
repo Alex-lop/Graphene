@@ -1045,10 +1045,13 @@ def register(cli: typer.Typer, root, open_store, fail):
             out("stopping the run: what it holds goes back to the plan" if pid else "no run is going here")
             return
         with open_store(r) as store:
-            from .run import hand_on, run_holding
+            from .run import ATTEMPTS, hand_on, run_holding
 
-            going = None if here else run_holding(r)
-            if going is not None:  # one run a repo: the one going takes what this one would have started
+            # one run a repo: the one going takes what this one would have started, with its own executor,
+            # attempts and cap. One named with its own is refused as before; --here takes no lock
+            own = executor or attempts != ATTEMPTS or max_usd is not None
+            going = None if here or own else run_holding(r)
+            if going is not None:
                 ids = hand_on(store, node or None)
                 out(f"run: the run going here (pid {going}) takes {P._few(ids)} as soon as it can" if ids
                     else f"run: a run is going here (pid {going}), and it has nothing more to take")
@@ -1406,9 +1409,12 @@ def register(cli: typer.Typer, root, open_store, fail):
                     raise P.Refused(f"you hold {them}: `graphene node done <id>` names one")
                 target = held[0].id
             n = P.finish(store, target, who, override=override, checkout=checkout())
+            last = (store.node_log(n.id, ("finished",)) or [{"detail": {}}])[-1]
+            mine = str((last["detail"] or {}).get("note", "")).startswith("done by hand")  # the person's word
             how = (
                 "overruled by a person" if override is not None
-                else "by hand: yours, with no check to run" if not n.scope
+                else f"by hand: yours, {'and its check passed' if n.check else 'with no check to run'}"
+                if mine or not n.scope
                 else "check passed, nothing outside its scope"
             )  # fmt: skip
             out(f"{n.id} is {'done' if n.state == P.DONE else 'finished and waits for a sign-off'} ({how})")
@@ -1615,9 +1621,8 @@ def register(cli: typer.Typer, root, open_store, fail):
         def go(store):
             was = P.get(store, node_id).scope
             n = P.widen(store, node_id, paths or [], P.caller(), files=files)
-            scope = ", ".join(n.scope)
-            if n.state == P.RUNNING:  # its agent writes on, now with more: it is not ready again
-                new = ", ".join(p for p in n.scope if p not in was)
+            scope, new = ", ".join(n.scope), ", ".join(p for p in n.scope if p not in was)
+            if n.state == P.RUNNING and new:  # its agent writes on, now with more: it is not ready again
                 out(f"{n.id}'s agent may now write {new}; its scope is now {scope}")
             else:
                 out(f"{n.id}'s scope is now {scope}" + "; it is ready again" * (n.state == P.OPEN))

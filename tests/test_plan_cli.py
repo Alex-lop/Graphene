@@ -130,6 +130,17 @@ def test_the_loop_a_person_shapes_an_agent_executes_and_the_boundary_carries_the
     assert "next: nothing; every leaf is done" in agent("node", "done", "n2").stdout
 
 
+def test_a_task_of_yours_done_by_your_word_says_so_and_never_that_git_was_asked(repo):
+    """Done by the person's word, a task of theirs nobody started said "(check passed, nothing outside its
+    scope)": git was never asked, and with no check nothing passed."""
+    person("node", "add", "read it over", "--id", "mine", "--scope", "b.py", "--owner", "me", "--signoff")
+    said = person("node", "done", "mine")
+    assert said.exit_code == 0, said.output
+    assert "(by hand: yours, with no check to run)" in said.stdout and "nothing outside" not in said.stdout
+    person("node", "add", "check it", "--id", "mine2", "--scope", "b.py", "--check", "true", "--owner", "me")
+    assert "(by hand: yours, and its check passed)" in person("node", "done", "mine2").stdout
+
+
 def test_a_persons_node_makes_the_agent_stop_and_shows_the_person_why(repo):
     person("node", "add", "the migration", "--scope", "schema.py", "--check", "true", "--owner", "me")
     person("node", "add", "use the new table", "--scope", "api.py", "--check", "true", "--needs", "n1")
@@ -589,6 +600,15 @@ def test_a_widen_says_ready_again_of_an_open_leaf_and_of_a_running_one_what_its_
     agent("node", "release", "l1", "--why", "needs schema.py", "--wants", "schema.py")
     back = person("node", "widen", "l1")
     assert back.stdout.splitlines()[0] == "l1's scope is now api.py, extra.py, schema.py; it is ready again"
+
+
+def test_a_widen_of_a_running_leaf_by_a_path_it_may_write_says_its_scope_and_no_empty_write(repo):
+    """Seam review, 19 October: a running leaf widened by a path its scope already had said "l1's agent may
+    now write ; its scope is now api.py"."""
+    person("node", "add", "leaf one", "--id", "l1", "--scope", "api.py", "--check", "true")
+    agent("node", "start", "l1")
+    same = person("node", "widen", "l1", "api.py")
+    assert same.exit_code == 0 and same.stdout.splitlines()[0] == "l1's scope is now api.py", same.output
 
 
 def test_next_is_one_line_in_the_words_of_whoever_reads_it(repo):

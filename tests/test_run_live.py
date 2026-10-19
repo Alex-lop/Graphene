@@ -1189,7 +1189,46 @@ def test_a_run_named_while_another_holds_the_repo_asks_that_run_for_the_leaf_and
         assert states(repo)["slow"] == RUNNING  # the same run, still going, landed it
         idle, _ = graphene_run(repo).communicate(timeout=60)  # R: nothing is ready that it has not taken
         assert idle.splitlines()[-1] == f"run: a run is going here {pid}, and it has nothing more to take"
+        own = graphene_run(repo, "--with", command, "--node", "back")  # an executor of its own: not handed on
+        said, _ = own.communicate(timeout=60)
+        assert own.returncode == 1 and "another `graphene run` is going here" in said, said
     finally:
         (beside / "go").touch()
         out, _ = run.communicate(timeout=60)
     assert out.splitlines()[-1].startswith("run: 2 done"), out
+
+
+HOLDS_RED_FIRST = """
+import pathlib, sys, time
+beside = pathlib.Path(sys.argv[1])
+(beside / "pre").touch()
+until = time.time() + 60
+while not (beside / "go").exists() and time.time() < until:
+    time.sleep(0.05)
+"""
+WRITES_ITS_OWN = "import os, pathlib; pathlib.Path(os.environ['GRAPHENE_NODE'] + '.txt').write_text('x\\n')\n"
+
+
+def test_a_leaf_asked_for_while_the_run_checks_red_first_is_taken_by_that_run(repo):
+    """Seam review, 19 October: a leaf asked for while the going run checked red first (each ready leaf's
+    check at the base, which can take minutes) was told "the run going here takes back as soon as it can",
+    and was never taken: the run counted what was asked of it from when red first had ended."""
+    hold = repo.parent / "hold.py"
+    hold.write_text(HOLDS_RED_FIRST)
+    slow = leaf("slow", "slow.txt", check=f"{sys.executable} {hold} {repo.parent} && test -s slow.txt")
+    with Store.open(repo) as store:
+        plan.propose(store, [slow, leaf("back", "back.txt")], ALEX)
+        run = Caller("run:python", False, "s-1")
+        plan.start(store, "back", run, repo)
+        plan.release(store, "back", run, "it needs more")  # came back before the run: it waits on the person
+    going = graphene_run(repo, "--with", executor(repo, WRITES_ITS_OWN), "--parallel", "2", "--attempts", "1")
+    try:
+        assert wait_for(lambda: (repo.parent / "pre").exists())  # red first runs slow's check, and holds
+        asked = graphene_run(repo, "--node", "back")
+        said, _ = asked.communicate(timeout=60)
+        pid = f"(pid {going.pid})"
+        assert said.splitlines()[-1] == f"run: the run going here {pid} takes back as soon as it can"
+    finally:
+        (repo.parent / "go").touch()
+        out, _ = going.communicate(timeout=60)
+    assert states(repo) == {"slow": DONE, "back": DONE}, out

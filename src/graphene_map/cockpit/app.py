@@ -27,6 +27,7 @@ from textual.widgets import Input, Static
 
 from .. import plan as P
 from .. import plan_text as PT
+from .. import run as R
 from .. import settings as S
 from ..tui import ASK_HINT, Ask
 from . import flow_view as FV
@@ -534,8 +535,11 @@ class Cockpit(App):
             d.run_ready()
             return
         which = ", ".join(f"{n} {w}" for n, w in could)
+        going = self.root is not None and R.run_holding(self.root) is not None  # it takes them, with room
         said = f"run up to {total} tasks ({which}), at most 4 at once with {m.executor}"
         said += "? y and Enter start them"
+        if going:
+            said = f"hand up to {total} tasks ({which}) to the run going here? y and Enter"
 
         def answered(typed: str | None) -> None:
             if (typed or "").lower() in ("y", "yes"):

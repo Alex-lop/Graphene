@@ -217,6 +217,27 @@ def test_a_run_that_could_start_more_than_one_leaf_asks_first_and_one_leaf_start
     asyncio.run(go())
 
 
+def test_r_while_a_run_is_going_asks_to_hand_the_tasks_to_it(repo, monkeypatch):
+    """Mid-run, R's line said "y and Enter start them", but the run going here is what takes them."""
+    from graphene_map import run as R
+
+    make_plan(repo)
+    with Store.open(repo) as store:
+        store.set_meta("executor", "claude -p")
+    monkeypatch.setattr(R, "run_holding", lambda root: 4242)  # a run holds the repository
+    app = cockpit(repo)
+
+    async def go():
+        async with app.run_test(size=(110, 30)) as pilot:
+            await pilot.pause(0.1)
+            app.doer.background = lambda argv: None
+            await pilot.press("R")
+            await pilot.pause(0.3)
+            assert type(app.screen).__name__ == "Ask" and "to the run going here" in app.screen.prompt
+
+    asyncio.run(go())
+
+
 def test_colon_ask_alone_opens_the_editor_for_a_paragraph_and_asks_what_was_written(repo, monkeypatch):
     from graphene_map import plan_text
 
