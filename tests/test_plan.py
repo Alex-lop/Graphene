@@ -756,6 +756,21 @@ def test_a_done_needs_file_is_offered_to_the_task_that_came_back_wanting_it(stor
     assert plan.widen(store, "readme", [], ALEX).scope == ["README.md", "src/api/users.py"]
 
 
+def test_a_done_refused_because_nothing_in_its_scope_changed_is_logged_and_recorded(store, repo):
+    """The replays walk (third review): a done refused for an unchanged scope logged nothing, so the live
+    take's screens said "its check passed" and no screen or record could say why it was not done."""
+    from graphene_map import node_record
+
+    plan.propose(store, [api_node(id="a")], ALEX)
+    plan.start(store, "a", BOT, repo)
+    with pytest.raises(Refused, match="nothing inside its scope"):
+        plan.finish(store, "a", BOT)
+    [row] = store.node_log("a", ("refused",))
+    assert row["detail"] == {"unchanged": ["src/api/**", "tests/**"]}
+    said = "\n".join(node_record.render(node_record.node_record(store, repo, plan.get(store, "a"))))
+    assert "`done` refused over: nothing in its scope changed" in said
+
+
 def test_a_reason_naming_many_nodes_is_checked_for_cycles_once(tmp_path, monkeypatch):
     """Recheck 44: a validate for every node the reason named, on every refresh of the screen."""
     import subprocess

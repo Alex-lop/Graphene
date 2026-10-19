@@ -652,8 +652,9 @@ def _refusals(log: list[dict]) -> Refusals:
             out.breaches.extend(str(p) for p in detail.get("paths", []))
         elif kind == "stop_refused":
             out.stops += 1
-        elif kind == "refused":
-            out.done.append([str(p) for p in detail.get("outside", [])])
+        elif kind == "refused":  # what it was refused over: its paths outside, or that nothing in it changed
+            unchanged = ["nothing in its scope changed"] if "unchanged" in detail else []
+            out.done.append([str(p) for p in detail.get("outside", [])] or unchanged)
         elif kind in ("check_failed", "check_passed"):
             out.checks_failed += kind == "check_failed"
             out.last_check = {

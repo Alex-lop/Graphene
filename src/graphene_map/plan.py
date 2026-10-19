@@ -2497,7 +2497,8 @@ def finish(
     changed = [p for p in changed if p not in theirs]  # `run` commits what `changed` names
     if not passed and override is None:
         raise Refused(f"{node.id} is not done: `{node.check}` failed:\n{output}")
-    if override is None and not any(in_scope(p, node.scope) for p in changed):
+    if override is None and not any(in_scope(p, node.scope) for p in changed):  # logged: a screen says it
+        store.log_node(node.id, now, "refused", who.label, who.session_id, None, {"unchanged": node.scope})
         raise refusal(
             f"{node.id} is not done: nothing inside its scope ({', '.join(node.scope)}) has changed since "
             "it was started, so a passing check shows nothing",

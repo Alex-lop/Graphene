@@ -82,6 +82,8 @@ def news(line: dict, titles: dict[str, str] | None = None) -> str:
     moves: set[int] = set()  # which of them are an agent's own moves: what it did or said
     first: dict[int, int] = {}  # an answer that edited the plan -> where the edits it made begin
     edits = 0  # where the edits said just before this row begin
+    ends = ("finished", "overruled", "refused")  # a check that passed with none of these was not done yet
+    ended = {r["node_id"] for r in line.get("node_log") or [] if r["kind"] in ends}
     for row in line.get("node_log") or []:
         d, kind = json.loads(row.get("detail") or "{}"), row["kind"]
         title = titles.get(row["node_id"], row["node_id"])
@@ -97,6 +99,10 @@ def news(line: dict, titles: dict[str, str] | None = None) -> str:
             said.append(f"{title} came back: {words(d.get('why'))}")
         elif kind == "refused" and d.get("outside"):
             said.append(f"{title} is not done: {words(', '.join(d['outside']))} is outside its scope")
+        elif kind == "refused" and "unchanged" in d:
+            said.append(f"{title} is not done: nothing in its scope changed")
+        elif kind == "check_passed" and row["node_id"] not in ended:  # 0.5.0 logged no refusal after it
+            said.append(f"{title}: its check passed, not done yet")
         elif kind == "board":
             if d.get("became"):  # what it changed is in the rows just before it
                 first[len(said)] = edits

@@ -173,11 +173,12 @@ def test_sign_off_reopen_and_release_each_leave_a_line_in_the_nodes_record(repo)
     assert "handed back: needs schema.py, which is outside my scope" in person("plan").stdout
     shown = person("node", "show", "n1").stdout
     assert "window 2:" in shown and "released: needs schema.py" in shown  # the contract, then the record
-    assert "`graphene plan log` (8 for n1)" in shown
+    assert "`graphene plan log` (9 for n1)" in shown
     kinds = [re.split(r"  +", line.strip())[2] for line in person("plan", "log").stdout.splitlines()]
     assert kinds == [  # a kind reads with spaces, as the record pane and the replay's bottom line say it
-        "added", "started", "check passed", "check passed", "finished", "reopened", "started", "released"
-    ]  # fmt: skip
+        "added", "started", "check passed", "refused", "check passed", "finished", "reopened", "started",
+        "released",
+    ]  # fmt: skip  (the first done, refused: nothing in its scope had changed, a row of its own since 19 Oct)
 
 
 def test_next_knows_what_the_caller_holds_and_never_points_back_at_a_node_just_handed_back(repo):

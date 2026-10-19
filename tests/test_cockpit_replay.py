@@ -159,6 +159,20 @@ def test_tasks_accepted_together_are_one_item_that_counts_them():
     assert news({"node_log": [row("greet", "accepted")]}, GREET) == "you accepted greet says hello"
 
 
+def test_a_check_that_passed_with_no_finish_is_not_done_yet_and_a_refusal_says_why():
+    """The replays walk (third review): the live take narrated "its check passed" where Graphene refused the
+    done, nothing in the scope having changed (0.5.0 logged no refusal). A passed check with no finish in its
+    change is not done yet; a refusal for an unchanged scope says so."""
+    alone = [row("greet", "check_passed")]
+    assert news({"node_log": alone}, GREET) == "greet says hello: its check passed, not done yet"
+    done = [row("bye", "check_passed"), row("bye", "finished")]
+    said = "bye says goodbye: its check passed · bye says goodbye is proven"
+    assert news({"node_log": done}, GREET) == said
+    refused = [row("greet", "check_passed"), row("greet", "refused", unchanged=["app.py"])]
+    said = "greet says hello: its check passed · greet says hello is not done: nothing in its scope changed"
+    assert news({"node_log": refused}, GREET) == said
+
+
 def test_the_news_says_an_edit_as_what_it_changed():
     widened = row("greet", "edited", changed={"scope": [["app.py"], ["app.py", "words.py"]]}, rev=3)
     assert news({"node_log": [widened]}, GREET) == "greet says hello may now write words.py"
