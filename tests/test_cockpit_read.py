@@ -696,6 +696,28 @@ def test_a_leaf_the_person_finished_over_its_check_is_done_but_not_proven_and_st
     assert "x" in m.tasks and m.folded_done > 0 and m.scoreboard()[2] == m.folded_done + KEEP_DONE
 
 
+def test_a_done_task_whose_check_passed_before_the_work_says_so_on_its_row(repo):
+    """A stranger's first hour (second review): red first said "its check passes before any work: it would
+    pass with nothing done", the run went on, and the row read "✓ 1 multiply 2 files", proven, with no word of
+    it; only `i` said it. The row says it too; the task still counts as proven, as its check did pass."""
+    from graphene_map.cockpit.rows import build_cockpit
+
+    plan_of(repo)
+    with Store.open(repo) as store:
+        plan.propose(store, [{"id": "x", "title": "x", "scope": ["x.txt"], "check": "true"}], ALEX)
+        node = plan.get(store, "x")
+        store.log_node("x", plan._now(), "precheck", None, None, None,
+                       {"verdict": "passes", "check": "true", "rev": node.rev})  # fmt: skip
+        plan.start(store, "x", ALEX, repo)
+    (repo / "x.txt").write_text("done\n")
+    with Store.open(repo) as store:
+        plan.finish(store, "x", ALEX)
+    m = look(repo)
+    assert m.tasks["x"].hollow and not m.tasks["schema"].hollow
+    said = "\n".join(line.plain() for line in build_cockpit(m, 120))
+    assert "check passed before the work" in said
+
+
 def test_agents_are_numbered_as_their_tasks_were_first_taken_and_a_retry_keeps_the_number(repo):
     plan_of(repo)
     other = Caller("claude:7a11", False, "7a110000-0000-4000-8000-0000000000b2")

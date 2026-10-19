@@ -79,3 +79,27 @@ def test_a_file_a_task_made_that_git_does_not_track_yet_is_counted_in_the_new_pl
         return {style for _, style in T.bar(by_name[name], 20, "changed", lambda tid: tid)}
 
     assert bar("pdf/ (new)") == {"pdf", "grey23"} and bar("mail/ (new)") == {"grey23"}  # made, not may
+
+
+def test_a_small_projects_one_file_folder_is_named_and_not_folded_into_other():
+    """A stranger's first hour (second review): on a six-file project the map named the package's folder
+    "other", under a headline that counted it as a folder, and p refused it ("other is not one folder").
+    Folders fold only when there are more of them than rows."""
+    files = [".gitignore", "README.md", "pyproject.toml", "src/tinycalc/__init__.py", "tests/test_calc.py",
+             "tests/test_mul.py"]  # fmt: skip
+    names = [g.name for g in T.group_files(files, rows=10)]
+    assert "other" not in names and "src/" in names
+    many = [f"pkg{k}/mod.py" for k in range(40)] + ["README.md", "setup.py"]  # forty one-file folders
+    assert [g.name for g in T.group_files(many, rows=10)][-1] == "other"
+
+
+def test_a_new_file_being_written_counts_in_its_new_places_row_as_in_the_headline():
+    """The replays walk (third review): `demo --live`'s map said "1 file being written" over no row that
+    showed it: the file was new, git did not track it, and only tracked files counted as written. It counts
+    in the row of the new place it is made in."""
+    files = ["app/report.py", "tests/test_report.py"]
+    tasks = {"json-tests": {"state": "running", "scope": ["tests/test_report_json.py"],
+                            "touched": ["tests/test_report_json.py"]}}  # fmt: skip
+    groups, summary = T.compute(files, tasks, lens="live")
+    assert summary["writing"] == 1
+    assert sum(g.touched for g in groups) == 1 and [g.name for g in groups if g.touched] == ["tests/ (new)"]

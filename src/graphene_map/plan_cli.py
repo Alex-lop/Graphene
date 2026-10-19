@@ -1008,7 +1008,7 @@ def register(cli: typer.Typer, root, open_store, fail):
             help="Use this executor, not init's: claude, codex, nemotron or a command.",
         ),
         attempts: int = typer.Option(
-            3, "--attempts", min=1, help="How often a refused executor is sent back."
+            3, "--attempts", min=1, help="Attempts a leaf gets before it comes back."
         ),
         node: list[str] = typer.Option(None, "--node", help="Only this node; repeat it."),
         parallel: int = typer.Option(1, "--parallel", help="How many leaves run at once."),

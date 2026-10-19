@@ -58,6 +58,7 @@ class Task:
     overruled: bool = False  # done because the person said so, over a check that had not passed
     above: list[tuple[str, str]] = field(default_factory=list)  # the sub-goals over it, top first: id, name
     check: str = ""  # the command that proves it done, as the plan says it
+    hollow: bool = False  # done or in review, and its check passed before any work too: it proves nothing new
 
 
 @dataclass
@@ -153,8 +154,18 @@ class Model:
         return self.clock - last
 
     def tail(self, t: Task, n: int = 3) -> list[str]:
+        """The task's last few moves. A write the gate then stopped did not happen: it is said once, as
+        stopped, not as an edit and then a stop (the README's "refused before the write")."""
+        stops: set[str] = set()
+        kept = []
+        for e in reversed(t.events):
+            if e.kind == "stop":
+                stops.add(e.path)
+            elif e.kind == "edit" and e.path in stops:
+                continue
+            kept.append(e)
         out = []
-        for e in t.events[-n:]:
+        for e in kept[::-1][-n:]:
             out.append(
                 {
                     "read": "read ",

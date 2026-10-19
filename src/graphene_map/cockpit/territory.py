@@ -66,7 +66,9 @@ def group_files(files: list[str], rows: int = 10) -> list[Group]:
             break
         groups.update(split)
     out = [Group((("/".join(k) + "/") if k else "(root)"), v) for k, v in groups.items()]
-    keep = [g for g in out if len(g.files) >= max(2, total // 60)]
+    # small folders fold into "other" only when there are more of them than rows: a small project's one code
+    # folder is named, never "other" under a headline that counts it
+    keep = out if len(out) <= rows else [g for g in out if len(g.files) >= max(2, total // 60)]
     rest = [g for g in out if g not in keep]
     if rest:
         other = Group("other", [f for g in rest for f in g.files])
@@ -138,6 +140,11 @@ def compute(
                 g.changed[tid] += 1
                 if scope and not _in(p, scope):
                     g.outside += 1
+        writing = (t.get("touched") or ()) if t["state"] == "running" else ()
+        for p in [p for p in writing if p not in where]:  # a new file being written: the headline counts it
+            made = [g for g in groups if g.new and _made_in(p, g.name)]
+            if made:
+                max(made, key=lambda g: len(g.name)).touched += 1
     total = len(files)
     done = [(p, tuple(t.get("scope") or ())) for t in tasks.values() for p in t.get("changed") or ()]
     running = [t for t in tasks.values() if t["state"] == "running"]

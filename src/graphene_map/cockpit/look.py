@@ -32,8 +32,9 @@ def color_of(agent: str) -> str:
 
 
 def who(agent: str) -> str:
-    """How the screen names an agent in words: "agent 2". Agents go by numbers, in the order they took
-    their first leaf of the plan, so "agent 2 is stuck" is sayable and says which one started second."""
+    """How the screen names an agent in words: "agent 2". Agents go by numbers, one a task in the order the
+    tasks were first taken (``read.numbers``), kept through a retry, so "agent 2 is stuck" is sayable and says
+    which task was taken second."""
     return f"agent {agent}" if agent else ""
 
 

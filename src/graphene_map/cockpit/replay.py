@@ -45,8 +45,9 @@ NO_DIRECTION = "a replay has no direction: in your own repo, D shows the goals a
 # tables (precheck, usage, model, attempt, ended, a run's summary) is bookkeeping and says nothing
 MILESTONES = {
     "proposed": "proposed: {}", "accepted": "you accepted {}", "started": "{} started",
-    "check_passed": "{}: its check passed", "check_failed": "{}: its check failed", "finished": "{} is done",
-    "signed_off": "you signed off {}", "landed": "{} landed", "rolled_up": "{} is done",
+    "check_passed": "{}: its check passed", "check_failed": "{}: its check failed",
+    "finished": "{} is proven", "rolled_up": "{} is proven",  # the screen's word; overruled stays "done"
+    "signed_off": "you signed off {}", "landed": "{} landed",
     "reopened": "{} reopened", "dropped": "{} dropped", "overruled": "{} is done over its check",
     "added": "{} added",
 }  # fmt: skip

@@ -34,7 +34,7 @@ Needs [uv](https://docs.astral.sh/uv/getting-started/installation/), a free inst
 
 ## What you see
 
-`graphene watch` is the cockpit: a row a task, numbered by its agent, and what needs you on top. Enter does the row's move (accept, try again, sign off), `t` tells an agent one line, `w` widens a task to the file it was stopped at, `?` shows every key.
+`graphene watch` is the cockpit: a row a task, numbered in the order the tasks were taken, and what needs you on top. Enter does the row's move (accept, try again, sign off), `t` tells an agent one line, `w` widens a task to the file it was stopped at, `?` shows every key.
 
 ![graphene watch: agent 1 has handed its task back with its reason, the word lives in words.py, and Enter tries again; agents 2 and 3 are running, and a fourth task waits on agents 1 and 2](https://raw.githubusercontent.com/Alex-lop/Graphene/main/docs/assets/cockpit.png)
 

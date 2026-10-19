@@ -2792,8 +2792,10 @@ def record_pane(store, node: P.Node, s, wide: int) -> Text:
         )
     else:
         pane.text("none has run for it yet", "dim", indent=2)
+    for line in record.against:  # flagged, never refused: a check it changed, or one the base passed too
+        pane.text(line, "#e9a23b", indent=2)
     no = record.refusals
-    said = [f"a write denied: {p}" for p in sorted(set(no.denied))]
+    said = [f"a write to {p}, before it happened" for p in sorted(set(no.denied))]  # the README's "refused"
     said += [f"a change refused after the fact: {p}" for p in sorted(set(no.breaches))]
     said += [f"done refused over {', '.join(stray) or 'a failing check'}" for stray in no.done]
     said += [f"{no.checks_failed} failed check{'s' * (no.checks_failed != 1)}"] if no.checks_failed else []
@@ -2811,9 +2813,10 @@ def record_pane(store, node: P.Node, s, wide: int) -> Text:
     pane.text("what people did", "bold")
     if not record.acts:
         pane.text("nothing yet: nobody accepted, edited, signed off or sent it back", "dim", indent=2)
-    kinds = max((len(a.kind) for a in record.acts), default=0)
-    for a in record.acts:
-        pane.text(f"{_clock(a.at)}  {a.kind.replace('_', ' ').ljust(kinds)}  {P.said_by(a.actor)}"
+    named = [{"released": "handed back"}.get(a.kind, a.kind.replace("_", " ")) for a in record.acts]  # as x
+    kinds = max((len(k) for k in named), default=0)
+    for a, kind in zip(record.acts, named, strict=True):
+        pane.text(f"{_clock(a.at)}  {kind.ljust(kinds)}  {P.said_by(a.actor)}"
                   + (f": {a.said}" if a.said else ""), indent=2)  # fmt: skip
     return pane.render()
 

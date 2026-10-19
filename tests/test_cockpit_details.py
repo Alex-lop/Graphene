@@ -273,3 +273,29 @@ def test_i_opens_the_details_of_a_row_that_waits_for_you_and_takes_nothing(repo)
                 assert plan.get(store, "notes").state == plan.OPEN
 
     asyncio.run(go())
+
+
+def test_the_record_pane_flags_a_check_that_runs_a_file_its_task_changed(tmp_path):
+    """A skeptic (third review): HOW_IT_WORKS says done flags a check that runs a file its own leaf changed,
+    "in the run and the record", and the cockpit's record pane never printed it: a person who reads only the
+    cockpit never saw the flag. The shipped replay's banner task has it."""
+    from graphene_map import demo as D
+    from graphene_map.cockpit.replay import CockpitReplay
+
+    head, lines = D.load(D.SHIPPED, 1.0)
+
+    async def go():
+        app = CockpitReplay(D.repository(tmp_path, head), head, lines)
+        async with app.run_test(size=(120, 50)) as pilot:
+            await pilot.pause(0.2)
+            await pilot.press("space")
+            while app.next < len(lines):
+                await pilot.press("full_stop")
+            app.model.selected = "banner"
+            await pilot.press("i", "4")
+            await pilot.pause(0.2)
+            assert isinstance(app.screen, Details)
+            said = " ".join(str(w.render()) for w in app.screen.query(Static))
+            assert "its check runs cli/banner.py, which this leaf changed" in said
+
+    asyncio.run(go())

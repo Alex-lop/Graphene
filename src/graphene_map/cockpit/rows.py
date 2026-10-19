@@ -177,7 +177,8 @@ def right_of(m: Model, t: Task, width: int) -> list[Seg]:
         return [Seg(said if after else "", "grey50")]
     if t.state == "review":
         proof = f"✓{t.passed}/{t.checks}  " if t.checks else ""
-        return [Seg(proof, "#8ab17d"), Seg("⏎ sign off", "bold #c77dff", "take")]
+        hollow = [Seg("passed before the work  ", "#e9a23b")] if t.hollow else []
+        return [Seg(proof, "#8ab17d"), *hollow, Seg("⏎ sign off", "bold #c77dff", "take")]
     if t.state == "came back":  # the reason is cut to a third of the row: the open row says all of it
         why = fit(t.note or "stuck", max(width // 3, 16))
         return [Seg(why, "#ef476f"), Seg("   ⏎ try again", "bold #c77dff", "take")]
@@ -194,7 +195,9 @@ def right_of(m: Model, t: Task, width: int) -> list[Seg]:
         f"{n} file{'s' if n != 1 else ''}" + (" · OUTSIDE" if outside else ""),
         "bold #ef476f" if outside else "grey50",
     )
-    return [said, Seg(" · overruled", "bold #e9a23b")] if t.overruled else [said]
+    if t.overruled:
+        return [said, Seg(" · overruled", "bold #e9a23b")]
+    return [said, Seg(" · check passed before the work", "#e9a23b")] if t.hollow else [said]
 
 
 def task_lines(

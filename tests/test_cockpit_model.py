@@ -81,3 +81,13 @@ def test_a_glob_that_matches_no_tracked_file_is_a_file_still_to_be_made_and_coun
     t = Task("new", "new test", "running", ["models/**", "tests/test_new.py", "!models/m0.py"])
     m.tasks["new"] = t
     assert m.allowed(t) == 4 + 1  # four models files (m0 taken out), and the test file still to come
+
+
+def test_a_write_the_gate_stopped_is_said_once_as_stopped_never_as_an_edit_first():
+    """A first look (third review): cockpit.png read "edit app.py / edit words.py / stopped words.py", an edit
+    one line above its own refusal, beside the README's "refused before the write". The stopped write is said
+    once; an edit of another file stays."""
+    t = Task("greet", "greet says hello", "running", ["app.py"])
+    t.events = [Ev(1.0, "edit", path="app.py"), Ev(2.0, "edit", path="words.py"),
+                Ev(2.5, "stop", path="words.py")]
+    assert Model("a friendlier app").tail(t) == ["edit app.py", "stopped words.py"]
