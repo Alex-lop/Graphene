@@ -42,6 +42,42 @@ def test_enter_on_a_running_task_opens_its_contract_and_tab_goes_through_the_pan
     asyncio.run(go())
 
 
+def test_the_panes_are_on_1_to_4_and_d_l_and_r_never_show_one_as_they_drop_and_run_one_screen_down(repo):
+    make_plan(repo, running=True)
+    app = cockpit(repo)
+    app.open_store = lambda: Store.open(repo)
+
+    async def go():
+        async with app.run_test(size=(100, 30)) as pilot:
+            await pilot.pause(0.1)
+            app.model.selected = "ids"
+            await pilot.press("i")
+            await pilot.pause(0.3)
+            title = str(app.screen.query_one("#title", Static).render())
+            assert "1 contract" in title and "4 record" in title
+            for key, pane in (("2", "output"), ("4", "record"), ("3", "changes"), ("1", "contract")):
+                await pilot.press(key)
+                await pilot.pause(0.1)
+                assert app.screen.which == pane, key
+            for key in ("d", "l", "r"):  # drop, the old output key, run: none of them moves the pane
+                await pilot.press(key)
+                await pilot.pause(0.1)
+                assert app.screen.which == "contract", key
+            assert "1-4 a pane" in str(app.screen.query_one("#foot", Static).render())
+
+    asyncio.run(go())
+
+
+def test_a_leaf_that_came_back_offers_its_ways_out_without_the_classic_screens_t(repo):
+    make_plan(repo, running=True)
+    with Store.open(repo) as store:
+        plan.release(store, "ids", BOT, "the id lives in db/models.py", wants=["db/models.py"])
+        for wide in (60, 120):  # the command on a line of its own, and beside its key
+            said = pane_text(store, repo, "ids", "contract", wide).plain
+            assert "ask the planner" not in said and "graphene ask" not in said
+            assert "graphene node widen ids" in said  # the ways out the cockpit's keys take are all there
+
+
 def test_a_pane_for_a_node_that_left_the_plan_says_so_and_a_pane_that_cannot_be_made_does_not_crash(repo):
     make_plan(repo)
     with Store.open(repo) as store:

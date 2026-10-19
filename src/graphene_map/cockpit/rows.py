@@ -2,7 +2,7 @@
 
 `build_cockpit` takes the model and a width and returns lines (lines.py). A row says who is on the task,
 what its title is, and in numbers whether it is alive and on track: a sparkline of pace, files touched of
-files allowed, proofs passed of proofs asked, writes stopped, seconds quiet. The row under the cursor
+files allowed, checks passed of checks asked, writes stopped, seconds quiet. The row under the cursor
 opens: the last lines of what the agent did, what the person told it and whether it heard, and the verbs.
 """
 
@@ -13,8 +13,8 @@ import textwrap
 from rich.cells import cell_len
 
 from . import territory as T
-from .lines import Line, Seg, ago, fit, ljust, pad, span
-from .look import STATE_GLYPH, color_of, who
+from .lines import Line, Seg, ago, fit, fit_end, ljust, pad, span
+from .look import STATE_GLYPH, color_of, short, who
 from .model import Model, Question, Task
 
 NO_GOAL = "no goal yet"  # what the plan's reader says of a plan with none (views.inputs)
@@ -116,14 +116,17 @@ def right_of(m: Model, t: Task, width: int) -> list[Seg]:
     """The columns on the right of a task's row: what it is doing, in numbers."""
     if t.state == "running":
         quiet = m.quiet(t)
-        right = [Seg(m.pace(t) + "  ", RUNNING)] if width >= 70 else []  # its pace, in its state's colour
+        pace = width >= (100 if t.stopped else 70)  # a stopped row's room goes to the key that frees it
+        right = [Seg(m.pace(t) + "  ", RUNNING)] if pace else []  # its pace, in its state's colour
         if width >= 78:
             right += [Seg(f"✎{len(t.touched)}/{m.allowed(t)}".ljust(8), "grey62")]
         if t.checks:
             proven = "#8ab17d" if t.passed == t.checks else "grey62"
             right += [Seg(f"✓{t.passed}/{t.checks}".ljust(6), proven)]
-        if t.stopped:
-            right += [Seg(f"!{len(t.stopped)} ", "bold #ef476f", "allow")]
+        if t.stopped:  # what the gate stopped, and the key that gives it: the fix, not a count
+            path, room, more = t.stopped[-1][0], max(12, width // 5), len(t.stopped) - 1
+            path = path if cell_len(path) <= room else fit_end(path.rsplit("/", 1)[-1], room)  # else its name
+            right += [Seg(f"w widen {path}" + (f" +{more} " if more else " "), "bold #e9a23b", "allow")]
         if t.outside:
             right += [Seg(f"{len(t.outside)} OUTSIDE ", "bold #ef476f")]
         if quiet > 8:
@@ -131,7 +134,7 @@ def right_of(m: Model, t: Task, width: int) -> list[Seg]:
         return right
     if t.state == "waiting":
         before = [m.tasks[n] for n in t.needs if n in m.tasks and m.tasks[n].state != "done"]
-        after = ", ".join(who(o.agent) or o.id for o in before)
+        after = ", ".join(who(o.agent) or o.title for o in before)  # who is on it, else what it is
         return [Seg("← " + after if after else "", "grey50")]
     if t.state == "review":
         proof = f"✓{t.passed}/{t.checks}  " if t.checks else ""
@@ -170,7 +173,8 @@ def task_lines(
     right = right_of(m, t, width)
     room = max(12, width - LEAD - cols - 1)
     gap = [Seg(" " * max(0, cols - span(right)))] if cols else []
-    title = Seg(ljust(fit(t.title, room - 1), room), "bold" if on else "", f"select:{t.id}")
+    whole = short(t.full, 0) or t.title  # the whole title, its article and what follows a colon left out
+    title = Seg(ljust(fit(whole, room - 1), room), "bold" if on else "", f"select:{t.id}")
     segs = lead + [title] + right + gap
     line = Line(pad(segs, width), t.id)
     out = [line]
@@ -241,14 +245,14 @@ def expansion(m: Model, t: Task, width: int, tell: str | None) -> list[Line]:
     verbs = [Seg("      ", ""), Seg("t tell", "bold #4cc9f0", "tell")]
     if t.stopped:  # `graphene node widen` gives what the gate stopped: say which path, not a guess
         path, more = t.stopped[-1][0], len(t.stopped) - 1
-        give = f"   w give it {fit(path, 28)}" + (f" +{more}" if more else "")
+        give = f"   w widen {fit(path, 28)}" + (f" +{more}" if more else "")
         verbs += [Seg(give, "bold #e9a23b", "allow")]
-    for key, what in (("w", "widen it"), ("b", "a sibling"), ("n", "wait on it"), ("r", "reopen")):
+    for key, what in (("w", "widen"), ("b", "a sibling"), ("n", "wait on it"), ("r", "reopen")):
         if key in t.offers and not (key == "w" and t.stopped):  # what a leaf that came back offers
             verbs += [Seg(f"   {key} {what}", "bold #e9a23b", "allow" if key == "w" else f"offer:{key}")]
-    if t.state == "running":
-        verbs += [Seg("   x pull back", "grey70", "back")]
-    verbs += [Seg("   i everything", "grey50", "details")]
+    if t.state in ("running", "review"):  # x hands a running task back, and reopens one that waits on you
+        verbs += [Seg("   x hand back" if t.state == "running" else "   x reopen", "grey70", "back")]
+    verbs += [Seg("   i details", "grey50", "details")]
     while span(verbs) > width and len(verbs) > 2:  # the last verbs give way first
         verbs.pop()
     out.append(Line(verbs, t.id))

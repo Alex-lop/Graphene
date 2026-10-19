@@ -108,7 +108,7 @@ def test_widen_gives_a_task_the_paths_the_gate_stopped_and_nothing_more(repo, do
         assert plan.get(store, "ids").scope == ["api.py", "db/ids_2.py"]  # the path, not its folder
     m.tasks["ids"].stopped = []
     doer.widen(m, "ids")
-    assert doer.said[-1] == "nothing was stopped, so nothing to allow"
+    assert doer.said[-1] == "nothing was stopped, so nothing to widen"
 
 
 def test_a_leaf_that_came_back_offers_its_own_commands(repo, doer):

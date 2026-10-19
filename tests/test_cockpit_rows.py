@@ -66,8 +66,9 @@ def test_a_question_a_proposal_and_a_risk_have_marks_of_their_own_and_their_word
 def test_a_running_row_has_its_agent_and_its_numbers_and_the_selected_one_opens():
     m = scene()
     text = "\n".join(plain(rows.build_cockpit(m, 100)))
-    assert "● 1  users return ids" in text and "✎2/9" in text and "✓1/3" in text and "!1" in text
-    assert "t tell" in text and "w give it db/ids_2.py" in text and "x pull back" in text
+    assert "● 1  users return ids" in text and "✎2/9" in text and "✓1/3" in text
+    assert all(k in text for k in ("t tell", "w widen db/ids_2.py", "x hand back", "i details"))
+    assert not any(old in text for old in ("give it", "pull back", "everything"))  # one word for each key
     m.selected = "docs"  # a proposed row does not open with an agent's verbs
     assert "t tell" not in "\n".join(plain(rows.build_cockpit(m, 100)))
 
@@ -78,6 +79,20 @@ def test_a_running_rows_pace_is_drawn_in_the_running_amber_not_in_its_agents_col
     row = next(line for line in rows.build_cockpit(scene(), 100) if line.row == "ids")
     [pace] = [s for s in row.segs if any(c in SPARK for c in s.text)]
     assert pace.style.startswith(STATE_GLYPH["running"][1].split()[-1]) and color_of("1") not in pace.style
+
+
+def test_a_row_whose_write_was_stopped_says_on_its_right_the_key_that_widens_it_and_the_path():
+    m = scene()
+    m.selected = "docs"
+    for width in (60, 80, 120):
+        row = next(line for line in rows.build_cockpit(m, width) if line.row == "ids")
+        [hint] = [s for s in row.segs if s.action == "allow"]
+        assert hint.text.startswith("w widen ") and hint.text.strip().endswith("ids_2.py")
+        assert "#e9a23b" in hint.style  # amber: a key to press, not an alarm
+        assert row.width() <= width and "!1" not in row.plain()
+    m.tasks["ids"].stopped.append(("db/other.py", 97.0))
+    row = next(line for line in rows.build_cockpit(m, 120) if line.row == "ids")
+    assert "w widen db/other.py +1" in row.plain()  # the last one stopped, and how many more
 
 
 def test_a_row_waiting_for_sign_off_and_a_proposal_name_their_key():
@@ -108,6 +123,9 @@ def test_a_selected_proposal_opens_to_show_what_accepting_it_agrees_to():
 def test_a_task_that_waits_says_for_whom_and_a_finished_one_says_what_it_changed():
     text = "\n".join(plain(rows.build_cockpit(scene(), 100)))
     assert "← agent 1, agent 2" in text and "3 files" in text
+    m = scene()
+    m.tasks["ids"].agent = ""  # nobody on it yet: it is named by what it is, never by its id
+    assert "← users return ids, agent 2" in "\n".join(plain(rows.build_cockpit(m, 100)))
 
 
 def test_a_task_that_changed_a_file_outside_its_scope_says_so():
@@ -149,7 +167,10 @@ def test_a_leaf_that_came_back_shows_what_it_offers_as_keys():
     m.tasks["migrate"].state = "came back"
     m.tasks["migrate"].offers = {"w": ["node", "widen", "migrate"], "b": ["node", "sibling", "migrate"]}
     text = "\n".join(plain(rows.build_cockpit(m, 120)))
-    assert "w widen it" in text and "b a sibling" in text and "n wait on it" not in text
+    assert "w widen" in text and "b a sibling" in text and "n wait on it" not in text
+    m.tasks["migrate"].state = "review"  # x on a task that waits for sign-off reopens it
+    assert "x reopen" in "\n".join(plain(rows.build_cockpit(m, 120)))
+    m.tasks["migrate"].state = "came back"
     line = next(line for line in rows.build_cockpit(m, 120) if "b a sibling" in line.plain())
     assert "offer:b" in [s.action for s in line.segs]
 
@@ -169,6 +190,18 @@ def test_a_running_agent_that_is_not_selected_shows_its_last_move_in_one_dim_lin
     assert "┊ edit models/m0.py" in text  # agent 1's last event, under its row
     m.selected = "ids"  # selected, it opens into three lines and the verbs instead
     assert "┊ edit models/m0.py" in "\n".join(plain(rows.build_cockpit(m, 100)))
+
+
+def test_a_row_shows_the_whole_title_where_it_fits_and_cuts_it_with_an_ellipsis_where_it_does_not():
+    m = scene()
+    m.tasks["tests"].full = "The tests for ids: each endpoint returns the id it was given"
+    m.tasks["tests"].title = "tests for ids"  # the plan's reader keeps five words for the graph's boxes
+    m.tasks["docs"].full = "Write the docs for the ids endpoint, with an example request and its answer"
+    wide = "\n".join(plain(rows.build_cockpit(m, 140)))
+    assert "tests for ids " in wide and "each endpoint" not in wide  # what follows the colon is left out
+    assert "Write the docs for the ids endpoint, with an example request and its answer" in wide
+    narrow = next(line for line in rows.build_cockpit(m, 80) if line.row == "docs").plain()
+    assert "Write the docs for" in narrow and "…" in narrow and len(narrow) <= 80
 
 
 def test_a_narrow_banner_keeps_what_it_is_and_where_it_is():

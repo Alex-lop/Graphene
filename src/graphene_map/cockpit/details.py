@@ -3,9 +3,10 @@ already knew how to write.
 
 contract (what it is for, its scope and check, why it came back), output (what the agent did and said,
 newest last), changes (what it changed, whole, as `graphene node diff` shows it) and record (each hold: who,
-when, how it ended, what the check said, what was refused). Tab goes on; Esc goes back. They are the same
-builders the classic screen uses (`tui.detail`, `tail_pane`, `diff_pane`, `record_pane`), so a row reads the
-same here.
+when, how it ended, what the check said, what was refused). 1 to 4 show one, Tab goes on, Esc goes back: no
+key here means what it means one screen down (d drop, r run). They are the same builders the classic screen
+uses (`tui.detail`, `tail_pane`, `diff_pane`, `record_pane`), so a row reads the same here, but for the
+classic screen's `t ask the planner`: in the cockpit t tells the agent.
 """
 
 from __future__ import annotations
@@ -28,7 +29,7 @@ from .lines import fit_keys
 
 PANES = ("contract", "output", "changes", "record")
 DIRECTION = ("direction",)  # D: the goals above your plans, a pane of its own
-KEYS = {"d": "contract", "l": "output", "c": "changes", "r": "record"}  # a key, and the pane it shows
+KEYS = {"1": "contract", "2": "output", "3": "changes", "4": "record", "c": "changes"}  # c: the README's diff
 
 
 def pane_text(store, root: Path, node_id: str, which: str, wide: int, high: int = 20) -> Text:
@@ -53,9 +54,22 @@ def pane_text(store, root: Path, node_id: str, which: str, wide: int, high: int 
             return tui.diff_pane(store, node, word, wide)
         if which == "record":
             return tui.record_pane(store, node, s, wide)
-        return tui.detail(store, node, s, P.tracked(root), (wide, high))
+        return untold(tui.detail(store, node, s, P.tracked(root), (wide, high)))
     except Exception as no:  # a pane is a view: whatever went wrong, the screen stays up
         return Text(f"the {which} pane could not be made: {type(no).__name__}: {no}", style="#ef476f")
+
+
+def untold(text: Text) -> Text:
+    """A leaf that came back, without the classic screen's `t ask the planner` row (and the command under
+    it, where the pane is narrow): the cockpit's t tells the agent, so the row would offer a key that does
+    something else. `:ask` asks the planner."""
+    kept, dropped = [], False
+    for line in text.split("\n", allow_blank=True):
+        said = line.plain.lstrip()
+        dropped = said.startswith("t  ask the planner") or (dropped and said.startswith("graphene ask"))
+        if not dropped:
+            kept.append(line)
+    return Text("\n").join(kept)
 
 
 class Details(ModalScreen[None]):
@@ -100,8 +114,7 @@ class Details(ModalScreen[None]):
     def feet(self) -> None:
         """The keys this screen has, in the room there is (Esc back always); a lone pane has no Tab."""
         many = len(self.panes) > 1
-        pieces = ["Tab next pane"] if many else []
-        pieces += [f"{key} {pane}" for key, pane in KEYS.items() if many and pane in self.panes]
+        pieces = ["Tab next pane", f"1-{len(self.panes)} a pane"] if many else []
         pieces += ["j k scroll", "Esc back"]
         room = max(self.size.width - 3, 20)
         self.query_one("#foot", Static).update(" " + fit_keys(" · ".join(pieces), room))
@@ -109,8 +122,9 @@ class Details(ModalScreen[None]):
     def show(self, which: str) -> None:
         self.which = which
         tabs = Text(" ")
-        for name in self.panes:
-            tabs.append(f" {name} ", style="bold reverse #4cc9f0" if name == which else "grey62")
+        for k, name in enumerate(self.panes, 1):  # numbered, as the keys that show them
+            shown = f" {k} {name} " if len(self.panes) > 1 else f" {name} "
+            tabs.append(shown, style="bold reverse #4cc9f0" if name == which else "grey62")
             tabs.append(" ")
         tabs.append(f" {self.title_text}", style="bold")
         self.query_one("#title", Static).update(tabs)

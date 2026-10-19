@@ -3,8 +3,8 @@
 `Cockpit` is handed a `looker`: a function from the model last shown (or None) to the model now. In the
 product it reads the plan's store (read.py); a test hands it a model it built. Everything on the canvas is
 lines (lines.py) painted and turned back into actions when clicked, so the words on a row are its buttons.
-The screens: cockpit (c), flow (g), territory (m). The keys are the verbs; a verb is a command that
-exists on its own (verbs.py), and the line at the bottom says what the last one did.
+The screens: cockpit (c), graph (g), map (m). The keys are the verbs; a verb is a command that exists
+on its own (verbs.py), and the line at the bottom says what the last one did.
 """
 
 from __future__ import annotations
@@ -40,10 +40,11 @@ from .territory_view import HEAD, build_territory
 from .verbs import Doer
 
 SCREENS = ("cockpit", "flow", "territory")
+TABS = ("cockpit", "graph", "map")  # what the top line calls them
 KEYS = {  # one line each, at most 79 columns: the screen's own keys, then the ones every screen has
-    "cockpit": "⏎ take · i all · t tell · w allow · x back · g graph · m map · ? keys · q quit",
-    "flow": "arrows · ⏎ take · t tell · w allow · c cockpit · m map · ? keys · q quit",
-    "territory": "j/k folder · ←/→ task · p paint · v lens · w allow · c cockpit · ? keys · q",
+    "cockpit": "⏎ accept · i details · t tell · w widen · x hand back · ? keys · q",
+    "flow": "arrows · ⏎ accept · i details · t tell · w widen · ? keys · q",
+    "territory": "j/k folder · ←/→ task · p paint · v lens · w widen · c cockpit · ? keys · q",
 }
 KEYS_TO_VERBS = {  # a key, and the verb it asks for (`act`)
     "t": "tell", "w": "allow", "x": "back", "d": "drop", "r": "run", "R": "run-all", "a": "answer",
@@ -158,12 +159,11 @@ class Cockpit(App):
         m, w = self.model, self.width()
         if self.tell_open and m.selected != self.tell_for:  # a click moved on: the line was for the other row
             self.close_tell()
-        tabs = "  ".join(
-            f"[{'b' if s == self.view else 'dim'}]{k} {s}[/]" for k, s in zip("cgm", SCREENS, strict=True)
-        )
+        shown = zip("cgm", SCREENS, TABS, strict=True)
+        tabs = "  ".join(f"[{'b' if s == self.view else 'dim'}]{k} {tab}[/]" for k, s, tab in shown)
         bar = Text.from_markup(" " + tabs.replace("[b]", "[bold #4cc9f0]").replace("[dim]", "[grey50]"))
         name = self.root.name if self.root else ""
-        name += f" · plan first {m.first}" if m.first else ""
+        name += " · plan first off" if m.first == "off" else ""  # said only when agents may write unplanned
         if bar.cell_len + len(name) + 3 > w:  # narrow: just whose plan this is, cut, or nothing
             name = name.split(" · ")[0][: max(w - bar.cell_len - 3, 0)]
         bar.append(" " * max(2, w - bar.cell_len - len(name) - 1) + name, style="grey42")  # whose plan
@@ -196,7 +196,7 @@ class Cockpit(App):
         info = f" {sel.title}" if sel else ""
         if sel:
             info += f"  ·  {sel.state}" + (f" · {who(sel.agent)}" if sel.agent else "")
-            info += f" · proof {sel.passed}/{sel.checks}" if sel.checks else ""
+            info += f" · ✓{sel.passed}/{sel.checks}" if sel.checks else ""
             info += f" · for {sel.why}" if sel.why else ""
         lines += [
             Line([]),
@@ -288,7 +288,7 @@ class Cockpit(App):
                 )
         elif action == "details":
             if task is None or self.open_store is None or self.root is None:
-                m.say("select a task to see everything about it")
+                m.say("select a task to see its details")
             else:
                 name = " · ".join(x for x in (task.title, who(task.agent)) if x)
                 self.push_screen(Details(self.open_store, self.root, sel, name))
@@ -304,8 +304,8 @@ class Cockpit(App):
             d.offer(m, sel, action.split(":", 1)[1])
         elif action == "back":
             if task is not None and task.state in ("review", "done"):
-                about = " · ".join(x for x in (task.title, who(task.agent)) if x)
-                ask = Ask(f"reopen {sel}: what is wrong? its next executor is told", about=about)
+                about = " · ".join(x for x in ("reopen " + task.title, who(task.agent)) if x)
+                ask = Ask("what is wrong? the agent that takes it next is told", about=about)
                 m.moved = True  # opening it is choosing the row: the selection stays here until you move
                 self.push_screen(ask, partial(self.reopened, sel))
             else:
@@ -314,7 +314,7 @@ class Cockpit(App):
             d.drop(m, sel)
         elif action == "run":
             if task is None:
-                m.say("select a task to run: r runs the one under the cursor, R every ready leaf")
+                m.say("select a task to run: r runs the one under the cursor, R every ready task")
             elif "r" in task.offers:
                 d.offer(m, sel, "r")
             else:
@@ -329,7 +329,7 @@ class Cockpit(App):
                 m.say("a answers a question in your own words: select one")
             else:
                 m.moved = True
-                ask = Ask(f"answer {q.id} in your own words", about=q.text)
+                ask = Ask("your answer, in your own words", about=q.text)
                 self.push_screen(ask, partial(self.answered, q.id))
         elif action == "split":
             d.split(m, sel)
@@ -380,8 +380,8 @@ class Cockpit(App):
             self.model.say("nothing asked: the file had no line of yours (:ask what you want asks in a line)")
 
     def run_all(self) -> None:
-        """R: every ready leaf. A run that could start more than one (each an executor that spends) asks
-        first; one leaf starts at once, and so does a run when no executor is chosen (it says so)."""
+        """R: every ready task. A run that could start more than one (each an executor that spends) asks
+        first; one task starts at once, and so does a run when no executor is chosen (it says so)."""
         m, d = self.model, self.doer
         could = [(n, w) for w in ("ready", "waiting") if (n := sum(t.state == w for t in m.tasks.values()))]
         total = sum(n for n, _ in could)
@@ -389,7 +389,7 @@ class Cockpit(App):
             d.run_ready()
             return
         which = ", ".join(f"{n} {w}" for n, w in could)
-        said = f"run up to {total} leaves ({which}), at most 4 at once with {m.executor}"
+        said = f"run up to {total} tasks ({which}), at most 4 at once with {m.executor}"
         said += "? y and Enter start them"
 
         def answered(typed: str | None) -> None:

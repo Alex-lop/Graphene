@@ -124,9 +124,9 @@ class Doer:
         elif t.state == "came back":
             self.background(["run", *RUN_WITH, "--node", t.id])
         elif t.state == "ready":
-            self.say(f"{t.title} is ready and waits for no one: r runs it, R runs every ready leaf")
+            self.say(f"{t.title} is ready and waits for no one: r runs it, R runs every ready task")
         else:
-            self.say(f"{who(t.agent) or t.title} is {t.state}: nothing to take")
+            self.say(f"{who(t.agent) or t.title} is {t.state}: it waits for nothing from you")
 
     def pick(self, m: Model, sel: str, n: int) -> None:
         q = next((q for q in m.questions if q.id == sel), None)
@@ -156,7 +156,7 @@ class Doer:
         if t is None:
             return
         if not t.stopped and "w" not in t.offers:
-            self.say("nothing was stopped, so nothing to allow")
+            self.say("nothing was stopped, so nothing to widen")
             return
         self.run(t.offers.get("w") or ["node", "widen", t.id])
 
@@ -173,9 +173,9 @@ class Doer:
     def pull_back(self, m: Model, sel: str) -> None:
         t = m.tasks.get(sel)
         if t is None or t.state != "running":
-            self.say("x pulls back a task that is running")
+            self.say("x hands back a task that is running")
             return
-        self.run(["node", "release", t.id, "--why", "the person pulled it back, from graphene watch"])
+        self.run(["node", "release", t.id, "--why", "the person handed it back, from graphene watch"])
 
     def paint(self, m: Model, sel: str, folder: str) -> None:
         """Give the task a folder, or take it back: its scope gains or loses the folder's glob."""
@@ -236,9 +236,9 @@ class Doer:
         or is done."""
         t = m.tasks.get(sel)
         if t is None:
-            self.say("select a leaf to split")
+            self.say("select a task to split")
         elif t.state in ("running", "review", "done"):
-            self.say(f"✗ {t.title} is {t.state}: s splits a leaf still to do, so no planner was started")
+            self.say(f"✗ {t.title} is {t.state}: s splits a task still to do, so no planner was started")
         else:
             self.background(["node", "split", t.id])
 

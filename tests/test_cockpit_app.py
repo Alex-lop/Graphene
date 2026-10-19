@@ -152,7 +152,7 @@ def test_question_mark_opens_the_keys_on_one_screen_and_escape_closes_it():
     run(go())
     text = help_text(80).plain.splitlines()
     assert len(text) <= 22 and all(len(line) <= 96 for line in text)
-    assert "tell it one line" in help_text(80).plain and "any graphene command" in help_text(80).plain
+    assert "tell its agent one line" in help_text(80).plain and "any graphene command" in help_text(80).plain
 
 
 def test_the_keys_line_keeps_help_and_quit_when_the_terminal_is_narrow():
@@ -166,6 +166,22 @@ def test_the_keys_line_keeps_help_and_quit_when_the_terminal_is_narrow():
     assert fit_keys(KEYS["cockpit"], 200) == KEYS["cockpit"]
 
 
+def test_the_tabs_say_cockpit_graph_and_map_and_plan_first_is_said_only_when_it_is_off(tmp_path):
+    async def go():
+        m = scene()
+        app = Cockpit(lambda previous: previous or m, root=tmp_path / "shop")
+        async with app.run_test(size=(100, 30)) as pilot:
+            await pilot.pause(0.1)
+            bar = str(app.query_one("#bar").render())
+            assert "c cockpit  g graph  m map" in bar and "flow" not in bar and "territory" not in bar
+            for first, shown in (("on", False), ("auto", False), ("off", True)):
+                m.first = first
+                app.paint()
+                assert ("plan first off" in str(app.query_one("#bar").render())) is shown, first
+
+    run(go())
+
+
 def test_the_graph_says_what_the_selected_task_is_for():
     from graphene_map.cockpit.model import Model, Task
 
@@ -177,7 +193,7 @@ def test_the_graph_says_what_the_selected_task_is_for():
         async with app.run_test(size=(100, 24)) as pilot:
             await pilot.pause(0.1)
             shown = "\n".join(line.plain() for line in app.query_one(Canvas).lines)
-            assert "users return ids  ·  running · agent 1 · proof 0/1 · for API" in shown
+            assert "users return ids  ·  running · agent 1 · ✓0/1 · for API" in shown
 
     run(go())
 

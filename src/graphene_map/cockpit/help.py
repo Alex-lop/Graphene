@@ -14,27 +14,27 @@ from textual.widgets import Static
 
 GROUPS = (
     ("answer", (
-        ("⏎ y", "take what waits for you: default, proposal, sign-off, retry"),
-        ("1-9", "pick that option"), ("a", "answer in your own words"),
-        ("d", "drop a proposal or a question"),
+        ("⏎ y", "the row's own move: the default, accept, sign off, try again"),
+        ("1-9 a", "pick that option; answer in your own words"),
+        ("d A", "drop a proposal or a question; accept every proposal"),
     )),
     ("agents", (
-        ("t", "tell it one line: it hears it with its next write"),
-        ("w", "give it the path the gate stopped"),
-        ("b n", "a leaf that came back: write a sibling, or wait on another"),
-        ("x", "hand a running agent back; reopen a finished one (say why)"),
-        ("r R", "run this leaf (or reopen its owner); run every ready one"),
-        ("s", "the planner splits a leaf still to do"),
+        ("t", "tell its agent one line: it hears it with its next write"),
+        ("w", "widen: give the task the path the gate stopped"),
+        ("x", "hand back a running task; reopen a finished one (say why)"),
+        ("b n", "came back: a sibling for what it wanted; wait on another"),
+        ("r R", "run this task (or reopen its owner); run every ready one"),
+        ("s", "the planner splits a task still to do"),
     )),
     ("plan", (
         ("e E", "edit the task, or the whole plan, in your $EDITOR"),
         ("P u", "plan first: on, auto, off; undo your last act"),
-        ("D", "the direction above your plans"),
+        ("D", "the direction: the goals above this plan"),
     )),
     ("screens", (
         ("j k", "move; ← → the task on the map, the box on the graph"),
-        ("i", "everything about the row: contract, output, changes, record"),
-        ("c g m", "the cockpit, the graph, the folder map; Tab goes on"),
+        ("i", "details: the task's contract, output, changes and record"),
+        ("c g m", "the cockpit, the graph, the map; Tab goes on"),
         ("v p", "on the map: v changes the lens, p paints a folder to a task"),
     )),
     ("anything", (("`:`", "any graphene command (:stop stops runs, :ask a sentence)"),
@@ -54,8 +54,8 @@ def help_text(width: int, extra: tuple = ()) -> Text:
             for line in more:
                 out.append("\n" + " " * INDENT + line, style="grey70")
             out.append("\n")
-    closing = "\n A row's words are buttons: click them. Every key is a graphene command;\n"
-    out.append(closing + " the line under the rows says which one ran.", style="grey50")
+    closing = "\n A row's words are buttons. Each key runs a graphene command, and the line\n under the rows"
+    out.append(closing + " says which one ran. The commands call a task a leaf.", style="grey50")
     return out
 
 
