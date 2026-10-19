@@ -44,6 +44,27 @@ Review every task before it lands (19 October).
 - A sign-off is checked on its merge with what landed since the task was cut, as a run's landing is: a red check
   keeps it in review. Sign-offs take turns.
 
+After a review of the whole branch at its seams (19 October), each line a fault a reader found and a skeptic
+confirmed:
+- A task that comes back while a run goes is taken again by that run once you answer it (widen, reopen, Enter on
+  its row), and a second `graphene run`, or `R`, hands its tasks to the run going instead of being refused. One
+  started with its own `--with`, `--attempts` or `--max-usd` is still refused.
+- A task of yours that nobody started is done by your word, once the check it has passes.
+- Three moves ask first: `x` on a running task (its agent stops), `r` on a finished one (it reopens), and Enter on
+  the last proposal when accepting it takes the open questions' defaults; Enter then accepts the task its line
+  named, never one proposed while the line was up.
+- A question opens to its whole words and every option, by the number that picks it; a proposal shows its check;
+  a task that came back names the files `w` and `b` would give it; `t` on a question answers it, and words typed
+  where nobody can hear them are said to go nowhere.
+- Under `review: every`, a task waiting for you shows the sign-off still to come and reads ✓2/2 once given; the map
+  counts it as changed, and what waits on it says it waits on your sign-off.
+- A plan's agents are numbered from 1 again after the last plan is put away; the graph carries each box's number
+  and mark in every state, and its head never cuts the state for a long title.
+- New proposals ring once for the batch when no question comes with them; a write stopped again rings again.
+- The replay says on every screen that it is one, lists only the keys that work in it, ends on its last state
+  with the next step, writes nothing where it was started, and shows each answer before the edits it made.
+- A refused command says why first, and an ask that ends says what the planner proposed.
+
 The release.
 - On macOS, `graphene run` on a terminal that is not its own session's (an agent's pty) no longer stops itself
   half a second in: a check's bash took that terminal and revoked it as it exited. A check gets no terminal. This

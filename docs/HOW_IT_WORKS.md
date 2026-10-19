@@ -91,7 +91,8 @@ waits for your own key.
 `graphene watch` opens the cockpit (`c`): what needs you first, then a row a task with its agent's number, kept
 through a retry, and in numbers whether it is on track: activity, files written of allowed, checks passed,
 seconds quiet. A write the gate stopped needs you too. A new question, a task that came back, a sign-off or a
-stopped write rings the terminal, with a desktop notice saying why (`notify: off` quiets it).
+stopped write rings the terminal, with a desktop notice saying why; a batch of proposals that brings no question
+rings once (`notify: off` quiets it).
 
 The key bar says what the keys do to the selected row: `⏎` its own move (accept, take the default, try again,
 sign off), `A` accept every proposal, `t` tell its agent a line (a Claude Code session hears it with its next
@@ -171,11 +172,12 @@ A leaf that comes back says why and offers the fix: `w` widens its scope, `b` ad
 needed, `r` reopens the done leaf it found wrong and waits on it (it asks first). Leaves whose scopes overlap never run at once; a
 leaf waits until what it needs has landed; if git cannot merge, the leaf stops in review with its branch named.
 
-What you say while a Claude Code session holds a leaf (`graphene board note --about ID`, or an answer) reaches
-it with its next write or shell command, once; `node show` records it as told.
-
 Ctrl-C, or `graphene run --stop` from another terminal, stops the executors and hands back every leaf that had not
 passed; `graphene run --here` runs one leaf in your own checkout and commits nothing.
+
+One run goes in a repository at a time: a second `graphene run`, or `R` in the cockpit, hands its leaves to the
+run going (one with its own `--with`, `--attempts` or `--max-usd` is refused). A leaf that came back is taken again
+once you widen it, reopen it, or press `⏎` on it.
 
 **What the scopes cost.** A path has one writer, and a check runs only what its leaf owns or what exists at the
 base: that caps the width.
@@ -215,8 +217,8 @@ the plan's dollars) and yours (your moves and their minutes).
 leaves ran, at most two together. With no meter, the dollars say "no meter". `graphene plan log` keeps the line as a
 row.
 
-`graphene node show` lists each attempt: executor, model, time, turns, tokens, dollars, exit, the cache it wrote
-and read (Claude Code), what it read, edited and ran, and what was refused. A Claude Code executor is seen by the
+`graphene node show` lists each attempt: executor, model, time, turns, tokens, dollars, exit and, with Claude
+Code, the cache it wrote and read. A Claude Code executor is seen by the
 hooks and by its stream: for the meter the stream wins, for the gate the hooks do, so a refused shell write may
 count twice.
 
@@ -294,7 +296,7 @@ check and what it waits on, and holds its executor to them.
 accepts it. Under auto it is yours at once.
 
 **How do I turn it off?** `graphene plan first off` lets a quick change through at once; `graphene init --remove`
-takes the hooks out, and the recording with them.
+takes the hooks out, which ends the recording; what they recorded stays until you delete it.
 
 ## The rest
 
@@ -302,10 +304,10 @@ takes the hooks out, and the recording with them.
 
 - `graphene demo --cheat` plays a script that tries seven ways round the locks against the real hook, git and check:
   six refused, one flagged, at $0. A script, not a model.
-- `graphene plan goal` sets the plan's goal, or prints it.
 - `graphene plan prompts leaf|strict` sets what a prompt typed into a session means.
 - `graphene plan ack` makes the uncommitted changes no leaf made yours.
 - `graphene node start <id>` takes a node and prints its contract.
+- `graphene node done <id>` finishes a leaf. One whose owner is you is done on your word, once its check passes.
 - `graphene node signoff <id>` signs off a node that waits for a person.
 - `graphene node reopen <id>` sends a finished node back, with what is wrong.
 - `graphene node split <id>` asks the planner to cut a leaf into smaller leaves.

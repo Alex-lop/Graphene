@@ -1,9 +1,12 @@
-"""docs/HOW_IT_WORKS.md is the reference a user reads after the README: under 3,500 words, with every
-section it promises, in order. The cap was 3,000 until 10 October 2026, when the reference gained what init
-does to a Claude Code session and how to undo it, the run's first line and red first's warnings, and what the
-record and the merge message now say; raised once, on purpose, after the words no claim pinned were cut. It
-was 3,300 until 19 October, when the reference gained the cockpit's keys in the night's words, the plan's text
-with an example, `review: every` and `notify`; raised again after what it said twice was said once."""
+"""docs/HOW_IT_WORKS.md is the reference a user reads after the README: under 3,600 words, with every section
+it promises, in order. The cap was 3,000 until 10 October 2026, when the reference gained what init does to
+a Claude Code session and how to undo it, the run's first line and red first's warnings, and what the record
+and the merge message now say; raised once, on purpose, after the words no claim pinned were cut. It was
+3,300 until 19 October, when the reference gained the cockpit's keys in the night's words, the plan's text
+with an example, `review: every` and `notify`; raised again after what it said twice was said once. It was
+3,500 until the seam review's fixes (19 October) added three facts: a run going takes what a second run
+would start, a task of yours is done on your word, and proposals ring once a batch; raised after what it
+said twice (a told note, an attempt's reads, the goal's command) was cut."""
 
 import re
 from pathlib import Path
@@ -18,7 +21,7 @@ SECTIONS = ["The plan", "The board", "The views", "Plan first", "Ask", "Run", "T
 
 
 def test_it_is_under_the_cap():
-    assert len(HOW.split()) < 3500
+    assert len(HOW.split()) < 3600
 
 
 def test_every_section_is_there_in_order():
