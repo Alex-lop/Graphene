@@ -21,9 +21,10 @@ in its first three seconds; does every word and key mean one thing.
 ## What the readers found that decides the order
 
 1. **PyPI serves 0.5.0 (7 October).** It has no cockpit, `demo --cheat` fails, and every README command describes
-   something a stranger cannot install. The v0.5.1 release run failed because one timing test failed on one CI leg
-   (`tests/test_teardown.py:135`, macOS, Python 3.14). Until a release with a green suite exists, nothing else in the
-   README is true for anyone who follows it.
+   something a stranger cannot install. The v0.5.1 release run failed on help text under GitHub's forced colour
+   (fixed on main since), and main's CI is red again on one test on one leg (`tests/test_teardown.py:135`, macOS,
+   Python 3.14), which would stop the next release the same way. Until a release with a green suite exists, nothing
+   else in the README is true for anyone who follows it.
 2. **The hackathon (Nebius x NVIDIA, Devpost) closes Friday 30 October, 10:00 PT.** Its rules ask the README to
    "highlight how you've used NVIDIA Nemotron ... and where Token Factory accelerated your workflow", and stage one
    is pass or fail on that. Today the README never says Nemotron or Token Factory.
@@ -84,8 +85,8 @@ in its first three seconds; does every word and key mean one thing.
   on two others. The README's GIF and stills are filmed from it.
 
 **C: the suite is green on every leg** (`tests/`, `.github/workflows/`)
-- The timing test that kept 0.5.1 off PyPI is made deterministic, and every other test that waits on a clock is
-  checked under load.
+- The test that keeps main red is made deterministic, and every other test that waits on a clock is checked under
+  load.
 
 **K: review every task before it lands, when you ask** (`plan.py`, `settings.py`, `config_cli.py`)
 - One setting puts every task that passes its check in front of you as a sign-off (`c` in its details shows the

@@ -150,6 +150,7 @@ class Cockpit(App):
         self.view = screen if screen in SCREENS else "cockpit"
         self.keys = dict(KEYS)  # a replay says its own
         self.refusal = "there is no repository here to act on"  # what a verb says when it cannot act
+        self.replay = False  # a recording played back (replay.py): nothing in it has commits or runs
         self.cursor = 0  # the territory's folder cursor
         self.tell_open, self.tell_for = False, ""
         self.paint_mode = False
@@ -395,7 +396,7 @@ class Cockpit(App):
             else:
                 t = m.tasks.get(node)
                 name = " · ".join(x for x in (t.title if t else node, who(t.agent) if t else "") if x)
-                self.push_screen(Details(self.open_store, self.root, node, name))
+                self.push_screen(Details(self.open_store, self.root, node, name, replay=self.replay))
         elif d is None:
             m.say(self.refusal)
         elif action == "take":

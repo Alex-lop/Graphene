@@ -34,7 +34,7 @@ Needs [uv](https://docs.astral.sh/uv/getting-started/installation/), a free inst
 
 ## What you see
 
-`graphene watch` is the cockpit: a row a task, numbered by its agent, and what needs you on top. Enter does the row's move (accept, try again, sign off), `t` tells an agent one line, `w` gives a task the file it was stopped at, `?` shows every key.
+`graphene watch` is the cockpit: a row a task, numbered by its agent, and what needs you on top. Enter does the row's move (accept, try again, sign off), `t` tells an agent one line, `w` widens a task to the file it was stopped at, `?` shows every key.
 
 ![graphene watch: agent 1 has handed its task back with its reason, the word lives in words.py, and Enter tries again; agents 2 and 3 are running, and a fourth task waits on agents 1 and 2](https://raw.githubusercontent.com/Alex-lop/Graphene/main/docs/assets/cockpit.png)
 
@@ -56,7 +56,7 @@ Then tell Claude Code what you want, and the plan shows in the cockpit before it
 
 ## In your hands
 
-- **Stop:** Ctrl-C where `graphene run` runs, `graphene run --stop` from anywhere, or `:stop` in the cockpit.
+- **Stop:** Ctrl-C where `graphene run` runs, `graphene run --stop` from another terminal in the repo, or `:stop` in the cockpit.
 - **Review:** `review: every` in `graphene config edit` holds every task that passes for you: `i` then `c` shows its diff, Enter on its row lands it.
 - **Cost:** with Claude Code, $2 an attempt, three at most, and a run says its worst case first; `graphene run --max-usd N` caps a run. Codex has no cap. A real two-task run cost $0.30.
 - **Undo:** `git revert -m 1 <id>`, with the `landed:` id from `graphene node show <task>`.

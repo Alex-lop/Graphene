@@ -47,9 +47,9 @@ Review every task before it lands (19 October).
 The release.
 - On macOS, `graphene run` on a terminal that is not its own session's (an agent's pty) no longer stops itself
   half a second in: a check's bash took that terminal and revoked it as it exited. A check gets no terminal. This
-  was the red CI that kept 0.5.1 off PyPI.
+  was main's red CI after the new watch merged.
 - Two races a loaded runner loses are gone (a leaf told to land second, and a cockpit tick after it closes), and
-  help text no longer fails on GitHub's runners, which force colour.
+  help text no longer fails on GitHub's runners, which force colour: that is what failed 0.5.1's release run.
 - `graphene demo --once` lines a long task id up with the rest, and a recording keeps `review: every`.
 
 ## 0.5.1 (tagged 16 October 2026, never published)

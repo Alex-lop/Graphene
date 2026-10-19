@@ -11,6 +11,7 @@ classic screen's `t ask the planner`: in the cockpit t tells the agent.
 
 from __future__ import annotations
 
+import contextlib
 from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace
@@ -32,9 +33,16 @@ DIRECTION = ("direction",)  # D: the goals above your plans, a pane of its own
 KEYS = {"1": "contract", "2": "output", "3": "changes", "4": "record", "c": "changes"}  # c: the README's diff
 
 
-def pane_text(store, root: Path, node_id: str, which: str, wide: int, high: int = 20) -> Text:
+REPLAYED = "a replay keeps no commits: what each task changed is in 4 record; in your repo this is its diff"
+
+
+def pane_text(
+    store, root: Path, node_id: str, which: str, wide: int, high: int = 20, replay: bool = False
+) -> Text:
     """One pane for one node, as the person at this terminal would read it. A node that has left the plan,
-    or a pane that cannot be made (git, a missing file), says so in a line: it never crashes the screen."""
+    or a pane that cannot be made (git, a missing file), says so in a line: it never crashes the screen. Each
+    is made in ``root``, whatever directory the screen was started in; a replay (``replay``) has no commits,
+    so its changes pane says where what changed is instead of asking git."""
     if which == "direction":
         return tui.direction_pane(store, root, wide)
     nodes, words, _goal = V.inputs(store)
@@ -47,14 +55,17 @@ def pane_text(store, root: Path, node_id: str, which: str, wide: int, high: int 
         events=None,
     )  # fmt: skip
     word = words.get(node_id, "")
+    if which == "changes" and replay:
+        return Text(REPLAYED, style="grey62")
     try:
-        if which == "output":
-            return tui.tail_pane(store, node, root, wide)
-        if which == "changes":
-            return tui.diff_pane(store, node, word, wide)
-        if which == "record":
-            return tui.record_pane(store, node, s, wide)
-        return untold(tui.detail(store, node, s, P.tracked(root), (wide, high)))
+        with contextlib.chdir(root):  # the command a pane runs (node diff) reads the plan where it runs
+            if which == "output":
+                return tui.tail_pane(store, node, root, wide)
+            if which == "changes":
+                return tui.diff_pane(store, node, word, wide)
+            if which == "record":
+                return tui.record_pane(store, node, s, wide)
+            return untold(tui.detail(store, node, s, P.tracked(root), (wide, high)))
     except Exception as no:  # a pane is a view: whatever went wrong, the screen stays up
         return Text(f"the {which} pane could not be made: {type(no).__name__}: {no}", style="#ef476f")
 
@@ -90,11 +101,11 @@ class Details(ModalScreen[None]):
 
     def __init__(
         self, open_store: Callable, root: Path, node_id: str, title: str, which: str = "contract",
-        panes: tuple[str, ...] = PANES,
+        panes: tuple[str, ...] = PANES, replay: bool = False,
     ):  # fmt: skip
         super().__init__()
         self.open_store, self.root, self.node_id, self.title_text = open_store, root, node_id, title
-        self.panes = panes
+        self.panes, self.replay = panes, replay
         self.which = which if which in panes else panes[0]
 
     def compose(self) -> ComposeResult:
@@ -137,7 +148,7 @@ class Details(ModalScreen[None]):
         high = max(self.size.height - 4, 10)
         try:
             with self.open_store() as store:
-                text = pane_text(store, self.root, self.node_id, self.which, wide, high)
+                text = pane_text(store, self.root, self.node_id, self.which, wide, high, self.replay)
         except Exception as no:  # a store too busy to open: the pane stays as it was, and says so
             text = Text(f"the plan's store did not open ({no}); the pane is as it was", style="#ef476f")
         self.query_one("#pane", Static).update(text)

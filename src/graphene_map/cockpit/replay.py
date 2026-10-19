@@ -160,7 +160,7 @@ class CockpitReplay(Cockpit):
         self.state = ""  # where it is: `3 of 16`, `paused at 3 of 16`, `ended: last frame`
         super().__init__(self.look_at, 1.0, "cockpit", repo, lambda: Store.open(repo))
         self.doer = None  # nothing runs here: every verb says so
-        self.refusal = REFUSED
+        self.refusal, self.replay = REFUSED, True
         self.keys = {name: line for name, line in KEYS.items()}
         self.keys["cockpit"] = KEYS_PLAYING
 

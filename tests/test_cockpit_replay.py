@@ -2,6 +2,8 @@
 
 import asyncio
 import json
+import os
+import subprocess
 
 from graphene_map import demo as D
 from graphene_map import plan
@@ -282,4 +284,28 @@ def test_r_plays_the_replay_again_and_is_not_also_the_cockpits_run(tmp_path):
             assert REFUSED not in [said for _, said in app.model.feed]
 
     asyncio.run(go())
+
+
+def test_the_changes_pane_of_a_replay_writes_nothing_where_the_demo_was_started(tmp_path, monkeypatch):
+    """In a replay, `i` then the changes pane ran `graphene node diff` in the directory the demo was started
+    in: it made a plan store there, read that repository's own plan, and never showed a diff (a replay keeps
+    no commits). The pane says where what changed is, and the directory is left as it was."""
+    from graphene_map.cockpit.details import REPLAYED
+
+    mine = tmp_path / "mine"
+    mine.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=mine, check=True)
+    before = sorted(os.listdir(mine))
+    monkeypatch.chdir(mine)
+
+    async def go():
+        app, _, _ = replay(tmp_path)
+        async with app.run_test(size=(100, 30)) as pilot:
+            await pilot.pause(0.2)
+            await pilot.press("space", *["full_stop"] * 9, "i", "3")
+            await pilot.pause(0.5)
+            assert REPLAYED in str(app.screen.query_one("#pane").render())
+
+    asyncio.run(go())
+    assert sorted(os.listdir(mine)) == before
 
