@@ -180,7 +180,8 @@ def test_without_the_nemotron_extra_init_offers_no_nemotron_and_refuses_it_by_na
     said = person("init")
     assert chosen(repo) == {"planner": "claude", "executor": "claude"} and "Nemotron" not in said.output
     refused = person("init", "--executor", "nemotron")
-    assert refused.exit_code == 2 and "uv tool install 'graphene-map[nemotron]'" in refused.stderr
+    assert refused.exit_code == 2  # the extra needs a Python 3.12, which uv fetches only when asked for one
+    assert "uv tool install --python 3.12 'graphene-map[nemotron]'" in refused.stderr
     assert chosen(repo) == {"planner": "claude", "executor": "claude"}
 
 

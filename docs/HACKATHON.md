@@ -23,8 +23,9 @@ what it cost at list price. They were practice and takes for the video; none was
   (`tests/fake_tokenfactory.py`) and a Docker stand-in for Sandboxes. The replay `graphene demo` ships is the
   stand-in's, and its top line says "a scripted stand-in, no model ran".
 
-<!-- For Alex: send this only once PyPI serves the cockpit (`uvx --from graphene-map graphene --version` says more
-than 0.5.0): the testing instructions at the end depend on it. -->
+<!-- For Alex: send this only once PyPI serves the cockpit (`uvx --refresh --from 'graphene-map==0.6.0' graphene
+--version` says 0.6.0; without --refresh, uvx may answer from an environment it made before): the testing
+instructions at the end depend on it. -->
 
 ## Inspiration
 
@@ -90,7 +91,7 @@ code does not explain; `graphene board lookup` settles the open questions the re
 the line. Cover and precheck passed twice live, as practice on 2 October, and note routed one of two notes once;
 lookup has run only against the stand-in (`dev/test/first-light.md`, `tests/nemotron/`).
 
-**What it sends.** Nemotron is an optional extra: `uv tool install 'graphene-map[nemotron]'`. Without it, no
+**What it sends.** Nemotron is an optional extra: `uv tool install --python 3.12 'graphene-map[nemotron]'`. Without it, no
 Token Factory code loads, and with Claude Code or Codex Graphene itself sends nothing anywhere. With NVIDIA
 Nemotron as planner or executor, Graphene sends Nebius Token Factory your prompts and the files the model reads,
 and in a sandbox it sends Sandboxes the task's checkout. The key lives in your environment or the system keychain,
@@ -215,7 +216,6 @@ while one the repository cannot answer is open (`dev/test/results-2026-09-29-boa
 
 ## What's next for Graphene
 
-- The release with the cockpit on PyPI, so `uvx --from graphene-map graphene demo` shows what this page describes.
 - A live take filmed on the cockpit for the video, and an hour of a real person on it, timed: no person has been
   timed yet.
 - `t` heard mid-task by Nemotron's executor, as Claude Code hears it; today it is told at the task's next start.
@@ -362,7 +362,7 @@ With a Token Factory key, in a git repository of your own (it spends at list pri
 the takes of 8 and 9 October, and a take's tasks $0.005 to $0.15):
 
 ```
-uv tool install 'graphene-map[nemotron]'
+uv tool install --python 3.12 'graphene-map[nemotron]'
 graphene key set            # kept in the system keychain; or export NEBIUS_API_KEY=…
 graphene key check          # says whether Token Factory answers it
 graphene init --planner nemotron --executor nemotron

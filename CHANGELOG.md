@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.6.0
+## 0.6.0 (19 October 2026)
 
 The first release on PyPI since 0.5.0: it holds everything under 0.5.1 below (never published) as well as this.
 `graphene watch` is a new screen, which is why the minor version moves. Each line is one change.

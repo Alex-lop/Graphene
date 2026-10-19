@@ -4,11 +4,14 @@ Publishing is driven by a git tag: push the tag, GitHub Actions builds and publi
 
 ## Every release
 
-1. Bump the version in two places, and keep them identical (then `uv lock`; no test pins the number):
+1. Bump the version in three places, and keep them identical (then `uv lock`):
    - `version` in `pyproject.toml`
    - `__version__` in `src/graphene_map/__init__.py`
-2. Write the release notes in `CHANGELOG.md`.
-3. Commit both, land them on `main` and push `main` first: PyPI shows the README, and the README loads its
+   - the first line of `dev/launch/release-notes.md`, which a test checks against `pyproject.toml`: a bump
+     that misses it fails the release run before the upload, and burns the tag
+2. Write the release notes in `CHANGELOG.md`, its heading dated the day you tag, and in
+   `dev/launch/release-notes.md`, the body of the GitHub release.
+3. Commit them, land them on `main` and push `main` first: PyPI shows the README, and the README loads its
    pictures from `main`, so a tag cut before they are there publishes a page of broken images. Then tag `main`
    and push the tag:
 
@@ -35,6 +38,12 @@ Publishing is driven by a git tag: push the tag, GitHub Actions builds and publi
    If the run fails before the upload (a red leg, as v0.5.1's did), nothing reached PyPI, but the tag is public:
    leave it where it is, fix main, bump to the next version and tag that. The changelog keeps the skipped version's
    heading and says it was never published.
+
+5. When the run is green, make the GitHub release for the tag:
+
+   ```sh
+   gh release create v0.6.0 --title "Graphene 0.6.0" --notes-file dev/launch/release-notes.md
+   ```
 
 ## First time only
 

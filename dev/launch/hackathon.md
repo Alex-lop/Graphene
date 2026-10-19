@@ -38,7 +38,7 @@ For the README, under its own heading, as it is:
 Graphene works with the agent you already use, Claude Code or Codex. For the Nebius × NVIDIA Global AI Hackathon I
 built a third way to run it, on NVIDIA Nemotron through Nebius Token Factory:
 
-    uv tool install 'graphene-map[nemotron]'
+    uv tool install --python 3.12 'graphene-map[nemotron]'
     graphene key set                                     # or NEBIUS_API_KEY
     graphene init --planner nemotron --executor nemotron
 

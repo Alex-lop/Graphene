@@ -73,7 +73,7 @@ Then tell Claude Code what you want, and the plan shows in the cockpit before it
 For the Nebius × NVIDIA Global AI Hackathon I built a third way to run it, on NVIDIA Nemotron through Nebius Token Factory:
 
 ```
-uv tool install 'graphene-map[nemotron]'
+uv tool install --python 3.12 'graphene-map[nemotron]'
 graphene key set                                     # or NEBIUS_API_KEY
 graphene init --planner nemotron --executor nemotron
 ```
