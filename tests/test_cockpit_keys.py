@@ -4,7 +4,7 @@
 import asyncio
 import subprocess
 
-from cockpit_repo import BOT, cockpit, items, make_plan, node, type_in
+from cockpit_repo import ALEX, BOT, cockpit, items, make_plan, node, type_in
 from test_plan_cli import repo  # noqa: F401  (fixture)
 
 from graphene_map import board, plan
@@ -286,3 +286,65 @@ def test_colon_plan_edit_and_node_edit_hand_the_terminal_to_the_editor_as_e_does
 
     asyncio.run(go())
     assert edited == [["plan", "edit"], ["node", "edit", "ids"]]
+
+
+def test_on_the_map_enter_and_the_row_keys_run_nothing_and_say_where_they_act(repo):
+    """The map draws folders, not rows: the question the screen opens on is not on it, nor the move of the
+    task ←/→ picks. There ⏎ paints, in paint mode, and the keys its bar does not list run no command."""
+    from graphene_map.cockpit.app import ON_THE_MAP
+
+    ran = []
+
+    async def steps(app, pilot):
+        app.doer.run = lambda argv, done="": ran.append(argv)
+        app.doer.background = lambda argv: ran.append(argv)
+        first = app.model.selected
+        assert first == app.model.questions[0].id  # the first row: what needs the person most
+        await pilot.press("m")
+        for sel in (first, "ids"):  # the question nobody sees there, then a task picked with ←/→
+            app.model.selected = sel
+            for key in ("enter", "d", "1", "y", "a", "x", "r", "R", "s", "u", "P", "A", "i", "colon"):
+                await pilot.press(key)
+                await pilot.pause(0.05)
+                assert len(app.screen_stack) == 1 and app.view == "territory", (sel, key)  # nothing opened
+                assert app.model.latest() == ON_THE_MAP, (sel, key)
+        assert ran == []
+
+    drive(repo, steps, question=True, running=True)
+    assert board.reads(items(repo)[0]) == "open" and node(repo, "ids").state == plan.RUNNING
+
+
+def test_r_on_a_task_that_came_back_asks_before_it_reopens_the_finished_task_that_has_its_path(repo):
+    """r on a task that came back wanting a path a finished task wrote reopens that task, which was proven:
+    the row names it, and r asks first, as x reopen does."""
+    with Store.open(repo) as store:
+        leaves = [{"id": "schema", "title": "The schema", "scope": ["db.py"], "check": "true"},
+                  {"id": "export", "title": "export", "scope": ["export.py"], "check": "true"}]  # fmt: skip
+        plan.propose(store, leaves, ALEX)
+        plan.start(store, "schema", ALEX, repo)
+        (repo / "db.py").write_text("tables = []\n")
+        plan.finish(store, "schema", ALEX)
+        plan.start(store, "export", BOT, repo)
+        plan.release(store, "export", BOT, "it needs the export table in db.py", wants=["db.py"])
+    app = cockpit(repo)
+
+    async def go():
+        async with app.run_test(size=(110, 30)) as pilot:
+            await pilot.pause(0.1)
+            app.model.selected = "export"
+            app.paint()
+            assert any("r reopen schema" in line.plain() for line in app.query_one(Canvas).lines)
+            await pilot.press("r")
+            await pilot.pause(0.2)
+            assert type(app.screen).__name__ == "Ask" and app.screen.prompt.startswith("reopen schema? ")
+            await pilot.press("escape")  # no y: the finished task stays finished
+            await pilot.pause(0.2)
+            assert node(repo, "schema").state == plan.DONE
+            await pilot.press("r")
+            await pilot.pause(0.2)
+            await type_in(pilot, "y")
+            await pilot.press("enter")
+            await pilot.pause(0.3)
+
+    asyncio.run(go())
+    assert node(repo, "schema").state == plan.OPEN and "schema" in node(repo, "export").needs

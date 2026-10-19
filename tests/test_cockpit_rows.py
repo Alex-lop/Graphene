@@ -249,12 +249,31 @@ def test_a_leaf_that_came_back_shows_what_it_offers_as_keys():
     m.tasks["migrate"].state = "came back"
     m.tasks["migrate"].offers = {"w": ["node", "widen", "migrate"], "b": ["node", "sibling", "migrate"]}
     text = "\n".join(plain(rows.build_cockpit(m, 120)))
-    assert "w widen" in text and "b a sibling" in text and "n wait on it" not in text
+    assert "w widen" in text and "b a new task" in text and "wait on" not in text and "sibling" not in text
     m.tasks["migrate"].state = "review"  # x on a task that waits for sign-off reopens it
     assert "x reopen" in "\n".join(plain(rows.build_cockpit(m, 120)))
     m.tasks["migrate"].state = "came back"
-    line = next(line for line in rows.build_cockpit(m, 120) if "b a sibling" in line.plain())
+    line = next(line for line in rows.build_cockpit(m, 120) if "b a new task" in line.plain())
     assert "offer:b" in [s.action for s in line.segs]
+
+
+def test_each_offer_of_a_task_that_came_back_names_what_its_command_acts_on():
+    """`n wait on it` and `r reopen` named nothing, and r reopens another task: each offer says what its
+    command names, the paths, the task it would wait on (by its agent) and the finished one (by its title)."""
+    m = scene()
+    m.selected = "migrate"
+    m.tasks["schema"].full = "The schema: every table and its keys"
+    back = m.tasks["migrate"]
+    back.state, back.needs = "came back", ["tests"]
+    back.offers = {
+        "b": ["node", "sibling", "migrate", "db/d2.py"],
+        "n": ["node", "set", "migrate", "--needs", "tests", "--needs", "ids"],  # it waits on tests already
+        "r": ["node", "reopen", "schema", "--note", "came back from migrate: db/d0.py", "--for", "migrate"],
+    }
+    [keys] = [line for line in rows.build_cockpit(m, 120) if "r reopen" in line.plain()]
+    assert "b a new task for db/d2.py   n wait on agent 1   r reopen schema   i details" in keys.plain()
+    assert [s.action for s in keys.segs if s.action.startswith("offer:")] == ["offer:b", "offer:n", "offer:r"]
+    assert all(line.width() <= 80 for line in rows.build_cockpit(m, 80))
 
 
 def test_the_open_row_of_a_task_waiting_for_sign_off_offers_no_t_as_nobody_is_on_it_to_tell():

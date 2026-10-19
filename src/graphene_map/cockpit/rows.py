@@ -27,12 +27,7 @@ def build_head(m: Model, width: int) -> list[Line]:
     in one line, what needs you, what runs and what is proven, with the proven part as a bar."""
     need, running, done, total = m.scoreboard()
     goal = "" if m.goal in ("", NO_GOAL) else m.goal
-    tag = m.banner or ("replay" if m.source == "replay" else "")  # the live plan needs no word
-    parts = tag.split(" · ") if tag else []
-    room = width - min(cell_len(goal or NO_GOAL), 24) - 4  # the goal keeps what it needs, the banner the rest
-    while cell_len(" · ".join(parts)) > max(16, room) and len(parts) > 2:
-        parts.pop(2)  # narrow: the day goes, then where it is; never what it is and what made it
-    tag = " · ".join(parts)
+    tag = tag_of(m, width - min(cell_len(goal or NO_GOAL), 24) - 4)  # the goal keeps what it needs
     said = goal or (NO_GOAL if tag else INVITE)  # your goal on top; with none, how to give one (not a title)
     head = [Seg(" " + fit(said, width - (cell_len(tag) + 4 if tag else 2)), "bold" if goal else "grey62")]
     head += [Seg(" · " + tag, "grey50")] if tag else []
@@ -49,6 +44,15 @@ def build_head(m: Model, width: int) -> list[Line]:
         counts += [Seg("▱" * (cells - fill - busy), "grey35")]
     counted = [Line(pad(counts, width))] if m.order() or m.folded_done else []  # nothing planned: no count
     return [Line(pad(head, width)), *counted, Line([Seg("─" * width, "grey30")])]
+
+
+def tag_of(m: Model, room: int) -> str:
+    """What the screens say it is when it is not your live plan (a replay's banner; the live plan needs no
+    word), in ``room`` cells: narrow, the day goes, then where it is; never what it is and what made it."""
+    parts = [p for p in (m.banner or ("replay" if m.source == "replay" else "")).split(" · ") if p]
+    while cell_len(" · ".join(parts)) > max(16, room) and len(parts) > 2:
+        parts.pop(2)
+    return " · ".join(parts)
 
 
 def build_cockpit(m: Model, width: int, *, tell: str | None = None) -> list[Line]:
@@ -254,6 +258,33 @@ def proposal(m: Model, t: Task, width: int) -> list[Line]:
     return out
 
 
+OFFERS = (  # what a task that came back offers: its key, what it does, the word before what it acts on
+    ("w", "widen", ""), ("b", "a new task", "for "), ("n", "wait on", ""), ("r", "reopen", ""),
+)
+
+
+def offered(m: Model, t: Task, key: str) -> str:
+    """What an offer acts on, as its command names it: the paths a widen or a new task takes, the tasks it
+    would wait on (not the ones it waits on now), the finished tasks it reopens."""
+    argv = t.offers[key]
+    if key in ("w", "b"):  # `node widen ID [PATH…]`, `node sibling ID [PATH…]`
+        return ", ".join(argv[3:])
+    if key == "n":  # `node set ID --needs A --needs B`
+        ids = [x for flag, x in zip(argv, argv[1:], strict=False) if flag == "--needs" and x not in t.needs]
+    else:  # `node reopen A [B…] --note … --for ID`
+        ids = argv[2 : argv.index("--note")] if "--note" in argv else argv[2:]
+    return ", ".join(named(m, i) for i in ids)
+
+
+def named(m: Model, task_id: str) -> str:
+    """Another task, as a row names it: by the agent on it, else (finished, or never taken) by its title; one
+    the rows leave out (a finished task counted, not shown) by its id, the word its command takes."""
+    o = m.tasks.get(task_id)
+    if o is None:
+        return task_id
+    return who(o.agent) if o.agent and o.state != "done" else short(o.full, 0) or o.title
+
+
 def _outside(m: Model, t: Task) -> list[str]:
     return [p for p in t.changed if t.scope and not T._in(p, tuple(t.scope))]
 
@@ -295,9 +326,11 @@ def expansion(m: Model, t: Task, width: int) -> list[Line]:
         path, more = t.stopped[-1][0], len({p for p, _ in t.stopped}) - 1  # paths: a retry is no new one
         give = f"   w widen {fit(path, 28)}" + (f" +{more}" if more else "")
         verbs += [Seg(give, "bold #e9a23b", "allow")]
-    for key, what in (("w", "widen"), ("b", "a sibling"), ("n", "wait on it"), ("r", "reopen")):
-        if key in t.offers and not (key == "w" and t.stopped):  # what a leaf that came back offers
-            verbs += [Seg(f"   {key} {what}", "bold #e9a23b", "allow" if key == "w" else f"offer:{key}")]
+    for key, what, before in OFFERS:
+        if key in t.offers and not (key == "w" and t.stopped):  # what a task that came back offers, on what
+            on = offered(m, t, key)
+            said = f"   {key} {what}" + (f" {before}{fit(on, max(12, width // 5))}" if on else "")
+            verbs += [Seg(said, "bold #e9a23b", "allow" if key == "w" else f"offer:{key}")]
     if t.state in ("running", "review"):  # x hands a running task back, and reopens one that waits on you
         verbs += [Seg("   x hand back" if t.state == "running" else "   x reopen", "grey70", "back")]
     verbs += [Seg("   i details", "grey50", "details")]

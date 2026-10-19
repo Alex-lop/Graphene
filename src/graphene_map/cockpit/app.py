@@ -34,9 +34,9 @@ from . import territory as T
 from .details import DIRECTION, Details
 from .help import Help
 from .lines import Line, Seg, fit, fit_keys, seg_at
-from .look import who
+from .look import short, who
 from .model import Model
-from .rows import build_cockpit, build_head
+from .rows import build_cockpit, build_head, offered, tag_of
 from .territory_view import HEAD, build_territory
 from .verbs import Doer
 
@@ -47,9 +47,13 @@ KEYS = {  # one line each, at most 79 columns: the screen's own keys, then the o
     "flow": "",
     "territory": "j/k folder · ←/→ task · p paint · v lens · w widen · c cockpit · ? keys · q",
 }
+# the map draws folders, not rows: only its bar's keys act there (and t, whose line is typed under the task's
+# row, in the cockpit); ⏎ paints in paint mode, and every other key says where it acts
+ON_THE_MAP = "only the keys below act on the map: c goes back to the cockpit for the rest"
+UNSENT = "nothing typed here is sent · Esc closes"  # t that nobody hears: words go nowhere, not to keys
 ROW_KEYS = {  # a task's own keys, by its state: ⏎ first when it has a move, then the letters
     "proposed": ["⏎ accept", "A all", "d drop", "i details"],
-    "came back": ["⏎ try again", "w widen", "t tell", "i details"],
+    "came back": ["⏎ try again", "w widen", "b new task", "n wait", "r reopen", "t tell", "i details"],
     "review": ["⏎ sign off", "x reopen", "i details"],
     "yours": ["⏎ mark done", "i details"],
     "running": ["t tell", "w widen", "x hand back", "i details"],
@@ -57,6 +61,7 @@ ROW_KEYS = {  # a task's own keys, by its state: ⏎ first when it has a move, t
     "waiting": ["t tell", "i details"],
     "done": ["i details", "x reopen"],
 }
+OFFERED = ("w widen", "b new task", "n wait", "r reopen")  # a task that came back offers these, by its offers
 KEYS_TO_VERBS = {  # a key, and the verb it asks for (`act`)
     "t": "tell", "w": "allow", "x": "back", "d": "drop", "r": "run", "R": "run-all", "a": "answer",
     "b": "offer:b", "n": "offer:n", "colon": "command", "y": "take", "s": "split", "P": "first", "u": "undo",
@@ -228,19 +233,25 @@ class Cockpit(App):
         bar = Text.from_markup(" " + tabs.replace("[b]", "[bold #4cc9f0]").replace("[dim]", "[grey50]"))
         name = self.root.name if self.root else ""
         name += " · plan first off" if m.first == "off" else ""  # said only when agents may write unplanned
+        if m.source == "replay" and self.view != "cockpit":  # what it is, on every screen (the cockpit's head
+            name = tag_of(m, w - bar.cell_len - 3)  # says it there)
         if bar.cell_len + len(name) + 3 > w:  # narrow: just whose plan this is, cut, or nothing
             name = name.split(" · ")[0][: max(w - bar.cell_len - 3, 0)]
         bar.append(" " * max(2, w - bar.cell_len - len(name) - 1) + name, style="grey42")  # whose plan
         self.query_one("#bar", Static).update(bar)
-        head = self.query_one("#head", Static)
-        head.display = self.view == "cockpit"
+        top: list[Line] = []  # what stays on top while the canvas under it scrolls
         if self.view == "cockpit":
-            head.update(text_of(build_head(m, w)))
+            top = build_head(m, w)
             lines = build_cockpit(m, w, tell=self.query_one("#tell", Input).value if self.tell_open else None)
         elif self.view == "territory":
             lines, self.groups = build_territory(m, w, self.cursor)
+            if self.groups:  # its headline, its lens and the task it lights, over the folders
+                top, lines = lines[:HEAD], lines[HEAD:]
         else:
-            lines = self.flow_lines(w)
+            top, lines = self.flow_lines(w)
+        head = self.query_one("#head", Static)
+        head.display = bool(top)
+        head.update(text_of(top))
         self.query_one(Canvas).set_lines(lines)
         at = (self.view, m.selected, self.cursor if self.view == "territory" else 0)
         if at != self.shown:  # follow the selection when it moves, not on every tick
@@ -263,7 +274,8 @@ class Cockpit(App):
             t = m.tasks.get(self.tell_for)
             return f"Enter sends to {who(t.agent) if t and t.agent else 'its agent'} · Esc cancels"
         if self.screen_stack and isinstance(self.screen_stack[-1], Ask):  # a prompt has the keys
-            return "Enter sends · Esc cancels"
+            unsent = self.screen_stack[-1].prompt == UNSENT
+            return "nothing is sent · Esc or Enter closes" if unsent else "Enter sends · Esc cancels"
         q = next((q for q in m.questions if q.id == m.selected), None)
         t = m.tasks.get(m.selected)
         if m.source == "replay":  # a recording: what it shows can be read, nothing in it is yours to act on
@@ -271,38 +283,42 @@ class Cockpit(App):
         elif q:
             picks = {0: [], 1: ["1 pick"], 2: ["1 2 pick"]}.get(len(q.options), [f"1-{len(q.options)} pick"])
             own = [f"⏎ {fit(q.default, 12)}", *picks, "a answer", "d drop"]
-        elif t:  # w only where there is something to widen
+        elif t:  # an offer's key only where it is offered; w also where the gate stopped a write
             own = [k for k in ROW_KEYS.get(t.state, ["i details"])
-                   if k != "w widen" or t.stopped or "w" in t.offers]  # fmt: skip
+                   if k not in OFFERED or k[0] in t.offers or k == "w widen" and t.stopped]  # fmt: skip
         else:
             own = [":ask what you want"]
         screens = ["c cockpit", "m map"] if self.view == "flow" else ["g graph", "m map"]
         return " · ".join([*own, *screens, "? keys", "q"])
 
-    def flow_lines(self, width: int) -> list[Line]:
+    def flow_lines(self, width: int) -> tuple[list[Line], list[Line]]:
+        """The graph's head, which stays on top: what is selected, in one line (a question has no box, so what
+        it asks); then the graph, and under it what it leaves out and what its marks mean."""
         m = self.model
         nodes, edges = FV.flow_graph(m)
         lines, self.flow_layout, note = FV.build_flow(nodes, edges, width, m.selected)
         if not nodes:  # the graph's own sentence says what it will show (flow_view.EMPTY)
-            return lines
+            return [], lines
         sel = m.tasks.get(m.selected)
-        info = f" {sel.title}" if sel else ""
+        whole = lambda t: short(t.full, 0) or t.title  # noqa: E731  (the line has the room a box has not)
+        info = whole(sel) if sel else ""
         q = next((q for q in m.questions if q.id == m.selected), None)
         if q:  # a question has no box: what it asks, and the task it is about
             about = m.tasks.get(q.about)
-            info = f" {'!' if q.kind == 'risk' else '?'} {q.text}"
-            info += f"  ·  about {about.title}" if about else ""
+            info = f"{'!' if q.kind == 'risk' else '?'} {q.text}"
+            info += f"  ·  about {whole(about)}" if about else ""
         if sel:
             info += f"  ·  {sel.state}" + (f" · {who(sel.agent)}" if sel.agent else "")
             info += f" · ✓{sel.passed}/{sel.checks}" if sel.checks else ""
             info += f" · for {sel.why}" if sel.why else ""
-        lines += [Line([]), Line([Seg(info, "bold")]), Line([Seg(" " + note if note else "", "grey50")])]
+        top = [Line([Seg(" " + fit(info, width - 2), "bold")]), Line([Seg("─" * width, "grey30")])]
         drawn = [cell for row in self.flow_layout.cells for cell in row]
         legend = [said for said, there in (  # what the graph's own marks mean, only those it drew
             ("amber lane = a retry loop (bounded)", any(style == "edge_loop" for _, style in drawn)),
             ("◀▶ two-way", any(ch == "◀" for ch, _ in drawn)),
         ) if there]  # fmt: skip
-        return lines + ([Line([Seg(" " + " · ".join(legend), "grey50")])] if legend else [])
+        under = [Line([Seg(" " + said, "grey50")]) for said in (note, " · ".join(legend)) if said]
+        return top, lines + ([Line([]), *under] if under else [])
 
     def follow(self, lines: list[Line]) -> None:
         """Scroll so what is selected is on screen: a task's row, all its lines; the box on the graph; the
@@ -314,7 +330,7 @@ class Cockpit(App):
                 box.scroll_to_region(Region(0, rect[1], 1, rect[3] - rect[1] + 1), animate=False)
             return
         if self.view == "territory":
-            box.scroll_to_region(Region(0, HEAD + self.cursor, 1, 1), animate=False)
+            box.scroll_to_region(Region(0, self.cursor, 1, 1), animate=False)  # its head is on top, apart
             return
         at = [k for k, line in enumerate(lines) if line.row and line.row == self.model.selected]
         if at:
@@ -400,11 +416,19 @@ class Cockpit(App):
         elif d is None:
             m.say(self.refusal)
         elif action == "take":
-            d.take(m, sel)
+            proposed = [t.id for t in m.tasks.values() if t.state == "proposed"]
+            if m.questions and proposed == [sel]:  # the last one takes the questions' defaults: it asks, as A
+                self.accept_all()
+            else:
+                d.take(m, sel)
         elif action.startswith("pick:"):
             d.pick(m, sel, int(action.split(":", 1)[1]))
         elif action == "allow":
             d.widen(m, sel)
+        elif action.startswith("paint:"):
+            d.paint(m, sel, action.split(":", 1)[1])
+        elif action in ("run", "offer:r") and task is not None and "r" in task.offers:
+            self.reopen_offered(task)
         elif action.startswith("offer:"):
             d.offer(m, sel, action.split(":", 1)[1])
         elif action == "back":
@@ -425,8 +449,6 @@ class Cockpit(App):
         elif action == "run":
             if task is None:
                 m.say("select a task to run: r runs the one under the cursor, R every ready task")
-            elif "r" in task.offers:
-                d.offer(m, sel, "r")
             else:
                 d.run_ready(sel)
         elif action == "run-all":
@@ -545,6 +567,18 @@ class Cockpit(App):
             self.doer.answer(self.model, qid, words)
         self.paint()
 
+    def reopen_offered(self, task) -> None:
+        """r on a task that came back reopens the finished task that has the paths it wanted, which it then
+        waits on: asked first, as x reopen is, since a task that was proven goes back to work."""
+        names = offered(self.model, task, "r")
+        said = f"reopen {fit(names, 22)}? its next agent is told why · y and Enter"
+        self.push_screen(Ask(said, about=f"reopen {names}"), partial(self.took_offer, task.id, "r"))
+
+    def took_offer(self, node_id: str, key: str, typed: str | None) -> None:
+        if (typed or "").strip().lower() in ("y", "yes") and self.doer:
+            self.doer.offer(self.model, node_id, key)
+        self.paint()
+
     def handed_back(self, node_id: str, typed: str | None) -> None:
         if (typed or "").strip().lower() in ("y", "yes") and self.doer:
             self.doer.pull_back(self.model, node_id)
@@ -574,7 +608,7 @@ class Cockpit(App):
             said = f"{t.title} {nobody}" if t else "select a task to tell"
             self.model.say(said)
             # what is typed next was meant as words: a line that sends nothing keeps it from running as keys
-            self.push_screen(Ask("nothing typed here is sent · Esc closes", about=said), lambda _typed: None)
+            self.push_screen(Ask(UNSENT, about=said), lambda _typed: self.paint())
             return
         box = self.query_one("#tell", Input)
         box.add_class("on")
@@ -629,10 +663,13 @@ class Cockpit(App):
             self.view = SCREENS[(SCREENS.index(self.view) + 1) % len(SCREENS)]
         elif key in ("j", "down", "k", "up", "left", "right", "h", "l"):
             self.move(key)
+        elif self.view == "territory" and key not in ("v", "p", "w", "t"):  # no row is drawn (ON_THE_MAP)
+            if key == "enter" and self.paint_mode and self.groups:
+                self.act(f"paint:{self.groups[self.cursor].name}")
+            elif key == "enter" or key in KEYS_TO_VERBS or key.isdigit():
+                self.model.say(ON_THE_MAP)
         elif key == "enter":
-            if self.view == "territory" and self.paint_mode and self.groups and self.doer:
-                self.doer.paint(self.model, self.model.selected, self.groups[self.cursor].name)
-            elif self.takes():
+            if self.takes():
                 self.act("take")
             else:
                 self.act("details")

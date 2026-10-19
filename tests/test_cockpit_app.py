@@ -254,6 +254,8 @@ def test_the_keys_line_says_what_the_keys_do_to_the_selected_row(tmp_path):
     async def go():
         m = scene()
         m.tasks["back"] = Task("back", "retry it", "came back", agent="3", offers={"w": ["node", "widen"]})
+        offers = {"w": ["node", "widen"], "b": ["node", "sibling"], "r": ["node", "reopen", "schema"]}
+        m.tasks["more"] = Task("more", "retry more", "came back", agent="4", offers=offers)
         app = Cockpit(lambda previous: previous or m, root=tmp_path)
 
         def keys():
@@ -265,6 +267,7 @@ def test_the_keys_line_says_what_the_keys_do_to_the_selected_row(tmp_path):
                 ("docs", "⏎ accept · A all · d drop · i details"),
                 ("ids", "t tell · w widen · x hand back · i details"),
                 ("back", "⏎ try again · w widen · t tell · i details"),
+                ("more", "⏎ try again · w widen · b new task · r reopen · t tell · i details"),  # its offers
                 ("migrate", "⏎ sign off · x reopen · i details"),
                 ("schema", "i details · x reopen"),
                 ("tests", "t tell · i details"),
@@ -346,7 +349,7 @@ def test_on_the_graph_a_selected_question_says_what_it_asks_and_what_it_is_about
         app = app_of(m, screen="flow")
         async with app.run_test(size=(120, 30)) as pilot:
             await pilot.pause(0.1)
-            shown = "\n".join(line.plain() for line in app.query_one(Canvas).lines)
+            shown = str(app.query_one("#head", Static).render())  # on top: a question has no box
             assert "? Keep old ids working?  ·  about users return ids" in shown
 
     run(go())
@@ -362,7 +365,7 @@ def test_the_graph_says_what_the_selected_task_is_for():
         app = app_of(m, screen="flow")
         async with app.run_test(size=(100, 24)) as pilot:
             await pilot.pause(0.1)
-            shown = "\n".join(line.plain() for line in app.query_one(Canvas).lines)
+            shown = str(app.query_one("#head", Static).render())
             assert "users return ids  ·  running · agent 1 · ✓0/1 · for API" in shown
 
     run(go())
@@ -481,7 +484,8 @@ def test_the_graph_and_the_map_scroll_to_what_is_selected_when_there_are_more_th
             await pilot.pause(0.2)
             await pilot.press("k")  # wraps to the last folder, below the first screen
             await pilot.pause(0.3)
-            assert box.scroll_y > 0 and 3 + app.cursor < box.scroll_y + box.size.height
+            assert box.scroll_y > 0 and box.scroll_y <= app.cursor < box.scroll_y + box.size.height
+            assert str(app.query_one("#head", Static).render()).startswith(" MAP ")  # its headline, on top
 
     run(go())
     run(folders())
@@ -498,5 +502,55 @@ def test_a_line_wider_than_the_screen_is_cut_and_never_wraps_under_the_rows_belo
             canvas.set_lines([Line([Seg("x" * 300)]), Line([Seg("second")])])
             await pilot.pause(0.2)
             assert canvas.virtual_size.height == 2 and canvas.size.height == 2
+
+    run(go())
+
+
+def test_the_graph_says_what_is_selected_on_top_however_tall_it_is_in_one_line_that_fits():
+    """The line that says what is selected was under the whole graph, off screen on a plan taller than the
+    terminal, so a question, which has no box, was selected and acted on unseen; and it was cut at the edge.
+    It is on top now, as the cockpit's head is, in one line that ends in an ellipsis where it is cut."""
+    m = scene()
+    for i in range(12):
+        m.tasks[f"t{i}"] = replace(m.tasks["tests"], id=f"t{i}", title=f"task {i}")
+    m.questions[0].text = "Which PDF library should render the invoices, and does it run in the worker?"
+    m.questions[0].about = "ids"
+    m.selected = "q"
+
+    async def go():
+        app = app_of(m, screen="flow")
+        async with app.run_test(size=(80, 24)) as pilot:
+            await pilot.pause(0.1)
+            assert app.query_one(ScrollableContainer).max_scroll_y > 0  # taller than the screen
+            top = str(app.query_one("#head", Static).render()).splitlines()[0]
+            assert top.startswith(" ? Which PDF library") and top.endswith("…") and len(top) <= 80
+            for _ in range(12):
+                await pilot.press("down")
+            await pilot.pause(0.2)
+            top = str(app.query_one("#head", Static).render()).splitlines()[0]
+            assert top.startswith(f" {m.tasks[m.selected].title}  ·  waiting") and len(top) <= 80
+            m.tasks["migrate"].full = "Migrate the old ids to the new format: both stay readable"
+            m.selected = "migrate"  # the line has the room a box has not: the title is whole, not five words
+            app.paint()
+            top = str(app.query_one("#head", Static).render()).splitlines()[0]
+            assert top.startswith(" Migrate the old ids to the new format  ·  review · agent 2")
+
+    run(go())
+
+
+def test_a_replay_says_what_it_is_on_the_graph_and_on_the_map_too():
+    m = scene()
+    m.source, m.banner = "replay", "replay · a scripted stand-in, no model ran · 2026-10-12 · 3 of 28"
+
+    async def go():
+        app = app_of(m)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await pilot.pause(0.1)
+            for key in ("g", "m"):  # the cockpit's head says it; on these the top line does, where room is
+                await pilot.press(key)
+                bar = str(app.query_one("#bar", Static).render())
+                assert bar.rstrip().endswith("replay · a scripted stand-in, no model ran") and len(bar) <= 80
+            await pilot.press("c")
+            assert "replay · a scripted stand-in" in str(app.query_one("#head", Static).render())
 
     run(go())
