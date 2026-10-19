@@ -1654,6 +1654,10 @@ def propose(
             if isinstance(item.get("children"), list):
                 flat[:0] = [(child, node.id) for child in item["children"]]
             if node.id in taken:
+                gone = next((n for n in existing if n.id == node.id and n.state in GONE), None)
+                if gone:  # an undone add, or a drop: out of the plan, and its id kept for the record
+                    raise refusal(f"{node.id} was {gone.state} and its id stays taken",
+                                  do="`graphene plan undo` puts it back, or choose another id")  # fmt: skip
                 raise refusal(
                     f"{node.id} is already in the plan", do=f"graphene node set {node.id} … edits it"
                 )

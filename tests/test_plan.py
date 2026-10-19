@@ -782,6 +782,16 @@ def test_a_check_that_runs_the_directory_its_own_scope_will_fill_is_not_a_misspe
     assert plan.unreachable(typo, ["README.md"], repo) == ["test/pdf"]  # a real misspelling still is one
 
 
+def test_an_id_out_of_the_plan_is_refused_as_taken_and_never_as_in_the_plan(store, repo):
+    """The reference against the code (fourth review): `node add … --id t`, `plan undo`, the same add again:
+    "t is already in the plan", then `node done t` said "t is dropped: it is not in the plan any more"."""
+    plan.propose(store, [api_node(id="t")], ALEX)
+    plan.drop(store, "t", ALEX)
+    with pytest.raises(Refused, match="t was dropped and its id stays taken") as said:
+        plan.propose(store, [api_node(id="t")], ALEX)
+    assert "already in the plan" not in str(said.value)
+
+
 def test_a_reason_naming_many_nodes_is_checked_for_cycles_once(tmp_path, monkeypatch):
     """Recheck 44: a validate for every node the reason named, on every refresh of the screen."""
     import subprocess

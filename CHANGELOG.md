@@ -23,8 +23,8 @@ real plan and wired to the real commands; `graphene watch --classic` is the olde
   the plan's stage until you turn it with `v`, and its top line says what is true in each.
 - `i` opens everything about a row in four panes, on 1 to 4 (contract, output, changes, record); `c` there shows
   the task's whole diff, as `graphene node diff` does.
-- When something new needs you, the terminal rings and a notification says why; `notify: off` in
-  `graphene config edit` keeps it quiet.
+- When something new needs you, the terminal rings and, where it shows one, a notification says why; `notify:
+  off` in `graphene config edit` keeps it quiet.
 - Colour means state: an agent's colour never borrows proven green, running amber, need-you purple or came-back
   red. Rows show whole titles where they fit; one word for one thing (task, check, proven, graph, map, widen, hand
   back, details), and `?` explains the marks.

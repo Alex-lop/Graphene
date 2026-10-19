@@ -24,9 +24,9 @@ HEAD = """\
 # protected: globs no scope may include      readonly: globs no leaf may write
 # never: one thing the planner must never propose, a line each
 # size: auto, finer or coarser (how big a plan the planner proposes)
-# board: auto (only while a question is open) or on (every open item waits on you)
+# board: auto (while a question, or an agent's note, is open) or on (every open item waits on you)
 # review: off (the check decides) or every (a proven task waits for your sign-off before it lands)
-# notify: on (graphene watch rings, with a desktop notice, when something new needs you) or off
+# notify: on (graphene watch rings, and a terminal that shows them notifies, when something needs you) or off
 """
 
 

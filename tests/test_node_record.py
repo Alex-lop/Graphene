@@ -271,6 +271,22 @@ def test_a_node_done_by_an_executor_no_vendor_records_still_has_a_coverage_line(
     assert "not computed" not in "\n".join(printed)  # every count here has evidence behind it
 
 
+def test_a_runs_sessions_with_no_records_are_never_called_claude_codes_records(store, repo):
+    """The reference against the code (fourth review): a leaf held by `graphene run` with a script printed
+    "read from: the node's log, git, and Claude Code's records for sessions 18d620d7, …": a run gives every
+    executor a session id of its own, and the store holds no records of it. No vendor keeps them."""
+    run = Caller("run:doer.sh", False, "18d620d7-0000-4000-8000-000000000001")
+    plan.propose(store, [api_node(check="test -f src/api/users.py")], ALEX, now=T(0))
+    plan.start(store, "n1", run, repo, now=T(1))
+    (repo / "src/api/users.py").write_text("def users():\n    return [1]\n")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", "the endpoint", at=T(2))
+    plan.finish(store, "n1", run, now=T(3))
+    printed = "\n".join(NR.render(NR.node_record(store, repo, plan.get(store, "n1"), at=T(9))))
+    assert "Claude Code's records" not in printed
+    assert "read from: the node's log and git. No vendor keeps records for run:doer.sh" in printed
+
+
 def test_the_check_says_its_last_line_and_that_it_also_passed_at_the_base_before_any_work(store, repo):
     """The check line said "passed" and no more: not what it printed last, nor that red first saw it pass
     at the base commit, before any work, where it shows nothing about the change. And three coverage

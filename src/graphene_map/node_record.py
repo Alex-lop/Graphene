@@ -540,18 +540,19 @@ def _coverage(store, node: P.Node, windows: list[Window], commits: list, at: str
     ours = [e for e in usage if e["session_id"] in ids and "wrote" in e["detail"]]
     if ours:  # Graphene's own executor: it recorded each write it made, whatever held the session
         return _graded_by_executor(counts, under, commits, ours)
+    nobody = (
+        f"the node's log and git. No vendor keeps records for {held or 'nobody'}, so nothing here "
+        "says which path a write somebody recorded making accounts for"
+    )
     if not ids:
-        counts["read_from"] = (
-            f"the node's log and git. No vendor keeps records for {held or 'nobody'}, so nothing here "
-            "says which path a write somebody recorded making accounts for"
-        )
+        counts["read_from"] = nobody
         one = "it" if len(commits) == 1 else "them"
         return _not_computed(counts, commits, f"no session's records account for {one}")
     run = run_records(store, ids)
-    counts["read_from"] = (
+    counts["read_from"] = (  # Claude Code's records only when there are some: a run's sessions have none
         f"the node's log, git, and Claude Code's records for "
         f"session{_s(len(ids))} {', '.join(i[:8] for i in ids)}"
-    )
+    ) if run.sessions else nobody
     if not run.sessions:
         return _not_computed(
             counts,

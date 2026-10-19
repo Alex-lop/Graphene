@@ -83,16 +83,17 @@ You can answer nothing. What is left open takes its default when you accept the 
 `graphene board take` with no id. A question with no default stays open, and so does a default that drops a node: it
 waits for your own key.
 
-`board: auto` (the default) shows it only while a question is open, `board: on` while any item is. In
-`graphene watch` the open items are the first rows under the goal.
+`board: auto` (the default) shows it while a question, or a note an agent put up, is open; `board: on` while any
+item is. In `graphene watch` the open items are the first rows under the goal.
 
 ## The views
 
 `graphene watch` opens the cockpit (`c`): what needs you first, then a row a task, numbered in the order the tasks
 were taken and kept through a retry, and in numbers whether it is on track: activity, files written of allowed,
 checks passed, seconds quiet. A write the gate stopped needs you too. A new question, a task that came back, a
-sign-off or a stopped write rings the terminal, with a desktop notice saying why; a batch of proposals that brings
-no question rings once (`notify: off` quiets it).
+sign-off or a stopped write rings the terminal, with a desktop notice saying why where the terminal shows one
+(iTerm2, WezTerm, Ghostty; Terminal.app only rings); a batch of proposals that brings no question rings once
+(`notify: off` quiets it).
 
 The key bar says what the keys do to the selected row: `⏎` its own move (accept, take the default, try again,
 sign off), `A` accept every proposal, `t` tell its agent a line (a Claude Code session hears it with its next
@@ -173,7 +174,8 @@ needed, `r` reopens the done leaf it found wrong and waits on it (it asks first)
 leaf waits until what it needs has landed; if git cannot merge, the leaf stops in review with its branch named.
 
 Ctrl-C, or `graphene run --stop` from another terminal, stops the executors and hands back every leaf that had not
-passed; `graphene run --here` runs one leaf in your own checkout and commits nothing.
+passed; `graphene run --here` runs the leaves one at a time in your own checkout (`--node ID` for one) and commits
+nothing.
 
 One run goes in a repository at a time: a second `graphene run`, or `R` in the cockpit, hands its leaves to the
 run going (one with its own `--with`, `--attempts` or `--max-usd` is refused). A leaf that came back is taken again
@@ -278,7 +280,7 @@ reads no transcript.
 | `size: auto\|finer\|coarser` | How many leaves the planner is asked for |
 | `board: auto\|on` | When the board shows |
 | `review: off\|every` | `every`: a task whose check passes waits for your sign-off before it lands |
-| `notify: on\|off` | Whether `graphene watch` rings, with a desktop notice, when something new needs you |
+| `notify: on\|off` | Whether `graphene watch` rings, with a desktop notice where the terminal shows one, when something new needs you |
 
 `graphene config` also names the planner, the executor and plan first.
 
