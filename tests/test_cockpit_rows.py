@@ -11,29 +11,34 @@ def plain(lines) -> list[str]:
 
 
 def test_every_line_fits_the_width_asked():
+    for width in (40, 60, 80, 120):  # the head at the narrowest the screen draws (40)
+        assert all(line.width() <= width for line in rows.build_head(scene(), width))
     for width in (60, 80, 120):
         assert all(line.width() <= width for line in rows.build_cockpit(scene(), width))
 
 
-def test_the_header_says_what_waits_for_the_person_what_runs_and_what_is_proven():
-    top = plain(rows.build_cockpit(scene(), 80))
+def test_the_head_says_what_waits_for_the_person_what_runs_and_what_is_proven_in_one_line():
+    top = plain(rows.build_head(scene(), 80))
     assert top[0].strip() == "users come back with their ids"
-    assert top[1].split() == ["4", "need", "you", "1", "running", "1/5", "proven"]  # a proposal counts, and
-    # so does the running task with a write the gate stopped (`ids`)
+    assert top[1].split()[:7] == ["4", "need", "you", "1", "running", "1/5", "proven"]  # a proposal counts,
+    # and so does the running task with a write the gate stopped (`ids`)
+    assert top[1].split()[7].startswith("▰") and len(top) == 3  # the bar on the same line; then the rule
+    scrolled = plain(rows.build_cockpit(scene(), 80))  # the rows, which scroll, have neither
+    assert not any("need you" in line or "users come back" in line for line in scrolled)
 
 
 def test_the_headline_is_your_goal_and_with_none_it_says_how_to_give_one():
-    head = rows.build_cockpit(scene(), 80)[0]
+    head = rows.build_head(scene(), 80)[0]
     assert head.plain().strip() == "users come back with their ids" and head.segs[0].style == "bold"
     m = scene()
     m.source = "replay"
-    assert rows.build_cockpit(m, 80)[0].plain().rstrip().endswith("users come back with their ids · replay")
+    assert rows.build_head(m, 80)[0].plain().rstrip().endswith("users come back with their ids · replay")
     for none in ("", "no goal yet"):  # the second is what the plan's reader says of a plan with no goal
         m = scene()
         m.goal = none
-        head = rows.build_cockpit(m, 80)[0]
+        head = rows.build_head(m, 80)[0]
         assert ':plan goal "' in head.plain() and not any("bold" in s.style for s in head.segs)
-        assert head.width() <= 80 and rows.build_cockpit(m, 60)[0].width() <= 60
+        assert head.width() <= 80 and rows.build_head(m, 60)[0].width() <= 60
 
 
 def test_the_question_comes_first_and_the_default_and_the_options_are_buttons():
@@ -151,6 +156,19 @@ def test_the_tell_box_shows_under_the_selected_agent_while_it_is_open():
     assert "tell agent 1: keep ids as strings▌" in text
 
 
+def test_the_tell_box_under_a_task_nobody_is_on_yet_says_its_agent_reads_it_when_it_starts():
+    m = scene()
+    for sel, whom in (("tests", "its agent"), ("docs", "its agent")):  # waiting, and proposed
+        m.selected = sel
+        text = "\n".join(plain(rows.build_cockpit(m, 120, tell="use tabs")))
+        assert f"tell {whom}: use tabs▌" in text and f"{whom} reads this when it starts" in text
+    m.tasks["tests"].state, m.tasks["tests"].agent = "came back", "3"  # it keeps its number
+    m.selected = "tests"
+    assert "agent 3 reads this when it starts" in "\n".join(plain(rows.build_cockpit(m, 120, tell="x")))
+    m.selected = "ids"  # running, and hooked: it hears it with its next write, so no more is said
+    assert "reads this" not in "\n".join(plain(rows.build_cockpit(m, 120, tell="x")))
+
+
 def test_files_outside_the_scope_are_flagged_and_a_note_that_cannot_be_heard_says_when_it_is_read():
     m = scene()
     m.tasks["ids"].outside = ["db/schema.py"]
@@ -175,12 +193,22 @@ def test_a_leaf_that_came_back_shows_what_it_offers_as_keys():
     assert "offer:b" in [s.action for s in line.segs]
 
 
-def test_a_plan_with_nothing_in_it_says_what_to_do_in_three_short_lines():
+def test_a_plan_with_nothing_in_it_says_what_to_do_next_in_lines_that_fit_80_columns_and_counts_nothing():
     m = Model("no goal yet")
+    m.executor = "claude"
     lines = plain(rows.build_cockpit(m, 80))
     text = "\n".join(lines)
-    assert "Nothing is planned yet." in text and "Or type :ask" in text
-    assert all(len(line) <= 80 for line in lines)
+    assert "Nothing is planned yet." in text and "In Claude Code, say what you want" in text
+    assert ":ask what you want" in text and "graphene demo" in text and "…" not in text
+    assert all(len(line) <= 79 for line in lines) and "graphene init" not in text
+    m.executor = ""  # graphene init chose no one to run the tasks: that comes first
+    assert "graphene init, in a terminal of your own" in plain(rows.build_cockpit(m, 80))[2]
+    assert all(len(line) <= 79 and "…" not in line for line in plain(rows.build_cockpit(m, 80)))
+    head = plain(rows.build_head(m, 80))
+    assert len(head) == 2 and "need you" not in "\n".join(head)  # the invitation and the rule, no zeros
+    m.source = "replay"  # a replay that has nothing yet only says so
+    said = [line.strip() for line in plain(rows.build_cockpit(m, 80)) if line.strip()]
+    assert said == ["Nothing is planned yet."]
 
 
 def test_a_running_agent_that_is_not_selected_shows_its_last_move_in_one_dim_line():
@@ -189,7 +217,9 @@ def test_a_running_agent_that_is_not_selected_shows_its_last_move_in_one_dim_lin
     text = "\n".join(plain(rows.build_cockpit(m, 100)))
     assert "┊ edit models/m0.py" in text  # agent 1's last event, under its row
     m.selected = "ids"  # selected, it opens into three lines and the verbs instead
-    assert "┊ edit models/m0.py" in "\n".join(plain(rows.build_cockpit(m, 100)))
+    opened = plain(rows.build_cockpit(m, 100))
+    assert "┊ edit models/m0.py" in "\n".join(opened)
+    assert sum("edit models/m0.py" in line for line in opened) == 1 and "t tell" in opened[-3]  # said once
 
 
 def test_a_row_shows_the_whole_title_where_it_fits_and_cuts_it_with_an_ellipsis_where_it_does_not():
@@ -207,8 +237,8 @@ def test_a_row_shows_the_whole_title_where_it_fits_and_cuts_it_with_an_ellipsis_
 def test_a_narrow_banner_keeps_what_it_is_and_where_it_is():
     m = scene()
     m.banner = "replay · as it ran, live · 2026-10-09 · 120 of 138"
-    wide = plain(rows.build_cockpit(m, 120))[0]
-    narrow = plain(rows.build_cockpit(m, 60))[0]
+    wide = plain(rows.build_head(m, 120))[0]
+    narrow = plain(rows.build_head(m, 60))[0]
     assert "as it ran, live · 2026-10-09" in wide
     assert narrow.rstrip().endswith("replay · 120 of 138") and len(narrow) <= 60
 

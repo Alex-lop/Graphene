@@ -10,4 +10,6 @@ def test_the_help_says_task_and_names_each_key_by_the_one_verb_the_screens_use()
     assert keys["x"].startswith("hand back a running task; reopen")
     assert "accept every proposal" in keys["d A"] and "the cockpit, the graph, the map" in keys["c g m"]
     assert said.count("leaf") == 1 and "call a task a leaf" in said  # said once, for the commands
+    marks = " ".join(line[16:] for line in said.splitlines() if line.startswith((" marks", " " * 16)))
+    assert all(m in marks for m in ("● running", "◆ sign-off", "↩ came back", "+ proposed", "✎ files"))
     assert all(len(line) <= 76 for line in said.splitlines()) and len(said.splitlines()) <= 22

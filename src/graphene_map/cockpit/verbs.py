@@ -52,10 +52,11 @@ class Doer:
 
     # -- running a command --------------------------------------------------------------------------
 
-    def run(self, argv: list[str]) -> int:
-        """A quick command, now. Says which it was; the model is looked at again after it."""
+    def run(self, argv: list[str], done: str = "") -> int:
+        """A quick command, now. Says which it was (and ``done``, when it worked, for what it said); the model
+        is looked at again after it."""
         code, said = _cli(argv)
-        self.say(gist(argv, code, said))
+        self.say(f"graphene {as_typed(argv)}: {done}" if done and not code else gist(argv, code, said))
         self.look()
         return code
 
@@ -142,12 +143,14 @@ class Doer:
         self.run(["board", "answer", q.id, words.strip()])
 
     def tell(self, m: Model, sel: str, words: str) -> None:
-        """A note about the task: told to its executor with its next write or command, once."""
+        """A note about the task: told to its executor with its next write or command, once; a task nobody
+        is on yet has it in its contract when an agent takes it (`board.decided`)."""
         t = m.tasks.get(sel)
         if t is None or not words.strip():
             self.say("select a task to tell")
             return
-        self.run(["board", "note", words.strip(), "--about", t.id])
+        later = "" if t.state == "running" else f"{who(t.agent) or 'its agent'} reads it when it starts"
+        self.run(["board", "note", words.strip(), "--about", t.id], later)
 
     def widen(self, m: Model, sel: str) -> None:
         """Give a task the paths its gate stopped (or, for a leaf that came back, the ones it wanted):

@@ -86,6 +86,16 @@ def test_tell_puts_a_note_about_the_task_on_the_board(repo, doer):
     assert len(items(repo)) == 1  # nothing said, nothing put up
 
 
+def test_a_note_to_a_task_nobody_is_on_yet_says_its_agent_reads_it_when_it_starts(repo, doer):
+    plan_of(repo)
+    doer.tell(model_of(docs="waiting"), "docs", "link the API page")
+    [note] = [it for it in items(repo) if it["kind"] == "note"]
+    assert note["about"] == "docs" and doer.said[-1].startswith("graphene board note")
+    assert doer.said[-1].endswith(": its agent reads it when it starts")
+    with Store.open(repo) as store:  # and it does: the person's note is in what its executor is told
+        assert any("link the API page" in line for line in B.decided(store, plan.get(store, "docs")))
+
+
 def test_take_on_a_proposal_accepts_it(repo, doer):
     plan_of(repo)
     m = model_of()

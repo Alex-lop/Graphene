@@ -7,7 +7,7 @@ from cockpit_repo import BOT, cockpit, make_plan
 from test_plan_cli import repo  # noqa: F401  (fixture)
 from textual.widgets import Static
 
-from graphene_map import plan
+from graphene_map import board, plan
 from graphene_map.cockpit.details import PANES, Details, pane_text
 from graphene_map.store import Store
 
@@ -187,6 +187,33 @@ def test_keys_under_the_details_do_not_reach_the_rows_and_q_closes_only_the_deta
             await pilot.press("q")
             await pilot.pause(0.2)
             assert app.is_running and not isinstance(app.screen, Details)
+
+    asyncio.run(go())
+
+
+def test_i_on_a_question_opens_the_task_it_is_about_and_on_one_about_the_plan_says_what_the_keys_do(repo):
+    make_plan(repo, question=True)  # tabs or spaces? is about ids
+    with Store.open(repo) as store:
+        board.add(store, "question", "ship it on Friday?", BOT, default="yes")
+    app = cockpit(repo)
+    app.open_store = lambda: Store.open(repo)
+
+    async def go():
+        async with app.run_test(size=(100, 30)) as pilot:
+            await pilot.pause(0.2)
+            asked = {q.text: q.id for q in app.model.questions}
+            app.model.selected = asked["tabs or spaces?"]
+            await pilot.press("i")
+            await pilot.pause(0.3)
+            assert isinstance(app.screen, Details) and app.screen.node_id == "ids"
+            await pilot.press("escape")
+            await pilot.pause(0.2)
+            app.model.selected = asked["ship it on Friday?"]
+            await pilot.press("i")
+            await pilot.pause(0.2)
+            assert not isinstance(app.screen, Details)
+            said = "it is about the whole plan: ⏎ takes its default, a answers in your own words"
+            assert app.model.latest() == said
 
     asyncio.run(go())
 

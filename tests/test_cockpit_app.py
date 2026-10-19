@@ -10,6 +10,7 @@ from textual.widgets import Static
 
 from graphene_map.cockpit.app import Canvas, Cockpit
 from graphene_map.cockpit.help import Help
+from graphene_map.cockpit.model import Task
 
 
 def run(coro):
@@ -34,6 +35,19 @@ def test_the_three_screens_open_at_these_sizes_without_a_crash(size):
     run(go())
 
 
+def test_escape_on_the_graph_or_the_map_comes_back_to_the_cockpit():
+    async def go():
+        app = app_of(scene())
+        async with app.run_test(size=(100, 30)) as pilot:
+            for keys in (("g",), ("m",), ("p",)):  # p paints on the map: Esc stops that too
+                await pilot.press(*keys)
+                assert app.view != "cockpit"
+                await pilot.press("escape")
+                assert app.view == "cockpit" and not app.paint_mode, keys
+
+    run(go())
+
+
 def test_j_and_k_move_the_selection_down_and_up_the_rows_and_wrap():
     async def go():
         m = scene()
@@ -54,6 +68,7 @@ def test_a_long_plan_scrolls_and_j_keeps_the_selected_row_on_screen():
         m = scene()
         for i in range(30):
             m.tasks[f"t{i}"] = replace(m.tasks["docs"], id=f"t{i}", title=f"task {i}", state="waiting")
+        m.selected = m.order()[0][1]  # from the first row, j down to the last
         app = app_of(m)
         async with app.run_test(size=(80, 24)) as pilot:
             await pilot.pause(0.1)
@@ -64,6 +79,9 @@ def test_a_long_plan_scrolls_and_j_keeps_the_selected_row_on_screen():
             await pilot.pause(0.1)
             at = next(k for k, line in enumerate(app.query_one(Canvas).lines) if line.row == m.selected)
             assert 0 < box.scroll_y <= at < box.scroll_y + box.size.height
+            head = str(app.query_one("#head", Static).render())  # the goal and the counts stay on top
+            assert "users come back with their ids" in head and "need you" in head and "proven" in head
+            assert not any("need you" in line.plain() for line in app.query_one(Canvas).lines)
 
     run(go())
 
@@ -106,6 +124,17 @@ def test_in_flow_the_arrows_move_to_the_nearest_box():
             m.selected = "ids"
             await pilot.press("right")
             assert m.selected == "tests"  # what waits on ids is to its right
+
+    run(go())
+
+
+def test_the_colon_line_says_what_it_takes_before_anything_is_typed(tmp_path):
+    async def go():
+        app = Cockpit(lambda previous: previous or scene(), root=tmp_path)
+        async with app.run_test(size=(100, 30)) as pilot:
+            await pilot.press("colon")
+            await pilot.pause(0.2)
+            assert app.screen.prompt == "a graphene command: ask …, run, plan accept, stop"
 
     run(go())
 
@@ -158,12 +187,53 @@ def test_question_mark_opens_the_keys_on_one_screen_and_escape_closes_it():
 def test_the_keys_line_keeps_help_and_quit_when_the_terminal_is_narrow():
     from graphene_map.cockpit.app import KEYS, fit_keys
 
-    for width in (79, 60, 40):
-        for line in KEYS.values():
+    m = scene()
+    m.questions[0].default, m.questions[0].options = "keep both of them, old and new", ["a", "b", "c"]
+    app = app_of(m)
+    lines = [KEYS["territory"]]
+    for view in ("cockpit", "flow"):
+        app.view = view
+        for rid in [rid for _, rid in m.order()]:
+            m.selected = rid
+            lines.append(app.row_keys())
+    for line in lines:
+        assert len(line) <= 79, line
+        for width in (79, 60, 40):
             fitted = fit_keys(line, width)
-            assert len(fitted) <= width and "? keys" in fitted
-            assert fitted.rstrip().endswith("q") or fitted.rstrip().endswith("quit")
-    assert fit_keys(KEYS["cockpit"], 200) == KEYS["cockpit"]
+            assert len(fitted) <= width and "? keys" in fitted and fitted.rstrip().endswith("q")
+        assert fit_keys(line, 200) == line
+
+
+def test_the_keys_line_says_what_the_keys_do_to_the_selected_row(tmp_path):
+    async def go():
+        m = scene()
+        m.tasks["back"] = Task("back", "retry it", "came back", agent="3", offers={"w": ["node", "widen"]})
+        app = Cockpit(lambda previous: previous or m, root=tmp_path)
+
+        def keys():
+            return str(app.query_one("#keys", Static).render()).strip()
+
+        async with app.run_test(size=(100, 30)) as pilot:
+            for sel, own in (
+                ("q", "⏎ keep both · 1 pick · a answer · d drop"),
+                ("docs", "⏎ accept · A all · d drop · i details"),
+                ("ids", "t tell · w widen · x hand back · i details"),
+                ("back", "⏎ try again · w widen · t tell · i details"),
+                ("migrate", "⏎ sign off · x reopen · i details"),
+                ("schema", "i details · x reopen"),
+                ("tests", "t tell · i details"),
+            ):
+                m.selected = sel
+                app.paint()
+                assert keys() == own + " · g graph · m map · ? keys · q"
+            m.tasks["ids"].stopped = []  # nothing stopped: nothing to widen, so no w
+            m.selected = "ids"
+            app.paint()
+            assert "w widen" not in keys()
+            await pilot.press("t")
+            assert keys() == "Enter sends to agent 1 · Esc cancels"
+
+    run(go())
 
 
 def test_the_tabs_say_cockpit_graph_and_map_and_plan_first_is_said_only_when_it_is_off(tmp_path):
@@ -182,6 +252,27 @@ def test_the_tabs_say_cockpit_graph_and_map_and_plan_first_is_said_only_when_it_
     run(go())
 
 
+def test_the_graphs_legend_says_only_what_it_drew():
+    async def go():
+        m = scene()
+        app = app_of(m, screen="flow")
+        async with app.run_test(size=(140, 30)) as pilot:
+            await pilot.pause(0.1)
+
+            def shown():
+                return "\n".join(line.plain() for line in app.query_one(Canvas).lines)
+
+            assert "retry loop" not in shown() and "two-way" not in shown()  # plain edges: no legend
+            m.extra_edges = [("tests", "ids", "loop")]
+            app.paint()
+            assert "amber lane = a retry loop (bounded)" in shown() and "two-way" not in shown()
+            m.extra_edges = [("ids", "migrate", "two")]
+            app.paint()
+            assert "◀▶ two-way" in shown() and "retry loop" not in shown()
+
+    run(go())
+
+
 def test_the_graph_says_what_the_selected_task_is_for():
     from graphene_map.cockpit.model import Model, Task
 
@@ -194,6 +285,20 @@ def test_the_graph_says_what_the_selected_task_is_for():
             await pilot.pause(0.1)
             shown = "\n".join(line.plain() for line in app.query_one(Canvas).lines)
             assert "users return ids  ·  running · agent 1 · ✓0/1 · for API" in shown
+
+    run(go())
+
+
+def test_the_line_under_the_rows_is_blank_when_there_is_no_news():
+    async def go():
+        m = scene()
+        app = app_of(m)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await pilot.pause(0.1)
+            assert str(app.query_one("#feed", Static).render()).strip() == ""  # the marks are in ? now
+            m.say("graphene board take q: taken")
+            app.paint()
+            assert "board take" in str(app.query_one("#feed", Static).render())
 
     run(go())
 

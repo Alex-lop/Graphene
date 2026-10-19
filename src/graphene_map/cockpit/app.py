@@ -32,26 +32,46 @@ from . import flowlayout as F
 from . import territory as T
 from .details import DIRECTION, Details
 from .help import Help
-from .lines import Line, Seg, fit_keys, seg_at
+from .lines import Line, Seg, fit, fit_keys, seg_at
 from .look import who
 from .model import Model
-from .rows import build_cockpit
+from .rows import build_cockpit, build_head
 from .territory_view import HEAD, build_territory
 from .verbs import Doer
 
 SCREENS = ("cockpit", "flow", "territory")
 TABS = ("cockpit", "graph", "map")  # what the top line calls them
 KEYS = {  # one line each, at most 79 columns: the screen's own keys, then the ones every screen has
-    "cockpit": "⏎ accept · i details · t tell · w widen · x hand back · ? keys · q",
-    "flow": "arrows · ⏎ accept · i details · t tell · w widen · ? keys · q",
+    "cockpit": "",  # empty: what the keys do to the selected row (row_keys)
+    "flow": "",
     "territory": "j/k folder · ←/→ task · p paint · v lens · w widen · c cockpit · ? keys · q",
+}
+ROW_KEYS = {  # a task's own keys, by its state: ⏎ first when it has a move, then the letters
+    "proposed": ["⏎ accept", "A all", "d drop", "i details"],
+    "came back": ["⏎ try again", "w widen", "t tell", "i details"],
+    "review": ["⏎ sign off", "x reopen", "i details"],
+    "yours": ["⏎ mark done", "i details"],
+    "running": ["t tell", "w widen", "x hand back", "i details"],
+    "ready": ["r run", "R run ready", "t tell", "i details"],
+    "waiting": ["t tell", "i details"],
+    "done": ["i details", "x reopen"],
 }
 KEYS_TO_VERBS = {  # a key, and the verb it asks for (`act`)
     "t": "tell", "w": "allow", "x": "back", "d": "drop", "r": "run", "R": "run-all", "a": "answer",
     "b": "offer:b", "n": "offer:n", "colon": "command", "y": "take", "s": "split", "P": "first", "u": "undo",
     "e": "edit", "E": "edit-plan", "D": "direction", "i": "details", "A": "accept-all",
 }  # fmt: skip
-LEGEND = "✎ files touched of allowed · ✓ proofs · ! writes stopped · ⏸ quiet · ▁▃▅ activity"
+
+
+def text_of(lines: list[Line]) -> Text:
+    """Lines as one Text, each cut at the screen's edge, never wrapped."""
+    out = Text(no_wrap=True, overflow="crop")
+    for k, line in enumerate(lines):
+        for s in line.segs:
+            out.append(s.text, style=s.style or None)
+        if k < len(lines) - 1:
+            out.append("\n")
+    return out
 
 
 class Canvas(Widget):
@@ -69,13 +89,7 @@ class Canvas(Widget):
         self.refresh(layout=True)
 
     def render(self) -> Text:
-        out = Text(no_wrap=True, overflow="crop")
-        for k, line in enumerate(self.lines):
-            for s in line.segs:
-                out.append(s.text, style=s.style or None)
-            if k < len(self.lines) - 1:
-                out.append("\n")
-        return out
+        return text_of(self.lines)
 
     def on_click(self, event: Click) -> None:
         if 0 <= event.y < len(self.lines):
@@ -92,6 +106,9 @@ class Cockpit(App):
     Screen { background: #0e1014; }
     Ask { background: #0e1014 55%; }
     #bar { height: 1; background: #181b22; color: #9aa0ad; }
+    #head { height: auto; }
+    ScrollableContainer { scrollbar-size-vertical: 1; scrollbar-background: #0e1014; scrollbar-color: #2b3242;
+                          scrollbar-color-hover: #3a4357; scrollbar-color-active: #4cc9f0; }
     #feed { height: 1; }
     #keys { height: 1; background: #181b22; color: #7d8492; }
     #tell { display: none; height: 3; }
@@ -124,6 +141,7 @@ class Cockpit(App):
 
     def compose(self) -> ComposeResult:
         yield Static(id="bar")
+        yield Static(id="head")  # the goal and the counts: they stay while the rows scroll
         with ScrollableContainer():
             yield Canvas()
         yield Static(id="feed")
@@ -168,7 +186,10 @@ class Cockpit(App):
             name = name.split(" · ")[0][: max(w - bar.cell_len - 3, 0)]
         bar.append(" " * max(2, w - bar.cell_len - len(name) - 1) + name, style="grey42")  # whose plan
         self.query_one("#bar", Static).update(bar)
+        head = self.query_one("#head", Static)
+        head.display = self.view == "cockpit"
         if self.view == "cockpit":
+            head.update(text_of(build_head(m, w)))
             lines = build_cockpit(m, w, tell=self.query_one("#tell", Input).value if self.tell_open else None)
         elif self.view == "territory":
             lines, self.groups = build_territory(m, w, self.cursor)
@@ -181,12 +202,32 @@ class Cockpit(App):
             self.call_after_refresh(self.follow, lines)
         feed = m.latest()
         note = Text()
-        note.append(" " + (feed or LEGEND), style="bold #e9c46a" if feed else "grey42")
+        note.append(" " + feed if feed else "", style="bold #e9c46a")  # no news: a quiet line (the marks: ?)
         note.truncate(w, overflow="ellipsis")  # a long line ends in …, not mid-word
         self.query_one("#feed", Static).update(note)
         painting = "paint mode: click or Enter on folders · p to stop · " if self.paint_mode else ""
-        keys = painting + self.keys[self.view]
+        keys = painting + (self.keys[self.view] or self.row_keys())
         self.query_one("#keys", Static).update(" " + fit_keys(keys, w - 1))
+
+    def row_keys(self) -> str:
+        """The keys line for what is selected: what ⏎ and each letter do to it, then the other screens.
+        While the tell box has the keys, what Enter and Esc do there."""
+        m = self.model
+        if self.tell_open:
+            t = m.tasks.get(self.tell_for)
+            return f"Enter sends to {who(t.agent) if t and t.agent else 'its agent'} · Esc cancels"
+        q = next((q for q in m.questions if q.id == m.selected), None)
+        t = m.tasks.get(m.selected)
+        if q:
+            picks = {0: [], 1: ["1 pick"], 2: ["1 2 pick"]}.get(len(q.options), [f"1-{len(q.options)} pick"])
+            own = [f"⏎ {fit(q.default, 12)}", *picks, "a answer", "d drop"]
+        elif t:  # w only where there is something to widen
+            own = [k for k in ROW_KEYS.get(t.state, ["i details"])
+                   if k != "w widen" or t.stopped or "w" in t.offers]  # fmt: skip
+        else:
+            own = [":ask what you want"]
+        screens = ["c cockpit", "m map"] if self.view == "flow" else ["g graph", "m map"]
+        return " · ".join([*own, *screens, "? keys", "q"])
 
     def flow_lines(self, width: int) -> list[Line]:
         m = self.model
@@ -198,13 +239,13 @@ class Cockpit(App):
             info += f"  ·  {sel.state}" + (f" · {who(sel.agent)}" if sel.agent else "")
             info += f" · ✓{sel.passed}/{sel.checks}" if sel.checks else ""
             info += f" · for {sel.why}" if sel.why else ""
-        lines += [
-            Line([]),
-            Line([Seg(info, "bold")]),
-            Line([Seg(" " + note if note else "", "grey50")]),
-            Line([Seg(" amber lane = a retry loop (bounded) · ◀▶ two-way", "grey50")]),
-        ]
-        return lines
+        lines += [Line([]), Line([Seg(info, "bold")]), Line([Seg(" " + note if note else "", "grey50")])]
+        drawn = [cell for row in self.flow_layout.cells for cell in row]
+        legend = [said for said, there in (  # what the graph's own marks mean, only those it drew
+            ("amber lane = a retry loop (bounded)", any(style == "edge_loop" for _, style in drawn)),
+            ("◀▶ two-way", any(ch == "◀" for ch, _ in drawn)),
+        ) if there]  # fmt: skip
+        return lines + ([Line([Seg(" " + " · ".join(legend), "grey50")])] if legend else [])
 
     def follow(self, lines: list[Line]) -> None:
         """Scroll so what is selected is on screen: a task's row, all its lines; the box on the graph; the
@@ -287,11 +328,17 @@ class Cockpit(App):
                     Details(self.open_store, self.root, "", "the direction", "direction", DIRECTION)
                 )
         elif action == "details":
-            if task is None or self.open_store is None or self.root is None:
+            q = next((q for q in m.questions if q.id == sel), None)
+            node = q.about if q else sel  # a question's details are those of the task it is about
+            if q and not q.about:
+                keys = "1 2 pick an option, " if q.options else ""
+                m.say(f"it is about the whole plan: ⏎ takes its default, {keys}a answers in your own words")
+            elif not (node in m.tasks or q) or self.open_store is None or self.root is None:
                 m.say("select a task to see its details")
             else:
-                name = " · ".join(x for x in (task.title, who(task.agent)) if x)
-                self.push_screen(Details(self.open_store, self.root, sel, name))
+                t = m.tasks.get(node)
+                name = " · ".join(x for x in (t.title if t else node, who(t.agent) if t else "") if x)
+                self.push_screen(Details(self.open_store, self.root, node, name))
         elif d is None:
             m.say(self.refusal)
         elif action == "take":
@@ -340,7 +387,7 @@ class Cockpit(App):
         elif action in ("edit", "edit-plan"):
             self.edit_with(["node", "edit", sel] if action == "edit" and task else ["plan", "edit"])
         elif action == "command":
-            self.push_screen(Ask("graphene "), self.commanded)
+            self.push_screen(Ask("a graphene command: ask …, run, plan accept, stop"), self.commanded)
         self.paint()
 
     def commanded(self, text: str | None) -> None:
@@ -444,8 +491,16 @@ class Cockpit(App):
         if t is None:
             self.model.say("select a task to tell")
             return
-        if self.doer is None:
+        if self.doer is None:  # a replay, or no repository: nothing is told, whatever the task
             self.model.say(self.refusal)
+            return
+        nobody = {  # no agent is on it, nor still to take it
+            "review": "waits for your sign-off: x reopens it, and its next agent is told why",
+            "done": "is done: x reopens it, and its next agent is told why",
+            "yours": "is yours to do: no agent takes it",
+        }.get(t.state)
+        if nobody:
+            self.model.say(f"{t.title} {nobody}")
             return
         box = self.query_one("#tell", Input)
         box.add_class("on")
@@ -491,7 +546,9 @@ class Cockpit(App):
         if key == "q":
             self.exit()
             return
-        if key in ("c", "g", "m"):
+        if key == "escape":  # from the graph or the map, back to the rows (and out of painting)
+            self.view, self.paint_mode = "cockpit", False
+        elif key in ("c", "g", "m"):
             self.view = {"c": "cockpit", "g": "flow", "m": "territory"}[key]
         elif key == "tab":
             self.view = SCREENS[(SCREENS.index(self.view) + 1) % len(SCREENS)]

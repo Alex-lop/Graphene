@@ -1,6 +1,7 @@
 """The cockpit screen: one row a task, the questions that wait for the person first, numbers on the right.
 
-`build_cockpit` takes the model and a width and returns lines (lines.py). A row says who is on the task,
+`build_head` (the goal and the counts, which stay on top) and `build_cockpit` (the rows, which scroll) take
+the model and a width and return lines (lines.py). A row says who is on the task,
 what its title is, and in numbers whether it is alive and on track: a sparkline of pace, files touched of
 files allowed, checks passed of checks asked, writes stopped, seconds quiet. The row under the cursor
 opens: the last lines of what the agent did, what the person told it and whether it heard, and the verbs.
@@ -21,8 +22,9 @@ NO_GOAL = "no goal yet"  # what the plan's reader says of a plan with none (view
 INVITE = 'no goal yet · :plan goal "…" tells every agent what this is for'
 
 
-def build_cockpit(m: Model, width: int, *, tell: str | None = None) -> list[Line]:
-    out: list[Line] = []
+def build_head(m: Model, width: int) -> list[Line]:
+    """What stays on top while the rows scroll: your goal (or how to give one), then where the plan stands
+    in one line, what needs you, what runs and what is proven, with the proven part as a bar."""
     need, running, done, total = m.scoreboard()
     goal = "" if m.goal in ("", NO_GOAL) else m.goal
     tag = m.banner or ("replay" if m.source == "replay" else "")  # the live plan needs no word
@@ -34,30 +36,26 @@ def build_cockpit(m: Model, width: int, *, tell: str | None = None) -> list[Line
     said = goal or (NO_GOAL if tag else INVITE)  # your goal on top; with none, how to give one (not a title)
     head = [Seg(" " + fit(said, width - (cell_len(tag) + 5 if tag else 2)), "bold" if goal else "grey62")]
     head += [Seg(" · " + tag, "grey50")] if tag else []
-    out.append(Line(pad(head, width)))
-    out.append(
-        Line(
-            pad(
-                [
-                    Seg(f" {need}", "bold #c77dff"),
-                    Seg(" need you   ", "#c77dff"),
-                    Seg(str(running), "bold #e9c46a"),
-                    Seg(" running   ", "#e9c46a"),
-                    Seg(f"{done}/{total}", "bold #8ab17d"),
-                    Seg(" proven", "#8ab17d"),
-                ],
-                width,
-            )
-        )
-    )
-    cells = max(10, min(width - 12, 40))
-    fill = round(cells * done / max(total, 1))
-    out.append(Line(pad([Seg(" " + "▰" * fill, "#8ab17d"), Seg("▱" * (cells - fill), "grey35")], width)))
-    out.append(Line([Seg("─" * width, "grey30")]))
+    counts = [
+        Seg(f" {need}", "bold #c77dff"), Seg(" need you   ", "#c77dff"),
+        Seg(str(running), "bold #e9c46a"), Seg(" running   ", "#e9c46a"),
+        Seg(f"{done}/{total}", "bold #8ab17d"), Seg(" proven  ", "#8ab17d"),
+    ]  # fmt: skip
+    cells = min(width - span(counts) - 2, 30)
+    if cells >= 10:  # the bar, where it fits beside the numbers
+        fill = round(cells * done / max(total, 1))
+        counts += [Seg("▰" * fill, "#8ab17d"), Seg("▱" * (cells - fill), "grey35")]
+    counted = [Line(pad(counts, width))] if m.order() or m.folded_done else []  # nothing planned: no count
+    return [Line(pad(head, width)), *counted, Line([Seg("─" * width, "grey30")])]
+
+
+def build_cockpit(m: Model, width: int, *, tell: str | None = None) -> list[Line]:
+    """The rows, which scroll under the head (build_head): what needs you first, then the rest."""
+    out: list[Line] = []
     sel = m.selected
     cols = max((span(right_of(m, t, width)) for t in m.tasks.values()), default=0)
     if not m.order() and not m.folded_done:
-        return out + empty(width)
+        return empty(m, width)
     for kind, rid in m.order():
         if kind == "question":
             out.append(question_line(next(q for q in m.questions if q.id == rid), width, rid == sel))
@@ -70,16 +68,19 @@ def build_cockpit(m: Model, width: int, *, tell: str | None = None) -> list[Line
 
 
 EMPTY = (
-    "Nothing is planned yet.",
-    "Tell your agent what you want, and it proposes the tasks here for you to accept.",
-    "Or type :ask and what you want.",
+    "In Claude Code, say what you want: it proposes the tasks here.",
+    ":ask what you want · see a run: graphene demo",
 )
+NO_EXECUTOR = "No agent is chosen to run tasks: graphene init, in a terminal of your own."
 
 
-def empty(width: int) -> list[Line]:
-    """A plan with nothing in it: what to do, in three short lines."""
-    said = [Line([Seg(" " + fit(t, width - 2), "grey62" if k else "bold")]) for k, t in enumerate(EMPTY)]
-    return [Line([]), *said]
+def empty(m: Model, width: int) -> list[Line]:
+    """A plan with nothing in it: what to do next, in lines that fit 80 columns. A replay only says so."""
+    said = [Seg("Nothing is planned yet.", "bold")]
+    if m.source != "replay":
+        said += [Seg(NO_EXECUTOR, "#e9a23b")] if not m.executor else []  # `graphene init` chose no one yet
+        said += [Seg(t, "grey62") for t in EMPTY]
+    return [Line([]), *(Line([Seg(" " + fit(s.text, width - 2), s.style)]) for s in said)]
 
 
 def question_line(q: Question, width: int, on: bool) -> Line:
@@ -179,11 +180,18 @@ def task_lines(
     line = Line(pad(segs, width), t.id)
     out = [line]
     if on and t.state in ("running", "review", "came back"):
-        out += expansion(m, t, width, tell)
+        out += expansion(m, t, width)
     elif on and t.state == "proposed":
         out += proposal(m, t, width)
     elif t.state == "running" and t.events:  # its last move in one dim line: alive or stuck, at a glance
         out.append(Line([Seg("      ┊ ", "grey35"), Seg(fit(m.tail(t, 1)[0], width - 10), "grey58")], t.id))
+    if tell is not None:  # the line being typed, under the row it is for
+        whom = who(t.agent) or "its agent"
+        typed = [Seg(f"      tell {whom}: ", "bold #4cc9f0"), Seg(tell + "▌", "bold")]
+        if t.state != "running" or not t.hears:  # its contract tells it (board.decided) when it starts
+            when = "starts" if t.state != "running" else "next starts"
+            typed.append(Seg(f"   {whom} reads this when it {when}", "grey50"))
+        out.append(Line(typed, t.id))
     if on:
         for ln in out:
             for s in ln.segs:
@@ -218,7 +226,7 @@ def _outside(m: Model, t: Task) -> list[str]:
     return [p for p in t.changed if t.scope and not T._in(p, tuple(t.scope))]
 
 
-def expansion(m: Model, t: Task, width: int, tell: str | None) -> list[Line]:
+def expansion(m: Model, t: Task, width: int) -> list[Line]:
     out: list[Line] = []
     if t.state == "came back" and len(t.note) > max(width // 3, 16):  # what the row had to cut
         for part in textwrap.wrap(t.note, max(width - 12, 20))[:3]:
@@ -256,8 +264,4 @@ def expansion(m: Model, t: Task, width: int, tell: str | None) -> list[Line]:
     while span(verbs) > width and len(verbs) > 2:  # the last verbs give way first
         verbs.pop()
     out.append(Line(verbs, t.id))
-    if tell is not None:
-        out.append(
-            Line([Seg(f"      tell {who(t.agent) or t.id}: ", "bold #4cc9f0"), Seg(tell + "▌", "bold")], t.id)
-        )
     return out

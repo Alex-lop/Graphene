@@ -23,8 +23,7 @@ GROUPS = (
         ("w", "widen: give the task the path the gate stopped"),
         ("x", "hand back a running task; reopen a finished one (say why)"),
         ("b n", "came back: a sibling for what it wanted; wait on another"),
-        ("r R", "run this task (or reopen its owner); run every ready one"),
-        ("s", "the planner splits a task still to do"),
+        ("r R s", "run this task, or every ready one; s: the planner splits one"),
     )),
     ("plan", (
         ("e E", "edit the task, or the whole plan, in your $EDITOR"),
@@ -34,11 +33,14 @@ GROUPS = (
     ("screens", (
         ("j k", "move; ← → the task on the map, the box on the graph"),
         ("i", "details: the task's contract, output, changes and record"),
-        ("c g m", "the cockpit, the graph, the map; Tab goes on"),
+        ("c g m", "the cockpit, the graph, the map; Tab goes on, Esc comes back"),
         ("v p", "on the map: v changes the lens, p paints a folder to a task"),
     )),
     ("anything", (("`:`", "any graphene command (:stop stops runs, :ask a sentence)"),
                   ("q", "quit; a run started here goes on"))),
+    ("marks", (("", "● running  ◆ sign-off  ↩ came back  ○ ready  ◌ waiting"),
+               ("", "+ proposed  ✓ proven  ◇ yours  ? a question  ! a risk"),
+               ("", "✎ files written of allowed  ✓ checks  ⏸ quiet  ▁▃▅ activity"))),
 )  # fmt: skip
 INDENT = 16  # the group name and the key, before the words
 
@@ -54,8 +56,7 @@ def help_text(width: int, extra: tuple = ()) -> Text:
             for line in more:
                 out.append("\n" + " " * INDENT + line, style="grey70")
             out.append("\n")
-    closing = "\n A row's words are buttons. Each key runs a graphene command, and the line\n under the rows"
-    out.append(closing + " says which one ran. The commands call a task a leaf.", style="grey50")
+    out.append("\n A row's words are buttons. The keys' commands call a task a leaf.", style="grey50")
     return out
 
 
