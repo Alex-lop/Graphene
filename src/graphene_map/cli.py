@@ -359,7 +359,7 @@ def build():
             except ValueError as exc:
                 fail(f"cannot update {settings}: {exc}", 1)
             say(f"hooks removed from {settings}: {', '.join(gone) or 'none were there'}")
-            say("the plan in .graphene/ is yours to keep or delete")
+            say("the plan, and the sessions the hooks recorded, stay in .graphene/: yours to keep or delete")
             return
         given = {k: v for k, v in (("planner", planner), ("executor", executor)) if v is not None}
         if given:  # they are started as you, with your permissions, and they spend

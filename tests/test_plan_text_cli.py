@@ -62,6 +62,7 @@ def test_a_proposal_with_two_faults_is_told_both_at_once(repo):
     proposed = agent("plan", "propose", "-", input="? one  [one]\n? two  [two]\n    scope: api.py\n")
     assert proposed.exit_code == 1, proposed.output
     assert "line 1: 'one' is a new leaf with no scope and no check" in proposed.stderr
+    assert "Under it, indented: scope: the files it may change, check: the command" in proposed.stderr  # how
     assert "line 2 [two]: two: a leaf needs a check" in proposed.stderr, proposed.stderr
 
 

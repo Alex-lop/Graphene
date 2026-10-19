@@ -777,6 +777,12 @@ def _guard_shape(lines, fresh, everything, opened, parent_of, who, faulty=frozen
                     if ln.title.startswith(tuple(f"{kind}:" for kind in B.KINDS))
                     else ""
                 )
+                + (
+                    ". Under it, indented: scope: the files it may change, check: the command that "
+                    "proves it done"
+                    if not (unread or contract or ln.title.startswith(tuple(f"{kind}:" for kind in B.KINDS)))
+                    else ""
+                )
             )
         if not who.person and P._owner(ln.owner) not in (P.AGENT, "me", P.person_name()):
             raise P.Refused(

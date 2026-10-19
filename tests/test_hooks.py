@@ -289,6 +289,7 @@ def test_init_remove_takes_out_only_what_init_added_and_an_agent_may_not(repo, m
     assert said.exit_code == 0, said.output
     assert said.stdout.startswith("hooks removed from .claude/settings.local.json: ")
     assert all(name in said.stdout.splitlines()[0] for name in HOOK_EVENTS)
+    assert "the sessions the hooks recorded, stay in" in said.stdout  # what leaving does not take away
     assert json.loads(settings.read_text()) == theirs
     assert "none were there" in person("init", "--remove").stdout
 
