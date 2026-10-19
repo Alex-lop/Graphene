@@ -144,7 +144,10 @@ class Cockpit(App):
     # -- looking and painting --------------------------------------------------------------------
 
     def look(self) -> None:
-        """Ask for the model as it is now, and draw it."""
+        """Ask for the model as it is now, and draw it. A tick that lands once the app has begun to shut
+        down draws nothing: its widgets are being removed, and `#bar` was not found (a loaded runner)."""
+        if not self.is_running:
+            return
         self.model = self.looker(self.model)
         self.paint()
 

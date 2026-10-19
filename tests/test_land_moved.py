@@ -38,13 +38,24 @@ def test_a_check_at_a_commit_runs_on_that_commits_tree_and_not_the_checkouts(tmp
     assert (root / "x.txt").read_text() == "three\n"
 
 
-# a: a.f() returns 2; anything else writes <id>.py. b's check imports a and wants a.f() == 1: a and b
-# are green alone and red together. The one GRAPHENE_SLOW names sleeps first, so it lands second.
-EXECUTOR = """
-import os, pathlib, time
+# The leaf GRAPHENE_SLOW names waits, before it writes, until GRAPHENE_AFTER (1) leaves have landed in the
+# checkout (each lands as a merge), so it lands after them however slow the machine. A sleep of 1 s or 2 s
+# was not enough under a loaded suite: the first leaf's landing outlasted it, and the order flipped.
+SLOW = """
+import os, subprocess, time
 node = os.environ["GRAPHENE_NODE"]
 if node == os.environ.get("GRAPHENE_SLOW"):
-    time.sleep(1)
+    count = ["git", "-C", os.environ["GRAPHENE_ROOT"], "rev-list", "--merges", "--count", "HEAD"]
+    landed = lambda: int(subprocess.run(count, capture_output=True, text=True).stdout or 0)  # noqa: E731
+    until = time.monotonic() + 60
+    while landed() < int(os.environ.get("GRAPHENE_AFTER", "1")) and time.monotonic() < until:
+        time.sleep(0.05)
+"""
+
+# a: a.f() returns 2; anything else writes <id>.py. b's check imports a and wants a.f() == 1: a and b
+# are green alone and red together. The one GRAPHENE_SLOW names lands second (SLOW).
+EXECUTOR = SLOW + """
+import pathlib
 if node == "a":
     pathlib.Path("a.py").write_text("def f():\\n    return 2\\n")
 else:
@@ -70,6 +81,7 @@ def repo_with(tmp_path, monkeypatch, leaves, slow=""):
     git(root, "commit", "-qm", "start")
     monkeypatch.chdir(root)
     monkeypatch.setenv("GRAPHENE_SLOW", slow)
+    monkeypatch.setenv("GRAPHENE_ROOT", str(root))
     (tmp_path / "ex.py").write_text(EXECUTOR)
     with Store.open(root) as store:
         plan.propose(store, leaves, ALEX)
@@ -201,11 +213,8 @@ CHECK_A = (
     "import pathlib, lib\nassert pathlib.Path('a.txt').exists()\n"
     "assert lib.f() == 1, 'lib.f() changed under a'\n"
 )
-WRITES = """
-import os, pathlib, time
-node = os.environ["GRAPHENE_NODE"]
-if node == os.environ.get("GRAPHENE_SLOW"):
-    time.sleep(2)
+WRITES = SLOW + """
+import pathlib
 if node == "c":
     pathlib.Path("lib.py").write_text("def f():\\n    return 2\\n")
 else:
@@ -226,6 +235,7 @@ def small_repo(tmp_path, monkeypatch, leaves, slow=""):
     git(root, "commit", "-qm", "start")
     monkeypatch.chdir(root)
     monkeypatch.setenv("GRAPHENE_SLOW", slow)
+    monkeypatch.setenv("GRAPHENE_ROOT", str(root))
     (tmp_path / "ex.py").write_text(WRITES)
     with Store.open(root) as store:
         plan.propose(store, leaves, ALEX)
@@ -243,6 +253,7 @@ def test_a_check_already_red_on_the_target_is_not_held_against_the_next_leaf(tmp
         {"id": "c", "title": "c", "scope": ["lib.py"], "check": "grep -q 'return 2' lib.py", "needs": ["a"]},
     ]
     root, executor = small_repo(tmp_path, monkeypatch, leaves, slow="b")
+    monkeypatch.setenv("GRAPHENE_AFTER", "2")  # b lands after a and c
     said: list[str] = []
     run_parallel(lambda: Store.open(root), root, root, 2, executor, say=said.append)
     with Store.open(root) as store:

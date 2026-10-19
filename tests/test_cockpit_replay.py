@@ -130,3 +130,16 @@ def test_i_opens_everything_about_the_leaf_that_came_back_in_a_replay_too(tmp_pa
             assert "nothing runs here" in app.model.latest()
 
     asyncio.run(go())
+
+
+def test_a_look_that_lands_after_the_screen_has_closed_draws_nothing(tmp_path):
+    """The look's timer could tick while the app shut down, its widgets gone: `NoMatches: #bar`, on a
+    loaded runner. Once it is no longer running a look does nothing."""
+
+    async def go():
+        app, _, _ = replay(tmp_path)
+        async with app.run_test(size=(100, 30)) as pilot:
+            await pilot.pause(0.1)
+        app.look()  # as a late tick would: no widget is left to draw on
+
+    asyncio.run(go())

@@ -117,6 +117,8 @@ class Details(ModalScreen[None]):
         self.refresh_pane()
 
     def refresh_pane(self) -> None:
+        if not self.app.is_running:  # a tick while the app shuts down: its widgets are going (as `look`)
+            return
         wide = max(self.size.width - 4, 40)
         high = max(self.size.height - 4, 10)
         try:
