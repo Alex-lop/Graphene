@@ -58,6 +58,10 @@ def looker(root: Path, open_store: Callable) -> Callable[[Model | None], Model]:
             model = previous or Model("the plan's store did not open")
             model.say(f"✗ the plan's store did not open ({no}); the screen is as it was")
             return model
+        except Exception as no:  # a look is a view: whatever went wrong, the screen stays up and says so
+            model = previous or Model("the plan could not be read")
+            model.say(f"✗ the plan could not be read ({type(no).__name__}: {no}); the screen is as it was")
+            return model
 
     return look
 

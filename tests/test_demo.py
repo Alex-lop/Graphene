@@ -556,6 +556,8 @@ def test_demo_once_fits_80_columns_and_calls_its_last_rows_the_end_of_the_runs_l
     assert any(line.endswith("…") and "finished" in line for line in lines)
     rows = [line for line in lines if line.startswith("  20")]  # no log identifier (`rolled_up`) on a row
     assert rows and not any(re.search(r"\b\w+_\w+\b", line) for line in rows), rows
+    kinds = {re.match(r"  \S+  \S+ +", line).end() for line in rows}  # where the kind starts on each row
+    assert len(kinds) == 1, rows  # a nine-letter id (hello-bye) pushed its rows a column right of the rest
 
 
 def test_each_change_stays_on_the_screen_and_space_dot_and_r_pause_step_and_play_again(tmp_path):

@@ -136,6 +136,20 @@ def test_a_store_too_busy_to_open_leaves_the_screen_as_it_was_and_says_so(repo):
     assert isinstance(looker(repo, busy)(None), Model)
 
 
+def test_a_look_that_fails_leaves_the_screen_as_it_was_and_says_why(repo, monkeypatch):
+    from graphene_map.cockpit import read as cockpit_read
+
+    plan_of(repo)
+    first = look(repo)
+
+    def broken(*_args, **_kw):
+        raise ValueError("a row it cannot read")
+
+    monkeypatch.setattr(cockpit_read, "read", broken)
+    again = looker(repo, lambda: Store.open(repo))(first)
+    assert again is first and "a row it cannot read" in again.latest()
+
+
 def test_the_clock_is_now_unless_a_look_is_told_otherwise(repo):
     plan_of(repo)
     with Store.open(repo) as store:

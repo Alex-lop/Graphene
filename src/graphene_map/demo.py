@@ -75,7 +75,7 @@ WORK = ("j ", "gg", "Enter", "l ", "za", "Tab", "? ", "q ", "ctrl-d", "Esc", "/"
 # the plan_meta keys the screen reads: the board's and the person's standing settings included
 META = ("goal", "goal:proposed", "goal:proposed:by", "planner", "executor", "plan_first", "paused", "board",
         "settings:protected", "settings:readonly", "settings:never", "settings:size",
-        "settings:board")  # read  # fmt: skip
+        "settings:board", "settings:review")  # read  # fmt: skip
 KEY, WORD, BASE64, REMOVED = P.SHAPED, P.WORD, P.BASE64, P.REMOVED  # shaped like a key: see there
 DASHED = re.compile(r"[^A-Za-z0-9]")  # what Claude Code dashes in a path it names a folder after
 

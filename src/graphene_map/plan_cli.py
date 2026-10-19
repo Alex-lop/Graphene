@@ -566,13 +566,15 @@ def register(cli: typer.Typer, root, open_store, fail):
             out(line)
         if recent:
             out(f"\n{recent_as}")
+            ids = max(8, *(len(e["node_id"]) for e in recent))  # a longer id does not push its rows right
             for e in recent:
                 if wide:
-                    said = Text(log_line(e, with_node=8))
+                    said = Text(log_line(e, with_node=ids))
                     said.truncate(wide, overflow="ellipsis")
                     out(said.plain)
                     continue
-                for part in wrapped(log_line(e, with_node=8), width) if width else [log_line(e, with_node=8)]:
+                line = log_line(e, with_node=ids)
+                for part in wrapped(line, width) if width else [line]:
                     out(part)
 
     def known_view(name: str) -> None:
