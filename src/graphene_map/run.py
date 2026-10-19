@@ -847,14 +847,30 @@ def live(store, node: P.Node, now: float | None = None) -> dict:
         "checkout": node.checkout,
         "attempt": metered.get("attempt"),
         "log": log,
-        "last": metered.get("last") or (said_by(last[-1]) if last else _spoke(log)),
+        # Nemotron writes the model's words as rows itself, and its log is its own narration ("sandbox made"):
+        # never what the agent says
+        "last": metered.get("last") or (said_by(last[-1]) if last else
+                                        "" if str(node.executor or "").endswith("nemotron") else _spoke(log)),
         "idle": int(now - max(stamps)) if stamps else None,
     }
 
 
+# the first line of what Graphene's own commands print into an executor's log (`node release`, `node done`,
+# a refused `done` with its check's output, the next step): from there on the words are Graphene's, which a
+# cockpit row would quote as what the agent says
+OURS_SAID = re.compile(
+    r"^(?:next: |\S+ handed back: |\S+ is (?:done|finished and waits for a sign-off|not done)\b)"
+)
+
+
 def _spoke(log: str | None) -> str:
-    """The log's last line that is not one of the stream's JSON events (stderr shares the file)."""
-    return next((line for line in reversed(tail(log, 40)) if not line.lstrip().startswith("{")), "")
+    """The agent's last line in its log: from before the first line one of Graphene's own commands printed
+    there (``OURS_SAID``: what follows is that command's, a failed check's output and the line naming whose
+    plan it changed included), and not one of the stream's JSON events (stderr shares the file)."""
+    lines = tail(log, 40)
+    first = next((k for k, line in enumerate(lines) if OURS_SAID.match(line.strip())), len(lines))
+    return next((line for line in reversed(lines[:first])
+                 if not line.lstrip().startswith(("{", "(the plan of "))), "")  # fmt: skip
 
 
 QUEUED = "queued"  # a leaf a `graphene run` asked for while another run held the repo: that run takes it

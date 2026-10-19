@@ -229,6 +229,26 @@ def test_what_a_leaf_did_last_is_the_meters_row_then_its_logs_last_line_not_the_
         assert R.live(store, node, newest)["idle"] == 0  # it read -2700s ago, on 7 October
 
 
+def test_a_nemotron_leafs_log_is_its_executors_narration_never_what_the_agent_says(repo):
+    """The regressions hunt (third review): `graphene demo --live` showed "says sandbox made (contree, 7.0 s)"
+    and "says nemotron executor · … · leaf regress-text" under running rows: Nemotron's own log lines, read
+    as the model's words until its first `said` row. Its words are rows; its log is never quoted."""
+    run = Caller("run:nemotron", False, "run-session")
+    log = repo / ".graphene" / "runs" / "a-1.txt"
+    log.parent.mkdir(parents=True, exist_ok=True)
+    log.write_text("nemotron executor · nvidia/Nano · sandbox placement · leaf a\nsandbox made (x, 7.0 s)\n")
+    with Store.open(repo) as store:
+        plan.propose(store, [leaf("a", "a.txt")], ALEX)
+        plan.start(store, "a", run, repo)
+        store.log_node("a", plan._now(), "attempt", run.label, run.session_id, None,
+                       {"attempt": 1, "log": str(log)})  # fmt: skip
+        node = plan.get(store, "a")
+        assert node.executor.endswith("nemotron") and R.live(store, node)["last"] == ""
+        said = {"attempt": 1, "text": "on it"}
+        store.log_node("a", plan._now(), "said", run.label, run.session_id, None, said)
+        assert R.live(store, node)["last"] == "on it"
+
+
 def test_the_executors_output_is_a_tail_while_it_runs(repo):
     with Store.open(repo) as store:
         plan.propose(store, [leaf("a", "a.txt")], ALEX)

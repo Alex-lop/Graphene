@@ -371,3 +371,12 @@ def test_an_interpreters_own_dash_m_names_a_module_and_never_the_model():
     assert M.model_in(shlex.split(named("nemotron --model nvidia/X"))) == "nvidia/X"
     assert M.model_in(["python3", "-m", "pkg.agent", "--model", "m"]) == "m"
     assert M.model_in(["codex", "exec", "-m", "o3"]) == "o3" and M.model_in(shlex.split(DEFAULT_WITH)) is None
+
+
+def test_a_multi_line_command_is_said_whole_when_its_first_line_leaves_a_quote_open():
+    """The replays walk (third review): the live take's row read `run  python3 -c "` for a whole script, the
+    first line alone. A heredoc keeps its first line, which says what it writes."""
+    script = 'python3 -c "\nimport json\nprint(json.dumps({}))\n"'
+    assert M.one_line(script) == 'python3 -c " import json print(json.dumps({})) "'
+    assert M.one_line("cat > hello.py << 'EOF'\ndef hello():\n    return 1\nEOF") == "cat > hello.py << 'EOF'"
+    assert M.one_line("pytest -q") == "pytest -q" and len(M.one_line("x" * 500)) == M.TARGET

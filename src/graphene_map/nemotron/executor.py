@@ -553,7 +553,7 @@ def _did(name: str, arguments, leaf: Leaf) -> dict:
     target = os.path.normpath(str(given["path"])) if given.get("path") else str(given.get("command") or "")
     if name in ("done", "release"):
         target = f"graphene node {name} {leaf.node.id}"
-    target = target.strip().split("\n")[0][: meter.TARGET]
+    target = meter.one_line(target)
     return {"tool": name, "target": target, "verb": VERBS.get(name, name)}
 
 

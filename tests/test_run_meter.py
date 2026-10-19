@@ -580,3 +580,23 @@ def test_a_codex_edit_too_long_to_keep_whole_is_said_from_its_checkout_before_it
     with Store.open(repo) as store:
         R.run_plan(store, repo, f"{script} exec --json", say=lambda _: None, logs=repo.parent / "runs")
         assert [e["detail"]["target"] for e in store.node_log("a", ("did",))] == [rel]
+
+
+def test_a_logs_last_words_are_the_agents_and_never_what_graphenes_own_commands_printed(tmp_path):
+    """A stranger's first hour (second review): an executor with no hooks ran `graphene node release`, and the
+    cockpit's row quoted what that command printed into its log as the agent's own words: "says next: stop
+    here. `graphene run` started you for one leaf…". Graphene's lines are skipped; the agent's last line is
+    what it said."""
+    log = tmp_path / "x-1.log"
+    log.write_text("I changed README.md; the docstring is mul's file\n"
+                   "readme handed back: the README list must match a docstring\n"
+                   "next: stop here. `graphene run` started you for one leaf, and it decides what runs\n")
+    assert R._spoke(str(log)) == "I changed README.md; the docstring is mul's file"
+    log.write_text('{"type": "result"}\nmul is done (check passed, nothing outside its scope)\nnext: none\n')
+    assert R._spoke(str(log)) == ""
+    # third review: run --parallel prints whose plan it changed, and a refused done prints its check's output
+    log.write_text("I read README.md\nreadme handed back: it must match src/x.py\nnext: stop here\n"
+                   "  (the plan of /tmp/toy)\n")
+    assert R._spoke(str(log)) == "I read README.md"
+    log.write_text("rendered it\nsrc is not done: `python3 -c …` failed:\nE   assert render() == 2\n")
+    assert R._spoke(str(log)) == "rendered it"

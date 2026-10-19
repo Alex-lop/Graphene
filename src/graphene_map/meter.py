@@ -34,6 +34,16 @@ PRICES: dict[str, tuple[float, float, float]] = {  # dollars per million tokens:
 FIVE_MINUTES, HOUR = 1.25, 2  # a cache write, as a multiple of the input price
 SAID = 400  # characters of one said row
 TARGET = 120  # characters of one did row's target
+
+
+def one_line(text: str) -> str:
+    """A did row's target, cut at TARGET: a command's first line (a heredoc's `cat > f << 'EOF'`), or the
+    whole command on one line when its first line leaves a quote open: the first line alone named a
+    multi-line `python3 -c "` and nothing it ran."""
+    first, _, rest = str(text).strip().partition("\n")
+    if rest and (first.count('"') % 2 or first.count("'") % 2):
+        first = " ".join(str(text).split())
+    return first[:TARGET]
 VERBS = {"Read": "reading", "NotebookRead": "reading", "Edit": "editing", "Write": "editing",
          "MultiEdit": "editing", "NotebookEdit": "editing", "Bash": "running", "Grep": "searching",
          "Glob": "searching", "WebSearch": "searching", "WebFetch": "searching"}  # fmt: skip
@@ -152,7 +162,7 @@ class Meter:
         return "usage", row
 
     def _did(self, tool: str, target: str, verb: str) -> tuple[str, dict]:
-        target = target.strip().split("\n")[0][:TARGET]
+        target = one_line(target)
         self.last = doing(verb, target)
         return "did", {"attempt": self.attempt, "tool": tool, "target": target, "verb": verb}
 
@@ -212,7 +222,7 @@ class Meter:
                 continue
             tool = d.get("tool_name") or ""
             if VERBS.get(tool) != "editing":  # "command", never "path": plan.wanted offers a path to widen to
-                command = self._target(d.get("tool_input") or {}).strip().split("\n")[0][:TARGET] or tool
+                command = one_line(self._target(d.get("tool_input") or {})) or tool
                 refused.append(("denied", {"attempt": self.attempt, "command": command, "tool": tool,
                                            "how": "refused to the executor"}))  # fmt: skip
         reported = event.get("total_cost_usd")
