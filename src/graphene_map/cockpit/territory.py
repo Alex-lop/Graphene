@@ -6,7 +6,8 @@ that refuses a write uses), so what this shows is the law, not a guess. The file
 Three lenses on the same rows:
   plan     what the tasks that are not done may touch (the blast radius, before you accept)
   live     the same, with what is being touched now and what was stopped at a folder's edge
-  changed  what finished tasks actually changed, and whether any of it was outside their scope
+  changed  what tasks actually changed once their check passed (waiting for your sign-off, or done), and
+           whether any of it was outside their scope
 """
 
 from __future__ import annotations
@@ -128,6 +129,15 @@ def compute(
                 g = Group(name, [], new=True)
                 groups.append(g)
             g.owners[tid] += 1
+    for tid, t in tasks.items():  # a file it made that git does not track yet (on its branch, waiting for
+        scope = tuple(t.get("scope") or ())  # your sign-off): in the row of the new place it was made in
+        for p in [p for p in t.get("changed") or () if p not in where]:
+            made = [g for g in groups if g.new and _made_in(p, g.name)]
+            if made:
+                g = max(made, key=lambda g: len(g.name))  # the deepest place that holds it
+                g.changed[tid] += 1
+                if scope and not _in(p, scope):
+                    g.outside += 1
     total = len(files)
     done = [(p, tuple(t.get("scope") or ())) for t in tasks.values() for p in t.get("changed") or ()]
     running = [t for t in tasks.values() if t["state"] == "running"]
@@ -146,10 +156,18 @@ def compute(
     return groups, summary
 
 
+def _made_in(path: str, place: str) -> bool:
+    """Whether a file is in a new place's row: under its folder ("pdf/ (new)"), or, in no folder, at the
+    top ("(root) (new)")."""
+    folder = place.removesuffix(" (new)")
+    return "/" not in path if folder == "(root)" else path.startswith(folder)
+
+
 def bar(group: Group, width: int, lens: str, color_of) -> list[tuple[str, str]]:
     """A bar of ``width`` cells as (text, style) runs. Segments are each task's share of the folder."""
-    if group.new:  # no files yet: a hatched bar, one run per task that may create some
-        runs = [("▒" * max(2, width // 4), color_of(tid)) for tid in list(group.owners)[:2]]
+    if group.new:  # no files yet: a hatched bar, one run per task that may create some (changed: that did)
+        makers = group.changed if lens == "changed" else group.owners
+        runs = [("▒" * max(2, width // 4), color_of(tid)) for tid in list(makers)[:2]]
         used = sum(len(t) for t, _ in runs)
         return runs + ([("░" * (width - used), "grey23")] if used < width else [])
     n = max(len(group.files), 1)

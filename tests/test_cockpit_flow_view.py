@@ -14,8 +14,31 @@ def test_the_graph_starts_from_the_goal_with_a_box_for_each_task_and_an_arrow_fo
     assert {n.id for n in nodes} == {FV.GOAL, "ids", "migrate", "tests", "docs", "schema"}
     assert {(e.a, e.b) for e in edges if e.kind == "needs"} == {("ids", "tests"), ("migrate", "tests")}
     assert {(e.a, e.b) for e in edges if e.kind == "tree"} == {(FV.GOAL, t) for t in scene().tasks}
-    assert next(n for n in nodes if n.id == "ids").badge == "1"  # which agent is on it, while it runs
-    assert next(n for n in nodes if n.id == "docs").badge == ""
+    assert next(n for n in nodes if n.id == "ids").badge == "1"  # which agent is on it, as its row says
+    assert next(n for n in nodes if n.id == "docs").badge == ""  # nobody has taken it yet
+
+
+def test_a_box_keeps_its_agents_number_in_every_state_and_a_state_change_moves_no_box():
+    """A box carried its agent's number only while it ran, so the ↩ box had none while the bell, the row and
+    the map said agent 3; and a number wider than the box's least room made the box wider as it appeared."""
+    m = scene()
+    m.tasks["docs"].state, m.tasks["docs"].title = "ready", "docs"  # nobody on it yet: no number
+    before = FV.build_flow(*FV.flow_graph(m), 120, "ids")[1].rects
+    for state in ("running", "came back", "review", "done"):
+        m.tasks["docs"].state, m.tasks["docs"].agent = state, "100"  # a hundredth agent: wider than "docs"
+        nodes, edges = FV.flow_graph(m)
+        assert next(n for n in nodes if n.id == "docs").badge == "100"
+        lay = FV.build_flow(nodes, edges, 120, "ids")[1]
+        x0, _y0, x1, y1 = lay.rects["docs"]
+        assert lay.rects == before and " 100 " in "".join(c for c, _ in lay.cells[y1][x0 : x1 + 1])
+
+
+def test_a_box_has_its_states_mark_on_its_border_as_its_row_has_it_yours_too():
+    m = scene()
+    m.tasks["docs"].state = "yours"  # its row's ◇: on the graph it had no mark, in a review box's purple
+    lay = FV.build_flow(*FV.flow_graph(m), 120, "ids")[1]
+    x0, y0, x1, _y1 = lay.rects["docs"]
+    assert "".join(c for c, _ in lay.cells[y0][x0 : x1 + 1]).startswith("╭─◇─")
 
 
 def test_sub_goals_stand_between_the_goal_and_their_tasks_and_a_task_waiting_beside_hangs_from_it():

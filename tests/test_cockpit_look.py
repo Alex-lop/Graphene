@@ -65,7 +65,7 @@ def test_a_sentence_title_gets_a_short_name():
 def test_a_row_takes_the_whole_title_and_only_its_article_and_what_follows_a_colon_are_left_out():
     title = "Store when each invoice was sent to the customer"
     assert short(title, 0) == title and short("The template: Jinja, as the shop has it", 0) == "template"
-    assert short(title) == "Store when each invoice was"  # a box on the graph keeps five words
+    assert short(title) == "Store when each invoice was"  # five words, the default: a sub-goal's name
 
 
 def test_a_short_name_ends_where_a_phrase_ends():

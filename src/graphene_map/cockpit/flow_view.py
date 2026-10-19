@@ -34,8 +34,9 @@ def flow_graph(m: Model) -> tuple[list[F.GNode], list[F.GEdge]]:
     for t in m.tasks.values():
         for sid, name in t.above:
             nodes.setdefault(sid, F.GNode(sid, name, "sub-goal"))
-        # a running box carries its agent's number on its border, as its row does
-        nodes[t.id] = F.GNode(t.id, t.title, t.state, t.agent if t.state == "running" else "")
+        # a box carries its agent's number on its border in every state, as its row does: the state is its
+        # colour and its glyph
+        nodes[t.id] = F.GNode(t.id, t.title, t.state, t.agent)
         path = [GOAL] * (GOAL in nodes) + [sid for sid, _ in t.above] + [t.id]
         tree.update(dict.fromkeys(zip(path, path[1:], strict=False)))
     edges = [F.GEdge(a, b, "tree") for a, b in tree]

@@ -74,11 +74,11 @@ def build_territory(m: Model, width: int, cursor: int = 0) -> tuple[list[Line], 
         while span(segs + flag) > width and len(segs) > keep:  # the names give way first
             segs.pop()
         out.append(Line(pad(segs + flag, width)))
-    waits = _waits(m)
+    waits = _waits(m, width)
     if waits:
         out.append(Line([Seg("")]))
         for w in waits:
-            out.append(Line([Seg(" " + w, "#e9a23b")]))
+            out.append(Line([Seg(" " + fit(w, width - 2), "#e9a23b")]))
     return out, groups
 
 
@@ -115,8 +115,9 @@ def headline(lens: str, summary: dict) -> list[Seg]:
     return [Seg(said, "bold #e9c46a")]
 
 
-def _waits(m: Model) -> list[str]:
-    """Tasks held back because a task in front of them owns the files: why work is not parallel."""
+def _waits(m: Model, width: int) -> list[str]:
+    """Tasks held back because a task in front of them owns the files: why work is not parallel. A long title
+    gives way, with an ellipsis: whom it waits for, and why, stay."""
     out = []
     live = [t for t in m.tasks.values() if t.state in ("running", "ready", "review")]
     for t in m.tasks.values():
@@ -124,6 +125,7 @@ def _waits(m: Model) -> list[str]:
             continue
         for o in live:
             if o.scope and any(T._in(f, tuple(t.scope)) and T._in(f, tuple(o.scope)) for f in m.files[:400]):
-                out.append(f"{t.title} waits for {name_of(o)}: it owns the same files")
+                said = f" waits for {name_of(o)}: it owns the same files"
+                out.append(fit(t.title, max(12, width - 2 - cell_len(said))) + said)
                 break
     return out[:3]

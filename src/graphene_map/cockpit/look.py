@@ -22,8 +22,7 @@ FLOW_STYLES = {
     "node_sel": "bold #ffffff", "plain": "grey62", "label:plain": "#d8dee9",
     "node": "grey70",
     "label:running": "bold", "label:done": "grey62", "label:waiting": "grey58", "edge_loop": "#e9a23b",
-    "glyph:running": "●", "glyph:done": "✓", "glyph:review": "◆", "glyph:came back": "↩", "glyph:ready": "○",
-    "glyph:waiting": "◌", "glyph:proposed": "+",
+    **{f"glyph:{state}": glyph for state, (glyph, _) in STATE_GLYPH.items()},  # a box's mark is its row's
 }  # fmt: skip
 
 
@@ -43,9 +42,9 @@ TRAILING = {"a", "an", "the", "and", "or", "of", "to", "for", "in", "on", "with"
 
 def short(title: str, words: int = 5) -> str:
     """A glanceable name for a sentence-long title: what comes before a colon, a semicolon or a dash,
-    without a leading article, at most ``words`` words (0: as many as it has; a row has the room a box on
-    the graph has not), and never ending on a word that wants another ("Add an XML reader and" is "Add an
-    XML reader"). A plan's titles are sentences; a screen with almost no text needs a name. A word that
+    without a leading article, at most ``words`` words (0: as many as it has, for a screen that fits it to
+    its room with an ellipsis), and never ending on a word that wants another ("Add an XML reader and" is "Add
+    an XML reader"). A plan's titles are sentences; a screen with almost no text needs a name. A word that
     owns the next one ("views'") brings it."""
     head = re.split(r"[:;]|\s[-–—]\s", title, maxsplit=1)[0].strip()
     parts = head.split()

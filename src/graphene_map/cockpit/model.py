@@ -34,7 +34,7 @@ class Ev:
 @dataclass
 class Task:
     id: str
-    title: str  # a short name (look.short)
+    title: str  # its name (look.short, whole): a screen fits it to its room, and ends a cut in an ellipsis
     state: str = "waiting"  # running, review, came back, ready, waiting, proposed, done
     scope: list[str] = field(default_factory=list)
     needs: list[str] = field(default_factory=list)
@@ -44,10 +44,10 @@ class Task:
     events: list[Ev] = field(default_factory=list)
     touched: dict[str, float] = field(default_factory=dict)  # path -> when, for the files edited so far
     stopped: list[tuple[str, float]] = field(default_factory=list)  # writes the gate refused: path, when
-    changed: list[str] = field(default_factory=list)  # what a finished task changed
+    changed: list[str] = field(default_factory=list)  # what it changed, once its check passed (review, done)
     told: list[tuple[str, float, float]] = field(default_factory=list)  # text, sent, heard (0 = not yet)
     note: str = ""  # why it came back
-    full: str = ""  # the whole title
+    full: str = ""  # the title as the plan says it
     why: str = ""  # the path down from the goal
     hears: bool = True  # whether its executor is told a note mid-run (a Claude Code session with hooks)
     started: float = 0.0  # when its agent took it, on the model's clock; 0 before

@@ -61,3 +61,21 @@ def test_a_bar_is_as_wide_as_asked_and_shares_a_folder_between_tasks():
     runs = T.bar(models, 20, "plan", lambda tid: tid)
     assert sum(len(text) for text, _ in runs) == 20
     assert {style for _, style in runs} >= {"ids", "api"}
+
+
+def test_a_file_a_task_made_that_git_does_not_track_yet_is_counted_in_the_new_place_it_was_made_in():
+    """Under `review: every` what a task made waits on its branch, not in git's list here: the changed lens
+    said "2 files changed" over the new place's row, which read "untouched" under a bar in a task's colour."""
+    tasks = {
+        "pdf": {"state": "review", "scope": ["models/**", "pdf/**"], "changed": ["models/m0.py", "pdf/a.py"]},
+        "mail": {"state": "waiting", "scope": ["mail/**"]},  # a new place too, where nothing was made yet
+    }
+    groups, summary = T.compute(FILES, tasks, lens="changed")
+    by_name = {g.name: g for g in groups}
+    assert summary["changed"] == 2 == sum(sum(g.changed.values()) for g in groups)
+    assert by_name["pdf/ (new)"].changed == {"pdf": 1}
+
+    def bar(name):
+        return {style for _, style in T.bar(by_name[name], 20, "changed", lambda tid: tid)}
+
+    assert bar("pdf/ (new)") == {"pdf", "grey23"} and bar("mail/ (new)") == {"grey23"}  # made, not may

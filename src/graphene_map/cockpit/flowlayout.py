@@ -35,7 +35,7 @@ class GNode:
     id: str
     label: str
     state: str = "waiting"  # a key of the caller's style table
-    badge: str = ""  # who is on it, shown on the bottom border
+    badge: str = ""  # who is on it, shown on the bottom border: it never makes the box wider
 
 
 @dataclass
@@ -214,7 +214,7 @@ def _box(n: GNode, label_w: int) -> Box:
             break
     if len(lines) > 3:
         lines = [*lines[:2], lines[2][: label_w - 1] + "…"]
-    inner = max(max(cell_len(x) for x in lines), len(n.badge) + 4, 6)  # in cells: a wide character is two
+    inner = max(max(cell_len(x) for x in lines), 6)  # in cells: a wide character is two
     return Box([x + " " * (inner - cell_len(x)) for x in lines], inner + 4, len(lines) + 2)
 
 
@@ -432,8 +432,8 @@ def _draw(nodes, boxes, edges, forward, back, layer, rows, selected, styles) -> 
         glyph = styles.get(f"glyph:{n.state}", "")
         top = tl + hz + (glyph or hz) + hz * (b.w - 4) + tr
         bot = bl + hz * (b.w - 2) + br
-        if n.badge:
-            tag = f" {n.badge} "
+        if n.badge:  # on the border the box has, whatever its width: a badge appearing moves no box
+            tag = f" {n.badge} "[: b.w - 3]
             bot = bl + hz + tag + hz * (b.w - 3 - len(tag)) + br
         for dx, ch in enumerate(top):
             cells[by][bx + dx] = (ch, sel)

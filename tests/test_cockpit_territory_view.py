@@ -92,6 +92,15 @@ def test_a_task_that_waits_for_files_another_owns_is_told_why_it_is_not_parallel
     assert "waits for agent 1: it owns the same files" in plain(TV.build_territory(m, 100)[0])
 
 
+def test_at_80_columns_a_long_title_gives_way_in_why_a_task_waits_and_whom_it_waits_for_stays():
+    m = scene()
+    m.tasks["tests"].scope = ["models/**"]
+    m.tasks["tests"].title = "tests for ids, for every endpoint that returns a user, the old ones and the new"
+    said = TV.build_territory(m, 80)[0][-1].plain()  # the last line: why it waits
+    assert said.startswith(" tests for ids, for every") and len(said) <= 80
+    assert said.endswith("… waits for agent 1: it owns the same files")
+
+
 def test_a_plan_with_no_tasks_is_one_line_on_the_map_not_a_row_of_nobody():
     from graphene_map.cockpit.model import Model
 

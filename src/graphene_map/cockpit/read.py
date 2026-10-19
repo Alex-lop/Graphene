@@ -97,7 +97,7 @@ def read(
         above = P.above(n, by_id)
         m.tasks[n.id] = Task(
             n.id,
-            short(n.title),
+            short(n.title, 0),  # whole: a box wraps it and a line fits it to its room, cut with an ellipsis
             STATE.get(words.get(n.id, ""), "waiting"),
             list(n.scope),
             [x for x in n.needs if x in keep],
@@ -117,15 +117,15 @@ def read(
     for t in m.tasks.values():
         node = by_id[t.id]
         t.agent = m.names.get(t.id, "")  # a task taken once keeps its number, back, ready again and done
-        last = ended(store, t.id) if t.state == "done" else None
-        proofs(t, node, last, every)
+        last = ended(store, t.id) if t.state in ("done", "review") else None
+        proofs(t, node, last, every, t.state == "done" and signed_off(store, t.id))
         if t.state in LIVE:
             live(store, m, t, node)
         if t.state == "running":
             told(store, t, node, by_id, items)
         if t.state == "came back":
             came_back(store, t, node)
-        if t.state == "done":
+        if t.state in ("done", "review"):  # in review, it passed its check: what it changed waits for you
             t.changed = list((last or {"detail": {}})["detail"].get("changed") or [])
     m.questions = [question_of(item) for item in BR.read(store).open]
     if not m.lens_chosen:
@@ -140,11 +140,13 @@ def read(
 
 def numbers(store) -> dict[str, str]:
     """The number each task's agent goes by: the order in which the plan's tasks were first taken, as its
-    log has them. It never changes between looks or when watch opens again, and a task keeps it when it
-    comes back and is tried again, by a new session or the same one: "agent 2" is on the second task."""
+    log has them since the last plan was put away (`plan.archive`'s row on `*`, written once nothing of it
+    is left in force: archiving a part mid-run renumbers no one). It never changes between looks or when
+    watch opens again, and a task keeps it when it comes back and is tried again, by a new session or the
+    same one: "agent 2" is on the second task."""
     rows = store.conn.execute(
-        "SELECT node_id FROM node_log WHERE kind = 'started' AND node_id IN (SELECT id FROM nodes) "
-        "ORDER BY id"
+        "SELECT node_id FROM node_log WHERE kind = 'started' AND node_id IN (SELECT id FROM nodes) AND id > "
+        "(SELECT COALESCE(MAX(id), 0) FROM node_log WHERE node_id = '*' AND kind = 'archived') ORDER BY id"
     ).fetchall()
     out: dict[str, str] = {}
     for r in rows:
@@ -155,11 +157,13 @@ def numbers(store) -> dict[str, str]:
 def lens_for(tasks) -> str:
     """The map's lens for the plan's stage, until the person picks one: what the tasks may touch while
     anything is proposed or nothing has started, what is being touched while anything runs, and what
-    changed once every task is done."""
+    changed while something waits for your sign-off and nothing runs, and once every task is done."""
     states = {t.state for t in tasks}
-    if "running" in states and "proposed" not in states:
+    if "proposed" in states:
+        return "plan"
+    if "running" in states:
         return "live"
-    return "changed" if states == {"done"} else "plan"
+    return "changed" if "review" in states or states == {"done"} else "plan"
 
 
 def fold_done(m: Model, by_id: dict[str, P.Node]) -> None:
@@ -248,13 +252,15 @@ def live(store, m: Model, t: Task, node: P.Node) -> None:
     touched_by_git(store, m, t, node)
 
 
-def proofs(t: Task, node: P.Node, ended: dict | None = None, every: bool = False) -> None:
-    """A leaf is proved by its check, and by the person's sign-off when it asks for one, or while
-    `review: every` is set and it is not done yet: at most two. The check has passed once the leaf is in
-    review (it waits for the sign-off) or done; there is no partial progress inside a check. A leaf the person
-    finished over its check (`--override`) is done, and proved by nothing: the row that ended it says whether
-    the check had passed, and sign-off was skipped."""
-    signs = node.signoff or (every and t.state != "done")
+def proofs(
+    t: Task, node: P.Node, ended: dict | None = None, every: bool = False, signed: bool = False
+) -> None:
+    """A leaf is proved by its check, and by the person's sign-off when it asks for one, while `review:
+    every` is set and it is not done yet, or once the person gave one (``signed``): at most two. The check
+    has passed once the leaf is in review (it waits for the sign-off) or done; there is no partial progress
+    inside a check. A leaf the person finished over its check (`--override`) is done, and proved by nothing:
+    the row that ended it says whether the check had passed, and sign-off was skipped."""
+    signs = node.signoff or signed or (every and t.state != "done")
     t.checks = int(bool(node.check)) + int(signs)
     if t.state == "done" and ended and ended["kind"] == "overruled":
         t.passed = int(bool(node.check and ended["detail"].get("check_passed")))
@@ -270,6 +276,13 @@ def ended(store, node_id: str) -> dict | None:
     """The row that ended a leaf: `finished`, or `overruled` when the person made it done over its check."""
     rows = recent(store, node_id, ("finished", "overruled"), 1)
     return rows[-1] if rows else None
+
+
+def signed_off(store, node_id: str) -> bool:
+    """Whether the person's sign-off is what made a leaf done: a `signed_off` row after the row that ended it
+    (a leaf reopened since and landed by its check alone was not signed off that time)."""
+    rows = recent(store, node_id, ("finished", "overruled", "signed_off"), 1)
+    return bool(rows) and rows[-1]["kind"] == "signed_off"
 
 
 def came_back(store, t: Task, node: P.Node) -> None:

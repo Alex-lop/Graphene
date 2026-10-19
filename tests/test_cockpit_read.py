@@ -56,6 +56,15 @@ def test_the_tasks_are_the_leaves_with_a_state_a_short_name_what_they_wait_on_an
     assert m.tasks["ids"].scope == ["api.py"] and set(m.files) == {"api.py", "schema.py"}
 
 
+def test_a_task_is_named_by_its_whole_title_for_each_screen_to_fit_to_its_room(repo):
+    """Five words were kept for the graph's boxes, and outside the rows a task was named by them, cut with no
+    ellipsis: the graph, the details, the map, the news and the bell said "Store when each invoice was"."""
+    with Store.open(repo) as store:
+        plan.propose(store, [{"id": "migrate", "title": "Store when each invoice was last downloaded",
+                              "scope": ["db.py"], "check": "true"}], ALEX)  # fmt: skip
+    assert look(repo).tasks["migrate"].title == "Store when each invoice was last downloaded"
+
+
 def test_a_task_carries_the_command_that_proves_it_so_a_proposal_can_say_what_you_agree_to(repo):
     plan_of(repo)
     tasks = look(repo).tasks
@@ -117,6 +126,25 @@ def test_the_maps_lens_follows_the_plans_stage_until_the_person_chooses_one(repo
     assert m.lens == "changed"  # every task done: what changed
     m.lens, m.lens_chosen = "plan", True  # v: the person's choice holds from here
     assert look(repo, m).lens == "plan" and look(repo, m).lens_chosen
+
+
+def test_under_review_every_the_map_shows_what_waits_for_your_sign_off_as_what_changed(repo):
+    """The stage where the person judges what changed had no lens that showed it: "no files changed yet",
+    "untouched", while two tasks waited for a sign-off with their work on their branches."""
+    with Store.open(repo) as store:
+        store.set_meta("settings:review", "every")
+        leaves = [{"id": i, "title": i, "scope": [f"{i}.txt"], "check": "true"} for i in "xy"]
+        plan.propose(store, leaves, ALEX)
+        plan.start(store, "x", ALEX, repo)
+    (repo / "x.txt").write_text("done\n")
+    with Store.open(repo) as store:
+        plan.finish(store, "x", ALEX)  # its check passed: it waits for the sign-off
+    m = look(repo)
+    assert m.tasks["x"].state == "review" and m.tasks["x"].changed == ["x.txt"]
+    assert m.lens == "changed"  # nothing runs: what waits for you is what changed
+    with Store.open(repo) as store:
+        plan.start(store, "y", ALEX, repo)
+    assert look(repo, m).lens == "live"  # while one runs, what is being written
 
 
 def test_a_lens_the_person_turned_to_holds_through_the_next_look(repo):
@@ -380,6 +408,35 @@ def test_under_review_every_a_task_waiting_for_its_sign_off_shows_the_sign_off_s
     t = look(repo).tasks
     assert (t["rev"].checks, t["rev"].passed) == (2, 1)  # the check passed; your sign-off is the second
     assert (t["ids"].checks, t["fin"].checks, t["fin"].passed) == (2, 1, 1)  # one landed before: its check
+
+
+def test_under_review_every_a_sign_off_once_given_is_a_proof_and_counts_for_the_landing_it_signed(repo):
+    """The sign-off `review: every` asks for was dropped from the proofs once given: ✓1/2 became ✓1/1 at
+    done, and the count went down when the person did their part."""
+
+    def finished():
+        with Store.open(repo) as store:
+            plan.start(store, "x", ALEX, repo)
+        (repo / "x.txt").write_text(f"{time.time()}\n")
+        with Store.open(repo) as store:
+            plan.finish(store, "x", ALEX)
+
+    with Store.open(repo) as store:
+        store.set_meta("settings:review", "every")
+        plan.propose(store, [{"id": "x", "title": "x", "scope": ["x.txt"], "check": "true"}], ALEX)
+    finished()
+    t = look(repo).tasks["x"]
+    assert (t.state, t.passed, t.checks) == ("review", 1, 2)
+    with Store.open(repo) as store:
+        plan.signoff(store, "x", ALEX)
+    t = look(repo).tasks["x"]
+    assert (t.state, t.passed, t.checks) == ("done", 2, 2)
+    with Store.open(repo) as store:  # reopened, and landed again once review is off: by its check alone
+        plan.reopen(store, "x", ALEX, "the column needs an index")
+        store.set_meta("settings:review", None)
+    finished()
+    t = look(repo).tasks["x"]
+    assert (t.state, t.passed, t.checks) == ("done", 1, 1)
 
 
 def test_only_a_hooked_claude_code_agent_hears_a_note_while_it_works(repo):
@@ -655,3 +712,34 @@ def test_agents_are_numbered_as_their_tasks_were_first_taken_and_a_retry_keeps_t
     fresh = look(repo)  # watch opened again: the log says the same order
     assert {i: t.agent for i, t in fresh.tasks.items() if t.agent} == {"schema": "1", "ids": "2"}
 
+
+def test_a_plan_after_an_archived_one_numbers_its_agents_from_1_and_archiving_a_part_renumbers_none(repo):
+    """The agents are numbered in the order they took their first task of the plan: one archived with the
+    plan put away is not this plan's, and the first agent of the next was "agent 5" after four."""
+
+    def leaves(*ids):
+        with Store.open(repo) as store:
+            plan.propose(store, [{"id": i, "title": i, "scope": [f"{i}.txt"], "check": "true"} for i in ids],
+                         ALEX)  # fmt: skip
+
+    def finished(node_id):
+        with Store.open(repo) as store:
+            plan.start(store, node_id, ALEX, repo)
+        (repo / f"{node_id}.txt").write_text("done\n")
+        with Store.open(repo) as store:
+            plan.finish(store, node_id, ALEX)
+
+    leaves("a", "b")
+    finished("a")
+    finished("b")
+    with Store.open(repo) as store:
+        plan.archive(store, ALEX)  # the whole plan, put away
+    leaves("c", "d", "e")
+    start(repo, "c")
+    assert look(repo).tasks["c"].agent == "1"
+    finished("d")  # agent 2's
+    with Store.open(repo) as store:
+        assert [n.id for n in plan.archive(store, ALEX)] == ["d"]  # part of the plan, while c runs
+    start(repo, "e")
+    m = look(repo)
+    assert (m.tasks["c"].agent, m.tasks["e"].agent) == ("1", "3")  # c keeps its number, d's is not reused
