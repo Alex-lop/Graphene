@@ -13,7 +13,7 @@ SPARK = "▁▂▃▄▅▆▇█"
 STATE_GLYPH = {
     "running": ("●", "bold #e9c46a"), "review": ("◆", "bold #c77dff"), "came back": ("↩", "bold #ef476f"),
     "ready": ("○", "#d0d0d0"), "waiting": ("◌", "grey50"),
-    "proposed": ("?", "#4cc9f0"), "done": ("✓", "#8ab17d"), "yours": ("◇", "bold #c77dff"),
+    "proposed": ("+", "#4cc9f0"), "done": ("✓", "#8ab17d"), "yours": ("◇", "bold #c77dff"),
 }  # fmt: skip
 FLOW_STYLES = {
     "running": "bold #e9c46a", "done": "#8ab17d", "review": "bold #c77dff", "came back": "bold #ef476f",
@@ -23,7 +23,7 @@ FLOW_STYLES = {
     "node": "grey70",
     "label:running": "bold", "label:done": "grey62", "label:waiting": "grey58", "edge_loop": "#e9a23b",
     "glyph:running": "●", "glyph:done": "✓", "glyph:review": "◆", "glyph:came back": "↩", "glyph:ready": "○",
-    "glyph:waiting": "◌", "glyph:proposed": "?",
+    "glyph:waiting": "◌", "glyph:proposed": "+",
 }  # fmt: skip
 
 

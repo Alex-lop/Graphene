@@ -44,6 +44,25 @@ def test_the_question_comes_first_and_the_default_and_the_options_are_buttons():
     assert actions == ["take", "pick:1"]
 
 
+def test_a_question_a_proposal_and_a_risk_have_marks_of_their_own_and_their_words_line_up():
+    from graphene_map.cockpit.model import Question
+
+    m = scene()
+    m.questions.append(Question("r", "Old ids have no checksum", "noted", [], kind="risk"))
+    m.questions[0].options = ["drop old ids now", "keep them until July"]
+    lines = {}
+    for line in rows.build_cockpit(m, 120):
+        lines.setdefault(line.row, line)  # a row's first line: an open one has more under it
+    marks = {row: lines[row].plain()[2] for row in ("q", "r", "docs")}
+    assert marks == {"q": "?", "r": "!", "docs": "+"}
+    assert "#e9a23b" in lines["r"].segs[1].style and "#4cc9f0" in lines["docs"].segs[1].style
+    starts = {lines[row].plain().index(words) for row, words in (
+        ("q", "Keep old ids"), ("r", "Old ids"), ("ids", "users return"), ("docs", "docs for"))}  # fmt: skip
+    assert len(starts) == 1  # one left edge
+    assert "1 drop old ids now" in lines["q"].plain() and "2 keep them until July" in lines["q"].plain()
+    assert all(line.width() <= 60 for line in rows.build_cockpit(m, 60))
+
+
 def test_a_running_row_has_its_agent_and_its_numbers_and_the_selected_one_opens():
     m = scene()
     text = "\n".join(plain(rows.build_cockpit(m, 100)))
@@ -64,6 +83,26 @@ def test_a_running_rows_pace_is_drawn_in_the_running_amber_not_in_its_agents_col
 def test_a_row_waiting_for_sign_off_and_a_proposal_name_their_key():
     text = "\n".join(plain(rows.build_cockpit(scene(), 100)))
     assert "⏎ sign off" in text and "⏎ accept" in text
+
+
+def test_a_selected_proposal_opens_to_show_what_accepting_it_agrees_to():
+    m = scene()
+    docs = m.tasks["docs"]
+    docs.scope, docs.needs = ["models/**", "README.md"], ["ids", "schema"]  # schema is done: it waits on ids
+    row = next(line for line in rows.build_cockpit(m, 100) if line.row == "docs")
+    assert "10 files" in row.plain() and "⏎ accept" in row.plain()  # nine tracked, and one still to make
+    m.selected = "docs"
+    text = "\n".join(plain(rows.build_cockpit(m, 100)))
+    assert "files  models/**, README.md" in text and "waits  users return ids  " in text
+    assert all(k in text for k in ("⏎ accept", "d drop", "e edit", "i details")) and "t tell" not in text
+    assert "no check" not in text  # it has one; a proposal with none says so
+    docs.checks = 0
+    assert "no check yet: nothing can prove it done" in "\n".join(plain(rows.build_cockpit(m, 100)))
+    docs.check = "pytest -q tests/test_docs.py"  # its words, once the plan's reader gives them
+    assert "check  pytest -q tests/test_docs.py" in "\n".join(plain(rows.build_cockpit(m, 100)))
+    keys = next(line for line in rows.build_cockpit(m, 100) if "d drop" in line.plain())
+    assert [s.action for s in keys.segs if s.action] == ["take", "drop", "edit", "details"]
+    assert all(line.width() <= 60 for line in rows.build_cockpit(m, 60))
 
 
 def test_a_task_that_waits_says_for_whom_and_a_finished_one_says_what_it_changed():

@@ -48,7 +48,7 @@ KEYS = {  # one line each, at most 79 columns: the screen's own keys, then the o
 KEYS_TO_VERBS = {  # a key, and the verb it asks for (`act`)
     "t": "tell", "w": "allow", "x": "back", "d": "drop", "r": "run", "R": "run-all", "a": "answer",
     "b": "offer:b", "n": "offer:n", "colon": "command", "y": "take", "s": "split", "P": "first", "u": "undo",
-    "e": "edit", "E": "edit-plan", "D": "direction", "i": "details",
+    "e": "edit", "E": "edit-plan", "D": "direction", "i": "details", "A": "accept-all",
 }  # fmt: skip
 LEGEND = "✎ files touched of allowed · ✓ proofs · ! writes stopped · ⏸ quiet · ▁▃▅ activity"
 
@@ -321,6 +321,8 @@ class Cockpit(App):
                 d.run_ready(sel)
         elif action == "run-all":
             self.run_all()
+        elif action == "accept-all":
+            self.accept_all()
         elif action == "answer":
             q = next((q for q in m.questions if q.id == sel), None)
             if q is None:
@@ -393,6 +395,25 @@ class Cockpit(App):
         def answered(typed: str | None) -> None:
             if (typed or "").lower() in ("y", "yes"):
                 d.run_ready()
+
+        self.push_screen(Ask(said), answered)
+
+    def accept_all(self) -> None:
+        """A: every proposal, as `graphene plan accept` takes them, once a line has said how many (and that
+        the questions still open then take their defaults, as they do when the whole plan is accepted)."""
+        m, d = self.model, self.doer
+        n = sum(t.state == "proposed" for t in m.tasks.values())
+        if not n:
+            m.say("nothing to accept: no task is proposed")
+            return
+        said = f"accept {n} proposed task{'s' * (n > 1)}"
+        if m.questions:
+            said += f" and the defaults of {len(m.questions)} question{'s' * (len(m.questions) > 1)}"
+        said += "? y and Enter"
+
+        def answered(typed: str | None) -> None:
+            if (typed or "").lower() in ("y", "yes"):
+                d.run(["plan", "accept"])
 
         self.push_screen(Ask(said), answered)
 

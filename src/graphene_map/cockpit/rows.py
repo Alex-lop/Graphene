@@ -83,13 +83,20 @@ def empty(width: int) -> list[Line]:
 
 
 def question_line(q: Question, width: int, on: bool) -> Line:
-    """? the question, ⏎ its default, and the other options by the numbers `graphene board pick` takes."""
-    room = max(width - 6, 20)
+    """? the question (! a risk), ⏎ its default, and the other options by the numbers `graphene board pick`
+    takes. Its words start where a task's title does, so the rows have one left edge."""
+    room = max(width - LEAD - 2, 20)
     keep = fit("⏎ " + q.default, max(room // 3, 12))
-    options = [(k, fit(f"   {k} {o}", 16)) for k, o in enumerate(q.options, 1)][:2]  # the first two fit
-    spare = room - cell_len(keep) - sum(cell_len(text) for _, text in options)
+    words = min(cell_len(q.text), room // 2)  # the question keeps up to half the row, the options the rest
+    each = max(16, (room - cell_len(keep) - words - 2) // max(len(q.options[:2]), 1))
+    options = [(k, fit(f"   {k} {o}", each)) for k, o in enumerate(q.options, 1)][:2]  # the first two fit
+    while options and room - cell_len(keep) - sum(cell_len(text) for _, text in options) - 2 < 12:
+        options.pop()  # narrow: the question keeps twelve cells, and its last option gives way
+    spare = room - cell_len(keep) - sum(cell_len(text) for _, text in options) - 2
+    mark, style = ("!", "bold #e9a23b") if q.kind == "risk" else ("?", "bold #c77dff")
     segs = [
-        Seg(" ? ", "bold #c77dff"),
+        Seg("▶" if on else " ", "bold"),
+        Seg(f" {mark}    ", style),  # the state's column, then the agent's, empty
         Seg(fit(q.text, max(spare, 12)), "bold" if on else ""),
         Seg("  "),
         Seg(keep, "bold #c77dff", "take"),
@@ -132,8 +139,9 @@ def right_of(m: Model, t: Task, width: int) -> list[Seg]:
     if t.state == "came back":  # the reason is cut to a third of the row: the open row says all of it
         why = fit(t.note or "stuck", max(width // 3, 16))
         return [Seg(why, "#ef476f"), Seg("   ⏎ try again", "bold #c77dff", "take")]
-    if t.state == "proposed":
-        return [Seg("⏎ accept", "bold #4cc9f0", "take")]
+    if t.state == "proposed":  # how many files accepting it lets an agent write
+        n = m.allowed(t)
+        return [Seg(f"{n} file{'s' * (n != 1)}".ljust(11), "grey50"), Seg("⏎ accept", "bold #4cc9f0", "take")]
     if t.state == "yours":
         return [Seg("yours", "#c77dff"), Seg("   ⏎ mark done", "bold #c77dff", "take")]
     if t.state == "ready":
@@ -168,6 +176,8 @@ def task_lines(
     out = [line]
     if on and t.state in ("running", "review", "came back"):
         out += expansion(m, t, width, tell)
+    elif on and t.state == "proposed":
+        out += proposal(m, t, width)
     elif t.state == "running" and t.events:  # its last move in one dim line: alive or stuck, at a glance
         out.append(Line([Seg("      ┊ ", "grey35"), Seg(fit(m.tail(t, 1)[0], width - 10), "grey58")], t.id))
     if on:
@@ -175,6 +185,28 @@ def task_lines(
             for s in ln.segs:
                 s.style = (s.style + FOCUS_BG).strip()
             ln.segs = pad(ln.segs, width, FOCUS_BG.strip())
+    return out
+
+
+def proposal(m: Model, t: Task, width: int) -> list[Line]:
+    """What accepting a proposal agrees to: the files it may write, the check that proves it done, what it
+    waits on; then its keys."""
+
+    def said(words: list[Seg]) -> Line:
+        return Line([Seg("      ┊ ", "grey35"), *words], t.id)
+
+    out = [said([Seg("files  ", "grey50"), Seg(fit(", ".join(t.scope) or "none yet", width - 17), "grey70")])]
+    check = getattr(t, "check", "")  # its command, once the plan's reader gives it (read.py)
+    if check:
+        out.append(said([Seg("check  ", "grey50"), Seg(fit(check, width - 17), "grey70")]))
+    elif not t.checks:
+        out.append(said([Seg("no check yet: nothing can prove it done", "#e9a23b")]))
+    before = [o.title for x in t.needs if (o := m.tasks.get(x)) and o.state != "done"]
+    if before:
+        out.append(said([Seg("waits  ", "grey50"), Seg(fit(", ".join(before), width - 17), "grey70")]))
+    keys = [("⏎ accept", "bold #4cc9f0", "take"), ("d drop", "grey70", "drop"), ("e edit", "grey70", "edit"),
+            ("i details", "grey50", "details")]  # fmt: skip
+    out.append(Line([Seg("      ")] + [Seg(f"{k}   ", style, act) for k, style, act in keys], t.id))
     return out
 
 
