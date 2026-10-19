@@ -22,10 +22,7 @@ Ctrl+B
 Type "M"
 Show
 Escape
-Type "zR"
-Sleep 0.5s
-Type "gg"
-Sleep 7s
+Sleep 7.5s
 Hide
 Ctrl+B
 Type "M"

@@ -21,8 +21,6 @@ Sleep 1.5s
 Ctrl+B
 Type "M"
 Show
-Type "gg"
-Sleep 0.5s
 Type "E"
 Sleep 2.5s
 Type ":%s#, cli/main.py##ge"
@@ -34,8 +32,12 @@ Sleep 1.5s
 Type ":wq"
 Enter
 Sleep 2.5s
+# A accepts every proposal, and the defaults of the questions still open, once you say y and Enter
+Type "A"
+Sleep 1s
 Type "y"
-Sleep 3s
+Enter
+Sleep 2s
 Hide
 Ctrl+B
 Type "M"

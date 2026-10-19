@@ -3,7 +3,7 @@
 # sets Output, Width and Height here. The tape attaches, presses its keys in real time, and leaves.
 # Ctrl+B M marks the time where the footage starts and ends: build.sh plays the clip at that length,
 # since VHS captures fewer frames a second than it plays when the machine is busy.
-# only if: /\b(asks|risk|assumes|leaves out)\b/
+# only if: /(?m)^[▶ ] [?!] {4}\S/
 Output scene.mp4
 Set Shell "bash"
 Set FontSize 24
@@ -21,16 +21,12 @@ Sleep 1.5s
 Ctrl+B
 Type "M"
 Show
-# y takes the item's default, and the cursor goes to the next open item. The planner puts up at most three
-# (decision 99); a y past the last lands on the settled fold, where it does nothing
-# (tests/test_board_rows.py::test_each_key_answers_the_item_under_the_cursor_and_says_its_command).
+# In the cockpit the board's items are the first rows, `?` a question and `!` a risk (the only-if line above),
+# and the first is selected: Enter takes its default. Once no question is open the next row is a proposal,
+# which Enter would accept, so this takes one; scene 06's A takes the rest of the defaults with the plan.
 Sleep 5s
-Type "y"
-Sleep 3s
-Type "y"
-Sleep 3s
-Type "y"
-Sleep 5s
+Enter
+Sleep 8s
 Hide
 Ctrl+B
 Type "M"

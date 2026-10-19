@@ -483,6 +483,24 @@ def test_the_release_notes_are_this_versions_and_every_command_they_name_is_the_
     assert ran >= 6
 
 
+def test_the_release_notes_do_not_say_only_claude_code_refuses_the_write_their_demo_shows_nemotron_refuse():
+    """The notes said a write outside a task's files is refused before it happens only with Claude Code; the
+    demo they point at is a Nemotron run whose write tool refused agent 1's words.py before it was made.
+    Nemotron's edit and write refuse a path outside the scope (nemotron/executor.py, its first layer); a
+    command it runs outside a Sandbox is caught at done, as a Codex write is."""
+    import json
+
+    from graphene_map import demo as D
+
+    rows = [json.loads(line) for line in D.SHIPPED.read_text(encoding="utf-8").splitlines() if line][1:]
+    executor = next(r["plan_meta"]["executor"] for r in rows if "executor" in (r.get("plan_meta") or {}))
+    denied = [json.loads(e["detail"]) for r in rows for e in r.get("node_log") or [] if e["kind"] == "denied"]
+    assert executor.startswith("nemotron ") and {"path": "words.py", "how": "write"} in denied
+    said = doc("dev/launch/release-notes.md")
+    assert "refused before it happens only with Claude Code" not in said
+    assert "refused before it happens by Claude Code's hooks and by Nemotron's edit and write" in said
+
+
 def test_contributing_runs_the_suite_as_ci_does_and_each_file_it_points_at_does_what_it_says():
     """CONTRIBUTING said the suite takes about 18 minutes in one process, with -n auto "where pytest-xdist is
     installed"; the dev group installs it and CI runs -n auto. Its Python is pyproject's, and the files its
@@ -502,3 +520,100 @@ def test_contributing_runs_the_suite_as_ci_does_and_each_file_it_points_at_does_
     recipe = "RECORD_DEMO=src/graphene_map/demo.jsonl uv run pytest tests/test_demo_script.py"
     script = (ROOT / "tests/test_demo_script.py").read_text(encoding="utf-8")
     assert recipe in said and 'os.environ.get("RECORD_DEMO")' in script
+
+
+def test_the_demo_docs_describe_the_recording_graphene_ships_as_it_is(tmp_path):
+    """dev/demo/README.md said the shipped recording was 29 September's, and the video's step 4 had one task
+    come back; the recording of 19 October has two sub-goals, four tasks, three agents at once, a task that
+    comes back, is widened and runs again, and one that waits on two. Each is read from the recording."""
+    import json
+
+    from graphene_map import demo as D
+    from graphene_map import plan as P
+    from graphene_map.store import Store
+
+    head, lines = D.load(D.SHIPPED)
+    repo = D.repository(tmp_path, head)
+    D.last_frame(repo, lines)
+    with Store.open(repo) as store:
+        nodes = P.nodes(store)
+    rows = [row for line in lines for row in line.get("node_log") or []]
+    under = {n.parent for n in nodes if n.parent}
+    goals, tasks = [n for n in nodes if n.id in under], [n for n in nodes if n.id not in under]
+    runs = [json.loads(row["detail"])["summary"] for row in rows if row["kind"] == "run"]
+    at_once = max(int(n) for summary in runs for n in re.findall(r"(\d+) of \d+ at once", summary))
+    back = {row["node_id"] for row in rows if row["kind"] == "released"}
+    scopes = [(row["node_id"], json.loads(row["detail"])["changed"].get("scope")) for row in rows
+              if row["kind"] == "edited"]  # fmt: skip
+    wider = {node for node, scope in scopes if scope and len(scope[1]) > len(scope[0])}
+    started = [row["node_id"] for row in rows if row["kind"] == "started"]
+    assert back & wider == {"greet"} and started.count("greet") == 2  # back, widened, and run again
+    assert [n.id for n in tasks if len(n.needs) == 2] == ["hello-bye"]
+    say = {2: "two", 3: "three", 4: "four"}
+    readme, video = doc("dev/demo/README.md"), doc("dev/launch/video.md")
+    assert head["recorded"].startswith("2026-10-19") and "made on 19 October 2026 (UTC)" in readme
+    assert f"a plan of {say[len(goals)]} sub-goals and {say[len(tasks)]} tasks" in readme
+    assert f"{say[at_once].capitalize()} agents start at once" in readme
+    assert "it is widened and tried again as agent 1" in readme and "The fourth task waits on two" in readme
+    step = video.split("4. **")[1].split("5. **")[0]
+    assert f"{say[len(goals)]} sub-goals, {say[len(tasks)]} tasks. {say[at_once].capitalize()} agents" in step
+    assert "is widened and tried again as agent 1" in step and "the two it waits on have landed" in step
+
+
+def test_the_videos_step_4_plays_what_it_narrates_within_its_seconds():
+    """Step 4 narrates the shipped replay up to the task that waits on two starting, which `graphene demo`
+    reaches 42 s after it opens, at its own speed, in a step of 20 s: it names a speed that gets there."""
+    from graphene_map import demo as D
+    from graphene_map.cockpit.replay import opening
+
+    step = doc("dev/launch/video.md").split("4. **")[1].split("5. **")[0]
+    begin, end = (int(s) for s in re.match(r"(\d+) to (\d+) s", step).groups())
+    typed = re.search(r"Type `graphene demo --speed (\d+)`", step)
+    assert typed, step
+    _head, lines = D.load(D.SHIPPED, float(typed[1]))
+    starts = next(line["at"] for line in lines for row in line.get("node_log") or []
+                  if row["kind"] == "started" and row["node_id"] == "hello-bye")  # fmt: skip
+    assert starts - opening(lines) <= end - begin
+
+
+def test_the_scene_tapes_press_the_cockpits_keys_not_the_classic_screens():
+    """dev/demo/scenes pressed September's keys, which the cockpit reads as other verbs: `gg` opens the graph
+    twice, `zR` runs every ready task, a `/` search types r (run the task), u (undo), n, i and g. A tape now
+    presses the cockpit's own key for what its scene does, and scene 04 films only when the screen has a
+    question's or a risk's row, which the cockpit marks `?` and `!` where the classic screen said "asks"."""
+    from cockpit_scene import scene
+
+    from graphene_map.cockpit import app as A
+    from graphene_map.cockpit.rows import build_cockpit
+
+    scenes = sorted((ROOT / "dev/demo/scenes").glob("[0-9][0-9]-*.tape"))
+    tapes = {tape.name[:2]: tape.read_text(encoding="utf-8") for tape in scenes}
+    typed = {n: [k for k in re.findall(r'^Type "([^"]*)"$', t, re.M) if k != "M"] for n, t in tapes.items()}
+    for n, keys in typed.items():  # M is tmux's mark, after its Ctrl+B
+        assert not [k for k in keys if k in ("gg", "zR") or k.startswith("/")], n
+        assert "\nTab\n" not in tapes[n], n
+    assert typed["05"] == ["g", "m", "c"]  # the graph, the map, back to the cockpit
+    assert typed["06"][0] == "E" and typed["06"][-2:] == ["A", "y"]  # the plan in the editor; accept all
+    assert (A.KEYS_TO_VERBS["E"], A.KEYS_TO_VERBS["A"]) == ("edit-plan", "accept-all")
+    only = re.search(r"^# only if: /(.+)/$", tapes["04"], re.M)[1]
+    for selected in ("q", "ids"):
+        m = scene()
+        m.selected = selected
+        assert {line.row for line in build_cockpit(m, 120) if re.search(only, line.plain())} == {"q"}
+
+
+def test_scene_08_films_when_the_cockpit_shows_a_task_that_came_back():
+    """Scene 08's `# only if:` looked for "came back", the classic row's word. The cockpit's row of a task
+    that came back says its reason and `⏎ try again`; "came back" is only in a run's last line on the news,
+    for six seconds, so a take whose task came back mostly skipped the scene that widens and reruns it."""
+    from cockpit_scene import scene
+
+    from graphene_map.cockpit.rows import build_cockpit
+
+    tape = (ROOT / "dev/demo/scenes/08-came-back.tape").read_text(encoding="utf-8")
+    only = re.search(r"^# only if: /(.+)/$", tape, re.M)[1]
+    for width in (80, 120):
+        m = scene()
+        assert not [line for line in build_cockpit(m, width) if re.search(only, line.plain())]
+        m.tasks["tests"].state, m.tasks["tests"].note = "came back", "the word lives in words.py"
+        assert {line.row for line in build_cockpit(m, width) if re.search(only, line.plain())} == {"tests"}

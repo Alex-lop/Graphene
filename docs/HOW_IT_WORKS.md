@@ -90,8 +90,8 @@ waits for your own key.
 
 `graphene watch` opens the cockpit (`c`): what needs you first, then a row a task with its agent's number, kept
 through a retry, and in numbers whether it is on track: activity, files written of allowed, checks passed,
-seconds quiet. A write the gate stopped needs you too. Anything new that needs you rings the terminal, with a
-desktop notice saying why (`notify: off` quiets it).
+seconds quiet. A write the gate stopped needs you too. A new question, a task that came back, a sign-off or a
+stopped write rings the terminal, with a desktop notice saying why (`notify: off` quiets it).
 
 The key bar says what the keys do to the selected row: `⏎` its own move (accept, take the default, try again,
 sign off), `A` accept every proposal, `t` tell its agent a line (a Claude Code session hears it with its next

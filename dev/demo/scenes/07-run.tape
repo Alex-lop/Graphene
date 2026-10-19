@@ -25,10 +25,7 @@ Type "R"
 Sleep 1s
 Type "y"
 Enter
-Sleep 2s
-Type "/running"
-Enter
-Sleep 14s
+Sleep 16s
 Hide
 Ctrl+B
 Type "M"

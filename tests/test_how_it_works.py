@@ -88,6 +88,26 @@ def test_the_views_say_what_needs_you_as_the_cockpit_counts_and_rings_it():
     assert "A write the gate stopped needs you too" in views and "(`notify: off` quiets it)" in views
 
 
+def test_the_views_say_what_rings_the_terminal_and_not_that_anything_needing_you_does():
+    """The views said anything new that needs you rings the terminal. A proposal and a task of yours count
+    in "need you" and ring nothing (`needs` leaves them out): what rings is a question, a task that came
+    back, one waiting for its sign-off and a write the gate stopped."""
+    from graphene_map.cockpit.app import needs
+    from graphene_map.cockpit.model import Model, Question, Task, needs_you
+
+    m = Model("users come back with their ids")
+    m.questions = [Question("q", "which id?", "uuid", [])]
+    m.tasks = {t.id: t for t in (
+        Task("back", "users return ids", "came back", agent="1"), Task("review", "document it", "review"),
+        Task("stop", "the schema", "running", agent="2", stopped=[("db/ids.py", 1.0)]),
+        Task("new", "a proposal", "proposed"), Task("mine", "a task of yours", "yours"),
+    )}  # fmt: skip
+    assert all(needs_you(t) for t in m.tasks.values())
+    assert {key.split(":")[0] for key in needs(m)} == {"q", "back", "review", "stop"}  # not new, nor mine
+    views = " ".join(HOW.split("## The views")[1].split("## ")[0].split())
+    assert "A new question, a task that came back, a sign-off or a stopped write rings the terminal" in views
+
+
 def test_the_board_table_says_t_tells_the_selected_task_as_the_cockpit_runs_it(tmp_path):
     """The table said `t` puts up a note of yours (`graphene board note WORDS`); the cockpit's t needs a
     task and says the note about it (docs-audit, 18 October)."""

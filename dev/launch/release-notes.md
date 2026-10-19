@@ -33,8 +33,8 @@ project).
 
 ## What it does not do
 
-- A write outside a task's files is refused before it happens only with Claude Code; with Codex, git finds it
-  when the task says it is done.
+- A write outside a task's files is refused before it happens by Claude Code's hooks and by Nemotron's edit and
+  write; with Codex, or a command Nemotron runs outside a Sandbox, git finds it when the task says it is done.
 - Its hook fails open if it cannot run; git catches the change at done.
 - A task allowed to edit the test its own check runs can weaken it: it is flagged, not refused.
 - Codex has no cap of its own, and `--max-usd` stops starts, not an attempt that is going.

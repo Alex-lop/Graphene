@@ -4,7 +4,7 @@
 # Ctrl+B M marks the time where the footage starts and ends: build.sh plays the clip at that length,
 # since VHS captures fewer frames a second than it plays when the machine is busy.
 # wait: $ tail -n 1 "$(ls -t .graphene/runs/run-*.txt | head -n 1)" | grep -q "^run: " up to 40 min; cut: the executors at work
-# only if: /came back/
+# only if: /⏎ try again/
 Output scene.mp4
 Set Shell "bash"
 Set FontSize 24
@@ -22,9 +22,8 @@ Sleep 1.5s
 Ctrl+B
 Type "M"
 Show
+# the task that came back needs you, so it is the first row and selected: its reason and its fix
 Escape
-Type "/came back"
-Enter
 Sleep 6s
 Type "w"
 Sleep 3s

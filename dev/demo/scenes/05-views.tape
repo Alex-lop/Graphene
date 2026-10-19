@@ -1,4 +1,4 @@
-# Scene 05 of dev/demo/STORYBOARD.md: the views: Tab to the tree, Tab to the graph, Tab back to the outline.
+# Scene 05 of dev/demo/STORYBOARD.md: the views: g the graph, m the map, c back to the cockpit.
 # dev/demo/build.sh films it: it sets the take's stage (tmux -L graphene-film) and writes $FILM/attach, and
 # sets Output, Width and Height here. The tape attaches, presses its keys in real time, and leaves.
 # Ctrl+B M marks the time where the footage starts and ends: build.sh plays the clip at that length,
@@ -21,11 +21,11 @@ Sleep 1.5s
 Ctrl+B
 Type "M"
 Show
-Tab
+Type "g"
 Sleep 7s
-Tab
+Type "m"
 Sleep 8s
-Tab
+Type "c"
 Sleep 2.5s
 Hide
 Ctrl+B
