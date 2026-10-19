@@ -4,7 +4,7 @@
 
 The new watch (17 October). 0.5.1 holds the older screen; `graphene watch` now opens the one Alex judged in
 `dev/ui/playground/`, fed by the real plan and wired to the real commands. Each line is one change.
-- `graphene watch` is a cockpit: a row a task, with its agent's name, what it did last, files touched of files
+- `graphene watch` is a cockpit: a row a task, with its agent's number, what it did last, files touched of files
   allowed, checks passed, and how long it has been quiet. What waits for you is on top and Enter takes it.
   `--classic` is the older outline, and `--view` (tree, dag, time) still picks among its views.
 - The keys talk to an agent: `t` tells a running one a line (it hears it with its next write or command, and the

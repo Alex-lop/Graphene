@@ -1,7 +1,7 @@
-"""The cockpit's small shared parts: segments that carry actions, fitting text to a width, agent names."""
+"""The cockpit's small shared parts: segments that carry actions, fitting text to a width, agent numbers."""
 
 from graphene_map.cockpit.lines import Line, Seg, ago, fit, pad, seg_at
-from graphene_map.cockpit.look import NAMES, color_of, name_for, short
+from graphene_map.cockpit.look import PALETTE, color_of, short, who
 
 
 def test_a_click_finds_the_segment_under_it_and_its_action():
@@ -21,12 +21,11 @@ def test_seconds_read_as_seconds_then_minutes():
     assert ago(12.6) == "12s" and ago(89) == "89s" and ago(150) == "2m"
 
 
-def test_an_agent_keeps_its_name_and_two_running_agents_never_share_one():
-    assert name_for("session-1", set()) == name_for("session-1", set())
-    first = name_for("session-1", set())
-    second = name_for("session-1", {first})
-    assert second != first and second in NAMES
-    assert color_of(first).startswith("#") and color_of("nobody") == "white"
+def test_an_agent_goes_by_a_number_and_its_colour_comes_from_it():
+    assert who("2") == "agent 2" and who("") == ""
+    assert color_of("1") == PALETTE[0] and color_of("2") == PALETTE[1]
+    assert color_of(str(len(PALETTE) + 1)) == PALETTE[0]  # the colours go round
+    assert color_of("") == color_of("fox") == color_of("0") == "white"
 
 
 def test_a_sentence_title_gets_a_short_name():

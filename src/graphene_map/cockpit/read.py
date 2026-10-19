@@ -70,13 +70,14 @@ def read(
     m = Model(goal, "plan")
     m.clock = now
     if previous is not None:  # what is the person's survives a look: the selection, the lens, the news
-        m.selected, m.lens, m.feed, m.names = previous.selected, previous.lens, previous.feed, previous.names
+        m.selected, m.lens, m.feed = previous.selected, previous.lens, previous.feed
         m.moved = previous.moved
         m.files, m.files_at, m.seen = previous.files, previous.files_at, previous.seen
     if files is not None:  # told (a replay's, from its recording): git is never asked
         m.files, m.files_at = files, now
     elif not m.files or now - m.files_at > FILES_EVERY:
         m.files, m.files_at = P.tracked(root), now
+    m.names = numbers(store)  # agent 1, agent 2: the tasks in the order they were first taken
     m.protected = S.protected(store) + S.readonly(store)
     m.first = P.plan_first(store)
     chosen = (store.meta("executor") or "").split()  # what R starts, when `graphene init` chose it
@@ -103,6 +104,7 @@ def read(
     items = {it["id"]: it for it in B.items(store)}
     for t in m.tasks.values():
         node = by_id[t.id]
+        t.agent = m.names.get(t.id, "")  # a task taken once keeps its number, back, ready again and done
         last = ended(store, t.id) if t.state == "done" else None
         proofs(t, node, last)
         if t.state in LIVE:
@@ -113,7 +115,6 @@ def read(
             came_back(store, t, node)
         if t.state == "done":
             t.changed = list((last or {"detail": {}})["detail"].get("changed") or [])
-            t.agent = m.agent_name(agent_key(store, node))  # who did it, by the name it had while it ran
     m.questions = [question_of(item) for item in BR.read(store).open]
     rows = m.order()
     if rows and (not m.moved or m.selected not in {rid for _, rid in rows}):
@@ -121,6 +122,20 @@ def read(
     elif not rows:
         m.selected = ""
     return m
+
+
+def numbers(store) -> dict[str, str]:
+    """The number each task's agent goes by: the order in which the plan's tasks were first taken, as its
+    log has them. It never changes between looks or when watch opens again, and a task keeps it when it
+    comes back and is tried again, by a new session or the same one: "agent 2" is on the second task."""
+    rows = store.conn.execute(
+        "SELECT node_id FROM node_log WHERE kind = 'started' AND node_id IN (SELECT id FROM nodes) "
+        "ORDER BY id"
+    ).fetchall()
+    out: dict[str, str] = {}
+    for r in rows:
+        out.setdefault(r["node_id"], str(len(out) + 1))
+    return out
 
 
 def fold_done(m: Model, by_id: dict[str, P.Node]) -> None:
@@ -171,7 +186,7 @@ def live(store, m: Model, t: Task, node: P.Node) -> None:
     edited, ran and said (`did`, `said`), and the writes the gate stopped (`denied` with a path)."""
     t.started = epoch(node.started_at)
     t.hears = "claude" in (node.executor or "claude")  # only a hooked Claude Code session is told mid-run
-    t.agent = m.agent_name(agent_key(store, node))
+    t.agent = m.agent_name(t.id)
     sign = R.live(store, node, m.clock)  # the meter's last row, the hooks' last call, the log's age
     t.idle = sign["idle"]
     rows = recent(store, t.id, ("did", "said", "denied"))
@@ -292,13 +307,3 @@ def touched_by_git(store, m: Model, t: Task, node: P.Node) -> None:
     t.touched = {p: t.touched.get(p, m.clock) for p in both}
     t.outside = [p for p in both if p in outside or (p not in files and not P.in_scope(p, node.scope))]
 
-
-def agent_key(store, node: P.Node) -> str:
-    """What names an agent: its session while it holds the leaf, else the session or the executor its last
-    `started` row names (a release or a finish clears them from the node, not from the log), so a leaf has
-    the same name running, back, in review and done."""
-    if node.session_id:
-        return node.session_id
-    started = recent(store, node.id, ("started",), 1)
-    last = started[-1] if started else {}
-    return last.get("session_id") or last.get("actor") or node.executor or node.id

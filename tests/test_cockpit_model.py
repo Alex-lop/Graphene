@@ -56,10 +56,10 @@ def test_the_tail_names_what_the_agent_did_in_words():
     assert m.tail(t, 2) == ["edit b.py", "stopped db/c.py"]
 
 
-def test_an_agent_keeps_its_name_between_looks_and_two_agents_differ():
+def test_a_task_keeps_its_agents_number_between_looks_and_two_tasks_differ():
     m = model()
-    first = m.agent_name("session-a")
-    assert m.agent_name("session-a") == first and m.agent_name("session-b") != first
+    first = m.agent_name("task-a")
+    assert m.agent_name("task-a") == first and m.agent_name("task-b") != first
 
 
 def test_a_glob_that_matches_no_tracked_file_is_a_file_still_to_be_made_and_counts_one_allowed():

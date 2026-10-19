@@ -33,8 +33,8 @@ the classic screen 98 (at most 135).
 *Found while building it:* real plans have sentence-long titles; the screen needs a three-word name per task.
 
 **2. Territory.** Which folders each task may write. Only Graphene can show this, because scopes never overlap.
-Before you accept a plan: "13 of 636 files may be touched (2%)". Live: touches, stopped writes, "oak waits for
-fox: it owns the same files". After: what changed, and anything outside. Press `p`, click a folder: given or taken.
+Before you accept a plan: "13 of 636 files may be touched (2%)". Live: touches, stopped writes, "tests waits
+for agent 1: it owns the same files". After: what changed, and anything outside. Press `p`, click a folder: given or taken.
 
 ![territory](playground/shots/territory-real.png)
 
@@ -70,7 +70,8 @@ You said to do what I think is best. Each flips with one line; the new watch fol
    Enter, and Tell reaches the agent if you change your mind. Stopping an unattended run costs the night.
 2. **One window, many agents,** one repository.
 3. **Plain words on the new screens** (task, may touch, proof, stuck); the engine and docs keep leaf, scope, check.
-4. **Keep the agent names:** a task keeps its name, and "fox is stuck" is sayable.
+4. **Agents go by numbers** (your call, 18 October, over my "keep the names"): agent 1 is the first to take a
+   task of the plan, a retry is a new number, and "agent 2 is stuck" is sayable.
 5. **Execution graph first,** intent graph after.
 
 ## Next

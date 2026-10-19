@@ -16,7 +16,7 @@ from rich.cells import cell_len, set_cell_size
 class Seg:
     text: str
     style: str = ""
-    action: str = ""  # "take", "tell", "select:fox", "pick:1", "group:3"...: what a click on it does
+    action: str = ""  # "take", "tell", "select:ids", "pick:1", "group:3"...: what a click on it does
 
 
 @dataclass

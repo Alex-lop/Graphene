@@ -32,7 +32,7 @@ def test_the_question_comes_first_and_the_default_and_the_options_are_buttons():
 def test_a_running_row_has_its_agent_and_its_numbers_and_the_selected_one_opens():
     m = scene()
     text = "\n".join(plain(rows.build_cockpit(m, 100)))
-    assert "fox" in text and "✎2/9" in text and "✓1/3" in text and "!1" in text
+    assert "● 1  users return ids" in text and "✎2/9" in text and "✓1/3" in text and "!1" in text
     assert "t tell" in text and "w give it db/ids_2.py" in text and "x pull back" in text
     m.selected = "docs"  # a proposed row does not open with an agent's verbs
     assert "t tell" not in "\n".join(plain(rows.build_cockpit(m, 100)))
@@ -45,7 +45,7 @@ def test_a_row_waiting_for_sign_off_and_a_proposal_name_their_key():
 
 def test_a_task_that_waits_says_for_whom_and_a_finished_one_says_what_it_changed():
     text = "\n".join(plain(rows.build_cockpit(scene(), 100)))
-    assert "← fox oak" in text and "3 files" in text
+    assert "← agent 1, agent 2" in text and "3 files" in text
 
 
 def test_a_task_that_changed_a_file_outside_its_scope_says_so():
@@ -68,7 +68,7 @@ def test_finished_tasks_the_rows_left_out_are_counted():
 
 def test_the_tell_box_shows_under_the_selected_agent_while_it_is_open():
     text = "\n".join(plain(rows.build_cockpit(scene(), 100, tell="keep ids as strings")))
-    assert "tell fox: keep ids as strings▌" in text
+    assert "tell agent 1: keep ids as strings▌" in text
 
 
 def test_files_outside_the_scope_are_flagged_and_a_note_that_cannot_be_heard_says_when_it_is_read():
@@ -104,7 +104,7 @@ def test_a_running_agent_that_is_not_selected_shows_its_last_move_in_one_dim_lin
     m = scene()
     m.selected = "docs"
     text = "\n".join(plain(rows.build_cockpit(m, 100)))
-    assert "┊ edit models/m0.py" in text  # fox's last event, under its row
+    assert "┊ edit models/m0.py" in text  # agent 1's last event, under its row
     m.selected = "ids"  # selected, it opens into three lines and the verbs instead
     assert "┊ edit models/m0.py" in "\n".join(plain(rows.build_cockpit(m, 100)))
 
@@ -121,7 +121,7 @@ def test_a_narrow_banner_keeps_what_it_is_and_where_it_is():
 def test_a_long_reason_a_leaf_came_back_with_is_cut_on_its_row_and_whole_when_the_row_is_open():
     m = scene()
     note = "I need README.md and tests/test_api.py, but my scope covers only src/ and the gate stopped both"
-    back = Task("back", "retry the migration", "came back", agent="wren", note=note)
+    back = Task("back", "retry the migration", "came back", agent="3", note=note)
     m.tasks["back"] = back
     for width in (60, 80, 120):
         lines = rows.build_cockpit(m, width)

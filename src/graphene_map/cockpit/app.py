@@ -33,6 +33,7 @@ from . import territory as T
 from .details import DIRECTION, Details
 from .help import Help
 from .lines import Line, Seg, fit_keys, seg_at
+from .look import who
 from .model import Model
 from .rows import build_cockpit
 from .territory_view import HEAD, build_territory
@@ -191,7 +192,7 @@ class Cockpit(App):
         sel = m.tasks.get(m.selected)
         info = f" {sel.title}" if sel else ""
         if sel:
-            info += f"  ·  {sel.state}" + (f" · {sel.agent}" if sel.agent else "")
+            info += f"  ·  {sel.state}" + (f" · {who(sel.agent)}" if sel.agent else "")
             info += f" · proof {sel.passed}/{sel.checks}" if sel.checks else ""
             info += f" · for {sel.why}" if sel.why else ""
         lines += [
@@ -286,7 +287,7 @@ class Cockpit(App):
             if task is None or self.open_store is None or self.root is None:
                 m.say("select a task to see everything about it")
             else:
-                name = f"{task.agent} {task.title}".strip()
+                name = " · ".join(x for x in (task.title, who(task.agent)) if x)
                 self.push_screen(Details(self.open_store, self.root, sel, name))
         elif d is None:
             m.say(self.refusal)
@@ -300,7 +301,7 @@ class Cockpit(App):
             d.offer(m, sel, action.split(":", 1)[1])
         elif action == "back":
             if task is not None and task.state in ("review", "done"):
-                about = f"{task.agent} {task.title}".strip()
+                about = " · ".join(x for x in (task.title, who(task.agent)) if x)
                 ask = Ask(f"reopen {sel}: what is wrong? its next executor is told", about=about)
                 m.moved = True  # opening it is choosing the row: the selection stays here until you move
                 self.push_screen(ask, partial(self.reopened, sel))

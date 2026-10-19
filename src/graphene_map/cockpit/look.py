@@ -1,14 +1,9 @@
-"""How things look: the names agents go by, their colours, the glyph of each state, a task's short name."""
+"""How things look: the number an agent goes by, its colour, the glyph of each state, a task's short name."""
 
 from __future__ import annotations
 
-import hashlib
 import re
 
-NAMES = [
-    "fox", "oak", "river", "bee", "crab", "hen", "elm", "ant", "owl", "ivy", "jay", "koi", "lynx", "moth",
-    "newt", "otter", "pine", "quail", "reed", "seal", "tern", "vole", "wren", "yak", "zebu", "dove",
-]  # fmt: skip
 PALETTE = [
     "#f4a261", "#8ab17d", "#5fa8d3", "#e9c46a", "#e76f51", "#c77dff", "#2a9d8f", "#ef476f", "#90be6d",
     "#4cc9f0", "#f9c74f", "#b5838d", "#43aa8b", "#f3722c", "#577590", "#bc6c25",
@@ -32,19 +27,15 @@ FLOW_STYLES = {
 }  # fmt: skip
 
 
-def name_for(key: str, taken: set[str]) -> str:
-    """A stable name for an agent from a key (its session): the same key, the same name, and never one
-    another running agent has while there is a free one."""
-    start = int(hashlib.sha1(key.encode()).hexdigest(), 16) % len(NAMES)
-    for k in range(len(NAMES)):
-        name = NAMES[(start + k) % len(NAMES)]
-        if name not in taken:
-            return name
-    return NAMES[start]
+def color_of(agent: str) -> str:
+    """An agent's colour, from its number: agent 1 takes the palette's first, agent 2 the next."""
+    return PALETTE[(int(agent) - 1) % len(PALETTE)] if agent.isdigit() and agent != "0" else "white"
 
 
-def color_of(name: str) -> str:
-    return PALETTE[NAMES.index(name) % len(PALETTE)] if name in NAMES else "white"
+def who(agent: str) -> str:
+    """How the screen names an agent in words: "agent 2". Agents go by numbers, in the order they took
+    their first leaf of the plan, so "agent 2 is stuck" is sayable and says which one started second."""
+    return f"agent {agent}" if agent else ""
 
 
 TRAILING = {"a", "an", "the", "and", "or", "of", "to", "for", "in", "on", "with", "so", "as", "by"}

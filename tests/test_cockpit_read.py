@@ -9,7 +9,6 @@ from datetime import UTC, datetime, timedelta
 from test_plan_cli import repo  # noqa: F401  (fixture)
 
 from graphene_map import board, plan
-from graphene_map.cockpit.look import NAMES
 from graphene_map.cockpit.model import Model
 from graphene_map.cockpit.read import FOLD_AFTER, KEEP_DONE, looker, read
 from graphene_map.model import ToolEvent
@@ -83,9 +82,9 @@ def test_what_the_person_chose_survives_the_next_look(repo):
     plan_of(repo)
     first = look(repo)
     first.selected, first.moved, first.lens = "schema", True, "live"
-    first.say("told fox")
+    first.say("told agent 1")
     again = look(repo, first)
-    assert again.selected == "schema" and again.lens == "live" and again.latest() == "told fox"
+    assert again.selected == "schema" and again.lens == "live" and again.latest() == "told agent 1"
     assert again.files is first.files  # git's list is not read again within the minute
     first.selected = "gone"
     assert look(repo, first).selected in {rid for _, rid in again.order()}  # falls to the first row
@@ -176,7 +175,7 @@ def test_what_an_executor_did_is_the_agents_tail_pace_touched_files_and_stopped_
     t = look(repo).tasks["ids"]
     assert [e.kind for e in t.events] == ["read", "edit", "run", "said", "stop"]
     assert list(t.touched) == ["api.py"] and [p for p, _ in t.stopped] == ["db/ids_2.py"]
-    assert t.agent in NAMES
+    assert t.agent == "1"  # the first agent to take a leaf of this plan
     m = look(repo)
     said = ["edit api.py", "run  pytest -q", "says tests pass locally", "stopped db/ids_2.py"]
     assert m.tail(m.tasks["ids"], 4) == said
@@ -377,11 +376,11 @@ def test_files_the_agents_own_record_says_it_edited_count_even_when_git_cannot_s
     assert list(look(repo).tasks["ids"].touched) == ["api.py"]
 
 
-def test_an_agent_has_the_same_name_running_back_and_done(repo):
+def test_an_agent_has_the_same_number_running_back_and_done(repo):
     plan_of(repo)
     start(repo)
     running = look(repo).tasks["ids"].agent
-    assert running in NAMES
+    assert running == "1"
     with Store.open(repo) as store:
         plan.release(store, "ids", BOT, "it needs db/models.py", wants=["db/models.py"])
     assert look(repo).tasks["ids"].state == "came back" and look(repo).tasks["ids"].agent == running
@@ -446,3 +445,22 @@ def test_a_leaf_the_person_finished_over_its_check_is_done_but_not_proven_and_st
             plan.finish(store, f"d{k}", ALEX)
     m = look(repo)
     assert "x" in m.tasks and m.folded_done > 0 and m.scoreboard()[2] == m.folded_done + KEEP_DONE
+
+
+def test_agents_are_numbered_as_their_tasks_were_first_taken_and_a_retry_keeps_the_number(repo):
+    plan_of(repo)
+    other = Caller("claude:7a11", False, "7a110000-0000-4000-8000-0000000000b2")
+    again = Caller("claude:9c0d", False, "9c0d0000-0000-4000-8000-0000000000c3")
+    with Store.open(repo) as store:
+        plan.start(store, "schema", BOT, repo)  # agent 1
+        plan.start(store, "ids", other, repo)  # agent 2
+    first = look(repo)
+    assert (first.tasks["schema"].agent, first.tasks["ids"].agent) == ("1", "2")
+    with Store.open(repo) as store:  # the second hands its leaf back, and a new session takes it again
+        plan.release(store, "ids", other, "it needs db/models.py", wants=["db/models.py"])
+        plan.start(store, "ids", again, repo)
+    later = look(repo, first)
+    assert later.tasks["ids"].agent == "2" and later.tasks["schema"].agent == "1"  # tried again: still 2
+    fresh = look(repo)  # watch opened again: the log says the same order
+    assert {i: t.agent for i, t in fresh.tasks.items() if t.agent} == {"schema": "1", "ids": "2"}
+

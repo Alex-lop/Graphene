@@ -11,7 +11,7 @@ import hashlib
 from dataclasses import dataclass, field
 
 from . import territory as T
-from .look import PALETTE, SPARK, color_of, name_for
+from .look import PALETTE, SPARK, color_of
 
 LIVE_STATES = ("running", "ready", "review", "proposed", "came back", "waiting", "yours")
 NEEDS_YOU = ("review", "came back", "yours", "proposed")  # where the move is the person's
@@ -33,7 +33,7 @@ class Task:
     state: str = "waiting"  # running, review, came back, ready, waiting, proposed, done
     scope: list[str] = field(default_factory=list)
     needs: list[str] = field(default_factory=list)
-    agent: str = ""  # the name its agent goes by while it holds the leaf
+    agent: str = ""  # the number its agent goes by ("2"): tasks are counted as they are first taken
     checks: int = 1  # the proofs it has to pass: its check, and your sign-off when it asks for one
     passed: int = 0
     events: list[Ev] = field(default_factory=list)
@@ -80,7 +80,7 @@ class Model:
         self.executor = ""  # who a run starts, when `graphene init` chose one (claude, codex...)
         self.banner = ""  # what the top row says it is, when it is not "your plan" (a replay)
         self.feed: list[tuple[float, str]] = []
-        self.names: dict[str, str] = {}  # an agent's key (its session) -> its name, kept across looks
+        self.names: dict[str, str] = {}  # a task -> the number its agent goes by, in the order of the log
         # a leaf -> when git was asked, the files it said, and which of them are outside the leaf's scope
         self.seen: dict[str, tuple[float, list[str], list[str]]] = {}
         self._allowed: dict[tuple[str, tuple[str, ...]], int] = {}
@@ -177,8 +177,8 @@ class Model:
             for t in self.tasks.values()
         }
 
-    def agent_name(self, key: str, taken: set[str] | None = None) -> str:
-        """The name an agent goes by: kept for its key once chosen, so a name never flips between looks."""
-        if key not in self.names:
-            self.names[key] = name_for(key, taken if taken is not None else set(self.names.values()))
-        return self.names[key]
+    def agent_name(self, task: str) -> str:
+        """The number a task's agent goes by: the one the plan's log gave it (`read.numbers`), else next."""
+        if task not in self.names:
+            self.names[task] = str(len(self.names) + 1)
+        return self.names[task]

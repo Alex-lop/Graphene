@@ -13,6 +13,7 @@ from rich.cells import cell_len
 
 from . import territory as T
 from .lines import Line, Seg, fit_end, ljust, pad
+from .look import who
 from .model import Model
 
 HEAD = 3  # lines above the first folder: the total, the lens, the rule
@@ -52,14 +53,14 @@ def build_territory(m: Model, width: int, cursor: int = 0) -> tuple[list[Line], 
         segs += [Seg("  ")]
         if m.lens == "changed":
             for tid, n in g.changed.most_common(3):
-                segs += [Seg(f"{m.tasks[tid].agent or tid} {n}  ", m.color(tid))]
+                segs += [Seg(f"{who(m.tasks[tid].agent) or tid} ({n})  ", m.color(tid))]
             if g.outside:
                 segs += [Seg(f"{g.outside} OUTSIDE", "bold #ef476f")]
             if not g.changed:
                 segs += [Seg("untouched", "grey42")]
         else:
             for tid, n in g.owners.most_common(3):
-                segs += [Seg(f"{m.tasks[tid].agent or tid} {n}  ", m.color(tid))]
+                segs += [Seg(f"{who(m.tasks[tid].agent) or tid} ({n})  ", m.color(tid))]
             if g.protected:
                 segs += [Seg("PROTECTED", "bold #ef476f")]
             elif not g.owners:
@@ -68,10 +69,10 @@ def build_territory(m: Model, width: int, cursor: int = 0) -> tuple[list[Line], 
                 if g.touched:
                     segs += [Seg(f"● {g.touched} now  ", "#e9c46a")]
                 if g.stopped:
-                    who = m.tasks[g.stopped_by[-1]].agent or g.stopped_by[-1]
+                    whose = who(m.tasks[g.stopped_by[-1]].agent) or g.stopped_by[-1]
                     segs += [
                         Seg(f" !{g.stopped} stopped", "bold #ef476f"),
-                        Seg(f"  a: allow {who}", "#e9a23b", "allow"),
+                        Seg(f"  a: allow {whose}", "#e9a23b", "allow"),
                     ]
         out.append(Line(pad(segs, width, "reverse" if k == cursor and False else "")))
     waits = _waits(m)
@@ -95,6 +96,6 @@ def _waits(m: Model) -> list[str]:
             continue
         for o in live:
             if o.scope and any(T._in(f, tuple(t.scope)) and T._in(f, tuple(o.scope)) for f in m.files[:400]):
-                out.append(f"{t.title} waits for {o.agent or o.id}: it owns the same files")
+                out.append(f"{t.title} waits for {who(o.agent) or o.id}: it owns the same files")
                 break
     return out[:3]

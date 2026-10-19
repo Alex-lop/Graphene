@@ -16,7 +16,7 @@ PER_COLUMN, MOST_COLUMNS = 4, 4  # boxes a column holds before a flat list start
 
 
 def flow_graph(m: Model) -> tuple[list[F.GNode], list[F.GEdge]]:
-    nodes = [
+    nodes = [  # a running box carries its agent's number on its border, as its row does
         F.GNode(t.id, t.title, t.state, t.agent if t.state == "running" else "") for t in m.tasks.values()
     ]
     edges = [F.GEdge(n, t.id) for t in m.tasks.values() for n in t.needs if n in m.tasks]

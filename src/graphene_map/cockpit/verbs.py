@@ -23,6 +23,7 @@ from pathlib import Path
 
 from .. import run as R
 from ..tui import _cli, as_typed
+from .look import who
 from .model import Model
 
 RUN_WITH = ["--parallel", "4"]  # ready leaves at once, a worktree each, landed here as they pass
@@ -125,7 +126,7 @@ class Doer:
         elif t.state == "ready":
             self.say(f"{t.title} is ready and waits for no one: r runs it, R runs every ready leaf")
         else:
-            self.say(f"{t.agent or t.title} is {t.state}: nothing to take")
+            self.say(f"{who(t.agent) or t.title} is {t.state}: nothing to take")
 
     def pick(self, m: Model, sel: str, n: int) -> None:
         q = next((q for q in m.questions if q.id == sel), None)
@@ -164,8 +165,8 @@ class Doer:
         the owner): the command it names."""
         t = m.tasks.get(sel)
         if t is None or key not in t.offers:
-            who = (t.agent or t.title) if t else "this"
-            self.say(f"{who} has no '{key}' to offer: it did not come back wanting one")
+            whose = (who(t.agent) or t.title) if t else "this"
+            self.say(f"{whose} has no '{key}' to offer: it did not come back wanting one")
             return
         self.run(t.offers[key])
 

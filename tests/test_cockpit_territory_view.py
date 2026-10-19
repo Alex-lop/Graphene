@@ -27,7 +27,7 @@ def test_the_live_lens_shows_a_stopped_write_and_offers_to_allow_it():
     m = scene()
     m.lens = "live"
     text = plain(TV.build_territory(m, 100)[0])
-    assert "stopped" in text and "allow fox" in text
+    assert "stopped" in text and "allow agent 1" in text
 
 
 def test_the_changed_lens_names_what_a_finished_task_changed_and_flags_what_was_outside_its_scope():
@@ -36,10 +36,10 @@ def test_the_changed_lens_names_what_a_finished_task_changed_and_flags_what_was_
     m.tasks["schema"].changed = ["db/d0.py", "db/d1.py", "models/m0.py"]
     m.tasks["schema"].scope = ["db/**"]
     text = plain(TV.build_territory(m, 100)[0])
-    assert "schema 2" in text and "1 OUTSIDE" in text
+    assert "schema (2)" in text and "1 OUTSIDE" in text
 
 
 def test_a_task_that_waits_for_files_another_owns_is_told_why_it_is_not_parallel():
     m = scene()
-    m.tasks["tests"].scope = ["models/**"]  # it wants what fox owns
-    assert "waits for fox: it owns the same files" in plain(TV.build_territory(m, 100)[0])
+    m.tasks["tests"].scope = ["models/**"]  # it wants what agent 1 owns
+    assert "waits for agent 1: it owns the same files" in plain(TV.build_territory(m, 100)[0])

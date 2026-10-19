@@ -14,7 +14,7 @@ from rich.cells import cell_len
 
 from . import territory as T
 from .lines import Line, Seg, ago, fit, ljust, pad, span
-from .look import STATE_GLYPH, color_of
+from .look import STATE_GLYPH, color_of, who
 from .model import Model, Question, Task
 
 
@@ -94,7 +94,7 @@ def question_line(q: Question, width: int, on: bool) -> Line:
     return Line(pad(segs, width, FOCUS_BG.strip() if on else ""), q.id)
 
 
-LEAD = 12  # "▶ ● fox    "
+LEAD = 8  # "▶ ● 12 ": the arrow, the state, the number of the agent on it
 FOCUS_BG = " on #1a2030"
 
 
@@ -117,9 +117,8 @@ def right_of(m: Model, t: Task, width: int) -> list[Seg]:
             right += [Seg(f"⏸{ago(quiet)}", "bold #e9a23b")]
         return right
     if t.state == "waiting":
-        after = " ".join(
-            m.tasks[n].agent or m.tasks[n].id for n in t.needs if n in m.tasks and m.tasks[n].state != "done"
-        )
+        before = [m.tasks[n] for n in t.needs if n in m.tasks and m.tasks[n].state != "done"]
+        after = ", ".join(who(o.agent) or o.id for o in before)
         return [Seg("← " + after if after else "", "grey50")]
     if t.state == "review":
         proof = f"✓{t.passed}/{t.checks}  " if t.checks else ""
@@ -152,7 +151,7 @@ def task_lines(
     lead = [
         Seg("▶" if on else " ", "bold"),
         Seg(f" {glyph} ", gstyle),
-        Seg(f"{name:<6} ", f"bold {colour}" if name else ""),
+        Seg(f"{name:<2} ", f"bold {colour}" if name else ""),
     ]
     right = right_of(m, t, width)
     room = max(12, width - LEAD - cols - 1)
@@ -217,6 +216,6 @@ def expansion(m: Model, t: Task, width: int, tell: str | None) -> list[Line]:
     out.append(Line(verbs, t.id))
     if tell is not None:
         out.append(
-            Line([Seg(f"      tell {t.agent or t.id}: ", "bold #4cc9f0"), Seg(tell + "▌", "bold")], t.id)
+            Line([Seg(f"      tell {who(t.agent) or t.id}: ", "bold #4cc9f0"), Seg(tell + "▌", "bold")], t.id)
         )
     return out

@@ -11,7 +11,7 @@ def test_the_graph_has_a_box_for_each_task_and_an_arrow_for_each_need():
     nodes, edges = FV.flow_graph(scene())
     assert {n.id for n in nodes} == {"ids", "migrate", "tests", "docs", "schema"}
     assert {(e.a, e.b) for e in edges} == {("ids", "tests"), ("migrate", "tests")}
-    assert next(n for n in nodes if n.id == "ids").badge == "fox"  # who is on it, while it runs
+    assert next(n for n in nodes if n.id == "ids").badge == "1"  # which agent is on it, while it runs
     assert next(n for n in nodes if n.id == "docs").badge == ""
 
 

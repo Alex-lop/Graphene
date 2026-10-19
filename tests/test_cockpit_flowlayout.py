@@ -49,7 +49,7 @@ def test_the_pasted_graph_lays_out_with_every_node_and_edge_drawn():
 def test_the_layout_is_deterministic_and_a_state_change_does_not_move_a_node():
     lay = F.layout(PASTED_NODES, PASTED_EDGES, label_w=12)
     assert F.layout(PASTED_NODES, PASTED_EDGES, label_w=12).text() == lay.text()
-    recoloured = [GNode(n.id, n.label, "running", "fox") for n in PASTED_NODES]
+    recoloured = [GNode(n.id, n.label, "running", "1") for n in PASTED_NODES]
     assert F.layout(recoloured, PASTED_EDGES, label_w=12).rects == lay.rects
 
 
