@@ -29,12 +29,12 @@ def build_head(m: Model, width: int) -> list[Line]:
     goal = "" if m.goal in ("", NO_GOAL) else m.goal
     tag = m.banner or ("replay" if m.source == "replay" else "")  # the live plan needs no word
     parts = tag.split(" · ") if tag else []
-    room = width - min(cell_len(goal or NO_GOAL), 24) - 6  # the goal keeps what it needs, the banner the rest
+    room = width - min(cell_len(goal or NO_GOAL), 24) - 4  # the goal keeps what it needs, the banner the rest
     while cell_len(" · ".join(parts)) > max(16, room) and len(parts) > 2:
         parts.pop(2)  # narrow: the day goes, then where it is; never what it is and what made it
     tag = " · ".join(parts)
     said = goal or (NO_GOAL if tag else INVITE)  # your goal on top; with none, how to give one (not a title)
-    head = [Seg(" " + fit(said, width - (cell_len(tag) + 5 if tag else 2)), "bold" if goal else "grey62")]
+    head = [Seg(" " + fit(said, width - (cell_len(tag) + 4 if tag else 2)), "bold" if goal else "grey62")]
     head += [Seg(" · " + tag, "grey50")] if tag else []
     counts = [
         Seg(f" {need}", "bold #c77dff"), Seg(" need you   ", "#c77dff"),

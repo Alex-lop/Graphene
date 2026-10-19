@@ -56,11 +56,11 @@ Then tell Claude Code what you want, and the plan shows in the cockpit before it
 
 ## In your hands
 
-- **Stop:** Ctrl-C, `graphene run --stop`, or `:stop` in the cockpit.
-- **Review:** `review: every` in `graphene config edit` holds every task that passes for you: `i` then `c` shows its diff, Enter lands it.
+- **Stop:** Ctrl-C where `graphene run` runs, `graphene run --stop` from anywhere, or `:stop` in the cockpit.
+- **Review:** `review: every` in `graphene config edit` holds every task that passes for you: `i` then `c` shows its diff, Enter on its row lands it.
 - **Cost:** with Claude Code, $2 an attempt, three at most, and a run says its worst case first; `graphene run --max-usd N` caps a run. Codex has no cap. A real two-task run cost $0.30.
 - **Undo:** `git revert -m 1 <id>`, with the `landed:` id from `graphene node show <task>`.
-- **Leave:** `graphene init --remove`, then `uv tool uninstall graphene-map`.
+- **Leave:** `graphene init --remove`, then `uv tool uninstall graphene-map`. The plan and what the hooks recorded stay in `.graphene/` until you delete it.
 
 ## What it enforces, and where it ends
 
@@ -82,7 +82,7 @@ Nemotron 3 Ultra reads your repository and plans, in a strict JSON schema, tasks
 
 ## Does anything leave my computer?
 
-With Claude Code or Codex, Graphene itself sends nothing anywhere. `graphene init` adds small add-ons (hooks) to this project only, so Claude Code asks Graphene before it writes; they record its sessions on your machine: prompts, tool calls, results, edited files. On the Nemotron path, the planner and the executors read your files through Token Factory, as any hosted model does.
+With Claude Code or Codex, Graphene itself sends nothing anywhere. `graphene init` adds small add-ons (hooks) to this project only, so Claude Code asks Graphene before it writes; they record its sessions on your machine: prompts, tool calls, results, edited files. On the Nemotron path, the planner and the executors read your files through Token Factory, as any hosted model does, and with that extra and a key set, `graphene init` asks Token Factory for its list of models.
 
 ## Why I built this
 

@@ -4,7 +4,7 @@ on any other import of it in the core. Without the extra installed, `load` is No
 import importlib
 
 MISSING = ("Nemotron is an optional extra, and it is not installed here: "
-           "uv tool install 'graphene-map[nemotron] @ git+https://github.com/Alex-lop/Graphene'")  # fmt: skip
+           "uv tool install 'graphene-map[nemotron]'")  # fmt: skip
 
 
 def load(name: str):

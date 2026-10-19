@@ -257,6 +257,12 @@ def test_at_80_columns_the_top_line_still_says_no_model_ran(tmp_path):
             await pilot.pause(0.3)
             top = str(app.query_one("#head").render()).splitlines()[0]
             assert head["shown"] in top and "replay" in top and len(top.rstrip()) <= 80, top
+            await pilot.press("space")  # paused: the key line says space plays on, when the head has no room
+            await pilot.pause(0.2)
+            assert str(app.query_one("#keys").render()).lstrip().startswith("space play ·")
+            await pilot.press("space")
+            await pilot.pause(0.2)
+            assert str(app.query_one("#keys").render()).lstrip().startswith("space pause ·")
 
     asyncio.run(go())
 

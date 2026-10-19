@@ -434,7 +434,7 @@ def build():
         if shutil.which("graphene") is None:
             console.print(
                 "[yellow]warning:[/yellow] `graphene` is not on PATH, so the hook will not run. Install "
-                "it with `uv tool install git+https://github.com/Alex-lop/Graphene` (or `--editable .`)."
+                "it with `uv tool install graphene-map` (then `uv tool update-shell`), or `--editable .`."
             )
 
     ingest = typer.Typer(help="Record what an agent did.\n\nThe installed hooks call this. Nobody types it.")

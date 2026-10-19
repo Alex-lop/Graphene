@@ -654,7 +654,7 @@ def register(cli: typer.Typer, root, open_store, fail):
         except ImportError as missing:  # an install from before the screen: code new, dependencies old
             fail(
                 f"graphene watch needs {missing.name or 'textual'}, which this install lacks\n"
-                "  `uv tool install --force git+https://github.com/Alex-lop/Graphene` (`--editable .` in a "
+                "  `uv tool install --force graphene-map` (`--editable .` in a "
                 "checkout); `graphene watch --once` prints the plan meanwhile",
                 1,
             )
@@ -983,7 +983,7 @@ def register(cli: typer.Typer, root, open_store, fail):
     ) -> None:
         """Set whether an agent proposes before it writes, and what waits for you.
 
-        On: every ask waits. Auto: one small leaf is yours at once, more waits. Off never proposes."""
+        On: every ask waits. Auto: one small leaf goes at once. Off: quick changes go, bigger work waits."""
         if how not in (None, *P.FIRST):
             fail(f"graphene plan first takes on, auto or off, not {how!r}", 1)
         if how is not None:

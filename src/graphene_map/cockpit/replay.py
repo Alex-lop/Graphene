@@ -135,6 +135,11 @@ def opening(lines: list[dict]) -> float:
     return 0.0
 
 
+# the replay's own keys first; paused, space says it plays on (a narrow head drops "paused at"; this keeps it)
+KEYS_PLAYING = "space pause · . next · r again · i details · g graph · m map · ? keys · q"
+KEYS_PAUSED = "space play · . next · r again · i details · g graph · m map · ? keys · q"
+
+
 def banner(head: dict, state: str = "") -> str:
     """What the top row says it is: a replay, whether a model made it, which day, and where it is."""
     return " · ".join(filter(None, ["replay", head["shown"], head["day"], state]))
@@ -157,7 +162,7 @@ class CockpitReplay(Cockpit):
         self.doer = None  # nothing runs here: every verb says so
         self.refusal = REFUSED
         self.keys = {name: line for name, line in KEYS.items()}
-        self.keys["cockpit"] = "space pause · . next · r again · i details · g graph · m map · ? keys · q"
+        self.keys["cockpit"] = KEYS_PLAYING
 
     def look_at(self, previous: Model | None) -> Model:
         """The replay's store as the recording had it by now: the recording's clock is its newest row."""
@@ -215,6 +220,7 @@ class CockpitReplay(Cockpit):
         else:
             self.began, self.paused = self.began + now - self.paused, None
             self.state = f"{self.next} of {len(self.lines)}"
+        self.keys["cockpit"] = KEYS_PLAYING if self.paused is None else KEYS_PAUSED  # what space does now
         self.look()
 
     def action_next_change(self) -> None:
@@ -222,6 +228,7 @@ class CockpitReplay(Cockpit):
         if self.next < len(self.lines):
             self.paused = self.paused or time.monotonic()
             self.began = self.paused - self.lines[self.next]["at"]
+            self.keys["cockpit"] = KEYS_PAUSED
         self.play()
 
     def action_again(self) -> None:
@@ -233,5 +240,6 @@ class CockpitReplay(Cockpit):
         for output in (self.root / ".graphene" / "runs").glob("*"):
             output.unlink()
         self.next, self.paused, self.files, self.state = 0, None, [], ""
+        self.keys["cockpit"] = KEYS_PLAYING
         self.began = time.monotonic() - opening(self.lines)
         self.play()

@@ -8,11 +8,14 @@ Publishing is driven by a git tag: push the tag, GitHub Actions builds and publi
    - `version` in `pyproject.toml`
    - `__version__` in `src/graphene_map/__init__.py`
 2. Write the release notes in `CHANGELOG.md`.
-3. Commit both, then tag and push the tag:
+3. Commit both, land them on `main` and push `main` first: PyPI shows the README, and the README loads its
+   pictures from `main`, so a tag cut before they are there publishes a page of broken images. Then tag `main`
+   and push the tag:
 
    ```sh
-   git tag v0.3.0
-   git push origin v0.3.0
+   git push origin main
+   git tag v0.6.0
+   git push origin v0.6.0
    ```
 
 4. Watch the run:
