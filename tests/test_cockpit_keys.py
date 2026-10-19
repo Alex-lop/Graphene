@@ -184,7 +184,7 @@ def test_s_splits_only_a_leaf_still_to_do(repo):
     async def steps(app, pilot):
         app.model.selected = "ids"
         await pilot.press("s")
-        assert app.model.latest().startswith("✗ ids is running")
+        assert app.model.latest().startswith("✗ s splits a task still to do, and this one is running")
 
     drive(repo, steps, running=True)
 

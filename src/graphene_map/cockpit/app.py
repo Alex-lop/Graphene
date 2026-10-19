@@ -78,11 +78,12 @@ def needs(m: Model) -> dict[str, str]:
     are not here: they ring once a batch (``proposals``), when nothing here comes with them."""
     out = {f"q:{q.id}": f"{'a risk' if q.kind == 'risk' else 'a question'}: {q.text}" for q in m.questions}
     for t in m.tasks.values():
-        name = who(t.agent) or t.title
+        title = fit(t.title, 40)  # a whole title is cut here, so the line keeps what happened
+        name = who(t.agent) or title
         if t.state == "came back":
             out[f"back:{t.id}:{t.started}"] = f"{name} came back" + (f": {t.note}" if t.note else "")
         elif t.state == "review":
-            out[f"review:{t.id}:{t.started}"] = f"{t.title} passed its check and waits for your sign-off"
+            out[f"review:{t.id}:{t.started}"] = f"{title} passed its check and waits for your sign-off"
         for path, _when in t.stopped if t.state == "running" else []:
             out[f"stop:{t.id}:{t.started}:{path}"] = f"{name} was stopped writing {path}: w widens it"
     return out
@@ -622,7 +623,7 @@ class Cockpit(App):
             "yours": "is yours to do: no agent takes it",
         }.get(t.state if t else "")
         if t is None or nobody:
-            said = f"{t.title} {nobody}" if t else "select a task to tell"
+            said = f"{fit(t.title, 32)} {nobody}" if t else "select a task to tell"
             self.model.say(said)
             # what is typed next was meant as words: a line that sends nothing keeps it from running as keys
             self.push_screen(Ask(UNSENT, about=said), lambda _typed: self.paint())

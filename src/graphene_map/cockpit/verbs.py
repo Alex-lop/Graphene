@@ -23,6 +23,7 @@ from pathlib import Path
 
 from .. import run as R
 from ..tui import _cli, as_typed
+from .lines import fit
 from .look import who
 from .model import Model
 
@@ -139,11 +140,12 @@ class Doer:
         elif t.state == "came back":
             self.background(["run", *RUN_WITH, "--node", t.id])
         elif t.state == "ready":
-            self.say(f"{t.title} is ready and waits for no one: r runs it, R runs every ready task")
+            self.say("this task is ready and waits for no one: r runs it, R runs every ready task")
         elif t.state == "running" and t.stopped:  # the move is yours, and its key is w, as the row says
-            self.say(f"{who(t.agent) or t.title} was stopped writing {t.stopped[-1][0]}: w widens it")
+            whose = who(t.agent) or fit(t.title, 32)
+            self.say(f"{whose} was stopped writing {t.stopped[-1][0]}: w widens it")
         else:
-            self.say(f"{who(t.agent) or t.title} is {t.state}: it waits for nothing from you")
+            self.say(f"{who(t.agent) or fit(t.title, 32)} is {t.state}: it waits for nothing from you")
 
     def pick(self, m: Model, sel: str, n: int) -> None:
         q = next((q for q in m.questions if q.id == sel), None)
@@ -227,7 +229,7 @@ class Doer:
         elif t is not None and t.state == "proposed":
             self.run(["node", "drop", sel])
         elif t is not None:
-            self.say(f"d drops a proposal or a question; {t.title} is {t.state}: `:node drop {t.id}` does")
+            self.say(f"d drops a proposal or a question; a task that is {t.state}: `:node drop {t.id}`")
 
     def reopen(self, m: Model, sel: str, note: str) -> None:
         """Send a finished or reviewed leaf back, with what is wrong: its next executor is told."""
@@ -264,7 +266,7 @@ class Doer:
         if t is None:
             self.say("select a task to split")
         elif t.state in ("running", "review", "done"):
-            self.say(f"✗ {t.title} is {t.state}: s splits a task still to do, so no planner was started")
+            self.say(f"✗ s splits a task still to do, and this one is {t.state}: no planner was started")
         else:
             self.background(["node", "split", t.id])
 

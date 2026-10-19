@@ -280,6 +280,16 @@ def test_the_gist_names_the_command_and_says_the_first_line_it_said():
     assert gist(["node", "drop", "x"], 1, "") == "✗ graphene node drop x"
 
 
+def test_a_sentence_about_a_task_cuts_its_title_and_keeps_the_key_it_explains(doer):
+    """With whole titles, a long one pushed the end of a sentence (the key that does it) off the news line at
+    80 columns: the sentence is about the selected row, so it does without the title."""
+    m = model_of(ids="running")
+    m.tasks["ids"].title = "users return their ids as strings everywhere the API answers, in every handler"
+    doer.drop(m, "ids")
+    said = doer.said[-1]
+    assert said.endswith("`:node drop ids`") and "users return" not in said and len(said) <= 80, said
+
+
 def test_d_drops_a_proposal_or_a_question_and_never_an_accepted_leaf(repo, doer):
     plan_of(repo)
     qid = question(repo)
@@ -287,7 +297,7 @@ def test_d_drops_a_proposal_or_a_question_and_never_an_accepted_leaf(repo, doer)
     m.tasks["notes"] = Task("notes", "notes", "proposed", ["NOTES.md"])
     doer.drop(m, "ids")
     doer.drop(m, "docs")
-    assert "d drops a proposal or a question" in doer.said[-1] and ":node drop docs` does" in doer.said[-1]
+    assert "d drops a proposal or a question" in doer.said[-1] and doer.said[-1].endswith("`:node drop docs`")
     with Store.open(repo) as store:
         assert {n.id: n.state for n in plan.nodes(store)} == {
             "ids": plan.OPEN, "docs": plan.OPEN, "notes": plan.PROPOSED,
