@@ -17,17 +17,23 @@ from .lines import Line, Seg, ago, fit, ljust, pad, span
 from .look import STATE_GLYPH, color_of, who
 from .model import Model, Question, Task
 
+NO_GOAL = "no goal yet"  # what the plan's reader says of a plan with none (views.inputs)
+INVITE = 'no goal yet · :plan goal "…" tells every agent what this is for'
+
 
 def build_cockpit(m: Model, width: int, *, tell: str | None = None) -> list[Line]:
     out: list[Line] = []
     need, running, done, total = m.scoreboard()
-    tag = m.banner or ("replay" if m.source == "replay" else "your plan")
-    parts = tag.split(" · ")
-    room = width - min(cell_len(m.goal), 24) - 6  # the goal keeps what it needs, the banner the rest
+    goal = "" if m.goal in ("", NO_GOAL) else m.goal
+    tag = m.banner or ("replay" if m.source == "replay" else "")  # the live plan needs no word
+    parts = tag.split(" · ") if tag else []
+    room = width - min(cell_len(goal or NO_GOAL), 24) - 6  # the goal keeps what it needs, the banner the rest
     while cell_len(" · ".join(parts)) > max(16, room) and len(parts) > 2:
         parts.pop(1)  # narrow: what it is and where it is, the days and the models dropped
     tag = " · ".join(parts)
-    head = [Seg(" " + fit(m.goal, width - cell_len(tag) - 4), "bold"), Seg(" " * 1), Seg(tag, "grey50")]
+    said = goal or (NO_GOAL if tag else INVITE)  # your goal on top; with none, how to give one (not a title)
+    head = [Seg(" " + fit(said, width - (cell_len(tag) + 5 if tag else 2)), "bold" if goal else "grey62")]
+    head += [Seg(" · " + tag, "grey50")] if tag else []
     out.append(Line(pad(head, width)))
     out.append(
         Line(
@@ -96,14 +102,14 @@ def question_line(q: Question, width: int, on: bool) -> Line:
 
 LEAD = 8  # "▶ ● 12 ": the arrow, the state, the number of the agent on it
 FOCUS_BG = " on #1a2030"
+RUNNING = STATE_GLYPH["running"][1].split()[-1]  # the running amber
 
 
 def right_of(m: Model, t: Task, width: int) -> list[Seg]:
     """The columns on the right of a task's row: what it is doing, in numbers."""
-    colour = color_of(t.agent) if t.agent else "grey62"
     if t.state == "running":
         quiet = m.quiet(t)
-        right = [Seg(m.pace(t) + "  ", colour)] if width >= 70 else []
+        right = [Seg(m.pace(t) + "  ", RUNNING)] if width >= 70 else []  # its pace, in its state's colour
         if width >= 78:
             right += [Seg(f"✎{len(t.touched)}/{m.allowed(t)}".ljust(8), "grey62")]
         if t.checks:

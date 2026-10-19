@@ -1,5 +1,7 @@
 """The cockpit's small shared parts: segments that carry actions, fitting text to a width, agent numbers."""
 
+import colorsys
+
 from graphene_map.cockpit.lines import Line, Seg, ago, fit, pad, seg_at
 from graphene_map.cockpit.look import PALETTE, color_of, short, who
 
@@ -26,6 +28,32 @@ def test_an_agent_goes_by_a_number_and_its_colour_comes_from_it():
     assert color_of("1") == PALETTE[0] and color_of("2") == PALETTE[1]
     assert color_of(str(len(PALETTE) + 1)) == PALETTE[0]  # the colours go round
     assert color_of("") == color_of("fox") == color_of("0") == "white"
+
+
+def test_an_agents_colour_is_never_the_colour_of_a_state_and_reads_on_the_dark_screen():
+    """Colour means state: proven green, running amber, quiet orange, need-you purple, came-back and stopped
+    red, proposal cyan. An agent's colour is another hue, or one too muted to pass for a state."""
+    states = ["#8ab17d", "#90be6d", "#43aa8b", "#e9c46a", "#f9c74f", "#e9a23b", "#c77dff", "#ef476f",
+              "#e76f51", "#f3722c", "#4cc9f0"]  # fmt: skip
+
+    def rgb(c):
+        return [int(c[i : i + 2], 16) / 255 for i in (1, 3, 5)]
+
+    def lum(c):  # WCAG's relative luminance
+        return sum(w * (v / 12.92 if v <= 0.04045 else ((v + 0.055) / 1.055) ** 2.4)
+                   for w, v in zip((0.2126, 0.7152, 0.0722), rgb(c), strict=True))  # fmt: skip
+
+    def hue(c):
+        h, _l, s = colorsys.rgb_to_hls(*rgb(c))
+        return h * 360, s
+
+    assert 8 <= len(set(PALETTE)) == len(PALETTE) <= 12 and not set(PALETTE) & set(states)
+    for c in PALETTE:
+        h, s = hue(c)
+        apart = min(min(abs(h - hue(x)[0]), 360 - abs(h - hue(x)[0])) for x in states)
+        assert s < 0.3 or apart >= 15, (c, apart)
+        for ground in ("#0e1014", "#1a2030"):  # the screen, and the selected row
+            assert (lum(c) + 0.05) / (lum(ground) + 0.05) >= 4.5, (c, ground)
 
 
 def test_a_sentence_title_gets_a_short_name():

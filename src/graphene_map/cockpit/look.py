@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import re
 
-PALETTE = [
-    "#f4a261", "#8ab17d", "#5fa8d3", "#e9c46a", "#e76f51", "#c77dff", "#2a9d8f", "#ef476f", "#90be6d",
-    "#4cc9f0", "#f9c74f", "#b5838d", "#43aa8b", "#f3722c", "#577590", "#bc6c25",
-]  # fmt: skip
+# an agent's colour says which agent, never how it is going: blues, slates, mauve, pink and brown, none of
+# them a state's (proven green, running amber, need-you purple, came-back red, proposal cyan), each one
+# at least 4.5:1 on the screen's background and on the selected row's
+PALETTE = ["#5b8fd4", "#d291bc", "#a3826a", "#a7b4e8", "#b5838d", "#7a9e9f", "#8d99ae", "#8c86d4"]
 SPARK = "▁▂▃▄▅▆▇█"
 
 STATE_GLYPH = {

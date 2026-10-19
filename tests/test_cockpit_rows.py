@@ -17,9 +17,23 @@ def test_every_line_fits_the_width_asked():
 
 def test_the_header_says_what_waits_for_the_person_what_runs_and_what_is_proven():
     top = plain(rows.build_cockpit(scene(), 80))
-    assert "users come back with their ids" in top[0] and "your plan" in top[0]
+    assert top[0].strip() == "users come back with their ids"
     assert top[1].split() == ["4", "need", "you", "1", "running", "1/5", "proven"]  # a proposal counts, and
     # so does the running task with a write the gate stopped (`ids`)
+
+
+def test_the_headline_is_your_goal_and_with_none_it_says_how_to_give_one():
+    head = rows.build_cockpit(scene(), 80)[0]
+    assert head.plain().strip() == "users come back with their ids" and head.segs[0].style == "bold"
+    m = scene()
+    m.source = "replay"
+    assert rows.build_cockpit(m, 80)[0].plain().rstrip().endswith("users come back with their ids · replay")
+    for none in ("", "no goal yet"):  # the second is what the plan's reader says of a plan with no goal
+        m = scene()
+        m.goal = none
+        head = rows.build_cockpit(m, 80)[0]
+        assert ':plan goal "' in head.plain() and not any("bold" in s.style for s in head.segs)
+        assert head.width() <= 80 and rows.build_cockpit(m, 60)[0].width() <= 60
 
 
 def test_the_question_comes_first_and_the_default_and_the_options_are_buttons():
@@ -37,6 +51,14 @@ def test_a_running_row_has_its_agent_and_its_numbers_and_the_selected_one_opens(
     assert "t tell" in text and "w give it db/ids_2.py" in text and "x pull back" in text
     m.selected = "docs"  # a proposed row does not open with an agent's verbs
     assert "t tell" not in "\n".join(plain(rows.build_cockpit(m, 100)))
+
+
+def test_a_running_rows_pace_is_drawn_in_the_running_amber_not_in_its_agents_colour():
+    from graphene_map.cockpit.look import SPARK, STATE_GLYPH, color_of
+
+    row = next(line for line in rows.build_cockpit(scene(), 100) if line.row == "ids")
+    [pace] = [s for s in row.segs if any(c in SPARK for c in s.text)]
+    assert pace.style.startswith(STATE_GLYPH["running"][1].split()[-1]) and color_of("1") not in pace.style
 
 
 def test_a_row_waiting_for_sign_off_and_a_proposal_name_their_key():
