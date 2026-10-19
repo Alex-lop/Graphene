@@ -64,7 +64,7 @@ Then tell Claude Code what you want, and the plan shows in the cockpit before it
 
 ## What it enforces, and where it ends
 
-- Refused before the write: Claude Code only, shell redirects included. With Codex, or if the hook cannot run, git finds it when the task finishes.
+- Refused before the write: Claude Code only, shell redirects included where the hook can read them (a `#` comment line above one, or a target in a variable, hides it). With Codex, or whenever the hook cannot see a write, git finds it when the task finishes.
 - A task allowed to edit its own test can weaken it: `done` flags it, and `review: every` lets you read the diff first.
 - Honestly, in the three comparisons so far (September) a plain paragraph to the same agent did just as well for less. What I'm betting on is when you find out what it understood: before the work, not after. [Compared with Claude Code, Cursor, Kiro and Cline, gaps included](https://github.com/Alex-lop/Graphene/blob/main/docs/COMPARE.md) · [every limit](https://github.com/Alex-lop/Graphene/blob/main/docs/HOW_IT_WORKS.md#where-each-mechanism-ends).
 

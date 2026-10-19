@@ -229,6 +229,10 @@ count twice.
 - A script that opens files itself, or a write through an MCP server, is not seen by the hooks. Git catches both at
   `done`, but only while a leaf is held.
 - A hook that crashes or times out lets the call through: the vendor's rule.
+- The hook reads a shell command as written, not as bash runs it: a write after a `#` comment line, to a target
+  in a variable or a glob, after a `cd` it cannot follow, through a link in the scope that leads out of it, or
+  from a directory that is a checkout of its own is not seen before it happens. Git finds each at `done`. The
+  other way, a quoted `>` (a `grep` pattern) reads as a redirect and is refused.
 - "Only a person" rests on the environment: an agent that unsets its CLI's variables passes for you.
 - The store is a file; a script that writes it directly is neither stopped nor noticed.
 - What git ignores, nobody audits: an executor can write anything under an ignored directory.
