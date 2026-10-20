@@ -436,15 +436,18 @@ def test_a_run_says_at_its_top_that_it_is_from_before_the_cockpit():
 
 def test_ideas_next_says_what_the_night_did_and_what_is_still_not_done():
     """dev/ui/IDEAS.md still listed sub-goal boxes as not done once the graph drew them from your goal down
-    (18 October); it stays a three-minute read, under 750 words."""
+    (18 October); on 20 October the graph turned to flow into the goal, with sub-goals as lanes and no box
+    for them, and the line says that instead; it stays a three-minute read, under 750 words."""
     from graphene_map.cockpit import flow_view as FV
+    from graphene_map.cockpit import flowlayout as F
     from graphene_map.cockpit.look import who
 
-    assert FV.GOAL and who("2") == "agent 2"  # a box for the goal; agents by number
+    assert FV.GOAL and F.Lane and not hasattr(FV, "TREE")  # a box for the goal, a lane a sub-goal, no tree
+    assert who("2") == "agent 2"  # agents by number
     text = (ROOT / "dev/ui/IDEAS.md").read_text(encoding="utf-8")
     assert len(text.split()) < 750
     done, left = " ".join(text.split("## Next")[1].split()).split(" Not done: ")
-    assert "sub-goal boxes" in done and "agents by number" in done
+    assert "flows into your goal" in done and "agents by number" in done
     for still in ("an hour of real agents on these screens", "Tell on Codex", "the intent graph"):
         assert still in left, still
 

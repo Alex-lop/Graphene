@@ -35,13 +35,13 @@ and anything outside. The lens follows the plan's stage.
 
 ![territory](playground/shots/territory-real.png)
 
-**3. Graph (`g`).** Your goal at the top, its sub-goals under it, their tasks under those, an agent's number on
+**3. Graph (`g`).** What must land before what, flowing into your goal; sub-goals are lanes, an agent's number on
 its box. Your pasted diagram lays out on its own: 10 nodes, 13 edges, 136 columns.
 
 ![flow](playground/shots/flow-pasted.png)
 
-Limits: busier than your hand-drawn one (terminals want right angles); too wide for the screen, it shows
-the selected task's neighbourhood. jcode's prettier diagrams are images, which break in tmux.
+Limits: busier than your hand-drawn one (terminals want right angles); too wide, it shows the selected task's
+neighbourhood. jcode's prettier diagrams are images, which break in tmux.
 
 ## The graph idea, straight
 
@@ -72,5 +72,6 @@ You said to do what I think is best. Each flips with one line; the new watch fol
 
 ## Next
 
-Done on 18 October: the graph's sub-goal boxes, from your goal down, and agents by number. Not done: an hour of
-real agents on these screens (recordings and throwaway plans only), Tell on Codex, and the intent graph.
+Done: agents by number (18 October); the graph flows into your goal, sub-goals as lanes, columns as waves (20
+October). Not done: an hour of real agents on these screens (recordings and throwaway plans only), Tell on
+Codex, and the intent graph.
