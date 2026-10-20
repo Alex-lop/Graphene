@@ -56,6 +56,25 @@ def test_the_record_pane_has_the_forks_table_and_which_was_kept_when_the_hold_fo
         assert table[3] == ["c", "codex", "ended"]  # the run ended it: `stopped` is the gate's word
 
 
+def test_the_forks_table_fits_the_pane_when_a_fork_runs_with_a_command(repo):
+    """A `--with` may be a command. The table padded every column to its widest cell, so a 65-character
+    command made rows wider than the pane, which wrapped them: the columns after `with` landed on a second
+    line under each row. The `with` cell takes what the other columns leave, cut with an ellipsis."""
+    command = "python -m myagent --model gpt-5 --tools shell,edit --max-steps 40"
+    with Store.open(repo) as store:
+        forked(store, repo)
+        store.log_node("ids", plan._now(), "fork", "run:claude", None, None,
+                       {"fork": "c", "of": 3, "state": "passed", "lines": 40, "attempts": 1, "with": command,
+                        "dollars": 0.2, "seconds": 61.0})  # fmt: skip
+        for wide in (76, 96):  # the record pane at 80 and 100 columns
+            lines = pane_text(store, repo, "ids", "record", wide).plain.split("\nforks\n")[1].splitlines()
+            assert all(len(line) <= wide for line in lines), (wide, lines)
+            head, c = lines[0], lines[3]
+            assert c.index("passed") == head.index("state") and c.index("1m01s") == head.index("seconds")
+            assert "python -m myagent" in c and "…" in c and "--max-steps" not in c
+        assert command in pane_text(store, repo, "ids", "record", 200).plain  # room enough: whole
+
+
 def row(node, kind, **detail):
     return {"node_id": node, "kind": kind, "detail": json.dumps(detail)}
 

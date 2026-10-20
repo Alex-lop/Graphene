@@ -27,7 +27,7 @@ from textual.widgets import Static
 from .. import plan as P
 from .. import tui
 from .. import views as V
-from .lines import fit_keys
+from .lines import fit, fit_keys
 from .rows import FORK_WORD, kept_said
 
 PANES = ("contract", "output", "changes", "record")
@@ -66,7 +66,7 @@ def pane_text(
             if which == "changes":
                 return tui.diff_pane(store, node, word, wide)
             if which == "record":
-                record, forks = tui.record_pane(store, node, s, wide), forks_text(store, node_id)
+                record, forks = tui.record_pane(store, node, s, wide), forks_text(store, node_id, wide)
                 return Text("\n\n").join([record, forks]) if forks else record
             return untold(tui.detail(store, node, s, P.tracked(root), (wide, high)))
     except Exception as no:  # a pane is a view: whatever went wrong, the screen stays up
@@ -76,11 +76,11 @@ def pane_text(
 COLUMNS = ("fork", "with", "attempts", "state", "lines", "dollars", "seconds")
 
 
-def forks_text(store, node_id: str) -> Text | None:
-    """The forks of the node's last hold, when it forked (its `forked` row): a table, a fork a row, from its
-    last `fork` row (none yet: running, with what the `forked` row said it runs with; its state in the
-    screens' word), then the fork kept, the rule's reason and by whom, from the `picked` row. None for a
-    hold that did not fork."""
+def forks_text(store, node_id: str, wide: int) -> Text | None:
+    """The forks of the node's last hold, when it forked (its `forked` row): a table in ``wide`` cells, a
+    fork a row, from its last `fork` row (none yet: running, with what the `forked` row said it runs with;
+    its state in the screens' word), then the fork kept, the rule's reason and by whom, from the `picked`
+    row. None for a hold that did not fork."""
     log = store.node_log(node_id, ("started", "forked", "fork", "picked"))
     held = log[max((k for k, e in enumerate(log) if e["kind"] == "started"), default=-1) + 1 :]
     forked = next((e["detail"] for e in held if e["kind"] == "forked"), None)
@@ -97,10 +97,15 @@ def forks_text(store, node_id: str) -> Text | None:
                      "" if f.get("lines") is None else str(f["lines"]),
                      V.money(dollars) if dollars else "",
                      V.elapsed(int(seconds)) if seconds else ""))  # fmt: skip
-    wide = [max(len(r[k]) for r in rows) for k in range(len(COLUMNS))]
+    widths = [max(len(r[k]) for r in rows) for k in range(len(COLUMNS))]
+    # `with` may be a command: its cell takes what the other columns leave of the pane, cut with an ellipsis,
+    # since a row wider than the pane wraps, and its columns land on a second line
+    room = wide - 2 - (sum(widths) - widths[1]) - 2 * (len(COLUMNS) - 1)
+    widths[1] = max(min(widths[1], room), len(COLUMNS[1]))
+    rows = [(r[0], fit(r[1], widths[1]), *r[2:]) for r in rows]
     out = Text("forks", "bold")
     for k, r in enumerate(rows):
-        out.append("\n  " + "  ".join(cell.ljust(w) for cell, w in zip(r, wide, strict=True)).rstrip(),
+        out.append("\n  " + "  ".join(cell.ljust(w) for cell, w in zip(r, widths, strict=True)).rstrip(),
                    "dim" if k == 0 else "")  # fmt: skip
     picked = next((e["detail"] for e in reversed(held) if e["kind"] == "picked"), None)
     if picked:
