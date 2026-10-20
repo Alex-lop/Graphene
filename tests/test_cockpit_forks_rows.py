@@ -83,6 +83,24 @@ def test_the_persons_own_note_under_a_forked_row_has_no_forks_letter():
     assert lines_of(m, 100)[1].plain().split("┊ ", 1)[1].rstrip() == "1a read tests/util.py"
 
 
+def test_a_fork_the_run_ended_says_ended_since_stopped_is_the_gates_word_on_these_rows():
+    """With `--first`, the forks still going when one passes are stopped, and their rows said `stopped`,
+    right under a fork's `stopped db/ids_2.py` (a write the gate refused, with `w widen` as its remedy)."""
+    m = forked()
+    ids = m.tasks["ids"]
+    ids.forks[2].state, ids.forks[2].why = "stopped", "b passed first"
+    ids.forks[0].events.append(Ev(97, "stop", path="db/ids_2.py"))
+    ids.forks[0].stopped = ids.stopped = [("db/ids_2.py", 97.0)]
+    ids.events = sorted([e for f in ids.forks for e in f.events], key=lambda e: e.t)
+
+    def under():
+        return [ln.plain().split("┊ ", 1)[1].rstrip() for ln in lines_of(m, 100) if "┊" in ln.plain()]
+
+    assert under()[0].endswith("stopped db/ids_2.py") and under()[2] == "1c · ended: b passed first"
+    ids.forks[2].why = ""
+    assert under()[2] == "1c · ended"
+
+
 def test_once_a_fork_is_kept_the_row_is_review_or_done_as_today_and_a_dim_line_says_which_and_why():
     for width in (80, 120):
         m = forked()

@@ -27,7 +27,7 @@ from .lines import fit
 from .look import short
 from .model import Model
 from .read import OURS, epoch, read
-from .rows import kept_said
+from .rows import FORK_WORD, kept_said
 
 REFUSED = "a replay: nothing runs here"
 REPLAY_KEYS = (("space", "pause, or play on"), (".", "the next change, and stay paused"),
@@ -109,7 +109,8 @@ def news(line: dict, titles: dict[str, str] | None = None, names: dict[str, str]
         elif kind == "fork" and fork and d.get("state") == "passed":
             said.append(f"{who}: its check passed" + (f" · {d['lines']} lines" if d.get("lines") else ""))
         elif kind == "fork" and fork and d.get("state") not in (None, "running"):
-            said.append(f"{who}: {d['state']}" + (f": {words(d['why'])}" if d.get("why") else ""))
+            state = FORK_WORD.get(d["state"], d["state"])
+            said.append(f"{who}: {state}" + (f": {words(d['why'])}" if d.get("why") else ""))
         elif kind == "picked":
             said.append(f"{title}: " + kept_said((str(d.get("fork") or ""), words(d.get("reason")),
                                                    str(d.get("by") or ""))))  # fmt: skip

@@ -49,6 +49,11 @@ def test_the_record_pane_has_the_forks_table_and_which_was_kept_when_the_hold_fo
                        {"fork": "b", "of": 3, "by": "graphene", "reason": "31 lines against 58"})  # fmt: skip
         said = pane_text(store, repo, "ids", "record", 100).plain
         assert said.rstrip().endswith("kept b · 31 lines against 58")
+        store.log_node("ids", plan._now(), "fork", "run:claude", None, None,
+                       {"fork": "c", "of": 3, "state": "stopped", "why": "b passed first", "with": "codex"})
+        said = pane_text(store, repo, "ids", "record", 100).plain
+        table = [line.split() for line in said.split("\nforks\n")[1].splitlines()]
+        assert table[3] == ["c", "codex", "ended"]  # the run ended it: `stopped` is the gate's word
 
 
 def row(node, kind, **detail):
@@ -79,3 +84,6 @@ def test_the_news_names_a_fork_by_its_agents_number_and_its_letter_and_says_what
     assert news(line, GREET, names) == "greet says hello: kept b · 31 lines against 58"
     nemotron = {"node_log": [row("greet", "fork", fork=1, of=2, state="passed", why="")]}  # numbered: as was
     assert news(nemotron, GREET, names) == ""
+    line = {"node_log": [row("greet", "fork", fork="c", of=3, state="stopped", why="b passed first"),
+                         row("greet", "denied", path="words.py", fork="a")]}  # fmt: skip
+    assert news(line, GREET, names) == "agent 3c: ended: b passed first · agent 3a: stopped writing words.py"

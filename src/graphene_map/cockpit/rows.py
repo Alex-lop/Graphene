@@ -152,6 +152,9 @@ FORK_GLYPH = {  # how a fork ended, on its line: passed in the proven green, the
     "passed": ("✓", "#8ab17d"), "refused": ("✗", "#ef476f"), "failed": ("✗", "#ef476f"),
     "gave up": ("↩", "#ef476f"), "stopped": ("·", "grey50"),
 }  # fmt: skip
+# a fork's state, as the screens say it: `stopped` on these rows is the gate's word, for a write it refused
+# (`stopped db/x.py`, `w widen`), so a fork the run stopped (another passed first) is `ended`
+FORK_WORD = {"stopped": "ended"}
 
 
 def right_of(m: Model, t: Task, width: int) -> list[Seg]:
@@ -327,7 +330,8 @@ def fork_line(m: Model, t: Task, f: Fork, room: int) -> list[Seg]:
     name = Seg(f"{t.agent}{f.letter} ", f"bold {color_of(t.agent)}" if t.agent else "")
     if f.state != "running":
         glyph, style = FORK_GLYPH.get(f.state, ("·", "grey50"))
-        said = f.state + (f" · {f.lines} lines" if f.state == "passed" and f.lines else "")
+        said = FORK_WORD.get(f.state, f.state)
+        said += f" · {f.lines} lines" if f.state == "passed" and f.lines else ""
         said += f": {f.why}" if f.why and f.state != "passed" else ""
         return [name, Seg(f"{glyph} ", style), Seg(fit(said, room - span([name]) - 2), style)]
     quiet = m.quiet(f)
