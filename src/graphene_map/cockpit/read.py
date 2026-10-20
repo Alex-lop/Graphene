@@ -23,7 +23,7 @@ from .. import settings as S
 from .. import views as V
 from ..tui import precheck
 from .look import short
-from .model import Ev, Model, Question, Task
+from .model import Ev, Fork, Model, Question, Task
 
 # what a person reads a leaf as (plan.reads), and the state the cockpit draws it in
 STATE = {
@@ -90,6 +90,8 @@ def read(
     m.names = numbers(store)  # agent 1, agent 2: the tasks in the order they were first taken
     m.protected = S.protected(store) + S.readonly(store)
     m.first = P.plan_first(store)
+    forks = store.meta("settings:forks") or ""  # the setting `graphene config edit` keeps (1 unset)
+    m.forks = int(forks) if forks.isdigit() else 1
     chosen = (store.meta("executor") or "").split()  # what R starts, when `graphene init` chose it
     m.executor = Path(chosen[0]).name if chosen else ""
     leaves = [n for n in nodes if not kids.get(n.id)]
@@ -120,6 +122,8 @@ def read(
         t.agent = m.names.get(t.id, "")  # a task taken once keeps its number, back, ready again and done
         last = ended(store, t.id) if t.state in ("done", "review") else None
         proofs(t, node, last, every, t.state == "done" and signed_off(store, t.id))
+        if t.state in LIVE or t.state == "done":
+            forks_of(store, t)  # its hold forked: the forks, and the one kept
         if t.state in LIVE:
             live(store, m, t, node)
         if t.state == "running":
@@ -213,37 +217,26 @@ def live(store, m: Model, t: Task, node: P.Node) -> None:
     """What the agent holding this task is doing, from the rows logged in the attempt going now (after the
     leaf's last `started` or `attempt` row, as `meter.going` reads it: an earlier hold's or attempt's are
     not this one's, and the gate's `denied` rows carry no attempt number): what it read, edited, ran and said
-    (`did`, `said`), and the writes the gate stopped (`denied` with a path)."""
+    (`did`, `said`), and the writes the gate stopped (`denied` with a path). A hold that forked has an
+    agent a fork, each read the same way from its own rows (`fork_moves`)."""
     t.started = epoch(node.started_at)
     t.hears = "claude" in (node.executor or "claude")  # only a hooked Claude Code session is told mid-run
     t.agent = m.agent_name(t.id)
     sign = R.live(store, node, m.clock)  # the meter's last row, the hooks' last call, the log's age
     t.idle = sign["idle"]
     rows = recent(store, t.id, ("started", "attempt", "did", "said", "denied"))
+    if t.forks:  # the hold forked: each fork's rows are its own, from the hold's `started` on
+        held = max((k for k, r in enumerate(rows) if r["kind"] == "started"), default=-1)
+        fork_moves(m, t, node, rows[held + 1 :])
+        touched_by_git(store, m, t, node)
+        return
     begun = max((k for k, r in enumerate(rows) if r["kind"] in ("started", "attempt")), default=-1)
     tried = [epoch(r["timestamp"]) for r in rows[begun : begun + 1] if r["kind"] == "attempt"]
     since = max([t.started, *tried])  # when the attempt going now began: its hold, or a run's retry in it
     rows = rows[begun + 1 :]
     if not any(r["kind"] == "did" for r in rows) and node.session_id:
         calls(store, t, node, since)  # no stream: a person's own Claude Code session, seen by its hooks only
-    for r in rows:
-        d, at = r["detail"], epoch(r["timestamp"])
-        if r["kind"] == "did":
-            kind = KINDS.get(d.get("verb", ""), "run")
-            target = str(d.get("target") or "")
-            shell = kind == "run"  # a command is words; anything else names a file
-            if shell and OURS.search(target):
-                continue
-            t.events.append(Ev(at, kind, text=target if shell else "", path="" if shell else target))
-            if kind == "edit" and target:
-                t.touched[target] = at
-        elif r["kind"] == "said":
-            t.events.append(Ev(at, "said", text=" ".join(str(d.get("text") or "").split())[:SAYS]))
-        elif r["kind"] == "denied" and d.get("path"):
-            t.events.append(Ev(at, "stop", path=str(d["path"])))
-            t.touched.pop(str(d["path"]), None)  # a write it stopped did not happen: git says if another did
-            if not P.in_scope(str(d["path"]), node.scope):  # a scope that has taken it in has not stopped it
-                t.stopped.append((str(d["path"]), at))
+    moves(rows, t, node)
     # no rows and no calls: the last thing its log says, unless the rows above left it out: the agent's own
     # `graphene node` command, or the session's newest call when that is from before this attempt
     last = " ".join(str(sign["last"] or "").split())[:SAYS]
@@ -252,6 +245,81 @@ def live(store, m: Model, t: Task, node: P.Node) -> None:
         if all(epoch(c["timestamp"]) >= since for c in newest):
             t.events.append(Ev(m.clock - (t.idle or 0), "said", text=last))
     touched_by_git(store, m, t, node)
+
+
+def moves(rows: list[dict], into: Task | Fork, node: P.Node) -> None:
+    """One agent's moves from its rows, oldest first, onto ``into``: what it read, edited, ran and said
+    (`did`, `said`), and the writes the gate stopped (`denied` with a path)."""
+    for r in rows:
+        d, at = r["detail"], epoch(r["timestamp"])
+        if r["kind"] == "did":
+            kind = KINDS.get(d.get("verb", ""), "run")
+            target = str(d.get("target") or "")
+            shell = kind == "run"  # a command is words; anything else names a file
+            if shell and OURS.search(target):
+                continue
+            into.events.append(Ev(at, kind, text=target if shell else "", path="" if shell else target))
+            if kind == "edit" and target:
+                into.touched[target] = at
+        elif r["kind"] == "said":
+            into.events.append(Ev(at, "said", text=" ".join(str(d.get("text") or "").split())[:SAYS]))
+        elif r["kind"] == "denied" and d.get("path"):
+            into.events.append(Ev(at, "stop", path=str(d["path"])))
+            into.touched.pop(str(d["path"]), None)  # a write it stopped did not happen: git says if one did
+            if not P.in_scope(str(d["path"]), node.scope):  # a scope that has taken it in has not stopped it
+                into.stopped.append((str(d["path"]), at))
+
+
+def forks_of(store, t: Task) -> None:
+    """The forks of the task's last hold, when it forked: a `Fork` for each letter its `forked` row names, in
+    the order they started, each with the word of its last `fork` row (running until one says otherwise, and
+    running again from an `attempt` row after it: a fork refused tries again, told why, as a leaf does); and
+    the fork kept, from the `picked` row, with the rule's reason and by whom (graphene, or the person). A
+    hold that did not fork leaves both empty."""
+    rows = recent(store, t.id, ("started", "forked", "attempt", "fork", "picked"))
+    held = max((k for k, r in enumerate(rows) if r["kind"] == "started"), default=-1)
+    rows = rows[held + 1 :]
+    forked = next((r["detail"] for r in rows if r["kind"] == "forked"), None)
+    if forked is None:
+        return
+    sessions = forked.get("sessions") or {}
+    t.forks = [Fork(str(x), session=str(sessions.get(x) or "")) for x in forked.get("forks") or []]
+    by = {f.letter: f for f in t.forks}
+    for r in rows:
+        d = r["detail"]
+        f = by.get(str(d.get("fork", "")))
+        if r["kind"] == "fork" and f is not None:
+            f.state = str(d.get("state") or "running")
+            f.why = " ".join(str(d.get("why") or "").split())[:SAYS]
+            f.lines = d.get("lines")
+        elif r["kind"] == "attempt" and f is not None:
+            f.state, f.why = "running", ""
+        elif r["kind"] == "picked":
+            t.kept = (str(d.get("fork") or ""), " ".join(str(d.get("reason") or "").split()),
+                      str(d.get("by") or ""))  # fmt: skip
+
+
+def fork_moves(m: Model, t: Task, node: P.Node, rows: list[dict]) -> None:
+    """Each fork's moves from the rows that are its (`fork` in their detail, or its session on them), after
+    its own last `attempt` row, as `live` reads one agent's: one fork's rows never hide another's. The
+    task's are all of theirs together: its files are the union, its pace and quiet the newest fork's."""
+    by = {f.letter: f for f in t.forks}
+    sessions = {f.session: f for f in t.forks if f.session}
+    for f in t.forks:
+        mine = [r for r in rows
+                if by.get(str(r["detail"].get("fork", ""))) is f or sessions.get(r["session_id"]) is f]
+        tried = [k for k, r in enumerate(mine) if r["kind"] == "attempt"]
+        if tried:
+            f.started = epoch(mine[tried[0]]["timestamp"])
+        if mine:  # its last row, whatever it was, is its last sign of life
+            f.idle = max(0.0, m.clock - max(epoch(r["timestamp"]) for r in mine))
+        moves(mine[tried[-1] + 1 :] if tried else mine, f, node)
+    t.events = sorted((e for f in t.forks for e in f.events), key=lambda e: e.t)
+    for f in t.forks:
+        t.touched |= f.touched
+        t.stopped += f.stopped
+    idles = [f.idle for f in t.forks if f.idle is not None]
+    t.idle = min(idles) if idles else t.idle
 
 
 def proofs(
