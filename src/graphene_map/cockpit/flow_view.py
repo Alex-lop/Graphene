@@ -157,4 +157,6 @@ def build_flow(g: Graph, width: int, selected: str | None) -> tuple[list[Line], 
             else:
                 segs.append(Seg(ch, style, f"select:{nid}" if nid else ""))
         lines.append(Line(segs))
+    while lines and not lines[-1].plain().strip():  # the rows kept under the boxes for back edges, unused
+        lines.pop()
     return lines, lay, note

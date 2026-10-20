@@ -224,6 +224,7 @@ def test_one_task_is_a_box_and_a_double_arrow_into_the_goal_which_counts_it():
     assert lines[0].plain().startswith("  wave 1 · 1 task") and lines[0].plain().rstrip().endswith("goal")
     assert "═▶│ ship it" in text and "└─ 0 of 1 ─┘" in text  # the goal's box, its count on its border
     assert note == "" and set(lay.rects) == {"a"}
+    assert lines[-1].plain().strip()  # the graph ends at its last box: no blank rows under it
 
 
 def test_two_waves_are_two_columns_with_headers_and_the_chain_runs_through_both():
