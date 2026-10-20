@@ -67,3 +67,48 @@ pilot to two tasks, then P to 3 seeds a task (P+ and G keep 5). No Nebius or Cod
   and the write-up says so.
 - The test that discriminates is false done on T3. G's edge there depends on the planner writing a full-suite
   check, so no direction is predicted.
+
+## The second question: forks, written before any number
+
+Written on 20 October 2026 at bbc4d80, before any run of this bench. The tag `held-prereg-1` is not yet cut, so
+it is cut with this section in it. This is a second question with an arm of its own, kept apart from the first:
+nothing above changes for it, and no claim above reads a G3 number. The question: on the same tasks and seeds,
+does G3 claim done while wrong less often than G, and does it land more tasks?
+
+- **G3**: G exactly (the same planner, the same executor, the same cap a session, the same scripted person),
+  with `graphene run --parallel 3 --forks 3`: three agents on each leaf at once, each in its own copy, and the
+  rule in `src/graphene_map/pick.py` keeps one whose check passed. Never `--first`. run.sh runs it; P, P+ and
+  G are untouched.
+- **Metrics.** False done, as above. **Landed**: the run says done and the task's `hidden.py` passes on the
+  final tree (`score.json`'s `landed`); a done that `hidden.py` fails is a false done, never a landing. Escape
+  is printed for G3 beside G's and not judged. Dollars, turns and wall seconds, as above.
+- **Unit and interval.** As above: one run is one task, one seed, one arm; each metric pooled over T1 to T4,
+  5 seeds a task, 20 runs an arm; a Wilson 95% interval on each pooled count; a claim only when the two
+  intervals do not overlap, else "no difference shown".
+- **Claims, G3 against G only.** *G3 false-dones less* if G3's interval lies wholly below G's: with G3 at 0 of
+  20 (upper bound 0.16), G must reach 7 of 20 (lower bound 0.18); 6 of 20 (0.15) is not enough. *G3 lands more*
+  if G3's interval lies wholly above G's: with G3 at 20 of 20 (lower bound 0.84), G may land at most 13 of 20
+  (upper bound 0.82); 14 of 20 (0.85) is not enough. The other way round is *G3 false-dones more* and *G3 lands
+  fewer*. Anything else is *no difference shown*, and RESULTS.md says exactly that. G3 against P+ or P is never
+  a claim and never the headline.
+- **What may be said.** "Forks are better" only where the rule says so, on the metric it says it on, in those
+  words; never from one task's five seeds, and the write-up says it is four tasks on one model. No sentence says
+  forks save tokens, turns or dollars: G3 runs three agents a leaf, so it spends more by construction, and its
+  dollars are printed beside G's with no pass mark. If both metrics show no difference, the README may not say
+  forks land more or lie less.
+- **Spend.** A third of the estimate above is G's: $10 of the $30, $15 of the $45. G3 runs the planner once and
+  three executors a leaf, so a run costs about three times G's less the planner's part: the estimate is $25 for
+  its 20 runs and its pilot. Its ceiling is its own, over the first question's: G3 ceiling $40, Sonnet, Alex's
+  login, the same $3 cap a session on the command line (`graphene run` prints a leaf's worst case: 3 forks x 3
+  attempts x $3 = $27, against G's $9). Cut order: G3 to 3 seeds a task (12 runs, wider intervals, the rule
+  unchanged); past that G3 is not run, and RESULTS.md says so. Nothing of the first question is cut for it.
+- **Order.** After the first question's 60 runs are in, on the same day, the same Claude Code version and the
+  same pinned model id: one G3 pilot run (T2, a seed of its own, printed as pilot and never pooled; it may
+  change only the harness), then G3's 20 runs on the first question's seeds, task by task, seed by seed. G3 is
+  interleaved with nothing: it changes nothing it would be interleaved with, since the runs it is judged against
+  are done before its first run starts. A run is void by the rule above and is redone on the next unused seed.
+- **Predictions, written now.** No direction on landed. On false done, G3's edge, if any, is pick.py's agreement
+  step on T3: forks that write different tests referee each other. Where a leaf's check is the visible tests
+  alone, the forks pass alike and the rule keeps the smaller, which says nothing about `hidden.py`.
+- **At $0.** FAKE=1 runs G3 through run.sh with the stand-in as it runs G, and test_held.py pins that three forks
+  run, one is kept and the row reads as G's. That proves the harness and the scorer, never forks.
