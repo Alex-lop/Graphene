@@ -1375,8 +1375,12 @@ def _ident(tree: Path) -> list[str]:
 
 def _commit(store, tree: Path, node: P.Node) -> list[str]:
     """The leaf's work, committed on its branch in its worktree, with its why in the message.
-    Returns the paths its boundary said had changed."""
-    entry = (store.node_log(node.id, ("finished", "overruled")) or [{"detail": {}}])[-1]["detail"]
+    Returns the paths its boundary said had changed. After the person's `node pick` the branch is that
+    fork's commit already (``pick_fork``): nothing to commit, and what lands is what that fork changed."""
+    last = (store.node_log(node.id, ("finished", "overruled", "picked")) or [{"kind": "", "detail": {}}])[-1]
+    if last["kind"] == "picked":  # after the finish, so the person's: the rule's own comes before it
+        return (P.fork_row(store, node, last["detail"]["fork"]) or {}).get("paths") or []
+    entry = last["detail"]
     paths = entry.get("changed") or []
     why, notes = " > ".join(P.trail(store, node)), P.notes(store, node.id)
     message = f"{node.title}\n\n{node.goal or node.title}\n\n" + (f"Why: {why}\n" if why else "")

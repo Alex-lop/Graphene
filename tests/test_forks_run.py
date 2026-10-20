@@ -372,6 +372,10 @@ def test_a_person_picks_another_fork_of_a_leaf_in_review_and_the_sign_off_lands_
     assert signed.exit_code == 0 and states(repo)["n1"] == DONE, signed.output
     assert (repo / "api.py").read_text().startswith("import os\n") and not (repo / "notes.txt").exists()
     assert "3 forks, kept c" in git(repo, "log", "-1", "--format=%B")
+    with Store.open(repo) as store:  # what landed is c's work, and the record says so, not b's paths
+        [landed] = rows(store, "landed")
+        assert landed["detail"]["paths"] == ["api.py", "notes.txt"]
+        assert landed["detail"]["paths"] == sorted(git(repo, "diff", "--name-only", "HEAD^", "HEAD").split())
     assert git(repo, "worktree", "list").count("\n") == 1 and "graphene/" not in git(repo, "branch")
     after = person("node", "pick", "n1", "b")
     assert after.exit_code == 1, after.output
