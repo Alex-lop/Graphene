@@ -2,11 +2,14 @@
 """Reading a hold that forked into the cockpit's model: a fork each, lettered, with its own moves and its
 verdict, from the rows `graphene run --forks` writes (SPEC section 5), on a store with no engine behind it."""
 
+import subprocess
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
 from test_plan_cli import repo  # noqa: F401  (fixture)
 
 from graphene_map import plan
+from graphene_map.cockpit import read as RD
 from graphene_map.cockpit.read import read
 from graphene_map.plan import Caller
 from graphene_map.store import Store
@@ -97,6 +100,63 @@ def test_a_forks_moves_are_the_ones_after_its_own_last_attempt_and_a_denied_writ
     assert [e.path for e in a.events] == ["api.py"]  # not old.py: that was its attempt 1
     assert [e.path for e in b.events] == ["api.py", "db/x.py"] and [p for p, _ in b.stopped] == ["db/x.py"]
     assert [p for p, _ in t.stopped] == ["db/x.py"] and c.events == [] and c.idle is None
+
+
+def test_a_forks_window_is_its_own_so_another_forks_flood_of_rows_never_hides_it(repo):
+    """The forks shared the leaf's one window of its latest rows: a fork that read 120 files and ran 120
+    commands pushed a quiet fork's attempt, edit and words out of it, so that one showed no file, no move
+    and no quiet at all. A fork's window is its own session's rows."""
+    plan_of(repo)
+    forked(repo, 900)
+    for letter in "abc":
+        row(repo, "attempt", {"attempt": 1, "of": 3}, 890, letter)
+    row(repo, "did", {"attempt": 1, "tool": "Edit", "target": "api.py", "verb": "editing"}, 880, "a")
+    row(repo, "said", {"attempt": 1, "text": "done, running the tests"}, 870, "a")
+    with Store.open(repo) as store:  # b's flood: more rows than a window holds
+        for k in range(RD.ROWS // 2 + 10):
+            for verb, target in (("reading", f"src/f{k}.py"), ("running", f"pytest tests/t{k}.py")):
+                store.log_node("ids", ago(800 - k), "did", "run:claude", SESSIONS["b"], None,
+                               {"attempt": 1, "target": target, "verb": verb, "fork": "b"})  # fmt: skip
+    m = look(repo)
+    t = m.tasks["ids"]
+    a, b, c = t.forks
+    assert [e.path or e.text for e in a.events] == ["api.py", "done, running the tests"]
+    assert list(a.touched) == list(t.touched) == ["api.py"]
+    assert 865 <= m.quiet(a) <= 875 and 885 <= m.clock - a.started <= 895  # its words, its attempt
+    assert len(b.events) == RD.ROWS and c.idle is not None and 885 <= c.idle <= 895
+
+
+@dataclass
+class Forked(plan.Node):
+    """A Node with the engine's hold field: each fork's session, with its letter and its tree. The engine's
+    lane adds it to `plan.Node`; the reader takes it by name, so the lanes merge in any order."""
+
+    forked: dict = field(default_factory=dict)
+
+
+def test_git_is_asked_about_each_forks_own_tree_and_never_the_holds(repo):
+    """The forks work in their own trees (`.graphene/worktrees/<id>.<letter>`) and the hold's tree is
+    untouched: asked about that one, git filled in nothing a fork's rows had lost, and would have counted a
+    change there as the forks'. Each fork's tree is asked about, from the hold's `forked`."""
+    plan_of(repo)
+    forked(repo)
+    trees = {}
+    for letter in "ab":
+        trees[letter] = repo / ".graphene" / "worktrees" / f"ids.{letter}"
+        subprocess.run(["git", "worktree", "add", "-q", "--detach", str(trees[letter])], cwd=repo, check=True)
+    (trees["a"] / "api.py").write_text("def users():\n    return ['a']\n")
+    (trees["b"] / "schema.py").write_text("TABLES = ['b']\n")  # outside its scope, api.py
+    (repo / "notes.py").write_text("# the hold's own tree: no fork wrote here\n")
+    m = look(repo)
+    t = m.tasks["ids"]
+    theirs = {SESSIONS[x]: {"fork": x, "tree": str(trees[x])} for x in "ab"}
+    with Store.open(repo) as store:
+        held = Forked(**plan.to_dict(plan.get(store, "ids")), forked=theirs)
+        RD.touched_by_git(store, m, t, held)
+    a, b, c = t.forks
+    assert list(a.touched) == ["api.py"] and list(b.touched) == ["schema.py"]
+    assert c.touched == {} and sorted(t.touched) == ["api.py", "schema.py"]  # c has no tree; not notes.py
+    assert t.outside == ["schema.py"]
 
 
 def test_the_fork_kept_is_read_from_the_picked_row_in_review_and_done(repo):

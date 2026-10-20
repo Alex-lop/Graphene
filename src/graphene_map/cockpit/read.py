@@ -34,8 +34,8 @@ STATE = {
 FOLD_AFTER = 8  # more finished tasks than this, and the rows keep the latest few: the rest are counted
 KEEP_DONE = 4
 FILES_EVERY = 30.0  # seconds between looks at what git tracks: a big repository's list is not free
-GIT_EVERY = 5.0  # seconds between asks of git, for each running leaf: it costs three of its commands
-ROWS = 200  # the latest rows of a leaf's log the cockpit reads each look: a run's log can be long
+GIT_EVERY = 5.0  # seconds between asks of git, for each running leaf or fork: it costs three of its commands
+ROWS = 200  # the latest rows of a leaf's log (a fork's own) read each look: a run's log can be long
 SAYS = 400  # characters kept of what an agent said or ran: the screen cuts it to its width, with an ellipsis
 LIVE = ("running", "review", "came back")  # the tasks whose agent the rows are read for
 KINDS = {"reading": "read", "editing": "edit", "running": "run", "searching": "search"}  # a did row's verb
@@ -203,12 +203,14 @@ def epoch(stamp: str | None) -> float:
         return 0.0
 
 
-def recent(store, node_id: str, kinds: tuple[str, ...], limit: int = ROWS) -> list[dict]:
-    """The latest rows of these kinds on a leaf, oldest first, their detail as a dict."""
+def recent(store, node_id: str, kinds: tuple[str, ...], limit: int = ROWS, session: str = "") -> list[dict]:
+    """The latest rows of these kinds on a leaf, oldest first, their detail as a dict; ``session``: only the
+    ones that session wrote (a fork's own window: another fork's flood of rows never pushes its out)."""
+    whose = " AND session_id = ?" if session else ""
     rows = store.conn.execute(
-        f"SELECT * FROM node_log WHERE node_id = ? AND kind IN ({', '.join('?' for _ in kinds)}) "
+        f"SELECT * FROM node_log WHERE node_id = ? AND kind IN ({', '.join('?' for _ in kinds)}){whose} "
         "ORDER BY id DESC LIMIT ?",
-        (node_id, *kinds, limit),
+        (node_id, *kinds, *([session] if session else []), limit),
     ).fetchall()
     return [{**dict(r), "detail": json.loads(r["detail"]) if r["detail"] else {}} for r in reversed(rows)]
 
@@ -218,18 +220,17 @@ def live(store, m: Model, t: Task, node: P.Node) -> None:
     leaf's last `started` or `attempt` row, as `meter.going` reads it: an earlier hold's or attempt's are
     not this one's, and the gate's `denied` rows carry no attempt number): what it read, edited, ran and said
     (`did`, `said`), and the writes the gate stopped (`denied` with a path). A hold that forked has an
-    agent a fork, each read the same way from its own rows (`fork_moves`)."""
+    agent a fork, each read the same way from its own session's rows (`fork_moves`)."""
     t.started = epoch(node.started_at)
     t.hears = "claude" in (node.executor or "claude")  # only a hooked Claude Code session is told mid-run
     t.agent = m.agent_name(t.id)
     sign = R.live(store, node, m.clock)  # the meter's last row, the hooks' last call, the log's age
     t.idle = sign["idle"]
-    rows = recent(store, t.id, ("started", "attempt", "did", "said", "denied"))
-    if t.forks:  # the hold forked: each fork's rows are its own, from the hold's `started` on
-        held = max((k for k, r in enumerate(rows) if r["kind"] == "started"), default=-1)
-        fork_moves(m, t, node, rows[held + 1 :])
+    if t.forks:  # the hold forked: each fork's rows are its own session's, a window each
+        fork_moves(store, m, t, node)
         touched_by_git(store, m, t, node)
         return
+    rows = recent(store, t.id, ("started", "attempt", "did", "said", "denied"))
     begun = max((k for k, r in enumerate(rows) if r["kind"] in ("started", "attempt")), default=-1)
     tried = [epoch(r["timestamp"]) for r in rows[begun : begun + 1] if r["kind"] == "attempt"]
     since = max([t.started, *tried])  # when the attempt going now began: its hold, or a run's retry in it
@@ -299,15 +300,14 @@ def forks_of(store, t: Task) -> None:
                       str(d.get("by") or ""))  # fmt: skip
 
 
-def fork_moves(m: Model, t: Task, node: P.Node, rows: list[dict]) -> None:
-    """Each fork's moves from the rows that are its (`fork` in their detail, or its session on them), after
-    its own last `attempt` row, as `live` reads one agent's: one fork's rows never hide another's. The
-    task's are all of theirs together: its files are the union, its pace and quiet the newest fork's."""
-    by = {f.letter: f for f in t.forks}
-    sessions = {f.session: f for f in t.forks if f.session}
+def fork_moves(store, m: Model, t: Task, node: P.Node) -> None:
+    """Each fork's moves from its own session's rows (the `forked` row names the sessions; a window each, so
+    one fork's flood of rows never pushes another's out), after its own last `attempt` row, as `live` reads
+    one agent's. The task's are all of theirs together: its files are the union, its pace and quiet the
+    newest fork's."""
     for f in t.forks:
-        mine = [r for r in rows
-                if by.get(str(r["detail"].get("fork", ""))) is f or sessions.get(r["session_id"]) is f]
+        kinds = ("attempt", "did", "said", "denied")
+        mine = recent(store, t.id, kinds, session=f.session) if f.session else []
         tried = [k for k, r in enumerate(mine) if r["kind"] == "attempt"]
         if tried:
             f.started = epoch(mine[tried[0]]["timestamp"])
@@ -411,24 +411,47 @@ def touched_by_git(store, m: Model, t: Task, node: P.Node) -> None:
     every few seconds for each leaf, and at once when it is taken again or its scope changes (a widen must
     not leave the file it gave flagged); and the ones outside its scope as `node done` counts them
     (`plan.outside_scope`: not what a leaf running beside it in the checkout may write, nor what a run
-    landed)."""
+    landed). A hold that forked is asked about each fork's own tree (`Node.forked`, the hold's field: a
+    fork's session -> its tree), never its own, which no fork writes; the task's files are the union."""
     if not (node.checkout and node.base_sha):
         t.outside = [p for p in t.touched if not P.in_scope(p, node.scope)]
         return
+    if not t.forks:
+        t.touched, t.outside = asked(store, m, node, t.id, node.checkout, node.dirty_at_start, t.touched)
+        return
+    forked = getattr(node, "forked", None) or {}  # the engine's field: it lands with its lane
+    t.touched, t.outside = {}, []
+    for f in t.forks:
+        tree = (forked.get(f.session) or {}).get("tree")
+        if tree:  # cut clean from the hold's base: nothing was dirty when it began
+            f.touched, outside = asked(store, m, node, f"{t.id}.{f.letter}", tree, {}, f.touched)
+        else:  # no tree to ask about: its rows' word, as a leaf with no checkout
+            outside = [p for p in f.touched if not P.in_scope(p, node.scope)]
+        t.touched |= f.touched
+        t.outside += [p for p in outside if p not in t.outside]
+
+
+def asked(
+    store, m: Model, node: P.Node, key: str, tree: str, dirty: dict[str, str | None],
+    touched: dict[str, float],
+) -> tuple[dict[str, float], list[str]]:
+    """What git says ``tree`` has changed since the hold began (``dirty``: what already was), with what its
+    own rows said was edited (``touched``), asked at most every few seconds (``key`` names the answer in
+    `Model.seen`): the files and when, and the ones outside the scope."""
     hold = (node.started_at, tuple(node.scope))  # what git's answer was for
-    when, files, outside, asked = m.seen.get(t.id, (0.0, [], [], None))
-    if asked != hold or m.clock - when >= GIT_EVERY or when > m.clock:
+    when, files, outside, was = m.seen.get(key, (0.0, [], [], None))
+    if was != hold or m.clock - when >= GIT_EVERY or when > m.clock:
         try:
-            files = P.changed_since(node.checkout, node.base_sha, node.dirty_at_start)
+            files = P.changed_since(tree, node.base_sha, dirty)
         except (P.Refused, OSError, subprocess.TimeoutExpired):
-            files = list(t.touched)
-        both = sorted({*files, *t.touched})
+            files = list(touched)
+        both = sorted({*files, *touched})
         try:
             outside = P.outside_scope(store, node, both)
         except (P.Refused, OSError, subprocess.TimeoutExpired):
             outside = [p for p in both if not P.in_scope(p, node.scope)]
-        m.seen[t.id] = (m.clock, files, outside, hold)
-    both = sorted({*files, *t.touched})  # what git sees, and what its own record says it edited
-    t.touched = {p: t.touched.get(p, m.clock) for p in both}
-    t.outside = [p for p in both if p in outside or (p not in files and not P.in_scope(p, node.scope))]
+        m.seen[key] = (m.clock, files, outside, hold)
+    both = sorted({*files, *touched})  # what git sees, and what its own record says it edited
+    out = [p for p in both if p in outside or (p not in files and not P.in_scope(p, node.scope))]
+    return {p: touched.get(p, m.clock) for p in both}, out
 

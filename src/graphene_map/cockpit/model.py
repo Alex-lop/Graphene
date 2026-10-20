@@ -111,8 +111,9 @@ class Model:
         self.banner = ""  # what the top row says it is, when it is not "your plan" (a replay)
         self.feed: list[tuple[float, str]] = []
         self.names: dict[str, str] = {}  # a task -> the number its agent goes by, in the order of the log
-        # a leaf -> when git was asked, the files it said, which of them are outside the leaf's scope, and the
-        # hold and the scope it was asked for: a leaf taken again or widened is asked again
+        # a leaf (or a fork of one, `id.letter`) -> when git was asked, the files it said, which of them are
+        # outside the leaf's scope, and the hold and the scope it was asked for: a leaf taken again or widened
+        # is asked again
         self.seen: dict[str, tuple[float, list[str], list[str], tuple]] = {}
         self._allowed: dict[tuple[str, tuple[str, ...]], int] = {}
 
