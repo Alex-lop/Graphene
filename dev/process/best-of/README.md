@@ -43,7 +43,10 @@ the test that failed before it.
 claude:haiku --max-usd 7`. Three Claude Code agents, each judged in its own copy by its own `graphene node done`;
 the rule kept a (`10 lines against 12`); one merge, `Executor: claude claude-haiku-5-5 · 3 forks, kept a`; three
 refs under `refs/graphene/forks/stats/`; no worktree left; $0.0173 at list price. `run-under-cap.txt`: the
-first try, with `--max-usd 1.50`, started nothing and did not say why (now it does).
+first try, with `--max-usd 1.50`, started nothing and did not say why (now it does). `run-first-pick.txt`: a
+task that waits for a sign-off, run with `--first --with claude:haiku --with claude:sonnet`: Haiku's fork a passed
+first and was kept, Sonnet's b was stopped with its work on its ref; the person's `graphene node pick mean b` made
+the branch b's work, and `graphene node signoff mean` landed it (`2 forks, kept b`); $0.0675.
 
 ## Not measured
 
