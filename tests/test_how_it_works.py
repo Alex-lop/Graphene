@@ -8,7 +8,10 @@ with an example, `review: every` and `notify`; raised again after what it said t
 would start, a task of yours is done on your word, and proposals ring once a batch; raised after what it
 said twice (a told note, an attempt's reads, the goal's command) was cut. It was 3,600 until an adversarial
 pass at the write gate (19 October) found what the hook does not read before a write; raised, since a limit
-admitted is worth its words."""
+admitted is worth its words. It was 3,700 until forks (20 October): the reference gained a section on them,
+with the rule that keeps one in its five steps and the commands around it, the graph's new direction and the
+gate that fails closed; raised to 4,300, past the 4,000 the night's brief allowed, after what it said twice
+(the meter's clocks, `node show`'s attempt line) was said once and the section still did not fit under it."""
 
 import re
 from pathlib import Path
@@ -17,13 +20,13 @@ import pytest
 from test_plan_cli import agent, repo  # noqa: F401  (repo: a fixture)
 
 HOW = (Path(__file__).resolve().parents[1] / "docs/HOW_IT_WORKS.md").read_text(encoding="utf-8")
-SECTIONS = ["The plan", "The board", "The views", "Plan first", "Ask", "Run", "The executors",
+SECTIONS = ["The plan", "The board", "The views", "Plan first", "Ask", "Run", "Forks", "The executors",
             "The meter", "Where each mechanism ends", "The record", "The settings", "Privacy", "FAQ",
             "The rest"]  # fmt: skip
 
 
 def test_it_is_under_the_cap():
-    assert len(HOW.split()) < 3700
+    assert len(HOW.split()) < 4300
 
 
 def test_every_section_is_there_in_order():
@@ -62,18 +65,20 @@ def test_a_sign_off_lands_as_the_reference_says_checked_on_its_merge_and_one_at_
 
 def test_the_views_give_each_key_the_verb_the_cockpit_runs():
     """The night's words (18 October): one verb for each key, on the screen and here. The reference said `w`
-    gives, `x` hands it back, `Enter` takes and `i` opens it up, and had no `A`, no panes and no `Esc`."""
+    gives, `x` hands it back, `Enter` takes and `i` opens it up, and had no `A`, no panes and no `Esc`. On 20
+    October the graph turned to flow into the goal, and `f` forks a task: the reference says both."""
     from graphene_map.cockpit import app as A
     from graphene_map.cockpit import details as D
 
-    verbs = {"t": "tell", "w": "allow", "x": "back", "A": "accept-all", "i": "details"}
+    verbs = {"t": "tell", "w": "allow", "x": "back", "A": "accept-all", "i": "details", "f": "fork"}
     assert all(A.KEYS_TO_VERBS[key] == verb for key, verb in verbs.items())
     assert [D.KEYS[k] for k in "1234c"] == [*D.PANES, "changes"] and A.TABS == ("cockpit", "graph", "map")
     views = " ".join(HOW.split("## The views")[1].split("## ")[0].split())
     said = ("opens the cockpit (`c`)", "`⏎` its own move (accept, take the default, try again, sign off)",
             "`A` accept every proposal", "`t` tell its agent a line", "`w` widen the scope",
-            "`x` hand back a running task or reopen a finished one", "`i` details (panes `1` to `4`; `c`",
-            "`g` is the graph from your goal down", "`m` the map",
+            "`x` hand back a running task or reopen a finished one",
+            "`f` fork it (N agents at once, the check", "`i` details (panes `1` to `4`; `c`",
+            "`g` is the graph: what must land before what, flowing into your goal", "`m` the map",
             "`Tab` goes on, `Esc` comes back")  # fmt: skip
     for words in said:
         assert words in views, words

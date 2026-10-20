@@ -38,8 +38,8 @@ agent from you by the variables its CLI sets: `CLAUDECODE`, `CLAUDE_CODE_SESSION
 
 `graphene plan --text` prints the plan as text; `graphene plan edit` opens it in your editor; an agent proposes
 with `graphene plan propose -`. `-` is in the plan and `?` a proposal, indentation is the tree, and `[id]`
-keeps an edit on its node; under a leaf, `scope:`, `check:`, `needs:`, `owner:` and `signoff:` are its contract,
-and any other line is its goal. The board comes first:
+keeps an edit on its node; under a leaf, `scope:`, `check:`, `needs:`, `owner:`, `signoff:` and `forks:` are its
+contract, and any other line is its goal. The board comes first:
 
 ```
 goal: customers download their invoices as PDF
@@ -98,9 +98,11 @@ sign-off or a stopped write rings the terminal, with a desktop notice saying why
 The key bar says what the keys do to the selected row: `⏎` its own move (accept, take the default, try again,
 sign off), `A` accept every proposal, `t` tell its agent a line (a Claude Code session hears it with its next
 write or command; a task nobody is on yet reads it when it starts), `w` widen the scope to the path the gate
-stopped, `x` hand back a running task or reopen a finished one, `i` details (panes `1` to `4`; `c` there is the
-diff). `g` is the graph from your goal down, `m` the map of the folders each task may write, its lens following
-the plan's stage until `v` turns it. `Tab` goes on, `Esc` comes back, `?` lists every key and what the marks mean.
+stopped, `x` hand back a running task or reopen a finished one, `f` fork it (N agents at once, the check keeps
+one), `i` details (panes `1` to `4`; `c` there is the diff). `g` is the graph: what must land before what,
+flowing into your goal at the right (columns are waves, sub-goals lanes, the longest chain double); `m` the map
+of the folders each task may write, its lens following the plan's stage until `v` turns it. `Tab` goes on,
+`Esc` comes back, `?` lists every key and what the marks mean.
 
 `--classic` (or a `--view`) opens the older screen: `graphene plan`'s outline, a row a node with its state's word
 (∅ after a title: its check passes at the base, or fails outside its scope). `Tab` there, or `graphene plan
@@ -108,9 +110,8 @@ the plan's stage until `v` turns it. `Tab` goes on, `Esc` comes back, `?` lists 
 
 - `tree` (`view_tree.py`) draws the plan top-down; too wide, it drops the titles, folds finished sub-goals, then
   lists each sub-goal's leaves down.
-- `dag` (`view_dag.py`) draws the leaves left to right by their `needs`, the critical path bold.
-- `time` (`view_time.py`) draws a lane for each held leaf, under one for your moves; a cell is what its executor
-  mostly did then.
+- `dag` (`view_dag.py`) draws the leaves left to right by their `needs`, the critical path bold; `time`
+  (`view_time.py`) a lane for each held leaf under one for your moves, a cell what its executor mostly did then.
 
 ## Plan first
 
@@ -152,7 +153,7 @@ If every answer is refused, the last proposal is kept and the commands that add 
    refused, the executor tries again, up to three attempts;
 4. commits the leaf's paths on its branch (`--no-verify`: your pre-commit and commit-msg hooks skip it) and merges
    it `--no-ff` into the branch you have checked out (your merge hooks run). The merge's message says what landed:
-   the check and its result, the executor, its attempts and dollars, and the note a reopened leaf was sent back with.
+   the check and its result, the executor, attempts and dollars, and a reopened leaf's note.
    If other leaves landed since this one was cut, its check and theirs run on the merge first; one that
    fails leaves it in review. A leaf that needs a sign-off, or every leaf under `review: every`, is committed on
    its branch and waits in review: `⏎` in the cockpit, or `graphene node signoff`, makes the merge, checked the
@@ -161,9 +162,9 @@ If every answer is refused, the last proposal is kept and the commands that add 
 The run's first line says where it lands, with what, how wide and under what cap; its second says the worst case
 (leaves, attempts, the cap) or that the executor has no cap. `--max-usd N` starts nothing past N dollars (each attempt
 is held at its worst case, then settled at what it spent).
-Then ready leaves' checks run at the base: one that passes there tests nothing; one whose runner is missing cannot
-run here; an editable install a check would import is named; a reopened leaf's, which passed when it landed, is said
-so. Each is a warning, said before the leaf starts anyway (`--no-precheck` skips them).
+Then each ready leaf's check runs at the base, and a warning names one that passes there (it tests nothing), a
+runner that is missing, an editable install it would import, or a reopened leaf's that passed when it landed;
+the leaf starts anyway (`--no-precheck` skips them).
 
 **Done** is the gate. Graphene asks git what changed since the leaf started; a path outside the scope is refused. Then
 it runs the check in a fresh worktree of the leaf's state, so nothing the check writes lands in yours. If nothing in
@@ -183,6 +184,45 @@ once you widen it, reopen it, or press `⏎` on it.
 
 **What the scopes cost.** A path has one writer, and a check runs only what its leaf owns or what exists at the
 base: that caps the width.
+
+## Forks
+
+A leaf can run as several agents at once, each in a copy of its own; its check keeps one. `forks: 3` under the
+leaf in `graphene plan edit` (or `graphene node set ID --forks 3`), `graphene run --forks 3` for a run, or
+`forks: 3` in `graphene config edit` for every leaf: the leaf's number counts first, then the run's, then the
+setting; never fewer than the `--with`s; 8 at most. A leaf with no check runs as one agent; forks with a
+sign-off alone, and `--here`, are refused. `--with` more than once gives each fork its executor, round robin;
+`claude:MODEL` and `codex:MODEL` name a model.
+
+A fork is a worktree, `.graphene/worktrees/<id>.<letter>`, with its own session, attempts and meter rows, told
+`This is fork b of 3`. It is held as a leaf is, in its own copy alone (with Claude Code, a write into the leaf's
+tree, another fork's copy or your checkout is refused): its `graphene node done` judges its own tree and changes
+no state, its `release` is its giving up, what you tell the task reaches each fork, and its tree is judged as it
+stands when its executor ends.
+
+Then the rule in `src/graphene_map/pick.py`, written before any fork ran, keeps one. Only a fork whose check
+passed, inside its scope, can be kept; each step breaks only the ties of the step before, and the reason names
+the step:
+
+1. agreement: it passes the most of the other passing forks' tests (its test files laid over another's tree,
+   under the leaf's check; a fork's own tests count for nobody): `passes a's tests (a and c fail b's)`;
+2. the check left alone: it changed no file its check ran at the base: `left the check's own files as they were
+   (c changed tests/test_ids.py)`;
+3. smaller: the fewest lines changed outside tests: `2 lines against 11`;
+4. cheaper: the fewest dollars, to the cent; no meter, no step: `$0.52 against $0.61`;
+5. sooner: `finished first`.
+
+The run says `n1 kept b of 3: 2 lines against 11`, copies that fork's changes inside the scope into the leaf's
+tree and finishes it there once, so it lands as any leaf does (the merge says `3 forks, kept b`); `--first`
+keeps the first fork whose check passes and stops the rest; none passed, the leaf comes back with each fork's
+reason. What each fork changed stays on `refs/graphene/forks/<id>/<letter>`, and `graphene node diff ID --fork
+c` prints it; on a leaf in review, `graphene node pick ID c` makes its branch fork c's work, and the sign-off
+lands it. The worst-case line multiplies by the forks (`1 leaf x 3 forks x 1 attempt x $2 = $6`).
+
+In `graphene watch`, `f` on a task still to do sets `forks: N` (the setting's number when it is 2 or more, else
+3) and runs it; its row says `3 forks` and opens to a line a fork; once one landed, a dim line says `kept b ·
+<the reason>`; in review the digits pick another (`1-3 pick`); the record pane has the forks table; the graph's
+box says `3 ×3` while they run.
 
 ## The executors
 
@@ -211,28 +251,29 @@ It logs rows on the leaf: `usage` for each turn (model, tokens, dollars at list 
 `said` for what the agent says, and `ended` with the exit and seconds.
 Claude Code's final report settles the dollars to what it says it cost. A Codex model with no list price says so.
 
-The classic watch shows these on a running leaf's row, with two clocks: the agents' (how many run, their minutes,
-the plan's dollars) and yours (your moves and their minutes).
+The classic watch shows them on a running leaf's row.
 
 **The bill line**: `graphene run` ends with one line, for every executor:
 `run: 3 done · agents 41m, $2.8700 at list price · 2 of 3 at once · you: 4 moves, 2m`. `2 of 3 at once`: three
 leaves ran, at most two together. With no meter, the dollars say "no meter". `graphene plan log` keeps the line as a
 row.
 
-`graphene node show` lists each attempt: executor, model, time, turns, tokens, dollars, exit and, with Claude
-Code, the cache it wrote and read. A Claude Code executor is seen by the
-hooks and by its stream: for the meter the stream wins, for the gate the hooks do, so a refused shell write may
-count twice.
+A Claude Code executor is seen by the hooks and by its stream: for the meter the stream wins, for the gate the
+hooks do, so a refused shell write may count twice.
 
 ## Where each mechanism ends
 
 - A script that opens files itself, or a write through an MCP server, is not seen by the hooks. Git catches both at
   `done`, but only while a leaf is held.
-- A hook that crashes or times out lets the call through: the vendor's rule.
+- A hook that crashes or times out lets the call through on a Claude Code before 2.1.295, or where `graphene
+  init` ran from a script: the vendor's rule. From 2.1.295, `init` at a terminal makes the gate fail closed
+  (`"onFailure": "block"`) and says so. A call the hook cannot judge is refused either way (`Graphene could not
+  judge this call …`), with its error logged.
 - The hook reads a shell command as written, not as bash runs it: a write after a `#` comment line, to a target
   in a variable or a glob, after a `cd` it cannot follow, through a link in the scope that leads out of it, or
   from a directory that is a checkout of its own is not seen before it happens. Git finds each at `done`. The
-  other way, a quoted `>` (a `grep` pattern) reads as a redirect and is refused.
+  other way, a quoted `>` (a `grep` pattern) reads as a redirect and is refused. A target outside the repository
+  (`> /tmp/pytest.log`) is nobody's to judge; the rest still is.
 - "Only a person" rests on the environment: an agent that unsets its CLI's variables passes for you.
 - The store is a file; a script that writes it directly is neither stopped nor noticed.
 - What git ignores, nobody audits: an executor can write anything under an ignored directory.
@@ -261,10 +302,12 @@ count twice.
 ## The record
 
 `graphene node show ID` prints a leaf's contract and then its record: each time it was held (who, when,
-how it ended); what changed, from git, and the commit that landed it, with the `git revert -m 1` that takes it back
-(`graphene node diff ID` prints the diff); its attempts, from the meter, with the agent's last words whole; the writes
-the hooks refused and, apart from them, the commands the executor was refused; the check's result and its last line,
-whether it also passed at the base, and a file the check runs that the leaf changed; and your moves on it. `graphene plan record` opens with one row a leaf: what it changed, where it landed, what it cost. It works for any executor.
+how it ended; forked, `forked 3 ways · kept b: …` and a line a fork); what changed, from git, and the commit
+that landed it, with the `git revert -m 1` that takes it back (`graphene node diff ID` prints the diff); its
+attempts, from the meter, with the agent's last words whole; the writes the hooks refused and, apart from them,
+the commands the executor was refused; the check's result and its last line, whether it also passed at the
+base, and a file the check runs that the leaf changed; and your moves on it. `graphene plan record` opens with
+one row a leaf: what it changed, where it landed (`3 forks, kept b`), what it cost. It works for any executor.
 
 Claude Code's hooks add one thing: which changed path traces to a recorded write. Without them every path is graded
 "to git alone"; a count that cannot be supported says "not computed" and why.
@@ -285,6 +328,7 @@ reads no transcript.
 | `board: auto\|on` | When the board shows |
 | `review: off\|every` | `every`: a task whose check passes waits for your sign-off before it lands |
 | `notify: on\|off` | Whether `graphene watch` rings, with a desktop notice where the terminal shows one, when something new needs you |
+| `forks: 1\|2\|3\|4\|5\|6\|7\|8` | Agents at once on each leaf that says nothing itself; its check keeps one |
 
 `graphene config` also names the planner, the executor and plan first.
 
@@ -308,15 +352,16 @@ takes the hooks out, which ends the recording; what they recorded stays until yo
 
 `graphene --help` lists nine commands. These work too, and `--help` after any of them says more.
 
-- `graphene demo --cheat` plays a script that tries seven ways round the locks against the real hook, git and check:
-  six refused, one flagged, at $0. A script, not a model. `graphene demo --live` replays a live run on Nemotron
-  through Token Factory (9 October), as it ran.
+- `graphene demo --cheat` plays a script, not a model, that tries seven ways round the locks against the real hook,
+  git and check: six refused, one flagged, at $0. `graphene demo --live` replays a live run on Nemotron through
+  Token Factory (9 October), as it ran.
 - `graphene plan prompts leaf|strict` sets what a prompt typed into a session means.
 - `graphene plan ack` makes the uncommitted changes no leaf made yours.
 - `graphene node start <id>` takes a node and prints its contract.
 - `graphene node done <id>` finishes a leaf. One whose owner is you is done on your word, once its check passes.
 - `graphene node signoff <id>` signs off a node that waits for a person.
 - `graphene node reopen <id>` sends a finished node back, with what is wrong.
+- `graphene node pick <id> <letter>` keeps another fork of a leaf in review, for its sign-off.
 - `graphene node split <id>` asks the planner to cut a leaf into smaller leaves.
 - `graphene board park <id>` sets an item aside, told to nobody; `graphene board unpark <id>` opens it again.
 - `graphene talk why|split|merge|another` asks the planner about a node.
