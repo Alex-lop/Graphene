@@ -17,6 +17,9 @@ STRING_CAP = 8 * 1024  # a recorded string longer than this keeps its first and 
 KEEP = 4 * 1024
 CONTENT_CAP = 2 * 1024 * 1024
 SCHEMA_VERSION = 6  # a hook-recorded session may outlive its transcript: migrate in place, never rebuild
+# what an open brings an older store up to: 6 adds no table, and is stamped by the first node saved with forks
+# (``put_node``), so a store that never forked is one a graphene before forks still reads
+OPENED = 5
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS sessions (
@@ -149,8 +152,9 @@ MIGRATIONS: dict[int, tuple[str, ...]] = {
     # leaf was the person's at once), so it becomes auto. An older graphene refuses the store in
     # words instead of reading auto as never set.
     5: ("UPDATE plan_meta SET value = 'auto' WHERE key = 'plan_first' AND value = 'on'",),
-    # 6: no table changes. A node gained `forks` (its contract) and `forked` (its hold), and the settings
-    # `forks`; the number goes up so that an older graphene refuses the store in words.
+    # 6: no table changes. A node gained `forks` (its contract) and `forked` (its hold): an older graphene
+    # cannot read such a node, so the first one saved stamps 6 (``put_node``), and the older one refuses
+    # the store in words instead of failing on it. Until then a store opened here stays 5.
     6: (),
 }
 
@@ -291,7 +295,7 @@ class Store:
             self.conn.execute("PRAGMA synchronous=NORMAL")
             if self._version() > SCHEMA_VERSION:
                 raise StaleStore("newer")
-            if self._version() < SCHEMA_VERSION:
+            if self._version() < OPENED:
                 self._migrate()
         except sqlite3.DatabaseError as exc:
             self.conn.close()
@@ -316,10 +320,10 @@ class Store:
                 for statement in SCHEMA.split(";"):
                     if statement.strip():
                         self.conn.execute(statement)
-            for step in range(max(version, 1) + 1, SCHEMA_VERSION + 1):
+            for step in range(max(version, 1) + 1, OPENED + 1):
                 for statement in MIGRATIONS[step]:
                     self.conn.execute(statement)
-            self.conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+            self.conn.execute(f"PRAGMA user_version = {max(version, OPENED)}")
         except BaseException:
             self.conn.execute("ROLLBACK")
             raise
@@ -565,6 +569,8 @@ class Store:
         return json.loads(row[0]) if row else None
 
     def put_node(self, node: dict) -> None:
+        if ("forks" in node or "forked" in node) and self._version() < SCHEMA_VERSION:
+            self.conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")  # a node older ones cannot read
         self.conn.execute(
             """INSERT INTO nodes (id, seq, state, session_id, data)
                VALUES (?, (SELECT COALESCE(MAX(seq), 0) + 1 FROM nodes), ?, ?, ?)

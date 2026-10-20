@@ -1062,6 +1062,8 @@ def to_dict(node: Node) -> dict:
     out = {f: getattr(node, f) for f in Node.__slots__}
     if out["forks"] is None:
         del out["forks"]  # stored only when set: unsaid, the run's --forks or the setting decides
+    if not out["forked"]:
+        del out["forked"]  # only while a hold's forks work: a node that never forked is as it was
     return out
 
 

@@ -13,7 +13,7 @@ from typer.testing import CliRunner
 from graphene_map.cli import build
 from graphene_map.hooks import hook_main
 from graphene_map.model import Agent, Commit, Prompt, Session, ToolEvent
-from graphene_map.store import RESPONSE_CAP, SCHEMA_VERSION, Store, capped_json
+from graphene_map.store import OPENED, RESPONSE_CAP, SCHEMA_VERSION, Store, capped_json
 
 
 def test_opens_in_wal_mode_with_schema(tmp_path):
@@ -194,8 +194,30 @@ def test_a_store_from_before_auto_reads_its_on_as_auto_and_keeps_its_off(tmp_pat
 
 def test_a_new_store_records_the_schema_version(tmp_path):
     with Store.open(tmp_path) as store:
-        assert store.conn.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
+        assert store.conn.execute("PRAGMA user_version").fetchone()[0] == OPENED
         assert store.rebuilt_from is None
+
+
+def test_a_store_is_version_6_only_once_a_node_with_forks_is_saved_so_one_that_never_forked_reads_as_before(
+    tmp_path,
+):
+    """Version 6 adds no table: a node gained `forks` and `forked`, which a graphene before forks cannot read
+    (its `Node(**row)` refuses a key it does not know). Stamped on every open, it shut out 0.6 from a repo the
+    moment anything of 0.7 opened its store, and 0.6's hook then let every call through, saying nothing.
+    Now only the first node saved with forks stamps it; until then the store and its rows are 0.6's."""
+    from graphene_map import plan
+
+    alex = plan.Caller("alex", True)
+    with Store.open(tmp_path) as store:
+        plan.propose(store, [{"id": "a", "title": "a", "scope": ["a.txt"], "check": "true"}], alex)
+        assert store.conn.execute("PRAGMA user_version").fetchone()[0] == 5
+        assert {"forks", "forked"}.isdisjoint(store.node_row("a"))  # a row 0.6 reads as its own
+        forked = {"id": "b", "title": "b", "scope": ["b.txt"], "check": "true", "forks": 3}
+        plan.propose(store, [forked], alex)
+        assert store.conn.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION == 6
+    with Store.open(tmp_path) as store:  # and it stays 6: the next open migrates nothing back
+        assert store.conn.execute("PRAGMA user_version").fetchone()[0] == 6
+        assert plan.get(store, "b").forks == 3 and plan.get(store, "a").forked == {}
 
 
 V1_TABLES = ("sessions", "prompts", "tool_events", "explanations", "debrief_runs")
@@ -223,7 +245,7 @@ def test_an_older_store_is_migrated_in_place_and_keeps_its_sessions(tmp_path, ve
     downgrade_to_v1(db, version)
     with Store.open(tmp_path) as store:
         assert store.rebuilt_from is None and list((tmp_path / ".graphene").glob("*.bak")) == []
-        assert store.conn.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
+        assert store.conn.execute("PRAGMA user_version").fetchone()[0] == OPENED
         assert [s.id for s in store.sessions()] == ["hooked"]  # its transcript may be gone: never dropped
         assert [e.id for e in store.events("hooked")] == ["t1"] and store.events("hooked")[0].cwd is None
         tables = {r[0] for r in store.conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
