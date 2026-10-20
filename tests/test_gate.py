@@ -676,3 +676,18 @@ def test_a_log_written_outside_the_repo_does_not_open_the_gate_for_the_rest_of_t
     assert bash(repo, "pytest -q > /tmp/pytest.log 2>&1") is None  # a log, and nothing else: as ever
     assert bash(repo, "echo x > src/api/users.py 2>/tmp/err.log") is None
 
+
+def test_a_write_the_gate_cannot_judge_is_refused_not_let_through(repo, monkeypatch):
+    """The hook's own error used to let the call through ("`plan.finish` holds at the boundary"). The
+    gate fails closed: a PreToolUse it raised on is refused, and the error is in the log; any other event
+    goes on, so a recording that fails never stops a session."""
+    holding(repo)
+
+    def broken(*_args, **_kwargs):
+        raise TypeError("a reader's bug")
+
+    monkeypatch.setattr(gate, "decide", broken)
+    said = reason(write(repo, "src/api/users.py"))
+    assert said.startswith("Graphene could not judge this call") and "ingest.log" in said
+    assert hook(repo, "Stop") is None and hook(repo, "UserPromptSubmit", prompt="hello") is None
+    assert "a reader's bug" in (repo / ".graphene" / "ingest.log").read_text()

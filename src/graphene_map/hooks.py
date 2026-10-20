@@ -386,9 +386,9 @@ def _uuid4():
 def hook_main(stdin=None, cwd: Path | None = None, stdout=None) -> int:
     """``graphene ingest hook``: never raises, always returns 0, and writes stdout only when a plan in
     force has something to say (a write refused, a stop refused: ``gate.decide``). Recording and
-    deciding fail apart: an event that cannot be recorded is still decided, and a decision that
-    cannot be made lets the call through and says so in the log, because ``plan.finish`` holds at
-    the boundary with or without this hook."""
+    deciding fail apart: an event that cannot be recorded is still decided, and a tool call the gate
+    raised on while judging it is refused, never let through (the gate fails closed, as Claude Code
+    makes it when this hook cannot run); the error goes to the log. Any other event goes on."""
     root = Path(cwd or os.getcwd())
     try:
         root = repo_root(root)  # before anything can fail: a log written from a worktree goes to the repo
@@ -423,7 +423,14 @@ def hook_main(stdin=None, cwd: Path | None = None, stdout=None) -> int:
             elif gated(store, event):
                 from . import gate
 
-                answer = gate.decide(store, event, root)
+                try:
+                    answer = gate.decide(store, event, root)
+                except Exception:
+                    _log_error(root)
+                    if event.get("hook_event_name") == "PreToolUse":
+                        answer = gate._deny("Graphene could not judge this call (its error is in "
+                                            ".graphene/ingest.log), so it is refused; say it another way, or "
+                                            "ask the person")  # fmt: skip
         if answer is not None:
             (stdout or sys.stdout).write(json.dumps(answer))
     except StaleStore as stale:
