@@ -1,0 +1,7 @@
+$ me graphene run --forks 3 --with claude:haiku --max-usd 1.50
+landing into main at 9bcd5bd: claude (haiku), up to 1 at once; an attempt stops once it passes $2
+worst case: 1 leaf x 3 forks x 3 attempts x $2 = $18; --max-usd $1.5 starts nothing past it
+`graphene watch` in another terminal follows it (each leaf lands as its own merge; your commit hooks are skipped)
+red first: 1 check ran at 9bcd5bd before any work, in 1 s
+stopped starting: $0.00 spent, $0.00 held, cap $1.50
+run: nothing started (graphene plan says what each leaf waits on)

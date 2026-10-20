@@ -42,6 +42,8 @@ change.
   pick`), the details' record has a forks table (fork, with, attempts, state, lines, dollars, seconds), the
   replay's news names a fork (`agent 3b`), `?` says what `f` does and what `3b` is, and the graph's box says
   `3 ×3` while the forks run.
+- The held bench (`dev/held/`) asks a second question, written before any number: does G3, Graphene with three
+  forks a task, claim done while wrong less often than one agent, or land more tasks (`dev/held/rules.md`)?
 - A store is version 6 once a node in it is saved with forks: a graphene from before refuses it in words
   (`was written by a newer graphene; upgrade this one`) and leaves it as it is. Until then it stays version 5,
   one 0.6 reads, and whose hook 0.6 still runs.
