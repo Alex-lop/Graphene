@@ -32,20 +32,62 @@ _OPERATORS = re.compile(r"&&|\|\||;;|\|&|&>>|&>|>>|>\||>&|<&|<<-?|<>|[();&|<>]")
 
 
 def strip_heredocs(command: str) -> str:
-    """Drop heredoc bodies so a `>` inside a script fed to a command is not read as a redirection."""
+    """Drop heredoc bodies so a `>` inside a script fed to a command is not read as a redirection. A
+    `<<WORD` is a heredoc only where bash reads one (``_heredocs``): inside quotes, a comment or
+    arithmetic, or as a here-string `<<<`, it starts no body, and the lines after it are commands."""
     lines = command.split("\n")
     out: list[str] = []
+    quote: str | None = None  # a quote still open where a line ends goes on into the next
     i = 0
     while i < len(lines):
         line = lines[i]
         out.append(line)
         i += 1
-        for marker in _HEREDOC.finditer(line):
-            terminator = marker.group(2)
+        terminators, quote = _heredocs(line, quote)
+        for terminator in terminators:
             while i < len(lines) and lines[i].strip() != terminator:
                 i += 1
             i += 1
     return "\n".join(out)
+
+
+def _heredocs(line: str, quote: str | None) -> tuple[list[str], str | None]:
+    """The terminators of the heredocs a line opens, as bash reads it: a `<<WORD`, `<<-WORD` or
+    `<<'WORD'` outside quotes, a comment and `$(( ))` or `(( ))`; never a here-string `<<<`. And the
+    quote still open at the line's end. `echo '<<EOF'`, `# <<EOF`, `$((1<<n))` and `<<< "EOF"` hid
+    every write after them while a body was looked for that never was one."""
+    found: list[str] = []
+    depth = 0  # arithmetic, where `<<` is a shift
+    i, escaped = 0, False
+    while i < len(line):
+        ch = line[i]
+        if escaped:
+            escaped = False
+        elif ch == "\\" and quote != "'":
+            escaped = True
+        elif quote:
+            quote = None if ch == quote else quote
+        elif ch in ("'", '"'):
+            quote = ch
+        elif ch == "#" and (i == 0 or line[i - 1] in " \t;|&()"):
+            break  # a comment, to the end of the line
+        elif line.startswith("$((", i) or line.startswith("((", i):
+            depth += 1
+            i += 3 if ch == "$" else 2
+            continue
+        elif depth and line.startswith("))", i):
+            depth -= 1
+            i += 2
+            continue
+        elif line.startswith("<<<", i):
+            i += 3  # a here-string: one word, and no body
+            continue
+        elif not depth and (marker := _HEREDOC.match(line, i)):
+            found.append(marker.group(2))
+            i = marker.end()
+            continue
+        i += 1
+    return found, quote
 
 
 def _is_assignment(token: str) -> bool:

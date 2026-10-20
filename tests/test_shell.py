@@ -103,6 +103,29 @@ def test_a_comment_hides_no_write_after_it_and_a_quoted_redirect_writes_nothing(
     assert bash_written_paths(command, tmp_path) == [(p, k) for p, k in written]
 
 
+@pytest.mark.parametrize(
+    "command, written",
+    [
+        ("echo '<<EOF'\necho x > src/db/schema.py", [("src/db/schema.py", "write")]),
+        ('echo "<<EOF"\necho x > src/db/schema.py', [("src/db/schema.py", "write")]),
+        ("n=1; echo $((1<<n))\necho x > src/db/schema.py", [("src/db/schema.py", "write")]),
+        ("(( m = 1<<n ))\necho x > src/db/schema.py", [("src/db/schema.py", "write")]),
+        ("# see <<EOF below\necho x > src/db/schema.py", [("src/db/schema.py", "write")]),
+        ('grep -q x <<< "y"\necho x > src/db/schema.py', [("src/db/schema.py", "write")]),
+        ("python3 -c 'print(1)' <<< \"EOF\"\necho x > src/db/schema.py", [("src/db/schema.py", "write")]),
+        ("echo 'a\n<<EOF'\necho x > src/db/schema.py", [("src/db/schema.py", "write")]),  # a quote over lines
+        ("cat > src/api/a.py <<-EOF\n\tprint(1 > 0)\n\tEOF\necho x > b.txt",
+         [("src/api/a.py", "write"), ("b.txt", "write")]),  # fmt: skip
+        ("cat <<EOF > src/api/a.py\na > b\nEOF", [("src/api/a.py", "write")]),
+    ],
+)
+def test_only_a_heredoc_bash_reads_hides_the_lines_after_it(command, written, tmp_path):
+    """The re-review of 20 October: a `<<WORD` inside quotes, a comment or arithmetic, or a here-string
+    `<<<`, was taken for a heredoc, and every line after it for its body, so a write there passed the hook.
+    Only a heredoc bash reads starts a body; a real one still hides its own."""
+    assert bash_written_paths(command, tmp_path) == [(p, k) for p, k in written]
+
+
 def test_a_commit_message_keeps_its_quoted_redirects_and_hashes():
     assert shell_segments("git commit -m 'a > b # c'") == [["git", "commit", "-m", "a > b # c"]]
 
