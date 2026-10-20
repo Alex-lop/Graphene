@@ -857,9 +857,10 @@ def _forked(store, node: P.Node, tree: Path, template: str, attempts: int, say: 
     finished: list[str] = []  # the forks in the order they ended
     won = threading.Event() if forks.first else None
     order = threading.Lock()
+    base = node.base_sha or "HEAD"  # the hold's: every fork is cut from it, and kept against it
     try:
         for b in letters:
-            trees[b] = worktree_for(store, root, tree, node.id, fork=b, at=node.base_sha or "HEAD")
+            trees[b] = worktree_for(store, root, tree, node.id, fork=b, at=base)
         P.set_forked(store, node.id, {sessions[b]: {"fork": b, "tree": str(trees[b])} for b in letters})
         store.log_node(node.id, P._now(), "forked", who.label, who.session_id, None,
                        {"forks": list(letters), "of": n, "first": forks.first, "with": specs,
@@ -902,12 +903,16 @@ def _forked(store, node: P.Node, tree: Path, template: str, attempts: int, say: 
                 with order:
                     k = len(finished)
                     finished.append(b)
-                paths = [p for p in P.changed_since(trees[b], node.base_sha, {}) if P.in_scope(p, node.scope)]
                 verdict = P.fork_row(mine, node, b) or {}  # its check's own files it changed, when it passed
-                sha = _keep_fork(trees[b], node.id, b, paths)
-                lines, test_lines = pick.size(root, node.base_sha, sha) if sha and node.base_sha else (0, 0)
-                e = pick.Entry(b, how == "passed", sha, paths, lines, test_lines,
-                               _tests_of(root, node, sha, paths) if sha else [],
+                paths, sha, lines, test_lines, tests = [], None, 0, 0, []
+                try:  # git that fails here is this fork's failure, on its row: never the thread's end
+                    paths = [p for p in P.changed_since(trees[b], base, {}) if P.in_scope(p, node.scope)]
+                    if sha := _keep_fork(trees[b], node.id, b, paths, base):
+                        lines, test_lines = pick.size(root, base, sha)
+                        tests = _tests_of(root, node, sha, paths)
+                except (P.Refused, RuntimeError) as no:  # pick's git raises RuntimeError
+                    how, why = "failed", f"its work could not be kept: {no}"
+                e = pick.Entry(b, how == "passed", sha, paths, lines, test_lines, tests,
                                verdict.get("check_touched") or [], end.get("dollars"),
                                round(time.monotonic() - began, 1), k, how, why)  # fmt: skip
                 entries[b] = e
@@ -1004,20 +1009,24 @@ def fork_ref(node_id: str, letter: str) -> str:
     return f"refs/graphene/forks/{node_id}/{letter}"
 
 
-def _keep_fork(tree: Path, node_id: str, letter: str, paths: list[str]) -> str | None:
-    """A fork's changes inside the scope, committed in its worktree and kept on the hidden ref
-    ``fork_ref`` names (its parent the hold's base) after the leaf ends, so the record and `node diff
-    --fork` can show what each fork tried. The commit; None when it changed nothing there."""
+def _keep_fork(tree: Path, node_id: str, letter: str, paths: list[str], base: str) -> str | None:
+    """A fork's changes inside the scope (``paths``), as a commit on the hold's ``base``, kept on the hidden
+    ref ``fork_ref`` names after the leaf ends, so the record and `node diff --fork` can show what each
+    fork tried. Read from its copy as it stands: an agent may `git commit` there itself, and its HEAD is
+    then not the base. The commit; None when nothing inside the scope differs from the base."""
     if not paths:
         return None
     sparse = ("-c", "core.sparseCheckout=false")  # a leaf may write outside a sparse checkout's cone
-    _git(tree, *sparse, "add", "-A", "--", *paths)
-    if _git(tree, "diff", "--cached", "--quiet", ok=True).returncode == 0:
+    _git(tree, *sparse, "read-tree", base)  # its index is the base again: what differs is what it changed
+    # update-index, not add: a path it committed and then deleted is in neither, and add refuses the pathspec
+    _git(tree, *sparse, "update-index", "--add", "--remove", "--", *paths)
+    if _git(tree, "diff", "--cached", "--quiet", base, ok=True).returncode == 0:
         return None
-    _git(tree, *_ident(tree), "commit", "-q", "--no-verify", "-m",
-         f"fork {letter} of {node_id}\n\nGraphene-Node: {node_id}\n")  # fmt: skip
-    _git(tree, "update-ref", fork_ref(node_id, letter), "HEAD")
-    return _git(tree, "rev-parse", "HEAD").stdout.strip()
+    made = _git(tree, "write-tree").stdout.strip()
+    sha = _git(tree, *_ident(tree), "commit-tree", made, "-p", base, "-m",
+               f"fork {letter} of {node_id}\n\nGraphene-Node: {node_id}\n").stdout.strip()  # fmt: skip
+    _git(tree, "update-ref", fork_ref(node_id, letter), sha)
+    return sha
 
 
 STOPPED = "the run was stopped before this leaf was finished"  # by Ctrl-C, `:stop` or a closed terminal

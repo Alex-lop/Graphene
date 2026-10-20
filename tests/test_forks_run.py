@@ -242,6 +242,67 @@ def test_a_forks_own_pass_is_judged_again_when_its_executor_ends(repo, monkeypat
     assert (repo / "api.py").read_text().startswith("import os\n")
 
 
+def committing(deletes: bool) -> str:
+    """FORKED, with c committing its own work in its copy (as an agent may), deleting notes.txt or not."""
+    return FORKED.replace(
+        '    pathlib.Path("notes.txt").unlink()  # a deletion inside the scope lands too',
+        ('    pathlib.Path("notes.txt").unlink()\n' if deletes else "")
+        + '    import subprocess\n    subprocess.run(["git", "add", "-A"], check=True)\n'
+        '    subprocess.run(["git", "-c", "user.name=c", "-c", "user.email=c@c", "commit", "-qm", "mine"],\n'
+        "                   check=True)",
+    )
+
+
+@pytest.mark.parametrize("deletes", [True, False])
+def test_a_fork_that_committed_its_own_work_is_kept_on_its_ref_from_the_base(repo, monkeypatch, deletes):
+    """c's HEAD is its own commit, not the hold's base: its ref still holds what it changed, from the base,
+    and the rule reads its size, so the smaller fork b is kept."""
+    base = seed(repo, monkeypatch)
+    said: list[str] = []
+    done = go(repo, committing(deletes), said, forks=R.Forks(3))
+    assert [n.id for n in done] == ["n1"] and states(repo) == {"n1": DONE}, said
+    with Store.open(repo) as store:
+        last = last_rows(store)
+        assert {b: f["state"] for b, f in last.items()} == {"a": "refused", "b": "passed", "c": "passed"}
+        assert last["c"]["ref"] == "refs/graphene/forks/n1/c" and last["c"]["attempts"] == 1
+        assert last["c"]["paths"] == (["api.py", "notes.txt"] if deletes else ["api.py"])
+        assert last["c"]["lines"] > last["b"]["lines"] == 2
+        [picked] = rows(store, "picked")
+        assert picked["detail"]["fork"] == "b"
+        assert picked["detail"]["reason"] == f"2 lines against {last['c']['lines']}"
+    ref = "refs/graphene/forks/n1/c"
+    assert git(repo, "rev-parse", f"{ref}^").strip() == base  # from the hold's base, not from c's own commit
+    assert git(repo, "show", f"{ref}:api.py").startswith("import os\n")
+    assert ("notes.txt" in git(repo, "ls-tree", "--name-only", ref)) is not deletes
+    assert " api.py " in person("node", "diff", "n1", "--fork", "c", "--stat").stdout  # its ref, shown
+    assert (repo / "api.py").read_text() == "def users():\n    return ids\n" and (repo / "notes.txt").exists()
+    assert not any((repo / ".graphene" / "worktrees").glob("n1*"))
+
+
+def test_a_fork_whose_work_git_would_not_keep_ends_failed_and_the_run_goes_on(repo, monkeypatch):
+    seed(repo, monkeypatch)
+    real = R._keep_fork
+
+    def broken(tree, node_id, letter, *rest):
+        if letter == "c":
+            raise Refused("git update-ref failed in n1.c: disk full")
+        return real(tree, node_id, letter, *rest)
+
+    monkeypatch.setattr(R, "_keep_fork", broken)
+    said: list[str] = []
+    done = go(repo, FORKED, said, forks=R.Forks(3))
+    assert [n.id for n in done] == ["n1"] and states(repo) == {"n1": DONE}, said
+    with Store.open(repo) as store:
+        last = last_rows(store)
+        assert {b: f["state"] for b, f in last.items()} == {"a": "refused", "b": "passed", "c": "failed"}
+        assert last["c"]["why"] == "its work could not be kept: git update-ref failed in n1.c: disk full"
+        assert last["c"]["ref"] is None and last["c"]["lines"] == 0
+        [picked] = rows(store, "picked")
+        assert picked["detail"]["fork"] == "b"
+        assert picked["detail"]["reason"] == "the only fork whose check passed"
+    assert "n1 fork c: failed: its work could not be kept: git update-ref failed in n1.c: disk full" in said
+
+
 def test_a_person_picks_another_fork_of_a_leaf_in_review_and_the_sign_off_lands_it(repo, monkeypatch):
     monkeypatch.setenv("FORKS_LOG", str(repo.parent / "forks.log"))
     (repo / "api.py").write_text("def users():\n    return []\n")
