@@ -42,8 +42,9 @@ change.
   pick`), the details' record has a forks table (fork, with, attempts, state, lines, dollars, seconds), the
   replay's news names a fork (`agent 3b`), `?` says what `f` does and what `3b` is, and the graph's box says
   `3 ×3` while the forks run.
-- The store is version 6: a graphene from before refuses it in words (`was written by a newer graphene;
-  upgrade this one`) and leaves it as it is.
+- A store is version 6 once a node in it is saved with forks: a graphene from before refuses it in words
+  (`was written by a newer graphene; upgrade this one`) and leaves it as it is. Until then it stays version 5,
+  one 0.6 reads, and whose hook 0.6 still runs.
 
 The graph flows into the goal (20 October).
 - `g` draws the goal as the last box, at the right; every arrow says "must land before": from a task to each
@@ -71,8 +72,19 @@ The gate fails closed (20 October).
   Stop or a prompt still goes on, so a recording that fails never stops a session.
 - A redirect to a path outside the repository beside an out-of-scope write (`pytest -q > /tmp/pytest.log 2>&1;
   echo x > src/db/schema.py`) no longer lets the write through: the log is nobody's to judge, and the rest of the
-  command is refused as before. The shell reader's other holes (dev/process/publish/gate/review.md) are as they
-  were.
+  command is refused as before.
+- The shell reader reads before the write what the 19 October review found it missed (findings 1, 4, 5 and 6
+  of dev/process/publish/gate/review.md): a `#` comment ends at its line, and a `<<WORD` inside quotes, a
+  comment or `$((1<<n))`, or a here-string `<<<`, starts no heredoc, so the lines after it are read; `cd -P`,
+  `cd --`, `cd -`, `pushd` and `popd`, `cd $PWD/…` and a subshell's `cd` are followed as bash follows them;
+  `>&`, `<>`, `&>>`, `|&`, `dd of=` and `install` are writes, and so is `tee` under `command -p`, `nice -n 1`
+  or `env -i`; a target in `$PWD`, `$HOME` or a variable the command set is judged; a quoted `>` in a `grep`
+  pattern writes nothing, and a move into the scope's own directory is not refused. A target in another
+  variable, a glob or a command substitution is still left to git at `done`, as before (refusing it refused
+  `sed -i … src/*.py`), and so are findings 2 and 3: a cwd that is a checkout of its own, and a link in the
+  scope that leads out of it.
+- `graphene run --max-usd` under one attempt's worst case starts nothing and now says so: `one attempt holds
+  $2.00 until it ends: --max-usd 2 starts one`.
 
 ## 0.6.0 (19 October 2026)
 

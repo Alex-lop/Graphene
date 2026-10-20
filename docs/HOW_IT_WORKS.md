@@ -269,11 +269,11 @@ hooks do, so a refused shell write may count twice.
   init` ran from a script: the vendor's rule. From 2.1.295, `init` at a terminal makes the gate fail closed
   (`"onFailure": "block"`) and says so. A call the hook cannot judge is refused either way (`Graphene could not
   judge this call …`), with its error logged.
-- The hook reads a shell command as written, not as bash runs it: a write after a `#` comment line, to a target
-  in a variable or a glob, after a `cd` it cannot follow, through a link in the scope that leads out of it, or
-  from a directory that is a checkout of its own is not seen before it happens. Git finds each at `done`. The
-  other way, a quoted `>` (a `grep` pattern) reads as a redirect and is refused. A target outside the repository
-  (`> /tmp/pytest.log`) is nobody's to judge; the rest still is.
+- The hook reads a shell command as written: `cd`, comments, heredocs, the redirects and the usual writers
+  (`tee`, `cp`, `mv`, `dd`, `install`, `sed -i`), under `sudo`, `env` or `nice`, to `$PWD`, `$HOME` or a variable
+  the command set. A target in another variable, a glob or `$(…)`, a link in the scope that leads out of it, or
+  a cwd that is a checkout of its own is not seen before the write; git finds each at `done`. A target outside
+  the repository (`> /tmp/pytest.log`) is nobody's to judge; the rest still is.
 - "Only a person" rests on the environment: an agent that unsets its CLI's variables passes for you.
 - The store is a file; a script that writes it directly is neither stopped nor noticed.
 - What git ignores, nobody audits: an executor can write anything under an ignored directory.

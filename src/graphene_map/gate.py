@@ -6,7 +6,9 @@ the stop refused while a node is open; the person's word kept out of an agent's 
 the vendor's documented JSON (code.claude.com/docs/en/hooks), printed by ``hook_main``.
 
 The holes, which the README and the map print beside the controls:
-- a hook that crashes or times out lets the call through (the vendor's rule); ``finish`` still holds;
+- a hook that crashes or times out lets the call through (the vendor's rule) on a Claude Code before
+  2.1.295, or where init ran from a script; from 2.1.295 init closes it (``hooks.BLOCKS_FROM``), and a
+  call ``decide`` raises on is refused either way (``hooks.hook_main``); ``finish`` still holds;
 - a write through an MCP server's tool (a filesystem server's included) is not seen here at all;
 - a shell command can write a file in a way no parser reads (a script that opens files itself);
   when the vendor reports what a command changed it is refused after the fact, and ``finish`` asks

@@ -75,7 +75,7 @@ Type "." Sleep 800ms Type "." Sleep 3s
 # and everything is proven (37: the end)
 Type "." Sleep 800ms Type "." Sleep 1500ms
 Type "." Sleep 1500ms Type "." Sleep 500ms Type "." Sleep 300ms Type "." Sleep 3500ms
-# the plan as a graph, from your goal down
+# the plan as a graph, flowing into your goal
 Type "g"
 Sleep 3500ms
 Screenshot docs/assets/graph.png
