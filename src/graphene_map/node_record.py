@@ -102,6 +102,7 @@ class NodeRecord:
     against: list[str] = field(default_factory=list)  # paths its check ran as at the base (``_against_base``)
     waits_on: str | None = None  # where its work waits, in review and not merged here yet (``_waits_on``)
     landed: str | None = None  # the merge that landed it, when that is where it ended (``_landed``)
+    forked: list[dict] = field(default_factory=list)  # each hold `graphene run` forked (``forked``)
 
 
 def node_record(store, root: str | Path, node: P.Node, at: str | None = None) -> NodeRecord:
@@ -145,6 +146,7 @@ def node_record(store, root: str | Path, node: P.Node, at: str | None = None) ->
         _against_base(store, root, node, windows) + _touched(log, node.id),
         _waits_on(store, root, node),
         _landed(log, root),
+        forked(log),
     )
 
 
@@ -265,20 +267,42 @@ def models(log: list[dict]) -> list[dict]:
 
 
 def forks(log: list[dict], state: str = P.RUNNING) -> list[dict]:
-    """The forks of the node's last attempt, each as its last `fork` row says it: which of how many, its
-    model, its state and why, and in a sandbox its checkpoint, operations and seconds. ``state`` is the
-    node's: on a node that no longer runs, a fork whose last row says running had its executor stopped
-    under it (`:stop`, Ctrl-C) before it wrote its end. It reads stopped, without the counts it started
-    with."""
+    """The Nemotron executor's forks of the node's last attempt (numbered; `graphene run`'s lettered
+    forks are ``forked``'s), each as its last `fork` row says it: which of how many, its model, its state
+    and why, and in a sandbox its checkpoint, operations and seconds. ``state`` is the node's: on a node
+    that no longer runs, a fork whose last row says running had its executor stopped under it (`:stop`,
+    Ctrl-C) before it wrote its end. It reads stopped, without the counts it started with."""
     rows = _hold(log)
     rows = rows[max((k for k, e in enumerate(rows) if e["kind"] == "model"), default=-1) + 1 :]
-    last = {e["detail"]["fork"]: e["detail"] for e in rows if e["kind"] == "fork"}
+    last = {e["detail"]["fork"]: e["detail"] for e in rows
+            if e["kind"] == "fork" and not isinstance(e["detail"].get("fork"), str)}  # fmt: skip
     said = [last[k] for k in sorted(last)]
     if state == P.RUNNING:
         return said
     stopped = {"state": "stopped", "why": "its executor was stopped before this fork ended"}
     return [f if f["state"] != "running" else
             {k: v for k, v in f.items() if k not in ("ops", "seconds")} | stopped for f in said]  # fmt: skip
+
+
+def forked(log: list[dict]) -> list[dict]:
+    """Each hold of the node that `graphene run` forked, oldest first: its `forked` row's detail (the
+    forks' letters, of how many, each's executor), each fork's last `fork` row by letter (``rows``), and
+    the last `picked` row's detail (``picked``: Graphene's, or the person's after `node pick`; None while
+    the forks run, or when none passed)."""
+    out: list[dict] = []
+    hold: dict | None = None
+    for e in log:
+        d = e["detail"] or {}
+        if e["kind"] == "started":
+            hold = None
+        elif e["kind"] == "forked":
+            hold = {**d, "rows": {}, "picked": None}
+            out.append(hold)
+        elif hold is not None and e["kind"] == "fork" and str(d.get("fork")) in hold["forks"]:
+            hold["rows"][str(d["fork"])] = d
+        elif hold is not None and e["kind"] == "picked":
+            hold["picked"] = d
+    return out
 
 
 def sandbox(log: list[dict]) -> dict | None:
@@ -721,6 +745,7 @@ def render(record: NodeRecord) -> list[str]:
     lines += _coverage_lines(record.coverage, record.refusals.last_check, record.refusals.at_base)
     lines += [f"    {line}" for line in record.against]
     lines += _refusal_lines(record.refusals)
+    lines += _fork_lines(record)
     lines += _attempt_lines(record)
     lines += bill_line(record.bill)
     lines += _act_lines(record.acts)
@@ -867,13 +892,44 @@ def _refusal_lines(refusals: Refusals) -> list[str]:
     return lines  # the last check is a coverage line: it is what verifies the change set
 
 
+REFUSED_AFTER = re.compile(r"^\d+ attempts?, the last one refused: ")  # the run's count: the line has its own
+
+
+def _fork_lines(record: NodeRecord) -> list[str]:
+    """Each hold that forked: how many ways, which fork was kept and why (Graphene's reason, or the person's
+    pick), then one line a fork: its letter, executor, attempts, how it ended, its size, cost and time."""
+    lines = []
+    for hold in record.forked:
+        picked = hold["picked"]
+        kept = f" · kept {picked['fork']}: {picked['reason']}" if picked else ""
+        lines.append(f"  forked {hold['of']} ways{kept}")
+        for b in hold["forks"]:
+            f = hold["rows"].get(b, {})
+            why = REFUSED_AFTER.sub("", (str(f.get("why") or "").splitlines() or [""])[0]).rstrip(":")
+            ran = f.get("with") or (hold.get("with") or {}).get(b) or "an executor the log does not name"
+            said = [f"{b} {ran}"]
+            if (n := f.get("attempts")) is not None:
+                said.append(f"{n} attempt{_s(n)}")
+            state = f.get("state", "not started")
+            said.append(state + (f": {why}" if why and state != "passed" else ""))
+            if "lines" in f:
+                said.append(f"{f['lines']} line{_s(f['lines'])}")
+                said.append(money(f["dollars"]) if f.get("dollars") is not None else "no meter")
+            if f.get("seconds") is not None:
+                said.append(_took(round(f["seconds"])))
+            lines.append("    " + " · ".join(said))
+    return lines
+
+
 def _attempt_lines(record: NodeRecord) -> list[str]:
-    """Each attempt's record: what ran it, for how long and what it spent, then what it read, edited and
-    ran, what was refused, what it said last, and the tail of what it did (its log's, with no meter)."""
+    """Each attempt's record: what ran it (and which fork it was, on a forked hold), for how long and what
+    it spent, then what it read, edited and ran, what was refused, what it said last, and the tail of what
+    it did (its log's, with no meter)."""
     lines = []
     for a in record.attempts:
         model = a["model"] and a["model"].rsplit("/", 1)[-1]
-        head = [f"attempt {a['attempt']}", " ".join(filter(None, (a["executor"], model)))]
+        head = [f"attempt {a['attempt']}", *([f"fork {a['fork']}"] if a.get("fork") else []),
+                " ".join(filter(None, (a["executor"], model)))]  # fmt: skip
         known = not a["running"] or record.state == P.RUNNING  # an older store has no end row for its last
         head += [_took(a["seconds"])] if known else []
         if a["meter"]:
@@ -980,9 +1036,11 @@ def rolled_up(store, root: str | Path, leaves: list[P.Node], at: str | None = No
         word = "came back" if n.state == P.OPEN and P.came_back(store, n) else {  # not ready: yours to answer
             P.DONE: "done", P.RUNNING: "running", P.REVIEW: "review"}.get(n.state, "ready")
         where = f"landed {landed[-1]['detail']['commit'][:7]}" if landed else word if r else "not started"
+        picked = [h["picked"] for h in (r.forked[-1:] if r else []) if h["picked"]]  # its last hold's, kept
+        kept = f" · {picked[-1]['of']} forks, kept {picked[-1]['fork']}" if picked else ""
         cost = f" · {money(r.bill['dollars'])}" if r and r.bill and r.bill.get("dollars") else ""
         head = f"    {P.look(word)[0]} {n.id}" + (f" · {changed}" if changed else "")
-        lines.append(f"{head} · {where}{cost}")
+        lines.append(f"{head} · {where}{kept}{cost}")
     if counted:
         alone = max(len(paths) - total["changed_edit"] - total["changed_shell"], 0)
         lines.append(

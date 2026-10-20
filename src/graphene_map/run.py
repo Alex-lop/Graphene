@@ -1738,3 +1738,53 @@ def park(store, tree: Path, node: P.Node, say: Callable[[str], None],
                 worktree=str(tree), why=[why])  # fmt: skip
     say(f"{node.id} passed; {why}\n  its work: {branch}. `graphene node diff {node.id}` shows it; "
         f"`graphene node signoff {node.id}` merges it")
+
+
+def fork_work(store, target: Path, node_id: str, letter: str) -> tuple[str, str, list[dict]]:
+    """One fork's work as its ref keeps it (``_keep_fork``): the ref, its commit, and the rows of the hold
+    that forked (its `forked` row on). Refused when the leaf's last hold did not fork, had no such fork,
+    or the fork changed nothing inside its scope, so nothing of it was kept."""
+    from .node_record import _hold  # the rows of its last hold
+
+    held = _hold(store.node_log(node_id, ("started", "forked", "fork", "picked")))
+    forked = next((e["detail"] for e in held if e["kind"] == "forked"), None)
+    if forked is None:
+        raise P.Refused(f"{node_id}'s last hold did not fork, so it has no fork {letter}")
+    if letter not in forked["forks"]:
+        raise P.Refused(f"{node_id} forked {forked['of']} ways ({', '.join(forked['forks'])}): it has no "
+                        f"fork {letter}")  # fmt: skip
+    ref = fork_ref(node_id, letter)
+    sha = _git(target, "rev-parse", "-q", "--verify", f"{ref}^{{commit}}", ok=True).stdout.strip()
+    if not sha:
+        raise P.Refused(f"fork {letter} of {node_id} changed nothing inside its scope, so nothing of it was "
+                        "kept")  # fmt: skip
+    return ref, sha, held
+
+
+def pick_fork(store, target: Path, node_id: str, letter: str, who: P.Caller) -> str:
+    """`graphene node pick`: the person's own choice among the forks of a leaf that waits in review with its
+    work parked on its branch (``park``). The branch, and its worktree, become that fork's work as its ref
+    keeps it, whatever the rule kept, and a `picked` row says so, by the person; the sign-off then lands it
+    as it lands any leaf (``_signoff`` → ``land``). The fork's state is on its row, so a fork whose check
+    was refused is the person's to land, as an override is: returns that state, for the person to hear.
+    Refused on a leaf that is not in review, or whose work is not parked on a branch."""
+    P._person_only(who, "picking a fork")
+    node = P.get(store, node_id)
+    if node.state != P.REVIEW:
+        raise P.Refused(f"{node.id} is {node.state}: a fork is picked on a leaf in review, before its "
+                        "sign-off")  # fmt: skip
+    left = P.unlanded(store, node.id)
+    if not left:
+        raise P.Refused(f"{node.id}'s work is not parked on a branch, so no fork of it can take its place")
+    _ref, sha, held = fork_work(store, target, node_id, letter)
+    tree = Path(left.get("worktree") or "")
+    if tree.is_dir():  # the branch is checked out there: it moves with the tree
+        _git(tree, "reset", "-q", "--hard", sha)
+    else:  # cleared by hand: the branch alone, which the sign-off has the person merge, as it says
+        _git(target, "update-ref", f"refs/heads/{left.get('branch', f'graphene/{node_id}')}", sha)
+    was = [e["detail"] for e in held if e["kind"] == "picked"]
+    row = {"fork": letter, "of": next(e["detail"]["of"] for e in held if e["kind"] == "forked"),
+           "by": "person", "reason": f"picked by {who.name}", "table": was[-1]["table"] if was else []}
+    store.log_node(node.id, P._now(), "picked", who.label, None, None, row)
+    return next((e["detail"]["state"] for e in reversed(held)
+                 if e["kind"] == "fork" and str(e["detail"].get("fork")) == letter), "on no record")

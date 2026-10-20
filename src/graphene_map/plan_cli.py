@@ -1588,9 +1588,24 @@ def register(cli: typer.Typer, root, open_store, fail):
         run(go)
 
     @node_cli.command(hidden=True)
+    def pick(
+        node_id: str = typer.Argument(...),
+        fork: str = typer.Argument(..., help="The fork's letter, as `graphene node show` lists them."),
+    ) -> None:
+        """Keep another fork of a leaf in review; signing it off then lands it."""
+        from .run import pick_fork
+
+        who = P.caller()
+        state = run(lambda store: pick_fork(store, root(), node_id, fork, who))
+        out(f"{node_id}'s branch is now fork {fork}'s work ({state}); `graphene node signoff {node_id}` "
+            "lands it")  # fmt: skip
+        said_where()
+
+    @node_cli.command(hidden=True)
     def diff(
         node_id: str = typer.Argument(...),
         stat: bool = typer.Option(False, "--stat", help="Only each file and how much of it changed."),
+        fork: str = typer.Option(None, "--fork", help="One fork's work, by its letter, from its ref."),
     ) -> None:
         """Show what a leaf changed: the merge that landed it, or what it left."""
         from .precheck import state
@@ -1599,6 +1614,11 @@ def register(cli: typer.Typer, root, open_store, fail):
             n, here = P.get(store, node_id), str(root())
             if any(m.parent == n.id for m in P.nodes(store)):
                 raise P.Refused(f"{n.id} is a sub-goal: each of its leaves has its own diff")
+            if fork:  # what that fork tried, as its ref keeps it over the hold's base (run.fork_work)
+                from .run import fork_work
+
+                ref = fork_work(store, root(), n.id, fork)[0]
+                return here, [], [f"{ref}^", ref]
             ends = store.node_log(n.id, ("landed", "unlanded", "finished", "overruled"))
             kind, d = (ends[-1]["kind"], ends[-1]["detail"]) if ends else (None, {})
             if kind == "landed":  # the merge: what it brought in over its first parent

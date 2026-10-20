@@ -10,14 +10,21 @@ import signal
 import subprocess
 import sys
 
+import pytest
 from test_run_live import SLOW, graphene_run, repo, states, wait_for  # noqa: F401
+from typer.testing import CliRunner
 
 from graphene_map import plan
 from graphene_map import run as R
-from graphene_map.plan import DONE, OPEN, Caller
+from graphene_map.cli import build
+from graphene_map.plan import DONE, OPEN, REVIEW, Caller, Refused
 from graphene_map.store import Store
 
 ALEX = Caller("alex", True)
+
+
+def person(*args):
+    return CliRunner().invoke(build(), list(args), env={"GRAPHENE_AS": "person:alex"})
 FORKED = """
 import json, os, pathlib, sys, time
 fork, of = os.environ["GRAPHENE_FORK"], os.environ["GRAPHENE_FORKS"]
@@ -162,6 +169,65 @@ def test_three_forks_run_at_once_one_is_kept_and_lands_as_one_merge(repo, monkey
     assert git(repo, "log", "-1", "--format=%B", "refs/graphene/forks/n1/b").strip() == (
         "fork b of n1\n\nGraphene-Node: n1")
     assert git(repo, "status", "--porcelain") == ""
+    # the record: `node show` lists the forks, `plan record` says the kept one, `node diff --fork` shows one
+    shown = person("node", "show", "n1").stdout.splitlines()
+    assert f"  forked 3 ways · kept b: {reason}" in shown
+    forks = [line for line in shown if line.startswith(("    a ", "    b ", "    c "))]
+    me = f"{repo.name}-forks.py"
+    assert forks[0].startswith(f"    a {me} · 1 attempt · refused: n1 is not done: `grep -q ids api.py` "
+                               "failed · 2 lines · no meter · ")
+    assert forks[1].startswith(f"    b {me} · 1 attempt · passed · 2 lines · no meter · ")
+    assert forks[2].startswith(f"    c {me} · 1 attempt · passed · {last['c']['lines']} lines · no meter · ")
+    assert sum(line.startswith(f"  attempt 1 · fork {b} · {me} · ") for b in "abc" for line in shown) == 3
+    record = person("plan", "record").stdout
+    assert f"    {plan.look('done')[0]} n1 · api.py · landed {merges[0][:7]} · 3 forks, kept b" in record
+    assert "+    return ids" in person("node", "diff", "n1", "--fork", "b").stdout
+    assert " notes.txt |" in person("node", "diff", "n1", "--fork", "c", "--stat").stdout  # its deletion
+    said = person("node", "diff", "n1", "--fork", "z")
+    assert said.exit_code == 1 and "n1 forked 3 ways (a, b, c): it has no fork z" in said.output
+
+
+def test_a_person_picks_another_fork_of_a_leaf_in_review_and_the_sign_off_lands_it(repo, monkeypatch):
+    monkeypatch.setenv("FORKS_LOG", str(repo.parent / "forks.log"))
+    (repo / "api.py").write_text("def users():\n    return []\n")
+    (repo / "notes.txt").write_text("to go\n")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", "api")
+    said: list[str] = []
+    with Store.open(repo) as store:  # it waits for the person's sign-off, so the rule's pick is parked
+        plan.propose(store, [users_leaf(signoff=True), {"id": "n2", "title": "n2", "scope": ["x.py"],
+                                                       "check": "true"}], ALEX)  # fmt: skip
+    assert go(repo, FORKED, said, forks=R.Forks(3), only=["n1"]) == [] and states(repo)["n1"] == REVIEW
+    assert any(line.startswith("n1 kept b of 3: 2 lines against ") for line in said), said
+    with Store.open(repo) as store:
+        with pytest.raises(Refused, match="n2's last hold did not fork, so it has no fork a"):
+            R.fork_work(store, repo, "n2", "a")
+    said_no = person("node", "pick", "n1", "z")
+    assert said_no.exit_code == 1 and "n1 forked 3 ways (a, b, c): it has no fork z" in said_no.output
+    picked = person("node", "pick", "n1", "c")
+    assert picked.exit_code == 0, picked.output
+    assert picked.stdout.splitlines()[0] == (
+        "n1's branch is now fork c's work (passed); `graphene node signoff n1` lands it")
+    assert git(repo, "rev-parse", "graphene/n1") == git(repo, "rev-parse", "refs/graphene/forks/n1/c")
+    with Store.open(repo) as store:
+        first, second = rows(store, "picked")
+        assert first["detail"]["by"] == "graphene" and second["actor"] == "alex (no terminal)"  # as logged
+        assert second["detail"] | {"table": None} == {"fork": "c", "of": 3, "by": "person",
+                                                      "reason": "picked by alex", "table": None}  # fmt: skip
+        assert second["detail"]["table"] == first["detail"]["table"]
+        assert plan.get(store, "n1").state == REVIEW
+    assert "  forked 3 ways · kept c: picked by alex" in person("node", "show", "n1").stdout.splitlines()
+    assert "+    found = ids" in person("node", "diff", "n1").stdout  # the parked branch is c's work now
+    signed = person("node", "signoff", "n1")
+    assert signed.exit_code == 0 and states(repo)["n1"] == DONE, signed.output
+    assert (repo / "api.py").read_text().startswith("import os\n") and not (repo / "notes.txt").exists()
+    assert "3 forks, kept c" in git(repo, "log", "-1", "--format=%B")
+    assert git(repo, "worktree", "list").count("\n") == 1 and "graphene/" not in git(repo, "branch")
+    after = person("node", "pick", "n1", "b")
+    assert after.exit_code == 1, after.output
+    assert "n1 is done: a fork is picked on a leaf in review, before its sign-off" in after.output
+    agent = CliRunner().invoke(build(), ["node", "pick", "n1", "b"], env={"CLAUDECODE": "1"})
+    assert agent.exit_code == 1 and "picking a fork is the person's to do" in agent.output
 
 
 def test_the_fork_that_passes_the_others_tests_is_kept_before_the_smaller_one(repo, monkeypatch):
