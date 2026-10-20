@@ -105,6 +105,15 @@ def test_a_budget_waits_for_room_said_once_and_a_second_attempt_waits_in_its_wor
     assert said == ["stopped starting: $1.06 spent, $0.00 held, cap $1.50"]
 
 
+def test_a_cap_under_one_attempt_says_so_and_how_much_starts_one():
+    """`--max-usd 1.5` with Claude Code started nothing and said only "$0.00 spent, $0.00 held, cap $1.50":
+    an attempt holds its worst case ($2) until it ends, so a cap under that never starts one."""
+    said: list[str] = []
+    assert R.Budget(1.5, said.append).take(2.0) is False
+    assert said == ["stopped starting: $0.00 spent, $0.00 held, cap $1.50; one attempt holds $2.00 until it "
+                    "ends: --max-usd 2 starts one"]  # fmt: skip
+
+
 def test_a_codex_attempt_with_no_list_price_counts_at_its_worst_case_on_a_cap_and_at_none_on_the_night():
     meter = M.Meter("codex", 1)  # no price: the bill says its tokens
     assert R._spent(meter, 3.0) == 0.0  # the night's ledger
@@ -148,7 +157,8 @@ def test_here_a_cap_below_one_attempts_worst_case_starts_nothing(repo):
     with Store.open(repo) as store:
         assert run_plan(store, repo, executor(repo), say=said.append, max_usd=0.5) == []
         assert not store.node_log(None, ("started",))
-    assert "stopped starting: $0.00 spent, $0.00 held, cap $0.50" in said
+    assert any(s.startswith("stopped starting: $0.00 spent, $0.00 held, cap $0.50; one attempt holds $")
+               for s in said), said  # fmt: skip
 
 
 def test_an_attempt_after_the_first_that_does_not_fit_is_not_started_and_its_leaf_comes_back(repo):

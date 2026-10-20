@@ -509,8 +509,11 @@ class Budget:
                     return True
                 if self.spent + worst > self.cap + self.EPS:  # not even with nothing going
                     self.stopped = True
+                    alone = worst > self.cap + self.EPS  # no attempt fits, however little is spent
+                    why = f"; one attempt holds {money(worst)} until it ends: --max-usd {worst:g} starts one"
+                    why *= alone
                     self.say(f"stopped starting: {money(self.spent)} spent, {money(self.held)} held, "
-                             f"cap {money(self.cap)}")  # fmt: skip
+                             f"cap {money(self.cap)}{why}")  # fmt: skip
                     return False
                 if stop is None:
                     return None
