@@ -45,6 +45,17 @@ def test_a_box_keeps_its_agents_number_in_every_state_and_a_state_change_moves_n
         assert lay.rects == before and " 100 " in "".join(c for c, _ in lay.cells[y1][x0 : x1 + 1])
 
 
+def test_a_forked_tasks_box_says_how_many_agents_are_on_it_until_one_is_kept():
+    m = scene()
+    m.tasks["ids"].forks = ["a", "b", "c"]  # the rows' field: three forks of agent 1's hold, running
+    lay = FV.build_flow(FV.flow_graph(m), 120, "docs")[1]
+    x0, _y0, x1, y1 = lay.rects["ids"]
+    assert "┗━ 1 ×3 ━" in "".join(c for c, _ in lay.cells[y1][x0 : x1 + 1])  # on its running border
+    for state in ("review", "done", "came back"):  # one kept, or none passed: its agent's number alone
+        m.tasks["ids"].state = state
+        assert next(n for n in FV.flow_graph(m).nodes if n.id == "ids").badge == "1"
+
+
 def test_a_box_has_its_states_mark_on_its_border_as_its_row_has_it_yours_too():
     m = scene()
     m.tasks["docs"].state = "yours"  # its row's ◇: on the graph it had no mark, in a review box's purple

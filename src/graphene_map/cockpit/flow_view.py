@@ -43,6 +43,14 @@ def count(tasks: list[Task]) -> str:
     return f"{done} of {len(tasks)}" + " ✓" * (done == len(tasks))
 
 
+def badge(t: Task) -> str:
+    """The number its agent goes by; while its hold's forks run (`Task.forks`, the rows' field, read softly so
+    the graph draws without it), `3 ×3`: three agents on it at once, until one is kept and the task is in
+    review or done."""
+    forks = getattr(t, "forks", None)
+    return f"{t.agent} ×{len(forks)}" if t.agent and forks and t.state == "running" else t.agent
+
+
 def head(k: int, tasks: list[Task]) -> str:
     """Over wave ``k``: its agents once every task in it has one (`agent 4`, `3 agents`), else its tasks;
     over the goal's column, which holds no task, `goal`."""
@@ -79,7 +87,7 @@ def flow_graph(m: Model) -> Graph:
             seen.setdefault(over, len(seen))
         # a box carries its agent's number on its border in every state, as its row does: the state is its
         # colour and its glyph
-        g.nodes.append(F.GNode(t.id, t.title, t.state, t.agent, lane=sid))
+        g.nodes.append(F.GNode(t.id, t.title, t.state, badge(t), lane=sid))
     for sid, ts in under.items():
         if sid:
             g.lanes.append(F.Lane(sid, " › ".join(name for _, name in ts[0].above), count(ts)))
