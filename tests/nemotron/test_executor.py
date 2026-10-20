@@ -390,6 +390,34 @@ def test_when_every_fork_gives_up_the_leaf_comes_back_with_what_they_wanted(repo
         assert sorted(released["wants"]) == ["cli.py", "other.py"]
 
 
+def test_the_runs_own_forks_run_an_executor_each_and_a_forks_passing_done_ends_its_loop(repo, fake):
+    """`graphene run --forks 2` with Nemotron, as with any executor: one a fork, each in its own copy, and
+    the rule keeps one (b, the smaller). A fork's `done` that passed is its verdict, not the leaf's state,
+    so its loop ends there, as a leaf's does, instead of asking the model again."""
+    from graphene_map.run import Forks
+
+    longer = 'def greet():\n    word = "hello"\n    return word\n'
+    steps = {"a": [call("write", path="app.py", content=longer), call("done"), call("view", path="app.py")],
+             "b": [call("edit", path="app.py", old='"hi"', new='"hello"'), call("done"),
+                   call("view", path="app.py")]}  # fmt: skip
+
+    def reply(body):
+        b = next(b for b in steps if f"This is fork {b} of 2" in body["messages"][1]["content"])
+        n = sum(1 for m in body["messages"] if m["role"] == "assistant")
+        return steps[b][n] if n < len(steps[b]) else {"content": "nothing more"}
+
+    f = fake([reply] * 20)
+    plan_of(repo, leaf())
+    said = []
+    done = run_parallel(lambda: Store.open(repo), repo, repo, 1, named(f"nemotron --model {NANO}"), 1, None,
+                        said.append, repo / ".graphene" / "runs", forks=Forks(2))  # fmt: skip
+    assert [n.id for n in done] == ["greet"], said
+    assert (repo / "app.py").read_text() == 'def greet():\n    return "hello"\n'
+    assert any(line.startswith("greet kept b of 2: ") for line in said), said
+    asked = {b: sum(f"fork {b} of 2" in r["messages"][1]["content"] for r in f.requests) for b in steps}
+    assert asked == {"a": 2, "b": 2}  # its edit, then its done: nothing after a done that passed
+
+
 def test_the_check_graphene_runs_after_the_executor_never_gets_the_key(repo, fake):
     fake([script({"greet": [call("edit", path="app.py", old='"hi"', new='"hello"')] + [
         {"content": "that is all"}] * 3})] * 10)  # fmt: skip

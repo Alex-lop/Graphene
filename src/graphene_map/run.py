@@ -575,9 +575,6 @@ def run_node(
     if n > 1 and not node.check:  # the check is what keeps one: `validate` refuses the line, not the run's
         say(f"{node.id} runs as one agent: {n} forks need a check to keep one")
         n = 1
-    if n > 1 and name == "nemotron" and "--forks" not in shlex.split(template):
-        # Graphene's own executor forks inside its own process, from one checkpoint: it is handed the number
-        template, n = f"{template} --forks {n}", 1
     try:
         if n > 1:
             return _forked(store, node, checkout, template, attempts, say, logs, stop, budget, owed, who,
