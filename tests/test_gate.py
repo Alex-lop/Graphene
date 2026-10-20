@@ -425,6 +425,24 @@ def test_finding_5_a_write_after_a_subshell_cd_is_inside_the_scope_not_falsely_r
     assert bash(repo, "pushd src/api >/dev/null && echo x > users.py") is None
 
 
+def test_finding_6_reads_and_in_scope_moves_are_not_refused_as_writes(repo):
+    """Finding 6: a quoted `>` in a grep pattern was read as a redirect and the read refused (fixed with
+    the mask); and a move into the scope's own directory was refused, because `src/api/` (the directory)
+    did not match `src/api/**` once its trailing slash was normalised away. A read writes nothing, and a
+    directory the scope covers is judged as `src/api/`, which the glob matches."""
+    holding(repo)
+    (repo / "README.md").write_text("# readme\n")
+    reads = ("grep -n '>' src/db/schema.py", "rg -n '>>' src", "grep -rn '>' .", "git grep -n '>' src/db")
+    for read in reads:
+        assert bash(repo, read) is None, read
+    moves = ("cp README.md src/api/", "mv src/api/users.py src/api/", "rm -rf src/api/",
+             "cp README.md src/api")  # fmt: skip
+    for move in moves:
+        assert bash(repo, move) is None, move
+    # a move into a directory outside the scope is still refused, keeping the spelling
+    assert "src/db/ is outside the scope" in reason(bash(repo, "cp README.md src/db/"))
+
+
 # -- what the closing review broke ---------------------------------------------------------------------
 
 

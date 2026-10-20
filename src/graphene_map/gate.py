@@ -532,6 +532,11 @@ def _check_write(
 ) -> dict | None:
     if rel.split("/", 1)[0].casefold() in OURS:  # a disk that ignores case writes .GRAPHENE/ there too
         return _deny(f"{rel} is the plan's own store; no node's scope covers it")
+    # a move into an existing directory (`cp x src/api/`, `mv x src/api/`, `rm -rf src/api/`) lands
+    # under it, so a scope of `src/api/**` covers it: judge the directory as `src/api/`, which the glob
+    # matches, not `src/api`, which it does not (finding 6)
+    if root is not None and rel and not rel.endswith("/") and os.path.isdir(os.path.join(str(root), rel)):
+        rel = rel + "/"
     agent_id = event.get("agent_id") if isinstance(event.get("agent_id"), str) else None
     if not held and root is not None:
         cwd = event.get("cwd") if isinstance(event.get("cwd"), str) else None
