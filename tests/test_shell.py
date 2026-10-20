@@ -138,5 +138,32 @@ def test_redirect_forms_and_targets_the_parser_now_reads(command, written, tmp_p
     """Finding 4 of the adversarial pass: `>&`, `1<>`, `&>>`, `|&`, `command`/`dd`/`install`, and a
     redirect after a variable the command set, a glob or `$PWD`, were not read and let a write by. A
     target that stays a variable, a glob or a substitution is "unknown": the gate refuses it while a
-    leaf is held (it cannot be checked), but `$PWD`, `$(pwd)`, `$HOME` and an in-command literal resolve."""
+    leaf is held (it cannot be checked), but `$PWD`, `$HOME` and an in-command literal resolve."""
+    assert bash_written_paths(command, tmp_path) == [(p, k) for p, k in written]
+
+
+@pytest.mark.parametrize(
+    "command, written",
+    [
+        # finding 5: cd followed wrongly. Each of these wrote src/db/schema.py and was missed.
+        ("cd -P src/db && echo x > schema.py", [("src/db/schema.py", "write")]),
+        ("cd -- src/db && echo x > schema.py", [("src/db/schema.py", "write")]),
+        ("cd src/api && cd - >/dev/null && echo x > src/db/schema.py", [("src/db/schema.py", "write")]),
+        ("cd $PWD/src/db && echo x > schema.py", [("src/db/schema.py", "write")]),
+        ("(cd src/api); echo x > src/db/schema.py", [("src/db/schema.py", "write")]),
+        ("(cd src/api && pwd >/dev/null) && echo x > src/db/schema.py", [("src/db/schema.py", "write")]),
+        # a subshell's cd ends at its `)`, so the write after it lands where the outer shell is, not
+        # inside the subshell's directory (these were read as src/src/… and wrongly refused)
+        ("(cd src && ls >/dev/null) && echo x > src/api/users.py", [("src/api/users.py", "write")]),
+        ("pushd src/api >/dev/null && echo x > users.py", [("src/api/users.py", "write")]),
+        # and the honest cases the parser already read stay the same
+        ("cd sub && echo hi > a.txt", [("sub/a.txt", "write")]),
+        ("(cd sub && echo > e.txt)", [("sub/e.txt", "write")]),
+    ],
+)
+def test_cd_flags_dash_pwd_and_subshells_are_followed_as_bash_does(command, written, tmp_path):
+    """Finding 5: `cd -P`/`cd --` were read as `cd ~`, `cd -` and `cd $PWD/…` lost the directory, and a
+    subshell's `cd` leaked past its `)` (so a write after it was read in the wrong place, bypassing the
+    scope one way and falsely refused the other). The cwd now follows bash: flags skipped, `cd -` to the
+    previous directory, `$PWD` resolved, a subshell's cd undone at its `)`."""
     assert bash_written_paths(command, tmp_path) == [(p, k) for p, k in written]

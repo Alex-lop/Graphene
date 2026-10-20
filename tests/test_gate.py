@@ -399,6 +399,32 @@ def test_finding_4_a_target_the_hook_cannot_know_is_left_to_git_as_before(repo):
     assert bash(repo, "cat src/api/users.py > /dev/null") is None
 
 
+@pytest.mark.parametrize(
+    "command",
+    [
+        "cd -P src/db && echo x > schema.py",
+        "cd -- src/db && echo x > schema.py",
+        "cd src/api && cd - >/dev/null && echo x > src/db/schema.py",
+        "cd $PWD/src/db && echo x > schema.py",
+        "(cd src/api); echo x > src/db/schema.py",
+        "(cd src/api && pwd >/dev/null) && echo x > src/db/schema.py",
+    ],
+)
+def test_finding_5_cd_followed_wrongly_is_refused_before_the_write(repo, command):
+    """Finding 5: cd's flags, `cd -`, `cd $PWD/…` and a subshell's cd that leaked past its `)` each let
+    a write of src/db/schema.py past the hook; git refused them only at done."""
+    holding(repo)
+    assert "src/db/schema.py is outside the scope" in reason(bash(repo, command))
+
+
+def test_finding_5_a_write_after_a_subshell_cd_is_inside_the_scope_not_falsely_refused(repo):
+    """The mirror of the bypass: a subshell's cd must not be read as still in force after its `)`, or an
+    honest write inside the scope is refused (`src/src/api/...`). These pass now."""
+    holding(repo)
+    assert bash(repo, "(cd src && ls >/dev/null) && echo x > src/api/users.py") is None
+    assert bash(repo, "pushd src/api >/dev/null && echo x > users.py") is None
+
+
 # -- what the closing review broke ---------------------------------------------------------------------
 
 

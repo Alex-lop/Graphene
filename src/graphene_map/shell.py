@@ -23,6 +23,9 @@ _VAR = re.compile(r"\$\{(\w+)\}|\$(\w+)")
 _WRITE_OPS = (">", ">>", "&>", ">|", "&>>", "<>")  # the next token is a file this writes
 _REDIRECTS = (">", ">>", "&>", ">|", "&>>", "<>", "<", "<<", "<&", ">&")  # any redirection operator
 _WRAPPERS = ("sudo", "env", "time", "command", "builtin", "exec", "nohup", "nice")
+_SEPARATOR_TOKENS = ("&&", "||", "|", "|&", ";", "&", ";;")
+_PUNCT = re.compile(r"[();&|<>]+")  # a token that is only operator characters: shlex glues `);` into one
+_OPERATORS = re.compile(r"&&|\|\||;;|\|&|&>>|&>|>>|>\||>&|<&|<<-?|<>|[();&|<>]")
 
 
 # -- shell commands -----------------------------------------------------------------------------
@@ -108,11 +111,16 @@ def _split(command: str) -> list[list[str]]:
     lexer.commenters = ""  # comments went with their own lines, above
     segments: list[list[str]] = [[]]
     try:
-        for token in lexer:
-            if token in ("&&", "||", "|", "|&", ";", "&", "(", ")", ";;"):
-                segments.append([])  # `|&` pipes stdout and stderr both: a separator, like `|`
-            else:
-                segments[-1].append(token)
+        for glued in lexer:
+            # shlex glues a run of operators into one token: `);` is `)` then `;`, `>>|` is `>>` then `|`
+            for token in _OPERATORS.findall(glued) if _PUNCT.fullmatch(glued) else [glued]:
+                if token in _SEPARATOR_TOKENS:
+                    segments.append([])  # `|&` pipes stdout and stderr both: a separator, like `|`
+                elif token in ("(", ")"):
+                    segments.append([token])  # a subshell boundary: its own cd ends at its `)`
+                    segments.append([])
+                else:
+                    segments[-1].append(token)
     except ValueError:  # unbalanced quotes: fall back to a crude split
         segments = [segment.split() for segment in _SEPARATORS.split(text)]
     return segments
@@ -159,9 +167,17 @@ def bash_written_paths(command: str, root: Path) -> list[tuple[str, str]]:
     incomplete: anything else a shell command does to a file is invisible here.
     """
     cwd: str | None = os.path.normpath(str(root))
+    stack: list[str | None] = []  # the cwd outside each open subshell: its `cd` ends at its `)`
+    previous: str | None = cwd  # where `cd -` goes back to
     assigns: dict[str, str] = {}
     found: list[tuple[str, str]] = []
     for raw in _split(command):  # a quoted `>` stays masked: text, never a redirect
+        if raw == ["("]:
+            stack.append(cwd)
+            continue
+        if raw == [")"]:
+            cwd = stack.pop() if stack else cwd  # the subshell's cd is undone
+            continue
         tokens = list(raw)
         while tokens and _is_assignment(tokens[0].translate(_UNMASK)):
             name, _, value = tokens.pop(0).translate(_UNMASK).partition("=")
@@ -169,15 +185,8 @@ def bash_written_paths(command: str, root: Path) -> list[tuple[str, str]]:
         tokens = _strip_wrappers(tokens)
         if not tokens:
             continue
-        if os.path.basename(tokens[0].translate(_UNMASK)) == "cd":
-            given = len(tokens) > 1 and not tokens[1].startswith("-")
-            target = tokens[1].translate(_UNMASK) if given else "~"
-            if _NOT_A_PATH.search(target):
-                cwd = None
-            elif os.path.isabs(os.path.expanduser(target)):
-                cwd = os.path.normpath(os.path.expanduser(target))
-            elif cwd is not None:
-                cwd = os.path.normpath(os.path.join(cwd, target))
+        if os.path.basename(tokens[0].translate(_UNMASK)) in ("cd", "pushd", "popd"):
+            cwd, previous = _follow_cd(tokens, cwd, previous, assigns)
             continue
         for path, kind in _segment_paths(tokens):
             resolved = _resolve(path.translate(_UNMASK), cwd, assigns)
@@ -198,6 +207,41 @@ def bash_written_paths(command: str, root: Path) -> list[tuple[str, str]]:
     return found
 
 
+def _args(tokens: list[str]) -> list[str]:
+    """A command's arguments with the redirections dropped: an operator, a fd before one (`2>`), and
+    the target after one are not arguments of the command itself."""
+    args = []
+    for j in range(1, len(tokens)):
+        t, prev, nxt = tokens[j], tokens[j - 1], tokens[j + 1] if j + 1 < len(tokens) else ""
+        if t in _REDIRECTS or (t.isdigit() and nxt in _REDIRECTS) or prev in _REDIRECTS:
+            continue
+        args.append(t)
+    return args
+
+
+def _follow_cd(
+    tokens: list[str], cwd: str | None, previous: str | None, assigns: dict[str, str]
+) -> tuple[str | None, str | None]:
+    """Where a `cd`, `pushd` or `popd` leaves the cwd, and the directory a later `cd -` returns to.
+    Flags (`-P`, `--`) are skipped; `cd -`, `popd` and a bare `pushd` go back to the previous
+    directory; `$PWD` and a variable the command set resolve; a target that cannot be resolved loses
+    the cwd (None), so relative paths after it are dropped rather than guessed."""
+    verb = os.path.basename(tokens[0].translate(_UNMASK))
+    words = [a.translate(_UNMASK) for a in _args(tokens) if a == "-" or not a.startswith("-")]
+    target = words[0] if words else ("~" if verb == "cd" else "-")
+    if target == "-":
+        return previous, cwd  # swap: the previous directory, and this one becomes the new previous
+    target = _resolve(target, cwd, assigns)
+    was = cwd
+    if _NOT_A_PATH.search(target):
+        cwd = None
+    elif os.path.isabs(os.path.expanduser(target)):
+        cwd = os.path.normpath(os.path.expanduser(target))
+    elif cwd is not None:
+        cwd = os.path.normpath(os.path.join(cwd, target))
+    return cwd, was
+
+
 def _segment_paths(tokens: list[str]) -> list[tuple[str, str]]:
     out: list[tuple[str, str]] = []
     i = 0
@@ -211,12 +255,7 @@ def _segment_paths(tokens: list[str]) -> list[tuple[str, str]]:
             continue
         i += 1
     name = os.path.basename(tokens[0])
-    args = []
-    for j in range(1, len(tokens)):  # drop redirection operators, their descriptors (2>...) and targets (>&1)
-        t, prev, nxt = tokens[j], tokens[j - 1], tokens[j + 1] if j + 1 < len(tokens) else ""
-        if t in _REDIRECTS or (t.isdigit() and nxt in _REDIRECTS) or prev in _REDIRECTS:
-            continue
-        args.append(t)
+    args = _args(tokens)
     plain = [a for a in args if not a.startswith("-") and a != ""]
     if name in ("tee", "touch"):
         out.extend((p, "write") for p in plain)
