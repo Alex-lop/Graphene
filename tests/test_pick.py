@@ -32,23 +32,23 @@ def test_the_only_one_that_passed_is_kept_and_nothing_is_run():
 
 
 def test_agreement_decides_first_and_says_who_failed_whose_tests():
-    # b's tests are stricter: a passes only its own; b passes a's; c passes a's but fails b's
-    passes = {("a", "b"), ("a", "c")}
+    # a's tests pass on b alone; b's, the stricter, pass on nobody; c, the smallest, wrote none
+    passes = {("a", "b")}
     forks = [e("a", tests=["tests/test_x.py"], lines=5), e("b", tests=["tests/test_x.py"], lines=40),
              e("c", lines=3)]
     choice = choose(forks, lambda i, j: (i, j) in passes)
     assert choice.fork == "b"  # agreement outranks being smaller
-    assert choice.agree == {"a": [], "b": ["a"], "c": ["a"]}
+    assert choice.agree == {"a": [], "b": ["a"], "c": []}
     assert choice.reason == "passes a's tests (a and c fail b's)"
 
 
-def test_a_fork_whose_own_tests_the_others_fail_is_kept():
-    # only a wrote tests, and they fail on b: a passes its own, b passes nobody's
+def test_a_forks_own_tests_count_for_nobody_itself_included():
+    # only a wrote tests, and they fail on b: its own pass is no agreement, so the smaller is kept
     choice = choose([e("a", tests=["tests/test_x.py"], lines=50), e("b", lines=5)], lambda i, j: False)
-    assert (choice.fork, choice.reason) == ("a", "passes its own tests (b fails a's)")
-    # they pass on b too: a tie on agreement, so the smaller is kept
-    choice = choose([e("a", tests=["tests/test_x.py"], lines=50), e("b", lines=5)], lambda i, j: True)
     assert (choice.fork, choice.reason) == ("b", "5 lines against 50")
+    # they pass on b: b passes a's tests, and a passes nobody's
+    choice = choose([e("a", tests=["tests/test_x.py"], lines=50), e("b", lines=5)], lambda i, j: True)
+    assert (choice.fork, choice.reason) == ("b", "passes a's tests")
 
 
 def test_each_pair_is_asked_once_and_only_referees_are_asked():

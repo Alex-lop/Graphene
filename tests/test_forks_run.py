@@ -49,11 +49,12 @@ if fork == "c" and os.environ.get("FORKS_RELEASE"):  # c gives up, naming what i
     print(subprocess.run(argv, capture_output=True, text=True).stdout)
 """
 NONE = FORKED.replace("return ids", "return [1]").replace("found = ids", "found = [1]")
-# every fork passes; a and b add a test the check runs: b's, the stricter, fails on a's code and c's
+# every fork passes; a and b add a test the check runs: a's passes on b and fails on c, b's, the stricter,
+# fails on a's code and c's
 AGREE = """
 import os, pathlib
 fork = os.environ["GRAPHENE_FORK"]
-api = {"a": "def users():\\n    return [1]\\n", "c": "def users():\\n    return [1]\\n",
+api = {"a": "def users():\\n    return [1]\\n", "c": "def users():\\n    return [2]\\n",
        "b": 'def users():\\n    \"\"\"The ids.\"\"\"\\n    return [1]\\n'}[fork]
 pathlib.Path("api.py").write_text(api)
 test = {"a": "assert users() == [1]\\n", "b": "assert users() == [1]\\nassert users.__doc__\\n"}.get(fork)
@@ -380,7 +381,7 @@ def test_a_person_picks_another_fork_of_a_leaf_in_review_and_the_sign_off_lands_
 
 
 def test_the_fork_that_passes_the_others_tests_is_kept_before_the_smaller_one(repo, monkeypatch):
-    """pick's agreement: a's test passes on b and c; b's stricter one fails on both; c wrote none."""
+    """pick's agreement: a's test passes on b and fails on c; b's stricter one fails on both; c wrote none."""
     monkeypatch.setenv("FORKS_LOG", str(repo.parent / "forks.log"))
     (repo / "api.py").write_text("def users():\n    return []\n")
     (repo / "tests").mkdir()
@@ -404,7 +405,7 @@ def test_the_fork_that_passes_the_others_tests_is_kept_before_the_smaller_one(re
         assert picked["detail"]["fork"] == "b"  # larger than a and c, and a's test passes on it
         assert picked["detail"]["reason"] == "passes a's tests (a and c fail b's)"
         table = {t["fork"]: t for t in picked["detail"]["table"]}
-        assert {b: t["agrees"] for b, t in table.items()} == {"a": [], "b": ["a"], "c": ["a"]}
+        assert {b: t["agrees"] for b, t in table.items()} == {"a": [], "b": ["a"], "c": []}
         assert {b: t["touched_check"] for b, t in table.items()} == {"a": True, "b": True, "c": False}
         assert plan.get(store, "n1").forked == {}
     assert "n1 kept b of 3: passes a's tests (a and c fail b's) · 3 lines against 2, 2" in said, said

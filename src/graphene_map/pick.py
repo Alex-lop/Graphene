@@ -3,11 +3,12 @@
 The rule, written on 20 October 2026 before any fork had run. Only a fork whose check passed in a clean copy,
 with nothing outside its scope, can be kept. Among those, each step breaks only the ties of the step before:
 
-1. **Agreement**: it passes the most of the passing forks' tests, its own included. A fork's tests are the
-   files it changed that look like tests and that its check runs; "a's tests pass on b" means the leaf's own
-   check passes on b's tree with a's versions of those files laid over it; a fork passes its own, since its
-   check passed with them. A fork with no such files referees nobody. (CodeT's dual execution agreement, at
-   its smallest: tests that only some forks pass are evidence about the others.)
+1. **Agreement**: it passes the most of the other passing forks' tests. A fork's tests are the files it
+   changed that look like tests and that its check runs; "a's tests pass on b" means the leaf's own check
+   passes on b's tree with a's versions of those files laid over it. A fork with no such files referees
+   nobody, and its own tests count for nobody, itself included: its check passed with them, which says
+   nothing against the others. (CodeT's dual execution agreement, at its smallest: tests that only some
+   forks pass are evidence about the others.)
 2. **The check left alone**: it did not change a file its check ran at the base (a test made to agree).
 3. **Smaller**: the fewest lines added and removed outside test files.
 4. **Cheaper**: the fewest dollars, to the cent; a fork with no meter makes this step a tie.
@@ -115,7 +116,7 @@ def choose(entries: list[Entry], agrees: Callable[[str, str], bool] | None = Non
         return Choice(passed[0].fork, "the only fork whose check passed", table, agree)
 
     steps: list[tuple[str, Callable[[Entry], object]]] = [
-        ("agreement", lambda e: -(len(agree[e.fork]) + bool(e.tests)) if scored else 0),  # its own pass
+        ("agreement", lambda e: -len(agree[e.fork]) if scored else 0),  # the others' tests it passes
         ("untouched", lambda e: bool(e.touched_check)),
         ("lines", lambda e: e.lines),
         ("dollars", _cents),
@@ -140,7 +141,7 @@ def choose(entries: list[Entry], agrees: Callable[[str, str], bool] | None = Non
 def _reason(step: str, k: Entry, losers: list[Entry], passed: list[Entry], agree: dict) -> str:
     """The step that decided, in a line, against the forks that step set aside."""
     if step == "agreement":
-        said = f"passes {_owners(agree[k.fork])} tests" if agree[k.fork] else "passes its own tests"
+        said = f"passes {_owners(agree[k.fork])} tests"  # it passed somebody's, or the step was a tie
         if k.tests:  # who the kept fork's own tests turned away
             failing = [e.fork for e in passed if e is not k and k.fork not in agree[e.fork]]
             if failing:
