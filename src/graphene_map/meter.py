@@ -281,8 +281,9 @@ class Meter:
 def attempts(rows: list[dict], scope: list[str] | None = None, now: datetime | None = None) -> list[dict]:
     """One leaf's attempts, oldest first, from its node_log rows: what each spent, did and said. A row
     without an attempt number (a usage row from before the meter, a denied path) is the attempt's that
-    was going when it was written. An attempt with no `ended` row (one from before the meter, or a run
-    that died) ends where its hold did."""
+    was going when it was written; a forked hold's rows say whose fork's, so two forks' first attempts
+    are two. An attempt with no `ended` row (one from before the meter, or a run that died) ends where
+    its hold did."""
     now = now or datetime.now(UTC)
     tries: list[dict] = []
     numbered: dict = {}
@@ -290,10 +291,10 @@ def attempts(rows: list[dict], scope: list[str] | None = None, now: datetime | N
         d = e["detail"] or {}
         if e["kind"] == "attempt":
             tries.append({"row": e, "rows": [], "ended": None, "held": None})
-            numbered[d.get("attempt")] = tries[-1]
+            numbered[d.get("fork"), d.get("attempt")] = tries[-1]
             continue
         if "attempt" in d:
-            a = numbered.get(d["attempt"])
+            a = numbered.get((d.get("fork"), d["attempt"]))
         else:
             a = tries[-1] if tries and not tries[-1]["ended"] else None
         if a is None:
@@ -426,9 +427,10 @@ def agents(rows: list[dict], now: datetime) -> dict:
 
 
 def width(rows: list[dict], now: datetime | None = None) -> dict | None:
-    """How wide a whole log ran. ``most``: the most leaves with an attempt running at once. ``lanes``: the
-    leaves that made one. ``alone``: the share of agent seconds with one running alone. None when none ran.
-    An attempt runs over [start, end), to the millisecond: one ending as another starts is not beside it."""
+    """How wide a whole log ran. ``most``: the most agents with an attempt running at once. ``lanes``: the
+    leaves that made one, a forked leaf's forks each. ``alone``: the share of agent seconds with one running
+    alone. None when none ran. An attempt runs over [start, end), to the millisecond: one ending as another
+    starts is not beside it."""
     tries = [a for log in by_node(rows).values() for a in attempts(log, now=now)]
     spans = [(datetime.fromisoformat(a["started"]).timestamp(), a["until"].timestamp()) for a in tries]
     points = sorted({x for span in spans for x in span})
@@ -436,7 +438,7 @@ def width(rows: list[dict], now: datetime | None = None) -> dict | None:
     stretches = [(q - p, sum(s <= p < e for s, e in spans)) for p, q in itertools.pairwise(points)]
     held = sum(d * n for d, n in stretches)
     alone = sum(d for d, n in stretches if n == 1) / held if held else 1.0
-    lanes = len({e["node_id"] for e in rows if e["kind"] == "attempt"})
+    lanes = len({(e["node_id"], (e["detail"] or {}).get("fork")) for e in rows if e["kind"] == "attempt"})
     return {"most": max([1, *(n for _, n in stretches)]), "lanes": lanes, "alone": alone} if tries else None
 
 
