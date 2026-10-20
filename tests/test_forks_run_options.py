@@ -44,7 +44,19 @@ def test_a_leaf_runs_as_its_own_line_else_the_runs_forks_else_the_setting_else_o
         assert R.forks_of(store, a, three) == 3 and R.forks_of(store, b, three) == 3
         S.apply(store, "forks: 4\n", ALEX)
         assert R.forks_of(store, a, R.Forks()) == 4 and R.forks_of(store, b, R.Forks(3)) == 2
-        assert R.forks_of(store, c, R.Forks(3)) == 1  # no check to keep one: one agent, whatever the run says
+        assert R.forks_of(store, c, R.Forks(3)) == 3  # asked in vain: no check to keep one (run_node says so)
+
+
+def test_a_leaf_with_no_check_runs_as_one_agent_and_the_run_says_why(repo):
+    """`forks_of` gave a leaf with no check one fork before `run_node` could ask, so its line saying why the
+    run's --forks did nothing never printed."""
+    with Store.open(repo) as store:
+        plan.propose(store, [leaf("c", "c.txt", check=None, signoff=True)], ALEX)
+    said: list[str] = []
+    R.run_parallel(lambda: Store.open(repo), repo, repo, 1, "true", attempts=1, say=said.append, logs=None,
+                   forks=R.Forks(3))  # fmt: skip
+    assert "c runs as one agent: 3 forks need a check to keep one" in said, said
+    assert not any("forked" in line for line in said)
 
 
 def test_forks_need_worktrees_so_here_is_refused_and_so_are_too_many(repo):

@@ -98,11 +98,11 @@ class Forks:
 
 
 def forks_of(store, node: P.Node, run: Forks | None) -> int:
-    """How many forks a leaf runs as: its own `forks:` line, else the run's --forks, else the setting, else
-    one, and never fewer than the run's --with names. One for a leaf with no check (its check is what
-    keeps one: `validate` refuses the line, not the run's number), and one for a run that never forks
-    (``run`` is None: `--here`, one checkout)."""
-    if run is None or not node.check:
+    """How many forks a leaf is asked to run as: its own `forks:` line, else the run's --forks, else the
+    setting, else one, and never fewer than the run's --with names; one for a run that never forks (``run``
+    is None: `--here`, one checkout). A leaf with no check is asked in vain (its check is what keeps one:
+    `validate` refuses the line, not the run's number): `run_node` runs it as one agent and says why."""
+    if run is None:
         return 1
     return max(node.forks or run.n or S.forks(store), len(run.withs))
 
