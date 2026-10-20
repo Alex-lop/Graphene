@@ -129,9 +129,9 @@ def build_flow(g: Graph, width: int, selected: str | None) -> tuple[list[Line], 
             break
     focus = selected if selected in ids else GOAL if GOAL in ids else ids[0]  # a question: the goal, or top
     if lay is not None and lay.width > width:
-        # the more around it the better, then the wider; last, the goal it flows into gives way to what is
-        # around it
-        for (hops, goal), label_w in product(((2, True), (1, True), (1, False)), LABELS):
+        # the more around it the better, then the wider; the goal it flows into, when nothing shown flows
+        # into it, says less than a step of context does, so it gives way before a step
+        for (hops, goal), label_w in product(((2, True), (2, False), (1, True), (1, False)), LABELS):
             near, edges = F.neighbourhood(g.nodes, g.edges, focus, hops, keep=[GOAL] * goal)
             waves = sorted({g.wave[n.id] for n in near})  # the plan's waves with a box here: the columns
             lay = F.layout(near, edges, label_w=label_w, selected=selected, styles=STYLES,

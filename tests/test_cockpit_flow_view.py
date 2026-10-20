@@ -139,8 +139,7 @@ def test_the_line_under_a_neighbourhood_keeps_how_far_it_reaches_at_80_columns_w
     for i in range(8):
         m.tasks[f"c{i}"] = Task(f"c{i}", f"step {i}", "waiting", needs=["ids"] if i == 0 else [f"c{i - 1}"])
     _lines, _layout, note = FV.build_flow(FV.flow_graph(m), 80, "q")
-    assert note.startswith("showing ") and "Customers get their" in note
-    assert note.endswith(("within 2 steps", "within 1 step"))
+    assert note.startswith("showing ") and "Customers get their" in note and note.endswith("within 2 steps")
     assert cell_len(" " + note) <= 80  # the screen draws it after one space
 
 
@@ -171,7 +170,7 @@ def test_at_80_columns_a_neighbourhood_has_the_widest_labels_that_fit_and_the_go
     m.goal = "customers get their invoices by email"
     for i in range(8):  # a chain of eight more: too wide for 80 columns whole
         m.tasks[f"c{i}"] = Task(f"c{i}", f"step {i}", "waiting", needs=["ids"] if i == 0 else [f"c{i - 1}"])
-    lines, _layout, note = FV.build_flow(FV.flow_graph(m), 80, "c3")
+    lines, _layout, note = FV.build_flow(FV.flow_graph(m), 80, "c7")  # the last step: the goal a step away
     text = "\n".join(line.plain() for line in lines)
     assert note.startswith("showing ") and "customers get their" in text and "…" not in text
     assert all(line.width() <= 80 for line in lines)
@@ -332,3 +331,17 @@ def test_a_part_of_a_graph_keeps_the_wholes_back_edge_a_back_edge_and_no_arrowhe
     assert note.startswith("showing ") and set(lay.rects) == {"a", "b", "d"} and lay.back == [("d", "a")]
     assert not any(line.plain().rstrip().endswith("▶") for line in lines)
     assert all(line.width() <= 44 for line in lines)
+
+
+def test_a_neighbourhood_gives_up_the_goal_before_a_step_of_context_when_nothing_shown_flows_into_it():
+    """Two steps with the goal, then one step with it: on a chain of ten at 80 columns with the fifth
+    selected, the two-step view with the goal was 83 wide, so the one-step view showed, with the goal box
+    four steps away beside it and no arrow into it: a step of context given up for a box that says nothing."""
+    m = plan()
+    for i in range(10):
+        m.tasks[f"c{i}"] = Task(f"c{i}", f"step {i}", "ready", needs=[f"c{i - 1}"] if i else [])
+    lines, lay, note, text = drawn(m, 80, "c5")
+    assert note == "showing 5 of 11: step 5 and what is within 2 steps" and "ship it" not in text
+    assert set(lay.rects) == {"c3", "c4", "c5", "c6", "c7"} and all(line.width() <= 80 for line in lines)
+    _lines, lay, note, text = drawn(m, 80, "c9")  # the goal a step away: kept, with its arrow into it
+    assert note.endswith("within 2 steps") and "═▶│ ship it" in text and set(lay.rects) == {"c7", "c8", "c9"}
