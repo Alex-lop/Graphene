@@ -49,20 +49,40 @@ def _strip_wrappers(tokens: list[str]) -> list[str]:
     return tokens
 
 
+# a `<` or `>` that is text (inside quotes, or escaped), kept apart from a redirect until a token is a path
+_MASK = {"<": "\ue000", ">": "\ue001"}
+_UNMASK = str.maketrans({v: k for k, v in _MASK.items()})
+
+
 def _unquoted_newlines_to_semicolons(text: str) -> str:
+    """As bash reads it, outside quotes: each newline ends a command (`;`), and a `#` that starts a word is a
+    comment to the end of its own line. shlex read a comment to the end of the whole command once the newlines
+    were gone, so `# note\necho x > f` hid the write. A `<` or `>` inside quotes, or escaped, is masked
+    (``_MASK``): `grep '>' f` writes nothing."""
     out: list[str] = []
     quote: str | None = None
-    escaped = False
+    escaped = comment = False
     for ch in text:
+        if comment:
+            if ch == "\n":
+                comment = False
+                out.append(";")
+            continue
         if escaped:
             escaped = False
+            ch = _MASK.get(ch, ch)
         elif ch == "\\" and quote != "'":
             escaped = True
         elif quote:
             if ch == quote:
                 quote = None
+            else:
+                ch = _MASK.get(ch, ch)
         elif ch in ("'", '"'):
             quote = ch
+        elif ch == "#" and (not out or out[-1] in " \t;|&()"):
+            comment = True
+            continue
         elif ch == "\n":
             out.append(";")
             continue
@@ -70,14 +90,12 @@ def _unquoted_newlines_to_semicolons(text: str) -> str:
     return "".join(out)
 
 
-def shell_segments(command: str) -> list[list[str]]:
-    """Token lists of each simple command, split on && || | ; & ( ) and unquoted newlines.
-
-    Quotes are respected, so a `|` or an `rm` inside a grep pattern is not shell syntax.
-    """
-    text = _unquoted_newlines_to_semicolons(strip_heredocs(command))
-    lexer = shlex.shlex(text, posix=True, punctuation_chars=True)
+def _segments(command: str) -> list[list[str]]:
+    """``shell_segments`` with quoted `<` and `>` still masked: what the redirect reader needs."""
+    text = _unquoted_newlines_to_semicolons(strip_heredocs(command))  # heredoc bodies first: an apostrophe
+    lexer = shlex.shlex(text, posix=True, punctuation_chars=True)  # in one opens no quote
     lexer.whitespace_split = True
+    lexer.commenters = ""  # comments went with their own lines, above
     segments: list[list[str]] = [[]]
     try:
         for token in lexer:
@@ -90,6 +108,14 @@ def shell_segments(command: str) -> list[list[str]]:
     return [_strip_wrappers(segment) for segment in segments if segment]
 
 
+def shell_segments(command: str) -> list[list[str]]:
+    """Token lists of each simple command, split on && || | ; & ( ) and unquoted newlines.
+
+    Quotes are respected, so a `|` or an `rm` inside a grep pattern is not shell syntax.
+    """
+    return [[token.translate(_UNMASK) for token in segment] for segment in _segments(command)]
+
+
 def bash_written_paths(command: str, root: Path) -> list[tuple[str, str]]:
     """(repo-relative path, "write" | "delete") for the obvious forms: > >> tee sed -i mv cp rm touch.
 
@@ -99,11 +125,12 @@ def bash_written_paths(command: str, root: Path) -> list[tuple[str, str]]:
     """
     cwd: str | None = os.path.normpath(str(root))
     found: list[tuple[str, str]] = []
-    for tokens in shell_segments(command):
+    for tokens in _segments(command):  # a quoted `>` stays masked: text, never a redirect
         if not tokens:
             continue
         if os.path.basename(tokens[0]) == "cd":
-            target = tokens[1] if len(tokens) > 1 and not tokens[1].startswith("-") else "~"
+            given = len(tokens) > 1 and not tokens[1].startswith("-")
+            target = tokens[1].translate(_UNMASK) if given else "~"
             if _NOT_A_PATH.search(target):
                 cwd = None
             elif os.path.isabs(os.path.expanduser(target)):
@@ -112,6 +139,7 @@ def bash_written_paths(command: str, root: Path) -> list[tuple[str, str]]:
                 cwd = os.path.normpath(os.path.join(cwd, target))
             continue
         for path, kind in _segment_paths(tokens):
+            path = path.translate(_UNMASK)
             if _NOT_A_PATH.search(path) or path in ("/dev/null", "-", "") or path.startswith("-"):
                 continue
             expanded = os.path.expanduser(path)

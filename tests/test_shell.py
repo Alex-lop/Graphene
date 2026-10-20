@@ -6,7 +6,9 @@ actually typed, not a grammar exercise.
 
 from pathlib import Path
 
-from graphene_map.shell import bash_written_paths
+import pytest
+
+from graphene_map.shell import bash_written_paths, shell_segments
 
 
 def test_bash_written_paths(tmp_path):
@@ -74,3 +76,32 @@ def test_files_inside_a_nested_checkout_are_outside_the_repo(tmp_path):
     assert relative_path(inside, tmp_path) == inside
     assert relative_path(str(tmp_path / "src" / "app.py"), tmp_path) == "src/app.py"
     assert bash_written_paths(f"echo x > {inside}", tmp_path) == [(inside, "write")]
+
+
+@pytest.mark.parametrize(
+    "command, written",
+    [
+        ("# update the schema\necho x > src/db/schema.py", [("src/db/schema.py", "write")]),
+        ("ls # list first\necho x > src/db/schema.py", [("src/db/schema.py", "write")]),
+        ("# write it\ncat > src/db/schema.py <<'EOF'\nTABLES = ['x']\nEOF", [("src/db/schema.py", "write")]),
+        ("echo https://example.com/#top\necho x > src/db/schema.py", [("src/db/schema.py", "write")]),
+        ("x=abc; echo ${#x} > src/db/schema.py", [("src/db/schema.py", "write")]),
+        ('echo "a # b" > out.txt', [("out.txt", "write")]),
+        ("grep -n '>' src/db/schema.py", []),
+        ("rg -n '>>' src", []),
+        ("echo x \\> not-a-write.txt", []),
+        ("echo '>' > src/api/users.py", [("src/api/users.py", "write")]),
+        ("cat > a.txt <<'EOF'\ndon't\nEOF\necho x > outside.txt",
+         [("a.txt", "write"), ("outside.txt", "write")]),
+    ],
+)
+def test_a_comment_hides_no_write_after_it_and_a_quoted_redirect_writes_nothing(command, written, tmp_path):
+    """An adversarial pass at the gate (19 October): a `#` comment line above a write hid it (shlex read the
+    comment to the end of the command once its newlines were `;`), and a quoted `>` in a grep pattern was read
+    as a redirect, refusing a read. A comment ends with its line; a `>` inside quotes, or escaped, is text; an
+    apostrophe in a heredoc body opens no quote."""
+    assert bash_written_paths(command, tmp_path) == [(p, k) for p, k in written]
+
+
+def test_a_commit_message_keeps_its_quoted_redirects_and_hashes():
+    assert shell_segments("git commit -m 'a > b # c'") == [["git", "commit", "-m", "a > b # c"]]
