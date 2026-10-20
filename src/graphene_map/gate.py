@@ -632,8 +632,9 @@ def _heard(store, held: list[P.Node], event: dict) -> dict | None:
     note of theirs or an answer on the board (``board.told``) about the leaf, a sub-goal above it or the
     whole plan, changed after the hold began (what came before is in the contract ``node start`` showed).
     Told once, to whichever agent of the session calls first (a subagent, if it is first), and logged
-    as ``told`` on the leaf: the person is shown that it was heard, never that it was done. The ledger
-    is written first, so a store too busy to keep it says nothing now rather than twice.
+    as ``told`` on the leaf: the person is shown that it was heard, never that it was done. A leaf whose
+    hold forked has a session a fork, and each fork is told for itself. The ledger is written first, so
+    a store too busy to keep it says nothing now rather than twice.
     TODO: one meta row a hold that was told something, never pruned."""
     held = [n for n in held if not n.aside]  # a leaf made from a prompt: the person is talking to it already
     if not held:
@@ -651,7 +652,9 @@ def _heard(store, held: list[P.Node], event: dict) -> dict | None:
     try:
         with store.claim():  # two calls of one batch run two hooks at once: one of them tells
             for n in held:
-                key = f"told:{n.session_id}:{n.id}:{n.started_at}"
+                fork = P.fork_of(n, event.get("session_id"))
+                whose = fork[0] if fork else n.session_id  # a fork hears it for itself
+                key = f"told:{whose}:{n.id}:{n.started_at}"
                 seen = json.loads(store.meta(key) or "[]")
                 on = {None, n.id, *(a.id for a in P.above(n, by_id))}
                 fresh = [it for it in new if it.get("about") in on and it["updated_at"] > (n.started_at or "")
@@ -659,7 +662,8 @@ def _heard(store, held: list[P.Node], event: dict) -> dict | None:
                 if fresh:
                     store.set_meta(key, json.dumps([*seen, *(f"{it['id']}@{it['rev']}" for it in fresh)]))
                     detail = {"items": [it["id"] for it in fresh], "how": how}
-                    store.log_node(n.id, P._now(), "told", n.executor, n.session_id, agent_id, detail)
+                    detail |= {"fork": fork[1]["fork"]} if fork else {}
+                    store.log_node(n.id, P._now(), "told", n.executor, whose, agent_id, detail)
                     said += [B.said(it) for it in fresh]
     except sqlite3.OperationalError:
         return None

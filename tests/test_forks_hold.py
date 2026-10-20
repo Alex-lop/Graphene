@@ -10,7 +10,7 @@ import subprocess
 import pytest
 from typer.testing import CliRunner
 
-from graphene_map import gate, plan
+from graphene_map import board, gate, plan
 from graphene_map import run as R
 from graphene_map.cli import build
 from graphene_map.hooks import hook_main
@@ -209,3 +209,19 @@ def test_the_command_line_says_a_forks_verdict_in_its_own_words(repo):
         verdicts = [(f["fork"], f["state"]) for f in fork_rows(store)]
         assert verdicts == [("a", "running"), ("a", "passed"), ("b", "gave up"), ("a", "passed")]
         assert store.node_log("n1", ("fork",))[-1]["session_id"] == FORK_A
+
+
+def test_what_the_person_tells_a_forked_leaf_reaches_every_fork_once(repo):
+    """A note was told once a hold, to whichever session wrote first: with forks, the first fork heard it
+    and the others worked on without it. Each fork is told for itself, with its next write."""
+    trees = forked(repo)
+    with Store.open(repo) as store:
+        board.note(store, "keep the ids as strings", ALEX, about="n1")
+    for session, b in ((FORK_A, "a"), (FORK_B, "b")):
+        edit = {"tool_name": "Edit", "tool_input": {"file_path": f"{trees[b]}/api.py"}, "cwd": trees[b]}
+        heard = hook(repo, "PreToolUse", session, **edit)
+        assert "keep the ids as strings" in heard["hookSpecificOutput"]["additionalContext"], b
+        assert hook(repo, "PreToolUse", session, **edit) is None  # once a fork
+    with Store.open(repo) as store:
+        told = [(e["session_id"], e["detail"]["fork"]) for e in store.node_log("n1", ("told",))]
+        assert told == [(FORK_A, "a"), (FORK_B, "b")]
