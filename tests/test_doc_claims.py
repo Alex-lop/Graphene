@@ -454,9 +454,9 @@ def test_ideas_next_says_what_the_night_did_and_what_is_still_not_done():
 
 def test_the_release_notes_are_this_versions_and_every_command_they_name_is_the_clis():
     """dev/launch/release-notes.md is pasted into the GitHub release, and it was 0.5.1's, a version PyPI never
-    got. It names pyproject's version and says 0.5.1 was never published; the two install lines are the
-    package's and its `graphene-map` command's; it has six to ten bullets, the watch first; each command it
-    names, with each option, answers `--help`."""
+    got. It names pyproject's version; the two install lines are the package's and its `graphene-map`
+    command's; it has six to ten bullets, the release's headline first (0.6.0's was the watch, 0.7.0's is
+    forks); each command it names, with each option, answers `--help`."""
     import shlex
     import tomllib
     from itertools import takewhile
@@ -469,11 +469,10 @@ def test_the_release_notes_are_this_versions_and_every_command_they_name_is_the_
     text = (ROOT / "dev/launch/release-notes.md").read_text(encoding="utf-8")
     said = " ".join(text.split())
     assert text.startswith(f"# Graphene {project['version']}\n")
-    assert "0.5.1 was tagged on 16 October and never published" in said
     assert "graphene-map" in project["scripts"] and project["name"] == "graphene-map"
     assert "`uv tool install graphene-map`" in said and "`uvx graphene-map demo`" in said
     bullets = re.findall(r"^- \*\*(.+?)\*\*", text.split("## What you get")[1].split("## ")[0], re.M)
-    assert 6 <= len(bullets) <= 10 and "watch" in bullets[0]
+    assert 6 <= len(bullets) <= 10 and "Fork" in bullets[0]
     runner, ran = CliRunner(), 0
     for span in re.findall(r"`(graphene [^`]+)`", said):
         words = shlex.split(span)
