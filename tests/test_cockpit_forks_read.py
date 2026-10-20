@@ -7,7 +7,7 @@ from datetime import UTC, datetime, timedelta
 
 from test_plan_cli import repo  # noqa: F401  (fixture)
 
-from graphene_map import plan
+from graphene_map import board, plan
 from graphene_map.cockpit import read as RD
 from graphene_map.cockpit.read import read
 from graphene_map.plan import Caller
@@ -185,3 +185,18 @@ def test_the_forks_setting_is_the_models_and_unset_or_unreadable_it_is_one(repo)
     with Store.open(repo) as store:
         store.set_meta("settings:forks", "many")
     assert look(repo).forks == 1
+
+
+def test_a_note_every_fork_heard_is_one_line_heard_when_the_first_fork_heard_it(repo):
+    """Each fork of a hold hears the person's note for itself (gate._heard), so a note told to three forks
+    has three `told` rows: the cockpit said it three times."""
+    plan_of(repo)
+    forked(repo)
+    with Store.open(repo) as store:
+        note = board.note(store, "keep the ids as strings", ALEX, about="ids")
+    for seconds, letter in ((30, "a"), (20, "b"), (10, "c")):
+        row(repo, "told", {"items": [note["id"]], "how": "write"}, seconds, letter)
+    t = look(repo).tasks["ids"]
+    [(text, _sent, heard)] = t.told
+    assert text == "keep the ids as strings" and heard > 0
+    assert [e.text for e in t.events if e.kind == "you"] == ["“keep the ids as strings”"]

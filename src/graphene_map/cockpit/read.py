@@ -370,14 +370,18 @@ def came_back(store, t: Task, node: P.Node) -> None:
 def told(store, t: Task, node: P.Node, by_id: dict[str, P.Node], items: dict[str, dict]) -> None:
     """What the person told this agent and whether it heard: a note about the leaf, a sub-goal above it
     or the whole plan, since the leaf was taken. It is heard when the hook put it next to a tool result
-    (a `told` row); until then it is sending."""
+    (a `told` row); until then it is sending. A note is one line however many rows say it was heard: a
+    forked hold's forks each hear it, and it was heard when the first did."""
     on = {None, node.id, *(a.id for a in P.above(node, by_id))}
     since = node.started_at or ""
+    heard: dict[str, float] = {}
     for r in recent(store, t.id, ("told",)):
         for item_id in r["detail"].get("items") or []:
-            if item_id in items:
-                it = items[item_id]
-                t.told.append((" ".join(B.said(it).split()), epoch(it["updated_at"]), epoch(r["timestamp"])))
+            if item_id in items and item_id not in heard:
+                heard[item_id] = epoch(r["timestamp"])
+    for item_id, when in heard.items():
+        it = items[item_id]
+        t.told.append((" ".join(B.said(it).split()), epoch(it["updated_at"]), when))
     ledger = set(json.loads(store.meta(f"told:{node.session_id}:{node.id}:{node.started_at}") or "[]"))
     for it in items.values():
         key = f"{it['id']}@{it['rev']}"
