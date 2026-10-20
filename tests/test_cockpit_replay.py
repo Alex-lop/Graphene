@@ -71,7 +71,7 @@ def test_a_key_that_would_change_the_plan_says_so_and_does_nothing(tmp_path):
             for _ in range(len(lines)):
                 await pilot.press("full_stop")
             app.model.selected = next(iter(app.model.tasks))
-            for key in ("t", "w", "x", "d", "R", "y", "s", "P", "u", "e"):  # r is the replay's own: again
+            for key in ("t", "w", "x", "d", "R", "y", "s", "P", "u", "e", "f"):  # r is the replay's: again
                 app.model.feed.clear()
                 await pilot.press(key)
                 assert app.model.latest() == "a replay: nothing runs here", key
@@ -426,8 +426,9 @@ def test_each_board_row_of_the_shipped_replay_leaves_the_screen_only_with_the_pe
 
 def test_the_shipped_replay_shows_agent_1_stopped_then_back_while_two_agents_still_run(tmp_path):
     """What the README's GIF and cockpit.png show, kept when the recording is made again: agent 1's write is
-    stopped in a change of its own, where it needs you while three run, and in the next it is back with its
-    reason while agents 2 and 3 still run."""
+    stopped in a change of its own, where it needs you while three run, and in the next change of its row
+    it is back with its reason while agents 2 and 3 still run (a change between them that moves nothing on
+    its row, the agent's own hand-back call in the recording of 20 October, is let by)."""
 
     async def go():
         app, _, lines = replay(tmp_path)
@@ -441,7 +442,8 @@ def test_the_shipped_replay_shows_agent_1_stopped_then_back_while_two_agents_sti
                 stopped = bool(greet.stopped) if greet.state == "running" else None
                 seen.append((greet.state, stopped, need, running))
             stopped = seen.index(("running", True, 1, 3))
-            assert seen[stopped + 1] == ("came back", None, 1, 2) and greet.agent == "1"
+            after = next(s for s in seen[stopped + 1 :] if s != seen[stopped])  # its row's next change
+            assert after == ("came back", None, 1, 2) and greet.agent == "1"
 
     asyncio.run(go())
 

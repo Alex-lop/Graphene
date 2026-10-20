@@ -263,13 +263,13 @@ def test_the_keys_line_says_what_the_keys_do_to_the_selected_row(tmp_path):
         def keys():
             return str(app.query_one("#keys", Static).render()).strip()
 
-        async with app.run_test(size=(100, 30)) as pilot:
+        async with app.run_test(size=(110, 30)) as pilot:  # the widest line, with f fork, needs 106
             for sel, own in (
                 ("q", "⏎ keep both · 1 pick · a answer · d drop"),
                 ("docs", "⏎ accept · A all · d drop · i details"),
                 ("ids", "t tell · w widen · x hand back · i details"),
-                ("back", "⏎ try again · w widen · t tell · i details"),
-                ("more", "⏎ try again · w widen · b new task · r reopen · t tell · i details"),  # its offers
+                ("back", "⏎ try again · f fork · w widen · t tell · i details"),
+                ("more", "⏎ try again · f fork · w widen · b new task · r reopen · t tell · i details"),
                 ("migrate", "⏎ sign off · x reopen · i details"),
                 ("schema", "i details · x reopen"),
                 ("tests", "t tell · i details"),
@@ -318,9 +318,10 @@ def test_the_graphs_legend_says_only_what_it_drew():
                 return "\n".join(line.plain() for line in app.query_one(Canvas).lines)
 
             assert "retry loop" not in shown() and "two-way" not in shown()  # plain edges: no legend
+            assert "═ the longest chain into the goal" in shown() and "lanes: sub-goals" not in shown()
             m.extra_edges = [("tests", "ids", "loop")]
             app.paint()
-            assert "amber lane = a retry loop (bounded)" in shown() and "two-way" not in shown()
+            assert "┄ amber = a retry loop (bounded)" in shown() and "two-way" not in shown()
             m.extra_edges = [("ids", "migrate", "two")]
             app.paint()
             assert "◀▶ two-way" in shown() and "retry loop" not in shown()
@@ -530,7 +531,8 @@ def test_the_graph_says_what_is_selected_on_top_however_tall_it_is_in_one_line_t
                 await pilot.press("down")
             await pilot.pause(0.2)
             top = str(app.query_one("#head", Static).render()).splitlines()[0]
-            assert top.startswith(f" {m.tasks[m.selected].title}  ·  waiting") and len(top) <= 80
+            sel = m.tasks[m.selected]  # the arrows went down the graph: whichever task they reached
+            assert top.startswith(f" {sel.title}  ·  {sel.state}") and len(top) <= 80
             m.tasks["migrate"].full = "Migrate the old ids to the new format: both stay readable"
             m.selected = "migrate"  # the line has the room a box has not: the title is whole, not five words
             app.paint()

@@ -26,21 +26,25 @@ import re
 import shlex
 import shutil
 import signal
+import string
 import subprocess
 import threading
 import time
 import uuid
 from collections.abc import Callable
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
 from . import board as B
-from . import extra
+from . import extra, pick
 from . import meter as M
 from . import plan as P
+from . import settings as S
 from .plan import may_collide
 from .record import seconds as _seconds
+from .store import Store
 from .views import elide, money
 
 # An executor may edit files and run `graphene node …` and `graphene plan …` (its done, its release, a
@@ -69,14 +73,38 @@ def unchosen(who: str) -> P.Refused:
 
 def named(spec: str | None) -> str:
     """What --with names, as the command to start: `nemotron [options]` is Graphene's own executor on
-    Token Factory; `claude` and `codex` alone are those agents as Graphene starts them by default;
-    anything else is a command, as it is. Nothing named is refused (`unchosen`)."""
+    Token Factory; `claude` and `codex` alone are those agents as Graphene starts them by default, and
+    `claude:MODEL` or `codex:MODEL` is the same with that model named in the CLI's own flag; anything
+    else is a command, as it is. Nothing named is refused (`unchosen`)."""
     spec = (spec or "").strip()
     if not spec:
         raise unchosen("executor")
     if spec.split(None, 1)[0] == "nemotron":
         return extra.need("executor").template(spec)
+    name, _, model = spec.partition(":")
+    if model and " " not in spec and name in ("claude", "codex"):
+        return {"claude": f"{DEFAULT_WITH} --model", "codex": f"{CODEX} -m"}[name] + f" {shlex.quote(model)}"
     return {"claude": DEFAULT_WITH, "codex": CODEX}.get(spec, spec)
+
+
+@dataclass(frozen=True)
+class Forks:
+    """What `graphene run` was told about forks: --forks (0: nothing), --first, and each --with as typed
+    (fork k runs the k-th, round robin). A leaf's own number comes first (``forks_of``)."""
+
+    n: int = 0
+    first: bool = False
+    withs: list[str] = field(default_factory=list)
+
+
+def forks_of(store, node: P.Node, run: Forks | None) -> int:
+    """How many forks a leaf is asked to run as: its own `forks:` line, else the run's --forks, else the
+    setting, else one, and never fewer than the run's --with names; one for a run that never forks (``run``
+    is None: `--here`, one checkout). A leaf with no check is asked in vain (its check is what keeps one:
+    `validate` refuses the line, not the run's number): `run_node` runs it as one agent and says why."""
+    if run is None:
+        return 1
+    return max(node.forks or run.n or S.forks(store), len(run.withs))
 
 
 INTERPRETER = re.compile(r"(python|node|bash|sh|zsh|ruby|perl|deno|bun)[\d.]*")
@@ -109,13 +137,13 @@ class Stop:
         self._procs: dict[str, subprocess.Popen] = {}
         self._lock = threading.Lock()
 
-    def add(self, node_id: str, proc: subprocess.Popen) -> None:
+    def add(self, session: str, proc: subprocess.Popen) -> None:  # by its session: a fork's, or the hold's
         with self._lock:
-            self._procs[node_id] = proc
+            self._procs[session] = proc
 
-    def remove(self, node_id: str) -> None:
+    def remove(self, session: str) -> None:
         with self._lock:
-            self._procs.pop(node_id, None)
+            self._procs.pop(session, None)
 
     def halt(self) -> None:
         self.event.set()
@@ -192,21 +220,32 @@ def sweep(store, say: Callable[[str], None], root: Path | None = None) -> None:
     stopped for it. A parallel run that died outright (kill -9, Force Quit) left its executors
     working, and a leaf one of them finished is done in the run's worktree and nowhere here: it is
     parked as a stopped run parks it (``park``), committed on its branch and waiting in review. Either
-    way the dead run's attempt is closed first (``_close``): nothing else settles its hold. Last, every
+    way the dead run's attempt is closed first (``_close``): nothing else settles its hold. A hold that
+    forked had a tree a fork: each fork's work is kept on its ref first (``_keep_fork``: the dead run
+    wrote none), then the tree goes, so none stays registered with nothing pointing at it. Last, every
     hold a dead run left in flight in its ledger is closed, whatever its leaf has become since: the
     executor left working may have ended the leaf itself (`done`, or `release`)."""
     for n in P.nodes(store, (P.RUNNING,)):
         if not (n.executor or "").startswith("run:"):
             continue
-        last = (store.node_log(n.id, ("attempt",)) or [None])[-1]
-        this = last["detail"] if last and last["session_id"] == n.session_id else {}
+        mine = {n.session_id, *n.forked}  # the hold's sessions: its own, and each fork's
+        rows = [e for e in store.node_log(n.id, ("attempt",)) if e["session_id"] in mine]
+        this = rows[-1]["detail"] if rows else {}
         if this.get("run_pid"):
             gone = not _still(this["run_pid"], this.get("run_start"))
         else:  # started, and no attempt written yet: dead only if no parallel run holds the lock
             gone = P.RUN_TREE in (n.checkout or "") and not _locked(root)
         if not gone:
             continue
-        _close(this)
+        for last in {e["session_id"]: e for e in rows}.values():  # each session's last attempt: its executor
+            _close(last["detail"])
+        for f in n.forked.values():  # the dead run wrote no ref: what each fork tried is kept, its tree goes
+            tree = Path(f["tree"])
+            with contextlib.suppress(P.Refused, OSError, subprocess.TimeoutExpired):  # a tree git cannot read
+                if tree.is_dir():
+                    paths = [p for p in P.changed_since(tree, n.base_sha, {}) if P.in_scope(p, n.scope)]
+                    _keep_fork(tree, n.id, f["fork"], paths, n.base_sha or "HEAD")
+            _git(Path(store.path).parent.parent, "worktree", "remove", "--force", str(tree), ok=True)
         try:
             P.release(store, n.id, P.Caller("graphene run", False, n.session_id),
                       "the run that held it ended without finishing it", stopped=True)  # fmt: skip
@@ -277,10 +316,12 @@ def _locked(root: Path | None) -> bool:
 
 
 def _waited(
-    proc: subprocess.Popen, store, node_id: str, stop: Stop, each: Callable[[], None] | None = None
+    proc: subprocess.Popen, store, node_id: str, stop: Stop, each: Callable[[], None] | None = None,
+    halted: Callable[[], bool] | None = None,
 ) -> int:
     """The executor's exit code. Meanwhile, a leaf the person released (or dropped) stops its
-    executor: handing it back is the person's way to say stop. ``each`` runs every POLL."""
+    executor: handing it back is the person's way to say stop. ``each`` runs every POLL; ``halted``
+    says when this one is to stop on its own (a fork, once another is kept under --first)."""
     while True:
         try:
             return proc.wait(timeout=POLL)
@@ -288,7 +329,7 @@ def _waited(
             pass
         if each:
             each()
-        if stop.event.is_set() or _let_go(store, node_id):
+        if stop.event.is_set() or (halted is not None and halted()) or _let_go(store, node_id):
             _end(proc)
 
 
@@ -355,7 +396,10 @@ def prompt_for(
     why: list[str] | None = None,
     decided: list[str] = (),
     shell: bool = False,
+    fork: tuple[str, int] | None = None,
 ) -> str:
+    """What an executor is told: the person's notes, the contract, how to finish or hand back, and, as
+    one of several forks (``fork``: its letter, how many), that it is one, and what decides among them."""
     lines = [
         *notes,
         *([""] if notes else []),
@@ -372,6 +416,10 @@ def prompt_for(
         "do not work around it in your own files: run the release command with --wants naming that file "
         "and a why that names the fault, so the person can reopen that leaf. Do not start any other node.",
     ]
+    if fork:
+        b, n = fork
+        lines += ["", f"This is fork {b} of {n}: {n} agents work on this leaf at once, each in its own copy; "
+                      "when they end, Graphene keeps one by its check."]  # fmt: skip
     if shell:  # ``graphene_shell``: a test runner of its own would be refused; `done` is the one it has
         lines += ["", "Your shell runs only `graphene node …` and `graphene plan …`: `graphene node done "
                   f"{node.id}` runs the check and prints why it failed; call it as often as you need."]
@@ -461,8 +509,11 @@ class Budget:
                     return True
                 if self.spent + worst > self.cap + self.EPS:  # not even with nothing going
                     self.stopped = True
+                    alone = worst > self.cap + self.EPS  # no attempt fits, however little is spent
+                    why = f"; one attempt holds {money(worst)} until it ends: --max-usd {worst:g} starts one"
+                    why *= alone
                     self.say(f"stopped starting: {money(self.spent)} spent, {money(self.held)} held, "
-                             f"cap {money(self.cap)}")  # fmt: skip
+                             f"cap {money(self.cap)}{why}")  # fmt: skip
                     return False
                 if stop is None:
                     return None
@@ -497,12 +548,14 @@ def run_node(
     logs: Path | None,
     stop: Stop | None = None,
     budget: Budget | None = None,
+    forks: Forks | None = None,
 ) -> P.Node | None:
     """One leaf, start to boundary, in ``checkout``. Returns it when it ended done (or in review);
     None when it could not start, was handed back, or ran out of attempts. Interrupted (Ctrl-C, or
     ``stop``), the leaf is handed back before its executor is stopped, and the interruption goes on.
     ``budget``: the caller has taken its first attempt's worst case there; each attempt after is taken
-    here, and each settles there when it ends."""
+    here, and each settles there when it ends. ``forks``: what the run was told about forks
+    (``forks_of`` says how many this leaf runs as, ``_forked`` runs them); None never forks."""
     session = str(uuid.uuid4())
     name = label(template)
     who = P.Caller(f"run:{name}", False, session)
@@ -521,13 +574,66 @@ def run_node(
         say("\n".join(lines))
         return None
     say(f"{node.id} started: {node.title}")
+    n = forks_of(store, node, forks)
+    if n > 1 and not node.check:  # the check is what keeps one: `validate` refuses the line, not the run's
+        say(f"{node.id} runs as one agent: {n} forks need a check to keep one")
+        n = 1
+    try:
+        if n > 1:
+            return _forked(store, node, checkout, template, attempts, say, logs, stop, budget, owed, who,
+                           forks, n)  # fmt: skip
+        return _attempts(store, node, checkout, template, attempts, say, logs, stop, budget, owed, session,
+                         who).get("node")  # fmt: skip
+    except KeyboardInterrupt:
+        with _no_interrupt():  # a second Ctrl-C must not leave the leaf running and its executor alive
+            stop.halt()
+            if P.get(store, node.id).state == P.RUNNING:
+                P.release(store, node.id, who, STOPPED, stopped=True)
+                say(f"{node.id} handed back: the run was stopped")
+        raise
+
+
+def _attempts(
+    store,
+    node: P.Node,
+    tree: Path,
+    template: str,
+    attempts: int,
+    say: Callable[[str], None],
+    logs: Path | None,
+    stop: Stop,
+    budget: Budget | None,
+    owed: float,
+    session: str,
+    who: P.Caller,
+    fork: dict | None = None,
+    won: threading.Event | None = None,
+) -> dict:
+    """One executor session's attempts at the leaf, in ``tree``: each told the last refusal, each held on
+    the night's ledger and the budget (``owed``: what the caller holds for the first), each metered; then
+    the boundary, unless the executor ended the leaf itself. The hold's own loop, or one fork's (``fork``:
+    its `fork` rows' base: its letter, how many, its --with; ``won``: --first, set once a fork is kept,
+    which stops this one). Returns how
+    it ended: "done" with the leaf (done, or in review); "back", handed back by the executor or the person
+    (said here for the hold); "refused", out of attempts (the hold is handed back here; a fork's why is
+    returned); and for a fork "passed", "gave up", "failed" or "stopped" (under --first, or the leaf let go
+    under it: the hold says by whom); with the attempts made and the dollars metered. Raises
+    KeyboardInterrupt when the run was stopped, and P.Refused when the executor could not be started."""
+    name = label(template)
+    worst = _worst(shlex.split(template))
     refusal: str | None = None
     stamp = (node.started_at or P._now()).replace(":", "").replace("-", "")[:15]
     proc: subprocess.Popen | None = None
     hold: dict | None = None  # the attempt's on the night's ledger
     paid = 0.0  # what this hold's attempts settled: a resumed Claude Code reports the session's total
+    spent: float | None = None  # ``paid`` once a meter has read a stream; None with no meter (pick: no step)
     shell = graphene_shell(shlex.split(template))
     due = 0.0  # when the terminal next says what the leaf is doing: HEARTBEAT after an attempt begins
+    b, of = (fork["fork"], fork["of"]) if fork else (None, 0)
+    lane = f"{node.id} fork {b}" if fork else node.id  # the leaf, or one fork of it, in the run's lines
+    said = f"{lane}: " if fork else f"{lane} "
+    tag = {"fork": b, "of": of} if fork else {}  # on a fork's attempt rows: which, of how many
+    mark = {"fork": b} if fork else {}  # on a fork's every other row
 
     def each() -> None:  # every POLL of the attempt going (its read, meter and began are set below)
         nonlocal due
@@ -544,7 +650,7 @@ def run_node(
             if not (turns or m.get("prompt_tokens") or dollars):  # Codex: only as a turn ends
                 used = "no usage yet"
             tries = f"attempt {attempt} · " if attempt > 1 else ""  # named past the first, as the pane does
-            head = f"{node.id} · {tries}{round(time.monotonic() - began)} s · "
+            head = f"{lane} · {tries}{round(time.monotonic() - began)} s · "
             if used == "no usage yet" and not m.get("last"):  # a quiet leaf: one fact, not two nothings
                 say(head + "still running, nothing read from it yet")
             else:
@@ -555,18 +661,29 @@ def run_node(
         for attempt in range(1, attempts + 1):
             if stop.event.is_set():  # stopped while the last attempt's check ran: nothing starts again
                 raise KeyboardInterrupt
+            if won is not None and won.is_set():  # --first: another fork is kept, so this one is stopped
+                return {"how": "stopped", "why": LOST, "attempts": attempt - 1, "dollars": spent}
             if budget and not owed:
                 if not budget.take(worst, stop):
-                    P.release(store, node.id, who, f"the run's --max-usd stopped it before attempt {attempt}")
-                    say(f"{node.id} came back: the run's --max-usd stopped it before attempt {attempt}")
-                    return None
+                    why = f"the run's --max-usd stopped it before attempt {attempt}"
+                    if fork:
+                        return {"how": "refused", "why": why, "attempts": attempt - 1, "dollars": spent}
+                    P.release(store, node.id, who, why)
+                    say(f"{node.id} came back: {why}")
+                    return {"how": "back"}
                 owed = worst
                 current = P.get(store, node.id)  # the wait can be a whole attempt of another leaf's
                 if current.state != P.RUNNING:
+                    if fork:  # the hold says by whom
+                        return {"how": "stopped", "why": LET_GO, "attempts": attempt - 1, "dollars": spent}
                     say(f"{node.id} handed back while it waited for room under --max-usd")
-                    return current if current.state in (P.DONE, P.REVIEW) else None
+                    ended = current.state in (P.DONE, P.REVIEW)
+                    return {"how": "done", "node": current} if ended else {"how": "back"}
+            if fork:  # working (again, after a refusal): the hooks hold it to `done` while its row says so
+                store.log_node(node.id, P._now(), "fork", who.label, session, None,
+                               {**fork, "state": "running", "why": ""})  # fmt: skip
             told = prompt_for(node, P.notes(store, node.id), refusal, P.trail(store, node),
-                              B.decided(store, node), shell)  # fmt: skip
+                              B.decided(store, node), shell, (b, of) if fork else None)  # fmt: skip
             argv = command_for(template, told, session, attempt > 1)
             # GRAPHENE_EXECUTOR: its own `done` is logged under the name the run's acts are (plan.caller)
             # GRAPHENE_TRY: which attempt this is, told rather than read back from the log, whose row
@@ -574,28 +691,35 @@ def run_node(
             env = {**os.environ, "GRAPHENE_NODE": node.id, "GRAPHENE_ATTEMPT": session,
                    "GRAPHENE_TRY": str(attempt)}  # fmt: skip
             env["GRAPHENE_EXECUTOR"] = name
+            if fork:  # which fork this is, of how many: its own `done` judges its own copy (plan.fork_of)
+                env["GRAPHENE_FORK"], env["GRAPHENE_FORKS"] = b, str(of)
             if name != "nemotron":  # only Graphene's own executor calls Token Factory; the rest never look
                 env["GRAPHENE_KEYCHAIN"] = "off"
             env.pop("GRAPHENE_AS", None)  # whoever started the run, the executor speaks for nobody
             log = None
             if logs is not None:  # streamed as it runs, so its tail can be read while it works
                 logs.mkdir(parents=True, exist_ok=True)
-                log = logs / f"{node.id}-{stamp}-{session[:8]}-{attempt}.txt"
+                whose = f"{node.id}.{b}" if fork else node.id
+                log = logs / f"{whose}-{stamp}-{session[:8]}-{attempt}.txt"
             try:  # under the opening: the attempt's worst case, held first
-                night, hold = held(name, argv, paid, f"run: {node.id} attempt {attempt}")
+                night, hold = held(name, argv, paid, f"run: {lane} attempt {attempt}")
             except P.Refused as no:
+                if fork:
+                    return {"how": "failed", "why": str(no), "attempts": attempt - 1, "dollars": spent}
                 P.release(store, node.id, who, str(no))
                 say(f"{node.id} came back: {no}")
-                return None
+                return {"how": "back"}
             sink = open(log, "w", encoding="utf-8") if log else subprocess.DEVNULL  # noqa: SIM115
             try:
                 proc = subprocess.Popen(
-                    argv, cwd=checkout, env=env, stdin=subprocess.DEVNULL, stdout=sink,
+                    argv, cwd=tree, env=env, stdin=subprocess.DEVNULL, stdout=sink,
                     stderr=subprocess.STDOUT, start_new_session=True,
                 )  # fmt: skip
             except OSError as no:  # the executor is not installed, or not executable: nothing ran
                 if hold:
                     night.settle(hold["id"], hold["model"], 0.0, ledger=hold["ledger"])
+                if fork:  # this fork failed; the leaf comes back once every fork has ended
+                    raise P.Refused(f"the executor could not be started: {name}: {no.strerror}") from None
                 P.release(store, node.id, who, f"the executor could not be started: {name}: {no.strerror}")
                 raise P.Refused(
                     f"cannot run `{argv[0]}`: {no.strerror}. {node.id} was handed back untouched; name "
@@ -604,7 +728,7 @@ def run_node(
             finally:
                 if log:
                     sink.close()
-            stop.add(node.id, proc)
+            stop.add(session, proc)
             began = time.monotonic()
             due = began + HEARTBEAT
             kind = M.kind(argv) if log else None
@@ -613,21 +737,22 @@ def run_node(
             store.log_node(node.id, P._now(), "attempt", who.label, session, None,
                            {"attempt": attempt, "pid": proc.pid, "pid_start": _started(proc.pid),
                             "run_pid": os.getpid(), "run_start": _started(os.getpid()),
-                            "log": str(log) if log else None, "checkout": str(checkout),
-                            "meter": metered, "hold": hold})  # fmt: skip
+                            "log": str(log) if log else None, "checkout": str(tree),
+                            "meter": metered, "hold": hold, **tag})  # fmt: skip
             meter = read = None
             if kind:  # what it writes is a stream the meter reads: read as it is written
                 price = _listed().get if kind == "codex" else None
-                meter = M.Meter(kind, attempt, M.model_in(argv), paid, price, str(checkout))
+                meter = M.Meter(kind, attempt, M.model_in(argv), paid, price, str(tree))
                 read = Reader(log, meter, lambda k, d: store.log_node(node.id, P._now(), k, who.label,
-                                                                      session, None, d))  # fmt: skip
+                                                                      session, None, d | mark))  # fmt: skip
             try:
-                code = _waited(proc, store, node.id, stop, each)
+                code = _waited(proc, store, node.id, stop, each, won.is_set if won is not None else None)
             finally:
-                stop.remove(node.id)
+                stop.remove(session)
                 if read:
                     read(last=True)  # Claude Code's result is its last line
                     paid += meter.dollars
+                    spent = paid
                 if hold:
                     _settle(night, hold, meter)
                 if owed:
@@ -636,36 +761,45 @@ def run_node(
             # not an "attempt" row: readers take the last of those as the attempt going now
             store.log_node(node.id, P._now(), "ended", who.label, session, None,
                            {"attempt": attempt, "exit": code, "seconds": round(time.monotonic() - began, 1),
-                            "meter": metered, "unread": meter.unread if meter else 0})  # fmt: skip
+                            "meter": metered, "unread": meter.unread if meter else 0,
+                            **({"fork": b} if fork else {})})  # fmt: skip
             if stop.event.is_set():
                 raise KeyboardInterrupt
+            if won is not None and won.is_set():  # --first: another fork is kept; this one was stopped for it
+                return {"how": "stopped", "why": LOST, "attempts": attempt, "dollars": spent}
             capped = meter is not None and meter.result == "error_max_budget_usd"  # its result's subtype
-            say(f"{node.id} attempt {attempt}: the executor "
+            say(f"{said}attempt {attempt}: the executor "
                 + ("stopped at its --max-budget-usd" if capped else f"ended (exit {code})"))  # fmt: skip
             current = P.get(store, node.id)
-            if current.state in (P.DONE, P.REVIEW):  # it ran `done` itself, and the boundary agreed
-                return current
-            if current.state != P.RUNNING:  # it handed the node back and said why, or the person did
-                last = (store.node_log(node.id, ("released", "dropped")) or [{"detail": {}, "actor": ""}])[-1]
-                person = last["detail"].get("person") or last.get("kind") == "dropped"
-                who_said = last["actor"] if person else "the executor"
-                say(f"{node.id} handed back by {who_said}: {last['detail'].get('why', current.state)}")
-                for _key, what, command in P.offers(store, current):
-                    say(f"  {what}: `graphene {shlex.join(command)}`")
-                if P.not_offered(store, current):
-                    say(f"  {P.not_offered(store, current)}")
-                return None
-            try:
-                return P.finish(store, node.id, who)
-            except P.Refused as no:
-                if P.get(store, node.id).state != P.RUNNING:  # the person let it go while its check ran
-                    say(f"{node.id} handed back while its check ran: {no}")
-                    return None
-                refusal = str(no)
-                first, *rest = refusal.splitlines()
-                paths = rest[0].strip() if rest and rest[0].startswith("  ") else ""  # the refusal's line 2
-                said = first.rstrip(":") + (f" · {paths}" if paths else "")
-                say(f"{node.id} attempt {attempt} refused: {said}")
+            if fork:
+                if current.state != P.RUNNING:  # the leaf was let go under its forks: the hold says by whom
+                    return {"how": "stopped", "why": LET_GO, "attempts": attempt, "dollars": spent}
+                last = P.fork_row(store, current, b) or {}
+                if last.get("state") == "gave up":
+                    return {"how": "gave up", "why": last.get("why", ""), "attempts": attempt,
+                            "wants": last.get("wants") or [], "dollars": spent}  # fmt: skip
+                try:  # its own `done` may have passed, and it may have written since: judged as it stands
+                    P.judge_fork(store, node.id, who, (session, {"fork": b, "tree": str(tree)}))
+                    return {"how": "passed", "attempts": attempt, "dollars": spent}
+                except P.Refused as no:
+                    refusal = str(no)
+            else:
+                if current.state in (P.DONE, P.REVIEW):  # it ran `done` itself, and the boundary agreed
+                    return {"how": "done", "node": current}
+                if current.state != P.RUNNING:  # it handed the node back and said why, or the person did
+                    _handed_back(store, current, say)
+                    return {"how": "back"}
+                try:
+                    return {"how": "done", "node": P.finish(store, node.id, who)}
+                except P.Refused as no:
+                    if P.get(store, node.id).state != P.RUNNING:  # the person let it go while its check ran
+                        say(f"{node.id} handed back while its check ran: {no}")
+                        return {"how": "back"}
+                    refusal = str(no)
+            first, *rest = refusal.splitlines()
+            paths = rest[0].strip() if rest and rest[0].startswith("  ") else ""  # the refusal's line 2
+            told = first.rstrip(":") + (f" · {paths}" if paths else "")
+            say(f"{said}attempt {attempt} refused: {told}")
         tries = f"{attempts} attempt{'s' if attempts != 1 else ''}"
         # the refusal for the person: its `graphene node release` step was the executor's to take
         told = "\n".join(ln for ln in refusal.splitlines() if "graphene node release" not in ln)
@@ -673,23 +807,238 @@ def run_node(
         if capped:  # no crash: its result said the budget ran out
             crashed = ("; its last attempt stopped at its --max-budget-usd (a larger cap in --with, or a "
                        "smaller leaf)")
-        P.release(store, node.id, who, f"{tries}, the last one refused: {told}{crashed}")
+        why = f"{tries}, the last one refused: {told}{crashed}"
+        if fork:
+            say(f"{said}{tries}, the last one refused")
+            return {"how": "refused", "why": why, "attempts": attempts, "dollars": spent}
+        P.release(store, node.id, who, why)
         say(f"{node.id} came back after {tries}: `graphene node show {node.id}` says why")
-        return None
+        return {"how": "refused"}
     except KeyboardInterrupt:
-        with _no_interrupt():  # a second Ctrl-C must not leave the leaf running and its executor alive
-            stop.halt()
+        with _no_interrupt():  # a second Ctrl-C must not leave the executor alive
             if proc is not None:
                 _end(proc)  # its own session never saw the terminal's Ctrl-C: it is stopped here
             if hold and hold.get("id"):  # stopped before its attempt's own settle: its worst case, once
                 _settle(night, hold, None)
-            if P.get(store, node.id).state == P.RUNNING:
-                P.release(store, node.id, who, STOPPED, stopped=True)
-                say(f"{node.id} handed back: the run was stopped")
         raise
     finally:
         if owed:  # held, and no attempt ran on it (refused by the night, or not startable)
             budget.settle(owed, 0.0)
+
+
+def _handed_back(store, node: P.Node, say: Callable[[str], None]) -> None:
+    """The leaf was handed back under its executor, by the executor or by the person: said, with the
+    offers a leaf that came back makes."""
+    last = (store.node_log(node.id, ("released", "dropped")) or [{"detail": {}, "actor": ""}])[-1]
+    person = last["detail"].get("person") or last.get("kind") == "dropped"
+    who_said = last["actor"] if person else "the executor"
+    say(f"{node.id} handed back by {who_said}: {last['detail'].get('why', node.state)}")
+    for _key, what, command in P.offers(store, node):
+        say(f"  {what}: `graphene {shlex.join(command)}`")
+    if P.not_offered(store, node):
+        say(f"  {P.not_offered(store, node)}")
+
+
+LOST = "another fork's check passed first"  # a fork stopped under --first: Nemotron's words for it
+STOPPED_FORK = "the run was stopped before this fork ended"  # a fork's last row under Ctrl-C or `:stop`
+LET_GO = "the leaf was handed back while this fork worked"  # a fork's last row under the person's release
+
+
+def _forked(store, node: P.Node, tree: Path, template: str, attempts: int, say: Callable[[str], None],
+            logs: Path | None, stop: Stop, budget: Budget | None, owed: float, who: P.Caller, forks: Forks,
+            n: int) -> P.Node | None:  # fmt: skip
+    """The leaf run as ``n`` forks (the hold is taken: ``tree`` is its own worktree, ``who`` its session):
+    a worktree a fork, cut from the hold's base beside the hold's tree; each fork the attempt loop
+    (``_attempts``) in a thread of its own, with its own store connection, session, log, holds and meter,
+    told which fork it is. The leaf's state stays the hold's. When every fork has ended (with --first, as
+    soon as one has passed, the rest stopped), each fork's changes inside the scope are committed on
+    refs/graphene/forks/<id>/<letter> (``_keep_fork``: kept after the leaf ends, for the record and `node
+    diff --fork`), and the rule that keeps one (``pick.choose``: among the forks whose check passed, the
+    one that passes the most of the others' tests, then the one that left its check's own files alone,
+    the smaller, the cheaper, the sooner) names the fork to keep; its changes inside the scope are copied
+    into the hold's tree, deletions too, and the leaf is finished there, once, under the run's own
+    session, so it lands as any leaf does. None passed, it comes back with each fork's reason and the
+    union of what they asked for. The fork worktrees go."""
+    root = Path(store.path).parent.parent  # the repo: the fork trees go beside the hold's
+    letters = string.ascii_lowercase[:n]
+    withs = forks.withs or [None]  # fork k runs the k-th --with, round robin; none: the run's own
+    specs = {b: withs[k % len(withs)] or label(template) for k, b in enumerate(letters)}
+    templates = {b: named(w) if (w := withs[k % len(withs)]) else template for k, b in enumerate(letters)}
+    sessions = {b: str(uuid.uuid4()) for b in letters}
+    trees: dict[str, Path] = {}
+    ends: dict[str, dict] = {}  # each fork's last row, as it ended
+    entries: dict[str, pick.Entry] = {}  # each fork as the rule that keeps one reads it
+    finished: list[str] = []  # the forks in the order they ended
+    won = threading.Event() if forks.first else None
+    order = threading.Lock()
+    base = node.base_sha or "HEAD"  # the hold's: every fork is cut from it, and kept against it
+    try:
+        for b in letters:
+            trees[b] = worktree_for(store, root, tree, node.id, fork=b, at=base)
+        P.set_forked(store, node.id, {sessions[b]: {"fork": b, "tree": str(trees[b])} for b in letters})
+        store.log_node(node.id, P._now(), "forked", who.label, who.session_id, None,
+                       {"forks": list(letters), "of": n, "first": forks.first, "with": specs,
+                        "sessions": sessions})  # fmt: skip
+        say(f"{node.id} forked {n} ways: " + ", ".join(f"{b} {specs[b]}" for b in letters))
+        # the budget: the caller holds the leaf's first attempt (``owed``), which is fork a's; each other
+        # fork holds its own, and one that cannot fit does not start
+        holds = {"a": owed}
+        for b in letters[1:]:
+            worst = _worst(shlex.split(templates[b]))
+            if budget is None:
+                holds[b] = 0.0
+            elif budget.take(worst):
+                holds[b] = worst
+        if len(holds) < n:
+            say(f"{len(holds)} of {n} forks started: --max-usd has room for {len(holds)}")
+            for b in [b for b in letters if b not in holds]:  # on record, as the forks that ran are
+                ends[b] = {"fork": b, "of": n, "with": specs[b], "state": "failed", "attempts": 0,
+                           "why": "the run's --max-usd had no room for it"}  # fmt: skip
+                entries[b] = pick.Entry(b, False, state="failed", why=ends[b]["why"])
+                store.log_node(node.id, P._now(), "fork", who.label, sessions[b], None, ends[b])
+
+        def one(b: str) -> None:
+            with Store.open(root) as mine:  # a thread, a connection
+                mine_who = P.Caller(f"run:{label(templates[b])}", False, sessions[b])
+                row = {"fork": b, "of": n, "with": specs[b]}  # its `fork` rows' base: running, each attempt
+                began = time.monotonic()
+                try:
+                    end = _attempts(mine, node, trees[b], templates[b], attempts, say, logs, stop, budget,
+                                    holds[b], sessions[b], mine_who, row, won)  # fmt: skip
+                except KeyboardInterrupt:  # the run was stopped: its row says so; the hold hands it back
+                    end = {"how": "stopped", "why": STOPPED_FORK}
+                except P.Refused as no:  # its executor would not start
+                    end = {"how": "failed", "why": str(no)}
+                how, why = end["how"], end.get("why", "")
+                if how == "passed" and won is not None:
+                    won.set()  # --first: the rest stop
+                with order:
+                    k = len(finished)
+                    finished.append(b)
+                verdict = P.fork_row(mine, node, b) or {}  # its check's own files it changed, when it passed
+                paths, sha, lines, test_lines, tests = [], None, 0, 0, []
+                try:  # git that fails here is this fork's failure, on its row: never the thread's end
+                    paths = [p for p in P.changed_since(trees[b], base, {}) if P.in_scope(p, node.scope)]
+                    if sha := _keep_fork(trees[b], node.id, b, paths, base):
+                        lines, test_lines = pick.size(root, base, sha)
+                        tests = _tests_of(root, node, sha, paths)
+                except (P.Refused, RuntimeError) as no:  # pick's git raises RuntimeError
+                    how, why = "failed", f"its work could not be kept: {no}"
+                e = pick.Entry(b, how == "passed", sha, paths, lines, test_lines, tests,
+                               verdict.get("check_touched") or [], end.get("dollars"),
+                               round(time.monotonic() - began, 1), k, how, why)  # fmt: skip
+                entries[b] = e
+                detail = {**row, "state": how, "why": why, "paths": paths[: P.KEPT_PATHS], "lines": lines,
+                          "test_lines": test_lines, "ref": fork_ref(node.id, b) if sha else None,
+                          "dollars": e.dollars, "seconds": e.seconds, "attempts": end.get("attempts", 0),
+                          **({"wants": end["wants"]} if end.get("wants") else {}),
+                          **({"check_touched": e.touched_check} if e.touched_check else {})}  # fmt: skip
+                mine.log_node(node.id, P._now(), "fork", mine_who.label, sessions[b], None, detail)
+                ends[b] = detail
+                told = {"passed": f"the check passed · {lines} lines", "gave up": f"gave up: {why}",
+                        "stopped": f"stopped: {why}", "failed": f"failed: {why}"}.get(how)  # fmt: skip
+                if told:  # a refused fork said each attempt as it went
+                    say(f"{node.id} fork {b}: {told}")
+
+        threads = [threading.Thread(target=one, args=(b,), daemon=True) for b in holds]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        if stop.event.is_set():
+            raise KeyboardInterrupt
+        current = P.get(store, node.id)
+        if current.state in (P.DONE, P.REVIEW):  # a person's own say-so meanwhile: as it stands
+            return current
+        if current.state != P.RUNNING:  # the person let it go under its forks
+            _handed_back(store, current, say)
+            return None
+        if not any(e.passed for e in entries.values()):  # Nemotron's words: each fork's reason, as one
+            why = f"no fork's check passed ({n} forks): " + "; ".join(
+                f"fork {b}: {'handed it back: ' * (ends[b]['state'] == 'gave up')}{ends[b]['why']}"
+                for b in letters if b in ends
+            )
+            wants = sorted({w for e in ends.values() for w in e.get("wants") or []})
+            P.release(store, node.id, who, why, wants=wants or None)
+            say(f"{node.id} came back: {why}")
+            return None
+
+        def agrees(i: str, j: str) -> bool:  # i's tests laid over j's tree, under the leaf's own check
+            try:
+                crossed = pick.overlay(root, entries[j].commit, entries[i].commit, entries[i].tests)
+            except RuntimeError:  # the crossed tree could not be made: it passes nothing
+                return False
+            return P.run_check(node.check, tree, at=crossed)[0]
+
+        choice = pick.choose(list(entries.values()), agrees)
+        kept = choice.fork
+        _copied(trees[kept], tree, entries[kept].paths)
+        store.log_node(node.id, P._now(), "picked", who.label, who.session_id, None,
+                       {"fork": kept, "of": n, "by": "graphene", "reason": choice.reason,
+                        "table": choice.table})  # fmt: skip
+        others = [str(entries[b].lines) for b in sorted(entries) if b != kept and entries[b].passed]
+        sizes = "" if re.fullmatch(r"\d+ lines? against \d+", choice.reason) else (  # the reason said it
+            f" · {entries[kept].lines} lines" + (f" against {', '.join(others)}" if others else ""))
+        say(f"{node.id} kept {kept} of {n}: {choice.reason}{sizes}")
+        try:  # the boundary, once, in the hold's tree: the check, `finished`, review or done, then it lands
+            return P.finish(store, node.id, who)
+        except P.Refused as no:
+            if P.get(store, node.id).state != P.RUNNING:  # the person let it go while its check ran
+                say(f"{node.id} handed back while its check ran: {no}")
+                return None
+            why = f"fork {kept}'s work was refused in the leaf's own tree: {no}"
+            P.release(store, node.id, who, why)
+            say(f"{node.id} came back: {why.splitlines()[0]}")
+            return None
+    finally:
+        for t in trees.values():
+            _git(tree, "worktree", "remove", "--force", str(t), ok=True)
+
+
+def _copied(source: Path, into: Path, paths: list[str]) -> None:
+    """A fork's changes inside the scope, put into the hold's tree as `fork_and_pick` puts a winner's:
+    each path as the fork left it, and a path it deleted deleted."""
+    for rel in paths:
+        src, dst = source / rel, into / rel
+        if dst.is_symlink() or dst.exists():
+            dst.unlink()
+        if src.is_symlink() or src.is_file():
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, dst, follow_symlinks=False)
+
+
+def _tests_of(repo: Path, node: P.Node, commit: str, paths: list[str]) -> list[str]:
+    """What a fork referees the other forks with (pick's agreement): of what it changed inside the scope
+    (``paths``, committed as ``commit``), the files that look like tests and that its check runs in its
+    tree. A file it deleted runs nowhere."""
+    listed = _git(repo, "ls-tree", "-r", "-z", "--name-only", commit, ok=True).stdout.split("\0")[:-1]
+    ran = {f for _, under in P.check_paths(node.check, listed, [node]) for f in under}
+    return [p for p in paths if pick.is_test(p) and p in ran]
+
+
+def fork_ref(node_id: str, letter: str) -> str:
+    """Where a fork's work is kept once the leaf has ended: a hidden ref under the leaf's id."""
+    return f"refs/graphene/forks/{node_id}/{letter}"
+
+
+def _keep_fork(tree: Path, node_id: str, letter: str, paths: list[str], base: str) -> str | None:
+    """A fork's changes inside the scope (``paths``), as a commit on the hold's ``base``, kept on the hidden
+    ref ``fork_ref`` names after the leaf ends, so the record and `node diff --fork` can show what each
+    fork tried. Read from its copy as it stands: an agent may `git commit` there itself, and its HEAD is
+    then not the base. The commit; None when nothing inside the scope differs from the base."""
+    if not paths:
+        return None
+    sparse = ("-c", "core.sparseCheckout=false")  # a leaf may write outside a sparse checkout's cone
+    _git(tree, *sparse, "read-tree", base)  # its index is the base again: what differs is what it changed
+    # update-index, not add: a path it committed and then deleted is in neither, and add refuses the pathspec
+    _git(tree, *sparse, "update-index", "--add", "--remove", "--", *paths)
+    if _git(tree, "diff", "--cached", "--quiet", base, ok=True).returncode == 0:
+        return None
+    made = _git(tree, "write-tree").stdout.strip()
+    sha = _git(tree, *_ident(tree), "commit-tree", made, "-p", base, "-m",
+               f"fork {letter} of {node_id}\n\nGraphene-Node: {node_id}\n").stdout.strip()  # fmt: skip
+    _git(tree, "update-ref", fork_ref(node_id, letter), sha)
+    return sha
 
 
 STOPPED = "the run was stopped before this leaf was finished"  # by Ctrl-C, `:stop` or a closed terminal
@@ -1004,14 +1353,19 @@ def _git(where: Path, *args: str, ok: bool = False) -> subprocess.CompletedProce
     return out
 
 
-def worktree_for(store, root: Path, target: Path, node_id: str) -> Path:
+def worktree_for(
+    store, root: Path, target: Path, node_id: str, fork: str | None = None, at: str = "HEAD"
+) -> Path:
     """A fresh worktree for one leaf, on branch graphene/<id>, cut from where the target stands now
-    (so it has everything that has landed). What an earlier run left under the same name goes."""
-    path = root / ".graphene" / WORKTREES / node_id
+    (so it has everything that has landed). What an earlier run left under the same name goes. ``fork``:
+    one fork's copy of the leaf, `<id>.<letter>`, detached at ``at`` (the hold's base): it lands nothing
+    itself, so it is on no branch to delete."""
+    path = root / ".graphene" / WORKTREES / (f"{node_id}.{fork}" if fork else node_id)
     _git(target, "worktree", "remove", "--force", str(path), ok=True)
     _git(target, "worktree", "prune", ok=True)
     shutil.rmtree(path, ignore_errors=True)  # a directory git has lost track of (a killed run) goes too
-    _git(target, "worktree", "add", "--quiet", "-B", f"graphene/{node_id}", str(path), "HEAD")
+    on = ("--detach",) if fork else ("-B", f"graphene/{node_id}")
+    _git(target, "worktree", "add", "--quiet", *on, str(path), at)
     # The person's hook settings are usually untracked (`graphene init` keeps them out of git through
     # .git/info/exclude, which every worktree shares), so a fresh worktree has none and the hooks
     # would not run there. Copied, they do; ignored by git, the copy is nobody's change.
@@ -1030,8 +1384,12 @@ def _ident(tree: Path) -> list[str]:
 
 def _commit(store, tree: Path, node: P.Node) -> list[str]:
     """The leaf's work, committed on its branch in its worktree, with its why in the message.
-    Returns the paths its boundary said had changed."""
-    entry = (store.node_log(node.id, ("finished", "overruled")) or [{"detail": {}}])[-1]["detail"]
+    Returns the paths its boundary said had changed. After the person's `node pick` the branch is that
+    fork's commit already (``pick_fork``): nothing to commit, and what lands is what that fork changed."""
+    last = (store.node_log(node.id, ("finished", "overruled", "picked")) or [{"kind": "", "detail": {}}])[-1]
+    if last["kind"] == "picked":  # after the finish, so the person's: the rule's own comes before it
+        return (P.fork_row(store, node, last["detail"]["fork"]) or {}).get("paths") or []
+    entry = last["detail"]
     paths = entry.get("changed") or []
     why, notes = " > ".join(P.trail(store, node)), P.notes(store, node.id)
     message = f"{node.title}\n\n{node.goal or node.title}\n\n" + (f"Why: {why}\n" if why else "")
@@ -1049,7 +1407,9 @@ def _merged(store, node: P.Node) -> str:
     reopen, the person's last note."""
     from .node_record import _hold  # the rows of its last hold: this run's attempts
 
-    notes, tries, lines = P.notes(store, node.id), M.attempts(_hold(store.node_log(node.id))), []
+    held = _hold(store.node_log(node.id))
+    notes, tries, lines = P.notes(store, node.id), M.attempts(held), []
+    picked = [e["detail"] for e in held if e["kind"] == "picked"]  # forked, and one fork kept
     if node.check:
         red = [e["detail"] for e in store.node_log(node.id, ("precheck",))]  # red first, at the base
         red = [d for d in red if d.get("check") == node.check]
@@ -1057,12 +1417,14 @@ def _merged(store, node: P.Node) -> str:
         too = ", and it passed at the base too" if at_base else ""
         lines.append(f"Check: `{node.check}` passed{too}")
     if tries:
-        a = tries[-1]
+        kept = picked[-1]["fork"] if picked else None  # the kept fork's executor is the one that did it
+        a = ([t for t in tries if t.get("fork") == kept] or tries)[-1]
         who = " ".join(filter(None, (a["executor"], a["model"] and a["model"].rsplit("/", 1)[-1])))
         spent = f"${sum(t['dollars'] for t in tries):.4f} at list price"
         if not all(t["meter"] and t["priced"] for t in tries):  # no dollars where nothing counted them
             spent = "no meter" if not all(t["meter"] for t in tries) else "no list price"
-        lines.append(f"Executor: {who} · {len(tries)} attempt{'s' * (len(tries) != 1)} · {spent}")
+        forked = f"{picked[-1]['of']} forks, kept {kept} · " if picked else ""
+        lines.append(f"Executor: {who} · {forked}{len(tries)} attempt{'s' * (len(tries) != 1)} · {spent}")
     lines += [f"Reopened: {notes[-1]}"] if notes else []
     subject = f"{node.title} ({node.id}{', reopened' if notes else ''})"
     return "\n".join([subject, "", *lines, f"Graphene-Node: {node.id}"])
@@ -1237,11 +1599,13 @@ def run_parallel(
     logs: Path | None = None,
     precheck: bool = False,
     max_usd: float | None = None,
+    forks: Forks | None = None,
 ) -> list[P.Node]:
     """Every leaf an agent can reach, up to ``workers`` at once, each in its own worktree; landed one
     at a time, here, as they finish. A leaf never starts while something it needs has not landed, or
     while a leaf whose scope overlaps its own is in flight. ``precheck``: red first, before any starts.
-    ``max_usd``: a cap on what starts (``Budget``)."""
+    ``max_usd``: a cap on what starts (``Budget``). ``forks``: what the run was told about forks, for
+    each leaf to read (``forks_of``)."""
     _splits(template)
     if _git(target, "rev-parse", "-q", "--verify", "HEAD", ok=True).returncode != 0:  # as init says it
         raise P.Refused(
@@ -1255,13 +1619,13 @@ def run_parallel(
     lock = _only_run(root)
     try:
         return _run_parallel(open_store, root, target, workers, template, attempts, only, say, logs, precheck,
-                             max_usd)  # fmt: skip
+                             max_usd, forks)  # fmt: skip
     finally:
         lock.unlink(missing_ok=True)
 
 
 def _run_parallel(open_store, root, target, workers, template, attempts, only, say, logs,
-                  precheck, max_usd) -> list[P.Node]:  # fmt: skip
+                  precheck, max_usd, forks=None) -> list[P.Node]:  # fmt: skip
     store = open_store()
     began = _newest(store)  # it holds the repo from here: what is asked of it from now on (red first can
     # take minutes) is asked of it, and nothing before
@@ -1286,7 +1650,7 @@ def _run_parallel(open_store, root, target, workers, template, attempts, only, s
 
     def work(node_id: str, tree: Path) -> P.Node | None:
         with open_store() as mine:  # a thread, a connection
-            return run_node(mine, node_id, tree, template, attempts, say, logs, stop, budget)
+            return run_node(mine, node_id, tree, template, attempts, say, logs, stop, budget, forks)
 
     def again(node_id: str) -> bool:
         """Taken again, or one this run was not started with: the person widened or changed it, or reopened
@@ -1335,7 +1699,11 @@ def _run_parallel(open_store, root, target, workers, template, attempts, only, s
             say(str(no))
             node = None
         if node is None:  # handed back: its worktree stays, with whatever it tried, for the person
-            say(f"{was.id}: what it tried is kept in {tree} until a run takes {was.id} again")
+            log = store.node_log(was.id, ("started", "forked"))
+            if log and log[-1]["kind"] == "forked":  # its forks tried, each kept on its own ref
+                say(f"{was.id}: what each fork tried is kept under refs/graphene/forks/{was.id}/")
+            else:
+                say(f"{was.id}: what it tried is kept in {tree} until a run takes {was.id} again")
             return
         if node.state == P.REVIEW:  # a sign-off holds the merge: its work waits on its branch for the yes
             park(store, tree, node, say, "it waits for your sign-off before it lands")
@@ -1395,3 +1763,53 @@ def park(store, tree: Path, node: P.Node, say: Callable[[str], None],
                 worktree=str(tree), why=[why])  # fmt: skip
     say(f"{node.id} passed; {why}\n  its work: {branch}. `graphene node diff {node.id}` shows it; "
         f"`graphene node signoff {node.id}` merges it")
+
+
+def fork_work(store, target: Path, node_id: str, letter: str) -> tuple[str, str, list[dict]]:
+    """One fork's work as its ref keeps it (``_keep_fork``): the ref, its commit, and the rows of the hold
+    that forked (its `forked` row on). Refused when the leaf's last hold did not fork, had no such fork,
+    or the fork changed nothing inside its scope, so nothing of it was kept."""
+    from .node_record import _hold  # the rows of its last hold
+
+    held = _hold(store.node_log(node_id, ("started", "forked", "fork", "picked")))
+    forked = next((e["detail"] for e in held if e["kind"] == "forked"), None)
+    if forked is None:
+        raise P.Refused(f"{node_id}'s last hold did not fork, so it has no fork {letter}")
+    if letter not in forked["forks"]:
+        raise P.Refused(f"{node_id} forked {forked['of']} ways ({', '.join(forked['forks'])}): it has no "
+                        f"fork {letter}")  # fmt: skip
+    ref = fork_ref(node_id, letter)
+    sha = _git(target, "rev-parse", "-q", "--verify", f"{ref}^{{commit}}", ok=True).stdout.strip()
+    if not sha:
+        raise P.Refused(f"fork {letter} of {node_id} changed nothing inside its scope, so nothing of it was "
+                        "kept")  # fmt: skip
+    return ref, sha, held
+
+
+def pick_fork(store, target: Path, node_id: str, letter: str, who: P.Caller) -> str:
+    """`graphene node pick`: the person's own choice among the forks of a leaf that waits in review with its
+    work parked on its branch (``park``). The branch, and its worktree, become that fork's work as its ref
+    keeps it, whatever the rule kept, and a `picked` row says so, by the person; the sign-off then lands it
+    as it lands any leaf (``_signoff`` → ``land``). The fork's state is on its row, so a fork whose check
+    was refused is the person's to land, as an override is: returns that state, for the person to hear.
+    Refused on a leaf that is not in review, or whose work is not parked on a branch."""
+    P._person_only(who, "picking a fork")
+    node = P.get(store, node_id)
+    if node.state != P.REVIEW:
+        raise P.Refused(f"{node.id} is {node.state}: a fork is picked on a leaf in review, before its "
+                        "sign-off")  # fmt: skip
+    left = P.unlanded(store, node.id)
+    if not left:
+        raise P.Refused(f"{node.id}'s work is not parked on a branch, so no fork of it can take its place")
+    _ref, sha, held = fork_work(store, target, node_id, letter)
+    tree = Path(left.get("worktree") or "")
+    if tree.is_dir():  # the branch is checked out there: it moves with the tree
+        _git(tree, "reset", "-q", "--hard", sha)
+    else:  # cleared by hand: the branch alone, which the sign-off has the person merge, as it says
+        _git(target, "update-ref", f"refs/heads/{left.get('branch', f'graphene/{node_id}')}", sha)
+    was = [e["detail"] for e in held if e["kind"] == "picked"]
+    row = {"fork": letter, "of": next(e["detail"]["of"] for e in held if e["kind"] == "forked"),
+           "by": "person", "reason": f"picked by {who.name}", "table": was[-1]["table"] if was else []}
+    store.log_node(node.id, P._now(), "picked", who.label, None, None, row)
+    return next((e["detail"]["state"] for e in reversed(held)
+                 if e["kind"] == "fork" and str(e["detail"].get("fork")) == letter), "on no record")

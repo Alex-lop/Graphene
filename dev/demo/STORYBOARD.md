@@ -33,7 +33,7 @@ keep its top line in the frame. *live*: your own run on your key, in a terminal 
 
 166 seconds planned, fourteen under the limit for a slow line. The narration is at most 2.5 words a second of its
 scene, so it can be said in the time. Name Token Factory and Nemotron aloud as written (scenes 03, 04, 06 and
-10); when the graph draws your goal at the top, say "from my goal down" in scene 11.
+10); the graph flows into your goal at the right, so scene 11 may say "into my goal".
 
 ## Recording it in one sitting
 

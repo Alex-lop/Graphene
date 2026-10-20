@@ -26,7 +26,8 @@ from .help import GROUPS, Help
 from .lines import fit
 from .look import short
 from .model import Model
-from .read import OURS, epoch, read
+from .read import OURS, epoch, fork_why, read
+from .rows import FORK_WORD, kept_said
 
 REFUSED = "a replay: nothing runs here"
 REPLAY_KEYS = (("space", "pause, or play on"), (".", "the next change, and stay paused"),
@@ -65,16 +66,24 @@ def words(text) -> str:
     return fit(" ".join(str(text or "").split()), 60)
 
 
-def news(line: dict, titles: dict[str, str] | None = None) -> str:
+def item(text) -> str:
+    """A fork's words as one item of the news, which ` · ` parts: its own ` · ` (the rule's reason has one)
+    reads as a comma, so one verdict does not read as two."""
+    return words(text).replace(" · ", ", ")
+
+
+def news(line: dict, titles: dict[str, str] | None = None, names: dict[str, str] | None = None) -> str:
     """One recorded change as a narrator says it, each task by its title (``titles``): what an agent did or
     said, a write the gate stopped, why a task came back, what the board asks and what you answered, what
-    an edit changed, what was accepted, proven and landed. Bookkeeping (precheck, usage, model, attempt,
-    ended, an executor's output, the settings, the agent's own `graphene node` commands) says nothing, so
-    the last news stays up. Three at most, in the order they happened: the latest of the rest before an
-    agent's moves, so a hand-back is not crowded out by the edits that came before it; and your answer
-    before the edits it made, which the log has first. Tasks accepted together are one item, their count:
-    the last three of six accepts read as if two tasks were, and a sub-goal comes with its tasks."""
-    titles = titles or {}
+    an edit changed, what was accepted, proven and landed. A fork's row names the fork as the rows do, the
+    agent's number (``names``) and its letter: "agent 3b: editing app.py", its check's verdict, which was
+    kept. Bookkeeping (precheck, usage, model, attempt, ended, an executor's output, the settings, the
+    agent's own `graphene node` commands) says nothing, so the last news stays up. Three at most, in the
+    order they happened: the latest of the rest before an agent's moves, so a hand-back is not crowded out
+    by the edits that came before it; and your answer before the edits it made, which the log has first.
+    Tasks accepted together are one item, their count: the last three of six accepts read as if two tasks
+    were, and a sub-goal comes with its tasks."""
+    titles, names = titles or {}, names or {}
     items = {it["id"]: it for it in json.loads((line.get("plan_meta") or {}).get("board") or "[]")}
     parents = {json.loads(n.get("data") or "{}").get("parent") for n in (line.get("nodes") or {}).values()}
     accepted: list[int] = []  # where the accepts' one item is, once per accepted task
@@ -87,14 +96,30 @@ def news(line: dict, titles: dict[str, str] | None = None) -> str:
     for row in line.get("node_log") or []:
         d, kind = json.loads(row.get("detail") or "{}"), row["kind"]
         title = titles.get(row["node_id"], row["node_id"])
+        fork = d["fork"] if isinstance(d.get("fork"), str) else ""  # a run's fork (Nemotron's are numbered)
+        who = title  # a fork's row: its agent's number and its letter, as its row says it
+        if fork and row["node_id"] in names:
+            who = f"agent {names[row['node_id']]}{fork}"
+        elif fork:
+            who = f"{title} fork {fork}"
         if kind == "did" and not OURS.search(str(d.get("target") or "")):
             moves.add(len(said))
-            said.append(f"{title}: {d.get('verb', '')} {words(d.get('target'))}")
+            said.append(f"{who}: {d.get('verb', '')} {words(d.get('target'))}")
         elif kind == "said":
             moves.add(len(said))
-            said.append(f"{title}: {words(d.get('text'))}")
+            said.append(f"{who}: {words(d.get('text'))}")
         elif kind == "denied" and d.get("path"):
-            said.append(f"{title}: stopped writing {d['path']}")
+            said.append(f"{who}: stopped writing {d['path']}" + (" in another copy" if d.get("copy") else ""))
+        elif kind == "forked":
+            said.append(f"{title} forked {d.get('of') or len(d.get('forks') or [])} ways")
+        elif kind == "fork" and fork and "attempts" in d and d.get("state") == "passed":  # as the fork ended
+            said.append(f"{who}: its check passed" + (f", {d['lines']} lines" if d.get("lines") else ""))
+        elif kind == "fork" and fork and "attempts" in d and d.get("state") not in (None, "running"):
+            state = FORK_WORD.get(d["state"], d["state"])
+            said.append(f"{who}: {state}" + (f": {item(fork_why(d['why']))}" if d.get("why") else ""))
+        elif kind == "picked":  # as the run says it: `greet kept b: …`
+            said.append(f"{title} " + kept_said((str(d.get("fork") or ""), item(d.get("reason")),
+                                                  str(d.get("by") or "")), ": "))  # fmt: skip
         elif kind == "released":
             said.append(f"{title} came back: {words(d.get('why'))}")
         elif kind == "refused" and d.get("outside"):
@@ -240,7 +265,7 @@ class CockpitReplay(Cockpit):
         if ended:
             self.keys["cockpit"] = KEYS_ENDED
         self.look()
-        said = " · ".join(filter(None, (news(line, titles) for line in applied)))
+        said = " · ".join(filter(None, (news(line, titles, self.model.names) for line in applied)))
         if said:  # what changed, in the news; bookkeeping says nothing, and the last news stays up
             self.model.say(said)
         if ended:  # then the reader's next step: at 80 columns the head has no room for "ended"

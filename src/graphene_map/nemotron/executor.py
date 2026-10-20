@@ -275,15 +275,24 @@ class Leaf:
 
     def done(self) -> str:
         said = self._graphene("node", "done", self.node.id)
-        self.finished = P.get(self.store, self.node.id).state in (P.DONE, P.REVIEW)
+        node = P.get(self.store, self.node.id)
+        self.finished = node.state in (P.DONE, P.REVIEW) or self._verdict(node) == "passed"
         return said
 
     def release(self, why: str = "", wants: list[str] | str | None = None) -> str:
         wants = [wants] if isinstance(wants, str) else wants  # one path, not its letters
         said = self._graphene("node", "release", self.node.id, "--why", why or "(no reason given)",
                               *[a for w in wants or [] for a in ("--wants", w)])  # fmt: skip
-        self.finished = P.get(self.store, self.node.id).state != P.RUNNING
+        node = P.get(self.store, self.node.id)
+        self.finished = node.state != P.RUNNING or self._verdict(node) == "gave up"
         return said
+
+    def _verdict(self, node: P.Node) -> str | None:
+        """As one of the run's forks of the leaf (`graphene run --forks`), this fork's last word: its `done`
+        that passed or its `release` ends its loop, while the leaf stays the run's to end. None when it is
+        the leaf's only agent."""
+        found = P.fork_of(node, self.session)
+        return (P.fork_row(self.store, node, found[1]["fork"]) or {}).get("state") if found else None
 
     def call(self, name: str, arguments: str | dict | None) -> str:
         name = ALIASES.get(name, name)

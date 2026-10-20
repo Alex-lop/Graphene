@@ -305,9 +305,9 @@ def test_demo_live_replays_a_live_nemotron_take_shipped_in_the_package_as_it_ran
 
 
 def test_the_top_lines_day_is_the_one_the_rows_under_it_are_stamped_with(monkeypatch):
-    """The shipped recording is stamped 2026-10-19T04:04:40Z: in Los Angeles the top line said 2026-10-18
-    (the local day) over rows that say 2026-10-19, and the tests saw one day only because TZ is pinned to
-    UTC. A zone far enough behind UTC that its day is another is the one that shows it."""
+    """The shipped recording of 19 October was stamped 2026-10-19T04:04:40Z: in Los Angeles the top line said
+    2026-10-18 (the local day) over rows that say 2026-10-19, and the tests saw one day only because TZ is
+    pinned to UTC. A zone far enough behind UTC that its day is another is the one that shows it."""
     monkeypatch.setenv("TZ", "America/Los_Angeles")
     time.tzset()
     try:
@@ -392,8 +392,8 @@ def test_the_replay_at_80x24_says_so_shows_a_record_and_refuses_what_would_run(t
 
 def test_a_sub_goals_record_mid_replay_says_its_width_at_the_replays_clock(tmp_path, monkeypatch):
     """Up to the change where greet comes back, while farewell runs. The record of `friendly` measures them
-    up to the replay's clock, as the time view does: 2% of agent minutes alone, not days of the two at
-    once."""
+    up to the replay's clock, as the time view does: a few percent of agent minutes alone (4% in the
+    recording of 20 October; the share is the recording's own timing), not days of the two at once."""
     monkeypatch.setattr(demo, "LONG", 0.01)
     head, lines = demo.load(demo.SHIPPED)
     back = next(k for k, line in enumerate(lines, 1)
@@ -410,7 +410,7 @@ def test_a_sub_goals_record_mid_replay_says_its_width_at_the_replays_clock(tmp_p
             await pilot.pause()
             return " ".join(str(app.query_one("#detail").render()).split())
 
-    assert "2 of 2 at once · 2% of agent minutes alone" in asyncio.run(go())
+    assert re.search(r"2 of 2 at once · \d% of agent minutes alone", asyncio.run(go()))
 
 
 def test_the_replay_ends_with_every_fold_open(tmp_path, monkeypatch):

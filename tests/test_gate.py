@@ -359,6 +359,93 @@ def test_a_repeated_stop_closes_an_aside_leaf_whose_check_fails_there_for_the_fi
         assert aside.state == plan.DONE and store.node_log(aside.id, ("check_failed",))
 
 
+# -- the adversarial pass, 19 October (dev/process/publish/gate/review.md) -----------------------------
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "echo x >& src/db/schema.py",
+        "echo x 1<> src/db/schema.py",
+        "echo x | command tee src/db/schema.py",
+        "echo x |& tee src/db/schema.py",
+        "echo x | nice -n 1 tee src/db/schema.py",
+        "echo x | env -i tee src/db/schema.py",
+        "echo x | command -p tee src/db/schema.py",
+        "dd if=/dev/zero of=src/db/schema.py",
+        "install -m 644 README.md src/db/schema.py",
+        "F=src/db/schema.py; echo x > $F",
+        "d=src/db; echo x > $d/schema.py",
+        "echo x > $PWD/src/db/schema.py",
+    ],
+)
+def test_finding_4_redirect_forms_and_resolvable_targets_are_refused_before_they_happen(repo, command):
+    """Finding 4: these redirect spellings and resolvable targets each wrote src/db/schema.py and were
+    let past the hook; git refused them only at done."""
+    holding(repo)
+    assert "src/db/schema.py is outside the scope" in reason(bash(repo, command))
+
+
+def test_finding_4_a_target_the_hook_cannot_know_is_left_to_git_as_before(repo):
+    """A glob, a variable it was not given, or a command substitution in a write target cannot be read
+    before bash runs. Refusing them refused honest daily commands (16 of about 90 the re-review tried:
+    `sed -i 's/a/b/' src/api/*.py`, `touch src/api/{a,b}.py`, a log to `$TMPDIR`), so they pass the hook
+    as they did, and git finds what they changed when the leaf is done. $PWD, $HOME and a variable the
+    command set to a literal resolve, and are judged."""
+    holding(repo)
+    for command in ("sed -i 's/a/b/' src/api/*.py", "touch src/api/{a,b}.py", 'pytest -q > "$TMPDIR/x.log"',
+                    "echo x > /tmp/out-$$.log", "echo x > $OUT"):  # fmt: skip
+        assert bash(repo, command) is None, command
+    assert bash(repo, "echo x >> src/api/users.py") is None  # in scope
+    assert bash(repo, "echo log > $HOME/notes.txt") is None  # $HOME resolves, outside the repo
+    assert bash(repo, "rm -rf build/*") is None  # a glob that only deletes an ignored path
+    assert bash(repo, "cat src/api/users.py > /dev/null") is None
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "cd -P src/db && echo x > schema.py",
+        "cd -- src/db && echo x > schema.py",
+        "cd src/api && cd - >/dev/null && echo x > src/db/schema.py",
+        "cd $PWD/src/db && echo x > schema.py",
+        "(cd src/api); echo x > src/db/schema.py",
+        "(cd src/api && pwd >/dev/null) && echo x > src/db/schema.py",
+    ],
+)
+def test_finding_5_cd_followed_wrongly_is_refused_before_the_write(repo, command):
+    """Finding 5: cd's flags, `cd -`, `cd $PWD/…` and a subshell's cd that leaked past its `)` each let
+    a write of src/db/schema.py past the hook; git refused them only at done."""
+    holding(repo)
+    assert "src/db/schema.py is outside the scope" in reason(bash(repo, command))
+
+
+def test_finding_5_a_write_after_a_subshell_cd_is_inside_the_scope_not_falsely_refused(repo):
+    """The mirror of the bypass: a subshell's cd must not be read as still in force after its `)`, or an
+    honest write inside the scope is refused (`src/src/api/...`). These pass now."""
+    holding(repo)
+    assert bash(repo, "(cd src && ls >/dev/null) && echo x > src/api/users.py") is None
+    assert bash(repo, "pushd src/api >/dev/null && echo x > users.py") is None
+
+
+def test_finding_6_reads_and_in_scope_moves_are_not_refused_as_writes(repo):
+    """Finding 6: a quoted `>` in a grep pattern was read as a redirect and the read refused (fixed with
+    the mask); and a move into the scope's own directory was refused, because `src/api/` (the directory)
+    did not match `src/api/**` once its trailing slash was normalised away. A read writes nothing, and a
+    directory the scope covers is judged as `src/api/`, which the glob matches."""
+    holding(repo)
+    (repo / "README.md").write_text("# readme\n")
+    reads = ("grep -n '>' src/db/schema.py", "rg -n '>>' src", "grep -rn '>' .", "git grep -n '>' src/db")
+    for read in reads:
+        assert bash(repo, read) is None, read
+    moves = ("cp README.md src/api/", "mv src/api/users.py src/api/", "rm -rf src/api/",
+             "cp README.md src/api")  # fmt: skip
+    for move in moves:
+        assert bash(repo, move) is None, move
+    # a move into a directory outside the scope is still refused, keeping the spelling
+    assert "src/db/ is outside the scope" in reason(bash(repo, "cp README.md src/db/"))
+
+
 # -- what the closing review broke ---------------------------------------------------------------------
 
 
@@ -662,3 +749,32 @@ def test_a_new_session_is_taught_the_board_and_the_taught_text_puts_it_up(repo):
         ]
         board.pick(store, "q-id", 1, plan.Caller("alex", True))  # the option's then: line reaches the leaf
         assert plan.get(store, "leaf-id").goal.endswith(". what the leaf does instead, in a sentence")
+
+
+def test_a_log_written_outside_the_repo_does_not_open_the_gate_for_the_rest_of_the_command(repo):
+    """A redirect to /tmp or ~ has no repo path, and the scope was asked of it anyway: the hook raised, and
+    what raised was let through, so `pytest -q > /tmp/log; echo x > src/db/schema.py` wrote past a held
+    leaf's scope. A path outside the repo is no scope's to judge; the rest of the command still is."""
+    holding(repo)
+    for command in ("pytest -q > /tmp/pytest.log 2>&1; echo x > src/db/schema.py",
+                    "echo x > src/db/schema.py 2>/tmp/err.log",
+                    "cp src/db/schema.py /tmp/ && echo x > src/db/schema.py"):  # fmt: skip
+        assert "src/db/schema.py" in reason(bash(repo, command)), command
+    assert bash(repo, "pytest -q > /tmp/pytest.log 2>&1") is None  # a log, and nothing else: as ever
+    assert bash(repo, "echo x > src/api/users.py 2>/tmp/err.log") is None
+
+
+def test_a_write_the_gate_cannot_judge_is_refused_not_let_through(repo, monkeypatch):
+    """The hook's own error used to let the call through ("`plan.finish` holds at the boundary"). The
+    gate fails closed: a PreToolUse it raised on is refused, and the error is in the log; any other event
+    goes on, so a recording that fails never stops a session."""
+    holding(repo)
+
+    def broken(*_args, **_kwargs):
+        raise TypeError("a reader's bug")
+
+    monkeypatch.setattr(gate, "decide", broken)
+    said = reason(write(repo, "src/api/users.py"))
+    assert said.startswith("Graphene could not judge this call") and "ingest.log" in said
+    assert hook(repo, "Stop") is None and hook(repo, "UserPromptSubmit", prompt="hello") is None
+    assert "a reader's bug" in (repo / ".graphene" / "ingest.log").read_text()

@@ -1,0 +1,121 @@
+graphene: <smoke>/venv/bin/graphene graphene 0.7.0
+
+$ me graphene init --planner claude --executor claude
+planner: claude · executor: claude  (`graphene init` changes them)
+plan first: on. Claude proposes a plan here before it writes; you accept it in `graphene watch`, in another terminal. `graphene plan first off` turns it off.
+hooks added to .claude/settings.local.json (8 Claude Code hooks)
+each Claude Code session here is recorded on this machine only (its prompts, tool calls and what they returned, the files it edits); `graphene init --remove` takes the hooks out
+next: `graphene ask '<what you want>'` proposes a plan; `graphene watch` shows it
+goal: stats has a mean
+added mean: the mean
+
+$ me graphene run --first --with claude:haiku --with claude:sonnet --max-usd 5
+landing into main at 0a86f16: claude (haiku), up to 1 at once; an attempt stops once it passes $2
+worst case: 1 leaf x 2 forks x 3 attempts x $2 = $12; --max-usd $5 starts nothing past it
+`graphene watch` in another terminal follows it (each leaf lands as its own merge; your commit hooks are skipped)
+red first: 1 check ran at 0a86f16 before any work, in 0 s
+mean started: the mean
+mean forked 2 ways: a claude:haiku, b claude:sonnet
+mean fork a: attempt 1: the executor ended (exit 0)
+mean fork a: the check passed · 4 lines
+mean fork b: stopped: another fork's check passed first
+mean kept a of 2: the only fork whose check passed · 4 lines
+mean passed; it waits for your sign-off before it lands
+  its work: graphene/mean. `graphene node diff mean` shows it; `graphene node signoff mean` merges it
+run: 1 in review (mean) · agents <1m, $0.0675 at list price · 2 of 2 at once · you: 1 move, 1m
+
+$ me graphene node show mean
+mean (revision 1): the mean
+  why:    stats has a mean
+  goal:   stats.mean works on a list of numbers; on an empty list it raises ValueError
+  scope:  stats.py, test_stats.py   (a write anywhere else is refused, and blocks `done`)
+  done:   `python3 test_stats.py` passes and a person signs it off
+mean  the mean
+  state: review · owner agent
+  not in your branch yet: its work is on graphene/mean; `graphene node signoff mean` merges it
+  window 1: run:claude, session efeed11b-05e5-4551-9251-cf40bf754a0c  2026-10-20T09:44:10.906Z -> 2026-10-20T09:44:25.046Z  finished
+    from 0a86f16 to 0a86f16: what git said had changed when it ended
+    in scope: stats.py  (commit 2a05003 and git, when it ended)
+    in scope: test_stats.py  (commit 2a05003 and git, when it ended)
+  in short: 2 files changed, inside its scope; no record of who edited them, so git's word alone; the 1 commit inside its windows is in no record of a session that held it
+    read from: the node's log and git. No vendor keeps records for run:claude, so nothing here says which path a write somebody recorded making accounts for
+    check: `python3 test_stats.py` passed at 2026-10-20T09:44:25.046Z, run by Graphene itself
+      its last line: ok
+    1 commit inside its windows (2 files), not graded: session efeed11b held it and the store holds no records of it
+    its check runs test_stats.py, which this leaf changed: read that diff (`graphene node diff mean`)
+  refused: 1 command refused to the executor
+    refused to the executor: python3 test_stats.py && graphene node done mean
+  forked 2 ways · kept a: the only fork whose check passed
+    a claude:haiku · 1 attempt · passed · 4 lines · $0.0048 · 13s
+    b claude:sonnet · 1 attempt · stopped: another fork's check passed first · 4 lines · $0.06 · 14s
+  attempt 1 · fork b · claude claude-sonnet-5-5 · 14s · 2 turns · 50k in, 28 out · $0.06 at list price · exit 143
+    14k tokens written to the cache, 36k read
+    edited: stats.py, test_stats.py
+    ran: ls; cat stats.py test_stats.py
+    the last it did:
+      running ls; cat stats.py test_stats.py
+      editing stats.py
+      editing test_stats.py
+  attempt 1 · fork a · claude claude-haiku-5-5 · 13s · 4 turns · 106k in, 1k out · $0.0048 at list price · exit 0
+    16k tokens written to the cache, 90k read
+    edited: stats.py, test_stats.py
+    ran: cat stats.py; echo ---; cat test_stats.py; echo ---; git status; git log --oneline | head -3, graphene node done mean
+    refused: python3 test_stats.py && graphene node done mean
+    said last:
+      `stats.mean` now raises `ValueError` on an empty list and returns the mean otherwise. `graphene node
+      done mean` passed in this fork (fork a of 2), so Graphene decides which fork it keeps. Changes, both
+      inside the scope: - `stats.py`: `mean` raises `ValueError("mean() of empty list")` when the list is
+      empty, and otherwise returns `sum(xs) / len(xs)`. - `test_stats.py`: added a check that `mean([])`
+      raises `ValueError`, alongside the existing `mean([1, 2, 3]) == 2` check. I did not run `python3
+      test_stats.py` directly, because the shell only allows `graphene` commands. The pass comes from the
+      `graphene node done mean` check. The leaf still needs a person's sign-off before it counts as done.
+    the last it did:
+      running cat stats.py; echo ---; cat test_stats.py; echo ---; git status; git log --oneline | head -3
+      editing stats.py
+      editing test_stats.py
+      running python3 test_stats.py && graphene node done mean
+      running graphene node done mean
+  bill: $0.0675 at list price · 6 model calls · 155,951 tokens in, 1,304 out · claude-haiku-5-5, claude-sonnet-5-5 (Claude Code's report)
+  nobody has accepted, edited, signed off, sent back or handed back this node
+  every entry, check runs included: `graphene plan log` (36 for mean)
+
+$ me graphene node diff mean --fork a --stat
+ stats.py      | 4 +++-
+ test_stats.py | 8 ++++++++
+ 2 files changed, 11 insertions(+), 1 deletion(-)
+
+$ me graphene node diff mean --fork b --stat
+ stats.py      | 4 +++-
+ test_stats.py | 5 +++++
+ 2 files changed, 8 insertions(+), 1 deletion(-)
+kept: a, picking: b
+
+$ me graphene node pick mean b
+mean's branch is now fork b's work (stopped); `graphene node signoff mean` lands it
+
+$ me graphene node signoff mean
+mean is done (signed off)
+
+$ git log --oneline --graph -5
+*   5063f14 the mean (mean)
+|\  
+| * 3a271eb fork b of mean
+|/  
+* 0a86f16 start
+
+$ git log -1 --format=%B
+the mean (mean)
+
+Check: `python3 test_stats.py` passed
+Executor: claude claude-sonnet-5-5 · 2 forks, kept b · 2 attempts · $0.0675 at list price
+Graphene-Node: mean
+
+
+$ me graphene plan record
+  the record of the 1 leaf in the plan (1 done; each has its own: `graphene node show <id>`):
+    ✓ mean · stats.py, test_stats.py · landed 5063f14 · 2 forks, kept b · $0.07
+    coverage: of the 2 paths git said had changed under them, 2 inside the scope of the leaf that changed it; 0 to a recorded edit, 0 to a recorded shell command, 2 to git alone
+    checks run by Graphene itself: 1 of 1 passed at last run, 0 runs failed on the way; 0 writes refused; 0 `done` refused over paths outside a scope
+    the leaves' bill: $0.0675 at list price · 6 model calls · 155,951 tokens in, 1,304 out · claude-haiku-5-5, claude-sonnet-5-5 (Claude Code's report)
+    2 of 2 at once · 4% of agent minutes alone
+    last run: run: 1 in review (mean) · agents <1m, $0.0675 at list price · 2 of 2 at once · you: 1 move, 1m

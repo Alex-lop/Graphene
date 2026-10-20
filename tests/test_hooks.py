@@ -261,6 +261,26 @@ def test_install_hooks_merges_and_is_idempotent(repo):
     assert json.loads(settings.read_text()) == merged
 
 
+def test_a_closed_install_blocks_on_the_gate_alone_and_closes_an_open_one(repo):
+    """With a Claude Code that knows `onFailure`, the gate refuses a call when its hook cannot run; the
+    events that only record stay open, and an install from before is closed in place, nothing added."""
+    settings = repo / ".claude" / "settings.local.json"
+    assert install_hooks(repo) == list(HOOK_EVENTS)
+    assert "onFailure" not in settings.read_text()  # open, as before: an older Claude Code knows no such key
+    assert install_hooks(repo, closed=True) == []
+    hooks = json.loads(settings.read_text())["hooks"]
+    on = {e: [h.get("onFailure") for g in hooks[e] for h in g["hooks"]] for e in HOOK_EVENTS}
+    assert on.pop("PreToolUse") == ["block"]
+    assert all(v == [None] for v in on.values())
+    before = settings.read_text()
+    assert install_hooks(repo, closed=True) == []
+    assert settings.read_text() == before
+    assert "PreToolUse" in remove_hooks(repo)
+    assert install_hooks(repo, closed=True) == list(HOOK_EVENTS)
+    gate = json.loads(settings.read_text())["hooks"]["PreToolUse"][0]["hooks"][0]
+    assert gate == {"type": "command", "command": "graphene ingest hook", "timeout": 5, "onFailure": "block"}
+
+
 def test_install_hooks_refuses_to_clobber_malformed_settings(repo):
     settings = repo / ".claude" / "settings.local.json"
     settings.parent.mkdir()

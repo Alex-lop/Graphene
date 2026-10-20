@@ -148,11 +148,37 @@ class Doer:
             self.say(f"{who(t.agent) or fit(t.title, 32)} is {t.state}: it waits for nothing from you")
 
     def pick(self, m: Model, sel: str, n: int) -> None:
+        """A digit: a question's option by its number; on a task in review whose hold forked, the fork by its
+        number (1 is a, 2 is b), the person's own pick of what its sign-off lands (`graphene node pick`)."""
         q = next((q for q in m.questions if q.id == sel), None)
+        t = m.tasks.get(sel)
+        if t is not None and t.state == "review" and t.forks:
+            if 1 <= n <= len(t.forks):
+                self.run(["node", "pick", t.id, t.forks[n - 1].letter])
+            else:
+                self.say(f"1-{len(t.forks)} pick one of its forks")
+            return
         if q is None or not 1 <= n <= len(q.options):
             self.say("pick needs a question and one of its numbers")
             return
         self.run(["board", "pick", q.id, str(n)])
+
+    def fork(self, m: Model, sel: str) -> None:
+        """f: the task forks: N agents at once, its check keeps one. Its contract takes `forks: N` (the forks
+        setting when that is 2 or more, else 3), then it runs as r runs it (a going run takes it, with its
+        forks)."""
+        t = m.tasks.get(sel)
+        if t is None:
+            self.say("select a task to fork: f runs it as N agents at once, and its check keeps one")
+            return
+        if t.state in ("running", "review", "done", "proposed", "yours"):
+            self.say(f"f forks a task still to do, and this one is {t.state}")
+            return
+        n = m.forks if m.forks >= 2 else 3
+        done = f"{n} agents at once on it from now, and its check keeps one"
+        if self.run(["node", "set", t.id, "--forks", str(n)], done):  # refused (no check): said why
+            return
+        self.run_ready(t.id)
 
     def answer(self, m: Model, sel: str, words: str) -> None:
         q = next((q for q in m.questions if q.id == sel), None)

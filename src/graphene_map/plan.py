@@ -43,7 +43,8 @@ CLEAN_TREE = (
     "repo has one (`uv run pytest …` beside a pyproject, `npm ci && npm test`), else the system python3."
 )
 KEPT_PATHS = 200  # changed paths kept in a node's log when it ends; the count of the rest is kept too
-EDITABLE = ("title", "goal", "scope", "check", "signoff", "needs", "owner", "parent")
+EDITABLE = ("title", "goal", "scope", "check", "signoff", "forks", "needs", "owner", "parent")
+FORKS = range(1, 9)  # a leaf's forks, and the setting's: agents at once on one leaf, its check keeping one
 USABLE = re.compile(r"(?!.*\.\.|.*\.(lock)?$)[A-Za-z0-9][\w.-]{0,31}")  # an id: graphene/<id> is a branch
 # Environment variables an agent's shell carries. GRAPHENE_NODE is ours: `graphene run` sets it for
 # every executor it starts. TODO: the last two are from the vendors' docs, not yet seen on a real run.
@@ -95,6 +96,7 @@ class Node:
     scope: list[str] = field(default_factory=list)  # globs, repo-relative; "!glob" takes paths back out
     check: str | None = None  # a shell command that must exit 0, run by Graphene on the node's state
     signoff: bool = False  # a person must also say so
+    forks: int | None = None  # agents at once on it, its check keeping one; None: the run's, or the setting's
     needs: list[str] = field(default_factory=list)
     owner: str = AGENT
     parent: str | None = None  # the node this one helps achieve; None is directly under the plan's goal
@@ -110,6 +112,9 @@ class Node:
     dirty_at_start: dict[str, str | None] = field(default_factory=dict)  # path -> content hash
     unseen_at_start: dict[str, str] = field(default_factory=dict)  # what git could not see then
     others_at_start: dict[str, dict] = field(default_factory=dict)  # the repo's other working trees then
+    # the hold's forks, while `graphene run` runs it as several agents at once: each fork's own session,
+    # as {session: {"fork": "b", "tree": "/its/worktree"}}; the hooks and `done` find a fork's session here
+    forked: dict[str, dict] = field(default_factory=dict)
     told_rev: int | None = None  # the revision the executor was shown when it started
     created_at: str | None = None
     updated_at: str | None = None
@@ -389,6 +394,8 @@ def validate(
             raise Refused(
                 f"{n.id}: a leaf needs a check, a person's sign-off, or both; else nobody knows it is done"
             )
+        if (n.forks or 1) > 1 and not n.check:
+            raise Refused(f"{n.id}: {n.forks} forks need a check to keep one; a sign-off cannot choose")
     seen: dict[str, int] = {}
 
     def visit(i: str, trail: tuple[str, ...]) -> None:
@@ -984,6 +991,11 @@ def contract(
             if node.needs
             else []
         ),
+        *(
+            [f"  forks:  {node.forks}   (agents at once, each in its own copy; its check keeps one)"]
+            if (node.forks or 1) > 1
+            else []
+        ),
         f"  done:   {done_means(node) or 'no check yet'}",
         *(
             []
@@ -1027,6 +1039,11 @@ def from_dict(raw: dict, fallback_id: str) -> Node:
     scope = raw.get("scope") or []
     needs = raw.get("needs") or []
     owner = " ".join(str(raw.get("owner") or AGENT).split()) or AGENT  # one line, as the text writes it
+    forks = raw.get("forks")
+    if forks not in (None, ""):
+        forks = int(forks) if isinstance(forks, int) or str(forks).strip().isdigit() else 0
+        if forks not in FORKS:
+            raise Refused(f"forks is a number from {FORKS[0]} to {FORKS[-1]}, not {raw['forks']!r}")
     return Node(
         id=str(raw.get("id") or fallback_id),
         title=str(raw.get("title") or ""),
@@ -1034,6 +1051,7 @@ def from_dict(raw: dict, fallback_id: str) -> Node:
         scope=[scope] if isinstance(scope, str) else [str(s) for s in scope],
         check=str(raw["check"]).strip() or None if raw.get("check") else None,  # blank is no check
         signoff=bool(raw.get("signoff")),
+        forks=forks if forks not in (None, "") else None,
         needs=[needs] if isinstance(needs, str) else [str(n) for n in needs],
         owner=owner,
         parent=str(raw["parent"]) if raw.get("parent") not in (None, "", "none") else None,
@@ -1041,7 +1059,12 @@ def from_dict(raw: dict, fallback_id: str) -> Node:
 
 
 def to_dict(node: Node) -> dict:
-    return {f: getattr(node, f) for f in Node.__slots__}
+    out = {f: getattr(node, f) for f in Node.__slots__}
+    if out["forks"] is None:
+        del out["forks"]  # stored only when set: unsaid, the run's --forks or the setting decides
+    if not out["forked"]:
+        del out["forked"]  # only while a hold's forks work: a node that never forked is as it was
+    return out
 
 
 def to_json(nodes: list[Node]) -> str:
@@ -2116,7 +2139,7 @@ def start(
             agent_id,
         )
         node.checkout, node.base_sha, node.dirty_at_start = checkout, base, was_dirty
-        node.unseen_at_start, node.others_at_start = hidden, others
+        node.unseen_at_start, node.others_at_start, node.forked = hidden, others, {}
         node.started_at, node.finished_at, node.told_rev = now, None, node.rev
         extra = {"unowned": loose} if loose else {}  # a person starting over them has seen them
         _save(store, node, "started", who, now, rev=node.rev, base=node.base_sha, checkout=checkout, **extra)
@@ -2252,10 +2275,40 @@ def elsewhere(store, node: Node) -> list[str]:
     return out
 
 
+def set_forked(store, node_id: str, forked: dict[str, dict]) -> None:
+    """The hold's forks, as `graphene run` starts them (``Node.forked``); {} once they have ended. No row:
+    the run's `forked` row says it, and the hold's `finish` or `release` clears it with the hold."""
+    with store.claim():
+        node = get(store, node_id)
+        node.forked = forked
+        store.put_node(to_dict(node))
+
+
+def fork_of(node: Node, session: str | None) -> tuple[str, dict] | None:
+    """The fork a caller is, when the leaf's hold forked and the caller is one of them: by its own session
+    (a Claude Code session is told its id), else by the GRAPHENE_ATTEMPT `graphene run` gave its executor.
+    (The fork's session, its {"fork": letter, "tree": path}), or None."""
+    for sid in (session, os.environ.get("GRAPHENE_ATTEMPT")):
+        if sid and sid in node.forked:
+            return sid, node.forked[sid]
+    return None
+
+
+def fork_row(store, node: Node, letter: str) -> dict | None:
+    """What the last `fork` row of this hold says of fork ``letter`` (its state: running, passed, refused,
+    gave up, failed or stopped; why; what it asked for), or None before its first. A fork's verdict lives
+    here, never in the leaf's state."""
+    rows = store.node_log(node.id, ("started", "fork"))
+    since = rows[max((k for k, e in enumerate(rows) if e["kind"] == "started"), default=-1) + 1 :]
+    mine = [e["detail"] for e in since if str(e["detail"].get("fork")) == letter]
+    return mine[-1] if mine else None
+
+
 def _holder_only(node: Node, who: Caller, what: str) -> None:
     """Only whoever holds a running node finishes it or hands it back; a person may always. A Claude
     Code session is known by its session id; an executor `graphene run` started is known by the
-    GRAPHENE_NODE it was given; anyone else by the name they took the node under."""
+    GRAPHENE_NODE it was given; one of the hold's forks by its own session (``fork_of``); anyone else by
+    the name they took the node under."""
     if who.person:
         return
     same_session = bool(node.session_id) and who.session_id == node.session_id
@@ -2265,7 +2318,8 @@ def _holder_only(node: Node, who: Caller, what: str) -> None:
         and os.environ.get("GRAPHENE_ATTEMPT", node.session_id)
         == node.session_id  # not an orphan of a dead run
     )
-    if not (same_session or run_gave_it or (not node.session_id and who.name == node.executor)):
+    a_fork = fork_of(node, who.session_id) is not None
+    if not (same_session or run_gave_it or a_fork or (not node.session_id and who.name == node.executor)):
         raise Refused(
             f"{node.id} is held by {node.executor}, not by {who.name}: {what} is theirs, or a person's"
         )
@@ -2439,7 +2493,49 @@ def finish(
     _holder_only(node, who, "finishing it")
     if override is not None:
         _person_only(who, "overruling a node's check or scope")
-    checkout = node.checkout or "."
+    elif found := fork_of(node, who.session_id):  # a fork's own `done`: its tree is judged, the leaf stays
+        return judge_fork(store, node_id, who, found, given)
+    judged = _judge(store, node, who, now, given, override, node.checkout or ".")
+    now, changed, stray, passed, detail, blobs = judged
+    with store.claim():
+        node = get(store, node_id)
+        if node.state != RUNNING or node.started_at != began:
+            # let go while its check ran (a check can take minutes): that stands
+            was = {OPEN: "handed back", DROPPED: "dropped", RUNNING: "handed back and taken again"}
+            raise Refused(
+                f"{node.id} was {was.get(node.state, node.state)} while its check ran, so it is not done; "
+                "its work stays"
+            )
+        held = node.signoff or S.review(store) == "every"  # read as it passes: what was proposed before too
+        node.state = REVIEW if held and override is None else DONE
+        node.finished_at, node.forked = now, {}
+        if blobs:  # the content it left: what a leaf that needs it asks for, wherever it starts
+            detail["blobs"] = blobs
+        if len(changed) > KEPT_PATHS:
+            detail["more_changed"] = len(changed) - KEPT_PATHS
+        if override is not None:
+            detail |= {"override": override, "outside": stray, "check_passed": passed}
+        _save(
+            store, node, "overruled" if override is not None else "finished", who, node.finished_at, **detail
+        )
+    if RUN_TREE not in (node.checkout or ""):
+        # in a run's own worktree the sub-goal's check would not see its sibling leaves: `run.land`
+        # rolls up after the merge, in the checkout where they are all together
+        roll_up(store, who, node.checkout or ".", given)
+    mark_boundary(store, node.checkout or ".", now)
+    return node
+
+
+def _judge(
+    store, node: Node, who: Caller, now: str, given: str | None, override: str | None, checkout: str,
+    proof: bool = True,
+) -> tuple[str, list[str], list[str], bool, dict, dict[str, str]]:
+    """The boundary's questions, asked of ``checkout`` before the write lock is taken: git's changes
+    since the hold began, the standing settings, the scope, the links out, the check in a clean copy, and
+    the check's own files it touched. Refused as `done` is refused. Returns the moment to stamp (after the
+    check), what changed, what of it is outside the scope, whether the check passed, the `finished` row's
+    detail, and the content left in the scope. ``proof``: the check's row is the leaf's proof; a fork's
+    judgment (``judge_fork``) leaves none, since its verdict is its own row."""
     if override is None and node.unseen_at_start:
         now_unseen = unseen(checkout)
         if now_unseen != {k: v for k, v in node.unseen_at_start.items() if k != "ignored"}:
@@ -2491,6 +2587,7 @@ def finish(
     if node.check:
         checked = _now()
         now = given or checked
+    if node.check and proof:
         store.log_node(
             node.id,
             checked,
@@ -2524,32 +2621,29 @@ def finish(
             if touched := [p for p in changed if p in ran]:  # a file new since the base is in no list there
                 detail["check_touched"] = touched[:KEPT_PATHS]
     blobs = _blobs(checkout, [p for p in changed if in_scope(p, node.scope)][:KEPT_PATHS])
-    with store.claim():
-        node = get(store, node_id)
-        if node.state != RUNNING or node.started_at != began:
-            # let go while its check ran (a check can take minutes): that stands
-            was = {OPEN: "handed back", DROPPED: "dropped", RUNNING: "handed back and taken again"}
-            raise Refused(
-                f"{node.id} was {was.get(node.state, node.state)} while its check ran, so it is not done; "
-                "its work stays"
-            )
-        held = node.signoff or S.review(store) == "every"  # read as it passes: what was proposed before too
-        node.state = REVIEW if held and override is None else DONE
-        node.finished_at = now
-        if blobs:  # the content it left: what a leaf that needs it asks for, wherever it starts
-            detail["blobs"] = blobs
-        if len(changed) > KEPT_PATHS:
-            detail["more_changed"] = len(changed) - KEPT_PATHS
-        if override is not None:
-            detail |= {"override": override, "outside": stray, "check_passed": passed}
-        _save(
-            store, node, "overruled" if override is not None else "finished", who, node.finished_at, **detail
-        )
-    if RUN_TREE not in (node.checkout or ""):
-        # in a run's own worktree the sub-goal's check would not see its sibling leaves: `run.land`
-        # rolls up after the merge, in the checkout where they are all together
-        roll_up(store, who, node.checkout or ".", given)
-    mark_boundary(store, node.checkout or ".", now)
+    return now, changed, stray, passed, detail, blobs
+
+
+def judge_fork(store, node_id: str, who: Caller, found: tuple[str, dict], now: str | None = None) -> Node:
+    """A fork's `done` (``found``: its session and its fork, as ``fork_of`` gives them): its own tree is
+    judged with the boundary's pieces (``_judge``), and the verdict is its `fork` row, passed with the
+    paths it changed in the scope, or refused with why. It writes no check row (the leaf's proof is the
+    run's `finish` of the fork it keeps) and changes no state: the leaf's is the run's to change once every
+    fork has ended. Refused as `done` is, so the agent can fix it and try again."""
+    session, fork = found
+    node = get(store, node_id)
+    row = {"fork": fork["fork"], "of": len(node.forked), "state": "passed", "why": ""}
+    try:
+        judged = _judge(store, node, who, now or _now(), now, None, fork["tree"], proof=False)
+        _, changed, _, _, detail, _ = judged
+    except Refused as no:
+        row |= {"state": "refused", "why": str(no).splitlines()[0]}
+        store.log_node(node.id, _now(), "fork", who.label, session, None, row)
+        raise
+    row["paths"] = [p for p in changed if in_scope(p, node.scope)][:KEPT_PATHS]
+    if detail.get("check_touched"):
+        row["check_touched"] = detail["check_touched"]
+    store.log_node(node.id, _now(), "fork", who.label, session, None, row)
     return node
 
 
@@ -2692,7 +2786,9 @@ def release(
     it may not stop silently, and it may not widen its own scope; it can say what is in the way, and
     name the paths it would need (``wants``), which the person is then offered in one key.
     ``stopped``: the run let it go (stopped, or it died) before its executor finished: it did not
-    come back, it is ready again."""
+    come back, it is ready again. From one of the hold's forks (``fork_of``) it is that fork giving
+    up, its `fork` row with the why and the wants: the leaf is handed back by the run once every fork
+    has ended, with the union of what they asked for."""
     import subprocess
 
     now = now or _now()
@@ -2712,8 +2808,14 @@ def release(
         _holder_only(node, who, "handing it back")
         if node.started_at != began:
             raise refusal(f"{node.id} changed hands just now", do="graphene plan shows who holds it")
-        node.state, node.executor, node.session_id, node.agent_id = OPEN, None, None, None
         extra = {"wants": [w.strip() for w in wants if w.strip()]} if wants else {}
+        if found := fork_of(node, who.session_id):
+            session, fork = found
+            said = {"fork": fork["fork"], "of": len(node.forked), "state": "gave up", "why": why, **extra}
+            store.log_node(node.id, now, "fork", who.label, session, None, said)
+            return node
+        node.state, node.executor, node.session_id, node.agent_id = OPEN, None, None, None
+        node.forked = {}
         extra |= {"stopped": True} if stopped else {}
         _save(
             store,

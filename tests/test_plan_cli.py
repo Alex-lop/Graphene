@@ -765,7 +765,7 @@ def test_refusals_say_what_was_refused_and_the_command_in_a_line(repo):
     )
     assert person("node", "set", "n1").stderr == (
         "graphene node set n1 needs what to change: --title, --scope, --check, --goal, --needs, --owner, "
-        "--signoff or --parent\n"
+        "--signoff, --forks or --parent\n"
     )
     person("node", "add", "users", "--scope", "api.py", "--check", "true")
     agent("node", "start", "n1")

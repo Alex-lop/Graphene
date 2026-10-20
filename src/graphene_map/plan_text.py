@@ -39,7 +39,7 @@ from pathlib import Path
 from . import board as B
 from . import plan as P
 
-KEYS = ("scope", "check", "needs", "owner", "signoff", "goal")
+KEYS = ("scope", "check", "needs", "owner", "signoff", "forks", "goal")
 # Other spellings of a key that are read as it (compared lower case, with "_" and "-" as spaces): they
 # say nothing else, and a needs: value that is not an id is refused by its line anyway.
 _SAME = {
@@ -76,10 +76,11 @@ HELP = """\
 # to put it there; delete a node's lines (its own and what is under it) to drop it; reorder to reorder.
 # A line with no [id] is a new node; a child goes after its parent's own lines. Under a node: scope:
 # the paths it may write; check: a command that exits 0 when it is done; needs: ids it waits on;
-# owner: me; signoff: yes. Any other line under a node says what it should achieve. Lines starting
-# with # are notes, never read. The board is the lines at the left edge before the tree (question:,
-# assume:, risk:, leave out:, note:): answer one with "answer: default", "answer: option 2", "answer:
-# parked" or your own words under it; delete its lines to drop it; add a note: of your own.
+# owner: me; signoff: yes; forks: 3 (agents at once, its check keeps one). Any other line under a
+# node says what it should achieve. Lines starting with # are notes, never read. The board is the
+# lines at the left edge before the tree (question:, assume:, risk:, leave out:, note:): answer one
+# with "answer: default", "answer: option 2", "answer: parked" or your own words under it; delete its
+# lines to drop it; add a note: of your own.
 # Save and quit to apply. Nothing is applied when a line cannot be read, or when this is emptied."""
 
 
@@ -98,6 +99,7 @@ class Line:
     needs: list[str] = field(default_factory=list)
     owner: str = P.AGENT
     signoff: bool = False
+    forks: int | None = None
     goal: list[str] = field(default_factory=list)
     under: str | None = None  # the id a `parent:` line names; "" for none, at the top
     said: set[str] = field(default_factory=set)  # which keys the text wrote at all
@@ -351,6 +353,11 @@ def _set(line: Line, name: str, value: str, no: int) -> None:
         if value.lower() not in (*_YES, *_NO):
             raise P.Refused(f"line {no}: signoff is yes or no, not {value!r}")
         line.signoff = value.lower() in _YES
+    elif name == "forks":
+        value = _uncomment(value)
+        if not value.isdigit() or int(value) not in P.FORKS:
+            raise P.Refused(f"line {no}: forks is a number from {P.FORKS[0]} to {P.FORKS[-1]}, not {value!r}")
+        line.forks = int(value)
     else:
         line.goal.append(value)
     line.said.add(name)
@@ -540,6 +547,8 @@ def render(store, root: str | None = None, alone: bool = False) -> tuple[str, di
             lines.append(f"{inner}owner: {' '.join(n.owner.split())}")
         if n.signoff:
             lines.append(f"{inner}signoff: yes")
+        if n.forks is not None:
+            lines.append(f"{inner}forks: {n.forks}")
         if not alone:
             for child in under.get(n.id, []):
                 if not child.aside:
@@ -590,6 +599,7 @@ def apply(
     board = [f for f in board if f["no"] not in faulty]
     for ln in (ln for ln in lines if ln.no in faulty):  # still in the tree, and judged by nothing
         ln.scope, ln.check, ln.needs, ln.signoff, ln.owner, ln.said = [], None, [], False, P.AGENT, set()
+        ln.forks = None
     if board and opened is not None and "*board" not in opened:
         raise P.Refused(
             f"line {board[0]['no']}: the board is edited with the whole plan (`graphene plan edit`), not "
@@ -820,8 +830,10 @@ def _guard_shape(lines, fresh, everything, opened, parent_of, who, faulty=frozen
         if base and nxt is not None and nxt.parent == k and moved_in:
             # a line put right under an existing node's line takes the lines that were the node's own
             # when they sit where the node's own lines are written (four columns in from its line)
-            empty = not (ln.scope or ln.check or ln.goal or ln.needs or ln.signoff or ln.owner != P.AGENT)
-            was = base["scope"] or base["check"] or base["goal"] or base["needs"] or base["signoff"]
+            empty = not (ln.scope or ln.check or ln.goal or ln.needs or ln.signoff or ln.forks
+                         or ln.owner != P.AGENT)  # fmt: skip
+            was = (base["scope"] or base["check"] or base["goal"] or base["needs"] or base["signoff"]
+                   or base["forks"])  # fmt: skip
             if empty and (was or base["owner"] != P.AGENT) and nxt.column == ln.indent + 4:
                 raise P.Refused(
                     f"line {nxt.no}: the line sits between [{ln.id}] and [{ln.id}]'s own lines, so they "
@@ -911,6 +923,7 @@ def _fields(line: Line) -> dict:
         "needs": line.needs,
         "owner": line.owner,
         "signoff": line.signoff,
+        "forks": line.forks,
     }
 
 
@@ -923,6 +936,7 @@ def _stored(node: P.Node) -> dict:
         "needs": list(node.needs),
         "owner": " ".join(node.owner.split()),
         "signoff": node.signoff,
+        "forks": node.forks,
     }
 
 

@@ -1,45 +1,44 @@
-# Graphene 0.6.0
+# Graphene 0.7.0
 
-The first release on PyPI since 0.5.0, which was built on 7 October. 0.5.1 was tagged on 16 October and never
-published: its release run failed its tests, so nothing was uploaded. Everything that was in it is in 0.6.0.
-
-Install: `uv tool install graphene-map` (over 0.5.0, `uv tool upgrade graphene-map`). Or try it with nothing
-installed: `uvx graphene-map demo`, a recorded run replayed on the new screen (no key, nothing written to your
+Install: `uv tool install graphene-map` (over 0.6.0, `uv tool upgrade graphene-map`). Or try it with nothing
+installed: `uvx graphene-map demo`, a scripted replay of a run, a fork race in it (no key, nothing written to your
 project).
 
-## What you get that 0.5.0 did not have
+## What you get that 0.6.0 did not have
 
-- **The watch is a cockpit.** `graphene watch` is one screen for talking to your agents: a row a task, the agent
-  on it by number, files written of files allowed, checks passed, how long it has been quiet. What needs you
-  comes first, and ⏎ takes it. `g` draws the plan as a graph from your goal down, `m` maps the folders each task
-  may write. `graphene watch --classic` keeps the old outline.
-- **Talk to an agent while it works.** `t` tells it a line, and a Claude Code session hears it with its next
-  write or command. `w` widens a task to the path the gate stopped; `x` hands it back, or reopens a finished one
-  with what is wrong.
-- **It says when you're needed.** A question, a task that came back, a sign-off or a stopped write rings the
-  terminal, with a notification saying why where your terminal shows one. `notify: off` turns it off.
-- **Read every diff before it lands, if you want.** `review: every` (in `graphene config edit`) holds each task
-  whose check passed for your sign-off: `i` then `c` shows its diff, ⏎ lands it. By default the check decides.
-- **Green alone, red together, never lands.** A task whose branch moved while it ran is checked on the merge with
-  what landed since, and so is a sign-off; one that fails stays in review.
-- **Watch the locks hold.** `graphene demo --cheat` plays a script that tries seven ways round them against the
-  real hook, git and check: six refused, one flagged. It is a script, not a model.
-- **Know the cost first, and cap it.** A run says its worst case before it starts, `--max-usd N` starts nothing
-  past N dollars, and a Claude Code attempt stops at $2.
-- **Stop, undo, leave.** `graphene run --stop` from any terminal; `graphene node show` prints the
-  `git revert -m 1` that takes a landed task back; `graphene init --remove` takes the hooks out.
-- **A demo worth watching.** `graphene demo` replays a plan of two sub-goals and four tasks: three agents at
-  once, one that comes back with its reason and is widened and tried again, and one that waits on two.
+- **Fork a task.** `graphene run --forks 3` puts three agents on each task at once, each in its own copy of your
+  repository and held to the task's files like any agent. `graphene run --with claude:opus --with claude:sonnet
+  --with codex` gives each fork its own agent, `--first` keeps the first fork that passes and stops the rest,
+  `forks: 3` on a task in the plan forks only that one, and `forks:` in `graphene config edit` forks every task.
+- **The check keeps one, by a rule written before any fork ran.** Among the forks whose check passed: the one
+  that passes the most of the other forks' tests, then the one that left the check's own files alone, then the
+  smallest change, the cheapest, the first to finish. The run says why in one line (`stats kept a of 3: 10 lines
+  against 12`), lands that fork alone as one merge, and keeps every fork's work on a ref: `graphene node diff
+  <task> --fork b` shows it, `graphene node show <task>` lists them, and on a task waiting for your sign-off
+  `graphene node pick <task> c` lands another. Three Haiku forks of one task cost $0.02 in a live run.
+- **Forks in `graphene watch`.** `f` forks the task you're on; a forked task opens to a line a fork (`3a`, `3b`,
+  `3c`), each with its own moves; a note you tell it reaches every fork; a digit picks another fork of a task in
+  review; the details' record has a table of the forks.
+- **The graph flows into your goal.** `g` draws the goal as the last box, every arrow meaning "lands before":
+  each column a wave of tasks that can run at once, each band a part of the goal with its count, the double line
+  the longest chain the goal waits on.
+- **The gate fails closed.** On Claude Code 2.1.295 or later, `graphene init` in your terminal makes a hook that
+  cannot run refuse the call instead of letting it through; and a call the hook cannot judge is refused.
+- **The gate reads more of the shell.** A write after a `#` comment, a quoted `<<EOF`, `$((1<<n))` or a
+  here-string; after `cd -P`, `cd -`, `cd $PWD/…` or inside a subshell; to `>&`, `<>`, `&>>`, `|&`, `dd of=`,
+  `install` or a variable the command set; under `nice -n 1`, `env -i` or `command -p`: each is refused before
+  it happens now, where git found it at done. A log written to /tmp beside a write outside the task no longer
+  lets that write through.
+- **A cap that is too small says so.** `graphene run --max-usd` under one attempt's worst case says how much
+  starts one.
 
 ## What it does not do
 
 - A write outside a task's files is refused before it happens by Claude Code's hooks and by Nemotron's edit and
-  write; with Codex, or a command Nemotron runs outside a Sandbox, git finds it when the task says it is done.
-- Its hook fails open if it cannot run; git catches the change at done.
+  write; with Codex, or a write the hook cannot read (a target in a variable it was not given, a glob, a command
+  substitution, a script that opens a file itself), git finds it when the task says it is done.
+- The rule keeps one fork by the check and a few counts; it does not read the code. A fork it keeps is not shown
+  to be the best one, and `graphene node pick` is yours when you disagree.
+- Whether forks land more tasks is not measured yet. `dev/held/rules.md` says how it will be.
 - A task allowed to edit the test its own check runs can weaken it: it is flagged, not refused.
 - Codex has no cap of its own, and `--max-usd` stops starts, not an attempt that is going.
-- No person has been timed on it. It's early, and I'm building it in the open: if you try it on a real repo,
-  the first-hour form on the issues page takes two minutes, and where the plan misread you is what I most want
-  to hear.
-
-Everything, change by change: CHANGELOG.md. How it compares, gaps included: docs/COMPARE.md.

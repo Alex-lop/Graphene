@@ -17,7 +17,9 @@ SIZES = ("auto", "finer", "coarser")
 BOARDS = ("auto", "on")  # auto (unset, study 4): the board shows only for a question; on: every open item
 REVIEWS = ("off", "every")  # off (unset): the check decides; every: a proven task waits for the sign-off
 NOTIFY = ("on", "off")  # on (unset): graphene watch rings and notifies when something new needs the person
-SCALARS = {"size": SIZES, "board": BOARDS, "review": REVIEWS, "notify": NOTIFY}  # one of a few; unset: first
+FORKS = tuple(str(n) for n in P.FORKS)  # 1 (unset): one agent a leaf; more: that many at once, one kept
+# one of a few; unset: the first
+SCALARS = {"size": SIZES, "board": BOARDS, "review": REVIEWS, "notify": NOTIFY, "forks": FORKS}
 GLOBS = ("protected", "readonly")  # a line of either holds globs, comma-separated; lines add up
 HEAD = """\
 # Graphene's settings. A line is `key: value`; a line starting with '#' is not read.
@@ -27,6 +29,7 @@ HEAD = """\
 # board: auto (while a question, or an agent's note, is open) or on (every open item waits on you)
 # review: off (the check decides) or every (a proven task waits for your sign-off before it lands)
 # notify: on (graphene watch rings, and a terminal that shows them notifies, when something needs you) or off
+# forks: 1 to 8 agents at once on every leaf, each in its own copy; the leaf's check keeps one
 """
 
 
@@ -73,6 +76,13 @@ def notify(store) -> str:
     """on (unset): when something new needs the person, graphene watch rings the terminal's bell and sends a
     desktop notification saying what; off: it stays quiet."""
     return store.meta("settings:notify") or "on"
+
+
+def forks(store) -> int:
+    """1 (unset): one agent takes a leaf. More: `graphene run` forks every leaf that says nothing itself
+    (`forks:` in the plan) and that the run's own --forks does not say, that many agents at once, each
+    in its own copy, and the leaf's check keeps one."""
+    return int(store.meta("settings:forks") or FORKS[0])
 
 
 def conditions_for_planner(store) -> str:
@@ -125,7 +135,7 @@ def lines_for_screen(store) -> list[str]:
     said = [line.removeprefix("# ") for line in elsewhere(store)]
     shown = ("#", "notify:")  # notify is the cockpit's bell: this screen has none
     lines = [line for line in render(store).splitlines() if line and not line.startswith(shown)]
-    lines = [line for line in lines if line != "review: off"]
+    lines = [line for line in lines if line not in ("review: off", "forks: 1")]
     one = [line for line in lines if line.partition(":")[0] in SCALARS]  # one line for the one-value keys
     said += [line for line in lines if line not in one] + [" · ".join(one)]
     return [*said, "graphene config edit changes them"]
@@ -140,6 +150,7 @@ def render(store) -> str:
     out.append(f"size: {size(store)}")
     out.append(f"board: {board(store)}")
     out.append(f"review: {review(store)}")
+    out.append(f"forks: {forks(store)}")
     return "\n".join(out) + "\n"
 
 
@@ -174,7 +185,7 @@ def apply(
         if not colon or key not in (*got, *SCALARS):
             raise P.Refused(
                 f"line {no}: {body[:40]!r} is not a setting; the keys are protected, readonly, never, size, "
-                "board, review, notify"
+                "board, review, notify, forks"
             )
         if key in SCALARS:
             if value not in SCALARS[key]:
@@ -205,7 +216,8 @@ def apply(
             raise P.Refused(f"the settings were changed by someone else since this text was opened; they now "
                             f"say: {now}. Keep what you want of theirs and save again")  # fmt: skip
         was = {k: _list(store, k) for k in got}
-        was |= {"size": size(store), "board": board(store), "review": review(store), "notify": notify(store)}
+        was |= {"size": size(store), "board": board(store), "review": review(store), "notify": notify(store),
+                "forks": str(forks(store))}  # fmt: skip
         for key, values in got.items():
             store.set_meta(f"settings:{key}", json.dumps(values) if values else None)
         for key, values in SCALARS.items():  # unset is the first value; stored only when it is another

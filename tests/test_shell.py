@@ -6,7 +6,9 @@ actually typed, not a grammar exercise.
 
 from pathlib import Path
 
-from graphene_map.shell import bash_written_paths
+import pytest
+
+from graphene_map.shell import bash_written_paths, shell_segments
 
 
 def test_bash_written_paths(tmp_path):
@@ -24,7 +26,7 @@ def test_bash_written_paths(tmp_path):
         "git status": [],
         f"echo x > {root}/abs.txt": [("abs.txt", "write")],
         "echo x > /elsewhere/abs.txt": [("/elsewhere/abs.txt", "write")],
-        "echo x > $HOME/y.txt": [],
+        "echo x > $HOME/y.txt": [(str(Path.home() / "y.txt"), "write")],  # $HOME resolves, like ~
     }
     for command, expected in cases.items():
         assert bash_written_paths(command, root) == expected, command
@@ -74,3 +76,117 @@ def test_files_inside_a_nested_checkout_are_outside_the_repo(tmp_path):
     assert relative_path(inside, tmp_path) == inside
     assert relative_path(str(tmp_path / "src" / "app.py"), tmp_path) == "src/app.py"
     assert bash_written_paths(f"echo x > {inside}", tmp_path) == [(inside, "write")]
+
+
+@pytest.mark.parametrize(
+    "command, written",
+    [
+        ("# update the schema\necho x > src/db/schema.py", [("src/db/schema.py", "write")]),
+        ("ls # list first\necho x > src/db/schema.py", [("src/db/schema.py", "write")]),
+        ("# write it\ncat > src/db/schema.py <<'EOF'\nTABLES = ['x']\nEOF", [("src/db/schema.py", "write")]),
+        ("echo https://example.com/#top\necho x > src/db/schema.py", [("src/db/schema.py", "write")]),
+        ("x=abc; echo ${#x} > src/db/schema.py", [("src/db/schema.py", "write")]),
+        ('echo "a # b" > out.txt', [("out.txt", "write")]),
+        ("grep -n '>' src/db/schema.py", []),
+        ("rg -n '>>' src", []),
+        ("echo x \\> not-a-write.txt", []),
+        ("echo '>' > src/api/users.py", [("src/api/users.py", "write")]),
+        ("cat > a.txt <<'EOF'\ndon't\nEOF\necho x > outside.txt",
+         [("a.txt", "write"), ("outside.txt", "write")]),
+    ],
+)
+def test_a_comment_hides_no_write_after_it_and_a_quoted_redirect_writes_nothing(command, written, tmp_path):
+    """An adversarial pass at the gate (19 October): a `#` comment line above a write hid it (shlex read the
+    comment to the end of the command once its newlines were `;`), and a quoted `>` in a grep pattern was read
+    as a redirect, refusing a read. A comment ends with its line; a `>` inside quotes, or escaped, is text; an
+    apostrophe in a heredoc body opens no quote."""
+    assert bash_written_paths(command, tmp_path) == [(p, k) for p, k in written]
+
+
+@pytest.mark.parametrize(
+    "command, written",
+    [
+        ("echo '<<EOF'\necho x > src/db/schema.py", [("src/db/schema.py", "write")]),
+        ('echo "<<EOF"\necho x > src/db/schema.py', [("src/db/schema.py", "write")]),
+        ("n=1; echo $((1<<n))\necho x > src/db/schema.py", [("src/db/schema.py", "write")]),
+        ("(( m = 1<<n ))\necho x > src/db/schema.py", [("src/db/schema.py", "write")]),
+        ("# see <<EOF below\necho x > src/db/schema.py", [("src/db/schema.py", "write")]),
+        ('grep -q x <<< "y"\necho x > src/db/schema.py', [("src/db/schema.py", "write")]),
+        ("python3 -c 'print(1)' <<< \"EOF\"\necho x > src/db/schema.py", [("src/db/schema.py", "write")]),
+        ("echo 'a\n<<EOF'\necho x > src/db/schema.py", [("src/db/schema.py", "write")]),  # a quote over lines
+        ("cat > src/api/a.py <<-EOF\n\tprint(1 > 0)\n\tEOF\necho x > b.txt",
+         [("src/api/a.py", "write"), ("b.txt", "write")]),  # fmt: skip
+        ("cat <<EOF > src/api/a.py\na > b\nEOF", [("src/api/a.py", "write")]),
+    ],
+)
+def test_only_a_heredoc_bash_reads_hides_the_lines_after_it(command, written, tmp_path):
+    """The re-review of 20 October: a `<<WORD` inside quotes, a comment or arithmetic, or a here-string
+    `<<<`, was taken for a heredoc, and every line after it for its body, so a write there passed the hook.
+    Only a heredoc bash reads starts a body; a real one still hides its own."""
+    assert bash_written_paths(command, tmp_path) == [(p, k) for p, k in written]
+
+
+def test_a_commit_message_keeps_its_quoted_redirects_and_hashes():
+    assert shell_segments("git commit -m 'a > b # c'") == [["git", "commit", "-m", "a > b # c"]]
+
+
+@pytest.mark.parametrize(
+    "command, written",
+    [
+        # finding 4: redirect forms and targets the parser did not read. Each wrote src/db/schema.py.
+        ("echo x >& src/db/schema.py", [("src/db/schema.py", "write")]),
+        ("echo x 1<> src/db/schema.py", [("src/db/schema.py", "write")]),
+        ("echo x &>> src/db/schema.py", [("src/db/schema.py", "write")]),
+        ("echo x | command tee src/db/schema.py", [("src/db/schema.py", "write")]),
+        ("echo x |& tee src/db/schema.py", [("src/db/schema.py", "write")]),
+        ("echo x | command tee -a src/db/schema.py", [("src/db/schema.py", "write")]),
+        ("dd if=/dev/zero of=src/db/schema.py", [("src/db/schema.py", "write")]),
+        ("install -m 644 a src/db/schema.py", [("src/db/schema.py", "write")]),
+        # a variable set to a literal in the same command, and $PWD / $(pwd), resolve
+        ("F=src/db/schema.py; echo x > $F", [("src/db/schema.py", "write")]),
+        ("d=src/db; echo x > $d/schema.py", [("src/db/schema.py", "write")]),
+        ("echo x > $PWD/src/db/schema.py", [("src/db/schema.py", "write")]),
+        # a target the hook cannot know before bash runs: a glob, a variable it was not given, a
+        # command substitution (a backtick stays one token; `$(…)` shlex splits on its parens)
+        ("echo x > src/db/schema.p?", [("src/db/schema.p?", "unknown")]),
+        ("echo x > $OUT", [("$OUT", "unknown")]),
+        ("echo x > `mktemp`", [("`mktemp`", "unknown")]),
+        # not a write: a fd duplication, a glob that only deletes, /dev/null
+        ("echo x >&2", []),
+        ("rm -rf build/*", []),
+        ("cat a > /dev/null", []),
+    ],
+)
+def test_redirect_forms_and_targets_the_parser_now_reads(command, written, tmp_path):
+    """Finding 4 of the adversarial pass: `>&`, `1<>`, `&>>`, `|&`, `command`/`dd`/`install`, and a
+    redirect after a variable the command set, a glob or `$PWD`, were not read and let a write by. A
+    target that stays a variable, a glob or a substitution is "unknown": the gate refuses it while a
+    leaf is held (it cannot be checked), but `$PWD`, `$HOME` and an in-command literal resolve."""
+    assert bash_written_paths(command, tmp_path) == [(p, k) for p, k in written]
+
+
+@pytest.mark.parametrize(
+    "command, written",
+    [
+        # finding 5: cd followed wrongly. Each of these wrote src/db/schema.py and was missed.
+        ("cd -P src/db && echo x > schema.py", [("src/db/schema.py", "write")]),
+        ("cd -- src/db && echo x > schema.py", [("src/db/schema.py", "write")]),
+        ("cd src/api && cd - >/dev/null && echo x > src/db/schema.py", [("src/db/schema.py", "write")]),
+        ("cd $PWD/src/db && echo x > schema.py", [("src/db/schema.py", "write")]),
+        ("(cd src/api); echo x > src/db/schema.py", [("src/db/schema.py", "write")]),
+        ("(cd src/api && pwd >/dev/null) && echo x > src/db/schema.py", [("src/db/schema.py", "write")]),
+        # a subshell's cd ends at its `)`, so the write after it lands where the outer shell is, not
+        # inside the subshell's directory (these were read as src/src/… and wrongly refused)
+        ("(cd src && ls >/dev/null) && echo x > src/api/users.py", [("src/api/users.py", "write")]),
+        ("pushd src/api >/dev/null && echo x > users.py", [("src/api/users.py", "write")]),
+        # and the honest cases the parser already read stay the same
+        ("cd sub && echo hi > a.txt", [("sub/a.txt", "write")]),
+        ("(cd sub && echo > e.txt)", [("sub/e.txt", "write")]),
+    ],
+)
+def test_cd_flags_dash_pwd_and_subshells_are_followed_as_bash_does(command, written, tmp_path):
+    """Finding 5: `cd -P`/`cd --` were read as `cd ~`, `cd -` and `cd $PWD/…` lost the directory, and a
+    subshell's `cd` leaked past its `)` (so a write after it was read in the wrong place, bypassing the
+    scope one way and falsely refused the other). The cwd now follows bash: flags skipped, `cd -` to the
+    previous directory, `$PWD` resolved, a subshell's cd undone at its `)`."""
+    assert bash_written_paths(command, tmp_path) == [(p, k) for p, k in written]

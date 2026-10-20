@@ -6,7 +6,9 @@ the stop refused while a node is open; the person's word kept out of an agent's 
 the vendor's documented JSON (code.claude.com/docs/en/hooks), printed by ``hook_main``.
 
 The holes, which the README and the map print beside the controls:
-- a hook that crashes or times out lets the call through (the vendor's rule); ``finish`` still holds;
+- a hook that crashes or times out lets the call through (the vendor's rule) on a Claude Code before
+  2.1.295, or where init ran from a script; from 2.1.295 init closes it (``hooks.BLOCKS_FROM``), and a
+  call ``decide`` raises on is refused either way (``hooks.hook_main``); ``finish`` still holds;
 - a write through an MCP server's tool (a filesystem server's included) is not seen here at all;
 - a shell command can write a file in a way no parser reads (a script that opens files itself);
   when the vendor reports what a command changed it is refused after the fact, and ``finish`` asks
@@ -61,7 +63,8 @@ def _write(write, *args) -> None:
 
 
 def _held(store, session_id: str) -> list[P.Node]:
-    return [n for n in P.nodes(store, (P.RUNNING,)) if n.session_id == session_id]
+    """The leaves this session holds: the one session its hold recorded, or one of the hold's forks."""
+    return [n for n in P.nodes(store, (P.RUNNING,)) if n.session_id == session_id or session_id in n.forked]
 
 
 def _rel(path: str, root: Path, cwd: str | None) -> str | None:
@@ -501,11 +504,41 @@ def _aside(store, sid: str, cwd: str | None, root: Path) -> P.Node | None:
         return None  # a busy store: no leaf, so the write is refused as if no prompt had been typed
 
 
+def _other_copy(
+    store, held: list[P.Node], sid: str, path: str, root: Path, cwd: str | None, how: str
+) -> dict | None:
+    """A fork writes in its own copy of the repo alone. Scope is judged by the path inside a copy, so a
+    write from one of the hold's forks that lands in another copy (the leaf's own tree, which the hold
+    sweeps up when the kept fork lands; another fork's; the checkout) is refused here, before the scope
+    is asked. The refusal, logged on the leaf as the fork's; None for any other write."""
+    from .hooks import worktree_root
+
+    for n in held:
+        if found := P.fork_of(n, sid):
+            break
+    else:
+        return None
+    full = os.path.normpath(path if os.path.isabs(path) else os.path.join(cwd or str(root), path))
+    live = worktree_root(os.path.dirname(full), root)  # None in the checkout itself
+    letter, mine = found[1]["fork"], found[1]["tree"]
+    if live is not None and os.path.realpath(live) == os.path.realpath(mine):
+        return None
+    _write(store.log_node, n.id, P._now(), "denied", n.executor, sid, None,
+           {"path": _rel(path, root, cwd), "how": how, "fork": letter, "copy": True})  # fmt: skip
+    return _deny(f"{full} is in another copy of the repo: fork {letter} of {n.id} writes in its own, {mine}, "
+                 "and nowhere else")  # fmt: skip
+
+
 def _check_write(
     store, held: list[P.Node], rel: str, event: dict, how: str, root: Path | None = None
 ) -> dict | None:
     if rel.split("/", 1)[0].casefold() in OURS:  # a disk that ignores case writes .GRAPHENE/ there too
         return _deny(f"{rel} is the plan's own store; no node's scope covers it")
+    # a move into an existing directory (`cp x src/api/`, `mv x src/api/`, `rm -rf src/api/`) lands
+    # under it, so a scope of `src/api/**` covers it: judge the directory as `src/api/`, which the glob
+    # matches, not `src/api`, which it does not (finding 6)
+    if root is not None and rel and not rel.endswith("/") and os.path.isdir(os.path.join(str(root), rel)):
+        rel = rel + "/"
     agent_id = event.get("agent_id") if isinstance(event.get("agent_id"), str) else None
     if not held and root is not None:
         cwd = event.get("cwd") if isinstance(event.get("cwd"), str) else None
@@ -536,7 +569,9 @@ def scope_refused(
     if any(P.binds(rel, n, standing) for n in held):
         return None
     n = held[0]
-    _write(store.log_node, n.id, P._now(), "denied", n.executor, session, agent_id, {"path": rel, "how": how})
+    fork = {"fork": n.forked[session]["fork"]} if session in n.forked else {}  # whose fork's write it was
+    _write(store.log_node, n.id, P._now(), "denied", n.executor, session, agent_id,
+           {"path": rel, "how": how, **fork})  # fmt: skip
     kept = P.kept_out_by(rel, standing)
     if kept:
         return (f"{rel} is kept out of every scope by the setting `{kept}` (`graphene config`); only the "
@@ -592,7 +627,8 @@ def _first_write(event: dict, root: Path) -> str | None:
         command = str(tool_input.get("command") or "")
         if len(command) > PARSED:
             return None
-        written = [w for w, _kind in bash_written_paths(command, Path(cwd or root)) if w.strip()]
+        writes = bash_written_paths(command, Path(cwd or root))
+        written = [w for w, k in writes if w.strip() and k != "unknown"]
         rels = [r for r in (_rel(w, root, cwd) for w in written) if r is not None]
         ignored = _ignored(root, rels)
         return next((r for r in rels if r not in ignored), None)
@@ -604,8 +640,9 @@ def _heard(store, held: list[P.Node], event: dict) -> dict | None:
     note of theirs or an answer on the board (``board.told``) about the leaf, a sub-goal above it or the
     whole plan, changed after the hold began (what came before is in the contract ``node start`` showed).
     Told once, to whichever agent of the session calls first (a subagent, if it is first), and logged
-    as ``told`` on the leaf: the person is shown that it was heard, never that it was done. The ledger
-    is written first, so a store too busy to keep it says nothing now rather than twice.
+    as ``told`` on the leaf: the person is shown that it was heard, never that it was done. A leaf whose
+    hold forked has a session a fork, and each fork is told for itself. The ledger is written first, so
+    a store too busy to keep it says nothing now rather than twice.
     TODO: one meta row a hold that was told something, never pruned."""
     held = [n for n in held if not n.aside]  # a leaf made from a prompt: the person is talking to it already
     if not held:
@@ -623,7 +660,9 @@ def _heard(store, held: list[P.Node], event: dict) -> dict | None:
     try:
         with store.claim():  # two calls of one batch run two hooks at once: one of them tells
             for n in held:
-                key = f"told:{n.session_id}:{n.id}:{n.started_at}"
+                fork = P.fork_of(n, event.get("session_id"))
+                whose = fork[0] if fork else n.session_id  # a fork hears it for itself
+                key = f"told:{whose}:{n.id}:{n.started_at}"
                 seen = json.loads(store.meta(key) or "[]")
                 on = {None, n.id, *(a.id for a in P.above(n, by_id))}
                 fresh = [it for it in new if it.get("about") in on and it["updated_at"] > (n.started_at or "")
@@ -631,7 +670,8 @@ def _heard(store, held: list[P.Node], event: dict) -> dict | None:
                 if fresh:
                     store.set_meta(key, json.dumps([*seen, *(f"{it['id']}@{it['rev']}" for it in fresh)]))
                     detail = {"items": [it["id"] for it in fresh], "how": how}
-                    store.log_node(n.id, P._now(), "told", n.executor, n.session_id, agent_id, detail)
+                    detail |= {"fork": fork[1]["fork"]} if fork else {}
+                    store.log_node(n.id, P._now(), "told", n.executor, whose, agent_id, detail)
                     said += [B.said(it) for it in fresh]
     except sqlite3.OperationalError:
         return None
@@ -734,6 +774,10 @@ def decide(store, event: dict, root: Path) -> dict | None:
         if not held or again:
             return None
         n = held[0]
+        # one of the hold's forks with its verdict (passed, refused, gave up) may stop: the run ends the leaf
+        found = P.fork_of(n, sid)
+        if found and (P.fork_row(store, n, found[1]["fork"]) or {}).get("state") not in (None, "running"):
+            return None
         _write(store.log_node, n.id, P._now(), "stop_refused", n.executor, sid, None, None)
         return {
             "decision": "block",
@@ -754,6 +798,8 @@ def decide(store, event: dict, root: Path) -> dict | None:
             return _link(_leaves(path, root, cwd))
         rel = _rel(path, root, cwd)
         held = _held(store, sid)
+        if rel is not None and (other := _other_copy(store, held, sid, path, root, cwd, tool)):
+            return other
         answer = None if rel is None else _check_write(store, held, rel, event, tool, root)
         return answer or _heard(store, held, event)
 
@@ -766,9 +812,11 @@ def decide(store, event: dict, root: Path) -> dict | None:
 
         standing = P.standing(store)
         rels = []
-        for written, _kind in bash_written_paths(command, Path(cwd or root)):
+        for written, kind in bash_written_paths(command, Path(cwd or root)):
             if not written.strip():
                 continue  # `echo hi > "\n"`: the parser's artefact, not a path anyone can write
+            if kind == "unknown":  # a variable, a glob or a substitution: git finds what it wrote at done
+                continue
             if _leaves(written, root, cwd):
                 return _link(_leaves(written, root, cwd))
             from .hooks import ours
@@ -776,11 +824,14 @@ def decide(store, event: dict, root: Path) -> dict | None:
             if ours(written, cwd, root):  # the store or the direction, however it is spelled
                 return _deny(f"{written} is the plan's own store; no node's scope covers it")
             rel = _rel(written, root, cwd)
-            if rel is not None and (rel.split("/", 1)[0].casefold() in OURS or rel in HOOKS):
+            if rel is None:
+                continue  # outside the repo (a log in /tmp): no scope's to judge, and the rest still is
+            if other := _other_copy(store, held, sid, written, root, cwd, "shell"):
+                return other
+            if rel.split("/", 1)[0].casefold() in OURS or rel in HOOKS:
                 # before any scope is asked: `**` does not cover the store, nor the hooks' settings
                 return _check_write(store, held, rel, event, "shell")
-            bound = held and any(P.binds(rel, n, standing) for n in held)
-            if rel is not None and not bound:
+            if not (held and any(P.binds(rel, n, standing) for n in held)):
                 rels.append(rel)
         # a build leftover git ignores is nobody's change; a standing path (an ignored .env) is never one
         ignored = {r for r in _ignored(root, rels) if not P.kept_out_by(r, standing)}

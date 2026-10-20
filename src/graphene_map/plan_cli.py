@@ -220,7 +220,11 @@ def register(cli: typer.Typer, root, open_store, fail):
         return ", ".join(shown)
 
     def holds(n: P.Node, who: P.Caller) -> bool:
-        return n.session_id == who.session_id if who.session_id else n.executor == who.name
+        if P.fork_of(n, who.session_id):  # one of its forks, by its session or the GRAPHENE_ATTEMPT it has
+            return True
+        if who.session_id:  # the hold's own session
+            return n.session_id == who.session_id
+        return n.executor == who.name
 
     def describe(
         store, n: P.Node, word: str, by_id: dict[str, P.Node], words: dict, who: P.Caller, room: int | None
@@ -1006,16 +1010,23 @@ def register(cli: typer.Typer, root, open_store, fail):
 
     @cli.command("run")
     def run_(
-        executor: str = typer.Option(
+        withs: list[str] = typer.Option(
             None,
             "--with",
-            help="Use this executor, not init's: claude, codex, nemotron or a command.",
+            help="This executor, not init's: claude, codex, nemotron, claude:MODEL or a command.",
         ),
         attempts: int = typer.Option(
             3, "--attempts", min=1, help="Attempts a leaf gets before it comes back."
         ),
         node: list[str] = typer.Option(None, "--node", help="Only this node; repeat it."),
         parallel: int = typer.Option(1, "--parallel", help="How many leaves run at once."),
+        forks: int = typer.Option(
+            None, "--forks", min=1, max=8,
+            help="Forks a leaf: N agents at once, its check keeps one; --with again mixes them.",
+        ),
+        first: bool = typer.Option(
+            False, "--first", help="Keep the first fork whose check passes and stop the rest."
+        ),
         here: bool = typer.Option(
             False, "--here", help="Run in your checkout and commit nothing; the checkout is exposed."
         ),
@@ -1037,9 +1048,27 @@ def register(cli: typer.Typer, root, open_store, fail):
         if os.environ.get("GRAPHENE_NODE") or os.environ.get("GRAPHENE_PLANNER"):
             fail("an executor or a planner does not start runs: through --with a run is any command", 1)
         from . import meter as M
-        from .run import CAP_UNIT, NOTHING, _splits, label, named, run_parallel, run_plan, summary, sweep
+        from .run import (
+            CAP_UNIT,
+            NOTHING,
+            Forks,
+            _splits,
+            label,
+            named,
+            run_parallel,
+            run_plan,
+            summary,
+            sweep,
+        )  # fmt: skip
 
         r = root()
+        withs = [w for w in withs or [] if w.strip()]
+        executor = withs[0] if withs else None
+        if len(withs) > P.FORKS[-1]:
+            fail(f"--with at most {P.FORKS[-1]} times: each is a fork, and a leaf forks {P.FORKS[-1]} ways "
+                 "at most", 2)  # fmt: skip
+        if here and ((forks or 1) > 1 or first or len(withs) > 1):
+            fail("forks need worktrees: drop --here", 2)
         if stop:  # Ctrl-C to the run, as `:stop` in `graphene watch` sends it: it hands back what it holds
             from .run import run_holding
 
@@ -1052,8 +1081,8 @@ def register(cli: typer.Typer, root, open_store, fail):
             from .run import ATTEMPTS, hand_on, run_holding
 
             # one run a repo: the one going takes what this one would have started, with its own executor,
-            # attempts and cap. One named with its own is refused as before; --here takes no lock
-            own = executor or attempts != ATTEMPTS or max_usd is not None
+            # attempts, cap and forks. One named with its own is refused as before; --here takes no lock
+            own = executor or attempts != ATTEMPTS or max_usd is not None or forks is not None or first
             going = None if here or own else run_holding(r)
             if going is not None:
                 ids = hand_on(store, node or None)
@@ -1112,7 +1141,8 @@ def register(cli: typer.Typer, root, open_store, fail):
                     run_plan(store, checkout(), template, attempts, node or None, out, logs, precheck,
                              max_usd)  # fmt: skip
                 else:
-                    _splits(template)  # a --with that cannot be read is refused before anything is said
+                    for one in [template, *(named(w) for w in withs[1:])]:
+                        _splits(one)  # a --with that cannot be read is refused before anything is said
                     here_ = checkout()
                     on = subprocess.run(["git", "symbolic-ref", "--short", "-q", "HEAD"], cwd=here_,
                                         capture_output=True, text=True).stdout.strip()  # fmt: skip
@@ -1129,12 +1159,17 @@ def register(cli: typer.Typer, root, open_store, fail):
 
                         # every leaf the run may reach, not only the ready ones: it goes on to the next
                         only = leaves_of(store, node or None)
-                        reach = sum(
-                            n.state == P.OPEN and (not only or n.id in only) and not P.came_back(store, n)
-                            for n in P.leaves(P.nodes(store))
-                        )
+                        reached = [
+                            n for n in P.leaves(P.nodes(store))
+                            if n.state == P.OPEN and (not only or n.id in only) and not P.came_back(store, n)
+                        ]  # fmt: skip
+                        reach = len(reached)
                         each, tries = _worst(argv), f"{attempts} attempt" + "s" * (attempts != 1)
-                        worst = f"{_leaves(reach)} x {tries} x ${each:g} = ${reach * attempts * each:g}"
+                        # the most forks any of its leaves runs as: its own line, the run's, the setting's
+                        ways = max(forks or S.forks(store), len(withs), *(n.forks or 1 for n in reached))
+                        forked = f"{ways} forks x " if ways > 1 else ""
+                        worst = (f"{_leaves(reach)} x {forked}{tries} x ${each:g} = "
+                                 f"${reach * ways * attempts * each:g}")  # fmt: skip
                         worst = worst if cap else "no spend cap on this executor"
                         if max_usd is not None:  # a ceiling on starts, not a kill: an attempt going runs on
                             counts = f"each attempt counts ${each:g}, or what its stream says it spent"
@@ -1148,7 +1183,7 @@ def register(cli: typer.Typer, root, open_store, fail):
                                 "from HEAD")  # fmt: skip
                     run_parallel(
                         lambda: open_store(r), r, here_, max(parallel, 1), template,
-                        attempts, node or None, out, logs, precheck, max_usd,
+                        attempts, node or None, out, logs, precheck, max_usd, Forks(forks or 0, first, withs),
                     )  # fmt: skip
             except P.Refused as no:
                 fail(str(no), 1)
@@ -1246,6 +1281,9 @@ def register(cli: typer.Typer, root, open_store, fail):
         signoff: bool = typer.Option(
             False, "--signoff", help="Require a person's sign-off as well as the check."
         ),
+        forks: int = typer.Option(
+            None, "--forks", min=1, max=8, help="Agents at once on this leaf; its check keeps one."
+        ),
         node_id: str = typer.Option(None, "--id", help="An id of your choosing; else n1, n2, …"),
         parent: str = typer.Option(
             None, "--parent", help="The node this one helps achieve; under a leaf, this splits the leaf."
@@ -1261,6 +1299,7 @@ def register(cli: typer.Typer, root, open_store, fail):
             goal=goal,
             needs=needs,
             owner=owner,
+            forks=forks,
             id=node_id,
             parent=parent,
         )
@@ -1293,12 +1332,16 @@ def register(cli: typer.Typer, root, open_store, fail):
         signoff: bool = typer.Option(
             None, "--signoff/--no-signoff", help="Require a person's sign-off, or not."
         ),
+        forks: int = typer.Option(
+            None, "--forks", min=1, max=8, help="Agents at once on this leaf; its check keeps one."
+        ),
         parent: str = typer.Option(None, "--parent", help="Move it under another node; 'none' is the top."),
     ) -> None:
         """Change a node's contract.
 
         Only a person can. The change binds the node's next write and next start."""
-        edits = changes(title=title, scope=scope, check=check, goal=goal, owner=owner, parent=parent)
+        edits = changes(title=title, scope=scope, check=check, goal=goal, owner=owner, forks=forks,
+                        parent=parent)  # fmt: skip
         if needs:
             edits["needs"] = [i for i in needs if i != "none"]
         if signoff is not None:
@@ -1308,7 +1351,7 @@ def register(cli: typer.Typer, root, open_store, fail):
                 fail(f"--{said} replaces the {said} and --add-{said} adds to it: one or the other", 2)
         if not (edits or add_scope or add_goal):
             fail(f"graphene node set {node_id} needs what to change: --title, --scope, --check, --goal, "
-                 "--needs, --owner, --signoff or --parent", 1)  # fmt: skip
+                 "--needs, --owner, --signoff, --forks or --parent", 1)  # fmt: skip
 
         files = tracked()
         told: list[str] = []
@@ -1413,6 +1456,12 @@ def register(cli: typer.Typer, root, open_store, fail):
                     raise P.Refused(f"you hold {them}: `graphene node done <id>` names one")
                 target = held[0].id
             n = P.finish(store, target, who, override=override, checkout=checkout())
+            if found := P.fork_of(n, who.session_id):  # its verdict is its own row; the run ends the leaf
+                out(f"the check passed in this fork (fork {found[1]['fork']} of {len(n.forked)}); Graphene "
+                    "keeps one when the forks end")  # fmt: skip
+                for line in next_lines(store, who):
+                    out(line)
+                return
             last = (store.node_log(n.id, ("finished",)) or [{"detail": {}}])[-1]
             mine = str((last["detail"] or {}).get("note", "")).startswith("done by hand")  # the person's word
             how = (
@@ -1455,7 +1504,10 @@ def register(cli: typer.Typer, root, open_store, fail):
             why = asked(f"graphene node release {node_id}", "--why", "what is in the way")
 
         def go(store):
-            P.release(store, node_id, who, why or "", wants=wants or None)
+            n = P.release(store, node_id, who, why or "", wants=wants or None)
+            if P.fork_of(n, who.session_id):  # one fork of the hold gave up; the run hands the leaf back
+                out("this fork gives up; the leaf is handed back only if every fork does")
+                return
             out(f"{node_id} handed back: {why}")
             for line in next_lines(store, who, but=node_id):
                 out(line)
@@ -1539,9 +1591,24 @@ def register(cli: typer.Typer, root, open_store, fail):
         run(go)
 
     @node_cli.command(hidden=True)
+    def pick(
+        node_id: str = typer.Argument(...),
+        fork: str = typer.Argument(..., help="The fork's letter, as `graphene node show` lists them."),
+    ) -> None:
+        """Keep another fork of a leaf in review; signing it off then lands it."""
+        from .run import pick_fork
+
+        who = P.caller()
+        state = run(lambda store: pick_fork(store, root(), node_id, fork, who))
+        out(f"{node_id}'s branch is now fork {fork}'s work ({state}); `graphene node signoff {node_id}` "
+            "lands it")  # fmt: skip
+        said_where()
+
+    @node_cli.command(hidden=True)
     def diff(
         node_id: str = typer.Argument(...),
         stat: bool = typer.Option(False, "--stat", help="Only each file and how much of it changed."),
+        fork: str = typer.Option(None, "--fork", help="One fork's work, by its letter, from its ref."),
     ) -> None:
         """Show what a leaf changed: the merge that landed it, or what it left."""
         from .precheck import state
@@ -1550,6 +1617,11 @@ def register(cli: typer.Typer, root, open_store, fail):
             n, here = P.get(store, node_id), str(root())
             if any(m.parent == n.id for m in P.nodes(store)):
                 raise P.Refused(f"{n.id} is a sub-goal: each of its leaves has its own diff")
+            if fork:  # what that fork tried, as its ref keeps it over the hold's base (run.fork_work)
+                from .run import fork_work
+
+                ref = fork_work(store, root(), n.id, fork)[0]
+                return here, [], [f"{ref}^", ref]
             ends = store.node_log(n.id, ("landed", "unlanded", "finished", "overruled"))
             kind, d = (ends[-1]["kind"], ends[-1]["detail"]) if ends else (None, {})
             if kind == "landed":  # the merge: what it brought in over its first parent

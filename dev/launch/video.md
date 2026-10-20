@@ -10,10 +10,12 @@ replay's dollars (a stand-in's prices). Record from the released wheel so the wo
    test its own check runs: Graphene flags it, because it cannot know whether the change was right."
 3. **40 to 50 s.** The closing lines. SAY: "Six refused, one flagged, none through. And it says what it does not show:
    a script played the agent; a real model will try other things."
-4. **50 to 70 s.** Type `graphene demo --speed 3`. It opens on the plan: a goal, two sub-goals, four tasks. Three
+4. **50 to 70 s.** Type `graphene demo --speed 4`. It opens on the plan: a goal, two sub-goals, four tasks. Three
    agents start at once; agent 1 is stopped at words.py on greet and comes back ("the word lives in words.py"), is
-   widened and tried again as agent 1; the last task starts once the two it waits on have landed. SAY: "Here is the
-   plan first. Three agents at once. This one needed a file I took away. It didn't touch it; it came back with the
-   reason, I widened it, and it went again. The last one waits for the two it needs."
+   widened, forked three ways and tried again as agent 1: fork 1a gives up, 1b and 1c pass, and the rule keeps b,
+   the smaller; the last task starts once the two it waits on have landed. SAY: "Here is the plan first. Three
+   agents at once. This one needed a file I took away. It didn't touch it; it came back with the reason, I widened
+   it and forked it three ways: one gave up, two passed, and the rule kept the smaller. The last one waits for the
+   two it needs."
 5. **70 to 75 s.** The README's try-it line on screen. SAY: "One command, no key. I'd like to know where the plan
    misread you."

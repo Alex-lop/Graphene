@@ -32,6 +32,23 @@ class Ev:
 
 
 @dataclass
+class Fork:
+    """One fork of a task whose hold forked: the task's agent number and this letter name it (`3b`). It
+    has an agent's moves of its own, read as a running task's are, and a verdict once its check has run."""
+
+    letter: str
+    state: str = "running"  # its last `fork` row's word: passed, refused, gave up, failed, stopped
+    why: str = ""  # why it ended so, in the run's words
+    lines: int | None = None  # what it changed, in lines, once it ended
+    session: str = ""  # its executor's session: the rows that carry it are its
+    events: list[Ev] = field(default_factory=list)
+    touched: dict[str, float] = field(default_factory=dict)
+    stopped: list[tuple[str, float]] = field(default_factory=list)
+    started: float = 0.0  # when its first attempt began, on the model's clock; 0 before
+    idle: float | None = None  # seconds since its last row; None: none yet
+
+
+@dataclass
 class Task:
     id: str
     title: str  # its name (look.short, whole): a screen fits it to its room, and ends a cut in an ellipsis
@@ -45,7 +62,10 @@ class Task:
     touched: dict[str, float] = field(default_factory=dict)  # path -> when, for the files edited so far
     stopped: list[tuple[str, float]] = field(default_factory=list)  # writes the gate refused: path, when
     changed: list[str] = field(default_factory=list)  # what it changed, once its check passed (review, done)
+    forks: list[Fork] = field(default_factory=list)  # its hold forked: a fork each, in the order they started
+    kept: tuple[str, str, str] | None = None  # the fork that landed: its letter, the reason, by whom
     told: list[tuple[str, float, float]] = field(default_factory=list)  # text, sent, heard (0 = not yet)
+    heard_by: dict[float, int] = field(default_factory=dict)  # a note (when sent) -> how many forks heard it
     note: str = ""  # why it came back
     full: str = ""  # the title as the plan says it
     why: str = ""  # the path down from the goal
@@ -87,12 +107,14 @@ class Model:
         self.lens = "plan"
         self.lens_chosen = False  # the person picked the lens (v): until then it follows the plan's stage
         self.first = ""  # plan first, as the person set it: on, auto or off
+        self.forks = 1  # the forks setting: how many agents `f` puts on a task, when it is 2 or more
         self.executor = ""  # who a run starts, when `graphene init` chose one (claude, codex...)
         self.banner = ""  # what the top row says it is, when it is not "your plan" (a replay)
         self.feed: list[tuple[float, str]] = []
         self.names: dict[str, str] = {}  # a task -> the number its agent goes by, in the order of the log
-        # a leaf -> when git was asked, the files it said, which of them are outside the leaf's scope, and the
-        # hold and the scope it was asked for: a leaf taken again or widened is asked again
+        # a leaf (or a fork of one, `id.letter`) -> when git was asked, the files it said, which of them are
+        # outside the leaf's scope, and the hold and the scope it was asked for: a leaf taken again or widened
+        # is asked again
         self.seen: dict[str, tuple[float, list[str], list[str], tuple]] = {}
         self._allowed: dict[tuple[str, tuple[str, ...]], int] = {}
 
@@ -136,7 +158,7 @@ class Model:
             self._allowed[key] = covered + still if t.scope else 0
         return self._allowed[key]
 
-    def pace(self, t: Task, buckets: int = 12, width: float = 5.0) -> str:
+    def pace(self, t: Task | Fork, buckets: int = 12, width: float = 5.0) -> str:
         counts = [0] * buckets
         for e in t.events:
             age = self.clock - e.t
@@ -145,15 +167,16 @@ class Model:
         top = max(max(counts), 4)
         return "".join(SPARK[min(7, int(c * 8 / (top + 1)))] if c else "▁" for c in counts)
 
-    def quiet(self, t: Task) -> float:
+    def quiet(self, t: Task | Fork) -> float:
         """Seconds since the agent's last sign of life, as `run.live` counts them (its meter, its hooks, its
-        log), else since its last move (a note the person sent it is not one), else since it began."""
+        log; a fork's, its last row), else since its last move (a note the person sent it is not one), else
+        since it began."""
         if t.idle is not None:
             return float(t.idle)
         last = max((e.t for e in t.events if e.kind != "you"), default=t.started) or self.clock
         return self.clock - last
 
-    def tail(self, t: Task, n: int = 3) -> list[str]:
+    def tail(self, t: Task | Fork, n: int = 3) -> list[str]:
         """The task's last few moves. A write the gate then stopped did not happen: it is said once, as
         stopped, not as an edit and then a stop (the README's "refused before the write")."""
         stops: set[str] = set()

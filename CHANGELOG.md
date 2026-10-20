@@ -1,5 +1,93 @@
 # Changelog
 
+## 0.7.0 (unreleased)
+
+Forks (20 October 2026). A task can run as several agents at once, and its check keeps one. Each line is one
+change.
+- `forks: 3` under a leaf (`graphene plan edit`, `graphene node set ID --forks 3`), `graphene run --forks 3` for a
+  run, or `forks: 3` in `graphene config edit` for every leaf: the leaf runs as that many agents at once, each in
+  a worktree of its own (`.graphene/worktrees/<id>.<letter>`) with its own session, attempts and meter rows, and
+  told so (`This is fork b of 3`). The leaf's number counts first, then the run's, then the setting; forks need a
+  check (`a sign-off cannot choose`), and `--here` refuses them (`forks need worktrees: drop --here`).
+- A fork is held as a leaf is, in its own copy alone: with Claude Code a write into the leaf's tree, another
+  fork's copy or the checkout is refused before it happens; its `graphene node done` judges its own tree and
+  changes no state (`the check passed in this fork (fork b of 3); Graphene keeps one when the forks end`); its
+  `release` is its giving up (`this fork gives up; the leaf is handed back only if every fork does`); what you
+  tell the task reaches every fork, once each; a fork with a verdict may stop; its tree is judged as it stands
+  when its executor ends, whatever its own `done` said.
+- When the forks end, the rule in `src/graphene_map/pick.py`, written before any fork ran, keeps one: among the
+  forks whose check passed inside the scope, the one that passes the most of the other forks' tests (its test
+  files laid over another's tree, under the leaf's own check; its own tests count for nobody), then the one
+  that left its check's own files alone, then the smaller, the cheaper, the sooner; the run says which step
+  decided (`n1 kept b of 3: 2 lines against 11`), the kept fork's changes are copied into the leaf's tree and
+  the leaf is finished there once, so it lands as any leaf does (the merge says `3 forks, kept b`), and each
+  fork's work inside the scope is kept on `refs/graphene/forks/<id>/<letter>`. None passed: the task comes back
+  with every fork's reason (`no fork's check passed (3 forks): fork a: …; fork c: handed it back: …`) and the
+  union of what they asked for. `--first` keeps the first fork whose check passes and stops the rest
+  (`another fork's check passed first`). `--with` more than once gives each fork its executor, round robin;
+  `claude:MODEL` and `codex:MODEL` name a model. The worst-case line multiplies by the forks (`1 leaf x 3 forks
+  x 1 attempt x $2 = $6`), and a fork `--max-usd` has no room for does not start (`2 of 3 forks started`).
+  Nemotron forks as any executor does. A dead run's sweep keeps each fork's work on its ref, then removes its
+  tree.
+- `graphene node show` lists a forked hold's forks (`forked 3 ways · kept b: 2 lines against 11`, then a line a
+  fork: executor, attempts, how it ended, lines, dollars, time; each attempt says its fork), `graphene node diff
+  ID --fork b` prints what fork b tried, from its ref, and `graphene plan record` says `3 forks, kept b`.
+- `graphene node pick ID c` (hidden; the person's own act) on a task in review whose hold forked makes its
+  branch fork c's work ("n1's branch is now fork c's work (passed); `graphene node signoff n1` lands it"), so
+  the sign-off lands your pick and the record says `kept c: picked by alex`.
+- In the cockpit, `f` forks the task under the cursor (the setting's number when it is 2 or more, else 3) and
+  runs it; a forked task's row says `3 forks` and opens to a line a fork (`1a ▁▂▃▅ ✎2  edit app.py`, `1b ✓
+  passed · 31 lines`, `1c ↩ gave up: …`), a fork the run stopped says `ended`, a dim line says `kept b · <the
+  reason>` once one landed (`your pick` when you chose), a digit picks another fork of a task in review (`1-3
+  pick`), the details' record has a forks table (fork, with, attempts, state, lines, dollars, seconds), the
+  replay's news names a fork (`agent 3b`), `?` says what `f` does and what `3b` is, and the graph's box says
+  `3 ×3` while the forks run.
+- The held bench (`dev/held/`) asks a second question, written before any number: does G3, Graphene with three
+  forks a task, claim done while wrong less often than one agent, or land more tasks (`dev/held/rules.md`)?
+- A store is version 6 once a node in it is saved with forks: a graphene from before refuses it in words
+  (`was written by a newer graphene; upgrade this one`) and leaves it as it is. Until then it stays version 5,
+  one 0.6 reads, and whose hook 0.6 still runs.
+
+The graph flows into the goal (20 October).
+- `g` draws the goal as the last box, at the right; every arrow says "must land before": from a task to each
+  task that waits on it, and from a task nothing waits on to the goal. Columns are waves, with a header each
+  (`wave 1 · 3 agents`, `wave 2 · agent 4`, `goal`); sub-goals are lanes, a rule across the graph with the
+  sub-goal's title and its count (`── say hello ──── 2 of 2 ✓ ──`; nested, `parent › child`); the longest chain
+  into the goal is drawn in double lines, and the goal box carries `4 of 4 ✓` on its border. The legend says
+  what it drew (`═ the longest chain into the goal · ─ other needs`, `lanes: sub-goals · columns: waves`). Too
+  wide, the graph shows the selected task's neighbourhood under the plan's own wave numbers, and gives up the
+  goal before a step of context. The sub-goal boxes, and the tree's lines pointing away from the goal, are gone:
+  the graph no longer reads "from your goal down".
+- A line keeps its row across a column and turns at its target's; the chain's boxes lead their lane; no line is
+  joined by a stranger's corner; a lane's label ends before a line crossing its rule; the graph is as wide as a
+  lane's rule needs; the legend wraps; the lines end at the last box; a cycle among needs (a hand-edited store)
+  still puts the goal last.
+
+The gate fails closed (20 October).
+- From Claude Code 2.1.295, `graphene init` at a terminal sets `"onFailure": "block"` on the gate's hook
+  (PreToolUse): a hook that cannot start, errors or times out refuses the call instead of letting it through,
+  and init says so ("the gate fails closed: when `graphene` cannot run, Claude Code here is refused each tool
+  call until it can"). An install from before is closed in place; the events that only record stay open; an
+  older Claude Code, or an init from a script, keeps the open gate.
+- A tool call the gate raises on while judging it is refused, not let through (`Graphene could not judge this
+  call (its error is in .graphene/ingest.log), so it is refused; say it another way, or ask the person`); a
+  Stop or a prompt still goes on, so a recording that fails never stops a session.
+- A redirect to a path outside the repository beside an out-of-scope write (`pytest -q > /tmp/pytest.log 2>&1;
+  echo x > src/db/schema.py`) no longer lets the write through: the log is nobody's to judge, and the rest of the
+  command is refused as before.
+- The shell reader reads before the write what the 19 October review found it missed (findings 1, 4, 5 and 6
+  of dev/process/publish/gate/review.md): a `#` comment ends at its line, and a `<<WORD` inside quotes, a
+  comment or `$((1<<n))`, or a here-string `<<<`, starts no heredoc, so the lines after it are read; `cd -P`,
+  `cd --`, `cd -`, `pushd` and `popd`, `cd $PWD/…` and a subshell's `cd` are followed as bash follows them;
+  `>&`, `<>`, `&>>`, `|&`, `dd of=` and `install` are writes, and so is `tee` under `command -p`, `nice -n 1`
+  or `env -i`; a target in `$PWD`, `$HOME` or a variable the command set is judged; a quoted `>` in a `grep`
+  pattern writes nothing, and a move into the scope's own directory is not refused. A target in another
+  variable, a glob or a command substitution is still left to git at `done`, as before (refusing it refused
+  `sed -i … src/*.py`), and so are findings 2 and 3: a cwd that is a checkout of its own, and a link in the
+  scope that leads out of it.
+- `graphene run --max-usd` under one attempt's worst case starts nothing and now says so: `one attempt holds
+  $2.00 until it ends: --max-usd 2 starts one`.
+
 ## 0.6.0 (19 October 2026)
 
 The first release on PyPI since 0.5.0: it holds everything under 0.5.1 below (never published) as well as this.

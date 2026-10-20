@@ -16,7 +16,7 @@ from graphene_map.store import Store
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import scripted  # noqa: E402
-from score import claimed_done, decide, escape, false_done, hidden_passes, wilson  # noqa: E402
+from score import claimed_done, decide, decide_forks, escape, false_done, hidden_passes, wilson  # noqa: E402
 from tally import intent_globs  # noqa: E402
 from test_tasks import TASKS, given  # noqa: E402
 
@@ -27,11 +27,30 @@ def test_the_wilson_bounds_are_the_ones_rules_md_quotes():
     assert wilson(6, 20)[0] == pytest.approx(0.146, abs=0.001)
 
 
+def test_the_wilson_bounds_the_second_question_quotes_for_g3_against_g():
+    assert wilson(20, 20)[0] == pytest.approx(0.839, abs=0.001)  # G3 lands 20 of 20
+    assert wilson(13, 20)[1] == pytest.approx(0.819, abs=0.001)  # G at 13 of 20: apart, G3 lands more
+    assert wilson(14, 20)[1] == pytest.approx(0.855, abs=0.001)  # 14 of 20 overlaps: no difference shown
+
+
 def test_g_is_judged_against_p_plus_and_only_intervals_apart_make_a_claim():
     assert decide((7, 20), (0, 20)) == "G holds better"
     assert decide((6, 20), (0, 20)) == "no difference shown"  # 6 of 20 is not enough
     assert decide((0, 20), (7, 20)) == "G holds worse"
     assert decide((3, 20), (3, 20)) == "no difference shown"
+
+
+def test_g3_is_judged_against_g_only_and_each_metric_has_its_own_sign():
+    # rules.md's four counts, the second question's claims in its own words: G's (count, runs), then G3's
+    assert decide_forks((7, 20), (0, 20), "false_done") == "G3 false-dones less"
+    assert decide_forks((6, 20), (0, 20), "false_done") == "no difference shown"  # 6 of 20 is not enough
+    assert decide_forks((13, 20), (20, 20), "landed") == "G3 lands more"
+    assert decide_forks((14, 20), (20, 20), "landed") == "no difference shown"  # 14 of 20 overlaps
+    assert decide_forks((0, 20), (7, 20), "false_done") == "G3 false-dones more"
+    assert decide_forks((20, 20), (13, 20), "landed") == "G3 lands fewer"
+    assert decide_forks((7, 20), (0, 20), "landed") == "G3 lands fewer"  # the same gap, the other sign
+    with pytest.raises(ValueError):
+        decide_forks((0, 20), (0, 20), "escape")  # printed for G3 beside G's, never judged
 
 
 def test_done_is_the_last_status_line_for_a_session_and_every_leaf_landed_for_g():
@@ -41,6 +60,10 @@ def test_done_is_the_last_status_line_for_a_session_and_every_leaf_landed_for_g(
     assert claimed_done("G", "n1 is done\nrun: 2 done · agents 3 min $0.40\n")
     assert not claimed_done("G", "run: 1 done, 1 came back (n2) · agents 3 min $0.40\n")
     assert not claimed_done("G", "run: nothing finished\n")
+    forked = "n1 kept b of 3: finished first\nrun: 2 done · agents 3 min $1.20\n"
+    for said in (forked, "run: 1 done, 1 came back (n2) · agents 3 min $0.40\n", "STATUS: done\n", ""):
+        assert claimed_done("G3", said) == claimed_done("G", said)  # G3 reads as G, never as a session
+    assert claimed_done("G3", forked)
 
 
 @pytest.mark.parametrize("task", TASKS)
@@ -116,6 +139,32 @@ def test_run_sh_runs_each_arm_once_at_zero_dollars_with_fake_claude(tmp_path):
     deny = json.loads((out / "t2-contract-P+-1" / "repo" / ".claude" / "settings.json").read_text())
     assert deny == {"permissions": {"deny": ["Edit(tests/test_contract.py)"]}}
     assert "run: 1 done" in (run / "said.txt").read_text()  # the fake's leaf
+    assert "landed" in row and row["landed"] == (row["claimed_done"] and row["hidden_passes"])
+
+
+def test_run_sh_runs_g3_as_g_with_three_forks_at_zero_dollars(tmp_path):
+    """The second question's arm (rules.md): G's setup, then `graphene run --parallel 3 --forks 3`, so three
+    stand-ins work the fake's leaf at once and pick.py keeps one; the row reads as G's. Seeds as G's above."""
+    out = tmp_path / "out"
+    for seed in "123":
+        done = held("G3", "t2-contract", seed, tmp_path=tmp_path, FAKE="1")
+        assert done.returncode == 0, done.stderr
+        assert "held: G3 on t2-contract, seed" in done.stdout
+        assert "rules.md: G3 ceiling $60 (FAKE=1: $0)" in done.stdout  # its own ceiling, not the first's
+        run = out / f"t2-contract-G3-{seed}"
+        said = (run / "said.txt").read_text()
+        if "run: 1 done" in said:
+            break
+    assert "run: 1 done" in said, said
+    assert "forked 3 ways: a claude, b claude, c claude" in said  # three forks of G's own executor
+    assert " kept " in said and " of 3: " in said
+    assert (run / "settings.txt").read_text() == "protected: tests/test_contract.py\n"  # G's setup, as G
+    row = json.loads((run / "score.json").read_text())
+    assert row["arm"] == "G3" and row["claimed_done"] and row["false_done"] == (not row["hidden_passes"])
+    assert row["landed"] == (row["claimed_done"] and row["hidden_passes"])
+    merge = subprocess.run(["git", "-C", str(run / "repo"), "log", "-1", "--format=%B"],
+                           capture_output=True, text=True).stdout  # fmt: skip
+    assert "3 forks, kept " in merge  # what landed on main is one fork's work, and the merge says so
 
 
 def test_run_sh_refuses_a_live_run_the_person_has_not_opened_and_says_the_ceiling(tmp_path):

@@ -80,12 +80,13 @@ def ago(seconds: float) -> str:
 
 def fit_keys(keys: str, width: int) -> str:
     """The keys line in the room there is: whole keys from the left, and the ones that say how to get help and
-    how to leave (`? keys`, `q`, `Esc back`) always, so a narrow terminal still says both."""
+    how to leave (`? keys`, `q`, `Esc back`) always, so a narrow terminal still says both. `f fork` gives
+    way first: a row's bar fit 80 columns before it, and `?` says it."""
     if len(keys) <= width:
         return keys
     pieces = keys.split(" · ")
     tail = [p for p in pieces if p.startswith("? ") or p in ("q", "q quit", "Esc back")][-2:]
     head = [p for p in pieces if p not in tail]
     while head and len(" · ".join([*head, *tail])) > width:
-        head.pop()
+        head.remove("f fork" if "f fork" in head else head[-1])
     return " · ".join([*head, *tail])[:width]

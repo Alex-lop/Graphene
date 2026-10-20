@@ -436,24 +436,27 @@ def test_a_run_says_at_its_top_that_it_is_from_before_the_cockpit():
 
 def test_ideas_next_says_what_the_night_did_and_what_is_still_not_done():
     """dev/ui/IDEAS.md still listed sub-goal boxes as not done once the graph drew them from your goal down
-    (18 October); it stays a three-minute read, under 750 words."""
+    (18 October); on 20 October the graph turned to flow into the goal, with sub-goals as lanes and no box
+    for them, and the line says that instead; it stays a three-minute read, under 750 words."""
     from graphene_map.cockpit import flow_view as FV
+    from graphene_map.cockpit import flowlayout as F
     from graphene_map.cockpit.look import who
 
-    assert FV.TREE == ("goal", "sub-goal") and who("2") == "agent 2"  # boxes for the tree; agents by number
+    assert FV.GOAL and F.Lane and not hasattr(FV, "TREE")  # a box for the goal, a lane a sub-goal, no tree
+    assert who("2") == "agent 2"  # agents by number
     text = (ROOT / "dev/ui/IDEAS.md").read_text(encoding="utf-8")
     assert len(text.split()) < 750
     done, left = " ".join(text.split("## Next")[1].split()).split(" Not done: ")
-    assert "sub-goal boxes" in done and "agents by number" in done
+    assert "flows into your goal" in done and "agents by number" in done
     for still in ("an hour of real agents on these screens", "Tell on Codex", "the intent graph"):
         assert still in left, still
 
 
 def test_the_release_notes_are_this_versions_and_every_command_they_name_is_the_clis():
     """dev/launch/release-notes.md is pasted into the GitHub release, and it was 0.5.1's, a version PyPI never
-    got. It names pyproject's version and says 0.5.1 was never published; the two install lines are the
-    package's and its `graphene-map` command's; it has six to ten bullets, the watch first; each command it
-    names, with each option, answers `--help`."""
+    got. It names pyproject's version; the two install lines are the package's and its `graphene-map`
+    command's; it has six to ten bullets, the release's headline first (0.6.0's was the watch, 0.7.0's is
+    forks); each command it names, with each option, answers `--help`."""
     import shlex
     import tomllib
     from itertools import takewhile
@@ -466,11 +469,10 @@ def test_the_release_notes_are_this_versions_and_every_command_they_name_is_the_
     text = (ROOT / "dev/launch/release-notes.md").read_text(encoding="utf-8")
     said = " ".join(text.split())
     assert text.startswith(f"# Graphene {project['version']}\n")
-    assert "0.5.1 was tagged on 16 October and never published" in said
     assert "graphene-map" in project["scripts"] and project["name"] == "graphene-map"
     assert "`uv tool install graphene-map`" in said and "`uvx graphene-map demo`" in said
     bullets = re.findall(r"^- \*\*(.+?)\*\*", text.split("## What you get")[1].split("## ")[0], re.M)
-    assert 6 <= len(bullets) <= 10 and "watch" in bullets[0]
+    assert 6 <= len(bullets) <= 10 and "Fork" in bullets[0]
     runner, ran = CliRunner(), 0
     for span in re.findall(r"`(graphene [^`]+)`", said):
         words = shlex.split(span)
@@ -524,8 +526,9 @@ def test_contributing_runs_the_suite_as_ci_does_and_each_file_it_points_at_does_
 
 def test_the_demo_docs_describe_the_recording_graphene_ships_as_it_is(tmp_path):
     """dev/demo/README.md said the shipped recording was 29 September's, and the video's step 4 had one task
-    come back; the recording of 19 October has two sub-goals, four tasks, three agents at once, a task that
-    comes back, is widened and runs again, and one that waits on two. Each is read from the recording."""
+    come back; the recording of 20 October has two sub-goals, four tasks, three agents at once, a task that
+    comes back, is widened, forked three ways (one fork gives up, two pass, the rule keeps the smaller) and
+    runs again, and one that waits on two. Each is read from the recording."""
     import json
 
     from graphene_map import demo as D
@@ -548,16 +551,27 @@ def test_the_demo_docs_describe_the_recording_graphene_ships_as_it_is(tmp_path):
     wider = {node for node, scope in scopes if scope and len(scope[1]) > len(scope[0])}
     started = [row["node_id"] for row in rows if row["kind"] == "started"]
     assert back & wider == {"greet"} and started.count("greet") == 2  # back, widened, and run again
+    [forked] = [json.loads(row["detail"]) for row in rows if row["kind"] == "forked"]
+    [picked] = [json.loads(row["detail"]) for row in rows if row["kind"] == "picked"]
+    forks = {f["fork"]: f for f in picked["table"]}  # each fork as it ended, a row a fork
+    assert forked["of"] == 3 and {b: f["state"] for b, f in forks.items()} == {"a": "gave up", "b": "passed",
+                                                                                "c": "passed"}  # fmt: skip
+    assert picked["fork"] == "b" and forks["b"]["lines"] < forks["c"]["lines"]  # the smaller is kept
     assert [n.id for n in tasks if len(n.needs) == 2] == ["hello-bye"]
     say = {2: "two", 3: "three", 4: "four"}
     readme, video = doc("dev/demo/README.md"), doc("dev/launch/video.md")
-    assert head["recorded"].startswith("2026-10-19") and "made on 19 October 2026 (UTC)" in readme
+    assert head["recorded"].startswith("2026-10-20") and "made on 20 October 2026 (UTC)" in readme
     assert f"a plan of {say[len(goals)]} sub-goals and {say[len(tasks)]} tasks" in readme
     assert f"{say[at_once].capitalize()} agents start at once" in readme
-    assert "it is widened and tried again as agent 1" in readme and "The fourth task waits on two" in readme
+    assert "it is widened, forked three ways" in readme and "tried again as agent 1" in readme
+    lines_b, lines_c = forks["b"]["lines"], forks["c"]["lines"]
+    assert f"fork 1a gives up, 1b passes with {lines_b} lines, 1c with {lines_c}" in readme
+    assert f'"greet kept b of 3: {picked["reason"]}"' in readme and "The fourth task waits on two" in readme
     step = video.split("4. **")[1].split("5. **")[0]
     assert f"{say[len(goals)]} sub-goals, {say[len(tasks)]} tasks. {say[at_once].capitalize()} agents" in step
-    assert "is widened and tried again as agent 1" in step and "the two it waits on have landed" in step
+    assert "is widened, forked three ways and tried again as agent 1" in step
+    assert "fork 1a gives up, 1b and 1c pass, and the rule keeps b" in step
+    assert "the two it waits on have landed" in step
 
 
 def test_the_videos_step_4_plays_what_it_narrates_within_its_seconds():

@@ -1,7 +1,12 @@
 # Held: does it stay inside the lines, and is done true
 
-A bench for one question, asked of Graphene against plain Claude Code given the same rule as a deny setting.
+A bench for one question, asked of Graphene against plain Claude Code given the same rule as a deny setting,
+and a second, asked of forks against Graphene without them.
 `rules.md` is the decision rule, written before any number. Nothing here calls a model.
+
+The arms `run.sh` takes, as `rules.md` defines them: **P** (one `claude -p`), **P+** (P with the rule as a deny
+setting), **G** (`graphene run --parallel 3`) and **G3** (G with `--forks 3`: three agents a leaf, and the rule
+in `src/graphene_map/pick.py` keeps one). G3 is the second question's arm, judged against G only.
 
 Each task under `tasks/<id>/` is self-contained:
 

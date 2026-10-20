@@ -55,11 +55,12 @@ ON_THE_MAP = "only the keys below act on the map: c goes back to the cockpit for
 UNSENT = "nothing typed here is sent · Esc closes"  # t that nobody hears: words go nowhere, not to keys
 ROW_KEYS = {  # a task's own keys, by its state: ⏎ first when it has a move, then the letters
     "proposed": ["⏎ accept", "A all", "d drop", "i details"],
-    "came back": ["⏎ try again", "w widen", "b new task", "n wait", "r reopen", "t tell", "i details"],
+    "came back": ["⏎ try again", "f fork", "w widen", "b new task", "n wait", "r reopen", "t tell",
+                  "i details"],  # fmt: skip
     "review": ["⏎ sign off", "x reopen", "i details"],
     "yours": ["⏎ mark done", "i details"],
     "running": ["t tell", "w widen", "x hand back", "i details"],
-    "ready": ["r run", "R run ready", "t tell", "i details"],
+    "ready": ["r run", "f fork", "R run ready", "t tell", "i details"],
     "waiting": ["t tell", "i details"],
     "done": ["i details", "x reopen"],
 }
@@ -67,7 +68,7 @@ OFFERED = ("w widen", "b new task", "n wait", "r reopen")  # a task that came ba
 KEYS_TO_VERBS = {  # a key, and the verb it asks for (`act`)
     "t": "tell", "w": "allow", "x": "back", "d": "drop", "r": "run", "R": "run-all", "a": "answer",
     "b": "offer:b", "n": "offer:n", "colon": "command", "y": "take", "s": "split", "P": "first", "u": "undo",
-    "e": "edit", "E": "edit-plan", "D": "direction", "i": "details", "A": "accept-all",
+    "e": "edit", "E": "edit-plan", "D": "direction", "i": "details", "A": "accept-all", "f": "fork",
 }  # fmt: skip
 
 
@@ -298,6 +299,8 @@ class Cockpit(App):
         elif t:  # an offer's key only where it is offered; w also where the gate stopped a write
             own = [k for k in ROW_KEYS.get(t.state, ["i details"])
                    if k not in OFFERED or k[0] in t.offers or k == "w widen" and t.stopped]  # fmt: skip
+            if t.state == "review" and t.forks:  # its hold forked: a digit picks another fork's work
+                own.insert(-1, f"1-{len(t.forks)} pick")
         else:
             own = [":ask what you want"]
         screens = ["c cockpit", "m map"] if self.view == "flow" else ["g graph", "m map"]
@@ -307,10 +310,10 @@ class Cockpit(App):
         """The graph's head, which stays on top: what is selected, in one line (a question has no box, so what
         it asks); then the graph, and under it what it leaves out and what its marks mean."""
         m = self.model
-        nodes, edges = FV.flow_graph(m)
+        g = FV.flow_graph(m)
         # one column kept for the scrollbar a tall graph shows, so a box at the right edge keeps its border
-        lines, self.flow_layout, note = FV.build_flow(nodes, edges, width - 1, m.selected)
-        if not nodes:  # the graph's own sentence says what it will show (flow_view.EMPTY)
+        lines, self.flow_layout, note = FV.build_flow(g, width - 1, m.selected)
+        if not g.nodes:  # the graph's own sentence says what it will show (flow_view.EMPTY)
             return [], lines
         sel = m.tasks.get(m.selected)
         whole = lambda t: short(t.full, 0) or t.title  # noqa: E731  (the line has the room a box has not)
@@ -328,10 +331,18 @@ class Cockpit(App):
         top = [Line([Seg(" " + fit(info, width - 2), "bold")]), Line([Seg("─" * width, "grey30")])]
         drawn = [cell for row in self.flow_layout.cells for cell in row]
         legend = [said for said, there in (  # what the graph's own marks mean, only those it drew
-            ("amber lane = a retry loop (bounded)", any(style == "edge_loop" for _, style in drawn)),
+            ("═ the longest chain into the goal · ─ other needs", any(e.double for e in g.edges)),
+            ("lanes: sub-goals · columns: waves", bool(g.lanes)),
+            ("┄ amber = a retry loop (bounded)", any(style == "edge_loop" for _, style in drawn)),
             ("◀▶ two-way", any(ch == "◀" for ch, _ in drawn)),
         ) if there]  # fmt: skip
-        under = [Line([Seg(" " + said, "grey50")]) for said in (note, " · ".join(legend)) if said]
+        rows: list[str] = []  # on as many lines as the width asks, broken between entries: the canvas clips
+        for said in legend:
+            if rows and cell_len(f"{rows[-1]} · {said}") <= width - 1:
+                rows[-1] += f" · {said}"
+            else:
+                rows.append(said)
+        under = [Line([Seg(" " + fit(said, width - 1), "grey50")]) for said in (note, *rows) if said]
         return top, lines + ([Line([]), *under] if under else [])
 
     def follow(self, lines: list[Line]) -> None:
@@ -467,6 +478,8 @@ class Cockpit(App):
                 d.run_ready(sel)
         elif action == "run-all":
             self.run_all()
+        elif action == "fork":
+            d.fork(m, sel)
         elif action == "accept-all":
             self.accept_all()
         elif action == "answer":
