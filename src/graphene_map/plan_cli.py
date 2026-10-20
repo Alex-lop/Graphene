@@ -1006,16 +1006,22 @@ def register(cli: typer.Typer, root, open_store, fail):
 
     @cli.command("run")
     def run_(
-        executor: str = typer.Option(
+        withs: list[str] = typer.Option(
             None,
             "--with",
-            help="Use this executor, not init's: claude, codex, nemotron or a command.",
+            help="Executor: claude, codex, nemotron, a command, or claude:MODEL; once a fork.",
         ),
         attempts: int = typer.Option(
             3, "--attempts", min=1, help="Attempts a leaf gets before it comes back."
         ),
         node: list[str] = typer.Option(None, "--node", help="Only this node; repeat it."),
         parallel: int = typer.Option(1, "--parallel", help="How many leaves run at once."),
+        forks: int = typer.Option(
+            None, "--forks", min=1, max=8, help="Forks a leaf: N agents at once, its check keeps one."
+        ),
+        first: bool = typer.Option(
+            False, "--first", help="Keep the first fork whose check passes and stop the rest."
+        ),
         here: bool = typer.Option(
             False, "--here", help="Run in your checkout and commit nothing; the checkout is exposed."
         ),
@@ -1037,9 +1043,27 @@ def register(cli: typer.Typer, root, open_store, fail):
         if os.environ.get("GRAPHENE_NODE") or os.environ.get("GRAPHENE_PLANNER"):
             fail("an executor or a planner does not start runs: through --with a run is any command", 1)
         from . import meter as M
-        from .run import CAP_UNIT, NOTHING, _splits, label, named, run_parallel, run_plan, summary, sweep
+        from .run import (
+            CAP_UNIT,
+            NOTHING,
+            Forks,
+            _splits,
+            label,
+            named,
+            run_parallel,
+            run_plan,
+            summary,
+            sweep,
+        )  # fmt: skip
 
         r = root()
+        withs = [w for w in withs or [] if w.strip()]
+        executor = withs[0] if withs else None
+        if len(withs) > P.FORKS[-1]:
+            fail(f"--with at most {P.FORKS[-1]} times: each is a fork, and a leaf forks {P.FORKS[-1]} ways "
+                 "at most", 2)  # fmt: skip
+        if here and ((forks or 1) > 1 or first or len(withs) > 1):
+            fail("forks need worktrees: drop --here", 2)
         if stop:  # Ctrl-C to the run, as `:stop` in `graphene watch` sends it: it hands back what it holds
             from .run import run_holding
 
@@ -1052,8 +1076,8 @@ def register(cli: typer.Typer, root, open_store, fail):
             from .run import ATTEMPTS, hand_on, run_holding
 
             # one run a repo: the one going takes what this one would have started, with its own executor,
-            # attempts and cap. One named with its own is refused as before; --here takes no lock
-            own = executor or attempts != ATTEMPTS or max_usd is not None
+            # attempts, cap and forks. One named with its own is refused as before; --here takes no lock
+            own = executor or attempts != ATTEMPTS or max_usd is not None or forks is not None or first
             going = None if here or own else run_holding(r)
             if going is not None:
                 ids = hand_on(store, node or None)
@@ -1112,7 +1136,8 @@ def register(cli: typer.Typer, root, open_store, fail):
                     run_plan(store, checkout(), template, attempts, node or None, out, logs, precheck,
                              max_usd)  # fmt: skip
                 else:
-                    _splits(template)  # a --with that cannot be read is refused before anything is said
+                    for one in [template, *(named(w) for w in withs[1:])]:
+                        _splits(one)  # a --with that cannot be read is refused before anything is said
                     here_ = checkout()
                     on = subprocess.run(["git", "symbolic-ref", "--short", "-q", "HEAD"], cwd=here_,
                                         capture_output=True, text=True).stdout.strip()  # fmt: skip
@@ -1129,12 +1154,17 @@ def register(cli: typer.Typer, root, open_store, fail):
 
                         # every leaf the run may reach, not only the ready ones: it goes on to the next
                         only = leaves_of(store, node or None)
-                        reach = sum(
-                            n.state == P.OPEN and (not only or n.id in only) and not P.came_back(store, n)
-                            for n in P.leaves(P.nodes(store))
-                        )
+                        reached = [
+                            n for n in P.leaves(P.nodes(store))
+                            if n.state == P.OPEN and (not only or n.id in only) and not P.came_back(store, n)
+                        ]  # fmt: skip
+                        reach = len(reached)
                         each, tries = _worst(argv), f"{attempts} attempt" + "s" * (attempts != 1)
-                        worst = f"{_leaves(reach)} x {tries} x ${each:g} = ${reach * attempts * each:g}"
+                        # the most forks any of its leaves runs as: its own line, the run's, the setting's
+                        ways = max(forks or S.forks(store), len(withs), *(n.forks or 1 for n in reached))
+                        forked = f"{ways} forks x " if ways > 1 else ""
+                        worst = (f"{_leaves(reach)} x {forked}{tries} x ${each:g} = "
+                                 f"${reach * ways * attempts * each:g}")  # fmt: skip
                         worst = worst if cap else "no spend cap on this executor"
                         if max_usd is not None:  # a ceiling on starts, not a kill: an attempt going runs on
                             counts = f"each attempt counts ${each:g}, or what its stream says it spent"
@@ -1148,7 +1178,7 @@ def register(cli: typer.Typer, root, open_store, fail):
                                 "from HEAD")  # fmt: skip
                     run_parallel(
                         lambda: open_store(r), r, here_, max(parallel, 1), template,
-                        attempts, node or None, out, logs, precheck, max_usd,
+                        attempts, node or None, out, logs, precheck, max_usd, Forks(forks or 0, first, withs),
                     )  # fmt: skip
             except P.Refused as no:
                 fail(str(no), 1)

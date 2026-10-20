@@ -32,6 +32,7 @@ import time
 import uuid
 from collections.abc import Callable
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -39,6 +40,7 @@ from . import board as B
 from . import extra
 from . import meter as M
 from . import plan as P
+from . import settings as S
 from .plan import may_collide
 from .record import seconds as _seconds
 from .views import elide, money
@@ -69,14 +71,38 @@ def unchosen(who: str) -> P.Refused:
 
 def named(spec: str | None) -> str:
     """What --with names, as the command to start: `nemotron [options]` is Graphene's own executor on
-    Token Factory; `claude` and `codex` alone are those agents as Graphene starts them by default;
-    anything else is a command, as it is. Nothing named is refused (`unchosen`)."""
+    Token Factory; `claude` and `codex` alone are those agents as Graphene starts them by default, and
+    `claude:MODEL` or `codex:MODEL` is the same with that model named in the CLI's own flag; anything
+    else is a command, as it is. Nothing named is refused (`unchosen`)."""
     spec = (spec or "").strip()
     if not spec:
         raise unchosen("executor")
     if spec.split(None, 1)[0] == "nemotron":
         return extra.need("executor").template(spec)
+    name, _, model = spec.partition(":")
+    if model and " " not in spec and name in ("claude", "codex"):
+        return {"claude": f"{DEFAULT_WITH} --model", "codex": f"{CODEX} -m"}[name] + f" {shlex.quote(model)}"
     return {"claude": DEFAULT_WITH, "codex": CODEX}.get(spec, spec)
+
+
+@dataclass(frozen=True)
+class Forks:
+    """What `graphene run` was told about forks: --forks (0: nothing), --first, and each --with as typed
+    (fork k runs the k-th, round robin). A leaf's own number comes first (``forks_of``)."""
+
+    n: int = 0
+    first: bool = False
+    withs: list[str] = field(default_factory=list)
+
+
+def forks_of(store, node: P.Node, run: Forks | None) -> int:
+    """How many forks a leaf runs as: its own `forks:` line, else the run's --forks, else the setting, else
+    one, and never fewer than the run's --with names. One for a leaf with no check (its check is what
+    keeps one: `validate` refuses the line, not the run's number), and one for a run that never forks
+    (``run`` is None: `--here`, one checkout)."""
+    if run is None or not node.check:
+        return 1
+    return max(node.forks or run.n or S.forks(store), len(run.withs))
 
 
 INTERPRETER = re.compile(r"(python|node|bash|sh|zsh|ruby|perl|deno|bun)[\d.]*")
@@ -497,12 +523,14 @@ def run_node(
     logs: Path | None,
     stop: Stop | None = None,
     budget: Budget | None = None,
+    forks: Forks | None = None,
 ) -> P.Node | None:
     """One leaf, start to boundary, in ``checkout``. Returns it when it ended done (or in review);
     None when it could not start, was handed back, or ran out of attempts. Interrupted (Ctrl-C, or
     ``stop``), the leaf is handed back before its executor is stopped, and the interruption goes on.
     ``budget``: the caller has taken its first attempt's worst case there; each attempt after is taken
-    here, and each settles there when it ends."""
+    here, and each settles there when it ends. ``forks``: what the run was told about forks
+    (``forks_of`` says how many this leaf runs as); None never forks."""
     session = str(uuid.uuid4())
     name = label(template)
     who = P.Caller(f"run:{name}", False, session)
@@ -1237,11 +1265,13 @@ def run_parallel(
     logs: Path | None = None,
     precheck: bool = False,
     max_usd: float | None = None,
+    forks: Forks | None = None,
 ) -> list[P.Node]:
     """Every leaf an agent can reach, up to ``workers`` at once, each in its own worktree; landed one
     at a time, here, as they finish. A leaf never starts while something it needs has not landed, or
     while a leaf whose scope overlaps its own is in flight. ``precheck``: red first, before any starts.
-    ``max_usd``: a cap on what starts (``Budget``)."""
+    ``max_usd``: a cap on what starts (``Budget``). ``forks``: what the run was told about forks, for
+    each leaf to read (``forks_of``)."""
     _splits(template)
     if _git(target, "rev-parse", "-q", "--verify", "HEAD", ok=True).returncode != 0:  # as init says it
         raise P.Refused(
@@ -1255,13 +1285,13 @@ def run_parallel(
     lock = _only_run(root)
     try:
         return _run_parallel(open_store, root, target, workers, template, attempts, only, say, logs, precheck,
-                             max_usd)  # fmt: skip
+                             max_usd, forks)  # fmt: skip
     finally:
         lock.unlink(missing_ok=True)
 
 
 def _run_parallel(open_store, root, target, workers, template, attempts, only, say, logs,
-                  precheck, max_usd) -> list[P.Node]:  # fmt: skip
+                  precheck, max_usd, forks=None) -> list[P.Node]:  # fmt: skip
     store = open_store()
     began = _newest(store)  # it holds the repo from here: what is asked of it from now on (red first can
     # take minutes) is asked of it, and nothing before
@@ -1286,7 +1316,7 @@ def _run_parallel(open_store, root, target, workers, template, attempts, only, s
 
     def work(node_id: str, tree: Path) -> P.Node | None:
         with open_store() as mine:  # a thread, a connection
-            return run_node(mine, node_id, tree, template, attempts, say, logs, stop, budget)
+            return run_node(mine, node_id, tree, template, attempts, say, logs, stop, budget, forks)
 
     def again(node_id: str) -> bool:
         """Taken again, or one this run was not started with: the person widened or changed it, or reopened
