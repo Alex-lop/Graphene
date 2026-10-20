@@ -620,7 +620,8 @@ def _first_write(event: dict, root: Path) -> str | None:
         command = str(tool_input.get("command") or "")
         if len(command) > PARSED:
             return None
-        written = [w for w, _kind in bash_written_paths(command, Path(cwd or root)) if w.strip()]
+        writes = bash_written_paths(command, Path(cwd or root))
+        written = [w for w, k in writes if w.strip() and k != "unknown"]
         rels = [r for r in (_rel(w, root, cwd) for w in written) if r is not None]
         ignored = _ignored(root, rels)
         return next((r for r in rels if r not in ignored), None)
@@ -804,9 +805,11 @@ def decide(store, event: dict, root: Path) -> dict | None:
 
         standing = P.standing(store)
         rels = []
-        for written, _kind in bash_written_paths(command, Path(cwd or root)):
+        for written, kind in bash_written_paths(command, Path(cwd or root)):
             if not written.strip():
                 continue  # `echo hi > "\n"`: the parser's artefact, not a path anyone can write
+            if kind == "unknown":  # a variable, a glob or a substitution: git finds what it wrote at done
+                continue
             if _leaves(written, root, cwd):
                 return _link(_leaves(written, root, cwd))
             from .hooks import ours

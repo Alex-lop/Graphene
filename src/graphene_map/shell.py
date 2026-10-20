@@ -16,9 +16,13 @@ from functools import lru_cache
 from pathlib import Path
 
 _NOT_A_PATH = re.compile(r"[*?$`{}\[\]<>|]")
+_UNKNOWABLE = re.compile(r"[*?$`{}\[\]]")  # a glob, a variable, a command substitution, a brace list
 _HEREDOC = re.compile(r"<<-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1")
 _SEPARATORS = re.compile(r"&&|\|\||;|\||\n")
-_REDIRECTS = (">", ">>", "&>", ">|", "<", ">&", "<&")
+_VAR = re.compile(r"\$\{(\w+)\}|\$(\w+)")
+_WRITE_OPS = (">", ">>", "&>", ">|", "&>>", "<>")  # the next token is a file this writes
+_REDIRECTS = (">", ">>", "&>", ">|", "&>>", "<>", "<", "<<", "<&", ">&")  # any redirection operator
+_WRAPPERS = ("sudo", "env", "time", "command", "builtin", "exec", "nohup", "nice")
 
 
 # -- shell commands -----------------------------------------------------------------------------
@@ -41,10 +45,14 @@ def strip_heredocs(command: str) -> str:
     return "\n".join(out)
 
 
+def _is_assignment(token: str) -> bool:
+    """A leading `NAME=value` word, which sets an environment variable rather than names a command."""
+    name = token.partition("=")[0]
+    return "=" in token and not token.startswith("-") and name.isidentifier()
+
+
 def _strip_wrappers(tokens: list[str]) -> list[str]:
-    while tokens and (
-        ("=" in tokens[0] and not tokens[0].startswith("-")) or tokens[0] in ("sudo", "env", "time")
-    ):
+    while tokens and (_is_assignment(tokens[0]) or tokens[0] in _WRAPPERS):
         tokens.pop(0)
     return tokens
 
@@ -90,8 +98,10 @@ def _unquoted_newlines_to_semicolons(text: str) -> str:
     return "".join(out)
 
 
-def _segments(command: str) -> list[list[str]]:
-    """``shell_segments`` with quoted `<` and `>` still masked: what the redirect reader needs."""
+def _split(command: str) -> list[list[str]]:
+    """Token lists of each simple command, split on the separators, with quoted `<` and `>` still
+    masked and the leading wrappers (`NAME=value`, sudo, command, …) still on: what reads a redirect,
+    and what captures a `NAME=value` set in one command and used in the next."""
     text = _unquoted_newlines_to_semicolons(strip_heredocs(command))  # heredoc bodies first: an apostrophe
     lexer = shlex.shlex(text, posix=True, punctuation_chars=True)  # in one opens no quote
     lexer.whitespace_split = True
@@ -99,13 +109,18 @@ def _segments(command: str) -> list[list[str]]:
     segments: list[list[str]] = [[]]
     try:
         for token in lexer:
-            if token in ("&&", "||", "|", ";", "&", "(", ")", ";;"):
-                segments.append([])
+            if token in ("&&", "||", "|", "|&", ";", "&", "(", ")", ";;"):
+                segments.append([])  # `|&` pipes stdout and stderr both: a separator, like `|`
             else:
                 segments[-1].append(token)
     except ValueError:  # unbalanced quotes: fall back to a crude split
         segments = [segment.split() for segment in _SEPARATORS.split(text)]
-    return [_strip_wrappers(segment) for segment in segments if segment]
+    return segments
+
+
+def _segments(command: str) -> list[list[str]]:
+    """``shell_segments`` with quoted `<` and `>` still masked: what the redirect reader needs."""
+    return [_strip_wrappers(segment) for segment in _split(command) if segment]
 
 
 def shell_segments(command: str) -> list[list[str]]:
@@ -116,19 +131,45 @@ def shell_segments(command: str) -> list[list[str]]:
     return [[token.translate(_UNMASK) for token in segment] for segment in _segments(command)]
 
 
+def _resolve(token: str, cwd: str | None, assigns: dict[str, str]) -> str:
+    """The expansions the hook can know before bash runs: `$PWD` (the cwd), `$HOME` (the home), and a
+    variable this command set to a literal earlier. What is left — another variable, a glob, a command
+    substitution (`$(…)`, which shlex splits on its parens, or a backtick) — stays, and
+    ``bash_written_paths`` marks the write "unknown"."""
+
+    def repl(m: re.Match) -> str:
+        name = m.group(1) or m.group(2)
+        if name == "PWD" and cwd:
+            return cwd
+        if name == "HOME":
+            return os.path.expanduser("~")
+        return assigns.get(name, m.group(0))
+
+    return _VAR.sub(repl, token)
+
+
 def bash_written_paths(command: str, root: Path) -> list[tuple[str, str]]:
-    """(repo-relative path, "write" | "delete") for the obvious forms: > >> tee sed -i mv cp rm touch.
+    """(repo-relative path, kind) for the obvious forms: > >> >| &> &>> <> >& tee dd mv cp install
+    rm touch sed -i. ``kind`` is "write", "delete", or "unknown" for a write target the hook cannot
+    know before bash runs (a variable it was not given, a glob, a command substitution): the gate
+    refuses that one while a leaf is held, since it cannot be checked against the scope.
 
     Relative paths follow `cd` inside the command; after a `cd` to a directory that cannot be
     resolved (a variable, a glob) relative paths are dropped rather than guessed. Deliberately
     incomplete: anything else a shell command does to a file is invisible here.
     """
     cwd: str | None = os.path.normpath(str(root))
+    assigns: dict[str, str] = {}
     found: list[tuple[str, str]] = []
-    for tokens in _segments(command):  # a quoted `>` stays masked: text, never a redirect
+    for raw in _split(command):  # a quoted `>` stays masked: text, never a redirect
+        tokens = list(raw)
+        while tokens and _is_assignment(tokens[0].translate(_UNMASK)):
+            name, _, value = tokens.pop(0).translate(_UNMASK).partition("=")
+            assigns[name] = value  # used by a later command: `F=path; echo x > $F`
+        tokens = _strip_wrappers(tokens)
         if not tokens:
             continue
-        if os.path.basename(tokens[0]) == "cd":
+        if os.path.basename(tokens[0].translate(_UNMASK)) == "cd":
             given = len(tokens) > 1 and not tokens[1].startswith("-")
             target = tokens[1].translate(_UNMASK) if given else "~"
             if _NOT_A_PATH.search(target):
@@ -139,10 +180,14 @@ def bash_written_paths(command: str, root: Path) -> list[tuple[str, str]]:
                 cwd = os.path.normpath(os.path.join(cwd, target))
             continue
         for path, kind in _segment_paths(tokens):
-            path = path.translate(_UNMASK)
-            if _NOT_A_PATH.search(path) or path in ("/dev/null", "-", "") or path.startswith("-"):
+            resolved = _resolve(path.translate(_UNMASK), cwd, assigns)
+            if _UNKNOWABLE.search(resolved):  # a glob, a variable or a substitution still in it
+                if kind == "write" and (path.translate(_UNMASK), "unknown") not in found:
+                    found.append((path.translate(_UNMASK), "unknown"))
+                continue  # a delete of one is dropped, as a target that cannot be named always was
+            if resolved in ("/dev/null", "-", "") or resolved.startswith("-"):
                 continue
-            expanded = os.path.expanduser(path)
+            expanded = os.path.expanduser(resolved)
             if not os.path.isabs(expanded):
                 if cwd is None:
                     continue  # somewhere we cannot name
@@ -157,8 +202,11 @@ def _segment_paths(tokens: list[str]) -> list[tuple[str, str]]:
     out: list[tuple[str, str]] = []
     i = 0
     while i < len(tokens):
-        if tokens[i] in (">", ">>", "&>", ">|") and i + 1 < len(tokens):
-            out.append((tokens[i + 1], "write"))
+        t = tokens[i]
+        nxt = tokens[i + 1] if i + 1 < len(tokens) else ""
+        # `>&word` writes word, the same as `&>word`; `>&1`, `>&2`, `>&-` duplicate or close a fd
+        if nxt and (t in _WRITE_OPS or (t == ">&" and not (nxt == "-" or nxt.isdigit()))):
+            out.append((nxt, "write"))
             i += 2
             continue
         i += 1
@@ -166,18 +214,20 @@ def _segment_paths(tokens: list[str]) -> list[tuple[str, str]]:
     args = []
     for j in range(1, len(tokens)):  # drop redirection operators, their descriptors (2>...) and targets (>&1)
         t, prev, nxt = tokens[j], tokens[j - 1], tokens[j + 1] if j + 1 < len(tokens) else ""
-        if t in _REDIRECTS or (t in ("0", "1", "2") and nxt in _REDIRECTS) or prev in _REDIRECTS:
+        if t in _REDIRECTS or (t.isdigit() and nxt in _REDIRECTS) or prev in _REDIRECTS:
             continue
         args.append(t)
     plain = [a for a in args if not a.startswith("-") and a != ""]
     if name in ("tee", "touch"):
         out.extend((p, "write") for p in plain)
+    elif name == "dd":
+        out.extend((a[3:], "write") for a in args if a.startswith("of="))
     elif name == "sed" and any(a == "-i" or a.startswith("-i") for a in args):
         script_given = "-e" in args
         files = plain[1:] if not script_given else [a for a in plain if a not in _sed_scripts(args)]
         out.extend((p, "write") for p in files)
-    elif name in ("mv", "cp") and len(plain) >= 2:
-        out.append((plain[-1], "write"))
+    elif name in ("mv", "cp", "install") and len(plain) >= 2:
+        out.append((plain[-1], "write"))  # the destination, last; install copies, it does not delete
         if name == "mv":
             out.extend((p, "delete") for p in plain[:-1])
     elif name == "rm":

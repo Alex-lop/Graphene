@@ -26,7 +26,7 @@ def test_bash_written_paths(tmp_path):
         "git status": [],
         f"echo x > {root}/abs.txt": [("abs.txt", "write")],
         "echo x > /elsewhere/abs.txt": [("/elsewhere/abs.txt", "write")],
-        "echo x > $HOME/y.txt": [],
+        "echo x > $HOME/y.txt": [(str(Path.home() / "y.txt"), "write")],  # $HOME resolves, like ~
     }
     for command, expected in cases.items():
         assert bash_written_paths(command, root) == expected, command
@@ -105,3 +105,38 @@ def test_a_comment_hides_no_write_after_it_and_a_quoted_redirect_writes_nothing(
 
 def test_a_commit_message_keeps_its_quoted_redirects_and_hashes():
     assert shell_segments("git commit -m 'a > b # c'") == [["git", "commit", "-m", "a > b # c"]]
+
+
+@pytest.mark.parametrize(
+    "command, written",
+    [
+        # finding 4: redirect forms and targets the parser did not read. Each wrote src/db/schema.py.
+        ("echo x >& src/db/schema.py", [("src/db/schema.py", "write")]),
+        ("echo x 1<> src/db/schema.py", [("src/db/schema.py", "write")]),
+        ("echo x &>> src/db/schema.py", [("src/db/schema.py", "write")]),
+        ("echo x | command tee src/db/schema.py", [("src/db/schema.py", "write")]),
+        ("echo x |& tee src/db/schema.py", [("src/db/schema.py", "write")]),
+        ("echo x | command tee -a src/db/schema.py", [("src/db/schema.py", "write")]),
+        ("dd if=/dev/zero of=src/db/schema.py", [("src/db/schema.py", "write")]),
+        ("install -m 644 a src/db/schema.py", [("src/db/schema.py", "write")]),
+        # a variable set to a literal in the same command, and $PWD / $(pwd), resolve
+        ("F=src/db/schema.py; echo x > $F", [("src/db/schema.py", "write")]),
+        ("d=src/db; echo x > $d/schema.py", [("src/db/schema.py", "write")]),
+        ("echo x > $PWD/src/db/schema.py", [("src/db/schema.py", "write")]),
+        # a target the hook cannot know before bash runs: a glob, a variable it was not given, a
+        # command substitution (a backtick stays one token; `$(…)` shlex splits on its parens)
+        ("echo x > src/db/schema.p?", [("src/db/schema.p?", "unknown")]),
+        ("echo x > $OUT", [("$OUT", "unknown")]),
+        ("echo x > `mktemp`", [("`mktemp`", "unknown")]),
+        # not a write: a fd duplication, a glob that only deletes, /dev/null
+        ("echo x >&2", []),
+        ("rm -rf build/*", []),
+        ("cat a > /dev/null", []),
+    ],
+)
+def test_redirect_forms_and_targets_the_parser_now_reads(command, written, tmp_path):
+    """Finding 4 of the adversarial pass: `>&`, `1<>`, `&>>`, `|&`, `command`/`dd`/`install`, and a
+    redirect after a variable the command set, a glob or `$PWD`, were not read and let a write by. A
+    target that stays a variable, a glob or a substitution is "unknown": the gate refuses it while a
+    leaf is held (it cannot be checked), but `$PWD`, `$(pwd)`, `$HOME` and an in-command literal resolve."""
+    assert bash_written_paths(command, tmp_path) == [(p, k) for p, k in written]

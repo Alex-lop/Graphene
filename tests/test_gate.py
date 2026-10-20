@@ -359,6 +359,46 @@ def test_a_repeated_stop_closes_an_aside_leaf_whose_check_fails_there_for_the_fi
         assert aside.state == plan.DONE and store.node_log(aside.id, ("check_failed",))
 
 
+# -- the adversarial pass, 19 October (dev/process/publish/gate/review.md) -----------------------------
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "echo x >& src/db/schema.py",
+        "echo x 1<> src/db/schema.py",
+        "echo x | command tee src/db/schema.py",
+        "echo x |& tee src/db/schema.py",
+        "dd if=/dev/zero of=src/db/schema.py",
+        "install -m 644 README.md src/db/schema.py",
+        "F=src/db/schema.py; echo x > $F",
+        "d=src/db; echo x > $d/schema.py",
+        "echo x > $PWD/src/db/schema.py",
+    ],
+)
+def test_finding_4_redirect_forms_and_resolvable_targets_are_refused_before_they_happen(repo, command):
+    """Finding 4: these redirect spellings and resolvable targets each wrote src/db/schema.py and were
+    let past the hook; git refused them only at done."""
+    holding(repo)
+    assert "src/db/schema.py is outside the scope" in reason(bash(repo, command))
+
+
+def test_finding_4_a_target_the_hook_cannot_know_is_left_to_git_as_before(repo):
+    """A glob, a variable it was not given, or a command substitution in a write target cannot be read
+    before bash runs. Refusing them refused honest daily commands (16 of about 90 the re-review tried:
+    `sed -i 's/a/b/' src/api/*.py`, `touch src/api/{a,b}.py`, a log to `$TMPDIR`), so they pass the hook
+    as they did, and git finds what they changed when the leaf is done. $PWD, $HOME and a variable the
+    command set to a literal resolve, and are judged."""
+    holding(repo)
+    for command in ("sed -i 's/a/b/' src/api/*.py", "touch src/api/{a,b}.py", 'pytest -q > "$TMPDIR/x.log"',
+                    "echo x > /tmp/out-$$.log", "echo x > $OUT"):  # fmt: skip
+        assert bash(repo, command) is None, command
+    assert bash(repo, "echo x >> src/api/users.py") is None  # in scope
+    assert bash(repo, "echo log > $HOME/notes.txt") is None  # $HOME resolves, outside the repo
+    assert bash(repo, "rm -rf build/*") is None  # a glob that only deletes an ignored path
+    assert bash(repo, "cat src/api/users.py > /dev/null") is None
+
+
 # -- what the closing review broke ---------------------------------------------------------------------
 
 
