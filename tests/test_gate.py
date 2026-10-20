@@ -662,3 +662,17 @@ def test_a_new_session_is_taught_the_board_and_the_taught_text_puts_it_up(repo):
         ]
         board.pick(store, "q-id", 1, plan.Caller("alex", True))  # the option's then: line reaches the leaf
         assert plan.get(store, "leaf-id").goal.endswith(". what the leaf does instead, in a sentence")
+
+
+def test_a_log_written_outside_the_repo_does_not_open_the_gate_for_the_rest_of_the_command(repo):
+    """A redirect to /tmp or ~ has no repo path, and the scope was asked of it anyway: the hook raised, and
+    what raised was let through, so `pytest -q > /tmp/log; echo x > src/db/schema.py` wrote past a held
+    leaf's scope. A path outside the repo is no scope's to judge; the rest of the command still is."""
+    holding(repo)
+    for command in ("pytest -q > /tmp/pytest.log 2>&1; echo x > src/db/schema.py",
+                    "echo x > src/db/schema.py 2>/tmp/err.log",
+                    "cp src/db/schema.py /tmp/ && echo x > src/db/schema.py"):  # fmt: skip
+        assert "src/db/schema.py" in reason(bash(repo, command)), command
+    assert bash(repo, "pytest -q > /tmp/pytest.log 2>&1") is None  # a log, and nothing else: as ever
+    assert bash(repo, "echo x > src/api/users.py 2>/tmp/err.log") is None
+

@@ -810,13 +810,14 @@ def decide(store, event: dict, root: Path) -> dict | None:
             if ours(written, cwd, root):  # the store or the direction, however it is spelled
                 return _deny(f"{written} is the plan's own store; no node's scope covers it")
             rel = _rel(written, root, cwd)
-            if rel is not None and (other := _other_copy(store, held, sid, written, root, cwd, "shell")):
+            if rel is None:
+                continue  # outside the repo (a log in /tmp): no scope's to judge, and the rest still is
+            if other := _other_copy(store, held, sid, written, root, cwd, "shell"):
                 return other
-            if rel is not None and (rel.split("/", 1)[0].casefold() in OURS or rel in HOOKS):
+            if rel.split("/", 1)[0].casefold() in OURS or rel in HOOKS:
                 # before any scope is asked: `**` does not cover the store, nor the hooks' settings
                 return _check_write(store, held, rel, event, "shell")
-            bound = held and any(P.binds(rel, n, standing) for n in held)
-            if rel is not None and not bound:
+            if not (held and any(P.binds(rel, n, standing) for n in held)):
                 rels.append(rel)
         # a build leftover git ignores is nobody's change; a standing path (an ignored .env) is never one
         ignored = {r for r in _ignored(root, rels) if not P.kept_out_by(r, standing)}
