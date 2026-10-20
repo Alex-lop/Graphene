@@ -522,7 +522,7 @@ def _other_copy(
     if live is not None and os.path.realpath(live) == os.path.realpath(mine):
         return None
     _write(store.log_node, n.id, P._now(), "denied", n.executor, sid, None,
-           {"path": _rel(path, root, cwd), "how": how, "fork": letter})  # fmt: skip
+           {"path": _rel(path, root, cwd), "how": how, "fork": letter, "copy": True})  # fmt: skip
     return _deny(f"{full} is in another copy of the repo: fork {letter} of {n.id} writes in its own, {mine}, "
                  "and nowhere else")  # fmt: skip
 

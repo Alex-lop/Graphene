@@ -110,7 +110,8 @@ def test_a_fork_writes_in_its_own_copy_alone(repo):
     assert hook(repo, "PreToolUse", HOLD, **{**own, "cwd": hold}) is None  # the hold's own session, as ever
     with Store.open(repo) as store:  # each refused write is on the leaf's record, as the fork's
         denied = [e["detail"] for e in store.node_log("n1", ("denied",))]
-        assert denied == [{"path": "api.py", "how": how, "fork": "a"} for how in ("Edit",) * 3 + ("shell",)]
+        assert denied == [{"path": "api.py", "how": how, "fork": "a", "copy": True}
+                          for how in ("Edit",) * 3 + ("shell",)]  # fmt: skip
 
 
 def test_a_forks_own_done_judges_its_own_tree_and_leaves_the_leafs_state_to_the_run(repo, monkeypatch):
@@ -225,3 +226,14 @@ def test_what_the_person_tells_a_forked_leaf_reaches_every_fork_once(repo):
     with Store.open(repo) as store:
         told = [(e["session_id"], e["detail"]["fork"]) for e in store.node_log("n1", ("told",))]
         assert told == [(FORK_A, "a"), (FORK_B, "b")]
+
+
+def test_a_fork_running_another_executor_finds_the_leaf_it_holds_with_done_and_no_id(repo):
+    """`graphene run --with claude --with <a command>`: the second fork's executor is named for its command,
+    not the hold's, and `graphene node done` with no id said `you hold no node`."""
+    forked(repo)
+    (repo / ".graphene/worktrees/n1.b/api.py").write_text("def users():\n    return ids\n")
+    env = {"GRAPHENE_NODE": "n1", "GRAPHENE_ATTEMPT": FORK_B, "GRAPHENE_EXECUTOR": "myagent"}
+    done = CliRunner().invoke(build(), ["node", "done"], env=env)
+    assert done.exit_code == 0, done.output
+    assert done.stdout.startswith("the check passed in this fork (fork b of 2)")

@@ -220,8 +220,10 @@ def register(cli: typer.Typer, root, open_store, fail):
         return ", ".join(shown)
 
     def holds(n: P.Node, who: P.Caller) -> bool:
-        if who.session_id:  # the hold's own session, or one of its forks
-            return n.session_id == who.session_id or who.session_id in n.forked
+        if P.fork_of(n, who.session_id):  # one of its forks, by its session or the GRAPHENE_ATTEMPT it has
+            return True
+        if who.session_id:  # the hold's own session
+            return n.session_id == who.session_id
         return n.executor == who.name
 
     def describe(
