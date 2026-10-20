@@ -69,6 +69,21 @@ def decide(p_plus: tuple[int, int], g: tuple[int, int]) -> str:
     return "no difference shown"
 
 
+def decide_forks(g: tuple[int, int], g3: tuple[int, int], metric: str) -> str:
+    """G3 judged against G only (rules.md, the second question), on one metric's pooled (count, runs): a
+    claim only where the intervals do not overlap, and each metric with its own sign: below G's is better
+    on false done, above G's is better on landed."""
+    (g_lo, g_hi), (f_lo, f_hi) = wilson(*g), wilson(*g3)
+    below, above = f_hi < g_lo, f_lo > g_hi
+    if metric == "false_done":
+        said = "G3 false-dones less" if below else "G3 false-dones more" if above else ""
+    elif metric == "landed":
+        said = "G3 lands more" if above else "G3 lands fewer" if below else ""
+    else:
+        raise ValueError(f"metric is false_done or landed, not {metric!r}")
+    return said or "no difference shown"
+
+
 def main(task: str, repo: str, base: str, arm: str, said: str) -> int:
     if arm not in ARMS:
         raise SystemExit(f"arm is one of {', '.join(ARMS)}, not {arm!r}")
