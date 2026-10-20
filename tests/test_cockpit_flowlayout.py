@@ -122,3 +122,76 @@ def test_a_box_whose_label_has_wide_characters_keeps_its_borders_in_line():
     rows = ["".join(c for c, _ in lay.cells[y]) for y in range(y0, y1 + 1)]
     assert {cell_len(r.rstrip()) for r in rows} == {x1 + 1}  # every row of the box ends in its border's cell
     assert len(lay.cells[y0]) == len(lay.cells[y1])
+
+
+def test_lanes_are_bands_under_a_rule_with_the_label_at_the_left_and_the_note_at_the_right():
+    nodes = [GNode("a", "first", lane="x"), GNode("b", "then", lane="y"), GNode("c", "last")]
+    lanes = [F.Lane("x", "the API", "1 of 2 ✓"), F.Lane("y", "the web")]
+    lay = F.layout(nodes, [GEdge("a", "c"), GEdge("b", "c")], label_w=8, lanes=lanes)
+    rows = lay.text().splitlines()
+    assert rows[0].startswith("── the API ") and rows[0].endswith(" 1 of 2 ✓ ──")
+    assert len(rows[0]) == lay.width  # across the whole graph
+    assert lay.rects["a"][1] == 1  # right under its rule
+    web = next(k for k, row in enumerate(rows) if row.startswith("── the web "))
+    assert lay.rects["a"][3] < web < lay.rects["b"][1]  # a over the web's rule, b under it
+    assert rows[web].endswith("──") and "┼" in rows[web]  # no note; a's arrow to c crosses it
+    assert lay.rects["b"][3] < lay.rects["c"][1]  # what is in no lane comes last, with no rule
+
+
+def test_a_header_sits_over_each_column_and_one_too_long_for_its_column_keeps_its_first_words():
+    heads = ["wave 1 · 3 agents", "goal"]
+    lay = F.layout([GNode("a", "a"), GNode("b", "b")], [GEdge("a", "b")], label_w=8, heads=heads)
+    rows = lay.text().splitlines()
+    ax, bx = lay.rects["a"][0], lay.rects["b"][0]
+    assert rows[0][ax + 2 :].startswith("wave 1 ") and "agents" not in rows[0]  # a box 10 wide: no room
+    assert rows[0][bx + 2 :].startswith("goal") and lay.rects["a"][1] == 1  # the boxes start under it
+    wide = F.layout([GNode("a", "a task name"), GNode("b", "b")], [GEdge("a", "b")], label_w=12, heads=heads)
+    assert "wave 1 · 3 agents" in wide.text().splitlines()[0]
+
+
+def test_a_double_edge_is_drawn_in_double_lines_and_a_single_one_joining_it_shows_the_join():
+    # a and b flow into c, under their lane, sharing a trunk; a's edge is the chain
+    nodes = [GNode("a", "a", lane="x"), GNode("b", "b", lane="x"), GNode("c", "c")]
+    edges = [GEdge("a", "c", double=True), GEdge("b", "c")]
+    text = F.layout(nodes, edges, label_w=8, lanes=[F.Lane("x", "x")]).text()
+    assert "═" in text and "║" in text and "═▶" in text and text.count("▶") == 1  # one trunk, one arrowhead
+    assert "╢" in text  # b's single line meets the double trunk running down past it, from a to c
+    single = F.layout(nodes, [GEdge(e.a, e.b) for e in edges], label_w=8, lanes=[F.Lane("x", "x")]).text()
+    assert not set("═║╢") & set(single)
+
+
+def test_a_lanes_rule_crossing_the_double_chain_shows_the_crossing():
+    nodes = [GNode("a", "a", lane="x"), GNode("b", "b", lane="y"), GNode("c", "c")]
+    lanes = [F.Lane("x", "x"), F.Lane("y", "y")]
+    text = F.layout(nodes, [GEdge("a", "c", double=True), GEdge("b", "c")], label_w=8, lanes=lanes).text()
+    assert "╫" in text  # y's rule, single, crossed by the double trunk from a down to c
+
+
+def test_an_edge_across_a_column_runs_on_at_its_row_and_turns_at_its_targets_column():
+    nodes = [GNode("a", "a", lane="x"), GNode("b", "b"), GNode("c", "c")]
+    lay = F.layout(nodes, [GEdge("a", "c"), GEdge("b", "c")], label_w=8, lanes=[F.Lane("x", "x")])
+    _x0, y0, x1, y1 = lay.rects["a"]
+    row = "".join(c for c, _ in lay.cells[(y0 + y1) // 2])
+    assert row[x1 + 1 :].strip("─ ") == "┐"  # straight across b's column, one turn before c's
+
+
+def test_pinned_layers_keep_a_parts_columns_as_the_wholes_and_waves_are_the_chain_before_each():
+    nodes = [GNode(x, x) for x in "abc"]
+    edges = [GEdge("a", "b"), GEdge("b", "c")]
+    assert F.waves(nodes, edges) == {"a": 0, "b": 1, "c": 2}
+    part = F.layout(nodes[1:], [], layers={"b": 0, "c": 1})  # b and c alone, c still a column after b
+    assert part.rects["b"][0] < part.rects["c"][0] and part.layers == {"b": 0, "c": 1}
+
+
+def test_a_badge_longer_than_the_least_room_gets_its_room_and_a_short_one_moves_no_box():
+    rows = F.layout([GNode("g", "goal", badge="4 of 4 ✓")], []).text().splitlines()
+    assert rows[2].startswith("╰─ 4 of 4 ✓ ")
+    assert F.layout([GNode("t", "docs", badge="100")], []).rects == F.layout([GNode("t", "docs")], []).rects
+
+
+def test_a_neighbourhood_keeps_what_the_caller_names_the_goal_it_all_flows_into():
+    nodes = [GNode(x, x) for x in ("a", "b", "c", "goal", "far")]
+    edges = [GEdge("a", "b"), GEdge("b", "c"), GEdge("c", "goal"), GEdge("far", "goal")]
+    near, near_edges = F.neighbourhood(nodes, edges, "a", 1, keep=["goal"])
+    assert {n.id for n in near} == {"a", "b", "goal"}  # a step from a, and the goal, three steps on
+    assert {(e.a, e.b) for e in near_edges} == {("a", "b")}

@@ -1,12 +1,17 @@
 """A small layered graph layout, drawn in box-drawing characters. Pure functions: no Textual, no store.
 
-Left to right: a node's layer is its longest path from a source; order inside a layer comes from a few
-barycentre sweeps; edges are right-angled and run in lanes between layers, so a crossing is a `┼` and a
-fan-out is a trunk with branches. An edge that would close a cycle (found by a depth-first search, or
-declared `loop`) is a "back edge": it leaves the right of its source, drops to a lane under every node,
-runs back and comes in at the left of its target, so no line ever crosses a box. A `two` edge has an
-arrowhead at both ends; a `tree` edge (a goal over what serves it) has none, and is drawn quieter than any
-other. Positions are a function of the graph alone, so a recolour never moves a node.
+Left to right: a node's layer is its longest path from a source (or pinned by the caller, so a part of a
+graph keeps the whole's columns); order inside a layer comes from a few barycentre sweeps; edges are
+right-angled and run in channels between layers, so a crossing is a `┼` and a fan-out is a trunk with
+branches. An edge that would close a cycle (found by a depth-first search, or declared `loop`) is a "back
+edge": it leaves the right of its source, drops to a row under every node, runs back and comes in at the
+left of its target, so no line ever crosses a box. A `two` edge has an arrowhead at both ends; a `tree`
+edge (a goal over what serves it) has none, and is drawn quieter than any other; a `double` edge is drawn
+in double lines, and where it meets a single one the join says which is which (`╢ ╧ ╫`). An edge that
+crosses a column runs on at its row and turns at its target's column.
+Lanes stack the nodes in bands, top to bottom, each under a rule across the graph that carries the lane's
+label and note; the nodes in no lane come last, with no rule; `heads` puts a header over each layer.
+Positions are a function of the graph alone, so a recolour never moves a node.
 
 The result is cells: (char, style) per position, plus each node's rectangle for mouse hit-testing.
 """
@@ -18,13 +23,29 @@ from dataclasses import dataclass, field
 
 from rich.cells import cell_len
 
+from .lines import fit
+
 N, E, S, W = 1, 2, 4, 8
 JOIN = {
     0: " ", N: "│", S: "│", N | S: "│", E: "─", W: "─", E | W: "─",
     E | S: "┌", S | W: "┐", N | E: "└", N | W: "┘", N | S | E: "├", N | S | W: "┤",
     E | W | S: "┬", E | W | N: "┴", N | E | S | W: "┼",
 }  # fmt: skip
-RANK = {"": 0, "edge_tree": 1, "edge": 2, "edge_hot": 3, "edge_loop": 4}  # two edges in a cell: the louder
+DOUBLE = {
+    N: "║", S: "║", N | S: "║", E: "═", W: "═", E | W: "═",
+    E | S: "╔", S | W: "╗", N | E: "╚", N | W: "╝", N | S | E: "╠", N | S | W: "╣",
+    E | W | S: "╦", E | W | N: "╩", N | E | S | W: "╬",
+}  # fmt: skip
+# where a double line meets a single one: double up and down with single across, and the other way round
+UPRIGHT = {
+    E | S: "╓", S | W: "╖", N | E: "╙", N | W: "╜", N | S | E: "╟", N | S | W: "╢",
+    E | W | S: "╥", E | W | N: "╨", N | E | S | W: "╫",
+}  # fmt: skip
+ACROSS = {
+    E | S: "╒", S | W: "╕", N | E: "╘", N | W: "╛", N | S | E: "╞", N | S | W: "╡",
+    E | W | S: "╤", E | W | N: "╧", N | E | S | W: "╪",
+}  # fmt: skip
+RANK = {"": 0, "lane": 1, "edge_tree": 1, "edge": 2, "edge_hot": 3, "edge_loop": 4}  # two in a cell: the loud
 BOX = {
     "light": "╭╮╰╯─│", "heavy": "┏┓┗┛━┃", "double": "╔╗╚╝═║", "square": "┌┐└┘─│",
 }  # fmt: skip
@@ -35,7 +56,8 @@ class GNode:
     id: str
     label: str
     state: str = "waiting"  # a key of the caller's style table
-    badge: str = ""  # who is on it, shown on the bottom border: it never makes the box wider
+    badge: str = ""  # who is on it, shown on the bottom border; up to five cells it never makes the box wider
+    lane: str = ""  # the lane it is drawn in, by id; "" or one not given: the last band, which has no rule
 
 
 @dataclass
@@ -44,6 +66,14 @@ class GEdge:
     b: str
     kind: str = "needs"  # needs: a to b · two: a and b, both ways · loop: a to b, always drawn as a back edge
     # · tree: b is under a (a goal over what serves it): a line with no arrowhead
+    double: bool = False  # drawn in double lines: the chain the caller wants seen
+
+
+@dataclass
+class Lane:
+    id: str
+    label: str  # at the left of its rule
+    note: str = ""  # at the right of its rule: `2 of 2 ✓`
 
 
 @dataclass
@@ -67,10 +97,15 @@ class Layout:
 
 
 def neighbourhood(
-    nodes: list[GNode], edges: list[GEdge], focus: str, hops: int, up: bool = True
+    nodes: list[GNode],
+    edges: list[GEdge],
+    focus: str,
+    hops: int,
+    up: bool = True,
+    keep: list[str] | None = None,
 ) -> tuple[list[GNode], list[GEdge]]:
     """The nodes within ``hops`` of ``focus``, either direction, the goals over ``focus`` by `tree` edges, up
-    to the top (why it is there) unless ``up`` is False, and the edges among them."""
+    to the top (why it is there) unless ``up`` is False, those named in ``keep``, and the edges among them."""
     near, front = {focus}, {focus}
     for _ in range(hops):
         front = {y for e in edges for x, y in ((e.a, e.b), (e.b, e.a)) if x in front} - near
@@ -80,7 +115,15 @@ def neighbourhood(
         if (at := parent.get(at)) is None:
             break
         near.add(at)
+    near |= set(keep or ())
     return [n for n in nodes if n.id in near], [e for e in edges if e.a in near and e.b in near]
+
+
+def waves(nodes: list[GNode], edges: list[GEdge]) -> dict[str, int]:
+    """Each node's layer: the longest chain of edges before it, an edge that closes a cycle left out."""
+    ids = [n.id for n in nodes]
+    forward, _ = _split(ids, _among(ids, edges))
+    return _layers(ids, forward)
 
 
 def layout(
@@ -91,26 +134,38 @@ def layout(
     selected: str | None = None,
     styles: dict[str, str] | None = None,
     columns: int = 1,
+    lanes: list[Lane] | None = None,
+    heads: list[str] | None = None,
+    layers: dict[str, int] | None = None,
 ) -> Layout:
     """Lay ``nodes`` out left to right and draw them. ``styles`` maps a node state to a style string. With no
-    edges there is nothing to order, so ``columns`` wraps the list into that many (the first column first)."""
+    edges there is nothing to order, so ``columns`` wraps the list into that many (the first column first).
+    ``lanes`` are the bands, top to bottom; ``heads`` the header over each layer; ``layers`` pins each
+    node's layer (a part of a graph shown alone keeps the whole's columns)."""
     styles = styles or {}
+    lanes, heads = lanes or [], heads or []
     ids = [n.id for n in nodes]
     if not ids:
         return Layout()
-    by_id = {n.id: n for n in nodes}
-    edges = [e for e in edges if e.a in by_id and e.b in by_id and e.a != e.b]
+    edges = _among(ids, edges)
     forward, back = _split(ids, edges)
-    layer = _layers(ids, forward)
+    layer = dict(layers) if layers else _layers(ids, forward)
     if columns > 1 and not edges:
         per = -(-len(ids) // columns)
         layer = {n: k // per for k, n in enumerate(ids)}
-    rows = _order(ids, forward, layer)  # layer -> [id or dummy]
+    index = {lane.id: k for k, lane in enumerate(lanes)}
+    band = {n.id: index.get(n.lane, len(lanes)) for n in nodes}  # its lane's band, else the last
+    rows = _order(ids, forward, layer, band)  # layer -> [id or dummy]
     boxes = {n.id: _box(n, label_w) for n in nodes}
-    return _draw(nodes, boxes, edges, forward, back, layer, rows, selected, styles)
+    return _draw(nodes, boxes, edges, forward, back, layer, rows, band, lanes, heads, selected, styles)
 
 
 # -- structure ---------------------------------------------------------------------------------------
+
+
+def _among(ids: list[str], edges: list[GEdge]) -> list[GEdge]:
+    by_id = set(ids)
+    return [e for e in edges if e.a in by_id and e.b in by_id and e.a != e.b]
 
 
 def _split(ids: list[str], edges: list[GEdge]) -> tuple[list[GEdge], list[GEdge]]:
@@ -163,8 +218,12 @@ def _layers(ids: list[str], forward: list[GEdge]) -> dict[str, int]:
     return layer
 
 
-def _order(ids: list[str], forward: list[GEdge], layer: dict[str, int]) -> list[list[str]]:
-    """Nodes (and one dummy for each layer an edge passes) in each layer, ordered to cut crossings."""
+def _order(
+    ids: list[str], forward: list[GEdge], layer: dict[str, int], band: dict[str, int]
+) -> list[list[str]]:
+    """Nodes (and one dummy for each layer an edge passes) in each layer, band by band, ordered to cut
+    crossings. A dummy takes its source's band: an edge runs on in its own lane and turns at its target's
+    column."""
     top = max(layer.values())
     rows: list[list[str]] = [[] for _ in range(top + 1)]
     for i in ids:
@@ -174,6 +233,7 @@ def _order(ids: list[str], forward: list[GEdge], layer: dict[str, int]) -> list[
         chain = [e.a, *(f"~{n}:{k}" for k in range(layer[e.a] + 1, layer[e.b])), e.b]
         for k in range(layer[e.a] + 1, layer[e.b]):
             rows[k].append(f"~{n}:{k}")
+            band[f"~{n}:{k}"] = band[e.a]
         links += list(zip(chain, chain[1:], strict=False))
     above: dict[str, list[str]] = {}
     below: dict[str, list[str]] = {}
@@ -190,7 +250,7 @@ def _order(ids: list[str], forward: list[GEdge], layer: dict[str, int]) -> list[
         order = range(1, len(rows)) if sweep % 2 == 0 else range(len(rows) - 2, -1, -1)
         near = above if sweep % 2 == 0 else below
         for li in order:
-            rows[li].sort(key=lambda n, near=near, pos=pos: (bary(n, near, pos), pos[n]))
+            rows[li].sort(key=lambda n, near=near, pos=pos: (band[n], bary(n, near, pos), pos[n]))
             pos.update({n: k for k, n in enumerate(rows[li])})
     return rows
 
@@ -214,7 +274,8 @@ def _box(n: GNode, label_w: int) -> Box:
             break
     if len(lines) > 3:
         lines = [*lines[:2], lines[2][: label_w - 1] + "…"]
-    inner = max(max(cell_len(x) for x in lines), 6)  # in cells: a wide character is two
+    # in cells: a wide character is two; a badge longer than the least room (`4 of 4 ✓`) gets its room
+    inner = max(max(cell_len(x) for x in lines), 6, cell_len(n.badge) + 1)
     return Box([x + " " * (inner - cell_len(x)) for x in lines], inner + 4, len(lines) + 2)
 
 
@@ -230,7 +291,7 @@ def spread(text: str) -> list[str]:
 # -- drawing -----------------------------------------------------------------------------------------
 
 
-def _draw(nodes, boxes, edges, forward, back, layer, rows, selected, styles) -> Layout:
+def _draw(nodes, boxes, edges, forward, back, layer, rows, band, lanes, heads, selected, styles) -> Layout:
     chains: list[tuple[GEdge, list[str]]] = []
     for n, e in enumerate(forward):
         chains.append((e, [e.a, *(f"~{n}:{k}" for k in range(layer[e.a] + 1, layer[e.b])), e.b]))
@@ -241,13 +302,27 @@ def _draw(nodes, boxes, edges, forward, back, layer, rows, selected, styles) -> 
     def wid(n: str) -> int:
         return boxes[n].w if n in boxes else 1
 
-    # -- y: stack each layer, then pull nodes toward their neighbours, keeping the order
+    # -- y: a band for each lane under its rule, then the band of what is in none; in each, stack each
+    # layer, then pull nodes toward their neighbours, keeping the order and the band
     y: dict[str, int] = {}
-    for row in rows:
-        at = 0
-        for n in row:
-            y[n] = at
-            at += hgt(n) + 1
+    rule_y: dict[int, int] = {}
+    floor: dict[int, int] = {}  # band -> its first row
+    ceiling: dict[int, int] = {}  # band -> the row after it; the last band is open, nothing is under it
+    top = 1 if heads else 0
+    for k in range(len(lanes) + 1):
+        if k < len(lanes):
+            rule_y[k] = top
+            top += 1
+        floor[k] = ceiling[k] = top
+        for row in rows:
+            at = top
+            for n in row:
+                if band[n] == k:
+                    y[n] = at
+                    at += hgt(n) + 1
+            ceiling[k] = max(ceiling[k], at)
+        top = ceiling[k] - (k + 1 < len(lanes))  # the next rule takes the row the last box's gap would
+    ceiling[len(lanes)] = 10**6
     nbr: dict[str, list[str]] = {}
     for _, chain in chains:
         for a, b in zip(chain, chain[1:], strict=False):
@@ -257,56 +332,64 @@ def _draw(nodes, boxes, edges, forward, back, layer, rows, selected, styles) -> 
     def mid(n: str) -> float:
         return y[n] + (hgt(n) - 1) / 2
 
+    def want(n: str) -> float:
+        """Where it would be: a box between its neighbours; a dummy at its edge's row so far, which turns
+        at its target's column."""
+        if n not in nbr:
+            return y[n]
+        if n not in boxes:
+            return mid(nbr[n][0])
+        return sum(mid(m) for m in nbr[n]) / len(nbr[n]) - (hgt(n) - 1) / 2
+
     for sweep in range(6):
         for row in rows if sweep % 2 == 0 else reversed(rows):
-            want = {
-                n: (sum(mid(m) for m in nbr[n]) / len(nbr[n]) - (hgt(n) - 1) / 2 if n in nbr else y[n])
-                for n in row
-            }
-            at = 0.0
-            for n in row:
-                y[n] = int(round(max(want[n], at)))
-                at = y[n] + hgt(n) + 1
-    low = min(y.values())
-    for n in y:
+            for k in floor:
+                stack = [n for n in row if band[n] == k]
+                at, need = floor[k], sum(hgt(n) + 1 for n in stack)  # the rows the rest of the stack needs
+                for n in stack:
+                    y[n] = int(round(min(max(want(n), at), ceiling[k] - need)))
+                    at, need = y[n] + hgt(n) + 1, need - hgt(n) - 1
+    last = [n for n in y if band[n] == len(lanes)]  # the open band starts at its floor, however it was pulled
+    low = min((y[n] for n in last), default=0) - floor[len(lanes)]
+    for n in last:
         y[n] -= low
     body = max(y[n] + hgt(n) for n in y)
 
-    # -- lanes: each gap between layers gets one lane per overlapping vertical run
+    # -- channels: each gap between layers gets one channel per overlapping vertical run
     pieces: dict[int, list[tuple[int, int, str, str]]] = {}  # gap -> (y from, y to, src node, dst node)
     for _, chain in chains:
         for a, b in zip(chain, chain[1:], strict=False):
             ya, yb = int(mid(a)), int(mid(b))
             pieces.setdefault(layer_of(a, layer, chain), []).append((ya, yb, a, b))
     back_runs = [(e, k) for k, e in enumerate(back)]
-    lane_y = {k: body + 1 + k for _, k in back_runs}  # one row under the boxes for each back edge
-    lanes: dict[int, dict[tuple[str, str], int]] = {}
+    under_y = {k: body + 1 + k for _, k in back_runs}  # one row under the boxes for each back edge
+    channels: dict[int, dict[tuple[str, str], int]] = {}
     used: dict[int, int] = {}
     for gap, items in pieces.items():
-        lanes[gap] = {}
+        channels[gap] = {}
         placed: list[tuple[int, int, str, str, int]] = []
         for ya, yb, a, b in sorted(items, key=lambda t: (min(t[0], t[1]), max(t[0], t[1]))):
             if ya == yb:
-                lanes[gap][(a, b)] = -1  # straight across: no lane
+                channels[gap][(a, b)] = -1  # straight across: no channel
                 continue
             lo, hi = min(ya, yb), max(ya, yb)
             taken = {
-                ln
-                for plo, phi, pa, pb, ln in placed
+                ch
+                for plo, phi, pa, pb, ch in placed
                 if not (hi < plo or phi < lo) and not (pa == a or pb == b)  # a trunk is shared by one end
             }
-            ln = next(k for k in range(len(items) + 1) if k not in taken)
-            placed.append((lo, hi, a, b, ln))
-            lanes[gap][(a, b)] = ln
-        used[gap] = 1 + max((v for v in lanes[gap].values()), default=-1)
+            ch = next(k for k in range(len(items) + 1) if k not in taken)
+            placed.append((lo, hi, a, b, ch))
+            channels[gap][(a, b)] = ch
+        used[gap] = 1 + max((v for v in channels[gap].values()), default=-1)
     # back edges: down in the gap after the source's layer, up in the gap before the target's
-    back_lane: dict[tuple[int, int], int] = {}
+    back_channel: dict[tuple[int, int], int] = {}
     for e, k in back_runs:
         for gap in (layer[e.a], layer[e.b] - 1):
-            back_lane[(k, gap)] = used.get(gap, 0)
+            back_channel[(k, gap)] = used.get(gap, 0)
             used[gap] = used.get(gap, 0) + 1
     gaps = len(rows)
-    width_of = [max(wid(n) for n in row) for row in rows]
+    width_of = [max((wid(n) for n in row), default=0) for row in rows]
     gap_w = {g: max(4, used.get(g, 0) + 3) for g in range(-1, gaps)}
     if not any(layer[e.b] == 0 for e in back):
         gap_w[-1] = 0
@@ -319,16 +402,17 @@ def _draw(nodes, boxes, edges, forward, back, layer, rows, selected, styles) -> 
     total_h = body + len(back) + 1
 
     mask = [[0] * (total_w + 2) for _ in range(total_h + 1)]
+    double = [[0] * (total_w + 2) for _ in range(total_h + 1)]  # the directions drawn in double lines
     style = [[""] * (total_w + 2) for _ in range(total_h + 1)]
     mark: dict[tuple[int, int], tuple[str, str]] = {}
 
     def x_of(n: str) -> int:
         return x0[layer_of(n, layer, None, rows)]
 
-    def lane_x(gap: int, ln: int) -> int:
-        return x0[gap] + width_of[gap] + 1 + ln
+    def channel_x(gap: int, ch: int) -> int:
+        return x0[gap] + width_of[gap] + 1 + ch
 
-    def line(points: list[tuple[int, int]], st: str) -> None:
+    def line(points: list[tuple[int, int]], st: str, dbl: bool = False) -> None:
         for (ax, ay), (bx, by) in zip(points, points[1:], strict=False):
             if (ax, ay) == (bx, by):
                 continue
@@ -339,12 +423,19 @@ def _draw(nodes, boxes, edges, forward, back, layer, rows, selected, styles) -> 
                 d = {(1, 0): (E, W), (-1, 0): (W, E), (0, 1): (S, N), (0, -1): (N, S)}[step]
                 mask[yy][x] |= d[0]
                 mask[ny][nx] |= d[1]
+                if dbl:
+                    double[yy][x] |= d[0]
+                    double[ny][nx] |= d[1]
                 for cx, cy in ((x, yy), (nx, ny)):
                     if RANK.get(st, 1) >= RANK.get(style[cy][cx], 0):
                         style[cy][cx] = st
                 x, yy = nx, ny
                 if (x, yy) == (bx, by):
                     break
+
+    def put(x: int, yy: int, text: str, st: str) -> None:
+        for dx, ch in enumerate(spread(text)):
+            mark[(x + dx, yy)] = (ch, st)
 
     loops = {(e.a, e.b) for e in edges if e.kind == "loop"}
     trees = {(e.a, e.b) for e in edges if e.kind == "tree"}
@@ -356,29 +447,39 @@ def _draw(nodes, boxes, edges, forward, back, layer, rows, selected, styles) -> 
             return "edge_tree"
         return "edge_hot" if selected in (a, b) else "edge"
 
+    # lanes: a rule over each band, its label at the left and its note at the right; the headers over the
+    # layers, one that does not fit its column kept to its first words
+    for k, lane in enumerate(lanes):
+        line([(0, rule_y[k]), (total_w - 2, rule_y[k])], "lane")
+        note = f" {lane.note} " if lane.note else ""
+        put(2, rule_y[k], f" {fit(lane.label, max(total_w - 7 - cell_len(note), 1))} ", "lane_label")
+        put(total_w - 3 - cell_len(note), rule_y[k], note, "lane_label")
+    for li, head in enumerate(heads[:gaps]):
+        room = width_of[li] - 1 + (gap_w[li] if li < gaps - 1 else 0)  # a cell short of the next header
+        put(x0[li] + 2, 0, head if cell_len(head) <= room else head.split(" · ")[0], "head")
+
     # forward edges
-    for e, chain in chains:  # noqa: B007
+    for e, chain in chains:
         pts: list[tuple[int, int]] = []
         first, last = chain[0], chain[-1]
         sx = x_of(first) + wid(first)
         pts.append((sx, int(mid(first))))
         for a, b in zip(chain, chain[1:], strict=False):
             gap = layer[first] + chain.index(a)
-            ln = lanes[gap][(a, b)]
+            ch = channels[gap][(a, b)]
             ya, yb = int(mid(a)), int(mid(b))
-            if ln >= 0:
-                lx = lane_x(gap, ln)
-                pts += [(lx, ya), (lx, yb)]
-            tx = x_of(b) if b not in boxes else x_of(b) - 1
+            if ch >= 0:
+                cx = channel_x(gap, ch)
+                pts += [(cx, ya), (cx, yb)]
             if b in boxes:
-                pts.append((tx - 1, yb))
+                pts.append((x_of(b) - 2, yb))
             else:  # through a dummy: across its layer
                 pts += [(x_of(b), yb), (x_of(b) + width_of[layer_of(b, layer, None, rows)], yb)]
         st = hot(e.a, e.b)
         end = (x_of(last) - 1, int(mid(last)))
         if e.kind == "tree":  # no arrowhead: the line runs on to the box
             pts.append(end)
-        line(_dedupe(pts), st)
+        line(_dedupe(pts), st, e.double)
         if e.kind != "tree":
             mark[end] = ("▶", st)
         if e.kind == "two":
@@ -388,18 +489,18 @@ def _draw(nodes, boxes, edges, forward, back, layer, rows, selected, styles) -> 
         st = hot(e.a, e.b)
         ya, yb = int(mid(e.a)), int(mid(e.b))
         gl = layer[e.a]
-        gx = lane_x(gl, back_lane[(k, gl)])
+        gx = channel_x(gl, back_channel[(k, gl)])
         gt = layer[e.b] - 1
-        tx = lane_x(gt, back_lane[(k, gt)]) if gt >= 0 else back_lane[(k, gt)] + 1
+        tx = channel_x(gt, back_channel[(k, gt)]) if gt >= 0 else back_channel[(k, gt)] + 1
         pts = [
             (x_of(e.a) + wid(e.a), ya),
             (gx, ya),
-            (gx, lane_y[k]),
-            (tx, lane_y[k]),
+            (gx, under_y[k]),
+            (tx, under_y[k]),
             (tx, yb),
             (x_of(e.b) - 2, yb),
         ]
-        line(_dedupe(pts), st)
+        line(_dedupe(pts), st, e.double)
         mark[(x_of(e.b) - 1, yb)] = ("▶", st)
         if e.kind == "two":
             mark[(x_of(e.a) + wid(e.a), ya)] = ("◀", st)
@@ -409,8 +510,8 @@ def _draw(nodes, boxes, edges, forward, back, layer, rows, selected, styles) -> 
     for yy in range(total_h + 1):
         cells.append(
             [
-                (JOIN[mask[yy][x] & 15], style[yy][x] or "edge") if mask[yy][x] else (" ", "")
-                for x in range(total_w + 2)
+                (_glyph(m & 15, d & 15), st or "edge") if m else (" ", "")
+                for m, d, st in zip(mask[yy], double[yy], style[yy], strict=True)
             ]
         )
     for row in cells:  # a loop is drawn dashed, so it is never mistaken for a dependency
@@ -454,6 +555,14 @@ def _draw(nodes, boxes, edges, forward, back, layer, rows, selected, styles) -> 
     return Layout(
         width, total_h, [row[:width] for row in cells], rects, dict(layer), [(e.a, e.b) for e in back]
     )
+
+
+def _glyph(m: int, d: int) -> str:
+    """The character for a cell's directions ``m``, of which ``d`` are drawn double."""
+    up, across = d & (N | S), d & (E | W)
+    if (up or not m & (N | S)) and (across or not m & (E | W)):  # every direction it has is double
+        return DOUBLE[m]
+    return (UPRIGHT if up else ACROSS if across else JOIN)[m]
 
 
 def layer_of(
