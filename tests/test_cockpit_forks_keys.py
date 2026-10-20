@@ -20,7 +20,7 @@ def doer_of(repo):
     d = Doer(repo, [].append, lambda: None)
     d.ran, d.said = [], []
     d.say = d.said.append
-    d.run = lambda argv, done="": (d.ran.append(argv), 0)[1]
+    d.run = lambda argv, done="": (d.ran.append(argv), d.said.append(done), 0)[2]
     d.background = lambda argv: d.ran.append(argv)
     return d
 
@@ -125,3 +125,10 @@ def test_the_help_says_what_f_and_the_digits_do_and_what_a_lettered_number_is_wi
     assert keys["1-9 a"].startswith("pick that option, or a fork")
     assert "3b a fork" in said and "D: the plan's direction" in said  # D's line gave f its room
     assert all(len(line) <= 76 for line in said.splitlines()) and len(said.splitlines()) <= 22
+
+
+def test_f_says_what_it_did_to_the_task_not_the_commands_first_line(repo):
+    """The news said `graphene node set n2 --forks 3: n2 is now revision 2:`, the change cut off."""
+    d = doer_of(repo)
+    d.fork(model_of(ids="ready"), "ids")
+    assert d.said[0] == "3 agents at once on it from now, and its check keeps one"

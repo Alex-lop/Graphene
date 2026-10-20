@@ -264,6 +264,8 @@ def moves(rows: list[dict], into: Task | Fork, node: P.Node) -> None:
                 into.touched[target] = at
         elif r["kind"] == "said":
             into.events.append(Ev(at, "said", text=" ".join(str(d.get("text") or "").split())[:SAYS]))
+        elif r["kind"] == "denied" and d.get("copy"):  # a fork's write into another copy: no scope stopped it
+            into.events.append(Ev(at, "said", text=f"stopped writing {d.get('path')} in another copy"))
         elif r["kind"] == "denied" and d.get("path"):
             into.events.append(Ev(at, "stop", path=str(d["path"])))
             into.touched.pop(str(d["path"]), None)  # a write it stopped did not happen: git says if one did
@@ -290,14 +292,27 @@ def forks_of(store, t: Task) -> None:
         d = r["detail"]
         f = by.get(str(d.get("fork", "")))
         if r["kind"] == "fork" and f is not None:
-            f.state = str(d.get("state") or "running")
-            f.why = " ".join(str(d.get("why") or "").split())[:SAYS]
+            # the run's row as a fork ends counts its attempts; a fork's own `done` or `release` while its
+            # executor works on is no end, and neither is the run's `running` before each attempt
+            ended = "attempts" in d
+            f.state = str(d.get("state") or "running") if ended else "running"
+            f.why = fork_why(d.get("why")) if ended else ""
             f.lines = d.get("lines")
         elif r["kind"] == "attempt" and f is not None:
             f.state, f.why = "running", ""
         elif r["kind"] == "picked":
             t.kept = (str(d.get("fork") or ""), " ".join(str(d.get("reason") or "").split()),
                       str(d.get("by") or ""))  # fmt: skip
+
+
+REFUSED_AFTER = re.compile(r"^\d+ attempts?, the last one refused: ")  # the run's count, said on its own
+
+
+def fork_why(why) -> str:
+    """How a fork ended, in the words of its first line: without the run's count of its attempts and the
+    colon its check's output came after, as `graphene node show` says it."""
+    first = (str(why or "").splitlines() or [""])[0]
+    return " ".join(REFUSED_AFTER.sub("", first).rstrip(":").split())[:SAYS]
 
 
 def fork_moves(store, m: Model, t: Task, node: P.Node) -> None:
@@ -375,13 +390,18 @@ def told(store, t: Task, node: P.Node, by_id: dict[str, P.Node], items: dict[str
     on = {None, node.id, *(a.id for a in P.above(node, by_id))}
     since = node.started_at or ""
     heard: dict[str, float] = {}
+    forks: dict[str, set[str]] = {}  # the forks that heard it, when a forked hold's did
     for r in recent(store, t.id, ("told",)):
         for item_id in r["detail"].get("items") or []:
-            if item_id in items and item_id not in heard:
-                heard[item_id] = epoch(r["timestamp"])
+            if item_id in items:
+                heard.setdefault(item_id, epoch(r["timestamp"]))
+                if r["detail"].get("fork"):
+                    forks.setdefault(item_id, set()).add(str(r["detail"]["fork"]))
     for item_id, when in heard.items():
         it = items[item_id]
         t.told.append((" ".join(B.said(it).split()), epoch(it["updated_at"]), when))
+        if item_id in forks:
+            t.heard_by[epoch(it["updated_at"])] = len(forks[item_id])
     ledger = set(json.loads(store.meta(f"told:{node.session_id}:{node.id}:{node.started_at}") or "[]"))
     for it in items.values():
         key = f"{it['id']}@{it['rev']}"

@@ -59,8 +59,11 @@ def test_a_hold_that_forked_has_a_fork_a_letter_each_with_its_own_moves_and_verd
     row(repo, "did", {"attempt": 1, "tool": "Edit", "target": "api.py", "verb": "editing"}, 60, "b")
     row(repo, "did", {"attempt": 1, "tool": "Bash", "target": "pytest -q", "verb": "running"}, 50, "b")
     row(repo, "said", {"attempt": 1, "text": "the ids are strings"}, 40, "b")
-    row(repo, "fork", {"of": 3, "state": "passed", "why": "", "lines": 31, "with": "claude:opus"}, 30, "b")
-    row(repo, "fork", {"of": 3, "state": "gave up", "why": "it needs db/models.py", "lines": 0}, 20, "c")
+    # the run's row as a fork ends counts its attempts
+    row(repo, "fork", {"of": 3, "state": "passed", "why": "", "lines": 31, "with": "claude:opus",
+                       "attempts": 1}, 30, "b")  # fmt: skip
+    row(repo, "fork", {"of": 3, "state": "gave up", "why": "it needs db/models.py", "lines": 0,
+                       "attempts": 1}, 20, "c")  # fmt: skip
     row(repo, "did", {"attempt": 1, "tool": "Read", "target": "schema.py", "verb": "reading"}, 5, "a")
     m = look(repo)
     t = m.tasks["ids"]
@@ -154,8 +157,8 @@ def test_git_is_asked_about_each_forks_own_tree_and_never_the_holds(repo):
 def test_the_fork_kept_is_read_from_the_picked_row_in_review_and_done(repo):
     plan_of(repo)
     forked(repo)
-    row(repo, "fork", {"of": 3, "state": "passed", "lines": 58}, 40, "a")
-    row(repo, "fork", {"of": 3, "state": "passed", "lines": 31}, 30, "b")
+    row(repo, "fork", {"of": 3, "state": "passed", "lines": 58, "attempts": 1}, 40, "a")
+    row(repo, "fork", {"of": 3, "state": "passed", "lines": 31, "attempts": 1}, 30, "b")
     row(repo, "picked", {"fork": "b", "of": 3, "by": "graphene", "reason": "31 lines against 58"}, 10)
     with Store.open(repo) as store:
         node = plan.get(store, "ids")
@@ -200,3 +203,48 @@ def test_a_note_every_fork_heard_is_one_line_heard_when_the_first_fork_heard_it(
     [(text, _sent, heard)] = t.told
     assert text == "keep the ids as strings" and heard > 0
     assert [e.text for e in t.events if e.kind == "you"] == ["“keep the ids as strings”"]
+
+
+def test_a_fork_whose_own_done_was_refused_works_on_and_reads_as_running_with_its_moves(repo):
+    """The seam review of 20 October: a fork's own `graphene node done` that is refused writes a `fork` row,
+    refused, and the agent goes on in the same attempt; the cockpit drew it as ended, its moves hidden. Only
+    the run's row as a fork ends (it counts the fork's attempts) ends it on the screen."""
+    plan_of(repo)
+    forked(repo)
+    row(repo, "attempt", {"attempt": 1, "of": 3}, 80, "b")
+    refused = "ids is not done: `grep -q ids api.py` failed"
+    row(repo, "fork", {"of": 3, "state": "refused", "why": f"{refused}:"}, 60, "b")  # its own done, going on
+    row(repo, "did", {"attempt": 1, "tool": "Edit", "target": "api.py", "verb": "editing"}, 50, "b")
+    b = look(repo).tasks["ids"].forks[1]
+    assert (b.state, b.why) == ("running", "") and [e.path for e in b.events] == ["api.py"]
+    why = f"1 attempt, the last one refused: {refused}:\nexit 1, no output"
+    row(repo, "fork", {"of": 3, "state": "refused", "lines": 2, "attempts": 1, "why": why}, 10, "b")
+    b = look(repo).tasks["ids"].forks[1]
+    assert (b.state, b.why) == ("refused", refused)  # as `graphene node show` says it
+
+
+def test_a_forks_write_into_another_copy_is_said_as_that_and_stops_nothing_in_its_scope(repo):
+    """A fork's write into another fork's copy is refused by the gate as another copy's; the cockpit read its
+    `denied` row as the scope stopping api.py, which is in the scope, with `w widen` for it."""
+    plan_of(repo)
+    forked(repo)
+    row(repo, "attempt", {"attempt": 1, "of": 3}, 80, "a")
+    with Store.open(repo) as store:
+        store.log_node("ids", ago(40), "denied", "gate", SESSIONS["a"], None,
+                       {"path": "api.py", "how": "Edit", "fork": "a", "copy": True})  # fmt: skip
+    t = look(repo).tasks["ids"]
+    a = t.forks[0]
+    assert [e.text for e in a.events] == ["stopped writing api.py in another copy"]
+    assert a.stopped == [] and t.stopped == []
+
+
+def test_a_note_heard_by_some_forks_says_by_how_many(repo):
+    plan_of(repo)
+    forked(repo)
+    with Store.open(repo) as store:
+        note = board.note(store, "keep the ids as strings", ALEX, about="ids")
+    for seconds, letter in ((30, "a"), (20, "b")):
+        row(repo, "told", {"items": [note["id"]], "how": "write"}, seconds, letter)
+    t = look(repo).tasks["ids"]
+    [(_text, sent, _heard)] = t.told
+    assert t.heard_by == {sent: 2}

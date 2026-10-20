@@ -175,7 +175,8 @@ class Doer:
             self.say(f"f forks a task still to do, and this one is {t.state}")
             return
         n = m.forks if m.forks >= 2 else 3
-        if self.run(["node", "set", t.id, "--forks", str(n)]):  # refused (no check to keep one by): said why
+        done = f"{n} agents at once on it from now, and its check keeps one"
+        if self.run(["node", "set", t.id, "--forks", str(n)], done):  # refused (no check): said why
             return
         self.run_ready(t.id)
 

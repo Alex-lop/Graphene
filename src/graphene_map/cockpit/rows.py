@@ -322,7 +322,9 @@ def kept_said(kept: tuple[str, str, str], then: str = " · ") -> str:
     """The fork that landed, in one line: its letter, ``then`` the rule's reason, or that the person picked
     it (the news, whose items ` · ` parts, says `kept b: …`)."""
     letter, reason, by = kept
-    return f"kept {letter}" + (f"{then}{reason}" if reason else f"{then}your pick" if by == "person" else "")
+    if by == "person":  # the record names them; this screen says you
+        return f"kept {letter}{then}your pick"
+    return f"kept {letter}" + (f"{then}{reason}" if reason else "")
 
 
 def fork_line(m: Model, t: Task, f: Fork, room: int) -> list[Seg]:
@@ -355,14 +357,15 @@ def expansion(m: Model, t: Task, width: int) -> list[Line]:
     for line in moves:
         style = "#e76f51" if line.startswith("stopped") else "grey70"
         out.append(Line([Seg("      ┊ ", "grey35"), Seg(fit(line, width - 10), style)], t.id))
-    for text, _sent, heard in t.told[-1:]:
+    for text, sent, heard in t.told[-1:]:
+        some = f"by {t.heard_by[sent]} of {len(t.forks)} " if t.forks and sent in t.heard_by else ""
         out.append(
             Line(
                 [
                     Seg("      ┊ ", "grey35"),
                     Seg(f"you “{fit(text, 40)}”  ", "#4cc9f0"),
                     Seg(
-                        "heard " + ago(m.clock - heard) + " ago"
+                        f"heard {some}" + ago(m.clock - heard) + " ago"
                         if heard
                         else ("sending…" if t.hears else "it reads this when it next starts"),
                         "#8ab17d" if heard else "grey50",

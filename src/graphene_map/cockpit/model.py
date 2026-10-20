@@ -65,6 +65,7 @@ class Task:
     forks: list[Fork] = field(default_factory=list)  # its hold forked: a fork each, in the order they started
     kept: tuple[str, str, str] | None = None  # the fork that landed: its letter, the reason, by whom
     told: list[tuple[str, float, float]] = field(default_factory=list)  # text, sent, heard (0 = not yet)
+    heard_by: dict[float, int] = field(default_factory=dict)  # a note (when sent) -> how many forks heard it
     note: str = ""  # why it came back
     full: str = ""  # the title as the plan says it
     why: str = ""  # the path down from the goal

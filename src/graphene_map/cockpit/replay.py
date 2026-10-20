@@ -26,7 +26,7 @@ from .help import GROUPS, Help
 from .lines import fit
 from .look import short
 from .model import Model
-from .read import OURS, epoch, read
+from .read import OURS, epoch, fork_why, read
 from .rows import FORK_WORD, kept_said
 
 REFUSED = "a replay: nothing runs here"
@@ -109,14 +109,14 @@ def news(line: dict, titles: dict[str, str] | None = None, names: dict[str, str]
             moves.add(len(said))
             said.append(f"{who}: {words(d.get('text'))}")
         elif kind == "denied" and d.get("path"):
-            said.append(f"{who}: stopped writing {d['path']}")
+            said.append(f"{who}: stopped writing {d['path']}" + (" in another copy" if d.get("copy") else ""))
         elif kind == "forked":
             said.append(f"{title} forked {d.get('of') or len(d.get('forks') or [])} ways")
-        elif kind == "fork" and fork and d.get("state") == "passed":
+        elif kind == "fork" and fork and "attempts" in d and d.get("state") == "passed":  # as the fork ended
             said.append(f"{who}: its check passed" + (f", {d['lines']} lines" if d.get("lines") else ""))
-        elif kind == "fork" and fork and d.get("state") not in (None, "running"):
+        elif kind == "fork" and fork and "attempts" in d and d.get("state") not in (None, "running"):
             state = FORK_WORD.get(d["state"], d["state"])
-            said.append(f"{who}: {state}" + (f": {item(d['why'])}" if d.get("why") else ""))
+            said.append(f"{who}: {state}" + (f": {item(fork_why(d['why']))}" if d.get("why") else ""))
         elif kind == "picked":  # as the run says it: `greet kept b: …`
             said.append(f"{title} " + kept_said((str(d.get("fork") or ""), item(d.get("reason")),
                                                   str(d.get("by") or "")), ": "))  # fmt: skip

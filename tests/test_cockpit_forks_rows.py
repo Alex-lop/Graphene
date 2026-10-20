@@ -126,3 +126,14 @@ def test_the_cockpit_stays_light_at_80_columns_with_a_forked_agent_open():
     tokens = " ".join(plain(rows.build_cockpit(forked(), 80))).split()
     words = sum(1 for t in tokens if any(c.isalnum() for c in t))
     assert words <= 110, words
+
+
+def test_a_note_to_a_forked_task_says_how_many_of_its_forks_heard_it_and_the_persons_pick_is_theirs():
+    m = forked()
+    ids = m.tasks["ids"]
+    ids.told = [("keep the ids as strings", m.clock - 30, m.clock - 20)]
+    ids.heard_by = {m.clock - 30: 2}
+    said = [line.split("┊ ", 1)[1].rstrip() for line in plain(lines_of(m, 120)) if "┊ you" in line]
+    assert said == ["you “keep the ids as strings”  heard by 2 of 3 20s ago"]
+    ids.state, ids.kept = "done", ("c", "picked by alex", "person")  # the engine's own words for it
+    assert plain(lines_of(m, 120))[1].split("┊ ", 1)[1].rstrip() == "kept c · your pick"

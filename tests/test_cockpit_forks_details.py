@@ -50,10 +50,11 @@ def test_the_record_pane_has_the_forks_table_and_which_was_kept_when_the_hold_fo
         said = pane_text(store, repo, "ids", "record", 100).plain
         assert said.rstrip().endswith("kept b · 31 lines against 58")
         store.log_node("ids", plan._now(), "fork", "run:claude", None, None,
-                       {"fork": "c", "of": 3, "state": "stopped", "why": "b passed first", "with": "codex"})
+                       {"fork": "c", "of": 3, "state": "stopped", "why": "b passed first", "with": "codex",
+                        "attempts": 1})
         said = pane_text(store, repo, "ids", "record", 100).plain
         table = [line.split() for line in said.split("\nforks\n")[1].splitlines()]
-        assert table[3] == ["c", "codex", "ended"]  # the run ended it: `stopped` is the gate's word
+        assert table[3] == ["c", "codex", "1", "ended"]  # the run ended it: `stopped` is the gate's word
 
 
 def test_the_forks_table_fits_the_pane_when_a_fork_runs_with_a_command(repo):
@@ -94,8 +95,9 @@ def test_the_news_names_a_fork_by_its_agents_number_and_its_letter_and_says_what
     assert news(line, GREET) == " · ".join(by_title)
     line = {"node_log": [row("greet", "forked", forks=["a", "b", "c"], of=3)]}
     assert news(line, GREET, names) == "greet says hello forked 3 ways"
-    line = {"node_log": [row("greet", "fork", fork="b", of=3, state="passed", lines=31),
-                         row("greet", "fork", fork="a", of=3, state="gave up", why="it needs words.py"),
+    line = {"node_log": [row("greet", "fork", fork="b", of=3, state="passed", lines=31, attempts=1),
+                         row("greet", "fork", fork="a", of=3, state="gave up", why="it needs words.py",
+                             attempts=1),
                          row("greet", "fork", fork="c", of=3, state="running")]}  # fmt: skip
     said = "agent 3b: its check passed, 31 lines · agent 3a: gave up: it needs words.py"
     assert news(line, GREET, names) == said  # a fork still running is bookkeeping; ` · ` parts the items
@@ -103,7 +105,7 @@ def test_the_news_names_a_fork_by_its_agents_number_and_its_letter_and_says_what
     assert news(line, GREET, names) == "greet says hello kept b: 31 lines against 58"
     reason = "passes a's tests (a fails b's) · 31 lines against 58"  # the rule's own ` · ` reads as a comma
     line = {"node_log": [row("greet", "picked", fork="b", of=3, by="graphene", reason=reason),
-                         row("greet", "fork", fork="c", of=3, state="gave up", why="needs x · y"),
+                         row("greet", "fork", fork="c", of=3, state="gave up", why="needs x · y", attempts=1),
                          row("greet", "did", verb="editing", target="app.py", fork="a")]}  # fmt: skip
     said = "greet says hello kept b: passes a's tests (a fails b's), 31 lines against 58"
     assert news(line, GREET, names) == said + " · agent 3c: gave up: needs x, y · agent 3a: editing app.py"
@@ -111,6 +113,7 @@ def test_the_news_names_a_fork_by_its_agents_number_and_its_letter_and_says_what
     assert news(line, GREET, names) == "greet says hello kept a: your pick"
     nemotron = {"node_log": [row("greet", "fork", fork=1, of=2, state="passed", why="")]}  # numbered: as was
     assert news(nemotron, GREET, names) == ""
-    line = {"node_log": [row("greet", "fork", fork="c", of=3, state="stopped", why="b passed first"),
+    line = {"node_log": [row("greet", "fork", fork="c", of=3, state="stopped", why="b passed first",
+                             attempts=1),
                          row("greet", "denied", path="words.py", fork="a")]}  # fmt: skip
     assert news(line, GREET, names) == "agent 3c: ended: b passed first · agent 3a: stopped writing words.py"
