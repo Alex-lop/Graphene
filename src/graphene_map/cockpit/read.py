@@ -419,7 +419,7 @@ def touched_by_git(store, m: Model, t: Task, node: P.Node) -> None:
     if not t.forks:
         t.touched, t.outside = asked(store, m, node, t.id, node.checkout, node.dirty_at_start, t.touched)
         return
-    forked = getattr(node, "forked", None) or {}  # the engine's field: it lands with its lane
+    forked = node.forked  # each fork's session -> its letter and its tree, while the forks work
     t.touched, t.outside = {}, []
     for f in t.forks:
         tree = (forked.get(f.session) or {}).get("tree")

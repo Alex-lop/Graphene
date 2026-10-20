@@ -44,11 +44,9 @@ def count(tasks: list[Task]) -> str:
 
 
 def badge(t: Task) -> str:
-    """The number its agent goes by; while its hold's forks run (`Task.forks`, the rows' field, read softly so
-    the graph draws without it), `3 ×3`: three agents on it at once, until one is kept and the task is in
-    review or done."""
-    forks = getattr(t, "forks", None)
-    return f"{t.agent} ×{len(forks)}" if t.agent and forks and t.state == "running" else t.agent
+    """The number its agent goes by; while its hold's forks run (`Task.forks`), `3 ×3`: three agents on it at
+    once, until one is kept and the task is in review or done."""
+    return f"{t.agent} ×{len(t.forks)}" if t.agent and t.forks and t.state == "running" else t.agent
 
 
 def head(k: int, tasks: list[Task]) -> str:

@@ -3,7 +3,6 @@
 verdict, from the rows `graphene run --forks` writes (SPEC section 5), on a store with no engine behind it."""
 
 import subprocess
-from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
 from test_plan_cli import repo  # noqa: F401  (fixture)
@@ -126,14 +125,6 @@ def test_a_forks_window_is_its_own_so_another_forks_flood_of_rows_never_hides_it
     assert len(b.events) == RD.ROWS and c.idle is not None and 885 <= c.idle <= 895
 
 
-@dataclass
-class Forked(plan.Node):
-    """A Node with the engine's hold field: each fork's session, with its letter and its tree. The engine's
-    lane adds it to `plan.Node`; the reader takes it by name, so the lanes merge in any order."""
-
-    forked: dict = field(default_factory=dict)
-
-
 def test_git_is_asked_about_each_forks_own_tree_and_never_the_holds(repo):
     """The forks work in their own trees (`.graphene/worktrees/<id>.<letter>`) and the hold's tree is
     untouched: asked about that one, git filled in nothing a fork's rows had lost, and would have counted a
@@ -151,7 +142,8 @@ def test_git_is_asked_about_each_forks_own_tree_and_never_the_holds(repo):
     t = m.tasks["ids"]
     theirs = {SESSIONS[x]: {"fork": x, "tree": str(trees[x])} for x in "ab"}
     with Store.open(repo) as store:
-        held = Forked(**plan.to_dict(plan.get(store, "ids")), forked=theirs)
+        held = plan.get(store, "ids")
+        held.forked = theirs  # as `run._forked` sets it while its forks work
         RD.touched_by_git(store, m, t, held)
     a, b, c = t.forks
     assert list(a.touched) == ["api.py"] and list(b.touched) == ["schema.py"]
