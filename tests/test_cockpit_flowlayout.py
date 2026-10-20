@@ -214,3 +214,37 @@ def test_a_lanes_label_ends_before_a_line_crossing_its_rule_so_the_crossing_show
         x = rows[rule - 1].index("║")  # the chain, running down from a across y's rule to b
         assert rows[rule][x] == "╫" and rows[rule + 1][x] == "║", rows[rule]
         assert rows[rule].startswith(rule_starts), rows[rule]  # cut before the crossing, or whole up to it
+
+
+JOINS = set("┬┴├┤┼╦╩╠╣╬╤╧╞╡╪╥╨╟╢╫")  # where one line meets another
+
+
+def test_two_edges_that_cross_between_lanes_never_merge_at_a_corner():
+    """Lane x holds a and a2 (needs b); lane y holds b and c (needs a). Each source sat on the row of the
+    other edge's target, so a's line to c ran through the corner where b's double edge turned toward a2,
+    and the row read `║ upper one ║─╦╤═▶│ upper two │`: a feeding a2, which is false. Now one of the pair
+    jogs through a second channel in a row between, where it crosses the other, and nothing joins a line
+    between its box and its turn."""
+    nodes = [GNode("a", "upper one", lane="x"), GNode("a2", "upper two", lane="x"),
+             GNode("b", "lower", lane="y"), GNode("c", "lower two", lane="y")]  # fmt: skip
+    edges = [GEdge("b", "a2", double=True), GEdge("a", "c")]
+    lay = F.layout(nodes, edges, label_w=12, lanes=[F.Lane("x", "x"), F.Lane("y", "y")])
+    rows = lay.text().splitlines()
+    for src, dst in (("a", "a2"), ("b", "c")):  # a source's row: from its box to the next box, no join
+        _x0, y0, x1, y1 = lay.rects[src]
+        between = rows[(y0 + y1) // 2][x1 + 1 : lay.rects[dst][0]]
+        assert "▶" in between and not set(between) & JOINS, rows[(y0 + y1) // 2]
+    ya = sum(lay.rects["a"][1::2]) // 2
+    assert "╫" in rows[ya + 1] and lay.text().count("▶") == 2  # the jog crosses the double edge under a's row
+
+
+def test_on_a_shared_row_a_line_leaving_its_box_turns_before_one_arriving_at_the_next_box():
+    """On web app 1's row, api 1's line joined from above before web app 1's branch left for docs 2, read
+    `─┴┬─▶`: whether the branch carried api 1's line was anyone's guess. The branch turns first, `─┬┴─▶`."""
+    nodes = [GNode("p", "api 1", lane="w"), GNode("a", "web app 1", lane="x"),
+             GNode("b", "web app 2", lane="x"), GNode("d", "docs 2", lane="y")]  # fmt: skip
+    edges = [GEdge("p", "b"), GEdge("a", "b"), GEdge("a", "d")]
+    lanes = [F.Lane("w", "w"), F.Lane("x", "x"), F.Lane("y", "y")]
+    rows = F.layout(nodes, edges, label_w=12, lanes=lanes).text().splitlines()
+    row = next(r for r in rows if "web app 1" in r)
+    assert "┬┴" in row and "┴┬" not in row, row

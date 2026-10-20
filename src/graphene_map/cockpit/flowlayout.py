@@ -3,7 +3,9 @@
 Left to right: a node's layer is its longest path from a source (or pinned by the caller, so a part of a
 graph keeps the whole's columns); order inside a layer comes from a few barycentre sweeps; edges are
 right-angled and run in channels between layers, so a crossing is a `┼` and a fan-out is a trunk with
-branches. An edge that would close a cycle (found by a depth-first search, or declared `loop`) is a "back
+branches; on a row a line leaving its box turns before one arriving does, and of two that each leave on
+the row the other arrives at one jogs through a second channel, so no line is joined by a stranger's
+corner. An edge that would close a cycle (found by a depth-first search, or declared `loop`) is a "back
 edge": it leaves the right of its source, drops to a row under every node, runs back and comes in at the
 left of its target, so no line ever crosses a box. A `two` edge has an arrowhead at both ends; a `double`
 edge is drawn in double lines, and where it meets a single one the join says which is which (`╢ ╧ ╫`).
@@ -19,6 +21,7 @@ from __future__ import annotations
 
 import textwrap
 from dataclasses import dataclass, field
+from itertools import count
 
 from rich.cells import cell_len
 
@@ -366,33 +369,59 @@ def _draw(
         y[n] -= low
     body = max(y[n] + hgt(n) for n in y)
 
-    # -- channels: each gap between layers gets one channel per overlapping vertical run
-    pieces: dict[int, list[tuple[int, int, str, str]]] = {}  # gap -> (y from, y to, src node, dst node)
-    for _, chain in chains:
+    # -- channels: each gap between layers gets one channel per overlapping vertical run. On a row, a line
+    # leaving its box turns before one arriving at the next box does, so no line is joined by a stranger's
+    # corner; two that each leave on the row the other arrives at cannot both, so one jogs through a second
+    # channel in a row between, where it crosses the other.
+    pieces: dict[int, list[tuple]] = {}  # gap -> (y from, y to, src, dst, on the chain, the edge's piece)
+    for e, chain in chains:
         for a, b in zip(chain, chain[1:], strict=False):
             ya, yb = int(mid(a)), int(mid(b))
-            pieces.setdefault(layer_of(a, layer, chain), []).append((ya, yb, a, b))
+            pieces.setdefault(layer_of(a, layer, chain), []).append((ya, yb, a, b, e.double, (a, b)))
     back_runs = [(e, k) for k, e in enumerate(back)]
     under_y = {k: body + 1 + k for _, k in back_runs}  # one row under the boxes for each back edge
-    channels: dict[int, dict[tuple[str, str], int]] = {}
+    channels: dict[int, dict[tuple[str, str], list[tuple[int, int]]]] = {}  # piece -> runs: channel, row to
     used: dict[int, int] = {}
+    rules = set(rule_y.values())
+
+    def before(q: tuple, p: tuple) -> bool:  # q leaves on the row p arrives at: q turns first, to the left
+        return q[0] == p[1] and q[2] != p[3]  # unless q is p's own second half, which starts where p ends
+
     for gap, items in pieces.items():
-        channels[gap] = {}
-        placed: list[tuple[int, int, str, str, int]] = []
-        for ya, yb, a, b in sorted(items, key=lambda t: (min(t[0], t[1]), max(t[0], t[1]))):
-            if ya == yb:
-                channels[gap][(a, b)] = -1  # straight across: no channel
-                continue
+        runs = channels[gap] = {key: [] for *_, key in items}  # straight across: no channel
+        left = sorted((p for p in items if p[0] != p[1]), key=lambda t: (min(t[0], t[1]), max(t[0], t[1])))
+        mids = {y for ya, yb, *_ in items for y in (ya, yb)}
+        placed: list[tuple[tuple, int]] = []
+        while left:
+            p = next((p for p in left if not any(before(q, p) for q in left)), None)
+            if p is None:  # each leaves where another arrives: one of the cycle, not the chain if it can be
+                seen, p = [], left[0]  # helped, jogs in a row no line ends on
+                while p not in seen:
+                    seen.append(p)
+                    p = next(q for q in left if before(q, p))
+                cycle = seen[seen.index(p) :]
+                p = next((q for q in cycle if not q[4]), cycle[0])
+                ya, yb, a, b, dbl, key = p
+                step = 1 if yb > ya else -1
+                ym = next((y for y in range(ya + step, yb, step) if y not in mids | rules), None)
+                if ym is not None:
+                    at, joint = left.index(p), f"~{a}:{b}"
+                    left[at : at + 1] = [(ya, ym, a, joint, dbl, key), (ym, yb, joint, b, dbl, key)]
+                    mids.add(ym)
+                    continue
+            ya, yb, a, b, _, key = p
             lo, hi = min(ya, yb), max(ya, yb)
             taken = {
                 ch
-                for plo, phi, pa, pb, ch in placed
-                if not (hi < plo or phi < lo) and not (pa == a or pb == b)  # a trunk is shared by one end
-            }
-            ch = next(k for k in range(len(items) + 1) if k not in taken)
-            placed.append((lo, hi, a, b, ch))
-            channels[gap][(a, b)] = ch
-        used[gap] = 1 + max((v for v in channels[gap].values()), default=-1)
+                for q, ch in placed
+                if not (hi < min(q[:2]) or max(q[:2]) < lo) and not (q[2] == a or q[3] == b)  # a trunk is
+            }  # shared by one end
+            floor = 1 + max((ch for q, ch in placed if before(q, p)), default=-1)
+            ch = next(k for k in count(floor) if k not in taken)
+            placed.append((p, ch))
+            runs[key].append((ch, yb))
+            left.remove(p)
+        used[gap] = 1 + max((ch for r in runs.values() for ch, _ in r), default=-1)
     # back edges: down in the gap after the source's layer, up in the gap before the target's
     back_channel: dict[tuple[int, int], int] = {}
     for e, k in back_runs:
@@ -474,11 +503,11 @@ def _draw(
         pts.append((sx, int(mid(first))))
         for a, b in zip(chain, chain[1:], strict=False):
             gap = layer[first] + chain.index(a)
-            ch = channels[gap][(a, b)]
             ya, yb = int(mid(a)), int(mid(b))
-            if ch >= 0:
+            for ch, yy in channels[gap][(a, b)]:  # down or up its channel; two of them with a jog between
                 cx = channel_x(gap, ch)
-                pts += [(cx, ya), (cx, yb)]
+                pts += [(cx, ya), (cx, yy)]
+                ya = yy
             if b in boxes:
                 pts.append((x_of(b) - 2, yb))
             else:  # through a dummy: across its layer
