@@ -762,10 +762,10 @@ def _attempts(
                 if current.state != P.RUNNING:  # the leaf was let go under its forks: the hold says by whom
                     return {"how": "back"}
                 last = P.fork_row(store, current, b) or {}
-                if last.get("state") in ("passed", "gave up"):  # its own `done` passed, or it gave up
-                    return {"how": last["state"], "why": last.get("why", ""), "attempts": attempt,
+                if last.get("state") == "gave up":
+                    return {"how": "gave up", "why": last.get("why", ""), "attempts": attempt,
                             "wants": last.get("wants") or [], "dollars": spent}  # fmt: skip
-                try:
+                try:  # its own `done` may have passed, and it may have written since: judged as it stands
                     P.judge_fork(store, node.id, who, (session, {"fork": b, "tree": str(tree)}))
                     return {"how": "passed", "attempts": attempt, "dollars": spent}
                 except P.Refused as no:

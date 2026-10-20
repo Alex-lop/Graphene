@@ -63,6 +63,22 @@ if test:
 """
 TEST = ("import os, sys\nsys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))\n"
         "from api import users\nassert isinstance(users(), list)\n")
+CLI = "import sys; from graphene_map.cli import app; sys.argv[0] = 'graphene'; app()"
+# b's own `done` passes, then b writes again and breaks it (it is told to call done as often as it needs);
+# c passes with the larger change; a fails
+STALE = f"""
+import os, pathlib, subprocess, sys
+fork = os.environ["GRAPHENE_FORK"]
+LARGE = ("import os\\n\\n\\ndef users():\\n    found = ids\\n    return found\\n\\n\\n"
+         "def more():\\n    return 1\\n")
+body = {{"a": "def users():\\n    return [0]\\n", "b": "def users():\\n    return ids\\n", "c": LARGE}}
+pathlib.Path("api.py").write_text(body[fork])
+if fork == "b":
+    out = subprocess.run([sys.executable, "-c", {CLI!r}, "node", "done", os.environ["GRAPHENE_NODE"]],
+                         capture_output=True, text=True)
+    assert out.stdout.startswith("the check passed in this fork (fork b of 3)"), out.stdout + out.stderr
+    pathlib.Path("api.py").write_text("def users():\\n    return [0]\\n")  # broken again, after its done
+"""
 
 
 def executor(repo, source: str) -> str:
@@ -86,8 +102,25 @@ def rows(store, kind):
 
 def go(repo, source, said, **kw):
     command = executor(repo, source)
-    return R.run_parallel(lambda: Store.open(repo), repo, repo, 1, command, attempts=1, say=said.append,
-                          logs=repo / ".graphene" / "runs", **kw)  # fmt: skip
+    return R.run_parallel(lambda: Store.open(repo), repo, repo, 1, command, attempts=kw.pop("attempts", 1),
+                          say=said.append, logs=repo / ".graphene" / "runs", **kw)  # fmt: skip
+
+
+def seed(repo, monkeypatch, **extra) -> str:
+    """api.py and notes.txt committed, the leaf proposed; the base commit."""
+    monkeypatch.setenv("FORKS_LOG", str(repo.parent / "forks.log"))
+    (repo / "api.py").write_text("def users():\n    return []\n")
+    (repo / "notes.txt").write_text("to go\n")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", "api")
+    with Store.open(repo) as store:
+        plan.propose(store, [users_leaf(**extra)], ALEX)
+    return git(repo, "rev-parse", "HEAD").strip()
+
+
+def last_rows(store) -> dict[str, dict]:
+    """Each fork's last `fork` row: how it ended."""
+    return {e["detail"]["fork"]: e["detail"] for e in rows(store, "fork")}
 
 
 def test_three_forks_run_at_once_one_is_kept_and_lands_as_one_merge(repo, monkeypatch):
@@ -185,6 +218,28 @@ def test_three_forks_run_at_once_one_is_kept_and_lands_as_one_merge(repo, monkey
     assert " notes.txt |" in person("node", "diff", "n1", "--fork", "c", "--stat").stdout  # its deletion
     said = person("node", "diff", "n1", "--fork", "z")
     assert said.exit_code == 1 and "n1 forked 3 ways (a, b, c): it has no fork z" in said.output
+
+
+def test_a_forks_own_pass_is_judged_again_when_its_executor_ends(repo, monkeypatch):
+    """b's `done` passed, then b wrote again and broke it: its tree is judged as it stands when its executor
+    ends, so the pass it once had is not what the rule reads, and c's good work lands."""
+    seed(repo, monkeypatch)
+    said: list[str] = []
+    done = go(repo, STALE, said, forks=R.Forks(3))
+    assert [n.id for n in done] == ["n1"] and states(repo) == {"n1": DONE}, said
+    with Store.open(repo) as store:
+        last = last_rows(store)
+        assert {b: f["state"] for b, f in last.items()} == {"a": "refused", "b": "refused", "c": "passed"}
+        assert last["b"]["why"].startswith("1 attempt, the last one refused: n1 is not done: `grep -q ids "
+                                           "api.py` failed")  # fmt: skip
+        b = [e["detail"]["state"] for e in rows(store, "fork") if e["detail"]["fork"] == "b"]
+        assert b == ["running", "passed", "refused", "refused"]  # its own done, then the end's own look
+        [picked] = rows(store, "picked")
+        assert picked["detail"]["fork"] == "c"
+        assert picked["detail"]["reason"] == "the only fork whose check passed"
+    assert "n1 fork b: attempt 1 refused: n1 is not done: `grep -q ids api.py` failed" in said, said
+    assert f"n1 kept c of 3: the only fork whose check passed · {last['c']['lines']} lines" in said
+    assert (repo / "api.py").read_text().startswith("import os\n")
 
 
 def test_a_person_picks_another_fork_of_a_leaf_in_review_and_the_sign_off_lands_it(repo, monkeypatch):
