@@ -76,20 +76,30 @@ def test_the_key_bar_offers_f_on_a_ready_or_came_back_task_and_the_digits_on_a_f
         m = scene()
         m.tasks["tests"].state = "ready"
         m.tasks["migrate"].forks = [Fork("a", "passed"), Fork("b", "passed")]  # in review, forked
+        m.tasks["back"] = Task("back", "retry it", "came back", agent="3", offers={"w": ["node", "widen"]})
+        every = {k: ["node", k] for k in "wbnr"}
+        m.tasks["more"] = Task("more", "retry more", "came back", agent="4", offers=every)
         app = Cockpit(lambda previous: previous or m, root=tmp_path)
-        async with app.run_test(size=(100, 30)):
+        async with app.run_test(size=(120, 30)):
             for sel, own in (
                 ("tests", "r run · f fork · R run ready · t tell · i details"),
                 ("migrate", "⏎ sign off · x reopen · 1-2 pick · i details"),
                 ("ids", "t tell · w widen · x hand back · i details"),  # running: no f
+                ("back", "⏎ try again · f fork · w widen · t tell · i details"),
             ):
                 m.selected = sel
                 app.paint()
                 keys = str(app.query_one("#keys", Static).render()).strip()
                 assert keys == own + " · g graph · m map · ? keys · q", sel
-            m.selected = "tests"  # at 80 columns the ready row's bar gives up a screen's key, never f
-            narrow = "r run · f fork · R run ready · t tell · i details · g graph · ? keys · q"
-            assert fit_keys(app.row_keys(), 79) == narrow
+            # at 80 columns a bar that does not fit gives up f first: every key it said before forks, it
+            # still says (the usual came-back bar is whole, as it was), and `?` says f
+            for sel, narrow in (
+                ("tests", "r run · R run ready · t tell · i details · g graph · m map · ? keys · q"),
+                ("back", "⏎ try again · w widen · t tell · i details · g graph · m map · ? keys · q"),
+                ("more", "⏎ try again · w widen · b new task · n wait · r reopen · t tell · ? keys · q"),
+            ):
+                m.selected = sel
+                assert fit_keys(app.row_keys(), 79) == narrow, sel
 
     asyncio.run(go())
 
