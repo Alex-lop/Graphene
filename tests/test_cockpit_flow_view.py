@@ -4,7 +4,7 @@ from cockpit_scene import scene
 
 from graphene_map.cockpit import flow_view as FV
 from graphene_map.cockpit import flowlayout as F
-from graphene_map.cockpit.model import Task
+from graphene_map.cockpit.model import Model, Task
 
 
 def test_the_graph_has_a_box_for_each_task_an_arrow_for_each_need_and_the_goal_last_where_the_rest_arrive():
@@ -203,3 +203,91 @@ def test_a_plan_with_no_tasks_has_no_graph_and_says_so_in_one_line():
     lines, lay, note = FV.build_flow(FV.Graph(), 80, None)
     assert [line.plain() for line in lines] == [" " + FV.EMPTY] and lines[0].width() <= 78
     assert FV.EMPTY.startswith("Nothing is planned yet") and lay.width == 0 and note == ""
+
+
+# -- small plans, drawn whole ---------------------------------------------------------------------------
+
+
+def plan(goal: str = "ship it") -> Model:
+    return Model(goal)
+
+
+def drawn(m, width: int, selected: str):
+    lines, lay, note = FV.build_flow(FV.flow_graph(m), width, selected)
+    return lines, lay, note, "\n".join(line.plain() for line in lines)
+
+
+def test_one_task_is_a_box_and_a_double_arrow_into_the_goal_which_counts_it():
+    m = plan()
+    m.tasks["a"] = Task("a", "write it", "ready")
+    lines, lay, note, text = drawn(m, 80, "a")
+    assert lines[0].plain().startswith("  wave 1 · 1 task") and lines[0].plain().rstrip().endswith("goal")
+    assert "═▶│ ship it" in text and "└─ 0 of 1 ─┘" in text  # the goal's box, its count on its border
+    assert note == "" and set(lay.rects) == {"a"}
+
+
+def test_two_waves_are_two_columns_with_headers_and_the_chain_runs_through_both():
+    m = plan()
+    m.tasks["a"] = Task("a", "write the code", "done", agent="1")  # wide enough for their whole headers
+    m.tasks["b"] = Task("b", "test the code", "running", agent="2", needs=["a"])
+    lines, lay, _note, text = drawn(m, 80, "b")
+    assert lay.rects["a"][2] < lay.rects["b"][0]  # a's column before b's
+    head = lines[0].plain()
+    assert head.index("wave 1 · agent 1") < head.index("wave 2 · agent 2") < head.index("goal")
+    assert text.count("═▶") == 2 and "─▶" not in text  # a → b → goal, double all the way
+
+
+def test_two_lanes_are_two_rules_in_the_plans_order_each_over_its_tasks():
+    m = plan()
+    m.tasks["a"] = Task("a", "write it", "done", above=[("w", "writing")])
+    m.tasks["b"] = Task("b", "test it", "ready", above=[("t", "testing")])
+    m.tasks["c"] = Task("c", "test more", "ready", above=[("t", "testing")])
+    lines, lay, _note, _text = drawn(m, 80, "a")
+    rules = [(k, line.plain().rstrip()) for k, line in enumerate(lines) if line.plain().startswith("── ")]
+    assert [r.startswith("── writing ") for _, r in rules] == [True, False]
+    assert rules[0][1].endswith(" 1 of 1 ✓ ──") and rules[1][1].endswith(" 0 of 2 ──")
+    assert rules[0][0] < lay.rects["a"][1] < rules[1][0] < lay.rects["b"][1] < lay.rects["c"][1]
+
+
+def test_a_need_across_lanes_is_an_arrow_that_crosses_the_lower_lanes_rule():
+    m = plan()
+    m.tasks["a"] = Task("a", "write it", "done", above=[("w", "writing")])
+    m.tasks["b"] = Task("b", "test it", "ready", needs=["a"], above=[("t", "testing")])
+    lines, _lay, _note, _text = drawn(m, 80, "a")
+    rule = next(line.plain() for line in lines if line.plain().startswith("── testing "))
+    assert "╫" in rule  # the chain a → b → goal, double, crosses testing's rule on its way down
+
+
+def test_a_nested_sub_goals_lane_is_named_by_its_parent_and_comes_after_the_parents():
+    m = plan()
+    m.tasks["a"] = Task("a", "log in", "ready", above=[("api", "API"), ("auth", "Auth")])
+    m.tasks["b"] = Task("b", "list users", "ready", above=[("api", "API")])
+    lines, _lay, _note, _text = drawn(m, 80, "a")
+    rules = [line.plain() for line in lines if line.plain().startswith("── ")]
+    assert rules[0].startswith("── API ") and rules[1].startswith("── API › Auth ")
+
+
+def test_a_long_title_wraps_to_a_second_line_before_the_labels_shrink():
+    m = plan()
+    m.tasks["a"] = Task("a", "Render the invoice template with the customer's address", "ready")  # 55 cells
+    _lines, lay, _note, text = drawn(m, 160, "a")
+    _x0, y0, _x1, y1 = lay.rects["a"]
+    assert y1 - y0 == 3  # two lines of title between the borders
+    assert "Render the invoice template" in text and "customer's address" in text and "…" not in text
+
+
+def test_twelve_tasks_in_three_lanes_fit_80_columns_whole_with_short_headers():
+    m = plan("customers get their invoices by email")
+    for lane, name in [("api", "the API"), ("web", "the web"), ("docs", "the docs")]:
+        for j in range(4):
+            needs = [f"{lane}{j - 1}"] if j else []
+            needs += ["api1"] if (lane, j) == ("web", 2) else []  # a need across lanes
+            m.tasks[f"{lane}{j}"] = Task(f"{lane}{j}", f"{name} step {j + 1}", "ready", needs=needs,
+                                         above=[(lane, name)])  # fmt: skip
+    lines, lay, note, _text = drawn(m, 80, "web2")
+    assert all(line.width() <= 80 for line in lines) and note == "" and len(lay.rects) == 12
+    assert [line.plain()[:11] for line in lines if line.plain().startswith("── the ")] == [
+        "── the API ", "── the web ", "── the docs",
+    ]  # fmt: skip
+    head = lines[0].plain()
+    assert "wave 4" in head and head.rstrip().endswith("goal") and "tasks" not in head  # no room: first words
