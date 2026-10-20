@@ -39,6 +39,24 @@ def claude_lacks() -> str | None:
     return next((flag for flag in ("--max-budget-usd",) if flag not in done.stdout), None)
 
 
+def claude_blocks() -> bool:
+    """Whether this machine's Claude Code can refuse a tool call when its hook cannot run (`onFailure`,
+    hooks.BLOCKS_FROM); False when it is older, or when no claude answers."""
+    import re
+    import subprocess
+
+    from .hooks import BLOCKS_FROM
+
+    try:
+        done = subprocess.run(
+            ["claude", "--version"], stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=10
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    said = re.match(r"\s*(\d+)\.(\d+)\.(\d+)", done.stdout)
+    return not done.returncode and bool(said) and tuple(map(int, said.groups())) >= BLOCKS_FROM
+
+
 def build():
     import inspect
     import json
@@ -399,8 +417,9 @@ def build():
             say("this repo has no commit yet: a run cuts each leaf's worktree from HEAD, so commit once "
                 "first")  # fmt: skip
         say(chosen)
+        closed = terminal and claude_blocks()  # asked at a terminal only, as `claude --help` is
         try:
-            added = install_hooks(r)
+            added = install_hooks(r, closed)
         except ValueError as exc:
             fail(f"cannot update {SETTINGS}: {exc}", 1)
         settings = Path(os.path.relpath(hooks_file(r), Path.cwd()))
@@ -419,6 +438,9 @@ def build():
                 "each Claude Code session here is recorded on this machine only (its prompts, tool calls and "
                 "what they returned, the files it edits); `graphene init --remove` takes the hooks out"
             )
+            if closed:
+                say("the gate fails closed: when `graphene` cannot run, Claude Code here is refused each "
+                    "tool call until it can")  # fmt: skip
             if not shell_lists_enabled():
                 say(SHELL_LISTS_HINT)
             if terminal and (flag := claude_lacks()):  # at a terminal only: no test starts claude

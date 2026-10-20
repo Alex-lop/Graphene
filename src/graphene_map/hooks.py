@@ -37,6 +37,9 @@ HOOK_EVENTS = (
     "Stop",
 )
 HOOK_COMMAND = "graphene ingest hook"
+# Claude Code's `onFailure: "block"` (code.claude.com/docs/en/hooks): a PreToolUse hook that cannot start,
+# exits with an error or times out refuses the call instead of letting it through
+BLOCKS_FROM = (2, 1, 295)
 SETTINGS = ".claude/settings.local.json"  # personal; the team's settings.json is the committed one
 TEAM_SETTINGS = ".claude/settings.json"
 FILE_TOOLS = {"Edit", "Write", "MultiEdit", "NotebookEdit"}
@@ -461,11 +464,12 @@ def hooks_file(root: Path) -> Path:
     return next((root / n for n in (SETTINGS, TEAM_SETTINGS) if _holds_hook(root / n)), root / SETTINGS)
 
 
-def install_hooks(root: Path) -> list[str]:
+def install_hooks(root: Path, closed: bool = False) -> list[str]:
     """Merge our hook into the repo's settings file, keeping everything else. Returns events added.
 
     The local file when the repo has no hooks of ours yet, not settings.json: the hooks call a tool
-    installed on this machine, and the team's settings.json is the one people commit.
+    installed on this machine, and the team's settings.json is the one people commit. ``closed``: the
+    gate (PreToolUse) fails closed, ours added before included; for a Claude Code that knows `onFailure`.
     """
     path = hooks_file(root)
     settings = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
@@ -475,15 +479,21 @@ def install_hooks(root: Path) -> list[str]:
     if not isinstance(hooks, dict):
         raise ValueError(f"{path}: 'hooks' is not an object")
     added: list[str] = []
+    shut = False  # an install of ours from before, its gate now closed
     for event in HOOK_EVENTS:
         groups = hooks.setdefault(event, [])
         if not isinstance(groups, list):
             raise ValueError(f"{path}: hooks.{event} is not a list")
-        if any(_is_ours(h) for g in groups if isinstance(g, dict) for h in _handlers(g)):
+        gate = closed and event == "PreToolUse"
+        if ours := [h for g in groups if isinstance(g, dict) for h in _handlers(g) if _is_ours(h)]:
+            for h in ours if gate else []:
+                shut |= h.get("onFailure") != "block"
+                h["onFailure"] = "block"
             continue
-        groups.append({"hooks": [{"type": "command", "command": HOOK_COMMAND, "timeout": 5}]})
+        handler = {"type": "command", "command": HOOK_COMMAND, "timeout": 5}
+        groups.append({"hooks": [handler | ({"onFailure": "block"} if gate else {})]})
         added.append(event)
-    if added:
+    if added or shut:
         path.parent.mkdir(exist_ok=True)
         _write_atomically(path, json.dumps(settings, indent=2) + "\n")
         if path.name == Path(SETTINGS).name:

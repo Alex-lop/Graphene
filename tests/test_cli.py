@@ -261,3 +261,21 @@ def test_claude_lacks_names_the_first_flag_this_claude_code_does_not_list(tmp_pa
     assert claude_lacks() is None  # a claude that cannot print its help is not told to update
     monkeypatch.setenv("PATH", str(tmp_path / "nowhere"))
     assert claude_lacks() is None  # no claude here: nothing to update
+
+
+def test_claude_blocks_from_the_claude_code_that_knows_on_failure(tmp_path, monkeypatch):
+    """At a terminal init asks `claude --version`: from 2.1.295 the gate can fail closed."""
+    from graphene_map.cli import claude_blocks
+
+    claude = tmp_path / "claude"
+    monkeypatch.setenv("PATH", str(tmp_path))
+    for said, blocks in [("2.1.304 (Claude Code)", True), ("2.1.295 (Claude Code)", True),
+                         ("2.1.294 (Claude Code)", False), ("2.0.999", False), ("3.0.0", True),
+                         ("Claude Code", False)]:  # fmt: skip
+        claude.write_text(f"#!/bin/sh\necho '{said}'\n")
+        claude.chmod(0o755)
+        assert claude_blocks() is blocks, said
+    claude.write_text("#!/bin/sh\necho '2.1.304 (Claude Code)'\nexit 1\n")
+    assert claude_blocks() is False  # a claude that fails says nothing to go by
+    monkeypatch.setenv("PATH", str(tmp_path / "nowhere"))
+    assert claude_blocks() is False
