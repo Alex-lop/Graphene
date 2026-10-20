@@ -62,3 +62,25 @@ def test_the_graphs_head_cuts_a_long_title_and_never_the_state_and_agent_after_i
 
     asyncio.run(go())
 
+
+def test_the_graphs_legend_fits_80_columns_whole_on_a_plan_with_sub_goals():
+    """The legend was one line nothing fitted to the width: on a plan with sub-goals it ran to 86 cells and
+    the canvas, which clips, cut it mid-word at 80: '... · lanes: sub-goals · columns:'."""
+    from rich.cells import cell_len
+
+    from graphene_map.cockpit.model import Model, Task
+
+    async def go():
+        m = Model("a friendlier app")
+        m.tasks["1"] = Task("1", "greet says hello", "done", agent="1", above=[("hello", "say hello")])
+        m.tasks["4"] = Task("4", "app says hello", "done", agent="4", needs=["1"])
+        m.selected = "4"
+        app = Cockpit(lambda previous: previous or m, screen="flow")
+        async with app.run_test(size=(80, 24)) as pilot:
+            await pilot.pause(0.1)
+            lines = [line.plain() for line in app.query_one(Canvas).lines]
+            assert all(cell_len(line) <= 80 for line in lines), max(lines, key=cell_len)
+            legend = " ".join(line.strip() for line in lines if "chain" in line or "lanes" in line)
+            assert "═ the longest chain into the goal" in legend and "columns: waves" in legend
+
+    asyncio.run(go())

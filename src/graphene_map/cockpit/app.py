@@ -336,7 +336,13 @@ class Cockpit(App):
             ("┄ amber = a retry loop (bounded)", any(style == "edge_loop" for _, style in drawn)),
             ("◀▶ two-way", any(ch == "◀" for ch, _ in drawn)),
         ) if there]  # fmt: skip
-        under = [Line([Seg(" " + said, "grey50")]) for said in (note, " · ".join(legend)) if said]
+        rows: list[str] = []  # on as many lines as the width asks, broken between entries: the canvas clips
+        for said in legend:
+            if rows and cell_len(f"{rows[-1]} · {said}") <= width - 1:
+                rows[-1] += f" · {said}"
+            else:
+                rows.append(said)
+        under = [Line([Seg(" " + fit(said, width - 1), "grey50")]) for said in (note, *rows) if said]
         return top, lines + ([Line([]), *under] if under else [])
 
     def follow(self, lines: list[Line]) -> None:
