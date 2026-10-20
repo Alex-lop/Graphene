@@ -91,6 +91,28 @@ def test_the_hooks_find_the_held_leaf_for_a_forks_session(repo):
                                                                          "fork": "a"}  # fmt: skip
 
 
+def test_a_fork_writes_in_its_own_copy_alone(repo):
+    """Scope is judged by the path inside a copy, so without this a fork could write api.py into the leaf's
+    own tree (swept up when the kept fork lands), into the other fork's copy, or into the checkout."""
+    trees = forked(repo)
+    hold = str(repo / ".graphene" / "worktrees" / "n1")
+    for where in (hold, trees["b"], str(repo)):
+        edit = {"tool_name": "Edit", "tool_input": {"file_path": f"{where}/api.py"}, "cwd": trees["a"]}
+        said = hook(repo, "PreToolUse", FORK_A, **edit)["hookSpecificOutput"]["permissionDecisionReason"]
+        assert said == (f"{where}/api.py is in another copy of the repo: fork a of n1 writes in its own, "
+                        f"{trees['a']}, and nowhere else"), said
+    # a shell write into the store's worktrees is refused as reaching into the store already; the checkout's
+    shell = {"tool_name": "Bash", "tool_input": {"command": f"echo x > {repo}/api.py"}, "cwd": trees["a"]}
+    said = hook(repo, "PreToolUse", FORK_A, **shell)["hookSpecificOutput"]["permissionDecisionReason"]
+    assert said.startswith(f"{repo}/api.py is in another copy of the repo: fork a of n1 writes in its own, ")
+    own = {"tool_name": "Edit", "tool_input": {"file_path": "api.py"}, "cwd": trees["a"]}
+    assert hook(repo, "PreToolUse", FORK_A, **own) is None  # its own copy, by a relative path: as ever
+    assert hook(repo, "PreToolUse", HOLD, **{**own, "cwd": hold}) is None  # the hold's own session, as ever
+    with Store.open(repo) as store:  # each refused write is on the leaf's record, as the fork's
+        denied = [e["detail"] for e in store.node_log("n1", ("denied",))]
+        assert denied == [{"path": "api.py", "how": how, "fork": "a"} for how in ("Edit",) * 3 + ("shell",)]
+
+
 def test_a_forks_own_done_judges_its_own_tree_and_leaves_the_leafs_state_to_the_run(repo, monkeypatch):
     trees = forked(repo)
     with Store.open(repo) as store:

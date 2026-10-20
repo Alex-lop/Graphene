@@ -502,6 +502,31 @@ def _aside(store, sid: str, cwd: str | None, root: Path) -> P.Node | None:
         return None  # a busy store: no leaf, so the write is refused as if no prompt had been typed
 
 
+def _other_copy(
+    store, held: list[P.Node], sid: str, path: str, root: Path, cwd: str | None, how: str
+) -> dict | None:
+    """A fork writes in its own copy of the repo alone. Scope is judged by the path inside a copy, so a
+    write from one of the hold's forks that lands in another copy (the leaf's own tree, which the hold
+    sweeps up when the kept fork lands; another fork's; the checkout) is refused here, before the scope
+    is asked. The refusal, logged on the leaf as the fork's; None for any other write."""
+    from .hooks import worktree_root
+
+    for n in held:
+        if found := P.fork_of(n, sid):
+            break
+    else:
+        return None
+    full = os.path.normpath(path if os.path.isabs(path) else os.path.join(cwd or str(root), path))
+    live = worktree_root(os.path.dirname(full), root)  # None in the checkout itself
+    letter, mine = found[1]["fork"], found[1]["tree"]
+    if live is not None and os.path.realpath(live) == os.path.realpath(mine):
+        return None
+    _write(store.log_node, n.id, P._now(), "denied", n.executor, sid, None,
+           {"path": _rel(path, root, cwd), "how": how, "fork": letter})  # fmt: skip
+    return _deny(f"{full} is in another copy of the repo: fork {letter} of {n.id} writes in its own, {mine}, "
+                 "and nowhere else")  # fmt: skip
+
+
 def _check_write(
     store, held: list[P.Node], rel: str, event: dict, how: str, root: Path | None = None
 ) -> dict | None:
@@ -761,6 +786,8 @@ def decide(store, event: dict, root: Path) -> dict | None:
             return _link(_leaves(path, root, cwd))
         rel = _rel(path, root, cwd)
         held = _held(store, sid)
+        if rel is not None and (other := _other_copy(store, held, sid, path, root, cwd, tool)):
+            return other
         answer = None if rel is None else _check_write(store, held, rel, event, tool, root)
         return answer or _heard(store, held, event)
 
@@ -783,6 +810,8 @@ def decide(store, event: dict, root: Path) -> dict | None:
             if ours(written, cwd, root):  # the store or the direction, however it is spelled
                 return _deny(f"{written} is the plan's own store; no node's scope covers it")
             rel = _rel(written, root, cwd)
+            if rel is not None and (other := _other_copy(store, held, sid, written, root, cwd, "shell")):
+                return other
             if rel is not None and (rel.split("/", 1)[0].casefold() in OURS or rel in HOOKS):
                 # before any scope is asked: `**` does not cover the store, nor the hooks' settings
                 return _check_write(store, held, rel, event, "shell")
