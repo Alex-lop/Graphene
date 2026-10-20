@@ -527,6 +527,31 @@ def test_sweep_closes_every_forks_executor_of_a_dead_run(repo):
             orphan.kill()
 
 
+def test_a_leaf_handed_back_by_the_person_under_its_forks_ends_each_fork_stopped(repo):
+    """A fork's last row is one of the contract's states: let go under the person's release, it is stopped,
+    and its row says why."""
+    with Store.open(repo) as store:
+        plan.propose(store, [users_leaf()], ALEX)
+    slow = executor(repo, SLOW)
+    run = graphene_run(repo, "--with", slow, "--forks", "2", "--attempts", "1", "--no-precheck")
+    try:
+        assert wait_for(lambda: len(attempts(repo)) == 2), run.stdout
+        pids = [e["detail"]["pid"] for e in attempts(repo)]
+        released = person("node", "release", "n1", "--why", "mine now")
+        assert released.exit_code == 0, released.output
+        said, _ = run.communicate(timeout=60)
+        assert states(repo) == {"n1": OPEN} and "n1 handed back by alex" in said, said
+        assert wait_for(lambda: not any(R._alive(p) for p in pids), 15)
+        with Store.open(repo) as store:
+            last = last_rows(store)
+            assert {b: (f["state"], f["why"]) for b, f in last.items()} == {
+                "a": ("stopped", R.LET_GO), "b": ("stopped", R.LET_GO)}  # fmt: skip
+            assert all(f["attempts"] == 1 and f["ref"] is None for f in last.values())
+        assert f"n1 fork a: stopped: {R.LET_GO}" in said and f"n1 fork b: stopped: {R.LET_GO}" in said
+    finally:
+        run.kill()
+
+
 def test_ctrl_c_ends_every_forks_executor_and_hands_the_leaf_back(repo):
     with Store.open(repo) as store:
         plan.propose(store, [users_leaf()], ALEX)

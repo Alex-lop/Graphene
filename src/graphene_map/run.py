@@ -607,9 +607,9 @@ def _attempts(
     which stops this one). Returns how
     it ended: "done" with the leaf (done, or in review); "back", handed back by the executor or the person
     (said here for the hold); "refused", out of attempts (the hold is handed back here; a fork's why is
-    returned); and for a fork "passed", "gave up" or "stopped"; with the attempts made and the dollars
-    metered. Raises KeyboardInterrupt when the run was stopped, and P.Refused when the executor could not
-    be started."""
+    returned); and for a fork "passed", "gave up", "failed" or "stopped" (under --first, or the leaf let go
+    under it: the hold says by whom); with the attempts made and the dollars metered. Raises
+    KeyboardInterrupt when the run was stopped, and P.Refused when the executor could not be started."""
     name = label(template)
     worst = _worst(shlex.split(template))
     refusal: str | None = None
@@ -666,7 +666,7 @@ def _attempts(
                 current = P.get(store, node.id)  # the wait can be a whole attempt of another leaf's
                 if current.state != P.RUNNING:
                     if fork:  # the hold says by whom
-                        return {"how": "back"}
+                        return {"how": "stopped", "why": LET_GO, "attempts": attempt - 1, "dollars": spent}
                     say(f"{node.id} handed back while it waited for room under --max-usd")
                     ended = current.state in (P.DONE, P.REVIEW)
                     return {"how": "done", "node": current} if ended else {"how": "back"}
@@ -764,7 +764,7 @@ def _attempts(
             current = P.get(store, node.id)
             if fork:
                 if current.state != P.RUNNING:  # the leaf was let go under its forks: the hold says by whom
-                    return {"how": "back"}
+                    return {"how": "stopped", "why": LET_GO, "attempts": attempt, "dollars": spent}
                 last = P.fork_row(store, current, b) or {}
                 if last.get("state") == "gave up":
                     return {"how": "gave up", "why": last.get("why", ""), "attempts": attempt,
@@ -832,6 +832,7 @@ def _handed_back(store, node: P.Node, say: Callable[[str], None]) -> None:
 
 LOST = "another fork's check passed first"  # a fork stopped under --first: Nemotron's words for it
 STOPPED_FORK = "the run was stopped before this fork ended"  # a fork's last row under Ctrl-C or `:stop`
+LET_GO = "the leaf was handed back while this fork worked"  # a fork's last row under the person's release
 
 
 def _forked(store, node: P.Node, tree: Path, template: str, attempts: int, say: Callable[[str], None],
