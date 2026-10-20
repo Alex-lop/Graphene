@@ -55,7 +55,7 @@ class GNode:
     id: str
     label: str
     state: str = "waiting"  # a key of the caller's style table
-    badge: str = ""  # who is on it, shown on the bottom border; up to five cells it never makes the box wider
+    badge: str = ""  # who is on it, shown on the bottom border; up to four cells it never makes the box wider
     lane: str = ""  # the lane it is drawn in, by id; "" or one not given: the last band, which has no rule
 
 
@@ -271,8 +271,9 @@ def _box(n: GNode, label_w: int) -> Box:
             break
     if len(lines) > 3:
         lines = [*lines[:2], lines[2][: label_w - 1] + "…"]
-    # in cells: a wide character is two; a badge longer than the least room (`4 of 4 ✓`) gets its room
-    inner = max(max(cell_len(x) for x in lines), 6, cell_len(n.badge) + 1)
+    # in cells: a wide character is two; a badge longer than the least room (`4 of 4 ✓`) gets its room,
+    # with a dash after it
+    inner = max(max(cell_len(x) for x in lines), 6, cell_len(n.badge) + 2)
     return Box([x + " " * (inner - cell_len(x)) for x in lines], inner + 4, len(lines) + 2)
 
 
