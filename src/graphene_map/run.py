@@ -597,13 +597,14 @@ def _attempts(
     owed: float,
     session: str,
     who: P.Caller,
-    fork: tuple[str, int] | None = None,
+    fork: dict | None = None,
     won: threading.Event | None = None,
 ) -> dict:
     """One executor session's attempts at the leaf, in ``tree``: each told the last refusal, each held on
     the night's ledger and the budget (``owed``: what the caller holds for the first), each metered; then
     the boundary, unless the executor ended the leaf itself. The hold's own loop, or one fork's (``fork``:
-    its letter and how many; ``won``: --first, set once a fork is kept, which stops this one). Returns how
+    its `fork` rows' base: its letter, how many, its --with; ``won``: --first, set once a fork is kept,
+    which stops this one). Returns how
     it ended: "done" with the leaf (done, or in review); "back", handed back by the executor or the person
     (said here for the hold); "refused", out of attempts (the hold is handed back here; a fork's why is
     returned); and for a fork "passed", "gave up" or "stopped"; with the attempts made and the dollars
@@ -619,7 +620,7 @@ def _attempts(
     spent: float | None = None  # ``paid`` once a meter has read a stream; None with no meter (pick: no step)
     shell = graphene_shell(shlex.split(template))
     due = 0.0  # when the terminal next says what the leaf is doing: HEARTBEAT after an attempt begins
-    b, of = fork or (None, 0)
+    b, of = (fork["fork"], fork["of"]) if fork else (None, 0)
     lane = f"{node.id} fork {b}" if fork else node.id  # the leaf, or one fork of it, in the run's lines
     said = f"{lane}: " if fork else f"{lane} "
     tag = {"fork": b, "of": of} if fork else {}  # on a fork's attempt rows: which, of how many
@@ -669,8 +670,11 @@ def _attempts(
                     say(f"{node.id} handed back while it waited for room under --max-usd")
                     ended = current.state in (P.DONE, P.REVIEW)
                     return {"how": "done", "node": current} if ended else {"how": "back"}
+            if fork:  # working (again, after a refusal): the hooks hold it to `done` while its row says so
+                store.log_node(node.id, P._now(), "fork", who.label, session, None,
+                               {**fork, "state": "running", "why": ""})  # fmt: skip
             told = prompt_for(node, P.notes(store, node.id), refusal, P.trail(store, node),
-                              B.decided(store, node), shell, fork)  # fmt: skip
+                              B.decided(store, node), shell, (b, of) if fork else None)  # fmt: skip
             argv = command_for(template, told, session, attempt > 1)
             # GRAPHENE_EXECUTOR: its own `done` is logged under the name the run's acts are (plan.caller)
             # GRAPHENE_TRY: which attempt this is, told rather than read back from the log, whose row
@@ -886,13 +890,11 @@ def _forked(store, node: P.Node, tree: Path, template: str, attempts: int, say: 
         def one(b: str) -> None:
             with Store.open(root) as mine:  # a thread, a connection
                 mine_who = P.Caller(f"run:{label(templates[b])}", False, sessions[b])
-                row = {"fork": b, "of": n, "with": specs[b]}
-                mine.log_node(node.id, P._now(), "fork", mine_who.label, sessions[b], None,
-                              {**row, "state": "running", "why": ""})  # fmt: skip
+                row = {"fork": b, "of": n, "with": specs[b]}  # its `fork` rows' base: running, each attempt
                 began = time.monotonic()
                 try:
                     end = _attempts(mine, node, trees[b], templates[b], attempts, say, logs, stop, budget,
-                                    holds[b], sessions[b], mine_who, (b, n), won)  # fmt: skip
+                                    holds[b], sessions[b], mine_who, row, won)  # fmt: skip
                 except KeyboardInterrupt:  # the run was stopped: its row says so; the hold hands it back
                     end = {"how": "stopped", "why": STOPPED_FORK}
                 except P.Refused as no:  # its executor would not start

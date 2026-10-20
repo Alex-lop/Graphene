@@ -303,6 +303,39 @@ def test_a_fork_whose_work_git_would_not_keep_ends_failed_and_the_run_goes_on(re
     assert "n1 fork c: failed: its work could not be kept: git update-ref failed in n1.c: disk full" in said
 
 
+# a fails its first attempt and passes its second; b passes first time with the larger change
+TWICE = """
+import os, pathlib
+fork, attempt = os.environ["GRAPHENE_FORK"], os.environ["GRAPHENE_TRY"]
+LARGE = ("import os\\n\\n\\ndef users():\\n    found = ids\\n    return found\\n\\n\\n"
+         "def more():\\n    return 1\\n")
+body = {"a": "def users():\\n    return ids\\n", "b": LARGE}[fork]
+if (fork, attempt) == ("a", "1"):
+    body = "def users():\\n    return [0]\\n"
+pathlib.Path("api.py").write_text(body)
+"""
+
+
+def test_a_fork_refused_once_reads_as_running_again_on_its_next_attempt(repo, monkeypatch):
+    """The Stop hook holds a fork while its row says running and lets it stop on a verdict: a fork resumed
+    after a refusal is running again, and its row says so before its next attempt starts."""
+    seed(repo, monkeypatch)
+    said: list[str] = []
+    done = go(repo, TWICE, said, forks=R.Forks(2), attempts=2)
+    assert [n.id for n in done] == ["n1"] and states(repo) == {"n1": DONE}, said
+    with Store.open(repo) as store:
+        a = [e["detail"] for e in rows(store, "fork") if e["detail"]["fork"] == "a"]
+        assert [f["state"] for f in a] == ["running", "refused", "running", "passed", "passed"]
+        assert all(f["of"] == 2 for f in a)
+        assert [f.get("with") for f in a if f["state"] == "running"] == [f"{repo.name}-forks.py"] * 2
+        last = last_rows(store)
+        assert last["a"]["attempts"] == 2 and last["b"]["attempts"] == 1
+        assert rows(store, "picked")[0]["detail"]["fork"] == "a"  # the smaller, its second attempt passed
+    assert "n1 fork a: attempt 1 refused: n1 is not done: `grep -q ids api.py` failed" in said
+    assert "n1 fork a: attempt 2: the executor ended (exit 0)" in said
+    assert "n1 fork a: the check passed · 2 lines" in said
+
+
 def test_a_person_picks_another_fork_of_a_leaf_in_review_and_the_sign_off_lands_it(repo, monkeypatch):
     monkeypatch.setenv("FORKS_LOG", str(repo.parent / "forks.log"))
     (repo / "api.py").write_text("def users():\n    return []\n")
