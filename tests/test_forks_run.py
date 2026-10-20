@@ -190,6 +190,58 @@ def test_first_keeps_the_first_fork_that_passes_and_stops_the_rest(repo, monkeyp
     assert not any((repo / ".graphene" / "worktrees").glob("n1*"))
 
 
+def test_a_fork_with_no_room_under_max_usd_does_not_start_and_is_on_record(repo, monkeypatch):
+    monkeypatch.setenv("FORKS_LOG", str(repo.parent / "forks.log"))
+    (repo / "api.py").write_text("def users():\n    return []\n")
+    (repo / "notes.txt").write_text("to go\n")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", "api")
+    said: list[str] = []
+    with Store.open(repo) as store:
+        plan.propose(store, [users_leaf()], ALEX)
+    # each attempt's worst case is WORST (no --max-budget-usd in the command): room for two forks of three
+    done = go(repo, FORKED, said, forks=R.Forks(3), max_usd=2 * R.WORST + 1)
+    assert [n.id for n in done] == ["n1"] and "2 of 3 forks started: --max-usd has room for 2" in said
+    ran = [json.loads(line) for line in (repo.parent / "forks.log").read_text().splitlines()]
+    assert sorted(r["fork"] for r in ran) == ["a", "b"]
+    with Store.open(repo) as store:
+        last = {e["detail"]["fork"]: e["detail"] for e in rows(store, "fork")}
+        assert {b: f["state"] for b, f in last.items()} == {"a": "refused", "b": "passed", "c": "failed"}
+        assert last["c"]["why"] == "the run's --max-usd had no room for it" and last["c"]["attempts"] == 0
+        assert rows(store, "picked")[0]["detail"]["fork"] == "b"
+        table = [(t["fork"], t["state"]) for t in rows(store, "picked")[0]["detail"]["table"]]
+        assert table == [("a", "refused"), ("b", "passed"), ("c", "failed")]
+    assert "n1 kept b of 3: the only fork whose check passed · 2 lines" in said
+
+
+def test_sweep_closes_every_forks_executor_of_a_dead_run(repo):
+    """A dead run's hold had one executor to stop; forked, it has one a fork, each on its own session."""
+    orphans = [subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"], start_new_session=True)
+               for _ in "ab"]  # fmt: skip
+    dead = subprocess.Popen([sys.executable, "-c", "pass"])
+    dead.wait()
+    try:
+        with Store.open(repo) as store:
+            plan.propose(store, [users_leaf()], ALEX)
+            hold = R.worktree_for(store, repo, repo, "n1")
+            plan.start(store, "n1", Caller("run:x", False, "hold-session"), hold)
+            forked = {"fork-a": {"fork": "a", "tree": "x"}, "fork-b": {"fork": "b", "tree": "y"}}
+            plan.set_forked(store, "n1", forked)
+            for session, orphan, b in zip(("fork-a", "fork-b"), orphans, "ab", strict=True):
+                row = {"run_pid": dead.pid, "pid": orphan.pid, "pid_start": R._started(orphan.pid),
+                       "attempt": 1, "fork": b, "of": 2}  # fmt: skip
+                store.log_node("n1", plan._now(), "attempt", "run:x", session, None, row)
+            said: list[str] = []
+            R.sweep(store, said.append, repo)
+            for orphan in orphans:
+                orphan.wait(timeout=15)  # each fork's executor stopped before the leaf was handed back
+            assert states(repo) == {"n1": OPEN} and plan.get(store, "n1").forked == {}
+            assert said == ["n1 was left running by a run that ended; handed back, and it is ready again"]
+    finally:
+        for orphan in orphans:
+            orphan.kill()
+
+
 def test_ctrl_c_ends_every_forks_executor_and_hands_the_leaf_back(repo):
     with Store.open(repo) as store:
         plan.propose(store, [users_leaf()], ALEX)

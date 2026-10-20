@@ -85,6 +85,10 @@ def test_the_hooks_find_the_held_leaf_for_a_forks_session(repo):
     assert "schema.py is outside the scope of the node you hold (n1: api.py)" in said
     stranger = hook(repo, "PreToolUse", "someone-else", **outside)
     assert "holds no leaf" in stranger["hookSpecificOutput"]["permissionDecisionReason"]  # as ever
+    with Store.open(repo) as store:  # the refused write is on the leaf's record, as the fork's
+        [denied] = store.node_log("n1", ("denied",))
+        assert denied["session_id"] == FORK_A and denied["detail"] == {"path": "schema.py", "how": "Edit",
+                                                                         "fork": "a"}  # fmt: skip
 
 
 def test_a_forks_own_done_judges_its_own_tree_and_leaves_the_leafs_state_to_the_run(repo, monkeypatch):
@@ -174,7 +178,12 @@ def test_the_command_line_says_a_forks_verdict_in_its_own_words(repo):
     assert gave.exit_code == 0 and gave.stdout.splitlines()[0] == (
         "this fork gives up; the leaf is handed back only if every fork does"
     ), gave.output
+    # a Claude Code fork, known by its session: `node done` with no id names the leaf it holds
+    claude = {"CLAUDECODE": "1", "CLAUDE_CODE_SESSION_ID": FORK_A, "GRAPHENE_NODE": "n1"}
+    again = CliRunner().invoke(build(), ["node", "done"], env=claude)
+    assert again.exit_code == 0 and again.stdout.startswith("the check passed in this fork (fork a of 2)")
     with Store.open(repo) as store:
         assert plan.get(store, "n1").state == RUNNING
-        assert [(f["fork"], f["state"]) for f in fork_rows(store)] == [("a", "running"), ("a", "passed"),
-                                                                        ("b", "gave up")]  # fmt: skip
+        verdicts = [(f["fork"], f["state"]) for f in fork_rows(store)]
+        assert verdicts == [("a", "running"), ("a", "passed"), ("b", "gave up"), ("a", "passed")]
+        assert store.node_log("n1", ("fork",))[-1]["session_id"] == FORK_A

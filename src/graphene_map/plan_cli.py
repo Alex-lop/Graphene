@@ -220,7 +220,9 @@ def register(cli: typer.Typer, root, open_store, fail):
         return ", ".join(shown)
 
     def holds(n: P.Node, who: P.Caller) -> bool:
-        return n.session_id == who.session_id if who.session_id else n.executor == who.name
+        if who.session_id:  # the hold's own session, or one of its forks
+            return n.session_id == who.session_id or who.session_id in n.forked
+        return n.executor == who.name
 
     def describe(
         store, n: P.Node, word: str, by_id: dict[str, P.Node], words: dict, who: P.Caller, room: int | None

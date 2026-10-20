@@ -872,6 +872,10 @@ def _forked(store, node: P.Node, tree: Path, template: str, attempts: int, say: 
                 holds[b] = worst
         if len(holds) < n:
             say(f"{len(holds)} of {n} forks started: --max-usd has room for {len(holds)}")
+            for b in [b for b in letters if b not in holds]:  # on record, as the forks that ran are
+                ends[b] = {"fork": b, "of": n, "with": specs[b], "state": "failed", "attempts": 0,
+                           "why": "the run's --max-usd had no room for it"}  # fmt: skip
+                store.log_node(node.id, P._now(), "fork", who.label, sessions[b], None, ends[b])
 
         def one(b: str) -> None:
             with Store.open(root) as mine:  # a thread, a connection
@@ -931,7 +935,7 @@ def _forked(store, node: P.Node, tree: Path, template: str, attempts: int, say: 
         kept = passed[0]  # ponytail: the first that passed; pick.choose (the rule that keeps one) replaces it
         reason = "the only fork whose check passed" if len(passed) == 1 else "finished first"
         _copied(trees[kept], tree, wrote[kept])
-        table = [{k: ends[b][k] for k in ("fork", "state", "lines", "dollars", "seconds")}
+        table = [{k: ends[b].get(k) for k in ("fork", "state", "lines", "dollars", "seconds")}
                  for b in letters if b in ends]  # fmt: skip
         choice = {"fork": kept, "of": n, "by": "graphene", "reason": reason, "table": table}
         store.log_node(node.id, P._now(), "picked", who.label, who.session_id, None, choice)
