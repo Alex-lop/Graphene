@@ -1013,7 +1013,7 @@ def register(cli: typer.Typer, root, open_store, fail):
         withs: list[str] = typer.Option(
             None,
             "--with",
-            help="Executor: claude, codex, nemotron, a command, or claude:MODEL; once a fork.",
+            help="This executor, not init's: claude, codex, nemotron, claude:MODEL or a command.",
         ),
         attempts: int = typer.Option(
             3, "--attempts", min=1, help="Attempts a leaf gets before it comes back."
@@ -1021,7 +1021,8 @@ def register(cli: typer.Typer, root, open_store, fail):
         node: list[str] = typer.Option(None, "--node", help="Only this node; repeat it."),
         parallel: int = typer.Option(1, "--parallel", help="How many leaves run at once."),
         forks: int = typer.Option(
-            None, "--forks", min=1, max=8, help="Forks a leaf: N agents at once, its check keeps one."
+            None, "--forks", min=1, max=8,
+            help="Forks a leaf: N agents at once, its check keeps one; --with again mixes them.",
         ),
         first: bool = typer.Option(
             False, "--first", help="Keep the first fork whose check passes and stop the rest."
