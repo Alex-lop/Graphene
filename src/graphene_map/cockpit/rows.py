@@ -235,9 +235,10 @@ def task_lines(
     elif on and t.state == "proposed":
         out += proposal(m, t, width)
     elif t.state == "running" and t.events:  # its last move in one dim line: alive or stuck, at a glance
+        said = m.tail(t, 1)[0]
         moved = [f for f in t.forks if f.events]  # forked: the newest fork's move, with its letter
-        said = f"{t.agent}{max(moved, key=lambda f: f.events[-1].t).letter} " if moved else ""
-        said += m.tail(t, 1)[0]
+        if moved and not said.startswith("you "):  # the person's own note is no fork's move
+            said = f"{t.agent}{max(moved, key=lambda f: f.events[-1].t).letter} {said}"
         out.append(Line([Seg("      ┊ ", "grey35"), Seg(fit(said, width - 10), "grey58")], t.id))
     if tell is not None:  # the line being typed, under the row it is for: the only place it shows
         whom = who(t.agent) or "its agent"

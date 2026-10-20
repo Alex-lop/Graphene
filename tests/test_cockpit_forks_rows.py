@@ -69,6 +69,20 @@ def test_a_forked_task_that_is_not_selected_shows_the_newest_forks_move_with_its
     assert "3 forks" in mine[0].plain()
 
 
+def test_the_persons_own_note_under_a_forked_row_has_no_forks_letter():
+    """`t tell` puts a `you` event on the task, newer than any fork's move: the dim line said `1a you
+    “…”`, as if fork a had said it. The person's note is nobody's move; a fork's move keeps its letter."""
+    m = forked()
+    ids = m.tasks["ids"]
+    ids.told = [("use strings", 98.0, 0.0)]
+    ids.events.append(Ev(98.0, "you", text="“use strings”"))
+    m.selected = "docs"
+    assert lines_of(m, 100)[1].plain().split("┊ ", 1)[1].rstrip() == "you  “use strings”"
+    ids.events.append(Ev(99.0, "read", path="tests/util.py"))  # a moved on, after the note
+    ids.forks[0].events.append(ids.events[-1])
+    assert lines_of(m, 100)[1].plain().split("┊ ", 1)[1].rstrip() == "1a read tests/util.py"
+
+
 def test_once_a_fork_is_kept_the_row_is_review_or_done_as_today_and_a_dim_line_says_which_and_why():
     for width in (80, 120):
         m = forked()
