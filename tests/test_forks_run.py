@@ -1,8 +1,9 @@
 # ruff: noqa: F811  (pytest fixtures imported from test_run_live are named again as arguments)
 """A leaf run as forks: N agents at once, a worktree each, cut from the same commit; each judged by the
-leaf's check in its own copy; one kept and landed as any leaf lands; the rest on record. The executor is
-a script that behaves by its GRAPHENE_FORK: a fails the check, b passes with a small change, c with a
-larger one."""
+leaf's check in its own copy; one kept by the rule in pick.py and landed as any leaf lands; the rest on
+record, each on its own ref. The executor is a script that behaves by its GRAPHENE_FORK: a fails the
+check, b passes with a small change, c with a larger one; AGREE's forks write tests, and b's are the
+stricter."""
 
 import json
 import signal
@@ -41,6 +42,20 @@ if fork == "c" and os.environ.get("FORKS_RELEASE"):  # c gives up, naming what i
     print(subprocess.run(argv, capture_output=True, text=True).stdout)
 """
 NONE = FORKED.replace("return ids", "return [1]").replace("found = ids", "found = [1]")
+# every fork passes; a and b add a test the check runs: b's, the stricter, fails on a's code and c's
+AGREE = """
+import os, pathlib
+fork = os.environ["GRAPHENE_FORK"]
+api = {"a": "def users():\\n    return [1]\\n", "c": "def users():\\n    return [1]\\n",
+       "b": 'def users():\\n    \"\"\"The ids.\"\"\"\\n    return [1]\\n'}[fork]
+pathlib.Path("api.py").write_text(api)
+test = {"a": "assert users() == [1]\\n", "b": "assert users() == [1]\\nassert users.__doc__\\n"}.get(fork)
+if test:
+    t = pathlib.Path("tests/test_api.py")
+    t.write_text(t.read_text() + test)
+"""
+TEST = ("import os, sys\nsys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))\n"
+        "from api import users\nassert isinstance(users(), list)\n")
 
 
 def executor(repo, source: str) -> str:
@@ -105,34 +120,84 @@ def test_three_forks_run_at_once_one_is_kept_and_lands_as_one_merge(repo, monkey
         assert last["b"]["paths"] == ["api.py"] and last["b"]["lines"] == 2  # one line changed
         assert last["c"]["paths"] == ["api.py", "notes.txt"] and last["c"]["lines"] > last["b"]["lines"]
         assert all(f["of"] == 3 and f["attempts"] == 1 and f["seconds"] >= 0 for f in last.values())
+        assert all(f["test_lines"] == 0 and f["dollars"] is None for f in last.values())  # no meter
         assert all(f["ref"] == f"refs/graphene/forks/n1/{b}" for b, f in last.items())
         assert len(rows(store, "check_passed")) == 1  # the leaf's proof: the hold's own finish, once
         [picked] = rows(store, "picked")
-        kept = picked["detail"]["fork"]
-        assert kept in "bc" and picked["detail"]["of"] == 3 and picked["detail"]["by"] == "graphene"
-        assert [t["fork"] for t in picked["detail"]["table"]] == ["a", "b", "c"]
+        reason = f"2 lines against {last['c']['lines']}"  # b and c passed; the smaller is kept
+        assert picked["detail"] | {"table": None} == {"fork": "b", "of": 3, "by": "graphene",
+                                                      "reason": reason, "table": None}  # fmt: skip
+        table = picked["detail"]["table"]
+        assert [(t["fork"], t["state"], t["passed"]) for t in table] == [("a", "refused", False),
+                                                                          ("b", "passed", True),
+                                                                          ("c", "passed", True)]  # fmt: skip
+        assert all(t["agrees"] == [] and t["test_lines"] == 0 for t in table)
+        # the check runs api.py itself, which both passing forks changed: a tie there, and the size decides
+        assert {t["fork"]: t["touched_check"] for t in table} == {"a": False, "b": True, "c": True}
+        assert [t["lines"] for t in table] == [last[b]["lines"] for b in "abc"]
+        assert all(t["dollars"] is None and t["seconds"] == last[t["fork"]]["seconds"] for t in table)
+        assert table[0]["why"].startswith(refused) and "why" not in table[1]
         assert plan.get(store, "n1").forked == {}  # cleared with the hold
         assert [e["kind"] for e in store.node_log("n1")][-3:] == ["check_passed", "finished", "landed"]
     assert f"n1 forked 3 ways: a {repo.name}-forks.py, b {repo.name}-forks.py, c {repo.name}-forks.py" in said
     assert f"n1 fork b: the check passed · {last['b']['lines']} lines" in said
     assert "n1 fork a: attempt 1 refused: n1 is not done: `grep -q ids api.py` failed" in said
     assert "n1 fork a: 1 attempt, the last one refused" in said
-    assert any(line.startswith(f"n1 kept {kept} of 3: finished first · ") and " lines against " in line
-               for line in said), said  # fmt: skip
+    assert f"n1 kept b of 3: {reason}" in said, said  # the reason names the sizes: not said twice
     # one fork's work landed as one merge, and the merge says so
     merges = git(repo, "log", "--merges", "--format=%H").split()
-    assert len(merges) == 1 and "Forks: 3, kept " + kept in git(repo, "log", "-1", "--format=%B")
-    expect = {"b": "def users():\n    return ids\n", "c": "import os\n\n\ndef users():\n    found = ids\n"
-              "    return found\n\n\ndef more():\n    return 1\n"}[kept]  # fmt: skip
-    assert (repo / "api.py").read_text() == expect
-    assert (repo / "notes.txt").exists() == (kept == "b")  # c's deletion lands with c
+    message = git(repo, "log", "-1", "--format=%B")
+    assert len(merges) == 1 and f"Executor: {repo.name}-forks.py · 3 forks, kept b · 3 attempts" in message
+    assert (repo / "api.py").read_text() == "def users():\n    return ids\n"
+    assert (repo / "notes.txt").exists()  # c's deletion did not land
     # no fork worktree or branch is left; each fork's work is kept on its ref, from the base
     assert not any((repo / ".graphene" / "worktrees").glob("n1*"))
     assert git(repo, "worktree", "list").count("\n") == 1 and "graphene/" not in git(repo, "branch")
     refs = git(repo, "for-each-ref", "--format=%(refname)", "refs/graphene/forks/n1/").split()
     assert refs == [f"refs/graphene/forks/n1/{b}" for b in "abc"]
-    assert git(repo, "rev-parse", "refs/graphene/forks/n1/b^").strip() == base
+    assert all(git(repo, "rev-parse", f"refs/graphene/forks/n1/{b}^").strip() == base for b in "abc")
+    assert git(repo, "show", "refs/graphene/forks/n1/a:api.py") == "def users():\n    return [0]\n"
+    assert git(repo, "show", "refs/graphene/forks/n1/c:api.py").startswith("import os\n\n\ndef users():\n")
+    assert "notes.txt" not in git(repo, "ls-tree", "--name-only", "refs/graphene/forks/n1/c")  # c deleted it
+    assert git(repo, "log", "-1", "--format=%B", "refs/graphene/forks/n1/b").strip() == (
+        "fork b of n1\n\nGraphene-Node: n1")
     assert git(repo, "status", "--porcelain") == ""
+
+
+def test_the_fork_that_passes_the_others_tests_is_kept_before_the_smaller_one(repo, monkeypatch):
+    """pick's agreement: a's test passes on b and c; b's stricter one fails on both; c wrote none."""
+    monkeypatch.setenv("FORKS_LOG", str(repo.parent / "forks.log"))
+    (repo / "api.py").write_text("def users():\n    return []\n")
+    (repo / "tests").mkdir()
+    (repo / "tests" / "test_api.py").write_text(TEST)
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", "api")
+    said: list[str] = []
+    with Store.open(repo) as store:
+        plan.propose(store, [users_leaf(scope=["api.py", "tests/test_api.py"],
+                                        check=f"{sys.executable} tests/test_api.py")], ALEX)  # fmt: skip
+    done = go(repo, AGREE, said, forks=R.Forks(3))
+    assert [n.id for n in done] == ["n1"] and states(repo) == {"n1": DONE}, said
+    with Store.open(repo) as store:
+        last = {e["detail"]["fork"]: e["detail"] for e in rows(store, "fork")}
+        assert {b: f["state"] for b, f in last.items()} == {"a": "passed", "b": "passed", "c": "passed"}
+        assert [(f["lines"], f["test_lines"]) for f in (last["a"], last["b"], last["c"])] == [(2, 1), (3, 2),
+                                                                                                (2, 0)]
+        assert last["a"]["check_touched"] == last["b"]["check_touched"] == ["tests/test_api.py"]
+        assert "check_touched" not in last["c"]
+        [picked] = rows(store, "picked")
+        assert picked["detail"]["fork"] == "b"  # larger than a and c, and a's test passes on it
+        assert picked["detail"]["reason"] == "passes a's tests (a and c fail b's)"
+        table = {t["fork"]: t for t in picked["detail"]["table"]}
+        assert {b: t["agrees"] for b, t in table.items()} == {"a": [], "b": ["a"], "c": ["a"]}
+        assert {b: t["touched_check"] for b, t in table.items()} == {"a": True, "b": True, "c": False}
+        assert plan.get(store, "n1").forked == {}
+    assert "n1 kept b of 3: passes a's tests (a and c fail b's) · 3 lines against 2, 2" in said, said
+    assert (repo / "api.py").read_text() == 'def users():\n    """The ids."""\n    return [1]\n'
+    assert (repo / "tests" / "test_api.py").read_text().endswith("assert users.__doc__\n")
+    assert "3 forks, kept b" in git(repo, "log", "-1", "--format=%B")
+    assert git(repo, "status", "--porcelain") == ""
+    assert not any((repo / ".graphene" / "worktrees").glob("n1*"))
 
 
 def test_when_no_fork_passes_the_leaf_comes_back_with_each_forks_reason(repo, monkeypatch):
@@ -184,7 +249,11 @@ def test_first_keeps_the_first_fork_that_passes_and_stops_the_rest(repo, monkeyp
         assert {b: f["state"] for b, f in last.items()} == {"a": "stopped", "b": "passed", "c": "stopped"}
         assert last["a"]["why"] == last["c"]["why"] == "another fork's check passed first"
         assert rows(store, "forked")[0]["detail"]["first"] is True
-        assert rows(store, "picked")[0]["detail"]["fork"] == "b"
+        [picked] = rows(store, "picked")
+        kept, why = picked["detail"]["fork"], picked["detail"]["reason"]
+        assert (kept, why) == ("b", "the only fork whose check passed")
+        states_ = [(t["fork"], t["state"]) for t in picked["detail"]["table"]]
+        assert states_ == [("a", "stopped"), ("b", "passed"), ("c", "stopped")]
     assert "n1 kept b of 3: the only fork whose check passed · 2 lines" in said
     assert (repo / "api.py").read_text() == "def users():\n    return ids\n"
     assert not any((repo / ".graphene" / "worktrees").glob("n1*"))

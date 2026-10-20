@@ -38,7 +38,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from . import board as B
-from . import extra
+from . import extra, pick
 from . import meter as M
 from . import plan as P
 from . import settings as S
@@ -616,6 +616,7 @@ def _attempts(
     proc: subprocess.Popen | None = None
     hold: dict | None = None  # the attempt's on the night's ledger
     paid = 0.0  # what this hold's attempts settled: a resumed Claude Code reports the session's total
+    spent: float | None = None  # ``paid`` once a meter has read a stream; None with no meter (pick: no step)
     shell = graphene_shell(shlex.split(template))
     due = 0.0  # when the terminal next says what the leaf is doing: HEARTBEAT after an attempt begins
     b, of = fork or (None, 0)
@@ -651,12 +652,12 @@ def _attempts(
             if stop.event.is_set():  # stopped while the last attempt's check ran: nothing starts again
                 raise KeyboardInterrupt
             if won is not None and won.is_set():  # --first: another fork is kept, so this one is stopped
-                return {"how": "stopped", "why": LOST, "attempts": attempt - 1, "dollars": paid}
+                return {"how": "stopped", "why": LOST, "attempts": attempt - 1, "dollars": spent}
             if budget and not owed:
                 if not budget.take(worst, stop):
                     why = f"the run's --max-usd stopped it before attempt {attempt}"
                     if fork:
-                        return {"how": "refused", "why": why, "attempts": attempt - 1, "dollars": paid}
+                        return {"how": "refused", "why": why, "attempts": attempt - 1, "dollars": spent}
                     P.release(store, node.id, who, why)
                     say(f"{node.id} came back: {why}")
                     return {"how": "back"}
@@ -691,7 +692,7 @@ def _attempts(
                 night, hold = held(name, argv, paid, f"run: {lane} attempt {attempt}")
             except P.Refused as no:
                 if fork:
-                    return {"how": "failed", "why": str(no), "attempts": attempt - 1, "dollars": paid}
+                    return {"how": "failed", "why": str(no), "attempts": attempt - 1, "dollars": spent}
                 P.release(store, node.id, who, str(no))
                 say(f"{node.id} came back: {no}")
                 return {"how": "back"}
@@ -738,6 +739,7 @@ def _attempts(
                 if read:
                     read(last=True)  # Claude Code's result is its last line
                     paid += meter.dollars
+                    spent = paid
                 if hold:
                     _settle(night, hold, meter)
                 if owed:
@@ -751,7 +753,7 @@ def _attempts(
             if stop.event.is_set():
                 raise KeyboardInterrupt
             if won is not None and won.is_set():  # --first: another fork is kept; this one was stopped for it
-                return {"how": "stopped", "why": LOST, "attempts": attempt, "dollars": paid}
+                return {"how": "stopped", "why": LOST, "attempts": attempt, "dollars": spent}
             capped = meter is not None and meter.result == "error_max_budget_usd"  # its result's subtype
             say(f"{said}attempt {attempt}: the executor "
                 + ("stopped at its --max-budget-usd" if capped else f"ended (exit {code})"))  # fmt: skip
@@ -762,10 +764,10 @@ def _attempts(
                 last = P.fork_row(store, current, b) or {}
                 if last.get("state") in ("passed", "gave up"):  # its own `done` passed, or it gave up
                     return {"how": last["state"], "why": last.get("why", ""), "attempts": attempt,
-                            "wants": last.get("wants") or [], "dollars": paid}  # fmt: skip
+                            "wants": last.get("wants") or [], "dollars": spent}  # fmt: skip
                 try:
                     P.judge_fork(store, node.id, who, (session, {"fork": b, "tree": str(tree)}))
-                    return {"how": "passed", "attempts": attempt, "dollars": paid}
+                    return {"how": "passed", "attempts": attempt, "dollars": spent}
                 except P.Refused as no:
                     refusal = str(no)
             else:
@@ -795,7 +797,7 @@ def _attempts(
         why = f"{tries}, the last one refused: {told}{crashed}"
         if fork:
             say(f"{said}{tries}, the last one refused")
-            return {"how": "refused", "why": why, "attempts": attempts, "dollars": paid}
+            return {"how": "refused", "why": why, "attempts": attempts, "dollars": spent}
         P.release(store, node.id, who, why)
         say(f"{node.id} came back after {tries}: `graphene node show {node.id}` says why")
         return {"how": "refused"}
@@ -835,12 +837,14 @@ def _forked(store, node: P.Node, tree: Path, template: str, attempts: int, say: 
     a worktree a fork, cut from the hold's base beside the hold's tree; each fork the attempt loop
     (``_attempts``) in a thread of its own, with its own store connection, session, log, holds and meter,
     told which fork it is. The leaf's state stays the hold's. When every fork has ended (with --first, as
-    soon as one has passed, the rest stopped), the first that passed is kept (ponytail: pick.choose takes
-    this place, with the rule that keeps one), its changes inside the scope copied into the hold's tree,
-    deletions too, and the leaf finished there, once, under the run's own session, so it lands as any leaf
-    does; none passed, it comes back with each fork's reason and the union of what they asked for. Each
-    fork's changes inside the scope are kept on refs/graphene/forks/<id>/<letter> for the record; the
-    fork worktrees go."""
+    soon as one has passed, the rest stopped), each fork's changes inside the scope are committed on
+    refs/graphene/forks/<id>/<letter> (``_keep_fork``: kept after the leaf ends, for the record and `node
+    diff --fork`), and the rule that keeps one (``pick.choose``: among the forks whose check passed, the
+    one that passes the most of the others' tests, then the one that left its check's own files alone,
+    the smaller, the cheaper, the sooner) names the fork to keep; its changes inside the scope are copied
+    into the hold's tree, deletions too, and the leaf is finished there, once, under the run's own
+    session, so it lands as any leaf does. None passed, it comes back with each fork's reason and the
+    union of what they asked for. The fork worktrees go."""
     root = Path(store.path).parent.parent  # the repo: the fork trees go beside the hold's
     letters = string.ascii_lowercase[:n]
     withs = forks.withs or [None]  # fork k runs the k-th --with, round robin; none: the run's own
@@ -849,8 +853,8 @@ def _forked(store, node: P.Node, tree: Path, template: str, attempts: int, say: 
     sessions = {b: str(uuid.uuid4()) for b in letters}
     trees: dict[str, Path] = {}
     ends: dict[str, dict] = {}  # each fork's last row, as it ended
-    wrote: dict[str, list[str]] = {}  # each fork's changes inside the scope, whole
-    passed: list[str] = []  # the forks whose check passed, in the order they did
+    entries: dict[str, pick.Entry] = {}  # each fork as the rule that keeps one reads it
+    finished: list[str] = []  # the forks in the order they ended
     won = threading.Event() if forks.first else None
     order = threading.Lock()
     try:
@@ -875,6 +879,7 @@ def _forked(store, node: P.Node, tree: Path, template: str, attempts: int, say: 
             for b in [b for b in letters if b not in holds]:  # on record, as the forks that ran are
                 ends[b] = {"fork": b, "of": n, "with": specs[b], "state": "failed", "attempts": 0,
                            "why": "the run's --max-usd had no room for it"}  # fmt: skip
+                entries[b] = pick.Entry(b, False, state="failed", why=ends[b]["why"])
                 store.log_node(node.id, P._now(), "fork", who.label, sessions[b], None, ends[b])
 
         def one(b: str) -> None:
@@ -892,17 +897,25 @@ def _forked(store, node: P.Node, tree: Path, template: str, attempts: int, say: 
                 except P.Refused as no:  # its executor would not start
                     end = {"how": "failed", "why": str(no)}
                 how, why = end["how"], end.get("why", "")
-                if how == "passed":
-                    with order:
-                        passed.append(b)
-                    if won is not None:
-                        won.set()  # --first: the rest stop
+                if how == "passed" and won is not None:
+                    won.set()  # --first: the rest stop
+                with order:
+                    k = len(finished)
+                    finished.append(b)
                 paths = [p for p in P.changed_since(trees[b], node.base_sha, {}) if P.in_scope(p, node.scope)]
-                wrote[b], lines = paths, _lines(trees[b], node.base_sha, paths)
+                verdict = P.fork_row(mine, node, b) or {}  # its check's own files it changed, when it passed
+                sha = _keep_fork(trees[b], node.id, b, paths)
+                lines, test_lines = pick.size(root, node.base_sha, sha) if sha and node.base_sha else (0, 0)
+                e = pick.Entry(b, how == "passed", sha, paths, lines, test_lines,
+                               _tests_of(root, node, sha, paths) if sha else [],
+                               verdict.get("check_touched") or [], end.get("dollars"),
+                               round(time.monotonic() - began, 1), k, how, why)  # fmt: skip
+                entries[b] = e
                 detail = {**row, "state": how, "why": why, "paths": paths[: P.KEPT_PATHS], "lines": lines,
-                          "ref": _keep_fork(trees[b], node.id, b, paths), "dollars": end.get("dollars"),
-                          "seconds": round(time.monotonic() - began, 1), "attempts": end.get("attempts", 0),
-                          **({"wants": end["wants"]} if end.get("wants") else {})}  # fmt: skip
+                          "test_lines": test_lines, "ref": fork_ref(node.id, b) if sha else None,
+                          "dollars": e.dollars, "seconds": e.seconds, "attempts": end.get("attempts", 0),
+                          **({"wants": end["wants"]} if end.get("wants") else {}),
+                          **({"check_touched": e.touched_check} if e.touched_check else {})}  # fmt: skip
                 mine.log_node(node.id, P._now(), "fork", mine_who.label, sessions[b], None, detail)
                 ends[b] = detail
                 told = {"passed": f"the check passed · {lines} lines", "gave up": f"gave up: {why}",
@@ -923,7 +936,7 @@ def _forked(store, node: P.Node, tree: Path, template: str, attempts: int, say: 
         if current.state != P.RUNNING:  # the person let it go under its forks
             _handed_back(store, current, say)
             return None
-        if not passed:  # Nemotron's words: each fork's reason, a hand-back said as one
+        if not any(e.passed for e in entries.values()):  # Nemotron's words: each fork's reason, as one
             why = f"no fork's check passed ({n} forks): " + "; ".join(
                 f"fork {b}: {'handed it back: ' * (ends[b]['state'] == 'gave up')}{ends[b]['why']}"
                 for b in letters if b in ends
@@ -932,16 +945,24 @@ def _forked(store, node: P.Node, tree: Path, template: str, attempts: int, say: 
             P.release(store, node.id, who, why, wants=wants or None)
             say(f"{node.id} came back: {why}")
             return None
-        kept = passed[0]  # ponytail: the first that passed; pick.choose (the rule that keeps one) replaces it
-        reason = "the only fork whose check passed" if len(passed) == 1 else "finished first"
-        _copied(trees[kept], tree, wrote[kept])
-        table = [{k: ends[b].get(k) for k in ("fork", "state", "lines", "dollars", "seconds")}
-                 for b in letters if b in ends]  # fmt: skip
-        choice = {"fork": kept, "of": n, "by": "graphene", "reason": reason, "table": table}
-        store.log_node(node.id, P._now(), "picked", who.label, who.session_id, None, choice)
-        against = ", ".join(str(ends[b]["lines"]) for b in passed[1:])
-        say(f"{node.id} kept {kept} of {n}: {reason} · {ends[kept]['lines']} lines"
-            + (f" against {against}" if against else ""))  # fmt: skip
+
+        def agrees(i: str, j: str) -> bool:  # i's tests laid over j's tree, under the leaf's own check
+            try:
+                crossed = pick.overlay(root, entries[j].commit, entries[i].commit, entries[i].tests)
+            except RuntimeError:  # the crossed tree could not be made: it passes nothing
+                return False
+            return P.run_check(node.check, tree, at=crossed)[0]
+
+        choice = pick.choose(list(entries.values()), agrees)
+        kept = choice.fork
+        _copied(trees[kept], tree, entries[kept].paths)
+        store.log_node(node.id, P._now(), "picked", who.label, who.session_id, None,
+                       {"fork": kept, "of": n, "by": "graphene", "reason": choice.reason,
+                        "table": choice.table})  # fmt: skip
+        others = [str(entries[b].lines) for b in sorted(entries) if b != kept and entries[b].passed]
+        sizes = "" if re.fullmatch(r"\d+ lines? against \d+", choice.reason) else (  # the reason said it
+            f" · {entries[kept].lines} lines" + (f" against {', '.join(others)}" if others else ""))
+        say(f"{node.id} kept {kept} of {n}: {choice.reason}{sizes}")
         try:  # the boundary, once, in the hold's tree: the check, `finished`, review or done, then it lands
             return P.finish(store, node.id, who)
         except P.Refused as no:
@@ -969,25 +990,24 @@ def _copied(source: Path, into: Path, paths: list[str]) -> None:
             shutil.copy2(src, dst, follow_symlinks=False)
 
 
-def _lines(tree: Path, base: str | None, paths: list[str]) -> int:
-    """Lines added and removed in ``paths`` since ``base``, a new file counted whole: the size the record
-    shows of what a fork did."""
-    if not paths or not base:
-        return 0
-    stat = _git(tree, "diff", "--numstat", base, "--", *paths, ok=True).stdout
-    n = sum(int(a) + int(d) for a, d, *_ in (line.split("\t") for line in stat.splitlines()) if a != "-")
-    listed = _git(tree, "ls-tree", "-r", "--name-only", "-z", base, "--", *paths, ok=True).stdout
-    was = set(listed.split("\0"))
-    for new in [p for p in paths if p not in was and (tree / p).is_file()]:
-        with contextlib.suppress(OSError), open(tree / new, "rb") as made:
-            n += sum(1 for _ in made)
-    return n
+def _tests_of(repo: Path, node: P.Node, commit: str, paths: list[str]) -> list[str]:
+    """What a fork referees the other forks with (pick's agreement): of what it changed inside the scope
+    (``paths``, committed as ``commit``), the files that look like tests and that its check runs in its
+    tree. A file it deleted runs nowhere."""
+    listed = _git(repo, "ls-tree", "-r", "-z", "--name-only", commit, ok=True).stdout.split("\0")[:-1]
+    ran = {f for _, under in P.check_paths(node.check, listed, [node]) for f in under}
+    return [p for p in paths if pick.is_test(p) and p in ran]
+
+
+def fork_ref(node_id: str, letter: str) -> str:
+    """Where a fork's work is kept once the leaf has ended: a hidden ref under the leaf's id."""
+    return f"refs/graphene/forks/{node_id}/{letter}"
 
 
 def _keep_fork(tree: Path, node_id: str, letter: str, paths: list[str]) -> str | None:
     """A fork's changes inside the scope, committed in its worktree and kept on the hidden ref
-    refs/graphene/forks/<id>/<letter> (its parent the hold's base) after the leaf ends, so the record
-    can show what each fork tried. None when it changed nothing there."""
+    ``fork_ref`` names (its parent the hold's base) after the leaf ends, so the record and `node diff
+    --fork` can show what each fork tried. The commit; None when it changed nothing there."""
     if not paths:
         return None
     sparse = ("-c", "core.sparseCheckout=false")  # a leaf may write outside a sparse checkout's cone
@@ -996,9 +1016,8 @@ def _keep_fork(tree: Path, node_id: str, letter: str, paths: list[str]) -> str |
         return None
     _git(tree, *_ident(tree), "commit", "-q", "--no-verify", "-m",
          f"fork {letter} of {node_id}\n\nGraphene-Node: {node_id}\n")  # fmt: skip
-    ref = f"refs/graphene/forks/{node_id}/{letter}"
-    _git(tree, "update-ref", ref, "HEAD")
-    return ref
+    _git(tree, "update-ref", fork_ref(node_id, letter), "HEAD")
+    return _git(tree, "rev-parse", "HEAD").stdout.strip()
 
 
 STOPPED = "the run was stopped before this leaf was finished"  # by Ctrl-C, `:stop` or a closed terminal
@@ -1373,13 +1392,14 @@ def _merged(store, node: P.Node) -> str:
         too = ", and it passed at the base too" if at_base else ""
         lines.append(f"Check: `{node.check}` passed{too}")
     if tries:
-        a = tries[-1]
+        kept = picked[-1]["fork"] if picked else None  # the kept fork's executor is the one that did it
+        a = ([t for t in tries if t.get("fork") == kept] or tries)[-1]
         who = " ".join(filter(None, (a["executor"], a["model"] and a["model"].rsplit("/", 1)[-1])))
         spent = f"${sum(t['dollars'] for t in tries):.4f} at list price"
         if not all(t["meter"] and t["priced"] for t in tries):  # no dollars where nothing counted them
             spent = "no meter" if not all(t["meter"] for t in tries) else "no list price"
-        lines.append(f"Executor: {who} · {len(tries)} attempt{'s' * (len(tries) != 1)} · {spent}")
-    lines += [f"Forks: {picked[-1]['of']}, kept {picked[-1]['fork']}"] if picked else []
+        forked = f"{picked[-1]['of']} forks, kept {kept} · " if picked else ""
+        lines.append(f"Executor: {who} · {forked}{len(tries)} attempt{'s' * (len(tries) != 1)} · {spent}")
     lines += [f"Reopened: {notes[-1]}"] if notes else []
     subject = f"{node.title} ({node.id}{', reopened' if notes else ''})"
     return "\n".join([subject, "", *lines, f"Graphene-Node: {node.id}"])

@@ -358,6 +358,7 @@ def _attempt(a: dict, nxt: dict | None, scope: list[str] | None, now: datetime) 
     end = datetime.fromisoformat((until or nxt["row"])["timestamp"]) if until or nxt else now
     return {
         "attempt": a["row"]["detail"].get("attempt"),
+        **({"fork": f} if (f := a["row"]["detail"].get("fork")) else {}),  # its letter, on a forked hold's
         "executor": executor,
         "meter": (ended["detail"].get("meter") if ended else None)
         or a["row"]["detail"].get("meter")  # known from the start: before its first turn it has no usage yet
