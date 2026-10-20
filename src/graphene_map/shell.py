@@ -96,9 +96,20 @@ def _is_assignment(token: str) -> bool:
     return "=" in token and not token.startswith("-") and name.isidentifier()
 
 
+_WRAPPER_ARGS = {"nice": ("-n",), "env": ("-u", "-C", "-S"), "exec": ("-a",), "time": ("-f", "-o"),
+                 "sudo": ("-u", "-g", "-C", "-D", "-h", "-p", "-r", "-t", "-U")}  # flags that take a word
+
+
 def _strip_wrappers(tokens: list[str]) -> list[str]:
+    """The command under its leading `NAME=value` words and wrappers, with each wrapper's own flags:
+    `nice -n 1 tee f` is tee, as `command -p tee f` and `env -i tee f` are."""
     while tokens and (_is_assignment(tokens[0]) or tokens[0] in _WRAPPERS):
-        tokens.pop(0)
+        takes = _WRAPPER_ARGS.get(tokens.pop(0), ())
+        while tokens and tokens[0].startswith("-") and tokens[0] != "--":
+            if tokens.pop(0) in takes and tokens:
+                tokens.pop(0)
+        if tokens and tokens[0] == "--":
+            tokens.pop(0)
     return tokens
 
 
