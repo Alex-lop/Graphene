@@ -16,7 +16,7 @@ RESPONSE_CAP = 256 * 1024
 STRING_CAP = 8 * 1024  # a recorded string longer than this keeps its first and last KEEP bytes only
 KEEP = 4 * 1024
 CONTENT_CAP = 2 * 1024 * 1024
-SCHEMA_VERSION = 5  # a hook-recorded session may outlive its transcript: migrate in place, never rebuild
+SCHEMA_VERSION = 6  # a hook-recorded session may outlive its transcript: migrate in place, never rebuild
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS sessions (
@@ -149,6 +149,9 @@ MIGRATIONS: dict[int, tuple[str, ...]] = {
     # leaf was the person's at once), so it becomes auto. An older graphene refuses the store in
     # words instead of reading auto as never set.
     5: ("UPDATE plan_meta SET value = 'auto' WHERE key = 'plan_first' AND value = 'on'",),
+    # 6: no table changes. A node gained `forks` (its contract) and `forked` (its hold), and the settings
+    # `forks`; the number goes up so that an older graphene refuses the store in words.
+    6: (),
 }
 
 

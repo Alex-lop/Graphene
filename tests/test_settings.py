@@ -22,7 +22,8 @@ size: finer
 def test_nothing_set_reads_as_empty_and_auto(store):
     assert (S.protected(store), S.readonly(store), S.never(store), S.size(store)) == ([], [], [], "auto")
     assert S.conditions_for_planner(store) == ""
-    assert S.render(store).endswith("size: auto\nboard: auto\nreview: off\n") and S.board(store) == "auto"
+    assert S.render(store).endswith("size: auto\nboard: auto\nreview: off\nforks: 1\n")
+    assert S.board(store) == "auto" and S.forks(store) == 1
     assert S.review(store) == "off"
 
 

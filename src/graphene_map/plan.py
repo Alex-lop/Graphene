@@ -43,7 +43,8 @@ CLEAN_TREE = (
     "repo has one (`uv run pytest …` beside a pyproject, `npm ci && npm test`), else the system python3."
 )
 KEPT_PATHS = 200  # changed paths kept in a node's log when it ends; the count of the rest is kept too
-EDITABLE = ("title", "goal", "scope", "check", "signoff", "needs", "owner", "parent")
+EDITABLE = ("title", "goal", "scope", "check", "signoff", "forks", "needs", "owner", "parent")
+FORKS = range(1, 9)  # a leaf's forks, and the setting's: agents at once on one leaf, its check keeping one
 USABLE = re.compile(r"(?!.*\.\.|.*\.(lock)?$)[A-Za-z0-9][\w.-]{0,31}")  # an id: graphene/<id> is a branch
 # Environment variables an agent's shell carries. GRAPHENE_NODE is ours: `graphene run` sets it for
 # every executor it starts. TODO: the last two are from the vendors' docs, not yet seen on a real run.
@@ -95,6 +96,7 @@ class Node:
     scope: list[str] = field(default_factory=list)  # globs, repo-relative; "!glob" takes paths back out
     check: str | None = None  # a shell command that must exit 0, run by Graphene on the node's state
     signoff: bool = False  # a person must also say so
+    forks: int | None = None  # agents at once on it, its check keeping one; None: the run's, or the setting's
     needs: list[str] = field(default_factory=list)
     owner: str = AGENT
     parent: str | None = None  # the node this one helps achieve; None is directly under the plan's goal
@@ -389,6 +391,8 @@ def validate(
             raise Refused(
                 f"{n.id}: a leaf needs a check, a person's sign-off, or both; else nobody knows it is done"
             )
+        if (n.forks or 1) > 1 and not n.check:
+            raise Refused(f"{n.id}: {n.forks} forks need a check to keep one; a sign-off cannot choose")
     seen: dict[str, int] = {}
 
     def visit(i: str, trail: tuple[str, ...]) -> None:
@@ -984,6 +988,11 @@ def contract(
             if node.needs
             else []
         ),
+        *(
+            [f"  forks:  {node.forks}   (agents at once, each in its own copy; its check keeps one)"]
+            if (node.forks or 1) > 1
+            else []
+        ),
         f"  done:   {done_means(node) or 'no check yet'}",
         *(
             []
@@ -1027,6 +1036,11 @@ def from_dict(raw: dict, fallback_id: str) -> Node:
     scope = raw.get("scope") or []
     needs = raw.get("needs") or []
     owner = " ".join(str(raw.get("owner") or AGENT).split()) or AGENT  # one line, as the text writes it
+    forks = raw.get("forks")
+    if forks not in (None, ""):
+        forks = int(forks) if isinstance(forks, int) or str(forks).strip().isdigit() else 0
+        if forks not in FORKS:
+            raise Refused(f"forks is a number from {FORKS[0]} to {FORKS[-1]}, not {raw['forks']!r}")
     return Node(
         id=str(raw.get("id") or fallback_id),
         title=str(raw.get("title") or ""),
@@ -1034,6 +1048,7 @@ def from_dict(raw: dict, fallback_id: str) -> Node:
         scope=[scope] if isinstance(scope, str) else [str(s) for s in scope],
         check=str(raw["check"]).strip() or None if raw.get("check") else None,  # blank is no check
         signoff=bool(raw.get("signoff")),
+        forks=forks if forks not in (None, "") else None,
         needs=[needs] if isinstance(needs, str) else [str(n) for n in needs],
         owner=owner,
         parent=str(raw["parent"]) if raw.get("parent") not in (None, "", "none") else None,
@@ -1041,7 +1056,10 @@ def from_dict(raw: dict, fallback_id: str) -> Node:
 
 
 def to_dict(node: Node) -> dict:
-    return {f: getattr(node, f) for f in Node.__slots__}
+    out = {f: getattr(node, f) for f in Node.__slots__}
+    if out["forks"] is None:
+        del out["forks"]  # stored only when set: unsaid, the run's --forks or the setting decides
+    return out
 
 
 def to_json(nodes: list[Node]) -> str:

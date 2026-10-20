@@ -1246,6 +1246,9 @@ def register(cli: typer.Typer, root, open_store, fail):
         signoff: bool = typer.Option(
             False, "--signoff", help="Require a person's sign-off as well as the check."
         ),
+        forks: int = typer.Option(
+            None, "--forks", min=1, max=8, help="Agents at once on this leaf; its check keeps one."
+        ),
         node_id: str = typer.Option(None, "--id", help="An id of your choosing; else n1, n2, …"),
         parent: str = typer.Option(
             None, "--parent", help="The node this one helps achieve; under a leaf, this splits the leaf."
@@ -1261,6 +1264,7 @@ def register(cli: typer.Typer, root, open_store, fail):
             goal=goal,
             needs=needs,
             owner=owner,
+            forks=forks,
             id=node_id,
             parent=parent,
         )
@@ -1293,12 +1297,16 @@ def register(cli: typer.Typer, root, open_store, fail):
         signoff: bool = typer.Option(
             None, "--signoff/--no-signoff", help="Require a person's sign-off, or not."
         ),
+        forks: int = typer.Option(
+            None, "--forks", min=1, max=8, help="Agents at once on this leaf; its check keeps one."
+        ),
         parent: str = typer.Option(None, "--parent", help="Move it under another node; 'none' is the top."),
     ) -> None:
         """Change a node's contract.
 
         Only a person can. The change binds the node's next write and next start."""
-        edits = changes(title=title, scope=scope, check=check, goal=goal, owner=owner, parent=parent)
+        edits = changes(title=title, scope=scope, check=check, goal=goal, owner=owner, forks=forks,
+                        parent=parent)  # fmt: skip
         if needs:
             edits["needs"] = [i for i in needs if i != "none"]
         if signoff is not None:
@@ -1308,7 +1316,7 @@ def register(cli: typer.Typer, root, open_store, fail):
                 fail(f"--{said} replaces the {said} and --add-{said} adds to it: one or the other", 2)
         if not (edits or add_scope or add_goal):
             fail(f"graphene node set {node_id} needs what to change: --title, --scope, --check, --goal, "
-                 "--needs, --owner, --signoff or --parent", 1)  # fmt: skip
+                 "--needs, --owner, --signoff, --forks or --parent", 1)  # fmt: skip
 
         files = tracked()
         told: list[str] = []
