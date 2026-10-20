@@ -5,10 +5,9 @@ graph keeps the whole's columns); order inside a layer comes from a few barycent
 right-angled and run in channels between layers, so a crossing is a `┼` and a fan-out is a trunk with
 branches. An edge that would close a cycle (found by a depth-first search, or declared `loop`) is a "back
 edge": it leaves the right of its source, drops to a row under every node, runs back and comes in at the
-left of its target, so no line ever crosses a box. A `two` edge has an arrowhead at both ends; a `tree`
-edge (a goal over what serves it) has none, and is drawn quieter than any other; a `double` edge is drawn
-in double lines, and where it meets a single one the join says which is which (`╢ ╧ ╫`). An edge that
-crosses a column runs on at its row and turns at its target's column.
+left of its target, so no line ever crosses a box. A `two` edge has an arrowhead at both ends; a `double`
+edge is drawn in double lines, and where it meets a single one the join says which is which (`╢ ╧ ╫`).
+An edge that crosses a column runs on at its row and turns at its target's column.
 Lanes stack the nodes in bands, top to bottom, each under a rule across the graph that carries the lane's
 label and note; the nodes in no lane come last, with no rule; `heads` puts a header over each layer.
 Positions are a function of the graph alone, so a recolour never moves a node.
@@ -45,7 +44,7 @@ ACROSS = {
     E | S: "╒", S | W: "╕", N | E: "╘", N | W: "╛", N | S | E: "╞", N | S | W: "╡",
     E | W | S: "╤", E | W | N: "╧", N | E | S | W: "╪",
 }  # fmt: skip
-RANK = {"": 0, "lane": 1, "edge_tree": 1, "edge": 2, "edge_hot": 3, "edge_loop": 4}  # two in a cell: the loud
+RANK = {"": 0, "lane": 1, "edge": 2, "edge_hot": 3, "edge_loop": 4}  # two lines in a cell: the louder
 BOX = {
     "light": "╭╮╰╯─│", "heavy": "┏┓┗┛━┃", "double": "╔╗╚╝═║", "square": "┌┐└┘─│",
 }  # fmt: skip
@@ -65,7 +64,6 @@ class GEdge:
     a: str
     b: str
     kind: str = "needs"  # needs: a to b · two: a and b, both ways · loop: a to b, always drawn as a back edge
-    # · tree: b is under a (a goal over what serves it): a line with no arrowhead
     double: bool = False  # drawn in double lines: the chain the caller wants seen
 
 
@@ -97,24 +95,14 @@ class Layout:
 
 
 def neighbourhood(
-    nodes: list[GNode],
-    edges: list[GEdge],
-    focus: str,
-    hops: int,
-    up: bool = True,
-    keep: list[str] | None = None,
+    nodes: list[GNode], edges: list[GEdge], focus: str, hops: int, keep: list[str] | None = None
 ) -> tuple[list[GNode], list[GEdge]]:
-    """The nodes within ``hops`` of ``focus``, either direction, the goals over ``focus`` by `tree` edges, up
-    to the top (why it is there) unless ``up`` is False, those named in ``keep``, and the edges among them."""
+    """The nodes within ``hops`` of ``focus``, either direction, those named in ``keep`` (the goal, where
+    it all arrives), and the edges among them."""
     near, front = {focus}, {focus}
     for _ in range(hops):
         front = {y for e in edges for x, y in ((e.a, e.b), (e.b, e.a)) if x in front} - near
         near |= front
-    parent, at = {e.b: e.a for e in edges if e.kind == "tree"}, focus
-    for _ in nodes if up else ():  # a tree has no cycle; this is the most steps up there can be if one did
-        if (at := parent.get(at)) is None:
-            break
-        near.add(at)
     near |= set(keep or ())
     return [n for n in nodes if n.id in near], [e for e in edges if e.a in near and e.b in near]
 
@@ -438,13 +426,10 @@ def _draw(nodes, boxes, edges, forward, back, layer, rows, band, lanes, heads, s
             mark[(x + dx, yy)] = (ch, st)
 
     loops = {(e.a, e.b) for e in edges if e.kind == "loop"}
-    trees = {(e.a, e.b) for e in edges if e.kind == "tree"}
 
     def hot(a: str, b: str) -> str:
         if (a, b) in loops:
             return "edge_loop"
-        if (a, b) in trees:  # the tree stays quiet: what lights up is what the selected task waits on
-            return "edge_tree"
         return "edge_hot" if selected in (a, b) else "edge"
 
     # lanes: a rule over each band, its label at the left and its note at the right; the headers over the
@@ -476,12 +461,8 @@ def _draw(nodes, boxes, edges, forward, back, layer, rows, band, lanes, heads, s
             else:  # through a dummy: across its layer
                 pts += [(x_of(b), yb), (x_of(b) + width_of[layer_of(b, layer, None, rows)], yb)]
         st = hot(e.a, e.b)
-        end = (x_of(last) - 1, int(mid(last)))
-        if e.kind == "tree":  # no arrowhead: the line runs on to the box
-            pts.append(end)
         line(_dedupe(pts), st, e.double)
-        if e.kind != "tree":
-            mark[end] = ("▶", st)
+        mark[(x_of(last) - 1, int(mid(last)))] = ("▶", st)
         if e.kind == "two":
             mark[(sx, int(mid(first)))] = ("◀", st)
     # back edges

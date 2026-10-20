@@ -60,26 +60,16 @@ def test_a_neighbourhood_fits_where_the_whole_does_not():
     assert len(near_nodes) < 10 and narrow.width < lay.width
 
 
-def test_a_neighbourhood_keeps_the_goals_over_its_focus_up_to_the_top():
-    nodes = [GNode(x, x) for x in ("goal", "api", "web", "ids", "docs", "far")]
-    edges = [GEdge("goal", "api", "tree"), GEdge("goal", "web", "tree"), GEdge("api", "docs", "tree")]
-    edges += [GEdge("web", "ids", "tree"), GEdge("ids", "docs"), GEdge("goal", "far", "tree")]
-    near, near_edges = F.neighbourhood(nodes, edges, "docs", 1)
-    assert {n.id for n in near} == {"docs", "ids", "api", "goal"}  # its own way up; not web, not far
-    assert all("far" not in (e.a, e.b) for e in near_edges)
-
-
-def test_a_tree_edge_runs_to_its_box_with_no_arrowhead_and_gives_way_to_an_arrow():
-    nodes = [GNode("g", "the goal", "goal"), GNode("a", "first"), GNode("b", "then")]
-    lay = F.layout(nodes, [GEdge("g", "a", "tree"), GEdge("g", "b", "tree"), GEdge("a", "b")], label_w=8)
+def test_every_edge_ends_in_an_arrowhead_at_its_targets_left():
+    nodes = [GNode("a", "first"), GNode("b", "then"), GNode("g", "the goal", "goal")]
+    lay = F.layout(nodes, [GEdge("a", "b"), GEdge("b", "g"), GEdge("a", "g")], label_w=8)
 
     def left_of(n: str) -> tuple[str, str]:
         x0, y0, _x1, y1 = lay.rects[n]
         return lay.cells[(y0 + y1) // 2][x0 - 1]
 
-    assert left_of("a") == ("─", "edge_tree")  # the goal's line reaches a's border, quietly
-    assert left_of("b") == ("▶", "edge")  # b waits on a: that arrow is drawn over the goal's line
-    assert lay.text().count("▶") == 1
+    assert left_of("b") == ("▶", "edge") and left_of("g") == ("▶", "edge")
+    assert lay.text().count("▶") == 2 and left_of("a") == (" ", "")  # nothing flows into a
 
 
 def test_a_cycle_among_plain_edges_becomes_one_back_edge():

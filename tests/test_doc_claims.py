@@ -440,7 +440,7 @@ def test_ideas_next_says_what_the_night_did_and_what_is_still_not_done():
     from graphene_map.cockpit import flow_view as FV
     from graphene_map.cockpit.look import who
 
-    assert FV.TREE == ("goal", "sub-goal") and who("2") == "agent 2"  # boxes for the tree; agents by number
+    assert FV.GOAL and who("2") == "agent 2"  # a box for the goal; agents by number
     text = (ROOT / "dev/ui/IDEAS.md").read_text(encoding="utf-8")
     assert len(text.split()) < 750
     done, left = " ".join(text.split("## Next")[1].split()).split(" Not done: ")

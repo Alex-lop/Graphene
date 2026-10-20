@@ -1,5 +1,5 @@
-"""The graph screen in the app: the goal and the sub-goals are boxes, and neither an arrow nor a click on one
-selects it."""
+"""The graph screen in the app: the goal is the box where the arrows arrive, and neither an arrow key nor a
+click on it selects it."""
 
 import asyncio
 
