@@ -68,29 +68,41 @@ leave out: a --name flag; nobody asked for one  [name-flag]
 GREET_CHECK = "python3 -c 'import app; assert app.greet() == \"hello\"'"
 MAIN = ("from app import greet\nfrom bye import bye\n\ndef start():\n    return greet()\n\n"
         "def stop():\n    return bye()\n")  # what the leaf that waits writes
+WORDS = "# the words the app says\nHELLO = 'hello'\nGOODBYE = 'goodbye'\n"  # fork c writes more than asked
 # seconds a stand-in thinks before a step (its script, the step's number): the three the first run starts
 # think before their second, so they are seen at work at once; greet hands its task back a look of the
 # recorder's after the write it was stopped at, before the other two are done, so a recording sees the write
-# stopped, then the task back while two agents still run
+# stopped, then the task back while two agents still run. Widened, greet runs as three forks: each thinks
+# a second before its first step, so all three are seen at work at once; a gives up then, b does the rest
+# at once and ends first, c thinks before its last steps and ends a few looks later
 THINKS = {("greet (revision 2", 1): 1.5, ("greet (revision 2", 2): 0.4,
-          ("farewell (revision", 1): 2.5, ("banner (revision", 1): 2.5}  # fmt: skip
+          ("farewell (revision", 1): 2.5, ("banner (revision", 1): 2.5,
+          ("fork a of 3", 0): 1.0, ("fork b of 3", 0): 1.0,
+          ("fork c of 3", 0): 1.0, ("fork c of 3", 2): 0.8, ("fork c of 3", 4): 1.2}  # fmt: skip
 SCRIPTS = {
     "planner": [call("list", path="."), call("read", path="app.py"), {"content": PLAN}],
     # the prune took words.py from greet's scope: its first hold comes back wanting it
     "greet (revision 2": [call("edit", path="app.py", old="return 'hi'", new="return HELLO"),
                           call("write", path="words.py", content="HELLO = 'hello'\n"),
                           call("release", why="the word lives in words.py", wants=["words.py"])],
-    "greet (revision 3": [call("edit", path="app.py", old="return 'hi'", new="return HELLO"),
-                          call("edit", path="words.py", old="'hi'", new="'hello'"),
-                          call("run", command=GREET_CHECK), call("done")],
+    # widened and forked three ways (each fork's prompt says which it is): a gives up, b passes with the
+    # smallest change, c passes with a larger one; the rule keeps b
+    "fork a of 3": [call("release", why="two files say the word; not sure which one to change")],
+    "fork b of 3": [call("edit", path="app.py", old="return 'hi'", new="return HELLO"),
+                    call("edit", path="words.py", old="'hi'", new="'hello'"),
+                    call("run", command=GREET_CHECK), call("done")],
+    "fork c of 3": [call("view", path="words.py"),
+                    call("edit", path="app.py", old="return 'hi'", new="return HELLO"),
+                    call("write", path="words.py", content=WORDS),
+                    call("run", command=GREET_CHECK), call("done")],
     "farewell (revision": [call("edit", path="bye.py", old="'bye'", new="'goodbye'"), call("done")],
     "banner (revision": [call("edit", path="cli/banner.py", old="'hi'", new="'welcome'"), call("done")],
     # it starts once greet and farewell have landed: its check reads both
     "hello-bye (revision": [call("write", path="cli/main.py", content=MAIN), call("done")],
 }  # fmt: skip
-# no prune: greet keeps words.py in its scope, and every leaf lands on the first run (the first key is
-# the one every revision of greet's prompt meets)
-IN_ONE_GO = {"greet (revision": SCRIPTS["greet (revision 3"]} | SCRIPTS
+# no prune: greet keeps words.py in its scope, and every leaf lands on the first run, greet as one agent
+# doing fork b's work (the first key is the one every revision of greet's prompt meets)
+IN_ONE_GO = {"greet (revision": SCRIPTS["fork b of 3"]} | SCRIPTS
 
 
 def reply(body, scripts=SCRIPTS):
@@ -138,12 +150,21 @@ def test_the_demo_script_runs_from_nothing_to_the_bill(tmp_path):
     assert "(the plan of" not in said  # the demo stands in its own checkout: no act names it
     first, again = [line for line in said.splitlines() if line.startswith("run: ")]
     assert first.startswith("run: 2 done, 1 came back (greet) · ") and " · 3 of 3 at once · " in first
-    assert again.startswith("run: 2 done · ")  # greet tried again, then the leaf that waited on it
+    # widened, greet is forked (as f in the cockpit does) and tried again as three forks: a gives up, b and
+    # c pass, the rule keeps the smaller; then the leaf that waited on it
+    assert "$ graphene node set greet --forks 3" in said
+    assert "greet forked 3 ways: a nemotron, b nemotron, c nemotron" in said
+    assert "greet fork a: gave up: two files say the word; not sure which one to change" in said
+    assert "greet fork b: the check passed · 4 lines" in said
+    assert "greet fork c: the check passed · 6 lines" in said
+    assert "greet kept b of 3: 4 lines against 6" in said
+    assert again.startswith("run: 2 done · ") and " · 3 of 4 at once · " in again  # the three forks, then one
     assert said.index("farewell is done") < said.index("greet is done") < said.index("hello-bye started")
-    graph = subprocess.run(["git", "-C", str(tmp_path / "demo"), "log", "--merges", "--format=%s"],
-                           capture_output=True, text=True).stdout.split("\n")  # fmt: skip
+    merges = subprocess.run(["git", "-C", str(tmp_path / "demo"), "log", "--merges", "--format=%s%n%b"],
+                            capture_output=True, text=True).stdout  # fmt: skip
     assert {"greet says hello (greet)", "bye says goodbye (farewell)", "the banner says welcome (banner)",
-            "the app says hello and goodbye (hello-bye)"} <= set(graph)  # fmt: skip
+            "the app says hello and goodbye (hello-bye)"} <= set(merges.split("\n"))  # fmt: skip
+    assert " · 3 forks, kept b · " in merges  # greet's merge says so; no other leaf forked
     assert "bill: $" in said and "at list price" in said  # the record's bill, at the end
     assert "4 of 4 passed at last run, 0 runs failed on the way; 1 write refused" in said
     assert (tmp_path / "demo" / "words.py").read_text() == "HELLO = 'hello'\n"
