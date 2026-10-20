@@ -199,3 +199,18 @@ def test_the_chains_boxes_lead_their_column_and_a_line_running_on_passes_under_t
 
     assert any(crossed(y) for y in range(cy1 + 1, lay.height))  # a's line runs on under c
     assert not any(crossed(y) for y in range(cy0))  # not over it
+
+
+def test_a_lanes_label_ends_before_a_line_crossing_its_rule_so_the_crossing_shows():
+    """The label was painted on its rule after the edges, so a line crossing the rule under the label was
+    broken by the label's letters: 'command line please' over the chain from a down to b had an 'l' where
+    the ╫ belongs, with ║ above and below it."""
+    for label, rule_starts in [("command line please", "── command…╫"), ("write it", "── write it╫")]:
+        nodes = [GNode("a", "short", lane="x"), GNode("b", "then", lane="y")]
+        lanes = [F.Lane("x", "lane x"), F.Lane("y", label)]
+        lay = F.layout(nodes, [GEdge("a", "b", double=True)], label_w=8, lanes=lanes)
+        rows = lay.text().splitlines()
+        rule = next(k for k, row in enumerate(rows) if row.startswith("── " + label[:5]))
+        x = rows[rule - 1].index("║")  # the chain, running down from a across y's rule to b
+        assert rows[rule][x] == "╫" and rows[rule + 1][x] == "║", rows[rule]
+        assert rows[rule].startswith(rule_starts), rows[rule]  # cut before the crossing, or whole up to it

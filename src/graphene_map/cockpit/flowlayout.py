@@ -458,13 +458,10 @@ def _draw(
             return "edge_loop"
         return "edge_hot" if selected in (a, b) else "edge"
 
-    # lanes: a rule over each band, its label at the left and its note at the right; the headers over the
-    # layers, one that does not fit its column kept to its first words
-    for k, lane in enumerate(lanes):
+    # lanes: a rule over each band; the headers over the layers, one that does not fit its column kept to
+    # its first words
+    for k in range(len(lanes)):
         line([(0, rule_y[k]), (total_w - 2, rule_y[k])], "lane")
-        note = f" {lane.note} " if lane.note else ""
-        put(2, rule_y[k], f" {fit(lane.label, max(total_w - 7 - cell_len(note), 1))} ", "lane_label")
-        put(total_w - 3 - cell_len(note), rule_y[k], note, "lane_label")
     for li, head in enumerate(heads[:gaps]):
         room = width_of[li] - 1 + (gap_w[li] if li < gaps - 1 else 0)  # a cell short of the next header
         put(x0[li] + 2, 0, head if cell_len(head) <= room else head.split(" · ")[0], "head")
@@ -511,6 +508,16 @@ def _draw(
         mark[(x_of(e.b) - 1, yb)] = ("▶", st)
         if e.kind == "two":
             mark[(x_of(e.a) + wid(e.a), ya)] = ("◀", st)
+    # each rule's label at its left and its note at its right, now that the edges say where a line crosses
+    # the rule: the label ends before the first crossing, so its letters never paint over one
+    for k, lane in enumerate(lanes):
+        yy = rule_y[k]
+        note = f" {lane.note} " if lane.note else ""
+        crossed = next((x for x in range(2, total_w) if mask[yy][x] & (N | S)), total_w)
+        label = fit(lane.label, max(min(total_w - 7 - cell_len(note), crossed - 3), 1))
+        text = f" {label} " if 3 + cell_len(label) < crossed else f" {label}"  # its space, where no line is
+        put(2, yy, text, "lane_label")
+        put(total_w - 3 - cell_len(note), yy, note, "lane_label")
 
     # compose cells
     cells: list[list[tuple[str, str]]] = []
