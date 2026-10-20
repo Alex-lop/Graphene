@@ -295,8 +295,9 @@ def attempts(rows: list[dict], scope: list[str] | None = None, now: datetime | N
             continue
         if "attempt" in d:
             a = numbered.get((d.get("fork"), d["attempt"]))
-        else:
-            a = tries[-1] if tries and not tries[-1]["ended"] else None
+        else:  # the attempt going when it was written: of its own fork, when the row says whose
+            mine = [t for t in tries if t["row"]["detail"].get("fork") == d.get("fork")]
+            a = mine[-1] if mine and not mine[-1]["ended"] else None
         if a is None:
             continue
         if e["kind"] == "ended":

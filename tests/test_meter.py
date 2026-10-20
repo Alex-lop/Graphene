@@ -192,6 +192,21 @@ def test_attempts_of_one_leaf():
     assert M.attempts([row("00:00", "started", {}), row("00:05", "released", {})]) == []  # never tried
 
 
+def test_a_forks_refused_write_is_its_own_attempts_whichever_fork_started_last():
+    """A `denied` row has no attempt number, only the fork's letter: it belongs to that fork's attempt going
+    then, not to the attempt of whichever fork started last."""
+    forked = [
+        row("00:00", "attempt", {"attempt": 1, "fork": "a", "of": 2, "checkout": "/w/n1.a"}),
+        row("00:02", "attempt", {"attempt": 1, "fork": "b", "of": 2, "checkout": "/w/n1.b"}),
+        row("00:03", "denied", {"path": "schema.py", "how": "Edit", "fork": "a"}, actor=None),
+        row("00:06", "ended", {"attempt": 1, "fork": "a", "exit": 0, "seconds": 6}),
+        row("00:07", "ended", {"attempt": 1, "fork": "b", "exit": 0, "seconds": 5}),
+    ]
+    a, b = M.attempts(forked, now=NOW)
+    assert (a["fork"], a["refused"]) == ("a", ["schema.py"])
+    assert (b["fork"], b["refused"]) == ("b", [])
+
+
 def test_an_attempt_says_its_meter_from_its_start():
     """Live, 7 October: a Claude Code leaf read "no meter" until its first turn's usage came. Its attempt
     row says which stream it writes, so until then it has a meter and no usage yet."""
