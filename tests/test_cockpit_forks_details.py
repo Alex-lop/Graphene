@@ -78,10 +78,18 @@ def test_the_news_names_a_fork_by_its_agents_number_and_its_letter_and_says_what
     line = {"node_log": [row("greet", "fork", fork="b", of=3, state="passed", lines=31),
                          row("greet", "fork", fork="a", of=3, state="gave up", why="it needs words.py"),
                          row("greet", "fork", fork="c", of=3, state="running")]}  # fmt: skip
-    said = "agent 3b: its check passed · 31 lines · agent 3a: gave up: it needs words.py"
-    assert news(line, GREET, names) == said  # a fork still running is bookkeeping
+    said = "agent 3b: its check passed, 31 lines · agent 3a: gave up: it needs words.py"
+    assert news(line, GREET, names) == said  # a fork still running is bookkeeping; ` · ` parts the items
     line = {"node_log": [row("greet", "picked", fork="b", of=3, by="graphene", reason="31 lines against 58")]}
-    assert news(line, GREET, names) == "greet says hello: kept b · 31 lines against 58"
+    assert news(line, GREET, names) == "greet says hello kept b: 31 lines against 58"
+    reason = "passes a's tests (a fails b's) · 31 lines against 58"  # the rule's own ` · ` reads as a comma
+    line = {"node_log": [row("greet", "picked", fork="b", of=3, by="graphene", reason=reason),
+                         row("greet", "fork", fork="c", of=3, state="gave up", why="needs x · y"),
+                         row("greet", "did", verb="editing", target="app.py", fork="a")]}  # fmt: skip
+    said = "greet says hello kept b: passes a's tests (a fails b's), 31 lines against 58"
+    assert news(line, GREET, names) == said + " · agent 3c: gave up: needs x, y · agent 3a: editing app.py"
+    line = {"node_log": [row("greet", "picked", fork="a", of=2, by="person", reason="")]}
+    assert news(line, GREET, names) == "greet says hello kept a: your pick"
     nemotron = {"node_log": [row("greet", "fork", fork=1, of=2, state="passed", why="")]}  # numbered: as was
     assert news(nemotron, GREET, names) == ""
     line = {"node_log": [row("greet", "fork", fork="c", of=3, state="stopped", why="b passed first"),

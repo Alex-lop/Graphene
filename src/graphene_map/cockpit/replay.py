@@ -66,6 +66,12 @@ def words(text) -> str:
     return fit(" ".join(str(text or "").split()), 60)
 
 
+def item(text) -> str:
+    """A fork's words as one item of the news, which ` · ` parts: its own ` · ` (the rule's reason has one)
+    reads as a comma, so one verdict does not read as two."""
+    return words(text).replace(" · ", ", ")
+
+
 def news(line: dict, titles: dict[str, str] | None = None, names: dict[str, str] | None = None) -> str:
     """One recorded change as a narrator says it, each task by its title (``titles``): what an agent did or
     said, a write the gate stopped, why a task came back, what the board asks and what you answered, what
@@ -107,13 +113,13 @@ def news(line: dict, titles: dict[str, str] | None = None, names: dict[str, str]
         elif kind == "forked":
             said.append(f"{title} forked {d.get('of') or len(d.get('forks') or [])} ways")
         elif kind == "fork" and fork and d.get("state") == "passed":
-            said.append(f"{who}: its check passed" + (f" · {d['lines']} lines" if d.get("lines") else ""))
+            said.append(f"{who}: its check passed" + (f", {d['lines']} lines" if d.get("lines") else ""))
         elif kind == "fork" and fork and d.get("state") not in (None, "running"):
             state = FORK_WORD.get(d["state"], d["state"])
-            said.append(f"{who}: {state}" + (f": {words(d['why'])}" if d.get("why") else ""))
-        elif kind == "picked":
-            said.append(f"{title}: " + kept_said((str(d.get("fork") or ""), words(d.get("reason")),
-                                                   str(d.get("by") or ""))))  # fmt: skip
+            said.append(f"{who}: {state}" + (f": {item(d['why'])}" if d.get("why") else ""))
+        elif kind == "picked":  # as the run says it: `greet kept b: …`
+            said.append(f"{title} " + kept_said((str(d.get("fork") or ""), item(d.get("reason")),
+                                                  str(d.get("by") or "")), ": "))  # fmt: skip
         elif kind == "released":
             said.append(f"{title} came back: {words(d.get('why'))}")
         elif kind == "refused" and d.get("outside"):

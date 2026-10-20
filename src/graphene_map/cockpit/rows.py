@@ -318,10 +318,11 @@ def long_note(t: Task, width: int) -> bool:
     return len(t.note) > max(width // 3, 16)
 
 
-def kept_said(kept: tuple[str, str, str]) -> str:
-    """The fork that landed, in one line: its letter, then the rule's reason, or that the person picked it."""
+def kept_said(kept: tuple[str, str, str], then: str = " · ") -> str:
+    """The fork that landed, in one line: its letter, ``then`` the rule's reason, or that the person picked
+    it (the news, whose items ` · ` parts, says `kept b: …`)."""
     letter, reason, by = kept
-    return f"kept {letter}" + (f" · {reason}" if reason else " · your pick" if by == "person" else "")
+    return f"kept {letter}" + (f"{then}{reason}" if reason else f"{then}your pick" if by == "person" else "")
 
 
 def fork_line(m: Model, t: Task, f: Fork, room: int) -> list[Seg]:
