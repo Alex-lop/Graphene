@@ -16,7 +16,7 @@ from rich.cells import cell_len
 from . import territory as T
 from .lines import Line, Seg, ago, fit, fit_end, ljust, pad, span
 from .look import STATE_GLYPH, color_of, short, who
-from .model import Model, Question, Task
+from .model import Fork, Model, Question, Task
 
 NO_GOAL = "no goal yet"  # what the plan's reader says of a plan with none (views.inputs)
 INVITE = 'no goal yet · :plan goal "…" tells every agent what this is for'
@@ -148,6 +148,10 @@ def question_open(q: Question, width: int) -> list[Line]:
 LEAD = 8  # "▶ ● 12 ": the arrow, the state, the number of the agent on it
 FOCUS_BG = " on #1a2030"
 RUNNING = STATE_GLYPH["running"][1].split()[-1]  # the running amber
+FORK_GLYPH = {  # how a fork ended, on its line: passed in the proven green, the rest in the came-back red
+    "passed": ("✓", "#8ab17d"), "refused": ("✗", "#ef476f"), "failed": ("✗", "#ef476f"),
+    "gave up": ("↩", "#ef476f"), "stopped": ("·", "grey50"),
+}  # fmt: skip
 
 
 def right_of(m: Model, t: Task, width: int) -> list[Seg]:
@@ -156,6 +160,8 @@ def right_of(m: Model, t: Task, width: int) -> list[Seg]:
         quiet = m.quiet(t)
         pace = width >= (100 if t.stopped else 70)  # a stopped row's room goes to the key that frees it
         right = [Seg(m.pace(t) + "  ", RUNNING)] if pace else []  # its pace, in its state's colour
+        if pace and t.forks:  # how many agents are on it, where one agent's pace goes: each has its own line
+            right = [Seg(f"{len(t.forks)} forks".ljust(14), RUNNING)]
         if width >= 78:
             right += [Seg(f"✎{len(t.touched)}/{m.allowed(t)}".ljust(8), "grey62")]
         if t.checks:
@@ -222,12 +228,19 @@ def task_lines(
     segs = lead + [title] + right + gap
     line = Line(pad(segs, width), t.id)
     out = [line]
+    if t.kept:  # its hold forked, and this is the fork that landed, by the rule's one line
+        letter, reason, by = t.kept
+        said = f"kept {letter}" + (f" · {reason}" if reason else " · your pick" if by == "person" else "")
+        out.append(Line([Seg("      ┊ ", "grey35"), Seg(fit(said, width - 10), "grey58")], t.id))
     if on and t.state in ("running", "review", "came back"):
         out += expansion(m, t, width)
     elif on and t.state == "proposed":
         out += proposal(m, t, width)
     elif t.state == "running" and t.events:  # its last move in one dim line: alive or stuck, at a glance
-        out.append(Line([Seg("      ┊ ", "grey35"), Seg(fit(m.tail(t, 1)[0], width - 10), "grey58")], t.id))
+        moved = [f for f in t.forks if f.events]  # forked: the newest fork's move, with its letter
+        said = f"{t.agent}{max(moved, key=lambda f: f.events[-1].t).letter} " if moved else ""
+        said += m.tail(t, 1)[0]
+        out.append(Line([Seg("      ┊ ", "grey35"), Seg(fit(said, width - 10), "grey58")], t.id))
     if tell is not None:  # the line being typed, under the row it is for: the only place it shows
         whom = who(t.agent) or "its agent"
         typed = [Seg(f"      tell {whom}: ", "bold #4cc9f0")]
@@ -303,12 +316,32 @@ def long_note(t: Task, width: int) -> bool:
     return len(t.note) > max(width // 3, 16)
 
 
+def fork_line(m: Model, t: Task, f: Fork, room: int) -> list[Seg]:
+    """One fork of an open row: its number and letter in the agent's colour; running, its pace, its files
+    and its last move (and how long it has been quiet); ended, how, and why, or what it changed."""
+    name = Seg(f"{t.agent}{f.letter} ", f"bold {color_of(t.agent)}" if t.agent else "")
+    if f.state != "running":
+        glyph, style = FORK_GLYPH.get(f.state, ("·", "grey50"))
+        said = f.state + (f" · {f.lines} lines" if f.state == "passed" and f.lines else "")
+        said += f": {f.why}" if f.why and f.state != "passed" else ""
+        return [name, Seg(f"{glyph} ", style), Seg(fit(said, room - span([name]) - 2), style)]
+    quiet = m.quiet(f)
+    segs = [name, Seg(m.pace(f, 6, 10.0) + " ", RUNNING), Seg(f"✎{len(f.touched)}  ", "grey62")]
+    if quiet > 8:
+        segs.append(Seg(f"⏸{ago(quiet)}  ", "bold #e9a23b"))
+    return segs + [Seg(fit((m.tail(f, 1) or [""])[0], room - span(segs)), "grey70")]
+
+
 def expansion(m: Model, t: Task, width: int) -> list[Line]:
     out: list[Line] = []
     if t.state == "came back" and long_note(t, width):  # what the row had to cut, in three lines at most
         for part in textwrap.wrap(t.note, max(width - 12, 20), max_lines=3, placeholder=" …"):
             out.append(Line([Seg("      ┊ ", "grey35"), Seg(part, "#ef476f")], t.id))
     moves = [ln for ln in m.tail(t, 5) if not (t.told and ln.startswith("you "))][-3:]  # the note: below
+    if t.forks and t.state in ("running", "review"):  # a line a fork, in place of one agent's moves
+        for f in t.forks:
+            out.append(Line([Seg("      ┊ ", "grey35"), *fork_line(m, t, f, width - 8)], t.id))
+        moves = []
     for line in moves:
         style = "#e76f51" if line.startswith("stopped") else "grey70"
         out.append(Line([Seg("      ┊ ", "grey35"), Seg(fit(line, width - 10), style)], t.id))
@@ -342,6 +375,8 @@ def expansion(m: Model, t: Task, width: int) -> list[Line]:
             verbs += [Seg(said, "bold #e9a23b", "allow" if key == "w" else f"offer:{key}")]
     if t.state in ("running", "review"):  # x hands a running task back, and reopens one that waits on you
         verbs += [Seg("   x hand back" if t.state == "running" else "   x reopen", "grey70", "back")]
+    if t.state == "review" and t.forks:  # the digits pick another fork's work to sign off: 1 is a, 2 is b
+        verbs += [Seg(f"   1-{len(t.forks)} pick", "bold #c77dff")]
     verbs += [Seg("   i details", "grey50", "details")]
     while span(verbs) > width and len(verbs) > 2:  # the last verbs give way first
         verbs.pop()
