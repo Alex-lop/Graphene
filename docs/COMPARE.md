@@ -32,6 +32,17 @@ Teams were read from their docs on 18 October ([`field.md`](../dev/process/publi
 | my-pi (Pi agent) | not read | a per-task editable scope; edits outside it are blocked | deterministic validation scripts | stops for review before commit |
 | Ralon | no | a kernel-enforced write lock from one static list | no | no |
 
+## Several attempts at one task
+
+| | Attempts at once | Who keeps one |
+|---|---|---|
+| **Graphene** | `forks: N` on a task, `graphene run --forks N`, or the `forks` setting: N agents, each in a copy of its own | the task's check runs on each; among the forks that pass, a rule written before any ran keeps one (`src/graphene_map/pick.py`: the one that passes the most of the others' tests, then the one that left its check's files alone, the smaller, the cheaper, the sooner) and says which step decided; on a task in review the person can pick another (`graphene node pick`) |
+| Codex cloud | "generate multiple responses simultaneously for a single task" (OpenAI's X account, 13 June 2025, as its community forum quotes it; its docs pages read say nothing of it) | the person: "explore possible solutions and pick the best approach" |
+| Cursor | "multiple agents in parallel" on one prompt (its changelog for 2.2, 10 December 2025) | Cursor: it evaluates every run once they have all finished and recommends one; "The selected agent will have a comment explaining why it was picked." The entry names no check and does not say what judges |
+
+Read on 20 October 2026. Neither vendor's page says what its pick is held to; Graphene's rule keeps nothing whose
+check failed, and the check is one you wrote.
+
 ## What this says, and does not say
 
 For Claude Code, nothing read gives all of this together: a plan where every piece names the files it may change and
@@ -42,11 +53,12 @@ one static list. Claude Code's Agent View gives every session a row and its Agen
 leave the files to convention. Nobody here is "the only one".
 
 What Graphene lacks, in this table: it holds a write before it happens only for Claude Code (for Codex and any other
-command, git finds it when the leaf is declared done); its hook fails open if it cannot run; a run says its worst
-case before it starts, a Claude Code attempt stops at $2 and `--max-usd N` starts nothing past N dollars (an
-attempt going is not stopped), but Codex has no cap of its own; a leaf allowed to edit the test its own check runs
-can weaken it, and `done` flags that and does not refuse it (`review: every` puts each diff in front of you before
-it lands); and it is local, so nothing runs off your laptop.
+command, git finds it when the leaf is declared done); its hook fails open if it cannot run on a Claude Code before
+2.1.295, or where `graphene init` ran from a script (from 2.1.295, `init` at a terminal makes it fail closed); a run
+says its worst case before it starts, a Claude Code attempt stops at $2 and `--max-usd N` starts nothing past N
+dollars (an attempt going is not stopped), but Codex has no cap of its own; a leaf allowed to edit the test its own
+check runs can weaken it, and `done` flags that and does not refuse it (`review: every` puts each diff in front of
+you before it lands); and it is local, so nothing runs off your laptop.
 
 Plan approval, which this project first led with, is in Claude Code, Cursor, Kiro, Cline and Spec Kit. It is no
 longer what is different.
