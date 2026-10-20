@@ -304,3 +304,31 @@ def test_a_graph_narrower_than_a_lanes_rule_is_widened_to_hold_the_lanes_name_an
     rule = lines[0].plain().rstrip()
     assert rule.startswith("── the API ") and rule.endswith(" 1 of 1 ✓ ──") and note == ""
     assert all(line.width() <= lay.width for line in lines) and lay.rects["a"][0] == 0
+
+
+def test_with_a_cycle_among_needs_the_goal_is_still_the_last_column_and_the_cycles_end_flows_into_it():
+    """The goal's edges came from the tasks nothing waits on; in a cycle every task is waited on, so the
+    goal got no edge, landed in the first column under a 'wave 1' header, and no chain was double."""
+    m = plan()
+    m.tasks["a"] = Task("a", "first", "ready", needs=["b"])
+    m.tasks["b"] = Task("b", "second", "ready", needs=["a"])  # a hand-edited store: validate refuses a cycle
+    g = FV.flow_graph(m)
+    assert g.wave[FV.GOAL] == 2 and g.heads[-1] == "goal"
+    assert {e.a for e in g.edges if e.b == FV.GOAL} == {"b"}  # the cycle's end, by the edge that closes it
+    assert {(e.a, e.b) for e in g.edges if e.double} == {("a", "b"), ("b", FV.GOAL)}
+    lines, _lay, _note, text = drawn(m, 80, "a")
+    assert lines[0].plain().rstrip().endswith("goal") and "═▶│ ship it" in text
+
+
+def test_a_part_of_a_graph_keeps_the_wholes_back_edge_a_back_edge_and_no_arrowhead_lands_at_a_rows_end():
+    """The part around a task found its own cycles: an edge that closed one in the whole looked forward in
+    the part when the task that closed it was out of view, while the pinned columns ran it backwards: it was
+    drawn from its source's right edge through three boxes, its arrowhead wrapped to the row's last cell."""
+    m = plan()
+    for i, n in enumerate("abcd"):
+        m.tasks[n] = Task(n, f"step {n}", "ready", needs=["abcd"[(i - 1) % 4]])
+    m.tasks["e"] = Task("e", "step e", "ready", needs=["d"])
+    lines, lay, note, _text = drawn(m, 44, "a")  # room for a, b and d, not for c, which closes the cycle
+    assert note.startswith("showing ") and set(lay.rects) == {"a", "b", "d"} and lay.back == [("d", "a")]
+    assert not any(line.plain().rstrip().endswith("▶") for line in lines)
+    assert all(line.width() <= 44 for line in lines)

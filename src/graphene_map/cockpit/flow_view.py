@@ -93,7 +93,8 @@ def flow_graph(m: Model) -> Graph:
             g.lanes.append(F.Lane(sid, " › ".join(name for _, name in ts[0].above), count(ts)))
     g.lanes.sort(key=lambda lane: tuple(seen[over] for over, _ in under[lane.id][0].above))
     g.edges = [F.GEdge(n, t.id) for t in tasks for n in t.needs if n in m.tasks]
-    needed = {e.a for e in g.edges}
+    wave = F.waves(g.nodes, g.edges)  # by the needs alone: an edge that closes a cycle leads nowhere
+    needed = {e.a for e in g.edges if wave[e.b] > wave[e.a]}  # waited on, by a need that is not that edge
     g.edges += [F.GEdge(t.id, GOAL) for t in tasks if t.id not in needed] if goal else []
     g.edges += [F.GEdge(a, b, k) for a, b, k in m.extra_edges if a in m.tasks and b in m.tasks]
     g.wave = F.waves(g.nodes, g.edges)

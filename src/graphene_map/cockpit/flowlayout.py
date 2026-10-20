@@ -138,6 +138,9 @@ def layout(
     edges = _among(ids, edges)
     forward, back = _split(ids, edges)
     layer = dict(layers) if layers else _layers(ids, forward)
+    if layers:  # a part of a graph: an edge against the whole's columns closed a cycle the part cannot see
+        back += [e for e in forward if layer[e.b] <= layer[e.a]]
+        forward = [e for e in forward if layer[e.b] > layer[e.a]]
     if columns > 1 and not edges:
         per = -(-len(ids) // columns)
         layer = {n: k // per for k, n in enumerate(ids)}
