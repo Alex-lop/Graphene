@@ -531,6 +531,37 @@ def test_sweep_closes_every_forks_executor_of_a_dead_run(repo):
             orphan.kill()
 
 
+def test_sweep_removes_a_dead_runs_fork_trees_and_keeps_what_each_tried_on_its_ref(repo):
+    """A run killed outright wrote no fork's ref: the sweep keeps each fork's work there before its tree
+    goes, so nothing stays registered with nothing pointing at it, and nothing an agent did is lost."""
+    (repo / "api.py").write_text("def users():\n    return []\n")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", "api")
+    dead = subprocess.Popen([sys.executable, "-c", "pass"])
+    dead.wait()
+    with Store.open(repo) as store:
+        plan.propose(store, [users_leaf(scope=["api.py"])], ALEX)
+        hold = R.worktree_for(store, repo, repo, "n1")
+        node = plan.start(store, "n1", Caller("run:x", False, "hold-session"), hold)
+        trees = {b: R.worktree_for(store, repo, hold, "n1", fork=b, at=node.base_sha) for b in "ab"}
+        plan.set_forked(store, "n1", {f"fork-{b}": {"fork": b, "tree": str(t)} for b, t in trees.items()})
+        (trees["a"] / "api.py").write_text("def users():\n    return ids\n")  # a's work, b did nothing yet
+        for b in "ab":
+            store.log_node("n1", plan._now(), "attempt", "run:x", f"fork-{b}", None,
+                           {"run_pid": dead.pid, "attempt": 1, "fork": b, "of": 2})  # fmt: skip
+        said: list[str] = []
+        R.sweep(store, said.append, repo)
+        assert states(repo) == {"n1": OPEN} and plan.get(store, "n1").forked == {}
+        assert said == ["n1 was left running by a run that ended; handed back, and it is ready again"]
+    listed = git(repo, "worktree", "list")
+    assert "n1.a" not in listed and "n1.b" not in listed and str(hold) in listed  # the hold's stays, as ever
+    assert not any((repo / ".graphene" / "worktrees").glob("n1.*"))
+    assert git(repo, "for-each-ref", "--format=%(refname)", "refs/graphene/forks/n1/").split() == [
+        "refs/graphene/forks/n1/a"]  # b changed nothing: nothing of it to keep
+    assert git(repo, "show", "refs/graphene/forks/n1/a:api.py") == "def users():\n    return ids\n"
+    assert git(repo, "rev-parse", "refs/graphene/forks/n1/a^").strip() == node.base_sha
+
+
 def test_a_leaf_handed_back_by_the_person_under_its_forks_ends_each_fork_stopped(repo):
     """A fork's last row is one of the contract's states: let go under the person's release, it is stopped,
     and its row says why."""

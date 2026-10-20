@@ -220,7 +220,9 @@ def sweep(store, say: Callable[[str], None], root: Path | None = None) -> None:
     stopped for it. A parallel run that died outright (kill -9, Force Quit) left its executors
     working, and a leaf one of them finished is done in the run's worktree and nowhere here: it is
     parked as a stopped run parks it (``park``), committed on its branch and waiting in review. Either
-    way the dead run's attempt is closed first (``_close``): nothing else settles its hold. Last, every
+    way the dead run's attempt is closed first (``_close``): nothing else settles its hold. A hold that
+    forked had a tree a fork: each fork's work is kept on its ref first (``_keep_fork``: the dead run
+    wrote none), then the tree goes, so none stays registered with nothing pointing at it. Last, every
     hold a dead run left in flight in its ledger is closed, whatever its leaf has become since: the
     executor left working may have ended the leaf itself (`done`, or `release`)."""
     for n in P.nodes(store, (P.RUNNING,)):
@@ -237,6 +239,13 @@ def sweep(store, say: Callable[[str], None], root: Path | None = None) -> None:
             continue
         for last in {e["session_id"]: e for e in rows}.values():  # each session's last attempt: its executor
             _close(last["detail"])
+        for f in n.forked.values():  # the dead run wrote no ref: what each fork tried is kept, its tree goes
+            tree = Path(f["tree"])
+            with contextlib.suppress(P.Refused, OSError, subprocess.TimeoutExpired):  # a tree git cannot read
+                if tree.is_dir():
+                    paths = [p for p in P.changed_since(tree, n.base_sha, {}) if P.in_scope(p, n.scope)]
+                    _keep_fork(tree, n.id, f["fork"], paths, n.base_sha or "HEAD")
+            _git(Path(store.path).parent.parent, "worktree", "remove", "--force", str(tree), ok=True)
         try:
             P.release(store, n.id, P.Caller("graphene run", False, n.session_id),
                       "the run that held it ended without finishing it", stopped=True)  # fmt: skip
