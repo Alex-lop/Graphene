@@ -28,6 +28,7 @@ from .. import plan as P
 from .. import tui
 from .. import views as V
 from .lines import fit_keys
+from .rows import kept_said
 
 PANES = ("contract", "output", "changes", "record")
 DIRECTION = ("direction",)  # D: the goals above your plans, a pane of its own
@@ -65,10 +66,47 @@ def pane_text(
             if which == "changes":
                 return tui.diff_pane(store, node, word, wide)
             if which == "record":
-                return tui.record_pane(store, node, s, wide)
+                record, forks = tui.record_pane(store, node, s, wide), forks_text(store, node_id)
+                return Text("\n\n").join([record, forks]) if forks else record
             return untold(tui.detail(store, node, s, P.tracked(root), (wide, high)))
     except Exception as no:  # a pane is a view: whatever went wrong, the screen stays up
         return Text(f"the {which} pane could not be made: {type(no).__name__}: {no}", style="#ef476f")
+
+
+COLUMNS = ("fork", "with", "attempts", "state", "lines", "dollars", "seconds")
+
+
+def forks_text(store, node_id: str) -> Text | None:
+    """The forks of the node's last hold, when it forked (its `forked` row): a table, a fork a row, from its
+    last `fork` row (none yet: running, with what the `forked` row said it runs with), then the fork kept,
+    the rule's reason and by whom, from the `picked` row. None for a hold that did not fork."""
+    log = store.node_log(node_id, ("started", "forked", "fork", "picked"))
+    held = log[max((k for k, e in enumerate(log) if e["kind"] == "started"), default=-1) + 1 :]
+    forked = next((e["detail"] for e in held if e["kind"] == "forked"), None)
+    if forked is None:
+        return None
+    last = {str(e["detail"].get("fork")): e["detail"] for e in held if e["kind"] == "fork"}
+    rows = [COLUMNS]
+    for letter in forked.get("forks") or []:
+        f = last.get(str(letter), {})
+        dollars, seconds = f.get("dollars"), f.get("seconds")
+        rows.append((str(letter), str(f.get("with") or (forked.get("with") or {}).get(letter) or ""),
+                     str(f.get("attempts") or ""), str(f.get("state") or "running"),
+                     "" if f.get("lines") is None else str(f["lines"]),
+                     V.money(dollars) if dollars else "",
+                     V.elapsed(int(seconds)) if seconds else ""))  # fmt: skip
+    wide = [max(len(r[k]) for r in rows) for k in range(len(COLUMNS))]
+    out = Text("forks", "bold")
+    for k, r in enumerate(rows):
+        out.append("\n  " + "  ".join(cell.ljust(w) for cell, w in zip(r, wide, strict=True)).rstrip(),
+                   "dim" if k == 0 else "")  # fmt: skip
+    picked = next((e["detail"] for e in reversed(held) if e["kind"] == "picked"), None)
+    if picked:
+        kept = (str(picked.get("fork") or ""), str(picked.get("reason") or ""), str(picked.get("by") or ""))
+        out.append("\n  " + kept_said(kept))
+    else:
+        out.append("\n  none kept yet", "dim")
+    return out
 
 
 OFFER = re.compile(r"  [wbnrt]  ")  # a way out of a task that came back, as the classic pane has it: its key

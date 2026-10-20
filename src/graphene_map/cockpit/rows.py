@@ -229,9 +229,7 @@ def task_lines(
     line = Line(pad(segs, width), t.id)
     out = [line]
     if t.kept:  # its hold forked, and this is the fork that landed, by the rule's one line
-        letter, reason, by = t.kept
-        said = f"kept {letter}" + (f" · {reason}" if reason else " · your pick" if by == "person" else "")
-        out.append(Line([Seg("      ┊ ", "grey35"), Seg(fit(said, width - 10), "grey58")], t.id))
+        out.append(Line([Seg("      ┊ ", "grey35"), Seg(fit(kept_said(t.kept), width - 10), "grey58")], t.id))
     if on and t.state in ("running", "review", "came back"):
         out += expansion(m, t, width)
     elif on and t.state == "proposed":
@@ -314,6 +312,12 @@ def _outside(m: Model, t: Task) -> list[str]:
 def long_note(t: Task, width: int) -> bool:
     """Is the reason a task came back longer than its row shows (a third of it)?"""
     return len(t.note) > max(width // 3, 16)
+
+
+def kept_said(kept: tuple[str, str, str]) -> str:
+    """The fork that landed, in one line: its letter, then the rule's reason, or that the person picked it."""
+    letter, reason, by = kept
+    return f"kept {letter}" + (f" · {reason}" if reason else " · your pick" if by == "person" else "")
 
 
 def fork_line(m: Model, t: Task, f: Fork, room: int) -> list[Seg]:

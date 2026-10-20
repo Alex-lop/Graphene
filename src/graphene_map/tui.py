@@ -2771,6 +2771,7 @@ def record_pane(store, node: P.Node, s, wide: int) -> Text:
         for line in inner.render().split():
             pane.line(Text("     ") + line)
     ran = forks(store.node_log(node.id, ("started", "model", "fork")), node.state)
+    ran = [f for f in ran if not isinstance(f["fork"], str)]  # a run's are lettered: the cockpit's own table
     if ran:  # its last attempt's forks: the one that won first, then why each other one did not
         pane.gap()
         pane.text("forks", "bold")
