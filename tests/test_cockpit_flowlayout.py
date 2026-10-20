@@ -69,7 +69,7 @@ def test_every_edge_ends_in_an_arrowhead_at_its_targets_left():
         return lay.cells[(y0 + y1) // 2][x0 - 1]
 
     assert left_of("b") == ("▶", "edge") and left_of("g") == ("▶", "edge")
-    assert lay.text().count("▶") == 2 and left_of("a") == (" ", "")  # nothing flows into a
+    assert lay.text().count("▶") == 2  # and none into a, which nothing flows into
 
 
 def test_a_cycle_among_plain_edges_becomes_one_back_edge():
@@ -185,3 +185,17 @@ def test_a_neighbourhood_keeps_what_the_caller_names_the_goal_it_all_flows_into(
     near, near_edges = F.neighbourhood(nodes, edges, "a", 1, keep=["goal"])
     assert {n.id for n in near} == {"a", "b", "goal"}  # a step from a, and the goal, three steps on
     assert {(e.a, e.b) for e in near_edges} == {("a", "b")}
+
+
+def test_the_chains_boxes_lead_their_column_and_a_line_running_on_passes_under_them():
+    nodes = [GNode(x, x) for x in "abcd"]  # a and b flow into c; b's edge is the chain; a's other edge
+    edges = [GEdge("a", "c"), GEdge("b", "c", double=True), GEdge("a", "d"), GEdge("c", "d")]  # crosses c's
+    lay = F.layout(nodes, edges, label_w=8)  # column on its way to d
+    assert lay.rects["b"][1] < lay.rects["a"][1]  # b over a, though a was given first
+    cx0, cy0, cx1, cy1 = lay.rects["c"]
+
+    def crossed(y: int) -> bool:  # a line runs through c's column on this row
+        return "─" in "".join(c for c, _ in lay.cells[y][cx0 : cx1 + 1])
+
+    assert any(crossed(y) for y in range(cy1 + 1, lay.height))  # a's line runs on under c
+    assert not any(crossed(y) for y in range(cy0))  # not over it

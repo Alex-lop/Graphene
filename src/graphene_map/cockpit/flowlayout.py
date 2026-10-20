@@ -210,18 +210,23 @@ def _order(
     ids: list[str], forward: list[GEdge], layer: dict[str, int], band: dict[str, int]
 ) -> list[list[str]]:
     """Nodes (and one dummy for each layer an edge passes) in each layer, band by band, ordered to cut
-    crossings. A dummy takes its source's band: an edge runs on in its own lane and turns at its target's
-    column."""
+    crossings: in a column of a band, what is on a double edge first (the chain, at the top of its lane),
+    then the lines running on through the column, then the rest. A dummy takes its source's band: an edge
+    runs on in its own lane and turns at its target's column."""
     top = max(layer.values())
+    real = set(ids)
     rows: list[list[str]] = [[] for _ in range(top + 1)]
     for i in ids:
         rows[layer[i]].append(i)
     links: list[tuple[str, str]] = []  # consecutive pairs along every edge, through dummies
+    on_chain: set[str] = set()
     for n, e in enumerate(forward):
         chain = [e.a, *(f"~{n}:{k}" for k in range(layer[e.a] + 1, layer[e.b])), e.b]
         for k in range(layer[e.a] + 1, layer[e.b]):
             rows[k].append(f"~{n}:{k}")
             band[f"~{n}:{k}"] = band[e.a]
+        if e.double:
+            on_chain.update(chain)
         links += list(zip(chain, chain[1:], strict=False))
     above: dict[str, list[str]] = {}
     below: dict[str, list[str]] = {}
@@ -238,7 +243,11 @@ def _order(
         order = range(1, len(rows)) if sweep % 2 == 0 else range(len(rows) - 2, -1, -1)
         near = above if sweep % 2 == 0 else below
         for li in order:
-            rows[li].sort(key=lambda n, near=near, pos=pos: (band[n], bary(n, near, pos), pos[n]))
+            rows[li].sort(
+                key=lambda n, near=near, pos=pos: (
+                    band[n], n not in on_chain, n in real, bary(n, near, pos), pos[n],
+                )
+            )  # fmt: skip
             pos.update({n: k for k, n in enumerate(rows[li])})
     return rows
 
@@ -290,6 +299,12 @@ def _draw(nodes, boxes, edges, forward, back, layer, rows, band, lanes, heads, s
     def wid(n: str) -> int:
         return boxes[n].w if n in boxes else 1
 
+    def tall(n: str) -> int:  # the rows it takes in a stack: a dummy takes a box's, its line drawn in the
+        return boxes[n].h if n in boxes else 3  # middle one, so a line running on can meet a box's middle
+
+    def off(n: str) -> int:  # where in those rows it is drawn: a box at its top, a dummy in the middle
+        return 0 if n in boxes else 1
+
     # -- y: a band for each lane under its rule, then the band of what is in none; in each, stack each
     # layer, then pull nodes toward their neighbours, keeping the order and the band
     y: dict[str, int] = {}
@@ -306,8 +321,8 @@ def _draw(nodes, boxes, edges, forward, back, layer, rows, band, lanes, heads, s
             at = top
             for n in row:
                 if band[n] == k:
-                    y[n] = at
-                    at += hgt(n) + 1
+                    y[n] = at + off(n)
+                    at += tall(n) + 1
             ceiling[k] = max(ceiling[k], at)
         top = ceiling[k] - (k + 1 < len(lanes))  # the next rule takes the row the last box's gap would
     ceiling[len(lanes)] = 10**6
@@ -329,16 +344,16 @@ def _draw(nodes, boxes, edges, forward, back, layer, rows, band, lanes, heads, s
             return mid(nbr[n][0])
         return sum(mid(m) for m in nbr[n]) / len(nbr[n]) - (hgt(n) - 1) / 2
 
-    for sweep in range(6):
+    for sweep in range(7):  # an odd count ends down the rows: what runs on follows where its source ended
         for row in rows if sweep % 2 == 0 else reversed(rows):
             for k in floor:
                 stack = [n for n in row if band[n] == k]
-                at, need = floor[k], sum(hgt(n) + 1 for n in stack)  # the rows the rest of the stack needs
+                at, need = floor[k], sum(tall(n) + 1 for n in stack)  # the rows the rest of the stack needs
                 for n in stack:
-                    y[n] = int(round(min(max(want(n), at), ceiling[k] - need)))
-                    at, need = y[n] + hgt(n) + 1, need - hgt(n) - 1
+                    y[n] = int(round(min(max(want(n), at + off(n)), ceiling[k] - need + off(n))))
+                    at, need = y[n] - off(n) + tall(n) + 1, need - tall(n) - 1
     last = [n for n in y if band[n] == len(lanes)]  # the open band starts at its floor, however it was pulled
-    low = min((y[n] for n in last), default=0) - floor[len(lanes)]
+    low = min((y[n] - off(n) for n in last), default=0) - floor[len(lanes)]
     for n in last:
         y[n] -= low
     body = max(y[n] + hgt(n) for n in y)
