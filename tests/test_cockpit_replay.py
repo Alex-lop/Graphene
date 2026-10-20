@@ -71,7 +71,7 @@ def test_a_key_that_would_change_the_plan_says_so_and_does_nothing(tmp_path):
             for _ in range(len(lines)):
                 await pilot.press("full_stop")
             app.model.selected = next(iter(app.model.tasks))
-            for key in ("t", "w", "x", "d", "R", "y", "s", "P", "u", "e"):  # r is the replay's own: again
+            for key in ("t", "w", "x", "d", "R", "y", "s", "P", "u", "e", "f"):  # r is the replay's: again
                 app.model.feed.clear()
                 await pilot.press(key)
                 assert app.model.latest() == "a replay: nothing runs here", key

@@ -263,13 +263,13 @@ def test_the_keys_line_says_what_the_keys_do_to_the_selected_row(tmp_path):
         def keys():
             return str(app.query_one("#keys", Static).render()).strip()
 
-        async with app.run_test(size=(100, 30)) as pilot:
+        async with app.run_test(size=(110, 30)) as pilot:  # the widest line, with f fork, needs 106
             for sel, own in (
                 ("q", "⏎ keep both · 1 pick · a answer · d drop"),
                 ("docs", "⏎ accept · A all · d drop · i details"),
                 ("ids", "t tell · w widen · x hand back · i details"),
-                ("back", "⏎ try again · w widen · t tell · i details"),
-                ("more", "⏎ try again · w widen · b new task · r reopen · t tell · i details"),  # its offers
+                ("back", "⏎ try again · f fork · w widen · t tell · i details"),
+                ("more", "⏎ try again · f fork · w widen · b new task · r reopen · t tell · i details"),
                 ("migrate", "⏎ sign off · x reopen · i details"),
                 ("schema", "i details · x reopen"),
                 ("tests", "t tell · i details"),

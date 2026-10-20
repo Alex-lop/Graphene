@@ -55,11 +55,12 @@ ON_THE_MAP = "only the keys below act on the map: c goes back to the cockpit for
 UNSENT = "nothing typed here is sent · Esc closes"  # t that nobody hears: words go nowhere, not to keys
 ROW_KEYS = {  # a task's own keys, by its state: ⏎ first when it has a move, then the letters
     "proposed": ["⏎ accept", "A all", "d drop", "i details"],
-    "came back": ["⏎ try again", "w widen", "b new task", "n wait", "r reopen", "t tell", "i details"],
+    "came back": ["⏎ try again", "f fork", "w widen", "b new task", "n wait", "r reopen", "t tell",
+                  "i details"],  # fmt: skip
     "review": ["⏎ sign off", "x reopen", "i details"],
     "yours": ["⏎ mark done", "i details"],
     "running": ["t tell", "w widen", "x hand back", "i details"],
-    "ready": ["r run", "R run ready", "t tell", "i details"],
+    "ready": ["r run", "f fork", "R run ready", "t tell", "i details"],
     "waiting": ["t tell", "i details"],
     "done": ["i details", "x reopen"],
 }
@@ -67,7 +68,7 @@ OFFERED = ("w widen", "b new task", "n wait", "r reopen")  # a task that came ba
 KEYS_TO_VERBS = {  # a key, and the verb it asks for (`act`)
     "t": "tell", "w": "allow", "x": "back", "d": "drop", "r": "run", "R": "run-all", "a": "answer",
     "b": "offer:b", "n": "offer:n", "colon": "command", "y": "take", "s": "split", "P": "first", "u": "undo",
-    "e": "edit", "E": "edit-plan", "D": "direction", "i": "details", "A": "accept-all",
+    "e": "edit", "E": "edit-plan", "D": "direction", "i": "details", "A": "accept-all", "f": "fork",
 }  # fmt: skip
 
 
@@ -298,6 +299,8 @@ class Cockpit(App):
         elif t:  # an offer's key only where it is offered; w also where the gate stopped a write
             own = [k for k in ROW_KEYS.get(t.state, ["i details"])
                    if k not in OFFERED or k[0] in t.offers or k == "w widen" and t.stopped]  # fmt: skip
+            if t.state == "review" and t.forks:  # its hold forked: a digit picks another fork's work
+                own.insert(-1, f"1-{len(t.forks)} pick")
         else:
             own = [":ask what you want"]
         screens = ["c cockpit", "m map"] if self.view == "flow" else ["g graph", "m map"]
@@ -467,6 +470,8 @@ class Cockpit(App):
                 d.run_ready(sel)
         elif action == "run-all":
             self.run_all()
+        elif action == "fork":
+            d.fork(m, sel)
         elif action == "accept-all":
             self.accept_all()
         elif action == "answer":

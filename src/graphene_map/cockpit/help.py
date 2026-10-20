@@ -16,7 +16,7 @@ from textual.widgets import Static
 GROUPS = (
     ("answer", (
         ("⏎ y", "the row's own move: the default, accept, sign off, try again"),
-        ("1-9 a", "pick that option; answer in your own words"),
+        ("1-9 a", "pick that option, or a fork; answer in your own words"),
         ("d A", "drop a proposal or a question; accept every proposal"),
     )),
     ("agents", (
@@ -25,11 +25,11 @@ GROUPS = (
         ("x", "hand back a running task; reopen a finished one (say why)"),
         ("b n r", "came back: a new task, wait on another, reopen the one named"),
         ("r R s", "run this task, or every ready one; s: the planner splits one"),
+        ("f", "fork: N agents at once, the check keeps one"),
     )),
     ("plan", (
         ("e E", "edit the task, or the whole plan, in your $EDITOR"),
-        ("P u", "plan first: on, auto, off; undo your last act"),
-        ("D", "the direction: the goals above this plan"),
+        ("P u D", "plan first: on, auto, off; undo; D: the plan's direction"),
     )),
     ("screens", (
         ("j k", "move; ← → the task on the map, the box on the graph"),
@@ -41,7 +41,7 @@ GROUPS = (
                   ("q", "quit; a run started here goes on"))),
     ("marks", (("", "● running  ◆ sign-off  ↩ came back  ○ ready  ◌ waiting"),
                ("", "+ proposed  ✓ proven  ◇ yours  ? a question  ! a risk"),
-               ("", "✎ files written of allowed  ✓ checks  ⏸ quiet  ▁▃▅ activity"))),
+               ("", "✎ files/allowed  ✓ checks  ⏸ quiet  ▁▃▅ activity  3b a fork"))),
 )  # fmt: skip
 INDENT = 16  # the group name and the key, before the words
 END = "A row's words are buttons. The keys' commands call a task a leaf."
