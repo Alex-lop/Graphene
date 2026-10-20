@@ -1,3 +1,56 @@
+# morning.md — 2026-10-20 — forks, the graph into the goal, a gate that fails closed
+
+**Watch first.** `git fetch origin && git switch night/best-of && uv run graphene demo` (space pauses, `.` steps):
+greet's second try is three forks racing, and the check keeps one; then `g`, the plan flowing into your goal. Then
+`dev/process/best-of/run.txt`: three real Claude Code agents (Haiku) on one task, one kept and landed, $0.02.
+
+**What happened.** You asked me to make the product better, not the hackathon: take the retry further ("what if we
+ran multiple tests to see which one was best"), maybe turn the graph, put it in the README, and leave a PR of 50+
+commits. It is PR #51 on `night/best-of`: 74 commits past `origin/main`, each authored as you, built in
+lanes in clones of my own; only the branch is pushed. The record, the research and the live run are in
+`dev/process/best-of/`.
+- **Fork a task.** `graphene run --forks 3` (or `forks: 3` on a task, the `forks:` setting, or `f` in the cockpit)
+  puts three agents on one task at once, each in its own copy, held to the task's files. When they end, a rule
+  written before any fork ran keeps one: the fork that passes the most of the other forks' tests, then the one
+  that left the check's own files alone, the smallest, the cheapest, the first. It says why in one line, lands that
+  fork alone, keeps every fork on a ref (`graphene node diff <task> --fork b`), and `graphene node pick` is yours on
+  a task waiting for your sign-off. `--with claude:opus --with claude:sonnet --with codex` races three agents;
+  `--first` keeps the first that passes. No model picks.
+- **The graph flows into the goal.** The goal is the last box on the right; columns are waves of tasks that can run
+  at once; each sub-goal is a band with its count; the double line is the longest chain into the goal.
+- **The gate fails closed.** On Claude Code 2.1.295+, `graphene init` in your terminal makes a hook that cannot run
+  refuse the call, and a call the hook cannot judge is refused. **A hole on main is closed:** with a task held,
+  `pytest -q > /tmp/log 2>&1; echo x > src/db/schema.py` wrote past its scope (the /tmp path crashed the reader,
+  and what crashed was let through). The 19 October review's findings 1, 4, 5 and 6 are closed, and two more
+  spellings of them; 2 and 3 stay written limits.
+- **The README** has a section for forks with the race filmed under it, the new graph and gate lines, the Nemotron
+  section folded; your why and the honest line as you wrote them. 0.7.0 is in the version files; the held bench
+  has a second question, forks, pre-registered before any number.
+
+**Reviewed, then fixed.** Each lane had a reviewer and a fixer: engine 10 findings (the worst: a fork whose own
+`done` passed and which then broke its tree was kept on that stale word, and the leaf came back while another fork
+had passed), cockpit 6, graph 6, held 5; all fixed. The gate lane's review found its own regressions (a target it
+could not read was refused, which refused 16 of about 90 everyday commands; choosing the store by where a write
+lands made stores in other repos; resolving links made two tasks from one prompt): I dropped those two commits,
+stopped refusing what it cannot read, and closed two more spellings of finding 1 it had missed. After the merge,
+two seam readers and a skeptic each: forks against the cockpit (8, 7 fixed: a fork whose own `done` was refused
+was drawn as finished while it worked on; a note to three forks showed three times), and "nothing changes without
+forks" (6, all fixed or refuted: the worst, any 0.7 command opening a repo's store made 0.6's hook, yours on PATH,
+let every call through in silence; the store is now version 6 only once a task in it has forks). Things I found
+myself: what you tell a forked task reached only the first fork; a Nemotron fork's passing `done` kept its loop
+going; `--max-usd` under one attempt started nothing and blamed the plan.
+
+**Verified:** the whole suite on the final tree as CI runs it (`GITHUB_ACTIONS` set), Python 3.13 on this Mac: 2,576 passed, 21 skipped (main: 2,396), `ruff check` clean; CI on PR #51: green on all six legs (Ubuntu and macOS, Python 3.12, 3.13 and 3.14: ruff, the suite, the build and the wheel's smoke) at 52d486f; a live run of three Claude Code forks (Haiku) on a toy repo with this branch's build, end to end ($0.0173, `dev/process/best-of/run.txt`), and a second: `--first` with Haiku and Sonnet on a task that waits for your sign-off, then `node pick` of the other fork and the sign-off landing it ($0.07, `run-first-pick.txt`); the demo re-recorded and read frame by frame; the GIF and the four stills filmed by vhs and looked at; every fix's test run first on the code before it, and failing there. **Not verified:** Codex forks and the cockpit's `f` with a real agent (scripted executors only); whether forks land more tasks (the held bench's second question, live, is yours). **Not done:** a fork run by a plain script shows no moves on its line; HOW_IT_WORKS is 4,282 words (its cap raised from 3,700 to 4,300; the PR says where to cut); set aside: a Claude Code plugin and skill, a stall watchdog, risk-rated sign-off, a worktree setup contract, `graphene ask --ways`.
+
+**Yours, in order**
+1. Watch the demo and read the PR's decisions; flip what you disagree with (each is small).
+2. Merge PR #51 when CI is green (`gh pr checks 51`).
+3. Release 0.7.0 so PyPI matches the README: `git switch main && git pull && git tag v0.7.0 && git push origin
+   v0.7.0`, then `gh release create v0.7.0 --title "Graphene 0.7.0" --notes-file dev/launch/release-notes.md` once
+   the release run is green (docs/RELEASING.md). The changelog says 20 October: change it if you tag another day.
+4. If you want the number behind forks: cut `held-prereg-1`, then the held bench live (`dev/held/rules.md`, the
+   first question about $30 to $45, the second, forks, its own ceiling), with `GRAPHENE_AGENT_LIVE_USD` set.
+
 # morning.md — 2026-10-19 — ready to publish
 
 **Watch first.** `git stash && git switch night/publish && uv run graphene demo` (the stash keeps your uncommitted
