@@ -1451,6 +1451,12 @@ def register(cli: typer.Typer, root, open_store, fail):
                     raise P.Refused(f"you hold {them}: `graphene node done <id>` names one")
                 target = held[0].id
             n = P.finish(store, target, who, override=override, checkout=checkout())
+            if found := P.fork_of(n, who.session_id):  # its verdict is its own row; the run ends the leaf
+                out(f"the check passed in this fork (fork {found[1]['fork']} of {len(n.forked)}); Graphene "
+                    "keeps one when the forks end")  # fmt: skip
+                for line in next_lines(store, who):
+                    out(line)
+                return
             last = (store.node_log(n.id, ("finished",)) or [{"detail": {}}])[-1]
             mine = str((last["detail"] or {}).get("note", "")).startswith("done by hand")  # the person's word
             how = (
@@ -1493,7 +1499,10 @@ def register(cli: typer.Typer, root, open_store, fail):
             why = asked(f"graphene node release {node_id}", "--why", "what is in the way")
 
         def go(store):
-            P.release(store, node_id, who, why or "", wants=wants or None)
+            n = P.release(store, node_id, who, why or "", wants=wants or None)
+            if P.fork_of(n, who.session_id):  # one fork of the hold gave up; the run hands the leaf back
+                out("this fork gives up; the leaf is handed back only if every fork does")
+                return
             out(f"{node_id} handed back: {why}")
             for line in next_lines(store, who, but=node_id):
                 out(line)

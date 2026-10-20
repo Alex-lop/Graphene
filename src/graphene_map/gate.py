@@ -61,7 +61,8 @@ def _write(write, *args) -> None:
 
 
 def _held(store, session_id: str) -> list[P.Node]:
-    return [n for n in P.nodes(store, (P.RUNNING,)) if n.session_id == session_id]
+    """The leaves this session holds: the one session its hold recorded, or one of the hold's forks."""
+    return [n for n in P.nodes(store, (P.RUNNING,)) if n.session_id == session_id or session_id in n.forked]
 
 
 def _rel(path: str, root: Path, cwd: str | None) -> str | None:
@@ -734,6 +735,10 @@ def decide(store, event: dict, root: Path) -> dict | None:
         if not held or again:
             return None
         n = held[0]
+        # one of the hold's forks with its verdict (passed, refused, gave up) may stop: the run ends the leaf
+        found = P.fork_of(n, sid)
+        if found and (P.fork_row(store, n, found[1]["fork"]) or {}).get("state") not in (None, "running"):
+            return None
         _write(store.log_node, n.id, P._now(), "stop_refused", n.executor, sid, None, None)
         return {
             "decision": "block",

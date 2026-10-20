@@ -919,9 +919,10 @@ def _forked(store, node: P.Node, tree: Path, template: str, attempts: int, say: 
         if current.state != P.RUNNING:  # the person let it go under its forks
             _handed_back(store, current, say)
             return None
-        if not passed:
+        if not passed:  # Nemotron's words: each fork's reason, a hand-back said as one
             why = f"no fork's check passed ({n} forks): " + "; ".join(
-                f"fork {b}: {ends[b]['why']}" for b in letters if b in ends
+                f"fork {b}: {'handed it back: ' * (ends[b]['state'] == 'gave up')}{ends[b]['why']}"
+                for b in letters if b in ends
             )
             wants = sorted({w for e in ends.values() for w in e.get("wants") or []})
             P.release(store, node.id, who, why, wants=wants or None)

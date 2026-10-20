@@ -33,6 +33,12 @@ body = {"a": "def users():\\n    return [0]\\n", "b": "def users():\\n    return
 pathlib.Path("api.py").write_text(body)
 if fork == "c":
     pathlib.Path("notes.txt").unlink()  # a deletion inside the scope lands too
+if fork == "c" and os.environ.get("FORKS_RELEASE"):  # c gives up, naming what it needs
+    import subprocess
+    cli = "import sys; from graphene_map.cli import app; sys.argv[0] = 'graphene'; app()"
+    argv = [sys.executable, "-c", cli, "node", "release", os.environ["GRAPHENE_NODE"],
+            "--why", "needs schema", "--wants", "schema.py"]
+    print(subprocess.run(argv, capture_output=True, text=True).stdout)
 """
 NONE = FORKED.replace("return ids", "return [1]").replace("found = ids", "found = [1]")
 
@@ -131,6 +137,7 @@ def test_three_forks_run_at_once_one_is_kept_and_lands_as_one_merge(repo, monkey
 
 def test_when_no_fork_passes_the_leaf_comes_back_with_each_forks_reason(repo, monkeypatch):
     monkeypatch.setenv("FORKS_LOG", str(repo.parent / "forks.log"))
+    monkeypatch.setenv("FORKS_RELEASE", "1")  # c hands its fork back, wanting schema.py
     (repo / "api.py").write_text("def users():\n    return []\n")
     (repo / "notes.txt").write_text("to go\n")
     git(repo, "add", "-A")
@@ -143,11 +150,18 @@ def test_when_no_fork_passes_the_leaf_comes_back_with_each_forks_reason(repo, mo
         [released] = rows(store, "released")
         why = released["detail"]["why"]
         assert why.startswith("no fork's check passed (3 forks): fork a: 1 attempt, the last one refused: ")
-        assert "; fork b: 1 attempt" in why and "; fork c: 1 attempt" in why
+        assert "; fork b: 1 attempt" in why and why.endswith("; fork c: handed it back: needs schema")
+        assert released["detail"]["wants"] == ["schema.py"]  # the union of what the forks asked for
         assert plan.came_back(store, plan.get(store, "n1")) and plan.get(store, "n1").forked == {}
         assert rows(store, "check_passed") == [] and rows(store, "check_failed") == []
-        assert {e["detail"]["state"] for e in rows(store, "fork")} == {"running", "refused"}
-    assert f"n1 came back: {why}" in said
+        last = {e["detail"]["fork"]: e["detail"] for e in rows(store, "fork")}
+        assert {b: f["state"] for b, f in last.items()} == {"a": "refused", "b": "refused", "c": "gave up"}
+        assert last["c"]["wants"] == ["schema.py"] and last["c"]["why"] == "needs schema"
+        offered = [k for k, _, _ in plan.offers(store, plan.get(store, "n1"))]
+        assert offered == ["w", "b"]  # schema.py, which c wanted, is on offer to the person
+    assert f"n1 came back: {why}" in said and "n1 fork c: gave up: needs schema" in said
+    log = next((repo / ".graphene" / "runs").glob("n1.c-*-1.txt")).read_text()
+    assert "this fork gives up; the leaf is handed back only if every fork does" in log
     assert "n1: what each fork tried is kept under refs/graphene/forks/n1/" in said
     assert not any((repo / ".graphene" / "worktrees").glob("n1.*"))
     assert len(git(repo, "for-each-ref", "refs/graphene/forks/n1/").splitlines()) == 3

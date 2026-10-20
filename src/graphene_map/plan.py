@@ -2305,7 +2305,8 @@ def fork_row(store, node: Node, letter: str) -> dict | None:
 def _holder_only(node: Node, who: Caller, what: str) -> None:
     """Only whoever holds a running node finishes it or hands it back; a person may always. A Claude
     Code session is known by its session id; an executor `graphene run` started is known by the
-    GRAPHENE_NODE it was given; anyone else by the name they took the node under."""
+    GRAPHENE_NODE it was given; one of the hold's forks by its own session (``fork_of``); anyone else by
+    the name they took the node under."""
     if who.person:
         return
     same_session = bool(node.session_id) and who.session_id == node.session_id
@@ -2315,7 +2316,8 @@ def _holder_only(node: Node, who: Caller, what: str) -> None:
         and os.environ.get("GRAPHENE_ATTEMPT", node.session_id)
         == node.session_id  # not an orphan of a dead run
     )
-    if not (same_session or run_gave_it or (not node.session_id and who.name == node.executor)):
+    a_fork = fork_of(node, who.session_id) is not None
+    if not (same_session or run_gave_it or a_fork or (not node.session_id and who.name == node.executor)):
         raise Refused(
             f"{node.id} is held by {node.executor}, not by {who.name}: {what} is theirs, or a person's"
         )
@@ -2489,6 +2491,8 @@ def finish(
     _holder_only(node, who, "finishing it")
     if override is not None:
         _person_only(who, "overruling a node's check or scope")
+    elif found := fork_of(node, who.session_id):  # a fork's own `done`: its tree is judged, the leaf stays
+        return judge_fork(store, node_id, who, found, given)
     judged = _judge(store, node, who, now, given, override, node.checkout or ".")
     now, changed, stray, passed, detail, blobs = judged
     with store.claim():
@@ -2780,7 +2784,9 @@ def release(
     it may not stop silently, and it may not widen its own scope; it can say what is in the way, and
     name the paths it would need (``wants``), which the person is then offered in one key.
     ``stopped``: the run let it go (stopped, or it died) before its executor finished: it did not
-    come back, it is ready again."""
+    come back, it is ready again. From one of the hold's forks (``fork_of``) it is that fork giving
+    up, its `fork` row with the why and the wants: the leaf is handed back by the run once every fork
+    has ended, with the union of what they asked for."""
     import subprocess
 
     now = now or _now()
@@ -2800,9 +2806,14 @@ def release(
         _holder_only(node, who, "handing it back")
         if node.started_at != began:
             raise refusal(f"{node.id} changed hands just now", do="graphene plan shows who holds it")
+        extra = {"wants": [w.strip() for w in wants if w.strip()]} if wants else {}
+        if found := fork_of(node, who.session_id):
+            session, fork = found
+            said = {"fork": fork["fork"], "of": len(node.forked), "state": "gave up", "why": why, **extra}
+            store.log_node(node.id, now, "fork", who.label, session, None, said)
+            return node
         node.state, node.executor, node.session_id, node.agent_id = OPEN, None, None, None
         node.forked = {}
-        extra = {"wants": [w.strip() for w in wants if w.strip()]} if wants else {}
         extra |= {"stopped": True} if stopped else {}
         _save(
             store,
