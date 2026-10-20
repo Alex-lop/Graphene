@@ -292,3 +292,15 @@ def test_twelve_tasks_in_three_lanes_fit_80_columns_whole_with_short_headers():
     ]  # fmt: skip
     head = lines[0].plain()
     assert "wave 4" in head and head.rstrip().endswith("goal") and "tasks" not in head  # no room: first words
+
+
+def test_a_graph_narrower_than_a_lanes_rule_is_widened_to_hold_the_lanes_name_and_count():
+    """The note was put at the graph's right edge less its length, which is negative on a graph narrower than
+    that, and a negative cell is the row's end: a plan with no goal and one short done task under a sub-goal
+    had the rule ' of 1 ✓ ──  1', the sub-goal's name gone."""
+    m = plan("no goal yet")
+    m.tasks["a"] = Task("a", "write", "done", above=[("x", "the API")])
+    lines, lay, note, _text = drawn(m, 80, "a")
+    rule = lines[0].plain().rstrip()
+    assert rule.startswith("── the API ") and rule.endswith(" 1 of 1 ✓ ──") and note == ""
+    assert all(line.width() <= lay.width for line in lines) and lay.rects["a"][0] == 0

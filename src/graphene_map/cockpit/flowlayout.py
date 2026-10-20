@@ -145,7 +145,9 @@ def layout(
     band = {n.id: index.get(n.lane, len(lanes)) for n in nodes}  # its lane's band, else the last
     rows = _order(ids, forward, layer, band)  # layer -> [id or dummy]
     boxes = {n.id: _box(n, label_w) for n in nodes}
-    return _draw(nodes, boxes, edges, forward, back, layer, rows, band, lanes, heads, selected, styles)
+    return _draw(
+        nodes, boxes, edges, forward, back, layer, rows, band, lanes, heads, selected, styles, label_w
+    )
 
 
 # -- structure ---------------------------------------------------------------------------------------
@@ -289,7 +291,9 @@ def spread(text: str) -> list[str]:
 # -- drawing -----------------------------------------------------------------------------------------
 
 
-def _draw(nodes, boxes, edges, forward, back, layer, rows, band, lanes, heads, selected, styles) -> Layout:
+def _draw(
+    nodes, boxes, edges, forward, back, layer, rows, band, lanes, heads, selected, styles, label_w
+) -> Layout:
     chains: list[tuple[GEdge, list[str]]] = []
     for n, e in enumerate(forward):
         chains.append((e, [e.a, *(f"~{n}:{k}" for k in range(layer[e.a] + 1, layer[e.b])), e.b]))
@@ -403,6 +407,9 @@ def _draw(nodes, boxes, edges, forward, back, layer, rows, band, lanes, heads, s
         x0.append(at)
         at += width_of[li] + gap_w[li]
     total_w = at - gap_w[gaps - 1] + 1
+    for lane in lanes:  # a rule holds its note and, at the least, the room a title gets of its label
+        note = f" {lane.note} " if lane.note else ""
+        total_w = max(total_w, min(cell_len(lane.label), label_w) + cell_len(note) + 7)
     total_h = body + len(back) + 1
 
     mask = [[0] * (total_w + 2) for _ in range(total_h + 1)]
