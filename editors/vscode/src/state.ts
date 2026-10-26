@@ -201,12 +201,13 @@ export function summary(s: State): string {
   return parts.join(" · ");
 }
 
-/** The auto header: `auto · round 1 of 2 · running · $0.42 of $2.00`; empty when auto is off. */
+/** The auto header, as the cockpit's: `auto · round 1 of 3 · running · $0.42 of $2.00` (a round is the first plan or
+ * a fix round, `rounds + 1` in all); a fix round says what the goal failed on; empty when auto is off. */
 export function autoLine(s: State): string {
   const a = s.auto;
   if (!a || s.envelope.auto !== "on" && !a.stage) return "";
   const parts = ["auto"];
-  if (a.round !== null) parts.push(a.rounds !== null ? `round ${a.round} of ${a.rounds}` : `round ${a.round}`);
+  if (a.round !== null) parts.push(a.rounds !== null ? `round ${a.round} of ${a.rounds + 1}` : `round ${a.round}`);
   if (a.stage) parts.push(a.stage);
   const spent = a.spent === null ? "" : usd(a.spent) || "$0.00";
   if (spent) parts.push(a.budget !== null ? `${spent} of ${usd(a.budget) || "$0.00"}` : spent);

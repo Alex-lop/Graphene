@@ -42,7 +42,7 @@ test("auto waiting reads as a header with the round, the stage and the spend of 
   const s = parseState(fixture("auto"));
   assert.equal(s.envelope.auto, "on");
   assert.equal(s.auto?.stage, "waits");
-  assert.equal(autoLine(s), "auto · round 2 of 2 · waits · $1.37 of $2.00 · the goal's check is still red after 2 rounds");
+  assert.equal(autoLine(s), "auto · round 2 of 3 · waits · $1.37 of $2.00 · the goal's check is still red after 2 rounds");
   assert.equal(summary(s), "1 needs you · $1.37");
 });
 

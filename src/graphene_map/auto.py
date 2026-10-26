@@ -317,7 +317,11 @@ def drive(open_store: Callable, root: Path, goal: str | None, say: Callable[[str
                                             planner=spec, base_parent=root_id):  # fmt: skip
                                 say(line)
                         except P.Refused as no:
-                            why, paid = f"the planner proposed nothing: {no}", spent(store, at)
+                            # a planner that could not work at all (exit 3: no key, a cap) says why, alone
+                            cannot = re.search(r"\(exit 3\): stopped: (.+)", str(no))
+                            why = (f"the planner could not start: {cannot.group(1)}" if cannot
+                                   else f"the planner proposed nothing: {no}")  # fmt: skip
+                            paid = spent(store, at)
                             log(store, k, "waits", paid, budget, red, why, root=root_id, goal=goal)
                             say(f"{WAITS}{why}")
                             return 3

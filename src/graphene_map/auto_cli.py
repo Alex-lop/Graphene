@@ -48,6 +48,14 @@ def register(cli: typer.Typer, root, open_store, fail) -> None:
         if len(withs) > P.FORKS[-1]:
             fail(f"--with at most {P.FORKS[-1]} times: each is a fork", 2)
         files = P.tracked(r)  # before the plan's write lock, never under it
+        with open_store(r) as store:  # who would plan and do it: asked before the envelope is touched
+            chosen = {"planner": planner or store.meta("planner"),
+                      "executor": withs or store.meta("executor")}  # fmt: skip
+        for who_, flag in (("planner", "--planner"), ("executor", "--with")):
+            if not chosen[who_]:
+                fail(f"no {who_} is chosen for this repo, so nothing was started and your envelope is as it "
+                     f"was: `graphene init` chooses one, or `{flag} claude` (or codex, nemotron, a command) "
+                     "names one for `graphene auto`", 1)  # fmt: skip
         given = {"auto": "on", "budget": "" if budget is None else f"{budget}", "tasks": "" if tasks is None
                  else str(tasks), "rounds": "" if rounds is None else str(rounds)}  # fmt: skip
         given = {k: v for k, v in given.items() if v or k == "auto"}  # a flag left out keeps the setting

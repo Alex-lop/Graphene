@@ -22,6 +22,7 @@ let selected: string | null = null;
 let linking: string | null = null;
 let zoom = { k: 1, tx: 0, ty: 0 };
 let fitted = false;
+let moved = false; // the person zoomed or panned: a resize no longer re-fits until a double-click
 
 function el<K extends keyof SVGElementTagNameMap>(tag: K, attrs: Record<string, string | number> = {}, text?: string) {
   const node = document.createElementNS(svgNS, tag);
@@ -175,8 +176,10 @@ function render() {
 
 function fit() {
   if (!lay) return;
-  const room = $("canvas").clientWidth || 800;
-  zoom = { k: Math.min(1, Math.max(0.35, (room - 24) / Math.max(lay.width, 1))), tx: 0, ty: 0 };
+  const canvas = $("canvas");
+  const w = canvas.clientWidth || 800, h = canvas.clientHeight || 600; // both: the goal is last on the right
+  const k = Math.min(1, (w - 24) / Math.max(lay.width, 1), (h - 24) / Math.max(lay.height, 1));
+  zoom = { k: Math.max(0.35, k), tx: 0, ty: 0 };
   fitted = true;
 }
 
@@ -345,6 +348,7 @@ function wire() {
     const px = e.clientX - rect.left + canvas.scrollLeft, py = e.clientY - rect.top + canvas.scrollTop;
     const k = Math.min(3, Math.max(0.25, zoom.k * Math.exp(-e.deltaY * 0.0015)));
     zoom = { k, tx: px - (px - zoom.tx) * (k / zoom.k), ty: py - (py - zoom.ty) * (k / zoom.k) };
+    moved = true;
     applyZoom();
   }, { passive: false });
   let drag: { x: number; y: number; tx: number; ty: number } | null = null;
@@ -356,14 +360,24 @@ function wire() {
   window.addEventListener("mousemove", (e) => {
     if (!drag) return;
     zoom = { ...zoom, tx: drag.tx + e.clientX - drag.x, ty: drag.ty + e.clientY - drag.y };
+    moved = true;
     applyZoom();
   });
   window.addEventListener("mouseup", () => { drag = null; canvas.classList.remove("dragging"); });
   canvas.addEventListener("dblclick", (e) => {
     if ((e.target as Element).closest(".task, .goal")) return;
     fitted = false;
+    moved = false;
     render();
   });
+  // the details pane opening narrows the canvas, as does a narrower window: the whole graph stays in view, the
+  // goal box included, until the person zooms or pans themselves
+  new ResizeObserver(() => {
+    if (lay && !moved) {
+      fit();
+      applyZoom();
+    }
+  }).observe(canvas);
   $("b-run").addEventListener("click", () => api.postMessage({ type: "act", act: "run", id: "" }));
   $("b-auto").addEventListener("click", () => api.postMessage({ type: "act", act: "auto", id: "" }));
   $("b-cockpit").addEventListener("click", () => api.postMessage({ type: "act", act: "cockpit", id: "" }));
