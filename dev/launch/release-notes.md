@@ -26,7 +26,8 @@ the older one, a run you steer by hand.
   line, lands that fork alone, and keeps every fork on a ref (`graphene node diff <task> --fork b`).
 - **The race on screen.** Every agent's row names its model (Nano, Super, Ultra, Haiku, Sonnet, Codex), each fork
   its own line with its dollars, the auto line its round, stage and budget; on the graph, `+` adds a step after
-  a task and `L` links two (`graphene node set B --add-needs A`), and its head says how many can run at once.
+  a task and `L` links two (`graphene node set B --add-needs A`) or unlinks them (`--drop-needs A`), and its head
+  says how many can run at once.
 - **Graphene for VS Code.** `editors/vscode`, its `.vsix` attached below: the plan as a graph in an editor tab
   and the sidebar, forks racing, auto mode's rounds, the status bar, each file a running agent writes marked in
   the Explorer with its number, and every click a `graphene` command run as you: drag one task's dot onto

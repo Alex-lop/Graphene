@@ -74,10 +74,7 @@ export class GraphHost implements vscode.WebviewViewProvider {
       case "add-after": return vscode.commands.executeCommand("graphene.addStep", { ...arg, after: true });
       case "add-under": return vscode.commands.executeCommand("graphene.addStep", m.id ? { ...arg, under: true } : undefined);
       case "link": return m.target ? this.session.act(C.link(m.id, m.target)) : undefined;
-      case "unlink": {
-        const b = this.session.state?.tasks.find((t) => t.id === m.id);
-        return b && m.target ? this.session.act(C.unlink(m.target, b.id, b.needs)) : undefined;
-      }
+      case "unlink": return m.target ? this.session.act(C.unlink(m.target, m.id)) : undefined;
       case "edit": return vscode.commands.executeCommand("graphene.editStep", arg);
       case "drop": return vscode.commands.executeCommand("graphene.dropStep", arg);
       case "accept": return vscode.commands.executeCommand("graphene.accept", arg);

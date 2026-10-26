@@ -49,7 +49,7 @@ buttons in the graph's details pane.
 | Accept / Accept All | `graphene plan accept [ID]` |
 | Add Step… | title, where (after a task, i.e. waiting on it; or under a sub-goal), scope, check; `graphene node add TITLE --parent P --needs X --scope G --check C` |
 | Link… | A then B, B waits on A: `graphene node set B --add-needs A` (in the graph: drag A's dot onto B, or Link to… then click B; Esc cancels) |
-| Unlink (the × beside a task under "needs", in the details pane) | B stops waiting on A: `graphene node set B --needs <the rest>`, or `--needs none` |
+| Unlink (the × beside a task under "needs", in the details pane) | B stops waiting on A: `graphene node set B --drop-needs A` |
 | Edit Step… | title, scope or check: `graphene node set ID --title/--scope/--check` |
 | Drop Step | `graphene node drop ID` (`graphene plan undo` puts it back) |
 | Tell Agent… | `graphene board note "<line>" --about ID`: a hooked agent reads it before its next write |

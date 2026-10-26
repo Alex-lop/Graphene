@@ -127,7 +127,7 @@ def test_l_on_a_pair_already_linked_takes_the_arrow_away(repo):
 
     app = drive(repo, steps)
     assert node(repo, "b").needs == []
-    said = "graphene node set b --needs none: bye says goodbye no longer waits on greet says hello"
+    said = "graphene node set b --drop-needs a: bye says goodbye no longer waits on greet says hello"
     assert app.model.feed[-1][1] == said
 
 

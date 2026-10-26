@@ -80,8 +80,8 @@ The race on screen (26 October 2026). Each line is one change.
   $0.42 of $2.00 · 5 of 12 tasks`, in the need-you colour and on top while it waits for you, with why.
 - On the graph, `+` adds a step after the task you're on (`graphene node add TITLE --parent … --needs …`, then `e`
   fills its scope and check) and `L` then `L` on another task links them, or unlinks a pair already linked; the
-  head says how many tasks can run at once. `graphene node set B --add-needs A` adds to what B waits on without replacing it, and refuses a cycle with
-  its reason.
+  head says how many tasks can run at once. `graphene node set B --add-needs A` adds to what B waits on without
+  replacing it, and refuses a cycle with its reason; `--drop-needs A` takes it away, the rest as it is then.
 
 Editors (26 October 2026). Each line is one change.
 - `graphene state --json` (hidden): one snapshot of everything the cockpit shows (the goal, the envelope, the
@@ -96,7 +96,7 @@ Editors (26 October 2026). Each line is one change.
   are taken out of its environment. CI builds and tests it in a job of its own.
 - Click and connect: in the graph, drag a task's dot (its right edge) onto another and that one waits on it
   (`graphene node set B --add-needs A`); the × beside a task under "needs", in the details pane, unlinks them
-  (`--needs` with the rest, or `none`).
+  (`graphene node set B --drop-needs A`).
 - A Rounds view: auto mode's iterations from `graphene plan log --json`, a row a round (`Round 2 · done · 1
   accepted · 1 landed · goal ✓ · $0.02`), under it what the envelope accepted, which fork each task kept and why,
   what landed, and the line that sent the round to fixing.

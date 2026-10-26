@@ -68,12 +68,13 @@ def test_link_adds_to_what_a_task_waits_on_without_replacing_it(repo):
     assert plan()["c"]["needs"] == ["a", "b"]
 
 
-def test_unlink_is_the_needs_again_without_one_and_none_when_nothing_is_left(repo):
-    for t in ("a", "b", "c"):
+def test_unlink_drops_one_need_and_keeps_the_rest_as_the_cli_reads_them(repo):
+    for t in ("a", "b", "c", "d"):
         assert person("node", "add", t, "--id", t, "--scope", f"{t}.py", "--check", "true").exit_code == 0
     assert person("node", "set", "c", "--needs", "a", "--needs", "b").exit_code == 0
-    assert person("node", "set", "c", "--needs", "b").exit_code == 0  # the × beside a
-    assert plan()["c"]["needs"] == ["b"]
-    cleared = person("node", "set", "c", "--needs", "none")  # the × beside b, the last
-    assert cleared.exit_code == 0, cleared.output
-    assert plan()["c"]["needs"] == []
+    assert person("node", "set", "c", "--add-needs", "d").exit_code == 0  # a link the extension has not seen
+    dropped = person("node", "set", "c", "--drop-needs", "a")  # the × beside a, from a snapshot without d
+    assert dropped.exit_code == 0, dropped.output
+    assert plan()["c"]["needs"] == ["b", "d"]
+    both = person("node", "set", "c", "--needs", "b", "--drop-needs", "b")
+    assert both.exit_code == 2 and "one or the other" in both.output
