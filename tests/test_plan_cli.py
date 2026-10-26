@@ -555,7 +555,9 @@ class Tty(io.StringIO):
 
 
 def at_terminal(repo, args, answer: str) -> str:
-    """The CLI as the person runs it at a terminal (a pty), answering the one question it asks."""
+    """The CLI as the person runs it at a terminal (a pty), answering the one question it asks once it is
+    all on the screen. Click writes a question's last character, its space, on its own: an answer typed at
+    the colon was echoed before it, `what is in the way:the schema…` (PR #52's macOS 3.12 CI)."""
     main, tty = pty.openpty()
     proc = subprocess.Popen([*CLI, *args], cwd=repo, stdin=tty, stdout=tty, stderr=tty)
     os.close(tty)
@@ -568,7 +570,7 @@ def at_terminal(repo, args, answer: str) -> str:
         if not chunk:
             break
         said += chunk
-        if not answered and said.rstrip().endswith(b":"):
+        if not answered and said.endswith(b": "):
             os.write(main, answer.encode() + b"\n")
             answered = True
     os.close(main)

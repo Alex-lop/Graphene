@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.8.0 (unreleased)
+## 0.8.0 (26 October 2026)
 
 0.7.0 was tagged but never published (its tag built 0.6.0 again): everything below ships in 0.8.0.
 
