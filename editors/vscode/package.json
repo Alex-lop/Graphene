@@ -51,6 +51,12 @@
           "contextualTitle": "Graphene"
         },
         {
+          "id": "graphene.rounds",
+          "name": "Rounds",
+          "icon": "media/graphene.svg",
+          "contextualTitle": "Graphene"
+        },
+        {
           "id": "graphene.graph",
           "type": "webview",
           "name": "Graph",
@@ -72,7 +78,7 @@
       },
       {
         "view": "graphene.plan",
-        "contents": "This folder has no plan yet.\n\nRun `graphene init` in it, then `graphene ask \"what you want\"` or Graphene: Auto…\n[Open Cockpit](command:graphene.openCockpit)",
+        "contents": "This folder has no plan yet.\n\nSet it up once with `graphene init`: it asks which planner and executor to use.\n[Set Up This Folder](command:graphene.init)\nThen `graphene ask \"what you want\"`, or Graphene: Auto…",
         "when": "graphene.status == uninitialised"
       },
       {
@@ -89,6 +95,10 @@
         "view": "graphene.plan",
         "contents": "Open a folder to see its plan.",
         "when": "graphene.status == nofolder"
+      },
+      {
+        "view": "graphene.rounds",
+        "contents": "No auto rounds here yet.\n\nGraphene: Auto… plans a goal, races it, checks it and plans the fix; each round shows here, with what your envelope accepted, the fork each task kept and why, and what landed.\n[Graphene: Auto…](command:graphene.auto)"
       }
     ],
     "commands": [
@@ -155,6 +165,10 @@
         "command": "graphene.tell",
         "title": "Graphene: Tell Agent…",
         "icon": "$(comment)"
+      },
+      {
+        "command": "graphene.init",
+        "title": "Graphene: Set Up This Folder"
       },
       {
         "command": "graphene.refresh",

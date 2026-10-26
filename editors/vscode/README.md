@@ -20,6 +20,9 @@ It is a thin client: everything it shows comes from `graphene state --json`, and
   forked task fans out into its forks (letter, model, state, the kept one marked); an auto header
   (`auto · round 1 of 2 · running · $0.42 of $2.00`) when auto is on. Click selects and opens the details
   pane; arrow keys move the selection; the wheel zooms, dragging pans, a double click fits.
+- **Rounds** view: auto mode's iterations, one row a round (`Round 2 · done · 1 accepted · 1 landed · goal ✓ ·
+  $0.02`), and under it what the envelope accepted, which fork each task kept and why, what landed, and the
+  line the goal's check failed on that sent it there. It reads `graphene plan log --json`, only while it is open.
 - **Status bar**: `◆ 2 running · 1 needs you · $0.42`; click for the graph.
 
 It reads the plan again whenever the store's files change (`.graphene/`, watched as a directory: the WAL
@@ -35,10 +38,8 @@ buttons in the graph's details pane.
 | Show Plan Graph | the graph, as an editor tab |
 | Open Cockpit | `graphene watch` in a terminal |
 | Auto… | asks for a goal, an optional budget, and whether to plan first; `graphene auto "<goal>" --budget N [--plan]` in a terminal you can Ctrl-C |
+| Set Up This Folder | `graphene init` in a terminal: it asks which planner and executor to use |
 | Set Envelope… | shows auto, budget, tasks, rounds, forks and checks as they are, and sets the one you pick with `graphene config set KEY VALUE` |
-
-While auto mode runs, a notification says when it waits for you (with why), when the goal's check failed and a
-round plans the fix, and when it is done, with a button to the graph or the cockpit.
 | Run Ready Tasks | `graphene run --parallel 4` in a terminal |
 | Stop | `graphene run --stop` |
 | Accept / Accept All | `graphene plan accept [ID]` |
@@ -48,6 +49,9 @@ round plans the fix, and when it is done, with a button to the graph or the cock
 | Drop Step | `graphene node drop ID` (`graphene plan undo` puts it back) |
 | Tell Agent… | `graphene board note "<line>" --about ID`: a hooked agent reads it before its next write |
 | Refresh | reads the plan again |
+
+While auto mode runs, a notification says when it waits for you (with why), when the goal's check failed and a
+round plans the fix, and when it is done, with a button to the graph or the cockpit.
 
 Settings: `graphene.path` (the command, default `graphene`; set it when `uv tool install` put it somewhere
 the editor does not see) and `graphene.pollMs`.

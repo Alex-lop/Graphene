@@ -8,6 +8,8 @@ import * as vscode from "vscode";
 import * as C from "./commands.ts";
 import { GraphHost } from "./graph.ts";
 import { autoNews, parseState, summary, type State, type Task } from "./state.ts";
+import { parseLog, rounds } from "./rounds.ts";
+import { RoundsTree } from "./roundsView.ts";
 import { PlanTree } from "./tree.ts";
 
 export type Status = { kind: "reading" | "missing" | "uninitialised" | "error" | "nofolder" | "ok" | "empty"; text: string };
@@ -123,6 +125,15 @@ export function activate(context: vscode.ExtensionContext) {
   const session = new Session();
   const tree = new PlanTree();
   const treeView = vscode.window.createTreeView("graphene.plan", { treeDataProvider: tree, showCollapseAll: true });
+  const roundsTree = new RoundsTree();
+  const roundsView = vscode.window.createTreeView("graphene.rounds", { treeDataProvider: roundsTree });
+  // auto mode's rounds, read from the plan's log only while their view is open: one more command a refresh
+  const readRounds = async () => {
+    if (!roundsView.visible || !session.state) return;
+    const out = await session.run(C.logJson());
+    if (out.code === 0) roundsTree.set(rounds(parseLog(out.stdout)));
+  };
+  context.subscriptions.push(roundsView, roundsView.onDidChangeVisibility(() => void readRounds()));
   const graph = new GraphHost(context, session);
   const bar = vscode.window.createStatusBarItem("graphene", vscode.StatusBarAlignment.Left, 50);
   bar.name = "Graphene";
@@ -133,6 +144,7 @@ export function activate(context: vscode.ExtensionContext) {
 
   session.onDidChange(() => {
     tree.set(session.state);
+    void readRounds();
     const s = session.state;
     const said = s ? autoNews(session.before, s) : null; // auto mode needs you, plans a fix, or is done
     if (said) {
@@ -194,6 +206,7 @@ export function activate(context: vscode.ExtensionContext) {
   cmd("refresh", () => session.refresh());
   cmd("showGraph", (arg) => graph.show(taskOf(arg)?.id));
   cmd("openCockpit", () => session.terminal("graphene watch", C.watch()));
+  cmd("init", () => session.terminal("graphene init", C.init()));
   cmd("runReady", () => session.terminal("graphene run", C.runReady()));
   cmd("stop", () => session.act(C.stop()));
   cmd("auto", async () => {

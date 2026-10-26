@@ -26,9 +26,11 @@ export interface NewStep {
 }
 
 export const stateJson = (): string[] => ["state", "--json"];
+export const logJson = (): string[] => ["plan", "log", "--json"]; // a JSON object a line: the Rounds view reads it
 export const stop = (): string[] => ["run", "--stop"];
 export const runReady = (): string[] => ["run", "--parallel", "4"];
 export const watch = (): string[] => ["watch"];
+export const init = (): string[] => ["init"]; // asks which planner and executor: a terminal of its own
 export const refreshable = (): string[] => ["--version"];
 
 export function auto(goal: string, budget?: number | null, planOnly = false): string[] {
