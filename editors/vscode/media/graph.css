@@ -84,6 +84,7 @@ button.close { background: none; border: none; color: var(--dim); font-size: 1.3
 .row .k { color: var(--dim); }
 .row .v { font-family: var(--mono); font-size: 0.92em; word-break: break-word; white-space: pre-wrap; }
 .move { color: var(--dim); }
+.hollow { color: #e9a23b; padding: 4px 0; border-bottom: 1px dotted var(--border); }
 .need { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
 button.unlink { background: none; border: none; color: var(--dim); padding: 0 4px; font-size: 1.1em; }
 button.unlink:hover { color: var(--vscode-errorForeground, #f48771); background: none; }

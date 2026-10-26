@@ -29,6 +29,12 @@
     "plan"
   ],
   "main": "./dist/extension.js",
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false,
+      "description": "Graphene runs the graphene command, and the plan's checks, in this folder."
+    }
+  },
   "activationEvents": [
     "workspaceContains:.graphene/graphene.db"
   ],
@@ -342,7 +348,8 @@
         "graphene.path": {
           "type": "string",
           "default": "graphene",
-          "description": "The graphene command: a name on PATH or an absolute path."
+          "description": "The graphene command: a name on PATH or an absolute path. Only your own settings set it, never a folder's: a cloned repository cannot choose what the extension runs.",
+          "scope": "machine"
         },
         "graphene.pollMs": {
           "type": "number",

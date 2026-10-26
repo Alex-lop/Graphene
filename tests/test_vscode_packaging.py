@@ -67,7 +67,9 @@ def test_the_activity_bar_shows_the_brand_mark_and_a_plan_view_and_the_graph():
 def test_the_settings_are_the_command_and_the_poll():
     props = MANIFEST["contributes"]["configuration"]["properties"]
     assert props["graphene.path"]["default"] == "graphene"
+    assert props["graphene.path"]["scope"] == "machine"  # a cloned folder's settings never choose what runs
     assert props["graphene.pollMs"]["default"] == 1500
+    assert MANIFEST["capabilities"]["untrustedWorkspaces"]["supported"] is False  # off in Restricted Mode
 
 
 def test_no_runtime_dependencies_and_every_dev_one_pinned_exactly():

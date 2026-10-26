@@ -279,6 +279,7 @@ function details() {
   row("under", t.parent ? goalTitle(state, t.parent) : "", body);
   row("scope", t.scope.join("  "), body);
   row("check", t.check ?? "", body);
+  if (t.hollow) div("hollow", "its check passed before the work too: it proves nothing new", body); // as the cockpit says
   if (t.needs.length) { // what it waits on, each with the × that stops it waiting
     const r = div("row", undefined, body);
     div("k", "needs", r);

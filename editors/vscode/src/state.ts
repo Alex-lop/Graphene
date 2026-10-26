@@ -190,6 +190,13 @@ export function usd(n: number | null | undefined): string {
   return n >= 0.01 ? `$${n.toFixed(2)}` : `$${n.toFixed(3)}`;
 }
 
+/** The plan's words for a Markdown hover, as text: an agent writes some of them (a title it proposed, a command
+ *  it ran, a note), so every Markdown character is escaped and none is read as a link, an image, HTML or an
+ *  icon; spaces stay spaces, so a long line still wraps, and a line break is a space. */
+export function mdText(s: string): string {
+  return s.replace(/\s+/g, " ").replace(/[\\`*_{}[\]()#+\-.!|<>~$&:]/g, "\\$&");
+}
+
 /** The status bar's words: `2 running · 1 needs you · $0.42`, `3 of 6 done` when nothing runs. */
 export function summary(s: State): string {
   const sb = s.scoreboard;

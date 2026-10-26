@@ -8,7 +8,7 @@ import * as vscode from "vscode";
 import * as C from "./commands.ts";
 import { GraphHost } from "./graph.ts";
 import { owner } from "./owners.ts";
-import { autoNews, parseState, summary, type State, type Task } from "./state.ts";
+import { autoNews, mdText, parseState, summary, type State, type Task } from "./state.ts";
 import { parseLog, rounds } from "./rounds.ts";
 import { RoundsTree } from "./roundsView.ts";
 import { PlanTree } from "./tree.ts";
@@ -179,8 +179,8 @@ export function activate(context: vscode.ExtensionContext) {
     if (s && (session.status.kind === "ok" || session.status.kind === "empty")) {
       bar.text = `◆ ${summary(s)}`;
       const md = new vscode.MarkdownString(undefined, true);
-      md.appendMarkdown(`**${s.goal || "no goal yet"}**\n\n`);
-      for (const line of s.news.slice(-4)) md.appendMarkdown(`- ${line}\n`);
+      md.appendMarkdown(`**${mdText(s.goal || "no goal yet")}**\n\n`); // the plan's words as text, not markup
+      for (const line of s.news.slice(-4)) md.appendMarkdown(`- ${mdText(line)}\n`);
       md.appendMarkdown("\nGraphene: Show Plan Graph");
       bar.tooltip = md;
     } else {

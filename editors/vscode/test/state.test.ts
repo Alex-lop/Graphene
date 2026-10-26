@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { autoLine, autoNews, parseState, summary, usd } from "../src/state.ts";
+import { autoLine, autoNews, mdText, parseState, summary, usd } from "../src/state.ts";
 
 const fixture = (name: string) => readFileSync(new URL(`./fixtures/${name}.json`, import.meta.url), "utf8");
 
@@ -104,4 +104,12 @@ test("auto mode's news is said once, when its round's stage changes, never on th
                    { kind: "fixing", text: "Graphene auto: the goal's check failed (FAIL: test_x); round 2 plans the fix" });
   assert.deepEqual(autoNews(at("checking", 2), at("done", 2)),
                    { kind: "done", text: "Graphene auto is done: the goal's check passed in round 2 · $0.42 of $2.00" });
+});
+
+test("a hover reads the plan's words as text: no link, image, HTML or icon of an agent's renders", () => {
+  const said = mdText("look ![x](https://e.vil/p.png?k=1) [ok](command:x) <img src=y> $(alert) a`b\nc");
+  assert.ok(!/(?<!\\)[!\[\]()<>`$:]/.test(said), said); // every one of them escaped, so read as itself
+  assert.ok(!said.includes("\n"));
+  assert.equal(mdText("greet says hi"), "greet says hi"); // spaces stay, so it wraps
+  assert.equal(mdText("a_b *c*"), "a\\_b \\*c\\*");
 });

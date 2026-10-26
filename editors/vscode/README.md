@@ -59,7 +59,9 @@ While auto mode runs, a notification says when it waits for you (with why), when
 round plans the fix, and when it is done, with a button to the graph or the cockpit.
 
 Settings: `graphene.path` (the command, default `graphene`; set it when `uv tool install` put it somewhere
-the editor does not see) and `graphene.pollMs`.
+the editor does not see; your own settings only, so a cloned folder's `.vscode/settings.json` cannot choose what
+the extension runs) and `graphene.pollMs`. In a folder VS Code does not trust (Restricted Mode) the extension is
+off: it runs commands, and the plan's checks, there.
 
 ## How it talks to the CLI
 

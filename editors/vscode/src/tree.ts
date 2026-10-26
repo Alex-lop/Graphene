@@ -1,7 +1,7 @@
 // The Plan view: goal → sub-goals → tasks, a codicon a state, `model · forks · $` beside the title, the
 // contract in the tooltip; a click opens the graph on that task. Context menus are chosen by `task:<state>`.
 import * as vscode from "vscode";
-import { usd, type Goal, type State, type Task } from "./state.ts";
+import { mdText, usd, type Goal, type State, type Task } from "./state.ts";
 
 export type Node = { kind: "goal"; goal: Goal } | { kind: "task"; task: Task };
 
@@ -27,23 +27,25 @@ export function description(t: Task): string {
   return parts.join(" · ");
 }
 
+/** The task's contract on hover: the markup is ours, every word of the plan's goes in as text (`mdText`). */
 export function tooltip(t: Task, goals: Goal[]): vscode.MarkdownString {
   const md = new vscode.MarkdownString(undefined, true);
-  md.appendMarkdown(`**${t.title}** · \`${t.id}\` · ${t.state}${t.needs_you ? " · needs you" : ""}\n\n`);
-  if (t.full) md.appendMarkdown(`${t.full}\n\n`);
+  const x = mdText;
+  md.appendMarkdown(`**${x(t.title)}** · ${x(t.id)} · ${x(t.state)}${t.needs_you ? " · needs you" : ""}\n\n`);
+  if (t.full) md.appendMarkdown(`${x(t.full)}\n\n`);
   const under = goals.find((g) => g.id === t.parent);
-  if (under) md.appendMarkdown(`under **${under.title}**\n\n`);
-  if (t.scope.length) md.appendMarkdown(`scope: ${t.scope.map((g) => `\`${g}\``).join(" ")}\n\n`);
-  if (t.check) md.appendMarkdown(`check: \`${t.check}\`\n\n`);
-  if (t.needs.length) md.appendMarkdown(`needs: ${t.needs.join(", ")}\n\n`);
-  if (t.agent) md.appendMarkdown(`agent ${t.agent}${t.model ? ` · ${t.model}` : ""}${usd(t.usd) ? ` · ${usd(t.usd)}` : ""}\n\n`);
+  if (under) md.appendMarkdown(`under **${x(under.title)}**\n\n`);
+  if (t.scope.length) md.appendMarkdown(`scope: ${x(t.scope.join("  "))}\n\n`);
+  if (t.check) md.appendMarkdown(`check: ${x(t.check)}\n\n`);
+  if (t.needs.length) md.appendMarkdown(`needs: ${x(t.needs.join(", "))}\n\n`);
+  if (t.agent) md.appendMarkdown(`agent ${x(`${t.agent}${t.model ? ` · ${t.model}` : ""}${usd(t.usd) ? ` · ${usd(t.usd)}` : ""}`)}\n\n`);
   for (const f of t.forks) {
     const kept = t.kept?.letter === f.letter ? " · ✓ kept" : "";
-    md.appendMarkdown(`- fork ${f.letter} · ${f.model} · ${f.state}${f.lines !== null ? ` · ${f.lines} lines` : ""}${kept}\n`);
+    md.appendMarkdown(`- fork ${x(`${f.letter} · ${f.model} · ${f.state}${f.lines !== null ? ` · ${f.lines} lines` : ""}${kept}`)}\n`);
   }
   if (t.forks.length) md.appendMarkdown("\n");
-  if (t.tail.length) md.appendMarkdown(t.tail.slice(-4).map((l) => `- ${l}`).join("\n") + "\n");
-  if (t.note) md.appendMarkdown(`\nnote: ${t.note}\n`);
+  if (t.tail.length) md.appendMarkdown(t.tail.slice(-4).map((l) => `- ${x(l)}`).join("\n") + "\n");
+  if (t.note) md.appendMarkdown(`\nnote: ${x(t.note)}\n`);
   return md;
 }
 
