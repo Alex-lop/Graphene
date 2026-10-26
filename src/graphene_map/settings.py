@@ -85,6 +85,33 @@ def forks(store) -> int:
     return int(store.meta("settings:forks") or FORKS[0])
 
 
+# The envelope: what `graphene auto` and an agent's proposals may do without the person, set once by them.
+# Readers only here; `graphene config` and `graphene auto` write them: settings:auto, :budget, :tasks,
+# :rounds.
+
+
+def auto(store) -> str:
+    """off (unset): every proposal waits for the person. on: one inside the envelope is accepted at once."""
+    return store.meta("settings:auto") or "off"
+
+
+def budget(store) -> float | None:
+    """Dollars the runs Graphene starts on its own may spend while the envelope is in force; None: unset."""
+    said = store.meta("settings:budget")
+    return float(said) if said else None
+
+
+def tasks(store) -> int | None:
+    """Leaves the envelope may accept on the person's behalf, all told; None: unset."""
+    said = store.meta("settings:tasks")
+    return int(said) if said else None
+
+
+def rounds(store) -> int:
+    """Fix rounds `graphene auto` may take after the goal's check fails (2 unset)."""
+    return int(store.meta("settings:rounds") or 2)
+
+
 def conditions_for_planner(store) -> str:
     """The standing conditions as the planner's prompt says them; empty when there are none."""
     lines = []
