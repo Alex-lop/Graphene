@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "graphene": "0.7.0",
+  "graphene": "0.8.0",
   "repo": "/home/dev/project",
   "cursor": 42,
   "goal": "the app greets, says goodbye, and knows its users",
