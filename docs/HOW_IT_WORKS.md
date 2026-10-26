@@ -307,6 +307,9 @@ hooks do, so a refused shell write may count twice.
   stop. `graphene run`'s executors are held until their leaf is done or handed back.
 - A write outside the repository is not limited, and a check runs with your environment: a file written there can
   change what it sees.
+- The envelope decides what is accepted, not whether the work is good: the checks do, and they are as good as your
+  tests. Nemotron bills a call after it ends, so `graphene auto` reads its budget between rounds; an executor that
+  reports no cost is counted in attempts.
 - A leaf that may edit a file its own check runs can make the check agree: `done` flags it, in the run and the
   record, and does not refuse it. Mark the leaf for sign-off, or set `review: every`, to read the diff first.
 - `--max-usd` stops starts, not an attempt going: Claude Code may end a turn past its $2; Codex with no cap counts
@@ -346,8 +349,8 @@ reads no transcript.
 | `review: off\|every` | `every`: a task whose check passes waits for your sign-off before it lands |
 | `notify: on\|off` | Whether `graphene watch` rings, with a desktop notice where the terminal shows one, when something new needs you |
 | `forks: 1\|2\|3\|4\|5\|6\|7\|8` | Agents at once on each leaf that says nothing itself; its check keeps one |
-| `auto: off\|on` | `on`: a proposal that fits the envelope (every task with a scope and a check, the board settled, under `tasks`) is accepted for you at once; `graphene auto` turns it on |
-| `budget: DOLLARS` | What the runs Graphene starts on its own may spend while `auto` is on |
+| `auto: off\|on` | `on`: a proposal that fits the envelope (every task with a scope and a check, the board settled, under `tasks`, no scope reaching `.claude/`, `.codex/`, `.cursor/`, `.gemini/` or `.github/workflows/`) is accepted for you at once, from any agent; `graphene auto` turns it on |
+| `budget: DOLLARS` | What every run may spend while `auto` is on, `graphene auto`'s, an agent's own `graphene run` and `R` alike |
 | `tasks: N` | How many tasks the envelope may accept for you, all told, since `auto` went on (12 unset) |
 | `rounds: N` | Fix rounds `graphene auto` takes after the goal's check fails (2 unset) |
 
@@ -357,7 +360,8 @@ reads no transcript.
 loop: the planner's tree hangs under a root task that carries the goal's check (`--check`, else every task's
 check together); what fits the envelope is accepted at once, run and landed; a red goal check is planned again,
 for `rounds` rounds. Exit 0 when the goal's check passes, 1 when it is still red, the budget is spent or you
-stopped it, 3 when something waits for you. With no goal it goes on with the plan in force.
+stopped it, 3 when something waits for you. With no goal it goes on with the plan in force. Each stage is a row
+of the plan's log (`graphene plan log`), and the cockpit's head says the round, its stage and the budget.
 
 ## Privacy
 

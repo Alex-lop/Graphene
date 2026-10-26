@@ -1,3 +1,65 @@
+# morning.md — 2026-10-26 — one goal in, tested commits out
+
+**Watch first.** In your checkout: `git switch night/revamp && uv run graphene demo --auto` (space pauses, `.`
+steps, `g` the graph, `q` leaves). One goal; Nemotron's three tasks; nine agents at once; one stopped writing a
+file that isn't its task's; the rule keeping one fork a task; your whole suite red after all three land; Ultra's
+fix; green. Then read the new `README.md` on the branch: it is the product now.
+
+**What happened.** You asked for a completely revamped product and README, aggressive, all night. It is the local
+branch `night/revamp` in your checkout: 47 commits past GitHub's `main` (499d0a3d, the forks merge), each authored
+as you, **nothing pushed**. The record, every decision and what went wrong: `dev/process/revamp/README.md`.
+- **Auto mode.** `graphene auto "<goal>" --budget 2 --forks 3 --check "…"`: the planner drafts tasks that can run
+  at once, Graphene accepts what fits your envelope, races them, lands what passes, runs the goal's own check, and
+  plans the fix when it is red, for `--rounds` rounds. The envelope is your settings (`auto`, `budget`, `tasks`,
+  `rounds`; `graphene config set auto on`); while auto is on, **any agent's plan that fits is accepted at once**, so
+  three Claude Code sessions don't wait on you; every round is in `graphene plan log`.
+- **The race on screen.** Every agent row names its model (Nano, Super, Ultra, Haiku…), each fork its own with its
+  dollars; the auto line on top; on the graph `+` adds a step after a task and `L` links two.
+- **Graphene for VS Code** (`editors/vscode`): the plan as a graph, forks racing, a details pane that adds a step,
+  links, edits, drops, accepts, tells; Auto…; the status bar. It reads the new `graphene state --json`.
+- **Any model**: `--endpoint nim|ollama|openai` runs Graphene's own loop on NVIDIA's API catalog or any
+  OpenAI-compatible host; `{prompt_file}` for any CLI agent; a `PORT` per task.
+- **README, HACKATHON (Devpost text), the kit, claims, CHANGELOG, release notes**, a three-minute video script
+  (`dev/launch/video-auto.md`), the GIF (`docs/assets/auto.gif`) and stills; **version 0.8.0** (0.7.0 never shipped).
+
+**Reviewed, then fixed.** Five Fable lanes built it in parallel from 00:57; **the Fable limit hit at 01:50**, before
+any review or fixer ran, and your rule keeps subagents on Fable, so I carried the rest alone. What I found, each
+fixed with a failing test first: an agent could spend your Token Factory key with no opening by spelling its URL
+another way (older than tonight); the envelope would have accepted an agent's task that writes the hooks'
+settings, turning the gate off; the budget held only `graphene auto`, not an agent's own `graphene run`; six seam
+failures at the merge; a stranger's first `graphene auto` named the wrong flag and turned auto on for nothing.
+
+**Verified:** the whole suite, ruff clean (see the last line of this brief for the final count); `graphene demo
+--auto` from the built 0.8.0 wheel in an empty directory, no key; the extension's types, 20 unit tests, a smoke test
+in VS Code 1.143.1, and its `.vsix`. **Not verified:** a live auto run on any model (Token Factory needs your
+opening, Claude Code a model other than Fable, and your Ollama cannot start models: its app is gone from
+/Applications); the extension in Cursor; GitHub CI on this branch.
+
+**Yours, in order**
+1. Watch the demo, read the README and `dev/process/revamp/README.md`; flip any decision below.
+2. Push and open the PR when you're happy: `git push -u origin night/revamp && gh pr create --fill`.
+3. A live take, in your own terminal (it spends on your key, $2 at most by the envelope; the October takes cost
+   $0.08 to $0.55 a plan and cents a task): `RECORD=$HOME/auto-live.jsonl dev/proof/auto.sh ~/graphene-auto`, then
+   `graphene demo ~/auto-live.jsonl`, which a real Token Factory run replays as "as it ran, live". That take is the
+   video's fourth beat and the README's missing line.
+4. Try the extension: `cd editors/vscode && npm ci && npm run package`, then in VS Code "Extensions: Install from
+   VSIX…" with `graphene-0.8.0.vsix`, and open a repo with a plan.
+5. After the merge, release 0.8.0 so `uvx graphene-map demo --auto` works for a judge: `git switch main && git pull &&
+   git tag v0.8.0 && git push origin v0.8.0`, then `gh release create v0.8.0 --title "Graphene 0.8.0" --notes-file
+   dev/launch/release-notes.md` once the release run is green. The old `v0.7.0` tag (on 0316a7cd, which built
+   0.6.0) can stay or go: `git push origin :refs/tags/v0.7.0`.
+6. GitHub's About text and topics still say Claude only: add Nemotron, NVIDIA, Token Factory (two minutes).
+7. `dry-run/` in your checkout still blocks every Graphene task there: `graphene plan ack`, or delete it.
+
+**Decisions I made for you** (each is small to flip)
+1. The envelope is `graphene config`, and with `auto: on` it accepts **any** agent's fitting plan, not only `graphene
+   auto`'s. 2. It never accepts a task reaching `.claude/`, `.codex/`, `.cursor/`, `.gemini/`, `.github/workflows/`.
+   3. While auto is on, every run counts against the budget. 4. With no `--check`, the goal's check is every task's
+   check together. 5. `graphene auto` is visible (10 top-level commands). 6. `graphene demo` stays the older replay;
+   the README leads with `--auto` (making it the default moves ten pins). 7. 0.8.0, with 0.7.0 folded in. 8. A VS
+   Code click strips agent marks from `graphene`'s environment (it is your click). 9. No Token Factory spend and no
+   subagent on another model, per your standing rules.
+
 # morning.md — 2026-10-20 — forks, the graph into the goal, a gate that fails closed
 
 **Watch first.** `git fetch origin && git switch night/best-of && uv run graphene demo` (space pauses, `.` steps):
