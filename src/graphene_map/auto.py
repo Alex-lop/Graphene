@@ -265,7 +265,7 @@ def drive(open_store: Callable, root: Path, goal: str | None, say: Callable[[str
     waits for the person (a proposal outside the envelope, a sign-off, a planner that proposed nothing)."""
     from . import plan_text as T
     from .ask import ask, named, talking
-    from .run import Forks, run_parallel, summary
+    from .run import Forks, _worst, run_parallel, summary
     from .run import named as executor_named
 
     me = P.caller()
@@ -383,9 +383,16 @@ def drive(open_store: Callable, root: Path, goal: str | None, say: Callable[[str
                     log(store, k, "waits", paid, budget, red, why, root=root_id, goal=goal)
                     say(f"{WAITS}{why}; `graphene config set budget N` widens it")
                     return 1
+                cap = max(0.0, budget - paid) if budget is not None and how == "stream" else None
+                each = _worst(shlex.split(executor)) if cap is not None else 0.0
+                if cap is not None and cap < each:  # nothing could start: say why, not "did not start"
+                    why = (f"the budget left (${cap:.2f}) is less than one attempt's worst case (${each:g}): "
+                           "`graphene config set budget N` widens it, or the executor's `--max-budget-usd`")
+                    log(store, k, "waits", paid, budget, red, why, root=root_id, goal=goal)
+                    say(f"{WAITS}{why}")
+                    return 1
                 log(store, k, "running", paid, budget, red, root=root_id, goal=goal)
                 began, since = P._now(), len(store.node_log())
-                cap = max(0.0, budget - paid) if budget is not None and how == "stream" else None
                 raced = Forks(forks or 0, False, list(withs))
                 try:  # named the root: its leaves, the ones that came back too (a run not told leaves them)
                     run_parallel(lambda: open_store(root), root, root, max(parallel, 1), executor, attempts,
