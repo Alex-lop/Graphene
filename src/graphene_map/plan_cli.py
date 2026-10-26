@@ -1152,9 +1152,14 @@ def register(cli: typer.Typer, root, open_store, fail):
                      if waiting else "nothing to run: the plan has no open leaf", 1)  # fmt: skip
             try:  # --with, else the repo's (`graphene init`); neither, and nothing starts
                 template = named(executor or store.meta("executor"))
+                from . import auto as AUTO
+
+                max_usd, budget_said = AUTO.run_cap(store, template, max_usd)  # auto on: its budget
             except P.Refused as no:
                 fail(str(no), 1)
             said_where()  # first: a run changes the plan for as long as it goes
+            if budget_said:
+                out(budget_said)
             who = P.caller()
             # a run that starts nothing answers nothing on the board
             starts = [n for n in P.ready(P.nodes(store), who) if not P.came_back(store, n)

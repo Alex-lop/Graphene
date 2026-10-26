@@ -173,6 +173,26 @@ def metering(template: str) -> str:
     return "stream" if M.kind(argv) else "rows" if label(template) == "nemotron" else "none"
 
 
+def run_cap(store, template: str, given: float | None) -> tuple[float | None, str]:
+    """What any run may start while auto is on (an agent's `graphene run` after its plan was taken, the
+    cockpit's `R`): the envelope's budget left, as `--max-usd`, for an executor whose stream says what it
+    spent (Claude Code, Codex); for one billed after each call (Nemotron) or with no meter, the budget is
+    read before the run only. Refused, with what to do, once it is spent. Returns the cap and the line to
+    say, or (``given``, "") while auto is off or has no budget."""
+    budget = S.budget(store)
+    if S.auto(store) != "on" or budget is None:
+        return given, ""
+    paid = spent(store, S.auto_since(store) or "")
+    left = budget - paid
+    if left <= 0:
+        raise P.Refused(f"nothing starts: your envelope's budget is spent (${paid:.2f} of ${budget:.2f}); "
+                        "`graphene config set budget N` widens it")  # fmt: skip
+    if metering(template) != "stream":
+        return given, f"your envelope's budget: ${left:.2f} of ${budget:.2f} left, read before this run"
+    cap = left if given is None else min(given, left)
+    return cap, f"your envelope's budget: ${left:.2f} of ${budget:.2f} left; this run starts nothing past it"
+
+
 def goal_check(store, root_id: str, own: str | None) -> str:
     """The root's check: the goal's own (--check), else every task's check under it run together, in the
     plan's order (what passes alone and breaks together is caught here)."""

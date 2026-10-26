@@ -210,3 +210,21 @@ def test_the_envelope_never_takes_a_task_that_reaches_the_agents_own_settings_or
         assert why and why[0].startswith(f"reach's scope reaches {reached}"), why
         assert AUTO.take(store, added, files, repo).startswith(AUTO.WAITS)
         assert P.get(store, "reach").state == P.PROPOSED  # nobody can start it until the person accepts
+
+
+def test_while_auto_is_on_every_run_counts_against_the_envelopes_budget(repo):
+    """An agent whose plan the envelope took can start `graphene run` itself, and `R` in the cockpit is a run
+    too: while auto is on, a run with the budget spent starts nothing and says so, whoever started it."""
+    files = P.tracked(repo)
+    with Store.open(repo) as store:
+        S.apply(store, "auto: on\nbudget: 0.5\n", ALEX)
+        AUTO.take(store, proposed(store, TREE, files), files, repo)
+        store.log_node("ids", P._now(), "usage", "run:claude", None, None, {"dollars": 0.6, "model": "m"})
+        store.set_meta("executor", "true")
+    said = agent("run")
+    assert said.exit_code == 1
+    assert "nothing starts: your envelope's budget is spent ($0.60 of $0.50)" in said.output, said.output
+    with Store.open(repo) as store:
+        S.apply(store, "auto: off\nbudget: 0.5\n", ALEX)  # off: the budget is the envelope's, and it is shut
+        assert P.get(store, "ids").state == P.OPEN
+    assert "envelope's budget" not in person("run", "--node", "nothing").output
