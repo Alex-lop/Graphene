@@ -87,6 +87,12 @@ What I did in place of the reviews, each with a failing test first:
   not call tools. I pulled NVIDIA's `nemotron-mini` (4B, tools) to try, found the server broken, and deleted the
   model again; reinstalling Ollama is Alex's call.
 
+- **Codex**, signed in with ChatGPT (no API key, so no dollars): one bounded live `graphene auto` on wordkit at
+  03:12, Codex planning and doing the tasks. Codex refused before any work: `ERROR: workspace routing discovery
+  unauthorized (401)`, twice; its sign-in has expired (`codex login` is Alex's). Graphene stopped as it should:
+  `waits for you: the planner proposed nothing … exit 3`, nothing accepted, nothing run.
+- **Gemini CLI** is set up for Vertex AI, which bills a Google Cloud account: not tried.
+
 So auto mode has run end to end only against the scripted stand-in (`tests/test_auto_nemotron.py`,
 `tests/test_demo_auto.py`). The README, HACKATHON and claims say so.
 
@@ -98,6 +104,11 @@ So auto mode has run end to end only against the scripted stand-in (`tests/test_
 - The extension: `npm test` (types, 20 unit tests, the smoke test in VS Code 1.143.1) and `npm run package`, from
   `night/revamp`; its parser read a real `graphene state --json` snapshot.
 - The GIF and the stills, looked at frame by frame.
+
+Also measured: `graphene state --json` answers in 0.16 to 0.22 s on the replayed demo's plan (`plan --json`:
+0.07 s; most of the difference is importing Textual), so the extension's poll every 1.5 s while a view is open costs
+a little CPU. One test of the auto set failed once under `-n 8` on this Mac while lanes ran, and passed in four
+reruns of the same set and three alone: a timing test under load, not named.
 
 ## Not verified
 

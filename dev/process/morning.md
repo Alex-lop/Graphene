@@ -33,7 +33,8 @@ failures at the merge; a stranger's first `graphene auto` named the wrong flag a
 --auto` from the built 0.8.0 wheel in an empty directory, no key; the extension's types, 20 unit tests, a smoke test
 in VS Code 1.143.1, and its `.vsix`. **Not verified:** a live auto run on any model (Token Factory needs your
 opening, Claude Code a model other than Fable, and your Ollama cannot start models: its app is gone from
-/Applications); the extension in Cursor; GitHub CI on this branch.
+/Applications, and Codex's sign-in has expired: a live Codex auto run at 03:12 got a 401 before any work, and
+Graphene stopped with nothing run); the extension in Cursor; GitHub CI on this branch.
 
 **Yours, in order**
 1. Watch the demo, read the README and `dev/process/revamp/README.md`; flip any decision below.
@@ -50,6 +51,8 @@ opening, Claude Code a model other than Fable, and your Ollama cannot start mode
    0.6.0) can stay or go: `git push origin :refs/tags/v0.7.0`.
 6. GitHub's About text and topics still say Claude only: add Nemotron, NVIDIA, Token Factory (two minutes).
 7. `dry-run/` in your checkout still blocks every Graphene task there: `graphene plan ack`, or delete it.
+8. Housekeeping: `codex login` (expired), Ollama reinstalled if you want free local runs (`--endpoint ollama` needs
+   a model that calls tools), and an old `graphene demo --record` from 9 October still running (pid 34346).
 
 **Decisions I made for you** (each is small to flip)
 1. The envelope is `graphene config`, and with `auto: on` it accepts **any** agent's fitting plan, not only `graphene
