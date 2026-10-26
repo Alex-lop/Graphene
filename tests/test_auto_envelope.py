@@ -190,3 +190,23 @@ def test_the_help_names_the_command_and_the_executor_scripts_are_what_the_tests_
     for option in options:
         assert option in said.output, option
     assert sys.executable  # the scripted planner and executors run on this interpreter (test_auto_run)
+
+
+@pytest.mark.parametrize(
+    "scope, reached",
+    [(".claude/settings.local.json", ".claude/"), ("**", ".claude/"), (".codex/config.toml", ".codex/"),
+     (".github/workflows/ci.yml", ".github/workflows/")],
+)  # fmt: skip
+def test_the_envelope_never_takes_a_task_that_reaches_the_agents_own_settings_or_hooks(repo, scope, reached):
+    """`.claude/settings.local.json` holds the hooks that keep the plan: a held task whose scope names it
+    may write it, which was safe while only the person accepted such a task. Inside the envelope an agent
+    could have proposed one, had it taken at once, and turned the gate off; so a scope that reaches the
+    agents' own settings and hooks (or the CI that runs with the repo's secrets) waits for the person."""
+    files = P.tracked(repo)
+    with Store.open(repo) as store:
+        S.apply(store, "auto: on\n", ALEX)
+        added = proposed(store, f"? reach in  [reach]\n    scope: {scope}\n    check: true\n", files)
+        why = AUTO.fits(store, added, files)
+        assert why and why[0].startswith(f"reach's scope reaches {reached}"), why
+        assert AUTO.take(store, added, files, repo).startswith(AUTO.WAITS)
+        assert P.get(store, "reach").state == P.PROPOSED  # nobody can start it until the person accepts

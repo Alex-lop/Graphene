@@ -26,6 +26,10 @@ ACTOR = "graphene auto"
 STAGES = ("planning", "running", "checking", "fixing", "done", "waits")
 TASKS = 12  # tasks the envelope accepts for the person when `tasks:` is unset and auto is on
 WAITS = "waits for you: "  # how every reason a proposal is not taken begins
+# where the agents' own settings and hooks live, and the CI that runs with the repo's secrets: a held task
+# whose scope names one may write it (the hooks' settings are written so on purpose), so only the person
+# accepts it
+GUARDED = (".claude/", ".codex/", ".cursor/", ".gemini/", ".github/workflows/")
 
 
 def state(store) -> dict | None:
@@ -88,8 +92,9 @@ def fits(store, added: list[P.Node], files: list[str]) -> list[str]:
     """Why these proposals wait for the person, a reason each; empty: they fit the envelope. They fit when
     auto is on; every new task has a scope and a check (a sign-off alone is the person's); the tasks the
     envelope accepted since auto went on plus these stay within `tasks`; nothing on the board waits for the
-    person (a question with no default, an executor's note, a default that drops a task); and none of them
-    splits a task someone holds. `review: every` still holds each proven task for the sign-off."""
+    person (a question with no default, an executor's note, a default that drops a task); none of them
+    splits a task someone holds; and no scope reaches GUARDED (a task that could rewrite the hooks that hold
+    it). `review: every` still holds each proven task for the sign-off."""
     if S.auto(store) != "on":
         return ["auto is off (`graphene config set auto on`, or `graphene auto`, turns it on)"]
     everything = P.nodes(store)
@@ -98,6 +103,10 @@ def fits(store, added: list[P.Node], files: list[str]) -> list[str]:
     leaves = [n for n in new if not under.get(n.id)]
     why = [f"{n.id} has no scope" for n in leaves if not n.scope]
     why += [f"{n.id} has no check" for n in leaves if n.scope and not n.check]
+    for n in leaves:
+        if hit := next((g for g in GUARDED if P.may_collide(n.scope, [f"{g}**"])), None):
+            why.insert(0, f"{n.id}'s scope reaches {hit}, where the agents' own settings and hooks live "
+                          "(or the CI that runs with your secrets): you accept that yourself")  # fmt: skip
     most, had = S.tasks(store) or TASKS, accepted(store, S.auto_since(store) or "")
     if had + len(leaves) > most:
         why.append(f"your envelope accepts {most} tasks and this makes {had + len(leaves)}")
