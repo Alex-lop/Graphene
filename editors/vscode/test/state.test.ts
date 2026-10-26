@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { autoLine, parseState, summary, usd } from "../src/state.ts";
+import { autoLine, autoNews, parseState, summary, usd } from "../src/state.ts";
 
 const fixture = (name: string) => readFileSync(new URL(`./fixtures/${name}.json`, import.meta.url), "utf8");
 
@@ -91,4 +91,17 @@ test("a real snapshot, `graphene state --json` at the end of the --auto replay, 
   assert.ok(s.tasks.every((t) => t.model === "stand-in-Nano" && t.forks.length === 3));
   assert.deepEqual(s.tasks[0]!.forks.map((f) => f.state), ["passed", "passed", "gave up"]);
   assert.equal(autoLine(s), "auto · round 2 of 3 · done · $0.02 of $2.00");
+});
+
+test("auto mode's news is said once, when its round's stage changes, never on the first read", () => {
+  const at = (stage: string, round: number, why = "") => parseState(JSON.stringify({ schema: 1, envelope: { auto: "on" },
+    auto: { round, rounds: 2, stage, spent: 0.42, budget: 2, check: null, why } }));
+  assert.equal(autoNews(null, at("waits", 1, "a question")), null);
+  assert.equal(autoNews(at("running", 1), at("running", 1)), null);
+  assert.deepEqual(autoNews(at("running", 1), at("waits", 1, "t1 has no check")),
+                   { kind: "waits", text: "Graphene auto waits for you: t1 has no check" });
+  assert.deepEqual(autoNews(at("checking", 1), at("fixing", 2, "FAIL: test_x")),
+                   { kind: "fixing", text: "Graphene auto: the goal's check failed (FAIL: test_x); round 2 plans the fix" });
+  assert.deepEqual(autoNews(at("checking", 2), at("done", 2)),
+                   { kind: "done", text: "Graphene auto is done: the goal's check passed in round 2 · $0.42 of $2.00" });
 });

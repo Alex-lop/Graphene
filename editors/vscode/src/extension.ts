@@ -7,7 +7,7 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import * as C from "./commands.ts";
 import { GraphHost } from "./graph.ts";
-import { parseState, summary, type State, type Task } from "./state.ts";
+import { autoNews, parseState, summary, type State, type Task } from "./state.ts";
 import { PlanTree } from "./tree.ts";
 
 export type Status = { kind: "reading" | "missing" | "uninitialised" | "error" | "nofolder" | "ok" | "empty"; text: string };
@@ -74,7 +74,11 @@ export class Session {
     }
   }
 
+  /** The state before the last read: what changed, for auto mode's notifications. */
+  before: State | null = null;
+
   private set(state: State | null, status: Status) {
+    this.before = this.state;
     this.state = state;
     this.status = status;
     void vscode.commands.executeCommand("setContext", "graphene.status", status.kind);
@@ -130,6 +134,14 @@ export function activate(context: vscode.ExtensionContext) {
   session.onDidChange(() => {
     tree.set(session.state);
     const s = session.state;
+    const said = s ? autoNews(session.before, s) : null; // auto mode needs you, plans a fix, or is done
+    if (said) {
+      const show = said.kind === "waits" ? vscode.window.showWarningMessage : vscode.window.showInformationMessage;
+      void show(said.text, "Show Plan Graph", "Open Cockpit").then((pick) => {
+        if (pick === "Show Plan Graph") void vscode.commands.executeCommand("graphene.showGraph");
+        if (pick === "Open Cockpit") void vscode.commands.executeCommand("graphene.openCockpit");
+      });
+    }
     if (s && (session.status.kind === "ok" || session.status.kind === "empty")) {
       bar.text = `◆ ${summary(s)}`;
       const md = new vscode.MarkdownString(undefined, true);

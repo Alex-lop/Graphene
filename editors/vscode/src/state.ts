@@ -215,3 +215,15 @@ export function autoLine(s: State): string {
   if (a.why) parts.push(a.why);
   return parts.join(" · ");
 }
+
+/** What a change in auto mode's round says to the person, once, as it happens: it waits for them, it plans a fix,
+ * or it is done. Null when nothing worth a notification changed (or on the first read, which is no change). */
+export function autoNews(before: State | null, now: State): { kind: "waits" | "fixing" | "done"; text: string } | null {
+  const was = before?.auto, a = now.auto;
+  if (!before || !a || !a.stage || (was?.stage === a.stage && was?.round === a.round)) return null;
+  const money = a.spent === null ? "" : ` · ${usd(a.spent) || "$0.00"}${a.budget !== null ? ` of ${usd(a.budget) || "$0.00"}` : ""}`;
+  if (a.stage === "waits") return { kind: "waits", text: `Graphene auto waits for you: ${a.why || "see the plan"}` };
+  if (a.stage === "fixing") return { kind: "fixing", text: `Graphene auto: the goal's check failed${a.why ? ` (${a.why})` : ""}; round ${a.round} plans the fix` };
+  if (a.stage === "done") return { kind: "done", text: `Graphene auto is done: the goal's check passed in round ${a.round}${money}` };
+  return null;
+}
