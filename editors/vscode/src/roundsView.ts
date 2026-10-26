@@ -27,7 +27,9 @@ export class RoundsTree implements vscode.TreeDataProvider<Item> {
   }
 
   getChildren(item?: Item): Item[] {
-    if (!item) return this.list.map((r) => new Item(roundLine(r), r, r.check === "pass" ? "pass" : r.stage === "waits" ? "warning" : "sync"));
+    // a round's icon: its goal check passed or failed (a failed round sent the next to fix it), it waits, or it goes
+    const icon = (r: Round) => (r.check === "pass" ? "pass" : r.check === "fail" ? "error" : r.stage === "waits" ? "warning" : "sync");
+    if (!item) return this.list.map((r) => new Item(roundLine(r), r, icon(r)));
     const r = item.round!;
     const kids: Item[] = [];
     if (r.failed) kids.push(new Item(`the goal's check failed: ${r.failed}, so this round plans the fix`, undefined, "error"));

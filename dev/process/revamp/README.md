@@ -29,7 +29,7 @@ plans the fix when that is red, and you watch and steer from the terminal or VS 
 - **Graphene for VS Code** (`editors/vscode/`; lane vscode). TypeScript, no runtime dependencies: a Plan tree, the
   graph in an editor tab and the sidebar, a details pane with Add step after/under, Link to…, Edit, Drop, Accept,
   Tell; the status bar; Open Cockpit, Auto…, Run Ready Tasks, Stop. Every change is a `graphene` command with the
-  agents' marks taken out of its environment. 29 unit tests, a smoke test that activates it in a real VS Code
+  agents' marks taken out of its environment. 30 unit tests, a smoke test that activates it in a real VS Code
   1.143.1 and opens its walkthrough, `npm run package` makes a 128 KB `.vsix` (11 files); a CI job of its own.
 - **Any model, any agent, a port a task** (lane anymodel). `--endpoint tokenfactory|nim|ollama|openai` for
   Graphene's own planner and tool loop; `{prompt}` and `{prompt_file}` for any CLI agent; `PORT` and `GRAPHENE_PORT`
@@ -70,7 +70,8 @@ review and no fixer ran. Alex's standing rule is Fable for every subagent ("a ru
 for him"), so from 01:50 the night is the main session alone. Probes at 02:35, 04:05 and 04:57 found Fable still
 limited.
 
-What I did in place of the reviews, each with a failing test first:
+What I did in place of the reviews, each with a test (those before 03:30 run against the old code first and
+failing there):
 - **The merge's seams**: six failures on the merged branch (a script's fork named `repo-forks.p`, the keychain
   and check stubs not taking the arguments the any-model lane added), fixed (42671e2d).
 - **A spend-guard bypass** (partly older than tonight): Token Factory's URL variable pointed at its own host
@@ -136,11 +137,11 @@ So auto mode has run end to end only against the scripted stand-in (`tests/test_
 
 - The whole suite on the merged branch: 2,730 passed, 21 skipped, ruff clean (Python 3.13, macOS; after the
   seam fixes). On the final tree, ruff clean and:
-  - Python 3.13: 2,770 passed, 21 skipped;
-  - Python 3.14: 2,770 passed, 21 skipped;
-  - Python 3.12: 2,770 passed, 21 skipped.
+  - Python 3.13: 2,771 passed, 21 skipped;
+  - Python 3.14: 2,771 passed, 21 skipped;
+  - Python 3.12: 2,771 passed, 21 skipped.
 - `graphene demo --auto --once` from the built 0.8.0 wheel in an empty directory, no key, no network: 0.4 s.
-- The extension: `npm test` (types, 29 unit tests, the smoke test in VS Code 1.143.1) and `npm run package`,
+- The extension: `npm test` (types, 30 unit tests, the smoke test in VS Code 1.143.1) and `npm run package`,
   from `night/revamp`; its parser read a real `graphene state --json` snapshot. The drag, the unlink, the hollow
   line and Stop were tried in the preview page in Chromium (Playwright), each asking for the command it should.
 - The GIF and the stills, filmed again at the end of the night and looked at.
@@ -150,6 +151,9 @@ Also measured: `graphene state --json` answered in 0.16 to 0.22 s on the replaye
 screens' modules it answers in 0.10 s, which is what the extension's poll every 1.5 s pays. A test of the auto set failed three times under load (the suite beside a film or a lane) and never alone:
 `test_auto_stop.py` sent its Ctrl-C between the attempt's row and the executor's pid file, then read the pid.
 It waits for the pid now (fixed, b73242af).
+At the end, a run of the suite on Python 3.14 beside another on 3.12 caught a second one of the kind: the state
+lane's test counted three forks at once by the clock, and one fork had ended before the last began, so the
+snapshot rightly said two. It checks the meter's own count now.
 
 ## Not verified
 
@@ -168,4 +172,5 @@ landscape research (`landscape.json`, one researcher, its fact-check cut off by 
 
 The history is folded: 108 commits became 48 on `night/revamp` (each lane one commit, its own listed in the
 message; small neighbours together, each a tree the branch really had; the last tree byte for byte the unfolded
-one). The SHAs above are the folded ones; the unfolded history is on `night/revamp-before-fold`.
+one), and a last look after the fold is a 49th. The SHAs above are the folded ones; the unfolded history is on
+`night/revamp-before-fold`.

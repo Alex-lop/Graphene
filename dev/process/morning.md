@@ -1,6 +1,6 @@
 # morning.md — 2026-10-26 — one goal in, tested commits out
 
-**Start here.** Everything is on the local branch `night/revamp` in your checkout: 48 commits as you past
+**Start here.** Everything is on the local branch `night/revamp` in your checkout: 49 commits as you past
 GitHub's `main` (499d0a3d, the forks merge your local `main` lacks), **nothing pushed**. The unfolded history
 (108 commits) is on `night/revamp-before-fold`. Then:
 1. `git switch night/revamp && uv run graphene demo --auto` (space pauses, `.` steps, `g` the graph, `q` leaves):
@@ -37,8 +37,9 @@ Nemotron, Claude Code, Codex or any model.
   (`dev/launch/video-auto.md`), the GIF and the stills.
 
 **Found and fixed with no reviewer.** Five Fable lanes built the first half from 00:57. The Fable limit hit at
-01:50, before any review ran, and it still held at 04:05 and 04:57. Your rule keeps subagents on Fable, so I
-reviewed it myself. Each fix has a test that failed first:
+01:50, before any review ran, and it still held at every probe after, the last at 06:15. Your rule keeps
+subagents on Fable, so I reviewed it myself. Each code fix below comes with a test; the earlier ones were run
+against the old code first and failed there:
 - An agent could spend your Token Factory key with no opening, by spelling its URL another way. This is older
   than tonight.
 - The envelope would have accepted:
@@ -56,16 +57,19 @@ reviewed it myself. Each fix has a test that failed first:
   `--drop-needs` reads them in the same write.
 - `docs/COMPARE.md`'s new table came from one unchecked reading. I checked each row against the vendor's own
   page and corrected Kiro's, which named a "conductor" its page doesn't.
+- The cockpit's `:auto <goal> --plan` ran the whole loop, because its list of auto's flags predated `--plan`. The
+  Rounds view merged a second goal's round 1 into the first goal's.
 - Six seam failures at the merge, and a stranger's first `graphene auto` named the wrong flag.
 
 **Verified.**
-- The whole suite on the final tree, with `ruff check` clean:
-  - Python 3.13: 2,770 passed, 21 skipped;
-  - Python 3.14: 2,770 passed, 21 skipped;
-  - Python 3.12: 2,770 passed, 21 skipped.
+- The whole suite on the final code, with `ruff check` clean (three doc edits came after it, and the doc tests
+  ran again on them):
+  - Python 3.13: 2,771 passed, 21 skipped;
+  - Python 3.14: 2,771 passed, 21 skipped;
+  - Python 3.12: 2,771 passed, 21 skipped.
 - `graphene demo --auto --once` from the built 0.8.0 wheel in an empty directory: no key, 0.4 s.
 - The extension:
-  - its types and 29 unit tests;
+  - its types and 30 unit tests;
   - the smoke test in VS Code 1.143.1 (it activates, every command is registered, the walkthrough opens);
   - `npm run package` (11 files, 128 KB).
 - The drag, the unlink and Stop, tried in the preview page in Chromium.
@@ -86,13 +90,16 @@ reviewed it myself. Each fix has a test that failed first:
    --title "Auto mode, the race on screen, Graphene for VS Code (0.8.0)" --body-file dev/process/revamp/README.md`.
 3. A live take.
    - Free: install Ollama (ollama.com), run `ollama pull nemotron-3-nano:4b`, then `ENDPOINT=ollama
-     RECORD=$HOME/auto-live.jsonl dev/proof/auto.sh ~/graphene-auto`.
+     RECORD=$HOME/auto-live.jsonl dev/proof/auto.sh ~/graphene-auto`. A 4B Nano then plans as well as does the
+     work, so expect a weaker plan than Ultra's: the take proves the loop, not the best plan.
    - On Token Factory: the same without `ENDPOINT`, with `NEBIUS_API_KEY` set. It spends on your key, $2 at most
      by the envelope.
-   - `graphene demo ~/auto-live.jsonl` replays it. That take is the video's fourth beat, and it replaces the
-     README's line "auto mode has run against the scripted stand-in".
+   - `graphene demo ~/auto-live.jsonl` replays it. That take is the video's fourth beat, and it lets the README
+     drop its two lines saying auto mode has run only against the scripted stand-in.
 4. After the merge, release 0.8.0, so `uvx graphene-map demo --auto` works for a judge (PyPI still serves 0.6.0):
-   - `git switch main && git pull && git tag v0.8.0 && git push origin v0.8.0`;
+   - `git switch main && git pull`, then date the CHANGELOG's `## 0.8.0 (unreleased)` heading as the day you tag
+     (RELEASING step 2), commit it and `git push origin main`;
+   - `git tag v0.8.0 && git push origin v0.8.0`;
    - when the run is green, `(cd editors/vscode && npm ci && npm run package)`;
    - then `gh release create v0.8.0 --title "Graphene 0.8.0" --notes-file dev/launch/release-notes.md
      editors/vscode/graphene-0.8.0.vsix` (`docs/RELEASING.md` has the rest).
@@ -117,7 +124,7 @@ reviewed it myself. Each fix has a test that failed first:
 9. A VS Code click strips agent marks from `graphene`'s environment, because it is your click. `graphene.path` is
    set in your own settings only, and the extension is off in an untrusted folder.
 10. The Explorer marks every live task's files, not only running ones.
-11. The history is folded to 48 commits: one for each lane, small neighbours together. The unfolded history
+11. The history is folded to 49 commits: one for each lane, small neighbours together. The unfolded history
     is on `night/revamp-before-fold`.
 12. No Token Factory spend and no subagent on another model, per your standing rules.
 

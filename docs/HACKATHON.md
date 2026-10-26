@@ -179,7 +179,7 @@ runs unless you run it, or set `GRAPHENE_SHAPE` to run them after each `graphene
   is flagged too.
 - **Accepting for the person opened new ways in.** Auto mode lets Graphene accept a plan for you, so an agent's
   own proposal can be taken at once. A review on 26 October found what that would have let through, and each is
-  closed with a test that failed first: a task scoped to the agents' own settings and hooks (`.claude/`) or to
+  closed, with a test: a task scoped to the agents' own settings and hooks (`.claude/`) or to
   `.git/hooks/` (on a Mac's case-blind disk, `.CLAUDE/` and `.GIT/` too); a planner's check run unread (now one
   plain command, or one you name in `checks:`); an agent's own `graphene run` outside the budget; and a task whose
   check already passed before any work, which would have landed with nothing done (`dev/process/revamp/README.md`).
@@ -404,9 +404,13 @@ uv tool install --python 3.12 'graphene-map[nemotron]'
 graphene key set            # kept in the system keychain; or export NEBIUS_API_KEY=…
 graphene key check          # says whether Token Factory answers it
 graphene init --planner nemotron --executor nemotron
-graphene ask "what you want, in a paragraph"
-graphene watch              # ⏎ on each question and each proposed task, then R runs what is ready
+graphene auto "what you want" --budget 2 --forks 3 --plan   # the plan your envelope accepts, nothing run yet
+graphene auto               # runs it: three Nanos race each task, the goal's check, the fix if it is red
+graphene watch              # in another terminal: the race, the auto line, what needs you
 ```
+
+Or by hand: `graphene ask "what you want, in a paragraph"`, then in `graphene watch` ⏎ on each question and each
+proposed task, and `R` runs what is ready.
 
 With Claude Code or Codex instead (no key): `graphene init`, then tell Claude Code what you want and it proposes
 the plan first; `graphene watch` beside it.

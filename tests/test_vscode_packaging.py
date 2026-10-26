@@ -109,10 +109,11 @@ def test_the_readme_says_how_it_is_installed_and_whose_click_it_is():
 
 
 def test_the_source_takes_the_agent_marks_out_before_it_runs_graphene():
+    from graphene_map.state import MARKS  # every mark `plan.caller` reads as an agent's
+
     source = (EXT / "src/commands.ts").read_text()
-    for mark in ("CLAUDECODE", "CLAUDE_CODE_SESSION_ID", "CODEX_SESSION_ID", "CODEX_SANDBOX", "AI_AGENT",
-                 "GRAPHENE_NODE", "GRAPHENE_PLANNER", "GEMINI_CLI", "CURSOR_AGENT"):
-        assert f'"{mark}"' in source
+    for mark in MARKS:
+        assert f'"{mark}"' in source, mark
     extension = (EXT / "src/extension.ts").read_text()
     assert "GRAPHENE_AS" not in extension and "GRAPHENE_WATCH" not in extension  # stand-in marks: never set
 

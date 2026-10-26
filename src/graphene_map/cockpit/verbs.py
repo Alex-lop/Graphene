@@ -31,7 +31,7 @@ RUN_WITH = ["--parallel", "4"]  # ready leaves at once, a worktree each, landed 
 SLOW = (["run"], ["ask"], ["talk"], ["auto"], ["node", "split"], ["node", "done"],
         ["node", "signoff"])  # minutes long
 # `graphene auto`'s own flags: what comes before the first of them is the goal, `--top` in it or not
-AUTO_FLAGS = re.compile(r"\s--(?:budget|tasks|rounds|forks|parallel|check|planner|with|attempts)\b")
+AUTO_FLAGS = re.compile(r"\s--(?:budget|tasks|rounds|forks|parallel|check|planner|with|attempts|plan)\b")
 
 
 def gist(argv: list[str], code: int, said: str) -> str:

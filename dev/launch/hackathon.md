@@ -4,8 +4,8 @@ For the Nebius × NVIDIA Global AI Hackathon on Devpost, track Coding and Agenti
 Friday 30 October 2026, 10:00 PT.** Three pieces in my words, to paste as they are or change: the form's
 description, its Built with list, and the README section the rules ask for, on how Nemotron is used and where
 Token Factory sped the work up. The long fields, the feedback and every number's source are in
-`docs/HACKATHON.md`; the video's script is `dev/demo/STORYBOARD.md`. Nothing here may say what `claims.md` rules
-out.
+`docs/HACKATHON.md`; the video's script is `dev/launch/video-auto.md` (auto mode; the older one, before it, is
+`dev/demo/STORYBOARD.md`). Nothing here may say what `claims.md` rules out.
 
 ## Tagline
 

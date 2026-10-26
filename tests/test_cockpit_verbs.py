@@ -339,6 +339,7 @@ def test_y_on_a_ready_leaf_starts_nothing_and_points_at_r(repo, doer):
                                                          "--forks", "3"]),
      (":graphene auto 'the goal' --check 'python3 -m unittest'", ["auto", "the goal", "--check",
                                                                     "python3 -m unittest"]),
+     (":auto add a --top N option --plan", ["auto", "add a --top N option", "--plan"]),
      (":auto", ["auto"])],
 )  # fmt: skip
 def test_auto_typed_at_the_colon_runs_as_a_process_and_takes_its_goal_as_a_sentence(doer, typed, argv):

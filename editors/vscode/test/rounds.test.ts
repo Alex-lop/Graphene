@@ -20,3 +20,17 @@ test("the --auto replay's log reads as two rounds: three tasks raced and landed,
 test("a log with no auto rows has no rounds, and a line that is not JSON is no row", () => {
   assert.deepEqual(rounds(parseLog('{"id": 1, "node_id": "a", "kind": "added", "detail": {}}\nnot json\n')), []);
 });
+
+test("a second goal starts the rounds again: its round 1 is not merged into the first goal's", () => {
+  const row = (id: number, kind: string, node_id: string, detail: Record<string, unknown>) => JSON.stringify({ id, kind, node_id, detail });
+  const log = [
+    row(1, "auto", "*", { round: 1, stage: "planning", root: "first-goal" }),
+    row(2, "accepted", "a", { by: "auto", round: 1 }),
+    row(3, "auto", "*", { round: 1, stage: "done", root: "first-goal", check: "pass" }),
+    row(4, "auto", "*", { round: 1, stage: "planning", root: "second-goal" }),
+    row(5, "accepted", "b", { by: "auto", round: 1 }),
+  ].join("\n");
+  const [only, ...rest] = rounds(parseLog(log));
+  assert.equal(rest.length, 0);
+  assert.deepEqual([only!.n, only!.stage, only!.accepted, only!.check], [1, "planning", ["b"], ""]);
+});

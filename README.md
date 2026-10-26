@@ -28,8 +28,8 @@ uvx graphene-map demo --auto
 
 One goal, three tasks, nine agents at once, one of them stopped writing a file that is not its task's, and your
 whole test suite catching what two tasks broke together. Needs [uv](https://docs.astral.sh/uv/getting-started/installation/),
-a free installer for Python tools, on macOS or Linux (on Windows, inside WSL). Then watch the locks hold: `uvx graphene-map demo --cheat` plays an agent
-trying seven ways round them.
+a free installer for Python tools, on macOS or Linux (on Windows, inside WSL). Then watch the locks hold:
+`uvx graphene-map demo --cheat` plays an agent trying seven ways round them.
 
 ```
 6 refused, 1 flagged, 0 got through
@@ -46,8 +46,8 @@ graphene auto "add a --top N option to the CLI, with tests" --budget 2 --forks 3
 
 1. **You set the envelope, once.** `--budget` in dollars, `--tasks`, fix `--rounds`, `--forks`, and in `graphene
    config` the files no task may touch and the test commands it may run as checks. Inside it Graphene accepts the
-   plan for you; anything outside it waits for you, with the one reason why. Only you can set it: Graphene refuses it from an agent, and it never takes a task
-   that could reach the agents' own settings and hooks.
+   plan for you; anything outside it waits for you, with the one reason why. Only you can set it: Graphene refuses
+   it from an agent, and it never takes a task that could reach the agents' own settings and hooks.
 2. **Nemotron 3 Ultra plans** small tasks, each naming the files it may change and a check, a command that passes
    only when the task is done. It is told to plan wide: tasks that run at once share no file, each its own test file.
 3. **Agents race each task, all at once.** Three Nemotron 3 Nano agents a task, each in its own git worktree,
@@ -82,8 +82,8 @@ costs, and what needs you on top. Enter does the row's move (accept, try again, 
 line, `w` widens a task to the file it was stopped at, `f` forks a task, `?` shows every key.
 
 `g` draws the plan as a graph flowing into your goal, with how many tasks can run at once. On it, `+` adds a step
-after the task you're on and `L` links two tasks (on a linked pair, unlinks them); `m` maps the folders each task may write; `:auto <goal>` starts
-auto mode from the cockpit.
+after the task you're on and `L` links two tasks (on a linked pair, unlinks them); `m` maps the folders each task
+may write; `:auto <goal>` starts auto mode from the cockpit.
 
 ![the graph: four tasks flowing into the goal, each with its agent and model; auto, round 2 of 3, done, $0.02 of $2.00](https://raw.githubusercontent.com/Alex-lop/Graphene/main/docs/assets/auto-graph.png)
 
@@ -93,9 +93,11 @@ auto mode from the cockpit.
 
 The extension in [`editors/vscode`](https://github.com/Alex-lop/Graphene/blob/main/editors/vscode/README.md) shows
 the same plan in an editor tab and a sidebar: the graph, the forks racing, the rounds of auto mode, the status bar
-(`◆ 2 running · 1 needs you · $0.42`), and in the Explorer each file a running agent writes marked with its number. Every click is a `graphene` command run as you: add a step, link two by dragging one's dot onto
-the other (an × unlinks them), edit, drop, accept, tell an agent, and **Graphene: Auto…** for a goal. It reads `graphene state --json`, so the cockpit and the editor never
-disagree. It is built for VS Code 1.95 and later, so its forks such as Cursor should load it (not tried there yet).
+(`◆ 2 running · 1 needs you · $0.42`), and in the Explorer whose each file is, a running agent's marked with its
+number. Every click is a `graphene` command run as you: add a step, link two by dragging one's dot onto the other
+(an × unlinks them), edit, drop, accept, tell an agent, and **Graphene: Auto…** for a goal. It reads `graphene
+state --json`, so the cockpit and the editor never disagree. It is built for VS Code 1.95 and later, so its forks
+such as Cursor should load it (not tried there yet).
 
 ## Any agent, any model
 

@@ -21,7 +21,7 @@ It is a thin client: everything it shows comes from `graphene state --json`, and
   (`auto · round 1 of 2 · running · $0.42 of $2.00`) when auto is on. Click selects and opens the details
   pane; drag a task's dot (its right edge) onto another and that one waits on it; arrow keys move the
   selection; the wheel zooms, dragging pans, a double click fits.
-- **Rounds** view: auto mode's iterations, one row a round (`Round 2 · done · 1 accepted · 1 landed · goal ✓ ·
+- **Rounds** view: auto mode's iterations for the newest goal, one row a round (`Round 2 · done · 1 accepted · 1 landed · goal ✓ ·
   $0.02`), and under it what the envelope accepted, which fork each task kept and why, what landed, and the
   line the goal's check failed on that sent it there. It reads `graphene plan log --json` only while it is
   open, and then only the rows logged since it last read.

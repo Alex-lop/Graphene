@@ -37,10 +37,12 @@ export function parseLog(text: string): LogRow[] {
   return rows;
 }
 
-/** The rounds of auto mode in the log, oldest first; a row belongs to the round the last `auto` row before it named. */
+/** The rounds of auto mode in the log, oldest first; a row belongs to the round the last `auto` row before it named.
+ *  Only the newest goal's: an `auto` row naming another root starts the list again (its round 1 is not the last's). */
 export function rounds(rows: LogRow[]): Round[] {
   const out: Round[] = [];
   let current: Round | null = null;
+  let goal = "";
   const at = (n: number): Round => {
     let r = out.find((x) => x.n === n);
     if (!r) {
@@ -52,6 +54,11 @@ export function rounds(rows: LogRow[]): Round[] {
   for (const row of rows) {
     const d = row.detail;
     if (row.kind === "auto") {
+      const root = typeof d.root === "string" ? d.root : "";
+      if (root && root !== goal) {
+        if (goal) out.length = 0; // another goal: the view follows the newest
+        goal = root;
+      }
       current = at(Number(d.round) || 1);
       current.stage = String(d.stage ?? current.stage);
       current.why = String(d.why ?? "");
