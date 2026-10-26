@@ -78,8 +78,8 @@ The race on screen (26 October 2026). Each line is one change.
 - While auto is on, the cockpit's and the graph's head carry one more line: `auto · round 1 of 3 · running ·
   $0.42 of $2.00 · 5 of 12 tasks`, in the need-you colour and on top while it waits for you, with why.
 - On the graph, `+` adds a step after the task you're on (`graphene node add TITLE --parent … --needs …`, then `e`
-  fills its scope and check) and `L` then `L` on another task links them; the head says how many tasks can run at
-  once. `graphene node set B --add-needs A` adds to what B waits on without replacing it, and refuses a cycle with
+  fills its scope and check) and `L` then `L` on another task links them, or unlinks a pair already linked; the
+  head says how many tasks can run at once. `graphene node set B --add-needs A` adds to what B waits on without replacing it, and refuses a cycle with
   its reason.
 
 Editors (26 October 2026). Each line is one change.

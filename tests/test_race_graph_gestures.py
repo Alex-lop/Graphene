@@ -115,6 +115,22 @@ def test_l_on_a_then_on_b_makes_b_wait_on_a_and_the_head_says_what_to_do_meanwhi
     assert "c" in app.model.tasks and app.model.tasks["c"].needs == ["a"]  # the new arrow is drawn
 
 
+def test_l_on_a_pair_already_linked_takes_the_arrow_away(repo):
+    async def steps(app, pilot):
+        app.model.selected = "a"
+        app.paint()
+        await pilot.press("L")
+        await pilot.pause(0.1)
+        app.model.selected = "b"  # b waits on a already
+        await pilot.press("L")
+        await pilot.pause(0.3)
+
+    app = drive(repo, steps)
+    assert node(repo, "b").needs == []
+    said = "graphene node set b --needs none: bye says goodbye no longer waits on greet says hello"
+    assert app.model.feed[-1][1] == said
+
+
 def test_enter_ends_a_link_too_and_a_link_that_makes_a_cycle_is_refused_with_its_reason(repo):
     async def steps(app, pilot):
         app.model.selected = "b"  # b waits on a already

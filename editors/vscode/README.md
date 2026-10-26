@@ -44,7 +44,7 @@ buttons in the graph's details pane.
 | Auto… | asks for a goal, an optional budget, and whether to plan first; `graphene auto "<goal>" --budget N [--plan]` in a terminal you can Ctrl-C |
 | Set Up This Folder | `graphene init` in a terminal: it asks which planner and executor to use |
 | Set Envelope… | shows auto, budget, tasks, rounds, forks and checks as they are, and sets the one you pick with `graphene config set KEY VALUE` |
-| Run Ready Tasks | `graphene run --parallel 4` in a terminal |
+| Run Ready Tasks | `graphene run --parallel 4` in a terminal (the graph's Run ready, which reads Stop while a run goes) |
 | Stop | `graphene run --stop` |
 | Accept / Accept All | `graphene plan accept [ID]` |
 | Add Step… | title, where (after a task, i.e. waiting on it; or under a sub-goal), scope, check; `graphene node add TITLE --parent P --needs X --scope G --check C` |

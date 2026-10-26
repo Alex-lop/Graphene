@@ -5,7 +5,7 @@ import * as C from "./commands.ts";
 import type { Session } from "./extension.ts";
 
 // link: id is A, target B, and B waits on A; unlink: id is B, target the A it stops waiting on
-type Act = "add-after" | "add-under" | "link" | "unlink" | "edit" | "drop" | "accept" | "tell" | "run" | "auto" | "cockpit";
+type Act = "add-after" | "add-under" | "link" | "unlink" | "edit" | "drop" | "accept" | "tell" | "run" | "stop" | "auto" | "cockpit";
 type FromPage = { type: "ready" } | { type: "act"; act: Act; id: string; target?: string };
 
 export class GraphHost implements vscode.WebviewViewProvider {
@@ -83,6 +83,7 @@ export class GraphHost implements vscode.WebviewViewProvider {
       case "accept": return vscode.commands.executeCommand("graphene.accept", arg);
       case "tell": return vscode.commands.executeCommand("graphene.tell", arg);
       case "run": return vscode.commands.executeCommand("graphene.runReady");
+      case "stop": return vscode.commands.executeCommand("graphene.stop");
       case "auto": return vscode.commands.executeCommand("graphene.auto");
       case "cockpit": return vscode.commands.executeCommand("graphene.openCockpit");
     }

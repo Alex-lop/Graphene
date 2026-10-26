@@ -82,7 +82,7 @@ costs, and what needs you on top. Enter does the row's move (accept, try again, 
 line, `w` widens a task to the file it was stopped at, `f` forks a task, `?` shows every key.
 
 `g` draws the plan as a graph flowing into your goal, with how many tasks can run at once. On it, `+` adds a step
-after the task you're on and `L` links two tasks; `m` maps the folders each task may write; `:auto <goal>` starts
+after the task you're on and `L` links two tasks (on a linked pair, unlinks them); `m` maps the folders each task may write; `:auto <goal>` starts
 auto mode from the cockpit.
 
 ![the graph: four tasks flowing into the goal, each with its agent and model; auto, round 2 of 3, done, $0.02 of $2.00](https://raw.githubusercontent.com/Alex-lop/Graphene/main/docs/assets/auto-graph.png)

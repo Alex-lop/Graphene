@@ -659,7 +659,8 @@ class Cockpit(App):
     def link(self) -> None:
         """`L` on the graph: on the task that lands first, then (L again, or ⏎) on the one that waits for it,
         makes the second wait on the first (`node set B --add-needs A`), a new arrow; Esc cancels. A link that
-        would close a cycle is refused by the plan, and the news says why."""
+        would close a cycle is refused by the plan, and the news says why. On a task that waits on the first
+        already, the same gesture takes the arrow away (`node set B --needs` with the rest, or `none`)."""
         m = self.model
         t = m.tasks.get(m.selected)
         if self.view != "flow":
@@ -675,6 +676,11 @@ class Cockpit(App):
         else:
             a, self.linking = self.linking, ""
             first = m.tasks[a].title if a in m.tasks else a
+            if a in t.needs:  # linked already: the gesture unlinks, as VS Code's × does
+                rest = [x for n in [n for n in t.needs if n != a] or ["none"] for x in ("--needs", n)]
+                done = f"{fit(t.title, 30)} no longer waits on {fit(first, 30)}"
+                self.doer.run(["node", "set", t.id, *rest], done)
+                return
             done = f"{fit(t.title, 30)} now waits on {fit(first, 30)}"
             self.doer.run(["node", "set", t.id, "--add-needs", a], done)
 

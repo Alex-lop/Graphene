@@ -8,7 +8,7 @@ declare function acquireVsCodeApi(): { postMessage(m: unknown): void };
 
 type Status = { kind: "reading" | "missing" | "uninitialised" | "error" | "nofolder"; text: string };
 type Incoming = { type: "state"; state: State } | { type: "status"; status: Status } | { type: "select"; id: string };
-export type Act = "add-after" | "add-under" | "link" | "unlink" | "edit" | "drop" | "accept" | "tell" | "run" | "auto" | "cockpit";
+export type Act = "add-after" | "add-under" | "link" | "unlink" | "edit" | "drop" | "accept" | "tell" | "run" | "stop" | "auto" | "cockpit";
 
 const GOAL = " goal";
 const BOX_W = 184, BOX_H = 48, FORK_H = 20, FORK_DX = 22, GOAL_W = 200, GOAL_H = 66;
@@ -100,6 +100,9 @@ function render() {
   if (s.width) counts.push(`width ${s.width}`);
   if (s.spent) counts.push(usd(s.spent));
   if (s.run.going) counts.unshift("run going");
+  const run = $("b-run"); // while a run goes, the button that started it stops it
+  run.textContent = s.run.going ? "Stop" : "Run ready";
+  run.title = s.run.going ? "graphene run --stop: what runs goes back to the plan" : "graphene run --parallel 4";
   $("counts").textContent = counts.join(" · ");
   const auto = autoLine(s);
   $("auto").textContent = auto;
@@ -440,7 +443,7 @@ function wire() {
       applyZoom();
     }
   }).observe(canvas);
-  $("b-run").addEventListener("click", () => api.postMessage({ type: "act", act: "run", id: "" }));
+  $("b-run").addEventListener("click", () => api.postMessage({ type: "act", act: state?.run.going ? "stop" : "run", id: "" }));
   $("b-auto").addEventListener("click", () => api.postMessage({ type: "act", act: "auto", id: "" }));
   $("b-cockpit").addEventListener("click", () => api.postMessage({ type: "act", act: "cockpit", id: "" }));
   $("b-add").addEventListener("click", () => api.postMessage({ type: "act", act: "add-under", id: "" }));
