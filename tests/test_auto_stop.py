@@ -23,6 +23,11 @@ def planner(repo) -> str:
 
 
 def attempts(repo) -> int:
+    """The attempts begun on the slow task, once its executor has written its pid: the attempt's row comes as
+    it is launched, the pid a moment later, and a stop between the two left `stopped` no pid to read (a flake
+    under load)."""
+    if not (repo / ".graphene" / "worktrees" / "slow" / "pid.txt").exists():
+        return 0
     with Store.open(repo) as store:
         return len(store.node_log("slow", ("attempt",)))
 

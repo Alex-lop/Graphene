@@ -117,8 +117,9 @@ So auto mode has run end to end only against the scripted stand-in (`tests/test_
 
 Also measured: `graphene state --json` answered in 0.16 to 0.22 s on the replayed demo's plan (`plan --json`:
 0.07 s), most of it importing Textual for one pure function and the replay's narrator; with both moved out of the
-screens' modules it answers in 0.10 s, which is what the extension's poll every 1.5 s pays. One test of the auto set failed once under `-n 8` on this Mac while lanes ran, and passed in four
-reruns of the same set and three alone: a timing test under load, not named.
+screens' modules it answers in 0.10 s, which is what the extension's poll every 1.5 s pays. A test of the auto set failed three times under load (the suite beside a film or a lane) and never alone:
+`test_auto_stop.py` sent its Ctrl-C between the attempt's row and the executor's pid file, then read the pid.
+It waits for the pid now (fixed, 2af8c0b7).
 
 ## Not verified
 
