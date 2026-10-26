@@ -264,10 +264,20 @@ def kept_out_by(path: str, conditions: list[tuple[str, str]]) -> str | None:
     return next((f"{s}: {g}" for s, g in conditions if covers([g], path)), None)
 
 
+GIT_OWN = ".git/ is git's own: a hook planted there runs on your next commit, and git status never shows it"
+
+
+def git_own(path_or_glob: str) -> bool:
+    """Does it name `.git` or anything under it (a worktree's `.git` file too)? No scope reaches there, and no
+    write there is let through, whatever a scope says."""
+    first = _fixed(path_or_glob)[:1]
+    return first == [".git"]
+
+
 def binds(path: str, node: Node, conditions: list[tuple[str, str]]) -> bool:
     """Is ``path`` inside the scope as it binds (``as_scoped``), a standing path matched as the disk
-    reaches it (``kept_out_by``)?"""
-    return in_scope(path, node.scope) and kept_out_by(path, conditions) is None
+    reaches it (``kept_out_by``)? Never one under `.git/` (``git_own``)."""
+    return not git_own(path) and in_scope(path, node.scope) and kept_out_by(path, conditions) is None
 
 
 def _keeps_standing(node: Node, conditions: list[tuple[str, str]], files: list[str]) -> None:
@@ -390,6 +400,8 @@ def validate(
                 f"{n.id}: a leaf needs a scope (the paths it may touch), e.g. --scope 'src/api/**'; "
                 "or give it children, and it is a sub-goal"
             )
+        if inside := next((g for g in n.scope if not g.startswith("!") and git_own(g)), None):
+            raise Refused(f"{n.id}: its scope names {inside}, and {GIT_OWN}; no scope reaches it")
         if not n.check and not n.signoff and not n.aside:
             raise Refused(
                 f"{n.id}: a leaf needs a check, a person's sign-off, or both; else nobody knows it is done"

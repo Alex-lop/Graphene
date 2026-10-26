@@ -572,6 +572,8 @@ def scope_refused(
     fork = {"fork": n.forked[session]["fork"]} if session in n.forked else {}  # whose fork's write it was
     _write(store.log_node, n.id, P._now(), "denied", n.executor, session, agent_id,
            {"path": rel, "how": how, **fork})  # fmt: skip
+    if P.git_own(rel):
+        return f"{rel}: {P.GIT_OWN}. No task writes there; leave it as it is"
     kept = P.kept_out_by(rel, standing)
     if kept:
         return (f"{rel} is kept out of every scope by the setting `{kept}` (`graphene config`); only the "

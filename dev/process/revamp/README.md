@@ -66,6 +66,9 @@ What I did in place of the reviews, each with a failing test first:
   the hooks (that is how the person edits them), so an agent's proposal naming it, taken at once by the envelope,
   could have turned the gate off. The envelope now never takes a task that reaches `.claude/`, `.codex/`,
   `.cursor/`, `.gemini/` or `.github/workflows/` (00882613).
+- **`.git/` was anybody's** (older than tonight, made worse by auto mode): a leaf scoped to `.git/hooks/pre-commit`
+  was proposed, fit the envelope, and could have planted a hook that runs on the person's next commit, unseen by
+  `done` (git status never shows `.git/`). No scope reaches `.git/` now, and no write there is let through.
 - **The budget only held `graphene auto`**: an agent whose plan was taken could start `graphene run` itself, or
   the person's `R`, unbudgeted. While auto is on, every run counts against the budget now (5788b7da).
 - **A stranger's walk** on a fresh repo with the built wheel: before `graphene init`, `graphene auto` named

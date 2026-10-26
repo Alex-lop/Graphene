@@ -26,7 +26,7 @@ as you, **nothing pushed**. The record, every decision and what went wrong: `dev
 any review or fixer ran, and your rule keeps subagents on Fable, so I carried the rest alone. What I found, each
 fixed with a failing test first: an agent could spend your Token Factory key with no opening by spelling its URL
 another way (older than tonight); the envelope would have accepted an agent's task that writes the hooks'
-settings, turning the gate off; the budget held only `graphene auto`, not an agent's own `graphene run`; six seam
+settings, turning the gate off, or one that plants a git hook in `.git/hooks/` (no scope reaches `.git/` now); the budget held only `graphene auto`, not an agent's own `graphene run`; six seam
 failures at the merge; a stranger's first `graphene auto` named the wrong flag and turned auto on for nothing.
 
 **Verified:** the whole suite, ruff clean (see the last line of this brief for the final count); `graphene demo

@@ -299,6 +299,8 @@ hooks do, so a refused shell write may count twice.
   `uv run pytest …` builds the tree's own environment.
 - Two scopes that overlap only on a file that does not exist yet are not seen until one leaf's `done`.
 - `.claude/settings*.json` is not protected. An agent that removes the hook has removed it; `done` still holds.
+  The envelope never takes a task that reaches it, and `.git/` is nobody's: no scope reaches it, and no write there
+  is let through, since a hook planted in `.git/hooks/` would run on your next commit.
 - A board answer changes the tree only through its `then:` lines, and a `never:` setting is told to the planner and
   checked nowhere.
 - A protected path is kept from the model where Graphene reads for it. A local Nemotron command, or a planner without
