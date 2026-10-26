@@ -28,7 +28,8 @@ It is a thin client: everything it shows comes from `graphene state --json`, and
 - **Explorer**: each file a task owns is marked, a running task's with its agent's number in yellow (the task,
   its model and its forks in the tooltip), one waiting for your sign-off with ✓, one that came back with !, one
   not started yet with ·: whose is whose, at a glance. The scope globs are read as the CLI reads them.
-- **Status bar**: `◆ 2 running · 1 needs you · $0.42`; click for the graph.
+- **Status bar**: `◆ 2 running · 1 needs you · $0.42`, led by auto mode's round while it is on (`◆ auto round 2 ·
+  …`, `auto waits`, `auto done`); click for the graph.
 
 It reads the plan again whenever the store's files change (`.graphene/`, watched as a directory: the WAL
 changes before `graphene.db` does) and every `graphene.pollMs` (1500 ms) while a Graphene view is open.
@@ -57,7 +58,8 @@ buttons in the graph's details pane.
 | Refresh | reads the plan again |
 
 While auto mode runs, a notification says when it waits for you (with why), when the goal's check failed and a
-round plans the fix, and when it is done, with a button to the graph or the cockpit.
+round plans the fix, and when it is done, with a button to the graph or the cockpit; when it waits on a missing
+key, Set Key runs `graphene key set` in a terminal.
 
 Settings: `graphene.path` (the command, default `graphene`; set it when `uv tool install` put it somewhere
 the editor does not see; your own settings only, so a cloned folder's `.vscode/settings.json` cannot choose what

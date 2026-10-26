@@ -136,7 +136,8 @@ change through at once.
 - Scopes cover files. A task can still use the network, or a database two tasks share; its own port is as far as
   Graphene goes there.
 - A task allowed to edit its own test can weaken it: `done` flags it, and `review: every` lets you read the diff
-  first. The replay's fix round is one, and Graphene says so.
+  first. The replay's fix round is one, and Graphene says so. In auto mode, a task whose check already passes
+  before any work waits for you: it would land with nothing done.
 - The envelope decides what is accepted, not whether the work is good: that is the checks' job, and they are only
   as good as your tests. Auto mode has run end to end against a scripted stand-in of Token Factory; a live auto run
   is next.

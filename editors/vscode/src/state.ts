@@ -197,7 +197,8 @@ export function mdText(s: string): string {
   return s.replace(/\s+/g, " ").replace(/[\\`*_{}[\]()#+\-.!|<>~$&:]/g, "\\$&");
 }
 
-/** The status bar's words: `2 running · 1 needs you · $0.42`, `3 of 6 done` when nothing runs. */
+/** The status bar's words: `2 running · 1 needs you · $0.42`, `3 of 6 done` when nothing runs; while auto is on,
+ *  its round first (`auto round 2 · …`), or that it waits for you, or is done. */
 export function summary(s: State): string {
   const sb = s.scoreboard;
   const parts: string[] = [];
@@ -206,6 +207,8 @@ export function summary(s: State): string {
   if (!parts.length) parts.push(sb.total ? `${sb.proven} of ${sb.total} done` : "no plan yet");
   const spent = usd(s.spent);
   if (spent) parts.push(spent);
+  const a = autoLine(s) ? s.auto : null;
+  if (a?.stage) parts.unshift(a.stage === "waits" ? "auto waits" : a.stage === "done" ? "auto done" : `auto round ${a.round ?? 1}`);
   return parts.join(" · ");
 }
 

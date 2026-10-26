@@ -43,7 +43,15 @@ test("auto waiting reads as a header with the round, the stage and the spend of 
   assert.equal(s.envelope.auto, "on");
   assert.equal(s.auto?.stage, "waits");
   assert.equal(autoLine(s), "auto · round 2 of 3 · waits · $1.37 of $2.00 · the goal's check is still red after 2 rounds");
-  assert.equal(summary(s), "1 needs you · $1.37");
+  assert.equal(summary(s), "auto waits · 1 needs you · $1.37");
+});
+
+test("the status bar leads with auto's round while auto is on", () => {
+  const done = parseState(fixture("real-auto"));
+  assert.equal(summary(done), "auto done · 4 of 4 done · $0.02");
+  const going = parseState(JSON.stringify({ ...JSON.parse(fixture("real-auto")),
+    auto: { round: 1, rounds: 2, stage: "running", spent: 0.01, budget: 2 } }));
+  assert.ok(summary(going).startsWith("auto round 1 · "), summary(going));
 });
 
 test("missing keys take defaults and unknown keys are ignored", () => {
@@ -112,4 +120,15 @@ test("a hover reads the plan's words as text: no link, image, HTML or icon of an
   assert.ok(!said.includes("\n"));
   assert.equal(mdText("greet says hi"), "greet says hi"); // spaces stay, so it wraps
   assert.equal(mdText("a_b *c*"), "a\\_b \\*c\\*");
+});
+
+test("auto waiting on a key says `graphene key set` in its notification, where the Set Key button finds it", () => {
+  const base = JSON.parse(fixture("real-auto"));
+  const going = parseState(JSON.stringify({ ...base, auto: { round: 1, rounds: 2, stage: "planning", spent: 0, budget: 2 } }));
+  const why = "the planner could not start: NEBIUS_API_KEY is not set: Token Factory needs a key (tokenfactory.nebius.com); "
+    + "`graphene key set` keeps one";
+  const waits = parseState(JSON.stringify({ ...base, auto: { round: 1, rounds: 2, stage: "waits", spent: 0, budget: 2, why } }));
+  const said = autoNews(going, waits);
+  assert.equal(said?.kind, "waits");
+  assert.ok(/`graphene key set(?: --endpoint (\w+))?`/.test(said!.text), said!.text);
 });

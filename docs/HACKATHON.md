@@ -177,6 +177,12 @@ runs unless you run it, or set `GRAPHENE_SHAPE` to run them after each `graphene
   (`dev/test/first-light.md`). Graphene cannot tell a weak check from a strong one. It can show it: every check
   runs once before any work and one that already passes is flagged, and a task that changes its own check's file
   is flagged too.
+- **Accepting for the person opened new ways in.** Auto mode lets Graphene accept a plan for you, so an agent's
+  own proposal can be taken at once. A review on 26 October found what that would have let through, and each is
+  closed with a test that failed first: a task scoped to the agents' own settings and hooks (`.claude/`) or to
+  `.git/hooks/` (on a Mac's case-blind disk, `.CLAUDE/` and `.GIT/` too); a planner's check run unread (now one
+  plain command, or one you name in `checks:`); an agent's own `graphene run` outside the budget; and a task whose
+  check already passed before any work, which would have landed with nothing done (`dev/process/revamp/README.md`).
 - **Where the agent loop runs decides what can be refused.** With Graphene's own loop on your machine and the
   tools in the sandbox, an out-of-scope write was refused in Graphene's words before it happened, 3 runs of 3.
   With a harness inside the sandbox (OpenCode 1.18.31), Graphene never heard of it in 3 of 3, the key sat where

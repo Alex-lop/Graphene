@@ -187,7 +187,9 @@ export function activate(context: vscode.ExtensionContext) {
     const said = s ? autoNews(session.before, s) : null; // auto mode needs you, plans a fix, or is done
     if (said) {
       const show = said.kind === "waits" ? vscode.window.showWarningMessage : vscode.window.showInformationMessage;
-      void show(said.text, "Show Plan Graph", "Open Cockpit").then((pick) => {
+      const key = /`graphene key set(?: --endpoint (\w+))?`/.exec(said.text); // it waits on a key: set it from here
+      void show(said.text, ...(key ? ["Set Key", "Show Plan Graph"] : ["Show Plan Graph", "Open Cockpit"])).then((pick) => {
+        if (pick === "Set Key") session.terminal("graphene key set", C.keySet(key?.[1]));
         if (pick === "Show Plan Graph") void vscode.commands.executeCommand("graphene.showGraph");
         if (pick === "Open Cockpit") void vscode.commands.executeCommand("graphene.openCockpit");
       });

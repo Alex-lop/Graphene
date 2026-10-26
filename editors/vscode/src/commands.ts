@@ -32,6 +32,8 @@ export const stop = (): string[] => ["run", "--stop"];
 export const runReady = (): string[] => ["run", "--parallel", "4"];
 export const watch = (): string[] => ["watch"];
 export const init = (): string[] => ["init"]; // asks which planner and executor: a terminal of its own
+/** `graphene key set`, for the host a refusal named (`--endpoint nim`): it asks for the key, hidden, in a terminal. */
+export const keySet = (endpoint?: string): string[] => ["key", "set", ...(endpoint ? ["--endpoint", endpoint] : [])];
 export const refreshable = (): string[] => ["--version"];
 
 export function auto(goal: string, budget?: number | null, planOnly = false): string[] {

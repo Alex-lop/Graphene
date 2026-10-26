@@ -318,7 +318,7 @@
           {
             "id": "watch",
             "title": "Watch it, steer it",
-            "description": "The graph shows every task, its forks racing and what needs you; drag a task's dot onto another and that one waits on it. The Explorer marks each file a running agent writes with its number; Rounds lists auto mode's iterations.\n[Show Plan Graph](command:graphene.showGraph)",
+            "description": "The graph shows every task, its forks racing and what needs you; drag a task's dot onto another and that one waits on it. The Explorer marks whose each file is, a running agent's with its number; Rounds lists auto mode's iterations.\n[Show Plan Graph](command:graphene.showGraph)",
             "media": {
               "image": "media/graph.png",
               "altText": "the plan as a graph: tasks by state, one task's three forks racing, the kept one marked, the goal on the right"
