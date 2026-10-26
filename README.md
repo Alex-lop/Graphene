@@ -28,7 +28,7 @@ uvx graphene-map demo --auto
 
 One goal, three tasks, nine agents at once, one of them stopped writing a file that is not its task's, and your
 whole test suite catching what two tasks broke together. Needs [uv](https://docs.astral.sh/uv/getting-started/installation/),
-a free installer for Python tools. Then watch the locks hold: `uvx graphene-map demo --cheat` plays an agent
+a free installer for Python tools, on macOS or Linux (on Windows, inside WSL). Then watch the locks hold: `uvx graphene-map demo --cheat` plays an agent
 trying seven ways round them.
 
 ```
