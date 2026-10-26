@@ -60,7 +60,7 @@ plans the fix when that is red, and you watch and steer from the terminal or VS 
 00:31 a clone of GitHub's `main` (499d0a3d, the forks merge that Alex's local `main` lacks) in the session's
 scratchpad, on `night/revamp`; his checkout was never written (its plan-first hook refuses agents, and its
 untracked `dry-run/` blocks any leaf). Baseline: ruff clean, 2,576 passed, 21 skipped. Six read-only readers mapped
-the code (plan, run, nemotron, cockpit, cli, docs: their maps fed every lane). A small contract commit (522e0313)
+the code (plan, run, nemotron, cockpit, cli, docs: their maps fed every lane). A small contract commit (72220bb4)
 gave the lanes shared names. At 00:57 five Fable lanes started, each in its own clone with no remote, each to be
 built, reviewed by a skeptic and fixed.
 
@@ -72,26 +72,26 @@ limited.
 
 What I did in place of the reviews, each with a failing test first:
 - **The merge's seams**: six failures on the merged branch (a script's fork named `repo-forks.p`, the keychain
-  and check stubs not taking the arguments the any-model lane added), fixed (38f950a1).
+  and check stubs not taking the arguments the any-model lane added), fixed (42671e2d).
 - **A spend-guard bypass** (partly older than tonight): Token Factory's URL variable pointed at its own host
   spelled another way (`:443`, a capital letter) or at a proxy counted as a stand-in, so an agent's call went out
-  with the person's key and no opening. Now only a host on this machine stands in (c3d9d6f3).
+  with the person's key and no opening. Now only a host on this machine stands in (cd3238f9).
 - **An escalation through the envelope**: a held task whose scope names `.claude/settings.local.json` may write
   the hooks (that is how the person edits them), so an agent's proposal naming it, taken at once by the envelope,
   could have turned the gate off. The envelope now never takes a task that reaches `.claude/`, `.codex/`,
-  `.cursor/`, `.gemini/` or `.github/workflows/` (00882613).
+  `.cursor/`, `.gemini/` or `.github/workflows/` (6c8def6b).
 - **`.git/` was anybody's** (older than tonight, made worse by auto mode): a leaf scoped to `.git/hooks/pre-commit`
   was proposed, fit the envelope, and could have planted a hook that runs on the person's next commit, unseen by
   `done` (git status never shows `.git/`). No scope reaches `.git/` now, and no write there is let through.
 - **The budget only held `graphene auto`**: an agent whose plan was taken could start `graphene run` itself, or
-  the person's `R`, unbudgeted. While auto is on, every run counts against the budget now (5788b7da).
+  the person's `R`, unbudgeted. While auto is on, every run counts against the budget now (edbe037b).
 - **A planner's check ran unread**: with auto on, nobody reads a check before Graphene runs it (red first, then
   at every landing), and a read-only planner fed a hostile repository could write `check: curl … | sh`. The
   envelope now takes only one plain command as a check (no `;`, `&&`, `|`, redirect or `$(…)` outside quotes) and,
   once `checks:` names commands, one of them; anything else waits for the person.
 - **A stranger's walk** on a fresh repo with the built wheel: before `graphene init`, `graphene auto` named
   `--with` (the executor's flag) and turned auto on for a command that started nothing; with no key the reason
-  came wrapped in three others. All three fixed (d96ea25f).
+  came wrapped in three others. All three fixed (752a1860).
 - Screens I looked at while filming: a fix round did not say why it was fixing (now `fixing: FAIL: test_x`); the
   replay's news said "you accepted" for the envelope's acceptances; VS Code's graph hid the goal box under the
   details pane, and counted rounds differently from the cockpit. All fixed.
@@ -149,7 +149,7 @@ Also measured: `graphene state --json` answered in 0.16 to 0.22 s on the replaye
 0.07 s), most of it importing Textual for one pure function and the replay's narrator; with both moved out of the
 screens' modules it answers in 0.10 s, which is what the extension's poll every 1.5 s pays. A test of the auto set failed three times under load (the suite beside a film or a lane) and never alone:
 `test_auto_stop.py` sent its Ctrl-C between the attempt's row and the executor's pid file, then read the pid.
-It waits for the pid now (fixed, 2af8c0b7).
+It waits for the pid now (fixed, b73242af).
 
 ## Not verified
 
@@ -165,3 +165,7 @@ It waits for the pid now (fixed, 2af8c0b7).
 `dev/process/revamp/` holds this record. The night's maps, brief and log were in the session's scratchpad; the
 landscape research (`landscape.json`, one researcher, its fact-check cut off by the limit) is summarized in
 `landscape.md` here.
+
+The history is folded: 108 commits became 48 on `night/revamp` (each lane one commit, its own listed in the
+message; small neighbours together, each a tree the branch really had; the last tree byte for byte the unfolded
+one). The SHAs above are the folded ones; the unfolded history is on `night/revamp-before-fold`.
