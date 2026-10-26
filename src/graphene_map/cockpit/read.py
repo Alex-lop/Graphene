@@ -23,7 +23,6 @@ from .. import plan as P
 from .. import run as R
 from .. import settings as S
 from .. import views as V
-from ..tui import precheck
 from .look import short
 from .model import Ev, Fork, Model, Question, Task
 
@@ -140,7 +139,7 @@ def read(
             came_back(store, t, node)
         if t.state in ("done", "review"):  # in review, it passed its check: what it changed waits for you
             t.changed = list((last or {"detail": {}})["detail"].get("changed") or [])
-            t.hollow = precheck(store, node) is not None  # its check passed at the base too, as `i` says
+            t.hollow = P.prechecked(store, node) is not None  # its check passed at the base too, as `i` says
     m.questions = [question_of(item) for item in BR.read(store).open]
     if not m.lens_chosen:
         m.lens = lens_for(m.tasks.values())

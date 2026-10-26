@@ -34,6 +34,9 @@ plans the fix when that is red, and you watch and steer from the terminal or VS 
 - **Any model, any agent, a port a task** (lane anymodel). `--endpoint tokenfactory|nim|ollama|openai` for
   Graphene's own planner and tool loop; `{prompt}` and `{prompt_file}` for any CLI agent; `PORT` and `GRAPHENE_PORT`
   per running task and fork, given to its check; `graphene init` offers Nemotron at a terminal.
+- **Later in the night, alone:** `checks:` in the envelope; `graphene config set`; Graphene: Set Envelope… in VS
+  Code; `:auto <goal>` in the cockpit, as a process of its own; a fix round's planner told never to loosen a test;
+  the extension tested against a real snapshot; `graphene state --json` without Textual.
 - **`graphene demo --auto`** (`dev/proof/auto.sh`, `dev/proof/make_wordkit.py`, `tests/test_demo_auto.py`): auto mode
   on Nemotron against the recorded fake, shipped in the wheel: three tasks, nine forks at once, one write refused
   outside its task, the whole suite red after all three land, Ultra's fix, green. `docs/assets/auto.gif` (vhs,
@@ -71,6 +74,10 @@ What I did in place of the reviews, each with a failing test first:
   `done` (git status never shows `.git/`). No scope reaches `.git/` now, and no write there is let through.
 - **The budget only held `graphene auto`**: an agent whose plan was taken could start `graphene run` itself, or
   the person's `R`, unbudgeted. While auto is on, every run counts against the budget now (5788b7da).
+- **A planner's check ran unread**: with auto on, nobody reads a check before Graphene runs it (red first, then
+  at every landing), and a read-only planner fed a hostile repository could write `check: curl … | sh`. The
+  envelope now takes only one plain command as a check (no `;`, `&&`, `|`, redirect or `$(…)` outside quotes) and,
+  once `checks:` names commands, one of them; anything else waits for the person.
 - **A stranger's walk** on a fresh repo with the built wheel: before `graphene init`, `graphene auto` named
   `--with` (the executor's flag) and turned auto on for a command that started nothing; with no key the reason
   came wrapped in three others. All three fixed (d96ea25f).
@@ -108,9 +115,9 @@ So auto mode has run end to end only against the scripted stand-in (`tests/test_
   `night/revamp`; its parser read a real `graphene state --json` snapshot.
 - The GIF and the stills, looked at frame by frame.
 
-Also measured: `graphene state --json` answers in 0.16 to 0.22 s on the replayed demo's plan (`plan --json`:
-0.07 s; most of the difference is importing Textual), so the extension's poll every 1.5 s while a view is open costs
-a little CPU. One test of the auto set failed once under `-n 8` on this Mac while lanes ran, and passed in four
+Also measured: `graphene state --json` answered in 0.16 to 0.22 s on the replayed demo's plan (`plan --json`:
+0.07 s), most of it importing Textual for one pure function and the replay's narrator; with both moved out of the
+screens' modules it answers in 0.10 s, which is what the extension's poll every 1.5 s pays. One test of the auto set failed once under `-n 8` on this Mac while lanes ran, and passed in four
 reruns of the same set and three alone: a timing test under load, not named.
 
 ## Not verified

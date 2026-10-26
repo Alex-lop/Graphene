@@ -213,7 +213,7 @@ def task(m, t, log: list[dict]) -> dict:
 def news(store, m) -> list[str]:
     """The last few things that happened, each a line as the replay's narrator says it (`replay.news`, a
     row at a time): bookkeeping rows say nothing, so the lines are what a person would be told."""
-    from .cockpit import replay
+    from .cockpit import narrate as replay  # the narrator alone: no Textual
 
     raw = store.conn.execute("SELECT * FROM node_log ORDER BY id DESC LIMIT ?", (NEWS_ROWS,)).fetchall()
     titles = {t.id: t.title for t in m.tasks.values()}
