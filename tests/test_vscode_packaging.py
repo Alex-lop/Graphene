@@ -18,8 +18,8 @@ PYPROJECT = tomllib.loads((ROOT / "pyproject.toml").read_text())
 CI = (ROOT / ".github/workflows/ci.yml").read_text()
 STORE = ".graphene/graphene.db"
 
-COMMANDS = ["Show Plan Graph", "Open Cockpit", "Auto…", "Run Ready Tasks", "Stop", "Accept", "Accept All",
-            "Add Step…", "Link…", "Edit Step…", "Drop Step", "Tell Agent…", "Refresh"]
+COMMANDS = ["Show Plan Graph", "Open Cockpit", "Auto…", "Set Envelope…", "Run Ready Tasks", "Stop", "Accept",
+            "Accept All", "Add Step…", "Link…", "Edit Step…", "Drop Step", "Tell Agent…", "Refresh"]
 
 
 def test_the_manifest_names_the_product_and_its_version():

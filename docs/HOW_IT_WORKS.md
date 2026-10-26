@@ -361,7 +361,8 @@ loop: the planner's tree hangs under a root task that carries the goal's check (
 check together); what fits the envelope is accepted at once, run and landed; a red goal check is planned again,
 for `rounds` rounds. Exit 0 when the goal's check passes, 1 when it is still red, the budget is spent or you
 stopped it, 3 when something waits for you. With no goal it goes on with the plan in force. Each stage is a row
-of the plan's log (`graphene plan log`), and the cockpit's head says the round, its stage and the budget.
+of the plan's log (`graphene plan log`), and the cockpit's head says the round, its stage and the budget. In
+`graphene watch`, `:auto <goal>` starts it as a process of its own, and `:stop` stops it.
 
 ## Privacy
 

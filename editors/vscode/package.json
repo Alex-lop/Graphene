@@ -108,6 +108,10 @@
         "icon": "$(rocket)"
       },
       {
+        "command": "graphene.envelope",
+        "title": "Graphene: Set Envelope…"
+      },
+      {
         "command": "graphene.runReady",
         "title": "Graphene: Run Ready Tasks",
         "icon": "$(play)"
@@ -187,6 +191,11 @@
         },
         {
           "command": "graphene.auto",
+          "when": "view == graphene.plan",
+          "group": "1_run@1"
+        },
+        {
+          "command": "graphene.envelope",
           "when": "view == graphene.plan",
           "group": "1_run@1"
         },

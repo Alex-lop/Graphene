@@ -62,6 +62,8 @@ export const dropStep = (id: string): string[] => ["node", "drop", id];
 export const accept = (id?: string | null): string[] => (id ? ["plan", "accept", id] : ["plan", "accept"]);
 export const acceptAll = (): string[] => ["plan", "accept"];
 export const tell = (id: string, text: string): string[] => ["board", "note", text, "--about", id];
+/** One setting of the envelope (`auto`, `budget`, `tasks`, `rounds`, `forks`), as the person sets it. */
+export const setting = (key: string, value: string): string[] => ["config", "set", key, value];
 
 /** Globs typed in one box: spaces or commas between them. */
 export function globs(text: string): string[] {

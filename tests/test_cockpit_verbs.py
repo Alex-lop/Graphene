@@ -330,3 +330,22 @@ def test_y_on_a_ready_leaf_starts_nothing_and_points_at_r(repo, doer):
     plan_of(repo)
     doer.take(model_of(ids="ready"), "ids")
     assert "r runs it" in doer.said[-1] and not any("graphene run" in line for line in doer.said)
+
+
+@pytest.mark.parametrize(
+    "typed, argv",
+    [(":auto add a --top N option to the CLI", ["auto", "add a --top N option to the CLI"]),
+     (":auto add a --top N option --budget 2 --forks 3", ["auto", "add a --top N option", "--budget", "2",
+                                                         "--forks", "3"]),
+     (":graphene auto 'the goal' --check 'python3 -m unittest'", ["auto", "the goal", "--check",
+                                                                    "python3 -m unittest"]),
+     (":auto", ["auto"])],
+)  # fmt: skip
+def test_auto_typed_at_the_colon_runs_as_a_process_and_takes_its_goal_as_a_sentence(doer, typed, argv):
+    """`graphene auto` runs for minutes: typed at the `:` line it ran in the cockpit's own process and froze
+    the screen. It runs as a process of its own, as `:ask` does, and `:stop` stops it; its goal is a sentence,
+    `--top` in it included, up to the first of auto's own flags."""
+    went = []
+    doer.background = lambda argv: went.append(argv)
+    doer.command(typed)
+    assert went == [argv]

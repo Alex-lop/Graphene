@@ -193,6 +193,26 @@ export function activate(context: vscode.ExtensionContext) {
     if (budget === undefined) return;
     session.terminal("graphene auto", C.auto(goal.trim(), budget.trim() ? Number(budget) : null));
   });
+  cmd("envelope", async () => {
+    // the settings `graphene auto` and an agent's proposals stay inside, set once, as `graphene config set` does
+    const e = session.state?.envelope;
+    const now = (v: unknown, unset: string) => (v === null || v === undefined || v === "" ? unset : String(v));
+    const items = [
+      { key: "auto", label: "Auto", description: now(e?.auto, "off"), detail: "on: a plan that fits the envelope is accepted at once, from any agent" },
+      { key: "budget", label: "Budget", description: e?.budget != null ? `$${e.budget}` : "unset", detail: "dollars every run may spend while auto is on" },
+      { key: "tasks", label: "Tasks", description: now(e?.tasks, "12"), detail: "how many tasks the envelope may accept for you, all told" },
+      { key: "rounds", label: "Rounds", description: now(e?.rounds, "2"), detail: "fix rounds after the goal's check fails" },
+      { key: "forks", label: "Forks", description: now(e?.forks, "1"), detail: "agents at once on every task; its check keeps one" },
+    ];
+    const chosen = await vscode.window.showQuickPick(items, { placeHolder: "the envelope: what Graphene may do without asking you" });
+    if (!chosen) return;
+    const value = chosen.key === "auto"
+      ? (await vscode.window.showQuickPick(["on", "off"], { placeHolder: "auto" }))
+      : await vscode.window.showInputBox({ prompt: `${chosen.label}: ${chosen.detail}`, value: chosen.description.replace(/^\$/, "").replace("unset", ""),
+                                           ignoreFocusOut: true, validateInput: (v) => (Number(v) >= 0 && v.trim() ? undefined : "a number") });
+    if (value === undefined || !value.trim()) return;
+    await session.act(C.setting(chosen.key, value.trim()));
+  });
   cmd("accept", async (arg) => {
     const t = await pick(arg, "the proposed task to accept", session.tasks().filter((x) => x.state === "proposed"));
     if (t) await session.act(C.accept(t.id));

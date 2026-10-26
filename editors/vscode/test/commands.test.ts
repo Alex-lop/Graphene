@@ -21,6 +21,8 @@ test("every mutation is the argv the cockpit's verbs use", () => {
   assert.deepEqual(C.auto("a CLI that greets", 2), ["auto", "a CLI that greets", "--budget", "2"]);
   assert.deepEqual(C.auto("a CLI that greets"), ["auto", "a CLI that greets"]);
   assert.deepEqual(C.auto("x", null), ["auto", "x"]);
+  assert.deepEqual(C.setting("budget", "2"), ["config", "set", "budget", "2"]);
+  assert.deepEqual(C.setting("auto", "on"), ["config", "set", "auto", "on"]);
 });
 
 test("the agent marks are taken out of the environment, nothing else is", () => {

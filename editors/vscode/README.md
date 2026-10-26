@@ -35,6 +35,7 @@ buttons in the graph's details pane.
 | Show Plan Graph | the graph, as an editor tab |
 | Open Cockpit | `graphene watch` in a terminal |
 | Auto… | asks for a goal, then an optional budget; `graphene auto "<goal>" --budget N` in a terminal you can Ctrl-C |
+| Set Envelope… | shows auto, budget, tasks, rounds and forks as they are, and sets the one you pick with `graphene config set KEY VALUE` |
 | Run Ready Tasks | `graphene run --parallel 4` in a terminal |
 | Stop | `graphene run --stop` |
 | Accept / Accept All | `graphene plan accept [ID]` |
