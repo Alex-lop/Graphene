@@ -56,12 +56,14 @@ AUTO_WAITS = "bold #c77dff"  # the envelope's line while it waits for the person
 def auto_line(a: dict) -> str:
     """The envelope's round in one line: `auto · round 1 of 3 · running · $0.42 of $2.00 · 5 of 12 tasks`.
     A round is the first plan or a fix round after the goal's check failed, `rounds + 1` in all; `waits`
-    says why it waits for the person; what is not set (no round yet, no budget, no cap on the tasks) is
-    left out, never said as a zero."""
+    says why it waits for the person, `fixing` what the goal's check failed on; what is not set (no round
+    yet, no budget, no cap on the tasks) is left out, never said as a zero."""
     parts = ["auto"]
     if a.get("stage"):
         parts.append(f"round {a['round']} of {a['rounds'] + 1}")
-        parts.append(f"waits: {a.get('why') or 'needs you'}" if a["stage"] == "waits" else a["stage"])
+        why = a.get("why") or ""
+        parts.append(f"waits: {why or 'needs you'}" if a["stage"] == "waits" else
+                     f"fixing: {why}" if a["stage"] == "fixing" and why else a["stage"])  # fmt: skip
     else:
         parts.append("on")
     if a.get("spent") is not None or a.get("budget") is not None:

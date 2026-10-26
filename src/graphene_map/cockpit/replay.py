@@ -79,6 +79,8 @@ def auto_said(d: dict) -> str:
     where = f"round {d.get('round') or 1} of {int(d.get('rounds') or 2) + 1}"
     if d.get("stage") == "waits":
         return f"{where} waits: {item(d.get('why') or 'needs you')}"
+    if d.get("stage") == "fixing" and d.get("why"):
+        return f"{where}: the goal's check failed ({item(d['why'])}), so it plans the fix"
     return f"{where}: {d.get('stage') or 'on'}"
 
 
@@ -153,11 +155,12 @@ def news(
         elif kind in GOALS:
             said.append(f"{GOALS[kind]}: {words(d.get('note'))}")
         elif kind == "accepted" and row["node_id"] not in parents:
+            who = "your envelope accepted" if d.get("by") == "auto" else "you accepted"  # auto's, or yours
             accepted.append(accepted[0] if accepted else len(said))
             if len(accepted) == 1:
-                said.append(MILESTONES[kind].format(title))
+                said.append(f"{who} {title}")
             else:
-                said[accepted[0]] = f"you accepted {len(accepted)} tasks"
+                said[accepted[0]] = f"{who} {len(accepted)} tasks"
         elif kind == "accepted":
             continue  # a sub-goal accepted with its tasks: they say it
         elif kind == "auto":

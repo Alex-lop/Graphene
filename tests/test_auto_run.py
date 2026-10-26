@@ -106,7 +106,8 @@ def test_a_goal_is_planned_run_checked_and_fixed_inside_the_envelope(tiny, tmp_p
         (2, "done")]  # fmt: skip
     for r in got:
         assert {"round", "rounds", "stage", "spent", "budget", "check", "why"} <= set(r), r
-        assert (r["rounds"], r["budget"], r["why"]) == (2, 2.0, ""), r
+        said = "AssertionError" if r["stage"] == "fixing" else ""  # a fix round: what the goal failed on
+        assert (r["rounds"], r["budget"], r["why"]) == (2, 2.0, said), r
     assert [r["check"] for r in got] == [None, None, None, "fail", "fail", "fail", "pass"]
     with Store.open(tiny) as store:
         root = AUTO.state(store)["root"]

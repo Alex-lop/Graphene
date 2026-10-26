@@ -36,7 +36,7 @@ def state(store) -> dict | None:
     """The newest round's progress, or None when `graphene auto` never ran on this plan: a dict with
     round (1 is the first plan), rounds (the most fix rounds), stage (one of STAGES), spent and budget
     (dollars, budget None when unset), check ("pass", "fail" or None while not yet run) and why (a line
-    for the person when stage is waits, else "")."""
+    for the person when stage is waits; while fixing, the line the goal's check failed on; else "")."""
     rows = store.node_log("*", (KIND,))
     return dict(rows[-1]["detail"]) if rows else None
 
@@ -191,8 +191,8 @@ def _failing(output: str) -> str:
     (Python's `AssertionError`), else the last line. ponytail: a word match, not a parser per test runner."""
     lines = [line.strip() for line in output.splitlines() if line.strip()]
     named = [line for line in lines if re.match(r"(?:FAIL|ERROR): |FAILED \S", line)]
-    if named:
-        return named[0][:200]
+    if named:  # unittest's `FAIL: test_x (tests.test_y.TestY.test_x)`: the test's name says it
+        return re.sub(r"^((?:FAIL|ERROR): \S+) \([\w.]+\)$", r"\1", named[0])[:200]
     said = [line for line in lines if re.search(r"Error|FAILED|failed|assert", line)]
     return (said or lines or ["no output"])[-1][:200]
 
@@ -281,7 +281,8 @@ def drive(open_store: Callable, root: Path, goal: str | None, say: Callable[[str
                 paid = spent(store, at)
                 if k == 1 or fix or back:
                     stage = "planning" if k == 1 else "fixing"
-                    log(store, k, stage, paid, budget, red, root=root_id, goal=goal)
+                    said = _failing(fix[1]) if fix and stage == "fixing" else ""  # what the fix is for
+                    log(store, k, stage, paid, budget, red, said, root=root_id, goal=goal)
                     say(f"round {k}: " + ("planning" if k == 1 else "planning the fix"))
                     # the whole tree (round 1); the fix for a red goal check, under the root; and what to do
                     # about each task that came back, beside it (the next run takes them again)
