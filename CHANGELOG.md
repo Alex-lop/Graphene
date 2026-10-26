@@ -61,8 +61,9 @@ checks the goal and plans the fix. Each line is one change.
   ($0.50) is less than one attempt's worst case ($1)`), where nothing used to start and the plan was blamed; with
   Claude Code the round's dollars are its stream's.
 - Red first is a gate in auto mode: nobody reads what lands, and a task whose check passes before any work
-  would land with nothing done, so `graphene auto` stops before it runs (`waits for you: bye-fix: its check
-  passes before any work, so it would land with nothing done: …`). Under `graphene run` it stays a warning.
+  would land with nothing done, so when one of the tasks a round can start has such a check, `graphene auto`
+  stops before the round runs (`waits for you: bye-fix: its check passes before any work, so it would land with
+  nothing done: …`). A task that waits on another is not checked first; under `graphene run` it stays a warning.
 - In the cockpit, `:auto <goal>` runs auto mode as a process of its own, and `:stop` stops it.
 - `.GIT/`, `.CLAUDE/` and the rest are guarded as `.git/` and `.claude/` are: a Mac's disk ignores case, so a write
   to `.GIT/hooks/pre-commit` lands in `.git/hooks/`.
