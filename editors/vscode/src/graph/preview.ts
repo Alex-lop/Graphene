@@ -4,9 +4,11 @@ import autoFx from "../../test/fixtures/auto.json";
 import emptyFx from "../../test/fixtures/empty.json";
 import proposalsFx from "../../test/fixtures/proposals.json";
 import runningFx from "../../test/fixtures/running.json";
+import realAutoFx from "../../test/fixtures/real-auto.json";
 import { parseState } from "../state.ts";
 
-const fixtures: Record<string, unknown> = { auto: autoFx, empty: emptyFx, proposals: proposalsFx, running: runningFx };
+const fixtures: Record<string, unknown> = { auto: autoFx, empty: emptyFx, proposals: proposalsFx, running: runningFx,
+  real: realAutoFx };
 const params = new URLSearchParams(location.search);
 const name = params.get("fixture") ?? "running";
 const select = params.get("select"); // `&select=greet` opens that task's details, as a click would

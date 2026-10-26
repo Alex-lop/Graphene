@@ -1,0 +1,299 @@
+{
+ "schema": 1,
+ "graphene": "0.8.0",
+ "repo": "/home/you/wordkit",
+ "cursor": 230,
+ "goal": "wordkit grows three things at once: a --top N option on the CLI that prints the N most common words with their counts; a reading time in whole minutes, rounded up, at 200 words a minute; and hyphenated words like well-known counted as one word.",
+ "first": "on",
+ "planner": "stand-in",
+ "executor": "stand-in",
+ "envelope": {
+  "auto": "on",
+  "budget": 2.0,
+  "tasks": null,
+  "rounds": 2,
+  "forks": 1,
+  "review": "off",
+  "protected": [],
+  "readonly": []
+ },
+ "auto": {
+  "round": 2,
+  "rounds": 2,
+  "stage": "done",
+  "spent": 0.0193,
+  "budget": 2.0,
+  "check": "pass",
+  "why": "",
+  "note": "round 2: done · $0.0193 of $2.00 · the goal's check: pass",
+  "root": "wordkit-grows-three",
+  "goal": "wordkit grows three things at once: a --top N option on the CLI that prints the N most common words with their counts; a reading time in whole minutes, rounded up, at 200 words a minute; and hyphenated words like well-known counted as one word."
+ },
+ "run": {
+  "going": false,
+  "pid": null
+ },
+ "spent": 0.019326,
+ "scoreboard": {
+  "need_you": 0,
+  "running": 0,
+  "proven": 4,
+  "total": 4
+ },
+ "width": 9,
+ "questions": [],
+ "goals": [
+  {
+   "id": "wordkit-grows-three",
+   "title": "wordkit grows three things at once: a --top N option on the CLI that prints the N most common words with their counts; a reading time in whole minutes, rounded up, at 200 words a minute; and hyphenated words like well-known counted as one word.",
+   "parent": null,
+   "state": "done",
+   "check": "python3 -m unittest"
+  }
+ ],
+ "tasks": [
+  {
+   "id": "top",
+   "title": "CLI prints the top words",
+   "full": "the CLI prints the top words",
+   "state": "done",
+   "parent": "wordkit-grows-three",
+   "scope": [
+    "wordkit/cli.py",
+    "tests/test_top.py"
+   ],
+   "needs": [],
+   "check": "python3 -m unittest tests.test_top",
+   "agent": "1",
+   "model": "stand-in-Nano",
+   "usd": 0.0008817999999999999,
+   "idle": null,
+   "needs_you": false,
+   "tail": [],
+   "note": "",
+   "offers": {},
+   "changed": [
+    "tests/test_top.py",
+    "wordkit/cli.py"
+   ],
+   "stopped": [],
+   "outside": [],
+   "forks": [
+    {
+     "letter": "a",
+     "state": "passed",
+     "why": "",
+     "lines": 7,
+     "model": "stand-in-Nano",
+     "usd": 0.00044134999999999997
+    },
+    {
+     "letter": "b",
+     "state": "passed",
+     "why": "",
+     "lines": 7,
+     "model": "stand-in-Nano",
+     "usd": 0.00026024999999999996
+    },
+    {
+     "letter": "c",
+     "state": "gave up",
+     "why": "a negative N wants a guard in count.py, outside this task's files",
+     "lines": 0,
+     "model": "stand-in-Nano",
+     "usd": 0.0001802
+    }
+   ],
+   "kept": {
+    "letter": "b",
+    "why": "finished first",
+    "by": "graphene"
+   },
+   "hollow": false
+  },
+  {
+   "id": "reading",
+   "title": "reading time in minutes",
+   "full": "a reading time in minutes",
+   "state": "done",
+   "parent": "wordkit-grows-three",
+   "scope": [
+    "wordkit/reading.py",
+    "tests/test_reading.py"
+   ],
+   "needs": [],
+   "check": "python3 -m unittest tests.test_reading",
+   "agent": "2",
+   "model": "stand-in-Nano",
+   "usd": 0.00073425,
+   "idle": null,
+   "needs_you": false,
+   "tail": [],
+   "note": "",
+   "offers": {},
+   "changed": [
+    "tests/test_reading.py",
+    "wordkit/reading.py"
+   ],
+   "stopped": [],
+   "outside": [],
+   "forks": [
+    {
+     "letter": "a",
+     "state": "passed",
+     "why": "",
+     "lines": 9,
+     "model": "stand-in-Nano",
+     "usd": 0.00019789999999999999
+    },
+    {
+     "letter": "b",
+     "state": "passed",
+     "why": "",
+     "lines": 6,
+     "model": "stand-in-Nano",
+     "usd": 0.0002592
+    },
+    {
+     "letter": "c",
+     "state": "passed",
+     "why": "",
+     "lines": 9,
+     "model": "stand-in-Nano",
+     "usd": 0.00027715
+    }
+   ],
+   "kept": {
+    "letter": "b",
+    "why": "6 lines against 9",
+    "by": "graphene"
+   },
+   "hollow": false
+  },
+  {
+   "id": "hyphens",
+   "title": "hyphenated words stay whole",
+   "full": "hyphenated words stay whole",
+   "state": "done",
+   "parent": "wordkit-grows-three",
+   "scope": [
+    "wordkit/clean.py",
+    "tests/test_hyphens.py"
+   ],
+   "needs": [],
+   "check": "python3 -m unittest tests.test_hyphens",
+   "agent": "3",
+   "model": "stand-in-Nano",
+   "usd": 0.0005489999999999999,
+   "idle": null,
+   "needs_you": false,
+   "tail": [],
+   "note": "",
+   "offers": {},
+   "changed": [
+    "tests/test_hyphens.py",
+    "wordkit/clean.py"
+   ],
+   "stopped": [],
+   "outside": [],
+   "forks": [
+    {
+     "letter": "a",
+     "state": "gave up",
+     "why": "a hyphen at a word's end (well-) is not said: keep it or drop it?",
+     "lines": 0,
+     "model": "stand-in-Nano",
+     "usd": 0.00010559999999999999
+    },
+    {
+     "letter": "b",
+     "state": "passed",
+     "why": "",
+     "lines": 2,
+     "model": "stand-in-Nano",
+     "usd": 0.00024724999999999997
+    },
+    {
+     "letter": "c",
+     "state": "passed",
+     "why": "",
+     "lines": 3,
+     "model": "stand-in-Nano",
+     "usd": 0.00019614999999999997
+    }
+   ],
+   "kept": {
+    "letter": "b",
+    "why": "2 lines against 3",
+    "by": "graphene"
+   },
+   "hollow": false
+  },
+  {
+   "id": "count-test",
+   "title": "old count test agrees with the hyphens",
+   "full": "the old count test agrees with the hyphens",
+   "state": "done",
+   "parent": "wordkit-grows-three",
+   "scope": [
+    "tests/test_count.py"
+   ],
+   "needs": [],
+   "check": "python3 -m unittest tests.test_count",
+   "agent": "4",
+   "model": "stand-in-Nano",
+   "usd": 0.0005622,
+   "idle": null,
+   "needs_you": false,
+   "tail": [],
+   "note": "",
+   "offers": {},
+   "changed": [
+    "tests/test_count.py"
+   ],
+   "stopped": [],
+   "outside": [],
+   "forks": [
+    {
+     "letter": "a",
+     "state": "passed",
+     "why": "",
+     "lines": 0,
+     "model": "stand-in-Nano",
+     "usd": 0.00019175
+    },
+    {
+     "letter": "b",
+     "state": "passed",
+     "why": "",
+     "lines": 0,
+     "model": "stand-in-Nano",
+     "usd": 0.0001793
+    },
+    {
+     "letter": "c",
+     "state": "passed",
+     "why": "",
+     "lines": 0,
+     "model": "stand-in-Nano",
+     "usd": 0.00019115
+    }
+   ],
+   "kept": {
+    "letter": "b",
+    "why": "finished first",
+    "by": "graphene"
+   },
+   "hollow": false
+  }
+ ],
+ "edges": [],
+ "news": [
+  "old count test agrees with the hyphens is proven",
+  "old count test agrees with the hyphens landed",
+  "wordkit-grows-three: its check passed, not done yet",
+  "wordkit-grows-three is proven",
+  "auto · round 2 of 3: checking",
+  "auto · round 2 of 3: done"
+ ]
+}

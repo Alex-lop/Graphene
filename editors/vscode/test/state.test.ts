@@ -82,3 +82,13 @@ test("dollars read as the cockpit shows them", () => {
 test("bad JSON throws, so the caller shows a CLI error rather than an empty plan", () => {
   assert.throws(() => parseState("not json"));
 });
+
+test("a real snapshot, `graphene state --json` at the end of the --auto replay, parses whole", () => {
+  // made by replaying src/graphene_map/demo-auto.jsonl to its last frame and running `graphene state --json` there
+  const s = parseState(fixture("real-auto"));
+  assert.equal(s.schema, 1);
+  assert.deepEqual(s.tasks.map((t) => [t.id, t.state]), [["top", "done"], ["reading", "done"], ["hyphens", "done"], ["count-test", "done"]]);
+  assert.ok(s.tasks.every((t) => t.model === "stand-in-Nano" && t.forks.length === 3));
+  assert.deepEqual(s.tasks[0]!.forks.map((f) => f.state), ["passed", "passed", "gave up"]);
+  assert.equal(autoLine(s), "auto · round 2 of 3 · done · $0.02 of $2.00");
+});
