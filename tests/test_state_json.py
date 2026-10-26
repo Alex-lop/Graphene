@@ -163,7 +163,7 @@ def test_a_forked_leaf_carries_its_forks_their_verdicts_and_the_one_kept(repo, m
     assert t["state"] == "done" and t["hollow"] is False
     assert [f["letter"] for f in t["forks"]] == ["a", "b", "c"]
     assert {f["letter"]: f["state"] for f in t["forks"]} == {"a": "refused", "b": "passed", "c": "passed"}
-    assert all(f["model"] == "" and f["usd"] == 0.0 for f in t["forks"])  # a script, unmetered
+    assert {(f["model"], f["usd"]) for f in t["forks"]} == {("repo-forks", 0.0)}  # a script, by name
     assert t["kept"]["letter"] == "b" and t["kept"]["why"] and t["kept"]["by"]
     assert t["forks"][1]["lines"] and t["forks"][0]["why"]  # b's size, a's refusal
     assert s["scoreboard"] == {"need_you": 0, "running": 0, "proven": 1, "total": 1}

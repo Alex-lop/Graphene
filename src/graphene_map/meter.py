@@ -10,6 +10,7 @@ dev/process/meter/rows.md has the shapes. Standard library only; a line never ra
 import itertools
 import json
 import os
+import re
 import shlex
 from collections import Counter
 from datetime import UTC, datetime
@@ -102,6 +103,7 @@ def short(model: str | None) -> str:
     tail = said.rsplit("/", 1)[-1].split()[0] if said else ""
     if low.startswith("codex") or tail.lower().startswith(("codex", "gpt")):
         return "Codex"
+    tail = re.sub(r"\.(py|sh|js|mjs|ts|rb|pl)$", "", tail)  # a script executor goes by its name
     return tail if "stand-in" in tail.lower() else tail[:SHORT]
 
 

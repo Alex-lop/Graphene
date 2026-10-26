@@ -39,6 +39,7 @@ NANO, SUPER = "nvidia/Nemotron-3-Nano-fake", "nvidia/Nemotron-3-Super-fake"
         ("stand-in-Nano", "stand-in-Nano"),  # the demo's stand-in keeps its name whole: never Nemotron's
         ("stand-in --model stand-in-Super", "stand-in"),
         ("claude", "claude"),
+        ("python3 /tmp/repo-forks.py", "repo-forks"),  # a script executor: its name, not its extension
         ("", ""),
         (None, ""),
     ],
@@ -119,7 +120,7 @@ def test_each_fork_names_its_own_model_and_dollars_from_its_sessions_rows_else_w
         plan.start(store, "ids", BOT, repo)
     row(repo, "forked", {"forks": ["a", "b"], "of": 2, "with": {"a": "python agent.py", "b": "codex"},
                          "sessions": SESSIONS}, 5)  # fmt: skip
-    assert [f.model for f in look(repo).tasks["ids"].forks] == ["agent.py", "Codex"]  # a command: its script
+    assert [f.model for f in look(repo).tasks["ids"].forks] == ["agent", "Codex"]  # a command: its script
 
 
 def test_the_details_forks_table_names_the_model_a_forks_rows_say_when_its_with_does_not(repo):
