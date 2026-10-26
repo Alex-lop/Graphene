@@ -161,11 +161,13 @@ def endpoint() -> str:
 
 
 def stand_in() -> bool:
-    """Whether the host stands in for a paid service: a keyed host (Token Factory, NIM) pointed anywhere but
-    its own URL (the tests' fake, a proxy), or a keyless one (Ollama, an OpenAI-compatible URL) on this
-    machine. Anything else spends, and is guarded as Token Factory is (``night.person_only``)."""
-    where = urllib.parse.urlsplit(base()).hostname or ""
-    return endpoint() == "a stand-in" or (not chosen().keyed and where in ("localhost", "127.0.0.1", "::1"))
+    """Whether the host stands in for a paid service: one on this machine that is not a keyed host's own URL
+    (the tests' fake; a local Ollama or vLLM). Anything else spends, and is guarded as Token Factory is
+    (``night.person_only``): a keyed host's own URL spelled another way (a port, a case) or a proxy off this
+    machine would carry the person's key just the same."""
+    e, url = chosen(), base()
+    local = (urllib.parse.urlsplit(url).hostname or "") in ("localhost", "127.0.0.1", "::1")
+    return local and (not e.keyed or url != _own(e))
 
 
 def _key() -> str | None:

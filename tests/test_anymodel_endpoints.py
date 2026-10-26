@@ -285,3 +285,22 @@ def test_the_specs_carry_the_endpoint_to_the_planner_and_the_executor():
     argv = [sys.executable, "-m", "graphene_map.nemotron.executor", "--help"]
     out = subprocess.run(argv, capture_output=True, text=True)
     assert "--endpoint {tokenfactory,nim,ollama,openai}" in out.stdout
+
+
+@pytest.mark.parametrize(
+    "url",
+    ["https://api.tokenfactory.nebius.com:443/v1/", "https://API.tokenfactory.nebius.com/v1/",
+     "https://a-proxy.example.com/v1/"],
+)  # fmt: skip
+def test_a_keyed_host_pointed_off_this_machine_another_way_is_still_guarded(url, monkeypatch):
+    """Only a host on this machine stands in. Token Factory's own host spelled another way (a port, a case)
+    or a proxy elsewhere would carry the person's key just the same: an agent's call there is refused unsent
+    without the opening, as one to the real URL is."""
+    monkeypatch.delenv(tf.ENDPOINT, raising=False)
+    monkeypatch.setenv("GRAPHENE_TOKENFACTORY_URL", url)
+    monkeypatch.setenv("NEBIUS_API_KEY", "fake-key")
+    monkeypatch.delenv(night.OPENING, raising=False)
+    monkeypatch.setenv("CLAUDECODE", "1")
+    assert not tf.stand_in()
+    with pytest.raises(tf.Spent, match="nothing was sent"):
+        tf.chat("nvidia/Nemotron-3-Nano-fake", [{"role": "user", "content": "hi"}])
