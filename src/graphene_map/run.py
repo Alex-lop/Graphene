@@ -1116,12 +1116,13 @@ STOPPED = "the run was stopped before this leaf was finished"  # by Ctrl-C, `:st
 NOTHING = "run: nothing started (graphene plan says what each leaf waits on)"  # a last line kept as no row
 
 
-def summary(store, since: int, stopped: bool = False) -> str:
+def summary(store, since: int, stopped: bool = False, yours: bool = True) -> str:
     """What a run did, in one line for the person, read from what the plan logged after entry
     ``since``: what it finished, what came back to them, what waits in review, and the two clocks (the
     agents' minutes and dollars, the person's acts and minutes). `graphene watch` shows this line when
     the run ends, so it is the run's last. The person's clock counts what led to the run too: their acts
-    since the last run ended (its kept line) or the plan was archived, else since the plan began."""
+    since the last run ended (its kept line) or the plan was archived, else since the plan began. Without
+    ``yours`` (`graphene auto`'s runs) it is left out: what auto wrote as the person is no move of theirs."""
     whole = store.node_log()
     log = whole[since:]
     begun = max((k + 1 for k, e in enumerate(whole[:since])
@@ -1142,6 +1143,7 @@ def summary(store, since: int, stopped: bool = False) -> str:
     said += [f"{P._few(handed)} handed back, ready again"] if handed else []
     said += [f"{P._few(freed)} released by you, ready again"] if freed else []
     cost = clocks(log, M.you(whole[begun:], P.person_name()))
+    cost = cost if yours else cost.split(" · you: ")[0]
     if stopped:
         return "run stopped: " + (", ".join(said) or "nothing was finished") + cost
     if not ran:

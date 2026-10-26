@@ -474,7 +474,9 @@ def build():
             say(f"next: `graphene init --planner {found[0]} --executor {found[0]}` chooses them; "
                 "`graphene ask` after that")  # fmt: skip
         else:
-            say("next: `graphene ask '<what you want>'` proposes a plan; `graphene watch` shows it")
+            say("next: `graphene auto '<what you want>'` plans it, runs it and checks it inside your "
+                "envelope (`--plan` to look first), or `graphene ask '<what you want>'` proposes a plan you "
+                "accept; `graphene watch` shows it")  # fmt: skip
         if shutil.which("graphene") is None:
             console.print(
                 "[yellow]warning:[/yellow] `graphene` is not on PATH, so the hook will not run. Install "

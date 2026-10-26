@@ -470,9 +470,11 @@ def width(rows: list[dict], now: datetime | None = None) -> dict | None:
 
 
 def acts(rows: list[dict], person: str | None) -> list[str]:
-    """The person's acts: the timestamps of their own rows, once each, oldest first."""
+    """The person's acts: the timestamps of their own rows, once each, oldest first. What the envelope
+    accepted for them (`by: auto`) is logged as theirs and is no move of theirs."""
     # talk.mine's rule, mirrored: talk imports typer, and this module is the core's
-    return sorted({e["timestamp"] for e in rows if (e["actor"] or "").split(" (")[0] == person})
+    return sorted({e["timestamp"] for e in rows if (e["actor"] or "").split(" (")[0] == person
+                   and (e.get("detail") or {}).get("by") != "auto"})  # fmt: skip
 
 
 def you(rows: list[dict], person: str) -> dict:

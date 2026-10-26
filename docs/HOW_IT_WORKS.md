@@ -362,14 +362,14 @@ reads no transcript.
 `graphene config` also names the planner, the executor and plan first.
 
 `graphene auto "<goal>"` turns `auto` on (its flags set `budget`, `tasks`, `rounds` and `forks`) and runs the
-loop: the planner's tree hangs under a root task that carries the goal's check (`--check`, else every task's
-check together); what fits the envelope is accepted at once, run and landed, unless a task it can start has a
-check that passes before any work (it would land with nothing done, so it waits for you); a red goal check is
-planned again, for `rounds` rounds. Exit 0 when the goal's check passes, 1 when it is still red, the budget is spent or you
-stopped it, 3 when something waits for you. With no goal it goes on with the plan in force. Each stage is a row
-of the plan's log (`graphene plan log`), and the cockpit's head says the round, its stage and the budget. In
-`graphene watch`, `:auto <goal>` starts it as a process of its own, and `:stop` stops it. `--plan` plans and
-accepts inside the envelope, runs nothing, and leaves the round for `graphene auto` to run.
+loop: the planner's tree hangs under a root task that carries the goal's check (`--check`, else every task's check
+together); what fits the envelope is accepted at once, run and landed, unless a task it can start has a check that
+passes before any work (it would land with nothing done, so it waits for you); a red goal check is planned again,
+for `rounds` rounds. Exit 0 when the goal's check passes, 1 when it is still red, the budget is spent or you
+stopped it, 3 when something waits for you. With no goal it goes on with the plan in force. Each stage is a row of
+the plan's log (`graphene plan log`), and the cockpit's head and `graphene plan` say the round, its stage and the
+budget. In `graphene watch`, `:auto <goal>` starts it as a process of its own, and `:stop` stops it. `--plan`
+plans and accepts inside the envelope, runs nothing, and leaves the round for `graphene auto` to run.
 
 ## Privacy
 

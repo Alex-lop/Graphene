@@ -98,9 +98,9 @@ def test_a_goal_is_planned_run_checked_and_fixed_inside_the_envelope(tiny, tmp_p
     assert "this executor reports no cost, so the budget cannot hold it: attempts are counted" in out
     assert "round 1: planning" in out and "round 2: planning the fix" in out
     assert "accepted inside your envelope (auto on since " in out
-    assert "): greet, bye. `graphene run` runs them; 2 tasks can run at once" in out
+    assert "): greet, bye. `graphene auto` runs them now; 2 tasks can run at once" in out
     assert "the goal's check failed: " in out
-    assert "): bye-fix. `graphene run` runs them; 1 task can run at once" in out
+    assert "): bye-fix. `graphene auto` runs them now; 1 task can run at once" in out
     last = out.strip().splitlines()[-1]
     assert last == ("auto: 2 rounds, 3 tasks landed, 0 came back, 0 forks raced, 3 attempts, no meter; the "
                     "goal's check passed. `graphene plan log` has the whole history"), last  # fmt: skip
@@ -218,7 +218,7 @@ def test_with_no_goal_it_goes_on_with_the_plan_in_force(tiny, tmp_path):
     assert rows(tiny)[-1]["stage"] == "done" and rows(tiny)[-1]["round"] == 3
     other = person("auto", "another goal", "--planner", planner, "--with", executor, "--check", "true")
     assert other.exit_code == 0, other.output  # the first goal's tree is finished: a new goal may follow it
-    assert "): greet-2, bye-2. `graphene run` runs them" in other.stdout, other.stdout
+    assert "): greet-2, bye-2. `graphene auto` runs them now" in other.stdout, other.stdout
     assert "auto: 1 round, 2 tasks landed, 0 came back, 0 forks raced, 2 attempts" in other.stdout
     with Store.open(tiny) as store:
         assert P.goal(store) == "another goal"
@@ -231,7 +231,7 @@ def test_plan_only_plans_and_accepts_inside_the_envelope_and_runs_nothing_until_
     planner, executor = scripts(tmp_path)
     said = person("auto", GOAL, "--planner", planner, "--with", executor, "--check", GOAL_CHECK, "--plan")
     assert said.exit_code == 0, said.output
-    assert "): greet, bye. `graphene run` runs them" in said.stdout
+    assert "): greet, bye. `graphene auto` runs them now" in said.stdout
     assert said.stdout.strip().splitlines()[-1] == (
         "auto: planned round 1 inside your envelope and ran nothing: `graphene plan` shows it, "
         "`graphene auto` runs it")  # fmt: skip

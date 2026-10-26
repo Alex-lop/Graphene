@@ -29,16 +29,18 @@ from . import plan_text as T
 from . import settings as S
 from . import views as V
 
-# What `graphene` and `graphene plan` say in a repository with nothing planned: paragraph in, tree out.
+# What `graphene` and `graphene plan` say in a repository with nothing planned: a goal in, tested commits out;
+# or paragraph in, tree out, for the person to accept.
 ASK = (
-    "`graphene ask '<what you want, in a paragraph>'` proposes a plan (or ask Claude Code here: its hooks "
-    "propose one too); `graphene watch` shows it"
+    "`graphene auto '<what you want>'` plans it, runs it and checks it inside your envelope (`--plan` to "
+    "look first), or `graphene ask '<what you want, in a paragraph>'` proposes a plan you accept (or ask "
+    "Claude Code here: its hooks propose one too); `graphene watch` shows it"
 )
 NO_PLAN = f"nothing is planned here yet. {ASK}"
 # ... and in a repository `graphene init` never set up: init first, since until then `ask` refuses
 NOT_INIT = (
     "nothing is planned here yet. Start with `graphene init`: it chooses who plans and who runs (until "
-    f"then, `ask` and `run` refuse). Then {ASK}"
+    f"then, `auto`, `ask` and `run` refuse). Then {ASK}"
 )
 # What `graphene plan first` says each setting does
 FIRST_SAID = {
@@ -329,6 +331,12 @@ def register(cli: typer.Typer, root, open_store, fail):
                 head += P.UNCOMMITTED
             head += " · finished" * (not left) + ("; `graphene plan archive` puts it away" if archive else "")
         lines += [head, *([board] if board else [])]
+        from .cockpit.read import envelope
+        from .cockpit.rows import auto_line
+
+        if auto := envelope(store):  # auto on: its round, as the cockpit's head says it, and how it goes on
+            waits = auto["stage"] == "waits" and "graphene auto" not in auto["why"]
+            lines.append(auto_line(auto) + ("; then `graphene auto` goes on" if waits else ""))
         yours = [n for n in alive if n.state == P.REVIEW]
         yours += [  # a proposed subtree is asked about once, at its top
             n

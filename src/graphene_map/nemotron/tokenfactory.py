@@ -174,11 +174,12 @@ def _key() -> str | None:
     """The chosen endpoint's key, checked as a header can carry it; None for an endpoint that needs none."""
     e = chosen()
     key = keys.find(e.key_envs, e.account)
-    if not key:
-        if e.keyed:
-            raise Unreachable(f"{e.key_envs[0]} is not set: {e.host} needs a key ({e.site})")
-        return None
     flag = "" if e.name == "tokenfactory" else f" --endpoint {e.name}"
+    if not key:
+        if e.keyed:  # what to do, in the same line: a stranger's first `graphene auto` stops here
+            raise Unreachable(f"{e.key_envs[0]} is not set: {e.host} needs a key ({e.site}); "
+                              f"`graphene key set{flag}` keeps one")  # fmt: skip
+        return None
     told = f"set {e.key_envs[0]} or `graphene key set{flag}"
     if any(c.isspace() for c in key):  # a header cannot carry it, and its error would print the key
         raise Unreachable(f"the key found holds a space or a line break: {told}`")

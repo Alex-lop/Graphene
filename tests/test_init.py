@@ -31,7 +31,8 @@ NEMOTRON = {
     "planner": f"nemotron --model {ULTRA}",
     "executor": f"nemotron --model {NANO} --model {SUPER} --placement local",
 }
-NO_KEY = "NEBIUS_API_KEY is not set: Token Factory needs a key (tokenfactory.nebius.com)"
+NO_KEY = ("NEBIUS_API_KEY is not set: Token Factory needs a key (tokenfactory.nebius.com); "
+          "`graphene key set` keeps one")
 
 
 @pytest.fixture

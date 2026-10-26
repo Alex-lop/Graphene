@@ -158,9 +158,10 @@ def take(store, added: list[P.Node], files: list[str], root: Path, round: int | 
     if why:
         more = f" (and {len(why) - 1} more: `graphene board`, `graphene plan`)" if len(why) > 1 else ""
         return f"{WAITS}{why[0]}{more}"
+    going = state(store)
+    planning = going if going and going["stage"] in ("planning", "fixing") else None  # auto's own round
     if round is None:
-        going = state(store)
-        round = going["round"] if going and going["stage"] in ("planning", "fixing") else None
+        round = planning["round"] if planning else None
     me = P.Caller(P.person_name(), True, None, stand_in=True)
     new = {n.id for n in added if n.state == P.PROPOSED}
     tops = [n.id for n in added if n.id in new and n.parent not in new]
@@ -176,8 +177,11 @@ def take(store, added: list[P.Node], files: list[str], root: Path, round: int | 
     under = P.kids(everything, drawn=True)
     leaves = [n.id for n in chosen if not under.get(n.id)]
     wide = width(everything, files)
-    lines = [f"accepted inside your envelope ({envelope(store)}): {', '.join(leaves)}. `graphene run` runs "
-             f"them; {wide} task{'s' if wide != 1 else ''} can run at once"]  # fmt: skip
+    root_id = (planning or {}).get("root")  # what `graphene auto` runs itself: the leaves under its goal
+    ours = {n.id for n in P.below(root_id, everything)} if root_id else set()
+    runs = "`graphene auto` runs them now" if leaves and set(leaves) <= ours else "`graphene run` runs them"
+    lines = [f"accepted inside your envelope ({envelope(store)}): {', '.join(leaves)}. {runs}; {wide} "
+             f"task{'s' if wide != 1 else ''} can run at once"]  # fmt: skip
     lines += [took] if took else []
     return "\n".join([*lines, *told])
 
@@ -410,12 +414,12 @@ def drive(open_store: Callable, root: Path, goal: str | None, say: Callable[[str
                     run_parallel(lambda: open_store(root), root, root, max(parallel, 1), executor, attempts,
                                  [root_id], say, logs, False, cap, raced)  # fmt: skip  (red first ran above)
                 except KeyboardInterrupt:
-                    say(summary(store, since, stopped=True))
+                    say(summary(store, since, stopped=True, yours=False))
                     why = "stopped by you: what was running went back to the plan; `graphene auto` goes on"
                     log(store, k, "waits", spent(store, at), budget, red, why, root=root_id, goal=goal)
                     say(f"auto {why}")
                     return 1
-                say(summary(store, since))
+                say(summary(store, since, yours=False))
                 paid = spent(store, at)
                 log(store, k, "checking", paid, budget, red, root=root_id, goal=goal)
                 everything = P.nodes(store)

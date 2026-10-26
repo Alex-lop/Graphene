@@ -115,14 +115,16 @@ def build_cockpit(m: Model, width: int, *, tell: str | None = None) -> list[Line
         out.append(Line([Seg(f"   ✓ {m.folded_done} more proven", "grey50")]))
     need, _running, done, total = m.scoreboard()
     if done == total and not need:  # every task proven, nothing asked: the plan is done, so what next
-        said = "Every task is proven." + ("" if m.source == "replay" else " Next: :ask, or tell Claude Code.")
+        then = " Next: :auto, :ask, or tell Claude Code."
+        said = "Every task is proven." + ("" if m.source == "replay" else then)
         out += [Line([]), Line([Seg(" " + fit(said, width - 2), "grey62")])]
     return out
 
 
 EMPTY = (
+    ":auto what you want: planned, raced and checked inside your envelope.",
     "In Claude Code, say what you want: it proposes the tasks here.",
-    ":ask what you want · see a run: graphene demo",
+    ":ask what you want · see a run: graphene demo --auto",
 )
 NO_EXECUTOR = "No agent is chosen to run tasks: graphene init, in a terminal of your own."
 

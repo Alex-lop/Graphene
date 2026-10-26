@@ -33,3 +33,7 @@ def test_a_planner_that_cannot_start_says_why_in_one_reason(repo, monkeypatch):
     line = [x for x in said.output.splitlines() if x.startswith("waits for you: ")][-1]
     assert line.startswith("waits for you: the planner could not start: NEBIUS_API_KEY is not set"), line
     assert "nothing was added" not in line and "(exit 3)" not in line
+    assert "`graphene key set` keeps one" in line  # what to do, in the same line
+    shown = person("plan").output  # the next look says the same, and how auto mode goes on from there
+    assert "auto · round 1 of 3 · waits: the planner could not start: NEBIUS_API_KEY is not set" in shown
+    assert shown.rstrip().count("then `graphene auto` goes on") == 1

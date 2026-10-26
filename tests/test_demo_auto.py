@@ -247,6 +247,9 @@ def test_auto_races_three_tasks_catches_what_broke_between_them_and_lands_the_fi
     assert done.returncode == 0, said
     assert "$ graphene auto wordkit grows three things at once" in said
     assert "accepted inside your envelope (auto on since " in said and "): top, reading, hyphens." in said
+    assert "): top, reading, hyphens. `graphene auto` runs them now" in said  # not `graphene run`: auto does
+    runs = [line for line in said.splitlines() if line.startswith("run: ")]
+    assert runs and not any(" · you: " in line for line in runs)  # what auto wrote as you is no move of yours
     assert "3 tasks can run at once" in said
     # the race: one fork a task stopped or gave up, the rule keeps one of the others
     assert "top fork c: gave up: a negative N wants a guard in count.py" in said  # its write there was stopped
