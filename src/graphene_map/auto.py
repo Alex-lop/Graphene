@@ -266,7 +266,7 @@ def drive(open_store: Callable, root: Path, goal: str | None, say: Callable[[str
     waits for the person (a proposal outside the envelope, a sign-off, a planner that proposed nothing)."""
     from . import plan_text as T
     from .ask import ask, named, talking
-    from .run import Forks, _worst, run_parallel, summary
+    from .run import Forks, _red_first, _worst, leaves_of, run_parallel, summary
     from .run import named as executor_named
 
     me = P.caller()
@@ -392,12 +392,23 @@ def drive(open_store: Callable, root: Path, goal: str | None, say: Callable[[str
                     log(store, k, "waits", paid, budget, red, why, root=root_id, goal=goal)
                     say(f"{WAITS}{why}")
                     return 1
+                # red first, as the run does, but a gate here: nobody reads a task that would land with
+                # nothing done, so one whose check passes before any work waits for the person
+                hollow = [n.id for n, d in _red_first(store, root, leaves_of(store, [root_id]), say, True)
+                          if d.get("verdict") == "passes"]  # fmt: skip
+                if hollow:
+                    its = "its check passes" if len(hollow) == 1 else "their checks pass"
+                    why = (f"{', '.join(hollow)}: {its} before any work, so it would land with nothing done: "
+                           "a check that fails now (`graphene node set ID --check …`), then `graphene auto`")
+                    log(store, k, "waits", paid, budget, red, why, root=root_id, goal=goal)
+                    say(f"{WAITS}{why}")
+                    return 3
                 log(store, k, "running", paid, budget, red, root=root_id, goal=goal)
                 began, since = P._now(), len(store.node_log())
                 raced = Forks(forks or 0, False, list(withs))
                 try:  # named the root: its leaves, the ones that came back too (a run not told leaves them)
                     run_parallel(lambda: open_store(root), root, root, max(parallel, 1), executor, attempts,
-                                 [root_id], say, logs, True, cap, raced)  # fmt: skip
+                                 [root_id], say, logs, False, cap, raced)  # fmt: skip  (red first ran above)
                 except KeyboardInterrupt:
                     say(summary(store, since, stopped=True))
                     why = "stopped by you: what was running went back to the plan; `graphene auto` goes on"

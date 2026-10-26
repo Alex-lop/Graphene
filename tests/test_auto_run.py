@@ -33,14 +33,19 @@ if "has landed, and its own check still fails" in prompt:
 else:
     print(f"? greet says hi  [greet{two}]")
     print("    scope: greet.py")
-    print("    check: python3 -c 'import greet; assert greet.hi() == \"hi\"'")
+    print("    check: grep -q again greet.py" if two else  # red before its work, as every check here
+          "    check: python3 -c 'import greet; assert greet.hi() == \"hi\"'")
     print(f"? bye says bye  [bye{two}]")
     print("    scope: bye.py")
-    print("    check: python3 -c 'import bye; assert bye.bye()'")
+    print("    check: grep -q again bye.py" if two else
+          "    check: python3 -c 'import bye; assert bye.bye()'")
 print("```")
 '''
-# A fix whose check is too weak to catch the wrong word: the goal's check stays red after the fix round
-WEAK_FIX = PLANNER.replace("""assert bye.bye() == \\"bye\\"'""", "assert bye.bye()'")
+# A fix whose check is too weak to catch the wrong word (red before the work, passed by any other word): the
+# goal's check stays red after the fix round
+WEAK_FIX = PLANNER.replace("""assert bye.bye() == \\"bye\\"'""", """assert bye.bye() != \\"bye!\\"'""")
+# A fix whose check passes before any work: it would land with nothing done
+HOLLOW_FIX = PLANNER.replace("""assert bye.bye() == \\"bye\\"'""", "assert bye.bye()'")
 # What each executor writes, by the leaf it holds (cwd is its worktree): bye passes its own check and breaks
 # the goal's; bye-fix mends it
 EXECUTOR = r'''
@@ -174,6 +179,22 @@ def test_the_check_still_red_after_the_rounds_waits_with_the_first_failing_line(
     got = rows(tiny)
     assert [(r["round"], r["stage"]) for r in got][-2:] == [(2, "checking"), (2, "waits")]
     assert got[-1]["check"] == "fail" and got[-1]["rounds"] == 1
+
+
+def test_a_task_whose_check_passes_before_any_work_waits_for_the_person(tiny, tmp_path):
+    """Red first is a gate in auto mode: nobody reads what lands, so a task whose check passes before any
+    work (here the fix's, `assert bye.bye()`, which "bye!" passes already) would land with nothing done. It
+    waits for the person with why, and nothing runs on it."""
+    planner, executor = scripts(tmp_path, planner=HOLLOW_FIX)
+    said = person("auto", GOAL, "--planner", planner, "--with", executor, "--check", GOAL_CHECK)
+    assert said.exit_code == 3, said.output
+    said_it = "waits for you: bye-fix: its check passes before any work, so it would land with nothing done"
+    assert said_it in said.stdout
+    got = rows(tiny)
+    assert (got[-1]["round"], got[-1]["stage"]) == (2, "waits")
+    assert got[-1]["why"].startswith("bye-fix: its check passes")
+    with Store.open(tiny) as store:
+        assert not store.node_log("bye-fix", ("attempt",))
 
 
 def test_an_agent_cannot_run_auto_and_the_envelope_is_the_persons_alone(tiny, tmp_path):

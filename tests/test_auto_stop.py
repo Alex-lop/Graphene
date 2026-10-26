@@ -13,7 +13,8 @@ from graphene_map import auto as AUTO
 from graphene_map import plan as P
 from graphene_map.store import Store
 
-PLANNER = 'print("```plan\\n? a slow task  [slow]\\n    scope: a.txt\\n    check: true\\n```")\n'
+PLANNER = ('print("```plan\\n? a slow task  [slow]\\n    scope: a.txt\\n'
+           '    check: grep -q done a.txt\\n```")\n')  # red before any work, or auto mode would not start it
 
 
 def planner(repo) -> str:

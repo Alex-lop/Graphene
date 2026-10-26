@@ -1340,25 +1340,29 @@ def _came_back(store, only: list[str] | None, say: Callable[[str], None]) -> set
     return set(back)
 
 
-def _red_first(store, target: Path, only: list[str] | None, say: Callable[[str], None], committed: bool):
+def _red_first(store, target: Path, only: list[str] | None, say: Callable[[str], None],
+               committed: bool) -> list:
     """Red first (precheck.py), once the run's own refusals have passed: the check of each leaf it can
     start now, ready for an agent with what it needs here (``only``: of those, what --node named, a
     sub-goal's leaves, a leaf that came back; else each that did not come back): one that waits on
     another would be judged before what it needs has landed. Run at the commit its leaves start from
-    (``committed``: HEAD alone, which a leaf's worktree is cut from). A warning, not a gate: if it breaks,
-    the run goes on."""
+    (``committed``: HEAD alone, which a leaf's worktree is cut from). A warning here, not a gate: if it
+    breaks, the run goes on. Returns its rows, (leaf, verdict detail) each: `graphene auto` gates on them."""
     from . import precheck as pre
 
     ready = [n for n in P.ready(P.nodes(store), P.Caller("agent", False))
              if not P.not_here(store, n, target, committed)]  # fmt: skip
     ids = [n.id for n in ready if (n.id in only if only else not P.came_back(store, n))]
     if not ids:
-        return
+        return []
     try:
-        for line in pre.said(pre.run(store, target, ids, committed=committed)):
-            say(line)
+        rows = pre.run(store, target, ids, committed=committed)
     except Exception as no:
         say(f"red first: not run: {' '.join(str(no).split())[:200]}")
+        return []
+    for line in pre.said(rows):
+        say(line)
+    return list(rows)
 
 
 def _said_done(store, node: P.Node, say: Callable[[str], None]) -> None:
