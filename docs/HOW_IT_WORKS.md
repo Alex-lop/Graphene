@@ -350,7 +350,9 @@ takes the hooks out, which ends the recording; what they recorded stays until yo
 
 ## The rest
 
-`graphene --help` lists nine commands. These work too, and `--help` after any of them says more.
+`graphene --help` lists nine commands. These work too; `--help` after any says more.
+
+- `graphene state --json`: one JSON snapshot for an editor; `plan log --json --since ID`: the log's rows after ID.
 
 - `graphene demo --cheat` plays a script, not a model, that tries seven ways round the locks against the real hook,
   git and check: six refused, one flagged, at $0. `graphene demo --live` replays a live run on Nemotron through

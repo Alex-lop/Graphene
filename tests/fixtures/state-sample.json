@@ -1,0 +1,321 @@
+{
+  "schema": 1,
+  "graphene": "0.7.0",
+  "repo": "/home/dev/project",
+  "cursor": 42,
+  "goal": "the app greets, says goodbye, and knows its users",
+  "first": "auto",
+  "planner": "",
+  "executor": "",
+  "envelope": {
+    "auto": "on",
+    "budget": 2.0,
+    "tasks": 12,
+    "rounds": 2,
+    "forks": 1,
+    "review": "off",
+    "protected": [],
+    "readonly": []
+  },
+  "auto": {
+    "round": 1,
+    "rounds": 2,
+    "stage": "running",
+    "spent": 0.004,
+    "budget": 2.0,
+    "check": null,
+    "why": ""
+  },
+  "run": {
+    "going": false,
+    "pid": null
+  },
+  "spent": 0.004,
+  "scoreboard": {
+    "need_you": 5,
+    "running": 1,
+    "proven": 1,
+    "total": 7
+  },
+  "width": 4,
+  "questions": [
+    {
+      "id": "formal-or-casual",
+      "text": "formal or casual greeting?",
+      "default": "casual",
+      "options": [
+        "formal"
+      ],
+      "about": "words",
+      "kind": "question"
+    }
+  ],
+  "goals": [
+    {
+      "id": "api",
+      "title": "the API",
+      "parent": null,
+      "state": "done",
+      "check": null
+    }
+  ],
+  "tasks": [
+    {
+      "id": "ids",
+      "title": "users returns ids",
+      "full": "users returns ids",
+      "state": "done",
+      "parent": "api",
+      "scope": [
+        "api.py",
+        "notes.txt"
+      ],
+      "needs": [],
+      "check": "grep -q ids api.py",
+      "agent": "1",
+      "model": "",
+      "usd": 0.0,
+      "idle": null,
+      "needs_you": false,
+      "tail": [],
+      "note": "",
+      "offers": {},
+      "changed": [
+        "api.py"
+      ],
+      "stopped": [],
+      "outside": [],
+      "forks": [
+        {
+          "letter": "a",
+          "state": "refused",
+          "why": "ids is not done: `grep -q ids api.py` failed",
+          "lines": 2,
+          "model": "",
+          "usd": 0.0
+        },
+        {
+          "letter": "b",
+          "state": "passed",
+          "why": "",
+          "lines": 2,
+          "model": "",
+          "usd": 0.0
+        },
+        {
+          "letter": "c",
+          "state": "passed",
+          "why": "",
+          "lines": 11,
+          "model": "",
+          "usd": 0.0
+        }
+      ],
+      "kept": {
+        "letter": "b",
+        "why": "2 lines against 11",
+        "by": "graphene"
+      },
+      "hollow": false
+    },
+    {
+      "id": "words",
+      "title": "greeting's words",
+      "full": "the greeting's words",
+      "state": "running",
+      "parent": null,
+      "scope": [
+        "words.py"
+      ],
+      "needs": [],
+      "check": "true",
+      "agent": "2",
+      "model": "Nano",
+      "usd": 0.004,
+      "idle": 10.0,
+      "needs_you": true,
+      "tail": [
+        "edit words.py",
+        "run  pytest -q",
+        "stopped app.py"
+      ],
+      "note": "",
+      "offers": {},
+      "changed": [],
+      "stopped": [
+        "app.py"
+      ],
+      "outside": [],
+      "forks": [],
+      "kept": null,
+      "hollow": false
+    },
+    {
+      "id": "greet",
+      "title": "greet says hello",
+      "full": "greet says hello",
+      "state": "waiting",
+      "parent": null,
+      "scope": [
+        "app.py"
+      ],
+      "needs": [
+        "words"
+      ],
+      "check": "true",
+      "agent": "",
+      "model": "",
+      "usd": 0.0,
+      "idle": null,
+      "needs_you": false,
+      "tail": [],
+      "note": "",
+      "offers": {},
+      "changed": [],
+      "stopped": [],
+      "outside": [],
+      "forks": [],
+      "kept": null,
+      "hollow": false
+    },
+    {
+      "id": "farewell",
+      "title": "farewell says goodbye",
+      "full": "farewell says goodbye",
+      "state": "came back",
+      "parent": null,
+      "scope": [
+        "bye.py"
+      ],
+      "needs": [],
+      "check": "true",
+      "agent": "3",
+      "model": "",
+      "usd": 0.0,
+      "idle": null,
+      "needs_you": true,
+      "tail": [],
+      "note": "bye.py imports the schema, which no leaf makes",
+      "offers": {
+        "w": [
+          "node",
+          "widen",
+          "farewell",
+          "schema.py"
+        ],
+        "b": [
+          "node",
+          "sibling",
+          "farewell",
+          "schema.py"
+        ]
+      },
+      "changed": [],
+      "stopped": [],
+      "outside": [],
+      "forks": [],
+      "kept": null,
+      "hollow": false
+    },
+    {
+      "id": "docs",
+      "title": "document the API",
+      "full": "document the API",
+      "state": "ready",
+      "parent": null,
+      "scope": [
+        "README.md"
+      ],
+      "needs": [
+        "ids"
+      ],
+      "check": "true",
+      "agent": "",
+      "model": "",
+      "usd": 0.0,
+      "idle": null,
+      "needs_you": false,
+      "tail": [],
+      "note": "",
+      "offers": {},
+      "changed": [],
+      "stopped": [],
+      "outside": [],
+      "forks": [],
+      "kept": null,
+      "hollow": false
+    },
+    {
+      "id": "mine",
+      "title": "release notes, by hand",
+      "full": "the release notes, by hand",
+      "state": "yours",
+      "parent": null,
+      "scope": [
+        "NOTES.md"
+      ],
+      "needs": [],
+      "check": "true",
+      "agent": "",
+      "model": "",
+      "usd": 0.0,
+      "idle": null,
+      "needs_you": true,
+      "tail": [],
+      "note": "",
+      "offers": {},
+      "changed": [],
+      "stopped": [],
+      "outside": [],
+      "forks": [],
+      "kept": null,
+      "hollow": false
+    },
+    {
+      "id": "notes",
+      "title": "release notes",
+      "full": "release notes",
+      "state": "proposed",
+      "parent": null,
+      "scope": [
+        "CHANGELOG.md"
+      ],
+      "needs": [],
+      "check": "true",
+      "agent": "",
+      "model": "",
+      "usd": 0.0,
+      "idle": null,
+      "needs_you": true,
+      "tail": [],
+      "note": "",
+      "offers": {},
+      "changed": [],
+      "stopped": [],
+      "outside": [],
+      "forks": [],
+      "kept": null,
+      "hollow": false
+    }
+  ],
+  "edges": [
+    [
+      "words",
+      "greet",
+      "needs"
+    ],
+    [
+      "ids",
+      "docs",
+      "needs"
+    ]
+  ],
+  "news": [
+    "greeting's words: running pytest -q",
+    "greeting's words: stopped writing app.py",
+    "farewell says goodbye started",
+    "farewell says goodbye came back: bye.py imports the schema, which no leaf makes",
+    "asks: formal or casual greeting?",
+    "proposed: release notes"
+  ]
+}

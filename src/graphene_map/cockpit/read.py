@@ -69,8 +69,10 @@ def looker(root: Path, open_store: Callable) -> Callable[[Model | None], Model]:
 
 def read(
     store, root: Path, previous: Model | None = None, now: float | None = None,
-    files: list[str] | None = None,
+    files: list[str] | None = None, fold: bool = True,
 ) -> Model:
+    """``fold``: finished tasks past the few the screen keeps are a count (`fold_done`); off, every task
+    is there, as `graphene state --json` gives an editor the whole plan."""
     now = time.time() if now is None else now
     nodes, words, goal = V.inputs(store)
     by_id = {n.id: n for n in nodes}
@@ -114,7 +116,8 @@ def read(
         if t is not None and t.state == "done":
             row = ended(store, node_id)
             t.overruled = bool(row and row["kind"] == "overruled")  # not since finished properly
-    fold_done(m, by_id)
+    if fold:
+        fold_done(m, by_id)
     items = {it["id"]: it for it in B.items(store)}
     every = S.review(store) == "every"  # a task that passes waits for the person's sign-off: a second proof
     for t in m.tasks.values():

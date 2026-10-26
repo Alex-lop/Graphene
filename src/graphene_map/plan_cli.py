@@ -669,6 +669,35 @@ def register(cli: typer.Typer, root, open_store, fail):
         else:
             cockpit_run(r, lambda: open_store(r), every)
 
+    @cli.command(hidden=True)
+    def state(
+        as_json: bool = typer.Option(False, "--json", help="One line of JSON; without it, indented."),
+    ) -> None:
+        """Print the plan as one JSON snapshot for an editor (schema 1).
+
+        Tasks, forks, questions, envelope, run. With no plan here: {"schema": 1, "error": "why"}, exit 1."""
+        from . import state as ST
+
+        r, why = ST.where(Path.cwd())
+        said: dict = {}
+        store = None
+        if why is None:
+            try:
+                store = open_store(r)
+            except typer.Exit:  # the opener said why on stderr: locked, unreadable, or a newer graphene's
+                why = "the store did not open; the line on stderr says why (locked: try again in a moment)"
+        if store is not None:
+            with store:
+                why = ST.unplanned(store)
+                try:
+                    said = ST.snapshot(store, r) if why is None else {}
+                except Exception as no:  # stdout holds one JSON object whatever happened: an editor reads it
+                    why = f"the plan could not be read ({type(no).__name__}: {no})"
+        if why is not None:
+            out(json.dumps(ST.error(why)))
+            raise typer.Exit(1)
+        out(json.dumps(said) if as_json else json.dumps(said, indent=2))
+
     @cli.command()
     def demo(
         recording: Path = typer.Argument(
@@ -895,13 +924,22 @@ def register(cli: typer.Typer, root, open_store, fail):
         said_where()
 
     @plan_cli.command("log")
-    def log_() -> None:
+    def log_(
+        as_json: bool = typer.Option(False, "--json", help="One row a line, as JSON (JSON lines)."),
+        since: int = typer.Option(0, "--since", help="Only the rows after this id (`state` says it)."),
+    ) -> None:
         """Print everything that happened on the plan, oldest first.
 
         A `*` marks what belonged to no node."""
 
         def go(store):
-            entries = store.node_log()
+            from . import state as ST
+
+            entries = ST.log_after(store, since)
+            if as_json:
+                for e in entries:
+                    out(json.dumps(e))
+                return
             wide = max((len(e["node_id"]) for e in entries), default=1)
             who_wide = max((len(e["actor"] or "") for e in entries), default=16)
             for e in entries:
