@@ -57,6 +57,7 @@ from .tui import Pane, Watch, fit, help_groups
 
 SHIPPED = Path(__file__).with_name("demo.jsonl")
 LIVE_TAKE = Path(__file__).with_name("demo-live.jsonl")  # tests/recordings/loop-nemotron-take-2.jsonl
+AUTO_TAKE = Path(__file__).with_name("demo-auto.jsonl")  # tests/test_demo_auto.py, a scripted stand-in
 ENDED = "ended: last frame"
 # the reader's next step, as the README's: Claude Code is told, Codex asked; 78 columns, so whole at 80
 NEXT = "the end · graphene init, then tell Claude Code what you want (or graphene ask)"

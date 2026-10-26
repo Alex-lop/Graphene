@@ -186,10 +186,13 @@ def goal_check(store, root_id: str, own: str | None) -> str:
 
 
 def _failing(output: str) -> str:
-    """The line of a red check's tail that says what failed: the last that names an error or a failure
-    (pytest's `FAILED …`, Python's `AssertionError`), else the last line. ponytail: a word match, not a parser
-    per test runner."""
+    """The line of a red check's tail that says what failed: the first that names a failing test (unittest's
+    `FAIL: test_x (…)`, pytest's `FAILED tests/…::test_x`), else the last that names an error or a failure
+    (Python's `AssertionError`), else the last line. ponytail: a word match, not a parser per test runner."""
     lines = [line.strip() for line in output.splitlines() if line.strip()]
+    named = [line for line in lines if re.match(r"(?:FAIL|ERROR): |FAILED \S", line)]
+    if named:
+        return named[0][:200]
     said = [line for line in lines if re.search(r"Error|FAILED|failed|assert", line)]
     return (said or lines or ["no output"])[-1][:200]
 

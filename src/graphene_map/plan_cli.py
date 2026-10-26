@@ -727,6 +727,9 @@ def register(cli: typer.Typer, root, open_store, fail):
         live: bool = typer.Option(
             False, "--live", help="Replay a live run on Nemotron through Token Factory, as it ran."
         ),
+        auto: bool = typer.Option(
+            False, "--auto", help="Replay auto mode: one goal, Nemotron's plan, forks racing, the goal's fix."
+        ),
     ) -> None:
         """Replay a recorded run in `graphene watch`, change by change.
 
@@ -750,7 +753,7 @@ def register(cli: typer.Typer, root, open_store, fail):
                 fail(f"cannot write {record}: {no.strerror or no}", 1)
             typer.echo(f"recorded {n} changes to {record}", err=True)
             return
-        shown = recording or (D.LIVE_TAKE if live else D.SHIPPED)
+        shown = recording or (D.LIVE_TAKE if live else D.AUTO_TAKE if auto else D.SHIPPED)
         try:
             head, lines = D.load(shown, speed)
         except (OSError, ValueError, KeyError) as no:
