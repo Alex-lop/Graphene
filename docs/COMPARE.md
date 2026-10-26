@@ -17,7 +17,7 @@ Teams were read from their docs on 18 October ([`field.md`](../dev/process/publi
 
 | | A plan before code | The files a piece may change | A check the tool runs itself | A look at the diff before the merge |
 |---|---|---|---|---|
-| **Graphene**, with Claude Code | a tree you edit and accept | per leaf; a write outside is refused before it happens (Claude Code only; git catches the rest at `done`) | yes, in a clean copy | a leaf marked for sign-off, or every leaf under `review: every`, waits on its branch, and `i` then `c` in the cockpit shows its diff |
+| **Graphene**, with Claude Code | a tree you edit and accept | per leaf; a write outside is refused before it happens (Claude Code, and Graphene's own loop for Nemotron and the other hosts; git catches the rest at `done`) | yes, in a clean copy | a leaf marked for sign-off, or every leaf under `review: every`, waits on its branch, and `i` then `c` in the cockpit shows its diff |
 | Claude Code, by itself | plan mode; its docs say it is not enforced in interactive sessions where bypass is available | static allow and deny rules, not per piece | only if you write a hook | see Agent View |
 | Claude Code Agent View | each session's own; it is "one screen for all your background sessions: what's running, what needs your input, and what's done" | each session's allow and deny rules | no; a row's pull request label is coloured by its checks | "`Ready for review` and `Needs input` above `Working` and `Completed`", and no diff column |
 | Claude Code Agent Teams (experimental) | a shared task list; a teammate's plan can be approved "without the lead reviewing it" | by convention: "Two teammates editing the same file leads to overwrites. Break the work so each teammate owns a different set of files." | a task is done by its status ("Task status can lag"); a `TaskCompleted` hook you write can block it | not read |
@@ -39,9 +39,26 @@ Teams were read from their docs on 18 October ([`field.md`](../dev/process/publi
 | **Graphene** | `forks: N` on a task, `graphene run --forks N`, or the `forks` setting: N agents, each in a copy of its own | the task's check runs on each; among the forks that pass, a rule written before any ran keeps one (`src/graphene_map/pick.py`: the one that passes the most of the others' tests, then the one that left its check's files alone, the smaller, the cheaper, the sooner) and says which step decided; on a task in review the person can pick another (`graphene node pick`) |
 | Codex cloud | "generate multiple responses simultaneously for a single task" (OpenAI's X account, 13 June 2025, as its community forum quotes it; its docs pages read say nothing of it) | the person: "explore possible solutions and pick the best approach" |
 | Cursor | "multiple agents in parallel" on one prompt (its changelog for 2.2, 10 December 2025) | Cursor: it evaluates every run once they have all finished and recommends one; "The selected agent will have a comment explaining why it was picked." The entry names no check and does not say what judges |
+| VS Code 1.143 (Compare Models, preview) | "Add between two and 10 attempts", each "in its own Git worktree" (code.visualstudio.com/docs/agents/run/compare-models, read 26 October 2026) | an optional judge model "evaluates the attempts and recommends a solution", whose assessment, its page says, "isn't proof that an implementation is correct"; then the person, or Synthesize |
 
 Read on 20 October 2026. Neither vendor's page says what its pick is held to; Graphene's rule keeps nothing whose
 check failed, and the check is one you wrote.
+
+## Unattended work: a goal, a loop, a limit
+
+Read on 26 October 2026 by one model session from each vendor's pages (cited in
+[`dev/process/revamp/landscape.md`](../dev/process/revamp/landscape.md)); a second reading, to check it, did not run.
+
+| | Re-checks the goal | Plans the fix | A limit on the run |
+|---|---|---|---|
+| **Graphene**, `graphene auto` | yes: the goal's own check (yours, or every task's together) on the merged result | yes: the planner proposes the fix, accepted only inside your envelope, for `rounds` rounds | the envelope you set: dollars, how many tasks, fix rounds, the files no task may touch |
+| Claude Code `/goal` | yes: "a model checks whether the condition holds" after each turn | the same session works on | `--max-budget-usd`, in print mode only |
+| OpenHands `run_goal` | yes: "a second judge LLM" audits the transcript for evidence | it re-prompts until complete | `max_iterations` (10 by default) |
+| Kiro (Crew) | yes: a conductor "checks acceptance criteria" | it sends follow-ups or retries | counts and time, not dollars |
+| GitHub Copilot cloud agent | on feedback and failed checks, not the goal | Agent Merge "addresses failing checks" | 59 minutes a session |
+
+What Graphene adds here is not the loop, which others have, but what the loop runs inside: the tests are the
+judge, every task is held to its files, and nothing outside your envelope is accepted for you.
 
 ## What this says, and does not say
 
