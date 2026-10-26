@@ -18,8 +18,11 @@ BOARDS = ("auto", "on")  # auto (unset, study 4): the board shows only for a que
 REVIEWS = ("off", "every")  # off (unset): the check decides; every: a proven task waits for the sign-off
 NOTIFY = ("on", "off")  # on (unset): graphene watch rings and notifies when something new needs the person
 FORKS = tuple(str(n) for n in P.FORKS)  # 1 (unset): one agent a leaf; more: that many at once, one kept
+AUTOS = ("off", "on")  # off (unset): every proposal waits for the person; on: one in the envelope is theirs
 # one of a few; unset: the first
-SCALARS = {"size": SIZES, "board": BOARDS, "review": REVIEWS, "notify": NOTIFY, "forks": FORKS}
+SCALARS = {"size": SIZES, "board": BOARDS, "review": REVIEWS, "notify": NOTIFY, "forks": FORKS, "auto": AUTOS}
+# a number, or unset (the reader says what unset means): the envelope's dollars, tasks and fix rounds
+NUMBERS = {"budget": "dollars, such as 2 or 0.50", "tasks": "a count", "rounds": "a count"}
 GLOBS = ("protected", "readonly")  # a line of either holds globs, comma-separated; lines add up
 HEAD = """\
 # Graphene's settings. A line is `key: value`; a line starting with '#' is not read.
@@ -30,6 +33,10 @@ HEAD = """\
 # review: off (the check decides) or every (a proven task waits for your sign-off before it lands)
 # notify: on (graphene watch rings, and a terminal that shows them notifies, when something needs you) or off
 # forks: 1 to 8 agents at once on every leaf, each in its own copy; the leaf's check keeps one
+# auto: off (every proposal waits for you) or on (one that fits the envelope below is accepted at once)
+# budget: dollars the runs Graphene starts on its own may spend while auto is on (unset: no cap)
+# tasks: how many tasks the envelope may accept for you, all told, since auto went on (unset: 12)
+# rounds: fix rounds `graphene auto` takes after the goal's check fails (unset: 2)
 """
 
 
@@ -112,6 +119,27 @@ def rounds(store) -> int:
     return int(store.meta("settings:rounds") or 2)
 
 
+def auto_since(store) -> str | None:
+    """When auto went on: the timestamp of the settings row that turned it on (the latest one), so that
+    what the envelope accepted and spent is counted from there. None while it is off; "" when it is on
+    and no row says since when (every row counts)."""
+    if auto(store) != "on":
+        return None
+    rows = [r for r in store.node_log("*", ("settings",))
+            if ((r["detail"] or {}).get("changed") or {}).get("auto", [None, None])[1] == "on"]  # fmt: skip
+    return rows[-1]["timestamp"] if rows else ""
+
+
+def set_some(store, who: P.Caller, files: list[str] | None = None, **values: str) -> list[str]:
+    """`graphene config set KEY VALUE`, and what `graphene auto` was told: the named settings changed and
+    the rest kept, through ``apply`` (person-only, one `settings` row). An empty value clears its key; a
+    key with several lines (protected, readonly, never) is replaced by the one line given."""
+    lines = [line for line in render(store).splitlines() if line and not line.startswith("#")]
+    kept = [line for line in lines if line.partition(":")[0].strip() not in values]
+    new = [f"{key}: {value}" for key, value in values.items() if str(value).strip()]
+    return apply(store, "\n".join([*kept, *new]) + "\n", who, None, files)
+
+
 def conditions_for_planner(store) -> str:
     """The standing conditions as the planner's prompt says them; empty when there are none."""
     lines = []
@@ -162,7 +190,7 @@ def lines_for_screen(store) -> list[str]:
     said = [line.removeprefix("# ") for line in elsewhere(store)]
     shown = ("#", "notify:")  # notify is the cockpit's bell: this screen has none
     lines = [line for line in render(store).splitlines() if line and not line.startswith(shown)]
-    lines = [line for line in lines if line not in ("review: off", "forks: 1")]
+    lines = [line for line in lines if line not in ("review: off", "forks: 1", "auto: off")]
     one = [line for line in lines if line.partition(":")[0] in SCALARS]  # one line for the one-value keys
     said += [line for line in lines if line not in one] + [" · ".join(one)]
     return [*said, "graphene config edit changes them"]
@@ -173,12 +201,25 @@ def render(store) -> str:
            *elsewhere(store), ""]  # fmt: skip
     out += [f"{key}: {', '.join(_list(store, key))}" for key in GLOBS if _list(store, key)]
     out += [f"never: {n}" for n in never(store)]
+    out.append(f"auto: {auto(store)}")  # the envelope: its numbers only once said, as its readers default
+    out += [f"{key}: {store.meta(f'settings:{key}')}" for key in NUMBERS if store.meta(f"settings:{key}")]
     out.append(f"notify: {notify(store)}")
     out.append(f"size: {size(store)}")
     out.append(f"board: {board(store)}")
     out.append(f"review: {review(store)}")
     out.append(f"forks: {forks(store)}")
     return "\n".join(out) + "\n"
+
+
+def _number(no: int, key: str, value: str) -> str:
+    """A number as the envelope stores it: dollars with their cents, a count whole, neither negative."""
+    try:
+        n = float(value) if key == "budget" else int(value)
+    except ValueError:
+        raise P.Refused(f"line {no}: {key} is {NUMBERS[key]}, not {value!r}") from None
+    if n < 0 or n != n:  # nan is a number to float()
+        raise P.Refused(f"line {no}: {key} is {NUMBERS[key]}, not {value!r}")
+    return f"{n:.2f}" if key == "budget" else str(n)
 
 
 def _glob(no: int, glob: str) -> str:
@@ -209,15 +250,17 @@ def apply(
             continue
         key, colon, value = body.partition(":")
         key, value = key.strip(), value.strip()
-        if not colon or key not in (*got, *SCALARS):
+        if not colon or key not in (*got, *SCALARS, *NUMBERS):
             raise P.Refused(
                 f"line {no}: {body[:40]!r} is not a setting; the keys are protected, readonly, never, size, "
-                "board, review, notify, forks"
+                "board, review, notify, forks, auto, budget, tasks, rounds"
             )
-        if key in SCALARS:
-            if value not in SCALARS[key]:
+        if key in SCALARS or key in NUMBERS:
+            if key in SCALARS and value not in SCALARS[key]:
                 *rest, last = SCALARS[key]
                 raise P.Refused(f"line {no}: {key} is {', '.join(rest)} or {last}, not {value!r}")
+            if key in NUMBERS:
+                value = _number(no, key, value)
             if key in said:
                 raise P.Refused(f"line {no}: {key} is said on line {said[key][0]} already")
             said[key] = (no, value)
@@ -244,13 +287,17 @@ def apply(
                             f"say: {now}. Keep what you want of theirs and save again")  # fmt: skip
         was = {k: _list(store, k) for k in got}
         was |= {"size": size(store), "board": board(store), "review": review(store), "notify": notify(store),
-                "forks": str(forks(store))}  # fmt: skip
+                "forks": str(forks(store)), "auto": auto(store)}  # fmt: skip
+        was |= {k: store.meta(f"settings:{k}") for k in NUMBERS}
         for key, values in got.items():
             store.set_meta(f"settings:{key}", json.dumps(values) if values else None)
         for key, values in SCALARS.items():  # unset is the first value; stored only when it is another
             value = said.get(key, (0, values[0]))[1]
             store.set_meta(f"settings:{key}", value if value != values[0] else None)
+        for key in NUMBERS:  # unset is None: the reader says what that means
+            store.set_meta(f"settings:{key}", said[key][1] if key in said else None)
         now = {**got, **{k: said[k][1] if k in said else v[0] for k, v in SCALARS.items()}}
+        now |= {k: said[k][1] if k in said else None for k in NUMBERS}
         changed = {k: [was[k], now[k]] for k in now if was[k] != now[k]}
         if changed:
             store.log_node("*", P._now(), "settings", who.label, None, None, {"changed": changed})

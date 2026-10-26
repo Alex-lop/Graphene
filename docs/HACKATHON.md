@@ -110,7 +110,7 @@ runs unless you run it, or set `GRAPHENE_SHAPE` to run them after each `graphene
 - **Nemotron's roles.** Ultra is the planner (`planner.py`): its tools (list, glob, grep, read) run on your machine
   and read only what git shows. Since prompt version 5 it answers in a strict JSON schema, and a check runs only
   its own task's files. Since prompt version 6, Ultra hears the faults of an answer together, one per node, at most
-  twice, and Graphene repairs what needs no judgement itself (`planner.py`, `PROMPT_VERSION`). Nano, then Super,
+  twice, and Graphene repairs what needs no judgement itself (`planner.py`, `PROMPT_VERSION`). Since prompt version 7, Ultra is told that tasks running at once share no file, each with its own test file, and `needs:` only where one uses another's work. Nano, then Super,
   is the executor (`executor.py`): Graphene's own loop asks for one tool call at a time (view, edit, write, run,
   done or release). The reasoning budget is each call's `max_tokens`, doubled up to 32,768 when a reply is cut
   off. Nemotron's `<TOOLCALL>` text and common tool-name spellings are read as the calls they mean.

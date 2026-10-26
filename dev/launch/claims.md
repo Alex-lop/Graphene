@@ -25,6 +25,7 @@ Nemotron claims added on 18 October; re-read before posting.
 | Of 31 live demo takes on two small repositories, 7 to 9 October, 4 ran clean and 2 landed every task | dev/process/meter, timeline and loop, takes.md | measured live: two small repositories |
 | Each Nemotron call is priced from Token Factory's usage at list price, so each task has a bill | tests/nemotron/test_tokenfactory.py; `i` on a task in `graphene demo tests/recordings/loop-nemotron-take-2.jsonl` | shown; whether the list price is what is billed is not observed |
 | A task can run as several agents at once, and the check decides which is kept, by a rule written before any fork ran; the person can pick another | src/graphene_map/pick.py (the rule, dated in its docstring); tests/test_pick.py; tests/test_forks_run.py (`node pick`) | shown, with scripted agents; no live forked run |
+| With `auto: on`, a proposal that fits the envelope (every task with a scope and a check, the board settled, within `tasks`) is accepted at once as the person's stand-in, and `graphene plan undo` takes it back; `graphene auto` plans, runs, checks the goal and plans the fix for `rounds` rounds, and stops with a reason at the envelope's edge | tests/test_auto_envelope.py, tests/test_auto_run.py, tests/test_auto_nemotron.py | shown; the planner and executors are scripts, or the scripted Token Factory; no live auto run |
 
 ## May not be said
 
@@ -39,7 +40,9 @@ Nemotron claims added on 18 October; re-read before posting.
   init` ran from a script (from 2.1.295, `init` at a terminal makes it fail closed); git catches the change at done
   either way.
 - That unattended runs are safe. Codex has no spend cap of its own, and a whole run's total is capped only by
-  `graphene run --max-usd`, which starts no attempt past it and stops none that is going.
+  `graphene run --max-usd`, which starts no attempt past it and stops none that is going. `graphene auto`'s
+  `budget` holds Claude Code and Codex attempts the same way, reads Nemotron's bills only between rounds, and
+  cannot hold an executor that reports no cost (it counts attempts instead, and says so first).
 - That every leaf is approved before it lands. Only a leaf marked for sign-off waits.
 - That Nemotron is broadly tested live (docs/HACKATHON.md).
 - That a Nemotron agent hears `t` mid-task. It is told the next time its task starts; Claude Code hears it with its

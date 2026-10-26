@@ -35,10 +35,11 @@ from ..store import Store, repo_root
 from . import tokenfactory as tf
 from .executor import text_calls
 
-PROMPT_VERSION = 6  # 2: the board (questions with a default, assumptions, risks, leave-outs); 3: then:
+PROMPT_VERSION = 7  # 2: the board (questions with a default, assumptions, risks, leave-outs); 3: then:
 # lines; 4: at most three items, each a question or a risk that changes the tree; assumptions in goals;
 # 5: a check runs only its own files; the proposal is asked for as JSON in a strict schema; 6: what needs
-# no judgement is repaired, not sent back; the faults go back together, one per node, at most twice
+# no judgement is repaired, not sent back; the faults go back together, one per node, at most twice;
+# 7: leaves that run at once share no file, each its own test file, needs: only where one uses another's work
 SYSTEM = """\
 You are the planner for Graphene: a person said what they want, and you propose the tree of work that
 coding agents will do, which the person prunes before anything runs. Read the repository with the tools
@@ -53,7 +54,9 @@ leaves do not already follow, that changes what a leaf does, which files it may 
 checked carries the then: lines that make that change (goal, scope, check, drop, leaf), so the person's
 choice changes the tree. A leaf's check runs only files in its own scope and files already in the
 repository. A leaf that needs a test another leaf writes waits on it with needs:. Two leaves never share a
-test file: give each leaf its own, or make one tests leaf that waits on all of them. When you have read
+test file: give each leaf its own, or make one tests leaf that waits on all of them. Leaves that can run at
+the same time share no file: give each its own files and its own test file, and a needs: line only where a
+leaf uses another's work, so the rest start at once. When you have read
 enough, stop calling tools. You are then asked for the proposal as JSON, with the fields of the form the
 request gives. Put one or two sentences to the person in says. To put lines under a node already in the
 plan, name that node as their parent. You write no file and run nothing."""

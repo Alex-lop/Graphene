@@ -481,6 +481,8 @@ def register(cli: typer.Typer, root, open_store, fail):
             )
             or (value(detail["note"]) if detail.get("note") else "")
             or detail.get("override")
+            or (f"accepted by your envelope{', round ' + str(detail['round']) if detail.get('round') else ''}"
+                if detail.get("by") == "auto" else "")  # fmt: skip
             or (f"by their prompt in the session: {detail.get('prompt', '')!r}" if detail.get("by") else "")
             or detail.get("path")
             or ", ".join(detail.get("outside") or detail.get("paths") or detail.get("unowned") or [])
@@ -823,10 +825,20 @@ def register(cli: typer.Typer, root, open_store, fail):
         def go(store):
             added = as_json(store) if text.lstrip().startswith(("{", "[")) else as_text(store)
             if not who.person and added:  # one leaf of the person's ask is theirs at once
+                from . import auto as AUTO
+
+                board = B.split(text)[1]  # the text's board items
+                said = G.one_line_ask(store, added, who, files, board, here)
+                # else the person's envelope (`auto: on`): what fits it is theirs at once, and what does not
+                # waits for them with the one reason
+                taken = AUTO.take(store, added, files, here) if said is None else None
+                waits = f"it {taken}. " if taken and taken.startswith(AUTO.WAITS) else ""
+                them = "it" if len(added) == 1 else "them"
                 out(
-                    G.one_line_ask(store, added, who, files, B.split(text)[1], here)  # the text's board items
-                    or f"{len(added)} proposed: nobody can start {'it' if len(added) == 1 else 'them'} until "
-                    "the person accepts, in `graphene watch`. Tell them the tree is ready, and stop"
+                    said
+                    or (taken if taken and not waits else None)
+                    or f"{len(added)} proposed: {waits}nobody can start {them} until the person accepts, in "
+                    "`graphene watch`. Tell them the tree is ready, and stop"
                 )
             return [n.id for n in added]
 
@@ -1251,6 +1263,10 @@ def register(cli: typer.Typer, root, open_store, fail):
             if said and waits:  # what waits on the person is named first, where they would find it
                 hint = "at the top, y takes, d drops" if here else "`graphene board`, or `graphene watch`"
                 out(f"the board waits on you ({waits}): {hint}")
+            # what the envelope accepted (`auto: on`) needs no accept: its line said `graphene run` runs them
+            pending = [i for i in ids if (store.node_row(i) or {}).get("state") == P.PROPOSED]
+            if ids and not pending and S.auto(store) == "on":
+                return ids
             if ids or (said and not waits):
                 hint = (
                     "y accepts, d drops"

@@ -84,7 +84,7 @@ def test_version_and_help_read_as_a_product():
     text = run("--help").output
     listed = [line.split()[1] for line in text.splitlines() if line.startswith("│ ") and line[2] != " "]
     commands = [name for name in listed if not name.startswith("-")]
-    assert commands == ["init", "ask", "watch", "run", "plan", "node", "board", "demo", "config"]
+    assert commands == ["init", "ask", "watch", "run", "auto", "plan", "node", "board", "demo", "config"]
     assert "ingest" not in text and "talk" not in text  # hidden: they work, and the help leaves them out
     assert "graphene node show" in text  # what was done for one node is where the record lives now
 

@@ -134,7 +134,7 @@ def build():
 
         def list_commands(self, ctx):
             """The help lists the commands in the order a new user needs them."""
-            first = ["init", "ask", "watch", "run", "plan", "node", "board", "demo", "config"]
+            first = ["init", "ask", "watch", "run", "auto", "plan", "node", "board", "demo", "config"]
             names = super().list_commands(ctx)
             return [n for n in first if n in names] + [n for n in names if n not in first]
 
@@ -254,6 +254,9 @@ def build():
     from . import settings as S
 
     config_cli.register(cli, root, open_store, fail)
+    from . import auto_cli
+
+    auto_cli.register(cli, root, open_store, fail)  # `graphene auto`: the goal, the envelope, the rounds
     if key_cli := extra.load("key_cli"):  # `graphene key`: the Nemotron extra's, when it is installed
         key_cli.register(cli, fail)
 

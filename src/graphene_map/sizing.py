@@ -91,5 +91,7 @@ def measure(root: str | Path, sentence: str, files: list[str], size: str = "auto
     return (
         f"The repo has {len(files):,} files and {f'over {BIG:,}' if lines >= BIG else f'{lines:,}'} lines, "
         f"{named}, and {where}: "
-        f"cut the tree into about {leaves} ({size})."
+        f"cut the tree into about {leaves} ({size}). "
+        "Leaves that can run at the same time share no file: give each its own files and its own test "
+        "file, and a needs: line only where a leaf uses another's work."
     )

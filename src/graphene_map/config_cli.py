@@ -29,6 +29,30 @@ def register(cli: typer.Typer, root, open_store, fail):
             if keys := extra.load("keys"):
                 typer.echo(f"# the Token Factory key: {keys.where() or 'none found'} (graphene key set)")
 
+    @config_cli.command("set")
+    def set_(
+        key: str = typer.Argument(..., help="The setting: auto, budget, tasks, rounds, forks, size, review…"),
+        value: str = typer.Argument(..., help="Its new value; '' clears it."),
+    ) -> None:
+        """Change one setting without an editor; the rest are kept.
+
+        Only a person can; each change is logged, as `graphene config edit` logs it."""
+        who = P.caller()
+        files = P.tracked(root())  # before the plan's write lock, never under it
+        try:
+            with open_store(root()) as store:
+                before = S.render(store)
+                after = S.set_some(store, who, files, **{key: value})
+        except P.Refused as no:
+            fail(str(no), 1)
+        was = before.splitlines()
+        for line in [line for line in after if line not in was and not line.startswith("#")]:
+            typer.echo(f"added: {line}")
+        for line in [line for line in was if line not in after and not line.startswith("#")]:
+            typer.echo(f"removed: {line}")
+        if "\n".join(after) + "\n" == before:
+            typer.echo("nothing changed")
+
     @config_cli.command()
     def edit() -> None:
         """Edit the settings in your editor; the save applies all or none.

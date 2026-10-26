@@ -2,6 +2,38 @@
 
 ## 0.7.0 (unreleased)
 
+Auto mode (26 October 2026). You give Graphene a goal and an envelope once; it plans, accepts what fits, runs,
+checks the goal and plans the fix. Each line is one change.
+- `graphene auto "<goal>"` (visible, the person's alone; from an agent: `` `graphene auto` is the person's ``):
+  turns `auto: on`, writes `--budget`, `--tasks`, `--rounds` and `--forks` into the settings as one `settings`
+  row, says the envelope (`envelope: auto on since 00:31 · $2.00 · 12 tasks · 2 fix rounds · 1 fork a task · 4
+  at once`), sets the goal, asks the planner (`--planner`, else init's) for a tree under a root sub-goal that
+  carries the goal's check (`--check`, else every task's check run together), accepts what fits the envelope,
+  runs it (`--with`, `--parallel`, `--attempts`, `--forks`), and when the root's check is red asks the planner
+  for the fix under it (the check's command and the tail of what it said), for `rounds` rounds. It ends with
+  `auto: 2 rounds, 3 tasks landed, 0 came back, 0 forks raced, $0.0123 at list price; the goal's check passed.
+  `graphene plan log` has the whole history`; exit 0 passed, 1 still red, the budget spent or stopped, 3 waits
+  for you. With no goal it goes on with the plan in force. Each stage is an `auto` row on `*` (`round`,
+  `rounds`, `stage` planning|running|checking|fixing|done|waits, `spent`, `budget`, `check`, `why`).
+- The envelope is settings: `auto: off|on`, `budget: DOLLARS`, `tasks: N` (12 unset), `rounds: N` (2 unset), in
+  `graphene config edit` and the table in HOW_IT_WORKS; `graphene config set KEY VALUE` changes one setting
+  without an editor (`added: auto: on`, `removed: auto: off`), person-only, logged as every setting is.
+- With `auto: on`, a proposal that fits is accepted at once, from `graphene ask` and from an agent's `graphene
+  plan propose -` alike: every new task has a scope and a check, the tasks accepted since auto went on plus
+  these stay within `tasks`, nothing on the board waits for you (a question with no default, a default that
+  drops a task), nothing splits a task someone holds. It is accepted as your stand-in (`alex (no terminal)`,
+  `by: auto`), so `graphene plan undo` takes it back and the board's defaults are taken as at your accept. It
+  says `accepted inside your envelope (auto on since 00:31 · $2.00 · 12 tasks): greet, bye. `graphene run` runs
+  them; 2 tasks can run at once`, or the one reason it waits (`waits for you: greet has no check`; `waits for
+  you: your envelope accepts 12 tasks and this makes 14`). `graphene plan log` says `accepted by your envelope,
+  round 2`. Nothing an agent sends changes the envelope.
+- A budget holds Claude Code and Codex attempts through the run's cap; Nemotron bills each call after it ends,
+  so the budget is read between rounds (said first); an executor that reports no cost is said first too, and
+  its attempts are counted instead of dollars.
+- Planners split wide: the sizing sentence, `graphene ask`'s rules and Nemotron's system prompt (version 7) say
+  that leaves that run at once share no file, each its own test file, `needs:` only where one uses another's
+  work; after an accept Graphene says how many tasks can run at once.
+
 Forks (20 October 2026). A task can run as several agents at once, and its check keeps one. Each line is one
 change.
 - `forks: 3` under a leaf (`graphene plan edit`, `graphene node set ID --forks 3`), `graphene run --forks 3` for a

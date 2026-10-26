@@ -136,7 +136,7 @@ Graphene reads none of your words to decide this.
 with a tree; Graphene adds it as proposals. `graphene node split ID` asks it to cut a leaf;
 `--about ID` asks about one. In `graphene watch`, `:ask` alone opens your editor for the paragraph.
 
-The planner's prompt (Nemotron's system prompt, version 6) tells it to read the
+The planner's prompt (Nemotron's system prompt, version 7) tells it to read the
 repository first, ask only what the code cannot settle, and put up at most three items, each a question or a risk. What
 it is sure of goes in the leaf's goal.
 
@@ -318,7 +318,7 @@ reads no transcript.
 
 ## The settings
 
-`graphene config` prints what you state once; `graphene config edit` changes it. Only you can.
+`graphene config` prints what you state once; `graphene config edit` changes it, and `graphene config set KEY VALUE` changes one. Only you can.
 
 | Setting | Does |
 | --- | --- |
@@ -330,8 +330,18 @@ reads no transcript.
 | `review: off\|every` | `every`: a task whose check passes waits for your sign-off before it lands |
 | `notify: on\|off` | Whether `graphene watch` rings, with a desktop notice where the terminal shows one, when something new needs you |
 | `forks: 1\|2\|3\|4\|5\|6\|7\|8` | Agents at once on each leaf that says nothing itself; its check keeps one |
+| `auto: off\|on` | `on`: a proposal that fits the envelope (every task with a scope and a check, the board settled, under `tasks`) is accepted for you at once; `graphene auto` turns it on |
+| `budget: DOLLARS` | What the runs Graphene starts on its own may spend while `auto` is on |
+| `tasks: N` | How many tasks the envelope may accept for you, all told, since `auto` went on (12 unset) |
+| `rounds: N` | Fix rounds `graphene auto` takes after the goal's check fails (2 unset) |
 
 `graphene config` also names the planner, the executor and plan first.
+
+`graphene auto "<goal>"` turns `auto` on (its flags set `budget`, `tasks`, `rounds` and `forks`) and runs the
+loop: the planner's tree hangs under a root task that carries the goal's check (`--check`, else every task's
+check together); what fits the envelope is accepted at once, run and landed; a red goal check is planned again,
+for `rounds` rounds. Exit 0 when the goal's check passes, 1 when it is still red, the budget is spent or you
+stopped it, 3 when something waits for you. With no goal it goes on with the plan in force.
 
 ## Privacy
 

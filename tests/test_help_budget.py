@@ -1,5 +1,6 @@
-"""What `--help` shows a new user. Nine commands at the top, at most eight under `plan` and nine under
-`node`. The rest are hidden and still work; docs/HOW_IT_WORKS.md lists them under "The rest"."""
+"""What `--help` shows a new user. Ten commands at the top (nine until `graphene auto`, 26 October 2026), at
+most eight under `plan` and nine under `node`. The rest are hidden and still work; docs/HOW_IT_WORKS.md lists
+them under "The rest"."""
 
 import re
 
@@ -10,13 +11,13 @@ from graphene_map.cli import build
 
 CLI = typer.main.get_command(build())
 VISIBLE = {
-    "": ["init", "ask", "watch", "run", "plan", "node", "board", "demo", "config"],
+    "": ["init", "ask", "watch", "run", "auto", "plan", "node", "board", "demo", "config"],
     "plan": ["accept", "edit", "undo", "archive", "first", "pause", "resume", "log"],
     "node": ["add", "drop", "set", "edit", "show", "done", "release", "widen", "sibling"],
     "board": ["take", "drop", "answer", "pick", "note"],
-    "config": ["edit"],
+    "config": ["edit", "set"],
 }
-BUDGET = {"": 9, "plan": 8, "node": 9}
+BUDGET = {"": 10, "plan": 8, "node": 9}
 
 
 def walk(command, path=()):
