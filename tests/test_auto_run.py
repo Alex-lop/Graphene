@@ -223,3 +223,21 @@ def test_plan_only_plans_and_accepts_inside_the_envelope_and_runs_nothing_until_
     assert "round 1: planning" not in went.stdout  # it was planned already
     assert [(r["round"], r["stage"]) for r in rows(tiny)][2:4] == [(1, "running"), (1, "checking")]
     assert went.stdout.strip().splitlines()[-1].startswith("auto: 2 rounds, 3 tasks landed")
+
+
+FAILING_PLANNER = "import sys\nprint('stopped: no key here', file=sys.stderr)\nsys.exit(3)\n"
+
+
+def test_a_round_whose_planner_failed_is_planned_again_when_auto_goes_on(tiny, tmp_path):
+    """A first `graphene auto` whose planner could not start (no key) left the goal's root with nothing under
+    it, and the next `graphene auto` counted itself round 2 and planned nothing: the goal could never start.
+    Nothing planned under the root yet, the round is planned again, with the goal's check as first given."""
+    planner, executor = scripts(tmp_path)
+    (tmp_path / "broken.py").write_text(FAILING_PLANNER)
+    said = person("auto", GOAL, "--planner", f"{sys.executable} {tmp_path / 'broken.py'}", "--with", executor,
+                  "--check", GOAL_CHECK)  # fmt: skip
+    assert said.exit_code == 3, said.output
+    went = person("auto", "--planner", planner, "--with", executor)  # the key is set now, say
+    assert went.exit_code == 0, went.output
+    assert "round 1: planning" in went.stdout
+    assert went.stdout.strip().splitlines()[-1].startswith("auto: 2 rounds, 3 tasks landed")

@@ -286,6 +286,7 @@ def drive(open_store: Callable, root: Path, goal: str | None, say: Callable[[str
                                 "want>' starts one")  # fmt: skip
             root_id, goal = going["root"], P.goal(store)
             k = going["round"] + (0 if going.get("planned") else 1)  # a round planned with --plan runs now
+            check = check or store.meta("auto:check")  # the goal's own check, as the person first gave it
         else:
             was = P.goal(store)
             open_ = [n for n in P.nodes(store) if n.state in (P.PROPOSED, P.OPEN, P.RUNNING, P.REVIEW)]
@@ -297,10 +298,12 @@ def drive(open_store: Callable, root: Path, goal: str | None, say: Callable[[str
                 )
             if same:
                 root_id, k = going["root"], going["round"] + (0 if going.get("planned") else 1)
+                check = check or store.meta("auto:check")
             else:
                 if was != goal:
                     P.set_goal(store, goal, me)
                 root_id = T.slug(goal, {n.id for n in P.nodes(store)}, "goal")
+                store.set_meta("auto:check", check)  # a new goal: its own check, or none (every task's)
                 P.propose(store, [{"id": root_id, "title": goal}], me, files=files)  # the root: open, bare
                 k = 1
         # this goal's own rows, for the last line: the budget counts from auto on, the summary from the goal
@@ -323,10 +326,14 @@ def drive(open_store: Callable, root: Path, goal: str | None, say: Callable[[str
         fix: tuple[str, str] | None = None  # the red check's command and tail, for the next round's planner
         back: list[P.Node] = []
         planned = bool(going and going.get("planned") and going.get("root") == root_id)  # by --plan, to run
+        unplanned = not [n for n in P.below(root_id, P.nodes(store))
+                         if n.id != root_id and n.state not in P.GONE]  # fmt: skip
+        if unplanned and going and going.get("root") == root_id:  # its planner failed or was stopped: again
+            k, planned = going["round"], False
         try:
             while True:
                 paid = spent(store, at)
-                if (k == 1 and not planned) or fix or back:
+                if (k == 1 and not planned) or unplanned or fix or back:
                     stage = "planning" if k == 1 else "fixing"
                     said = _failing(fix[1]) if fix and stage == "fixing" else ""  # what the fix is for
                     log(store, k, stage, paid, budget, red, said, root=root_id, goal=goal)
@@ -369,7 +376,7 @@ def drive(open_store: Callable, root: Path, goal: str | None, say: Callable[[str
                         say(f"auto: planned round {k} inside your envelope and ran nothing: `graphene plan` "
                             "shows it, `graphene auto` runs it")  # fmt: skip
                         return 0
-                planned = False
+                planned = unplanned = False
                 paid = spent(store, at)
                 if budget is not None and paid >= budget:
                     why = f"the budget is spent: ${paid:.4f} of ${budget:.2f}"
