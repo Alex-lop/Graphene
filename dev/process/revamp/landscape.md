@@ -16,7 +16,7 @@ does it keep one of several attempts and by what, does it re-check a goal, and i
 | OpenAI Codex (cloud best-of-N, sandbox profiles) | directory-level, OS-enforced, per profile not per task | no | yes, up to 4 attempts, the person picks | not documented | weak |
 | Google Jules | no (AGENTS.md, an approved plan) | no | no; a critic flags once | partial | task-count quotas |
 | Devin | no ("independent work packages" by convention) | not documented | no | partial (a coordinator) | yes, ACU limit per session |
-| Kiro (Web autonomous mode, Crew, Task Runner) | no per task | partial: "if tests pass, git commits the change", then a reviewer reads the diff | no | **yes**, bounded: a conductor checks acceptance criteria | counts and time, not dollars |
+| Kiro (Web autonomous mode, Crew, Task Runner) | no per task | partial: "if tests pass, git commits the change", then a reviewer reads the diff | no | partly: each planned task carries acceptance criteria; a step is retried, the plan replanned | counts and time, not dollars |
 | OpenHands (Agent Canvas, critic, run_goal) | no (the Docker mount) | no | yes, by a learned critic (Best@8 73.8% against 57.9% random, its blog) | **yes**: `run_goal`, a judge LLM, capped | `MAX_BUDGET_PER_TASK` (archived config) |
 | Conductor, Crystal, Claude Squad, Vibe Kanban, Sculptor, uzi | no | no | the person, by hand | no | no |
 | Amp | unverified (its permissions page needs sign-in) | no | no | no | compute billing only |
@@ -35,7 +35,8 @@ does it keep one of several attempts and by what, does it re-check a goal, and i
   Graphene's hold is a hook plus git, and says so.
 - Judging and synthesis: VS Code's Compare Models (a judge's scorecard, then Synthesize) and Cursor's parent agent
   give the person more than one kept fork; OpenHands' learned critic picks where no test exists.
-- Goal loops exist natively now (Claude Code's `/goal`, OpenHands' `run_goal`, Kiro's conductor): what remains
+- Goal loops exist natively now (Claude Code's `/goal`, OpenHands' `run_goal`; Kiro's Task Runner retries and
+  replans): what remains
   Graphene's is the loop inside the envelope, with the tests as the judge.
 - Landing automation (GitHub Agent Merge), scale and unattended runtime (Claude Code workflows, Codex cloud,
   Jules), and worktree setup contracts (Cursor, Codex, VS Code, Conductor, Sculptor).

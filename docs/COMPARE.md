@@ -47,15 +47,17 @@ check failed, and the check is one you wrote.
 ## Unattended work: a goal, a loop, a limit
 
 Read on 26 October 2026 by one model session from each vendor's pages (cited in
-[`dev/process/revamp/landscape.md`](../dev/process/revamp/landscape.md)); a second reading, to check it, did not run.
+[`dev/process/revamp/landscape.md`](../dev/process/revamp/landscape.md)). A second reading checked each row
+against its vendor's own page (Claude Code's `/goal`, OpenHands' goal guide, Kiro's Task Runner, GitHub's page
+on the cloud agent) and corrected Kiro's, which had named a "conductor" its page does not.
 
 | | Re-checks the goal | Plans the fix | A limit on the run |
 |---|---|---|---|
 | **Graphene**, `graphene auto` | yes: the goal's own check (yours, or every task's together) on the merged result | yes: the planner proposes the fix, accepted only inside your envelope, for `rounds` rounds | the envelope you set: dollars, how many tasks, fix rounds, the files no task may touch |
 | Claude Code `/goal` | yes: "a model checks whether the condition holds" after each turn | the same session works on | `--max-budget-usd`, in print mode only |
 | OpenHands `run_goal` | yes: "a second judge LLM" audits the transcript for evidence | it re-prompts until complete | `max_iterations` (10 by default) |
-| Kiro (Crew) | yes: a conductor "checks acceptance criteria" | it sends follow-ups or retries | counts and time, not dollars |
-| GitHub Copilot cloud agent | on feedback and failed checks, not the goal | Agent Merge "addresses failing checks" | 59 minutes a session |
+| Kiro (Crew's Task Runner) | partly: each task it plans carries acceptance criteria | it retries a step (3 times) and plans again (2 replans) | counts and time (50 tasks, a 90-minute test timeout), not dollars |
+| GitHub Copilot cloud agent | on feedback and failed checks, not the goal | Agent Merge (VS Code, preview) fixes what blocks the pull request, failing checks among it | 59 minutes a session |
 
 What Graphene adds here is not the loop, which others have, but what the loop runs inside: the tests are the
 judge, every task is held to its files, and nothing outside your envelope is accepted for you.
