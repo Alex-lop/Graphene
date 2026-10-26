@@ -306,3 +306,11 @@ def test_graphene_demo_auto_replays_the_shipped_recording_with_no_key_and_no_net
     assert "the old count test agrees with the hyphens" in said.stdout
     head, lines = demo.load(demo.AUTO_TAKE)
     assert head["stand_in"] is True and len(lines) > 40
+
+
+def test_the_auto_replay_ends_on_auto_as_the_readers_next_step():
+    """The older replay ends on `graphene init, then tell Claude Code what you want`; the --auto one, whose run was
+    `graphene auto`, ends on that command, whole at 80 columns."""
+    _, lines = demo.load(demo.AUTO_TAKE)
+    assert demo.next_step(lines) == demo.AUTO_NEXT and len(demo.AUTO_NEXT) <= 78
+    assert demo.next_step(demo.load(demo.SHIPPED)[1]) == demo.NEXT

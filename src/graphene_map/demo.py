@@ -61,6 +61,7 @@ AUTO_TAKE = Path(__file__).with_name("demo-auto.jsonl")  # tests/test_demo_auto.
 ENDED = "ended: last frame"
 # the reader's next step, as the README's: Claude Code is told, Codex asked; 78 columns, so whole at 80
 NEXT = "the end · graphene init, then tell Claude Code what you want (or graphene ask)"
+AUTO_NEXT = "the end · graphene init, then graphene auto 'what you want' (--plan to look)"  # 76: whole at 80
 REFUSED = "a replay: nothing runs here"
 LIVE, STAND_IN = "as it ran, live", "a scripted stand-in, no model ran"  # what the top line says made it
 NO_CALLS = "a run with no model calls on record"
@@ -264,6 +265,13 @@ def repository(tmp: Path, head: dict) -> Path:
     return repo
 
 
+def next_step(lines: list[dict]) -> str:
+    """The reader's next step at a replay's end: `graphene auto` after a run auto mode made (its `auto` rows),
+    else init and an ask."""
+    auto = any(r.get("kind") == "auto" for line in lines for r in line.get("node_log") or [])
+    return AUTO_NEXT if auto else NEXT
+
+
 def apply(store: Store, line: dict, repo: Path) -> None:
     """One recorded change, applied to the replay's store and to its executors' outputs, with the
     repository's path put back as the replay's own."""
@@ -440,7 +448,7 @@ class Replay(Watch):
     def said_lines(self, room: int) -> list:
         """At the end, the reader's next step on a line of its own, above what the last change was."""
         said = super().said_lines(room)
-        return [fit([(NEXT, "")], room), *said] if self.next == len(self.lines) else said
+        return [fit([(next_step(self.lines), "")], room), *said] if self.next == len(self.lines) else said
 
     def refuse(self, *_, **__) -> None:
         self.message = REFUSED

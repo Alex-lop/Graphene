@@ -776,7 +776,7 @@ def register(cli: typer.Typer, root, open_store, fail):
             out(D.fit(D.banner(head, D.ENDED), wide).plain)  # whole pieces, as the screen's top line
             with contextlib.chdir(repo):  # printed as `graphene watch --once` prints it, in the replay's repo
                 print_once(P.caller(), everything=False, archive=False, recent_as=D.ENDING, wide=wide)
-            out(D.fit([(D.NEXT, "")], wide).plain)  # cut at the width, as every row above it
+            out(D.fit([(D.next_step(lines), "")], wide).plain)  # cut at the width, as every row above it
 
     @plan_cli.command(hidden=True)
     def propose(

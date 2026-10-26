@@ -139,7 +139,7 @@ class CockpitReplay(Cockpit):
         if said:  # what changed, in the news; bookkeeping says nothing, and the last news stays up
             self.model.say(said)
         if ended:  # then the reader's next step: at 80 columns the head has no room for "ended"
-            self.model.say(D.NEXT)
+            self.model.say(D.next_step(self.lines))
         self.paint()
 
     def action_help(self) -> None:
