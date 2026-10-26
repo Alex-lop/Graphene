@@ -19,7 +19,7 @@ import re
 import sys
 import time
 from bisect import bisect_left
-from contextlib import contextmanager, suppress
+from contextlib import contextmanager, nullcontext, suppress
 from dataclasses import dataclass, field
 from functools import lru_cache, partial
 from pathlib import Path
@@ -590,6 +590,30 @@ def _git(checkout: str | Path, *args: str) -> str:
     return out.stdout
 
 
+@contextmanager
+def worktree_lock(checkout: str | Path):
+    """Held around each `git worktree` add, remove and prune Graphene runs, so that one runs at a time in a
+    repository, across threads and processes alike (flock on a file in its git dir, let go as it closes).
+    Git reads every worktree's record under .git/worktrees in each of them: a remove died on the one an
+    add was still writing (`failed to read .git/worktrees/tree3/commondir`), and an add died when the
+    last removal took that directory from under it (`Invalid path`). A fork race checks its forks at
+    once: on CI a passing fork was refused, and a check's worktree stayed registered."""
+    import fcntl
+    import subprocess
+
+    common = subprocess.run(
+        ["git", "-C", str(checkout), "rev-parse", "--git-common-dir"], capture_output=True, text=True
+    ).stdout.strip()
+    try:
+        held = open(Path(checkout, common or ".git", "graphene-worktrees.lock"), "w")
+    except OSError:  # no git dir to hold it in: the command itself says what is wrong
+        held = None
+    with held or nullcontext():
+        if held:
+            fcntl.flock(held, fcntl.LOCK_EX)
+        yield
+
+
 def head(checkout: str | Path) -> str | None:
     import subprocess
 
@@ -856,7 +880,9 @@ def _clean_tree(
     common, had = git("rev-parse", "--git-common-dir", "--git-path", "index").splitlines()
     trees = Path(checkout, common).parent / ".graphene" / "worktrees"
     trees.mkdir(parents=True, exist_ok=True)
-    tmp = Path(tempfile.mkdtemp(prefix=".check-", dir=trees))
+    # its real path, as git records it: the removal below names it once the directory is gone, when no
+    # other spelling is found (a Mac's /var is /private/var, and every check's record stayed)
+    tmp = Path(tempfile.mkdtemp(prefix=".check-", dir=trees)).resolve()
     tree, index = tmp / "tree", tmp / "index"
     try:
         # a copy of the checkout's index, so what git tracks is taken as git has it (a tracked file an
@@ -876,12 +902,13 @@ def _clean_tree(
         commit = git(*nobody, "commit-tree", state, *(("-p", base) if base else ()), "-m", "check")
         # ponytail: a whole checkout per check, a sparse checkout's included, which grows with the
         # repository; a kept worktree moved to each commit (`git checkout --detach`) if a large one needs it
-        git("worktree", "add", "--quiet", "--detach", str(tree), commit.strip())
+        with worktree_lock(checkout):
+            git("worktree", "add", "--quiet", "--detach", str(tree), commit.strip())
         yield tree
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
         # then git's record of it; twice forced: a worktree whose making was stopped is locked
-        with suppress(OSError, subprocess.TimeoutExpired):
+        with suppress(OSError, subprocess.TimeoutExpired), worktree_lock(checkout):
             subprocess.run(
                 ["git", "-C", str(checkout), "worktree", "remove", "--force", "--force", str(tree)],
                 capture_output=True,

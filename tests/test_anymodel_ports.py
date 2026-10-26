@@ -96,14 +96,23 @@ def test_forks_get_different_ports_and_each_forks_check_sees_its_own(repo):
     assert (repo / "api.py").read_text() == f"{ports[kept]}\n"  # the kept fork's work landed under its port
 
 
-def test_ports_skip_one_something_holds_and_come_back_when_a_leaf_ends():
+def test_ports_skip_one_something_holds_and_come_back_when_a_leaf_ends(monkeypatch):
+    """What the machine holds is the test's to say: on a CI box the other workers' runs bind-test 41000
+    too, and an outgoing connection can sit on it (Linux hands out 32768-60999), so v0.8.0's release run
+    once got 41001 for `take(0)`."""
+    held = {PORT_BASE + 20}
+    monkeypatch.setattr(R, "_free", lambda port: port not in held)
     ports = Ports()
-    with socket.socket() as s:
-        s.bind(("", PORT_BASE + 20))
-        assert ports.take(2, 2) == [PORT_BASE + 21, PORT_BASE + 22]
+    assert ports.take(2, 2) == [PORT_BASE + 21, PORT_BASE + 22]
     assert ports.take(0) == [PORT_BASE] and ports.take(0) == [PORT_BASE + 1]  # taken here: the next
     ports.give_back([PORT_BASE])
     assert ports.take(0) == [PORT_BASE]
+
+
+def test_a_port_something_binds_is_not_free():
+    with socket.socket() as s:
+        s.bind(("", 0))  # one the system picks, so no other test's run holds it
+        assert not R._free(s.getsockname()[1])
 
 
 def test_the_prompt_says_the_port_only_when_the_run_gave_one():
