@@ -74,6 +74,9 @@ def test_config_set_changes_one_setting_keeps_the_rest_and_is_the_persons(repo):
     assert person("config", "set", "auto", "on").stdout == "nothing changed\n"
     bad = person("config", "set", "colour", "blue")
     assert bad.exit_code == 1 and "'colour: blue' is not a setting" in bad.output
+    lots = person("config", "set", "budget", "lots")  # no "line 7:": the person named a setting, not a line
+    assert lots.exit_code == 1, lots.output
+    assert lots.output.strip().startswith("budget is dollars, such as 2 or 0.50"), lots.output
     no = agent("config", "set", "auto", "on")
     assert no.exit_code == 1 and "changing Graphene's settings is the person's to do" in no.output
     with Store.open(repo) as store:

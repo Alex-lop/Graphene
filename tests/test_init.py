@@ -282,7 +282,7 @@ def test_without_a_terminal_none_or_several_found_leave_the_choice_unset_and_say
     assert [line for line in said.output.splitlines() if "not chosen:" in line] == [
         "the planner and the executor are not chosen: Claude Code and Nemotron on Token Factory are found "
         "here; `graphene init` at a terminal asks, or --planner and --executor name one, and until then "
-        "`run` and `ask` refuse"
+        "`run`, `ask` and `auto` refuse"
     ]
     assert "planner: not chosen · executor: not chosen" in said.output
     assert "each Claude Code session here is recorded" in said.output  # none chosen: the person's own
@@ -306,7 +306,8 @@ def test_inits_first_screen_is_in_the_persons_words_and_its_next_step_fits_what_
     said = person("init")
     assert said.exit_code == 0, said.output
     [then] = [line for line in said.output.splitlines() if line.startswith("next:")]
-    assert then == "next: install claude or codex, then `graphene init` again; `graphene ask` after that"
+    assert then == ("next: install claude or codex, or set a Token Factory key (`graphene key set`), then "
+                    "`graphene init` again; `graphene auto '<what you want>'` after that")
     on_path("claude", "codex")  # two found, none chosen: the next step is to name one, not to install
     [then] = [line for line in person("init").output.splitlines() if line.startswith("next:")]
     assert then.startswith("next: `graphene init --planner claude --executor claude` chooses them; ") and (

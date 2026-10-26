@@ -362,7 +362,7 @@ def build():
                 who = " and ".join(f"the {k}" for k in missing)
                 say(f"{who} {'are' if missing[1:] else 'is'} not chosen: {why}; "
                     "`graphene init` at a terminal asks, or --planner and --executor name one, and until "
-                    "then `run` and `ask` refuse")  # fmt: skip
+                    "then `run`, `ask` and `auto` refuse")  # fmt: skip
             given = {**{k: one[k] for k in missing if one}, **given, **plain_ones}
         if unreached and not key and named:  # chosen: what it needs, once
             say(unreached)
@@ -469,10 +469,11 @@ def build():
                 say(f"this Claude Code has no {flag}: `claude update` first")
         found = [w for w in ("claude", "codex") if shutil.which(w)]
         if "not chosen" in chosen and not found:  # `ask` and `run` refuse until then, as the line above said
-            say("next: install claude or codex, then `graphene init` again; `graphene ask` after that")
+            say("next: install claude or codex, or set a Token Factory key (`graphene key set`), then "
+                "`graphene init` again; `graphene auto '<what you want>'` after that")  # fmt: skip
         elif "not chosen" in chosen:  # more than one found: the line above named them, so name the command
             say(f"next: `graphene init --planner {found[0]} --executor {found[0]}` chooses them; "
-                "`graphene ask` after that")  # fmt: skip
+                "`graphene auto '<what you want>'` after that")  # fmt: skip
         else:
             say("next: `graphene auto '<what you want>'` plans it, runs it and checks it inside your "
                 "envelope (`--plan` to look first), or `graphene ask '<what you want>'` proposes a plan you "

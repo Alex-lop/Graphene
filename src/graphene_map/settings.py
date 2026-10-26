@@ -144,7 +144,10 @@ def set_some(store, who: P.Caller, files: list[str] | None = None, **values: str
     lines = [line for line in render(store).splitlines() if line and not line.startswith("#")]
     kept = [line for line in lines if line.partition(":")[0].strip() not in values]
     new = [f"{key}: {value}" for key, value in values.items() if str(value).strip()]
-    return apply(store, "\n".join([*kept, *new]) + "\n", who, None, files)
+    try:
+        return apply(store, "\n".join([*kept, *new]) + "\n", who, None, files)
+    except P.Refused as no:  # its line number is of a text the person never saw: they named the setting
+        raise P.Refused(re.sub(r"^line \d+: ", "", str(no))) from None
 
 
 def conditions_for_planner(store) -> str:

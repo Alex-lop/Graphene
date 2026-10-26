@@ -241,7 +241,7 @@ def test_before_init_plain_graphene_names_init_and_init_names_the_next_step(repo
     assert said.startswith("nothing is planned here yet") and "`graphene init`: it chooses who plans" in said
     done = run("init")
     assert done.exit_code == 0, done.output
-    assert "next: install claude or codex, then `graphene init` again" in done.output  # nothing is chosen
+    assert "next: install claude or codex, or set a Token Factory key" in done.output  # nothing is chosen
     again = run()
     assert "graphene init" not in again.output and "nothing is planned here yet" in again.output
 
