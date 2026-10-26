@@ -15,7 +15,8 @@
     "forks": 1,
     "review": "off",
     "protected": [],
-    "readonly": []
+    "readonly": [],
+    "checks": []
   },
   "auto": {
     "round": 1,
@@ -73,7 +74,7 @@
       "needs": [],
       "check": "grep -q ids api.py",
       "agent": "1",
-      "model": "",
+      "model": "repo-forks",
       "usd": 0.0,
       "idle": null,
       "needs_you": false,
@@ -91,7 +92,7 @@
           "state": "refused",
           "why": "ids is not done: `grep -q ids api.py` failed",
           "lines": 2,
-          "model": "",
+          "model": "repo-forks",
           "usd": 0.0
         },
         {
@@ -99,7 +100,7 @@
           "state": "passed",
           "why": "",
           "lines": 2,
-          "model": "",
+          "model": "repo-forks",
           "usd": 0.0
         },
         {
@@ -107,7 +108,7 @@
           "state": "passed",
           "why": "",
           "lines": 11,
-          "model": "",
+          "model": "repo-forks",
           "usd": 0.0
         }
       ],
@@ -311,11 +312,11 @@
     ]
   ],
   "news": [
-    "greeting's words: running pytest -q",
     "greeting's words: stopped writing app.py",
     "farewell says goodbye started",
     "farewell says goodbye came back: bye.py imports the schema, which no leaf makes",
     "asks: formal or casual greeting?",
-    "proposed: release notes"
+    "proposed: release notes",
+    "auto \u00b7 round 1 of 3: running"
   ]
 }

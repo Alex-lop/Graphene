@@ -69,6 +69,7 @@ export interface Envelope {
   review: string;
   protected: string[];
   readonly: string[];
+  checks: string[];
 }
 
 export interface Auto {
@@ -164,7 +165,7 @@ export function parseState(text: string): State {
     envelope: {
       auto: str(env.auto, "off"), budget: num(env.budget), tasks: num(env.tasks), rounds: num(env.rounds),
       forks: num(env.forks), review: str(env.review, "off"), protected: strs(env.protected),
-      readonly: strs(env.readonly),
+      readonly: strs(env.readonly), checks: strs(env.checks),
     },
     auto: auto && Object.keys(auto).length
       ? { round: num(auto.round), rounds: num(auto.rounds), stage: str(auto.stage), spent: num(auto.spent),

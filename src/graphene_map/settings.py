@@ -37,6 +37,7 @@ HEAD = """\
 # budget: dollars the runs Graphene starts on its own may spend while auto is on (unset: no cap)
 # tasks: how many tasks the envelope may accept for you, all told, since auto went on (unset: 12)
 # rounds: fix rounds `graphene auto` takes after the goal's check fails (unset: 2)
+# checks: the commands the envelope runs as a task's check, comma-separated (unset: any one plain command)
 """
 
 
@@ -58,6 +59,12 @@ def readonly(store) -> list[str]:
 
 def never(store) -> list[str]:
     return _list(store, "never")
+
+
+def checks(store) -> list[str]:
+    """The commands the envelope runs as a task's check without the person (`checks:`), as they were typed;
+    empty: any one plain command (``auto.runs_as_check``)."""
+    return _list(store, "checks")
 
 
 def size(store) -> str:
@@ -201,6 +208,7 @@ def render(store) -> str:
            *elsewhere(store), ""]  # fmt: skip
     out += [f"{key}: {', '.join(_list(store, key))}" for key in GLOBS if _list(store, key)]
     out += [f"never: {n}" for n in never(store)]
+    out += [f"checks: {', '.join(checks(store))}"] if checks(store) else []
     out.append(f"auto: {auto(store)}")  # the envelope: its numbers only once said, as its readers default
     out += [f"{key}: {store.meta(f'settings:{key}')}" for key in NUMBERS if store.meta(f"settings:{key}")]
     out.append(f"notify: {notify(store)}")
@@ -242,7 +250,7 @@ def apply(
     the save is refused, never written over theirs. ``files``: what git tracks, so a glob that differs
     from a path only in case is refused, as a scope is. Returns the text as stored."""
     P._person_only(who, "changing Graphene's settings")
-    got: dict[str, list[str]] = {"protected": [], "readonly": [], "never": []}
+    got: dict[str, list[str]] = {"protected": [], "readonly": [], "never": [], "checks": []}
     said: dict[str, tuple[int, str]] = {}  # a one-value key: (its line, its value)
     for no, line in enumerate(text.splitlines(), 1):
         body = line.strip()
@@ -253,7 +261,7 @@ def apply(
         if not colon or key not in (*got, *SCALARS, *NUMBERS):
             raise P.Refused(
                 f"line {no}: {body[:40]!r} is not a setting; the keys are protected, readonly, never, size, "
-                "board, review, notify, forks, auto, budget, tasks, rounds"
+                "board, review, notify, forks, auto, budget, tasks, rounds, checks"
             )
         if key in SCALARS or key in NUMBERS:
             if key in SCALARS and value not in SCALARS[key]:
@@ -268,6 +276,11 @@ def apply(
             if not value:
                 raise P.Refused(f"line {no}: never: needs what the planner must never propose")
             got["never"].append(value)
+        elif key == "checks":
+            commands = [c.strip() for c in value.split(",")]
+            if not all(commands):
+                raise P.Refused(f"line {no}: checks: needs commands, comma-separated, none empty")
+            got["checks"] += [c for c in commands if c not in got["checks"]]
         else:
             globs = [g.strip() for g in value.split(",")]
             if not all(globs):

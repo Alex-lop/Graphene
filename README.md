@@ -45,8 +45,8 @@ graphene auto "add a --top N option to the CLI, with tests" --budget 2 --forks 3
 ```
 
 1. **You set the envelope, once.** `--budget` in dollars, `--tasks`, fix `--rounds`, `--forks`, and in `graphene
-   config` the files no task may touch. Inside it Graphene accepts the plan for you; anything outside it waits for
-   you, with the one reason why. Only you can set it: Graphene refuses it from an agent, and it never takes a task
+   config` the files no task may touch and the test commands it may run as checks. Inside it Graphene accepts the
+   plan for you; anything outside it waits for you, with the one reason why. Only you can set it: Graphene refuses it from an agent, and it never takes a task
    that could reach the agents' own settings and hooks.
 2. **Nemotron 3 Ultra plans** small tasks, each naming the files it may change and a check, a command that passes
    only when the task is done. It is told to plan wide: tasks that run at once share no file, each its own test file.

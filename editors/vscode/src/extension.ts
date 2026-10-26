@@ -203,13 +203,17 @@ export function activate(context: vscode.ExtensionContext) {
       { key: "tasks", label: "Tasks", description: now(e?.tasks, "12"), detail: "how many tasks the envelope may accept for you, all told" },
       { key: "rounds", label: "Rounds", description: now(e?.rounds, "2"), detail: "fix rounds after the goal's check fails" },
       { key: "forks", label: "Forks", description: now(e?.forks, "1"), detail: "agents at once on every task; its check keeps one" },
+      { key: "checks", label: "Checks", description: e?.checks?.length ? e.checks.join(", ") : "any one plain command",
+        detail: "the commands the envelope runs as a task's check, comma-separated" },
     ];
     const chosen = await vscode.window.showQuickPick(items, { placeHolder: "the envelope: what Graphene may do without asking you" });
     if (!chosen) return;
     const value = chosen.key === "auto"
       ? (await vscode.window.showQuickPick(["on", "off"], { placeHolder: "auto" }))
-      : await vscode.window.showInputBox({ prompt: `${chosen.label}: ${chosen.detail}`, value: chosen.description.replace(/^\$/, "").replace("unset", ""),
-                                           ignoreFocusOut: true, validateInput: (v) => (Number(v) >= 0 && v.trim() ? undefined : "a number") });
+      : await vscode.window.showInputBox({ prompt: `${chosen.label}: ${chosen.detail}`,
+                                           value: chosen.key === "checks" ? (e?.checks ?? []).join(", ") : chosen.description.replace(/^\$/, "").replace("unset", ""),
+                                           ignoreFocusOut: true,
+                                           validateInput: (v) => (chosen.key === "checks" || (Number(v) >= 0 && v.trim()) ? undefined : "a number") });
     if (value === undefined || !value.trim()) return;
     await session.act(C.setting(chosen.key, value.trim()));
   });

@@ -100,7 +100,7 @@ def test_an_empty_plan_in_a_repo_set_up_is_a_snapshot_with_no_tasks(repo):
     assert s["cursor"] == 0 and s["spent"] == 0.0 and s["width"] == 0 and s["auto"] is None
     assert s["run"] == {"going": False, "pid": None} and s["repo"] == str(repo)
     assert s["envelope"] == {"auto": "off", "budget": None, "tasks": None, "rounds": 2, "forks": 1,
-                             "review": "off", "protected": [], "readonly": []}  # fmt: skip
+                             "review": "off", "protected": [], "readonly": [], "checks": []}  # fmt: skip
 
 
 def test_proposals_questions_sub_goals_and_edges_read_as_the_cockpit_reads_them(repo):

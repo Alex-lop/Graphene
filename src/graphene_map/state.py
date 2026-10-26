@@ -134,6 +134,7 @@ def snapshot(store, root: Path, now: float | None = None) -> dict:
             "review": S.review(store),
             "protected": S.protected(store),
             "readonly": S.readonly(store),
+            "checks": S.checks(store),
         },
         "auto": auto.state(store),
         "run": {"going": pid is not None, "pid": pid},

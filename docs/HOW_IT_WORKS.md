@@ -355,6 +355,7 @@ reads no transcript.
 | `budget: DOLLARS` | What every run may spend while `auto` is on, `graphene auto`'s, an agent's own `graphene run` and `R` alike |
 | `tasks: N` | How many tasks the envelope may accept for you, all told, since `auto` went on (12 unset) |
 | `rounds: N` | Fix rounds `graphene auto` takes after the goal's check fails (2 unset) |
+| `checks: COMMAND, …` | The commands the envelope runs as a task's check without you; unset, any one plain command (no `;`, `&&`, `\|`, redirect or `$(…)`) |
 
 `graphene config` also names the planner, the executor and plan first.
 

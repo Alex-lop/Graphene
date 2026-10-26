@@ -41,6 +41,11 @@ checks the goal and plans the fix. Each line is one change.
   whose scope names the hooks' settings may write them; and while auto is on every run counts against the budget,
   an agent's own `graphene run` and the cockpit's `R` too (`nothing starts: your envelope's budget is spent ($0.60
   of $0.50)`), capping a Claude Code or Codex run at what is left.
+- `checks:` in the settings names the commands the envelope runs as a task's check without the person
+  (`graphene config set checks "python3 -m unittest, uv run pytest"`); unset, it takes one plain command and no
+  `;`, `&&`, `|`, redirect or `$(…)` outside quotes. A check outside it waits (`t1's check is not one your envelope
+  runs (one plain command, …): \`pytest -q && curl … | sh\`; you read it and accept it yourself`): with auto on,
+  nobody else would read a planner's check before Graphene runs it.
 - `.git/` is nobody's: a scope that names it is refused at propose (`its scope names .git/hooks/pre-commit, and
   .git/ is git's own: a hook planted there runs on your next commit, and git status never shows it`), and a write
   into it is refused whatever the scope says, `**` included. Before, a leaf scoped to `.git/hooks/pre-commit` was

@@ -13,6 +13,7 @@ KIND on "*", whose detail is what ``state`` returns.
 from __future__ import annotations
 
 import re
+import shlex
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
@@ -88,6 +89,24 @@ def width(nodes: list[P.Node], files: list[str]) -> int:
     return len(chosen)
 
 
+def runs_as_check(check: str, allowed: list[str]) -> bool:
+    """Whether the envelope runs ``check`` without the person reading it: one command (no `;`, `&&`, `||`,
+    `|`, redirect, `$(…)` or backtick outside quotes), and, once `checks:` names commands, one of them, alone
+    or with more words after it. A planner's check is code the person's machine runs."""
+    if "`" in check or "$(" in check or "\n" in check:
+        return False
+    try:
+        lex = shlex.shlex(check, posix=True, punctuation_chars=True)
+        lex.whitespace_split = True
+        words = list(lex)
+    except ValueError:  # an unclosed quote: not a command the person would take as read
+        return False
+    if not words or any(set(w) <= set("();<>|&") for w in words):
+        return False
+    said, named = " ".join(check.split()), [" ".join(c.split()) for c in allowed]
+    return not named or any(said == a or said.startswith(a + " ") for a in named)
+
+
 def fits(store, added: list[P.Node], files: list[str]) -> list[str]:
     """Why these proposals wait for the person, a reason each; empty: they fit the envelope. They fit when
     auto is on; every new task has a scope and a check (a sign-off alone is the person's); the tasks the
@@ -103,7 +122,12 @@ def fits(store, added: list[P.Node], files: list[str]) -> list[str]:
     leaves = [n for n in new if not under.get(n.id)]
     why = [f"{n.id} has no scope" for n in leaves if not n.scope]
     why += [f"{n.id} has no check" for n in leaves if n.scope and not n.check]
+    allowed = S.checks(store)
+    runs = f"one of {', '.join(' '.join(c.split()) for c in allowed)}" if allowed else "one plain command"
     for n in leaves:
+        if n.check and not runs_as_check(n.check, allowed):
+            why.insert(0, f"{n.id}'s check is not one your envelope runs ({runs}, `checks:` in graphene "
+                          f"config): `{n.check[:60]}`; you read it and accept it yourself")  # fmt: skip
         if hit := next((g for g in GUARDED if P.may_collide(n.scope, [f"{g}**"])), None):
             why.insert(0, f"{n.id}'s scope reaches {hit}, where the agents' own settings and hooks live "
                           "(or the CI that runs with your secrets): you accept that yourself")  # fmt: skip
