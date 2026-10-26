@@ -28,7 +28,10 @@ from .look import who
 from .model import Model
 
 RUN_WITH = ["--parallel", "4"]  # ready leaves at once, a worktree each, landed here as they pass
-SLOW = (["run"], ["ask"], ["talk"], ["node", "split"], ["node", "done"], ["node", "signoff"])  # minutes long
+SLOW = (["run"], ["ask"], ["talk"], ["auto"], ["node", "split"], ["node", "done"],
+        ["node", "signoff"])  # minutes long
+# `graphene auto`'s own flags: what comes before the first of them is the goal, `--top` in it or not
+AUTO_FLAGS = re.compile(r"\s--(?:budget|tasks|rounds|forks|parallel|check|planner|with|attempts|plan)\b")
 
 
 def gist(argv: list[str], code: int, said: str) -> str:
@@ -277,6 +280,21 @@ class Doer:
             return
         if re.match(r"ask\s", words):  # a sentence, not shell words: apostrophes are the person's
             self.background(["ask", words[3:].strip()])
+            return
+        if re.match(r"auto(\s|$)", words):  # a goal as a sentence, then auto's own flags as shell words
+            rest = words[4:].strip()
+            if rest[:1] in ("'", '"'):  # quoted: the shell's words, the goal first
+                try:
+                    self.background(["auto", *shlex.split(rest)])
+                except ValueError as no:
+                    self.say(f"✗ {no}")
+                return
+            at = AUTO_FLAGS.search(" " + rest)
+            goal, flags = (rest, "") if at is None else (rest[: at.start()].strip(), rest[at.start():])
+            try:
+                self.background(["auto", *([goal] if goal else []), *shlex.split(flags)])
+            except ValueError as no:
+                self.say(f"✗ {no}")
             return
         try:
             argv = shlex.split(words)

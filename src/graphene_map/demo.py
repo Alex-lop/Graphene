@@ -57,9 +57,11 @@ from .tui import Pane, Watch, fit, help_groups
 
 SHIPPED = Path(__file__).with_name("demo.jsonl")
 LIVE_TAKE = Path(__file__).with_name("demo-live.jsonl")  # tests/recordings/loop-nemotron-take-2.jsonl
+AUTO_TAKE = Path(__file__).with_name("demo-auto.jsonl")  # tests/test_demo_auto.py, a scripted stand-in
 ENDED = "ended: last frame"
 # the reader's next step, as the README's: Claude Code is told, Codex asked; 78 columns, so whole at 80
 NEXT = "the end · graphene init, then tell Claude Code what you want (or graphene ask)"
+AUTO_NEXT = "the end · graphene init, then graphene auto 'what you want' (--plan to look)"  # 76: whole at 80
 REFUSED = "a replay: nothing runs here"
 LIVE, STAND_IN = "as it ran, live", "a scripted stand-in, no model ran"  # what the top line says made it
 NO_CALLS = "a run with no model calls on record"
@@ -77,7 +79,8 @@ WORK = ("j ", "gg", "Enter", "l ", "za", "Tab", "? ", "q ", "ctrl-d", "Esc", "/"
 # the plan_meta keys the screen reads: the board's and the person's standing settings included
 META = ("goal", "goal:proposed", "goal:proposed:by", "planner", "executor", "plan_first", "paused", "board",
         "settings:protected", "settings:readonly", "settings:never", "settings:size",
-        "settings:board", "settings:review")  # read  # fmt: skip
+        "settings:board", "settings:review",
+        "settings:auto", "settings:budget", "settings:tasks", "settings:rounds")  # the envelope  # fmt: skip
 KEY, WORD, BASE64, REMOVED = P.SHAPED, P.WORD, P.BASE64, P.REMOVED  # shaped like a key: see there
 DASHED = re.compile(r"[^A-Za-z0-9]")  # what Claude Code dashes in a path it names a folder after
 
@@ -149,7 +152,7 @@ def record(root: Path, out: Path, every: float = EVERY) -> int:
     for sig in (signal.SIGINT, signal.SIGTERM):
         signal.signal(sig, lambda *_: stop.set())
     tf = extra.load("tokenfactory")  # this terminal's view; the replay decides from the run's usage rows
-    stand_in = bool(tf) and tf.base() != tf.BASE
+    stand_in = bool(tf) and tf.endpoint() == "a stand-in"
     head = {"graphene demo": 1, "recorded": P._now(), "graphene": __version__, "repository": root.name,
             "stand_in": stand_in, "shown": STAND_IN if stand_in else LIVE}  # fmt: skip
     db, runs, began = root / ".graphene" / "graphene.db", root / ".graphene" / "runs", time.monotonic()
@@ -260,6 +263,13 @@ def repository(tmp: Path, head: dict) -> Path:
     repo.mkdir()
     subprocess.run(["git", "init", "-q", str(repo)], check=True, capture_output=True)
     return repo
+
+
+def next_step(lines: list[dict]) -> str:
+    """The reader's next step at a replay's end: `graphene auto` after a run auto mode made (its `auto` rows),
+    else init and an ask."""
+    auto = any(r.get("kind") == "auto" for line in lines for r in line.get("node_log") or [])
+    return AUTO_NEXT if auto else NEXT
 
 
 def apply(store: Store, line: dict, repo: Path) -> None:
@@ -438,7 +448,7 @@ class Replay(Watch):
     def said_lines(self, room: int) -> list:
         """At the end, the reader's next step on a line of its own, above what the last change was."""
         said = super().said_lines(room)
-        return [fit([(NEXT, "")], room), *said] if self.next == len(self.lines) else said
+        return [fit([(next_step(self.lines), "")], room), *said] if self.next == len(self.lines) else said
 
     def refuse(self, *_, **__) -> None:
         self.message = REFUSED

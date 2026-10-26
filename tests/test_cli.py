@@ -84,7 +84,7 @@ def test_version_and_help_read_as_a_product():
     text = run("--help").output
     listed = [line.split()[1] for line in text.splitlines() if line.startswith("│ ") and line[2] != " "]
     commands = [name for name in listed if not name.startswith("-")]
-    assert commands == ["init", "ask", "watch", "run", "plan", "node", "board", "demo", "config"]
+    assert commands == ["init", "ask", "watch", "run", "auto", "plan", "node", "board", "demo", "config"]
     assert "ingest" not in text and "talk" not in text  # hidden: they work, and the help leaves them out
     assert "graphene node show" in text  # what was done for one node is where the record lives now
 
@@ -241,7 +241,7 @@ def test_before_init_plain_graphene_names_init_and_init_names_the_next_step(repo
     assert said.startswith("nothing is planned here yet") and "`graphene init`: it chooses who plans" in said
     done = run("init")
     assert done.exit_code == 0, done.output
-    assert "next: install claude or codex, then `graphene init` again" in done.output  # nothing is chosen
+    assert "next: install claude or codex, or set a Token Factory key" in done.output  # nothing is chosen
     again = run()
     assert "graphene init" not in again.output and "nothing is planned here yet" in again.output
 

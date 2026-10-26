@@ -40,14 +40,14 @@ def test_init_writes_each_default_and_keeps_what_is_set(repo):
 def test_a_key_in_the_keychain_is_found(repo, fake, on_path, monkeypatch):
     on_path()
     monkeypatch.delenv("NEBIUS_API_KEY")
-    monkeypatch.setattr(keys, "find", lambda: "fake-key")  # the keychain's, not the environment's
+    monkeypatch.setattr(keys, "find", lambda *_a, **_k: "fake-key")  # the keychain's, not the environment's
     assert person("init").exit_code == 0
     assert chosen(repo) == NEMOTRON
 
 
 def test_a_key_in_the_keychain_that_is_not_reached_is_said(repo, on_path, monkeypatch):
     on_path("claude")
-    monkeypatch.setattr(keys, "find", lambda: "a-key")
+    monkeypatch.setattr(keys, "find", lambda *_a, **_k: "a-key")
     monkeypatch.setenv("GRAPHENE_TOKENFACTORY_URL", "http://127.0.0.1:9/v1/")  # nothing listens there
     monkeypatch.setattr(tf, "_sleep", lambda s: pytest.fail("init waited to try Token Factory again"))
     tf._listed.cache_clear()

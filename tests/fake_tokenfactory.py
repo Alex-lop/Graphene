@@ -41,9 +41,10 @@ def call(name: str, **arguments) -> dict:
 
 
 class Fake:
-    def __init__(self, replies=(), models=MODELS):
+    def __init__(self, replies=(), models=MODELS, key="fake-key"):
         self.replies = list(replies)
         self.models = models
+        self.key = key  # the key it wants in the header; None: it asks for none, as Ollama or a local vLLM
         self.requests: list[dict] = []
         self.lock = threading.Lock()
 
@@ -70,8 +71,11 @@ class Fake:
                 self.end_headers()
                 self.wfile.write(data)
 
+            def _keyed(self) -> bool:
+                return fake.key is None or self.headers.get("Authorization", "") == f"Bearer {fake.key}"
+
             def do_GET(self):
-                if self.headers.get("Authorization", "") != "Bearer fake-key":
+                if not self._keyed():
                     return self._send(401, {"detail": "Couldn't authenticate. Reason: token is not present"})
                 if self.path.startswith("/v1/models"):
                     return self._send(200, {"object": "list", "data": fake.models})
@@ -79,7 +83,7 @@ class Fake:
 
             def do_POST(self):
                 body = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)) or b"{}")
-                if self.headers.get("Authorization", "") != "Bearer fake-key":
+                if not self._keyed():
                     return self._send(401, {"detail": "Couldn't authenticate. Reason: invalid token"})
                 with fake.lock:
                     fake.requests.append(body)

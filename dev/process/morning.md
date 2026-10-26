@@ -1,3 +1,133 @@
+# morning.md — 2026-10-26 — one goal in, tested commits out
+
+**Start here.** Everything is on the local branch `night/revamp` in your checkout: 49 commits as you past
+GitHub's `main` (499d0a3d, the forks merge your local `main` lacks), **nothing pushed**. The unfolded history
+(108 commits) is on `night/revamp-before-fold`. Then:
+1. `git switch night/revamp && uv run graphene demo --auto` (space pauses, `.` steps, `g` the graph, `q` leaves):
+   one goal; Nemotron's three tasks; nine agents at once; one stopped writing a file that isn't its task's; the
+   rule keeping one fork a task; your whole suite red after all three land; Ultra's fix; green.
+2. Read the new `README.md`: it is the product now.
+3. Try the extension: `cd editors/vscode && npm ci && npm run package`, then `code --install-extension
+   graphene-0.8.0.vsix`, and open a repo with a plan. VS Code's Welcome page has **Get started with Graphene**.
+
+**What the product is now.** You give Graphene a goal and an envelope once. Nemotron plans it as tasks that can run
+at once; agents race each task, each in its own copy and held to its own files; the task's check keeps one fork;
+then Graphene runs your goal's own check, and when it is red it plans the fix. In the terminal or in VS Code, with
+Nemotron, Claude Code, Codex or any model.
+- **Auto mode.** `graphene auto "<goal>" --budget 2 --forks 3 --check "…"` (`--plan` to look first). The envelope
+  is your settings (`auto`, `budget`, `tasks`, `rounds`, `checks`, beside `protected`, `forks`, `review`). While
+  auto is on, any agent's plan that fits is accepted at once, so three Claude Code sessions don't wait on you;
+  anything outside it waits for you with one reason. Every round is in `graphene plan log`.
+- **The race on screen.** Each agent's row names its model, each fork has its own line and dollars, and the auto
+  line sits on top. On the graph, `+` adds a step and `L` links or unlinks two tasks; `:auto <goal>` starts auto
+  mode from the cockpit.
+- **Graphene for VS Code** (`editors/vscode`). The plan as a graph, forks fanning out. Drag one task's dot onto
+  another to link them, and an × unlinks; add, edit, drop, accept, tell an agent. The Explorer marks each file
+  with the task that owns it, a running agent's file with its number. A Rounds view shows auto mode's iterations;
+  a notification comes when auto waits, fixes or is done. Auto…, Set Envelope…, Set Up This Folder, Stop while a
+  run goes, a walkthrough. Every click is a `graphene` command run as you.
+- **Any model.** `--endpoint nim|ollama|openai` runs Graphene's own Nemotron loop on NVIDIA's API catalog or any
+  OpenAI-compatible host; `{prompt_file}` is for any CLI agent; every task gets its own `PORT`.
+- **A stranger's first hour, walked.** After `graphene init`, an empty `graphene plan` and the cockpit lead
+  with `graphene auto`. `graphene plan` shows auto mode's round and why it waits. A missing key says
+  `graphene key set`. A full run reads right: "`graphene auto` runs them now", and no "you: 4 moves" in a
+  hands-off run.
+- **The docs.** The README is rewritten around this, your why kept word for word. Also updated: HACKATHON's Devpost
+  fields, the kit, claims, the CHANGELOG and release notes for 0.8.0, a three-minute video script
+  (`dev/launch/video-auto.md`), the GIF and the stills.
+
+**Found and fixed with no reviewer.** Five Fable lanes built the first half from 00:57. The Fable limit hit at
+01:50, before any review ran, and it still held at every probe after, the last at 06:15. Your rule keeps
+subagents on Fable, so I reviewed it myself. Each code fix below comes with a test; the earlier ones were run
+against the old code first and failed there:
+- An agent could spend your Token Factory key with no opening, by spelling its URL another way. This is older
+  than tonight.
+- The envelope would have accepted:
+  - a task that writes the hooks' settings, turning the gate off;
+  - a task that plants a git hook in `.git/hooks/` (also older than tonight);
+  - a planner's check run unread.
+  On a Mac's case-blind disk, `.GIT/` and `.CLAUDE/` got past the first fixes.
+- The budget held only `graphene auto`, not an agent's own `graphene run`.
+- Auto mode would land a task whose check passed before any work. Now that task waits for you.
+- In VS Code:
+  - a cloned folder's settings could choose the binary the extension runs;
+  - an agent's words rendered as Markdown in the hovers, so a remote image could load on hover;
+  - the packaged README's picture pointed at the wrong folder.
+- An unlink sent the rest of a task's needs from a snapshot up to 1.5 s old, so it could drop a link made since.
+  `--drop-needs` reads them in the same write.
+- `docs/COMPARE.md`'s new table came from one unchecked reading. I checked each row against the vendor's own
+  page and corrected Kiro's, which named a "conductor" its page doesn't.
+- The cockpit's `:auto <goal> --plan` ran the whole loop, because its list of auto's flags predated `--plan`. The
+  Rounds view merged a second goal's round 1 into the first goal's.
+- Six seam failures at the merge, and a stranger's first `graphene auto` named the wrong flag.
+
+**Verified.**
+- The whole suite on the final code, with `ruff check` clean (three doc edits came after it, and the doc tests
+  ran again on them):
+  - Python 3.13: 2,771 passed, 21 skipped;
+  - Python 3.14: 2,771 passed, 21 skipped;
+  - Python 3.12: 2,771 passed, 21 skipped.
+- `graphene demo --auto --once` from the built 0.8.0 wheel in an empty directory: no key, 0.4 s.
+- The extension:
+  - its types and 30 unit tests;
+  - the smoke test in VS Code 1.143.1 (it activates, every command is registered, the walkthrough opens);
+  - `npm run package` (11 files, 128 KB).
+- The drag, the unlink and Stop, tried in the preview page in Chromium.
+- The GIF and the stills, filmed again and looked at.
+
+**Not verified.**
+- A live auto run on any model:
+  - Token Factory needs your opening;
+  - Claude Code needs a model other than Fable;
+  - your Ollama can't start models, and the auto-mode classifier refused downloading a fresh one;
+  - Codex's sign-in expired.
+- The extension with a live run, and in Cursor.
+- GitHub CI on this branch.
+
+**Yours, in order**
+1. Watch the demo, read the README, try the extension. Flip any decision below.
+2. Push and open the PR, with the night's record as its body: `git push -u origin night/revamp && gh pr create
+   --title "Auto mode, the race on screen, Graphene for VS Code (0.8.0)" --body-file dev/process/revamp/README.md`.
+3. A live take.
+   - Free: install Ollama (ollama.com), run `ollama pull nemotron-3-nano:4b`, then `ENDPOINT=ollama
+     RECORD=$HOME/auto-live.jsonl dev/proof/auto.sh ~/graphene-auto`. A 4B Nano then plans as well as does the
+     work, so expect a weaker plan than Ultra's: the take proves the loop, not the best plan.
+   - On Token Factory: the same without `ENDPOINT`, with `NEBIUS_API_KEY` set. It spends on your key, $2 at most
+     by the envelope.
+   - `graphene demo ~/auto-live.jsonl` replays it. That take is the video's fourth beat, and it lets the README
+     drop its two lines saying auto mode has run only against the scripted stand-in.
+4. After the merge, release 0.8.0, so `uvx graphene-map demo --auto` works for a judge (PyPI still serves 0.6.0):
+   - `git switch main && git pull`, then date the CHANGELOG's `## 0.8.0 (unreleased)` heading as the day you tag
+     (RELEASING step 2), commit it and `git push origin main`;
+   - `git tag v0.8.0 && git push origin v0.8.0`;
+   - when the run is green, `(cd editors/vscode && npm ci && npm run package)`;
+   - then `gh release create v0.8.0 --title "Graphene 0.8.0" --notes-file dev/launch/release-notes.md
+     editors/vscode/graphene-0.8.0.vsix` (`docs/RELEASING.md` has the rest).
+   - The old `v0.7.0` tag (on 0316a7cd, which built 0.6.0) can go: `git push origin :refs/tags/v0.7.0`.
+5. GitHub's About text and topics still say Claude only. Add Nemotron, NVIDIA and Token Factory (two minutes).
+6. `dry-run/` in your checkout blocks every Graphene task there: `graphene plan ack`, or delete it.
+7. Housekeeping: run `codex login` (it expired). An old `graphene demo --record` from 9 October is still running
+   (pid 34346).
+
+**Decisions I made for you** (each is small to flip)
+1. The envelope is `graphene config`. With `auto: on` it accepts any agent's plan that fits, not only `graphene
+   auto`'s.
+2. It never accepts a task reaching `.claude/`, `.codex/`, `.cursor/`, `.gemini/` or `.github/workflows/`, in any
+   case.
+3. While auto is on, every run counts against the budget.
+4. With no `--check`, the goal's check is every task's check run together.
+5. In auto mode, a round waits for you when a task it can start has a check that passes before any work. A task
+   that waits on another isn't checked first. Under `graphene run` it stays a warning.
+6. `graphene auto` is visible: 10 top-level commands.
+7. `graphene demo` stays the older replay; the README leads with `--auto`.
+8. The version is 0.8.0, with 0.7.0 folded in.
+9. A VS Code click strips agent marks from `graphene`'s environment, because it is your click. `graphene.path` is
+   set in your own settings only, and the extension is off in an untrusted folder.
+10. The Explorer marks every live task's files, not only running ones.
+11. The history is folded to 49 commits: one for each lane, small neighbours together. The unfolded history
+    is on `night/revamp-before-fold`.
+12. No Token Factory spend and no subagent on another model, per your standing rules.
+
 # morning.md — 2026-10-20 — forks, the graph into the goal, a gate that fails closed
 
 **Watch first.** `git fetch origin && git switch night/best-of && uv run graphene demo` (space pauses, `.` steps):

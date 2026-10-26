@@ -24,9 +24,9 @@ what it cost at list price. They were practice and takes for the video; none was
   (`tests/fake_tokenfactory.py`) and a Docker stand-in for Sandboxes. The replay `graphene demo` ships is the
   stand-in's, and its top line says "a scripted stand-in, no model ran".
 
-<!-- For Alex: send this only once PyPI serves the cockpit (`uvx --refresh --from 'graphene-map==0.6.0' graphene
---version` says 0.6.0; without --refresh, uvx may answer from an environment it made before): the testing
-instructions at the end depend on it. -->
+<!-- For Alex: send this only once PyPI serves 0.8.0 (`uvx --refresh --from 'graphene-map==0.8.0' graphene
+--version` says 0.8.0; without --refresh, uvx may answer from an environment it made before): the testing
+instructions at the end, `demo --auto` first, depend on it. -->
 
 ## Inspiration
 
@@ -44,6 +44,18 @@ hand real work to a cheap model, stay the one who decides where it goes, and tru
 
 Graphene is the plan you and your coding agents share. You set the direction, they work inside it, and you can see
 every one of them while they do.
+
+**New on 26 October: one goal in, tested commits out.** `graphene auto "<goal>" --budget 2 --forks 3` hands the
+whole loop to Nemotron inside an envelope you set once (dollars, how many tasks, fix rounds, the files no task may
+touch). Nemotron 3 Ultra plans the goal as tasks that can run at once, each with its own files and its own test
+file; Graphene accepts what fits the envelope; three Nemotron 3 Nano agents race each task, each in its own
+worktree; a rule written before any fork ran keeps one by test evidence, never by a model's opinion; what passes
+lands. Then the goal's own check runs on the merged result, and when it is red Ultra plans the fix, for at most the
+rounds you allowed. Token Factory is what makes a race on every task affordable: the replay's whole run, two plans
+by Ultra and twelve Nano forks, cost $0.02 at the scripted stand-in's prices (`tests/test_demo_auto.py`), and
+`graphene demo --auto` replays it with no key. The same plan, forks racing, shows in VS Code (`editors/vscode`):
+drag one task's dot onto another to link them, the Explorer marks each file a running agent writes with its
+number, and every click is a `graphene` command run as you.
 
 **On NVIDIA Nemotron, through Nebius Token Factory: the path built for this hackathon.** `graphene init --planner
 nemotron --executor nemotron` reads Token Factory's live model list: Nemotron 3 Ultra plans, Nano does the tasks,
@@ -110,7 +122,7 @@ runs unless you run it, or set `GRAPHENE_SHAPE` to run them after each `graphene
 - **Nemotron's roles.** Ultra is the planner (`planner.py`): its tools (list, glob, grep, read) run on your machine
   and read only what git shows. Since prompt version 5 it answers in a strict JSON schema, and a check runs only
   its own task's files. Since prompt version 6, Ultra hears the faults of an answer together, one per node, at most
-  twice, and Graphene repairs what needs no judgement itself (`planner.py`, `PROMPT_VERSION`). Nano, then Super,
+  twice, and Graphene repairs what needs no judgement itself (`planner.py`, `PROMPT_VERSION`). Since prompt version 7, Ultra is told that tasks running at once share no file, each with its own test file, and `needs:` only where one uses another's work. Nano, then Super,
   is the executor (`executor.py`): Graphene's own loop asks for one tool call at a time (view, edit, write, run,
   done or release). The reasoning budget is each call's `max_tokens`, doubled up to 32,768 when a reply is cut
   off. Nemotron's `<TOOLCALL>` text and common tool-name spellings are read as the calls they mean.
@@ -137,6 +149,14 @@ runs unless you run it, or set `GRAPHENE_SHAPE` to run them after each `graphene
   `tests/test_cockpit_cost.py`). Every key is an ordinary `graphene` command, and the line under the rows says which
   one ran. Tasks run in parallel, each in a git worktree of its own, and are merged `--no-ff`. CI runs the suite on
   Linux and macOS, on Python 3.12, 3.13 and 3.14.
+- **Auto mode** (`auto.py`): the envelope is the person's settings, written only by them; a proposal that fits is
+  accepted as their stand-in, so `graphene plan undo` takes it back, and never one whose scope reaches the agents'
+  own settings and hooks; the goal's check is a root sub-goal's, run after its tasks land; each round is a row of
+  the plan's log, so the history is there the morning after (`tests/test_auto_run.py`, `tests/test_auto_nemotron.py`).
+- **The editor** is a thin client: Graphene for VS Code (`editors/vscode`, TypeScript, no runtime dependencies)
+  reads `graphene state --json`, the cockpit's own snapshot, and runs `graphene` commands for every change.
+- **Any OpenAI-compatible host**: the same Nemotron loop runs on NVIDIA's API catalog (NIM), Ollama or any other
+  host with `--endpoint`, the writes held the same way; only a host on your machine counts as a stand-in.
 - **Built the way it is meant to be used.** I set the direction and coding agents do much of the writing, in lanes,
   overnight; each night's plan, readers' reports and brief are in `dev/process/`. On 9 October two of those lanes
   were built through Graphene itself: five tasks, four agents at once, all five proven on their first attempt
@@ -157,6 +177,12 @@ runs unless you run it, or set `GRAPHENE_SHAPE` to run them after each `graphene
   (`dev/test/first-light.md`). Graphene cannot tell a weak check from a strong one. It can show it: every check
   runs once before any work and one that already passes is flagged, and a task that changes its own check's file
   is flagged too.
+- **Accepting for the person opened new ways in.** Auto mode lets Graphene accept a plan for you, so an agent's
+  own proposal can be taken at once. A review on 26 October found what that would have let through, and each is
+  closed, with a test: a task scoped to the agents' own settings and hooks (`.claude/`) or to
+  `.git/hooks/` (on a Mac's case-blind disk, `.CLAUDE/` and `.GIT/` too); a planner's check run unread (now one
+  plain command, or one you name in `checks:`); an agent's own `graphene run` outside the budget; and a task whose
+  check already passed before any work, which would have landed with nothing done (`dev/process/revamp/README.md`).
 - **Where the agent loop runs decides what can be refused.** With Graphene's own loop on your machine and the
   tools in the sandbox, an out-of-scope write was refused in Graphene's words before it happened, 3 runs of 3.
   With a harness inside the sandbox (OpenCode 1.18.31), Graphene never heard of it in 3 of 3, the key sat where
@@ -218,8 +244,12 @@ while one the repository cannot answer is open (`dev/test/results-2026-09-29-boa
 
 ## What's next for Graphene
 
-- A live take filmed on the cockpit for the video, and an hour of a real person on it, timed: no person has been
-  timed yet.
+- A live take of auto mode on Token Factory, filmed for the video: auto mode has run end to end only against the
+  scripted stand-in so far. And an hour of a real person on it, timed: no person has been timed yet.
+- Graphene for VS Code on the Marketplace and Open VSX, and the graph's gestures (add a step, link two) answering
+  a board question too.
+- Whether a race of three Nanos lands more tasks than one, measured on the same tasks with its pass rate and its
+  dollars; the held bench has the question written down (`dev/held/rules.md`).
 - `t` heard mid-task by Nemotron's executor, as Claude Code hears it; today it is told at the task's next start.
 - The questions against the paragraph, registered and not yet run (`dev/test/results-2026-09-28-shaping.md`).
 - The same containment around Claude Code or Codex inside a Sandbox.
@@ -227,7 +257,7 @@ while one the repository cannot answer is open (`dev/test/results-2026-09-29-boa
 ## Built with
 
 python · textual · rich · typer · sqlite · git · nvidia-nemotron (3 Ultra, Super, Nano) · nebius-token-factory ·
-token-factory-sandboxes (contree-sdk) · claude-code · codex · github-actions
+token-factory-sandboxes (contree-sdk) · claude-code · codex · github-actions · typescript · vscode-extension-api
 
 ## What changed during the Submission Period
 
@@ -252,7 +282,9 @@ August 2026.
   sign-off waits on its own branch, `graphene demo --cheat`, `graphene run --stop` and `--max-usd`, and a task
   whose branch moved is checked on the merge before it lands. 16 October, a note reaches a Claude Code agent with
   its next write. 17 and 18 October, `graphene watch` became the cockpit, and agents go by numbers, kept by their
-  task through a retry.
+  task through a retry. 20 October, forks: several agents on one task, a rule keeping one. 26 October, auto mode
+  inside an envelope, the race on screen with each agent's model, Graphene for VS Code, and any OpenAI-compatible
+  host behind Graphene's own loop.
 
 Commands: `git rev-list --count --until='2026-08-26T16:00:00Z' 921834de`, `git rev-list --count
 --since='2026-08-26T16:00:00Z' 921834de`, and `git blame --line-porcelain 921834de` over its `src/*.py`, counting
@@ -335,6 +367,7 @@ checked again since.
 | 3 of 3 against 0 of 3; 5.2 to 6.1 times the characters | `dev/test/spikes/harness_there/RESULTS.md` (stand-ins) |
 | the questions against editing the plan: +356.7 to +637.3 modelled person-seconds (study 2), +272.8 to +398.6 (study 3), board higher on 4 of 4 tasks | `dev/test/results-2026-09-28-shaping.md`, H1 of studies 2 and 3 (Claude model stand-ins, one Claude Code proposal per task, nothing run, one run each) |
 | 2 ms on this repository's plan, 53 ms at 22,000 log rows | `tests/test_cockpit_cost.py`, its docstring |
+| auto mode: 2 rounds, 4 tasks landed, 12 forks raced, $0.0193 at the stand-in's prices | `tests/test_demo_auto.py` (the scripted stand-in, no model ran) |
 | 27,469 lines, none before the period; 181 and 971 commits | git, the commands above, at `921834de` |
 | the questions against the paragraph; the plan against the paragraph with Nemotron | none yet: registered in `dev/test/results-2026-09-28-shaping.md` and `dev/test/results-2026-09-28-live-prereg.md` |
 
@@ -343,6 +376,7 @@ checked again since.
 No key, and nothing spent: the replays and the locks.
 
 ```
+uvx --from graphene-map graphene demo --auto   # auto mode on the stand-in: one goal, a race on every task, the fix
 uvx --from graphene-map graphene demo          # the scripted stand-in's run of the Nemotron path, in the cockpit
 uvx --from graphene-map graphene demo --live   # a live run on Token Factory, 9 October: Nano, its Sandbox, its bill
 uvx --from graphene-map graphene demo --cheat  # a script tries seven ways round the locks; the real ones answer
@@ -359,6 +393,7 @@ git clone https://github.com/Alex-lop/Graphene && cd Graphene
 uv run graphene demo tests/recordings/loop-nemotron-take-2.jsonl      # 9 October: three tasks, all landed
 uv run graphene demo tests/recordings/timeline-nemotron-take-6.jsonl  # 8 October: two tasks, both landed
 uv run pytest tests/nemotron -q -n auto         # the Nemotron path against the scripted Token Factory
+uv run pytest tests/test_auto_nemotron.py tests/test_demo_auto.py -q  # auto mode on the Nemotron path, the same way
 ```
 
 With a Token Factory key, in a git repository of your own (it spends at list price: an ask cost $0.08 to $0.55 in
@@ -369,9 +404,13 @@ uv tool install --python 3.12 'graphene-map[nemotron]'
 graphene key set            # kept in the system keychain; or export NEBIUS_API_KEY=…
 graphene key check          # says whether Token Factory answers it
 graphene init --planner nemotron --executor nemotron
-graphene ask "what you want, in a paragraph"
-graphene watch              # ⏎ on each question and each proposed task, then R runs what is ready
+graphene auto "what you want" --budget 2 --forks 3 --plan   # the plan your envelope accepts, nothing run yet
+graphene auto               # runs it: three Nanos race each task, the goal's check, the fix if it is red
+graphene watch              # in another terminal: the race, the auto line, what needs you
 ```
+
+Or by hand: `graphene ask "what you want, in a paragraph"`, then in `graphene watch` ⏎ on each question and each
+proposed task, and `R` runs what is ready.
 
 With Claude Code or Codex instead (no key): `graphene init`, then tell Claude Code what you want and it proposes
 the plan first; `graphene watch` beside it.

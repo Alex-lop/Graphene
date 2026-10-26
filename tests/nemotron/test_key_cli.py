@@ -31,8 +31,8 @@ def keychain(monkeypatch):
     ):
         monkeypatch.delenv(name, raising=False)
     kept: dict[str, str] = {}
-    monkeypatch.setattr(keys, "set", lambda k: kept.__setitem__("key", k.strip()))
-    monkeypatch.setattr(keys, "remove", lambda: kept.pop("key"))
+    monkeypatch.setattr(keys, "set", lambda k, *account: kept.__setitem__("key", k.strip()))
+    monkeypatch.setattr(keys, "remove", lambda *account: kept.pop("key"))
     monkeypatch.setattr(keys, "reached", lambda: f"Token Factory: reached, 3 NVIDIA models ({len(kept)})")
     return kept
 
@@ -72,7 +72,7 @@ def test_set_never_takes_the_key_from_argv(keychain):
 
 
 def test_a_failure_says_why_without_the_key(keychain, monkeypatch):
-    def refuse(k):
+    def refuse(k, *account):
         raise RuntimeError("the key could not be kept: the keychain is off")
 
     monkeypatch.setattr(keys, "set", refuse)

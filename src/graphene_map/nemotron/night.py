@@ -48,6 +48,10 @@ START = 0.9  # of the cap: past it, nothing new starts
 UNSAID = 32_768  # completion tokens a call that names no max_tokens may take: the most a planner raises it to
 
 
+# the endpoints that spend, as usage rows name them; a row from anywhere else (the fake, Ollama) is a
+# stand-in's
+PAID = ("token factory", "nvidia nim", "an openai-compatible host", "claude code", "codex")
+
 # What a vendor's agent exports into its shell (plan.caller reads them); not Graphene's own GRAPHENE_NODE
 # or GRAPHENE_PLANNER, which a person's `graphene run` and `ask` give the executors and planners they start
 MARKS = ("CLAUDECODE", "CLAUDE_CODE_SESSION_ID", "CLAUDE_CODE_ENTRYPOINT", "CODEX_SESSION_ID",
@@ -184,11 +188,12 @@ def reserve(model: str, worst: float, tag: str, endpoint: str, ledger: str | Non
 
 
 def settle(held_id: str | None, model: str, dollars: float, usage: dict | None = None,
-           ledger: str | None = None) -> None:  # fmt: skip
+           ledger: str | None = None, priced: bool = True) -> None:  # fmt: skip
     """The call's reservation, settled at what it cost (its usage at list price), once: a run killed while
     its leaf's check ran had settled its attempt, and the next run's sweep settles that attempt again. It
     settles in the ledger that holds it (``ledger``, else the night's now), under the purpose it was held
-    for: a hold settled after noon is its own night's, not the next one's."""
+    for: a hold settled after noon is its own night's, not the next one's. ``priced`` False: the model has
+    no list price, so its dollars are 0 and the bill says "no list price" rather than a price."""
     if held_id is None:
         return
     usage = usage or {}
@@ -198,7 +203,8 @@ def settle(held_id: str | None, model: str, dollars: float, usage: dict | None =
         held = next((r for r in rows if r.get("kind") == "reserve" and r.get("id") == held_id), {})
         _add(f, {"kind": "settle", "id": held_id, "model": model, "dollars": dollars,
                  "prompt_tokens": usage.get("prompt_tokens") or 0,
-                 "completion_tokens": usage.get("completion_tokens") or 0}, held.get("purpose"))  # fmt: skip
+                 "completion_tokens": usage.get("completion_tokens") or 0,
+                 **({"priced": False} if not priced else {})}, held.get("purpose"))  # fmt: skip
 
 
 def flying(ledger: str | None = None) -> set:
@@ -236,13 +242,15 @@ def bill() -> list[str]:
                      "started here is counted")  # fmt: skip
     settles = [r for r in rows if r.get("kind") == "settle"]
     models: dict[str, list[float]] = {}
+    unpriced = {str(r.get("model")) for r in settles if r.get("priced") is False}
     for r in settles:
         seen = models.setdefault(str(r.get("model")), [0, 0.0])
         seen[0] += 1
         seen[1] += _dollars(r)
     ultra_first = sorted(models.items(), key=lambda m: ("ultra" not in m[0].lower(), -m[1][1]))
     for model, (calls, dollars) in ultra_first:
-        lines.append(f"  {model}: {calls} call{'s' * (calls != 1)}, ${dollars:.4f}")
+        price = " (no list price: counted at $0)" if model in unpriced else ""
+        lines.append(f"  {model}: {calls} call{'s' * (calls != 1)}, ${dollars:.4f}{price}")
     flying = len({r.get("id") for r in rows if r.get("kind") == "reserve"} - {r.get("id") for r in settles})
     if flying:
         lines.append(f"  in flight: {flying} call{'s' * (flying != 1)}, ${held:.4f} held at the worst case")
@@ -252,8 +260,7 @@ def bill() -> list[str]:
         purposes[key] = purposes.get(key, 0.0) + _dollars(r)
     if purposes:
         lines.append("  by purpose: " + " · ".join(f"{k} ${v:.4f}" for k, v in sorted(purposes.items())))
-    stand_in = sum(1 for r in rows if r.get("kind") == "reserve"
-                   and r.get("endpoint") not in ("token factory", "claude code", "codex"))  # fmt: skip
+    stand_in = sum(1 for r in rows if r.get("kind") == "reserve" and r.get("endpoint") not in PAID)
     if stand_in:
         lines.append(f"  of these, {stand_in} call{'s' * (stand_in != 1)} went to a stand-in")
     ops = [r for r in rows if r.get("kind") == "sandbox"]

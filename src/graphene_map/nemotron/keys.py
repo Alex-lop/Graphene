@@ -1,5 +1,7 @@
 """The Token Factory key: found in the environment (``NEBIUS_API_KEY``), then the system keychain, and
-never in a file. On macOS the keychain is `security`; on Linux it is `secret-tool` (libsecret).
+never in a file. On macOS the keychain is `security`; on Linux it is `secret-tool` (libsecret). Another
+endpoint's key is found the same way, from its own variables and under its own name in the keychain
+(``tokenfactory.ENDPOINTS``: `graphene key set --endpoint nim`).
 
 Setting a key never puts it in argv, which ps shows to everyone on the machine: `security -i` reads its
 command on stdin, and `secret-tool store` reads the secret from stdin.
@@ -36,28 +38,30 @@ def _run(argv: list[str], stdin: str | None = None) -> subprocess.CompletedProce
         return None
 
 
-def find() -> str | None:
-    """The key, from the environment first, then the keychain; None when neither has one."""
-    key = os.environ.get(KEY, "").strip()
-    if key:
-        return key
-    return _from_keychain() if _keychain() else None
+def find(envs: tuple[str, ...] = (KEY,), account: str = ACCOUNT) -> str | None:
+    """The key, from the environment first (``envs``, in order), then the keychain under ``account``; None
+    when neither has one."""
+    for name in envs:
+        if key := os.environ.get(name, "").strip():
+            return key
+    return _from_keychain(account) if _keychain() else None
 
 
-def where() -> str | None:
+def where(envs: tuple[str, ...] = (KEY,), account: str = ACCOUNT) -> str | None:
     """Where the key was found, never what it is: 'in NEBIUS_API_KEY', 'in the keychain', or None."""
-    if os.environ.get(KEY, "").strip():
-        return f"in {KEY}"
-    return "in the keychain" if _keychain() and _from_keychain() else None
+    for name in envs:
+        if os.environ.get(name, "").strip():
+            return f"in {name}"
+    return "in the keychain" if _keychain() and _from_keychain(account) else None
 
 
 @functools.cache
-def _from_keychain() -> str | None:
+def _from_keychain(account: str = ACCOUNT) -> str | None:
     """Asked once a process: a leaf of N turns would otherwise start the keychain tool N times."""
     if PLATFORM == "darwin":
-        done = _run(["security", "find-generic-password", "-s", SERVICE, "-a", ACCOUNT, "-w"])
+        done = _run(["security", "find-generic-password", "-s", SERVICE, "-a", account, "-w"])
     elif PLATFORM.startswith("linux"):
-        done = _run(["secret-tool", "lookup", "service", SERVICE, "account", ACCOUNT])
+        done = _run(["secret-tool", "lookup", "service", SERVICE, "account", account])
     else:
         return None
     if done is None or done.returncode != 0:
@@ -65,28 +69,29 @@ def _from_keychain() -> str | None:
     return done.stdout.strip() or None
 
 
-def set(key: str) -> None:  # noqa: A001 - keys.set reads as what it does
-    """Keep ``key`` in the keychain, replacing any there. Raises RuntimeError, without the key, on failure."""
+def set(key: str, account: str = ACCOUNT, host: str = "Token Factory") -> None:  # noqa: A001 - reads as it does
+    """Keep ``key`` in the keychain under ``account``, replacing any there. Raises RuntimeError, without
+    the key, on failure."""
     key = key.strip()
     if not key or any(c.isspace() or c in "\"'\\" for c in key) or not (key.isascii() and key.isprintable()):
-        raise RuntimeError("a Token Factory key is one word of plain ASCII: no space, quote or pasted dash")
+        raise RuntimeError(f"a {host} key is one word of plain ASCII: no space, quote or pasted dash")
     if PLATFORM == "darwin":
-        done = _run(["security", "-i"], f'add-generic-password -U -s {SERVICE} -a {ACCOUNT} -w "{key}"\n')
+        done = _run(["security", "-i"], f'add-generic-password -U -s {SERVICE} -a {account} -w "{key}"\n')
     elif PLATFORM.startswith("linux"):
-        done = _run(["secret-tool", "store", "--label=Graphene: Token Factory", "service", SERVICE,
-                     "account", ACCOUNT], key)  # fmt: skip
+        done = _run(["secret-tool", "store", f"--label=Graphene: {host}", "service", SERVICE,
+                     "account", account], key)  # fmt: skip
     else:
         raise RuntimeError(f"no keychain on {PLATFORM}: set {KEY} in the environment")
     _from_keychain.cache_clear()
     _said(done, "kept")
 
 
-def remove() -> None:
+def remove(account: str = ACCOUNT) -> None:
     """Take the key out of the keychain. Raises RuntimeError on failure."""
     if PLATFORM == "darwin":
-        done = _run(["security", "delete-generic-password", "-s", SERVICE, "-a", ACCOUNT])
+        done = _run(["security", "delete-generic-password", "-s", SERVICE, "-a", account])
     elif PLATFORM.startswith("linux"):
-        done = _run(["secret-tool", "clear", "service", SERVICE, "account", ACCOUNT])
+        done = _run(["secret-tool", "clear", "service", SERVICE, "account", account])
     else:
         raise RuntimeError(f"no keychain on {PLATFORM}")
     _from_keychain.cache_clear()
@@ -106,13 +111,18 @@ def _said(done: subprocess.CompletedProcess | None, what: str) -> None:
 
 
 def reached() -> str:
-    """One line: "Token Factory: reached, N NVIDIA models", or what stood in the way. Never the key."""
+    """One line: "Token Factory: reached, N NVIDIA models" (another host: its models, counted whole), or
+    what stood in the way. Never the key."""
     from . import tokenfactory
 
-    key = find()
+    e = tokenfactory.chosen()
+    key = find(e.key_envs, e.account)
     try:
-        n = sum("nvidia" in m.id.lower() for m in tokenfactory.models(tries=1))
-        line = f"Token Factory: reached, {n} NVIDIA models"
+        listed = tokenfactory.models(tries=1)
+        if e.name == "tokenfactory":
+            line = f"{e.host}: reached, {sum('nvidia' in m.id.lower() for m in listed)} NVIDIA models"
+        else:
+            line = f"{e.host}: reached, {len(listed)} models"
     except tokenfactory.Unreachable as no:
-        line = "Token Factory: not reached: " + " ".join(str(no).split())
+        line = f"{e.host}: not reached: " + " ".join(str(no).split())
     return line.replace(key, "…") if key else line

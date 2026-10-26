@@ -134,7 +134,7 @@ def build():
 
         def list_commands(self, ctx):
             """The help lists the commands in the order a new user needs them."""
-            first = ["init", "ask", "watch", "run", "plan", "node", "board", "demo", "config"]
+            first = ["init", "ask", "watch", "run", "auto", "plan", "node", "board", "demo", "config"]
             names = super().list_commands(ctx)
             return [n for n in first if n in names] + [n for n in names if n not in first]
 
@@ -254,6 +254,9 @@ def build():
     from . import settings as S
 
     config_cli.register(cli, root, open_store, fail)
+    from . import auto_cli
+
+    auto_cli.register(cli, root, open_store, fail)  # `graphene auto`: the goal, the envelope, the rounds
     if key_cli := extra.load("key_cli"):  # `graphene key`: the Nemotron extra's, when it is installed
         key_cli.register(cli, fail)
 
@@ -270,7 +273,19 @@ def build():
             return f"{command!r} cannot be read as a command: {no}"
         return extra.MISSING if words[:1] == ["nemotron"] and not key_cli else None
 
-    def asked_once(offer: dict[str, str], said: str, now: dict, found: list, agents) -> dict[str, str]:
+    def plain(spec: str) -> tuple[bool, str | None]:
+        """Whether ``spec`` is the offer (`nemotron`, or `nemotron --endpoint X`: Nemotron on that host,
+        ids and all), and the host it names, if any. Anything more (a model, --steps) is kept as written."""
+        words = spec.split()
+        if words[:1] != ["nemotron"]:
+            return False, None
+        if not words[1:]:
+            return True, None
+        if words[1] == "--endpoint" and len(words) == 3:
+            return True, words[2]
+        return False, None
+
+    def asked_once(offer: dict, said: str, now: dict, found: list, agents, key: bool = False) -> dict:
         """At a terminal: each choice by name, with what it needs and whether it was found here. Enter
         keeps what is set; with nothing set it takes the one choice found, when exactly one is, and
         otherwise a number is typed (any of them: what is not found yet can still be chosen). A command
@@ -283,12 +298,16 @@ def build():
         picks = {own: {}}
         for n, (word, name, needs) in enumerate(agents, 1):
             picks[str(n)] = offer if word == "nemotron" else dict.fromkeys(WHO, word)
-            # Nemotron is listed only with a key: not found, it did not answer, as the line above says
-            state = "found" if word in found else "not reached" if word == "nemotron" else "not found"
+            # Nemotron is listed with the extra: with a key that did not answer it is "not reached", as the
+            # line above says; with none, "no key", and chosen it finds its models when it runs
+            state = "found" if word in found else "not found"
+            if word == "nemotron" and state != "found":
+                state = "not reached" if key else "no key"
             say(f"  {n}  {name:<27}needs {needs:<20}{state}")
-            if word == "nemotron":  # what Nemotron would be, under its line
+            if word == "nemotron":  # what Nemotron would be, under its line, and the other hosts it runs on
                 where = "each in a Sandbox" if offer["executor"].endswith("sandbox") else "on this machine"
                 say(f"     {said}, {where}")
+                say("     or on another host: --executor 'nemotron --endpoint nim|ollama|openai'")
         say(f"  {own}  {'a command of your own':<27}that takes the prompt last")
         one = [str(n) for n, (word, _, _) in enumerate(agents, 1) if word in found]
         default = one[0] if len(one) == 1 and not kept else ""
@@ -320,18 +339,21 @@ def build():
         offer, said, unreached, found, placed = {}, "", None, [], None
         keys = extra.load("keys")
         key = bool(keys) and keys.find() is not None  # the environment's, or the keychain's
-        agents = AGENTS if key else AGENTS[:2]  # Nemotron is offered with the extra and a key, not before
+        agents = AGENTS if key_cli else AGENTS[:2]  # Nemotron is offered with the extra; a key makes it found
         named = any(v.split()[:1] == ["nemotron"] for v in given.values())
+        # `nemotron --endpoint X` in the flags: the offer is that host's (its list, its ids)
+        host = next((at for v in given.values() for ok, at in [plain(v)] if ok and at), None)
         if asking or missing or named:
-            if key or named:
-                offer, said, unreached, placed = key_cli.offer()
+            if key_cli and (key or named or asking):
+                offer, said, unreached, placed = key_cli.offer(host)
             if unreached and key:  # a key that did not answer: before the choice
                 say(unreached)
-            found = [w for w, _, _ in agents if (not unreached if w == "nemotron" else shutil.which(w))]
+            reached = bool(offer) and not unreached  # asked, and the host answered the key
+            found = [w for w, _, _ in agents if (reached if w == "nemotron" else shutil.which(w))]
         if asking:
-            given = asked_once(offer, said, now, found, agents)
+            given = asked_once(offer, said, now, found, agents, key)
         else:
-            plain = {k: offer[k] for k, v in given.items() if v.split() == ["nemotron"]}  # ids and all
+            plain_ones = {k: offer[k] for k, v in given.items() if plain(v)[0]}  # ids and all
             one = {} if len(found) != 1 else offer if found[0] == "nemotron" else dict.fromkeys(WHO, found[0])
             if missing and not one:  # nothing to pick from, or more than one: a script picks none
                 names = " and ".join(name for w, name, _ in AGENTS if w in found)
@@ -340,8 +362,8 @@ def build():
                 who = " and ".join(f"the {k}" for k in missing)
                 say(f"{who} {'are' if missing[1:] else 'is'} not chosen: {why}; "
                     "`graphene init` at a terminal asks, or --planner and --executor name one, and until "
-                    "then `run` and `ask` refuse")  # fmt: skip
-            given = {**{k: one[k] for k in missing if one}, **given, **plain}
+                    "then `run`, `ask` and `auto` refuse")  # fmt: skip
+            given = {**{k: one[k] for k in missing if one}, **given, **plain_ones}
         if unreached and not key and named:  # chosen: what it needs, once
             say(unreached)
         if placed and offer and given.get("executor") == offer["executor"]:  # the offer, placed here: why
@@ -447,12 +469,15 @@ def build():
                 say(f"this Claude Code has no {flag}: `claude update` first")
         found = [w for w in ("claude", "codex") if shutil.which(w)]
         if "not chosen" in chosen and not found:  # `ask` and `run` refuse until then, as the line above said
-            say("next: install claude or codex, then `graphene init` again; `graphene ask` after that")
+            say("next: install claude or codex, or set a Token Factory key (`graphene key set`), then "
+                "`graphene init` again; `graphene auto '<what you want>'` after that")  # fmt: skip
         elif "not chosen" in chosen:  # more than one found: the line above named them, so name the command
             say(f"next: `graphene init --planner {found[0]} --executor {found[0]}` chooses them; "
-                "`graphene ask` after that")  # fmt: skip
+                "`graphene auto '<what you want>'` after that")  # fmt: skip
         else:
-            say("next: `graphene ask '<what you want>'` proposes a plan; `graphene watch` shows it")
+            say("next: `graphene auto '<what you want>'` plans it, runs it and checks it inside your "
+                "envelope (`--plan` to look first), or `graphene ask '<what you want>'` proposes a plan you "
+                "accept; `graphene watch` shows it")  # fmt: skip
         if shutil.which("graphene") is None:
             console.print(
                 "[yellow]warning:[/yellow] `graphene` is not on PATH, so the hook will not run. Install "

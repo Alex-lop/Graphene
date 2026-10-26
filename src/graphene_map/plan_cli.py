@@ -29,16 +29,18 @@ from . import plan_text as T
 from . import settings as S
 from . import views as V
 
-# What `graphene` and `graphene plan` say in a repository with nothing planned: paragraph in, tree out.
+# What `graphene` and `graphene plan` say in a repository with nothing planned: a goal in, tested commits out;
+# or paragraph in, tree out, for the person to accept.
 ASK = (
-    "`graphene ask '<what you want, in a paragraph>'` proposes a plan (or ask Claude Code here: its hooks "
-    "propose one too); `graphene watch` shows it"
+    "`graphene auto '<what you want>'` plans it, runs it and checks it inside your envelope (`--plan` to "
+    "look first), or `graphene ask '<what you want, in a paragraph>'` proposes a plan you accept (or ask "
+    "Claude Code here: its hooks propose one too); `graphene watch` shows it"
 )
 NO_PLAN = f"nothing is planned here yet. {ASK}"
 # ... and in a repository `graphene init` never set up: init first, since until then `ask` refuses
 NOT_INIT = (
     "nothing is planned here yet. Start with `graphene init`: it chooses who plans and who runs (until "
-    f"then, `ask` and `run` refuse). Then {ASK}"
+    f"then, `auto`, `ask` and `run` refuse). Then {ASK}"
 )
 # What `graphene plan first` says each setting does
 FIRST_SAID = {
@@ -329,6 +331,12 @@ def register(cli: typer.Typer, root, open_store, fail):
                 head += P.UNCOMMITTED
             head += " · finished" * (not left) + ("; `graphene plan archive` puts it away" if archive else "")
         lines += [head, *([board] if board else [])]
+        from .cockpit.read import envelope
+        from .cockpit.rows import auto_line
+
+        if auto := envelope(store):  # auto on: its round, as the cockpit's head says it, and how it goes on
+            waits = auto["stage"] == "waits" and "graphene auto" not in auto["why"]
+            lines.append(auto_line(auto) + ("; then `graphene auto` goes on" if waits else ""))
         yours = [n for n in alive if n.state == P.REVIEW]
         yours += [  # a proposed subtree is asked about once, at its top
             n
@@ -481,6 +489,8 @@ def register(cli: typer.Typer, root, open_store, fail):
             )
             or (value(detail["note"]) if detail.get("note") else "")
             or detail.get("override")
+            or (f"accepted by your envelope{', round ' + str(detail['round']) if detail.get('round') else ''}"
+                if detail.get("by") == "auto" else "")  # fmt: skip
             or (f"by their prompt in the session: {detail.get('prompt', '')!r}" if detail.get("by") else "")
             or detail.get("path")
             or ", ".join(detail.get("outside") or detail.get("paths") or detail.get("unowned") or [])
@@ -669,6 +679,35 @@ def register(cli: typer.Typer, root, open_store, fail):
         else:
             cockpit_run(r, lambda: open_store(r), every)
 
+    @cli.command(hidden=True)
+    def state(
+        as_json: bool = typer.Option(False, "--json", help="One line of JSON; without it, indented."),
+    ) -> None:
+        """Print the plan as one JSON snapshot for an editor (schema 1).
+
+        Tasks, forks, questions, envelope, run. With no plan here: {"schema": 1, "error": "why"}, exit 1."""
+        from . import state as ST
+
+        r, why = ST.where(Path.cwd())
+        said: dict = {}
+        store = None
+        if why is None:
+            try:
+                store = open_store(r)
+            except typer.Exit:  # the opener said why on stderr: locked, unreadable, or a newer graphene's
+                why = "the store did not open; the line on stderr says why (locked: try again in a moment)"
+        if store is not None:
+            with store:
+                why = ST.unplanned(store)
+                try:
+                    said = ST.snapshot(store, r) if why is None else {}
+                except Exception as no:  # stdout holds one JSON object whatever happened: an editor reads it
+                    why = f"the plan could not be read ({type(no).__name__}: {no})"
+        if why is not None:
+            out(json.dumps(ST.error(why)))
+            raise typer.Exit(1)
+        out(json.dumps(said) if as_json else json.dumps(said, indent=2))
+
     @cli.command()
     def demo(
         recording: Path = typer.Argument(
@@ -696,6 +735,9 @@ def register(cli: typer.Typer, root, open_store, fail):
         live: bool = typer.Option(
             False, "--live", help="Replay a live run on Nemotron through Token Factory, as it ran."
         ),
+        auto: bool = typer.Option(
+            False, "--auto", help="Replay auto mode: one goal, Nemotron's plan, forks racing, the goal's fix."
+        ),
     ) -> None:
         """Replay a recorded run in `graphene watch`, change by change.
 
@@ -719,7 +761,7 @@ def register(cli: typer.Typer, root, open_store, fail):
                 fail(f"cannot write {record}: {no.strerror or no}", 1)
             typer.echo(f"recorded {n} changes to {record}", err=True)
             return
-        shown = recording or (D.LIVE_TAKE if live else D.SHIPPED)
+        shown = recording or (D.LIVE_TAKE if live else D.AUTO_TAKE if auto else D.SHIPPED)
         try:
             head, lines = D.load(shown, speed)
         except (OSError, ValueError, KeyError) as no:
@@ -742,7 +784,7 @@ def register(cli: typer.Typer, root, open_store, fail):
             out(D.fit(D.banner(head, D.ENDED), wide).plain)  # whole pieces, as the screen's top line
             with contextlib.chdir(repo):  # printed as `graphene watch --once` prints it, in the replay's repo
                 print_once(P.caller(), everything=False, archive=False, recent_as=D.ENDING, wide=wide)
-            out(D.fit([(D.NEXT, "")], wide).plain)  # cut at the width, as every row above it
+            out(D.fit([(D.next_step(lines), "")], wide).plain)  # cut at the width, as every row above it
 
     @plan_cli.command(hidden=True)
     def propose(
@@ -794,10 +836,20 @@ def register(cli: typer.Typer, root, open_store, fail):
         def go(store):
             added = as_json(store) if text.lstrip().startswith(("{", "[")) else as_text(store)
             if not who.person and added:  # one leaf of the person's ask is theirs at once
+                from . import auto as AUTO
+
+                board = B.split(text)[1]  # the text's board items
+                said = G.one_line_ask(store, added, who, files, board, here)
+                # else the person's envelope (`auto: on`): what fits it is theirs at once, and what does not
+                # waits for them with the one reason
+                taken = AUTO.take(store, added, files, here) if said is None else None
+                waits = f"it {taken}. " if taken and taken.startswith(AUTO.WAITS) else ""
+                them = "it" if len(added) == 1 else "them"
                 out(
-                    G.one_line_ask(store, added, who, files, B.split(text)[1], here)  # the text's board items
-                    or f"{len(added)} proposed: nobody can start {'it' if len(added) == 1 else 'them'} until "
-                    "the person accepts, in `graphene watch`. Tell them the tree is ready, and stop"
+                    said
+                    or (taken if taken and not waits else None)
+                    or f"{len(added)} proposed: {waits}nobody can start {them} until the person accepts, in "
+                    "`graphene watch`. Tell them the tree is ready, and stop"
                 )
             return [n.id for n in added]
 
@@ -895,13 +947,22 @@ def register(cli: typer.Typer, root, open_store, fail):
         said_where()
 
     @plan_cli.command("log")
-    def log_() -> None:
+    def log_(
+        as_json: bool = typer.Option(False, "--json", help="One row a line, as JSON (JSON lines)."),
+        since: int = typer.Option(0, "--since", help="Only the rows after this id (`state` says it)."),
+    ) -> None:
         """Print everything that happened on the plan, oldest first.
 
         A `*` marks what belonged to no node."""
 
         def go(store):
-            entries = store.node_log()
+            from . import state as ST
+
+            entries = ST.log_after(store, since)
+            if as_json:
+                for e in entries:
+                    out(json.dumps(e))
+                return
             wide = max((len(e["node_id"]) for e in entries), default=1)
             who_wide = max((len(e["actor"] or "") for e in entries), default=16)
             for e in entries:
@@ -1099,9 +1160,14 @@ def register(cli: typer.Typer, root, open_store, fail):
                      if waiting else "nothing to run: the plan has no open leaf", 1)  # fmt: skip
             try:  # --with, else the repo's (`graphene init`); neither, and nothing starts
                 template = named(executor or store.meta("executor"))
+                from . import auto as AUTO
+
+                max_usd, budget_said = AUTO.run_cap(store, template, max_usd)  # auto on: its budget
             except P.Refused as no:
                 fail(str(no), 1)
             said_where()  # first: a run changes the plan for as long as it goes
+            if budget_said:
+                out(budget_said)
             who = P.caller()
             # a run that starts nothing answers nothing on the board
             starts = [n for n in P.ready(P.nodes(store), who) if not P.came_back(store, n)
@@ -1213,6 +1279,10 @@ def register(cli: typer.Typer, root, open_store, fail):
             if said and waits:  # what waits on the person is named first, where they would find it
                 hint = "at the top, y takes, d drops" if here else "`graphene board`, or `graphene watch`"
                 out(f"the board waits on you ({waits}): {hint}")
+            # what the envelope accepted (`auto: on`) needs no accept: its line said `graphene run` runs them
+            pending = [i for i in ids if (store.node_row(i) or {}).get("state") == P.PROPOSED]
+            if ids and not pending and S.auto(store) == "on":
+                return ids
             if ids or (said and not waits):
                 hint = (
                     "y accepts, d drops"
@@ -1328,6 +1398,8 @@ def register(cli: typer.Typer, root, open_store, fail):
         goal: str = typer.Option(None, "--goal", help="Replaces the goal."),
         add_goal: str = typer.Option(None, "--add-goal", help="Adds a sentence at the end of the goal."),
         needs: list[str] = typer.Option(None, "--needs", help="Replaces what it waits on; 'none' clears it."),
+        add_needs: list[str] = typer.Option(None, "--add-needs", help="Adds a node it waits on; repeat it."),
+        drop_needs: list[str] = typer.Option(None, "--drop-needs", help="No longer waits on it; repeat it."),
         owner: str = typer.Option(None, "--owner", help="'agent', 'me', or a person's name."),
         signoff: bool = typer.Option(
             None, "--signoff/--no-signoff", help="Require a person's sign-off, or not."
@@ -1346,10 +1418,12 @@ def register(cli: typer.Typer, root, open_store, fail):
             edits["needs"] = [i for i in needs if i != "none"]
         if signoff is not None:
             edits["signoff"] = signoff
-        for said, adds in (("scope", add_scope), ("goal", add_goal)):
+        for said, adds in (("scope", add_scope), ("goal", add_goal), ("needs", add_needs)):
             if adds and said in edits:
                 fail(f"--{said} replaces the {said} and --add-{said} adds to it: one or the other", 2)
-        if not (edits or add_scope or add_goal):
+        if drop_needs and "needs" in edits:
+            fail("--needs replaces what it waits on and --drop-needs takes from it: one or the other", 2)
+        if not (edits or add_scope or add_goal or add_needs or drop_needs):
             fail(f"graphene node set {node_id} needs what to change: --title, --scope, --check, --goal, "
                  "--needs, --owner, --signoff, --forks or --parent", 1)  # fmt: skip
 
@@ -1363,6 +1437,9 @@ def register(cli: typer.Typer, root, open_store, fail):
                 edits["scope"] = [*now.scope, *(g for g in dict.fromkeys(add_scope) if g not in now.scope)]
             if add_goal:
                 edits["goal"] = P.goal_plus(now.goal, add_goal) or now.goal
+            if add_needs or drop_needs:  # a link made or taken away on the graph: the rest stays as it is
+                kept = [x for x in now.needs if x not in (drop_needs or [])]  # `validate` refuses a cycle
+                edits["needs"] = [*kept, *(x for x in dict.fromkeys(add_needs or []) if x not in kept)]
             node = P.edit(store, node_id, edits, P.caller(), files=files, told=told)
             return node, store.node_log(node_id, ("edited",))[seen:]  # yours, then a need Graphene added
 

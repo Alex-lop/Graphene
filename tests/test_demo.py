@@ -253,7 +253,8 @@ def test_the_built_wheel_carries_the_recording(tmp_path):
                            capture_output=True, text=True, timeout=300)  # fmt: skip
     assert built.returncode == 0, built.stderr
     (wheel,) = tmp_path.glob("*.whl")
-    assert "graphene_map/demo.jsonl" in zipfile.ZipFile(wheel).namelist()
+    names = zipfile.ZipFile(wheel).namelist()
+    assert {"graphene_map/demo.jsonl", "graphene_map/demo-auto.jsonl"} <= set(names)  # --auto's too
 
 
 def test_demo_once_needs_no_key_and_no_network_and_prints_the_banner_and_the_end(tmp_path, monkeypatch):

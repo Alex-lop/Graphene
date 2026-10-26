@@ -196,7 +196,7 @@ def test_when_every_task_is_proven_the_rows_say_so_and_what_comes_next():
     for t in m.tasks.values():
         t.state = "done"
     said = plain(rows.build_cockpit(m, 80))[-1].strip()
-    assert said == "Every task is proven. Next: :ask, or tell Claude Code."
+    assert said == "Every task is proven. Next: :auto, :ask, or tell Claude Code."
     m.source = "replay"  # nothing comes next in a recording
     assert plain(rows.build_cockpit(m, 80))[-1].strip() == "Every task is proven."
     m.tasks["ids"].overruled = True  # done over its check is not proven
@@ -306,6 +306,7 @@ def test_a_plan_with_nothing_in_it_says_what_to_do_next_in_lines_that_fit_80_col
     text = "\n".join(lines)
     assert "Nothing is planned yet." in text and "In Claude Code, say what you want" in text
     assert ":ask what you want" in text and "graphene demo" in text and "…" not in text
+    assert ":auto what you want" in text  # the goal in, tested commits out, first
     assert all(len(line) <= 79 for line in lines) and "graphene init" not in text
     m.executor = ""  # graphene init chose no one to run the tasks: that comes first
     assert "graphene init, in a terminal of your own" in plain(rows.build_cockpit(m, 80))[2]

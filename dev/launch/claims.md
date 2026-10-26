@@ -25,6 +25,16 @@ Nemotron claims added on 18 October; re-read before posting.
 | Of 31 live demo takes on two small repositories, 7 to 9 October, 4 ran clean and 2 landed every task | dev/process/meter, timeline and loop, takes.md | measured live: two small repositories |
 | Each Nemotron call is priced from Token Factory's usage at list price, so each task has a bill | tests/nemotron/test_tokenfactory.py; `i` on a task in `graphene demo tests/recordings/loop-nemotron-take-2.jsonl` | shown; whether the list price is what is billed is not observed |
 | A task can run as several agents at once, and the check decides which is kept, by a rule written before any fork ran; the person can pick another | src/graphene_map/pick.py (the rule, dated in its docstring); tests/test_pick.py; tests/test_forks_run.py (`node pick`) | shown, with scripted agents; no live forked run |
+| With `auto: on`, a proposal that fits the envelope (every task with a scope and a check, the board settled, within `tasks`) is accepted at once as the person's stand-in, and `graphene plan undo` takes it back; `graphene auto` plans, runs, checks the goal and plans the fix for `rounds` rounds, and stops with a reason at the envelope's edge | tests/test_auto_envelope.py, tests/test_auto_run.py, tests/test_auto_nemotron.py | shown; the planner and executors are scripts, or the scripted Token Factory; no live auto run |
+| The envelope never takes a task whose scope reaches `.claude/`, `.codex/`, `.cursor/`, `.gemini/` or `.github/workflows/`, nor one whose check is not one plain command (or not among `checks:`), and while auto is on every run counts against its budget, an agent's own `graphene run` included; no scope reaches `.git/` | tests/test_auto_envelope.py, tests/test_auto_checks.py, tests/test_git_dir_is_nobodys.py | shown, with scripted agents |
+| Auto mode on the Nemotron path ran end to end against the scripted Token Factory: three tasks, nine forks at once, the goal's check red, Ultra's fix, the suite green, $0.0193 at the stand-in's prices | tests/test_demo_auto.py; `graphene demo --auto` | shown; a scripted stand-in, no model ran; no live auto run |
+| In auto mode, a round waits for the person when a task it can start has a check that passes before any work (it would land with nothing done) | tests/test_auto_run.py | shown, with scripted agents; a task that waits on another is not checked first |
+| Every agent's row names its model, and each fork its own, with its dollars | tests/test_race_read.py, tests/test_race_rows.py | shown, with scripted agents and the recordings |
+| Graphene for VS Code shows the plan as a graph and runs a `graphene` command for every change; it activated and registered its commands in VS Code 1.143 | editors/vscode/test/*.test.ts, editors/vscode/test/smoke.cjs; tests/test_vscode_cli.py | shown; not on the Marketplace, not tried in Cursor |
+| In the graph a drag from one task's dot onto another links them, and an × unlinks; the Explorer marks each file a running task writes with its agent's number, reading scope globs as the CLI does | editors/vscode/test/commands.test.ts, editors/vscode/test/owners.test.ts, tests/test_vscode_cli.py, tests/test_vscode_scope_parity.py | shown: the argv on the real CLI, the globs against 208 of its answers; the drag tried in the preview page in Chromium, not in VS Code; the marks not yet seen on a live run |
+| A cloned folder's own settings cannot choose the binary Graphene for VS Code runs, the extension is off in a folder VS Code does not trust, and its hovers show the plan's words as text, never as links or images | tests/test_vscode_packaging.py, editors/vscode/test/state.test.ts | shown: the manifest and the escaping; the hovers not looked at in VS Code |
+| The same Nemotron loop runs on NVIDIA NIM, Ollama or any OpenAI-compatible host, writes refused the same way; an agent's call to a paid host off this machine is refused without the opening | tests/test_anymodel_endpoints.py | shown against the scripted host; no live call to NIM, Ollama or another host |
+| Every agent a run starts gets a `PORT` of its own, per task and per fork, given to its check too | tests/test_anymodel_ports.py | shown, with scripted agents |
 
 ## May not be said
 
@@ -39,7 +49,9 @@ Nemotron claims added on 18 October; re-read before posting.
   init` ran from a script (from 2.1.295, `init` at a terminal makes it fail closed); git catches the change at done
   either way.
 - That unattended runs are safe. Codex has no spend cap of its own, and a whole run's total is capped only by
-  `graphene run --max-usd`, which starts no attempt past it and stops none that is going.
+  `graphene run --max-usd`, which starts no attempt past it and stops none that is going. `graphene auto`'s
+  `budget` holds Claude Code and Codex attempts the same way, reads Nemotron's bills only between rounds, and
+  cannot hold an executor that reports no cost (it counts attempts instead, and says so first).
 - That every leaf is approved before it lands. Only a leaf marked for sign-off waits.
 - That Nemotron is broadly tested live (docs/HACKATHON.md).
 - That a Nemotron agent hears `t` mid-task. It is told the next time its task starts; Claude Code hears it with its

@@ -264,10 +264,35 @@ def kept_out_by(path: str, conditions: list[tuple[str, str]]) -> str | None:
     return next((f"{s}: {g}" for s, g in conditions if covers([g], path)), None)
 
 
+GIT_OWN = ".git/ is git's own: a hook planted there runs on your next commit, and git status never shows it"
+
+
+def git_own(path_or_glob: str) -> bool:
+    """Does it name `.git` or anything under it (a worktree's `.git` file too)? No scope reaches there, and no
+    write there is let through, whatever a scope says. Case is ignored: a Mac's disk writes .GIT/ in .git/."""
+    return _fixed(path_or_glob.casefold())[:1] == [".git"]
+
+
+def prechecked(store, node: Node) -> dict | None:
+    """The leaf's last precheck row's detail, when it is about its current rev and says it passes at
+    the base (its check proves nothing) or names paths outside its scope; else None. Done or in review,
+    when it passed at the base with the check it finished on: what that check passed proved no more."""
+    if node.state not in (OPEN, PROPOSED, DONE, REVIEW):  # running, it is being run
+        return None
+    rows = store.node_log(node.id, ("precheck",))
+    d = rows[-1]["detail"] if rows else {}
+    if node.state in (DONE, REVIEW):  # by the check's own words, whatever the rev or the check is since;
+        # a reopened leaf done again on the check it landed with ("landed") was verified by it no more
+        ran = store.node_log(node.id, ("check_passed",))  # an edit since ran nothing
+        on = ran[-1]["detail"].get("command") if ran else node.check
+        return d if d.get("verdict") in ("passes", "landed") and d.get("check") == on else None
+    return d if d.get("rev") == node.rev and d.get("verdict") in ("passes", "outside") else None
+
+
 def binds(path: str, node: Node, conditions: list[tuple[str, str]]) -> bool:
     """Is ``path`` inside the scope as it binds (``as_scoped``), a standing path matched as the disk
-    reaches it (``kept_out_by``)?"""
-    return in_scope(path, node.scope) and kept_out_by(path, conditions) is None
+    reaches it (``kept_out_by``)? Never one under `.git/` (``git_own``)."""
+    return not git_own(path) and in_scope(path, node.scope) and kept_out_by(path, conditions) is None
 
 
 def _keeps_standing(node: Node, conditions: list[tuple[str, str]], files: list[str]) -> None:
@@ -390,6 +415,8 @@ def validate(
                 f"{n.id}: a leaf needs a scope (the paths it may touch), e.g. --scope 'src/api/**'; "
                 "or give it children, and it is a sub-goal"
             )
+        if inside := next((g for g in n.scope if not g.startswith("!") and git_own(g)), None):
+            raise Refused(f"{n.id}: its scope names {inside}, and {GIT_OWN}; no scope reaches it")
         if not n.check and not n.signoff and not n.aside:
             raise Refused(
                 f"{n.id}: a leaf needs a check, a person's sign-off, or both; else nobody knows it is done"
@@ -862,17 +889,36 @@ def _clean_tree(
             )
 
 
-def check_env() -> dict[str, str]:
-    """A check's environment, wherever it runs here (`done`, `plan precheck`): no key, and Graphene's own
-    keychain lookup off, for it runs code an executor wrote."""
-    env = {k: v for k, v in os.environ.items() if k != "NEBIUS_API_KEY"}
-    return env | {"GRAPHENE_AS": "agent:check", "GRAPHENE_KEYCHAIN": "off"}
+def check_env(extra: dict[str, str] | None = None) -> dict[str, str]:
+    """A check's environment, wherever it runs here (`done`, `plan precheck`): no API key (none of
+    ``*_API_KEY``: Token Factory's, NVIDIA's, OpenAI's), and Graphene's own keychain lookup off, for it
+    runs code an executor wrote. ``extra``: the leaf's own (its PORT)."""
+    env = {k: v for k, v in os.environ.items() if not k.endswith("_API_KEY")}
+    return env | {"GRAPHENE_AS": "agent:check", "GRAPHENE_KEYCHAIN": "off"} | (extra or {})
+
+
+def port_env(store, node: Node, session: str | None = None) -> dict[str, str]:
+    """The PORT the run gave the leaf's executor in this hold (its `attempt` row: ``session``'s when that is
+    a fork's or the hold's own; after a pick, the kept fork's; else the newest), for its check to bind the
+    same: {} when no run gave one."""
+    log = store.node_log(node.id, ("started", "attempt", "picked"))
+    log = log[max((k for k, r in enumerate(log) if r["kind"] == "started"), default=-1) + 1 :]  # this hold's
+    rows = [r for r in log if r["kind"] == "attempt" and r["detail"].get("port")]
+    mine = [r for r in rows if session and r.get("session_id") == session]
+    if not mine:
+        kept = next((r["detail"].get("fork") for r in reversed(log) if r["kind"] == "picked"), None)
+        mine = [r for r in rows if kept and r["detail"].get("fork") == kept] or rows
+    if not mine:
+        return {}
+    port = str(mine[-1]["detail"]["port"])
+    return {"PORT": port, "GRAPHENE_PORT": port}
 
 
 @ctrl_c_on_hangup()
 def run_check(
-    command: str, checkout: str | Path, leave_out: list[str] | tuple = (), at: str | None = None
-) -> tuple[bool, str, list[str]]:
+    command: str, checkout: str | Path, leave_out: list[str] | tuple = (), at: str | None = None,
+    env: dict[str, str] | None = None,
+) -> tuple[bool, str, list[str]]:  # fmt: skip
     """Run a check on the state of ``checkout``: whether it passed, the tail of what it said, and
     which of ``leave_out`` (new files, left out of what it runs on) it made again. This is the one
     place Graphene runs a check. Graphene runs it, not the executor: "it passed" is then a fact about
@@ -880,14 +926,14 @@ def run_check(
     (``_clean_tree``), never in the checkout itself: run in place, a check left its caches in the
     executor's tree, to be counted as its change and committed with its leaf. Its time limit and its
     stop (``_ended``) are the whole of it, the making of that worktree included. ``at``: on that
-    commit's tree instead of the checkout's state."""
+    commit's tree instead of the checkout's state. ``env``: the leaf's own variables (``port_env``)."""
     import subprocess
 
     began = time.monotonic()
     # Whatever the check starts is not the person, terminal or none: pytest takes the terminal away
     # from the tests it runs, and a test file is something an executor writes inside its own scope.
     # It runs code an executor wrote, so it never gets the Token Factory key.
-    env = check_env()
+    env = check_env(env)
     try:
         with _clean_tree(checkout, leave_out, began, at=at) as tree:
             code, out, err = _ended(command, tree, env, began)
@@ -2582,7 +2628,9 @@ def _judge(
         passed, output, theirs = True, "", []
     else:
         place = sandboxed(store, node)
-        passed, output, theirs = (run_check(node.check, checkout, aside) if place is None else
+        own = port_env(store, node, who.session_id)  # the PORT its executor had: the check binds the same
+        extra = {"env": own} if own else {}  # named only when there is one: a test's stand-in takes none
+        passed, output, theirs = (run_check(node.check, checkout, aside, **extra) if place is None else
                                   _check_in_sandbox(place, node.check, checkout, aside))  # fmt: skip
     if node.check:
         checked = _now()

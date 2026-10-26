@@ -10,6 +10,7 @@ dev/process/meter/rows.md has the shapes. Standard library only; a line never ra
 import itertools
 import json
 import os
+import re
 import shlex
 from collections import Counter
 from datetime import UTC, datetime
@@ -80,6 +81,30 @@ def model_in(argv: list[str]) -> str | None:
     if argv[1:2] == ["-m"] and os.path.basename(argv[0]).startswith("python"):
         argv = argv[2:]  # the module, then what it is given
     return option(argv, "-m", "--model")
+
+
+SIZES = ("nano", "super", "ultra")  # a Nemotron id's size: the name a screen gives it
+FAMILIES = ("haiku", "sonnet", "opus", "fable")  # a Claude id's family
+SHORT = 12  # characters of an id's last path part a screen shows when no name above fits it
+
+
+def short(model: str | None) -> str:
+    """A model id as a screen names it, in one word: a Nemotron id by its size (Nano, Super, Ultra), a
+    Claude id by its family (Haiku, Sonnet, Opus, Fable), a Codex or GPT id as Codex, anything else by the
+    last part of its path, at most SHORT characters. A `--with` spec names its model the same way
+    (`claude:opus`, `nemotron --model nvidia/…Nano…`). The demo's stand-in keeps its whole name
+    (`stand-in-Nano`): a replay never reads as the model it stood in for."""
+    said = str(model or "").strip()
+    low = said.lower()
+    if "nemotron" in low and (size := next((s for s in SIZES if s in low), None)):
+        return size.title()
+    if "claude" in low and (family := next((f for f in FAMILIES if f in low), None)):
+        return family.title()
+    tail = said.rsplit("/", 1)[-1].split()[0] if said else ""
+    if low.startswith("codex") or tail.lower().startswith(("codex", "gpt")):
+        return "Codex"
+    tail = re.sub(r"\.(py|sh|js|mjs|ts|rb|pl)$", "", tail)  # a script executor goes by its name
+    return tail if "stand-in" in tail.lower() else tail[:SHORT]
 
 
 def doing(verb: str, target: str) -> str:
@@ -445,9 +470,11 @@ def width(rows: list[dict], now: datetime | None = None) -> dict | None:
 
 
 def acts(rows: list[dict], person: str | None) -> list[str]:
-    """The person's acts: the timestamps of their own rows, once each, oldest first."""
+    """The person's acts: the timestamps of their own rows, once each, oldest first. What the envelope
+    accepted for them (`by: auto`) is logged as theirs and is no move of theirs."""
     # talk.mine's rule, mirrored: talk imports typer, and this module is the core's
-    return sorted({e["timestamp"] for e in rows if (e["actor"] or "").split(" (")[0] == person})
+    return sorted({e["timestamp"] for e in rows if (e["actor"] or "").split(" (")[0] == person
+                   and (e.get("detail") or {}).get("by") != "auto"})  # fmt: skip
 
 
 def you(rows: list[dict], person: str) -> dict:

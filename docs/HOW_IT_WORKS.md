@@ -31,7 +31,8 @@ the sub-goal's own check runs, if it has one.
 | `done` | finished |
 | `dropped`, `archived` | out of the plan |
 
-Agents propose. Only a person accepts, edits a contract, signs off, reopens, pauses or archives. Graphene tells an
+Agents propose. Only a person accepts, edits a contract, signs off, reopens, pauses or archives; with `auto: on`,
+Graphene accepts for you what fits the envelope you set, logged as yours (`by: auto`). Graphene tells an
 agent from you by the variables its CLI sets: `CLAUDECODE`, `CLAUDE_CODE_SESSION_ID`, `CODEX_SESSION_ID`,
 `CODEX_SANDBOX`, `AI_AGENT`, `GEMINI_CLI`, `CURSOR_AGENT`, and Graphene's own `GRAPHENE_NODE` and
 `GRAPHENE_PLANNER`. `graphene plan log` lists every change and who made it.
@@ -101,8 +102,10 @@ write or command; a task nobody is on yet reads it when it starts), `w` widen th
 stopped, `x` hand back a running task or reopen a finished one, `f` fork it (N agents at once, the check keeps
 one), `i` details (panes `1` to `4`; `c` there is the diff). `g` is the graph: what must land before what,
 flowing into your goal at the right (columns are waves, sub-goals lanes, the longest chain double); `m` the map
-of the folders each task may write, its lens following the plan's stage until `v` turns it. `Tab` goes on,
-`Esc` comes back, `?` lists every key and what the marks mean.
+of the folders each task may write, its lens following the plan's stage until `v` turns it. On the graph `+`
+adds a step after the selected task, and `L` on one task, then on another, makes the second wait on the first
+(or, when it waits on it already, no longer).
+`Tab` goes on, `Esc` comes back, `?` lists every key and what the marks mean.
 
 `--classic` (or a `--view`) opens the older screen: `graphene plan`'s outline, a row a node with its state's word
 (∅ after a title: its check passes at the base, or fails outside its scope). `Tab` there, or `graphene plan
@@ -135,7 +138,7 @@ Graphene reads none of your words to decide this.
 with a tree; Graphene adds it as proposals. `graphene node split ID` asks it to cut a leaf;
 `--about ID` asks about one. In `graphene watch`, `:ask` alone opens your editor for the paragraph.
 
-The planner's prompt (Nemotron's system prompt, version 6) tells it to read the
+The planner's prompt (Nemotron's system prompt, version 7) tells it to read the
 repository first, ask only what the code cannot settle, and put up at most three items, each a question or a risk. What
 it is sure of goes in the leaf's goal.
 
@@ -236,8 +239,24 @@ box says `3 ×3` while they run.
   scope holds at `done`.
 - **Nemotron**: Graphene's own executor and planner on NVIDIA Nemotron through Nebius Token Factory (the optional
   extra `graphene-map[nemotron]`). Its tools refuse a write outside the scope; in a Sandbox it can write only the scope.
-- **Any command**: `--with 'my-agent --flag'` gets the contract as its last argument; nothing holds it before the
-  write.
+  The same loop runs on another host with `--endpoint`: `nim` (NVIDIA's API catalog, `NVIDIA_API_KEY`), `ollama`
+  (this machine, no key) or `openai` (any OpenAI-compatible URL in `GRAPHENE_OPENAI_BASE_URL`, key
+  `GRAPHENE_OPENAI_API_KEY` or `OPENAI_API_KEY`: vLLM, OpenRouter, LM Studio), as `--with 'nemotron --endpoint nim'`
+  or `graphene init --executor 'nemotron --endpoint nim'`; `graphene key set --endpoint nim` keeps that host's key.
+  A host that lists no Nemotron uses `--model`, else the first model it lists, and says which. A model with no list
+  price is billed as "no list price", not $0, and counts $0 against every cap. NIM and any URL off this machine
+  spend, so an agent's call to them is refused without your opening, as Token Factory's is; Ollama and a local
+  URL are stand-ins. Every row names the host that answered.
+- **Any command**: `--with 'my-agent --flag'` gets the contract as its last argument. A command that takes it
+  elsewhere says where: `{prompt}` is replaced by the contract, `{prompt_file}` by the path of a file holding it,
+  written under `.graphene/runs/`, outside every scope. Recipes, not tested here: `aider --yes --message-file
+  {prompt_file}`, `gemini --yolo -p {prompt}`, `opencode run {prompt}`, `goose run -t {prompt}`. Nothing holds
+  such an agent before the write: the scope holds at `done`, when git says what changed, and a write outside it
+  is refused there, with the paths named, before the check runs.
+
+Every executor a run starts gets `PORT` and `GRAPHENE_PORT`, a port of its own (distinct per running task and per
+fork, free when it is handed out), said in its contract and given to its check, so a task that starts a server
+binds one no other task has.
 
 Whoever executes, a person included, is held at `done` by the check and git.
 
@@ -282,6 +301,8 @@ hooks do, so a refused shell write may count twice.
   `uv run pytest …` builds the tree's own environment.
 - Two scopes that overlap only on a file that does not exist yet are not seen until one leaf's `done`.
 - `.claude/settings*.json` is not protected. An agent that removes the hook has removed it; `done` still holds.
+  The envelope never takes a task that reaches it, and `.git/` is nobody's: no scope reaches it, and no write there
+  is let through, since a hook planted in `.git/hooks/` would run on your next commit.
 - A board answer changes the tree only through its `then:` lines, and a `never:` setting is told to the planner and
   checked nowhere.
 - A protected path is kept from the model where Graphene reads for it. A local Nemotron command, or a planner without
@@ -290,6 +311,9 @@ hooks do, so a refused shell write may count twice.
   stop. `graphene run`'s executors are held until their leaf is done or handed back.
 - A write outside the repository is not limited, and a check runs with your environment: a file written there can
   change what it sees.
+- The envelope decides what is accepted, not whether the work is good: the checks do, and they are as good as your
+  tests. Nemotron bills a call after it ends, so `graphene auto` reads its budget between rounds; an executor that
+  reports no cost is counted in attempts.
 - A leaf that may edit a file its own check runs can make the check agree: `done` flags it, in the run and the
   record, and does not refuse it. Mark the leaf for sign-off, or set `review: every`, to read the diff first.
 - `--max-usd` stops starts, not an attempt going: Claude Code may end a turn past its $2; Codex with no cap counts
@@ -317,7 +341,7 @@ reads no transcript.
 
 ## The settings
 
-`graphene config` prints what you state once; `graphene config edit` changes it. Only you can.
+`graphene config` prints what you state once; `graphene config edit` changes it, and `graphene config set KEY VALUE` changes one. Only you can.
 
 | Setting | Does |
 | --- | --- |
@@ -329,13 +353,30 @@ reads no transcript.
 | `review: off\|every` | `every`: a task whose check passes waits for your sign-off before it lands |
 | `notify: on\|off` | Whether `graphene watch` rings, with a desktop notice where the terminal shows one, when something new needs you |
 | `forks: 1\|2\|3\|4\|5\|6\|7\|8` | Agents at once on each leaf that says nothing itself; its check keeps one |
+| `auto: off\|on` | `on`: a proposal that fits the envelope (every task with a scope and a check, the board settled, under `tasks`, no scope reaching `.claude/`, `.codex/`, `.cursor/`, `.gemini/` or `.github/workflows/`) is accepted for you at once, from any agent; `graphene auto` turns it on |
+| `budget: DOLLARS` | What every run may spend while `auto` is on, `graphene auto`'s, an agent's own `graphene run` and `R` alike |
+| `tasks: N` | How many tasks the envelope may accept for you, all told, since `auto` went on (12 unset) |
+| `rounds: N` | Fix rounds `graphene auto` takes after the goal's check fails (2 unset) |
+| `checks: COMMAND, …` | The commands the envelope runs as a task's check without you; unset, any one plain command (no `;`, `&&`, `\|`, redirect or `$(…)`) |
 
 `graphene config` also names the planner, the executor and plan first.
+
+`graphene auto "<goal>"` turns `auto` on (its flags set `budget`, `tasks`, `rounds` and `forks`) and runs the
+loop: the planner's tree hangs under a root task that carries the goal's check (`--check`, else every task's check
+together); what fits the envelope is accepted at once, run and landed, unless a task it can start has a check that
+passes before any work (it would land with nothing done, so it waits for you); a red goal check is planned again,
+for `rounds` rounds. Exit 0 when the goal's check passes, 1 when it is still red, the budget is spent or you
+stopped it, 3 when something waits for you. With no goal it goes on with the plan in force. Each stage is a row of
+the plan's log (`graphene plan log`), and the cockpit's head and `graphene plan` say the round, its stage and the
+budget. In `graphene watch`, `:auto <goal>` starts it as a process of its own, and `:stop` stops it. `--plan`
+plans and accepts inside the envelope, runs nothing, and leaves the round for `graphene auto` to run.
 
 ## Privacy
 
 - With Claude Code or Codex, Graphene sends nothing anywhere.
 - Nemotron on Token Factory is an optional extra; what it sends is in [HACKATHON.md](HACKATHON.md).
+- Another host named with `--endpoint` (NVIDIA NIM, an OpenAI-compatible URL) is sent the same: the contract, the
+  files the model reads, the output of the commands it runs. Ollama on this machine sends nothing off it.
 
 ## FAQ
 
@@ -350,7 +391,9 @@ takes the hooks out, which ends the recording; what they recorded stays until yo
 
 ## The rest
 
-`graphene --help` lists nine commands. These work too, and `--help` after any of them says more.
+`graphene --help` lists nine commands. These work too; `--help` after any says more.
+
+- `graphene state --json`: one JSON snapshot for an editor; `plan log --json --since ID`: the log's rows after ID.
 
 - `graphene demo --cheat` plays a script, not a model, that tries seven ways round the locks against the real hook,
   git and check: six refused, one flagged, at $0. `graphene demo --live` replays a live run on Nemotron through
@@ -366,5 +409,6 @@ takes the hooks out, which ends the recording; what they recorded stays until yo
 - `graphene board park <id>` sets an item aside, told to nobody; `graphene board unpark <id>` opens it again.
 - `graphene talk why|split|merge|another` asks the planner about a node.
 - `graphene direction` prints the goals above your plans. Its subcommands change them.
-- Nemotron extra only: `graphene key set|check|remove` keeps the Token Factory key; `plan cover`, `plan note`,
-  `plan precheck` and `board lookup` put a question to Nano ([HACKATHON.md](HACKATHON.md)).
+- Nemotron extra only: `graphene key set|check|remove` keeps the Token Factory key (`--endpoint nim|openai`,
+  another host's); `plan cover`, `plan note`, `plan precheck` and `board lookup` put a question to Nano
+  ([HACKATHON.md](HACKATHON.md)).

@@ -11,7 +11,15 @@ pass at the write gate (19 October) found what the hook does not read before a w
 admitted is worth its words. It was 3,700 until forks (20 October): the reference gained a section on them,
 with the rule that keeps one in its five steps and the commands around it, the graph's new direction and the
 gate that fails closed; raised to 4,300, past the 4,000 the night's brief allowed, after what it said twice
-(the meter's clocks, `node show`'s attempt line) was said once and the section still did not fit under it."""
+(the meter's clocks, `node show`'s attempt line) was said once and the section still did not fit under it. It
+was 4,300 until the revamp night (26 October), when the graph gained its gestures (`+` a step after a task,
+`L` a link between two) and The views their one sentence; the settings table gained `auto`, `budget`,
+`tasks` and `rounds` with the paragraph on `graphene config set`; and the executors section gained the other
+hosts behind Graphene's own loop (`--endpoint`), the `{prompt}` and `{prompt_file}` recipes for other CLI
+agents with how they are held, a port per task, and Privacy a bullet for the other hosts; raised to 5,000,
+nothing cut, a row a setting being the table's own rule and a key with no sentence a key nobody finds. It
+was 5,000 until the same night's later additions (`checks:`, `--plan`, `:auto`, `.git/` and the envelope's
+limits); raised to 5,100."""
 
 import re
 from pathlib import Path
@@ -26,7 +34,7 @@ SECTIONS = ["The plan", "The board", "The views", "Plan first", "Ask", "Run", "F
 
 
 def test_it_is_under_the_cap():
-    assert len(HOW.split()) < 4300
+    assert len(HOW.split()) < 5100
 
 
 def test_every_section_is_there_in_order():
@@ -35,12 +43,16 @@ def test_every_section_is_there_in_order():
 
 
 def test_the_settings_table_names_every_setting_with_its_values():
-    """`review` and `notify` (18 October) were in `graphene config` and missing from the table."""
+    """`review` and `notify` (18 October) were in `graphene config` and missing from the table. The envelope's
+    numbers (26 October: `budget`, `tasks`, `rounds`) have a row each too, and `config set` is named."""
     from graphene_map import settings as S
 
     bar = "\\|"  # a | inside a table cell
     for key, values in S.SCALARS.items():
         assert f"| `{key}: {bar.join(values)}` |" in HOW, key
+    for key in S.NUMBERS:
+        assert f"| `{key}: " in HOW, key
+    assert "`graphene config set KEY VALUE` changes one" in HOW
 
 
 def test_a_sign_off_lands_as_the_reference_says_checked_on_its_merge_and_one_at_a_time():

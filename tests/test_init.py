@@ -31,7 +31,8 @@ NEMOTRON = {
     "planner": f"nemotron --model {ULTRA}",
     "executor": f"nemotron --model {NANO} --model {SUPER} --placement local",
 }
-NO_KEY = "NEBIUS_API_KEY is not set: Token Factory needs a key (tokenfactory.nebius.com)"
+NO_KEY = ("NEBIUS_API_KEY is not set: Token Factory needs a key (tokenfactory.nebius.com); "
+          "`graphene key set` keeps one")
 
 
 @pytest.fixture
@@ -115,6 +116,7 @@ def test_at_a_terminal_each_choice_says_what_it_needs_and_enter_takes_the_one_fo
         "  2  Codex                      needs codex on the PATH   not found",
         "  3  Nemotron on Token Factory  needs NEBIUS_API_KEY      found",
         "     Ultra plans, Nano then Super do the leaves, on this machine",
+        "     or on another host: --executor 'nemotron --endpoint nim|ollama|openai'",
         "  4  a command of your own      that takes the prompt last",
         "choose [3]: ",
     ]
@@ -143,8 +145,10 @@ def test_at_a_terminal_with_only_claude_or_only_codex_found_enter_takes_it(repo,
     on_path(agent)  # and no key
     said = at_terminal(repo, ["init"], "", "")
     shown = menu(said)
-    assert shown[number - 1].endswith("  found") and shown[2].startswith("  3  a command of your own")
-    assert "Nemotron" not in said and NO_KEY not in said  # no key: Nemotron is not offered, and no signup
+    assert shown[number - 1].endswith("  found") and shown[5].startswith("  4  a command of your own")
+    # no key: Nemotron is still offered (the extra is installed), says so, and no signup line is printed
+    assert shown[2] == "  3  Nemotron on Token Factory  needs NEBIUS_API_KEY      no key"
+    assert NO_KEY not in said
     assert shown[-1] == f"choose [{number}]: "
     assert chosen(repo) == {"planner": agent, "executor": agent}
 
@@ -164,11 +168,42 @@ def test_at_a_terminal_with_nothing_found_each_is_listed_with_what_it_needs(repo
     assert menu(said) == [
         "  1  Claude Code                needs claude on the PATH  not found",
         "  2  Codex                      needs codex on the PATH   not found",
-        "  3  a command of your own      that takes the prompt last",
+        "  3  Nemotron on Token Factory  needs NEBIUS_API_KEY      no key",
+        "     largest plans, smallest does the leaves, on this machine",
+        "     or on another host: --executor 'nemotron --endpoint nim|ollama|openai'",
+        "  4  a command of your own      that takes the prompt last",
         "choose: ",
-    ]  # Nemotron is offered only with a key
+    ]  # Nemotron is offered with the extra, key or none: chosen with none, it finds its models when it runs
     assert said.count("choose: ") == 2 and "choose [" not in said  # Enter took nothing
     assert chosen(repo) == {"planner": "claude", "executor": "claude"}  # not found yet
+
+
+def test_at_a_terminal_with_no_key_nemotron_can_still_be_chosen_and_names_the_other_hosts(repo, on_path):
+    """26 October: the extra is what offers Nemotron, not a key. Chosen with none, the specs are plain
+    `nemotron`, which finds its key and models when it runs, on the host --endpoint names."""
+    on_path()
+    said = at_terminal(repo, ["init"], "3", "")
+    assert "or on another host: --executor 'nemotron --endpoint nim|ollama|openai'" in said
+    assert chosen(repo) == {"planner": "nemotron", "executor": "nemotron --placement local"}
+
+
+def test_nemotron_on_another_host_in_the_flags_is_offered_from_that_hosts_list(repo, fake, monkeypatch):
+    """`--executor 'nemotron --endpoint nim'` with no model is the offer made from NIM's list: its ids, with
+    the endpoint kept in the spec; its leaves run on this machine (Sandboxes are Nebius's)."""
+    monkeypatch.setenv("GRAPHENE_NIM_URL", fake.url)
+    monkeypatch.setenv("NVIDIA_API_KEY", "fake-key")
+    monkeypatch.delenv("GRAPHENE_TOKENFACTORY_URL")
+    monkeypatch.delenv("NEBIUS_API_KEY")
+    nim = [dict(m, pricing=None) for m in MODELS]  # NIM's list prices nothing
+    nim[1]["id"], nim[3]["id"] = "nvidia/nemotron-3-nano-30b-a3b", "nvidia/llama-3.3-nemotron-super-49b-v1.5"
+    fake.models = nim
+    said = person("init", "--planner", "nemotron --endpoint nim", "--executor", "nemotron --endpoint nim")
+    assert said.exit_code == 0, said.output
+    assert chosen(repo) == {
+        "planner": "nemotron --endpoint nim --model nvidia/Nemotron-3-Ultra-fake",
+        "executor": "nemotron --endpoint nim --model nvidia/nemotron-3-nano-30b-a3b "
+                    "--model nvidia/llama-3.3-nemotron-super-49b-v1.5 --placement local",
+    }  # fmt: skip
 
 
 def test_without_the_nemotron_extra_init_offers_no_nemotron_and_refuses_it_by_name(
@@ -193,10 +228,14 @@ def test_the_offer_names_the_sizes_the_list_has_and_writes_their_ids(repo, fake,
     assert chosen(repo) == {"planner": f"nemotron --model {SUPER}", "executor": NEMOTRON["executor"]}
     fake.models = [m for m in MODELS if "Nemotron" not in m["id"]]
     said = at_terminal(repo, ["init"], "3", "")
-    assert "Token Factory lists no NVIDIA Nemotron model for this key\n" in said
-    assert "  3  Nemotron on Token Factory  needs NEBIUS_API_KEY      not reached\n" in said  # a key
-    assert "     largest plans, smallest does the leaves, on this machine\n" in said
+    # a list with no Nemotron is still reached (26 October): the first model listed does both, and it says so
+    assert "  3  Nemotron on Token Factory  needs NEBIUS_API_KEY      found\n" in said
+    assert "     Llama-3.3-70B-Instruct does both (no Nemotron listed), on this machine\n" in said
     assert chosen(repo) == {"planner": "nemotron", "executor": "nemotron --placement local"}
+    fake.models = []
+    said = at_terminal(repo, ["init"], "3", "")
+    assert "Token Factory lists no model for this key\n" in said
+    assert "  3  Nemotron on Token Factory  needs NEBIUS_API_KEY      not reached\n" in said  # a key
 
 
 def test_plain_nemotron_in_the_flags_is_the_offer_with_the_ids_the_list_gave(repo, fake):
@@ -243,7 +282,7 @@ def test_without_a_terminal_none_or_several_found_leave_the_choice_unset_and_say
     assert [line for line in said.output.splitlines() if "not chosen:" in line] == [
         "the planner and the executor are not chosen: Claude Code and Nemotron on Token Factory are found "
         "here; `graphene init` at a terminal asks, or --planner and --executor name one, and until then "
-        "`run` and `ask` refuse"
+        "`run`, `ask` and `auto` refuse"
     ]
     assert "planner: not chosen · executor: not chosen" in said.output
     assert "each Claude Code session here is recorded" in said.output  # none chosen: the person's own
@@ -267,7 +306,8 @@ def test_inits_first_screen_is_in_the_persons_words_and_its_next_step_fits_what_
     said = person("init")
     assert said.exit_code == 0, said.output
     [then] = [line for line in said.output.splitlines() if line.startswith("next:")]
-    assert then == "next: install claude or codex, then `graphene init` again; `graphene ask` after that"
+    assert then == ("next: install claude or codex, or set a Token Factory key (`graphene key set`), then "
+                    "`graphene init` again; `graphene auto '<what you want>'` after that")
     on_path("claude", "codex")  # two found, none chosen: the next step is to name one, not to install
     [then] = [line for line in person("init").output.splitlines() if line.startswith("next:")]
     assert then.startswith("next: `graphene init --planner claude --executor claude` chooses them; ") and (

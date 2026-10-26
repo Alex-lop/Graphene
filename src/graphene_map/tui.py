@@ -2362,20 +2362,7 @@ def goal_pane(store, s, wide: int) -> Text:
     return pane.render()
 
 
-def precheck(store, node: P.Node) -> dict | None:
-    """The leaf's last precheck row's detail, when it is about its current rev and says it passes at
-    the base (its check proves nothing) or names paths outside its scope; else None. Done or in review,
-    when it passed at the base with the check it finished on: what that check passed proved no more."""
-    if node.state not in (P.OPEN, P.PROPOSED, P.DONE, P.REVIEW):  # running, it is being run
-        return None
-    rows = store.node_log(node.id, ("precheck",))
-    d = rows[-1]["detail"] if rows else {}
-    if node.state in (P.DONE, P.REVIEW):  # by the check's own words, whatever the rev or the check is since;
-        # a reopened leaf done again on the check it landed with ("landed") was verified by it no more
-        ran = store.node_log(node.id, ("check_passed",))  # an edit since ran nothing
-        on = ran[-1]["detail"].get("command") if ran else node.check
-        return d if d.get("verdict") in ("passes", "landed") and d.get("check") == on else None
-    return d if d.get("rev") == node.rev and d.get("verdict") in ("passes", "outside") else None
+precheck = P.prechecked  # the plan's own now: cockpit/read.py reads it without Textual
 
 
 def detail(store, node: P.Node, s, files: list[str] | None = None, room: tuple[int, int] = (60, 0)) -> Text:

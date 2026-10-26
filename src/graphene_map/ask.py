@@ -84,6 +84,8 @@ risk: what could make a check pass on nothing, or a leaf go wrong  [short-id]
   that exits 0 only when the leaf is done, and that can pass with what its scope and its needs write.
   Use the repo's own test runner and files that exist or that the leaf creates. """ + P.CLEAN_TREE + """
 - A leaf whose check needs another leaf's work says so with needs:. Two leaves never share a path.
+  Leaves that can run at the same time share no file: give each its own files and its own test file,
+  and a needs: line only where a leaf uses another's work, so the rest start at once.
 - A leaf's check runs only files in its own scope and files already in the repository. A leaf that
   needs a test another leaf writes waits on it with needs:. Two leaves never share a test file: give
   each leaf its own, or make one tests leaf that waits on all of them.
@@ -166,17 +168,31 @@ def prompt_for(
     return "\n".join(lines)
 
 
-def talking(store, kind: str, ids: list[str]) -> str:
+def talking(store, kind: str, ids: list[str], **more: str) -> str:
     """What the planner is asked when the person talks on the tree (`graphene talk`), after the node
     it is about: why it is there (a note on the board), one leaf for several (merge), or another way
     to reach what it is for. Whether to merge, or which way, is the person's: Graphene puts that
-    question on the board itself, so the planner is asked for the leaves only."""
+    question on the board itself, so the planner is asked for the leaves only. ``fix`` is `graphene
+    auto`'s: the goal's check (``command``) is red once every leaf under the node landed, with the tail
+    of what it said (``output``); the planner proposes the leaves that make it pass, under the node."""
     node = P.get(store, ids[0])
     under = (
         f"write {node.parent}'s line as it is above, with its [{node.parent}], and under it"
         if node.parent
         else "at the left edge, write"
     )
+    if kind == "fix":
+        command = more.get("command", "")
+        return "\n".join([
+            f"Every leaf under {node.id} has landed, and its own check still fails. `{command}` said:",
+            more.get("output", "").strip() or "(no output)", "",
+            f"Propose the leaves that make it pass: write {node.id}'s line as it is above, with its "
+            f"[{node.id}], and under it new leaves, each with its own scope and its own test file, none "
+            "sharing a path, with needs: only where one uses another's work; and nothing else. Read the "
+            "repository as it is now: the leaves above have landed. Fix what the failure shows is wrong; "
+            "change a test only where the goal itself changed what it should expect, and say so in that "
+            "leaf's goal. Never loosen, skip or delete a test to make the check pass.",
+        ])  # fmt: skip
     if kind == "why":
         taken = {it["id"] for it in B.items(store)} | {n.id for n in P.nodes(store)}
         return (
@@ -384,12 +400,15 @@ def ask(
     talk: str | None = None,
     planner: str | None = None,
     beside: frozenset[str] | set[str] = frozenset(),
+    base_parent: str | None = None,
 ) -> list[str]:
     """Start the planner, read its proposal, add it to the plan as the planner's. Returns what was
     proposed, one line each. A proposal Graphene cannot read goes back to the planner once, with the
     refusal, as a refused executor does. ``planner`` is what --with named, kept with the ask so that
     asking it again finer or coarser starts the same one. ``beside``: the leaves the proposal would
-    replace (`graphene talk`), which it may overlap."""
+    replace (`graphene talk`), which it may overlap. ``base_parent``: the node the proposal's top lines
+    hang under (`graphene auto`'s goal). With `auto: on`, what fits the envelope is accepted at once
+    (auto.take) and the line that says so is the last returned."""
     _splits(template)  # bad quoting in --with is one refused line, as it is for `graphene run`
     if about is not None:
         P.get(store, about)  # an unknown id is refused before anything is spent
@@ -490,7 +509,8 @@ def ask(
                     left = {n.id for n in _pending(store, last)} if reask else set()
                     if wrong := T.faults(store, text, who, files, {*beside, *left}):  # every one, at once
                         raise P.Refused("\n".join(wrong))
-                    said = T.apply(store, text, who, None, files=files, beside={*beside, *left})
+                    said = T.apply(store, text, who, None, base_parent=base_parent, files=files,
+                                   beside={*beside, *left})  # fmt: skip
                     if gone:
                         _carry(store, gone, said, heard.append, files)
             except P.Refused as no:
@@ -498,6 +518,13 @@ def ask(
             else:
                 for line in heard:
                     say(line)
+                from . import auto as AUTO  # the envelope: what fits it is the person's at once
+
+                rows = {i: (store.node_row(i) or {}).get("state") for i in said.ids}
+                new = [P.get(store, i) for i, state in rows.items() if state == P.PROPOSED]
+                # not what would replace leaves (`graphene talk` merge, another way): whether to is the
+                # person's question on the board, and the envelope does not answer it
+                taken = AUTO.take(store, new, files, root) if new and not beside else None
                 rest = _FENCE.sub("", printed).strip() if _FENCE.search(printed) else ""
                 if rest:  # its lines as it wrote them (a list stays a list), not run together
                     lines = [" ".join(line.split()).replace("**", "") for line in rest.splitlines()]
@@ -515,6 +542,8 @@ def ask(
                     said += [bill]
                 elif bill:  # nothing was added: said alone, so the caller prints no next step
                     say(bill)
+                if taken:  # last: what the envelope accepted, or the one reason it waits for the person
+                    said += [taken]
                 return said
         if done.returncode == 3 and not text.strip():  # it could not work at all; again would not help
             raise P.Refused(f"nothing was added. {refusal}")

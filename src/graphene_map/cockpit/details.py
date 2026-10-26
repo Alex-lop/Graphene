@@ -24,6 +24,7 @@ from textual.containers import VerticalScroll
 from textual.screen import ModalScreen
 from textual.widgets import Static
 
+from .. import meter as M
 from .. import plan as P
 from .. import tui
 from .. import views as V
@@ -78,21 +79,29 @@ COLUMNS = ("fork", "with", "attempts", "state", "lines", "dollars", "seconds")
 
 def forks_text(store, node_id: str, wide: int) -> Text | None:
     """The forks of the node's last hold, when it forked (its `forked` row): a table in ``wide`` cells, a
-    fork a row, from its last `fork` row (none yet: running, with what the `forked` row said it runs with;
-    its state in the screens' word), then the fork kept, the rule's reason and by whom, from the `picked`
-    row. None for a hold that did not fork."""
+    fork a row, from its last `fork` row (none yet: running, with what the `forked` row said it runs with,
+    and the model its own rows name when that says another: `nemotron (Nano)`; its state in the screens'
+    word), then the fork kept, the rule's reason and by whom, from the `picked` row. None for a hold that
+    did not fork."""
     log = store.node_log(node_id, ("started", "forked", "fork", "picked"))
     held = log[max((k for k, e in enumerate(log) if e["kind"] == "started"), default=-1) + 1 :]
-    forked = next((e["detail"] for e in held if e["kind"] == "forked"), None)
-    if forked is None:
+    begun = next((e for e in held if e["kind"] == "forked"), None)
+    if begun is None:
         return None
+    forked, sessions = begun["detail"], begun["detail"].get("sessions") or {}
+    named: dict[str, str] = {}  # a fork's session -> the model its newest usage or model row says
+    for e in store.node_log(node_id, ("usage", "model")):
+        if e["id"] > begun["id"] and e["detail"].get("model") and e["session_id"]:
+            named[e["session_id"]] = str(e["detail"]["model"])
     last = {str(e["detail"].get("fork")): e["detail"] for e in held if e["kind"] == "fork"}
     rows = [COLUMNS]
     for letter in forked.get("forks") or []:
         f = last.get(str(letter), {})
         dollars, seconds = f.get("dollars"), f.get("seconds")
         state = str(f.get("state") or "running")
-        rows.append((str(letter), str(f.get("with") or (forked.get("with") or {}).get(letter) or ""),
+        spec = str(f.get("with") or (forked.get("with") or {}).get(letter) or "")
+        model = M.short(named.get(str(sessions.get(letter) or "")))
+        rows.append((str(letter), f"{spec} ({model})" if model and model != M.short(spec) else spec,
                      str(f.get("attempts") or ""), FORK_WORD.get(state, state),
                      "" if f.get("lines") is None else str(f["lines"]),
                      V.money(dollars) if dollars else "",

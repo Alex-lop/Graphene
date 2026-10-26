@@ -1,0 +1,1506 @@
+[
+{
+"scope": [
+"src/api/**"
+],
+"path": "src/api/x.ts",
+"inside": true
+},
+{
+"scope": [
+"src/api/**"
+],
+"path": "src/api",
+"inside": false
+},
+{
+"scope": [
+"src/api/**"
+],
+"path": "src/api/deep/y.ts",
+"inside": true
+},
+{
+"scope": [
+"src/api/**"
+],
+"path": "src/apis/z.ts",
+"inside": false
+},
+{
+"scope": [
+"src/api/**"
+],
+"path": "src/a.py",
+"inside": false
+},
+{
+"scope": [
+"src/api/**"
+],
+"path": "src/sub/b.py",
+"inside": false
+},
+{
+"scope": [
+"src/api/**"
+],
+"path": "top.py",
+"inside": false
+},
+{
+"scope": [
+"src/api/**"
+],
+"path": "src/db/s.sql",
+"inside": false
+},
+{
+"scope": [
+"src/api/**"
+],
+"path": "src/db/keep.py",
+"inside": false
+},
+{
+"scope": [
+"src/api/**"
+],
+"path": "app.py",
+"inside": false
+},
+{
+"scope": [
+"src/api/**"
+],
+"path": "app.pyc",
+"inside": false
+},
+{
+"scope": [
+"src/api/**"
+],
+"path": "docs/a.md",
+"inside": false
+},
+{
+"scope": [
+"src/api/**"
+],
+"path": "docs/ab.md",
+"inside": false
+},
+{
+"scope": [
+"src/api/**"
+],
+"path": "README.md",
+"inside": false
+},
+{
+"scope": [
+"src/api/**"
+],
+"path": "a.b/x.c",
+"inside": false
+},
+{
+"scope": [
+"src/api/**"
+],
+"path": "axb/x.c",
+"inside": false
+},
+{
+"scope": [
+"src/api"
+],
+"path": "src/api/x.ts",
+"inside": true
+},
+{
+"scope": [
+"src/api"
+],
+"path": "src/api",
+"inside": true
+},
+{
+"scope": [
+"src/api"
+],
+"path": "src/api/deep/y.ts",
+"inside": true
+},
+{
+"scope": [
+"src/api"
+],
+"path": "src/apis/z.ts",
+"inside": false
+},
+{
+"scope": [
+"src/api"
+],
+"path": "src/a.py",
+"inside": false
+},
+{
+"scope": [
+"src/api"
+],
+"path": "src/sub/b.py",
+"inside": false
+},
+{
+"scope": [
+"src/api"
+],
+"path": "top.py",
+"inside": false
+},
+{
+"scope": [
+"src/api"
+],
+"path": "src/db/s.sql",
+"inside": false
+},
+{
+"scope": [
+"src/api"
+],
+"path": "src/db/keep.py",
+"inside": false
+},
+{
+"scope": [
+"src/api"
+],
+"path": "app.py",
+"inside": false
+},
+{
+"scope": [
+"src/api"
+],
+"path": "app.pyc",
+"inside": false
+},
+{
+"scope": [
+"src/api"
+],
+"path": "docs/a.md",
+"inside": false
+},
+{
+"scope": [
+"src/api"
+],
+"path": "docs/ab.md",
+"inside": false
+},
+{
+"scope": [
+"src/api"
+],
+"path": "README.md",
+"inside": false
+},
+{
+"scope": [
+"src/api"
+],
+"path": "a.b/x.c",
+"inside": false
+},
+{
+"scope": [
+"src/api"
+],
+"path": "axb/x.c",
+"inside": false
+},
+{
+"scope": [
+"src/api/"
+],
+"path": "src/api/x.ts",
+"inside": true
+},
+{
+"scope": [
+"src/api/"
+],
+"path": "src/api",
+"inside": false
+},
+{
+"scope": [
+"src/api/"
+],
+"path": "src/api/deep/y.ts",
+"inside": true
+},
+{
+"scope": [
+"src/api/"
+],
+"path": "src/apis/z.ts",
+"inside": false
+},
+{
+"scope": [
+"src/api/"
+],
+"path": "src/a.py",
+"inside": false
+},
+{
+"scope": [
+"src/api/"
+],
+"path": "src/sub/b.py",
+"inside": false
+},
+{
+"scope": [
+"src/api/"
+],
+"path": "top.py",
+"inside": false
+},
+{
+"scope": [
+"src/api/"
+],
+"path": "src/db/s.sql",
+"inside": false
+},
+{
+"scope": [
+"src/api/"
+],
+"path": "src/db/keep.py",
+"inside": false
+},
+{
+"scope": [
+"src/api/"
+],
+"path": "app.py",
+"inside": false
+},
+{
+"scope": [
+"src/api/"
+],
+"path": "app.pyc",
+"inside": false
+},
+{
+"scope": [
+"src/api/"
+],
+"path": "docs/a.md",
+"inside": false
+},
+{
+"scope": [
+"src/api/"
+],
+"path": "docs/ab.md",
+"inside": false
+},
+{
+"scope": [
+"src/api/"
+],
+"path": "README.md",
+"inside": false
+},
+{
+"scope": [
+"src/api/"
+],
+"path": "a.b/x.c",
+"inside": false
+},
+{
+"scope": [
+"src/api/"
+],
+"path": "axb/x.c",
+"inside": false
+},
+{
+"scope": [
+"./src/api/**"
+],
+"path": "src/api/x.ts",
+"inside": true
+},
+{
+"scope": [
+"./src/api/**"
+],
+"path": "src/api",
+"inside": false
+},
+{
+"scope": [
+"./src/api/**"
+],
+"path": "src/api/deep/y.ts",
+"inside": true
+},
+{
+"scope": [
+"./src/api/**"
+],
+"path": "src/apis/z.ts",
+"inside": false
+},
+{
+"scope": [
+"./src/api/**"
+],
+"path": "src/a.py",
+"inside": false
+},
+{
+"scope": [
+"./src/api/**"
+],
+"path": "src/sub/b.py",
+"inside": false
+},
+{
+"scope": [
+"./src/api/**"
+],
+"path": "top.py",
+"inside": false
+},
+{
+"scope": [
+"./src/api/**"
+],
+"path": "src/db/s.sql",
+"inside": false
+},
+{
+"scope": [
+"./src/api/**"
+],
+"path": "src/db/keep.py",
+"inside": false
+},
+{
+"scope": [
+"./src/api/**"
+],
+"path": "app.py",
+"inside": false
+},
+{
+"scope": [
+"./src/api/**"
+],
+"path": "app.pyc",
+"inside": false
+},
+{
+"scope": [
+"./src/api/**"
+],
+"path": "docs/a.md",
+"inside": false
+},
+{
+"scope": [
+"./src/api/**"
+],
+"path": "docs/ab.md",
+"inside": false
+},
+{
+"scope": [
+"./src/api/**"
+],
+"path": "README.md",
+"inside": false
+},
+{
+"scope": [
+"./src/api/**"
+],
+"path": "a.b/x.c",
+"inside": false
+},
+{
+"scope": [
+"./src/api/**"
+],
+"path": "axb/x.c",
+"inside": false
+},
+{
+"scope": [
+"src/*"
+],
+"path": "src/api/x.ts",
+"inside": false
+},
+{
+"scope": [
+"src/*"
+],
+"path": "src/api",
+"inside": true
+},
+{
+"scope": [
+"src/*"
+],
+"path": "src/api/deep/y.ts",
+"inside": false
+},
+{
+"scope": [
+"src/*"
+],
+"path": "src/apis/z.ts",
+"inside": false
+},
+{
+"scope": [
+"src/*"
+],
+"path": "src/a.py",
+"inside": true
+},
+{
+"scope": [
+"src/*"
+],
+"path": "src/sub/b.py",
+"inside": false
+},
+{
+"scope": [
+"src/*"
+],
+"path": "top.py",
+"inside": false
+},
+{
+"scope": [
+"src/*"
+],
+"path": "src/db/s.sql",
+"inside": false
+},
+{
+"scope": [
+"src/*"
+],
+"path": "src/db/keep.py",
+"inside": false
+},
+{
+"scope": [
+"src/*"
+],
+"path": "app.py",
+"inside": false
+},
+{
+"scope": [
+"src/*"
+],
+"path": "app.pyc",
+"inside": false
+},
+{
+"scope": [
+"src/*"
+],
+"path": "docs/a.md",
+"inside": false
+},
+{
+"scope": [
+"src/*"
+],
+"path": "docs/ab.md",
+"inside": false
+},
+{
+"scope": [
+"src/*"
+],
+"path": "README.md",
+"inside": false
+},
+{
+"scope": [
+"src/*"
+],
+"path": "a.b/x.c",
+"inside": false
+},
+{
+"scope": [
+"src/*"
+],
+"path": "axb/x.c",
+"inside": false
+},
+{
+"scope": [
+"**/*.py"
+],
+"path": "src/api/x.ts",
+"inside": false
+},
+{
+"scope": [
+"**/*.py"
+],
+"path": "src/api",
+"inside": false
+},
+{
+"scope": [
+"**/*.py"
+],
+"path": "src/api/deep/y.ts",
+"inside": false
+},
+{
+"scope": [
+"**/*.py"
+],
+"path": "src/apis/z.ts",
+"inside": false
+},
+{
+"scope": [
+"**/*.py"
+],
+"path": "src/a.py",
+"inside": true
+},
+{
+"scope": [
+"**/*.py"
+],
+"path": "src/sub/b.py",
+"inside": true
+},
+{
+"scope": [
+"**/*.py"
+],
+"path": "top.py",
+"inside": true
+},
+{
+"scope": [
+"**/*.py"
+],
+"path": "src/db/s.sql",
+"inside": false
+},
+{
+"scope": [
+"**/*.py"
+],
+"path": "src/db/keep.py",
+"inside": true
+},
+{
+"scope": [
+"**/*.py"
+],
+"path": "app.py",
+"inside": true
+},
+{
+"scope": [
+"**/*.py"
+],
+"path": "app.pyc",
+"inside": false
+},
+{
+"scope": [
+"**/*.py"
+],
+"path": "docs/a.md",
+"inside": false
+},
+{
+"scope": [
+"**/*.py"
+],
+"path": "docs/ab.md",
+"inside": false
+},
+{
+"scope": [
+"**/*.py"
+],
+"path": "README.md",
+"inside": false
+},
+{
+"scope": [
+"**/*.py"
+],
+"path": "a.b/x.c",
+"inside": false
+},
+{
+"scope": [
+"**/*.py"
+],
+"path": "axb/x.c",
+"inside": false
+},
+{
+"scope": [
+"src/**",
+"!src/db/**"
+],
+"path": "src/api/x.ts",
+"inside": true
+},
+{
+"scope": [
+"src/**",
+"!src/db/**"
+],
+"path": "src/api",
+"inside": true
+},
+{
+"scope": [
+"src/**",
+"!src/db/**"
+],
+"path": "src/api/deep/y.ts",
+"inside": true
+},
+{
+"scope": [
+"src/**",
+"!src/db/**"
+],
+"path": "src/apis/z.ts",
+"inside": true
+},
+{
+"scope": [
+"src/**",
+"!src/db/**"
+],
+"path": "src/a.py",
+"inside": true
+},
+{
+"scope": [
+"src/**",
+"!src/db/**"
+],
+"path": "src/sub/b.py",
+"inside": true
+},
+{
+"scope": [
+"src/**",
+"!src/db/**"
+],
+"path": "top.py",
+"inside": false
+},
+{
+"scope": [
+"src/**",
+"!src/db/**"
+],
+"path": "src/db/s.sql",
+"inside": false
+},
+{
+"scope": [
+"src/**",
+"!src/db/**"
+],
+"path": "src/db/keep.py",
+"inside": false
+},
+{
+"scope": [
+"src/**",
+"!src/db/**"
+],
+"path": "app.py",
+"inside": false
+},
+{
+"scope": [
+"src/**",
+"!src/db/**"
+],
+"path": "app.pyc",
+"inside": false
+},
+{
+"scope": [
+"src/**",
+"!src/db/**"
+],
+"path": "docs/a.md",
+"inside": false
+},
+{
+"scope": [
+"src/**",
+"!src/db/**"
+],
+"path": "docs/ab.md",
+"inside": false
+},
+{
+"scope": [
+"src/**",
+"!src/db/**"
+],
+"path": "README.md",
+"inside": false
+},
+{
+"scope": [
+"src/**",
+"!src/db/**"
+],
+"path": "a.b/x.c",
+"inside": false
+},
+{
+"scope": [
+"src/**",
+"!src/db/**"
+],
+"path": "axb/x.c",
+"inside": false
+},
+{
+"scope": [
+"src/**/*.py"
+],
+"path": "src/api/x.ts",
+"inside": false
+},
+{
+"scope": [
+"src/**/*.py"
+],
+"path": "src/api",
+"inside": false
+},
+{
+"scope": [
+"src/**/*.py"
+],
+"path": "src/api/deep/y.ts",
+"inside": false
+},
+{
+"scope": [
+"src/**/*.py"
+],
+"path": "src/apis/z.ts",
+"inside": false
+},
+{
+"scope": [
+"src/**/*.py"
+],
+"path": "src/a.py",
+"inside": true
+},
+{
+"scope": [
+"src/**/*.py"
+],
+"path": "src/sub/b.py",
+"inside": true
+},
+{
+"scope": [
+"src/**/*.py"
+],
+"path": "top.py",
+"inside": false
+},
+{
+"scope": [
+"src/**/*.py"
+],
+"path": "src/db/s.sql",
+"inside": false
+},
+{
+"scope": [
+"src/**/*.py"
+],
+"path": "src/db/keep.py",
+"inside": true
+},
+{
+"scope": [
+"src/**/*.py"
+],
+"path": "app.py",
+"inside": false
+},
+{
+"scope": [
+"src/**/*.py"
+],
+"path": "app.pyc",
+"inside": false
+},
+{
+"scope": [
+"src/**/*.py"
+],
+"path": "docs/a.md",
+"inside": false
+},
+{
+"scope": [
+"src/**/*.py"
+],
+"path": "docs/ab.md",
+"inside": false
+},
+{
+"scope": [
+"src/**/*.py"
+],
+"path": "README.md",
+"inside": false
+},
+{
+"scope": [
+"src/**/*.py"
+],
+"path": "a.b/x.c",
+"inside": false
+},
+{
+"scope": [
+"src/**/*.py"
+],
+"path": "axb/x.c",
+"inside": false
+},
+{
+"scope": [
+"app.py"
+],
+"path": "src/api/x.ts",
+"inside": false
+},
+{
+"scope": [
+"app.py"
+],
+"path": "src/api",
+"inside": false
+},
+{
+"scope": [
+"app.py"
+],
+"path": "src/api/deep/y.ts",
+"inside": false
+},
+{
+"scope": [
+"app.py"
+],
+"path": "src/apis/z.ts",
+"inside": false
+},
+{
+"scope": [
+"app.py"
+],
+"path": "src/a.py",
+"inside": false
+},
+{
+"scope": [
+"app.py"
+],
+"path": "src/sub/b.py",
+"inside": false
+},
+{
+"scope": [
+"app.py"
+],
+"path": "top.py",
+"inside": false
+},
+{
+"scope": [
+"app.py"
+],
+"path": "src/db/s.sql",
+"inside": false
+},
+{
+"scope": [
+"app.py"
+],
+"path": "src/db/keep.py",
+"inside": false
+},
+{
+"scope": [
+"app.py"
+],
+"path": "app.py",
+"inside": true
+},
+{
+"scope": [
+"app.py"
+],
+"path": "app.pyc",
+"inside": false
+},
+{
+"scope": [
+"app.py"
+],
+"path": "docs/a.md",
+"inside": false
+},
+{
+"scope": [
+"app.py"
+],
+"path": "docs/ab.md",
+"inside": false
+},
+{
+"scope": [
+"app.py"
+],
+"path": "README.md",
+"inside": false
+},
+{
+"scope": [
+"app.py"
+],
+"path": "a.b/x.c",
+"inside": false
+},
+{
+"scope": [
+"app.py"
+],
+"path": "axb/x.c",
+"inside": false
+},
+{
+"scope": [
+"docs/?.md"
+],
+"path": "src/api/x.ts",
+"inside": false
+},
+{
+"scope": [
+"docs/?.md"
+],
+"path": "src/api",
+"inside": false
+},
+{
+"scope": [
+"docs/?.md"
+],
+"path": "src/api/deep/y.ts",
+"inside": false
+},
+{
+"scope": [
+"docs/?.md"
+],
+"path": "src/apis/z.ts",
+"inside": false
+},
+{
+"scope": [
+"docs/?.md"
+],
+"path": "src/a.py",
+"inside": false
+},
+{
+"scope": [
+"docs/?.md"
+],
+"path": "src/sub/b.py",
+"inside": false
+},
+{
+"scope": [
+"docs/?.md"
+],
+"path": "top.py",
+"inside": false
+},
+{
+"scope": [
+"docs/?.md"
+],
+"path": "src/db/s.sql",
+"inside": false
+},
+{
+"scope": [
+"docs/?.md"
+],
+"path": "src/db/keep.py",
+"inside": false
+},
+{
+"scope": [
+"docs/?.md"
+],
+"path": "app.py",
+"inside": false
+},
+{
+"scope": [
+"docs/?.md"
+],
+"path": "app.pyc",
+"inside": false
+},
+{
+"scope": [
+"docs/?.md"
+],
+"path": "docs/a.md",
+"inside": true
+},
+{
+"scope": [
+"docs/?.md"
+],
+"path": "docs/ab.md",
+"inside": false
+},
+{
+"scope": [
+"docs/?.md"
+],
+"path": "README.md",
+"inside": false
+},
+{
+"scope": [
+"docs/?.md"
+],
+"path": "a.b/x.c",
+"inside": false
+},
+{
+"scope": [
+"docs/?.md"
+],
+"path": "axb/x.c",
+"inside": false
+},
+{
+"scope": [
+"**"
+],
+"path": "src/api/x.ts",
+"inside": true
+},
+{
+"scope": [
+"**"
+],
+"path": "src/api",
+"inside": true
+},
+{
+"scope": [
+"**"
+],
+"path": "src/api/deep/y.ts",
+"inside": true
+},
+{
+"scope": [
+"**"
+],
+"path": "src/apis/z.ts",
+"inside": true
+},
+{
+"scope": [
+"**"
+],
+"path": "src/a.py",
+"inside": true
+},
+{
+"scope": [
+"**"
+],
+"path": "src/sub/b.py",
+"inside": true
+},
+{
+"scope": [
+"**"
+],
+"path": "top.py",
+"inside": true
+},
+{
+"scope": [
+"**"
+],
+"path": "src/db/s.sql",
+"inside": true
+},
+{
+"scope": [
+"**"
+],
+"path": "src/db/keep.py",
+"inside": true
+},
+{
+"scope": [
+"**"
+],
+"path": "app.py",
+"inside": true
+},
+{
+"scope": [
+"**"
+],
+"path": "app.pyc",
+"inside": true
+},
+{
+"scope": [
+"**"
+],
+"path": "docs/a.md",
+"inside": true
+},
+{
+"scope": [
+"**"
+],
+"path": "docs/ab.md",
+"inside": true
+},
+{
+"scope": [
+"**"
+],
+"path": "README.md",
+"inside": true
+},
+{
+"scope": [
+"**"
+],
+"path": "a.b/x.c",
+"inside": true
+},
+{
+"scope": [
+"**"
+],
+"path": "axb/x.c",
+"inside": true
+},
+{
+"scope": [
+"src/**",
+"!src/db/**",
+"src/db/keep.py"
+],
+"path": "src/api/x.ts",
+"inside": true
+},
+{
+"scope": [
+"src/**",
+"!src/db/**",
+"src/db/keep.py"
+],
+"path": "src/api",
+"inside": true
+},
+{
+"scope": [
+"src/**",
+"!src/db/**",
+"src/db/keep.py"
+],
+"path": "src/api/deep/y.ts",
+"inside": true
+},
+{
+"scope": [
+"src/**",
+"!src/db/**",
+"src/db/keep.py"
+],
+"path": "src/apis/z.ts",
+"inside": true
+},
+{
+"scope": [
+"src/**",
+"!src/db/**",
+"src/db/keep.py"
+],
+"path": "src/a.py",
+"inside": true
+},
+{
+"scope": [
+"src/**",
+"!src/db/**",
+"src/db/keep.py"
+],
+"path": "src/sub/b.py",
+"inside": true
+},
+{
+"scope": [
+"src/**",
+"!src/db/**",
+"src/db/keep.py"
+],
+"path": "top.py",
+"inside": false
+},
+{
+"scope": [
+"src/**",
+"!src/db/**",
+"src/db/keep.py"
+],
+"path": "src/db/s.sql",
+"inside": false
+},
+{
+"scope": [
+"src/**",
+"!src/db/**",
+"src/db/keep.py"
+],
+"path": "src/db/keep.py",
+"inside": true
+},
+{
+"scope": [
+"src/**",
+"!src/db/**",
+"src/db/keep.py"
+],
+"path": "app.py",
+"inside": false
+},
+{
+"scope": [
+"src/**",
+"!src/db/**",
+"src/db/keep.py"
+],
+"path": "app.pyc",
+"inside": false
+},
+{
+"scope": [
+"src/**",
+"!src/db/**",
+"src/db/keep.py"
+],
+"path": "docs/a.md",
+"inside": false
+},
+{
+"scope": [
+"src/**",
+"!src/db/**",
+"src/db/keep.py"
+],
+"path": "docs/ab.md",
+"inside": false
+},
+{
+"scope": [
+"src/**",
+"!src/db/**",
+"src/db/keep.py"
+],
+"path": "README.md",
+"inside": false
+},
+{
+"scope": [
+"src/**",
+"!src/db/**",
+"src/db/keep.py"
+],
+"path": "a.b/x.c",
+"inside": false
+},
+{
+"scope": [
+"src/**",
+"!src/db/**",
+"src/db/keep.py"
+],
+"path": "axb/x.c",
+"inside": false
+},
+{
+"scope": [
+"a.b/*.c"
+],
+"path": "src/api/x.ts",
+"inside": false
+},
+{
+"scope": [
+"a.b/*.c"
+],
+"path": "src/api",
+"inside": false
+},
+{
+"scope": [
+"a.b/*.c"
+],
+"path": "src/api/deep/y.ts",
+"inside": false
+},
+{
+"scope": [
+"a.b/*.c"
+],
+"path": "src/apis/z.ts",
+"inside": false
+},
+{
+"scope": [
+"a.b/*.c"
+],
+"path": "src/a.py",
+"inside": false
+},
+{
+"scope": [
+"a.b/*.c"
+],
+"path": "src/sub/b.py",
+"inside": false
+},
+{
+"scope": [
+"a.b/*.c"
+],
+"path": "top.py",
+"inside": false
+},
+{
+"scope": [
+"a.b/*.c"
+],
+"path": "src/db/s.sql",
+"inside": false
+},
+{
+"scope": [
+"a.b/*.c"
+],
+"path": "src/db/keep.py",
+"inside": false
+},
+{
+"scope": [
+"a.b/*.c"
+],
+"path": "app.py",
+"inside": false
+},
+{
+"scope": [
+"a.b/*.c"
+],
+"path": "app.pyc",
+"inside": false
+},
+{
+"scope": [
+"a.b/*.c"
+],
+"path": "docs/a.md",
+"inside": false
+},
+{
+"scope": [
+"a.b/*.c"
+],
+"path": "docs/ab.md",
+"inside": false
+},
+{
+"scope": [
+"a.b/*.c"
+],
+"path": "README.md",
+"inside": false
+},
+{
+"scope": [
+"a.b/*.c"
+],
+"path": "a.b/x.c",
+"inside": true
+},
+{
+"scope": [
+"a.b/*.c"
+],
+"path": "axb/x.c",
+"inside": false
+}
+]

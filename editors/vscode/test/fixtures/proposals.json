@@ -1,0 +1,39 @@
+{
+  "schema": 1, "graphene": "0.8.0", "repo": "/home/alex/app", "cursor": 41,
+  "goal": "make the app friendlier", "first": "on", "planner": "nemotron", "executor": "nemotron",
+  "envelope": {"auto": "off", "budget": null, "tasks": null, "rounds": 2, "forks": 3, "review": "off",
+               "protected": ["deploy/**"], "readonly": []},
+  "auto": null,
+  "run": {"going": false, "pid": null},
+  "spent": 0,
+  "scoreboard": {"need_you": 4, "running": 0, "proven": 0, "total": 4},
+  "width": 2,
+  "questions": [
+    {"id": "which-port", "text": "which port does the dev server take?", "default": "8000, as the README says",
+     "options": ["pick a free one at start"], "about": "greet", "kind": "question"}
+  ],
+  "goals": [
+    {"id": "words", "title": "the words", "parent": null, "state": "open", "check": "uv run pytest -q"},
+    {"id": "api", "title": "the API", "parent": null, "state": "open", "check": null}
+  ],
+  "tasks": [
+    {"id": "hello", "title": "hello says hello", "full": "hello says hello to the person by name",
+     "state": "proposed", "parent": "words", "scope": ["words.py"], "needs": [], "check": "pytest -q tests/test_words.py",
+     "agent": "", "model": "", "usd": null, "idle": null, "needs_you": true, "tail": [], "note": "",
+     "changed": [], "stopped": [], "outside": [], "forks": [], "kept": null, "hollow": false},
+    {"id": "bye", "title": "bye says goodbye", "full": "", "state": "proposed", "parent": "words",
+     "scope": ["words.py"], "needs": ["hello"], "check": "pytest -q tests/test_words.py",
+     "agent": "", "model": "", "usd": null, "idle": null, "needs_you": true, "tail": [], "note": "",
+     "changed": [], "stopped": [], "outside": [], "forks": [], "kept": null, "hollow": false},
+    {"id": "greet", "title": "greet route", "full": "", "state": "proposed", "parent": "api",
+     "scope": ["app.py"], "needs": ["hello"], "check": "pytest -q tests/test_app.py",
+     "agent": "", "model": "", "usd": null, "idle": null, "needs_you": true, "tail": [], "note": "",
+     "changed": [], "stopped": [], "outside": [], "forks": [], "kept": null, "hollow": false},
+    {"id": "farewell", "title": "farewell route", "full": "", "state": "proposed", "parent": "api",
+     "scope": ["app.py"], "needs": ["bye", "greet"], "check": "pytest -q tests/test_app.py",
+     "agent": "", "model": "", "usd": null, "idle": null, "needs_you": true, "tail": [], "note": "",
+     "changed": [], "stopped": [], "outside": [], "forks": [], "kept": null, "hollow": false}
+  ],
+  "edges": [["hello", "bye", "needs"], ["hello", "greet", "needs"], ["bye", "farewell", "needs"], ["greet", "farewell", "needs"]],
+  "news": ["the planner proposed 4 tasks under 2 sub-goals", "1 question waits for you"]
+}

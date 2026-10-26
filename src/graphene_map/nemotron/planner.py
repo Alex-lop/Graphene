@@ -35,10 +35,11 @@ from ..store import Store, repo_root
 from . import tokenfactory as tf
 from .executor import text_calls
 
-PROMPT_VERSION = 6  # 2: the board (questions with a default, assumptions, risks, leave-outs); 3: then:
+PROMPT_VERSION = 7  # 2: the board (questions with a default, assumptions, risks, leave-outs); 3: then:
 # lines; 4: at most three items, each a question or a risk that changes the tree; assumptions in goals;
 # 5: a check runs only its own files; the proposal is asked for as JSON in a strict schema; 6: what needs
-# no judgement is repaired, not sent back; the faults go back together, one per node, at most twice
+# no judgement is repaired, not sent back; the faults go back together, one per node, at most twice;
+# 7: leaves that run at once share no file, each its own test file, needs: only where one uses another's work
 SYSTEM = """\
 You are the planner for Graphene: a person said what they want, and you propose the tree of work that
 coding agents will do, which the person prunes before anything runs. Read the repository with the tools
@@ -53,7 +54,9 @@ leaves do not already follow, that changes what a leaf does, which files it may 
 checked carries the then: lines that make that change (goal, scope, check, drop, leaf), so the person's
 choice changes the tree. A leaf's check runs only files in its own scope and files already in the
 repository. A leaf that needs a test another leaf writes waits on it with needs:. Two leaves never share a
-test file: give each leaf its own, or make one tests leaf that waits on all of them. When you have read
+test file: give each leaf its own, or make one tests leaf that waits on all of them. Leaves that can run at
+the same time share no file: give each its own files and its own test file, and a needs: line only where a
+leaf uses another's work, so the rest start at once. When you have read
 enough, stop calling tools. You are then asked for the proposal as JSON, with the fields of the form the
 request gives. Put one or two sentences to the person in says. To put lines under a node already in the
 plan, name that node as their parent. You write no file and run nothing."""
@@ -302,12 +305,14 @@ def plan(args: argparse.Namespace, prompt: str) -> int:
     repo = Repo(here, _protected(here))
     say = sys.stderr
     try:  # the id the live list has: the largest Nemotron by default, a retired one's nearest
+        if args.endpoint:
+            tf.use(args.endpoint)
         chosen, instead = tf.resolve([args.model] if args.model else [], "planner")
     except tf.Unreachable as no:
         print(f"stopped: {no}", file=say)
         return 3
     if not chosen:
-        print("stopped: Token Factory lists no Nemotron model for this key", file=say)
+        print(f"stopped: {tf.host()} lists no model for this key", file=say)
         return 3
     model = chosen[0]
     messages = [{"role": "system", "content": SYSTEM}, {"role": "user", "content": prompt}]
@@ -315,7 +320,8 @@ def plan(args: argparse.Namespace, prompt: str) -> int:
               **{k: json.loads(v) for k, v in (p.split("=", 1) for p in args.param)}}  # fmt: skip
     bill = {"model": model, "calls": 0, "prompt_tokens": 0, "completion_tokens": 0, "dollars": 0.0,
             "prompt": PROMPT_VERSION, "endpoint": tf.endpoint()}  # fmt: skip
-    print(f"nemotron planner · {model}", file=say, flush=True)
+    where = "" if tf.chosen().name == "tokenfactory" else f" · {tf.host()}"
+    print(f"nemotron planner · {model}{where}", file=say, flush=True)
 
     def asked(tools: list | None = None, **strict) -> tuple[dict, list]:
         """One call, on the bill, and its tool calls. Cut off with no call, it is asked again with room."""
@@ -325,6 +331,8 @@ def plan(args: argparse.Namespace, prompt: str) -> int:
             bill["prompt_tokens"] += said["usage"].get("prompt_tokens") or 0
             bill["completion_tokens"] += said["usage"].get("completion_tokens") or 0
             bill["dollars"] += said["dollars"]
+            if not said.get("priced", True):  # the list gave no price: the row says so, not $0
+                bill["priced"] = False
             message = said["message"]
             calls = message.get("tool_calls") or (text_calls(message.get("content")) if tools else [])
             if calls or said.get("finish") != "length":
@@ -370,8 +378,9 @@ def plan(args: argparse.Namespace, prompt: str) -> int:
         stopped = no
     finally:
         bill["dollars"] = round(bill["dollars"], 6)
+        priced = "at list price" if bill.get("priced", True) else "(no list price)"
         print(f"bill: {bill['calls']} calls, {bill['prompt_tokens']} in, {bill['completion_tokens']} out, "
-              f"${bill['dollars']:.4f} at list price", file=say, flush=True)  # fmt: skip
+              f"${bill['dollars']:.4f} {priced}", file=say, flush=True)  # fmt: skip
         try:
             with Store.open(repo_root(here)) as store:
                 store.log_node("*", P._now(), "usage", "planner:nemotron", None, None, bill)
@@ -389,7 +398,9 @@ def plan(args: argparse.Namespace, prompt: str) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="graphene-nemotron-planner", description=__doc__.split("\n")[0])
-    parser.add_argument("--model", help="a model id in Token Factory's list (default: the largest Nemotron)")
+    parser.add_argument("--model", help="a model id in the host's list (default: the largest Nemotron)")
+    parser.add_argument("--endpoint", choices=tuple(tf.ENDPOINTS),
+                        help="the host: tokenfactory (default), nim, ollama or openai")  # fmt: skip
     parser.add_argument("--steps", type=int, default=30, help="tool steps at most, then the answer")
     parser.add_argument("--temperature", type=float, default=0.3)
     parser.add_argument("--max-tokens", type=int, default=8192)

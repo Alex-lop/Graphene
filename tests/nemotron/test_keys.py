@@ -199,7 +199,7 @@ def test_contree_and_the_access_check_count_a_key_kept_in_the_keychain(tmp_path,
 
     from graphene_map.nemotron import sandbox
 
-    monkeypatch.setattr(keys, "find", lambda: "fake-key-in-keychain")
+    monkeypatch.setattr(keys, "find", lambda *where: "fake-key-in-keychain")
     monkeypatch.setenv("NEBIUS_PROJECT_ID", "project-fake")
     assert sandbox.credentials()
     monkeypatch.syspath_prepend(str(pathlib.Path(__file__).parents[2] / "dev" / "test"))

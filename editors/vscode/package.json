@@ -1,0 +1,378 @@
+{
+  "name": "graphene-vscode",
+  "displayName": "Graphene",
+  "description": "Your plan as a graph you can act on: watch the agents Graphene holds to it, add a step, link two, accept, tell an agent.",
+  "version": "0.8.0",
+  "publisher": "alex-lop",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Alex-lop/Graphene"
+  },
+  "homepage": "https://github.com/Alex-lop/Graphene/tree/main/editors/vscode",
+  "bugs": {
+    "url": "https://github.com/Alex-lop/Graphene/issues"
+  },
+  "engines": {
+    "vscode": "^1.95.0"
+  },
+  "categories": [
+    "Other",
+    "Visualization"
+  ],
+  "keywords": [
+    "graphene",
+    "coding agents",
+    "claude code",
+    "codex",
+    "nemotron",
+    "plan"
+  ],
+  "main": "./dist/extension.js",
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false,
+      "description": "Graphene runs the graphene command, and the plan's checks, in this folder."
+    }
+  },
+  "activationEvents": [
+    "workspaceContains:.graphene/graphene.db"
+  ],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "graphene",
+          "title": "Graphene",
+          "icon": "media/graphene.svg"
+        }
+      ]
+    },
+    "views": {
+      "graphene": [
+        {
+          "id": "graphene.plan",
+          "name": "Plan",
+          "icon": "media/graphene.svg",
+          "contextualTitle": "Graphene"
+        },
+        {
+          "id": "graphene.rounds",
+          "name": "Rounds",
+          "icon": "media/graphene.svg",
+          "contextualTitle": "Graphene"
+        },
+        {
+          "id": "graphene.graph",
+          "type": "webview",
+          "name": "Graph",
+          "icon": "media/graphene.svg",
+          "contextualTitle": "Graphene"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "graphene.plan",
+        "contents": "$(loading~spin) Reading the plan…",
+        "when": "graphene.status == reading"
+      },
+      {
+        "view": "graphene.plan",
+        "contents": "Graphene is not installed, or not on this editor's PATH.\n\nInstall it with `uv tool install graphene-map`, or set the setting `graphene.path` to where it is.\n[Open Settings](command:workbench.action.openSettings?%22graphene.path%22)",
+        "when": "graphene.status == missing"
+      },
+      {
+        "view": "graphene.plan",
+        "contents": "This folder has no plan yet.\n\nSet it up once with `graphene init`: it asks which planner and executor to use.\n[Set Up This Folder](command:graphene.init)\nThen `graphene ask \"what you want\"`, or Graphene: Auto…",
+        "when": "graphene.status == uninitialised"
+      },
+      {
+        "view": "graphene.plan",
+        "contents": "Graphene could not read the plan.\n\n[Try again](command:graphene.refresh)",
+        "when": "graphene.status == error"
+      },
+      {
+        "view": "graphene.plan",
+        "contents": "Nothing is planned yet.\n\n[Graphene: Auto…](command:graphene.auto)\n[Add Step…](command:graphene.addStep)",
+        "when": "graphene.status == empty"
+      },
+      {
+        "view": "graphene.plan",
+        "contents": "Open a folder to see its plan.",
+        "when": "graphene.status == nofolder"
+      },
+      {
+        "view": "graphene.rounds",
+        "contents": "No auto rounds here yet.\n\nGraphene: Auto… plans a goal, races it, checks it and plans the fix; each round shows here, with what your envelope accepted, the fork each task kept and why, and what landed.\n[Graphene: Auto…](command:graphene.auto)"
+      }
+    ],
+    "commands": [
+      {
+        "command": "graphene.showGraph",
+        "title": "Graphene: Show Plan Graph",
+        "icon": "$(type-hierarchy-sub)"
+      },
+      {
+        "command": "graphene.openCockpit",
+        "title": "Graphene: Open Cockpit",
+        "icon": "$(terminal)"
+      },
+      {
+        "command": "graphene.auto",
+        "title": "Graphene: Auto…",
+        "icon": "$(rocket)"
+      },
+      {
+        "command": "graphene.envelope",
+        "title": "Graphene: Set Envelope…"
+      },
+      {
+        "command": "graphene.runReady",
+        "title": "Graphene: Run Ready Tasks",
+        "icon": "$(play)"
+      },
+      {
+        "command": "graphene.stop",
+        "title": "Graphene: Stop",
+        "icon": "$(debug-stop)"
+      },
+      {
+        "command": "graphene.accept",
+        "title": "Graphene: Accept",
+        "icon": "$(check)"
+      },
+      {
+        "command": "graphene.acceptAll",
+        "title": "Graphene: Accept All",
+        "icon": "$(check-all)"
+      },
+      {
+        "command": "graphene.addStep",
+        "title": "Graphene: Add Step…",
+        "icon": "$(add)"
+      },
+      {
+        "command": "graphene.link",
+        "title": "Graphene: Link…",
+        "icon": "$(link)"
+      },
+      {
+        "command": "graphene.editStep",
+        "title": "Graphene: Edit Step…",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "graphene.dropStep",
+        "title": "Graphene: Drop Step",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "graphene.tell",
+        "title": "Graphene: Tell Agent…",
+        "icon": "$(comment)"
+      },
+      {
+        "command": "graphene.init",
+        "title": "Graphene: Set Up This Folder"
+      },
+      {
+        "command": "graphene.refresh",
+        "title": "Graphene: Refresh",
+        "icon": "$(refresh)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "graphene.refresh",
+          "when": "view == graphene.plan",
+          "group": "navigation@5"
+        },
+        {
+          "command": "graphene.showGraph",
+          "when": "view == graphene.plan",
+          "group": "navigation@1"
+        },
+        {
+          "command": "graphene.runReady",
+          "when": "view == graphene.plan",
+          "group": "navigation@2"
+        },
+        {
+          "command": "graphene.acceptAll",
+          "when": "view == graphene.plan",
+          "group": "navigation@3"
+        },
+        {
+          "command": "graphene.addStep",
+          "when": "view == graphene.plan",
+          "group": "navigation@4"
+        },
+        {
+          "command": "graphene.auto",
+          "when": "view == graphene.plan",
+          "group": "1_run@1"
+        },
+        {
+          "command": "graphene.envelope",
+          "when": "view == graphene.plan",
+          "group": "1_run@1"
+        },
+        {
+          "command": "graphene.openCockpit",
+          "when": "view == graphene.plan",
+          "group": "1_run@2"
+        },
+        {
+          "command": "graphene.stop",
+          "when": "view == graphene.plan",
+          "group": "1_run@3"
+        },
+        {
+          "command": "graphene.link",
+          "when": "view == graphene.plan",
+          "group": "2_plan@1"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "graphene.accept",
+          "when": "view == graphene.plan && viewItem == task:proposed",
+          "group": "inline@1"
+        },
+        {
+          "command": "graphene.accept",
+          "when": "view == graphene.plan && viewItem == task:proposed",
+          "group": "1_act@1"
+        },
+        {
+          "command": "graphene.tell",
+          "when": "view == graphene.plan && viewItem =~ /^task:(running|ready|waiting|came-back)$/",
+          "group": "1_act@2"
+        },
+        {
+          "command": "graphene.addStep",
+          "when": "view == graphene.plan && viewItem =~ /^(task|goal)/",
+          "group": "2_plan@1"
+        },
+        {
+          "command": "graphene.link",
+          "when": "view == graphene.plan && viewItem =~ /^task:/",
+          "group": "2_plan@2"
+        },
+        {
+          "command": "graphene.editStep",
+          "when": "view == graphene.plan && viewItem =~ /^task:(proposed|ready|waiting|running|review|came-back|yours)$/",
+          "group": "2_plan@3"
+        },
+        {
+          "command": "graphene.dropStep",
+          "when": "view == graphene.plan && viewItem =~ /^task:(proposed|ready|waiting)$/",
+          "group": "3_drop@1"
+        }
+      ]
+    },
+    "walkthroughs": [
+      {
+        "id": "start",
+        "title": "Get started with Graphene",
+        "description": "A team of coding agents on one repo: each owns its files, and your tests decide what lands.",
+        "steps": [
+          {
+            "id": "install",
+            "title": "Install Graphene",
+            "description": "This extension draws and drives the `graphene` command. Install it once, in a terminal: `uv tool install 'graphene-map[nemotron]'` (or without `[nemotron]` for Claude Code or Codex alone).\n[Open a Terminal](command:workbench.action.terminal.new)",
+            "media": {
+              "image": "media/graph.png",
+              "altText": "the plan as a graph: tasks by state, one task's three forks racing, the kept one marked, the goal on the right"
+            },
+            "completionEvents": [
+              "onContext:graphene.status && graphene.status != missing"
+            ]
+          },
+          {
+            "id": "setup",
+            "title": "Set up this folder",
+            "description": "`graphene init` asks who plans and who does the work: Nemotron on Token Factory, Claude Code, Codex, or any model behind Graphene's own loop.\n[Set Up This Folder](command:graphene.init)",
+            "media": {
+              "image": "media/graph.png",
+              "altText": "the plan as a graph: tasks by state, one task's three forks racing, the kept one marked, the goal on the right"
+            },
+            "completionEvents": [
+              "onCommand:graphene.init"
+            ]
+          },
+          {
+            "id": "goal",
+            "title": "Give it a goal",
+            "description": "Auto… takes a goal, a budget, and whether to plan first. The planner splits it into tasks that can run at once, each with the files it may change and a check; agents race each task, the check keeps one, then your goal's own check runs, and a red one is planned again.\n[Auto…](command:graphene.auto)",
+            "media": {
+              "image": "media/graph.png",
+              "altText": "the plan as a graph: tasks by state, one task's three forks racing, the kept one marked, the goal on the right"
+            },
+            "completionEvents": [
+              "onCommand:graphene.auto"
+            ]
+          },
+          {
+            "id": "watch",
+            "title": "Watch it, steer it",
+            "description": "The graph shows every task, its forks racing and what needs you; drag a task's dot onto another and that one waits on it. The Explorer marks whose each file is, a running agent's with its number; Rounds lists auto mode's iterations.\n[Show Plan Graph](command:graphene.showGraph)",
+            "media": {
+              "image": "media/graph.png",
+              "altText": "the plan as a graph: tasks by state, one task's three forks racing, the kept one marked, the goal on the right"
+            },
+            "completionEvents": [
+              "onCommand:graphene.showGraph"
+            ]
+          },
+          {
+            "id": "envelope",
+            "title": "Set the limits once",
+            "description": "The envelope is what auto mode may do without you: a budget, how many tasks, fix rounds, forks, the files no task touches and the checks it may run. Anything outside it waits for you, with why.\n[Set Envelope…](command:graphene.envelope)",
+            "media": {
+              "image": "media/graph.png",
+              "altText": "the plan as a graph: tasks by state, one task's three forks racing, the kept one marked, the goal on the right"
+            },
+            "completionEvents": [
+              "onCommand:graphene.envelope"
+            ]
+          }
+        ]
+      }
+    ],
+    "configuration": {
+      "title": "Graphene",
+      "properties": {
+        "graphene.path": {
+          "type": "string",
+          "default": "graphene",
+          "description": "The graphene command: a name on PATH or an absolute path. Only your own settings set it, never a folder's: a cloned repository cannot choose what the extension runs.",
+          "scope": "machine"
+        },
+        "graphene.pollMs": {
+          "type": "number",
+          "default": 1500,
+          "minimum": 250,
+          "description": "How often, in milliseconds, the plan is read again while a Graphene view is open. File changes in the plan's store refresh it sooner."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "node esbuild.mjs",
+    "check": "tsc --noEmit -p .",
+    "test": "npm run check && node --experimental-strip-types --test \"test/*.test.ts\" && npm run build && node test/smoke.cjs",
+    "package": "vsce package --no-dependencies --baseContentUrl https://github.com/Alex-lop/Graphene/blob/main/editors/vscode --baseImagesUrl https://raw.githubusercontent.com/Alex-lop/Graphene/main/editors/vscode -o graphene-0.8.0.vsix",
+    "vscode:prepublish": "npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "@types/vscode": "1.95.0",
+    "@vscode/test-electron": "2.5.2",
+    "@vscode/vsce": "3.9.2",
+    "esbuild": "0.25.12",
+    "typescript": "5.9.3"
+  }
+}

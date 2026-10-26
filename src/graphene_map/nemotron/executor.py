@@ -131,8 +131,10 @@ class Local:
         path.write_bytes(data)
 
     def run(self, command: str, timeout: int = RUN_TIMEOUT) -> tuple[int, str]:
-        # model-written code never sees the key: not in its environment, nor through Graphene's keychain
-        env = {k: v for k, v in os.environ.items() if k != tf.KEY} | {"GRAPHENE_KEYCHAIN": "off"}
+        # model-written code never sees a key (none of *_API_KEY): not in its environment, nor through
+        # Graphene's keychain
+        env = {k: v for k, v in os.environ.items() if not k.endswith("_API_KEY")}
+        env["GRAPHENE_KEYCHAIN"] = "off"
         proc = self.proc = subprocess.Popen(
             ["bash", "-c", command], cwd=self.root, env=env, stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, start_new_session=True,
@@ -478,15 +480,17 @@ def converse(leaf: Leaf, model: str, messages: list[dict], args, params: dict, b
         turn = {"calls": 1, "prompt_tokens": used.get("prompt_tokens") or 0,
                 "completion_tokens": used.get("completion_tokens") or 0,
                 "dollars": said["dollars"]}  # fmt: skip
+        unpriced = {"priced": False} if not said.get("priced", True) else {}  # no list price: said, not $0
         with _SHARED:
             for k in COUNTED:
                 bill[k] += turn[k]
             bill["seconds"] += said["seconds"]
+            bill.update(unpriced)
             n = bill["calls"]
         metered = "attempt" in bill  # a leaf of Graphene's run; arm A's harness keeps a bill of its own
         if metered:
             _row(leaf, "usage", {"model": model, **turn, "endpoint": bill["endpoint"],
-                                 "attempt": bill["attempt"], "turn": n})  # fmt: skip
+                                 "attempt": bill["attempt"], "turn": n, **unpriced})  # fmt: skip
             with _SHARED:  # logged: the attempt's own row at the end carries only what no turn's row did
                 for k in COUNTED:
                     bill["logged"][k] += turn[k]
@@ -729,13 +733,15 @@ def work(args: argparse.Namespace, prompt: str) -> int:
     with Store.open(repo) as store:
         node = P.get(store, node_id)
         try:  # the ids the live list has: the smallest Nemotron by default, a retired one's nearest
+            if args.endpoint:
+                tf.use(args.endpoint)
             args.model, said = tf.resolve(args.model, "executor")
         except tf.Unreachable as no:
             return stop(store, node, str(no))
         for line in said:
             print(line, flush=True)
         if not args.model:
-            return stop(store, node, "Token Factory lists no Nemotron model for this key")
+            return stop(store, node, f"{tf.host()} lists no model for this key")
         ladder = args.model
         tried = int(os.environ.get("GRAPHENE_TRY") or 0) or attempt_number(store, node)  # run says which
         model = ladder[min(tried, len(ladder)) - 1]
@@ -762,7 +768,8 @@ def work(args: argparse.Namespace, prompt: str) -> int:
                 "seconds": 0.0, "prompt": PROMPT_VERSION, "endpoint": tf.endpoint(), "attempt": tried,
                 "logged": dict.fromkeys(COUNTED, 0)}  # fmt: skip
         where = args.placement + (f", {args.forks} forks" if args.forks > 1 else "")
-        print(f"nemotron executor · {model} · {where} placement · leaf {node.id}", flush=True)
+        at = "" if tf.chosen().name == "tokenfactory" else f" · {tf.host()}"
+        print(f"nemotron executor · {model}{at} · {where} placement · leaf {node.id}", flush=True)
         if "from" in step:
             print(f"stepped up from {before}: {step['why']}", flush=True)
         leaf = None
@@ -800,8 +807,9 @@ def work(args: argparse.Namespace, prompt: str) -> int:
             rest = {k: bill[k] - logged[k] for k in COUNTED}
             rest["dollars"] = round(rest["dollars"], 6)
             store.log_node(node.id, P._now(), "usage", f"run:{NAME}", session or None, None, bill | rest)
+            priced = "at list price" if bill.get("priced", True) else "(no list price)"
             print(f"bill: {bill['calls']} calls, {bill['prompt_tokens']} in, "
-                  f"{bill['completion_tokens']} out, ${bill['dollars']:.4f} at list price, "
+                  f"{bill['completion_tokens']} out, ${bill['dollars']:.4f} {priced}, "
                   f"{bill['refused']} writes refused", flush=True)  # fmt: skip
 
 
@@ -888,6 +896,8 @@ NAME = "nemotron"
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="graphene-nemotron", description=__doc__.split("\n")[0])
     parser.add_argument("--model", action="append", default=[], help="a model id; again for the next attempt")
+    parser.add_argument("--endpoint", choices=tuple(tf.ENDPOINTS),
+                        help="the host: tokenfactory (default), nim, ollama or openai")  # fmt: skip
     parser.add_argument("--placement", choices=("local", "sandbox"), default="local")
     parser.add_argument("--steps", type=int, default=40, help="model calls at most")
     parser.add_argument("--temperature", type=float, default=0.2)

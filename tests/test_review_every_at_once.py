@@ -26,7 +26,7 @@ def at_once(root, monkeypatch, first, second):
             except plan.Refused as no:
                 said[key] = str(no)
 
-    def check(command, checkout, leave_out=(), at=None):
+    def check(command, checkout, leave_out=(), at=None, env=None):
         if not other:
             other.append(threading.Thread(target=yes, args=(second, "second")))
             other[0].start()

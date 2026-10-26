@@ -45,8 +45,10 @@ def count(tasks: list[Task]) -> str:
 
 def badge(t: Task) -> str:
     """The number its agent goes by; while its hold's forks run (`Task.forks`), `3 ×3`: three agents on it at
-    once, until one is kept and the task is in review or done."""
-    return f"{t.agent} ×{len(t.forks)}" if t.agent and t.forks and t.state == "running" else t.agent
+    once, until one is kept and the task is in review or done; then the model they answer with (`1 Nano`,
+    `3 ×3 Nano`), when they share one. The box's border cuts it where there is no room."""
+    said = f"{t.agent} ×{len(t.forks)}" if t.agent and t.forks and t.state == "running" else t.agent
+    return f"{said} {t.model}".strip() if t.model and said else said
 
 
 def head(k: int, tasks: list[Task]) -> str:
