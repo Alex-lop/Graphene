@@ -41,6 +41,9 @@ checks the goal and plans the fix. Each line is one change.
   whose scope names the hooks' settings may write them; and while auto is on every run counts against the budget,
   an agent's own `graphene run` and the cockpit's `R` too (`nothing starts: your envelope's budget is spent ($0.60
   of $0.50)`), capping a Claude Code or Codex run at what is left.
+- `graphene auto "<goal>" --plan` plans and accepts inside the envelope and runs nothing (`auto: planned round 1
+  inside your envelope and ran nothing: \`graphene plan\` shows it, \`graphene auto\` runs it`); `graphene auto`
+  then runs that same round.
 - `checks:` in the settings names the commands the envelope runs as a task's check without the person
   (`graphene config set checks "python3 -m unittest, uv run pytest"`); unset, it takes one plain command and no
   `;`, `&&`, `|`, redirect or `$(…)` outside quotes. A check outside it waits (`t1's check is not one your envelope

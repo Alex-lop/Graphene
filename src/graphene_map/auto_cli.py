@@ -34,6 +34,9 @@ def register(cli: typer.Typer, root, open_store, fail) -> None:
         attempts: int = typer.Option(
             3, "--attempts", min=1, help="Attempts a task gets before it comes back."
         ),
+        plan_only: bool = typer.Option(
+            False, "--plan", help="Plan inside your envelope and run nothing; `graphene auto` runs it."
+        ),
     ) -> None:
         """Plan a goal, run it and fix it inside your envelope, hands off.
 
@@ -65,7 +68,7 @@ def register(cli: typer.Typer, root, open_store, fail) -> None:
             with open_store(r) as store:
                 S.set_some(store, who, files, **given)  # one `settings` row: the envelope, the person's
             code = AUTO.drive(open_store, r, goal, typer.echo, planner, withs, parallel, forks, check,
-                              attempts)  # fmt: skip
+                              attempts, plan_only)  # fmt: skip
         except P.Refused as no:
             fail(str(no), 1)
         if line := P.where_said(r):

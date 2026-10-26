@@ -202,3 +202,24 @@ def test_with_no_goal_it_goes_on_with_the_plan_in_force(tiny, tmp_path):
     with Store.open(tiny) as store:
         assert P.goal(store) == "another goal"
         assert json.dumps(AUTO.state(store))  # JSON all the way: `state --json` carries it as it is
+
+
+def test_plan_only_plans_and_accepts_inside_the_envelope_and_runs_nothing_until_auto_goes_on(tiny, tmp_path):
+    """`graphene auto "<goal>" --plan` is the cautious first try: the planner's tree, accepted inside the
+    envelope and shown, nothing run and nothing spent on an executor; `graphene auto` then runs that round."""
+    planner, executor = scripts(tmp_path)
+    said = person("auto", GOAL, "--planner", planner, "--with", executor, "--check", GOAL_CHECK, "--plan")
+    assert said.exit_code == 0, said.output
+    assert "): greet, bye. `graphene run` runs them" in said.stdout
+    assert said.stdout.strip().splitlines()[-1] == (
+        "auto: planned round 1 inside your envelope and ran nothing: `graphene plan` shows it, "
+        "`graphene auto` runs it")  # fmt: skip
+    with Store.open(tiny) as store:
+        assert {P.get(store, i).state for i in ("greet", "bye")} == {P.OPEN}
+        assert not store.node_log(None, ("attempt",))  # no executor started
+    assert [(r["round"], r["stage"]) for r in rows(tiny)] == [(1, "planning"), (1, "waits")]
+    went = person("auto", "--planner", planner, "--with", executor)  # the same round goes on
+    assert went.exit_code == 0, went.output
+    assert "round 1: planning" not in went.stdout  # it was planned already
+    assert [(r["round"], r["stage"]) for r in rows(tiny)][2:4] == [(1, "running"), (1, "checking")]
+    assert went.stdout.strip().splitlines()[-1].startswith("auto: 2 rounds, 3 tasks landed")

@@ -258,7 +258,8 @@ def _ended(store, since: str, k: int, verdict: str) -> str:
 
 
 def drive(open_store: Callable, root: Path, goal: str | None, say: Callable[[str], None], planner: str | None,
-          withs: list[str], parallel: int, forks: int | None, check: str | None, attempts: int) -> int:
+          withs: list[str], parallel: int, forks: int | None, check: str | None, attempts: int,
+          plan_only: bool = False) -> int:
     """`graphene auto`'s rounds, as the person (the command is theirs). Returns the exit code: 0 the goal's
     check passed; 1 it is still red after the rounds, the budget is spent, or the run was stopped; 3 something
     waits for the person (a proposal outside the envelope, a sign-off, a planner that proposed nothing)."""
@@ -284,7 +285,7 @@ def drive(open_store: Callable, root: Path, goal: str | None, say: Callable[[str
                 raise P.Refused("no goal is in force for `graphene auto` here: graphene auto '<what you "
                                 "want>' starts one")  # fmt: skip
             root_id, goal = going["root"], P.goal(store)
-            k = going["round"] + 1
+            k = going["round"] + (0 if going.get("planned") else 1)  # a round planned with --plan runs now
         else:
             was = P.goal(store)
             open_ = [n for n in P.nodes(store) if n.state in (P.PROPOSED, P.OPEN, P.RUNNING, P.REVIEW)]
@@ -295,7 +296,7 @@ def drive(open_store: Callable, root: Path, goal: str | None, say: Callable[[str
                     "open: `graphene auto` with no goal goes on with it; `graphene plan archive` ends it"
                 )
             if same:
-                root_id, k = going["root"], going["round"] + 1
+                root_id, k = going["root"], going["round"] + (0 if going.get("planned") else 1)
             else:
                 if was != goal:
                     P.set_goal(store, goal, me)
@@ -321,10 +322,11 @@ def drive(open_store: Callable, root: Path, goal: str | None, say: Callable[[str
         red: str | None = None  # the goal check's last verdict, on every row until it passes
         fix: tuple[str, str] | None = None  # the red check's command and tail, for the next round's planner
         back: list[P.Node] = []
+        planned = bool(going and going.get("planned") and going.get("root") == root_id)  # by --plan, to run
         try:
             while True:
                 paid = spent(store, at)
-                if k == 1 or fix or back:
+                if (k == 1 and not planned) or fix or back:
                     stage = "planning" if k == 1 else "fixing"
                     said = _failing(fix[1]) if fix and stage == "fixing" else ""  # what the fix is for
                     log(store, k, stage, paid, budget, red, said, root=root_id, goal=goal)
@@ -360,6 +362,14 @@ def drive(open_store: Callable, root: Path, goal: str | None, say: Callable[[str
                     want = goal_check(store, root_id, check)
                     if want and P.get(store, root_id).check != want:
                         P.edit(store, root_id, {"check": want}, me, files=files)
+                    if plan_only:  # the cautious first try: the tree is in, nothing runs until auto goes on
+                        why = "planned with --plan: `graphene auto` runs it"
+                        log(store, k, "waits", spent(store, at), budget, red, why, root=root_id, goal=goal,
+                            planned=True)  # fmt: skip
+                        say(f"auto: planned round {k} inside your envelope and ran nothing: `graphene plan` "
+                            "shows it, `graphene auto` runs it")  # fmt: skip
+                        return 0
+                planned = False
                 paid = spent(store, at)
                 if budget is not None and paid >= budget:
                     why = f"the budget is spent: ${paid:.4f} of ${budget:.2f}"

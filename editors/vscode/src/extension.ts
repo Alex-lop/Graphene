@@ -203,7 +203,12 @@ export function activate(context: vscode.ExtensionContext) {
     const budget = await vscode.window.showInputBox({ prompt: "A budget in dollars for the whole run (empty: the configured one)", placeHolder: "2",
                                                      ignoreFocusOut: true, validateInput: (v) => (!v.trim() || Number(v) > 0 ? undefined : "a number of dollars, or nothing") });
     if (budget === undefined) return;
-    session.terminal("graphene auto", C.auto(goal.trim(), budget.trim() ? Number(budget) : null));
+    const how = await vscode.window.showQuickPick(
+      [{ label: "Plan and run", description: "plan, race, land, check the goal, fix", planOnly: false },
+       { label: "Plan first", description: "--plan: see what your envelope accepts; Auto… again, or graphene auto, runs it", planOnly: true }],
+      { placeHolder: "run it now, or look at the plan first?" });
+    if (!how) return;
+    session.terminal("graphene auto", C.auto(goal.trim(), budget.trim() ? Number(budget) : null, how.planOnly));
   });
   cmd("envelope", async () => {
     // the settings `graphene auto` and an agent's proposals stay inside, set once, as `graphene config set` does

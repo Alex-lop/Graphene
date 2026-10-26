@@ -31,9 +31,10 @@ export const runReady = (): string[] => ["run", "--parallel", "4"];
 export const watch = (): string[] => ["watch"];
 export const refreshable = (): string[] => ["--version"];
 
-export function auto(goal: string, budget?: number | null): string[] {
+export function auto(goal: string, budget?: number | null, planOnly = false): string[] {
   const argv = ["auto", goal];
   if (budget !== null && budget !== undefined && Number.isFinite(budget)) argv.push("--budget", String(budget));
+  if (planOnly) argv.push("--plan"); // the plan your envelope accepts, shown, and nothing run
   return argv;
 }
 

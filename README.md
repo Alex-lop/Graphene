@@ -60,6 +60,9 @@ graphene auto "add a --top N option to the CLI, with tests" --budget 2 --forks 3
    the fix and the race goes again, at most `--rounds` times, inside the budget. Every round, acceptance and fork
    is in `graphene plan log`, so the plan's history is there the morning after.
 
+Add `--plan` the first time: the plan your envelope accepts is shown, and nothing runs until `graphene auto`
+alone runs it.
+
 ![The loop: you shape the plan, your agents do the work, Graphene checks it](https://raw.githubusercontent.com/Alex-lop/Graphene/main/docs/assets/loop-ink.svg)
 
 ## Many agents, one repo
