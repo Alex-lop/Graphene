@@ -31,7 +31,8 @@ the sub-goal's own check runs, if it has one.
 | `done` | finished |
 | `dropped`, `archived` | out of the plan |
 
-Agents propose. Only a person accepts, edits a contract, signs off, reopens, pauses or archives. Graphene tells an
+Agents propose. Only a person accepts, edits a contract, signs off, reopens, pauses or archives; with `auto: on`,
+Graphene accepts for you what fits the envelope you set, logged as yours (`by: auto`). Graphene tells an
 agent from you by the variables its CLI sets: `CLAUDECODE`, `CLAUDE_CODE_SESSION_ID`, `CODEX_SESSION_ID`,
 `CODEX_SANDBOX`, `AI_AGENT`, `GEMINI_CLI`, `CURSOR_AGENT`, and Graphene's own `GRAPHENE_NODE` and
 `GRAPHENE_PLANNER`. `graphene plan log` lists every change and who made it.
