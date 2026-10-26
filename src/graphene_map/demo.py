@@ -150,7 +150,7 @@ def record(root: Path, out: Path, every: float = EVERY) -> int:
     for sig in (signal.SIGINT, signal.SIGTERM):
         signal.signal(sig, lambda *_: stop.set())
     tf = extra.load("tokenfactory")  # this terminal's view; the replay decides from the run's usage rows
-    stand_in = bool(tf) and tf.base() != tf.BASE
+    stand_in = bool(tf) and tf.endpoint() == "a stand-in"
     head = {"graphene demo": 1, "recorded": P._now(), "graphene": __version__, "repository": root.name,
             "stand_in": stand_in, "shown": STAND_IN if stand_in else LIVE}  # fmt: skip
     db, runs, began = root / ".graphene" / "graphene.db", root / ".graphene" / "runs", time.monotonic()

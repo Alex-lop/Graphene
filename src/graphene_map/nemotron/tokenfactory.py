@@ -14,8 +14,15 @@ While the person's opening is set (``GRAPHENE_AGENT_LIVE_USD``), each call also 
 the night's ledger before it is sent and settles to its usage after (``night``): one that would take the
 night past its cap is refused, and nothing is sent.
 
-``GRAPHENE_TOKENFACTORY_URL`` points everything at another endpoint (the tests' recorded fake), and
-``GRAPHENE_TOKENFACTORY_RECORD`` appends each exchange to a file, so a live run can be replayed later.
+The host is a choice (``ENDPOINTS``, named with ``--endpoint`` or ``GRAPHENE_ENDPOINT``): Token Factory by
+default; NVIDIA's API catalog (``nim``, ``NVIDIA_API_KEY``); a local Ollama (``ollama``, no key); or any
+OpenAI-compatible URL (``openai``: ``GRAPHENE_OPENAI_BASE_URL``, key ``GRAPHENE_OPENAI_API_KEY`` or
+``OPENAI_API_KEY``: vLLM, OpenRouter, LM Studio). The same loop, the same refusals, the same rows: each
+names who answered (``endpoint``). A host on this machine is a stand-in (``stand_in``); any other spends.
+
+Each endpoint's URL variable (``GRAPHENE_TOKENFACTORY_URL``, ``GRAPHENE_NIM_URL``, ``GRAPHENE_OLLAMA_URL``)
+points it elsewhere (the tests' recorded fake), and ``GRAPHENE_TOKENFACTORY_RECORD`` appends each exchange
+to a file, so a live run can be replayed later.
 """
 
 from __future__ import annotations
@@ -26,7 +33,9 @@ import os
 import socket
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
+from contextlib import contextmanager
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -40,9 +49,77 @@ _sleep = time.sleep
 
 BASE = "https://api.tokenfactory.nebius.com/v1/"
 KEY = "NEBIUS_API_KEY"
+ENDPOINT = "GRAPHENE_ENDPOINT"  # the endpoint chosen for this process: `--endpoint` sets it
 TRIES = 6  # a 429 or a 5xx is tried again, waiting what the server asks or twice as long each time
 TIMEOUT = 300  # seconds for one completion: a long reasoning answer from the largest model takes minutes
 LISTED = 10  # seconds a try at the model list waits for an answer: offline, init must not wait a minute
+
+
+@dataclass(frozen=True)
+class Endpoint:
+    name: str  # the word --endpoint takes
+    url: str  # its own URL ("" when a variable names it: openai)
+    url_env: str  # the variable that points it elsewhere (the tests' fake), or names it
+    key_envs: tuple[str, ...]  # where its key is read, in order, then the keychain under ``account``
+    account: str  # its key's name in the keychain
+    keyed: bool  # a call with no key is refused before it is sent; else it goes without a header
+    label: str  # who answered, as a usage row says it
+    host: str  # its name in a sentence to the person
+    site: str  # where a key comes from
+
+
+ENDPOINTS = {
+    "tokenfactory": Endpoint("tokenfactory", BASE, "GRAPHENE_TOKENFACTORY_URL", (KEY,), keys.ACCOUNT, True,
+                             "token factory", "Token Factory", "tokenfactory.nebius.com"),
+    "nim": Endpoint("nim", "https://integrate.api.nvidia.com/v1/", "GRAPHENE_NIM_URL", ("NVIDIA_API_KEY",),
+                    "nim", True, "nvidia nim", "NVIDIA NIM", "build.nvidia.com"),
+    "ollama": Endpoint("ollama", "http://localhost:11434/v1/", "GRAPHENE_OLLAMA_URL", ("OLLAMA_API_KEY",),
+                       "ollama", False, "ollama", "Ollama", "ollama.com"),
+    "openai": Endpoint("openai", "", "GRAPHENE_OPENAI_BASE_URL",
+                       ("GRAPHENE_OPENAI_API_KEY", "OPENAI_API_KEY"), "openai", False,
+                       "an openai-compatible host", "the OpenAI-compatible host", "its host"),
+}  # fmt: skip
+NOT_CHAT = ("embed", "rerank", "whisper", "tts", "guard")  # a listed model that is no chat model, by its id
+
+
+def chosen() -> Endpoint:
+    """The endpoint this process calls: GRAPHENE_ENDPOINT, else Token Factory."""
+    name = os.environ.get(ENDPOINT) or "tokenfactory"
+    if name not in ENDPOINTS:
+        raise Unreachable(f"{ENDPOINT} is {name!r}: the endpoints are {', '.join(ENDPOINTS)}")
+    return ENDPOINTS[name]
+
+
+def use(name: str) -> Endpoint:
+    """Call ``name`` from here on, in this process and what it starts (`--endpoint`)."""
+    if name not in ENDPOINTS:
+        raise Unreachable(f"no endpoint named {name!r}: the endpoints are {', '.join(ENDPOINTS)}")
+    os.environ[ENDPOINT] = name
+    return ENDPOINTS[name]
+
+
+@contextmanager
+def using(name: str | None):
+    """``name`` for the calls inside the block, then what was chosen before (`graphene init` lists a host)."""
+    before = os.environ.get(ENDPOINT)
+    if name:
+        use(name)
+    try:
+        yield chosen()
+    finally:
+        if name:
+            os.environ.pop(ENDPOINT, None)
+            if before is not None:
+                os.environ[ENDPOINT] = before
+
+
+def host() -> str:
+    """The endpoint's name in a sentence: "Token Factory", "NVIDIA NIM", "Ollama"..."""
+    return chosen().host
+
+
+def _own(e: Endpoint) -> str:
+    return BASE if e.name == "tokenfactory" else e.url  # a test stands in for the real host by BASE
 
 
 class Unreachable(Exception):
@@ -65,49 +142,78 @@ class Model:
     prompt: float  # dollars a prompt token, at list price
     completion: float  # dollars a completion token
     created: int = 0
+    priced: bool = True  # the list gave a price; without one (NIM, Ollama) its calls are "unpriced", not $0
 
 
 def base() -> str:
-    return os.environ.get("GRAPHENE_TOKENFACTORY_URL", BASE).rstrip("/") + "/"
+    """The chosen endpoint's URL: its variable when set (the fake; for openai, the host), else its own."""
+    e = chosen()
+    url = os.environ.get(e.url_env) or _own(e)
+    return url.rstrip("/") + "/" if url else ""
 
 
 def endpoint() -> str:
-    """Who answered, as a usage row says it: "token factory", or "a stand-in" when
-    GRAPHENE_TOKENFACTORY_URL points anywhere else (the tests' fake, a proxy). Never the URL itself: it
-    could name a host of the person's."""
-    return "token factory" if base() == BASE else "a stand-in"
+    """Who answered, as a usage row says it: "token factory", "nvidia nim", "ollama", "an openai-compatible
+    host", or "a stand-in" when the endpoint's variable points it anywhere but its own URL (the tests' fake,
+    a proxy). Never the URL itself: it could name a host of the person's."""
+    e = chosen()
+    return e.label if not _own(e) or base() == _own(e) else "a stand-in"
+
+
+def stand_in() -> bool:
+    """Whether the host stands in for a paid service: a keyed host (Token Factory, NIM) pointed anywhere but
+    its own URL (the tests' fake, a proxy), or a keyless one (Ollama, an OpenAI-compatible URL) on this
+    machine. Anything else spends, and is guarded as Token Factory is (``night.person_only``)."""
+    where = urllib.parse.urlsplit(base()).hostname or ""
+    return endpoint() == "a stand-in" or (not chosen().keyed and where in ("localhost", "127.0.0.1", "::1"))
+
+
+def _key() -> str | None:
+    """The chosen endpoint's key, checked as a header can carry it; None for an endpoint that needs none."""
+    e = chosen()
+    key = keys.find(e.key_envs, e.account)
+    if not key:
+        if e.keyed:
+            raise Unreachable(f"{e.key_envs[0]} is not set: {e.host} needs a key ({e.site})")
+        return None
+    flag = "" if e.name == "tokenfactory" else f" --endpoint {e.name}"
+    told = f"set {e.key_envs[0]} or `graphene key set{flag}"
+    if any(c.isspace() for c in key):  # a header cannot carry it, and its error would print the key
+        raise Unreachable(f"the key found holds a space or a line break: {told}`")
+    if not (key.isascii() and key.isprintable()):  # a pasted en dash: the header is never built
+        raise Unreachable(f"the key found holds a character that is not plain ASCII letters, digits and "
+                          f"punctuation (a pasted dash?): {told}` again")  # fmt: skip
+    return key
 
 
 def _request(
     method: str, path: str, body: dict | None = None, timeout: float = 60, tries: int = TRIES
 ) -> tuple[dict, dict]:
     """One request, tried again on a 429 or a 5xx. Returns the JSON answer and the response headers."""
-    key = keys.find()
-    if not key:
-        raise Unreachable(f"{KEY} is not set: Token Factory needs a key (tokenfactory.nebius.com)")
-    if any(c.isspace() for c in key):  # a header cannot carry it, and its error would print the key
-        raise Unreachable(f"the key found holds a space or a line break: set {KEY} or `graphene key set`")
-    if not (key.isascii() and key.isprintable()):  # a pasted en dash: the header is never built
-        raise Unreachable(f"the key found holds a character that is not plain ASCII letters, digits and "
-                          f"punctuation (a pasted dash?): set {KEY} or `graphene key set` again")  # fmt: skip
+    e = chosen()
+    key = _key()
+    if not base():
+        raise Unreachable(f"{e.url_env} is not set: the {e.name} endpoint needs the host's URL "
+                          "(http://localhost:8000/v1 for a vLLM here)")  # fmt: skip
     data = json.dumps(body).encode() if body is not None else None
     wait, maybe = 2.0, False  # maybe: a try may have reached the model; only a 4xx or no connection says not
     for attempt in range(1, tries + 1):
         req = urllib.request.Request(base() + path, data=data, method=method)
-        req.add_header("Authorization", f"Bearer {key}")
+        if key:
+            req.add_header("Authorization", f"Bearer {key}")
         req.add_header("Content-Type", "application/json")
         try:
             with urllib.request.urlopen(req, timeout=timeout) as resp:
                 answer, headers = resp.read(), dict(resp.headers)
             try:
                 return json.loads(answer or b"{}"), headers
-            except ValueError:  # a sign-in page, a proxy's: not Token Factory (an earlier try may have been)
-                said = (f"Token Factory's answer at {base()} is not JSON: a proxy, or a wrong "
-                        "GRAPHENE_TOKENFACTORY_URL?")  # fmt: skip
+            except ValueError:  # a sign-in page, a proxy's: not the host (an earlier try may have been)
+                said = (f"{e.host}'s answer at {base()} is not JSON: a proxy, or a wrong "
+                        f"{e.url_env}?")  # fmt: skip
                 raise (Late if maybe and method == "POST" else Unreachable)(said) from None
         except urllib.error.HTTPError as no:
             # a gateway's page may echo the Authorization header: the key goes before the cut can halve it
-            said = unkeyed(no.read(65536).decode("utf-8", "replace").replace(key, "…"))[:300]
+            said = unkeyed(no.read(65536).decode("utf-8", "replace").replace(key or "\0", "…"))[:300]
             maybe = maybe or no.code >= 500
             if (no.code == 429 or no.code >= 500) and attempt < tries:
                 after = no.headers.get("Retry-After")
@@ -115,7 +221,7 @@ def _request(
                 wait *= 2
                 continue
             raise (Late if maybe and method == "POST" else Unreachable)(
-                f"Token Factory answered {no.code} to {method} /{path}: {said}{_then(no.code, attempt)}"
+                f"{e.host} answered {no.code} to {method} /{path}: {said}{_then(no.code, attempt)}"
             ) from None
         except (urllib.error.URLError, TimeoutError, OSError) as no:
             slow = isinstance(no, TimeoutError) or "timed out" in str(no)
@@ -128,7 +234,7 @@ def _request(
                 wait *= 2
                 continue
             then = _then(0, attempt, timeout) if slow and method == "POST" else ""
-            said = f"Token Factory could not be reached at {base()}: {no}{then}"
+            said = f"{e.host} could not be reached at {base()}: {no}{then}"
             raise (Late if maybe and method == "POST" else Unreachable)(said) from None
     raise AssertionError("unreachable")  # pragma: no cover
 
@@ -137,10 +243,10 @@ def _then(code: int, tried: int, timeout: float = 0) -> str:
     """What a person can do next, after ``tried`` tries ended in ``code`` (0: no answer in time)."""
     times = "once" if tried == 1 else f"{tried} times"
     if code == 429:
-        return (f" (asked {times}: Token Factory limits how fast this key may ask; wait a minute and run "
+        return (f" (asked {times}: {host()} limits how fast this key may ask; wait a minute and run "
                 "again, or run fewer leaves at once)")  # fmt: skip
     if code >= 500:
-        return f" (asked {times}: the fault is on Token Factory's side; try again later)"
+        return f" (asked {times}: the fault is on {host()}'s side; try again later)"
     if code == 0:
         return (f" (no answer in {timeout:g} s, asked {times}: try again later, or ask for a shorter answer "
                 "with --max-tokens)")  # fmt: skip
@@ -153,13 +259,14 @@ def _listed(url: str, tries: int = TRIES) -> tuple[Model, ...]:
     out = []
     for m in said.get("data") or []:
         price = m.get("pricing") or {}
+        priced = price.get("prompt") is not None or price.get("completion") is not None
         out.append(Model(m["id"], float(price.get("prompt") or 0), float(price.get("completion") or 0),
-                         int(m.get("created") or 0)))  # fmt: skip
+                         int(m.get("created") or 0), priced))  # fmt: skip
     return tuple(out)
 
 
 def models(tries: int = TRIES) -> list[Model]:
-    """Every model Token Factory lists for this key, with its list price (asked once a process)."""
+    """Every model the endpoint lists for this key, with its list price (asked once a process)."""
     return list(_listed(base(), tries))
 
 
@@ -198,24 +305,29 @@ def resolve(given: list[str], role: str, listed: list[Model] | None = None) -> t
     - an id it lacks that names a Nemotron size is replaced by the listed Nemotron of that size that
       ``roles`` picks (the newest), else by the nearest size listed, the larger of two as near: a
       ladder's rung above stays above, and the check still decides what lands;
-    - an id that names no Nemotron size, or any id while no Nemotron is listed, is kept: Token
-      Factory's own answer then says what is wrong with it;
+    - an id that names no Nemotron size, or any id while no Nemotron is listed, is kept: the host's
+      own answer then says what is wrong with it;
     - with no id given, the planner has the largest Nemotron listed and the executor the smallest, and
-      a line says so when that is not Ultra or Nano.
+      a line says so when that is not Ultra or Nano; a host that lists no Nemotron at all (Ollama, an
+      OpenAI-compatible one) gives the first chat model it lists, and a line says which.
 
-    An empty list back means no Nemotron is listed at all."""
+    An empty list back means the host lists no model at all."""
     listed = models() if listed is None else listed
     found, ids = roles(listed), {m.id for m in listed}
     rank = ROLES[::-1].index  # nano 0, super 1, ultra 2
     sizes = sorted(found, key=rank)
     if not given:
         if not sizes:
-            return [], []
+            chat = [m.id for m in listed if not any(w in m.id.lower() for w in NOT_CHAT)]
+            if not chat:
+                return [], []
+            return [chat[0]], [f"{host()} lists no Nemotron; the {role} uses {chat[0]}, the first model "
+                               f"listed (--model names another)"]  # fmt: skip
         planner = role == "planner"
         size, wanted, most = (sizes[-1], "ultra", "largest") if planner else (sizes[0], "nano", "smallest")
         if size == wanted:
             return [found[size]], []
-        return [found[size]], [f"Token Factory lists no Nemotron {wanted.title()}; the {role} uses "
+        return [found[size]], [f"{host()} lists no Nemotron {wanted.title()}; the {role} uses "
                                f"{found[size]}, the {most} Nemotron listed"]  # fmt: skip
     out, said = [], []
     for g in given:
@@ -226,13 +338,14 @@ def resolve(given: list[str], role: str, listed: list[Model] | None = None) -> t
         near = min(sizes, key=lambda s: (abs(rank(s) - rank(size)), -rank(s)))
         which = f"the Nemotron {near.title()} listed" + ("" if near == size else ", the nearest size")
         out.append(found[near])
-        said.append(f"{g} is not in Token Factory's list (retired?); the {role} uses {found[near]} instead, "
+        said.append(f"{g} is not in {host()}'s list (retired?); the {role} uses {found[near]} instead, "
                     f"{which}. `graphene init --{role} nemotron` writes the ids listed now")  # fmt: skip
     return out, said
 
 
 def price(model_id: str) -> Model:
-    return next((m for m in models() if m.id == model_id), Model(model_id, 0.0, 0.0))
+    """The model's list price; a model the list lacks, or lists with no price, is unpriced."""
+    return next((m for m in models() if m.id == model_id), Model(model_id, 0.0, 0.0, priced=False))
 
 
 def worst(body: dict, model_id: str) -> float:
@@ -294,18 +407,21 @@ def chat(
     timeout: float | None = None,
     **params,
 ) -> dict:
-    """One chat completion. Returns ``{"message", "usage", "dollars", "seconds", "model"}``: the
-    assistant's message as Token Factory sent it (``content``, ``tool_calls``, any reasoning), its usage,
-    and that usage at list price. ``params`` go into the request as they are (temperature, max_tokens,
-    and whatever a model reads beyond those). ``tag`` names the caller in the ledger (a leaf's id).
-    ``tries`` and ``timeout`` are the request's: a helper nobody waits on asks once, briefly."""
+    """One chat completion. Returns ``{"message", "usage", "dollars", "seconds", "model", "priced"}``: the
+    assistant's message as the host sent it (``content``, ``tool_calls``, any reasoning), its usage, and
+    that usage at list price (``priced`` False: the list gave none, and the dollars are 0, not a price).
+    ``params`` go into the request as they are (temperature, max_tokens, and whatever a model reads beyond
+    those). ``tag`` names the caller in the ledger (a leaf's id). ``tries`` and ``timeout`` are the
+    request's: a helper nobody waits on asks once, briefly."""
     limit = cap()
     if limit is not None and _ledger() is not None and spent() >= limit:
         raise Spent(f"the spend cap is reached: ${spent():.2f} of ${limit:.2f} (GRAPHENE_SPEND_CAP_USD)")
     body = {"model": model, "messages": messages, **({"tools": tools} if tools else {}), **params}
     try:
-        if endpoint() == "token factory":  # the real host; the fake and a proxy are anyone's
+        if not stand_in():  # a host that spends (Token Factory, NIM, a URL off this machine): the person's
             night.person_only(f"a call to {model}")
+        # ponytail: an unpriced model reserves $0 on every cap, and its rows say "no list price"; a price
+        # table of its own would be the next step
         most = worst(body, model) if night.cap() is not None else 0.0
         held = night.reserve(model, most, tag, endpoint())
     except night.Refused as no:
@@ -323,17 +439,18 @@ def chat(
     # at the answer's usage alone
     took = time.monotonic() - began
     usage = (said.get("usage") if isinstance(said, dict) else None) or {}
-    cost = dollars(usage, model)
-    night.settle(held, model, cost, usage)
+    cost, priced = dollars(usage, model), price(model).priced
+    night.settle(held, model, cost, usage, priced=priced)
     try:
         message = said["choices"][0]["message"]
     except (KeyError, IndexError, TypeError):
-        raise Unreachable(f"Token Factory sent no message: {json.dumps(said)[:300]}") from None
+        raise Unreachable(f"{host()} sent no message: {json.dumps(said)[:300]}") from None
     finish = (said.get("choices") or [{}])[0].get("finish_reason")
     out = {"message": message, "usage": usage, "dollars": cost, "seconds": round(took, 3), "model": model,
-           "finish": finish}  # fmt: skip
+           "finish": finish, "priced": priced}  # fmt: skip
     _write(_ledger(), {"at": time.time(), "tag": tag, "model": model, "usage": usage, "dollars": cost,
-                       "seconds": out["seconds"], **({"practice": True} if held else {})})  # fmt: skip
+                       "seconds": out["seconds"], **({"practice": True} if held else {}),
+                       **({"priced": False} if not priced else {})})  # fmt: skip
     record = os.environ.get("GRAPHENE_TOKENFACTORY_RECORD")
     if record:
         _write(Path(record), {"request": body, "response": said})
@@ -349,12 +466,13 @@ def _write(path: Path | None, row: dict) -> None:
 
 
 def reach(tries: int = TRIES) -> str | None:
-    """What could not be reached, in one line, or None when the key works and a Nemotron model is
-    listed. `graphene init` says it, asking once (``tries=1``): offline, it must not wait a minute."""
+    """What could not be reached, in one line, or None when the key works and a model is listed (a
+    Nemotron, or on a host with none, any chat model: ``resolve`` takes the first). `graphene init` says
+    it, asking once (``tries=1``): offline, it must not wait a minute."""
     try:
-        found = roles(models(tries))
+        listed = models(tries)
     except Unreachable as no:
         return " ".join(str(no).split())  # a gateway's error page has lines of its own
-    if not found:
-        return "Token Factory lists no NVIDIA Nemotron model for this key"
+    if not resolve([], "planner", listed)[0]:
+        return f"{host()} lists no model for this key"
     return None

@@ -305,12 +305,14 @@ def plan(args: argparse.Namespace, prompt: str) -> int:
     repo = Repo(here, _protected(here))
     say = sys.stderr
     try:  # the id the live list has: the largest Nemotron by default, a retired one's nearest
+        if args.endpoint:
+            tf.use(args.endpoint)
         chosen, instead = tf.resolve([args.model] if args.model else [], "planner")
     except tf.Unreachable as no:
         print(f"stopped: {no}", file=say)
         return 3
     if not chosen:
-        print("stopped: Token Factory lists no Nemotron model for this key", file=say)
+        print(f"stopped: {tf.host()} lists no model for this key", file=say)
         return 3
     model = chosen[0]
     messages = [{"role": "system", "content": SYSTEM}, {"role": "user", "content": prompt}]
@@ -318,7 +320,8 @@ def plan(args: argparse.Namespace, prompt: str) -> int:
               **{k: json.loads(v) for k, v in (p.split("=", 1) for p in args.param)}}  # fmt: skip
     bill = {"model": model, "calls": 0, "prompt_tokens": 0, "completion_tokens": 0, "dollars": 0.0,
             "prompt": PROMPT_VERSION, "endpoint": tf.endpoint()}  # fmt: skip
-    print(f"nemotron planner · {model}", file=say, flush=True)
+    where = "" if tf.chosen().name == "tokenfactory" else f" · {tf.host()}"
+    print(f"nemotron planner · {model}{where}", file=say, flush=True)
 
     def asked(tools: list | None = None, **strict) -> tuple[dict, list]:
         """One call, on the bill, and its tool calls. Cut off with no call, it is asked again with room."""
@@ -328,6 +331,8 @@ def plan(args: argparse.Namespace, prompt: str) -> int:
             bill["prompt_tokens"] += said["usage"].get("prompt_tokens") or 0
             bill["completion_tokens"] += said["usage"].get("completion_tokens") or 0
             bill["dollars"] += said["dollars"]
+            if not said.get("priced", True):  # the list gave no price: the row says so, not $0
+                bill["priced"] = False
             message = said["message"]
             calls = message.get("tool_calls") or (text_calls(message.get("content")) if tools else [])
             if calls or said.get("finish") != "length":
@@ -373,8 +378,9 @@ def plan(args: argparse.Namespace, prompt: str) -> int:
         stopped = no
     finally:
         bill["dollars"] = round(bill["dollars"], 6)
+        priced = "at list price" if bill.get("priced", True) else "(no list price)"
         print(f"bill: {bill['calls']} calls, {bill['prompt_tokens']} in, {bill['completion_tokens']} out, "
-              f"${bill['dollars']:.4f} at list price", file=say, flush=True)  # fmt: skip
+              f"${bill['dollars']:.4f} {priced}", file=say, flush=True)  # fmt: skip
         try:
             with Store.open(repo_root(here)) as store:
                 store.log_node("*", P._now(), "usage", "planner:nemotron", None, None, bill)
@@ -392,7 +398,9 @@ def plan(args: argparse.Namespace, prompt: str) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="graphene-nemotron-planner", description=__doc__.split("\n")[0])
-    parser.add_argument("--model", help="a model id in Token Factory's list (default: the largest Nemotron)")
+    parser.add_argument("--model", help="a model id in the host's list (default: the largest Nemotron)")
+    parser.add_argument("--endpoint", choices=tuple(tf.ENDPOINTS),
+                        help="the host: tokenfactory (default), nim, ollama or openai")  # fmt: skip
     parser.add_argument("--steps", type=int, default=30, help="tool steps at most, then the answer")
     parser.add_argument("--temperature", type=float, default=0.3)
     parser.add_argument("--max-tokens", type=int, default=8192)

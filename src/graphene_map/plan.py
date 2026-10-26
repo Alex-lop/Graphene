@@ -862,17 +862,36 @@ def _clean_tree(
             )
 
 
-def check_env() -> dict[str, str]:
-    """A check's environment, wherever it runs here (`done`, `plan precheck`): no key, and Graphene's own
-    keychain lookup off, for it runs code an executor wrote."""
-    env = {k: v for k, v in os.environ.items() if k != "NEBIUS_API_KEY"}
-    return env | {"GRAPHENE_AS": "agent:check", "GRAPHENE_KEYCHAIN": "off"}
+def check_env(extra: dict[str, str] | None = None) -> dict[str, str]:
+    """A check's environment, wherever it runs here (`done`, `plan precheck`): no API key (none of
+    ``*_API_KEY``: Token Factory's, NVIDIA's, OpenAI's), and Graphene's own keychain lookup off, for it
+    runs code an executor wrote. ``extra``: the leaf's own (its PORT)."""
+    env = {k: v for k, v in os.environ.items() if not k.endswith("_API_KEY")}
+    return env | {"GRAPHENE_AS": "agent:check", "GRAPHENE_KEYCHAIN": "off"} | (extra or {})
+
+
+def port_env(store, node: Node, session: str | None = None) -> dict[str, str]:
+    """The PORT the run gave the leaf's executor in this hold (its `attempt` row: ``session``'s when that is
+    a fork's or the hold's own; after a pick, the kept fork's; else the newest), for its check to bind the
+    same: {} when no run gave one."""
+    log = store.node_log(node.id, ("started", "attempt", "picked"))
+    log = log[max((k for k, r in enumerate(log) if r["kind"] == "started"), default=-1) + 1 :]  # this hold's
+    rows = [r for r in log if r["kind"] == "attempt" and r["detail"].get("port")]
+    mine = [r for r in rows if session and r.get("session_id") == session]
+    if not mine:
+        kept = next((r["detail"].get("fork") for r in reversed(log) if r["kind"] == "picked"), None)
+        mine = [r for r in rows if kept and r["detail"].get("fork") == kept] or rows
+    if not mine:
+        return {}
+    port = str(mine[-1]["detail"]["port"])
+    return {"PORT": port, "GRAPHENE_PORT": port}
 
 
 @ctrl_c_on_hangup()
 def run_check(
-    command: str, checkout: str | Path, leave_out: list[str] | tuple = (), at: str | None = None
-) -> tuple[bool, str, list[str]]:
+    command: str, checkout: str | Path, leave_out: list[str] | tuple = (), at: str | None = None,
+    env: dict[str, str] | None = None,
+) -> tuple[bool, str, list[str]]:  # fmt: skip
     """Run a check on the state of ``checkout``: whether it passed, the tail of what it said, and
     which of ``leave_out`` (new files, left out of what it runs on) it made again. This is the one
     place Graphene runs a check. Graphene runs it, not the executor: "it passed" is then a fact about
@@ -880,14 +899,14 @@ def run_check(
     (``_clean_tree``), never in the checkout itself: run in place, a check left its caches in the
     executor's tree, to be counted as its change and committed with its leaf. Its time limit and its
     stop (``_ended``) are the whole of it, the making of that worktree included. ``at``: on that
-    commit's tree instead of the checkout's state."""
+    commit's tree instead of the checkout's state. ``env``: the leaf's own variables (``port_env``)."""
     import subprocess
 
     began = time.monotonic()
     # Whatever the check starts is not the person, terminal or none: pytest takes the terminal away
     # from the tests it runs, and a test file is something an executor writes inside its own scope.
     # It runs code an executor wrote, so it never gets the Token Factory key.
-    env = check_env()
+    env = check_env(env)
     try:
         with _clean_tree(checkout, leave_out, began, at=at) as tree:
             code, out, err = _ended(command, tree, env, began)
@@ -2582,7 +2601,9 @@ def _judge(
         passed, output, theirs = True, "", []
     else:
         place = sandboxed(store, node)
-        passed, output, theirs = (run_check(node.check, checkout, aside) if place is None else
+        own = port_env(store, node, who.session_id)  # the PORT its executor had: the check binds the same
+        extra = {"env": own} if own else {}  # named only when there is one: a test's stand-in takes none
+        passed, output, theirs = (run_check(node.check, checkout, aside, **extra) if place is None else
                                   _check_in_sandbox(place, node.check, checkout, aside))  # fmt: skip
     if node.check:
         checked = _now()

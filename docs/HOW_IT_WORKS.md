@@ -237,8 +237,24 @@ box says `3 ×3` while they run.
   scope holds at `done`.
 - **Nemotron**: Graphene's own executor and planner on NVIDIA Nemotron through Nebius Token Factory (the optional
   extra `graphene-map[nemotron]`). Its tools refuse a write outside the scope; in a Sandbox it can write only the scope.
-- **Any command**: `--with 'my-agent --flag'` gets the contract as its last argument; nothing holds it before the
-  write.
+  The same loop runs on another host with `--endpoint`: `nim` (NVIDIA's API catalog, `NVIDIA_API_KEY`), `ollama`
+  (this machine, no key) or `openai` (any OpenAI-compatible URL in `GRAPHENE_OPENAI_BASE_URL`, key
+  `GRAPHENE_OPENAI_API_KEY` or `OPENAI_API_KEY`: vLLM, OpenRouter, LM Studio), as `--with 'nemotron --endpoint nim'`
+  or `graphene init --executor 'nemotron --endpoint nim'`; `graphene key set --endpoint nim` keeps that host's key.
+  A host that lists no Nemotron uses `--model`, else the first model it lists, and says which. A model with no list
+  price is billed as "no list price", not $0, and counts $0 against every cap. NIM and any URL off this machine
+  spend, so an agent's call to them is refused without your opening, as Token Factory's is; Ollama and a local
+  URL are stand-ins. Every row names the host that answered.
+- **Any command**: `--with 'my-agent --flag'` gets the contract as its last argument. A command that takes it
+  elsewhere says where: `{prompt}` is replaced by the contract, `{prompt_file}` by the path of a file holding it,
+  written under `.graphene/runs/`, outside every scope. Recipes, not tested here: `aider --yes --message-file
+  {prompt_file}`, `gemini --yolo -p {prompt}`, `opencode run {prompt}`, `goose run -t {prompt}`. Nothing holds
+  such an agent before the write: the scope holds at `done`, when git says what changed, and a write outside it
+  is refused there, with the paths named, before the check runs.
+
+Every executor a run starts gets `PORT` and `GRAPHENE_PORT`, a port of its own (distinct per running task and per
+fork, free when it is handed out), said in its contract and given to its check, so a task that starts a server
+binds one no other task has.
 
 Whoever executes, a person included, is held at `done` by the check and git.
 
@@ -347,6 +363,8 @@ stopped it, 3 when something waits for you. With no goal it goes on with the pla
 
 - With Claude Code or Codex, Graphene sends nothing anywhere.
 - Nemotron on Token Factory is an optional extra; what it sends is in [HACKATHON.md](HACKATHON.md).
+- Another host named with `--endpoint` (NVIDIA NIM, an OpenAI-compatible URL) is sent the same: the contract, the
+  files the model reads, the output of the commands it runs. Ollama on this machine sends nothing off it.
 
 ## FAQ
 
@@ -379,5 +397,6 @@ takes the hooks out, which ends the recording; what they recorded stays until yo
 - `graphene board park <id>` sets an item aside, told to nobody; `graphene board unpark <id>` opens it again.
 - `graphene talk why|split|merge|another` asks the planner about a node.
 - `graphene direction` prints the goals above your plans. Its subcommands change them.
-- Nemotron extra only: `graphene key set|check|remove` keeps the Token Factory key; `plan cover`, `plan note`,
-  `plan precheck` and `board lookup` put a question to Nano ([HACKATHON.md](HACKATHON.md)).
+- Nemotron extra only: `graphene key set|check|remove` keeps the Token Factory key (`--endpoint nim|openai`,
+  another host's); `plan cover`, `plan note`, `plan precheck` and `board lookup` put a question to Nano
+  ([HACKATHON.md](HACKATHON.md)).

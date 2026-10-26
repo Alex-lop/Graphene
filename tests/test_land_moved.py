@@ -92,7 +92,7 @@ def counted(monkeypatch) -> list[tuple[str, str | None]]:
     """Every check run, as (command, the commit it ran at)."""
     ran, real = [], plan.run_check
 
-    def run_check(command, checkout, leave_out=(), at=None):
+    def run_check(command, checkout, leave_out=(), at=None, env=None):  # env: the leaf's PORT, unused here
         ran.append((command, at))
         return real(command, checkout, leave_out, at)
 
@@ -195,7 +195,7 @@ def test_the_merge_runs_the_checks_of_what_landed_since_the_leaf_was_cut_and_no_
     ran: list[tuple[str, str, str]] = [("check a", "a", a_at), ("check b", "b", b_at)]
     seen: list[str] = []
 
-    def run_check(command, checkout, leave_out=(), at=None):
+    def run_check(command, checkout, leave_out=(), at=None, env=None):  # env: the leaf's PORT, unused here
         seen.append(command)
         return True, "", []
 
@@ -273,7 +273,7 @@ def test_the_checkout_moving_while_a_merge_is_checked_is_checked_again(tmp_path,
     root, executor = small_repo(tmp_path, monkeypatch, leaves, slow="d")
     real = plan.run_check
 
-    def run_check(command, checkout, leave_out=(), at=None):
+    def run_check(command, checkout, leave_out=(), at=None, env=None):  # env: the leaf's PORT, unused here
         out = real(command, checkout, leave_out, at)
         if at and not (root / "bad.txt").exists():  # your commit, while the merge is checked
             (root / "bad.txt").write_text("x\n")

@@ -48,7 +48,12 @@ def test_a_retired_id_falls_back_within_the_family_and_says_which_instead_of_whi
         ["nvidia/Nemotron-3-Nano-retired"], [])  # fmt: skip
     assert tf.resolve([], "executor", listed()) == ([NANO], [])
     assert tf.resolve([], "planner", listed()) == ([ULTRA], [])
-    assert tf.resolve([], "planner", listed("Nemotron")) == ([], [])
+    # a list with no Nemotron at all (26 October): the first chat model listed, and a line saying which
+    llama = "meta-llama/Llama-3.3-70B-Instruct"
+    assert tf.resolve([], "planner", listed("Nemotron")) == ([llama], [
+        f"Token Factory lists no Nemotron; the planner uses {llama}, the first model listed (--model names "
+        "another)"])  # fmt: skip
+    assert tf.resolve([], "planner", []) == ([], [])
 
 
 def test_a_list_that_has_lost_ultra_plans_with_the_largest_left_and_says_so_in_one_line(repo, monkeypatch):

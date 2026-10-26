@@ -244,7 +244,8 @@ def bill(log: list[dict]) -> dict | None:
 
 
 WHOSE = {"token factory": "Token Factory's usage", "claude code": "Claude Code's report",
-         "codex": "Codex's tokens"}  # fmt: skip
+         "codex": "Codex's tokens", "nvidia nim": "NVIDIA NIM's usage", "ollama": "Ollama's usage",
+         "an openai-compatible host": "an OpenAI-compatible host's usage"}  # fmt: skip
 
 
 def _whose(rows: list[dict]) -> str:
