@@ -26,7 +26,8 @@ export interface NewStep {
 }
 
 export const stateJson = (): string[] => ["state", "--json"];
-export const logJson = (): string[] => ["plan", "log", "--json"]; // a JSON object a line: the Rounds view reads it
+/** The plan's log, a JSON object a line, after the row ``since`` (the Rounds view reads only what is new). */
+export const logJson = (since = 0): string[] => ["plan", "log", "--json", ...(since > 0 ? ["--since", String(since)] : [])];
 export const stop = (): string[] => ["run", "--stop"];
 export const runReady = (): string[] => ["run", "--parallel", "4"];
 export const watch = (): string[] => ["watch"];

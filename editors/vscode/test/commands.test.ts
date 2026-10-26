@@ -7,6 +7,8 @@ test("every mutation is the argv the cockpit's verbs use", () => {
                    ["node", "add", "greet route", "--parent", "api", "--needs", "hello", "--scope", "app.py", "--scope", "tests/**", "--check", "pytest -q"]);
   assert.deepEqual(C.addStep({ title: "top" }), ["node", "add", "top"]);
   assert.deepEqual(C.link("a", "b"), ["node", "set", "b", "--add-needs", "a"]);
+  assert.deepEqual(C.logJson(), ["plan", "log", "--json"]);
+  assert.deepEqual(C.logJson(230), ["plan", "log", "--json", "--since", "230"]);
   assert.deepEqual(C.unlink("a", "b"), ["node", "set", "b", "--drop-needs", "a"]);
   assert.deepEqual(C.editStep("x", "title", "new words"), ["node", "set", "x", "--title", "new words"]);
   assert.deepEqual(C.editStep("x", "scope", ["a.py", "b/**"]), ["node", "set", "x", "--scope", "a.py", "--scope", "b/**"]);

@@ -9,7 +9,7 @@ import * as C from "./commands.ts";
 import { GraphHost } from "./graph.ts";
 import { owner } from "./owners.ts";
 import { autoNews, mdText, parseState, summary, type State, type Task } from "./state.ts";
-import { parseLog, rounds } from "./rounds.ts";
+import { parseLog, rounds, type LogRow } from "./rounds.ts";
 import { RoundsTree } from "./roundsView.ts";
 import { PlanTree } from "./tree.ts";
 
@@ -128,11 +128,27 @@ export function activate(context: vscode.ExtensionContext) {
   const treeView = vscode.window.createTreeView("graphene.plan", { treeDataProvider: tree, showCollapseAll: true });
   const roundsTree = new RoundsTree();
   const roundsView = vscode.window.createTreeView("graphene.rounds", { treeDataProvider: roundsTree });
-  // auto mode's rounds, read from the plan's log only while their view is open: one more command a refresh
+  // auto mode's rounds, from the plan's log while their view is open: only the rows after the last read, none
+  // asked for when the snapshot's cursor says nothing was logged since, and all again if the log starts over
+  let logged: LogRow[] = [];
+  let read = 0;
+  let reading = false;
   const readRounds = async () => {
-    if (!roundsView.visible || !session.state) return;
-    const out = await session.run(C.logJson());
-    if (out.code === 0) roundsTree.set(rounds(parseLog(out.stdout)));
+    const s = session.state;
+    if (!roundsView.visible || !s || reading) return;
+    if (s.cursor < read) [logged, read] = [[], 0]; // a new store: its ids start again
+    if (read > 0 && s.cursor === read) return;
+    reading = true;
+    try {
+      const out = await session.run(C.logJson(read));
+      if (out.code !== 0) return;
+      const fresh = parseLog(out.stdout).filter((r) => r.id > read);
+      logged = logged.concat(fresh);
+      read = Math.max(read, ...fresh.map((r) => r.id));
+      roundsTree.set(rounds(logged));
+    } finally {
+      reading = false;
+    }
   };
   context.subscriptions.push(roundsView, roundsView.onDidChangeVisibility(() => void readRounds()));
   const graph = new GraphHost(context, session);

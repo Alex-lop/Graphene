@@ -23,7 +23,8 @@ It is a thin client: everything it shows comes from `graphene state --json`, and
   selection; the wheel zooms, dragging pans, a double click fits.
 - **Rounds** view: auto mode's iterations, one row a round (`Round 2 · done · 1 accepted · 1 landed · goal ✓ ·
   $0.02`), and under it what the envelope accepted, which fork each task kept and why, what landed, and the
-  line the goal's check failed on that sent it there. It reads `graphene plan log --json`, only while it is open.
+  line the goal's check failed on that sent it there. It reads `graphene plan log --json` only while it is
+  open, and then only the rows logged since it last read.
 - **Explorer**: each file a task owns is marked, a running task's with its agent's number in yellow (the task,
   its model and its forks in the tooltip), one waiting for your sign-off with ✓, one that came back with !, one
   not started yet with ·: whose is whose, at a glance. The scope globs are read as the CLI reads them.

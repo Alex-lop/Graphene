@@ -78,3 +78,16 @@ def test_unlink_drops_one_need_and_keeps_the_rest_as_the_cli_reads_them(repo):
     assert plan()["c"]["needs"] == ["b", "d"]
     both = person("node", "set", "c", "--needs", "b", "--drop-needs", "b")
     assert both.exit_code == 2 and "one or the other" in both.output
+
+
+def test_the_rounds_view_follows_the_log_from_the_snapshots_cursor(repo):
+    """The Rounds view reads `plan log --json --since <last id>`: nothing when nothing was logged, only what
+    is new after a change. The snapshot's cursor is the last id: while the two agree, it asks nothing."""
+    assert person("node", "add", "a", "--id", "a", "--scope", "a.py", "--check", "true").exit_code == 0
+    cursor = json.loads(person("state", "--json").stdout)["cursor"]
+    assert person("plan", "log", "--json", "--since", str(cursor)).stdout.strip() == ""
+    assert person("node", "set", "a", "--title", "a, renamed").exit_code == 0
+    since = person("plan", "log", "--json", "--since", str(cursor)).stdout
+    fresh = [json.loads(line) for line in since.splitlines()]
+    assert fresh and all(r["id"] > cursor for r in fresh) and fresh[-1]["kind"] == "edited"
+    assert json.loads(person("state", "--json").stdout)["cursor"] == fresh[-1]["id"]
