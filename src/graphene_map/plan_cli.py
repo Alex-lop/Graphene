@@ -1604,7 +1604,8 @@ def register(cli: typer.Typer, root, open_store, fail):
         out(f"{node_id} is done (signed off)")
         if left.get("branch"):  # the person merged it by hand: its worktree goes, and its branch if merged
             git = ["git", "-C", str(checkout())]
-            subprocess.run([*git, "worktree", "remove", "--force", left["worktree"]], capture_output=True)
+            with P.worktree_lock(checkout()):  # one at a time with a run's and a check's
+                subprocess.run([*git, "worktree", "remove", "--force", left["worktree"]], capture_output=True)
             gone = subprocess.run([*git, "branch", "-d", left["branch"]], capture_output=True)
             kept = subprocess.run([*git, "rev-parse", "-q", "--verify", left["branch"]], capture_output=True)
             if gone.returncode != 0 and kept.returncode == 0:  # not when it was gone already

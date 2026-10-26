@@ -1210,3 +1210,50 @@ def test_a_checks_clean_tree_reads_an_edit_made_in_the_second_the_file_was_writt
     monkeypatch.setattr(shutil, "copyfile", later)
     with plan._clean_tree(repo, [], clock.monotonic()) as tree:
         assert (tree / "src/db/schema.py").read_text() == "TABLES = [2]\n"
+
+
+def test_checks_and_runs_at_once_take_turns_at_git_worktree(repo, monkeypatch, tmp_path_factory):
+    """CI, 26 October: a fork race checks its forks at once, and git reads every worktree's record under
+    .git/worktrees in each `worktree` command. A remove died on one an add was still writing (`failed to
+    read .git/worktrees/tree3/commondir`), and a check's worktree stayed registered; an add died when the
+    last removal took that directory from under it (`Invalid path`), and a passing fork was refused. Each
+    such command now waits its turn, a check's and a run's alike: a git that sleeps in them shows it."""
+    import shutil
+    from concurrent.futures import ThreadPoolExecutor
+
+    from graphene_map import run as R
+
+    with Store.open(repo):  # the store ignores itself, as anywhere Graphene runs: no check's `add -A` reads
+        pass  # another's files under .graphene/worktrees (one met another's index.lock as it went)
+    real, here = shutil.which("git"), tmp_path_factory.mktemp("turns")
+    log, shim = here / "worktree.log", here / "bin" / "git"
+    shim.parent.mkdir()
+    shim.write_text(
+        '#!/bin/sh\ncase " $* " in *" worktree "*)\n'
+        '  echo in >> "$LOG"; sleep 0.1; "$REAL" "$@"; code=$?; echo out >> "$LOG"; exit $code;;\nesac\n'
+        'exec "$REAL" "$@"\n'
+    )
+    shim.chmod(0o755)
+    monkeypatch.setenv("REAL", real)
+    monkeypatch.setenv("LOG", str(log))
+    monkeypatch.setenv("PATH", f"{shim.parent}{os.pathsep}{os.environ['PATH']}")
+
+    def check():
+        with plan._clean_tree(repo, [], time.monotonic()) as tree:
+            assert tree.is_dir()
+
+    def leaf(k):
+        R._git(repo, "worktree", "add", "--quiet", "--detach", str(here / f"leaf{k}"), "HEAD")
+        R._git(repo, "worktree", "remove", "--force", str(here / f"leaf{k}"), ok=True)
+
+    with ThreadPoolExecutor(5) as pool:
+        jobs = [pool.submit(check) for _ in range(3)] + [pool.submit(leaf, k) for k in range(2)]
+    for job in jobs:
+        job.result()  # an error in any is the test's
+    depth = most = 0
+    for line in log.read_text().split():
+        depth += 1 if line == "in" else -1
+        most = max(most, depth)
+    assert (most, log.read_text().split().count("in")) == (1, 10)  # 5 adds and 5 removes, never two at once
+    listed = subprocess.run([real, "-C", str(repo), "worktree", "list"], capture_output=True, text=True)
+    assert listed.stdout.count("\n") == 1  # none left registered

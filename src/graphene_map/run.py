@@ -1422,7 +1422,8 @@ def run_plan(
 
 
 def _git(where: Path, *args: str, ok: bool = False) -> subprocess.CompletedProcess:
-    out = subprocess.run(["git", "-C", str(where), *args], capture_output=True, text=True)
+    with P.worktree_lock(where) if args[:1] == ("worktree",) else contextlib.nullcontext():  # one at a time
+        out = subprocess.run(["git", "-C", str(where), *args], capture_output=True, text=True)
     if out.returncode != 0 and not ok:
         raise P.Refused(
             f"git {' '.join(args[:3])} failed in {where}: {(out.stderr or out.stdout).strip()[:300]}"
