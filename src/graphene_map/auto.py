@@ -128,7 +128,8 @@ def fits(store, added: list[P.Node], files: list[str]) -> list[str]:
         if n.check and not runs_as_check(n.check, allowed):
             why.insert(0, f"{n.id}'s check is not one your envelope runs ({runs}, `checks:` in graphene "
                           f"config): `{n.check[:60]}`; you read it and accept it yourself")  # fmt: skip
-        if hit := next((g for g in GUARDED if P.may_collide(n.scope, [f"{g}**"])), None):
+        folded = [g.casefold() for g in n.scope]  # a Mac's disk writes .CLAUDE/ into .claude/
+        if hit := next((g for g in GUARDED if P.may_collide(folded, [f"{g}**"])), None):
             why.insert(0, f"{n.id}'s scope reaches {hit}, where the agents' own settings and hooks live "
                           "(or the CI that runs with your secrets): you accept that yourself")  # fmt: skip
     most, had = S.tasks(store) or TASKS, accepted(store, S.auto_since(store) or "")

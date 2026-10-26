@@ -269,9 +269,8 @@ GIT_OWN = ".git/ is git's own: a hook planted there runs on your next commit, an
 
 def git_own(path_or_glob: str) -> bool:
     """Does it name `.git` or anything under it (a worktree's `.git` file too)? No scope reaches there, and no
-    write there is let through, whatever a scope says."""
-    first = _fixed(path_or_glob)[:1]
-    return first == [".git"]
+    write there is let through, whatever a scope says. Case is ignored: a Mac's disk writes .GIT/ in .git/."""
+    return _fixed(path_or_glob.casefold())[:1] == [".git"]
 
 
 def prechecked(store, node: Node) -> dict | None:

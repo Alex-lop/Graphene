@@ -26,7 +26,7 @@ def repo(tmp_path):
     return tmp_path
 
 
-@pytest.mark.parametrize("scope", [".git/hooks/pre-commit", ".git/**", ".git", "./.git/config"])
+@pytest.mark.parametrize("scope", [".git/hooks/pre-commit", ".git/**", ".git", "./.git/config", ".GIT/x"])
 def test_no_scope_reaches_git_dir(repo, scope):
     with Store.open(repo) as store:
         for who in (BOT, ALEX):
@@ -35,7 +35,7 @@ def test_no_scope_reaches_git_dir(repo, scope):
                 T.apply(store, text, who, None, files=P.tracked(repo))
 
 
-@pytest.mark.parametrize("path", [".git/hooks/pre-commit", ".git/config", ".git"])
+@pytest.mark.parametrize("path", [".git/hooks/pre-commit", ".git/config", ".git", ".Git/hooks/pre-push"])
 def test_a_write_into_git_dir_is_refused_whatever_the_scope(repo, path):
     with Store.open(repo) as store:
         P.propose(store, [{"id": "all", "title": "everything", "scope": ["**"], "check": "true"}], ALEX)

@@ -195,7 +195,7 @@ def test_the_help_names_the_command_and_the_executor_scripts_are_what_the_tests_
 @pytest.mark.parametrize(
     "scope, reached",
     [(".claude/settings.local.json", ".claude/"), ("**", ".claude/"), (".codex/config.toml", ".codex/"),
-     (".github/workflows/ci.yml", ".github/workflows/")],
+     (".github/workflows/ci.yml", ".github/workflows/"), (".CLAUDE/settings.json", ".claude/")],
 )  # fmt: skip
 def test_the_envelope_never_takes_a_task_that_reaches_the_agents_own_settings_or_hooks(repo, scope, reached):
     """`.claude/settings.local.json` holds the hooks that keep the plan: a held task whose scope names it
