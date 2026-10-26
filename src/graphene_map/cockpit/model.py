@@ -46,6 +46,8 @@ class Fork:
     stopped: list[tuple[str, float]] = field(default_factory=list)
     started: float = 0.0  # when its first attempt began, on the model's clock; 0 before
     idle: float | None = None  # seconds since its last row; None: none yet
+    model: str = ""  # the model it answers with, in a word (meter.short): Nano, Opus, stand-in-Nano
+    usd: float | None = None  # what its attempts have cost so far, in dollars; None: nothing metered yet
 
 
 @dataclass
@@ -79,6 +81,8 @@ class Task:
     above: list[tuple[str, str]] = field(default_factory=list)  # the sub-goals over it, top first: id, name
     check: str = ""  # the command that proves it done, as the plan says it
     hollow: bool = False  # done or in review, and its check passed before any work too: it proves nothing new
+    model: str = ""  # the model its agent answers with, in a word (meter.short); forked: the one they share
+    usd: float | None = None  # what this hold has cost so far, its forks' together; None: nothing metered
 
 
 @dataclass
@@ -109,6 +113,9 @@ class Model:
         self.first = ""  # plan first, as the person set it: on, auto or off
         self.forks = 1  # the forks setting: how many agents `f` puts on a task, when it is 2 or more
         self.executor = ""  # who a run starts, when `graphene init` chose one (claude, codex...)
+        # the envelope's round while `auto` is on (read.envelope): round, rounds, stage, spent, budget, why,
+        # tasks (accepted on your behalf) and of (the most it may); None while auto is off
+        self.auto: dict | None = None
         self.banner = ""  # what the top row says it is, when it is not "your plan" (a replay)
         self.feed: list[tuple[float, str]] = []
         self.names: dict[str, str] = {}  # a task -> the number its agent goes by, in the order of the log

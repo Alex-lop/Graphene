@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import re
 import shlex
+from collections import Counter
 from collections.abc import Callable
 from functools import partial
 from pathlib import Path
@@ -38,7 +39,7 @@ from .help import Help
 from .lines import Line, Seg, fit, fit_keys, seg_at
 from .look import short, who
 from .model import Model
-from .rows import build_cockpit, build_head, offered, tag_of
+from .rows import auto_head, build_cockpit, build_head, offered, tag_of
 from .territory_view import HEAD, build_territory
 from .verbs import Doer
 
@@ -69,7 +70,13 @@ KEYS_TO_VERBS = {  # a key, and the verb it asks for (`act`)
     "t": "tell", "w": "allow", "x": "back", "d": "drop", "r": "run", "R": "run-all", "a": "answer",
     "b": "offer:b", "n": "offer:n", "colon": "command", "y": "take", "s": "split", "P": "first", "u": "undo",
     "e": "edit", "E": "edit-plan", "D": "direction", "i": "details", "A": "accept-all", "f": "fork",
+    "plus": "add-step", "L": "link",  # the graph's gestures: + a step after the task, L a link from A to B
 }  # fmt: skip
+ON_THE_GRAPH = {  # what the graph's gestures say when pressed elsewhere: g, then the gesture
+    "add-step": "+ adds a step on the graph: g, select the task it comes after, then +",
+    "link": "L links two steps on the graph: g, L on the one that lands first, move to the one that waits, L",
+}
+LINKING = "link: move to the task that waits on {}, then L or ⏎ · Esc cancels"  # the graph's head meanwhile
 
 
 def needs(m: Model) -> dict[str, str]:
@@ -169,6 +176,7 @@ class Cockpit(App):
         self.cursor = 0  # the territory's folder cursor
         self.tell_open, self.tell_for = False, ""
         self.paint_mode = False
+        self.linking = ""  # L on the graph: the task a link begins at, until L or ⏎ on the one that waits
         self.shown: tuple = ()  # the screen, row and folder the canvas was last scrolled to
         self.flow_layout: F.Layout | None = None
         self.groups: list[T.Group] = []
@@ -289,6 +297,8 @@ class Cockpit(App):
         if self.screen_stack and isinstance(self.screen_stack[-1], Ask):  # a prompt has the keys
             unsent = self.screen_stack[-1].prompt == UNSENT
             return "nothing is sent · Esc or Enter closes" if unsent else "Enter sends · Esc cancels"
+        if self.linking:  # a link begun on the graph: what ends it
+            return "L or ⏎ link here · Esc cancels · c cockpit · ? keys · q"
         q = next((q for q in m.questions if q.id == m.selected), None)
         t = m.tasks.get(m.selected)
         if m.source == "replay":  # a recording: what it shows can be read, nothing in it is yours to act on
@@ -303,6 +313,8 @@ class Cockpit(App):
                 own.insert(-1, f"1-{len(t.forks)} pick")
         else:
             own = [":ask what you want"]
+        if self.view == "flow" and t and m.source != "replay":  # on the graph, a task's keys are its gestures
+            own = [*own[:1][: own[0].startswith("⏎")], "+ step", "L link", "i details"]  # ⏎ keeps its move
         screens = ["c cockpit", "m map"] if self.view == "flow" else ["g graph", "m map"]
         return " · ".join([*own, *screens, "? keys", "q"])
 
@@ -326,9 +338,19 @@ class Cockpit(App):
         bits = [sel.state, who(sel.agent), f"✓{sel.passed}/{sel.checks}" if sel.checks else ""] if sel else []
         rest = "  ·  " + " · ".join(b for b in bits if b) if sel else ""
         info = fit(title, max(width - 2 - cell_len(rest), 12)) + rest  # a long title is cut, never its state
-        if sel and sel.why and cell_len(info) + cell_len(sel.why) + 7 <= width - 2:
-            info += f" · for {sel.why}"
-        top = [Line([Seg(" " + fit(info, width - 2), "bold")]), Line([Seg("─" * width, "grey30")])]
+        # then what it is for, and the plan's width: the most tasks in one wave, which could all run at once
+        at_once = max(Counter(g.wave[t] for t in m.tasks if t in g.wave).values(), default=0)
+        why = f"for {sel.why}" if sel and sel.why else ""
+        for more in (why, f"{at_once} can run at once" if at_once > 1 else ""):
+            if more and cell_len(info) + cell_len(more) + 3 <= width - 2:
+                info += f" · {more}"
+        if self.linking:  # a link begun: the head says what to do, until L or ⏎ ends it or Esc cancels
+            a = m.tasks.get(self.linking)
+            info = LINKING.format(fit(whole(a) if a else self.linking, max(width - 2 - len(LINKING), 12)))
+        top = [Line([Seg(" " + fit(info, width - 2), "bold")])]
+        if (auto := auto_head(m, width)) is not None:  # the envelope's round, as the cockpit's head has it
+            top = [auto, *top] if m.auto.get("stage") == "waits" else [*top, auto]
+        top.append(Line([Seg("─" * width, "grey30")]))
         drawn = [cell for row in self.flow_layout.cells for cell in row]
         legend = [said for said, there in (  # what the graph's own marks mean, only those it drew
             ("═ the longest chain into the goal · ─ other needs", any(e.double for e in g.edges)),
@@ -436,7 +458,8 @@ class Cockpit(App):
                 m.say("select a task to see its details")
             else:
                 t = m.tasks.get(node)
-                name = " · ".join(x for x in (t.title if t else node, who(t.agent) if t else "") if x)
+                bits = (t.title, who(t.agent), t.model) if t else (node,)  # the task, its agent, its model
+                name = " · ".join(x for x in bits if x)
                 self.push_screen(Details(self.open_store, self.root, node, name, replay=self.replay))
         elif d is None:
             m.say(self.refusal)
@@ -480,6 +503,10 @@ class Cockpit(App):
             self.run_all()
         elif action == "fork":
             d.fork(m, sel)
+        elif action == "add-step":
+            self.add_step()
+        elif action == "link":
+            self.link()
         elif action == "accept-all":
             self.accept_all()
         elif action == "answer":
@@ -598,6 +625,59 @@ class Cockpit(App):
             self.doer.answer(self.model, qid, words)
         self.paint()
 
+    # -- the graph's gestures ----------------------------------------------------------------------
+
+    def add_step(self) -> None:
+        """`+` on the graph: a new step after the selected task, its title typed in one line. It waits on that
+        task, under the same sub-goal, and is in the plan at once with nothing else filled in (`node add`);
+        then `e` opens it in your editor for its scope and check."""
+        m = self.model
+        t = m.tasks.get(m.selected)
+        if self.view != "flow":
+            m.say(ON_THE_GRAPH["add-step"])
+        elif t is None:
+            m.say("select the task the new step comes after, then +")
+        else:
+            m.moved = True
+            ask = Ask(f"a new step after {fit(t.title, 30)}: its title, in one line", about="+ a step")
+            self.push_screen(ask, partial(self.step_added, t.id))
+
+    def step_added(self, after: str, title: str | None) -> None:
+        if title and self.doer:
+            t = self.model.tasks.get(after)
+            argv = ["node", "add", title, "--needs", after]
+            argv += ["--parent", t.above[-1][0]] if t and t.above else []  # under the same sub-goal
+            before = set(self.model.tasks)
+            if self.doer.run(argv) == 0:  # the look after it has the new task: select it, so e fills it in
+                new = [tid for tid in self.model.tasks if tid not in before]
+                if new:
+                    self.model.selected, self.model.moved = new[0], True
+                came = f" after {fit(t.title, 30)}" if t else ""
+                self.model.say(f"added {fit(title, 40)}{came}: e fills in its scope and check")
+        self.paint()
+
+    def link(self) -> None:
+        """`L` on the graph: on the task that lands first, then (L again, or ⏎) on the one that waits for it,
+        makes the second wait on the first (`node set B --add-needs A`), a new arrow; Esc cancels. A link that
+        would close a cycle is refused by the plan, and the news says why."""
+        m = self.model
+        t = m.tasks.get(m.selected)
+        if self.view != "flow":
+            self.linking = ""
+            m.say(ON_THE_GRAPH["link"])
+        elif t is None:
+            m.say("select a task to link, then L")
+        elif not self.linking:
+            self.linking, m.moved = t.id, True
+            m.say(f"linking: move to the task that waits on {fit(t.title, 30)}, then L or ⏎ · Esc cancels")
+        elif self.linking == t.id:
+            m.say("a task cannot wait on itself: move to the one that waits, then L · Esc cancels")
+        else:
+            a, self.linking = self.linking, ""
+            first = m.tasks[a].title if a in m.tasks else a
+            done = f"{fit(t.title, 30)} now waits on {fit(first, 30)}"
+            self.doer.run(["node", "set", t.id, "--add-needs", a], done)
+
     def reopen_offered(self, task) -> None:
         """r on a task that came back reopens the finished task that has the paths it wanted, which it then
         waits on: asked first, as x reopen is, since a task that was proven goes back to work."""
@@ -686,6 +766,11 @@ class Cockpit(App):
         if key == "q":
             self.exit()
             return
+        if self.linking and key == "escape":  # a link begun on the graph: Esc cancels it, and stays there
+            self.linking = ""
+            self.model.say("the link is cancelled: nothing changed")
+            self.paint()
+            return
         if key == "escape":  # from the graph or the map, back to the rows (and out of painting)
             self.view, self.paint_mode = "cockpit", False
         elif key in ("c", "g", "m"):
@@ -699,6 +784,8 @@ class Cockpit(App):
                 self.act(f"paint:{self.groups[self.cursor].name}")
             elif key == "enter" or key in KEYS_TO_VERBS or key.isdigit():
                 self.model.say(ON_THE_MAP)
+        elif key == "enter" and self.linking and self.view == "flow":  # ⏎ ends a link where L would
+            self.act("link")
         elif key == "enter":
             if self.takes():
                 self.act("take")
@@ -716,6 +803,8 @@ class Cockpit(App):
             self.act(f"pick:{key}")
         elif key in KEYS_TO_VERBS:
             self.act(KEYS_TO_VERBS[key])
+        if self.view != "flow":  # a link begun on the graph ends with the graph
+            self.linking = ""
         self.paint()
 
 def nearest(lay: F.Layout, current: str, key: str) -> str | None:

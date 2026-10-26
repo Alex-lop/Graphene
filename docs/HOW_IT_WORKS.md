@@ -101,8 +101,9 @@ write or command; a task nobody is on yet reads it when it starts), `w` widen th
 stopped, `x` hand back a running task or reopen a finished one, `f` fork it (N agents at once, the check keeps
 one), `i` details (panes `1` to `4`; `c` there is the diff). `g` is the graph: what must land before what,
 flowing into your goal at the right (columns are waves, sub-goals lanes, the longest chain double); `m` the map
-of the folders each task may write, its lens following the plan's stage until `v` turns it. `Tab` goes on,
-`Esc` comes back, `?` lists every key and what the marks mean.
+of the folders each task may write, its lens following the plan's stage until `v` turns it. On the graph `+`
+adds a step after the selected task, and `L` on one task, then on another, makes the second wait on the first.
+`Tab` goes on, `Esc` comes back, `?` lists every key and what the marks mean.
 
 `--classic` (or a `--view`) opens the older screen: `graphene plan`'s outline, a row a node with its state's word
 (∅ after a title: its check passes at the base, or fails outside its scope). `Tab` there, or `graphene plan

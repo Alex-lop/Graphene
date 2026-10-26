@@ -1366,6 +1366,7 @@ def register(cli: typer.Typer, root, open_store, fail):
         goal: str = typer.Option(None, "--goal", help="Replaces the goal."),
         add_goal: str = typer.Option(None, "--add-goal", help="Adds a sentence at the end of the goal."),
         needs: list[str] = typer.Option(None, "--needs", help="Replaces what it waits on; 'none' clears it."),
+        add_needs: list[str] = typer.Option(None, "--add-needs", help="Adds a node it waits on; repeat it."),
         owner: str = typer.Option(None, "--owner", help="'agent', 'me', or a person's name."),
         signoff: bool = typer.Option(
             None, "--signoff/--no-signoff", help="Require a person's sign-off, or not."
@@ -1384,10 +1385,10 @@ def register(cli: typer.Typer, root, open_store, fail):
             edits["needs"] = [i for i in needs if i != "none"]
         if signoff is not None:
             edits["signoff"] = signoff
-        for said, adds in (("scope", add_scope), ("goal", add_goal)):
+        for said, adds in (("scope", add_scope), ("goal", add_goal), ("needs", add_needs)):
             if adds and said in edits:
                 fail(f"--{said} replaces the {said} and --add-{said} adds to it: one or the other", 2)
-        if not (edits or add_scope or add_goal):
+        if not (edits or add_scope or add_goal or add_needs):
             fail(f"graphene node set {node_id} needs what to change: --title, --scope, --check, --goal, "
                  "--needs, --owner, --signoff, --forks or --parent", 1)  # fmt: skip
 
@@ -1401,6 +1402,8 @@ def register(cli: typer.Typer, root, open_store, fail):
                 edits["scope"] = [*now.scope, *(g for g in dict.fromkeys(add_scope) if g not in now.scope)]
             if add_goal:
                 edits["goal"] = P.goal_plus(now.goal, add_goal) or now.goal
+            if add_needs:  # a link on the graph: what it waits on already stays; `validate` refuses a cycle
+                edits["needs"] = [*now.needs, *(x for x in dict.fromkeys(add_needs) if x not in now.needs)]
             node = P.edit(store, node_id, edits, P.caller(), files=files, told=told)
             return node, store.node_log(node_id, ("edited",))[seen:]  # yours, then a need Graphene added
 

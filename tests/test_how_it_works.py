@@ -11,7 +11,10 @@ pass at the write gate (19 October) found what the hook does not read before a w
 admitted is worth its words. It was 3,700 until forks (20 October): the reference gained a section on them,
 with the rule that keeps one in its five steps and the commands around it, the graph's new direction and the
 gate that fails closed; raised to 4,300, past the 4,000 the night's brief allowed, after what it said twice
-(the meter's clocks, `node show`'s attempt line) was said once and the section still did not fit under it."""
+(the meter's clocks, `node show`'s attempt line) was said once and the section still did not fit under it. It
+was 4,300 until the revamp night (26 October), when the graph gained its gestures (`+` a step after a task,
+`L` a link between two) and The views their one sentence; raised to 4,330 with 22 words of room left, since a
+key with no sentence is a key nobody finds."""
 
 import re
 from pathlib import Path
@@ -26,7 +29,7 @@ SECTIONS = ["The plan", "The board", "The views", "Plan first", "Ask", "Run", "F
 
 
 def test_it_is_under_the_cap():
-    assert len(HOW.split()) < 4300
+    assert len(HOW.split()) < 4330
 
 
 def test_every_section_is_there_in_order():

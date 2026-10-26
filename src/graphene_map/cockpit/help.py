@@ -30,6 +30,7 @@ GROUPS = (
     ("plan", (
         ("e E", "edit the task, or the whole plan, in your $EDITOR"),
         ("P u D", "plan first: on, auto, off; undo; D: the plan's direction"),
+        ("+ L", "graph: + adds a step after; L on A, then on B: B waits on A"),
     )),
     ("screens", (
         ("j k", "move; ← → the task on the map, the box on the graph"),
@@ -37,8 +38,7 @@ GROUPS = (
         ("c g m", "the cockpit, the graph, the map; Tab goes on, Esc comes back"),
         ("v p", "on the map: v changes the lens, p paints a folder to a task"),
     )),
-    ("anything", (("`:`", "any graphene command (:stop stops runs, :ask a sentence)"),
-                  ("q", "quit; a run started here goes on"))),
+    ("anything", (("`:` q", "any graphene command (:stop stops runs, :ask asks); q quits"),)),
     ("marks", (("", "● running  ◆ sign-off  ↩ came back  ○ ready  ◌ waiting"),
                ("", "+ proposed  ✓ proven  ◇ yours  ? a question  ! a risk"),
                ("", "✎ files/allowed  ✓ checks  ⏸ quiet  ▁▃▅ activity  3b a fork"))),
@@ -55,7 +55,7 @@ def help_text(width: int, groups: tuple = GROUPS, end: str = END) -> Text:
         for k, (key, what) in enumerate(keys):
             first, *more = textwrap.wrap(what, max(width - INDENT, 20)) or [""]
             out.append(f" {name if k == 0 else '':<9}", style="bold #4cc9f0")
-            out.append_text(Text.assemble((key.strip("`").ljust(6), "bold"), (first, "grey70")))
+            out.append_text(Text.assemble((key.replace("`", "").ljust(6), "bold"), (first, "grey70")))
             for line in more:
                 out.append("\n" + " " * INDENT + line, style="grey70")
             out.append("\n")

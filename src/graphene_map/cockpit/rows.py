@@ -13,6 +13,7 @@ import textwrap
 
 from rich.cells import cell_len
 
+from ..views import money
 from . import territory as T
 from .lines import Line, Seg, ago, fit, fit_end, ljust, pad, span
 from .look import STATE_GLYPH, color_of, short, who
@@ -43,7 +44,41 @@ def build_head(m: Model, width: int) -> list[Line]:
         counts += [Seg("▰" * fill, "#8ab17d"), Seg("▰" * busy, RUNNING)]
         counts += [Seg("▱" * (cells - fill - busy), "grey35")]
     counted = [Line(pad(counts, width))] if m.order() or m.folded_done else []  # nothing planned: no count
-    return [Line(pad(head, width)), *counted, Line([Seg("─" * width, "grey30")])]
+    lines = [Line(pad(head, width)), *counted]
+    if (auto := auto_head(m, width)) is not None:  # the envelope's round: on top while it waits for you
+        lines = [auto, *lines] if m.auto.get("stage") == "waits" else [*lines, auto]
+    return [*lines, Line([Seg("─" * width, "grey30")])]
+
+
+AUTO_WAITS = "bold #c77dff"  # the envelope's line while it waits for the person: the need-you purple
+
+
+def auto_line(a: dict) -> str:
+    """The envelope's round in one line: `auto · round 1 of 3 · running · $0.42 of $2.00 · 5 of 12 tasks`.
+    A round is the first plan or a fix round after the goal's check failed, `rounds + 1` in all; `waits`
+    says why it waits for the person; what is not set (no round yet, no budget, no cap on the tasks) is
+    left out, never said as a zero."""
+    parts = ["auto"]
+    if a.get("stage"):
+        parts.append(f"round {a['round']} of {a['rounds'] + 1}")
+        parts.append(f"waits: {a.get('why') or 'needs you'}" if a["stage"] == "waits" else a["stage"])
+    else:
+        parts.append("on")
+    if a.get("spent") is not None or a.get("budget") is not None:
+        spent = f"${a.get('spent') or 0:.2f}"
+        parts.append(spent + (f" of ${a['budget']:.2f}" if a.get("budget") is not None else ""))
+    n, of = a.get("tasks") or 0, a.get("of")
+    parts.append(f"{n} of {of} tasks" if of else f"{n} task{'s' * (n != 1)}")
+    return " · ".join(parts)
+
+
+def auto_head(m: Model, width: int) -> Line | None:
+    """The envelope's line for a head (the cockpit's, the graph's) while auto is on: dim while it runs, in the
+    need-you purple while it waits for the person. None while auto is off: today's head, unchanged."""
+    if not m.auto:
+        return None
+    waits = m.auto.get("stage") == "waits"
+    return Line([Seg(" " + fit(auto_line(m.auto), width - 2), AUTO_WAITS if waits else "grey62")])
 
 
 def tag_of(m: Model, room: int) -> str:
@@ -69,7 +104,7 @@ def build_cockpit(m: Model, width: int, *, tell: str | None = None) -> list[Line
     for kind, rid in m.order():
         if kind == "question":
             q = next(q for q in m.questions if q.id == rid)
-            out.append(question_line(q, width, rid == sel))
+            out.append(question_line(q, width, rid == sel, model_col(m)))
             out += question_open(q, width) if rid == sel else []
             continue
         t = m.tasks[rid]
@@ -99,10 +134,11 @@ def empty(m: Model, width: int) -> list[Line]:
     return [Line([]), *(Line([Seg(" " + fit(s.text, width - 2), s.style)]) for s in said)]
 
 
-def question_line(q: Question, width: int, on: bool) -> Line:
+def question_line(q: Question, width: int, on: bool, models: int = 0) -> Line:
     """? the question (! a risk), ⏎ its default, and the other options by the numbers `graphene board pick`
-    takes. Its words start where a task's title does, so the rows have one left edge."""
-    room = max(width - LEAD - 2, 20)
+    takes. Its words start where a task's title does (``models``: the model column's cells, when the rows
+    have one), so the rows have one left edge."""
+    room = max(width - LEAD - models - 2, 20)
     keep = fit("⏎ " + q.default, max(room // 3, 12))
     words = min(cell_len(q.text), room // 2)  # the question keeps up to half the row, the options the rest
     each = max(16, (room - cell_len(keep) - words - 2) // max(len(q.options[:2]), 1))
@@ -113,7 +149,7 @@ def question_line(q: Question, width: int, on: bool) -> Line:
     mark, style = ("!", "bold #e9a23b") if q.kind == "risk" else ("?", "bold #c77dff")
     segs = [
         Seg("▶" if on else " ", "bold"),
-        Seg(f" {mark}    ", style),  # the state's column, then the agent's, empty
+        Seg(f" {mark}    " + " " * models, style),  # the state's column, then the agent's, empty
         Seg(fit(q.text, max(spare, 12)), "bold" if on else ""),
         Seg("  "),
         Seg(keep, "bold #c77dff", "take"),
@@ -146,7 +182,33 @@ def question_open(q: Question, width: int) -> list[Line]:
 
 
 LEAD = 8  # "▶ ● 12 ": the arrow, the state, the number of the agent on it
+MODEL_COL = 14  # the most cells the model's column takes: `stand-in-Nano` whole, a longer name cut
 FOCUS_BG = " on #1a2030"
+
+
+def model_col(m: Model) -> int:
+    """The cells the model's column takes on every row, after the agent's number: the widest name any task
+    says and one space, or nothing when no task names one (a plan nobody metered keeps today's rows)."""
+    widest = max((cell_len(t.model) for t in m.tasks.values()), default=0)
+    return min(widest, MODEL_COL) + 2 if widest else 0  # two spaces after it, as after the number
+
+
+def forks_said(t: Task, width: int) -> str:
+    """How many agents race on a forked task, and on which models, where one agent's pace goes: `3 forks ·
+    Nano ×3` when they share one, else each in its turn (`Nano, Nano, Super`), cut to a third of the row
+    (the stand-in's `3 forks · stand-in-Nano ×3` is whole at 80 columns)."""
+    n, models = len(t.forks), [f.model for f in t.forks]
+    said = f"{n} forks"
+    if any(models):
+        one = len(set(models)) == 1
+        said += f" · {models[0]} ×{n}" if one else " · " + ", ".join(x or "?" for x in models)
+    return f"{fit(said, max(14, width // 3))}  ".ljust(14)
+
+
+def cents(usd: float | None) -> str:
+    """Dollars on a row, as the bills spell them (`views.money`), or nothing for a spend too small to show
+    at four places (`$0.0000` says less than no number)."""
+    return money(usd) if usd and round(usd, 4) else ""
 RUNNING = STATE_GLYPH["running"][1].split()[-1]  # the running amber
 FORK_GLYPH = {  # how a fork ended, on its line: passed in the proven green, the rest in the came-back red
     "passed": ("✓", "#8ab17d"), "refused": ("✗", "#ef476f"), "failed": ("✗", "#ef476f"),
@@ -163,13 +225,15 @@ def right_of(m: Model, t: Task, width: int) -> list[Seg]:
         quiet = m.quiet(t)
         pace = width >= (100 if t.stopped else 70)  # a stopped row's room goes to the key that frees it
         right = [Seg(m.pace(t) + "  ", RUNNING)] if pace else []  # its pace, in its state's colour
-        if pace and t.forks:  # how many agents are on it, where one agent's pace goes: each has its own line
-            right = [Seg(f"{len(t.forks)} forks".ljust(14), RUNNING)]
+        if pace and t.forks:  # how many agents race on it, on what, where one agent's pace goes
+            right = [Seg(forks_said(t, width), RUNNING)]
         if width >= 78:
             right += [Seg(f"✎{len(t.touched)}/{m.allowed(t)}".ljust(8), "grey62")]
         if t.checks:
             proven = "#8ab17d" if t.passed == t.checks else "grey62"
             right += [Seg(f"✓{t.passed}/{t.checks}".ljust(6), proven)]
+        if cents(t.usd) and width >= 100:  # what it has cost so far, where the row has the room
+            right += [Seg(cents(t.usd).ljust(8), "grey62")]
         if t.stopped:  # what the gate stopped, and the key that gives it: the fix, not a count
             path, room, more = t.stopped[-1][0], max(12, width // 5), len({p for p, _ in t.stopped}) - 1
             path = path if cell_len(path) <= room else fit_end(path.rsplit("/", 1)[-1], room)  # else its name
@@ -216,15 +280,17 @@ def task_lines(
     colour = color_of(t.agent) if t.agent else "grey62"
     on = expanded
     name = t.agent or ""
+    models = model_col(m)  # the model after the number, in a column of its own, when any task names one
     lead = [
         Seg("▶" if on else " ", "bold"),
         Seg(f" {glyph} ", gstyle),
         Seg(f"{name:<2} ", f"bold {colour}" if name else ""),
+        *([Seg(ljust(fit(t.model, models - 2), models), "grey62")] if models else []),
     ]
     right, more = right_of(m, t, width), 0
     if on and t.state == "came back" and long_note(t, width):  # the open row says it all, once, below:
         more, right = span(right[:1]), right[1:]  # its cut reason gives the title its room
-    room = max(12, width - LEAD - cols - 1) + more
+    room = max(12, width - LEAD - models - cols - 1) + more
     gap = [Seg(" " * max(0, cols - more - span(right)))] if cols else []
     whole = short(t.full, 0) or t.title  # the whole title, its article and what follows a colon left out
     title = Seg(ljust(fit(whole, room - 1), room), "bold" if on else "", f"select:{t.id}")
@@ -328,17 +394,22 @@ def kept_said(kept: tuple[str, str, str], then: str = " · ") -> str:
 
 
 def fork_line(m: Model, t: Task, f: Fork, room: int) -> list[Seg]:
-    """One fork of an open row: its number and letter in the agent's colour; running, its pace, its files
-    and its last move (and how long it has been quiet); ended, how, and why, or what it changed."""
-    name = Seg(f"{t.agent}{f.letter} ", f"bold {color_of(t.agent)}" if t.agent else "")
+    """One fork of an open row: its number and letter in the agent's colour, then its model; running, its
+    pace, its files, its dollars so far and its last move (and how long it has been quiet); ended, how, what
+    it changed and cost (`1b Nano ✓ passed · 4 lines · $0.002`), and why when it did not pass."""
+    name = [Seg(f"{t.agent}{f.letter} ", f"bold {color_of(t.agent)}" if t.agent else "")]
+    name += [Seg(f"{f.model} ", "grey62")] if f.model else []
     if f.state != "running":
         glyph, style = FORK_GLYPH.get(f.state, ("·", "grey50"))
         said = FORK_WORD.get(f.state, f.state)
         said += f" · {f.lines} lines" if f.state == "passed" and f.lines else ""
+        said += f" · {cents(f.usd)}" if cents(f.usd) else ""
         said += f": {f.why}" if f.why and f.state != "passed" else ""
-        return [name, Seg(f"{glyph} ", style), Seg(fit(said, room - span([name]) - 2), style)]
+        return [*name, Seg(f"{glyph} ", style), Seg(fit(said, room - span(name) - 2), style)]
     quiet = m.quiet(f)
-    segs = [name, Seg(m.pace(f, 6, 10.0) + " ", RUNNING), Seg(f"✎{len(f.touched)}  ", "grey62")]
+    segs = [*name, Seg(m.pace(f, 6, 10.0) + " ", RUNNING), Seg(f"✎{len(f.touched)}  ", "grey62")]
+    if cents(f.usd):
+        segs.append(Seg(f"{cents(f.usd)}  ", "grey62"))
     if quiet > 8:
         segs.append(Seg(f"⏸{ago(quiet)}  ", "bold #e9a23b"))
     return segs + [Seg(fit((m.tail(f, 1) or [""])[0], room - span(segs)), "grey70")]

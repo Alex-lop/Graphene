@@ -15,8 +15,10 @@ from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 
+from .. import auto as A
 from .. import board as B
 from .. import board_rows as BR
+from .. import meter as M
 from .. import plan as P
 from .. import run as R
 from .. import settings as S
@@ -36,6 +38,7 @@ KEEP_DONE = 4
 FILES_EVERY = 30.0  # seconds between looks at what git tracks: a big repository's list is not free
 GIT_EVERY = 5.0  # seconds between asks of git, for each running leaf or fork: it costs three of its commands
 ROWS = 200  # the latest rows of a leaf's log (a fork's own) read each look: a run's log can be long
+BILL = 4000  # the hold's usage rows read for its models and dollars: a run's attempts have hundreds each
 SAYS = 400  # characters kept of what an agent said or ran: the screen cuts it to its width, with an ellipsis
 LIVE = ("running", "review", "came back")  # the tasks whose agent the rows are read for
 KINDS = {"reading": "read", "editing": "edit", "running": "run", "searching": "search"}  # a did row's verb
@@ -96,6 +99,7 @@ def read(
     m.forks = int(forks) if forks.isdigit() else 1
     chosen = (store.meta("executor") or "").split()  # what R starts, when `graphene init` chose it
     m.executor = Path(chosen[0]).name if chosen else ""
+    m.auto = envelope(store)
     leaves = [n for n in nodes if not kids.get(n.id)]
     keep = {n.id for n in leaves}
     for n in leaves:
@@ -127,6 +131,7 @@ def read(
         proofs(t, node, last, every, t.state == "done" and signed_off(store, t.id))
         if t.state in LIVE or t.state == "done":
             forks_of(store, t)  # its hold forked: the forks, and the one kept
+            models_of(store, t, chosen)  # which model each agent on it answers with, and the dollars so far
         if t.state in LIVE:
             live(store, m, t, node)
         if t.state == "running":
@@ -301,11 +306,81 @@ def forks_of(store, t: Task) -> None:
             f.state = str(d.get("state") or "running") if ended else "running"
             f.why = fork_why(d.get("why")) if ended else ""
             f.lines = d.get("lines")
+            f.usd = d["dollars"] if ended and d.get("dollars") is not None else f.usd
         elif r["kind"] == "attempt" and f is not None:
             f.state, f.why = "running", ""
         elif r["kind"] == "picked":
             t.kept = (str(d.get("fork") or ""), " ".join(str(d.get("reason") or "").split()),
                       str(d.get("by") or ""))  # fmt: skip
+
+
+def models_of(store, t: Task, executor: list[str]) -> None:
+    """Which model each agent on the task answers with, in a word (`meter.short`), and the dollars so far,
+    from the rows of the hold going now (after its last `started`): the `usage` rows the meter and
+    Nemotron's executor write name the model each turn and what it cost; Nemotron's `model` row names the
+    rung an attempt climbed to before its first turn; before either, a fork's model is the `forked` row's
+    `with` for its letter, a leaf's the executor `graphene init` chose (``executor``, its words). A forked
+    task names the model its forks share, else none: their lines say each; its dollars are all of theirs."""
+    rows = recent(store, t.id, ("started", "forked", "usage", "model"), BILL)
+    held = max((k for k, r in enumerate(rows) if r["kind"] == "started"), default=-1)
+    rows = rows[held + 1 :]
+    withs = next((r["detail"].get("with") or {} for r in rows if r["kind"] == "forked"), {})
+    chosen = (M.model_in(executor) or executor[0]) if executor else ""  # its --model, else its name
+
+    def named(mine: list[dict], fallback: str) -> tuple[str, float | None]:
+        usage = [r["detail"] for r in mine if r["kind"] == "usage"]
+        said = next((r["detail"]["model"] for r in reversed(mine) if r["detail"].get("model")), None)
+        return M.short(said or fallback), sum(u.get("dollars") or 0 for u in usage) if usage else None
+
+    if not t.forks:
+        t.model, t.usd = named(rows, chosen)
+        return
+    for f in t.forks:
+        mine = [r for r in rows if r["session_id"] == f.session] if f.session else []
+        f.model, usd = named(mine, with_model(str(withs.get(f.letter) or ""), executor, chosen))
+        f.usd = usd if usd is not None else f.usd  # else what its last `fork` row said it cost
+    shared = {f.model for f in t.forks if f.model}
+    t.model = shared.pop() if len(shared) == 1 else ""
+    spent = [f.usd for f in t.forks if f.usd is not None]
+    t.usd = sum(spent) if spent else None
+
+
+def with_model(spec: str, executor: list[str], chosen: str) -> str:
+    """What a fork's `with` names, before its rows say: a model (`claude:opus`, `… --model x`) as given; the
+    executor's own name (the run's, or none given) as the executor's first rung (``chosen``); any other
+    command by its script, as the run's log labels it."""
+    if ":" in spec or "--model" in spec:
+        return spec
+    if not spec or spec.split()[:1] == executor[:1]:
+        return chosen
+    try:
+        return R.label(spec)
+    except (ValueError, IndexError):  # a quote left open: the words as they are
+        return spec
+
+
+def envelope(store) -> dict | None:
+    """The envelope's round while `auto` is on: `auto.state` (round, rounds, stage, spent, budget, check,
+    why) with the envelope's budget and task count (`settings.budget`, `settings.tasks`) where the round
+    says none, and how many tasks it has accepted on the person's behalf since it went on: the `accepted`
+    rows whose detail says `by: auto`, after the newest settings row that turned it on (all of them when
+    no row says). None while auto is off: the head says nothing of it."""
+    if S.auto(store) != "on":
+        return None
+    state = dict(A.state(store) or {})
+    since = 0
+    for r in store.node_log("*", ("settings",)):
+        if ((r["detail"] or {}).get("changed") or {}).get("auto", [None, None])[-1] == "on":
+            since = r["id"]
+    rows = store.conn.execute("SELECT detail FROM node_log WHERE kind = 'accepted' AND id > ?", (since,))
+    taken = sum(1 for (detail,) in rows if detail and json.loads(detail).get("by") == "auto")
+    budget = state.get("budget") if state.get("budget") is not None else S.budget(store)
+    return {
+        "round": int(state.get("round") or 1), "rounds": int(state.get("rounds") or S.rounds(store)),
+        "stage": str(state.get("stage") or ""), "spent": state.get("spent"), "budget": budget,
+        "check": state.get("check"), "why": " ".join(str(state.get("why") or "").split()),
+        "tasks": taken, "of": S.tasks(store),
+    }  # fmt: skip
 
 
 REFUSED_AFTER = re.compile(r"^\d+ attempts?, the last one refused: ")  # the run's count, said on its own

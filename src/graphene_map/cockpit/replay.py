@@ -51,6 +51,7 @@ MILESTONES = {
     "signed_off": "you signed off {}", "landed": "{} landed",
     "reopened": "{} reopened", "dropped": "{} dropped", "overruled": "{} is done over its check",
     "added": "{} added",
+    "auto": "auto · {}",  # a round of `graphene auto`: its words are `auto_said`'s, not a task's title
 }  # fmt: skip
 GOALS = {"asked": "you asked", "goal_proposed": "proposed goal", "goal": "your goal"}  # its note is the words
 ASKS = {"question": "asks", "assume": "assumes", "risk": "flags a risk", "leave out": "leaves out",
@@ -72,18 +73,31 @@ def item(text) -> str:
     return words(text).replace(" · ", ", ")
 
 
-def news(line: dict, titles: dict[str, str] | None = None, names: dict[str, str] | None = None) -> str:
+def auto_said(d: dict) -> str:
+    """A round of `graphene auto` as the news says it (its row's detail is `auto.state`'s): `round 2 of 3:
+    fixing`, a round being the first plan or a fix round after the goal's check failed; or why it waits."""
+    where = f"round {d.get('round') or 1} of {int(d.get('rounds') or 2) + 1}"
+    if d.get("stage") == "waits":
+        return f"{where} waits: {item(d.get('why') or 'needs you')}"
+    return f"{where}: {d.get('stage') or 'on'}"
+
+
+def news(
+    line: dict, titles: dict[str, str] | None = None, names: dict[str, str] | None = None,
+    models: dict[str, dict[str, str]] | None = None,
+) -> str:
     """One recorded change as a narrator says it, each task by its title (``titles``): what an agent did or
     said, a write the gate stopped, why a task came back, what the board asks and what you answered, what
     an edit changed, what was accepted, proven and landed. A fork's row names the fork as the rows do, the
-    agent's number (``names``) and its letter: "agent 3b: editing app.py", its check's verdict, which was
-    kept. Bookkeeping (precheck, usage, model, attempt, ended, an executor's output, the settings, the
+    agent's number (``names``) and its letter, and its model when known (``models``, a task's letters to
+    their names): "agent 3b (Nano): editing app.py", its check's verdict, which was kept. Bookkeeping
+    (precheck, usage, model, attempt, ended, an executor's output, the settings, the
     agent's own `graphene node` commands) says nothing, so the last news stays up. Three at most, in the
     order they happened: the latest of the rest before an agent's moves, so a hand-back is not crowded out
     by the edits that came before it; and your answer before the edits it made, which the log has first.
     Tasks accepted together are one item, their count: the last three of six accepts read as if two tasks
     were, and a sub-goal comes with its tasks."""
-    titles, names = titles or {}, names or {}
+    titles, names, models = titles or {}, names or {}, models or {}
     items = {it["id"]: it for it in json.loads((line.get("plan_meta") or {}).get("board") or "[]")}
     parents = {json.loads(n.get("data") or "{}").get("parent") for n in (line.get("nodes") or {}).values()}
     accepted: list[int] = []  # where the accepts' one item is, once per accepted task
@@ -97,11 +111,13 @@ def news(line: dict, titles: dict[str, str] | None = None, names: dict[str, str]
         d, kind = json.loads(row.get("detail") or "{}"), row["kind"]
         title = titles.get(row["node_id"], row["node_id"])
         fork = d["fork"] if isinstance(d.get("fork"), str) else ""  # a run's fork (Nemotron's are numbered)
-        who = title  # a fork's row: its agent's number and its letter, as its row says it
+        who = title  # a fork's row: its agent's number and its letter, as its row says it, and its model
         if fork and row["node_id"] in names:
             who = f"agent {names[row['node_id']]}{fork}"
         elif fork:
             who = f"{title} fork {fork}"
+        if fork and (model := (models.get(row["node_id"]) or {}).get(fork)):
+            who += f" ({model})"
         if kind == "did" and not OURS.search(str(d.get("target") or "")):
             moves.add(len(said))
             said.append(f"{who}: {d.get('verb', '')} {words(d.get('target'))}")
@@ -144,6 +160,8 @@ def news(line: dict, titles: dict[str, str] | None = None, names: dict[str, str]
                 said[accepted[0]] = f"you accepted {len(accepted)} tasks"
         elif kind == "accepted":
             continue  # a sub-goal accepted with its tasks: they say it
+        elif kind == "auto":
+            said.append(MILESTONES[kind].format(auto_said(d)))
         elif kind in MILESTONES:
             said.append(MILESTONES[kind].format(title))
         if kind != "edited":
@@ -265,7 +283,8 @@ class CockpitReplay(Cockpit):
         if ended:
             self.keys["cockpit"] = KEYS_ENDED
         self.look()
-        said = " · ".join(filter(None, (news(line, titles, self.model.names) for line in applied)))
+        models = {tid: {f.letter: f.model for f in t.forks} for tid, t in self.model.tasks.items() if t.forks}
+        said = " · ".join(filter(None, (news(line, titles, self.model.names, models) for line in applied)))
         if said:  # what changed, in the news; bookkeeping says nothing, and the last news stays up
             self.model.say(said)
         if ended:  # then the reader's next step: at 80 columns the head has no room for "ended"

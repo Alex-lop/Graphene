@@ -82,6 +82,29 @@ def model_in(argv: list[str]) -> str | None:
     return option(argv, "-m", "--model")
 
 
+SIZES = ("nano", "super", "ultra")  # a Nemotron id's size: the name a screen gives it
+FAMILIES = ("haiku", "sonnet", "opus", "fable")  # a Claude id's family
+SHORT = 12  # characters of an id's last path part a screen shows when no name above fits it
+
+
+def short(model: str | None) -> str:
+    """A model id as a screen names it, in one word: a Nemotron id by its size (Nano, Super, Ultra), a
+    Claude id by its family (Haiku, Sonnet, Opus, Fable), a Codex or GPT id as Codex, anything else by the
+    last part of its path, at most SHORT characters. A `--with` spec names its model the same way
+    (`claude:opus`, `nemotron --model nvidia/…Nano…`). The demo's stand-in keeps its whole name
+    (`stand-in-Nano`): a replay never reads as the model it stood in for."""
+    said = str(model or "").strip()
+    low = said.lower()
+    if "nemotron" in low and (size := next((s for s in SIZES if s in low), None)):
+        return size.title()
+    if "claude" in low and (family := next((f for f in FAMILIES if f in low), None)):
+        return family.title()
+    tail = said.rsplit("/", 1)[-1].split()[0] if said else ""
+    if low.startswith("codex") or tail.lower().startswith(("codex", "gpt")):
+        return "Codex"
+    return tail if "stand-in" in tail.lower() else tail[:SHORT]
+
+
 def doing(verb: str, target: str) -> str:
     """What an executor is doing, in a few words: "editing ingest/xmlfeed.py"."""
     return f"{verb} {target}".strip()
