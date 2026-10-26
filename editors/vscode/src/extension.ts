@@ -7,6 +7,7 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import * as C from "./commands.ts";
 import { GraphHost } from "./graph.ts";
+import { owner } from "./owners.ts";
 import { autoNews, parseState, summary, type State, type Task } from "./state.ts";
 import { parseLog, rounds } from "./rounds.ts";
 import { RoundsTree } from "./roundsView.ts";
@@ -142,8 +143,29 @@ export function activate(context: vscode.ExtensionContext) {
   bar.show();
   context.subscriptions.push(treeView, bar, vscode.window.registerWebviewViewProvider("graphene.graph", graph, { webviewOptions: { retainContextWhenHidden: true } }));
 
+  // the Explorer marks each file a live task owns, a running one's with its agent's number: whose is whose
+  const owners = new vscode.EventEmitter<undefined>();
+  const colours: Record<string, string> = { running: "charts.yellow", review: "charts.purple", "came back": "charts.red" };
+  let held = "";
+  context.subscriptions.push(owners, vscode.window.registerFileDecorationProvider({
+    onDidChangeFileDecorations: owners.event,
+    provideFileDecoration(uri) {
+      const root = session.folder?.uri.fsPath;
+      if (!root || !session.state || uri.scheme !== "file") return undefined;
+      const rel = path.relative(root, uri.fsPath).split(path.sep).join("/");
+      if (rel.startsWith("../") || rel === ".." || path.isAbsolute(rel)) return undefined;
+      const o = owner(rel, session.state.tasks);
+      if (!o) return undefined;
+      const colour = colours[o.state];
+      return new vscode.FileDecoration(o.badge, o.tooltip, colour ? new vscode.ThemeColor(colour) : undefined);
+    },
+  }));
+
   session.onDidChange(() => {
     tree.set(session.state);
+    const now = JSON.stringify((session.state?.tasks ?? []).filter((t) => t.state !== "done" && t.state !== "proposed")
+      .map((t) => [t.id, t.state, t.agent, t.model, t.scope, t.forks.length]));
+    if (now !== held) { held = now; owners.fire(undefined); } // only when whose is whose changed
     void readRounds();
     const s = session.state;
     const said = s ? autoNews(session.before, s) : null; // auto mode needs you, plans a fix, or is done

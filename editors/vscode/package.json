@@ -267,6 +267,75 @@
         }
       ]
     },
+    "walkthroughs": [
+      {
+        "id": "start",
+        "title": "Get started with Graphene",
+        "description": "A team of coding agents on one repo: each owns its files, and your tests decide what lands.",
+        "steps": [
+          {
+            "id": "install",
+            "title": "Install Graphene",
+            "description": "This extension draws and drives the `graphene` command. Install it once, in a terminal: `uv tool install 'graphene-map[nemotron]'` (or without `[nemotron]` for Claude Code or Codex alone).\n[Open a Terminal](command:workbench.action.terminal.new)",
+            "media": {
+              "image": "media/graph.png",
+              "altText": "the plan as a graph: tasks by state, one task's three forks racing, the kept one marked, the goal on the right"
+            },
+            "completionEvents": [
+              "onContext:graphene.status && graphene.status != missing"
+            ]
+          },
+          {
+            "id": "setup",
+            "title": "Set up this folder",
+            "description": "`graphene init` asks who plans and who does the work: Nemotron on Token Factory, Claude Code, Codex, or any model behind Graphene's own loop.\n[Set Up This Folder](command:graphene.init)",
+            "media": {
+              "image": "media/graph.png",
+              "altText": "the plan as a graph: tasks by state, one task's three forks racing, the kept one marked, the goal on the right"
+            },
+            "completionEvents": [
+              "onCommand:graphene.init"
+            ]
+          },
+          {
+            "id": "goal",
+            "title": "Give it a goal",
+            "description": "Auto… takes a goal, a budget, and whether to plan first. The planner splits it into tasks that can run at once, each with the files it may change and a check; agents race each task, the check keeps one, then your goal's own check runs, and a red one is planned again.\n[Auto…](command:graphene.auto)",
+            "media": {
+              "image": "media/graph.png",
+              "altText": "the plan as a graph: tasks by state, one task's three forks racing, the kept one marked, the goal on the right"
+            },
+            "completionEvents": [
+              "onCommand:graphene.auto"
+            ]
+          },
+          {
+            "id": "watch",
+            "title": "Watch it, steer it",
+            "description": "The graph shows every task, its forks racing and what needs you; drag a task's dot onto another and that one waits on it. The Explorer marks each file a running agent writes with its number; Rounds lists auto mode's iterations.\n[Show Plan Graph](command:graphene.showGraph)",
+            "media": {
+              "image": "media/graph.png",
+              "altText": "the plan as a graph: tasks by state, one task's three forks racing, the kept one marked, the goal on the right"
+            },
+            "completionEvents": [
+              "onCommand:graphene.showGraph"
+            ]
+          },
+          {
+            "id": "envelope",
+            "title": "Set the limits once",
+            "description": "The envelope is what auto mode may do without you: a budget, how many tasks, fix rounds, forks, the files no task touches and the checks it may run. Anything outside it waits for you, with why.\n[Set Envelope…](command:graphene.envelope)",
+            "media": {
+              "image": "media/graph.png",
+              "altText": "the plan as a graph: tasks by state, one task's three forks racing, the kept one marked, the goal on the right"
+            },
+            "completionEvents": [
+              "onCommand:graphene.envelope"
+            ]
+          }
+        ]
+      }
+    ],
     "configuration": {
       "title": "Graphene",
       "properties": {
@@ -288,7 +357,7 @@
     "build": "node esbuild.mjs",
     "check": "tsc --noEmit -p .",
     "test": "npm run check && node --experimental-strip-types --test \"test/*.test.ts\" && npm run build && node test/smoke.cjs",
-    "package": "vsce package --no-dependencies -o graphene-0.8.0.vsix",
+    "package": "vsce package --no-dependencies --baseContentUrl https://github.com/Alex-lop/Graphene/blob/main/editors/vscode --baseImagesUrl https://raw.githubusercontent.com/Alex-lop/Graphene/main/editors/vscode -o graphene-0.8.0.vsix",
     "vscode:prepublish": "npm run build"
   },
   "devDependencies": {

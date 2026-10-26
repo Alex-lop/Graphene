@@ -19,10 +19,14 @@ It is a thin client: everything it shows comes from `graphene state --json`, and
   words, sub-goals as bands, the goal at the right, the plan's width; a running box names its model; a
   forked task fans out into its forks (letter, model, state, the kept one marked); an auto header
   (`auto · round 1 of 2 · running · $0.42 of $2.00`) when auto is on. Click selects and opens the details
-  pane; arrow keys move the selection; the wheel zooms, dragging pans, a double click fits.
+  pane; drag a task's dot (its right edge) onto another and that one waits on it; arrow keys move the
+  selection; the wheel zooms, dragging pans, a double click fits.
 - **Rounds** view: auto mode's iterations, one row a round (`Round 2 · done · 1 accepted · 1 landed · goal ✓ ·
   $0.02`), and under it what the envelope accepted, which fork each task kept and why, what landed, and the
   line the goal's check failed on that sent it there. It reads `graphene plan log --json`, only while it is open.
+- **Explorer**: each file a task owns is marked, a running task's with its agent's number in yellow (the task,
+  its model and its forks in the tooltip), one waiting for your sign-off with ✓, one that came back with !, one
+  not started yet with ·: whose is whose, at a glance. The scope globs are read as the CLI reads them.
 - **Status bar**: `◆ 2 running · 1 needs you · $0.42`; click for the graph.
 
 It reads the plan again whenever the store's files change (`.graphene/`, watched as a directory: the WAL
@@ -44,7 +48,8 @@ buttons in the graph's details pane.
 | Stop | `graphene run --stop` |
 | Accept / Accept All | `graphene plan accept [ID]` |
 | Add Step… | title, where (after a task, i.e. waiting on it; or under a sub-goal), scope, check; `graphene node add TITLE --parent P --needs X --scope G --check C` |
-| Link… | A then B, B waits on A: `graphene node set B --add-needs A` (in the graph: Link to…, then click the target; Esc cancels) |
+| Link… | A then B, B waits on A: `graphene node set B --add-needs A` (in the graph: drag A's dot onto B, or Link to… then click B; Esc cancels) |
+| Unlink (the × beside a task under "needs", in the details pane) | B stops waiting on A: `graphene node set B --needs <the rest>`, or `--needs none` |
 | Edit Step… | title, scope or check: `graphene node set ID --title/--scope/--check` |
 | Drop Step | `graphene node drop ID` (`graphene plan undo` puts it back) |
 | Tell Agent… | `graphene board note "<line>" --about ID`: a hooked agent reads it before its next write |
@@ -74,11 +79,16 @@ Clear states instead of an empty tree: Graphene not found (`uv tool install grap
 
 ## Install
 
-From a build of this folder:
+Graphene itself first (`uv tool install graphene-map`, 0.8 or later). Then the extension: download
+`graphene-0.8.0.vsix` from [the release](https://github.com/Alex-lop/Graphene/releases/latest), or build it
+from this folder (below), and
 
 ```sh
 code --install-extension graphene-0.8.0.vsix      # Cursor: cursor --install-extension graphene-0.8.0.vsix
 ```
+
+VS Code's Welcome page then has **Get started with Graphene**: install, set up the folder, give it a goal, watch
+and steer, set the limits; each step a button.
 
 To build it (Node 22+, no runtime dependencies):
 

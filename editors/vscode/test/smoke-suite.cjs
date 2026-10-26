@@ -18,5 +18,6 @@ exports.run = async () => {
   await vscode.commands.executeCommand("graphene.refresh"); // reads the plan: graphene may be missing here, and that is a state, not a throw
   await vscode.commands.executeCommand("graphene.showGraph"); // the panel opens
   await vscode.commands.executeCommand("workbench.view.extension.graphene"); // the container with the tree and the graph view
+  await vscode.commands.executeCommand("workbench.action.openWalkthrough", `${ext.id}#start`, false); // Get started
   await new Promise((r) => setTimeout(r, 1500));
 };

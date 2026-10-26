@@ -26,8 +26,10 @@ loud; say which model does what. Narrate in your own words; the SAY lines are a 
 5. **1:45 to 2:10, the locks.** Type `graphene demo --cheat`. SAY: "And when an agent tries to get round the locks:
    six refused, one flagged, none through."
 6. **2:10 to 2:35, where you work.** VS Code with the extension: the graph, forks fanning out, the details pane;
-   click Add step after, then Link to…. SAY: "The same plan in VS Code. Every click is a Graphene command run as
-   me. I set the envelope once (a budget, how many tasks, the files no agent may touch) and it does the rest."
+   drag one task's dot onto another to link them; then the Explorer, each file a running agent writes marked with
+   its number. SAY: "The same plan in VS Code. Every click is a Graphene command run as me, and you can see which
+   agent owns which files. I set the envelope once (a budget, how many tasks, the files no agent may touch) and
+   it does the rest."
 7. **2:35 to 3:00, why.** SAY your "Why I built this", in your words: the limit on software won't be tokens; it's
    the direction a person gives. Then the README's first line: `uvx graphene-map demo --auto`.
 

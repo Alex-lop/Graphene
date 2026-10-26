@@ -39,10 +39,14 @@ Publishing is driven by a git tag: push the tag, GitHub Actions builds and publi
    leave it where it is, fix main, bump to the next version and tag that. The changelog keeps the skipped version's
    heading and says it was never published.
 
-5. When the run is green, make the GitHub release for the tag:
+5. When the run is green, make the GitHub release for the tag, with the VS Code extension built from the same
+   commit attached (its version is in `editors/vscode/package.json`; the extension's README sends people here
+   for it):
 
    ```sh
-   gh release create v0.6.0 --title "Graphene 0.6.0" --notes-file dev/launch/release-notes.md
+   (cd editors/vscode && npm ci && npm run package)
+   gh release create v0.6.0 --title "Graphene 0.6.0" --notes-file dev/launch/release-notes.md \
+     editors/vscode/graphene-0.6.0.vsix
    ```
 
 ## First time only

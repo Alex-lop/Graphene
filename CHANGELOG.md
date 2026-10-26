@@ -56,6 +56,13 @@ checks the goal and plans the fix. Each line is one change.
 - A fix round says what the goal's check failed on, on its row (`why`), the head (`auto · round 2 of 3 · fixing:
   FAIL: test_a_hyphen_splits_a_word`) and a replay's news; a red check names its failing test first (unittest's
   `FAIL:`, pytest's `FAILED`).
+- A goal whose first planning failed (no key, a planner stopped) is planned again by the next `graphene auto`,
+  with the goal's check as first given; a budget under one attempt's worst case says so at once (`the budget left
+  ($0.50) is less than one attempt's worst case ($1)`), where nothing used to start and the plan was blamed; with
+  Claude Code the round's dollars are its stream's.
+- In the cockpit, `:auto <goal>` runs auto mode as a process of its own, and `:stop` stops it.
+- `.GIT/`, `.CLAUDE/` and the rest are guarded as `.git/` and `.claude/` are: a Mac's disk ignores case, so a write
+  to `.GIT/hooks/pre-commit` lands in `.git/hooks/`.
 - `graphene demo --auto` replays auto mode on Nemotron against the scripted stand-in (`dev/proof/auto.sh` on
   wordkit, recorded by `tests/test_demo_auto.py`): three tasks, nine forks at once, one stopped writing a file
   outside its task, the whole suite red after all three land, Ultra's fix, the suite green. The wheel carries it.
@@ -83,6 +90,19 @@ Editors (26 October 2026). Each line is one change.
   Link to…, Edit, Drop, Accept and Tell, a status bar (`◆ 2 running · 1 needs you · $0.42`), and the commands
   Open Cockpit, Auto…, Run Ready Tasks and Stop. Each click is a `graphene` command run as you: the agents' marks
   are taken out of its environment. CI builds and tests it in a job of its own.
+- Click and connect: in the graph, drag a task's dot (its right edge) onto another and that one waits on it
+  (`graphene node set B --add-needs A`); the × beside a task under "needs", in the details pane, unlinks them
+  (`--needs` with the rest, or `none`).
+- A Rounds view: auto mode's iterations from `graphene plan log --json`, a row a round (`Round 2 · done · 1
+  accepted · 1 landed · goal ✓ · $0.02`), under it what the envelope accepted, which fork each task kept and why,
+  what landed, and the line that sent the round to fixing.
+- The Explorer marks each file a task owns: a running one's with its agent's number (the task, model and forks in
+  the tooltip), then ✓ waiting for your sign-off, ! came back, · not started; the scope globs are read as the CLI
+  reads them (a table of 208 of `in_scope`'s answers holds the port).
+- Auto… asks for a goal, a budget and whether to plan first (`--plan`); Set Envelope… shows the envelope and sets
+  one setting (`graphene config set`); Set Up This Folder runs `graphene init` where a folder has no plan; a
+  notification says when auto mode waits for you (and why), plans a fix, or is done.
+- Each GitHub release carries the extension's `.vsix`, built from the tagged commit (docs/RELEASING.md).
 
 Any model, any agent, a port a task (26 October 2026). Each line is one change.
 - Graphene's own planner and tool loop run on another host with `--endpoint`: `nim` (NVIDIA's API catalog,
@@ -95,6 +115,8 @@ Any model, any agent, a port a task (26 October 2026). Each line is one change.
   unsent without the person's opening.
 - `--with` takes `{prompt}` and `{prompt_file}` for a CLI agent that reads its task from somewhere other than its
   last argument (recipes for aider, gemini, opencode and goose in HOW_IT_WORKS, not tested here).
+- `ENDPOINT=ollama dev/proof/auto.sh` runs the live take free on this machine's Ollama
+  (`ollama pull nemotron-3-nano:4b` first), `ENDPOINT=nim` on NVIDIA's API catalog.
 - Every executor a run starts gets `PORT` and `GRAPHENE_PORT`, its own (per running task and per fork, free when
   handed out), said in its contract and given to its check.
 

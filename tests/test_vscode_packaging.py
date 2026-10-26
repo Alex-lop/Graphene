@@ -43,6 +43,16 @@ def test_every_command_is_titled_graphene_and_the_list_is_the_promised_one():
     assert all(c["command"].startswith("graphene.") for c in MANIFEST["contributes"]["commands"])
 
 
+def test_the_walkthrough_buttons_are_the_extensions_own_commands_and_its_picture_ships():
+    [walk] = MANIFEST["contributes"]["walkthroughs"]
+    ours = {c["command"] for c in MANIFEST["contributes"]["commands"]}
+    linked = {m for s in walk["steps"] for m in re.findall(r"\(command:(graphene\.\w+)\)", s["description"])}
+    assert linked == ours & {"graphene.init", "graphene.auto", "graphene.showGraph", "graphene.envelope"}
+    shipped = (EXT / ".vscodeignore").read_text().split()
+    for s in walk["steps"]:
+        assert (EXT / s["media"]["image"]).is_file() and f"!{s['media']['image']}" in shipped, s["id"]
+
+
 def test_the_activity_bar_shows_the_brand_mark_and_a_plan_view_and_the_graph():
     (container,) = MANIFEST["contributes"]["viewsContainers"]["activitybar"]
     assert container["title"] == "Graphene"

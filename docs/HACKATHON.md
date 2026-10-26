@@ -53,8 +53,9 @@ worktree; a rule written before any fork ran keeps one by test evidence, never b
 lands. Then the goal's own check runs on the merged result, and when it is red Ultra plans the fix, for at most the
 rounds you allowed. Token Factory is what makes a race on every task affordable: the replay's whole run, two plans
 by Ultra and twelve Nano forks, cost $0.02 at the scripted stand-in's prices (`tests/test_demo_auto.py`), and
-`graphene demo --auto` replays it with no key. The same plan, forks racing, shows in VS Code (`editors/vscode`),
-where every click is a `graphene` command run as you.
+`graphene demo --auto` replays it with no key. The same plan, forks racing, shows in VS Code (`editors/vscode`):
+drag one task's dot onto another to link them, the Explorer marks each file a running agent writes with its
+number, and every click is a `graphene` command run as you.
 
 **On NVIDIA Nemotron, through Nebius Token Factory: the path built for this hackathon.** `graphene init --planner
 nemotron --executor nemotron` reads Token Factory's live model list: Nemotron 3 Ultra plans, Nano does the tasks,

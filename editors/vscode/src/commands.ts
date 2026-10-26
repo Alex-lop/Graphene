@@ -52,6 +52,12 @@ export function addStep(s: NewStep): string[] {
 /** B waits on A: adds to B's needs, keeping what it already waits on. */
 export const link = (a: string, b: string): string[] => ["node", "set", b, "--add-needs", a];
 
+/** B stops waiting on A: B's needs again without A, `none` when nothing is left (`--needs` replaces them). */
+export function unlink(a: string, b: string, needs: string[]): string[] {
+  const rest = needs.filter((n) => n !== a);
+  return ["node", "set", b, ...(rest.length ? rest.flatMap((n) => ["--needs", n]) : ["--needs", "none"])];
+}
+
 export type Field = "title" | "scope" | "check";
 
 export function editStep(id: string, field: Field, value: string | string[]): string[] {

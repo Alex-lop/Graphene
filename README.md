@@ -92,9 +92,9 @@ auto mode from the cockpit.
 ![Graphene for VS Code: the plan as a graph in an editor tab, a task's three forks with their models and the kept one, the details of the selected task, and the buttons that add a step after it, link it, edit it or tell its agent](https://raw.githubusercontent.com/Alex-lop/Graphene/main/editors/vscode/media/graph.png)
 
 The extension in [`editors/vscode`](https://github.com/Alex-lop/Graphene/blob/main/editors/vscode/README.md) shows
-the same plan in an editor tab and a sidebar: the graph, the forks racing, the status bar (`◆ 2 running · 1 needs
-you · $0.42`). Every click is a `graphene` command run as you: add a step, link two, edit, drop, accept, tell an
-agent, and **Graphene: Auto…** for a goal. It reads `graphene state --json`, so the cockpit and the editor never
+the same plan in an editor tab and a sidebar: the graph, the forks racing, the rounds of auto mode, the status bar
+(`◆ 2 running · 1 needs you · $0.42`), and in the Explorer each file a running agent writes marked with its number. Every click is a `graphene` command run as you: add a step, link two by dragging one's dot onto
+the other (an × unlinks them), edit, drop, accept, tell an agent, and **Graphene: Auto…** for a goal. It reads `graphene state --json`, so the cockpit and the editor never
 disagree. It is built for VS Code 1.95 and later, so its forks such as Cursor should load it (not tried there yet).
 
 ## Any agent, any model

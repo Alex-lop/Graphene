@@ -8,7 +8,7 @@ declare function acquireVsCodeApi(): { postMessage(m: unknown): void };
 
 type Status = { kind: "reading" | "missing" | "uninitialised" | "error" | "nofolder"; text: string };
 type Incoming = { type: "state"; state: State } | { type: "status"; status: Status } | { type: "select"; id: string };
-export type Act = "add-after" | "add-under" | "link" | "edit" | "drop" | "accept" | "tell" | "run" | "auto" | "cockpit";
+export type Act = "add-after" | "add-under" | "link" | "unlink" | "edit" | "drop" | "accept" | "tell" | "run" | "auto" | "cockpit";
 
 const GOAL = " goal";
 const BOX_W = 184, BOX_H = 48, FORK_H = 20, FORK_DX = 22, GOAL_W = 200, GOAL_H = 66;
@@ -20,6 +20,7 @@ let state: State | null = null;
 let lay: Layout | null = null;
 let selected: string | null = null;
 let linking: string | null = null;
+let wiring: { from: string; x: number; y: number } | null = null; // a drag from a task's dot: the link being drawn
 let zoom = { k: 1, tx: 0, ty: 0 };
 let fitted = false;
 let moved = false; // the person zoomed or panned: a resize no longer re-fits until a double-click
@@ -153,6 +154,8 @@ function render() {
       chip.appendChild(el("text", { class: "chip-text", x: x + 8, y: y + 14 }, words.join(" · ")));
       grp.appendChild(chip);
     });
+    // its dot, where its lines leave: drag it onto another task and that task waits on this one
+    grp.appendChild(el("circle", { class: "port", cx: p.x + BOX_W, cy: p.y + BOX_H / 2, r: 5, "data-port": t.id }));
     grp.addEventListener("click", (e) => { e.stopPropagation(); clicked(t.id); });
     view.appendChild(grp);
   }
@@ -165,6 +168,7 @@ function render() {
     grp.appendChild(el("text", { class: "sub", x: p.x + 14, y: p.y + 48 }, `goal · ${count(s.tasks)} done`));
     view.appendChild(grp);
   }
+  if (wiring) view.appendChild(el("path", { id: "wire", class: "wire", d: wireD() }));
   svg.setAttribute("viewBox", `0 0 ${Math.max(lay.width, 10)} ${Math.max(lay.height, 10)}`);
   svg.setAttribute("width", String(lay.width));
   svg.setAttribute("height", String(lay.height));
@@ -172,6 +176,20 @@ function render() {
   applyZoom();
   details();
   hint();
+}
+
+/** The link being drawn: from the dragged task's dot to the pointer, curved as an edge is. */
+function wireD(): string {
+  const p = wiring && lay?.boxes[wiring.from];
+  if (!wiring || !p) return "";
+  const x1 = p.x + BOX_W, y1 = p.y + BOX_H / 2, dx = Math.max(24, Math.abs(wiring.x - x1) / 2);
+  return `M${x1},${y1} C${x1 + dx},${y1} ${wiring.x - dx},${wiring.y} ${wiring.x},${wiring.y}`;
+}
+
+/** Where the pointer is in the graph's own units: the SVG is drawn 1:1, then translated and scaled. */
+function at(e: MouseEvent): { x: number; y: number } {
+  const r = $("svg").getBoundingClientRect();
+  return { x: (e.clientX - r.left) / zoom.k, y: (e.clientY - r.top) / zoom.k };
 }
 
 function fit() {
@@ -206,9 +224,10 @@ function select(id: string | null) {
 
 function hint() {
   const h = $("hint");
-  if (linking && state) {
-    const a = state.tasks.find((t) => t.id === linking);
-    h.textContent = `link: click the task that waits on “${a?.title ?? linking}” · Esc cancels`;
+  const from = wiring?.from ?? linking;
+  if (from && state) {
+    const a = state.tasks.find((t) => t.id === from);
+    h.textContent = `link: ${wiring ? "drop it on" : "click"} the task that waits on “${a?.title ?? from}” · Esc cancels`;
     h.className = "linking";
   } else if (state?.questions.length) { // an open question outranks the news: answering it is the person's
     const q = state.questions[0]!;
@@ -216,7 +235,8 @@ function hint() {
     h.textContent = `question${about ? ` on “${about}”` : ""}: ${q.text}${q.default ? ` (unanswered: ${q.default})` : ""} · answer it in the cockpit`;
     h.className = "asks";
   } else {
-    h.textContent = state?.news.length ? state.news[state.news.length - 1]! : "click a task · arrows move · wheel zooms · drag pans";
+    h.textContent = state?.news.length ? state.news[state.news.length - 1]!
+      : "click a task · drag its dot onto another to link them · wheel zooms · drag pans";
     h.className = "";
   }
 }
@@ -259,7 +279,20 @@ function details() {
   row("under", t.parent ? goalTitle(state, t.parent) : "", body);
   row("scope", t.scope.join("  "), body);
   row("check", t.check ?? "", body);
-  row("needs", t.needs.map((n) => state!.tasks.find((x) => x.id === n)?.title ?? n).join(", "), body);
+  if (t.needs.length) { // what it waits on, each with the × that stops it waiting
+    const r = div("row", undefined, body);
+    div("k", "needs", r);
+    const v = div("v", undefined, r);
+    for (const n of t.needs) {
+      const need = div("need", state.tasks.find((x) => x.id === n)?.title ?? n, v);
+      const x = document.createElement("button");
+      x.className = "unlink";
+      x.textContent = "×";
+      x.title = "stop waiting on it";
+      x.addEventListener("click", () => api.postMessage({ type: "act", act: "unlink", id: t.id, target: n }));
+      need.appendChild(x);
+    }
+  }
   row("agent", t.agent ? `agent ${t.agent}${t.model ? ` · ${t.model}` : ""}` : "", body);
   row("cost", usd(t.usd), body);
   row("idle", t.idle !== null && t.idle > 8 ? `${Math.round(t.idle)} s quiet` : "", body);
@@ -321,7 +354,8 @@ window.addEventListener("message", (e: MessageEvent<Incoming>) => {
 
 window.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
-    if (linking) linking = null; else selected = null;
+    if (wiring) { wiring = null; $("canvas").classList.remove("wiring"); }
+    else if (linking) linking = null; else selected = null;
     render();
     return;
   }
@@ -353,17 +387,44 @@ function wire() {
   }, { passive: false });
   let drag: { x: number; y: number; tx: number; ty: number } | null = null;
   canvas.addEventListener("mousedown", (e) => {
+    const port = (e.target as Element).closest("[data-port]");
+    if (port) { // a drag from a task's dot draws a link
+      e.preventDefault();
+      wiring = { from: port.getAttribute("data-port")!, ...at(e) };
+      canvas.classList.add("wiring");
+      render();
+      return;
+    }
     if ((e.target as Element).closest(".task, .goal")) return;
     drag = { x: e.clientX, y: e.clientY, tx: zoom.tx, ty: zoom.ty };
     canvas.classList.add("dragging");
   });
   window.addEventListener("mousemove", (e) => {
+    if (wiring) {
+      Object.assign(wiring, at(e));
+      $("wire")?.setAttribute("d", wireD());
+      return;
+    }
     if (!drag) return;
     zoom = { ...zoom, tx: drag.tx + e.clientX - drag.x, ty: drag.ty + e.clientY - drag.y };
     moved = true;
     applyZoom();
   });
-  window.addEventListener("mouseup", () => { drag = null; canvas.classList.remove("dragging"); });
+  window.addEventListener("mouseup", (e) => {
+    if (wiring) { // dropped on another task: it waits on the one dragged from, as Link to… then a click
+      const from = wiring.from;
+      const target = document.elementFromPoint(e.clientX, e.clientY)?.closest(".task")?.getAttribute("data-id");
+      wiring = null;
+      canvas.classList.remove("wiring");
+      if (target && target !== from) {
+        api.postMessage({ type: "act", act: "link", id: from, target });
+        select(target);
+      } else render();
+      return;
+    }
+    drag = null;
+    canvas.classList.remove("dragging");
+  });
   canvas.addEventListener("dblclick", (e) => {
     if ((e.target as Element).closest(".task, .goal")) return;
     fitted = false;

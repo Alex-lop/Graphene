@@ -27,9 +27,11 @@ the older one, a run you steer by hand.
 - **The race on screen.** Every agent's row names its model (Nano, Super, Ultra, Haiku, Sonnet, Codex), each fork
   its own line with its dollars, the auto line its round, stage and budget; on the graph, `+` adds a step after
   a task and `L` links two (`graphene node set B --add-needs A`), and its head says how many can run at once.
-- **Graphene for VS Code.** `editors/vscode`: the plan as a graph in an editor tab and the sidebar, forks racing,
-  the status bar, and every click a `graphene` command run as you (add a step, link, edit, drop, accept, tell an
-  agent, Auto…). It reads `graphene state --json`, one snapshot of everything the cockpit shows.
+- **Graphene for VS Code.** `editors/vscode`, its `.vsix` attached below: the plan as a graph in an editor tab
+  and the sidebar, forks racing, auto mode's rounds, the status bar, each file a running agent writes marked in
+  the Explorer with its number, and every click a `graphene` command run as you: drag one task's dot onto
+  another to link them, an × to unlink, add a step, edit, drop, accept, tell an agent, Auto…. It reads `graphene
+  state --json`, one snapshot of everything the cockpit shows.
 - **Any model behind Graphene's own loop.** `graphene run --with 'nemotron --endpoint nim'` runs the same
   Nemotron loop on NVIDIA's API catalog, and `--endpoint ollama` or `--endpoint openai` on any OpenAI-compatible
   host, writes still refused before they happen; `{prompt}` and `{prompt_file}` let any CLI agent take the task.

@@ -1,9 +1,11 @@
 // The graph's host: one webview panel (Graphene: Show Plan Graph) and the sidebar's Graph view share the
 // same page, dist/graph.js, under a strict CSP; the page asks, the host runs graphene and pushes the state.
 import * as vscode from "vscode";
+import * as C from "./commands.ts";
 import type { Session } from "./extension.ts";
 
-type Act = "add-after" | "add-under" | "link" | "edit" | "drop" | "accept" | "tell" | "run" | "auto" | "cockpit";
+// link: id is A, target B, and B waits on A; unlink: id is B, target the A it stops waiting on
+type Act = "add-after" | "add-under" | "link" | "unlink" | "edit" | "drop" | "accept" | "tell" | "run" | "auto" | "cockpit";
 type FromPage = { type: "ready" } | { type: "act"; act: Act; id: string; target?: string };
 
 export class GraphHost implements vscode.WebviewViewProvider {
@@ -71,7 +73,11 @@ export class GraphHost implements vscode.WebviewViewProvider {
     switch (m.act) {
       case "add-after": return vscode.commands.executeCommand("graphene.addStep", { ...arg, after: true });
       case "add-under": return vscode.commands.executeCommand("graphene.addStep", m.id ? { ...arg, under: true } : undefined);
-      case "link": return m.target ? this.session.act(["node", "set", m.target, "--add-needs", m.id]) : undefined;
+      case "link": return m.target ? this.session.act(C.link(m.id, m.target)) : undefined;
+      case "unlink": {
+        const b = this.session.state?.tasks.find((t) => t.id === m.id);
+        return b && m.target ? this.session.act(C.unlink(m.target, b.id, b.needs)) : undefined;
+      }
       case "edit": return vscode.commands.executeCommand("graphene.editStep", arg);
       case "drop": return vscode.commands.executeCommand("graphene.dropStep", arg);
       case "accept": return vscode.commands.executeCommand("graphene.accept", arg);
