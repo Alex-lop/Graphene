@@ -189,7 +189,9 @@ def talking(store, kind: str, ids: list[str], **more: str) -> str:
             f"Propose the leaves that make it pass: write {node.id}'s line as it is above, with its "
             f"[{node.id}], and under it new leaves, each with its own scope and its own test file, none "
             "sharing a path, with needs: only where one uses another's work; and nothing else. Read the "
-            "repository as it is now: the leaves above have landed.",
+            "repository as it is now: the leaves above have landed. Fix what the failure shows is wrong; "
+            "change a test only where the goal itself changed what it should expect, and say so in that "
+            "leaf's goal. Never loosen, skip or delete a test to make the check pass.",
         ])  # fmt: skip
     if kind == "why":
         taken = {it["id"] for it in B.items(store)} | {n.id for n in P.nodes(store)}

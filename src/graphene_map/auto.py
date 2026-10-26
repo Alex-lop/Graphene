@@ -289,6 +289,7 @@ def drive(open_store: Callable, root: Path, goal: str | None, say: Callable[[str
             lines.append("nemotron bills each call after it ends: the budget is read between rounds")
         if budget is not None and how == "none":
             lines.append("this executor reports no cost, so the budget cannot hold it: attempts are counted")
+        lines.append("`graphene watch` in another terminal follows it; Ctrl-C here stops it")
         for line in lines:
             say(line)
         logs = root / ".graphene" / "runs"
