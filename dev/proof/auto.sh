@@ -12,14 +12,24 @@
 # ROUNDS and CHECK the envelope's forks, fix rounds and the goal's check. RECORD=<file> records the plan's
 # store over the whole run, for `graphene demo <file>` to replay (tests/test_demo_auto.py makes the one
 # `graphene demo --auto` ships this way, against a scripted stand-in).
+#
+# ENDPOINT=ollama runs the same take free, on this machine's Ollama and no key (`ollama pull nemotron-3-nano:4b`
+# first: the one Nemotron listed both plans and does the tasks); ENDPOINT=nim on NVIDIA's API catalog
+# (NVIDIA_API_KEY).
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
 DIR=${1:-$HOME/graphene-auto}
 [ -e "$DIR" ] && { echo "$DIR exists already; name another directory, or delete it first" >&2; exit 1; }
-[ -n "${NEBIUS_API_KEY:-}" ] || { echo "NEBIUS_API_KEY is not set: Token Factory needs a key" >&2; exit 1; }
+export GRAPHENE_ENDPOINT=${ENDPOINT:-tokenfactory}
+case $GRAPHENE_ENDPOINT in
+  tokenfactory) [ -n "${NEBIUS_API_KEY:-}" ] || { echo "NEBIUS_API_KEY is not set: Token Factory needs a key" >&2; exit 1; } ;;
+  nim) [ -n "${NVIDIA_API_KEY:-}" ] || { echo "NVIDIA_API_KEY is not set: NVIDIA's API catalog needs a key" >&2; exit 1; } ;;
+  ollama) ;;
+  *) echo "ENDPOINT is tokenfactory, nim or ollama, not $GRAPHENE_ENDPOINT" >&2; exit 1 ;;
+esac
 command -v graphene >/dev/null || { echo "graphene is not on PATH" >&2; exit 1; }
 # spending is the person's: an agent's shell runs this on Token Factory only when the person opened it
-if [ -z "${GRAPHENE_TOKENFACTORY_URL:-}" ] && [ -z "${GRAPHENE_AGENT_LIVE_USD:-}" ]; then
+if [ "$GRAPHENE_ENDPOINT" != ollama ] && [ -z "${GRAPHENE_TOKENFACTORY_URL:-}" ] && [ -z "${GRAPHENE_AGENT_LIVE_USD:-}" ]; then
   for mark in CLAUDECODE CLAUDE_CODE_SESSION_ID CLAUDE_CODE_ENTRYPOINT CODEX_SESSION_ID CODEX_SANDBOX \
               AI_AGENT GEMINI_CLI CURSOR_AGENT; do
     [ -n "${!mark:-}" ] && { echo "refused: this spends on the person's key, and this shell carries an agent's mark ($mark) with no GRAPHENE_AGENT_LIVE_USD: nothing was sent" >&2; exit 1; }

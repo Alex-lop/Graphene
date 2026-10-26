@@ -221,14 +221,18 @@ def reply(body):
     return steps[k] if k < len(steps) else {"content": "nothing more"}
 
 
-def script(tmp_path, answer, **more: str):
+def script(tmp_path, answer, as_ollama: bool = False, **more: str):
     """auto.sh on wordkit against the fake, answered by ``answer``: the finished script, all it said in the
-    order a terminal shows it, and the fake."""
-    with Fake([answer] * 200) as f:
+    order a terminal shows it, and the fake. ``as_ollama``: the fake answers as this machine's Ollama, and
+    the script is given no key and no Token Factory URL."""
+    with Fake([answer] * 200, key=None if as_ollama else "fake-key") as f:
         env = {k: v for k, v in os.environ.items() if not k.startswith(("GRAPHENE_", "CLAUDE", "CODEX"))
                and k not in ("SHOW_DEMO", "RECORD_DEMO", "RECORD_DEMO_AUTO", "NEBIUS_PROJECT_ID", "AI_AGENT")}  # fmt: skip
         env |= f.env() | {"MAKE_REPO": f"{sys.executable} {MAKE}", "HOME": str(tmp_path),
-                          "GRAPHENE_PERSON": "the script"} | more  # fmt: skip
+                          "GRAPHENE_PERSON": "the script", "GRAPHENE_KEYCHAIN": "off"} | more  # fmt: skip
+        if as_ollama:
+            env = {k: v for k, v in env.items() if k not in f.env()} | {"ENDPOINT": "ollama",
+                                                                         "GRAPHENE_OLLAMA_URL": f.url}  # fmt: skip
         done = subprocess.run(["bash", str(SCRIPT), str(tmp_path / "wordkit")], stdout=subprocess.PIPE,
                               stderr=subprocess.STDOUT, text=True, env=env, timeout=600)  # fmt: skip
     return done, done.stdout, f
@@ -314,3 +318,16 @@ def test_the_auto_replay_ends_on_auto_as_the_readers_next_step():
     _, lines = demo.load(demo.AUTO_TAKE)
     assert demo.next_step(lines) == demo.AUTO_NEXT and len(demo.AUTO_NEXT) <= 78
     assert demo.next_step(demo.load(demo.SHIPPED)[1]) == demo.NEXT
+
+
+@pytest.mark.skipif(shutil.which("graphene") is None, reason="needs graphene on PATH (uv run puts it there)")
+def test_endpoint_ollama_is_the_same_take_on_this_machine_with_no_key(tmp_path):
+    """`ENDPOINT=ollama dev/proof/auto.sh`: the free take, on this machine's Ollama (the fake answers as it):
+    no key is asked for, the same loop runs the same rounds, and the bill names who answered."""
+    done, said, f = script(tmp_path, reply, as_ollama=True)
+    assert done.returncode == 0, said
+    assert "NEBIUS_API_KEY" not in said and "planner: nemotron --endpoint ollama" in said
+    last = [line for line in said.splitlines() if line.startswith("auto: ")][-1]
+    assert last.startswith("auto: 2 rounds, 4 tasks landed, 0 came back, 12 forks raced"), last
+    assert "the goal's check passed" in last
+    assert {r["model"] for r in f.requests} == {"nvidia/Nemotron-3-Ultra-fake", "nvidia/Nemotron-3-Nano-fake"}
