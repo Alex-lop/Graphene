@@ -1,0 +1,39 @@
+{
+  "schema": 1, "graphene": "0.8.0", "repo": "/home/alex/app", "cursor": 2201,
+  "goal": "a CLI that greets and says goodbye", "first": "auto", "planner": "nemotron", "executor": "nemotron",
+  "envelope": {"auto": "on", "budget": 2.0, "tasks": 12, "rounds": 2, "forks": 3, "review": "off",
+               "protected": [], "readonly": ["README.md"]},
+  "auto": {"round": 2, "rounds": 2, "stage": "waits", "spent": 1.37, "budget": 2.0,
+           "check": "uv run pytest -q", "why": "the goal's check is still red after 2 rounds"},
+  "run": {"going": false, "pid": null},
+  "spent": 1.37,
+  "scoreboard": {"need_you": 1, "running": 0, "proven": 3, "total": 4},
+  "width": 2,
+  "questions": [
+    {"id": "goal-red", "text": "the goal's check fails on test_cli.py::test_bye; plan a fix, or stop here?",
+     "default": "plan a fix", "options": ["plan a fix", "stop here"], "about": null, "kind": "question"}
+  ],
+  "goals": [
+    {"id": "cli", "title": "the command line", "parent": null, "state": "open", "check": "uv run pytest -q"}
+  ],
+  "tasks": [
+    {"id": "hello", "title": "hello", "full": "", "state": "done", "parent": "cli", "scope": ["cli.py"], "needs": [],
+     "check": "pytest -q tests/test_cli.py -k hello", "agent": "1", "model": "Nano", "usd": 0.4, "idle": null,
+     "needs_you": false, "tail": [], "note": "", "changed": ["cli.py"], "stopped": [], "outside": [],
+     "forks": [], "kept": null, "hollow": false},
+    {"id": "bye", "title": "bye", "full": "", "state": "done", "parent": "cli", "scope": ["cli.py"], "needs": ["hello"],
+     "check": "pytest -q tests/test_cli.py -k bye", "agent": "2", "model": "Super", "usd": 0.5, "idle": null,
+     "needs_you": false, "tail": [], "note": "", "changed": ["cli.py"], "stopped": [], "outside": [],
+     "forks": [], "kept": null, "hollow": false},
+    {"id": "entry", "title": "the entry point", "full": "", "state": "done", "parent": "cli", "scope": ["pyproject.toml"],
+     "needs": ["hello", "bye"], "check": "python -c 'import cli'", "agent": "3", "model": "Nano", "usd": 0.47, "idle": null,
+     "needs_you": false, "tail": [], "note": "", "changed": ["pyproject.toml"], "stopped": [], "outside": [],
+     "forks": [], "kept": null, "hollow": false},
+    {"id": "fix-bye", "title": "bye takes a name", "full": "", "state": "proposed", "parent": "cli", "scope": ["cli.py"],
+     "needs": ["entry"], "check": "pytest -q tests/test_cli.py", "agent": "", "model": "", "usd": null, "idle": null,
+     "needs_you": true, "tail": [], "note": "", "changed": [], "stopped": [], "outside": [],
+     "forks": [], "kept": null, "hollow": false}
+  ],
+  "edges": [["hello", "bye", "needs"], ["hello", "entry", "needs"], ["bye", "entry", "needs"], ["entry", "fix-bye", "needs"]],
+  "news": ["round 2 checked the goal: red", "auto waits: the budget has $0.63 left and a question is open"]
+}

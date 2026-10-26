@@ -35,3 +35,19 @@ jobs:
           ./smoke/bin/graphene --version
           ./smoke/bin/graphene demo --once   # the replay a judge with no key runs: from the wheel alone
 
+  vscode:  # the VS Code extension (editors/vscode), a thin client over the CLI: its own tests and a .vsix build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: editors/vscode
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: editors/vscode/package-lock.json
+      - run: npm ci
+      - run: npm test  # the typecheck, the node tests and the build; the VS Code smoke test skips itself without a VS Code
+      - run: npm run package  # graphene-0.8.0.vsix, never published from here
+

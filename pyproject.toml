@@ -61,9 +61,14 @@ dev = [
 [tool.hatch.build.targets.wheel]
 packages = ["src/graphene_map"]
 
+[tool.hatch.build.targets.sdist]
+# the VS Code extension's sources ship in the sdist; what npm and vsce build there never does
+exclude = ["editors/vscode/node_modules", "editors/vscode/out", "editors/vscode/dist", "editors/vscode/*.vsix"]
+
 [tool.ruff]
 line-length = 110
 target-version = "py312"
+extend-exclude = ["editors"]  # TypeScript and node_modules: not Python's to lint
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
@@ -71,3 +76,4 @@ ignore = ["B008"]  # typer.Option() in defaults is the Typer idiom
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "dev/test", "dev/held/test_held.py", "dev/held/test_tasks.py"]  # the files, not dev/held: its tasks hold fixture repos with their own tests
+norecursedirs = ["*.egg", ".*", "build", "dist", "node_modules", "venv", "editors"]  # the defaults, and the editors' own test suites

@@ -1,0 +1,9 @@
+**
+!dist/extension.js
+!dist/graph.js
+!media/graphene.svg
+!media/graph.css
+!package.json
+!README.md
+!CHANGELOG.md
+!LICENSE

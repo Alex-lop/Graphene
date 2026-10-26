@@ -1,0 +1,16 @@
+{
+  "schema": 1, "graphene": "0.8.0", "repo": "/home/alex/app", "cursor": 3,
+  "goal": "", "first": "on", "planner": "nemotron", "executor": "nemotron",
+  "envelope": {"auto": "off", "budget": null, "tasks": null, "rounds": 2, "forks": null, "review": "off",
+               "protected": [], "readonly": []},
+  "auto": null,
+  "run": {"going": false, "pid": null},
+  "spent": 0,
+  "scoreboard": {"need_you": 0, "running": 0, "proven": 0, "total": 0},
+  "width": 0,
+  "questions": [],
+  "goals": [],
+  "tasks": [],
+  "edges": [],
+  "news": []
+}
