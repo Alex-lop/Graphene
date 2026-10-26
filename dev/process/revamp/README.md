@@ -29,14 +29,24 @@ plans the fix when that is red, and you watch and steer from the terminal or VS 
 - **Graphene for VS Code** (`editors/vscode/`; lane vscode). TypeScript, no runtime dependencies: a Plan tree, the
   graph in an editor tab and the sidebar, a details pane with Add step after/under, Link to…, Edit, Drop, Accept,
   Tell; the status bar; Open Cockpit, Auto…, Run Ready Tasks, Stop. Every change is a `graphene` command with the
-  agents' marks taken out of its environment. 20 unit tests, a smoke test that activates it in a real VS Code
-  1.143.1, `npm run package` makes a 29.5 KB `.vsix`; a CI job of its own.
+  agents' marks taken out of its environment. 29 unit tests, a smoke test that activates it in a real VS Code
+  1.143.1 and opens its walkthrough, `npm run package` makes a 128 KB `.vsix` (11 files); a CI job of its own.
 - **Any model, any agent, a port a task** (lane anymodel). `--endpoint tokenfactory|nim|ollama|openai` for
   Graphene's own planner and tool loop; `{prompt}` and `{prompt_file}` for any CLI agent; `PORT` and `GRAPHENE_PORT`
   per running task and fork, given to its check; `graphene init` offers Nemotron at a terminal.
 - **Later in the night, alone:** `checks:` in the envelope; `graphene config set`; Graphene: Set Envelope… in VS
   Code; `:auto <goal>` in the cockpit, as a process of its own; a fix round's planner told never to loosen a test;
-  the extension tested against a real snapshot; `graphene state --json` without Textual.
+  the extension tested against a real snapshot; `graphene state --json` without Textual. Then, from 03:30:
+  - auto mode: `--plan` (plan and accept, run nothing); a goal whose first planning failed is planned again; a
+    budget under one attempt's worst case says so at once; red first is a gate (a task a round can start whose
+    check passes before any work waits for the person);
+  - click and connect: in VS Code's graph a drag from one task's dot onto another links them and an × unlinks;
+    in the cockpit `L` on a linked pair unlinks; `graphene node set B --drop-needs A` underneath both;
+  - VS Code: the Explorer marks each file with the task that owns it (a running agent's number); a Rounds view of
+    auto mode's iterations from `graphene plan log --json`; notifications when auto waits, fixes or is done; Auto…
+    asks whether to plan first; Set Up This Folder; Stop in the graph while a run goes; a hollow check said in the
+    details; Get started with Graphene, a walkthrough; the `.vsix` attached to every release;
+  - `ENDPOINT=ollama dev/proof/auto.sh`: the live take, free, on Nemotron 3 Nano on this machine.
 - **`graphene demo --auto`** (`dev/proof/auto.sh`, `dev/proof/make_wordkit.py`, `tests/test_demo_auto.py`): auto mode
   on Nemotron against the recorded fake, shipped in the wheel: three tasks, nine forks at once, one write refused
   outside its task, the whole suite red after all three land, Ultra's fix, green. `docs/assets/auto.gif` (vhs,
@@ -57,7 +67,8 @@ built, reviewed by a skeptic and fixed.
 **At 01:50 the Fable limit hit** ("You've reached your Fable limit"). Every lane's work was committed by then (the
 vscode builder had finished at 01:33; auto had one finished test uncommitted, which I ran and committed), but no
 review and no fixer ran. Alex's standing rule is Fable for every subagent ("a run that needs another model waits
-for him"), so from 01:50 the night is the main session alone. A probe at 02:35 found Fable still limited.
+for him"), so from 01:50 the night is the main session alone. Probes at 02:35, 04:05 and 04:57 found Fable still
+limited.
 
 What I did in place of the reviews, each with a failing test first:
 - **The merge's seams**: six failures on the merged branch (a script's fork named `repo-forks.p`, the keychain
@@ -84,6 +95,18 @@ What I did in place of the reviews, each with a failing test first:
 - Screens I looked at while filming: a fix round did not say why it was fixing (now `fixing: FAIL: test_x`); the
   replay's news said "you accepted" for the envelope's acceptances; VS Code's graph hid the goal box under the
   details pane, and counted rounds differently from the cockpit. All fixed.
+- **A Mac's case-blind disk** (after 03:30): `.GIT/hooks/pre-commit` lands in `.git/hooks/`, and a scope of
+  `.CLAUDE/**` reaches `.claude/`; the guards for both compared case. They compare casefolded now, as the gate
+  already did for its own directory.
+- **Hollow checks in auto mode**: red first was a warning, so with nobody reading, a task whose check passed
+  before any work landed with nothing done. It caught `test_auto_run`'s own still-red scenario, whose fix's check
+  (`assert bye.bye()`) passed before the fix. A round now waits for the person (only the tasks it can start are
+  checked first; that was always so).
+- **The extension**: a cloned folder's `.vscode/settings.json` could set `graphene.path`, the binary the
+  extension runs on every poll (now machine scope, and the extension is off in an untrusted folder); the plan's
+  words, some an agent's, rendered as Markdown in the hovers, so a remote image would load on hover (escaped
+  now); the packaged README's picture pointed at the repository's root; an unlink sent the rest of the needs from
+  a snapshot 1.5 s old and could drop a link made since (`--drop-needs` reads them in the same write).
 
 ## The live proof that did not happen
 
@@ -95,7 +118,10 @@ What I did in place of the reviews, each with a failing test first:
 - **Ollama, free and local:** its server on this Mac (running since July from an Ollama.app no longer in
   /Applications) cannot start any model ("llama-server binary not found"), and the two models it has (Gemma 3) do
   not call tools. I pulled NVIDIA's `nemotron-mini` (4B, tools) to try, found the server broken, and deleted the
-  model again; reinstalling Ollama is Alex's call.
+  model again; reinstalling Ollama is Alex's call. At 04:2x I tried a copy of Ollama of its own in the scratchpad
+  (another port, its models there, his install untouched): the auto-mode classifier refused downloading and
+  running it. Ollama lists `nemotron-3-nano:4b`, NVIDIA's Nemotron 3 Nano in a size this Mac runs, with tool
+  calls; `ENDPOINT=ollama dev/proof/auto.sh` is staged for him and tested against the fake answering as Ollama.
 
 - **Codex**, signed in with ChatGPT (no API key, so no dollars): one bounded live `graphene auto` on wordkit at
   03:12, Codex planning and doing the tasks. Codex refused before any work: `ERROR: workspace routing discovery
@@ -109,11 +135,15 @@ So auto mode has run end to end only against the scripted stand-in (`tests/test_
 ## Verified
 
 - The whole suite on the merged branch: 2,730 passed, 21 skipped, ruff clean (Python 3.13, macOS; after the
-  seam fixes). The suite at the night's end is in the brief.
-- `graphene demo --auto --once` from the built 0.8.0 wheel in an empty directory, no key, no network.
-- The extension: `npm test` (types, 20 unit tests, the smoke test in VS Code 1.143.1) and `npm run package`, from
-  `night/revamp`; its parser read a real `graphene state --json` snapshot.
-- The GIF and the stills, looked at frame by frame.
+  seam fixes). On the final tree, ruff clean and:
+  - Python 3.13: 2,770 passed, 21 skipped;
+  - Python 3.14: 2,770 passed, 21 skipped;
+  - Python 3.12: 2,770 passed, 21 skipped.
+- `graphene demo --auto --once` from the built 0.8.0 wheel in an empty directory, no key, no network: 0.4 s.
+- The extension: `npm test` (types, 29 unit tests, the smoke test in VS Code 1.143.1) and `npm run package`,
+  from `night/revamp`; its parser read a real `graphene state --json` snapshot. The drag, the unlink, the hollow
+  line and Stop were tried in the preview page in Chromium (Playwright), each asking for the command it should.
+- The GIF and the stills, filmed again at the end of the night and looked at.
 
 Also measured: `graphene state --json` answered in 0.16 to 0.22 s on the replayed demo's plan (`plan --json`:
 0.07 s), most of it importing Textual for one pure function and the replay's narrator; with both moved out of the
@@ -123,9 +153,12 @@ It waits for the pid now (fixed, 2af8c0b7).
 
 ## Not verified
 
-- A live auto run on any model. A person on the new screens. The extension in Cursor. Codex as an auto executor.
+- A live auto run on any model. A person on the new screens. The extension in Cursor, and its Explorer marks and
+  drag in VS Code itself with a live run (only the preview page and the smoke test). Codex as an auto executor.
   Whether a race of three Nanos lands more tasks than one (`dev/held/rules.md` has the question).
 - GitHub CI on this branch (nothing is pushed).
+- Open, not tonight's: the sdist is 10.9 MB, most of it the README's GIFs and the tests' recordings (open since
+  the publish night).
 
 ## The files
 
