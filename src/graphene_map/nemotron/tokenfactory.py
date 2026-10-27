@@ -253,6 +253,9 @@ def _then(code: int, tried: int, timeout: float = 0) -> str:
     if code == 0:
         return (f" (no answer in {timeout:g} s, asked {times}: try again later, or ask for a shorter answer "
                 "with --max-tokens)")  # fmt: skip
+    if code == 401:  # where the key goes, in the same line: a stranger's first `graphene auto` stops here
+        flag = "" if chosen().name == "tokenfactory" else f" --endpoint {chosen().name}"
+        return f" (the key was refused: `graphene key set{flag}` keeps another)"
     return ""
 
 

@@ -186,6 +186,7 @@ def snapshot(store, root: Path, now: float | None = None) -> dict:
         "graphene": __version__,
         "repo": str(root),
         "replay": replay(store),
+        "stand_in": stand_in(rows),
         "cursor": cursor(store),
         "goal": P.goal(store) or store.meta("goal:proposed") or "",
         "first": m.first,
@@ -218,6 +219,14 @@ def snapshot(store, root: Path, now: float | None = None) -> dict:
         + [[a, b, kind] for a, b, kind in m.extra_edges],
         "news": news(store, m),
     }
+
+
+def stand_in(rows: list[dict]) -> bool:
+    """Whether every model call the log priced was a stand-in's (`tokenfactory.endpoint`: the tests' fake, the
+    harness's dev/proof/standin.py), so an editor filming a free race says on screen that it is one. False
+    with no call on record, or when any call went to a real endpoint."""
+    said = [(r.get("detail") or {}).get("endpoint") for r in rows if r.get("kind") == "usage"]
+    return bool(said) and all(e == "a stand-in" for e in said)
 
 
 def replay(store) -> dict | None:
