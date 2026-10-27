@@ -70,8 +70,9 @@ export class Stream {
       }
     });
     child.stderr?.on("data", (chunk: string) => { stderr = (stderr + chunk).slice(-4000); });
-    child.on("error", () => { /* exit follows */ });
-    child.on("exit", () => {
+    child.on("error", () => { /* close follows: a spawn error (ENOENT, EACCES) emits no exit */ });
+    child.on("close", () => {
+      if (this.child !== child) return; // a restart's old child: the new one is the stream now
       this.child = null;
       this.live = false;
       if (unsupported(stderr)) { this.unsupported = true; return; }

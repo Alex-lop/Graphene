@@ -63,6 +63,22 @@ export function byHand(title: string, parent: string | null, needs: string[], sc
   return addStep({ title: title.trim(), parent, needs, scope: globs(scope), check: check.trim() || null, signoff: !check.trim() });
 }
 
+/** Add Step by Hand's "where it goes" beside a task: after it or beside it, its title as text. */
+export function places(near: { title: string; parent: string | null }) {
+  return [
+    { label: `after “${plain(near.title)}”`, description: "waits on it", v: "after" },
+    { label: "beside it", description: near.parent ? "under the same sub-goal" : "at the top", v: "under" },
+  ];
+}
+
+/** With no task picked: the top, or under which sub-goal, the titles as text. */
+export function goalPlaces(goals: { id: string; title: string }[]) {
+  return [
+    { label: "at the top", description: "under the goal itself", id: null as string | null },
+    ...goals.map((g) => ({ label: plain(g.title), description: g.id, id: g.id as string | null })),
+  ];
+}
+
 /** B waits on A: adds to B's needs, keeping what it already waits on. */
 export const link = (a: string, b: string): string[] => ["node", "set", b, "--add-needs", a];
 
@@ -235,7 +251,7 @@ export function globs(text: string): string[] {
   return text.split(/[\s,]+/).map((g) => g.trim()).filter(Boolean);
 }
 
-export const OLDER = "This Graphene is older than the extension: it needs 0.8 (`uv tool upgrade graphene-map`).";
+export const OLDER = "This Graphene is older than the extension: it needs 0.9 (`uv tool upgrade graphene-map`).";
 
 /** A CLI that does not know an option or a command of this extension's is an older one: that is the line,
  *  wherever the refusal is shown (an id or free text never reaches argv as an option, so nothing else says it). */

@@ -56,18 +56,11 @@ export async function addByHand(session: Session, arg?: Arg) {
   const given = typeof arg === "object" ? arg : undefined;
   if (near && given?.after) needs.push(near.id);
   else if (near && !given?.under) {
-    const where = await vscode.window.showQuickPick([
-      { label: `after “${near.title}”`, description: "waits on it", v: "after" },
-      { label: "beside it", description: near.parent ? `under the same sub-goal` : "at the top", v: "under" },
-    ], { placeHolder: "where it goes" });
+    const where = await vscode.window.showQuickPick(C.places(near), { placeHolder: "where it goes" });
     if (!where) return;
     if (where.v === "after") needs.push(near.id);
   } else if (!near && session.state?.goals.length) {
-    const goals = session.state.goals;
-    const where = await vscode.window.showQuickPick([
-      { label: "at the top", description: "under the goal itself", id: null as string | null },
-      ...goals.map((g) => ({ label: g.title, description: g.id, id: g.id as string | null })),
-    ], { placeHolder: "under which sub-goal" });
+    const where = await vscode.window.showQuickPick(C.goalPlaces(session.state.goals), { placeHolder: "under which sub-goal" });
     if (!where) return;
     parent = where.id;
   }

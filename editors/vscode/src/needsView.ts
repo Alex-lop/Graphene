@@ -2,7 +2,7 @@
 // a badge with the count; the commands graphene.answer, graphene.handBack, graphene.markDone and graphene.setKey.
 import * as vscode from "vscode";
 import * as C from "./commands.ts";
-import { answerWith, answerWords, count, markDone, needs, offerWords, pickOption, takeDefault, type Need } from "./needs.ts";
+import { answerPicks, answerWith, answerWords, count, markDone, needs, offerWords, type Need } from "./needs.ts";
 import type { Session, UI } from "./session.ts";
 import { mdText, type State } from "./state.ts";
 
@@ -114,17 +114,13 @@ export function register(context: vscode.ExtensionContext, session: Session, _ui
     let q = qs.find((x) => x.id === idOf(arg));
     if (!q) {
       if (!qs.length) return void vscode.window.showInformationMessage("No question is open.");
-      q = qs.length === 1 ? qs[0] : (await vscode.window.showQuickPick(qs.map((x) => ({ label: x.text, description: x.id, q: x })), { placeHolder: "the question to answer" }))?.q;
+      q = qs.length === 1 ? qs[0] : (await vscode.window.showQuickPick(qs.map((x) => ({ label: C.plain(x.text), description: x.id, q: x })), { placeHolder: "the question to answer" }))?.q;
       if (!q) return;
     }
     const given = typeof arg === "object" ? arg?.option?.trim() : undefined; // the graph's pane sent the option: no pick
     if (given) return session.act(answerWith(q, given));
-    type Pick = vscode.QuickPickItem & { argv?: string[]; own?: boolean };
-    const items: Pick[] = [];
-    if (q.default) items.push({ label: `$(check) ${q.default}`, description: "the default", argv: takeDefault(q.id) });
-    q.options.forEach((o, i) => items.push({ label: o, description: `option ${i + 1}`, argv: pickOption(q.id, i + 1) }));
-    items.push({ label: "$(edit) In your own words…", description: "your words go to the agents as written", own: true });
-    const chosen = await vscode.window.showQuickPick(items, { placeHolder: q.text, ignoreFocusOut: true });
+    // the model's words as text: a quick pick's label reads `$(name)` as an icon (needs.ts answerPicks)
+    const chosen = await vscode.window.showQuickPick(answerPicks(q), { placeHolder: C.plain(q.text), ignoreFocusOut: true });
     if (!chosen) return;
     if (chosen.own) {
       const words = await vscode.window.showInputBox({ prompt: q.text, placeHolder: "your answer", ignoreFocusOut: true });
@@ -139,12 +135,12 @@ export function register(context: vscode.ExtensionContext, session: Session, _ui
     let t = back.find((x) => x.id === idOf(arg));
     if (!t) {
       if (!back.length) return void vscode.window.showInformationMessage("No task came back.");
-      t = back.length === 1 ? back[0] : (await vscode.window.showQuickPick(back.map((x) => ({ label: x.title, description: x.why || x.note, t: x })), { placeHolder: "the task that came back" }))?.t;
+      t = back.length === 1 ? back[0] : (await vscode.window.showQuickPick(back.map((x) => ({ label: C.plain(x.title), description: C.plain(x.why || x.note), t: x })), { placeHolder: "the task that came back" }))?.t;
       if (!t) return;
     }
     const titles = Object.fromEntries(session.tasks().map((x) => [x.id, x.title]));
     const why = t.state === "running" ? `agent ${t.agent || "?"} was stopped writing ${t.stopped[t.stopped.length - 1]}` : t.why || t.note || "it came back";
-    const chosen = await vscode.window.showQuickPick(offerWords(t, titles), { placeHolder: `${t.title}: ${why}`, ignoreFocusOut: true });
+    const chosen = await vscode.window.showQuickPick(offerWords(t, titles), { placeHolder: C.plain(`${t.title}: ${why}`), ignoreFocusOut: true });
     if (!chosen) return;
     if (chosen.long) session.terminal(`graphene ${chosen.argv.slice(0, 2).join(" ")}`, chosen.argv);
     else await session.act(chosen.argv);
@@ -153,7 +149,7 @@ export function register(context: vscode.ExtensionContext, session: Session, _ui
   cmd("markDone", async (arg) => {
     const yours = session.tasks().filter((t) => t.state === "yours");
     const t = yours.find((x) => x.id === idOf(arg)) ?? (yours.length === 1 ? yours[0] : undefined)
-      ?? (await vscode.window.showQuickPick(yours.map((x) => ({ label: x.title, t: x })), { placeHolder: "your task that is done" }))?.t;
+      ?? (await vscode.window.showQuickPick(yours.map((x) => ({ label: C.plain(x.title), t: x })), { placeHolder: "your task that is done" }))?.t;
     if (t) session.terminal("graphene node done", markDone(t.id));
   });
 

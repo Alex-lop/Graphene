@@ -8,6 +8,7 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import * as C from "./commands.ts";
 import type { GraphHost } from "./graph.ts";
+import { cannotRun, olderWords, resolved } from "./find.ts";
 import { errorOf, parseState, type State, type Task } from "./state.ts";
 import { Stream } from "./stream.ts";
 import type { Node, PlanTree } from "./tree.ts";
@@ -17,7 +18,6 @@ export type Status = { kind: "reading" | "missing" | "uninitialised" | "error" |
 export const STORE = path.join(".graphene", "graphene.db"); // the plan's store, under the repo's root
 export const INSTALL = "Graphene is not installed, or not on this editor's PATH: `uv tool install graphene-map`, or set graphene.path.";
 const INIT = "This folder has no plan yet: run `graphene init` in it, then `graphene ask` or Graphene: Auto…";
-const OLDER = C.OLDER; // the same line wherever an older CLI refuses a new shape (firstLine, refusal say it too)
 
 /** What the feature modules share: the graph's host and the Plan view. */
 export interface UI {
@@ -37,6 +37,11 @@ export class Session {
   readonly own: string | undefined;
   /** graphene found off the PATH (find.ts), used while graphene.path is unset. */
   found: string | null = null;
+  /** `graphene --version`'s line for `path`, read once per path (again after Install or a settings change). */
+  version: string | null = null;
+  /** The file `path` runs, for the hover and the older-CLI line: a bare word as the PATH resolves it. */
+  file = "";
+  private versioned = "";
   /** `graphene state --json --watch`, a snapshot a line, while the CLI has it. */
   readonly stream: Stream;
 
@@ -60,7 +65,17 @@ export class Session {
   private noPlan(why: string) {
     const store = this.folder && existsSync(path.join(this.folder.uri.fsPath, STORE));
     if (!store || /`graphene init`/.test(why)) return this.set(null, { kind: "uninitialised", text: INIT });
-    this.set(null, { kind: "error", text: /no such command/i.test(why) ? OLDER : why });
+    this.set(null, { kind: "error", text: this.said(C.older(why)) });
+  }
+
+  /** The not-installed line; when a path is set and cannot run (a directory, no x bit), it says so first. */
+  private install(why: string): string {
+    return why ? `${why}. ${INSTALL}` : INSTALL;
+  }
+
+  /** A refusal's line as the person reads it: the older-CLI line names the graphene that answered. */
+  private said(why: string): string {
+    return why === C.OLDER ? olderWords(this.file || this.path, this.version) : why;
   }
 
   get path(): string {
@@ -72,13 +87,14 @@ export class Session {
     return Math.max(250, vscode.workspace.getConfiguration("graphene").get<number>("pollMs") ?? 1500);
   }
 
-  /** graphene, in the plan's folder, as the person: exit code and both streams; -1 when it is not found. */
+  /** graphene, in the plan's folder, as the person: exit code and both streams; -1 when it did not run at all
+   *  (not found, a directory, no x bit), stderr saying which. */
   run(argv: string[], input?: string): Promise<{ code: number; stdout: string; stderr: string }> {
     return new Promise((resolve) => {
       const child = execFile(this.path, argv, { cwd: this.folder?.uri.fsPath, env: C.scrub(process.env), maxBuffer: 64 * 1024 * 1024 },
                              (err, stdout, stderr) => {
         const e = err as (NodeJS.ErrnoException & { code?: number | string }) | null;
-        if (e && e.code === "ENOENT") return resolve({ code: -1, stdout: "", stderr: `${this.path} was not found` });
+        if (e && cannotRun(e.code)) return resolve({ code: -1, stdout: "", stderr: e.code === "ENOENT" ? "" : `${this.path} is not a command it can run (${e.code})` });
         resolve({ code: e ? (typeof e.code === "number" ? e.code : 1) : 0, stdout: String(stdout), stderr: String(stderr) });
       });
       if (input !== undefined) child.stdin?.end(input);
@@ -94,9 +110,15 @@ export class Session {
   private async read() {
     if (!this.own) this.folder ??= planFolder();
     if (!this.folder) return this.set(null, { kind: "nofolder", text: "Open a folder to see its plan." });
+    if (this.versioned !== this.path) { // which graphene answers: said in the hover and the older-CLI line
+      const v = await this.run(["--version"]);
+      this.versioned = this.path;
+      this.file = resolved(this.path, process.env.PATH, existsSync);
+      this.version = v.code === 0 ? C.firstLine(v.stdout, "", "") || null : null;
+    }
     const out = await this.run(C.stateJson());
     const initialised = existsSync(path.join(this.folder.uri.fsPath, STORE));
-    if (out.code === -1) return this.set(null, { kind: "missing", text: INSTALL });
+    if (out.code === -1) return this.set(null, { kind: "missing", text: this.install(out.stderr) });
     if (!initialised) return this.set(null, { kind: "uninitialised", text: INIT });
     if (out.code !== 0) return this.noPlan(errorOf(out.stdout) ?? C.firstLine(out.stderr, out.stdout));
     try {
@@ -127,7 +149,7 @@ export class Session {
   async act(argv: string[]): Promise<boolean> {
     const out = await this.run(argv);
     if (out.code !== 0) {
-      const why = out.code === -1 ? INSTALL : C.firstLine(out.stderr, out.stdout);
+      const why = out.code === -1 ? this.install(out.stderr) : this.said(C.firstLine(out.stderr, out.stdout));
       void vscode.window.showErrorMessage(C.refused(argv, C.plain(why)));
     } else {
       vscode.window.setStatusBarMessage(`$(check) ${C.plain(C.firstLine(out.stdout, out.stderr, "done"))}`, 6000);
@@ -148,8 +170,9 @@ export class Session {
     return this.state?.tasks ?? [];
   }
 
-  /** The folder or the command changed: the stream starts over there. */
+  /** The folder or the command changed (a setting, an install): the stream starts over there, the version is read again. */
   moved() {
+    this.versioned = "";
     this.stream.restart();
   }
 

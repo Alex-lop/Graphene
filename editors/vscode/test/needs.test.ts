@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { answerWith, answerWords, count, DROPPABLE, keyTrouble, needs, offerOn, offerWords, pickOption, takeDefault, tryAgain } from "../src/needs.ts";
+import { answerPicks, answerWith, answerWords, count, DROPPABLE, keyTrouble, needs, offerOn, offerWords, pickOption, takeDefault, tryAgain } from "../src/needs.ts";
 import { parseState } from "../src/state.ts";
 
 const fixture = (name: string) => readFileSync(new URL(`./fixtures/${name}.json`, import.meta.url), "utf8");
@@ -101,6 +101,17 @@ test("an answer given with the command is the option by its words, the default, 
   assert.deepEqual(answerWith(q, "8000"), ["board", "take", "port"]);
   assert.deepEqual(answerWith(q, "9000, the proxy has 8080"), ["board", "answer", "port", "--", "9000, the proxy has 8080"]);
   assert.deepEqual(answerWith(q, "-n, the short one"), ["board", "answer", "port", "--", "-n, the short one"]);
+});
+
+test("the answer quick pick lists the default, each option by number and own words, the model's words as text", () => {
+  // a quick pick's label reads `$(name)` as an icon: a planner's option wore a trash can (reviewer A's probe)
+  const q = { id: "q1", text: "delete it?", default: "$(trash) delete everything", options: ["$(check) yes", "no"], about: null, kind: "question" };
+  const items = answerPicks(q);
+  assert.deepEqual(items.map((i) => i.argv ?? "own"), [["board", "take", "q1"], ["board", "pick", "q1", "1"], ["board", "pick", "q1", "2"], "own"]);
+  for (const i of items.slice(0, 3)) assert.doesNotMatch(i.label.replace(/^\$\(check\) /, ""), /\$\(/, i.label); // the check mark is ours
+  assert.match(items[0]!.label, /delete everything/);
+  assert.equal(items[3]!.description, "your words go to the agents as written");
+  assert.equal(answerPicks({ ...q, default: null, options: [] }).length, 1, "no default, no options: own words alone");
 });
 
 test("a task that came back can be dropped; a running one cannot", () => {

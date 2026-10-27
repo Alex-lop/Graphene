@@ -5,8 +5,10 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import * as C from "./commands.ts";
 import { GraphHost } from "./graph.ts";
+import { which } from "./find.ts";
 import { owner } from "./owners.ts";
 import { autoNews, mdText, summary, type Task } from "./state.ts";
+import { topLine } from "./graph/words.ts";
 import { DROPPABLE, keyTrouble } from "./needs.ts";
 import { parseLog, rounds, type LogRow } from "./rounds.ts";
 import { RoundsTree } from "./roundsView.ts";
@@ -91,7 +93,7 @@ export function activate(context: vscode.ExtensionContext) {
     if (said) {
       const show = said.kind === "waits" ? vscode.window.showWarningMessage : vscode.window.showInformationMessage;
       const key = keyTrouble(said.text); // it waits on a key, refused or missing: set it from here
-      void show(said.text, ...(key.key ? ["Set Key", "Needs You"] : said.kind === "waits" ? ["Needs You", "Show Plan Graph"] : ["Show Plan Graph", "Rounds"])).then((pick) => {
+      void show(C.plain(said.text), ...(key.key ? ["Set Key", "Needs You"] : said.kind === "waits" ? ["Needs You", "Show Plan Graph"] : ["Show Plan Graph", "Rounds"])).then((pick) => {
         if (pick === "Set Key") void vscode.commands.executeCommand("graphene.setKey", key.endpoint ?? undefined);
         if (pick === "Needs You") void vscode.commands.executeCommand("graphene.needs.focus");
         if (pick === "Show Plan Graph") void vscode.commands.executeCommand("graphene.showGraph");
@@ -102,14 +104,18 @@ export function activate(context: vscode.ExtensionContext) {
       bar.text = `◆ ${summary(s)}`;
       const md = new vscode.MarkdownString(undefined, true);
       md.appendMarkdown(`**${mdText(s.goal || "no goal yet")}**\n\n`); // the plan's words as text, not markup
+      const top = topLine(s); // a replay, or a race against the scripted stand-in: not a paid run, said as the graph says it
+      if (top) md.appendMarkdown(`${mdText(top)}\n\n`);
       for (const line of s.news.slice(-4)) md.appendMarkdown(`- ${mdText(line)}\n`);
-      md.appendMarkdown(session.found ? `\ngraphene from ${mdText(session.found)}, off this editor's PATH\n\n` : "\n");
+      md.appendMarkdown(`\n${mdText(which(session.file || session.path, session.version))}${session.found ? ", off this editor's PATH" : ""}\n\n`);
       md.appendMarkdown(session.stream.live ? "live: `graphene state --json --watch`\n\n" : "");
       md.appendMarkdown("Graphene: Show Plan Graph");
       bar.tooltip = md;
     } else {
-      bar.text = `◆ Graphene · ${session.status.kind === "missing" ? "not installed" : session.status.kind === "uninitialised" ? "no plan" : session.status.kind}`;
-      bar.tooltip = session.status.text;
+      const k = session.status.kind;
+      const words: Partial<Record<typeof k, string>> = { missing: "not installed", uninitialised: "no plan", nofolder: "no folder", reading: "reading…" };
+      bar.text = `◆ Graphene · ${words[k] ?? k}`;
+      bar.tooltip = k === "missing" || k === "nofolder" ? session.status.text : `${session.status.text}\n\n${which(session.file || session.path, session.version)}`;
     }
   });
 
@@ -143,8 +149,8 @@ export function activate(context: vscode.ExtensionContext) {
     const given = taskOf(arg);
     if (given) return given;
     if (!among.length) { void vscode.window.showInformationMessage("No task to choose from."); return undefined; }
-    const chosen = await vscode.window.showQuickPick(
-      among.map((t) => ({ label: t.title, description: `${t.state} · ${t.id}`, detail: t.scope.join("  "), t })), { placeHolder });
+    const chosen = await vscode.window.showQuickPick( // a planner's title as text: a label reads `$(name)` as an icon
+      among.map((t) => ({ label: C.plain(t.title), description: `${t.state} · ${t.id}`, detail: C.plain(t.scope.join("  ")), t })), { placeHolder });
     return chosen?.t;
   };
   const cmd = (name: string, fn: (arg?: Arg) => unknown) =>
@@ -214,10 +220,10 @@ export function activate(context: vscode.ExtensionContext) {
     const t = await pick(arg, "the task to edit");
     if (!t) return;
     const field = await vscode.window.showQuickPick([
-      { label: "title", description: t.title, f: "title" as C.Field },
-      { label: "scope", description: t.scope.join("  ") || "none", f: "scope" as C.Field },
-      { label: "check", description: t.check ?? "none", f: "check" as C.Field },
-    ], { placeHolder: `what to change on “${t.title}”` });
+      { label: "title", description: C.plain(t.title), f: "title" as C.Field },
+      { label: "scope", description: C.plain(t.scope.join("  ")) || "none", f: "scope" as C.Field },
+      { label: "check", description: C.plain(t.check ?? "none"), f: "check" as C.Field },
+    ], { placeHolder: C.plain(`what to change on “${t.title}”`) });
     if (!field) return;
     const value = await vscode.window.showInputBox({
       prompt: field.f === "scope" ? "The files it may write (globs, spaces or commas between)" : field.f === "check" ? "The command that passes only when it is done" : "The title",
@@ -238,7 +244,7 @@ export function activate(context: vscode.ExtensionContext) {
     const text = await vscode.window.showInputBox({ prompt: `A line for the agent on “${t.title}”`, placeHolder: "keep both routes", ignoreFocusOut: true });
     if (!text?.trim()) return;
     if (await session.act(C.tell(t.id, text.trim()))) { // said back, and the note shows on the task's row and hover
-      void vscode.window.showInformationMessage(`Told the agent on “${t.title}”: ${text.trim()}`);
+      void vscode.window.showInformationMessage(C.plain(`Told the agent on “${t.title}”: ${text.trim()}`));
     }
   });
 
