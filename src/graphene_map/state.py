@@ -33,6 +33,7 @@ import os
 import time
 from collections.abc import Callable
 from dataclasses import asdict
+from datetime import datetime
 from pathlib import Path
 
 from . import plan as P
@@ -170,6 +171,9 @@ def snapshot(store, root: Path, now: float | None = None) -> dict:
     from . import views as V
     from .cockpit import read as CR
 
+    if now is None and replay(store):  # a replay's clock is the recording's: its newest row
+        newest = store.conn.execute("SELECT MAX(timestamp) FROM node_log").fetchone()[0]
+        now = datetime.fromisoformat(newest.replace("Z", "+00:00")).timestamp() if newest else None
     m = CR.read(store, root, None, now, fold=False)  # every task: an editor folds nothing
     nodes = V.shown(store)
     ids = {n.id for n in nodes}
