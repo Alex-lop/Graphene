@@ -69,12 +69,17 @@ footer#hint {
 }
 footer#hint.linking { color: var(--edge-hot); }
 footer#hint.asks { color: var(--review); }
-/* the sidebar's graph is narrow: the details go under the canvas, the header's buttons wrap */
+#b-more { display: none; padding: 3px 6px; }
+/* the sidebar's graph is narrow: the header is one line, the goal and a `…` that unfolds the buttons (the
+   counts and the auto line are in the goal's hover and the footer); the details go under the canvas */
 @media (max-width: 700px) {
   main { flex-direction: column; }
   #details { width: auto; max-height: 55%; border-left: none; border-top: 1px solid var(--border); }
-  header { grid-template-columns: 1fr; }
-  #actions { grid-column: 1; grid-row: auto; margin-top: 4px; justify-content: start; }
+  header { padding: 5px 10px 4px; align-items: center; }
+  #b-more { display: inline-flex; grid-column: 2; }
+  #counts, #auto { display: none; }
+  #actions { display: none; grid-column: 1 / -1; grid-row: auto; margin-top: 4px; justify-content: start; }
+  header.open #actions { display: flex; }
   #actions button { padding: 3px 7px; }
 }
 

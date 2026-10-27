@@ -6,7 +6,7 @@
 import { layout, modeFor, step, type Box, type Edge, type Layout } from "../layout.ts";
 import { autoLine, usd, type State } from "../state.ts";
 import { ICONS } from "./icons.ts";
-import { actsFor, counts, cut, done, FIRST_HINT, forkActs, forkRow, forkWords, KEYS, questionOn, replayLine, sub,
+import { actsFor, cornerWord, cut, done, FIRST_HINT, fitWidth, forkActs, forkRow, forkWords, headerFor, KEYS, paneKey, questionOn, replayLine, sub, tabOrder, zoomK,
          type Act, type Button, type StateX, type TaskX } from "./words.ts";
 
 declare function acquireVsCodeApi(): { postMessage(m: unknown): void; getState(): unknown; setState(s: unknown): void };
@@ -18,7 +18,7 @@ type View = "auto" | "graph" | "lanes";
 type Saved = { zoom?: Zoom; hinted?: boolean; view?: View };
 
 const GOAL = " goal";
-const BOX_W = 184, BOX_H = 48, FORK_H = 20, FORK_DX = 22, CHIP_W = 200, GOAL_W = 200, GOAL_H = 66; // a chip holds 28 mono characters
+const BOX_W = 200, BOX_H = 48, FORK_H = 20, FORK_DX = 22, CHIP_W = 228, GOAL_W = 200, GOAL_H = 66; // a chip holds 32 mono characters
 /** The narrow view by default: lanes read better than a downward graph at 280 to 400 px (lane 1's notes). */
 const NARROW_VIEW: "lanes" | "graph" = "lanes";
 const api = acquireVsCodeApi();
@@ -56,6 +56,14 @@ function div(cls: string, text?: string, parent?: HTMLElement): HTMLDivElement {
   if (text !== undefined) d.textContent = text;
   parent?.appendChild(d);
   return d;
+}
+
+/** An SVG text cut to ``max`` px by its drawn length. Not drawn yet (the SVG hidden), it is cut by a
+ *  character count instead, so nothing runs past its box in the meantime. */
+function fitText(text: SVGTextElement, max: number) {
+  const whole = text.textContent ?? "";
+  if (text.getComputedTextLength() === 0 && whole) { text.textContent = cut(whole, Math.max(2, Math.floor(max / 7))); return; }
+  text.textContent = fitWidth(whole, max, (t) => { text.textContent = t; return text.getComputedTextLength(); });
 }
 
 /** A codicon, inline: its path in a 16 by 16 box. */
@@ -135,15 +143,20 @@ function render() {
   hint();
 }
 
+/** The side bar's width, or a narrow tab: the header folds to one line and the pane goes under the canvas. */
+const narrow = () => matchMedia("(max-width: 700px)").matches;
+
 function header(s: StateX) {
   const replay = replayLine(s.replay);
   $("replay").textContent = replay;
   $("replay").hidden = !replay;
-  $("goal").textContent = s.goal || "no goal yet";
-  $("counts").textContent = counts(s);
-  const auto = autoLine(s);
-  $("auto").textContent = auto;
-  $("auto").hidden = !auto;
+  const h = headerFor(s, narrow());
+  $("goal").textContent = h.goal;
+  $("goal").title = h.hover;
+  $("counts").textContent = h.counts;
+  $("counts").hidden = !h.counts;
+  $("auto").textContent = h.auto;
+  $("auto").hidden = !h.auto;
   const run = $("b-run"); // while a run goes, the button that started it stops it
   run.replaceChildren(icon(s.run.going ? "debug-stop" : "play"), document.createTextNode(s.run.going ? "Stop" : "Run ready"));
   run.title = s.run.going ? "graphene run --stop: what runs goes back to the plan" : "graphene run --parallel 4";
@@ -171,7 +184,8 @@ function graph(s: StateX, dir: "across" | "down") {
     if (!band.id) continue;
     const ts = s.tasks.filter((t) => t.parent === band.id);
     bands.appendChild(el("rect", { class: "band", x: 4, y: band.y0, width: lay.width - 8, height: band.y1 - band.y0, rx: 6 }));
-    bands.appendChild(el("text", { class: "band-label", x: 14, y: band.y0 + 16 }, `${goalTitle(s, band.id)} · ${done(ts)}`));
+    const label = bands.appendChild(el("text", { class: "band-label", x: 14, y: band.y0 + 16 }, `${goalTitle(s, band.id)} · ${done(ts)}`));
+    fitText(label, Math.min(lay.width - 8, $("canvas").clientWidth / zoom.k) - 28); // the band's visible width
   }
   // edges: keyed by their ends; a changed path glides (CSS transitions d)
   const edges = $("edges") as unknown as SVGGElement;
@@ -211,6 +225,10 @@ function graph(s: StateX, dir: "across" | "down") {
     have.g.style.transform = `translate(${p.x}px, ${p.y}px)`;
   }
   for (const [id, have] of taskEls) if (!seen.has(id)) { have.g.remove(); taskEls.delete(id); }
+  // Tab walks the boxes wave by wave, which is their order in the DOM: reordered only when it changed
+  const want = tabOrder(lay, s.tasks.map((t) => t.id));
+  const have = Array.from(tasks.children).map((c) => c.getAttribute("data-id"));
+  if (want.join("\n") !== have.join("\n")) for (const id of want) { const grp = taskEls.get(id)?.g; if (grp) tasks.appendChild(grp); }
   // the goal
   const goalG = $("goalg") as unknown as SVGGElement;
   const gp = g.goal ? lay.boxes[GOAL] : undefined;
@@ -221,9 +239,12 @@ function graph(s: StateX, dir: "across" | "down") {
     if (gp) {
       goalG.appendChild(el("rect", { class: "goal-box", x: 0, y: 0, width: gp.w, height: gp.h, rx: 8 }));
       goalG.appendChild(el("rect", { class: "goal-box inner", x: 4, y: 4, width: gp.w - 8, height: gp.h - 8, rx: 5 }));
-      goalG.appendChild(el("text", { class: "goal-title", x: 14, y: 28 }, cut(s.goal, 24)));
+      fitText(goalG.appendChild(el("text", { class: "goal-title", x: 14, y: 28 }, s.goal)), gp.w - 28);
       goalG.appendChild(el("text", { class: "sub", x: 14, y: 48 }, `goal · ${done(s.tasks)} done`));
       goalG.setAttribute("aria-label", `goal: ${s.goal}, ${done(s.tasks)} done`);
+      goalG.setAttribute("role", "group"); // reachable by Tab and the arrows, announced
+      goalG.setAttribute("tabindex", "0");
+      goalG.appendChild(el("title", {}, s.goal));
       goalG.style.transform = `translate(${gp.x}px, ${gp.y}px)`;
     }
   }
@@ -231,7 +252,7 @@ function graph(s: StateX, dir: "across" | "down") {
   svg.setAttribute("viewBox", `0 0 ${Math.max(lay.width, 10)} ${Math.max(lay.height, 10)}`);
   svg.setAttribute("width", String(lay.width));
   svg.setAttribute("height", String(lay.height));
-  if (!fitted && !moved) fit();
+  if (!fitted && !moved) fit(); else zoom = clamp(zoom);
   fitted = true;
   applyZoom();
 }
@@ -257,12 +278,12 @@ function drawTask(grp: SVGGElement, t: TaskX, h: number, down: boolean) {
   grp.setAttribute("aria-label", `${t.title}: ${line}${t.id === selected ? ", selected" : ""}`);
   grp.appendChild(el("rect", { class: "box", x: 0, y: 0, width: BOX_W, height: BOX_H, rx: 6 }));
   grp.appendChild(el("rect", { class: "stripe", x: 0, y: 0, width: 5, height: BOX_H, rx: 2 }));
-  const corner = t.state === "running" && t.model ? t.model : t.needs_you ? "◆" : "";
-  const room = corner ? 21 - Math.min(6, corner.length) : 23; // the title stops short of the corner's word
-  grp.appendChild(el("text", { class: "title", x: 12, y: 19 }, cut(t.title, room)));
+  const corner = cornerWord(t);
+  const cornerEl = corner ? grp.appendChild(el("text", { class: corner === "◆" ? "mark" : "model", x: BOX_W - 10, y: 17, "text-anchor": "end" }, corner)) : null;
+  const title = grp.appendChild(el("text", { class: "title", x: 12, y: 19 }, t.title));
+  fitText(title, BOX_W - 24 - (cornerEl ? cornerEl.getComputedTextLength() + 6 : 0)); // the title stops short of the corner's word
   grp.appendChild(el("text", { class: "sub", x: 12, y: 36 }, line));
   grp.appendChild(el("title", {}, `${t.title} · ${sub(t, 200)}`)); // the hover: the whole line
-  if (corner) grp.appendChild(el("text", { class: corner === "◆" ? "mark" : "model", x: BOX_W - 10, y: 17, "text-anchor": "end" }, corner));
   // the fan: one chip a fork, hanging under the box, each on a line from the box's foot
   t.forks.forEach((f, i) => {
     const y = BOX_H + 6 + i * FORK_H, x = FORK_DX;
@@ -326,6 +347,8 @@ function lanes(s: StateX) {
   if (s.goal) {
     const goal = div("lane goal-row");
     goal.setAttribute("aria-label", `goal: ${s.goal}, ${done(s.tasks)} done`);
+    goal.setAttribute("role", "group");
+    goal.tabIndex = 0;
     div("l-title", s.goal, goal);
     div("l-sub", `goal · ${done(s.tasks)} done`, goal);
     rows.push(goal);
@@ -344,7 +367,7 @@ function drawLane(row: HTMLElement, t: TaskX, s: StateX) {
   const main = div("l-main", undefined, row);
   const head = div("l-head", undefined, main);
   div("l-title", t.title, head);
-  const corner = t.state === "running" && t.model ? t.model : t.needs_you ? "◆" : "";
+  const corner = cornerWord(t);
   if (corner) div(corner === "◆" ? "l-mark" : "l-model", corner, head);
   div("l-sub", line, main);
   if (t.parent) div("l-band", goalTitle(s, t.parent), main);
@@ -392,20 +415,21 @@ function clamp(z: Zoom): Zoom {
   if (!lay) return z;
   const canvas = $("canvas");
   const w = canvas.clientWidth || 800, h = canvas.clientHeight || 600;
-  const gw = lay.width * z.k, gh = lay.height * z.k;
+  const k = zoomK(z.k); // a remembered zoom from an older page is clamped as a new one is
+  const gw = lay.width * k, gh = lay.height * k;
   const tx = gw <= w ? Math.max(0, (w - gw) / 2) : Math.min(0, Math.max(w - gw, z.tx));
   const ty = gh <= h ? Math.min(Math.max(0, z.ty), h - gh) : Math.min(0, Math.max(h - gh, z.ty));
-  return { k: z.k, tx, ty };
+  return { k, tx, ty };
 }
 
 function applyZoom() {
   const svg = $("svg");
   svg.style.transform = `translate(${zoom.tx}px, ${zoom.ty}px) scale(${zoom.k})`;
   svg.style.transformOrigin = "0 0";
-  // the goal off screen: a chip at the edge says where it is, and a click brings it (as `g` does)
+  // the goal off screen, whole or in part: a chip at the edge says where it is, and a click brings it (as `g` does)
   const p = lay?.boxes[GOAL];
   const canvas = $("canvas");
-  const off = Boolean(p && view() !== "lanes" && (p.x * zoom.k + zoom.tx > canvas.clientWidth || (p.y + p.h) * zoom.k + zoom.ty < 0
+  const off = Boolean(p && view() !== "lanes" && ((p.x + p.w) * zoom.k + zoom.tx > canvas.clientWidth || (p.y + p.h) * zoom.k + zoom.ty < 0
                       || p.y * zoom.k + zoom.ty > canvas.clientHeight || (p.x + p.w) * zoom.k + zoom.tx < 0));
   $("to-goal").hidden = !off;
   if (p && off) $("to-goal").classList.toggle("below", p.y * zoom.k + zoom.ty > canvas.clientHeight);
@@ -466,8 +490,8 @@ function hint() {
   } else if (!saved.hinted) {
     h.textContent = FIRST_HINT;
     h.className = "";
-  } else {
-    h.textContent = state?.news.length ? state.news[state.news.length - 1]! : "";
+  } else { // the news, or, narrow, the line the header has no room for
+    h.textContent = state ? state.news[state.news.length - 1] || headerFor(state, narrow()).footer : "";
     h.className = "";
   }
 }
@@ -480,13 +504,28 @@ function row(label: string, value: string, parent: HTMLElement): HTMLDivElement 
   return r;
 }
 
+let paneLast = "";
+
+/** The pane is rebuilt only when what it shows changed (its key); then the focused button, by its words,
+ *  and the scroll are kept, so a keyboard user reaches its buttons while a run writes the store. */
 function pane() {
   const pane = $("details");
-  pane.replaceChildren();
+  const key = state ? paneKey(state, selected, replaying()) : "";
+  if (key === paneLast) return;
+  paneLast = key;
   const t = state?.tasks.find((x) => x.id === selected);
-  if (!state || !t) { pane.hidden = true; return; }
+  if (!state || !t || !key) { pane.hidden = true; pane.replaceChildren(); return; }
+  const was = pane.contains(document.activeElement) ? document.activeElement : null;
+  const mark = (e: Element) => `${e.className}|${e.textContent}|${e.getAttribute("aria-label") ?? ""}`;
+  const want = was ? mark(was) : "";
+  const top = pane.scrollTop;
+  pane.replaceChildren();
   const s = state;
   pane.hidden = false;
+  queueMicrotask(() => {
+    if (want) Array.from(pane.querySelectorAll("button")).find((b) => mark(b) === want)?.focus({ preventScroll: true });
+    pane.scrollTop = top;
+  });
   const head = div("d-head", undefined, pane);
   div(`d-title ${cls(t.state)}`, t.title, head);
   div("d-id", `${t.id} · ${t.state}${t.needs_you ? " · needs you" : ""}`, head);
@@ -571,18 +610,29 @@ function pane() {
   for (const b of actsFor(t, replaying())) button(b, t.id, acts);
 }
 
+let helpFrom: Element | null = null; // where the focus was when ? opened: it goes back there on Esc
+
+/** The keys, as a dialog: the focus moves into it and returns on Esc. */
 function help(show: boolean) {
   const h = $("help");
   h.hidden = !show;
-  if (!show || h.childElementCount) return;
-  const card = div("help-card", undefined, h);
-  div("help-title", "Keys", card);
-  const table = div("help-rows", undefined, card);
-  for (const [key, what] of KEYS) {
-    div("help-key", key, table);
-    div("help-what", what, table);
+  if (!show) { (helpFrom as HTMLElement | null)?.focus?.({ preventScroll: true }); helpFrom = null; return; }
+  helpFrom = document.activeElement;
+  if (!h.childElementCount) {
+    h.setAttribute("role", "dialog");
+    h.setAttribute("aria-modal", "true");
+    h.setAttribute("aria-label", "Keys");
+    const card = div("help-card", undefined, h);
+    card.tabIndex = -1;
+    div("help-title", "Keys", card);
+    const table = div("help-rows", undefined, card);
+    for (const [key, what] of KEYS) {
+      div("help-key", key, table);
+      div("help-what", what, table);
+    }
+    div("help-foot", "Esc closes", card);
   }
-  div("help-foot", "Esc closes", card);
+  (h.firstElementChild as HTMLElement).focus({ preventScroll: true });
 }
 
 function notice(st: Status) {
@@ -593,7 +643,7 @@ function notice(st: Status) {
   for (const id of ["bands", "edges", "tasks", "goalg"]) ($(id) as unknown as SVGGElement).replaceChildren();
   taskEls.clear(); edgeEls.clear(); goalKey = "";
   $("lanes").replaceChildren(); laneEls.clear(); lanesKey = "";
-  $("details").hidden = true;
+  $("details").hidden = true; paneLast = "";
   $("goal").textContent = "Graphene";
   $("counts").textContent = "";
   $("auto").hidden = true;
@@ -650,16 +700,18 @@ window.addEventListener("keydown", (e) => {
   if (!dir || !state) return;
   e.preventDefault();
   first();
-  if (!selected) { select(state.tasks[0]?.id ?? null, true); return; }
+  const goalG = $("goalg");
+  const from = document.activeElement === goalG ? GOAL : selected; // the arrows walk from the goal box too
+  if (!from) { select(state.tasks[0]?.id ?? null, true); return; }
   if (!lay) { // the lanes: along the rows
     const rows = Array.from($("lanes").querySelectorAll<HTMLElement>(".lane[data-id]")).map((r) => r.dataset.id!);
-    const i = rows.indexOf(selected);
+    const i = rows.indexOf(from);
     const next = dir === "down" || dir === "right" ? rows[i + 1] : rows[i - 1];
     if (next) select(next, true);
     return;
   }
-  let next = step(lay, selected, dir);
-  if (next === GOAL) next = null; // the goal is not a task
+  const next = step(lay, from, dir);
+  if (next === GOAL) { goalG.focus({ preventScroll: true }); reveal(GOAL); return; } // the goal is not a task: focused, not selected
   if (next) select(next, true);
 });
 
@@ -672,7 +724,7 @@ function wire() {
     if (e.ctrlKey || e.metaKey) { // a pinch, or the wheel with the modifier: zoom about the pointer
       const rect = canvas.getBoundingClientRect();
       const px = e.clientX - rect.left, py = e.clientY - rect.top;
-      const k = Math.min(3, Math.max(0.5, zoom.k * Math.exp(-e.deltaY * 0.01)));
+      const k = zoomK(zoom.k * Math.exp(-e.deltaY * 0.01));
       zoom = clamp({ k, tx: px - (px - zoom.tx) * (k / zoom.k), ty: py - (py - zoom.ty) * (k / zoom.k) });
     } else {
       zoom = clamp({ ...zoom, tx: zoom.tx - e.deltaX, ty: zoom.ty - e.deltaY }); // the wheel scrolls, as a page does
@@ -767,6 +819,21 @@ function wire() {
   top("b-view", "Lanes", "list-flat", "graph or lanes (v)", () => { remember({ view: view() === "lanes" ? "graph" : "lanes" }); fitted = false; render(); });
   top("b-help", "", "question", "every key (?)", () => help($("help").hidden));
   $("b-help").setAttribute("aria-label", "keys");
+  // narrow, the buttons hide behind one `…` beside the goal, so the header is one line
+  const more = document.createElement("button");
+  more.id = "b-more";
+  more.className = "quiet";
+  more.appendChild(icon("ellipsis"));
+  more.title = "the buttons";
+  more.setAttribute("aria-label", "the buttons");
+  more.setAttribute("aria-expanded", "false");
+  more.addEventListener("click", () => {
+    const open = document.querySelector("header")!.classList.toggle("open");
+    more.setAttribute("aria-expanded", String(open));
+  });
+  $("goal").after(more);
+  matchMedia("(max-width: 700px)").addEventListener("change", render); // the header's lines move
+  $("hint").setAttribute("aria-live", "polite"); // a question or a hand-back is announced
   api.postMessage({ type: "ready" });
 }
 
