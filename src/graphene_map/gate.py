@@ -76,21 +76,28 @@ def _rel(path: str, root: Path, cwd: str | None) -> str | None:
     return None if os.path.isabs(rel) or rel.startswith("..") else rel
 
 
+def _lands(path: str, root: Path, cwd: str | None) -> tuple[str | None, str | None]:
+    """(how a path in the repo is spelled, where a write of it lands), both repo-relative. The same,
+    unless a symbolic link on the way (the path, or a directory of it) points elsewhere: then the real
+    file, or None when that is out of the repo. A write is judged by where it lands: a repo can ship
+    `docs/g -> ../.git`, and `docs/g/hooks/pre-commit` is `.git/hooks/pre-commit`."""
+    rel = _rel(path, root, cwd)
+    if rel is None:
+        return None, None
+    full = path if os.path.isabs(path) else os.path.join(cwd or str(root), path)
+    if os.path.realpath(os.path.dirname(full)) == os.path.dirname(
+        os.path.abspath(full)
+    ) and not os.path.islink(full):
+        return rel, rel  # nothing on the way is a link: the common case, decided without touching git
+    return rel, _rel(os.path.realpath(full), Path(os.path.realpath(root)), None)
+
+
 def _leaves(path: str, root: Path, cwd: str | None) -> str | None:
     """The repo-relative spelling of a path inside the repo whose real file is not: a symbolic link
     (or a directory that is one) pointing out of the repo, or into the plan's own store. A write
     through it would land where no scope reaches, so it is refused whatever the scope says."""
-    rel = _rel(path, root, cwd)
-    if rel is None:
-        return None
-    full = path if os.path.isabs(path) else os.path.join(cwd or str(root), path)
-    real, home = os.path.realpath(full), os.path.realpath(root)
-    if os.path.realpath(os.path.dirname(full)) == os.path.dirname(
-        os.path.abspath(full)
-    ) and not os.path.islink(full):
-        return None  # nothing on the way is a link: the common case, decided without touching git
-    inside = _rel(real, Path(home), None)
-    return rel if inside is None or inside.split("/", 1)[0] in OURS else None
+    rel, inside = _lands(path, root, cwd)
+    return rel if rel is not None and (inside is None or inside.split("/", 1)[0] in OURS) else None
 
 
 def _ignored(root: Path, rels: list[str]) -> set[str]:
@@ -550,7 +557,7 @@ def _check_write(
         if os.environ.get("GRAPHENE_PLANNER"):
             return _deny("you are the planner: your only output is the proposal you print. Write no file")
         return _deny(_claim_first(store))
-    if rel in HOOKS and all(n.aside for n in held):
+    if rel.casefold() in HOOKS and all(n.aside for n in held):  # a Mac's disk writes .CLAUDE/ into .claude/
         return _deny(
             f"{rel} holds the hooks that keep this plan; a leaf made from a prompt does not reach it. "
             "The person edits it themselves, or plans a leaf whose scope names it"
@@ -583,6 +590,60 @@ def scope_refused(
     return f"{rel} is outside the scope of the node you hold ({scopes}). {way_out}"
 
 
+_GIT_TAKES = ("-C", "-c", "--git-dir", "--work-tree", "--namespace", "--config-env")  # git's own, with a word
+_CONFIG_TAKES = ("-f", "--file", "--blob", "--type", "--default")  # `git config`'s, with a word
+_CONFIG_READS = {"--get", "--get-all", "--get-regexp", "--get-urlmatch", "--list", "-l", "--show-origin",
+                 "--show-scope", "--get-color", "--get-colorbool", "get", "list"}  # fmt: skip
+_CONFIG_WRITES = {"--add", "--replace-all", "--unset", "--unset-all", "--rename-section", "--remove-section",
+                  "-e", "--edit", "set", "unset", "edit", "rename-section", "remove-section"}  # fmt: skip
+GIT_CONFIG = ("git's own configuration (.git/config, which every worktree shares with the person's "
+              "checkout, or their ~/.gitconfig): a hooksPath, a pager, an alias or a filter set there runs a "
+              "command on the person's machine. No task changes it; `git config --get …` and `git config "
+              "--list` read it")  # fmt: skip
+HOOKS_PATH = ("core.hooksPath names where git runs its hooks from, and a hook planted there runs on the "
+              "person's machine: an agent's command may not set it, in `git -c`, the environment or "
+              "`git config`")  # fmt: skip
+
+
+def _git_config_write(command: str) -> str | None:
+    """Why a command that would change git's own configuration is refused, or None: `git config` in a
+    form that writes (GIT_CONFIG; a read is `--get`, `--list`, or one key alone), or a hooksPath set for
+    one command (`git -c`, `--config-env`) or in the environment (GIT_CONFIG_*). Read from the command's
+    parsed words, so a commit message or a grep that names the words is not refused."""
+    from .shell import shell_segments
+
+    if re.search(r"(?:^|[\s;&|(])GIT_CONFIG\w*=", command):
+        return HOOKS_PATH
+    if len(command) > PARSED:  # too long to parse inside the hook's time; `done` asks git anyway
+        return None
+    for words in shell_segments(command):
+        if not words or os.path.basename(words[0]) != "git":
+            continue
+        i = 1
+        while i < len(words) and words[i].startswith("-"):
+            option, i = words[i], i + 1
+            value = option.partition("=")[2]
+            if option in _GIT_TAKES and i < len(words):
+                value, i = words[i], i + 1
+            if "hookspath" in value.casefold():
+                return HOOKS_PATH
+        if words[i : i + 1] != ["config"]:
+            continue
+        flags, keys, j = set(), [], i + 1
+        while j < len(words):
+            word, j = words[j], j + 1
+            if word.startswith("-") and word != "-":
+                flags.add(word.partition("=")[0])
+                j += word in _CONFIG_TAKES
+            else:
+                keys.append(word)
+        if flags & _CONFIG_READS or keys[:1] in (["get"], ["list"]):
+            continue
+        if flags & _CONFIG_WRITES or keys[:1] in (["set"], ["unset"], ["edit"]) or len(keys) >= 2:
+            return f"`git config` here would change {GIT_CONFIG}"
+    return None
+
+
 def _guard_command(event: dict, root: Path) -> dict | None:
     """The shell commands refused whatever the scope: speaking for the person, feeding the hook by
     hand, reaching round `graphene` into its store."""
@@ -611,6 +672,8 @@ def _guard_command(event: dict, root: Path) -> dict | None:
             "the plan's own store (.graphene/) is not an agent's to read around or write: use "
             "`graphene plan`, `graphene node show <id>` and `graphene plan log`"
         )
+    if why := _git_config_write(command):
+        return _deny(why)
     return None
 
 
@@ -798,7 +861,7 @@ def decide(store, event: dict, root: Path) -> dict | None:
             return None
         if _leaves(path, root, cwd):
             return _link(_leaves(path, root, cwd))
-        rel = _rel(path, root, cwd)
+        rel = _lands(path, root, cwd)[1]  # judged by where it lands: a link into .git/ is .git/
         held = _held(store, sid)
         if rel is not None and (other := _other_copy(store, held, sid, path, root, cwd, tool)):
             return other
@@ -825,12 +888,12 @@ def decide(store, event: dict, root: Path) -> dict | None:
 
             if ours(written, cwd, root):  # the store or the direction, however it is spelled
                 return _deny(f"{written} is the plan's own store; no node's scope covers it")
-            rel = _rel(written, root, cwd)
+            rel = _lands(written, root, cwd)[1]  # judged by where it lands: a link into .git/ is .git/
             if rel is None:
                 continue  # outside the repo (a log in /tmp): no scope's to judge, and the rest still is
             if other := _other_copy(store, held, sid, written, root, cwd, "shell"):
                 return other
-            if rel.split("/", 1)[0].casefold() in OURS or rel in HOOKS:
+            if rel.split("/", 1)[0].casefold() in OURS or rel.casefold() in HOOKS:
                 # before any scope is asked: `**` does not cover the store, nor the hooks' settings
                 return _check_write(store, held, rel, event, "shell")
             if not (held and any(P.binds(rel, n, standing) for n in held)):
@@ -852,7 +915,7 @@ def decide(store, event: dict, root: Path) -> dict | None:
         diff = response.get("bashEditDiff") if isinstance(response.get("bashEditDiff"), dict) else {}
         if not held or diff.get("shared"):  # a list another command's changes leaked into proves nothing
             return None
-        changed = [_rel(p, root, cwd) for p in diff.get("changedFiles") or [] if isinstance(p, str)]
+        changed = [_lands(p, root, cwd)[1] for p in diff.get("changedFiles") or [] if isinstance(p, str)]
         standing = P.standing(store)
         # Graphene's own directory is written by `graphene` (a proposal to the direction): never a stray
         stray = [r for r in changed if r and r.split("/", 1)[0] not in OURS]
