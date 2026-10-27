@@ -3,7 +3,7 @@
 Watch and steer a team of coding agents from your editor. Graphene holds each agent to one task, one set of
 files and one check. This extension shows what needs you, the agents as they work, and the plan as a graph.
 
-![Real VS Code after a race against the scripted stand-in: the graph in an editor tab, four tasks done, each with its three forks and the kept one's reason, flowing into the goal; the side bar's Needs You, Graph and Agents views](media/graph.png)
+![Graphene for VS Code during a race against the scripted stand-in, in real VS Code: the editor tab draws three tasks, each fanned out into three Nano forks, running, passed or given up, with their lines and dollars, flowing into the goal; the auto line says round 1 of 3, running, $0.007 of $2.00; in the side bar, Needs You holds a task whose agent was stopped, the Graph draws the same race as lanes, and Agents lists the three agents at work](media/graph.png)
 
 It is a thin client over the `graphene` command. Everything it shows is `graphene state --json`, streamed with
 `--watch`, and everything it changes is one `graphene` command, the same ones the terminal cockpit runs.

@@ -89,7 +89,7 @@ may write; `:auto <goal>` starts auto mode from the cockpit.
 
 ### In VS Code
 
-![Graphene for VS Code after a race against the scripted stand-in, in real VS Code: the plan as a graph in an editor tab, four tasks done, each fanned out into its three forks with the kept one and why, flowing into the goal; the auto line says round 2 of 3, done, $0.02 of $2.00; in the side bar, Needs You with nothing waiting, the Graph as lanes, and Agents](https://raw.githubusercontent.com/Alex-lop/Graphene/main/editors/vscode/media/graph.png)
+![Graphene for VS Code during a race against the scripted stand-in, in real VS Code: the editor tab draws three tasks, each fanned out into three Nano forks, running, passed or given up, with their lines and dollars, flowing into the goal; the auto line says round 1 of 3, running, $0.007 of $2.00; in the side bar, Needs You holds a task whose agent was stopped, the Graph draws the same race as lanes, and Agents lists the three agents at work](https://raw.githubusercontent.com/Alex-lop/Graphene/main/editors/vscode/media/graph.png)
 
 The extension in [`editors/vscode`](https://github.com/Alex-lop/Graphene/blob/main/editors/vscode/README.md) is
 the same plan in your editor. Needs You comes first in the side bar: a question, a proposal, a task that came
