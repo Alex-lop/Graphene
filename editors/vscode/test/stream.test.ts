@@ -1,0 +1,111 @@
+import assert from "node:assert/strict";
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import * as path from "node:path";
+import { test } from "node:test";
+import { backoff, lines, Stream, unsupported, WATCH } from "../src/stream.ts";
+
+test("the stream's line splitting: a chunk may end mid-line or hold several, and blank lines are nothing", () => {
+  let got = lines("", '{"a":1}\n{"b"');
+  assert.deepEqual(got, { whole: ['{"a":1}'], rest: '{"b"' });
+  got = lines(got.rest, ':2}\n\n{"c":3}\n');
+  assert.deepEqual(got, { whole: ['{"b":2}', '{"c":3}'], rest: "" });
+  assert.deepEqual(lines("", "no newline yet"), { whole: [], rest: "no newline yet" });
+});
+
+test("the fallback decision: an older CLI's refusal of --watch means the poll; any other death means a restart", () => {
+  assert.ok(unsupported("Usage: graphene state [OPTIONS]\nTry 'graphene state --help' for help.\n\nError: No such option: --watch\n"));
+  assert.ok(!unsupported("the store did not open; locked"));
+  assert.ok(!unsupported(""));
+  assert.deepEqual([1, 2, 3, 4, 5, 6, 9].map(backoff), [1000, 2000, 4000, 8000, 16000, 30000, 30000]);
+  assert.deepEqual(WATCH(), ["state", "--json", "--watch"]);
+});
+
+// a stand-in for the graphene command: a shell script that hands its argv to node, so the Stream spawns it as it
+// spawns graphene (the path, then `state --json --watch`)
+function fake(dir: string, name: string, code: string): string {
+  const js = path.join(dir, `${name}.cjs`);
+  writeFileSync(js, code);
+  const sh = path.join(dir, name);
+  writeFileSync(sh, `#!/bin/sh\nexec "${process.execPath}" "${js}" "$@"\n`);
+  chmodSync(sh, 0o755);
+  return sh;
+}
+
+test("an older CLI's child ends the stream for the poll; a newer one's lines each reach the session, and it is live", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "graphene-stream-"));
+  try {
+    const older = fake(dir, "older", `process.stderr.write("Error: No such option: --watch\\n"); process.exit(2);`);
+    const seen: string[] = [];
+    const s1 = new Stream({ path: older, cwd: dir, onLine: (l) => seen.push(l) });
+    s1.start();
+    await new Promise((r) => setTimeout(r, 700));
+    assert.ok(s1.unsupported, "the CLI refused --watch: the poll takes over");
+    assert.ok(!s1.live);
+    assert.deepEqual(seen, []);
+    s1.dispose();
+
+    const newer = fake(dir, "newer", `
+      if (process.argv.slice(2).join(" ") !== "state --json --watch") { process.stderr.write("wrong argv " + process.argv.slice(2).join(" ")); process.exit(3); }
+      process.stdout.write('{"schema":1,"cursor":1}\\n{"schema":1,"cur');
+      setTimeout(() => { process.stdout.write('sor":2}\\n'); setTimeout(() => process.exit(0), 600); }, 100);
+    `);
+    const got: string[] = [];
+    const s2 = new Stream({ path: newer, cwd: dir, onLine: (l) => got.push(l) });
+    s2.start();
+    for (let i = 0; i < 40 && got.length < 2; i++) await new Promise((r) => setTimeout(r, 50)); // node starts in its own time
+    assert.ok(s2.live, "a line arrived: the stream is live");
+    await new Promise((r) => setTimeout(r, 900));
+    assert.deepEqual(got, ['{"schema":1,"cursor":1}', '{"schema":1,"cursor":2}']);
+    assert.ok(!s2.live, "the child ended: not live until the next line");
+    assert.ok(!s2.unsupported, "it died for another reason: it is started again, with a backoff");
+    s2.dispose();
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a command that cannot be spawned is tried again with a backoff, not held as a dead child", async () => {
+  // graphene uninstalled or its path broken under a live editor: spawn emits `error`, then `close`, never `exit`
+  const dir = mkdtempSync(path.join(tmpdir(), "graphene-stream-"));
+  try {
+    const s = new Stream({ path: path.join(dir, "no-such-graphene"), cwd: dir, onLine: () => {} });
+    s.start();
+    await new Promise((r) => setTimeout(r, 300));
+    assert.ok(!s.live);
+    assert.ok(!s.unsupported, "a missing command is not an older CLI");
+    const inner = s as unknown as { child: unknown; tries: number; timer: NodeJS.Timeout | undefined };
+    assert.equal(inner.child, null, "the dead child is let go");
+    assert.equal(inner.tries, 1, "one try so far, the next one waits");
+    assert.ok(inner.timer, "the next start is due");
+    s.dispose();
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a restart's old child, closing late, leaves the new child the stream: no third child is started", async () => {
+  // restart() lets the old child go before it is killed; its close used to take the new child for itself, so a
+  // third was started on the backoff and the second ran on, its lines still reaching the session
+  const dir = mkdtempSync(path.join(tmpdir(), "graphene-stream-"));
+  const pids = path.join(dir, "pids");
+  const started = () => (existsSync(pids) ? readFileSync(pids, "utf8").trim().split("\n") : []);
+  const s = new Stream({ path: fake(dir, "slow", `
+    require("node:fs").appendFileSync(${JSON.stringify(pids)}, process.pid + "\\n");
+    process.stdout.write('{"schema":1}\\n');
+    setInterval(() => {}, 1000);
+  `), cwd: dir, onLine: () => {} });
+  try {
+    s.start();
+    for (let i = 0; i < 60 && !s.live; i++) await new Promise((r) => setTimeout(r, 50));
+    assert.ok(s.live, "the first child's line arrived");
+    s.restart();
+    await new Promise((r) => setTimeout(r, 1800)); // the old child's close, then a backoff's second after it
+    assert.equal(started().length, 2, "the first child and the restart's, no third");
+    assert.ok(s.live, "the restart's child is the stream");
+  } finally {
+    s.dispose();
+    for (const pid of started()) try { process.kill(Number(pid)); } catch { /* gone already */ }
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

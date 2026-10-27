@@ -334,6 +334,41 @@ def last_frame(repo: Path, lines: list[dict]) -> None:
             apply(store, line, repo)
 
 
+def own(target: Path) -> Path:
+    """`--into DIR`: the directory that becomes the replay's own repository and store, new or empty. One
+    that holds anything is refused: a replay writes a store and a `.git` there, and never into a project."""
+    if target.exists() and (not target.is_dir() or any(target.iterdir())):
+        raise ValueError(f"{target} holds something already; `--into` takes a new or empty directory")
+    target.mkdir(parents=True, exist_ok=True)
+    subprocess.run(["git", "init", "-q", str(target)], check=True, capture_output=True)
+    return target.resolve()
+
+
+def mark(repo: Path, head: dict) -> None:
+    """The store's plan_meta key `replay`: what the snapshot's `replay` says (`state.replay`), so an editor
+    shows the store as a replay and runs nothing there."""
+    told = {"shown": head["shown"], "day": head["day"], "repository": head["repository"]}
+    with Store.open(repo) as store:
+        store.set_meta("replay", json.dumps(told))
+
+
+def into(repo: Path, head: dict, lines: list[dict], say, alive, tick: float = 0.05) -> None:
+    """`graphene demo --into DIR`, with no screen: the recording's changes applied to the store in ``repo``
+    on the recorded clock (``load`` set each one's `at`), one line a change on stdout (``what``); then it
+    stays at the last frame while ``alive`` says so (until TERM, or its reader goes), and nothing more is
+    written. An editor watches the store with `graphene state --json --watch`, as it watches a real one."""
+    mark(repo, head)
+    began, at = time.monotonic(), 0
+    with Store.open(repo) as store:
+        while alive():
+            due = time.monotonic() - began + 1e-6
+            while at < len(lines) and lines[at]["at"] <= due:
+                apply(store, lines[at], repo)
+                say(what(lines[at]))
+                at += 1
+            time.sleep(tick)
+
+
 class Replay(Watch):
     """`graphene watch` over a recording: its changes applied to the replay's own store on the recorded
     clock (each held HOLD seconds at least, a wait over LONG cut), the top line saying what it is and

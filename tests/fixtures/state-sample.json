@@ -1,7 +1,9 @@
 {
   "schema": 1,
-  "graphene": "0.8.0",
+  "graphene": "0.9.0",
   "repo": "/home/dev/project",
+  "replay": null,
+  "stand_in": false,
   "cursor": 42,
   "goal": "the app greets, says goodbye, and knows its users",
   "first": "auto",
@@ -93,7 +95,10 @@
           "why": "ids is not done: `grep -q ids api.py` failed",
           "lines": 2,
           "model": "repo-forks",
-          "usd": 0.0
+          "usd": 0.0,
+          "attempts": 1,
+          "idle": null,
+          "checkout": null
         },
         {
           "letter": "b",
@@ -101,7 +106,10 @@
           "why": "",
           "lines": 2,
           "model": "repo-forks",
-          "usd": 0.0
+          "usd": 0.0,
+          "attempts": 1,
+          "idle": null,
+          "checkout": null
         },
         {
           "letter": "c",
@@ -109,7 +117,10 @@
           "why": "",
           "lines": 11,
           "model": "repo-forks",
-          "usd": 0.0
+          "usd": 0.0,
+          "attempts": 1,
+          "idle": null,
+          "checkout": null
         }
       ],
       "kept": {
@@ -117,7 +128,11 @@
         "why": "2 lines against 11",
         "by": "graphene"
       },
-      "hollow": false
+      "hollow": false,
+      "why": "",
+      "checkout": null,
+      "base": "b551a54e26ac86a11b200e175368b0e50e109c49",
+      "attempts": 1
     },
     {
       "id": "words",
@@ -149,7 +164,11 @@
       "outside": [],
       "forks": [],
       "kept": null,
-      "hollow": false
+      "hollow": false,
+      "why": "",
+      "checkout": "/home/dev/project",
+      "base": "2e9dc8046820f846e9be5065740f7d5db9af9f45",
+      "attempts": 1
     },
     {
       "id": "greet",
@@ -177,7 +196,11 @@
       "outside": [],
       "forks": [],
       "kept": null,
-      "hollow": false
+      "hollow": false,
+      "why": "",
+      "checkout": null,
+      "base": null,
+      "attempts": 0
     },
     {
       "id": "farewell",
@@ -216,7 +239,11 @@
       "outside": [],
       "forks": [],
       "kept": null,
-      "hollow": false
+      "hollow": false,
+      "why": "bye.py imports the schema, which no leaf makes",
+      "checkout": "/home/dev/project",
+      "base": "2e9dc8046820f846e9be5065740f7d5db9af9f45",
+      "attempts": 0
     },
     {
       "id": "docs",
@@ -244,7 +271,11 @@
       "outside": [],
       "forks": [],
       "kept": null,
-      "hollow": false
+      "hollow": false,
+      "why": "",
+      "checkout": null,
+      "base": null,
+      "attempts": 0
     },
     {
       "id": "mine",
@@ -270,7 +301,11 @@
       "outside": [],
       "forks": [],
       "kept": null,
-      "hollow": false
+      "hollow": false,
+      "why": "",
+      "checkout": null,
+      "base": null,
+      "attempts": 0
     },
     {
       "id": "notes",
@@ -296,7 +331,11 @@
       "outside": [],
       "forks": [],
       "kept": null,
-      "hollow": false
+      "hollow": false,
+      "why": "",
+      "checkout": null,
+      "base": null,
+      "attempts": 0
     }
   ],
   "edges": [

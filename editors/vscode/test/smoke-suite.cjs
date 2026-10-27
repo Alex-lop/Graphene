@@ -4,7 +4,8 @@ const assert = require("node:assert/strict");
 const vscode = require("vscode");
 
 const COMMANDS = ["showGraph", "openCockpit", "auto", "envelope", "runReady", "stop", "accept", "acceptAll", "addStep", "link",
-                  "editStep", "dropStep", "tell", "init", "refresh"].map((c) => `graphene.${c}`);
+                  "editStep", "dropStep", "tell", "init", "refresh", "answer", "handBack", "install", "markDone", "setKey", "openDiff",
+                  "compareForks", "pickFork", "signOff", "editPlan", "addStepByHand", "watchDemo", "diffWithAgent"].map((c) => `graphene.${c}`);
 
 exports.run = async () => {
   const ext = vscode.extensions.getExtension("alex-lop.graphene-vscode");

@@ -1,0 +1,59 @@
+name: Publish the VS Code extension
+
+# One .vsix, built once, published to the Marketplace and to Open VSX. Runs by hand, or when a GitHub release is
+# published (the release's tag names the version). A push to a branch never runs it. Each registry is a job of
+# its own, so when one refuses the file, "Re-run failed jobs" on the run tries that one again and the other,
+# which already has the version, is left alone. docs/RELEASING.md has the first-time steps and the two secrets.
+
+on:
+  workflow_dispatch:
+  release:
+    types: [published]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: editors/vscode
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: editors/vscode/package-lock.json
+      - run: npm ci
+      - name: The release's tag names the version the extension has
+        if: github.event_name == 'release'
+        run: |
+          version=$(node -p "require('./package.json').version")
+          [ "v$version" = "$GITHUB_REF_NAME" ] || { echo "package.json is $version, the release is $GITHUB_REF_NAME"; exit 1; }
+      - run: npm test  # the typecheck, the node tests and the build; the VS Code smoke test skips itself here
+      - run: npm run package
+      - uses: actions/upload-artifact@v4  # the one file both registries get
+        with:
+          name: vsix
+          path: editors/vscode/graphene-*.vsix
+
+  marketplace:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: vsix
+      - env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: npx --yes @vscode/vsce@3.9.2 publish --packagePath graphene-*.vsix
+
+  open-vsx:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: vsix
+      - env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        run: npx --yes ovsx@1.3.0 publish graphene-*.vsix

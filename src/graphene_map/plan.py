@@ -18,6 +18,7 @@ import os
 import re
 import sys
 import time
+import unicodedata
 from bisect import bisect_left
 from contextlib import contextmanager, nullcontext, suppress
 from dataclasses import dataclass, field
@@ -252,11 +253,17 @@ def as_scoped(node: Node, conditions: list[tuple[str, str]]) -> list[str]:
     return [*node.scope, *(f"!{g}" for _, g in conditions)]
 
 
+def _as_disk(path_or_glob: str) -> str:
+    """A path or glob as a disk that ignores case and unicode form (a Mac's) reaches it: casefolded, and
+    composed (NFC), so `café` spelled with a separate accent is the same name."""
+    return unicodedata.normalize("NFC", path_or_glob).casefold()
+
+
 def covers(globs: list[str], path: str) -> bool:
     """Does a standing glob cover ``path`` as the disk reaches it? On one that ignores case (a Mac's)
-    SECRETS/ is secrets/, so case is ignored. ponytail: on a disk that minds case, SECRETS/ is then
-    kept out as well, which errs toward the setting."""
-    return in_scope(path.casefold(), [g.casefold() for g in globs])
+    SECRETS/ is secrets/, and its unicode form, so both are ignored (``_as_disk``). ponytail: on a disk
+    that minds case, SECRETS/ is then kept out as well, which errs toward the setting."""
+    return in_scope(_as_disk(path), [_as_disk(g) for g in globs])
 
 
 def kept_out_by(path: str, conditions: list[tuple[str, str]]) -> str | None:
@@ -300,10 +307,12 @@ def _keeps_standing(node: Node, conditions: list[tuple[str, str]], files: list[s
     Judged by ``overlap``, so a scope that takes the path out again with a '!' glob is not refused."""
     if not node.scope or (node.aside and node.scope == ["**"]):  # an aside's untyped `**` leaves them out
         return
+    nfc = partial(unicodedata.normalize, "NFC")  # as the disk reaches a name: café in either unicode form
+    scope, tracked = [nfc(g) for g in node.scope], [nfc(f) for f in files]
     for setting, glob in conditions:
-        hit = overlap(node.scope, [glob], files)
+        hit = overlap(scope, [nfc(glob)], tracked)
         if hit:
-            path = next((p for p in hit if p in files), hit[0])  # a file git tracks, when one is covered
+            path = next((p for p in hit if p in tracked), hit[0])  # a file git tracks, when one is covered
             raise refusal(
                 f"{node.id}: its scope ({', '.join(node.scope)}) covers {path}, which the setting "
                 f"`{setting}: {glob}` keeps out of every scope",

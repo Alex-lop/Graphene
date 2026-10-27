@@ -1,12 +1,12 @@
 // The graph's host: one webview panel (Graphene: Show Plan Graph) and the sidebar's Graph view share the
 // same page, dist/graph.js, under a strict CSP; the page asks, the host runs graphene and pushes the state.
+// The host checks every message the page sends: a known act, an id the plan has, a fork the task has;
+// nothing from the page reaches a shell, each act is a command's argument or a graphene argv.
 import * as vscode from "vscode";
 import * as C from "./commands.ts";
-import type { Session } from "./extension.ts";
+import { check, type Act } from "./graph/check.ts";
+import type { Session } from "./session.ts";
 
-// link: id is A, target B, and B waits on A; unlink: id is B, target the A it stops waiting on
-type Act = "add-after" | "add-under" | "link" | "unlink" | "edit" | "drop" | "accept" | "tell" | "run" | "stop" | "auto" | "cockpit";
-type FromPage = { type: "ready" } | { type: "act"; act: Act; id: string; target?: string };
 
 export class GraphHost implements vscode.WebviewViewProvider {
   private panel: vscode.WebviewPanel | null = null;
@@ -14,23 +14,34 @@ export class GraphHost implements vscode.WebviewViewProvider {
   private sidebars = new Set<vscode.WebviewView>();
   private context: vscode.ExtensionContext;
   private session: Session;
+  private title: string;
+  private closed = new vscode.EventEmitter<void>();
+  /** The panel was closed (Watch the Demo ends its replay then). */
+  readonly onDidClose = this.closed.event;
 
-  constructor(context: vscode.ExtensionContext, session: Session) {
+  constructor(context: vscode.ExtensionContext, session: Session, title = "Graphene") {
     this.context = context;
     this.session = session;
+    this.title = title;
     session.onDidChange(() => this.push());
   }
 
   /** The panel, made or revealed; with ``select`` the page selects that task. */
   show(select?: string) {
     if (!this.panel) {
-      this.panel = vscode.window.createWebviewPanel("graphene.graphPanel", "Graphene", vscode.ViewColumn.Active, {
+      const panel = vscode.window.createWebviewPanel("graphene.graphPanel", this.title, vscode.ViewColumn.Active, {
         enableScripts: true, retainContextWhenHidden: true,
         localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, "dist"), vscode.Uri.joinPath(this.context.extensionUri, "media")],
       });
-      this.panel.iconPath = vscode.Uri.joinPath(this.context.extensionUri, "media", "graphene.svg");
-      this.attach(this.panel.webview);
-      this.panel.onDidDispose(() => { this.views.delete(this.panel!.webview); this.panel = null; });
+      this.panel = panel;
+      panel.iconPath = vscode.Uri.joinPath(this.context.extensionUri, "media", "graphene.svg");
+      const webview = panel.webview; // held now: a disposed panel throws on `webview`
+      this.attach(webview);
+      panel.onDidDispose(() => {
+        this.views.delete(webview);
+        if (this.panel === panel) this.panel = null;
+        this.closed.fire();
+      });
     } else {
       this.panel.reveal();
     }
@@ -52,12 +63,21 @@ export class GraphHost implements vscode.WebviewViewProvider {
     return Boolean(this.panel?.visible) || [...this.sidebars].some((v) => v.visible);
   }
 
+  dispose() {
+    this.closed.dispose();
+  }
+
   private attach(webview: vscode.Webview) {
     webview.html = this.html(webview);
     this.views.add(webview);
-    webview.onDidReceiveMessage((m: FromPage) => {
-      if (m.type === "ready") return this.push(webview);
-      if (m.type === "act") return this.act(m);
+    webview.onDidReceiveMessage((m: unknown) => {
+      const msg = check(m, this.session);
+      if (!msg) return;
+      if (msg.type === "ready") return this.push(webview);
+      // a replay is watched: check() refuses its acts once its state says `replay`, and before that state is
+      // read (or after a read fails) the acts that take no id would run in the person's folder
+      if (this.session.own) return;
+      return this.act(msg);
     });
   }
 
@@ -68,21 +88,27 @@ export class GraphHost implements vscode.WebviewViewProvider {
     for (const w of only ? [only] : this.views) void w.postMessage(message);
   }
 
-  private act(m: { act: Act; id: string; target?: string }) {
+  private act(m: { act: Act; id: string; target?: string; fork?: string }) {
     const arg = { id: m.id };
     switch (m.act) {
-      case "add-after": return vscode.commands.executeCommand("graphene.addStep", { ...arg, after: true });
-      case "add-under": return vscode.commands.executeCommand("graphene.addStep", m.id ? { ...arg, under: true } : undefined);
+      case "add-after": return run("addStep", { ...arg, after: m.id });
+      case "add-under": return run("addStep", m.id ? { ...arg, under: m.id } : undefined);
       case "link": return m.target ? this.session.act(C.link(m.id, m.target)) : undefined;
       case "unlink": return m.target ? this.session.act(C.unlink(m.target, m.id)) : undefined;
-      case "edit": return vscode.commands.executeCommand("graphene.editStep", arg);
-      case "drop": return vscode.commands.executeCommand("graphene.dropStep", arg);
-      case "accept": return vscode.commands.executeCommand("graphene.accept", arg);
-      case "tell": return vscode.commands.executeCommand("graphene.tell", arg);
-      case "run": return vscode.commands.executeCommand("graphene.runReady");
-      case "stop": return vscode.commands.executeCommand("graphene.stop");
-      case "auto": return vscode.commands.executeCommand("graphene.auto");
-      case "cockpit": return vscode.commands.executeCommand("graphene.openCockpit");
+      case "edit": return run("editStep", arg);
+      case "drop": return run("dropStep", arg);
+      case "accept": return run("accept", arg);
+      case "tell": return run("tell", arg);
+      case "run": return run("runReady");
+      case "stop": return run("stop");
+      case "auto": return run("auto");
+      case "cockpit": return run("openCockpit");
+      case "openDiff": return run("openDiff", m.fork ? { ...arg, fork: m.fork } : arg);
+      case "compareForks": return run("compareForks", arg);
+      case "pickFork": return m.fork ? run("pickFork", { ...arg, fork: m.fork }) : undefined;
+      case "signOff": return run("signOff", arg);
+      case "answer": return run("answer", m.target !== undefined ? { ...arg, option: m.target } : arg);
+      case "handBack": return run("handBack", arg);
     }
   }
 
@@ -100,26 +126,33 @@ export class GraphHost implements vscode.WebviewViewProvider {
 </head>
 <body>
   <header>
+    <div id="replay" hidden></div>
     <div id="goal">Graphene</div>
     <div id="counts"></div>
     <div id="auto" hidden></div>
-    <div id="actions">
-      <button id="b-add" title="graphene node add">Add step…</button>
-      <button id="b-run" title="graphene run --parallel 4">Run ready</button>
-      <button id="b-auto" title="graphene auto">Auto…</button>
-      <button id="b-cockpit" title="graphene watch">Cockpit</button>
-    </div>
+    <div id="actions"></div>
   </header>
   <main>
     <div id="canvas">
-      <svg id="svg" xmlns="http://www.w3.org/2000/svg"><g id="view"></g></svg>
+      <svg id="svg" xmlns="http://www.w3.org/2000/svg"><g id="view"><g id="bands"></g><g id="edges"></g><g id="tasks"></g><g id="goalg" class="goal"></g><path id="wire" class="wire"></path></g></svg>
+      <div id="lanes" hidden></div>
       <div id="notice" hidden></div>
+      <button id="to-goal" class="quiet" hidden></button>
     </div>
     <aside id="details" hidden></aside>
   </main>
   <footer id="hint"></footer>
+  <div id="help" hidden></div>
   <script nonce="${nonce}" src="${uri("dist", "graph.js")}"></script>
 </body>
 </html>`;
   }
+}
+
+/** A command of the extension's, or a message that it is not there yet: never a throw from the page. */
+async function run(name: string, arg?: unknown) {
+  const all = await vscode.commands.getCommands(true);
+  const id = `graphene.${name}`;
+  if (!all.includes(id)) return vscode.window.showInformationMessage(`Graphene: ${name} is not built yet.`);
+  return arg === undefined ? vscode.commands.executeCommand(id) : vscode.commands.executeCommand(id, arg);
 }

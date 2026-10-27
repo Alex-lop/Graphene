@@ -7,12 +7,16 @@ edges, the settings and `auto.state` for the envelope and the round, the run's l
 usage rows for what was spent, and its last id as the cursor. Schema 1: a key may gain siblings and is never
 renamed; what is not known is null or empty. Read-only: nothing here writes the store or holds a lock.
 
-Following the plan: an editor keeps the snapshot's ``cursor`` and asks `graphene plan log --json --since
-<cursor>` for what happened since (one row a line, nothing when nothing did), then reads `state --json` again
-when a row came. The cheapest trigger is the store's own files: `.graphene/graphene.db-wal` changes on every
-write while a run or a session holds a connection, `.graphene/graphene.db` on a checkpoint, so it watches
-that directory for `graphene.db*` and debounces about 200 ms; `.graphene/run.lock` appears with a run and
-goes with it. Once a second is what the cockpit itself does, and is safe: a WAL reader blocks no writer.
+Following the plan: `graphene state --json --watch` (``follow``) prints the snapshot once, then once more
+each time the store's own version moves: SQLite's `PRAGMA data_version` (another connection committed), the
+log's last id, or the run lock coming or going. It looks every TICK seconds, three cheap reads a look and
+nothing printed when nothing changed, and ends with exit 0 when its stdout closes or on SIGTERM. An editor on
+an older CLI, which answers `--watch` with "No such option", keeps the snapshot's ``cursor`` and asks
+`graphene plan log --json --since <cursor>` for what happened since (one row a line, nothing when nothing
+did), then reads `state --json` again when a row came. The cheapest trigger there is the store's own files:
+`.graphene/graphene.db-wal` changes on every write while a run or a session holds a connection,
+`.graphene/graphene.db` on a checkpoint, so it watches that directory for `graphene.db*` and debounces about
+200 ms; `.graphene/run.lock` appears with a run and goes with it. A WAL reader blocks no writer.
 
 Who is calling: reading needs no mark, so `state --json` answers anyone, an agent's shell included. An editor
 that spawns `graphene` for a person's click (accept, add a step, link two steps) must drop the agent marks
@@ -25,12 +29,17 @@ either: the gate refuses a hooked session's command that names them, and neither
 from __future__ import annotations
 
 import json
+import os
+import time
+from collections.abc import Callable
 from dataclasses import asdict
+from datetime import datetime
 from pathlib import Path
 
 from . import plan as P
 
 SCHEMA = 1
+TICK = 0.1  # seconds between `--watch`'s looks at the store's version: at most one line every 100 ms
 # what an editor drops from the environment before it spawns `graphene` for a person's click
 MARKS = ("CLAUDECODE", "CLAUDE_CODE_SESSION_ID", "CODEX_SESSION_ID", "CODEX_SANDBOX", "AI_AGENT",
          *P.AGENT_MARKS)  # fmt: skip
@@ -90,6 +99,62 @@ def cursor(store) -> int:
     return int(store.conn.execute("SELECT COALESCE(MAX(id), 0) FROM node_log").fetchone()[0])
 
 
+def version(store, root: Path) -> tuple:
+    """The store's own version, as `--watch` compares it from one look to the next: what SQLite says another
+    connection committed (`PRAGMA data_version`, one page read), the log's last id (an index lookup), and the
+    run lock as a file (its size and mtime, or None when there is no run). Any of the three moving is a
+    change; none moving is nothing to say."""
+    moved = store.conn.execute("PRAGMA data_version").fetchone()[0]
+    try:
+        lock = os.stat(root / ".graphene" / "run.lock")
+        held = (lock.st_size, lock.st_mtime_ns)
+    except OSError:
+        held = None
+    return moved, cursor(store), held
+
+
+def identity(root: Path) -> tuple | None:
+    """The store's file itself, as `--watch` tells one store from the next: its device and inode, or None
+    while there is none. A connection keeps the file it opened even after `git clean -fdx` unlinks it, so
+    the version read on it would never move again; the file's identity says the store went or is another."""
+    try:
+        own = os.stat(root / ".graphene" / "graphene.db")
+    except OSError:
+        return None
+    return own.st_dev, own.st_ino
+
+
+def line(store, root: Path) -> str:
+    """One line for the stream: the snapshot, or the one-line error `state --json` prints in its place, so
+    an editor reading lines is never left with half an object."""
+    try:
+        why = unplanned(store)
+        said = snapshot(store, root) if why is None else error(why)
+    except Exception as no:  # the same promise as `state --json`: one JSON object on stdout whatever happened
+        said = error(f"the plan could not be read ({type(no).__name__}: {no})")
+    return json.dumps(said)
+
+
+def follow(
+    store, root: Path, say: Callable[[str], None], alive: Callable[[], bool], tick: float = TICK
+) -> bool:
+    """`graphene state --json --watch`: one line at once, then one more each time ``version`` moves, while
+    ``alive`` says to go on (the caller's: stdout open, no SIGTERM); True then. The version is read before
+    the snapshot, so a write that lands between the two is said again on the next look rather than missed.
+    False when the store's file went or is another (``identity``): nothing more is said on this store, and
+    the caller follows what is there now."""
+    was, own = None, identity(root)
+    while alive():
+        if identity(root) != own:
+            return False
+        now = version(store, root)
+        if now != was:
+            say(line(store, root))
+            was = now
+        time.sleep(tick)
+    return True
+
+
 def log_after(store, since: int = 0) -> list[dict]:
     """The log's rows after ``since``, oldest first, as `Store.node_log` shapes them (detail a dict)."""
     rows = store.conn.execute("SELECT * FROM node_log WHERE id > ? ORDER BY id", (since,)).fetchall()
@@ -106,6 +171,9 @@ def snapshot(store, root: Path, now: float | None = None) -> dict:
     from . import views as V
     from .cockpit import read as CR
 
+    if now is None and replay(store):  # a replay's clock is the recording's: its newest row
+        newest = store.conn.execute("SELECT MAX(timestamp) FROM node_log").fetchone()[0]
+        now = datetime.fromisoformat(newest.replace("Z", "+00:00")).timestamp() if newest else None
     m = CR.read(store, root, None, now, fold=False)  # every task: an editor folds nothing
     nodes = V.shown(store)
     ids = {n.id for n in nodes}
@@ -116,10 +184,13 @@ def snapshot(store, root: Path, now: float | None = None) -> dict:
     bill = NR.bill(rows)
     wide = M.width(rows)
     need, running, proven, total = m.scoreboard()
+    by_id = {n.id: n for n in P.nodes(store)}  # each task's checkout and base, as the plan keeps them
     return {
         "schema": SCHEMA,
         "graphene": __version__,
         "repo": str(root),
+        "replay": replay(store),
+        "stand_in": stand_in(rows),
         "cursor": cursor(store),
         "goal": P.goal(store) or store.meta("goal:proposed") or "",
         "first": m.first,
@@ -147,11 +218,31 @@ def snapshot(store, root: Path, now: float | None = None) -> dict:
             for n in nodes
             if kids.get(n.id)
         ],
-        "tasks": [task(m, t, by.get(t.id, [])) for t in m.tasks.values()],
+        "tasks": [task(m, t, by.get(t.id, []), by_id.get(t.id), root) for t in m.tasks.values()],
         "edges": [[need_id, n.id, "needs"] for n in nodes for need_id in n.needs if need_id in ids]
         + [[a, b, kind] for a, b, kind in m.extra_edges],
         "news": news(store, m),
     }
+
+
+def stand_in(rows: list[dict]) -> bool:
+    """Whether every model call the log priced was a stand-in's (`tokenfactory.endpoint`: the tests' fake, the
+    harness's dev/proof/standin.py), so an editor filming a free race says on screen that it is one. False
+    with no call on record, or when any call went to a real endpoint."""
+    said = [(r.get("detail") or {}).get("endpoint") for r in rows if r.get("kind") == "usage"]
+    return bool(said) and all(e == "a stand-in" for e in said)
+
+
+def replay(store) -> dict | None:
+    """What a replay's store says of itself, or None in a real project's: `graphene demo --into DIR` writes
+    the plan_meta key `replay` with what the screen's top line says, `shown` (a scripted stand-in, no model
+    ran; or as it ran, live), `day` and `repository`. An editor shows a replay as one, and runs nothing."""
+    raw = store.meta("replay")
+    try:
+        said = json.loads(raw) if raw else None
+    except ValueError:
+        return None
+    return {k: said.get(k) for k in ("shown", "day", "repository")} if isinstance(said, dict) else None
 
 
 def chosen(store, key: str) -> str:
@@ -160,10 +251,13 @@ def chosen(store, key: str) -> str:
     return Path(said[0]).name if said else ""
 
 
-def task(m, t, log: list[dict]) -> dict:
+def task(m, t, log: list[dict], node: P.Node | None = None, root: Path | None = None) -> dict:
     """One task as the brief's schema has it. Its model and spend are the cockpit's once the race lane adds
     them to Task and Fork (`model`, `usd`); until then, and where it says nothing, the meter's: the attempt
-    going now names the model, the task's usage rows its dollars, and a fork's own attempts both of its."""
+    going now names the model, the task's usage rows its dollars, and a fork's own attempts both of its.
+    The editor night's keys (siblings, schema 1): `why`, the reason it came back; `checkout`, the directory
+    its agent works in while it runs or after it came back; `base`, the commit its work starts from;
+    `attempts`, the last hold's own, or a fork's each; a running fork's `idle` and `checkout`."""
     from . import meter as M
     from . import node_record as NR
     from .cockpit.model import needs_you
@@ -182,8 +276,14 @@ def task(m, t, log: list[dict]) -> dict:
         spent = getattr(f, "usd", None)
         if spent is None:
             spent = round(sum((a["dollars"] for a in mine), 0.0), 6)
+        copy = root / ".graphene" / "worktrees" / f"{t.id}.{f.letter}" if root else None
+        runs = f.state == "running"
         forks.append({"letter": f.letter, "state": f.state, "why": f.why, "lines": f.lines, "model": its,
-                      "usd": spent})  # fmt: skip
+                      "usd": spent, "attempts": len(mine),
+                      "idle": round(f.idle, 1) if runs and f.idle is not None else None,
+                      "checkout": str(copy) if runs and copy and copy.is_dir() else None})  # fmt: skip
+    own = [a for a in tries if not a.get("fork")]  # a forked hold's attempts are its forks': the most of one
+    where = (node.checkout or "") if node and t.state in ("running", "came back") else ""
     return {
         "id": t.id,
         "title": t.title,
@@ -207,6 +307,10 @@ def task(m, t, log: list[dict]) -> dict:
         "forks": forks,
         "kept": {"letter": t.kept[0], "why": t.kept[1], "by": t.kept[2]} if t.kept else None,
         "hollow": t.hollow,
+        "why": t.note if t.state == "came back" else "",
+        "checkout": where if where and Path(where).is_dir() else None,
+        "base": (node.base_sha or None) if node else None,
+        "attempts": len(own) or max((f["attempts"] for f in forks), default=0),
     }
 
 
