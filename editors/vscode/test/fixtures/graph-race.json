@@ -1,0 +1,71 @@
+{
+  "schema": 1, "graphene": "0.9.0", "repo": "/home/alex/app", "cursor": 1301,
+  "goal": "make the app friendlier", "first": "auto", "planner": "nemotron", "executor": "nemotron",
+  "envelope": {"auto": "on", "budget": 2.0, "tasks": 12, "rounds": 2, "forks": 3, "review": "off",
+               "protected": [], "readonly": []},
+  "auto": {"round": 1, "rounds": 2, "stage": "running", "spent": 0.61, "budget": 2.0, "check": "uv run pytest -q", "why": ""},
+  "run": {"going": true, "pid": 4242},
+  "spent": 0.61,
+  "replay": null,
+  "scoreboard": {"need_you": 3, "running": 1, "proven": 2, "total": 7},
+  "width": 3,
+  "questions": [
+    {"id": "which-port", "text": "which port does the dev server take?", "default": "8000, as the README says",
+     "options": ["pick a free one at start"], "about": "greet", "kind": "question"}
+  ],
+  "goals": [
+    {"id": "words", "title": "the words", "parent": null, "state": "open", "check": "uv run pytest -q"},
+    {"id": "api", "title": "the API", "parent": null, "state": "open", "check": null},
+    {"id": "routes", "title": "the routes", "parent": "api", "state": "open", "check": null}
+  ],
+  "tasks": [
+    {"id": "hello", "title": "hello says hello", "full": "hello says hello to the person by name",
+     "state": "done", "parent": "words", "scope": ["words.py"], "needs": [], "check": "pytest -q tests/test_words.py",
+     "agent": "1", "model": "Nano", "usd": 0.004, "idle": null, "needs_you": false, "attempts": 1, "why": "",
+     "tail": ["edit words.py", "run  pytest -q tests/test_words.py"], "note": "",
+     "changed": ["words.py"], "stopped": [], "outside": [], "forks": [], "kept": null, "hollow": false},
+    {"id": "bye", "title": "bye says goodbye", "full": "", "state": "done", "parent": "words",
+     "scope": ["words.py"], "needs": ["hello"], "check": "pytest -q tests/test_words.py",
+     "agent": "2", "model": "Nano", "usd": 0.003, "idle": null, "needs_you": false, "attempts": 2, "why": "",
+     "tail": ["edit words.py"], "note": "", "changed": ["words.py"], "stopped": [], "outside": [],
+     "forks": [], "kept": null, "hollow": false},
+    {"id": "greet", "title": "greet route", "full": "the /greet route answers with hello's words",
+     "state": "running", "parent": "routes", "scope": ["app.py"], "needs": ["hello"], "check": "pytest -q tests/test_app.py",
+     "agent": "3", "model": "Nano", "usd": 0.31, "idle": 2.5, "needs_you": true, "attempts": 1, "why": "",
+     "tail": ["edit app.py", "run  pytest -q tests/test_app.py", "read tests/test_app.py"], "note": "keep /greet and /hello both",
+     "changed": ["app.py"], "stopped": [], "outside": [],
+     "forks": [
+       {"letter": "a", "state": "gave up", "why": "its check failed twice", "lines": 12, "model": "Nano", "usd": 0.09, "attempts": 2, "idle": null},
+       {"letter": "b", "state": "passed", "why": "", "lines": 4, "model": "Nano", "usd": 0.07, "attempts": 1, "idle": null},
+       {"letter": "c", "state": "running", "why": "", "lines": 7, "model": "Super", "usd": 0.15, "attempts": 1, "idle": 23}
+     ],
+     "kept": {"letter": "b", "why": "4 lines against 12", "by": "rule"}, "hollow": false},
+    {"id": "farewell", "title": "farewell route", "full": "the /farewell route answers with bye's words", "state": "review", "parent": "routes",
+     "scope": ["app.py"], "needs": ["bye"], "check": "pytest -q tests/test_app.py",
+     "agent": "4", "model": "Super", "usd": 0.12, "idle": null, "needs_you": true, "attempts": 1, "why": "",
+     "tail": ["read app.py", "edit app.py", "run  pytest -q tests/test_app.py"], "note": "", "changed": ["app.py"], "stopped": [], "outside": [],
+     "forks": [
+       {"letter": "a", "state": "passed", "why": "", "lines": 9, "model": "Nano", "usd": 0.05, "attempts": 1, "idle": null},
+       {"letter": "b", "state": "passed", "why": "", "lines": 15, "model": "Super", "usd": 0.07, "attempts": 1, "idle": null}
+     ],
+     "kept": null, "hollow": false},
+    {"id": "docs", "title": "README says how to greet", "full": "", "state": "review", "parent": "api",
+     "scope": ["README.md"], "needs": ["greet"], "check": "grep -q /greet README.md",
+     "agent": "5", "model": "Nano", "usd": 0.01, "idle": null, "needs_you": true, "attempts": 1, "why": "",
+     "tail": ["edit README.md"], "note": "", "changed": ["README.md"], "stopped": [], "outside": [],
+     "forks": [], "kept": null, "hollow": false},
+    {"id": "logs", "title": "log every request", "full": "", "state": "came back", "parent": "api",
+     "scope": ["log.py"], "needs": [], "check": "pytest -q tests/test_log.py",
+     "agent": "6", "model": "Nano", "usd": 0.02, "idle": null, "needs_you": true, "attempts": 2, "why": "app.py is outside its scope",
+     "tail": ["edit log.py", "edit app.py"], "note": "", "changed": ["log.py"], "stopped": ["app.py"], "outside": ["app.py"],
+     "forks": [], "kept": null, "hollow": false},
+    {"id": "ship", "title": "tag the release", "full": "", "state": "waiting", "parent": null,
+     "scope": ["CHANGELOG.md"], "needs": ["farewell", "docs"], "check": "test -s CHANGELOG.md",
+     "agent": "", "model": "", "usd": null, "idle": null, "needs_you": false, "attempts": 0, "why": "",
+     "tail": [], "note": "", "changed": [], "stopped": [], "outside": [], "forks": [], "kept": null, "hollow": false}
+  ],
+  "edges": [["hello", "bye", "needs"], ["hello", "greet", "needs"], ["bye", "farewell", "needs"],
+            ["greet", "docs", "needs"], ["farewell", "ship", "needs"], ["docs", "ship", "needs"]],
+  "news": ["agent 3 forked greet 3 ways: a Nano, b Nano, c Super", "fork 3b passed greet's check with 4 lines",
+           "agent 6 stopped: app.py is outside logs's scope", "farewell route waits for your pick: a or b"]
+}

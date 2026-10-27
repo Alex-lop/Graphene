@@ -1,5 +1,6 @@
-/* The graph's look: VS Code's own colours, so it is native in light and dark; a state's colour is a chart
-   colour, as the cockpit's are (running amber, review purple, came back red, proposed cyan, done green). */
+/* The graph's look: VS Code's own colours, so it is native in light, dark and high contrast; a state's colour
+   is a chart colour, as the cockpit's are (running amber, review purple, came back red, proposed cyan, done
+   green). No text under 11 px. */
 :root {
   --running: var(--vscode-charts-yellow, #e9c46a);
   --review: var(--vscode-charts-purple, #c77dff);
@@ -13,11 +14,14 @@
   --edge-hot: var(--vscode-focusBorder, #4cc9f0);
   --panel: var(--vscode-editorWidget-background, var(--vscode-sideBar-background, #222));
   --border: var(--vscode-widget-border, var(--vscode-panel-border, #444));
+  --focus: var(--vscode-focusBorder, #007fd4);
+  --hover: var(--vscode-list-hoverBackground, rgba(128, 128, 128, 0.1));
   --fg: var(--vscode-foreground, #ccc);
   --dim: var(--vscode-descriptionForeground, #999);
   --bg: var(--vscode-editor-background, #1e1e1e);
   --font: var(--vscode-font-family, system-ui, sans-serif);
   --mono: var(--vscode-editor-font-family, ui-monospace, Menlo, monospace);
+  --ease: 0.25s ease;
 }
 html, body { height: 100%; margin: 0; }
 body {
@@ -28,16 +32,21 @@ header {
   display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; padding: 8px 12px 6px;
   border-bottom: 1px solid var(--border); align-items: baseline;
 }
-#goal { font-weight: 600; font-size: 1.1em; grid-column: 1; }
+#replay {
+  grid-column: 1 / -1; color: var(--review); font-family: var(--mono); font-size: 0.92em; padding-bottom: 2px;
+}
+#replay[hidden] { display: none; }
+#goal { font-weight: 600; font-size: 1.1em; grid-column: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #counts { color: var(--dim); grid-column: 1; }
 #auto {
   grid-column: 1; margin-top: 2px; color: var(--running); font-family: var(--mono); font-size: 0.95em;
 }
 #auto[hidden] { display: none; }
-#actions { grid-column: 2; grid-row: 1 / span 3; display: flex; gap: 6px; align-items: start; }
+#actions { grid-column: 2; grid-row: 2 / span 3; display: flex; gap: 6px; align-items: start; flex-wrap: wrap; justify-content: end; }
 main { flex: 1; display: flex; min-height: 0; }
-#canvas { flex: 1; position: relative; overflow: hidden; cursor: grab; }
+#canvas { flex: 1; position: relative; overflow: hidden; cursor: grab; outline: none; }
 #canvas.dragging { cursor: grabbing; }
+#canvas.lanes { cursor: default; overflow: auto; }
 #svg { display: block; position: absolute; left: 0; top: 0; }
 #notice {
   position: absolute; left: 50%; top: 40%; transform: translate(-50%, -50%); max-width: 70%;
@@ -45,6 +54,9 @@ main { flex: 1; display: flex; min-height: 0; }
   background: var(--panel); border: 1px solid var(--border); border-radius: 8px; white-space: pre-wrap;
 }
 #notice[hidden] { display: none; }
+#to-goal { position: absolute; right: 10px; top: 10px; z-index: 2; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3); }
+#to-goal.below { top: auto; bottom: 10px; }
+#to-goal.below .ico { transform: rotate(90deg); }
 #notice.missing, #notice.error { color: var(--came-back); }
 #details {
   width: 300px; border-left: 1px solid var(--border); background: var(--panel); overflow: auto;
@@ -53,28 +65,40 @@ main { flex: 1; display: flex; min-height: 0; }
 #details[hidden] { display: none; }
 footer#hint {
   padding: 4px 12px; border-top: 1px solid var(--border); color: var(--dim); font-size: 0.92em;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-height: 1.3em;
 }
+footer#hint.linking { color: var(--edge-hot); }
+footer#hint.asks { color: var(--review); }
 /* the sidebar's graph is narrow: the details go under the canvas, the header's buttons wrap */
 @media (max-width: 700px) {
   main { flex-direction: column; }
   #details { width: auto; max-height: 55%; border-left: none; border-top: 1px solid var(--border); }
   header { grid-template-columns: 1fr; }
-  #actions { grid-column: 1; grid-row: auto; flex-wrap: wrap; margin-top: 4px; }
+  #actions { grid-column: 1; grid-row: auto; margin-top: 4px; justify-content: start; }
+  #actions button { padding: 3px 7px; }
 }
-footer#hint.linking { color: var(--edge-hot); }
-footer#hint.asks { color: var(--review); }
+
+/* buttons, as VS Code's: the primary filled, the quiet ones secondary, each with its codicon */
 button {
-  font: inherit; color: var(--vscode-button-foreground, #fff); background: var(--vscode-button-background, #0e639c);
+  display: inline-flex; align-items: center; gap: 5px; font: inherit; line-height: 1.3;
+  color: var(--vscode-button-foreground, #fff); background: var(--vscode-button-background, #0e639c);
   border: 1px solid var(--vscode-button-border, transparent); border-radius: 3px; padding: 3px 10px; cursor: pointer;
 }
 button:hover { background: var(--vscode-button-hoverBackground, #1177bb); }
-button.quiet, #actions button {
+button.quiet {
   color: var(--vscode-button-secondaryForeground, var(--fg));
   background: var(--vscode-button-secondaryBackground, #3a3d41);
 }
-button.quiet:hover, #actions button:hover { background: var(--vscode-button-secondaryHoverBackground, #45494e); }
-button.close { background: none; border: none; color: var(--dim); font-size: 1.3em; padding: 0 4px; }
+button.quiet:hover { background: var(--vscode-button-secondaryHoverBackground, #45494e); }
+button:focus-visible, [tabindex]:focus-visible { outline: 1px solid var(--focus); outline-offset: 1px; }
+button[hidden] { display: none; }
+.ico { width: 14px; height: 14px; fill: currentColor; flex: none; }
+button.close, button.unlink { background: none; border: none; color: var(--dim); padding: 2px; }
+button.close:hover, button.unlink:hover { color: var(--fg); background: var(--hover); }
+button.unlink:hover { color: var(--vscode-errorForeground, #f48771); }
+#b-help { padding: 3px 6px; }
+
+/* the details pane */
 .d-head { padding: 10px 12px 6px; border-bottom: 1px solid var(--border); position: relative; }
 .d-head .close { position: absolute; right: 8px; top: 8px; }
 .d-title { font-weight: 600; font-size: 1.05em; padding-right: 24px; border-left: 4px solid var(--ready); padding-left: 8px; }
@@ -84,26 +108,35 @@ button.close { background: none; border: none; color: var(--dim); font-size: 1.3
 .row .k { color: var(--dim); }
 .row .v { font-family: var(--mono); font-size: 0.92em; word-break: break-word; white-space: pre-wrap; }
 .move { color: var(--dim); }
-.hollow { color: #e9a23b; padding: 4px 0; border-bottom: 1px dotted var(--border); }
+.hollow { color: var(--running); padding: 4px 0; border-bottom: 1px dotted var(--border); }
+.why { color: var(--came-back); padding: 6px 8px; margin: 6px 0; border-left: 3px solid var(--came-back); background: var(--hover); }
+.ask { padding: 6px 8px; margin: 6px 0; border-left: 3px solid var(--review); background: var(--hover); }
+.ask-text { margin-bottom: 6px; }
+.ask-opts { display: flex; flex-wrap: wrap; gap: 6px; }
 .need { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
-button.unlink { background: none; border: none; color: var(--dim); padding: 0 4px; font-size: 1.1em; }
-button.unlink:hover { color: var(--vscode-errorForeground, #f48771); background: none; }
-.fork-row { padding: 1px 0; border-left: 3px solid var(--waiting); padding-left: 6px; margin: 2px 0; }
+.fork-row { padding: 2px 0 4px 6px; border-left: 3px solid var(--waiting); margin: 3px 0; }
 .fork-row.kept { font-weight: 600; }
+.fork-acts { display: flex; gap: 4px; margin-top: 3px; font-weight: 400; }
+.fork-acts button { padding: 1px 6px; font-size: 0.92em; }
 .d-acts { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 12px; border-top: 1px solid var(--border); }
 
 /* the drawing */
+.task, .goal { transition: transform var(--ease); will-change: transform; }
+.edge { transition: d var(--ease); }
+@keyframes appear { from { opacity: 0; } to { opacity: 1; } }
+.task.fresh, .lane.fresh { animation: appear 0.3s ease; }
 .band { fill: var(--vscode-editor-inactiveSelectionBackground, rgba(128, 128, 128, 0.08)); stroke: none; }
 .band-label { fill: var(--dim); font-size: 11px; font-family: var(--font); }
 .edge { fill: none; stroke: var(--edge); stroke-width: 1.5; marker-end: none; }
 .edge.hot { stroke: var(--edge-hot); stroke-width: 2.5; }
 .fan { fill: none; stroke: var(--edge); stroke-width: 1.2; }
-.task { cursor: pointer; }
+.task { cursor: pointer; outline: none; }
 .box { fill: var(--panel); stroke: var(--border); stroke-width: 1.2; }
 .task:hover .box { stroke: var(--fg); }
 .task.selected .box { stroke: var(--edge-hot); stroke-width: 2.5; }
+.task:focus-visible .box { stroke: var(--focus); stroke-width: 2; stroke-dasharray: 3 2; }
 .port { fill: var(--panel); stroke: var(--edge); stroke-width: 1.5; opacity: 0.45; cursor: crosshair; }
-.task:hover .port, .task.selected .port, #canvas.wiring .port { opacity: 1; }
+.task:hover .port, .task.selected .port, .task:focus-visible .port, #canvas.wiring .port { opacity: 1; }
 .port:hover { fill: var(--edge-hot); stroke: var(--edge-hot); }
 .wire { fill: none; stroke: var(--edge-hot); stroke-width: 2; stroke-dasharray: 5 4; pointer-events: none; }
 #canvas.wiring, #canvas.wiring .task { cursor: crosshair; }
@@ -128,10 +161,13 @@ button.unlink:hover { color: var(--vscode-errorForeground, #f48771); background:
 .st-ready > .stripe { fill: var(--ready); }
 .st-waiting > .stripe { fill: var(--waiting); }
 .st-yours > .stripe { fill: var(--yours); }
+.st-came-back > .box { stroke: var(--came-back); }
+.st-came-back .sub { fill: var(--came-back); }
 .fork .chip { fill: var(--bg); stroke: var(--border); }
 .fork.st-running .chip { stroke: var(--running); }
 .fork.st-passed .chip { stroke: var(--done); }
-.fork.kept .chip { fill: var(--vscode-editor-inactiveSelectionBackground, rgba(128, 128, 128, 0.15)); }
+.fork.kept .chip { fill: var(--vscode-editor-inactiveSelectionBackground, rgba(128, 128, 128, 0.15)); stroke: var(--done); }
+.fork.kept .chip-text { font-weight: 600; }
 .fork.st-gave-up .chip, .fork.st-failed .chip, .fork.st-ended .chip { stroke: var(--came-back); }
 .fork.st-gave-up .chip-text, .fork.st-ended .chip-text { fill: var(--dim); }
 .st-running .mark, .st-review .mark, .st-yours .mark { fill: var(--review); }
@@ -143,7 +179,79 @@ button.unlink:hover { color: var(--vscode-errorForeground, #f48771); background:
 .d-title.st-proposed { border-color: var(--proposed); }
 .d-title.st-done { border-color: var(--done); }
 .fork-row.st-running { border-color: var(--running); }
-.fork-row.st-passed { border-color: var(--done); }
+.fork-row.st-passed, .fork-row.kept { border-color: var(--done); }
 .fork-row.st-gave-up, .fork-row.st-failed, .fork-row.st-ended { border-color: var(--came-back); }
 .st-done .title { fill: var(--dim); font-weight: 500; }
 .st-waiting .title { fill: var(--dim); }
+
+/* the lanes: the narrow view, one row a task, wave by wave; HTML, so every word wraps and nothing shrinks */
+#lanes { padding: 6px 8px 12px; }
+#lanes[hidden] { display: none; }
+.wave { color: var(--dim); font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; padding: 10px 4px 4px; }
+.lane {
+  display: flex; gap: 8px; padding: 6px 8px 6px 6px; margin: 3px 0; border: 1px solid var(--border); border-radius: 6px;
+  background: var(--panel); cursor: pointer; outline: none; transition: border-color var(--ease);
+}
+.lane:hover { border-color: var(--fg); background: var(--hover); }
+.lane.selected { border-color: var(--edge-hot); box-shadow: inset 0 0 0 1px var(--edge-hot); }
+.lane:focus-visible { outline: 1px dashed var(--focus); outline-offset: 1px; }
+.l-stripe { width: 4px; border-radius: 2px; background: var(--ready); flex: none; }
+.lane.st-running .l-stripe { background: var(--running); }
+.lane.st-review .l-stripe, .lane.st-yours .l-stripe { background: var(--review); }
+.lane.st-came-back .l-stripe { background: var(--came-back); }
+.lane.st-came-back { border-color: var(--came-back); }
+.lane.st-came-back .l-sub { color: var(--came-back); }
+.lane.st-proposed .l-stripe { background: var(--proposed); }
+.lane.st-done .l-stripe { background: var(--done); }
+.lane.st-waiting .l-stripe { background: var(--waiting); }
+.l-main { flex: 1; min-width: 0; }
+.l-head { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+.l-title { font-weight: 600; overflow-wrap: anywhere; }
+.lane.st-done .l-title, .lane.st-waiting .l-title { color: var(--dim); font-weight: 500; }
+.l-model { color: var(--running); font-family: var(--mono); font-size: 11px; font-weight: 600; flex: none; }
+.l-mark { color: var(--review); font-size: 11px; flex: none; }
+.lane.st-came-back .l-mark { color: var(--came-back); }
+.lane.st-proposed .l-mark { color: var(--proposed); }
+.l-sub { color: var(--dim); font-family: var(--mono); font-size: 11px; margin-top: 2px; overflow-wrap: anywhere; }
+.l-band { color: var(--dim); font-size: 11px; margin-top: 2px; }
+.l-forks { display: flex; flex-direction: column; gap: 3px; margin-top: 5px; }
+.l-chip {
+  font-family: var(--mono); font-size: 11px; padding: 2px 7px; border: 1px solid var(--border); border-radius: 4px;
+  background: var(--bg); overflow-wrap: anywhere;
+}
+.l-chip.st-running { border-color: var(--running); }
+.l-chip.st-passed { border-color: var(--done); }
+.l-chip.kept { border-color: var(--done); font-weight: 600; background: var(--vscode-editor-inactiveSelectionBackground, rgba(128, 128, 128, 0.15)); }
+.l-chip.st-gave-up, .l-chip.st-failed, .l-chip.st-ended { border-color: var(--came-back); color: var(--dim); }
+.goal-row { border-color: var(--fg); box-shadow: inset 0 0 0 1px var(--fg); flex-direction: column; gap: 2px; margin-top: 10px; cursor: default; }
+.goal-row .l-sub { color: var(--dim); }
+
+/* the keys, on ? */
+#help { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.45); display: flex; align-items: center; justify-content: center; z-index: 5; }
+#help[hidden] { display: none; }
+.help-card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; max-width: 90%; max-height: 90%; overflow: auto; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3); }
+.help-title { font-weight: 600; margin-bottom: 8px; }
+.help-rows { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; }
+.help-key { font-family: var(--mono); color: var(--fg); white-space: nowrap; }
+.help-what { color: var(--dim); }
+.help-foot { color: var(--dim); font-size: 0.92em; margin-top: 10px; }
+
+/* high contrast: every edge a contrast border, no tints, the focus border loud */
+body.vscode-high-contrast, body.vscode-high-contrast-light {
+  --border: var(--vscode-contrastBorder, #6fc3df); --edge: var(--vscode-contrastBorder, #6fc3df);
+  --hover: transparent; --focus: var(--vscode-contrastActiveBorder, var(--vscode-focusBorder, #f38518));
+}
+body.vscode-high-contrast .band, body.vscode-high-contrast-light .band { fill: none; stroke: var(--border); stroke-dasharray: 4 3; }
+body.vscode-high-contrast .box, body.vscode-high-contrast .chip, body.vscode-high-contrast .goal-box,
+body.vscode-high-contrast-light .box, body.vscode-high-contrast-light .chip, body.vscode-high-contrast-light .goal-box { stroke-width: 1.5; }
+body.vscode-high-contrast .task.selected .box, body.vscode-high-contrast .lane.selected,
+body.vscode-high-contrast-light .task.selected .box, body.vscode-high-contrast-light .lane.selected { stroke: var(--focus); border-color: var(--focus); box-shadow: none; }
+body.vscode-high-contrast .fork.kept .chip, body.vscode-high-contrast .l-chip.kept,
+body.vscode-high-contrast-light .fork.kept .chip, body.vscode-high-contrast-light .l-chip.kept { fill: none; background: none; }
+body.vscode-high-contrast button, body.vscode-high-contrast-light button { border-color: var(--border); }
+body.vscode-high-contrast #help, body.vscode-high-contrast-light #help { background: rgba(0, 0, 0, 0.7); }
+
+@media (prefers-reduced-motion: reduce) {
+  .task, .goal, .edge, .lane { transition: none; }
+  .task.fresh, .lane.fresh { animation: none; }
+}
