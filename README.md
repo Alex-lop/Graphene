@@ -89,15 +89,21 @@ may write; `:auto <goal>` starts auto mode from the cockpit.
 
 ### In VS Code
 
-![Graphene for VS Code: the plan as a graph in an editor tab, a task's three forks with their models and the kept one, the details of the selected task, and the buttons that add a step after it, link it, edit it or tell its agent](https://raw.githubusercontent.com/Alex-lop/Graphene/main/editors/vscode/media/graph.png)
+![Graphene for VS Code after a race against the scripted stand-in, in real VS Code: the plan as a graph in an editor tab, four tasks done, each fanned out into its three forks with the kept one and why, flowing into the goal; the auto line says round 2 of 3, done, $0.02 of $2.00; in the side bar, Needs You with nothing waiting, the Graph as lanes, and Agents](https://raw.githubusercontent.com/Alex-lop/Graphene/main/editors/vscode/media/graph.png)
 
-The extension in [`editors/vscode`](https://github.com/Alex-lop/Graphene/blob/main/editors/vscode/README.md) shows
-the same plan in an editor tab and a sidebar: the graph, the forks racing, the rounds of auto mode, the status bar
-(`◆ 2 running · 1 needs you · $0.42`), and in the Explorer whose each file is, a running agent's marked with its
-number. Every click is a `graphene` command run as you: add a step, link two by dragging one's dot onto the other
-(an × unlinks them), edit, drop, accept, tell an agent, and **Graphene: Auto…** for a goal. It reads `graphene
-state --json`, so the cockpit and the editor never disagree. It is built for VS Code 1.95 and later, so its forks
-such as Cursor should load it (not tried there yet).
+The extension in [`editors/vscode`](https://github.com/Alex-lop/Graphene/blob/main/editors/vscode/README.md) is
+the same plan in your editor. Needs You comes first in the side bar: a question, a proposal, a task that came
+back, a sign-off, each with its move. Agents lists every running agent, what it edits now, its seconds quiet and
+its dollars. The graph shows the race: a task fans out into its forks as they work, and the kept one says why it
+won. A task's changes open in VS Code's own diff editor, a race's forks side by side. The plan opens as text, and
+saving applies it. Add Step takes one sentence, and the planner proposes the step. Watch the Demo plays the race
+with no key. Every click is a `graphene` command run as you, and it reads `graphene state --json`, the cockpit's
+own snapshot, so the two never disagree.
+
+Install the `.vsix` attached to [the latest release](https://github.com/Alex-lop/Graphene/releases/latest) with
+`code --install-extension`, or from the Marketplace and Open VSX once they list it. It is built for VS Code 1.95
+or later. In Cursor 3.25.6 (VS Code 1.128) it installs and activates, and the harness's end-to-end check passes
+there.
 
 ## Any agent, any model
 
