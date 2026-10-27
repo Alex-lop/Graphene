@@ -17,8 +17,9 @@
     "vscode": "^1.95.0"
   },
   "categories": [
-    "Other",
-    "Visualization"
+    "AI",
+    "Visualization",
+    "Other"
   ],
   "keywords": [
     "graphene",
@@ -26,7 +27,12 @@
     "claude code",
     "codex",
     "nemotron",
-    "plan"
+    "plan",
+    "agents",
+    "ai",
+    "multi-agent",
+    "parallel agents",
+    "cursor"
   ],
   "main": "./dist/extension.js",
   "capabilities": {
@@ -50,6 +56,18 @@
     },
     "views": {
       "graphene": [
+        {
+          "id": "graphene.needs",
+          "name": "Needs You",
+          "icon": "media/graphene.svg",
+          "contextualTitle": "Graphene"
+        },
+        {
+          "id": "graphene.agents",
+          "name": "Agents",
+          "icon": "media/graphene.svg",
+          "contextualTitle": "Graphene"
+        },
         {
           "id": "graphene.plan",
           "name": "Plan",
@@ -180,6 +198,61 @@
         "command": "graphene.refresh",
         "title": "Graphene: Refresh",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "graphene.answer",
+        "title": "Graphene: Answer…",
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "graphene.handBack",
+        "title": "Graphene: Take Up the Hand-Back…",
+        "icon": "$(debug-step-back)"
+      },
+      {
+        "command": "graphene.install",
+        "title": "Graphene: Install Graphene…",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "graphene.openDiff",
+        "title": "Graphene: Open Changes",
+        "icon": "$(diff)"
+      },
+      {
+        "command": "graphene.compareForks",
+        "title": "Graphene: Compare Forks",
+        "icon": "$(split-horizontal)"
+      },
+      {
+        "command": "graphene.pickFork",
+        "title": "Graphene: Keep This Fork",
+        "icon": "$(pass)"
+      },
+      {
+        "command": "graphene.signOff",
+        "title": "Graphene: Sign Off",
+        "icon": "$(check)"
+      },
+      {
+        "command": "graphene.editPlan",
+        "title": "Graphene: Edit Plan as Text",
+        "icon": "$(go-to-file)"
+      },
+      {
+        "command": "graphene.addStepByHand",
+        "title": "Graphene: Add Step by Hand…",
+        "icon": "$(add)"
+      },
+      {
+        "command": "graphene.watchDemo",
+        "title": "Graphene: Watch the Demo",
+        "icon": "$(play-circle)"
+      },
+      {
+        "command": "graphene.diffWithAgent",
+        "title": "Graphene: Diff with the Agent's Copy",
+        "icon": "$(diff)"
       }
     ],
     "menus": {
@@ -374,5 +447,11 @@
     "@vscode/vsce": "3.9.2",
     "esbuild": "0.25.12",
     "typescript": "5.9.3"
+  },
+  "icon": "media/icon.png",
+  "preview": true,
+  "galleryBanner": {
+    "color": "#14161a",
+    "theme": "dark"
   }
 }

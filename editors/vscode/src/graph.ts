@@ -2,7 +2,7 @@
 // same page, dist/graph.js, under a strict CSP; the page asks, the host runs graphene and pushes the state.
 import * as vscode from "vscode";
 import * as C from "./commands.ts";
-import type { Session } from "./extension.ts";
+import type { Session } from "./session.ts";
 
 // link: id is A, target B, and B waits on A; unlink: id is B, target the A it stops waiting on
 type Act = "add-after" | "add-under" | "link" | "unlink" | "edit" | "drop" | "accept" | "tell" | "run" | "stop" | "auto" | "cockpit";

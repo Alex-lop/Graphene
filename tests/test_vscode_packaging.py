@@ -20,7 +20,9 @@ STORE = ".graphene/graphene.db"
 
 COMMANDS = ["Show Plan Graph", "Open Cockpit", "Auto…", "Set Envelope…", "Run Ready Tasks", "Stop", "Accept",
             "Accept All", "Add Step…", "Link…", "Edit Step…", "Drop Step", "Tell Agent…",
-            "Set Up This Folder", "Refresh"]
+            "Set Up This Folder", "Refresh", "Answer…", "Take Up the Hand-Back…", "Install Graphene…", "Open Changes",
+            "Compare Forks", "Keep This Fork", "Sign Off", "Edit Plan as Text", "Add Step by Hand…", "Watch the Demo",
+            "Diff with the Agent's Copy"]
 
 
 def test_the_manifest_names_the_product_and_its_version():
