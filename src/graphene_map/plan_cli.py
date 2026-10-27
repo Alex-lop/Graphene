@@ -1375,8 +1375,10 @@ def register(cli: typer.Typer, root, open_store, fail):
             end(summary(store, since) + (f" · the work of {', '.join(left)} is {P.UNCOMMITTED}" * bool(left)))
 
     def planner(
-        sentence: str, executor: str | None, about: str | None, split: bool, size: str | None = None
+        sentence: str, executor: str | None, about: str | None, split: bool, size: str | None = None,
+        step: bool = False, after: str | None = None, under: str | None = None,
     ) -> None:
+        from . import ask as A
         from .ask import ask, named
 
         who = P.caller()
@@ -1386,7 +1388,22 @@ def register(cli: typer.Typer, root, open_store, fail):
 
         def go(store):
             spec = executor or store.meta("planner")  # --with, else the repo's (`graphene init`); or refused
-            said = ask(store, checkout(), sentence, named(spec), about, split, out, size, planner=spec)
+            talk = base = None
+            say = out
+            if step:  # one leaf, where the person pointed, from the planner or Nano when it is Nemotron
+                spec, talk = A.for_step(spec), A.step_words(store, after, under)
+                base = under or (P.get(store, after).parent if after else None)
+                say = lambda line: typer.echo(line, err=True)  # noqa: E731  (the planner's progress: stdout
+                # is the step's own lines, its id first, for whoever asked)
+            said = ask(store, checkout(), sentence, named(spec), about, split, say, size, planner=spec,
+                       talk=talk, base_parent=base)  # fmt: skip
+            if step:
+                landed = A.step_landed(store, said, after, who)
+                if landed is None:
+                    raise P.Refused("the planner proposed no step; nothing was added")
+                first = f"proposed {landed[0]}: {landed[1]}"
+                out(first)  # the first line, for whoever asked: the step's id
+                said = [line for line in said if line.strip() != first]
             for line in said:
                 out(line)
             ids, (waits, _) = list(getattr(said, "ids", [])), B.waiting(store)
@@ -1426,13 +1443,23 @@ def register(cli: typer.Typer, root, open_store, fail):
         coarser: bool = typer.Option(
             False, "--coarser", help="Size this ask coarser, whatever the saved size."
         ),
+        step: bool = typer.Option(
+            False, "--step", help="One step from one sentence, proposed for you to accept."
+        ),
+        after: str = typer.Option(None, "--after", help="With --step: the step comes after this task."),
+        under: str = typer.Option(None, "--under", help="With --step: the step goes under this node."),
     ) -> None:
         """Ask the planner for a tree from a paragraph.
 
         The planner reads the repo and writes nothing. Nothing runs until you accept the tree."""
         if finer and coarser:
             fail("--finer or --coarser, not both", 2)
-        planner(sentence, executor, about, False, "finer" if finer else "coarser" if coarser else None)
+        if after and under:
+            fail("--after or --under, not both", 2)
+        if (after or under) and not step:
+            fail("--after and --under place a step: `graphene ask '…' --step --after ID`", 2)
+        planner(sentence, executor, about, False, "finer" if finer else "coarser" if coarser else None,
+                step, after, under)  # fmt: skip
 
     if N := extra.load("note"):
         N.register(plan_cli, root, open_store, fail)  # `graphene plan note`

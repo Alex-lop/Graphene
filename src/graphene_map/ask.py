@@ -113,6 +113,50 @@ risk: what could make a check pass on nothing, or a leaf go wrong  [short-id]
 - Write no file and start no work: what you print is all of your answer."""  # fmt: skip
 
 
+def for_step(spec: str | None) -> str | None:
+    """`ask --step`'s planner: the one named or configured, and Nano when that is Nemotron (one step is a
+    small ask; a `--model` already in the spec stands)."""
+    spec = (spec or "").strip()
+    if spec.split(None, 1)[:1] == ["nemotron"] and "--model" not in spec:
+        nano = None
+        if "--endpoint" not in spec and (tf := extra.load("tokenfactory")):  # the host's own Nano, by id
+            try:
+                nano = tf.roles().get("nano")
+            except Exception:  # noqa: BLE001  (unreachable, no key: the planner says so itself, later)
+                nano = None
+        return f"{spec} --model {nano or 'nemotron-nano'}"  # a size name: the planner resolves it
+    return spec or None
+
+
+def step_words(store, after: str | None, under: str | None) -> str:
+    """What `ask --step` adds to the planner's prompt: one leaf, placed where the person pointed."""
+    where = ""
+    if after:
+        node = P.get(store, after)
+        where = (f" It comes after [{after}] ({node.title}): a leaf beside it, under the same node, with "
+                 f"`needs: {after}`.")  # fmt: skip
+    elif under:
+        node = P.get(store, under)
+        where = (f" It goes under [{under}] ({node.title}): write that node's line as it is above, with its "
+                 "[id], and the new leaf under it.")  # fmt: skip
+    return ("The person asks for one step: propose exactly one leaf, no sub-goal and no second leaf, with "
+            f"its title, scope, check and needs, marked `?`.{where}")  # fmt: skip
+
+
+def step_landed(store, said, after: str | None, who: P.Caller) -> tuple[str, str] | None:
+    """The step the planner proposed: the first leaf among what landed, by id and title; placed after a
+    node, it waits on that node (the person's edit of the proposal, when the planner left the need out).
+    None when nothing landed."""
+    for node_id in getattr(said, "ids", []):
+        node = store.node_row(node_id)
+        if not node or any(n.parent == node_id for n in P.nodes(store)):
+            continue
+        if after and after not in node.get("needs", []):
+            P.edit(store, node_id, {"needs": [*node.get("needs", []), after]}, who, check=False)
+        return node_id, node["title"]
+    return None
+
+
 def prompt_for(
     store,
     sentence: str,
