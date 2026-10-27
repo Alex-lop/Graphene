@@ -15,9 +15,9 @@ graphene --version                                           # graphene 0.9.0
 ```
 
 ```sh
-# 2. Install the extension in VS Code and in Cursor
-code --install-extension editors/vscode/graphene-0.9.0.vsix
-cursor --install-extension editors/vscode/graphene-0.9.0.vsix
+# 2. Install the extension in VS Code and in Cursor (neither `code` nor `cursor` is on this Mac's PATH)
+"/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code" --install-extension editors/vscode/graphene-0.9.0.vsix
+/Applications/Cursor.app/Contents/Resources/app/bin/cursor --install-extension editors/vscode/graphene-0.9.0.vsix
 ```
 
 3. **Watch the Demo.** In VS Code, the palette: **Graphene: Watch the Demo**. A tab plays the auto replay. Its first
@@ -27,7 +27,8 @@ cursor --install-extension editors/vscode/graphene-0.9.0.vsix
 ```sh
 # 4. A race of your own, free, against the stand-in, watched in VS Code
 cd ~/graphene-night && ENDPOINT=standin PAUSE=1 dev/proof/auto.sh ~/graphene-try
-#    at "open ... in VS Code and start recording, then press Enter": `code ~/graphene-try`, then Enter here
+#    at "open ... in VS Code and start recording, then press Enter": open ~/graphene-try in VS Code
+#    (File > Open Folder…), then press Enter here
 ```
 
    The side bar leads with **Needs You**, then the graph as lanes, then **Agents**. The tab (**Graphene: Show
