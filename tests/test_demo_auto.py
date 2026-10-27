@@ -206,9 +206,22 @@ ULTRA = [call("list", path="."), call("read", path="wordkit/count.py"), call("re
 THINKS = {"a": 1.2, "b": 0.7, "c": 1.6}
 
 
+def step(first: str) -> dict:
+    """`ask --step`'s one leaf (ask.step_words asks for it), from the sentence alone: the stand-in reads
+    nothing, so the leaf is named by the sentence's first words and owns files no task has."""
+    sentence = re.search(r"The person said: (.*)", first).group(1).strip()
+    slug = "-".join(re.findall(r"[a-z0-9]+", sentence.lower())[:3]) or "step"
+    name = slug.replace("-", "_")
+    return {"says": "One step.", "goal": None, "board": [], "nodes": [
+        node(slug, sentence[:60], [f"wordkit/{name}.py", f"tests/test_{name}.py"],
+             f"python3 -m unittest tests.test_{name}", sentence)]}  # fmt: skip
+
+
 def reply(body):
     first = body["messages"][1]["content"] if len(body["messages"]) > 1 else ""
     k = sum(1 for m in body["messages"] if m["role"] == "assistant")
+    if "propose exactly one leaf" in first:  # `ask --step`, whichever model asks: read nothing, one leaf
+        return {"content": json.dumps(step(first)) if body.get("response_format") else "I have read enough."}
     if "Ultra" in body["model"]:
         if body.get("response_format"):
             return {"content": json.dumps(FIX if "has landed, and its own check still fails" in first else TREE)}

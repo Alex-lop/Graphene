@@ -1,8 +1,46 @@
 // The harness's own pieces that need no app: `node --test unit.test.mjs` (part of `npm test`).
 import assert from "node:assert/strict";
+import { execFileSync, spawnSync } from "node:child_process";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { test } from "node:test";
 import * as L from "./lib.mjs";
 import { line, summary } from "./measure/stats.mjs";
+
+const PYTHON = process.env.PYTHON || path.join(L.ROOT, ".venv", "bin", "python");
+const moves = (manifest) => spawnSync(PYTHON, [path.join(L.HERE, "measure", "moves.py"), manifest], { encoding: "utf8" });
+
+test("moves.py's table is the build it measures: every command it names is in the manifest, and the count follows", { skip: !existsSync(PYTHON) && "no venv python (uv sync)" }, () => {
+  const manifest = path.join(L.EXT, "package.json");
+  const out = moves(manifest);
+  assert.equal(out.status, 0, out.stderr);
+  const table = out.stdout.split("\n\ncockpit moves")[0];
+  const commands = JSON.parse(readFileSync(manifest, "utf8")).contributes.commands.map((c) => c.command.replace("graphene.", ""));
+  const named = new Set([...table.matchAll(/graphene\.(\w+)/g)].map((m) => m[1]));
+  assert.deepEqual([...named].filter((c) => !commands.includes(c)), [], "the table names commands this build lacks");
+  // the night's moves are in its table, not left as the cockpit's alone
+  for (const c of ["answer", "handBack", "pickFork", "openDiff", "signOff", "editPlan"]) assert.ok(named.has(c), `${c} is not in the table`);
+  assert.match(out.stdout, /cockpit moves: 17\. The editor \(0\.9\.\d+\) covers 9 whole and 5 in part; 3 not at all\./);
+});
+
+test("moves.py keeps the before's table for the before's manifest (0.8.0's: 4, 6 and 7)", { skip: !existsSync(PYTHON) && "no venv python (uv sync)" }, () => {
+  let old;
+  try { old = execFileSync("git", ["-C", L.ROOT, "show", "v0.8.0:editors/vscode/package.json"], { encoding: "utf8", stdio: "pipe" }); }
+  catch { return; } // no v0.8.0 in this clone
+  const file = path.join(mkdtempSync(path.join(tmpdir(), "moves-")), "package.json");
+  writeFileSync(file, old);
+  const out = moves(file);
+  assert.equal(out.status, 0, out.stderr);
+  assert.match(out.stdout, /cockpit moves: 17\. The editor \(0\.8\.0\) covers 4 whole and 6 in part; 7 not at all\./);
+  // a table that names a command the manifest lacks is another build's: the script refuses it
+  const bare = JSON.parse(old);
+  bare.version = "0.9.0";
+  writeFileSync(file, JSON.stringify(bare));
+  const refused = moves(file);
+  assert.equal(refused.status, 1);
+  assert.match(refused.stderr, /names commands the manifest lacks: .*answer/);
+});
 
 test("shell keeps a quoted argument whole, as the driver's `sh` line needs", () => {
   const out = L.shell(process.execPath, `-e "console.log(JSON.stringify(process.argv.slice(1)))" node set top --title "a new title" --note 'two words'`, { encoding: "utf8" });
