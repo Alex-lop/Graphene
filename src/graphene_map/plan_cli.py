@@ -682,6 +682,9 @@ def register(cli: typer.Typer, root, open_store, fail):
     @cli.command(hidden=True)
     def state(
         as_json: bool = typer.Option(False, "--json", help="One line of JSON; without it, indented."),
+        watch: bool = typer.Option(
+            False, "--watch", help="Stay on, and print one more line each time the store changes."
+        ),
     ) -> None:
         """Print the plan as one JSON snapshot for an editor (schema 1).
 
@@ -699,6 +702,8 @@ def register(cli: typer.Typer, root, open_store, fail):
         if store is not None:
             with store:
                 why = ST.unplanned(store)
+                if why is None and watch:
+                    return stream(store, r)
                 try:
                     said = ST.snapshot(store, r) if why is None else {}
                 except Exception as no:  # stdout holds one JSON object whatever happened: an editor reads it
@@ -707,6 +712,31 @@ def register(cli: typer.Typer, root, open_store, fail):
             out(json.dumps(ST.error(why)))
             raise typer.Exit(1)
         out(json.dumps(said) if as_json else json.dumps(said, indent=2))
+
+    def stream(store, r: Path) -> None:
+        """`state --json --watch`: snapshot lines on stdout until the reader goes (its end of the pipe
+        closed, seen with poll or at the write) or a TERM or INT comes; each of those is exit 0, said to
+        no one. The store's connection is held for the whole watch: a WAL reader blocks no writer."""
+        import select
+
+        from . import state as ST
+
+        fd = sys.stdout.fileno()
+        hung = select.poll()
+        hung.register(fd, select.POLLERR | select.POLLHUP)
+        going = [True]
+        for sig in (signal.SIGTERM, signal.SIGINT):
+            signal.signal(sig, lambda *_: going.__setitem__(0, False))
+
+        def say(text: str) -> None:
+            try:
+                sys.stdout.write(text + "\n")
+                sys.stdout.flush()
+            except BrokenPipeError:  # the reader went between two looks: nothing more to say, exit 0
+                os.dup2(os.open(os.devnull, os.O_WRONLY), fd)  # so the exit's own flush is quiet
+                going[0] = False
+
+        ST.follow(store, r, say, lambda: going[0] and not hung.poll(0))
 
     @cli.command()
     def demo(
