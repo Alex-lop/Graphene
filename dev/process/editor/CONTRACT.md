@@ -28,7 +28,9 @@ No new top-level command.
      directory its agent works in while it runs or after it came back, else null), `base` (the commit
      its work starts from, else null), `attempts` (int);
    - each fork: `attempts` (int), `idle` (seconds quiet while it runs, else null), `checkout`
-     (its own directory while it runs, else null).
+     (its own directory while it runs, else null);
+   - top level `stand_in` (added at 02:11): true when every model call on record was a stand-in's, so a
+     free race says on screen that it is one.
 3. **A diff the editor can open.** `graphene node diff <id> [--fork X] --json` prints
    `{"repo": DIR, "left": REV, "right": REV-or-null, "files": [{"path": P, "status": "M|A|D|R",
    "old": P-or-null}], "said": [lines]}`: `right` null means the working tree in `repo` (a running

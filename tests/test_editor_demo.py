@@ -157,3 +157,28 @@ def test_the_flag_has_help_in_the_budget_and_the_reference_names_it():
     assert len(flag.help) <= 80 and "directory" in flag.help
     how = (Path(__file__).resolve().parents[1] / "docs/HOW_IT_WORKS.md").read_text()
     assert "`graphene demo --into DIR`" in how
+
+
+def test_a_replays_quiet_seconds_are_counted_on_the_recordings_clock(tmp_path):
+    """Watch the Demo said "94948 s quiet" on every running task. The replay's rows are the recording's,
+    and the snapshot counted from the wall clock. A replay's clock is its newest row."""
+    target = tmp_path / "auto"
+    proc = play("--auto", "--into", str(target), "--speed", "4", cwd=tmp_path)
+    try:
+        running = []
+
+        def some_running():
+            if not (target / ".git").exists():
+                return False
+            try:
+                s = state(target)
+            except Exception:  # the store is still being made
+                return False
+            running[:] = [t for t in s.get("tasks", []) if t["state"] == "running"]
+            return bool(running)
+
+        assert wait_for(some_running, 60)
+        assert all(t["idle"] is not None and t["idle"] < 600 for t in running), [t["idle"] for t in running]
+    finally:
+        proc.send_signal(signal.SIGTERM)
+        proc.wait(30)

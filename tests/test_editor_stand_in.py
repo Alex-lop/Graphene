@@ -38,3 +38,4 @@ def test_one_real_call_makes_it_no_stand_in(repo):
         usage(store, "a stand-in")
         usage(store, "token factory")
     assert snapshot()["stand_in"] is False
+
