@@ -437,7 +437,7 @@
     "build": "node esbuild.mjs",
     "check": "tsc --noEmit -p .",
     "test": "npm run check && node --experimental-strip-types --test \"test/*.test.ts\" && npm run build && node test/smoke.cjs",
-    "package": "vsce package --no-dependencies --baseContentUrl https://github.com/Alex-lop/Graphene/blob/main/editors/vscode --baseImagesUrl https://raw.githubusercontent.com/Alex-lop/Graphene/main/editors/vscode -o graphene-0.8.0.vsix",
+    "package": "vsce package --no-dependencies --baseContentUrl https://github.com/Alex-lop/Graphene/blob/main/editors/vscode --baseImagesUrl https://raw.githubusercontent.com/Alex-lop/Graphene/main/editors/vscode -o graphene-$npm_package_version.vsix",
     "vscode:prepublish": "npm run build"
   },
   "devDependencies": {
