@@ -32,7 +32,8 @@ for (let i = 0; i < runs; i++) {
   for (;;) {
     let seen = false;
     for (const f of await L.graphFrames(s.page)) {
-      const titles = await f.evaluate(() => [...document.querySelectorAll("#view g.task text.title")].map((t) => t.textContent)).catch(() => []);
+      // the graph's boxes, or the side bar's lanes when the canvas is narrow: either drawing shows the title
+      const titles = await f.evaluate(() => [...document.querySelectorAll("#view g.task text.title, #lanes:not([hidden]) .lane[data-id] .l-title")].map((t) => t.textContent)).catch(() => []);
       if (titles.some((t) => t.startsWith(short))) seen = true;
     }
     if (seen) break;
