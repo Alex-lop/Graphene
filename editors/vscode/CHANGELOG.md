@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.9.0
+## 0.9.0 (unreleased)
 
 Beside Graphene 0.9.0: the editor night (26 to 27 October 2026).
 
@@ -20,7 +20,13 @@ Beside Graphene 0.9.0: the editor night (26 to 27 October 2026).
 - First run: finds `graphene` in `~/.local/bin` and uv's tool dir, offers to install it after you say yes; Set
   Up This Folder is two quick picks.
 - Ready for the Marketplace and Open VSX: an icon, a README for the listing page, and a workflow that
-  publishes the `.vsix` to both.
+  publishes the `.vsix` to both. The `.vsix` is named for the version in package.json.
+- A refused key offers Set Key (`graphene key set` in a terminal); Mark Your Task Done finishes a task of your
+  own; Auto…'s first choice is Plan first; a task that came back can be dropped.
+- Rounds counts each round's own accepts; a race on the stand-in says so first; link mode disarms from outside
+  and offers Cancel; the pane's acts stay in reach under a long note.
+- Tried in Cursor 3.25.6 (VS Code 1.128) by the harness in `editors/vscode/e2e`: the `.vsix` installs and
+  activates, and the end-to-end check passes there.
 
 ## 0.8.0
 

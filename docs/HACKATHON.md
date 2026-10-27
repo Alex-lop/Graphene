@@ -24,8 +24,8 @@ what it cost at list price. They were practice and takes for the video; none was
   (`tests/fake_tokenfactory.py`) and a Docker stand-in for Sandboxes. The replay `graphene demo` ships is the
   stand-in's, and its top line says "a scripted stand-in, no model ran".
 
-<!-- For Alex: send this only once PyPI serves 0.8.0 (`uvx --refresh --from 'graphene-map==0.8.0' graphene
---version` says 0.8.0; without --refresh, uvx may answer from an environment it made before): the testing
+<!-- For Alex: send this only once PyPI serves 0.9.0 (`uvx --refresh --from 'graphene-map==0.9.0' graphene
+--version` says 0.9.0; without --refresh, uvx may answer from an environment it made before): the testing
 instructions at the end, `demo --auto` first, depend on it. -->
 
 ## Inspiration
@@ -160,7 +160,8 @@ runs unless you run it, or set `GRAPHENE_SHAPE` to run them after each `graphene
   commands for every change. A harness (`editors/vscode/e2e`, Playwright's Electron driver) installs the
   `.vsix` in a profile of its own in real VS Code and Cursor, races a fixture against the scripted stand-in and
   measures what it sees. The before and after of 27 October are in `dev/process/editor/`: the smallest text the
-  side bar drew went from 4.61 px at 280 px wide to 11 px at every width and theme.
+  side bar drew went from 4.61 px at 280 px wide to 11 px at every width and theme, a store write reached the
+  screen in 31 ms at the median against 123, and idle the app took 2.3 % of a core against 10.7.
 - **Any OpenAI-compatible host**: the same Nemotron loop runs on NVIDIA's API catalog (NIM), Ollama or any other
   host with `--endpoint`, the writes held the same way; only a host on your machine counts as a stand-in.
 - **Built the way it is meant to be used.** I set the direction and coding agents do much of the writing, in lanes,
@@ -384,7 +385,7 @@ checked again since.
 | auto mode: 2 rounds, 4 tasks landed, 12 forks raced, $0.0193 at the stand-in's prices | `tests/test_demo_auto.py` (the scripted stand-in, no model ran) |
 | 27,469 lines, none before the period; 181 and 971 commits | git, the commands above, at `921834de` |
 | a stranger on 0.8.0's extension: 11 minutes to the first graph, 28 to the first accept from it, 9 guesses | `dev/process/editor/before/stranger.md` (one model session with a driver, not a person; a stand-in in place of Token Factory) |
-| the side bar's smallest text, 4.61 px at 280 px wide before and 11 px at every width after; 2.69 s from install to the first graph and p50 574 ms from a store write to the screen, before | `dev/process/editor/before/README.md`, `dev/process/editor/after/code-smallest-text.json` (the harness, `editors/vscode/e2e/measure/`) |
+| the side bar's smallest text, 4.61 px at 280 px wide before and 11 px at every width after; a store write to the screen, p50 123 ms before and 31 ms after; idle, 10.7 % of a core before and 2.3 % after; 2.4 and 2.5 s from install to the first graph | `dev/process/editor/after/README.md`, run back to back with `editors/vscode/e2e/measure/` |
 | the questions against the paragraph; the plan against the paragraph with Nemotron | none yet: registered in `dev/test/results-2026-09-28-shaping.md` and `dev/test/results-2026-09-28-live-prereg.md` |
 
 ## Testing instructions

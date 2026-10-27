@@ -30,7 +30,7 @@ def test_the_manifest_names_the_product_and_its_version():
     assert MANIFEST["name"] == "graphene-vscode"
     assert MANIFEST["displayName"] == "Graphene"
     assert MANIFEST["publisher"] == "alex-lop"
-    assert MANIFEST["version"] == "0.8.0"
+    assert MANIFEST["version"] == "0.9.0"
     assert MANIFEST["license"] == "Apache-2.0"
     assert MANIFEST["repository"]["url"] == PYPROJECT["project"]["urls"]["Repository"]
     assert MANIFEST["engines"]["vscode"] == "^1.95.0"
@@ -108,7 +108,7 @@ def test_the_licence_is_the_repositorys():
 
 def test_the_readme_says_how_it_is_installed_and_whose_click_it_is():
     readme = (EXT / "README.md").read_text()
-    assert "code --install-extension graphene-0.8.0.vsix" in readme
+    assert "code --install-extension graphene-0.9.0.vsix" in readme
     assert "graphene state --json" in readme
     assert "A click in VS Code is the person's" in readme
     assert "uv tool install graphene-map" in readme
