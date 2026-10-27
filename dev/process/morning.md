@@ -1,6 +1,6 @@
 # The editor night, 26 to 27 October 2026
 
-*Kept current as the night goes. Last written at 00:40, when the lanes started.*
+*Kept current as the night goes. Last written at 00:50.*
 
 ## Your 15 minutes
 
@@ -17,10 +17,16 @@ Not written yet.
 3. **The review.** Lane 5 runs from the start: two fresh reviewers on auto mode, the envelope, state and the
    gate. The extension's half runs once the new editor lands.
 4. **Your notes.** `~/graphene-notes.md` did not exist when the night started.
-5. **The browser spike.** Running.
+5. **The browser spike** (`dev/process/editor/browser-spike.md`, $0.02 of Haiku). Yes, PreToolUse and PostToolUse
+   fire for MCP tools on Claude Code 2.1.311 (18 calls of 18). A screenshot reaches the hook as base64 (19 to
+   300 KB), and the store keeps 9 KB of it, which is no longer an image: a trail needs the PNG kept beside it.
 6. **Decide.** Nothing yet.
 7. **Broken or risky.** No Token Factory tonight: `GRAPHENE_AGENT_LIVE_USD` was not set, so lane 7's live takes
-   do not run. The stand-in rehearsal and the b-roll still do.
+   do not run. The stand-in rehearsal and the b-roll still do. Two things of tonight's are on your screen, both
+   safe to close: a VS Code window "Welcome — wordkit" (lane 4's scratch fixture, opened in your running VS Code
+   at 00:31 because its profile's path was too long; Restricted Mode, nothing ran; it is in your recents too),
+   and a macOS prompt "WezTerm wants access to control System Events" (answer Don't Allow). Every lane now
+   launches VS Code with a short profile path.
 
 ## How the night runs
 
@@ -29,7 +35,7 @@ The work is in a fresh clone of GitHub's `main`, on `night/editor`, never in you
 Each lane builds in its own clone; a skeptic who didn't write it reviews it; a fixer pairs each fault with the
 test that failed before it. Subagents run on Fable first and on Opus 5.5 once Fable's limit hits.
 
-| Lane | What | State at 00:40 |
+| Lane | What | State at 00:50 |
 |---|---|---|
 | 0 | the harness: real VS Code and Cursor driven by Playwright, the before | building |
 | 1 | the graph, readable at any width, the race visible | building |
@@ -40,7 +46,7 @@ test that failed before it. Subagents run on Fable first and on Opus 5.5 once Fa
 | 5 | auto mode reviewed by two who weren't there | reading |
 | 6 | the docs | at the end |
 | 7 | the live take and the b-roll | after lanes 0 to 2 |
-| 8 | the browser spike | running |
+| 8 | the browser spike | done: two answers, $0.02 |
 
 ## Branches and rollback
 
