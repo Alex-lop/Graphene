@@ -164,10 +164,12 @@ def snapshot(store, root: Path, now: float | None = None) -> dict:
     bill = NR.bill(rows)
     wide = M.width(rows)
     need, running, proven, total = m.scoreboard()
+    by_id = {n.id: n for n in P.nodes(store)}  # each task's checkout and base, as the plan keeps them
     return {
         "schema": SCHEMA,
         "graphene": __version__,
         "repo": str(root),
+        "replay": replay(store),
         "cursor": cursor(store),
         "goal": P.goal(store) or store.meta("goal:proposed") or "",
         "first": m.first,
@@ -195,11 +197,23 @@ def snapshot(store, root: Path, now: float | None = None) -> dict:
             for n in nodes
             if kids.get(n.id)
         ],
-        "tasks": [task(m, t, by.get(t.id, [])) for t in m.tasks.values()],
+        "tasks": [task(m, t, by.get(t.id, []), by_id.get(t.id), root) for t in m.tasks.values()],
         "edges": [[need_id, n.id, "needs"] for n in nodes for need_id in n.needs if need_id in ids]
         + [[a, b, kind] for a, b, kind in m.extra_edges],
         "news": news(store, m),
     }
+
+
+def replay(store) -> dict | None:
+    """What a replay's store says of itself, or None in a real project's: `graphene demo --into DIR` writes
+    the plan_meta key `replay` with what the screen's top line says, `shown` (a scripted stand-in, no model
+    ran; or as it ran, live), `day` and `repository`. An editor shows a replay as one, and runs nothing."""
+    raw = store.meta("replay")
+    try:
+        said = json.loads(raw) if raw else None
+    except ValueError:
+        return None
+    return {k: said.get(k) for k in ("shown", "day", "repository")} if isinstance(said, dict) else None
 
 
 def chosen(store, key: str) -> str:
@@ -208,10 +222,13 @@ def chosen(store, key: str) -> str:
     return Path(said[0]).name if said else ""
 
 
-def task(m, t, log: list[dict]) -> dict:
+def task(m, t, log: list[dict], node: P.Node | None = None, root: Path | None = None) -> dict:
     """One task as the brief's schema has it. Its model and spend are the cockpit's once the race lane adds
     them to Task and Fork (`model`, `usd`); until then, and where it says nothing, the meter's: the attempt
-    going now names the model, the task's usage rows its dollars, and a fork's own attempts both of its."""
+    going now names the model, the task's usage rows its dollars, and a fork's own attempts both of its.
+    The editor night's keys (siblings, schema 1): `why`, the reason it came back; `checkout`, the directory
+    its agent works in while it runs or after it came back; `base`, the commit its work starts from;
+    `attempts`, the last hold's own, or a fork's each; a running fork's `idle` and `checkout`."""
     from . import meter as M
     from . import node_record as NR
     from .cockpit.model import needs_you
@@ -230,8 +247,14 @@ def task(m, t, log: list[dict]) -> dict:
         spent = getattr(f, "usd", None)
         if spent is None:
             spent = round(sum((a["dollars"] for a in mine), 0.0), 6)
+        copy = root / ".graphene" / "worktrees" / f"{t.id}.{f.letter}" if root else None
+        runs = f.state == "running"
         forks.append({"letter": f.letter, "state": f.state, "why": f.why, "lines": f.lines, "model": its,
-                      "usd": spent})  # fmt: skip
+                      "usd": spent, "attempts": len(mine),
+                      "idle": round(f.idle, 1) if runs and f.idle is not None else None,
+                      "checkout": str(copy) if runs and copy and copy.is_dir() else None})  # fmt: skip
+    own = [a for a in tries if not a.get("fork")]  # a forked hold's attempts are its forks': the most of one
+    where = (node.checkout or "") if node and t.state in ("running", "came back") else ""
     return {
         "id": t.id,
         "title": t.title,
@@ -255,6 +278,10 @@ def task(m, t, log: list[dict]) -> dict:
         "forks": forks,
         "kept": {"letter": t.kept[0], "why": t.kept[1], "by": t.kept[2]} if t.kept else None,
         "hollow": t.hollow,
+        "why": t.note if t.state == "came back" else "",
+        "checkout": where if where and Path(where).is_dir() else None,
+        "base": (node.base_sha or None) if node else None,
+        "attempts": len(own) or max((f["attempts"] for f in forks), default=0),
     }
 
 

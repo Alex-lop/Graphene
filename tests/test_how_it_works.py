@@ -19,7 +19,10 @@ hosts behind Graphene's own loop (`--endpoint`), the `{prompt}` and `{prompt_fil
 agents with how they are held, a port per task, and Privacy a bullet for the other hosts; raised to 5,000,
 nothing cut, a row a setting being the table's own rule and a key with no sentence a key nobody finds. It
 was 5,000 until the same night's later additions (`checks:`, `--plan`, `:auto`, `.git/` and the envelope's
-limits); raised to 5,100."""
+limits); raised to 5,100. It was 5,100 until the editor night (27 October), when The rest gained the commands
+an editor reads and writes through (`state --json --watch`, `node diff --json`, the plan's text from a pipe,
+one sentence for one step, a replay into a directory of its own); raised to 5,300, after four facts said
+elsewhere were cut."""
 
 import re
 from pathlib import Path
@@ -34,7 +37,7 @@ SECTIONS = ["The plan", "The board", "The views", "Plan first", "Ask", "Run", "F
 
 
 def test_it_is_under_the_cap():
-    assert len(HOW.split()) < 5100
+    assert len(HOW.split()) < 5300
 
 
 def test_every_section_is_there_in_order():
