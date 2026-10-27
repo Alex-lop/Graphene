@@ -25,6 +25,7 @@ export interface NewStep {
   needs?: string[];
   scope?: string[];
   check?: string | null;
+  signoff?: boolean; // a person's sign-off finishes it: the CLI refuses a leaf with neither a check nor this
 }
 
 export const stateJson = (): string[] => ["state", "--json"];
@@ -38,20 +39,28 @@ export const init = (): string[] => ["init"]; // asks which planner and executor
 export const keySet = (endpoint?: string): string[] => ["key", "set", ...(endpoint ? ["--endpoint", endpoint] : [])];
 export const refreshable = (): string[] => ["--version"];
 
+// Free text (a goal, a title, a note, an answer) comes last, after `--`: typed words that start with a dash
+// are words to the CLI, not an option it refuses.
 export function auto(goal: string, budget?: number | null, planOnly = false): string[] {
-  const argv = ["auto", goal];
+  const argv = ["auto"];
   if (budget !== null && budget !== undefined && Number.isFinite(budget)) argv.push("--budget", String(budget));
   if (planOnly) argv.push("--plan"); // the plan your envelope accepts, shown, and nothing run
-  return argv;
+  return [...argv, "--", goal];
 }
 
 export function addStep(s: NewStep): string[] {
-  const argv = ["node", "add", s.title];
+  const argv = ["node", "add"];
   if (s.parent) argv.push("--parent", s.parent);
   for (const n of s.needs ?? []) argv.push("--needs", n);
   for (const g of s.scope ?? []) argv.push("--scope", g);
   if (s.check) argv.push("--check", s.check);
-  return argv;
+  if (s.signoff) argv.push("--signoff");
+  return [...argv, "--", s.title];
+}
+
+/** Add Step by Hand's four boxes as one step: a check when one was typed, else the person's sign-off. */
+export function byHand(title: string, parent: string | null, needs: string[], scope: string, check: string): string[] {
+  return addStep({ title: title.trim(), parent, needs, scope: globs(scope), check: check.trim() || null, signoff: !check.trim() });
 }
 
 /** B waits on A: adds to B's needs, keeping what it already waits on. */
@@ -72,7 +81,7 @@ export function editStep(id: string, field: Field, value: string | string[]): st
 export const dropStep = (id: string): string[] => ["node", "drop", id];
 export const accept = (id?: string | null): string[] => (id ? ["plan", "accept", id] : ["plan", "accept"]);
 export const acceptAll = (): string[] => ["plan", "accept"];
-export const tell = (id: string, text: string): string[] => ["board", "note", text, "--about", id];
+export const tell = (id: string, text: string): string[] => ["board", "note", "--about", id, "--", text];
 /** One setting of the envelope (`auto`, `budget`, `tasks`, `rounds`, `forks`), as the person sets it. */
 export const setting = (key: string, value: string): string[] => ["config", "set", key, value];
 
@@ -91,6 +100,13 @@ export const nodeDiff = (node: string, fork?: string | null): string[] =>
 export const pickFork = (node: string, fork: string): string[] => ["node", "pick", id(node), id(fork)];
 export const signOff = (node: string): string[] => ["node", "signoff", id(node)];
 export const planText = (): string[] => ["plan", "--text"];
+/** The tasks Open Changes can show, when the palette gives none: those with a diff to read (running, in
+ *  review, came back, done). Compare Forks: those with lettered forks racing. */
+type Forked = { id: string; state: string; forks: { letter: string }[] };
+export const withChanges = <T extends Forked>(tasks: T[]): T[] =>
+  tasks.filter((t) => ["running", "review", "came back", "done"].includes(t.state));
+export const forked = <T extends Forked>(tasks: T[]): T[] => tasks.filter((t) => t.forks.some((f) => f.letter));
+
 /** The plan's text from stdin, applied all or none; `since` is the snapshot's cursor when the text was read. */
 export const planApply = (since: number): string[] => ["plan", "edit", "--from", "-", "--json", "--since", String(since)];
 /** One sentence, one proposed step, after a task or under a goal. The sentence comes after `--`: free text. */
@@ -219,20 +235,39 @@ export function globs(text: string): string[] {
   return text.split(/[\s,]+/).map((g) => g.trim()).filter(Boolean);
 }
 
+export const OLDER = "This Graphene is older than the extension: it needs 0.8 (`uv tool upgrade graphene-map`).";
+
+/** A CLI that does not know an option or a command of this extension's is an older one: that is the line,
+ *  wherever the refusal is shown (an id or free text never reaches argv as an option, so nothing else says it). */
+export const older = (line: string): string => (/no such (option|command)/i.test(line) ? OLDER : line);
+
 /** The line a refusal is read from: the first non-empty line of stderr, else stdout's, else a stock line. */
 export function firstLine(stderr: string, stdout = "", fallback = "graphene said nothing"): string {
   for (const text of [stderr, stdout]) {
     const line = text.split(/\r?\n/).map((l) => l.trim()).find(Boolean);
-    if (line) return line;
+    if (line) return older(line);
   }
   return fallback;
+}
+
+/** A refusal's toast: the command, then why; the CLI's own usage line names the command already. */
+export function refused(argv: string[], why: string): string {
+  return /^graphene /.test(why) ? why : `graphene ${argv.slice(0, 2).join(" ")}: ${why}`;
 }
 
 /** The line a refusal is read from when progress came first (`asking the planner…`): the first non-empty
  *  line of stderr that is not a progress line, one ending in an ellipsis; else `firstLine`'s. */
 export function refusal(stderr: string, stdout = "", fallback = "graphene said nothing"): string {
   const line = stderr.split(/\r?\n/).map((l) => l.trim()).find((l) => l && !l.endsWith("…"));
-  return line ?? firstLine(stderr, stdout, fallback);
+  return line ? older(line) : firstLine(stderr, stdout, fallback);
+}
+
+/** Words a model or an agent wrote (a title, a note, the CLI's line quoting one), as a notification or the
+ *  status bar shows them: text. VS Code reads `[words](command:…)` there as a link that runs on click and
+ *  `$(name)` as an icon; a space inside each pair leaves the words and takes the markup (a hover's words go
+ *  through `mdText` instead, which escapes for Markdown proper). */
+export function plain(s: string): string {
+  return s.replace(/\s+/g, " ").replace(/\]\(/g, "] (").replace(/\$\(/g, "$ (");
 }
 
 /** One line for a shell: the goal quoted so the person sees exactly what runs and may edit it. */

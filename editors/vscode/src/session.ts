@@ -17,7 +17,7 @@ export type Status = { kind: "reading" | "missing" | "uninitialised" | "error" |
 export const STORE = path.join(".graphene", "graphene.db"); // the plan's store, under the repo's root
 export const INSTALL = "Graphene is not installed, or not on this editor's PATH: `uv tool install graphene-map`, or set graphene.path.";
 const INIT = "This folder has no plan yet: run `graphene init` in it, then `graphene ask` or Graphene: Auto…";
-const OLDER = "This Graphene is older than the extension: it needs 0.8 (`uv tool upgrade graphene-map`).";
+const OLDER = C.OLDER; // the same line wherever an older CLI refuses a new shape (firstLine, refusal say it too)
 
 /** What the feature modules share: the graph's host and the Plan view. */
 export interface UI {
@@ -128,9 +128,9 @@ export class Session {
     const out = await this.run(argv);
     if (out.code !== 0) {
       const why = out.code === -1 ? INSTALL : C.firstLine(out.stderr, out.stdout);
-      void vscode.window.showErrorMessage(`graphene ${argv.slice(0, 2).join(" ")}: ${why}`);
+      void vscode.window.showErrorMessage(C.refused(argv, C.plain(why)));
     } else {
-      vscode.window.setStatusBarMessage(`$(check) ${C.firstLine(out.stdout, out.stderr, "done")}`, 6000);
+      vscode.window.setStatusBarMessage(`$(check) ${C.plain(C.firstLine(out.stdout, out.stderr, "done"))}`, 6000);
     }
     void this.refresh();
     return out.code === 0;

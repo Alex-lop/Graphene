@@ -86,10 +86,10 @@ All under `Graphene:` in the command palette; most are also in the views' menus 
 | Sign Off | a task waiting on you, from its diff |
 | Mark Your Task Done | a task of your own: `graphene node done` in a terminal, where its check runs |
 | Set Key… | `graphene key set` in a terminal, a hidden prompt; offered when a run waits on a key |
-| Open Changes / Compare Forks / Keep This Fork | a task or fork in the diff editor; a race side by side; the one to keep |
+| Open Changes / Compare Forks / Keep This Fork | a task or fork in the diff editor; a race side by side; the one to keep (from the palette, a pick of the tasks that have them) |
 | Edit Plan as Text | the plan's text form in an editor tab; save applies it |
 | Add Step… | one sentence; the planner proposes the step |
-| Add Step by Hand… | title, where, scope and check, typed |
+| Add Step by Hand… | title, where, scope and check, typed; no check means your sign-off finishes it |
 | Link… / Edit Step… / Drop Step | B waits on A; title, scope or check; drop it (`graphene plan undo` puts it back) |
 | Tell Agent… | one line a hooked agent reads before its next write |
 | Diff with the Agent's Copy | the open file against the running agent's version |

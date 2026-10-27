@@ -46,7 +46,8 @@ test("a plan with nothing for you lists nothing, and a running plan lists only w
 test("a question's moves are the board's commands: take its default, pick an option by number, answer in words", () => {
   assert.deepEqual(takeDefault("port"), ["board", "take", "port"]);
   assert.deepEqual(pickOption("port", 1), ["board", "pick", "port", "1"]);
-  assert.deepEqual(answerWords("port", "8080, the proxy has 8000"), ["board", "answer", "port", "8080, the proxy has 8000"]);
+  assert.deepEqual(answerWords("port", "8080, the proxy has 8000"), ["board", "answer", "port", "--", "8080, the proxy has 8000"]);
+  assert.deepEqual(answerWords("port", "-1, use the proxy"), ["board", "answer", "port", "--", "-1, use the proxy"], "a dash-first answer is words");
 });
 
 test("a hand-back offers what the snapshot carries, in the cockpit's order and words, then trying it again", () => {
@@ -93,7 +94,7 @@ test("an answer given with the command is the option by its words, the default, 
   const q = { id: "port", text: "which port?", default: "8000", options: ["pick a free one", "8080"], about: null, kind: "question" };
   assert.deepEqual(answerWith(q, "8080"), ["board", "pick", "port", "2"]);
   assert.deepEqual(answerWith(q, "8000"), ["board", "take", "port"]);
-  assert.deepEqual(answerWith(q, "9000, the proxy has 8080"), ["board", "answer", "port", "9000, the proxy has 8080"]);
+  assert.deepEqual(answerWith(q, "9000, the proxy has 8080"), ["board", "answer", "port", "--", "9000, the proxy has 8080"]);
 });
 
 test("a task that came back can be dropped; a running one cannot", () => {

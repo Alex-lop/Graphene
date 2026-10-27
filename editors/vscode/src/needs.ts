@@ -46,7 +46,7 @@ export function count(list: Need[]): string {
 // the moves, each the graphene command the cockpit runs for the same key
 export const takeDefault = (id: string): string[] => ["board", "take", id];
 export const pickOption = (id: string, n: number): string[] => ["board", "pick", id, String(n)]; // from 1
-export const answerWords = (id: string, words: string): string[] => ["board", "answer", id, words];
+export const answerWords = (id: string, words: string): string[] => ["board", "answer", id, "--", words]; // free text last
 export const tryAgain = (id: string): string[] => ["run", "--parallel", "4", "--node", id]; // the cockpit's ⏎
 
 /** An answer given with the command (the graph's pane sends the option it shows): one of the question's options

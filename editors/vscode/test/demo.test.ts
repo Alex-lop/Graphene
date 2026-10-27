@@ -1,7 +1,9 @@
 // The demo's session against a stand-in for the vscode module (a loader hook from this file, as
 // graph-host.test.ts does): what the graph is handed for a replay.
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { register } from "node:module";
 import { test } from "node:test";
 import type { Act, StateX } from "../src/graph/words.ts";
@@ -22,7 +24,7 @@ export async function resolve(spec, ctx, next) { return spec === "vscode" ? { ur
 `;
 register(`data:text/javascript,${encodeURIComponent(hooks)}`);
 
-const { ReplaySession, STAND_IN } = await import("../src/demo.ts");
+const { ReplaySession, STAND_IN, end } = await import("../src/demo.ts");
 const { parseReplay } = await import("../src/commands.ts");
 const { parseState } = await import("../src/state.ts");
 const { actsFor, CHANGES, replayLine } = await import("../src/graph/words.ts");
@@ -48,4 +50,26 @@ test("the store's own replay words, once read, are what the header says", () => 
   assert.equal(replayLine((s.state as StateX).replay), "replay · a scripted stand-in, no model ran · 2026-10-26");
   assert.equal(parseReplay(JSON.stringify({ replay: null })), null);
   assert.equal(parseReplay("not json"), null);
+});
+
+test("the replay's directory goes with it: at once when the editor quits, after the child's grace when the panel closes", async () => {
+  const fake = () => { const c = { exitCode: null as number | null, signal: "", kill(sig: string) { c.signal = sig; c.exitCode = 0; return true; } }; return c; };
+  const dir = () => { const d = mkdtempSync(join(tmpdir(), "graphene-demo-")); writeFileSync(join(d, "store"), ""); return d; };
+
+  const quit = dir(), q = fake();
+  end(q, quit, true); // the extension's dispose: no timer would fire, so the directory goes now
+  assert.equal(existsSync(quit), false, "the directory is gone before dispose returns");
+  assert.equal(q.signal, "SIGKILL");
+
+  const closed = dir(), c = fake();
+  end(c, closed, false); // the panel's close: TERM, then the directory once the child had its 500 ms
+  assert.equal(c.signal, "SIGTERM");
+  assert.equal(existsSync(closed), true, "the child gets its grace first");
+  await new Promise((r) => setTimeout(r, 700));
+  assert.equal(existsSync(closed), false);
+
+  const gone = dir(), g = fake(); g.exitCode = 1; // a child that ended on its own is not killed again
+  end(g, gone, true);
+  assert.equal(g.signal, "");
+  assert.equal(existsSync(gone), false);
 });
