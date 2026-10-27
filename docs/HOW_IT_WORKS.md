@@ -391,10 +391,11 @@ takes the hooks out, which ends the recording; what they recorded stays until yo
 
 `graphene --help` lists ten commands. These work too.
 
-For an editor, each a line of JSON: `graphene state --json` is one snapshot of the plan; `graphene state --json
---watch` stays on and prints one more each time the store changes, nothing while it does not, and ends when its
-reader closes. `graphene node diff ID --json` (`--fork X`) names the two revisions and each file's status; a task
-or a fork at work is its own directory against its base. `plan log --json --since ID`: the log's rows after ID.
+For an editor, each a line of JSON: `graphene state --json` is one snapshot of the plan;
+`graphene state --json --watch` stays on and prints one more each time the store changes, nothing while it does
+not, and ends when its reader closes. `graphene node diff ID --json` (`--fork X`) names the two revisions and each
+file's status; a task or a fork at work is its own directory against its base. `plan log --json --since ID`: the
+log's rows after ID.
 
 - `graphene demo --cheat` plays a script, not a model, that tries seven ways round the locks against the real hook,
   git and check: six refused, one flagged, at $0. `graphene demo --live` replays a live run on Nemotron through

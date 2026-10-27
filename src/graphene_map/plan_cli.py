@@ -1721,7 +1721,7 @@ def register(cli: typer.Typer, root, open_store, fail):
             False, "--json", help="The two revisions and each file's status, as one line of JSON."
         ),
     ) -> None:
-        """Show what a leaf changed: the merge that landed it, what it left, or its work so far."""
+        """Show what a leaf changed: what landed, what it left, or its work so far."""
         from .precheck import state
 
         def going(where: str, base: str | None, what: str) -> tuple[str, list[str], str | None, None, list]:
