@@ -53,7 +53,7 @@ const allAt0 = first.reduce((a, r) => a + r.ms, 0);
 const grapheneSeen = new Map(); // pid -> last CPU ms seen (a process that ended keeps its last)
 let samples = 0;
 while (Date.now() - t0 < seconds * 1000) {
-  await new Promise((r) => setTimeout(r, 1000));
+  await new Promise((r) => setTimeout(r, 200)); // a `graphene state --json` lives about 100 ms
   for (const r of tree()) if (isGraphene(r.command)) grapheneSeen.set(r.pid, Math.max(grapheneSeen.get(r.pid) ?? 0, r.ms));
   samples++;
 }
@@ -65,7 +65,7 @@ const grapheneMs = [...grapheneSeen.values()].reduce((a, b) => a + b, 0);
 const pct = (ms) => (ms / 10 / elapsed).toFixed(1);
 console.log(`${app.name}: idle over ${elapsed.toFixed(0)} s with the views open (${samples} samples)`);
 console.log(`  extension host: ${pct(hostMs)} % (${hostMs} ms CPU)`);
-console.log(`  graphene processes seen: ${grapheneSeen.size}, ${pct(grapheneMs)} % (${grapheneMs} ms CPU, 1 s samples: a process shorter than a second may be missed)`);
+console.log(`  graphene processes seen: ${grapheneSeen.size}, ${pct(grapheneMs)} % (${grapheneMs} ms CPU, 200 ms samples: a shorter process may be missed, and the last sample of one undercounts it)`);
 console.log(`  the whole app tree: ${pct(allMs)} % (${allMs} ms CPU; ps time has 10 ms steps)`);
 await s.electronApp.close();
 rmSync(base, { recursive: true, force: true });
