@@ -4,6 +4,7 @@ import asyncio
 import json
 import os
 import subprocess
+from types import SimpleNamespace
 
 from graphene_map import demo as D
 from graphene_map import plan
@@ -15,6 +16,13 @@ from graphene_map.cockpit.replay import CockpitReplay, banner, news
 def replay(tmp_path):
     head, lines = D.load(D.SHIPPED, 1.0)
     return CockpitReplay(D.repository(tmp_path, head), head, lines), head, lines
+
+
+def still(monkeypatch):
+    """The replay's clock stands still, so only `.` moves it: a slow machine cannot play past the opening
+    frame before the test pauses (CI's macOS 3.14 took over 2 s from mount to the pause, and the first act
+    had taken a row)."""
+    monkeypatch.setattr("graphene_map.cockpit.replay.time", SimpleNamespace(monotonic=lambda: 1000.0))
 
 
 def shown(app) -> str:
@@ -235,7 +243,8 @@ def node_row(node_id, title, state, seq=1):
     return {"id": node_id, "seq": seq, "state": state, "session_id": None, "data": data}
 
 
-def test_the_replay_opens_on_the_plan_not_on_the_settings_a_recording_begins_with(tmp_path):
+def test_the_replay_opens_on_the_plan_not_on_the_settings_a_recording_begins_with(tmp_path, monkeypatch):
+    still(monkeypatch)
     head, lines = recorded(
         tmp_path,
         {"t": 0.2, "plan_meta": {"plan_first": "on", "settings:size": "auto"}, "tracked": ["app.py"]},
@@ -261,7 +270,10 @@ def logged(n, node, kind, **detail):
             "detail": json.dumps(detail)}  # fmt: skip
 
 
-def test_the_replay_names_tasks_by_their_titles_and_a_change_of_bookkeeping_leaves_the_news_up(tmp_path):
+def test_the_replay_names_tasks_by_their_titles_and_a_change_of_bookkeeping_leaves_the_news_up(
+    tmp_path, monkeypatch
+):
+    still(monkeypatch)
     head, lines = recorded(
         tmp_path,
         {"t": 0.2, "nodes": {"greet": node_row("greet", "greet says hello", "proposed")},
@@ -396,7 +408,9 @@ def test_the_replays_keys_fit_80_by_24_and_list_only_what_works_there_and_d_has_
     asyncio.run(go())
 
 
-def test_each_board_row_of_the_shipped_replay_leaves_the_screen_only_with_the_persons_act_on_it(tmp_path):
+def test_each_board_row_of_the_shipped_replay_leaves_the_screen_only_with_the_persons_act_on_it(
+    tmp_path, monkeypatch
+):
     """The recording took the question first, and under `board: auto` an assumption and a leave-out show only
     while a question is open: the first `.` took all three rows off the screen (7 need you became 4), and the
     next two narrated acts on rows that had already gone."""
@@ -404,6 +418,8 @@ def test_each_board_row_of_the_shipped_replay_leaves_the_screen_only_with_the_pe
     def acted(line):  # the items the person's acts in this change were on
         acts = [json.loads(r["detail"]) for r in line.get("node_log") or [] if r["kind"] == "board"]
         return {a["item"] for a in acts if a["act"] != "put up"}
+
+    still(monkeypatch)
 
     async def go():
         app, _, lines = replay(tmp_path)
@@ -424,11 +440,12 @@ def test_each_board_row_of_the_shipped_replay_leaves_the_screen_only_with_the_pe
     asyncio.run(go())
 
 
-def test_the_shipped_replay_shows_agent_1_stopped_then_back_while_two_agents_still_run(tmp_path):
+def test_the_shipped_replay_shows_agent_1_stopped_then_back_while_two_agents_still_run(tmp_path, monkeypatch):
     """What the README's GIF and cockpit.png show, kept when the recording is made again: agent 1's write is
     stopped in a change of its own, where it needs you while three run, and in the next change of its row
     it is back with its reason while agents 2 and 3 still run (a change between them that moves nothing on
     its row, the agent's own hand-back call in the recording of 20 October, is let by)."""
+    still(monkeypatch)
 
     async def go():
         app, _, lines = replay(tmp_path)
