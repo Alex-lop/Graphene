@@ -1717,25 +1717,41 @@ def register(cli: typer.Typer, root, open_store, fail):
         node_id: str = typer.Argument(...),
         stat: bool = typer.Option(False, "--stat", help="Only each file and how much of it changed."),
         fork: str = typer.Option(None, "--fork", help="One fork's work, by its letter, from its ref."),
+        as_json: bool = typer.Option(
+            False, "--json", help="The two revisions and each file's status, as one line of JSON."
+        ),
     ) -> None:
-        """Show what a leaf changed: the merge that landed it, or what it left."""
+        """Show what a leaf changed: the merge that landed it, what it left, or its work so far."""
         from .precheck import state
 
-        def go(store):
+        def going(where: str, base: str | None, what: str) -> tuple[str, list[str], str | None, None, list]:
+            """A task or a fork at work: its own directory, as git sees it now, against the hold's base."""
+            if not base or not Path(where).is_dir():
+                raise P.Refused(f"{node_id} is running, and {what} is not here to read: nothing to show yet")
+            return where, [], base, None, []
+
+        def go(store) -> tuple[str, list[str], str | None, str | None, list[str]]:
+            """Where to ask git, what to say first, the left revision, the right one (None: the working
+            tree there, as it stands), and the paths it is about (none: every path)."""
             n, here = P.get(store, node_id), str(root())
             if any(m.parent == n.id for m in P.nodes(store)):
                 raise P.Refused(f"{n.id} is a sub-goal: each of its leaves has its own diff")
-            if fork:  # what that fork tried, as its ref keeps it over the hold's base (run.fork_work)
+            if fork:  # its own copy while it works there; after, what it tried as its ref keeps it
                 from .run import fork_work
 
+                copy = root() / ".graphene" / "worktrees" / f"{n.id}.{fork}"
+                if n.state == P.RUNNING and copy.is_dir():
+                    return going(str(copy), n.base_sha, f"fork {fork}'s copy")
                 ref = fork_work(store, root(), n.id, fork)[0]
-                return here, [], [f"{ref}^", ref]
+                return here, [], f"{ref}^", ref, []
+            if n.state == P.RUNNING:  # its changes so far: its directory against its base
+                return going(n.checkout or here, n.base_sha, "its directory")
             ends = store.node_log(n.id, ("landed", "unlanded", "finished", "overruled"))
             kind, d = (ends[-1]["kind"], ends[-1]["detail"]) if ends else (None, {})
             if kind == "landed":  # the merge: what it brought in over its first parent
-                return here, [], [f"{d['commit']}^1", d["commit"]]
+                return here, [], f"{d['commit']}^1", d["commit"], []
             if kind == "unlanded":  # passed and not merged: its branch waits for the person
-                return here, [], [n.base_sha, d["branch"]]
+                return here, [], n.base_sha, d["branch"], []
             if kind and (not n.base_sha or not d.get("changed")):  # done by hand, or overruled: no change
                 how = "overruled" if kind == "overruled" else "done"
                 raise P.Refused(f"{n.id} was {how} with no change of its own to show")
@@ -1747,19 +1763,37 @@ def register(cli: typer.Typer, root, open_store, fail):
                 moved = ", ".join(p for p in kept if now.get(p) != kept[p])
                 said = ["done in your checkout; Graphene committed nothing"]
                 said += [f"changed since it finished, shown as it is now: {moved}"] if moved else []
-                tree = state(Path(where))[1]  # the checkout as git sees it, its new files too
-                return where, said, [n.base_sha, *([tree] if tree else []), "--", *(d.get("changed") or [])]
+                return where, said, n.base_sha, None, list(d.get("changed") or [])
             why = ("its work has not landed yet" if n.state in (P.DONE, P.REVIEW) else "nothing of it is done"
                    ) if store.node_log(n.id, ("started",)) else "nothing has run yet"  # fmt: skip
             raise P.Refused(f"{n.id} is {n.state}: {why}")
 
-        where, said, span = run(go)
-        # captured, never fd 1: watch runs a command here, its output read back (tui._cli); and plain, for
-        # its pane, whatever git's colours (color.ui=always colours a pipe too)
-        argv = ["git", "-C", where, "diff", "--no-color", *(["--stat"] if stat else []), *span]
-        shown = subprocess.run(argv, capture_output=True, text=True, errors="replace")
-        if shown.returncode:
-            fail(f"git cannot show what {node_id} changed: {shown.stderr.strip()}", 1)
+        where, said, left, right, paths = run(go)
+        # the working tree as git sees it now, its new files too, written as a tree nobody checks out
+        tree = right if right is not None else state(Path(where))[1]
+        span = [left, *([tree] if tree else []), *(["--", *paths] if paths else [])]
+
+        def git(*args: str) -> subprocess.CompletedProcess:
+            # captured, never fd 1: watch runs a command here, its output read back (tui._cli); and plain,
+            # for its pane, whatever git's colours (color.ui=always colours a pipe too)
+            argv = ["git", "-C", where, *args]
+            shown = subprocess.run(argv, capture_output=True, text=True, errors="replace")
+            if shown.returncode:
+                fail(f"git cannot show what {node_id} changed: {shown.stderr.strip()}", 1)
+            return shown
+
+        if as_json:
+            left, right = (git("rev-parse", "--verify", f"{rev}^{{commit}}").stdout.strip() if rev else rev
+                           for rev in (left, right))  # fmt: skip
+            files = []
+            for row in git("diff", "--no-color", "--name-status", "-M", *span).stdout.splitlines():
+                status, *names = row.split("\t")
+                old = names[0] if status[0] in "RC" and len(names) > 1 else None
+                files.append({"path": names[-1], "status": {"T": "M", "C": "A"}.get(status[0], status[0]),
+                              "old": old})  # fmt: skip
+            out(json.dumps({"repo": where, "left": left, "right": right, "files": files, "said": said}))
+            return
+        shown = git("diff", "--no-color", *(["--stat"] if stat else []), *span)
         for line in [*said, shown.stdout.rstrip("\n") or "git shows no difference"]:
             out(line)
 
