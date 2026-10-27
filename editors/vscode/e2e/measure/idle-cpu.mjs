@@ -67,5 +67,5 @@ console.log(`${app.name}: idle over ${elapsed.toFixed(0)} s with the views open 
 console.log(`  extension host: ${pct(hostMs)} % (${hostMs} ms CPU)`);
 console.log(`  graphene processes seen: ${grapheneSeen.size}, ${pct(grapheneMs)} % (${grapheneMs} ms CPU, 200 ms samples: a shorter process may be missed, and the last sample of one undercounts it)`);
 console.log(`  the whole app tree: ${pct(allMs)} % (${allMs} ms CPU; ps time has 10 ms steps)`);
-await s.electronApp.close();
+await L.close(s);
 rmSync(base, { recursive: true, force: true });

@@ -1,0 +1,107 @@
+{
+  "code-sidebar-280-dark.png": {
+    "px": 4.61,
+    "scale": 0.419,
+    "which": "band-label: wordkit grows three things at once: a --",
+    "view": "graph",
+    "canvas": 237
+  },
+  "code-sidebar-320-dark.png": {
+    "px": 5.48,
+    "scale": 0.498,
+    "which": "band-label: wordkit grows three things at once: a --",
+    "view": "graph",
+    "canvas": 277
+  },
+  "code-sidebar-400-dark.png": {
+    "px": 7.21,
+    "scale": 0.656,
+    "which": "band-label: wordkit grows three things at once: a --",
+    "view": "graph",
+    "canvas": 357
+  },
+  "code-sidebar-280-light.png": {
+    "px": 4.61,
+    "scale": 0.419,
+    "which": "band-label: wordkit grows three things at once: a --",
+    "view": "graph",
+    "canvas": 237
+  },
+  "code-sidebar-320-light.png": {
+    "px": 5.48,
+    "scale": 0.498,
+    "which": "band-label: wordkit grows three things at once: a --",
+    "view": "graph",
+    "canvas": 277
+  },
+  "code-sidebar-400-light.png": {
+    "px": 7.21,
+    "scale": 0.656,
+    "which": "band-label: wordkit grows three things at once: a --",
+    "view": "graph",
+    "canvas": 357
+  },
+  "code-sidebar-280-hc.png": {
+    "px": 4.61,
+    "scale": 0.419,
+    "which": "band-label: wordkit grows three things at once: a --",
+    "view": "graph",
+    "canvas": 237
+  },
+  "code-sidebar-320-hc.png": {
+    "px": 5.48,
+    "scale": 0.498,
+    "which": "band-label: wordkit grows three things at once: a --",
+    "view": "graph",
+    "canvas": 277
+  },
+  "code-sidebar-400-hc.png": {
+    "px": 7.21,
+    "scale": 0.656,
+    "which": "band-label: wordkit grows three things at once: a --",
+    "view": "graph",
+    "canvas": 357
+  },
+  "code-panel-1280x800-dark.png": {
+    "px": 10.74,
+    "scale": 0.976,
+    "which": "band-label: wordkit grows three things at once: a --",
+    "view": "graph",
+    "canvas": 882
+  },
+  "code-panel-1920x1050-dark.png": {
+    "px": 11,
+    "scale": 1,
+    "which": "band-label: wordkit grows three things at once: a --",
+    "view": "graph",
+    "canvas": 1522
+  },
+  "code-panel-1280x800-light.png": {
+    "px": 10.74,
+    "scale": 0.976,
+    "which": "band-label: wordkit grows three things at once: a --",
+    "view": "graph",
+    "canvas": 882
+  },
+  "code-panel-1920x1050-light.png": {
+    "px": 11,
+    "scale": 1,
+    "which": "band-label: wordkit grows three things at once: a --",
+    "view": "graph",
+    "canvas": 1522
+  },
+  "code-panel-1280x800-hc.png": {
+    "px": 10.74,
+    "scale": 0.976,
+    "which": "band-label: wordkit grows three things at once: a --",
+    "view": "graph",
+    "canvas": 882
+  },
+  "code-panel-1920x1050-hc.png": {
+    "px": 11,
+    "scale": 1,
+    "which": "band-label: wordkit grows three things at once: a --",
+    "view": "graph",
+    "canvas": 1522
+  }
+}

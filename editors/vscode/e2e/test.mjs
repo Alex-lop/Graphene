@@ -2,7 +2,7 @@
 // side bar's Graph view and in the graph panel of real VS Code. It fails when the graph does not render them.
 // VSCODE_EXECUTABLE names the app (CI: a build @vscode/test-electron downloads, under xvfb); VSIX the package.
 import { execFileSync } from "node:child_process";
-import { rmSync } from "node:fs";
+import { existsSync, rmSync } from "node:fs";
 import path from "node:path";
 import * as L from "./lib.mjs";
 
@@ -22,6 +22,12 @@ try {
     execFileSync(graphene, ["node", "add", title, "--id", id, "--scope", `wordkit/${id}.py`, "--check", "true"], { cwd: fx.dir, env: fx.env, stdio: "pipe" });
   }
   session = await L.launch(app, profile, fx.dir, { width: 1280, height: 800 });
+  if (session.size.width !== 1280 || session.size.height !== 800) throw new Error(`the window took ${JSON.stringify(session.size)}, not 1280x800`);
+  const inner = async () => session.page.evaluate(() => [window.innerWidth, window.innerHeight]);
+  // setSize says what the window took: a size that fits every display, so it is the one asked for
+  const got = await L.setSize(session.electronApp, session.page, 1200, 700);
+  if (JSON.stringify(await inner()) !== JSON.stringify([got.width, got.height]) || got.width !== 1200) throw new Error(`setSize said ${JSON.stringify(got)}, the window is ${await inner()}`);
+  await L.setSize(session.electronApp, session.page, 1280, 800);
   await L.openSidebar(session.page);
   const side = await L.waitForGraph(session.page, { min: TASKS.length, timeout: 60000 });
   const shown = await L.readGraph(side.frame);
@@ -41,7 +47,8 @@ try {
   failed = err;
   if (session) await L.shot(session.page, path.join(base, "failed.png")).catch(() => {});
 } finally {
-  await session?.electronApp.close().catch(() => {});
+  if (session) await L.close(session);
+  if (session && app.name === "cursor" && existsSync(L.cursorProjectDir(session.folder))) failed ??= new Error(`Cursor's ${L.cursorProjectDir(session.folder)} is still there`);
   if (failed) {
     console.error("e2e: failed", failed.message, `(profile kept at ${base})`);
     process.exit(1);

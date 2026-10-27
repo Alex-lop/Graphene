@@ -29,7 +29,7 @@ for (let i = 0; i < runs; i++) {
   const t3 = Date.now();
   times.push({ install_s: (t1 - t0) / 1000, launch_s: (t2 - t1) / 1000, graph_s: (t3 - t2) / 1000, total_s: (t3 - t0) / 1000, tasks: g.tasks });
   console.log(`run ${i + 1}: ${JSON.stringify(times.at(-1))}`);
-  await s.electronApp.close();
+  await L.close(s);
   rmSync(base, { recursive: true, force: true });
 }
 const med = (k) => times.map((t) => t[k]).sort((a, b) => a - b)[Math.floor(times.length / 2)];

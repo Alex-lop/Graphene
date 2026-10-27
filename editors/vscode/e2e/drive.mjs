@@ -12,12 +12,11 @@
 //   frames             print every frame's text
 //   graph              print what the graph frames show, as JSON
 //   sidebar N          set the side bar's width in px
-//   size WxH           set the window's content size
+//   size WxH           set the window's content size; answers with the size it took (what fits the display)
 //   theme NAME         set the colour theme (dark, light, hc, or a theme's name)
 //   auto               start `graphene auto` against the stand-in in the fixture (once)
-//   sh CMD             run a graphene command in the fixture (CMD after `graphene`), print its output
+//   sh CMD             run a graphene command in the fixture (CMD after `graphene`, quoted as in a shell), print its output
 //   quit               close the app and stop
-import { execFileSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import path from "node:path";
@@ -70,10 +69,10 @@ async function run(line) {
     case "frames": return (await L.framesText(page)).map((f) => `--- ${f.url}\n${f.text}`).join("\n") || "(no text)";
     case "graph": { const out = []; for (const f of await L.graphFrames(page)) out.push(await L.readGraph(f)); return JSON.stringify(out, null, 1); }
     case "sidebar": return `side bar ${await L.setSidebarWidth(page, Number(rest[0]))} px`;
-    case "size": { const [w, h] = rest[0].split("x").map(Number); await L.setSize(session.electronApp, page, w, h); return `size ${w}x${h}`; }
+    case "size": { const [w, h] = rest[0].split("x").map(Number); const got = await L.setSize(session.electronApp, page, w, h); return `size ${got.width}x${got.height}${got.width !== w || got.height !== h ? ` (asked ${w}x${h})` : ""}`; }
     case "theme": await L.setTheme(page, profile, L.THEMES[text] || text); return `theme ${L.THEMES[text] || text}`;
     case "auto": return startAuto();
-    case "sh": return execFileSync(graphene, rest, { cwd: fx.dir, env: fx.env, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+    case "sh": return L.shell(graphene, text, { cwd: fx.dir, env: fx.env, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
     case "quit": setTimeout(quit, 50); return "bye";
     case "": return "";
     default: return `err: unknown command ${cmd}`;
@@ -81,14 +80,15 @@ async function run(line) {
 }
 
 async function quit() {
-  await session.electronApp.close().catch(() => {});
+  await L.close(session);
   standin?.stop();
   auto?.kill("SIGTERM");
   process.exit(0);
 }
 
 let busy = Promise.resolve();
-const server = createServer((sock) => {
+// allowHalfOpen: `nc` sends its end-of-input before the answer comes; without it node drops the answer
+const server = createServer({ allowHalfOpen: true }, (sock) => {
   let buf = "", ended = false;
   const pending = [];
   const drain = () => {
