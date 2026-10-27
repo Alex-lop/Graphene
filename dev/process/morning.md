@@ -10,7 +10,7 @@ A fresh terminal. Each block says what it shows. [TIMED]
 # 1. The night's build in a clone of its own, and the CLI it needs (about 3 minutes)
 git clone -q -b night/editor https://github.com/Alex-lop/Graphene ~/graphene-night && cd ~/graphene-night
 uv sync -q && (cd editors/vscode && npm ci --silent && npm run package)
-uv tool install --force --from . 'graphene-map[nemotron]'   # your graphene becomes 0.9.0; undo: --force graphene-map==0.8.0
+uv tool install --force '.[nemotron]'   # your graphene becomes 0.9.0; undo: uv tool install --force 'graphene-map[nemotron]==0.8.0'
 graphene --version                                           # graphene 0.9.0
 ```
 
