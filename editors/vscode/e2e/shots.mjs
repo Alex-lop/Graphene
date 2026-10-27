@@ -33,7 +33,7 @@ if (!flag("--during")) {
   const code = await new Promise((r) => auto.on("exit", r));
   say(`the race ran to its end (exit ${code}, log ${autoLog})`);
 }
-const session = await L.launch(app, profile, fx.dir, { width: 1280, height: 800, video });
+const session = await L.launch(app, profile, fx.dir, { width: 1280, height: 800, video, standin: standin?.url });
 say("launched");
 if (flag("--during")) auto = L.startAuto(fx, { log: autoLog });
 await L.openSidebar(session.page);

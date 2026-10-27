@@ -166,14 +166,24 @@ export function startAuto(fixture, { rounds = 2, forks = 3, log } = {}) {
 }
 
 /** Launch the app on a folder with the profile. Returns {app, page, size}. */
-export async function launch(app, profile, folder, { width = 1280, height = 800, video, timeout = 90000 } = {}) {
+// Alex's ~/.zshenv exports a real Token Factory key into every zsh: VS Code's terminals, and the shell VS Code reads
+// its environment from at start. The marks are stripped here, so to graphene such a terminal is the person. Every
+// app this launches gets an empty ZDOTDIR (no profile is read), the stand-in's fake key, and a Token Factory URL
+// that is the stand-in's or a dead local port, so nothing it starts can reach the real endpoint or spend.
+export const DEAD_URL = "http://127.0.0.1:9/v1";
+export function safeEnv(standin) {
+  const zdot = path.join(SHORT, "gv-zdot");
+  mkdirSync(zdot, { recursive: true });
+  return { ZDOTDIR: zdot, NEBIUS_API_KEY: "fake-key", GRAPHENE_KEYCHAIN: "off", GRAPHENE_TOKENFACTORY_URL: standin || DEAD_URL };
+}
+export async function launch(app, profile, folder, { width = 1280, height = 800, video, timeout = 90000, standin } = {}) {
   const args = [
     folder,
     "--user-data-dir", profile.userDataDir, "--extensions-dir", profile.extensionsDir,
     "--skip-welcome", "--skip-release-notes", "--disable-updates", "--disable-telemetry", "--disable-crash-reporter",
     "--disable-workspace-trust", "--no-cached-data", "--disable-gpu", "--new-window",
   ];
-  const env = { ...cleanEnv(), VSCODE_SKIP_PRELAUNCH: "1", ELECTRON_ENABLE_LOGGING: process.env.E2E_LOG ? "1" : undefined };
+  const env = { ...cleanEnv(), ...safeEnv(standin), VSCODE_SKIP_PRELAUNCH: "1", ELECTRON_ENABLE_LOGGING: process.env.E2E_LOG ? "1" : undefined };
   delete env.ELECTRON_RUN_AS_NODE;
   const options = { executablePath: app.exe, args, env, timeout };
   if (video) {
@@ -319,7 +329,9 @@ export async function waitForGraph(page, { min = 1, timeout = 60000 } = {}) {
   const t0 = Date.now();
   while (Date.now() - t0 < timeout) {
     for (const f of await graphFrames(page)) {
-      const n = await f.evaluate(() => document.querySelectorAll("#view g.task").length).catch(() => 0);
+      // the graph's boxes, or the lanes' rows when the canvas is narrow: either drawing counts
+      const n = await f.evaluate(() => document.querySelectorAll("#view g.task").length
+        + document.querySelectorAll("#lanes:not([hidden]) .lane[data-id]").length).catch(() => 0);
       if (n >= min) return { frame: f, tasks: n, ms: Date.now() - t0 };
     }
     await page.waitForTimeout(100);
@@ -333,28 +345,44 @@ export async function readGraph(frame) {
     goal: document.querySelector("#goal")?.textContent ?? "",
     counts: document.querySelector("#counts")?.textContent ?? "",
     notice: document.querySelector("#notice:not([hidden])")?.textContent ?? "",
-    tasks: [...document.querySelectorAll("#view g.task")].map((g) => ({
-      id: g.getAttribute("data-id"),
-      title: g.querySelector("text.title")?.textContent ?? "",
-      sub: g.querySelector("text.sub")?.textContent ?? "",
-      state: [...g.classList].filter((c) => c !== "task" && c !== "selected").join(" "),
-      forks: g.querySelectorAll("g.fork").length,
-    })),
+    view: document.querySelector("#lanes:not([hidden])") ? "lanes" : "graph",
+    tasks: [
+      ...[...document.querySelectorAll("#view g.task")].map((g) => ({
+        id: g.getAttribute("data-id"),
+        title: g.querySelector("text.title")?.textContent ?? "",
+        sub: g.querySelector("text.sub")?.textContent ?? "",
+        state: [...g.classList].filter((c) => c !== "task" && c !== "selected").join(" "),
+        forks: g.querySelectorAll("g.fork").length,
+      })),
+      ...[...document.querySelectorAll("#lanes:not([hidden]) .lane[data-id]")].map((r) => ({
+        id: r.getAttribute("data-id"),
+        title: r.querySelector(".l-title")?.textContent ?? "",
+        sub: r.querySelector(".l-sub")?.textContent ?? "",
+        state: [...r.classList].filter((c) => c !== "lane" && c !== "selected" && c !== "fresh").join(" "),
+        forks: r.querySelectorAll(".l-chip").length,
+      })),
+    ],
   }));
 }
 
 /** The smallest text drawn in a graph frame, in CSS px as rendered: font size times the SVG's scale. */
 export async function smallestText(frame) {
+  // every text the page draws and shows, the header, the pane, the hint and the lanes included: its font size as
+  // computed, times the SVG's scale for the drawing's own text
   return frame.evaluate(() => {
     const svg = document.querySelector("#svg");
-    const m = new DOMMatrix(getComputedStyle(svg).transform);
+    const m = svg ? new DOMMatrix(getComputedStyle(svg).transform) : new DOMMatrix();
     const k = Math.hypot(m.a, m.b) || 1;
     let min = Infinity, which = "";
-    for (const t of document.querySelectorAll("#svg text")) {
-      const px = parseFloat(getComputedStyle(t).fontSize) * k;
-      if (px < min) { min = px; which = `${t.getAttribute("class")}: ${t.textContent}`; }
+    const shown = (el) => el.getClientRects().length > 0 && getComputedStyle(el).visibility !== "hidden";
+    for (const el of document.body.querySelectorAll("*")) {
+      const own = [...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim());
+      if (!own || !shown(el)) continue;
+      const px = parseFloat(getComputedStyle(el).fontSize) * (el.closest("#svg") ? k : 1);
+      if (px < min) { min = px; which = `${el.getAttribute("class") || el.tagName.toLowerCase()}: ${el.textContent.trim().slice(0, 40)}`; }
     }
     return { px: Number.isFinite(min) ? Math.round(min * 100) / 100 : null, scale: Math.round(k * 1000) / 1000, which,
+             view: document.querySelector("#lanes:not([hidden])") ? "lanes" : "graph",
              canvas: document.querySelector("#canvas")?.clientWidth ?? 0 };
   });
 }
