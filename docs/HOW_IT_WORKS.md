@@ -270,6 +270,8 @@ It logs rows on the leaf: `usage` for each turn (model, tokens, dollars at list 
 `said` for what the agent says, and `ended` with the exit and seconds.
 Claude Code's final report settles the dollars to what it says it cost. A Codex model with no list price says so.
 
+The classic watch shows them on a running leaf's row.
+
 **The bill line**: `graphene run` ends with one line, for every executor:
 `run: 3 done · agents 41m, $2.8700 at list price · 2 of 3 at once · you: 4 moves, 2m`. `2 of 3 at once`: three
 leaves ran, at most two together. With no meter, the dollars say "no meter". `graphene plan log` keeps the line as a
@@ -283,9 +285,9 @@ hooks do, so a refused shell write may count twice.
 - A script that opens files itself, or a write through an MCP server, is not seen by the hooks. Git catches both at
   `done`, but only while a leaf is held.
 - A hook that crashes or times out lets the call through on a Claude Code before 2.1.295, or where `graphene
-  init` ran from a script. From 2.1.295, `init` at a terminal makes the gate fail closed (`"onFailure":
-  "block"`). A call the hook cannot judge is refused either way (`Graphene could not judge this call …`), with
-  its error logged.
+  init` ran from a script: the vendor's rule. From 2.1.295, `init` at a terminal makes the gate fail closed
+  (`"onFailure": "block"`) and says so. A call the hook cannot judge is refused either way (`Graphene could not
+  judge this call …`), with its error logged.
 - The hook reads a shell command as written: `cd`, comments, heredocs, the redirects and the usual writers
   (`tee`, `cp`, `mv`, `dd`, `install`, `sed -i`), under `sudo`, `env` or `nice`, to `$PWD`, `$HOME` or a variable
   the command set. A target in another variable, a glob or `$(…)`, a link in the scope that leads out of it, or
@@ -329,7 +331,7 @@ that landed it, with the `git revert -m 1` that takes it back (`graphene node di
 attempts, from the meter, with the agent's last words whole; the writes the hooks refused and, apart from them,
 the commands the executor was refused; the check's result and its last line, whether it also passed at the
 base, and a file the check runs that the leaf changed; and your moves on it. `graphene plan record` opens with
-one row a leaf: what it changed, where it landed (`3 forks, kept b`), what it cost.
+one row a leaf: what it changed, where it landed (`3 forks, kept b`), what it cost. It works for any executor.
 
 Claude Code's hooks add one thing: which changed path traces to a recorded write. Without them every path is graded
 "to git alone"; a count that cannot be supported says "not computed" and why.
@@ -401,7 +403,8 @@ refusal with its line; `--since CURSOR` keeps what someone else changed after th
 and store, one line a change, and stays at the last frame until it is stopped; the snapshot's `replay` says
 what it is. `graphene ask "<sentence>" --step` asks the planner (Nano, when it is Nemotron) for one step, a
 leaf with its scope, check and needs, `--after ID` beside that task and waiting on it, or `--under ID`; it
-lands as a proposal, said first as `proposed ID: TITLE`, for you or the envelope to accept.
+lands as a proposal, said first as `proposed ID: TITLE`, for you or the envelope to accept; a planner that
+proposes more than one is refused, and nothing lands.
 
 - `graphene demo --cheat` plays a script, not a model, that tries seven ways round the locks against the real hook,
   git and check: six refused, one flagged, at $0. `graphene demo --live` replays a live run on Nemotron through

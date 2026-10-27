@@ -740,11 +740,22 @@ def register(cli: typer.Typer, root, open_store, fail):
 
     def stream(store, r: Path) -> None:
         """`state --json --watch`: snapshot lines on stdout until the reader goes or a TERM comes. The
-        store's connection is held for the whole watch: a WAL reader blocks no writer."""
+        store's connection is held while its file stays: a WAL reader blocks no writer. The file gone
+        (`git clean -fdx` under an open editor) is said once, as `state --json` says it; the store made
+        next (`graphene init`, `graphene ask`) is opened and followed in its turn, in the same stream."""
         from . import state as ST
 
         say, alive = lines_out()
-        ST.follow(store, r, say, alive)
+        while not ST.follow(store, r, say, alive):
+            store.close()
+            gone = None
+            while alive() and (there := ST.identity(r)) is None:
+                if gone is None:
+                    say(json.dumps(ST.error(gone := ST.where(r)[1] or "no Graphene store here")))
+                time.sleep(ST.TICK)
+            if there is None:  # the reader went, or a TERM came, while there was no store
+                return
+            store = open_store(r)
 
     @cli.command()
     def demo(
@@ -803,8 +814,9 @@ def register(cli: typer.Typer, root, open_store, fail):
             out(f"graphene demo --cheat · {D.STAND_IN} · $0")
             if into is not None:  # the cheat's repository stays, for an editor to read as a replay
                 say, alive = lines_out()
-                through = C.run(say, into)[2]
+                # marked before a move runs: the frames an editor watches are the moves themselves
                 D.mark(into, {"shown": D.STAND_IN, "day": P._now()[:10], "repository": into.name})
+                through = C.run(say, into)[2]
                 while alive():
                     time.sleep(0.1)
                 raise typer.Exit(1 if through else 0)
@@ -1396,7 +1408,7 @@ def register(cli: typer.Typer, root, open_store, fail):
                 say = lambda line: typer.echo(line, err=True)  # noqa: E731  (the planner's progress: stdout
                 # is the step's own lines, its id first, for whoever asked)
             said = ask(store, checkout(), sentence, named(spec), about, split, say, size, planner=spec,
-                       talk=talk, base_parent=base)  # fmt: skip
+                       talk=talk, base_parent=base, one=step)  # fmt: skip
             if step:
                 landed = A.step_landed(store, said, after, who)
                 if landed is None:

@@ -6,6 +6,7 @@ when its reader goes or a TERM comes. The editor night's contract, section "The 
 import json
 import os
 import queue
+import shutil
 import signal
 import subprocess
 import threading
@@ -133,6 +134,50 @@ def test_follow_says_the_line_once_per_change_and_reads_the_version_before_the_s
     with Store.open(repo) as reader:
         ST.follow(reader, repo, said.append, alive, tick=0.0)
     assert [sorted(t["id"] for t in json.loads(s)["tasks"]) for s in said] == [["a"], ["a", "b"]]
+
+
+def until(stream, want, seconds=10.0) -> dict:
+    """The first line ``want`` says yes to, within ``seconds``: the lines before it are what the store said
+    on its way (a store just made is unplanned for a moment)."""
+    end = time.monotonic() + seconds
+    while True:
+        said = stream.next(max(0.01, end - time.monotonic()))
+        if want(said):
+            return said
+
+
+def test_a_store_removed_and_remade_under_the_watch_is_said_gone_then_followed_anew(stream, repo):
+    """`git clean -fdx` under an open editor, then a new `graphene ask`: the connection held the old file's
+    inode for ever and the stream showed the old plan with no sign (the editor night's review)."""
+    assert [t["id"] for t in stream.next()["tasks"]] == ["a"]
+    shutil.rmtree(repo / ".graphene")
+    assert "no Graphene store" in stream.next()["error"]  # said once, as `state --json` says it
+    assert stream.quiet(0.6) and stream.proc.poll() is None  # one process, still watching
+    with Store.open(repo) as store:  # a new store: a new file, a new plan
+        plan.propose(store, [leaf("b", "b.txt")], ALEX)
+    said = until(stream, lambda s: "tasks" in s)
+    assert [t["id"] for t in said["tasks"]] == ["b"]
+    with Store.open(repo) as store:  # and it is the new store that is followed from here on
+        plan.propose(store, [leaf("c", "c.txt")], ALEX)
+    assert {t["id"] for t in stream.next()["tasks"]} == {"b", "c"}
+    assert stream.quiet(0.6)
+
+
+def test_follow_ends_with_false_when_the_store_file_goes_or_is_another(repo):
+    with Store.open(repo) as store:
+        plan.propose(store, [leaf("a", "a.txt")], ALEX)
+    said, looks = [], [0]
+
+    def alive():
+        looks[0] += 1
+        if looks[0] == 3:
+            os.replace(repo / ".graphene" / "graphene.db", repo / ".graphene" / "aside.db")
+        return looks[0] <= 20
+
+    with Store.open(repo) as reader:
+        assert ST.identity(repo) is not None
+        assert ST.follow(reader, repo, said.append, alive, tick=0.0) is False
+    assert len(said) == 1 and ST.identity(repo) is None and looks[0] < 20  # the old one was never said again
 
 
 def test_where_there_is_no_plan_the_watch_says_so_once_and_exits_1_as_state_does(repo):

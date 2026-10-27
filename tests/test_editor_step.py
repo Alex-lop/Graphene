@@ -114,15 +114,25 @@ def test_the_gate_stands_an_agent_does_not_start_the_planner(repo, tmp_path, mon
     assert said.exit_code == 2 and "--after or --under, not both" in said.stderr
 
 
-def test_a_planner_that_proposes_a_tree_still_names_the_first_leaf(repo, tmp_path, monkeypatch):
+def test_a_planner_that_proposes_a_tree_is_refused_told_so_and_nothing_lands(repo, tmp_path, monkeypatch):
+    """One sentence is one step. The first leaf was named and the rest landed with it: the editor had four
+    proposals to show for one sentence, under a sub-goal nobody asked for (the editor night's review)."""
     leaf = 'print("? the docs  [the-docs]")\nprint("  ? document the ids  [docs-ids]")'
     tree = ONE.replace('print("? document the ids  [docs-ids]")', leaf)
     tree = tree.replace('print("    scope:', 'print("      scope:')
     tree = tree.replace('print("    check:', 'print("      check:')
+    third = 'print("? and a third  [third]")\nprint("    scope: docs/third.md")\nprint("    check: true")\n'
+    tree = tree.replace('print("```")\n', third + 'print("```")\n')  # inside the fence, a third node
     planned(repo)
     said = person("ask", "docs", "--step", "--with", planner(tmp_path, monkeypatch, tree))
-    assert said.exit_code == 0, said.output
-    assert said.stdout.splitlines()[0] == "proposed docs-ids: document the ids"  # the leaf, not its sub-goal
+    assert said.exit_code == 1, said.output
+    assert "the planner proposed 3 steps, not one" in said.stderr and "nothing was added" in said.stderr
+    assert "proposed" not in said.stdout
+    with Store.open(repo) as store:
+        assert {n.id for n in plan.nodes(store)} == {"api", "ids", "docs"}  # the plan as it was
+    assert "proposed 3 steps, not one" in prompt(tmp_path)  # the planner was told, and asked again
+    kept = list((repo / ".graphene" / "runs").glob("ask-*.txt"))
+    assert len(kept) == 1 and "[third]" in kept[0].read_text()  # its text kept, as any refused proposal's
 
 
 def reply(body):
