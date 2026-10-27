@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
 import { test } from "node:test";
@@ -80,6 +80,32 @@ test("a command that cannot be spawned is tried again with a backoff, not held a
     assert.ok(inner.timer, "the next start is due");
     s.dispose();
   } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a restart's old child, closing late, leaves the new child the stream: no third child is started", async () => {
+  // restart() lets the old child go before it is killed; its close used to take the new child for itself, so a
+  // third was started on the backoff and the second ran on, its lines still reaching the session
+  const dir = mkdtempSync(path.join(tmpdir(), "graphene-stream-"));
+  const pids = path.join(dir, "pids");
+  const started = () => (existsSync(pids) ? readFileSync(pids, "utf8").trim().split("\n") : []);
+  const s = new Stream({ path: fake(dir, "slow", `
+    require("node:fs").appendFileSync(${JSON.stringify(pids)}, process.pid + "\\n");
+    process.stdout.write('{"schema":1}\\n');
+    setInterval(() => {}, 1000);
+  `), cwd: dir, onLine: () => {} });
+  try {
+    s.start();
+    for (let i = 0; i < 60 && !s.live; i++) await new Promise((r) => setTimeout(r, 50));
+    assert.ok(s.live, "the first child's line arrived");
+    s.restart();
+    await new Promise((r) => setTimeout(r, 1800)); // the old child's close, then a backoff's second after it
+    assert.equal(started().length, 2, "the first child and the restart's, no third");
+    assert.ok(s.live, "the restart's child is the stream");
+  } finally {
+    s.dispose();
+    for (const pid of started()) try { process.kill(Number(pid)); } catch { /* gone already */ }
     rmSync(dir, { recursive: true, force: true });
   }
 });
