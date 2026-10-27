@@ -158,7 +158,7 @@ def test_a_spent_budget_stops_it_before_a_run_and_says_so(tiny, tmp_path, monkey
     assert said.exit_code == 1, said.output
     spent = "waits for you: the budget is spent: $0.7500 of $0.50; `graphene config set budget N` widens it"
     assert spent in said.stdout
-    [planning, waits] = rows(tiny)
+    [waits] = rows(tiny)  # before the planner is asked: its call is inside the budget too
     assert waits["stage"] == "waits" and waits["spent"] == 0.75 and waits["budget"] == 0.5
     with Store.open(tiny) as store:
         assert not store.node_log(None, ("attempt",))  # nothing started

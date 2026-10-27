@@ -352,10 +352,10 @@ reads no transcript.
 | `notify: on\|off` | Whether `graphene watch` rings, with a desktop notice where the terminal shows one, when something new needs you |
 | `forks: 1\|2\|3\|4\|5\|6\|7\|8` | Agents at once on each leaf that says nothing itself; its check keeps one |
 | `auto: off\|on` | `on`: a proposal that fits the envelope (every task with a scope and a check, the board settled, under `tasks`, no scope reaching `.claude/`, `.codex/`, `.cursor/`, `.gemini/` or `.github/workflows/`) is accepted for you at once, from any agent; `graphene auto` turns it on |
-| `budget: DOLLARS` | What every run may spend while `auto` is on, `graphene auto`'s, an agent's own `graphene run` and `R` alike |
+| `budget: DOLLARS` | What every run may spend while `auto` is on: `graphene auto`'s, its planner's calls (a Claude Code planner gets what is left as `--max-budget-usd`), an agent's own `graphene run` and `R` alike |
 | `tasks: N` | How many tasks the envelope may accept for you, all told, since `auto` went on (12 unset) |
 | `rounds: N` | Fix rounds `graphene auto` takes after the goal's check fails (2 unset) |
-| `checks: COMMAND, …` | The commands the envelope runs as a task's check without you, each with any words after it; unset, any one plain command (no `;`, `&&`, `\|`, redirect or `$(…)`, and not a shell, a wrapper such as `env` or `xargs`, or a `NAME=value` as the command) |
+| `checks: COMMAND, …` | The commands the envelope runs as a task's check without you, each with any words after it; unset, any one plain command (no `;`, `&&`, `\|`, redirect or `$(…)`, and not a shell, a wrapper (`env`, `xargs`) or a `NAME=value` as the command) |
 
 `graphene config` also names the planner, the executor and plan first.
 

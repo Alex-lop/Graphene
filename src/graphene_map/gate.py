@@ -768,12 +768,11 @@ def _protected_read(store, event: dict, root: Path) -> str | None:
     if rel is None:
         return None
     # what the path reaches, not how it is spelled: a tracked link is followed, and on a disk that
-    # ignores case (a Mac's) SECRETS/ is secrets/, so the globs are matched casefolded
+    # ignores case and unicode form (a Mac's) SECRETS/ is secrets/, so the globs are matched as it does
     full = path if os.path.isabs(path) else os.path.join(cwd or str(root), path)
     real = _rel(os.path.realpath(full), Path(os.path.realpath(root)), None) or rel
-    folded = [g.casefold() for g in hidden]
     for spelled in (rel, real):
-        if P.in_scope(spelled.casefold(), folded):
+        if P.covers(hidden, spelled):
             return spelled
     if tool == "Read":
         return None
