@@ -11,9 +11,9 @@ import { parseLog, rounds, type LogRow } from "./rounds.ts";
 import { RoundsTree } from "./roundsView.ts";
 import { PlanTree } from "./tree.ts";
 import { planFolder, Session, type UI } from "./session.ts";
-import * as needs from "./needs.ts";
-import * as agents from "./agents.ts";
-import * as find from "./find.ts";
+import * as needs from "./needsView.ts";
+import * as agents from "./agentsView.ts";
+import * as find from "./setup.ts";
 import * as diff from "./diff.ts";
 import * as planDoc from "./planDoc.ts";
 import * as step from "./step.ts";
@@ -90,10 +90,11 @@ export function activate(context: vscode.ExtensionContext) {
     if (said) {
       const show = said.kind === "waits" ? vscode.window.showWarningMessage : vscode.window.showInformationMessage;
       const key = /`graphene key set(?: --endpoint (\w+))?`/.exec(said.text); // it waits on a key: set it from here
-      void show(said.text, ...(key ? ["Set Key", "Show Plan Graph"] : ["Show Plan Graph", "Open Cockpit"])).then((pick) => {
-        if (pick === "Set Key") session.terminal("graphene key set", C.keySet(key?.[1]));
+      void show(said.text, ...(key ? ["Set Key", "Needs You"] : said.kind === "waits" ? ["Needs You", "Show Plan Graph"] : ["Show Plan Graph", "Rounds"])).then((pick) => {
+        if (pick === "Set Key") void vscode.commands.executeCommand("graphene.setKey", key?.[1]);
+        if (pick === "Needs You") void vscode.commands.executeCommand("graphene.needs.focus");
         if (pick === "Show Plan Graph") void vscode.commands.executeCommand("graphene.showGraph");
-        if (pick === "Open Cockpit") void vscode.commands.executeCommand("graphene.openCockpit");
+        if (pick === "Rounds") void vscode.commands.executeCommand("graphene.rounds.focus");
       });
     }
     if (s && (session.status.kind === "ok" || session.status.kind === "empty")) {
@@ -101,7 +102,9 @@ export function activate(context: vscode.ExtensionContext) {
       const md = new vscode.MarkdownString(undefined, true);
       md.appendMarkdown(`**${mdText(s.goal || "no goal yet")}**\n\n`); // the plan's words as text, not markup
       for (const line of s.news.slice(-4)) md.appendMarkdown(`- ${mdText(line)}\n`);
-      md.appendMarkdown("\nGraphene: Show Plan Graph");
+      md.appendMarkdown(session.found ? `\ngraphene from ${mdText(session.found)}, off this editor's PATH\n\n` : "\n");
+      md.appendMarkdown(session.stream.live ? "live: `graphene state --json --watch`\n\n" : "");
+      md.appendMarkdown("Graphene: Show Plan Graph");
       bar.tooltip = md;
     } else {
       bar.text = `◆ Graphene · ${session.status.kind === "missing" ? "not installed" : session.status.kind === "uninitialised" ? "no plan" : session.status.kind}`;
@@ -109,26 +112,27 @@ export function activate(context: vscode.ExtensionContext) {
     }
   });
 
-  // read again when the store's files change (the WAL changes before graphene.db does) and on a poll while a
-  // view is open; a burst of changes is one read
+  // read again when the store's own files change (graphene.db, its WAL, the run lock: not an agent's save
+  // under the worktrees) and on a poll while a view is open; a burst of changes is one read. While the stream
+  // is live (`state --json --watch`) it brings every change, and both rest.
   let due: NodeJS.Timeout | undefined;
-  const soon = () => { clearTimeout(due); due = setTimeout(() => void session.refresh(), 250); };
+  const soon = () => { if (session.stream.live) return; clearTimeout(due); due = setTimeout(() => void session.refresh(), 250); };
   if (session.folder) {
-    const watcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(session.folder, ".graphene/**"));
+    const watcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(session.folder, ".graphene/{graphene.db,graphene.db-wal,run.lock}"));
     watcher.onDidChange(soon); watcher.onDidCreate(soon); watcher.onDidDelete(soon);
     context.subscriptions.push(watcher);
   }
   let poll: NodeJS.Timeout | undefined;
   const arm = () => {
     clearInterval(poll);
-    poll = setInterval(() => { if (treeView.visible || graph.open) void session.refresh(); }, session.pollMs);
+    poll = setInterval(() => { if ((treeView.visible || graph.open) && !session.stream.live) void session.refresh(); }, session.pollMs);
   };
   arm();
-  context.subscriptions.push({ dispose: () => { clearInterval(poll); clearTimeout(due); } });
+  context.subscriptions.push(session, { dispose: () => { clearInterval(poll); clearTimeout(due); } });
   context.subscriptions.push(vscode.workspace.onDidChangeConfiguration((e) => {
-    if (e.affectsConfiguration("graphene")) { arm(); void session.refresh(); }
+    if (e.affectsConfiguration("graphene")) { arm(); session.moved(); void session.refresh(); }
   }));
-  context.subscriptions.push(vscode.workspace.onDidChangeWorkspaceFolders(() => { session.folder = planFolder(); void session.refresh(); }));
+  context.subscriptions.push(vscode.workspace.onDidChangeWorkspaceFolders(() => { session.folder = planFolder(); session.moved(); void session.refresh(); }));
 
   const taskOf = (arg: Arg): Task | undefined => {
     const id = typeof arg === "string" ? arg : arg?.task?.id ?? arg?.id;
@@ -148,7 +152,6 @@ export function activate(context: vscode.ExtensionContext) {
   cmd("refresh", () => session.refresh());
   cmd("showGraph", (arg) => graph.show(taskOf(arg)?.id));
   cmd("openCockpit", () => session.terminal("graphene watch", C.watch()));
-  cmd("init", () => session.terminal("graphene init", C.init()));
   cmd("runReady", () => session.terminal("graphene run", C.runReady()));
   cmd("stop", () => session.act(C.stop()));
   cmd("auto", async () => {

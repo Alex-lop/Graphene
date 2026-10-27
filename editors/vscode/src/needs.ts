@@ -1,13 +1,72 @@
-// The Needs You view: what waits for the person, first, each with its move inline.
-// A stub the orchestrator left so the lanes could start at once (lane 2a fills it in).
-import * as vscode from "vscode";
-import type { Session, UI } from "./session.ts";
+// The Needs You view: what waits for the person, first, each row with its move inline and on its click, in
+// the cockpit's order (cockpit/model.py `order`): auto mode waiting, then questions, then the tasks whose move
+// is the person's (a sign-off, a hand-back, their own task, a proposal, a running task the gate stopped).
+// Nothing here sends anyone to the cockpit. Pure: no VS Code here; needsView.ts draws what this returns.
+import type { Question, State, Task } from "./state.ts";
 
-export function register(context: vscode.ExtensionContext, _session: Session, _ui: UI) {
-  context.subscriptions.push(vscode.window.registerTreeDataProvider("graphene.needs", {
-    getTreeItem: (n: vscode.TreeItem) => n, getChildren: () => [] as vscode.TreeItem[] }));
-  context.subscriptions.push(vscode.commands.registerCommand("graphene.answer", () =>
-    vscode.window.showInformationMessage("Graphene: answer is not built yet.")));
-  context.subscriptions.push(vscode.commands.registerCommand("graphene.handBack", () =>
-    vscode.window.showInformationMessage("Graphene: handBack is not built yet.")));
+export type Need =
+  | { kind: "auto"; why: string; endpoint: string | null; key: boolean } // auto waits; key: on `graphene key set`
+  | { kind: "question"; q: Question }
+  | { kind: "proposal" | "hand-back" | "sign-off" | "yours" | "stopped"; t: Task };
+
+type TaskNeed = Extract<Need, { t: Task }>["kind"];
+const NEEDS_YOU: Record<string, TaskNeed> = { proposed: "proposal", "came back": "hand-back", review: "sign-off", yours: "yours" };
+
+/** What needs the person, in the order a person should look at it. A task counts when the snapshot says so or
+ *  its state does (an older CLI says nothing): review, came back, yours, proposed, or running with a write the
+ *  gate stopped, which only the person can widen its scope to. */
+export function needs(s: State): Need[] {
+  const out: Need[] = [];
+  if (s.auto?.stage === "waits") {
+    const key = /`graphene key set(?: --endpoint (\w+))?`/.exec(s.auto.why);
+    out.push({ kind: "auto", why: s.auto.why || "see the plan", endpoint: key?.[1] ?? null, key: Boolean(key) });
+  }
+  for (const q of s.questions) out.push({ kind: "question", q });
+  for (const t of s.tasks) {
+    const kind: TaskNeed | null = NEEDS_YOU[t.state] ?? (t.state === "running" && t.stopped.length ? "stopped" : null);
+    if (kind) out.push({ kind, t });
+  }
+  return out;
+}
+
+/** The tooltip's one-line count: `2 need you`. */
+export function count(list: Need[]): string {
+  return list.length === 1 ? "1 needs you" : `${list.length} need you`;
+}
+
+// the moves, each the graphene command the cockpit runs for the same key
+export const takeDefault = (id: string): string[] => ["board", "take", id];
+export const pickOption = (id: string, n: number): string[] => ["board", "pick", id, String(n)]; // from 1
+export const answerWords = (id: string, words: string): string[] => ["board", "answer", id, words];
+export const tryAgain = (id: string): string[] => ["run", "--parallel", "4", "--node", id]; // the cockpit's ⏎
+export const markDone = (id: string): string[] => ["node", "done", id]; // runs its check: a terminal
+export const widen = (id: string): string[] => ["node", "widen", id]; // exactly what the gate stopped
+
+export const OFFERS: [string, string][] = [["w", "Widen its scope"], ["b", "A new task"], ["n", "Wait on"], ["r", "Reopen"]];
+
+/** What an offer acts on, read from its command as the cockpit reads it (rows.py `offered`): the paths a widen
+ *  or a new task takes, the tasks it would wait on, the tasks it reopens. */
+export function offerOn(key: string, argv: string[], t: Task, titles: Record<string, string> = {}): string {
+  const name = (id: string) => titles[id] ?? id;
+  if (key === "w" || key === "b") return argv.slice(3).join(", ");
+  if (key === "n") return argv.filter((x, i) => argv[i - 1] === "--needs" && !t.needs.includes(x)).map(name).join(", ");
+  const at = argv.indexOf("--note");
+  return argv.slice(2, at < 0 ? undefined : at).map(name).join(", ");
+}
+
+/** The hand-back's moves as a quick pick says them: each offer the snapshot carries, with what it acts on, in
+ *  the cockpit's order, then trying it again. A running task the gate stopped offers the widen alone. */
+export function offerWords(t: Task, titles: Record<string, string> = {}): { label: string; detail: string; argv: string[]; long: boolean }[] {
+  if (t.state === "running") {
+    const path = t.stopped[t.stopped.length - 1] ?? "";
+    return [{ label: `Widen its scope to ${path}`, detail: `graphene ${widen(t.id).join(" ")}: the agent may write it`, argv: t.offers.w ?? widen(t.id), long: false }];
+  }
+  const out = OFFERS.filter(([k]) => t.offers[k]).map(([k, what]) => {
+    const argv = t.offers[k]!;
+    const on = offerOn(k, argv, t, titles);
+    const label = k === "b" ? `A new task for ${on}; this one waits on it` : on ? `${what} ${on}` : what;
+    return { label, detail: `graphene ${argv.join(" ")}`, argv, long: false };
+  });
+  out.push({ label: "Try it again", detail: `graphene ${tryAgain(t.id).join(" ")}: a new agent, told why it came back`, argv: tryAgain(t.id), long: true });
+  return out;
 }

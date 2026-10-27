@@ -44,8 +44,8 @@ test("a task that came back says why on its box; a running one its agent, forks 
   assert.equal(sub(task("greet"), 60), "agent 3 · 3 forks · $0.31");
   const quiet = { ...task("greet"), forks: [], idle: 40 };
   assert.equal(sub(quiet, 60), "agent 3 · running · $0.31 · 40 s quiet");
-  // without the new fields, the old words
-  const old = { ...task("logs"), why: undefined, attempts: undefined };
+  // an older CLI's snapshot, as parseState fills it: no reason and no tries, so the old words
+  const old = { ...task("logs"), why: "", attempts: 0 };
   assert.equal(sub(old, 60), "came back · 1 outside · $0.02");
 });
 

@@ -66,7 +66,9 @@ test("missing keys take defaults and unknown keys are ignored", () => {
   assert.equal(a.state, "running");
   assert.deepEqual(a.scope, []);
   assert.equal(a.kept, null);
-  assert.deepEqual(a.forks[0], { letter: "a", state: "", why: "", lines: null, model: "", usd: null });
+  assert.deepEqual(a.forks[0], { letter: "a", state: "", why: "", lines: null, model: "", usd: null, attempts: 0, idle: null, checkout: null });
+  assert.deepEqual([a.why, a.checkout, a.base, a.attempts, a.offers], ["", null, null, 0, {}]); // the contract's siblings, absent on an older CLI
+  assert.equal(s.replay, null);
   assert.deepEqual(s.edges, [["a", "a", "needs"]]); // an edge to a task that is not there is dropped
   assert.equal(s.envelope.auto, "off");
   assert.equal(s.scoreboard.total, 1);
@@ -131,4 +133,18 @@ test("auto waiting on a key says `graphene key set` in its notification, where t
   const said = autoNews(going, waits);
   assert.equal(said?.kind, "waits");
   assert.ok(/`graphene key set(?: --endpoint (\w+))?`/.test(said!.text), said!.text);
+});
+
+test("the contract's siblings parse when the CLI has them: a hand-back's why and offers, a fork's idle, a replay's header", () => {
+  const s = parseState(JSON.stringify({
+    schema: 1, replay: { shown: "a scripted stand-in, no model ran", day: "2026-10-26", repository: "wordkit" },
+    tasks: [{ id: "a", title: "A", state: "came back", why: "needs app.py", checkout: "/w/a", base: "abc123", attempts: 2,
+              offers: { w: ["node", "widen", "a", "app.py"], junk: "not argv" },
+              forks: [{ letter: "b", state: "running", idle: 3.5, attempts: 1, checkout: "/w/a-b" }] }],
+  }));
+  const a = s.tasks[0]!;
+  assert.deepEqual([a.why, a.checkout, a.base, a.attempts], ["needs app.py", "/w/a", "abc123", 2]);
+  assert.deepEqual(a.offers, { w: ["node", "widen", "a", "app.py"] });
+  assert.deepEqual([a.forks[0]!.idle, a.forks[0]!.attempts, a.forks[0]!.checkout], [3.5, 1, "/w/a-b"]);
+  assert.deepEqual(s.replay, { shown: "a scripted stand-in, no model ran", day: "2026-10-26", repository: "wordkit" });
 });

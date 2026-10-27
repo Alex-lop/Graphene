@@ -11,6 +11,9 @@ export interface Fork {
   lines: number | null;
   model: string;
   usd: number | null;
+  attempts: number;
+  idle: number | null; // seconds quiet while it runs
+  checkout: string | null; // its own directory while it runs
 }
 
 export interface Kept {
@@ -35,12 +38,23 @@ export interface Task {
   needs_you: boolean;
   tail: string[];
   note: string;
+  why: string; // a task that came back: its reason, one line
+  checkout: string | null; // where its agent works while it runs, or after it came back
+  base: string | null; // the commit its work starts from
+  attempts: number;
+  offers: Record<string, string[]>; // a task that came back: the cockpit's key -> the command that takes it up
   changed: string[];
   stopped: string[];
   outside: string[];
   forks: Fork[];
   kept: Kept | null;
   hollow: boolean;
+}
+
+export interface Replay {
+  shown: string; // "a scripted stand-in, no model ran"
+  day: string;
+  repository: string;
 }
 
 export interface Goal {
@@ -93,6 +107,7 @@ export interface State {
   schema: number;
   graphene: string;
   repo: string;
+  replay: Replay | null; // the store is a replay's (Graphene: Watch the Demo), not a project's
   cursor: number;
   goal: string;
   first: string;
@@ -121,9 +136,16 @@ const bool = (v: unknown): boolean => v === true;
 const strs = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
 const list = (v: unknown): Raw[] => (Array.isArray(v) ? v.map(obj) : []);
 
+const optStr = (v: unknown): string | null => (typeof v === "string" ? v : null);
+const argvs = (v: unknown): Record<string, string[]> => {
+  const out: Record<string, string[]> = {};
+  for (const [k, a] of Object.entries(obj(v))) if (Array.isArray(a) && a.every((x) => typeof x === "string")) out[k] = a as string[];
+  return out;
+};
+
 export function parseFork(r: Raw): Fork {
   return { letter: str(r.letter), state: str(r.state), why: str(r.why), lines: num(r.lines),
-           model: str(r.model), usd: num(r.usd) };
+           model: str(r.model), usd: num(r.usd), attempts: int(r.attempts, 0), idle: num(r.idle), checkout: optStr(r.checkout) };
 }
 
 export function parseTask(r: Raw): Task {
@@ -136,7 +158,8 @@ export function parseTask(r: Raw): Task {
     scope: strs(r.scope), needs: strs(r.needs), check: typeof r.check === "string" ? r.check : null,
     agent: typeof r.agent === "number" ? String(r.agent) : str(r.agent),
     model: str(r.model), usd: num(r.usd), idle: num(r.idle), needs_you: bool(r.needs_you),
-    tail: strs(r.tail), note: str(r.note), changed: strs(r.changed), stopped: strs(r.stopped),
+    tail: strs(r.tail), note: str(r.note), why: str(r.why), checkout: optStr(r.checkout), base: optStr(r.base),
+    attempts: int(r.attempts, 0), offers: argvs(r.offers), changed: strs(r.changed), stopped: strs(r.stopped),
     outside: strs(r.outside), forks: list(r.forks).map(parseFork),
     kept: kept && str(kept.letter) ? { letter: str(kept.letter), why: str(kept.why), by: str(kept.by) } : null,
     hollow: bool(r.hollow),
@@ -159,8 +182,10 @@ export function parseState(text: string): State {
     .filter((e): e is unknown[] => Array.isArray(e) && typeof e[0] === "string" && typeof e[1] === "string")
     .map((e) => [e[0] as string, e[1] as string, str(e[2], "needs")] as [string, string, string])
     .filter(([a, b]) => known.has(a) && known.has(b));
+  const replay = obj(r.replay);
   return {
     schema: int(r.schema, 1), graphene: str(r.graphene), repo: str(r.repo), cursor: int(r.cursor, 0),
+    replay: str(replay.shown) ? { shown: str(replay.shown), day: str(replay.day), repository: str(replay.repository) } : null,
     goal: str(r.goal), first: str(r.first), planner: str(r.planner), executor: str(r.executor),
     envelope: {
       auto: str(env.auto, "off"), budget: num(env.budget), tasks: num(env.tasks), rounds: num(env.rounds),
