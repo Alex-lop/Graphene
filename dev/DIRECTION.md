@@ -1775,6 +1775,38 @@ any of them.
 Decisions 171 (a board answer is not judged) and 175 (a refusal goes back once) are superseded above by 193 and 192;
 the widen and the sibling offers stay unjudged, as 171 had them.
 
+## Decisions taken on the editor night (26 to 27 October)
+
+196. **The editor follows a stream.** `graphene state --json --watch` prints the snapshot, then a line each time
+     the store's own version moves (SQLite's data_version, the log's last id, the run lock), looked at every
+     100 ms; nothing when idle. An older CLI answers "No such option", and the extension polls as before.
+197. **Narrow, the graph is lanes.** Under 560 px it draws a row a task, wave by wave, and no text under 11 px;
+     the editor tab keeps the graph. Lanes and Graph toggle.
+198. **Needs You leads the side bar**, then the Graph, then Agents. Plan and Rounds start collapsed, so the
+     graph gets the room.
+199. **Auto…'s first choice is Plan first.** With auto on, Plan and run landed a stranger's race before they saw
+     the plan.
+200. **A step is a sentence.** `graphene ask "<sentence>" --step [--after ID | --under ID]` proposes one step
+     through the configured planner, Nano on Nemotron. It is a proposal whoever asked. Add Step by Hand keeps the
+     four boxes.
+201. **The plan's text applies from a pipe.** `graphene plan edit --from - --json --since CURSOR` applies it all or
+     none, with each fault on its line; the editor's plan tab saves through it, and a refusal is a diagnostic.
+202. **A replay is a store of its own.** `graphene demo --into DIR` plays into a new or empty directory; the
+     snapshot's `replay` says what it is, its host acts on nothing outside it, and its clock is the recording's.
+203. **A free race says so.** The snapshot's `stand_in` is true when every model call on record was a stand-in's,
+     and the graph's first words are then "against the scripted stand-in".
+204. **A refused key says where the key goes.** Token Factory's 401 line ends with `graphene key set`, and the
+     editor offers Set Key on it.
+205. **The listing's icon is the small mark**, not the avatar: the avatar's dots smear at 32 px.
+206. **One .vsix, published from a job a registry.** It is named for package.json's version. `publish-vscode.yml`
+     runs by hand or on a published release, never on a push, so one refusal is re-run alone.
+207. **CI's end-to-end job stays off the release path** until it has stayed green; its first green run was on
+     27 October (afbc7e40).
+208. **The harness never reads a shell profile.** Every app it launches gets an empty ZDOTDIR, a fake key, and the
+     stand-in's URL or a dead port: this machine's `~/.zshenv` exports a real key.
+209. **The reference's cap is 5,300 words**, for the commands an editor reads and writes through.
+210. **The next version is 0.9.0**: new views in the editor, and new flags in the CLI.
+
 ## What does not bind (say it wherever you sell it)
 
 - A shell command can write a file in a way nothing reads beforehand (a script that opens files
