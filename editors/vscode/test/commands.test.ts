@@ -31,6 +31,29 @@ test("every mutation is the argv the cockpit's verbs use", () => {
   assert.deepEqual(C.setting("auto", "on"), ["config", "set", "auto", "on"]);
 });
 
+test("the editor night's argv: diffs, forks, the plan's text, a step in a sentence, the demo", () => {
+  assert.deepEqual(C.nodeDiff("ids"), ["node", "diff", "ids", "--json"]);
+  assert.deepEqual(C.nodeDiff("ids", "b"), ["node", "diff", "ids", "--fork", "b", "--json"]);
+  assert.deepEqual(C.pickFork("ids", "b"), ["node", "pick", "ids", "b"]);
+  assert.deepEqual(C.signOff("ids"), ["node", "signoff", "ids"]);
+  assert.deepEqual(C.planText(), ["plan", "--text"]);
+  assert.deepEqual(C.planApply(230), ["plan", "edit", "--from", "-", "--json", "--since", "230"]);
+  assert.deepEqual(C.askStep("add a --json flag"), ["ask", "--step", "--", "add a --json flag"]);
+  assert.deepEqual(C.askStep("x", { after: "ids" }), ["ask", "--step", "--after", "ids", "--", "x"]);
+  assert.deepEqual(C.askStep("x", { under: "api" }), ["ask", "--step", "--under", "api", "--", "x"]);
+  assert.deepEqual(C.demoInto("/tmp/d"), ["demo", "--auto", "--into", "/tmp/d"]);
+});
+
+test("an id that starts with a dash never reaches argv", () => {
+  for (const bad of ["--json", "-", ""]) {
+    assert.throws(() => C.nodeDiff(bad), /not an id/);
+    assert.throws(() => C.nodeDiff("ids", bad || "-x"), /not an id/);
+    assert.throws(() => C.pickFork("ids", bad || "-"), /not an id/);
+    assert.throws(() => C.signOff(bad), /not an id/);
+    assert.throws(() => C.askStep("x", { after: bad || "-" }), /not an id/);
+  }
+});
+
 test("the agent marks are taken out of the environment, nothing else is", () => {
   const env = { PATH: "/bin", CLAUDECODE: "1", CLAUDE_CODE_SESSION_ID: "s", CODEX_SESSION_ID: "c", CODEX_SANDBOX: "1",
                 AI_AGENT: "x", GRAPHENE_NODE: "n", GRAPHENE_PLANNER: "p", GEMINI_CLI: "1", CURSOR_AGENT: "1", HOME: "/h" };

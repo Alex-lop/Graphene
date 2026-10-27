@@ -1,9 +1,60 @@
-// Graphene: Watch the Demo: the auto replay in the graph, no key and no network.
-// A stub the orchestrator left so the lanes could start at once (lane 2b fills it in).
+// Graphene: Watch the Demo: the auto replay plays into a directory of its own under the OS temp dir, as a
+// child this module owns, and a graph panel of its own shows it (lane 1 draws the replay's banner from the
+// snapshot). No key and no network. Closing the panel stops the replay and removes the directory.
+import { spawn, type ChildProcess } from "node:child_process";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import * as path from "node:path";
 import * as vscode from "vscode";
-import type { Session, UI } from "./session.ts";
+import * as C from "./commands.ts";
+import { GraphHost } from "./graph.ts";
+import { Session, STORE, type UI } from "./session.ts";
 
-export function register(context: vscode.ExtensionContext, _session: Session, _ui: UI) {
-  context.subscriptions.push(vscode.commands.registerCommand("graphene.watchDemo", () =>
-    vscode.window.showInformationMessage("Graphene: watchDemo is not built yet.")));
+/** Where a replay plays: a new directory under the OS temp dir, never in the person's folder. */
+export const demoDir = (tmp = tmpdir()) => mkdtempSync(path.join(tmp, "graphene-demo-"));
+
+export function register(context: vscode.ExtensionContext, session: Session, _ui: UI) {
+  let running: { child: ChildProcess; dir: string; stop: () => void } | null = null;
+
+  context.subscriptions.push({ dispose: () => running?.stop() });
+  context.subscriptions.push(vscode.commands.registerCommand("graphene.watchDemo", async () => {
+    if (running) return void vscode.window.showInformationMessage("The demo is already playing. Close its graph to stop it.");
+    const dir = demoDir();
+    const child = spawn(session.path, C.demoInto(dir), { cwd: dir, env: C.scrub(process.env), stdio: ["ignore", "pipe", "pipe"] });
+    let err = "";
+    child.stderr?.on("data", (b: Buffer) => { err += String(b); });
+    child.stdout?.resume();
+    const replay = new Session(dir);
+    const graph = new GraphHost(context, replay, "Graphene demo");
+    const tick = setInterval(() => void replay.refresh(), 1000);
+    const stop = () => {
+      if (!running) return;
+      running = null;
+      clearInterval(tick);
+      replay.dispose();
+      if (child.exitCode === null) child.kill("SIGTERM");
+      setTimeout(() => rmSync(dir, { recursive: true, force: true }), 500);
+    };
+    running = { child, dir, stop };
+    child.on("exit", (code) => {
+      if (running?.child !== child) return;
+      if (code) void vscode.window.showErrorMessage(`graphene demo ended: ${C.firstLine(err, "", `exit ${code}`)}`);
+      stop();
+    });
+    child.on("error", (e) => { void vscode.window.showErrorMessage(`graphene demo: ${e.message}`); stop(); });
+
+    // the store appears once the replay has set its repo up; then the graph of its own
+    const t0 = Date.now();
+    while (!existsSync(path.join(dir, STORE)) && child.exitCode === null && Date.now() - t0 < 30_000) {
+      await new Promise((r) => setTimeout(r, 300));
+    }
+    if (!running) return;
+    if (!existsSync(path.join(dir, STORE))) {
+      void vscode.window.showErrorMessage(`graphene demo made no store in ${dir}: ${C.firstLine(err, "", "it said nothing")}`);
+      return stop();
+    }
+    await replay.refresh();
+    graph.show();
+    context.subscriptions.push(graph.onDidClose(stop)); // the panel closing is the end
+  }));
 }
