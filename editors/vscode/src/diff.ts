@@ -1,63 +1,60 @@
 // A task's or a fork's changes in VS Code's own diff editor, multi-file where it can; a race's forks side by
-// side; picking a fork and signing off from there. Every side at a revision comes from `git show` in the
-// snapshot's repo, read-only, under this module's own scheme; a running agent's side is its file on disk.
+// side; picking a fork and signing off from there. Every side is read-only, under this module's own scheme:
+// `git show` in the snapshot's repo at a revision, or a running agent's file on disk, read again as the plan
+// changes. Nothing here writes into an agent's directory.
 import { execFile } from "node:child_process";
+import { readFile } from "node:fs/promises";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import * as C from "./commands.ts";
 import type { Session, UI } from "./session.ts";
 
-export const SCHEME = "graphene-git";
+export const SCHEME = C.SCHEME;
 
 type Arg = string | { id?: string; fork?: string; task?: { id: string } } | undefined;
-/** Which diff a side belongs to, kept in its URI so a title action knows what it acts on. */
-interface Query { repo: string; rev: string; id: string; fork: string | null }
 
-/** A side as a URI: the file on disk, or `git show REV:PATH` under this module's scheme. */
+/** A side as a URI under this module's scheme. The query says which revision it is at (null: the file on
+ *  disk) and which diff it is in, so a title action knows what it acts on. */
 export function sideUri(side: C.Side, id: string, fork: string | null): vscode.Uri {
-  const file = vscode.Uri.file(path.join(side.repo, side.path));
-  if (side.rev === null) return file;
-  const q: Query = { repo: side.repo, rev: side.rev, id, fork };
-  return file.with({ scheme: SCHEME, query: JSON.stringify(q) });
+  const q: C.Query = { repo: side.repo, rev: side.rev, id, fork };
+  return vscode.Uri.file(path.join(side.repo, side.path)).with({ scheme: SCHEME, query: JSON.stringify(q) });
 }
 
-function queryOf(uri: vscode.Uri | undefined): Query | null {
+function queryOf(uri: vscode.Uri | undefined): C.Query | null {
   if (!uri || uri.scheme !== SCHEME) return null;
-  try { return JSON.parse(uri.query) as Query; } catch { return null; }
+  try { return JSON.parse(uri.query) as C.Query; } catch { return null; }
 }
 
-/** The diff the active tab shows, when it is one of ours. */
-function activeDiff(): { id: string; fork: string | null } | null {
-  const input = vscode.window.tabGroups.activeTabGroup.activeTab?.input;
-  if (input instanceof vscode.TabInputTextDiff) {
-    const q = queryOf(input.original) ?? queryOf(input.modified);
-    if (q) return { id: q.id, fork: q.fork };
-  }
-  return null;
+/** A side's text: nothing for a side the file is not on; the file on disk for a running agent's changes so
+ *  far; else `git show REV:PATH`. A file missing either place is empty. */
+export function contentOf(q: C.Query, fsPath: string): Promise<string> {
+  if (q.rev === "") return Promise.resolve("");
+  if (q.rev === null) return readFile(fsPath, "utf8").catch(() => "");
+  const rel = path.relative(q.repo, fsPath);
+  return new Promise((resolve) =>
+    execFile("git", ["-C", q.repo, "show", `${q.rev}:${rel}`], { maxBuffer: 64 * 1024 * 1024 }, (err, out) =>
+      resolve(err ? "" : String(out))));
 }
 
-/** Is a tab one of our diffs: a diff editor with a side of ours, or a multi-file one (its input class is newer
- *  than the API this extension is typed against, so it is read loosely). */
-function ours(input: unknown): boolean {
-  if (input instanceof vscode.TabInputTextDiff) return Boolean(queryOf(input.original) ?? queryOf(input.modified));
-  const multi = input as { textDiffs?: { original: vscode.Uri }[] } | undefined;
-  return Boolean(multi?.textDiffs?.some((d) => queryOf(d.original)));
-}
+/** The diff the active tab shows, when it is one of ours: a diff editor or a multi-file one. */
+const activeDiff = () => C.diffOf(vscode.window.tabGroups.activeTabGroup.activeTab?.input);
 
 export function register(context: vscode.ExtensionContext, session: Session, _ui: UI) {
-  // what one of our diffs showed last: the multi-file editor's tab has no URI an action can read
+  // what one of our diffs showed last, for an action run while none of them is the active tab
   let last: { id: string; fork: string | null } | null = null;
   const current = () => activeDiff() ?? last;
 
-  context.subscriptions.push(vscode.workspace.registerTextDocumentContentProvider(SCHEME, {
+  const changed = new vscode.EventEmitter<vscode.Uri>();
+  context.subscriptions.push(changed, vscode.workspace.registerTextDocumentContentProvider(SCHEME, {
+    onDidChange: changed.event,
     provideTextDocumentContent(uri) {
       const q = queryOf(uri);
-      if (!q || !q.rev) return ""; // a side the file is not on
-      const rel = path.relative(q.repo, uri.fsPath);
-      return new Promise<string>((resolve) =>
-        execFile("git", ["-C", q.repo, "show", `${q.rev}:${rel}`], { maxBuffer: 64 * 1024 * 1024 }, (err, out) =>
-          resolve(err ? "" : String(out)))); // not in that revision: nothing there
+      return q ? contentOf(q, uri.fsPath) : "";
     },
+  }));
+  // an agent's side on disk is read again as the plan changes: its changes so far, still read-only
+  context.subscriptions.push(session.onDidChange(() => {
+    for (const d of vscode.workspace.textDocuments) if (queryOf(d.uri)?.rev === null) changed.fire(d.uri);
   }));
 
   // the title actions (Keep This Fork, Sign Off) show on our diffs: lane 2a's package.json reads these keys
@@ -68,7 +65,7 @@ export function register(context: vscode.ExtensionContext, session: Session, _ui
     void vscode.commands.executeCommand("setContext", "graphene.diff.review", Boolean(d && t?.state === "review"));
   };
   context.subscriptions.push(vscode.window.tabGroups.onDidChangeTabs(() => {
-    const open = vscode.window.tabGroups.all.flatMap((g) => g.tabs).some((tab) => ours(tab.input));
+    const open = vscode.window.tabGroups.all.flatMap((g) => g.tabs).some((tab) => C.diffOf(tab.input));
     if (!open) last = null; // every diff of ours is closed
     keys();
   }), vscode.window.onDidChangeActiveTextEditor(keys), session.onDidChange(keys));

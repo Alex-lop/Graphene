@@ -33,7 +33,7 @@ export async function addStep(session: Session, arg?: Arg) {
                                                () => session.run(C.askStep(sentence.trim(), where)));
   void session.refresh();
   if (out.code !== 0) {
-    const why = out.code === -1 ? "graphene was not found" : C.firstLine(out.stderr, out.stdout);
+    const why = out.code === -1 ? "graphene was not found" : C.refusal(out.stderr, out.stdout);
     return void vscode.window.showErrorMessage(`graphene ask --step: ${why}`);
   }
   const p = C.proposed(out.stdout);
