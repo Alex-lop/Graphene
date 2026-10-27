@@ -138,7 +138,10 @@ def test_cheat_into_a_directory_is_a_replay_from_its_first_frame_not_after_the_m
         assert wait_for(lambda: said.append(proc.stdout.readline()) or said[-1].startswith("A throwaway"), 60)
         s = state(target)
         assert s["replay"] and s["replay"]["shown"] == demo.STAND_IN and s["replay"]["repository"] == "cheat"
-        assert [(t["id"], t["state"]) for t in s["tasks"]] == [("n1", "running")]  # the stand-in's leaf
+        # the stand-in's leaf, at whatever move it is: a fast machine has run them all by now (CI's did)
+        assert [t["id"] for t in s["tasks"]] == ["n1"] and s["tasks"][0]["state"] in ("running", "done")
+        # its last frame, where the contract's exit 0 on TERM holds; a TERM mid-move is not that promise
+        assert wait_for(lambda: said.append(proc.stdout.readline()) or "got through." in said[-1], 120)
     finally:
         proc.send_signal(signal.SIGTERM)
         assert proc.wait(30) == 0
