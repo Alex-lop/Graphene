@@ -133,6 +133,29 @@ def test_a_dead_stand_in_is_a_refusal_not_a_fallback(tmp_path):
     assert f.requests == []
 
 
+def test_a_stand_in_that_dies_at_once_is_a_refusal_every_time_under_load(tmp_path):
+    """On macOS a read-only open of the stand-in's pipe could sleep through a quick death, and the SIGCHLD
+    then failed the open ("Interrupted system call"): the take died without saying why. CI's macOS 3.14 leg
+    showed it; here it was 1 run in 48, 8 at once."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    with Fake([], key="fake-key") as f:
+        env = take_env(tmp_path, f, STANDIN="false")
+
+        def once(i: int) -> str:
+            argv = ["bash", str(SCRIPT), str(tmp_path / f"wordkit-{i}")]
+            done = subprocess.run(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env,
+                                  timeout=120)  # fmt: skip
+            ok = done.returncode == 1 and "refused: the stand-in died before it said its URL" in done.stdout
+            last = done.stdout.strip().splitlines()[-1:]
+            return "" if ok else f"run {i}: exit {done.returncode}: {last}"
+
+        with ThreadPoolExecutor(16) as pool:
+            faults = [x for x in pool.map(once, range(96)) if x]
+    assert faults == []
+    assert f.requests == []
+
+
 def test_the_header_says_each_knob_in_one_line():
     head = Path(SCRIPT).read_text().split("set -euo pipefail")[0]
     for knob in ("ENDPOINT=standin", "ENDPOINT=ollama", "ENDPOINT=nim", "PAUSE=1", "RECORD=<file>",
