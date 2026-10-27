@@ -4,10 +4,11 @@
 
 ## Your 15 minutes
 
-A fresh terminal. Each block says what it shows. [TIMED]
+A fresh terminal. Each block says what it shows. Run once as written from the pushed branch at 06:00, the harness's
+hands in VS Code: 124 s of the machine's time, every step as it says (`dev/process/editor/after/fifteen/`).
 
 ```sh
-# 1. The night's build in a clone of its own, and the CLI it needs (about 3 minutes)
+# 1. The night's build in a clone of its own, and the CLI it needs (7 s here, with warm caches)
 git clone -q -b night/editor https://github.com/Alex-lop/Graphene ~/graphene-night && cd ~/graphene-night
 uv sync -q && (cd editors/vscode && npm ci --silent && npm run package)
 uv tool install --force '.[nemotron]'   # your graphene becomes 0.9.0; undo: uv tool install --force 'graphene-map[nemotron]==0.8.0'
@@ -41,8 +42,8 @@ cd ~/graphene-try && graphene config set auto off
 CLAUDECODE=1 graphene node add "the README says how to use --top" --scope README.md --check "grep -q -- --top README.md"
 ```
 
-   **Needs You** shows the proposal: click its Accept. Then click a done task in the graph, and its **Open
-   changes**: VS Code's own diff editor opens what it landed.
+   **Needs You** shows the proposal: click its ✓ (Accept), or the row itself. Then click a done task in the
+   graph tab, and its **Open changes**: VS Code's own diff editor opens what it landed.
 
 6. No live take ran tonight, so there is no live take to replay.
 
@@ -89,40 +90,34 @@ each beat from the rehearsal.
 
 ## The brief
 
-1. **Before and after**, the same scripts back to back (`dev/process/editor/after/README.md`). The smallest text
-   in the side bar went from 4.6 px to 11 px at every width. A store write reaches the screen in 31 ms at the
-   median, against 123. Idle, the app takes 2.3 % of a core, against 10.7. The editor covers 9 of the cockpit's
-   17 moves whole, against 4. The first graph takes 2.5 s either way. A stranger reached the first graph in about
-   7 minutes, against 11, and steered in about 14, against 18, with 11 guesses against 9 (`after/stranger.md`).
-2. **Look at these first**: `dev/process/editor/after/code-panel-1280x800-dark.png` (the race),
-   `after/code-sidebar-320-dark.png` beside `before/code-sidebar-320-dark.png` (the side bar), and the clip
-   `~/graphene-film/broll/beat6-editor-race-fans-out.mp4`.
-3. **The review** (`dev/process/editor/review.md`). Auto mode, the envelope and the gate: nine faults, five high,
-   all fixed with a failing test first, each confirmed by the other reviewer. The extension and the seams between
-   the lanes: five readers found 29. [REVIEW-EXT]
-4. **Your notes.** `~/graphene-notes.md` did not exist.
-5. **The browser spike** (`dev/process/editor/browser-spike.md`, $0.02 of Haiku). PreToolUse and PostToolUse fire
-   for MCP tools on Claude Code 2.1.311, 18 calls of 18. A screenshot reaches the hook as 19 to 300 KB of base64,
-   and the store keeps 9 KB of it: a trail needs the PNG kept beside the store.
-6. **Decide.**
-   - Auto…'s first choice is now Plan first: with auto on, Plan and run landed a stranger's race before they saw
-     it. Default: keep it. To flip it, swap the two items in Auto…'s pick (`extension.ts`).
-   - Your `~/.zshenv` exports your Token Factory key into every shell, agents' and VS Code's terminals included.
-     Default: leave it; the harness no longer reads it. Option: `graphene key set`, then remove the line.
-   - The branch has [COMMITS] commits, over the 30 to 50 you want: it was pushed early for CI, so it could not be
-     folded. Default: merge it as usual. Option: squash and merge.
-7. **Broken or risky.** A usage limit stopped every agent from 02:15 to 04:41, and lane 2a's builder stalled from
-   00:34 to 02:00 on a prompt nobody could answer: the night lost its second review round to them. The extension
-   runs the first `graphene` it finds and does not say which; on a machine with two, it can run the older one.
-   Two things may be on your screen: a VS Code window "Welcome — wordkit" from 00:31, and a WezTerm prompt (answer
-   Don't Allow).
+1. **Before and after** (`dev/process/editor/after/README.md`): the side bar's smallest text 4.6 → 11 px at every width;
+   a write to the screen 123 → 31 ms at the median; idle 10.7 → 2.3 % of a core; the cockpit's moves 4 → 9 of 17 whole.
+2. **Look at these first**: `after/code-panel-1280x800-dark.png` (the race), `after/code-sidebar-320-dark.png` beside
+   `before/code-sidebar-320-dark.png`, and the clip `~/graphene-film/broll/beat6-editor-race-fans-out.mp4`.
+3. **The review** (`dev/process/editor/review.md`): auto mode, the envelope and the gate, 9 faults, 5 high; the extension
+   and the seams, 34, 3 high (the demo's panel ran your commands; a planner's title in a toast could run a link; Needs
+   You's icons acted on no task). Each is fixed with a test that failed first (a few lines only VS Code runs have none),
+   or was gone with another lane's work; a reader who did not find it confirmed each. Open: a crash leaves the demo's dir.
+4. **Your notes**: `~/graphene-notes.md` did not exist.
+5. **The browser spike** (`browser-spike.md`, $0.02 of Haiku): hooks fire for MCP tools, 18 calls of 18 on Claude Code
+   2.1.311; a screenshot reaches the hook as base64 and the store keeps 9 KB of it, so a trail keeps the PNG beside it.
+6. **Decide**, each with my default:
+   - Auto…'s first choice is Plan first: Plan and run landed a stranger's race before they saw it. Default: keep it.
+     To flip it, swap Auto…'s two picks in `extension.ts`.
+   - Your `~/.zshenv` exports your Token Factory key into every shell, VS Code's too. Default: leave it, the harness no
+     longer reads it. Or `graphene key set`, then drop the line.
+   - 78 commits, over your 30 to 50: the branch was pushed early for CI, so it was not folded. Default: merge
+     `night/editor-folded` instead, the same tree in 42 (a PR from it; close #55). Or merge #55 as it is.
+7. **Broken or risky.** A usage limit stopped every agent 02:15 to 04:41, and lane 2a's builder stalled 00:34 to 02:00:
+   no dogfood run. Maybe on your screen: VS Code's "Welcome — wordkit" (00:31) and a WezTerm prompt (Don't Allow).
 
 ## How the night ran
 
 The work was in a fresh clone of GitHub's `main`, on `night/editor`, never in your checkout.
 `dev/process/editor/CONTRACT.md` said which lane wrote which file and the CLI shapes the editor coded against.
 Each lane built in its own clone; a skeptic who didn't write it reviewed it; a fixer paired each fault with the
-test that failed before it. Subagents ran on Fable 5.1 until the usage limit at 02:15, and on Opus 5.5 after.
+test that failed before it, and a reader who did not find the fault confirmed the fix. Subagents ran on Fable 5.1, with
+Opus 5.5 where Fable gave no answer.
 
 | Lane | What it left |
 |---|---|
@@ -132,7 +127,7 @@ test that failed before it. Subagents ran on Fable 5.1 until the usage limit at 
 | 2b | diffs in the diff editor, the plan as a text tab with refusals on their lines, a step in a sentence, Watch the Demo, files you open |
 | 3 | `state --json --watch`, `node diff --json`, `plan edit --from -`, `ask --step`, `demo --into`, the snapshot's new keys |
 | 4 | the listing README, the icon, `publish-vscode.yml`, RELEASING's first-time steps, CI's end-to-end job |
-| 5 | two reviews: `dev/process/editor/review.md` |
+| 5 | two reviews, 43 faults, each fixed or gone and confirmed: `dev/process/editor/review.md` |
 | 6 | the README's VS Code section on a real screenshot, the listing, HACKATHON, COMPARE, claims, the 0.9.0 notes |
 | 7 | `ENDPOINT=standin` and `PAUSE=1` in `dev/proof/auto.sh`, the rehearsal, the b-roll |
 | 8 | `dev/process/editor/browser-spike.md` |
@@ -140,10 +135,18 @@ test that failed before it. Subagents ran on Fable 5.1 until the usage limit at 
 Not done: dogfooding a lane through Graphene with Claude Code executors (no time after the limit), Cursor's after
 screenshots (its check passes), and a second seam review round.
 
+Verified at the end, on the pushed head: CI on GitHub, every leg; the suite, 2,907 passed and 21 skipped; the
+extension's types, 110 unit tests, build and smoke; the harness's check in real VS Code and in Cursor; `vsce package`
+clean (12 files); the judge's `demo --auto`, `--cheat` and `--live` from the built wheel alone; "Your 15 minutes".
+
 Decisions taken tonight are in `dev/DIRECTION.md`, 196 on.
 
 ## Branches and rollback
 
 - `main` on GitHub was `2da29a52a1b38031418506f5a7a6929c121f673b` when the night started. That is the rollback.
-- `night/editor` is draft PR #55 (https://github.com/Alex-lop/Graphene/pull/55). Nothing else was pushed.
+- `night/editor` is draft PR #55 (https://github.com/Alex-lop/Graphene/pull/55), 78 commits. Every SHA the record
+  names (`dev/process/editor/`) is one of its commits, so keep it whichever you merge.
+- `night/editor-folded` holds the same tree, byte for byte, in 42 commits: the morning's milestones, the ruff wraps
+  and each lane's pieces folded into the commit they belong to. No PR; `gh pr create --head night/editor-folded` makes
+  one. Nothing else was pushed.
 - The lanes' own branches live only in the night's scratch clones; their work is on `night/editor`.
