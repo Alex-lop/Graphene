@@ -235,7 +235,7 @@ export function globs(text: string): string[] {
   return text.split(/[\s,]+/).map((g) => g.trim()).filter(Boolean);
 }
 
-export const OLDER = "This Graphene is older than the extension: it needs 0.8 (`uv tool upgrade graphene-map`).";
+export const OLDER = "This Graphene is older than the extension: it needs 0.9 (`uv tool upgrade graphene-map`).";
 
 /** A CLI that does not know an option or a command of this extension's is an older one: that is the line,
  *  wherever the refusal is shown (an id or free text never reaches argv as an option, so nothing else says it). */

@@ -2,6 +2,7 @@
 // the cockpit's order (cockpit/model.py `order`): auto mode waiting, then questions, then the tasks whose move
 // is the person's (a sign-off, a hand-back, their own task, a proposal, a running task the gate stopped).
 // Nothing here sends anyone to the cockpit. Pure: no VS Code here; needsView.ts draws what this returns.
+import { plain } from "./commands.ts";
 import type { Question, State, Task } from "./state.ts";
 
 // A row's element reaches its menu commands as it is, so it carries `id`: what every command reads from its
@@ -57,6 +58,16 @@ export function answerWith(q: Question, option: string): string[] {
   const i = q.options.indexOf(option);
   if (i >= 0) return pickOption(q.id, i + 1);
   return option === q.default ? takeDefault(q.id) : answerWords(q.id, option);
+}
+
+/** The answer quick pick's items: the default, each option by its number, then the person's own words. The
+ *  model's words go through `plain`: a quick pick's label reads `$(name)` as an icon. */
+export function answerPicks(q: Question): { label: string; description: string; argv?: string[]; own?: boolean }[] {
+  const items: ReturnType<typeof answerPicks> = [];
+  if (q.default) items.push({ label: `$(check) ${plain(q.default)}`, description: "the default", argv: takeDefault(q.id) });
+  q.options.forEach((o, i) => items.push({ label: plain(o), description: `option ${i + 1}`, argv: pickOption(q.id, i + 1) }));
+  items.push({ label: "$(edit) In your own words…", description: "your words go to the agents as written", own: true });
+  return items;
 }
 export const markDone = (id: string): string[] => ["node", "done", id]; // runs its check: a terminal
 export const widen = (id: string): string[] => ["node", "widen", id]; // exactly what the gate stopped

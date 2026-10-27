@@ -59,7 +59,7 @@ export function register(context: vscode.ExtensionContext, session: Session, _ui
     const term = vscode.window.createTerminal({ name: "uv tool install graphene-map", env: C.unmarked(), iconPath: new vscode.ThemeIcon("cloud-download") });
     term.show(true);
     term.sendText("uv tool install graphene-map", true);
-    const done = vscode.window.onDidCloseTerminal((t) => { if (t === term) { done.dispose(); void look().then(() => session.refresh()); } });
+    const done = vscode.window.onDidCloseTerminal((t) => { if (t === term) { done.dispose(); void look().then(() => { session.moved(); return session.refresh(); }); } });
     context.subscriptions.push(done);
   }));
 

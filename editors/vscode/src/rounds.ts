@@ -74,6 +74,8 @@ export function rounds(rows: LogRow[]): Round[] {
       // envelope taking a later ask of the person's, which is no round's
       if (Number(d.round)) at(Number(d.round)).accepted.push(row.node_id);
     } else if (row.kind === "picked" && current) {
+      // a task picked again (run again, or the person's own pick over the check's): the later pick is the one kept
+      current.kept = current.kept.filter((k) => !k.startsWith(`${row.node_id} kept `));
       current.kept.push(`${row.node_id} kept ${String(d.fork)} of ${String(d.of)}${d.reason ? `: ${String(d.reason)}` : ""}`);
     } else if (row.kind === "landed" && current) {
       current.landed.push(row.node_id);

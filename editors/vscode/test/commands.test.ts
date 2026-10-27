@@ -109,7 +109,7 @@ test("a refusal's toast names the command once: the CLI's line already does when
 });
 
 test("an older CLI's refusal of a new shape is the one 'older Graphene' line, not a Typer usage line", () => {
-  const says = /older than the extension.*0\.8/;
+  const says = /older than the extension.*0\.9/;
   assert.equal(C.firstLine("graphene node diff: no such option: --json (`graphene node diff --help` says what it takes)\n"), C.OLDER);
   assert.equal(C.firstLine("graphene plan edit: no such option: --from (`graphene plan edit --help` says what it takes)\n"), C.OLDER);
   assert.equal(C.firstLine("graphene demo: no such option: --into (`graphene demo --help` says what it takes)\n"), C.OLDER);

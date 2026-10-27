@@ -64,3 +64,22 @@ test("an older CLI's child ends the stream for the poll; a newer one's lines eac
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("a command that cannot be spawned is tried again with a backoff, not held as a dead child", async () => {
+  // graphene uninstalled or its path broken under a live editor: spawn emits `error`, then `close`, never `exit`
+  const dir = mkdtempSync(path.join(tmpdir(), "graphene-stream-"));
+  try {
+    const s = new Stream({ path: path.join(dir, "no-such-graphene"), cwd: dir, onLine: () => {} });
+    s.start();
+    await new Promise((r) => setTimeout(r, 300));
+    assert.ok(!s.live);
+    assert.ok(!s.unsupported, "a missing command is not an older CLI");
+    const inner = s as unknown as { child: unknown; tries: number; timer: NodeJS.Timeout | undefined };
+    assert.equal(inner.child, null, "the dead child is let go");
+    assert.equal(inner.tries, 1, "one try so far, the next one waits");
+    assert.ok(inner.timer, "the next start is due");
+    s.dispose();
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
