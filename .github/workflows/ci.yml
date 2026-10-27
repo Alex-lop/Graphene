@@ -49,5 +49,47 @@ jobs:
           cache-dependency-path: editors/vscode/package-lock.json
       - run: npm ci
       - run: npm test  # the typecheck, the node tests and the build; the VS Code smoke test skips itself without a VS Code
-      - run: npm run package  # graphene-0.8.0.vsix, never published from here
+      - run: npm run package  # the .vsix, never published from here (publish-vscode.yml does that, on a release)
+      - uses: actions/upload-artifact@v4  # the end-to-end job installs this exact file
+        with:
+          name: vsix
+          path: editors/vscode/graphene-*.vsix
 
+  vscode-e2e:  # the extension in a real VS Code under xvfb: editors/vscode/e2e drives it with Playwright
+    needs: vscode
+    # Not on a tag: release.yml calls this file and PyPI's upload waits on every job in it. This job has not
+    # yet gone green on Linux; a red or hung run would burn the tag. Take the `if` off once one has (its URL
+    # goes in the morning file), and keep the timeout: GitHub's default is six hours.
+    if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+    timeout-minutes: 20
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: astral-sh/setup-uv@v6  # the harness runs `graphene auto` against the stand-in, from this checkout's CLI
+        with:
+          python-version: "3.13"
+      - run: uv sync
+      - uses: actions/download-artifact@v4
+        with:
+          name: vsix
+          path: editors/vscode
+      - name: Run the end-to-end tests under xvfb
+        working-directory: editors/vscode/e2e
+        env:  # test.mjs: the newest .vsix in editors/vscode, the checkout's .venv/bin/graphene, a VS Code it downloads
+          E2E_TMP: ${{ runner.temp }}/e2e  # its profiles and, after a red run, failed.png
+          E2E_SHOT: ${{ runner.temp }}/e2e-after.png  # what it drew, after a green one
+        run: |
+          mkdir -p "$E2E_TMP"
+          npm ci
+          xvfb-run -a npm test
+      - uses: actions/upload-artifact@v4  # what the harness saw, for a look after either colour of run
+        if: always()
+        with:
+          name: e2e-output
+          path: |
+            ${{ runner.temp }}/e2e-after.png
+            ${{ runner.temp }}/e2e/**/failed.png
+          if-no-files-found: ignore
