@@ -1,0 +1,15 @@
+{
+  "name": "graphene-vscode-e2e",
+  "private": true,
+  "description": "Drives real VS Code and Cursor with the Graphene extension installed: screenshots, video, a driver, a check.",
+  "type": "module",
+  "scripts": {
+    "test": "node test.mjs",
+    "shots": "node shots.mjs",
+    "drive": "node drive.mjs"
+  },
+  "devDependencies": {
+    "@vscode/test-electron": "2.5.2",
+    "playwright-core": "1.64.0"
+  }
+}
