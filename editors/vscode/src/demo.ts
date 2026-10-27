@@ -1,6 +1,6 @@
 // Graphene: Watch the Demo: the auto replay plays into a directory of its own under the OS temp dir, as a
-// child this module owns, and a graph panel of its own shows it (lane 1 draws the replay's banner from the
-// snapshot). No key and no network. Closing the panel stops the replay and removes the directory.
+// child this module owns, and a graph panel of its own shows it. No key and no network. Closing the panel
+// stops the replay and removes the directory.
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -9,9 +9,22 @@ import * as vscode from "vscode";
 import * as C from "./commands.ts";
 import { GraphHost } from "./graph.ts";
 import { Session, STORE, type UI } from "./session.ts";
+import type { State } from "./state.ts";
 
 /** Where a replay plays: a new directory under the OS temp dir, never in the person's folder. */
 export const demoDir = (tmp = tmpdir()) => mkdtempSync(path.join(tmp, "graphene-demo-"));
+
+/** What the replay says of itself until its store is read: no model ran, by construction. */
+export const STAND_IN: C.Replay = { shown: "a scripted stand-in, no model ran", day: "", repository: "" };
+
+/** The replay's session: every state it holds carries `replay`, so the graph draws the replay line and
+ *  offers nothing that changes a plan (state.ts does not read the snapshot's `replay` yet). */
+export class ReplaySession extends Session {
+  replay: C.Replay = STAND_IN;
+  override take(state: State) {
+    super.take({ ...state, replay: this.replay } as State);
+  }
+}
 
 export function register(context: vscode.ExtensionContext, session: Session, _ui: UI) {
   let running: { child: ChildProcess; dir: string; stop: () => void } | null = null;
@@ -24,7 +37,7 @@ export function register(context: vscode.ExtensionContext, session: Session, _ui
     let err = "";
     child.stderr?.on("data", (b: Buffer) => { err += String(b); });
     child.stdout?.resume();
-    const replay = new Session(dir);
+    const replay = new ReplaySession(dir);
     const graph = new GraphHost(context, replay, "Graphene demo");
     const tick = setInterval(() => void replay.refresh(), 1000);
     const stop = () => {
@@ -53,6 +66,7 @@ export function register(context: vscode.ExtensionContext, session: Session, _ui
       void vscode.window.showErrorMessage(`graphene demo made no store in ${dir}: ${C.firstLine(err, "", "it said nothing")}`);
       return stop();
     }
+    replay.replay = C.parseReplay((await replay.run(C.stateJson())).stdout) ?? STAND_IN; // its day and repository
     await replay.refresh();
     graph.show();
     context.subscriptions.push(graph.onDidClose(stop)); // the panel closing is the end

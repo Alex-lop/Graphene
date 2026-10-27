@@ -101,6 +101,19 @@ export function askStep(sentence: string, where: { after?: string | null; under?
 /** The auto replay played into a directory of its own, with no screen. */
 export const demoInto = (dir: string): string[] => ["demo", "--auto", "--into", dir];
 
+/** The snapshot's `replay`: what a replay's store says of itself (`graphene demo --into`). */
+export interface Replay { shown: string; day: string; repository: string }
+
+/** `replay` read loosely from `state --json`'s output; null when the store is not a replay's. */
+export function parseReplay(stdout: string): Replay | null {
+  try {
+    const r = (JSON.parse(stdout) as { replay?: unknown }).replay;
+    if (!r || typeof r !== "object") return null;
+    const o = r as Record<string, unknown>;
+    return { shown: String(o.shown ?? ""), day: String(o.day ?? ""), repository: String(o.repository ?? "") };
+  } catch { return null; }
+}
+
 /** `graphene node diff --json`: `right` null is the working tree in `repo`, a running agent's changes so far. */
 export interface Diff {
   repo: string;
@@ -114,6 +127,27 @@ export interface Diff {
  *  nothing, for a side the file is not on (added, or deleted). */
 export interface Side { repo: string; path: string; rev: string | null }
 export interface Pair { path: string; status: string; left: Side; right: Side }
+
+/** The scheme every side of our diffs is read under, and the query its URI carries: which diff it is in. */
+export const SCHEME = "graphene-git";
+export interface Query { repo: string; rev: string | null; id: string; fork: string | null }
+
+/** Which diff of ours a tab shows, read from its input: a diff editor's two sides, or a multi-file editor's
+ *  list of them (its class is newer than the API this extension is typed against, so it is read loosely).
+ *  Null for a tab that is not one of our diffs. */
+export function diffOf(input: unknown): { id: string; fork: string | null } | null {
+  type U = { scheme?: string; query?: string } | undefined;
+  const r = input as { original?: U; modified?: U; textDiffs?: { original?: U; modified?: U }[] } | undefined;
+  const sides = r?.textDiffs ? r.textDiffs.flatMap((d) => [d.original, d.modified]) : [r?.original, r?.modified];
+  for (const u of sides) {
+    if (u?.scheme !== SCHEME || !u.query) continue;
+    try {
+      const q = JSON.parse(u.query) as Partial<Query>;
+      if (typeof q.id === "string") return { id: q.id, fork: typeof q.fork === "string" ? q.fork : null };
+    } catch { /* not a query of ours */ }
+  }
+  return null;
+}
 
 export function parseDiff(text: string): Diff {
   const r = JSON.parse(text) as Record<string, unknown>;
@@ -192,6 +226,13 @@ export function firstLine(stderr: string, stdout = "", fallback = "graphene said
     if (line) return line;
   }
   return fallback;
+}
+
+/** The line a refusal is read from when progress came first (`asking the planner…`): the first non-empty
+ *  line of stderr that is not a progress line, one ending in an ellipsis; else `firstLine`'s. */
+export function refusal(stderr: string, stdout = "", fallback = "graphene said nothing"): string {
+  const line = stderr.split(/\r?\n/).map((l) => l.trim()).find((l) => l && !l.endsWith("…"));
+  return line ?? firstLine(stderr, stdout, fallback);
 }
 
 /** One line for a shell: the goal quoted so the person sees exactly what runs and may edit it. */
