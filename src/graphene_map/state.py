@@ -7,12 +7,16 @@ edges, the settings and `auto.state` for the envelope and the round, the run's l
 usage rows for what was spent, and its last id as the cursor. Schema 1: a key may gain siblings and is never
 renamed; what is not known is null or empty. Read-only: nothing here writes the store or holds a lock.
 
-Following the plan: an editor keeps the snapshot's ``cursor`` and asks `graphene plan log --json --since
-<cursor>` for what happened since (one row a line, nothing when nothing did), then reads `state --json` again
-when a row came. The cheapest trigger is the store's own files: `.graphene/graphene.db-wal` changes on every
-write while a run or a session holds a connection, `.graphene/graphene.db` on a checkpoint, so it watches
-that directory for `graphene.db*` and debounces about 200 ms; `.graphene/run.lock` appears with a run and
-goes with it. Once a second is what the cockpit itself does, and is safe: a WAL reader blocks no writer.
+Following the plan: `graphene state --json --watch` (``follow``) prints the snapshot once, then once more
+each time the store's own version moves: SQLite's `PRAGMA data_version` (another connection committed), the
+log's last id, or the run lock coming or going. It looks every TICK seconds, three cheap reads a look and
+nothing printed when nothing changed, and ends with exit 0 when its stdout closes or on SIGTERM. An editor on
+an older CLI, which answers `--watch` with "No such option", keeps the snapshot's ``cursor`` and asks
+`graphene plan log --json --since <cursor>` for what happened since (one row a line, nothing when nothing
+did), then reads `state --json` again when a row came. The cheapest trigger there is the store's own files:
+`.graphene/graphene.db-wal` changes on every write while a run or a session holds a connection,
+`.graphene/graphene.db` on a checkpoint, so it watches that directory for `graphene.db*` and debounces about
+200 ms; `.graphene/run.lock` appears with a run and goes with it. A WAL reader blocks no writer.
 
 Who is calling: reading needs no mark, so `state --json` answers anyone, an agent's shell included. An editor
 that spawns `graphene` for a person's click (accept, add a step, link two steps) must drop the agent marks
@@ -25,12 +29,16 @@ either: the gate refuses a hooked session's command that names them, and neither
 from __future__ import annotations
 
 import json
+import os
+import time
+from collections.abc import Callable
 from dataclasses import asdict
 from pathlib import Path
 
 from . import plan as P
 
 SCHEMA = 1
+TICK = 0.1  # seconds between `--watch`'s looks at the store's version: at most one line every 100 ms
 # what an editor drops from the environment before it spawns `graphene` for a person's click
 MARKS = ("CLAUDECODE", "CLAUDE_CODE_SESSION_ID", "CODEX_SESSION_ID", "CODEX_SANDBOX", "AI_AGENT",
          *P.AGENT_MARKS)  # fmt: skip
@@ -88,6 +96,46 @@ def short(model: str | None) -> str:
 def cursor(store) -> int:
     """The log's last id: `plan log --json --since` this gives what happened after the snapshot."""
     return int(store.conn.execute("SELECT COALESCE(MAX(id), 0) FROM node_log").fetchone()[0])
+
+
+def version(store, root: Path) -> tuple:
+    """The store's own version, as `--watch` compares it from one look to the next: what SQLite says another
+    connection committed (`PRAGMA data_version`, one page read), the log's last id (an index lookup), and the
+    run lock as a file (its size and mtime, or None when there is no run). Any of the three moving is a
+    change; none moving is nothing to say."""
+    moved = store.conn.execute("PRAGMA data_version").fetchone()[0]
+    try:
+        lock = os.stat(root / ".graphene" / "run.lock")
+        held = (lock.st_size, lock.st_mtime_ns)
+    except OSError:
+        held = None
+    return moved, cursor(store), held
+
+
+def line(store, root: Path) -> str:
+    """One line for the stream: the snapshot, or the one-line error `state --json` prints in its place, so
+    an editor reading lines is never left with half an object."""
+    try:
+        why = unplanned(store)
+        said = snapshot(store, root) if why is None else error(why)
+    except Exception as no:  # the same promise as `state --json`: one JSON object on stdout whatever happened
+        said = error(f"the plan could not be read ({type(no).__name__}: {no})")
+    return json.dumps(said)
+
+
+def follow(
+    store, root: Path, say: Callable[[str], None], alive: Callable[[], bool], tick: float = TICK
+) -> None:
+    """`graphene state --json --watch`: one line at once, then one more each time ``version`` moves, while
+    ``alive`` says to go on (the caller's: stdout open, no SIGTERM). The version is read before the snapshot,
+    so a write that lands between the two is said again on the next look rather than missed."""
+    was = None
+    while alive():
+        now = version(store, root)
+        if now != was:
+            say(line(store, root))
+            was = now
+        time.sleep(tick)
 
 
 def log_after(store, since: int = 0) -> list[dict]:
