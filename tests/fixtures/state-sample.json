@@ -3,6 +3,7 @@
   "graphene": "0.8.0",
   "repo": "/home/dev/project",
   "replay": null,
+  "stand_in": false,
   "cursor": 42,
   "goal": "the app greets, says goodbye, and knows its users",
   "first": "auto",
@@ -130,7 +131,7 @@
       "hollow": false,
       "why": "",
       "checkout": null,
-      "base": "bc9513dcedec570d0a3a73b83c4c40a68040edfe",
+      "base": "23196b27ed7c7fdcadf111839af263e865eafb0f",
       "attempts": 1
     },
     {
@@ -166,7 +167,7 @@
       "hollow": false,
       "why": "",
       "checkout": "/home/dev/project",
-      "base": "e86fcd4b62faccff637cdb079e46b0f51b161707",
+      "base": "510bbf8f78a8112647b9d9029338125309df890b",
       "attempts": 1
     },
     {
@@ -241,7 +242,7 @@
       "hollow": false,
       "why": "bye.py imports the schema, which no leaf makes",
       "checkout": "/home/dev/project",
-      "base": "e86fcd4b62faccff637cdb079e46b0f51b161707",
+      "base": "510bbf8f78a8112647b9d9029338125309df890b",
       "attempts": 0
     },
     {
