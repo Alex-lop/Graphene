@@ -10,14 +10,14 @@ A fresh terminal. Each block says what it shows. [TIMED]
 # 1. The night's build in a clone of its own, and the CLI it needs (about 3 minutes)
 git clone -q -b night/editor https://github.com/Alex-lop/Graphene ~/graphene-night && cd ~/graphene-night
 uv sync -q && (cd editors/vscode && npm ci --silent && npm run package)
-uv tool install --force --from . 'graphene-map[nemotron]'   # your graphene becomes 0.9.0; undo: --force graphene-map==0.8.0
+uv tool install --force '.[nemotron]'   # your graphene becomes 0.9.0; undo: uv tool install --force 'graphene-map[nemotron]==0.8.0'
 graphene --version                                           # graphene 0.9.0
 ```
 
 ```sh
-# 2. Install the extension in VS Code and in Cursor
-code --install-extension editors/vscode/graphene-0.9.0.vsix
-cursor --install-extension editors/vscode/graphene-0.9.0.vsix
+# 2. Install the extension in VS Code and in Cursor (neither `code` nor `cursor` is on this Mac's PATH)
+"/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code" --install-extension editors/vscode/graphene-0.9.0.vsix
+/Applications/Cursor.app/Contents/Resources/app/bin/cursor --install-extension editors/vscode/graphene-0.9.0.vsix
 ```
 
 3. **Watch the Demo.** In VS Code, the palette: **Graphene: Watch the Demo**. A tab plays the auto replay. Its first
@@ -27,7 +27,8 @@ cursor --install-extension editors/vscode/graphene-0.9.0.vsix
 ```sh
 # 4. A race of your own, free, against the stand-in, watched in VS Code
 cd ~/graphene-night && ENDPOINT=standin PAUSE=1 dev/proof/auto.sh ~/graphene-try
-#    at "open ... in VS Code and start recording, then press Enter": `code ~/graphene-try`, then Enter here
+#    at "open ... in VS Code and start recording, then press Enter": open ~/graphene-try in VS Code
+#    (File > Open Folder…), then press Enter here
 ```
 
    The side bar leads with **Needs You**, then the graph as lanes, then **Agents**. The tab (**Graphene: Show
@@ -76,7 +77,15 @@ gh run watch                  # publish-vscode.yml: the same .vsix to the Market
 Enter. `ENDPOINT=standin` runs the same take free, to rehearse. `dev/process/editor/take/` has a screenshot of
 each beat from the rehearsal.
 
-**The b-roll** is in `~/graphene-film/broll/`, each clip named for its beat in `dev/launch/video-auto.md`. [BROLL]
+**The b-roll** is in `~/graphene-film/broll/`, each clip 1920x1080 and named for its beat in
+`dev/launch/video-auto.md`. Every clip is the scripted stand-in and says so on screen.
+- `beat2-aha-demo-auto.mp4` (40 s) and `beat5-locks-demo-cheat.mp4` (13 s): the terminal replays, filmed with vhs.
+- `beat6-editor-race-fans-out.mp4` (12 s): three tasks, nine forks racing in the editor tab.
+- `beat3-check-a-fork-kept.mp4` (12 s): the chips turn "✓ kept" with why; the goal's check goes red; the fix races.
+- `beat6-editor-explorer-owners.mp4` (12 s): the Explorer marks the agents' files with their numbers.
+- `beat6-editor-drag-links-two-tasks.mp4` (8 s): a task's dot dragged onto another, the edge drawn.
+- `beat6-editor-open-changes-diff.mp4` (9 s): Open changes on a done task, in VS Code's own diff editor.
+- `beat6-editor-needs-you-accepted.mp4` (13 s): two proposals in Needs You, accepted from the side bar.
 
 ## The brief
 
@@ -86,7 +95,8 @@ each beat from the rehearsal.
    17 moves whole, against 4. The first graph takes 2.5 s either way. A stranger reached the first graph in about
    7 minutes, against 11, and steered in about 14, against 18, with 11 guesses against 9 (`after/stranger.md`).
 2. **Look at these first**: `dev/process/editor/after/code-panel-1280x800-dark.png` (the race),
-   `after/code-sidebar-320-dark.png` beside `before/code-sidebar-320-dark.png` (the side bar). [BROLL-ONE]
+   `after/code-sidebar-320-dark.png` beside `before/code-sidebar-320-dark.png` (the side bar), and the clip
+   `~/graphene-film/broll/beat6-editor-race-fans-out.mp4`.
 3. **The review** (`dev/process/editor/review.md`). Auto mode, the envelope and the gate: nine faults, five high,
    all fixed with a failing test first, each confirmed by the other reviewer. The extension and the seams between
    the lanes: five readers found 29. [REVIEW-EXT]
