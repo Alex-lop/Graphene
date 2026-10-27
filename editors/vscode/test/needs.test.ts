@@ -29,6 +29,9 @@ test("what needs you comes in the cockpit's order: auto waiting, questions, then
   assert.deepEqual(list.map((n) => n.kind), ["auto", "question", "sign-off", "hand-back", "yours", "proposal", "stopped"]);
   assert.deepEqual(list.map((n) => ("t" in n ? n.t.id : "q" in n ? n.q.id : "auto")), ["auto", "port", "api", "db", "mine", "ui", "cli"]);
   assert.equal(count(list), "7 need you");
+  // a row's element reaches its menu commands as it is (Drop, Accept, Tell, Open Changes): it carries the id
+  // every command reads from its argument, so the move is the row's own, not a picker of every task
+  assert.deepEqual(list.map((n) => ("id" in n ? n.id : null)), [null, "port", "api", "db", "mine", "ui", "cli"]);
   const auto = list[0]!;
   assert.ok(auto.kind === "auto" && auto.key && auto.endpoint === "nim");
 });
@@ -46,7 +49,10 @@ test("a plan with nothing for you lists nothing, and a running plan lists only w
 test("a question's moves are the board's commands: take its default, pick an option by number, answer in words", () => {
   assert.deepEqual(takeDefault("port"), ["board", "take", "port"]);
   assert.deepEqual(pickOption("port", 1), ["board", "pick", "port", "1"]);
-  assert.deepEqual(answerWords("port", "8080, the proxy has 8000"), ["board", "answer", "port", "8080, the proxy has 8000"]);
+  assert.deepEqual(answerWords("port", "8080, the proxy has 8000"), ["board", "answer", "port", "--", "8080, the proxy has 8000"]);
+  assert.deepEqual(answerWords("port", "-1, use the proxy"), ["board", "answer", "port", "--", "-1, use the proxy"], "a dash-first answer is words");
+  // the person's words come after `--`: ones that start with a dash are an answer, not an option the CLI refuses
+  assert.deepEqual(answerWords("which-flag-name", "--top 5, as the goal says"), ["board", "answer", "which-flag-name", "--", "--top 5, as the goal says"]);
 });
 
 test("a hand-back offers what the snapshot carries, in the cockpit's order and words, then trying it again", () => {
@@ -93,7 +99,8 @@ test("an answer given with the command is the option by its words, the default, 
   const q = { id: "port", text: "which port?", default: "8000", options: ["pick a free one", "8080"], about: null, kind: "question" };
   assert.deepEqual(answerWith(q, "8080"), ["board", "pick", "port", "2"]);
   assert.deepEqual(answerWith(q, "8000"), ["board", "take", "port"]);
-  assert.deepEqual(answerWith(q, "9000, the proxy has 8080"), ["board", "answer", "port", "9000, the proxy has 8080"]);
+  assert.deepEqual(answerWith(q, "9000, the proxy has 8080"), ["board", "answer", "port", "--", "9000, the proxy has 8080"]);
+  assert.deepEqual(answerWith(q, "-n, the short one"), ["board", "answer", "port", "--", "-n, the short one"]);
 });
 
 test("a task that came back can be dropped; a running one cannot", () => {

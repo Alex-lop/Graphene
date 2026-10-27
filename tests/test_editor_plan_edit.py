@@ -115,6 +115,18 @@ def test_a_deleted_line_and_a_goal_changed_after_the_cursor_are_refused_too(repo
     assert code == 0 and got == {"applied": False, "said": [], "faults": []}
 
 
+def test_the_text_of_an_empty_plan_is_the_editors_hint_not_a_blank_line(repo):
+    """Edit Plan as Text on a fresh repo opened an empty tab: `plan --text` printed one newline, and a save
+    of nothing is refused with no hint of what to type. The terminal's `plan edit` shows its `# ` help under
+    the text; an empty plan's text is that help, which a save passes back unread."""
+    text = rendered()
+    assert text.strip(), repr(text)
+    assert all(line.startswith("# ") for line in text.splitlines()), text
+    assert "is a node in the plan" in text and "scope:" in text
+    nothing = "the text has no node in it, so nothing was applied"
+    assert save(text)[1] == {"applied": False, "said": [], "faults": [{"line": 1, "text": nothing}]}
+
+
 def test_the_terminal_form_says_the_lines_and_an_agent_is_refused(repo):
     agent("plan", "propose", "-", input=TEXT)
     said = runner.invoke(build(), ["plan", "edit", "--from", "-"], env={"GRAPHENE_AS": "person:alex"},

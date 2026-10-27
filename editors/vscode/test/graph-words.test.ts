@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
+import * as C from "../src/commands.ts";
 import { actsFor, CHANGES, cornerWord, counts, fitWidth, fitWords, forkActs, forkWords, HEADER_ACTS, headerFor, linkHint, paneKey, replayLine, sub, tabOrder, zoomK,
          topLine, type StateX, type TaskX } from "../src/graph/words.ts";
 import { ICONS } from "../src/graph/icons.ts";
@@ -124,6 +125,15 @@ test("a task offers the acts its state takes; a replay offers only what reads", 
   assert.deepEqual(acts("farewell", true), []);
   assert.deepEqual(acts("ship", true), []);
   assert.equal(actsFor(task("farewell"), false)[0]!.main, true);
+});
+
+test("a button's hover names the graphene command its click runs", () => {
+  const named = (b: { title: string }, argv: string[]) => assert.ok(b.title.includes(`graphene ${argv.slice(0, 2).join(" ")}`), `"${b.title}" names ${argv.join(" ")}`);
+  const r = actsFor(task("farewell"), false);
+  named(r.find((b) => b.act === "signOff")!, C.signOff("farewell"));
+  named(actsFor({ ...task("ship"), state: "proposed" }, false).find((b) => b.act === "accept")!, C.accept("ship"));
+  const f = task("farewell");
+  named(forkActs(f, f.forks[0]!, false).find((b) => b.act === "pickFork")!, C.pickFork("farewell", "a"));
 });
 
 test("a fork in review offers Keep beside its changes; elsewhere only its changes", () => {

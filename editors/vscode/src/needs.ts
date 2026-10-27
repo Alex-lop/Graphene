@@ -4,10 +4,12 @@
 // Nothing here sends anyone to the cockpit. Pure: no VS Code here; needsView.ts draws what this returns.
 import type { Question, State, Task } from "./state.ts";
 
+// A row's element reaches its menu commands as it is, so it carries `id`: what every command reads from its
+// argument (extension.ts taskOf, diff.ts, step.ts). Without it, Drop from a Needs You row opened a picker of every task.
 export type Need =
   | { kind: "auto"; why: string; endpoint: string | null; key: boolean } // auto waits; key: a key would free it
-  | { kind: "question"; q: Question }
-  | { kind: "proposal" | "hand-back" | "sign-off" | "yours" | "stopped"; t: Task };
+  | { kind: "question"; id: string; q: Question }
+  | { kind: "proposal" | "hand-back" | "sign-off" | "yours" | "stopped"; id: string; t: Task };
 
 type TaskNeed = Extract<Need, { t: Task }>["kind"];
 const NEEDS_YOU: Record<string, TaskNeed> = { proposed: "proposal", "came back": "hand-back", review: "sign-off", yours: "yours" };
@@ -30,10 +32,10 @@ export function keyTrouble(why: string): { key: boolean; endpoint: string | null
 export function needs(s: State): Need[] {
   const out: Need[] = [];
   if (s.auto?.stage === "waits") out.push({ kind: "auto", why: s.auto.why || "see the plan", ...keyTrouble(s.auto.why) });
-  for (const q of s.questions) out.push({ kind: "question", q });
+  for (const q of s.questions) out.push({ kind: "question", id: q.id, q });
   for (const t of s.tasks) {
     const kind: TaskNeed | null = NEEDS_YOU[t.state] ?? (t.state === "running" && t.stopped.length ? "stopped" : null);
-    if (kind) out.push({ kind, t });
+    if (kind) out.push({ kind, id: t.id, t });
   }
   return out;
 }
@@ -46,7 +48,7 @@ export function count(list: Need[]): string {
 // the moves, each the graphene command the cockpit runs for the same key
 export const takeDefault = (id: string): string[] => ["board", "take", id];
 export const pickOption = (id: string, n: number): string[] => ["board", "pick", id, String(n)]; // from 1
-export const answerWords = (id: string, words: string): string[] => ["board", "answer", id, words];
+export const answerWords = (id: string, words: string): string[] => ["board", "answer", id, "--", words]; // free text last
 export const tryAgain = (id: string): string[] => ["run", "--parallel", "4", "--node", id]; // the cockpit's ⏎
 
 /** An answer given with the command (the graph's pane sends the option it shows): one of the question's options

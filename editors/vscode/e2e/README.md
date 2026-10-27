@@ -58,6 +58,8 @@ printf 'quit\n' | nc 127.0.0.1 N
 One command a line; the answer comes back on the same connection. `sh` reads its line as a shell does, so
 a title with spaces goes in quotes. `--fixture DIR` opens your own
 repository instead of a fresh wordkit; `--standin` starts the stand-in without the race; `auto` starts it.
+The stand-in answers Add Step too (`sh ask --step --after top -- "a --version flag on the CLI"`): one leaf
+named by the sentence's first words, owning files no task has, as a proposal.
 
 ## Measures
 

@@ -60,23 +60,20 @@
           "id": "graphene.needs",
           "name": "Needs You",
           "icon": "media/graphene.svg",
-          "contextualTitle": "Graphene",
-          "initialSize": 1
+          "contextualTitle": "Graphene"
         },
         {
           "id": "graphene.graph",
           "type": "webview",
           "name": "Graph",
           "icon": "media/graphene.svg",
-          "contextualTitle": "Graphene",
-          "initialSize": 4
+          "contextualTitle": "Graphene"
         },
         {
           "id": "graphene.agents",
           "name": "Agents",
           "icon": "media/graphene.svg",
-          "contextualTitle": "Graphene",
-          "initialSize": 1
+          "contextualTitle": "Graphene"
         },
         {
           "id": "graphene.plan",
@@ -112,8 +109,28 @@
       },
       {
         "view": "graphene.needs",
-        "contents": "What needs you shows here once the plan is read.",
-        "when": "graphene.status != ok && graphene.status != empty"
+        "contents": "$(loading~spin) Reading the plan…",
+        "when": "graphene.status == reading"
+      },
+      {
+        "view": "graphene.needs",
+        "contents": "Graphene is not installed, or not on this editor's PATH.\n[Install Graphene](command:graphene.install)\n[Watch the Demo](command:graphene.watchDemo)",
+        "when": "graphene.status == missing"
+      },
+      {
+        "view": "graphene.needs",
+        "contents": "This folder has no plan yet.\n[Set Up This Folder](command:graphene.init)\n[Watch the Demo](command:graphene.watchDemo)",
+        "when": "graphene.status == uninitialised"
+      },
+      {
+        "view": "graphene.needs",
+        "contents": "Graphene could not read the plan.\n\n[Try again](command:graphene.refresh)",
+        "when": "graphene.status == error"
+      },
+      {
+        "view": "graphene.needs",
+        "contents": "Open a folder to see what needs you.",
+        "when": "graphene.status == nofolder"
       },
       {
         "view": "graphene.agents",

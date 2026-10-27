@@ -17,3 +17,12 @@ test("a refused step is told by the refusal, not by the planner's progress line 
   assert.equal(C.refusal("asking the planner…\n", "it said this on stdout"), "asking the planner…", "progress alone is still a line");
   assert.equal(C.refusal("", ""), "graphene said nothing");
 });
+
+test("a step by hand with no check asks for the person's sign-off, so the CLI takes the leaf as one it can finish", () => {
+  assert.deepEqual(C.byHand("greet route", null, [], "app.py tests/**", ""),
+                   ["node", "add", "--scope", "app.py", "--scope", "tests/**", "--signoff", "--", "greet route"]);
+  assert.deepEqual(C.byHand(" greet route ", "api", ["hello"], "app.py", " pytest -q "),
+                   ["node", "add", "--parent", "api", "--needs", "hello", "--scope", "app.py", "--check", "pytest -q", "--", "greet route"]);
+  assert.ok(C.addStep({ title: "x", scope: ["a.py"], signoff: true }).includes("--signoff"));
+  assert.ok(!C.addStep({ title: "x", scope: ["a.py"], check: "true" }).includes("--signoff"));
+});

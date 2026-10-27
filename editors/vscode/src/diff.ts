@@ -8,6 +8,7 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import * as C from "./commands.ts";
 import type { Session, UI } from "./session.ts";
+import type { Task } from "./state.ts";
 
 export const SCHEME = C.SCHEME;
 
@@ -77,12 +78,12 @@ export function register(context: vscode.ExtensionContext, session: Session, _ui
   const read = async (id: string, fork: string | null): Promise<C.Diff | null> => {
     const out = await session.run(C.nodeDiff(id, fork));
     if (out.code !== 0) {
-      void vscode.window.showInformationMessage(`Graphene: ${C.firstLine(out.stderr, out.stdout)}`);
+      void vscode.window.showInformationMessage(`Graphene: ${C.plain(C.firstLine(out.stderr, out.stdout))}`);
       return null;
     }
     try { return C.parseDiff(out.stdout); } catch {
       // nothing to show yet is said in words, on stdout, exit 0 (the CLI as it is)
-      void vscode.window.showInformationMessage(`Graphene: ${C.firstLine(out.stdout, out.stderr, "node diff gave no JSON")}`);
+      void vscode.window.showInformationMessage(`Graphene: ${C.plain(C.firstLine(out.stdout, out.stderr, "node diff gave no JSON"))}`);
       return null;
     }
   };
@@ -93,10 +94,10 @@ export function register(context: vscode.ExtensionContext, session: Session, _ui
     const title = C.diffTitle(name(id), fork, d);
     const pairs = C.diffPairs(d);
     if (!pairs.length) {
-      void vscode.window.showInformationMessage(`Graphene: ${d.said[0] ?? `${name(id)} changed no file`}`);
+      void vscode.window.showInformationMessage(`Graphene: ${C.plain(d.said[0] ?? `${name(id)} changed no file`)}`);
       return;
     }
-    if (d.said.length) vscode.window.setStatusBarMessage(`$(info) ${d.said.join(" · ")}`, 8000);
+    if (d.said.length) vscode.window.setStatusBarMessage(`$(info) ${C.plain(d.said.join(" · "))}`, 8000);
     const uris = pairs.map((p) => [sideUri(p.left, id, fork), sideUri(p.right, id, fork)] as const);
     if (pairs.length > 1 && !column) {
       try {
@@ -115,8 +116,16 @@ export function register(context: vscode.ExtensionContext, session: Session, _ui
   const cmd = (n: string, fn: (arg?: Arg) => unknown) =>
     context.subscriptions.push(vscode.commands.registerCommand(`graphene.${n}`, (arg?: Arg) => fn(arg)));
 
+  /** The task the palette did not name: a quick pick among those the command can act on, or why none. */
+  const pick = async (among: Task[], placeHolder: string, none: string): Promise<Task | undefined> => {
+    if (!among.length) return void vscode.window.showInformationMessage(`Graphene: ${none}`);
+    const chosen = await vscode.window.showQuickPick(
+      among.map((t) => ({ label: C.plain(t.title), description: `${t.state} · ${t.id}`, t })), { placeHolder });
+    return chosen?.t;
+  };
+
   cmd("openDiff", async (arg) => {
-    const id = idOf(arg);
+    const id = idOf(arg) ?? (await pick(C.withChanges(session.tasks()), "the task whose changes to open", "no task has changes to show yet."))?.id;
     if (!id) return;
     const fork = typeof arg === "object" ? arg.fork ?? null : null;
     const d = await read(id, fork);
@@ -125,10 +134,11 @@ export function register(context: vscode.ExtensionContext, session: Session, _ui
 
   cmd("compareForks", async (arg) => {
     const id = idOf(arg);
-    const t = id ? session.tasks().find((x) => x.id === id) : undefined;
+    const t = id ? session.tasks().find((x) => x.id === id)
+                 : await pick(C.forked(session.tasks()), "the task whose forks to compare", "no task has forks racing.");
     if (!t) return;
     const letters = t.forks.map((f) => f.letter).filter(Boolean);
-    if (!letters.length) return void vscode.window.showInformationMessage(`Graphene: ${t.title} has no forks racing.`);
+    if (!letters.length) return void vscode.window.showInformationMessage(`Graphene: ${C.plain(t.title)} has no forks racing.`);
     const columns = [vscode.ViewColumn.One, vscode.ViewColumn.Two, vscode.ViewColumn.Three, vscode.ViewColumn.Four,
                      vscode.ViewColumn.Five, vscode.ViewColumn.Six, vscode.ViewColumn.Seven, vscode.ViewColumn.Eight, vscode.ViewColumn.Nine];
     for (const [i, letter] of letters.slice(0, columns.length).entries()) {
@@ -142,7 +152,7 @@ export function register(context: vscode.ExtensionContext, session: Session, _ui
     const d = given?.id && given.fork ? { id: given.id, fork: given.fork } : current();
     if (!d?.fork) return void vscode.window.showInformationMessage("Graphene: open a fork's diff first, then keep it.");
     if (await session.act(C.pickFork(d.id, d.fork))) {
-      const land = await vscode.window.showInformationMessage(`Fork ${d.fork} is now ${name(d.id)}'s work. Sign off to land it.`, "Sign Off");
+      const land = await vscode.window.showInformationMessage(`Fork ${d.fork} is now ${C.plain(name(d.id))}'s work. Sign off to land it.`, "Sign Off");
       if (land) await session.act(C.signOff(d.id));
     }
   });

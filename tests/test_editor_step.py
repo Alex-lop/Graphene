@@ -172,6 +172,32 @@ def test_with_nemotron_the_step_comes_from_nano_not_the_largest_model(repo, fake
     assert A.for_step("claude") == "claude" and A.for_step(None) is None
 
 
+def test_the_harness_stand_in_answers_a_step_with_one_leaf_from_the_sentence(repo, monkeypatch):
+    """dev/proof/standin.py serves test_demo_auto's `reply` for every request, so the editor's Add Step
+    (`graphene ask --step --after ID -- SENTENCE`) driven through the harness lands one proposal."""
+    from test_demo_auto import reply as standin
+
+    planned(repo)
+    with Fake([standin] * 20) as f:
+        for k, v in f.env().items():
+            monkeypatch.setenv(k, v)
+        tf._listed.cache_clear()
+        sentence = "a --version flag on the CLI, with a test"
+        said = person("ask", "--step", "--after", "ids", "--with", "nemotron", "--", sentence)
+        assert said.exit_code == 0, said.output + said.stderr
+        assert said.stdout.splitlines()[0] == f"proposed a-version-flag: {sentence}"
+        with Store.open(repo) as store:
+            step = plan.get(store, "a-version-flag")
+            assert step.state == PROPOSED and step.needs == ["ids"] and step.parent == "api"
+            assert step.scope == ["wordkit/a_version_flag.py", "tests/test_a_version_flag.py"]
+            assert {n.id for n in plan.nodes(store)} == {"api", "ids", "docs", "a-version-flag"}
+        # a second sentence is a second leaf of its own, beside the first
+        said = person("ask", "--step", "--after", "ids", "--with", "nemotron", "--",
+                      "a --help line that names every flag")  # fmt: skip
+        assert said.exit_code == 0, said.output + said.stderr
+        assert said.stdout.splitlines()[0] == "proposed a-help-line: a --help line that names every flag"
+
+
 def test_the_flags_have_help_in_the_budget_and_the_reference_names_the_step():
     import typer.main
 

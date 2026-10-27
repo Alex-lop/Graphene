@@ -34,11 +34,12 @@ export async function addStep(session: Session, arg?: Arg) {
   void session.refresh();
   if (out.code !== 0) {
     const why = out.code === -1 ? "graphene was not found" : C.refusal(out.stderr, out.stdout);
-    return void vscode.window.showErrorMessage(`graphene ask --step: ${why}`);
+    return void vscode.window.showErrorMessage(`graphene ask --step: ${C.plain(why)}`);
   }
   const p = C.proposed(out.stdout);
-  if (!p) return void vscode.window.showInformationMessage(`Graphene: ${C.firstLine(out.stdout, out.stderr, "nothing was proposed")}`);
-  const pick = await vscode.window.showInformationMessage(`Proposed: ${p.title} (${p.id})`, "Accept", "Drop");
+  if (!p) return void vscode.window.showInformationMessage(`Graphene: ${C.plain(C.firstLine(out.stdout, out.stderr, "nothing was proposed"))}`);
+  // the planner's title, as text: a link or an icon in it is shown, not read
+  const pick = await vscode.window.showInformationMessage(`Proposed: ${C.plain(p.title)} (${C.plain(p.id)})`, "Accept", "Drop");
   if (pick === "Accept") await session.act(C.accept(p.id));
   if (pick === "Drop") await session.act(C.dropStep(p.id));
 }
@@ -70,11 +71,13 @@ export async function addByHand(session: Session, arg?: Arg) {
     if (!where) return;
     parent = where.id;
   }
-  const scope = await vscode.window.showInputBox({ prompt: "The files it may write (globs, spaces or commas between), or nothing for now",
-                                                  placeHolder: "app.py tests/test_app.py", ignoreFocusOut: true });
+  // the CLI refuses a leaf with no scope, and one with neither a check nor a sign-off: the prompts say so
+  const scope = await vscode.window.showInputBox({ prompt: "The files it may write: a step needs a scope (globs, spaces or commas between)",
+                                                  placeHolder: "app.py tests/test_app.py", ignoreFocusOut: true,
+                                                  validateInput: (v) => (C.globs(v).length ? undefined : "a step needs a scope: the paths it may touch") });
   if (scope === undefined) return;
-  const check = await vscode.window.showInputBox({ prompt: "The command that passes only when it is done, or nothing for now",
+  const check = await vscode.window.showInputBox({ prompt: "The command that passes only when it is done; leave it empty and your sign-off finishes it",
                                                   placeHolder: "pytest -q tests/test_app.py", ignoreFocusOut: true });
   if (check === undefined) return;
-  await session.act(C.addStep({ title: title.trim(), parent, needs, scope: C.globs(scope), check: check.trim() || null }));
+  await session.act(C.byHand(title, parent, needs, scope, check));
 }

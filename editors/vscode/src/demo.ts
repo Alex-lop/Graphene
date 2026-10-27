@@ -1,6 +1,6 @@
 // Graphene: Watch the Demo: the auto replay plays into a directory of its own under the OS temp dir, as a
 // child this module owns, and a graph panel of its own shows it. No key and no network. Closing the panel
-// stops the replay and removes the directory.
+// stops the replay and removes the directory; so does the editor quitting, before its host goes.
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -26,10 +26,23 @@ export class ReplaySession extends Session {
   }
 }
 
-export function register(context: vscode.ExtensionContext, session: Session, _ui: UI) {
-  let running: { child: ChildProcess; dir: string; stop: () => void } | null = null;
+/** The replay's end: its child stopped and its directory removed. From the panel's close the child gets TERM
+ *  and 500 ms to go before the directory does. From the extension's dispose (the editor quitting) no timer
+ *  would ever fire, so the child is killed and the directory removed before dispose returns. */
+export function end(child: { exitCode: number | null; kill(signal: "SIGTERM" | "SIGKILL"): boolean }, dir: string, atOnce: boolean) {
+  const rm = () => rmSync(dir, { recursive: true, force: true });
+  if (atOnce) {
+    if (child.exitCode === null) child.kill("SIGKILL");
+    return rm();
+  }
+  if (child.exitCode === null) child.kill("SIGTERM");
+  setTimeout(rm, 500);
+}
 
-  context.subscriptions.push({ dispose: () => running?.stop() });
+export function register(context: vscode.ExtensionContext, session: Session, _ui: UI) {
+  let running: { child: ChildProcess; dir: string; stop: (atOnce?: boolean) => void } | null = null;
+
+  context.subscriptions.push({ dispose: () => running?.stop(true) });
   context.subscriptions.push(vscode.commands.registerCommand("graphene.watchDemo", async () => {
     if (running) return void vscode.window.showInformationMessage("The demo is already playing. Close its graph to stop it.");
     const dir = demoDir();
@@ -40,21 +53,20 @@ export function register(context: vscode.ExtensionContext, session: Session, _ui
     const replay = new ReplaySession(dir);
     const graph = new GraphHost(context, replay, "Graphene demo");
     const tick = setInterval(() => void replay.refresh(), 1000);
-    const stop = () => {
+    const stop = (atOnce = false) => {
       if (!running) return;
       running = null;
       clearInterval(tick);
       replay.dispose();
-      if (child.exitCode === null) child.kill("SIGTERM");
-      setTimeout(() => rmSync(dir, { recursive: true, force: true }), 500);
+      end(child, dir, atOnce);
     };
     running = { child, dir, stop };
     child.on("exit", (code) => {
       if (running?.child !== child) return;
-      if (code) void vscode.window.showErrorMessage(`graphene demo ended: ${C.firstLine(err, "", `exit ${code}`)}`);
+      if (code) void vscode.window.showErrorMessage(`graphene demo ended: ${C.plain(C.firstLine(err, "", `exit ${code}`))}`);
       stop();
     });
-    child.on("error", (e) => { void vscode.window.showErrorMessage(`graphene demo: ${e.message}`); stop(); });
+    child.on("error", (e) => { void vscode.window.showErrorMessage(`graphene demo: ${C.plain(e.message)}`); stop(); });
 
     // the store appears once the replay has set its repo up; then the graph of its own
     const t0 = Date.now();
@@ -63,12 +75,12 @@ export function register(context: vscode.ExtensionContext, session: Session, _ui
     }
     if (!running) return;
     if (!existsSync(path.join(dir, STORE))) {
-      void vscode.window.showErrorMessage(`graphene demo made no store in ${dir}: ${C.firstLine(err, "", "it said nothing")}`);
+      void vscode.window.showErrorMessage(`graphene demo made no store in ${dir}: ${C.plain(C.firstLine(err, "", "it said nothing"))}`);
       return stop();
     }
     replay.replay = C.parseReplay((await replay.run(C.stateJson())).stdout) ?? STAND_IN; // its day and repository
     await replay.refresh();
     graph.show();
-    context.subscriptions.push(graph.onDidClose(stop)); // the panel closing is the end
+    context.subscriptions.push(graph.onDidClose(() => stop())); // the panel closing is the end
   }));
 }

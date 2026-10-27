@@ -75,3 +75,13 @@ test("the agent's copy is the snapshot's checkout, else the run's own place", ()
   assert.match(C.agentCopy("/r", "ids", null), /^\/r\/\.graphene\/worktrees\/ids$/);
   assert.match(C.agentCopy("/r", "ids", undefined, "b"), /\/ids\.b$/);
 });
+
+test("from the palette, Open Changes offers the tasks that have changes and Compare Forks the ones racing", () => {
+  const t = (id: string, state: string, letters: string[] = []) =>
+    ({ id, state, forks: letters.map((letter) => ({ letter })) }) as unknown as import("../src/state.ts").Task;
+  const tasks = [t("a", "running"), t("b", "review", ["a", "b"]), t("c", "came back"), t("d", "done"),
+                 t("e", "ready"), t("f", "waiting"), t("g", "proposed"), t("h", "yours"), t("i", "running", [""])];
+  assert.deepEqual(C.withChanges(tasks).map((x) => x.id), ["a", "b", "c", "d", "i"]);
+  assert.deepEqual(C.forked(tasks).map((x) => x.id), ["b"], "a fork with no letter is not one to compare");
+  assert.deepEqual(C.withChanges([]), []);
+});

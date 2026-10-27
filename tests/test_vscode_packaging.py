@@ -70,6 +70,20 @@ def test_the_activity_bar_shows_the_brand_mark_and_a_plan_view_and_the_graph():
     assert views["graphene.graph"]["type"] == "webview"
 
 
+def test_the_first_open_view_says_what_to_do_before_there_is_a_plan():
+    # Needs You sits first and open; Plan starts collapsed, so its welcome is out of sight until it is opened.
+    views = MANIFEST["contributes"]["views"]["graphene"]
+    assert [v["id"] for v in views[:3]] == ["graphene.needs", "graphene.graph", "graphene.agents"]
+    collapsed = {v["id"] for v in views if v.get("visibility") == "collapsed"}
+    assert collapsed == {"graphene.plan", "graphene.rounds"}
+    welcome = {w["when"]: w["contents"] for w in MANIFEST["contributes"]["viewsWelcome"]
+               if w["view"] == "graphene.needs"}
+    assert "command:graphene.init" in welcome["graphene.status == uninitialised"]
+    assert "command:graphene.install" in welcome["graphene.status == missing"]
+    for status in ("uninitialised", "missing"):
+        assert "command:graphene.watchDemo" in welcome[f"graphene.status == {status}"]
+
+
 def test_the_settings_are_the_command_and_the_poll():
     props = MANIFEST["contributes"]["configuration"]["properties"]
     assert props["graphene.path"]["default"] == "graphene"

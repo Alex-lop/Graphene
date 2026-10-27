@@ -544,8 +544,8 @@ def register(cli: typer.Typer, root, open_store, fail):
         who = P.caller()
         if view and (as_json or as_text):
             fail("--view draws the plan; --json and --text print what it holds: one or the other", 2)
-        if as_text:
-            run(lambda s: out(T.render(s)[0].rstrip("\n")))
+        if as_text:  # an empty plan's text is the editor's `# ` help: the tab it opens in says what to type
+            run(lambda s: out(T.render(s)[0].rstrip("\n") or T.HELP))
             return
         if view:
             return print_view(view, width, height, lambda: run(lambda s: print_plan(s, who, everything)))

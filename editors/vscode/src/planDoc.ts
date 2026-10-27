@@ -44,7 +44,7 @@ export function register(context: vscode.ExtensionContext, session: Session, _ui
         fail(r.faults.map((f) => f.text).join("; ") || C.firstLine(out.stderr, out.stdout, "the plan refused it"));
       }
       faults.delete(uri);
-      vscode.window.setStatusBarMessage(`$(check) ${r.said[0] ?? "the plan is as you wrote it"}`, 6000);
+      vscode.window.setStatusBarMessage(`$(check) ${C.plain(r.said[0] ?? "the plan is as you wrote it")}`, 6000);
       text = typed;
       mtime = Date.now();
       void session.refresh();
