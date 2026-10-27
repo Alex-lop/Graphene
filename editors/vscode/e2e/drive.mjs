@@ -43,7 +43,7 @@ if (arg("--fixture", null)) {
 } else {
   fx = L.makeFixture(path.join(base, "wordkit"), graphene, { standin: standin?.url });
 }
-const session = await L.launch(app, profile, fx.dir, { width: 1280, height: 800 });
+const session = await L.launch(app, profile, fx.dir, { width: 1280, height: 800, standin: standin?.url });
 await L.openSidebar(session.page);
 let auto = null;
 const startAuto = () => { if (!auto && standin) auto = L.startAuto(fx, { log: path.join(shots, "auto.log") }); return auto ? "auto runs" : "no stand-in: start with --auto"; };

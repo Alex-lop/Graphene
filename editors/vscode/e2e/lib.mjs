@@ -166,14 +166,24 @@ export function startAuto(fixture, { rounds = 2, forks = 3, log } = {}) {
 }
 
 /** Launch the app on a folder with the profile. Returns {app, page, size}. */
-export async function launch(app, profile, folder, { width = 1280, height = 800, video, timeout = 90000 } = {}) {
+// Alex's ~/.zshenv exports a real Token Factory key into every zsh: VS Code's terminals, and the shell VS Code reads
+// its environment from at start. The marks are stripped here, so to graphene such a terminal is the person. Every
+// app this launches gets an empty ZDOTDIR (no profile is read), the stand-in's fake key, and a Token Factory URL
+// that is the stand-in's or a dead local port, so nothing it starts can reach the real endpoint or spend.
+export const DEAD_URL = "http://127.0.0.1:9/v1";
+export function safeEnv(standin) {
+  const zdot = path.join(SHORT, "gv-zdot");
+  mkdirSync(zdot, { recursive: true });
+  return { ZDOTDIR: zdot, NEBIUS_API_KEY: "fake-key", GRAPHENE_KEYCHAIN: "off", GRAPHENE_TOKENFACTORY_URL: standin || DEAD_URL };
+}
+export async function launch(app, profile, folder, { width = 1280, height = 800, video, timeout = 90000, standin } = {}) {
   const args = [
     folder,
     "--user-data-dir", profile.userDataDir, "--extensions-dir", profile.extensionsDir,
     "--skip-welcome", "--skip-release-notes", "--disable-updates", "--disable-telemetry", "--disable-crash-reporter",
     "--disable-workspace-trust", "--no-cached-data", "--disable-gpu", "--new-window",
   ];
-  const env = { ...cleanEnv(), VSCODE_SKIP_PRELAUNCH: "1", ELECTRON_ENABLE_LOGGING: process.env.E2E_LOG ? "1" : undefined };
+  const env = { ...cleanEnv(), ...safeEnv(standin), VSCODE_SKIP_PRELAUNCH: "1", ELECTRON_ENABLE_LOGGING: process.env.E2E_LOG ? "1" : undefined };
   delete env.ELECTRON_RUN_AS_NODE;
   const options = { executablePath: app.exe, args, env, timeout };
   if (video) {
