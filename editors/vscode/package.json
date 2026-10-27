@@ -2,7 +2,7 @@
   "name": "graphene-vscode",
   "displayName": "Graphene",
   "description": "Your plan as a graph you can act on: watch the agents Graphene holds to it, add a step, link two, accept, tell an agent.",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "publisher": "alex-lop",
   "license": "Apache-2.0",
   "repository": {

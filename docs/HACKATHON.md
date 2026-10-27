@@ -24,8 +24,8 @@ what it cost at list price. They were practice and takes for the video; none was
   (`tests/fake_tokenfactory.py`) and a Docker stand-in for Sandboxes. The replay `graphene demo` ships is the
   stand-in's, and its top line says "a scripted stand-in, no model ran".
 
-<!-- For Alex: send this only once PyPI serves 0.8.0 (`uvx --refresh --from 'graphene-map==0.8.0' graphene
---version` says 0.8.0; without --refresh, uvx may answer from an environment it made before): the testing
+<!-- For Alex: send this only once PyPI serves 0.9.0 (`uvx --refresh --from 'graphene-map==0.9.0' graphene
+--version` says 0.9.0; without --refresh, uvx may answer from an environment it made before): the testing
 instructions at the end, `demo --auto` first, depend on it. -->
 
 ## Inspiration

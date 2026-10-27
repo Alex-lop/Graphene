@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "graphene": "0.8.0",
+  "graphene": "0.9.0",
   "repo": "/home/dev/project",
   "replay": null,
   "stand_in": false,
@@ -131,7 +131,7 @@
       "hollow": false,
       "why": "",
       "checkout": null,
-      "base": "23196b27ed7c7fdcadf111839af263e865eafb0f",
+      "base": "b551a54e26ac86a11b200e175368b0e50e109c49",
       "attempts": 1
     },
     {
@@ -167,7 +167,7 @@
       "hollow": false,
       "why": "",
       "checkout": "/home/dev/project",
-      "base": "510bbf8f78a8112647b9d9029338125309df890b",
+      "base": "2e9dc8046820f846e9be5065740f7d5db9af9f45",
       "attempts": 1
     },
     {
@@ -242,7 +242,7 @@
       "hollow": false,
       "why": "bye.py imports the schema, which no leaf makes",
       "checkout": "/home/dev/project",
-      "base": "510bbf8f78a8112647b9d9029338125309df890b",
+      "base": "2e9dc8046820f846e9be5065740f7d5db9af9f45",
       "attempts": 0
     },
     {

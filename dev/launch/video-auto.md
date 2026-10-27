@@ -4,7 +4,7 @@ A pitch, not a tutorial: the judges may score from the video alone, and the aha 
 screen is either a command anyone can run for free (`graphene demo --auto`, `graphene demo --cheat`) or your own
 live take (`dev/proof/auto.sh`, which spends on your Token Factory key). Say "Nemotron" and "Token Factory" out
 loud; say which model does what. Narrate in your own words; the SAY lines are a draft. Record from the released
-0.8.0 wheel so the words match (`uvx graphene-map@0.8.0 …`).
+0.9.0 wheel so the words match (`uvx graphene-map@0.9.0 …`).
 
 1. **0:00 to 0:20, the problem** (`beat1-problem`)**.** Your face or a plain slide. SAY: "Yesterday I ran three coding agents on one repo
    by hand: one reviewing, two building, each told which folder was theirs. It worked until it didn't: one agent's

@@ -26,7 +26,7 @@ The VS Code extension builds and tests with Node 22 or newer, apart from the Pyt
 
 ```
 cd editors/vscode && npm ci && npm test   # types, unit tests, and a smoke test in a local VS Code if there is one
-npm run package                           # graphene-0.8.0.vsix, for `code --install-extension`
+npm run package                           # graphene-0.9.0.vsix, for `code --install-extension`
 ```
 
 ## Where things are

@@ -45,7 +45,7 @@ It is a thin client over the `graphene` command. Everything it shows is `graphen
    or from the Marketplace (VS Code) and Open VSX (Cursor) once it is published there:
 
    ```sh
-   code --install-extension graphene-0.8.0.vsix      # Cursor: cursor --install-extension graphene-0.8.0.vsix
+   code --install-extension graphene-0.9.0.vsix      # Cursor: cursor --install-extension graphene-0.9.0.vsix
    ```
 
 3. Open a folder. `Graphene: Set Up This Folder` asks who plans and who does the work, in two picks: Nemotron on
