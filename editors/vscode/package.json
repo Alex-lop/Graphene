@@ -502,7 +502,7 @@
             "description": "This extension draws and drives the `graphene` command. Install it once, in a terminal: `uv tool install graphene-map`, as the extension's page says.\n[Open a Terminal](command:workbench.action.terminal.new)",
             "media": {
               "image": "media/graph.png",
-              "altText": "the plan as a graph: tasks by state, one task's three forks racing, the kept one marked, the goal on the right"
+              "altText": "a race in the graph: three tasks, each with three forks racing, the goal on the right"
             },
             "completionEvents": [
               "onContext:graphene.status && graphene.status != missing"
@@ -514,7 +514,7 @@
             "description": "`graphene init` asks who plans and who does the work: Nemotron on Token Factory, Claude Code, Codex, or any model behind Graphene's own loop.\n[Set Up This Folder](command:graphene.init)",
             "media": {
               "image": "media/graph.png",
-              "altText": "the plan as a graph: tasks by state, one task's three forks racing, the kept one marked, the goal on the right"
+              "altText": "a race in the graph: three tasks, each with three forks racing, the goal on the right"
             },
             "completionEvents": [
               "onContext:graphene.status == ok || graphene.status == empty"
@@ -526,7 +526,7 @@
             "description": "Auto… takes a goal, a budget, and whether to plan first. The planner splits it into tasks that can run at once, each with the files it may change and a check; agents race each task, the check keeps one, then your goal's own check runs, and a red one is planned again.\n[Auto…](command:graphene.auto)",
             "media": {
               "image": "media/graph.png",
-              "altText": "the plan as a graph: tasks by state, one task's three forks racing, the kept one marked, the goal on the right"
+              "altText": "a race in the graph: three tasks, each with three forks racing, the goal on the right"
             },
             "completionEvents": [
               "onCommand:graphene.auto"
@@ -538,7 +538,7 @@
             "description": "The graph shows every task, its forks racing and what needs you; drag a task's dot onto another and that one waits on it. The Explorer marks whose each file is, a running agent's with its number; Rounds lists auto mode's iterations.\n[Show Plan Graph](command:graphene.showGraph)",
             "media": {
               "image": "media/graph.png",
-              "altText": "the plan as a graph: tasks by state, one task's three forks racing, the kept one marked, the goal on the right"
+              "altText": "a race in the graph: three tasks, each with three forks racing, the goal on the right"
             },
             "completionEvents": [
               "onCommand:graphene.showGraph"
@@ -550,7 +550,7 @@
             "description": "The envelope is what auto mode may do without you: a budget, how many tasks, fix rounds, forks, the files no task touches and the checks it may run. Anything outside it waits for you, with why.\n[Set Envelope…](command:graphene.envelope)",
             "media": {
               "image": "media/graph.png",
-              "altText": "the plan as a graph: tasks by state, one task's three forks racing, the kept one marked, the goal on the right"
+              "altText": "a race in the graph: three tasks, each with three forks racing, the goal on the right"
             },
             "completionEvents": [
               "onCommand:graphene.envelope"
