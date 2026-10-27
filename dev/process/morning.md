@@ -59,8 +59,8 @@ has every click. In short:
    agreement, make an access token, then `npx --yes ovsx@1.3.0 create-namespace alex-lop -p <token>`.
 3. The secrets: `gh secret set VSCE_PAT` and `gh secret set OVSX_PAT`.
 
-**The release, 0.9.0.** Merge PR #55 on GitHub. Date the CHANGELOG's 0.9.0 heading (it says "unreleased") in a
-commit of its own on `main`. Then:
+**The release, 0.9.0.** Merge PR #55 on GitHub, or the folded branch's PR (the brief's question 6). Date the
+CHANGELOG's 0.9.0 heading (it says "unreleased") in a commit of its own on `main`. Then:
 
 ```sh
 git push origin main          # PyPI shows the README, which loads its pictures from main
@@ -106,8 +106,8 @@ each beat from the rehearsal.
      To flip it, swap Auto…'s two picks in `extension.ts`.
    - Your `~/.zshenv` exports your Token Factory key into every shell, VS Code's too. Default: leave it, the harness no
      longer reads it. Or `graphene key set`, then drop the line.
-   - 78 commits, over your 30 to 50: the branch was pushed early for CI, so it was not folded. Default: merge
-     `night/editor-folded` instead, the same tree in 42 (a PR from it; close #55). Or merge #55 as it is.
+   - 79 commits, over your 30 to 50: the branch was pushed early for CI, so it was not folded. Default: merge
+     `night/editor-folded` instead, the same tree in 43 (a PR from it; close #55). Or merge #55 as it is.
 7. **Broken or risky.** A usage limit stopped every agent 02:15 to 04:41, and lane 2a's builder stalled 00:34 to 02:00:
    no dogfood run. Maybe on your screen: VS Code's "Welcome — wordkit" (00:31) and a WezTerm prompt (Don't Allow).
 
@@ -132,8 +132,8 @@ Opus 5.5 where Fable gave no answer.
 | 7 | `ENDPOINT=standin` and `PAUSE=1` in `dev/proof/auto.sh`, the rehearsal, the b-roll |
 | 8 | `dev/process/editor/browser-spike.md` |
 
-Not done: dogfooding a lane through Graphene with Claude Code executors (no time after the limit), Cursor's after
-screenshots (its check passes), and a second seam review round.
+Not done: dogfooding a lane through Graphene with Claude Code executors (no time after the limit), and a second seam
+review round.
 
 Verified at the end, on the pushed head: CI on GitHub, every leg; the suite, 2,907 passed and 21 skipped; the
 extension's types, 110 unit tests, build and smoke; the harness's check in real VS Code and in Cursor; `vsce package`
@@ -144,9 +144,9 @@ Decisions taken tonight are in `dev/DIRECTION.md`, 196 on.
 ## Branches and rollback
 
 - `main` on GitHub was `2da29a52a1b38031418506f5a7a6929c121f673b` when the night started. That is the rollback.
-- `night/editor` is draft PR #55 (https://github.com/Alex-lop/Graphene/pull/55), 78 commits. Every SHA the record
+- `night/editor` is draft PR #55 (https://github.com/Alex-lop/Graphene/pull/55), 79 commits. Every SHA the record
   names (`dev/process/editor/`) is one of its commits, so keep it whichever you merge.
-- `night/editor-folded` holds the same tree, byte for byte, in 42 commits: the morning's milestones, the ruff wraps
+- `night/editor-folded` holds the same tree, byte for byte, in 43 commits: the morning's milestones, the ruff wraps
   and each lane's pieces folded into the commit they belong to. No PR; `gh pr create --head night/editor-folded` makes
   one. Nothing else was pushed.
 - The lanes' own branches live only in the night's scratch clones; their work is on `night/editor`.
