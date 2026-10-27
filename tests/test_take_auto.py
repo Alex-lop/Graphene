@@ -139,3 +139,13 @@ def test_the_header_says_each_knob_in_one_line():
                  "STANDIN=<command>"):  # fmt: skip
         assert any(line.lstrip("# ").startswith(knob) for line in head.splitlines()), knob
     assert "never runs it" in head
+
+
+def test_every_proof_script_runs_as_the_docs_call_it():
+    """The morning's 15 minutes said `dev/proof/auto.sh ~/graphene-try`; the shell said "permission denied".
+    auto.sh was the one script in dev/proof without its executable bit, and the tests ran it with bash."""
+    root = Path(__file__).resolve().parents[1]
+    listed = subprocess.run(["git", "ls-files", "-s", "--", "dev/proof/*.sh"], cwd=root, capture_output=True,
+                            text=True, check=True).stdout.splitlines()  # fmt: skip
+    modes = {line.split()[3]: line.split()[0] for line in listed}
+    assert "dev/proof/auto.sh" in modes and all(m == "100755" for m in modes.values()), modes
