@@ -128,6 +128,22 @@ def test_cheat_into_a_directory_leaves_its_repository_as_a_replay(tmp_path):
         assert proc.wait(30) == 0
 
 
+def test_cheat_into_a_directory_is_a_replay_from_its_first_frame_not_after_the_moves(tmp_path):
+    """The store was marked once the seven moves had run: while they ran, the only frames worth watching,
+    an editor saw a real project with a running task (the editor night's review)."""
+    target = tmp_path / "cheat"
+    proc = play("--cheat", "--into", str(target), cwd=tmp_path)
+    try:
+        said = []  # the top line, then the first line after the store exists, before any move
+        assert wait_for(lambda: said.append(proc.stdout.readline()) or said[-1].startswith("A throwaway"), 60)
+        s = state(target)
+        assert s["replay"] and s["replay"]["shown"] == demo.STAND_IN and s["replay"]["repository"] == "cheat"
+        assert [(t["id"], t["state"]) for t in s["tasks"]] == [("n1", "running")]  # the stand-in's leaf
+    finally:
+        proc.send_signal(signal.SIGTERM)
+        assert proc.wait(30) == 0
+
+
 def test_the_flag_has_help_in_the_budget_and_the_reference_names_it():
     import typer.main
 

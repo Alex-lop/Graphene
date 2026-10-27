@@ -112,6 +112,17 @@ def version(store, root: Path) -> tuple:
     return moved, cursor(store), held
 
 
+def identity(root: Path) -> tuple | None:
+    """The store's file itself, as `--watch` tells one store from the next: its device and inode, or None
+    while there is none. A connection keeps the file it opened even after `git clean -fdx` unlinks it, so
+    the version read on it would never move again; the file's identity says the store went or is another."""
+    try:
+        own = os.stat(root / ".graphene" / "graphene.db")
+    except OSError:
+        return None
+    return own.st_dev, own.st_ino
+
+
 def line(store, root: Path) -> str:
     """One line for the stream: the snapshot, or the one-line error `state --json` prints in its place, so
     an editor reading lines is never left with half an object."""
@@ -125,17 +136,22 @@ def line(store, root: Path) -> str:
 
 def follow(
     store, root: Path, say: Callable[[str], None], alive: Callable[[], bool], tick: float = TICK
-) -> None:
+) -> bool:
     """`graphene state --json --watch`: one line at once, then one more each time ``version`` moves, while
-    ``alive`` says to go on (the caller's: stdout open, no SIGTERM). The version is read before the snapshot,
-    so a write that lands between the two is said again on the next look rather than missed."""
-    was = None
+    ``alive`` says to go on (the caller's: stdout open, no SIGTERM); True then. The version is read before
+    the snapshot, so a write that lands between the two is said again on the next look rather than missed.
+    False when the store's file went or is another (``identity``): nothing more is said on this store, and
+    the caller follows what is there now."""
+    was, own = None, identity(root)
     while alive():
+        if identity(root) != own:
+            return False
         now = version(store, root)
         if now != was:
             say(line(store, root))
             was = now
         time.sleep(tick)
+    return True
 
 
 def log_after(store, since: int = 0) -> list[dict]:

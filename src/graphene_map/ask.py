@@ -445,14 +445,16 @@ def ask(
     planner: str | None = None,
     beside: frozenset[str] | set[str] = frozenset(),
     base_parent: str | None = None,
+    one: bool = False,
 ) -> list[str]:
     """Start the planner, read its proposal, add it to the plan as the planner's. Returns what was
     proposed, one line each. A proposal Graphene cannot read goes back to the planner once, with the
     refusal, as a refused executor does. ``planner`` is what --with named, kept with the ask so that
     asking it again finer or coarser starts the same one. ``beside``: the leaves the proposal would
     replace (`graphene talk`), which it may overlap. ``base_parent``: the node the proposal's top lines
-    hang under (`graphene auto`'s goal). With `auto: on`, what fits the envelope is accepted at once
-    (auto.take) and the line that says so is the last returned."""
+    hang under (`graphene auto`'s goal). ``one`` (`ask --step`): a proposal of more than one node is
+    refused the same way, and nothing of it lands. With `auto: on`, what fits the envelope is accepted
+    at once (auto.take) and the line that says so is the last returned."""
     _splits(template)  # bad quoting in --with is one refused line, as it is for `graphene run`
     if about is not None:
         P.get(store, about)  # an unknown id is refused before anything is spent
@@ -555,6 +557,8 @@ def ask(
                         raise P.Refused("\n".join(wrong))
                     said = T.apply(store, text, who, None, base_parent=base_parent, files=files,
                                    beside={*beside, *left})  # fmt: skip
+                    if one and len(said.ids) != 1:  # one step: the claim rolls the tree back
+                        raise P.Refused(f"the planner proposed {len(said.ids)} steps, not one")
                     if gone:
                         _carry(store, gone, said, heard.append, files)
             except P.Refused as no:
