@@ -1,7 +1,8 @@
 // Screenshots and video of the extension in the real app, on a store a stand-in race changed:
 //   node shots.mjs --app code|cursor --vsix FILE --out DIR [--video DIR] [--during] [--keep]
-// The side bar at 280, 320 and 400 px; the editor tab at 1280x800 and 1920x1080; each in Dark Modern, Light
-// Modern and High Contrast; named APP-WHAT-THEME.png under --out, with smallest-text.json beside them (the
+// The side bar at 280, 320 and 400 px; the editor tab at 1280x800 and 1920x1080 (or what fits the display: on a
+// 1920x1080 screen a window takes 1920x1050); each in Dark Modern, Light Modern and High Contrast; named
+// APP-WHAT-THEME.png under --out by the size the window took, with smallest-text.json beside them (the
 // smallest text drawn in each, font size times the SVG's scale). By default the race runs to its end before
 // the window opens, so every shot is the same finished store; --during starts the race after the window
 // opens, so the video shows it live. --video puts the session's .webm in DIR.
@@ -66,9 +67,12 @@ say("the panel is open");
 for (const [key, theme] of Object.entries(L.THEMES)) {
   await L.setTheme(session.page, profile, theme);
   for (const [w, h] of SIZES) {
-    await L.setSize(session.electronApp, session.page, w, h);
+    const got = await L.setSize(session.electronApp, session.page, w, h);
+    const what = `panel-${got.width}x${got.height}`; // the size the window took, not the one asked for
+    if (got.width !== w || got.height !== h) say(`asked ${w}x${h}, the window took ${got.width}x${got.height}`);
+    if (smallest[`${appName}-${what}-${key}.png`]) { say(`no shot at ${w}x${h}: the window stayed ${got.width}x${got.height}`); continue; }
     await session.page.waitForTimeout(700);
-    await take(`panel-${w}x${h}`, key);
+    await take(what, key);
   }
 }
 if (flag("--during") && auto && auto.exitCode === null) {
@@ -79,7 +83,7 @@ if (flag("--during") && auto && auto.exitCode === null) {
 }
 writeFileSync(path.join(out, `${appName}-smallest-text.json`), JSON.stringify(smallest, null, 2));
 const clip = video ? await session.page.video()?.path() : null;
-await session.electronApp.close();
+await L.close(session);
 if (clip) {
   const now = new Date(), two = (n) => String(n).padStart(2, "0"); // local time, as the night's clock reads
   const stamp = `${now.getFullYear()}-${two(now.getMonth() + 1)}-${two(now.getDate())}-${two(now.getHours())}${two(now.getMinutes())}`;

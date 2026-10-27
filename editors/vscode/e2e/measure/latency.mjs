@@ -1,17 +1,19 @@
 // Latency from a store write to the screen: `graphene node set ID --title T`, then the side bar's graph
 // shows T. The clock starts when the command returns (the store holds the write), and stops when a graph
-// frame draws the new title.
+// frame draws the new title. The write lands at a random phase of the extension's poll, so one run says
+// little: 20 runs, and the spread (p50, p90, max, mean) with the machine's load beside it.
 //   node measure/latency.mjs [--app code|cursor] [--vsix FILE] [--runs N]
 import { execFileSync } from "node:child_process";
 import { rmSync } from "node:fs";
 import path from "node:path";
 import * as L from "../lib.mjs";
+import { line } from "./stats.mjs";
 
 const arg = (k, d) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : d; };
 const app = await L.findApp(arg("--app", "code"));
 const vsix = arg("--vsix", null) ? path.resolve(arg("--vsix")) : L.findVsix();
 const graphene = L.findGraphene();
-const runs = Number(arg("--runs", 5));
+const runs = Number(arg("--runs", 20));
 const base = L.scratch("latency-");
 const profile = L.makeProfile(base, { graphene });
 L.installVsix(app, profile, vsix);
@@ -41,7 +43,6 @@ for (let i = 0; i < runs; i++) {
   console.log(`run ${i + 1}: ${ms.at(-1)} ms`);
   await s.page.waitForTimeout(2000);
 }
-const sorted = [...ms].sort((a, b) => a - b);
-console.log(`${app.name}: store write to screen, ${runs} runs: median ${sorted[Math.floor(runs / 2)]} ms, min ${sorted[0]}, max ${sorted.at(-1)}`);
-await s.electronApp.close();
+console.log(`${app.name}: store write to screen, ${line(ms)}`);
+await L.close(s);
 rmSync(base, { recursive: true, force: true });

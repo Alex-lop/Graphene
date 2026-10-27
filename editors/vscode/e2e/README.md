@@ -6,6 +6,11 @@ a `--user-data-dir` and `--extensions-dir` of its own under a short temp dir, ne
 welcome page, no release notes, no telemetry, workspace trust off), opens a fixture repository, and can run
 `graphene auto` against the scripted stand-in so the store changes as it would live.
 
+One thing a profile does not cover: Cursor keeps a folder's agent data (canvases, terminals, mcps) under
+`~/.cursor/projects/<the folder's path with dashes>`, whatever `--user-data-dir` says, and a `HOME` of the
+profile's own stops it on a "Keychain Not Found" dialog. So `close` in `lib.mjs` removes that entry when it
+closes Cursor, and every script here closes through it.
+
 ## Set up
 
 ```
@@ -50,16 +55,18 @@ printf 'sh node set top --title "a new title"\n' | nc 127.0.0.1 N
 printf 'quit\n' | nc 127.0.0.1 N
 ```
 
-One command a line; the answer comes back on the same connection. `--fixture DIR` opens your own
+One command a line; the answer comes back on the same connection. `sh` reads its line as a shell does, so
+a title with spaces goes in quotes. `--fixture DIR` opens your own
 repository instead of a fresh wordkit; `--standin` starts the stand-in without the race; `auto` starts it.
 
 ## Measures
 
-Each prints its number and how it was taken, so a before and an after come from the same script.
+Each prints its number and how it was taken, so a before and an after come from the same script. Timing
+numbers mean little on a loaded machine: the latency line prints the load average beside them.
 
 ```
 node measure/first-graph.mjs --app code --vsix FILE      # seconds from install to the first graph, median of 3
-node measure/latency.mjs --app code --vsix FILE          # ms from `graphene node set` to the title on screen
+node measure/latency.mjs --app code --vsix FILE          # ms from `graphene node set` to the title on screen, 20 runs: p50, p90, max, mean
 node measure/idle-cpu.mjs --app code --vsix FILE         # 60 s idle: the extension host, the graphene processes
 uv run python editors/vscode/e2e/measure/moves.py        # the cockpit's keys against the extension's commands
 ```

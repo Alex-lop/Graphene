@@ -4,8 +4,8 @@
 // `graphene auto` against the stand-in, launch, open the views, reach into the webview's frames, shoot.
 import "./pw-env.mjs";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { _electron as electron } from "playwright-core";
@@ -117,6 +117,11 @@ export function cleanEnv(more = {}) {
   return { ...env, GRAPHENE_KEYCHAIN: "off", ...more };
 }
 
+/** Run `exe` with the arguments the shell reads from `text`, so a quoted title stays one argument. */
+export function shell(exe, text, opts) {
+  return execFileSync("/bin/sh", ["-c", `exec "$0" ${text}`, exe], opts);
+}
+
 /** The clone's own graphene (the venv's), or GRAPHENE. */
 export function findGraphene() {
   const own = process.env.GRAPHENE || path.join(ROOT, ".venv", "bin", "graphene");
@@ -194,9 +199,22 @@ export async function launch(app, profile, folder, { width = 1280, height = 800,
   const electronApp = await electron.launch(options);
   const page = await electronApp.firstWindow({ timeout });
   await page.waitForSelector(".monaco-workbench", { timeout });
-  await setSize(electronApp, page, width, height);
+  const size = await setSize(electronApp, page, width, height);
   if (app.name === "cursor") await cursorClassic(page, profile);
-  return { app, electronApp, page, profile, folder, video };
+  return { app, electronApp, page, profile, folder, video, size };
+}
+
+/** Close the app. Cursor keeps a project's agent data under ~/.cursor/projects, whatever --user-data-dir
+ *  says (a HOME of the profile's own stops it on a "Keychain Not Found" dialog), so that entry goes too:
+ *  a run leaves nothing in the person's profile. */
+export async function close(session) {
+  await session.electronApp.close().catch(() => {});
+  if (session.app.name === "cursor") rmSync(cursorProjectDir(session.folder), { recursive: true, force: true });
+}
+
+/** Where Cursor keeps a folder's agent data: its path with dashes for slashes, under ~/.cursor/projects. */
+export function cursorProjectDir(folder) {
+  return path.join(homedir(), ".cursor", "projects", folder.replace(/^\//, "").replace(/\//g, "-"));
 }
 
 /** Cursor 3 on a fresh profile: a log-in wall covers the window, and its agent layout keeps the primary
@@ -218,13 +236,21 @@ export function ensureFfmpeg() {
   execFileSync(process.execPath, [path.join(HERE, "node_modules", "playwright-core", "cli.js"), "install", "ffmpeg"], { stdio: "inherit" });
 }
 
-/** The window's content size, set in the main process. */
+/** The window's content size, set in the main process. Returns the size the window took: a window that
+ *  would run off its screen is clamped (VS Code) or left as it was (Cursor), so it moves to the work area's
+ *  corner first and asks for no more than fits. A 1920x1080 ask on a 1920x1080 display gives 1920x1050. */
 export async function setSize(electronApp, page, width, height) {
-  await electronApp.evaluate(({ BrowserWindow }, [w, h]) => {
+  const asked = await electronApp.evaluate(({ BrowserWindow, screen }, [w, h]) => {
     const win = BrowserWindow.getAllWindows().find((x) => x.isVisible()) || BrowserWindow.getAllWindows()[0];
-    win.setContentSize(w, h);
+    const area = screen.getDisplayMatching(win.getBounds()).workArea;
+    win.setPosition(area.x, area.y);
+    win.setContentSize(Math.min(w, area.width), Math.min(h, area.height));
+    return win.getContentSize();
   }, [width, height]);
-  await page.waitForFunction(([w, h]) => Math.abs(window.innerWidth - w) <= 2 && Math.abs(window.innerHeight - h) <= 2, [width, height], { timeout: 10000 }).catch(() => {});
+  await page.waitForFunction(([w, h]) => window.innerWidth === w && window.innerHeight === h, asked, { timeout: 10000 }).catch(() => {});
+  const [w, h] = await page.evaluate(() => [window.innerWidth, window.innerHeight]);
+  if (w !== width || h !== height) console.error(`size: asked ${width}x${height}, the window took ${w}x${h}`);
+  return { width: w, height: h };
 }
 
 /** The command palette, typed to: the first entry that matches `title` runs. */

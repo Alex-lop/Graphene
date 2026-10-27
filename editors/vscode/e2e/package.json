@@ -4,7 +4,7 @@
   "description": "Drives real VS Code and Cursor with the Graphene extension installed: screenshots, video, a driver, a check.",
   "type": "module",
   "scripts": {
-    "test": "node test.mjs",
+    "test": "node --test unit.test.mjs && node test.mjs",
     "shots": "node shots.mjs",
     "drive": "node drive.mjs"
   },
