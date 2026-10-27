@@ -1,6 +1,6 @@
 # The editor night, 26 to 27 October 2026
 
-*Kept current as the night goes. Last written at 01:20.*
+*Kept current as the night goes. Last written at 01:30.*
 
 ## Your 15 minutes
 
@@ -12,16 +12,24 @@ Not written yet.
 
 ## The brief
 
-1. **Before and after.** Nothing measured yet: lane 0 measures the before on 0.8.0's extension first.
+1. **Before and after.** A stranger on 0.8.0's extension: 11 minutes to the first graph, 28 to the first accept
+   from it, 9 guesses (`dev/process/editor/before/stranger.md`). The harness's five numbers are measured again,
+   before and after back to back, at the end: the lanes kept the load average near 160.
 2. **Look at these first.** Nothing yet.
-3. **The review.** Lane 5 runs from the start: two fresh reviewers on auto mode, the envelope, state and the
-   gate. The extension's half runs once the new editor lands.
+3. **The review** (`dev/process/editor/review.md`). Two fresh reviewers found nine faults in auto mode and the
+   gate, five of them high; all nine are fixed, each with the test that failed first, and each confirmed by the
+   other reviewer. The worst: a committed link carried a write into `.git/hooks/`; `git config core.hooksPath`
+   moved git's hooks into a task's scope; a `#` hid a second command from `checks:`. What stays a limit is
+   written there. The extension's half runs once the new editor lands.
 4. **Your notes.** `~/graphene-notes.md` did not exist when the night started.
 5. **The browser spike** (`dev/process/editor/browser-spike.md`, $0.02 of Haiku). Yes, PreToolUse and PostToolUse
    fire for MCP tools on Claude Code 2.1.311 (18 calls of 18). A screenshot reaches the hook as base64 (19 to
    300 KB), and the store keeps 9 KB of it, which is no longer an image: a trail needs the PNG kept beside it.
 6. **Decide.** Nothing yet.
-7. **Broken or risky.** No Token Factory tonight: `GRAPHENE_AGENT_LIVE_USD` was not set, so lane 7's live takes
+7. **Broken or risky.** Your `~/.zshenv` exports your Token Factory key into every shell, agents' and VS Code's
+   terminals included. One stranger session used it once to list Token Factory's models (a GET, no spend);
+   an audit of tonight's 113 stores found no usage on a real endpoint. The harness now gives every app it
+   launches an empty `ZDOTDIR`, a fake key and the stand-in's URL. No Token Factory tonight: `GRAPHENE_AGENT_LIVE_USD` was not set, so lane 7's live takes
    do not run. The stand-in rehearsal and the b-roll still do. Two things of tonight's are on your screen, both
    safe to close: a VS Code window "Welcome — wordkit" (lane 4's scratch fixture, opened in your running VS Code
    at 00:31 because its profile's path was too long; Restricted Mode, nothing ran; it is in your recents too),
