@@ -26,3 +26,14 @@ test("a step by hand with no check asks for the person's sign-off, so the CLI ta
   assert.ok(C.addStep({ title: "x", scope: ["a.py"], signoff: true }).includes("--signoff"));
   assert.ok(!C.addStep({ title: "x", scope: ["a.py"], check: "true" }).includes("--signoff"));
 });
+
+test("Add Step by Hand's places show a task's or a sub-goal's title as text, never as an icon", () => {
+  const near = C.places({ title: "$(trash) the old route", parent: null });
+  assert.ok(!near[0]!.label.includes("$("), near[0]!.label);
+  assert.equal(near[0]!.v, "after");
+  assert.equal(near[1]!.description, "at the top");
+  const goals = C.goalPlaces([{ id: "api", title: "[x](command:graphene.stop) the API" }]);
+  assert.equal(goals[0]!.id, null);
+  assert.ok(!goals[1]!.label.includes("]("), goals[1]!.label);
+  assert.equal(goals[1]!.id, "api");
+});

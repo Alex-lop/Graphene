@@ -63,6 +63,22 @@ export function byHand(title: string, parent: string | null, needs: string[], sc
   return addStep({ title: title.trim(), parent, needs, scope: globs(scope), check: check.trim() || null, signoff: !check.trim() });
 }
 
+/** Add Step by Hand's "where it goes" beside a task: after it or beside it, its title as text. */
+export function places(near: { title: string; parent: string | null }) {
+  return [
+    { label: `after “${plain(near.title)}”`, description: "waits on it", v: "after" },
+    { label: "beside it", description: near.parent ? "under the same sub-goal" : "at the top", v: "under" },
+  ];
+}
+
+/** With no task picked: the top, or under which sub-goal, the titles as text. */
+export function goalPlaces(goals: { id: string; title: string }[]) {
+  return [
+    { label: "at the top", description: "under the goal itself", id: null as string | null },
+    ...goals.map((g) => ({ label: plain(g.title), description: g.id, id: g.id as string | null })),
+  ];
+}
+
 /** B waits on A: adds to B's needs, keeping what it already waits on. */
 export const link = (a: string, b: string): string[] => ["node", "set", b, "--add-needs", a];
 
