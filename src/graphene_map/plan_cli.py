@@ -16,6 +16,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import typer
@@ -713,13 +714,12 @@ def register(cli: typer.Typer, root, open_store, fail):
             raise typer.Exit(1)
         out(json.dumps(said) if as_json else json.dumps(said, indent=2))
 
-    def stream(store, r: Path) -> None:
-        """`state --json --watch`: snapshot lines on stdout until the reader goes (its end of the pipe
-        closed, seen with poll or at the write) or a TERM or INT comes; each of those is exit 0, said to
-        no one. The store's connection is held for the whole watch: a WAL reader blocks no writer."""
+    def lines_out() -> tuple:
+        """A long-lived command's stdout, a line at a time, for an editor: ``say`` writes one and flushes;
+        ``alive`` says whether to go on, False once the reader has gone (its end of the pipe closed, seen
+        with poll or at a write) or a TERM or INT came. Each of those ends the command with exit 0, said to
+        no one."""
         import select
-
-        from . import state as ST
 
         fd = sys.stdout.fileno()
         hung = select.poll()
@@ -736,7 +736,15 @@ def register(cli: typer.Typer, root, open_store, fail):
                 os.dup2(os.open(os.devnull, os.O_WRONLY), fd)  # so the exit's own flush is quiet
                 going[0] = False
 
-        ST.follow(store, r, say, lambda: going[0] and not hung.poll(0))
+        return say, lambda: going[0] and not hung.poll(0)
+
+    def stream(store, r: Path) -> None:
+        """`state --json --watch`: snapshot lines on stdout until the reader goes or a TERM comes. The
+        store's connection is held for the whole watch: a WAL reader blocks no writer."""
+        from . import state as ST
+
+        say, alive = lines_out()
+        ST.follow(store, r, say, alive)
 
     @cli.command()
     def demo(
@@ -768,6 +776,9 @@ def register(cli: typer.Typer, root, open_store, fail):
         auto: bool = typer.Option(
             False, "--auto", help="Replay auto mode: one goal, Nemotron's plan, forks racing, the goal's fix."
         ),
+        into: Path = typer.Option(
+            None, "--into", help="No screen: play it into this new or empty directory, a line a change."
+        ),
     ) -> None:
         """Replay a recorded run in `graphene watch`, change by change.
 
@@ -777,10 +788,26 @@ def register(cli: typer.Typer, root, open_store, fail):
 
         from . import demo as D
 
+        if into is not None and (record is not None or once):
+            fail("--into plays into a directory of its own: not with --record or --once", 2)
+        if into is not None:
+            try:
+                into = D.own(into)
+            except ValueError as no:
+                fail(str(no), 1)
+            except (OSError, subprocess.CalledProcessError) as no:
+                fail(f"graphene demo makes a git repository in {into}, and could not: {no}", 1)
         if cheat:  # computed live in a repository of its own, which goes with the directory
             from . import cheat as C
 
             out(f"graphene demo --cheat · {D.STAND_IN} · $0")
+            if into is not None:  # the cheat's repository stays, for an editor to read as a replay
+                say, alive = lines_out()
+                through = C.run(say, into)[2]
+                D.mark(into, {"shown": D.STAND_IN, "day": P._now()[:10], "repository": into.name})
+                while alive():
+                    time.sleep(0.1)
+                raise typer.Exit(1 if through else 0)
             with tempfile.TemporaryDirectory(prefix="graphene-cheat-") as tmp:
                 through = C.run(out, Path(tmp).resolve())[2]
             raise typer.Exit(1 if through else 0)
@@ -796,6 +823,9 @@ def register(cli: typer.Typer, root, open_store, fail):
             head, lines = D.load(shown, speed)
         except (OSError, ValueError, KeyError) as no:
             fail(f"cannot replay {shown}: {no}", 1)
+        if into is not None:
+            say, alive = lines_out()
+            return D.into(into, head, lines, say, alive)
         with tempfile.TemporaryDirectory(prefix="graphene-demo-") as tmp:
             try:
                 repo = D.repository(Path(tmp), head)

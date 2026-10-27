@@ -395,7 +395,10 @@ keeps it on, one more line each time the store changes, until its reader closes.
 (`--fork X`) names two revisions and each file's status; a task or fork at work is its directory against its
 base. `graphene plan edit --from - --json` applies the plan's text from a pipe, all or none, and says each
 refusal with its line; `--since CURSOR` keeps what someone else changed after that snapshot. `plan log --json
---since ID`: the log's rows after ID.
+--since ID`: the log's rows after ID. `graphene demo --into DIR` (with a recording, `--auto`, `--cheat` or
+`--live`) plays it with no screen into DIR, a new or empty directory that becomes the replay's own repository
+and store, one line a change, and stays at the last frame until it is stopped; the snapshot's `replay` says
+what it is.
 
 - `graphene demo --cheat` plays a script, not a model, that tries seven ways round the locks against the real hook,
   git and check: six refused, one flagged, at $0. `graphene demo --live` replays a live run on Nemotron through
