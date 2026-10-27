@@ -46,7 +46,9 @@ const take = async (what, theme) => {
   await L.shot(session.page, file);
   const texts = [];
   for (const f of frames) texts.push(await L.smallestText(f).catch(() => null));
-  smallest[path.basename(file)] = texts.filter(Boolean).sort((a, b) => a.px - b.px)[0] ?? null;
+  // the side bar's frame is the narrow canvas, the panel's the wide one: measure the one the shot is about
+  const wide = what.startsWith("panel");
+  smallest[path.basename(file)] = texts.filter(Boolean).sort((a, b) => wide ? b.canvas - a.canvas : a.canvas - b.canvas)[0] ?? null;
   say(`shot ${path.basename(file)} smallest text ${JSON.stringify(smallest[path.basename(file)])}`);
 };
 for (const [key, theme] of Object.entries(L.THEMES)) {
@@ -79,7 +81,9 @@ writeFileSync(path.join(out, `${appName}-smallest-text.json`), JSON.stringify(sm
 const clip = video ? await session.page.video()?.path() : null;
 await session.electronApp.close();
 if (clip) {
-  const named = path.join(video, `${appName}-${flag("--during") ? "race" : "shots"}-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-")}.webm`);
+  const now = new Date(), two = (n) => String(n).padStart(2, "0"); // local time, as the night's clock reads
+  const stamp = `${now.getFullYear()}-${two(now.getMonth() + 1)}-${two(now.getDate())}-${two(now.getHours())}${two(now.getMinutes())}`;
+  const named = path.join(video, `${appName}-${flag("--during") ? "race" : "shots"}-${stamp}.webm`);
   renameSync(clip, named);
   say(`video ${named}`);
 }

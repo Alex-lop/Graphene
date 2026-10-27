@@ -76,6 +76,7 @@ export function makeProfile(base, { graphene, theme = THEMES.dark, settings = {}
     "git.openRepositoryInParentFolders": "never",
     "chat.commandCenter.enabled": false,
     "workbench.secondarySideBar.defaultVisibility": "hidden", // the Chat pane, else open on a fresh profile
+    "editor.accessibilitySupport": "off", // else a "screen reader detected" toast: the driver looks like one
     ...settings,
   });
   return profile;
@@ -184,7 +185,19 @@ export async function launch(app, profile, folder, { width = 1280, height = 800,
   const page = await electronApp.firstWindow({ timeout });
   await page.waitForSelector(".monaco-workbench", { timeout });
   await setSize(electronApp, page, width, height);
+  if (app.name === "cursor") await cursorClassic(page, profile);
   return { app, electronApp, page, profile, folder, video };
+}
+
+/** Cursor 3 on a fresh profile: a log-in wall covers the window, and its agent layout keeps the primary
+ *  side bar at display:none. The harness hides the wall, closes the agents pane, and lets the side bar
+ *  show, so the extension's views can be looked at without an account. */
+export async function cursorClassic(page, profile) {
+  await page.waitForTimeout(1500);
+  await page.evaluate(() => { const o = document.querySelector(".onboarding-v2-overlay"); if (o) o.style.display = "none"; });
+  await command(page, profile, "workbench.action.toggleAgents");
+  await page.waitForTimeout(800);
+  await page.addStyleTag({ content: ".monaco-workbench .part.sidebar { display: block !important; }" });
 }
 
 /** Playwright's ffmpeg, the revision this playwright-core wants, in e2e/.pw: fetched once. */
@@ -207,7 +220,7 @@ export async function setSize(electronApp, page, width, height) {
 /** The command palette, typed to: the first entry that matches `title` runs. */
 export async function palette(page, title) {
   await page.keyboard.press("F1");
-  const input = page.locator(".quick-input-widget input");
+  const input = page.locator(".quick-input-widget .quick-input-box input"); // Cursor's palette has checkboxes too
   await input.waitFor({ timeout: 10000 });
   await input.fill(">" + title);
   const row = page.locator(".quick-input-list .monaco-list-row").filter({ hasText: title }).first();
@@ -216,9 +229,26 @@ export async function palette(page, title) {
   await page.waitForSelector(".quick-input-widget", { state: "hidden", timeout: 10000 }).catch(() => {});
 }
 
+/** Run a command by its id: the profile's keybindings.json binds a spare chord to it, and the chord is
+ *  pressed. For commands the palette does not list by a title (Cursor's own, a view's id). */
+export async function command(page, profile, id) {
+  const chord = "Control+Alt+Shift+F9";
+  profile.keybindings = (profile.keybindings || []).filter((k) => k.key !== chord.toLowerCase());
+  profile.keybindings.push({ key: chord.toLowerCase().replace("control", "ctrl"), command: id });
+  writeFileSync(path.join(profile.userDataDir, "User", "keybindings.json"), JSON.stringify(profile.keybindings, null, 2));
+  await page.waitForTimeout(600); // the keybinding service reads the file
+  await page.keyboard.press(chord);
+}
+
 /** Graphene's side bar container, and its Graph view in it. */
 export async function openSidebar(page) {
   await palette(page, "View: Show Graphene");
+  await page.waitForSelector(".sidebar .pane-header", { timeout: 20000, state: "attached" });
+  const flat = await page.evaluate(() => (document.querySelector(".sidebar .pane-header")?.getBoundingClientRect().height ?? 0) === 0);
+  if (flat) { // Cursor: the part was hidden when the views came; a nudge to the window lays them out
+    await page.evaluate(() => window.dispatchEvent(new Event("resize")));
+    await page.waitForTimeout(500);
+  }
   await page.waitForSelector(".sidebar .pane-header", { timeout: 20000 });
 }
 
@@ -324,7 +354,8 @@ export async function smallestText(frame) {
       const px = parseFloat(getComputedStyle(t).fontSize) * k;
       if (px < min) { min = px; which = `${t.getAttribute("class")}: ${t.textContent}`; }
     }
-    return { px: Number.isFinite(min) ? Math.round(min * 100) / 100 : null, scale: Math.round(k * 1000) / 1000, which };
+    return { px: Number.isFinite(min) ? Math.round(min * 100) / 100 : null, scale: Math.round(k * 1000) / 1000, which,
+             canvas: document.querySelector("#canvas")?.clientWidth ?? 0 };
   });
 }
 
