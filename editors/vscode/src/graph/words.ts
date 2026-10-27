@@ -7,14 +7,19 @@ import { autoLine, usd, type Fork, type Kept, type Question, type State, type Ta
 export type ForkX = Fork & { attempts?: number; idle?: number | null };
 export type TaskX = Omit<Task, "forks"> & { why?: string; attempts?: number; forks: ForkX[] };
 export type Replay = { shown: string; day: string; repository: string } | null;
-export type StateX = Omit<State, "tasks"> & { replay?: Replay; tasks: TaskX[] };
+/** `stand_in`: the run's model calls went to the scripted stand-in (the CLI adds it tonight). */
+export type StateX = Omit<State, "tasks"> & { replay?: Replay; stand_in?: boolean; tasks: TaskX[] };
 
 export type Act = "add-after" | "add-under" | "link" | "unlink" | "edit" | "drop" | "accept" | "tell" | "run" | "stop" | "auto" | "cockpit"
   | "openDiff" | "compareForks" | "pickFork" | "signOff" | "answer" | "handBack";
 
-/** The acts that change a plan: a replay offers none of them. */
+/** The acts a replay offers none of: they change a plan, or they act outside the replay (the cockpit opens
+ *  `graphene watch` in the person's own folder). */
 export const CHANGES: readonly Act[] = ["add-after", "add-under", "link", "unlink", "edit", "drop", "accept", "tell", "run", "stop", "auto",
-                                        "pickFork", "signOff", "answer", "handBack"];
+                                        "cockpit", "pickFork", "signOff", "answer", "handBack"];
+
+/** The header's act buttons, by their element id: each one is hidden in a replay. */
+export const HEADER_ACTS: readonly [string, Act][] = [["b-add", "add-under"], ["b-run", "run"], ["b-auto", "auto"], ["b-cockpit", "cockpit"]];
 
 export const cut = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1).trimEnd() + "…" : s);
 
@@ -91,6 +96,12 @@ export function forkRow(f: ForkX, kept: Kept | null): string {
 /** The header's first line when the store is a replay's, as the terminal replay's top line says it. */
 export function replayLine(r: Replay | undefined): string {
   return r ? ["replay", r.shown, r.day].filter(Boolean).join(" · ") : "";
+}
+
+/** The header's first words, when the store is not a real run's: a replay says what it is; a live race
+ *  against the scripted stand-in says so. Nothing for a run whose model was real, or an older snapshot. */
+export function topLine(s: Pick<StateX, "replay" | "stand_in">): string {
+  return replayLine(s.replay) || (s.stand_in ? "against the scripted stand-in" : "");
 }
 
 /** The counts under the goal: `run going · 2 running · 2 need you · 2 of 7 done · width 3 · $0.42`. */
@@ -191,6 +202,12 @@ export const KEYS: readonly [string, string][] = [
   ["×", "beside a need: it stops waiting on it"],
   ["wheel · drag", "scroll · pan; ⌘ or Ctrl with the wheel zooms"],
 ];
+
+/** The hint while a link is armed: what to click or where to drop, and the two ways out. Esc works only with
+ *  the focus in the graph, so the footer offers Cancel beside it. */
+export function linkHint(title: string, dragging: boolean): string {
+  return `link: ${dragging ? "drop it on" : "click"} the task that waits on “${title}” · Cancel or Esc stops it`;
+}
 
 /** The first-time hint under the graph. */
 export const FIRST_HINT = "click a task · drag its dot onto another to link them · ? lists every key";

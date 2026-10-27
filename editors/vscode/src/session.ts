@@ -8,7 +8,7 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import * as C from "./commands.ts";
 import type { GraphHost } from "./graph.ts";
-import { parseState, type State, type Task } from "./state.ts";
+import { errorOf, parseState, type State, type Task } from "./state.ts";
 import { Stream } from "./stream.ts";
 import type { Node, PlanTree } from "./tree.ts";
 
@@ -47,8 +47,20 @@ export class Session {
     this.stream = new Stream({
       get path() { return self.path; },
       get cwd() { return self.folder?.uri.fsPath; },
-      onLine: (line) => { try { this.take(parseState(line)); } catch { /* not a snapshot: the next line is */ } },
+      onLine: (line) => {
+        const why = errorOf(line); // the store went away mid-stream: a status, and the stream follows the next store
+        if (why) return this.noPlan(why);
+        try { this.take(parseState(line)); } catch { /* not a snapshot: the next line is */ }
+      },
     });
+  }
+
+  /** `state --json` or the stream said there is no plan to read: still setting up (init asks at its terminal
+   *  after it made the store, so the store's being there says nothing), or a plan that cannot be read. */
+  private noPlan(why: string) {
+    const store = this.folder && existsSync(path.join(this.folder.uri.fsPath, STORE));
+    if (!store || /`graphene init`/.test(why)) return this.set(null, { kind: "uninitialised", text: INIT });
+    this.set(null, { kind: "error", text: /no such command/i.test(why) ? OLDER : why });
   }
 
   get path(): string {
@@ -86,10 +98,7 @@ export class Session {
     const initialised = existsSync(path.join(this.folder.uri.fsPath, STORE));
     if (out.code === -1) return this.set(null, { kind: "missing", text: INSTALL });
     if (!initialised) return this.set(null, { kind: "uninitialised", text: INIT });
-    if (out.code !== 0) {
-      const why = C.firstLine(out.stderr, out.stdout);
-      return this.set(null, { kind: "error", text: /no such command/i.test(why) ? OLDER : why });
-    }
+    if (out.code !== 0) return this.noPlan(errorOf(out.stdout) ?? C.firstLine(out.stderr, out.stdout));
     try {
       this.take(parseState(out.stdout));
     } catch {

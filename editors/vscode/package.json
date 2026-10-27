@@ -60,32 +60,37 @@
           "id": "graphene.needs",
           "name": "Needs You",
           "icon": "media/graphene.svg",
-          "contextualTitle": "Graphene"
-        },
-        {
-          "id": "graphene.agents",
-          "name": "Agents",
-          "icon": "media/graphene.svg",
-          "contextualTitle": "Graphene"
-        },
-        {
-          "id": "graphene.plan",
-          "name": "Plan",
-          "icon": "media/graphene.svg",
-          "contextualTitle": "Graphene"
-        },
-        {
-          "id": "graphene.rounds",
-          "name": "Rounds",
-          "icon": "media/graphene.svg",
-          "contextualTitle": "Graphene"
+          "contextualTitle": "Graphene",
+          "initialSize": 1
         },
         {
           "id": "graphene.graph",
           "type": "webview",
           "name": "Graph",
           "icon": "media/graphene.svg",
-          "contextualTitle": "Graphene"
+          "contextualTitle": "Graphene",
+          "initialSize": 4
+        },
+        {
+          "id": "graphene.agents",
+          "name": "Agents",
+          "icon": "media/graphene.svg",
+          "contextualTitle": "Graphene",
+          "initialSize": 1
+        },
+        {
+          "id": "graphene.plan",
+          "name": "Plan",
+          "icon": "media/graphene.svg",
+          "contextualTitle": "Graphene",
+          "visibility": "collapsed"
+        },
+        {
+          "id": "graphene.rounds",
+          "name": "Rounds",
+          "icon": "media/graphene.svg",
+          "contextualTitle": "Graphene",
+          "visibility": "collapsed"
         }
       ]
     },
@@ -97,7 +102,7 @@
       },
       {
         "view": "graphene.plan",
-        "contents": "Graphene is not installed, or not on this editor's PATH.\n\nIt looked on the PATH, in ~/.local/bin and in uv's tool bin.\n[Install Graphene](command:graphene.install)\nOr set the setting `graphene.path` to where it is.\n[Open Settings](command:workbench.action.openSettings?%22graphene.path%22)",
+        "contents": "Graphene is not installed, or not on this editor's PATH.\n\nIt looked on the PATH, in ~/.local/bin and in uv's tool bin.\n[Install Graphene](command:graphene.install)\nOr set the setting `graphene.path` to where it is.\n[Open Settings](command:workbench.action.openSettings?%22graphene.path%22)\n[Watch the Demo](command:graphene.watchDemo)",
         "when": "graphene.status == missing"
       },
       {
@@ -122,7 +127,7 @@
       },
       {
         "view": "graphene.plan",
-        "contents": "This folder has no plan yet.\n\nSet it up once with `graphene init`: it asks which planner and executor to use.\n[Set Up This Folder](command:graphene.init)\nThen `graphene ask \"what you want\"`, or Graphene: Auto…",
+        "contents": "This folder has no plan yet.\n\nSet it up once with `graphene init`: it asks which planner and executor to use.\n[Set Up This Folder](command:graphene.init)\nThen `graphene ask \"what you want\"`, or Graphene: Auto…\n[Watch the Demo](command:graphene.watchDemo)",
         "when": "graphene.status == uninitialised"
       },
       {
@@ -286,6 +291,18 @@
       }
     ],
     "menus": {
+      "editor/title": [
+        {
+          "command": "graphene.pickFork",
+          "when": "graphene.diff.fork",
+          "group": "navigation@1"
+        },
+        {
+          "command": "graphene.signOff",
+          "when": "graphene.diff.review",
+          "group": "navigation@2"
+        }
+      ],
       "view/title": [
         {
           "command": "graphene.refresh",
@@ -336,6 +353,16 @@
           "command": "graphene.link",
           "when": "view == graphene.plan",
           "group": "2_plan@1"
+        },
+        {
+          "command": "graphene.editPlan",
+          "when": "view == graphene.plan",
+          "group": "2_plan@2"
+        },
+        {
+          "command": "graphene.addStepByHand",
+          "when": "view == graphene.plan",
+          "group": "2_plan@3"
         }
       ],
       "view/item/context": [
@@ -410,6 +437,16 @@
           "group": "1_act@0"
         },
         {
+          "command": "graphene.compareForks",
+          "when": "view == graphene.plan && viewItem =~ /^task:(running|review)$/",
+          "group": "1_act@4"
+        },
+        {
+          "command": "graphene.dropStep",
+          "when": "view == graphene.needs && viewItem == need:hand-back",
+          "group": "3_drop@1"
+        },
+        {
           "command": "graphene.accept",
           "when": "view == graphene.plan && viewItem == task:proposed",
           "group": "1_act@1"
@@ -436,7 +473,7 @@
         },
         {
           "command": "graphene.dropStep",
-          "when": "view == graphene.plan && viewItem =~ /^task:(proposed|ready|waiting)$/",
+          "when": "view == graphene.plan && viewItem =~ /^task:(proposed|ready|waiting|came-back)$/",
           "group": "3_drop@1"
         }
       ]
@@ -448,9 +485,21 @@
         "description": "A team of coding agents on one repo: each owns its files, and your tests decide what lands.",
         "steps": [
           {
+            "id": "demo",
+            "title": "Watch the demo",
+            "description": "No key, no network: the recorded auto run plays in the graph, three agents racing one task and the check keeping one.\n[Watch the Demo](command:graphene.watchDemo)",
+            "media": {
+              "image": "media/graph.png",
+              "altText": "the replay in the graph"
+            },
+            "completionEvents": [
+              "onCommand:graphene.watchDemo"
+            ]
+          },
+          {
             "id": "install",
             "title": "Install Graphene",
-            "description": "This extension draws and drives the `graphene` command. Install it once, in a terminal: `uv tool install 'graphene-map[nemotron]'` (or without `[nemotron]` for Claude Code or Codex alone).\n[Open a Terminal](command:workbench.action.terminal.new)",
+            "description": "This extension draws and drives the `graphene` command. Install it once, in a terminal: `uv tool install graphene-map`, as the extension's page says.\n[Open a Terminal](command:workbench.action.terminal.new)",
             "media": {
               "image": "media/graph.png",
               "altText": "the plan as a graph: tasks by state, one task's three forks racing, the kept one marked, the goal on the right"
@@ -468,7 +517,7 @@
               "altText": "the plan as a graph: tasks by state, one task's three forks racing, the kept one marked, the goal on the right"
             },
             "completionEvents": [
-              "onCommand:graphene.init"
+              "onContext:graphene.status == ok || graphene.status == empty"
             ]
           },
           {

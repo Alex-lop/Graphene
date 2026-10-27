@@ -7,6 +7,7 @@ import * as C from "./commands.ts";
 import { GraphHost } from "./graph.ts";
 import { owner } from "./owners.ts";
 import { autoNews, mdText, summary, type Task } from "./state.ts";
+import { DROPPABLE, keyTrouble } from "./needs.ts";
 import { parseLog, rounds, type LogRow } from "./rounds.ts";
 import { RoundsTree } from "./roundsView.ts";
 import { PlanTree } from "./tree.ts";
@@ -89,9 +90,9 @@ export function activate(context: vscode.ExtensionContext) {
     const said = s ? autoNews(session.before, s) : null; // auto mode needs you, plans a fix, or is done
     if (said) {
       const show = said.kind === "waits" ? vscode.window.showWarningMessage : vscode.window.showInformationMessage;
-      const key = /`graphene key set(?: --endpoint (\w+))?`/.exec(said.text); // it waits on a key: set it from here
-      void show(said.text, ...(key ? ["Set Key", "Needs You"] : said.kind === "waits" ? ["Needs You", "Show Plan Graph"] : ["Show Plan Graph", "Rounds"])).then((pick) => {
-        if (pick === "Set Key") void vscode.commands.executeCommand("graphene.setKey", key?.[1]);
+      const key = keyTrouble(said.text); // it waits on a key, refused or missing: set it from here
+      void show(said.text, ...(key.key ? ["Set Key", "Needs You"] : said.kind === "waits" ? ["Needs You", "Show Plan Graph"] : ["Show Plan Graph", "Rounds"])).then((pick) => {
+        if (pick === "Set Key") void vscode.commands.executeCommand("graphene.setKey", key.endpoint ?? undefined);
         if (pick === "Needs You") void vscode.commands.executeCommand("graphene.needs.focus");
         if (pick === "Show Plan Graph") void vscode.commands.executeCommand("graphene.showGraph");
         if (pick === "Rounds") void vscode.commands.executeCommand("graphene.rounds.focus");
@@ -161,10 +162,11 @@ export function activate(context: vscode.ExtensionContext) {
     const budget = await vscode.window.showInputBox({ prompt: "A budget in dollars for the whole run (empty: the configured one)", placeHolder: "2",
                                                      ignoreFocusOut: true, validateInput: (v) => (!v.trim() || Number(v) > 0 ? undefined : "a number of dollars, or nothing") });
     if (budget === undefined) return;
+    // Plan first comes first: with auto on, Plan and run lands the race before the person has seen the plan
     const how = await vscode.window.showQuickPick(
-      [{ label: "Plan and run", description: "plan, race, land, check the goal, fix", planOnly: false },
-       { label: "Plan first", description: "--plan: see what your envelope accepts; Auto… again, or graphene auto, runs it", planOnly: true }],
-      { placeHolder: "run it now, or look at the plan first?" });
+      [{ label: "Plan first", description: "--plan: see what your envelope accepts; Auto… again, or graphene auto, runs it", planOnly: true },
+       { label: "Plan and run", description: "plan, race, land, check the goal, fix", planOnly: false }],
+      { placeHolder: "look at the plan first, or run it now?" });
     if (!how) return;
     session.terminal("graphene auto", C.auto(goal.trim(), budget.trim() ? Number(budget) : null, how.planOnly));
   });
@@ -225,7 +227,7 @@ export function activate(context: vscode.ExtensionContext) {
     await session.act(C.editStep(t.id, field.f, field.f === "scope" ? C.globs(value) : value.trim()));
   });
   cmd("dropStep", async (arg) => {
-    const t = await pick(arg, "the task to drop", session.tasks().filter((x) => ["proposed", "ready", "waiting"].includes(x.state)));
+    const t = await pick(arg, "the task to drop", session.tasks().filter((x) => DROPPABLE.includes(x.state)));
     if (!t) return;
     const ok = await vscode.window.showWarningMessage(`Drop “${t.title}”? \`graphene plan undo\` puts it back.`, { modal: true }, "Drop");
     if (ok) await session.act(C.dropStep(t.id));
@@ -234,7 +236,10 @@ export function activate(context: vscode.ExtensionContext) {
     const t = await pick(arg, "the task whose agent hears it");
     if (!t) return;
     const text = await vscode.window.showInputBox({ prompt: `A line for the agent on “${t.title}”`, placeHolder: "keep both routes", ignoreFocusOut: true });
-    if (text?.trim()) await session.act(C.tell(t.id, text.trim()));
+    if (!text?.trim()) return;
+    if (await session.act(C.tell(t.id, text.trim()))) { // said back, and the note shows on the task's row and hover
+      void vscode.window.showInformationMessage(`Told the agent on “${t.title}”: ${text.trim()}`);
+    }
   });
 
   // the features, each in a module of its own (dev/process/editor/CONTRACT.md says who writes which)

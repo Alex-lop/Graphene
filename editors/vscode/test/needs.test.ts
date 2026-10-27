@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { answerWords, count, needs, offerOn, offerWords, pickOption, takeDefault, tryAgain } from "../src/needs.ts";
+import { answerWith, answerWords, count, DROPPABLE, keyTrouble, needs, offerOn, offerWords, pickOption, takeDefault, tryAgain } from "../src/needs.ts";
 import { parseState } from "../src/state.ts";
 
 const fixture = (name: string) => readFileSync(new URL(`./fixtures/${name}.json`, import.meta.url), "utf8");
@@ -73,4 +73,29 @@ test("a running task the gate stopped offers the widen alone, to the path it sto
 test("a task that came back with no offers still has trying it again", () => {
   const bare = parseState(JSON.stringify({ schema: 1, tasks: [{ id: "t", title: "t", state: "came back" }] })).tasks[0]!;
   assert.deepEqual(offerWords(bare).map((m) => m.label), ["Try it again"]);
+});
+
+test("auto waiting on a key offers Set Key however the refusal is worded: the CLI's line, or Token Factory's 401", () => {
+  // what `graphene auto` writes when the host refuses the key (dev/process/editor/before/stranger.md, 0.8.0)
+  const refused = "the planner could not start: Token Factory answered 401 to GET /models?verbose=true: "
+    + '{"detail": "Couldn\'t authenticate. Reason: token is not present"}';
+  assert.deepEqual(keyTrouble(refused), { key: true, endpoint: null });
+  assert.deepEqual(keyTrouble("the planner could not start: NEBIUS_API_KEY is not set; `graphene key set --endpoint nim` keeps one"), { key: true, endpoint: "nim" });
+  assert.deepEqual(keyTrouble("no key: `graphene key set` sets one"), { key: true, endpoint: null });
+  assert.deepEqual(keyTrouble("the budget is spent: $2.0000 of $2.00"), { key: false, endpoint: null });
+  assert.deepEqual(keyTrouble("the goal's check failed after 2 fix rounds"), { key: false, endpoint: null });
+  const s = parseState(JSON.stringify({ schema: 1, auto: { round: 1, rounds: 2, stage: "waits", why: refused } }));
+  const [auto] = needs(s);
+  assert.ok(auto?.kind === "auto" && auto.key, "Needs You's row offers Set Key");
+});
+
+test("an answer given with the command is the option by its words, the default, or the person's own words", () => {
+  const q = { id: "port", text: "which port?", default: "8000", options: ["pick a free one", "8080"], about: null, kind: "question" };
+  assert.deepEqual(answerWith(q, "8080"), ["board", "pick", "port", "2"]);
+  assert.deepEqual(answerWith(q, "8000"), ["board", "take", "port"]);
+  assert.deepEqual(answerWith(q, "9000, the proxy has 8080"), ["board", "answer", "port", "9000, the proxy has 8080"]);
+});
+
+test("a task that came back can be dropped; a running one cannot", () => {
+  assert.ok(DROPPABLE.includes("came back") && DROPPABLE.includes("proposed") && !DROPPABLE.includes("running"));
 });

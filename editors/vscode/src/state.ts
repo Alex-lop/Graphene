@@ -108,6 +108,7 @@ export interface State {
   graphene: string;
   repo: string;
   replay: Replay | null; // the store is a replay's (Graphene: Watch the Demo), not a project's
+  stand_in: boolean; // the run is against the scripted stand-in, no model
   cursor: number;
   goal: string;
   first: string;
@@ -166,8 +167,20 @@ export function parseTask(r: Raw): Task {
   };
 }
 
+/** The line `graphene state --json` prints when there is no plan to read, `{"schema": 1, "error": why}`, and the
+ *  stream prints when its store went away: its why. Null for a snapshot, or for a line that is not JSON. */
+export function errorOf(text: string): string | null {
+  try {
+    const r = obj(JSON.parse(text));
+    return typeof r.error === "string" && r.error ? r.error : null;
+  } catch {
+    return null;
+  }
+}
+
 export function parseState(text: string): State {
   const r = obj(JSON.parse(text));
+  if (typeof r.error === "string") throw new Error(r.error); // not a snapshot: `errorOf` reads it
   const env = obj(r.envelope);
   const auto = r.auto === null || r.auto === undefined ? null : obj(r.auto);
   const run = obj(r.run);
@@ -186,6 +199,7 @@ export function parseState(text: string): State {
   return {
     schema: int(r.schema, 1), graphene: str(r.graphene), repo: str(r.repo), cursor: int(r.cursor, 0),
     replay: str(replay.shown) ? { shown: str(replay.shown), day: str(replay.day), repository: str(replay.repository) } : null,
+    stand_in: bool(r.stand_in),
     goal: str(r.goal), first: str(r.first), planner: str(r.planner), executor: str(r.executor),
     envelope: {
       auto: str(env.auto, "off"), budget: num(env.budget), tasks: num(env.tasks), rounds: num(env.rounds),

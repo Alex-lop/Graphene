@@ -34,3 +34,21 @@ test("a second goal starts the rounds again: its round 1 is not merged into the 
   assert.equal(rest.length, 0);
   assert.deepEqual([only!.n, only!.stage, only!.accepted, only!.check], [1, "planning", ["b"], ""]);
 });
+
+test("a later ask the envelope accepts is not round 1's: an accepted row without a round, or after done, is no round's", () => {
+  const row = (id: number, kind: string, node_id: string, detail: Record<string, unknown>) => JSON.stringify({ id, kind, node_id, detail });
+  // the stranger's log: auto ran a goal to done, then a `graphene ask` with auto on; `take` logs its accepts
+  // `by: auto` with no round, since auto's own round is over
+  const log = [
+    row(1, "auto", "*", { round: 1, stage: "planning", root: "goal" }),
+    row(2, "accepted", "a", { by: "auto", round: 1 }),
+    row(3, "picked", "a", { fork: "b", of: 3, reason: "finished first" }),
+    row(4, "landed", "a", {}),
+    row(5, "auto", "*", { round: 1, stage: "done", root: "goal", check: "pass" }),
+    row(6, "accepted", "later", { by: "auto" }),
+    row(7, "landed", "later", {}),
+  ].join("\n");
+  const [one, ...rest] = rounds(parseLog(log));
+  assert.equal(rest.length, 0);
+  assert.deepEqual([one!.accepted, one!.landed, one!.check], [["a"], ["a"], "pass"]);
+});

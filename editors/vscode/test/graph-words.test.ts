@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { actsFor, cornerWord, counts, fitWidth, fitWords, forkActs, forkWords, headerFor, paneKey, replayLine, sub, tabOrder, zoomK, type StateX, type TaskX } from "../src/graph/words.ts";
+import { actsFor, CHANGES, cornerWord, counts, fitWidth, fitWords, forkActs, forkWords, HEADER_ACTS, headerFor, linkHint, paneKey, replayLine, sub, tabOrder, zoomK,
+         topLine, type StateX, type TaskX } from "../src/graph/words.ts";
 import { ICONS } from "../src/graph/icons.ts";
 import { layout } from "../src/layout.ts";
 import { autoLine, parseState } from "../src/state.ts";
@@ -88,6 +89,23 @@ test("the replay line is the terminal replay's top line, and nothing when the st
                "replay · a scripted stand-in, no model ran · 2026-10-26");
   assert.equal(replayLine(null), "");
   assert.equal(replayLine(undefined), "");
+});
+
+test("a live race against the stand-in says so first; a replay's line wins; a real run says nothing", () => {
+  assert.equal(topLine({ replay: null, stand_in: true }), "against the scripted stand-in");
+  assert.equal(topLine({ replay: null, stand_in: false }), "");
+  // an older CLI sends no stand_in: parseState fills false, the line above
+  assert.equal(topLine({ replay: { shown: "a scripted stand-in, no model ran", day: "", repository: "" }, stand_in: true }),
+               "replay · a scripted stand-in, no model ran");
+});
+
+test("a replay offers none of the header's acts: the cockpit would open graphene watch in the person's folder", () => {
+  for (const [id, act] of HEADER_ACTS) assert.ok(CHANGES.includes(act), `${id} (${act}) stays in a replay`);
+});
+
+test("the link hint names the task, says Cancel as well as Esc, and drop while a dot is dragged", () => {
+  assert.equal(linkHint("hello", false), "link: click the task that waits on “hello” · Cancel or Esc stops it");
+  assert.equal(linkHint("hello", true), "link: drop it on the task that waits on “hello” · Cancel or Esc stops it");
 });
 
 test("a task offers the acts its state takes; a replay offers only what reads", () => {
