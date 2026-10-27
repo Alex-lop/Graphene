@@ -2,6 +2,8 @@
 
 One section a lane. One line a finding, worst first: its id, what it was, its state.
 
+The SHAs in the first section are the review lane's own commits. On `night/editor` they landed as three: `8585c5e2` (the gate: A1, B1, A2), `704ccfd4` (the checks: B2, A3) and `ab2f4133` (the envelope: A4, A5 + B3, A6, with this file).
+
 ## auto mode, the envelope, state and the gate
 
 Two reviewers, A and B, read the envelope and the gate and ran probes. A found six faults, B three; A5 and B3 are one fault. One fixer took them on `lane/review`, eight commits on 0418ca97. Each fix was confirmed by the reviewer who did not find it, at the fix's parent (the test fails) and at the fix (it passes).
