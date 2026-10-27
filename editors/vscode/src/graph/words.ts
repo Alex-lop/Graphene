@@ -7,16 +7,17 @@ import { autoLine, usd, type Fork, type Kept, type Question, type State, type Ta
 export type ForkX = Fork & { attempts?: number; idle?: number | null };
 export type TaskX = Omit<Task, "forks"> & { why?: string; attempts?: number; forks: ForkX[] };
 export type Replay = { shown: string; day: string; repository: string } | null;
-/** `stand_in`: the run's model calls went to the scripted stand-in (the CLI adds it tonight). */
+/** `stand_in`: every model call on record went to the scripted stand-in (the snapshot's, since 867c326c). */
 export type StateX = Omit<State, "tasks"> & { replay?: Replay; stand_in?: boolean; tasks: TaskX[] };
 
 export type Act = "add-after" | "add-under" | "link" | "unlink" | "edit" | "drop" | "accept" | "tell" | "run" | "stop" | "auto" | "cockpit"
   | "openDiff" | "compareForks" | "pickFork" | "signOff" | "answer" | "handBack";
 
 /** The acts a replay offers none of: they change a plan, or they act outside the replay (the cockpit opens
- *  `graphene watch` in the person's own folder). */
+ *  `graphene watch` in the person's own folder; openDiff and compareForks look the id up in the person's
+ *  plan). That is every act: a replay is watched. The host refuses them too (check.ts). */
 export const CHANGES: readonly Act[] = ["add-after", "add-under", "link", "unlink", "edit", "drop", "accept", "tell", "run", "stop", "auto",
-                                        "cockpit", "pickFork", "signOff", "answer", "handBack"];
+                                        "cockpit", "openDiff", "compareForks", "pickFork", "signOff", "answer", "handBack"];
 
 /** The header's act buttons, by their element id: each one is hidden in a replay. */
 export const HEADER_ACTS: readonly [string, Act][] = [["b-add", "add-under"], ["b-run", "run"], ["b-auto", "auto"], ["b-cockpit", "cockpit"]];
@@ -139,16 +140,16 @@ export interface Button {
   main?: boolean; // drawn as the primary button
 }
 
-/** The buttons a task's pane offers, in order. A replay offers only what reads. */
+/** The buttons a task's pane offers, in order. A replay offers none: its pane reads. */
 export function actsFor(t: TaskX, replay: boolean): Button[] {
   const out: Button[] = [];
+  if (replay) return out;
   const hasChanges = t.changed.length > 0 || ["running", "review", "done", "came back"].includes(t.state);
-  if (t.state === "review" && !replay) out.push({ label: "Sign off", act: "signOff", title: "it lands: graphene node approve", icon: "check", main: true });
-  if (t.state === "proposed" && !replay) out.push({ label: "Accept", act: "accept", title: "graphene plan accept", icon: "check", main: true });
-  if (t.state === "came back" && !replay) out.push({ label: "Take it up", act: "handBack", title: "widen it, reopen its owner, or try again", icon: "debug-step-back", main: true });
+  if (t.state === "review") out.push({ label: "Sign off", act: "signOff", title: "it lands: graphene node approve", icon: "check", main: true });
+  if (t.state === "proposed") out.push({ label: "Accept", act: "accept", title: "graphene plan accept", icon: "check", main: true });
+  if (t.state === "came back") out.push({ label: "Take it up", act: "handBack", title: "widen it, reopen its owner, or try again", icon: "debug-step-back", main: true });
   if (hasChanges) out.push({ label: "Open changes", act: "openDiff", title: "its changes so far, in the diff editor", icon: "diff" });
   if (t.forks.length >= 2) out.push({ label: "Compare forks", act: "compareForks", title: "the forks side by side", icon: "split-horizontal" });
-  if (replay) return out;
   out.push({ label: "Add step after", act: "add-after", title: "a new task that waits on this one", icon: "add" });
   out.push({ label: "Add step under", act: "add-under", title: "a new task under the same sub-goal", icon: "add" });
   out.push({ label: "Link to…", act: "link", title: "then click the task that waits on this one", icon: "link" });
@@ -158,10 +159,11 @@ export function actsFor(t: TaskX, replay: boolean): Button[] {
   return out;
 }
 
-/** What a fork's row offers: its changes, and Keep while the task is in review. */
+/** What a fork's row offers: its changes, and Keep while the task is in review. Nothing in a replay. */
 export function forkActs(t: TaskX, f: Fork, replay: boolean): Button[] {
+  if (replay) return [];
   const out: Button[] = [{ label: "Changes", act: "openDiff", title: `fork ${f.letter}'s changes, in the diff editor`, icon: "diff", fork: f.letter }];
-  if (t.state === "review" && !replay && t.forks.length >= 2) {
+  if (t.state === "review" && t.forks.length >= 2) {
     out.push({ label: "Keep", act: "pickFork", title: `keep fork ${f.letter}: graphene node pick`, icon: "pass", fork: f.letter });
   }
   return out;

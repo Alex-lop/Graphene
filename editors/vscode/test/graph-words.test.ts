@@ -103,6 +103,14 @@ test("a replay offers none of the header's acts: the cockpit would open graphene
   for (const [id, act] of HEADER_ACTS) assert.ok(CHANGES.includes(act), `${id} (${act}) stays in a replay`);
 });
 
+test("a replay offers no diff either: openDiff and compareForks run in the person's folder, not the replay's", () => {
+  for (const act of ["openDiff", "compareForks"]) assert.ok(CHANGES.includes(act as never), `${act} acts outside the replay`);
+  for (const t of tasks) {
+    assert.deepEqual(actsFor(t, true), [], `${t.id} (${t.state}) offers nothing in a replay`);
+    for (const f of t.forks) assert.deepEqual(forkActs(t, f, true), [], `fork ${f.letter} of ${t.id} offers nothing in a replay`);
+  }
+});
+
 test("the link hint names the task, says Cancel as well as Esc, and drop while a dot is dragged", () => {
   assert.equal(linkHint("hello", false), "link: click the task that waits on “hello” · Cancel or Esc stops it");
   assert.equal(linkHint("hello", true), "link: drop it on the task that waits on “hello” · Cancel or Esc stops it");
@@ -113,7 +121,7 @@ test("a task offers the acts its state takes; a replay offers only what reads", 
   assert.deepEqual(acts("farewell"), ["signOff", "openDiff", "compareForks", "add-after", "add-under", "link", "edit", "tell"].filter((a) => a !== "tell"));
   assert.deepEqual(acts("logs"), ["handBack", "openDiff", "add-after", "add-under", "link", "edit", "tell"]);
   assert.deepEqual(acts("ship"), ["add-after", "add-under", "link", "edit", "drop", "tell"]);
-  assert.deepEqual(acts("farewell", true), ["openDiff", "compareForks"]);
+  assert.deepEqual(acts("farewell", true), []);
   assert.deepEqual(acts("ship", true), []);
   assert.equal(actsFor(task("farewell"), false)[0]!.main, true);
 });
@@ -121,7 +129,7 @@ test("a task offers the acts its state takes; a replay offers only what reads", 
 test("a fork in review offers Keep beside its changes; elsewhere only its changes", () => {
   const f = task("farewell");
   assert.deepEqual(forkActs(f, f.forks[0]!, false).map((b) => [b.act, b.fork]), [["openDiff", "a"], ["pickFork", "a"]]);
-  assert.deepEqual(forkActs(f, f.forks[0]!, true).map((b) => b.act), ["openDiff"]);
+  assert.deepEqual(forkActs(f, f.forks[0]!, true), []);
   const g = task("greet");
   assert.deepEqual(forkActs(g, g.forks[1]!, false).map((b) => b.act), ["openDiff"]);
 });

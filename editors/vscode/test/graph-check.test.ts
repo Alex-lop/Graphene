@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { check } from "../src/graph/check.ts";
+import { CHANGES } from "../src/graph/words.ts";
 import { parseState } from "../src/state.ts";
 
 const state = parseState(readFileSync(new URL("./fixtures/graph-race.json", import.meta.url), "utf8"));
@@ -35,6 +36,17 @@ test("a fork the task has passes; so does an answer with one of the question's o
   assert.equal(ok({ type: "act", act: "answer", id: "which-port" })?.type, "act");
   assert.equal(ok({ type: "act", act: "answer", id: "which-port", target: "--help" }), null);
   assert.equal(ok({ type: "act", act: "answer", id: "greet" }), null); // a task's id is not a question's
+});
+
+test("a replay's host runs nothing that changes a plan or acts outside the replay; what reads still passes", () => {
+  const replay = { state: { ...state, replay: { shown: "a scripted stand-in, no model ran", day: "", repository: "" } } };
+  for (const act of CHANGES) {
+    const id = ["run", "stop", "auto", "cockpit", "add-under"].includes(act) ? "" : act === "answer" ? "which-port" : "farewell";
+    const fork = act === "pickFork" ? "b" : undefined;
+    const target = act === "link" || act === "unlink" ? "hello" : undefined;
+    assert.equal(check({ type: "act", act, id, fork, target }, replay), null, `${act} is refused in a replay`);
+  }
+  assert.equal(check({ type: "ready" }, replay)?.type, "ready");
 });
 
 test("with no plan read yet, only ready and the acts that take no id pass", () => {
