@@ -143,8 +143,9 @@ change through at once.
 - The envelope decides what is accepted, not whether the work is good: that is the checks' job, and they are only
   as good as your tests. Auto mode has run end to end against a scripted stand-in of Token Factory; a live auto run
   is next.
-- Honestly, in the three comparisons so far (September) a plain paragraph to the same agent did just as well for
-  less. What I'm betting on is when you find out what it understood: before the work, not after.
+- Honestly, the three comparisons so far (September) put one agent with a plan against the same agent with a
+  paragraph, and the paragraph did as well for less. None of them raced forks or ran tasks at once. What I'm
+  betting on is when you find out what it understood: before the work, not after.
   [Compared with Claude Code, Cursor, Kiro and Cline, gaps included](https://github.com/Alex-lop/Graphene/blob/main/docs/COMPARE.md) · [every limit](https://github.com/Alex-lop/Graphene/blob/main/docs/HOW_IT_WORKS.md#where-each-mechanism-ends).
 
 ## Nemotron on Token Factory

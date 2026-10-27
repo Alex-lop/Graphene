@@ -83,7 +83,7 @@ def test_no_runtime_dependencies_and_every_dev_one_pinned_exactly():
 
 def test_the_package_script_builds_the_vsix_and_never_publishes():
     scripts = MANIFEST["scripts"]
-    assert "graphene-0.8.0.vsix" in scripts["package"]
+    assert "-o graphene-$npm_package_version.vsix" in scripts["package"]  # the name follows the version
     assert "publish" not in " ".join(scripts.values())
     assert "npm run build" in scripts["test"]  # the smoke test runs the built extension
 
