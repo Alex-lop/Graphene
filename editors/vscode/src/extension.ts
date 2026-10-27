@@ -1,124 +1,29 @@
 // Graphene for VS Code: a thin client over the CLI. It reads `graphene state --json` in the folder that
 // holds the plan, again when the store's files change or on a poll while a view is open, and every change
 // it makes is a graphene command run as the person (the agent marks are taken out of the environment).
-import { execFile } from "node:child_process";
-import { existsSync } from "node:fs";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import * as C from "./commands.ts";
 import { GraphHost } from "./graph.ts";
+import { which } from "./find.ts";
 import { owner } from "./owners.ts";
-import { autoNews, mdText, parseState, summary, type State, type Task } from "./state.ts";
+import { autoNews, mdText, summary, type Task } from "./state.ts";
+import { topLine } from "./graph/words.ts";
+import { DROPPABLE, keyTrouble } from "./needs.ts";
 import { parseLog, rounds, type LogRow } from "./rounds.ts";
 import { RoundsTree } from "./roundsView.ts";
 import { PlanTree } from "./tree.ts";
+import { planFolder, Session, type UI } from "./session.ts";
+import * as needs from "./needsView.ts";
+import * as agents from "./agentsView.ts";
+import * as find from "./setup.ts";
+import * as diff from "./diff.ts";
+import * as planDoc from "./planDoc.ts";
+import * as step from "./step.ts";
+import * as demo from "./demo.ts";
+import * as files from "./files.ts";
 
-export type Status = { kind: "reading" | "missing" | "uninitialised" | "error" | "nofolder" | "ok" | "empty"; text: string };
-
-const STORE = path.join(".graphene", "graphene.db"); // the plan's store, under the repo's root
-const INSTALL = "Graphene is not installed, or not on this editor's PATH: `uv tool install graphene-map`, or set graphene.path.";
-const INIT = "This folder has no plan yet: run `graphene init` in it, then `graphene ask` or Graphene: Auto…";
-const OLDER = "This Graphene is older than the extension: it needs 0.8 (`uv tool upgrade graphene-map`).";
-
-export class Session {
-  folder: vscode.WorkspaceFolder | undefined;
-  state: State | null = null;
-  status: Status = { kind: "reading", text: "Reading the plan…" };
-  private emitter = new vscode.EventEmitter<void>();
-  readonly onDidChange = this.emitter.event;
-  private reading: Promise<void> | null = null;
-
-  constructor() {
-    this.folder = planFolder();
-  }
-
-  get path(): string {
-    return vscode.workspace.getConfiguration("graphene").get<string>("path")?.trim() || "graphene";
-  }
-
-  get pollMs(): number {
-    return Math.max(250, vscode.workspace.getConfiguration("graphene").get<number>("pollMs") ?? 1500);
-  }
-
-  /** graphene, in the plan's folder, as the person: exit code and both streams; -1 when it is not found. */
-  run(argv: string[]): Promise<{ code: number; stdout: string; stderr: string }> {
-    return new Promise((resolve) => {
-      execFile(this.path, argv, { cwd: this.folder?.uri.fsPath, env: C.scrub(process.env), maxBuffer: 64 * 1024 * 1024 },
-               (err, stdout, stderr) => {
-        const e = err as (NodeJS.ErrnoException & { code?: number | string }) | null;
-        if (e && e.code === "ENOENT") return resolve({ code: -1, stdout: "", stderr: `${this.path} was not found` });
-        resolve({ code: e ? (typeof e.code === "number" ? e.code : 1) : 0, stdout: String(stdout), stderr: String(stderr) });
-      });
-    });
-  }
-
-  /** Read the plan again; one read at a time. */
-  refresh(): Promise<void> {
-    if (!this.reading) this.reading = this.read().finally(() => { this.reading = null; });
-    return this.reading;
-  }
-
-  private async read() {
-    this.folder ??= planFolder();
-    if (!this.folder) return this.set(null, { kind: "nofolder", text: "Open a folder to see its plan." });
-    const out = await this.run(C.stateJson());
-    const initialised = existsSync(path.join(this.folder.uri.fsPath, STORE));
-    if (out.code === -1) return this.set(null, { kind: "missing", text: INSTALL });
-    if (!initialised) return this.set(null, { kind: "uninitialised", text: INIT });
-    if (out.code !== 0) {
-      const why = C.firstLine(out.stderr, out.stdout);
-      return this.set(null, { kind: "error", text: /no such command/i.test(why) ? OLDER : why });
-    }
-    try {
-      const state = parseState(out.stdout);
-      this.set(state, state.tasks.length ? { kind: "ok", text: "" } : { kind: "empty", text: "Nothing is planned yet." });
-    } catch {
-      this.set(null, { kind: "error", text: `graphene state --json gave no plan: ${C.firstLine(out.stderr, out.stdout)}` });
-    }
-  }
-
-  /** The state before the last read: what changed, for auto mode's notifications. */
-  before: State | null = null;
-
-  private set(state: State | null, status: Status) {
-    this.before = this.state;
-    this.state = state;
-    this.status = status;
-    void vscode.commands.executeCommand("setContext", "graphene.status", status.kind);
-    this.emitter.fire();
-  }
-
-  /** A change: run it, say the first line it answered, or its refusal; then read the plan again. */
-  async act(argv: string[]): Promise<boolean> {
-    const out = await this.run(argv);
-    if (out.code !== 0) {
-      const why = out.code === -1 ? INSTALL : C.firstLine(out.stderr, out.stdout);
-      void vscode.window.showErrorMessage(`graphene ${argv.slice(0, 2).join(" ")}: ${why}`);
-    } else {
-      vscode.window.setStatusBarMessage(`$(check) ${C.firstLine(out.stdout, out.stderr, "done")}`, 6000);
-    }
-    void this.refresh();
-    return out.code === 0;
-  }
-
-  /** A long command the person watches and may Ctrl-C: in a terminal of its own, as the person. */
-  terminal(name: string, argv: string[]): vscode.Terminal {
-    const term = vscode.window.createTerminal({ name, cwd: this.folder?.uri, env: C.unmarked(), iconPath: new vscode.ThemeIcon("type-hierarchy-sub") });
-    term.show(true);
-    term.sendText(C.shellLine(this.path, argv), true);
-    return term;
-  }
-
-  tasks(): Task[] {
-    return this.state?.tasks ?? [];
-  }
-}
-
-/** The workspace folder whose plan this is: the first with a store, else the first folder. */
-function planFolder(): vscode.WorkspaceFolder | undefined {
-  const folders = vscode.workspace.workspaceFolders ?? [];
-  return folders.find((f) => existsSync(path.join(f.uri.fsPath, STORE))) ?? folders[0];
-}
+export { Session } from "./session.ts";
 
 type Arg = string | { id?: string; task?: Task; after?: boolean; under?: boolean } | undefined;
 
@@ -187,46 +92,54 @@ export function activate(context: vscode.ExtensionContext) {
     const said = s ? autoNews(session.before, s) : null; // auto mode needs you, plans a fix, or is done
     if (said) {
       const show = said.kind === "waits" ? vscode.window.showWarningMessage : vscode.window.showInformationMessage;
-      const key = /`graphene key set(?: --endpoint (\w+))?`/.exec(said.text); // it waits on a key: set it from here
-      void show(said.text, ...(key ? ["Set Key", "Show Plan Graph"] : ["Show Plan Graph", "Open Cockpit"])).then((pick) => {
-        if (pick === "Set Key") session.terminal("graphene key set", C.keySet(key?.[1]));
+      const key = keyTrouble(said.text); // it waits on a key, refused or missing: set it from here
+      void show(C.plain(said.text), ...(key.key ? ["Set Key", "Needs You"] : said.kind === "waits" ? ["Needs You", "Show Plan Graph"] : ["Show Plan Graph", "Rounds"])).then((pick) => {
+        if (pick === "Set Key") void vscode.commands.executeCommand("graphene.setKey", key.endpoint ?? undefined);
+        if (pick === "Needs You") void vscode.commands.executeCommand("graphene.needs.focus");
         if (pick === "Show Plan Graph") void vscode.commands.executeCommand("graphene.showGraph");
-        if (pick === "Open Cockpit") void vscode.commands.executeCommand("graphene.openCockpit");
+        if (pick === "Rounds") void vscode.commands.executeCommand("graphene.rounds.focus");
       });
     }
     if (s && (session.status.kind === "ok" || session.status.kind === "empty")) {
       bar.text = `◆ ${summary(s)}`;
       const md = new vscode.MarkdownString(undefined, true);
       md.appendMarkdown(`**${mdText(s.goal || "no goal yet")}**\n\n`); // the plan's words as text, not markup
+      const top = topLine(s); // a replay, or a race against the scripted stand-in: not a paid run, said as the graph says it
+      if (top) md.appendMarkdown(`${mdText(top)}\n\n`);
       for (const line of s.news.slice(-4)) md.appendMarkdown(`- ${mdText(line)}\n`);
-      md.appendMarkdown("\nGraphene: Show Plan Graph");
+      md.appendMarkdown(`\n${mdText(which(session.file || session.path, session.version))}${session.found ? ", off this editor's PATH" : ""}\n\n`);
+      md.appendMarkdown(session.stream.live ? "live: `graphene state --json --watch`\n\n" : "");
+      md.appendMarkdown("Graphene: Show Plan Graph");
       bar.tooltip = md;
     } else {
-      bar.text = `◆ Graphene · ${session.status.kind === "missing" ? "not installed" : session.status.kind === "uninitialised" ? "no plan" : session.status.kind}`;
-      bar.tooltip = session.status.text;
+      const k = session.status.kind;
+      const words: Partial<Record<typeof k, string>> = { missing: "not installed", uninitialised: "no plan", nofolder: "no folder", reading: "reading…" };
+      bar.text = `◆ Graphene · ${words[k] ?? k}`;
+      bar.tooltip = k === "missing" || k === "nofolder" ? session.status.text : `${session.status.text}\n\n${which(session.file || session.path, session.version)}`;
     }
   });
 
-  // read again when the store's files change (the WAL changes before graphene.db does) and on a poll while a
-  // view is open; a burst of changes is one read
+  // read again when the store's own files change (graphene.db, its WAL, the run lock: not an agent's save
+  // under the worktrees) and on a poll while a view is open; a burst of changes is one read. While the stream
+  // is live (`state --json --watch`) it brings every change, and both rest.
   let due: NodeJS.Timeout | undefined;
-  const soon = () => { clearTimeout(due); due = setTimeout(() => void session.refresh(), 250); };
+  const soon = () => { if (session.stream.live) return; clearTimeout(due); due = setTimeout(() => void session.refresh(), 250); };
   if (session.folder) {
-    const watcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(session.folder, ".graphene/**"));
+    const watcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(session.folder, ".graphene/{graphene.db,graphene.db-wal,run.lock}"));
     watcher.onDidChange(soon); watcher.onDidCreate(soon); watcher.onDidDelete(soon);
     context.subscriptions.push(watcher);
   }
   let poll: NodeJS.Timeout | undefined;
   const arm = () => {
     clearInterval(poll);
-    poll = setInterval(() => { if (treeView.visible || graph.open) void session.refresh(); }, session.pollMs);
+    poll = setInterval(() => { if ((treeView.visible || graph.open) && !session.stream.live) void session.refresh(); }, session.pollMs);
   };
   arm();
-  context.subscriptions.push({ dispose: () => { clearInterval(poll); clearTimeout(due); } });
+  context.subscriptions.push(session, { dispose: () => { clearInterval(poll); clearTimeout(due); } });
   context.subscriptions.push(vscode.workspace.onDidChangeConfiguration((e) => {
-    if (e.affectsConfiguration("graphene")) { arm(); void session.refresh(); }
+    if (e.affectsConfiguration("graphene")) { arm(); session.moved(); void session.refresh(); }
   }));
-  context.subscriptions.push(vscode.workspace.onDidChangeWorkspaceFolders(() => { session.folder = planFolder(); void session.refresh(); }));
+  context.subscriptions.push(vscode.workspace.onDidChangeWorkspaceFolders(() => { session.folder = planFolder(); session.moved(); void session.refresh(); }));
 
   const taskOf = (arg: Arg): Task | undefined => {
     const id = typeof arg === "string" ? arg : arg?.task?.id ?? arg?.id;
@@ -236,8 +149,8 @@ export function activate(context: vscode.ExtensionContext) {
     const given = taskOf(arg);
     if (given) return given;
     if (!among.length) { void vscode.window.showInformationMessage("No task to choose from."); return undefined; }
-    const chosen = await vscode.window.showQuickPick(
-      among.map((t) => ({ label: t.title, description: `${t.state} · ${t.id}`, detail: t.scope.join("  "), t })), { placeHolder });
+    const chosen = await vscode.window.showQuickPick( // a planner's title as text: a label reads `$(name)` as an icon
+      among.map((t) => ({ label: C.plain(t.title), description: `${t.state} · ${t.id}`, detail: C.plain(t.scope.join("  ")), t })), { placeHolder });
     return chosen?.t;
   };
   const cmd = (name: string, fn: (arg?: Arg) => unknown) =>
@@ -246,7 +159,6 @@ export function activate(context: vscode.ExtensionContext) {
   cmd("refresh", () => session.refresh());
   cmd("showGraph", (arg) => graph.show(taskOf(arg)?.id));
   cmd("openCockpit", () => session.terminal("graphene watch", C.watch()));
-  cmd("init", () => session.terminal("graphene init", C.init()));
   cmd("runReady", () => session.terminal("graphene run", C.runReady()));
   cmd("stop", () => session.act(C.stop()));
   cmd("auto", async () => {
@@ -256,10 +168,11 @@ export function activate(context: vscode.ExtensionContext) {
     const budget = await vscode.window.showInputBox({ prompt: "A budget in dollars for the whole run (empty: the configured one)", placeHolder: "2",
                                                      ignoreFocusOut: true, validateInput: (v) => (!v.trim() || Number(v) > 0 ? undefined : "a number of dollars, or nothing") });
     if (budget === undefined) return;
+    // Plan first comes first: with auto on, Plan and run lands the race before the person has seen the plan
     const how = await vscode.window.showQuickPick(
-      [{ label: "Plan and run", description: "plan, race, land, check the goal, fix", planOnly: false },
-       { label: "Plan first", description: "--plan: see what your envelope accepts; Auto… again, or graphene auto, runs it", planOnly: true }],
-      { placeHolder: "run it now, or look at the plan first?" });
+      [{ label: "Plan first", description: "--plan: see what your envelope accepts; Auto… again, or graphene auto, runs it", planOnly: true },
+       { label: "Plan and run", description: "plan, race, land, check the goal, fix", planOnly: false }],
+      { placeHolder: "look at the plan first, or run it now?" });
     if (!how) return;
     session.terminal("graphene auto", C.auto(goal.trim(), budget.trim() ? Number(budget) : null, how.planOnly));
   });
@@ -297,39 +210,6 @@ export function activate(context: vscode.ExtensionContext) {
     const ok = await vscode.window.showWarningMessage(`Accept all ${n} proposed task${n > 1 ? "s" : ""}?`, { modal: true }, "Accept");
     if (ok) await session.act(C.acceptAll());
   });
-  cmd("addStep", async (arg) => {
-    const near = taskOf(arg);
-    const title = await vscode.window.showInputBox({ prompt: "The new step, as a title", ignoreFocusOut: true,
-                                                    validateInput: (v) => (v.trim() ? undefined : "a title") });
-    if (!title?.trim()) return;
-    let parent: string | null = near?.parent ?? null;
-    const needs: string[] = [];
-    const given = typeof arg === "object" ? arg : undefined;
-    if (near && given?.after) needs.push(near.id);
-    else if (near && !given?.under) {
-      const where = await vscode.window.showQuickPick([
-        { label: `after “${near.title}”`, description: "waits on it", v: "after" },
-        { label: "beside it", description: near.parent ? `under the same sub-goal` : "at the top", v: "under" },
-      ], { placeHolder: "where it goes" });
-      if (!where) return;
-      if (where.v === "after") needs.push(near.id);
-    } else if (!near && session.state?.goals.length) {
-      const goals = session.state.goals;
-      const where = await vscode.window.showQuickPick([
-        { label: "at the top", description: "under the goal itself", id: null as string | null },
-        ...goals.map((g) => ({ label: g.title, description: g.id, id: g.id as string | null })),
-      ], { placeHolder: "under which sub-goal" });
-      if (!where) return;
-      parent = where.id;
-    }
-    const scope = await vscode.window.showInputBox({ prompt: "The files it may write (globs, spaces or commas between), or nothing for now",
-                                                    placeHolder: "app.py tests/test_app.py", ignoreFocusOut: true });
-    if (scope === undefined) return;
-    const check = await vscode.window.showInputBox({ prompt: "The command that passes only when it is done, or nothing for now",
-                                                    placeHolder: "pytest -q tests/test_app.py", ignoreFocusOut: true });
-    if (check === undefined) return;
-    await session.act(C.addStep({ title: title.trim(), parent, needs, scope: C.globs(scope), check: check.trim() || null }));
-  });
   cmd("link", async (arg) => {
     const a = await pick(arg, "the task that must land first");
     if (!a) return;
@@ -340,10 +220,10 @@ export function activate(context: vscode.ExtensionContext) {
     const t = await pick(arg, "the task to edit");
     if (!t) return;
     const field = await vscode.window.showQuickPick([
-      { label: "title", description: t.title, f: "title" as C.Field },
-      { label: "scope", description: t.scope.join("  ") || "none", f: "scope" as C.Field },
-      { label: "check", description: t.check ?? "none", f: "check" as C.Field },
-    ], { placeHolder: `what to change on “${t.title}”` });
+      { label: "title", description: C.plain(t.title), f: "title" as C.Field },
+      { label: "scope", description: C.plain(t.scope.join("  ")) || "none", f: "scope" as C.Field },
+      { label: "check", description: C.plain(t.check ?? "none"), f: "check" as C.Field },
+    ], { placeHolder: C.plain(`what to change on “${t.title}”`) });
     if (!field) return;
     const value = await vscode.window.showInputBox({
       prompt: field.f === "scope" ? "The files it may write (globs, spaces or commas between)" : field.f === "check" ? "The command that passes only when it is done" : "The title",
@@ -353,7 +233,7 @@ export function activate(context: vscode.ExtensionContext) {
     await session.act(C.editStep(t.id, field.f, field.f === "scope" ? C.globs(value) : value.trim()));
   });
   cmd("dropStep", async (arg) => {
-    const t = await pick(arg, "the task to drop", session.tasks().filter((x) => ["proposed", "ready", "waiting"].includes(x.state)));
+    const t = await pick(arg, "the task to drop", session.tasks().filter((x) => DROPPABLE.includes(x.state)));
     if (!t) return;
     const ok = await vscode.window.showWarningMessage(`Drop “${t.title}”? \`graphene plan undo\` puts it back.`, { modal: true }, "Drop");
     if (ok) await session.act(C.dropStep(t.id));
@@ -362,8 +242,15 @@ export function activate(context: vscode.ExtensionContext) {
     const t = await pick(arg, "the task whose agent hears it");
     if (!t) return;
     const text = await vscode.window.showInputBox({ prompt: `A line for the agent on “${t.title}”`, placeHolder: "keep both routes", ignoreFocusOut: true });
-    if (text?.trim()) await session.act(C.tell(t.id, text.trim()));
+    if (!text?.trim()) return;
+    if (await session.act(C.tell(t.id, text.trim()))) { // said back, and the note shows on the task's row and hover
+      void vscode.window.showInformationMessage(C.plain(`Told the agent on “${t.title}”: ${text.trim()}`));
+    }
   });
+
+  // the features, each in a module of its own (dev/process/editor/CONTRACT.md says who writes which)
+  const ui: UI = { graph, tree, treeView };
+  for (const m of [needs, agents, find, diff, planDoc, step, demo, files]) m.register(context, session, ui);
 
   void session.refresh();
 }

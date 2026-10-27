@@ -18,16 +18,19 @@ PYPROJECT = tomllib.loads((ROOT / "pyproject.toml").read_text())
 CI = (ROOT / ".github/workflows/ci.yml").read_text()
 STORE = ".graphene/graphene.db"
 
-COMMANDS = ["Show Plan Graph", "Open Cockpit", "Auto…", "Set Envelope…", "Run Ready Tasks", "Stop", "Accept",
-            "Accept All", "Add Step…", "Link…", "Edit Step…", "Drop Step", "Tell Agent…",
-            "Set Up This Folder", "Refresh"]
+COMMANDS = ["Show Plan Graph", "Open Cockpit", "Auto…", "Set Envelope…", "Run Ready Tasks", "Stop",
+            "Accept", "Accept All", "Add Step…", "Link…", "Edit Step…", "Drop Step", "Tell Agent…",
+            "Set Up This Folder", "Refresh", "Answer…", "Take Up the Hand-Back…", "Install Graphene…",
+            "Mark Your Task Done", "Set Key…", "Open Changes", "Compare Forks", "Keep This Fork",
+            "Sign Off", "Edit Plan as Text", "Add Step by Hand…", "Watch the Demo",
+            "Diff with the Agent's Copy"]
 
 
 def test_the_manifest_names_the_product_and_its_version():
     assert MANIFEST["name"] == "graphene-vscode"
     assert MANIFEST["displayName"] == "Graphene"
     assert MANIFEST["publisher"] == "alex-lop"
-    assert MANIFEST["version"] == "0.8.0"
+    assert MANIFEST["version"] == "0.9.0"
     assert MANIFEST["license"] == "Apache-2.0"
     assert MANIFEST["repository"]["url"] == PYPROJECT["project"]["urls"]["Repository"]
     assert MANIFEST["engines"]["vscode"] == "^1.95.0"
@@ -47,7 +50,10 @@ def test_the_walkthrough_buttons_are_the_extensions_own_commands_and_its_picture
     [walk] = MANIFEST["contributes"]["walkthroughs"]
     ours = {c["command"] for c in MANIFEST["contributes"]["commands"]}
     linked = {m for s in walk["steps"] for m in re.findall(r"\(command:(graphene\.\w+)\)", s["description"])}
-    assert linked == ours & {"graphene.init", "graphene.auto", "graphene.showGraph", "graphene.envelope"}
+    asked = {"graphene.watchDemo", "graphene.init", "graphene.auto", "graphene.showGraph",
+             "graphene.envelope"}
+    assert linked == ours & asked
+    assert walk["steps"][0]["id"] == "demo"  # a judge with no key sees the race first
     shipped = (EXT / ".vscodeignore").read_text().split()
     for s in walk["steps"]:
         assert (EXT / s["media"]["image"]).is_file() and f"!{s['media']['image']}" in shipped, s["id"]
@@ -62,6 +68,20 @@ def test_the_activity_bar_shows_the_brand_mark_and_a_plan_view_and_the_graph():
     views = {v["id"]: v for v in MANIFEST["contributes"]["views"]["graphene"]}
     assert views["graphene.plan"]["name"] == "Plan"
     assert views["graphene.graph"]["type"] == "webview"
+
+
+def test_the_first_open_view_says_what_to_do_before_there_is_a_plan():
+    # Needs You sits first and open; Plan starts collapsed, so its welcome is out of sight until it is opened.
+    views = MANIFEST["contributes"]["views"]["graphene"]
+    assert [v["id"] for v in views[:3]] == ["graphene.needs", "graphene.graph", "graphene.agents"]
+    collapsed = {v["id"] for v in views if v.get("visibility") == "collapsed"}
+    assert collapsed == {"graphene.plan", "graphene.rounds"}
+    welcome = {w["when"]: w["contents"] for w in MANIFEST["contributes"]["viewsWelcome"]
+               if w["view"] == "graphene.needs"}
+    assert "command:graphene.init" in welcome["graphene.status == uninitialised"]
+    assert "command:graphene.install" in welcome["graphene.status == missing"]
+    for status in ("uninitialised", "missing"):
+        assert "command:graphene.watchDemo" in welcome[f"graphene.status == {status}"]
 
 
 def test_the_settings_are_the_command_and_the_poll():
@@ -81,7 +101,7 @@ def test_no_runtime_dependencies_and_every_dev_one_pinned_exactly():
 
 def test_the_package_script_builds_the_vsix_and_never_publishes():
     scripts = MANIFEST["scripts"]
-    assert "graphene-0.8.0.vsix" in scripts["package"]
+    assert "-o graphene-$npm_package_version.vsix" in scripts["package"]  # the name follows the version
     assert "publish" not in " ".join(scripts.values())
     assert "npm run build" in scripts["test"]  # the smoke test runs the built extension
 
@@ -102,7 +122,7 @@ def test_the_licence_is_the_repositorys():
 
 def test_the_readme_says_how_it_is_installed_and_whose_click_it_is():
     readme = (EXT / "README.md").read_text()
-    assert "code --install-extension graphene-0.8.0.vsix" in readme
+    assert "code --install-extension graphene-0.9.0.vsix" in readme
     assert "graphene state --json" in readme
     assert "A click in VS Code is the person's" in readme
     assert "uv tool install graphene-map" in readme

@@ -16,6 +16,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import typer
@@ -543,8 +544,8 @@ def register(cli: typer.Typer, root, open_store, fail):
         who = P.caller()
         if view and (as_json or as_text):
             fail("--view draws the plan; --json and --text print what it holds: one or the other", 2)
-        if as_text:
-            run(lambda s: out(T.render(s)[0].rstrip("\n")))
+        if as_text:  # an empty plan's text is the editor's `# ` help: the tab it opens in says what to type
+            run(lambda s: out(T.render(s)[0].rstrip("\n") or T.HELP))
             return
         if view:
             return print_view(view, width, height, lambda: run(lambda s: print_plan(s, who, everything)))
@@ -682,6 +683,9 @@ def register(cli: typer.Typer, root, open_store, fail):
     @cli.command(hidden=True)
     def state(
         as_json: bool = typer.Option(False, "--json", help="One line of JSON; without it, indented."),
+        watch: bool = typer.Option(
+            False, "--watch", help="Stay on, and print one more line each time the store changes."
+        ),
     ) -> None:
         """Print the plan as one JSON snapshot for an editor (schema 1).
 
@@ -699,6 +703,8 @@ def register(cli: typer.Typer, root, open_store, fail):
         if store is not None:
             with store:
                 why = ST.unplanned(store)
+                if why is None and watch:
+                    return stream(store, r)
                 try:
                     said = ST.snapshot(store, r) if why is None else {}
                 except Exception as no:  # stdout holds one JSON object whatever happened: an editor reads it
@@ -707,6 +713,49 @@ def register(cli: typer.Typer, root, open_store, fail):
             out(json.dumps(ST.error(why)))
             raise typer.Exit(1)
         out(json.dumps(said) if as_json else json.dumps(said, indent=2))
+
+    def lines_out() -> tuple:
+        """A long-lived command's stdout, a line at a time, for an editor: ``say`` writes one and flushes;
+        ``alive`` says whether to go on, False once the reader has gone (its end of the pipe closed, seen
+        with poll or at a write) or a TERM or INT came. Each of those ends the command with exit 0, said to
+        no one."""
+        import select
+
+        fd = sys.stdout.fileno()
+        hung = select.poll()
+        hung.register(fd, select.POLLERR | select.POLLHUP)
+        going = [True]
+        for sig in (signal.SIGTERM, signal.SIGINT):
+            signal.signal(sig, lambda *_: going.__setitem__(0, False))
+
+        def say(text: str) -> None:
+            try:
+                sys.stdout.write(text + "\n")
+                sys.stdout.flush()
+            except BrokenPipeError:  # the reader went between two looks: nothing more to say, exit 0
+                os.dup2(os.open(os.devnull, os.O_WRONLY), fd)  # so the exit's own flush is quiet
+                going[0] = False
+
+        return say, lambda: going[0] and not hung.poll(0)
+
+    def stream(store, r: Path) -> None:
+        """`state --json --watch`: snapshot lines on stdout until the reader goes or a TERM comes. The
+        store's connection is held while its file stays: a WAL reader blocks no writer. The file gone
+        (`git clean -fdx` under an open editor) is said once, as `state --json` says it; the store made
+        next (`graphene init`, `graphene ask`) is opened and followed in its turn, in the same stream."""
+        from . import state as ST
+
+        say, alive = lines_out()
+        while not ST.follow(store, r, say, alive):
+            store.close()
+            gone = None
+            while alive() and (there := ST.identity(r)) is None:
+                if gone is None:
+                    say(json.dumps(ST.error(gone := ST.where(r)[1] or "no Graphene store here")))
+                time.sleep(ST.TICK)
+            if there is None:  # the reader went, or a TERM came, while there was no store
+                return
+            store = open_store(r)
 
     @cli.command()
     def demo(
@@ -738,6 +787,9 @@ def register(cli: typer.Typer, root, open_store, fail):
         auto: bool = typer.Option(
             False, "--auto", help="Replay auto mode: one goal, Nemotron's plan, forks racing, the goal's fix."
         ),
+        into: Path = typer.Option(
+            None, "--into", help="No screen: play it into this new or empty directory, a line a change."
+        ),
     ) -> None:
         """Replay a recorded run in `graphene watch`, change by change.
 
@@ -747,10 +799,27 @@ def register(cli: typer.Typer, root, open_store, fail):
 
         from . import demo as D
 
+        if into is not None and (record is not None or once):
+            fail("--into plays into a directory of its own: not with --record or --once", 2)
+        if into is not None:
+            try:
+                into = D.own(into)
+            except ValueError as no:
+                fail(str(no), 1)
+            except (OSError, subprocess.CalledProcessError) as no:
+                fail(f"graphene demo makes a git repository in {into}, and could not: {no}", 1)
         if cheat:  # computed live in a repository of its own, which goes with the directory
             from . import cheat as C
 
             out(f"graphene demo --cheat · {D.STAND_IN} · $0")
+            if into is not None:  # the cheat's repository stays, for an editor to read as a replay
+                say, alive = lines_out()
+                # marked before a move runs: the frames an editor watches are the moves themselves
+                D.mark(into, {"shown": D.STAND_IN, "day": P._now()[:10], "repository": into.name})
+                through = C.run(say, into)[2]
+                while alive():
+                    time.sleep(0.1)
+                raise typer.Exit(1 if through else 0)
             with tempfile.TemporaryDirectory(prefix="graphene-cheat-") as tmp:
                 through = C.run(out, Path(tmp).resolve())[2]
             raise typer.Exit(1 if through else 0)
@@ -766,6 +835,9 @@ def register(cli: typer.Typer, root, open_store, fail):
             head, lines = D.load(shown, speed)
         except (OSError, ValueError, KeyError) as no:
             fail(f"cannot replay {shown}: {no}", 1)
+        if into is not None:
+            say, alive = lines_out()
+            return D.into(into, head, lines, say, alive)
         with tempfile.TemporaryDirectory(prefix="graphene-demo-") as tmp:
             try:
                 repo = D.repository(Path(tmp), head)
@@ -859,11 +931,66 @@ def register(cli: typer.Typer, root, open_store, fail):
     @plan_cli.command("edit")
     def edit_(
         node_id: str = typer.Argument(None, help="Open only this node and what is under it."),
+        source: str = typer.Option(
+            None, "--from", help="Apply the plan's text from this file, or from a pipe with '-'."
+        ),
+        as_json: bool = typer.Option(
+            False, "--json", help="With --from, one line of JSON: applied, said, faults by line."
+        ),
+        since: int = typer.Option(
+            None, "--since", help="The snapshot's cursor when the text was read; later changes stay."
+        ),
     ) -> None:
         """Open the plan as text in your editor ($VISUAL, $EDITOR, else vi).
 
         Graphene applies what you save, all or none. Turn "?" into "-" to accept a node."""
+        if source is not None:
+            return edit_from(source, node_id, as_json, since)
+        if as_json or since is not None:
+            fail("--json and --since go with --from: `graphene plan edit --from - --json`", 2)
         edit_in_editor(node_id, alone=False)
+
+    def edit_from(source: str, node_id: str | None, as_json: bool, since: int | None) -> None:
+        """`plan edit --from -`: the text an editor saved, applied as one save in the terminal's editor is
+        (all or none, only what the text changed, nothing someone else changed since ``since``), and
+        what came of it as lines, or as one JSON line with each refusal on the text's own line."""
+        who = P.caller()
+        if not who.person:
+            fail("an editor is for the person at a terminal; an agent proposes: `graphene plan propose -`", 1)
+        if source == "-" and sys.stdin.isatty():
+            fail("`graphene plan edit --from -` reads a pipe, and nothing is piped here", 1)
+        try:
+            text = sys.stdin.read() if source == "-" else Path(source).read_text(encoding="utf-8")
+        except OSError as exc:
+            fail(f"cannot read {source}: {exc.strerror or exc}", 1)
+        files = P.tracked(checkout())
+
+        def go(store):
+            opened = T.render(store, node_id, False)[1]
+            base = P.get(store, node_id).parent if node_id is not None else None
+            if since is not None:
+                T.stale(store, opened, since)
+            with P.undoable(store, who, "plan edit" + (f" {node_id}" if node_id else "")):
+                return T.apply(store, text, who, opened, base, files)
+
+        try:
+            with open_store(root()) as store:
+                said = go(store)
+        except P.Refused as no:
+            if as_json:
+                out(json.dumps({"applied": False, "said": [], "faults": [T.fault(str(no), text)]}))
+                raise typer.Exit(1) from None
+            fail(f"{no}. Nothing was applied", 1)
+        if as_json:
+            out(json.dumps({"applied": bool(said), "said": list(said), "faults": []}))
+        else:
+            for line in said or ["nothing changed"]:
+                out(line)
+        if said:
+            with open_store(root()) as store:
+                ids = [i for i in said.ids if store.node_row(i)]
+            warn_unreachable(ids, files)
+            said_where()
 
     @plan_cli.command()
     def undo() -> None:
@@ -1260,8 +1387,10 @@ def register(cli: typer.Typer, root, open_store, fail):
             end(summary(store, since) + (f" · the work of {', '.join(left)} is {P.UNCOMMITTED}" * bool(left)))
 
     def planner(
-        sentence: str, executor: str | None, about: str | None, split: bool, size: str | None = None
+        sentence: str, executor: str | None, about: str | None, split: bool, size: str | None = None,
+        step: bool = False, after: str | None = None, under: str | None = None,
     ) -> None:
+        from . import ask as A
         from .ask import ask, named
 
         who = P.caller()
@@ -1271,7 +1400,22 @@ def register(cli: typer.Typer, root, open_store, fail):
 
         def go(store):
             spec = executor or store.meta("planner")  # --with, else the repo's (`graphene init`); or refused
-            said = ask(store, checkout(), sentence, named(spec), about, split, out, size, planner=spec)
+            talk = base = None
+            say = out
+            if step:  # one leaf, where the person pointed, from the planner or Nano when it is Nemotron
+                spec, talk = A.for_step(spec), A.step_words(store, after, under)
+                base = under or (P.get(store, after).parent if after else None)
+                say = lambda line: typer.echo(line, err=True)  # noqa: E731  (the planner's progress: stdout
+                # is the step's own lines, its id first, for whoever asked)
+            said = ask(store, checkout(), sentence, named(spec), about, split, say, size, planner=spec,
+                       talk=talk, base_parent=base, one=step)  # fmt: skip
+            if step:
+                landed = A.step_landed(store, said, after, who)
+                if landed is None:
+                    raise P.Refused("the planner proposed no step; nothing was added")
+                first = f"proposed {landed[0]}: {landed[1]}"
+                out(first)  # the first line, for whoever asked: the step's id
+                said = [line for line in said if line.strip() != first]
             for line in said:
                 out(line)
             ids, (waits, _) = list(getattr(said, "ids", [])), B.waiting(store)
@@ -1311,13 +1455,23 @@ def register(cli: typer.Typer, root, open_store, fail):
         coarser: bool = typer.Option(
             False, "--coarser", help="Size this ask coarser, whatever the saved size."
         ),
+        step: bool = typer.Option(
+            False, "--step", help="One step from one sentence, proposed for you to accept."
+        ),
+        after: str = typer.Option(None, "--after", help="With --step: the step comes after this task."),
+        under: str = typer.Option(None, "--under", help="With --step: the step goes under this node."),
     ) -> None:
         """Ask the planner for a tree from a paragraph.
 
         The planner reads the repo and writes nothing. Nothing runs until you accept the tree."""
         if finer and coarser:
             fail("--finer or --coarser, not both", 2)
-        planner(sentence, executor, about, False, "finer" if finer else "coarser" if coarser else None)
+        if after and under:
+            fail("--after or --under, not both", 2)
+        if (after or under) and not step:
+            fail("--after and --under place a step: `graphene ask '…' --step --after ID`", 2)
+        planner(sentence, executor, about, False, "finer" if finer else "coarser" if coarser else None,
+                step, after, under)  # fmt: skip
 
     if N := extra.load("note"):
         N.register(plan_cli, root, open_store, fail)  # `graphene plan note`
@@ -1687,25 +1841,41 @@ def register(cli: typer.Typer, root, open_store, fail):
         node_id: str = typer.Argument(...),
         stat: bool = typer.Option(False, "--stat", help="Only each file and how much of it changed."),
         fork: str = typer.Option(None, "--fork", help="One fork's work, by its letter, from its ref."),
+        as_json: bool = typer.Option(
+            False, "--json", help="The two revisions and each file's status, as one line of JSON."
+        ),
     ) -> None:
-        """Show what a leaf changed: the merge that landed it, or what it left."""
+        """Show what a leaf changed: what landed, what it left, or its work so far."""
         from .precheck import state
 
-        def go(store):
+        def going(where: str, base: str | None, what: str) -> tuple[str, list[str], str | None, None, list]:
+            """A task or a fork at work: its own directory, as git sees it now, against the hold's base."""
+            if not base or not Path(where).is_dir():
+                raise P.Refused(f"{node_id} is running, and {what} is not here to read: nothing to show yet")
+            return where, [], base, None, []
+
+        def go(store) -> tuple[str, list[str], str | None, str | None, list[str]]:
+            """Where to ask git, what to say first, the left revision, the right one (None: the working
+            tree there, as it stands), and the paths it is about (none: every path)."""
             n, here = P.get(store, node_id), str(root())
             if any(m.parent == n.id for m in P.nodes(store)):
                 raise P.Refused(f"{n.id} is a sub-goal: each of its leaves has its own diff")
-            if fork:  # what that fork tried, as its ref keeps it over the hold's base (run.fork_work)
+            if fork:  # its own copy while it works there; after, what it tried as its ref keeps it
                 from .run import fork_work
 
+                copy = root() / ".graphene" / "worktrees" / f"{n.id}.{fork}"
+                if n.state == P.RUNNING and copy.is_dir():
+                    return going(str(copy), n.base_sha, f"fork {fork}'s copy")
                 ref = fork_work(store, root(), n.id, fork)[0]
-                return here, [], [f"{ref}^", ref]
+                return here, [], f"{ref}^", ref, []
+            if n.state == P.RUNNING:  # its changes so far: its directory against its base
+                return going(n.checkout or here, n.base_sha, "its directory")
             ends = store.node_log(n.id, ("landed", "unlanded", "finished", "overruled"))
             kind, d = (ends[-1]["kind"], ends[-1]["detail"]) if ends else (None, {})
             if kind == "landed":  # the merge: what it brought in over its first parent
-                return here, [], [f"{d['commit']}^1", d["commit"]]
+                return here, [], f"{d['commit']}^1", d["commit"], []
             if kind == "unlanded":  # passed and not merged: its branch waits for the person
-                return here, [], [n.base_sha, d["branch"]]
+                return here, [], n.base_sha, d["branch"], []
             if kind and (not n.base_sha or not d.get("changed")):  # done by hand, or overruled: no change
                 how = "overruled" if kind == "overruled" else "done"
                 raise P.Refused(f"{n.id} was {how} with no change of its own to show")
@@ -1717,19 +1887,37 @@ def register(cli: typer.Typer, root, open_store, fail):
                 moved = ", ".join(p for p in kept if now.get(p) != kept[p])
                 said = ["done in your checkout; Graphene committed nothing"]
                 said += [f"changed since it finished, shown as it is now: {moved}"] if moved else []
-                tree = state(Path(where))[1]  # the checkout as git sees it, its new files too
-                return where, said, [n.base_sha, *([tree] if tree else []), "--", *(d.get("changed") or [])]
+                return where, said, n.base_sha, None, list(d.get("changed") or [])
             why = ("its work has not landed yet" if n.state in (P.DONE, P.REVIEW) else "nothing of it is done"
                    ) if store.node_log(n.id, ("started",)) else "nothing has run yet"  # fmt: skip
             raise P.Refused(f"{n.id} is {n.state}: {why}")
 
-        where, said, span = run(go)
-        # captured, never fd 1: watch runs a command here, its output read back (tui._cli); and plain, for
-        # its pane, whatever git's colours (color.ui=always colours a pipe too)
-        argv = ["git", "-C", where, "diff", "--no-color", *(["--stat"] if stat else []), *span]
-        shown = subprocess.run(argv, capture_output=True, text=True, errors="replace")
-        if shown.returncode:
-            fail(f"git cannot show what {node_id} changed: {shown.stderr.strip()}", 1)
+        where, said, left, right, paths = run(go)
+        # the working tree as git sees it now, its new files too, written as a tree nobody checks out
+        tree = right if right is not None else state(Path(where))[1]
+        span = [left, *([tree] if tree else []), *(["--", *paths] if paths else [])]
+
+        def git(*args: str) -> subprocess.CompletedProcess:
+            # captured, never fd 1: watch runs a command here, its output read back (tui._cli); and plain,
+            # for its pane, whatever git's colours (color.ui=always colours a pipe too)
+            argv = ["git", "-C", where, *args]
+            shown = subprocess.run(argv, capture_output=True, text=True, errors="replace")
+            if shown.returncode:
+                fail(f"git cannot show what {node_id} changed: {shown.stderr.strip()}", 1)
+            return shown
+
+        if as_json:
+            left, right = (git("rev-parse", "--verify", f"{rev}^{{commit}}").stdout.strip() if rev else rev
+                           for rev in (left, right))  # fmt: skip
+            files = []
+            for row in git("diff", "--no-color", "--name-status", "-M", *span).stdout.splitlines():
+                status, *names = row.split("\t")
+                old = names[0] if status[0] in "RC" and len(names) > 1 else None
+                files.append({"path": names[-1], "status": {"T": "M", "C": "A"}.get(status[0], status[0]),
+                              "old": old})  # fmt: skip
+            out(json.dumps({"repo": where, "left": left, "right": right, "files": files, "said": said}))
+            return
+        shown = git("diff", "--no-color", *(["--stat"] if stat else []), *span)
         for line in [*said, shown.stdout.rstrip("\n") or "git shows no difference"]:
             out(line)
 

@@ -1,57 +1,50 @@
-# Graphene 0.8.0
+# Graphene 0.9.0
 
-Install: `uv tool install graphene-map` (over 0.6.0, `uv tool upgrade graphene-map`), or `uv tool install
+Install: `uv tool install graphene-map` (over 0.8.0, `uv tool upgrade graphene-map`), or `uv tool install
 'graphene-map[nemotron]'` for the Nemotron path. Or try it with nothing installed: `uvx graphene-map demo --auto`,
 a scripted replay of auto mode on Nemotron (no key, nothing written to your project); `uvx graphene-map demo` is
-the older one, a run you steer by hand.
+the older one, a run you steer by hand. The VS Code extension's `.vsix` is attached below: install it with
+`code --install-extension` (Cursor: `cursor --install-extension`), open a folder, and Graphene: Watch the Demo
+needs no key.
 
-0.7.0 was tagged but never published (its tag built 0.6.0 again): everything it had ships here.
+## What you get that 0.8.0 did not have
 
-## What you get that 0.6.0 did not have
-
-- **Auto mode.** `graphene auto "<goal>" --budget 2 --forks 3 --check "python3 -m pytest -q"`: the planner drafts
-  the goal as tasks that can run at once, Graphene accepts what fits your envelope, runs it with forks, lands
-  what passes, then runs the goal's own check; when that is red it plans the fix, at most `--rounds` times,
-  inside the budget. Ctrl-C stops it, `graphene auto` with no goal goes on, and `graphene plan log` keeps every
-  round.
-- **The envelope is your settings.** `auto`, `budget`, `tasks` and `rounds` beside `protected`, `readonly`,
-  `forks` and `review`, in `graphene config edit` or one at a time with `graphene config set auto on`. While auto
-  is on, a plan that fits is accepted at once, from `graphene ask` or from any agent's own proposal, so three
-  Claude Code sessions do not wait on you to click; a task that could reach the agents' own settings and hooks
-  never fits; and every run counts against the budget. Only you can set it.
-- **Fork a task.** `graphene run --forks 3` puts three agents on each task at once, each in its own copy and held
-  to the task's files; `--with claude:opus --with claude:sonnet --with codex` gives each fork its own agent.
-  Among the forks whose check passed, a rule written before any fork ran keeps one: the most of the other forks'
-  tests passed, then the check's own files left alone, the smallest, the cheapest, the first. It says why in one
-  line, lands that fork alone, and keeps every fork on a ref (`graphene node diff <task> --fork b`).
-- **The race on screen.** Every agent's row names its model (Nano, Super, Ultra, Haiku, Sonnet, Codex), each fork
-  its own line with its dollars, the auto line its round, stage and budget; on the graph, `+` adds a step after
-  a task and `L` links two (`graphene node set B --add-needs A`) or unlinks them (`--drop-needs A`), and its head
-  says how many can run at once.
-- **Graphene for VS Code.** `editors/vscode`, its `.vsix` attached below: the plan as a graph in an editor tab
-  and the sidebar, forks racing, auto mode's rounds, the status bar, each file a running agent writes marked in
-  the Explorer with its number, and every click a `graphene` command run as you: drag one task's dot onto
-  another to link them, an × to unlink, add a step, edit, drop, accept, tell an agent, Auto…. It reads `graphene
-  state --json`, one snapshot of everything the cockpit shows.
-- **Any model behind Graphene's own loop.** `graphene run --with 'nemotron --endpoint nim'` runs the same
-  Nemotron loop on NVIDIA's API catalog, and `--endpoint ollama` or `--endpoint openai` on any OpenAI-compatible
-  host, writes still refused before they happen; `{prompt}` and `{prompt_file}` let any CLI agent take the task.
-- **A port a task.** Every agent a run starts gets `PORT`, its own, said in its contract and given to its check.
-- **The graph flows into your goal, and the gate fails closed.** `g` draws the goal as the last box; on Claude
-  Code 2.1.295 or later a hook that cannot run refuses the call, and the hook reads more of the shell before a
-  write.
+- **Auto mode, watched and steered from VS Code.** Needs You leads the side bar: a question, a proposal, a task
+  that came back, a sign-off, auto mode waiting, each with its move inline. Agents lists every running agent
+  with its task, model, fork, what it edits now, seconds quiet and dollars. The graph shows the race and reads
+  at every width, in the side bar as lanes and in a tab; the editor streams the plan (`graphene state --json
+  --watch`).
+- **Diffs in the diff editor.** A task's or a fork's changes open in VS Code's own diff editor, a race's forks
+  side by side; Keep This Fork and Sign Off sit in the title (`graphene node diff ID --json` underneath).
+- **The plan as text, and a step in a sentence.** Edit Plan as Text opens the plan in a tab; saving applies it,
+  and a refusal is a diagnostic on its line (`graphene plan edit --from - --json`). Add Step… takes one sentence
+  and the planner proposes the step (`graphene ask "<sentence>" --step --after ID`).
+- **The demo in the editor.** Watch the Demo plays the auto replay in a graph of its own, with no key and no
+  network (`graphene demo --auto --into DIR`).
+- **First run without hunting.** The extension finds `graphene` in `~/.local/bin` and uv's tool directory,
+  offers to install it, sets a folder up in two picks, and a refused key offers Set Key (`graphene key set`).
+- **The gate after a review.** Two reviewers who did not build auto mode found nine ways past it; each is closed
+  with the test that failed first. A write is judged where it lands (a committed symlink into `.git/`), a `git
+  config` that writes is refused, `.CLAUDE/` is `.claude/`, a `#` cannot hide a second command in a check, a
+  check runs unread only when it is one plain command, the `tasks` cap counts nested tasks, and the budget is
+  read before the planner is asked.
+- **A harness for real VS Code and Cursor.** `editors/vscode/e2e` installs the `.vsix` in a profile of its own,
+  races a fixture against the scripted stand-in and measures what it sees. The `.vsix` installs and activates in
+  Cursor 3.25.6, and the check passes there.
+- **Ready for the Marketplace and Open VSX.** An icon, a listing page and a workflow that publishes the `.vsix`
+  to both from a release.
 
 ## What it does not do
 
 - A write outside a task's files is refused before it happens by Claude Code's hooks and by Nemotron's edit and
   write; with Codex, any other CLI agent, or a write the hook cannot read (a target in a variable it was not
-  given, a glob, a script that opens a file itself), git finds it when the task says it is done.
+  given, a glob, a script that opens a file itself, an interpreter taking code on its command line), git finds
+  it when the task says it is done.
 - Auto mode ran end to end against a scripted stand-in of Token Factory, not yet live; the envelope decides what
   is accepted, not whether the work is good, which is the checks' job.
+- No person has used the editor yet. A model session played a stranger on 0.8.0's extension, and the harness
+  measured pixels and seconds. The Marketplace and Open VSX listings are the publisher's next step.
 - Nemotron bills each call after it ends, so auto mode reads the budget between rounds; Codex has no cap of its
   own, and `--max-usd` stops starts, not an attempt that is going.
 - The rule keeps one fork by the check and a few counts; it does not read the code, and `graphene node pick` is
-  yours when you disagree. Whether forks land more tasks is not measured yet.
-- A task allowed to edit the test its own check runs can weaken it: it is flagged, not refused.
-- The VS Code extension is built and tested here, not yet on the Marketplace: `npm run package` in
-  `editors/vscode` makes the `.vsix`.
+  yours when you disagree.

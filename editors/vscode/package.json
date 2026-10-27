@@ -2,7 +2,7 @@
   "name": "graphene-vscode",
   "displayName": "Graphene",
   "description": "Your plan as a graph you can act on: watch the agents Graphene holds to it, add a step, link two, accept, tell an agent.",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "publisher": "alex-lop",
   "license": "Apache-2.0",
   "repository": {
@@ -17,8 +17,9 @@
     "vscode": "^1.95.0"
   },
   "categories": [
-    "Other",
-    "Visualization"
+    "AI",
+    "Visualization",
+    "Other"
   ],
   "keywords": [
     "graphene",
@@ -26,7 +27,12 @@
     "claude code",
     "codex",
     "nemotron",
-    "plan"
+    "plan",
+    "agents",
+    "ai",
+    "multi-agent",
+    "parallel agents",
+    "cursor"
   ],
   "main": "./dist/extension.js",
   "capabilities": {
@@ -51,14 +57,8 @@
     "views": {
       "graphene": [
         {
-          "id": "graphene.plan",
-          "name": "Plan",
-          "icon": "media/graphene.svg",
-          "contextualTitle": "Graphene"
-        },
-        {
-          "id": "graphene.rounds",
-          "name": "Rounds",
+          "id": "graphene.needs",
+          "name": "Needs You",
           "icon": "media/graphene.svg",
           "contextualTitle": "Graphene"
         },
@@ -68,6 +68,26 @@
           "name": "Graph",
           "icon": "media/graphene.svg",
           "contextualTitle": "Graphene"
+        },
+        {
+          "id": "graphene.agents",
+          "name": "Agents",
+          "icon": "media/graphene.svg",
+          "contextualTitle": "Graphene"
+        },
+        {
+          "id": "graphene.plan",
+          "name": "Plan",
+          "icon": "media/graphene.svg",
+          "contextualTitle": "Graphene",
+          "visibility": "collapsed"
+        },
+        {
+          "id": "graphene.rounds",
+          "name": "Rounds",
+          "icon": "media/graphene.svg",
+          "contextualTitle": "Graphene",
+          "visibility": "collapsed"
         }
       ]
     },
@@ -79,12 +99,52 @@
       },
       {
         "view": "graphene.plan",
-        "contents": "Graphene is not installed, or not on this editor's PATH.\n\nInstall it with `uv tool install graphene-map`, or set the setting `graphene.path` to where it is.\n[Open Settings](command:workbench.action.openSettings?%22graphene.path%22)",
+        "contents": "Graphene is not installed, or not on this editor's PATH.\n\nIt looked on the PATH, in ~/.local/bin and in uv's tool bin.\n[Install Graphene](command:graphene.install)\nOr set the setting `graphene.path` to where it is.\n[Open Settings](command:workbench.action.openSettings?%22graphene.path%22)\n[Watch the Demo](command:graphene.watchDemo)",
         "when": "graphene.status == missing"
       },
       {
+        "view": "graphene.needs",
+        "contents": "Nothing waits for you.\n\nA question, a proposal, a task that came back, a sign-off or auto mode waiting shows here, each with its move.",
+        "when": "graphene.status == ok || graphene.status == empty"
+      },
+      {
+        "view": "graphene.needs",
+        "contents": "$(loading~spin) Reading the plan…",
+        "when": "graphene.status == reading"
+      },
+      {
+        "view": "graphene.needs",
+        "contents": "Graphene is not installed, or not on this editor's PATH.\n[Install Graphene](command:graphene.install)\n[Watch the Demo](command:graphene.watchDemo)",
+        "when": "graphene.status == missing"
+      },
+      {
+        "view": "graphene.needs",
+        "contents": "This folder has no plan yet.\n[Set Up This Folder](command:graphene.init)\n[Watch the Demo](command:graphene.watchDemo)",
+        "when": "graphene.status == uninitialised"
+      },
+      {
+        "view": "graphene.needs",
+        "contents": "Graphene could not read the plan.\n\n[Try again](command:graphene.refresh)",
+        "when": "graphene.status == error"
+      },
+      {
+        "view": "graphene.needs",
+        "contents": "Open a folder to see what needs you.",
+        "when": "graphene.status == nofolder"
+      },
+      {
+        "view": "graphene.agents",
+        "contents": "No agent is running.\n\nEach running agent shows here: its number, task, model and fork, what it is doing now, seconds quiet and dollars.",
+        "when": "graphene.status == ok || graphene.status == empty"
+      },
+      {
+        "view": "graphene.agents",
+        "contents": "Running agents show here once the plan is read.",
+        "when": "graphene.status != ok && graphene.status != empty"
+      },
+      {
         "view": "graphene.plan",
-        "contents": "This folder has no plan yet.\n\nSet it up once with `graphene init`: it asks which planner and executor to use.\n[Set Up This Folder](command:graphene.init)\nThen `graphene ask \"what you want\"`, or Graphene: Auto…",
+        "contents": "This folder has no plan yet.\n\nSet it up once with `graphene init`: it asks which planner and executor to use.\n[Set Up This Folder](command:graphene.init)\nThen `graphene ask \"what you want\"`, or Graphene: Auto…\n[Watch the Demo](command:graphene.watchDemo)",
         "when": "graphene.status == uninitialised"
       },
       {
@@ -180,9 +240,86 @@
         "command": "graphene.refresh",
         "title": "Graphene: Refresh",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "graphene.answer",
+        "title": "Graphene: Answer…",
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "graphene.handBack",
+        "title": "Graphene: Take Up the Hand-Back…",
+        "icon": "$(debug-step-back)"
+      },
+      {
+        "command": "graphene.install",
+        "title": "Graphene: Install Graphene…",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "graphene.markDone",
+        "title": "Graphene: Mark Your Task Done",
+        "icon": "$(check)"
+      },
+      {
+        "command": "graphene.setKey",
+        "title": "Graphene: Set Key…",
+        "icon": "$(key)"
+      },
+      {
+        "command": "graphene.openDiff",
+        "title": "Graphene: Open Changes",
+        "icon": "$(diff)"
+      },
+      {
+        "command": "graphene.compareForks",
+        "title": "Graphene: Compare Forks",
+        "icon": "$(split-horizontal)"
+      },
+      {
+        "command": "graphene.pickFork",
+        "title": "Graphene: Keep This Fork",
+        "icon": "$(pass)"
+      },
+      {
+        "command": "graphene.signOff",
+        "title": "Graphene: Sign Off",
+        "icon": "$(check)"
+      },
+      {
+        "command": "graphene.editPlan",
+        "title": "Graphene: Edit Plan as Text",
+        "icon": "$(go-to-file)"
+      },
+      {
+        "command": "graphene.addStepByHand",
+        "title": "Graphene: Add Step by Hand…",
+        "icon": "$(add)"
+      },
+      {
+        "command": "graphene.watchDemo",
+        "title": "Graphene: Watch the Demo",
+        "icon": "$(play-circle)"
+      },
+      {
+        "command": "graphene.diffWithAgent",
+        "title": "Graphene: Diff with the Agent's Copy",
+        "icon": "$(diff)"
       }
     ],
     "menus": {
+      "editor/title": [
+        {
+          "command": "graphene.pickFork",
+          "when": "graphene.diff.fork",
+          "group": "navigation@1"
+        },
+        {
+          "command": "graphene.signOff",
+          "when": "graphene.diff.review",
+          "group": "navigation@2"
+        }
+      ],
       "view/title": [
         {
           "command": "graphene.refresh",
@@ -233,13 +370,98 @@
           "command": "graphene.link",
           "when": "view == graphene.plan",
           "group": "2_plan@1"
+        },
+        {
+          "command": "graphene.editPlan",
+          "when": "view == graphene.plan",
+          "group": "2_plan@2"
+        },
+        {
+          "command": "graphene.addStepByHand",
+          "when": "view == graphene.plan",
+          "group": "2_plan@3"
         }
       ],
       "view/item/context": [
         {
+          "command": "graphene.answer",
+          "when": "view == graphene.needs && viewItem == need:question",
+          "group": "inline@1"
+        },
+        {
+          "command": "graphene.setKey",
+          "when": "view == graphene.needs && viewItem == need:auto",
+          "group": "inline@1"
+        },
+        {
+          "command": "graphene.accept",
+          "when": "view == graphene.needs && viewItem == need:proposal",
+          "group": "inline@1"
+        },
+        {
+          "command": "graphene.dropStep",
+          "when": "view == graphene.needs && viewItem == need:proposal",
+          "group": "inline@2"
+        },
+        {
+          "command": "graphene.handBack",
+          "when": "view == graphene.needs && viewItem =~ /^need:(hand-back|stopped)$/",
+          "group": "inline@1"
+        },
+        {
+          "command": "graphene.openDiff",
+          "when": "view == graphene.needs && viewItem =~ /^need:(hand-back|sign-off)$/",
+          "group": "inline@2"
+        },
+        {
+          "command": "graphene.signOff",
+          "when": "view == graphene.needs && viewItem == need:sign-off",
+          "group": "inline@1"
+        },
+        {
+          "command": "graphene.markDone",
+          "when": "view == graphene.needs && viewItem == need:yours",
+          "group": "inline@1"
+        },
+        {
+          "command": "graphene.tell",
+          "when": "view == graphene.needs && viewItem =~ /^need:(hand-back|stopped|sign-off)$/",
+          "group": "1_act@1"
+        },
+        {
+          "command": "graphene.showGraph",
+          "when": "view == graphene.needs && viewItem =~ /^need:(proposal|hand-back|stopped|sign-off|yours)$/",
+          "group": "1_act@2"
+        },
+        {
+          "command": "graphene.openDiff",
+          "when": "view == graphene.agents",
+          "group": "inline@1"
+        },
+        {
+          "command": "graphene.tell",
+          "when": "view == graphene.agents",
+          "group": "1_act@1"
+        },
+        {
           "command": "graphene.accept",
           "when": "view == graphene.plan && viewItem == task:proposed",
           "group": "inline@1"
+        },
+        {
+          "command": "graphene.openDiff",
+          "when": "view == graphene.plan && viewItem =~ /^task:(running|review|came-back|done)$/",
+          "group": "1_act@0"
+        },
+        {
+          "command": "graphene.compareForks",
+          "when": "view == graphene.plan && viewItem =~ /^task:(running|review)$/",
+          "group": "1_act@4"
+        },
+        {
+          "command": "graphene.dropStep",
+          "when": "view == graphene.needs && viewItem == need:hand-back",
+          "group": "3_drop@1"
         },
         {
           "command": "graphene.accept",
@@ -268,7 +490,7 @@
         },
         {
           "command": "graphene.dropStep",
-          "when": "view == graphene.plan && viewItem =~ /^task:(proposed|ready|waiting)$/",
+          "when": "view == graphene.plan && viewItem =~ /^task:(proposed|ready|waiting|came-back)$/",
           "group": "3_drop@1"
         }
       ]
@@ -280,12 +502,24 @@
         "description": "A team of coding agents on one repo: each owns its files, and your tests decide what lands.",
         "steps": [
           {
-            "id": "install",
-            "title": "Install Graphene",
-            "description": "This extension draws and drives the `graphene` command. Install it once, in a terminal: `uv tool install 'graphene-map[nemotron]'` (or without `[nemotron]` for Claude Code or Codex alone).\n[Open a Terminal](command:workbench.action.terminal.new)",
+            "id": "demo",
+            "title": "Watch the demo",
+            "description": "No key, no network: the recorded auto run plays in the graph, three agents racing one task and the check keeping one.\n[Watch the Demo](command:graphene.watchDemo)",
             "media": {
               "image": "media/graph.png",
-              "altText": "the plan as a graph: tasks by state, one task's three forks racing, the kept one marked, the goal on the right"
+              "altText": "the replay in the graph"
+            },
+            "completionEvents": [
+              "onCommand:graphene.watchDemo"
+            ]
+          },
+          {
+            "id": "install",
+            "title": "Install Graphene",
+            "description": "This extension draws and drives the `graphene` command. Install it once, in a terminal: `uv tool install graphene-map`, as the extension's page says.\n[Open a Terminal](command:workbench.action.terminal.new)",
+            "media": {
+              "image": "media/graph.png",
+              "altText": "a race in the graph: three tasks, each with three forks racing, the goal on the right"
             },
             "completionEvents": [
               "onContext:graphene.status && graphene.status != missing"
@@ -297,10 +531,10 @@
             "description": "`graphene init` asks who plans and who does the work: Nemotron on Token Factory, Claude Code, Codex, or any model behind Graphene's own loop.\n[Set Up This Folder](command:graphene.init)",
             "media": {
               "image": "media/graph.png",
-              "altText": "the plan as a graph: tasks by state, one task's three forks racing, the kept one marked, the goal on the right"
+              "altText": "a race in the graph: three tasks, each with three forks racing, the goal on the right"
             },
             "completionEvents": [
-              "onCommand:graphene.init"
+              "onContext:graphene.status == ok || graphene.status == empty"
             ]
           },
           {
@@ -309,7 +543,7 @@
             "description": "Auto… takes a goal, a budget, and whether to plan first. The planner splits it into tasks that can run at once, each with the files it may change and a check; agents race each task, the check keeps one, then your goal's own check runs, and a red one is planned again.\n[Auto…](command:graphene.auto)",
             "media": {
               "image": "media/graph.png",
-              "altText": "the plan as a graph: tasks by state, one task's three forks racing, the kept one marked, the goal on the right"
+              "altText": "a race in the graph: three tasks, each with three forks racing, the goal on the right"
             },
             "completionEvents": [
               "onCommand:graphene.auto"
@@ -321,7 +555,7 @@
             "description": "The graph shows every task, its forks racing and what needs you; drag a task's dot onto another and that one waits on it. The Explorer marks whose each file is, a running agent's with its number; Rounds lists auto mode's iterations.\n[Show Plan Graph](command:graphene.showGraph)",
             "media": {
               "image": "media/graph.png",
-              "altText": "the plan as a graph: tasks by state, one task's three forks racing, the kept one marked, the goal on the right"
+              "altText": "a race in the graph: three tasks, each with three forks racing, the goal on the right"
             },
             "completionEvents": [
               "onCommand:graphene.showGraph"
@@ -333,7 +567,7 @@
             "description": "The envelope is what auto mode may do without you: a budget, how many tasks, fix rounds, forks, the files no task touches and the checks it may run. Anything outside it waits for you, with why.\n[Set Envelope…](command:graphene.envelope)",
             "media": {
               "image": "media/graph.png",
-              "altText": "the plan as a graph: tasks by state, one task's three forks racing, the kept one marked, the goal on the right"
+              "altText": "a race in the graph: three tasks, each with three forks racing, the goal on the right"
             },
             "completionEvents": [
               "onCommand:graphene.envelope"
@@ -342,13 +576,21 @@
         ]
       }
     ],
+    "configurationDefaults": {
+      "files.watcherExclude": {
+        "**/.graphene/worktrees/**": true
+      },
+      "search.exclude": {
+        "**/.graphene/worktrees/**": true
+      }
+    },
     "configuration": {
       "title": "Graphene",
       "properties": {
         "graphene.path": {
           "type": "string",
           "default": "graphene",
-          "description": "The graphene command: a name on PATH or an absolute path. Only your own settings set it, never a folder's: a cloned repository cannot choose what the extension runs.",
+          "description": "The graphene command: a name on PATH or an absolute path. Unset, the extension looks on the PATH, in ~/.local/bin and in uv's tool bin. Only your own settings set it, never a folder's: a cloned repository cannot choose what the extension runs.",
           "scope": "machine"
         },
         "graphene.pollMs": {
@@ -364,7 +606,7 @@
     "build": "node esbuild.mjs",
     "check": "tsc --noEmit -p .",
     "test": "npm run check && node --experimental-strip-types --test \"test/*.test.ts\" && npm run build && node test/smoke.cjs",
-    "package": "vsce package --no-dependencies --baseContentUrl https://github.com/Alex-lop/Graphene/blob/main/editors/vscode --baseImagesUrl https://raw.githubusercontent.com/Alex-lop/Graphene/main/editors/vscode -o graphene-0.8.0.vsix",
+    "package": "vsce package --no-dependencies --baseContentUrl https://github.com/Alex-lop/Graphene/blob/main/editors/vscode --baseImagesUrl https://raw.githubusercontent.com/Alex-lop/Graphene/main/editors/vscode -o graphene-$npm_package_version.vsix",
     "vscode:prepublish": "npm run build"
   },
   "devDependencies": {
@@ -374,5 +616,11 @@
     "@vscode/vsce": "3.9.2",
     "esbuild": "0.25.12",
     "typescript": "5.9.3"
+  },
+  "icon": "media/icon.png",
+  "preview": true,
+  "galleryBanner": {
+    "color": "#14161a",
+    "theme": "dark"
   }
 }

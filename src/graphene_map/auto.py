@@ -61,11 +61,15 @@ def spent(store, since: str) -> float:
 
 
 def accepted(store, since: str) -> int:
-    """How many tasks the envelope accepted for the person since auto went on (a sub-goal is no task)."""
-    under = P.kids(P.nodes(store), drawn=True)
-    rows = store.node_log(None, ("accepted",))
-    return len({r["node_id"] for r in rows if (r["detail"] or {}).get("by") == "auto"
-                and r["timestamp"] >= since and not under.get(r["node_id"])})  # fmt: skip
+    """How many tasks the envelope accepted for the person since auto went on, all told: every node it
+    accepted that was a leaf then (a sub-goal accepted with its leaves is no task), whether or not a later
+    proposal under it made it a sub-goal since; the cap is not reset by nesting the next tasks under the
+    last ones."""
+    parent = {n.id: n.parent for n in P.nodes(store)}
+    rows = [r for r in store.node_log(None, ("accepted",))
+            if (r["detail"] or {}).get("by") == "auto" and r["timestamp"] >= since]  # fmt: skip
+    goals = {(r["timestamp"], parent.get(r["node_id"])) for r in rows}  # a sub-goal: a child in the same act
+    return len({r["node_id"] for r in rows if (r["timestamp"], r["node_id"]) not in goals})
 
 
 def envelope(store) -> str:
@@ -89,22 +93,35 @@ def width(nodes: list[P.Node], files: list[str]) -> int:
     return len(chosen)
 
 
+# a command that is a shell line in another form: a shell handed code, a wrapper that runs what follows
+SHELLS = ("sh", "bash", "zsh", "dash", "ksh", "csh", "tcsh", "fish", "eval", "exec", "source", ".", "env",
+          "xargs", "nohup", "time", "command", "builtin", "sudo", "doas")  # fmt: skip
+
+
 def runs_as_check(check: str, allowed: list[str]) -> bool:
     """Whether the envelope runs ``check`` without the person reading it: one command (no `;`, `&&`, `||`,
     `|`, redirect, `$(…)` or backtick outside quotes), and, once `checks:` names commands, one of them, alone
-    or with more words after it. A planner's check is code the person's machine runs."""
-    if "`" in check or "$(" in check or "\n" in check:
+    or with more words after it. With none named, a shell handed a line (`sh -c '…'`), a wrapper that runs
+    what follows (SHELLS) or a leading `NAME=value` (`PATH=/tmp/evil pytest`) is a shell line the rule cannot
+    read, so it waits for the person. A planner's check is code the person's machine runs: what a plain
+    command then loads (a test file, a plugin, a Makefile) is the repo's, and `checks:` is the guard."""
+    from .shell import _is_assignment
+
+    if "`" in check or "$(" in check or "\n" in check or "\r" in check:
         return False
     try:
         lex = shlex.shlex(check, posix=True, punctuation_chars=True)
         lex.whitespace_split = True
+        lex.commenters = ""  # as bash reads it: `x#;touch f` is a word, then `;`, then a second command
         words = list(lex)
     except ValueError:  # an unclosed quote: not a command the person would take as read
         return False
     if not words or any(set(w) <= set("();<>|&") for w in words):
         return False
     said, named = " ".join(check.split()), [" ".join(c.split()) for c in allowed]
-    return not named or any(said == a or said.startswith(a + " ") for a in named)
+    if not named:
+        return words[0].rsplit("/", 1)[-1] not in SHELLS and not _is_assignment(words[0])
+    return any(said == a or said.startswith(a + " ") for a in named)
 
 
 def fits(store, added: list[P.Node], files: list[str]) -> list[str]:
@@ -222,6 +239,27 @@ def run_cap(store, template: str, given: float | None) -> tuple[float | None, st
     return cap, f"your envelope's budget: ${left:.2f} of ${budget:.2f} left; this run starts nothing past it"
 
 
+def planner_cap(template: str, left: float | None) -> tuple[str, str | None]:
+    """The planner's command inside the budget left: a Claude Code planner with no --max-budget-usd of its
+    own (the default names none) is given what is left as one, so one call cannot spend past the envelope;
+    one whose own cap is more than is left cannot start, and the reason is returned with the command as it
+    was. Any other planner is as named: Nemotron bills after each call (the budget is read before it), a
+    script reports no cost. Returns (the command, why it cannot start or None)."""
+    from . import meter as M
+    from .run import _worst
+
+    argv = shlex.split(template)
+    if left is None or M.kind(argv) != "claude":
+        return template, None
+    if M.option(argv, "--max-budget-usd") is None:
+        return f"{template} --max-budget-usd {left:.2f}", None
+    if (worst := _worst(argv)) > left:
+        why = (f"the budget left (${left:.2f}) is less than the planner's worst case (${worst:g}): "
+               "`graphene config set budget N` widens it, or the planner's `--max-budget-usd`")  # fmt: skip
+        return template, why
+    return template, None
+
+
 def goal_check(store, root_id: str, own: str | None) -> str:
     """The root's check: the goal's own (--check), else every task's check under it run together, in the
     plan's order (what passes alone and breaks together is caught here)."""
@@ -335,10 +373,25 @@ def drive(open_store: Callable, root: Path, goal: str | None, say: Callable[[str
                          if n.id != root_id and n.state not in P.GONE]  # fmt: skip
         if unplanned and going and going.get("root") == root_id:  # its planner failed or was stopped: again
             k, planned = going["round"], False
+        def over(paid: float) -> int:
+            """The budget is spent: nothing more starts, the planner included."""
+            why = f"the budget is spent: ${paid:.4f} of ${budget:.2f}"
+            log(store, k, "waits", paid, budget, red, why, root=root_id, goal=goal)
+            say(f"{WAITS}{why}; `graphene config set budget N` widens it")
+            return 1
+
         try:
             while True:
                 paid = spent(store, at)
+                if budget is not None and paid >= budget:  # read before the planner is asked, not after
+                    return over(paid)
                 if (k == 1 and not planned) or unplanned or fix or back:
+                    # the planner's call is inside the budget too: a Claude Code planner gets what is left
+                    asking, why = planner_cap(template, budget - paid if budget is not None else None)
+                    if why:
+                        log(store, k, "waits", paid, budget, red, why, root=root_id, goal=goal)
+                        say(f"{WAITS}{why}")
+                        return 1
                     stage = "planning" if k == 1 else "fixing"
                     said = _failing(fix[1]) if fix and stage == "fixing" else ""  # what the fix is for
                     log(store, k, stage, paid, budget, red, said, root=root_id, goal=goal)
@@ -352,7 +405,7 @@ def drive(open_store: Callable, root: Path, goal: str | None, say: Callable[[str
                     asks += [(f"{n.id} came back", n.id, None) for n in back]
                     for sentence, about, talk in asks:
                         try:
-                            for line in ask(store, root, sentence, template, about, say=say, talk=talk,
+                            for line in ask(store, root, sentence, asking, about, say=say, talk=talk,
                                             planner=spec, base_parent=root_id):  # fmt: skip
                                 say(line)
                         except P.Refused as no:
@@ -383,11 +436,8 @@ def drive(open_store: Callable, root: Path, goal: str | None, say: Callable[[str
                         return 0
                 planned = unplanned = False
                 paid = spent(store, at)
-                if budget is not None and paid >= budget:
-                    why = f"the budget is spent: ${paid:.4f} of ${budget:.2f}"
-                    log(store, k, "waits", paid, budget, red, why, root=root_id, goal=goal)
-                    say(f"{WAITS}{why}; `graphene config set budget N` widens it")
-                    return 1
+                if budget is not None and paid >= budget:  # the planner's own bill may have spent it
+                    return over(paid)
                 cap = max(0.0, budget - paid) if budget is not None and how == "stream" else None
                 each = _worst(shlex.split(executor)) if cap is not None else 0.0
                 if cap is not None and cap < each:  # nothing could start: say why, not "did not start"

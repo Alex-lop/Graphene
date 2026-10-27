@@ -55,6 +55,17 @@ def test_a_wrong_key_is_one_line_with_what_the_server_said(fake, monkeypatch):
     assert said.startswith("Token Factory answered 401") and "\n" not in said
 
 
+def test_a_refused_key_says_in_the_line_how_to_keep_another(fake, monkeypatch):
+    """A stranger's first `graphene auto` stopped on "answered 401 ... token is not present", and no line said
+    where the key goes (the editor night's first hour): the line names the command that keeps one."""
+    fake()
+    monkeypatch.setenv("NEBIUS_API_KEY", "wrong")
+    tf._listed.cache_clear()
+    said = tf.reach()
+    assert said.startswith("Token Factory answered 401") and "\n" not in said
+    assert "the key was refused: `graphene key set` keeps another" in said
+
+
 def test_a_call_is_priced_at_list_price_kept_in_the_ledger_and_the_cap_stops_the_next(
     fake, tmp_path, monkeypatch
 ):

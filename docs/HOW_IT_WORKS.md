@@ -354,10 +354,10 @@ reads no transcript.
 | `notify: on\|off` | Whether `graphene watch` rings, with a desktop notice where the terminal shows one, when something new needs you |
 | `forks: 1\|2\|3\|4\|5\|6\|7\|8` | Agents at once on each leaf that says nothing itself; its check keeps one |
 | `auto: off\|on` | `on`: a proposal that fits the envelope (every task with a scope and a check, the board settled, under `tasks`, no scope reaching `.claude/`, `.codex/`, `.cursor/`, `.gemini/` or `.github/workflows/`) is accepted for you at once, from any agent; `graphene auto` turns it on |
-| `budget: DOLLARS` | What every run may spend while `auto` is on, `graphene auto`'s, an agent's own `graphene run` and `R` alike |
+| `budget: DOLLARS` | What every run may spend while `auto` is on: `graphene auto`'s, its planner's calls (a Claude Code planner gets what is left as `--max-budget-usd`), an agent's own `graphene run` and `R` alike |
 | `tasks: N` | How many tasks the envelope may accept for you, all told, since `auto` went on (12 unset) |
 | `rounds: N` | Fix rounds `graphene auto` takes after the goal's check fails (2 unset) |
-| `checks: COMMAND, …` | The commands the envelope runs as a task's check without you; unset, any one plain command (no `;`, `&&`, `\|`, redirect or `$(…)`) |
+| `checks: COMMAND, …` | The commands the envelope runs as a task's check without you, each with any words after it; unset, any one plain command (no `;`, `&&`, `\|`, redirect or `$(…)`, and not a shell, a wrapper (`env`, `xargs`) or a `NAME=value` as the command) |
 
 `graphene config` also names the planner, the executor and plan first.
 
@@ -391,9 +391,20 @@ takes the hooks out, which ends the recording; what they recorded stays until yo
 
 ## The rest
 
-`graphene --help` lists nine commands. These work too; `--help` after any says more.
+`graphene --help` lists ten commands. These work too.
 
-- `graphene state --json`: one JSON snapshot for an editor; `plan log --json --since ID`: the log's rows after ID.
+For an editor, one line of JSON each: `graphene state --json` is the plan now; `graphene state --json --watch`
+keeps it on, one more line each time the store changes, until its reader closes. `graphene node diff ID --json`
+(`--fork X`) names two revisions and each file's status; a task or fork at work is its directory against its
+base. `graphene plan edit --from - --json` applies the plan's text from a pipe, all or none, and says each
+refusal with its line; `--since CURSOR` keeps what someone else changed after that snapshot. `plan log --json
+--since ID`: the log's rows after ID. `graphene demo --into DIR` (with a recording, `--auto`, `--cheat` or
+`--live`) plays it with no screen into DIR, a new or empty directory that becomes the replay's own repository
+and store, one line a change, and stays at the last frame until it is stopped; the snapshot's `replay` says
+what it is. `graphene ask "<sentence>" --step` asks the planner (Nano, when it is Nemotron) for one step, a
+leaf with its scope, check and needs, `--after ID` beside that task and waiting on it, or `--under ID`; it
+lands as a proposal, said first as `proposed ID: TITLE`, for you or the envelope to accept; a planner that
+proposes more than one is refused, and nothing lands.
 
 - `graphene demo --cheat` plays a script, not a model, that tries seven ways round the locks against the real hook,
   git and check: six refused, one flagged, at $0. `graphene demo --live` replays a live run on Nemotron through

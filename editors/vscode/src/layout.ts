@@ -30,10 +30,11 @@ export interface Band {
 export interface Layout {
   boxes: Record<string, Placed>;
   bands: Band[];
-  columns: number[]; // each rank's left x
+  columns: number[]; // each rank's left x (its top y when laid out downward)
   width: number;
   height: number;
   ranks: number;
+  down: boolean; // ranks go top to bottom, as rows, instead of left to right
 }
 
 export interface Options {
@@ -47,9 +48,19 @@ export interface Options {
   labelH?: number; // room at the top of a named band for its label
   goal?: string | null; // a box pinned to the last rank, alone
   sweeps?: number;
+  /** Lay the ranks out as rows, top to bottom, each row's boxes left to right and wrapping at ``width``
+   *  (the canvas's width): the narrow drawing, with no bands. */
+  down?: boolean;
+  width?: number;
 }
 
 const D = { boxW: 180, boxH: 46, gapX: 70, gapY: 12, bandGap: 28, padX: 16, padY: 16, labelH: 0, sweeps: 4 };
+
+/** The narrow drawing's rule: under this many pixels across, the graph is laid out downward. */
+export const NARROW = 560;
+
+/** How a canvas this wide draws the graph: left to right, or downward with waves as rows. */
+export const modeFor = (width: number): "across" | "down" => (width < NARROW ? "down" : "across");
 
 /** Each box's rank: the longest chain of edges before it; an edge that closes a cycle counts for nothing. */
 export function ranks(ids: string[], edges: Edge[]): Record<string, number> {
@@ -126,6 +137,7 @@ export function layout(boxes: Box[], edges: Edge[], opts: Options = {}): Layout 
   if (goal) rank[goal] = last;
   const cols = order(tasks, edges, rank);
   if (goal) cols.push([goal]);
+  if (o.down) return downward(cols, by, goal, o);
   // bands in the order the boxes name them; the goal sits in its own band at the bottom-right? No: the
   // goal spans every band, so it is placed last, centred on the whole height
   const bandIds: string[] = [];
@@ -186,24 +198,58 @@ export function layout(boxes: Box[], edges: Edge[], opts: Options = {}): Layout 
       placed[id] = { id, x: columns[k]!, y: top, w, h, rank: k, band: b.band };
     }
   }
-  return { boxes: placed, bands, columns, width, height, ranks: cols.length };
+  return { boxes: placed, bands, columns, width, height, ranks: cols.length, down: false };
 }
 
-/** The box an arrow key lands on from ``from``: right/left the nearest by y in the next/previous rank,
- *  up/down the next by y in the same rank. Null when there is none. */
+/** Waves as rows: each rank's boxes side by side, wrapping when the row would pass ``width``; the goal
+ *  in the last row, centred. A band is a tint on its boxes here, not a region, so ``bands`` is empty. */
+function downward(cols: string[][], by: Map<string, Box>, goal: string | null, o: typeof D & Options): Layout {
+  const maxW = Math.max(o.width ?? Infinity, o.padX * 2 + o.boxW);
+  const gap = 16; // between boxes in a row
+  const rankGap = 44; // between rows: room for the arrows
+  const placed: Record<string, Placed> = {};
+  const columns: number[] = [];
+  let y = o.padY;
+  let widest = o.padX * 2 + o.boxW;
+  for (let k = 0; k < cols.length; k++) {
+    columns.push(y);
+    let x = o.padX, rowH = 0;
+    for (const id of cols[k]!) {
+      const b = by.get(id)!;
+      const w = b.w ?? o.boxW, h = b.h ?? o.boxH;
+      if (x > o.padX && x + w > maxW - o.padX) { y += rowH + o.gapY; x = o.padX; rowH = 0; } // wrap
+      placed[id] = { id, x, y, w, h, rank: k, band: id === goal ? "" : b.band };
+      x += w + gap;
+      rowH = Math.max(rowH, h);
+      widest = Math.max(widest, x - gap + o.padX);
+    }
+    y += rowH + rankGap;
+  }
+  const width = Number.isFinite(maxW) ? Math.max(maxW, widest) : widest;
+  if (goal && placed[goal]) placed[goal]!.x = Math.max(o.padX, (width - placed[goal]!.w) / 2);
+  const height = Math.max(y - rankGap + o.padY, o.padY * 2 + o.boxH);
+  return { boxes: placed, bands: [], columns, width, height, ranks: cols.length, down: true };
+}
+
+/** The box an arrow key lands on from ``from``: along the ranks (right/left across, down/up when the
+ *  layout runs downward) the nearest in the next/previous rank; within a rank, the next one along.
+ *  Null when there is none. */
 export function step(lay: Layout, from: string, key: "left" | "right" | "up" | "down"): string | null {
   const here = lay.boxes[from];
   if (!here) return null;
   const all = Object.values(lay.boxes);
-  const mid = (p: Placed) => p.y + p.h / 2;
-  if (key === "left" || key === "right") {
-    const want = here.rank + (key === "right" ? 1 : -1);
+  // the axis a rank runs along: y across, x downward
+  const along = lay.down ? (p: Placed) => p.x + p.w / 2 : (p: Placed) => p.y + p.h / 2;
+  const toNextRank = lay.down ? key === "down" || key === "up" : key === "left" || key === "right";
+  const forward = key === "right" || key === "down";
+  if (toNextRank) {
+    const want = here.rank + (forward ? 1 : -1);
     const col = all.filter((p) => p.rank === want);
     if (!col.length) return null;
-    return col.reduce((best, p) => (Math.abs(mid(p) - mid(here)) < Math.abs(mid(best) - mid(here)) ? p : best)).id;
+    return col.reduce((best, p) => (Math.abs(along(p) - along(here)) < Math.abs(along(best) - along(here)) ? p : best)).id;
   }
   const col = all.filter((p) => p.rank === here.rank && p.id !== from);
-  const next = col.filter((p) => (key === "down" ? mid(p) > mid(here) : mid(p) < mid(here)));
+  const next = col.filter((p) => (forward ? along(p) > along(here) : along(p) < along(here)));
   if (!next.length) return null;
-  return next.reduce((best, p) => (Math.abs(mid(p) - mid(here)) < Math.abs(mid(best) - mid(here)) ? p : best)).id;
+  return next.reduce((best, p) => (Math.abs(along(p) - along(here)) < Math.abs(along(best) - along(here)) ? p : best)).id;
 }
