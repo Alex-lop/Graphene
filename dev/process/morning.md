@@ -1,6 +1,6 @@
 # The editor night, 26 to 27 October 2026
 
-*Kept current as the night goes. Last written at 00:50.*
+*Kept current as the night goes. Last written at 00:55.*
 
 ## Your 15 minutes
 
@@ -35,13 +35,13 @@ The work is in a fresh clone of GitHub's `main`, on `night/editor`, never in you
 Each lane builds in its own clone; a skeptic who didn't write it reviews it; a fixer pairs each fault with the
 test that failed before it. Subagents run on Fable first and on Opus 5.5 once Fable's limit hits.
 
-| Lane | What | State at 00:50 |
+| Lane | What | State at 00:55 |
 |---|---|---|
-| 0 | the harness: real VS Code and Cursor driven by Playwright, the before | building |
+| 0 | the harness: real VS Code and Cursor driven by Playwright, the before | harness merged; measuring the before |
 | 1 | the graph, readable at any width, the race visible | building |
 | 2a | Needs You, Agents, first run, the stream | building |
 | 2b | diffs, the plan as text, a step in a sentence, the demo, files you open | building |
-| 3 | the CLI: `state --watch`, `node diff --json`, `plan edit --from -`, `ask --step`, `demo --into` | building |
+| 3 | the CLI: `state --watch`, `node diff --json`, `plan edit --from -`, `ask --step`, `demo --into` | three of six merged |
 | 4 | the listing, the publish workflow, RELEASING | building |
 | 5 | auto mode reviewed by two who weren't there | reading |
 | 6 | the docs | at the end |
@@ -51,4 +51,5 @@ test that failed before it. Subagents run on Fable first and on Opus 5.5 once Fa
 ## Branches and rollback
 
 - `main` on GitHub was `2da29a52a1b38031418506f5a7a6929c121f673b` when the night started. That is the rollback.
-- `night/editor`: the directive, the contract and the module stubs so far. Nothing pushed yet.
+- `night/editor` is pushed, as draft PR #55 (https://github.com/Alex-lop/Graphene/pull/55). It is pushed again
+  after each merge, never forced.
