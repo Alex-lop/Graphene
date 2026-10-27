@@ -18,7 +18,7 @@ type View = "auto" | "graph" | "lanes";
 type Saved = { zoom?: Zoom; hinted?: boolean; view?: View };
 
 const GOAL = " goal";
-const BOX_W = 184, BOX_H = 48, FORK_H = 20, FORK_DX = 22, CHIP_W = 210, GOAL_W = 200, GOAL_H = 66; // a chip holds 29 mono characters
+const BOX_W = 184, BOX_H = 48, FORK_H = 20, FORK_DX = 22, CHIP_W = 200, GOAL_W = 200, GOAL_H = 66; // a chip holds 28 mono characters
 /** The narrow view by default: lanes read better than a downward graph at 280 to 400 px (lane 1's notes). */
 const NARROW_VIEW: "lanes" | "graph" = "lanes";
 const api = acquireVsCodeApi();
@@ -130,7 +130,7 @@ function render() {
     $("notice").className = "";
     $("notice").textContent = "Nothing is planned yet: the graph shows your goal and the tasks under it.";
   }
-  if (v === "lanes") lanes(s); else graph(s, dir);
+  if (v === "lanes") { lanes(s); $("to-goal").hidden = true; } else graph(s, dir);
   pane();
   hint();
 }
@@ -163,7 +163,7 @@ function graph(s: StateX, dir: "across" | "down") {
   const svg = $("svg") as unknown as SVGSVGElement;
   const g = boxes(s);
   const down = dir === "down";
-  lay = layout(g.boxes, g.edges, { goal: g.goal, boxW: BOX_W, boxH: BOX_H, labelH: 18, down, width: down ? $("canvas").clientWidth / zoom.k : undefined });
+  lay = layout(g.boxes, g.edges, { goal: g.goal, boxW: BOX_W, boxH: BOX_H, labelH: 18, gapX: 56, down, width: down ? $("canvas").clientWidth / zoom.k : undefined });
   // bands: few, redrawn
   const bands = $("bands") as unknown as SVGGElement;
   bands.replaceChildren();
@@ -183,7 +183,7 @@ function graph(s: StateX, dir: "across" | "down") {
     seenEdges.add(key);
     let path = edgeEls.get(key);
     if (!path) { path = el("path", { class: "edge" }); edgeEls.set(key, path); edges.appendChild(path); }
-    path.setAttribute("d", edgeD(p, q, a, down));
+    path.setAttribute("d", edgeD(p, q, a, b, down));
     path.classList.toggle("hot", Boolean(selected && (a === selected || b === selected)));
   }
   for (const [key, path] of edgeEls) if (!seenEdges.has(key)) { path.remove(); edgeEls.delete(key); }
@@ -237,13 +237,13 @@ function graph(s: StateX, dir: "across" | "down") {
 }
 
 /** An edge's curve: out of a box's right side into the next's left, or down out of its foot into the top. */
-function edgeD(p: { x: number; y: number; w: number; h: number }, q: { x: number; y: number; w: number; h: number }, a: string, down: boolean): string {
+function edgeD(p: { x: number; y: number; w: number; h: number }, q: { x: number; y: number; w: number; h: number }, a: string, b: string, down: boolean): string {
   if (down) {
     const x1 = p.x + (a === GOAL ? p.w : BOX_W) / 2, y1 = p.y + p.h, x2 = q.x + q.w / 2, y2 = q.y;
     const dy = Math.max(16, (y2 - y1) / 2);
     return `M${x1},${y1} C${x1},${y1 + dy} ${x2},${y2 - dy} ${x2},${y2}`;
   }
-  const x1 = p.x + BOX_W, y1 = p.y + BOX_H / 2, x2 = q.x, y2 = q.y + (q.h === GOAL_H ? q.h / 2 : BOX_H / 2);
+  const x1 = p.x + BOX_W, y1 = p.y + BOX_H / 2, x2 = q.x, y2 = q.y + (b === GOAL ? q.h / 2 : BOX_H / 2);
   const dx = Math.max(24, (x2 - x1) / 2);
   return `M${x1},${y1} C${x1 + dx},${y1} ${x2 - dx},${y2} ${x2},${y2}`;
 }
@@ -276,6 +276,7 @@ function drawTask(grp: SVGGElement, t: TaskX, h: number, down: boolean) {
     grp.appendChild(chip);
   });
   // its dot, where its lines leave: drag it onto another task and that task waits on this one
+  if (replaying()) return; // a replay is watched, not linked
   const port = el("circle", { class: "port", cx: down ? BOX_W / 2 : BOX_W, cy: down ? h : BOX_H / 2, r: 5, "data-port": t.id });
   port.appendChild(el("title", {}, "drag onto another task: it then waits on this one"));
   grp.appendChild(port);
@@ -430,6 +431,7 @@ function reveal(id: string) {
 // ---- selection, the pane, the hint, the help ----
 
 function clicked(id: string) {
+  first();
   if (linking && linking !== id) {
     api.postMessage({ type: "act", act: "link", id: linking, target: id });
     linking = null;
@@ -683,7 +685,7 @@ function wire() {
   canvas.addEventListener("mousedown", (e) => {
     if (view() === "lanes") return;
     const port = (e.target as Element).closest("[data-port]");
-    if (port) { // a drag from a task's dot draws a link
+    if (port && !replaying()) { // a drag from a task's dot draws a link
       e.preventDefault();
       first();
       wiring = { from: port.getAttribute("data-port")!, ...at(e) };

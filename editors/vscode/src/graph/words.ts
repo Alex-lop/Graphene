@@ -46,7 +46,7 @@ export function sub(t: TaskX, max = 25): string {
 
 /** A fork's chip: its letter, then that it is kept and why (`b ✓ kept: 4 lines against 12`, the cockpit's
  *  words) or its state, then its lines, tries, dollars and seconds quiet, as many as fit. */
-export function forkWords(f: ForkX, kept: Kept | null, max = 29): string {
+export function forkWords(f: ForkX, kept: Kept | null, max = 28): string {
   const isKept = kept?.letter === f.letter;
   const head = isKept ? `${f.letter} ✓ kept${kept?.why ? `: ${kept.why}` : ""}` : `${f.letter} · ${f.model || forkWord(f)}`;
   const parts = [head, isKept ? "" : f.model ? forkWord(f) : "", f.lines !== null ? `${f.lines} lines` : "",

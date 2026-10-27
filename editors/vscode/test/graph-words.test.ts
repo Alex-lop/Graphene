@@ -33,12 +33,12 @@ test("a task that came back says why on its box; a running one its agent, forks 
 
 test("the kept fork's chip says so in the cockpit's words, the others their state, lines, tries, dollars, quiet", () => {
   const g = task("greet");
-  const chip = (letter: string, max = 29) => forkWords(g.forks.find((f) => f.letter === letter)!, g.kept, max);
+  const chip = (letter: string, max = 28) => forkWords(g.forks.find((f) => f.letter === letter)!, g.kept, max);
   assert.equal(chip("b", 60), "b ✓ kept: 4 lines against 12 · 4 lines · $0.07");
   assert.equal(chip("b"), "b ✓ kept: 4 lines against 12");
   assert.equal(chip("a", 60), "a · Nano · gave up · 12 lines · 2 tries · $0.09");
   assert.equal(chip("c", 60), "c · Super · running · 7 lines · $0.15 · 23 s quiet");
-  assert.equal(chip("c"), "c · Super · running · 7 lines");
+  assert.equal(chip("c"), "c · Super · running");
 });
 
 test("the replay line is the terminal replay's top line, and nothing when the store is the person's", () => {
