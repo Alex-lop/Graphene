@@ -20,7 +20,11 @@ Not written yet.
 5. **The browser spike.** Running.
 6. **Decide.** Nothing yet.
 7. **Broken or risky.** No Token Factory tonight: `GRAPHENE_AGENT_LIVE_USD` was not set, so lane 7's live takes
-   do not run. The stand-in rehearsal and the b-roll still do.
+   do not run. The stand-in rehearsal and the b-roll still do. Two things of tonight's are on your screen, both
+   safe to close: a VS Code window "Welcome — wordkit" (lane 4's scratch fixture, opened in your running VS Code
+   at 00:31 because its profile's path was too long; Restricted Mode, nothing ran; it is in your recents too),
+   and a macOS prompt "WezTerm wants access to control System Events" (answer Don't Allow). Every lane now
+   launches VS Code with a short profile path.
 
 ## How the night runs
 
