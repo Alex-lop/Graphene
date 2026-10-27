@@ -1,6 +1,6 @@
 # The editor night, 26 to 27 October 2026
 
-*Kept current as the night goes. Last written at 00:55.*
+*Kept current as the night goes. Last written at 01:20.*
 
 ## Your 15 minutes
 
@@ -35,17 +35,17 @@ The work is in a fresh clone of GitHub's `main`, on `night/editor`, never in you
 Each lane builds in its own clone; a skeptic who didn't write it reviews it; a fixer pairs each fault with the
 test that failed before it. Subagents run on Fable first and on Opus 5.5 once Fable's limit hits.
 
-| Lane | What | State at 00:55 |
+| Lane | What | State at 01:20 |
 |---|---|---|
-| 0 | the harness: real VS Code and Cursor driven by Playwright, the before | harness merged; measuring the before |
-| 1 | the graph, readable at any width, the race visible | building |
+| 0 | the harness: real VS Code and Cursor driven by Playwright, the before | built, Cursor too; in review |
+| 1 | the graph, readable at any width, the race visible | merged; in review |
 | 2a | Needs You, Agents, first run, the stream | building |
-| 2b | diffs, the plan as text, a step in a sentence, the demo, files you open | building |
-| 3 | the CLI: `state --watch`, `node diff --json`, `plan edit --from -`, `ask --step`, `demo --into` | three of six merged |
-| 4 | the listing, the publish workflow, RELEASING | building |
-| 5 | auto mode reviewed by two who weren't there | reading |
+| 2b | diffs, the plan as text, a step in a sentence, the demo, files you open | merged; in review |
+| 3 | the CLI: `state --watch`, `node diff --json`, `plan edit --from -`, `ask --step`, `demo --into` | all six merged; in review |
+| 4 | the listing, the publish workflow, RELEASING | reviewed and fixed; merging |
+| 5 | auto mode reviewed by two who weren't there | fixing what they found |
 | 6 | the docs | at the end |
-| 7 | the live take and the b-roll | after lanes 0 to 2 |
+| 7 | the live take and the b-roll | the take and the terminal's b-roll: building |
 | 8 | the browser spike | done: two answers, $0.02 |
 
 ## Branches and rollback
