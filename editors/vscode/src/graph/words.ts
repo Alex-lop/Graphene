@@ -1,6 +1,7 @@
 // The graph's words, pure: what a box and a fork chip say, what the header says of a replay, which acts a
 // task offers, and the keys. No DOM here, so `node --test` reads them.
-import { usd, type Fork, type Kept, type Question, type State, type Task } from "../state.ts";
+import type { Layout } from "../layout.ts";
+import { autoLine, usd, type Fork, type Kept, type Question, type State, type Task } from "../state.ts";
 
 /** What the snapshot gains tonight (dev/process/editor/CONTRACT.md): read when present, nothing when not. */
 export type ForkX = Fork & { attempts?: number; idle?: number | null };
@@ -17,6 +18,17 @@ export const CHANGES: readonly Act[] = ["add-after", "add-under", "link", "unlin
 
 export const cut = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1).trimEnd() + "…" : s);
 
+/** Text cut with an ellipsis to ``max`` px as ``width`` measures it (the drawn text's own length): a guess
+ *  from the whole text's width, then a character off at a time until it fits. A few measures, never empty. */
+export function fitWidth(s: string, max: number, width: (t: string) => number): string {
+  const whole = width(s);
+  if (whole <= max) return s;
+  let n = Math.max(2, Math.min(s.length, Math.floor((s.length * max) / whole) + 1));
+  let out = cut(s, n);
+  while (n > 2 && width(out) > max) out = cut(s, --n);
+  return out;
+}
+
 /** Words joined with ` · `, the last dropped until they fit ``max`` characters; the first always stays. */
 export function fitWords(words: string[], max: number): string {
   const parts = words.filter(Boolean);
@@ -26,6 +38,16 @@ export function fitWords(words: string[], max: number): string {
 
 export function forkWord(f: Fork): string {
   return f.state || "waiting";
+}
+
+/** The zoom's bounds: never under 1, where the smallest text is drawn at its 11 px (pan and scroll show
+ *  more, never a shrink past reading), never over 3. */
+export const zoomK = (k: number) => (Number.isFinite(k) ? Math.min(3, Math.max(1, k)) : 1);
+
+/** The box's corner: the model while the task runs, cut to about six characters (`Nano`, `claude…`), or the
+ *  mark that it needs you. The hover and the pane say the model whole. */
+export function cornerWord(t: TaskX): string {
+  return t.state === "running" && t.model ? cut(t.model, 7) : t.needs_you ? "◆" : "";
 }
 
 const quiet = (idle: number | null | undefined) => (idle !== null && idle !== undefined && idle > 8 ? `${Math.round(idle)} s quiet` : "");
@@ -44,13 +66,18 @@ export function sub(t: TaskX, max = 25): string {
   return fitWords(parts, max);
 }
 
-/** A fork's chip: its letter, then that it is kept and why (`b ✓ kept: 4 lines against 12`, the cockpit's
- *  words) or its state, then its lines, tries, dollars and seconds quiet, as many as fit. */
-export function forkWords(f: ForkX, kept: Kept | null, max = 28): string {
+/** A fork's chip: its letter and model, then that it is kept and why (`b ✓ kept: 4 lines against 12`, the
+ *  cockpit's words), then as many as fit of its words. While it runs the numbers are the news, so its
+ *  lines, seconds quiet and dollars come before the state word (its border says it runs anyway); once it
+ *  ended the state word is the news and comes first. The default width is the chip's, 32 mono characters. */
+export function forkWords(f: ForkX, kept: Kept | null, max = 32): string {
   const isKept = kept?.letter === f.letter;
-  const head = isKept ? `${f.letter} ✓ kept${kept?.why ? `: ${kept.why}` : ""}` : `${f.letter} · ${f.model || forkWord(f)}`;
-  const parts = [head, isKept ? "" : f.model ? forkWord(f) : "", f.lines !== null ? `${f.lines} lines` : "",
-                 tries(f.attempts), usd(f.usd), f.state === "running" ? quiet(f.idle) : ""];
+  const head = cut(isKept ? `${f.letter} ✓ kept${kept?.why ? `: ${kept.why}` : ""}` : `${f.letter} · ${f.model || forkWord(f)}`, max);
+  const word = isKept || !f.model ? "" : forkWord(f);
+  const lines = f.lines !== null ? `${f.lines} lines` : "";
+  const parts = f.state === "running"
+    ? [head, lines, quiet(f.idle), usd(f.usd), tries(f.attempts), word]
+    : [head, word, lines, tries(f.attempts), usd(f.usd)];
   return fitWords(parts, max);
 }
 
@@ -75,6 +102,16 @@ export function counts(s: State): string {
   if (spent) parts.push(spent);
   if (s.run.going) parts.unshift("run going");
   return parts.join(" · ");
+}
+
+/** The header's lines. Narrow (the side bar), the header is the goal alone, one line, so the first wave
+ *  shows in whatever height the view gets: the counts and the auto line move to the goal's hover and to
+ *  the footer, the live line first. */
+export function headerFor(s: StateX, narrow: boolean): { goal: string; hover: string; counts: string; auto: string; footer: string } {
+  const goal = s.goal || "no goal yet";
+  const c = counts(s), a = autoLine(s);
+  if (!narrow) return { goal, hover: "", counts: c, auto: a, footer: "" };
+  return { goal, hover: [goal, c, a].filter(Boolean).join("\n"), counts: "", auto: "", footer: a || c };
 }
 
 export function done(ts: Task[]): string {
@@ -122,6 +159,22 @@ export function forkActs(t: TaskX, f: Fork, replay: boolean): Button[] {
 /** The open question on a task, if any. */
 export function questionOn(s: State, id: string): Question | undefined {
   return s.questions.find((q) => q.about === id);
+}
+
+/** What the details pane is drawn from: the selected task, its question, the names it shows, and whether
+ *  the store is a replay's. The same key, the same pane: a change elsewhere leaves it, and its focus,
+ *  alone. Empty when nothing is selected. */
+export function paneKey(s: StateX, selected: string | null, replay: boolean): string {
+  const t = s.tasks.find((x) => x.id === selected);
+  if (!t) return "";
+  const name = (id: string) => s.tasks.find((x) => x.id === id)?.title ?? id;
+  return JSON.stringify([t, questionOn(s, t.id) ?? null, replay, t.needs.map(name), t.parent ? s.goals.find((g) => g.id === t.parent)?.title : ""]);
+}
+
+/** The order Tab walks the boxes in: wave by wave, then down each wave, as the eye reads the graph. */
+export function tabOrder(lay: Layout, ids: string[]): string[] {
+  const at = (id: string) => lay.boxes[id];
+  return ids.filter(at).sort((a, b) => (at(a)!.rank - at(b)!.rank) || (at(a)!.y - at(b)!.y) || (at(a)!.x - at(b)!.x));
 }
 
 /** Every key the page answers, for the `?` overlay. */
