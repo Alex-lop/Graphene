@@ -48,9 +48,9 @@ Nemotron claims added on 18 October and the editor's on 27 October; re-read befo
 - Anything about real people's speed or ease. No person has been timed: dev/process/first-hour.md is how to get one.
 - That a person has used the editor, or how long one takes on it. The stranger of 27 October was a model session,
   and the harness measured pixels, seconds and CPU, not a person.
-- That the editor got faster. The after measured the smallest text; the first graph, the latency and the idle
-  CPU are measured on the before only (dev/process/editor/before/README.md) until the same scripts are run on
-  the after and written beside it.
+- That a person finds the editor faster. The harness measured, back to back on one machine with the same
+  scripts: a store write on screen in 31 ms at the median against 123, idle CPU 2.3 % of a core against 10.7,
+  and the first graph the same, 2.5 s (dev/process/editor/after/README.md). No person was timed.
 - That the extension is on the Marketplace or Open VSX. The workflow is written (docs/RELEASING.md); the listing
   is a step the publisher takes.
 - That the demo is a real model run, or that the replay's dollars are real costs.
