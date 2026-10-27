@@ -65,8 +65,17 @@ if [ "$ENDPOINT" = standin ]; then   # the stand-in speaks Token Factory's JSON;
   [ -e "$HERE/standin.py" ] || { echo "refused: $HERE/standin.py is missing, and ENDPOINT=standin never reaches Token Factory" >&2; exit 1; }
   pipe=$(mktemp -d)/standin; mkfifo "$pipe"
   ${STANDIN:-$py $HERE/standin.py} > "$pipe" & standin=$!
-  exec 3< "$pipe"; rm -rf "${pipe%/standin}"
-  if ! IFS= read -r url <&3 || [ -z "$url" ]; then
+  # read-write, so the open never waits on the stand-in: on macOS a stand-in that dies at once can leave a
+  # read-only open asleep, and its SIGCHLD then fails it with "Interrupted system call". Our own write end means
+  # no EOF, so the stand-in's death is read from the process, a second at a time.
+  exec 3<> "$pipe"
+  url=""; waited=0
+  until IFS= read -r -t 1 url <&3; do
+    waited=$((waited + 1)); kill -0 $standin 2>/dev/null && [ $waited -lt 60 ] || break
+  done
+  rm -rf "${pipe%/standin}"
+  if [ -z "$url" ]; then
+    kill -TERM $standin 2>/dev/null || true
     echo "refused: the stand-in died before it said its URL, and ENDPOINT=standin never reaches Token Factory" >&2; exit 1
   fi
   export GRAPHENE_TOKENFACTORY_URL=$url
