@@ -89,8 +89,8 @@ item is. In `graphene watch` the open items are the first rows under the goal.
 
 ## The views
 
-`graphene watch` opens the cockpit (`c`): what needs you first, then a row a task, numbered as the tasks were taken, and in
-numbers whether it is on track: activity, files written of allowed,
+`graphene watch` opens the cockpit (`c`): what needs you first, then a row a task, numbered in the order the tasks
+were taken and kept through a retry, and in numbers whether it is on track: activity, files written of allowed,
 checks passed, seconds quiet. A write the gate stopped needs you too. A new question, a task that came back, a
 sign-off or a stopped write rings the terminal, with a desktop notice saying why where the terminal shows one
 (iTerm2, WezTerm, Ghostty; Terminal.app only rings); a batch of proposals that brings no question rings once
@@ -224,7 +224,8 @@ lands it. The worst-case line multiplies by the forks (`1 leaf x 3 forks x 1 att
 
 In `graphene watch`, `f` on a task still to do sets `forks: N` (the setting's number when it is 2 or more, else
 3) and runs it; its row says `3 forks` and opens to a line a fork; once one landed, a dim line says `kept b ·
-<the reason>`; in review the digits pick another (`1-3 pick`).
+<the reason>`; in review the digits pick another (`1-3 pick`); the record pane has the forks table; the graph's
+box says `3 ×3` while they run.
 
 ## The executors
 
@@ -395,11 +396,16 @@ keeps it on, one more line each time the store changes, until its reader closes.
 (`--fork X`) names two revisions and each file's status; a task or fork at work is its directory against its
 base. `graphene plan edit --from - --json` applies the plan's text from a pipe, all or none, and says each
 refusal with its line; `--since CURSOR` keeps what someone else changed after that snapshot. `plan log --json
---since ID`: the log's rows after ID.
+--since ID`: the log's rows after ID. `graphene demo --into DIR` (with a recording, `--auto`, `--cheat` or
+`--live`) plays it with no screen into DIR, a new or empty directory that becomes the replay's own repository
+and store, one line a change, and stays at the last frame until it is stopped; the snapshot's `replay` says
+what it is. `graphene ask "<sentence>" --step` asks the planner (Nano, when it is Nemotron) for one step, a
+leaf with its scope, check and needs, `--after ID` beside that task and waiting on it, or `--under ID`; it
+lands as a proposal, said first as `proposed ID: TITLE`, for you or the envelope to accept.
 
 - `graphene demo --cheat` plays a script, not a model, that tries seven ways round the locks against the real hook,
   git and check: six refused, one flagged, at $0. `graphene demo --live` replays a live run on Nemotron through
-  Token Factory, as it ran.
+  Token Factory (9 October), as it ran.
 - `graphene plan prompts leaf|strict` sets what a prompt typed into a session means.
 - `graphene plan ack` makes the uncommitted changes no leaf made yours.
 - `graphene node start <id>` takes a node and prints its contract.

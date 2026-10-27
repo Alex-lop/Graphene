@@ -16,6 +16,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import typer
@@ -713,13 +714,12 @@ def register(cli: typer.Typer, root, open_store, fail):
             raise typer.Exit(1)
         out(json.dumps(said) if as_json else json.dumps(said, indent=2))
 
-    def stream(store, r: Path) -> None:
-        """`state --json --watch`: snapshot lines on stdout until the reader goes (its end of the pipe
-        closed, seen with poll or at the write) or a TERM or INT comes; each of those is exit 0, said to
-        no one. The store's connection is held for the whole watch: a WAL reader blocks no writer."""
+    def lines_out() -> tuple:
+        """A long-lived command's stdout, a line at a time, for an editor: ``say`` writes one and flushes;
+        ``alive`` says whether to go on, False once the reader has gone (its end of the pipe closed, seen
+        with poll or at a write) or a TERM or INT came. Each of those ends the command with exit 0, said to
+        no one."""
         import select
-
-        from . import state as ST
 
         fd = sys.stdout.fileno()
         hung = select.poll()
@@ -736,7 +736,15 @@ def register(cli: typer.Typer, root, open_store, fail):
                 os.dup2(os.open(os.devnull, os.O_WRONLY), fd)  # so the exit's own flush is quiet
                 going[0] = False
 
-        ST.follow(store, r, say, lambda: going[0] and not hung.poll(0))
+        return say, lambda: going[0] and not hung.poll(0)
+
+    def stream(store, r: Path) -> None:
+        """`state --json --watch`: snapshot lines on stdout until the reader goes or a TERM comes. The
+        store's connection is held for the whole watch: a WAL reader blocks no writer."""
+        from . import state as ST
+
+        say, alive = lines_out()
+        ST.follow(store, r, say, alive)
 
     @cli.command()
     def demo(
@@ -768,6 +776,9 @@ def register(cli: typer.Typer, root, open_store, fail):
         auto: bool = typer.Option(
             False, "--auto", help="Replay auto mode: one goal, Nemotron's plan, forks racing, the goal's fix."
         ),
+        into: Path = typer.Option(
+            None, "--into", help="No screen: play it into this new or empty directory, a line a change."
+        ),
     ) -> None:
         """Replay a recorded run in `graphene watch`, change by change.
 
@@ -777,10 +788,26 @@ def register(cli: typer.Typer, root, open_store, fail):
 
         from . import demo as D
 
+        if into is not None and (record is not None or once):
+            fail("--into plays into a directory of its own: not with --record or --once", 2)
+        if into is not None:
+            try:
+                into = D.own(into)
+            except ValueError as no:
+                fail(str(no), 1)
+            except (OSError, subprocess.CalledProcessError) as no:
+                fail(f"graphene demo makes a git repository in {into}, and could not: {no}", 1)
         if cheat:  # computed live in a repository of its own, which goes with the directory
             from . import cheat as C
 
             out(f"graphene demo --cheat · {D.STAND_IN} · $0")
+            if into is not None:  # the cheat's repository stays, for an editor to read as a replay
+                say, alive = lines_out()
+                through = C.run(say, into)[2]
+                D.mark(into, {"shown": D.STAND_IN, "day": P._now()[:10], "repository": into.name})
+                while alive():
+                    time.sleep(0.1)
+                raise typer.Exit(1 if through else 0)
             with tempfile.TemporaryDirectory(prefix="graphene-cheat-") as tmp:
                 through = C.run(out, Path(tmp).resolve())[2]
             raise typer.Exit(1 if through else 0)
@@ -796,6 +823,9 @@ def register(cli: typer.Typer, root, open_store, fail):
             head, lines = D.load(shown, speed)
         except (OSError, ValueError, KeyError) as no:
             fail(f"cannot replay {shown}: {no}", 1)
+        if into is not None:
+            say, alive = lines_out()
+            return D.into(into, head, lines, say, alive)
         with tempfile.TemporaryDirectory(prefix="graphene-demo-") as tmp:
             try:
                 repo = D.repository(Path(tmp), head)
@@ -1345,8 +1375,10 @@ def register(cli: typer.Typer, root, open_store, fail):
             end(summary(store, since) + (f" · the work of {', '.join(left)} is {P.UNCOMMITTED}" * bool(left)))
 
     def planner(
-        sentence: str, executor: str | None, about: str | None, split: bool, size: str | None = None
+        sentence: str, executor: str | None, about: str | None, split: bool, size: str | None = None,
+        step: bool = False, after: str | None = None, under: str | None = None,
     ) -> None:
+        from . import ask as A
         from .ask import ask, named
 
         who = P.caller()
@@ -1356,7 +1388,22 @@ def register(cli: typer.Typer, root, open_store, fail):
 
         def go(store):
             spec = executor or store.meta("planner")  # --with, else the repo's (`graphene init`); or refused
-            said = ask(store, checkout(), sentence, named(spec), about, split, out, size, planner=spec)
+            talk = base = None
+            say = out
+            if step:  # one leaf, where the person pointed, from the planner or Nano when it is Nemotron
+                spec, talk = A.for_step(spec), A.step_words(store, after, under)
+                base = under or (P.get(store, after).parent if after else None)
+                say = lambda line: typer.echo(line, err=True)  # noqa: E731  (the planner's progress: stdout
+                # is the step's own lines, its id first, for whoever asked)
+            said = ask(store, checkout(), sentence, named(spec), about, split, say, size, planner=spec,
+                       talk=talk, base_parent=base)  # fmt: skip
+            if step:
+                landed = A.step_landed(store, said, after, who)
+                if landed is None:
+                    raise P.Refused("the planner proposed no step; nothing was added")
+                first = f"proposed {landed[0]}: {landed[1]}"
+                out(first)  # the first line, for whoever asked: the step's id
+                said = [line for line in said if line.strip() != first]
             for line in said:
                 out(line)
             ids, (waits, _) = list(getattr(said, "ids", [])), B.waiting(store)
@@ -1396,13 +1443,23 @@ def register(cli: typer.Typer, root, open_store, fail):
         coarser: bool = typer.Option(
             False, "--coarser", help="Size this ask coarser, whatever the saved size."
         ),
+        step: bool = typer.Option(
+            False, "--step", help="One step from one sentence, proposed for you to accept."
+        ),
+        after: str = typer.Option(None, "--after", help="With --step: the step comes after this task."),
+        under: str = typer.Option(None, "--under", help="With --step: the step goes under this node."),
     ) -> None:
         """Ask the planner for a tree from a paragraph.
 
         The planner reads the repo and writes nothing. Nothing runs until you accept the tree."""
         if finer and coarser:
             fail("--finer or --coarser, not both", 2)
-        planner(sentence, executor, about, False, "finer" if finer else "coarser" if coarser else None)
+        if after and under:
+            fail("--after or --under, not both", 2)
+        if (after or under) and not step:
+            fail("--after and --under place a step: `graphene ask '…' --step --after ID`", 2)
+        planner(sentence, executor, about, False, "finer" if finer else "coarser" if coarser else None,
+                step, after, under)  # fmt: skip
 
     if N := extra.load("note"):
         N.register(plan_cli, root, open_store, fail)  # `graphene plan note`
