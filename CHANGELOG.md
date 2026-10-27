@@ -1,5 +1,52 @@
 # Changelog
 
+## 0.9.0 (unreleased)
+
+The editor night (26 to 27 October 2026). Graphene for VS Code is where you watch and steer; the CLI gives it
+what it reads and writes through; the gate is harder after a review by two who did not build it. Each line is
+one change, with what shows it.
+- Needs You leads the editor's side bar: a question, a proposal, a task that came back, a sign-off, your own
+  task, auto mode waiting, each with its move inline (the view in Graphene for VS Code; `Graphene: Answer…`).
+- Agents lists every running agent with its task, model, fork, what it edits now, seconds quiet and dollars; a
+  click opens its changes so far (`Graphene: Open Changes`).
+- A task's or a fork's changes open in VS Code's own diff editor, a race's forks side by side, Keep This Fork
+  and Sign Off in its title (`Graphene: Compare Forks`; `graphene node diff ID --json` underneath).
+- Edit Plan as Text opens the plan's text in a tab; saving applies it, all or none, and a refusal is a diagnostic
+  on its line (`graphene plan edit --from - --json --since CURSOR` underneath).
+- Add Step… takes one sentence and the planner proposes the step with its scope, check and needs (`graphene ask
+  "<sentence>" --step --after ID`); Add Step by Hand… keeps the four boxes.
+- Watch the Demo plays the auto replay in a graph of its own, no key and no network, in a directory under the OS
+  temp dir (`graphene demo --auto --into DIR`).
+- The graph reads at every width: lanes under 560 px, never below 1:1, no text under 11 px; a fork chip says
+  lines, dollars and seconds quiet, the kept one why, a task that came back is red with why (`Show Plan Graph`).
+- The editor streams the plan, one line a change, and polls an older CLI (`graphene state --json --watch`); the
+  snapshot gains `stand_in`, `replay`, and each task's and fork's `checkout`, `base`, `attempts`, `idle`, `why`.
+- A file a running task owns says so in the status bar and offers a diff with the agent's copy (`Graphene: Diff
+  with the Agent's Copy`).
+- First run: `graphene` is found in `~/.local/bin` and uv's tool directory, Install Graphene… runs `uv tool
+  install graphene-map` after you say yes, Set Up This Folder is two picks, and Auto… leads with Plan first.
+- A refused key says where it goes: Token Factory's 401 names `graphene key set`, and the editor offers Set Key
+  (`graphene key check` says whether it answers).
+- `graphene node diff ID --json` names the repo, two revisions and each file's status; a running task or fork is
+  its directory against its base, no longer refused.
+- `graphene demo --into DIR` plays any replay with no screen into a store of its own, one line a change, and
+  stays at the last frame until it is stopped (`graphene demo --cheat --into DIR`).
+- The gate judges a write where it lands: a committed symlink no longer carries a write into `.git/` or
+  `.claude/` (tests/test_review_link_lands.py).
+- A `git config` that writes is refused to an agent, `core.hooksPath` through `-c` or the environment too
+  (tests/test_review_git_config.py); `.CLAUDE/settings.json` is the hooks' file on a case-blind disk.
+- A task's check runs unread only when it is one plain command: a `#` glued to a word, a shell, a wrapper such
+  as `env` or `xargs`, or a leading `NAME=value` waits for you (tests/test_review_check_comment.py, _wrappers.py).
+- The `tasks` cap counts a task that became a sub-goal; the budget is read before the planner is asked, and a
+  Claude Code planner gets what is left as its cap (tests/test_review_tasks_cap.py, test_review_planner_budget.py).
+- A `protected:` name matches in either Unicode form, as a Mac's disk reaches it (tests/test_review_nfd.py).
+- A harness drives real VS Code and Cursor with Playwright (`editors/vscode/e2e`, `npm test`); the before and
+  after of the extension are in dev/process/editor/: screenshots, five numbers, a stranger's hour.
+- The extension's listing: an icon, a README for the Marketplace and Open VSX, `publish-vscode.yml`, the
+  first-time steps in docs/RELEASING.md; each GitHub release carries the `.vsix`, named for its version.
+- `dev/proof/auto.sh` takes `ENDPOINT=standin` (the take free, no key) and `PAUSE=1` (a pause after init to
+  open the editor), and prints the line that installs the `.vsix`; `dev/proof/standin.py` serves the stand-in.
+
 ## 0.8.0 (26 October 2026)
 
 0.7.0 was tagged but never published (its tag built 0.6.0 again): everything below ships in 0.8.0.
