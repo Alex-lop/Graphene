@@ -3,7 +3,7 @@
 Each claim names the file that shows it and how strong the showing is: **measured** (a number from a run that
 could have gone the other way), **shown** (a test or a command anyone can run), **stand-in** (a scripted or model
 reader, not a person), or **not shown**. Written 15 October 2026 for the 0.5.1 launch, with the hackathon's
-Nemotron claims added on 18 October; re-read before posting.
+Nemotron claims added on 18 October and the editor's on 27 October; re-read before posting.
 
 ## May be said
 
@@ -30,8 +30,10 @@ Nemotron claims added on 18 October; re-read before posting.
 | Auto mode on the Nemotron path ran end to end against the scripted Token Factory: three tasks, nine forks at once, the goal's check red, Ultra's fix, the suite green, $0.0193 at the stand-in's prices | tests/test_demo_auto.py; `graphene demo --auto` | shown; a scripted stand-in, no model ran; no live auto run |
 | In auto mode, a round waits for the person when a task it can start has a check that passes before any work (it would land with nothing done) | tests/test_auto_run.py | shown, with scripted agents; a task that waits on another is not checked first |
 | Every agent's row names its model, and each fork its own, with its dollars | tests/test_race_read.py, tests/test_race_rows.py | shown, with scripted agents and the recordings |
-| Graphene for VS Code shows the plan as a graph and runs a `graphene` command for every change; it activated and registered its commands in VS Code 1.143 | editors/vscode/test/*.test.ts, editors/vscode/test/smoke.cjs; tests/test_vscode_cli.py | shown; not on the Marketplace, not tried in Cursor |
-| In the graph a drag from one task's dot onto another links them, and an × unlinks; the Explorer marks each file a running task writes with its agent's number, reading scope globs as the CLI does | editors/vscode/test/commands.test.ts, editors/vscode/test/owners.test.ts, tests/test_vscode_cli.py, tests/test_vscode_scope_parity.py | shown: the argv on the real CLI, the globs against 208 of its answers; the drag tried in the preview page in Chromium, not in VS Code; the marks not yet seen on a live run |
+| Graphene for VS Code shows what needs you first, every running agent, the plan as a graph and a task's changes in the diff editor, and runs a `graphene` command for every change; its `.vsix` installed, activated and drew a plan's tasks in real VS Code 1.143.1 and Cursor 3.25.6, driven by the harness | editors/vscode/test/*.test.ts; editors/vscode/e2e (`npm test`, and with `E2E_APP=cursor`); tests/test_vscode_cli.py, tests/test_editor_*.py | shown, with a fixture and the scripted stand-in; no person has used it; not on the Marketplace or Open VSX yet |
+| In the graph a drag from one task's dot onto another links them, and an × unlinks; the Explorer marks each file a running task writes with its agent's number, reading scope globs as the CLI does | editors/vscode/test/commands.test.ts, editors/vscode/test/owners.test.ts, tests/test_vscode_cli.py, tests/test_vscode_scope_parity.py; dev/process/editor/take/beat6-editor-explorer-owners.png | shown: the argv on the real CLI, the globs against 208 of its answers; the marks seen in the harness's VS Code during a stand-in race; the drag tried in the preview page in Chromium, not in VS Code |
+| The smallest text the extension draws in the side bar went from 4.61 px at 280 px wide to 11 px at every width and theme, and in the tab from 10.74 to 11 px | dev/process/editor/before/README.md, dev/process/editor/after/code-smallest-text.json (`editors/vscode/e2e/shots.mjs`, the same script both times) | measured by the harness, before and after |
+| A stranger on 0.8.0's extension took 11 minutes to its first graph and 28 to its first accept from the graph, with 9 guesses; the worst wall was a missing key no surface said how to set | dev/process/editor/before/stranger.md | stand-in: one model session with a driver, not a person; on 0.8.0, before the night's changes |
 | A cloned folder's own settings cannot choose the binary Graphene for VS Code runs, the extension is off in a folder VS Code does not trust, and its hovers show the plan's words as text, never as links or images | tests/test_vscode_packaging.py, editors/vscode/test/state.test.ts | shown: the manifest and the escaping; the hovers not looked at in VS Code |
 | The same Nemotron loop runs on NVIDIA NIM, Ollama or any OpenAI-compatible host, writes refused the same way; an agent's call to a paid host off this machine is refused without the opening | tests/test_anymodel_endpoints.py | shown against the scripted host; no live call to NIM, Ollama or another host |
 | Every agent a run starts gets a `PORT` of its own, per task and per fork, given to its check too | tests/test_anymodel_ports.py | shown, with scripted agents |
@@ -44,6 +46,13 @@ Nemotron claims added on 18 October; re-read before posting.
 - "The only tool that...", "nobody else does this", "best controller". A per-task file scope with checks exists for
   another agent (my-pi) and a kernel write lock for nine agents (Ralon): docs/COMPARE.md, dev/PRODUCT_THESIS.md.
 - Anything about real people's speed or ease. No person has been timed: dev/process/first-hour.md is how to get one.
+- That a person has used the editor, or how long one takes on it. The stranger of 27 October was a model session,
+  and the harness measured pixels, seconds and CPU, not a person.
+- That the editor got faster. The after measured the smallest text; the first graph, the latency and the idle
+  CPU are measured on the before only (dev/process/editor/before/README.md) until the same scripts are run on
+  the after and written beside it.
+- That the extension is on the Marketplace or Open VSX. The workflow is written (docs/RELEASING.md); the listing
+  is a step the publisher takes.
 - That the demo is a real model run, or that the replay's dollars are real costs.
 - That a hook cannot be bypassed. It fails open if it cannot run on a Claude Code before 2.1.295, or where `graphene
   init` ran from a script (from 2.1.295, `init` at a terminal makes it fail closed); git catches the change at done

@@ -17,7 +17,7 @@ Teams were read from their docs on 18 October ([`field.md`](../dev/process/publi
 
 | | A plan before code | The files a piece may change | A check the tool runs itself | A look at the diff before the merge |
 |---|---|---|---|---|
-| **Graphene**, with Claude Code | a tree you edit and accept | per leaf; a write outside is refused before it happens (Claude Code, and Graphene's own loop for Nemotron and the other hosts; git catches the rest at `done`) | yes, in a clean copy | a leaf marked for sign-off, or every leaf under `review: every`, waits on its branch, and `i` then `c` in the cockpit shows its diff |
+| **Graphene**, with Claude Code | a tree you edit and accept | per leaf; a write outside is refused before it happens (Claude Code, and Graphene's own loop for Nemotron and the other hosts; git catches the rest at `done`) | yes, in a clean copy | a leaf marked for sign-off, or every leaf under `review: every`, waits on its branch, and `i` then `c` in the cockpit shows its diff; in VS Code, Open Changes shows it in the diff editor, and Needs You lists what waits for you |
 | Claude Code, by itself | plan mode; its docs say it is not enforced in interactive sessions where bypass is available | static allow and deny rules, not per piece | only if you write a hook | see Agent View |
 | Claude Code Agent View | each session's own; it is "one screen for all your background sessions: what's running, what needs your input, and what's done" | each session's allow and deny rules | no; a row's pull request label is coloured by its checks | "`Ready for review` and `Needs input` above `Working` and `Completed`", and no diff column |
 | Claude Code Agent Teams (experimental) | a shared task list; a teammate's plan can be approved "without the lead reviewing it" | by convention: "Two teammates editing the same file leads to overwrites. Break the work so each teammate owns a different set of files." | a task is done by its status ("Task status can lag"); a `TaskCompleted` hook you write can block it | not read |
@@ -36,7 +36,7 @@ Teams were read from their docs on 18 October ([`field.md`](../dev/process/publi
 
 | | Attempts at once | Who keeps one |
 |---|---|---|
-| **Graphene** | `forks: N` on a task, `graphene run --forks N`, or the `forks` setting: N agents, each in a copy of its own | the task's check runs on each; among the forks that pass, a rule written before any ran keeps one (`src/graphene_map/pick.py`: the one that passes the most of the others' tests, then the one that left its check's files alone, the smaller, the cheaper, the sooner) and says which step decided; on a task in review the person can pick another (`graphene node pick`) |
+| **Graphene** | `forks: N` on a task, `graphene run --forks N`, or the `forks` setting: N agents, each in a copy of its own | the task's check runs on each; among the forks that pass, a rule written before any ran keeps one (`src/graphene_map/pick.py`: the one that passes the most of the others' tests, then the one that left its check's files alone, the smaller, the cheaper, the sooner) and says which step decided; on a task in review the person can pick another (`graphene node pick`; in VS Code, Compare Forks opens them side by side and Keep This Fork picks one) |
 | Codex cloud | "generate multiple responses simultaneously for a single task" (OpenAI's X account, 13 June 2025, as its community forum quotes it; its docs pages read say nothing of it) | the person: "explore possible solutions and pick the best approach" |
 | Cursor | "multiple agents in parallel" on one prompt (its changelog for 2.2, 10 December 2025) | Cursor: it evaluates every run once they have all finished and recommends one; "The selected agent will have a comment explaining why it was picked." The entry names no check and does not say what judges |
 | VS Code 1.143 (Compare Models, preview) | "Add between two and 10 attempts", each "in its own Git worktree" (code.visualstudio.com/docs/agents/run/compare-models, read 26 October 2026) | an optional judge model "evaluates the attempts and recommends a solution", whose assessment, its page says, "isn't proof that an implementation is correct"; then the person, or Synthesize |
@@ -69,7 +69,8 @@ the check it must pass, a write outside those files refused as it happens, the c
 and a piece landed only when it passes, on your machine with no account. That is the claim, and it is scoped: my-pi
 has a per-task file scope with checks for another agent, and Ralon locks writes more strongly than a hook does, from
 one static list. Claude Code's Agent View gives every session a row and its Agent Teams a shared task list; both
-leave the files to convention. Nobody here is "the only one".
+leave the files to convention. Graphene for VS Code's Needs You and Agents views are those two rows, held to a
+plan's files; nobody has used them on a real run yet. Nobody here is "the only one".
 
 What Graphene lacks, in this table: it holds a write before it happens only for Claude Code (for Codex and any other
 command, git finds it when the leaf is declared done); its hook fails open if it cannot run on a Claude Code before

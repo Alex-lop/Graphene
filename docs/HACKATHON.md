@@ -54,8 +54,10 @@ lands. Then the goal's own check runs on the merged result, and when it is red U
 rounds you allowed. Token Factory is what makes a race on every task affordable: the replay's whole run, two plans
 by Ultra and twelve Nano forks, cost $0.02 at the scripted stand-in's prices (`tests/test_demo_auto.py`), and
 `graphene demo --auto` replays it with no key. The same plan, forks racing, shows in VS Code (`editors/vscode`):
-drag one task's dot onto another to link them, the Explorer marks each file a running agent writes with its
-number, and every click is a `graphene` command run as you.
+Needs You first, each thing that waits for you with its move; every running agent with what it edits, its
+seconds quiet and its dollars; a task's changes in the diff editor; and every click a `graphene` command run as
+you. The `.vsix` is on each GitHub release, and a harness drove it in real VS Code 1.143.1 and Cursor 3.25.6
+(`editors/vscode/e2e`).
 
 **On NVIDIA Nemotron, through Nebius Token Factory: the path built for this hackathon.** `graphene init --planner
 nemotron --executor nemotron` reads Token Factory's live model list: Nemotron 3 Ultra plans, Nano does the tasks,
@@ -154,7 +156,11 @@ runs unless you run it, or set `GRAPHENE_SHAPE` to run them after each `graphene
   own settings and hooks; the goal's check is a root sub-goal's, run after its tasks land; each round is a row of
   the plan's log, so the history is there the morning after (`tests/test_auto_run.py`, `tests/test_auto_nemotron.py`).
 - **The editor** is a thin client: Graphene for VS Code (`editors/vscode`, TypeScript, no runtime dependencies)
-  reads `graphene state --json`, the cockpit's own snapshot, and runs `graphene` commands for every change.
+  reads `graphene state --json`, the cockpit's own snapshot, streamed with `--watch`, and runs `graphene`
+  commands for every change. A harness (`editors/vscode/e2e`, Playwright's Electron driver) installs the
+  `.vsix` in a profile of its own in real VS Code and Cursor, races a fixture against the scripted stand-in and
+  measures what it sees. The before and after of 27 October are in `dev/process/editor/`: the smallest text the
+  side bar drew went from 4.61 px at 280 px wide to 11 px at every width and theme.
 - **Any OpenAI-compatible host**: the same Nemotron loop runs on NVIDIA's API catalog (NIM), Ollama or any other
   host with `--endpoint`, the writes held the same way; only a host on your machine counts as a stand-in.
 - **Built the way it is meant to be used.** I set the direction and coding agents do much of the writing, in lanes,
@@ -183,6 +189,11 @@ runs unless you run it, or set `GRAPHENE_SHAPE` to run them after each `graphene
   `.git/hooks/` (on a Mac's case-blind disk, `.CLAUDE/` and `.GIT/` too); a planner's check run unread (now one
   plain command, or one you name in `checks:`); an agent's own `graphene run` outside the budget; and a task whose
   check already passed before any work, which would have landed with nothing done (`dev/process/revamp/README.md`).
+- **A stranger's first hour hit the key.** A model session that had never seen Graphene, on 0.8.0's extension
+  with a stand-in in place of Token Factory, took 11 minutes to its first graph and 28 to its first accept from
+  it, with nine guesses. The worst wall was a 401 that no surface said how to fix
+  (`dev/process/editor/before/stranger.md`). Now the refusal names `graphene key set`, the extension offers Set
+  Key, Auto… leads with Plan first, and a task that came back can be dropped from the editor.
 - **Where the agent loop runs decides what can be refused.** With Graphene's own loop on your machine and the
   tools in the sandbox, an out-of-scope write was refused in Graphene's words before it happened, 3 runs of 3.
   With a harness inside the sandbox (OpenCode 1.18.31), Graphene never heard of it in 3 of 3, the key sat where
@@ -246,8 +257,9 @@ while one the repository cannot answer is open (`dev/test/results-2026-09-29-boa
 
 - A live take of auto mode on Token Factory, filmed for the video: auto mode has run end to end only against the
   scripted stand-in so far. And an hour of a real person on it, timed: no person has been timed yet.
-- Graphene for VS Code on the Marketplace and Open VSX, and the graph's gestures (add a step, link two) answering
-  a board question too.
+- Graphene for VS Code on the Marketplace and Open VSX: the workflow is written, the listing is the publisher's
+  own step. And a person on the editor, timed: tonight's stranger was a model session, and the harness measured
+  pixels and seconds, not a person.
 - Whether a race of three Nanos lands more tasks than one, measured on the same tasks with its pass rate and its
   dollars; the held bench has the question written down (`dev/held/rules.md`).
 - `t` heard mid-task by Nemotron's executor, as Claude Code hears it; today it is told at the task's next start.
@@ -284,7 +296,9 @@ August 2026.
   its next write. 17 and 18 October, `graphene watch` became the cockpit, and agents go by numbers, kept by their
   task through a retry. 20 October, forks: several agents on one task, a rule keeping one. 26 October, auto mode
   inside an envelope, the race on screen with each agent's model, Graphene for VS Code, and any OpenAI-compatible
-  host behind Graphene's own loop.
+  host behind Graphene's own loop. 27 October, Graphene for VS Code led by Needs You and Agents, diffs in the
+  diff editor, the plan as text, a step in a sentence, the demo in the editor, a harness that drives real VS
+  Code and Cursor, and the gate judging a write where it lands.
 
 Commands: `git rev-list --count --until='2026-08-26T16:00:00Z' 921834de`, `git rev-list --count
 --since='2026-08-26T16:00:00Z' 921834de`, and `git blame --line-porcelain 921834de` over its `src/*.py`, counting
@@ -369,6 +383,8 @@ checked again since.
 | 2 ms on this repository's plan, 53 ms at 22,000 log rows | `tests/test_cockpit_cost.py`, its docstring |
 | auto mode: 2 rounds, 4 tasks landed, 12 forks raced, $0.0193 at the stand-in's prices | `tests/test_demo_auto.py` (the scripted stand-in, no model ran) |
 | 27,469 lines, none before the period; 181 and 971 commits | git, the commands above, at `921834de` |
+| a stranger on 0.8.0's extension: 11 minutes to the first graph, 28 to the first accept from it, 9 guesses | `dev/process/editor/before/stranger.md` (one model session with a driver, not a person; a stand-in in place of Token Factory) |
+| the side bar's smallest text, 4.61 px at 280 px wide before and 11 px at every width after; 2.69 s from install to the first graph and p50 574 ms from a store write to the screen, before | `dev/process/editor/before/README.md`, `dev/process/editor/after/code-smallest-text.json` (the harness, `editors/vscode/e2e/measure/`) |
 | the questions against the paragraph; the plan against the paragraph with Nemotron | none yet: registered in `dev/test/results-2026-09-28-shaping.md` and `dev/test/results-2026-09-28-live-prereg.md` |
 
 ## Testing instructions
@@ -385,6 +401,10 @@ uvx --from graphene-map graphene demo --cheat  # a script tries seven ways round
 In the cockpit, `j` and `k` move, `i` opens the details, `g` the graph, `m` the map, `c` the cockpit again, `?`
 lists the keys and `q` leaves; in a replay, space pauses, `.` steps and `r` plays it again. Keys that would change
 the plan say "a replay: nothing runs here".
+
+In VS Code, with no key: install the `.vsix` attached to the latest GitHub release (`code --install-extension`),
+open any folder, and run `Graphene: Watch the Demo` from the command palette. The auto replay plays in a graph
+of its own, and its header says it is a stand-in's.
 
 Both live Nemotron runs on Token Factory, replayed with no key, from a clone (`--live` is the first):
 
