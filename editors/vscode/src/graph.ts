@@ -74,6 +74,9 @@ export class GraphHost implements vscode.WebviewViewProvider {
       const msg = check(m, this.session);
       if (!msg) return;
       if (msg.type === "ready") return this.push(webview);
+      // a replay is watched: check() refuses its acts once its state says `replay`, and before that state is
+      // read (or after a read fails) the acts that take no id would run in the person's folder
+      if (this.session.own) return;
       return this.act(msg);
     });
   }
