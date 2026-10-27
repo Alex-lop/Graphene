@@ -107,7 +107,7 @@ export function activate(context: vscode.ExtensionContext) {
       const top = topLine(s); // a replay, or a race against the scripted stand-in: not a paid run, said as the graph says it
       if (top) md.appendMarkdown(`${mdText(top)}\n\n`);
       for (const line of s.news.slice(-4)) md.appendMarkdown(`- ${mdText(line)}\n`);
-      md.appendMarkdown(`\n${mdText(which(session.path, session.version))}${session.found ? ", off this editor's PATH" : ""}\n\n`);
+      md.appendMarkdown(`\n${mdText(which(session.file || session.path, session.version))}${session.found ? ", off this editor's PATH" : ""}\n\n`);
       md.appendMarkdown(session.stream.live ? "live: `graphene state --json --watch`\n\n" : "");
       md.appendMarkdown("Graphene: Show Plan Graph");
       bar.tooltip = md;
@@ -115,7 +115,7 @@ export function activate(context: vscode.ExtensionContext) {
       const k = session.status.kind;
       const words: Partial<Record<typeof k, string>> = { missing: "not installed", uninitialised: "no plan", nofolder: "no folder", reading: "reading…" };
       bar.text = `◆ Graphene · ${words[k] ?? k}`;
-      bar.tooltip = k === "missing" || k === "nofolder" ? session.status.text : `${session.status.text}\n\n${which(session.path, session.version)}`;
+      bar.tooltip = k === "missing" || k === "nofolder" ? session.status.text : `${session.status.text}\n\n${which(session.file || session.path, session.version)}`;
     }
   });
 

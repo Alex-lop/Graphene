@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { candidates, cannotRun, found, olderWords, which } from "../src/find.ts";
+import { candidates, cannotRun, found, olderWords, resolved, which } from "../src/find.ts";
 
 test("graphene is looked for on each PATH entry, then ~/.local/bin, then uv's own bin, each once", () => {
   const list = candidates("/usr/bin:/opt/bin", "/Users/alex", "/Users/alex/.local/bin", ":");
@@ -34,4 +34,12 @@ test("a graphene.path that is not there, a directory, or without its x bit is 'n
   assert.ok(!cannotRun(undefined), "no error: it ran and answered");
   assert.ok(!cannotRun(null), "killed by a signal: it ran");
   assert.ok(!cannotRun("ERR_CHILD_PROCESS_STDIO_MAXBUFFER"), "it ran and said too much");
+});
+
+test("a graphene run by its bare word is named by the file the PATH gives it, so the hover says where", () => {
+  const has = (p: string) => p === "/opt/bin/graphene";
+  assert.equal(resolved("graphene", "/usr/bin:/opt/bin", has, ":"), "/opt/bin/graphene");
+  assert.equal(resolved("/Users/alex/.local/bin/graphene", "/opt/bin", has, ":"), "/Users/alex/.local/bin/graphene");
+  assert.equal(resolved("graphene", "/usr/bin", has, ":"), "graphene", "no PATH entry holds it: the word, as it runs");
+  assert.equal(resolved("graphene", undefined, has, ":"), "graphene");
 });

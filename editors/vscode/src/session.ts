@@ -8,7 +8,7 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import * as C from "./commands.ts";
 import type { GraphHost } from "./graph.ts";
-import { cannotRun, olderWords } from "./find.ts";
+import { cannotRun, olderWords, resolved } from "./find.ts";
 import { errorOf, parseState, type State, type Task } from "./state.ts";
 import { Stream } from "./stream.ts";
 import type { Node, PlanTree } from "./tree.ts";
@@ -39,6 +39,8 @@ export class Session {
   found: string | null = null;
   /** `graphene --version`'s line for `path`, read once per path (again after Install or a settings change). */
   version: string | null = null;
+  /** The file `path` runs, for the hover and the older-CLI line: a bare word as the PATH resolves it. */
+  file = "";
   private versioned = "";
   /** `graphene state --json --watch`, a snapshot a line, while the CLI has it. */
   readonly stream: Stream;
@@ -73,7 +75,7 @@ export class Session {
 
   /** A refusal's line as the person reads it: the older-CLI line names the graphene that answered. */
   private said(why: string): string {
-    return why === C.OLDER ? olderWords(this.path, this.version) : why;
+    return why === C.OLDER ? olderWords(this.file || this.path, this.version) : why;
   }
 
   get path(): string {
@@ -111,6 +113,7 @@ export class Session {
     if (this.versioned !== this.path) { // which graphene answers: said in the hover and the older-CLI line
       const v = await this.run(["--version"]);
       this.versioned = this.path;
+      this.file = resolved(this.path, process.env.PATH, existsSync);
       this.version = v.code === 0 ? C.firstLine(v.stdout, "", "") || null : null;
     }
     const out = await this.run(C.stateJson());

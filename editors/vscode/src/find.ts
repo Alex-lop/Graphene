@@ -25,6 +25,13 @@ export function cannotRun(code: unknown): boolean {
   return typeof code === "string" && /^E[A-Z]+$/.test(code);
 }
 
+/** The file a bare command runs: the first PATH entry that holds it, so the hover names a path, not the word.
+ *  A path is itself; a word no PATH entry holds stays the word. */
+export function resolved(cmd: string, pathEnv: string | undefined, exists: (p: string) => boolean, sep = path.delimiter): string {
+  if (cmd.includes("/") || cmd.includes(path.sep)) return cmd;
+  return (pathEnv ?? "").split(sep).filter(Boolean).map((d) => path.join(d, cmd)).find(exists) ?? cmd;
+}
+
 /** Which graphene the extension runs, as the status bar's hover says it: `graphene --version`'s line and the
  *  path (a machine may hold two: uv's in ~/.local/bin and the one on the PATH). */
 export function which(path: string, version: string | null): string {
