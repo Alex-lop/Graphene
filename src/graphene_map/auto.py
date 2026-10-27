@@ -89,22 +89,35 @@ def width(nodes: list[P.Node], files: list[str]) -> int:
     return len(chosen)
 
 
+# a command that is a shell line in another form: a shell handed code, a wrapper that runs what follows
+SHELLS = ("sh", "bash", "zsh", "dash", "ksh", "csh", "tcsh", "fish", "eval", "exec", "source", ".", "env",
+          "xargs", "nohup", "time", "command", "builtin", "sudo", "doas")  # fmt: skip
+
+
 def runs_as_check(check: str, allowed: list[str]) -> bool:
     """Whether the envelope runs ``check`` without the person reading it: one command (no `;`, `&&`, `||`,
     `|`, redirect, `$(…)` or backtick outside quotes), and, once `checks:` names commands, one of them, alone
-    or with more words after it. A planner's check is code the person's machine runs."""
-    if "`" in check or "$(" in check or "\n" in check:
+    or with more words after it. With none named, a shell handed a line (`sh -c '…'`), a wrapper that runs
+    what follows (SHELLS) or a leading `NAME=value` (`PATH=/tmp/evil pytest`) is a shell line the rule cannot
+    read, so it waits for the person. A planner's check is code the person's machine runs: what a plain
+    command then loads (a test file, a plugin, a Makefile) is the repo's, and `checks:` is the guard."""
+    from .shell import _is_assignment
+
+    if "`" in check or "$(" in check or "\n" in check or "\r" in check:
         return False
     try:
         lex = shlex.shlex(check, posix=True, punctuation_chars=True)
         lex.whitespace_split = True
+        lex.commenters = ""  # as bash reads it: `x#;touch f` is a word, then `;`, then a second command
         words = list(lex)
     except ValueError:  # an unclosed quote: not a command the person would take as read
         return False
     if not words or any(set(w) <= set("();<>|&") for w in words):
         return False
     said, named = " ".join(check.split()), [" ".join(c.split()) for c in allowed]
-    return not named or any(said == a or said.startswith(a + " ") for a in named)
+    if not named:
+        return words[0].rsplit("/", 1)[-1] not in SHELLS and not _is_assignment(words[0])
+    return any(said == a or said.startswith(a + " ") for a in named)
 
 
 def fits(store, added: list[P.Node], files: list[str]) -> list[str]:
