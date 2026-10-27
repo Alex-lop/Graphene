@@ -179,6 +179,8 @@ def test_a_replays_quiet_seconds_are_counted_on_the_recordings_clock(tmp_path):
 
         assert wait_for(some_running, 60)
         assert all(t["idle"] is not None and t["idle"] < 600 for t in running), [t["idle"] for t in running]
+        forks = [f for t in running for f in t["forks"] if f["idle"] is not None]  # a running fork's, too
+        assert all(f["idle"] < 600 for f in forks), [f["idle"] for f in forks]
     finally:
         proc.send_signal(signal.SIGTERM)
         proc.wait(30)
