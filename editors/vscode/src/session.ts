@@ -9,6 +9,7 @@ import * as vscode from "vscode";
 import * as C from "./commands.ts";
 import type { GraphHost } from "./graph.ts";
 import { parseState, type State, type Task } from "./state.ts";
+import { Stream } from "./stream.ts";
 import type { Node, PlanTree } from "./tree.ts";
 
 export type Status = { kind: "reading" | "missing" | "uninitialised" | "error" | "nofolder" | "ok" | "empty"; text: string };
@@ -34,14 +35,25 @@ export class Session {
   private reading: Promise<void> | null = null;
   /** A directory of its own (a replay's), not one of the workspace's folders. */
   readonly own: string | undefined;
+  /** graphene found off the PATH (find.ts), used while graphene.path is unset. */
+  found: string | null = null;
+  /** `graphene state --json --watch`, a snapshot a line, while the CLI has it. */
+  readonly stream: Stream;
 
   constructor(own?: string) {
     this.own = own;
     this.folder = own ? { uri: vscode.Uri.file(own), name: path.basename(own), index: -1 } : planFolder();
+    const self = this;
+    this.stream = new Stream({
+      get path() { return self.path; },
+      get cwd() { return self.folder?.uri.fsPath; },
+      onLine: (line) => { try { this.take(parseState(line)); } catch { /* not a snapshot: the next line is */ } },
+    });
   }
 
   get path(): string {
-    return vscode.workspace.getConfiguration("graphene").get<string>("path")?.trim() || "graphene";
+    const set = vscode.workspace.getConfiguration("graphene").get<string>("path")?.trim();
+    return set && set !== "graphene" ? set : this.found ?? "graphene";
   }
 
   get pollMs(): number {
@@ -81,8 +93,9 @@ export class Session {
     try {
       this.take(parseState(out.stdout));
     } catch {
-      this.set(null, { kind: "error", text: `graphene state --json gave no plan: ${C.firstLine(out.stderr, out.stdout)}` });
+      return this.set(null, { kind: "error", text: `graphene state --json gave no plan: ${C.firstLine(out.stderr, out.stdout)}` });
     }
+    this.stream.start(); // a plan read once: from here the stream brings each change, while the CLI has it
   }
 
   /** A snapshot read some other way (a stream's line): the same as a read's. */
@@ -126,7 +139,13 @@ export class Session {
     return this.state?.tasks ?? [];
   }
 
+  /** The folder or the command changed: the stream starts over there. */
+  moved() {
+    this.stream.restart();
+  }
+
   dispose() {
+    this.stream.dispose();
     this.emitter.dispose();
   }
 }

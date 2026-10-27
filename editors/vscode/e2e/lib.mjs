@@ -369,7 +369,8 @@ export async function waitForGraph(page, { min = 1, timeout = 60000 } = {}) {
 export async function readGraph(frame) {
   return frame.evaluate(() => ({
     goal: document.querySelector("#goal")?.textContent ?? "",
-    counts: document.querySelector("#counts")?.textContent ?? "",
+    // narrow, the header is one line: the counts are then in the goal's hover, not on the page
+    counts: document.querySelector("#counts:not([hidden])")?.textContent || document.querySelector("#goal")?.title || "",
     notice: document.querySelector("#notice:not([hidden])")?.textContent ?? "",
     view: document.querySelector("#lanes:not([hidden])") ? "lanes" : "graph",
     tasks: [
