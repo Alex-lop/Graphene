@@ -6,8 +6,8 @@
 import { layout, modeFor, step, type Box, type Edge, type Layout } from "../layout.ts";
 import { autoLine, usd, type State } from "../state.ts";
 import { ICONS } from "./icons.ts";
-import { actsFor, cornerWord, cut, done, FIRST_HINT, fitWidth, forkActs, forkRow, forkWords, headerFor, KEYS, paneKey, questionOn, replayLine, sub, tabOrder, zoomK,
-         type Act, type Button, type StateX, type TaskX } from "./words.ts";
+import { actsFor, cornerWord, cut, done, FIRST_HINT, fitWidth, forkActs, forkRow, forkWords, HEADER_ACTS, headerFor, KEYS, linkHint, paneKey, questionOn,
+         sub, tabOrder, topLine, zoomK, type Act, type Button, type StateX, type TaskX } from "./words.ts";
 
 declare function acquireVsCodeApi(): { postMessage(m: unknown): void; getState(): unknown; setState(s: unknown): void };
 
@@ -147,9 +147,9 @@ function render() {
 const narrow = () => matchMedia("(max-width: 700px)").matches;
 
 function header(s: StateX) {
-  const replay = replayLine(s.replay);
-  $("replay").textContent = replay;
-  $("replay").hidden = !replay;
+  const first = topLine(s); // a replay, or a live race against the stand-in: said before anything else
+  $("replay").textContent = first;
+  $("replay").hidden = !first;
   const h = headerFor(s, narrow());
   $("goal").textContent = h.goal;
   $("goal").title = h.hover;
@@ -160,7 +160,7 @@ function header(s: StateX) {
   const run = $("b-run"); // while a run goes, the button that started it stops it
   run.replaceChildren(icon(s.run.going ? "debug-stop" : "play"), document.createTextNode(s.run.going ? "Stop" : "Run ready"));
   run.title = s.run.going ? "graphene run --stop: what runs goes back to the plan" : "graphene run --parallel 4";
-  for (const id of ["b-add", "b-run", "b-auto"]) $(id).hidden = replaying(); // a replay is watched, not changed
+  for (const [id] of HEADER_ACTS) $(id).hidden = replaying(); // a replay is watched: nothing acts on a plan, or outside it
   const toggle = $("b-view");
   const v = view();
   toggle.replaceChildren(icon(v === "lanes" ? "type-hierarchy-sub" : "list-flat"), document.createTextNode(v === "lanes" ? "Graph" : "Lanes"));
@@ -475,12 +475,24 @@ function select(id: string | null, focus = false) {
   }
 }
 
+/** Link mode off: nothing armed, no wire drawn. On Esc, Cancel, or a select from outside the graph. */
+function disarm() {
+  linking = null;
+  wiring = null;
+  $("canvas").classList.remove("wiring");
+}
+
 function hint() {
   const h = $("hint");
   const from = wiring?.from ?? linking;
   if (from && state) {
     const a = state.tasks.find((t) => t.id === from);
-    h.textContent = `link: ${wiring ? "drop it on" : "click"} the task that waits on “${a?.title ?? from}” · Esc cancels`;
+    const cancel = document.createElement("button");
+    cancel.className = "quiet";
+    cancel.textContent = "Cancel";
+    cancel.title = "stop linking (Esc)";
+    cancel.addEventListener("click", () => { disarm(); render(); });
+    h.replaceChildren(div("hint-text", linkHint(a?.title ?? from, Boolean(wiring))), cancel);
     h.className = "linking";
   } else if (state?.questions.length) { // an open question outranks the news: answering it is the person's
     const q = state.questions[0]!;
@@ -518,13 +530,13 @@ function pane() {
   const was = pane.contains(document.activeElement) ? document.activeElement : null;
   const mark = (e: Element) => `${e.className}|${e.textContent}|${e.getAttribute("aria-label") ?? ""}`;
   const want = was ? mark(was) : "";
-  const top = pane.scrollTop;
+  const top = pane.querySelector(".d-body")?.scrollTop ?? 0; // the body scrolls; the head and the acts stay
   pane.replaceChildren();
   const s = state;
   pane.hidden = false;
   queueMicrotask(() => {
     if (want) Array.from(pane.querySelectorAll("button")).find((b) => mark(b) === want)?.focus({ preventScroll: true });
-    pane.scrollTop = top;
+    body.scrollTop = top;
   });
   const head = div("d-head", undefined, pane);
   div(`d-title ${cls(t.state)}`, t.title, head);
@@ -666,7 +678,8 @@ window.addEventListener("message", (e: MessageEvent<Incoming>) => {
   } else if (m.type === "status") {
     lastJson = "";
     notice(m.status);
-  } else if (m.type === "select") {
+  } else if (m.type === "select") { // a click in the Plan view: the link, if armed, is not for that task
+    disarm();
     select(m.id, true);
   }
 });
@@ -681,8 +694,8 @@ window.addEventListener("keydown", (e) => {
   if ((e.target as HTMLElement).tagName === "BUTTON" && (e.key === "Enter" || e.key === " ")) return;
   if (e.key === "Escape") {
     if (!$("help").hidden) help(false);
-    else if (wiring) { wiring = null; $("canvas").classList.remove("wiring"); }
-    else if (linking) linking = null; else selected = null;
+    else if (wiring || linking) disarm();
+    else selected = null;
     render();
     return;
   }

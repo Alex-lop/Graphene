@@ -58,8 +58,9 @@ main { flex: 1; display: flex; min-height: 0; }
 #to-goal.below { top: auto; bottom: 10px; }
 #to-goal.below .ico { transform: rotate(90deg); }
 #notice.missing, #notice.error { color: var(--came-back); }
+/* the pane's body scrolls on its own: its head and its acts stay in view, however long a note is */
 #details {
-  width: 300px; border-left: 1px solid var(--border); background: var(--panel); overflow: auto;
+  width: 300px; border-left: 1px solid var(--border); background: var(--panel); overflow: hidden;
   display: flex; flex-direction: column;
 }
 #details[hidden] { display: none; }
@@ -67,7 +68,9 @@ footer#hint {
   padding: 4px 12px; border-top: 1px solid var(--border); color: var(--dim); font-size: 0.92em;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-height: 1.3em;
 }
-footer#hint.linking { color: var(--edge-hot); }
+footer#hint.linking { color: var(--edge-hot); display: flex; align-items: center; gap: 8px; padding-top: 3px; padding-bottom: 3px; }
+.hint-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+footer#hint button { padding: 1px 8px; font-size: 1em; }
 footer#hint.asks { color: var(--review); }
 #b-more { display: none; padding: 3px 6px; }
 /* the sidebar's graph is narrow: the header is one line, the goal and a `…` that unfolds the buttons (the
@@ -108,7 +111,8 @@ button.unlink:hover { color: var(--vscode-errorForeground, #f48771); }
 .d-head .close { position: absolute; right: 8px; top: 8px; }
 .d-title { font-weight: 600; font-size: 1.05em; padding-right: 24px; border-left: 4px solid var(--ready); padding-left: 8px; }
 .d-id { color: var(--dim); font-family: var(--mono); font-size: 0.9em; margin-top: 3px; }
-.d-body { padding: 6px 12px; flex: 1; }
+.d-body { padding: 6px 12px; flex: 1; min-height: 0; overflow: auto; }
+.d-head, .d-acts { flex: none; }
 .row { display: grid; grid-template-columns: 70px 1fr; gap: 6px; padding: 4px 0; border-bottom: 1px dotted var(--border); }
 .row .k { color: var(--dim); }
 .row .v { font-family: var(--mono); font-size: 0.92em; word-break: break-word; white-space: pre-wrap; }

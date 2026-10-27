@@ -2,7 +2,7 @@
 // a badge with the count; the commands graphene.answer, graphene.handBack, graphene.markDone and graphene.setKey.
 import * as vscode from "vscode";
 import * as C from "./commands.ts";
-import { answerWords, count, markDone, needs, offerWords, pickOption, takeDefault, type Need } from "./needs.ts";
+import { answerWith, answerWords, count, markDone, needs, offerWords, pickOption, takeDefault, type Need } from "./needs.ts";
 import type { Session, UI } from "./session.ts";
 import { mdText, type State } from "./state.ts";
 
@@ -43,6 +43,8 @@ export function item(n: Need, s: State): vscode.TreeItem {
     it.label = t.title;
     md.appendMarkdown(`**${mdText(t.title)}** · ${mdText(t.id)} · ${mdText(t.state)}\n\n`);
     if (t.full) md.appendMarkdown(`${mdText(t.full)}\n\n`);
+    // its agent's last moves, a note the person sent it among them (`you  “keep both routes”`)
+    if (t.tail.length) md.appendMarkdown(t.tail.slice(-3).map((l) => `- ${mdText(l)}\n`).join("") + "\n");
     const arg = { id: t.id };
     if (n.kind === "proposal") {
       it.description = `proposed · ${t.scope.length ? t.scope.join("  ") : "no files yet"}`;
@@ -93,7 +95,7 @@ export class NeedsTree implements vscode.TreeDataProvider<Need> {
   }
 }
 
-type Arg = string | { id?: string } | undefined;
+type Arg = string | { id?: string; option?: string } | undefined;
 const idOf = (arg: Arg) => (typeof arg === "string" ? arg : arg?.id);
 
 export function register(context: vscode.ExtensionContext, session: Session, _ui: UI) {
@@ -115,6 +117,8 @@ export function register(context: vscode.ExtensionContext, session: Session, _ui
       q = qs.length === 1 ? qs[0] : (await vscode.window.showQuickPick(qs.map((x) => ({ label: x.text, description: x.id, q: x })), { placeHolder: "the question to answer" }))?.q;
       if (!q) return;
     }
+    const given = typeof arg === "object" ? arg?.option?.trim() : undefined; // the graph's pane sent the option: no pick
+    if (given) return session.act(answerWith(q, given));
     type Pick = vscode.QuickPickItem & { argv?: string[]; own?: boolean };
     const items: Pick[] = [];
     if (q.default) items.push({ label: `$(check) ${q.default}`, description: "the default", argv: takeDefault(q.id) });

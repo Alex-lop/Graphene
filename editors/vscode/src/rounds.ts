@@ -68,9 +68,11 @@ export function rounds(rows: LogRow[]): Round[] {
         current.failed = String(d.why ?? "");
         if (out.length > 1) out[out.length - 2]!.check = "fail"; // the round before failed it
       }
-      if (d.stage === "done") current.check = "pass";
+      if (d.stage === "done") { current.check = "pass"; current = null; } // over: what comes later is no round's
     } else if (row.kind === "accepted" && d.by === "auto") {
-      at(Number(d.round) || current?.n || 1).accepted.push(row.node_id);
+      // auto.py's `take` puts the round on the row only while auto's own round plans; without one it is the
+      // envelope taking a later ask of the person's, which is no round's
+      if (Number(d.round)) at(Number(d.round)).accepted.push(row.node_id);
     } else if (row.kind === "picked" && current) {
       current.kept.push(`${row.node_id} kept ${String(d.fork)} of ${String(d.of)}${d.reason ? `: ${String(d.reason)}` : ""}`);
     } else if (row.kind === "landed" && current) {

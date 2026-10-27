@@ -18,6 +18,7 @@ const state = parseState(JSON.stringify(raw)) as unknown as Record<string, unkno
 // what the snapshot gains tonight, until the parser knows it (CONTRACT.md): replay, a task's why and attempts,
 // a fork's attempts and idle
 state.replay = params.get("replay") ? { shown: "a scripted stand-in, no model ran", day: "2026-10-26", repository: "wordkit" } : raw.replay ?? null;
+state.stand_in = params.get("standin") ? true : raw.stand_in === true; // &standin=1: a live race against the stand-in
 const rawTasks = (raw.tasks as Record<string, unknown>[] | undefined) ?? [];
 for (const t of state.tasks) {
   const r = rawTasks.find((x) => x.id === t.id);
