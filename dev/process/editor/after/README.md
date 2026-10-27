@@ -29,4 +29,6 @@ What the numbers say:
 - **Moves** is a judgment, key by key, not a count a script makes: `moves.md`.
 
 The screenshots, the same widths, sizes and themes as the before's: `code-sidebar-*.png`, `code-panel-*.png`,
-with `code-smallest-text.json`. Cursor's after was not shot; the harness's check passes there.
+with `code-smallest-text.json`; and Cursor 3.25.6's, shot at 06:09 on the final build, `cursor-*.png` with
+`cursor-smallest-text.json`: its side bar's smallest text went from 4.68, 5.54 and 3.85 px at 280, 320 and 400 to 11
+at each, and its tab's stays 11.
