@@ -58,7 +58,8 @@ main { flex: 1; display: flex; min-height: 0; }
 #to-goal.below { top: auto; bottom: 10px; }
 #to-goal.below .ico { transform: rotate(90deg); }
 #notice.missing, #notice.error { color: var(--came-back); }
-/* the pane's body scrolls on its own: its head and its acts stay in view, however long a note is */
+/* beside the canvas the pane's body scrolls on its own: its head and its acts stay in view, however long a
+   note is (narrow, under the canvas, the whole pane scrolls instead: see the media query) */
 #details {
   width: 300px; border-left: 1px solid var(--border); background: var(--panel); overflow: hidden;
   display: flex; flex-direction: column;
@@ -77,7 +78,11 @@ footer#hint.asks { color: var(--review); }
    counts and the auto line are in the goal's hover and the footer); the details go under the canvas */
 @media (max-width: 700px) {
   main { flex-direction: column; }
-  #details { width: auto; max-height: 55%; border-left: none; border-top: 1px solid var(--border); }
+  /* under the canvas the pane can be shorter than its head and its acts (the side bar's Graph view at a
+     fresh profile's split is 120 px tall): the whole pane scrolls, so a mouse reaches every act */
+  #details { width: auto; max-height: 55%; border-left: none; border-top: 1px solid var(--border); overflow: auto; }
+  #details .d-body { flex: none; min-height: auto; overflow: visible; }
+  footer#hint.linking .hint-text { white-space: normal; } /* the ways out read whole: the line wraps */
   header { padding: 5px 10px 4px; align-items: center; }
   #b-more { display: inline-flex; grid-column: 2; }
   #counts, #auto { display: none; }

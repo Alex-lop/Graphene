@@ -530,13 +530,15 @@ function pane() {
   const was = pane.contains(document.activeElement) ? document.activeElement : null;
   const mark = (e: Element) => `${e.className}|${e.textContent}|${e.getAttribute("aria-label") ?? ""}`;
   const want = was ? mark(was) : "";
-  const top = pane.querySelector(".d-body")?.scrollTop ?? 0; // the body scrolls; the head and the acts stay
+  const top = pane.querySelector(".d-body")?.scrollTop ?? 0; // wide, the body scrolls; narrow, the whole pane
+  const paneTop = pane.scrollTop;
   pane.replaceChildren();
   const s = state;
   pane.hidden = false;
   queueMicrotask(() => {
     if (want) Array.from(pane.querySelectorAll("button")).find((b) => mark(b) === want)?.focus({ preventScroll: true });
     body.scrollTop = top;
+    pane.scrollTop = paneTop;
   });
   const head = div("d-head", undefined, pane);
   div(`d-title ${cls(t.state)}`, t.title, head);
