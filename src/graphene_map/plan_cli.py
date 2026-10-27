@@ -889,11 +889,66 @@ def register(cli: typer.Typer, root, open_store, fail):
     @plan_cli.command("edit")
     def edit_(
         node_id: str = typer.Argument(None, help="Open only this node and what is under it."),
+        source: str = typer.Option(
+            None, "--from", help="Apply the plan's text from this file, or from a pipe with '-'."
+        ),
+        as_json: bool = typer.Option(
+            False, "--json", help="With --from, one line of JSON: applied, said, faults by line."
+        ),
+        since: int = typer.Option(
+            None, "--since", help="The snapshot's cursor when the text was read; later changes stay."
+        ),
     ) -> None:
         """Open the plan as text in your editor ($VISUAL, $EDITOR, else vi).
 
         Graphene applies what you save, all or none. Turn "?" into "-" to accept a node."""
+        if source is not None:
+            return edit_from(source, node_id, as_json, since)
+        if as_json or since is not None:
+            fail("--json and --since go with --from: `graphene plan edit --from - --json`", 2)
         edit_in_editor(node_id, alone=False)
+
+    def edit_from(source: str, node_id: str | None, as_json: bool, since: int | None) -> None:
+        """`plan edit --from -`: the text an editor saved, applied as one save in the terminal's editor is
+        (all or none, only what the text changed, nothing someone else changed since ``since``), and
+        what came of it as lines, or as one JSON line with each refusal on the text's own line."""
+        who = P.caller()
+        if not who.person:
+            fail("an editor is for the person at a terminal; an agent proposes: `graphene plan propose -`", 1)
+        if source == "-" and sys.stdin.isatty():
+            fail("`graphene plan edit --from -` reads a pipe, and nothing is piped here", 1)
+        try:
+            text = sys.stdin.read() if source == "-" else Path(source).read_text(encoding="utf-8")
+        except OSError as exc:
+            fail(f"cannot read {source}: {exc.strerror or exc}", 1)
+        files = P.tracked(checkout())
+
+        def go(store):
+            opened = T.render(store, node_id, False)[1]
+            base = P.get(store, node_id).parent if node_id is not None else None
+            if since is not None:
+                T.stale(store, opened, since)
+            with P.undoable(store, who, "plan edit" + (f" {node_id}" if node_id else "")):
+                return T.apply(store, text, who, opened, base, files)
+
+        try:
+            with open_store(root()) as store:
+                said = go(store)
+        except P.Refused as no:
+            if as_json:
+                out(json.dumps({"applied": False, "said": [], "faults": [T.fault(str(no), text)]}))
+                raise typer.Exit(1) from None
+            fail(f"{no}. Nothing was applied", 1)
+        if as_json:
+            out(json.dumps({"applied": bool(said), "said": list(said), "faults": []}))
+        else:
+            for line in said or ["nothing changed"]:
+                out(line)
+        if said:
+            with open_store(root()) as store:
+                ids = [i for i in said.ids if store.node_row(i)]
+            warn_unreachable(ids, files)
+            said_where()
 
     @plan_cli.command()
     def undo() -> None:

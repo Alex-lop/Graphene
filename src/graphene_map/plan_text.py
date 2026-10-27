@@ -28,6 +28,7 @@ and the refusal names the line.
 
 from __future__ import annotations
 
+import json as _json
 import os
 import re
 import shlex
@@ -869,9 +870,9 @@ def _goal(store, goal: str | None, who: P.Caller, now: str, opened: dict | None)
         )
     if opened is not None:
         was = opened["*goal"]["goal"]
-        if goal == was:
-            return []
         now_shown = "\n".join(_norm_goal(P.goal(store) or store.meta("goal:proposed") or ""))
+        if goal in (was, now_shown):  # as it was shown, or as someone set it meanwhile: nothing to write
+            return []
         if now_shown != was:
             raise P.Refused(
                 "the plan's goal was changed by someone else since this text was opened; open it again"
@@ -1074,6 +1075,44 @@ def run_editor(path: Path) -> int:
 
 
 _REFUSED = "# ^ refused: "
+STALE = -1  # a revision no node has: what moved after the editor's cursor is refused if the text changes it
+# the log's kinds that change a node's shape or state (`plan._save`); an agent's activity rows are not these
+SHAPE = ("added", "edited", "accepted", "dropped", "archived", "started", "finished", "reopened",
+         "signed_off", "overruled", "rolled_up")  # fmt: skip
+
+
+def stale(store, opened: dict, since: int) -> None:
+    """`plan edit --from - --since CURSOR`: the text was read with the snapshot whose cursor is ``since``, so
+    what the log says changed after it is marked in ``opened`` as a revision no node has (STALE): a line that
+    would write such a node (its fields differ from the node's now), delete it, or set the goal, is refused
+    as "changed by someone else", never written over; a line that says what the node says now is fine."""
+    rows = store.conn.execute("SELECT node_id, kind, detail FROM node_log WHERE id > ?", (since,)).fetchall()
+    for row in rows:
+        node_id, kind = row["node_id"], row["kind"]
+        if kind in SHAPE and node_id in opened:
+            opened[node_id]["rev"] = STALE
+        elif kind in ("goal", "goal_proposed") and "*goal" in opened:
+            opened["*goal"]["goal"] = "\0"  # no text says this: any goal line then differs, and is refused
+        elif kind == "board":
+            item = (_json.loads(row["detail"]) if row["detail"] else {}).get("item")
+            if item in opened.get("*board", {}):
+                opened["*board"][item]["rev"] = STALE
+
+
+def fault(refusal: str, text: str) -> dict:
+    """A refusal as the editor shows it, on a line of the text (1-based): a parse fault's own `line N`,
+    else the line of the `[id]` the refusal names, else 1; its text without that prefix, on one line."""
+    found = re.match(r"line (\d+)(?: \[[^\]]*\])?: ", refusal)
+    said = " ".join(refusal[found.end() :].split()) if found else " ".join(refusal.split())
+    if found:
+        return {"line": int(found[1]), "text": said}
+    at = 1
+    for name in re.findall(r"\[([\w.-]+)\]", refusal):
+        on = next((no for no, raw in enumerate(text.splitlines(), 1) if f"[{name}]" in raw), None)
+        if on:
+            at = on
+            break
+    return {"line": at, "text": said}
 
 
 def _annotated(text: str, refusal: str) -> str:
