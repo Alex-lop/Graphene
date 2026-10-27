@@ -14,23 +14,34 @@ export class GraphHost implements vscode.WebviewViewProvider {
   private sidebars = new Set<vscode.WebviewView>();
   private context: vscode.ExtensionContext;
   private session: Session;
+  private title: string;
+  private closed = new vscode.EventEmitter<void>();
+  /** The panel was closed (Watch the Demo ends its replay then). */
+  readonly onDidClose = this.closed.event;
 
-  constructor(context: vscode.ExtensionContext, session: Session) {
+  constructor(context: vscode.ExtensionContext, session: Session, title = "Graphene") {
     this.context = context;
     this.session = session;
+    this.title = title;
     session.onDidChange(() => this.push());
   }
 
   /** The panel, made or revealed; with ``select`` the page selects that task. */
   show(select?: string) {
     if (!this.panel) {
-      this.panel = vscode.window.createWebviewPanel("graphene.graphPanel", "Graphene", vscode.ViewColumn.Active, {
+      const panel = vscode.window.createWebviewPanel("graphene.graphPanel", this.title, vscode.ViewColumn.Active, {
         enableScripts: true, retainContextWhenHidden: true,
         localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, "dist"), vscode.Uri.joinPath(this.context.extensionUri, "media")],
       });
-      this.panel.iconPath = vscode.Uri.joinPath(this.context.extensionUri, "media", "graphene.svg");
-      this.attach(this.panel.webview);
-      this.panel.onDidDispose(() => { this.views.delete(this.panel!.webview); this.panel = null; });
+      this.panel = panel;
+      panel.iconPath = vscode.Uri.joinPath(this.context.extensionUri, "media", "graphene.svg");
+      const webview = panel.webview; // held now: a disposed panel throws on `webview`
+      this.attach(webview);
+      panel.onDidDispose(() => {
+        this.views.delete(webview);
+        if (this.panel === panel) this.panel = null;
+        this.closed.fire();
+      });
     } else {
       this.panel.reveal();
     }
@@ -50,6 +61,10 @@ export class GraphHost implements vscode.WebviewViewProvider {
   /** Whether a graph is on screen: the poll runs only then. */
   get open(): boolean {
     return Boolean(this.panel?.visible) || [...this.sidebars].some((v) => v.visible);
+  }
+
+  dispose() {
+    this.closed.dispose();
   }
 
   private attach(webview: vscode.Webview) {
@@ -116,7 +131,7 @@ export class GraphHost implements vscode.WebviewViewProvider {
   </header>
   <main>
     <div id="canvas">
-      <svg id="svg" xmlns="http://www.w3.org/2000/svg"><g id="bands"></g><g id="edges"></g><g id="tasks"></g><g id="goalg" class="goal"></g><path id="wire" class="wire"></path></svg>
+      <svg id="svg" xmlns="http://www.w3.org/2000/svg"><g id="view"><g id="bands"></g><g id="edges"></g><g id="tasks"></g><g id="goalg" class="goal"></g><path id="wire" class="wire"></path></g></svg>
       <div id="lanes" hidden></div>
       <div id="notice" hidden></div>
       <button id="to-goal" class="quiet" hidden></button>
