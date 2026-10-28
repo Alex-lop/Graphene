@@ -2,7 +2,16 @@
 
 ## 0.9.0 (unreleased)
 
-Beside Graphene 0.9.0: the editor night (26 to 27 October 2026).
+Beside Graphene 0.9.0: the editor night (26 to 27 October 2026), then Home (28 October).
+
+- Home leads the side bar and does everything with a click: set the folder up (one pick: Claude Code, Codex or
+  Nemotron), say what you want and Plan it, read the suggested tasks (what each is for, the files it may change,
+  what proves it), Start, then review each finished task: Open changes, Approve, or Send back… with a note.
+- Approving a task whose changes you never opened asks first; Set Up turns on `review: every` (each finished task
+  waits for your approval) unless you untick it; two attempts that both passed are compared and one kept first.
+- Seven commands in the palette (Home, Show Graph, Watch the Demo, Stop All Agents, Set Up This Folder, Install
+  Graphene…, Set API Key…); the rest, and the Needs You, Agents, Plan and Rounds views, with `graphene.advanced`.
+- Plain words on screen: suggested, working, to review, needs help, attempt, approve, send back, limits.
 
 - Needs You, first in the sidebar: questions, proposals, hand-backs, sign-offs and auto mode waiting, each with
   its move inline; nothing sends you to the cockpit.
