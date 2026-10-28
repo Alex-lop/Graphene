@@ -20,7 +20,7 @@ export function icon(state: string): vscode.ThemeIcon {
 export function description(t: Task): string {
   const parts: string[] = [];
   if (t.model) parts.push(t.model);
-  if (t.forks.length) parts.push(`${t.forks.length} forks${t.kept ? ` · kept ${t.kept.letter}` : ""}`);
+  if (t.forks.length) parts.push(`${t.forks.length} attempts${t.kept ? ` · kept ${t.kept.letter}` : ""}`);
   const spent = usd(t.usd);
   if (spent) parts.push(spent);
   if (!parts.length && t.state !== "running") parts.push(t.state);

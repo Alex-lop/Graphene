@@ -4,7 +4,7 @@
 // pane whose buttons ask the extension to run graphene. No network, no library: SVG and DOM from the state.
 // Boxes are keyed by task id and updated in place, so a snapshot that changed nothing moves nothing.
 import { layout, modeFor, step, type Box, type Edge, type Layout } from "../layout.ts";
-import { autoLine, usd, type State } from "../state.ts";
+import { autoLine, SAY, usd, type State } from "../state.ts";
 import { ICONS } from "./icons.ts";
 import { actsFor, cornerWord, cut, done, FIRST_HINT, fitWidth, forkActs, forkRow, forkWords, HEADER_ACTS, headerFor, KEYS, linkHint, paneKey, questionOn,
          sub, tabOrder, topLine, zoomK, type Act, type Button, type StateX, type TaskX } from "./words.ts";
@@ -158,8 +158,8 @@ function header(s: StateX) {
   $("auto").textContent = h.auto;
   $("auto").hidden = !h.auto;
   const run = $("b-run"); // while a run goes, the button that started it stops it
-  run.replaceChildren(icon(s.run.going ? "debug-stop" : "play"), document.createTextNode(s.run.going ? "Stop" : "Run ready"));
-  run.title = s.run.going ? "graphene run --stop: what runs goes back to the plan" : "graphene run --parallel 4";
+  run.replaceChildren(icon(s.run.going ? "debug-stop" : "play"), document.createTextNode(s.run.going ? "Stop" : "Run"));
+  run.title = s.run.going ? "stop every agent: their tasks go back to the plan" : "start an agent on every task that is ready";
   for (const [id] of HEADER_ACTS) $(id).hidden = replaying(); // a replay is watched: nothing acts on a plan, or outside it
   const toggle = $("b-view");
   const v = view();
@@ -370,7 +370,8 @@ function drawLane(row: HTMLElement, t: TaskX, s: StateX) {
   const corner = cornerWord(t);
   if (corner) div(corner === "◆" ? "l-mark" : "l-model", corner, head);
   div("l-sub", line, main);
-  if (t.parent) div("l-band", goalTitle(s, t.parent), main);
+  const band = t.parent ? goalTitle(s, t.parent) : "";
+  if (band && band !== s.goal) div("l-band", band, main).title = band; // auto's root sub-goal is the goal itself: said once, at the foot
   if (t.forks.length) {
     const forks = div("l-forks", undefined, main);
     for (const f of t.forks) {
@@ -542,7 +543,7 @@ function pane() {
   });
   const head = div("d-head", undefined, pane);
   div(`d-title ${cls(t.state)}`, t.title, head);
-  div("d-id", `${t.id} · ${t.state}${t.needs_you ? " · needs you" : ""}`, head);
+  div("d-id", `${t.id} · ${SAY[t.state]}${t.needs_you ? " · needs you" : ""}`, head);
   const close = document.createElement("button");
   close.className = "close";
   close.appendChild(icon("close"));
@@ -575,14 +576,14 @@ function pane() {
       opts.appendChild(own);
     }
   }
-  row("goal", t.full, body);
+  row("what for", t.full, body);
   row("under", t.parent ? goalTitle(s, t.parent) : "", body);
-  row("scope", t.scope.join("  "), body);
-  row("check", t.check ?? "", body);
+  row("may change", t.scope.join("  "), body);
+  row("done when", t.check ? `${t.check} passes` : "", body);
   if (t.hollow) div("hollow", "its check passed before the work too: it proves nothing new", body); // as the cockpit says
   if (t.needs.length) { // what it waits on, each with the × that stops it waiting
     const r = div("row", undefined, body);
-    div("k", "needs", r);
+    div("k", "after", r);
     const v = div("v", undefined, r);
     for (const n of t.needs) {
       const need = div("need", s.tasks.find((x) => x.id === n)?.title ?? n, v);
@@ -599,12 +600,12 @@ function pane() {
   row("agent", t.agent ? `agent ${t.agent}${t.model ? ` · ${t.model}` : ""}` : "", body);
   row("tries", t.attempts !== undefined && t.attempts > 1 ? String(t.attempts) : "", body);
   row("cost", usd(t.usd), body);
-  row("idle", t.idle !== null && t.idle > 8 ? `${Math.round(t.idle)} s quiet` : "", body);
+  row("quiet", t.idle !== null && t.idle > 8 ? `${Math.round(t.idle)} s` : "", body);
   row("note", t.note, body);
-  row("outside", t.outside.join("  "), body);
+  row("wanted", t.outside.join("  "), body);
   if (t.forks.length) {
     const r = div("row", undefined, body);
-    div("k", "forks", r);
+    div("k", "attempts", r);
     const v = div("v", undefined, r);
     for (const f of t.forks) {
       const kept = t.kept?.letter === f.letter;
@@ -827,10 +828,8 @@ function wire() {
     b.addEventListener("click", on);
     actions.appendChild(b);
   };
-  top("b-add", "Add step…", "add", "a step in a sentence", () => api.postMessage({ type: "act", act: "add-under", id: "" }));
-  top("b-run", "Run ready", "play", "graphene run --parallel 4", () => api.postMessage({ type: "act", act: state?.run.going ? "stop" : "run", id: "" }));
-  top("b-auto", "Auto…", "rocket", "graphene auto", () => api.postMessage({ type: "act", act: "auto", id: "" }));
-  top("b-cockpit", "Cockpit", "terminal-cmd","graphene watch, in a terminal", () => api.postMessage({ type: "act", act: "cockpit", id: "" }));
+  top("b-add", "Add task…", "add", "a task in a sentence: the planner fills in its files and its check", () => api.postMessage({ type: "act", act: "add-under", id: "" }));
+  top("b-run", "Run", "play", "start an agent on every task that is ready", () => api.postMessage({ type: "act", act: state?.run.going ? "stop" : "run", id: "" }));
   top("b-view", "Lanes", "list-flat", "graph or lanes (v)", () => { remember({ view: view() === "lanes" ? "graph" : "lanes" }); fitted = false; render(); });
   top("b-help", "", "question", "every key (?)", () => help($("help").hidden));
   $("b-help").setAttribute("aria-label", "keys");

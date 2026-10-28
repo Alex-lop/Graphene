@@ -27,7 +27,7 @@ const tasks = parseState(JSON.stringify({
 test("the Explorer marks each live task's files: a running one with its agent's number, the rest by state", () => {
   const api = owner("src/api/routes.ts", tasks);
   assert.equal(api?.badge, "3");
-  assert.equal(api?.tooltip, "the API · agent 3 · Nano · 3 forks racing: writing these files now");
+  assert.equal(api?.tooltip, "the API · agent 3 · Nano · 3 attempts racing: writing these files now");
   assert.equal(owner("src/api", tasks)?.badge, "3"); // the directory it works in
   assert.equal(owner("src/api/vendor/lib.js", tasks), null); // kept out of its scope
   assert.deepEqual(owner("src/web/page.tsx", tasks), { badge: "·", state: "ready",

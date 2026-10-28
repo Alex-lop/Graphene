@@ -5,6 +5,7 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import * as C from "./commands.ts";
 import { GraphHost } from "./graph.ts";
+import { HomeHost } from "./home.ts";
 import { which } from "./find.ts";
 import { owner } from "./owners.ts";
 import { autoNews, mdText, summary, type Task } from "./state.ts";
@@ -57,12 +58,14 @@ export function activate(context: vscode.ExtensionContext) {
   };
   context.subscriptions.push(roundsView, roundsView.onDidChangeVisibility(() => void readRounds()));
   const graph = new GraphHost(context, session);
+  const home = new HomeHost(context, session);
   const bar = vscode.window.createStatusBarItem("graphene", vscode.StatusBarAlignment.Left, 50);
   bar.name = "Graphene";
-  bar.command = "graphene.showGraph";
+  bar.command = "graphene.home";
   bar.text = "◆ Graphene";
   bar.show();
-  context.subscriptions.push(treeView, bar, vscode.window.registerWebviewViewProvider("graphene.graph", graph, { webviewOptions: { retainContextWhenHidden: true } }));
+  context.subscriptions.push(treeView, bar, vscode.window.registerWebviewViewProvider("graphene.graph", graph, { webviewOptions: { retainContextWhenHidden: true } }),
+                             vscode.window.registerWebviewViewProvider("graphene.home", home, { webviewOptions: { retainContextWhenHidden: true } }));
 
   // the Explorer marks each file a live task owns, a running one's with its agent's number: whose is whose
   const owners = new vscode.EventEmitter<undefined>();
@@ -93,11 +96,10 @@ export function activate(context: vscode.ExtensionContext) {
     if (said) {
       const show = said.kind === "waits" ? vscode.window.showWarningMessage : vscode.window.showInformationMessage;
       const key = keyTrouble(said.text); // it waits on a key, refused or missing: set it from here
-      void show(C.plain(said.text), ...(key.key ? ["Set Key", "Needs You"] : said.kind === "waits" ? ["Needs You", "Show Plan Graph"] : ["Show Plan Graph", "Rounds"])).then((pick) => {
-        if (pick === "Set Key") void vscode.commands.executeCommand("graphene.setKey", key.endpoint ?? undefined);
-        if (pick === "Needs You") void vscode.commands.executeCommand("graphene.needs.focus");
-        if (pick === "Show Plan Graph") void vscode.commands.executeCommand("graphene.showGraph");
-        if (pick === "Rounds") void vscode.commands.executeCommand("graphene.rounds.focus");
+      void show(C.plain(said.text), ...(key.key ? ["Set API Key", "Open Home"] : said.kind === "waits" ? ["Open Home", "Show Graph"] : ["Show Graph"])).then((pick) => {
+        if (pick === "Set API Key") void vscode.commands.executeCommand("graphene.setKey", key.endpoint ?? undefined);
+        if (pick === "Open Home") void vscode.commands.executeCommand("graphene.home");
+        if (pick === "Show Graph") void vscode.commands.executeCommand("graphene.showGraph");
       });
     }
     if (s && (session.status.kind === "ok" || session.status.kind === "empty")) {
@@ -109,7 +111,7 @@ export function activate(context: vscode.ExtensionContext) {
       for (const line of s.news.slice(-4)) md.appendMarkdown(`- ${mdText(line)}\n`);
       md.appendMarkdown(`\n${mdText(which(session.file || session.path, session.version))}${session.found ? ", off this editor's PATH" : ""}\n\n`);
       md.appendMarkdown(session.stream.live ? "live: `graphene state --json --watch`\n\n" : "");
-      md.appendMarkdown("Graphene: Show Plan Graph");
+      md.appendMarkdown("Click for Graphene's Home");
       bar.tooltip = md;
     } else {
       const k = session.status.kind;
@@ -132,7 +134,7 @@ export function activate(context: vscode.ExtensionContext) {
   let poll: NodeJS.Timeout | undefined;
   const arm = () => {
     clearInterval(poll);
-    poll = setInterval(() => { if ((treeView.visible || graph.open) && !session.stream.live) void session.refresh(); }, session.pollMs);
+    poll = setInterval(() => { if ((treeView.visible || graph.open || home.open) && !session.stream.live) void session.refresh(); }, session.pollMs);
   };
   arm();
   context.subscriptions.push(session, { dispose: () => { clearInterval(poll); clearTimeout(due); } });
@@ -157,6 +159,7 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(vscode.commands.registerCommand(`graphene.${name}`, (arg?: Arg) => fn(arg)));
 
   cmd("refresh", () => session.refresh());
+  cmd("home", () => vscode.commands.executeCommand("graphene.home.focus"));
   cmd("showGraph", (arg) => graph.show(taskOf(arg)?.id));
   cmd("openCockpit", () => session.terminal("graphene watch", C.watch()));
   cmd("runReady", () => session.terminal("graphene run", C.runReady()));
@@ -185,11 +188,11 @@ export function activate(context: vscode.ExtensionContext) {
       { key: "budget", label: "Budget", description: e?.budget != null ? `$${e.budget}` : "unset", detail: "dollars every run may spend while auto is on" },
       { key: "tasks", label: "Tasks", description: now(e?.tasks, "12"), detail: "how many tasks the envelope may accept for you, all told" },
       { key: "rounds", label: "Rounds", description: now(e?.rounds, "2"), detail: "fix rounds after the goal's check fails" },
-      { key: "forks", label: "Forks", description: now(e?.forks, "1"), detail: "agents at once on every task; its check keeps one" },
+      { key: "forks", label: "Attempts", description: now(e?.forks, "1"), detail: "agents at once on every task; its check keeps one" },
       { key: "checks", label: "Checks", description: e?.checks?.length ? e.checks.join(", ") : "any one plain command",
         detail: "the commands the envelope runs as a task's check, comma-separated" },
     ];
-    const chosen = await vscode.window.showQuickPick(items, { placeHolder: "the envelope: what Graphene may do without asking you" });
+    const chosen = await vscode.window.showQuickPick(items, { placeHolder: "the limits: what Graphene may do without asking you" });
     if (!chosen) return;
     const value = chosen.key === "auto"
       ? (await vscode.window.showQuickPick(["on", "off"], { placeHolder: "auto" }))
