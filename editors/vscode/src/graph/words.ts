@@ -1,7 +1,7 @@
 // The graph's words, pure: what a box and a fork chip say, what the header says of a replay, which acts a
 // task offers, and the keys. No DOM here, so `node --test` reads them.
 import type { Layout } from "../layout.ts";
-import { autoLine, usd, type Fork, type Kept, type Question, type State, type Task } from "../state.ts";
+import { autoLine, headline, SAY, usd, type Fork, type Kept, type Question, type State, type Task } from "../state.ts";
 
 /** What the snapshot gains tonight (dev/process/editor/CONTRACT.md): read when present, nothing when not. */
 export type ForkX = Fork & { attempts?: number; idle?: number | null };
@@ -19,8 +19,9 @@ export type Act = "add-after" | "add-under" | "link" | "unlink" | "edit" | "drop
 export const CHANGES: readonly Act[] = ["add-after", "add-under", "link", "unlink", "edit", "drop", "accept", "tell", "run", "stop", "auto",
                                         "cockpit", "openDiff", "compareForks", "pickFork", "signOff", "answer", "handBack"];
 
-/** The header's act buttons, by their element id: each one is hidden in a replay. */
-export const HEADER_ACTS: readonly [string, Act][] = [["b-add", "add-under"], ["b-run", "run"], ["b-auto", "auto"], ["b-cockpit", "cockpit"]];
+/** The header's act buttons, by their element id: each one is hidden in a replay. Auto and the cockpit are
+ *  Home's and the palette's (with graphene.advanced), not the graph's. */
+export const HEADER_ACTS: readonly [string, Act][] = [["b-add", "add-under"], ["b-run", "run"]];
 
 export const cut = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1).trimEnd() + "…" : s);
 
@@ -59,15 +60,14 @@ export function cornerWord(t: TaskX): string {
 const quiet = (idle: number | null | undefined) => (idle !== null && idle !== undefined && idle > 8 ? `${Math.round(idle)} s quiet` : "");
 const tries = (n: number | undefined) => (n !== undefined && n > 1 ? `${n} tries` : "");
 
-/** The small line under a box's title: the state first, then what matters for it. A task that came back
- *  says why on the box. */
+/** The small line under a box's title: the state first, in plain words, then what matters for it. A task that
+ *  needs help says why on the box. */
 export function sub(t: TaskX, max = 25): string {
   const parts: string[] = [];
-  if (t.state === "running") parts.push(`agent ${t.agent || "?"}`, t.forks.length ? `${t.forks.length} forks` : "running");
-  else parts.push(t.state);
-  if (t.state === "came back" && t.why) return cut(fitWords([`came back · ${t.why}`, tries(t.attempts), usd(t.usd)], max), max); // the reason, cut, not dropped
+  if (t.state === "running") parts.push(`agent ${t.agent || "?"}`, t.forks.length ? `${t.forks.length} attempts` : SAY.running);
+  else parts.push(SAY[t.state]);
+  if (t.state === "came back" && t.why) return cut(fitWords([`${SAY["came back"]} · ${t.why}`, tries(t.attempts), usd(t.usd)], max), max); // the reason, cut, not dropped
   if (t.state === "came back" && t.outside.length) parts.push(`${t.outside.length} outside`);
-  if (t.state === "review") parts.push("sign off");
   parts.push(tries(t.attempts), usd(t.usd), t.state === "running" ? quiet(t.idle) : "");
   return fitWords(parts, max);
 }
@@ -100,19 +100,17 @@ export function replayLine(r: Replay | undefined): string {
 }
 
 /** The header's first words, when the store is not a real run's: a replay says what it is; a live race
- *  against the scripted stand-in says so. Nothing for a run whose model was real, or an older snapshot. */
+ *  against the scripted stand-in says it is practice. Nothing for a run whose model was real, or an older snapshot. */
 export function topLine(s: Pick<StateX, "replay" | "stand_in">): string {
-  return replayLine(s.replay) || (s.stand_in ? "against the scripted stand-in" : "");
+  return replayLine(s.replay) || (s.stand_in ? "practice run · a scripted stand-in, no real AI" : "");
 }
 
-/** The counts under the goal: `run going · 2 running · 2 need you · 2 of 7 done · width 3 · $0.42`. */
+/** The counts under the goal: `2 working · 2 need you · 2 of 7 done · $0.42`. */
 export function counts(s: State): string {
   const sb = s.scoreboard;
-  const parts = [`${sb.running} running`, `${sb.need_you} need${sb.need_you === 1 ? "s" : ""} you`, `${sb.proven} of ${sb.total} done`];
-  if (s.width) parts.push(`width ${s.width}`);
+  const parts = [`${sb.running} working`, `${sb.need_you} need${sb.need_you === 1 ? "s" : ""} you`, `${sb.proven} of ${sb.total} done`];
   const spent = usd(s.spent);
   if (spent) parts.push(spent);
-  if (s.run.going) parts.unshift("run going");
   return parts.join(" · ");
 }
 
@@ -120,7 +118,7 @@ export function counts(s: State): string {
  *  shows in whatever height the view gets: the counts and the auto line move to the goal's hover and to
  *  the footer, the live line first. */
 export function headerFor(s: StateX, narrow: boolean): { goal: string; hover: string; counts: string; auto: string; footer: string } {
-  const goal = s.goal || "no goal yet";
+  const goal = headline(s) || (s.tasks.length ? "your plan" : "no goal yet"); // an ask sets no goal: what was asked
   const c = counts(s), a = autoLine(s);
   if (!narrow) return { goal, hover: "", counts: c, auto: a, footer: "" };
   return { goal, hover: [goal, c, a].filter(Boolean).join("\n"), counts: "", auto: "", footer: a || c };
@@ -145,26 +143,26 @@ export function actsFor(t: TaskX, replay: boolean): Button[] {
   const out: Button[] = [];
   if (replay) return out;
   const hasChanges = t.changed.length > 0 || ["running", "review", "done", "came back"].includes(t.state);
-  if (t.state === "review") out.push({ label: "Sign off", act: "signOff", title: "it lands: graphene node signoff", icon: "check", main: true });
+  if (t.state === "review") out.push({ label: "Approve", act: "signOff", title: "it lands in your repository: graphene node signoff", icon: "check", main: true });
   if (t.state === "proposed") out.push({ label: "Accept", act: "accept", title: "graphene plan accept", icon: "check", main: true });
-  if (t.state === "came back") out.push({ label: "Take it up", act: "handBack", title: "widen it, reopen its owner, or try again", icon: "debug-step-back", main: true });
+  if (t.state === "came back") out.push({ label: "Help it…", act: "handBack", title: "allow what it needs, add a task for it, or try again", icon: "debug-step-back", main: true });
   if (hasChanges) out.push({ label: "Open changes", act: "openDiff", title: "its changes so far, in the diff editor", icon: "diff" });
-  if (t.forks.length >= 2) out.push({ label: "Compare forks", act: "compareForks", title: "the forks side by side", icon: "split-horizontal" });
-  out.push({ label: "Add step after", act: "add-after", title: "a new task that waits on this one", icon: "add" });
-  out.push({ label: "Add step under", act: "add-under", title: "a new task under the same sub-goal", icon: "add" });
+  if (t.forks.length >= 2) out.push({ label: "Compare attempts", act: "compareForks", title: "the attempts side by side", icon: "split-horizontal" });
+  out.push({ label: "Add task after", act: "add-after", title: "a new task that waits on this one", icon: "add" });
+  out.push({ label: "Add task beside", act: "add-under", title: "a new task under the same sub-goal", icon: "add" });
   out.push({ label: "Link to…", act: "link", title: "then click the task that waits on this one", icon: "link" });
-  if (t.state !== "done") out.push({ label: "Edit", act: "edit", title: "title, scope or check", icon: "edit" });
-  if (["proposed", "ready", "waiting"].includes(t.state)) out.push({ label: "Drop", act: "drop", title: "graphene node drop", icon: "trash" });
-  if (["running", "ready", "waiting", "came back"].includes(t.state)) out.push({ label: "Tell", act: "tell", title: "a line for the agent on it", icon: "comment" });
+  if (t.state !== "done") out.push({ label: "Edit", act: "edit", title: "its title, the files it may change, or its check", icon: "edit" });
+  if (["proposed", "ready", "waiting"].includes(t.state)) out.push({ label: "Remove", act: "drop", title: "graphene node drop", icon: "trash" });
+  if (["running", "ready", "waiting", "came back"].includes(t.state)) out.push({ label: "Message agent", act: "tell", title: "a line the agent on it reads with its next step", icon: "comment" });
   return out;
 }
 
-/** What a fork's row offers: its changes, and Keep while the task is in review. Nothing in a replay. */
+/** What an attempt's row offers: its changes, and Keep while the task is to review. Nothing in a replay. */
 export function forkActs(t: TaskX, f: Fork, replay: boolean): Button[] {
   if (replay) return [];
-  const out: Button[] = [{ label: "Changes", act: "openDiff", title: `fork ${f.letter}'s changes, in the diff editor`, icon: "diff", fork: f.letter }];
+  const out: Button[] = [{ label: "Changes", act: "openDiff", title: `attempt ${f.letter}'s changes, in the diff editor`, icon: "diff", fork: f.letter }];
   if (t.state === "review" && t.forks.length >= 2) {
-    out.push({ label: "Keep", act: "pickFork", title: `keep fork ${f.letter}: graphene node pick`, icon: "pass", fork: f.letter });
+    out.push({ label: "Keep", act: "pickFork", title: `keep attempt ${f.letter}: graphene node pick`, icon: "pass", fork: f.letter });
   }
   return out;
 }

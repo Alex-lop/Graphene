@@ -1,8 +1,10 @@
 **
 !dist/extension.js
 !dist/graph.js
+!dist/home.js
 !media/graphene.svg
 !media/graph.css
+!media/home.css
 !media/graph.png
 !media/icon.png
 !package.json

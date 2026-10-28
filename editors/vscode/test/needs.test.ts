@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { answerPicks, answerWith, answerWords, count, DROPPABLE, keyTrouble, needs, offerOn, offerWords, pickOption, takeDefault, tryAgain } from "../src/needs.ts";
+import { answerPicks, answerWith, answerWords, DROPPABLE, keyTrouble, needs, offerOn, offerWords, pickOption, takeDefault, tryAgain } from "../src/needs.ts";
 import { parseState } from "../src/state.ts";
 
 const fixture = (name: string) => readFileSync(new URL(`./fixtures/${name}.json`, import.meta.url), "utf8");
@@ -28,7 +28,6 @@ test("what needs you comes in the cockpit's order: auto waiting, questions, then
   const list = needs(mixed);
   assert.deepEqual(list.map((n) => n.kind), ["auto", "question", "sign-off", "hand-back", "yours", "proposal", "stopped"]);
   assert.deepEqual(list.map((n) => ("t" in n ? n.t.id : "q" in n ? n.q.id : "auto")), ["auto", "port", "api", "db", "mine", "ui", "cli"]);
-  assert.equal(count(list), "7 need you");
   // a row's element reaches its menu commands as it is (Drop, Accept, Tell, Open Changes): it carries the id
   // every command reads from its argument, so the move is the row's own, not a picker of every task
   assert.deepEqual(list.map((n) => ("id" in n ? n.id : null)), [null, "port", "api", "db", "mine", "ui", "cli"]);
@@ -43,7 +42,6 @@ test("a plan with nothing for you lists nothing, and a running plan lists only w
   const auto = needs(parseState(fixture("auto")));
   assert.deepEqual(auto.map((n) => n.kind), ["auto", "question", "proposal"]);
   assert.ok(auto[0]!.kind === "auto" && !auto[0]!.key); // the goal's check is red: no key to set
-  assert.equal(count(auto.slice(0, 1)), "1 needs you");
 });
 
 test("a question's moves are the board's commands: take its default, pick an option by number, answer in words", () => {

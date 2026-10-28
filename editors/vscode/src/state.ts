@@ -4,6 +4,12 @@
 export type Word = "running" | "review" | "came back" | "ready" | "waiting" | "proposed" | "done" | "yours";
 export const WORDS: readonly Word[] = ["running", "review", "came back", "ready", "waiting", "proposed", "done", "yours"];
 
+/** A state as the editor says it to a person: plain words. The CLI and the cockpit keep their own. */
+export const SAY: Record<Word, string> = {
+  running: "working", review: "to review", "came back": "needs help", ready: "ready", waiting: "waiting",
+  proposed: "suggested", done: "done", yours: "yours",
+};
+
 export interface Fork {
   letter: string;
   state: string;
@@ -223,10 +229,20 @@ export function parseState(text: string): State {
   };
 }
 
-/** `$0.42`; cents under a cent keep their digits (`$0.004`), nothing at all for no spend. */
+/** `$0.42`; cents under a cent keep their digits (`$0.004`), less than a tenth of a cent is `<$0.001`, not
+ *  `$0.000`; nothing at all for no spend. */
 export function usd(n: number | null | undefined): string {
   if (n === null || n === undefined || !(n > 0)) return "";
+  if (n < 0.001) return "<$0.001";
   return n >= 0.01 ? `$${n.toFixed(2)}` : `$${n.toFixed(3)}`;
+}
+
+/** What the plan is for: its goal, else what the person last asked for (`graphene ask` sets no goal); "" when
+ *  the news no longer says. */
+export function headline(s: Pick<State, "goal" | "news">): string {
+  if (s.goal) return s.goal;
+  const asked = [...s.news].reverse().find((l) => l.startsWith("you asked: "));
+  return asked ? asked.slice("you asked: ".length) : "";
 }
 
 /** The plan's words for a Markdown hover, as text: an agent writes some of them (a title it proposed, a command
@@ -236,12 +252,12 @@ export function mdText(s: string): string {
   return s.replace(/\s+/g, " ").replace(/[\\`*_{}[\]()#+\-.!|<>~$&:]/g, "\\$&");
 }
 
-/** The status bar's words: `2 running · 1 needs you · $0.42`, `3 of 6 done` when nothing runs; while auto is on,
+/** The status bar's words: `2 working · 1 needs you · $0.42`, `3 of 6 done` when nothing runs; while auto is on,
  *  its round first (`auto round 2 · …`), or that it waits for you, or is done. */
 export function summary(s: State): string {
   const sb = s.scoreboard;
   const parts: string[] = [];
-  if (sb.running) parts.push(`${sb.running} running`);
+  if (sb.running) parts.push(`${sb.running} working`);
   if (sb.need_you) parts.push(sb.need_you === 1 ? "1 needs you" : `${sb.need_you} need you`);
   if (!parts.length) parts.push(sb.total ? `${sb.proven} of ${sb.total} done` : "no plan yet");
   const spent = usd(s.spent);

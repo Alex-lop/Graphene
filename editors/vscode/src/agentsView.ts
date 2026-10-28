@@ -1,5 +1,5 @@
-// The Agents view: a row a running agent (agents.ts), the seconds quiet ticking on screen between snapshots
-// with no read, a badge with the count; a click opens its changes so far.
+// The Agents view (with graphene.advanced; Home's Working now shows them too): a row a running agent (agents.ts),
+// the seconds quiet ticking on screen between snapshots with no read; a click opens its changes so far.
 import * as vscode from "vscode";
 import { agentRows, ago, description, quiet, type AgentRow } from "./agents.ts";
 import type { Session, UI } from "./session.ts";
@@ -49,10 +49,8 @@ export class AgentsTree implements vscode.TreeDataProvider<AgentRow> {
 export function register(context: vscode.ExtensionContext, session: Session, _ui: UI) {
   const tree = new AgentsTree();
   const view = vscode.window.createTreeView("graphene.agents", { treeDataProvider: tree });
-  context.subscriptions.push(view, session.onDidChange(() => {
-    tree.set(session.state);
-    view.badge = tree.rows.length ? { value: tree.rows.length, tooltip: `${tree.rows.length} running` } : undefined;
-  }));
+  // no badge: the container's badge is Home's count of what needs the person, and VS Code would add this one to it
+  context.subscriptions.push(view, session.onDidChange(() => tree.set(session.state)));
   const clock = setInterval(() => { if (view.visible) tree.tick(); }, 1000);
   context.subscriptions.push({ dispose: () => clearInterval(clock) });
 }

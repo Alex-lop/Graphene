@@ -81,15 +81,18 @@ jobs:
         env:  # test.mjs: the newest .vsix in editors/vscode, the checkout's .venv/bin/graphene, a VS Code it downloads
           E2E_TMP: ${{ runner.temp }}/e2e  # its profiles and, after a red run, failed.png
           E2E_SHOT: ${{ runner.temp }}/e2e-after.png  # what it drew, after a green one
+          E2E_SHOTS: ${{ runner.temp }}/e2e-home  # home.mjs: a screenshot of each step it clicked
         run: |
           mkdir -p "$E2E_TMP"
           npm ci
           xvfb-run -a npm test
+          xvfb-run -a npm run home
       - uses: actions/upload-artifact@v4  # what the harness saw, for a look after either colour of run
         if: always()
         with:
           name: e2e-output
           path: |
             ${{ runner.temp }}/e2e-after.png
+            ${{ runner.temp }}/e2e-home/*.png
             ${{ runner.temp }}/e2e/**/failed.png
           if-no-files-found: ignore

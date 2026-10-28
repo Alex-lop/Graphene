@@ -1807,6 +1807,31 @@ the widen and the sibling offers stay unjudged, as 171 had them.
 209. **The reference's cap is 5,300 words**, for the commands an editor reads and writes through.
 210. **The next version is 0.9.0**: new views in the editor, and new flags in the CLI.
 
+## Decisions taken on 28 October (Home)
+
+Alex, after the editor night: "give the user something that can simply click on and make the agents do", the
+words were too many and had to be typed right, and the UI should help a person understand what the agents did,
+"since that's what we're trying to challenge with some SWEs not even reviewing their PRs or code".
+
+211. **Home leads the side bar, and everything is a click.** Set Up, Plan it, Start, Open changes, Approve, Send
+     back. The one thing a person types is what they want.
+212. **Seven commands in the palette**: Home, Show Graph, Watch the Demo, Stop All Agents, Set Up This Folder,
+     Install Graphene…, Set API Key…. The other 22, and the Needs You, Agents, Plan and Rounds views, show with
+     `graphene.advanced`. Nothing was deleted: each is a button where it is needed.
+213. **Plain words on the editor's screens; the CLI keeps its own.** Suggested (proposed), working (running), to
+     review (review), needs help (came back), attempt (fork), approve (sign off), send back (reopen), limits
+     (envelope). The extension's README maps them.
+214. **Set Up from Home turns `review: every` on** unless the person unticks it: each finished task waits for
+     their approval before it lands. *Why:* unread agent work is what Graphene is for; review is the default,
+     and landing unseen is the opt-out.
+215. **Approve asks first when the task's changes were never opened** in this window: Open Changes, Approve
+     Anyway, Cancel. One modal; a person who looked is never asked.
+216. **Set Up is one pick for both roles.** The same AI plans and does the work; two different ones are
+     `graphene init --planner X --executor Y`, or Set Up This Folder on a folder that already has a plan.
+217. **Plan it is `graphene ask`, not `graphene auto --plan`.** An ask proposes and changes no setting; auto
+     turns `auto: on`, after which an agent's proposal that fits is accepted at once. Auto stays in the palette
+     with `graphene.advanced`.
+
 ## What does not bind (say it wherever you sell it)
 
 - A shell command can write a file in a way nothing reads beforehand (a script that opens files

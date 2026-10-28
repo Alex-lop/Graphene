@@ -1,34 +1,41 @@
 # Graphene for VS Code
 
-Watch and steer a team of coding agents from your editor. Graphene holds each agent to one task, one set of
-files and one check. This extension shows what needs you, the agents as they work, and the plan as a graph.
+Say what you want, read the plan, start the agents, and approve what they did. Graphene runs each agent on one
+task, in its own copy of your repository, held to the files that task may change. A task lands only when its
+check passes and, if you keep the box ticked at setup, when you approve it.
 
-![Graphene for VS Code during a race against the scripted stand-in, in real VS Code: the editor tab draws three tasks, each fanned out into three Nano forks, running, passed or given up, with their lines and dollars, flowing into the goal; the auto line says round 1 of 3, running, $0.007 of $2.00; in the side bar, Needs You holds a task whose agent was stopped, the Graph draws the same race as lanes, and Agents lists the three agents at work](media/graph.png)
+![Graphene for VS Code during a race against the scripted stand-in, in real VS Code: Home, in the side bar, shows three agents working, each with its model, what it is doing now, its cost and its attempts, and a Stop all button; the editor tab draws the same race, two tasks each fanned out into three Nano attempts, all running, flowing into the goal; the auto line says round 1 of 3, running, $0.007 of $2.00](media/graph.png)
 
 It is a thin client over the `graphene` command. Everything it shows is `graphene state --json`, streamed with
 `--watch`, and everything it changes is one `graphene` command, the same ones the terminal cockpit runs.
 
-## What you can do
+## Home: everything with a click
 
-- **See what needs you first.** Needs You leads the side bar: a question, a proposal, a task that came back, a
-  sign-off, your own task, auto mode waiting. Each row has its move inline. Answer a question from its options
-  or in your own words, accept or drop a proposal, take up a hand-back, sign off from the diff, set a missing
-  key. Nothing sends you to the terminal.
-- **Watch the agents.** Agents lists every running agent: its number, task, model and fork, what it is editing
-  now, seconds quiet and dollars. Click one for its changes so far.
-- **Open any change in the diff editor.** A task or a fork opens against its base in VS Code's own diff editor.
-  A race's forks open side by side, and Keep This Fork and Sign Off sit in the diff's title.
-- **Read the race in the graph.** Tasks flow left to right into your goal. A forked task fans out into its forks
-  with their lines, dollars and seconds quiet, and the kept one says why it won. A task that came back is red,
-  with why. Narrow, the side bar draws the plan as lanes, wave by wave. Nothing is drawn under 11 px.
-- **Edit the plan as text.** Edit Plan as Text opens the plan's text form in an editor tab. Saving applies it,
-  all or none, and a refusal shows as a diagnostic on its line.
-- **Add a step in a sentence.** Type one line. The planner proposes the step with its scope, check and needs,
-  and it waits for your accept. Add Step by Hand keeps the four boxes.
-- **See whose file this is.** The Explorer marks each file a task owns, a running task's with its agent's
-  number. Open such a file and the status bar offers a diff with the agent's copy.
-- **Try it with no key.** Graphene: Watch the Demo plays a scripted run in a graph of its own, with no model
-  and no network, and its header says so.
+Click Graphene in the activity bar. Home is the first view, and it shows the one thing to do next.
+
+1. **Set up the folder.** Pick who plans and does the work: Claude Code, Codex or Nemotron. One click. Leave
+   *Ask me to approve each finished task* ticked, and nothing lands without you.
+2. **Say what you want.** Type it, in a sentence or a paragraph, and click **Plan it**. The planner reads the
+   repository and suggests small tasks. Each card says what the task is for, the files it may change, and the
+   check that proves it is done. Remove what you do not want.
+3. **Start.** The tasks are accepted and an agent starts on each. **Working now** shows each agent, what it is
+   editing and what it has spent; **Stop all** stops them.
+4. **Review.** Each finished task shows the files it changed, the check that passed, and the agent's last
+   steps. **Open changes** opens VS Code's diff editor; **Approve** lands it; **Send back…** returns it to an
+   agent with what is wrong. Approve before you have opened the changes, and Home asks first. When two attempts
+   both pass, you compare them and keep one.
+
+A task that needs help says why and offers its fixes as buttons: try again, allow it a file, add a task for what
+it needs. A question from the planner shows its options as buttons, the default first.
+
+The **graph** under Home is the whole plan: which tasks wait on which, the attempts racing, the one kept and
+why. **Show graph** opens it as a tab. The Explorer marks each file a task owns, a working agent's with its
+number.
+
+## Try it with no key
+
+**Graphene: Watch the Demo** plays a recorded run in a graph of its own, with no model and no network, and says
+so at the top.
 
 ## Install
 
@@ -48,54 +55,30 @@ It is a thin client over the `graphene` command. Everything it shows is `graphen
    code --install-extension graphene-0.9.0.vsix      # Cursor: cursor --install-extension graphene-0.9.0.vsix
    ```
 
-3. Open a folder. `Graphene: Set Up This Folder` asks who plans and who does the work, in two picks: Nemotron on
-   Token Factory, Claude Code, Codex, or a command of your own. It runs `graphene init` in a terminal. Then
-   `Graphene: Auto…` takes a goal and a budget, and plans first.
+3. Open a folder and click Graphene in the activity bar. Home sets it up.
 
 The Welcome page's **Get started with Graphene** walks through these, each step a button.
 
-## Editors
+## The words on screen
 
-VS Code 1.95 or later. In Cursor 3.25.6 (VS Code 1.128) the `.vsix` installs and activates, and the harness's
-end-to-end check passes there (`editors/vscode/e2e`). Cursor's agent layout hides the primary side bar; in its
-classic layout the views look as they do in VS Code.
-
-## Views
-
-- **Needs You**: questions, proposals, hand-backs, sign-offs, your own tasks and auto mode waiting, each with
-  its move inline, and a badge with the count.
-- **Graph**: the plan as a graph, in the side bar and as an editor tab (`Graphene: Show Plan Graph`); `?` lists
-  its keys.
-- **Agents**: every running agent, what it is doing, seconds quiet and dollars, and a badge with the count.
-- **Plan**: goal, sub-goals and tasks with a codicon per state and `model · forks · $` beside each.
-- **Rounds**: auto mode's iterations, what the envelope accepted, which fork each task kept and what landed.
-- **Explorer** marks and a **status bar** item: `◆ 2 running · 1 needs you · $0.42`; click it for the graph.
+| On screen | What it means | The CLI's word |
+| --- | --- | --- |
+| suggested | the planner proposed it; nothing runs until you start it | proposed |
+| working | an agent is on it now | running |
+| to review | its check passed; it waits for your approval | review |
+| needs help | it stopped before its check passed, and says why | came back |
+| attempt | one of several agents racing the same task; its check keeps one | fork |
+| approve | land it in your repository | sign off |
+| send back | open it again, with a note for the next agent | reopen |
 
 ## Commands
 
-All under `Graphene:` in the command palette; most are also in the views' menus and the graph's details pane.
+Seven in the command palette, all under `Graphene:`: **Home**, **Show Graph**, **Watch the Demo**, **Stop All
+Agents**, **Set Up This Folder**, **Install Graphene…** and **Set API Key…**. Everything else is a button on Home,
+in the graph's details pane, or in a diff's title (**Keep This Attempt**, **Approve**).
 
-| Command | What it does |
-| --- | --- |
-| Auto… | a goal, a budget and whether to plan first: `graphene auto "<goal>"` in a terminal you can stop |
-| Set Envelope… | what auto mode may do without you: budget, tasks, rounds, forks, checks |
-| Run Ready Tasks / Stop | `graphene run --parallel 4` in a terminal; `graphene run --stop` |
-| Answer… | a board question: its options, its default, or your own words |
-| Accept / Accept All | a proposal, or all of them |
-| Take Up the Hand-Back… | a task that came back: widen it, reopen its owner, or try again |
-| Sign Off | a task waiting on you, from its diff |
-| Mark Your Task Done | a task of your own: `graphene node done` in a terminal, where its check runs |
-| Set Key… | `graphene key set` in a terminal, a hidden prompt; offered when a run waits on a key |
-| Open Changes / Compare Forks / Keep This Fork | a task or fork in the diff editor; a race side by side; the one to keep (from the palette, a pick of the tasks that have them) |
-| Edit Plan as Text | the plan's text form in an editor tab; save applies it |
-| Add Step… | one sentence; the planner proposes the step |
-| Add Step by Hand… | title, where, scope and check, typed; no check means your sign-off finishes it |
-| Link… / Edit Step… / Drop Step | B waits on A; title, scope or check; drop it (`graphene plan undo` puts it back) |
-| Tell Agent… | one line a hooked agent reads before its next write |
-| Diff with the Agent's Copy | the open file against the running agent's version |
-| Watch the Demo | a scripted run in a graph of its own, no key and no network |
-| Show Plan Graph / Open Cockpit | the graph as a tab; `graphene watch` in a terminal |
-| Set Up This Folder / Install Graphene… / Refresh | `graphene init`; `uv tool install graphene-map`, after you say yes; read the plan again |
+Set `graphene.advanced` to see every command in the palette (auto mode, limits, edit the plan as text, add a task
+by hand, the cockpit in a terminal) and the Needs You, Agents, Plan and Rounds views.
 
 ## Settings
 
@@ -103,28 +86,37 @@ All under `Graphene:` in the command palette; most are also in the views' menus 
 | --- | --- | --- |
 | `graphene.path` | `graphene` | the command: a name on PATH or an absolute path. Read from your own settings only, never a folder's |
 | `graphene.pollMs` | `1500` | how often the plan is read again while a view is open, when the CLI has no `--watch` stream |
+| `graphene.advanced` | off | every command in the palette, and the Needs You, Agents, Plan and Rounds views |
+
+## Editors
+
+VS Code 1.95 or later. In Cursor 3.25.6 (VS Code 1.128) the `.vsix` installs and activates, and the harness's
+end-to-end check passes there (`editors/vscode/e2e`). Cursor's agent layout hides the primary side bar; in its
+classic layout the views look as they do in VS Code.
 
 ## Trust and privacy
 
 - **A thin client.** The extension reads the plan with `graphene state --json` and changes it with `graphene`
   commands, run as you in the folder. It never opens the plan's store itself.
+- **Nothing from a page reaches a shell.** Home and the graph send the extension a message; it checks each one
+  against the plan (a known act, a task the plan has, an option the question has) and passes words only as one
+  argument of a `graphene` command. A title or a planner's words are shown as text, never as markup or a link.
 - **No network of its own.** The extension makes no request and sends no telemetry. The models you configured
-  (Token Factory, Claude Code, Codex) are the CLI's business, in a terminal you can see, with a key it reads from
-  a hidden prompt.
+  (Token Factory, Claude Code, Codex) are the CLI's business, with a key it reads from a hidden prompt.
 - **Off in Restricted Mode.** In a folder you have not trusted it does nothing: it would run commands, and the
   plan's checks, there.
 - **Your settings only.** `graphene.path` comes from your user settings, never from a folder's
   `.vscode/settings.json`, so a cloned repository cannot choose what the extension runs.
 - **A click in VS Code is the person's.** An editor started from an agent's shell inherits the agent's marks
-  (`CLAUDECODE`, `CODEX_SESSION_ID`, …); the extension takes them out of everything it runs, so your accept
+  (`CLAUDECODE`, `CODEX_SESSION_ID`, …); the extension takes them out of everything it runs, so your approval
   is a person's.
 - **The demo stays out of your folder.** Watch the Demo plays into a directory under the OS temp dir, and
   closing its graph removes it.
 
 ## Limits
 
-- It needs Graphene 0.9 or later for the Agents view, the diffs, the text plan and the demo; with an older CLI
-  each view says what the CLI said, and the plan is polled instead of streamed.
+- It needs Graphene 0.9 or later; with an older CLI each view says what the CLI said, and the plan is polled
+  instead of streamed.
 - One plan per window: the first workspace folder with a store.
 - Nobody has used it on a real run yet. It was built and checked against a fixture and a scripted stand-in.
 

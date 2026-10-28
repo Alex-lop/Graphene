@@ -40,7 +40,7 @@ test("a landed diff is each file's two revisions; an added file has no left, a d
 test("a running task's diff is its base against the files on disk in its own directory", () => {
   const d = C.parseDiff(JSON.stringify({ repo: "/r/wt", left: "base", right: null, files: [{ path: "app.py", status: "M" }], said: [] }));
   assert.deepEqual(C.diffPairs(d), [{ path: "app.py", status: "M", left: { repo: "/r/wt", path: "app.py", rev: "base" }, right: { repo: "/r/wt", path: "app.py", rev: null } }]);
-  assert.equal(C.diffTitle("greet route", "b", d), "greet route · fork b: base → now");
+  assert.equal(C.diffTitle("greet route", "b", d), "greet route · attempt b: base → now");
 });
 
 test("a diff with no files is still a diff", () => {

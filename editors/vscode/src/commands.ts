@@ -95,6 +95,15 @@ export function editStep(id: string, field: Field, value: string | string[]): st
 }
 
 export const dropStep = (id: string): string[] => ["node", "drop", id];
+/** Several at once, as one drop: one at a time, a task another of them waits on is refused (`plan.drop`). */
+export const dropAll = (ids: string[]): string[] => ["node", "drop", ...ids.map(id)];
+/** What the person wants, to the planner: a proposal comes back, and nothing runs until it is accepted. */
+export const ask = (text: string): string[] => ["ask", "--", text];
+/** A finished task (to review, or done) back to an agent with what is wrong; `--note=` keeps a note that starts
+ *  with a dash a note. */
+export const reopen = (node: string, note: string): string[] => ["node", "reopen", id(node), `--note=${note}`];
+/** Home's Set Up: one AI plans and does the work, chosen without a terminal (init asks only at one). */
+export const initWith = (who: string): string[] => ["init", "--planner", who, "--executor", who];
 export const accept = (id?: string | null): string[] => (id ? ["plan", "accept", id] : ["plan", "accept"]);
 export const acceptAll = (): string[] => ["plan", "accept"];
 export const tell = (id: string, text: string): string[] => ["board", "note", "--about", id, "--", text];
@@ -205,7 +214,7 @@ export function diffPairs(d: Diff): Pair[] {
 /** The diff editor's title: whose changes, between what (the multi-file editor adds its own file count). */
 export function diffTitle(name: string, fork: string | null | undefined, d: Diff): string {
   const short = (rev: string) => (/^[0-9a-f]{12,}$/.test(rev) ? rev.slice(0, 7) : rev);
-  return `${name}${fork ? ` · fork ${fork}` : ""}: ${short(d.left)} → ${d.right === null ? "now" : short(d.right)}`;
+  return `${name}${fork ? ` · attempt ${fork}` : ""}: ${short(d.left)} → ${d.right === null ? "now" : short(d.right)}`;
 }
 
 /** `graphene plan edit --from - --json`: applied, or refused with each fault on its line of the text. */
