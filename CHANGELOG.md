@@ -2,11 +2,24 @@
 
 ## 0.9.0 (unreleased)
 
-The editor night (26 to 27 October 2026). Graphene for VS Code is where you watch and steer; the CLI gives it
-what it reads and writes through; the gate is harder after a review by two who did not build it. Each line is
-one change, with what shows it.
-- Needs You leads the editor's side bar: a question, a proposal, a task that came back, a sign-off, your own
-  task, auto mode waiting, each with its move inline (the view in Graphene for VS Code; `Graphene: Answer…`).
+The editor night (26 to 27 October 2026), then Home (28 October). Graphene for VS Code is where you watch and
+steer, with a click; the CLI gives it what it reads and writes through; the gate is harder after a review by two
+who did not build it. Each line is one change, with what shows it.
+- Home leads the editor's side bar and does it all with a click: Set Up is one pick (Claude Code, Codex or
+  Nemotron: `graphene init --planner X --executor X`); Plan it asks the planner (`graphene ask`); the suggested
+  tasks say what each is for, the files it may change and what proves it; Start accepts them and runs the agents;
+  each finished task shows what it changed, its check and its last steps, with Open changes, Approve (`graphene
+  node signoff`) and Send back… (`graphene node reopen ID --note=…`) (`editors/vscode/e2e/home.mjs` clicks it all
+  through in real VS Code against the stand-in, 18 s).
+- Approving a task whose changes were never opened asks first; Set Up turns on `review: every` unless unticked, so
+  each finished task waits for the person; two attempts that both passed are compared and one kept first.
+- The palette lists seven commands (Home, Show Graph, Watch the Demo, Stop All Agents, Set Up This Folder, Install
+  Graphene…, Set API Key…); the rest, and the Needs You, Agents, Plan and Rounds views, show with
+  `graphene.advanced` (`test/home.test.ts`, `tests/test_vscode_packaging.py`).
+- Plain words on the editor's screens: suggested, working, to review, needs help, attempt, approve, send back,
+  limits; the CLI keeps its own, and the extension's README maps one to the other.
+- Needs You (with `graphene.advanced`; Home shows the same first): a question, a proposal, a task that came back, a
+  sign-off, your own task, auto mode waiting, each with its move inline (`Graphene: Answer…`).
 - Agents lists every running agent with its task, model, fork, what it edits now, seconds quiet and dollars; a
   click opens its changes so far (`Graphene: Open Changes`).
 - A task's or a fork's changes open in VS Code's own diff editor, a race's forks side by side, Keep This Fork
