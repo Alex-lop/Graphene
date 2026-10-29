@@ -14,8 +14,10 @@ from pathlib import Path
 
 import pytest
 from test_auto_run import GOAL, GOAL_CHECK, scripts, tiny  # noqa: F401  (fixtures)
+from test_board import planned
 from test_plan_cli import person, repo  # noqa: F401  (fixtures)
 
+from graphene_map import board as B
 from graphene_map import run as R
 from graphene_map.store import Store
 
@@ -119,3 +121,25 @@ def test_an_attempt_stopped_at_claudes_default_cap_is_told_a_with_that_gives_it_
     [given] = re.findall(r"`--with '([^']+)'`", said)
     assert given == "claude:opus --max-budget-usd 4"
     assert R._worst(shlex.split(R.named(given))) == 4.0 and "--model opus" in R.named(given)
+
+
+def test_undo_is_advised_only_while_the_act_it_would_put_back_is_the_one_refused(repo, tmp_path):
+    """`graphene plan undo` puts back the person's last act alone, and nothing redoes it. Told after another
+    act that undo "takes an answer back", the person undid that other act (here, dropping paging) and the
+    answer stayed. Undo is advised while the answer is the last act; after another, the message names
+    what undo would put back instead."""
+    planned(repo, tmp_path)
+    assert person("board", "answer", "shape", "keep", "it", "a", "list").exit_code == 0
+    refused = person("board", "answer", "shape", "a", "map")
+    assert advice(refused.output) == ["graphene plan undo"], refused.output  # the answer is the last act
+    assert follow("graphene plan undo").exit_code == 0
+    assert person("board", "answer", "shape", "a", "map").exit_code == 0  # taken back, and answered again
+    assert person("board", "drop", "paging").exit_code == 0  # an act since: undo would put that back
+    refused = person("board", "answer", "shape", "a", "list")
+    assert "(board drop paging), not this" in refused.output, refused.output
+    for command in advice(refused.output):
+        assert follow(command).exit_code == 0, command
+        retry = person("board", "answer", "shape", "a", "list")
+        assert retry.exit_code == 0, (command, retry.output)  # whatever it advised got past it
+    with Store.open(repo) as store:
+        assert {it["id"]: it["state"] for it in B.items(store)}["paging"] == "dropped", "undid the wrong act"

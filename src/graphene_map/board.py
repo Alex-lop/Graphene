@@ -393,7 +393,7 @@ def settle(
         board = items(store)
         item = next((it for it in board if it["id"] == item_id), None) or get(store, item_id)
         if item["state"] == "dropped":
-            raise P.Refused(f"{item_id} was dropped; `graphene plan undo` brings it back")
+            raise P.Refused(f"{item_id} was dropped; {P.undo_for(store, item_id, 'brings it back')}")
         if item.get("from") and state == "open":  # the repository answered it: it is the person's again
             item.update(state="open", answer=None, option=None, conditions=[], rev=item["rev"] + 1,
                         updated_at=now, **{"from": None})  # fmt: skip  (`became` stays: `lifted` says it)
@@ -403,7 +403,7 @@ def settle(
         if item["state"] in DECIDED and state != "dropped":
             raise P.Refused(
                 f"{item_id} is {item['state']} already ({_one(item['answer']) or 'yes'}); "
-                "`graphene plan undo` takes an answer back"
+                + P.undo_for(store, item_id, "takes the answer back")
             )
         if state in DECIDED and reads(item) == "noted":
             raise P.Refused(
@@ -801,7 +801,8 @@ def apply(store, found: list[dict], who: P.Caller, opened: dict | None, files=No
             if answered and any(f[k] != base[k] for k in ("default", "then", "options")):
                 raise P.Refused(  # what it was answered with, and what that changed, would no longer match
                     f"line {f['no']}: [{f['id']}] is {known['state']} ({_one(known['answer']) or 'yes'}); "
-                    "`graphene plan undo` takes the answer back before its default, options or then: change"
+                    + P.undo_for(store, f["id"], "takes the answer back before its default, options or then: "
+                                 "change")  # fmt: skip
                 )
             _check(store, f, at)
             _reword(store, f, who, now)
