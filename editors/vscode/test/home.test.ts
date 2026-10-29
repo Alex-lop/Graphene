@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { banner, countsLine, home, said, type Card, type Home } from "../src/home/cards.ts";
+import { banner, checkHome, countsLine, home, said, type Card, type Home } from "../src/home/cards.ts";
 import { headline, parseState, type State } from "../src/state.ts";
 
 const fixture = (name: string): State => parseState(readFileSync(new URL(`./fixtures/${name}.json`, import.meta.url), "utf8"));
@@ -57,6 +57,9 @@ test("two attempts that both passed: the person compares them and keeps one befo
                     ["Send back…", "sendBack", undefined, false]]);
   const kept = { ...s, tasks: s.tasks.map((t) => (t.id === "farewell" ? { ...t, kept: { letter: "a", why: "fewer lines", by: "you" } } : t)) };
   assert.deepEqual(card(home(kept), "review:farewell").lines.find((l) => l.k === "Kept"), { k: "Kept", v: "attempt a of 2: fewer lines" });
+  assert.ok(checkHome({ type: "act", act: "keep", id: "farewell", arg: "b" }, s));
+  assert.equal(checkHome({ type: "act", act: "keep", id: "farewell", arg: "z" }, s), null);
+  assert.equal(checkHome({ type: "act", act: "keep", id: "farewell" }, s), null);
 });
 
 test("a check that passed before the work is said on the card: it proves nothing about the change", () => {
@@ -114,4 +117,38 @@ test("what an ask printed: the planner's own words and what planning cost, not t
                "next: `graphene plan accept`, or prune in `graphene watch` (y accepts, d drops)"].join("\n");
   assert.deepEqual(said(out), ["Three wishes, three tasks: each owns one file and its own test file, so all three run at once.", "Planning cost $0.0069."]);
   assert.deepEqual(said("proposed top: x\n"), []);
+});
+
+test("the page's messages are checked against the plan before anything runs", () => {
+  const s = fixture("graph-race");
+  const logs = s.tasks.find((t) => t.id === "logs")!;
+  const plan = { ...s, tasks: s.tasks.map((t) => (t === logs ? { ...t, offers: { w: ["node", "widen", "logs", "app.py"] } } : t)) };
+  const ok = (m: unknown) => assert.ok(checkHome(m, plan), JSON.stringify(m));
+  const no = (m: unknown) => assert.equal(checkHome(m, plan), null, JSON.stringify(m));
+  ok({ type: "ready" });
+  ok({ type: "act", act: "ask", arg: "  a --json flag  " });
+  assert.equal((checkHome({ type: "act", act: "ask", arg: "  a --json flag  " }, plan) as { arg: string }).arg, "a --json flag");
+  no({ type: "act", act: "ask", arg: "   " });
+  no({ type: "act", act: "ask", arg: "x".repeat(4001) });
+  no({ type: "act", act: "ask" });
+  ok({ type: "act", act: "setup", arg: "nemotron", flag: true });
+  no({ type: "act", act: "setup", arg: "rm -rf /" });
+  ok({ type: "act", act: "setKey", arg: "nim" });
+  no({ type: "act", act: "setKey", arg: "nim; rm" });
+  ok({ type: "act", act: "approve", id: "docs" });
+  no({ type: "act", act: "approve", id: "nope" });
+  no({ type: "act", act: "approve" });
+  ok({ type: "act", act: "offer", id: "logs", arg: "w" });
+  no({ type: "act", act: "offer", id: "logs", arg: "b" }); // not an offer the task carries
+  no({ type: "act", act: "offer", id: "logs", arg: "constructor" }); // an object's own keys only
+  ok({ type: "act", act: "answer", id: "which-port", arg: "pick a free one at start" });
+  ok({ type: "act", act: "answer", id: "which-port" });
+  no({ type: "act", act: "answer", id: "which-port", arg: "port 22" });
+  ok({ type: "act", act: "showGraph", id: "" });
+  ok({ type: "act", act: "showGraph", id: "greet" });
+  no({ type: "act", act: "showGraph", id: "nope" });
+  no({ type: "act", act: "rm" });
+  no({ type: "nonsense" });
+  no(null);
+  assert.equal(checkHome({ type: "act", act: "setup", arg: "claude" }, null)?.type, "act"); // set up: no plan yet
 });

@@ -4,6 +4,7 @@
 // here: home.ts sends what this returns, home/main.ts draws it, and checkHome reads what the page sends back.
 import { needs, OFFERS, offerOn } from "../needs.ts";
 import { headline, SAY, usd, type Question, type State, type Task } from "../state.ts";
+import { WHO } from "./who.ts";
 
 export const ACTS = ["ask", "cancel", "startAll", "discardAll", "run", "stop", "drop", "answer", "openDiff", "compare", "keep",
                      "approve", "sendBack", "offer", "tryAgain", "allow", "message", "markDone", "showGraph", "demo", "setup",
@@ -194,4 +195,38 @@ export function said(stdout: string): string[] {
   const cost = lines.find((l) => /^the planner \(/.test(l))?.match(/\$[\d.]+/);
   if (cost) out.push(`Planning cost ${cost[0]}.`);
   return out;
+}
+
+export type FromHome = { type: "ready" } | { type: "act"; act: Act; id: string; arg?: string; flag?: boolean };
+
+/** The acts that take no task: each still checked for what it carries. */
+const GLOBAL: readonly Act[] = ["ask", "cancel", "startAll", "discardAll", "run", "stop", "showGraph", "demo", "setup", "install",
+                                "setKey", "refresh", "openFolder"];
+
+/** A message from the page, checked against the plan before anything runs: a known act; the text of an ask; a
+ *  planner the Set Up offers; a task the plan has (a question, for answer); an option the question has; an offer
+ *  the task carries. Null for anything else. */
+export function checkHome(m: unknown, s: State | null): FromHome | null {
+  if (!m || typeof m !== "object") return null;
+  const r = m as Record<string, unknown>;
+  if (r.type === "ready") return { type: "ready" };
+  if (r.type !== "act" || typeof r.act !== "string" || !(ACTS as readonly string[]).includes(r.act)) return null;
+  const act = r.act as Act;
+  const id = typeof r.id === "string" ? r.id : "";
+  const arg = typeof r.arg === "string" ? r.arg : undefined;
+  if (act === "ask") return arg?.trim() && arg.length <= 4000 ? { type: "act", act, id: "", arg: arg.trim() } : null;
+  if (act === "setup") return WHO.some((w) => w.word === arg) ? { type: "act", act, id: "", arg, flag: r.flag === true } : null;
+  if (act === "setKey") return arg === undefined || /^\w+$/.test(arg) ? { type: "act", act, id: "", arg } : null;
+  if (act === "answer") {
+    const q = s?.questions.find((x) => x.id === id);
+    if (!q || (arg !== undefined && arg !== q.default && !q.options.includes(arg))) return null;
+    return { type: "act", act, id, arg };
+  }
+  if (act === "showGraph") return !id || s?.tasks.some((t) => t.id === id) ? { type: "act", act, id } : null;
+  if (GLOBAL.includes(act)) return { type: "act", act, id: "" };
+  const t = s?.tasks.find((x) => x.id === id);
+  if (!t) return null;
+  if (act === "offer") return arg && Object.hasOwn(t.offers, arg) ? { type: "act", act, id, arg } : null;
+  if (act === "keep") return arg && t.forks.some((f) => f.letter === arg) ? { type: "act", act, id, arg } : null;
+  return { type: "act", act, id };
 }
