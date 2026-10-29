@@ -335,9 +335,13 @@ def drive(open_store: Callable, root: Path, goal: str | None, say: Callable[[str
             open_ = [n for n in P.nodes(store) if n.state in (P.PROPOSED, P.OPEN, P.RUNNING, P.REVIEW)]
             same = going and going.get("goal") == goal and going.get("root") in {n.id for n in open_}
             if was and was != goal and open_ and not same:
+                # archive puts away finished nodes only: the drop is what ends one still open (a node goes
+                # with everything under it, so the tops are named)
+                ids, by_id = {n.id for n in open_}, {n.id: n for n in P.nodes(store)}
+                tops = " ".join(n.id for n in open_ if not any(a.id in ids for a in P.above(n, by_id)))
                 raise P.Refused(
                     f"the plan here is for another goal ({was!r}) and {len(open_)} of its nodes are still "
-                    "open: `graphene auto` with no goal goes on with it; `graphene plan archive` ends it"
+                    f"open: `graphene auto` with no goal goes on with it; `graphene node drop {tops}` ends it"
                 )
             if same:
                 root_id, k = going["root"], going["round"] + (0 if going.get("planned") else 1)
