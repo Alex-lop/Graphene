@@ -328,8 +328,8 @@ def test_an_attempt_stopped_at_its_budget_is_said_so(repo):
     assert "a attempt 1: the executor stopped at its --max-budget-usd" in said, said
     with Store.open(repo) as store:  # and so says the hand-back `graphene node show` reads: no crash
         why = store.node_log("a", ("released",))[-1]["detail"]["why"]
-    assert why.endswith("; its last attempt stopped at its --max-budget-usd (a larger cap in --with, or a "
-                        "smaller leaf)") and "exited" not in why, why
+    assert why.endswith("; its last attempt stopped at its --max-budget-usd (a larger --max-budget-usd in "
+                        "the command you give --with, or a smaller leaf)") and "exited" not in why, why
 
 
 def test_codex_is_priced_from_token_factorys_list_when_it_names_a_listed_model(repo, monkeypatch):

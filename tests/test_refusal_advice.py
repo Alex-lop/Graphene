@@ -110,3 +110,12 @@ def test_codex_has_no_cap_to_lower_so_the_budget_alone_is_advised(repo, planner)
     line = [x for x in said.output.splitlines() if x.startswith("waits for you: ")][-1]
     assert advice(line) == ["graphene config set budget N"], line
     assert "--max-budget-usd" not in line, line
+
+
+def test_an_attempt_stopped_at_claudes_default_cap_is_told_a_with_that_gives_it_more():
+    """`a larger cap in --with` named no way to get one for `--with claude`: the hint is now the shorthand,
+    and the shorthand is the default command with that cap."""
+    said = R.more(R.named("claude:opus"), 2.0)
+    [given] = re.findall(r"`--with '([^']+)'`", said)
+    assert given == "claude:opus --max-budget-usd 4"
+    assert R._worst(shlex.split(R.named(given))) == 4.0 and "--model opus" in R.named(given)

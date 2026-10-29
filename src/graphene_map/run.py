@@ -94,6 +94,17 @@ def named(spec: str | None) -> str:
     return {"claude": DEFAULT_WITH, "codex": CODEX}.get(spec, spec)
 
 
+def more(template: str, worst: float) -> str:
+    """How to give an attempt that stopped at its cap more, as advice: Claude Code's default named again
+    with twice the cap (`named` reads `claude --max-budget-usd X`); a command of the person's own, in its
+    own flag."""
+    if not template.startswith(DEFAULT_WITH.partition(" --max-budget-usd")[0]):
+        return "a larger --max-budget-usd in the command you give --with"
+    model = M.model_in(shlex.split(template))
+    word = f"claude:{model}" if model else "claude"
+    return f"`--with '{word} --max-budget-usd {worst * 2:g}'` gives it more"
+
+
 @dataclass(frozen=True)
 class Forks:
     """What `graphene run` was told about forks: --forks (0: nothing), --first, and each --with as typed
@@ -878,7 +889,7 @@ def _attempts(
         told = "\n".join(ln for ln in refusal.splitlines() if "graphene node release" not in ln)
         crashed = f"; the executor itself exited {code}" if code else ""
         if capped:  # no crash: its result said the budget ran out
-            crashed = ("; its last attempt stopped at its --max-budget-usd (a larger cap in --with, or a "
+            crashed = (f"; its last attempt stopped at its --max-budget-usd ({more(template, worst)}, or a "
                        "smaller leaf)")
         why = f"{tries}, the last one refused: {told}{crashed}"
         if fork:

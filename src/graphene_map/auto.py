@@ -270,7 +270,8 @@ def planner_cap(template: str, left: float | None) -> tuple[str, str | None]:
         return f"{template} --max-budget-usd {left:.2f}", None
     if (worst := _worst(argv)) > left:
         why = (f"the budget left (${left:.2f}) is less than the planner's worst case (${worst:g}): "
-               "`graphene config set budget N` widens it, or the planner's `--max-budget-usd`")  # fmt: skip
+               "`graphene config set budget N` widens it, or a lower `--max-budget-usd` in the command you "
+               "give `--planner`")  # fmt: skip
         return template, why
     return template, None
 
