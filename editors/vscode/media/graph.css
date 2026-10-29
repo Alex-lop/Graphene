@@ -227,7 +227,7 @@ button.unlink:hover { color: var(--vscode-errorForeground, #f48771); }
 .lane.st-came-back .l-mark { color: var(--came-back); }
 .lane.st-proposed .l-mark { color: var(--proposed); }
 .l-sub { color: var(--dim); font-family: var(--mono); font-size: 11px; margin-top: 2px; overflow-wrap: anywhere; }
-.l-band { color: var(--dim); font-size: 11px; margin-top: 2px; }
+.l-band { color: var(--dim); font-size: 11px; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .l-forks { display: flex; flex-direction: column; gap: 3px; margin-top: 5px; }
 .l-chip {
   font-family: var(--mono); font-size: 11px; padding: 2px 7px; border: 1px solid var(--border); border-radius: 4px;

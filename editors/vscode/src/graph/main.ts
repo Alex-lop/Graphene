@@ -370,7 +370,8 @@ function drawLane(row: HTMLElement, t: TaskX, s: StateX) {
   const corner = cornerWord(t);
   if (corner) div(corner === "◆" ? "l-mark" : "l-model", corner, head);
   div("l-sub", line, main);
-  if (t.parent) div("l-band", goalTitle(s, t.parent), main);
+  const band = t.parent ? goalTitle(s, t.parent) : "";
+  if (band && band !== s.goal) div("l-band", band, main).title = band; // auto's root sub-goal is the goal itself: said once, at the foot
   if (t.forks.length) {
     const forks = div("l-forks", undefined, main);
     for (const f of t.forks) {
