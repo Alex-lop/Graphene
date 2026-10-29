@@ -69,8 +69,8 @@ the check it must pass, a write outside those files refused as it happens, the c
 and a piece landed only when it passes, on your machine with no account. That is the claim, and it is scoped: my-pi
 has a per-task file scope with checks for another agent, and Ralon locks writes more strongly than a hook does, from
 one static list. Claude Code's Agent View gives every session a row and its Agent Teams a shared task list; both
-leave the files to convention. Graphene for VS Code's Needs You and Agents views are those two rows, held to a
-plan's files; nobody has used them on a real run yet. Nobody here is "the only one".
+leave the files to convention. Graphene for VS Code's Home (what needs you, who is working) is those two rows,
+held to a plan's files; nobody has used it on a real run yet. Nobody here is "the only one".
 
 What Graphene lacks, in this table: it holds a write before it happens only for Claude Code (for Codex and any other
 command, git finds it when the leaf is declared done); its hook fails open if it cannot run on a Claude Code before
