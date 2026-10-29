@@ -185,11 +185,11 @@ export function activate(context: vscode.ExtensionContext) {
       { key: "budget", label: "Budget", description: e?.budget != null ? `$${e.budget}` : "unset", detail: "dollars every run may spend while auto is on" },
       { key: "tasks", label: "Tasks", description: now(e?.tasks, "12"), detail: "how many tasks the envelope may accept for you, all told" },
       { key: "rounds", label: "Rounds", description: now(e?.rounds, "2"), detail: "fix rounds after the goal's check fails" },
-      { key: "forks", label: "Forks", description: now(e?.forks, "1"), detail: "agents at once on every task; its check keeps one" },
+      { key: "forks", label: "Attempts", description: now(e?.forks, "1"), detail: "agents at once on every task; its check keeps one" },
       { key: "checks", label: "Checks", description: e?.checks?.length ? e.checks.join(", ") : "any one plain command",
         detail: "the commands the envelope runs as a task's check, comma-separated" },
     ];
-    const chosen = await vscode.window.showQuickPick(items, { placeHolder: "the envelope: what Graphene may do without asking you" });
+    const chosen = await vscode.window.showQuickPick(items, { placeHolder: "the limits: what Graphene may do without asking you" });
     if (!chosen) return;
     const value = chosen.key === "auto"
       ? (await vscode.window.showQuickPick(["on", "off"], { placeHolder: "auto" }))

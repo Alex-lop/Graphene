@@ -49,7 +49,7 @@ node drive.mjs --app code --auto --shots /tmp/look &     # prints `port N`
 printf 'shot first\n' | nc 127.0.0.1 N                   # /tmp/look/first.png
 printf 'graph\nframes\n' | nc 127.0.0.1 N                # what the graph frames show; every frame's text
 printf 'sidebar 320\nshot narrow\n' | nc 127.0.0.1 N
-printf 'palette Graphene: Show Plan Graph\nsize 1920x1080\ntheme light\nshot panel\n' | nc 127.0.0.1 N
+printf 'palette Graphene: Show Graph\nsize 1920x1080\ntheme light\nshot panel\n' | nc 127.0.0.1 N
 printf 'click Run ready\nkey Escape\n' | nc 127.0.0.1 N
 printf 'sh node set top --title "a new title"\n' | nc 127.0.0.1 N
 printf 'quit\n' | nc 127.0.0.1 N

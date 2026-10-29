@@ -170,7 +170,7 @@
     "commands": [
       {
         "command": "graphene.showGraph",
-        "title": "Graphene: Show Plan Graph",
+        "title": "Graphene: Show Graph",
         "icon": "$(type-hierarchy-sub)"
       },
       {
@@ -185,7 +185,7 @@
       },
       {
         "command": "graphene.envelope",
-        "title": "Graphene: Set Envelope…"
+        "title": "Graphene: Set Limits…"
       },
       {
         "command": "graphene.runReady",
@@ -194,7 +194,7 @@
       },
       {
         "command": "graphene.stop",
-        "title": "Graphene: Stop",
+        "title": "Graphene: Stop All Agents",
         "icon": "$(debug-stop)"
       },
       {
@@ -204,32 +204,32 @@
       },
       {
         "command": "graphene.acceptAll",
-        "title": "Graphene: Accept All",
+        "title": "Graphene: Accept All Suggestions",
         "icon": "$(check-all)"
       },
       {
         "command": "graphene.addStep",
-        "title": "Graphene: Add Step…",
+        "title": "Graphene: Add Task…",
         "icon": "$(add)"
       },
       {
         "command": "graphene.link",
-        "title": "Graphene: Link…",
+        "title": "Graphene: Make a Task Wait on Another…",
         "icon": "$(link)"
       },
       {
         "command": "graphene.editStep",
-        "title": "Graphene: Edit Step…",
+        "title": "Graphene: Edit Task…",
         "icon": "$(edit)"
       },
       {
         "command": "graphene.dropStep",
-        "title": "Graphene: Drop Step",
+        "title": "Graphene: Remove Task",
         "icon": "$(trash)"
       },
       {
         "command": "graphene.tell",
-        "title": "Graphene: Tell Agent…",
+        "title": "Graphene: Message Agent…",
         "icon": "$(comment)"
       },
       {
@@ -248,7 +248,7 @@
       },
       {
         "command": "graphene.handBack",
-        "title": "Graphene: Take Up the Hand-Back…",
+        "title": "Graphene: Help a Task…",
         "icon": "$(debug-step-back)"
       },
       {
@@ -263,7 +263,7 @@
       },
       {
         "command": "graphene.setKey",
-        "title": "Graphene: Set Key…",
+        "title": "Graphene: Set API Key…",
         "icon": "$(key)"
       },
       {
@@ -273,17 +273,17 @@
       },
       {
         "command": "graphene.compareForks",
-        "title": "Graphene: Compare Forks",
+        "title": "Graphene: Compare Attempts",
         "icon": "$(split-horizontal)"
       },
       {
         "command": "graphene.pickFork",
-        "title": "Graphene: Keep This Fork",
+        "title": "Graphene: Keep This Attempt",
         "icon": "$(pass)"
       },
       {
         "command": "graphene.signOff",
-        "title": "Graphene: Sign Off",
+        "title": "Graphene: Approve",
         "icon": "$(check)"
       },
       {
@@ -293,7 +293,7 @@
       },
       {
         "command": "graphene.addStepByHand",
-        "title": "Graphene: Add Step by Hand…",
+        "title": "Graphene: Add Task by Hand…",
         "icon": "$(add)"
       },
       {
@@ -303,7 +303,7 @@
       },
       {
         "command": "graphene.diffWithAgent",
-        "title": "Graphene: Diff with the Agent's Copy",
+        "title": "Graphene: Compare with the Agent's Copy",
         "icon": "$(diff)"
       }
     ],
