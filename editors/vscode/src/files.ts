@@ -31,7 +31,7 @@ export function register(context: vscode.ExtensionContext, session: Session, _ui
     const h = held(session, vscode.window.activeTextEditor?.document.uri);
     if (!h) return bar.hide();
     const who = h.task.agent ? `agent ${h.task.agent}` : "an agent";
-    const forks = h.task.forks.length > 1 ? ` (${h.task.forks.length} forks)` : "";
+    const forks = h.task.forks.length > 1 ? ` (${h.task.forks.length} attempts)` : "";
     bar.text = `$(person) ${who} has ${path.basename(h.rel)}${forks}`;
     bar.tooltip = `${h.task.title}: ${who} is writing it now. Click to diff with its copy. Your own edits are not blocked.`;
     bar.show();
@@ -46,7 +46,7 @@ export function register(context: vscode.ExtensionContext, session: Session, _ui
     const t = h.task as Task & Where;
     const forks = t.forks as Where["forks"];
     const copies = forks.length
-      ? forks.map((f) => ({ label: `fork ${f.letter}`, dir: C.agentCopy(root, t.id, f.checkout, f.letter) }))
+      ? forks.map((f) => ({ label: `attempt ${f.letter}`, dir: C.agentCopy(root, t.id, f.checkout, f.letter) }))
       : [{ label: `agent ${t.agent}`, dir: C.agentCopy(root, t.id, t.checkout) }];
     const there = copies.filter((c) => existsSync(path.join(c.dir, h.rel)));
     if (!there.length) return void vscode.window.showInformationMessage(`Graphene: ${copies[0]!.label}'s copy of ${h.rel} is not on this machine yet.`);
