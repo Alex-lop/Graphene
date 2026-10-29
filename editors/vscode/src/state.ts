@@ -4,6 +4,12 @@
 export type Word = "running" | "review" | "came back" | "ready" | "waiting" | "proposed" | "done" | "yours";
 export const WORDS: readonly Word[] = ["running", "review", "came back", "ready", "waiting", "proposed", "done", "yours"];
 
+/** A state as the editor says it to a person: plain words. The CLI and the cockpit keep their own. */
+export const SAY: Record<Word, string> = {
+  running: "working", review: "to review", "came back": "needs help", ready: "ready", waiting: "waiting",
+  proposed: "suggested", done: "done", yours: "yours",
+};
+
 export interface Fork {
   letter: string;
   state: string;
@@ -238,12 +244,12 @@ export function mdText(s: string): string {
   return s.replace(/\s+/g, " ").replace(/[\\`*_{}[\]()#+\-.!|<>~$&:]/g, "\\$&");
 }
 
-/** The status bar's words: `2 running · 1 needs you · $0.42`, `3 of 6 done` when nothing runs; while auto is on,
+/** The status bar's words: `2 working · 1 needs you · $0.42`, `3 of 6 done` when nothing runs; while auto is on,
  *  its round first (`auto round 2 · …`), or that it waits for you, or is done. */
 export function summary(s: State): string {
   const sb = s.scoreboard;
   const parts: string[] = [];
-  if (sb.running) parts.push(`${sb.running} running`);
+  if (sb.running) parts.push(`${sb.running} working`);
   if (sb.need_you) parts.push(sb.need_you === 1 ? "1 needs you" : `${sb.need_you} need you`);
   if (!parts.length) parts.push(sb.total ? `${sb.proven} of ${sb.total} done` : "no plan yet");
   const spent = usd(s.spent);
