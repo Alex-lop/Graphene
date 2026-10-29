@@ -99,9 +99,9 @@ export function replayLine(r: Replay | undefined): string {
 }
 
 /** The header's first words, when the store is not a real run's: a replay says what it is; a live race
- *  against the scripted stand-in says so. Nothing for a run whose model was real, or an older snapshot. */
+ *  against the scripted stand-in says it is practice. Nothing for a run whose model was real, or an older snapshot. */
 export function topLine(s: Pick<StateX, "replay" | "stand_in">): string {
-  return replayLine(s.replay) || (s.stand_in ? "against the scripted stand-in" : "");
+  return replayLine(s.replay) || (s.stand_in ? "practice run · a scripted stand-in, no real AI" : "");
 }
 
 /** The counts under the goal: `run going · 2 running · 2 need you · 2 of 7 done · width 3 · $0.42`. */

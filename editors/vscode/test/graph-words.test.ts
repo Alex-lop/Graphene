@@ -93,7 +93,7 @@ test("the replay line is the terminal replay's top line, and nothing when the st
 });
 
 test("a live race against the stand-in says so first; a replay's line wins; a real run says nothing", () => {
-  assert.equal(topLine({ replay: null, stand_in: true }), "against the scripted stand-in");
+  assert.equal(topLine({ replay: null, stand_in: true }), "practice run · a scripted stand-in, no real AI");
   assert.equal(topLine({ replay: null, stand_in: false }), "");
   // an older CLI sends no stand_in: parseState fills false, the line above
   assert.equal(topLine({ replay: { shown: "a scripted stand-in, no model ran", day: "", repository: "" }, stand_in: true }),
