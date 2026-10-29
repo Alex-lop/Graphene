@@ -1,10 +1,11 @@
 # Changelog
 
-## 0.9.0 (unreleased)
+## 0.9.0 (29 October 2026)
 
-The editor night (26 to 27 October 2026), then Home (28 October). Graphene for VS Code is where you watch and
-steer, with a click; the CLI gives it what it reads and writes through; the gate is harder after a review by two
-who did not build it. Each line is one change, with what shows it.
+The editor night (26 to 27 October 2026), then Home and refusals that lead somewhere (28 October). Graphene for
+VS Code is where you watch and steer, with a click; the CLI gives it what it reads and writes through; the gate is
+harder after a review by two who did not build it, and a refusal's advice gets past it. Each line is one change,
+with what shows it.
 - Home leads the editor's side bar and does it all with a click: Set Up is one pick (Claude Code, Codex or
   Nemotron: `graphene init --planner X --executor X`); Plan it asks the planner (`graphene ask`); the suggested
   tasks say what each is for, the files it may change and what proves it; Start accepts them and runs the agents;
@@ -18,12 +19,23 @@ who did not build it. Each line is one change, with what shows it.
   `graphene.advanced` (`test/home.test.ts`, `tests/test_vscode_packaging.py`).
 - Plain words on the editor's screens: suggested, working, to review, needs help, attempt, approve, send back,
   limits; the CLI keeps its own, and the extension's README maps one to the other.
+- A refusal's advice, followed as printed, gets past it (tests/test_refusal_advice.py, each line here):
+  `graphene auto` refusing a new goal while the old one has a node open names the drop that ends it, `graphene
+  node drop ID…`, where it said `graphene plan archive`, which puts away finished nodes only.
+- `--with 'claude --max-budget-usd X'` (or `claude:MODEL --max-budget-usd X`) is Claude Code's default command
+  with that cap an attempt; a budget under one attempt's worst case names it, at the cent below what is left
+  (Codex, with no cap, is told the budget alone), and an attempt stopped at its cap is told the `--with` that
+  doubles it.
+- `graphene plan undo` is advised only while it puts back that very act (an answer, a dropped item, a dropped
+  node's id); after another act the refusal says which act an undo would put back instead.
+- With neither claude nor codex found and no Nemotron extra, init's next step names the install that brings
+  `graphene key set` before it.
 - Needs You (with `graphene.advanced`; Home shows the same first): a question, a proposal, a task that came back, a
   sign-off, your own task, auto mode waiting, each with its move inline (`Graphene: Answer…`).
 - Agents lists every running agent with its task, model, fork, what it edits now, seconds quiet and dollars; a
   click opens its changes so far (`Graphene: Open Changes`).
-- A task's or a fork's changes open in VS Code's own diff editor, a race's forks side by side, Keep This Fork
-  and Sign Off in its title (`Graphene: Compare Forks`; `graphene node diff ID --json` underneath).
+- A task's or a fork's changes open in VS Code's own diff editor, a race's forks side by side, Keep This
+  Attempt and Approve in its title (`Graphene: Compare Attempts`; `graphene node diff ID --json` underneath).
 - Edit Plan as Text opens the plan's text in a tab; saving applies it, all or none, and a refusal is a diagnostic
   on its line (`graphene plan edit --from - --json --since CURSOR` underneath).
 - Add Step… takes one sentence and the planner proposes the step with its scope, check and needs (`graphene ask
@@ -31,15 +43,15 @@ who did not build it. Each line is one change, with what shows it.
 - Watch the Demo plays the auto replay in a graph of its own, no key and no network, in a directory under the OS
   temp dir (`graphene demo --auto --into DIR`).
 - The graph reads at every width: lanes under 560 px, never below 1:1, no text under 11 px; a fork chip says
-  lines, dollars and seconds quiet, the kept one why, a task that came back is red with why (`Show Plan Graph`).
+  lines, dollars and seconds quiet, the kept one why, a task that came back is red with why (`Show Graph`).
 - The editor streams the plan, one line a change, and polls an older CLI (`graphene state --json --watch`); the
   snapshot gains `stand_in`, `replay`, and each task's and fork's `checkout`, `base`, `attempts`, `idle`, `why`.
-- A file a running task owns says so in the status bar and offers a diff with the agent's copy (`Graphene: Diff
-  with the Agent's Copy`).
+- A file a running task owns says so in the status bar and offers a diff with the agent's copy (`Graphene:
+  Compare with the Agent's Copy`).
 - First run: `graphene` is found in `~/.local/bin` and uv's tool directory, Install Graphene… runs `uv tool
-  install graphene-map` after you say yes, Set Up This Folder is two picks, and Auto… leads with Plan first.
-- A refused key says where it goes: Token Factory's 401 names `graphene key set`, and the editor offers Set Key
-  (`graphene key check` says whether it answers).
+  install graphene-map` after you say yes, and Set Up This Folder is one pick (on Home).
+- A refused key says where it goes: Token Factory's 401 names `graphene key set`, and the editor offers Set
+  API Key (`graphene key check` says whether it answers).
 - `graphene node diff ID --json` names the repo, two revisions and each file's status; a running task or fork is
   its directory against its base, no longer refused.
 - `graphene demo --into DIR` plays any replay with no screen into a store of its own, one line a change, and
