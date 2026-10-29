@@ -73,6 +73,9 @@ def test_a_running_forks_idle_and_checkout_are_its_own_and_go_when_it_ends(repo,
         trees = repo / ".graphene" / "worktrees"
         assert wait_for(lambda: len(list(trees.glob("n1.*"))) == 3 and (repo.parent / "forks.log").exists())
         assert wait_for(lambda: len((repo.parent / "forks.log").read_text().splitlines()) == 3)
+        # a fork's idle is read from its own rows, and the run writes its attempt row just after its process
+        # starts (run._attempts): on CI's macOS 3.13 a snapshot came in between and read idle None
+        assert wait_for(lambda: [f["idle"] is None for f in snapshot()["tasks"][0]["forks"]] == [False] * 3)
         (t,) = snapshot()["tasks"]
         whole_forks = {f["letter"]: f for f in t["forks"]}
         assert set(whole_forks) == {"a", "b", "c"}
