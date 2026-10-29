@@ -87,6 +87,18 @@ export class Session {
     return Math.max(250, vscode.workspace.getConfiguration("graphene").get<number>("pollMs") ?? 1500);
   }
 
+  /** The tasks whose changes the person opened in this window (diff.ts): Home asks before approving one unseen. */
+  readonly seen = new Set<string>();
+  private saw = new vscode.EventEmitter<void>();
+  readonly onDidSee = this.saw.event;
+
+  /** The person opened a task's changes: said once, apart from onDidChange (the plan did not change). */
+  see(id: string) {
+    if (this.seen.has(id)) return;
+    this.seen.add(id);
+    this.saw.fire();
+  }
+
   /** graphene, in the plan's folder, as the person: exit code and both streams; -1 when it did not run at all
    *  (not found, a directory, no x bit), stderr saying which. ``signal`` stops it (TERM: graphene settles first). */
   run(argv: string[], input?: string, signal?: AbortSignal): Promise<{ code: number; stdout: string; stderr: string }> {
@@ -131,6 +143,8 @@ export class Session {
 
   /** A snapshot read some other way (a stream's line): the same as a read's. */
   take(state: State) {
+    // a task's changes count as opened while it is to review or done; sent back or redone, it is new work
+    for (const id of this.seen) if (!state.tasks.some((t) => t.id === id && (t.state === "review" || t.state === "done"))) this.seen.delete(id);
     this.set(state, state.tasks.length ? { kind: "ok", text: "" } : { kind: "empty", text: "Nothing is planned yet." });
   }
 
@@ -173,12 +187,14 @@ export class Session {
   /** The folder or the command changed (a setting, an install): the stream starts over there, the version is read again. */
   moved() {
     this.versioned = "";
+    this.seen.clear(); // another folder's ids are other tasks
     this.stream.restart();
   }
 
   dispose() {
     this.stream.dispose();
     this.emitter.dispose();
+    this.saw.dispose();
   }
 }
 
