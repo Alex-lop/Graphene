@@ -184,3 +184,14 @@ export function home(s: State, seen: ReadonlySet<string> = new Set()): Home {
 
   return { banner: banner(s), goal: headline(s), counts: countsLine(s), sections, empty: !s.tasks.length && !s.questions.length };
 }
+
+/** What `graphene ask` printed that a person wants to read: the planner's own words, and what planning cost. */
+export function said(stdout: string): string[] {
+  const lines = stdout.split(/\r?\n/);
+  const out: string[] = [];
+  const at = lines.findIndex((l) => l.trim() === "the planner says:");
+  if (at >= 0) for (const l of lines.slice(at + 1)) { if (!/^\s+\S/.test(l)) break; out.push(l.trim()); }
+  const cost = lines.find((l) => /^the planner \(/.test(l))?.match(/\$[\d.]+/);
+  if (cost) out.push(`Planning cost ${cost[0]}.`);
+  return out;
+}

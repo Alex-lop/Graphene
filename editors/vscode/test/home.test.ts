@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { banner, countsLine, home, type Card, type Home } from "../src/home/cards.ts";
+import { banner, countsLine, home, said, type Card, type Home } from "../src/home/cards.ts";
 import { headline, parseState, type State } from "../src/state.ts";
 
 const fixture = (name: string): State => parseState(readFileSync(new URL(`./fixtures/${name}.json`, import.meta.url), "utf8"));
@@ -105,4 +105,13 @@ test("the header: the goal, else what was last asked; the counts in plain words;
   assert.equal(banner({ ...s, stand_in: true }), "Practice run: a scripted stand-in answers for the AI, so nothing is spent");
   assert.equal(banner({ ...s, replay: { shown: "a scripted stand-in, no model ran", day: "", repository: "" } }), "Demo replay: a scripted stand-in, no model ran");
   assert.equal(home(fixture("empty")).empty, true);
+});
+
+test("what an ask printed: the planner's own words and what planning cost, not the CLI's next steps", () => {
+  const out = ["asking the planner (nemotron)…", "the planner says:",
+               "  Three wishes, three tasks: each owns one file and its own test file, so all three run at once.",
+               "proposed top: the CLI prints the top words", "the planner (nemotron): 5 calls, 9942 in, 385 out, $0.0069 at list price",
+               "next: `graphene plan accept`, or prune in `graphene watch` (y accepts, d drops)"].join("\n");
+  assert.deepEqual(said(out), ["Three wishes, three tasks: each owns one file and its own test file, so all three run at once.", "Planning cost $0.0069."]);
+  assert.deepEqual(said("proposed top: x\n"), []);
 });
