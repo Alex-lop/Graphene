@@ -29,6 +29,11 @@ Mac's `/Applications/Visual Studio Code.app`, else a build `@vscode/test-electro
 opens Graphene and the graph panel, and fails when either graph does not draw the three tasks. On Linux
 run it under `xvfb-run`. `E2E_APP=cursor` runs it in Cursor; `E2E_SHOT=file.png` keeps a screenshot.
 
+`npm run home` clicks Home through, against the stand-in: a folder with no plan is set up with one click (and
+`review: every`), an ask is planned, Start runs the agents, Approve before the changes were opened asks first,
+Open Changes shows the diff, Approve lands the task and Send back… returns another with a note. It fails when a
+step does not show what it should, and keeps a screenshot of each step (`E2E_SHOTS=dir`, else in its scratch).
+
 ## Screenshots and video
 
 ```

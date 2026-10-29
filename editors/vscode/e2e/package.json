@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "test": "node --test unit.test.mjs && node test.mjs",
+    "home": "node home.mjs",
     "shots": "node shots.mjs",
     "drive": "node drive.mjs"
   },
