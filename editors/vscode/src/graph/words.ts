@@ -19,8 +19,9 @@ export type Act = "add-after" | "add-under" | "link" | "unlink" | "edit" | "drop
 export const CHANGES: readonly Act[] = ["add-after", "add-under", "link", "unlink", "edit", "drop", "accept", "tell", "run", "stop", "auto",
                                         "cockpit", "openDiff", "compareForks", "pickFork", "signOff", "answer", "handBack"];
 
-/** The header's act buttons, by their element id: each one is hidden in a replay. */
-export const HEADER_ACTS: readonly [string, Act][] = [["b-add", "add-under"], ["b-run", "run"], ["b-auto", "auto"], ["b-cockpit", "cockpit"]];
+/** The header's act buttons, by their element id: each one is hidden in a replay. Auto and the cockpit are
+ *  Home's and the palette's (with graphene.advanced), not the graph's. */
+export const HEADER_ACTS: readonly [string, Act][] = [["b-add", "add-under"], ["b-run", "run"]];
 
 export const cut = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1).trimEnd() + "…" : s);
 

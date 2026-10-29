@@ -158,8 +158,8 @@ function header(s: StateX) {
   $("auto").textContent = h.auto;
   $("auto").hidden = !h.auto;
   const run = $("b-run"); // while a run goes, the button that started it stops it
-  run.replaceChildren(icon(s.run.going ? "debug-stop" : "play"), document.createTextNode(s.run.going ? "Stop" : "Run ready"));
-  run.title = s.run.going ? "graphene run --stop: what runs goes back to the plan" : "graphene run --parallel 4";
+  run.replaceChildren(icon(s.run.going ? "debug-stop" : "play"), document.createTextNode(s.run.going ? "Stop" : "Run"));
+  run.title = s.run.going ? "stop every agent: their tasks go back to the plan" : "start an agent on every task that is ready";
   for (const [id] of HEADER_ACTS) $(id).hidden = replaying(); // a replay is watched: nothing acts on a plan, or outside it
   const toggle = $("b-view");
   const v = view();
@@ -828,10 +828,8 @@ function wire() {
     b.addEventListener("click", on);
     actions.appendChild(b);
   };
-  top("b-add", "Add step…", "add", "a step in a sentence", () => api.postMessage({ type: "act", act: "add-under", id: "" }));
-  top("b-run", "Run ready", "play", "graphene run --parallel 4", () => api.postMessage({ type: "act", act: state?.run.going ? "stop" : "run", id: "" }));
-  top("b-auto", "Auto…", "rocket", "graphene auto", () => api.postMessage({ type: "act", act: "auto", id: "" }));
-  top("b-cockpit", "Cockpit", "terminal-cmd","graphene watch, in a terminal", () => api.postMessage({ type: "act", act: "cockpit", id: "" }));
+  top("b-add", "Add task…", "add", "a task in a sentence: the planner fills in its files and its check", () => api.postMessage({ type: "act", act: "add-under", id: "" }));
+  top("b-run", "Run", "play", "start an agent on every task that is ready", () => api.postMessage({ type: "act", act: state?.run.going ? "stop" : "run", id: "" }));
   top("b-view", "Lanes", "list-flat", "graph or lanes (v)", () => { remember({ view: view() === "lanes" ? "graph" : "lanes" }); fitted = false; render(); });
   top("b-help", "", "question", "every key (?)", () => help($("help").hidden));
   $("b-help").setAttribute("aria-label", "keys");
