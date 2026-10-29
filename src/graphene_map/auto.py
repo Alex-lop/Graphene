@@ -239,6 +239,21 @@ def run_cap(store, template: str, given: float | None) -> tuple[float | None, st
     return cap, f"your envelope's budget: ${left:.2f} of ${budget:.2f} left; this run starts nothing past it"
 
 
+def lower(given: str | None, template: str, left: float) -> str:
+    """The other way past a budget smaller than one attempt's cap, as advice: Claude Code's default named
+    again with a cap that fits (`run.named` reads `claude --max-budget-usd X`), or a lower one in the
+    person's own Claude Code command. Codex and a plain command have no cap to lower: nothing."""
+    from . import meter as M
+
+    word = ((given or "").split(None, 1) or [""])[0]
+    fits = int(left * 100) / 100  # the cent below what is left: a cap a float's last digit cannot tip over
+    if word.partition(":")[0] == "claude" and fits >= 0.01:
+        return f", or `graphene auto --with '{word} --max-budget-usd {fits:.2f}'` holds an attempt to it"
+    if M.kind(shlex.split(template)) == "claude":
+        return ", or a lower `--max-budget-usd` in the command you give `--with`"
+    return ""
+
+
 def planner_cap(template: str, left: float | None) -> tuple[str, str | None]:
     """The planner's command inside the budget left: a Claude Code planner with no --max-budget-usd of its
     own (the default names none) is given what is left as one, so one call cannot spend past the envelope;
@@ -319,7 +334,8 @@ def drive(open_store: Callable, root: Path, goal: str | None, say: Callable[[str
         files = P.tracked(root)
         spec = planner or store.meta("planner")
         template = named(spec)  # refused with what to do when none is chosen
-        executor = executor_named(withs[0] if withs else store.meta("executor"))
+        given = withs[0] if withs else store.meta("executor")
+        executor = executor_named(given)
         how = metering(executor)
         going = state(store)
         if goal is None:  # go on with the plan in force: the next round
@@ -446,7 +462,7 @@ def drive(open_store: Callable, root: Path, goal: str | None, say: Callable[[str
                 each = _worst(shlex.split(executor)) if cap is not None else 0.0
                 if cap is not None and cap < each:  # nothing could start: say why, not "did not start"
                     why = (f"the budget left (${cap:.2f}) is less than one attempt's worst case (${each:g}): "
-                           "`graphene config set budget N` widens it, or the executor's `--max-budget-usd`")
+                           f"`graphene config set budget N` widens it{lower(given, executor, cap)}")
                     log(store, k, "waits", paid, budget, red, why, root=root_id, goal=goal)
                     say(f"{WAITS}{why}")
                     return 1

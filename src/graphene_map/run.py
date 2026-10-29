@@ -76,13 +76,18 @@ def unchosen(who: str) -> P.Refused:
 def named(spec: str | None) -> str:
     """What --with names, as the command to start: `nemotron [options]` is Graphene's own executor on
     Token Factory; `claude` and `codex` alone are those agents as Graphene starts them by default, and
-    `claude:MODEL` or `codex:MODEL` is the same with that model named in the CLI's own flag; anything
-    else is a command, as it is. Nothing named is refused (`unchosen`)."""
+    `claude:MODEL` or `codex:MODEL` is the same with that model named in the CLI's own flag; `claude
+    --max-budget-usd X` (or `claude:MODEL --max-budget-usd X`) is Claude Code's default with that cap an
+    attempt, not CAP_USD; anything else is a command, as it is. Nothing named is refused (`unchosen`)."""
     spec = (spec or "").strip()
     if not spec:
         raise unchosen("executor")
     if spec.split(None, 1)[0] == "nemotron":
         return extra.need("executor").template(spec)
+    word, _, rest = spec.partition(" ")
+    cap = re.fullmatch(r"--max-budget-usd[ =]\s*(\d+(?:\.\d+)?)", rest.strip())
+    if cap and word.partition(":")[0] == "claude":
+        return named(word).replace(f"--max-budget-usd {CAP_USD} ", f"--max-budget-usd {cap[1]} ")
     name, _, model = spec.partition(":")
     if model and " " not in spec and name in ("claude", "codex"):
         return {"claude": f"{DEFAULT_WITH} --model", "codex": f"{CODEX} -m"}[name] + f" {shlex.quote(model)}"
