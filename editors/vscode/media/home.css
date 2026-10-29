@@ -1,0 +1,110 @@
+/* Home's look: VS Code's own colours and fonts, so it is native in light, dark and high contrast. A card's
+   left edge carries its state's colour, as the graph's stripes do. No text under 11 px. */
+:root {
+  --running: var(--vscode-charts-yellow, #e9c46a);
+  --review: var(--vscode-charts-purple, #c77dff);
+  --came-back: var(--vscode-charts-red, #ef476f);
+  --proposed: var(--vscode-charts-blue, #4cc9f0);
+  --done: var(--vscode-charts-green, #8ab17d);
+  --waiting: var(--vscode-descriptionForeground, #888);
+  --border: var(--vscode-widget-border, var(--vscode-panel-border, rgba(128, 128, 128, 0.35)));
+  --card: var(--vscode-editorWidget-background, var(--vscode-sideBar-background, #252526));
+  --focus: var(--vscode-focusBorder, #007fd4);
+  --fg: var(--vscode-foreground, #ccc);
+  --dim: var(--vscode-descriptionForeground, #999);
+  --warn: var(--vscode-editorWarning-foreground, #cca700);
+  --bad: var(--vscode-errorForeground, #f48771);
+  --mono: var(--vscode-editor-font-family, ui-monospace, Menlo, monospace);
+}
+body {
+  margin: 0; padding: 10px 12px 16px; color: var(--fg); background: var(--vscode-sideBar-background, transparent);
+  font-family: var(--vscode-font-family, system-ui, sans-serif); font-size: var(--vscode-font-size, 13px); line-height: 1.4;
+}
+[hidden] { display: none !important; }
+h2 { font-size: 1.15em; margin: 4px 0 8px; }
+p { margin: 6px 0; }
+.dim { color: var(--dim); }
+.bad { color: var(--bad); }
+.strong { font-weight: 600; margin-top: 12px; }
+.banner {
+  margin: -2px 0 10px; padding: 6px 8px; border-left: 3px solid var(--review); color: var(--review);
+  background: var(--vscode-textBlockQuote-background, rgba(128, 128, 128, 0.1)); font-size: 0.95em;
+}
+.head { margin-bottom: 8px; }
+.goal {
+  font-weight: 600; font-size: 1.05em; word-break: break-word;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; /* the whole: its hover */
+}
+.goal.dim { font-weight: 400; }
+.counts { color: var(--dim); margin-top: 2px; }
+
+/* the ask: the one place a person types */
+.ask { margin: 6px 0 14px; }
+textarea {
+  box-sizing: border-box; width: 100%; resize: vertical; min-height: 54px; padding: 6px 8px; font: inherit;
+  color: var(--vscode-input-foreground, var(--fg)); background: var(--vscode-input-background, #3c3c3c);
+  border: 1px solid var(--vscode-input-border, var(--border)); border-radius: 3px;
+}
+textarea:focus { outline: 1px solid var(--focus); outline-offset: -1px; }
+.ask.compact textarea:not(:focus) { min-height: 0; height: 30px; resize: none; }
+textarea:disabled { opacity: 0.6; }
+.ask-row { display: flex; align-items: center; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
+.busy { color: var(--dim); }
+.busy::before { content: "◌ "; display: inline-block; animation: spin 1.2s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.said { margin-top: 8px; padding: 6px 8px; border-left: 3px solid var(--proposed); color: var(--fg); }
+.said.bad { border-color: var(--bad); color: var(--bad); }
+.said button { margin-top: 6px; }
+.intro { color: var(--dim); }
+
+/* sections and cards */
+.sec { margin: 12px 0 6px; }
+.sec-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.sec-acts { display: flex; gap: 6px; flex-wrap: wrap; }
+button.fold {
+  background: none; border: none; padding: 2px 0; color: var(--fg); font-weight: 600; text-transform: uppercase;
+  font-size: 0.85em; letter-spacing: 0.04em;
+}
+button.fold:hover { background: none; color: var(--vscode-textLink-foreground, var(--fg)); }
+.sec-note { color: var(--dim); font-size: 0.95em; }
+.card {
+  margin: 8px 0; padding: 8px 10px; background: var(--card); border: 1px solid var(--border);
+  border-left: 3px solid var(--waiting); border-radius: 4px;
+}
+.tone-question, .tone-review, .tone-yours { border-left-color: var(--review); }
+.tone-came-back { border-left-color: var(--came-back); }
+.tone-proposed { border-left-color: var(--proposed); }
+.tone-running { border-left-color: var(--running); }
+.tone-done { border-left-color: var(--done); }
+.tone-ready { border-left-color: var(--fg); }
+.c-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.c-title { font-weight: 600; word-break: break-word; }
+.c-tag { color: var(--dim); font-size: 0.9em; white-space: nowrap; }
+.c-lines { margin: 6px 0 0; }
+.c-line { display: grid; grid-template-columns: 84px 1fr; gap: 6px; padding: 2px 0; }
+.c-line.wide { display: block; }
+.c-line dt { color: var(--dim); }
+.c-line dd { margin: 0; word-break: break-word; }
+.c-line.warn dd { color: var(--warn); }
+.mono { font-family: var(--mono); font-size: 0.92em; }
+.c-acts, .acts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.foot { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 18px; padding-top: 10px; border-top: 1px solid var(--border); }
+
+/* Set Up */
+.tick { display: flex; align-items: center; gap: 6px; margin: 10px 0 4px; cursor: pointer; }
+.picks { display: flex; flex-direction: column; gap: 6px; }
+button.pick { flex-direction: column; align-items: flex-start; gap: 1px; padding: 7px 10px; text-align: left; }
+.pick-name { font-weight: 600; }
+.pick-note { color: var(--dim); font-size: 0.92em; }
+
+/* buttons, as VS Code's: the primary filled, the quiet ones secondary */
+button {
+  display: inline-flex; align-items: center; gap: 5px; font: inherit; line-height: 1.3; cursor: pointer;
+  color: var(--vscode-button-foreground, #fff); background: var(--vscode-button-background, #0e639c);
+  border: 1px solid var(--vscode-button-border, transparent); border-radius: 3px; padding: 4px 10px;
+}
+button:hover { background: var(--vscode-button-hoverBackground, #1177bb); }
+button.quiet { color: var(--vscode-button-secondaryForeground, var(--fg)); background: var(--vscode-button-secondaryBackground, #3a3d41); }
+button.quiet:hover { background: var(--vscode-button-secondaryHoverBackground, #45494e); }
+button:disabled { opacity: 0.5; cursor: default; }
+button:focus-visible, input:focus-visible { outline: 1px solid var(--focus); outline-offset: 1px; }
