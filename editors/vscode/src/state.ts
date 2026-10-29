@@ -237,6 +237,14 @@ export function usd(n: number | null | undefined): string {
   return n >= 0.01 ? `$${n.toFixed(2)}` : `$${n.toFixed(3)}`;
 }
 
+/** What the plan is for: its goal, else what the person last asked for (`graphene ask` sets no goal); "" when
+ *  the news no longer says. */
+export function headline(s: Pick<State, "goal" | "news">): string {
+  if (s.goal) return s.goal;
+  const asked = [...s.news].reverse().find((l) => l.startsWith("you asked: "));
+  return asked ? asked.slice("you asked: ".length) : "";
+}
+
 /** The plan's words for a Markdown hover, as text: an agent writes some of them (a title it proposed, a command
  *  it ran, a note), so every Markdown character is escaped and none is read as a link, an image, HTML or an
  *  icon; spaces stay spaces, so a long line still wraps, and a line break is a space. */
