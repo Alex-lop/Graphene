@@ -4,7 +4,7 @@
 // pane whose buttons ask the extension to run graphene. No network, no library: SVG and DOM from the state.
 // Boxes are keyed by task id and updated in place, so a snapshot that changed nothing moves nothing.
 import { layout, modeFor, step, type Box, type Edge, type Layout } from "../layout.ts";
-import { autoLine, usd, type State } from "../state.ts";
+import { autoLine, SAY, usd, type State } from "../state.ts";
 import { ICONS } from "./icons.ts";
 import { actsFor, cornerWord, cut, done, FIRST_HINT, fitWidth, forkActs, forkRow, forkWords, HEADER_ACTS, headerFor, KEYS, linkHint, paneKey, questionOn,
          sub, tabOrder, topLine, zoomK, type Act, type Button, type StateX, type TaskX } from "./words.ts";
@@ -542,7 +542,7 @@ function pane() {
   });
   const head = div("d-head", undefined, pane);
   div(`d-title ${cls(t.state)}`, t.title, head);
-  div("d-id", `${t.id} · ${t.state}${t.needs_you ? " · needs you" : ""}`, head);
+  div("d-id", `${t.id} · ${SAY[t.state]}${t.needs_you ? " · needs you" : ""}`, head);
   const close = document.createElement("button");
   close.className = "close";
   close.appendChild(icon("close"));
@@ -575,14 +575,14 @@ function pane() {
       opts.appendChild(own);
     }
   }
-  row("goal", t.full, body);
+  row("what for", t.full, body);
   row("under", t.parent ? goalTitle(s, t.parent) : "", body);
-  row("scope", t.scope.join("  "), body);
-  row("check", t.check ?? "", body);
+  row("may change", t.scope.join("  "), body);
+  row("done when", t.check ? `${t.check} passes` : "", body);
   if (t.hollow) div("hollow", "its check passed before the work too: it proves nothing new", body); // as the cockpit says
   if (t.needs.length) { // what it waits on, each with the × that stops it waiting
     const r = div("row", undefined, body);
-    div("k", "needs", r);
+    div("k", "after", r);
     const v = div("v", undefined, r);
     for (const n of t.needs) {
       const need = div("need", s.tasks.find((x) => x.id === n)?.title ?? n, v);
@@ -599,12 +599,12 @@ function pane() {
   row("agent", t.agent ? `agent ${t.agent}${t.model ? ` · ${t.model}` : ""}` : "", body);
   row("tries", t.attempts !== undefined && t.attempts > 1 ? String(t.attempts) : "", body);
   row("cost", usd(t.usd), body);
-  row("idle", t.idle !== null && t.idle > 8 ? `${Math.round(t.idle)} s quiet` : "", body);
+  row("quiet", t.idle !== null && t.idle > 8 ? `${Math.round(t.idle)} s` : "", body);
   row("note", t.note, body);
-  row("outside", t.outside.join("  "), body);
+  row("wanted", t.outside.join("  "), body);
   if (t.forks.length) {
     const r = div("row", undefined, body);
-    div("k", "forks", r);
+    div("k", "attempts", r);
     const v = div("v", undefined, r);
     for (const f of t.forks) {
       const kept = t.kept?.letter === f.letter;
