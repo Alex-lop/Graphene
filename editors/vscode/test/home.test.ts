@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
+import * as C from "../src/commands.ts";
 import { banner, checkHome, countsLine, home, said, type Card, type Home } from "../src/home/cards.ts";
 import { headline, parseState, type State } from "../src/state.ts";
 
@@ -151,4 +152,14 @@ test("the page's messages are checked against the plan before anything runs", ()
   no({ type: "nonsense" });
   no(null);
   assert.equal(checkHome({ type: "act", act: "setup", arg: "claude" }, null)?.type, "act"); // set up: no plan yet
+});
+
+test("Home's commands: an ask, a send-back with its note, a set-up that asks nothing", () => {
+  assert.deepEqual(C.ask("-v please"), ["ask", "--", "-v please"]);
+  assert.deepEqual(C.reopen("top", "-- the test only checks one word"), ["node", "reopen", "top", "--note=-- the test only checks one word"]);
+  assert.throws(() => C.reopen("-x", "why"));
+  assert.deepEqual(C.initWith("codex"), ["init", "--planner", "codex", "--executor", "codex"]);
+  // Discard all is one drop: one at a time, a task another of them waits on is refused
+  assert.deepEqual(C.dropAll(["hello", "bye", "words"]), ["node", "drop", "hello", "bye", "words"]);
+  assert.throws(() => C.dropAll(["hello", "--all"]));
 });
