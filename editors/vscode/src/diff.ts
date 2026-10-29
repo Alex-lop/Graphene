@@ -97,6 +97,7 @@ export function register(context: vscode.ExtensionContext, session: Session, _ui
       void vscode.window.showInformationMessage(`Graphene: ${C.plain(d.said[0] ?? `${name(id)} changed no file`)}`);
       return;
     }
+    session.see(id); // its changes are on screen: Home's Approve no longer asks
     if (d.said.length) vscode.window.setStatusBarMessage(`$(info) ${C.plain(d.said.join(" · "))}`, 8000);
     const uris = pairs.map((p) => [sideUri(p.left, id, fork), sideUri(p.right, id, fork)] as const);
     if (pairs.length > 1 && !column) {
@@ -147,19 +148,32 @@ export function register(context: vscode.ExtensionContext, session: Session, _ui
     }
   });
 
+  /** Approve lands the task. Its changes never opened in this window, the person is asked once first: approving
+   *  unread work is the failure Graphene is for. Every Approve comes here: Home's, the graph's, a diff's title's. */
+  const approve = async (id: string) => {
+    if (!session.seen.has(id)) {
+      const pick = await vscode.window.showWarningMessage(C.plain(`You have not opened the changes of “${name(id)}” yet.`),
+                                                          { modal: true, detail: "Approving lands them in your repository." },
+                                                          "Open Changes", "Approve Anyway");
+      if (pick === "Open Changes") return void vscode.commands.executeCommand("graphene.openDiff", { id });
+      if (pick !== "Approve Anyway") return;
+    }
+    await session.act(C.signOff(id));
+  };
+
   cmd("pickFork", async (arg) => {
     const given = typeof arg === "object" ? arg : undefined;
     const d = given?.id && given.fork ? { id: given.id, fork: given.fork } : current();
     if (!d?.fork) return void vscode.window.showInformationMessage("Graphene: open a fork's diff first, then keep it.");
     if (await session.act(C.pickFork(d.id, d.fork))) {
-      const land = await vscode.window.showInformationMessage(`Fork ${d.fork} is now ${C.plain(name(d.id))}'s work. Sign off to land it.`, "Sign Off");
-      if (land) await session.act(C.signOff(d.id));
+      const land = await vscode.window.showInformationMessage(`Attempt ${d.fork} is kept for “${C.plain(name(d.id))}”. Approve it to land it.`, "Approve");
+      if (land) await approve(d.id);
     }
   });
 
   cmd("signOff", async (arg) => {
     const id = idOf(arg) ?? current()?.id;
-    if (!id) return void vscode.window.showInformationMessage("Graphene: open a task's diff first, then sign off.");
-    await session.act(C.signOff(id));
+    if (!id) return void vscode.window.showInformationMessage("Graphene: open a task's changes first, then approve it.");
+    await approve(id);
   });
 }
