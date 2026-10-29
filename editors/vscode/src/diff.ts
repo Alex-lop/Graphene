@@ -136,10 +136,10 @@ export function register(context: vscode.ExtensionContext, session: Session, _ui
   cmd("compareForks", async (arg) => {
     const id = idOf(arg);
     const t = id ? session.tasks().find((x) => x.id === id)
-                 : await pick(C.forked(session.tasks()), "the task whose forks to compare", "no task has forks racing.");
+                 : await pick(C.forked(session.tasks()), "the task whose attempts to compare", "no task has attempts racing.");
     if (!t) return;
     const letters = t.forks.map((f) => f.letter).filter(Boolean);
-    if (!letters.length) return void vscode.window.showInformationMessage(`Graphene: ${C.plain(t.title)} has no forks racing.`);
+    if (!letters.length) return void vscode.window.showInformationMessage(`Graphene: ${C.plain(t.title)} has no attempts racing.`);
     const columns = [vscode.ViewColumn.One, vscode.ViewColumn.Two, vscode.ViewColumn.Three, vscode.ViewColumn.Four,
                      vscode.ViewColumn.Five, vscode.ViewColumn.Six, vscode.ViewColumn.Seven, vscode.ViewColumn.Eight, vscode.ViewColumn.Nine];
     for (const [i, letter] of letters.slice(0, columns.length).entries()) {
@@ -164,7 +164,7 @@ export function register(context: vscode.ExtensionContext, session: Session, _ui
   cmd("pickFork", async (arg) => {
     const given = typeof arg === "object" ? arg : undefined;
     const d = given?.id && given.fork ? { id: given.id, fork: given.fork } : current();
-    if (!d?.fork) return void vscode.window.showInformationMessage("Graphene: open a fork's diff first, then keep it.");
+    if (!d?.fork) return void vscode.window.showInformationMessage("Graphene: open an attempt's changes first, then keep it.");
     if (await session.act(C.pickFork(d.id, d.fork))) {
       const land = await vscode.window.showInformationMessage(`Attempt ${d.fork} is kept for “${C.plain(name(d.id))}”. Approve it to land it.`, "Approve");
       if (land) await approve(d.id);
