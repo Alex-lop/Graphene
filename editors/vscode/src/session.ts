@@ -88,10 +88,10 @@ export class Session {
   }
 
   /** graphene, in the plan's folder, as the person: exit code and both streams; -1 when it did not run at all
-   *  (not found, a directory, no x bit), stderr saying which. */
-  run(argv: string[], input?: string): Promise<{ code: number; stdout: string; stderr: string }> {
+   *  (not found, a directory, no x bit), stderr saying which. ``signal`` stops it (TERM: graphene settles first). */
+  run(argv: string[], input?: string, signal?: AbortSignal): Promise<{ code: number; stdout: string; stderr: string }> {
     return new Promise((resolve) => {
-      const child = execFile(this.path, argv, { cwd: this.folder?.uri.fsPath, env: C.scrub(process.env), maxBuffer: 64 * 1024 * 1024 },
+      const child = execFile(this.path, argv, { cwd: this.folder?.uri.fsPath, env: C.scrub(process.env), maxBuffer: 64 * 1024 * 1024, signal },
                              (err, stdout, stderr) => {
         const e = err as (NodeJS.ErrnoException & { code?: number | string }) | null;
         if (e && cannotRun(e.code)) return resolve({ code: -1, stdout: "", stderr: e.code === "ENOENT" ? "" : `${this.path} is not a command it can run (${e.code})` });
