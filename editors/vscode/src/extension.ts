@@ -61,7 +61,7 @@ export function activate(context: vscode.ExtensionContext) {
   const home = new HomeHost(context, session);
   const bar = vscode.window.createStatusBarItem("graphene", vscode.StatusBarAlignment.Left, 50);
   bar.name = "Graphene";
-  bar.command = "graphene.showGraph";
+  bar.command = "graphene.home";
   bar.text = "◆ Graphene";
   bar.show();
   context.subscriptions.push(treeView, bar, vscode.window.registerWebviewViewProvider("graphene.graph", graph, { webviewOptions: { retainContextWhenHidden: true } }),
@@ -112,7 +112,7 @@ export function activate(context: vscode.ExtensionContext) {
       for (const line of s.news.slice(-4)) md.appendMarkdown(`- ${mdText(line)}\n`);
       md.appendMarkdown(`\n${mdText(which(session.file || session.path, session.version))}${session.found ? ", off this editor's PATH" : ""}\n\n`);
       md.appendMarkdown(session.stream.live ? "live: `graphene state --json --watch`\n\n" : "");
-      md.appendMarkdown("Graphene: Show Plan Graph");
+      md.appendMarkdown("Click for Graphene's Home");
       bar.tooltip = md;
     } else {
       const k = session.status.kind;
@@ -160,6 +160,7 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(vscode.commands.registerCommand(`graphene.${name}`, (arg?: Arg) => fn(arg)));
 
   cmd("refresh", () => session.refresh());
+  cmd("home", () => vscode.commands.executeCommand("graphene.home.focus"));
   cmd("showGraph", (arg) => graph.show(taskOf(arg)?.id));
   cmd("openCockpit", () => session.terminal("graphene watch", C.watch()));
   cmd("runReady", () => session.terminal("graphene run", C.runReady()));
