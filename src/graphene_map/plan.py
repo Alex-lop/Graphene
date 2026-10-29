@@ -1761,8 +1761,10 @@ def propose(
             if node.id in taken:
                 gone = next((n for n in existing if n.id == node.id and n.state in GONE), None)
                 if gone:  # an undone add, or a drop: out of the plan, and its id kept for the record
+                    back = who.person and (act := last_act(store)) and node.id in act["rows"]  # undo's own
                     raise refusal(f"{node.id} was {gone.state} and its id stays taken",
-                                  do="`graphene plan undo` puts it back, or choose another id")  # fmt: skip
+                                  do="`graphene plan undo` puts it back, or choose another id" if back
+                                  else "choose another id")  # fmt: skip
                 raise refusal(
                     f"{node.id} is already in the plan", do=f"graphene node set {node.id} … edits it"
                 )
@@ -3163,6 +3165,24 @@ def _items_moved(before: str | None, after: str | None) -> dict:
     was = {it["id"]: it for it in json.loads(before or "[]")}
     now = {it["id"]: it for it in json.loads(after or "[]")}
     return {i: [was.get(i), now.get(i)] for i in {**was, **now} if was.get(i) != now.get(i)}
+
+
+def last_act(store) -> dict | None:
+    """The person's last kept act: `graphene plan undo` puts back this one alone, and nothing redoes it."""
+    stack = json.loads(store.meta("undo") or "[]")
+    return stack[-1] if stack else None
+
+
+def undo_for(store, touched: str, back: str) -> str:
+    """`graphene plan undo` as advice about what was done to ``touched`` (a node's or a board item's id):
+    "`graphene plan undo` BACK" while the last act is that one; else what undo would put back instead, not
+    as a command, so nobody is sent to undo an act they did not mean."""
+    act = last_act(store)
+    if act and (touched in act["rows"] or touched in act.get("board", {})):
+        return f"`graphene plan undo` {back}"
+    if act:
+        return f"an undo would put back your last act ({act['what']}), not this"
+    return "no undo reaches it now"
 
 
 def undo(store, who: Caller, now: str | None = None) -> str:

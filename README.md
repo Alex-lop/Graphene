@@ -18,6 +18,9 @@ Claude Code, Codex or any model. On your computer, no account.
 
 <p align="center"><img src="https://raw.githubusercontent.com/Alex-lop/Graphene/main/docs/assets/auto.gif" alt="graphene demo --auto: one goal; Nemotron plans three tasks that run at once; three agents race each task, one is stopped at a file outside its task, the rule keeps one fork a task; all three land; the whole test suite is red because two of them broke an old test together; Nemotron plans the fix, it races and lands, and the suite is green"></p>
 
+<p align="center"><img src="https://raw.githubusercontent.com/Alex-lop/Graphene/main/editors/vscode/media/graph.png" alt="Graphene for VS Code during a race against the scripted stand-in, in real VS Code: Home, in the side bar, shows three agents working, each with its model, what it is doing now, its cost and its attempts, and a Stop all button; the editor tab draws the same race, two tasks each fanned out into three Nano attempts, all running, flowing into the goal; the auto line says round 1 of 3, running, $0.007 of $2.00"></p>
+<p align="center"><sub>The same race in VS Code: Home in the side bar, a click for everything (<a href="#in-vs-code">In VS Code</a>)</sub></p>
+
 ## Try it
 
 A scripted replay of auto mode on Nemotron: no AI, no key, nothing written to your project.
@@ -89,16 +92,14 @@ may write; `:auto <goal>` starts auto mode from the cockpit.
 
 ### In VS Code
 
-![Graphene for VS Code during a race against the scripted stand-in, in real VS Code: the editor tab draws three tasks, each fanned out into three Nano forks, running, passed or given up, with their lines and dollars, flowing into the goal; the auto line says round 1 of 3, running, $0.007 of $2.00; in the side bar, Needs You holds a task whose agent was stopped, the Graph draws the same race as lanes, and Agents lists the three agents at work](https://raw.githubusercontent.com/Alex-lop/Graphene/main/editors/vscode/media/graph.png)
-
 The extension in [`editors/vscode`](https://github.com/Alex-lop/Graphene/blob/main/editors/vscode/README.md) is
-the same plan in your editor. Needs You comes first in the side bar: a question, a proposal, a task that came
-back, a sign-off, each with its move. Agents lists every running agent, what it edits now, its seconds quiet and
-its dollars. The graph shows the race: a task fans out into its forks as they work, and the kept one says why it
-won. A task's changes open in VS Code's own diff editor, a race's forks side by side. The plan opens as text, and
-saving applies it. Add Step takes one sentence, and the planner proposes the step. Watch the Demo plays the race
-with no key. Every click is a `graphene` command run as you, and it reads `graphene state --json`, the cockpit's
-own snapshot, so the two never disagree.
+the same plan in your editor, with a click for everything. Home comes first in the side bar: set the folder up in
+one pick, type what you want and click Plan it, read the suggested tasks (what each is for, the files it may
+change, what proves it), and Start. Each finished task then shows what it changed and the check that passed:
+Open changes, Approve, or Send back with a note, and Approve asks first if you never opened the changes. The graph
+shows the race: a task fans out into its attempts as they work, and the kept one says why it won. Watch the Demo
+plays the race with no key. Every click is a `graphene` command run as you, and it reads `graphene state --json`,
+the cockpit's own snapshot, so the two never disagree.
 
 Install the `.vsix` attached to [the latest release](https://github.com/Alex-lop/Graphene/releases/latest) with
 `code --install-extension`, or from the Marketplace and Open VSX once they list it. It is built for VS Code 1.95

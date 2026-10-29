@@ -239,6 +239,21 @@ def run_cap(store, template: str, given: float | None) -> tuple[float | None, st
     return cap, f"your envelope's budget: ${left:.2f} of ${budget:.2f} left; this run starts nothing past it"
 
 
+def lower(given: str | None, template: str, left: float) -> str:
+    """The other way past a budget smaller than one attempt's cap, as advice: Claude Code's default named
+    again with a cap that fits (`run.named` reads `claude --max-budget-usd X`), or a lower one in the
+    person's own Claude Code command. Codex and a plain command have no cap to lower: nothing."""
+    from . import meter as M
+
+    word = ((given or "").split(None, 1) or [""])[0]
+    fits = int(left * 100) / 100  # the cent below what is left: a cap a float's last digit cannot tip over
+    if word.partition(":")[0] == "claude" and fits >= 0.01:
+        return f", or `graphene auto --with '{word} --max-budget-usd {fits:.2f}'` holds an attempt to it"
+    if M.kind(shlex.split(template)) == "claude":
+        return ", or a lower `--max-budget-usd` in the command you give `--with`"
+    return ""
+
+
 def planner_cap(template: str, left: float | None) -> tuple[str, str | None]:
     """The planner's command inside the budget left: a Claude Code planner with no --max-budget-usd of its
     own (the default names none) is given what is left as one, so one call cannot spend past the envelope;
@@ -255,7 +270,8 @@ def planner_cap(template: str, left: float | None) -> tuple[str, str | None]:
         return f"{template} --max-budget-usd {left:.2f}", None
     if (worst := _worst(argv)) > left:
         why = (f"the budget left (${left:.2f}) is less than the planner's worst case (${worst:g}): "
-               "`graphene config set budget N` widens it, or the planner's `--max-budget-usd`")  # fmt: skip
+               "`graphene config set budget N` widens it, or a lower `--max-budget-usd` in the command you "
+               "give `--planner`")  # fmt: skip
         return template, why
     return template, None
 
@@ -319,7 +335,8 @@ def drive(open_store: Callable, root: Path, goal: str | None, say: Callable[[str
         files = P.tracked(root)
         spec = planner or store.meta("planner")
         template = named(spec)  # refused with what to do when none is chosen
-        executor = executor_named(withs[0] if withs else store.meta("executor"))
+        given = withs[0] if withs else store.meta("executor")
+        executor = executor_named(given)
         how = metering(executor)
         going = state(store)
         if goal is None:  # go on with the plan in force: the next round
@@ -335,9 +352,13 @@ def drive(open_store: Callable, root: Path, goal: str | None, say: Callable[[str
             open_ = [n for n in P.nodes(store) if n.state in (P.PROPOSED, P.OPEN, P.RUNNING, P.REVIEW)]
             same = going and going.get("goal") == goal and going.get("root") in {n.id for n in open_}
             if was and was != goal and open_ and not same:
+                # archive puts away finished nodes only: the drop is what ends one still open (a node goes
+                # with everything under it, so the tops are named)
+                ids, by_id = {n.id for n in open_}, {n.id: n for n in P.nodes(store)}
+                tops = " ".join(n.id for n in open_ if not any(a.id in ids for a in P.above(n, by_id)))
                 raise P.Refused(
                     f"the plan here is for another goal ({was!r}) and {len(open_)} of its nodes are still "
-                    "open: `graphene auto` with no goal goes on with it; `graphene plan archive` ends it"
+                    f"open: `graphene auto` with no goal goes on with it; `graphene node drop {tops}` ends it"
                 )
             if same:
                 root_id, k = going["root"], going["round"] + (0 if going.get("planned") else 1)
@@ -442,7 +463,7 @@ def drive(open_store: Callable, root: Path, goal: str | None, say: Callable[[str
                 each = _worst(shlex.split(executor)) if cap is not None else 0.0
                 if cap is not None and cap < each:  # nothing could start: say why, not "did not start"
                     why = (f"the budget left (${cap:.2f}) is less than one attempt's worst case (${each:g}): "
-                           "`graphene config set budget N` widens it, or the executor's `--max-budget-usd`")
+                           f"`graphene config set budget N` widens it{lower(given, executor, cap)}")
                     log(store, k, "waits", paid, budget, red, why, root=root_id, goal=goal)
                     say(f"{WAITS}{why}")
                     return 1

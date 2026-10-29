@@ -371,7 +371,8 @@ def test_plan_edit_answers_by_adding_answer_lines_and_drops_by_deleting(repo, tm
 def test_a_refused_answer_in_the_text_names_its_line(repo):
     with Store.open(repo) as store:
         T.apply(store, "question: q  [q]\n    default: d\n", PLANNER, None)
-        B.take(store, "q", ALEX)
+        with P.undoable(store, ALEX, "board take q"):  # as the CLI keeps it: undo is what takes it back
+            B.take(store, "q", ALEX)
         text, opened = T.render(store)
         changed = text.replace("answer: default", "answer: option 1")
         with pytest.raises(P.Refused, match=r"line 3: q is taken already \(d\); `graphene plan undo`"):
@@ -792,7 +793,8 @@ def test_plan_edit_does_not_reword_an_item_already_answered(repo):
         P.propose(store, [{"id": "users", "title": "users", "scope": ["api.py"], "check": "true"}], ALEX)
         asked = "question: which id?  [which-id]\n    default: the row id\n    then: condition schema.py\n"
         T.apply(store, asked + "    about: users\n", PLANNER, None)
-        B.take(store, "which-id", ALEX)
+        with P.undoable(store, ALEX, "board take which-id"):  # as the CLI keeps it
+            B.take(store, "which-id", ALEX)
         text, opened = T.render(store)
         edited = text.replace("default: the row id", "default: a new uuid").replace(
             "condition schema.py", "condition api.py"

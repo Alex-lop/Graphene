@@ -35,7 +35,7 @@ test("a running plan with three forks keeps each fork's letter, model, state and
                    [["a", "Nano", "gave up"], ["b", "Nano", "passed"], ["c", "Super", "running"]]);
   assert.deepEqual(greet.kept, { letter: "b", why: "4 lines against 12", by: "rule" });
   assert.equal(s.run.pid, 4242);
-  assert.equal(summary(s), "2 running · 2 need you · $0.42");
+  assert.equal(summary(s), "2 working · 2 need you · $0.42");
 });
 
 test("auto waiting reads as a header with the round, the stage and the spend of the budget", () => {
@@ -84,6 +84,7 @@ test("a state word the extension does not know reads as waiting, and an agent nu
 test("dollars read as the cockpit shows them", () => {
   assert.equal(usd(0.42), "$0.42");
   assert.equal(usd(0.004), "$0.004");
+  assert.equal(usd(0.0002), "<$0.001"); // a stand-in's run: not "$0.000"
   assert.equal(usd(0), "");
   assert.equal(usd(null), "");
   assert.equal(usd(12), "$12.00");

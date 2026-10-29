@@ -41,11 +41,6 @@ export function needs(s: State): Need[] {
   return out;
 }
 
-/** The tooltip's one-line count: `2 need you`. */
-export function count(list: Need[]): string {
-  return list.length === 1 ? "1 needs you" : `${list.length} need you`;
-}
-
 // the moves, each the graphene command the cockpit runs for the same key
 export const takeDefault = (id: string): string[] => ["board", "take", id];
 export const pickOption = (id: string, n: number): string[] => ["board", "pick", id, String(n)]; // from 1

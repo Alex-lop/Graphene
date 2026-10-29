@@ -76,17 +76,33 @@ def unchosen(who: str) -> P.Refused:
 def named(spec: str | None) -> str:
     """What --with names, as the command to start: `nemotron [options]` is Graphene's own executor on
     Token Factory; `claude` and `codex` alone are those agents as Graphene starts them by default, and
-    `claude:MODEL` or `codex:MODEL` is the same with that model named in the CLI's own flag; anything
-    else is a command, as it is. Nothing named is refused (`unchosen`)."""
+    `claude:MODEL` or `codex:MODEL` is the same with that model named in the CLI's own flag; `claude
+    --max-budget-usd X` (or `claude:MODEL --max-budget-usd X`) is Claude Code's default with that cap an
+    attempt, not CAP_USD; anything else is a command, as it is. Nothing named is refused (`unchosen`)."""
     spec = (spec or "").strip()
     if not spec:
         raise unchosen("executor")
     if spec.split(None, 1)[0] == "nemotron":
         return extra.need("executor").template(spec)
+    word, _, rest = spec.partition(" ")
+    cap = re.fullmatch(r"--max-budget-usd[ =]\s*(\d+(?:\.\d+)?)", rest.strip())
+    if cap and word.partition(":")[0] == "claude":
+        return named(word).replace(f"--max-budget-usd {CAP_USD} ", f"--max-budget-usd {cap[1]} ")
     name, _, model = spec.partition(":")
     if model and " " not in spec and name in ("claude", "codex"):
         return {"claude": f"{DEFAULT_WITH} --model", "codex": f"{CODEX} -m"}[name] + f" {shlex.quote(model)}"
     return {"claude": DEFAULT_WITH, "codex": CODEX}.get(spec, spec)
+
+
+def more(template: str, worst: float) -> str:
+    """How to give an attempt that stopped at its cap more, as advice: Claude Code's default named again
+    with twice the cap (`named` reads `claude --max-budget-usd X`); a command of the person's own, in its
+    own flag."""
+    if not template.startswith(DEFAULT_WITH.partition(" --max-budget-usd")[0]):
+        return "a larger --max-budget-usd in the command you give --with"
+    model = M.model_in(shlex.split(template))
+    word = f"claude:{model}" if model else "claude"
+    return f"`--with '{word} --max-budget-usd {worst * 2:g}'` gives it more"
 
 
 @dataclass(frozen=True)
@@ -873,7 +889,7 @@ def _attempts(
         told = "\n".join(ln for ln in refusal.splitlines() if "graphene node release" not in ln)
         crashed = f"; the executor itself exited {code}" if code else ""
         if capped:  # no crash: its result said the budget ran out
-            crashed = ("; its last attempt stopped at its --max-budget-usd (a larger cap in --with, or a "
+            crashed = (f"; its last attempt stopped at its --max-budget-usd ({more(template, worst)}, or a "
                        "smaller leaf)")
         why = f"{tries}, the last one refused: {told}{crashed}"
         if fork:

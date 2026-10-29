@@ -58,7 +58,7 @@ export function owner(path: string, tasks: Task[]): Owner | null {
   const t = live.find((x) => x.state === "running") ?? live[0];
   if (!t) return null;
   if (t.state === "running") {
-    const forks = t.forks.length ? ` · ${t.forks.length} forks racing` : "";
+    const forks = t.forks.length ? ` · ${t.forks.length} attempts racing` : "";
     return { badge: t.agent && t.agent.length <= 2 ? t.agent : "◆", state: t.state,
       tooltip: `${t.title} · agent ${t.agent || "?"}${t.model ? ` · ${t.model}` : ""}${forks}: writing these files now` };
   }

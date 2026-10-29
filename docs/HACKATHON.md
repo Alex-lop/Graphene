@@ -54,9 +54,9 @@ lands. Then the goal's own check runs on the merged result, and when it is red U
 rounds you allowed. Token Factory is what makes a race on every task affordable: the replay's whole run, two plans
 by Ultra and twelve Nano forks, cost $0.02 at the scripted stand-in's prices (`tests/test_demo_auto.py`), and
 `graphene demo --auto` replays it with no key. The same plan, forks racing, shows in VS Code (`editors/vscode`):
-Needs You first, each thing that waits for you with its move; every running agent with what it edits, its
-seconds quiet and its dollars; a task's changes in the diff editor; and every click a `graphene` command run as
-you. The `.vsix` is on each GitHub release, and a harness drove it in real VS Code 1.143.1 and Cursor 3.25.6
+Home first, where everything is a click (set up, Plan it, Start, then Open changes, Approve or Send back on each
+finished task); every running agent with what it edits and its dollars; a task's changes in the diff editor; and
+every click a `graphene` command run as you. The `.vsix` is on each GitHub release, and a harness drove it in real VS Code 1.143.1 and Cursor 3.25.6
 (`editors/vscode/e2e`).
 
 **On NVIDIA Nemotron, through Nebius Token Factory: the path built for this hackathon.** `graphene init --planner

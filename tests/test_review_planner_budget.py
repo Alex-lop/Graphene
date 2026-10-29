@@ -41,7 +41,7 @@ def test_a_claude_code_planner_is_given_the_budget_left_as_its_cap():
     capped, why = AUTO.planner_cap(own, 0.4)
     assert capped == own
     assert why == ("the budget left ($0.40) is less than the planner's worst case ($2): `graphene config set "
-                   "budget N` widens it, or the planner's `--max-budget-usd`")
+                   "budget N` widens it, or a lower `--max-budget-usd` in the command you give `--planner`")
     script = f"{sys.executable} planner.py"  # a script reports no cost: as it is
     assert AUTO.planner_cap(script, 0.4) == (script, None)
 

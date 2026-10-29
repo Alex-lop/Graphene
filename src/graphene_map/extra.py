@@ -3,8 +3,8 @@ on any other import of it in the core. Without the extra installed, `load` is No
 
 import importlib
 
-MISSING = ("Nemotron is an optional extra, and it is not installed here: "
-           "uv tool install --python 3.12 'graphene-map[nemotron]'")  # fmt: skip
+INSTALL = "uv tool install --python 3.12 'graphene-map[nemotron]'"  # the extra, and `graphene key` with it
+MISSING = f"Nemotron is an optional extra, and it is not installed here: {INSTALL}"
 
 
 def load(name: str):

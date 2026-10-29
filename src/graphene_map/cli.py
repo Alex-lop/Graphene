@@ -469,7 +469,8 @@ def build():
                 say(f"this Claude Code has no {flag}: `claude update` first")
         found = [w for w in ("claude", "codex") if shutil.which(w)]
         if "not chosen" in chosen and not found:  # `ask` and `run` refuse until then, as the line above said
-            say("next: install claude or codex, or set a Token Factory key (`graphene key set`), then "
+            key = "`graphene key set`" if key_cli else f"`{extra.INSTALL}`, then `graphene key set`"
+            say(f"next: install claude or codex, or set a Token Factory key ({key}), then "
                 "`graphene init` again; `graphene auto '<what you want>'` after that")  # fmt: skip
         elif "not chosen" in chosen:  # more than one found: the line above named them, so name the command
             say(f"next: `graphene init --planner {found[0]} --executor {found[0]}` chooses them; "

@@ -1,8 +1,9 @@
-// The Needs You view: a row for each thing that needs the person (needs.ts), its move on its click and inline,
-// a badge with the count; the commands graphene.answer, graphene.handBack, graphene.markDone and graphene.setKey.
+// The Needs You view (with graphene.advanced; Home shows the same things first): a row for each thing that needs
+// the person (needs.ts), its move on its click and inline; the commands graphene.answer, graphene.handBack,
+// graphene.markDone and graphene.setKey, which Home's buttons run too.
 import * as vscode from "vscode";
 import * as C from "./commands.ts";
-import { answerPicks, answerWith, answerWords, count, markDone, needs, offerWords, type Need } from "./needs.ts";
+import { answerPicks, answerWith, answerWords, markDone, needs, offerWords, type Need } from "./needs.ts";
 import type { Session, UI } from "./session.ts";
 import { mdText, type State } from "./state.ts";
 
@@ -47,16 +48,16 @@ export function item(n: Need, s: State): vscode.TreeItem {
     if (t.tail.length) md.appendMarkdown(t.tail.slice(-3).map((l) => `- ${mdText(l)}\n`).join("") + "\n");
     const arg = { id: t.id };
     if (n.kind === "proposal") {
-      it.description = `proposed · ${t.scope.length ? t.scope.join("  ") : "no files yet"}`;
+      it.description = `suggested · ${t.scope.length ? t.scope.join("  ") : "no files yet"}`;
       md.appendMarkdown(`scope: ${mdText(t.scope.join("  ") || "none")}\n\ncheck: ${mdText(t.check ?? "none")}\n\nClick to accept it; the trash can drops it (\`graphene plan undo\` puts it back).`);
       it.command = { command: "graphene.accept", title: "Accept", arguments: [arg] };
     } else if (n.kind === "hand-back") {
       const why = t.why || t.note || "stuck";
-      it.description = `came back · ${why}`;
-      md.appendMarkdown(`came back: ${mdText(why)}\n\nClick for its moves: ${offerWords(t).map((o) => mdText(o.label.toLowerCase())).join(", ")}.`);
-      it.command = { command: "graphene.handBack", title: "Take Up the Hand-Back", arguments: [arg] };
+      it.description = `needs help · ${why}`;
+      md.appendMarkdown(`needs help: ${mdText(why)}\n\nClick for its moves: ${offerWords(t).map((o) => mdText(o.label.toLowerCase())).join(", ")}.`);
+      it.command = { command: "graphene.handBack", title: "Help a Task", arguments: [arg] };
     } else if (n.kind === "sign-off") {
-      it.description = `${t.hollow ? "passed before the work" : "check passed"} · sign off`;
+      it.description = `${t.hollow ? "passed before the work" : "check passed"} · approve`;
       md.appendMarkdown(`${t.changed.length ? `changed: ${mdText(t.changed.join("  "))}` : "its check passed"}\n\nClick to open its changes; the check mark signs it off.`);
       it.command = { command: "graphene.openDiff", title: "Open Changes", arguments: [arg] };
     } else if (n.kind === "yours") {
@@ -101,10 +102,8 @@ const idOf = (arg: Arg) => (typeof arg === "string" ? arg : arg?.id);
 export function register(context: vscode.ExtensionContext, session: Session, _ui: UI) {
   const tree = new NeedsTree();
   const view = vscode.window.createTreeView("graphene.needs", { treeDataProvider: tree });
-  context.subscriptions.push(view, session.onDidChange(() => {
-    tree.set(session.state);
-    view.badge = tree.list.length ? { value: tree.list.length, tooltip: count(tree.list) } : undefined;
-  }));
+  // no badge of its own: Home's carries the count, and VS Code adds a container's view badges together
+  context.subscriptions.push(view, session.onDidChange(() => tree.set(session.state)));
 
   const cmd = (name: string, fn: (arg?: Arg) => unknown) =>
     context.subscriptions.push(vscode.commands.registerCommand(`graphene.${name}`, (arg?: Arg) => fn(arg)));
