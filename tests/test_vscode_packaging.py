@@ -63,8 +63,7 @@ def test_the_walkthrough_buttons_are_the_extensions_own_commands_and_its_picture
     [walk] = MANIFEST["contributes"]["walkthroughs"]
     ours = {c["command"] for c in MANIFEST["contributes"]["commands"]}
     linked = {m for s in walk["steps"] for m in re.findall(r"\(command:(graphene\.\w+)\)", s["description"])}
-    asked = {"graphene.watchDemo", "graphene.init", "graphene.auto", "graphene.showGraph",
-             "graphene.envelope"}
+    asked = {"graphene.watchDemo", "graphene.install", "graphene.home", "graphene.showGraph"}
     assert linked == ours & asked
     assert walk["steps"][0]["id"] == "demo"  # a judge with no key sees the race first
     shipped = (EXT / ".vscodeignore").read_text().split()

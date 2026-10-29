@@ -1,7 +1,7 @@
 {
   "name": "graphene-vscode",
   "displayName": "Graphene",
-  "description": "Your plan as a graph you can act on: watch the agents Graphene holds to it, add a step, link two, accept, tell an agent.",
+  "description": "Say what you want, read the plan, start the agents, and approve what they did: coding agents on one repo, each in its own copy, your checks and your review deciding what lands.",
   "version": "0.9.0",
   "publisher": "alex-lop",
   "license": "Apache-2.0",
@@ -612,12 +612,12 @@
       {
         "id": "start",
         "title": "Get started with Graphene",
-        "description": "A team of coding agents on one repo: each owns its files, and your tests decide what lands.",
+        "description": "Coding agents on one repo: each in its own copy, and your checks and your review decide what lands.",
         "steps": [
           {
             "id": "demo",
             "title": "Watch the demo",
-            "description": "No key, no network: the recorded auto run plays in the graph, three agents racing one task and the check keeping one.\n[Watch the Demo](command:graphene.watchDemo)",
+            "description": "No key and no network: a recorded run plays in the graph, three agents racing one task and its check keeping one.\n[Watch the Demo](command:graphene.watchDemo)",
             "media": {
               "image": "media/graph.png",
               "altText": "the replay in the graph"
@@ -629,10 +629,10 @@
           {
             "id": "install",
             "title": "Install Graphene",
-            "description": "This extension draws and drives the `graphene` command. Install it once, in a terminal: `uv tool install graphene-map`, as the extension's page says.\n[Open a Terminal](command:workbench.action.terminal.new)",
+            "description": "This extension drives the `graphene` command. Install it once (it uses uv): `uv tool install graphene-map`.\n[Install Graphene](command:graphene.install)",
             "media": {
               "image": "media/graph.png",
-              "altText": "a race in the graph: three tasks, each with three forks racing, the goal on the right"
+              "altText": "a race in the graph: three tasks, each with three attempts racing, the goal on the right"
             },
             "completionEvents": [
               "onContext:graphene.status && graphene.status != missing"
@@ -640,50 +640,38 @@
           },
           {
             "id": "setup",
-            "title": "Set up this folder",
-            "description": "`graphene init` asks who plans and who does the work: Nemotron on Token Factory, Claude Code, Codex, or any model behind Graphene's own loop.\n[Set Up This Folder](command:graphene.init)",
+            "title": "Set up a folder",
+            "description": "On Graphene's Home, pick who plans and does the work: Claude Code, Codex or Nemotron. One click.\n[Open Home](command:graphene.home)",
             "media": {
               "image": "media/graph.png",
-              "altText": "a race in the graph: three tasks, each with three forks racing, the goal on the right"
+              "altText": "a race in the graph: three tasks, each with three attempts racing, the goal on the right"
             },
             "completionEvents": [
               "onContext:graphene.status == ok || graphene.status == empty"
             ]
           },
           {
-            "id": "goal",
-            "title": "Give it a goal",
-            "description": "Auto… takes a goal, a budget, and whether to plan first. The planner splits it into tasks that can run at once, each with the files it may change and a check; agents race each task, the check keeps one, then your goal's own check runs, and a red one is planned again.\n[Auto…](command:graphene.auto)",
+            "id": "ask",
+            "title": "Say what you want",
+            "description": "Type it on Home and click Plan it. The planner suggests small tasks, each with the files it may change and the check that proves it. Remove what you do not want, then Start.\n[Open Home](command:graphene.home)",
             "media": {
               "image": "media/graph.png",
-              "altText": "a race in the graph: three tasks, each with three forks racing, the goal on the right"
+              "altText": "a race in the graph: three tasks, each with three attempts racing, the goal on the right"
             },
             "completionEvents": [
-              "onCommand:graphene.auto"
+              "onCommand:graphene.home"
             ]
           },
           {
-            "id": "watch",
-            "title": "Watch it, steer it",
-            "description": "The graph shows every task, its forks racing and what needs you; drag a task's dot onto another and that one waits on it. The Explorer marks whose each file is, a running agent's with its number; Rounds lists auto mode's iterations.\n[Show Plan Graph](command:graphene.showGraph)",
+            "id": "review",
+            "title": "Review before it lands",
+            "description": "Each finished task shows what changed and the check that passed. Open its changes, then Approve it, or Send it back with what is wrong. The graph shows the whole plan.\n[Show Graph](command:graphene.showGraph)",
             "media": {
               "image": "media/graph.png",
-              "altText": "a race in the graph: three tasks, each with three forks racing, the goal on the right"
+              "altText": "a race in the graph: three tasks, each with three attempts racing, the goal on the right"
             },
             "completionEvents": [
               "onCommand:graphene.showGraph"
-            ]
-          },
-          {
-            "id": "envelope",
-            "title": "Set the limits once",
-            "description": "The envelope is what auto mode may do without you: a budget, how many tasks, fix rounds, forks, the files no task touches and the checks it may run. Anything outside it waits for you, with why.\n[Set Envelope…](command:graphene.envelope)",
-            "media": {
-              "image": "media/graph.png",
-              "altText": "a race in the graph: three tasks, each with three forks racing, the goal on the right"
-            },
-            "completionEvents": [
-              "onCommand:graphene.envelope"
             ]
           }
         ]
