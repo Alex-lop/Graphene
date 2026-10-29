@@ -18,6 +18,9 @@ Claude Code, Codex or any model. On your computer, no account.
 
 <p align="center"><img src="https://raw.githubusercontent.com/Alex-lop/Graphene/main/docs/assets/auto.gif" alt="graphene demo --auto: one goal; Nemotron plans three tasks that run at once; three agents race each task, one is stopped at a file outside its task, the rule keeps one fork a task; all three land; the whole test suite is red because two of them broke an old test together; Nemotron plans the fix, it races and lands, and the suite is green"></p>
 
+<p align="center"><img src="https://raw.githubusercontent.com/Alex-lop/Graphene/main/editors/vscode/media/graph.png" alt="Graphene for VS Code during a race against the scripted stand-in, in real VS Code: Home, in the side bar, shows three agents working, each with its model, what it is doing now, its cost and its attempts, and a Stop all button; the editor tab draws the same race, two tasks each fanned out into three Nano attempts, all running, flowing into the goal; the auto line says round 1 of 3, running, $0.007 of $2.00"></p>
+<p align="center"><sub>The same race in VS Code: Home in the side bar, a click for everything (<a href="#in-vs-code">In VS Code</a>)</sub></p>
+
 ## Try it
 
 A scripted replay of auto mode on Nemotron: no AI, no key, nothing written to your project.
@@ -88,8 +91,6 @@ may write; `:auto <goal>` starts auto mode from the cockpit.
 ![the graph: four tasks flowing into the goal, each with its agent and model; auto, round 2 of 3, done, $0.02 of $2.00](https://raw.githubusercontent.com/Alex-lop/Graphene/main/docs/assets/auto-graph.png)
 
 ### In VS Code
-
-![Graphene for VS Code during a race against the scripted stand-in, in real VS Code: Home, in the side bar, shows three agents working, each with its model, what it is doing now, its cost and its attempts, and a Stop all button; the editor tab draws the same race, two tasks each fanned out into three Nano attempts, all running, flowing into the goal; the auto line says round 1 of 3, running, $0.007 of $2.00](https://raw.githubusercontent.com/Alex-lop/Graphene/main/editors/vscode/media/graph.png)
 
 The extension in [`editors/vscode`](https://github.com/Alex-lop/Graphene/blob/main/editors/vscode/README.md) is
 the same plan in your editor, with a click for everything. Home comes first in the side bar: set the folder up in
