@@ -214,7 +214,7 @@ export function diffPairs(d: Diff): Pair[] {
 /** The diff editor's title: whose changes, between what (the multi-file editor adds its own file count). */
 export function diffTitle(name: string, fork: string | null | undefined, d: Diff): string {
   const short = (rev: string) => (/^[0-9a-f]{12,}$/.test(rev) ? rev.slice(0, 7) : rev);
-  return `${name}${fork ? ` · fork ${fork}` : ""}: ${short(d.left)} → ${d.right === null ? "now" : short(d.right)}`;
+  return `${name}${fork ? ` · attempt ${fork}` : ""}: ${short(d.left)} → ${d.right === null ? "now" : short(d.right)}`;
 }
 
 /** `graphene plan edit --from - --json`: applied, or refused with each fault on its line of the text. */
