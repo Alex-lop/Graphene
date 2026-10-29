@@ -223,9 +223,11 @@ export function parseState(text: string): State {
   };
 }
 
-/** `$0.42`; cents under a cent keep their digits (`$0.004`), nothing at all for no spend. */
+/** `$0.42`; cents under a cent keep their digits (`$0.004`), less than a tenth of a cent is `<$0.001`, not
+ *  `$0.000`; nothing at all for no spend. */
 export function usd(n: number | null | undefined): string {
   if (n === null || n === undefined || !(n > 0)) return "";
+  if (n < 0.001) return "<$0.001";
   return n >= 0.01 ? `$${n.toFixed(2)}` : `$${n.toFixed(3)}`;
 }
 

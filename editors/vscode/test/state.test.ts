@@ -84,6 +84,7 @@ test("a state word the extension does not know reads as waiting, and an agent nu
 test("dollars read as the cockpit shows them", () => {
   assert.equal(usd(0.42), "$0.42");
   assert.equal(usd(0.004), "$0.004");
+  assert.equal(usd(0.0002), "<$0.001"); // a stand-in's run: not "$0.000"
   assert.equal(usd(0), "");
   assert.equal(usd(null), "");
   assert.equal(usd(12), "$12.00");
