@@ -142,26 +142,26 @@ export function actsFor(t: TaskX, replay: boolean): Button[] {
   const out: Button[] = [];
   if (replay) return out;
   const hasChanges = t.changed.length > 0 || ["running", "review", "done", "came back"].includes(t.state);
-  if (t.state === "review") out.push({ label: "Sign off", act: "signOff", title: "it lands: graphene node signoff", icon: "check", main: true });
+  if (t.state === "review") out.push({ label: "Approve", act: "signOff", title: "it lands in your repository: graphene node signoff", icon: "check", main: true });
   if (t.state === "proposed") out.push({ label: "Accept", act: "accept", title: "graphene plan accept", icon: "check", main: true });
-  if (t.state === "came back") out.push({ label: "Take it up", act: "handBack", title: "widen it, reopen its owner, or try again", icon: "debug-step-back", main: true });
+  if (t.state === "came back") out.push({ label: "Help it…", act: "handBack", title: "allow what it needs, add a task for it, or try again", icon: "debug-step-back", main: true });
   if (hasChanges) out.push({ label: "Open changes", act: "openDiff", title: "its changes so far, in the diff editor", icon: "diff" });
-  if (t.forks.length >= 2) out.push({ label: "Compare forks", act: "compareForks", title: "the forks side by side", icon: "split-horizontal" });
-  out.push({ label: "Add step after", act: "add-after", title: "a new task that waits on this one", icon: "add" });
-  out.push({ label: "Add step under", act: "add-under", title: "a new task under the same sub-goal", icon: "add" });
+  if (t.forks.length >= 2) out.push({ label: "Compare attempts", act: "compareForks", title: "the attempts side by side", icon: "split-horizontal" });
+  out.push({ label: "Add task after", act: "add-after", title: "a new task that waits on this one", icon: "add" });
+  out.push({ label: "Add task beside", act: "add-under", title: "a new task under the same sub-goal", icon: "add" });
   out.push({ label: "Link to…", act: "link", title: "then click the task that waits on this one", icon: "link" });
-  if (t.state !== "done") out.push({ label: "Edit", act: "edit", title: "title, scope or check", icon: "edit" });
-  if (["proposed", "ready", "waiting"].includes(t.state)) out.push({ label: "Drop", act: "drop", title: "graphene node drop", icon: "trash" });
-  if (["running", "ready", "waiting", "came back"].includes(t.state)) out.push({ label: "Tell", act: "tell", title: "a line for the agent on it", icon: "comment" });
+  if (t.state !== "done") out.push({ label: "Edit", act: "edit", title: "its title, the files it may change, or its check", icon: "edit" });
+  if (["proposed", "ready", "waiting"].includes(t.state)) out.push({ label: "Remove", act: "drop", title: "graphene node drop", icon: "trash" });
+  if (["running", "ready", "waiting", "came back"].includes(t.state)) out.push({ label: "Message agent", act: "tell", title: "a line the agent on it reads with its next step", icon: "comment" });
   return out;
 }
 
-/** What a fork's row offers: its changes, and Keep while the task is in review. Nothing in a replay. */
+/** What an attempt's row offers: its changes, and Keep while the task is to review. Nothing in a replay. */
 export function forkActs(t: TaskX, f: Fork, replay: boolean): Button[] {
   if (replay) return [];
-  const out: Button[] = [{ label: "Changes", act: "openDiff", title: `fork ${f.letter}'s changes, in the diff editor`, icon: "diff", fork: f.letter }];
+  const out: Button[] = [{ label: "Changes", act: "openDiff", title: `attempt ${f.letter}'s changes, in the diff editor`, icon: "diff", fork: f.letter }];
   if (t.state === "review" && t.forks.length >= 2) {
-    out.push({ label: "Keep", act: "pickFork", title: `keep fork ${f.letter}: graphene node pick`, icon: "pass", fork: f.letter });
+    out.push({ label: "Keep", act: "pickFork", title: `keep attempt ${f.letter}: graphene node pick`, icon: "pass", fork: f.letter });
   }
   return out;
 }
