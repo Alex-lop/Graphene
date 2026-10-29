@@ -163,3 +163,18 @@ test("Home's commands: an ask, a send-back with its note, a set-up that asks not
   assert.deepEqual(C.dropAll(["hello", "bye", "words"]), ["node", "drop", "hello", "bye", "words"]);
   assert.throws(() => C.dropAll(["hello", "--all"]));
 });
+
+test("the palette shows seven commands; the rest, and the advanced views, only with graphene.advanced", () => {
+  const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+  const c = pkg.contributes;
+  const hidden = new Set(c.menus.commandPalette.filter((m: { when: string }) => m.when === "config.graphene.advanced").map((m: { command: string }) => m.command));
+  const shown = c.commands.map((x: { command: string }) => x.command).filter((x: string) => !hidden.has(x));
+  assert.deepEqual(shown.sort(), ["graphene.home", "graphene.init", "graphene.install", "graphene.setKey", "graphene.showGraph",
+                                  "graphene.stop", "graphene.watchDemo"]);
+  for (const x of c.commands) assert.match(x.title, /^Graphene: /);
+  const views = c.views.graphene;
+  assert.equal(views[0].id, "graphene.home");
+  assert.equal(views[1].id, "graphene.graph");
+  for (const v of views.slice(2)) assert.equal(v.when, "config.graphene.advanced", v.id);
+  assert.equal(c.configuration.properties["graphene.advanced"].default, false);
+});

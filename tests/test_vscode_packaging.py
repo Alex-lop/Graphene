@@ -18,13 +18,17 @@ PYPROJECT = tomllib.loads((ROOT / "pyproject.toml").read_text())
 CI = (ROOT / ".github/workflows/ci.yml").read_text()
 STORE = ".graphene/graphene.db"
 
-COMMANDS = ["Show Graph", "Open Cockpit", "Auto…", "Set Limits…", "Run Ready Tasks",
+COMMANDS = ["Home", "Show Graph", "Open Cockpit", "Auto…", "Set Limits…", "Run Ready Tasks",
             "Stop All Agents", "Accept", "Accept All Suggestions", "Add Task…",
             "Make a Task Wait on Another…", "Edit Task…", "Remove Task", "Message Agent…",
             "Set Up This Folder", "Refresh", "Answer…", "Help a Task…", "Install Graphene…",
             "Mark Your Task Done", "Set API Key…", "Open Changes", "Compare Attempts", "Keep This Attempt",
             "Approve", "Edit Plan as Text", "Add Task by Hand…", "Watch the Demo",
             "Compare with the Agent's Copy"]
+# what the palette lists until graphene.advanced is set: the rest are buttons on Home, the graph and the diffs
+PALETTE = {"graphene.home", "graphene.showGraph", "graphene.watchDemo", "graphene.stop", "graphene.init",
+           "graphene.install", "graphene.setKey"}
+ADVANCED = "config.graphene.advanced"
 
 
 def test_the_manifest_names_the_product_and_its_version():
@@ -45,6 +49,14 @@ def test_every_command_is_titled_graphene_and_the_list_is_the_promised_one():
     titles = [c["title"] for c in MANIFEST["contributes"]["commands"]]
     assert titles == [f"Graphene: {name}" for name in COMMANDS]
     assert all(c["command"].startswith("graphene.") for c in MANIFEST["contributes"]["commands"])
+
+
+def test_the_palette_lists_seven_commands_until_advanced_is_set():
+    palette = MANIFEST["contributes"]["menus"]["commandPalette"]
+    hidden = {m["command"] for m in palette if m["when"] == ADVANCED}
+    shown = {c["command"] for c in MANIFEST["contributes"]["commands"]} - hidden
+    assert shown == PALETTE
+    assert MANIFEST["contributes"]["configuration"]["properties"]["graphene.advanced"]["default"] is False
 
 
 def test_the_walkthrough_buttons_are_the_extensions_own_commands_and_its_picture_ships():
@@ -72,9 +84,12 @@ def test_the_activity_bar_shows_the_brand_mark_and_a_plan_view_and_the_graph():
 
 
 def test_the_first_open_view_says_what_to_do_before_there_is_a_plan():
-    # Needs You sits first and open; Plan starts collapsed, so its welcome is out of sight until it is opened.
+    # Home sits first, a page that draws its own Set Up for a folder with no plan, then the graph; the other
+    # views show only with graphene.advanced, and Plan and Rounds start collapsed there too.
     views = MANIFEST["contributes"]["views"]["graphene"]
-    assert [v["id"] for v in views[:3]] == ["graphene.needs", "graphene.graph", "graphene.agents"]
+    assert [v["id"] for v in views[:2]] == ["graphene.home", "graphene.graph"]
+    assert views[0]["type"] == "webview" and views[0]["initialSize"] > views[1]["initialSize"]
+    assert all(v["when"] == ADVANCED for v in views[2:])
     collapsed = {v["id"] for v in views if v.get("visibility") == "collapsed"}
     assert collapsed == {"graphene.plan", "graphene.rounds"}
     welcome = {w["when"]: w["contents"] for w in MANIFEST["contributes"]["viewsWelcome"]
