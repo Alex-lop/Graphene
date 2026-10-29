@@ -5,6 +5,7 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import * as C from "./commands.ts";
 import { GraphHost } from "./graph.ts";
+import { HomeHost } from "./home.ts";
 import { which } from "./find.ts";
 import { owner } from "./owners.ts";
 import { autoNews, mdText, summary, type Task } from "./state.ts";
@@ -57,12 +58,14 @@ export function activate(context: vscode.ExtensionContext) {
   };
   context.subscriptions.push(roundsView, roundsView.onDidChangeVisibility(() => void readRounds()));
   const graph = new GraphHost(context, session);
+  const home = new HomeHost(context, session);
   const bar = vscode.window.createStatusBarItem("graphene", vscode.StatusBarAlignment.Left, 50);
   bar.name = "Graphene";
   bar.command = "graphene.showGraph";
   bar.text = "◆ Graphene";
   bar.show();
-  context.subscriptions.push(treeView, bar, vscode.window.registerWebviewViewProvider("graphene.graph", graph, { webviewOptions: { retainContextWhenHidden: true } }));
+  context.subscriptions.push(treeView, bar, vscode.window.registerWebviewViewProvider("graphene.graph", graph, { webviewOptions: { retainContextWhenHidden: true } }),
+                             vscode.window.registerWebviewViewProvider("graphene.home", home, { webviewOptions: { retainContextWhenHidden: true } }));
 
   // the Explorer marks each file a live task owns, a running one's with its agent's number: whose is whose
   const owners = new vscode.EventEmitter<undefined>();
@@ -132,7 +135,7 @@ export function activate(context: vscode.ExtensionContext) {
   let poll: NodeJS.Timeout | undefined;
   const arm = () => {
     clearInterval(poll);
-    poll = setInterval(() => { if ((treeView.visible || graph.open) && !session.stream.live) void session.refresh(); }, session.pollMs);
+    poll = setInterval(() => { if ((treeView.visible || graph.open || home.open) && !session.stream.live) void session.refresh(); }, session.pollMs);
   };
   arm();
   context.subscriptions.push(session, { dispose: () => { clearInterval(poll); clearTimeout(due); } });
