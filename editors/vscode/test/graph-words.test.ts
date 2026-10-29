@@ -40,15 +40,15 @@ test("words drop from the end until they fit, the first always stays", () => {
   assert.equal(fitWords(["a long first word"], 3), "a long first word");
 });
 
-test("a task that came back says why on its box; a running one its agent, forks and seconds quiet", () => {
-  assert.equal(sub(task("logs"), 60), "came back · app.py is outside its scope · 2 tries · $0.02");
-  assert.equal(sub(task("logs")), "came back · app.py is ou…"); // the reason is cut to the box, never dropped
-  assert.equal(sub(task("greet"), 60), "agent 3 · 3 forks · $0.31");
+test("a task that needs help says why on its box; a running one its agent, attempts and seconds quiet", () => {
+  assert.equal(sub(task("logs"), 60), "needs help · app.py is outside its scope · 2 tries · $0.02");
+  assert.equal(sub(task("logs")), "needs help · app.py is o…"); // the reason is cut to the box, never dropped
+  assert.equal(sub(task("greet"), 60), "agent 3 · 3 attempts · $0.31");
   const quiet = { ...task("greet"), forks: [], idle: 40 };
-  assert.equal(sub(quiet, 60), "agent 3 · running · $0.31 · 40 s quiet");
+  assert.equal(sub(quiet, 60), "agent 3 · working · $0.31 · 40 s quiet");
   // an older CLI's snapshot, as parseState fills it: no reason and no tries, so the old words
   const old = { ...task("logs"), why: "", attempts: 0 };
-  assert.equal(sub(old, 60), "came back · 1 outside · $0.02");
+  assert.equal(sub(old, 60), "needs help · 1 outside · $0.02");
 });
 
 test("the pane's key changes with the selected task, its question and its needs, not with the rest", () => {

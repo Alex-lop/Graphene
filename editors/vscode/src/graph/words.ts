@@ -1,7 +1,7 @@
 // The graph's words, pure: what a box and a fork chip say, what the header says of a replay, which acts a
 // task offers, and the keys. No DOM here, so `node --test` reads them.
 import type { Layout } from "../layout.ts";
-import { autoLine, usd, type Fork, type Kept, type Question, type State, type Task } from "../state.ts";
+import { autoLine, headline, SAY, usd, type Fork, type Kept, type Question, type State, type Task } from "../state.ts";
 
 /** What the snapshot gains tonight (dev/process/editor/CONTRACT.md): read when present, nothing when not. */
 export type ForkX = Fork & { attempts?: number; idle?: number | null };
@@ -59,15 +59,14 @@ export function cornerWord(t: TaskX): string {
 const quiet = (idle: number | null | undefined) => (idle !== null && idle !== undefined && idle > 8 ? `${Math.round(idle)} s quiet` : "");
 const tries = (n: number | undefined) => (n !== undefined && n > 1 ? `${n} tries` : "");
 
-/** The small line under a box's title: the state first, then what matters for it. A task that came back
- *  says why on the box. */
+/** The small line under a box's title: the state first, in plain words, then what matters for it. A task that
+ *  needs help says why on the box. */
 export function sub(t: TaskX, max = 25): string {
   const parts: string[] = [];
-  if (t.state === "running") parts.push(`agent ${t.agent || "?"}`, t.forks.length ? `${t.forks.length} forks` : "running");
-  else parts.push(t.state);
-  if (t.state === "came back" && t.why) return cut(fitWords([`came back · ${t.why}`, tries(t.attempts), usd(t.usd)], max), max); // the reason, cut, not dropped
+  if (t.state === "running") parts.push(`agent ${t.agent || "?"}`, t.forks.length ? `${t.forks.length} attempts` : SAY.running);
+  else parts.push(SAY[t.state]);
+  if (t.state === "came back" && t.why) return cut(fitWords([`${SAY["came back"]} · ${t.why}`, tries(t.attempts), usd(t.usd)], max), max); // the reason, cut, not dropped
   if (t.state === "came back" && t.outside.length) parts.push(`${t.outside.length} outside`);
-  if (t.state === "review") parts.push("sign off");
   parts.push(tries(t.attempts), usd(t.usd), t.state === "running" ? quiet(t.idle) : "");
   return fitWords(parts, max);
 }
