@@ -15,9 +15,11 @@ from pathlib import Path
 import pytest
 from test_auto_run import GOAL, GOAL_CHECK, scripts, tiny  # noqa: F401  (fixtures)
 from test_board import planned
+from test_init import on_path  # noqa: F401  (fixture)
 from test_plan_cli import person, repo  # noqa: F401  (fixtures)
 
 from graphene_map import board as B
+from graphene_map import extra
 from graphene_map import run as R
 from graphene_map.store import Store
 
@@ -143,3 +145,14 @@ def test_undo_is_advised_only_while_the_act_it_would_put_back_is_the_one_refused
         assert retry.exit_code == 0, (command, retry.output)  # whatever it advised got past it
     with Store.open(repo) as store:
         assert {it["id"]: it["state"] for it in B.items(store)}["paging"] == "dropped", "undid the wrong act"
+
+
+def test_with_no_agent_found_init_names_the_install_that_brings_graphene_key(repo, on_path, monkeypatch):
+    """With neither claude nor codex on the PATH, init's next step said to set a Token Factory key with
+    `graphene key set`, a command only the Nemotron extra brings: on a plain install it is no command."""
+    monkeypatch.setattr(extra, "load", lambda name: None)  # a plain `uv tool install graphene-map`
+    on_path()  # git alone: nothing found, nothing chosen
+    assert person("key", "set", "--help").exit_code != 0  # no such command here
+    [then] = [line for line in person("init").output.splitlines() if line.startswith("next:")]
+    assert "graphene-map[nemotron]" in then and then.index("graphene-map[nemotron]") < then.index(
+        "graphene key set"), then  # fmt: skip
