@@ -1,6 +1,7 @@
 // First run without hunting, the VS Code side: graphene found off the PATH is used and said in the status bar;
-// none found offers to install it (graphene.install); Set Up This Folder (graphene.init) is two quick picks, then
-// `graphene init --planner X --executor Y` in a terminal, then Auto….
+// none found offers to install it (graphene.install). A folder with no plan is set up on Home in one pick (home.ts);
+// Set Up This Folder (graphene.init) on one that has a plan is two quick picks, who plans and who works, then
+// `graphene init --planner X --executor Y` in a terminal.
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import * as os from "node:os";
@@ -67,6 +68,8 @@ export function register(context: vscode.ExtensionContext, session: Session, _ui
   // the store appears (uninitialised -> empty), Auto… is offered, once
   let setUp = false;
   context.subscriptions.push(vscode.commands.registerCommand("graphene.init", async () => {
+    // a folder with no plan is set up on Home, in one pick; the two picks here change who plans and who works
+    if (session.status.kind === "uninitialised") return void vscode.commands.executeCommand("graphene.home");
     const planner = await who("planner");
     if (!planner) return;
     const executor = await who("executor");
@@ -77,8 +80,8 @@ export function register(context: vscode.ExtensionContext, session: Session, _ui
   context.subscriptions.push(session.onDidChange(() => {
     if (!setUp || session.status.kind !== "empty") return;
     setUp = false;
-    void vscode.window.showInformationMessage("This folder is set up. Auto… plans a goal, races it and checks it.", "Auto…")
-      .then((pick) => { if (pick) void vscode.commands.executeCommand("graphene.auto"); });
+    void vscode.window.showInformationMessage("This folder is set up. Say what you want done on Graphene's Home.", "Open Home")
+      .then((pick) => { if (pick) void vscode.commands.executeCommand("graphene.home"); });
   }));
 
   void look().then(() => { looked = true; return session.refresh(); });

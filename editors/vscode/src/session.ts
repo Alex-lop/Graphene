@@ -17,7 +17,7 @@ export type Status = { kind: "reading" | "missing" | "uninitialised" | "error" |
 
 export const STORE = path.join(".graphene", "graphene.db"); // the plan's store, under the repo's root
 export const INSTALL = "Graphene is not installed, or not on this editor's PATH: `uv tool install graphene-map`, or set graphene.path.";
-const INIT = "This folder has no plan yet: run `graphene init` in it, then `graphene ask` or Graphene: Auto…";
+const INIT = "This folder has no plan yet: set it up on Graphene's Home, in one click (or `graphene init` in a terminal).";
 
 /** What the feature modules share: the graph's host and the Plan view. */
 export interface UI {
