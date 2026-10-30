@@ -155,20 +155,6 @@ change through at once.
   betting on is when you find out what it understood: before the work, not after.
   [Compared with Claude Code, Cursor, Kiro and Cline, gaps included](https://github.com/Alex-lop/Graphene/blob/main/docs/COMPARE.md) · [every limit](https://github.com/Alex-lop/Graphene/blob/main/docs/HOW_IT_WORKS.md#where-each-mechanism-ends).
 
-## Nemotron on Token Factory
-
-For the Nebius × NVIDIA Global AI Hackathon, Graphene runs on NVIDIA Nemotron through Nebius Token Factory, from one
-goal to tested commits. **How Nemotron is used:** Nemotron 3 Ultra plans, reading your repository with read-only
-tools and answering in a strict JSON schema, so what it proposes is tasks Graphene can hold, planned so the tasks
-that run at once share no file. Nemotron 3 Nano does the tasks in Graphene's own tool loop, whose write tools refuse
-a file outside the task; in auto mode three Nanos race each task; a refused attempt steps up to Nemotron 3 Super;
-and when the goal's own check is still red, Ultra plans the fix. **Where Token Factory sped it up:** one key and one
-OpenAI-style endpoint from Python's standard library, one family in three sizes so each role gets the size it
-needs, and a price on every model, so every task has its own bill (408 calls in a night came to $1.80). It ran live
-in practice and in 31 demo takes on two small repositories on 7 to 9 October, and `uvx graphene-map demo --live`
-replays one of them as it ran; auto mode has run against the scripted stand-in.
-[Details, and every number's source.](https://github.com/Alex-lop/Graphene/blob/main/docs/HACKATHON.md)
-
 ## Does anything leave my computer?
 
 With Claude Code or Codex, Graphene itself sends nothing anywhere. `graphene init` adds small add-ons (hooks) to
