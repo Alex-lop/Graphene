@@ -1,13 +1,8 @@
 <p align="center"><img src="https://raw.githubusercontent.com/Alex-lop/Graphene/main/docs/assets/graphene-mark.svg" alt="The Graphene mark"></p>
 
-# Graphene
+<h1 align="center">Graphene</h1>
 
-**A team of coding agents on one repo. Each one owns its files. Your tests decide what lands.**
-
-Give Graphene a goal. NVIDIA Nemotron plans it as small tasks that can run at once; several agents race each task,
-each in its own copy and held to that task's files; the task's check keeps one; then Graphene runs your goal's own
-check and, when it is red, plans the fix. You set the limits once. In your terminal or in VS Code, with Nemotron,
-Claude Code, Codex or any model. On your computer, no account.
+<p align="center"><b>A team of coding agents on one repo. Each one owns its files. Your tests decide what lands.</b></p>
 
 <p align="center">
   <a href="https://pypi.org/project/graphene-map/"><img src="https://img.shields.io/pypi/v/graphene-map?color=5e5d59" alt="PyPI"></a>
@@ -15,6 +10,19 @@ Claude Code, Codex or any model. On your computer, no account.
   <a href="https://github.com/Alex-lop/Graphene/actions/workflows/ci.yml"><img src="https://github.com/Alex-lop/Graphene/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://github.com/Alex-lop/Graphene/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-5e5d59" alt="License"></a>
 </p>
+
+<p align="center">
+  <a href="#try-it">Try it</a> ·
+  <a href="https://github.com/Alex-lop/Graphene/blob/main/docs/HOW_IT_WORKS.md">How it works</a> ·
+  <a href="#in-vs-code">VS Code</a> ·
+  <a href="#the-hackathon">The hackathon</a> ·
+  <a href="https://github.com/Alex-lop/Graphene/blob/main/CHANGELOG.md">Changelog</a>
+</p>
+
+Give Graphene a goal. NVIDIA Nemotron plans it as small tasks that can run at once; several agents race each task,
+each in its own copy and held to that task's files; the task's check keeps one; then Graphene runs your goal's own
+check and, when it is red, plans the fix. You set the limits once. In your terminal or in VS Code, with Nemotron,
+Claude Code, Codex or any model. On your computer, no account.
 
 <p align="center"><img src="https://raw.githubusercontent.com/Alex-lop/Graphene/main/docs/assets/auto.gif" alt="graphene demo --auto: one goal; Nemotron plans three tasks that run at once; three agents race each task, one is stopped at a file outside its task, the rule keeps one fork a task; all three land; the whole test suite is red because two of them broke an old test together; Nemotron plans the fix, it races and lands, and the suite is green"></p>
 
