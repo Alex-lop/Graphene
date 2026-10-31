@@ -163,6 +163,13 @@ prompts, tool calls, results, edited files. On the Nemotron path, the planner an
 through Token Factory (or the host `--endpoint` names), as any hosted model does; with Ollama or another host on
 your machine, nothing leaves it.
 
+## The hackathon
+
+Graphene was my entry to the Nebius × NVIDIA Global AI Hackathon, in the Coding and Agentic Engineering track: the
+Nemotron path (Ultra plans, Nano agents race on Token Factory) and auto mode were built for it.
+Submissions closed on 30 October 2026, and judging runs from 1 to 15 December. The hackathon is over; Graphene
+isn't. [What I submitted, and what ran live](https://github.com/Alex-lop/Graphene/blob/main/docs/HACKATHON.md).
+
 ## Why I built this
 
 I believe the limit on building software won't be tokens or cost. It'll be the human direction it takes. If you don't say which direction the application should go, the agent has to infer most of it, and you find out what it inferred in the diff. Graphene tries to bridge that. ([The longer version, in under three minutes.](https://www.youtube.com/watch?v=S3mucmwD-kQ))
