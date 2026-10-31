@@ -170,6 +170,11 @@ Nemotron path (Ultra plans, Nano agents race on Token Factory) and auto mode wer
 Submissions closed on 30 October 2026, and judging runs from 1 to 15 December. The hackathon is over; Graphene
 isn't. [What I submitted, and what ran live](https://github.com/Alex-lop/Graphene/blob/main/docs/HACKATHON.md).
 
+The video I sent in with it, two and a half minutes on why and the race itself:
+
+<a href="https://www.youtube.com/watch?v=QEylBDKLxks"><img src="https://img.youtube.com/vi/QEylBDKLxks/maxresdefault.jpg" width="480" alt="Graphene, the hackathon video on YouTube (2:29)"></a>
+<br><sub>▶ <a href="https://www.youtube.com/watch?v=QEylBDKLxks">Watch on YouTube</a> (2:29)</sub>
+
 ## Why I built this
 
 I believe the limit on building software won't be tokens or cost. It'll be the human direction it takes. If you don't say which direction the application should go, the agent has to infer most of it, and you find out what it inferred in the diff. Graphene tries to bridge that. ([The longer version, in under three minutes.](https://www.youtube.com/watch?v=S3mucmwD-kQ))
