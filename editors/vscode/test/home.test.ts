@@ -178,3 +178,17 @@ test("the palette shows seven commands; the rest, and the advanced views, only w
   for (const v of views.slice(2)) assert.equal(v.when, "config.graphene.advanced", v.id);
   assert.equal(c.configuration.properties["graphene.advanced"].default, false);
 });
+
+test("Exact: Start waits while anything the plan asks is open, and says how many; off, or with nothing open, it starts", () => {
+  const s = fixture("proposals");
+  const suggested = (h: ReturnType<typeof home>) => h.sections.find((x) => x.key === "suggested")!;
+  const start = (h: ReturnType<typeof home>) => suggested(h).buttons.find((b) => b.act === "startAll")!;
+  assert.equal(s.questions.length, 1);
+  assert.equal(start(home(s)).off, false, "off by default: what is left open takes its default at Start");
+  const exact = home(s, new Set(), true);
+  assert.equal(start(exact).off, true);
+  assert.match(suggested(exact).note, /^Exact is on: answer the 1 open question under Needs you first/);
+  assert.equal(start(home({ ...s, questions: [] }, new Set(), true)).off, false, "nothing open: nothing to wait for");
+  assert.deepEqual(checkHome({ type: "act", act: "exact", flag: true }, s), { type: "act", act: "exact", id: "", flag: true });
+  assert.equal(checkHome({ type: "act", act: "exact" }, s), null, "the switch says which way");
+});

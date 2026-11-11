@@ -2,13 +2,13 @@
 // library, and every word goes in as text, never as markup: task titles and the planner's words are a model's.
 // The ask box is made once and kept, so a snapshot that arrives while the person types moves nothing under them.
 import type { Act, Btn, Card, Home, Section } from "./cards.ts";
-import { WHO } from "./who.ts";
+import { EXACT, WHO } from "./who.ts";
 
 declare function acquireVsCodeApi(): { postMessage(m: unknown): void; getState(): unknown; setState(s: unknown): void };
 
 type Status = { kind: string; text: string };
 type Last = { n: number; lines: string[]; bad: boolean; asked?: string; key?: boolean };
-type Model = { type: "home"; status: Status; home: Home | null; review: boolean; busy: string; planning: boolean; last: Last };
+type Model = { type: "home"; status: Status; home: Home | null; review: boolean; exact: boolean; busy: string; planning: boolean; last: Last };
 type Saved = { open?: Record<string, boolean>; draft?: string; review?: boolean; cleared?: number };
 
 const PLACEHOLDER = "What do you want done? For example: a --json flag on the list command, with a test";
@@ -31,6 +31,7 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls = "", text?: stri
 function button(b: Btn, parent: HTMLElement): HTMLButtonElement {
   const btn = el("button", b.main ? "" : "quiet", b.label, parent);
   if (b.title) btn.title = b.title;
+  btn.disabled = b.off === true;
   btn.dataset.mark = `${b.act}|${b.id ?? ""}|${b.arg ?? ""}`; // the same button after a redraw, for the focus
   btn.addEventListener("click", () => send(b.act, { id: b.id ?? "", ...(b.arg !== undefined ? { arg: b.arg } : {}) }));
   return btn;
@@ -55,6 +56,12 @@ const go = el("button", "", "Plan it", row);
 go.title = "the planner reads your repository and suggests tasks; nothing runs until you start them (⌘ or Ctrl + Enter)";
 const cancel = el("button", "quiet", "Cancel", row);
 const busy = el("span", "busy", "", row);
+const exactLabel = el("label", "tick exact", undefined, ask);
+const exact = el("input", "", undefined, exactLabel);
+exact.type = "checkbox";
+exactLabel.append(" Exact");
+exactLabel.title = EXACT;
+exact.addEventListener("change", () => send("exact", { flag: exact.checked }));
 const out = el("div", "said", undefined, ask);
 const intro = el("p", "intro", undefined, work);
 const sections = el("div", "sections", undefined, work);
@@ -95,6 +102,7 @@ function render(m: Model) {
   cancel.hidden = !m.planning;
   busy.textContent = m.busy;
   busy.hidden = !m.busy;
+  exact.checked = m.exact;
   if (m.last.asked && m.last.n !== saved.cleared) { // planned: the box is free for the next thing
     if (box.value.trim() === m.last.asked) box.value = "";
     remember({ draft: box.value, cleared: m.last.n });

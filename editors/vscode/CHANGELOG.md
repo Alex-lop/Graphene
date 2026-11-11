@@ -12,6 +12,8 @@ The graph is built by hand (10 to 11 November 2026). It needs no newer CLI: ever
   plan (`graphene node add`) once graphene will take it. "Fill it in for me" hands its title to the planner.
 - Under the form, one line says what a change does now (suggested, not started, working, to review, done), and
   graphene's refusal of a change shows there, whole.
+- Home has an Exact switch, off by default. On, it sets `board: on`, `review: every` and `auto: off`, and Home's
+  Start waits until you have answered every open question (a default's button confirms it).
 
 ## 0.9.0 (unreleased)
 

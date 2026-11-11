@@ -92,6 +92,8 @@ button.fold:hover { background: none; color: var(--vscode-textLink-foreground, v
 
 /* Set Up */
 .tick { display: flex; align-items: center; gap: 6px; margin: 10px 0 4px; cursor: pointer; }
+.tick.exact { margin: 6px 0 0; color: var(--dim); width: fit-content; }
+button:disabled { opacity: 0.45; cursor: default; }
 .picks { display: flex; flex-direction: column; gap: 6px; }
 button.pick { flex-direction: column; align-items: flex-start; gap: 1px; padding: 7px 10px; text-align: left; }
 .pick-name { font-weight: 600; }
