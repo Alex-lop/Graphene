@@ -34,7 +34,7 @@ try {
   const g = (await L.graphFrames(page))[0];
   const focused = (id) => until(g, (i) => document.activeElement?.id === i, id, `the focus in ${id}`);
   const typeIn = async (id, text) => { await focused(id); await g.locator(`#${id}`).fill(text); await g.locator(`#${id}`).press("Enter"); };
-  const box = (title) => g.locator("#view g.task:not(.draft)", { has: g.locator("text.title", { hasText: title }) });
+  const box = (id) => g.locator(`#view g.task[data-id="${id}"]`); // by its id: a title is cut to its box, more where the font is wider
   const drawnAs = (title) => until(g, (t) => [...document.querySelectorAll("#view g.task:not(.draft) text.title")].some((x) => x.textContent === t)
     && !document.querySelector("#view g.task.draft"), title, `“${title}” in the plan`);
 
@@ -63,8 +63,8 @@ try {
   await shot("joined");
 
   // 2. the + on its box: a second task after it, your approval in place of a check
-  await box("print the top words").locator("rect.box").hover();
-  await box("print the top words").locator(".plus circle").click();
+  await box(first.id).locator("rect.box").hover();
+  await box(first.id).locator(".plus circle").click();
   await name.waitFor({ timeout: 10000 }).catch(() => { throw new Error("the + drew no draft box"); });
   await name.fill("say it in the README");
   await shot("plus");
@@ -79,13 +79,13 @@ try {
   await shot("second");
 
   // 3. attempts on one task: the stepper, and the fan before anything runs
-  await box("print the top words").locator("rect.box").click();
+  await box(first.id).locator("rect.box").click();
   await until(g, () => document.querySelector("#details .d-id")?.textContent.includes("ready"), null, "the first task's pane");
   for (let i = 0; i < 2; i++) {
     await g.locator('#details button[aria-label="one more attempt"]').click();
     await until(g, (n) => document.querySelector("#details .count")?.textContent === String(n), i + 2, `${i + 2} attempts on the stepper`);
   }
-  const fan = await box("print the top words").locator("g.fork.planned").count();
+  const fan = await box(first.id).locator("g.fork.planned").count();
   if (fan !== 3 || plan()["print the top words"].forks !== 3) throw new Error(`the fan has ${fan} chips; the plan says ${plan()["print the top words"].forks}`);
   say("the stepper set 3 attempts on that task alone, and the fan is drawn before anything runs");
   await shot("attempts");
@@ -102,7 +102,7 @@ try {
   say("the form changed its title in place, took it for you and gave it back to an agent");
 
   // 5. graphene's refusal, in the pane: the second task may not write the first one's file
-  await box("say it in the README").locator("rect.box").click();
+  await box(second.id).locator("rect.box").click();
   await until(g, () => document.querySelector("#details .d-id")?.textContent.includes("waiting"), null, "the second task's pane");
   await g.locator("#f-files").fill("wordkit/cli.py");
   await g.locator("#f-files").press("Enter");
@@ -115,7 +115,7 @@ try {
 
   // 6. while an agent holds a task: the pane says what an edit does now, and graphene takes it
   cli(["node", "start", first.id], { ...fx.env, CLAUDECODE: "1", CLAUDE_CODE_SESSION_ID: "e2e-draw-agent" });
-  await box("print the N most").locator("rect.box").click();
+  await box(first.id).locator("rect.box").click();
   await until(g, () => document.querySelector("#details .when")?.textContent.startsWith("Working now"), null, "the working task's line");
   await g.locator("#f-files").fill("wordkit/cli.py tests/test_top.py wordkit/count.py");
   await g.locator("#f-files").press("Enter");
