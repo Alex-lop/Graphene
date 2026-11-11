@@ -6,16 +6,18 @@
 import { layout, modeFor, step, type Box, type Edge, type Layout } from "../layout.ts";
 import { autoLine, SAY, usd, type State } from "../state.ts";
 import { ICONS } from "./icons.ts";
-import { actsFor, cornerWord, cut, done, FIRST_HINT, fitWidth, forkActs, forkRow, forkWords, HEADER_ACTS, headerFor, KEYS, linkHint, paneKey, questionOn,
-         sub, tabOrder, topLine, zoomK, type Act, type Button, type StateX, type TaskX } from "./words.ts";
+import { blanks, draftLine, globs, isDraft, lacks, type Draft } from "./draft.ts";
+import { actsFor, attemptsOf, cornerWord, cut, done, editable, fan, FIRST_HINT, fitWidth, forkActs, forkRow, forkWords, HEADER_ACTS, headerFor, KEYS, linkHint, paneKey,
+         questionOn, sub, tabOrder, topLine, whenEdit, zoomK, type Button, type StateX, type TaskX } from "./words.ts";
 
 declare function acquireVsCodeApi(): { postMessage(m: unknown): void; getState(): unknown; setState(s: unknown): void };
 
 type Status = { kind: "reading" | "missing" | "uninitialised" | "error" | "nofolder"; text: string };
-type Incoming = { type: "state"; state: StateX } | { type: "status"; status: Status } | { type: "select"; id: string };
+type Incoming = { type: "state"; state: StateX } | { type: "status"; status: Status } | { type: "select"; id: string }
+  | { type: "said"; id?: string; key?: string; ok: boolean; line: string; made?: string }; // graphene's answer to a change made here
 type Zoom = { k: number; tx: number; ty: number };
 type View = "auto" | "graph" | "lanes";
-type Saved = { zoom?: Zoom; hinted?: boolean; view?: View };
+type Saved = { zoom?: Zoom; hinted?: boolean; view?: View; drafts?: Draft[]; drew?: number };
 
 const GOAL = " goal";
 const BOX_W = 200, BOX_H = 48, FORK_H = 20, FORK_DX = 22, CHIP_W = 228, GOAL_W = 200, GOAL_H = 66; // a chip holds 32 mono characters
@@ -36,6 +38,14 @@ let zoom: Zoom = saved.zoom ?? { k: 1, tx: 0, ty: 0 };
 let moved = Boolean(saved.zoom); // the person zoomed or panned (now or last time): a resize no longer re-fits
 let fitted = false;
 let saving: ReturnType<typeof setTimeout> | undefined;
+// the tasks being drawn: the page's own until graphene takes them (kept with the page's state, so a hidden
+// tab keeps them). ponytail: each page keeps its own, so a draft in the side bar is not in the tab; the plan
+// would have to hold drafts for that
+let drafts: Draft[] = (saved.drafts ?? []).filter((d) => d.title.trim());
+let naming: string | null = null; // the draft whose title is being typed on its box
+const offered = new Set<string>(); // drafts graphene is being asked to take: not offered twice
+const refused = new Map<string, string>(); // a task's id -> graphene's refusal of the last change to it
+let arriving: string | null = null; // a drawn task graphene took: selected once the plan shows it
 
 function remember(patch: Partial<Saved>) {
   saved = { ...saved, ...patch };
@@ -81,6 +91,9 @@ function button(b: Button, id: string, parent: HTMLElement) {
   btn.className = b.main ? "" : "quiet";
   btn.addEventListener("click", () => {
     if (b.act === "link") { linking = id; render(); return; }
+    const near = state?.tasks.find((t) => t.id === id);
+    if (b.act === "add-after" && near) return draw({ after: id, parent: near.parent });
+    if (b.act === "add-under") return draw({ after: null, parent: near?.parent ?? null });
     api.postMessage({ type: "act", act: b.act, id, ...(b.fork ? { fork: b.fork } : {}) });
   });
   parent.appendChild(btn);
@@ -89,18 +102,91 @@ function button(b: Button, id: string, parent: HTMLElement) {
 const cls = (word: string) => `st-${word.replace(/\s+/g, "-")}`;
 
 function boxes(s: StateX): { boxes: Box[]; edges: Edge[]; goal: string | null } {
-  const bs: Box[] = s.tasks.map((t) => ({
-    id: t.id, band: t.parent ?? "", w: t.forks.length ? FORK_DX + CHIP_W : BOX_W,
-    h: BOX_H + (t.forks.length ? FORK_H * t.forks.length + 6 : 0),
-  }));
+  const bs: Box[] = s.tasks.map((t) => {
+    const n = fan(t, s.envelope.forks).length;
+    return { id: t.id, band: t.parent ?? "", w: n ? FORK_DX + CHIP_W : BOX_W, h: BOX_H + (n ? FORK_H * n + 6 : 0) };
+  });
   const edges: Edge[] = s.edges.filter(([, , kind]) => kind === "needs").map(([a, b]) => [a, b]);
+  for (const d of drawn()) { // a drawn task is a box as any other, after the task it waits on
+    bs.push({ id: d.key, band: d.parent ?? "", w: BOX_W, h: BOX_H });
+    if (d.after) edges.push([d.after, d.key]);
+  }
   const hasGoal = Boolean(s.goal) && s.tasks.length > 0;
   if (hasGoal) {
     bs.push({ id: GOAL, band: "", w: GOAL_W, h: GOAL_H });
     const needed = new Set(edges.map(([a]) => a));
-    for (const t of s.tasks) if (!needed.has(t.id)) edges.push([t.id, GOAL]);
+    for (const b of bs) if (b.id !== GOAL && !needed.has(b.id)) edges.push([b.id, GOAL]);
   }
   return { boxes: bs, edges, goal: hasGoal ? GOAL : null };
+}
+
+// ---- drawing a task by hand ----
+
+/** The drafts on screen: none in a replay, which is watched. */
+const drawn = (): Draft[] => (replaying() ? [] : drafts);
+
+/** A new draft box, after a task or on its own, its title typed on the box. */
+function draw(at: { after: string | null; parent: string | null }) {
+  if (!state || replaying()) return;
+  first();
+  const n = (saved.drew ?? 0) + 1;
+  const d: Draft = { key: ` d${n}`, title: "", files: "", check: "", approve: false, ...at };
+  drafts = [...drafts, d];
+  remember({ drafts, drew: n });
+  naming = d.key;
+  select(d.key);
+  reveal(d.key);
+}
+
+/** A draft's field changed: kept, and once it lacks nothing graphene is asked to take it (`node add`). */
+function redraw(key: string, patch: Partial<Draft>) {
+  const d = drafts.find((x) => x.key === key);
+  if (!d) return;
+  Object.assign(d, patch, { said: undefined });
+  remember({ drafts });
+  if (!lacks(d).length && !offered.has(key)) {
+    offered.add(key);
+    api.postMessage({ type: "act", act: "draw", id: "", draft: { key, title: d.title, files: d.files, check: d.check, approve: d.approve, after: d.after, parent: d.parent } });
+  }
+  setTimeout(render, 0); // once the focus has landed: a box left for the next one is not rebuilt under it
+}
+
+function discard(key: string) {
+  drafts = drafts.filter((d) => d.key !== key);
+  offered.delete(key);
+  remember({ drafts });
+  if (naming === key) naming = null;
+  if (selected === key) selected = null;
+  render();
+}
+
+/** The title typed on a draft's box: kept, and the files are next; an empty one takes the draft away. */
+function named(key: string, title: string) {
+  if (naming !== key) return; // Enter, then the blur of the box it took away
+  naming = null;
+  if (!title.trim()) return discard(key);
+  redraw(key, { title: title.trim() });
+  setTimeout(() => document.getElementById("f-files")?.focus(), 0);
+}
+
+/** The box a title is typed in, on a draft: Enter keeps it, Esc leaves it as it was. */
+function nameInput(d: Draft): HTMLInputElement {
+  const input = document.createElement("input");
+  input.className = "name";
+  input.value = d.title;
+  input.placeholder = "what this task does";
+  input.spellcheck = false;
+  input.setAttribute("aria-label", "the new task's title");
+  input.addEventListener("click", (e) => e.stopPropagation());
+  input.addEventListener("mousedown", (e) => e.stopPropagation());
+  input.addEventListener("keydown", (e) => {
+    e.stopPropagation(); // typed words are not the graph's keys
+    if (e.key === "Enter") named(d.key, input.value);
+    if (e.key === "Escape") named(d.key, d.title);
+  });
+  input.addEventListener("blur", () => named(d.key, input.value));
+  setTimeout(() => input.focus(), 0);
+  return input;
 }
 
 function goalTitle(s: State, id: string): string {
@@ -133,10 +219,11 @@ function render() {
   $("lanes").hidden = v !== "lanes";
   ($("svg") as unknown as SVGSVGElement).style.display = v === "lanes" ? "none" : "block";
   $("canvas").classList.toggle("lanes", v === "lanes");
-  $("notice").hidden = s.tasks.length > 0;
+  $("notice").hidden = s.tasks.length > 0 || drawn().length > 0;
   if (!s.tasks.length) {
     $("notice").className = "";
-    $("notice").textContent = "Nothing is planned yet: the graph shows your goal and the tasks under it.";
+    $("notice").textContent = replaying() ? "Nothing is planned yet." : "Nothing is planned yet. Draw the first task here, or say what you want on Home.";
+    if (!replaying()) button({ label: "Add task", act: "add-under", title: "draw a task: its title, then its files and its check", icon: "add", main: true }, "", $("notice"));
   }
   if (v === "lanes") { lanes(s); $("to-goal").hidden = true; } else graph(s, dir);
   pane();
@@ -199,34 +286,37 @@ function graph(s: StateX, dir: "across" | "down") {
     if (!path) { path = el("path", { class: "edge" }); edgeEls.set(key, path); edges.appendChild(path); }
     path.setAttribute("d", edgeD(p, q, a, b, down));
     path.classList.toggle("hot", Boolean(selected && (a === selected || b === selected)));
+    path.classList.toggle("draft", isDraft(a) || isDraft(b));
   }
   for (const [key, path] of edgeEls) if (!seenEdges.has(key)) { path.remove(); edgeEls.delete(key); }
   // boxes: one group a task, rebuilt only when its words or its place changed
   const tasks = $("tasks") as unknown as SVGGElement;
   const seen = new Set<string>();
-  for (const t of s.tasks) {
-    const p = lay.boxes[t.id];
-    if (!p) continue;
-    seen.add(t.id);
-    const key = JSON.stringify([t, p.x, p.y, t.id === selected, down]);
-    let have = taskEls.get(t.id);
-    if (have && have.key === key) continue;
+  const box = (id: string, key: string, paint: (g: SVGGElement, h: number) => void) => {
+    const p = lay!.boxes[id];
+    if (!p) return;
+    seen.add(id);
+    key = JSON.stringify([key, p.x, p.y, id === selected, down]);
+    let have = taskEls.get(id);
+    if (have && have.key === key) return;
     if (!have) {
-      const grp = el("g", { class: "task fresh", "data-id": t.id, tabindex: 0, role: "button" });
+      const grp = el("g", { class: "task fresh", "data-id": id, tabindex: 0, role: "button" });
       grp.style.transform = `translate(${p.x}px, ${p.y}px)`; // placed before it joins: no glide from the corner
-      grp.addEventListener("click", (e) => { e.stopPropagation(); clicked(t.id); });
-      grp.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); clicked(t.id); } });
+      grp.addEventListener("click", (e) => { e.stopPropagation(); clicked(id); });
+      grp.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); clicked(id); } });
       tasks.appendChild(grp);
       have = { g: grp, key: "" };
-      taskEls.set(t.id, have);
+      taskEls.set(id, have);
     }
     have.key = key;
-    drawTask(have.g, t, p.h, down);
+    paint(have.g, p.h);
     have.g.style.transform = `translate(${p.x}px, ${p.y}px)`;
-  }
+  };
+  for (const t of s.tasks) box(t.id, JSON.stringify([t, s.envelope.forks]), (grp, h) => drawTask(grp, t, h, down, s.envelope.forks));
+  for (const d of drawn()) box(d.key, JSON.stringify([d, naming === d.key]), (grp) => drawDraft(grp, d));
   for (const [id, have] of taskEls) if (!seen.has(id)) { have.g.remove(); taskEls.delete(id); }
   // Tab walks the boxes wave by wave, which is their order in the DOM: reordered only when it changed
-  const want = tabOrder(lay, s.tasks.map((t) => t.id));
+  const want = tabOrder(lay, [...s.tasks.map((t) => t.id), ...drawn().map((d) => d.key)]);
   const have = Array.from(tasks.children).map((c) => c.getAttribute("data-id"));
   if (want.join("\n") !== have.join("\n")) for (const id of want) { const grp = taskEls.get(id)?.g; if (grp) tasks.appendChild(grp); }
   // the goal
@@ -271,7 +361,7 @@ function edgeD(p: { x: number; y: number; w: number; h: number }, q: { x: number
 
 /** A task's box, drawn at the group's origin: the box, its stripe, title and sub line, the corner's word,
  *  its fork chips hanging under it, and the dot its lines leave from. */
-function drawTask(grp: SVGGElement, t: TaskX, h: number, down: boolean) {
+function drawTask(grp: SVGGElement, t: TaskX, h: number, down: boolean, limit: number | null) {
   grp.replaceChildren();
   grp.setAttribute("class", `task ${cls(t.state)}${t.id === selected ? " selected" : ""}${t.needs_you ? " needs-you" : ""}`);
   const line = sub(t);
@@ -285,11 +375,11 @@ function drawTask(grp: SVGGElement, t: TaskX, h: number, down: boolean) {
   grp.appendChild(el("text", { class: "sub", x: 12, y: 36 }, line));
   grp.appendChild(el("title", {}, `${t.title} · ${sub(t, 200)}`)); // the hover: the whole line
   // the fan: one chip a fork, hanging under the box, each on a line from the box's foot
-  t.forks.forEach((f, i) => {
+  fan(t, limit).forEach((f, i) => { // before anything runs: one waiting chip for each attempt it is set to
     const y = BOX_H + 6 + i * FORK_H, x = FORK_DX;
     const kept = t.kept?.letter === f.letter;
     grp.appendChild(el("path", { class: "fan", d: `M10,${BOX_H} C10,${y + 10} ${x - 8},${y + 10} ${x},${y + 10}` }));
-    const chip = el("g", { class: `fork ${cls(f.state || "waiting")}${kept ? " kept" : ""}` });
+    const chip = el("g", { class: `fork ${cls(f.state || "waiting")}${kept ? " kept" : ""}${t.forks.length ? "" : " planned"}` });
     chip.appendChild(el("rect", { class: "chip", x, y: y + 1, width: CHIP_W, height: FORK_H - 3, rx: 4 }));
     chip.appendChild(el("text", { class: "chip-text", x: x + 8, y: y + 14 }, forkWords(f, t.kept)));
     const tip = el("title", {}, forkRow(f, t.kept));
@@ -301,6 +391,31 @@ function drawTask(grp: SVGGElement, t: TaskX, h: number, down: boolean) {
   const port = el("circle", { class: "port", cx: down ? BOX_W / 2 : BOX_W, cy: down ? h : BOX_H / 2, r: 5, "data-port": t.id });
   port.appendChild(el("title", {}, "drag onto another task: it then waits on this one"));
   grp.appendChild(port);
+  // its +, on the corner: a new task drawn after this one
+  const plus = el("g", { class: "plus", "data-plus": t.id });
+  plus.appendChild(el("circle", { cx: BOX_W - 1, cy: 1, r: 8 }));
+  plus.appendChild(el("path", { d: `M${BOX_W - 5},1 h8 M${BOX_W - 1},-3 v8` }));
+  plus.appendChild(el("title", {}, "draw a task after this one"));
+  plus.addEventListener("click", (e) => { e.stopPropagation(); draw({ after: t.id, parent: t.parent }); });
+  grp.appendChild(plus);
+}
+
+/** A draft's box: dashed, its title (typed here while it is new), and its blanks until they are filled. */
+function drawDraft(grp: SVGGElement, d: Draft) {
+  grp.replaceChildren();
+  grp.setAttribute("class", `task draft${d.key === selected ? " selected" : ""}`);
+  grp.setAttribute("aria-label", `a draft: ${d.title || "no title yet"}: ${blanks(d)}${d.key === selected ? ", selected" : ""}`);
+  grp.appendChild(el("rect", { class: "box", x: 0, y: 0, width: BOX_W, height: BOX_H, rx: 6 }));
+  grp.appendChild(el("rect", { class: "stripe", x: 0, y: 0, width: 5, height: BOX_H, rx: 2 }));
+  if (naming === d.key) {
+    const fo = el("foreignObject", { x: 9, y: 3, width: BOX_W - 16, height: 24 });
+    fo.appendChild(nameInput(d));
+    grp.appendChild(fo);
+  } else {
+    fitText(grp.appendChild(el("text", { class: "title", x: 12, y: 19 }, d.title)), BOX_W - 24);
+  }
+  grp.appendChild(el("text", { class: `sub${d.said ? " bad" : ""}`, x: 12, y: 36 }, d.said ? "not taken: see why" : blanks(d)));
+  grp.appendChild(el("title", {}, `a draft: ${d.title} · ${blanks(d)}`));
 }
 
 // ---- the lanes: one row a task, wave by wave ----
@@ -319,7 +434,7 @@ function lanes(s: StateX) {
     (waves[r] ??= []).push(t);
   }
   for (const w of waves) w?.sort((p, q) => (order.boxes[p.id]?.y ?? 0) - (order.boxes[q.id]?.y ?? 0));
-  const key = JSON.stringify([waves.map((w) => w?.map((t) => t.id)), selected, s.goal, done(s.tasks)]);
+  const key = JSON.stringify([waves.map((w) => w?.map((t) => t.id)), selected, s.goal, done(s.tasks), drawn(), naming]);
   const rows: HTMLElement[] = [];
   const seen = new Set<string>();
   waves.forEach((w, i) => {
@@ -327,7 +442,7 @@ function lanes(s: StateX) {
     rows.push(div("wave", `wave ${i + 1} · ${done(w)} done`));
     for (const t of w) {
       seen.add(t.id);
-      const k = JSON.stringify([t, t.id === selected, s.goals.find((x) => x.id === t.parent)?.title]);
+      const k = JSON.stringify([t, t.id === selected, s.goals.find((x) => x.id === t.parent)?.title, s.envelope.forks]);
       let have = laneEls.get(t.id);
       if (!have) {
         const row = div("lane fresh");
@@ -344,6 +459,20 @@ function lanes(s: StateX) {
     }
   });
   for (const [id, have] of laneEls) if (!seen.has(id)) { have.el.remove(); laneEls.delete(id); }
+  if (drawn().length) rows.push(div("wave", "drawn, not in the plan yet"));
+  for (const d of drawn()) { // few, so made again each time; kept only when the rows changed (the key above)
+    const row = div(`lane draft${d.key === selected ? " selected" : ""}`);
+    row.tabIndex = 0;
+    row.setAttribute("role", "button");
+    row.dataset.id = d.key;
+    row.addEventListener("click", () => clicked(d.key));
+    row.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); clicked(d.key); } });
+    div("l-stripe", undefined, row);
+    const main = div("l-main", undefined, row);
+    if (naming === d.key) main.appendChild(nameInput(d)); else div("l-title", d.title, main);
+    div(`l-sub${d.said ? " bad" : ""}`, d.said ? "not taken: see why" : blanks(d), main);
+    rows.push(row);
+  }
   if (s.goal) {
     const goal = div("lane goal-row");
     goal.setAttribute("aria-label", `goal: ${s.goal}, ${done(s.tasks)} done`);
@@ -372,11 +501,12 @@ function drawLane(row: HTMLElement, t: TaskX, s: StateX) {
   div("l-sub", line, main);
   const band = t.parent ? goalTitle(s, t.parent) : "";
   if (band && band !== s.goal) div("l-band", band, main).title = band; // auto's root sub-goal is the goal itself: said once, at the foot
-  if (t.forks.length) {
+  const attempts = fan(t, s.envelope.forks);
+  if (attempts.length) {
     const forks = div("l-forks", undefined, main);
-    for (const f of t.forks) {
+    for (const f of attempts) {
       const kept = t.kept?.letter === f.letter;
-      const chip = div(`l-chip fork ${cls(f.state || "waiting")}${kept ? " kept" : ""}`, forkWords(f, t.kept, 40), forks);
+      const chip = div(`l-chip fork ${cls(f.state || "waiting")}${kept ? " kept" : ""}${t.forks.length ? "" : " planned"}`, forkWords(f, t.kept, 40), forks);
       chip.title = forkRow(f, t.kept);
     }
   }
@@ -458,7 +588,8 @@ function reveal(id: string) {
 function clicked(id: string) {
   first();
   if (linking && linking !== id) {
-    api.postMessage({ type: "act", act: "link", id: linking, target: id });
+    if (isDraft(id)) redraw(id, { after: linking }); // a draft waits on it from the start
+    else api.postMessage({ type: "act", act: "link", id: linking, target: id });
     linking = null;
     select(id);
     return;
@@ -518,18 +649,162 @@ function row(label: string, value: string, parent: HTMLElement): HTMLDivElement 
 }
 
 let paneLast = "";
+let paneOf: string | null = null; // whose pane is drawn
+
+/** A line of the pane's form: its label and a box to type in. Enter goes on to the next box (and keeps what
+ *  was typed, as leaving the box does); Esc puts back what was there. */
+function field(parent: HTMLElement, name: string, label: string, value: string, placeholder: string, hover: string, on: (v: string) => void): HTMLInputElement {
+  const r = div("row", undefined, parent);
+  const k = document.createElement("label");
+  k.className = "k";
+  k.textContent = label;
+  const input = document.createElement("input");
+  input.id = k.htmlFor = `f-${name}`;
+  input.className = "f";
+  input.type = "text";
+  input.value = value;
+  input.placeholder = placeholder;
+  input.title = hover;
+  input.spellcheck = false;
+  input.addEventListener("change", () => on(input.value));
+  input.addEventListener("keydown", (e) => {
+    e.stopPropagation(); // typed words are not the graph's keys
+    if (e.key === "Enter") {
+      const all = Array.from($("details").querySelectorAll<HTMLInputElement>("input.f"));
+      const next = all[all.indexOf(input) + 1];
+      if (next) next.focus(); else input.blur();
+    }
+    if (e.key === "Escape") { input.value = value; input.blur(); }
+  });
+  // what changed while it was typed in is drawn once the form is left (Enter goes on to the next box: not yet)
+  input.addEventListener("blur", () => setTimeout(() => { if (paneLast === "stale") pane(); }, 0));
+  r.append(k, input);
+  return input;
+}
+
+/** A yes or no of the form: a tick box with its words. */
+function tick(parent: HTMLElement, name: string, label: string, on: boolean, hover: string, set: (v: boolean) => void, off = false) {
+  const l = document.createElement("label");
+  l.className = "tick";
+  l.title = hover;
+  const c = document.createElement("input");
+  c.type = "checkbox";
+  c.id = `f-${name}`;
+  c.checked = on;
+  c.disabled = off;
+  c.addEventListener("change", () => set(c.checked));
+  l.append(c, document.createTextNode(label));
+  parent.appendChild(l);
+}
+
+/** One field of a task, to graphene (`node set`): its answer comes back as `said`, and the plan after it. */
+function setField(t: TaskX, name: "title" | "scope" | "check" | "forks" | "signoff" | "owner", value: string | number | boolean) {
+  refused.delete(t.id);
+  api.postMessage({ type: "act", act: "set", id: t.id, field: name, value });
+}
+
+/** A task's form: its title, the files it may change, its check, its attempts, your approval, and whether it
+ *  is yours; each change is graphene's to take or refuse, and the line under them says what it does now. */
+function form(body: HTMLElement, t: TaskX, s: StateX) {
+  const same = (a: string, b: string) => a.trim() === b.trim();
+  const back = () => setTimeout(() => { paneLast = ""; pane(); }, 0); // what was typed is not a change: the form as it was
+  field(body, "title", "title", t.full || t.title, "what this task does", "the task, in a line",
+        (v) => (!v.trim() || same(v, t.full || t.title) ? back() : setField(t, "title", v.trim())));
+  field(body, "files", "files", t.scope.join(" "), "src/api/** tests/test_api.py", "the files it may change: paths or globs, a space between",
+        (v) => (!globs(v).length || globs(v).join(" ") === t.scope.join(" ") ? back() : setField(t, "scope", globs(v).join(" "))));
+  field(body, "check", "check", t.check ?? "", "a command that passes when it is done", "the command that passes only when the task is done; empty: your approval finishes it",
+        (v) => (same(v, t.check ?? "") ? back() : setField(t, "check", v.trim())));
+  const n = attemptsOf(t, s.envelope.forks);
+  const r = div("row", undefined, body);
+  div("k", "attempts", r);
+  const v = div("v stepper", undefined, r);
+  const step = (label: string, to: number, sign: string) => {
+    const b = document.createElement("button");
+    b.className = "quiet";
+    b.textContent = sign;
+    b.setAttribute("aria-label", label);
+    b.title = t.check ? label : "attempts need a check to keep one";
+    b.disabled = !t.check || to < 1 || to > 8;
+    b.addEventListener("click", () => setField(t, "forks", to));
+    v.appendChild(b);
+  };
+  step("one attempt fewer", n - 1, "−");
+  div("count", String(n), v).setAttribute("aria-label", `${n} attempt${n > 1 ? "s" : ""}`);
+  step("one more attempt", n + 1, "+");
+  div("dim", !t.check ? "one agent: attempts need a check to keep one" : n > 1 ? "agents at once; its check keeps one" : "one agent", v);
+  const unread = t.signoff === null; // `graphene plan --json` not read yet: a moment
+  tick(body, "signoff", "wait for my approval", t.signoff === true, "it lands only once you approve it, as well as passing its check", (on) => setField(t, "signoff", on), unread);
+  tick(body, "owner", "I will do this one", Boolean(t.owner) && t.owner !== "agent", "no agent takes it: it is yours to do", (on) => setField(t, "owner", on), unread);
+  div("when", whenEdit(t), body);
+  const no = refused.get(t.id);
+  if (no) div("refused", no, body).setAttribute("role", "alert");
+}
+
+/** A draft's pane: the same form, its own; what it still lacks, or graphene's refusal; and the planner, a click away. */
+function draftPane(pane: HTMLElement, d: Draft) {
+  const head = div("d-head", undefined, pane);
+  div("d-title st-draft", d.title || "A new task", head);
+  div("d-id", "a draft · not in the plan yet", head);
+  const close = document.createElement("button");
+  close.className = "close";
+  close.appendChild(icon("close"));
+  close.title = "close (Esc)";
+  close.setAttribute("aria-label", "close");
+  close.addEventListener("click", () => select(null));
+  head.appendChild(close);
+  const body = div("d-body", undefined, pane);
+  field(body, "title", "title", d.title, "what this task does", "the task, in a line", (v) => (v.trim() ? redraw(d.key, { title: v.trim() }) : redraw(d.key, {})));
+  field(body, "files", "files", d.files, "src/api/** tests/test_api.py", "the files it may change: paths or globs, a space between", (v) => redraw(d.key, { files: v.trim() }));
+  field(body, "check", "check", d.check, "a command that passes when it is done", "the command that passes only when the task is done", (v) => redraw(d.key, { check: v.trim() }));
+  tick(body, "signoff", "wait for my approval", d.approve, "it lands only once you approve it", (on) => redraw(d.key, { approve: on }));
+  const after = d.after ? state?.tasks.find((t) => t.id === d.after)?.title : "";
+  row("after", after ?? "", body);
+  const line = offered.has(d.key) && !d.said ? "Graphene is asked to take it…" : draftLine(d);
+  if (line) div("when", line, body);
+  if (d.said) div("refused", d.said, body).setAttribute("role", "alert");
+  const acts = div("d-acts", undefined, pane);
+  const act = (label: string, ico: string, title: string, on: () => void, main = false) => {
+    const b = document.createElement("button");
+    b.className = main ? "" : "quiet";
+    b.append(icon(ico), document.createTextNode(label));
+    b.title = title;
+    b.addEventListener("mousedown", (e) => e.preventDefault()); // the box being typed in is not left first: Discard discards
+    b.addEventListener("click", on);
+    acts.appendChild(b);
+  };
+  act("Fill it in for me", "rocket", "the planner suggests its files and its check from the title", () => {
+    const title = (document.getElementById("f-title") as HTMLInputElement | null)?.value.trim() || d.title;
+    if (!title || offered.has(d.key)) return;
+    Object.assign(d, { title, said: undefined });
+    offered.add(d.key);
+    api.postMessage({ type: "act", act: d.after ? "add-after" : "add-under", id: d.after ?? "", sentence: title, key: d.key });
+    paneLast = "";
+    render();
+  });
+  act("Discard", "trash", "take this draft away", () => discard(d.key));
+}
 
 /** The pane is rebuilt only when what it shows changed (its key); then the focused button, by its words,
- *  and the scroll are kept, so a keyboard user reaches its buttons while a run writes the store. */
+ *  and the scroll are kept, so a keyboard user reaches its buttons while a run writes the store. A box being
+ *  typed in is never rebuilt under the typing: the pane waits for it to be left. */
 function pane() {
   const pane = $("details");
-  const key = state ? paneKey(state, selected, replaying()) : "";
+  const d = drawn().find((x) => x.key === selected);
+  const key = d ? JSON.stringify([d, offered.has(d.key)]) : state ? paneKey(state, selected, replaying()) + (refused.get(selected ?? "") ?? "") + state.envelope.forks : "";
   if (key === paneLast) return;
+  const at = document.activeElement as HTMLInputElement | null;
+  if (paneOf === selected && at && pane.contains(at) && at.tagName === "INPUT" && at.type === "text") {
+    paneLast = "stale"; // rebuilt once the box is left; a draft's own line is said now, as its box says its blanks
+    const when = d ? pane.querySelector(".when") : null;
+    if (d && when) when.textContent = offered.has(d.key) && !d.said ? "Graphene is asked to take it…" : draftLine(d);
+    return;
+  }
   paneLast = key;
+  paneOf = selected;
   const t = state?.tasks.find((x) => x.id === selected);
-  if (!state || !t || !key) { pane.hidden = true; pane.replaceChildren(); return; }
+  if (!state || (!t && !d) || !key) { pane.hidden = true; pane.replaceChildren(); return; }
   const was = pane.contains(document.activeElement) ? document.activeElement : null;
-  const mark = (e: Element) => `${e.className}|${e.textContent}|${e.getAttribute("aria-label") ?? ""}`;
+  const mark = (e: Element) => `${e.id}|${e.className}|${e.textContent}|${e.getAttribute("aria-label") ?? ""}`;
   const want = was ? mark(was) : "";
   const top = pane.querySelector(".d-body")?.scrollTop ?? 0; // wide, the body scrolls; narrow, the whole pane
   const paneTop = pane.scrollTop;
@@ -537,10 +812,13 @@ function pane() {
   const s = state;
   pane.hidden = false;
   queueMicrotask(() => {
-    if (want) Array.from(pane.querySelectorAll("button")).find((b) => mark(b) === want)?.focus({ preventScroll: true });
-    body.scrollTop = top;
+    if (want) Array.from(pane.querySelectorAll<HTMLElement>("button, input")).find((b) => mark(b) === want)?.focus({ preventScroll: true });
+    const now = pane.querySelector(".d-body");
+    if (now) now.scrollTop = top;
     pane.scrollTop = paneTop;
   });
+  if (d) return draftPane(pane, d);
+  if (!t) return;
   const head = div("d-head", undefined, pane);
   div(`d-title ${cls(t.state)}`, t.title, head);
   div("d-id", `${t.id} · ${SAY[t.state]}${t.needs_you ? " · needs you" : ""}`, head);
@@ -576,10 +854,14 @@ function pane() {
       opts.appendChild(own);
     }
   }
-  row("what for", t.full, body);
+  if (editable(t, replaying())) form(body, t, s);
+  else { // a finished task, or a replay: read, and the line says why
+    row("what for", t.full, body);
+    row("may change", t.scope.join("  "), body);
+    row("done when", t.check ? `${t.check} passes` : "", body);
+    if (!replaying()) div("when", whenEdit(t), body);
+  }
   row("under", t.parent ? goalTitle(s, t.parent) : "", body);
-  row("may change", t.scope.join("  "), body);
-  row("done when", t.check ? `${t.check} passes` : "", body);
   if (t.hollow) div("hollow", "its check passed before the work too: it proves nothing new", body); // as the cockpit says
   if (t.needs.length) { // what it waits on, each with the × that stops it waiting
     const r = div("row", undefined, body);
@@ -675,9 +957,33 @@ window.addEventListener("message", (e: MessageEvent<Incoming>) => {
     if (json === lastJson) return; // nothing changed: nothing moves
     lastJson = json;
     state = m.state;
-    if (selected && !state.tasks.some((t) => t.id === selected)) selected = null;
-    if (linking && !state.tasks.some((t) => t.id === linking)) linking = null;
+    const has = (id: string | null) => state!.tasks.some((t) => t.id === id);
+    if (arriving && has(arriving)) { selected = arriving; arriving = null; }
+    if (selected && !has(selected) && !isDraft(selected)) selected = null;
+    if (linking && !has(linking)) linking = null;
+    for (const d of drafts) { // what a draft was drawn after, or under, may have gone
+      if (d.after && !has(d.after)) d.after = null;
+      if (d.parent && !state.goals.some((g) => g.id === d.parent)) d.parent = null;
+    }
     render();
+  } else if (m.type === "said") { // graphene's answer to a change made here
+    if (m.id) { if (m.ok) refused.delete(m.id); else refused.set(m.id, m.line); }
+    const d = m.key ? drafts.find((x) => x.key === m.key) : undefined;
+    if (d) {
+      offered.delete(d.key);
+      if (m.ok) { // the plan has it: the draft goes, and the task it became is selected in its place
+        const made = selected === d.key ? m.made : undefined;
+        discard(d.key);
+        if (made && state?.tasks.some((t) => t.id === made)) select(made); else arriving = made ?? null;
+        return;
+      }
+      d.said = m.line;
+    }
+    paneLast = "";
+    render();
+    // a box of this task's form still being typed in keeps the form as it is: the refusal is said under it now
+    const body = m.id && m.id === selected && !m.ok ? $("details").querySelector<HTMLElement>(".d-body") : null;
+    if (body && !Array.from(body.querySelectorAll(".refused")).some((r) => r.textContent === m.line)) div("refused", m.line, body).setAttribute("role", "alert");
   } else if (m.type === "status") {
     lastJson = "";
     notice(m.status);
@@ -695,6 +1001,7 @@ function first() { // the first touch: the first-time hint has done its work
 
 window.addEventListener("keydown", (e) => {
   if ((e.target as HTMLElement).tagName === "BUTTON" && (e.key === "Enter" || e.key === " ")) return;
+  if ((e.target as HTMLElement).tagName === "INPUT" && e.key !== "Escape") return; // a tick box: Space is its own
   if (e.key === "Escape") {
     if (!$("help").hidden) help(false);
     else if (wiring || linking) disarm();
@@ -783,7 +1090,8 @@ function wire() {
       wiring = null;
       canvas.classList.remove("wiring");
       if (target && target !== from) {
-        api.postMessage({ type: "act", act: "link", id: from, target });
+        if (isDraft(target)) redraw(target, { after: from });
+        else api.postMessage({ type: "act", act: "link", id: from, target });
         select(target);
       } else render();
       return;
@@ -828,7 +1136,7 @@ function wire() {
     b.addEventListener("click", on);
     actions.appendChild(b);
   };
-  top("b-add", "Add task…", "add", "a task in a sentence: the planner fills in its files and its check", () => api.postMessage({ type: "act", act: "add-under", id: "" }));
+  top("b-add", "Add task", "add", "draw a task: its title, then its files and its check (or the planner fills them in)", () => draw({ after: null, parent: null }));
   top("b-run", "Run", "play", "start an agent on every task that is ready", () => api.postMessage({ type: "act", act: state?.run.going ? "stop" : "run", id: "" }));
   top("b-view", "Lanes", "list-flat", "graph or lanes (v)", () => { remember({ view: view() === "lanes" ? "graph" : "lanes" }); fitted = false; render(); });
   top("b-help", "", "question", "every key (?)", () => help($("help").hidden));

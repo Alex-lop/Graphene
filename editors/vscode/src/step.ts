@@ -14,8 +14,9 @@ export function register(context: vscode.ExtensionContext, session: Session, _ui
                              vscode.commands.registerCommand("graphene.addStepByHand", (arg?: Arg) => addByHand(session, arg)));
 }
 
-/** One line, then `graphene ask --step`: after a task, under a goal, or wherever the planner puts it. */
-export async function addStep(session: Session, arg?: Arg) {
+/** One line, then `graphene ask --step`: after a task, under a goal, or wherever the planner puts it. True
+ *  once a step is proposed: the offer to accept or drop it stays up without holding the caller. */
+export async function addStep(session: Session, arg?: Arg): Promise<boolean> {
   const id = typeof arg === "string" ? arg : arg?.task?.id ?? arg?.id;
   const given = typeof arg === "object" ? arg : undefined;
   const task = id ? session.tasks().find((t) => t.id === id) : undefined;
@@ -28,20 +29,26 @@ export async function addStep(session: Session, arg?: Arg) {
     placeHolder: "a --json flag on the list command, with a test", ignoreFocusOut: true,
     validateInput: (v) => (v.trim() ? undefined : "say what the step should do"),
   });
-  if (!sentence?.trim()) return;
+  if (!sentence?.trim()) return false;
   const out = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: "Graphene plans the step…" },
                                                () => session.run(C.askStep(sentence.trim(), where)));
   void session.refresh();
   if (out.code !== 0) {
     const why = out.code === -1 ? "graphene was not found" : C.refusal(out.stderr, out.stdout);
-    return void vscode.window.showErrorMessage(`graphene ask --step: ${C.plain(why)}`);
+    void vscode.window.showErrorMessage(`graphene ask --step: ${C.plain(why)}`);
+    return false;
   }
   const p = C.proposed(out.stdout);
-  if (!p) return void vscode.window.showInformationMessage(`Graphene: ${C.plain(C.firstLine(out.stdout, out.stderr, "nothing was proposed"))}`);
+  if (!p) {
+    void vscode.window.showInformationMessage(`Graphene: ${C.plain(C.firstLine(out.stdout, out.stderr, "nothing was proposed"))}`);
+    return false;
+  }
   // the planner's title, as text: a link or an icon in it is shown, not read
-  const pick = await vscode.window.showInformationMessage(`Proposed: ${C.plain(p.title)} (${C.plain(p.id)})`, "Accept", "Drop");
-  if (pick === "Accept") await session.act(C.accept(p.id));
-  if (pick === "Drop") await session.act(C.dropStep(p.id));
+  void vscode.window.showInformationMessage(`Proposed: ${C.plain(p.title)} (${C.plain(p.id)})`, "Accept", "Drop").then((pick) => {
+    if (pick === "Accept") void session.act(C.accept(p.id));
+    if (pick === "Drop") void session.act(C.dropStep(p.id));
+  });
+  return true;
 }
 
 /** Title, where, scope and check, one box each; then `graphene node add`. */

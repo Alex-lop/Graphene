@@ -4,7 +4,7 @@
 // nothing from the page reaches a shell, each act is a command's argument or a graphene argv.
 import * as vscode from "vscode";
 import * as C from "./commands.ts";
-import { check, type Act } from "./graph/check.ts";
+import { check, type FromPage } from "./graph/check.ts";
 import type { Session } from "./session.ts";
 
 
@@ -88,14 +88,32 @@ export class GraphHost implements vscode.WebviewViewProvider {
     for (const w of only ? [only] : this.views) void w.postMessage(message);
   }
 
-  private act(m: { act: Act; id: string; target?: string; fork?: string }) {
+  /** What graphene answered to a change made on the page, for the page to show beside it: on the task's
+   *  form (``id``), or on the drawn task (``key``), which is gone once the plan has it (``ok``). */
+  private said(to: { id?: string; key?: string }, r: { ok: boolean; line: string }, made?: string | null) {
+    for (const w of this.views) void w.postMessage({ type: "said", ...to, ok: r.ok, line: r.ok ? "" : r.line, made: made ?? undefined });
+  }
+
+  private async act(m: Extract<FromPage, { type: "act" }>) {
     const arg = { id: m.id };
     switch (m.act) {
-      case "add-after": return run("addStep", { ...arg, after: m.id });
-      case "add-under": return run("addStep", m.id ? { ...arg, under: m.id } : undefined);
+      case "set": // one field of the pane's form: graphene's answer comes back to the form
+        return m.field !== undefined && m.value !== undefined
+          ? this.said({ id: m.id }, await this.session.change(C.editStep(m.id, m.field, m.field === "scope" ? C.globs(String(m.value)) : m.value))) : undefined;
+      case "draw": { // a task drawn on the graph, whole: it joins the plan, or graphene says why not
+        const d = m.draft;
+        if (!d) return;
+        const r = await this.session.change(C.byHand(d.title, d.parent, d.after ? [d.after] : [], d.files, d.check, d.approve));
+        return this.said({ key: d.key }, r, r.ok ? C.added(r.stdout) : null);
+      }
+      case "add-after": case "add-under": {
+        if (m.sentence === undefined) return run("addStep", m.act === "add-after" ? { ...arg, after: m.id } : m.id ? { ...arg, under: m.id } : undefined);
+        // "Fill it in for me": the drawn task's title to the planner, which proposes it with its files and check
+        const ok = await run("addStep", { ...(m.id ? arg : {}), [m.act === "add-after" ? "after" : "under"]: Boolean(m.id), sentence: m.sentence });
+        return this.said({ key: m.key }, { ok: ok === true, line: ok === true ? "" : "the planner did not fill it in: its answer is in the notification" });
+      }
       case "link": return m.target ? this.session.act(C.link(m.id, m.target)) : undefined;
       case "unlink": return m.target ? this.session.act(C.unlink(m.target, m.id)) : undefined;
-      case "edit": return run("editStep", arg);
       case "drop": return run("dropStep", arg);
       case "accept": return run("accept", arg);
       case "tell": return run("tell", arg);

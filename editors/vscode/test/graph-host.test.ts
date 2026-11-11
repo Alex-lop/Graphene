@@ -78,3 +78,27 @@ test("the panel takes the title the host was given; Graphene by default", () => 
   assert.equal(vscode.panels[n]!.title, "Graphene demo");
   assert.equal(vscode.panels[n + 1]!.title, "Graphene");
 });
+
+test("a field set on the page is one `node set`, a drawn task one `node add`; graphene's answer goes back to the page", async () => {
+  const { parseState } = await import("../src/state.ts");
+  const { readFileSync } = await import("node:fs");
+  const state = parseState(readFileSync(new URL("./fixtures/graph-race.json", import.meta.url), "utf8"));
+  const ran: string[][] = [];
+  const change = async (argv: string[]) => {
+    ran.push(argv);
+    return argv.includes("--forks") ? { ok: false, line: "ship: 3 forks need a check to keep one", stdout: "" } : { ok: true, line: "done", stdout: "○ a flag  n9  ready\n" };
+  };
+  new GraphHost(context, { ...(session as object), state, change } as never).show();
+  const w = vscode.panels.at(-1)!.w as unknown as { sent: unknown[]; receive(m: unknown): Promise<unknown> };
+  await w.receive({ type: "act", act: "set", id: "ship", field: "forks", value: 3 });
+  assert.deepEqual(ran.at(-1), ["node", "set", "ship", "--forks", "3"]);
+  assert.deepEqual(w.sent.at(-1), { type: "said", id: "ship", ok: false, line: "ship: 3 forks need a check to keep one", made: undefined }, "the refusal, whole, for the form");
+  await w.receive({ type: "act", act: "set", id: "ship", field: "scope", value: "app.py  tests/**" });
+  assert.deepEqual(ran.at(-1), ["node", "set", "ship", "--scope", "app.py", "--scope", "tests/**"]);
+  await w.receive({ type: "act", act: "draw", id: "", draft: { key: " d1", title: "a flag", files: "cli.py", check: "pytest -q", approve: true, after: "hello", parent: null } });
+  assert.deepEqual(ran.at(-1), ["node", "add", "--needs", "hello", "--scope", "cli.py", "--check", "pytest -q", "--signoff", "--", "a flag"]);
+  assert.deepEqual(w.sent.at(-1), { type: "said", key: " d1", ok: true, line: "", made: "n9" }, "the draft goes, and the task it became is named");
+  const n = ran.length;
+  await w.receive({ type: "act", act: "set", id: "ship", field: "forks", value: 99 });
+  assert.equal(ran.length, n, "a value the field does not take runs nothing");
+});

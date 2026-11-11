@@ -164,3 +164,16 @@ test("`stand_in` rides through as a sibling of `replay`, false when the CLI does
   assert.equal(parseState(JSON.stringify({ schema: 1, stand_in: "yes" })).stand_in, false);
   assert.equal(parseState(fixture("running")).stand_in, false);
 });
+
+test("a task's attempts, approval and owner come from `plan --json`: unread until then, and junk reads as nothing", async () => {
+  const { parseContracts, withContracts, parseState } = await import("../src/state.ts");
+  const s = parseState(JSON.stringify({ tasks: [{ id: "n1", title: "a" }, { id: "n2", title: "b" }] }));
+  assert.deepEqual(s.tasks.map((t) => [t.planned, t.signoff, t.owner]), [[null, null, ""], [null, null, ""]]);
+  const c = parseContracts(JSON.stringify({ nodes: [{ id: "n1", signoff: true, owner: "alex", forks: 3 }, { id: "n2", signoff: false, owner: "agent" }, { title: "no id" }] }));
+  assert.deepEqual(c.get("n1"), { planned: 3, signoff: true, owner: "alex" });
+  assert.deepEqual(c.get("n2"), { planned: null, signoff: false, owner: "agent" }, "forks unsaid: the limits' number decides");
+  const filled = withContracts(s, c);
+  assert.deepEqual(filled.tasks.map((t) => [t.planned, t.signoff, t.owner]), [[3, true, "alex"], [null, false, "agent"]]);
+  assert.deepEqual(withContracts(filled, parseContracts("not json")).tasks[0]!.signoff, null, "a task the plan's JSON does not name is unread again");
+  assert.equal(parseContracts("{}").size, 0);
+});

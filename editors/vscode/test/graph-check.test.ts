@@ -55,3 +55,38 @@ test("with no plan read yet, only ready and the acts that take no id pass", () =
   assert.equal(none({ type: "act", act: "auto", id: "" })?.type, "act");
   assert.equal(none({ type: "act", act: "signOff", id: "farewell" }), null);
 });
+
+const act = (m: unknown) => { const r = check(m, session); return r?.type === "act" ? r : null; };
+
+test("a field of the form passes with a value its field takes, on a task the plan has", () => {
+  const set = (field: unknown, value: unknown, id = "farewell") => act({ type: "act", act: "set", id, field, value });
+  assert.deepEqual(set("title", "  a better title "), { type: "act", act: "set", id: "farewell", field: "title", value: "a better title" });
+  assert.equal(set("scope", "app.py tests/**")?.value, "app.py tests/**");
+  assert.equal(set("check", "")?.value, "", "an empty check is no check");
+  assert.equal(set("forks", 3)?.value, 3);
+  assert.equal(set("signoff", true)?.value, true);
+  assert.equal(set("owner", false)?.value, false);
+  for (const [field, value] of [["title", ""], ["title", "  "], ["scope", ""], ["forks", 0], ["forks", 9], ["forks", "3"], ["forks", 2.5], ["signoff", "yes"],
+                                ["owner", 1], ["goal", "x"], ["title", "a\nb"], ["title", "x".repeat(2001)], [undefined, "x"]] as const) {
+    assert.equal(set(field, value), null, `${String(field)}=${JSON.stringify(value).slice(0, 20)} is refused`);
+  }
+  assert.equal(set("title", "x", "nobody"), null);
+});
+
+test("a drawn task passes whole: a title, its files and check as typed, after a task and under a sub-goal the plan has", () => {
+  const draft = { key: " d1", title: " a flag ", files: "cli.py tests/test_cli.py", check: " pytest -q ", approve: false, after: "hello", parent: null };
+  const draw = (d: unknown) => act({ type: "act", act: "draw", id: "", draft: d });
+  assert.deepEqual(draw(draft)?.draft, { ...draft, title: "a flag", check: "pytest -q" });
+  assert.equal(draw({ ...draft, after: null, parent: state.goals[0]!.id })?.draft?.parent, state.goals[0]!.id);
+  for (const bad of [{ ...draft, title: " " }, { ...draft, after: "nobody" }, { ...draft, parent: "nowhere" }, { ...draft, approve: "yes" }, { ...draft, files: 3 },
+                     { ...draft, key: undefined }, null, "draft"]) assert.equal(draw(bad), null);
+  assert.equal(check({ type: "act", act: "draw", id: "", draft }, { state: null }), null, "no plan read: nothing to draw on");
+});
+
+test("the planner fills a drawn task in: its title as the sentence, after a task or on its own", () => {
+  assert.deepEqual(act({ type: "act", act: "add-after", id: "hello", sentence: " a flag ", key: " d1" }),
+                   { type: "act", act: "add-after", id: "hello", sentence: "a flag", key: " d1" });
+  assert.equal(act({ type: "act", act: "add-under", id: "", sentence: "a flag", key: " d1" })?.sentence, "a flag");
+  assert.equal(act({ type: "act", act: "add-after", id: "hello", sentence: " ", key: " d1" }), null);
+  assert.equal(act({ type: "act", act: "add-after", id: "nobody", sentence: "a flag", key: " d1" }), null);
+});

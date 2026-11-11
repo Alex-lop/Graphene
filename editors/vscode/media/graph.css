@@ -133,6 +133,26 @@ button.unlink:hover { color: var(--vscode-errorForeground, #f48771); }
 .fork-acts { display: flex; gap: 4px; margin-top: 3px; font-weight: 400; }
 .fork-acts button { padding: 1px 6px; font-size: 0.92em; }
 .d-acts { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 12px; border-top: 1px solid var(--border); }
+/* the pane's form: a task's own fields, typed in place */
+.row label.k { align-self: center; }
+input.f, input.name {
+  font: inherit; font-family: var(--mono); font-size: 0.92em; color: var(--vscode-input-foreground, var(--fg));
+  background: var(--vscode-input-background, var(--bg)); border: 1px solid var(--vscode-input-border, var(--border));
+  border-radius: 3px; padding: 2px 5px; min-width: 0; width: 100%; box-sizing: border-box;
+}
+input.f:focus, input.name:focus { outline: 1px solid var(--focus); outline-offset: -1px; }
+input.f::placeholder, input.name::placeholder { color: var(--vscode-input-placeholderForeground, var(--dim)); }
+input.name { font-family: var(--font); font-size: 13px; font-weight: 600; height: 22px; }
+.row .v.stepper { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-family: var(--font); }
+.stepper button { padding: 0 7px; min-width: 22px; justify-content: center; }
+.stepper .count { min-width: 1.2em; text-align: center; font-family: var(--mono); font-weight: 600; }
+.dim { color: var(--dim); }
+button:disabled { opacity: 0.45; cursor: default; }
+.tick { display: flex; align-items: center; gap: 6px; padding: 4px 0; cursor: pointer; }
+.tick input { margin: 0; accent-color: var(--vscode-button-background, #0e639c); }
+.tick:has(input:disabled) { opacity: 0.6; cursor: default; }
+.when { color: var(--dim); padding: 6px 0 4px; border-bottom: 1px dotted var(--border); line-height: 1.4; }
+.refused { color: var(--vscode-errorForeground, var(--came-back)); padding: 6px 8px; margin: 6px 0; border-left: 3px solid var(--came-back); background: var(--hover); white-space: pre-wrap; }
 
 /* the drawing */
 .task, .goal { transition: transform var(--ease); will-change: transform; }
@@ -155,6 +175,23 @@ button.unlink:hover { color: var(--vscode-errorForeground, #f48771); }
 .wire { fill: none; stroke: var(--edge-hot); stroke-width: 2; stroke-dasharray: 5 4; pointer-events: none; }
 #canvas.wiring, #canvas.wiring .task { cursor: crosshair; }
 #canvas.wiring .task:hover .box { stroke: var(--edge-hot); stroke-width: 2.5; }
+/* a task being drawn: dashed until graphene takes it; the + on a box's corner draws one after it */
+.draft .box { stroke-dasharray: 5 4; stroke: var(--proposed); }
+.draft > .stripe { fill: none; }
+.edge.draft { stroke-dasharray: 5 4; }
+.sub.bad, .l-sub.bad { fill: var(--came-back); color: var(--came-back); }
+.d-title.st-draft { border-color: var(--proposed); border-left-style: dashed; }
+.lane.draft { border-style: dashed; border-color: var(--proposed); }
+.lane.draft .l-stripe { background: none; }
+.plus { opacity: 0; cursor: pointer; }
+.plus circle { fill: var(--panel); stroke: var(--edge); stroke-width: 1.5; }
+.plus path { stroke: var(--fg); stroke-width: 1.5; fill: none; }
+.task:hover .plus, .task.selected .plus, .task:focus-visible .plus { opacity: 1; }
+.plus:hover circle { fill: var(--edge-hot); stroke: var(--edge-hot); }
+.fork.planned .chip { stroke-dasharray: 3 3; }
+.fork.planned .chip-text { fill: var(--dim); }
+.l-chip.planned { border-style: dashed; color: var(--dim); }
+#notice button { display: flex; margin: 10px auto 0; }
 .title { fill: var(--fg); font-size: 13px; font-weight: 600; font-family: var(--font); }
 .sub { fill: var(--dim); font-size: 11px; font-family: var(--mono); }
 .mark { font-size: 11px; }

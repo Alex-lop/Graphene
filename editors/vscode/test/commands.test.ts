@@ -15,6 +15,21 @@ test("every mutation is the argv the cockpit's verbs use", () => {
   assert.deepEqual(C.editStep("x", "title", "new words"), ["node", "set", "x", "--title", "new words"]);
   assert.deepEqual(C.editStep("x", "scope", ["a.py", "b/**"]), ["node", "set", "x", "--scope", "a.py", "--scope", "b/**"]);
   assert.deepEqual(C.editStep("x", "check", "pytest -q"), ["node", "set", "x", "--check", "pytest -q"]);
+  assert.deepEqual(C.editStep("x", "check", ""), ["node", "set", "x", "--check", ""]); // no check: your approval finishes it
+  assert.deepEqual(C.editStep("x", "forks", 3), ["node", "set", "x", "--forks", "3"]);
+  assert.deepEqual(C.editStep("x", "signoff", true), ["node", "set", "x", "--signoff"]);
+  assert.deepEqual(C.editStep("x", "signoff", false), ["node", "set", "x", "--no-signoff"]);
+  assert.deepEqual(C.editStep("x", "owner", true), ["node", "set", "x", "--owner", "me"]);
+  assert.deepEqual(C.editStep("x", "owner", false), ["node", "set", "x", "--owner", "agent"]);
+  assert.deepEqual(C.planJson(), ["plan", "--json"]);
+  // a task drawn on the graph: a check, your approval, or both
+  assert.deepEqual(C.byHand(" a flag ", null, ["hello"], "cli.py, tests/test_cli.py", "pytest -q", true),
+                   ["node", "add", "--needs", "hello", "--scope", "cli.py", "--scope", "tests/test_cli.py", "--check", "pytest -q", "--signoff", "--", "a flag"]);
+  assert.deepEqual(C.byHand("docs", "api", [], "README.md", ""), ["node", "add", "--parent", "api", "--scope", "README.md", "--signoff", "--", "docs"]);
+  assert.equal(C.added("◌ an added one  n4  waiting\nn4 waits on n3\n"), "n4");
+  assert.equal(C.added("○ tidy clean  n1  ready"), "n1");
+  assert.equal(C.added("? count faster  n2  needs help"), "n2");
+  assert.equal(C.added("nothing like a row"), null);
   assert.deepEqual(C.dropStep("x"), ["node", "drop", "x"]);
   assert.deepEqual(C.accept("x"), ["plan", "accept", "x"]);
   assert.deepEqual(C.accept(), ["plan", "accept"]);

@@ -10,14 +10,14 @@ export type Replay = { shown: string; day: string; repository: string } | null;
 /** `stand_in`: every model call on record went to the scripted stand-in (the snapshot's, since 867c326c). */
 export type StateX = Omit<State, "tasks"> & { replay?: Replay; stand_in?: boolean; tasks: TaskX[] };
 
-export type Act = "add-after" | "add-under" | "link" | "unlink" | "edit" | "drop" | "accept" | "tell" | "run" | "stop" | "auto" | "cockpit"
-  | "openDiff" | "compareForks" | "pickFork" | "signOff" | "answer" | "handBack";
+export type Act = "add-after" | "add-under" | "link" | "unlink" | "drop" | "accept" | "tell" | "run" | "stop" | "auto" | "cockpit"
+  | "openDiff" | "compareForks" | "pickFork" | "signOff" | "answer" | "handBack" | "set" | "draw";
 
 /** The acts a replay offers none of: they change a plan, or they act outside the replay (the cockpit opens
  *  `graphene watch` in the person's own folder; openDiff and compareForks look the id up in the person's
  *  plan). That is every act: a replay is watched. The host refuses them too (check.ts). */
-export const CHANGES: readonly Act[] = ["add-after", "add-under", "link", "unlink", "edit", "drop", "accept", "tell", "run", "stop", "auto",
-                                        "cockpit", "openDiff", "compareForks", "pickFork", "signOff", "answer", "handBack"];
+export const CHANGES: readonly Act[] = ["add-after", "add-under", "link", "unlink", "drop", "accept", "tell", "run", "stop", "auto",
+                                        "cockpit", "openDiff", "compareForks", "pickFork", "signOff", "answer", "handBack", "set", "draw"];
 
 /** The header's act buttons, by their element id: each one is hidden in a replay. Auto and the cockpit are
  *  Home's and the palette's (with graphene.advanced), not the graph's. */
@@ -56,6 +56,35 @@ export const zoomK = (k: number) => (Number.isFinite(k) ? Math.min(3, Math.max(1
 export function cornerWord(t: TaskX): string {
   return t.state === "running" && t.model ? cut(t.model, 7) : t.needs_you ? "◆" : "";
 }
+
+/** How many attempts a task runs as: its own number, else the limits' (Set Limits…), else one. */
+export const attemptsOf = (t: Pick<TaskX, "planned">, limit: number | null | undefined): number => Math.min(8, Math.max(1, t.planned ?? limit ?? 1));
+
+/** The fan under a box: its attempts as they run or ran; before anything runs, one waiting chip for each
+ *  attempt it is set to (two or more, and a check to keep one: without a check it runs as one agent). */
+export function fan(t: TaskX, limit: number | null | undefined): ForkX[] {
+  if (t.forks.length) return t.forks;
+  const n = attemptsOf(t, limit);
+  if (n < 2 || !t.check || !["proposed", "ready", "waiting"].includes(t.state)) return [];
+  return Array.from({ length: n }, (_, i) => ({ letter: "abcdefgh"[i]!, state: "", why: "", lines: null, model: "", usd: null, attempts: 0, idle: null, checkout: null }));
+}
+
+/** What a change to a task does now, by its state: the one line under the pane's form. It says what
+ *  `graphene node set` does (dev/process/graph-edit/edits.md has each state's answer, as the engine gave it). */
+export function whenEdit(t: Pick<TaskX, "state">): string {
+  switch (t.state) {
+    case "proposed": return "Suggested: nothing runs yet. A change binds once you accept it.";
+    case "ready": case "waiting": return "Not started: its agent starts from what you set here.";
+    case "running": return "Working now: new files hold its agent's next write; a new check, or your approval, its finish. Attempts wait for its next start.";
+    case "review": return "To review: its work is finished. A change binds when it starts again, if you send it back.";
+    case "came back": return "Needs help: a change binds when it starts again.";
+    case "yours": return "Yours: no agent takes it. Untick “I will do this one” and one can.";
+    case "done": return "Done: a finished task is not edited. Send it back to open it again.";
+  }
+}
+
+/** Whether the pane's form takes edits: graphene refuses a change to a finished task, and a replay is watched. */
+export const editable = (t: Pick<TaskX, "state">, replay: boolean): boolean => !replay && t.state !== "done";
 
 const quiet = (idle: number | null | undefined) => (idle !== null && idle !== undefined && idle > 8 ? `${Math.round(idle)} s quiet` : "");
 const tries = (n: number | undefined) => (n !== undefined && n > 1 ? `${n} tries` : "");
@@ -148,10 +177,9 @@ export function actsFor(t: TaskX, replay: boolean): Button[] {
   if (t.state === "came back") out.push({ label: "Help it…", act: "handBack", title: "allow what it needs, add a task for it, or try again", icon: "debug-step-back", main: true });
   if (hasChanges) out.push({ label: "Open changes", act: "openDiff", title: "its changes so far, in the diff editor", icon: "diff" });
   if (t.forks.length >= 2) out.push({ label: "Compare attempts", act: "compareForks", title: "the attempts side by side", icon: "split-horizontal" });
-  out.push({ label: "Add task after", act: "add-after", title: "a new task that waits on this one", icon: "add" });
-  out.push({ label: "Add task beside", act: "add-under", title: "a new task under the same sub-goal", icon: "add" });
+  out.push({ label: "Add task after", act: "add-after", title: "draw a new task that waits on this one", icon: "add" });
+  out.push({ label: "Add task beside", act: "add-under", title: "draw a new task under the same sub-goal", icon: "add" });
   out.push({ label: "Link to…", act: "link", title: "then click the task that waits on this one", icon: "link" });
-  if (t.state !== "done") out.push({ label: "Edit", act: "edit", title: "its title, the files it may change, or its check", icon: "edit" });
   if (["proposed", "ready", "waiting"].includes(t.state)) out.push({ label: "Remove", act: "drop", title: "graphene node drop", icon: "trash" });
   if (["running", "ready", "waiting", "came back"].includes(t.state)) out.push({ label: "Message agent", act: "tell", title: "a line the agent on it reads with its next step", icon: "comment" });
   return out;
@@ -198,6 +226,7 @@ export const KEYS: readonly [string, string][] = [
   ["f", "fit the graph again"],
   ["v", "graph or lanes"],
   ["?", "this list"],
+  ["+", "on a box: draw a task after it; Add task draws one on its own"],
   ["drag a dot", "onto another task: that task waits on this one"],
   ["×", "beside a need: it stops waiting on it"],
   ["wheel · drag", "scroll · pan; ⌘ or Ctrl with the wheel zooms"],
@@ -210,4 +239,4 @@ export function linkHint(title: string, dragging: boolean): string {
 }
 
 /** The first-time hint under the graph. */
-export const FIRST_HINT = "click a task · drag its dot onto another to link them · ? lists every key";
+export const FIRST_HINT = "click a task to change it · + draws a new one · drag a dot onto another task to link them · ? lists every key";
