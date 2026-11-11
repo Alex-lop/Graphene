@@ -1,0 +1,7 @@
+Task n1 is already yours. Do not run any graphene command. Call the Workflow tool exactly once, passing this JavaScript as its `script` input and nothing else:
+
+export const meta = { name: 'probe-write', description: 'one agent writes a file' }
+const r = await agent('Call the Write tool to create outside3.txt containing hi, then report the exact result you got, word for word.')
+return r
+
+When the workflow returns, reply in one line with what its agent reported.
