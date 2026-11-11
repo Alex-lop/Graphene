@@ -9,7 +9,7 @@ import * as vscode from "vscode";
 import * as C from "./commands.ts";
 import type { GraphHost } from "./graph.ts";
 import { cannotRun, olderWords, resolved } from "./find.ts";
-import { errorOf, parseState, type State, type Task } from "./state.ts";
+import { errorOf, parseContracts, parseState, withContracts, type Contract, type State, type Task } from "./state.ts";
 import { Stream } from "./stream.ts";
 import type { Node, PlanTree } from "./tree.ts";
 
@@ -144,8 +144,39 @@ export class Session {
   /** A snapshot read some other way (a stream's line): the same as a read's. */
   take(state: State) {
     // a task's changes count as opened while it is to review or done; sent back or redone, it is new work
+    // while a change of ours is read back, a snapshot waits: it would show the change beside the old
+    // attempts, approval and owner (the stream brings it before `plan --json` answers)
+    if (this.changing) { this.held = state; return; }
     for (const id of this.seen) if (!state.tasks.some((t) => t.id === id && (t.state === "review" || t.state === "done"))) this.seen.delete(id);
-    this.set(state, state.tasks.length ? { kind: "ok", text: "" } : { kind: "empty", text: "Nothing is planned yet." });
+    this.set(withContracts(state, this.contracts), state.tasks.length ? { kind: "ok", text: "" } : { kind: "empty", text: "Nothing is planned yet." });
+    void this.contract();
+  }
+  private changing = 0;
+  private held: State | null = null;
+
+  /** Each task's attempts, approval and owner, from `graphene plan --json`: the snapshot leaves them out, and
+   *  the graph's form shows them. Read again when the plan's log moved, one read at a time and at most one a
+   *  second, so a run that logs every move starts one small process a second, and an idle plan none. */
+  private contracts = new Map<string, Contract>();
+  private contractsAt = -1;
+  private contracting = false;
+  private contractDue: NodeJS.Timeout | undefined;
+
+  private async contract() {
+    const at = this.state?.cursor;
+    if (at === undefined || this.contracting || at === this.contractsAt) return;
+    this.contracting = true;
+    try {
+      const read = await this.readContracts();
+      this.contractsAt = at; // read, or refused: not asked again until the plan moves
+      if (!read || !this.state) return;
+      const next = withContracts(this.state, this.contracts);
+      if (JSON.stringify(next.tasks) !== JSON.stringify(this.state.tasks)) { this.state = next; this.emitter.fire(); }
+    } finally {
+      this.contracting = false;
+      clearTimeout(this.contractDue);
+      if (this.state && this.state.cursor !== this.contractsAt) this.contractDue = setTimeout(() => void this.contract(), 1000);
+    }
   }
 
   /** The state before the last read: what changed, for auto mode's notifications. */
@@ -159,17 +190,40 @@ export class Session {
     this.emitter.fire();
   }
 
+  private async readContracts(): Promise<boolean> {
+    const out = await this.run(C.planJson());
+    if (out.code === 0) this.contracts = parseContracts(out.stdout);
+    return out.code === 0;
+  }
+
   /** A change: run it, say the first line it answered, or its refusal; then read the plan again. */
   async act(argv: string[]): Promise<boolean> {
-    const out = await this.run(argv);
-    if (out.code !== 0) {
-      const why = out.code === -1 ? this.install(out.stderr) : this.said(C.firstLine(out.stderr, out.stdout));
-      void vscode.window.showErrorMessage(C.refused(argv, C.plain(why)));
-    } else {
-      vscode.window.setStatusBarMessage(`$(check) ${C.plain(C.firstLine(out.stdout, out.stderr, "done"))}`, 6000);
+    return (await this.change(argv)).ok;
+  }
+
+  /** A change made on the graph, which shows the answer beside what was changed: whether graphene took it,
+   *  the refusal's lines whole (or the first line it answered), and what it printed. */
+  async change(argv: string[]): Promise<{ ok: boolean; line: string; stdout: string }> {
+    this.changing++;
+    let out: { code: number; stdout: string; stderr: string };
+    try {
+      out = await this.run(argv);
+      if (out.code === 0) await this.readContracts(); // before the snapshot that shows the change
+    } finally {
+      this.changing--;
     }
+    const held = this.changing ? null : this.held;
+    if (held) { this.held = null; this.take(held); }
+    const ok = out.code === 0;
+    const first = ok ? C.firstLine(out.stdout, out.stderr, "done")
+      : out.code === -1 ? this.install(out.stderr) : this.said(C.firstLine(out.stderr, out.stdout));
+    // a refusal whole for the page (its second line is often what to do about it); its first line for the toast
+    const whole = (out.stderr.trim() || out.stdout.trim()).split(/\r?\n/).map((l) => l.trim()).filter(Boolean).slice(0, 8).join("\n");
+    const line = ok || out.code === -1 || first === this.said(C.OLDER) ? first : whole || first;
+    if (ok) vscode.window.setStatusBarMessage(`$(check) ${C.plain(first)}`, 6000);
+    else void vscode.window.showErrorMessage(C.refused(argv, C.plain(first)));
     void this.refresh();
-    return out.code === 0;
+    return { ok, line, stdout: out.stdout };
   }
 
   /** A long command the person watches and may Ctrl-C: in a terminal of its own, as the person. */
@@ -192,6 +246,7 @@ export class Session {
   }
 
   dispose() {
+    clearTimeout(this.contractDue);
     this.stream.dispose();
     this.emitter.dispose();
     this.saw.dispose();

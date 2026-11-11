@@ -2,12 +2,21 @@
 // click, an ask is planned, Start runs the agents, and each finished task is reviewed: Approve before its changes
 // were opened asks first, Open Changes shows them, Approve lands it, Send back… returns another with a note. It
 // fails when a step does not show what it should, and keeps a screenshot of each step (E2E_SHOTS, else the scratch).
+// Last, the Exact switch: on, it sets board on, review every and auto off, and Start waits while a question is open.
 import { execFileSync } from "node:child_process";
 import { existsSync, rmSync } from "node:fs";
 import path from "node:path";
 import * as L from "./lib.mjs";
 
 const ASK = "wordkit grows three things: a --top N option, a reading time in minutes, and hyphenated words counted as one";
+
+const ASKS = `question: how many words does --top print with no number?  [q-top-n]
+    default: ten
+    option: five
+- say what --top prints in the README  [top-docs]
+    scope: docs/TOP.md
+    check: python3 -m unittest -q
+`;
 
 const app = await L.findApp(process.env.E2E_APP || "code");
 if (!app) { console.error("home: no app to drive (set VSCODE_EXECUTABLE)"); process.exit(1); }
@@ -116,6 +125,31 @@ try {
   const by = Object.fromEntries(end.tasks.map((t) => [t.title, t.state]));
   if (by[title] !== "done") throw new Error(`“${title}” is ${by[title]}, not done`);
   if (!["ready", "waiting"].includes(by[back])) throw new Error(`“${back}” is ${by[back]}, not back on the plan`);
+
+  // Exact, off until its box is ticked: three settings that exist, and Home's Start waits for your answers
+  const env = L.cleanEnv(L.safeEnv(standin.url));
+  const settings = () => execFileSync(graphene, ["config"], { cwd: dir, env }).toString().split("\n");
+  const exact = home.locator(".tick.exact input");
+  if (await exact.isChecked()) throw new Error("Exact is on before anyone turned it on");
+  execFileSync(graphene, ["config", "set", "review", "off"], { cwd: dir, env, stdio: "pipe" }); // so that off has something to put back
+  await page.waitForTimeout(1000); // the stream brings Home the setting
+  await exact.check();
+  await until(home, () => document.querySelector(".said")?.textContent.startsWith("Exact: Start waits"), null, "Exact said on");
+  for (const line of ["board: on", "review: every", "auto: off"]) if (!settings().includes(line)) throw new Error(`Exact on left no “${line}”`);
+  execFileSync(graphene, ["plan", "propose", "-"], { cwd: dir, input: ASKS, stdio: ["pipe", "pipe", "pipe"], // a plan that asks something, as an agent proposes one
+                                                    env: { ...env, CLAUDECODE: "1", CLAUDE_CODE_SESSION_ID: "e2e-home-agent" } });
+  await sectionShown(home, "Suggested plan", "the suggested plan that asks something");
+  const start = home.locator(".sec-suggested .sec-head button", { hasText: "Start" });
+  if (!(await start.isDisabled())) throw new Error("Exact is on and a question is open, yet Start is offered");
+  say("Exact on: board on, review every, auto off; Start waits while the plan's question is open");
+  await shot("exact");
+  await home.locator("article.tone-question button", { hasText: "ten" }).click(); // the default's button confirms it
+  await until(home, () => [...document.querySelectorAll(".sec-suggested .sec-head button")].some((x) => x.textContent === "Start" && !x.disabled), null,
+              "Start, once the question is answered");
+  await exact.uncheck();
+  await until(home, () => document.querySelector(".said")?.textContent.startsWith("Exact is off"), null, "Exact said off");
+  for (const line of ["board: auto", "review: off", "auto: off"]) if (!settings().includes(line)) throw new Error(`Exact off left no “${line}”`);
+  say("the default's button confirmed it and Start came back; Exact off put the board and review back as they were");
   console.log(`home: passed in ${((Date.now() - t0) / 1000).toFixed(0)} s, ${step} screenshots in ${shots}`);
 } catch (err) {
   failed = err;

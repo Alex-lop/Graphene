@@ -55,6 +55,12 @@ export interface Task {
   forks: Fork[];
   kept: Kept | null;
   hollow: boolean;
+  /** What the snapshot does not say and `graphene plan --json` does (`withContracts`): the attempts set on the
+   *  task itself (null: unset, the limits' number decides), whether it waits for your approval and whose it
+   *  is ("agent", or a person's name). `signoff` null and `owner` "": not read yet. */
+  planned: number | null;
+  signoff: boolean | null;
+  owner: string;
 }
 
 export interface Replay {
@@ -169,8 +175,28 @@ export function parseTask(r: Raw): Task {
     attempts: int(r.attempts, 0), offers: argvs(r.offers), changed: strs(r.changed), stopped: strs(r.stopped),
     outside: strs(r.outside), forks: list(r.forks).map(parseFork),
     kept: kept && str(kept.letter) ? { letter: str(kept.letter), why: str(kept.why), by: str(kept.by) } : null,
-    hollow: bool(r.hollow),
+    hollow: bool(r.hollow), planned: null, signoff: null, owner: "",
   };
+}
+
+export interface Contract { planned: number | null; signoff: boolean; owner: string }
+
+/** `graphene plan --json`, read for what the snapshot leaves out of a task: its own attempts, your approval,
+ *  its owner. Empty for anything that is not that JSON. */
+export function parseContracts(text: string): Map<string, Contract> {
+  const out = new Map<string, Contract>();
+  try {
+    for (const n of list(obj(JSON.parse(text)).nodes)) {
+      const forks = num(n.forks);
+      if (str(n.id)) out.set(str(n.id), { planned: forks !== null && forks >= 1 ? Math.trunc(forks) : null, signoff: bool(n.signoff), owner: str(n.owner, "agent") });
+    }
+  } catch { /* not the plan's JSON: nothing known */ }
+  return out;
+}
+
+/** The snapshot with each task's contract filled in; a task the plan's JSON did not name stays unread. */
+export function withContracts(s: State, contracts: Map<string, Contract>): State {
+  return { ...s, tasks: s.tasks.map((t) => ({ ...t, ...(contracts.get(t.id) ?? { planned: null, signoff: null, owner: "" }) })) };
 }
 
 /** The line `graphene state --json` prints when there is no plan to read, `{"schema": 1, "error": why}`, and the

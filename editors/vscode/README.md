@@ -32,6 +32,12 @@ The **graph** under Home is the whole plan: which tasks wait on which, the attem
 why. **Show graph** opens it as a tab. The Explorer marks each file a task owns, a working agent's with its
 number.
 
+You can build the graph by hand, before and while agents run. **Add task**, or the **+** on a box, draws a draft:
+type its title on the box, then its files and its check in the pane, and it joins the plan (**Fill it in for me**
+asks the planner instead). Click any task and its pane is a form: its title, files and check, how many attempts
+run it at once, whether it waits for your approval, whether you do it yourself. The line under the form says what
+a change does now, and a change Graphene refuses says why, there.
+
 ## Try it with no key
 
 **Graphene: Watch the Demo** plays a recorded run in a graph of its own, with no model and no network, and says

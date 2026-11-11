@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased, after 0.9.0
+
+The graph is built by hand (10 to 11 November 2026). It needs no newer CLI: every click is a 0.9.0 command.
+
+- A task's pane is a form: its title, the files it may change and its check are typed in place; attempts are a
+  stepper (1 to 8) on that task alone; "wait for my approval" and "I will do this one" are tick boxes. The pop-up
+  chain is gone from the graph (Edit Task… stays in the Plan view).
+- The fan is drawn before anything runs: one waiting chip for each attempt a task is set to.
+- Add task, the + on a box, and the + key draw a draft box: type its title on it, then its files and its check. It joins the
+  plan (`graphene node add`) once graphene will take it. "Fill it in for me" hands its title to the planner.
+- Under the form, one line says what a change does now (suggested, not started, working, to review, done), and
+  graphene's refusal of a change shows there, whole.
+- Home has an Exact switch, off by default. On, it sets `board: on`, `review: every` and `auto: off`, and Home's
+  Start waits until you have answered every open question (a default's button confirms it).
+
 ## 0.9.0 (unreleased)
 
 Beside Graphene 0.9.0: the editor night (26 to 27 October 2026), then Home (28 October).

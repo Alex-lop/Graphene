@@ -810,13 +810,15 @@ def decide(store, event: dict, root: Path) -> dict | None:
         planned = first and _contract(store.meta(f"prompt:{sid}")) and not _spent(store, sid)
         if written is not None and not (planned and _aside(store, sid, cwd, root)):
             how = "planner" if planner else "plan first"
-            _write(store.log_node, "*", P._now(), "denied", None, sid, None, {"path": written, "how": how})
+            agent = event.get("agent_id") if isinstance(event.get("agent_id"), str) else None
+            _write(store.log_node, "*", P._now(), "denied", None, sid, agent, {"path": written, "how": how})
             return _deny("you are the planner: your only output is the proposal you print. Write no file"
                          if planner else _first_refused(store))  # fmt: skip
     hidden = _protected_read(store, event, root) if name == "PreToolUse" and planner else None
     if hidden is not None:
         said = {"path": hidden, "how": "planner read"}
-        _write(store.log_node, "*", P._now(), "denied", None, sid, None, said)
+        agent = event.get("agent_id") if isinstance(event.get("agent_id"), str) else None
+        _write(store.log_node, "*", P._now(), "denied", None, sid, agent, said)
         return _deny(f"{hidden} is protected (`graphene config`): the planner never reads it, and so "
                      "never sends it to a model. Search a narrower path, or a glob, that leaves it out")
     if not P.in_force(store):

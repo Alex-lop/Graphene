@@ -5,7 +5,7 @@
 import * as vscode from "vscode";
 import * as C from "./commands.ts";
 import { checkHome, home, said, type FromHome } from "./home/cards.ts";
-import { WHO } from "./home/who.ts";
+import { EXACT, WHO } from "./home/who.ts";
 import { keyTrouble, needs, tryAgain, widen } from "./needs.ts";
 import type { Session } from "./session.ts";
 import type { Task } from "./state.ts";
@@ -20,6 +20,10 @@ export class HomeHost implements vscode.WebviewViewProvider {
   private last: Last = { n: 0, lines: [], bad: false };
   /** What was last planned here: the headline once the plan's news no longer says it (an ask sets no goal). */
   private asked = "";
+  /** `board:` as `graphene config` last said it: on, with every task to review and auto off, is Exact.
+   *  ponytail: read when Home opens and when its switch moves, so a `config set board` typed in a terminal
+   *  shows here at the next of those; the snapshot would have to carry the setting to follow it live. */
+  private board = "";
   private readonly context: vscode.ExtensionContext;
   private readonly session: Session;
 
@@ -39,16 +43,16 @@ export class HomeHost implements vscode.WebviewViewProvider {
     view.webview.onDidReceiveMessage((m: unknown) => {
       const msg = checkHome(m, this.session.state);
       if (!msg) return;
-      if (msg.type === "ready") return this.push();
+      if (msg.type === "ready") return void this.readBoard().then(() => this.push());
       void this.act(msg);
     });
   }
 
   private push() {
     const s = this.session.state;
-    const h = s ? home(s, this.session.seen) : null;
+    const h = s ? home(s, this.session.seen, this.exact) : null;
     if (h && !s?.goal && this.asked) h.goal = this.asked; // whole: the news cuts what was asked at 60 characters
-    const model = { type: "home", status: this.session.status, home: h, review: s?.envelope.review === "every", busy: this.busy,
+    const model = { type: "home", status: this.session.status, home: h, review: s?.envelope.review === "every", exact: this.exact, busy: this.busy,
                     planning: Boolean(this.planning), last: this.last };
     const n = s ? needs(s).length : 0;
     for (const v of this.views) {
@@ -56,6 +60,48 @@ export class HomeHost implements vscode.WebviewViewProvider {
       void v.webview.postMessage(model);
     }
   }
+
+  /** Exact is three settings that exist, all holding: every open item shown (`board: on`), every finished task
+   *  to review (`review: every`), nothing accepted for you (`auto: off`). Home's own Start then waits for your
+   *  answers; `graphene plan accept` in a terminal still takes the defaults (the engine's rule, not changed here). */
+  private get exact(): boolean {
+    const e = this.session.state?.envelope;
+    return this.board === "on" && e?.review === "every" && e.auto === "off";
+  }
+
+  private async readBoard() {
+    const out = await this.session.run(["config"]);
+    if (out.code === 0) this.board = /^board:\s*(\S+)/m.exec(out.stdout)?.[1] ?? "";
+  }
+
+  /** The switch: on sets the three settings and keeps what review and auto were; off puts them back and forgets
+   *  them. All three or none: a setting graphene refuses takes the others back. One move of the switch at a time. */
+  private async setExact(on: boolean) {
+    const e = this.session.state?.envelope;
+    if (!e || this.switching || on === this.exact) return this.push();
+    this.switching = true;
+    try {
+      const KEY = "graphene.exact.before";
+      if (on) await this.context.workspaceState.update(KEY, { review: e.review, auto: e.auto });
+      const before = this.context.workspaceState.get<{ review: string; auto: string }>(KEY);
+      const set = async (want: [string, string][]) => {
+        for (const [key, value] of want) if ((await this.session.run(C.setting(key, value))).code !== 0) return false;
+        return true;
+      };
+      const off: [string, string][] = [["board", "auto"], ["review", before?.review ?? e.review], ["auto", before?.auto ?? e.auto]];
+      const ok = await set(on ? [["board", "on"], ["review", "every"], ["auto", "off"]] : off);
+      if (on && !ok) await set(off);
+      if (!on || !ok) await this.context.workspaceState.update(KEY, undefined);
+      await this.readBoard();
+      await this.session.refresh();
+      this.say(!ok ? ["Exact did not change: graphene refused a setting."] : on ? [`${EXACT}.`] : ["Exact is off: what you leave unanswered takes its default at Start."],
+               { bad: !ok });
+    } finally {
+      this.switching = false;
+      this.push();
+    }
+  }
+  private switching = false;
 
   private say(lines: string[], more: Partial<Last> = {}) {
     this.last = { n: this.last.n + 1, lines, bad: false, ...more };
@@ -76,7 +122,8 @@ export class HomeHost implements vscode.WebviewViewProvider {
       case "ask": return this.ask(m.arg!);
       case "cancel": return this.planning?.abort();
       case "setup": return this.setUp(m.arg!, m.flag === true);
-      case "startAll": return this.start();
+      case "startAll": return this.exact && s.state?.questions.length ? undefined : this.start(); // Exact: Start waits for the answers
+      case "exact": return this.setExact(m.flag === true);
       case "discardAll": return this.discard();
       case "run": return void s.terminal("graphene run", C.runReady());
       case "stop": return s.act(C.stop());

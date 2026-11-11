@@ -2,8 +2,9 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import * as C from "../src/commands.ts";
-import { actsFor, CHANGES, cornerWord, counts, fitWidth, fitWords, forkActs, forkWords, HEADER_ACTS, headerFor, linkHint, paneKey, replayLine, sub, tabOrder, zoomK,
-         topLine, type StateX, type TaskX } from "../src/graph/words.ts";
+import { actsFor, attemptsOf, CHANGES, cornerWord, counts, editable, fan, fitWidth, fitWords, forkActs, forkWords, HEADER_ACTS, headerFor, linkHint, paneKey, replayLine,
+         sub, tabOrder, zoomK, topLine, whenEdit, type StateX, type TaskX } from "../src/graph/words.ts";
+import { SAY, WORDS } from "../src/state.ts";
 import { ICONS } from "../src/graph/icons.ts";
 import { layout } from "../src/layout.ts";
 import { autoLine, parseState } from "../src/state.ts";
@@ -119,9 +120,9 @@ test("the link hint names the task, says Cancel as well as Esc, and drop while a
 
 test("a task offers the acts its state takes; a replay offers only what reads", () => {
   const acts = (id: string, replay = false) => actsFor(task(id), replay).map((b) => b.act);
-  assert.deepEqual(acts("farewell"), ["signOff", "openDiff", "compareForks", "add-after", "add-under", "link", "edit", "tell"].filter((a) => a !== "tell"));
-  assert.deepEqual(acts("logs"), ["handBack", "openDiff", "add-after", "add-under", "link", "edit", "tell"]);
-  assert.deepEqual(acts("ship"), ["add-after", "add-under", "link", "edit", "drop", "tell"]);
+  assert.deepEqual(acts("farewell"), ["signOff", "openDiff", "compareForks", "add-after", "add-under", "link"]);
+  assert.deepEqual(acts("logs"), ["handBack", "openDiff", "add-after", "add-under", "link", "tell"]);
+  assert.deepEqual(acts("ship"), ["add-after", "add-under", "link", "drop", "tell"]); // no Edit: the pane is the form
   assert.deepEqual(acts("farewell", true), []);
   assert.deepEqual(acts("ship", true), []);
   assert.equal(actsFor(task("farewell"), false)[0]!.main, true);
@@ -187,4 +188,33 @@ test("every icon is a path; Tab walks the boxes wave by wave, then down each wav
     assert.ok(rank(a) < rank(b) || (rank(a) === rank(b) && y(a) <= y(b)), `${a} before ${b}`);
   }
   assert.ok(order.indexOf("logs") < order.indexOf("greet")); // logs sits in wave 1, greet in wave 2, whatever the state's order
+});
+
+test("the fan is drawn before anything runs: one waiting chip for each attempt a task is set to", () => {
+  const ship = { ...task("ship"), state: "ready" as const, forks: [], check: "pytest -q" };
+  assert.deepEqual(fan({ ...ship, planned: 3 }, null).map((f) => f.letter), ["a", "b", "c"]);
+  assert.equal(forkWords(fan({ ...ship, planned: 3 }, null)[0]!, null), "a · waiting");
+  assert.equal(fan({ ...ship, planned: null }, 2).length, 2, "unset on the task: the limits' number");
+  assert.equal(fan({ ...ship, planned: 1 }, 3).length, 0, "the task's own number comes first, and one attempt has no fan");
+  assert.equal(fan({ ...ship, planned: 3, check: null }, null).length, 0, "no check: it runs as one agent");
+  assert.equal(fan({ ...ship, planned: 3, state: "done" }, null).length, 0, "only before it starts");
+  assert.equal(fan(task("farewell"), 8), task("farewell").forks, "attempts that ran are the fan");
+  assert.equal(attemptsOf({ planned: null }, null), 1);
+  assert.equal(attemptsOf({ planned: null }, 4), 4);
+  assert.equal(attemptsOf({ planned: 2 }, 4), 2);
+});
+
+test("every state says what an edit does now, in the screen's words; only a finished task's form is closed", () => {
+  const starts = { proposed: "Suggested:", ready: "Not started:", waiting: "Not started:", running: "Working now:", review: "To review:",
+                   "came back": "Needs help:", yours: "Yours:", done: "Done:" };
+  assert.equal(SAY.proposed, "suggested"); // the line opens with the state as the box says it
+  for (const state of WORDS) {
+    const line = whenEdit({ state });
+    assert.ok(line.startsWith(starts[state]), `${state}: ${line}`);
+    assert.doesNotMatch(line, /\b(fork|leaf|scope|node)s?\b/i, `${state} says attempt, task, files, check`);
+    assert.equal(editable({ state }, false), state !== "done");
+    assert.equal(editable({ state }, true), false, "a replay is watched");
+  }
+  assert.match(whenEdit({ state: "running" }), /next write/);
+  assert.match(whenEdit({ state: "done" }), /not edited/);
 });

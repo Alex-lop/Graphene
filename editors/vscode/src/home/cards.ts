@@ -8,10 +8,10 @@ import { WHO } from "./who.ts";
 
 export const ACTS = ["ask", "cancel", "startAll", "discardAll", "run", "stop", "drop", "answer", "openDiff", "compare", "keep",
                      "approve", "sendBack", "offer", "tryAgain", "allow", "message", "markDone", "showGraph", "demo", "setup",
-                     "install", "setKey", "refresh", "openFolder"] as const;
+                     "install", "setKey", "refresh", "openFolder", "exact"] as const;
 export type Act = (typeof ACTS)[number];
 
-export interface Btn { label: string; act: Act; id?: string; arg?: string; main?: boolean; title?: string }
+export interface Btn { label: string; act: Act; id?: string; arg?: string; main?: boolean; title?: string; off?: boolean }
 export interface Line { k?: string; v: string; mono?: boolean; warn?: boolean }
 export type Tone = "question" | "proposed" | "running" | "review" | "came-back" | "ready" | "waiting" | "done" | "yours";
 export interface Card { key: string; tone: Tone; title: string; tag: string; lines: Line[]; buttons: Btn[] }
@@ -91,7 +91,8 @@ function help(t: Task, titles: Record<string, string>): Btn[] {
           { label: "Open changes", act: "openDiff", id: t.id }, { label: "Remove task", act: "drop", id: t.id }];
 }
 
-export function home(s: State, seen: ReadonlySet<string> = new Set()): Home {
+/** ``exact``: the switch is on, so Start waits while anything the plan asks is open (its default's button confirms it). */
+export function home(s: State, seen: ReadonlySet<string> = new Set(), exact = false): Home {
   const titles: Record<string, string> = Object.fromEntries(s.tasks.map((t) => [t.id, t.title]));
   const name = (id: string) => titles[id] ?? id;
   const sections: Section[] = [];
@@ -150,8 +151,11 @@ export function home(s: State, seen: ReadonlySet<string> = new Set()): Home {
     key: `p:${t.id}`, tone: "proposed" as const, title: t.title, tag: SAY.proposed, lines: contract(t, name),
     buttons: [{ label: "Remove", act: "drop" as const, id: t.id, title: "leave this task out of the plan" }],
   })), {
-    note: "Read each task: what it may change, and what proves it is done. Remove what you do not want, then start.",
-    buttons: [{ label: "Start", act: "startAll", main: true, title: "accept these tasks and start an agent on each" },
+    note: exact && s.questions.length
+      ? `Exact is on: answer the ${plural(s.questions.length, "open question")} under Needs you first (a default's button confirms it), then start.`
+      : "Read each task: what it may change, and what proves it is done. Remove what you do not want, then start.",
+    buttons: [{ label: "Start", act: "startAll", main: true, off: exact && s.questions.length > 0,
+                title: exact && s.questions.length ? "Exact is on: it waits for your answers" : "accept these tasks and start an agent on each" },
               { label: "Discard all", act: "discardAll" }],
   });
 
@@ -201,7 +205,7 @@ export type FromHome = { type: "ready" } | { type: "act"; act: Act; id: string; 
 
 /** The acts that take no task: each still checked for what it carries. */
 const GLOBAL: readonly Act[] = ["ask", "cancel", "startAll", "discardAll", "run", "stop", "showGraph", "demo", "setup", "install",
-                                "setKey", "refresh", "openFolder"];
+                                "setKey", "refresh", "openFolder", "exact"];
 
 /** A message from the page, checked against the plan before anything runs: a known act; the text of an ask; a
  *  planner the Set Up offers; a task the plan has (a question, for answer); an option the question has; an offer
@@ -215,6 +219,7 @@ export function checkHome(m: unknown, s: State | null): FromHome | null {
   const id = typeof r.id === "string" ? r.id : "";
   const arg = typeof r.arg === "string" ? r.arg : undefined;
   if (act === "ask") return arg?.trim() && arg.length <= 4000 ? { type: "act", act, id: "", arg: arg.trim() } : null;
+  if (act === "exact") return typeof r.flag === "boolean" ? { type: "act", act, id: "", flag: r.flag } : null;
   if (act === "setup") return WHO.some((w) => w.word === arg) ? { type: "act", act, id: "", arg, flag: r.flag === true } : null;
   if (act === "setKey") return arg === undefined || /^\w+$/.test(arg) ? { type: "act", act, id: "", arg } : null;
   if (act === "answer") {

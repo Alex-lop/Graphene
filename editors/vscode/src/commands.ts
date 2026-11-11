@@ -3,6 +3,7 @@
 // of the environment (`scrub`): a click in VS Code is the person's, whatever shell the editor came from.
 
 import { join } from "node:path";
+import { globs } from "./graph/draft.ts";
 
 export const MARKS = ["CLAUDECODE", "CLAUDE_CODE_SESSION_ID", "CODEX_SESSION_ID", "CODEX_SANDBOX", "AI_AGENT",
                       "GRAPHENE_NODE", "GRAPHENE_PLANNER", "GEMINI_CLI", "CURSOR_AGENT"] as const;
@@ -29,6 +30,8 @@ export interface NewStep {
 }
 
 export const stateJson = (): string[] => ["state", "--json"];
+/** Every task's whole contract: the snapshot leaves out its attempts, your approval and its owner. */
+export const planJson = (): string[] => ["plan", "--json"];
 /** The plan's log, a JSON object a line, after the row ``since`` (the Rounds view reads only what is new). */
 export const logJson = (since = 0): string[] => ["plan", "log", "--json", ...(since > 0 ? ["--since", String(since)] : [])];
 export const stop = (): string[] => ["run", "--stop"];
@@ -58,9 +61,15 @@ export function addStep(s: NewStep): string[] {
   return [...argv, "--", s.title];
 }
 
-/** Add Step by Hand's four boxes as one step: a check when one was typed, else the person's sign-off. */
-export function byHand(title: string, parent: string | null, needs: string[], scope: string, check: string): string[] {
-  return addStep({ title: title.trim(), parent, needs, scope: globs(scope), check: check.trim() || null, signoff: !check.trim() });
+/** Add Step by Hand's four boxes as one step: a check when one was typed, else the person's sign-off. A task
+ *  drawn on the graph may ask for both (``signoff``). */
+export function byHand(title: string, parent: string | null, needs: string[], scope: string, check: string, signoff = false): string[] {
+  return addStep({ title: title.trim(), parent, needs, scope: globs(scope), check: check.trim() || null, signoff: signoff || !check.trim() });
+}
+
+/** `graphene node add` prints the new task's row, `○ its title  n4  ready`: its id, or null. */
+export function added(stdout: string): string | null {
+  return /  (\S+)  [a-z ]+$/.exec(stdout.split(/\r?\n/)[0] ?? "")?.[1] ?? null;
 }
 
 /** Add Step by Hand's "where it goes" beside a task: after it or beside it, its title as text. */
@@ -85,12 +94,18 @@ export const link = (a: string, b: string): string[] => ["node", "set", b, "--ad
 /** B stops waiting on A; what else B waits on stays, as the CLI reads it then. */
 export const unlink = (a: string, b: string): string[] => ["node", "set", b, "--drop-needs", a];
 
-export type Field = "title" | "scope" | "check";
+export const FIELDS = ["title", "scope", "check", "forks", "signoff", "owner"] as const;
+export type Field = (typeof FIELDS)[number];
 
-export function editStep(id: string, field: Field, value: string | string[]): string[] {
+/** One field of a task, as the pane's form sets it: its title, the files it may change, its check ("" takes
+ *  the check away), its attempts (1 to 8), whether it waits for your approval, whether you do it yourself. */
+export function editStep(id: string, field: Field, value: string | string[] | number | boolean): string[] {
   const argv = ["node", "set", id];
-  if (field === "scope") for (const g of Array.isArray(value) ? value : [value]) argv.push("--scope", g);
-  else argv.push(`--${field}`, Array.isArray(value) ? value.join(" ") : value);
+  if (field === "scope") for (const g of Array.isArray(value) ? value : [String(value)]) argv.push("--scope", g);
+  else if (field === "forks") argv.push("--forks", String(value));
+  else if (field === "signoff") argv.push(value ? "--signoff" : "--no-signoff");
+  else if (field === "owner") argv.push("--owner", value ? "me" : "agent");
+  else argv.push(`--${field}`, Array.isArray(value) ? value.join(" ") : String(value));
   return argv;
 }
 
@@ -255,10 +270,8 @@ export function agentCopy(root: string, node: string, checkout: string | null | 
   return join(root, ".graphene", "worktrees", fork ? `${node}.${fork}` : node);
 }
 
-/** Globs typed in one box: spaces or commas between them. */
-export function globs(text: string): string[] {
-  return text.split(/[\s,]+/).map((g) => g.trim()).filter(Boolean);
-}
+/** Globs typed in one box: spaces or commas between them (the graph's page splits them the same way). */
+export { globs } from "./graph/draft.ts";
 
 export const OLDER = "This Graphene is older than the extension: it needs 0.9 (`uv tool upgrade graphene-map`).";
 
