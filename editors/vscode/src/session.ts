@@ -215,10 +215,13 @@ export class Session {
     const held = this.changing ? null : this.held;
     if (held) { this.held = null; this.take(held); }
     const ok = out.code === 0;
-    const line = ok ? C.firstLine(out.stdout, out.stderr, "done")
+    const first = ok ? C.firstLine(out.stdout, out.stderr, "done")
       : out.code === -1 ? this.install(out.stderr) : this.said(C.firstLine(out.stderr, out.stdout));
-    if (ok) vscode.window.setStatusBarMessage(`$(check) ${C.plain(line)}`, 6000);
-    else void vscode.window.showErrorMessage(C.refused(argv, C.plain(line)));
+    // a refusal whole for the page (its second line is often what to do about it); its first line for the toast
+    const whole = (out.stderr.trim() || out.stdout.trim()).split(/\r?\n/).map((l) => l.trim()).filter(Boolean).slice(0, 8).join("\n");
+    const line = ok || out.code === -1 || first === this.said(C.OLDER) ? first : whole || first;
+    if (ok) vscode.window.setStatusBarMessage(`$(check) ${C.plain(first)}`, 6000);
+    else void vscode.window.showErrorMessage(C.refused(argv, C.plain(first)));
     void this.refresh();
     return { ok, line, stdout: out.stdout };
   }

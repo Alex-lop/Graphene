@@ -101,4 +101,24 @@ test("a field set on the page is one `node set`, a drawn task one `node add`; gr
   const n = ran.length;
   await w.receive({ type: "act", act: "set", id: "ship", field: "forks", value: 99 });
   assert.equal(ran.length, n, "a value the field does not take runs nothing");
+  // a drawn task the host will not pass on is still answered, so its page does not wait for ever
+  await w.receive({ type: "act", act: "draw", id: "", draft: { key: " d2", title: "x", files: "a.py", check: "true", approve: false, after: "gone", parent: null } });
+  assert.equal(ran.length, n);
+  const last = w.sent.at(-1) as { type: string; key: string; ok: boolean };
+  assert.deepEqual([last.type, last.key, last.ok], ["said", " d2", false]);
+});
+
+test("graphene's answer goes to the page that asked: another page's draft has the same key", async () => {
+  const { parseState } = await import("../src/state.ts");
+  const { readFileSync } = await import("node:fs");
+  const state = parseState(readFileSync(new URL("./fixtures/graph-race.json", import.meta.url), "utf8"));
+  const host = new GraphHost(context, { ...(session as object), state, change: async () => ({ ok: true, line: "done", stdout: "○ a flag  n9  ready\n" }) } as never);
+  host.show();
+  const panel = vscode.panels.at(-1)!.w as unknown as { sent: unknown[]; receive(m: unknown): Promise<unknown> };
+  const side = { html: "", cspSource: "", sent: [] as unknown[], options: {}, asWebviewUri: (u: unknown) => u, h: (_: unknown) => undefined as unknown,
+                 postMessage(m: unknown) { this.sent.push(m); return Promise.resolve(true); }, onDidReceiveMessage(h: (m: unknown) => unknown) { this.h = h; return { dispose() {} }; } };
+  host.resolveWebviewView({ webview: side, onDidDispose: () => ({ dispose() {} }), visible: true } as never);
+  await panel.receive({ type: "act", act: "draw", id: "", draft: { key: " d1", title: "a flag", files: "cli.py", check: "true", approve: false, after: null, parent: null } });
+  assert.equal((panel.sent.at(-1) as { type: string }).type, "said");
+  assert.ok(!side.sent.some((m) => (m as { type: string }).type === "said"), "the side bar's own ` d1` is not taken away by the tab's answer");
 });

@@ -226,7 +226,7 @@ export const KEYS: readonly [string, string][] = [
   ["f", "fit the graph again"],
   ["v", "graph or lanes"],
   ["?", "this list"],
-  ["+", "on a box: draw a task after it; Add task draws one on its own"],
+  ["+", "draw a task: after the selected one, or on its own (the + on a box's corner, and Add task, do the same)"],
   ["drag a dot", "onto another task: that task waits on this one"],
   ["×", "beside a need: it stops waiting on it"],
   ["wheel · drag", "scroll · pan; ⌘ or Ctrl with the wheel zooms"],

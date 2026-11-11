@@ -14,7 +14,7 @@ test("the host takes ready, and an act it knows on an id the plan has", () => {
   assert.deepEqual(ok({ type: "act", act: "signOff", id: "farewell" }), { type: "act", act: "signOff", id: "farewell", target: undefined, fork: undefined });
   assert.deepEqual(ok({ type: "act", act: "link", id: "hello", target: "ship" })?.target, "ship");
   assert.equal(ok({ type: "act", act: "run", id: "" })?.type, "act");
-  assert.equal(ok({ type: "act", act: "add-under", id: "" })?.type, "act");
+  assert.equal(ok({ type: "act", act: "add-under", id: "" }), null, "Add task draws on the page: the host is asked only with a sentence for the planner");
 });
 
 test("an unknown act, a stranger's id, a target or a fork the plan lacks, or junk: nothing", () => {
@@ -41,10 +41,14 @@ test("a fork the task has passes; so does an answer with one of the question's o
 test("a replay's host runs nothing that changes a plan or acts outside the replay; what reads still passes", () => {
   const replay = { state: { ...state, replay: { shown: "a scripted stand-in, no model ran", day: "", repository: "" } } };
   for (const act of CHANGES) {
-    const id = ["run", "stop", "auto", "cockpit", "add-under"].includes(act) ? "" : act === "answer" ? "which-port" : "farewell";
+    const id = ["run", "stop", "auto", "cockpit", "add-under", "draw"].includes(act) ? "" : act === "answer" ? "which-port" : "farewell";
+    const more = act === "set" ? { field: "title", value: "x" } : act === "draw" ? { draft: { key: " d1", title: "t", files: "a.py", check: "true", approve: false } }
+      : act.startsWith("add-") ? { sentence: "a flag", key: " d1" } : {};
+    assert.ok(check({ type: "act", act, id, fork: act === "pickFork" ? "b" : undefined, target: act === "link" || act === "unlink" ? "hello" : undefined, ...more }, session),
+              `${act} passes outside a replay, so the refusal below is the replay's`);
     const fork = act === "pickFork" ? "b" : undefined;
     const target = act === "link" || act === "unlink" ? "hello" : undefined;
-    assert.equal(check({ type: "act", act, id, fork, target }, replay), null, `${act} is refused in a replay`);
+    assert.equal(check({ type: "act", act, id, fork, target, ...more }, replay), null, `${act} is refused in a replay`);
   }
   assert.equal(check({ type: "ready" }, replay)?.type, "ready");
 });
@@ -87,6 +91,9 @@ test("the planner fills a drawn task in: its title as the sentence, after a task
   assert.deepEqual(act({ type: "act", act: "add-after", id: "hello", sentence: " a flag ", key: " d1" }),
                    { type: "act", act: "add-after", id: "hello", sentence: "a flag", key: " d1" });
   assert.equal(act({ type: "act", act: "add-under", id: "", sentence: "a flag", key: " d1" })?.sentence, "a flag");
+  assert.equal(act({ type: "act", act: "add-under", id: state.goals[0]!.id, sentence: "a flag", key: " d1" })?.id, state.goals[0]!.id, "under its sub-goal");
+  assert.equal(act({ type: "act", act: "add-under", id: "hello", sentence: "a flag", key: " d1" }), null, "a task is not a sub-goal");
   assert.equal(act({ type: "act", act: "add-after", id: "hello", sentence: " ", key: " d1" }), null);
   assert.equal(act({ type: "act", act: "add-after", id: "nobody", sentence: "a flag", key: " d1" }), null);
+  assert.equal(act({ type: "act", act: "add-after", id: "hello" }), null, "no sentence: nothing for the planner");
 });

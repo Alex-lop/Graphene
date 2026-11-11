@@ -46,6 +46,8 @@ let naming: string | null = null; // the draft whose title is being typed on its
 const offered = new Set<string>(); // drafts graphene is being asked to take: not offered twice
 const refused = new Map<string, string>(); // a task's id -> graphene's refusal of the last change to it
 let arriving: string | null = null; // a drawn task graphene took: selected once the plan shows it
+let pressing = false; // a press inside the pane: it is not rebuilt between the press and its click
+const LONG = 2000; // the longest title, check or line of files the host passes on
 
 function remember(patch: Partial<Saved>) {
   saved = { ...saved, ...patch };
@@ -155,23 +157,32 @@ function discard(key: string) {
   drafts = drafts.filter((d) => d.key !== key);
   offered.delete(key);
   remember({ drafts });
-  if (naming === key) naming = null;
+  if (naming === key) { naming = null; nameBox = null; }
   if (selected === key) selected = null;
   render();
 }
 
 /** The title typed on a draft's box: kept, and the files are next; an empty one takes the draft away. */
-function named(key: string, title: string) {
+function named(key: string, title: string, on = false) {
   if (naming !== key) return; // Enter, then the blur of the box it took away
   naming = null;
+  nameBox = null;
   if (!title.trim()) return discard(key);
   redraw(key, { title: title.trim() });
-  setTimeout(() => document.getElementById("f-files")?.focus(), 0);
+  if (on) setTimeout(() => document.getElementById("f-files")?.focus(), 0); // Enter goes on to its files
 }
 
-/** The box a title is typed in, on a draft: Enter keeps it, Esc leaves it as it was. */
+let nameBox: { key: string; input: HTMLInputElement } | null = null;
+let painting = false; // the graph or the lanes are being redrawn: a box moved by that was not left
+
+/** The box a title is typed in, on a draft: Enter keeps it, Esc leaves it as it was. One box for as long as
+ *  the title is being typed: a redraw around it (a task joined, the view turned) moves it with what it holds,
+ *  and whoever puts it on the page gives it the focus back. */
 function nameInput(d: Draft): HTMLInputElement {
+  if (nameBox?.key === d.key) return nameBox.input;
   const input = document.createElement("input");
+  nameBox = { key: d.key, input };
+  input.maxLength = LONG;
   input.className = "name";
   input.value = d.title;
   input.placeholder = "what this task does";
@@ -181,11 +192,11 @@ function nameInput(d: Draft): HTMLInputElement {
   input.addEventListener("mousedown", (e) => e.stopPropagation());
   input.addEventListener("keydown", (e) => {
     e.stopPropagation(); // typed words are not the graph's keys
-    if (e.key === "Enter") named(d.key, input.value);
+    if (e.key === "Enter") named(d.key, input.value, true);
     if (e.key === "Escape") named(d.key, d.title);
   });
-  input.addEventListener("blur", () => named(d.key, input.value));
-  setTimeout(() => input.focus(), 0);
+  // left for good, not moved by a redraw (which puts the focus back): then what was typed is the title
+  input.addEventListener("blur", () => { if (!painting && document.activeElement !== input) named(d.key, input.value); });
   return input;
 }
 
@@ -225,7 +236,13 @@ function render() {
     $("notice").textContent = replaying() ? "Nothing is planned yet." : "Nothing is planned yet. Draw the first task here, or say what you want on Home.";
     if (!replaying()) button({ label: "Add task", act: "add-under", title: "draw a task: its title, then its files and its check", icon: "add", main: true }, "", $("notice"));
   }
-  if (v === "lanes") { lanes(s); $("to-goal").hidden = true; } else graph(s, dir);
+  painting = true;
+  try {
+    if (v === "lanes") { lanes(s); $("to-goal").hidden = true; } else graph(s, dir);
+  } finally {
+    painting = false;
+  }
+  if (nameBox?.input.isConnected && document.activeElement !== nameBox.input) nameBox.input.focus({ preventScroll: true });
   pane();
   hint();
 }
@@ -666,6 +683,7 @@ function field(parent: HTMLElement, name: string, label: string, value: string, 
   input.placeholder = placeholder;
   input.title = hover;
   input.spellcheck = false;
+  input.maxLength = LONG;
   input.addEventListener("change", () => on(input.value));
   input.addEventListener("keydown", (e) => {
     e.stopPropagation(); // typed words are not the graph's keys
@@ -753,10 +771,11 @@ function draftPane(pane: HTMLElement, d: Draft) {
   close.addEventListener("click", () => select(null));
   head.appendChild(close);
   const body = div("d-body", undefined, pane);
-  field(body, "title", "title", d.title, "what this task does", "the task, in a line", (v) => (v.trim() ? redraw(d.key, { title: v.trim() }) : redraw(d.key, {})));
-  field(body, "files", "files", d.files, "src/api/** tests/test_api.py", "the files it may change: paths or globs, a space between", (v) => redraw(d.key, { files: v.trim() }));
-  field(body, "check", "check", d.check, "a command that passes when it is done", "the command that passes only when the task is done", (v) => redraw(d.key, { check: v.trim() }));
-  tick(body, "signoff", "wait for my approval", d.approve, "it lands only once you approve it", (on) => redraw(d.key, { approve: on }));
+  const asked = offered.has(d.key) && !d.said; // graphene is deciding: what it was offered is not changed under it
+  field(body, "title", "title", d.title, "what this task does", "the task, in a line", (v) => (v.trim() ? redraw(d.key, { title: v.trim() }) : redraw(d.key, {}))).disabled = asked;
+  field(body, "files", "files", d.files, "src/api/** tests/test_api.py", "the files it may change: paths or globs, a space between", (v) => redraw(d.key, { files: v.trim() })).disabled = asked;
+  field(body, "check", "check", d.check, "a command that passes when it is done", "the command that passes only when the task is done", (v) => redraw(d.key, { check: v.trim() })).disabled = asked;
+  tick(body, "signoff", "wait for my approval", d.approve, "it lands only once you approve it", (on) => redraw(d.key, { approve: on }), asked);
   const after = d.after ? state?.tasks.find((t) => t.id === d.after)?.title : "";
   row("after", after ?? "", body);
   const line = offered.has(d.key) && !d.said ? "Graphene is asked to take it…" : draftLine(d);
@@ -777,7 +796,7 @@ function draftPane(pane: HTMLElement, d: Draft) {
     if (!title || offered.has(d.key)) return;
     Object.assign(d, { title, said: undefined });
     offered.add(d.key);
-    api.postMessage({ type: "act", act: d.after ? "add-after" : "add-under", id: d.after ?? "", sentence: title, key: d.key });
+    api.postMessage({ type: "act", act: d.after ? "add-after" : "add-under", id: d.after ?? d.parent ?? "", sentence: title, key: d.key });
     paneLast = "";
     render();
   });
@@ -793,6 +812,7 @@ function pane() {
   const key = d ? JSON.stringify([d, offered.has(d.key)]) : state ? paneKey(state, selected, replaying()) + (refused.get(selected ?? "") ?? "") + state.envelope.forks : "";
   if (key === paneLast) return;
   const at = document.activeElement as HTMLInputElement | null;
+  if (paneOf === selected && pressing) { paneLast = "stale"; return; } // rebuilt once the press has had its click
   if (paneOf === selected && at && pane.contains(at) && at.tagName === "INPUT" && at.type === "text") {
     paneLast = "stale"; // rebuilt once the box is left; a draft's own line is said now, as its box says its blanks
     const when = d ? pane.querySelector(".when") : null;
@@ -961,9 +981,14 @@ window.addEventListener("message", (e: MessageEvent<Incoming>) => {
     if (arriving && has(arriving)) { selected = arriving; arriving = null; }
     if (selected && !has(selected) && !isDraft(selected)) selected = null;
     if (linking && !has(linking)) linking = null;
-    for (const d of drafts) { // what a draft was drawn after, or under, may have gone
+    for (const d of [...drafts]) { // what a draft was drawn after, or under, may have gone
       if (d.after && !has(d.after)) d.after = null;
       if (d.parent && !state.goals.some((g) => g.id === d.parent)) d.parent = null;
+      // whole, and not offered that this page remembers (it was reloaded before the answer came): the plan has
+      // it already, or it is offered now
+      if (lacks(d).length || offered.has(d.key) || d.said) continue;
+      const files = globs(d.files).join(" ");
+      if (state.tasks.some((t) => (t.full || t.title) === d.title && t.scope.join(" ") === files)) discard(d.key); else redraw(d.key, {});
     }
     render();
   } else if (m.type === "said") { // graphene's answer to a change made here
@@ -1014,6 +1039,11 @@ window.addEventListener("keydown", (e) => {
   if (e.key === "g" && state) { // the goal, on screen
     if (view() === "lanes") $("lanes").querySelector(".goal-row")?.scrollIntoView({ block: "nearest" });
     else reveal(GOAL);
+    return;
+  }
+  if (e.key === "+" && state) { // a task drawn after the selected one, or on its own
+    const near = state.tasks.find((t) => t.id === selected);
+    draw(near ? { after: near.id, parent: near.parent } : { after: null, parent: null });
     return;
   }
   if (e.key === "f") { moved = false; fit(); remember({ zoom: undefined }); applyZoom(); return; }
@@ -1119,6 +1149,12 @@ function wire() {
     if (lay && !moved) { fit(); applyZoom(); } else if (lay) { zoom = clamp(zoom); applyZoom(); }
   }).observe(canvas);
   $("help").addEventListener("click", (e) => { if (e.target === $("help")) help(false); });
+  // a press in the pane keeps the pane it pressed: a box left by that press is rebuilt after the click, not under it
+  $("details").addEventListener("pointerdown", () => { pressing = true; });
+  const released = () => { if (pressing) setTimeout(() => { pressing = false; if (paneLast === "stale") pane(); }, 0); };
+  window.addEventListener("pointerup", released);
+  window.addEventListener("pointercancel", released);
+  window.addEventListener("pointermove", (e) => { if (e.buttons === 0) released(); }); // let go outside the page
   const toGoal = $("to-goal");
   toGoal.appendChild(document.createTextNode("goal"));
   toGoal.appendChild(icon("arrow-right"));

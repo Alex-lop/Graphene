@@ -147,7 +147,7 @@ def test_row_5_another_cli_agent_is_not_stopped_at_the_write_but_the_finish_hand
     done, node, said, hooks_said = _run(repo, f"{sys.executable} {script}")
     assert done == [] and node.state != DONE  # the task came back, not done
     assert "outside.txt" in said  # the refusal names the path
-    assert hooks_said == []  # no hook ran: nothing was refused before the write
+    assert hooks_said == []  # the gate refused nothing before the write: the log has no `denied` row for it
     # "caught at the finish" is the whole of it: run in the checkout, the outside file is on disk until the
     # person puts it back (in `run --parallel` it is in the leaf's worktree, which is not merged)
     assert (repo / "outside.txt").exists()
@@ -167,7 +167,8 @@ def test_row_4_codex_runs_the_same_path_with_its_own_command_line(repo, tmp_path
     finally:
         os.environ["PATH"] = old
     assert done == [] and node.state != DONE
-    assert "outside.txt" in said and hooks_said == []
+    assert "outside.txt" in said and hooks_said == []  # named at the finish; nothing refused before the write
+    assert (repo / "outside.txt").exists()  # so the write landed, as row 5's does
 
 
 def test_row_5_a_stand_in_that_writes_only_inside_is_done(repo):

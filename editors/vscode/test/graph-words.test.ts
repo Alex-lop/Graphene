@@ -205,9 +205,12 @@ test("the fan is drawn before anything runs: one waiting chip for each attempt a
 });
 
 test("every state says what an edit does now, in the screen's words; only a finished task's form is closed", () => {
+  const starts = { proposed: "Suggested:", ready: "Not started:", waiting: "Not started:", running: "Working now:", review: "To review:",
+                   "came back": "Needs help:", yours: "Yours:", done: "Done:" };
+  assert.equal(SAY.proposed, "suggested"); // the line opens with the state as the box says it
   for (const state of WORDS) {
     const line = whenEdit({ state });
-    assert.ok(line.toLowerCase().startsWith(SAY[state] === "working" ? "working" : SAY[state].split(" ")[0]!.toLowerCase()) || state === "waiting" || state === "ready", `${state}: ${line}`);
+    assert.ok(line.startsWith(starts[state]), `${state}: ${line}`);
     assert.doesNotMatch(line, /\b(fork|leaf|scope|node)s?\b/i, `${state} says attempt, task, files, check`);
     assert.equal(editable({ state }, false), state !== "done");
     assert.equal(editable({ state }, true), false, "a replay is watched");

@@ -131,6 +131,8 @@ try {
   const settings = () => execFileSync(graphene, ["config"], { cwd: dir, env }).toString().split("\n");
   const exact = home.locator(".tick.exact input");
   if (await exact.isChecked()) throw new Error("Exact is on before anyone turned it on");
+  execFileSync(graphene, ["config", "set", "review", "off"], { cwd: dir, env, stdio: "pipe" }); // so that off has something to put back
+  await page.waitForTimeout(1000); // the stream brings Home the setting
   await exact.check();
   await until(home, () => document.querySelector(".said")?.textContent.startsWith("Exact: Start waits"), null, "Exact said on");
   for (const line of ["board: on", "review: every", "auto: off"]) if (!settings().includes(line)) throw new Error(`Exact on left no “${line}”`);
@@ -146,8 +148,8 @@ try {
               "Start, once the question is answered");
   await exact.uncheck();
   await until(home, () => document.querySelector(".said")?.textContent.startsWith("Exact is off"), null, "Exact said off");
-  if (!settings().includes("board: auto")) throw new Error("Exact off left the board on");
-  say("the default's button confirmed it and Start came back; Exact off put the board back");
+  for (const line of ["board: auto", "review: off", "auto: off"]) if (!settings().includes(line)) throw new Error(`Exact off left no “${line}”`);
+  say("the default's button confirmed it and Start came back; Exact off put the board and review back as they were");
   console.log(`home: passed in ${((Date.now() - t0) / 1000).toFixed(0)} s, ${step} screenshots in ${shots}`);
 } catch (err) {
   failed = err;

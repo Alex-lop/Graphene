@@ -3,6 +3,7 @@
 // of the environment (`scrub`): a click in VS Code is the person's, whatever shell the editor came from.
 
 import { join } from "node:path";
+import { globs } from "./graph/draft.ts";
 
 export const MARKS = ["CLAUDECODE", "CLAUDE_CODE_SESSION_ID", "CODEX_SESSION_ID", "CODEX_SANDBOX", "AI_AGENT",
                       "GRAPHENE_NODE", "GRAPHENE_PLANNER", "GEMINI_CLI", "CURSOR_AGENT"] as const;
@@ -269,10 +270,8 @@ export function agentCopy(root: string, node: string, checkout: string | null | 
   return join(root, ".graphene", "worktrees", fork ? `${node}.${fork}` : node);
 }
 
-/** Globs typed in one box: spaces or commas between them. */
-export function globs(text: string): string[] {
-  return text.split(/[\s,]+/).map((g) => g.trim()).filter(Boolean);
-}
+/** Globs typed in one box: spaces or commas between them (the graph's page splits them the same way). */
+export { globs } from "./graph/draft.ts";
 
 export const OLDER = "This Graphene is older than the extension: it needs 0.9 (`uv tool upgrade graphene-map`).";
 

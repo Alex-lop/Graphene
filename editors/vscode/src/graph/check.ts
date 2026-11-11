@@ -1,15 +1,15 @@
 // What the page may ask the host, checked against the plan. Pure: no VS Code here, so `node --test` reads it.
+import { FIELDS, type Field } from "../commands.ts";
 import { CHANGES } from "./words.ts";
 
 // link: id is A, target B, and B waits on A; unlink: id is B, target the A it stops waiting on;
 // answer: id is a question's, target one of its options (none: the command asks);
 // set: one field of the task's form, with its value; draw: a task drawn on the graph, whole, for `node add`;
-// add-after and add-under with a sentence: the planner fills a drawn task in
+// add-after (id a task) and add-under (id a sub-goal, or none): the planner fills a drawn task in, from its
+// title as the sentence
 export const ACTS = ["add-after", "add-under", "link", "unlink", "drop", "accept", "tell", "run", "stop", "auto", "cockpit",
                      "openDiff", "compareForks", "pickFork", "signOff", "answer", "handBack", "set", "draw"] as const;
 export type Act = (typeof ACTS)[number];
-export const FIELDS = ["title", "scope", "check", "forks", "signoff", "owner"] as const;
-export type Field = (typeof FIELDS)[number];
 export type Drawn = { key: string; title: string; files: string; check: string; approve: boolean; after: string | null; parent: string | null };
 export type FromPage = { type: "ready" }
   | { type: "act"; act: Act; id: string; target?: string; fork?: string; field?: Field; value?: string | number | boolean; draft?: Drawn; sentence?: string; key?: string };
@@ -56,7 +56,7 @@ export function check(m: unknown, session: { state: Plan }): FromPage | null {
   const s = session.state;
   const tasks = s?.tasks ?? [];
   const task = tasks.find((t) => t.id === id);
-  const global: readonly Act[] = ["run", "stop", "auto", "cockpit", "add-under"];
+  const global: readonly Act[] = ["run", "stop", "auto", "cockpit"];
   if (act === "answer") {
     const q = s?.questions.find((x) => x.id === id);
     if (!q) return null;
@@ -67,6 +67,11 @@ export function check(m: unknown, session: { state: Plan }): FromPage | null {
     const draft = drawn(r.draft, tasks, s?.goals ?? []);
     return s && draft ? { type: "act", act, id: "", draft } : null;
   }
+  if (act === "add-after" || act === "add-under") { // the planner fills a drawn task in: after a task, under a sub-goal, or on its own
+    if (!text(r.sentence) || !r.sentence.trim() || !text(r.key)) return null;
+    const there = act === "add-after" ? Boolean(task) : id === "" || Boolean(s?.goals?.some((g) => g.id === id));
+    return there ? { type: "act", act, id, sentence: r.sentence.trim(), key: r.key } : null;
+  }
   if (!task && !(id === "" && global.includes(act))) return null;
   if (target !== undefined && !tasks.some((t) => t.id === target)) return null;
   if (fork !== undefined && !task?.forks.some((f) => f.letter === fork)) return null;
@@ -74,10 +79,6 @@ export function check(m: unknown, session: { state: Plan }): FromPage | null {
     const field = (FIELDS as readonly unknown[]).includes(r.field) ? (r.field as Field) : undefined;
     const value = field ? valueOf(field, r.value) : undefined;
     return field && value !== undefined ? { type: "act", act, id, field, value } : null;
-  }
-  if ((act === "add-after" || act === "add-under") && r.sentence !== undefined) { // the planner fills a drawn task in
-    if (!text(r.sentence) || !r.sentence.trim() || !text(r.key)) return null;
-    return { type: "act", act, id, sentence: r.sentence.trim(), key: r.key };
   }
   return { type: "act", act, id, target, fork };
 }

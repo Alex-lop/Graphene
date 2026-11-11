@@ -74,23 +74,34 @@ export class HomeHost implements vscode.WebviewViewProvider {
     if (out.code === 0) this.board = /^board:\s*(\S+)/m.exec(out.stdout)?.[1] ?? "";
   }
 
-  /** The switch: on sets the three settings and keeps what review and auto were; off puts them back. */
+  /** The switch: on sets the three settings and keeps what review and auto were; off puts them back and forgets
+   *  them. All three or none: a setting graphene refuses takes the others back. One move of the switch at a time. */
   private async setExact(on: boolean) {
     const e = this.session.state?.envelope;
-    if (!e || on === this.exact) return this.push();
-    const KEY = "graphene.exact.before";
-    const before = this.context.workspaceState.get<{ review: string; auto: string }>(KEY);
-    if (on) await this.context.workspaceState.update(KEY, { review: e.review, auto: e.auto });
-    const want: [string, string][] = on ? [["board", "on"], ["review", "every"], ["auto", "off"]]
-      : [["board", "auto"], ["review", before?.review ?? e.review], ["auto", before?.auto ?? e.auto]];
-    const now: Record<string, string> = { board: this.board, review: e.review, auto: e.auto };
-    for (const [key, value] of want) if (now[key] !== value && (await this.session.run(C.setting(key, value))).code !== 0) break;
-    await this.readBoard();
-    await this.session.refresh();
-    this.say(on && this.exact ? [`${EXACT}.`] : on ? ["Exact could not be turned on: graphene refused a setting."] : ["Exact is off: what you leave unanswered takes its default at Start."],
-             { bad: on && !this.exact });
-    this.push();
+    if (!e || this.switching || on === this.exact) return this.push();
+    this.switching = true;
+    try {
+      const KEY = "graphene.exact.before";
+      if (on) await this.context.workspaceState.update(KEY, { review: e.review, auto: e.auto });
+      const before = this.context.workspaceState.get<{ review: string; auto: string }>(KEY);
+      const set = async (want: [string, string][]) => {
+        for (const [key, value] of want) if ((await this.session.run(C.setting(key, value))).code !== 0) return false;
+        return true;
+      };
+      const off: [string, string][] = [["board", "auto"], ["review", before?.review ?? e.review], ["auto", before?.auto ?? e.auto]];
+      const ok = await set(on ? [["board", "on"], ["review", "every"], ["auto", "off"]] : off);
+      if (on && !ok) await set(off);
+      if (!on || !ok) await this.context.workspaceState.update(KEY, undefined);
+      await this.readBoard();
+      await this.session.refresh();
+      this.say(!ok ? ["Exact did not change: graphene refused a setting."] : on ? [`${EXACT}.`] : ["Exact is off: what you leave unanswered takes its default at Start."],
+               { bad: !ok });
+    } finally {
+      this.switching = false;
+      this.push();
+    }
   }
+  private switching = false;
 
   private say(lines: string[], more: Partial<Last> = {}) {
     this.last = { n: this.last.n + 1, lines, bad: false, ...more };
