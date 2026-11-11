@@ -34,6 +34,12 @@ run it under `xvfb-run`. `E2E_APP=cursor` runs it in Cursor; `E2E_SHOT=file.png`
 Open Changes shows the diff, Approve lands the task and Send back… returns another with a note. It fails when a
 step does not show what it should, and keeps a screenshot of each step (`E2E_SHOTS=dir`, else in its scratch).
 
+`npm run draw` builds a graph by hand, with no planner and no model: on an empty plan it draws a task (its title
+typed on its box, its files and its check in the pane) and sees it join the plan, draws a second from the + on
+the first with your approval for a check, sets three attempts on the stepper and counts the fan before anything
+runs, changes a title in the form, takes a task for you and gives it back, reads graphene's refusal in the pane,
+and changes the files of a task an agent holds. Each step is checked against `graphene plan --json`.
+
 ## Screenshots and video
 
 ```
