@@ -107,7 +107,13 @@ change, what proves it), and Start. Each finished task then shows what it change
 Open changes, Approve, or Send back with a note, and Approve asks first if you never opened the changes. The graph
 shows the race: a task fans out into its attempts as they work, and the kept one says why it won. Watch the Demo
 plays the race with no key. Every click is a `graphene` command run as you, and it reads `graphene state --json`,
-the cockpit's own snapshot, so the two never disagree.
+the cockpit's own snapshot, plus `plan --json` for the task form.
+
+A task's pane is a form: edit its title, files and check in place, set 1 to 8 attempts, ask for your approval,
+or take it for yourself. Add task draws a draft box; fill its files and a check or approval to add it to the plan.
+Drafts are shared by the graph views and survive closing a tab or reloading the window. A refusal appears once,
+beside the form. Home's Exact switch holds its Start button until every open question is answered and makes
+finished tasks wait for approval. Terminal commands and the cockpit still take unanswered defaults.
 
 Install the `.vsix` attached to [the latest release](https://github.com/Alex-lop/Graphene/releases/latest) with
 `code --install-extension`, or from the Marketplace and Open VSX once they list it. It is built for VS Code 1.95
@@ -118,10 +124,16 @@ there.
 
 | Who does the task | How a write outside its files is held |
 |---|---|
+| Codex (`--with codex`) | patch and readable shell writes are refused before the write when the project hooks are loaded and trusted; git checks again at finish |
 | Nemotron on Token Factory (`--with nemotron`), or the same loop on NVIDIA NIM, Ollama or any OpenAI-compatible host (`--with 'nemotron --endpoint nim'`) | refused before the write, by Graphene's own tool loop |
 | Claude Code (`--with claude`, `claude:MODEL`) | refused before the write, by its hooks |
-| Codex (`--with codex`) | git finds it when the task finishes; the task comes back instead of landing |
 | Any CLI agent (`--with 'aider --yes --message-file {prompt_file}'`) | git finds it when the task finishes |
+
+`graphene init` installs `.codex/hooks.json`. In a new Codex session, trust the project and review the hooks
+with `/hooks` before running tasks. A session opened before init must be restarted. Live verification used
+Codex 0.167.2, one task and then three real attempts; the outside write was denied and only the allowed file
+landed. Unloaded, untrusted, failed or timed-out Codex hooks can let a write through: git then refuses the task
+at finish. The file can remain in its worktree (or your checkout with `--here`).
 
 `--with` again mixes them in one race: `--with nemotron --with claude:haiku --with codex` puts three different
 agents on every task, and the same rule keeps one.
@@ -147,9 +159,13 @@ change through at once.
 
 ## What it enforces, and where it ends
 
-- Refused before the write: Claude Code, and Graphene's own loop (Nemotron and the other hosts), shell redirects
-  included where the hook can read them (a `#` comment line above one, or a target in a variable, hides it). With
-  Codex or any other agent, git finds it when the task finishes; nothing outside a task's files ever lands.
+- Refused before the write: trusted, loaded Claude Code and Codex hooks, and Graphene's own loop. The shell
+  parser reads comments and same-command literal variables; an unknown variable, a glob, a script or an MCP
+  write can evade it. Git refuses tracked changes outside the task's files at finish. A hook with a missing
+  write path, missing session or unreadable plan now refuses the call; vendor crashes and timeouts remain a limit.
+- Git sees content, not who typed it. In a shared checkout, your edit inside a held task's files counts as that
+  task's work; an edit outside them can send it back. Your edit stays on disk. Prefer the normal worktree run
+  when editing alongside agents.
 - Scopes cover files. A task can still use the network, or a database two tasks share; its own port is as far as
   Graphene goes there.
 - A task allowed to edit its own test can weaken it: `done` flags it, and `review: every` lets you read the diff
