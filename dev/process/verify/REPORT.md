@@ -1,10 +1,10 @@
-Verification of [PR #60](https://github.com/Alex-lop/Graphene/pull/60): 30 commits from its recorded head `2a2c6fbb`; this draft targets `main` without rebasing.
+Verification of [PR #60](https://github.com/Alex-lop/Graphene/pull/60): 30 commits from its recorded head `2a2c6fbb`, based on the restored `night/graph-edit` branch.
 
-Delivery: Codex's 5-hour limit cut it off before the push. Restarted in a sandbox, it wrote CHECKS.md and this report, and the sandbox then refused its `git add` (`.git/index.lock`: Operation not permitted); it did not work around the refusal. Claude Fable 5.2 made commits 29 and 30 from those two files, pushed the branch and opened this draft on 12 Nov, changing only this paragraph, the line above it and two links. The 28 commits before them are Codex's, unchanged.
+Delivery history: an earlier run opened PR #61 against `main`; Alex merged it on 12 Nov. This run leaves #61 untouched and prepares this separate draft against the restored `night/graph-edit` tip `2a2c6fbb`. The 30 commits here include the verification brief, fixes, tests, evidence and this report.
 
 PR #60 lets Alex draw tasks, type their title/files/check in the pane, set attempts before running, take a task himself, and require approval. Home's Exact switch holds Start for unanswered questions. It did not add Codex write hooks or preserve drafts across pages.
 
-Alex's historical session remains unidentified; the probes below reproduce concrete acceptance paths. The brief was stale: #60 was already merged. Alex authorized restoring its exact branch tip; `night/graph-edit` remains on GitHub for Alex to delete. Since main already contains #60 at `1588482c`, this PR targets main, as the restart brief directs. All work is in `/private/tmp/graphene-codex-verify`; the Desktop checkout was left untouched because its hard write prohibition conflicts with “clone in this folder”. Commits use Alex Lopez with a GitHub noreply address. No main push, merge, tag, release or remote branch deletion; Nebius $0, Claude probes 0. Live Codex used xhigh and an isolated authenticated `CODEX_HOME`.
+Alex's historical session remains unidentified; the probes below reproduce concrete acceptance paths. The brief was stale: #60 was already merged. Alex explicitly authorized restoring its exact branch tip. This run does not change `main` or remove any branch. All work is in `/private/tmp/graphene-codex-verify`; the Desktop checkout was left untouched because its hard write prohibition conflicts with “clone in this folder”. Commits use Alex Lopez with a GitHub noreply address. This run made no main push, merge, tag, release or remote branch deletion; Nebius $0, Claude probes 0. Live Codex used xhigh and an isolated authenticated `CODEX_HOME`.
 
 | Claim / boundary | What actually ran | Held or broke |
 |---|---|---|
@@ -49,7 +49,7 @@ Housekeeping candidates for Alex, listed only; historical branches are not assum
 - #32 / `shaping-full-history`: the current planner/board replaced that presentation; preserve archival intent until Alex decides.
 - `night/editor-folded`, `night/feel`, `night/best-of`, `night/revamp`, `fix/ci-flakes`, `readme-after-hackathon`: their PRs #56/#48/#51/#53/#54/#59 are merged. This lists stale heads, not permission to remove them.
 
-Defaults kept: Exact in the engine and additional snapshot fields remain unchanged, per brief. The missing branch was restored with Alex's explicit confirmation; retain it while targeting the intended PR at main.
+Defaults kept: Exact in the engine and additional snapshot fields remain unchanged, per brief. The missing branch was restored at Alex's explicit direction; this draft uses it as the base.
 
 Skipped: live Claude reruns, Cursor/Copilot's own signed-in agents, and housekeeping changes.
 Risk: hook trust/startup/failure policy and shared-checkout attribution still limit enforcement; the passing checks do not prove an arbitrary task is correct.

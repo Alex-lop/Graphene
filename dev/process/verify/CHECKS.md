@@ -1,6 +1,6 @@
 # Verification commands and evidence
 
-The verification started at PR #60's recorded head, `2a2c6fbb`. It had already merged into main at `1588482c`; comparing main...night/graph-edit would now hide its changes. The test inventory came from `git diff e15d66a1..2a2c6fbb --stat`. The series targets main without rebasing; CHECKS.md and REPORT.md complete the planned 30 commits. The restart's sandbox refused Codex's git add (.git/index.lock could not be created), so Claude Fable 5.2 committed these two documents as written, but for this paragraph. The restored remote night/graph-edit is left for Alex to delete.
+The verification started at PR #60's recorded head, `2a2c6fbb`, restored as `night/graph-edit` with Alex's explicit direction. It had already merged into main at `1588482c`; comparing main...night/graph-edit would now hide its changes. The test inventory came from `git diff e15d66a1..2a2c6fbb --stat`. The 30-commit series is based on the restored night/graph-edit tip. A prior delivery opened PR #61 against main and Alex merged it; this verification run leaves that PR untouched and prepares a separate draft against night/graph-edit.
 
 Run checks in the fresh clone, never Alex's Desktop checkout:
 
