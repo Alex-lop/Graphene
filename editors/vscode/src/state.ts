@@ -303,7 +303,7 @@ export function autoLine(s: State): string {
   if (a.stage) parts.push(a.stage);
   const spent = a.spent === null ? "" : usd(a.spent) || "$0.00";
   if (spent) parts.push(a.budget !== null ? `${spent} of ${usd(a.budget) || "$0.00"}` : spent);
-  if (a.why) parts.push(a.why);
+  if (a.why) parts.push(screenWords(a.why));
   return parts.join(" · ");
 }
 
@@ -313,8 +313,15 @@ export function autoNews(before: State | null, now: State): { kind: "waits" | "f
   const was = before?.auto, a = now.auto;
   if (!before || !a || !a.stage || (was?.stage === a.stage && was?.round === a.round)) return null;
   const money = a.spent === null ? "" : ` · ${usd(a.spent) || "$0.00"}${a.budget !== null ? ` of ${usd(a.budget) || "$0.00"}` : ""}`;
-  if (a.stage === "waits") return { kind: "waits", text: `Graphene auto waits for you: ${a.why || "see the plan"}` };
-  if (a.stage === "fixing") return { kind: "fixing", text: `Graphene auto: the goal's check failed${a.why ? ` (${a.why})` : ""}; round ${a.round} plans the fix` };
+  if (a.stage === "waits") return { kind: "waits", text: `Graphene auto waits for you: ${screenWords(a.why) || "see the plan"}` };
+  if (a.stage === "fixing") return { kind: "fixing", text: `Graphene auto: the goal's check failed${a.why ? ` (${screenWords(a.why)})` : ""}; round ${a.round} plans the fix` };
   if (a.stage === "done") return { kind: "done", text: `Graphene auto is done: the goal's check passed in round ${a.round}${money}` };
   return null;
+}
+
+/** Translate engine prose at the display boundary; keep copied commands and file paths verbatim. */
+export function screenWords(text: string): string {
+  const words: Record<string, string> = { fork: "attempt", forks: "attempts", leaf: "task", leaves: "tasks", node: "task", nodes: "tasks", scope: "files" };
+  return text.replace(/`[^`]*`|\bgraphene[^\n]*|(?<![\w./-])(forks?|leaves|leaf|nodes?|scope)(?![\w./-])/gi,
+                      (word) => words[word.toLowerCase()] ?? word);
 }

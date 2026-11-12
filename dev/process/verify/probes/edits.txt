@@ -1,0 +1,241 @@
+
+--- init
+hooks added to .claude/settings.local.json (8 Claude Code hooks)
+each Claude Code session here is recorded on this machine only (its prompts, tool calls and what they returned, the files it edits); `graphene init --remove` takes the hooks out
+next: `graphene auto '<what you want>'` plans it, runs it and checks it inside your envelope (`--plan` to look first), or `graphene ask '<what you want>'` proposes a plan you accept; `graphene watch` shows it
+
+--- add n1 (person)
+○ tidy clean  n1  ready
+
+--- add by agent (suggested)
+? count faster  n2  proposed
+
+--- plan --json
+{
+  "nodes": [
+    {
+      "id": "n1",
+      "title": "tidy clean",
+      "goal": "",
+      "scope": [
+        "wordkit/clean.py"
+      ],
+      "check": "python3 -m unittest -q",
+      "signoff": false,
+      "needs": [],
+      "owner": "agent",
+      "parent": null,
+      "aside": false,
+      "state": "open",
+      "rev": 1,
+      "proposed_by": "alex",
+      "executor": null,
+      "session_id": null,
+      "agent_id": null,
+      "checkout": null,
+      "base_sha": null,
+      "dirty_at_start": {},
+      "unseen_at_start": {},
+      "others_at_start": {},
+      "told_rev": null,
+      "created_at": "2026-11-12T00:41:45.175Z",
+      "updated_at": "2026-11-12T00:41:45.175Z",
+      "started_at": null,
+      "finished_at": null
+    },
+    {
+      "id": "n2",
+      "title": "count faster",
+      "goal": "",
+      "scope": [
+        "wordkit/count.py"
+      ],
+      "check": "python3 -m unittest -q",
+
+--- state --json tasks
+n1 ready []
+n2 proposed []
+
+--- [suggested] title
+n2 is now revision 2:
+  title: count faster → suggested title
+
+--- [suggested] files
+n2 is now revision 3:
+  scope: wordkit/count.py → wordkit/count.py, notes-n2.txt
+
+--- [suggested] check
+n2 is now revision 4:
+  check: python3 -m unittest -q → python3 -m unittest
+
+--- [suggested] attempts
+n2 is now revision 5:
+  forks: none → 3
+
+--- [suggested] approval on
+n2 is now revision 6:
+  signoff: no → yes
+
+--- [suggested] mine
+n2 is now revision 7:
+  owner: agent → alex
+
+--- [suggested] back to an agent
+n2 is now revision 8:
+  owner: alex → agent
+
+--- [suggested] state now
+n1 ready 0
+n2 proposed 0
+
+--- [ready] title
+n1 is now revision 2:
+  title: tidy clean → ready title
+
+--- [ready] files
+n1 is now revision 3:
+  scope: wordkit/clean.py → wordkit/clean.py, notes-n1.txt
+
+--- [ready] check
+n1 is now revision 4:
+  check: python3 -m unittest -q → python3 -m unittest
+
+--- [ready] attempts
+n1 is now revision 5:
+  forks: none → 3
+
+--- [ready] approval on
+n1 is now revision 6:
+  signoff: no → yes
+
+--- [ready] mine
+n1 is now revision 7:
+  owner: agent → alex
+
+--- [ready] back to an agent
+n1 is now revision 8:
+  owner: alex → agent
+
+--- [ready] state now
+n1 ready 0
+n2 proposed 0
+
+--- attempts with no check
+○ write docs  n3  ready
+n3: 2 forks need a check to keep one; a sign-off cannot choose
+
+--- clear the check, approval on
+n1: 3 forks need a check to keep one; a sign-off cannot choose
+
+--- agent starts n1
+n1 (revision 10): ready title
+  goal:   ready title
+  scope:  wordkit/clean.py, notes-n1.txt   (a write anywhere else is refused, and blocks `done`)
+  done:   `python3 -m unittest -q` passes
+  finish: graphene node done n1   (runs the check and asks git what changed)
+
+--- [working] title
+n1 is now revision 11:
+  title: ready title → working title
+n1 is running on revision 10: its next write is held to the new scope, and its `done` to the new check
+
+--- [working] files
+n1 is unchanged (revision 11)
+
+--- [working] check
+n1 is now revision 12:
+  check: python3 -m unittest -q → python3 -m unittest
+n1 is running on revision 10: its next write is held to the new scope, and its `done` to the new check
+
+--- [working] attempts
+n1 is now revision 13:
+  forks: 1 → 3
+n1 is running on revision 10: its next write is held to the new scope, and its `done` to the new check
+
+--- [working] approval on
+n1 is now revision 14:
+  signoff: no → yes
+n1 is running on revision 10: its next write is held to the new scope, and its `done` to the new check
+
+--- [working] mine
+n1 is now revision 15:
+  owner: agent → alex
+n1 is running on revision 10: its next write is held to the new scope, and its `done` to the new check
+
+--- [working] back to an agent
+n1 is now revision 16:
+  owner: alex → agent
+n1 is running on revision 10: its next write is held to the new scope, and its `done` to the new check
+
+--- [working] state now
+n1 running 0
+n2 proposed 0
+n3 ready 0
+
+--- narrow the files under a working task
+n1 is now revision 17:
+  scope: wordkit/clean.py, notes-n1.txt → wordkit/clean.py
+n1 is running on revision 10: its next write is held to the new scope, and its `done` to the new check
+
+--- agent done n1 (approval on: to review)
+n1 is finished and waits for a sign-off (check passed, nothing outside its scope)
+next: n3 (write docs) is ready: `graphene node start n3` takes it, with its contract as it stands now
+
+--- state
+n1 review
+n2 proposed
+n3 ready
+
+--- [review] title
+n1 is now revision 18:
+  title: working title → review title
+
+--- [review] files
+n1 is now revision 19:
+  scope: wordkit/clean.py → wordkit/clean.py, notes-n1.txt
+
+--- [review] check
+n1 is unchanged (revision 19)
+
+--- [review] attempts
+n1 is unchanged (revision 19)
+
+--- [review] approval on
+n1 is unchanged (revision 19)
+
+--- [review] mine
+n1 is now revision 20:
+  owner: agent → alex
+
+--- [review] back to an agent
+n1 is now revision 21:
+  owner: alex → agent
+
+--- [review] state now
+n1 review 0
+n2 proposed 0
+n3 ready 0
+
+--- approve
+n1 is done (signed off)
+
+--- state
+n1 done
+n2 proposed
+n3 ready
+
+--- [done] title
+n1 is done, and a finished node's contract is not edited
+  graphene node reopen n1 --note '…' opens it again
+
+--- [done] attempts
+n1 is done, and a finished node's contract is not edited
+  graphene node reopen n1 --note '…' opens it again
+
+--- node add output
+◌ an added one  n4  waiting
+
+--- timing of plan --json
+real	0m0.236s
+user	0m0.127s
+sys	0m0.033s

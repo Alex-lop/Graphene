@@ -1,0 +1,77 @@
+
+--- board: auto
+nothing changed
+proposed top: print the top words
+put up q-n: how many words by default?
+put up r-hyphen: the old hyphen test may break
+1 proposed: nobody can start it until the person accepts, in `graphene watch`. Tell them the tree is ready, and stop
+
+--- what the snapshot shows (auto)
+questions: [('question', 'how many words by default?', 'ten'), ('risk', 'the old hyphen test may break', 'keep the old test as it is')]
+tasks: [('top', 'proposed', ['wordkit/cli.py', 'tests/test_top.py'])]
+envelope: off off
+
+--- graphene config
+# Graphene's settings. A line is `key: value`; a line starting with '#' is not read.
+# protected: globs no scope may include      readonly: globs no leaf may write
+# never: one thing the planner must never propose, a line each
+# size: auto, finer or coarser (how big a plan the planner proposes)
+# board: auto (while a question, or an agent's note, is open) or on (every open item waits on you)
+# review: off (the check decides) or every (a proven task waits for your sign-off before it lands)
+# notify: on (graphene watch rings, and a terminal that shows them notifies, when something needs you) or off
+# forks: 1 to 8 agents at once on every leaf, each in its own copy; the leaf's check keeps one
+# auto: off (every proposal waits for you) or on (one that fits the envelope below is accepted at once)
+# budget: dollars the runs Graphene starts on its own may spend while auto is on (unset: no cap)
+# tasks: how many tasks the envelope may accept for you, all told, since auto went on (unset: 12)
+# rounds: fix rounds `graphene auto` takes after the goal's check fails (unset: 2)
+
+--- plan accept (all), as Home's Start does
+accepted top; took the defaults of q-n, r-hyphen, left open on the board (`graphene plan undo` takes them back)
+○ print the top words  top  ready
+the plan: wordkit prints the top words
+next: `graphene run` reaches top  (R in graphene watch)
+
+--- after accept (auto)
+questions: []
+tasks: [('top', 'ready', ['wordkit/cli.py', 'tests/test_top.py'])]
+envelope: off off
+the board: 2 settled; nothing waits on you (`graphene board --all` lists them)
+
+--- board: on
+added: board: on
+removed: board: auto
+proposed top: print the top words
+put up q-n: how many words by default?
+put up r-hyphen: the old hyphen test may break
+1 proposed: nobody can start it until the person accepts, in `graphene watch`. Tell them the tree is ready, and stop
+
+--- what the snapshot shows (on)
+questions: [('question', 'how many words by default?', 'ten'), ('risk', 'the old hyphen test may break', 'keep the old test as it is')]
+tasks: [('top', 'proposed', ['wordkit/cli.py', 'tests/test_top.py'])]
+envelope: off off
+
+--- graphene config
+# Graphene's settings. A line is `key: value`; a line starting with '#' is not read.
+# protected: globs no scope may include      readonly: globs no leaf may write
+# never: one thing the planner must never propose, a line each
+# size: auto, finer or coarser (how big a plan the planner proposes)
+# board: auto (while a question, or an agent's note, is open) or on (every open item waits on you)
+# review: off (the check decides) or every (a proven task waits for your sign-off before it lands)
+# notify: on (graphene watch rings, and a terminal that shows them notifies, when something needs you) or off
+# forks: 1 to 8 agents at once on every leaf, each in its own copy; the leaf's check keeps one
+# auto: off (every proposal waits for you) or on (one that fits the envelope below is accepted at once)
+# budget: dollars the runs Graphene starts on its own may spend while auto is on (unset: no cap)
+# tasks: how many tasks the envelope may accept for you, all told, since auto went on (unset: 12)
+# rounds: fix rounds `graphene auto` takes after the goal's check fails (unset: 2)
+
+--- plan accept (all), as Home's Start does
+accepted top; took the defaults of q-n, r-hyphen, left open on the board (`graphene plan undo` takes them back)
+○ print the top words  top  ready
+the plan: wordkit prints the top words
+next: `graphene run` reaches top  (R in graphene watch)
+
+--- after accept (on)
+questions: []
+tasks: [('top', 'ready', ['wordkit/cli.py', 'tests/test_top.py'])]
+envelope: off off
+the board: 2 settled; nothing waits on you (`graphene board --all` lists them)

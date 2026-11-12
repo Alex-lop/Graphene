@@ -1,0 +1,16 @@
+package-control exit 0
+home-control exit 0
+draw-control exit 0
+draw-package-mutant exit 0
+draw-mutant exit 1
+draw caught: draw: 15.6 s  Add task on an empty plan drew a draft box; its title was typed on it, and its blanks show
+draw: 18.2 s  files and a check filled in: it joined the plan as n1, with no planner
+draw: 21.1 s  the + drew n2 after n1; “wait for my approval” stood in for a check
+draw: failed: waited 30 s for 2 attempts on the stepper (kept at /tmp/graphene-draw-zOKsRm)
+home-package-mutant exit 0
+home-mutant exit 1
+home caught: home: 21.8 s  Open Changes shows the task's diff in VS Code's diff editor
+home: 23.5 s  Approve landed “CLI prints the top words”
+home: 24.3 s  Send back returned “reading time in minutes” with a note
+home: failed: Exact is on and a question is open, yet Start is offered (kept at /tmp/graphene-home-HimVtt)
+Both controls passed; both behavior mutations were caught. Scratch: /private/tmp/gv-ui-mutations-eu9ml868

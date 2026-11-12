@@ -193,5 +193,6 @@ def test_row_6_an_editors_own_agent_with_no_hook_is_not_stopped_and_only_a_held_
 
 def test_row_6_with_no_task_held_an_editors_agent_is_never_seen_at_all(repo):
     (repo / "outside.txt").write_text("x\n")
+    assert write(repo, "outside.txt") is None  # even a loaded hook has no contract to enforce
     with Store.open(repo) as store:
         assert plan.nodes(store) == []

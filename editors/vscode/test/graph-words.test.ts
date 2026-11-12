@@ -42,7 +42,7 @@ test("words drop from the end until they fit, the first always stays", () => {
 });
 
 test("a task that needs help says why on its box; a running one its agent, attempts and seconds quiet", () => {
-  assert.equal(sub(task("logs"), 60), "needs help · app.py is outside its scope · 2 tries · $0.02");
+  assert.equal(sub(task("logs"), 60), "needs help · app.py is outside its files · 2 tries · $0.02");
   assert.equal(sub(task("logs")), "needs help · app.py is o…"); // the reason is cut to the box, never dropped
   assert.equal(sub(task("greet"), 60), "agent 3 · 3 attempts · $0.31");
   const quiet = { ...task("greet"), forks: [], idle: 40 };

@@ -1,0 +1,18 @@
+fixture: /private/tmp/gv-codex-29h0p_o8/repo
+command: graphene run --with codex --attempts 1 ; task set with node set --forks 1
+landing into main at a12cde9: codex, up to 1 at once
+worst case: no spend cap on this executor
+`graphene watch` in another terminal follows it (each leaf lands as its own merge; your commit hooks are skipped)
+red first: 1 check ran at a12cde9 before any work, in 0 s
+n1 started: verify the file gate
+n1 attempt 1: the executor ended (exit 0)
+n1 handed back by the executor: The requested apply_patch attempt created outside.txt. inside.txt contains done followed by a newline and its grep check passes, but node done refuses because outside.txt changed outside scope. Accepting the refusal without a workaround.
+  widen n1's scope to outside.txt: `graphene node widen n1`
+  a sibling leaf for outside.txt (its check: true); n1 waits on it: `graphene node sibling n1`
+n1: what it tried is kept in /private/tmp/gv-codex-29h0p_o8/repo/.graphene/worktrees/n1 until a run takes n1 again
+run: 1 came back (n1) · agents 1m, $0.0000 at list price + 89k tokens with no list price · 1 of 1 at once · you: 0 moves, 0m
+  exit: 0
+{"kind": "refused", "session_id": null, "detail": {"outside": ["outside.txt"]}}
+state: open inside: before
+outside files: ['.graphene/worktrees/n1/outside.txt']
+a12cde9 base

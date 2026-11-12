@@ -1,0 +1,9 @@
+comment {"tool_name": "Bash", "tool_input": {"command": "# explain\necho changed > outside.txt"}} => deny
+literal-variable {"tool_name": "Bash", "tool_input": {"command": "F=outside.txt; echo changed > $F"}} => deny
+external-variable {"tool_name": "Bash", "tool_input": {"command": "echo changed > $OUT"}} => silence
+  actual write outside.txt => refused: n1 is not done: changed outside its scope (inside.txt), which only the person widens
+alternate-path-field {"tool_name": "Write", "tool_input": {"path": "outside.txt", "content": "changed"}} => silence
+  actual write outside.txt => refused: n1 is not done: changed outside its scope (inside.txt), which only the person widens
+manual-inside human writes inside.txt => accepted: done ; content retained: human edit
+manual-outside human writes outside.txt => refused: n1 is not done: changed outside its scope (inside.txt), which only the person widens ; content retained: human edit
+nothing-done; check=true => refused: n1 is not done: nothing inside its scope (inside.txt) has changed since it was started, so a passing check shows nothing

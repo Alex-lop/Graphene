@@ -1,0 +1,18 @@
+fixture: /private/tmp/gv-codex-68h03kxb/repo
+command: graphene run --with codex --attempts 1 ; task set with node set --forks 1
+landing into main at c170c4a: codex, up to 1 at once
+worst case: no spend cap on this executor
+`graphene watch` in another terminal follows it (each leaf lands as its own merge; your commit hooks are skipped)
+red first: 1 check ran at c170c4a before any work, in 0 s
+n1 started: verify the file gate
+n1 attempt 1: the executor ended (exit 0)
+n1 is done
+its check runs inside.txt, which this leaf changed: read that diff (`graphene node diff n1`)
+run: 1 done · agents 1m, $0.0000 at list price + 104k tokens with no list price · 1 of 1 at once · you: 0 moves, 0m
+  exit: 0
+{"kind": "denied", "session_id": "3cf85ffc-4ce4-412a-8bce-5284fd8f6c97", "detail": {"path": "outside.txt", "how": "Write"}}
+{"kind": "landed", "session_id": null, "detail": {"commit": "abe3f208db4e45ee3efa830fb604d05319e16e29", "branch": "graphene/n1", "into": "/private/tmp/gv-codex-68h03kxb/repo", "paths": ["inside.txt"]}}
+state: done inside: done
+outside files: []
+abe3f20 verify the file gate (n1)
+c1d98b7 verify the file gate

@@ -177,3 +177,12 @@ test("a task's attempts, approval and owner come from `plan --json`: unread unti
   assert.deepEqual(withContracts(filled, parseContracts("not json")).tasks[0]!.signoff, null, "a task the plan's JSON does not name is unread again");
   assert.equal(parseContracts("{}").size, 0);
 });
+
+test("engine prose uses the screen's task, files and attempt words while commands and paths stay exact", async () => {
+  const { screenWords } = await import("../src/state.ts");
+  assert.equal(screenWords("n1: 3 forks need a check; a leaf is outside its scope"), "n1: 3 attempts need a check; a task is outside its files");
+  const command = "`graphene node set n1 --forks 3 --scope node.py`";
+  assert.equal(screenWords(command), command);
+  assert.equal(screenWords("fork.py node/file.py --forks scope.json"), "fork.py node/file.py --forks scope.json");
+  assert.equal(screenWords("graphene node done n1"), "graphene node done n1");
+});

@@ -1,0 +1,65 @@
+graphene-red-gate.log
+E       assert (None is not None)
+E       assert (None is not None)
+E       assert (None is not None)
+E       assert (None is not None)
+FAILED tests/test_verify_gate.py::test_known_write_without_a_usable_path_is_refused[tool_input0]
+FAILED tests/test_verify_gate.py::test_known_write_without_a_usable_path_is_refused[tool_input1]
+FAILED tests/test_verify_gate.py::test_known_write_without_a_usable_path_is_refused[tool_input2]
+FAILED tests/test_verify_gate.py::test_a_write_with_no_session_cannot_escape_the_plan
+4 failed, 1 passed in 5.83s
+graphene-red-stale.log
+E       assert (None is not None)
+FAILED tests/test_verify_gate.py::test_an_older_engine_cannot_let_writes_through_a_newer_store
+1 failed, 5 passed in 6.12s
+graphene-red-codex.log
+E       AssertionError: assert 'silence' == 'deny'
+E
+E         - deny
+E         + silence
+E       AssertionError: assert 'silence' == 'deny'
+E
+E         - deny
+E         + silence
+E       AssertionError: assert 'silence' == 'deny'
+E
+E         - deny
+E         + silence
+E       AssertionError: assert 'silence' == 'deny'
+E
+E         - deny
+E         + silence
+E       AssertionError: assert {'hookSpecificOutput': {'hookEventName': 'PreToolUse', 'permissionDecision': 'deny', 'permissionDecisionReason': 'plan...person turns plan first off with P in graphene watch or `graphene plan first off`, in a terminal outside Claude Code'}} is None
+E        +  where {'hookSpecificOutput': {'hookEventName': 'PreToolUse', 'permissionDecision': 'deny', 'permissionDecisionReason': 'plan...person turns plan first off with P in graphene watch or `graphene plan first off`, in a terminal outside Claude Code'}} = <function hook at 0x10310cfe0>(PosixPath('/private/var/folders/kl/5njp0xds47586m9j3gqtw_8m0000gn/T/pytest-of-alexlopez/pytest-1018/test_codex_run_matches_its_hol0'), 'PreToolUse', session='live-codex-id', tool_name='Bash', tool_input={'command': 'echo ok > inside.txt'})
+E        +    where <function hook at 0x10310cfe0> = E.hook
+E       AssertionError: assert False
+E        +  where False = exists()
+E        +    where exists = PosixPath('/private/var/folders/kl/5njp0xds47586m9j3gqtw_8m0000gn/T/pytest-of-alexlopez/pytest-1018/test_init_installs_codex_hooks0/.codex/hooks.json').exists
+E       AssertionError: assert 'silence' == 'deny'
+E
+E         - deny
+E         + silence
+FAILED tests/test_codex_hooks.py::test_patch_checks_every_path_before_any_write[Add]
+FAILED tests/test_codex_hooks.py::test_patch_checks_every_path_before_any_write[Update]
+FAILED tests/test_codex_hooks.py::test_patch_checks_every_path_before_any_write[Delete]
+FAILED tests/test_codex_hooks.py::test_a_patch_inside_the_files_passes_and_a_move_checks_its_destination
+FAILED tests/test_codex_hooks.py::test_codex_run_matches_its_hold_without_changing_direct_session_ids
+FAILED tests/test_codex_hooks.py::test_init_installs_codex_hooks_and_remove_keeps_other_handlers
+FAILED tests/test_codex_hooks.py::test_a_malformed_patch_is_refused - Asserti...
+graphene-red-drafts.log
+✖ draft edits survive a new host, reach both pages, and preserve another page's concurrent draft (1.2265ms)
+✖ failing tests:
+✖ draft edits survive a new host, reach both pages, and preserve another page's concurrent draft (1.2265ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+graphene-red-refusal.log
+✖ a form refusal is inline once; an act with no form still gets a notification (7.439125ms)
+✖ failing tests:
+✖ a form refusal is inline once; an act with no form still gets a notification (7.439125ms)
+  AssertionError [ERR_ASSERTION]: the form displays the refusal, so no toast duplicates it
+graphene-red-words.log
+✖ engine prose uses the screen's task, files and attempt words while commands and paths stay exact (1.0695ms)
+✖ failing tests:
+✖ engine prose uses the screen's task, files and attempt words while commands and paths stay exact (1.0695ms)
+  TypeError: screenWords is not a function
+graphene-red-start.log
+Home disables Start: false !== true while the host is busy
