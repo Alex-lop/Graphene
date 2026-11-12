@@ -1,0 +1,32 @@
+crash /Users/alexlopez/.local/bin/codex exec --json --ephemeral --enable hooks --dangerously-bypass-hook-trust --sandbox workspace-write -c 'model_reasoning_effort="xhigh"' <fixture prompt>
+{"type":"thread.started","thread_id":"01a1cd41-961c-7b11-a1c7-cf94f4e278a5"}
+{"type":"item.completed","item":{"id":"item_0","type":"error","message":"`--dangerously-bypass-hook-trust` is enabled. Enabled hooks may run without review for this invocation."}}
+{"type":"item.completed","item":{"id":"item_1","type":"error","message":"`--dangerously-bypass-hook-trust` is enabled. Enabled hooks may run without review for this invocation."}}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_2","type":"agent_message","text":"I’ll use `apply_patch` to add `outside.txt` containing `hello` in this fixture and report any hook error exactly.\n"}}
+{"type":"item.started","item":{"id":"item_3","type":"file_change","changes":[{"path":"/private/tmp/gv-hook-crash-vtxsleiv/outside.txt","kind":"add"}],"status":"in_progress"}}
+{"type":"item.completed","item":{"id":"item_3","type":"file_change","changes":[{"path":"/private/tmp/gv-hook-crash-vtxsleiv/outside.txt","kind":"add"}],"status":"completed"}}
+{"type":"item.started","item":{"id":"item_4","type":"command_execution","command":"/bin/zsh -c 'cat outside.txt'","aggregated_output":"","exit_code":null,"status":"in_progress"}}
+{"type":"item.completed","item":{"id":"item_4","type":"command_execution","command":"/bin/zsh -c 'cat outside.txt'","aggregated_output":"hello\n","exit_code":0,"status":"completed"}}
+{"type":"item.completed","item":{"id":"item_5","type":"agent_message","text":"Added `outside.txt` containing `hello`. Verified its contents. No hook error was reported."}}
+{"type":"turn.completed","usage":{"input_tokens":48157,"cached_input_tokens":44160,"cache_write_input_tokens":0,"output_tokens":395,"reasoning_output_tokens":238}}
+ Reading additional input from stdin...
+
+outside.txt exists: True exit: 0
+hook actually ran: True
+timeout /Users/alexlopez/.local/bin/codex exec --json --ephemeral --enable hooks --dangerously-bypass-hook-trust --sandbox workspace-write -c 'model_reasoning_effort="xhigh"' <fixture prompt>
+{"type":"thread.started","thread_id":"01a1cd41-d17c-7501-8584-00482cef753f"}
+{"type":"item.completed","item":{"id":"item_0","type":"error","message":"`--dangerously-bypass-hook-trust` is enabled. Enabled hooks may run without review for this invocation."}}
+{"type":"item.completed","item":{"id":"item_1","type":"error","message":"`--dangerously-bypass-hook-trust` is enabled. Enabled hooks may run without review for this invocation."}}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_2","type":"agent_message","text":"I’ll use `apply_patch` to add `outside.txt` containing `hello` in this fixture and report any hook error.\n"}}
+{"type":"item.started","item":{"id":"item_3","type":"file_change","changes":[{"path":"/private/tmp/gv-hook-timeout-ka1cgpa4/outside.txt","kind":"add"}],"status":"in_progress"}}
+{"type":"item.completed","item":{"id":"item_3","type":"file_change","changes":[{"path":"/private/tmp/gv-hook-timeout-ka1cgpa4/outside.txt","kind":"add"}],"status":"completed"}}
+{"type":"item.started","item":{"id":"item_4","type":"command_execution","command":"/bin/zsh -lc 'cat outside.txt'","aggregated_output":"","exit_code":null,"status":"in_progress"}}
+{"type":"item.completed","item":{"id":"item_4","type":"command_execution","command":"/bin/zsh -lc 'cat outside.txt'","aggregated_output":"hello\n","exit_code":0,"status":"completed"}}
+{"type":"item.completed","item":{"id":"item_5","type":"agent_message","text":"Added `outside.txt` containing `hello`. No hook error was reported."}}
+{"type":"turn.completed","usage":{"input_tokens":49795,"cached_input_tokens":40960,"cache_write_input_tokens":0,"output_tokens":286,"reasoning_output_tokens":134}}
+ Reading additional input from stdin...
+
+outside.txt exists: True exit: 0
+hook actually ran: True
