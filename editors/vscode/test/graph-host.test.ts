@@ -167,3 +167,24 @@ test("a form refusal is inline once; an act with no form still gets a notificati
   await Session.prototype.act.call({ change: async () => result } as never, ["node", "set", "n1"]);
   assert.equal(ui.notifications.length, 1);
 });
+
+test("Home disables Start while planning finishes, so a visible plan cannot swallow the click", async () => {
+  const { HomeHost } = await import("../src/home.ts");
+  const { parseState } = await import("../src/state.ts");
+  const { readFileSync } = await import("node:fs");
+  const state = parseState(readFileSync(new URL("./fixtures/proposals.json", import.meta.url), "utf8"));
+  const fake = { ...(session as object), state, seen: new Set(), onDidSee: () => ({ dispose() {} }) } as never;
+  const host = new HomeHost(context, fake);
+  const page = { html: "", cspSource: "", options: {}, asWebviewUri: (u: unknown) => u,
+    sent: [] as { type: string; home: { sections: { buttons: { act: string; off?: boolean }[] }[] } }[],
+    postMessage(m: never) { this.sent.push(m); return Promise.resolve(true); }, onDidReceiveMessage() { return { dispose() {} }; } };
+  host.resolveWebviewView({ webview: page, onDidDispose: () => ({ dispose() {} }), visible: true } as never);
+  const inspect = host as unknown as { busy: string; push(): void };
+  const start = () => page.sent.at(-1)!.home.sections.flatMap((s) => s.buttons).find((b) => b.act === "startAll")!;
+  inspect.busy = "Planning…";
+  inspect.push();
+  assert.equal(start().off, true);
+  inspect.busy = "";
+  inspect.push();
+  assert.equal(start().off, false);
+});
