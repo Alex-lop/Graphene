@@ -1,8 +1,12 @@
 <p align="center"><img src="https://raw.githubusercontent.com/Alex-lop/Graphene/main/docs/assets/graphene-mark.svg" alt="The Graphene mark"></p>
 
-<h1 align="center">Graphene</h1>
+# Graphene
 
-<p align="center"><b>A team of coding agents on one repo. Each one owns its files. Your tests decide what lands.</b></p>
+**One plan for your coding agents. Clear boundaries. Tested commits.**
+
+Graphene turns a goal into tasks with explicit files, dependencies, and checks. Agents work in separate Git
+worktrees; Graphene checks their changes and merges what passes. You can see the plan and steer it from your
+terminal or VS Code. Works with Claude Code, Codex, and the built-in NVIDIA Nemotron executor.
 
 <p align="center">
   <a href="https://pypi.org/project/graphene-map/"><img src="https://img.shields.io/pypi/v/graphene-map?color=5e5d59" alt="PyPI"></a>
@@ -11,198 +15,124 @@
   <a href="https://github.com/Alex-lop/Graphene/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-5e5d59" alt="License"></a>
 </p>
 
-<p align="center">
-  <a href="#try-it">Try it</a> ·
-  <a href="https://github.com/Alex-lop/Graphene/blob/main/docs/HOW_IT_WORKS.md">How it works</a> ·
-  <a href="#in-vs-code">VS Code</a> ·
-  <a href="#the-hackathon">The hackathon</a> ·
-  <a href="https://github.com/Alex-lop/Graphene/blob/main/CHANGELOG.md">Changelog</a>
-</p>
+![Graphene in VS Code: Home tracks working agents while the graph shows parallel tasks, attempts, and the budget](https://raw.githubusercontent.com/Alex-lop/Graphene/main/editors/vscode/media/graph.png)
 
-Give Graphene a goal. NVIDIA Nemotron plans it as small tasks that can run at once; several agents race each task,
-each in its own copy and held to that task's files; the task's check keeps one; then Graphene runs your goal's own
-check and, when it is red, plans the fix. You set the limits once. In your terminal or in VS Code, with Nemotron,
-Claude Code, Codex or any model. On your computer, no account.
+*VS Code running Graphene against a scripted model stand-in. No live model calls.*
 
-<p align="center"><img src="https://raw.githubusercontent.com/Alex-lop/Graphene/main/docs/assets/auto.gif" alt="graphene demo --auto: one goal; Nemotron plans three tasks that run at once; three agents race each task, one is stopped at a file outside its task, the rule keeps one fork a task; all three land; the whole test suite is red because two of them broke an old test together; Nemotron plans the fix, it races and lands, and the suite is green"></p>
+## What it solves
 
-<p align="center"><img src="https://raw.githubusercontent.com/Alex-lop/Graphene/main/editors/vscode/media/graph.png" alt="Graphene for VS Code during a race against the scripted stand-in, in real VS Code: Home, in the side bar, shows three agents working, each with its model, what it is doing now, its cost and its attempts, and a Stop all button; the editor tab draws the same race, two tasks each fanned out into three Nano attempts, all running, flowing into the goal; the auto line says round 1 of 3, running, $0.007 of $2.00"></p>
-<p align="center"><sub>The same race in VS Code: Home in the side bar, a click for everything (<a href="#in-vs-code">In VS Code</a>)</sub></p>
+Running more agents creates more coordination work: overlapping edits, hidden dependencies, and changes that
+look finished until you run the tests. Graphene makes that work visible and gives it rules.
 
-## Try it
+- **Keep parallel work separate.** Each task owns its files and worktree. Tasks with dependencies wait.
+- **Define “done” before work starts.** Each task has a check that Graphene runs itself in a clean copy.
+  Optional forks race the same task; a fixed rule chooses among passing results.
+- **Stay in control.** Review the plan, adjust scope, link tasks, send an agent a note, or stop a run.
+  Each landed task is a merge commit you can revert.
 
-A scripted replay of auto mode on Nemotron: no AI, no key, nothing written to your project.
+## Get started
 
-```
+Try the scripted replay first. It needs no API key and writes nothing to your project:
+
+```sh
 uvx graphene-map demo --auto
 ```
 
-One goal, three tasks, nine agents at once, one of them stopped writing a file that is not its task's, and your
-whole test suite catching what two tasks broke together. Needs [uv](https://docs.astral.sh/uv/getting-started/installation/),
-a free installer for Python tools, on macOS or Linux (on Windows, inside WSL). Then watch the locks hold:
-`uvx graphene-map demo --cheat` plays an agent trying seven ways round them.
+Requires [uv](https://docs.astral.sh/uv/getting-started/installation/) and Git on macOS or Linux
+(Windows via WSL). Graphene requires Python 3.12+.
 
-```
-6 refused, 1 flagged, 0 got through
+To use it on your own repository, have Claude Code or Codex installed and signed in, then run these commands
+in your terminal:
+
+```sh
+uv tool install graphene-map
+cd your-repo
+graphene init
+graphene ask "add a --top N option to the CLI, with tests"
+graphene watch
 ```
 
-## One goal in, tested commits out
+`init` asks which planner and executor to use. In the cockpit, press `A` to accept the plan, then `R` to run
+ready tasks; it asks first when more than one task could start. Press `g` for the graph, `i` for task details,
+and `?` for all keys. Stop a run with `graphene run --stop` from another terminal.
 
-```
-uv tool install 'graphene-map[nemotron]'
-graphene key set                                   # your Token Factory key, or NEBIUS_API_KEY
+With Claude Code, `init` also installs project hooks: your next request proposes a plan before writing.
+`graphene plan first off` lets quick changes through. Remove the hooks with `graphene init --remove`;
+uninstall with `uv tool uninstall graphene-map`.
+
+<details>
+<summary><strong>Let Nemotron plan and run the whole goal</strong></summary>
+
+Install the optional extra and set your Nebius Token Factory key:
+
+```sh
+uv tool install --force 'graphene-map[nemotron]'
+graphene key set
 graphene init --planner nemotron --executor nemotron
-graphene auto "add a --top N option to the CLI, with tests" --budget 2 --forks 3 --check "python3 -m pytest -q"
+graphene auto "add a --top N option to the CLI, with tests" \
+  --budget 2 --forks 3 --check "python3 -m pytest -q"
 ```
 
-1. **You set the envelope, once.** `--budget` in dollars, `--tasks`, fix `--rounds`, `--forks`, and in `graphene
-   config` the files no task may touch and the test commands it may run as checks. Inside it Graphene accepts the
-   plan for you; anything outside it waits for you, with the one reason why. Only you can set it: Graphene refuses
-   it from an agent, and it never takes a task that could reach the agents' own settings and hooks.
-2. **Nemotron 3 Ultra plans** small tasks, each naming the files it may change and a check, a command that passes
-   only when the task is done. It is told to plan wide: tasks that run at once share no file, each its own test file.
-3. **Agents race each task, all at once.** Three Nemotron 3 Nano agents a task, each in its own git worktree,
-   refused before any write outside its task's files. Two tasks never write the same file, and each gets its own
-   port, so their dev servers don't collide either.
-4. **The check decides, not a model.** Graphene runs each fork's check itself, in a clean copy, and a rule written
-   before any fork ran keeps one: the fork that passes the most of the other forks' tests, then the one that left
-   the check's own files alone, the smaller, the cheaper, the first. It lands as one merge commit you can revert.
-5. **Then your goal.** Your `--check` (or every task's check, together) runs on the merged result. Red: Ultra plans
-   the fix and the race goes again, at most `--rounds` times, inside the budget. Every round, acceptance and fork
-   is in `graphene plan log`, so the plan's history is there the morning after.
+Ultra plans, Nano agents race each task, and Graphene checks the merged result. If the goal's check fails,
+it plans a fix within your task, round, and budget settings. Add `--plan` to inspect the plan without running it.
+Budget checks happen between rounds, so the dollar limit is not a hard spending cap.
 
-Add `--plan` the first time: the plan your envelope accepts is shown, and nothing runs until `graphene auto`
-alone runs it.
+[Setup, model roles, and recorded results](https://github.com/Alex-lop/Graphene/blob/main/docs/HACKATHON.md).
 
-![The loop: you shape the plan, your agents do the work, Graphene checks it](https://raw.githubusercontent.com/Alex-lop/Graphene/main/docs/assets/loop-ink.svg)
+</details>
 
-## Many agents, one repo
+## Use the graph in VS Code or Cursor
 
-Agents in parallel go wrong first in one way: two of them edit the same file. Graphene's rule is one writer a
-path: two running tasks never share a file, and a task that needs another's work waits on it. Each gets its own
-worktree and its own `PORT`. The rule holds for agents you start yourself: open three Claude Code sessions with
-three asks, and with `graphene config set auto on` every plan that fits your envelope is accepted at once, so
-nobody waits on you to click through three plans; a plan that would write another's files waits, and says whose.
+![Graphene in Cursor: completed tasks, the kept attempts, and auto mode's round and budget](https://raw.githubusercontent.com/Alex-lop/Graphene/main/dev/process/editor/after/cursor-panel-1920x1050-dark.png)
 
-## Watch it, steer it
+*Cursor showing a completed auto run against the scripted stand-in.*
 
-![graphene watch during the race: three tasks running at once, each as three forks on Nano; fork 1c stopped writing wordkit/count.py, which is not its task's; 1b passed with 7 lines; the auto line: round 1 of 3, $0.01 of $2.00](https://raw.githubusercontent.com/Alex-lop/Graphene/main/docs/assets/race.png)
+The screenshots and Home workflow show current `main`, ahead of the
+[0.8.0 packaged release](https://github.com/Alex-lop/Graphene/releases/latest). To use the current CLI and
+editor, build from source with Node 22+:
 
-`graphene watch` is the cockpit: a row a task, its agent's number and model, its forks as they race, what each one
-costs, and what needs you on top. Enter does the row's move (accept, try again, sign off), `t` tells an agent one
-line, `w` widens a task to the file it was stopped at, `f` forks a task, `?` shows every key.
+```sh
+git clone https://github.com/Alex-lop/Graphene.git
+cd Graphene
+uv tool install --force .
+npm --prefix editors/vscode ci
+npm --prefix editors/vscode run package
+code --install-extension editors/vscode/graphene-0.9.0.vsix
+# Cursor:
+cursor --install-extension editors/vscode/graphene-0.9.0.vsix
+```
 
-`g` draws the plan as a graph flowing into your goal, with how many tasks can run at once. On it, `+` adds a step
-after the task you're on and `L` links two tasks (on a linked pair, unlinks them); `m` maps the folders each task
-may write; `:auto <goal>` starts auto mode from the cockpit.
+Click Graphene in the activity bar to open **Home**. Pick your planner and executor, type a goal, click
+**Plan it**, review the suggested tasks, then **Start**. Keep approval enabled to review each finished task
+with **Open changes**, then **Approve** or **Send back** with a note.
 
-![the graph: four tasks flowing into the goal, each with its agent and model; auto, round 2 of 3, done, $0.02 of $2.00](https://raw.githubusercontent.com/Alex-lop/Graphene/main/docs/assets/auto-graph.png)
+**Graphene: Show Graph** opens the plan in a tab. Click a task to edit its files, check, attempts, or approval;
+drag its dot onto another task to add a dependency. **Graphene: Watch the Demo** needs no key. The Explorer
+marks which task owns each file; `graphene.advanced` enables the extra task and round views.
 
-### In VS Code
+Current `main` also installs Codex hooks: run `graphene init` in your project, start a new Codex session,
+trust the project, and review its hooks with `/hooks`.
 
-The extension in [`editors/vscode`](https://github.com/Alex-lop/Graphene/blob/main/editors/vscode/README.md) is
-the same plan in your editor, with a click for everything. Home comes first in the side bar: set the folder up in
-one pick, type what you want and click Plan it, read the suggested tasks (what each is for, the files it may
-change, what proves it), and Start. Each finished task then shows what it changed and the check that passed:
-Open changes, Approve, or Send back with a note, and Approve asks first if you never opened the changes. The graph
-shows the race: a task fans out into its attempts as they work, and the kept one says why it won. Watch the Demo
-plays the race with no key. Every click is a `graphene` command run as you, and it reads `graphene state --json`,
-the cockpit's own snapshot, plus `plan --json` for the task form.
+The editor and `graphene watch` read the same local plan, including when Codex executes the tasks.
+See the [extension guide](https://github.com/Alex-lop/Graphene/blob/main/editors/vscode/README.md) for Cursor
+installation, commands, and settings.
 
-A task's pane is a form: edit its title, files and check in place, set 1 to 8 attempts, ask for your approval,
-or take it for yourself. Add task draws a draft box; fill its files and a check or approval to add it to the plan.
-Drafts are shared by the graph views and survive closing a tab or reloading the window. A refusal appears once,
-beside the form. Home's Exact switch holds its Start button until every open question is answered and makes
-finished tasks wait for approval. Terminal commands and the cockpit still take unanswered defaults.
+## Know the limits
 
-Install the `.vsix` attached to [the latest release](https://github.com/Alex-lop/Graphene/releases/latest) with
-`code --install-extension`, or from the Marketplace and Open VSX once they list it. It is built for VS Code 1.95
-or later. In Cursor 3.25.6 (VS Code 1.128) it installs and activates, and the harness's end-to-end check passes
-there.
+Graphene is early. Trusted, loaded hooks and the built-in executor block supported writes outside scope;
+Codex's hooks require current `main`. Unloaded or failed hooks can let writes through; Git checks tracked
+changes again before merging. This is file coordination, not a security sandbox. Checks are only as strong
+as your tests;
+set `review: every` in `graphene config edit` to require your sign-off before changes land.
 
-## Any agent, any model
+Plans and session records stay in `.graphene/`. Your chosen agent or model provider still receives the
+context it needs. The bundled auto demo uses a scripted stand-in; live auto mode has not yet been validated.
+[Enforcement limits](https://github.com/Alex-lop/Graphene/blob/main/docs/HOW_IT_WORKS.md#where-each-mechanism-ends)
+· [Privacy](https://github.com/Alex-lop/Graphene/blob/main/docs/HOW_IT_WORKS.md#privacy).
 
-| Who does the task | How a write outside its files is held |
-|---|---|
-| Codex (`--with codex`) | patch and readable shell writes are refused before the write when the project hooks are loaded and trusted; git checks again at finish |
-| Nemotron on Token Factory (`--with nemotron`), or the same loop on NVIDIA NIM, Ollama or any OpenAI-compatible host (`--with 'nemotron --endpoint nim'`) | refused before the write, by Graphene's own tool loop |
-| Claude Code (`--with claude`, `claude:MODEL`) | refused before the write, by its hooks |
-| Any CLI agent (`--with 'aider --yes --message-file {prompt_file}'`) | git finds it when the task finishes |
-
-`graphene init` installs `.codex/hooks.json`. In a new Codex session, trust the project and review the hooks
-with `/hooks` before running tasks. A session opened before init must be restarted. Live verification used
-Codex 0.167.2, one task and then three real attempts; the outside write was denied and only the allowed file
-landed. Unloaded, untrusted, failed or timed-out Codex hooks can let a write through: git then refuses the task
-at finish. The file can remain in its worktree (or your checkout with `--here`).
-
-`--with` again mixes them in one race: `--with nemotron --with claude:haiku --with codex` puts three different
-agents on every task, and the same rule keeps one.
-
-## In your hands
-
-- **Stop:** Ctrl-C where `graphene auto` or `graphene run` runs, `graphene run --stop` from another terminal, or
-  `:stop` in the cockpit. What was running goes back to the plan; `graphene auto` goes on from there.
-- **Review:** `review: every` in `graphene config edit` holds every task that passes for your sign-off, auto mode
-  too: `i` then `c` shows its diff, Enter lands it.
-- **Cost:** the envelope's budget, or `graphene run --max-usd N`. With Claude Code, $2 an attempt, three at most,
-  and a run says its worst case first; Nemotron bills each call after it ends, so auto mode reads the budget
-  between rounds. Codex has no cap. A real two-task Claude Code run cost $0.30.
-- **Undo:** `git revert -m 1 <id>` with the `landed:` id from `graphene node show <task>`; `graphene plan undo`
-  takes back what your envelope accepted.
-- **Leave:** `graphene init --remove`, then `uv tool uninstall graphene-map`. The plan and what the hooks recorded
-  stay in `.graphene/` until you delete it.
-
-Without auto mode, nothing runs until you accept: tell Claude Code what you want, and the plan shows in the cockpit
-before it writes (with Codex: `graphene ask "what you want"`). Enter accepts a task, `A` all of them, `R` runs
-what is ready, and it asks first when more than one task could start. `graphene plan first off` lets a quick
-change through at once.
-
-## What it enforces, and where it ends
-
-- Refused before the write: trusted, loaded Claude Code and Codex hooks, and Graphene's own loop. The shell
-  parser reads comments and same-command literal variables; an unknown variable, a glob, a script or an MCP
-  write can evade it. Git refuses tracked changes outside the task's files at finish. A hook with a missing
-  write path, missing session or unreadable plan now refuses the call; vendor crashes and timeouts remain a limit.
-- Git sees content, not who typed it. In a shared checkout, your edit inside a held task's files counts as that
-  task's work; an edit outside them can send it back. Your edit stays on disk. Prefer the normal worktree run
-  when editing alongside agents.
-- Scopes cover files. A task can still use the network, or a database two tasks share; its own port is as far as
-  Graphene goes there.
-- A task allowed to edit its own test can weaken it: `done` flags it, and `review: every` lets you read the diff
-  first. The replay's fix round is one, and Graphene says so. In auto mode, a task whose check already passes
-  before any work waits for you: it would land with nothing done.
-- The envelope decides what is accepted, not whether the work is good: that is the checks' job, and they are only
-  as good as your tests. Auto mode has run end to end against a scripted stand-in of Token Factory; a live auto run
-  is next.
-- Honestly, the three comparisons so far (September) put one agent with a plan against the same agent with a
-  paragraph, and the paragraph did as well for less. None of them raced forks or ran tasks at once. What I'm
-  betting on is when you find out what it understood: before the work, not after.
-  [Compared with Claude Code, Cursor, Kiro and Cline, gaps included](https://github.com/Alex-lop/Graphene/blob/main/docs/COMPARE.md) · [every limit](https://github.com/Alex-lop/Graphene/blob/main/docs/HOW_IT_WORKS.md#where-each-mechanism-ends).
-
-## Does anything leave my computer?
-
-With Claude Code or Codex, Graphene itself sends nothing anywhere. `graphene init` adds small add-ons (hooks) to
-this project only, so Claude Code asks Graphene before it writes; they record its sessions on your machine:
-prompts, tool calls, results, edited files. On the Nemotron path, the planner and the executors read your files
-through Token Factory (or the host `--endpoint` names), as any hosted model does; with Ollama or another host on
-your machine, nothing leaves it.
-
-## The hackathon
-
-Graphene was my entry to the Nebius × NVIDIA Global AI Hackathon, in the Coding and Agentic Engineering track: the
-Nemotron path (Ultra plans, Nano agents race on Token Factory) and auto mode were built for it.
-Submissions closed on 30 October 2026, and judging runs from 1 to 15 December. The hackathon is over; Graphene
-isn't. [What I submitted, and what ran live](https://github.com/Alex-lop/Graphene/blob/main/docs/HACKATHON.md).
-
-The video I sent in with it, two and a half minutes on why and the race itself:
-
-<a href="https://www.youtube.com/watch?v=QEylBDKLxks"><img src="https://img.youtube.com/vi/QEylBDKLxks/maxresdefault.jpg" width="480" alt="Graphene, the hackathon video on YouTube (2:29)"></a>
-<br><sub>▶ <a href="https://www.youtube.com/watch?v=QEylBDKLxks">Watch on YouTube</a> (2:29)</sub>
-
-## Why I built this
-
-I believe the limit on building software won't be tokens or cost. It'll be the human direction it takes. If you don't say which direction the application should go, the agent has to infer most of it, and you find out what it inferred in the diff. Graphene tries to bridge that. ([The longer version, in under three minutes.](https://www.youtube.com/watch?v=S3mucmwD-kQ))
-
-Honestly, it's early, and I'm building it in the open. If you try it on a real repo, what I most want to hear is where the plan misread what you meant: [tell me in two minutes](https://github.com/Alex-lop/Graphene/issues/new?template=first-hour.yml), or [open an issue](https://github.com/Alex-lop/Graphene/issues).
-
-[How it works](https://github.com/Alex-lop/Graphene/blob/main/docs/HOW_IT_WORKS.md) · [A real run](https://github.com/Alex-lop/Graphene/blob/main/docs/A_RUN.md) · [Changelog](https://github.com/Alex-lop/Graphene/blob/main/CHANGELOG.md) · [Contributing](https://github.com/Alex-lop/Graphene/blob/main/CONTRIBUTING.md) · [Alex Lopez](https://alex-lop.github.io/Alex_Lopez_Website/) · Apache-2.0
+[How it works](https://github.com/Alex-lop/Graphene/blob/main/docs/HOW_IT_WORKS.md)
+· [A real run](https://github.com/Alex-lop/Graphene/blob/main/docs/A_RUN.md)
+· [Comparisons](https://github.com/Alex-lop/Graphene/blob/main/docs/COMPARE.md)
+· [Changelog](https://github.com/Alex-lop/Graphene/blob/main/CHANGELOG.md)
+· [Contributing](https://github.com/Alex-lop/Graphene/blob/main/CONTRIBUTING.md)
+· [Feedback](https://github.com/Alex-lop/Graphene/issues/new?template=first-hour.yml)
