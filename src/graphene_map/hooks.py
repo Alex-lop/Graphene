@@ -390,6 +390,7 @@ def hook_main(stdin=None, cwd: Path | None = None, stdout=None) -> int:
     raised on while judging it is refused, never let through (the gate fails closed, as Claude Code
     makes it when this hook cannot run); the error goes to the log. Any other event goes on."""
     root = Path(cwd or os.getcwd())
+    event, answer, failed = None, None, False
     try:
         root = repo_root(root)  # before anything can fail: a log written from a worktree goes to the repo
         raw = (stdin or sys.stdin).read()
@@ -402,7 +403,6 @@ def hook_main(stdin=None, cwd: Path | None = None, stdout=None) -> int:
                 ingest_hook_event(store, event, root)
             except Exception:
                 _log_error(root)
-            answer = None
             ours = into_ours(event, root)
             if ours is not None:
                 sid = event.get("session_id")
@@ -431,13 +431,20 @@ def hook_main(stdin=None, cwd: Path | None = None, stdout=None) -> int:
                         answer = gate._deny("Graphene could not judge this call (its error is in "
                                             ".graphene/ingest.log), so it is refused; say it another way, or "
                                             "ask the person")  # fmt: skip
-        if answer is not None:
-            (stdout or sys.stdout).write(json.dumps(answer))
     except StaleStore as stale:
         # An unreadable file is the CLI's to move aside; a newer store is nobody's.
         _log(root, f"store is {stale.tag}: event skipped, run graphene")
+        failed = True
     except Exception:
         _log_error(root)
+        failed = True
+    if failed and isinstance(event, dict) and event.get("hook_event_name") == "PreToolUse":
+        from .gate import _deny
+
+        answer = _deny("Graphene could not read the plan (see .graphene/ingest.log), so this call is "
+                       "refused; run graphene to repair or upgrade it")
+    if answer is not None:
+        (stdout or sys.stdout).write(json.dumps(answer))
     return 0
 
 

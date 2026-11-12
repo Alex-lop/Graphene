@@ -790,6 +790,16 @@ def decide(store, event: dict, root: Path) -> dict | None:
     name = event.get("hook_event_name")
     sid = event.get("session_id")
     events = ("PreToolUse", "PostToolUse", "Stop", "SessionStart", "UserPromptSubmit")
+    if name == "PreToolUse":
+        if not isinstance(sid, str) or not sid:
+            return _deny("Graphene could not identify this session, so this call is refused")
+        if event.get("tool_name") in WRITE_TOOLS:
+            fields = event.get("tool_input")
+            fields = fields if isinstance(fields, dict) else {}
+            path = fields.get("file_path") or fields.get("notebook_path")
+            if not isinstance(path, str) or not path:
+                return _deny("Graphene could not read this write's path (file_path or notebook_path), "
+                             "so it is refused")
     if not isinstance(sid, str) or name not in events:
         return None
     if name == "UserPromptSubmit":  # before "in force": a plan of nothing but proposals binds nobody yet
