@@ -45,3 +45,12 @@ Tests: `tests/test_every_agent.py` (hermetic, in CI). Probes: `dev/process/graph
 
 No live Codex, Cursor or Copilot call. Workflow agents with `isolation: 'worktree'` were tested only by payload.
 The gate's known parser holes (HOW_IT_WORKS.md "Where each mechanism ends") are outside this question.
+
+## Codex verification follow-up
+
+The original table above is historical. The live Codex 0.167.2 runs and failing-first fixes are in
+[`../verify/REPORT.md`](../verify/REPORT.md), with raw fixture output under `../verify/probes/`.
+`init` now installs `.codex/hooks.json`; trusted, loaded hooks gate `apply_patch` paths and readable shell
+writes before they happen, including all three real attempts on one task. Project/hook trust and a new
+session are required. A session opened before init, and a crashed or timed-out hook, let a write through
+in the live probes. Git at finish remains the second check. Cursor's and Copilot's own agents remain untested.
