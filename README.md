@@ -1,6 +1,9 @@
 <p align="center"><img src="https://raw.githubusercontent.com/Alex-lop/Graphene/main/docs/assets/graphene-mark.svg" alt="The Graphene mark"></p>
 
-# Graphene
+<h1 align="center">Graphene</h1>
+
+As code becomes more abstract, it's becoming increasingly important to understand what your agents are
+actually doing.
 
 **One plan for your coding agents. Clear boundaries. Tested commits.**
 
@@ -30,7 +33,11 @@ look finished until you run the tests. Graphene makes that work visible and give
 - **Stay in control.** Review the plan, adjust scope, link tasks, send an agent a note, or stop a run.
   Each landed task is a merge commit you can revert.
 
-## Get started
+## Get started with the CLI
+
+![Graphene's CLI cockpit: three tasks running in parallel, their racing attempts, a stopped write, and cost](https://raw.githubusercontent.com/Alex-lop/Graphene/main/docs/assets/race.png)
+
+*The CLI cockpit tracks tasks, attempts, stopped writes, and cost. Scripted demo.*
 
 Try the scripted replay first. It needs no API key and writes nothing to your project:
 
@@ -55,6 +62,10 @@ graphene watch
 `init` asks which planner and executor to use. In the cockpit, press `A` to accept the plan, then `R` to run
 ready tasks; it asks first when more than one task could start. Press `g` for the graph, `i` for task details,
 and `?` for all keys. Stop a run with `graphene run --stop` from another terminal.
+
+![Graphene's CLI graph: completed tasks flowing into their goal, with the auto round and budget above](https://raw.githubusercontent.com/Alex-lop/Graphene/main/docs/assets/auto-graph.png)
+
+*Press `g` to switch to the task graph. The same scripted demo, after completion.*
 
 With Claude Code, `init` also installs project hooks: your next request proposes a plan before writing.
 `graphene plan first off` lets quick changes through. Remove the hooks with `graphene init --remove`;
