@@ -45,16 +45,6 @@ def no_token_factory(monkeypatch, tmp_path):
 
 
 @pytest.fixture(autouse=True)
-def no_agent_marks(monkeypatch):
-    """A leaf's check runs with its executor's marks set: the suite takes nobody for an agent, or a
-    stand-in, because of the shell it was started from."""
-    from graphene_map import plan
-
-    for name in (*plan.AGENT_MARKS, "GRAPHENE_AS"):
-        monkeypatch.delenv(name, raising=False)
-
-
-@pytest.fixture(autouse=True)
 def no_terminal_size(monkeypatch):
     """xdist's workers set COLUMNS=80 and LINES=24, which the CLI reads as a terminal: the suite has none."""
     monkeypatch.delenv("COLUMNS", raising=False)

@@ -4,7 +4,7 @@
 // pane whose buttons ask the extension to run graphene. No network, no library: SVG and DOM from the state.
 // Boxes are keyed by task id and updated in place, so a snapshot that changed nothing moves nothing.
 import { layout, modeFor, step, type Box, type Edge, type Layout } from "../layout.ts";
-import { autoLine, SAY, usd, type State } from "../state.ts";
+import { autoLine, SAY, screenWords, usd, type State } from "../state.ts";
 import { ICONS } from "./icons.ts";
 import { blanks, draftLine, globs, isDraft, lacks, type Draft } from "./draft.ts";
 import { actsFor, attemptsOf, cornerWord, cut, done, editable, fan, FIRST_HINT, fitWidth, forkActs, forkRow, forkWords, HEADER_ACTS, headerFor, KEYS, linkHint, paneKey,
@@ -14,6 +14,7 @@ declare function acquireVsCodeApi(): { postMessage(m: unknown): void; getState()
 
 type Status = { kind: "reading" | "missing" | "uninitialised" | "error" | "nofolder"; text: string };
 type Incoming = { type: "state"; state: StateX } | { type: "status"; status: Status } | { type: "select"; id: string }
+  | { type: "drafts"; drafts: Draft[] }
   | { type: "said"; id?: string; key?: string; ok: boolean; line: string; made?: string }; // graphene's answer to a change made here
 type Zoom = { k: number; tx: number; ty: number };
 type View = "auto" | "graph" | "lanes";
@@ -38,10 +39,9 @@ let zoom: Zoom = saved.zoom ?? { k: 1, tx: 0, ty: 0 };
 let moved = Boolean(saved.zoom); // the person zoomed or panned (now or last time): a resize no longer re-fits
 let fitted = false;
 let saving: ReturnType<typeof setTimeout> | undefined;
-// the tasks being drawn: the page's own until graphene takes them (kept with the page's state, so a hidden
-// tab keeps them). ponytail: each page keeps its own, so a draft in the side bar is not in the tab; the plan
-// would have to hold drafts for that
-let drafts: Draft[] = (saved.drafts ?? []).filter((d) => d.title.trim());
+// Drafts live in the host's workspace storage, shared by every graph page.
+let drafts: Draft[] = [];
+const sentDrafts = new Map<string, string>();
 let naming: string | null = null; // the draft whose title is being typed on its box
 const offered = new Set<string>(); // drafts graphene is being asked to take: not offered twice
 const refused = new Map<string, string>(); // a task's id -> graphene's refusal of the last change to it
@@ -50,6 +50,16 @@ let pressing = false; // a press inside the pane: it is not rebuilt between the 
 const LONG = 2000; // the longest title, check or line of files the host passes on
 
 function remember(patch: Partial<Saved>) {
+  if (patch.drafts) {
+    for (const key of sentDrafts.keys()) if (!patch.drafts.some((d) => d.key === key)) {
+      api.postMessage({ type: "draft", key, draft: null }); sentDrafts.delete(key);
+    }
+    for (const draft of patch.drafts) {
+      const json = JSON.stringify(draft);
+      if (sentDrafts.get(draft.key) !== json) api.postMessage({ type: "draft", key: draft.key, draft });
+      sentDrafts.set(draft.key, json);
+    }
+  }
   saved = { ...saved, ...patch };
   clearTimeout(saving);
   saving = setTimeout(() => { try { api.setState(saved); } catch { /* the preview has no state */ } }, 150);
@@ -132,7 +142,7 @@ function draw(at: { after: string | null; parent: string | null }) {
   if (!state || replaying()) return;
   first();
   const n = (saved.drew ?? 0) + 1;
-  const d: Draft = { key: ` d${n}`, title: "", files: "", check: "", approve: false, ...at };
+  const d: Draft = { key: ` d${crypto.randomUUID()}`, title: "", files: "", check: "", approve: false, ...at };
   drafts = [...drafts, d];
   remember({ drafts, drew: n });
   naming = d.key;
@@ -188,6 +198,7 @@ function nameInput(d: Draft): HTMLInputElement {
   input.placeholder = "what this task does";
   input.spellcheck = false;
   input.setAttribute("aria-label", "the new task's title");
+  input.addEventListener("input", () => { const current = drafts.find((x) => x.key === d.key); if (current) current.title = input.value; remember({ drafts }); });
   input.addEventListener("click", (e) => e.stopPropagation());
   input.addEventListener("mousedown", (e) => e.stopPropagation());
   input.addEventListener("keydown", (e) => {
@@ -652,7 +663,7 @@ function hint() {
     h.textContent = FIRST_HINT;
     h.className = "";
   } else { // the news, or, narrow, the line the header has no room for
-    h.textContent = state ? state.news[state.news.length - 1] || headerFor(state, narrow()).footer : "";
+    h.textContent = state ? screenWords(state.news[state.news.length - 1] || headerFor(state, narrow()).footer) : "";
     h.className = "";
   }
 }
@@ -850,7 +861,7 @@ function pane() {
   close.addEventListener("click", () => select(null));
   head.appendChild(close);
   const body = div("d-body", undefined, pane);
-  if (t.state === "came back" && t.why) div("why", t.why, body);
+  if (t.state === "came back" && t.why) div("why", screenWords(t.why), body);
   const q = questionOn(s, t.id);
   if (q) { // its question, with the options to answer inline
     const ask = div("ask", undefined, body);
@@ -921,7 +932,7 @@ function pane() {
     const r = div("row", undefined, body);
     div("k", "last moves", r);
     const v = div("v", undefined, r);
-    for (const line of t.tail.slice(-6)) div("move", line, v);
+    for (const line of t.tail.slice(-6)) div("move", screenWords(line), v);
   }
   const acts = div("d-acts", undefined, pane);
   for (const b of actsFor(t, replaying())) button(b, t.id, acts);
@@ -990,6 +1001,13 @@ window.addEventListener("message", (e: MessageEvent<Incoming>) => {
       const files = globs(d.files).join(" ");
       if (state.tasks.some((t) => (t.full || t.title) === d.title && t.scope.join(" ") === files)) discard(d.key); else redraw(d.key, {});
     }
+    render();
+  } else if (m.type === "drafts") {
+    drafts = m.drafts;
+    sentDrafts.clear();
+    for (const d of drafts) sentDrafts.set(d.key, JSON.stringify(d));
+    if (selected === null && drafts.length) selected = drafts[0]!.key;
+    paneLast = "";
     render();
   } else if (m.type === "said") { // graphene's answer to a change made here
     if (m.id) { if (m.ok) refused.delete(m.id); else refused.set(m.id, m.line); }

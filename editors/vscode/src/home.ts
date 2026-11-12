@@ -51,6 +51,9 @@ export class HomeHost implements vscode.WebviewViewProvider {
   private push() {
     const s = this.session.state;
     const h = s ? home(s, this.session.seen, this.exact) : null;
+    if (h && this.busy) for (const section of h.sections) for (const button of section.buttons) {
+      if (button.act === "startAll" || button.act === "discardAll") button.off = true;
+    }
     if (h && !s?.goal && this.asked) h.goal = this.asked; // whole: the news cuts what was asked at 60 characters
     const model = { type: "home", status: this.session.status, home: h, review: s?.envelope.review === "every", exact: this.exact, busy: this.busy,
                     planning: Boolean(this.planning), last: this.last };

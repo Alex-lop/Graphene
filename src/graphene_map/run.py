@@ -1463,10 +1463,11 @@ def worktree_for(
     # The person's hook settings are usually untracked (`graphene init` keeps them out of git through
     # .git/info/exclude, which every worktree shares), so a fresh worktree has none and the hooks
     # would not run there. Copied, they do; ignored by git, the copy is nobody's change.
-    hooks = Path(".claude") / "settings.local.json"
-    if (target / hooks).is_file() and _git(target, "check-ignore", "-q", str(hooks), ok=True).returncode == 0:
-        (path / hooks).parent.mkdir(exist_ok=True)
-        (path / hooks).write_bytes((target / hooks).read_bytes())
+    for hooks in (Path(".claude/settings.local.json"), Path(".codex/hooks.json")):
+        if ((target / hooks).is_file()
+                and _git(target, "check-ignore", "-q", str(hooks), ok=True).returncode == 0):
+            (path / hooks).parent.mkdir(exist_ok=True)
+            (path / hooks).write_bytes((target / hooks).read_bytes())
     P.mark_boundary(store, path)  # a path used before starts clean: nothing here was "changed between nodes"
     return path
 

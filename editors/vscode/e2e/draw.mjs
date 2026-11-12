@@ -31,7 +31,7 @@ try {
   session = await L.launch(app, profile, fx.dir, { width: 1440, height: 900, video: process.env.E2E_VIDEO });
   const page = session.page;
   await L.openPanel(page);
-  const g = (await L.graphFrames(page))[0];
+  let g = (await L.graphFrames(page))[0];
   const focused = (id) => until(g, (i) => document.activeElement?.id === i, id, `the focus in ${id}`);
   const typeIn = async (id, text) => { await focused(id); await g.locator(`#${id}`).fill(text); await g.locator(`#${id}`).press("Enter"); };
   const box = (id) => g.locator(`#view g.task[data-id="${id}"]`); // by its id: a title is cut to its box, more where the font is wider
@@ -42,7 +42,7 @@ try {
   await g.locator("#notice button", { hasText: "Add task" }).waitFor({ timeout: 20000 });
   await shot("empty");
   await g.locator("#notice button", { hasText: "Add task" }).click();
-  const name = g.locator("#view g.task.draft input.name");
+  let name = g.locator("#view g.task.draft input.name");
   await name.waitFor({ timeout: 10000 }).catch(() => { throw new Error("Add task drew no draft box to type in"); });
   await name.fill("print the top words");
   await shot("title");
@@ -53,6 +53,42 @@ try {
   await typeIn("f-files", "wordkit/cli.py tests/test_top.py");
   await until(g, () => document.querySelector("#view g.task.draft text.sub")?.textContent === "2 files · check ___", null, "the files on the draft's box");
   await shot("files");
+  // A draft belongs to the workspace: a second graph, a closed panel and a reloaded window retain it.
+  await g.locator("#f-check").press("Escape");
+  const graphIcon = page.locator('.activitybar .action-label[aria-label^="Graphene"]').first();
+  if (await graphIcon.isVisible().catch(() => false)) await graphIcon.click();
+  else await L.openSidebar(page);
+  for (let i = 0; i < 100 && (await L.graphFrames(page)).length < 2; i++) await page.waitForTimeout(100);
+  const side = (await L.graphFrames(page)).find((f) => f !== g);
+  if (!side) throw new Error("no second graph for the shared draft");
+  await until(side, () => document.querySelectorAll(".draft").length > 0, null, "the same draft in the sidebar");
+  say("the sidebar has the shared draft");
+  const graphTab = page.locator(".editor-group-container .tab.active");
+  await graphTab.hover();
+  await graphTab.getByRole("button", { name: /^Close/ }).click();
+  await graphTab.waitFor({ state: "detached" });
+  say("closed the graph tab");
+  await L.openPanel(page);
+  g = (await L.graphFrames(page)).find((f) => f !== side);
+  await until(g, () => document.querySelector("g.task.draft text.title")?.textContent === "print the top words", null, "the draft after closing its panel");
+  say("the reopened tab retained the draft");
+  await L.palette(page, "Developer: Reload Window");
+  await page.waitForTimeout(4000);
+  if (app.name === "cursor") await L.cursorClassic(page, profile);
+  await L.openPanel(page);
+  await L.setSize(session.electronApp, page, 1440, 900);
+  let widest = -1;
+  for (const f of await L.graphFrames(page)) {
+    const width = await f.locator("#canvas").evaluate((el) => el.clientWidth).catch(() => -1);
+    if (width > widest) { widest = width; g = f; }
+  }
+  await until(g, () => document.querySelector("g.task.draft text.title")?.textContent === "print the top words", null, "the draft after a window reload");
+  await g.locator("g.task.draft rect.box").click();
+  await until(g, () => document.querySelector("#f-files")?.value === "wordkit/cli.py tests/test_top.py", null, "the draft's retained files");
+  if (Object.keys(plan()).length !== 0) throw new Error("an incomplete draft entered the plan");
+  say("the draft and its files survived a second graph, closing the panel and reloading the window");
+  name = g.locator("#view g.task.draft input.name");
+  await g.locator("#f-check").focus();
   await typeIn("f-check", "python3 -m unittest -q");
   await drawnAs("print the top words");
   const first = plan()["print the top words"];
@@ -110,6 +146,9 @@ try {
   const refusal = await g.locator("#details .refused").first().textContent();
   if (plan()["say it in the README"].scope.join() !== "README.md") throw new Error("a refused change changed the plan");
   say(`a change graphene refuses is said in the pane, and the plan stands: “${refusal.trim().split("\n")[0]}”`);
+  if (await page.locator(".notification-toast").filter({ hasText: refusal.trim().split("\n")[0] }).count()) {
+    throw new Error("the inline refusal was duplicated in a notification");
+  }
   await shot("refused");
   await g.locator("#f-check").press("Escape");
 
@@ -138,7 +177,7 @@ try {
 } finally {
   if (session) await L.close(session);
   if (failed) {
-    console.error("draw: failed:", failed.message, `(kept at ${base})`);
+    console.error("draw: failed:", failed.stack, `(kept at ${base})`);
     process.exit(1);
   }
   if (!process.env.E2E_SHOTS) console.log(`draw: screenshots kept at ${shots}`);

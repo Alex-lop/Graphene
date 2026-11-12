@@ -18,7 +18,8 @@ class Panel { constructor(type, title) { this.type = type; this.title = title; t
   onDidDispose(h) { this.handlers.push(h); return { dispose() {} }; }
   reveal() { if (this.disposed) throw new Error("Webview is disposed"); this.revealed++; }
   dispose() { this.disposed = true; for (const h of this.handlers) { try { h(); } catch (e) { this.threw = String(e); } } } }
-export const window = { createWebviewPanel(type, title) { const p = new Panel(type, title); panels.push(p); return p; },
+export const notifications = [];
+export const window = { showErrorMessage(m) { notifications.push(m); return Promise.resolve(undefined); }, createWebviewPanel(type, title) { const p = new Panel(type, title); panels.push(p); return p; },
   showInformationMessage() { return Promise.resolve(undefined); } };
 export const Uri = { joinPath(...p) { return p.join("/"); } };
 export const ViewColumn = { Active: -1 };
@@ -34,7 +35,7 @@ register(`data:text/javascript,${encodeURIComponent(hooks)}`);
 type Panel = { disposed: boolean; title: string; revealed: number; threw?: string; dispose(): void; w: { receive(m: unknown): Promise<unknown> } };
 const vscode = await import("vscode") as unknown as { panels: Panel[]; commands: { ran: [string, unknown][] } };
 const { GraphHost } = await import("../src/graph.ts");
-const context = { extensionUri: "ext", subscriptions: [] } as never;
+const context = { extensionUri: "ext", subscriptions: [], workspaceState: { get: (_: string, fallback: unknown) => fallback, update: async () => {} } } as never;
 const session = { state: null, status: { kind: "reading", text: "Reading the plan…" }, onDidChange: () => ({ dispose() {} }) } as never;
 
 test("a closed panel is let go: open is false, a new show makes a new panel, and onDidClose fires once", () => {
@@ -97,7 +98,7 @@ test("a field set on the page is one `node set`, a drawn task one `node add`; gr
   assert.deepEqual(ran.at(-1), ["node", "set", "ship", "--scope", "app.py", "--scope", "tests/**"]);
   await w.receive({ type: "act", act: "draw", id: "", draft: { key: " d1", title: "a flag", files: "cli.py", check: "pytest -q", approve: true, after: "hello", parent: null } });
   assert.deepEqual(ran.at(-1), ["node", "add", "--needs", "hello", "--scope", "cli.py", "--check", "pytest -q", "--signoff", "--", "a flag"]);
-  assert.deepEqual(w.sent.at(-1), { type: "said", key: " d1", ok: true, line: "", made: "n9" }, "the draft goes, and the task it became is named");
+  assert.deepEqual(w.sent.filter((m) => (m as { type: string }).type === "said").at(-1), { type: "said", key: " d1", ok: true, line: "", made: "n9" }, "the draft goes, and the task it became is named");
   const n = ran.length;
   await w.receive({ type: "act", act: "set", id: "ship", field: "forks", value: 99 });
   assert.equal(ran.length, n, "a value the field does not take runs nothing");
@@ -119,6 +120,71 @@ test("graphene's answer goes to the page that asked: another page's draft has th
                  postMessage(m: unknown) { this.sent.push(m); return Promise.resolve(true); }, onDidReceiveMessage(h: (m: unknown) => unknown) { this.h = h; return { dispose() {} }; } };
   host.resolveWebviewView({ webview: side, onDidDispose: () => ({ dispose() {} }), visible: true } as never);
   await panel.receive({ type: "act", act: "draw", id: "", draft: { key: " d1", title: "a flag", files: "cli.py", check: "true", approve: false, after: null, parent: null } });
-  assert.equal((panel.sent.at(-1) as { type: string }).type, "said");
+  assert.ok(panel.sent.some((m) => (m as { type: string }).type === "said"));
   assert.ok(!side.sent.some((m) => (m as { type: string }).type === "said"), "the side bar's own ` d1` is not taken away by the tab's answer");
+});
+
+test("draft edits survive a new host, reach both pages, and preserve another page's concurrent draft", async () => {
+  const stored = new Map<string, unknown>();
+  const ctx = { extensionUri: "ext", subscriptions: [], workspaceState: {
+    get: (key: string, fallback: unknown) => stored.get(key) ?? fallback,
+    update: async (key: string, value: unknown) => { stored.set(key, structuredClone(value)); },
+  } } as never;
+  const own = { ...(session as object), folder: { uri: { fsPath: "/fixture" } } } as never;
+  const host = new GraphHost(ctx, own);
+  host.show();
+  const panel = vscode.panels.at(-1)!.w as unknown as { sent: { type: string; drafts?: unknown[] }[]; receive(m: unknown): Promise<unknown> };
+  const draft = (key: string) => ({ key, title: "unfinished", files: "a.py", check: "", approve: false, after: null, parent: null });
+  await panel.receive({ type: "draft", key: " d1", draft: draft(" d1") });
+  await panel.receive({ type: "draft", key: " d2", draft: draft(" d2") });
+  await panel.receive({ type: "draft", key: " d1", draft: { ...draft(" d1"), title: "changed" } });
+  const restored = new GraphHost(ctx, own);
+  restored.show();
+  const next = vscode.panels.at(-1)!.w as unknown as typeof panel;
+  await next.receive({ type: "ready" });
+  assert.equal(next.sent.filter((m) => m.type === "drafts").at(-1)?.drafts?.length, 2);
+  await next.receive({ type: "draft", key: " d1", draft: null });
+  assert.equal(next.sent.filter((m) => m.type === "drafts").at(-1)?.drafts?.length, 1);
+  const otherFolder = new GraphHost(ctx, { ...(own as object), folder: { uri: { fsPath: "/other" } } } as never);
+  otherFolder.show();
+  const other = vscode.panels.at(-1)!.w as unknown as typeof panel;
+  await other.receive({ type: "ready" });
+  assert.deepEqual(other.sent.filter((m) => m.type === "drafts").at(-1)?.drafts, []);
+});
+
+
+test("a form refusal is inline once; an act with no form still gets a notification", async () => {
+  const { Session } = await import("../src/session.ts");
+  const ui = await import("vscode") as unknown as { notifications: string[] };
+  ui.notifications.length = 0;
+  const fake = { changing: 0, held: null, run: async () => ({ code: 1, stdout: "", stderr: "3 forks need a check\nChoose a check" }),
+                 said: (s: string) => s, refresh: async () => {} };
+  const result = await Session.prototype.change.call(fake as never, ["node", "set", "n1", "--forks", "3"]);
+  assert.equal(result.ok, false);
+  assert.match(result.line, /Choose a check/);
+  assert.match(result.line, /3 attempts need a check/);
+  assert.deepEqual(ui.notifications, [], "the form displays the refusal, so no toast duplicates it");
+  await Session.prototype.act.call({ change: async () => result } as never, ["node", "set", "n1"]);
+  assert.equal(ui.notifications.length, 1);
+});
+
+test("Home disables Start while planning finishes, so a visible plan cannot swallow the click", async () => {
+  const { HomeHost } = await import("../src/home.ts");
+  const { parseState } = await import("../src/state.ts");
+  const { readFileSync } = await import("node:fs");
+  const state = parseState(readFileSync(new URL("./fixtures/proposals.json", import.meta.url), "utf8"));
+  const fake = { ...(session as object), state, seen: new Set(), onDidSee: () => ({ dispose() {} }) } as never;
+  const host = new HomeHost(context, fake);
+  const page = { html: "", cspSource: "", options: {}, asWebviewUri: (u: unknown) => u,
+    sent: [] as { type: string; home: { sections: { buttons: { act: string; off?: boolean }[] }[] } }[],
+    postMessage(m: never) { this.sent.push(m); return Promise.resolve(true); }, onDidReceiveMessage() { return { dispose() {} }; } };
+  host.resolveWebviewView({ webview: page, onDidDispose: () => ({ dispose() {} }), visible: true } as never);
+  const inspect = host as unknown as { busy: string; push(): void };
+  const start = () => page.sent.at(-1)!.home.sections.flatMap((s) => s.buttons).find((b) => b.act === "startAll")!;
+  inspect.busy = "Planning…";
+  inspect.push();
+  assert.equal(start().off, true);
+  inspect.busy = "";
+  inspect.push();
+  assert.equal(start().off, false);
 });

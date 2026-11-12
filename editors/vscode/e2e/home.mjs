@@ -113,7 +113,7 @@ try {
   const next = home.locator("article.tone-review").first();
   const back = await next.locator(".c-title").textContent();
   await next.locator("button", { hasText: "Send back…" }).click();
-  const box = page.locator(".quick-input-widget input");
+  const box = page.locator(".quick-input-widget .quick-input-box input");
   await box.waitFor({ timeout: 10000 });
   await box.fill("the test only covers one case");
   await page.keyboard.press("Enter");

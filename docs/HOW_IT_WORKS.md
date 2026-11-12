@@ -1,13 +1,12 @@
 # How Graphene works
 
-Graphene keeps a plan that you and your coding agents share, holds the agents to it, and keeps a record of each piece.
+Graphene holds coding agents to your shared plan and records their work.
 
 ## The plan
 
-The plan is a tree. Its root is your goal, one sentence (`graphene plan goal`). Each node under it is a row in the
-store, `.graphene/graphene.db`, which git ignores.
+The plan is a tree. Its root is your goal, one sentence (`graphene plan goal`). Nodes are rows in `.graphene/graphene.db`, which git ignores.
 
-A node with children is a **sub-goal**: it needs only a title, and nobody takes it. A node without children is a
+A **sub-goal** has children and a title; nobody takes it. A node without children is a
 **leaf**, the work (a **task**, on the screens). A leaf has:
 
 - a **goal**: what it should achieve, in words;
@@ -17,8 +16,7 @@ A node with children is a **sub-goal**: it needs only a title, and nobody takes 
 - what it **needs**: other nodes that must be done first;
 - an **owner**: any agent, or a person's name; and whether a person must **sign it off**.
 
-A leaf waits on what it needs and on what every node above it needs; a cycle is refused. Two leaves never write one
-path, except by an offer you take. A check that runs another leaf's file waits on that leaf (a directory names every
+A leaf waits on its needs and its ancestors' needs; cycles are refused. Two leaves share no path except by an offer you take. A check that runs another leaf's file waits on that leaf (a directory names every
 file under it); one that runs a file only a later leaf makes is refused. When the last leaf under a sub-goal is done,
 the sub-goal's own check runs, if it has one.
 
@@ -130,7 +128,7 @@ terminal outside Claude Code: inside one, Graphene takes the caller for the agen
 - **Off**: a quick change is done at once, as a leaf made from your prompt while a plan is in force; the session
   still proposes bigger work, or an asked-for plan, first.
 
-Graphene reads none of your words to decide this.
+Prompt wording never selects the mode.
 
 ## Ask
 
@@ -142,8 +140,7 @@ The planner's prompt (Nemotron's system prompt, version 7) tells it to read the
 repository first, ask only what the code cannot settle, and put up at most three items, each a question or a risk. What
 it is sure of goes in the leaf's goal.
 
-The Nemotron planner answers in a strict JSON schema; Graphene repairs what needs no judgement and sends other
-faults back, at most twice. An ask names its planner, calls and dollars at list price.
+Nemotron answers in a strict JSON schema; Graphene repairs mechanical faults and retries other faults twice. An ask names its planner, calls and dollars at list price.
 If every answer is refused, the last proposal is kept and the commands that add it are printed.
 
 ## Run
@@ -162,8 +159,7 @@ If every answer is refused, the last proposal is kept and the commands that add 
    its branch and waits in review: `⏎` in the cockpit, or `graphene node signoff`, makes the merge, checked the
    same way: a red check keeps it in review.
 
-The run's first line says where it lands, with what, how wide and under what cap; its second says the worst case
-(leaves, attempts, the cap) or that the executor has no cap. `--max-usd N` starts nothing past N dollars (each attempt
+The run's first line names its target, executor, width and cap; the second gives its worst case or says the executor has no cap. `--max-usd N` starts nothing past N dollars (each attempt
 is held at its worst case, then settled at what it spent).
 Then each ready leaf's check runs at the base, and a warning names one that passes there (it tests nothing), a
 runner that is missing, an editable install it would import, or a reopened leaf's that passed when it landed;
@@ -173,7 +169,7 @@ the leaf starts anyway (`--no-precheck` skips them).
 it runs the check in a fresh worktree of the leaf's state, so nothing the check writes lands in yours. If nothing in
 the scope changed, it is not done; otherwise the leaf is done, or in review.
 
-A leaf that comes back says why and offers the fix: `w` widens its scope, `b` adds a new task for the paths it
+A returned leaf says why and offers fixes: `w` widens its scope, `b` adds a new task for the paths it
 needed, `r` reopens the done leaf it found wrong and waits on it (it asks first). Leaves whose scopes overlap never run at once; a
 leaf waits until what it needs has landed; if git cannot merge, the leaf stops in review with its branch named.
 
@@ -222,8 +218,7 @@ reason. What each fork changed stays on `refs/graphene/forks/<id>/<letter>`, and
 c` prints it; on a leaf in review, `graphene node pick ID c` makes its branch fork c's work, and the sign-off
 lands it. The worst-case line multiplies by the forks (`1 leaf x 3 forks x 1 attempt x $2 = $6`).
 
-In `graphene watch`, `f` on a task still to do sets `forks: N` (the setting's number when it is 2 or more, else
-3) and runs it; its row says `3 forks` and opens to a line a fork; once one landed, a dim line says `kept b ·
+In `graphene watch`, `f` sets `forks: N` (the setting when 2 or more, else 3) and runs it; its row opens to a line a fork; once one landed, a dim line says `kept b ·
 <the reason>`; in review the digits pick another (`1-3 pick`); the record pane has the forks table; the graph's
 box says `3 ×3` while they run.
 
@@ -235,8 +230,11 @@ box says `3 ×3` while they run.
   `--output-format stream-json` for the meter. Its shell runs only `graphene node` and `graphene plan`, and it is
   told so; the hooks refuse its writes outside the scope before they happen. Your user-level plugins and hooks still
   reach it: `--setting-sources project,local` in `--with` keeps them, and your user settings, out.
-- **Codex**: `codex exec --json --sandbox workspace-write`. Its sandbox keeps it to the checkout, not the scope; the
-  scope holds at `done`.
+- **Codex**: `codex exec --json --sandbox workspace-write`. `init` installs `.codex/hooks.json`.
+  Trust the project, review `/hooks`, then start a new session. Hooks check patch additions, updates, deletions,
+  moves and readable shell writes. `GRAPHENE_ATTEMPT` matches the hold; hooks are copied into worktrees.
+  Codex 0.167.2 denied outside writes on one task and three attempts (`dev/process/verify/probes/`).
+  Git checks again at `done`; unloaded, crashed or timed-out hooks can let writes through.
 - **Nemotron**: Graphene's own executor and planner on NVIDIA Nemotron through Nebius Token Factory (the optional
   extra `graphene-map[nemotron]`). Its tools refuse a write outside the scope; in a Sandbox it can write only the scope.
   The same loop runs on another host with `--endpoint`: `nim` (NVIDIA's API catalog, `NVIDIA_API_KEY`), `ollama`
@@ -254,9 +252,7 @@ box says `3 ×3` while they run.
   such an agent before the write: the scope holds at `done`, when git says what changed, and a write outside it
   is refused there, with the paths named, before the check runs.
 
-Every executor a run starts gets `PORT` and `GRAPHENE_PORT`, a port of its own (distinct per running task and per
-fork, free when it is handed out), said in its contract and given to its check, so a task that starts a server
-binds one no other task has.
+Every executor and its check get `PORT` and `GRAPHENE_PORT`: a free port per task and fork, named in the contract.
 
 Whoever executes, a person included, is held at `done` by the check and git.
 
@@ -268,7 +264,7 @@ shows time and its log's tail.
 
 It logs rows on the leaf: `usage` for each turn (model, tokens, dollars at list price), `did` for each tool call,
 `said` for what the agent says, and `ended` with the exit and seconds.
-Claude Code's final report settles the dollars to what it says it cost. A Codex model with no list price says so.
+Claude Code's final report settles the dollars to what it says it cost. Unpriced Codex models say so.
 
 The classic watch shows them on a running leaf's row.
 
@@ -284,6 +280,8 @@ hooks do, so a refused shell write may count twice.
 
 - A script that opens files itself, or a write through an MCP server, is not seen by the hooks. Git catches both at
   `done`, but only while a leaf is held.
+- A Codex session opened before init needs a restart. Crashed and timed-out hooks let writes through in
+  [live probes](../dev/process/verify/probes/), consistent with the [vendor contract](https://learn.chatgpt.com/docs/hooks).
 - A hook that crashes or times out lets the call through on a Claude Code before 2.1.295, or where `graphene
   init` ran from a script: the vendor's rule. From 2.1.295, `init` at a terminal makes the gate fail closed
   (`"onFailure": "block"`) and says so. A call the hook cannot judge is refused either way (`Graphene could not
@@ -335,6 +333,9 @@ one row a leaf: what it changed, where it landed (`3 forks, kept b`), what it co
 
 Claude Code's hooks add one thing: which changed path traces to a recorded write. Without them every path is graded
 "to git alone"; a count that cannot be supported says "not computed" and why.
+
+Missing write paths, sessions or unreadable stores refuse tool calls. In shared checkouts, git cannot tell a
+human's edit from the agent's; inside the scope it can count as task work. Normal runs use separate worktrees.
 
 The hooks write one row per event and exit 0 whatever happens; their errors go to `.graphene/ingest.log`. Graphene
 reads no transcript.

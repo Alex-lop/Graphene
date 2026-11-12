@@ -77,7 +77,15 @@ def build():
         from click.exceptions import MissingParameter, UsageError
 
     from . import __version__
-    from .hooks import SETTINGS, git_head, hooks_file, install_hooks, remove_hooks
+    from .hooks import (
+        SETTINGS,
+        git_head,
+        hooks_file,
+        install_codex_hooks,
+        install_hooks,
+        remove_codex_hooks,
+        remove_hooks,
+    )
     from .store import StaleStore, Store, repo_root
 
     SHELL_LISTS_HINT = (
@@ -377,9 +385,9 @@ def build():
     def init(
         planner: str = typer.Option(None, help="The planner: claude, codex, nemotron or a command."),
         executor: str = typer.Option(None, help="The executor: claude, codex, nemotron or a command."),
-        remove: bool = typer.Option(False, "--remove", help="Take the Claude Code hooks out of this repo."),
+        remove: bool = typer.Option(False, "--remove", help="Remove Claude Code and Codex hooks."),
     ) -> None:
-        """Pick a planner and an executor, and install the Claude Code hooks.
+        """Choose agents and install Claude Code and Codex hooks.
 
         Run it once per repo. At a terminal it asks; --planner and --executor choose without asking."""
         from . import plan as P
@@ -396,8 +404,11 @@ def build():
             settings = Path(os.path.relpath(hooks_file(r), Path.cwd()))
             try:
                 gone = remove_hooks(r)
+                codex_gone = remove_codex_hooks(r)
             except ValueError as exc:
                 fail(f"cannot update {settings}: {exc}", 1)
+            if codex_gone:
+                say("hooks removed from .codex/hooks.json: " + ", ".join(codex_gone))
             say(f"hooks removed from {settings}: {', '.join(gone) or 'none were there'}")
             say("the plan, and the sessions the hooks recorded, stay in .graphene/: yours to keep or delete")
             return
@@ -442,6 +453,7 @@ def build():
         closed = terminal and claude_blocks()  # asked at a terminal only, as `claude --help` is
         try:
             added = install_hooks(r, closed)
+            install_codex_hooks(r)
         except ValueError as exc:
             fail(f"cannot update {SETTINGS}: {exc}", 1)
         settings = Path(os.path.relpath(hooks_file(r), Path.cwd()))
@@ -467,6 +479,8 @@ def build():
                 say(SHELL_LISTS_HINT)
             if terminal and (flag := claude_lacks()):  # at a terminal only: no test starts claude
                 say(f"this Claude Code has no {flag}: `claude update` first")
+        say("Codex gate: .codex/hooks.json; trust this project and review its hooks with /hooks "
+            "in a new Codex session before running tasks")
         found = [w for w in ("claude", "codex") if shutil.which(w)]
         if "not chosen" in chosen and not found:  # `ask` and `run` refuse until then, as the line above said
             key = "`graphene key set`" if key_cli else f"`{extra.INSTALL}`, then `graphene key set`"

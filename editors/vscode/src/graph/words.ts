@@ -1,7 +1,7 @@
 // The graph's words, pure: what a box and a fork chip say, what the header says of a replay, which acts a
 // task offers, and the keys. No DOM here, so `node --test` reads them.
 import type { Layout } from "../layout.ts";
-import { autoLine, headline, SAY, usd, type Fork, type Kept, type Question, type State, type Task } from "../state.ts";
+import { autoLine, headline, SAY, screenWords, usd, type Fork, type Kept, type Question, type State, type Task } from "../state.ts";
 
 /** What the snapshot gains tonight (dev/process/editor/CONTRACT.md): read when present, nothing when not. */
 export type ForkX = Fork & { attempts?: number; idle?: number | null };
@@ -95,7 +95,7 @@ export function sub(t: TaskX, max = 25): string {
   const parts: string[] = [];
   if (t.state === "running") parts.push(`agent ${t.agent || "?"}`, t.forks.length ? `${t.forks.length} attempts` : SAY.running);
   else parts.push(SAY[t.state]);
-  if (t.state === "came back" && t.why) return cut(fitWords([`${SAY["came back"]} · ${t.why}`, tries(t.attempts), usd(t.usd)], max), max); // the reason, cut, not dropped
+  if (t.state === "came back" && t.why) return cut(fitWords([`${SAY["came back"]} · ${screenWords(t.why)}`, tries(t.attempts), usd(t.usd)], max), max); // the reason, cut, not dropped
   if (t.state === "came back" && t.outside.length) parts.push(`${t.outside.length} outside`);
   parts.push(tries(t.attempts), usd(t.usd), t.state === "running" ? quiet(t.idle) : "");
   return fitWords(parts, max);
@@ -107,7 +107,7 @@ export function sub(t: TaskX, max = 25): string {
  *  ended the state word is the news and comes first. The default width is the chip's, 32 mono characters. */
 export function forkWords(f: ForkX, kept: Kept | null, max = 32): string {
   const isKept = kept?.letter === f.letter;
-  const head = cut(isKept ? `${f.letter} ✓ kept${kept?.why ? `: ${kept.why}` : ""}` : `${f.letter} · ${f.model || forkWord(f)}`, max);
+  const head = cut(isKept ? `${f.letter} ✓ kept${kept?.why ? `: ${screenWords(kept.why)}` : ""}` : `${f.letter} · ${f.model || forkWord(f)}`, max);
   const word = isKept || !f.model ? "" : forkWord(f);
   const lines = f.lines !== null ? `${f.lines} lines` : "";
   const parts = f.state === "running"
@@ -119,8 +119,8 @@ export function forkWords(f: ForkX, kept: Kept | null, max = 32): string {
 /** A fork's row in the details pane: everything, in one line. */
 export function forkRow(f: ForkX, kept: Kept | null): string {
   const isKept = kept?.letter === f.letter;
-  return [f.letter, f.model, isKept ? `✓ kept${kept?.why ? `: ${kept.why}` : ""}` : forkWord(f), f.lines !== null ? `${f.lines} lines` : "",
-          tries(f.attempts), usd(f.usd), f.state === "running" ? quiet(f.idle) : "", isKept ? "" : f.why].filter(Boolean).join(" · ");
+  return [f.letter, f.model, isKept ? `✓ kept${kept?.why ? `: ${screenWords(kept.why)}` : ""}` : forkWord(f), f.lines !== null ? `${f.lines} lines` : "",
+          tries(f.attempts), usd(f.usd), f.state === "running" ? quiet(f.idle) : "", isKept ? "" : screenWords(f.why)].filter(Boolean).join(" · ");
 }
 
 /** The header's first line when the store is a replay's, as the terminal replay's top line says it. */

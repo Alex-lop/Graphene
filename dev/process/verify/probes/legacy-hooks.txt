@@ -1,0 +1,4 @@
+old hook file has PostToolUse only; no PreToolUse handler is called
+printf legacy > outside.txt => file written; refused: n1 is not done: changed outside its scope (inside.txt), which only the person widens
+reinit adds PreToolUse, keeps the old recorder, and is idempotent
+Write outside.txt after reinit => outside.txt is outside the scope of the node you hold (n1: inside.txt). If the work cannot be done inside that scope, do not work around it: `graphene node release n1 --why '<what you need and why>' --wants <a path> --wants <another>` hands it back, and the person decides whether the scope is wrong. Only they can widen it

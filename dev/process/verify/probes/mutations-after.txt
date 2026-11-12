@@ -1,0 +1,28 @@
+{"test": "test_rows_1_to_3_a_write_outside_the_files_is_refused_and_logged_inside_is_let_through", "mutation": "src/graphene_map/gate.py", "result": "caught"}
+{"test": "test_row_2_and_3_a_subagent_or_workflow_agent_cannot_write_outside_through_the_shell_either", "mutation": "src/graphene_map/gate.py", "result": "caught"}
+{"test": "test_row_3_a_workflow_agent_in_its_own_worktree_is_judged_by_the_path_inside_it", "mutation": "src/graphene_map/gate.py", "result": "caught"}
+{"test": "test_row_3_a_call_from_a_session_that_holds_nothing_is_refused_not_let_through", "mutation": "src/graphene_map/gate.py", "result": "caught"}
+{"test": "test_row_5_another_cli_agent_is_not_stopped_at_the_write_but_the_finish_hands_the_task_back", "mutation": "src/graphene_map/plan.py", "result": "caught"}
+{"test": "test_row_4_codex_runs_the_same_path_with_its_own_command_line", "mutation": "src/graphene_map/plan.py", "result": "caught"}
+{"test": "test_row_6_an_editors_own_agent_with_no_hook_is_not_stopped_and_only_a_held_task_notices", "mutation": "src/graphene_map/plan.py", "result": "caught"}
+{"test": "test_row_5_a_stand_in_that_writes_only_inside_is_done", "mutation": "src/graphene_map/plan.py", "result": "caught"}
+{"test": "test_row_6_with_no_task_held_an_editors_agent_is_never_seen_at_all", "mutation": "src/graphene_map/hooks.py", "result": "caught"}
+{"test": "commands: new form fields", "mutation": "editors/vscode/src/commands.ts", "result": "caught"}
+{"test": "draft keys and blanks", "mutation": "editors/vscode/src/graph/draft.ts", "result": "caught"}
+{"test": "draft completion", "mutation": "editors/vscode/src/graph/draft.ts", "result": "caught"}
+{"test": "draw validates its parent", "mutation": "editors/vscode/src/graph/check.ts", "result": "caught"}
+{"test": "form validates values", "mutation": "editors/vscode/src/graph/check.ts", "result": "caught"}
+{"test": "planner requires sentence", "mutation": "editors/vscode/src/graph/check.ts", "result": "caught"}
+{"test": "empty Add task is rejected", "mutation": "editors/vscode/src/graph/check.ts", "result": "caught"}
+{"test": "replay refuses set", "mutation": "editors/vscode/src/graph/check.ts", "result": "caught"}
+{"test": "replay refuses draw", "mutation": "editors/vscode/src/graph/check.ts", "result": "caught"}
+{"test": "replay refuses add-after", "mutation": "editors/vscode/src/graph/check.ts", "result": "caught"}
+{"test": "replay refuses add-under", "mutation": "editors/vscode/src/graph/check.ts", "result": "caught"}
+{"test": "host answers form and draw", "mutation": "editors/vscode/src/graph.ts", "result": "caught"}
+{"test": "host answers only requesting page", "mutation": "editors/vscode/src/graph.ts", "result": "caught"}
+{"test": "planned fan", "mutation": "editors/vscode/src/graph/words.ts", "result": "caught"}
+{"test": "edit semantics", "mutation": "editors/vscode/src/graph/words.ts", "result": "caught"}
+{"test": "form replaces Edit button", "mutation": "editors/vscode/src/graph/words.ts", "result": "caught"}
+{"test": "contracts read from plan", "mutation": "editors/vscode/src/state.ts", "result": "caught"}
+{"test": "Exact disables Start", "mutation": "editors/vscode/src/home/cards.ts", "result": "caught"}
+controls: 27 caught: 27

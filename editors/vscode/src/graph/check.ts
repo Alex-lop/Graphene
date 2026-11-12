@@ -1,5 +1,6 @@
 // What the page may ask the host, checked against the plan. Pure: no VS Code here, so `node --test` reads it.
 import { FIELDS, type Field } from "../commands.ts";
+import { draftKey, draftOf, type Draft } from "./draft.ts";
 import { CHANGES } from "./words.ts";
 
 // link: id is A, target B, and B waits on A; unlink: id is B, target the A it stops waiting on;
@@ -12,6 +13,7 @@ export const ACTS = ["add-after", "add-under", "link", "unlink", "drop", "accept
 export type Act = (typeof ACTS)[number];
 export type Drawn = { key: string; title: string; files: string; check: string; approve: boolean; after: string | null; parent: string | null };
 export type FromPage = { type: "ready" }
+  | { type: "draft"; key: string; draft: Draft | null }
   | { type: "act"; act: Act; id: string; target?: string; fork?: string; field?: Field; value?: string | number | boolean; draft?: Drawn; sentence?: string; key?: string };
 export type Plan = { replay?: unknown; tasks: { id: string; forks: { letter: string }[] }[]; goals?: { id: string }[];
                      questions: { id: string; options: string[]; default: string | null }[] } | null;
@@ -47,6 +49,11 @@ export function check(m: unknown, session: { state: Plan }): FromPage | null {
   if (!m || typeof m !== "object") return null;
   const r = m as Record<string, unknown>;
   if (r.type === "ready") return { type: "ready" };
+  if (r.type === "draft") {
+    if (session.state?.replay || !draftKey(r.key)) return null;
+    const draft = r.draft === null ? null : draftOf(r.draft);
+    return r.draft === null || draft?.key === r.key ? { type: "draft", key: r.key, draft } : null;
+  }
   if (r.type !== "act" || typeof r.act !== "string" || !(ACTS as readonly string[]).includes(r.act)) return null;
   const act = r.act as Act;
   if (session.state?.replay && CHANGES.includes(act)) return null;

@@ -1,0 +1,40 @@
+fixture: /private/tmp/gv-codex-q2vett75/repo
+command: graphene run --with codex --attempts 1 ; task set with node set --forks 3
+landing into main at b61bce4: codex, up to 1 at once
+worst case: no spend cap on this executor
+`graphene watch` in another terminal follows it (each leaf lands as its own merge; your commit hooks are skipped)
+red first: 1 check ran at b61bce4 before any work, in 0 s
+n1 started: verify the file gate
+n1 forked 3 ways: a codex, b codex, c codex
+n1 fork c: attempt 1: the executor ended (exit 0)
+n1 fork b: attempt 1: the executor ended (exit 0)
+n1 fork a: attempt 1: the executor ended (exit 0)
+n1 fork c: the check passed · 2 lines
+n1 fork a: the check passed · 2 lines
+n1 fork b: the check passed · 2 lines
+n1 kept c of 3: finished first · 2 lines against 2, 2
+n1 is done
+its check runs inside.txt, which this leaf changed: read that diff (`graphene node diff n1`)
+run: 1 done · agents 3m, $0.0000 at list price + 313k tokens with no list price · 3 of 3 at once · you: 0 moves, 0m
+  exit: 0
+{"kind": "fork", "session_id": "b235dd13-8cc3-41f1-8fb8-c8026f5f06b9", "detail": {"fork": "a", "of": 3, "with": "codex", "state": "running", "why": ""}}
+{"kind": "fork", "session_id": "c8037da4-f9cc-4618-9eed-1889a9664dec", "detail": {"fork": "b", "of": 3, "with": "codex", "state": "running", "why": ""}}
+{"kind": "fork", "session_id": "e3556285-6c85-499a-b284-c623132b5a96", "detail": {"fork": "c", "of": 3, "with": "codex", "state": "running", "why": ""}}
+{"kind": "denied", "session_id": "e3556285-6c85-499a-b284-c623132b5a96", "detail": {"path": "outside.txt", "how": "Write", "fork": "c"}}
+{"kind": "denied", "session_id": "c8037da4-f9cc-4618-9eed-1889a9664dec", "detail": {"path": "outside.txt", "how": "Write", "fork": "b"}}
+{"kind": "denied", "session_id": "b235dd13-8cc3-41f1-8fb8-c8026f5f06b9", "detail": {"path": "outside.txt", "how": "Write", "fork": "a"}}
+{"kind": "fork", "session_id": "e3556285-6c85-499a-b284-c623132b5a96", "detail": {"fork": "c", "of": 3, "state": "passed", "why": "", "paths": ["inside.txt"], "check_touched": ["inside.txt"]}}
+{"kind": "fork", "session_id": "c8037da4-f9cc-4618-9eed-1889a9664dec", "detail": {"fork": "b", "of": 3, "state": "passed", "why": "", "paths": ["inside.txt"], "check_touched": ["inside.txt"]}}
+{"kind": "fork", "session_id": "b235dd13-8cc3-41f1-8fb8-c8026f5f06b9", "detail": {"fork": "a", "of": 3, "state": "passed", "why": "", "paths": ["inside.txt"], "check_touched": ["inside.txt"]}}
+{"kind": "fork", "session_id": "e3556285-6c85-499a-b284-c623132b5a96", "detail": {"fork": "c", "of": 3, "state": "passed", "why": "", "paths": ["inside.txt"], "check_touched": ["inside.txt"]}}
+{"kind": "fork", "session_id": "b235dd13-8cc3-41f1-8fb8-c8026f5f06b9", "detail": {"fork": "a", "of": 3, "state": "passed", "why": "", "paths": ["inside.txt"], "check_touched": ["inside.txt"]}}
+{"kind": "fork", "session_id": "c8037da4-f9cc-4618-9eed-1889a9664dec", "detail": {"fork": "b", "of": 3, "state": "passed", "why": "", "paths": ["inside.txt"], "check_touched": ["inside.txt"]}}
+{"kind": "fork", "session_id": "e3556285-6c85-499a-b284-c623132b5a96", "detail": {"fork": "c", "of": 3, "with": "codex", "state": "passed", "why": "", "paths": ["inside.txt"], "lines": 2, "test_lines": 0, "ref": "refs/graphene/forks/n1/c", "dollars": 0.0, "seconds": 63.2, "attempts": 1, "check_touched": ["inside.txt"]}}
+{"kind": "fork", "session_id": "b235dd13-8cc3-41f1-8fb8-c8026f5f06b9", "detail": {"fork": "a", "of": 3, "with": "codex", "state": "passed", "why": "", "paths": ["inside.txt"], "lines": 2, "test_lines": 0, "ref": "refs/graphene/forks/n1/a", "dollars": 0.0, "seconds": 63.2, "attempts": 1, "check_touched": ["inside.txt"]}}
+{"kind": "fork", "session_id": "c8037da4-f9cc-4618-9eed-1889a9664dec", "detail": {"fork": "b", "of": 3, "with": "codex", "state": "passed", "why": "", "paths": ["inside.txt"], "lines": 2, "test_lines": 0, "ref": "refs/graphene/forks/n1/b", "dollars": 0.0, "seconds": 63.3, "attempts": 1, "check_touched": ["inside.txt"]}}
+{"kind": "picked", "session_id": "fd211dde-24e6-4e81-8f0f-e18dc3765448", "detail": {"fork": "c", "of": 3, "by": "graphene", "reason": "finished first", "table": [{"fork": "a", "state": "passed", "passed": true, "agrees": [], "lines": 2, "test_lines": 0, "touched_check": true, "dollars": 0.0, "seconds": 63.2, "order": 1}, {"fork": "b", "state": "passed", "passed": true, "agrees": [], "lines": 2, "test_lines": 0, "touched_check": true, "dollars": 0.0, "seconds": 63.3, "order": 2}, {"fork": "c", "state": "passed", "passed": true, "agrees": [], "lines": 2, "test_lines": 0, "touched_check": true, "dollars": 0.0, "seconds": 63.2, "order": 0}]}}
+{"kind": "landed", "session_id": null, "detail": {"commit": "cb5e2593417c62ea551c261491d1825e80340662", "branch": "graphene/n1", "into": "/private/tmp/gv-codex-q2vett75/repo", "paths": ["inside.txt"]}}
+state: done inside: done
+outside files: []
+cb5e259 verify the file gate (n1)
+e946176 verify the file gate

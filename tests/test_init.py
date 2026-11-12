@@ -321,7 +321,7 @@ def test_inits_first_screen_is_in_the_persons_words_and_its_next_step_fits_what_
 
 def test_init_help_says_none_is_offered_first():
     said = " ".join(runner.invoke(build(), ["init", "--help"]).output.split())
-    assert "Pick a planner and an executor, and install the Claude Code hooks." in said
+    assert "Choose agents and install Claude Code and Codex hooks." in said
     assert said.count("claude, codex, nemotron or a command.") == 2  # each choice, in the same order
 
 
