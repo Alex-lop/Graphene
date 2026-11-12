@@ -316,7 +316,7 @@ _CHECK = re.compile(r"""(?<!\S)--check[ =]+(?:'([^']+)'|"([^"]+)")""")  # quoted
 # refused for naming ingest/__init__.py in their reason
 _HOOK = re.compile(r"\bgraphene\s+ingest\b|\bingest\s+hook\b|\bhook_main\s*\(")
 _READS = re.compile(r"\s*(rg|e?grep|git\s+grep|graphene\s+node\s+release)\b")
-HOOKS = (".claude/settings.json", ".claude/settings.local.json")
+HOOKS = (".claude/settings.json", ".claude/settings.local.json", ".codex/hooks.json", ".codex/config.toml")
 
 
 def _me(sid: str) -> P.Caller:
@@ -790,6 +790,20 @@ def decide(store, event: dict, root: Path) -> dict | None:
     name = event.get("hook_event_name")
     sid = event.get("session_id")
     events = ("PreToolUse", "PostToolUse", "Stop", "SessionStart", "UserPromptSubmit")
+    if name == "PreToolUse" and event.get("tool_name") == "apply_patch":
+        from .hooks import patch_paths
+
+        paths = patch_paths(event)
+        if not paths:
+            return _deny("Graphene could not read this patch's paths, so it is refused")
+        answer = None
+        for path in paths:
+            call = {**event, "tool_name": "Write", "tool_input": {"file_path": path}}
+            judged = decide(store, call, root)
+            if judged and judged.get("hookSpecificOutput", {}).get("permissionDecision") == "deny":
+                return judged
+            answer = judged or answer
+        return answer
     if name == "PreToolUse":
         if not isinstance(sid, str) or not sid:
             return _deny("Graphene could not identify this session, so this call is refused")

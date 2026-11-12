@@ -42,6 +42,7 @@ HOOK_COMMAND = "graphene ingest hook"
 BLOCKS_FROM = (2, 1, 295)
 SETTINGS = ".claude/settings.local.json"  # personal; the team's settings.json is the committed one
 TEAM_SETTINGS = ".claude/settings.json"
+CODEX_SETTINGS = ".codex/hooks.json"
 FILE_TOOLS = {"Edit", "Write", "MultiEdit", "NotebookEdit"}
 _SLASH_COMMAND = re.compile(r"/[A-Za-z][\w:-]*(?:[\s;]|$)")  # /model, /help, /plugin:skill args
 
@@ -325,7 +326,7 @@ def gated(store: Store, event: dict) -> bool:
     name, tool = event.get("hook_event_name"), event.get("tool_name")
     if name == "SessionStart" or os.environ.get("GRAPHENE_PLANNER"):
         return True
-    if name == "PreToolUse" and tool not in FILE_TOOLS and tool != "Bash":
+    if name == "PreToolUse" and tool not in FILE_TOOLS and tool not in ("Bash", "apply_patch"):
         return False
     if name == "PostToolUse" and tool != "Bash":
         return False
@@ -365,11 +366,25 @@ def ours(path: str, cwd: str | None, root: Path) -> str | None:
     return full if rel.startswith("..") else rel
 
 
+def patch_paths(event: dict) -> list[str]:
+    """Codex 0.167.2 sends the complete apply_patch text in tool_input.command."""
+    fields = event.get("tool_input")
+    command = fields.get("command") if isinstance(fields, dict) else None
+    if not isinstance(command, str):
+        return []
+    prefixes = ("*** Add File: ", "*** Update File: ", "*** Delete File: ", "*** Move to: ")
+    return [line[len(prefix):] for line in command.splitlines() for prefix in prefixes
+            if line.startswith(prefix) and line[len(prefix):]]
+
+
 def into_ours(event: dict, root: Path) -> str | None:
     """The path under .graphene/ an agent's write tool would write, whatever the plan's state:
     Graphene's own directory (its store, and the direction, which git tracks) is written by
     `graphene` commands only, so an agent cannot accept its own proposal by editing the file. Every
     event but a write tool's costs one comparison."""
+    if event.get("hook_event_name") == "PreToolUse" and event.get("tool_name") == "apply_patch":
+        return next((found for path in patch_paths(event)
+                     if (found := ours(path, _text(event.get("cwd")), root))), None)
     if event.get("hook_event_name") != "PreToolUse" or event.get("tool_name") not in FILE_TOOLS:
         return None
     tool_input = event.get("tool_input") if isinstance(event.get("tool_input"), dict) else {}
@@ -398,6 +413,9 @@ def hook_main(stdin=None, cwd: Path | None = None, stdout=None) -> int:
         if not isinstance(event, dict):
             raise ValueError("hook input is not a JSON object")
         root = repo_root(Path(event.get("cwd") or root))
+        if (os.environ.get("GRAPHENE_EXECUTOR") == "codex" and os.environ.get("GRAPHENE_NODE")
+                and os.environ.get("GRAPHENE_ATTEMPT")):
+            event = {**event, "session_id": os.environ["GRAPHENE_ATTEMPT"]}
         with Store.open(root, quick=True) as store:
             try:
                 ingest_hook_event(store, event, root)
@@ -485,7 +503,14 @@ def install_hooks(root: Path, closed: bool = False) -> list[str]:
     installed on this machine, and the team's settings.json is the one people commit. ``closed``: the
     gate (PreToolUse) fails closed, ours added before included; for a Claude Code that knows `onFailure`.
     """
-    path = hooks_file(root)
+    return _install_hooks(root, hooks_file(root), HOOK_EVENTS, closed)
+
+
+def install_codex_hooks(root: Path) -> list[str]:
+    return _install_hooks(root, root / CODEX_SETTINGS, ("PreToolUse",), False)
+
+
+def _install_hooks(root: Path, path: Path, events: tuple[str, ...], closed: bool) -> list[str]:
     settings = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
     if not isinstance(settings, dict):
         raise ValueError(f"{path} is not a JSON object")
@@ -494,7 +519,7 @@ def install_hooks(root: Path, closed: bool = False) -> list[str]:
         raise ValueError(f"{path}: 'hooks' is not an object")
     added: list[str] = []
     shut = False  # an install of ours from before, its gate now closed
-    for event in HOOK_EVENTS:
+    for event in events:
         groups = hooks.setdefault(event, [])
         if not isinstance(groups, list):
             raise ValueError(f"{path}: hooks.{event} is not a list")
@@ -510,8 +535,8 @@ def install_hooks(root: Path, closed: bool = False) -> list[str]:
     if added or shut:
         path.parent.mkdir(exist_ok=True)
         _write_atomically(path, json.dumps(settings, indent=2) + "\n")
-        if path.name == Path(SETTINGS).name:
-            _exclude_locally(root, SETTINGS)
+        if path in (root / SETTINGS, root / CODEX_SETTINGS):
+            _exclude_locally(root, str(path.relative_to(root)))
     return added
 
 
@@ -519,7 +544,14 @@ def remove_hooks(root: Path) -> list[str]:
     """Take out our handler from each group that holds it (install_hooks added it), a group it leaves
     empty, and an event or 'hooks' they leave empty, keeping everything else in the file: another
     handler the person put in our group stays. Returns the events it was taken out of."""
-    path = hooks_file(root)
+    return _remove_hooks(hooks_file(root))
+
+
+def remove_codex_hooks(root: Path) -> list[str]:
+    return _remove_hooks(root / CODEX_SETTINGS)
+
+
+def _remove_hooks(path: Path) -> list[str]:
     settings = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
     hooks = settings.get("hooks") if isinstance(settings, dict) else None
     removed: list[str] = []
