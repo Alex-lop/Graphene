@@ -128,3 +128,8 @@ classic layout the views look as they do in VS Code.
 
 Source, issues and the CLI: [github.com/Alex-lop/Graphene](https://github.com/Alex-lop/Graphene). Licence
 Apache-2.0.
+
+Draft tasks now belong to the workspace: the sidebar and graph tab share them, and closing a tab or
+reloading the window keeps them. Refused form edits show one inline message. See
+[the verification and manual walk](../../dev/process/verify/TRY_IT.md) for the trust setup needed for
+Codex's write hooks and the limits of Home's Exact switch.
