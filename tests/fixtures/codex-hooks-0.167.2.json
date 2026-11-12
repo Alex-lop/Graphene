@@ -1,0 +1,30 @@
+[
+  {
+    "session_id": "01a1cd34-1247-7392-828b-282c422a43e3",
+    "turn_id": "01a1cd34-16ba-79e2-b995-564133637b3c",
+    "transcript_path": null,
+    "cwd": "<fixture>",
+    "hook_event_name": "PreToolUse",
+    "model": "gpt-6.1-sol",
+    "permission_mode": "bypassPermissions",
+    "tool_name": "apply_patch",
+    "tool_input": {
+      "command": "*** Begin Patch\n*** Add File: <fixture>/captured.txt\n+patch\n*** End Patch"
+    },
+    "tool_use_id": "exec-a06a33c7-6ac1-49ea-9a93-ece9ad57ca6b"
+  },
+  {
+    "session_id": "01a1cd34-1247-7392-828b-282c422a43e3",
+    "turn_id": "01a1cd34-16ba-79e2-b995-564133637b3c",
+    "transcript_path": null,
+    "cwd": "<fixture>",
+    "hook_event_name": "PreToolUse",
+    "model": "gpt-6.1-sol",
+    "permission_mode": "bypassPermissions",
+    "tool_name": "Bash",
+    "tool_input": {
+      "command": "printf shell3 > shell.txt"
+    },
+    "tool_use_id": "exec-b6e020e4-f030-4c5a-a2e4-8cb17ccf19f4"
+  }
+]

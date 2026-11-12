@@ -103,3 +103,17 @@ def test_codex_install_preserves_other_hooks_and_rejects_invalid_settings(repo):
     with pytest.raises(ValueError):
         hooks.install_codex_hooks(repo)
     assert path.read_text() == "[]"
+
+
+def test_captured_codex_payloads_are_refused_before_the_write(repo):
+    import io
+    from pathlib import Path
+
+    E.hold(repo)
+    source = Path(__file__).parent / "fixtures/codex-hooks-0.167.2.json"
+    for event in json.loads(source.read_text().replace("<fixture>", str(repo))):
+        event["session_id"] = E.SID
+        out = io.StringIO()
+        assert hooks.hook_main(io.StringIO(json.dumps(event)), cwd=repo, stdout=out) == 0
+        assert E.verdict(json.loads(out.getvalue())) == "deny"
+    assert not (repo / "captured.txt").exists() and not (repo / "shell.txt").exists()
