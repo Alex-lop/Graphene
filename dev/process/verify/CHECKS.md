@@ -1,6 +1,6 @@
 # Verification commands and evidence
 
-The verification started at PR #60's recorded head, `2a2c6fbb`, restored as `night/graph-edit` with Alex's explicit direction. It had already merged into main at `1588482c`; comparing main...night/graph-edit would now hide its changes. The test inventory came from `git diff e15d66a1..2a2c6fbb --stat`. The 30-commit series is based on the restored night/graph-edit tip. A prior delivery opened PR #61 against main and Alex merged it; this verification run leaves that PR untouched and prepares a separate draft against night/graph-edit.
+The verification started at PR #60's recorded head, `2a2c6fbb`, restored as `night/graph-edit` with Alex's explicit direction. It had already merged into main at `1588482c`; comparing main...night/graph-edit would now hide its changes. The test inventory came from `git diff e15d66a1..2a2c6fbb --stat`. The about-30-commit series is based on the restored night/graph-edit tip. A prior delivery opened PR #61 against main and Alex merged it; this verification run leaves that PR untouched and prepares a separate draft against night/graph-edit.
 
 Run checks in the fresh clone, never Alex's Desktop checkout:
 

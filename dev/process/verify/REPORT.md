@@ -1,6 +1,6 @@
-Verification of [PR #60](https://github.com/Alex-lop/Graphene/pull/60): 30 commits from its recorded head `2a2c6fbb`, based on the restored `night/graph-edit` branch.
+Verification of [PR #60](https://github.com/Alex-lop/Graphene/pull/60), delivered as [draft PR #62](https://github.com/Alex-lop/Graphene/pull/62): about 30 commits from its recorded head `2a2c6fbb`, based on the restored `night/graph-edit` branch.
 
-Delivery history: an earlier run opened PR #61 against `main`; Alex merged it on 12 Nov. This run leaves #61 untouched and prepares this separate draft against the restored `night/graph-edit` tip `2a2c6fbb`. The 30 commits here include the verification brief, fixes, tests, evidence and this report.
+Delivery history: an earlier run opened PR #61 against `main`; Alex merged it on 12 Nov. This run leaves #61 untouched and prepares this separate draft against the restored `night/graph-edit` tip `2a2c6fbb`. The series includes the verification brief, fixes, tests, evidence and this report.
 
 PR #60 lets Alex draw tasks, type their title/files/check in the pane, set attempts before running, take a task himself, and require approval. Home's Exact switch holds Start for unanswered questions. It did not add Codex write hooks or preserve drafts across pages.
 
