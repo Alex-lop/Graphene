@@ -4,6 +4,7 @@
 // nothing from the page reaches a shell, each act is a command's argument or a graphene argv.
 import * as vscode from "vscode";
 import * as C from "./commands.ts";
+import { draftKey, draftOf, type Draft } from "./graph/draft.ts";
 import { check, type FromPage } from "./graph/check.ts";
 import type { Session } from "./session.ts";
 
@@ -15,6 +16,8 @@ export class GraphHost implements vscode.WebviewViewProvider {
   private context: vscode.ExtensionContext;
   private session: Session;
   private title: string;
+  private drafts: Draft[];
+  private draftStore: string;
   private closed = new vscode.EventEmitter<void>();
   /** The panel was closed (Watch the Demo ends its replay then). */
   readonly onDidClose = this.closed.event;
@@ -23,6 +26,9 @@ export class GraphHost implements vscode.WebviewViewProvider {
     this.context = context;
     this.session = session;
     this.title = title;
+    this.draftStore = `graphene.drafts:${session.folder?.uri.fsPath ?? session.own ?? ""}`;
+    const saved = context.workspaceState.get<unknown>(this.draftStore, []);
+    this.drafts = (Array.isArray(saved) ? saved : []).map(draftOf).filter((d): d is Draft => d !== null);
     session.onDidChange(() => this.push());
   }
 
@@ -77,12 +83,27 @@ export class GraphHost implements vscode.WebviewViewProvider {
         if (key) void webview.postMessage({ type: "said", key, ok: false, line: "Graphene was not asked: something this draft names has changed. Change it and it is offered again." });
         return;
       }
-      if (msg.type === "ready") return this.push(webview);
+      if (msg.type === "ready") { this.pushDrafts(webview); return this.push(webview); }
+      if (msg.type === "draft") {
+        if (!this.session.own) this.keepDraft(msg.key, msg.draft);
+        return;
+      }
       // a replay is watched: check() refuses its acts once its state says `replay`, and before that state is
       // read (or after a read fails) the acts that take no id would run in the person's folder
       if (this.session.own) return;
       return this.act(msg, webview);
     });
+  }
+
+  private pushDrafts(only?: vscode.Webview) {
+    for (const w of only ? [only] : this.views) void w.postMessage({ type: "drafts", drafts: this.session.own ? [] : this.drafts });
+  }
+
+  private keepDraft(key: string, draft: Draft | null) {
+    this.drafts = this.drafts.filter((d) => d.key !== key);
+    if (draft) this.drafts.push(draft);
+    void this.context.workspaceState.update(this.draftStore, this.drafts);
+    this.pushDrafts();
   }
 
   private push(only?: vscode.Webview) {
@@ -109,7 +130,9 @@ export class GraphHost implements vscode.WebviewViewProvider {
         const d = m.draft;
         if (!d) return;
         const r = await this.session.change(C.byHand(d.title, d.parent, d.after ? [d.after] : [], d.files, d.check, d.approve));
-        return this.said(page, { key: d.key }, r, r.ok ? C.added(r.stdout) : null);
+        this.said(page, { key: d.key }, r, r.ok ? C.added(r.stdout) : null);
+        if (r.ok) this.keepDraft(d.key, null);
+        return;
       }
       case "add-after": case "add-under": {
         // "Fill it in for me": the drawn task's title to the planner, which proposes it with its files and
@@ -176,7 +199,7 @@ export class GraphHost implements vscode.WebviewViewProvider {
 function drawnKey(m: unknown): string | null {
   const r = (m ?? {}) as { act?: unknown; key?: unknown; draft?: { key?: unknown } };
   const key = r.act === "draw" ? r.draft?.key : r.act === "add-after" || r.act === "add-under" ? r.key : null;
-  return typeof key === "string" && /^ d\d{1,9}$/.test(key) ? key : null;
+  return draftKey(key) ? key : null;
 }
 
 /** A command of the extension's, or a message that it is not there yet: never a throw from the page. */
