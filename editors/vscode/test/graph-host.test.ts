@@ -162,6 +162,7 @@ test("a form refusal is inline once; an act with no form still gets a notificati
   const result = await Session.prototype.change.call(fake as never, ["node", "set", "n1", "--forks", "3"]);
   assert.equal(result.ok, false);
   assert.match(result.line, /Choose a check/);
+  assert.match(result.line, /3 attempts need a check/);
   assert.deepEqual(ui.notifications, [], "the form displays the refusal, so no toast duplicates it");
   await Session.prototype.act.call({ change: async () => result } as never, ["node", "set", "n1"]);
   assert.equal(ui.notifications.length, 1);

@@ -9,7 +9,7 @@ import * as vscode from "vscode";
 import * as C from "./commands.ts";
 import type { GraphHost } from "./graph.ts";
 import { cannotRun, olderWords, resolved } from "./find.ts";
-import { errorOf, parseContracts, parseState, withContracts, type Contract, type State, type Task } from "./state.ts";
+import { errorOf, parseContracts, parseState, screenWords, withContracts, type Contract, type State, type Task } from "./state.ts";
 import { Stream } from "./stream.ts";
 import type { Node, PlanTree } from "./tree.ts";
 
@@ -75,7 +75,7 @@ export class Session {
 
   /** A refusal's line as the person reads it: the older-CLI line names the graphene that answered. */
   private said(why: string): string {
-    return why === C.OLDER ? olderWords(this.file || this.path, this.version) : why;
+    return why === C.OLDER ? olderWords(this.file || this.path, this.version) : screenWords(why);
   }
 
   get path(): string {
@@ -221,7 +221,7 @@ export class Session {
       : out.code === -1 ? this.install(out.stderr) : this.said(C.firstLine(out.stderr, out.stdout));
     // a refusal whole for the page (its second line is often what to do about it); its first line for the toast
     const whole = (out.stderr.trim() || out.stdout.trim()).split(/\r?\n/).map((l) => l.trim()).filter(Boolean).slice(0, 8).join("\n");
-    const line = ok || out.code === -1 || first === this.said(C.OLDER) ? first : whole || first;
+    const line = ok || out.code === -1 || first === this.said(C.OLDER) ? first : screenWords(whole || first);
     if (ok) vscode.window.setStatusBarMessage(`$(check) ${C.plain(first)}`, 6000);
     void this.refresh();
     return { ok, line, stdout: out.stdout };

@@ -4,7 +4,7 @@
 // pane whose buttons ask the extension to run graphene. No network, no library: SVG and DOM from the state.
 // Boxes are keyed by task id and updated in place, so a snapshot that changed nothing moves nothing.
 import { layout, modeFor, step, type Box, type Edge, type Layout } from "../layout.ts";
-import { autoLine, SAY, usd, type State } from "../state.ts";
+import { autoLine, SAY, screenWords, usd, type State } from "../state.ts";
 import { ICONS } from "./icons.ts";
 import { blanks, draftLine, globs, isDraft, lacks, type Draft } from "./draft.ts";
 import { actsFor, attemptsOf, cornerWord, cut, done, editable, fan, FIRST_HINT, fitWidth, forkActs, forkRow, forkWords, HEADER_ACTS, headerFor, KEYS, linkHint, paneKey,
@@ -663,7 +663,7 @@ function hint() {
     h.textContent = FIRST_HINT;
     h.className = "";
   } else { // the news, or, narrow, the line the header has no room for
-    h.textContent = state ? state.news[state.news.length - 1] || headerFor(state, narrow()).footer : "";
+    h.textContent = state ? screenWords(state.news[state.news.length - 1] || headerFor(state, narrow()).footer) : "";
     h.className = "";
   }
 }
@@ -861,7 +861,7 @@ function pane() {
   close.addEventListener("click", () => select(null));
   head.appendChild(close);
   const body = div("d-body", undefined, pane);
-  if (t.state === "came back" && t.why) div("why", t.why, body);
+  if (t.state === "came back" && t.why) div("why", screenWords(t.why), body);
   const q = questionOn(s, t.id);
   if (q) { // its question, with the options to answer inline
     const ask = div("ask", undefined, body);
@@ -932,7 +932,7 @@ function pane() {
     const r = div("row", undefined, body);
     div("k", "last moves", r);
     const v = div("v", undefined, r);
-    for (const line of t.tail.slice(-6)) div("move", line, v);
+    for (const line of t.tail.slice(-6)) div("move", screenWords(line), v);
   }
   const acts = div("d-acts", undefined, pane);
   for (const b of actsFor(t, replaying())) button(b, t.id, acts);
