@@ -198,7 +198,9 @@ export class Session {
 
   /** A change: run it, say the first line it answered, or its refusal; then read the plan again. */
   async act(argv: string[]): Promise<boolean> {
-    return (await this.change(argv)).ok;
+    const r = await this.change(argv);
+    if (!r.ok) void vscode.window.showErrorMessage(C.refused(argv, C.plain(r.line)));
+    return r.ok;
   }
 
   /** A change made on the graph, which shows the answer beside what was changed: whether graphene took it,
@@ -221,7 +223,6 @@ export class Session {
     const whole = (out.stderr.trim() || out.stdout.trim()).split(/\r?\n/).map((l) => l.trim()).filter(Boolean).slice(0, 8).join("\n");
     const line = ok || out.code === -1 || first === this.said(C.OLDER) ? first : whole || first;
     if (ok) vscode.window.setStatusBarMessage(`$(check) ${C.plain(first)}`, 6000);
-    else void vscode.window.showErrorMessage(C.refused(argv, C.plain(first)));
     void this.refresh();
     return { ok, line, stdout: out.stdout };
   }

@@ -151,3 +151,18 @@ test("draft edits survive a new host, reach both pages, and preserve another pag
   await other.receive({ type: "ready" });
   assert.deepEqual(other.sent.filter((m) => m.type === "drafts").at(-1)?.drafts, []);
 });
+
+
+test("a form refusal is inline once; an act with no form still gets a notification", async () => {
+  const { Session } = await import("../src/session.ts");
+  const ui = await import("vscode") as unknown as { notifications: string[] };
+  ui.notifications.length = 0;
+  const fake = { changing: 0, held: null, run: async () => ({ code: 1, stdout: "", stderr: "3 forks need a check\nChoose a check" }),
+                 said: (s: string) => s, refresh: async () => {} };
+  const result = await Session.prototype.change.call(fake as never, ["node", "set", "n1", "--forks", "3"]);
+  assert.equal(result.ok, false);
+  assert.match(result.line, /Choose a check/);
+  assert.deepEqual(ui.notifications, [], "the form displays the refusal, so no toast duplicates it");
+  await Session.prototype.act.call({ change: async () => result } as never, ["node", "set", "n1"]);
+  assert.equal(ui.notifications.length, 1);
+});
