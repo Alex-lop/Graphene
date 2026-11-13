@@ -33,6 +33,18 @@ can decide whether it worked. A general builder for arbitrary apps waits until t
 is easy to run and easy to trust. Until then, the ease of a tool like n8n is the standard for the
 experience, and the deliverable at the end of this file is the work.
 
+## Why the prompts scattered the work
+
+The repository got large, and the prompts handed to agents got harder to follow. The usual prompt
+points at the repo and says to do something, with the scope left for the agent to invent. That is
+how the direction scattered: each run explores, each run adds surface, and the next prompt has
+more repo to point at.
+
+The piece that was missing while this was being built is a scope written down before the agent
+starts. It names the files, what done means, and what is left alone. That scope is `dev/SCOPE.md`.
+The prompt that cites it is `dev/prompts/workflow.md`. A prompt that omits both is the failure
+this note is trying to stop.
+
 ## 1. Make the result something a person can verify
 
 Start with one complete experience in the existing Home review flow.
