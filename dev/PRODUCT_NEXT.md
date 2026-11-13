@@ -25,6 +25,14 @@ asserted, and usable without an account. The three slices below are how the firs
 that. A slice is worth building when it makes a workflow easier to run, or the result easier to
 trust.
 
+## What the three slices are
+
+The ideas below are worth building, and the ambition is larger than any one of them. The slices
+are the next build: one modest change, in a repository the person already has, reviewed so they
+can decide whether it worked. A general builder for arbitrary apps waits until that one workflow
+is easy to run and easy to trust. Until then, the ease of a tool like n8n is the standard for the
+experience, and the deliverable at the end of this file is the work.
+
 ## 1. Make the result something a person can verify
 
 Start with one complete experience in the existing Home review flow.
