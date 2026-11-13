@@ -8,6 +8,23 @@ hold file boundaries, run checks, and present changes for approval. A person can
 green task and wonder: did it do what I asked, what do I need to inspect, and can I carry on?
 Someone who rarely codes feels that uncertainty more strongly.
 
+## The ambition those slices serve
+
+Graphene should be the open-source way to automate a workflow. A person should be able to shape
+it and run it with about as little ceremony as a tool like n8n, and the result should mean
+something: a file boundary and a check decide what lands.
+
+Easy means they state a goal, correct the few choices that change the result, and start. They
+get one small change finished without inventing a test command, a task id, or a file list.
+Meaningful means the review shows what was checked, what happened, and what still needs a person.
+Open source means it runs on the computer they already have, with the agents they already use.
+Adding a provider is later work.
+
+That is the product to aim at: workflow automation that is easy to run, checked rather than
+asserted, and usable without an account. The three slices below are how the first workflow earns
+that. A slice is worth building when it makes a workflow easier to run, or the result easier to
+trust.
+
 ## 1. Make the result something a person can verify
 
 Start with one complete experience in the existing Home review flow.
