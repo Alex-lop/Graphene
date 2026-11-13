@@ -2,10 +2,6 @@
 
 <h1 align="center">Graphene</h1>
 
-<p align="center">
-  As code becomes more abstract, it's becoming increasingly important to understand what your agents are actually doing.
-</p>
-
 **One plan for your coding agents. Clear boundaries. Tested commits.**
 
 Graphene turns a goal into tasks with explicit files, dependencies, and checks. Agents work in separate Git

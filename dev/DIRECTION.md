@@ -8,6 +8,12 @@ collaboration directive (`dev/process/directives/COLLABORATION_DIRECTIVE.md`); l
 
 *The process archive moved off `main` on the cut night. It is the orphan branch `process`, at `fb6a408`.*
 
+**Read this first, 12 November 2026.** The next product is [PRODUCT_NEXT.md](PRODUCT_NEXT.md).
+The job an agent may take is [SCOPE.md](SCOPE.md). The prompt is
+[prompts/workflow.md](prompts/workflow.md). The workflow direction is
+[WORKFLOW_IDEAS.md](WORKFLOW_IDEAS.md). This file is the decision log. An agent reads the scope
+before it treats a decision here as the task.
+
 ## What Graphene is
 
 Graphene is the shared plan between a person and their coding agents: a graph of the work, which

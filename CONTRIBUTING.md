@@ -33,8 +33,9 @@ npm run package                           # graphene-0.9.0.vsix, for `code --ins
 
 `src/graphene_map/` is the product and `tests/` its tests; `editors/vscode/` is Graphene for VS Code, a client
 of `graphene state --json` and the CLI. `docs/` is what you need to use it, starting with
-`docs/HOW_IT_WORKS.md`. `dev/` is how it gets built ([`dev/README.md`](dev/README.md)); `dev/DIRECTION.md` is the
-maintainer's own document, and a change that goes against a decision in it should say so, and why.
+`docs/HOW_IT_WORKS.md`. `dev/` is how it gets built ([`dev/README.md`](dev/README.md)). An agent starts from
+[`dev/SCOPE.md`](dev/SCOPE.md) and [`dev/prompts/workflow.md`](dev/prompts/workflow.md). `dev/DIRECTION.md` is the
+maintainer's decision log, and a change that goes against a decision in it should say so, and why.
 
 ## A change
 
