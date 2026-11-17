@@ -1,7 +1,7 @@
 // The graph's words, pure: what a box and a fork chip say, what the header says of a replay, which acts a
 // task offers, and the keys. No DOM here, so `node --test` reads them.
 import type { Layout } from "../layout.ts";
-import { autoLine, headline, SAY, screenWords, usd, type Fork, type Kept, type Question, type State, type Task } from "../state.ts";
+import { autoLine, headline, SAY, screenWords, usd, type DraftStep, type Fork, type Kept, type Question, type State, type Task } from "../state.ts";
 
 /** What the snapshot gains tonight (dev/process/editor/CONTRACT.md): read when present, nothing when not. */
 export type ForkX = Fork & { attempts?: number; idle?: number | null };
@@ -67,6 +67,23 @@ export function who(t: Pick<TaskX, "state" | "owner">, executor: string): { kind
   if (name === "codex") return { kind: "codex", mark: "X", label: "Codex" };
   if (!name) return { kind: "agent", mark: "?", label: "an agent" };
   return words.length > 1 || words[0]!.includes("/") ? { kind: "cmd", mark: name.slice(0, 2), label: name } : { kind: "agent", mark: name[0]!.toUpperCase(), label: name };
+}
+
+/** The steps to draw while a planner writes: each one it has finished a line for that is a task, not a
+ *  sub-goal, and is not in the plan already (a line that names a task the plan has is an anchor, not a step). */
+export function draftedSteps(s: Pick<StateX, "drafting" | "tasks" | "goals">): DraftStep[] {
+  const have = new Set([...s.tasks.map((t) => t.id), ...s.goals.map((g) => g.id)]);
+  return (s.drafting?.steps ?? []).filter((d) => d.leaf && !have.has(d.id));
+}
+
+/** The line at the canvas's foot while a planner writes: how many steps it has drawn so far, or, when its
+ *  stream carries no text, that the boxes appear when the plan arrives. Nothing when no planner is writing. */
+export function planningLine(s: Pick<StateX, "drafting" | "tasks" | "goals">): string {
+  if (!s.drafting) return "";
+  const by = s.drafting.by ? ` (${s.drafting.by})` : "";
+  if (!s.drafting.live) return `The planner${by} is writing: its steps appear when the plan arrives`;
+  const n = draftedSteps(s).length;
+  return `The planner${by} is drawing: ${n} step${n === 1 ? "" : "s"} so far`;
 }
 
 /** The files chip on a card: the first of the paths it may change, and how many more there are. */

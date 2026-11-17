@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import * as C from "../src/commands.ts";
-import { actsFor, attemptsOf, badge, CHANGES, cornerWord, counts, edgeKind, editable, fan, filesChip, fitWidth, fitWords, forkActs, forkWords, HEADER_ACTS, headerFor, linkHint,
-         paneKey, replayLine, sub, tabOrder, zoomK, topLine, whenEdit, who, worktrees, type StateX, type TaskX } from "../src/graph/words.ts";
+import { actsFor, attemptsOf, badge, CHANGES, cornerWord, counts, draftedSteps, edgeKind, editable, fan, filesChip, fitWidth, fitWords, forkActs, forkWords, HEADER_ACTS, headerFor,
+         linkHint, paneKey, planningLine, replayLine, sub, tabOrder, zoomK, topLine, whenEdit, who, worktrees, type StateX, type TaskX } from "../src/graph/words.ts";
 import { SAY, WORDS } from "../src/state.ts";
 import { ICONS } from "../src/graph/icons.ts";
 import { layout } from "../src/layout.ts";
@@ -210,6 +210,21 @@ test("this machine counts a worktree for each agent at work: each running attemp
   assert.equal(worktrees([running]), 2);
   assert.equal(worktrees([{ ...greet, forks: [], checkout: "/tmp/w" }]), 1);
   assert.equal(worktrees([{ ...greet, forks: [], checkout: null }]), 0);
+});
+
+test("while a planner writes, its finished steps are drawn: tasks only, and none the plan already has", () => {
+  const writing = parseState(readFileSync(new URL("./fixtures/drafting.json", import.meta.url), "utf8")) as StateX;
+  assert.deepEqual(draftedSteps(writing).map((d) => d.id), ["failing", "rows", "button", "empty"], "the sub-goal is a band, not a box");
+  assert.equal(planningLine(writing), "The planner (claude) is drawing: 4 steps so far");
+  const one = { ...writing, drafting: { ...writing.drafting!, steps: writing.drafting!.steps.slice(0, 2) } };
+  assert.equal(planningLine(one), "The planner (claude) is drawing: 1 step so far");
+  // a line that names a task the plan has is an anchor: the task is drawn once, as itself
+  const anchored = { ...state, drafting: { by: "claude", live: true, steps: [{ id: "greet", title: "greet route", parent: null, leaf: true, scope: [], check: null, needs: [] },
+                                                                              { id: "new", title: "a new step", parent: null, leaf: true, scope: [], check: null, needs: ["greet"] }] } };
+  assert.deepEqual(draftedSteps(anchored).map((d) => d.id), ["new"]);
+  // a planner whose stream has no text: the boxes come with the plan, and the graph says so
+  assert.equal(planningLine({ ...writing, drafting: { by: "codex", live: false, steps: [] } }), "The planner (codex) is writing: its steps appear when the plan arrives");
+  assert.equal(planningLine(state), "", "no planner is writing");
 });
 
 test("the zoom never goes under 1, where the smallest text is 11 px, nor over 3; a remembered zoom is clamped too", () => {
