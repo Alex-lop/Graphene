@@ -3,7 +3,8 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import * as C from "../src/commands.ts";
 import { actsFor, attemptsOf, badge, CHANGES, cornerWord, counts, draftedSteps, edgeKind, editable, fan, filesChip, fitWidth, fitWords, forkActs, forkWords, HEADER_ACTS, headerFor,
-         linkHint, paneKey, pipeline, planningLine, provesNothing, replayLine, stopAfterPlan, sub, tabOrder, zoomK, topLine, whenEdit, who, worktrees, type StateX, type TaskX } from "../src/graph/words.ts";
+         checkWords, heldWords, linkHint, mayRun, OUTSIDE, OUTSIDE_OWN, paneKey, pipeline, planningLine, provesNothing, replayLine, scopeTree, stopAfterPlan, stopsOf, sub, tabOrder, tokenWords, zoomK, topLine,
+         whenEdit, who, worktrees, writtenOf, type StateX, type TaskX } from "../src/graph/words.ts";
 import { SAY, WORDS } from "../src/state.ts";
 import { ICONS } from "../src/graph/icons.ts";
 import { layout } from "../src/layout.ts";
@@ -258,6 +259,82 @@ test("one pipeline, the plan first: Plan, Run, Review, and where the work is in 
   // the switch is the envelope's auto setting, the other way round; an older CLI that says nothing leaves it on
   assert.equal(stopAfterPlan(fx("proposals")), true);
   assert.equal(stopAfterPlan({ envelope: { auto: "on" } }), false);
+});
+
+// ---- the pane's Scope tab ----
+const scoped = parseState(JSON.stringify({
+  tree: ["src/", "tests/", "web/", "README.md"], allows: ["graphene node *", "graphene plan *"], executor: "claude",
+  tasks: [
+    { id: "rows", title: "Export the visible rows", state: "running", scope: ["src/export/**"], check: "pytest -k export",
+      files: ["src/export/__init__.py", "src/export/csv.py", "src/export/formats.py", "src/export/rows.py"], files_n: 4,
+      touched: ["src/export/csv.py", "src/export/rows.py"], checked: { before: "red", after: null },
+      tokens: { read: 41000, cached: 30000, written: 6000, turns: 14 }, held: { state: "refused", by: "claude" } },
+    { id: "button", title: "Add the Export button", state: "running", scope: ["web/table/**"], files: ["web/table/button.tsx"], files_n: 1,
+      stops: [{ path: "README.md", at: "2026-11-17T12:41:00", how: "Write" }], held: { state: "caught", by: "codex" } },
+    { id: "test", title: "A test that fails today", state: "done", scope: ["tests/test_export.py"], files: ["tests/test_export.py"], files_n: 1,
+      changed: ["tests/test_export.py"], check: "pytest -k export", checked: { before: "passes", after: "passed" } },
+    { id: "docs", title: "Say it in the docs", state: "yours", scope: ["docs/EXPORT.md"], held: { state: "none", by: "you" } },
+  ],
+})) as StateX;
+const step = (id: string) => scoped.tasks.find((t) => t.id === id)!;
+
+test("May change is a tree: its folder opened to its files, the written ones marked, another step's named, the rest dim", () => {
+  assert.deepEqual(scopeTree(step("rows"), scoped).map((r) => `${"  ".repeat(r.depth)}${r.name} [${r.kind}]${r.note ? ` ${r.note}` : ""}`), [
+    "src/export/ [in]", "  __init__.py [in]", "  csv.py [in] written", "  formats.py [in]", "  rows.py [in] written",
+    "tests/ [other] another step's", "web/ [other] another step's", "README.md [out]",
+  ]);
+  assert.equal(writtenOf(step("rows")), "2 of 4");
+  const top = { id: "top", scope: ["wordkit/cli.py", "tests/test_top.py"], files: ["wordkit/cli.py"], filesN: 1, touched: [], changed: ["tests/test_top.py", "wordkit/cli.py"] };
+  assert.equal(writtenOf(top), "2 of 2", "a file it created counts");
+  assert.deepEqual(scopeTree(top, { tree: [], tasks: [] }).map((r) => `${r.name} ${r.note}`), ["tests/ ", "test_top.py written", "wordkit/ ", "cli.py written"], "and is drawn under its folder");
+  // a write outside its files is not one of them: the finish refuses it, so the count and the tree leave it out
+  const strayed = { ...top, files: ["wordkit/cli.py", "tests/test_top.py"], filesN: 2, touched: ["README.md", "wordkit/cli.py"], changed: [] };
+  assert.equal(writtenOf(strayed), "1 of 2");
+  assert.ok(!scopeTree(strayed, { tree: [], tasks: [] }).some((r) => r.name === "README.md"));
+  // a scope past the 200 files a snapshot lists: its other folders are still its own, and the rest are counted
+  const wide = { id: "all", scope: ["**"], files: ["a/x.py"], filesN: 300, touched: [], changed: [] };
+  assert.deepEqual(scopeTree(wide, { tree: ["a/", "z/", "README.md"], tasks: [] }).map((r) => `${"  ".repeat(r.depth)}${r.name} [${r.kind}]`),
+                   ["a/ [in]", "  x.py [in]", "z/ [in]", "README.md [in]", "… and 299 more files [in]"]);
+  // a path the step will create is its own, and says it is not there yet; a finished step's changes are its written files
+  assert.deepEqual(scopeTree(step("docs"), scoped).filter((r) => r.kind === "in"), [{ name: "docs/EXPORT.md", depth: 0, kind: "in", note: "not there yet" }]);
+  assert.deepEqual(scopeTree(step("test"), scoped).filter((r) => r.kind === "in"), [{ name: "tests/", depth: 0, kind: "in", note: "" },
+                                                                                   { name: "test_export.py", depth: 1, kind: "in", note: "written" }]);
+  assert.equal(writtenOf(step("docs")), "");
+  // a long folder is cut, and says how many more; an older CLI with no tree still shows the step's own files
+  const many = { ...step("rows"), files: Array.from({ length: 15 }, (_, i) => `src/export/f${i}.py`), filesN: 15, touched: [] };
+  assert.equal(scopeTree(many, scoped).filter((r) => r.kind === "in").at(-1)?.name, "… and 3 more");
+  assert.deepEqual(scopeTree(step("rows"), { tree: [], tasks: [step("rows")] }).map((r) => r.name), ["src/export/", "__init__.py", "csv.py", "formats.py", "rows.py"]);
+});
+
+test("May run, Held by, Stopped, Done when and Tokens say what is known, and no more", () => {
+  assert.deepEqual(mayRun(scoped, step("rows")), { commands: ["graphene node *", "graphene plan *"], words: "", outside: OUTSIDE });
+  assert.match(mayRun({ allows: null, executor: "claude" }, step("rows")).words, /^any command: what a command writes is still held/);
+  // the list is the repository's executor's: a step Codex holds, or one that is yours, is not under it
+  assert.deepEqual(mayRun(scoped, step("button")), { commands: [], words: "any command: what a command writes is still held to its files", outside: OUTSIDE_OWN });
+  assert.deepEqual(mayRun(scoped, step("docs")), { commands: [], words: "any command", outside: OUTSIDE_OWN });
+  // held: three states, each as the tests prove it; a Graphene that does not say is not held, never a shield
+  assert.deepEqual([heldWords(step("rows")).shield, heldWords(step("rows")).line], [true, "A write outside its files is refused before it happens."]);
+  assert.match(heldWords(step("rows")).proof, /^Claude Code's hook, proven by tests\/test_every_agent\.py$/);
+  assert.match(heldWords(step("button")).line, /caught when it finishes/);
+  assert.deepEqual([heldWords(step("docs")).shield, heldWords(step("docs")).line], [false, "Not held: nothing stops a write outside its files."]);
+  assert.equal(heldWords({ held: { state: "", by: "" } }).shield, false);
+  // stopped: here against the run; a step with none shows where the run's were
+  const here = stopsOf(step("button"), scoped.tasks);
+  assert.equal(here.count, "1 here · 1 in the run");
+  assert.deepEqual(here.rows, [{ line: "tried README.md", note: "refused 12:41 · Write · it carried on in its own files" }]);
+  assert.deepEqual(stopsOf(step("rows"), scoped.tasks), { count: "0 here · 1 in the run",
+    rows: [{ line: "“Add the Export button” tried README.md", note: "refused 12:41 · Write · it carried on in its own files" }] });
+  const back = { ...step("button"), state: "came back" as const };
+  assert.equal(stopsOf(back, [back]).rows[0]!.note, "refused 12:41 · Write", "a step that came back did not carry on");
+  // done when: before and after the work
+  assert.deepEqual(checkWords(step("rows")), [{ tone: "red", line: "failed before the work, so it can tell" },
+                                              { tone: "dim", line: "runs in a clean copy when the agent says done" }]);
+  assert.deepEqual(checkWords(step("test")).map((x) => x.tone), ["warn", "ok"], "it passed before the work too: it proved nothing");
+  assert.deepEqual(checkWords(step("docs")), [{ tone: "dim", line: "no check: your approval finishes it" }]);
+  // tokens: reading and writing as shares; the check costs none
+  assert.deepEqual(tokenWords(step("rows")), { total: "41k in · 6k out", read: 87, written: 13,
+    line: "reading 87% (30k of it from cache) · writing 13% · its check 0%: Graphene runs it, no model" });
+  assert.equal(tokenWords(step("button")), null, "no meter, or nothing spent yet");
 });
 
 test("the zoom never goes under 1, where the smallest text is 11 px, nor over 3; a remembered zoom is clamped too", () => {
