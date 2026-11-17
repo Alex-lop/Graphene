@@ -11,7 +11,7 @@ export type Replay = { shown: string; day: string; repository: string } | null;
 export type StateX = Omit<State, "tasks"> & { replay?: Replay; stand_in?: boolean; tasks: TaskX[] };
 
 export type Act = "add-after" | "add-under" | "link" | "unlink" | "drop" | "accept" | "tell" | "run" | "stop" | "auto" | "cockpit"
-  | "openDiff" | "compareForks" | "pickFork" | "signOff" | "answer" | "handBack" | "set" | "draw";
+  | "openDiff" | "compareForks" | "pickFork" | "signOff" | "answer" | "handBack" | "set" | "draw" | "stopAfter";
 
 /** The acts a replay offers none of: they change a plan, or they act outside the replay (the cockpit opens
  *  `graphene watch` in the person's own folder; openDiff and compareForks look the id up in the person's
@@ -68,6 +68,37 @@ export function who(t: Pick<TaskX, "state" | "owner">, executor: string): { kind
   if (!name) return { kind: "agent", mark: "?", label: "an agent" };
   return words.length > 1 || words[0]!.includes("/") ? { kind: "cmd", mark: name.slice(0, 2), label: name } : { kind: "agent", mark: name[0]!.toUpperCase(), label: name };
 }
+
+export interface Stage { key: "plan" | "run" | "review"; label: string; at: "done" | "now" | "next"; note: string }
+
+/** One pipeline, the plan always first: Plan, Run, Review. Where the work is (the first stage not finished is
+ *  `now`), and a few words under each: how big the plan is and what it asks, who is working, what waits for
+ *  you. Auto is the same pipeline with no stop after the plan (`stopAfterPlan`). */
+export function pipeline(s: Pick<StateX, "drafting" | "tasks" | "goals" | "questions" | "run">): Stage[] {
+  const n = (k: TaskX["state"]) => s.tasks.filter((t) => t.state === k).length;
+  const count = (k: number, word: string) => `${k} ${word}${k === 1 ? "" : "s"}`;
+  const planned = s.tasks.length > 0 && (n("running") > 0 || (!n("proposed") && !s.drafting)); // agents at work: the plan was started
+  const ran = planned && s.tasks.every((t) => t.state === "review" || t.state === "done");
+  const landed = ran && !n("review");
+  const asks = s.questions.length ? count(s.questions.length, "question") : "";
+  const plan = s.drafting ? (s.drafting.live ? `${count(draftedSteps(s).length, "step")} so far` : "the planner is writing")
+    : [s.tasks.length ? count(s.tasks.length, "step") : "", planned && n("proposed") ? `${n("proposed")} suggested` : "", asks].filter(Boolean).join(" · ");
+  const run = !planned || ran ? "" : n("running") ? `${n("running")} working` : n("came back") ? `${n("came back")} need${n("came back") === 1 ? "s" : ""} help` : s.run.going ? "starting"
+    : n("ready") ? `${n("ready")} ready` : "waiting";
+  const review = n("review") ? `${n("review")} to review` : landed ? "landed" : "";
+  return [
+    { key: "plan", label: "Plan", at: planned ? "done" : "now", note: plan },
+    { key: "run", label: "Run", at: !planned ? "next" : ran ? "done" : "now", note: run },
+    { key: "review", label: "Review", at: !ran ? "next" : landed ? "done" : "now", note: review },
+  ];
+}
+
+/** The one switch: on (the default), the run waits for you after the plan; off is auto, and the plan is still
+ *  drawn first. It is the envelope's `auto` setting, read the other way round. */
+export const stopAfterPlan = (s: { envelope: { auto: string } }): boolean => s.envelope.auto !== "on";
+export const STOP_AFTER = "Stop after the plan";
+export const STOP_AFTER_HOVER = "On: the plan is drawn and waits for you to start it. Off is auto: the plan is still drawn first, then what fits your limits "
+  + "runs without waiting. A question with no default stops it either way: Start waits for its answer, and so does auto.";
 
 /** The steps to draw while a planner writes: each one it has finished a line for that is a task, not a
  *  sub-goal, and is not in the plan already (a line that names a task the plan has is an anchor, not a step). */

@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import * as C from "../src/commands.ts";
 import { actsFor, attemptsOf, badge, CHANGES, cornerWord, counts, draftedSteps, edgeKind, editable, fan, filesChip, fitWidth, fitWords, forkActs, forkWords, HEADER_ACTS, headerFor,
-         linkHint, paneKey, planningLine, replayLine, sub, tabOrder, zoomK, topLine, whenEdit, who, worktrees, type StateX, type TaskX } from "../src/graph/words.ts";
+         linkHint, paneKey, pipeline, planningLine, replayLine, stopAfterPlan, sub, tabOrder, zoomK, topLine, whenEdit, who, worktrees, type StateX, type TaskX } from "../src/graph/words.ts";
 import { SAY, WORDS } from "../src/state.ts";
 import { ICONS } from "../src/graph/icons.ts";
 import { layout } from "../src/layout.ts";
@@ -225,6 +225,30 @@ test("while a planner writes, its finished steps are drawn: tasks only, and none
   // a planner whose stream has no text: the boxes come with the plan, and the graph says so
   assert.equal(planningLine({ ...writing, drafting: { by: "codex", live: false, steps: [] } }), "The planner (codex) is writing: its steps appear when the plan arrives");
   assert.equal(planningLine(state), "", "no planner is writing");
+});
+
+test("one pipeline, the plan first: Plan, Run, Review, and where the work is in it", () => {
+  const fx = (name: string) => parseState(readFileSync(new URL(`./fixtures/${name}.json`, import.meta.url), "utf8")) as StateX;
+  const at = (s: StateX) => pipeline(s).map((x) => `${x.label} ${x.at}${x.note ? `: ${x.note}` : ""}`);
+  assert.deepEqual(at(fx("empty")), ["Plan now", "Run next", "Review next"]);
+  assert.deepEqual(at(fx("drafting")), ["Plan now: 4 steps so far", "Run next", "Review next"]);
+  assert.deepEqual(at({ ...fx("drafting"), drafting: { by: "codex", live: false, steps: [] } }), ["Plan now: the planner is writing", "Run next", "Review next"]);
+  assert.deepEqual(at(fx("proposals")), ["Plan now: 4 steps · 1 question", "Run next", "Review next"]); // suggested: it waits for Start
+  assert.deepEqual(at(state), ["Plan done: 7 steps · 1 question", "Run now: 1 working", "Review next: 2 to review"]); // what waits for you is said while the rest runs
+  const all = (word: TaskX["state"]) => ({ ...state, questions: [], run: { going: false, pid: null }, tasks: state.tasks.map((t) => ({ ...t, state: word })) });
+  assert.deepEqual(at(all("ready")), ["Plan done: 7 steps", "Run now: 7 ready", "Review next"]);
+  assert.deepEqual(at({ ...all("ready"), run: { going: true, pid: 1 } }), ["Plan done: 7 steps", "Run now: starting", "Review next"]);
+  assert.deepEqual(at(all("review")), ["Plan done: 7 steps", "Run done", "Review now: 7 to review"]);
+  assert.deepEqual(at(all("done")), ["Plan done: 7 steps", "Run done", "Review done: landed"]);
+  // something suggested while agents work (an agent's proposal, a second ask): the work is still at Run, and the plan says what waits
+  const more = { ...state, tasks: [...state.tasks, { ...task("ship"), id: "extra", state: "proposed" as const }] };
+  assert.deepEqual(at(more), ["Plan done: 8 steps · 1 suggested · 1 question", "Run now: 1 working", "Review next: 2 to review"]);
+  const back = { ...all("ready"), tasks: all("ready").tasks.map((t, i) => (i ? t : { ...t, state: "came back" as const })) };
+  assert.equal(at(back)[1], "Run now: 1 needs help");
+  assert.deepEqual(at({ ...all("done"), run: { going: true, pid: 1 } }), ["Plan done: 7 steps", "Run done", "Review done: landed"], "a run winding down has nothing left to start");
+  // the switch is the envelope's auto setting, the other way round; an older CLI that says nothing leaves it on
+  assert.equal(stopAfterPlan(fx("proposals")), true);
+  assert.equal(stopAfterPlan({ envelope: { auto: "on" } }), false);
 });
 
 test("the zoom never goes under 1, where the smallest text is 11 px, nor over 3; a remembered zoom is clamped too", () => {
