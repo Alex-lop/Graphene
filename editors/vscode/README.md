@@ -131,9 +131,13 @@ classic layout the views look as they do in VS Code.
 
 - **A thin client.** The extension reads the plan with `graphene state --json` and changes it with `graphene`
   commands, run as you in the folder. It never opens the plan's store itself.
-- **Nothing from a page reaches a shell.** Home and the graph send the extension a message; it checks each one
+- **A page's words reach a shell only as one quoted argument.** Home and the graph send the extension a message; it checks each one
   against the plan (a known act, a task the plan has, an option the question has) and passes words only as one
   argument of a `graphene` command. A title or a planner's words are shown as text, never as markup or a link.
+  The runs you watch (Start, Run, Try again, Approve and run) are typed into a terminal as a `graphene` line,
+  so you can read it and stop it. One of them carries words you typed: with **Stop after the plan** off, **Plan
+  it** types `graphene auto` there with your words as one quoted argument on one line, control characters taken
+  out.
 - **No network of its own.** The extension makes no request and sends no telemetry. The agents you configured
   (Claude Code, Codex) are the CLI's business; a key the CLI needs is read from a hidden prompt.
 - **Off in Restricted Mode.** In a folder you have not trusted it does nothing: it would run commands, and the
