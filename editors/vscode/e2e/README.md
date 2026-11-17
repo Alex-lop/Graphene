@@ -32,8 +32,10 @@ run it under `xvfb-run`. `E2E_APP=cursor` runs it in Cursor; `E2E_SHOT=file.png`
 `npm run home` clicks Home through, against the stand-in: a folder with no plan is set up with one click (and
 `review: every`), an ask is planned, Start runs the agents, Approve before the changes were opened asks first,
 Open Changes shows the diff, Approve lands the task and Send back… returns another with a note. Then, on a
-second folder, it turns Stop after the plan off and Plan it runs the plan with no Start (auto). It fails when a
-step does not show what it should, and keeps a screenshot of each step (`E2E_SHOTS=dir`, else in its scratch).
+second folder, it turns Stop after the plan off and Plan it runs the plan with no Start (auto). On a third, Home
+lists `workflows/fix-issue.md`, Run fills its inputs and proposes its plan with no planner call, and Start runs
+it to the line, where the pull request step asks first. It fails when a step does not show what it should, and
+keeps a screenshot of each step (`E2E_SHOTS=dir`, else in its scratch).
 
 `npm run draw` builds a graph by hand, with no planner and no model: on an empty plan it draws a task (its title
 typed on its box, its files and its check in the pane) and sees it join the plan, draws a second from the + on

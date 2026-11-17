@@ -3,10 +3,14 @@
 // were opened asks first, Open Changes shows them, Approve lands it, Send back… returns another with a note. It
 // fails when a step does not show what it should, and keeps a screenshot of each step (E2E_SHOTS, else the scratch).
 // Then the Exact switch: on, it sets board on, review every and auto off, and Start waits while a question is open.
-// Last, the other position of Stop after the plan, on a folder of its own: off is auto, so Plan it draws the plan
+// Then the other position of Stop after the plan, on a folder of its own: off is auto, so Plan it draws the plan
 // and runs it with no Start. Home's three stages are read at each end.
+// Last, a workflow, on a third folder: Home lists workflows/fix-issue.md, Run asks for its inputs and proposes its
+// four steps with no planner call, Start runs the two agent steps and the suite's command, and the run stops at
+// the line: the pull request step is drawn past it and asks first. Nothing is pushed. Save as workflow, in the
+// graph's header, then writes the plan back as a second workflow.
 import { execFileSync } from "node:child_process";
-import { existsSync, rmSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import path from "node:path";
 import * as L from "./lib.mjs";
 
@@ -187,6 +191,75 @@ try {
   await home.locator("button.switch").click();
   await checked("true");
   if (state(fx.dir).envelope.auto !== "off") throw new Error("the switch went back on, yet auto is not off");
+
+  // A workflow: fix-issue, as shipped, run from Home on the stand-in. The stand-in plays its `reading` script for
+  // a step whose id ends in reading, so the issue is "reading": the first step writes the test, the second the fix.
+  await L.close(session);
+  const flow = L.makeFixture(path.join(base, "wordkit-flow"), graphene, { standin: standin.url });
+  mkdirSync(path.join(flow.dir, "workflows"));
+  cpSync(path.join(L.ROOT, "workflows", "fix-issue.md"), path.join(flow.dir, "workflows", "fix-issue.md"));
+  execFileSync("git", ["-C", flow.dir, "add", "workflows"], { stdio: "pipe" });
+  execFileSync("git", ["-C", flow.dir, "-c", "user.name=e2e", "-c", "user.email=e2e@example.com", "commit", "-qm", "the fix-issue workflow"], { stdio: "pipe" });
+  session = await L.launch(app, profile, flow.dir, { width: 1440, height: 900, standin: standin.url });
+  await L.openSidebar(session.page);
+  await L.setSidebarWidth(session.page, 400);
+  home = await homeFrame(session.page);
+  await sectionShown(home, "Workflows · 1", "the repository's workflows on Home");
+  await shot("workflows");
+  await home.locator("article.card", { has: home.locator(".c-title", { hasText: "fix-issue" }) }).locator("button", { hasText: "Run" }).click();
+  const input = session.page.locator(".quick-input-widget .quick-input-box input");
+  const INPUTS = [["issue", "reading"], ["file", "tests/test_reading.py"], ["test", "python3 -m unittest tests.test_reading"], ["src", "wordkit/**"], ["suite", "python3 -m unittest"]];
+  for (const [name, value] of INPUTS) { // Run asks for each input in turn, its default offered
+    await session.page.waitForFunction((n) => {
+      const widget = document.querySelector(".quick-input-widget");
+      return widget && widget.style.display !== "none" && widget.querySelector(".quick-input-title")?.textContent?.endsWith(`: ${n}`);
+    }, name, { timeout: 15000 }).catch(() => { throw new Error(`Run did not ask for “${name}”`); });
+    await input.fill(value);
+    await session.page.keyboard.press("Enter");
+  }
+  await sectionShown(home, "Suggested plan · 4", "the workflow's four steps, suggested");
+  const proposed = state(flow.dir);
+  if (proposed.tasks.map((t) => `${t.id} ${t.state}`).join() !== "test-reading proposed,fix-reading proposed,suite-reading proposed,pr-reading proposed") {
+    throw new Error(`the workflow proposed ${proposed.tasks.map((t) => `${t.id} ${t.state}`).join(", ")}`);
+  }
+  if (proposed.spent) throw new Error(`a workflow calls no planner, yet $${proposed.spent} is spent before anything ran`);
+  say("Run on fix-issue asked for its five inputs and proposed its four steps with no planner call");
+  await shot("workflow-suggested");
+  await home.locator(".sec-suggested .sec-head button", { hasText: "Start" }).click();
+  await until(home, () => [...document.querySelectorAll("article.tone-yours .c-tag")].some((x) => x.textContent === "asks you"), null,
+              "the pull request step to ask first", 180000);
+  const step4 = Object.fromEntries(state(flow.dir).tasks.map((t) => [t.id, t]));
+  for (const id of ["test-reading", "fix-reading", "suite-reading"]) if (step4[id]?.state !== "done") throw new Error(`${id} is ${step4[id]?.state}, not done`);
+  if (step4["pr-reading"]?.state !== "yours" || !step4["pr-reading"].leaves) throw new Error(`the pull request step is ${step4["pr-reading"]?.state}, leaves ${step4["pr-reading"]?.leaves}`);
+  if (step4["pr-reading"].checked.after !== null) throw new Error(`the run ran the step past the line: its command ${step4["pr-reading"].checked.after}`); // stopped at it, not crossed and failed
+  if (step4["suite-reading"].command !== "python3 -m unittest") throw new Error(`the suite step's command is ${step4["suite-reading"].command}`);
+  if (!(await home.locator("article.tone-yours button", { hasText: "Approve and run" }).count())) throw new Error("the step past the line offers no Approve and run");
+  await L.openPanel(session.page);
+  const wide = (await L.graphFrames(session.page)).at(-1);
+  await until(wide, () => Boolean(document.querySelector("#gates .gate.now")) && /asks you first/.test(document.querySelector("#regions .region-label.away")?.textContent ?? ""), null,
+              "the graph to draw the step past the line, with its gate");
+  say("Start ran the test, the fix and the suite's command; the run stopped at the line, and the pull request step asks first");
+  await shot("workflow-at-the-line");
+  // Save as workflow, in the graph's header: the plan as it stands goes to workflows/<name>.md, and what the
+  // last run was given is offered as what varies, so each value becomes a hole again.
+  await wide.locator("#b-save").click();
+  const asked = (want) => session.page.waitForFunction((w) => {
+    const widget = document.querySelector(".quick-input-widget");
+    return widget && widget.style.display !== "none" && widget.querySelector(".quick-input-title")?.textContent === "Save as workflow"
+      && widget.querySelector(".quick-input-box input")?.value.startsWith(w);
+  }, want, { timeout: 15000 }).catch(() => { throw new Error(`Save as workflow did not offer “${want}…”`); });
+  await asked("fix-issue"); // the name of the one that was run
+  await input.fill("fix-again");
+  await session.page.keyboard.press("Enter");
+  await asked("issue=reading, "); // its inputs, as name=value pairs
+  await session.page.keyboard.press("Enter");
+  await sectionShown(home, "Workflows · 2", "the saved workflow listed on Home");
+  const saved = readFileSync(path.join(flow.dir, "workflows", "fix-again.md"), "utf8");
+  for (const want of ["workflow: fix-again\n", "input: issue\n", "goal: fix issue {{issue}}", "[pr-{{issue}}]", "run: {{suite}}"]) {
+    if (!saved.includes(want)) throw new Error(`workflows/fix-again.md has no “${want.trim()}”:\n${saved}`);
+  }
+  if (saved.includes("reading")) throw new Error(`a value stayed in workflows/fix-again.md where its hole belongs:\n${saved}`);
+  say("Save as workflow wrote workflows/fix-again.md with the run's values as holes, and Home lists it");
   console.log(`home: passed in ${((Date.now() - t0) / 1000).toFixed(0)} s, ${step} screenshots in ${shots}`);
 } catch (err) {
   failed = err;
