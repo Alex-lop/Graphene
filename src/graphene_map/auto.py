@@ -278,13 +278,14 @@ def planner_cap(template: str, left: float | None) -> tuple[str, str | None]:
 
 def goal_check(store, root_id: str, own: str | None) -> str:
     """The root's check: the goal's own (--check), else every task's check under it run together, in the
-    plan's order (what passes alone and breaks together is caught here)."""
+    plan's order (what passes alone and breaks together is caught here). A command step's check is its
+    command, and a sub-goal's check runs by itself: it is left out, so no push runs with no approval."""
     if own:
         return own
     everything = P.nodes(store)
     under = P.kids(everything, drawn=True)
     leaves = [n for n in P.order(P.below(root_id, everything)) if n.check and not under.get(n.id)
-              and n.state not in P.GONE]  # fmt: skip
+              and n.state not in P.GONE and P.runs_itself(n) is None]  # fmt: skip
     return " && ".join(f"( {n.check} )" for n in leaves)
 
 

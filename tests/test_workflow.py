@@ -15,7 +15,7 @@ import pytest
 from test_run_live import repo  # noqa: F401
 from typer.testing import CliRunner
 
-from graphene_map import plan, precheck
+from graphene_map import auto, plan, precheck
 from graphene_map import plan_text as T
 from graphene_map import workflow as W
 from graphene_map.cli import build
@@ -378,6 +378,17 @@ def test_a_command_that_fails_stays_open_and_the_run_goes_on(repo):
     assert len(rows(repo, "see-b", "check_failed")) == 2
     by_hand = person("node", "done", "push-b")  # the line is no way round what it needs
     assert by_hand.exit_code == 1 and "push-b waits on see-b" in by_hand.output
+def test_the_goals_check_auto_builds_runs_no_command_step(repo):
+    """`graphene auto` makes its goal's check from the checks under it, and a sub-goal's check runs by
+    itself once its steps are done: a command step's command in it (a push) would run with no approval."""
+    with Store.open(repo) as store:
+        T.apply(store, "- ship it  [ship]\n"
+                       "  - the fix  [fix]\n      scope: a.txt\n      check: grep -q fixed a.txt\n"
+                       "  - the suite  [suite]\n      run: python3 -m unittest\n      needs: fix\n"
+                       "  - push it  [push]\n      run: git push origin main\n      needs: suite\n",
+                ALEX)  # fmt: skip
+        assert auto.goal_check(store, "ship", None) == "( grep -q fixed a.txt )"
+        assert auto.goal_check(store, "ship", "make all") == "make all"  # the goal's own check, as given
 
 
 def test_a_check_run_first_never_runs_a_command_that_leaves_this_machine(repo):
