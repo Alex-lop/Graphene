@@ -77,6 +77,11 @@ export interface Task {
   checked: { before: string | null; after: string | null };
   tokens: Tokens | null;
   held: Held;
+  /** A command step (a workflow's `run:`): the command that runs with no agent, its exit code its check; null
+   *  for a step an agent or a person does. `leaves`: its command pushes or opens a pull request, so it is drawn
+   *  past the "leaves your machine" line and waits for your approval. */
+  command: string | null;
+  leaves: boolean;
   /** What the snapshot does not say and `graphene plan --json` does (`withContracts`): the attempts set on the
    *  task itself (null: unset, the limits' number decides), whether it waits for your approval and whose it
    *  is ("agent", or a person's name). `signoff` null and `owner` "": not read yet. */
@@ -230,6 +235,7 @@ export function parseTask(r: Raw): Task {
     checked: { before: optStr(checked.before), after: optStr(checked.after) },
     tokens: tokens && { read: int(tokens.read, 0), cached: num(tokens.cached), written: int(tokens.written, 0), turns: int(tokens.turns, 0) },
     held: { state: held === "refused" || held === "caught" || held === "none" ? held : "", by: str(obj(r.held).by) },
+    command: optStr(r.command), leaves: bool(r.leaves),
     planned: null, signoff: null, owner: "",
   };
 }
