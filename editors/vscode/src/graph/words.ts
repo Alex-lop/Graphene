@@ -172,6 +172,23 @@ export function stopsOf(t: Pick<TaskX, "id" | "title" | "stops">, tasks: readonl
                                      note: `refused${time(x.at)}${x.how ? ` · ${x.how}` : ""}${x.on ? " · it carried on in its own files" : ""}` })) };
 }
 
+/** Done when: the check's result on the code as it was, and after the work. */
+export function checkWords(t: Pick<TaskX, "check" | "checked" | "state">): { tone: "red" | "warn" | "ok" | "dim"; line: string }[] {
+  if (!t.check) return [{ tone: "dim", line: "no check: your approval finishes it" }];
+  const before: Record<string, [("red" | "warn" | "ok" | "dim"), string]> = {
+    red: ["red", "failed before the work, so it can tell"],
+    passes: ["warn", "passed before the work: it proves nothing yet"],
+    outside: ["warn", "failed before the work on a path outside its files"],
+    environment: ["warn", "could not be run here before the work"],
+    landed: ["dim", "passed when it landed; reopened, it passes until the check is changed"],
+  };
+  const b = before[t.checked.before ?? ""] ?? ["dim", "not run on the code as it is yet: it runs once before the work starts"];
+  const a: [("red" | "warn" | "ok" | "dim"), string] = t.checked.after === "passed" ? ["ok", "passed after the work, in a clean copy"]
+    : t.checked.after === "failed" ? ["red", "failed after the work"]
+    : ["dim", t.state === "running" ? "runs in a clean copy when the agent says done" : "runs in a clean copy after the work"];
+  return [{ tone: b[0], line: b[1] }, { tone: a[0], line: a[1] }];
+}
+
 export interface Stage { key: "plan" | "run" | "review"; label: string; at: "done" | "now" | "next"; note: string }
 
 /** One pipeline, the plan always first: Plan, Run, Review. Where the work is (the first stage not finished is
