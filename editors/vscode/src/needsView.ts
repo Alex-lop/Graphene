@@ -3,7 +3,7 @@
 // graphene.markDone and graphene.setKey, which Home's buttons run too.
 import * as vscode from "vscode";
 import * as C from "./commands.ts";
-import { answerPicks, answerWith, answerWords, markDone, needs, offerWords, type Need } from "./needs.ts";
+import { answerPicks, answerWith, answerWords, markDone, needs, offerWords, yoursWords, type Need } from "./needs.ts";
 import type { Session, UI } from "./session.ts";
 import { mdText, type State } from "./state.ts";
 
@@ -61,9 +61,10 @@ export function item(n: Need, s: State): vscode.TreeItem {
       md.appendMarkdown(`${t.changed.length ? `changed: ${mdText(t.changed.join("  "))}` : "its check passed"}\n\nClick to open its changes; the check mark signs it off.`);
       it.command = { command: "graphene.openDiff", title: "Open Changes", arguments: [arg] };
     } else if (n.kind === "yours") {
-      it.description = "yours · mark done";
-      md.appendMarkdown("Your own task. Click when it is done: its check runs in a terminal.");
-      it.command = { command: "graphene.markDone", title: "Mark Done", arguments: [arg] };
+      const w = yoursWords(t);
+      it.description = w.description;
+      md.appendMarkdown(w.hover);
+      it.command = { command: "graphene.markDone", title: w.title, arguments: [arg] };
     } else {
       const path = t.stopped[t.stopped.length - 1] ?? "";
       it.description = `agent ${t.agent || "?"} stopped writing ${path}`;
@@ -147,8 +148,12 @@ export function register(context: vscode.ExtensionContext, session: Session, _ui
 
   cmd("markDone", async (arg) => {
     const yours = session.tasks().filter((t) => t.state === "yours");
-    const t = yours.find((x) => x.id === idOf(arg)) ?? (yours.length === 1 ? yours[0] : undefined)
-      ?? (await vscode.window.showQuickPick(yours.map((x) => ({ label: C.plain(x.title), t: x })), { placeHolder: "your task that is done" }))?.t;
+    const id = idOf(arg);
+    // `node done` on a step past the line runs its command: an id is that task alone (a stale one runs nothing),
+    // and with no id a lone step that leaves is still picked by hand, its command beside it
+    const t = id ? yours.find((x) => x.id === id) : yours.length === 1 && !yours[0]!.leaves ? yours[0]
+      : (await vscode.window.showQuickPick(yours.map((x) => ({ label: C.plain(x.title), description: x.leaves ? C.plain(yoursWords(x).description) : "", t: x })),
+                                           { placeHolder: "your task that is done, or the step to approve" }))?.t;
     if (t) session.terminal("graphene node done", markDone(t.id));
   });
 
