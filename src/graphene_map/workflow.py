@@ -30,11 +30,14 @@ run: it waits for the person's `graphene node done`.
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from . import board as B
 from . import plan as P
+from . import plan_text as T
 
 DIR = "workflows"  # at the repository's root
 LAST = "workflow:last"  # plan_meta: the name and the inputs of the last workflow proposed, as JSON
@@ -194,3 +197,44 @@ def fill(flow: Workflow, given: dict[str, str]) -> tuple[str, dict[str, str]]:
         for raw in flow.lines
     ]
     return "\n".join(filled) + "\n", values
+
+
+def propose(store, flow: Workflow, given: dict[str, str], who: P.Caller, files: list[str]) -> T.Said:
+    """Fill the workflow's holes and propose its steps, with no planner: each is a proposal, as `graphene
+    ask` leaves a planner's, whoever runs it, and the goal is the one the file names. Kept for `graphene
+    plan undo`, as one act. Refused, with nothing proposed, when the filled text cannot be read, when the
+    plan refuses a step, and when these inputs give an id the plan already has: such a line would add
+    nothing (plan_text.py reads it as the place new lines hang from), and a run of a workflow must never
+    add nothing without saying so. The inputs are remembered (``LAST``) for whoever saves it next."""
+    text, values = fill(flow, given)
+    text = "\n".join(_STEP.sub(r"\1?", line) for line in text.splitlines()) + "\n"
+    where = f"{DIR}/{flow.name}.md"
+    try:
+        steps = T.parse(B.split(text)[0])[1]
+    except P.Refused as no:
+        raise P.Refused(f"{where}, {no}") from None
+    if not steps:
+        raise P.Refused(f"{where} has no step in it, so nothing was proposed: a step is a '- ' line")
+    have = {n.id for n in P.nodes(store) if n.state not in P.GONE}
+    there = [ln.id for ln in steps if ln.id in have]
+    if there:
+        raise P.Refused(
+            f"the plan already has {', '.join(there)}: these inputs give the ids of steps that are there, "
+            "so nothing was proposed. Give an input another value (the ids are made from the holes), or "
+            f"drop those steps first (`graphene node drop {there[0]}`)"
+        )
+    with P.undoable(store, who, f"workflow {flow.name}"):
+        if wrong := T.faults(store, text, who, files):
+            raise P.Refused("\n".join(f"{where}, {line}" for line in wrong))
+        said = T.apply(store, text, who, None, files=files)
+        store.set_meta(LAST, json.dumps({"name": flow.name, "inputs": values}))
+    return said
+
+
+def last(store) -> dict | None:
+    """The name and the inputs of the last workflow proposed here, or None."""
+    try:
+        said = json.loads(store.meta(LAST) or "null")
+    except ValueError:
+        return None
+    return said if isinstance(said, dict) else None
