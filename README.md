@@ -15,9 +15,15 @@ terminal or VS Code. Works with Claude Code and Codex.
   <a href="https://github.com/Alex-lop/Graphene/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-5e5d59" alt="License"></a>
 </p>
 
-![Graphene in VS Code: Home tracks working agents while the graph shows parallel tasks, attempts, and the budget](https://raw.githubusercontent.com/Alex-lop/Graphene/main/editors/vscode/media/graph.png)
+![Graphene's canvas in VS Code, replaying the bundled demo. Across the top: Plan, Run and Review. On the canvas: three steps as cards with their files and checks, one landed and two working, each racing three attempts, and a region for what leaves your machine. Beside it, the selected step's Scope pane: the two files it may change, what it may run, how a write outside them is held, the one write that was refused, and its check](https://raw.githubusercontent.com/Alex-lop/Graphene/main/editors/vscode/media/graph.png)
 
-*VS Code running Graphene against a scripted model stand-in. No live model calls.*
+*The canvas in VS Code, replaying the bundled demo: a scripted stand-in, no model ran.*
+
+- **A canvas you watch and shape.** One pipeline, Plan → Run → Review: each step is drawn as the planner
+  writes it (Claude Code's stream; a Codex plan appears whole when it arrives), you edit a step before it
+  starts, and one switch, **Stop after the plan**, decides whether the run waits for you.
+- **Scope you can see.** Select a step and its pane says which files it may change, what it may run, how a
+  write outside them is held, which writes were stopped, and what its check said before and after the work.
 
 ## What it solves
 

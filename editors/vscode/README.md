@@ -4,7 +4,7 @@ Say what you want, read the plan, start the agents, and approve what they did. G
 task, in its own copy of your repository, held to the files that task may change. A task lands only when its
 check passes and, if you keep the box ticked at setup, when you approve it.
 
-![Graphene for VS Code during a race against the scripted stand-in, in real VS Code: Home, in the side bar, shows three agents working, each with its model, what it is doing now, its cost and its attempts, and a Stop all button; the editor tab draws the same race, two tasks each fanned out into three Nano attempts, all running, flowing into the goal; the auto line says round 1 of 3, running, $0.007 of $2.00](media/graph.png)
+![Graphene for VS Code replaying the bundled demo against the scripted stand-in, in real VS Code. The header names the goal, the auto line (round 1 of 3, running, $0.007 of $2.00) and the three stages: Plan with 3 steps, Run with 2 working, Review. The canvas draws three steps as cards in the region for this machine, each with its files, its check and three attempts under it, one landed and two working, flowing into the goal; beside them is the region for what leaves your machine, with nothing in it yet. The pane is open on Scope for the selected step: May change, 2 of 2 written; May run; Held by, caught when it finishes; Stopped, one write refused; Done when, its check, which failed before the work; Tokens, 13k in and 1k out](media/graph.png)
 
 It is a thin client over the `graphene` command. Everything it shows is `graphene state --json`, streamed with
 `--watch`, and everything it changes is one `graphene` command, the same ones the terminal cockpit runs.
