@@ -36,14 +36,24 @@ start runs once on the code as it is, before any agent works, and one that alrea
 card: it proves nothing yet.
 
 The **graph** under Home is the whole plan: which tasks wait on which, the attempts racing, the one kept and
-why. **Show graph** opens it as a tab. The Explorer marks each file a task owns, a working agent's with its
-number.
+why. **Show graph** opens it as a tab: a dotted canvas flowing left to right, each step a card with a tile for
+who does it, its files and its check, in a region for **this machine**; a step that would leave it is drawn in
+a region of its own. While Claude Code plans, each step it finishes appears as a drafted box; a planner whose
+stream carries no text (Codex) has its boxes appear when the plan arrives, and the graph says so. Each step has
+one colour, on its card's tile and, from the time it is accepted until it lands, on its files in the Explorer,
+a working agent's with its number.
 
 You can build the graph by hand, before and while agents run. **Add task**, or the **+** on a box, draws a draft:
 type its title on the box, then its files and its check in the pane, and it joins the plan (**Fill it in for me**
-asks the planner instead). Click any task and its pane is a form: its title, files and check, how many attempts
-run it at once, whether it waits for your approval, whether you do it yourself. The line under the form says what
-a change does now, and a change Graphene refuses says why, there.
+asks the planner instead). Click any task and its pane opens on **Scope**: the files it may change, as a tree,
+with the ones written so far marked and other steps' folders named; what it may run; how a write outside its
+files is held (refused before it happens, caught when it finishes, or not held: never more than the tests
+prove); the writes that were stopped, with the time; its check, with its result before and after the work; and
+its tokens, read and written. **Edit** is its form: its title, files and check, how many attempts run it at
+once, whether it waits for your approval, whether you do it yourself. The line under the form says what a
+change does now, and a change Graphene refuses says why, there. **Activity** is who is on it, what it cost, and
+its attempts.
+
 
 ## Try it with no key
 
