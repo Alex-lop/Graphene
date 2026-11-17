@@ -175,6 +175,25 @@ def test_a_forked_leaf_carries_its_forks_their_verdicts_and_the_one_kept(repo, m
     assert any("kept b" in line for line in s["news"]), s["news"]
 
 
+def test_a_check_that_already_passes_is_hollow_before_the_work_and_one_that_fails_now_is_not(repo):
+    """Before Run each step's check runs once on the code as it is (red first, precheck.py). A check that
+    passes there proves nothing yet, and the snapshot says so on the task while it waits, so its card can be
+    marked before any agent starts; an edit to the check takes the mark away until it is run again."""
+    from graphene_map import precheck
+
+    fails = "python3 -c 'import sys; sys.exit(1)'"
+    hollow = lambda: {t["id"]: t["hollow"] for t in snapshot()["tasks"]}  # noqa: E731
+    propose(repo, [{"id": "soft", "title": "soft", "scope": ["a.py"], "check": "true"},
+                   {"id": "hard", "title": "hard", "scope": ["b.py"], "check": fails}])  # fmt: skip
+    assert hollow() == {"soft": False, "hard": False}  # not run yet
+    with Store.open(repo) as store:
+        precheck.run(store, repo)
+    assert hollow() == {"soft": True, "hard": False}
+    with Store.open(repo) as store:
+        plan.edit(store, "soft", {"check": fails}, ALEX)
+    assert hollow() == {"soft": False, "hard": False}
+
+
 def test_the_model_and_the_dollars_come_from_the_meter_when_the_cockpit_says_nothing(repo):
     """Lane race adds `model` and `usd` to the cockpit's Task and Fork; until it lands, and where they say
     nothing, the attempt going now names the model and the usage rows the spend."""

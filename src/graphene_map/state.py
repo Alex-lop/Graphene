@@ -286,6 +286,19 @@ def chosen(store, key: str) -> str:
     return Path(said[0]).name if said else ""
 
 
+def passes_before(log: list[dict], node: P.Node | None) -> bool:
+    """Its check already passes on the code as it is, before any work, so it proves nothing yet: the leaf's
+    last `precheck` row is about the check and the revision it has now and says `passes`. Said from red
+    first until the work is done (open, and while it runs), so a card is marked before its agent starts; done
+    or in review, the cockpit's own `hollow` says it. Red first runs as a run starts and in auto's gate, and
+    never on a proposal: with the plan still suggested, no check has run and nothing is marked."""
+    if node is None or node.state not in (P.OPEN, P.RUNNING):
+        return False
+    said = [r["detail"] for r in log if r["kind"] == "precheck"]
+    last = said[-1] if said else {}
+    return last.get("verdict") == "passes" and last.get("rev") == node.rev and last.get("check") == node.check
+
+
 def task(m, t, log: list[dict], node: P.Node | None = None, root: Path | None = None) -> dict:
     """One task as the brief's schema has it. Its model and spend are the cockpit's once the race lane adds
     them to Task and Fork (`model`, `usd`); until then, and where it says nothing, the meter's: the attempt
@@ -341,7 +354,7 @@ def task(m, t, log: list[dict], node: P.Node | None = None, root: Path | None = 
         "outside": list(t.outside),
         "forks": forks,
         "kept": {"letter": t.kept[0], "why": t.kept[1], "by": t.kept[2]} if t.kept else None,
-        "hollow": t.hollow,
+        "hollow": t.hollow or passes_before(log, node),
         "why": t.note if t.state == "came back" else "",
         "checkout": where if where and Path(where).is_dir() else None,
         "base": (node.base_sha or None) if node else None,
