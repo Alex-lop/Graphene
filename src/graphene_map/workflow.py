@@ -285,3 +285,83 @@ def save(store, root: Path, name: str, literals: dict[str, str], force: bool = F
     path.parent.mkdir(exist_ok=True)
     path.write_text(text, encoding="utf-8")
     return path
+
+
+def _pairs(inputs: list[str] | None) -> dict[str, str]:
+    """`-i name=value`, each once: the name before the first `=`, the value everything after it."""
+    out: dict[str, str] = {}
+    for said in inputs or []:
+        key, eq, value = said.partition("=")
+        if not eq or not key.strip():
+            raise P.Refused(f"-i {said}: an input is given as name=value, e.g. -i issue=48")
+        if key.strip() in out:
+            raise P.Refused(f"-i {key.strip()} is given twice: give each input once")
+        out[key.strip()] = value
+    return out
+
+
+def register(cli, root, open_store, fail) -> None:
+    import typer  # here: the plan asks this module where the line is (`plan.runs_itself`), a hook's too
+
+    # hidden, as `graphene state` is: an editor's Home runs it, and `graphene --help` keeps to its ten rows
+    @cli.command("workflow", hidden=True)
+    def workflow_(
+        name: str = typer.Argument(None, help="The workflow to run, or to save; left out, they are listed."),
+        inputs: list[str] = typer.Option(
+            None, "-i", "--input", help="An input, as name=value (with --save, name=literal); repeat it."
+        ),
+        save_: bool = typer.Option(
+            False, "--save", help="Write workflows/NAME.md from the plan; each -i literal becomes a hole."
+        ),
+        force: bool = typer.Option(False, "--force", help="With --save, write over the file."),
+        as_json: bool = typer.Option(False, "--json", help="List the workflows as JSON."),
+    ) -> None:
+        """Run a saved workflow on new input, or save the plan as one.
+
+        Its steps are proposed with no planner call: `graphene plan accept`, then `graphene run`."""
+        who = P.caller()
+        if not who.person:
+            fail(f"`graphene workflow` is the person's: it proposes a plan with no planner, and writes "
+                 f"{DIR}/ (this call comes from {who.name}). An agent proposes: graphene plan propose -", 1)
+        r = root()
+        try:
+            given = _pairs(inputs)
+            if name is None:
+                if given or save_ or force:
+                    raise P.Refused("name the workflow: graphene workflow NAME -i name=value, or NAME --save")
+                flows, was = listed(r), None
+                if (r / ".graphene" / "graphene.db").exists():  # a listing makes no store
+                    with open_store(r) as store:
+                        was = last(store)
+                if as_json:
+                    typer.echo(json.dumps({"workflows": flows, "last": was}))
+                    return
+                for one in flows:
+                    said = ", ".join(i["name"] + (f"={i['default']}" if i["default"] is not None else "")
+                                     for i in one["inputs"])  # fmt: skip
+                    what = f"cannot be read: {one['error']}" if one["error"] else f"inputs: {said or 'none'}"
+                    typer.echo(f"{one['name']}  {what}  ({one['file']})")
+                if not flows:
+                    typer.echo(f"no workflow here yet: `graphene workflow NAME --save` writes {DIR}/NAME.md "
+                               "from the plan")  # fmt: skip
+                return
+            if as_json:
+                raise P.Refused("--json lists the workflows: leave the name out")
+            if save_:
+                with open_store(r) as store:
+                    path = save(store, r, name, given, force)
+                typer.echo(str(path.relative_to(r)))  # the path it wrote, and nothing else: a caller opens it
+                return
+            if force:
+                raise P.Refused("--force goes with --save: it writes over a workflow's file")
+            flow = read(r, name)
+            files = P.tracked(r)  # before the plan's write lock, never under it
+            with open_store(r) as store:
+                said = propose(store, flow, given, who, files)
+        except P.Refused as no:
+            fail(str(no), 1)
+        for line in said:
+            typer.echo(line)
+        typer.echo("next: `graphene plan accept`, or prune in `graphene watch` (y accepts, d drops)")
+        if line := P.where_said(r):
+            typer.echo(line, err=True)
