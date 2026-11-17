@@ -132,7 +132,8 @@ test("the page's messages are checked against the plan before anything runs", ()
   no({ type: "act", act: "ask", arg: "   " });
   no({ type: "act", act: "ask", arg: "x".repeat(4001) });
   no({ type: "act", act: "ask" });
-  ok({ type: "act", act: "setup", arg: "nemotron", flag: true });
+  ok({ type: "act", act: "setup", arg: "codex", flag: true });
+  no({ type: "act", act: "setup", arg: "nemotron", flag: true }); // Home's picker offers Claude Code and Codex; the CLI still takes --executor nemotron
   no({ type: "act", act: "setup", arg: "rm -rf /" });
   ok({ type: "act", act: "setKey", arg: "nim" });
   no({ type: "act", act: "setKey", arg: "nim; rm" });
