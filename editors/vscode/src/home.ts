@@ -37,6 +37,8 @@ export class HomeHost implements vscode.WebviewViewProvider {
     this.session = session;
     session.onDidChange(() => this.push());
     session.onDidSee(() => this.push());
+    // the graph's header asks for this by name: its Save as workflow button
+    context.subscriptions.push(vscode.commands.registerCommand("graphene.saveWorkflow", () => this.saveWorkflow()));
   }
 
   resolveWebviewView(view: vscode.WebviewView) {
@@ -114,6 +116,38 @@ export class HomeHost implements vscode.WebviewViewProvider {
     await this.readWorkflows();
     await this.session.refresh();
     this.push();
+  }
+
+  /** Save as workflow, from the graph's header: its name, then what varies from run to run as `name=value` pairs
+   *  (each value becomes an input, a hole in the text), and `graphene workflow NAME --save` writes workflows/NAME.md. */
+  private async saveWorkflow() {
+    if (!this.session.state?.tasks.length) return void vscode.window.showInformationMessage("There is no graph to save yet.");
+    await this.readWorkflows();
+    const named = await vscode.window.showInputBox({
+      title: "Save as workflow", prompt: "Its name: it is written to workflows/<name>.md", value: this.lastWorkflow?.name ?? "", placeHolder: "fix-issue",
+      ignoreFocusOut: true, validateInput: (v) => (/^[A-Za-z][A-Za-z0-9_-]*$/.test(v.trim()) ? undefined : "a letter, then letters, digits, - and _"), // the engine's own rule (workflow.py NAME)
+    });
+    const name = named?.trim();
+    if (!name) return;
+    const varies = await vscode.window.showInputBox({
+      title: "Save as workflow", prompt: "What varies from run to run? name=value pairs, a comma between. Each value becomes an input. Empty: nothing varies.",
+      value: Object.entries(this.lastWorkflow?.inputs ?? {}).map(([k, v]) => `${k}=${v}`).join(", "), placeHolder: "issue=48, test=pytest -k export",
+      ignoreFocusOut: true, validateInput: (v) => (C.pairs(v) ? undefined : "write name=value, with a comma between pairs"),
+    });
+    const inputs = varies === undefined ? null : C.pairs(varies);
+    if (!inputs) return;
+    let out = await this.session.run(C.saveWorkflow(name, inputs));
+    if (out.code !== 0 && /--force/.test(`${out.stderr}${out.stdout}`)) { // one by that name is there: replacing it is the person's to say
+      const ok = await vscode.window.showWarningMessage(`workflows/${name}.md is there already. Replace it?`, { modal: true }, "Replace");
+      if (!ok) return;
+      out = await this.session.run(C.saveWorkflow(name, inputs, true));
+    }
+    if (out.code !== 0) return void vscode.window.showErrorMessage(C.plain(out.code === -1 ? "graphene was not found" : C.refusal(out.stderr, out.stdout)));
+    await this.readWorkflows();
+    this.push();
+    const folder = this.session.folder;
+    const open = await vscode.window.showInformationMessage(`Saved as workflows/${name}.md. Home lists it under Workflows.`, "Open It");
+    if (open && folder) void vscode.window.showTextDocument(vscode.Uri.joinPath(folder.uri, "workflows", `${name}.md`));
   }
 
   /** The switch: on sets the three settings and keeps what review and auto were; off puts them back and forgets

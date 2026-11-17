@@ -23,7 +23,7 @@ export const window = { showErrorMessage(m) { notifications.push(m); return Prom
   showInformationMessage() { return Promise.resolve(undefined); } };
 export const Uri = { joinPath(...p) { return p.join("/"); } };
 export const ViewColumn = { Active: -1 };
-export const commands = { ran: [], getCommands() { return Promise.resolve(["graphene.runReady", "graphene.stop", "graphene.auto", "graphene.openCockpit", "graphene.addStep"]); },
+export const commands = { ran: [], registered: [], registerCommand(id) { this.registered.push(id); return { dispose() {} }; }, getCommands() { return Promise.resolve(["graphene.runReady", "graphene.stop", "graphene.auto", "graphene.openCockpit", "graphene.addStep"]); },
   executeCommand(id, arg) { this.ran.push([id, arg]); return Promise.resolve(); } };
 `;
 const hooks = `
