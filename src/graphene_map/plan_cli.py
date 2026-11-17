@@ -246,6 +246,8 @@ def register(cli: typer.Typer, root, open_store, fail):
             said += [f"`graphene plan accept {n.id}`"] if parent is None or parent.state != P.PROPOSED else []
         elif word == "waiting":
             said.append("waits on " + ", ".join(f"{b.id} ({T.blocker(b, words)})" for b in P.unmet(n, by_id)))
+        elif word == "yours" and P.runs_itself(n) is False:  # a command step past the line: nobody's name
+            said.append(f"leaves this machine: `graphene node done {n.id}` approves and runs it")
         elif word == "yours" and n.owner != who.name:
             said.append(f"{n.owner}'s")
         elif word == "to fill in":
@@ -1697,6 +1699,7 @@ def register(cli: typer.Typer, root, open_store, fail):
             mine = str((last["detail"] or {}).get("note", "")).startswith("done by hand")  # the person's word
             how = (
                 "overruled by a person" if override is not None
+                else "its command ran and exited 0" if P.runs_itself(n) is not None  # as its row says
                 else f"by hand: yours, {'and its check passed' if n.check else 'with no check to run'}"
                 if mine or not n.scope
                 else "check passed, nothing outside its scope"

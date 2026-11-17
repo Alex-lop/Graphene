@@ -471,8 +471,11 @@ def pad(text: str, wide: int) -> str:
 
 def blocker(node: P.Node, words: dict[str, str]) -> str:
     """A node something waits on, as that line says it: its state word, or whose it is when it is a
-    person's own (an agent reading "waits on n1 (yours)" would take n1 for its own)."""
+    person's own (an agent reading "waits on n1 (yours)" would take n1 for its own). A command step past
+    the line is nobody's: it waits for the person's approval."""
     word = words.get(node.id, node.state)
+    if word == "yours" and P.runs_itself(node) is False:
+        return "waits for your approval"
     return f"{node.owner}'s" if word == "yours" else word
 
 

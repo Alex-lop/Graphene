@@ -2126,9 +2126,12 @@ def _may_start(store, node: Node, who: Caller, everything: list[Node]) -> None:
 
 
 def _told(blockers: list[Node]) -> str:
-    return ", ".join(
-        f"{b.id} ({b.state}{', ' + b.owner + chr(39) + 's' if b.owner != AGENT else ''})" for b in blockers
-    )
+    def whose(b: Node) -> str:
+        if (itself := runs_itself(b)) is not None:  # a command step is nobody's: the run's, or past the line
+            return "" if itself else ", waits for your approval"
+        return f", {b.owner}'s" if b.owner != AGENT else ""
+
+    return ", ".join(f"{b.id} ({b.state}{whose(b)})" for b in blockers)
 
 
 def _no_scope(node: Node, who: Caller, verb: str) -> Refused:

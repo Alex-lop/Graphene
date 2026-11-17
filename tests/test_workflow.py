@@ -362,9 +362,12 @@ def test_the_run_lands_the_agents_step_runs_the_command_and_stops_at_the_line(re
     assert passed[1]["detail"]["note"] == "its command ran and exited 0"  # nobody's word
     assert not rows(repo, "push-a", "check_passed", "check_failed")  # never run by the run
     assert git(bare, "rev-parse", "-q", "--verify", "main") is None  # and nothing left this machine
-    assert "waiting on you: push-a (yours)" in person("plan").output  # the one move that is the person's
+    listed = person("plan")
+    assert "waiting on you: push-a (yours)" in listed.output  # the one move that is the person's
+    assert "yours · leaves this machine: `graphene node done push-a` approves and runs it" in listed.words
     approved = person("node", "done", "push-a")  # the person's approval: it runs the command
     assert approved.exit_code == 0, approved.output
+    assert "push-a is done (its command ran and exited 0)" in approved.output  # as its row says, below
     assert nodes(repo)["push-a"].state == DONE
     assert git(bare, "rev-parse", "main") == git(repo, "rev-parse", "main")
     assert rows(repo, "push-a", "check_passed")[0]["actor"] == "alex (no terminal)"
@@ -396,7 +399,23 @@ def test_a_command_that_fails_stays_open_and_the_run_goes_on(repo):
     assert alone.output.splitlines()[-1].startswith("run: 1 command failed (see-b) · agents ")
     assert len(rows(repo, "see-b", "check_failed")) == 2
     by_hand = person("node", "done", "push-b")  # the line is no way round what it needs
-    assert by_hand.exit_code == 1 and "push-b waits on see-b" in by_hand.output
+    assert by_hand.exit_code == 1 and "push-b waits on see-b (open)" in by_hand.words  # nobody's: no name
+
+
+def test_a_step_that_waits_on_one_past_the_line_says_it_waits_for_your_approval(repo):
+    """`command` is the owner of a command step and nobody's name: what waits on a step past the line said
+    "(command's)", in `graphene plan`, in the plan's text and in a refusal."""
+    with Store.open(repo) as store:
+        T.apply(store, "- push it  [push]\n    run: git push origin main\n"
+                       "- say so  [say]\n    run: true\n    needs: push\n", ALEX)  # fmt: skip
+    listed = person("plan")
+    assert "say waiting · waits on push (waits for your approval)" in listed.words
+    assert "    # waiting on push (waits for your approval)\n" in person("plan", "--text").stdout
+    early = person("node", "done", "say")
+    assert early.exit_code == 1 and "say waits on push (open, waits for your approval)" in early.words
+    assert "command's" not in listed.output + early.output
+
+
 def test_the_goals_check_auto_builds_runs_no_command_step(repo):
     """`graphene auto` makes its goal's check from the checks under it, and a sub-goal's check runs by
     itself once its steps are done: a command step's command in it (a push) would run with no approval."""
