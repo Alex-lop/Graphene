@@ -147,6 +147,19 @@ export function mayRun(s: Pick<StateX, "allows" | "executor">, t: Pick<TaskX, "h
 export const OUTSIDE = "none granted: a step cannot be given outside tools or network yet";
 export const OUTSIDE_OWN = "none granted by Graphene: this agent's own settings decide what else it reaches";
 
+/** Held by, in one of three states and never more than the tests prove (tests/test_every_agent.py,
+ *  dev/process/graph-edit/hooks.md): refused before the write, caught when it finishes, or not held. A
+ *  Graphene that does not say reads as not held: no shield for an agent nobody has tested. */
+export function heldWords(t: Pick<TaskX, "held">): { shield: boolean; line: string; proof: string } {
+  const by = t.held.by === "claude" ? "Claude Code" : t.held.by === "codex" ? "Codex" : t.held.by || "this agent";
+  if (t.held.state === "refused") return { shield: true, line: "A write outside its files is refused before it happens.", proof: `${by}'s hook, proven by tests/test_every_agent.py` };
+  if (t.held.state === "caught") return { shield: true, line: "A write outside its files is caught when it finishes, at the latest: the task comes back and none of its work is merged.",
+                                          proof: `Proven for every agent a run starts, ${by} too, by tests/test_every_agent.py: the finish checks what changed against its files.` };
+  return { shield: false, line: "Not held: nothing stops a write outside its files.",
+           proof: t.held.state === "none" ? "A task you do yourself, or give to an editor's own agent (Cursor, Copilot), is checked only when you mark it done."
+             : "This Graphene does not say how this step is held." };
+}
+
 export interface Stage { key: "plan" | "run" | "review"; label: string; at: "done" | "now" | "next"; note: string }
 
 /** One pipeline, the plan always first: Plan, Run, Review. Where the work is (the first stage not finished is
