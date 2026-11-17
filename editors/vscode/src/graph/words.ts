@@ -160,6 +160,18 @@ export function heldWords(t: Pick<TaskX, "held">): { shield: boolean; line: stri
              : "This Graphene does not say how this step is held." };
 }
 
+/** Stopped: this step's refused writes against the run's, then each with its time as the clock here reads it. */
+export function stopsOf(t: Pick<TaskX, "id" | "title" | "stops">, tasks: readonly Pick<TaskX, "id" | "title" | "stops" | "state">[], clock = (iso: string) => new Date(iso)):
+  { count: string; rows: { line: string; note: string }[] } {
+  const went = (state: string) => state === "running" || state === "review" || state === "done"; // it carried on: said only where it did
+  const all = tasks.flatMap((o) => o.stops.map((x) => ({ ...x, id: o.id, title: o.title, on: went(o.state) })));
+  const time = (iso: string) => { const d = clock(iso); return Number.isNaN(d.getTime()) ? "" : ` ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`; };
+  const shown = t.stops.length ? all.filter((x) => x.id === t.id) : all.slice(-3); // none here: the run's last ones, so a person sees where
+  return { count: `${t.stops.length} here · ${all.length} in the run`,
+           rows: shown.map((x) => ({ line: x.id === t.id ? `tried ${x.path}` : `“${x.title}” tried ${x.path}`,
+                                     note: `refused${time(x.at)}${x.how ? ` · ${x.how}` : ""}${x.on ? " · it carried on in its own files" : ""}` })) };
+}
+
 export interface Stage { key: "plan" | "run" | "review"; label: string; at: "done" | "now" | "next"; note: string }
 
 /** One pipeline, the plan always first: Plan, Run, Review. Where the work is (the first stage not finished is
