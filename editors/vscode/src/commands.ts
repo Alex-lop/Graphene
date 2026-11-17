@@ -44,6 +44,50 @@ export const refreshable = (): string[] => ["--version"];
 
 // Free text (a goal, a title, a note, an answer) comes last, after `--`: typed words that start with a dash
 // are words to the CLI, not an option it refuses.
+/** `graphene workflow --json`: the repository's workflows (workflows/*.md), each with its inputs. */
+export const workflows = (): string[] => ["workflow", "--json"];
+/** Propose a workflow's plan with its holes filled: no planner is called. Each input is one argument, `name=value`. */
+export const workflow = (name: string, inputs: Record<string, string>): string[] =>
+  ["workflow", name, ...Object.entries(inputs).flatMap(([k, v]) => ["-i", `${k}=${v}`])];
+/** Write the plan as it stands to workflows/NAME.md, each `name=literal` a hole; `force` overwrites one that is there. */
+export const saveWorkflow = (name: string, inputs: Record<string, string>, force = false): string[] =>
+  ["workflow", name, "--save", ...(force ? ["--force"] : []), ...Object.entries(inputs).flatMap(([k, v]) => ["-i", `${k}=${v}`])];
+
+/** `issue=48, test=pytest -k export` as its pairs: a comma ends a value only where a new `name=` follows, so a
+ *  value may hold commas. Null for anything that is not pairs; none for nothing. */
+export function pairs(text: string): Record<string, string> | null {
+  const out: Record<string, string> = {};
+  for (const part of text.trim() ? text.split(/,\s*(?=[A-Za-z][\w-]*\s*=)/) : []) {
+    const m = /^\s*([A-Za-z][\w-]*)\s*=\s*(.*?)\s*$/.exec(part);
+    if (!m || !m[2]) return null;
+    out[m[1]!] = m[2];
+  }
+  return out;
+}
+
+export interface Workflow { name: string; file: string; goal: string; inputs: { name: string; default: string | null }[]; error: string | null }
+/** What `graphene workflow --json` printed: the workflows, and the inputs the last one proposed here was given.
+ *  Nothing for anything that is not that JSON (an older CLI has no such command). */
+export function parseWorkflows(text: string): { workflows: Workflow[]; last: { name: string; inputs: Record<string, string> } | null } {
+  try {
+    const r = JSON.parse(text) as Record<string, unknown>;
+    const str = (v: unknown) => (typeof v === "string" ? v : "");
+    const list = Array.isArray(r.workflows) ? (r.workflows as Record<string, unknown>[]) : [];
+    const last = r.last && typeof r.last === "object" ? (r.last as Record<string, unknown>) : null;
+    const given = last && last.inputs && typeof last.inputs === "object" ? Object.entries(last.inputs as Record<string, unknown>) : [];
+    return {
+      workflows: list.filter((w) => w && typeof w === "object" && /^[\w.-]+$/.test(str(w.name))).map((w) => ({
+        name: str(w.name), file: str(w.file), goal: str(w.goal), error: typeof w.error === "string" && w.error ? w.error : null,
+        inputs: (Array.isArray(w.inputs) ? (w.inputs as Record<string, unknown>[]) : []).filter((i) => i && str(i.name))
+          .map((i) => ({ name: str(i.name), default: typeof i.default === "string" ? i.default : null })),
+      })),
+      last: last && str(last.name) ? { name: str(last.name), inputs: Object.fromEntries(given.filter(([, v]) => typeof v === "string") as [string, string][]) } : null,
+    };
+  } catch {
+    return { workflows: [], last: null };
+  }
+}
+
 /** The one switch, Stop after the plan: on is `auto: off` (a plan waits for you), off is `auto: on`. */
 export const stopAfter = (on: boolean): string[] => setting("auto", on ? "off" : "on");
 
