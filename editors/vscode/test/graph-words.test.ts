@@ -312,6 +312,8 @@ test("May change is a tree: its folder opened to its files, the written ones mar
   const strayed = { ...top, files: ["wordkit/cli.py", "tests/test_top.py"], filesN: 2, touched: ["README.md", "wordkit/cli.py"], changed: [] };
   assert.equal(writtenOf(strayed), "1 of 2");
   assert.ok(!scopeTree(strayed, { tree: [], tasks: [] }).some((r) => r.name === "README.md"));
+  // a replay's repository is empty, and an older CLI names no files: what is there is not known, so no path says "not there yet"
+  assert.deepEqual(scopeTree({ ...top, files: [], filesN: 0, changed: [] }, { tree: [], tasks: [] }).map((r) => `${r.name} ${r.note}`), ["tests/test_top.py ", "wordkit/cli.py "]);
   // a scope past the 200 files a snapshot lists: its other folders are still its own, and the rest are counted
   const wide = { id: "all", scope: ["**"], files: ["a/x.py"], filesN: 300, touched: [], changed: [] };
   assert.deepEqual(scopeTree(wide, { tree: ["a/", "z/", "README.md"], tasks: [] }).map((r) => `${"  ".repeat(r.depth)}${r.name} [${r.kind}]`),
