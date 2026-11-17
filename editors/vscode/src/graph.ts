@@ -148,6 +148,7 @@ export class GraphHost implements vscode.WebviewViewProvider {
       case "run": return run("runReady");
       case "stop": return run("stop");
       case "auto": return run("auto");
+      case "stopAfter": return typeof m.value === "boolean" ? this.session.act(C.stopAfter(m.value)) : undefined; // the header's switch
       case "cockpit": return run("openCockpit");
       case "openDiff": return run("openDiff", m.fork ? { ...arg, fork: m.fork } : arg);
       case "compareForks": return run("compareForks", arg);
