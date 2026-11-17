@@ -2,7 +2,7 @@
 // in the order a person acts on them (what needs you, the suggested plan, who is working, what is up next, what
 // is done); each card says what its task is for and what proves it, with its buttons. No VS Code and no DOM
 // here: home.ts sends what this returns, home/main.ts draws it, and checkHome reads what the page sends back.
-import { pipeline, stopAfterPlan, type Stage } from "../graph/words.ts";
+import { pipeline, PROVES_NOTHING, stopAfterPlan, type Stage } from "../graph/words.ts";
 import { needs, OFFERS, offerOn } from "../needs.ts";
 import { headline, SAY, usd, type Question, type State, type Task } from "../state.ts";
 import { WHO } from "./who.ts";
@@ -19,6 +19,7 @@ export interface Card { key: string; tone: Tone; title: string; tag: string; lin
 export interface Section { key: string; title: string; note: string; buttons: Btn[]; cards: Card[]; folded: boolean }
 /** ``stages``: Plan, Run, Review, and where the work is. ``stopAfter``: the one switch, on by default. */
 export interface Home { banner: string; goal: string; counts: string; stages: Stage[]; stopAfter: boolean; sections: Section[]; empty: boolean }
+export { PROVES_NOTHING };
 
 const cut = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1).trimEnd()}…` : s);
 const files = (paths: string[]) => paths.join(", ");
@@ -54,6 +55,7 @@ function contract(t: Task, name: (id: string) => string): Line[] {
     ...line("What for", t.full && t.full !== t.title ? t.full : ""),
     { k: "May change", v: files(t.scope) || "no files named", mono: Boolean(t.scope.length) },
     { k: "Done when", v: t.check ? `${t.check} passes` : "you approve it", mono: Boolean(t.check) },
+    ...(t.hollow ? [{ v: PROVES_NOTHING, warn: true }] : []), // the check ran once on the code as it is, before the run
     ...line("After", t.needs.map(name).join(", ")),
   ];
 }
@@ -172,7 +174,8 @@ export function home(s: State, seen: ReadonlySet<string> = new Set(), exact = fa
     return {
       key: `w:${t.id}`, tone: "running" as const, title: t.title, tag: SAY.running,
       lines: [...line("Agent", `${t.agent || "?"}${t.model ? ` · ${t.model}` : ""}`), ...line("Now", t.tail[t.tail.length - 1] ?? "", { mono: true }),
-              ...line("Quiet for", quiet), ...line("Cost", usd(t.usd)), ...line("Attempts", attempts(t), { mono: true })],
+              ...line("Quiet for", quiet), ...line("Cost", usd(t.usd)), ...line("Attempts", attempts(t), { mono: true }),
+              ...(t.hollow ? [{ v: PROVES_NOTHING, warn: true }] : [])],
       buttons: [{ label: "Open changes so far", act: "openDiff" as const, id: t.id },
                 { label: "Message agent…", act: "message" as const, id: t.id, title: "it reads your line with its next step" },
                 ...(t.forks.length > 1 ? [{ label: "Compare attempts", act: "compare" as const, id: t.id }] : [])],

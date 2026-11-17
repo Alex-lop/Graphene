@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import * as C from "../src/commands.ts";
-import { banner, checkHome, countsLine, home, said, type Card, type Home } from "../src/home/cards.ts";
+import { banner, checkHome, countsLine, home, PROVES_NOTHING, said, type Card, type Home } from "../src/home/cards.ts";
 import { headline, parseState, type State } from "../src/state.ts";
 
 const fixture = (name: string): State => parseState(readFileSync(new URL(`./fixtures/${name}.json`, import.meta.url), "utf8"));
@@ -191,6 +191,17 @@ test("Home shows the pipeline's three stages and the one switch, on until `auto`
   assert.equal(checkHome({ type: "act", act: "stopAfter" }, s), null, "the switch says which way");
   assert.deepEqual(C.stopAfter(true), ["config", "set", "auto", "off"]);
   assert.deepEqual(C.stopAfter(false), ["config", "set", "auto", "on"]);
+});
+
+test("before the run, a check that already passes is marked on its card: it proves nothing yet", () => {
+  const s = fixture("graph-race");
+  const mark = (id: string, key: string) => {
+    const h = home({ ...s, tasks: s.tasks.map((t) => (t.id === id ? { ...t, hollow: true } : t)) });
+    return card(h, key).lines.filter((l) => l.warn).map((l) => l.v);
+  };
+  assert.deepEqual(mark("ship", "n:ship"), [PROVES_NOTHING], "a task up next");
+  assert.ok(mark("greet", "w:greet").includes(PROVES_NOTHING), "a task an agent is on");
+  assert.deepEqual(card(home(s), "n:ship").lines.filter((l) => l.warn), [], "a check that fails now says nothing");
 });
 
 test("a question with no default stops the run either way: with the switch on, Start waits for its answer", () => {
