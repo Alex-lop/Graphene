@@ -6,12 +6,13 @@ import emptyFx from "../../test/fixtures/empty.json";
 import proposalsFx from "../../test/fixtures/proposals.json";
 import runningFx from "../../test/fixtures/running.json";
 import scopeFx from "../../test/fixtures/scope.json";
+import workflowFx from "../../test/fixtures/workflow.json";
 import realAutoFx from "../../test/fixtures/real-auto.json";
 import raceFx from "../../test/fixtures/graph-race.json";
 import { parseState } from "../state.ts";
 
 const fixtures: Record<string, unknown> = { auto: autoFx, empty: emptyFx, proposals: proposalsFx, running: runningFx,
-  real: realAutoFx, race: raceFx, drafting: draftingFx, scope: scopeFx };
+  real: realAutoFx, race: raceFx, drafting: draftingFx, scope: scopeFx, workflow: workflowFx };
 const params = new URLSearchParams(location.search);
 const name = params.get("fixture") ?? "running";
 const select = params.get("select"); // `&select=greet` opens that task's details, as a click would
