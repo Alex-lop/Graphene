@@ -290,6 +290,7 @@ function header(s: StateX) {
 const taskEls = new Map<string, { g: SVGGElement; key: string }>();
 const edgeEls = new Map<string, SVGPathElement>();
 let goalKey = "";
+let fitSize = ""; // the drawing's size when it was last fitted
 
 function graph(s: StateX, dir: "across" | "down") {
   const svg = $("svg") as unknown as SVGSVGElement;
@@ -386,7 +387,13 @@ function graph(s: StateX, dir: "across" | "down") {
   svg.setAttribute("viewBox", `0 0 ${Math.max(lay.width, 10)} ${Math.max(lay.height, 10)}`);
   svg.setAttribute("width", String(lay.width));
   svg.setAttribute("height", String(lay.height));
-  if (!fitted && !moved) fit(); else zoom = clamp(zoom);
+  // until the person pans or zooms, the plan keeps the middle: when it grows or shrinks it glides back there
+  const size = `${lay.width}x${lay.height}`;
+  if (!moved) {
+    if (fitted && size !== fitSize) { svg.classList.add("glide"); setTimeout(() => svg.classList.remove("glide"), 300); }
+    fit();
+  } else zoom = clamp(zoom);
+  fitSize = size;
   fitted = true;
   applyZoom();
 }
@@ -649,7 +656,7 @@ function at(e: MouseEvent): { x: number; y: number } {
  *  type reads at, the rest is a pan or the `g` key away. */
 function fit() {
   if (!lay) return;
-  zoom = clamp({ k: 1, tx: 0, ty: 0 });
+  zoom = clamp({ k: 1, tx: 0, ty: Math.max(0, ($("canvas").clientHeight - lay.height) / 2 - 10) }); // a short plan sits in the middle, as the target's does
   fitted = true;
 }
 
