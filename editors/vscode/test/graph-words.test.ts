@@ -335,6 +335,9 @@ test("May run, Held by, Stopped, Done when and Tokens say what is known, and no 
   // the list is the repository's executor's: a step Codex holds, or one that is yours, is not under it
   assert.deepEqual(mayRun(scoped, step("button")), { commands: [], words: "any command: what a command writes is still held to its files", outside: OUTSIDE_OWN });
   assert.deepEqual(mayRun(scoped, step("docs")), { commands: [], words: "any command", outside: OUTSIDE_OWN });
+  // the setting names the model (`claude:opus`), a run names the holder by family (`claude`): the same executor, the same list and name
+  assert.deepEqual(mayRun({ ...scoped, executor: "claude:opus" }, step("rows")).commands, ["graphene node *", "graphene plan *"]);
+  assert.match(heldWords({ held: { state: "refused", by: "claude:opus" } }).proof, /^Claude Code's hook/);
   // held: three states, each as the tests prove it; a Graphene that does not say is not held, never a shield
   assert.deepEqual([heldWords(step("rows")).shield, heldWords(step("rows")).line], [true, "A write outside its files is refused before it happens."]);
   assert.match(heldWords(step("rows")).proof, /^Claude Code's hook, proven by tests\/test_every_agent\.py$/);

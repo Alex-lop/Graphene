@@ -157,12 +157,15 @@ export function writtenOf(t: Pick<TaskX, "scope" | "files" | "filesN" | "touched
   return all ? `${written.length} of ${all}` : "";
 }
 
+/** An executor's family: `claude` of `claude:opus`. The setting names the model too; a run names who holds a step by family alone. */
+const family = (by: string) => by.split(":")[0]!;
+
 /** May run: the commands the repository's executor may run without asking, as its own command line lists them
  *  (`allows`), or that it names no list. The list is that executor's: a step someone else holds (another agent
  *  a run was given, you) is not under it. Outside: Graphene has nothing to grant a step yet, and says no more
  *  than that of an agent whose own settings decide what it reaches. */
 export function mayRun(s: Pick<StateX, "allows" | "executor">, t: Pick<TaskX, "held">): { commands: string[]; words: string; outside: string } {
-  if (s.allows && t.held.by === s.executor) return { commands: s.allows, words: s.allows.length ? "" : "no shell command", outside: OUTSIDE };
+  if (s.allows && family(t.held.by) === family(s.executor)) return { commands: s.allows, words: s.allows.length ? "" : "no shell command", outside: OUTSIDE };
   const held = t.held.state === "refused" || t.held.state === "caught";
   return { commands: [], words: held ? "any command: what a command writes is still held to its files" : "any command", outside: OUTSIDE_OWN };
 }
@@ -173,7 +176,7 @@ export const OUTSIDE_OWN = "none granted by Graphene: this agent's own settings 
  *  dev/process/graph-edit/hooks.md): refused before the write, caught when it finishes, or not held. A
  *  Graphene that does not say reads as not held: no shield for an agent nobody has tested. */
 export function heldWords(t: Pick<TaskX, "held">): { shield: boolean; line: string; proof: string } {
-  const by = t.held.by === "claude" ? "Claude Code" : t.held.by === "codex" ? "Codex" : t.held.by || "this agent";
+  const by = family(t.held.by) === "claude" ? "Claude Code" : family(t.held.by) === "codex" ? "Codex" : t.held.by || "this agent";
   if (t.held.state === "refused") return { shield: true, line: "A write outside its files is refused before it happens.", proof: `${by}'s hook, proven by tests/test_every_agent.py` };
   if (t.held.state === "caught") return { shield: true, line: "A write outside its files is caught when it finishes, at the latest: the task comes back and none of its work is merged.",
                                           proof: `Proven for every agent a run starts, ${by} too, by tests/test_every_agent.py: the finish checks what changed against its files.` };
