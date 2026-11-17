@@ -301,6 +301,25 @@ def test_run_with_an_agents_key_is_refused_with_its_line(repo, other, first):
         assert plan.nodes(store) == []
 
 
+def test_a_command_step_takes_no_scope_forks_or_signoff_and_stays_a_command_step(repo):
+    """`graphene node set` (the editor's form sends it) gave a command step files, attempts or a sign-off.
+    With a scope it was no command step any more, so nothing said its push leaves this machine; the run read
+    neither of the other two."""
+    with Store.open(repo) as store:
+        T.apply(store, "- push it  [push]\n    run: git push origin main\n", ALEX)
+    edits = ((["--scope", "a.txt"], "scope"), (["--forks", "2"], "forks"), (["--signoff"], "sign-off"))
+    for edit, what in edits:
+        said = person("node", "set", "push", *edit)
+        assert said.exit_code == 1, said.output
+        assert "push: a command step is its command alone: no agent takes it" in said.words
+        assert f"so it takes no {what}. To change what it runs, change its run: line in" in said.words
+    push = nodes(repo)["push"]
+    assert (push.scope, push.forks, push.signoff, push.owner) == ([], None, False, COMMAND)
+    assert plan.runs_itself(push) is False  # a command step still, and still past the line
+    with Store.open(repo) as store, pytest.raises(Refused, match="tag: a command step .* takes no sign-off"):
+        T.apply(store, "- tag it  [tag]\n    run: git tag v1\n    signoff: yes\n", ALEX)  # in the text too
+
+
 @pytest.mark.parametrize(("command", "past"), [
     ("git push -u origin HEAD && gh pr create --draft --fill", True), ("gh pr create --draft", True),
     ("cd .. && git  push", True), ("uv run pytest -q", False), ("git status && gh issue list", False),

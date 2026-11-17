@@ -423,6 +423,16 @@ def validate(
                 f"{n.id}: a command step (run: {n.check}) is a step of its own and takes no steps under it. "
                 "Give the command a step that needs them instead"
             )
+        if n.owner == COMMAND and (fresh is None or n.id in fresh):
+            # with a scope it is no command step any more (`runs_itself`): nothing then says its command
+            # leaves this machine. Forks and a sign-off are an agent's: the run reads neither on a command
+            extra = "scope" if n.scope else "forks" if (n.forks or 1) > 1 else "sign-off" if n.signoff else ""
+            if extra:
+                raise Refused(
+                    f"{n.id}: a command step is its command alone: no agent takes it, it changes no file, "
+                    f"and its exit code is its check, so it takes no {extra}. To change what it runs, change "
+                    "its run: line in the plan's text (`graphene plan edit`)"
+                )
         if under.get(n.id) or not (n.scope or n.check or n.signoff or n.aside):
             continue
         if fresh is not None and n.id not in fresh:
