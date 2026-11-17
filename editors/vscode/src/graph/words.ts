@@ -135,6 +135,18 @@ export function writtenOf(t: Pick<TaskX, "scope" | "files" | "filesN" | "touched
   return all ? `${written.length} of ${all}` : "";
 }
 
+/** May run: the commands the repository's executor may run without asking, as its own command line lists them
+ *  (`allows`), or that it names no list. The list is that executor's: a step someone else holds (another agent
+ *  a run was given, you) is not under it. Outside: Graphene has nothing to grant a step yet, and says no more
+ *  than that of an agent whose own settings decide what it reaches. */
+export function mayRun(s: Pick<StateX, "allows" | "executor">, t: Pick<TaskX, "held">): { commands: string[]; words: string; outside: string } {
+  if (s.allows && t.held.by === s.executor) return { commands: s.allows, words: s.allows.length ? "" : "no shell command", outside: OUTSIDE };
+  const held = t.held.state === "refused" || t.held.state === "caught";
+  return { commands: [], words: held ? "any command: what a command writes is still held to its files" : "any command", outside: OUTSIDE_OWN };
+}
+export const OUTSIDE = "none granted: a step cannot be given outside tools or network yet";
+export const OUTSIDE_OWN = "none granted by Graphene: this agent's own settings decide what else it reaches";
+
 export interface Stage { key: "plan" | "run" | "review"; label: string; at: "done" | "now" | "next"; note: string }
 
 /** One pipeline, the plan always first: Plan, Run, Review. Where the work is (the first stage not finished is
