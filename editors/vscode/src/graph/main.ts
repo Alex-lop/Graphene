@@ -660,6 +660,23 @@ function fit() {
   fitted = true;
 }
 
+/** Zoom to ``k`` about a point of the canvas (the pointer, or its middle for the buttons). */
+function zoomAt(k: number, px: number, py: number) {
+  k = zoomK(k);
+  zoom = clamp({ k, tx: px - (px - zoom.tx) * (k / zoom.k), ty: py - (py - zoom.ty) * (k / zoom.k) });
+  moved = true;
+  remember({ zoom });
+  applyZoom();
+}
+
+/** The graph fitted again, as `f` and a double click do. */
+function refit() {
+  moved = false;
+  fit();
+  remember({ zoom: undefined });
+  applyZoom();
+}
+
 /** A pan never loses the graph: a graph wider than the canvas stays against an edge at most, a smaller one
  *  stays inside. */
 function clamp(z: Zoom): Zoom {
@@ -1161,7 +1178,7 @@ window.addEventListener("keydown", (e) => {
     draw(near ? { after: near.id, parent: near.parent } : { after: null, parent: null });
     return;
   }
-  if (e.key === "f") { moved = false; fit(); remember({ zoom: undefined }); applyZoom(); return; }
+  if (e.key === "f") return refit();
   if (e.key === "v") { remember({ view: view() === "lanes" ? "graph" : "lanes" }); fitted = false; render(); return; }
   const keys: Record<string, "left" | "right" | "up" | "down"> = { ArrowLeft: "left", ArrowRight: "right", ArrowUp: "up", ArrowDown: "down" };
   const dir = keys[e.key];
@@ -1191,12 +1208,9 @@ function wire() {
     first();
     if (e.ctrlKey || e.metaKey) { // a pinch, or the wheel with the modifier: zoom about the pointer
       const rect = canvas.getBoundingClientRect();
-      const px = e.clientX - rect.left, py = e.clientY - rect.top;
-      const k = zoomK(zoom.k * Math.exp(-e.deltaY * 0.01));
-      zoom = clamp({ k, tx: px - (px - zoom.tx) * (k / zoom.k), ty: py - (py - zoom.ty) * (k / zoom.k) });
-    } else {
-      zoom = clamp({ ...zoom, tx: zoom.tx - e.deltaX, ty: zoom.ty - e.deltaY }); // the wheel scrolls, as a page does
+      return zoomAt(zoom.k * Math.exp(-e.deltaY * 0.01), e.clientX - rect.left, e.clientY - rect.top);
     }
+    zoom = clamp({ ...zoom, tx: zoom.tx - e.deltaX, ty: zoom.ty - e.deltaY }); // the wheel scrolls, as a page does
     moved = true;
     remember({ zoom });
     applyZoom();
@@ -1213,7 +1227,7 @@ function wire() {
       render();
       return;
     }
-    if ((e.target as Element).closest(".task, .goal")) return;
+    if ((e.target as Element).closest(".task, .goal, #zoom")) return;
     drag = { x: e.clientX, y: e.clientY, tx: zoom.tx, ty: zoom.ty };
     canvas.classList.add("dragging");
   });
@@ -1247,11 +1261,8 @@ function wire() {
   });
   canvas.addEventListener("click", (e) => { if (!(e.target as Element).closest(".task, .lane, .goal")) first(); });
   canvas.addEventListener("dblclick", (e) => {
-    if ((e.target as Element).closest(".task, .goal, .lane")) return;
-    moved = false;
-    fit();
-    remember({ zoom: undefined });
-    applyZoom();
+    if ((e.target as Element).closest(".task, .goal, .lane, #zoom")) return;
+    refit();
   });
   // the details pane opening narrows the canvas, as does a narrower window: a narrow one turns to lanes or
   // lays the graph downward, and the graph keeps its corner in view until the person pans themselves
@@ -1270,7 +1281,26 @@ function wire() {
   window.addEventListener("pointerup", released);
   window.addEventListener("pointercancel", released);
   window.addEventListener("pointermove", (e) => { if (e.buttons === 0) released(); }); // let go outside the page
-  $("view").prepend(el("g", { id: "regions" })); // under the drawing; made here, so the preview's shell has it too
+  // what the canvas gains over the shell (the preview's is the same shell): the regions under the drawing, the
+  // zoom's buttons at its foot, and the legend: colour means state and nothing else
+  $("view").prepend(el("g", { id: "regions" }));
+  const zooms = div("", undefined, canvas);
+  zooms.id = "zoom";
+  for (const [label, sign, title, on] of [["fit the graph", "⤢", "fit the graph (f)", refit],
+                                          ["zoom out", "−", "zoom out (⌘ or Ctrl with the wheel)", () => zoomAt(zoom.k / 1.25, canvas.clientWidth / 2, canvas.clientHeight / 2)],
+                                          ["zoom in", "+", "zoom in (⌘ or Ctrl with the wheel)", () => zoomAt(zoom.k * 1.25, canvas.clientWidth / 2, canvas.clientHeight / 2)]] as const) {
+    const b = document.createElement("button");
+    b.className = "quiet";
+    b.textContent = sign;
+    b.title = title;
+    b.setAttribute("aria-label", label);
+    b.addEventListener("click", on);
+    zooms.appendChild(b);
+  }
+  const legend = div("", undefined, canvas);
+  legend.id = "legend";
+  legend.setAttribute("aria-hidden", "true"); // each card says its state in words
+  for (const [word, state] of [["working", "running"], ["landed", "done"], ["needs you", "review"], ["drafted", "proposed"], ["came back", "came-back"]]) div(`lg-${state}`, word, legend);
   const toGoal = $("to-goal");
   toGoal.appendChild(document.createTextNode("goal"));
   toGoal.appendChild(icon("arrow-right"));
