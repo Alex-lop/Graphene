@@ -1352,11 +1352,13 @@ def register(cli: typer.Typer, root, open_store, fail):
                             out("review: every: a task that passes waits for your sign-off before it lands")
                         from .run import _worst, leaves_of
 
-                        # every leaf the run may reach, not only the ready ones: it goes on to the next
+                        # every leaf the run may reach, not only the ready ones: it goes on to the next. A
+                        # command step is not one: no agent attempts it, so it spends nothing
                         only = leaves_of(store, node or None)
                         reached = [
                             n for n in P.leaves(P.nodes(store))
                             if n.state == P.OPEN and (not only or n.id in only) and not P.came_back(store, n)
+                            and P.runs_itself(n) is None
                         ]  # fmt: skip
                         reach = len(reached)
                         each, tries = _worst(argv), f"{attempts} attempt" + "s" * (attempts != 1)

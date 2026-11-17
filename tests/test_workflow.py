@@ -416,6 +416,21 @@ def test_a_step_that_waits_on_one_past_the_line_says_it_waits_for_your_approval(
     assert "command's" not in listed.output + early.output
 
 
+def test_the_runs_worst_case_counts_no_command_step(repo, tmp_path, monkeypatch):
+    """No agent attempts a command step, so it spends nothing: the line counted each as a leaf times the
+    attempts times the cap."""
+    tools = tmp_path / "bin"
+    tools.mkdir()
+    (tools / "claude").write_text("#!/bin/sh\nexit 0\n")  # a Claude Code that does nothing, at $0
+    (tools / "claude").chmod(0o755)
+    monkeypatch.setenv("PATH", f"{tools}{os.pathsep}{os.environ['PATH']}")
+    flow(repo, "ship", SHIP)
+    assert person("workflow", "ship", "-i", "what=c").exit_code == 0
+    assert person("plan", "accept").exit_code == 0
+    said = person("run", "--with", "claude", "--no-precheck", "--attempts", "1")
+    assert "worst case: 1 leaf x 1 attempt x $2 = $2" in said.output, said.output  # fix-c, of the four
+
+
 def test_the_goals_check_auto_builds_runs_no_command_step(repo):
     """`graphene auto` makes its goal's check from the checks under it, and a sub-goal's check runs by
     itself once its steps are done: a command step's command in it (a push) would run with no approval."""
