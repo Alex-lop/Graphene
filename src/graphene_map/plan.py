@@ -2538,10 +2538,16 @@ def _untracked(checkout: str | Path, paths: list[str]) -> list[str]:
     return [p for p, f in full if os.path.isfile(f) and not os.path.islink(f)]
 
 
-def _done_by_hand(store, node: Node, who: Caller, given: str | None, checkout: str | Path | None) -> Node:
+def _done_by_hand(
+    store, node: Node, who: Caller, given: str | None, checkout: str | Path | None,
+    not_here: frozenset[str] | set[str] = frozenset(),
+) -> Node:  # fmt: skip
     """A person's own leaf that nobody started is done by their word, scope or none: no hold was taken, so
     git has nothing to say of it. The check it has runs first (never under the write lock), and one that
-    fails refuses it; a to-do has none to run. The log says it was their word."""
+    fails refuses it; a to-do has none to run. The log says it was their word. A command step's command is
+    told the checkout it was run for (GRAPHENE_CHECKOUT): it runs in a clean copy on no branch, and one that
+    pushes goes back there first. ``not_here``: as `roll_up` takes it, from a run whose leaves have not all
+    landed."""
 
     def may(node: Node) -> None:  # asked before the check and again under the lock: the plan may move
         everything = nodes(store)
@@ -2553,7 +2559,9 @@ def _done_by_hand(store, node: Node, who: Caller, given: str | None, checkout: s
 
     if node.check:
         may(node)
-        passed, output, _ = run_check(node.check, checkout or ".")
+        command = runs_itself(node) is not None
+        own = {"GRAPHENE_CHECKOUT": os.path.realpath(checkout or ".")} if command else None
+        passed, output, _ = run_check(node.check, checkout or ".", env=own)
         store.log_node(node.id, _now(), "check_passed" if passed else "check_failed", who.label,
                        who.session_id, None, {"command": node.check, "output": output})  # fmt: skip
         if not passed:  # what it said, indented under the reason: the screen's news says the reason first
@@ -2565,8 +2573,11 @@ def _done_by_hand(store, node: Node, who: Caller, given: str | None, checkout: s
         may(node)
         node.state, node.finished_at = DONE, now
         said = "and its check passed" if node.check else "with no check to run"
-        _save(store, node, "finished", who, now, note=f"done by hand: the person's word, {said}")
-    roll_up(store, who, checkout, given)
+        how = f"done by hand: the person's word, {said}"
+        if runs_itself(node) is not None:  # a command step is nobody's word: its command's exit code
+            how = "its command ran and exited 0"
+        _save(store, node, "finished", who, now, note=how)
+    roll_up(store, who, checkout, given, not_here)
     return node
 
 
@@ -2577,6 +2588,7 @@ def finish(
     now: str | None = None,
     override: str | None = None,
     checkout: str | Path | None = None,
+    not_here: frozenset[str] | set[str] = frozenset(),
 ) -> Node:
     """The boundary. Graphene asks git what changed and runs the check; only then is the node done
     (or waiting for its sign-off: one it asks for, or every one while the person's setting is
@@ -2594,7 +2606,7 @@ def finish(
             _person_only(who, "overruling a node's check or scope")
         return _finish_subgoal(store, node, who, given, checkout or ".", override)
     if node.state == OPEN and node.owner != AGENT and who.person:
-        return _done_by_hand(store, node, who, given, checkout)
+        return _done_by_hand(store, node, who, given, checkout, not_here)
     if node.state != RUNNING:
         raise _as_it_stands(node, nodes(store), who, "finish")
     _holder_only(node, who, "finishing it")

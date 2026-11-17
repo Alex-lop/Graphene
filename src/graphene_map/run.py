@@ -1144,9 +1144,11 @@ def summary(store, since: int, stopped: bool = False, yours: bool = True) -> str
     begun = max((k + 1 for k, e in enumerate(whole[:since])
                  if e["node_id"] == "*" and e["kind"] in ("run", "archived")), default=0)  # fmt: skip
     started = {e["node_id"] for e in log if e["kind"] == "started" and e["actor"].startswith("run:")}
+    commands = {e["node_id"] for e in log if e["actor"] == COMMAND.label and e["kind"] in CHECKED}
     let_go = {e["node_id"]: e["detail"] for e in log if e["kind"] == "released"}
-    ran = [n for n in P.order(P.nodes(store)) if n.id in started]  # in the plan's order, not the race's
+    ran = [n for n in P.order(P.nodes(store)) if n.id in started | commands]  # the plan's order
     done = [n.id for n in ran if n.state == P.DONE]
+    failed = [n.id for n in ran if n.state == P.OPEN and n.id in commands]  # its command exited non-zero
     review = [n.id for n in ran if n.state == P.REVIEW]
     back = [n.id for n in ran if n.state == P.OPEN and n.id in let_go and not let_go[n.id].get("person")]
     handed = [i for i in back if let_go[i].get("why") == STOPPED]
@@ -1155,6 +1157,7 @@ def summary(store, since: int, stopped: bool = False, yours: bool = True) -> str
 
     said = [f"{len(done)} done"] if done else []
     said += [f"{len(back)} came back ({P._few(back)})"] if back else []
+    said += [f"{len(failed)} command{'s' * (len(failed) != 1)} failed ({P._few(failed)})"] if failed else []
     said += [f"{len(review)} in review ({P._few(review)})"] if review else []
     said += [f"{P._few(handed)} handed back, ready again"] if handed else []
     said += [f"{P._few(freed)} released by you, ready again"] if freed else []
@@ -1391,6 +1394,59 @@ def _said_done(store, node: P.Node, say: Callable[[str], None]) -> None:
         say(line)
 
 
+COMMAND = P.Caller("run:command", True)  # who a command step's rows say ran it, when the run did
+CHECKED = ("check_passed", "check_failed")  # the row a command step's command leaves, either way
+
+
+def run_commands(store, target: Path, say: Callable[[str], None], skip: Callable[[P.Node], bool],
+                 told: dict[str, str], failed: Callable[[str], None],
+                 unlanded: frozenset[str] | set[str] = frozenset()) -> list[P.Node]:  # fmt: skip
+    """The command steps that can go now (`run:` in the plan's text; ``P.runs_itself``), each run by itself
+    with no agent, one after another until none is left: open, not passed over by the run (``skip``: not
+    in it, or tried by it), under no proposal, and everything it needs done with its work in ``target``.
+    The command runs as `graphene node done` runs a person's own leaf's check (``P.finish``): in a clean
+    copy of ``target`` as it is now, thrown away after, and its exit code is its check; a `check_passed`
+    or `check_failed` row says which, and the step is done or stays open. One that fails is told to
+    ``failed`` (the run does not take it again) and the run goes on with what does not need it. One whose
+    command leaves this machine (``workflow.leaves``: a push, a pull request) is never run here: the run
+    says once (``told``) that it waits for the person's approval, which is `graphene node done`. A paused
+    plan runs none. ``unlanded``: the leaves a parallel run has done in their own worktrees, whose work is
+    not in ``target`` yet, so no sub-goal over them is rolled up when a command ends. Returns the ones that
+    ended done."""
+    done: list[P.Node] = []
+    while not P.paused(store):
+        everything = P.nodes(store)
+        by_id = {n.id: n for n in everything}
+        step = None
+        for n in P.order(P.leaves(everything)):
+            if n.state != P.OPEN or P.runs_itself(n) is None or skip(n) or P.unmet(n, by_id):
+                continue
+            if any(a.state == P.PROPOSED for a in P.above(n, by_id)):
+                continue
+            waits = (f"leaves this machine (`{n.check}`), so the run does not run it: it waits for your "
+                     f"approval. `graphene node done {n.id}` runs it")  # fmt: skip
+            if P.runs_itself(n):
+                away = "; ".join(P.not_here(store, n, target))  # done elsewhere: a copy of this misses it
+                if not away:
+                    step = n
+                    break
+                waits = f"waits on {away}"
+            if told.get(n.id) != waits:
+                told[n.id] = waits
+                say(f"{n.id} {waits}")
+        if step is None:
+            return done
+        say(f"{step.id} started: `{step.check}` runs with no agent")
+        try:
+            done.append(P.finish(store, step.id, COMMAND, checkout=target, not_here=unlanded))
+            say(f"{step.id} is done: its command exited 0")
+        except P.Refused as no:  # its command failed (the refusal says what it printed), or the plan moved
+            failed(step.id)
+            still = P.get(store, step.id).state == P.OPEN  # else someone finished it meanwhile
+            say(f"{no}" + f"\n  {step.id} stays open, and the run goes on with what does not need it" * still)
+    return done
+
+
 @P.ctrl_c_on_hangup()
 def run_plan(
     store,
@@ -1418,7 +1474,13 @@ def run_plan(
     planned = {n.id for n in P.nodes(store) if n.state not in P.GONE}
     budget = Budget(max_usd, say) if max_usd is not None else None
     ports = Ports()
+    told: dict[str, str] = {}  # a command step that waits (for the person, or for work not here): said once
+
+    def passed_over(n: P.Node) -> bool:
+        return n.id not in planned or n.id in tried or bool(only and n.id not in only)
+
     while True:
+        finished += run_commands(store, checkout, say, passed_over, told, tried.add)  # first: one unblocks
         ready = [
             n
             for n in P.ready(P.nodes(store), P.Caller("agent", False))
@@ -1829,9 +1891,25 @@ def _run_parallel(open_store, root, target, workers, template, attempts, only, s
         else:
             unlanded.add(node.id)
 
+    def commands() -> None:
+        # ponytail: a command runs in this loop, so nothing lands while it does (a whole suite takes its
+        # minutes); a worker of its own if a wide run ever waits on one
+        busy = {n.id for n, _ in flying.values()} | unlanded  # done in its worktree is not yet here
+
+        def passed_over(n: P.Node) -> bool:
+            if (n.id not in planned or n.id in tried or (only and n.id not in only)) and not again(n.id):
+                return True
+            return bool(busy and busy & set(P.all_needs(n, {m.id: m for m in P.nodes(store)})))
+
+        def failed(node_id: str) -> None:
+            tried[node_id] = _newest(store, node_id)
+
+        finished.extend(run_commands(store, target, say, passed_over, waiting, failed, busy))
+
     with ThreadPoolExecutor(max_workers=workers) as pool:
         try:
             while True:
+                commands()  # first: a command step that passes is what a leaf may wait on
                 launch(pool)
                 if not flying:
                     return finished
