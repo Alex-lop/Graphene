@@ -18,11 +18,12 @@ export type Act = "add-after" | "add-under" | "link" | "unlink" | "drop" | "acce
  *  `graphene watch` in the person's own folder; openDiff and compareForks look the id up in the person's
  *  plan). That is every act: a replay is watched. The host refuses them too (check.ts). */
 export const CHANGES: readonly Act[] = ["add-after", "add-under", "link", "unlink", "drop", "accept", "tell", "run", "stop", "auto",
-                                        "cockpit", "openDiff", "compareForks", "pickFork", "signOff", "answer", "handBack", "set", "draw", "stopAfter"];
+                                        "cockpit", "openDiff", "compareForks", "pickFork", "signOff", "answer", "handBack", "set", "draw", "stopAfter",
+                                        "saveWorkflow", "markDone"];
 
 /** The header's act buttons, by their element id: each one is hidden in a replay. Auto and the cockpit are
  *  Home's and the palette's (with graphene.advanced), not the graph's. */
-export const HEADER_ACTS: readonly [string, Act][] = [["b-add", "add-under"], ["b-run", "run"]];
+export const HEADER_ACTS: readonly [string, Act][] = [["b-add", "add-under"], ["b-run", "run"], ["b-save", "saveWorkflow"]];
 
 export const cut = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1).trimEnd() + "…" : s);
 

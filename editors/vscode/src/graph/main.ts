@@ -8,7 +8,7 @@ import { STEP_COLOURS, STEP_FALLBACKS, stepColour } from "../owners.ts";
 import { autoLine, SAY, screenWords, usd, type DraftStep, type State } from "../state.ts";
 import { ICONS } from "./icons.ts";
 import { blanks, draftLine, globs, isDraft, lacks, type Draft } from "./draft.ts";
-import { actsFor, attemptsOf, badge, checkWords, cornerWord, cut, done, draftedSteps, edgeKind, editable, fan, filesChip, FIRST_HINT, fitWidth, forkActs, forkRow, forkWords, HEADER_ACTS, headerFor,
+import { actsFor, asksYou, attemptsOf, badge, checkWords, commandChip, cornerWord, cut, done, draftedSteps, edgeKind, editable, fan, filesChip, FIRST_HINT, fitWidth, forkActs, forkRow, forkWords, HEADER_ACTS, headerFor,
          heldWords, KEYS, linkHint, mayRun, paneKey, pipeline, planningLine, PROVES_NOTHING, provesNothing, questionOn, scopeTree, STOP_AFTER, STOP_AFTER_HOVER, stopAfterPlan, stopsOf, sub, tabOrder, tokenWords, topLine, whenEdit, who, worktrees, writtenOf, zoomK,
          type Button, type StateX, type TaskX } from "./words.ts";
 
@@ -30,6 +30,7 @@ const PLAN = " p"; // before a step the planner is writing: a space first, so it
 const BOX_W = 220, BOX_H = 84, SUB_H = 22, FORK_H = 20, FORK_DX = 22, CHIP_W = 228, GOAL_W = 220;
 const TEXT_X = 54; // where a card's words start, right of its tile
 const AWAY_W = 236, AWAY_GAP = 20; // the region for what leaves this machine, right of the plan
+const AWAY_PAD = 44; // a step past the line sits this far inside the region, so the gate on the line is clear of it
 /** The narrow view by default: lanes read better than a downward graph at 280 to 400 px (lane 1's notes). */
 const NARROW_VIEW: "lanes" | "graph" = "lanes";
 const api = acquireVsCodeApi();
@@ -122,7 +123,8 @@ function button(b: Button, id: string, parent: HTMLElement) {
 const cls = (word: string) => `st-${word.replace(/\s+/g, "-")}`;
 
 function boxes(s: StateX): { boxes: Box[]; edges: Edge[]; goal: string | null } {
-  const bs: Box[] = s.tasks.map((t) => {
+  const away = new Set(s.tasks.filter((t) => t.leaves).map((t) => t.id)); // past the line: placed in their region, not by the layout
+  const bs: Box[] = s.tasks.filter((t) => !away.has(t.id)).map((t) => {
     const n = fan(t, s.envelope.forks).length;
     return { id: t.id, band: t.parent ?? "", w: n ? FORK_DX + CHIP_W : BOX_W, h: BOX_H + SUB_H + (n ? FORK_H * n + 6 : 0) };
   });
@@ -140,8 +142,12 @@ function boxes(s: StateX): { boxes: Box[]; edges: Edge[]; goal: string | null } 
   const hasGoal = Boolean(s.goal) && s.tasks.length > 0;
   if (hasGoal) {
     bs.push({ id: GOAL, band: "", w: GOAL_W, h: BOX_H + SUB_H });
-    const needed = new Set(edges.map(([a]) => a));
+    const needed = new Set(edges.filter(([, b]) => !away.has(b)).map(([a]) => a)); // what only a step past the line waits on still ends the work here
     for (const b of bs) if (b.id !== GOAL && !needed.has(b.id)) edges.push([b.id, GOAL]);
+    // the run crosses the line from the goal, as the target draws it: what a step past the line waits on here ends at the goal
+    const crossing = edges.filter(([a, b]) => away.has(b) && !away.has(a));
+    for (const e of crossing) edges.splice(edges.indexOf(e), 1);
+    for (const b of new Set(crossing.map(([, x]) => x))) edges.push([GOAL, b]);
   }
   return { boxes: bs, edges, goal: hasGoal ? GOAL : null };
 }
@@ -326,8 +332,21 @@ function graph(s: StateX, dir: "across" | "down") {
                                    down, width: down ? $("canvas").clientWidth / zoom.k : undefined });
   // across, the plan sits in "this machine", and what leaves it has a region of its own at the right
   const here = down || !g.boxes.length ? 0 : lay.width;
-  if (here) lay.width += AWAY_GAP + AWAY_W;
-  regions(s, here);
+  const leaving = s.tasks.filter((t) => t.leaves);
+  const awayW = leaving.length ? BOX_W + 2 * AWAY_PAD : AWAY_W;
+  if (here) lay.width += AWAY_GAP + awayW;
+  // a step past the line stands in its region, one under another in the middle; laid downward, under the plan
+  const tall = leaving.length * (BOX_H + SUB_H) + Math.max(0, leaving.length - 1) * 14;
+  if (here) lay.height = Math.max(lay.height, tall + 46 + 24);
+  leaving.forEach((t, i) => {
+    const x = here ? here + AWAY_GAP - 8 + AWAY_PAD : 16;
+    const y = (here ? Math.max(46, (lay!.height - tall) / 2) : lay!.height + 28) + i * (BOX_H + SUB_H + 14);
+    lay!.boxes[t.id] = { id: t.id, x, y, w: BOX_W, h: BOX_H + SUB_H, rank: lay!.ranks, band: "" };
+  });
+  if (leaving.length) lay.ranks += 1;
+  if (!here && leaving.length) lay.height += 28 + tall + 16;
+  regions(s, here, awayW);
+  gates(s, here);
   // bands: few, redrawn
   const bands = $("bands") as unknown as SVGGElement;
   bands.replaceChildren();
@@ -442,15 +461,34 @@ function edgeD(p: { x: number; y: number; w: number; h: number }, q: { x: number
 
 /** The two regions the flow crosses: this machine, where each agent works in a worktree of its own, and what
  *  leaves it (a push, a pull request). No step does yet, and the region says so. */
-function regions(s: StateX, here: number) {
+function regions(s: StateX, here: number, awayW: number) {
   const root = $("regions") as unknown as SVGGElement;
   root.replaceChildren();
   if (!here || !lay) return;
   const n = worktrees(s.tasks), h = lay.height - 16, x = here + AWAY_GAP - 8;
+  const out = s.tasks.filter((t) => t.leaves).length, asks = s.tasks.filter(asksYou).length;
   root.appendChild(el("rect", { class: "region here", x: 8, y: 8, width: here - 16, height: h, rx: 14 }));
   root.appendChild(el("text", { class: "region-label", x: 24, y: 29 }, `THIS MACHINE${n ? ` · ${n} worktree${n > 1 ? "s" : ""}, one per agent` : ""}`));
-  root.appendChild(el("rect", { class: "region away", x, y: 8, width: AWAY_W, height: h, rx: 14 }));
-  root.appendChild(el("text", { class: "region-label away", x: x + 16, y: 29 }, "LEAVES YOUR MACHINE · nothing yet"));
+  root.appendChild(el("rect", { class: "region away", x, y: 8, width: awayW, height: h, rx: 14 }));
+  const says = !out ? "nothing yet" : asks ? "asks you first" : `${out} step${out > 1 ? "s" : ""}`;
+  root.appendChild(el("text", { class: "region-label away", x: x + 16, y: 29 }, `LEAVES YOUR MACHINE · ${says}`));
+}
+
+/** The approval on the line: where an edge crosses into "leaves your machine", a mark that the step past it
+ *  asks you before it runs. Gone once the step has run. */
+function gates(s: StateX, here: number) {
+  const root = $("gates") as unknown as SVGGElement;
+  root.replaceChildren();
+  if (!here || !lay) return;
+  const x = here + AWAY_GAP - 8;
+  for (const t of s.tasks.filter((x) => x.leaves && x.state !== "done")) {
+    const p = lay.boxes[t.id];
+    if (!p) continue;
+    const g = el("g", { class: `gate${asksYou(t) ? " now" : ""}`, transform: `translate(${x} ${p.y + BOX_H / 2})`, "aria-hidden": "true" });
+    g.appendChild(el("rect", { x: -34, y: -10, width: 68, height: 20, rx: 10 }));
+    g.appendChild(el("text", { y: 4, "text-anchor": "middle" }, "asks you"));
+    root.appendChild(g);
+  }
 }
 
 /** A card is drawn again whenever its task changes, which for a working one is every snapshot (its seconds
@@ -472,10 +510,10 @@ function tile(grp: SVGGElement, kind: string, mark: string, label: string, colou
 }
 
 /** A chip on a card, in mono, cut to the card: the files the step may change, or its check. */
-function pill(grp: SVGGElement, kind: "files" | "check", words: string, x: number, y: number, max: number, hollow = false) {
+function pill(grp: SVGGElement, kind: "files" | "check" | "run", words: string, x: number, y: number, max: number, hollow = false) {
   const g = el("g", { class: `pill ${kind}${hollow ? " hollow" : ""}` }); // hollow: the check already passes, so its tick is a warning
   const rect = g.appendChild(el("rect", { x, y, width: max, height: 17, rx: 5 }));
-  g.appendChild(el("text", { class: "pill-mark", x: x + 6, y: y + 12.5 }, kind === "files" ? "▤" : hollow ? "!" : "✓"));
+  g.appendChild(el("text", { class: "pill-mark", x: x + 6, y: y + 12.5 }, kind === "files" ? "▤" : kind === "run" ? "$" : hollow ? "!" : "✓"));
   const text = g.appendChild(el("text", { class: "pill-text", x: x + 19, y: y + 12.5 }, words));
   grp.appendChild(g);
   fitText(text, max - 25);
@@ -505,11 +543,12 @@ function drawTask(grp: SVGGElement, t: TaskX, h: number, down: boolean, limit: n
   if (t.id === selected) grp.appendChild(el("rect", { class: "ring", x: -5, y: -5, width: BOX_W + 10, height: BOX_H + 10, rx: 16 }));
   grp.appendChild(el("rect", { class: "box", x: 0, y: 0, width: BOX_W, height: BOX_H, rx: 12 }));
   const by = who(t, state?.executor ?? "");
-  tile(grp, by.kind, by.mark, by.label, stepColour(t.id, state?.tasks ?? []));
+  tile(grp, by.kind, by.mark, by.label, t.command ? -1 : stepColour(t.id, state?.tasks ?? [])); // a command writes no file: no colour to wear
   fitText(grp.appendChild(el("text", { class: "title", x: TEXT_X, y: 27 }, t.title)), BOX_W - TEXT_X - 8);
-  const files = filesChip(t.scope);
+  const files = t.command ? "" : filesChip(t.scope);
+  if (t.command) pill(grp, "run", commandChip(t.command), TEXT_X, 37, BOX_W - TEXT_X - 10); // a command step: what runs, with no agent
   if (files) pill(grp, "files", files, TEXT_X, 37, BOX_W - TEXT_X - 10);
-  if (t.check) pill(grp, "check", t.check, TEXT_X, files ? 58 : 37, BOX_W - TEXT_X - 10, provesNothing(t));
+  if (t.check && !t.command) pill(grp, "check", t.check, TEXT_X, files ? 58 : 37, BOX_W - TEXT_X - 10, provesNothing(t));
   // the status, under the card; while it runs, its model at the line's end
   const model = t.state === "running" && t.model ? grp.appendChild(el("text", { class: "model", x: BOX_W - 2, y: BOX_H + 16, "text-anchor": "end" }, cut(t.model, 14))) : null;
   fitText(grp.appendChild(el("text", { class: "sub", x: 2, y: BOX_H + 16 }, line)), BOX_W - 4 - (model ? model.getComputedTextLength() + 8 : 0));
@@ -599,8 +638,10 @@ function lanes(s: StateX) {
   const order = layout(g.boxes, g.edges, { goal: g.goal, boxW: BOX_W, boxH: BOX_H });
   lay = null; // arrows walk the rows, not a drawing
   const waves: TaskX[][] = [];
+  // a step past the line is not in the layout: it comes after every wave, under its own heading
+  const past = Math.max(-1, ...Object.values(order.boxes).filter((p) => p.id !== GOAL).map((p) => p.rank)) + 1;
   for (const t of s.tasks) {
-    const r = order.boxes[t.id]?.rank ?? 0;
+    const r = t.leaves ? past : order.boxes[t.id]?.rank ?? 0;
     (waves[r] ??= []).push(t);
   }
   for (const w of waves) w?.sort((p, q) => (order.boxes[p.id]?.y ?? 0) - (order.boxes[q.id]?.y ?? 0));
@@ -610,7 +651,7 @@ function lanes(s: StateX) {
   const seen = new Set<string>();
   waves.forEach((w, i) => {
     if (!w?.length) return;
-    rows.push(div("wave", `wave ${i + 1} · ${done(w)} done`));
+    rows.push(div("wave", w[0]!.leaves ? `leaves your machine${w.some(asksYou) ? " · asks you first" : ""}` : `wave ${i + 1} · ${done(w)} done`));
     for (const t of w) {
       seen.add(t.id);
       const k = JSON.stringify([t, t.id === selected, s.goals.find((x) => x.id === t.parent)?.title, s.envelope.forks]);
@@ -720,7 +761,11 @@ function at(e: MouseEvent): { x: number; y: number } {
  *  type reads at, the rest is a pan or the `g` key away. */
 function fit() {
   if (!lay) return;
-  zoom = clamp({ k: 1, tx: 0, ty: Math.max(0, ($("canvas").clientHeight - lay.height) / 2 - 10) }); // a short plan sits in the middle, as the target's does
+  // a step that asks you is the thing to see: a graph wider than its canvas opens on that step, past the line,
+  // and not on its left edge (`clamp` keeps a graph that fits in the middle)
+  const ask = state?.tasks.find(asksYou), at = ask ? lay.boxes[ask.id] : undefined;
+  const tx = at ? Math.min(0, $("canvas").clientWidth - (at.x + at.w + AWAY_PAD)) : 0;
+  zoom = clamp({ k: 1, tx, ty: Math.max(0, ($("canvas").clientHeight - lay.height) / 2 - 10) }); // a short plan sits in the middle, as the target's does
   fitted = true;
 }
 
@@ -1014,6 +1059,7 @@ const small = (text: string, parent: HTMLElement) => { const c = document.create
 /** Scope: what this step may do, in plain view. May change (a tree, the glob behind it), may run, outside,
  *  held by, stopped, done when, tokens. Every word is what the snapshot says; where it says nothing, so does this. */
 function scopeTab(body: HTMLElement, t: TaskX, s: StateX) {
+  if (t.command) return commandScope(body, t);
   const wrote = writtenOf(t);
   const change = part(body, "May change", wrote ? `✎ ${wrote}` : "");
   const tree = div("tree", undefined, change);
@@ -1068,6 +1114,28 @@ function scopeTab(body: HTMLElement, t: TaskX, s: StateX) {
     div("wrote", undefined, bar).style.width = `${spent.written}%`;
     div("checkrow dim", spent.line, tokens);
   } else div("dim", t.attempts ? "this agent reports no tokens" : "nothing metered yet: Graphene counts the agents a run starts", tokens);
+}
+
+/** Scope, for a command step: no agent and no file. What runs, whether it leaves this machine, and its exit code. */
+function commandScope(body: HTMLElement, t: TaskX) {
+  div("dim", "nothing: a command step changes no file of the repository", part(body, "May change"));
+  const kv = div("kv", undefined, part(body, "May run"));
+  div("kv-k", "Command", kv);
+  const cmd = div("kv-v", undefined, kv);
+  code(t.command ?? "", cmd).title = t.command ?? "";
+  div("kv-note", "Graphene runs it itself, with no agent, in a clean copy.", cmd);
+  div("kv-k", "Outside", kv);
+  div("kv-v", t.leaves ? "it leaves your machine: it pushes or opens a pull request, and asks you first"
+    : "nothing Graphene knows of: only a git push or a gh pr is read as leaving your machine", kv);
+  const hold = div("held none", undefined, part(body, "Held by"));
+  div("shield", "○", hold).setAttribute("aria-hidden", "true");
+  small("What it writes in its clean copy is thrown away.", div("", "No agent writes here: there is nothing to hold.", hold));
+  const when = part(body, "Done when");
+  const row = (tone: string, line: string) => { const r = div("checkrow", undefined, when); div(`dot ${tone}`, undefined, r); r.append(line); };
+  row("dim", "its exit code is its check: 0 and it is done");
+  if (t.checked.after) row(t.checked.after === "passed" ? "ok" : "red", t.checked.after === "passed" ? "it ran, and exited 0" : "it ran, and failed");
+  else row("dim", t.leaves ? "it runs when you approve it" : "it runs once what it waits on has landed");
+  div("dim", "no model: no tokens", part(body, "Tokens"));
 }
 
 /** Edit: the task's form (or, finished or in a replay, what it says), the sub-goal it is under and what it waits on. */
@@ -1253,7 +1321,7 @@ function notice(st: Status) {
   n.hidden = false;
   n.textContent = st.text;
   n.className = st.kind;
-  for (const id of ["regions", "bands", "edges", "tasks", "goalg"]) ($(id) as unknown as SVGGElement).replaceChildren();
+  for (const id of ["regions", "bands", "edges", "gates", "tasks", "goalg"]) ($(id) as unknown as SVGGElement).replaceChildren();
   taskEls.clear(); edgeEls.clear(); goalKey = "";
   $("lanes").replaceChildren(); laneEls.clear(); lanesKey = "";
   $("details").hidden = true; paneLast = "";
@@ -1458,6 +1526,7 @@ function wire() {
   // what the canvas gains over the shell (the preview's is the same shell): the regions under the drawing, the
   // zoom's buttons at its foot, and the legend: colour means state and nothing else
   $("view").prepend(el("g", { id: "regions" }));
+  $("edges").after(el("g", { id: "gates" })); // on the line, over the edges that cross it
   const zooms = div("", undefined, canvas);
   zooms.id = "zoom";
   for (const [label, sign, title, on] of [["fit the graph", "⤢", "fit the graph (f)", refit],
@@ -1498,6 +1567,7 @@ function wire() {
   };
   top("b-add", "Add task", "add", "draw a task: its title, then its files and its check (or the planner fills them in)", () => draw({ after: null, parent: null }));
   top("b-run", "Run", "play", "start an agent on every task that is ready", () => api.postMessage({ type: "act", act: state?.run.going ? "stop" : "run", id: "" }));
+  top("b-save", "Save as workflow", "save", "write this graph to workflows/ so it can run again on new inputs", () => api.postMessage({ type: "act", act: "saveWorkflow", id: "" }));
   top("b-view", "Lanes", "list-flat", "graph or lanes (v)", () => { remember({ view: view() === "lanes" ? "graph" : "lanes" }); fitted = false; render(); });
   top("b-help", "", "question", "every key (?)", () => help($("help").hidden));
   $("b-help").setAttribute("aria-label", "keys");
