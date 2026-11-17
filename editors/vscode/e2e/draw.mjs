@@ -35,7 +35,9 @@ try {
   const focused = (id) => until(g, (i) => document.activeElement?.id === i, id, `the focus in ${id}`);
   const typeIn = async (id, text) => { await focused(id); await g.locator(`#${id}`).fill(text); await g.locator(`#${id}`).press("Enter"); };
   const box = (id) => g.locator(`#view g.task[data-id="${id}"]`); // by its id: a title is cut to its box, more where the font is wider
-  const drawnAs = (title) => until(g, (t) => [...document.querySelectorAll("#view g.task:not(.draft) text.title")].some((x) => x.textContent === t)
+  // a card cuts a title that does not fit it (the runner's font may be wider than this one's): the cut title's start is the title's
+  const drawnAs = (title) => until(g, (t) => [...document.querySelectorAll("#view g.task:not(.draft) text.title")]
+    .some((x) => x.textContent === t || (x.textContent.endsWith("…") && x.textContent.length > 8 && t.startsWith(x.textContent.slice(0, -1).trimEnd())))
     && !document.querySelector("#view g.task.draft"), title, `“${title}” in the plan`);
 
   // 1. an empty plan: draw the first task, typing nothing but its words

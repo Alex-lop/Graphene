@@ -7,8 +7,8 @@ import { layout, modeFor, step, type Box, type Edge, type Layout } from "../layo
 import { autoLine, SAY, screenWords, usd, type State } from "../state.ts";
 import { ICONS } from "./icons.ts";
 import { blanks, draftLine, globs, isDraft, lacks, type Draft } from "./draft.ts";
-import { actsFor, attemptsOf, cornerWord, cut, done, editable, fan, FIRST_HINT, fitWidth, forkActs, forkRow, forkWords, HEADER_ACTS, headerFor, KEYS, linkHint, paneKey,
-         questionOn, sub, tabOrder, topLine, whenEdit, zoomK, type Button, type StateX, type TaskX } from "./words.ts";
+import { actsFor, attemptsOf, badge, cornerWord, cut, done, edgeKind, editable, fan, filesChip, FIRST_HINT, fitWidth, forkActs, forkRow, forkWords, HEADER_ACTS, headerFor, KEYS,
+         linkHint, paneKey, questionOn, sub, tabOrder, topLine, whenEdit, who, zoomK, type Button, type StateX, type TaskX } from "./words.ts";
 
 declare function acquireVsCodeApi(): { postMessage(m: unknown): void; getState(): unknown; setState(s: unknown): void };
 
@@ -21,7 +21,10 @@ type View = "auto" | "graph" | "lanes";
 type Saved = { zoom?: Zoom; hinted?: boolean; view?: View; drafts?: Draft[]; drew?: number };
 
 const GOAL = " goal";
-const BOX_W = 200, BOX_H = 48, FORK_H = 20, FORK_DX = 22, CHIP_W = 228, GOAL_W = 200, GOAL_H = 66; // a chip holds 32 mono characters
+// A card (dev/ui/canvas.html): a tile for who does the step, its title, a chip for its files and one for its check;
+// one line of status under it; then its attempts, a chip each (a chip holds 32 mono characters).
+const BOX_W = 220, BOX_H = 84, SUB_H = 22, FORK_H = 20, FORK_DX = 22, CHIP_W = 228, GOAL_W = 220;
+const TEXT_X = 54; // where a card's words start, right of its tile
 /** The narrow view by default: lanes read better than a downward graph at 280 to 400 px (lane 1's notes). */
 const NARROW_VIEW: "lanes" | "graph" = "lanes";
 const api = acquireVsCodeApi();
@@ -116,16 +119,16 @@ const cls = (word: string) => `st-${word.replace(/\s+/g, "-")}`;
 function boxes(s: StateX): { boxes: Box[]; edges: Edge[]; goal: string | null } {
   const bs: Box[] = s.tasks.map((t) => {
     const n = fan(t, s.envelope.forks).length;
-    return { id: t.id, band: t.parent ?? "", w: n ? FORK_DX + CHIP_W : BOX_W, h: BOX_H + (n ? FORK_H * n + 6 : 0) };
+    return { id: t.id, band: t.parent ?? "", w: n ? FORK_DX + CHIP_W : BOX_W, h: BOX_H + SUB_H + (n ? FORK_H * n + 6 : 0) };
   });
   const edges: Edge[] = s.edges.filter(([, , kind]) => kind === "needs").map(([a, b]) => [a, b]);
   for (const d of drawn()) { // a drawn task is a box as any other, after the task it waits on
-    bs.push({ id: d.key, band: d.parent ?? "", w: BOX_W, h: BOX_H });
+    bs.push({ id: d.key, band: d.parent ?? "", w: BOX_W, h: BOX_H + SUB_H });
     if (d.after) edges.push([d.after, d.key]);
   }
   const hasGoal = Boolean(s.goal) && s.tasks.length > 0;
   if (hasGoal) {
-    bs.push({ id: GOAL, band: "", w: GOAL_W, h: GOAL_H });
+    bs.push({ id: GOAL, band: "", w: GOAL_W, h: BOX_H + SUB_H });
     const needed = new Set(edges.map(([a]) => a));
     for (const b of bs) if (b.id !== GOAL && !needed.has(b.id)) edges.push([b.id, GOAL]);
   }
@@ -291,20 +294,21 @@ function graph(s: StateX, dir: "across" | "down") {
   const svg = $("svg") as unknown as SVGSVGElement;
   const g = boxes(s);
   const down = dir === "down";
-  lay = layout(g.boxes, g.edges, { goal: g.goal, boxW: BOX_W, boxH: BOX_H, labelH: 18, gapX: 56, down, width: down ? $("canvas").clientWidth / zoom.k : undefined });
+  lay = layout(g.boxes, g.edges, { goal: g.goal, boxW: BOX_W, boxH: BOX_H + SUB_H, labelH: 24, gapX: 56, gapY: 14, down, width: down ? $("canvas").clientWidth / zoom.k : undefined });
   // bands: few, redrawn
   const bands = $("bands") as unknown as SVGGElement;
   bands.replaceChildren();
   for (const band of lay.bands) {
     if (!band.id) continue;
     const ts = s.tasks.filter((t) => t.parent === band.id);
-    bands.appendChild(el("rect", { class: "band", x: 4, y: band.y0, width: lay.width - 8, height: band.y1 - band.y0, rx: 6 }));
+    bands.appendChild(el("rect", { class: "band", x: 4, y: band.y0, width: lay.width - 8, height: band.y1 - band.y0, rx: 10 }));
     const label = bands.appendChild(el("text", { class: "band-label", x: 14, y: band.y0 + 16 }, `${goalTitle(s, band.id)} · ${done(ts)}`));
     fitText(label, Math.min(lay.width - 8, $("canvas").clientWidth / zoom.k) - 28); // the band's visible width
   }
   // edges: keyed by their ends; a changed path glides (CSS transitions d)
   const edges = $("edges") as unknown as SVGGElement;
   const seenEdges = new Set<string>();
+  const taskOf = new Map(s.tasks.map((t) => [t.id, t]));
   for (const [a, b] of g.edges) {
     const p = lay.boxes[a], q = lay.boxes[b];
     if (!p || !q) continue;
@@ -312,9 +316,9 @@ function graph(s: StateX, dir: "across" | "down") {
     seenEdges.add(key);
     let path = edgeEls.get(key);
     if (!path) { path = el("path", { class: "edge" }); edgeEls.set(key, path); edges.appendChild(path); }
-    path.setAttribute("d", edgeD(p, q, a, b, down));
-    path.classList.toggle("hot", Boolean(selected && (a === selected || b === selected)));
-    path.classList.toggle("draft", isDraft(a) || isDraft(b));
+    path.setAttribute("d", edgeD(p, q, a, down));
+    // the edge carries the work: moving where an agent is working, green where it landed, dotted until then
+    path.setAttribute("class", `edge ${edgeKind(taskOf.get(a), taskOf.get(b))}${selected && (a === selected || b === selected) ? " hot" : ""}${isDraft(a) || isDraft(b) ? " draft" : ""}`);
   }
   for (const [key, path] of edgeEls) if (!seenEdges.has(key)) { path.remove(); edgeEls.delete(key); }
   // boxes: one group a task, rebuilt only when its words or its place changed
@@ -340,7 +344,7 @@ function graph(s: StateX, dir: "across" | "down") {
     paint(have.g, p.h);
     have.g.style.transform = `translate(${p.x}px, ${p.y}px)`;
   };
-  for (const t of s.tasks) box(t.id, JSON.stringify([t, s.envelope.forks]), (grp, h) => drawTask(grp, t, h, down, s.envelope.forks));
+  for (const t of s.tasks) box(t.id, JSON.stringify([t, s.envelope.forks, s.executor]), (grp, h) => drawTask(grp, t, h, down, s.envelope.forks));
   for (const d of drawn()) box(d.key, JSON.stringify([d, naming === d.key]), (grp) => drawDraft(grp, d));
   for (const [id, have] of taskEls) if (!seen.has(id)) { have.g.remove(); taskEls.delete(id); }
   // Tab walks the boxes wave by wave, which is their order in the DOM: reordered only when it changed
@@ -350,20 +354,26 @@ function graph(s: StateX, dir: "across" | "down") {
   // the goal
   const goalG = $("goalg") as unknown as SVGGElement;
   const gp = g.goal ? lay.boxes[GOAL] : undefined;
-  const gk = gp ? JSON.stringify([s.goal, done(s.tasks), gp.x, gp.y]) : "";
+  const goalCheck = s.goals.find((x) => !x.parent && x.title === s.goal)?.check ?? ""; // the root that is the goal: its own check
+  const gk = gp ? JSON.stringify([s.goal, goalCheck, done(s.tasks), gp.x, gp.y, down]) : "";
   if (gk !== goalKey) {
     goalKey = gk;
     goalG.replaceChildren();
-    if (gp) {
-      goalG.appendChild(el("rect", { class: "goal-box", x: 0, y: 0, width: gp.w, height: gp.h, rx: 8 }));
-      goalG.appendChild(el("rect", { class: "goal-box inner", x: 4, y: 4, width: gp.w - 8, height: gp.h - 8, rx: 5 }));
-      fitText(goalG.appendChild(el("text", { class: "goal-title", x: 14, y: 28 }, s.goal)), gp.w - 28);
-      goalG.appendChild(el("text", { class: "sub", x: 14, y: 48 }, `goal · ${done(s.tasks)} done`));
+    if (gp) { // the goal is a card as a task is: its tile, its words, its own check, and the count under it
+      goalG.appendChild(el("rect", { class: "goal-box", x: 0, y: 0, width: gp.w, height: BOX_H, rx: 12 }));
+      tile(goalG, "goal", "◎", "the whole goal");
+      fitText(goalG.appendChild(el("text", { class: "goal-title", x: TEXT_X, y: 27 }, s.goal)), gp.w - TEXT_X - 8);
+      if (goalCheck) pill(goalG, "check", goalCheck, TEXT_X, 37, gp.w - TEXT_X - 10);
+      goalG.appendChild(el("text", { class: "sub", x: 2, y: BOX_H + 16 }, `goal · ${done(s.tasks)} done`));
+      goalG.appendChild(el("circle", { class: "port in", cx: down ? gp.w / 2 : 0, cy: down ? 0 : BOX_H / 2, r: 5 }));
       goalG.setAttribute("aria-label", `goal: ${s.goal}, ${done(s.tasks)} done`);
       goalG.setAttribute("role", "group"); // reachable by Tab and the arrows, announced
       goalG.setAttribute("tabindex", "0");
       goalG.appendChild(el("title", {}, s.goal));
+      const first = !goalG.style.transform; // placed, as a task is: no glide from the corner the first time
+      if (first) goalG.style.transition = "none";
       goalG.style.transform = `translate(${gp.x}px, ${gp.y}px)`;
+      if (first) { void goalG.getBoundingClientRect(); goalG.style.transition = ""; }
     }
   }
   $("wire").setAttribute("d", wiring ? wireD() : "");
@@ -375,74 +385,130 @@ function graph(s: StateX, dir: "across" | "down") {
   applyZoom();
 }
 
-/** An edge's curve: out of a box's right side into the next's left, or down out of its foot into the top. */
-function edgeD(p: { x: number; y: number; w: number; h: number }, q: { x: number; y: number; w: number; h: number }, a: string, b: string, down: boolean): string {
+/** An edge's curve, port to port: out of a card's right side into the next's left, or down out of its foot
+ *  into the top. */
+function edgeD(p: { x: number; y: number; w: number; h: number }, q: { x: number; y: number; w: number; h: number }, a: string, down: boolean): string {
   if (down) {
-    const x1 = p.x + (a === GOAL ? p.w : BOX_W) / 2, y1 = p.y + p.h, x2 = q.x + q.w / 2, y2 = q.y;
+    const x1 = p.x + (a === GOAL ? p.w : BOX_W) / 2, y1 = p.y + p.h, x2 = q.x + BOX_W / 2, y2 = q.y;
     const dy = Math.max(16, (y2 - y1) / 2);
     return `M${x1},${y1} C${x1},${y1 + dy} ${x2},${y2 - dy} ${x2},${y2}`;
   }
-  const x1 = p.x + BOX_W, y1 = p.y + BOX_H / 2, x2 = q.x, y2 = q.y + (b === GOAL ? q.h / 2 : BOX_H / 2);
+  const x1 = p.x + BOX_W, y1 = p.y + BOX_H / 2, x2 = q.x, y2 = q.y + BOX_H / 2;
   const dx = Math.max(24, (x2 - x1) / 2);
   return `M${x1},${y1} C${x1 + dx},${y1} ${x2 - dx},${y2} ${x2},${y2}`;
 }
 
-/** A task's box, drawn at the group's origin: the box, its stripe, title and sub line, the corner's word,
- *  its fork chips hanging under it, and the dot its lines leave from. */
+/** A card is drawn again whenever its task changes, which for a working one is every snapshot (its seconds
+ *  quiet move): what turns or breathes on it takes up where the page's clock is, so a redraw starts nothing again. */
+function inStep<T extends SVGElement>(node: T, period: number): T {
+  node.style.animationDelay = `-${Date.now() % period}ms`;
+  return node;
+}
+
+/** The tile at a card's left: who does the step, by a letter or a mark. */
+function tile(grp: SVGGElement, kind: string, mark: string, label: string) {
+  const t = el("g", { class: `tile ${kind}` });
+  t.appendChild(el("rect", { x: 10, y: 11, width: 34, height: 34, rx: 9 }));
+  t.appendChild(el("text", { x: 27, y: kind === "cmd" ? 32 : 33, "text-anchor": "middle" }, mark));
+  t.appendChild(el("title", {}, label));
+  grp.appendChild(t);
+}
+
+/** A chip on a card, in mono, cut to the card: the files the step may change, or its check. */
+function pill(grp: SVGGElement, kind: "files" | "check", words: string, x: number, y: number, max: number) {
+  const g = el("g", { class: `pill ${kind}` });
+  const rect = g.appendChild(el("rect", { x, y, width: max, height: 17, rx: 5 }));
+  g.appendChild(el("text", { class: "pill-mark", x: x + 6, y: y + 12.5 }, kind === "files" ? "▤" : "✓"));
+  const text = g.appendChild(el("text", { class: "pill-text", x: x + 19, y: y + 12.5 }, words));
+  grp.appendChild(g);
+  fitText(text, max - 25);
+  const w = text.getComputedTextLength() || (text.textContent ?? "").length * 6.7;
+  rect.setAttribute("width", String(Math.min(max, Math.ceil(w) + 25)));
+}
+
+/** The mark on a card's corner (words.ts `badge`): a tick where the work landed, a turning ring where an
+ *  agent is working, `!` where it waits on you or came back. */
+function mark(grp: SVGGElement, kind: ReturnType<typeof badge>) {
+  if (!kind) return;
+  const g = el("g", { class: `badge ${kind}`, transform: `translate(${BOX_W - 2} 2)`, "aria-hidden": "true" });
+  g.appendChild(el("circle", { r: 10 }));
+  if (kind === "running") g.appendChild(inStep(el("path", { class: "spin", d: "M0,-6 a6,6 0 0 1 6,6" }), 900));
+  else g.appendChild(el("text", { y: 4, "text-anchor": "middle" }, kind === "done" ? "✓" : "!"));
+  grp.appendChild(g);
+}
+
+/** A task's card, drawn at the group's origin: who does it, its title, its files and its check; one line of
+ *  status under it; its fork chips hanging under that; the ports its lines join at; and its mark. */
 function drawTask(grp: SVGGElement, t: TaskX, h: number, down: boolean, limit: number | null) {
   grp.replaceChildren();
   grp.setAttribute("class", `task ${cls(t.state)}${t.id === selected ? " selected" : ""}${t.needs_you ? " needs-you" : ""}`);
-  const line = sub(t);
+  const line = sub(t, 36);
   grp.setAttribute("aria-label", `${t.title}: ${line}${t.id === selected ? ", selected" : ""}`);
-  grp.appendChild(el("rect", { class: "box", x: 0, y: 0, width: BOX_W, height: BOX_H, rx: 6 }));
-  grp.appendChild(el("rect", { class: "stripe", x: 0, y: 0, width: 5, height: BOX_H, rx: 2 }));
-  const corner = cornerWord(t);
-  const cornerEl = corner ? grp.appendChild(el("text", { class: corner === "◆" ? "mark" : "model", x: BOX_W - 10, y: 17, "text-anchor": "end" }, corner)) : null;
-  const title = grp.appendChild(el("text", { class: "title", x: 12, y: 19 }, t.title));
-  fitText(title, BOX_W - 24 - (cornerEl ? cornerEl.getComputedTextLength() + 6 : 0)); // the title stops short of the corner's word
-  grp.appendChild(el("text", { class: "sub", x: 12, y: 36 }, line));
+  if (t.state === "running") grp.appendChild(inStep(el("rect", { class: "halo", x: -2.5, y: -2.5, width: BOX_W + 5, height: BOX_H + 5, rx: 14.5 }), 1800));
+  if (t.id === selected) grp.appendChild(el("rect", { class: "ring", x: -5, y: -5, width: BOX_W + 10, height: BOX_H + 10, rx: 16 }));
+  grp.appendChild(el("rect", { class: "box", x: 0, y: 0, width: BOX_W, height: BOX_H, rx: 12 }));
+  const by = who(t, state?.executor ?? "");
+  tile(grp, by.kind, by.mark, by.label);
+  fitText(grp.appendChild(el("text", { class: "title", x: TEXT_X, y: 27 }, t.title)), BOX_W - TEXT_X - 8);
+  const files = filesChip(t.scope);
+  if (files) pill(grp, "files", files, TEXT_X, 37, BOX_W - TEXT_X - 10);
+  if (t.check) pill(grp, "check", t.check, TEXT_X, files ? 58 : 37, BOX_W - TEXT_X - 10);
+  // the status, under the card; while it runs, its model at the line's end
+  const model = t.state === "running" && t.model ? grp.appendChild(el("text", { class: "model", x: BOX_W - 2, y: BOX_H + 16, "text-anchor": "end" }, cut(t.model, 14))) : null;
+  fitText(grp.appendChild(el("text", { class: "sub", x: 2, y: BOX_H + 16 }, line)), BOX_W - 4 - (model ? model.getComputedTextLength() + 8 : 0));
   grp.appendChild(el("title", {}, `${t.title} · ${sub(t, 200)}`)); // the hover: the whole line
-  // the fan: one chip a fork, hanging under the box, each on a line from the box's foot
+  mark(grp, badge(t));
+  // the fan: one chip a fork, hanging under the status line, each on a line from the card's foot
+  const top = BOX_H + SUB_H;
   fan(t, limit).forEach((f, i) => { // before anything runs: one waiting chip for each attempt it is set to
-    const y = BOX_H + 6 + i * FORK_H, x = FORK_DX;
+    const y = top + 6 + i * FORK_H, x = FORK_DX;
     const kept = t.kept?.letter === f.letter;
-    grp.appendChild(el("path", { class: "fan", d: `M10,${BOX_H} C10,${y + 10} ${x - 8},${y + 10} ${x},${y + 10}` }));
+    grp.appendChild(el("path", { class: "fan", d: `M10,${top} C10,${y + 10} ${x - 8},${y + 10} ${x},${y + 10}` }));
     const chip = el("g", { class: `fork ${cls(f.state || "waiting")}${kept ? " kept" : ""}${t.forks.length ? "" : " planned"}` });
-    chip.appendChild(el("rect", { class: "chip", x, y: y + 1, width: CHIP_W, height: FORK_H - 3, rx: 4 }));
+    chip.appendChild(el("rect", { class: "chip", x, y: y + 1, width: CHIP_W, height: FORK_H - 3, rx: 5 }));
     chip.appendChild(el("text", { class: "chip-text", x: x + 8, y: y + 14 }, forkWords(f, t.kept)));
     const tip = el("title", {}, forkRow(f, t.kept));
     chip.appendChild(tip);
     grp.appendChild(chip);
   });
-  // its dot, where its lines leave: drag it onto another task and that task waits on this one
+  // its ports, where its lines join: in at the left, out at the right (the top and the foot when laid downward)
+  grp.appendChild(el("circle", { class: "port in", cx: down ? BOX_W / 2 : 0, cy: down ? 0 : BOX_H / 2, r: 5 }));
+  const port = grp.appendChild(el("circle", { class: "port", cx: down ? BOX_W / 2 : BOX_W, cy: down ? h : BOX_H / 2, r: 5 }));
   if (replaying()) return; // a replay is watched, not linked
-  const port = el("circle", { class: "port", cx: down ? BOX_W / 2 : BOX_W, cy: down ? h : BOX_H / 2, r: 5, "data-port": t.id });
+  // drag its out port onto another task and that task waits on this one
+  port.setAttribute("data-port", t.id);
   port.appendChild(el("title", {}, "drag onto another task: it then waits on this one"));
-  grp.appendChild(port);
-  // its +, on the corner: a new task drawn after this one
+  // its +, past the out port: a new task drawn after this one
   const plus = el("g", { class: "plus", "data-plus": t.id });
-  plus.appendChild(el("circle", { cx: BOX_W - 1, cy: 1, r: 8 }));
-  plus.appendChild(el("path", { d: `M${BOX_W - 5},1 h8 M${BOX_W - 1},-3 v8` }));
+  const px = BOX_W + 17, py = BOX_H / 2;
+  plus.appendChild(el("rect", { class: "reach", x: BOX_W + 5, y: py - 10, width: 22, height: 20 })); // the pointer crosses to it without leaving the task
+  plus.appendChild(el("circle", { cx: px, cy: py, r: 8 }));
+  plus.appendChild(el("path", { d: `M${px - 4},${py} h8 M${px},${py - 4} v8` }));
   plus.appendChild(el("title", {}, "draw a task after this one"));
   plus.addEventListener("click", (e) => { e.stopPropagation(); draw({ after: t.id, parent: t.parent }); });
   grp.appendChild(plus);
 }
 
-/** A draft's box: dashed, its title (typed here while it is new), and its blanks until they are filled. */
+/** A draft's card: dashed, its title (typed here while it is new), its files and check once it has them, and
+ *  under it its blanks until they are filled. */
 function drawDraft(grp: SVGGElement, d: Draft) {
   grp.replaceChildren();
   grp.setAttribute("class", `task draft${d.key === selected ? " selected" : ""}`);
   grp.setAttribute("aria-label", `a draft: ${d.title || "no title yet"}: ${blanks(d)}${d.key === selected ? ", selected" : ""}`);
-  grp.appendChild(el("rect", { class: "box", x: 0, y: 0, width: BOX_W, height: BOX_H, rx: 6 }));
-  grp.appendChild(el("rect", { class: "stripe", x: 0, y: 0, width: 5, height: BOX_H, rx: 2 }));
+  if (d.key === selected) grp.appendChild(el("rect", { class: "ring", x: -5, y: -5, width: BOX_W + 10, height: BOX_H + 10, rx: 16 }));
+  grp.appendChild(el("rect", { class: "box", x: 0, y: 0, width: BOX_W, height: BOX_H, rx: 12 }));
+  tile(grp, "draft", "+", "a draft: not in the plan yet");
   if (naming === d.key) {
-    const fo = el("foreignObject", { x: 9, y: 3, width: BOX_W - 16, height: 24 });
+    const fo = el("foreignObject", { x: TEXT_X - 5, y: 10, width: BOX_W - TEXT_X - 5, height: 24 });
     fo.appendChild(nameInput(d));
     grp.appendChild(fo);
   } else {
-    fitText(grp.appendChild(el("text", { class: "title", x: 12, y: 19 }, d.title)), BOX_W - 24);
+    fitText(grp.appendChild(el("text", { class: "title", x: TEXT_X, y: 27 }, d.title)), BOX_W - TEXT_X - 8);
   }
-  grp.appendChild(el("text", { class: `sub${d.said ? " bad" : ""}`, x: 12, y: 36 }, d.said ? "not taken: see why" : blanks(d)));
+  const files = filesChip(globs(d.files));
+  if (files) pill(grp, "files", files, TEXT_X, 37, BOX_W - TEXT_X - 10);
+  if (d.check) pill(grp, "check", d.check, TEXT_X, files ? 58 : 37, BOX_W - TEXT_X - 10);
+  grp.appendChild(el("text", { class: `sub${d.said ? " bad" : ""}`, x: 2, y: BOX_H + 16 }, d.said ? "not taken: see why" : blanks(d)));
   grp.appendChild(el("title", {}, `a draft: ${d.title} · ${blanks(d)}`));
 }
 
