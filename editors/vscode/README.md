@@ -54,6 +54,15 @@ once, whether it waits for your approval, whether you do it yourself. The line u
 change does now, and a change Graphene refuses says why, there. **Activity** is who is on it, what it cost, and
 its attempts.
 
+## Workflows: save a graph, run it again
+
+**Save as workflow**, in the graph's header, writes the plan to `workflows/<name>.md`, with the values you name
+as its inputs. Home lists the repository's workflows; **Run** asks for each input and proposes the plan with no
+planner call: a suggested plan that waits for **Start**, whatever the switch says. A step can be a command (`run:` in the file): Graphene runs it
+with no agent, and its exit code is its check. A command that pushes or opens a pull request is drawn past the
+line, in **leaves your machine**, and waits for **Approve and run**. Only `git push` and `gh pr` are read as
+leaving your machine: any other command runs with the run. An input can be a command (a check, a `run:` step),
+and what you type there is run, as a check you write in the form is.
 
 ## Try it with no key
 
@@ -90,6 +99,7 @@ The Welcome page's **Get started with Graphene** walks through these, each step 
 | working | an agent is on it now | running |
 | to review | its check passed; it waits for your approval | review |
 | needs help | it stopped before its check passed, and says why | came back |
+| asks you | a command that would push or open a pull request waits for you to approve it | yours |
 | attempt | one of several agents racing the same task; its check keeps one | fork |
 | approve | land it in your repository | sign off |
 | send back | open it again, with a note for the next agent | reopen |
