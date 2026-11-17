@@ -25,6 +25,10 @@ export class HomeHost implements vscode.WebviewViewProvider {
    *  ponytail: read when Home opens and when its switch moves, so a `config set board` typed in a terminal
    *  shows here at the next of those; the snapshot would have to carry the setting to follow it live. */
   private board = "";
+  /** The repository's workflows as `graphene workflow --json` last listed them, and the inputs the last one
+   *  proposed here was given (Save as workflow offers them). Read when Home opens and after a run or a save. */
+  private workflows: C.Workflow[] = [];
+  private lastWorkflow: { name: string; inputs: Record<string, string> } | null = null;
   private readonly context: vscode.ExtensionContext;
   private readonly session: Session;
 
@@ -42,16 +46,16 @@ export class HomeHost implements vscode.WebviewViewProvider {
     this.views.add(view);
     view.onDidDispose(() => this.views.delete(view));
     view.webview.onDidReceiveMessage((m: unknown) => {
-      const msg = checkHome(m, this.session.state);
+      const msg = checkHome(m, this.session.state, this.workflows);
       if (!msg) return;
-      if (msg.type === "ready") return void this.readBoard().then(() => this.push());
+      if (msg.type === "ready") return void Promise.all([this.readBoard(), this.readWorkflows()]).then(() => this.push());
       void this.act(msg);
     });
   }
 
   private push() {
     const s = this.session.state;
-    const h = s ? home(s, this.session.seen, this.exact) : null;
+    const h = s ? home(s, this.session.seen, this.exact, this.workflows) : null;
     if (h && this.busy) for (const section of h.sections) for (const button of section.buttons) {
       if (button.act === "startAll" || button.act === "discardAll") button.off = true;
     }
@@ -76,6 +80,40 @@ export class HomeHost implements vscode.WebviewViewProvider {
   private async readBoard() {
     const out = await this.session.run(["config"]);
     if (out.code === 0) this.board = /^board:\s*(\S+)/m.exec(out.stdout)?.[1] ?? "";
+  }
+
+  private async readWorkflows() {
+    const out = await this.session.run(C.workflows());
+    if (out.code !== 0) return; // an older graphene has no such command: no workflows are listed
+    ({ workflows: this.workflows, last: this.lastWorkflow } = C.parseWorkflows(out.stdout));
+  }
+
+  /** Run a workflow: ask for each input (its default offered), then `graphene workflow NAME -i …` proposes the
+   *  plan with its holes filled and no planner call. It is a suggested plan that waits for Start, whatever the
+   *  switch says: its command steps are shell lines from a file, read before they run (auto holds such a step
+   *  back too: a step with no files never fits its limits). */
+  private async runWorkflow(name: string) {
+    const w = this.workflows.find((x) => x.name === name);
+    if (!w || this.busy) return;
+    const inputs: Record<string, string> = {};
+    for (const i of w.inputs) {
+      const v = await vscode.window.showInputBox({
+        title: C.plain(`${name}: ${i.name}`), prompt: C.plain(`“${i.name}” for the workflow ${name}`), value: i.default ?? "", ignoreFocusOut: true,
+        validateInput: (x) => (x.trim() ? undefined : "it needs a value"),
+      });
+      if (v === undefined) return; // Esc: nothing is proposed
+      inputs[i.name] = v.trim();
+    }
+    this.busy = `Proposing ${name}…`;
+    this.say([]);
+    this.push();
+    const out = await this.session.run(C.workflow(name, inputs));
+    this.busy = "";
+    if (out.code !== 0) this.say([out.code === -1 ? "graphene was not found" : C.refusal(out.stderr, out.stdout)], { bad: true });
+    else this.say([`${name}: its plan is proposed, with no planner call. Read it, then start.`]);
+    await this.readWorkflows();
+    await this.session.refresh();
+    this.push();
   }
 
   /** The switch: on sets the three settings and keeps what review and auto were; off puts them back and forgets
@@ -130,6 +168,7 @@ export class HomeHost implements vscode.WebviewViewProvider {
       case "startAll": return (this.exact && s.state?.questions.length) || (s.state && unanswered(s.state)) ? undefined : this.start();
       case "exact": return this.setExact(m.flag === true);
       case "stopAfter": return this.setStopAfter(m.flag === true);
+      case "runWorkflow": return this.runWorkflow(m.arg!);
       case "discardAll": return this.discard();
       case "run": return void s.terminal("graphene run", C.runReady());
       case "stop": return s.act(C.stop());
