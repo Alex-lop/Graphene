@@ -57,6 +57,43 @@ export function cornerWord(t: TaskX): string {
   return t.state === "running" && t.model ? cut(t.model, 7) : t.needs_you ? "◆" : "";
 }
 
+/** Who does a step, for the tile on its card: you, or the executor by a letter (Claude Code `C`, Codex `X`, any
+ *  other named one by its first), or a command of your own by its first two letters, as a terminal names it. */
+export function who(t: Pick<TaskX, "state" | "owner">, executor: string): { kind: "you" | "claude" | "codex" | "agent" | "cmd"; mark: string; label: string } {
+  if (t.state === "yours" || (t.owner && t.owner !== "agent")) return { kind: "you", mark: "◆", label: "you" };
+  const words = executor.trim().split(/\s+/).filter(Boolean);
+  const name = (words[0] ?? "").split("/").pop() ?? "";
+  if (name === "claude") return { kind: "claude", mark: "C", label: "Claude Code" };
+  if (name === "codex") return { kind: "codex", mark: "X", label: "Codex" };
+  if (!name) return { kind: "agent", mark: "?", label: "an agent" };
+  return words.length > 1 || words[0]!.includes("/") ? { kind: "cmd", mark: name.slice(0, 2), label: name } : { kind: "agent", mark: name[0]!.toUpperCase(), label: name };
+}
+
+/** The files chip on a card: the first of the paths it may change, and how many more there are. */
+export const filesChip = (scope: readonly string[]): string => (scope.length > 1 ? `${scope[0]} +${scope.length - 1}` : scope[0] ?? "");
+
+/** How an edge is drawn, by the tasks at its ends (the goal has none): `run` where an agent is working on what
+ *  it leads to, `done` where the work it carries landed, `wait` until then. */
+export function edgeKind(from: Pick<TaskX, "state"> | undefined, to: Pick<TaskX, "state"> | undefined): "run" | "done" | "wait" {
+  if (to?.state === "running") return "run";
+  return from?.state === "done" ? "done" : "wait";
+}
+
+/** The mark on a card's corner: its work landed, an agent is on it, it waits on you, or it came back. A
+ *  suggested task has none: its dashed card says it is drafted, and accepting the plan is one act for them all. */
+export function badge(t: Pick<TaskX, "state" | "needs_you">): "done" | "running" | "you" | "back" | "" {
+  if (t.state === "done") return "done";
+  if (t.state === "came back") return "back";
+  if (t.state === "proposed") return "";
+  if (t.state === "review" || t.state === "yours" || t.needs_you) return "you";
+  return t.state === "running" ? "running" : "";
+}
+
+/** The worktrees on this machine, one per agent at work: each running attempt's, or the task's own. */
+export function worktrees(tasks: readonly TaskX[]): number {
+  return tasks.reduce((n, t) => n + (t.forks.some((f) => f.checkout) ? t.forks.filter((f) => f.checkout).length : t.checkout ? 1 : 0), 0);
+}
+
 /** How many attempts a task runs as: its own number, else the limits' (Set Limits…), else one. */
 export const attemptsOf = (t: Pick<TaskX, "planned">, limit: number | null | undefined): number => Math.min(8, Math.max(1, t.planned ?? limit ?? 1));
 

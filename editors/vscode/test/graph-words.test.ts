@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import * as C from "../src/commands.ts";
-import { actsFor, attemptsOf, CHANGES, cornerWord, counts, editable, fan, fitWidth, fitWords, forkActs, forkWords, HEADER_ACTS, headerFor, linkHint, paneKey, replayLine,
-         sub, tabOrder, zoomK, topLine, whenEdit, type StateX, type TaskX } from "../src/graph/words.ts";
+import { actsFor, attemptsOf, badge, CHANGES, cornerWord, counts, edgeKind, editable, fan, filesChip, fitWidth, fitWords, forkActs, forkWords, HEADER_ACTS, headerFor, linkHint,
+         paneKey, replayLine, sub, tabOrder, zoomK, topLine, whenEdit, who, worktrees, type StateX, type TaskX } from "../src/graph/words.ts";
 import { SAY, WORDS } from "../src/state.ts";
 import { ICONS } from "../src/graph/icons.ts";
 import { layout } from "../src/layout.ts";
@@ -166,6 +166,50 @@ test("the corner's word is the running task's model, cut to about six characters
   assert.equal(cornerWord({ ...greet, model: "qwen3-coder-480b" }), "qwen3-…");
   assert.equal(cornerWord(task("farewell")), "◆"); // in review: it needs you
   assert.equal(cornerWord(task("hello")), "");
+});
+
+test("a card's tile says who does the step: you, the executor by its letter, or a command by its first letters", () => {
+  const greet = task("greet");
+  assert.deepEqual(who(greet, "claude"), { kind: "claude", mark: "C", label: "Claude Code" });
+  assert.deepEqual(who(greet, "codex --full-auto"), { kind: "codex", mark: "X", label: "Codex" });
+  assert.equal(who(greet, "nemotron").mark, "N");
+  assert.deepEqual(who(greet, "stand-in"), { kind: "agent", mark: "S", label: "stand-in" }, "the demo's scripted stand-in");
+  assert.deepEqual(who(greet, "/usr/local/bin/aider --yes {prompt}"), { kind: "cmd", mark: "ai", label: "aider" });
+  assert.equal(who(greet, "").mark, "?");
+  assert.equal(who({ ...greet, owner: "alex" }, "claude").kind, "you", "a task you took is yours, whoever the executor is");
+  assert.equal(who({ ...greet, state: "yours" }, "claude").kind, "you");
+});
+
+test("the files chip names the first path and counts the rest; a card with no files has none", () => {
+  assert.equal(filesChip(["src/export/**"]), "src/export/**");
+  assert.equal(filesChip(["app.py", "tests/test_app.py", "README.md"]), "app.py +2");
+  assert.equal(filesChip([]), "");
+});
+
+test("an edge moves where an agent is working, is green where the work landed, and waits until then", () => {
+  assert.equal(edgeKind(task("hello"), task("greet")), "run"); // done into running: the work is on its way
+  assert.equal(edgeKind(task("hello"), task("bye")), "done");
+  assert.equal(edgeKind(task("hello"), undefined), "done", "a landed task's edge into the goal");
+  assert.equal(edgeKind(task("farewell"), undefined), "wait", "in review: nothing landed yet");
+  assert.equal(edgeKind(task("logs"), task("docs")), "wait");
+});
+
+test("a card's mark: landed, working, needs you, came back; a suggested task has none, its dashed card says it", () => {
+  assert.equal(badge(task("hello")), "done");
+  assert.equal(badge({ ...task("greet"), needs_you: false }), "running");
+  assert.equal(badge(task("greet")), "you", "a question on a working task: it needs you first");
+  assert.equal(badge(task("farewell")), "you");
+  assert.equal(badge(task("logs")), "back");
+  assert.equal(badge({ ...task("farewell"), state: "proposed" }), "");
+  assert.equal(badge({ ...task("hello"), state: "waiting", needs_you: false }), "");
+});
+
+test("this machine counts a worktree for each agent at work: each running attempt's, or the task's own", () => {
+  const greet = task("greet");
+  const running = { ...greet, forks: greet.forks.map((f, i) => ({ ...f, checkout: i < 2 ? `/tmp/w${i}` : null })) };
+  assert.equal(worktrees([running]), 2);
+  assert.equal(worktrees([{ ...greet, forks: [], checkout: "/tmp/w" }]), 1);
+  assert.equal(worktrees([{ ...greet, forks: [], checkout: null }]), 0);
 });
 
 test("the zoom never goes under 1, where the smallest text is 11 px, nor over 3; a remembered zoom is clamped too", () => {
