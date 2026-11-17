@@ -570,7 +570,7 @@ function drawTask(grp: SVGGElement, t: TaskX, h: number, down: boolean, limit: n
   // its ports, where its lines join: in at the left, out at the right (the top and the foot when laid downward)
   grp.appendChild(el("circle", { class: "port in", cx: down ? BOX_W / 2 : 0, cy: down ? 0 : BOX_H / 2, r: 5 }));
   const port = grp.appendChild(el("circle", { class: "port", cx: down ? BOX_W / 2 : BOX_W, cy: down ? h : BOX_H / 2, r: 5 }));
-  if (replaying()) return; // a replay is watched, not linked
+  if (replaying() || t.leaves) return; // a replay is watched, not linked; a task drawn after a step past the line would land in the first column
   // drag its out port onto another task and that task waits on this one
   port.setAttribute("data-port", t.id);
   port.appendChild(el("title", {}, "drag onto another task: it then waits on this one"));
@@ -1138,13 +1138,13 @@ function commandScope(body: HTMLElement, t: TaskX) {
   div("dim", "no model: no tokens", part(body, "Tokens"));
 }
 
-/** Edit: the task's form (or, finished or in a replay, what it says), the sub-goal it is under and what it waits on. */
+/** Edit: the task's form (or, finished, a command step or in a replay, what it says), the sub-goal it is under and what it waits on. */
 function editTab(body: HTMLElement, t: TaskX, s: StateX) {
   if (editable(t, replaying())) form(body, t, s);
-  else { // a finished task, or a replay: read, and the line says why
+  else { // a finished task, a command step, or a replay: read, and the line says why
     row("what for", t.full, body);
     row("may change", t.scope.join("  "), body);
-    row("done when", t.check ? `${t.check} passes` : "", body);
+    row(t.command ? "runs" : "done when", t.command ?? (t.check ? `${t.check} passes` : ""), body);
     if (!replaying()) div("when", whenEdit(t), body);
   }
   row("under", t.parent ? goalTitle(s, t.parent) : "", body);
@@ -1416,6 +1416,7 @@ window.addEventListener("keydown", (e) => {
   }
   if (e.key === "+" && state) { // a task drawn after the selected one, or on its own
     const near = state.tasks.find((t) => t.id === selected);
+    if (near?.leaves) return; // nothing is drawn after a step past the line
     draw(near ? { after: near.id, parent: near.parent } : { after: null, parent: null });
     return;
   }

@@ -25,7 +25,7 @@ state.stand_in = params.get("standin") ? true : raw.stand_in === true; // &stand
 const rawTasks = (raw.tasks as Record<string, unknown>[] | undefined) ?? [];
 for (const t of state.tasks) {
   const r = rawTasks.find((x) => x.id === t.id);
-  Object.assign(t, { planned: typeof r?.planned === "number" ? r.planned : null, signoff: r?.signoff === true, owner: "agent" }); // as `plan --json` would say
+  Object.assign(t, { planned: typeof r?.planned === "number" ? r.planned : null, signoff: r?.signoff === true, owner: r?.command ? "command" : "agent" }); // as `plan --json` would say
   if (!r) continue;
   if (typeof r.why === "string") t.why = r.why;
   if (typeof r.attempts === "number") t.attempts = r.attempts;

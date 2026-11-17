@@ -228,7 +228,8 @@ export interface Stage { key: "plan" | "run" | "review"; label: string; at: "don
 
 /** One pipeline, the plan always first: Plan, Run, Review. Where the work is (the first stage not finished is
  *  `now`), and a few words under each: how big the plan is and what it asks, who is working, what waits for
- *  you. Auto is the same pipeline with no stop after the plan (`stopAfterPlan`). */
+ *  you. Auto is the same pipeline with no stop after the plan (`stopAfterPlan`). A command step is never
+ *  `running` (the run executes it itself): a run going with one ready is running it, not starting. */
 export function pipeline(s: Pick<StateX, "drafting" | "tasks" | "goals" | "questions" | "run">): Stage[] {
   const n = (k: TaskX["state"]) => s.tasks.filter((t) => t.state === k).length;
   const count = (k: number, word: string) => `${k} ${word}${k === 1 ? "" : "s"}`;
@@ -238,7 +239,7 @@ export function pipeline(s: Pick<StateX, "drafting" | "tasks" | "goals" | "quest
   const asks = s.questions.length ? count(s.questions.length, "question") : "";
   const plan = s.drafting ? (s.drafting.live ? `${count(draftedSteps(s).length, "step")} so far` : "the planner is writing")
     : [s.tasks.length ? count(s.tasks.length, "step") : "", planned && n("proposed") ? `${n("proposed")} suggested` : "", asks].filter(Boolean).join(" · ");
-  const run = !planned || ran ? "" : n("running") ? `${n("running")} working` : n("came back") ? `${n("came back")} need${n("came back") === 1 ? "s" : ""} help` : s.run.going ? "starting"
+  const run = !planned || ran ? "" : n("running") ? `${n("running")} working` : n("came back") ? `${n("came back")} need${n("came back") === 1 ? "s" : ""} help` : s.run.going ? (s.tasks.some((t) => t.command && !t.leaves && t.state === "ready") ? "running a command" : "starting")
     : n("yours") ? `${n("yours")} ask${n("yours") === 1 ? "s" : ""} you` : n("ready") ? `${n("ready")} ready` : "waiting";
   const review = n("review") ? `${n("review")} to review` : landed ? "landed" : "";
   return [
@@ -318,8 +319,10 @@ export function fan(t: TaskX, limit: number | null | undefined): ForkX[] {
 }
 
 /** What a change to a task does now, by its state: the one line under the pane's form. It says what
- *  `graphene node set` does (dev/process/graph-edit/edits.md has each state's answer, as the engine gave it). */
-export function whenEdit(t: Pick<TaskX, "state">): string {
+ *  `graphene node set` does (dev/process/graph-edit/edits.md has each state's answer, as the engine gave it).
+ *  A command step has no form: its line says where it changes. */
+export function whenEdit(t: Pick<TaskX, "state"> & { command?: string | null }): string {
+  if (t.command && t.state !== "done") return "A command step is its command alone: no files, no attempts, no agent. Change its run: line in the plan's text.";
   switch (t.state) {
     case "proposed": return "Suggested: nothing runs yet. A change binds once you accept it.";
     case "ready": case "waiting": return "Not started: its agent starts from what you set here.";
@@ -331,8 +334,10 @@ export function whenEdit(t: Pick<TaskX, "state">): string {
   }
 }
 
-/** Whether the pane's form takes edits: graphene refuses a change to a finished task, and a replay is watched. */
-export const editable = (t: Pick<TaskX, "state">, replay: boolean): boolean => !replay && t.state !== "done";
+/** Whether the pane's form takes edits: graphene refuses a change to a finished task, and a replay is watched.
+ *  Nor a command step: `node set` takes files, attempts, an owner and an approval on one, and each makes it
+ *  something else (with files it is no command step: off the line, its approval gone). */
+export const editable = (t: Pick<TaskX, "state"> & { command?: string | null }, replay: boolean): boolean => !replay && t.state !== "done" && !t.command;
 
 const quiet = (idle: number | null | undefined) => (idle !== null && idle !== undefined && idle > 8 ? `${Math.round(idle)} s quiet` : "");
 const tries = (n: number | undefined) => (n !== undefined && n > 1 ? `${n} tries` : "");
@@ -418,7 +423,9 @@ export interface Button {
   main?: boolean; // drawn as the primary button
 }
 
-/** The buttons a task's pane offers, in order. A replay offers none: its pane reads. */
+/** The buttons a task's pane offers, in order. A replay offers none: its pane reads. A step past the line
+ *  offers nothing after it (a task drawn there lands in the first column, its edge running backwards), and a
+ *  command step has no agent to message. */
 export function actsFor(t: TaskX, replay: boolean): Button[] {
   const out: Button[] = [];
   if (replay) return out;
@@ -429,11 +436,11 @@ export function actsFor(t: TaskX, replay: boolean): Button[] {
   if (t.state === "came back") out.push({ label: "Help it…", act: "handBack", title: "allow what it needs, add a task for it, or try again", icon: "debug-step-back", main: true });
   if (hasChanges) out.push({ label: "Open changes", act: "openDiff", title: "its changes so far, in the diff editor", icon: "diff" });
   if (t.forks.length >= 2) out.push({ label: "Compare attempts", act: "compareForks", title: "the attempts side by side", icon: "split-horizontal" });
-  out.push({ label: "Add task after", act: "add-after", title: "draw a new task that waits on this one", icon: "add" });
+  if (!t.leaves) out.push({ label: "Add task after", act: "add-after", title: "draw a new task that waits on this one", icon: "add" });
   out.push({ label: "Add task beside", act: "add-under", title: "draw a new task under the same sub-goal", icon: "add" });
-  out.push({ label: "Link to…", act: "link", title: "then click the task that waits on this one", icon: "link" });
+  if (!t.leaves) out.push({ label: "Link to…", act: "link", title: "then click the task that waits on this one", icon: "link" });
   if (["proposed", "ready", "waiting"].includes(t.state)) out.push({ label: "Remove", act: "drop", title: "graphene node drop", icon: "trash" });
-  if (["running", "ready", "waiting", "came back"].includes(t.state)) out.push({ label: "Message agent", act: "tell", title: "a line the agent on it reads with its next step", icon: "comment" });
+  if (!t.command && ["running", "ready", "waiting", "came back"].includes(t.state)) out.push({ label: "Message agent", act: "tell", title: "a line the agent on it reads with its next step", icon: "comment" });
   return out;
 }
 

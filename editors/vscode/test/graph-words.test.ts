@@ -258,6 +258,17 @@ test("a command step: its tile is the command's word, and one past the line asks
   assert.equal(actsFor(suite, false).some((b) => b.act === "markDone"), false, "a command step before the line runs by itself");
   assert.equal(badge(pr), "you");
   assert.deepEqual(pipeline(wf).map((x) => `${x.label} ${x.at}${x.note ? `: ${x.note}` : ""}`), ["Plan done: 4 steps", "Run now: 1 asks you", "Review next"]);
+  // it is its command alone: the pane's form (files, attempts, your approval, whose it is) is closed, and the line says where it changes
+  const ready = { ...suite, state: "ready" as const };
+  assert.deepEqual([editable(ready, false), editable(pr, false)], [false, false]);
+  for (const t of [ready, pr]) assert.equal(whenEdit(t), "A command step is its command alone: no files, no attempts, no agent. Change its run: line in the plan's text.");
+  assert.match(whenEdit(suite), /^Done:/, "finished, it is not edited, as any task");
+  assert.deepEqual(actsFor(ready, false).map((b) => b.act), ["add-after", "add-under", "link", "drop"], "no agent to message");
+  // nothing is drawn after a step past the line: a task there would land in the first column, its edge running backwards
+  assert.deepEqual(actsFor(pr, false).map((b) => b.act), ["markDone", "add-under"]);
+  // the run executes a command itself, so the step never reads `running`: a run going with one ready is running it
+  const going = { ...wf, run: { going: true, pid: 1 }, tasks: wf.tasks.map((t) => (t === suite ? ready : t === pr ? { ...pr, state: "waiting" as const } : t)) };
+  assert.equal(pipeline(going)[1]!.note, "running a command");
 });
 
 test("one pipeline, the plan first: Plan, Run, Review, and where the work is in it", () => {
