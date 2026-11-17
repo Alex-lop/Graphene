@@ -49,11 +49,17 @@ export function countsLine(s: State): string {
 /** The open questions with no default: one stops the run either way, so Start waits for its answer as auto does. */
 export const unanswered = (s: Pick<State, "questions">): number => s.questions.filter((q) => !q.default).length;
 
+/** A command step whose command failed stays open, and reads as it did before it ran: once the terminal is gone,
+ *  this line is all that says it ran. */
+const failed = (t: Task): Line[] => (t.command && t.checked.after === "failed" && t.state !== "done"
+  ? [{ v: `Its command failed the last time it ran: the terminal said why. ${t.leaves ? "Approve and run" : "Run"} tries it again.`, warn: true }] : []);
+
 /** What a task is for, what it may change, and what proves it: the three lines a person reads before saying yes. */
 function contract(t: Task, name: (id: string) => string): Line[] {
   if (t.command) return [ // a command step: no agent and no files; what runs, and whether it asks first
     { k: "Runs", v: t.command, mono: true },
     { v: t.leaves ? "It leaves your machine, so it asks you before it runs." : "A command, with no agent: its exit code is its check." },
+    ...failed(t),
     ...line("After", t.needs.map(name).join(", ")),
   ];
   return [
@@ -157,7 +163,7 @@ export function home(s: State, seen: ReadonlySet<string> = new Set(), exact = fa
       const t = n.t;
       waiting.push({ key: `yours:${t.id}`, tone: "yours", title: t.title, tag: "asks you",
                      lines: [{ v: "This step leaves your machine, so it asks you first. Approving it runs its command, with no agent." },
-                             { k: "Runs", v: t.command!, mono: true }, ...line("After", t.needs.map(name).join(", "))],
+                             { k: "Runs", v: t.command!, mono: true }, ...failed(t), ...line("After", t.needs.map(name).join(", "))],
                      buttons: [{ label: "Approve and run", act: "markDone", id: t.id, main: true, title: "graphene node done runs the command, in a terminal you can watch" }] });
     } else if (n.kind === "yours") {
       const t = n.t;

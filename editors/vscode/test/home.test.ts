@@ -238,6 +238,12 @@ test("a step past the line asks you on Home: what leaves your machine, the comma
   const lines = (id: string) => before.sections.flatMap((x) => x.cards).find((x) => x.key.endsWith(`:${id}`))!.lines;
   assert.deepEqual(lines("suite-48").slice(0, 2), [{ k: "Runs", v: "uv run pytest -q", mono: true }, { v: "A command, with no agent: its exit code is its check." }]);
   assert.deepEqual(lines("pr-48")[1], { v: "It leaves your machine, so it asks you before it runs." });
+  // a command that failed stays open and reads as before it ran: its card says it ran, once the terminal is gone
+  const failed = (id: string, state: "ready" | "yours") => home({ ...s, tasks: s.tasks.map((t) => (t.id === id ? { ...t, state, checked: { before: null, after: "failed" } } : t)) });
+  const warns = (x: Home, key: string) => card(x, key).lines.filter((l) => l.warn).map((l) => l.v);
+  assert.deepEqual(warns(failed("suite-48", "ready"), "n:suite-48"), ["Its command failed the last time it ran: the terminal said why. Run tries it again."]);
+  assert.deepEqual(warns(failed("pr-48", "yours"), "yours:pr-48"), ["Its command failed the last time it ran: the terminal said why. Approve and run tries it again."]);
+  assert.deepEqual(warns(h, "yours:pr-48"), [], "nothing failed: no such line");
 });
 
 test("a question with no default stops the run either way: with the switch on, Start waits for its answer", () => {
