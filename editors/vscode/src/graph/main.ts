@@ -8,8 +8,8 @@ import { STEP_COLOURS, STEP_FALLBACKS, stepColour } from "../owners.ts";
 import { autoLine, SAY, screenWords, usd, type DraftStep, type State } from "../state.ts";
 import { ICONS } from "./icons.ts";
 import { blanks, draftLine, globs, isDraft, lacks, type Draft } from "./draft.ts";
-import { actsFor, attemptsOf, badge, cornerWord, cut, done, draftedSteps, edgeKind, editable, fan, filesChip, FIRST_HINT, fitWidth, forkActs, forkRow, forkWords, HEADER_ACTS, headerFor,
-         KEYS, linkHint, paneKey, pipeline, planningLine, PROVES_NOTHING, provesNothing, questionOn, STOP_AFTER, STOP_AFTER_HOVER, stopAfterPlan, sub, tabOrder, topLine, whenEdit, who, worktrees, zoomK,
+import { actsFor, attemptsOf, badge, checkWords, cornerWord, cut, done, draftedSteps, edgeKind, editable, fan, filesChip, FIRST_HINT, fitWidth, forkActs, forkRow, forkWords, HEADER_ACTS, headerFor,
+         heldWords, KEYS, linkHint, mayRun, paneKey, pipeline, planningLine, PROVES_NOTHING, provesNothing, questionOn, scopeTree, STOP_AFTER, STOP_AFTER_HOVER, stopAfterPlan, stopsOf, sub, tabOrder, tokenWords, topLine, whenEdit, who, worktrees, writtenOf, zoomK,
          type Button, type StateX, type TaskX } from "./words.ts";
 
 declare function acquireVsCodeApi(): { postMessage(m: unknown): void; getState(): unknown; setState(s: unknown): void };
@@ -20,7 +20,8 @@ type Incoming = { type: "state"; state: StateX } | { type: "status"; status: Sta
   | { type: "said"; id?: string; key?: string; ok: boolean; line: string; made?: string }; // graphene's answer to a change made here
 type Zoom = { k: number; tx: number; ty: number };
 type View = "auto" | "graph" | "lanes";
-type Saved = { zoom?: Zoom; hinted?: boolean; view?: View; drafts?: Draft[]; drew?: number };
+type Tab = "scope" | "edit" | "activity";
+type Saved = { zoom?: Zoom; hinted?: boolean; view?: View; drafts?: Draft[]; drew?: number; tab?: Tab };
 
 const GOAL = " goal";
 const PLAN = " p"; // before a step the planner is writing: a space first, so its box is never a task's
@@ -991,13 +992,153 @@ function draftPane(pane: HTMLElement, d: Draft) {
   act("Discard", "trash", "take this draft away", () => discard(d.key));
 }
 
+/** The pane's tab: Scope until the person picks another, and then that one for every task they open. */
+const tab = (): Tab => saved.tab ?? "scope";
+const pane_ = () => pane();
+
+/** A part of the Scope tab: its heading, with a few words at its right. */
+function part(body: HTMLElement, title: string, aside = ""): HTMLElement {
+  const sec = document.createElement("section");
+  sec.className = "sc";
+  const h = document.createElement("h3");
+  h.textContent = title;
+  if (aside) { const em = document.createElement("em"); em.textContent = aside; h.appendChild(em); }
+  sec.appendChild(h);
+  body.appendChild(sec);
+  return sec;
+}
+
+const code = (text: string, parent: HTMLElement) => { const c = document.createElement("code"); c.textContent = text; parent.appendChild(c); return c; };
+const small = (text: string, parent: HTMLElement) => { const c = document.createElement("small"); c.textContent = text; parent.appendChild(c); return c; };
+
+/** Scope: what this step may do, in plain view. May change (a tree, the glob behind it), may run, outside,
+ *  held by, stopped, done when, tokens. Every word is what the snapshot says; where it says nothing, so does this. */
+function scopeTab(body: HTMLElement, t: TaskX, s: StateX) {
+  const wrote = writtenOf(t);
+  const change = part(body, "May change", wrote ? `✎ ${wrote}` : "");
+  const tree = div("tree", undefined, change);
+  const rows = scopeTree(t, s);
+  for (const r of rows) {
+    const row = div(`tr ${r.kind}${r.depth ? " in1" : ""}`, undefined, tree);
+    div("tr-name", r.name, row);
+    if (r.note) div(`tr-note${r.note === "written" ? " wr" : ""}`, r.note, row);
+  }
+  if (!rows.length) div("tr out", "no files named", tree);
+  if (t.scope.length) { // the glob is the plan's own word for it: shown when asked
+    const glob = document.createElement("details");
+    glob.className = "glob";
+    const sum = document.createElement("summary");
+    sum.textContent = "as the plan writes it";
+    glob.appendChild(sum);
+    for (const g of t.scope) code(g, glob);
+    change.appendChild(glob);
+  }
+  const run = part(body, "May run");
+  const kv = div("kv", undefined, run);
+  div("kv-k", "Commands", kv);
+  const cmds = div("kv-v", undefined, kv);
+  const may = mayRun(s, t);
+  for (const c of may.commands) code(c, cmds);
+  if (may.words) cmds.append(may.words);
+  if (t.check) { const its = div("kv-note", undefined, cmds); its.append("Graphene itself runs its check: "); code(t.check, its); }
+  div("kv-k", "Outside", kv);
+  div("kv-v", may.outside, kv);
+  const held = heldWords(t);
+  const hold = div(`held${held.shield ? "" : " none"}`, undefined, part(body, "Held by"));
+  div("shield", held.shield ? "⛉" : "○", hold).setAttribute("aria-hidden", "true");
+  const said = div("", held.line, hold);
+  small(held.proof, said);
+  const stops = stopsOf(t, s.tasks);
+  const stopped = part(body, "Stopped", stops.count);
+  for (const x of stops.rows) small(x.note, div("stop", x.line, stopped));
+  if (!stops.rows.length) div("dim", "no write was refused", stopped);
+  const when = part(body, "Done when");
+  if (t.check) code(t.check, div("", undefined, when));
+  for (const c of checkWords(t)) {
+    const row = div("checkrow", undefined, when);
+    div(`dot ${c.tone}`, undefined, row);
+    row.append(c.line);
+  }
+  if (t.hollow && t.checked.before !== "passes") div("checkrow warn", "its check passed before the work too: it proves nothing new", when);
+  const spent = tokenWords(t);
+  const tokens = part(body, "Tokens", spent?.total ?? "");
+  if (spent) {
+    const bar = div("bar", undefined, tokens);
+    div("read", undefined, bar).style.width = `${spent.read}%`;
+    div("wrote", undefined, bar).style.width = `${spent.written}%`;
+    div("checkrow dim", spent.line, tokens);
+  } else div("dim", t.attempts ? "this agent reports no tokens" : "nothing metered yet: Graphene counts the agents a run starts", tokens);
+}
+
+/** Edit: the task's form (or, finished or in a replay, what it says), the sub-goal it is under and what it waits on. */
+function editTab(body: HTMLElement, t: TaskX, s: StateX) {
+  if (editable(t, replaying())) form(body, t, s);
+  else { // a finished task, or a replay: read, and the line says why
+    row("what for", t.full, body);
+    row("may change", t.scope.join("  "), body);
+    row("done when", t.check ? `${t.check} passes` : "", body);
+    if (!replaying()) div("when", whenEdit(t), body);
+  }
+  row("under", t.parent ? goalTitle(s, t.parent) : "", body);
+  if (t.hollow) div("hollow", provesNothing(t) ? PROVES_NOTHING : "its check passed before the work too: it proves nothing new", body); // as the cockpit says
+  if (t.needs.length) { // what it waits on, each with the × that stops it waiting
+    const r = div("row", undefined, body);
+    div("k", "after", r);
+    const v = div("v", undefined, r);
+    for (const n of t.needs) {
+      const need = div("need", s.tasks.find((x) => x.id === n)?.title ?? n, v);
+      if (replaying()) continue;
+      const x = document.createElement("button");
+      x.className = "unlink";
+      x.appendChild(icon("close"));
+      x.title = "stop waiting on it";
+      x.setAttribute("aria-label", `stop waiting on ${s.tasks.find((y) => y.id === n)?.title ?? n}`);
+      x.addEventListener("click", () => api.postMessage({ type: "act", act: "unlink", id: t.id, target: n }));
+      need.appendChild(x);
+    }
+  }
+}
+
+/** Activity: who is on it, what it cost, what it said and its last moves, and each attempt with its changes. */
+function activityTab(body: HTMLElement, t: TaskX) {
+  const before = body.childElementCount;
+  row("agent", t.agent ? `agent ${t.agent}${t.model ? ` · ${t.model}` : ""}` : "", body);
+  row("tries", t.attempts !== undefined && t.attempts > 1 ? String(t.attempts) : "", body);
+  row("cost", usd(t.usd), body);
+  row("quiet", t.idle !== null && t.idle > 8 ? `${Math.round(t.idle)} s` : "", body);
+  row("note", t.note, body);
+  row("wanted", t.outside.join("  "), body);
+  if (t.forks.length) {
+    const r = div("row", undefined, body);
+    div("k", "attempts", r);
+    const v = div("v", undefined, r);
+    for (const f of t.forks) {
+      const kept = t.kept?.letter === f.letter;
+      const fr = div(`fork-row ${cls(f.state || "waiting")}${kept ? " kept" : ""}`, undefined, v);
+      div("fork-words", forkRow(f, t.kept), fr);
+      const acts = div("fork-acts", undefined, fr);
+      for (const b of forkActs(t, f, replaying())) button({ ...b, main: false }, t.id, acts);
+    }
+  }
+  if (t.tail.length) {
+    const r = div("row", undefined, body);
+    div("k", "last moves", r);
+    const v = div("v", undefined, r);
+    for (const line of t.tail.slice(-6)) div("move", screenWords(line), v);
+  }
+  if (body.childElementCount === before) div("dim", "No agent has been on it yet.", body);
+}
+
 /** The pane is rebuilt only when what it shows changed (its key); then the focused button, by its words,
  *  and the scroll are kept, so a keyboard user reaches its buttons while a run writes the store. A box being
  *  typed in is never rebuilt under the typing: the pane waits for it to be left. */
 function pane() {
   const pane = $("details");
   const d = drawn().find((x) => x.key === selected);
-  const key = d ? JSON.stringify([d, offered.has(d.key)]) : state ? paneKey(state, selected, replaying()) + (refused.get(selected ?? "") ?? "") + state.envelope.forks : "";
+  const shown = state?.tasks.find((x) => x.id === selected);
+  const scoped = shown && state && tab() === "scope" ? JSON.stringify([scopeTree(shown, state), stopsOf(shown, state.tasks).count, state.allows]) : "";
+  const key = d ? JSON.stringify([d, offered.has(d.key)])
+    : state ? paneKey(state, selected, replaying()) + (refused.get(selected ?? "") ?? "") + state.envelope.forks + tab() + scoped : "";
   if (key === paneLast) return;
   const at = document.activeElement as HTMLInputElement | null;
   if (paneOf === selected && pressing) { paneLast = "stale"; return; } // rebuilt once the press has had its click
@@ -1012,7 +1153,7 @@ function pane() {
   const t = state?.tasks.find((x) => x.id === selected);
   if (!state || (!t && !d) || !key) { pane.hidden = true; pane.replaceChildren(); return; }
   const was = pane.contains(document.activeElement) ? document.activeElement : null;
-  const mark = (e: Element) => `${e.id}|${e.className}|${e.textContent}|${e.getAttribute("aria-label") ?? ""}`;
+  const mark = (e: Element) => `${e.id}|${(e as HTMLElement).dataset?.tab ?? e.className}|${e.textContent}|${e.getAttribute("aria-label") ?? ""}`; // a tab by its name: its class changes when chosen
   const want = was ? mark(was) : "";
   const top = pane.querySelector(".d-body")?.scrollTop ?? 0; // wide, the body scrolls; narrow, the whole pane
   const paneTop = pane.scrollTop;
@@ -1062,55 +1203,22 @@ function pane() {
       opts.appendChild(own);
     }
   }
-  if (editable(t, replaying())) form(body, t, s);
-  else { // a finished task, or a replay: read, and the line says why
-    row("what for", t.full, body);
-    row("may change", t.scope.join("  "), body);
-    row("done when", t.check ? `${t.check} passes` : "", body);
-    if (!replaying()) div("when", whenEdit(t), body);
+  // three tabs: what it may do (the pane opens here), its form, and what its agents did
+  const tabs = div("tabs", undefined, body);
+  tabs.setAttribute("role", "tablist");
+  for (const [key, label] of [["scope", "Scope"], ["edit", "Edit"], ["activity", "Activity"]] as const) {
+    const b = document.createElement("button");
+    b.className = `tab${tab() === key ? " on" : ""}`;
+    b.textContent = label;
+    b.dataset.tab = key;
+    b.setAttribute("role", "tab");
+    b.setAttribute("aria-selected", String(tab() === key));
+    b.addEventListener("click", () => { remember({ tab: key }); paneLast = ""; pane_(); });
+    tabs.appendChild(b);
   }
-  row("under", t.parent ? goalTitle(s, t.parent) : "", body);
-  if (t.hollow) div("hollow", provesNothing(t) ? PROVES_NOTHING : "its check passed before the work too: it proves nothing new", body); // as the cockpit says
-  if (t.needs.length) { // what it waits on, each with the × that stops it waiting
-    const r = div("row", undefined, body);
-    div("k", "after", r);
-    const v = div("v", undefined, r);
-    for (const n of t.needs) {
-      const need = div("need", s.tasks.find((x) => x.id === n)?.title ?? n, v);
-      if (replaying()) continue;
-      const x = document.createElement("button");
-      x.className = "unlink";
-      x.appendChild(icon("close"));
-      x.title = "stop waiting on it";
-      x.setAttribute("aria-label", `stop waiting on ${s.tasks.find((y) => y.id === n)?.title ?? n}`);
-      x.addEventListener("click", () => api.postMessage({ type: "act", act: "unlink", id: t.id, target: n }));
-      need.appendChild(x);
-    }
-  }
-  row("agent", t.agent ? `agent ${t.agent}${t.model ? ` · ${t.model}` : ""}` : "", body);
-  row("tries", t.attempts !== undefined && t.attempts > 1 ? String(t.attempts) : "", body);
-  row("cost", usd(t.usd), body);
-  row("quiet", t.idle !== null && t.idle > 8 ? `${Math.round(t.idle)} s` : "", body);
-  row("note", t.note, body);
-  row("wanted", t.outside.join("  "), body);
-  if (t.forks.length) {
-    const r = div("row", undefined, body);
-    div("k", "attempts", r);
-    const v = div("v", undefined, r);
-    for (const f of t.forks) {
-      const kept = t.kept?.letter === f.letter;
-      const fr = div(`fork-row ${cls(f.state || "waiting")}${kept ? " kept" : ""}`, undefined, v);
-      div("fork-words", forkRow(f, t.kept), fr);
-      const acts = div("fork-acts", undefined, fr);
-      for (const b of forkActs(t, f, replaying())) button({ ...b, main: false }, t.id, acts);
-    }
-  }
-  if (t.tail.length) {
-    const r = div("row", undefined, body);
-    div("k", "last moves", r);
-    const v = div("v", undefined, r);
-    for (const line of t.tail.slice(-6)) div("move", screenWords(line), v);
-  }
+  if (tab() === "scope") scopeTab(body, t, s);
+  else if (tab() === "edit") editTab(body, t, s);
+  else activityTab(body, t);
   const acts = div("d-acts", undefined, pane);
   for (const b of actsFor(t, replaying())) button(b, t.id, acts);
 }
