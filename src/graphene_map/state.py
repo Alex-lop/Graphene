@@ -185,6 +185,7 @@ def log_after(store, since: int = 0) -> list[dict]:
 def snapshot(store, root: Path, now: float | None = None) -> dict:
     """The plan now, schema 1 (the brief's): one dict `json.dumps` prints."""
     from . import __version__, auto
+    from . import board as B
     from . import meter as M
     from . import node_record as NR
     from . import run as R
@@ -209,6 +210,8 @@ def snapshot(store, root: Path, now: float | None = None) -> dict:
     standing = P.standing(store)  # no scope covers these, whatever its globs say: the gate's `plan.binds`
     files = sorted(f for f in m.files if P.kept_out_by(f, standing) is None)
     hooks = hooked(root)
+    # the cockpit's row words a question with no default as "yes" (its y key): an editor holds Start on null
+    bare = {it["id"] for it in B.items(store) if not it["default"] and not B.has_default(it)}
     return {
         "schema": SCHEMA,
         "graphene": __version__,
@@ -239,7 +242,7 @@ def snapshot(store, root: Path, now: float | None = None) -> dict:
         "spent": bill["dollars"] if bill else 0.0,
         "scoreboard": {"need_you": need, "running": running, "proven": proven, "total": total},
         "width": wide["most"] if wide else 0,
-        "questions": [asdict(q) for q in m.questions],
+        "questions": [asdict(q) | ({"default": None} if q.id in bare else {}) for q in m.questions],
         "goals": [
             {"id": n.id, "title": n.title, "parent": n.parent, "state": n.state, "check": n.check}
             for n in nodes

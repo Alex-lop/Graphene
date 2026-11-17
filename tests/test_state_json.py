@@ -141,6 +141,19 @@ def test_proposals_questions_sub_goals_and_edges_read_as_the_cockpit_reads_them(
     assert s["cursor"] >= 5 and s["news"]  # the log's last id; what happened, in the narrator's words
 
 
+def test_a_question_with_no_default_reads_null_and_one_with_a_default_keeps_it(repo):
+    """An editor's Start waits for a question nobody can take for the person (`board.has_default`). The
+    cockpit's row words such a one "yes" (what its y key answers): the snapshot says null."""
+    with Store.open(repo) as store:
+        store.set_meta("plan_first", "on")  # set up, as `graphene init` leaves it
+        board.add(store, "question", "which database?", BOT, item_id="db")
+        board.add(store, "question", "tabs or spaces?", BOT, default="spaces", item_id="tabs")
+        board.add(store, "assume", "python 3.12 is there", BOT, item_id="py")  # its take is a yes
+    s = snapshot()
+    whole(s)
+    assert {q["id"]: q["default"] for q in s["questions"]} == {"db": None, "tabs": "spaces", "py": "confirm"}
+
+
 def test_a_leaf_a_scripted_run_holds_reads_as_running_with_the_runs_pid(repo, monkeypatch):
     monkeypatch.setenv("GRAPHENE_PERSON", "alex")
     propose(repo, [leaf("a", "a.txt")])
