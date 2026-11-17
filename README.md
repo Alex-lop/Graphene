@@ -117,6 +117,11 @@ tab changes its files, check, attempts, or approval; drag its dot onto another s
 accepted until it lands, on its files in the Explorer; `graphene.advanced` enables the extra task and round
 views.
 
+A graph can be saved and run again. **Save as workflow** writes it to `workflows/<name>.md` with the values
+you name as inputs; Home lists the repository's workflows, and **Run** fills the inputs and proposes the plan
+with no planner call. A `run:` step runs a command with no agent. One that pushes or opens a pull request
+(`git push`, `gh pr`) is drawn past the **leaves your machine** line and waits for your approval. This
+repository ships [`workflows/fix-issue.md`](https://github.com/Alex-lop/Graphene/blob/main/workflows/fix-issue.md).
 
 Current `main` also installs Codex hooks: run `graphene init` in your project, start a new Codex session,
 trust the project, and review its hooks with `/hooks`.
@@ -135,6 +140,8 @@ set `review: every` in `graphene config edit` to require your sign-off before ch
 
 Plans and session records stay in `.graphene/`. Your chosen agent or model provider still receives the
 context it needs. The bundled auto demo uses a scripted stand-in; live auto mode has not yet been validated.
+The canvas, the Scope pane and workflows were built and checked against that stand-in too: nobody has used
+them on a real run yet.
 [Enforcement limits](https://github.com/Alex-lop/Graphene/blob/main/docs/HOW_IT_WORKS.md#where-each-mechanism-ends)
 · [Privacy](https://github.com/Alex-lop/Graphene/blob/main/docs/HOW_IT_WORKS.md#privacy).
 
