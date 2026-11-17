@@ -16,14 +16,18 @@ does not start. Do not look for other work in the repository.
 Where
 - Clone https://github.com/Alex-lop/Graphene into a directory of your own. Never work in
   ~/Desktop/AllThingsAgenticHackathon: it is Alex's checkout, with his uncommitted edits.
+- The folder you start in sits inside a git repository at Alex's home directory. Run git only
+  inside your clone, as git -C <your clone>.
 - Branch night/canvas from origin/docs/brainstorm: it is main plus the files this prompt names.
   Push after each leaf so CI runs. Open one draft PR into main after leaf 1, and keep it
   current. Never merge it, never push main, no tags, no releases, never pass --admin.
 
 Commits
 - As the git identity the clone has (Alex), with no attribution trailers.
-- About 30, at most 50. Each says what it changes and which check shows it works. A
-  subagent's work lands as one squashed commit.
+- About 50 in all, between 40 and 50: Alex merges the branch in the morning, and every
+  commit lands on main. Each is one coherent step that says what it changes and which check
+  shows it works. Never a "wip" or "fix typo" commit: fold those into the step they fix
+  before pushing. A subagent's work lands as one squashed commit.
 
 Checks
 - Each leaf's check before its push.
@@ -33,6 +37,9 @@ Checks
   the same commit as the words it pins.
 - The ubuntu test legs and vscode-e2e green on the PR at the end. If one is red, fix it or
   say why in the PR.
+- When the last push is green on every leg, mark the PR ready for review (gh pr ready) so
+  Alex can merge it in the morning. If anything is red, leave it a draft and say why in the
+  first line of its description.
 
 Help
 - At most two subagents at a time, on Sonnet or Haiku, never Fable. Give each a file list,
