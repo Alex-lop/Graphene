@@ -54,6 +54,22 @@ test("the status bar leads with auto's round while auto is on", () => {
   assert.ok(summary(going).startsWith("auto round 1 · "), summary(going));
 });
 
+test("a planner writing a plan is `drafting`: its steps so far, each with what of its lines is complete", () => {
+  const s = parseState(fixture("drafting"));
+  assert.equal(s.drafting?.by, "claude");
+  assert.equal(s.drafting?.live, true);
+  assert.deepEqual(s.drafting?.steps.map((d) => [d.id, d.parent, d.leaf]), [["export", null, false], ["failing", "export", true], ["rows", "export", true],
+                                                                           ["button", "export", true], ["empty", "export", true]]);
+  assert.deepEqual(s.drafting?.steps[2], { id: "rows", title: "Export the visible rows", parent: "export", leaf: true, scope: ["src/export/**"],
+                                           check: "pytest -k export", needs: ["failing"] });
+  assert.deepEqual(s.drafting?.steps[4]?.scope, [], "its files line is not written yet");
+  assert.equal(parseState(fixture("empty")).drafting, null, "an older CLI says nothing: no planner is seen writing");
+  assert.equal(parseState(JSON.stringify({ drafting: null })).drafting, null);
+  assert.equal(parseState(JSON.stringify({ drafting: [] })).drafting, null, "junk is no planner writing");
+  assert.deepEqual(parseState(JSON.stringify({ drafting: { by: "codex", steps: [{ title: "no id" }, { id: "a" }] } })).drafting,
+                   { by: "codex", live: false, steps: [{ id: "a", title: "", parent: null, leaf: true, scope: [], check: null, needs: [] }] });
+});
+
 test("missing keys take defaults and unknown keys are ignored", () => {
   const s = parseState(JSON.stringify({
     schema: 2, goal: "x", colour: "mauve",

@@ -108,6 +108,26 @@ export interface Auto {
   why: string;
 }
 
+/** A step the planner has written so far: a plan-text line that is complete, with those of its own lines that
+ *  are. Not a task yet: nothing of it is in the plan until the proposals land, and then it is one of `tasks`. */
+export interface DraftStep {
+  id: string;
+  title: string;
+  parent: string | null;
+  leaf: boolean; // false once a step is written under it: a sub-goal, drawn as a band
+  scope: string[];
+  check: string | null;
+  needs: string[];
+}
+
+/** A planner is writing a plan now. `live`: its stream carries the plan's text as it is written, so its steps
+ *  appear one by one; otherwise the plan arrives whole and `steps` stays empty until it does. */
+export interface Drafting {
+  by: string;
+  live: boolean;
+  steps: DraftStep[];
+}
+
 export interface Scoreboard {
   need_you: number;
   running: number;
@@ -129,6 +149,7 @@ export interface State {
   envelope: Envelope;
   auto: Auto | null;
   run: { going: boolean; pid: number | null };
+  drafting: Drafting | null; // a planner is writing: the steps it has written so far
   spent: number | null;
   scoreboard: Scoreboard;
   width: number | null;
@@ -228,6 +249,7 @@ export function parseState(text: string): State {
     .map((e) => [e[0] as string, e[1] as string, str(e[2], "needs")] as [string, string, string])
     .filter(([a, b]) => known.has(a) && known.has(b));
   const replay = obj(r.replay);
+  const drafting = r.drafting && typeof r.drafting === "object" && !Array.isArray(r.drafting) ? obj(r.drafting) : null; // an older CLI says nothing: no planner is seen writing
   return {
     schema: int(r.schema, 1), graphene: str(r.graphene), repo: str(r.repo), cursor: int(r.cursor, 0),
     replay: str(replay.shown) ? { shown: str(replay.shown), day: str(replay.day), repository: str(replay.repository) } : null,
@@ -243,6 +265,13 @@ export function parseState(text: string): State {
           budget: num(auto.budget), check: typeof auto.check === "string" ? auto.check : null, why: str(auto.why) }
       : null,
     run: { going: bool(run.going), pid: num(run.pid) },
+    drafting: drafting && {
+      by: str(drafting.by), live: bool(drafting.live),
+      steps: list(drafting.steps).map((d) => ({
+        id: str(d.id), title: str(d.title), parent: typeof d.parent === "string" ? d.parent : null, leaf: d.leaf !== false,
+        scope: strs(d.scope), check: typeof d.check === "string" ? d.check : null, needs: strs(d.needs),
+      })).filter((d) => d.id),
+    },
     spent: num(r.spent),
     scoreboard: { need_you: int(sb.need_you, 0), running: int(sb.running, 0), proven: int(sb.proven, 0),
                   total: int(sb.total, tasks.length) },
