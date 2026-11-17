@@ -9,7 +9,7 @@ import { WHO } from "./who.ts";
 
 export const ACTS = ["ask", "cancel", "startAll", "discardAll", "run", "stop", "drop", "answer", "openDiff", "compare", "keep",
                      "approve", "sendBack", "offer", "tryAgain", "allow", "message", "markDone", "showGraph", "demo", "setup",
-                     "install", "setKey", "refresh", "openFolder", "exact", "stopAfter"] as const;
+                     "install", "setKey", "refresh", "openFolder", "exact", "stopAfter", "runWorkflow"] as const;
 export type Act = (typeof ACTS)[number];
 
 export interface Btn { label: string; act: Act; id?: string; arg?: string; main?: boolean; title?: string; off?: boolean }
@@ -98,8 +98,12 @@ function help(t: Task, titles: Record<string, string>): Btn[] {
           { label: "Open changes", act: "openDiff", id: t.id }, { label: "Remove task", act: "drop", id: t.id }];
 }
 
-/** ``exact``: the switch is on, so Start waits while anything the plan asks is open (its default's button confirms it). */
-export function home(s: State, seen: ReadonlySet<string> = new Set(), exact = false): Home {
+/** A workflow as Home lists it: a graph saved to workflows/, with the inputs Run asks for. */
+export interface Listed { name: string; goal: string; inputs: { name: string; default: string | null }[]; error: string | null }
+
+/** ``exact``: the switch is on, so Start waits while anything the plan asks is open (its default's button confirms it).
+ *  ``workflows``: the repository's saved graphs, each with a Run that proposes its plan with no planner call. */
+export function home(s: State, seen: ReadonlySet<string> = new Set(), exact = false, workflows: readonly Listed[] = []): Home {
   const titles: Record<string, string> = Object.fromEntries(s.tasks.map((t) => [t.id, t.title]));
   const name = (id: string) => titles[id] ?? id;
   const sections: Section[] = [];
@@ -190,6 +194,14 @@ export function home(s: State, seen: ReadonlySet<string> = new Set(), exact = fa
   })), { buttons: [{ label: "Run", act: "run", main: true, title: s.run.going ? "hand these to the run that is going"
                                                                             : "start an agent on every task that is ready" }] });
 
+  section("workflows", `Workflows · ${workflows.length}`, workflows.map((w) => ({
+    key: `wf:${w.name}`, tone: "ready" as const, title: w.name, tag: "workflow",
+    lines: w.error ? [{ v: w.error, warn: true }]
+      : [...line("Does", w.goal), ...line("Asks for", w.inputs.map((i) => (i.default === null ? i.name : `${i.name} (${i.default})`)).join(", "))],
+    buttons: w.error ? [] : [{ label: "Run", act: "runWorkflow" as const, arg: w.name, main: true, title: "fill its inputs and propose its plan: no planner is called" }],
+  })), { note: "A graph saved to workflows/. Run asks for its inputs and proposes its plan with no planner call; then it goes on as any plan does.",
+         folded: s.tasks.length > 0 });
+
   const done = s.tasks.filter((t) => t.state === "done");
   section("done", `Done · ${done.length}`, done.map((t) => ({
     key: `d:${t.id}`, tone: "done" as const, title: t.title, tag: SAY.done, lines: evidence(t),
@@ -216,12 +228,12 @@ export type FromHome = { type: "ready" } | { type: "act"; act: Act; id: string; 
 
 /** The acts that take no task: each still checked for what it carries. */
 const GLOBAL: readonly Act[] = ["ask", "cancel", "startAll", "discardAll", "run", "stop", "showGraph", "demo", "setup", "install",
-                                "setKey", "refresh", "openFolder", "exact", "stopAfter"];
+                                "setKey", "refresh", "openFolder", "exact", "stopAfter", "runWorkflow"];
 
 /** A message from the page, checked against the plan before anything runs: a known act; the text of an ask; a
  *  planner the Set Up offers; a task the plan has (a question, for answer); an option the question has; an offer
  *  the task carries. Null for anything else. */
-export function checkHome(m: unknown, s: State | null): FromHome | null {
+export function checkHome(m: unknown, s: State | null, workflows: readonly Pick<Listed, "name" | "error">[] = []): FromHome | null {
   if (!m || typeof m !== "object") return null;
   const r = m as Record<string, unknown>;
   if (r.type === "ready") return { type: "ready" };
@@ -231,6 +243,7 @@ export function checkHome(m: unknown, s: State | null): FromHome | null {
   const arg = typeof r.arg === "string" ? r.arg : undefined;
   if (act === "ask") return arg?.trim() && arg.length <= 4000 ? { type: "act", act, id: "", arg: arg.trim() } : null;
   if (act === "exact" || act === "stopAfter") return typeof r.flag === "boolean" ? { type: "act", act, id: "", flag: r.flag } : null;
+  if (act === "runWorkflow") return workflows.some((w) => w.name === arg && !w.error) ? { type: "act", act, id: "", arg } : null; // one the repository has
   if (act === "setup") return WHO.some((w) => w.word === arg) ? { type: "act", act, id: "", arg, flag: r.flag === true } : null;
   if (act === "setKey") return arg === undefined || /^\w+$/.test(arg) ? { type: "act", act, id: "", arg } : null;
   if (act === "answer") {

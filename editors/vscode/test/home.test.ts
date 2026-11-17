@@ -204,6 +204,26 @@ test("before the run, a check that already passes is marked on its card: it prov
   assert.deepEqual(card(home(s), "n:ship").lines.filter((l) => l.warn), [], "a check that fails now says nothing");
 });
 
+test("Home lists the repository's workflows, each with a Run; a file that is not a workflow says why and offers none", () => {
+  const s = fixture("empty");
+  const listed = [{ name: "fix-issue", goal: "fix issue {{issue}}", inputs: [{ name: "issue", default: null }, { name: "suite", default: "uv run pytest -q" }], error: null },
+                  { name: "broken", goal: "", inputs: [], error: "line 3: {{branch}} is no input of this workflow" }];
+  const sec = section(home(s, new Set(), false, listed), "workflows")!;
+  assert.equal(sec.title, "Workflows · 2");
+  assert.equal(sec.folded, false, "nothing planned: the workflows are a way to start");
+  const fix = sec.cards[0]!;
+  assert.deepEqual(fix.lines, [{ k: "Does", v: "fix issue {{issue}}" }, { k: "Asks for", v: "issue, suite (uv run pytest -q)" }]);
+  assert.deepEqual(fix.buttons.map((b) => [b.label, b.act, b.arg]), [["Run", "runWorkflow", "fix-issue"]]);
+  assert.deepEqual([sec.cards[1]!.lines, sec.cards[1]!.buttons], [[{ v: "line 3: {{branch}} is no input of this workflow", warn: true }], []]);
+  assert.equal(section(home(s), "workflows"), undefined, "none in the repository: no section");
+  assert.equal(section(home(fixture("graph-race"), new Set(), false, listed), "workflows")!.folded, true, "a plan is on: they wait folded");
+  // Run is taken only for a workflow the repository has, and that reads
+  assert.deepEqual(checkHome({ type: "act", act: "runWorkflow", arg: "fix-issue" }, s, listed), { type: "act", act: "runWorkflow", id: "", arg: "fix-issue" });
+  assert.equal(checkHome({ type: "act", act: "runWorkflow", arg: "broken" }, s, listed), null);
+  assert.equal(checkHome({ type: "act", act: "runWorkflow", arg: "fix-issue; rm -rf /" }, s, listed), null);
+  assert.equal(checkHome({ type: "act", act: "runWorkflow", arg: "fix-issue" }, s), null, "none listed: none to run");
+});
+
 test("a question with no default stops the run either way: with the switch on, Start waits for its answer", () => {
   const s = fixture("proposals");
   const asks = { ...s, questions: [{ ...s.questions[0]!, default: null }] };
