@@ -1,0 +1,99 @@
+{
+  "schema": 1,
+  "graphene": "0.8.0",
+  "repo": "/home/alex/app",
+  "cursor": 3,
+  "goal": "",
+  "first": "on",
+  "planner": "claude",
+  "executor": "claude",
+  "envelope": {
+    "auto": "off",
+    "budget": null,
+    "tasks": null,
+    "rounds": 2,
+    "forks": null,
+    "review": "off",
+    "protected": [],
+    "readonly": []
+  },
+  "auto": null,
+  "run": {
+    "going": false,
+    "pid": null
+  },
+  "spent": 0,
+  "scoreboard": {
+    "need_you": 0,
+    "running": 0,
+    "proven": 0,
+    "total": 0
+  },
+  "width": 0,
+  "questions": [],
+  "goals": [],
+  "tasks": [],
+  "edges": [],
+  "news": [],
+  "drafting": {
+    "by": "claude",
+    "live": true,
+    "steps": [
+      {
+        "id": "export",
+        "title": "CSV export of the visible rows",
+        "parent": null,
+        "leaf": false,
+        "scope": [],
+        "check": null,
+        "needs": []
+      },
+      {
+        "id": "failing",
+        "title": "A test that fails today",
+        "parent": "export",
+        "leaf": true,
+        "scope": [
+          "tests/test_export.py"
+        ],
+        "check": "pytest -k export",
+        "needs": []
+      },
+      {
+        "id": "rows",
+        "title": "Export the visible rows",
+        "parent": "export",
+        "leaf": true,
+        "scope": [
+          "src/export/**"
+        ],
+        "check": "pytest -k export",
+        "needs": [
+          "failing"
+        ]
+      },
+      {
+        "id": "button",
+        "title": "Add the Export button",
+        "parent": "export",
+        "leaf": true,
+        "scope": [
+          "web/table/**"
+        ],
+        "check": "npm test table",
+        "needs": [
+          "failing"
+        ]
+      },
+      {
+        "id": "empty",
+        "title": "Handle an empty table",
+        "parent": "export",
+        "leaf": true,
+        "scope": [],
+        "check": null,
+        "needs": []
+      }
+    ]
+  }
+}
