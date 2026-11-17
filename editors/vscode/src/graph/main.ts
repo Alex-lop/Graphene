@@ -4,6 +4,7 @@
 // pane whose buttons ask the extension to run graphene. No network, no library: SVG and DOM from the state.
 // Boxes are keyed by task id and updated in place, so a snapshot that changed nothing moves nothing.
 import { layout, modeFor, step, type Box, type Edge, type Layout } from "../layout.ts";
+import { STEP_COLOURS, STEP_FALLBACKS, stepColour } from "../owners.ts";
 import { autoLine, SAY, screenWords, usd, type DraftStep, type State } from "../state.ts";
 import { ICONS } from "./icons.ts";
 import { blanks, draftLine, globs, isDraft, lacks, type Draft } from "./draft.ts";
@@ -377,7 +378,7 @@ function graph(s: StateX, dir: "across" | "down") {
     paint(have.g, p.h);
     have.g.style.transform = `translate(${p.x}px, ${p.y}px)`;
   };
-  for (const t of s.tasks) box(t.id, JSON.stringify([t, s.envelope.forks, s.executor]), (grp, h) => drawTask(grp, t, h, down, s.envelope.forks));
+  for (const t of s.tasks) box(t.id, JSON.stringify([t, s.envelope.forks, s.executor, stepColour(t.id, s.tasks)]), (grp, h) => drawTask(grp, t, h, down, s.envelope.forks));
   for (const d of drawn()) box(d.key, JSON.stringify([d, naming === d.key]), (grp) => drawDraft(grp, d));
   for (const d of draftedSteps(s)) box(PLAN + d.id, JSON.stringify([d, s.executor]), (grp) => drawPlanned(grp, d, s.executor, down), true);
   for (const [id, have] of taskEls) if (!seen.has(id)) { have.g.remove(); taskEls.delete(id); }
@@ -459,8 +460,10 @@ function inStep<T extends SVGElement>(node: T, period: number): T {
 }
 
 /** The tile at a card's left: who does the step, by a letter or a mark. */
-function tile(grp: SVGGElement, kind: string, mark: string, label: string) {
-  const t = el("g", { class: `tile ${kind}` });
+function tile(grp: SVGGElement, kind: string, mark: string, label: string, colour = -1) {
+  const t = el("g", { class: `tile ${kind}${colour < 0 ? "" : " step"}` });
+  // a step's one colour, the same as its files wear in the Explorer: the theme's own, by its id
+  if (colour >= 0) t.style.setProperty("--step", `var(--vscode-${STEP_COLOURS[colour]!.replace(".", "-")}, ${STEP_FALLBACKS[colour]})`);
   t.appendChild(el("rect", { x: 10, y: 11, width: 34, height: 34, rx: 9 }));
   t.appendChild(el("text", { x: 27, y: kind === "cmd" ? 32 : 33, "text-anchor": "middle" }, mark));
   t.appendChild(el("title", {}, label));
@@ -501,7 +504,7 @@ function drawTask(grp: SVGGElement, t: TaskX, h: number, down: boolean, limit: n
   if (t.id === selected) grp.appendChild(el("rect", { class: "ring", x: -5, y: -5, width: BOX_W + 10, height: BOX_H + 10, rx: 16 }));
   grp.appendChild(el("rect", { class: "box", x: 0, y: 0, width: BOX_W, height: BOX_H, rx: 12 }));
   const by = who(t, state?.executor ?? "");
-  tile(grp, by.kind, by.mark, by.label);
+  tile(grp, by.kind, by.mark, by.label, stepColour(t.id, state?.tasks ?? []));
   fitText(grp.appendChild(el("text", { class: "title", x: TEXT_X, y: 27 }, t.title)), BOX_W - TEXT_X - 8);
   const files = filesChip(t.scope);
   if (files) pill(grp, "files", files, TEXT_X, 37, BOX_W - TEXT_X - 10);

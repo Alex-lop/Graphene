@@ -237,12 +237,15 @@ button:disabled { opacity: 0.45; cursor: default; }
 .task:focus-visible, .goal:focus-visible { outline: none; } /* the dashed card says the focus: no square frame round its attempts too */
 .tile rect { fill: var(--tint); }
 .tile text { fill: var(--fg); font-size: 14px; font-weight: 700; font-family: var(--font); }
-.tile.claude rect { fill: color-mix(in srgb, var(--claude) 18%, transparent); }
-.tile.claude text { fill: var(--claude); }
-.tile.codex rect, .tile.draft rect { fill: color-mix(in srgb, var(--proposed) 15%, transparent); }
-.tile.codex text, .tile.draft text { fill: var(--proposed); }
-.tile.you rect { fill: color-mix(in srgb, var(--review) 16%, transparent); }
-.tile.you text { fill: var(--review); }
+/* a step's own colour, the same as its files wear in the Explorer: who does it is the tile's letter */
+.tile.step rect { fill: color-mix(in srgb, var(--step, var(--fg)) 18%, transparent); }
+.tile.step text { fill: var(--step, var(--fg)); }
+.tile.claude:not(.step) rect { fill: color-mix(in srgb, var(--claude) 18%, transparent); }
+.tile.claude:not(.step) text { fill: var(--claude); }
+.tile.codex:not(.step) rect, .tile.draft rect { fill: color-mix(in srgb, var(--proposed) 15%, transparent); }
+.tile.codex:not(.step) text, .tile.draft text { fill: var(--proposed); }
+.tile.you:not(.step) rect { fill: color-mix(in srgb, var(--review) 16%, transparent); }
+.tile.you:not(.step) text { fill: var(--review); }
 .tile.goal rect { fill: color-mix(in srgb, var(--done) 15%, transparent); }
 .tile.goal text { fill: var(--done); font-size: 16px; font-weight: 400; }
 .tile.cmd text { font-family: var(--mono); font-size: 12px; font-weight: 600; }
