@@ -224,6 +224,22 @@ test("Home lists the repository's workflows, each with a Run; a file that is not
   assert.equal(checkHome({ type: "act", act: "runWorkflow", arg: "fix-issue" }, s), null, "none listed: none to run");
 });
 
+test("a step past the line asks you on Home: what leaves your machine, the command it runs, and Approve and run", () => {
+  const s = fixture("workflow");
+  const h = home(s);
+  const c = card(h, "yours:pr-48");
+  assert.equal(c.tag, "asks you");
+  assert.match(c.lines[0]!.v, /^This step leaves your machine, so it asks you first\./);
+  assert.deepEqual(c.lines[1], { k: "Runs", v: "git push -u origin HEAD && gh pr create --draft --fill", mono: true });
+  assert.deepEqual(c.buttons.map((b) => [b.label, b.act, b.id]), [["Approve and run", "markDone", "pr-48"]]);
+  // before Start, the suggested plan is where each step is read: a command step says what runs, with no agent,
+  // and the one past the line says it will ask first. Neither says "no files named" or "... passes".
+  const before = home({ ...s, tasks: s.tasks.map((t) => ({ ...t, state: "proposed" as const })) });
+  const lines = (id: string) => before.sections.flatMap((x) => x.cards).find((x) => x.key.endsWith(`:${id}`))!.lines;
+  assert.deepEqual(lines("suite-48").slice(0, 2), [{ k: "Runs", v: "uv run pytest -q", mono: true }, { v: "A command, with no agent: its exit code is its check." }]);
+  assert.deepEqual(lines("pr-48")[1], { v: "It leaves your machine, so it asks you before it runs." });
+});
+
 test("a question with no default stops the run either way: with the switch on, Start waits for its answer", () => {
   const s = fixture("proposals");
   const asks = { ...s, questions: [{ ...s.questions[0]!, default: null }] };
