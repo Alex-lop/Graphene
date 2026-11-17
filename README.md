@@ -6,7 +6,7 @@
 
 Graphene turns a goal into tasks with explicit files, dependencies, and checks. Agents work in separate Git
 worktrees; Graphene checks their changes and merges what passes. You can see the plan and steer it from your
-terminal or VS Code. Works with Claude Code, Codex, and the built-in NVIDIA Nemotron executor.
+terminal or VS Code. Works with Claude Code and Codex.
 
 <p align="center">
   <a href="https://pypi.org/project/graphene-map/"><img src="https://img.shields.io/pypi/v/graphene-map?color=5e5d59" alt="PyPI"></a>
@@ -69,23 +69,18 @@ With Claude Code, `init` also installs project hooks: your next request proposes
 uninstall with `uv tool uninstall graphene-map`.
 
 <details>
-<summary><strong>Let Nemotron plan and run the whole goal</strong></summary>
-
-Install the optional extra and set your Nebius Token Factory key:
+<summary><strong>Let Graphene plan and run the whole goal</strong></summary>
 
 ```sh
-uv tool install --force 'graphene-map[nemotron]'
-graphene key set
-graphene init --planner nemotron --executor nemotron
 graphene auto "add a --top N option to the CLI, with tests" \
-  --budget 2 --forks 3 --check "python3 -m pytest -q"
+  --budget 10 --check "python3 -m pytest -q"
 ```
 
-Ultra plans, Nano agents race each task, and Graphene checks the merged result. If the goal's check fails,
-it plans a fix within your task, round, and budget settings. Add `--plan` to inspect the plan without running it.
-Budget checks happen between rounds, so the dollar limit is not a hard spending cap.
-
-[Setup, model roles, and recorded results](https://github.com/Alex-lop/Graphene/blob/main/docs/HACKATHON.md).
+Your planner plans, an agent takes each task, and Graphene checks the merged result. If the goal's check
+fails, it plans a fix within your task, round, and budget settings. `--forks 3` races three agents on each
+task. Each attempt holds its worst case from the budget before it starts ($2 with Claude Code, $3 with
+Codex), so leave room for the ones that run at once. Add `--plan` to inspect the plan without running it.
+The dollar limit is not a hard spending cap.
 
 </details>
 
