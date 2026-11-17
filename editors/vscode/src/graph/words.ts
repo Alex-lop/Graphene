@@ -12,7 +12,7 @@ export type Replay = { shown: string; day: string; repository: string } | null;
 export type StateX = Omit<State, "tasks"> & { replay?: Replay; stand_in?: boolean; tasks: TaskX[] };
 
 export type Act = "add-after" | "add-under" | "link" | "unlink" | "drop" | "accept" | "tell" | "run" | "stop" | "auto" | "cockpit"
-  | "openDiff" | "compareForks" | "pickFork" | "signOff" | "answer" | "handBack" | "set" | "draw" | "stopAfter";
+  | "openDiff" | "compareForks" | "pickFork" | "signOff" | "answer" | "handBack" | "set" | "draw" | "stopAfter" | "saveWorkflow" | "markDone";
 
 /** The acts a replay offers none of: they change a plan, or they act outside the replay (the cockpit opens
  *  `graphene watch` in the person's own folder; openDiff and compareForks look the id up in the person's
@@ -60,7 +60,9 @@ export function cornerWord(t: TaskX): string {
 
 /** Who does a step, for the tile on its card: you, or the executor by a letter (Claude Code `C`, Codex `X`, any
  *  other named one by its first), or a command of your own by its first two letters, as a terminal names it. */
-export function who(t: Pick<TaskX, "state" | "owner">, executor: string): { kind: "you" | "claude" | "codex" | "agent" | "cmd"; mark: string; label: string } {
+export function who(t: Pick<TaskX, "state" | "owner"> & { command?: string | null }, executor: string):
+  { kind: "you" | "claude" | "codex" | "agent" | "cmd"; mark: string; label: string } {
+  if (t.command) return { kind: "cmd", mark: commandWord(t.command).slice(0, 3), label: "a command, with no agent" }; // a workflow's `run:` step
   if (t.state === "yours" || (t.owner && t.owner !== "agent")) return { kind: "you", mark: "◆", label: "you" };
   const words = executor.trim().split(/\s+/).filter(Boolean);
   const name = (words[0] ?? "").split("/").pop() ?? "";
@@ -69,6 +71,25 @@ export function who(t: Pick<TaskX, "state" | "owner">, executor: string): { kind
   if (!name) return { kind: "agent", mark: "?", label: "an agent" };
   return words.length > 1 || words[0]!.includes("/") ? { kind: "cmd", mark: name.slice(0, 2), label: name } : { kind: "agent", mark: name[0]!.toUpperCase(), label: name };
 }
+
+/** The part of a command step's command its chip shows: the one its tile names (`gh pr create --draft` of
+ *  `cd .. && git push && gh pr create --draft`), so the chip says what leaves the machine and not the `cd` before it. */
+export const commandChip = (command: string): string =>
+  command.split(/&&|\|\||;/).map((x) => x.trim()).find((x) => ((x.split(/\s+/)[0] ?? "").split("/").pop() ?? "") === commandWord(command)) ?? command;
+
+/** The word a command step's tile shows, as a terminal names what runs: `python3` of `/usr/bin/python3 -m unittest`;
+ *  of a line of several commands, the one that leaves the machine (`gh` of `cd .. && git push && gh pr create`,
+ *  else `git`), else the first that is not a `cd`. */
+export function commandWord(command: string): string {
+  if (/\bgh\s+pr\b/.test(command)) return "gh";
+  if (/\bgit\s+push\b/.test(command)) return "git";
+  const parts = command.split(/&&|\|\||;/).map((x) => x.trim()).filter(Boolean);
+  const first = parts.find((x) => !/^cd(\s|$)/.test(x)) ?? parts[0] ?? "";
+  return ((first.split(/\s+/)[0] ?? "").split("/").pop() ?? "") || "$";
+}
+
+/** A step past the "leaves your machine" line that is the person's move now: approving it runs its command. */
+export const asksYou = (t: Pick<TaskX, "leaves" | "state">): boolean => t.leaves && t.state === "yours";
 
 // ---- the pane's Scope tab: what a step may do, as a person reads it ----
 
@@ -214,7 +235,7 @@ export function pipeline(s: Pick<StateX, "drafting" | "tasks" | "goals" | "quest
   const plan = s.drafting ? (s.drafting.live ? `${count(draftedSteps(s).length, "step")} so far` : "the planner is writing")
     : [s.tasks.length ? count(s.tasks.length, "step") : "", planned && n("proposed") ? `${n("proposed")} suggested` : "", asks].filter(Boolean).join(" · ");
   const run = !planned || ran ? "" : n("running") ? `${n("running")} working` : n("came back") ? `${n("came back")} need${n("came back") === 1 ? "s" : ""} help` : s.run.going ? "starting"
-    : n("ready") ? `${n("ready")} ready` : "waiting";
+    : n("yours") ? `${n("yours")} ask${n("yours") === 1 ? "s" : ""} you` : n("ready") ? `${n("ready")} ready` : "waiting";
   const review = n("review") ? `${n("review")} to review` : landed ? "landed" : "";
   return [
     { key: "plan", label: "Plan", at: planned ? "done" : "now", note: plan },
@@ -313,6 +334,8 @@ const tries = (n: number | undefined) => (n !== undefined && n > 1 ? `${n} tries
 /** The small line under a box's title: the state first, in plain words, then what matters for it. A task that
  *  needs help says why on the box. */
 export function sub(t: TaskX, max = 25): string {
+  if (asksYou(t)) return cut("asks you: it leaves your machine", max);
+  if (t.command && t.checked.after === "failed" && t.state !== "done") return cut("its command failed: a run tries it again", max);
   const parts: string[] = [];
   if (t.state === "running") parts.push(`agent ${t.agent || "?"}`, t.forks.length ? `${t.forks.length} attempts` : SAY.running);
   else parts.push(SAY[t.state]);
@@ -394,6 +417,7 @@ export function actsFor(t: TaskX, replay: boolean): Button[] {
   const out: Button[] = [];
   if (replay) return out;
   const hasChanges = t.changed.length > 0 || ["running", "review", "done", "came back"].includes(t.state);
+  if (asksYou(t)) out.push({ label: "Approve and run", act: "markDone", title: `it leaves your machine: graphene node done runs ${cut(t.command ?? "", 80)}`, icon: "check", main: true });
   if (t.state === "review") out.push({ label: "Approve", act: "signOff", title: "it lands in your repository: graphene node signoff", icon: "check", main: true });
   if (t.state === "proposed") out.push({ label: "Accept", act: "accept", title: "graphene plan accept", icon: "check", main: true });
   if (t.state === "came back") out.push({ label: "Help it…", act: "handBack", title: "allow what it needs, add a task for it, or try again", icon: "debug-step-back", main: true });

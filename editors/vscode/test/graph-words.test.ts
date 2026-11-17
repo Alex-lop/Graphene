@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import * as C from "../src/commands.ts";
-import { actsFor, attemptsOf, badge, CHANGES, cornerWord, counts, draftedSteps, edgeKind, editable, fan, filesChip, fitWidth, fitWords, forkActs, forkWords, HEADER_ACTS, headerFor,
+import { actsFor, asksYou, attemptsOf, badge, CHANGES, commandChip, commandWord, cornerWord, counts, draftedSteps, edgeKind, editable, fan, filesChip, fitWidth, fitWords, forkActs, forkWords, HEADER_ACTS, headerFor,
          checkWords, heldWords, linkHint, mayRun, OUTSIDE, OUTSIDE_OWN, paneKey, pipeline, planningLine, provesNothing, replayLine, scopeTree, stopAfterPlan, stopsOf, sub, tabOrder, tokenWords, zoomK, topLine,
          whenEdit, who, worktrees, writtenOf, type StateX, type TaskX } from "../src/graph/words.ts";
 import { SAY, WORDS } from "../src/state.ts";
@@ -235,6 +235,27 @@ test("a card whose check already passes says so under it until the work is done:
   assert.equal(provesNothing({ ...ship, state: "running" }), true);
   assert.equal(provesNothing({ ...ship, state: "done" }), false, "done or in review, the pane and Home say what it proved");
   assert.equal(provesNothing(task("ship")), false);
+});
+
+test("a command step: its tile is the command's word, and one past the line asks you before it runs", () => {
+  const wf = parseState(readFileSync(new URL("./fixtures/workflow.json", import.meta.url), "utf8")) as StateX;
+  const suite = wf.tasks.find((t) => t.id === "suite-48")!, pr = wf.tasks.find((t) => t.id === "pr-48")!;
+  assert.deepEqual(who(suite, "claude"), { kind: "cmd", mark: "uv", label: "a command, with no agent" });
+  assert.equal(who(pr, "claude").mark, "gh");
+  assert.equal(commandWord("/usr/bin/python3 -m unittest"), "python3");
+  assert.equal(commandWord('cd "$(git rev-parse --git-common-dir)/.." && git push -u origin HEAD'), "git", "the command that leaves, not the cd before it");
+  assert.equal(commandWord("cd web && npm test"), "npm");
+  // the chip shows the part the tile names, so a step past the line says what leaves and not the cd before it
+  assert.equal(commandChip('cd "$GRAPHENE_CHECKOUT" && git push -u origin HEAD && gh pr create --draft --fill'), "gh pr create --draft --fill");
+  assert.equal(commandChip("uv run pytest -q"), "uv run pytest -q");
+  assert.deepEqual([asksYou(pr), asksYou(suite)], [true, false]);
+  assert.equal(sub(pr, 36), "asks you: it leaves your machine");
+  assert.equal(sub({ ...suite, state: "ready", checked: { before: null, after: "failed" } }, 60), "its command failed: a run tries it again");
+  assert.deepEqual(actsFor(pr, false)[0], { label: "Approve and run", act: "markDone", icon: "check", main: true,
+    title: "it leaves your machine: graphene node done runs git push -u origin HEAD && gh pr create --draft --fill" });
+  assert.equal(actsFor(suite, false).some((b) => b.act === "markDone"), false, "a command step before the line runs by itself");
+  assert.equal(badge(pr), "you");
+  assert.deepEqual(pipeline(wf).map((x) => `${x.label} ${x.at}${x.note ? `: ${x.note}` : ""}`), ["Plan done: 4 steps", "Run now: 1 asks you", "Review next"]);
 });
 
 test("one pipeline, the plan first: Plan, Run, Review, and where the work is in it", () => {
