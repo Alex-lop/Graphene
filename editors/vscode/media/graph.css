@@ -1,8 +1,9 @@
 /* The graph's look (the target is dev/ui/canvas.html): a dotted canvas flowing left to right, a card a step,
    curved edges between ports, a region for this machine and one for what leaves it. Every colour is one of VS
-   Code's own, or mixed from two of them, so it is native in light, dark and high contrast. Colour means state
-   and nothing else: working amber, landed green, needs you purple, drafted blue, came back red (the chart
-   colours, as the cockpit's are); a tile's tint says who does the step. No text under 11 px. */
+   Code's own, or mixed from two of them, so it is native in light, dark and high contrast. Colour means state:
+   working amber, landed green, needs you purple, drafted blue, came back red (the chart colours, as the
+   cockpit's are). A task's tile is the one other colour: its step's own, as its files wear it in the Explorer;
+   the tile's letter says who does the step. No text under 11 px. */
 :root {
   --running: var(--vscode-charts-yellow, #e9c46a);
   --review: var(--vscode-charts-purple, #c77dff);

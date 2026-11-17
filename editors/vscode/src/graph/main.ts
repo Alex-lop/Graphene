@@ -460,7 +460,7 @@ function edgeD(p: { x: number; y: number; w: number; h: number }, q: { x: number
 }
 
 /** The two regions the flow crosses: this machine, where each agent works in a worktree of its own, and what
- *  leaves it (a push, a pull request). No step does yet, and the region says so. */
+ *  leaves it (a push, a pull request): its label says how many steps do, or that one asks you first. */
 function regions(s: StateX, here: number, awayW: number) {
   const root = $("regions") as unknown as SVGGElement;
   root.replaceChildren();
