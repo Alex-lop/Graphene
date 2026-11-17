@@ -31,7 +31,8 @@ run it under `xvfb-run`. `E2E_APP=cursor` runs it in Cursor; `E2E_SHOT=file.png`
 
 `npm run home` clicks Home through, against the stand-in: a folder with no plan is set up with one click (and
 `review: every`), an ask is planned, Start runs the agents, Approve before the changes were opened asks first,
-Open Changes shows the diff, Approve lands the task and Send back… returns another with a note. It fails when a
+Open Changes shows the diff, Approve lands the task and Send back… returns another with a note. Then, on a
+second folder, it turns Stop after the plan off and Plan it runs the plan with no Start (auto). It fails when a
 step does not show what it should, and keeps a screenshot of each step (`E2E_SHOTS=dir`, else in its scratch).
 
 `npm run draw` builds a graph by hand, with no planner and no model: on an empty plan it draws a task (its title

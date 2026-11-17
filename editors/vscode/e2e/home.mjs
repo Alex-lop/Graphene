@@ -2,7 +2,9 @@
 // click (then pointed at the stand-in from the shell), an ask is planned, Start runs the agents, and each finished task is reviewed: Approve before its changes
 // were opened asks first, Open Changes shows them, Approve lands it, Send back… returns another with a note. It
 // fails when a step does not show what it should, and keeps a screenshot of each step (E2E_SHOTS, else the scratch).
-// Last, the Exact switch: on, it sets board on, review every and auto off, and Start waits while a question is open.
+// Then the Exact switch: on, it sets board on, review every and auto off, and Start waits while a question is open.
+// Last, the other position of Stop after the plan, on a folder of its own: off is auto, so Plan it draws the plan
+// and runs it with no Start. Home's three stages are read at each end.
 import { execFileSync } from "node:child_process";
 import { existsSync, rmSync } from "node:fs";
 import path from "node:path";
@@ -82,7 +84,10 @@ try {
   await sectionShown(home, "Suggested plan", "the suggested plan");
   const suggested = await home.locator("article.tone-proposed").count();
   if (suggested < 1) throw new Error("no suggested task");
-  say(`Plan it: ${suggested} suggested tasks, each with what it may change and what proves it`);
+  const stage = () => home.evaluate(() => document.querySelector(".pipe .stage.now")?.textContent ?? "");
+  if (!(await stage()).includes("Plan")) throw new Error(`a suggested plan, yet the stage is “${await stage()}”, not Plan`);
+  if ((await home.locator("button.switch").getAttribute("aria-checked")) !== "true") throw new Error("Stop after the plan is not on by default");
+  say(`Plan it: ${suggested} suggested tasks, each with what it may change and what proves it; the stage is Plan, and it stopped there`);
   await shot("suggested");
 
   await home.locator(".sec-suggested .sec-head button", { hasText: "Start" }).click();
@@ -154,6 +159,34 @@ try {
   await until(home, () => document.querySelector(".said")?.textContent.startsWith("Exact is off"), null, "Exact said off");
   for (const line of ["board: auto", "review: off", "auto: off"]) if (!settings().includes(line)) throw new Error(`Exact off left no “${line}”`);
   say("the default's button confirmed it and Start came back; Exact off put the board and review back as they were");
+
+  // Stop after the plan, off: auto. A folder of its own (auto stops on any proposal a plan still holds), set up
+  // for the stand-in. Nothing is clicked between Plan it and the landed tasks.
+  await L.close(session);
+  const fx = L.makeFixture(path.join(base, "wordkit-auto"), graphene, { standin: standin.url });
+  session = await L.launch(app, profile, fx.dir, { width: 1440, height: 900, standin: standin.url });
+  await L.openSidebar(session.page);
+  await L.setSidebarWidth(session.page, 400);
+  home = await homeFrame(session.page);
+  const checked = (want) => until(home, (w) => document.querySelector("button.switch")?.getAttribute("aria-checked") === w, want, `the switch ${want}`);
+  await checked("true");
+  await home.locator("button.switch").click();
+  await checked("false");
+  await until(home, () => document.querySelector(".said")?.textContent.startsWith("Stop after the plan is off"), null, "the switch said off");
+  if (state(fx.dir).envelope.auto !== "on") throw new Error("the switch went off, yet auto is not on");
+  await shot("switch-off");
+  await home.locator("textarea").fill(ASK);
+  await home.locator("button", { hasText: "Plan it" }).click();
+  await sectionShown(home, "Done · 3", "the three tasks landed with no Start", 120000);
+  await until(home, () => document.querySelector(".pipe")?.textContent.includes("landed"), null, "the Review stage to say landed");
+  const ran = state(fx.dir);
+  if (ran.tasks.length !== 3 || ran.tasks.some((t) => t.state !== "done")) throw new Error(`auto left ${ran.tasks.map((t) => `${t.id} ${t.state}`).join(", ")}`);
+  if (await home.locator(".sec-suggested").count()) throw new Error("auto ran, yet a suggested plan still waits for Start");
+  say("Stop after the plan off: Plan it drew the plan and ran it with no Start; 3 tasks landed, and the stage is Review, landed");
+  await shot("auto-landed");
+  await home.locator("button.switch").click();
+  await checked("true");
+  if (state(fx.dir).envelope.auto !== "off") throw new Error("the switch went back on, yet auto is not off");
   console.log(`home: passed in ${((Date.now() - t0) / 1000).toFixed(0)} s, ${step} screenshots in ${shots}`);
 } catch (err) {
   failed = err;
