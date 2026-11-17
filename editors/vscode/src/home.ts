@@ -4,7 +4,7 @@
 // sends is checked first (cards.ts checkHome): nothing from the page reaches a shell but as an argument.
 import * as vscode from "vscode";
 import * as C from "./commands.ts";
-import { checkHome, home, said, type FromHome } from "./home/cards.ts";
+import { checkHome, home, said, unanswered, type FromHome } from "./home/cards.ts";
 import { EXACT, WHO } from "./home/who.ts";
 import { keyTrouble, needs, tryAgain, widen } from "./needs.ts";
 import type { Session } from "./session.ts";
@@ -125,7 +125,8 @@ export class HomeHost implements vscode.WebviewViewProvider {
       case "ask": return this.ask(m.arg!);
       case "cancel": return this.planning?.abort();
       case "setup": return this.setUp(m.arg!, m.flag === true);
-      case "startAll": return this.exact && s.state?.questions.length ? undefined : this.start(); // Exact: Start waits for the answers
+      // Exact: Start waits for every answer; and a question with no default stops the run either way
+      case "startAll": return (this.exact && s.state?.questions.length) || (s.state && unanswered(s.state)) ? undefined : this.start();
       case "exact": return this.setExact(m.flag === true);
       case "discardAll": return this.discard();
       case "run": return void s.terminal("graphene run", C.runReady());

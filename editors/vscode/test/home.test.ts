@@ -180,6 +180,17 @@ test("the palette shows seven commands; the rest, and the advanced views, only w
   assert.equal(c.configuration.properties["graphene.advanced"].default, false);
 });
 
+test("a question with no default stops the run either way: with the switch on, Start waits for its answer", () => {
+  const s = fixture("proposals");
+  const asks = { ...s, questions: [{ ...s.questions[0]!, default: null }] };
+  const suggested = (h: ReturnType<typeof home>) => h.sections.find((x) => x.key === "suggested")!;
+  const start = (h: ReturnType<typeof home>) => suggested(h).buttons.find((b) => b.act === "startAll")!;
+  assert.equal(start(home(asks)).off, true);
+  assert.match(suggested(home(asks)).note, /^Answer the 1 question with no default under Needs you first/);
+  assert.equal(start(home(s)).off, false, "a question with a default takes it at Start");
+  assert.equal(start(home({ ...s, questions: [] })).off, false);
+});
+
 test("Exact: Start waits while anything the plan asks is open, and says how many; off, or with nothing open, it starts", () => {
   const s = fixture("proposals");
   const suggested = (h: ReturnType<typeof home>) => h.sections.find((x) => x.key === "suggested")!;

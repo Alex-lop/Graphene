@@ -43,6 +43,9 @@ export function countsLine(s: State): string {
   return parts.join(" · ");
 }
 
+/** The open questions with no default: one stops the run either way, so Start waits for its answer as auto does. */
+export const unanswered = (s: Pick<State, "questions">): number => s.questions.filter((q) => !q.default).length;
+
 /** What a task is for, what it may change, and what proves it: the three lines a person reads before saying yes. */
 function contract(t: Task, name: (id: string) => string): Line[] {
   return [
@@ -153,9 +156,11 @@ export function home(s: State, seen: ReadonlySet<string> = new Set(), exact = fa
   })), {
     note: exact && s.questions.length
       ? `Exact is on: answer the ${plural(s.questions.length, "open question")} under Needs you first (a default's button confirms it), then start.`
+      : unanswered(s) ? `Answer the ${plural(unanswered(s), "question")} with no default under Needs you first: a question with no default stops the run.`
       : "Read each task: what it may change, and what proves it is done. Remove what you do not want, then start.",
-    buttons: [{ label: "Start", act: "startAll", main: true, off: exact && s.questions.length > 0,
-                title: exact && s.questions.length ? "Exact is on: it waits for your answers" : "accept these tasks and start an agent on each" },
+    buttons: [{ label: "Start", act: "startAll", main: true, off: (exact && s.questions.length > 0) || unanswered(s) > 0,
+                title: exact && s.questions.length ? "Exact is on: it waits for your answers" : unanswered(s) ? "it waits for an answer: a question with no default is open"
+                  : "accept these tasks and start an agent on each" },
               { label: "Discard all", act: "discardAll" }],
   });
 
