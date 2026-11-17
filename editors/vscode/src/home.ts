@@ -37,8 +37,10 @@ export class HomeHost implements vscode.WebviewViewProvider {
     this.session = session;
     session.onDidChange(() => this.push());
     session.onDidSee(() => this.push());
-    // the graph's header asks for this by name: its Save as workflow button
-    context.subscriptions.push(vscode.commands.registerCommand("graphene.saveWorkflow", () => this.saveWorkflow()));
+    // the graph's header asks for these by name: its Save as workflow button, and its switch, which moves as Home's
+    // does (Exact's settings go back with it). Home may never have opened: the board setting is read first.
+    context.subscriptions.push(vscode.commands.registerCommand("graphene.saveWorkflow", () => this.saveWorkflow()),
+                               vscode.commands.registerCommand("graphene.stopAfter", async (flag?: unknown) => { await this.readBoard(); return this.setStopAfter(flag === true); }));
   }
 
   resolveWebviewView(view: vscode.WebviewView) {

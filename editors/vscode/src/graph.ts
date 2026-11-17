@@ -148,7 +148,7 @@ export class GraphHost implements vscode.WebviewViewProvider {
       case "run": return run("runReady");
       case "stop": return run("stop");
       case "auto": return run("auto");
-      case "stopAfter": return typeof m.value === "boolean" ? this.session.act(C.stopAfter(m.value)) : undefined; // the header's switch
+      case "stopAfter": return typeof m.value === "boolean" ? run("stopAfter", m.value) : undefined; // the header's switch: Home's host moves it, so Exact goes off with it
       case "saveWorkflow": return run("saveWorkflow"); // the header's Save as workflow: Home's host asks its name and writes it
       case "markDone": return run("markDone", arg); // a step past the line: approving it runs its command
       case "cockpit": return run("openCockpit");
