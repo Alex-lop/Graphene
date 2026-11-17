@@ -9,6 +9,13 @@
   "first": "auto",
   "planner": "",
   "executor": "",
+  "allows": null,
+  "tree": [
+    "a.txt",
+    "api.py",
+    "b.txt",
+    "notes.txt"
+  ],
   "envelope": {
     "auto": "on",
     "budget": 2.0,
@@ -132,8 +139,24 @@
       "hollow": false,
       "why": "",
       "checkout": null,
-      "base": "54338226be377d03cf2dfffb76f1efb7b1238a45",
-      "attempts": 1
+      "base": "a4b4524bda7636fcd0691aa88c783c9560467e79",
+      "attempts": 1,
+      "files": [
+        "api.py",
+        "notes.txt"
+      ],
+      "files_n": 2,
+      "touched": [],
+      "stops": [],
+      "checked": {
+        "before": null,
+        "after": "passed"
+      },
+      "tokens": null,
+      "held": {
+        "state": "caught",
+        "by": ""
+      }
     },
     {
       "id": "words",
@@ -168,8 +191,34 @@
       "hollow": false,
       "why": "",
       "checkout": "/home/dev/project",
-      "base": "8594ba8345c7a863d0df563ce0831415df4de219",
-      "attempts": 1
+      "base": "ab6a5815093617546d5178626274b57c96ab7601",
+      "attempts": 1,
+      "files": [],
+      "files_n": 0,
+      "touched": [
+        "words.py"
+      ],
+      "stops": [
+        {
+          "path": "app.py",
+          "at": "2026-11-17T07:08:46.243562Z",
+          "how": ""
+        }
+      ],
+      "checked": {
+        "before": null,
+        "after": null
+      },
+      "tokens": {
+        "read": 1800,
+        "cached": null,
+        "written": 240,
+        "turns": 1
+      },
+      "held": {
+        "state": "caught",
+        "by": "nemotron"
+      }
     },
     {
       "id": "greet",
@@ -201,7 +250,20 @@
       "why": "",
       "checkout": null,
       "base": null,
-      "attempts": 0
+      "attempts": 0,
+      "files": [],
+      "files_n": 0,
+      "touched": [],
+      "stops": [],
+      "checked": {
+        "before": null,
+        "after": null
+      },
+      "tokens": null,
+      "held": {
+        "state": "caught",
+        "by": ""
+      }
     },
     {
       "id": "farewell",
@@ -243,8 +305,21 @@
       "hollow": false,
       "why": "bye.py imports the schema, which no leaf makes",
       "checkout": "/home/dev/project",
-      "base": "8594ba8345c7a863d0df563ce0831415df4de219",
-      "attempts": 0
+      "base": "ab6a5815093617546d5178626274b57c96ab7601",
+      "attempts": 0,
+      "files": [],
+      "files_n": 0,
+      "touched": [],
+      "stops": [],
+      "checked": {
+        "before": null,
+        "after": null
+      },
+      "tokens": null,
+      "held": {
+        "state": "caught",
+        "by": ""
+      }
     },
     {
       "id": "docs",
@@ -276,7 +351,20 @@
       "why": "",
       "checkout": null,
       "base": null,
-      "attempts": 0
+      "attempts": 0,
+      "files": [],
+      "files_n": 0,
+      "touched": [],
+      "stops": [],
+      "checked": {
+        "before": null,
+        "after": null
+      },
+      "tokens": null,
+      "held": {
+        "state": "caught",
+        "by": ""
+      }
     },
     {
       "id": "mine",
@@ -306,7 +394,20 @@
       "why": "",
       "checkout": null,
       "base": null,
-      "attempts": 0
+      "attempts": 0,
+      "files": [],
+      "files_n": 0,
+      "touched": [],
+      "stops": [],
+      "checked": {
+        "before": null,
+        "after": null
+      },
+      "tokens": null,
+      "held": {
+        "state": "none",
+        "by": "you"
+      }
     },
     {
       "id": "notes",
@@ -336,7 +437,20 @@
       "why": "",
       "checkout": null,
       "base": null,
-      "attempts": 0
+      "attempts": 0,
+      "files": [],
+      "files_n": 0,
+      "touched": [],
+      "stops": [],
+      "checked": {
+        "before": null,
+        "after": null
+      },
+      "tokens": null,
+      "held": {
+        "state": "caught",
+        "by": ""
+      }
     }
   ],
   "edges": [

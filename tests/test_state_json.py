@@ -3,7 +3,11 @@
 from the cockpit's own reader. Its keys and types on an empty plan, with proposals and questions, while a
 scripted run holds a leaf, after a forked run, with the envelope and a round's row; read-only and whole while
 another process writes the store; fast on a 40-task plan; answering anyone, an agent's shell included; and
-one JSON line of error, exit 1, where there is no Graphene to read."""
+one JSON line of error, exit 1, where there is no Graphene to read.
+
+The Scope pane's keys (leaf 5), each by its value on real state: `tree` and `allows`, and on a task `files`
+and `files_n`, `touched`, `stops`, `checked`, `tokens` and `held`, which never says more than
+tests/test_every_agent.py proves."""
 
 import json
 import os
@@ -32,14 +36,15 @@ TOP = {
     "schema": int, "graphene": str, "repo": str, "cursor": int, "goal": str, "first": str, "planner": str,
     "executor": str, "envelope": dict, "auto": (dict, type(None)), "run": dict, "spent": float,
     "scoreboard": dict, "width": int, "questions": list, "goals": list, "tasks": list, "edges": list,
-    "news": list,
+    "news": list, "tree": list, "allows": (list, type(None)),
 }  # fmt: skip
 TASK = {
     "id": str, "title": str, "full": str, "state": str, "parent": (str, type(None)), "scope": list,
     "needs": list, "check": str, "agent": str, "model": str, "usd": (int, float),
     "idle": (int, float, type(None)), "needs_you": bool, "tail": list, "note": str, "offers": dict,
     "changed": list, "stopped": list, "outside": list, "forks": list, "kept": (dict, type(None)),
-    "hollow": bool,
+    "hollow": bool, "files": list, "files_n": int, "touched": list, "stops": list, "checked": dict,
+    "tokens": (dict, type(None)), "held": dict,
 }  # fmt: skip
 FORK = {"letter": str, "state": str, "why": str, "lines": (int, type(None)), "model": str,
         "usd": (int, float)}  # fmt: skip
@@ -75,6 +80,8 @@ def whole(s: dict) -> None:
     for t in s["tasks"]:
         typed(TASK, t, t["id"])
         assert t["state"] in WORDS, t["state"]
+        assert set(t["checked"]) == {"before", "after"} and set(t["held"]) == {"state", "by"}
+        assert t["held"]["state"] in ("refused", "caught", "none") and len(t["files"]) <= t["files_n"]
         for f in t["forks"]:
             typed(FORK, f, f"{t['id']}.{f['letter']}")
     for q in s["questions"]:

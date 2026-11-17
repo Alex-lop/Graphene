@@ -23,6 +23,14 @@ did), then reads `state --json` again when a row came. The cheapest trigger ther
 `.graphene/graphene.db` on a checkpoint, so it watches that directory for `graphene.db*` and debounces about
 200 ms; `.graphene/run.lock` appears with a run and goes with it. A WAL reader blocks no writer.
 
+What a step may do, in plain view (the Scope pane's keys, siblings of the ones above): ``tree``, the
+repository's top-level entries, and ``allows``, the shell commands the executor's own command line lets it
+run without asking; and on each task ``files`` and ``files_n`` (the tracked files its scope covers now),
+``touched`` (written so far by the attempt going now), ``stops`` (every write of its that was refused, with
+the time and how), ``checked`` (its check's verdict before the work and after), ``tokens`` (read, cached,
+written, turns) and ``held``: how a write outside its files is held, by what tests/test_every_agent.py
+proves and nothing more.
+
 Who is calling: reading needs no mark, so `state --json` answers anyone, an agent's shell included. An editor
 that spawns `graphene` for a person's click (accept, add a step, link two steps) must drop the agent marks
 from the environment it inherits (``MARKS``): VS Code started from a shell inside Claude Code carries
@@ -198,6 +206,9 @@ def snapshot(store, root: Path, now: float | None = None) -> dict:
     wide = M.width(rows)
     need, running, proven, total = m.scoreboard()
     by_id = {n.id: n for n in P.nodes(store)}  # each task's checkout and base, as the plan keeps them
+    standing = P.standing(store)  # no scope covers these, whatever its globs say: the gate's `plan.binds`
+    files = sorted(f for f in m.files if P.kept_out_by(f, standing) is None)
+    hooks = hooked(root)
     return {
         "schema": SCHEMA,
         "graphene": __version__,
@@ -209,6 +220,8 @@ def snapshot(store, root: Path, now: float | None = None) -> dict:
         "first": m.first,
         "planner": chosen(store, "planner"),
         "executor": m.executor,
+        "allows": allows(store),
+        "tree": tree(m.files),
         "envelope": {
             "auto": S.auto(store),
             "budget": S.budget(store),
@@ -232,7 +245,11 @@ def snapshot(store, root: Path, now: float | None = None) -> dict:
             for n in nodes
             if kids.get(n.id)
         ],
-        "tasks": [task(m, t, by.get(t.id, []), by_id.get(t.id), root) for t in m.tasks.values()],
+        "tasks": [
+            task(m, t, by.get(t.id, []), by_id.get(t.id), root)
+            | pane(t, by.get(t.id, []), by_id.get(t.id), files, m.executor, hooks)
+            for t in m.tasks.values()
+        ],
         "edges": [[need_id, n.id, "needs"] for n in nodes for need_id in n.needs if need_id in ids]
         + [[a, b, kind] for a, b, kind in m.extra_edges],
         "news": news(store, m),
@@ -477,6 +494,30 @@ def held(node: P.Node | None, chosen: str, hooks: bool, log: list[dict] | tuple 
     mixed = bool(holds and node.forked) and any(str(w).partition(":")[0] != "claude" for w in forks.values())
     claude = by.partition(":")[0] == "claude" and not mixed
     return {"state": "refused" if claude and hooks else "caught", "by": by}
+
+
+def pane(t, log: list[dict], node: P.Node | None, files: list[str], chosen: str, hooks: bool) -> dict:
+    """What the step pane's Scope tab reads for one task, beside `scope`, `changed` and `stopped`, which stay
+    as they are. `files` are the tracked files its scope covers, matched as the gate matches a write
+    (`plan.in_scope`: the last glob that matches decides, so a `!` glob takes paths back out), LISTED at most
+    and `files_n` in all. ``files`` is every tracked file no standing setting keeps out, sorted: a scope's
+    are a slice of it (`plan._within`, as `plan.one_writer` finds them), so a plan of forty steps does not
+    match every file against every scope. `touched` is the cockpit's own (`Task.touched`) while it runs;
+    `stops` is the whole history, oldest first, where `stopped` is the attempt going now."""
+    covered = [f for f in P._within(files, P._prefixes(t.scope)) if P.in_scope(f, t.scope)]
+    return {
+        "files": covered[:LISTED],
+        "files_n": len(covered),
+        "touched": sorted(t.touched) if t.state == "running" else [],
+        "stops": [
+            {"path": str(d["path"]), "at": r["timestamp"], "how": str(d.get("how") or "")}
+            for r in log
+            if r["kind"] == "denied" and (d := r["detail"]).get("path")
+        ],
+        "checked": checked(log, t.check),
+        "tokens": tokens(log),
+        "held": held(node, chosen, hooks, log),
+    }
 
 
 def news(store, m) -> list[str]:
