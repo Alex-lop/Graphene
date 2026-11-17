@@ -8,7 +8,7 @@ import { autoLine, SAY, screenWords, usd, type DraftStep, type State } from "../
 import { ICONS } from "./icons.ts";
 import { blanks, draftLine, globs, isDraft, lacks, type Draft } from "./draft.ts";
 import { actsFor, attemptsOf, badge, cornerWord, cut, done, draftedSteps, edgeKind, editable, fan, filesChip, FIRST_HINT, fitWidth, forkActs, forkRow, forkWords, HEADER_ACTS, headerFor,
-         KEYS, linkHint, paneKey, pipeline, planningLine, questionOn, STOP_AFTER, STOP_AFTER_HOVER, stopAfterPlan, sub, tabOrder, topLine, whenEdit, who, worktrees, zoomK,
+         KEYS, linkHint, paneKey, pipeline, planningLine, PROVES_NOTHING, provesNothing, questionOn, STOP_AFTER, STOP_AFTER_HOVER, stopAfterPlan, sub, tabOrder, topLine, whenEdit, who, worktrees, zoomK,
          type Button, type StateX, type TaskX } from "./words.ts";
 
 declare function acquireVsCodeApi(): { postMessage(m: unknown): void; getState(): unknown; setState(s: unknown): void };
@@ -468,10 +468,10 @@ function tile(grp: SVGGElement, kind: string, mark: string, label: string) {
 }
 
 /** A chip on a card, in mono, cut to the card: the files the step may change, or its check. */
-function pill(grp: SVGGElement, kind: "files" | "check", words: string, x: number, y: number, max: number) {
-  const g = el("g", { class: `pill ${kind}` });
+function pill(grp: SVGGElement, kind: "files" | "check", words: string, x: number, y: number, max: number, hollow = false) {
+  const g = el("g", { class: `pill ${kind}${hollow ? " hollow" : ""}` }); // hollow: the check already passes, so its tick is a warning
   const rect = g.appendChild(el("rect", { x, y, width: max, height: 17, rx: 5 }));
-  g.appendChild(el("text", { class: "pill-mark", x: x + 6, y: y + 12.5 }, kind === "files" ? "▤" : "✓"));
+  g.appendChild(el("text", { class: "pill-mark", x: x + 6, y: y + 12.5 }, kind === "files" ? "▤" : hollow ? "!" : "✓"));
   const text = g.appendChild(el("text", { class: "pill-text", x: x + 19, y: y + 12.5 }, words));
   grp.appendChild(g);
   fitText(text, max - 25);
@@ -505,7 +505,7 @@ function drawTask(grp: SVGGElement, t: TaskX, h: number, down: boolean, limit: n
   fitText(grp.appendChild(el("text", { class: "title", x: TEXT_X, y: 27 }, t.title)), BOX_W - TEXT_X - 8);
   const files = filesChip(t.scope);
   if (files) pill(grp, "files", files, TEXT_X, 37, BOX_W - TEXT_X - 10);
-  if (t.check) pill(grp, "check", t.check, TEXT_X, files ? 58 : 37, BOX_W - TEXT_X - 10);
+  if (t.check) pill(grp, "check", t.check, TEXT_X, files ? 58 : 37, BOX_W - TEXT_X - 10, provesNothing(t));
   // the status, under the card; while it runs, its model at the line's end
   const model = t.state === "running" && t.model ? grp.appendChild(el("text", { class: "model", x: BOX_W - 2, y: BOX_H + 16, "text-anchor": "end" }, cut(t.model, 14))) : null;
   fitText(grp.appendChild(el("text", { class: "sub", x: 2, y: BOX_H + 16 }, line)), BOX_W - 4 - (model ? model.getComputedTextLength() + 8 : 0));
@@ -1067,7 +1067,7 @@ function pane() {
     if (!replaying()) div("when", whenEdit(t), body);
   }
   row("under", t.parent ? goalTitle(s, t.parent) : "", body);
-  if (t.hollow) div("hollow", "its check passed before the work too: it proves nothing new", body); // as the cockpit says
+  if (t.hollow) div("hollow", provesNothing(t) ? PROVES_NOTHING : "its check passed before the work too: it proves nothing new", body); // as the cockpit says
   if (t.needs.length) { // what it waits on, each with the × that stops it waiting
     const r = div("row", undefined, body);
     div("k", "after", r);

@@ -250,6 +250,7 @@ button:disabled { opacity: 0.45; cursor: default; }
 .pill-text, .pill-mark { fill: var(--dim); font-size: 11px; font-family: var(--mono); }
 .pill-mark { opacity: 0.75; }
 .pill.check .pill-mark { fill: var(--done); opacity: 1; }
+.pill.check.hollow .pill-mark, .pill.check.hollow .pill-text { fill: var(--running); font-weight: 600; } /* the check already passes: it proves nothing yet */
 /* the ports, where a card's lines join; the out port is the dot a link is dragged from */
 .port { fill: var(--bg); stroke: var(--edge); stroke-width: 2; }
 .port[data-port] { cursor: crosshair; }
