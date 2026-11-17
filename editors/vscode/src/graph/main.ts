@@ -8,7 +8,8 @@ import { autoLine, SAY, screenWords, usd, type DraftStep, type State } from "../
 import { ICONS } from "./icons.ts";
 import { blanks, draftLine, globs, isDraft, lacks, type Draft } from "./draft.ts";
 import { actsFor, attemptsOf, badge, cornerWord, cut, done, draftedSteps, edgeKind, editable, fan, filesChip, FIRST_HINT, fitWidth, forkActs, forkRow, forkWords, HEADER_ACTS, headerFor,
-         KEYS, linkHint, paneKey, planningLine, questionOn, sub, tabOrder, topLine, whenEdit, who, worktrees, zoomK, type Button, type StateX, type TaskX } from "./words.ts";
+         KEYS, linkHint, paneKey, pipeline, planningLine, questionOn, STOP_AFTER, STOP_AFTER_HOVER, stopAfterPlan, sub, tabOrder, topLine, whenEdit, who, worktrees, zoomK,
+         type Button, type StateX, type TaskX } from "./words.ts";
 
 declare function acquireVsCodeApi(): { postMessage(m: unknown): void; getState(): unknown; setState(s: unknown): void };
 
@@ -286,6 +287,19 @@ function header(s: StateX) {
   $("counts").hidden = !h.counts;
   $("auto").textContent = h.auto;
   $("auto").hidden = !h.auto;
+  // one pipeline, the plan first: Plan, Run, Review, and the one switch (a replay is watched: no switch)
+  $("pipe").hidden = false;
+  $("stages").replaceChildren(...pipeline(s).map((st, i) => {
+    const stage = div(`stage ${st.at}`);
+    stage.setAttribute("role", "listitem");
+    stage.setAttribute("aria-current", st.at === "now" ? "step" : "false");
+    div("n", String(i + 1), stage);
+    stage.append(st.label);
+    if (st.note) { const note = document.createElement("small"); note.textContent = st.note; stage.appendChild(note); }
+    return stage;
+  }));
+  $("b-stop-after").setAttribute("aria-checked", String(stopAfterPlan(s)));
+  $("b-stop-after").hidden = replaying();
   const run = $("b-run"); // while a run goes, the button that started it stops it
   run.replaceChildren(icon(s.run.going ? "debug-stop" : "play"), document.createTextNode(s.run.going ? "Stop" : "Run"));
   run.title = s.run.going ? "stop every agent: their tasks go back to the plan" : "start an agent on every task that is ready";
@@ -1136,6 +1150,8 @@ function notice(st: Status) {
   $("counts").textContent = "";
   $("auto").hidden = true;
   $("replay").hidden = true;
+  $("pipe").hidden = true; // no plan to read: no stage to be at
+  $("planning").hidden = true;
 }
 
 // ---- messages and keys ----
@@ -1374,6 +1390,24 @@ function wire() {
   top("b-view", "Lanes", "list-flat", "graph or lanes (v)", () => { remember({ view: view() === "lanes" ? "graph" : "lanes" }); fitted = false; render(); });
   top("b-help", "", "question", "every key (?)", () => help($("help").hidden));
   $("b-help").setAttribute("aria-label", "keys");
+  // under the goal: the pipeline's three stages and its one switch (made here, so the preview's shell has them too)
+  const pipe = div("", undefined, document.querySelector("header")!);
+  pipe.id = "pipe";
+  const stages = div("", undefined, pipe);
+  stages.id = "stages";
+  stages.setAttribute("role", "list");
+  stages.setAttribute("aria-label", "Plan, Run, Review");
+  const sw = document.createElement("button");
+  sw.id = "b-stop-after";
+  sw.className = "switch";
+  sw.setAttribute("role", "switch");
+  sw.setAttribute("aria-checked", "true");
+  sw.appendChild(document.createElement("i"));
+  sw.appendChild(document.createTextNode(STOP_AFTER));
+  sw.title = STOP_AFTER_HOVER;
+  sw.addEventListener("click", () => api.postMessage({ type: "act", act: "stopAfter", id: "", value: sw.getAttribute("aria-checked") !== "true" }));
+  pipe.appendChild(sw);
+  pipe.appendChild($("counts")); // the totals end the stages' row, as the target's header has them
   // narrow, the buttons hide behind one `…` beside the goal, so the header is one line
   const more = document.createElement("button");
   more.id = "b-more";
