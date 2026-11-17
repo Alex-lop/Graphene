@@ -8,7 +8,7 @@ import { autoLine, SAY, screenWords, usd, type State } from "../state.ts";
 import { ICONS } from "./icons.ts";
 import { blanks, draftLine, globs, isDraft, lacks, type Draft } from "./draft.ts";
 import { actsFor, attemptsOf, badge, cornerWord, cut, done, edgeKind, editable, fan, filesChip, FIRST_HINT, fitWidth, forkActs, forkRow, forkWords, HEADER_ACTS, headerFor, KEYS,
-         linkHint, paneKey, questionOn, sub, tabOrder, topLine, whenEdit, who, zoomK, type Button, type StateX, type TaskX } from "./words.ts";
+         linkHint, paneKey, questionOn, sub, tabOrder, topLine, whenEdit, who, worktrees, zoomK, type Button, type StateX, type TaskX } from "./words.ts";
 
 declare function acquireVsCodeApi(): { postMessage(m: unknown): void; getState(): unknown; setState(s: unknown): void };
 
@@ -25,6 +25,7 @@ const GOAL = " goal";
 // one line of status under it; then its attempts, a chip each (a chip holds 32 mono characters).
 const BOX_W = 220, BOX_H = 84, SUB_H = 22, FORK_H = 20, FORK_DX = 22, CHIP_W = 228, GOAL_W = 220;
 const TEXT_X = 54; // where a card's words start, right of its tile
+const AWAY_W = 236, AWAY_GAP = 20; // the region for what leaves this machine, right of the plan
 /** The narrow view by default: lanes read better than a downward graph at 280 to 400 px (lane 1's notes). */
 const NARROW_VIEW: "lanes" | "graph" = "lanes";
 const api = acquireVsCodeApi();
@@ -294,16 +295,21 @@ function graph(s: StateX, dir: "across" | "down") {
   const svg = $("svg") as unknown as SVGSVGElement;
   const g = boxes(s);
   const down = dir === "down";
-  lay = layout(g.boxes, g.edges, { goal: g.goal, boxW: BOX_W, boxH: BOX_H + SUB_H, labelH: 24, gapX: 56, gapY: 14, down, width: down ? $("canvas").clientWidth / zoom.k : undefined });
+  lay = layout(g.boxes, g.edges, { goal: g.goal, boxW: BOX_W, boxH: BOX_H + SUB_H, labelH: 24, gapX: 56, gapY: 14, ...(down ? {} : { padX: 30, padY: 46 }),
+                                   down, width: down ? $("canvas").clientWidth / zoom.k : undefined });
+  // across, the plan sits in "this machine", and what leaves it has a region of its own at the right
+  const here = down || !g.boxes.length ? 0 : lay.width;
+  if (here) lay.width += AWAY_GAP + AWAY_W;
+  regions(s, here);
   // bands: few, redrawn
   const bands = $("bands") as unknown as SVGGElement;
   bands.replaceChildren();
   for (const band of lay.bands) {
     if (!band.id) continue;
     const ts = s.tasks.filter((t) => t.parent === band.id);
-    bands.appendChild(el("rect", { class: "band", x: 4, y: band.y0, width: lay.width - 8, height: band.y1 - band.y0, rx: 10 }));
-    const label = bands.appendChild(el("text", { class: "band-label", x: 14, y: band.y0 + 16 }, `${goalTitle(s, band.id)} · ${done(ts)}`));
-    fitText(label, Math.min(lay.width - 8, $("canvas").clientWidth / zoom.k) - 28); // the band's visible width
+    bands.appendChild(el("rect", { class: "band", x: 18, y: band.y0, width: here - 36, height: band.y1 - band.y0, rx: 10 }));
+    const label = bands.appendChild(el("text", { class: "band-label", x: 30, y: band.y0 + 16 }, `${goalTitle(s, band.id)} · ${done(ts)}`));
+    fitText(label, Math.min(here - 36, $("canvas").clientWidth / zoom.k) - 28); // the band's visible width
   }
   // edges: keyed by their ends; a changed path glides (CSS transitions d)
   const edges = $("edges") as unknown as SVGGElement;
@@ -396,6 +402,19 @@ function edgeD(p: { x: number; y: number; w: number; h: number }, q: { x: number
   const x1 = p.x + BOX_W, y1 = p.y + BOX_H / 2, x2 = q.x, y2 = q.y + BOX_H / 2;
   const dx = Math.max(24, (x2 - x1) / 2);
   return `M${x1},${y1} C${x1 + dx},${y1} ${x2 - dx},${y2} ${x2},${y2}`;
+}
+
+/** The two regions the flow crosses: this machine, where each agent works in a worktree of its own, and what
+ *  leaves it (a push, a pull request). No step does yet, and the region says so. */
+function regions(s: StateX, here: number) {
+  const root = $("regions") as unknown as SVGGElement;
+  root.replaceChildren();
+  if (!here || !lay) return;
+  const n = worktrees(s.tasks), h = lay.height - 16, x = here + AWAY_GAP - 8;
+  root.appendChild(el("rect", { class: "region here", x: 8, y: 8, width: here - 16, height: h, rx: 14 }));
+  root.appendChild(el("text", { class: "region-label", x: 24, y: 29 }, `THIS MACHINE${n ? ` · ${n} worktree${n > 1 ? "s" : ""}, one per agent` : ""}`));
+  root.appendChild(el("rect", { class: "region away", x, y: 8, width: AWAY_W, height: h, rx: 14 }));
+  root.appendChild(el("text", { class: "region-label away", x: x + 16, y: 29 }, "LEAVES YOUR MACHINE · nothing yet"));
 }
 
 /** A card is drawn again whenever its task changes, which for a working one is every snapshot (its seconds
@@ -1034,7 +1053,7 @@ function notice(st: Status) {
   n.hidden = false;
   n.textContent = st.text;
   n.className = st.kind;
-  for (const id of ["bands", "edges", "tasks", "goalg"]) ($(id) as unknown as SVGGElement).replaceChildren();
+  for (const id of ["regions", "bands", "edges", "tasks", "goalg"]) ($(id) as unknown as SVGGElement).replaceChildren();
   taskEls.clear(); edgeEls.clear(); goalKey = "";
   $("lanes").replaceChildren(); laneEls.clear(); lanesKey = "";
   $("details").hidden = true; paneLast = "";
@@ -1239,6 +1258,7 @@ function wire() {
   window.addEventListener("pointerup", released);
   window.addEventListener("pointercancel", released);
   window.addEventListener("pointermove", (e) => { if (e.buttons === 0) released(); }); // let go outside the page
+  $("view").prepend(el("g", { id: "regions" })); // under the drawing; made here, so the preview's shell has it too
   const toGoal = $("to-goal");
   toGoal.appendChild(document.createTextNode("goal"));
   toGoal.appendChild(icon("arrow-right"));
