@@ -375,7 +375,8 @@ def task(m, t, log: list[dict], node: P.Node | None = None, root: Path | None = 
         "outside": list(t.outside),
         "forks": forks,
         "kept": {"letter": t.kept[0], "why": t.kept[1], "by": t.kept[2]} if t.kept else None,
-        "hollow": t.hollow or passes_before(log, node),
+        # a command step's command proves no work, so red first's verdict on it is no hollow check
+        "hollow": (t.hollow or passes_before(log, node)) and (node is None or P.runs_itself(node) is None),
         "why": t.note if t.state == "came back" else "",
         "checkout": where if where and Path(where).is_dir() else None,
         "base": (node.base_sha or None) if node else None,
@@ -517,6 +518,10 @@ def pane(t, log: list[dict], node: P.Node | None, files: list[str], chosen: str,
         "checked": checked(log, t.check),
         "tokens": tokens(log),
         "held": held(node, chosen, hooks, log),
+        # a workflow's `run:` step: the command that runs with no agent, and whether it leaves this machine
+        # (a push, a pull request: `workflow.leaves`), where the graph draws it past the line and it waits
+        "command": node.check if node is not None and P.runs_itself(node) is not None else None,
+        "leaves": node is not None and P.runs_itself(node) is False,
     }
 
 

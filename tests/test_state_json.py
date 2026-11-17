@@ -48,7 +48,7 @@ TASK = {
     "idle": (int, float, type(None)), "needs_you": bool, "tail": list, "note": str, "offers": dict,
     "changed": list, "stopped": list, "outside": list, "forks": list, "kept": (dict, type(None)),
     "hollow": bool, "files": list, "files_n": int, "touched": list, "stops": list, "checked": dict,
-    "tokens": (dict, type(None)), "held": dict,
+    "tokens": (dict, type(None)), "held": dict, "command": (str, type(None)), "leaves": bool,
 }  # fmt: skip
 FORK = {"letter": str, "state": str, "why": str, "lines": (int, type(None)), "model": str,
         "usd": (int, float)}  # fmt: skip
@@ -203,6 +203,26 @@ def test_a_check_that_already_passes_is_hollow_before_the_work_and_one_that_fail
     with Store.open(repo) as store:
         plan.edit(store, "soft", {"check": fails}, ALEX)
     assert hollow() == {"soft": False, "hard": False}
+
+
+def test_a_command_step_says_its_command_and_whether_it_leaves_this_machine(repo):
+    """A workflow's `run:` step has no agent and no scope. The snapshot says the command it runs and whether
+    that command leaves this machine (a push, a pull request), where the graph draws it past the line and
+    it waits for the person; a step an agent does says neither. A command proves no work, so red first's
+    verdict on it is never a hollow check."""
+    from graphene_map import precheck
+
+    propose(repo, [{"id": "fix", "title": "fix", "scope": ["a.py"], "check": "true"},
+                   {"id": "suite", "title": "suite", "check": "true", "owner": "command", "needs": ["fix"]},
+                   {"id": "pr", "title": "pr", "check": "git push origin main", "owner": "command",
+                    "needs": ["suite"]}])  # fmt: skip
+    by = {t["id"]: t for t in snapshot()["tasks"]}
+    assert [(by[i]["command"], by[i]["leaves"]) for i in ("fix", "suite", "pr")] == [
+        (None, False), ("true", False), ("git push origin main", True)]  # fmt: skip
+    with Store.open(repo) as store:
+        precheck.run(store, repo)
+    by = {t["id"]: t for t in snapshot()["tasks"]}
+    assert (by["fix"]["hollow"], by["suite"]["hollow"], by["pr"]["hollow"]) == (True, False, False)
 
 
 def test_the_model_and_the_dollars_come_from_the_meter_when_the_cockpit_says_nothing(repo):

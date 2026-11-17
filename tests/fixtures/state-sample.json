@@ -139,7 +139,7 @@
       "hollow": false,
       "why": "",
       "checkout": null,
-      "base": "a4b4524bda7636fcd0691aa88c783c9560467e79",
+      "base": "79bfc3f7323da4815689fa0a1623f9de42b78bb4",
       "attempts": 1,
       "files": [
         "api.py",
@@ -156,7 +156,9 @@
       "held": {
         "state": "caught",
         "by": ""
-      }
+      },
+      "command": null,
+      "leaves": false
     },
     {
       "id": "words",
@@ -191,7 +193,7 @@
       "hollow": false,
       "why": "",
       "checkout": "/home/dev/project",
-      "base": "ab6a5815093617546d5178626274b57c96ab7601",
+      "base": "e4803105ee269139cc61569a7601ebbfd9050efa",
       "attempts": 1,
       "files": [],
       "files_n": 0,
@@ -201,7 +203,7 @@
       "stops": [
         {
           "path": "app.py",
-          "at": "2026-11-17T07:08:46.243562Z",
+          "at": "2026-11-17T07:43:40.901589Z",
           "how": ""
         }
       ],
@@ -218,7 +220,9 @@
       "held": {
         "state": "caught",
         "by": "nemotron"
-      }
+      },
+      "command": null,
+      "leaves": false
     },
     {
       "id": "greet",
@@ -263,7 +267,9 @@
       "held": {
         "state": "caught",
         "by": ""
-      }
+      },
+      "command": null,
+      "leaves": false
     },
     {
       "id": "farewell",
@@ -305,7 +311,7 @@
       "hollow": false,
       "why": "bye.py imports the schema, which no leaf makes",
       "checkout": "/home/dev/project",
-      "base": "ab6a5815093617546d5178626274b57c96ab7601",
+      "base": "e4803105ee269139cc61569a7601ebbfd9050efa",
       "attempts": 0,
       "files": [],
       "files_n": 0,
@@ -319,7 +325,9 @@
       "held": {
         "state": "caught",
         "by": ""
-      }
+      },
+      "command": null,
+      "leaves": false
     },
     {
       "id": "docs",
@@ -364,7 +372,9 @@
       "held": {
         "state": "caught",
         "by": ""
-      }
+      },
+      "command": null,
+      "leaves": false
     },
     {
       "id": "mine",
@@ -407,7 +417,9 @@
       "held": {
         "state": "none",
         "by": "you"
-      }
+      },
+      "command": null,
+      "leaves": false
     },
     {
       "id": "notes",
@@ -450,7 +462,9 @@
       "held": {
         "state": "caught",
         "by": ""
-      }
+      },
+      "command": null,
+      "leaves": false
     }
   ],
   "edges": [
