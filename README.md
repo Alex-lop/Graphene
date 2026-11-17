@@ -107,11 +107,16 @@ cursor --install-extension editors/vscode/graphene-0.9.0.vsix
 
 Click Graphene in the activity bar to open **Home**. Pick your planner and executor, type a goal, click
 **Plan it**, review the suggested tasks, then **Start**. Keep approval enabled to review each finished task
-with **Open changes**, then **Approve** or **Send back** with a note.
+with **Open changes**, then **Approve** or **Send back** with a note. Home and the graph show the three
+stages and the **Stop after the plan** switch: turn it off and **Plan it** runs what fits your limits without
+waiting for **Start**.
 
-**Graphene: Show Graph** opens the plan in a tab. Click a task to edit its files, check, attempts, or approval;
-drag its dot onto another task to add a dependency. **Graphene: Watch the Demo** needs no key. The Explorer
-marks which task owns each file; `graphene.advanced` enables the extra task and round views.
+**Graphene: Show Graph** opens the plan in a tab. Click a step and its pane opens on **Scope**; its **Edit**
+tab changes its files, check, attempts, or approval; drag its dot onto another step to add a dependency.
+**Graphene: Watch the Demo** needs no key. Each step has one colour, on its card and, from the time it is
+accepted until it lands, on its files in the Explorer; `graphene.advanced` enables the extra task and round
+views.
+
 
 Current `main` also installs Codex hooks: run `graphene init` in your project, start a new Codex session,
 trust the project, and review its hooks with `/hooks`.
