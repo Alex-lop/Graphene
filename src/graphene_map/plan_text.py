@@ -711,6 +711,63 @@ def faults(store, text: str, who: P.Caller, files: list[str] | None = None, besi
             store.conn.execute("RELEASE faults")
 
 
+# A line that reads as the plan's text, and a fence's line: how a planner's answer is cut to its proposal.
+_START = re.compile(r"^(?:goal:|question:|assume:|risk:|leave out:|note:|[-*+?][ \t])", re.MULTILINE)
+_TICKS = re.compile(r"^```[ \t]*(\w*)[ \t]*$", re.MULTILINE)
+# A line only the plan's text says: its goal, a board item, a "?" line, a node's line that ends in its [id].
+# A planner's own words often hold a list ("- I read api.py"), which the whole answer's fence sets aside;
+# read while it writes, with no fence yet, such a list would be drawn as steps and go when the fence came.
+_SURE = re.compile(
+    r"^(?:goal:|question:|assume:|risk:|leave out:|note:|\?[ \t]|[-*+][ \t].*\[[\w.-]+\][ \t]*$)",
+    re.MULTILINE,
+)
+
+
+def drafted(said: str) -> list[dict]:
+    """The steps a planner has written so far, read from everything it has said while it still writes:
+    one for each node whose own line is complete, in the order written, as {id, title, parent, leaf,
+    scope, check, needs}. `graphene ask` reads it each time the planner ends a line, so a graph draws a
+    step as soon as its line is there, and its scope, check and needs as theirs are. The last line, which
+    has no line break yet, is never read. The proposal is found as `ask.proposal_in` finds it in the whole
+    answer, except that its block may still be open: the last ```plan block, else the last plain block
+    that reads as the plan's text, else, with no fence, everything from the first line that only the
+    plan's text says (``_SURE``). The board's lines are lifted out as ``apply`` lifts them. A line Graphene
+    cannot read ends the reading, and the steps before it stand: this never refuses. An id is the line's
+    [id], else the ``slug`` of its title, which is what ``apply`` gives it when nothing has that id; a need
+    is the id as written. No store is read, so a line that names a node already in the plan is among them."""
+    said = said[: said.rfind("\n") + 1]
+    blocks: list[tuple[str, str]] = []  # (label, body), in order; the last may be the one still open
+    start, label = None, ""
+    for tick in _TICKS.finditer(said):
+        if start is None:
+            start, label = tick.end() + 1, tick[1].lower()
+        elif not tick[1]:  # a bare fence closes the block; a labelled one inside it is the block's own
+            blocks.append((label, said[start : tick.start()]))
+            start = None
+    if start is not None:
+        blocks.append((label, said[start:]))
+    marked = [body for label, body in blocks if label == "plan"]
+    plain = [body for label, body in blocks if label in ("", "text", "graphene") and _START.search(body)]
+    first = _SURE.search(said)
+    kept = ((marked or plain)[-1] if marked or plain else said[first.start() :] if first else "").splitlines()
+    while True:
+        try:
+            lines = parse(B.split("\n".join(kept))[0])[1]
+            break
+        except P.Refused as no:  # the refusal names its line: what was written before it is read again
+            at = re.match(r"line (\d+)", str(no))
+            kept = kept[: int(at[1]) - 1] if at and int(at[1]) <= len(kept) else []
+    ids: list[str] = []
+    for ln in lines:  # in the order written: a step keeps the id it was first given as more arrive
+        ids.append(ln.id or slug(ln.title, set(ids)))
+    above = [ids[ln.parent] if ln.parent is not None else ln.under or None for ln in lines]
+    return [
+        {"id": i, "title": ln.title, "parent": up, "leaf": i not in above, "scope": ln.scope,
+         "check": ln.check, "needs": ln.needs}
+        for i, up, ln in zip(ids, above, lines, strict=True)
+    ]  # fmt: skip
+
+
 def _ids(lines: list[Line], everything: dict[str, P.Node], opened: dict | None) -> dict[str, Line]:
     """Refuse an [id] the text cannot use. Returns the lines of a proposal that reused a dropped or
     archived id, by that id: they get a new one, and a need that names it follows."""
