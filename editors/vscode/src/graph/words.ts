@@ -189,6 +189,16 @@ export function checkWords(t: Pick<TaskX, "check" | "checked" | "state">): { ton
   return [{ tone: b[0], line: b[1] }, { tone: a[0], line: a[1] }];
 }
 
+const thousands = (n: number) => (n >= 1000 ? `${Math.round(n / 1000)}k` : String(n));
+/** Tokens: what its attempts read and wrote, as shares; the check is Graphene's to run and costs none. */
+export function tokenWords(t: Pick<TaskX, "tokens">): { total: string; read: number; written: number; line: string } | null {
+  if (!t.tokens || !(t.tokens.read + t.tokens.written)) return null;
+  const all = t.tokens.read + t.tokens.written, read = Math.round((t.tokens.read / all) * 100);
+  const cached = t.tokens.cached ? ` (${thousands(t.tokens.cached)} of it from cache)` : "";
+  return { total: `${thousands(t.tokens.read)} in · ${thousands(t.tokens.written)} out`, read, written: 100 - read,
+           line: `reading ${read}%${cached} · writing ${100 - read}% · its check 0%: Graphene runs it, no model` };
+}
+
 export interface Stage { key: "plan" | "run" | "review"; label: string; at: "done" | "now" | "next"; note: string }
 
 /** One pipeline, the plan always first: Plan, Run, Review. Where the work is (the first stage not finished is
