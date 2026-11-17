@@ -13,7 +13,7 @@ It is a thin client over the `graphene` command. Everything it shows is `graphen
 
 Click Graphene in the activity bar. Home is the first view, and it shows the one thing to do next.
 
-1. **Set up the folder.** Pick who plans and does the work: Claude Code, Codex or Nemotron. One click. Leave
+1. **Set up the folder.** Pick who plans and does the work: Claude Code or Codex. One click. Leave
    *Ask me to approve each finished task* ticked, and nothing lands without you.
 2. **Say what you want.** Type it, in a sentence or a paragraph, and click **Plan it**. The planner reads the
    repository and suggests small tasks. Each card says what the task is for, the files it may change, and the
@@ -107,8 +107,8 @@ classic layout the views look as they do in VS Code.
 - **Nothing from a page reaches a shell.** Home and the graph send the extension a message; it checks each one
   against the plan (a known act, a task the plan has, an option the question has) and passes words only as one
   argument of a `graphene` command. A title or a planner's words are shown as text, never as markup or a link.
-- **No network of its own.** The extension makes no request and sends no telemetry. The models you configured
-  (Token Factory, Claude Code, Codex) are the CLI's business, with a key it reads from a hidden prompt.
+- **No network of its own.** The extension makes no request and sends no telemetry. The agents you configured
+  (Claude Code, Codex) are the CLI's business; a key the CLI needs is read from a hidden prompt.
 - **Off in Restricted Mode.** In a folder you have not trusted it does nothing: it would run commands, and the
   plan's checks, there.
 - **Your settings only.** `graphene.path` comes from your user settings, never from a folder's
