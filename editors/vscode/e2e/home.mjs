@@ -1,5 +1,5 @@
 // Home, clicked through in real VS Code against the scripted stand-in ($0): a folder with no plan is set up with one
-// click, an ask is planned, Start runs the agents, and each finished task is reviewed: Approve before its changes
+// click (then pointed at the stand-in from the shell), an ask is planned, Start runs the agents, and each finished task is reviewed: Approve before its changes
 // were opened asks first, Open Changes shows them, Approve lands it, Send back… returns another with a note. It
 // fails when a step does not show what it should, and keeps a screenshot of each step (E2E_SHOTS, else the scratch).
 // Last, the Exact switch: on, it sets board on, review every and auto off, and Start waits while a question is open.
@@ -64,12 +64,16 @@ try {
   say("a folder with no plan opens on Set Up");
   await shot("setup");
 
-  await home.locator("button.pick", { hasText: "Nemotron" }).click();
+  await home.locator("button.pick", { hasText: "Claude Code" }).click();
   await until(home, () => !document.querySelector("section.work").hidden && Boolean(document.querySelector("textarea"))
     && document.querySelector(".said")?.textContent.includes("waits for your approval"), null, "Set Up done, review on"); // init, then config set
   const set = state(dir);
   if (set.envelope.review !== "every") throw new Error(`Set Up left review ${set.envelope.review}, not every`);
-  say("one click set it up: Nemotron plans and works, and review is every");
+  if (set.planner !== "claude" || set.executor !== "claude") throw new Error(`Set Up chose ${set.planner} and ${set.executor}, not claude`);
+  say("one click set it up: Claude Code plans and works, and review is every");
+  // the walk runs on the scripted stand-in, which answers as the frozen nemotron executor: the CLI still takes it
+  execFileSync(graphene, ["init", "--planner", "nemotron", "--executor", "nemotron"], { cwd: dir, env: L.cleanEnv(L.safeEnv(standin.url)), stdio: "pipe" });
+  if (state(dir).envelope.review !== "every") throw new Error("pointing the folder at the stand-in lost review: every");
   await shot("ask");
 
   home = await homeFrame(page);
