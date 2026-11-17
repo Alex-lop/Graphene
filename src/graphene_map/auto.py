@@ -521,13 +521,27 @@ def drive(open_store: Callable, root: Path, goal: str | None, say: Callable[[str
                     verdict = f"did not run: {', '.join(n.id for n in back)} came back"
                 else:  # nothing under the root, proposals you never accepted, or tasks that could not start
                     pending = [n.id for n in leaves if n.state == P.PROPOSED]
-                    idle = [n.id for n in leaves if n.state == P.OPEN]
+                    idle = [n for n in leaves if n.state == P.OPEN]
+                    # a command step is no agent's to start: one past the line waits for the person's
+                    # approval, and one whose command ran and failed did start
+                    by_id = {n.id: n for n in everything}
+                    gated = [n.id for n in idle if P.runs_itself(n) is False and not P.unmet(n, by_id)]
+                    ran = [r["node_id"] for r in store.node_log(None, ("check_failed",))
+                           if r["timestamp"] >= began]  # fmt: skip
+                    broke = [n.id for n in idle
+                             if n.id in ran and n.id not in gated and P.runs_itself(n) is not None]
+                    rest = ", ".join(n.id for n in idle if n.id not in gated + broke)
+                    stuck = [f"{i} waits for your approval: `graphene node done {i}`, then `graphene auto` "
+                             "goes on" for i in gated]  # fmt: skip
+                    stuck += [f"{i}'s command failed" for i in broke]
+                    if rest or not stuck:
+                        stuck.append(f"{rest} did not start: `graphene plan` says what each waits on")
                     why = (
                         f"the planner's proposal put no task under {root_id}: `graphene plan` shows it"
                         if not leaves
                         else f"{', '.join(pending)} still wait for your accept (`graphene plan accept`)"
                         if pending
-                        else f"{', '.join(idle)} did not start: `graphene plan` says what each waits on"
+                        else "; ".join(stuck)
                     )
                     log(store, k, "waits", paid, budget, red, why, root=root_id, goal=goal)
                     say(f"{WAITS}{why}")
