@@ -408,6 +408,46 @@ def allows(store) -> list[str] | None:
     return said or None
 
 
+def hooked(root: Path) -> bool:
+    """Whether this repository has Graphene's gate among Claude Code's hooks: our command on PreToolUse, in
+    the settings file `graphene init` put it in (`hooks.hooks_file`). That hook is what refuses a write
+    before it happens; our command on another event alone refuses nothing. False when the file is not there
+    or does not read."""
+    from . import hooks as H
+
+    try:
+        groups = json.loads(H.hooks_file(root).read_text(encoding="utf-8"))["hooks"]["PreToolUse"]
+        return any(H._is_ours(h) for g in groups if isinstance(g, dict) for h in H._handlers(g))
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
+
+
+def held(node: P.Node | None, chosen: str, hooks: bool, log: list[dict] | tuple = ()) -> dict:
+    """How a write outside the task's files is held, by what is proven and nothing more (tests/
+    test_every_agent.py, dev/process/graph-edit/hooks.md). "refused", before the write: its executor is
+    Claude Code and this repository has the gate among its hooks (``hooked``). "caught", when it finishes:
+    anyone else holding it (Codex, the Nemotron executor, a command of the person's own), and Claude Code
+    without the hooks; the finish checks what changed against the scope whoever did the work. "none": a task
+    that is the person's to do, where nothing stops whatever writes it (the person, or an editor's own agent)
+    and nothing checks it until it is marked done; and a task held by something no run started and no proven
+    session is (an editor's own agent, a person who took an agent's task): nobody has tested those. Codex is
+    never "refused": whether its hooks are trusted is not in the store. Nor is a step whose forks are not all
+    Claude Code (``log``'s last `forked` row says who runs each): the weakest fork is what holds.
+    ``by`` is who holds it while it runs (`run:claude` and a session's `claude:5e55105e`
+    are both claude), else the executor chosen for the repository (``chosen``, the snapshot's `executor`),
+    or "you"."""
+    if node is not None and node.owner != P.AGENT:
+        return {"state": "none", "by": "you"}
+    holds = (node.executor or "") if node is not None and node.state == P.RUNNING else ""
+    by = holds.removeprefix("run:").partition(":")[0] or chosen
+    if holds and not holds.startswith(("run:", "claude:", "codex:")):
+        return {"state": "none", "by": by}
+    forks = next((r["detail"].get("with") or {} for r in reversed(log) if r["kind"] == "forked"), {})
+    mixed = bool(holds and node.forked) and any(str(w).partition(":")[0] != "claude" for w in forks.values())
+    claude = by.partition(":")[0] == "claude" and not mixed
+    return {"state": "refused" if claude and hooks else "caught", "by": by}
+
+
 def news(store, m) -> list[str]:
     """The last few things that happened, each a line as the replay's narrator says it (`replay.news`, a
     row at a time): bookkeeping rows say nothing, so the lines are what a person would be told."""
