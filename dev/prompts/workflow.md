@@ -41,11 +41,27 @@ Checks
   Alex can merge it in the morning. If anything is red, leave it a draft and say why in the
   first line of its description.
 
-Help
-- At most two subagents at a time, on Sonnet or Haiku, never Fable. Give each a file list,
-  absolute paths and git -C, and remove origin from their clones.
-- One review at the end, of the whole branch, capped at ten findings. Verify each finding
-  yourself before fixing it.
+Help: ultracode is on, and Alex has usage to spend. Spend it where it buys correctness.
+- Use workflows and subagents, Fable included, for work that is truly independent:
+  - lanes inside a leaf whose files do not overlap, such as the engine half and the extension
+    half of live-plan, scope-pane and workflows;
+  - a read-only scout that maps the next leaf's code while you build the current one;
+  - after each leaf and before its push, two readers: one on the code, and one comparing the
+    leaf's screenshots with dev/ui/canvas.html.
+- Leaves stay in order. Two agents never write the same file at the same time.
+- Every finding gets two skeptics, each told to disprove it from the code. Fix only what
+  survives both, or what you confirm yourself. Put more skeptics on a finding that matters,
+  and none on a typo.
+- At the end, review the whole branch at its seams, where the leaves meet: one reader per
+  seam, two skeptics per finding, and a fixer on a branch of its own. At most 25 findings.
+- Keep the night under about 60 agents. A weekly limit stops the run dead, so push after
+  every leaf.
+- Agents' clones have no origin: only you push, open or edit the PR. Give each agent a file
+  list, absolute paths and git -C. Their work lands through you, squashed, as Alex, with no
+  trailers. A Fable lane may sign its commits as itself, so rewrite them.
+- An agent that follows the README as a stranger would runs uv tool install. Set UV_TOOL_DIR
+  and UV_CACHE_DIR to a scratch directory first, or it lands on Alex's PATH.
+- If an agent goes quiet for twenty minutes, read its transcript and take its work over.
 
 Money
 - No Nebius or Token Factory spend. The scripted stand-in drives every walk.
@@ -63,4 +79,5 @@ Debrief: the PR description, written for Alex to read in five minutes
 4. Files touched outside a leaf's list, and why.
 5. At most five decisions you made that Alex may want to flip, each with your default.
 6. Which row of VISION.md's convergence table moved, and what the next run should take.
+7. How many agents ran, and what the reviews found and fixed.
 ```
