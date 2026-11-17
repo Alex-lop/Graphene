@@ -238,3 +238,50 @@ def last(store) -> dict | None:
     except ValueError:
         return None
     return said if isinstance(said, dict) else None
+
+
+def save(store, root: Path, name: str, literals: dict[str, str], force: bool = False) -> Path:
+    """Write `workflows/NAME.md` from the plan as it stands: the header, then every node that is not
+    dropped or archived as ``plan_text.render`` writes it, without the `#` notes, each step a `-` line
+    whatever its state, and without the board (a question asked of one run is not asked of the next).
+    Every occurrence of a literal is the hole `{{name}}`, declared as `input: name`. Refused when the
+    file is there and ``force`` is not given, when the plan has no step, when a literal is not in the
+    text (its hole would stand for nothing), and when the file written would not read back as a workflow."""
+    path = root / DIR / f"{name}.md"
+    if not NAME.fullmatch(name):
+        raise P.Refused(
+            f"{name!r} is not a workflow's name: a letter, then letters, digits, '-' and '_' (it names the "
+            f"file, {DIR}/NAME.md)"
+        )
+    if path.exists() and not force:
+        raise P.Refused(
+            f"{DIR}/{name}.md is there already, and it was left as it is: --force writes over it, or save "
+            "this one under another name"
+        )
+    kept = [_STEP.sub(r"\1-", line) for line in B.split(T.render(store)[0])[0].splitlines()]
+    body = "\n".join(line for line in kept if not line.lstrip().startswith("#"))
+    body = re.sub(r"\n{3,}", "\n\n", body).strip("\n")
+    if not any(_STEP.match(line) for line in body.splitlines()):
+        raise P.Refused("the plan has no step to save: `graphene ask` or `graphene plan edit` makes one")
+    by_literal: dict[str, str] = {}
+    for key, literal in literals.items():
+        literal = _one_line(f"-i {key}", literal)
+        if not NAME.fullmatch(key):
+            raise P.Refused(f"-i {key}: an input's name is a letter, then letters, digits, '-' and '_'")
+        if not literal or literal not in body:
+            raise P.Refused(
+                f"-i {key}={literal}: the plan's text has no {literal!r} in it, so {{{{{key}}}}} would stand "
+                "for nothing. `graphene plan --text` prints the text: give a literal that is in it"
+            )
+        if literal in by_literal:
+            raise P.Refused(f"-i {key} and -i {by_literal[literal]} name one literal: a literal is one input")
+        by_literal[literal] = key
+    if by_literal:  # in one pass, the longest first: a literal inside another, or inside a hole, stays
+        found = re.compile("|".join(re.escape(v) for v in sorted(by_literal, key=len, reverse=True)))
+        body = found.sub(lambda hit: "{{" + by_literal[hit[0]] + "}}", body)
+    head = [f"workflow: {name}", *(f"input: {key}" for key in literals)]
+    text = "\n".join(head) + "\n\n" + body + "\n"
+    parse(text, name)  # what is written reads back, or nothing is written
+    path.parent.mkdir(exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+    return path
