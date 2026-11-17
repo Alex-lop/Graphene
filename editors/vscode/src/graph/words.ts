@@ -93,6 +93,12 @@ export function pipeline(s: Pick<StateX, "drafting" | "tasks" | "goals" | "quest
   ];
 }
 
+/** Before Run each step's check runs once on the code as it is. One that passes there proves nothing yet: said
+ *  on the card of a task whose work is not finished (the snapshot's `hollow`). */
+export const PROVES_NOTHING = "This check already passes, before any work: it proves nothing yet. Give the task a check that fails now.";
+/** Whether a task's card carries that mark: its check passed before the work, and the work is not done. */
+export const provesNothing = (t: Pick<TaskX, "hollow" | "state">): boolean => t.hollow && t.state !== "done" && t.state !== "review";
+
 /** The one switch: on (the default), the run waits for you after the plan; off is auto, and the plan is still
  *  drawn first. It is the envelope's `auto` setting, read the other way round. */
 export const stopAfterPlan = (s: { envelope: { auto: string } }): boolean => s.envelope.auto !== "on";
@@ -182,6 +188,7 @@ export function sub(t: TaskX, max = 25): string {
   else parts.push(SAY[t.state]);
   if (t.state === "came back" && t.why) return cut(fitWords([`${SAY["came back"]} · ${screenWords(t.why)}`, tries(t.attempts), usd(t.usd)], max), max); // the reason, cut, not dropped
   if (t.state === "came back" && t.outside.length) parts.push(`${t.outside.length} outside`);
+  if (provesNothing(t)) parts.push("check already passes"); // it proves nothing yet: said before the cost and the tries
   parts.push(tries(t.attempts), usd(t.usd), t.state === "running" ? quiet(t.idle) : "");
   return fitWords(parts, max);
 }

@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import * as C from "../src/commands.ts";
 import { actsFor, attemptsOf, badge, CHANGES, cornerWord, counts, draftedSteps, edgeKind, editable, fan, filesChip, fitWidth, fitWords, forkActs, forkWords, HEADER_ACTS, headerFor,
-         linkHint, paneKey, pipeline, planningLine, replayLine, stopAfterPlan, sub, tabOrder, zoomK, topLine, whenEdit, who, worktrees, type StateX, type TaskX } from "../src/graph/words.ts";
+         linkHint, paneKey, pipeline, planningLine, provesNothing, replayLine, stopAfterPlan, sub, tabOrder, zoomK, topLine, whenEdit, who, worktrees, type StateX, type TaskX } from "../src/graph/words.ts";
 import { SAY, WORDS } from "../src/state.ts";
 import { ICONS } from "../src/graph/icons.ts";
 import { layout } from "../src/layout.ts";
@@ -225,6 +225,15 @@ test("while a planner writes, its finished steps are drawn: tasks only, and none
   // a planner whose stream has no text: the boxes come with the plan, and the graph says so
   assert.equal(planningLine({ ...writing, drafting: { by: "codex", live: false, steps: [] } }), "The planner (codex) is writing: its steps appear when the plan arrives");
   assert.equal(planningLine(state), "", "no planner is writing");
+});
+
+test("a card whose check already passes says so under it until the work is done: it proves nothing yet", () => {
+  const ship = { ...task("ship"), hollow: true }; // waiting
+  assert.equal(sub(ship, 60), "waiting · check already passes");
+  assert.equal(provesNothing(ship), true);
+  assert.equal(provesNothing({ ...ship, state: "running" }), true);
+  assert.equal(provesNothing({ ...ship, state: "done" }), false, "done or in review, the pane and Home say what it proved");
+  assert.equal(provesNothing(task("ship")), false);
 });
 
 test("one pipeline, the plan first: Plan, Run, Review, and where the work is in it", () => {
