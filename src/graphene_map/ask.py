@@ -12,9 +12,13 @@ asks it about a leaf that came back.
 
 from __future__ import annotations
 
+import contextlib
+import functools
+import json
 import os
 import re
 import shlex
+import sqlite3
 import subprocess
 import tempfile
 import uuid
@@ -26,17 +30,29 @@ from . import extra
 from . import meter as M
 from . import plan as P
 from . import plan_text as T
-from .run import _end, _no_interrupt, _settle, _splits, command_for, held, unchosen
+from .run import _end, _no_interrupt, _settle, _splits, _started, command_for, held, unchosen
 from .run import label as run_label
 from .views import money
 
 # Read-only: Claude Code's built-in tools cut to the three that read (`--tools`), and none of the MCP
 # servers the person has connected (`--strict-mcp-config` with no config: some of them send mail and
 # write documents), so its only way to say anything is what it prints. Its stream (`stream-json`, which
-# needs `--verbose`) says what it cost, as an executor's does. Codex: `codex exec --sandbox read-only`.
-DEFAULT_PLANNER = "claude -p --tools Read,Grep,Glob --strict-mcp-config --output-format stream-json --verbose"
+# needs `--verbose`) says what it cost, as an executor's does, and with `--include-partial-messages` it
+# carries the answer's text as it is written, so each step is drafted as its line ends (``DRAFTING``).
+# Codex: `codex exec --sandbox read-only`.
+DEFAULT_PLANNER = (
+    "claude -p --tools Read,Grep,Glob --strict-mcp-config --output-format stream-json --verbose"
+    " --include-partial-messages"
+)
 ATTEMPTS = 2
 SHOWN = 40  # tool calls said as they happen, a try; past them a count, so a long planner does not scroll
+# The plan_meta key an ask keeps while its planner writes, for `graphene state --json` (`state.drafting`):
+# {"by", "live", "steps", "pid", "start"}, the last two this process's own, so a reader knows an ask that
+# was killed. It is cleared in the commit that makes the proposals, and however else the ask ends.
+# ponytail: one record a repository. Two asks at once write over each other's draft: the one that wrote
+# last is the one shown, and each clears only a record that is its own when it ends. Key it by the ask's
+# session if asks ever run side by side.
+DRAFTING = "drafting"
 
 
 def named(spec: str | None) -> str:
@@ -56,7 +72,6 @@ def label(template: str) -> str:
 
 
 _FENCE = re.compile(r"^```[ \t]*(\w*)[ \t]*\n(.*?)^```[ \t]*$", re.MULTILINE | re.DOTALL)
-_START = re.compile(r"^(?:goal:|question:|assume:|risk:|leave out:|note:|[-*+?][ \t])", re.MULTILINE)
 
 RULES = """\
 Print the proposal between a line ```plan and a line ```, in this form:
@@ -266,12 +281,74 @@ def proposal_in(said: str) -> str:
     blocks = _FENCE.findall(said)
     marked = [body for label, body in blocks if label.lower() == "plan"]
     plain = [
-        body for label, body in blocks if label.lower() in ("", "text", "graphene") and _START.search(body)
+        body for label, body in blocks if label.lower() in ("", "text", "graphene") and T._START.search(body)
     ]
     if marked or plain:  # the block it was asked for, else the last one that reads as the plan
         return (marked or plain)[-1]
-    start = _START.search(said)
+    start = T._START.search(said)
     return said[start.start() :] if start else ""
+
+
+def live(argv0: str, argv: list[str]) -> bool:
+    """Whether the planner's stream carries its answer's text as it writes it, so its steps can be read one
+    by one (``T.drafted``). Claude Code's does with `--include-partial-messages` on a stream-json stream,
+    and not without; Codex and Graphene's own planner print their answer whole; any other command's stdout
+    is its text."""
+    if argv0 == "claude":
+        return M.kind(argv) == "claude" and "--include-partial-messages" in argv
+    return argv0 not in ("codex", "nemotron")
+
+
+def written(line: str) -> str:
+    """What one line of Claude Code's stream adds to the answer's text as it is written (the events
+    `--include-partial-messages` adds): a text delta's text, a line break where an assistant message opens
+    (its first line is no part of the last message's last), and nothing for any other event, nor for a
+    sub-agent's text, which names the tool use it runs under."""
+    if '"stream_event"' not in line:
+        return ""
+    try:
+        said = json.loads(line)
+        event = said["event"]
+        if said.get("type") != "stream_event" or said.get("parent_tool_use_id") is not None:
+            return ""
+        if event["type"] == "message_start":
+            return "\n"
+        delta = event.get("delta") or {}
+        return str(delta.get("text") or "") if delta.get("type") == "text_delta" else ""
+    except (ValueError, KeyError, TypeError, AttributeError):  # not an event: it adds nothing
+        return ""
+
+
+def _draft(store, record: dict) -> None:
+    """Write what the planner has drafted so far (``DRAFTING``). A store busy past its timeout costs a
+    drafted step on a screen, never the ask or what its planner said."""
+    with contextlib.suppress(sqlite3.OperationalError):
+        store.set_meta(DRAFTING, json.dumps(record))
+
+
+def _mine(store) -> bool:
+    """Whether the drafting record in the store is this ask's own (it names this process): one another
+    ask wrote since is that ask's to clear."""
+    try:
+        return json.loads(store.meta(DRAFTING) or "{}").get("pid") == os.getpid()
+    except (ValueError, AttributeError):  # not a record: nobody's to keep
+        return True
+
+
+def _drafting_ends(asking):
+    """However the ask ends (a refusal, a planner that failed, Ctrl-C), nobody is drafting after it. An
+    ask that made its proposals said so in their own commit, and writes nothing here."""
+
+    @functools.wraps(asking)
+    def ended(store, *args, **more):
+        try:
+            return asking(store, *args, **more)
+        finally:
+            with contextlib.suppress(sqlite3.Error):  # never in the way of how the ask itself ended
+                if store.meta(DRAFTING) and _mine(store):
+                    store.set_meta(DRAFTING, None)
+
+    return ended
 
 
 def reask_argv(store, size: str) -> list[str] | None:
@@ -432,6 +509,7 @@ def _what_stands(store, session: str | None) -> list[str] | None:
 
 
 @P.ctrl_c_on_hangup()  # a closed terminal or a `kill` is Ctrl-C: the planner's hold settles, and it stops
+@_drafting_ends
 def ask(
     store,
     root: Path,
@@ -480,6 +558,7 @@ def ask(
     calls, bill = 0, ""  # bill: what the ask cost, after its proposal, when a meter or Nemotron counted it
     tries = 1 if argv0 == "nemotron" else ATTEMPTS  # Graphene's own planner sends a refusal back itself
     paid_for = ""  # the last proposal a try printed: a try that prints none never loses it
+    me = {"by": argv0, "pid": os.getpid(), "start": _started(os.getpid())}  # whose draft it is: this ask's
     for attempt in range(1, tries + 1):
         argv = command_for(template, prompt, session, attempt > 1)
         env = {**os.environ, "GRAPHENE_PLANNER": "1"}
@@ -499,12 +578,20 @@ def ask(
             proc = subprocess.Popen(argv, cwd=root, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                                     stderr=errs, text=True, start_new_session=True)  # fmt: skip
             stream, shown = [], 0  # what it printed, whole; the tool calls said so far
+            # what it has written of its answer, and the steps read from it: each try starts with none
+            draft, wrote, steps = {**me, "live": live(argv0, argv)}, "", []
             try:
+                _draft(store, {**draft, "steps": steps})  # a planner writes, before its first step
                 for line in proc.stdout:  # read as it writes, not once it has ended: each tool call is said
                     stream.append(line)
                     for kind, d in meter.feed(line) if meter else []:
                         if kind == "did" and (shown := shown + 1) <= SHOWN:
                             say(f"  {M.doing(d['verb'], d['target'])}")
+                    more = (written(line) if meter else line) if draft["live"] else ""
+                    wrote += more
+                    if "\n" in more and (now := T.drafted(wrote)) != steps:  # a line ended, and said a step
+                        steps = now
+                        _draft(store, {**draft, "steps": steps})
                 proc.wait()
             except BaseException:
                 with _no_interrupt():
@@ -561,6 +648,8 @@ def ask(
                         raise P.Refused(f"the planner proposed {len(said.ids)} steps, not one")
                     if gone:
                         _carry(store, gone, said, heard.append, files)
+                    if _mine(store):  # in the proposals' commit: never both, never neither
+                        store.set_meta(DRAFTING, None)
             except P.Refused as no:
                 refusal = f"Graphene could not read the proposal: {no}"
             else:

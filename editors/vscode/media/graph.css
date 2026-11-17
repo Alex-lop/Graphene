@@ -1,6 +1,9 @@
-/* The graph's look: VS Code's own colours, so it is native in light, dark and high contrast; a state's colour
-   is a chart colour, as the cockpit's are (running amber, review purple, came back red, proposed cyan, done
-   green). No text under 11 px. */
+/* The graph's look (the target is dev/ui/canvas.html): a dotted canvas flowing left to right, a card a step,
+   curved edges between ports, a region for this machine and one for what leaves it. Every colour is one of VS
+   Code's own, or mixed from two of them, so it is native in light, dark and high contrast. Colour means state:
+   working amber, landed green, needs you purple, drafted blue, came back red (the chart colours, as the
+   cockpit's are). A task's tile is the one other colour: its step's own, as its files wear it in the Explorer;
+   the tile's letter says who does the step. No text under 11 px. */
 :root {
   --running: var(--vscode-charts-yellow, #e9c46a);
   --review: var(--vscode-charts-purple, #c77dff);
@@ -10,7 +13,7 @@
   --ready: var(--vscode-foreground, #d0d0d0);
   --waiting: var(--vscode-descriptionForeground, #888);
   --yours: var(--vscode-charts-purple, #c77dff);
-  --edge: var(--vscode-editorIndentGuide-background, var(--vscode-widget-border, #666));
+  --edge: color-mix(in srgb, var(--bg) 68%, var(--fg));
   --edge-hot: var(--vscode-focusBorder, #4cc9f0);
   --panel: var(--vscode-editorWidget-background, var(--vscode-sideBar-background, #222));
   --border: var(--vscode-widget-border, var(--vscode-panel-border, #444));
@@ -19,6 +22,13 @@
   --fg: var(--vscode-foreground, #ccc);
   --dim: var(--vscode-descriptionForeground, #999);
   --bg: var(--vscode-editor-background, #1e1e1e);
+  /* a card stands off the canvas in any theme: the canvas's colour with a little of the text's mixed in */
+  --card: color-mix(in srgb, var(--bg) 93%, var(--fg));
+  --card-border: color-mix(in srgb, var(--bg) 80%, var(--fg));
+  --tint: color-mix(in srgb, var(--fg) 7%, transparent);
+  --dot: color-mix(in srgb, var(--fg) 13%, transparent);
+  --shadow: var(--vscode-widget-shadow, rgba(0, 0, 0, 0.28));
+  --claude: var(--vscode-charts-orange, #d18616);
   --font: var(--vscode-font-family, system-ui, sans-serif);
   --mono: var(--vscode-editor-font-family, ui-monospace, Menlo, monospace);
   --ease: 0.25s ease;
@@ -29,25 +39,65 @@ body {
   font-family: var(--font); font-size: var(--vscode-font-size, 13px); overflow: hidden;
 }
 header {
-  display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; padding: 8px 12px 6px;
+  display: grid; grid-template-columns: 1fr auto; gap: 3px 12px; padding: 12px 20px 10px;
   border-bottom: 1px solid var(--border); align-items: baseline;
 }
 #replay {
   grid-column: 1 / -1; color: var(--review); font-family: var(--mono); font-size: 0.92em; padding-bottom: 2px;
 }
 #replay[hidden] { display: none; }
-#goal { font-weight: 600; font-size: 1.1em; grid-column: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#goal { font-weight: 600; font-size: 15px; grid-column: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #counts { color: var(--dim); grid-column: 1; }
 #auto {
   grid-column: 1; margin-top: 2px; color: var(--running); font-family: var(--mono); font-size: 0.95em;
 }
 #auto[hidden] { display: none; }
-#actions { grid-column: 2; grid-row: 2 / span 3; display: flex; gap: 6px; align-items: start; flex-wrap: wrap; justify-content: end; }
+#actions { grid-column: 2; grid-row: 2; display: flex; gap: 6px; align-items: center; align-self: center; flex-wrap: wrap; justify-content: end; }
+/* one pipeline, the plan first: Plan, Run, Review; then the one switch, Stop after the plan */
+#pipe { grid-column: 1 / -1; display: flex; align-items: center; gap: 14px; margin-top: 6px; flex-wrap: wrap; }
+#pipe[hidden] { display: none; }
+#pipe #counts { margin-left: auto; }
+#stages { display: flex; align-items: center; }
+.stage { display: flex; align-items: center; gap: 7px; padding: 3px 12px 3px 5px; border-radius: 99px; color: var(--dim); white-space: nowrap; }
+.stage + .stage { margin-left: 26px; position: relative; }
+.stage + .stage::before { content: ""; position: absolute; left: -26px; top: 50%; width: 26px; height: 1.5px; background: var(--card-border); }
+.stage .n { width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center; font-size: 11px; font-weight: 600; border: 1.5px solid var(--waiting); }
+.stage small { color: var(--dim); font-size: 11.5px; }
+.stage.done { color: var(--fg); }
+.stage.done .n { background: var(--done); border-color: var(--done); color: var(--bg); }
+.stage.now { color: var(--fg); background: color-mix(in srgb, var(--running) 13%, transparent); }
+.stage.now .n { border-color: var(--running); color: var(--running); }
+button.switch { background: none; border: none; padding: 2px 0; gap: 8px; color: var(--dim); font-size: 12.5px; }
+button.switch:hover { background: none; color: var(--fg); }
+.switch i { width: 30px; height: 17px; border-radius: 99px; background: var(--card-border); position: relative; flex: none; transition: background 0.2s; }
+.switch i::after { content: ""; position: absolute; top: 2px; left: 2px; width: 13px; height: 13px; border-radius: 50%; background: var(--vscode-button-foreground, #fff); transition: left 0.2s; }
+.switch[aria-checked="true"] i { background: var(--vscode-button-background, #0e639c); }
+.switch[aria-checked="true"] i::after { left: 15px; }
 main { flex: 1; display: flex; min-height: 0; }
-#canvas { flex: 1; position: relative; overflow: hidden; cursor: grab; outline: none; }
+#canvas {
+  flex: 1; position: relative; overflow: hidden; cursor: grab; outline: none; background-color: var(--bg);
+  background-image: radial-gradient(circle at 1px 1px, var(--dot) 1.1px, transparent 1.3px); background-size: 22px 22px;
+}
 #canvas.dragging { cursor: grabbing; }
-#canvas.lanes { cursor: default; overflow: auto; }
+#canvas.lanes { cursor: default; overflow: auto; background-image: none; }
+/* the zoom's buttons and the legend, at the canvas's foot */
+#zoom { position: absolute; left: 16px; bottom: 14px; display: flex; gap: 4px; z-index: 2; }
+#zoom button { width: 28px; height: 28px; padding: 0; justify-content: center; font-size: 14px; }
+#legend { position: absolute; right: 16px; bottom: 16px; display: flex; gap: 14px; font-size: 11.5px; color: var(--dim); pointer-events: none;
+          padding: 3px 9px; border-radius: 6px; background: var(--bg); } /* its own ground: a region or an edge may pass under it */
+#legend div::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; background: var(--running); }
+#legend .lg-done::before { background: var(--done); }
+#legend .lg-review::before { background: var(--review); }
+#legend .lg-proposed::before { background: var(--proposed); }
+#legend .lg-came-back::before { background: var(--came-back); }
+#canvas.lanes #zoom, #canvas.lanes #legend, #canvas.lanes #planning { display: none; }
+/* while a planner writes the plan: how many steps it has drawn so far, beside the zoom's buttons */
+#planning { position: absolute; left: 16px; bottom: 50px; z-index: 2; font-size: 12px; color: var(--proposed); display: flex; gap: 8px; align-items: center; pointer-events: none; }
+#planning[hidden] { display: none; }
+#planning::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--proposed); animation: blink 1s infinite; }
+@keyframes blink { 50% { opacity: 0.25; } }
 #svg { display: block; position: absolute; left: 0; top: 0; }
+#svg.glide { transition: transform var(--ease); } /* the plan grew: it glides to the middle again */
 #notice {
   position: absolute; left: 50%; top: 40%; transform: translate(-50%, -50%); max-width: 70%;
   text-align: center; color: var(--dim); font-size: 1.05em; line-height: 1.5; padding: 12px 16px;
@@ -61,7 +111,10 @@ main { flex: 1; display: flex; min-height: 0; }
 /* beside the canvas the pane's body scrolls on its own: its head and its acts stay in view, however long a
    note is (narrow, under the canvas, the whole pane scrolls instead: see the media query) */
 #details {
-  width: 300px; border-left: 1px solid var(--border); background: var(--panel); overflow: hidden;
+  /* the target's 340 px where there is room; in a narrower tab it gives the canvas the width, so opening a
+     task's pane does not push the graph under the 560 px where it turns to lanes (a 1280 px window with the
+     side bar open) */
+  width: clamp(280px, 26%, 340px); border-left: 1px solid var(--border); background: var(--panel); overflow: hidden;
   display: flex; flex-direction: column;
 }
 #details[hidden] { display: none; }
@@ -84,8 +137,10 @@ footer#hint.asks { color: var(--review); }
   #details .d-body { flex: none; min-height: auto; overflow: visible; }
   footer#hint.linking .hint-text { white-space: normal; } /* the ways out read whole: the line wraps */
   header { padding: 5px 10px 4px; align-items: center; }
+  #zoom, #legend { display: none; } /* the side bar's canvas is small: the keys and the wheel zoom it */
+  #planning { left: 12px; bottom: 8px; } /* no buttons here to sit above */
   #b-more { display: inline-flex; grid-column: 2; }
-  #counts, #auto { display: none; }
+  #counts, #auto, #pipe { display: none; } /* Home, above the side bar's graph, shows the stages and the switch */
   #actions { display: none; grid-column: 1 / -1; grid-row: auto; margin-top: 4px; justify-content: start; }
   header.open #actions { display: flex; }
   #actions button { padding: 3px 7px; }
@@ -95,12 +150,12 @@ footer#hint.asks { color: var(--review); }
 button {
   display: inline-flex; align-items: center; gap: 5px; font: inherit; line-height: 1.3;
   color: var(--vscode-button-foreground, #fff); background: var(--vscode-button-background, #0e639c);
-  border: 1px solid var(--vscode-button-border, transparent); border-radius: 3px; padding: 3px 10px; cursor: pointer;
+  border: 1px solid var(--vscode-button-border, transparent); border-radius: 6px; padding: 4px 11px; cursor: pointer;
 }
 button:hover { background: var(--vscode-button-hoverBackground, #1177bb); }
 button.quiet {
   color: var(--vscode-button-secondaryForeground, var(--fg));
-  background: var(--vscode-button-secondaryBackground, #3a3d41);
+  background: var(--vscode-button-secondaryBackground, #3a3d41); border-color: var(--vscode-button-border, var(--card-border));
 }
 button.quiet:hover { background: var(--vscode-button-secondaryHoverBackground, #45494e); }
 button:focus-visible, [tabindex]:focus-visible { outline: 1px solid var(--focus); outline-offset: 1px; }
@@ -133,6 +188,54 @@ button.unlink:hover { color: var(--vscode-errorForeground, #f48771); }
 .fork-acts { display: flex; gap: 4px; margin-top: 3px; font-weight: 400; }
 .fork-acts button { padding: 1px 6px; font-size: 0.92em; }
 .d-acts { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 12px; border-top: 1px solid var(--border); }
+/* the pane's tabs: Scope (what the step may do), Edit (its form), Activity (what its agents did) */
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin: 2px 0 12px; }
+button.tab {
+  background: none; border: none; border-bottom: 2px solid transparent; border-radius: 0; margin-bottom: -1px; padding: 5px 10px;
+  color: var(--dim); font-size: 12.5px;
+}
+button.tab:hover { background: none; color: var(--fg); }
+button.tab.on { color: var(--fg); border-bottom-color: var(--focus); }
+/* the Scope tab's seven parts, as the target's pane sets them */
+.sc { margin: 0 0 16px; }
+.sc h3 { margin: 0 0 6px; font-size: 11px; letter-spacing: 0.07em; text-transform: uppercase; color: var(--dim); font-weight: 600; display: flex; justify-content: space-between; gap: 8px; }
+.sc h3 em { font-style: normal; text-transform: none; letter-spacing: 0; color: var(--fg); white-space: nowrap; }
+.sc code {
+  font-family: var(--mono); font-size: 12px; background: var(--tint); padding: 1px 5px; border-radius: 4px; margin: 0 4px 3px 0;
+  display: inline-block; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom;
+}
+.sc small { display: block; color: var(--dim); margin-top: 2px; font-size: 11.5px; }
+.tree { font-family: var(--mono); font-size: 12px; line-height: 1.75; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; }
+.tr { display: flex; justify-content: space-between; gap: 10px; white-space: nowrap; }
+.tr-name { overflow: hidden; text-overflow: ellipsis; }
+.tr.in1 .tr-name { padding-left: 14px; }
+.tr.in { color: var(--fg); }
+.tr.out, .tr.other { color: var(--dim); opacity: 0.8; }
+.tr-note { font-family: var(--font); font-size: 11.5px; color: var(--dim); flex: none; }
+.tr-note.wr { color: var(--running); }
+details.glob { margin-top: 6px; color: var(--dim); font-size: 11.5px; }
+details.glob summary { cursor: pointer; width: fit-content; }
+details.glob code { display: inline-block; margin-top: 4px; }
+.kv { display: grid; grid-template-columns: 74px minmax(0, 1fr); gap: 6px 10px; font-size: 12.5px; }
+.kv-k { color: var(--dim); }
+.kv-v { min-width: 0; overflow-wrap: anywhere; }
+.kv-v > code { white-space: normal; } /* a command you are asked to approve is read whole, not cut */
+.kv-note { color: var(--dim); font-size: 11.5px; margin-top: 4px; }
+.held { display: flex; gap: 10px; align-items: flex-start; border-radius: 8px; padding: 9px 10px; font-size: 12.5px;
+  background: color-mix(in srgb, var(--done) 8%, transparent); border: 1px solid color-mix(in srgb, var(--done) 30%, transparent); }
+.held .shield { color: var(--done); font-size: 16px; line-height: 1; }
+.held.none { background: none; border: 1px dashed var(--border); }
+.held.none .shield { color: var(--dim); }
+.stop { font-size: 12.5px; border-left: 2px solid var(--came-back); padding: 2px 0 2px 9px; margin-bottom: 6px; }
+.checkrow { display: flex; align-items: center; gap: 8px; font-size: 12.5px; margin-top: 6px; }
+.checkrow.warn { color: var(--running); }
+.dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--waiting); }
+.dot.red { background: var(--came-back); }
+.dot.warn { background: var(--running); }
+.dot.ok { background: var(--done); }
+.bar { height: 6px; border-radius: 3px; background: var(--bg); overflow: hidden; margin-top: 6px; display: flex; }
+.bar .read { background: var(--proposed); }
+.bar .wrote { background: var(--running); }
 /* the pane's form: a task's own fields, typed in place */
 .row label.k { align-self: center; }
 input.f, input.name {
@@ -159,32 +262,87 @@ button:disabled { opacity: 0.45; cursor: default; }
 .edge { transition: d var(--ease); }
 @keyframes appear { from { opacity: 0; } to { opacity: 1; } }
 .task.fresh, .lane.fresh { animation: appear 0.3s ease; }
-.band { fill: var(--vscode-editor-inactiveSelectionBackground, rgba(128, 128, 128, 0.08)); stroke: none; }
+/* the regions the flow crosses: this machine, and what leaves it */
+.region { fill: color-mix(in srgb, var(--fg) 1.5%, transparent); stroke: color-mix(in srgb, var(--fg) 10%, transparent); stroke-dasharray: 5 4; }
+.region.away { fill: color-mix(in srgb, var(--review) 4%, transparent); stroke: color-mix(in srgb, var(--review) 45%, transparent); stroke-width: 1.5; }
+.region-label { fill: var(--dim); font-size: 11.5px; font-family: var(--font); letter-spacing: 0.02em; }
+.region-label.away { fill: var(--review); }
+.band { fill: color-mix(in srgb, var(--fg) 3%, transparent); stroke: none; }
 .band-label { fill: var(--dim); font-size: 11px; font-family: var(--font); }
-.edge { fill: none; stroke: var(--edge); stroke-width: 1.5; marker-end: none; }
+/* an edge carries the work: dotted while it waits, moving where an agent is working, green where it landed */
+.edge { fill: none; stroke: var(--edge); stroke-width: 2; marker-end: none; }
+.edge.wait { stroke-dasharray: 2 6; stroke-linecap: round; }
+.edge.done { stroke: color-mix(in srgb, var(--done) 55%, transparent); }
+.edge.run { stroke: var(--running); stroke-dasharray: 6 7; animation: flow 0.9s linear infinite; }
+@keyframes flow { to { stroke-dashoffset: -13; } }
 .edge.hot { stroke: var(--edge-hot); stroke-width: 2.5; }
 .fan { fill: none; stroke: var(--edge); stroke-width: 1.2; }
+/* a card: the box takes every click, so what is drawn on it lets the pointer through */
 .task { cursor: pointer; outline: none; }
-.box { fill: var(--panel); stroke: var(--border); stroke-width: 1.2; }
-.task:hover .box { stroke: var(--fg); }
-.task.selected .box { stroke: var(--edge-hot); stroke-width: 2.5; }
-.task:focus-visible .box { stroke: var(--focus); stroke-width: 2; stroke-dasharray: 3 2; }
-.port { fill: var(--panel); stroke: var(--edge); stroke-width: 1.5; opacity: 0.45; cursor: crosshair; }
-.task:hover .port, .task.selected .port, .task:focus-visible .port, #canvas.wiring .port { opacity: 1; }
-.port:hover { fill: var(--edge-hot); stroke: var(--edge-hot); }
+.task text, .tile, .pill, .badge, .halo, .ring, .goal text, .gate { pointer-events: none; }
+.box, .goal-box { fill: var(--card); stroke: var(--card-border); stroke-width: 1; filter: drop-shadow(0 5px 7px var(--shadow)); }
+.task:hover .box { stroke: color-mix(in srgb, var(--bg) 55%, var(--fg)); }
+.ring { fill: none; stroke: var(--edge-hot); stroke-width: 2; }
+.task:focus-visible .box, .goal:focus-visible .goal-box { stroke: var(--focus); stroke-width: 2; stroke-dasharray: 3 2; }
+.task:focus-visible, .goal:focus-visible { outline: none; } /* the dashed card says the focus: no square frame round its attempts too */
+.tile rect { fill: var(--tint); }
+.tile text { fill: var(--fg); font-size: 14px; font-weight: 700; font-family: var(--font); }
+/* a step's own colour, the same as its files wear in the Explorer: who does it is the tile's letter */
+.tile.step rect { fill: color-mix(in srgb, var(--step, var(--fg)) 18%, transparent); }
+.tile.step text { fill: var(--step, var(--fg)); }
+.tile.claude:not(.step) rect { fill: color-mix(in srgb, var(--claude) 18%, transparent); }
+.tile.claude:not(.step) text { fill: var(--claude); }
+.tile.codex:not(.step) rect, .tile.draft rect { fill: color-mix(in srgb, var(--proposed) 15%, transparent); }
+.tile.codex:not(.step) text, .tile.draft text { fill: var(--proposed); }
+.tile.you:not(.step) rect { fill: color-mix(in srgb, var(--review) 16%, transparent); }
+.tile.you:not(.step) text { fill: var(--review); }
+.tile.goal rect { fill: color-mix(in srgb, var(--done) 15%, transparent); }
+.tile.goal text { fill: var(--done); font-size: 16px; font-weight: 400; }
+.tile.cmd text { font-family: var(--mono); font-size: 12px; font-weight: 600; }
+.pill rect { fill: var(--tint); }
+.pill-text, .pill-mark { fill: var(--dim); font-size: 11px; font-family: var(--mono); }
+.pill-mark { opacity: 0.75; }
+.pill.check .pill-mark { fill: var(--done); opacity: 1; }
+.pill.run .pill-mark { opacity: 1; }
+/* the approval on the line: where the run crosses to leave this machine */
+.gate rect { fill: var(--panel); stroke: color-mix(in srgb, var(--review) 55%, transparent); stroke-width: 1.5; }
+.gate text { fill: var(--dim); font-size: 11.5px; font-family: var(--font); }
+.gate.now rect { stroke: var(--review); }
+.gate.now text { fill: var(--review); font-weight: 600; }
+.pill.check.hollow .pill-mark, .pill.check.hollow .pill-text { fill: var(--running); font-weight: 600; } /* the check already passes: it proves nothing yet */
+/* the ports, where a card's lines join; the out port is the dot a link is dragged from */
+.port { fill: var(--bg); stroke: var(--edge); stroke-width: 2; }
+.port[data-port] { cursor: crosshair; }
+.port[data-port]:hover, #canvas.wiring .port[data-port] { fill: var(--edge-hot); stroke: var(--edge-hot); }
 .wire { fill: none; stroke: var(--edge-hot); stroke-width: 2; stroke-dasharray: 5 4; pointer-events: none; }
 #canvas.wiring, #canvas.wiring .task { cursor: crosshair; }
-#canvas.wiring .task:hover .box { stroke: var(--edge-hot); stroke-width: 2.5; }
-/* a task being drawn: dashed until graphene takes it; the + on a box's corner draws one after it */
-.draft .box { stroke-dasharray: 5 4; stroke: var(--proposed); }
-.draft > .stripe { fill: none; }
+#canvas.wiring .task:not(.drafted):hover .box { stroke: var(--edge-hot); stroke-width: 2.5; }
+/* the mark on a card's corner: landed, working (a turning ring), needs you, came back */
+.badge circle { fill: var(--done); stroke: var(--bg); stroke-width: 2; }
+.badge text { fill: var(--bg); font-size: 11px; font-weight: 700; font-family: var(--font); }
+.badge.you circle { fill: var(--review); }
+.badge.back circle { fill: var(--came-back); }
+.badge.running circle { fill: var(--bg); stroke: color-mix(in srgb, var(--running) 35%, transparent); }
+.badge .spin { fill: none; stroke: var(--running); stroke-width: 2; stroke-linecap: round; animation: spin 0.9s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.halo { fill: none; stroke: color-mix(in srgb, var(--running) 13%, transparent); stroke-width: 4; animation: glow 1.8s ease-in-out infinite; }
+@keyframes glow { 0%, 100% { opacity: 0; } 50% { opacity: 1; } }
+/* a task being drawn, or suggested: dashed and flat until it is in the plan; the + past a card's out port draws one after it */
+.draft .box, .drafted .box, .st-proposed > .box { stroke-dasharray: 5 4; stroke: color-mix(in srgb, var(--proposed) 70%, transparent); fill: color-mix(in srgb, var(--card) 55%, transparent); filter: none; }
+.draft .sub, .drafted .sub, .st-proposed .sub { fill: var(--proposed); }
+.task.drafted { cursor: default; }
+.wave.planning { color: var(--proposed); text-transform: none; letter-spacing: 0; font-size: 12px; }
+.wave.planning::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 8px; background: var(--proposed); animation: blink 1s infinite; }
+.lane.drafted { border-style: dashed; border-color: var(--proposed); cursor: default; }
+.lane.drafted .l-stripe { background: none; }
 .edge.draft { stroke-dasharray: 5 4; }
 .sub.bad, .l-sub.bad { fill: var(--came-back); color: var(--came-back); }
 .d-title.st-draft { border-color: var(--proposed); border-left-style: dashed; }
 .lane.draft { border-style: dashed; border-color: var(--proposed); }
 .lane.draft .l-stripe { background: none; }
 .plus { opacity: 0; cursor: pointer; }
-.plus circle { fill: var(--panel); stroke: var(--edge); stroke-width: 1.5; }
+.plus .reach { fill: transparent; }
+.plus circle { fill: var(--card); stroke: var(--edge); stroke-width: 1.5; }
 .plus path { stroke: var(--fg); stroke-width: 1.5; fill: none; }
 .task:hover .plus, .task.selected .plus, .task:focus-visible .plus { opacity: 1; }
 .plus:hover circle { fill: var(--edge-hot); stroke: var(--edge-hot); }
@@ -192,28 +350,18 @@ button:disabled { opacity: 0.45; cursor: default; }
 .fork.planned .chip-text { fill: var(--dim); }
 .l-chip.planned { border-style: dashed; color: var(--dim); }
 #notice button { display: flex; margin: 10px auto 0; }
-.title { fill: var(--fg); font-size: 13px; font-weight: 600; font-family: var(--font); }
-.sub { fill: var(--dim); font-size: 11px; font-family: var(--mono); }
-.mark { font-size: 11px; }
+.title, .goal-title { fill: var(--fg); font-size: 13px; font-weight: 600; font-family: var(--font); }
+.sub { fill: var(--dim); font-size: 11.5px; font-family: var(--font); }
 .model { fill: var(--running); font-size: 11px; font-family: var(--mono); font-weight: 600; }
 .chip { fill: var(--bg); stroke: var(--border); }
 .chip-text { fill: var(--fg); font-size: 11px; font-family: var(--mono); }
 .fork.kept .chip { stroke-width: 2; }
-.goal-box { fill: var(--panel); stroke: var(--fg); stroke-width: 1.5; }
-.goal-box.inner { fill: none; stroke-width: 1; }
-.goal-title { fill: var(--fg); font-size: 14px; font-weight: 700; font-family: var(--font); }
 
-/* a state's colour: the stripe on its box, the mark, a fork chip's border, the details' title */
-.st-running > .stripe { fill: var(--running); }
-.st-review > .stripe { fill: var(--review); }
-.st-came-back > .stripe { fill: var(--came-back); }
-.st-proposed > .stripe { fill: var(--proposed); }
-.st-done > .stripe { fill: var(--done); }
-.st-ready > .stripe { fill: var(--ready); }
-.st-waiting > .stripe { fill: var(--waiting); }
-.st-yours > .stripe { fill: var(--yours); }
+/* a state's colour: its card's border, its mark, its status line, a fork chip's border, the details' title */
+.st-running > .box { stroke: color-mix(in srgb, var(--running) 70%, transparent); }
 .st-came-back > .box { stroke: var(--came-back); }
 .st-came-back .sub { fill: var(--came-back); }
+.task.st-waiting { opacity: 0.78; } /* the card alone: not its row in the lanes, an attempt's chip or the pane's title */
 .fork .chip { fill: var(--bg); stroke: var(--border); }
 .fork.st-running .chip { stroke: var(--running); }
 .fork.st-passed .chip { stroke: var(--done); }
@@ -221,9 +369,6 @@ button:disabled { opacity: 0.45; cursor: default; }
 .fork.kept .chip-text { font-weight: 600; }
 .fork.st-gave-up .chip, .fork.st-failed .chip, .fork.st-ended .chip { stroke: var(--came-back); }
 .fork.st-gave-up .chip-text, .fork.st-ended .chip-text { fill: var(--dim); }
-.st-running .mark, .st-review .mark, .st-yours .mark { fill: var(--review); }
-.st-came-back .mark { fill: var(--came-back); }
-.st-proposed .mark { fill: var(--proposed); }
 .d-title.st-running { border-color: var(--running); }
 .d-title.st-review, .d-title.st-yours { border-color: var(--review); }
 .d-title.st-came-back { border-color: var(--came-back); }
@@ -232,8 +377,6 @@ button:disabled { opacity: 0.45; cursor: default; }
 .fork-row.st-running { border-color: var(--running); }
 .fork-row.st-passed, .fork-row.kept { border-color: var(--done); }
 .fork-row.st-gave-up, .fork-row.st-failed, .fork-row.st-ended { border-color: var(--came-back); }
-.st-done .title { fill: var(--dim); font-weight: 500; }
-.st-waiting .title { fill: var(--dim); }
 
 /* the lanes: the narrow view, one row a task, wave by wave; HTML, so every word wraps and nothing shrinks */
 #lanes { padding: 6px 8px 12px; }
@@ -292,17 +435,28 @@ body.vscode-high-contrast, body.vscode-high-contrast-light {
   --border: var(--vscode-contrastBorder, #6fc3df); --edge: var(--vscode-contrastBorder, #6fc3df);
   --hover: transparent; --focus: var(--vscode-contrastActiveBorder, var(--vscode-focusBorder, #f38518));
 }
+body.vscode-high-contrast, body.vscode-high-contrast-light { --card: var(--bg); --card-border: var(--border); --tint: transparent; --dot: color-mix(in srgb, var(--fg) 20%, transparent); }
 body.vscode-high-contrast .band, body.vscode-high-contrast-light .band { fill: none; stroke: var(--border); stroke-dasharray: 4 3; }
+body.vscode-high-contrast .region, body.vscode-high-contrast-light .region { fill: none; stroke: var(--border); }
+body.vscode-high-contrast .region.away, body.vscode-high-contrast-light .region.away { stroke: var(--review); }
 body.vscode-high-contrast .box, body.vscode-high-contrast .chip, body.vscode-high-contrast .goal-box,
-body.vscode-high-contrast-light .box, body.vscode-high-contrast-light .chip, body.vscode-high-contrast-light .goal-box { stroke-width: 1.5; }
-body.vscode-high-contrast .task.selected .box, body.vscode-high-contrast .lane.selected,
-body.vscode-high-contrast-light .task.selected .box, body.vscode-high-contrast-light .lane.selected { stroke: var(--focus); border-color: var(--focus); box-shadow: none; }
+body.vscode-high-contrast-light .box, body.vscode-high-contrast-light .chip, body.vscode-high-contrast-light .goal-box { stroke-width: 1.5; filter: none; }
+body.vscode-high-contrast .held, body.vscode-high-contrast-light .held { background: none; border-color: var(--border); }
+body.vscode-high-contrast .tile rect, body.vscode-high-contrast .pill rect,
+body.vscode-high-contrast-light .tile rect, body.vscode-high-contrast-light .pill rect { fill: none; stroke: var(--border); }
+body.vscode-high-contrast .ring, body.vscode-high-contrast .lane.selected,
+body.vscode-high-contrast-light .ring, body.vscode-high-contrast-light .lane.selected { stroke: var(--focus); border-color: var(--focus); box-shadow: none; }
 body.vscode-high-contrast .fork.kept .chip, body.vscode-high-contrast .l-chip.kept,
 body.vscode-high-contrast-light .fork.kept .chip, body.vscode-high-contrast-light .l-chip.kept { fill: none; background: none; }
 body.vscode-high-contrast button, body.vscode-high-contrast-light button { border-color: var(--border); }
+body.vscode-high-contrast .switch i, body.vscode-high-contrast-light .switch i { outline: 1px solid var(--border); }
+body.vscode-high-contrast .stage.now, body.vscode-high-contrast-light .stage.now { background: none; outline: 1px solid var(--border); }
 body.vscode-high-contrast #help, body.vscode-high-contrast-light #help { background: rgba(0, 0, 0, 0.7); }
 
+/* motion only where work is happening, and none when the system asks for less: a working edge stays dashed and
+   amber, its card keeps its ring and a still halo */
 @media (prefers-reduced-motion: reduce) {
-  .task, .goal, .edge, .lane { transition: none; }
-  .task.fresh, .lane.fresh { animation: none; }
+  .task, .goal, .edge, .lane, #svg.glide, .switch i, .switch i::after { transition: none; }
+  .task.fresh, .lane.fresh, .edge.run, .badge .spin, .halo, #planning::before, .wave.planning::before { animation: none; }
+  .halo { opacity: 0.6; }
 }

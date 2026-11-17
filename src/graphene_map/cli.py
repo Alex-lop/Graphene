@@ -265,6 +265,9 @@ def build():
     from . import auto_cli
 
     auto_cli.register(cli, root, open_store, fail)  # `graphene auto`: the goal, the envelope, the rounds
+    from . import workflow
+
+    workflow.register(cli, root, open_store, fail)  # `graphene workflow` (hidden): a saved graph, run again
     if key_cli := extra.load("key_cli"):  # `graphene key`: the Nemotron extra's, when it is installed
         key_cli.register(cli, fail)
 

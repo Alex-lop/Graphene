@@ -28,6 +28,17 @@ export interface Kept {
   by: string;
 }
 
+/** A write the gate refused: the path, when (as the log stamps it), and the tool that tried it. */
+export interface Stop { path: string; at: string; how: string }
+
+/** What a task's attempts read and wrote, in tokens, from the meter. `cached`: how much of the reading came from
+ *  cache; null when the meter does not say. */
+export interface Tokens { read: number; cached: number | null; written: number; turns: number }
+
+/** How a write outside a task's files is held, by what the tests prove and nothing more: refused before the
+ *  write, caught when the task finishes, or not held. "" from an older CLI: nobody has said, so not held. */
+export interface Held { state: "refused" | "caught" | "none" | ""; by: string }
+
 export interface Task {
   id: string;
   title: string;
@@ -55,6 +66,22 @@ export interface Task {
   forks: Fork[];
   kept: Kept | null;
   hollow: boolean;
+  /** Its scope as the files it covers now (at most 200 named; `filesN` counts them all), the ones its agent
+   *  has written in the attempt going now, every write of its that was refused, its check's verdict on the
+   *  code as it was (red, passes, outside, environment, landed) and after the work (passed, failed), the
+   *  tokens its attempts read and wrote, and how it is held. An older CLI says none of them. */
+  files: string[];
+  filesN: number;
+  touched: string[];
+  stops: Stop[];
+  checked: { before: string | null; after: string | null };
+  tokens: Tokens | null;
+  held: Held;
+  /** A command step (a workflow's `run:`): the command that runs with no agent, its exit code its check; null
+   *  for a step an agent or a person does. `leaves`: its command pushes or opens a pull request, so it is drawn
+   *  past the "leaves your machine" line and waits for your approval. */
+  command: string | null;
+  leaves: boolean;
   /** What the snapshot does not say and `graphene plan --json` does (`withContracts`): the attempts set on the
    *  task itself (null: unset, the limits' number decides), whether it waits for your approval and whose it
    *  is ("agent", or a person's name). `signoff` null and `owner` "": not read yet. */
@@ -108,6 +135,26 @@ export interface Auto {
   why: string;
 }
 
+/** A step the planner has written so far: a plan-text line that is complete, with those of its own lines that
+ *  are. Not a task yet: nothing of it is in the plan until the proposals land, and then it is one of `tasks`. */
+export interface DraftStep {
+  id: string;
+  title: string;
+  parent: string | null;
+  leaf: boolean; // false once a step is written under it: a sub-goal, drawn as a band
+  scope: string[];
+  check: string | null;
+  needs: string[];
+}
+
+/** A planner is writing a plan now. `live`: its stream carries the plan's text as it is written, so its steps
+ *  appear one by one; otherwise the plan arrives whole and `steps` stays empty until it does. */
+export interface Drafting {
+  by: string;
+  live: boolean;
+  steps: DraftStep[];
+}
+
 export interface Scoreboard {
   need_you: number;
   running: number;
@@ -129,6 +176,11 @@ export interface State {
   envelope: Envelope;
   auto: Auto | null;
   run: { going: boolean; pid: number | null };
+  /** The repository's top-level entries (a folder ends with `/`), and the shell commands the executor's own
+   *  command line lets it run without asking (null: it names no list, so any command). */
+  tree: string[];
+  allows: string[] | null;
+  drafting: Drafting | null; // a planner is writing: the steps it has written so far
   spent: number | null;
   scoreboard: Scoreboard;
   width: number | null;
@@ -164,6 +216,8 @@ export function parseFork(r: Raw): Fork {
 export function parseTask(r: Raw): Task {
   const state = str(r.state);
   const kept = r.kept === null || r.kept === undefined ? null : obj(r.kept);
+  const files = strs(r.files), checked = obj(r.checked), tokens = r.tokens && typeof r.tokens === "object" ? obj(r.tokens) : null;
+  const held = str(obj(r.held).state);
   return {
     id: str(r.id), title: str(r.title), full: str(r.full),
     state: (WORDS as readonly string[]).includes(state) ? (state as Word) : "waiting",
@@ -175,7 +229,14 @@ export function parseTask(r: Raw): Task {
     attempts: int(r.attempts, 0), offers: argvs(r.offers), changed: strs(r.changed), stopped: strs(r.stopped),
     outside: strs(r.outside), forks: list(r.forks).map(parseFork),
     kept: kept && str(kept.letter) ? { letter: str(kept.letter), why: str(kept.why), by: str(kept.by) } : null,
-    hollow: bool(r.hollow), planned: null, signoff: null, owner: "",
+    hollow: bool(r.hollow),
+    files, filesN: int(r.files_n, files.length), touched: strs(r.touched),
+    stops: list(r.stops).map((x) => ({ path: str(x.path), at: str(x.at), how: str(x.how) })).filter((x) => x.path),
+    checked: { before: optStr(checked.before), after: optStr(checked.after) },
+    tokens: tokens && { read: int(tokens.read, 0), cached: num(tokens.cached), written: int(tokens.written, 0), turns: int(tokens.turns, 0) },
+    held: { state: held === "refused" || held === "caught" || held === "none" ? held : "", by: str(obj(r.held).by) },
+    command: optStr(r.command), leaves: bool(r.leaves),
+    planned: null, signoff: null, owner: "",
   };
 }
 
@@ -228,6 +289,7 @@ export function parseState(text: string): State {
     .map((e) => [e[0] as string, e[1] as string, str(e[2], "needs")] as [string, string, string])
     .filter(([a, b]) => known.has(a) && known.has(b));
   const replay = obj(r.replay);
+  const drafting = r.drafting && typeof r.drafting === "object" && !Array.isArray(r.drafting) ? obj(r.drafting) : null; // an older CLI says nothing: no planner is seen writing
   return {
     schema: int(r.schema, 1), graphene: str(r.graphene), repo: str(r.repo), cursor: int(r.cursor, 0),
     replay: str(replay.shown) ? { shown: str(replay.shown), day: str(replay.day), repository: str(replay.repository) } : null,
@@ -243,6 +305,14 @@ export function parseState(text: string): State {
           budget: num(auto.budget), check: typeof auto.check === "string" ? auto.check : null, why: str(auto.why) }
       : null,
     run: { going: bool(run.going), pid: num(run.pid) },
+    tree: strs(r.tree), allows: Array.isArray(r.allows) ? strs(r.allows) : null,
+    drafting: drafting && {
+      by: str(drafting.by), live: bool(drafting.live),
+      steps: list(drafting.steps).map((d) => ({
+        id: str(d.id), title: str(d.title), parent: typeof d.parent === "string" ? d.parent : null, leaf: d.leaf !== false,
+        scope: strs(d.scope), check: typeof d.check === "string" ? d.check : null, needs: strs(d.needs),
+      })).filter((d) => d.id),
+    },
     spent: num(r.spent),
     scoreboard: { need_you: int(sb.need_you, 0), running: int(sb.running, 0), proven: int(sb.proven, 0),
                   total: int(sb.total, tasks.length) },

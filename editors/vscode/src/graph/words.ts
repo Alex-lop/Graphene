@@ -1,7 +1,8 @@
 // The graph's words, pure: what a box and a fork chip say, what the header says of a replay, which acts a
 // task offers, and the keys. No DOM here, so `node --test` reads them.
 import type { Layout } from "../layout.ts";
-import { autoLine, headline, SAY, screenWords, usd, type Fork, type Kept, type Question, type State, type Task } from "../state.ts";
+import { inScope } from "../owners.ts";
+import { autoLine, headline, SAY, screenWords, usd, type DraftStep, type Fork, type Kept, type Question, type State, type Task } from "../state.ts";
 
 /** What the snapshot gains tonight (dev/process/editor/CONTRACT.md): read when present, nothing when not. */
 export type ForkX = Fork & { attempts?: number; idle?: number | null };
@@ -11,17 +12,18 @@ export type Replay = { shown: string; day: string; repository: string } | null;
 export type StateX = Omit<State, "tasks"> & { replay?: Replay; stand_in?: boolean; tasks: TaskX[] };
 
 export type Act = "add-after" | "add-under" | "link" | "unlink" | "drop" | "accept" | "tell" | "run" | "stop" | "auto" | "cockpit"
-  | "openDiff" | "compareForks" | "pickFork" | "signOff" | "answer" | "handBack" | "set" | "draw";
+  | "openDiff" | "compareForks" | "pickFork" | "signOff" | "answer" | "handBack" | "set" | "draw" | "stopAfter" | "saveWorkflow" | "markDone";
 
 /** The acts a replay offers none of: they change a plan, or they act outside the replay (the cockpit opens
  *  `graphene watch` in the person's own folder; openDiff and compareForks look the id up in the person's
  *  plan). That is every act: a replay is watched. The host refuses them too (check.ts). */
 export const CHANGES: readonly Act[] = ["add-after", "add-under", "link", "unlink", "drop", "accept", "tell", "run", "stop", "auto",
-                                        "cockpit", "openDiff", "compareForks", "pickFork", "signOff", "answer", "handBack", "set", "draw"];
+                                        "cockpit", "openDiff", "compareForks", "pickFork", "signOff", "answer", "handBack", "set", "draw", "stopAfter",
+                                        "saveWorkflow", "markDone"];
 
 /** The header's act buttons, by their element id: each one is hidden in a replay. Auto and the cockpit are
  *  Home's and the palette's (with graphene.advanced), not the graph's. */
-export const HEADER_ACTS: readonly [string, Act][] = [["b-add", "add-under"], ["b-run", "run"]];
+export const HEADER_ACTS: readonly [string, Act][] = [["b-add", "add-under"], ["b-run", "run"], ["b-save", "saveWorkflow"]];
 
 export const cut = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1).trimEnd() + "…" : s);
 
@@ -57,21 +59,270 @@ export function cornerWord(t: TaskX): string {
   return t.state === "running" && t.model ? cut(t.model, 7) : t.needs_you ? "◆" : "";
 }
 
+/** Who does a step, for the tile on its card: you, or the executor by a letter (Claude Code `C`, Codex `X`, any
+ *  other named one by its first), or a command of your own by its first two letters, as a terminal names it. */
+export function who(t: Pick<TaskX, "state" | "owner"> & { command?: string | null }, executor: string):
+  { kind: "you" | "claude" | "codex" | "agent" | "cmd"; mark: string; label: string } {
+  if (t.command) return { kind: "cmd", mark: commandWord(t.command).slice(0, 3), label: "a command, with no agent" }; // a workflow's `run:` step
+  if (t.state === "yours" || (t.owner && t.owner !== "agent")) return { kind: "you", mark: "◆", label: "you" };
+  const words = executor.trim().split(/\s+/).filter(Boolean);
+  const name = (words[0] ?? "").split("/").pop() ?? "";
+  if (name === "claude") return { kind: "claude", mark: "C", label: "Claude Code" };
+  if (name === "codex") return { kind: "codex", mark: "X", label: "Codex" };
+  if (!name) return { kind: "agent", mark: "?", label: "an agent" };
+  return words.length > 1 || words[0]!.includes("/") ? { kind: "cmd", mark: name.slice(0, 2), label: name } : { kind: "agent", mark: name[0]!.toUpperCase(), label: name };
+}
+
+/** The part of a command step's command its chip shows: the one its tile names (`gh pr create --draft` of
+ *  `cd .. && git push && gh pr create --draft`), so the chip says what leaves the machine and not the `cd` before it. */
+export const commandChip = (command: string): string =>
+  command.split(/&&|\|\||;/).map((x) => x.trim()).find((x) => ((x.split(/\s+/)[0] ?? "").split("/").pop() ?? "") === commandWord(command)) ?? command;
+
+/** The word a command step's tile shows, as a terminal names what runs: `python3` of `/usr/bin/python3 -m unittest`;
+ *  of a line of several commands, the one that leaves the machine (`gh` of `cd .. && git push && gh pr create`,
+ *  else `git`), else the first that is not a `cd`. */
+export function commandWord(command: string): string {
+  if (/\bgh\s+pr\b/.test(command)) return "gh";
+  if (/\bgit\s+push\b/.test(command)) return "git";
+  const parts = command.split(/&&|\|\||;/).map((x) => x.trim()).filter(Boolean);
+  const first = parts.find((x) => !/^cd(\s|$)/.test(x)) ?? parts[0] ?? "";
+  return ((first.split(/\s+/)[0] ?? "").split("/").pop() ?? "") || "$";
+}
+
+/** A step past the "leaves your machine" line that is the person's move now: approving it runs its command. */
+export const asksYou = (t: Pick<TaskX, "leaves" | "state">): boolean => t.leaves && t.state === "yours";
+
+// ---- the pane's Scope tab: what a step may do, as a person reads it ----
+
+export interface TreeRow { name: string; depth: 0 | 1; kind: "in" | "other" | "out"; note: string }
+
+const dirOf = (path: string) => (path.includes("/") ? `${path.slice(0, path.lastIndexOf("/"))}/` : "");
+const topOf = (path: string) => (path.includes("/") ? `${path.slice(0, path.indexOf("/"))}/` : path);
+/** What a glob names before its first wildcard: `src/export/**` is `src/export/`, `README.md` itself. */
+const fixedOf = (glob: string) => {
+  const parts = glob.replace(/^\.\//, "").split("/");
+  const upto = parts.findIndex((x) => /[*?]/.test(x));
+  return upto < 0 ? glob : `${parts.slice(0, upto).join("/")}${upto ? "/" : ""}`;
+};
+
+/** May change, as a tree: the repository's top-level entries; this step's folders opened to the files it covers
+ *  (a written one says so, at most ``most`` a folder); a path it may create that is not there yet; another
+ *  step's entries named; everything else dim. The glob itself is the pane's to show when asked. */
+export function scopeTree(t: Pick<TaskX, "id" | "scope" | "files" | "filesN" | "touched" | "changed">, s: Pick<StateX, "tree" | "tasks">, most = 12): TreeRow[] {
+  const wrote = writtenIn(t), written = new Set(wrote);
+  const files = [...new Set([...t.files, ...wrote])].sort(); // a file it created is one of its files, though git does not track it yet
+  const cut = t.filesN > t.files.length; // the snapshot lists 200 at most: the rest are its own all the same
+  const mine = new Map<string, string[]>(); // a folder of its files -> the files
+  for (const f of files) mine.set(dirOf(f), [...(mine.get(dirOf(f)) ?? []), f]);
+  const globs = t.scope.filter((g) => !g.startsWith("!")).map(fixedOf);
+  const fresh = cut ? [] : globs.filter((g) => g && !files.some((f) => f === g || f.startsWith(g))); // nothing there yet
+  const others = new Map<string, string>(); // a top-level entry -> the other step whose files are under it
+  for (const o of s.tasks) {
+    if (o.id === t.id) continue;
+    for (const f of o.files.length ? o.files : o.scope.filter((g) => !g.startsWith("!")).map(fixedOf)) if (f && !others.has(topOf(f))) others.set(topOf(f), o.title);
+  }
+  const tops = s.tree.length ? [...s.tree] : [...new Set([...files, ...fresh, ...others.keys()].map(topOf))].sort();
+  for (const f of [...files, ...fresh]) if (!tops.includes(topOf(f))) tops.push(topOf(f)); // a path it will create
+  const rows: TreeRow[] = [];
+  const open = (dir: string) => {
+    const files = mine.get(dir) ?? [];
+    if (dir) rows.push({ name: dir, depth: 0, kind: "in", note: "" });
+    for (const f of files.slice(0, most)) rows.push({ name: dir ? f.slice(dir.length) : f, depth: dir ? 1 : 0, kind: "in", note: written.has(f) ? "written" : "" });
+    if (files.length > most) rows.push({ name: `… and ${files.length - most} more`, depth: dir ? 1 : 0, kind: "in", note: "" });
+  };
+  for (const top of tops) {
+    const dirs = [...mine.keys()].filter((d) => (top.endsWith("/") ? d.startsWith(top) : false)).sort();
+    const here = fresh.filter((g) => topOf(g) === top);
+    if (!top.endsWith("/") && files.includes(top)) rows.push({ name: top, depth: 0, kind: "in", note: written.has(top) ? "written" : "" });
+    else if (dirs.length || here.length) {
+      for (const d of dirs) open(d);
+      for (const g of here) rows.push({ name: g, depth: 0, kind: "in", note: written.has(g) ? "written" : s.tree.length ? "not there yet" : "" }); // no tree (a replay, an older CLI): nobody knows what is there
+    } else if (cut && globs.some((g) => !g || g.startsWith(top))) rows.push({ name: top, depth: 0, kind: "in", note: "" }); // its own, past the list's cut
+    else rows.push({ name: top, depth: 0, kind: others.has(top) ? "other" : "out", note: others.has(top) ? "another step's" : "" });
+  }
+  if (cut) rows.push({ name: `… and ${t.filesN - t.files.length} more files`, depth: 0, kind: "in", note: "" });
+  return rows;
+}
+
+/** What a step has written inside its files. A write outside them is the Stopped part's and the finish's to
+ *  say: it is never counted as one of its files. */
+const writtenIn = (t: Pick<TaskX, "scope" | "touched" | "changed">): string[] => [...new Set([...t.touched, ...t.changed])].filter((f) => inScope(f, t.scope));
+
+/** How many of its files a step has written so far: `2 of 4`. A file it created is one of its files too, though
+ *  git does not track it yet. Nothing while its scope covers no file and it has written none. */
+export function writtenOf(t: Pick<TaskX, "scope" | "files" | "filesN" | "touched" | "changed">): string {
+  const written = writtenIn(t);
+  // ponytail: past the list's cut (200 files) a written file cannot be told from a new one, so the count stays the scope's
+  const all = t.filesN > t.files.length ? Math.max(t.filesN, written.length) : t.filesN + written.filter((f) => !t.files.includes(f)).length;
+  return all ? `${written.length} of ${all}` : "";
+}
+
+/** An executor's family: `claude` of `claude:opus`. The setting names the model too; a run names who holds a step by family alone. */
+const family = (by: string) => by.split(":")[0]!;
+
+/** May run: the commands the repository's executor may run without asking, as its own command line lists them
+ *  (`allows`), or that it names no list. The list is that executor's: a step someone else holds (another agent
+ *  a run was given, you) is not under it. Outside: Graphene has nothing to grant a step yet, and says no more
+ *  than that of an agent whose own settings decide what it reaches. */
+export function mayRun(s: Pick<StateX, "allows" | "executor">, t: Pick<TaskX, "held">): { commands: string[]; words: string; outside: string } {
+  if (s.allows && family(t.held.by) === family(s.executor)) return { commands: s.allows, words: s.allows.length ? "" : "no shell command", outside: OUTSIDE };
+  const held = t.held.state === "refused" || t.held.state === "caught";
+  return { commands: [], words: held ? "any command: what a command writes is still held to its files" : "any command", outside: OUTSIDE_OWN };
+}
+export const OUTSIDE = "none granted: a step cannot be given outside tools or network yet";
+export const OUTSIDE_OWN = "none granted by Graphene: this agent's own settings decide what else it reaches";
+
+/** Held by, in one of three states and never more than the tests prove (tests/test_every_agent.py,
+ *  dev/process/graph-edit/hooks.md): refused before the write, caught when it finishes, or not held. A
+ *  Graphene that does not say reads as not held: no shield for an agent nobody has tested. */
+export function heldWords(t: Pick<TaskX, "held">): { shield: boolean; line: string; proof: string } {
+  const by = family(t.held.by) === "claude" ? "Claude Code" : family(t.held.by) === "codex" ? "Codex" : t.held.by || "this agent";
+  if (t.held.state === "refused") return { shield: true, line: "A write outside its files is refused before it happens.", proof: `${by}'s hook, proven by tests/test_every_agent.py` };
+  if (t.held.state === "caught") return { shield: true, line: "A write outside its files is caught when it finishes, at the latest: the task comes back and none of its work is merged.",
+                                          proof: `Proven for every agent a run starts, ${by} too, by tests/test_every_agent.py: the finish checks what changed against its files.` };
+  return { shield: false, line: "Not held: nothing stops a write outside its files.",
+           proof: t.held.state === "none" ? "A task you do yourself, or give to an editor's own agent (Cursor, Copilot), is checked only when you mark it done."
+             : "This Graphene does not say how this step is held." };
+}
+
+/** Stopped: this step's refused writes against the run's, then each with its time as the clock here reads it. */
+export function stopsOf(t: Pick<TaskX, "id" | "title" | "stops">, tasks: readonly Pick<TaskX, "id" | "title" | "stops" | "state">[], clock = (iso: string) => new Date(iso)):
+  { count: string; rows: { line: string; note: string }[] } {
+  const went = (state: string) => state === "running" || state === "review" || state === "done"; // it carried on: said only where it did
+  const all = tasks.flatMap((o) => o.stops.map((x) => ({ ...x, id: o.id, title: o.title, on: went(o.state) })));
+  const time = (iso: string) => { const d = clock(iso); return Number.isNaN(d.getTime()) ? "" : ` ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`; };
+  const shown = t.stops.length ? all.filter((x) => x.id === t.id) : all.slice(-3); // none here: the run's last ones, so a person sees where
+  return { count: `${t.stops.length} here · ${all.length} in the run`,
+           rows: shown.map((x) => ({ line: x.id === t.id ? `tried ${x.path}` : `“${x.title}” tried ${x.path}`,
+                                     note: `refused${time(x.at)}${x.how ? ` · ${x.how}` : ""}${x.on ? " · it carried on in its own files" : ""}` })) };
+}
+
+/** Done when: the check's result on the code as it was, and after the work. */
+export function checkWords(t: Pick<TaskX, "check" | "checked" | "state">): { tone: "red" | "warn" | "ok" | "dim"; line: string }[] {
+  if (!t.check) return [{ tone: "dim", line: "no check: your approval finishes it" }];
+  const before: Record<string, [("red" | "warn" | "ok" | "dim"), string]> = {
+    red: ["red", "failed before the work, so it can tell"],
+    passes: ["warn", "passed before the work: it proves nothing yet"],
+    outside: ["warn", "failed before the work on a path outside its files"],
+    environment: ["warn", "could not be run here before the work"],
+    landed: ["dim", "passed when it landed; reopened, it passes until the check is changed"],
+  };
+  const b = before[t.checked.before ?? ""] ?? ["dim", "not run on the code as it is yet: it runs once before the work starts"];
+  const a: [("red" | "warn" | "ok" | "dim"), string] = t.checked.after === "passed" ? ["ok", "passed after the work, in a clean copy"]
+    : t.checked.after === "failed" ? ["red", "failed after the work"]
+    : ["dim", t.state === "running" ? "runs in a clean copy when the agent says done" : "runs in a clean copy after the work"];
+  return [{ tone: b[0], line: b[1] }, { tone: a[0], line: a[1] }];
+}
+
+const thousands = (n: number) => (n >= 1000 ? `${Math.round(n / 1000)}k` : String(n));
+/** Tokens: what its attempts read and wrote, as shares; the check is Graphene's to run and costs none. */
+export function tokenWords(t: Pick<TaskX, "tokens">): { total: string; read: number; written: number; line: string } | null {
+  if (!t.tokens || !(t.tokens.read + t.tokens.written)) return null;
+  const all = t.tokens.read + t.tokens.written, read = Math.round((t.tokens.read / all) * 100);
+  const cached = t.tokens.cached ? ` (${thousands(t.tokens.cached)} of it from cache)` : "";
+  return { total: `${thousands(t.tokens.read)} in · ${thousands(t.tokens.written)} out`, read, written: 100 - read,
+           line: `reading ${read}%${cached} · writing ${100 - read}% · its check 0%: Graphene runs it, no model` };
+}
+
+export interface Stage { key: "plan" | "run" | "review"; label: string; at: "done" | "now" | "next"; note: string }
+
+/** One pipeline, the plan always first: Plan, Run, Review. Where the work is (the first stage not finished is
+ *  `now`), and a few words under each: how big the plan is and what it asks, who is working, what waits for
+ *  you. Auto is the same pipeline with no stop after the plan (`stopAfterPlan`). A command step is never
+ *  `running` (the run executes it itself): a run going with one ready is running it, not starting. */
+export function pipeline(s: Pick<StateX, "drafting" | "tasks" | "goals" | "questions" | "run">): Stage[] {
+  const n = (k: TaskX["state"]) => s.tasks.filter((t) => t.state === k).length;
+  const count = (k: number, word: string) => `${k} ${word}${k === 1 ? "" : "s"}`;
+  const planned = s.tasks.length > 0 && (n("running") > 0 || (!n("proposed") && !s.drafting)); // agents at work: the plan was started
+  const ran = planned && s.tasks.every((t) => t.state === "review" || t.state === "done");
+  const landed = ran && !n("review");
+  const asks = s.questions.length ? count(s.questions.length, "question") : "";
+  const plan = s.drafting ? (s.drafting.live ? `${count(draftedSteps(s).length, "step")} so far` : "the planner is writing")
+    : [s.tasks.length ? count(s.tasks.length, "step") : "", planned && n("proposed") ? `${n("proposed")} suggested` : "", asks].filter(Boolean).join(" · ");
+  const run = !planned || ran ? "" : n("running") ? `${n("running")} working` : n("came back") ? `${n("came back")} need${n("came back") === 1 ? "s" : ""} help` : s.run.going ? (s.tasks.some((t) => t.command && !t.leaves && t.state === "ready") ? "running a command" : "starting")
+    : n("yours") ? `${n("yours")} ask${n("yours") === 1 ? "s" : ""} you` : n("ready") ? `${n("ready")} ready` : "waiting";
+  const review = n("review") ? `${n("review")} to review` : landed ? "landed" : "";
+  return [
+    { key: "plan", label: "Plan", at: planned ? "done" : "now", note: plan },
+    { key: "run", label: "Run", at: !planned ? "next" : ran ? "done" : "now", note: run },
+    { key: "review", label: "Review", at: !ran ? "next" : landed ? "done" : "now", note: review },
+  ];
+}
+
+/** Before Run each step's check runs once on the code as it is. One that passes there proves nothing yet: said
+ *  on the card of a task whose work is not finished (the snapshot's `hollow`). */
+export const PROVES_NOTHING = "This check already passes, before any work: it proves nothing yet. Give the task a check that fails now.";
+/** Whether a task's card carries that mark: its check passed before the work, and the work is not done. */
+export const provesNothing = (t: Pick<TaskX, "hollow" | "state">): boolean => t.hollow && t.state !== "done" && t.state !== "review";
+
+/** The one switch: on (the default), the run waits for you after the plan; off is auto, and the plan is still
+ *  drawn first. It is the envelope's `auto` setting, read the other way round. */
+export const stopAfterPlan = (s: { envelope: { auto: string } }): boolean => s.envelope.auto !== "on";
+export const STOP_AFTER = "Stop after the plan";
+export const STOP_AFTER_HOVER = "On: the plan is drawn and waits for you to start it. Off is auto: the plan is still drawn first, then what fits your limits "
+  + "runs without waiting. A question with no default stops it either way: Start waits for its answer, and so does auto.";
+
+/** The steps to draw while a planner writes: each one it has finished a line for that is a task, not a
+ *  sub-goal, and is not in the plan already (a line that names a task the plan has is an anchor, not a step). */
+export function draftedSteps(s: Pick<StateX, "drafting" | "tasks" | "goals">): DraftStep[] {
+  const have = new Set([...s.tasks.map((t) => t.id), ...s.goals.map((g) => g.id)]);
+  return (s.drafting?.steps ?? []).filter((d) => d.leaf && !have.has(d.id));
+}
+
+/** The line at the canvas's foot while a planner writes: how many steps it has drawn so far, or, when its
+ *  stream carries no text, that the boxes appear when the plan arrives. Nothing when no planner is writing. */
+export function planningLine(s: Pick<StateX, "drafting" | "tasks" | "goals">): string {
+  if (!s.drafting) return "";
+  const by = s.drafting.by ? ` (${s.drafting.by})` : "";
+  if (!s.drafting.live) return `The planner${by} is writing: its steps appear when the plan arrives`;
+  const n = draftedSteps(s).length;
+  return `The planner${by} is drawing: ${n} step${n === 1 ? "" : "s"} so far`;
+}
+
+/** The files chip on a card: the first of the paths it may change, and how many more there are. */
+export const filesChip = (scope: readonly string[]): string => (scope.length > 1 ? `${scope[0]} +${scope.length - 1}` : scope[0] ?? "");
+
+/** How an edge is drawn, by the tasks at its ends (the goal has none): `run` where an agent is working on what
+ *  it leads to, `done` where the work it carries landed, `wait` until then. Either end done says it landed: a
+ *  done task's needs are done, and the edge that crosses the line starts at the goal. */
+export function edgeKind(from: Pick<TaskX, "state"> | undefined, to: Pick<TaskX, "state"> | undefined): "run" | "done" | "wait" {
+  if (to?.state === "running") return "run";
+  return from?.state === "done" || to?.state === "done" ? "done" : "wait";
+}
+
+/** The mark on a card's corner: its work landed, an agent is on it, it waits on you, or it came back. A
+ *  suggested task has none: its dashed card says it is drafted, and accepting the plan is one act for them all. */
+export function badge(t: Pick<TaskX, "state" | "needs_you">): "done" | "running" | "you" | "back" | "" {
+  if (t.state === "done") return "done";
+  if (t.state === "came back") return "back";
+  if (t.state === "proposed") return "";
+  if (t.state === "review" || t.state === "yours" || t.needs_you) return "you";
+  return t.state === "running" ? "running" : "";
+}
+
+/** The worktrees on this machine, one per agent at work: each running attempt's, or the task's own. */
+export function worktrees(tasks: readonly TaskX[]): number {
+  return tasks.reduce((n, t) => n + (t.forks.some((f) => f.checkout) ? t.forks.filter((f) => f.checkout).length : t.checkout ? 1 : 0), 0);
+}
+
 /** How many attempts a task runs as: its own number, else the limits' (Set Limits…), else one. */
 export const attemptsOf = (t: Pick<TaskX, "planned">, limit: number | null | undefined): number => Math.min(8, Math.max(1, t.planned ?? limit ?? 1));
 
 /** The fan under a box: its attempts as they run or ran; before anything runs, one waiting chip for each
- *  attempt it is set to (two or more, and a check to keep one: without a check it runs as one agent). */
+ *  attempt it is set to (two or more, and a check to keep one: without a check it runs as one agent). None on
+ *  a command step: its check is its command, which runs once, with no agent. */
 export function fan(t: TaskX, limit: number | null | undefined): ForkX[] {
   if (t.forks.length) return t.forks;
   const n = attemptsOf(t, limit);
-  if (n < 2 || !t.check || !["proposed", "ready", "waiting"].includes(t.state)) return [];
+  if (n < 2 || !t.check || t.command || !["proposed", "ready", "waiting"].includes(t.state)) return [];
   return Array.from({ length: n }, (_, i) => ({ letter: "abcdefgh"[i]!, state: "", why: "", lines: null, model: "", usd: null, attempts: 0, idle: null, checkout: null }));
 }
 
 /** What a change to a task does now, by its state: the one line under the pane's form. It says what
- *  `graphene node set` does (dev/process/graph-edit/edits.md has each state's answer, as the engine gave it). */
-export function whenEdit(t: Pick<TaskX, "state">): string {
+ *  `graphene node set` does (dev/process/graph-edit/edits.md has each state's answer, as the engine gave it).
+ *  A command step has no form: its line says where it changes. */
+export function whenEdit(t: Pick<TaskX, "state"> & { command?: string | null }): string {
+  if (t.command && t.state !== "done") return "A command step is its command alone: no files, no attempts, no agent. Change its run: line in the plan's text.";
   switch (t.state) {
     case "proposed": return "Suggested: nothing runs yet. A change binds once you accept it.";
     case "ready": case "waiting": return "Not started: its agent starts from what you set here.";
@@ -83,8 +334,10 @@ export function whenEdit(t: Pick<TaskX, "state">): string {
   }
 }
 
-/** Whether the pane's form takes edits: graphene refuses a change to a finished task, and a replay is watched. */
-export const editable = (t: Pick<TaskX, "state">, replay: boolean): boolean => !replay && t.state !== "done";
+/** Whether the pane's form takes edits: graphene refuses a change to a finished task, and a replay is watched.
+ *  Nor a command step: `node set` takes files, attempts, an owner and an approval on one, and each makes it
+ *  something else (with files it is no command step: off the line, its approval gone). */
+export const editable = (t: Pick<TaskX, "state"> & { command?: string | null }, replay: boolean): boolean => !replay && t.state !== "done" && !t.command;
 
 const quiet = (idle: number | null | undefined) => (idle !== null && idle !== undefined && idle > 8 ? `${Math.round(idle)} s quiet` : "");
 const tries = (n: number | undefined) => (n !== undefined && n > 1 ? `${n} tries` : "");
@@ -92,11 +345,14 @@ const tries = (n: number | undefined) => (n !== undefined && n > 1 ? `${n} tries
 /** The small line under a box's title: the state first, in plain words, then what matters for it. A task that
  *  needs help says why on the box. */
 export function sub(t: TaskX, max = 25): string {
+  if (asksYou(t)) return cut("asks you: it leaves your machine", max);
+  if (t.command && t.checked.after === "failed" && t.state !== "done") return cut("its command failed: a run tries it again", max);
   const parts: string[] = [];
   if (t.state === "running") parts.push(`agent ${t.agent || "?"}`, t.forks.length ? `${t.forks.length} attempts` : SAY.running);
   else parts.push(SAY[t.state]);
   if (t.state === "came back" && t.why) return cut(fitWords([`${SAY["came back"]} · ${screenWords(t.why)}`, tries(t.attempts), usd(t.usd)], max), max); // the reason, cut, not dropped
   if (t.state === "came back" && t.outside.length) parts.push(`${t.outside.length} outside`);
+  if (provesNothing(t)) parts.push("check already passes"); // it proves nothing yet: said before the cost and the tries
   parts.push(tries(t.attempts), usd(t.usd), t.state === "running" ? quiet(t.idle) : "");
   return fitWords(parts, max);
 }
@@ -167,21 +423,24 @@ export interface Button {
   main?: boolean; // drawn as the primary button
 }
 
-/** The buttons a task's pane offers, in order. A replay offers none: its pane reads. */
+/** The buttons a task's pane offers, in order. A replay offers none: its pane reads. A step past the line
+ *  offers nothing after it (a task drawn there lands in the first column, its edge running backwards), and a
+ *  command step has no agent to message. */
 export function actsFor(t: TaskX, replay: boolean): Button[] {
   const out: Button[] = [];
   if (replay) return out;
   const hasChanges = t.changed.length > 0 || ["running", "review", "done", "came back"].includes(t.state);
+  if (asksYou(t)) out.push({ label: "Approve and run", act: "markDone", title: `it leaves your machine: graphene node done runs ${cut(t.command ?? "", 80)}`, icon: "check", main: true });
   if (t.state === "review") out.push({ label: "Approve", act: "signOff", title: "it lands in your repository: graphene node signoff", icon: "check", main: true });
   if (t.state === "proposed") out.push({ label: "Accept", act: "accept", title: "graphene plan accept", icon: "check", main: true });
   if (t.state === "came back") out.push({ label: "Help it…", act: "handBack", title: "allow what it needs, add a task for it, or try again", icon: "debug-step-back", main: true });
   if (hasChanges) out.push({ label: "Open changes", act: "openDiff", title: "its changes so far, in the diff editor", icon: "diff" });
   if (t.forks.length >= 2) out.push({ label: "Compare attempts", act: "compareForks", title: "the attempts side by side", icon: "split-horizontal" });
-  out.push({ label: "Add task after", act: "add-after", title: "draw a new task that waits on this one", icon: "add" });
+  if (!t.leaves) out.push({ label: "Add task after", act: "add-after", title: "draw a new task that waits on this one", icon: "add" });
   out.push({ label: "Add task beside", act: "add-under", title: "draw a new task under the same sub-goal", icon: "add" });
-  out.push({ label: "Link to…", act: "link", title: "then click the task that waits on this one", icon: "link" });
+  if (!t.leaves) out.push({ label: "Link to…", act: "link", title: "then click the task that waits on this one", icon: "link" });
   if (["proposed", "ready", "waiting"].includes(t.state)) out.push({ label: "Remove", act: "drop", title: "graphene node drop", icon: "trash" });
-  if (["running", "ready", "waiting", "came back"].includes(t.state)) out.push({ label: "Message agent", act: "tell", title: "a line the agent on it reads with its next step", icon: "comment" });
+  if (!t.command && ["running", "ready", "waiting", "came back"].includes(t.state)) out.push({ label: "Message agent", act: "tell", title: "a line the agent on it reads with its next step", icon: "comment" });
   return out;
 }
 
@@ -226,7 +485,7 @@ export const KEYS: readonly [string, string][] = [
   ["f", "fit the graph again"],
   ["v", "graph or lanes"],
   ["?", "this list"],
-  ["+", "draw a task: after the selected one, or on its own (the + on a box's corner, and Add task, do the same)"],
+  ["+", "draw a task: after the selected one, or on its own (the + past a card's out port, and Add task, do the same)"],
   ["drag a dot", "onto another task: that task waits on this one"],
   ["×", "beside a need: it stops waiting on it"],
   ["wheel · drag", "scroll · pan; ⌘ or Ctrl with the wheel zooms"],

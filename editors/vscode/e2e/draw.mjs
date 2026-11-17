@@ -33,9 +33,14 @@ try {
   await L.openPanel(page);
   let g = (await L.graphFrames(page))[0];
   const focused = (id) => until(g, (i) => document.activeElement?.id === i, id, `the focus in ${id}`);
+  // a task's pane opens on Scope (what it may do): its form is the Edit tab's
+  const openForm = async (id) => { await box(id).locator("rect.box").click(); await g.locator('#details button.tab[data-tab="edit"]').click(); };
+  const scopeParts = () => g.evaluate(() => [...document.querySelectorAll("#details .sc h3")].map((h) => h.firstChild?.textContent ?? "").join(", "));
   const typeIn = async (id, text) => { await focused(id); await g.locator(`#${id}`).fill(text); await g.locator(`#${id}`).press("Enter"); };
   const box = (id) => g.locator(`#view g.task[data-id="${id}"]`); // by its id: a title is cut to its box, more where the font is wider
-  const drawnAs = (title) => until(g, (t) => [...document.querySelectorAll("#view g.task:not(.draft) text.title")].some((x) => x.textContent === t)
+  // a card cuts a title that does not fit it (the runner's font may be wider than this one's): the cut title's start is the title's
+  const drawnAs = (title) => until(g, (t) => [...document.querySelectorAll("#view g.task:not(.draft) text.title")]
+    .some((x) => x.textContent === t || (x.textContent.endsWith("…") && x.textContent.length > 8 && t.startsWith(x.textContent.slice(0, -1).trimEnd())))
     && !document.querySelector("#view g.task.draft"), title, `“${title}” in the plan`);
 
   // 1. an empty plan: draw the first task, typing nothing but its words
@@ -116,6 +121,11 @@ try {
 
   // 3. attempts on one task: the stepper, and the fan before anything runs
   await box(first.id).locator("rect.box").click();
+  await until(g, () => document.querySelector("#details button.tab.on")?.textContent === "Scope", null, "the pane to open on Scope");
+  if (await scopeParts() !== "May change, May run, Held by, Stopped, Done when, Tokens") throw new Error(`the Scope tab's parts are: ${await scopeParts()}`);
+  if (!(await g.locator("#details .tree").textContent()).includes("cli.py")) throw new Error("May change does not show the task's file");
+  say("a task's pane opens on Scope: what it may change as a tree, may run, how it is held, what was stopped, its check, its tokens");
+  await openForm(first.id);
   await until(g, () => document.querySelector("#details .d-id")?.textContent.includes("ready"), null, "the first task's pane");
   for (let i = 0; i < 2; i++) {
     await g.locator('#details button[aria-label="one more attempt"]').click();
@@ -138,7 +148,7 @@ try {
   say("the form changed its title in place, took it for you and gave it back to an agent");
 
   // 5. graphene's refusal, in the pane: the second task may not write the first one's file
-  await box(second.id).locator("rect.box").click();
+  await openForm(second.id);
   await until(g, () => document.querySelector("#details .d-id")?.textContent.includes("waiting"), null, "the second task's pane");
   await g.locator("#f-files").fill("wordkit/cli.py");
   await g.locator("#f-files").press("Enter");
@@ -154,7 +164,7 @@ try {
 
   // 6. while an agent holds a task: the pane says what an edit does now, and graphene takes it
   cli(["node", "start", first.id], { ...fx.env, CLAUDECODE: "1", CLAUDE_CODE_SESSION_ID: "e2e-draw-agent" });
-  await box(first.id).locator("rect.box").click();
+  await openForm(first.id);
   await until(g, () => document.querySelector("#details .when")?.textContent.startsWith("Working now"), null, "the working task's line");
   await g.locator("#f-files").fill("wordkit/cli.py tests/test_top.py wordkit/count.py");
   await g.locator("#f-files").press("Enter");

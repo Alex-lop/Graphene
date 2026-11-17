@@ -641,7 +641,7 @@
           {
             "id": "setup",
             "title": "Set up a folder",
-            "description": "On Graphene's Home, pick who plans and does the work: Claude Code, Codex or Nemotron. One click.\n[Open Home](command:graphene.home)",
+            "description": "On Graphene's Home, pick who plans and does the work: Claude Code or Codex. One click.\n[Open Home](command:graphene.home)",
             "media": {
               "image": "media/graph.png",
               "altText": "a race in the graph: three tasks, each with three attempts racing, the goal on the right"

@@ -1,6 +1,7 @@
 // Home, in the webview: draws what the host sends (cards.ts's model) and asks the host to act. Plain DOM, no
 // library, and every word goes in as text, never as markup: task titles and the planner's words are a model's.
 // The ask box is made once and kept, so a snapshot that arrives while the person types moves nothing under them.
+import { STOP_AFTER, STOP_AFTER_HOVER } from "../graph/words.ts";
 import type { Act, Btn, Card, Home, Section } from "./cards.ts";
 import { EXACT, WHO } from "./who.ts";
 
@@ -45,6 +46,8 @@ const work = el("section", "work");
 const head = el("div", "head", undefined, work);
 const goal = el("div", "goal", undefined, head);
 const counts = el("div", "counts", undefined, head);
+const pipe = el("div", "pipe", undefined, head); // Plan, Run, Review: where the work is
+pipe.setAttribute("role", "list");
 const ask = el("div", "ask", undefined, work);
 const box = el("textarea", "", undefined, ask);
 box.rows = 3;
@@ -56,6 +59,12 @@ const go = el("button", "", "Plan it", row);
 go.title = "the planner reads your repository and suggests tasks; nothing runs until you start them (⌘ or Ctrl + Enter)";
 const cancel = el("button", "quiet", "Cancel", row);
 const busy = el("span", "busy", "", row);
+const stopAfter = el("button", "switch", undefined, ask); // the one switch: off is auto
+stopAfter.setAttribute("role", "switch");
+el("i", "", undefined, stopAfter);
+stopAfter.append(STOP_AFTER);
+stopAfter.title = STOP_AFTER_HOVER;
+stopAfter.addEventListener("click", () => send("stopAfter", { flag: stopAfter.getAttribute("aria-checked") !== "true" }));
 const exactLabel = el("label", "tick exact", undefined, ask);
 const exact = el("input", "", undefined, exactLabel);
 exact.type = "checkbox";
@@ -97,6 +106,19 @@ function render(m: Model) {
   goal.hidden = !h.goal && !h.empty; // a plan whose ask is no longer known: no headline rather than a wrong one
   counts.textContent = h.counts;
   counts.hidden = !h.counts;
+  pipe.replaceChildren(...h.stages.map((st, i) => {
+    const stage = el("span", `stage ${st.at}`);
+    stage.setAttribute("role", "listitem");
+    stage.setAttribute("aria-current", st.at === "now" ? "step" : "false");
+    el("i", "", String(i + 1), stage);
+    stage.append(st.label);
+    if (st.note) el("small", "", st.note, stage);
+    return stage;
+  }));
+  pipe.hidden = h.empty; // nothing asked yet: the intro says what happens
+  stopAfter.setAttribute("aria-checked", String(h.stopAfter));
+  go.title = h.stopAfter ? "the planner reads your repository and suggests tasks; nothing runs until you start them (⌘ or Ctrl + Enter)"
+    : "auto: the planner draws the plan, then what fits your limits runs without waiting (⌘ or Ctrl + Enter)";
   box.disabled = m.planning;
   go.hidden = m.planning;
   cancel.hidden = !m.planning;
@@ -111,9 +133,10 @@ function render(m: Model) {
   ask.classList.toggle("compact", h.sections.length > 0); // one line while there is work to read; it grows on focus
   drawSaid(out, m.last);
   intro.hidden = !h.empty;
-  intro.textContent = "Say what you want done, in a sentence or a paragraph. The planner splits it into small tasks; you read "
-    + "them, remove what you do not want, and start the agents. Each agent works in its own copy of your repository, and "
-    + `a task lands only when its check passes${m.review ? " and you approve it" : ""}.`;
+  intro.textContent = "Say what you want done, in a sentence or a paragraph. "
+    + (h.stopAfter ? "The planner splits it into small tasks; you read them, remove what you do not want, and start the agents. "
+      : "The planner draws the plan as small tasks, then what fits your limits runs without waiting. ")
+    + `Each agent works in its own copy of your repository, and a task lands only when its check passes${m.review ? " and you approve it" : ""}.`;
   const focused = document.activeElement instanceof HTMLButtonElement && sections.contains(document.activeElement)
     ? document.activeElement.dataset.mark : "";
   sections.replaceChildren(...h.sections.map(drawSection));

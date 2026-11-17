@@ -1,10 +1,16 @@
 // Home, clicked through in real VS Code against the scripted stand-in ($0): a folder with no plan is set up with one
-// click, an ask is planned, Start runs the agents, and each finished task is reviewed: Approve before its changes
+// click (then pointed at the stand-in from the shell), an ask is planned, Start runs the agents, and each finished task is reviewed: Approve before its changes
 // were opened asks first, Open Changes shows them, Approve lands it, Send back… returns another with a note. It
 // fails when a step does not show what it should, and keeps a screenshot of each step (E2E_SHOTS, else the scratch).
-// Last, the Exact switch: on, it sets board on, review every and auto off, and Start waits while a question is open.
+// Then the Exact switch: on, it sets board on, review every and auto off, and Start waits while a question is open.
+// Then the other position of Stop after the plan, on a folder of its own: off is auto, so Plan it draws the plan
+// and runs it with no Start. Home's three stages are read at each end.
+// Last, a workflow, on a third folder: Home lists workflows/fix-issue.md, Run asks for its inputs and proposes its
+// four steps with no planner call, Start runs the two agent steps and the suite's command, and the run stops at
+// the line: the pull request step is drawn past it and asks first. Nothing is pushed. Save as workflow, in the
+// graph's header, then writes the plan back as a second workflow.
 import { execFileSync } from "node:child_process";
-import { existsSync, rmSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import path from "node:path";
 import * as L from "./lib.mjs";
 
@@ -64,12 +70,16 @@ try {
   say("a folder with no plan opens on Set Up");
   await shot("setup");
 
-  await home.locator("button.pick", { hasText: "Nemotron" }).click();
+  await home.locator("button.pick", { hasText: "Claude Code" }).click();
   await until(home, () => !document.querySelector("section.work").hidden && Boolean(document.querySelector("textarea"))
     && document.querySelector(".said")?.textContent.includes("waits for your approval"), null, "Set Up done, review on"); // init, then config set
   const set = state(dir);
   if (set.envelope.review !== "every") throw new Error(`Set Up left review ${set.envelope.review}, not every`);
-  say("one click set it up: Nemotron plans and works, and review is every");
+  if (set.planner !== "claude" || set.executor !== "claude") throw new Error(`Set Up chose ${set.planner} and ${set.executor}, not claude`);
+  say("one click set it up: Claude Code plans and works, and review is every");
+  // the walk runs on the scripted stand-in, which answers as the frozen nemotron executor: the CLI still takes it
+  execFileSync(graphene, ["init", "--planner", "nemotron", "--executor", "nemotron"], { cwd: dir, env: L.cleanEnv(L.safeEnv(standin.url)), stdio: "pipe" });
+  if (state(dir).envelope.review !== "every") throw new Error("pointing the folder at the stand-in lost review: every");
   await shot("ask");
 
   home = await homeFrame(page);
@@ -78,7 +88,10 @@ try {
   await sectionShown(home, "Suggested plan", "the suggested plan");
   const suggested = await home.locator("article.tone-proposed").count();
   if (suggested < 1) throw new Error("no suggested task");
-  say(`Plan it: ${suggested} suggested tasks, each with what it may change and what proves it`);
+  const stage = () => home.evaluate(() => document.querySelector(".pipe .stage.now")?.textContent ?? "");
+  if (!(await stage()).includes("Plan")) throw new Error(`a suggested plan, yet the stage is “${await stage()}”, not Plan`);
+  if ((await home.locator("button.switch").getAttribute("aria-checked")) !== "true") throw new Error("Stop after the plan is not on by default");
+  say(`Plan it: ${suggested} suggested tasks, each with what it may change and what proves it; the stage is Plan, and it stopped there`);
   await shot("suggested");
 
   await home.locator(".sec-suggested .sec-head button", { hasText: "Start" }).click();
@@ -150,6 +163,103 @@ try {
   await until(home, () => document.querySelector(".said")?.textContent.startsWith("Exact is off"), null, "Exact said off");
   for (const line of ["board: auto", "review: off", "auto: off"]) if (!settings().includes(line)) throw new Error(`Exact off left no “${line}”`);
   say("the default's button confirmed it and Start came back; Exact off put the board and review back as they were");
+
+  // Stop after the plan, off: auto. A folder of its own (auto stops on any proposal a plan still holds), set up
+  // for the stand-in. Nothing is clicked between Plan it and the landed tasks.
+  await L.close(session);
+  const fx = L.makeFixture(path.join(base, "wordkit-auto"), graphene, { standin: standin.url });
+  session = await L.launch(app, profile, fx.dir, { width: 1440, height: 900, standin: standin.url });
+  await L.openSidebar(session.page);
+  await L.setSidebarWidth(session.page, 400);
+  home = await homeFrame(session.page);
+  const checked = (want) => until(home, (w) => document.querySelector("button.switch")?.getAttribute("aria-checked") === w, want, `the switch ${want}`);
+  await checked("true");
+  await home.locator("button.switch").click();
+  await checked("false");
+  await until(home, () => document.querySelector(".said")?.textContent.startsWith("Stop after the plan is off"), null, "the switch said off");
+  if (state(fx.dir).envelope.auto !== "on") throw new Error("the switch went off, yet auto is not on");
+  await shot("switch-off");
+  await home.locator("textarea").fill(ASK);
+  await home.locator("button", { hasText: "Plan it" }).click();
+  await sectionShown(home, "Done · 3", "the three tasks landed with no Start", 120000);
+  await until(home, () => document.querySelector(".pipe")?.textContent.includes("landed"), null, "the Review stage to say landed");
+  const ran = state(fx.dir);
+  if (ran.tasks.length !== 3 || ran.tasks.some((t) => t.state !== "done")) throw new Error(`auto left ${ran.tasks.map((t) => `${t.id} ${t.state}`).join(", ")}`);
+  if (await home.locator(".sec-suggested").count()) throw new Error("auto ran, yet a suggested plan still waits for Start");
+  say("Stop after the plan off: Plan it drew the plan and ran it with no Start; 3 tasks landed, and the stage is Review, landed");
+  await shot("auto-landed");
+  await home.locator("button.switch").click();
+  await checked("true");
+  if (state(fx.dir).envelope.auto !== "off") throw new Error("the switch went back on, yet auto is not off");
+
+  // A workflow: fix-issue, as shipped, run from Home on the stand-in. The stand-in plays its `reading` script for
+  // a step whose id ends in reading, so the issue is "reading": the first step writes the test, the second the fix.
+  await L.close(session);
+  const flow = L.makeFixture(path.join(base, "wordkit-flow"), graphene, { standin: standin.url });
+  mkdirSync(path.join(flow.dir, "workflows"));
+  cpSync(path.join(L.ROOT, "workflows", "fix-issue.md"), path.join(flow.dir, "workflows", "fix-issue.md"));
+  execFileSync("git", ["-C", flow.dir, "add", "workflows"], { stdio: "pipe" });
+  execFileSync("git", ["-C", flow.dir, "-c", "user.name=e2e", "-c", "user.email=e2e@example.com", "commit", "-qm", "the fix-issue workflow"], { stdio: "pipe" });
+  session = await L.launch(app, profile, flow.dir, { width: 1440, height: 900, standin: standin.url });
+  await L.openSidebar(session.page);
+  await L.setSidebarWidth(session.page, 400);
+  home = await homeFrame(session.page);
+  await sectionShown(home, "Workflows · 1", "the repository's workflows on Home");
+  await shot("workflows");
+  await home.locator("article.card", { has: home.locator(".c-title", { hasText: "fix-issue" }) }).locator("button", { hasText: "Run" }).click();
+  const input = session.page.locator(".quick-input-widget .quick-input-box input");
+  const INPUTS = [["issue", "reading"], ["file", "tests/test_reading.py"], ["test", "python3 -m unittest tests.test_reading"], ["src", "wordkit/**"], ["suite", "python3 -m unittest"]];
+  for (const [name, value] of INPUTS) { // Run asks for each input in turn, its default offered
+    await session.page.waitForFunction((n) => {
+      const widget = document.querySelector(".quick-input-widget");
+      return widget && widget.style.display !== "none" && widget.querySelector(".quick-input-title")?.textContent?.endsWith(`: ${n}`);
+    }, name, { timeout: 15000 }).catch(() => { throw new Error(`Run did not ask for “${name}”`); });
+    await input.fill(value);
+    await session.page.keyboard.press("Enter");
+  }
+  await sectionShown(home, "Suggested plan · 4", "the workflow's four steps, suggested");
+  const proposed = state(flow.dir);
+  if (proposed.tasks.map((t) => `${t.id} ${t.state}`).join() !== "test-reading proposed,fix-reading proposed,suite-reading proposed,pr-reading proposed") {
+    throw new Error(`the workflow proposed ${proposed.tasks.map((t) => `${t.id} ${t.state}`).join(", ")}`);
+  }
+  if (proposed.spent) throw new Error(`a workflow calls no planner, yet $${proposed.spent} is spent before anything ran`);
+  say("Run on fix-issue asked for its five inputs and proposed its four steps with no planner call");
+  await shot("workflow-suggested");
+  await home.locator(".sec-suggested .sec-head button", { hasText: "Start" }).click();
+  await until(home, () => [...document.querySelectorAll("article.tone-yours .c-tag")].some((x) => x.textContent === "asks you"), null,
+              "the pull request step to ask first", 180000);
+  const step4 = Object.fromEntries(state(flow.dir).tasks.map((t) => [t.id, t]));
+  for (const id of ["test-reading", "fix-reading", "suite-reading"]) if (step4[id]?.state !== "done") throw new Error(`${id} is ${step4[id]?.state}, not done`);
+  if (step4["pr-reading"]?.state !== "yours" || !step4["pr-reading"].leaves) throw new Error(`the pull request step is ${step4["pr-reading"]?.state}, leaves ${step4["pr-reading"]?.leaves}`);
+  if (step4["pr-reading"].checked.after !== null) throw new Error(`the run ran the step past the line: its command ${step4["pr-reading"].checked.after}`); // stopped at it, not crossed and failed
+  if (step4["suite-reading"].command !== "python3 -m unittest") throw new Error(`the suite step's command is ${step4["suite-reading"].command}`);
+  if (!(await home.locator("article.tone-yours button", { hasText: "Approve and run" }).count())) throw new Error("the step past the line offers no Approve and run");
+  await L.openPanel(session.page);
+  const wide = (await L.graphFrames(session.page)).at(-1);
+  await until(wide, () => Boolean(document.querySelector("#gates .gate.now")) && /asks you first/.test(document.querySelector("#regions .region-label.away")?.textContent ?? ""), null,
+              "the graph to draw the step past the line, with its gate");
+  say("Start ran the test, the fix and the suite's command; the run stopped at the line, and the pull request step asks first");
+  await shot("workflow-at-the-line");
+  // Save as workflow, in the graph's header: the plan as it stands goes to workflows/<name>.md, and what the
+  // last run was given is offered as what varies, so each value becomes a hole again.
+  await wide.locator("#b-save").click();
+  const asked = (want) => session.page.waitForFunction((w) => {
+    const widget = document.querySelector(".quick-input-widget");
+    return widget && widget.style.display !== "none" && widget.querySelector(".quick-input-title")?.textContent === "Save as workflow"
+      && widget.querySelector(".quick-input-box input")?.value.startsWith(w);
+  }, want, { timeout: 15000 }).catch(() => { throw new Error(`Save as workflow did not offer “${want}…”`); });
+  await asked("fix-issue"); // the name of the one that was run
+  await input.fill("fix-again");
+  await session.page.keyboard.press("Enter");
+  await asked("issue=reading, "); // its inputs, as name=value pairs
+  await session.page.keyboard.press("Enter");
+  await sectionShown(home, "Workflows · 2", "the saved workflow listed on Home");
+  const saved = readFileSync(path.join(flow.dir, "workflows", "fix-again.md"), "utf8");
+  for (const want of ["workflow: fix-again\n", "input: issue\n", "goal: fix issue {{issue}}", "[pr-{{issue}}]", "run: {{suite}}"]) {
+    if (!saved.includes(want)) throw new Error(`workflows/fix-again.md has no “${want.trim()}”:\n${saved}`);
+  }
+  if (saved.includes("reading")) throw new Error(`a value stayed in workflows/fix-again.md where its hole belongs:\n${saved}`);
+  say("Save as workflow wrote workflows/fix-again.md with the run's values as holes, and Home lists it");
   console.log(`home: passed in ${((Date.now() - t0) / 1000).toFixed(0)} s, ${step} screenshots in ${shots}`);
 } catch (err) {
   failed = err;

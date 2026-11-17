@@ -133,3 +133,28 @@ test("an older CLI's refusal of a new shape is the one 'older Graphene' line, no
   assert.match(C.OLDER, says);
   assert.equal(C.firstLine("n2: a leaf needs a scope\n"), "n2: a leaf needs a scope", "a refusal of the plan's own is said as it is");
 });
+
+test("the one new command, `graphene workflow`: list, run with its inputs, save; and what its listing says", () => {
+  assert.deepEqual(C.workflows(), ["workflow", "--json"]);
+  assert.deepEqual(C.workflow("fix-issue", { issue: "48", test: "pytest -k export" }), ["workflow", "fix-issue", "-i", "issue=48", "-i", "test=pytest -k export"]);
+  assert.deepEqual(C.workflow("nightly", {}), ["workflow", "nightly"]);
+  assert.deepEqual(C.saveWorkflow("fix-issue", { issue: "48" }), ["workflow", "fix-issue", "--save", "-i", "issue=48"]);
+  assert.deepEqual(C.saveWorkflow("fix-issue", {}, true), ["workflow", "fix-issue", "--save", "--force"]);
+  const said = C.parseWorkflows(JSON.stringify({
+    workflows: [{ name: "fix-issue", file: "workflows/fix-issue.md", goal: "fix issue {{issue}}", inputs: [{ name: "issue", default: null }, { name: "suite", default: "uv run pytest -q" }], error: null },
+                { name: "broken", file: "workflows/broken.md", goal: "", inputs: [], error: "not a workflow" }, { name: "../etc", inputs: [] }, "junk"],
+    last: { name: "fix-issue", inputs: { issue: "48", n: 3 } },
+  }));
+  assert.deepEqual(said.workflows.map((w) => [w.name, w.inputs.length, w.error]), [["fix-issue", 2, null], ["broken", 0, "not a workflow"]]);
+  assert.deepEqual(said.workflows[0]!.inputs[1], { name: "suite", default: "uv run pytest -q" });
+  assert.deepEqual(said.last, { name: "fix-issue", inputs: { issue: "48" } });
+  assert.deepEqual(C.parseWorkflows("no such command"), { workflows: [], last: null }, "an older graphene: none listed");
+});
+
+test("what varies, typed as name=value pairs: a comma ends a value only where a new name follows", () => {
+  assert.deepEqual(C.pairs("issue=48, test=pytest -k export"), { issue: "48", test: "pytest -k export" });
+  assert.deepEqual(C.pairs("src=wordkit/**, tests/**, issue=reading"), { src: "wordkit/**, tests/**", issue: "reading" });
+  assert.deepEqual(C.pairs("  "), {});
+  assert.equal(C.pairs("just words"), null);
+  assert.equal(C.pairs("issue="), null);
+});

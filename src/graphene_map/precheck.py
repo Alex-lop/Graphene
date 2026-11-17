@@ -113,7 +113,13 @@ def current(store, node: P.Node, base: str | None, tree: str | None) -> dict | N
 def _here(command: str, root: Path, committed: bool = False) -> tuple[int | None, str]:
     """An accepted check, run as `node done` runs it: in a clean worktree, without the key. What it runs
     is asked for first (`_probe`): missing, the check is not run, and exits 127 saying CANNOT and why. Not
-    None: the Nemotron extra's precheck shares this, and a None there is a not-run, run again every time."""
+    None: the Nemotron extra's precheck shares this, and a None there is a not-run, run again every time.
+    A command that leaves this machine (a command step's push or pull request: `workflow.leaves`) is never
+    run here, whoever asks: only the person's `graphene node done` runs it."""
+    from .workflow import leaves  # here: it imports the plan's text, which no check needs
+
+    if leaves(command):
+        return 127, CANNOT + "it leaves this machine, so only your `graphene node done` runs it"
     began = time.monotonic()
     env = P.check_env()
     try:

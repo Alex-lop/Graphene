@@ -4,7 +4,8 @@
 // sends is checked first (cards.ts checkHome): nothing from the page reaches a shell but as an argument.
 import * as vscode from "vscode";
 import * as C from "./commands.ts";
-import { checkHome, home, said, type FromHome } from "./home/cards.ts";
+import { stopAfterPlan } from "./graph/words.ts";
+import { checkHome, home, said, unanswered, type FromHome } from "./home/cards.ts";
 import { EXACT, WHO } from "./home/who.ts";
 import { keyTrouble, needs, tryAgain, widen } from "./needs.ts";
 import type { Session } from "./session.ts";
@@ -24,6 +25,10 @@ export class HomeHost implements vscode.WebviewViewProvider {
    *  ponytail: read when Home opens and when its switch moves, so a `config set board` typed in a terminal
    *  shows here at the next of those; the snapshot would have to carry the setting to follow it live. */
   private board = "";
+  /** The repository's workflows as `graphene workflow --json` last listed them, and the inputs the last one
+   *  proposed here was given (Save as workflow offers them). Read when Home opens and after a run or a save. */
+  private workflows: C.Workflow[] = [];
+  private lastWorkflow: { name: string; inputs: Record<string, string> } | null = null;
   private readonly context: vscode.ExtensionContext;
   private readonly session: Session;
 
@@ -32,6 +37,10 @@ export class HomeHost implements vscode.WebviewViewProvider {
     this.session = session;
     session.onDidChange(() => this.push());
     session.onDidSee(() => this.push());
+    // the graph's header asks for these by name: its Save as workflow button, and its switch, which moves as Home's
+    // does (Exact's settings go back with it). Home may never have opened: the board setting is read first.
+    context.subscriptions.push(vscode.commands.registerCommand("graphene.saveWorkflow", () => this.saveWorkflow()),
+                               vscode.commands.registerCommand("graphene.stopAfter", async (flag?: unknown) => { await this.readBoard(); return this.setStopAfter(flag === true); }));
   }
 
   resolveWebviewView(view: vscode.WebviewView) {
@@ -41,16 +50,16 @@ export class HomeHost implements vscode.WebviewViewProvider {
     this.views.add(view);
     view.onDidDispose(() => this.views.delete(view));
     view.webview.onDidReceiveMessage((m: unknown) => {
-      const msg = checkHome(m, this.session.state);
+      const msg = checkHome(m, this.session.state, this.workflows);
       if (!msg) return;
-      if (msg.type === "ready") return void this.readBoard().then(() => this.push());
+      if (msg.type === "ready") return void Promise.all([this.readBoard(), this.readWorkflows()]).then(() => this.push());
       void this.act(msg);
     });
   }
 
   private push() {
     const s = this.session.state;
-    const h = s ? home(s, this.session.seen, this.exact) : null;
+    const h = s ? home(s, this.session.seen, this.exact, this.workflows) : null;
     if (h && this.busy) for (const section of h.sections) for (const button of section.buttons) {
       if (button.act === "startAll" || button.act === "discardAll") button.off = true;
     }
@@ -75,6 +84,72 @@ export class HomeHost implements vscode.WebviewViewProvider {
   private async readBoard() {
     const out = await this.session.run(["config"]);
     if (out.code === 0) this.board = /^board:\s*(\S+)/m.exec(out.stdout)?.[1] ?? "";
+  }
+
+  private async readWorkflows() {
+    const out = await this.session.run(C.workflows());
+    if (out.code !== 0) return; // an older graphene has no such command: no workflows are listed
+    ({ workflows: this.workflows, last: this.lastWorkflow } = C.parseWorkflows(out.stdout));
+  }
+
+  /** Run a workflow: ask for each input (its default offered), then `graphene workflow NAME -i …` proposes the
+   *  plan with its holes filled and no planner call. It is a suggested plan that waits for Start, whatever the
+   *  switch says: its command steps are shell lines from a file, read before they run (auto holds such a step
+   *  back too: a step with no files never fits its limits). */
+  private async runWorkflow(name: string) {
+    const w = this.workflows.find((x) => x.name === name);
+    if (!w || this.busy) return;
+    const inputs: Record<string, string> = {};
+    for (const i of w.inputs) {
+      const v = await vscode.window.showInputBox({
+        title: C.plain(`${name}: ${i.name}`), prompt: C.plain(`“${i.name}” for the workflow ${name}`), value: i.default ?? "", ignoreFocusOut: true,
+        validateInput: (x) => (x.trim() ? undefined : "it needs a value"),
+      });
+      if (v === undefined) return; // Esc: nothing is proposed
+      inputs[i.name] = v.trim();
+    }
+    this.busy = `Proposing ${name}…`;
+    this.say([]);
+    this.push();
+    const out = await this.session.run(C.workflow(name, inputs));
+    this.busy = "";
+    if (out.code !== 0) this.say([out.code === -1 ? "graphene was not found" : C.refusal(out.stderr, out.stdout)], { bad: true });
+    else this.say([`${name}: its plan is proposed, with no planner call. Read it, then start.`]);
+    await this.readWorkflows();
+    await this.session.refresh();
+    this.push();
+  }
+
+  /** Save as workflow, from the graph's header: its name, then what varies from run to run as `name=value` pairs
+   *  (each value becomes an input, a hole in the text), and `graphene workflow NAME --save` writes workflows/NAME.md. */
+  private async saveWorkflow() {
+    if (!this.session.state?.tasks.length) return void vscode.window.showInformationMessage("There is no graph to save yet.");
+    await this.readWorkflows();
+    const named = await vscode.window.showInputBox({
+      title: "Save as workflow", prompt: "Its name: it is written to workflows/<name>.md", value: this.lastWorkflow?.name ?? "", placeHolder: "fix-issue",
+      ignoreFocusOut: true, validateInput: (v) => (/^[A-Za-z][A-Za-z0-9_-]*$/.test(v.trim()) ? undefined : "a letter, then letters, digits, - and _"), // the engine's own rule (workflow.py NAME)
+    });
+    const name = named?.trim();
+    if (!name) return;
+    const varies = await vscode.window.showInputBox({
+      title: "Save as workflow", prompt: "What varies from run to run? name=value pairs, a comma between. Each value becomes an input. Empty: nothing varies.",
+      value: Object.entries(this.lastWorkflow?.inputs ?? {}).map(([k, v]) => `${k}=${v}`).join(", "), placeHolder: "issue=48, test=pytest -k export",
+      ignoreFocusOut: true, validateInput: (v) => (C.pairs(v) ? undefined : "write name=value, with a comma between pairs"),
+    });
+    const inputs = varies === undefined ? null : C.pairs(varies);
+    if (!inputs) return;
+    let out = await this.session.run(C.saveWorkflow(name, inputs));
+    if (out.code !== 0 && /--force/.test(`${out.stderr}${out.stdout}`)) { // one by that name is there: replacing it is the person's to say
+      const ok = await vscode.window.showWarningMessage(`workflows/${name}.md is there already. Replace it?`, { modal: true }, "Replace");
+      if (!ok) return;
+      out = await this.session.run(C.saveWorkflow(name, inputs, true));
+    }
+    if (out.code !== 0) return void vscode.window.showErrorMessage(C.plain(out.code === -1 ? "graphene was not found" : C.refusal(out.stderr, out.stdout)));
+    await this.readWorkflows();
+    this.push();
+    const folder = this.session.folder;
+    const open = await vscode.window.showInformationMessage(`Saved as workflows/${name}.md. Home lists it under Workflows.`, "Open It");
+    if (open && folder) void vscode.window.showTextDocument(vscode.Uri.joinPath(folder.uri, "workflows", `${name}.md`));
   }
 
   /** The switch: on sets the three settings and keeps what review and auto were; off puts them back and forgets
@@ -125,8 +200,11 @@ export class HomeHost implements vscode.WebviewViewProvider {
       case "ask": return this.ask(m.arg!);
       case "cancel": return this.planning?.abort();
       case "setup": return this.setUp(m.arg!, m.flag === true);
-      case "startAll": return this.exact && s.state?.questions.length ? undefined : this.start(); // Exact: Start waits for the answers
+      // Exact: Start waits for every answer; and a question with no default stops the run either way
+      case "startAll": return (this.exact && s.state?.questions.length) || (s.state && unanswered(s.state)) ? undefined : this.start();
       case "exact": return this.setExact(m.flag === true);
+      case "stopAfter": return this.setStopAfter(m.flag === true);
+      case "runWorkflow": return this.runWorkflow(m.arg!);
       case "discardAll": return this.discard();
       case "run": return void s.terminal("graphene run", C.runReady());
       case "stop": return s.act(C.stop());
@@ -151,9 +229,28 @@ export class HomeHost implements vscode.WebviewViewProvider {
     }
   }
 
-  /** `graphene ask`: the planner suggests tasks, and nothing runs until the person starts them. Cancel stops it. */
+  /** The one switch (decision 225). On, Plan it suggests a plan and waits for Start; off is auto, and the plan
+   *  is still drawn first. It is the `auto` setting, so the terminal and the graph's header see the same one. */
+  private async setStopAfter(on: boolean) {
+    if (!on && this.exact) await this.setExact(false); // Exact holds `auto: off`: its three settings go back together, then the switch moves
+    if (!(await this.session.act(C.stopAfter(on)))) return;
+    this.say([on ? "Stop after the plan is on: Plan it suggests a plan and waits for you to start it."
+      : "Stop after the plan is off: Plan it draws the plan, then runs what fits your limits without waiting. A question with no default still stops it."]);
+    this.push();
+  }
+
+  /** Plan it. While Stop after the plan is on, `graphene ask`: the planner suggests tasks, and nothing runs until
+   *  the person starts them; Cancel stops it. Off, `graphene auto` in a terminal the person can watch, as Start's
+   *  run is: the plan is drawn first, then what fits the limits runs. */
   private async ask(text: string) {
     if (this.planning) return;
+    const s = this.session.state;
+    if (s && !stopAfterPlan(s)) {
+      this.asked = text;
+      this.say(["Auto started in its terminal: it draws the plan first, then runs what fits your limits. If it stops, the terminal and Needs you say why."], { asked: text });
+      this.session.terminal("graphene auto", C.auto(text.replace(/[\u0000-\u001f\u007f]+/g, " "))); // typed into a shell: one line, no control characters
+      return this.push();
+    }
     const stop = new AbortController();
     this.planning = stop;
     this.busy = "Planning: the planner is reading your repository…";

@@ -7,16 +7,29 @@ edges, the settings and `auto.state` for the envelope and the round, the run's l
 usage rows for what was spent, and its last id as the cursor. Schema 1: a key may gain siblings and is never
 renamed; what is not known is null or empty. Read-only: nothing here writes the store or holds a lock.
 
+While a planner writes a plan (`graphene ask`), ``drafting`` says who, whether its stream carries the plan's
+text as it is written (``live``), and the steps whose lines are complete so far, for a graph to draw before
+they are proposals; null when nobody is, and in the same commit that makes them proposals.
+
 Following the plan: `graphene state --json --watch` (``follow``) prints the snapshot once, then once more
 each time the store's own version moves: SQLite's `PRAGMA data_version` (another connection committed), the
-log's last id, or the run lock coming or going. It looks every TICK seconds, three cheap reads a look and
-nothing printed when nothing changed, and ends with exit 0 when its stdout closes or on SIGTERM. An editor on
-an older CLI, which answers `--watch` with "No such option", keeps the snapshot's ``cursor`` and asks
+log's last id, the run lock coming or going, or an ask that was drafting going. It looks every TICK seconds,
+a few cheap reads a look and nothing printed when nothing changed, and ends with exit 0 when its stdout
+closes or on SIGTERM. An editor on an older CLI,
+which answers `--watch` with "No such option", keeps the snapshot's ``cursor`` and asks
 `graphene plan log --json --since <cursor>` for what happened since (one row a line, nothing when nothing
 did), then reads `state --json` again when a row came. The cheapest trigger there is the store's own files:
 `.graphene/graphene.db-wal` changes on every write while a run or a session holds a connection,
 `.graphene/graphene.db` on a checkpoint, so it watches that directory for `graphene.db*` and debounces about
 200 ms; `.graphene/run.lock` appears with a run and goes with it. A WAL reader blocks no writer.
+
+What a step may do, in plain view (the Scope pane's keys, siblings of the ones above): ``tree``, the
+repository's top-level entries, and ``allows``, the shell commands the executor's own command line lets it
+run without asking; and on each task ``files`` and ``files_n`` (the tracked files its scope covers now),
+``touched`` (written so far by the attempt going now), ``stops`` (every write of its that was refused, with
+the time and how), ``checked`` (its check's verdict before the work and after), ``tokens`` (read, cached,
+written, turns) and ``held``: how a write outside its files is held, by what tests/test_every_agent.py
+proves and nothing more.
 
 Who is calling: reading needs no mark, so `state --json` answers anyone, an agent's shell included. An editor
 that spawns `graphene` for a person's click (accept, add a step, link two steps) must drop the agent marks
@@ -30,6 +43,8 @@ from __future__ import annotations
 
 import json
 import os
+import re
+import shlex
 import time
 from collections.abc import Callable
 from dataclasses import asdict
@@ -47,6 +62,8 @@ NEWS_ROWS = 40  # the latest rows the news is read from; six lines of it at most
 NEWS = 6
 # a model's short name, when `meter.short` (the race lane's) is not there yet: the family's word
 FAMILIES = ("nano", "super", "ultra", "haiku", "sonnet", "opus", "fable")
+LISTED = 200  # the most paths `tree` and a task's `files` list; `files_n` counts them all
+VERDICTS = ("red", "passes", "outside", "environment", "landed")  # a `precheck` row's, as `checked` says them
 
 
 def error(why: str) -> dict:
@@ -101,16 +118,20 @@ def cursor(store) -> int:
 
 def version(store, root: Path) -> tuple:
     """The store's own version, as `--watch` compares it from one look to the next: what SQLite says another
-    connection committed (`PRAGMA data_version`, one page read), the log's last id (an index lookup), and the
-    run lock as a file (its size and mtime, or None when there is no run). Any of the three moving is a
-    change; none moving is nothing to say."""
+    connection committed (`PRAGMA data_version`, one page read), the log's last id (an index lookup), the
+    run lock as a file (its size and mtime, or None when there is no run), and whether the ask that says it
+    is drafting is there (a killed one writes nothing more: its going is the change). Any of them moving is
+    a change; none moving is nothing to say."""
+    from .run import _alive
+
     moved = store.conn.execute("PRAGMA data_version").fetchone()[0]
     try:
         lock = os.stat(root / ".graphene" / "run.lock")
         held = (lock.st_size, lock.st_mtime_ns)
     except OSError:
         held = None
-    return moved, cursor(store), held
+    draft = _draft(store)
+    return moved, cursor(store), held, draft is not None and _alive(draft["pid"])
 
 
 def identity(root: Path) -> tuple | None:
@@ -164,6 +185,7 @@ def log_after(store, since: int = 0) -> list[dict]:
 def snapshot(store, root: Path, now: float | None = None) -> dict:
     """The plan now, schema 1 (the brief's): one dict `json.dumps` prints."""
     from . import __version__, auto
+    from . import board as B
     from . import meter as M
     from . import node_record as NR
     from . import run as R
@@ -185,6 +207,11 @@ def snapshot(store, root: Path, now: float | None = None) -> dict:
     wide = M.width(rows)
     need, running, proven, total = m.scoreboard()
     by_id = {n.id: n for n in P.nodes(store)}  # each task's checkout and base, as the plan keeps them
+    standing = P.standing(store)  # no scope covers these, whatever its globs say: the gate's `plan.binds`
+    files = sorted(f for f in m.files if P.kept_out_by(f, standing) is None)
+    hooks = hooked(root)
+    # the cockpit's row words a question with no default as "yes" (its y key): an editor holds Start on null
+    bare = {it["id"] for it in B.items(store) if not it["default"] and not B.has_default(it)}
     return {
         "schema": SCHEMA,
         "graphene": __version__,
@@ -196,6 +223,8 @@ def snapshot(store, root: Path, now: float | None = None) -> dict:
         "first": m.first,
         "planner": chosen(store, "planner"),
         "executor": m.executor,
+        "allows": allows(store),
+        "tree": tree(m.files),
         "envelope": {
             "auto": S.auto(store),
             "budget": S.budget(store),
@@ -209,20 +238,50 @@ def snapshot(store, root: Path, now: float | None = None) -> dict:
         },
         "auto": auto.state(store),
         "run": {"going": pid is not None, "pid": pid},
+        "drafting": drafting(store),
         "spent": bill["dollars"] if bill else 0.0,
         "scoreboard": {"need_you": need, "running": running, "proven": proven, "total": total},
         "width": wide["most"] if wide else 0,
-        "questions": [asdict(q) for q in m.questions],
+        "questions": [asdict(q) | ({"default": None} if q.id in bare else {}) for q in m.questions],
         "goals": [
             {"id": n.id, "title": n.title, "parent": n.parent, "state": n.state, "check": n.check}
             for n in nodes
             if kids.get(n.id)
         ],
-        "tasks": [task(m, t, by.get(t.id, []), by_id.get(t.id), root) for t in m.tasks.values()],
+        "tasks": [
+            task(m, t, by.get(t.id, []), by_id.get(t.id), root)
+            | pane(t, by.get(t.id, []), by_id.get(t.id), files, m.executor, hooks)
+            for t in m.tasks.values()
+        ],
         "edges": [[need_id, n.id, "needs"] for n in nodes for need_id in n.needs if need_id in ids]
         + [[a, b, kind] for a, b, kind in m.extra_edges],
         "news": news(store, m),
     }
+
+
+def _draft(store) -> dict | None:
+    """What `graphene ask` wrote while its planner writes (the plan_meta key `ask.DRAFTING`), as it wrote it:
+    who plans, the steps so far, and the ask's own pid and start. None when no ask says it is drafting."""
+    try:
+        said = json.loads(store.meta("drafting") or "null")
+    except ValueError:
+        return None
+    return said if isinstance(said, dict) and isinstance(said.get("pid"), int) else None
+
+
+def drafting(store) -> dict | None:
+    """The plan a planner is writing now: who (as ``planner`` names one), whether its stream carries the
+    plan's text as it is written (``live``: its steps appear one by one; else the plan arrives whole, and
+    ``steps`` stays empty until it does), and each step whose own line is complete, in the order written
+    (`plan_text.drafted`). None when no planner is writing: the ask made its proposals or ended some other
+    way, or its process is gone (killed, so it never said so: the store still holds what it wrote, and the
+    pid and start time it wrote beside it name no process now, as a dead run's lock does not)."""
+    from .run import _still
+
+    said = _draft(store)
+    if said is None or not _still(said["pid"], said.get("start")):
+        return None
+    return {"by": str(said.get("by") or ""), "live": bool(said.get("live")), "steps": said.get("steps") or []}
 
 
 def stand_in(rows: list[dict]) -> bool:
@@ -249,6 +308,19 @@ def chosen(store, key: str) -> str:
     """Who `graphene init` chose as the planner or the executor: the command's first word, by its name."""
     said = (store.meta(key) or "").split()
     return Path(said[0]).name if said else ""
+
+
+def passes_before(log: list[dict], node: P.Node | None) -> bool:
+    """Its check already passes on the code as it is, before any work, so it proves nothing yet: the leaf's
+    last `precheck` row is about the check and the revision it has now and says `passes`. Said from red
+    first until the work is done (open, and while it runs), so a card is marked before its agent starts; done
+    or in review, the cockpit's own `hollow` says it. Red first runs as a run starts and in auto's gate, and
+    never on a proposal: with the plan still suggested, no check has run and nothing is marked."""
+    if node is None or node.state not in (P.OPEN, P.RUNNING):
+        return False
+    said = [r["detail"] for r in log if r["kind"] == "precheck"]
+    last = said[-1] if said else {}
+    return last.get("verdict") == "passes" and last.get("rev") == node.rev and last.get("check") == node.check
 
 
 def task(m, t, log: list[dict], node: P.Node | None = None, root: Path | None = None) -> dict:
@@ -306,11 +378,153 @@ def task(m, t, log: list[dict], node: P.Node | None = None, root: Path | None = 
         "outside": list(t.outside),
         "forks": forks,
         "kept": {"letter": t.kept[0], "why": t.kept[1], "by": t.kept[2]} if t.kept else None,
-        "hollow": t.hollow,
+        # a command step's command proves no work, so red first's verdict on it is no hollow check
+        "hollow": (t.hollow or passes_before(log, node)) and (node is None or P.runs_itself(node) is None),
         "why": t.note if t.state == "came back" else "",
         "checkout": where if where and Path(where).is_dir() else None,
         "base": (node.base_sha or None) if node else None,
         "attempts": len(own) or max((f["attempts"] for f in forks), default=0),
+    }
+
+
+def tree(files: list[str]) -> list[str]:
+    """The repository's top-level entries as git tracks them, from the files the cockpit's model already
+    holds (git is not asked again; a replay's repository is not on disk, so it has none): the folders, each
+    ending "/", then the files, each group sorted, LISTED at most."""
+    folders = sorted({f.split("/", 1)[0] + "/" for f in files if "/" in f})
+    return [*folders, *sorted(f for f in files if "/" not in f)][:LISTED]
+
+
+def allows(store) -> list[str] | None:
+    """The shell commands the executor's own command line lets it run without asking: for Claude Code, the
+    `Bash(...)` entries of its `--allowedTools`, read from the whole command `graphene run` starts
+    (`run.named` of the store's `executor`: the default names two, `graphene node *` and `graphene plan *`).
+    None when the command line names no such list (Codex, the Nemotron executor, a command of the person's
+    own, nobody chosen) or switches the asking off: it may run any command, and what a command writes is
+    still held to the step's files. Never an entry of `--disallowedTools`: that list says the opposite.
+    Only a command that begins as Claude Code's is resolved: Nemotron's is an extra's to say."""
+    from . import meter as M
+    from . import run as R
+
+    argv: list[str] = []
+    if chosen(store, "executor").startswith("claude"):
+        try:
+            argv = shlex.split(R.named(store.meta("executor")))
+        except ValueError:  # a quote left open: nothing `graphene run` could start
+            pass
+    if not argv or Path(argv[0]).name != "claude":
+        return None
+    if "--dangerously-skip-permissions" in argv or M.option(argv, "--permission-mode") == "bypassPermissions":
+        return None
+    said: list[str] = []
+    listing = False
+    for arg in argv[1:]:
+        flag, _, joined = arg.partition("=")
+        if flag in ("--allowedTools", "--allowed-tools"):
+            listing, arg = True, joined
+        elif arg.startswith("-"):
+            listing = False
+        if listing:
+            said += re.findall(r"Bash\(([^)]*)\)", arg)
+    return said or None
+
+
+def hooked(root: Path) -> bool:
+    """Whether this repository has Graphene's gate among Claude Code's hooks: our command on PreToolUse, in
+    the settings file `graphene init` put it in (`hooks.hooks_file`). That hook is what refuses a write
+    before it happens; our command on another event alone refuses nothing. False when the file is not there
+    or does not read."""
+    from . import hooks as H
+
+    try:
+        groups = json.loads(H.hooks_file(root).read_text(encoding="utf-8"))["hooks"]["PreToolUse"]
+        return any(H._is_ours(h) for g in groups if isinstance(g, dict) for h in H._handlers(g))
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
+
+
+def checked(log: list[dict], check: str) -> dict:
+    """The check's verdict before the work and after, each only while it is about the check the task has
+    now: ``before`` from its last `precheck` row (red first, precheck.py: one of VERDICTS), ``after``
+    "passed" or "failed" from its last `check_passed` or `check_failed` row. None for a check that was
+    edited since, was not run, or is not there: what an older check said is not this one's result."""
+    before = next((r["detail"] for r in reversed(log) if r["kind"] == "precheck"), {})
+    after = next((r for r in reversed(log) if r["kind"] in ("check_passed", "check_failed")), None)
+    out: dict[str, str | None] = {"before": None, "after": None}
+    if check and before.get("check") == check and before.get("verdict") in VERDICTS:
+        out["before"] = before["verdict"]
+    if check and after is not None and after["detail"].get("command") == check:
+        out["after"] = after["kind"].removeprefix("check_")
+    return out
+
+
+def tokens(log: list[dict]) -> dict | None:
+    """What the task's attempts spent, its forks' included, from its `usage` rows as `node_record.bill` adds
+    them up: ``read`` the prompt tokens, ``cached`` how many of those came from the cache (None when no row
+    says: Codex reports none), ``written`` the completion tokens, ``turns`` the model turns. None when no
+    attempt of it has a metered row: not started, or an executor with no meter."""
+    from . import meter as M
+    from . import node_record as NR
+
+    bill = NR.bill(log)
+    if bill is None:
+        return None
+    cached = [u[M.PROMPT[2]] for r in log if r["kind"] == "usage" and M.PROMPT[2] in (u := r["detail"])]
+    return {"read": bill["prompt_tokens"], "cached": sum(cached) if cached else None,
+            "written": bill["completion_tokens"], "turns": bill["calls"]}  # fmt: skip
+
+
+def held(node: P.Node | None, chosen: str, hooks: bool, log: list[dict] | tuple = ()) -> dict:
+    """How a write outside the task's files is held, by what is proven and nothing more (tests/
+    test_every_agent.py, dev/process/graph-edit/hooks.md). "refused", before the write: its executor is
+    Claude Code and this repository has the gate among its hooks (``hooked``). "caught", when it finishes:
+    anyone else holding it (Codex, the Nemotron executor, a command of the person's own), and Claude Code
+    without the hooks; the finish checks what changed against the scope whoever did the work. "none": a task
+    that is the person's to do, where nothing stops whatever writes it (the person, or an editor's own agent)
+    and nothing checks it until it is marked done; and a task held by something no run started and no proven
+    session is (an editor's own agent, a person who took an agent's task): nobody has tested those. Codex is
+    never "refused": whether its hooks are trusted is not in the store. Nor is a step whose forks are not all
+    Claude Code (``log``'s last `forked` row says who runs each): the weakest fork is what holds.
+    ``by`` is who holds it while it runs (`run:claude` and a session's `claude:5e55105e`
+    are both claude), else the executor chosen for the repository (``chosen``, the snapshot's `executor`),
+    or "you"."""
+    if node is not None and node.owner != P.AGENT:
+        return {"state": "none", "by": "you"}
+    holds = (node.executor or "") if node is not None and node.state == P.RUNNING else ""
+    by = holds.removeprefix("run:").partition(":")[0] or chosen
+    if holds and not holds.startswith(("run:", "claude:", "codex:")):
+        return {"state": "none", "by": by}
+    forks = next((r["detail"].get("with") or {} for r in reversed(log) if r["kind"] == "forked"), {})
+    mixed = bool(holds and node.forked) and any(str(w).partition(":")[0] != "claude" for w in forks.values())
+    claude = by.partition(":")[0] == "claude" and not mixed
+    return {"state": "refused" if claude and hooks else "caught", "by": by}
+
+
+def pane(t, log: list[dict], node: P.Node | None, files: list[str], chosen: str, hooks: bool) -> dict:
+    """What the step pane's Scope tab reads for one task, beside `scope`, `changed` and `stopped`, which stay
+    as they are. `files` are the tracked files its scope covers, matched as the gate matches a write
+    (`plan.in_scope`: the last glob that matches decides, so a `!` glob takes paths back out), LISTED at most
+    and `files_n` in all. ``files`` is every tracked file no standing setting keeps out, sorted: a scope's
+    are a slice of it (`plan._within`, as `plan.one_writer` finds them), so a plan of forty steps does not
+    match every file against every scope. `touched` is the cockpit's own (`Task.touched`) while it runs;
+    `stops` is the whole history, oldest first, where `stopped` is the attempt going now."""
+    covered = [f for f in P._within(files, P._prefixes(t.scope)) if P.in_scope(f, t.scope)]
+    return {
+        "files": covered[:LISTED],
+        "files_n": len(covered),
+        "touched": sorted(t.touched) if t.state == "running" else [],
+        "stops": [
+            {"path": str(d["path"]), "at": r["timestamp"], "how": str(d.get("how") or "")}
+            for r in log
+            if r["kind"] == "denied" and (d := r["detail"]).get("path")
+        ],
+        "checked": checked(log, t.check),
+        "tokens": tokens(log),
+        "held": held(node, chosen, hooks, log),
+        # a workflow's `run:` step: the command that runs with no agent, and whether it leaves this machine
+        # (a push, a pull request: `workflow.leaves`), where the graph draws it past the line and it waits
+        "command": node.check if node is not None and P.runs_itself(node) is not None else None,
+        "leaves": node is not None and P.runs_itself(node) is False,
     }
 
 

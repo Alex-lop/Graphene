@@ -2,13 +2,14 @@
 // in the order a person acts on them (what needs you, the suggested plan, who is working, what is up next, what
 // is done); each card says what its task is for and what proves it, with its buttons. No VS Code and no DOM
 // here: home.ts sends what this returns, home/main.ts draws it, and checkHome reads what the page sends back.
+import { pipeline, PROVES_NOTHING, stopAfterPlan, type Stage } from "../graph/words.ts";
 import { needs, OFFERS, offerOn } from "../needs.ts";
 import { headline, SAY, usd, type Question, type State, type Task } from "../state.ts";
 import { WHO } from "./who.ts";
 
 export const ACTS = ["ask", "cancel", "startAll", "discardAll", "run", "stop", "drop", "answer", "openDiff", "compare", "keep",
                      "approve", "sendBack", "offer", "tryAgain", "allow", "message", "markDone", "showGraph", "demo", "setup",
-                     "install", "setKey", "refresh", "openFolder", "exact"] as const;
+                     "install", "setKey", "refresh", "openFolder", "exact", "stopAfter", "runWorkflow"] as const;
 export type Act = (typeof ACTS)[number];
 
 export interface Btn { label: string; act: Act; id?: string; arg?: string; main?: boolean; title?: string; off?: boolean }
@@ -16,7 +17,9 @@ export interface Line { k?: string; v: string; mono?: boolean; warn?: boolean }
 export type Tone = "question" | "proposed" | "running" | "review" | "came-back" | "ready" | "waiting" | "done" | "yours";
 export interface Card { key: string; tone: Tone; title: string; tag: string; lines: Line[]; buttons: Btn[] }
 export interface Section { key: string; title: string; note: string; buttons: Btn[]; cards: Card[]; folded: boolean }
-export interface Home { banner: string; goal: string; counts: string; sections: Section[]; empty: boolean }
+/** ``stages``: Plan, Run, Review, and where the work is. ``stopAfter``: the one switch, on by default. */
+export interface Home { banner: string; goal: string; counts: string; stages: Stage[]; stopAfter: boolean; sections: Section[]; empty: boolean }
+export { PROVES_NOTHING };
 
 const cut = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1).trimEnd()}…` : s);
 const files = (paths: string[]) => paths.join(", ");
@@ -43,12 +46,27 @@ export function countsLine(s: State): string {
   return parts.join(" · ");
 }
 
+/** The open questions with no default: one stops the run either way, so Start waits for its answer as auto does. */
+export const unanswered = (s: Pick<State, "questions">): number => s.questions.filter((q) => !q.default).length;
+
+/** A command step whose command failed stays open, and reads as it did before it ran: once the terminal is gone,
+ *  this line is all that says it ran. */
+const failed = (t: Task): Line[] => (t.command && t.checked.after === "failed" && t.state !== "done"
+  ? [{ v: `Its command failed the last time it ran: the terminal said why. ${t.leaves ? "Approve and run" : "Run"} tries it again.`, warn: true }] : []);
+
 /** What a task is for, what it may change, and what proves it: the three lines a person reads before saying yes. */
 function contract(t: Task, name: (id: string) => string): Line[] {
+  if (t.command) return [ // a command step: no agent and no files; what runs, and whether it asks first
+    { k: "Runs", v: t.command, mono: true },
+    { v: t.leaves ? "It leaves your machine, so it asks you before it runs." : "A command, with no agent: its exit code is its check." },
+    ...failed(t),
+    ...line("After", t.needs.map(name).join(", ")),
+  ];
   return [
     ...line("What for", t.full && t.full !== t.title ? t.full : ""),
     { k: "May change", v: files(t.scope) || "no files named", mono: Boolean(t.scope.length) },
     { k: "Done when", v: t.check ? `${t.check} passes` : "you approve it", mono: Boolean(t.check) },
+    ...(t.hollow ? [{ v: PROVES_NOTHING, warn: true }] : []), // the check ran once on the code as it is, before the run
     ...line("After", t.needs.map(name).join(", ")),
   ];
 }
@@ -91,8 +109,12 @@ function help(t: Task, titles: Record<string, string>): Btn[] {
           { label: "Open changes", act: "openDiff", id: t.id }, { label: "Remove task", act: "drop", id: t.id }];
 }
 
-/** ``exact``: the switch is on, so Start waits while anything the plan asks is open (its default's button confirms it). */
-export function home(s: State, seen: ReadonlySet<string> = new Set(), exact = false): Home {
+/** A workflow as Home lists it: a graph saved to workflows/, with the inputs Run asks for. */
+export interface Listed { name: string; goal: string; inputs: { name: string; default: string | null }[]; error: string | null }
+
+/** ``exact``: the switch is on, so Start waits while anything the plan asks is open (its default's button confirms it).
+ *  ``workflows``: the repository's saved graphs, each with a Run that proposes its plan with no planner call. */
+export function home(s: State, seen: ReadonlySet<string> = new Set(), exact = false, workflows: readonly Listed[] = []): Home {
   const titles: Record<string, string> = Object.fromEntries(s.tasks.map((t) => [t.id, t.title]));
   const name = (id: string) => titles[id] ?? id;
   const sections: Section[] = [];
@@ -137,6 +159,12 @@ export function home(s: State, seen: ReadonlySet<string> = new Set(), exact = fa
                      lines: [{ v: `Agent ${t.agent || "?"} tried to change ${path}, which is outside the files this task may change.`, warn: true }],
                      buttons: [{ label: `Allow it to change ${cut(path, 60)}`, act: "allow", id: t.id, main: true },
                                { label: "Open changes so far", act: "openDiff", id: t.id }] });
+    } else if (n.kind === "yours" && n.t.leaves && n.t.command) { // a step past the line: approving it runs its command
+      const t = n.t;
+      waiting.push({ key: `yours:${t.id}`, tone: "yours", title: t.title, tag: "asks you",
+                     lines: [{ v: "This step leaves your machine, so it asks you first. Approving it runs its command, with no agent." },
+                             { k: "Runs", v: t.command!, mono: true }, ...failed(t), ...line("After", t.needs.map(name).join(", "))],
+                     buttons: [{ label: "Approve and run", act: "markDone", id: t.id, main: true, title: "graphene node done runs the command, in a terminal you can watch" }] });
     } else if (n.kind === "yours") {
       const t = n.t;
       waiting.push({ key: `yours:${t.id}`, tone: "yours", title: t.title, tag: SAY.yours,
@@ -153,9 +181,11 @@ export function home(s: State, seen: ReadonlySet<string> = new Set(), exact = fa
   })), {
     note: exact && s.questions.length
       ? `Exact is on: answer the ${plural(s.questions.length, "open question")} under Needs you first (a default's button confirms it), then start.`
+      : unanswered(s) ? `Answer the ${plural(unanswered(s), "question")} with no default under Needs you first: a question with no default stops the run.`
       : "Read each task: what it may change, and what proves it is done. Remove what you do not want, then start.",
-    buttons: [{ label: "Start", act: "startAll", main: true, off: exact && s.questions.length > 0,
-                title: exact && s.questions.length ? "Exact is on: it waits for your answers" : "accept these tasks and start an agent on each" },
+    buttons: [{ label: "Start", act: "startAll", main: true, off: (exact && s.questions.length > 0) || unanswered(s) > 0,
+                title: exact && s.questions.length ? "Exact is on: it waits for your answers" : unanswered(s) ? "it waits for an answer: a question with no default is open"
+                  : "accept these tasks and start an agent on each" },
               { label: "Discard all", act: "discardAll" }],
   });
 
@@ -165,7 +195,8 @@ export function home(s: State, seen: ReadonlySet<string> = new Set(), exact = fa
     return {
       key: `w:${t.id}`, tone: "running" as const, title: t.title, tag: SAY.running,
       lines: [...line("Agent", `${t.agent || "?"}${t.model ? ` · ${t.model}` : ""}`), ...line("Now", t.tail[t.tail.length - 1] ?? "", { mono: true }),
-              ...line("Quiet for", quiet), ...line("Cost", usd(t.usd)), ...line("Attempts", attempts(t), { mono: true })],
+              ...line("Quiet for", quiet), ...line("Cost", usd(t.usd)), ...line("Attempts", attempts(t), { mono: true }),
+              ...(t.hollow ? [{ v: PROVES_NOTHING, warn: true }] : [])],
       buttons: [{ label: "Open changes so far", act: "openDiff" as const, id: t.id },
                 { label: "Message agent…", act: "message" as const, id: t.id, title: "it reads your line with its next step" },
                 ...(t.forks.length > 1 ? [{ label: "Compare attempts", act: "compare" as const, id: t.id }] : [])],
@@ -180,6 +211,14 @@ export function home(s: State, seen: ReadonlySet<string> = new Set(), exact = fa
   })), { buttons: [{ label: "Run", act: "run", main: true, title: s.run.going ? "hand these to the run that is going"
                                                                             : "start an agent on every task that is ready" }] });
 
+  section("workflows", `Workflows · ${workflows.length}`, workflows.map((w) => ({
+    key: `wf:${w.name}`, tone: "ready" as const, title: w.name, tag: "workflow",
+    lines: w.error ? [{ v: w.error, warn: true }]
+      : [...line("Does", w.goal), ...line("Asks for", w.inputs.map((i) => (i.default === null ? i.name : `${i.name} (${i.default})`)).join(", "))],
+    buttons: w.error ? [] : [{ label: "Run", act: "runWorkflow" as const, arg: w.name, main: true, title: "fill its inputs and propose its plan: no planner is called" }],
+  })), { note: "A graph saved to workflows/. Run asks for its inputs and proposes its plan with no planner call; then it goes on as any plan does.",
+         folded: s.tasks.length > 0 });
+
   const done = s.tasks.filter((t) => t.state === "done");
   section("done", `Done · ${done.length}`, done.map((t) => ({
     key: `d:${t.id}`, tone: "done" as const, title: t.title, tag: SAY.done, lines: evidence(t),
@@ -187,7 +226,8 @@ export function home(s: State, seen: ReadonlySet<string> = new Set(), exact = fa
               { label: "Send back…", act: "sendBack" as const, id: t.id, title: "say what is wrong; an agent takes it again" }],
   })), { folded: true });
 
-  return { banner: banner(s), goal: headline(s), counts: countsLine(s), sections, empty: !s.tasks.length && !s.questions.length };
+  return { banner: banner(s), goal: headline(s), counts: countsLine(s), stages: pipeline(s), stopAfter: stopAfterPlan(s), sections,
+           empty: !s.tasks.length && !s.questions.length };
 }
 
 /** What `graphene ask` printed that a person wants to read: the planner's own words, and what planning cost. */
@@ -205,12 +245,12 @@ export type FromHome = { type: "ready" } | { type: "act"; act: Act; id: string; 
 
 /** The acts that take no task: each still checked for what it carries. */
 const GLOBAL: readonly Act[] = ["ask", "cancel", "startAll", "discardAll", "run", "stop", "showGraph", "demo", "setup", "install",
-                                "setKey", "refresh", "openFolder", "exact"];
+                                "setKey", "refresh", "openFolder", "exact", "stopAfter", "runWorkflow"];
 
 /** A message from the page, checked against the plan before anything runs: a known act; the text of an ask; a
  *  planner the Set Up offers; a task the plan has (a question, for answer); an option the question has; an offer
  *  the task carries. Null for anything else. */
-export function checkHome(m: unknown, s: State | null): FromHome | null {
+export function checkHome(m: unknown, s: State | null, workflows: readonly Pick<Listed, "name" | "error">[] = []): FromHome | null {
   if (!m || typeof m !== "object") return null;
   const r = m as Record<string, unknown>;
   if (r.type === "ready") return { type: "ready" };
@@ -219,7 +259,8 @@ export function checkHome(m: unknown, s: State | null): FromHome | null {
   const id = typeof r.id === "string" ? r.id : "";
   const arg = typeof r.arg === "string" ? r.arg : undefined;
   if (act === "ask") return arg?.trim() && arg.length <= 4000 ? { type: "act", act, id: "", arg: arg.trim() } : null;
-  if (act === "exact") return typeof r.flag === "boolean" ? { type: "act", act, id: "", flag: r.flag } : null;
+  if (act === "exact" || act === "stopAfter") return typeof r.flag === "boolean" ? { type: "act", act, id: "", flag: r.flag } : null;
+  if (act === "runWorkflow") return workflows.some((w) => w.name === arg && !w.error) ? { type: "act", act, id: "", arg } : null; // one the repository has
   if (act === "setup") return WHO.some((w) => w.word === arg) ? { type: "act", act, id: "", arg, flag: r.flag === true } : null;
   if (act === "setKey") return arg === undefined || /^\w+$/.test(arg) ? { type: "act", act, id: "", arg } : null;
   if (act === "answer") {

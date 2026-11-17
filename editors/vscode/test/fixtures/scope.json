@@ -1,0 +1,288 @@
+{
+ "schema": 1,
+ "graphene": "0.8.0",
+ "repo": "/home/alex/app",
+ "cursor": 3,
+ "goal": "Add CSV export of the visible rows",
+ "first": "on",
+ "planner": "claude",
+ "executor": "claude",
+ "envelope": {
+  "auto": "off",
+  "budget": null,
+  "tasks": null,
+  "rounds": 2,
+  "forks": null,
+  "review": "off",
+  "protected": [],
+  "readonly": []
+ },
+ "auto": null,
+ "run": {
+  "going": true,
+  "pid": 4242
+ },
+ "spent": 0.48,
+ "scoreboard": {
+  "need_you": 0,
+  "running": 2,
+  "proven": 1,
+  "total": 4
+ },
+ "width": 0,
+ "questions": [],
+ "goals": [],
+ "tasks": [
+  {
+   "full": "",
+   "parent": null,
+   "needs": [],
+   "agent": "",
+   "model": "",
+   "usd": 0.09,
+   "idle": null,
+   "needs_you": false,
+   "tail": [],
+   "note": "",
+   "offers": {},
+   "changed": [
+    "tests/test_export.py"
+   ],
+   "stopped": [],
+   "outside": [],
+   "forks": [],
+   "kept": null,
+   "hollow": false,
+   "why": "",
+   "checkout": null,
+   "base": null,
+   "attempts": 1,
+   "files": [
+    "tests/test_export.py"
+   ],
+   "files_n": 1,
+   "touched": [],
+   "stops": [],
+   "checked": {
+    "before": "red",
+    "after": "passed"
+   },
+   "tokens": {
+    "read": 12000,
+    "cached": 8000,
+    "written": 1500,
+    "turns": 5
+   },
+   "held": {
+    "state": "refused",
+    "by": "claude"
+   },
+   "id": "failing",
+   "title": "A test that fails today",
+   "state": "done",
+   "scope": [
+    "tests/test_export.py"
+   ],
+   "check": "pytest -k export"
+  },
+  {
+   "full": "",
+   "parent": null,
+   "needs": [
+    "failing"
+   ],
+   "agent": 1,
+   "model": "claude-sonnet",
+   "usd": 0.21,
+   "idle": 3,
+   "needs_you": false,
+   "tail": [
+    "edit src/export/csv.py",
+    "edit src/export/rows.py",
+    "run  pytest -k export"
+   ],
+   "note": "",
+   "offers": {},
+   "changed": [],
+   "stopped": [],
+   "outside": [],
+   "forks": [],
+   "kept": null,
+   "hollow": false,
+   "why": "",
+   "checkout": "/home/alex/app/.graphene/worktrees/rows",
+   "base": null,
+   "attempts": 1,
+   "files": [
+    "src/export/__init__.py",
+    "src/export/csv.py",
+    "src/export/formats.py",
+    "src/export/rows.py"
+   ],
+   "files_n": 4,
+   "touched": [
+    "src/export/csv.py",
+    "src/export/rows.py"
+   ],
+   "stops": [],
+   "checked": {
+    "before": "red",
+    "after": null
+   },
+   "tokens": {
+    "read": 41000,
+    "cached": 30000,
+    "written": 6000,
+    "turns": 14
+   },
+   "held": {
+    "state": "refused",
+    "by": "claude"
+   },
+   "id": "rows",
+   "title": "Export the visible rows",
+   "state": "running",
+   "scope": [
+    "src/export/**"
+   ],
+   "check": "pytest -k export"
+  },
+  {
+   "full": "",
+   "parent": null,
+   "needs": [
+    "failing"
+   ],
+   "agent": 2,
+   "model": "gpt-5-codex",
+   "usd": 0.18,
+   "idle": 5,
+   "needs_you": false,
+   "tail": [],
+   "note": "",
+   "offers": {},
+   "changed": [],
+   "stopped": [
+    "README.md"
+   ],
+   "outside": [],
+   "forks": [],
+   "kept": null,
+   "hollow": false,
+   "why": "",
+   "checkout": "/home/alex/app/.graphene/worktrees/button",
+   "base": null,
+   "attempts": 1,
+   "files": [
+    "web/table/Table.tsx",
+    "web/table/button.tsx",
+    "web/table/table.test.tsx"
+   ],
+   "files_n": 3,
+   "touched": [
+    "web/table/button.tsx"
+   ],
+   "stops": [
+    {
+     "path": "README.md",
+     "at": "2026-11-17T12:41:00",
+     "how": "Write"
+    }
+   ],
+   "checked": {
+    "before": "red",
+    "after": null
+   },
+   "tokens": {
+    "read": 30000,
+    "cached": null,
+    "written": 4000,
+    "turns": 9
+   },
+   "held": {
+    "state": "caught",
+    "by": "codex"
+   },
+   "id": "button",
+   "title": "Add the Export button",
+   "state": "running",
+   "scope": [
+    "web/table/**"
+   ],
+   "check": "npm test table"
+  },
+  {
+   "full": "",
+   "parent": null,
+   "needs": [
+    "rows"
+   ],
+   "agent": "",
+   "model": "",
+   "usd": null,
+   "idle": null,
+   "needs_you": false,
+   "tail": [],
+   "note": "",
+   "offers": {},
+   "changed": [],
+   "stopped": [],
+   "outside": [],
+   "forks": [],
+   "kept": null,
+   "hollow": true,
+   "why": "",
+   "checkout": null,
+   "base": null,
+   "attempts": 0,
+   "files": [],
+   "files_n": 0,
+   "touched": [],
+   "stops": [],
+   "checked": {
+    "before": "passes",
+    "after": null
+   },
+   "tokens": null,
+   "held": {
+    "state": "refused",
+    "by": "claude"
+   },
+   "id": "empty",
+   "title": "Handle an empty table",
+   "state": "waiting",
+   "scope": [
+    "src/export/empty.py"
+   ],
+   "check": "pytest -k empty"
+  }
+ ],
+ "edges": [
+  [
+   "failing",
+   "rows",
+   "needs"
+  ],
+  [
+   "failing",
+   "button",
+   "needs"
+  ],
+  [
+   "rows",
+   "empty",
+   "needs"
+  ]
+ ],
+ "news": [],
+ "tree": [
+  "src/",
+  "tests/",
+  "web/",
+  "README.md"
+ ],
+ "allows": [
+  "graphene node *",
+  "graphene plan *"
+ ]
+}

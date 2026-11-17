@@ -23,8 +23,9 @@ export const window = { showErrorMessage(m) { notifications.push(m); return Prom
   showInformationMessage() { return Promise.resolve(undefined); } };
 export const Uri = { joinPath(...p) { return p.join("/"); } };
 export const ViewColumn = { Active: -1 };
-export const commands = { ran: [], getCommands() { return Promise.resolve(["graphene.runReady", "graphene.stop", "graphene.auto", "graphene.openCockpit", "graphene.addStep"]); },
-  executeCommand(id, arg) { this.ran.push([id, arg]); return Promise.resolve(); } };
+export const commands = { ran: [], registered: [], fns: {}, registerCommand(id, fn) { this.registered.push(id); this.fns[id] = fn; return { dispose() {} }; },
+  getCommands() { return Promise.resolve(["graphene.runReady", "graphene.stop", "graphene.auto", "graphene.openCockpit", "graphene.addStep", ...this.registered]); },
+  executeCommand(id, arg) { this.ran.push([id, arg]); return Promise.resolve(this.fns[id]?.(arg)); } };
 `;
 const hooks = `
 const STUB = ${JSON.stringify(`data:text/javascript,${encodeURIComponent(stub)}`)};
@@ -166,6 +167,22 @@ test("a form refusal is inline once; an act with no form still gets a notificati
   assert.deepEqual(ui.notifications, [], "the form displays the refusal, so no toast duplicates it");
   await Session.prototype.act.call({ change: async () => result } as never, ["node", "set", "n1"]);
   assert.equal(ui.notifications.length, 1);
+});
+
+test("the graph header's switch moves as Home's does: with Exact on, its three settings go back before auto turns on", async () => {
+  const { HomeHost } = await import("../src/home.ts");
+  const { parseState } = await import("../src/state.ts");
+  const state = parseState(JSON.stringify({ envelope: { review: "every", auto: "off" } }));
+  const ran: string[][] = [];
+  const fake = { ...(session as object), state, seen: new Set(), onDidSee: () => ({ dispose() {} }), refresh: async () => {},
+    run: async (argv: string[]) => { ran.push(argv); return { code: 0, stdout: "board: on\n", stderr: "" }; }, // `graphene config`: Exact is on
+    act: async (argv: string[]) => { ran.push(argv); return true; } } as never;
+  new HomeHost(context, fake); // it registers graphene.stopAfter; Home's page was never opened, so the board setting is read then
+  new GraphHost(context, fake).show();
+  await vscode.panels.at(-1)!.w.receive({ type: "act", act: "stopAfter", id: "", value: false });
+  assert.deepEqual(vscode.commands.ran.at(-1), ["graphene.stopAfter", false]);
+  assert.deepEqual(ran.filter((argv) => argv.length > 1), [["config", "set", "board", "auto"], ["config", "set", "review", "every"], ["config", "set", "auto", "off"],
+                                                          ["config", "set", "auto", "on"]], "Exact's three go back together, then the switch moves");
 });
 
 test("Home disables Start while planning finishes, so a visible plan cannot swallow the click", async () => {

@@ -1,15 +1,18 @@
 // The preview stands in for VS Code: it answers the graph's `ready` with a fixture state (`?fixture=auto`
 // picks one) and shows what the graph asked for in the footer. For screenshots, no editor needed.
 import autoFx from "../../test/fixtures/auto.json";
+import draftingFx from "../../test/fixtures/drafting.json";
 import emptyFx from "../../test/fixtures/empty.json";
 import proposalsFx from "../../test/fixtures/proposals.json";
 import runningFx from "../../test/fixtures/running.json";
+import scopeFx from "../../test/fixtures/scope.json";
+import workflowFx from "../../test/fixtures/workflow.json";
 import realAutoFx from "../../test/fixtures/real-auto.json";
 import raceFx from "../../test/fixtures/graph-race.json";
 import { parseState } from "../state.ts";
 
 const fixtures: Record<string, unknown> = { auto: autoFx, empty: emptyFx, proposals: proposalsFx, running: runningFx,
-  real: realAutoFx, race: raceFx };
+  real: realAutoFx, race: raceFx, drafting: draftingFx, scope: scopeFx, workflow: workflowFx };
 const params = new URLSearchParams(location.search);
 const name = params.get("fixture") ?? "running";
 const select = params.get("select"); // `&select=greet` opens that task's details, as a click would
@@ -22,7 +25,7 @@ state.stand_in = params.get("standin") ? true : raw.stand_in === true; // &stand
 const rawTasks = (raw.tasks as Record<string, unknown>[] | undefined) ?? [];
 for (const t of state.tasks) {
   const r = rawTasks.find((x) => x.id === t.id);
-  Object.assign(t, { planned: typeof r?.planned === "number" ? r.planned : null, signoff: r?.signoff === true, owner: "agent" }); // as `plan --json` would say
+  Object.assign(t, { planned: typeof r?.planned === "number" ? r.planned : null, signoff: r?.signoff === true, owner: r?.command ? "command" : "agent" }); // as `plan --json` would say
   if (!r) continue;
   if (typeof r.why === "string") t.why = r.why;
   if (typeof r.attempts === "number") t.attempts = r.attempts;

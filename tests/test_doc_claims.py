@@ -203,6 +203,38 @@ def test_first_lights_403_for_a_made_up_key_names_its_source_and_says_it_is_no_p
     assert "No log of that run was kept" in said
 
 
+def test_the_readme_and_the_pickers_name_no_nemotron_nebius_or_hackathon():
+    """The first screens (the README, the extension's README, Home's picker and Set Up's) lead with the
+    agents a person has. The Nemotron code is frozen, not deleted: `graphene init --executor nemotron` is
+    held by tests/test_init.py."""
+    vscode = "editors/vscode"
+    for path in ("README.md", f"{vscode}/README.md", f"{vscode}/src/home/who.ts", f"{vscode}/src/setup.ts"):
+        said = doc(path).lower()
+        for word in ("nemotron", "nebius", "hackathon", "token factory"):
+            assert word not in said, (path, word)
+
+
+def test_the_readme_leads_with_the_canvas_and_its_two_pillars():
+    """The first screen is the canvas (the picture `dev/process/canvas/shoot.mjs readme` takes from Watch the
+    Demo) with the two pillars of dev/VISION.md in a sentence each, above "What it solves". What it says of
+    workflows is held to the file the repository ships and to the two commands the machine line knows."""
+    from graphene_map import workflow
+
+    readme = doc("README.md")
+    assert "## What it solves" in readme  # else the first screen below would be the whole file
+    first = readme.split("## What it solves")[0]
+    assert "editors/vscode/media/graph.png" in first and "a scripted stand-in, no model ran" in first
+    assert "**A canvas you watch and shape.**" in first and "**Scope you can see.**" in first
+    assert "Plan → Run → Review" in first and "**Stop after the plan**" in first
+    assert "which files it may change" in first and "which writes were stopped" in first  # the second's
+    assert "a Codex plan appears whole" in first  # live drawing is Claude Code's stream: ask.live
+    assert (ROOT / "editors/vscode/media/graph.png").read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
+    assert (ROOT / "workflows/fix-issue.md").exists() and "workflows/fix-issue.md" in readme
+    assert "(`git push`, `gh pr`)" in readme
+    assert workflow.leaves("git push -u origin HEAD") and workflow.leaves("gh pr create --draft --fill")
+    assert not workflow.leaves("uv run pytest -q")
+
+
 def test_the_readme_says_what_init_does_to_claude_code_and_how_to_undo_it():
     """The first-hour readers of 10 October 2026 found 'plan first' 0 times in the README, no uninstall
     anywhere, and a demo called a recorded run that replays a scripted stand-in. The commands named are

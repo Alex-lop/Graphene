@@ -1,0 +1,256 @@
+{
+ "schema": 1,
+ "graphene": "0.8.0",
+ "repo": "/home/alex/app",
+ "cursor": 3,
+ "goal": "fix issue 48",
+ "first": "on",
+ "planner": "claude",
+ "executor": "claude",
+ "envelope": {
+  "auto": "off",
+  "budget": null,
+  "tasks": null,
+  "rounds": 2,
+  "forks": null,
+  "review": "off",
+  "protected": [],
+  "readonly": []
+ },
+ "auto": null,
+ "run": {
+  "going": false,
+  "pid": null
+ },
+ "spent": 0.31,
+ "scoreboard": {
+  "need_you": 1,
+  "running": 0,
+  "proven": 3,
+  "total": 4
+ },
+ "width": 0,
+ "questions": [],
+ "goals": [],
+ "tasks": [
+  {
+   "full": "",
+   "parent": null,
+   "needs": [],
+   "agent": "",
+   "model": "",
+   "usd": 0.09,
+   "idle": null,
+   "needs_you": false,
+   "tail": [],
+   "note": "",
+   "offers": {},
+   "changed": [
+    "tests/test_export.py"
+   ],
+   "stopped": [],
+   "outside": [],
+   "forks": [],
+   "kept": null,
+   "hollow": false,
+   "why": "",
+   "checkout": null,
+   "base": null,
+   "attempts": 1,
+   "files": [
+    "tests/test_export.py"
+   ],
+   "files_n": 1,
+   "touched": [],
+   "stops": [],
+   "checked": {
+    "before": "red",
+    "after": "passed"
+   },
+   "tokens": null,
+   "held": {
+    "state": "refused",
+    "by": "claude"
+   },
+   "id": "test-48",
+   "title": "a test that fails for issue 48",
+   "state": "done",
+   "scope": [
+    "tests/**"
+   ],
+   "check": "! pytest -k export",
+   "command": null,
+   "leaves": false
+  },
+  {
+   "full": "",
+   "parent": null,
+   "needs": [
+    "test-48"
+   ],
+   "agent": "",
+   "model": "",
+   "usd": 0.22,
+   "idle": null,
+   "needs_you": false,
+   "tail": [],
+   "note": "",
+   "offers": {},
+   "changed": [
+    "src/export/csv.py"
+   ],
+   "stopped": [],
+   "outside": [],
+   "forks": [],
+   "kept": null,
+   "hollow": false,
+   "why": "",
+   "checkout": null,
+   "base": null,
+   "attempts": 1,
+   "files": [
+    "src/export/csv.py",
+    "src/export/rows.py"
+   ],
+   "files_n": 2,
+   "touched": [],
+   "stops": [],
+   "checked": {
+    "before": "red",
+    "after": "passed"
+   },
+   "tokens": null,
+   "held": {
+    "state": "refused",
+    "by": "claude"
+   },
+   "id": "fix-48",
+   "title": "the fix for issue 48",
+   "state": "done",
+   "scope": [
+    "src/**"
+   ],
+   "check": "pytest -k export",
+   "command": null,
+   "leaves": false
+  },
+  {
+   "full": "",
+   "parent": null,
+   "needs": [
+    "fix-48"
+   ],
+   "agent": "",
+   "model": "",
+   "usd": null,
+   "idle": null,
+   "needs_you": false,
+   "tail": [],
+   "note": "",
+   "offers": {},
+   "changed": [],
+   "stopped": [],
+   "outside": [],
+   "forks": [],
+   "kept": null,
+   "hollow": false,
+   "why": "",
+   "checkout": null,
+   "base": null,
+   "attempts": 0,
+   "files": [],
+   "files_n": 0,
+   "touched": [],
+   "stops": [],
+   "checked": {
+    "before": null,
+    "after": "passed"
+   },
+   "tokens": null,
+   "held": {
+    "state": "caught",
+    "by": "command"
+   },
+   "id": "suite-48",
+   "title": "the whole suite",
+   "state": "done",
+   "scope": [],
+   "check": "uv run pytest -q",
+   "command": "uv run pytest -q",
+   "leaves": false
+  },
+  {
+   "full": "",
+   "parent": null,
+   "needs": [
+    "suite-48"
+   ],
+   "agent": "",
+   "model": "",
+   "usd": null,
+   "idle": null,
+   "needs_you": true,
+   "tail": [],
+   "note": "",
+   "offers": {},
+   "changed": [],
+   "stopped": [],
+   "outside": [],
+   "forks": [],
+   "kept": null,
+   "hollow": false,
+   "why": "",
+   "checkout": null,
+   "base": null,
+   "attempts": 0,
+   "files": [],
+   "files_n": 0,
+   "touched": [],
+   "stops": [],
+   "checked": {
+    "before": null,
+    "after": null
+   },
+   "tokens": null,
+   "held": {
+    "state": "none",
+    "by": "you"
+   },
+   "id": "pr-48",
+   "title": "open a draft pull request",
+   "state": "yours",
+   "scope": [],
+   "check": "git push -u origin HEAD && gh pr create --draft --fill",
+   "command": "git push -u origin HEAD && gh pr create --draft --fill",
+   "leaves": true
+  }
+ ],
+ "edges": [
+  [
+   "test-48",
+   "fix-48",
+   "needs"
+  ],
+  [
+   "fix-48",
+   "suite-48",
+   "needs"
+  ],
+  [
+   "suite-48",
+   "pr-48",
+   "needs"
+  ]
+ ],
+ "news": [],
+ "tree": [
+  "src/",
+  "tests/",
+  "web/",
+  "README.md"
+ ],
+ "allows": [
+  "graphene node *",
+  "graphene plan *"
+ ]
+}

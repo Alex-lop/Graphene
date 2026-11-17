@@ -246,6 +246,26 @@ def test_plan_only_plans_and_accepts_inside_the_envelope_and_runs_nothing_until_
     assert went.stdout.strip().splitlines()[-1].startswith("auto: 2 rounds, 3 tasks landed")
 
 
+def test_a_command_step_under_the_goal_is_said_as_it_stands_and_never_that_it_did_not_start(tiny, tmp_path):
+    """A command step is no agent's to start, and a person may put one under auto's goal. One past the line
+    that waits for approval, and one whose command ran and failed, were both said to have not started."""
+    planner, executor = scripts(tmp_path)
+    planned = person("auto", GOAL, "--planner", planner, "--with", executor, "--check", GOAL_CHECK, "--plan")
+    assert planned.exit_code == 0, planned.output
+    with Store.open(tiny) as store:
+        root = AUTO.state(store)["root"]
+        steps = {"push": ("git push origin main", []), "suite": ("false", []), "after": ("true", ["suite"])}
+        P.propose(store, [{"id": i, "title": i, "parent": root, "check": run, "owner": P.COMMAND, "needs": on}
+                          for i, (run, on) in steps.items()], P.Caller("alex", True))  # fmt: skip
+    went = person("auto", "--planner", planner, "--with", executor)
+    assert went.exit_code == 3, went.output
+    assert went.stdout.strip().splitlines()[-1] == (
+        "waits for you: push waits for your approval: `graphene node done push`, then `graphene auto` goes "
+        "on; suite's command failed; after did not start: `graphene plan` says what each waits on")
+    with Store.open(tiny) as store:
+        assert not store.node_log("push", ("check_passed", "check_failed"))  # and nothing ran it
+
+
 FAILING_PLANNER = "import sys\nprint('stopped: no key here', file=sys.stderr)\nsys.exit(3)\n"
 
 

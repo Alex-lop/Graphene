@@ -205,7 +205,7 @@ export function layout(boxes: Box[], edges: Edge[], opts: Options = {}): Layout 
  *  in the last row, centred. A band is a tint on its boxes here, not a region, so ``bands`` is empty. */
 function downward(cols: string[][], by: Map<string, Box>, goal: string | null, o: typeof D & Options): Layout {
   const maxW = Math.max(o.width ?? Infinity, o.padX * 2 + o.boxW);
-  const gap = 16; // between boxes in a row
+  const gap = 32; // between boxes in a row: room for a card's + and the next one's selection ring
   const rankGap = 44; // between rows: room for the arrows
   const placed: Record<string, Placed> = {};
   const columns: number[] = [];

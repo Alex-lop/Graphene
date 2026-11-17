@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { answerPicks, answerWith, answerWords, DROPPABLE, keyTrouble, needs, offerOn, offerWords, pickOption, takeDefault, tryAgain } from "../src/needs.ts";
+import { answerPicks, answerWith, answerWords, DROPPABLE, keyTrouble, needs, offerOn, offerWords, pickOption, takeDefault, tryAgain, yoursWords } from "../src/needs.ts";
 import { parseState } from "../src/state.ts";
 
 const fixture = (name: string) => readFileSync(new URL(`./fixtures/${name}.json`, import.meta.url), "utf8");
@@ -110,6 +110,18 @@ test("the answer quick pick lists the default, each option by number and own wor
   assert.match(items[0]!.label, /delete everything/);
   assert.equal(items[3]!.description, "your words go to the agents as written");
   assert.equal(answerPicks({ ...q, default: null, options: [] }).length, 1, "no default, no options: own words alone");
+});
+
+test("a step past the line is not your own finished task: its row says it asks you, names its command, and that it leaves your machine", () => {
+  const wf = parseState(fixture("workflow"));
+  assert.deepEqual(needs(wf).map((n) => [n.kind, "id" in n ? n.id : ""]), [["yours", "pr-48"]]);
+  const row = yoursWords(wf.tasks.find((t) => t.id === "pr-48")!);
+  assert.equal(row.description, "asks you: it leaves your machine · approving runs git push -u origin HEAD && gh pr create --draft --fill");
+  assert.equal(row.title, "Approve and Run");
+  assert.match(row.hover, /^This step leaves your machine, so it asks you first\. Click to approve it: that runs its command in a terminal/);
+  assert.match(row.hover, /Runs: git push/);
+  assert.doesNotMatch(row.description + row.hover, /mark done|Your own task/);
+  assert.equal(yoursWords(mixed.tasks.find((t) => t.id === "mine")!).description, "yours · mark done", "a task of your own reads as before");
 });
 
 test("a task that came back can be dropped; a running one cannot", () => {

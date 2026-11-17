@@ -6,7 +6,7 @@
 
 Graphene turns a goal into tasks with explicit files, dependencies, and checks. Agents work in separate Git
 worktrees; Graphene checks their changes and merges what passes. You can see the plan and steer it from your
-terminal or VS Code. Works with Claude Code, Codex, and the built-in NVIDIA Nemotron executor.
+terminal or VS Code. Works with Claude Code and Codex.
 
 <p align="center">
   <a href="https://pypi.org/project/graphene-map/"><img src="https://img.shields.io/pypi/v/graphene-map?color=5e5d59" alt="PyPI"></a>
@@ -15,9 +15,15 @@ terminal or VS Code. Works with Claude Code, Codex, and the built-in NVIDIA Nemo
   <a href="https://github.com/Alex-lop/Graphene/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-5e5d59" alt="License"></a>
 </p>
 
-![Graphene in VS Code: Home tracks working agents while the graph shows parallel tasks, attempts, and the budget](https://raw.githubusercontent.com/Alex-lop/Graphene/main/editors/vscode/media/graph.png)
+![Graphene's canvas in VS Code, replaying the bundled demo. Across the top: Plan, Run and Review. On the canvas: three steps as cards with their files and checks, one landed and two working, each racing three attempts, and a region for what leaves your machine. Beside it, the selected step's Scope pane: the two files it may change, what it may run, how a write outside them is held, the one write that was refused, and its check](https://raw.githubusercontent.com/Alex-lop/Graphene/main/editors/vscode/media/graph.png)
 
-*VS Code running Graphene against a scripted model stand-in. No live model calls.*
+*The canvas in VS Code, replaying the bundled demo: a scripted stand-in, no model ran.*
+
+- **A canvas you watch and shape.** One pipeline, Plan → Run → Review: each step is drawn as the planner
+  writes it (Claude Code's stream; a Codex plan appears whole when it arrives), you edit a step before it
+  starts, and one switch, **Stop after the plan**, decides whether the run waits for you.
+- **Scope you can see.** Select a step and its pane says which files it may change, what it may run, how a
+  write outside them is held, which writes were stopped, and what its check said before and after the work.
 
 ## What it solves
 
@@ -69,31 +75,26 @@ With Claude Code, `init` also installs project hooks: your next request proposes
 uninstall with `uv tool uninstall graphene-map`.
 
 <details>
-<summary><strong>Let Nemotron plan and run the whole goal</strong></summary>
-
-Install the optional extra and set your Nebius Token Factory key:
+<summary><strong>Let Graphene plan and run the whole goal</strong></summary>
 
 ```sh
-uv tool install --force 'graphene-map[nemotron]'
-graphene key set
-graphene init --planner nemotron --executor nemotron
 graphene auto "add a --top N option to the CLI, with tests" \
-  --budget 2 --forks 3 --check "python3 -m pytest -q"
+  --budget 10 --check "python3 -m pytest -q"
 ```
 
-Ultra plans, Nano agents race each task, and Graphene checks the merged result. If the goal's check fails,
-it plans a fix within your task, round, and budget settings. Add `--plan` to inspect the plan without running it.
-Budget checks happen between rounds, so the dollar limit is not a hard spending cap.
-
-[Setup, model roles, and recorded results](https://github.com/Alex-lop/Graphene/blob/main/docs/HACKATHON.md).
+Your planner plans, an agent takes each task, and Graphene checks the merged result. If the goal's check
+fails, it plans a fix within your task, round, and budget settings. `--forks 3` races three agents on each
+task. Each attempt holds its worst case from the budget before it starts ($2 with Claude Code, $3 with
+Codex), so leave room for the ones that run at once. Add `--plan` to inspect the plan without running it.
+The dollar limit is not a hard spending cap.
 
 </details>
 
 ## Use the graph in VS Code or Cursor
 
-![Graphene in Cursor: completed tasks, the kept attempts, and auto mode's round and budget](https://raw.githubusercontent.com/Alex-lop/Graphene/main/dev/process/editor/after/cursor-panel-1920x1050-dark.png)
+![Graphene in Cursor after an auto run on the scripted stand-in: Home in the side bar, and the canvas with four steps landed, the attempt kept for each, the three stages finished, and auto mode's round and budget](https://raw.githubusercontent.com/Alex-lop/Graphene/main/docs/assets/cursor-canvas.png)
 
-*Cursor showing a completed auto run against the scripted stand-in.*
+*Cursor after a completed auto run against the scripted stand-in.*
 
 The screenshots and Home workflow show current `main`, ahead of the
 [0.8.0 packaged release](https://github.com/Alex-lop/Graphene/releases/latest). To use the current CLI and
@@ -112,11 +113,21 @@ cursor --install-extension editors/vscode/graphene-0.9.0.vsix
 
 Click Graphene in the activity bar to open **Home**. Pick your planner and executor, type a goal, click
 **Plan it**, review the suggested tasks, then **Start**. Keep approval enabled to review each finished task
-with **Open changes**, then **Approve** or **Send back** with a note.
+with **Open changes**, then **Approve** or **Send back** with a note. Home and the graph show the three
+stages and the **Stop after the plan** switch: turn it off and **Plan it** runs what fits your limits without
+waiting for **Start**.
 
-**Graphene: Show Graph** opens the plan in a tab. Click a task to edit its files, check, attempts, or approval;
-drag its dot onto another task to add a dependency. **Graphene: Watch the Demo** needs no key. The Explorer
-marks which task owns each file; `graphene.advanced` enables the extra task and round views.
+**Graphene: Show Graph** opens the plan in a tab. Click a step and its pane opens on **Scope**; its **Edit**
+tab changes its files, check, attempts, or approval; drag its dot onto another step to add a dependency.
+**Graphene: Watch the Demo** needs no key. Each step has one colour, on its card and, from the time it is
+accepted until it lands, on its files in the Explorer; `graphene.advanced` enables the extra task and round
+views.
+
+A graph can be saved and run again. **Save as workflow** writes it to `workflows/<name>.md` with the values
+you name as inputs; Home lists the repository's workflows, and **Run** fills the inputs and proposes the plan
+with no planner call. A `run:` step runs a command with no agent. One that pushes or opens a pull request
+(`git push`, `gh pr`) is drawn past the **leaves your machine** line and waits for your approval. This
+repository ships [`workflows/fix-issue.md`](https://github.com/Alex-lop/Graphene/blob/main/workflows/fix-issue.md).
 
 Current `main` also installs Codex hooks: run `graphene init` in your project, start a new Codex session,
 trust the project, and review its hooks with `/hooks`.
@@ -135,6 +146,8 @@ set `review: every` in `graphene config edit` to require your sign-off before ch
 
 Plans and session records stay in `.graphene/`. Your chosen agent or model provider still receives the
 context it needs. The bundled auto demo uses a scripted stand-in; live auto mode has not yet been validated.
+The canvas, the Scope pane and workflows were built and checked against that stand-in too: nobody has used
+them on a real run yet.
 [Enforcement limits](https://github.com/Alex-lop/Graphene/blob/main/docs/HOW_IT_WORKS.md#where-each-mechanism-ends)
 · [Privacy](https://github.com/Alex-lop/Graphene/blob/main/docs/HOW_IT_WORKS.md#privacy).
 

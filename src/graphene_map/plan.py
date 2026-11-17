@@ -26,6 +26,7 @@ from functools import lru_cache, partial
 from pathlib import Path
 
 AGENT = "agent"  # the owner of a node any agent may take; every other owner is a person's name
+COMMAND = "command"  # but this one: a command step's (`run:` in the text), which nobody takes (`runs_itself`)
 GRAPHENE = "graphene"  # who logs a need `wait_on_checks` adds: never the person (`_waited`, `let_go`)
 PROPOSED, OPEN, RUNNING, REVIEW, DONE, DROPPED = "proposed", "open", "running", "review", "done", "dropped"
 ARCHIVED = "archived"  # done or dropped, and put away by the person: no longer part of the plan
@@ -415,11 +416,28 @@ def validate(
         for need in n.needs:
             if need not in by_id:
                 raise Refused(f"{n.id} waits on {need}, which is not in the plan")
+        if under.get(n.id) and n.owner == COMMAND:
+            # a sub-goal's check runs by itself once its steps are done: a command there would run (and a
+            # push would leave this machine) with nobody's approval
+            raise Refused(
+                f"{n.id}: a command step (run: {n.check}) is a step of its own and takes no steps under it. "
+                "Give the command a step that needs them instead"
+            )
+        if n.owner == COMMAND and (fresh is None or n.id in fresh):
+            # with a scope it is no command step any more (`runs_itself`): nothing then says its command
+            # leaves this machine. Forks and a sign-off are an agent's: the run reads neither on a command
+            extra = "scope" if n.scope else "forks" if (n.forks or 1) > 1 else "sign-off" if n.signoff else ""
+            if extra:
+                raise Refused(
+                    f"{n.id}: a command step is its command alone: no agent takes it, it changes no file, "
+                    f"and its exit code is its check, so it takes no {extra}. To change what it runs, change "
+                    "its run: line in the plan's text (`graphene plan edit`)"
+                )
         if under.get(n.id) or not (n.scope or n.check or n.signoff or n.aside):
             continue
         if fresh is not None and n.id not in fresh:
             continue  # a sub-goal (or one whose children are still to come): they carry scope and check
-        if not n.scope:
+        if not n.scope and runs_itself(n) is None:  # a command step changes no file: it has no scope
             raise Refused(
                 f"{n.id}: a leaf needs a scope (the paths it may touch), e.g. --scope 'src/api/**'; "
                 "or give it children, and it is a sub-goal"
@@ -519,6 +537,18 @@ def may_take(node: Node, who: Caller) -> bool:
     return node.owner == AGENT if not who.person else node.owner in (AGENT, who.name)
 
 
+def runs_itself(node: Node) -> bool | None:
+    """A command step (`run:` in the plan's text: its owner is `command`, its check is the command, and it
+    has no scope, for it changes no file): True when `graphene run` runs it by itself, False when its
+    command leaves this machine (a push, a pull request: ``workflow.leaves``), so it waits for the person's
+    approval (`graphene node done`). None for every other node."""
+    if node.owner != COMMAND or not node.check or node.scope:
+        return None
+    from .workflow import leaves as past_the_line  # here: workflow.py imports this module
+
+    return not past_the_line(node.check)
+
+
 def waits_on_person(
     node: Node, by_id: dict[str, Node], back: set[str] | frozenset[str] = frozenset(), every: bool = False
 ) -> list[str]:
@@ -543,6 +573,9 @@ def waits_on_person(
                 walk(child)
             if n.signoff and n.id != node.id:
                 reasons.append(f"{n.id} needs a sign-off")
+        elif runs_itself(n) is not None:  # a command step: the run's own, this side of the line
+            if not runs_itself(n):
+                reasons.append(f"{n.id} leaves this machine, so it waits for your approval")
         elif n.owner != AGENT:
             reasons.append(f"{n.id} is {n.owner}'s")
         elif not n.scope:  # a sub-goal whose leaves are to come: `ready` skips it, so a run never starts it
@@ -2093,9 +2126,12 @@ def _may_start(store, node: Node, who: Caller, everything: list[Node]) -> None:
 
 
 def _told(blockers: list[Node]) -> str:
-    return ", ".join(
-        f"{b.id} ({b.state}{', ' + b.owner + chr(39) + 's' if b.owner != AGENT else ''})" for b in blockers
-    )
+    def whose(b: Node) -> str:
+        if (itself := runs_itself(b)) is not None:  # a command step is nobody's: the run's, or past the line
+            return "" if itself else ", waits for your approval"
+        return f", {b.owner}'s" if b.owner != AGENT else ""
+
+    return ", ".join(f"{b.id} ({b.state}{whose(b)})" for b in blockers)
 
 
 def _no_scope(node: Node, who: Caller, verb: str) -> Refused:
@@ -2515,10 +2551,16 @@ def _untracked(checkout: str | Path, paths: list[str]) -> list[str]:
     return [p for p, f in full if os.path.isfile(f) and not os.path.islink(f)]
 
 
-def _done_by_hand(store, node: Node, who: Caller, given: str | None, checkout: str | Path | None) -> Node:
+def _done_by_hand(
+    store, node: Node, who: Caller, given: str | None, checkout: str | Path | None,
+    not_here: frozenset[str] | set[str] = frozenset(),
+) -> Node:  # fmt: skip
     """A person's own leaf that nobody started is done by their word, scope or none: no hold was taken, so
     git has nothing to say of it. The check it has runs first (never under the write lock), and one that
-    fails refuses it; a to-do has none to run. The log says it was their word."""
+    fails refuses it; a to-do has none to run. The log says it was their word. A command step's command is
+    told the checkout it was run for (GRAPHENE_CHECKOUT): it runs in a clean copy on no branch, and one that
+    pushes goes back there first. ``not_here``: as `roll_up` takes it, from a run whose leaves have not all
+    landed."""
 
     def may(node: Node) -> None:  # asked before the check and again under the lock: the plan may move
         everything = nodes(store)
@@ -2530,7 +2572,9 @@ def _done_by_hand(store, node: Node, who: Caller, given: str | None, checkout: s
 
     if node.check:
         may(node)
-        passed, output, _ = run_check(node.check, checkout or ".")
+        command = runs_itself(node) is not None
+        own = {"GRAPHENE_CHECKOUT": os.path.realpath(checkout or ".")} if command else None
+        passed, output, _ = run_check(node.check, checkout or ".", env=own)
         store.log_node(node.id, _now(), "check_passed" if passed else "check_failed", who.label,
                        who.session_id, None, {"command": node.check, "output": output})  # fmt: skip
         if not passed:  # what it said, indented under the reason: the screen's news says the reason first
@@ -2542,8 +2586,11 @@ def _done_by_hand(store, node: Node, who: Caller, given: str | None, checkout: s
         may(node)
         node.state, node.finished_at = DONE, now
         said = "and its check passed" if node.check else "with no check to run"
-        _save(store, node, "finished", who, now, note=f"done by hand: the person's word, {said}")
-    roll_up(store, who, checkout, given)
+        how = f"done by hand: the person's word, {said}"
+        if runs_itself(node) is not None:  # a command step is nobody's word: its command's exit code
+            how = "its command ran and exited 0"
+        _save(store, node, "finished", who, now, note=how)
+    roll_up(store, who, checkout, given, not_here)
     return node
 
 
@@ -2554,6 +2601,7 @@ def finish(
     now: str | None = None,
     override: str | None = None,
     checkout: str | Path | None = None,
+    not_here: frozenset[str] | set[str] = frozenset(),
 ) -> Node:
     """The boundary. Graphene asks git what changed and runs the check; only then is the node done
     (or waiting for its sign-off: one it asks for, or every one while the person's setting is
@@ -2571,7 +2619,7 @@ def finish(
             _person_only(who, "overruling a node's check or scope")
         return _finish_subgoal(store, node, who, given, checkout or ".", override)
     if node.state == OPEN and node.owner != AGENT and who.person:
-        return _done_by_hand(store, node, who, given, checkout)
+        return _done_by_hand(store, node, who, given, checkout, not_here)
     if node.state != RUNNING:
         raise _as_it_stands(node, nodes(store), who, "finish")
     _holder_only(node, who, "finishing it")
@@ -3333,6 +3381,8 @@ def reads(node: Node, everything: list[Node], back: set[str] | frozenset[str] = 
         return "came back"
     if unmet(node, by_id):
         return "waiting"
+    if runs_itself(node):  # a command step this side of the line: the run runs it, nobody takes it
+        return "ready"
     if node.owner != AGENT:
         return "yours"
     return "ready" if node.scope else "to fill in"

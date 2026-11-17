@@ -54,6 +54,47 @@ test("the status bar leads with auto's round while auto is on", () => {
   assert.ok(summary(going).startsWith("auto round 1 · "), summary(going));
 });
 
+test("a planner writing a plan is `drafting`: its steps so far, each with what of its lines is complete", () => {
+  const s = parseState(fixture("drafting"));
+  assert.equal(s.drafting?.by, "claude");
+  assert.equal(s.drafting?.live, true);
+  assert.deepEqual(s.drafting?.steps.map((d) => [d.id, d.parent, d.leaf]), [["export", null, false], ["failing", "export", true], ["rows", "export", true],
+                                                                           ["button", "export", true], ["empty", "export", true]]);
+  assert.deepEqual(s.drafting?.steps[2], { id: "rows", title: "Export the visible rows", parent: "export", leaf: true, scope: ["src/export/**"],
+                                           check: "pytest -k export", needs: ["failing"] });
+  assert.deepEqual(s.drafting?.steps[4]?.scope, [], "its files line is not written yet");
+  assert.equal(parseState(fixture("empty")).drafting, null, "an older CLI says nothing: no planner is seen writing");
+  assert.equal(parseState(JSON.stringify({ drafting: null })).drafting, null);
+  assert.equal(parseState(JSON.stringify({ drafting: [] })).drafting, null, "junk is no planner writing");
+  assert.deepEqual(parseState(JSON.stringify({ drafting: { by: "codex", steps: [{ title: "no id" }, { id: "a" }] } })).drafting,
+                   { by: "codex", live: false, steps: [{ id: "a", title: "", parent: null, leaf: true, scope: [], check: null, needs: [] }] });
+});
+
+test("a task's scope in plain view: its files, what was written, what was stopped, its check before and after, its tokens, how it is held", () => {
+  const s = parseState(JSON.stringify({
+    tree: ["src/", "tests/", "README.md"], allows: ["graphene node *", "graphene plan *"],
+    tasks: [{
+      id: "rows", title: "Export the visible rows", state: "running", scope: ["src/export/**"],
+      files: ["src/export/csv.py", "src/export/rows.py"], files_n: 4, touched: ["src/export/csv.py"],
+      stops: [{ path: "README.md", at: "2026-11-17T05:41:02Z", how: "Write" }, { at: "no path" }],
+      checked: { before: "red", after: null }, tokens: { read: 41200, cached: 30100, written: 6100, turns: 14 },
+      held: { state: "refused", by: "claude" },
+    }, { id: "old", title: "an older CLI's task", held: { state: "a shield nobody proved" } }],
+  }));
+  assert.deepEqual(s.tree, ["src/", "tests/", "README.md"]);
+  assert.deepEqual(s.allows, ["graphene node *", "graphene plan *"]);
+  const rows = s.tasks[0]!;
+  assert.deepEqual([rows.files, rows.filesN, rows.touched], [["src/export/csv.py", "src/export/rows.py"], 4, ["src/export/csv.py"]]);
+  assert.deepEqual(rows.stops, [{ path: "README.md", at: "2026-11-17T05:41:02Z", how: "Write" }]);
+  assert.deepEqual(rows.checked, { before: "red", after: null });
+  assert.deepEqual(rows.tokens, { read: 41200, cached: 30100, written: 6100, turns: 14 });
+  assert.deepEqual(rows.held, { state: "refused", by: "claude" });
+  const old = s.tasks[1]!; // what the snapshot does not say is nothing, and never a hold nobody proved
+  assert.deepEqual([old.files, old.filesN, old.touched, old.stops, old.checked, old.tokens], [[], 0, [], [], { before: null, after: null }, null]);
+  assert.deepEqual(old.held, { state: "", by: "" });
+  assert.deepEqual([parseState("{}").tree, parseState("{}").allows], [[], null], "no list named: any command");
+});
+
 test("missing keys take defaults and unknown keys are ignored", () => {
   const s = parseState(JSON.stringify({
     schema: 2, goal: "x", colour: "mauve",

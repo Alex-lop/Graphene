@@ -3,7 +3,6 @@
 export const WHO = [
   { word: "claude", label: "Claude Code", note: "the claude command on this machine" },
   { word: "codex", label: "Codex", note: "the codex command on this machine" },
-  { word: "nemotron", label: "Nemotron", note: "NVIDIA's models on Nebius Token Factory; needs an API key" },
 ] as const;
 
 /** Exact, said on its switch and when it goes on: what it holds. Here, with no import of its own, so the page's

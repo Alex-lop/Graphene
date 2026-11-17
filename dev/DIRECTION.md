@@ -8,11 +8,9 @@ collaboration directive (`dev/process/directives/COLLABORATION_DIRECTIVE.md`); l
 
 *The process archive moved off `main` on the cut night. It is the orphan branch `process`, at `fb6a408`.*
 
-**Read this first, 12 November 2026.** The next product is [PRODUCT_NEXT.md](PRODUCT_NEXT.md).
-The job an agent may take is [SCOPE.md](SCOPE.md). The prompt is
-[prompts/workflow.md](prompts/workflow.md). The workflow direction is
-[WORKFLOW_IDEAS.md](WORKFLOW_IDEAS.md). This file is the decision log. An agent reads the scope
-before it treats a decision here as the task.
+**Read this first, 16 November 2026.** The direction is [VISION.md](VISION.md). The job an agent
+may take is [SCOPE.md](SCOPE.md). The prompt is [prompts/workflow.md](prompts/workflow.md). This
+file is the decision log. An agent reads the scope before it treats a decision here as the task.
 
 ## What Graphene is
 
@@ -1837,6 +1835,41 @@ words were too many and had to be typed right, and the UI should help a person u
 217. **Plan it is `graphene ask`, not `graphene auto --plan`.** An ask proposes and changes no setting; auto
      turns `auto: on`, after which an agent's proposal that fits is accepted at once. Auto stays in the palette
      with `graphene.advanced`.
+
+## Decisions taken on 16 November (the vision)
+
+Alex, after reading the brainstorm: the n8n market is crowded, "but I honestly still do think that there is so
+much room for improvement in actual collaboration with agents and understanding what they're doing in a
+meaningful way". The direction is [VISION.md](VISION.md); it replaces PRODUCT_NEXT.md and WORKFLOW_IDEAS.md
+(last at `7c09313f`).
+
+218. **A run produces a change to a repo.** Understanding what the agents are doing is the point; messages to
+     other apps are a by-product.
+219. **Two kinds of graph.** One you look at once (understand, debug, brainstorm) and a workflow saved in
+     `workflows/<name>.md` that runs again on new inputs.
+220. **For people with some coding background** who want a higher-level understanding of their projects.
+221. **Local first.** A step that pushes, opens a PR or runs on Actions is drawn past a "leaves your machine"
+     line, and crossing it asks the person.
+222. **New words are allowed when they earn their place** (this lifts WORKFLOW_IDEAS' "no new words").
+223. **The README drops Nemotron and the hackathon** and leads with the canvas. The Nemotron code is frozen,
+     not deleted; deleting it is a cleanup run of its own.
+224. **The plan always comes first.** Plan, Run and Review are one pipeline; auto is that pipeline without the
+     stop after the plan, never a run without a plan. *Why:* Alex has seen that a strong plan is what makes
+     agents work out. The switch and how it changes decision 217 are the canvas run's to add.
+
+## Decisions taken on 17 November (the canvas run)
+
+The canvas run (dev/SCOPE.md) added the switch decision 224 left to it.
+
+225. **Plan it follows one switch, Stop after the plan, on by default.** On, Plan it is `graphene ask`, as 217
+     says: the plan is suggested and nothing runs until Start. Off, Plan it is `graphene auto -- <goal>`: the
+     plan is still drawn first, what fits the limits is accepted, and it runs without waiting. A question with
+     no default stops it either way: on, Start waits for the answer; off, auto does. A check that already
+     passes is marked on its card; off, it stops the run too. The switch is the `auto`
+     setting read the other way round (`auto: off` is the switch on), so Home, the graph's header and a
+     terminal move the same one. It stays where it is put: while it is off, an agent's later proposal that
+     fits is accepted at once, which is what 217 warned of. *Why:* 224; one pipeline needs one place to say
+     whether it stops.
 
 ## What does not bind (say it wherever you sell it)
 

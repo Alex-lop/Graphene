@@ -3,7 +3,11 @@
 from the cockpit's own reader. Its keys and types on an empty plan, with proposals and questions, while a
 scripted run holds a leaf, after a forked run, with the envelope and a round's row; read-only and whole while
 another process writes the store; fast on a 40-task plan; answering anyone, an agent's shell included; and
-one JSON line of error, exit 1, where there is no Graphene to read."""
+one JSON line of error, exit 1, where there is no Graphene to read.
+
+The Scope pane's keys (leaf 5), each by its value on real state: `tree` and `allows`, and on a task `files`
+and `files_n`, `touched`, `stops`, `checked`, `tokens` and `held`, which never says more than
+tests/test_every_agent.py proves."""
 
 import json
 import os
@@ -14,13 +18,17 @@ import time
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from test_every_agent import hook
 from test_forks_run import FORKED, go, seed
-from test_run_live import SLOW, executor, graphene_run, leaf, repo, states, wait_for  # noqa: F401
+from test_meter import fed
+from test_run_live import SLOW, executor, git, graphene_run, leaf, repo, states, wait_for  # noqa: F401
 from typer.testing import CliRunner
 
-from graphene_map import auto, board, plan
+from graphene_map import auto, board, plan, precheck
+from graphene_map import meter as M
 from graphene_map import state as ST
 from graphene_map.cli import build
+from graphene_map.hooks import HOOK_COMMAND, SETTINGS, install_codex_hooks, install_hooks
 from graphene_map.plan import RUNNING, Caller
 from graphene_map.store import Store
 
@@ -32,14 +40,15 @@ TOP = {
     "schema": int, "graphene": str, "repo": str, "cursor": int, "goal": str, "first": str, "planner": str,
     "executor": str, "envelope": dict, "auto": (dict, type(None)), "run": dict, "spent": float,
     "scoreboard": dict, "width": int, "questions": list, "goals": list, "tasks": list, "edges": list,
-    "news": list,
+    "news": list, "tree": list, "allows": (list, type(None)),
 }  # fmt: skip
 TASK = {
     "id": str, "title": str, "full": str, "state": str, "parent": (str, type(None)), "scope": list,
     "needs": list, "check": str, "agent": str, "model": str, "usd": (int, float),
     "idle": (int, float, type(None)), "needs_you": bool, "tail": list, "note": str, "offers": dict,
     "changed": list, "stopped": list, "outside": list, "forks": list, "kept": (dict, type(None)),
-    "hollow": bool,
+    "hollow": bool, "files": list, "files_n": int, "touched": list, "stops": list, "checked": dict,
+    "tokens": (dict, type(None)), "held": dict, "command": (str, type(None)), "leaves": bool,
 }  # fmt: skip
 FORK = {"letter": str, "state": str, "why": str, "lines": (int, type(None)), "model": str,
         "usd": (int, float)}  # fmt: skip
@@ -75,6 +84,8 @@ def whole(s: dict) -> None:
     for t in s["tasks"]:
         typed(TASK, t, t["id"])
         assert t["state"] in WORDS, t["state"]
+        assert set(t["checked"]) == {"before", "after"} and set(t["held"]) == {"state", "by"}
+        assert t["held"]["state"] in ("refused", "caught", "none") and len(t["files"]) <= t["files_n"]
         for f in t["forks"]:
             typed(FORK, f, f"{t['id']}.{f['letter']}")
     for q in s["questions"]:
@@ -130,6 +141,19 @@ def test_proposals_questions_sub_goals_and_edges_read_as_the_cockpit_reads_them(
     assert s["cursor"] >= 5 and s["news"]  # the log's last id; what happened, in the narrator's words
 
 
+def test_a_question_with_no_default_reads_null_and_one_with_a_default_keeps_it(repo):
+    """An editor's Start waits for a question nobody can take for the person (`board.has_default`). The
+    cockpit's row words such a one "yes" (what its y key answers): the snapshot says null."""
+    with Store.open(repo) as store:
+        store.set_meta("plan_first", "on")  # set up, as `graphene init` leaves it
+        board.add(store, "question", "which database?", BOT, item_id="db")
+        board.add(store, "question", "tabs or spaces?", BOT, default="spaces", item_id="tabs")
+        board.add(store, "assume", "python 3.12 is there", BOT, item_id="py")  # its take is a yes
+    s = snapshot()
+    whole(s)
+    assert {q["id"]: q["default"] for q in s["questions"]} == {"db": None, "tabs": "spaces", "py": "confirm"}
+
+
 def test_a_leaf_a_scripted_run_holds_reads_as_running_with_the_runs_pid(repo, monkeypatch):
     monkeypatch.setenv("GRAPHENE_PERSON", "alex")
     propose(repo, [leaf("a", "a.txt")])
@@ -173,6 +197,45 @@ def test_a_forked_leaf_carries_its_forks_their_verdicts_and_the_one_kept(repo, m
         counted = M.width(store.node_log())["most"]
     assert s["width"] == counted >= 2, (s["width"], counted)
     assert any("kept b" in line for line in s["news"]), s["news"]
+
+
+def test_a_check_that_already_passes_is_hollow_before_the_work_and_one_that_fails_now_is_not(repo):
+    """Before Run each step's check runs once on the code as it is (red first, precheck.py). A check that
+    passes there proves nothing yet, and the snapshot says so on the task while it waits, so its card can be
+    marked before any agent starts; an edit to the check takes the mark away until it is run again."""
+    from graphene_map import precheck
+
+    fails = "python3 -c 'import sys; sys.exit(1)'"
+    hollow = lambda: {t["id"]: t["hollow"] for t in snapshot()["tasks"]}  # noqa: E731
+    propose(repo, [{"id": "soft", "title": "soft", "scope": ["a.py"], "check": "true"},
+                   {"id": "hard", "title": "hard", "scope": ["b.py"], "check": fails}])  # fmt: skip
+    assert hollow() == {"soft": False, "hard": False}  # not run yet
+    with Store.open(repo) as store:
+        precheck.run(store, repo)
+    assert hollow() == {"soft": True, "hard": False}
+    with Store.open(repo) as store:
+        plan.edit(store, "soft", {"check": fails}, ALEX)
+    assert hollow() == {"soft": False, "hard": False}
+
+
+def test_a_command_step_says_its_command_and_whether_it_leaves_this_machine(repo):
+    """A workflow's `run:` step has no agent and no scope. The snapshot says the command it runs and whether
+    that command leaves this machine (a push, a pull request), where the graph draws it past the line and
+    it waits for the person; a step an agent does says neither. A command proves no work, so red first's
+    verdict on it is never a hollow check."""
+    from graphene_map import precheck
+
+    propose(repo, [{"id": "fix", "title": "fix", "scope": ["a.py"], "check": "true"},
+                   {"id": "suite", "title": "suite", "check": "true", "owner": "command", "needs": ["fix"]},
+                   {"id": "pr", "title": "pr", "check": "git push origin main", "owner": "command",
+                    "needs": ["suite"]}])  # fmt: skip
+    by = {t["id"]: t for t in snapshot()["tasks"]}
+    assert [(by[i]["command"], by[i]["leaves"]) for i in ("fix", "suite", "pr")] == [
+        (None, False), ("true", False), ("git push origin main", True)]  # fmt: skip
+    with Store.open(repo) as store:
+        precheck.run(store, repo)
+    by = {t["id"]: t for t in snapshot()["tasks"]}
+    assert (by["fix"]["hollow"], by["suite"]["hollow"], by["pr"]["hollow"]) == (True, False, False)
 
 
 def test_the_model_and_the_dollars_come_from_the_meter_when_the_cockpit_says_nothing(repo):
@@ -364,3 +427,279 @@ def test_a_models_short_name_is_the_familys_word_or_the_ids_last_part(given):
     expect = {"Nano": "Nano", "nvidia/NVIDIA-Nemotron-3-Super-49B": "Super", "claude-sonnet-5-5": "Sonnet",
               "gpt-5-codex": "Codex", "org/some-model": "some-model"}  # fmt: skip
     assert ST.short(given) == expect[given] and ST.short(None) == "" and ST.short("") == ""
+
+
+def tasks() -> dict:
+    return {t["id"]: t for t in snapshot()["tasks"]}
+
+
+def track(repo, *paths):
+    for path in paths:
+        (repo / path).parent.mkdir(parents=True, exist_ok=True)
+        (repo / path).write_text("x\n")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", "more")
+
+
+def test_files_are_the_tracked_files_a_scope_covers_as_the_gate_matches_a_write(repo):
+    """A glob, a `!` that takes paths back out, a file the step will make, and a file on disk git does not
+    track yet; `tree` is the top level, folders first. A path a standing setting keeps out of every scope is
+    not one the step may change, whatever its glob says (`plan.binds`)."""
+    track(repo, "src/export/csv.py", "src/export/rows.py", "src/export/notes.md", "src/db/x.py", "src/app.py",
+          "docs/a.md")  # fmt: skip
+    (repo / "src" / "export" / "draft.py").write_text("not added yet\n")
+    propose(repo, [
+        {"id": "glob", "title": "glob", "scope": ["src/export/*.py"], "check": "true"},
+        {"id": "but", "title": "but", "scope": ["src/**", "!src/export/**", "!src/db/**"], "check": "true"},
+        {"id": "new", "title": "new", "scope": ["lib/made/later.py"], "check": "true"},
+        {"id": "two", "title": "two", "scope": ["docs", "b.txt"], "check": "true"},
+    ])  # fmt: skip
+    s = snapshot()
+    whole(s)
+    got = {t["id"]: (t["files"], t["files_n"]) for t in s["tasks"]}
+    assert got == {"glob": (["src/export/csv.py", "src/export/rows.py"], 2), "but": (["src/app.py"], 1),
+                   "new": ([], 0), "two": (["b.txt", "docs/a.md"], 2)}  # fmt: skip
+    assert s["tree"] == ["docs/", "src/", "a.txt", "b.txt"]
+    with Store.open(repo) as store:  # set after the scope was accepted: it binds all the same
+        store.set_meta("settings:protected", json.dumps(["src/export/rows.py"]))
+    assert tasks()["glob"]["files"] == ["src/export/csv.py"] and tasks()["glob"]["files_n"] == 1
+    assert ST.tree([]) == []  # nothing tracked, and a replay, whose repository is not on disk
+
+
+def test_at_most_200_paths_are_listed_and_files_n_counts_them_all(repo):
+    names = [f"f{i:03}.txt" for i in range(205)]
+    track(repo, *names)
+    track(repo, *(f"pkg{i}/x.py" for i in range(3)))
+    propose(repo, [{"id": "all", "title": "all", "scope": ["f*.txt"], "check": "true"}])
+    s = snapshot()
+    (t,) = s["tasks"]
+    assert t["files"] == names[:200] and t["files_n"] == 205
+    assert s["tree"] == ["pkg0/", "pkg1/", "pkg2/", "a.txt", "b.txt", *names][:200] and len(s["tree"]) == 200
+
+
+WRITES = """
+import pathlib, time
+pathlib.Path("a.txt").write_text("changed\\n")
+time.sleep(60)
+"""
+
+
+def test_touched_is_what_the_attempt_going_now_has_written_while_a_scripted_run_holds_the_leaf(
+    repo, monkeypatch
+):
+    monkeypatch.setenv("GRAPHENE_PERSON", "alex")
+    propose(repo, [leaf("a", "a.txt"), leaf("b", "b.txt", needs=["a"])])
+    assert {i: t["touched"] for i, t in tasks().items()} == {"a": [], "b": []}  # nothing runs yet
+    run = graphene_run(repo, "--with", executor(repo, WRITES))
+    try:
+        assert wait_for(lambda: states(repo)["a"] == RUNNING), run.stdout
+        assert wait_for(lambda: tasks()["a"]["touched"] == ["a.txt"]), tasks()["a"]
+        by = tasks()
+        assert by["a"]["state"] == "running" and by["a"]["files"] == ["a.txt"] and by["b"]["touched"] == []
+        assert by["a"]["held"] == {"state": "caught", "by": "executor.py"}  # a command of your own, by name
+        assert by["a"]["tokens"] is None  # and it has no meter
+    finally:
+        os.kill(run.pid, signal.SIGINT)
+        run.wait(30)
+    assert tasks()["a"]["touched"] == []  # handed back: no attempt is going
+    with Store.open(repo) as store:  # a session takes it, writes, and hands it back with its change there
+        plan.start(store, "a", BOT, repo)
+        (repo / "a.txt").write_text("changed again\n")
+        assert ST.snapshot(store, repo)["tasks"][0]["touched"] == ["a.txt"]
+        plan.release(store, "a", BOT, "it needs b.txt too")
+    back = tasks()["a"]
+    assert back["state"] == "came back" and back["touched"] == []  # `touched` is the attempt going now
+
+
+def test_stops_are_every_write_of_the_task_that_was_refused_with_the_time_and_how(repo):
+    """The whole history, oldest first, from the log's `denied` rows that carry a path: a write tool's, then
+    a shell command's. `stopped` stays the attempt going now, as paths."""
+    propose(repo, [leaf("a", "a.txt"), leaf("b", "b.txt")])
+    sid = BOT.session_id
+    with Store.open(repo) as store:
+        plan.start(store, "a", BOT, repo)
+    assert tasks()["a"]["stops"] == []
+    began = plan._now()
+    tries = (("Write", {"file_path": str(repo / "a.txt")}, None),  # its own file: let through, no row
+             ("Write", {"file_path": str(repo / "README.md")}, "deny"),
+             ("Bash", {"command": "echo x > b.txt"}, "deny"))  # fmt: skip
+    for tool, given, expect in tries:
+        answer = hook(repo, "PreToolUse", sid, tool_name=tool, tool_input=given)
+        assert (answer and answer["hookSpecificOutput"]["permissionDecision"]) == expect
+    with Store.open(repo) as store:
+        at = [r["timestamp"] for r in store.node_log("a", ("denied",))]  # the time, as the log stores it
+    by = tasks()
+    assert by["a"]["stops"] == [{"path": "README.md", "at": at[0], "how": "Write"},
+                                {"path": "b.txt", "at": at[1], "how": "shell"}]  # fmt: skip
+    assert began <= at[0] <= at[1] <= plan._now() and by["b"]["stops"] == []
+    assert by["a"]["stopped"] == ["README.md", "b.txt"]  # as it was
+    with Store.open(repo) as store:  # handed back and taken again: a new attempt, the same history
+        plan.release(store, "a", BOT, "it needs the README")
+        plan.start(store, "a", BOT, repo)
+    again = tasks()["a"]
+    assert again["stopped"] == [] and again["stops"] == by["a"]["stops"]
+
+
+def test_checked_is_the_checks_verdict_before_the_work_and_after_while_it_is_about_the_check_it_has_now(repo):
+    fails = "python3 -c 'import sys; sys.exit(1)'"
+    checked = lambda: {i: t["checked"] for i, t in tasks().items()}  # noqa: E731
+    nothing = {"before": None, "after": None}
+    propose(repo, [{"id": "red", "title": "red", "scope": ["a.txt"], "check": "grep -q done a.txt"},
+                   {"id": "soft", "title": "soft", "scope": ["b.txt"], "check": "true"},
+                   {"id": "bare", "title": "bare", "scope": ["c.txt"], "signoff": True}])  # fmt: skip
+    assert checked() == {"red": nothing, "soft": nothing, "bare": nothing}  # not run yet
+    with Store.open(repo) as store:
+        precheck.run(store, repo)
+    assert checked() == {"red": {"before": "red", "after": None}, "soft": {"before": "passes", "after": None},
+                         "bare": nothing}  # fmt: skip
+    with Store.open(repo) as store:
+        plan.start(store, "red", BOT, repo)
+        (repo / "a.txt").write_text("not yet\n")
+        with pytest.raises(plan.Refused):
+            plan.finish(store, "red", BOT)
+    assert checked()["red"] == {"before": "red", "after": "failed"}
+    with Store.open(repo) as store:
+        (repo / "a.txt").write_text("done\n")
+        plan.finish(store, "red", BOT)
+    assert checked()["red"] == {"before": "red", "after": "passed"}
+    with Store.open(repo) as store:  # an edited check has not been run, before or after
+        plan.edit(store, "soft", {"check": fails}, ALEX)
+        plan.reopen(store, "red", ALEX, "the check should ask for more")
+        plan.edit(store, "red", {"check": "grep -q finished a.txt"}, ALEX)
+    assert checked() == {"red": nothing, "soft": nothing, "bare": nothing}
+
+
+def metered(store, node_id, attempt, kind, name, **given):
+    """A recorded stream's rows on the task, as `graphene run` logs what its meter reads; the meter."""
+    meter = M.Meter(kind, attempt, **given)
+    sid = f"5e55105e-0000-4000-8000-00000000000{attempt}"
+    store.log_node(
+        node_id, plan._now(), "attempt", f"run:{kind}", sid, None, {"attempt": attempt, "log": "x"}
+    )
+    for row, detail in fed(name, meter):
+        store.log_node(node_id, plan._now(), row, f"run:{kind}", sid, None, detail)
+    return meter
+
+
+def test_tokens_are_summed_over_the_tasks_attempts_from_the_meters_rows_and_null_with_no_meter(repo):
+    """Claude Code's recorded stream (tests/fixtures/meter): three turns, 6 + 11,782 + 48,637 tokens in, of
+    which 48,637 came from the cache, and 539 out. Codex's: one turn, 48,940 in and 344 out, and no cache
+    split, so a task only Codex worked on reads null there, and one both worked on keeps Claude's."""
+    propose(repo, [leaf("a", "a.txt"), leaf("b", "b.txt"), leaf("c", "c.txt")])
+    with Store.open(repo) as store:
+        plan.start(store, "a", Caller("run:claude", False, "5e55105e-0000-4000-8000-000000000001"), repo)
+        metered(store, "a", 1, "claude", "claude.jsonl")
+    by = tasks()
+    assert by["a"]["tokens"] == {"read": 60425, "cached": 48637, "written": 539, "turns": 3}
+    assert by["b"]["tokens"] is None and by["c"]["tokens"] is None  # not started
+    with Store.open(repo) as store:
+        codex = metered(store, "a", 2, "codex", "codex.jsonl", model="m")
+        plan.start(store, "b", Caller("run:codex", False, "5e55105e-0000-4000-8000-000000000002"), repo)
+        metered(store, "b", 2, "codex", "codex.jsonl", model="m")
+    assert (codex.prompt_tokens, codex.completion_tokens, codex.turns) == (48940, 344, 1)
+    by = tasks()
+    assert by["a"]["tokens"] == {"read": 60425 + 48940, "cached": 48637, "written": 539 + 344, "turns": 4}
+    assert by["b"]["tokens"] == {"read": 48940, "cached": None, "written": 344, "turns": 1}
+
+
+def choose(repo, executor):
+    with Store.open(repo) as store:
+        store.set_meta("executor", executor)
+
+
+def test_held_says_what_test_every_agent_proves_and_nothing_more(repo):
+    """Refused before the write: Claude Code, in a repository with Graphene's gate among its hooks, and no
+    one else. Caught when it finishes: Claude Code without them, Codex (whose hooks may be installed: whether
+    they are trusted is not in the store), a command of your own, and nobody chosen. Not held: a task that is
+    yours."""
+    propose(repo, [leaf("a", "a.txt"), leaf("mine", "b.txt", owner="alex")])
+    held = lambda: {i: t["held"] for i, t in tasks().items()}  # noqa: E731
+    yours = {"state": "none", "by": "you"}
+    assert held() == {"a": {"state": "caught", "by": ""}, "mine": yours}  # no executor chosen, no hooks
+    choose(repo, "claude")
+    assert held() == {"a": {"state": "caught", "by": "claude"}, "mine": yours}  # Claude Code, no hooks
+    (repo / ".claude").mkdir()
+    only_stop = {"hooks": {"Stop": [{"hooks": [{"type": "command", "command": HOOK_COMMAND}]}]}}
+    (repo / SETTINGS).write_text(json.dumps(only_stop))
+    assert held()["a"] == {"state": "caught", "by": "claude"}  # our command, but not where a write is asked
+    install_hooks(repo)
+    install_codex_hooks(repo)
+    assert held() == {"a": {"state": "refused", "by": "claude"}, "mine": yours}
+    choose(repo, "claude:opus")
+    assert held()["a"] == {"state": "refused", "by": snapshot()["executor"]}  # as `executor` says it
+    for own in ("codex", "codex:gpt-5-codex", f"{sys.executable} /opt/agents/mine.py", "aider --yes"):
+        choose(repo, own)
+        s = snapshot()
+        assert {t["id"]: t["held"] for t in s["tasks"]} == {"a": {"state": "caught", "by": s["executor"]},
+                                                            "mine": yours}, own  # fmt: skip
+
+
+def test_held_follows_who_holds_a_running_task_not_the_executor_chosen_for_the_repository(repo):
+    """`graphene run --with codex` in a repository set up for Claude Code is Codex's, and a Claude Code
+    session that took a task in one set up for Codex is held by its hooks, as rows 1 to 3 of
+    test_every_agent are."""
+    propose(repo, [leaf("a", "a.txt"), leaf("b", "b.txt")])
+    install_hooks(repo)
+    choose(repo, "claude")
+    with Store.open(repo) as store:
+        plan.start(store, "a", Caller("run:codex", False, "5e55105e-0000-4000-8000-000000000003"), repo)
+    by = tasks()
+    assert by["a"]["held"] == {"state": "caught", "by": "codex"}
+    assert by["b"]["held"] == {"state": "refused", "by": "claude"}
+    choose(repo, "codex")
+    with Store.open(repo) as store:
+        plan.start(store, "b", BOT, repo)  # claude:5e55105e, a session its hooks hold
+    by = tasks()
+    assert by["b"]["held"] == {"state": "refused", "by": "claude"}
+    assert by["a"]["held"] == {"state": "caught", "by": "codex"}
+    (repo / SETTINGS).unlink()
+    assert tasks()["b"]["held"] == {"state": "caught", "by": "claude"}  # the hooks taken out
+
+
+def test_held_is_the_weakest_fork_and_never_a_shield_for_a_holder_no_run_started(repo):
+    """A step forked across executors is held as its weakest fork is: Claude Code racing Codex is caught,
+    not refused (`run --forks 2 --with claude --with codex`). And a task held by something no run started
+    and no proven session is (an editor's own agent, which the plan names "an agent"; a person who took an
+    agent's task) is not held: nobody has tested those."""
+    propose(repo, [leaf("a", "a.txt"), leaf("b", "b.txt"), leaf("c", "c.txt")])
+    install_hooks(repo)
+    choose(repo, "claude")
+    run = Caller("run:claude", False, "5e55105e-0000-4000-8000-000000000004")
+    forks = {"s-a": {"fork": "a", "tree": str(repo)}, "s-b": {"fork": "b", "tree": str(repo)}}
+    with Store.open(repo) as store:
+        plan.start(store, "a", run, repo)
+        plan.set_forked(store, "a", forks)
+        row = {"forks": ["a", "b"], "of": 2, "with": {"a": "claude", "b": "codex"}}
+        store.log_node("a", plan._now(), "forked", run.label, run.session_id, None, row)
+    assert tasks()["a"]["held"] == {"state": "caught", "by": "claude"}
+    with Store.open(repo) as store:  # the same hold forked again, every fork Claude Code's
+        row = {"forks": ["a", "b"], "of": 2, "with": {"a": "claude", "b": "claude:opus"}}
+        store.log_node("a", plan._now(), "forked", run.label, run.session_id, None, row)
+    assert tasks()["a"]["held"] == {"state": "refused", "by": "claude"}
+    with Store.open(repo) as store:
+        plan.start(store, "b", Caller("an agent", False, None), repo)
+        plan.start(store, "c", Caller("alex", True, None), repo)
+    by = tasks()
+    assert by["b"]["held"] == {"state": "none", "by": "an agent"}
+    assert by["c"]["held"] == {"state": "none", "by": "alex"}
+
+
+def test_allows_is_what_the_executors_own_command_line_lets_it_run_without_asking(repo):
+    """Claude Code as Graphene starts it names two; Codex, the Nemotron executor and a command of your own
+    name no list: any command, held to the step's files by what it writes. A list of what is NOT allowed, or
+    a command line that switches the asking off, is no such list either."""
+    propose(repo, [leaf("a", "a.txt")])
+    assert snapshot()["allows"] is None  # nobody chosen
+    two = ["graphene node *", "graphene plan *"]
+    said = {"claude": two, "claude:opus": two, "claude --max-budget-usd 5": two, "codex": None,
+            "nemotron --model nano": None, f"{sys.executable} /opt/agents/mine.py": None,
+            "claude -p --allowedTools 'Bash(git diff)' Edit 'Bash(npm *)' --verbose": ["git diff", "npm *"],
+            "claude -p --allowed-tools='Bash(make *),Read'": ["make *"],
+            "claude -p --disallowedTools 'Bash(rm *)'": None,
+            "claude -p --dangerously-skip-permissions --allowedTools 'Bash(graphene node *)'": None,
+            "claude -p --permission-mode bypassPermissions --allowedTools 'Bash(graphene node *)'": None,
+            "mine --allowedTools 'Bash(graphene node *)'": None,
+            "claude-shim --allowedTools 'Bash(graphene node *)'": None}  # fmt: skip
+    for executor_, allowed in said.items():
+        choose(repo, executor_)
+        assert snapshot()["allows"] == allowed, executor_

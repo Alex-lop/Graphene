@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import * as C from "../src/commands.ts";
-import { banner, checkHome, countsLine, home, said, type Card, type Home } from "../src/home/cards.ts";
+import { banner, checkHome, countsLine, home, PROVES_NOTHING, said, type Card, type Home } from "../src/home/cards.ts";
 import { headline, parseState, type State } from "../src/state.ts";
 
 const fixture = (name: string): State => parseState(readFileSync(new URL(`./fixtures/${name}.json`, import.meta.url), "utf8"));
@@ -132,7 +132,8 @@ test("the page's messages are checked against the plan before anything runs", ()
   no({ type: "act", act: "ask", arg: "   " });
   no({ type: "act", act: "ask", arg: "x".repeat(4001) });
   no({ type: "act", act: "ask" });
-  ok({ type: "act", act: "setup", arg: "nemotron", flag: true });
+  ok({ type: "act", act: "setup", arg: "codex", flag: true });
+  no({ type: "act", act: "setup", arg: "nemotron", flag: true }); // Home's picker offers Claude Code and Codex; the CLI still takes --executor nemotron
   no({ type: "act", act: "setup", arg: "rm -rf /" });
   ok({ type: "act", act: "setKey", arg: "nim" });
   no({ type: "act", act: "setKey", arg: "nim; rm" });
@@ -177,6 +178,83 @@ test("the palette shows seven commands; the rest, and the advanced views, only w
   assert.equal(views[1].id, "graphene.graph");
   for (const v of views.slice(2)) assert.equal(v.when, "config.graphene.advanced", v.id);
   assert.equal(c.configuration.properties["graphene.advanced"].default, false);
+});
+
+test("Home shows the pipeline's three stages and the one switch, on until `auto` is on", () => {
+  const s = fixture("proposals");
+  const h = home(s);
+  assert.deepEqual(h.stages.map((x) => [x.label, x.at]), [["Plan", "now"], ["Run", "next"], ["Review", "next"]]);
+  assert.equal(h.stopAfter, true, "the default: a plan waits for Start");
+  assert.equal(home({ ...s, envelope: { ...s.envelope, auto: "on" } }).stopAfter, false, "off is auto");
+  assert.deepEqual(home(fixture("graph-race")).stages.map((x) => x.at), ["done", "now", "next"]);
+  assert.deepEqual(checkHome({ type: "act", act: "stopAfter", flag: false }, s), { type: "act", act: "stopAfter", id: "", flag: false });
+  assert.equal(checkHome({ type: "act", act: "stopAfter" }, s), null, "the switch says which way");
+  assert.deepEqual(C.stopAfter(true), ["config", "set", "auto", "off"]);
+  assert.deepEqual(C.stopAfter(false), ["config", "set", "auto", "on"]);
+});
+
+test("before the run, a check that already passes is marked on its card: it proves nothing yet", () => {
+  const s = fixture("graph-race");
+  const mark = (id: string, key: string) => {
+    const h = home({ ...s, tasks: s.tasks.map((t) => (t.id === id ? { ...t, hollow: true } : t)) });
+    return card(h, key).lines.filter((l) => l.warn).map((l) => l.v);
+  };
+  assert.deepEqual(mark("ship", "n:ship"), [PROVES_NOTHING], "a task up next");
+  assert.ok(mark("greet", "w:greet").includes(PROVES_NOTHING), "a task an agent is on");
+  assert.deepEqual(card(home(s), "n:ship").lines.filter((l) => l.warn), [], "a check that fails now says nothing");
+});
+
+test("Home lists the repository's workflows, each with a Run; a file that is not a workflow says why and offers none", () => {
+  const s = fixture("empty");
+  const listed = [{ name: "fix-issue", goal: "fix issue {{issue}}", inputs: [{ name: "issue", default: null }, { name: "suite", default: "uv run pytest -q" }], error: null },
+                  { name: "broken", goal: "", inputs: [], error: "line 3: {{branch}} is no input of this workflow" }];
+  const sec = section(home(s, new Set(), false, listed), "workflows")!;
+  assert.equal(sec.title, "Workflows · 2");
+  assert.equal(sec.folded, false, "nothing planned: the workflows are a way to start");
+  const fix = sec.cards[0]!;
+  assert.deepEqual(fix.lines, [{ k: "Does", v: "fix issue {{issue}}" }, { k: "Asks for", v: "issue, suite (uv run pytest -q)" }]);
+  assert.deepEqual(fix.buttons.map((b) => [b.label, b.act, b.arg]), [["Run", "runWorkflow", "fix-issue"]]);
+  assert.deepEqual([sec.cards[1]!.lines, sec.cards[1]!.buttons], [[{ v: "line 3: {{branch}} is no input of this workflow", warn: true }], []]);
+  assert.equal(section(home(s), "workflows"), undefined, "none in the repository: no section");
+  assert.equal(section(home(fixture("graph-race"), new Set(), false, listed), "workflows")!.folded, true, "a plan is on: they wait folded");
+  // Run is taken only for a workflow the repository has, and that reads
+  assert.deepEqual(checkHome({ type: "act", act: "runWorkflow", arg: "fix-issue" }, s, listed), { type: "act", act: "runWorkflow", id: "", arg: "fix-issue" });
+  assert.equal(checkHome({ type: "act", act: "runWorkflow", arg: "broken" }, s, listed), null);
+  assert.equal(checkHome({ type: "act", act: "runWorkflow", arg: "fix-issue; rm -rf /" }, s, listed), null);
+  assert.equal(checkHome({ type: "act", act: "runWorkflow", arg: "fix-issue" }, s), null, "none listed: none to run");
+});
+
+test("a step past the line asks you on Home: what leaves your machine, the command it runs, and Approve and run", () => {
+  const s = fixture("workflow");
+  const h = home(s);
+  const c = card(h, "yours:pr-48");
+  assert.equal(c.tag, "asks you");
+  assert.match(c.lines[0]!.v, /^This step leaves your machine, so it asks you first\./);
+  assert.deepEqual(c.lines[1], { k: "Runs", v: "git push -u origin HEAD && gh pr create --draft --fill", mono: true });
+  assert.deepEqual(c.buttons.map((b) => [b.label, b.act, b.id]), [["Approve and run", "markDone", "pr-48"]]);
+  // before Start, the suggested plan is where each step is read: a command step says what runs, with no agent,
+  // and the one past the line says it will ask first. Neither says "no files named" or "... passes".
+  const before = home({ ...s, tasks: s.tasks.map((t) => ({ ...t, state: "proposed" as const })) });
+  const lines = (id: string) => before.sections.flatMap((x) => x.cards).find((x) => x.key.endsWith(`:${id}`))!.lines;
+  assert.deepEqual(lines("suite-48").slice(0, 2), [{ k: "Runs", v: "uv run pytest -q", mono: true }, { v: "A command, with no agent: its exit code is its check." }]);
+  assert.deepEqual(lines("pr-48")[1], { v: "It leaves your machine, so it asks you before it runs." });
+  // a command that failed stays open and reads as before it ran: its card says it ran, once the terminal is gone
+  const failed = (id: string, state: "ready" | "yours") => home({ ...s, tasks: s.tasks.map((t) => (t.id === id ? { ...t, state, checked: { before: null, after: "failed" } } : t)) });
+  const warns = (x: Home, key: string) => card(x, key).lines.filter((l) => l.warn).map((l) => l.v);
+  assert.deepEqual(warns(failed("suite-48", "ready"), "n:suite-48"), ["Its command failed the last time it ran: the terminal said why. Run tries it again."]);
+  assert.deepEqual(warns(failed("pr-48", "yours"), "yours:pr-48"), ["Its command failed the last time it ran: the terminal said why. Approve and run tries it again."]);
+  assert.deepEqual(warns(h, "yours:pr-48"), [], "nothing failed: no such line");
+});
+
+test("a question with no default stops the run either way: with the switch on, Start waits for its answer", () => {
+  const s = fixture("proposals");
+  const asks = { ...s, questions: [{ ...s.questions[0]!, default: null }] };
+  const suggested = (h: ReturnType<typeof home>) => h.sections.find((x) => x.key === "suggested")!;
+  const start = (h: ReturnType<typeof home>) => suggested(h).buttons.find((b) => b.act === "startAll")!;
+  assert.equal(start(home(asks)).off, true);
+  assert.match(suggested(home(asks)).note, /^Answer the 1 question with no default under Needs you first/);
+  assert.equal(start(home(s)).off, false, "a question with a default takes it at Start");
+  assert.equal(start(home({ ...s, questions: [] })).off, false);
 });
 
 test("Exact: Start waits while anything the plan asks is open, and says how many; off, or with nothing open, it starts", () => {

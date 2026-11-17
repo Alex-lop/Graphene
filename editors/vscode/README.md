@@ -4,7 +4,7 @@ Say what you want, read the plan, start the agents, and approve what they did. G
 task, in its own copy of your repository, held to the files that task may change. A task lands only when its
 check passes and, if you keep the box ticked at setup, when you approve it.
 
-![Graphene for VS Code during a race against the scripted stand-in, in real VS Code: Home, in the side bar, shows three agents working, each with its model, what it is doing now, its cost and its attempts, and a Stop all button; the editor tab draws the same race, two tasks each fanned out into three Nano attempts, all running, flowing into the goal; the auto line says round 1 of 3, running, $0.007 of $2.00](media/graph.png)
+![Graphene for VS Code replaying the bundled demo against the scripted stand-in, in real VS Code. The header names the goal, the auto line (round 1 of 3, running, $0.007 of $2.00) and the three stages: Plan with 3 steps, Run with 2 working, Review. The canvas draws three steps as cards in the region for this machine, each with its files, its check and three attempts under it, one landed and two working, flowing into the goal; beside them is the region for what leaves your machine, with nothing in it yet. The pane is open on Scope for the selected step: May change, 2 of 2 written; May run; Held by, caught when it finishes; Stopped, one write refused; Done when, its check, which failed before the work; Tokens, 13k in and 1k out](media/graph.png)
 
 It is a thin client over the `graphene` command. Everything it shows is `graphene state --json`, streamed with
 `--watch`, and everything it changes is one `graphene` command, the same ones the terminal cockpit runs.
@@ -13,7 +13,7 @@ It is a thin client over the `graphene` command. Everything it shows is `graphen
 
 Click Graphene in the activity bar. Home is the first view, and it shows the one thing to do next.
 
-1. **Set up the folder.** Pick who plans and does the work: Claude Code, Codex or Nemotron. One click. Leave
+1. **Set up the folder.** Pick who plans and does the work: Claude Code or Codex. One click. Leave
    *Ask me to approve each finished task* ticked, and nothing lands without you.
 2. **Say what you want.** Type it, in a sentence or a paragraph, and click **Plan it**. The planner reads the
    repository and suggests small tasks. Each card says what the task is for, the files it may change, and the
@@ -28,15 +28,41 @@ Click Graphene in the activity bar. Home is the first view, and it shows the one
 A task that needs help says why and offers its fixes as buttons: try again, allow it a file, add a task for what
 it needs. A question from the planner shows its options as buttons, the default first.
 
+Home and the graph's header show the three stages, **Plan**, **Run** and **Review**, and one switch, **Stop
+after the plan**. It is on by default: you read the plan, then **Start**. Turn it off and **Plan it** draws the
+plan and then runs what fits your limits without waiting, in a terminal you can read and stop; a question with
+no default, or a check that already passes, still stops it. As a run starts, the check of each task that can
+start runs once on the code as it is, before any agent works, and one that already passes is marked on its
+card: it proves nothing yet.
+
 The **graph** under Home is the whole plan: which tasks wait on which, the attempts racing, the one kept and
-why. **Show graph** opens it as a tab. The Explorer marks each file a task owns, a working agent's with its
-number.
+why. **Show graph** opens it as a tab: a dotted canvas flowing left to right, each step a card with a tile for
+who does it, its files and its check, in a region for **this machine**; a step that would leave it is drawn in
+a region of its own. While Claude Code plans, each step it finishes appears as a drafted box; a planner whose
+stream carries no text (Codex) has its boxes appear when the plan arrives, and the graph says so. Each step has
+one colour, on its card's tile and, from the time it is accepted until it lands, on its files in the Explorer,
+a working agent's with its number.
 
 You can build the graph by hand, before and while agents run. **Add task**, or the **+** on a box, draws a draft:
 type its title on the box, then its files and its check in the pane, and it joins the plan (**Fill it in for me**
-asks the planner instead). Click any task and its pane is a form: its title, files and check, how many attempts
-run it at once, whether it waits for your approval, whether you do it yourself. The line under the form says what
-a change does now, and a change Graphene refuses says why, there.
+asks the planner instead). Click any task and its pane opens on **Scope**: the files it may change, as a tree,
+with the ones written so far marked and other steps' folders named; what it may run; how a write outside its
+files is held (refused before it happens, caught when it finishes, or not held: never more than the tests
+prove); the writes that were stopped, with the time; its check, with its result before and after the work; and
+its tokens, read and written. **Edit** is its form: its title, files and check, how many attempts run it at
+once, whether it waits for your approval, whether you do it yourself. The line under the form says what a
+change does now, and a change Graphene refuses says why, there. **Activity** is who is on it, what it cost, and
+its attempts.
+
+## Workflows: save a graph, run it again
+
+**Save as workflow**, in the graph's header, writes the plan to `workflows/<name>.md`, with the values you name
+as its inputs. Home lists the repository's workflows; **Run** asks for each input and proposes the plan with no
+planner call: a suggested plan that waits for **Start**, whatever the switch says. A step can be a command (`run:` in the file): Graphene runs it
+with no agent, and its exit code is its check. A command that pushes or opens a pull request is drawn past the
+line, in **leaves your machine**, and waits for **Approve and run**. Only `git push` and `gh pr` are read as
+leaving your machine: any other command runs with the run. An input can be a command (a check, a `run:` step),
+and what you type there is run, as a check you write in the form is.
 
 ## Try it with no key
 
@@ -73,6 +99,7 @@ The Welcome page's **Get started with Graphene** walks through these, each step 
 | working | an agent is on it now | running |
 | to review | its check passed; it waits for your approval | review |
 | needs help | it stopped before its check passed, and says why | came back |
+| asks you | a command that would push or open a pull request waits for you to approve it | yours |
 | attempt | one of several agents racing the same task; its check keeps one | fork |
 | approve | land it in your repository | sign off |
 | send back | open it again, with a note for the next agent | reopen |
@@ -104,11 +131,15 @@ classic layout the views look as they do in VS Code.
 
 - **A thin client.** The extension reads the plan with `graphene state --json` and changes it with `graphene`
   commands, run as you in the folder. It never opens the plan's store itself.
-- **Nothing from a page reaches a shell.** Home and the graph send the extension a message; it checks each one
+- **A page's words reach a shell only as one quoted argument.** Home and the graph send the extension a message; it checks each one
   against the plan (a known act, a task the plan has, an option the question has) and passes words only as one
   argument of a `graphene` command. A title or a planner's words are shown as text, never as markup or a link.
-- **No network of its own.** The extension makes no request and sends no telemetry. The models you configured
-  (Token Factory, Claude Code, Codex) are the CLI's business, with a key it reads from a hidden prompt.
+  The runs you watch (Start, Run, Try again, Approve and run) are typed into a terminal as a `graphene` line,
+  so you can read it and stop it. One of them carries words you typed: with **Stop after the plan** off, **Plan
+  it** types `graphene auto` there with your words as one quoted argument on one line, control characters taken
+  out.
+- **No network of its own.** The extension makes no request and sends no telemetry. The agents you configured
+  (Claude Code, Codex) are the CLI's business; a key the CLI needs is read from a hidden prompt.
 - **Off in Restricted Mode.** In a folder you have not trusted it does nothing: it would run commands, and the
   plan's checks, there.
 - **Your settings only.** `graphene.path` comes from your user settings, never from a folder's

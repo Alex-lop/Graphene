@@ -3,7 +3,7 @@
 // is the person's (a sign-off, a hand-back, their own task, a proposal, a running task the gate stopped).
 // Nothing here sends anyone to the cockpit. Pure: no VS Code here; needsView.ts draws what this returns.
 import { plain } from "./commands.ts";
-import type { Question, State, Task } from "./state.ts";
+import { mdText, type Question, type State, type Task } from "./state.ts";
 
 // A row's element reaches its menu commands as it is, so it carries `id`: what every command reads from its
 // argument (extension.ts taskOf, diff.ts, step.ts). Without it, Drop from a Needs You row opened a picker of every task.
@@ -65,6 +65,14 @@ export function answerPicks(q: Question): { label: string; description: string; 
   return items;
 }
 export const markDone = (id: string): string[] => ["node", "done", id]; // runs its check: a terminal
+
+/** A `yours` row's words, and its hover as Markdown. A step past the line is not the person's own finished task:
+ *  it asks them, and approving it runs its command, which leaves their machine. */
+export function yoursWords(t: Task): { description: string; hover: string; title: string } {
+  if (t.leaves && t.command) return { description: `asks you: it leaves your machine · approving runs ${t.command}`, title: "Approve and Run",
+    hover: `This step leaves your machine, so it asks you first. Click to approve it: that runs its command in a terminal, with no agent.\n\nRuns: ${mdText(t.command)}` };
+  return { description: "yours · mark done", title: "Mark Done", hover: "Your own task. Click when it is done: its check runs in a terminal." };
+}
 export const widen = (id: string): string[] => ["node", "widen", id]; // exactly what the gate stopped
 
 export const OFFERS: [string, string][] = [["w", "Widen its scope"], ["b", "A new task"], ["n", "Wait on"], ["r", "Reopen"]];

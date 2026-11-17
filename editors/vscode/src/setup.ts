@@ -14,7 +14,6 @@ import type { Session, UI } from "./session.ts";
 const PLANNERS = [
   { label: "Claude Code", description: "claude on the PATH", word: "claude" },
   { label: "Codex", description: "codex on the PATH", word: "codex" },
-  { label: "Nemotron on Token Factory", description: "needs a key: Set Key, or NEBIUS_API_KEY", word: "nemotron" },
   { label: "A command of your own", description: "it takes the prompt last", word: "" },
 ];
 

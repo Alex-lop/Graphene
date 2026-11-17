@@ -9,6 +9,13 @@
   "first": "auto",
   "planner": "",
   "executor": "",
+  "allows": null,
+  "tree": [
+    "a.txt",
+    "api.py",
+    "b.txt",
+    "notes.txt"
+  ],
   "envelope": {
     "auto": "on",
     "budget": 2.0,
@@ -33,6 +40,7 @@
     "going": false,
     "pid": null
   },
+  "drafting": null,
   "spent": 0.004,
   "scoreboard": {
     "need_you": 5,
@@ -131,8 +139,26 @@
       "hollow": false,
       "why": "",
       "checkout": null,
-      "base": "b551a54e26ac86a11b200e175368b0e50e109c49",
-      "attempts": 1
+      "base": "79bfc3f7323da4815689fa0a1623f9de42b78bb4",
+      "attempts": 1,
+      "files": [
+        "api.py",
+        "notes.txt"
+      ],
+      "files_n": 2,
+      "touched": [],
+      "stops": [],
+      "checked": {
+        "before": null,
+        "after": "passed"
+      },
+      "tokens": null,
+      "held": {
+        "state": "caught",
+        "by": ""
+      },
+      "command": null,
+      "leaves": false
     },
     {
       "id": "words",
@@ -167,8 +193,36 @@
       "hollow": false,
       "why": "",
       "checkout": "/home/dev/project",
-      "base": "2e9dc8046820f846e9be5065740f7d5db9af9f45",
-      "attempts": 1
+      "base": "e4803105ee269139cc61569a7601ebbfd9050efa",
+      "attempts": 1,
+      "files": [],
+      "files_n": 0,
+      "touched": [
+        "words.py"
+      ],
+      "stops": [
+        {
+          "path": "app.py",
+          "at": "2026-11-17T07:43:40.901589Z",
+          "how": ""
+        }
+      ],
+      "checked": {
+        "before": null,
+        "after": null
+      },
+      "tokens": {
+        "read": 1800,
+        "cached": null,
+        "written": 240,
+        "turns": 1
+      },
+      "held": {
+        "state": "caught",
+        "by": "nemotron"
+      },
+      "command": null,
+      "leaves": false
     },
     {
       "id": "greet",
@@ -200,7 +254,22 @@
       "why": "",
       "checkout": null,
       "base": null,
-      "attempts": 0
+      "attempts": 0,
+      "files": [],
+      "files_n": 0,
+      "touched": [],
+      "stops": [],
+      "checked": {
+        "before": null,
+        "after": null
+      },
+      "tokens": null,
+      "held": {
+        "state": "caught",
+        "by": ""
+      },
+      "command": null,
+      "leaves": false
     },
     {
       "id": "farewell",
@@ -242,8 +311,23 @@
       "hollow": false,
       "why": "bye.py imports the schema, which no leaf makes",
       "checkout": "/home/dev/project",
-      "base": "2e9dc8046820f846e9be5065740f7d5db9af9f45",
-      "attempts": 0
+      "base": "e4803105ee269139cc61569a7601ebbfd9050efa",
+      "attempts": 0,
+      "files": [],
+      "files_n": 0,
+      "touched": [],
+      "stops": [],
+      "checked": {
+        "before": null,
+        "after": null
+      },
+      "tokens": null,
+      "held": {
+        "state": "caught",
+        "by": ""
+      },
+      "command": null,
+      "leaves": false
     },
     {
       "id": "docs",
@@ -275,7 +359,22 @@
       "why": "",
       "checkout": null,
       "base": null,
-      "attempts": 0
+      "attempts": 0,
+      "files": [],
+      "files_n": 0,
+      "touched": [],
+      "stops": [],
+      "checked": {
+        "before": null,
+        "after": null
+      },
+      "tokens": null,
+      "held": {
+        "state": "caught",
+        "by": ""
+      },
+      "command": null,
+      "leaves": false
     },
     {
       "id": "mine",
@@ -305,7 +404,22 @@
       "why": "",
       "checkout": null,
       "base": null,
-      "attempts": 0
+      "attempts": 0,
+      "files": [],
+      "files_n": 0,
+      "touched": [],
+      "stops": [],
+      "checked": {
+        "before": null,
+        "after": null
+      },
+      "tokens": null,
+      "held": {
+        "state": "none",
+        "by": "you"
+      },
+      "command": null,
+      "leaves": false
     },
     {
       "id": "notes",
@@ -335,7 +449,22 @@
       "why": "",
       "checkout": null,
       "base": null,
-      "attempts": 0
+      "attempts": 0,
+      "files": [],
+      "files_n": 0,
+      "touched": [],
+      "stops": [],
+      "checked": {
+        "before": null,
+        "after": null
+      },
+      "tokens": null,
+      "held": {
+        "state": "caught",
+        "by": ""
+      },
+      "command": null,
+      "leaves": false
     }
   ],
   "edges": [
