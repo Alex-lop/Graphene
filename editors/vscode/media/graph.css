@@ -1,4 +1,4 @@
-/* The graph's look (the target is dev/ui/canvas.html): a canvas flowing left to right, a card a step,
+/* The graph's look (the target is dev/ui/canvas.html): a dotted canvas flowing left to right, a card a step,
    curved edges between ports, a region for this machine and one for what leaves it. Every colour is one of VS
    Code's own, or mixed from two of them, so it is native in light, dark and high contrast. Colour means state
    and nothing else: working amber, landed green, needs you purple, drafted blue, came back red (the chart
@@ -25,6 +25,7 @@
   --card: color-mix(in srgb, var(--bg) 93%, var(--fg));
   --card-border: color-mix(in srgb, var(--bg) 80%, var(--fg));
   --tint: color-mix(in srgb, var(--fg) 7%, transparent);
+  --dot: color-mix(in srgb, var(--fg) 13%, transparent);
   --shadow: var(--vscode-widget-shadow, rgba(0, 0, 0, 0.28));
   --claude: var(--vscode-charts-orange, #d18616);
   --font: var(--vscode-font-family, system-ui, sans-serif);
@@ -52,7 +53,10 @@ header {
 #auto[hidden] { display: none; }
 #actions { grid-column: 2; grid-row: 2 / span 3; display: flex; gap: 6px; align-items: start; flex-wrap: wrap; justify-content: end; }
 main { flex: 1; display: flex; min-height: 0; }
-#canvas { flex: 1; position: relative; overflow: hidden; cursor: grab; outline: none; }
+#canvas {
+  flex: 1; position: relative; overflow: hidden; cursor: grab; outline: none; background-color: var(--bg);
+  background-image: radial-gradient(circle at 1px 1px, var(--dot) 1.1px, transparent 1.3px); background-size: 22px 22px;
+}
 #canvas.dragging { cursor: grabbing; }
 #canvas.lanes { cursor: default; overflow: auto; }
 #svg { display: block; position: absolute; left: 0; top: 0; }

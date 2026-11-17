@@ -670,6 +670,11 @@ function applyZoom() {
   const svg = $("svg");
   svg.style.transform = `translate(${zoom.tx}px, ${zoom.ty}px) scale(${zoom.k})`;
   svg.style.transformOrigin = "0 0";
+  const dots = $("canvas").style; // the canvas's dots move and grow with the plan
+  dots.backgroundPosition = `${zoom.tx}px ${zoom.ty}px`;
+  dots.backgroundSize = `${22 * zoom.k}px ${22 * zoom.k}px`;
+  const [, out, into] = Array.from($("zoom").querySelectorAll("button")); // at 1 there is no zooming out, at 3 no zooming in
+  if (out && into) { out.disabled = zoom.k <= 1; into.disabled = zoom.k >= 3; }
   // the goal off screen, whole or in part: a chip at the edge says where it is, and a click brings it (as `g` does)
   const p = lay?.boxes[GOAL];
   const canvas = $("canvas");
