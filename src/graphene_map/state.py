@@ -422,6 +422,37 @@ def hooked(root: Path) -> bool:
         return False
 
 
+def checked(log: list[dict], check: str) -> dict:
+    """The check's verdict before the work and after, each only while it is about the check the task has
+    now: ``before`` from its last `precheck` row (red first, precheck.py: one of VERDICTS), ``after``
+    "passed" or "failed" from its last `check_passed` or `check_failed` row. None for a check that was
+    edited since, was not run, or is not there: what an older check said is not this one's result."""
+    before = next((r["detail"] for r in reversed(log) if r["kind"] == "precheck"), {})
+    after = next((r for r in reversed(log) if r["kind"] in ("check_passed", "check_failed")), None)
+    out: dict[str, str | None] = {"before": None, "after": None}
+    if check and before.get("check") == check and before.get("verdict") in VERDICTS:
+        out["before"] = before["verdict"]
+    if check and after is not None and after["detail"].get("command") == check:
+        out["after"] = after["kind"].removeprefix("check_")
+    return out
+
+
+def tokens(log: list[dict]) -> dict | None:
+    """What the task's attempts spent, its forks' included, from its `usage` rows as `node_record.bill` adds
+    them up: ``read`` the prompt tokens, ``cached`` how many of those came from the cache (None when no row
+    says: Codex reports none), ``written`` the completion tokens, ``turns`` the model turns. None when no
+    attempt of it has a metered row: not started, or an executor with no meter."""
+    from . import meter as M
+    from . import node_record as NR
+
+    bill = NR.bill(log)
+    if bill is None:
+        return None
+    cached = [u[M.PROMPT[2]] for r in log if r["kind"] == "usage" and M.PROMPT[2] in (u := r["detail"])]
+    return {"read": bill["prompt_tokens"], "cached": sum(cached) if cached else None,
+            "written": bill["completion_tokens"], "turns": bill["calls"]}  # fmt: skip
+
+
 def held(node: P.Node | None, chosen: str, hooks: bool, log: list[dict] | tuple = ()) -> dict:
     """How a write outside the task's files is held, by what is proven and nothing more (tests/
     test_every_agent.py, dev/process/graph-edit/hooks.md). "refused", before the write: its executor is
