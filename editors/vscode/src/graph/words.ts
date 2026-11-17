@@ -1,6 +1,7 @@
 // The graph's words, pure: what a box and a fork chip say, what the header says of a replay, which acts a
 // task offers, and the keys. No DOM here, so `node --test` reads them.
 import type { Layout } from "../layout.ts";
+import { inScope } from "../owners.ts";
 import { autoLine, headline, SAY, screenWords, usd, type DraftStep, type Fork, type Kept, type Question, type State, type Task } from "../state.ts";
 
 /** What the snapshot gains tonight (dev/process/editor/CONTRACT.md): read when present, nothing when not. */
@@ -67,6 +68,71 @@ export function who(t: Pick<TaskX, "state" | "owner">, executor: string): { kind
   if (name === "codex") return { kind: "codex", mark: "X", label: "Codex" };
   if (!name) return { kind: "agent", mark: "?", label: "an agent" };
   return words.length > 1 || words[0]!.includes("/") ? { kind: "cmd", mark: name.slice(0, 2), label: name } : { kind: "agent", mark: name[0]!.toUpperCase(), label: name };
+}
+
+// ---- the pane's Scope tab: what a step may do, as a person reads it ----
+
+export interface TreeRow { name: string; depth: 0 | 1; kind: "in" | "other" | "out"; note: string }
+
+const dirOf = (path: string) => (path.includes("/") ? `${path.slice(0, path.lastIndexOf("/"))}/` : "");
+const topOf = (path: string) => (path.includes("/") ? `${path.slice(0, path.indexOf("/"))}/` : path);
+/** What a glob names before its first wildcard: `src/export/**` is `src/export/`, `README.md` itself. */
+const fixedOf = (glob: string) => {
+  const parts = glob.replace(/^\.\//, "").split("/");
+  const upto = parts.findIndex((x) => /[*?]/.test(x));
+  return upto < 0 ? glob : `${parts.slice(0, upto).join("/")}${upto ? "/" : ""}`;
+};
+
+/** May change, as a tree: the repository's top-level entries; this step's folders opened to the files it covers
+ *  (a written one says so, at most ``most`` a folder); a path it may create that is not there yet; another
+ *  step's entries named; everything else dim. The glob itself is the pane's to show when asked. */
+export function scopeTree(t: Pick<TaskX, "id" | "scope" | "files" | "filesN" | "touched" | "changed">, s: Pick<StateX, "tree" | "tasks">, most = 12): TreeRow[] {
+  const wrote = writtenIn(t), written = new Set(wrote);
+  const files = [...new Set([...t.files, ...wrote])].sort(); // a file it created is one of its files, though git does not track it yet
+  const cut = t.filesN > t.files.length; // the snapshot lists 200 at most: the rest are its own all the same
+  const mine = new Map<string, string[]>(); // a folder of its files -> the files
+  for (const f of files) mine.set(dirOf(f), [...(mine.get(dirOf(f)) ?? []), f]);
+  const globs = t.scope.filter((g) => !g.startsWith("!")).map(fixedOf);
+  const fresh = cut ? [] : globs.filter((g) => g && !files.some((f) => f === g || f.startsWith(g))); // nothing there yet
+  const others = new Map<string, string>(); // a top-level entry -> the other step whose files are under it
+  for (const o of s.tasks) {
+    if (o.id === t.id) continue;
+    for (const f of o.files.length ? o.files : o.scope.filter((g) => !g.startsWith("!")).map(fixedOf)) if (f && !others.has(topOf(f))) others.set(topOf(f), o.title);
+  }
+  const tops = s.tree.length ? [...s.tree] : [...new Set([...files, ...fresh, ...others.keys()].map(topOf))].sort();
+  for (const f of [...files, ...fresh]) if (!tops.includes(topOf(f))) tops.push(topOf(f)); // a path it will create
+  const rows: TreeRow[] = [];
+  const open = (dir: string) => {
+    const files = mine.get(dir) ?? [];
+    if (dir) rows.push({ name: dir, depth: 0, kind: "in", note: "" });
+    for (const f of files.slice(0, most)) rows.push({ name: dir ? f.slice(dir.length) : f, depth: dir ? 1 : 0, kind: "in", note: written.has(f) ? "written" : "" });
+    if (files.length > most) rows.push({ name: `… and ${files.length - most} more`, depth: dir ? 1 : 0, kind: "in", note: "" });
+  };
+  for (const top of tops) {
+    const dirs = [...mine.keys()].filter((d) => (top.endsWith("/") ? d.startsWith(top) : false)).sort();
+    const here = fresh.filter((g) => topOf(g) === top);
+    if (!top.endsWith("/") && files.includes(top)) rows.push({ name: top, depth: 0, kind: "in", note: written.has(top) ? "written" : "" });
+    else if (dirs.length || here.length) {
+      for (const d of dirs) open(d);
+      for (const g of here) rows.push({ name: g, depth: 0, kind: "in", note: written.has(g) ? "written" : "not there yet" });
+    } else if (cut && globs.some((g) => !g || g.startsWith(top))) rows.push({ name: top, depth: 0, kind: "in", note: "" }); // its own, past the list's cut
+    else rows.push({ name: top, depth: 0, kind: others.has(top) ? "other" : "out", note: others.has(top) ? "another step's" : "" });
+  }
+  if (cut) rows.push({ name: `… and ${t.filesN - t.files.length} more files`, depth: 0, kind: "in", note: "" });
+  return rows;
+}
+
+/** What a step has written inside its files. A write outside them is the Stopped part's and the finish's to
+ *  say: it is never counted as one of its files. */
+const writtenIn = (t: Pick<TaskX, "scope" | "touched" | "changed">): string[] => [...new Set([...t.touched, ...t.changed])].filter((f) => inScope(f, t.scope));
+
+/** How many of its files a step has written so far: `2 of 4`. A file it created is one of its files too, though
+ *  git does not track it yet. Nothing while its scope covers no file and it has written none. */
+export function writtenOf(t: Pick<TaskX, "scope" | "files" | "filesN" | "touched" | "changed">): string {
+  const written = writtenIn(t);
+  // ponytail: past the list's cut (200 files) a written file cannot be told from a new one, so the count stays the scope's
+  const all = t.filesN > t.files.length ? Math.max(t.filesN, written.length) : t.filesN + written.filter((f) => !t.files.includes(f)).length;
+  return all ? `${written.length} of ${all}` : "";
 }
 
 export interface Stage { key: "plan" | "run" | "review"; label: string; at: "done" | "now" | "next"; note: string }
