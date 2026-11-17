@@ -307,11 +307,12 @@ export function worktrees(tasks: readonly TaskX[]): number {
 export const attemptsOf = (t: Pick<TaskX, "planned">, limit: number | null | undefined): number => Math.min(8, Math.max(1, t.planned ?? limit ?? 1));
 
 /** The fan under a box: its attempts as they run or ran; before anything runs, one waiting chip for each
- *  attempt it is set to (two or more, and a check to keep one: without a check it runs as one agent). */
+ *  attempt it is set to (two or more, and a check to keep one: without a check it runs as one agent). None on
+ *  a command step: its check is its command, which runs once, with no agent. */
 export function fan(t: TaskX, limit: number | null | undefined): ForkX[] {
   if (t.forks.length) return t.forks;
   const n = attemptsOf(t, limit);
-  if (n < 2 || !t.check || !["proposed", "ready", "waiting"].includes(t.state)) return [];
+  if (n < 2 || !t.check || t.command || !["proposed", "ready", "waiting"].includes(t.state)) return [];
   return Array.from({ length: n }, (_, i) => ({ letter: "abcdefgh"[i]!, state: "", why: "", lines: null, model: "", usd: null, attempts: 0, idle: null, checkout: null }));
 }
 

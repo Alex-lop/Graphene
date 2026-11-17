@@ -393,6 +393,7 @@ test("the fan is drawn before anything runs: one waiting chip for each attempt a
   assert.equal(fan({ ...ship, planned: 1 }, 3).length, 0, "the task's own number comes first, and one attempt has no fan");
   assert.equal(fan({ ...ship, planned: 3, check: null }, null).length, 0, "no check: it runs as one agent");
   assert.equal(fan({ ...ship, planned: 3, state: "done" }, null).length, 0, "only before it starts");
+  assert.equal(fan({ ...ship, planned: null, command: "pytest -q" }, 3).length, 0, "a command step runs once, with no agent, whatever the limits say");
   assert.equal(fan(task("farewell"), 8), task("farewell").forks, "attempts that ran are the fan");
   assert.equal(attemptsOf({ planned: null }, null), 1);
   assert.equal(attemptsOf({ planned: null }, 4), 4);
