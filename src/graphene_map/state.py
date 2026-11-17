@@ -7,11 +7,16 @@ edges, the settings and `auto.state` for the envelope and the round, the run's l
 usage rows for what was spent, and its last id as the cursor. Schema 1: a key may gain siblings and is never
 renamed; what is not known is null or empty. Read-only: nothing here writes the store or holds a lock.
 
+While a planner writes a plan (`graphene ask`), ``drafting`` says who, whether its stream carries the plan's
+text as it is written (``live``), and the steps whose lines are complete so far, for a graph to draw before
+they are proposals; null when nobody is, and in the same commit that makes them proposals.
+
 Following the plan: `graphene state --json --watch` (``follow``) prints the snapshot once, then once more
 each time the store's own version moves: SQLite's `PRAGMA data_version` (another connection committed), the
-log's last id, or the run lock coming or going. It looks every TICK seconds, three cheap reads a look and
-nothing printed when nothing changed, and ends with exit 0 when its stdout closes or on SIGTERM. An editor on
-an older CLI, which answers `--watch` with "No such option", keeps the snapshot's ``cursor`` and asks
+log's last id, the run lock coming or going, or an ask that was drafting going. It looks every TICK seconds,
+a few cheap reads a look and nothing printed when nothing changed, and ends with exit 0 when its stdout
+closes or on SIGTERM. An editor on an older CLI,
+which answers `--watch` with "No such option", keeps the snapshot's ``cursor`` and asks
 `graphene plan log --json --since <cursor>` for what happened since (one row a line, nothing when nothing
 did), then reads `state --json` again when a row came. The cheapest trigger there is the store's own files:
 `.graphene/graphene.db-wal` changes on every write while a run or a session holds a connection,
@@ -101,16 +106,20 @@ def cursor(store) -> int:
 
 def version(store, root: Path) -> tuple:
     """The store's own version, as `--watch` compares it from one look to the next: what SQLite says another
-    connection committed (`PRAGMA data_version`, one page read), the log's last id (an index lookup), and the
-    run lock as a file (its size and mtime, or None when there is no run). Any of the three moving is a
-    change; none moving is nothing to say."""
+    connection committed (`PRAGMA data_version`, one page read), the log's last id (an index lookup), the
+    run lock as a file (its size and mtime, or None when there is no run), and whether the ask that says it
+    is drafting is there (a killed one writes nothing more: its going is the change). Any of them moving is
+    a change; none moving is nothing to say."""
+    from .run import _alive
+
     moved = store.conn.execute("PRAGMA data_version").fetchone()[0]
     try:
         lock = os.stat(root / ".graphene" / "run.lock")
         held = (lock.st_size, lock.st_mtime_ns)
     except OSError:
         held = None
-    return moved, cursor(store), held
+    draft = _draft(store)
+    return moved, cursor(store), held, draft is not None and _alive(draft["pid"])
 
 
 def identity(root: Path) -> tuple | None:
@@ -209,6 +218,7 @@ def snapshot(store, root: Path, now: float | None = None) -> dict:
         },
         "auto": auto.state(store),
         "run": {"going": pid is not None, "pid": pid},
+        "drafting": drafting(store),
         "spent": bill["dollars"] if bill else 0.0,
         "scoreboard": {"need_you": need, "running": running, "proven": proven, "total": total},
         "width": wide["most"] if wide else 0,
@@ -223,6 +233,31 @@ def snapshot(store, root: Path, now: float | None = None) -> dict:
         + [[a, b, kind] for a, b, kind in m.extra_edges],
         "news": news(store, m),
     }
+
+
+def _draft(store) -> dict | None:
+    """What `graphene ask` wrote while its planner writes (the plan_meta key `ask.DRAFTING`), as it wrote it:
+    who plans, the steps so far, and the ask's own pid and start. None when no ask says it is drafting."""
+    try:
+        said = json.loads(store.meta("drafting") or "null")
+    except ValueError:
+        return None
+    return said if isinstance(said, dict) and isinstance(said.get("pid"), int) else None
+
+
+def drafting(store) -> dict | None:
+    """The plan a planner is writing now: who (as ``planner`` names one), whether its stream carries the
+    plan's text as it is written (``live``: its steps appear one by one; else the plan arrives whole, and
+    ``steps`` stays empty until it does), and each step whose own line is complete, in the order written
+    (`plan_text.drafted`). None when no planner is writing: the ask made its proposals or ended some other
+    way, or its process is gone (killed, so it never said so: the store still holds what it wrote, and the
+    pid and start time it wrote beside it name no process now, as a dead run's lock does not)."""
+    from .run import _still
+
+    said = _draft(store)
+    if said is None or not _still(said["pid"], said.get("start")):
+        return None
+    return {"by": str(said.get("by") or ""), "live": bool(said.get("live")), "steps": said.get("steps") or []}
 
 
 def stand_in(rows: list[dict]) -> bool:

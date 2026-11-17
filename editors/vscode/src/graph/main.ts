@@ -1245,7 +1245,7 @@ function wire() {
   window.addEventListener("mouseup", (e) => {
     if (wiring) { // dropped on another task: it waits on the one dragged from, as Link to… then a click
       const from = wiring.from;
-      const target = document.elementFromPoint(e.clientX, e.clientY)?.closest(".task")?.getAttribute("data-id");
+      const target = document.elementFromPoint(e.clientX, e.clientY)?.closest(".task:not(.drafted)")?.getAttribute("data-id"); // a card the planner is still writing takes no link
       wiring = null;
       canvas.classList.remove("wiring");
       if (target && target !== from) {

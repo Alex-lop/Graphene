@@ -33,6 +33,7 @@
     "going": false,
     "pid": null
   },
+  "drafting": null,
   "spent": 0.004,
   "scoreboard": {
     "need_you": 5,
@@ -131,7 +132,7 @@
       "hollow": false,
       "why": "",
       "checkout": null,
-      "base": "b551a54e26ac86a11b200e175368b0e50e109c49",
+      "base": "54338226be377d03cf2dfffb76f1efb7b1238a45",
       "attempts": 1
     },
     {
@@ -167,7 +168,7 @@
       "hollow": false,
       "why": "",
       "checkout": "/home/dev/project",
-      "base": "2e9dc8046820f846e9be5065740f7d5db9af9f45",
+      "base": "8594ba8345c7a863d0df563ce0831415df4de219",
       "attempts": 1
     },
     {
@@ -242,7 +243,7 @@
       "hollow": false,
       "why": "bye.py imports the schema, which no leaf makes",
       "checkout": "/home/dev/project",
-      "base": "2e9dc8046820f846e9be5065740f7d5db9af9f45",
+      "base": "8594ba8345c7a863d0df563ce0831415df4de219",
       "attempts": 0
     },
     {
