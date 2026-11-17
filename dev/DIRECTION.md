@@ -1857,6 +1857,20 @@ meaningful way". The direction is [VISION.md](VISION.md); it replaces PRODUCT_NE
      stop after the plan, never a run without a plan. *Why:* Alex has seen that a strong plan is what makes
      agents work out. The switch and how it changes decision 217 are the canvas run's to add.
 
+## Decisions taken on 17 November (the canvas run)
+
+The canvas run (dev/SCOPE.md) added the switch decision 224 left to it.
+
+225. **Plan it follows one switch, Stop after the plan, on by default.** On, Plan it is `graphene ask`, as 217
+     says: the plan is suggested and nothing runs until Start. Off, Plan it is `graphene auto -- <goal>`: the
+     plan is still drawn first, what fits the limits is accepted, and it runs without waiting. A question with
+     no default stops it either way: on, Start waits for the answer; off, auto does. A check that already
+     passes is marked on its card; off, it stops the run too. The switch is the `auto`
+     setting read the other way round (`auto: off` is the switch on), so Home, the graph's header and a
+     terminal move the same one. It stays where it is put: while it is off, an agent's later proposal that
+     fits is accepted at once, which is what 217 warned of. *Why:* 224; one pipeline needs one place to say
+     whether it stops.
+
 ## What does not bind (say it wherever you sell it)
 
 - A shell command can write a file in a way nothing reads beforehand (a script that opens files
