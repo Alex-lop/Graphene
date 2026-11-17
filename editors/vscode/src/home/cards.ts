@@ -2,13 +2,14 @@
 // in the order a person acts on them (what needs you, the suggested plan, who is working, what is up next, what
 // is done); each card says what its task is for and what proves it, with its buttons. No VS Code and no DOM
 // here: home.ts sends what this returns, home/main.ts draws it, and checkHome reads what the page sends back.
+import { pipeline, stopAfterPlan, type Stage } from "../graph/words.ts";
 import { needs, OFFERS, offerOn } from "../needs.ts";
 import { headline, SAY, usd, type Question, type State, type Task } from "../state.ts";
 import { WHO } from "./who.ts";
 
 export const ACTS = ["ask", "cancel", "startAll", "discardAll", "run", "stop", "drop", "answer", "openDiff", "compare", "keep",
                      "approve", "sendBack", "offer", "tryAgain", "allow", "message", "markDone", "showGraph", "demo", "setup",
-                     "install", "setKey", "refresh", "openFolder", "exact"] as const;
+                     "install", "setKey", "refresh", "openFolder", "exact", "stopAfter"] as const;
 export type Act = (typeof ACTS)[number];
 
 export interface Btn { label: string; act: Act; id?: string; arg?: string; main?: boolean; title?: string; off?: boolean }
@@ -16,7 +17,8 @@ export interface Line { k?: string; v: string; mono?: boolean; warn?: boolean }
 export type Tone = "question" | "proposed" | "running" | "review" | "came-back" | "ready" | "waiting" | "done" | "yours";
 export interface Card { key: string; tone: Tone; title: string; tag: string; lines: Line[]; buttons: Btn[] }
 export interface Section { key: string; title: string; note: string; buttons: Btn[]; cards: Card[]; folded: boolean }
-export interface Home { banner: string; goal: string; counts: string; sections: Section[]; empty: boolean }
+/** ``stages``: Plan, Run, Review, and where the work is. ``stopAfter``: the one switch, on by default. */
+export interface Home { banner: string; goal: string; counts: string; stages: Stage[]; stopAfter: boolean; sections: Section[]; empty: boolean }
 
 const cut = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1).trimEnd()}…` : s);
 const files = (paths: string[]) => paths.join(", ");
@@ -192,7 +194,8 @@ export function home(s: State, seen: ReadonlySet<string> = new Set(), exact = fa
               { label: "Send back…", act: "sendBack" as const, id: t.id, title: "say what is wrong; an agent takes it again" }],
   })), { folded: true });
 
-  return { banner: banner(s), goal: headline(s), counts: countsLine(s), sections, empty: !s.tasks.length && !s.questions.length };
+  return { banner: banner(s), goal: headline(s), counts: countsLine(s), stages: pipeline(s), stopAfter: stopAfterPlan(s), sections,
+           empty: !s.tasks.length && !s.questions.length };
 }
 
 /** What `graphene ask` printed that a person wants to read: the planner's own words, and what planning cost. */
@@ -210,7 +213,7 @@ export type FromHome = { type: "ready" } | { type: "act"; act: Act; id: string; 
 
 /** The acts that take no task: each still checked for what it carries. */
 const GLOBAL: readonly Act[] = ["ask", "cancel", "startAll", "discardAll", "run", "stop", "showGraph", "demo", "setup", "install",
-                                "setKey", "refresh", "openFolder", "exact"];
+                                "setKey", "refresh", "openFolder", "exact", "stopAfter"];
 
 /** A message from the page, checked against the plan before anything runs: a known act; the text of an ask; a
  *  planner the Set Up offers; a task the plan has (a question, for answer); an option the question has; an offer
@@ -224,7 +227,7 @@ export function checkHome(m: unknown, s: State | null): FromHome | null {
   const id = typeof r.id === "string" ? r.id : "";
   const arg = typeof r.arg === "string" ? r.arg : undefined;
   if (act === "ask") return arg?.trim() && arg.length <= 4000 ? { type: "act", act, id: "", arg: arg.trim() } : null;
-  if (act === "exact") return typeof r.flag === "boolean" ? { type: "act", act, id: "", flag: r.flag } : null;
+  if (act === "exact" || act === "stopAfter") return typeof r.flag === "boolean" ? { type: "act", act, id: "", flag: r.flag } : null;
   if (act === "setup") return WHO.some((w) => w.word === arg) ? { type: "act", act, id: "", arg, flag: r.flag === true } : null;
   if (act === "setKey") return arg === undefined || /^\w+$/.test(arg) ? { type: "act", act, id: "", arg } : null;
   if (act === "answer") {

@@ -180,6 +180,19 @@ test("the palette shows seven commands; the rest, and the advanced views, only w
   assert.equal(c.configuration.properties["graphene.advanced"].default, false);
 });
 
+test("Home shows the pipeline's three stages and the one switch, on until `auto` is on", () => {
+  const s = fixture("proposals");
+  const h = home(s);
+  assert.deepEqual(h.stages.map((x) => [x.label, x.at]), [["Plan", "now"], ["Run", "next"], ["Review", "next"]]);
+  assert.equal(h.stopAfter, true, "the default: a plan waits for Start");
+  assert.equal(home({ ...s, envelope: { ...s.envelope, auto: "on" } }).stopAfter, false, "off is auto");
+  assert.deepEqual(home(fixture("graph-race")).stages.map((x) => x.at), ["done", "now", "next"]);
+  assert.deepEqual(checkHome({ type: "act", act: "stopAfter", flag: false }, s), { type: "act", act: "stopAfter", id: "", flag: false });
+  assert.equal(checkHome({ type: "act", act: "stopAfter" }, s), null, "the switch says which way");
+  assert.deepEqual(C.stopAfter(true), ["config", "set", "auto", "off"]);
+  assert.deepEqual(C.stopAfter(false), ["config", "set", "auto", "on"]);
+});
+
 test("a question with no default stops the run either way: with the switch on, Start waits for its answer", () => {
   const s = fixture("proposals");
   const asks = { ...s, questions: [{ ...s.questions[0]!, default: null }] };
