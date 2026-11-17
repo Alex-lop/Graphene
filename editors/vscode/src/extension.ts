@@ -69,7 +69,6 @@ export function activate(context: vscode.ExtensionContext) {
 
   // the Explorer marks each file a live task owns, a running one's with its agent's number: whose is whose
   const owners = new vscode.EventEmitter<undefined>();
-  const colours: Record<string, string> = { running: "charts.yellow", review: "charts.purple", "came back": "charts.red" };
   let held = "";
   context.subscriptions.push(owners, vscode.window.registerFileDecorationProvider({
     onDidChangeFileDecorations: owners.event,
@@ -80,8 +79,7 @@ export function activate(context: vscode.ExtensionContext) {
       if (rel.startsWith("../") || rel === ".." || path.isAbsolute(rel)) return undefined;
       const o = owner(rel, session.state.tasks);
       if (!o) return undefined;
-      const colour = colours[o.state];
-      return new vscode.FileDecoration(o.badge, o.tooltip, colour ? new vscode.ThemeColor(colour) : undefined);
+      return new vscode.FileDecoration(o.badge, o.tooltip, new vscode.ThemeColor(o.colour)); // the step's own colour, as on its card
     },
   }));
 
