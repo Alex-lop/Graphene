@@ -35,6 +35,8 @@ from __future__ import annotations
 
 import json
 import os
+import re
+import shlex
 import time
 from collections.abc import Callable
 from dataclasses import asdict
@@ -52,6 +54,8 @@ NEWS_ROWS = 40  # the latest rows the news is read from; six lines of it at most
 NEWS = 6
 # a model's short name, when `meter.short` (the race lane's) is not there yet: the family's word
 FAMILIES = ("nano", "super", "ultra", "haiku", "sonnet", "opus", "fable")
+LISTED = 200  # the most paths `tree` and a task's `files` list; `files_n` counts them all
+VERDICTS = ("red", "passes", "outside", "environment", "landed")  # a `precheck` row's, as `checked` says them
 
 
 def error(why: str) -> dict:
@@ -360,6 +364,48 @@ def task(m, t, log: list[dict], node: P.Node | None = None, root: Path | None = 
         "base": (node.base_sha or None) if node else None,
         "attempts": len(own) or max((f["attempts"] for f in forks), default=0),
     }
+
+
+def tree(files: list[str]) -> list[str]:
+    """The repository's top-level entries as git tracks them, from the files the cockpit's model already
+    holds (git is not asked again; a replay's repository is not on disk, so it has none): the folders, each
+    ending "/", then the files, each group sorted, LISTED at most."""
+    folders = sorted({f.split("/", 1)[0] + "/" for f in files if "/" in f})
+    return [*folders, *sorted(f for f in files if "/" not in f)][:LISTED]
+
+
+def allows(store) -> list[str] | None:
+    """The shell commands the executor's own command line lets it run without asking: for Claude Code, the
+    `Bash(...)` entries of its `--allowedTools`, read from the whole command `graphene run` starts
+    (`run.named` of the store's `executor`: the default names two, `graphene node *` and `graphene plan *`).
+    None when the command line names no such list (Codex, the Nemotron executor, a command of the person's
+    own, nobody chosen) or switches the asking off: it may run any command, and what a command writes is
+    still held to the step's files. Never an entry of `--disallowedTools`: that list says the opposite.
+    Only a command that begins as Claude Code's is resolved: Nemotron's is an extra's to say."""
+    from . import meter as M
+    from . import run as R
+
+    argv: list[str] = []
+    if chosen(store, "executor").startswith("claude"):
+        try:
+            argv = shlex.split(R.named(store.meta("executor")))
+        except ValueError:  # a quote left open: nothing `graphene run` could start
+            pass
+    if not argv or Path(argv[0]).name != "claude":
+        return None
+    if "--dangerously-skip-permissions" in argv or M.option(argv, "--permission-mode") == "bypassPermissions":
+        return None
+    said: list[str] = []
+    listing = False
+    for arg in argv[1:]:
+        flag, _, joined = arg.partition("=")
+        if flag in ("--allowedTools", "--allowed-tools"):
+            listing, arg = True, joined
+        elif arg.startswith("-"):
+            listing = False
+        if listing:
+            said += re.findall(r"Bash\(([^)]*)\)", arg)
+    return said or None
 
 
 def news(store, m) -> list[str]:
