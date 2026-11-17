@@ -26,6 +26,7 @@ from functools import lru_cache, partial
 from pathlib import Path
 
 AGENT = "agent"  # the owner of a node any agent may take; every other owner is a person's name
+COMMAND = "command"  # but this one: a command step's (`run:` in the text), which nobody takes (`runs_itself`)
 GRAPHENE = "graphene"  # who logs a need `wait_on_checks` adds: never the person (`_waited`, `let_go`)
 PROPOSED, OPEN, RUNNING, REVIEW, DONE, DROPPED = "proposed", "open", "running", "review", "done", "dropped"
 ARCHIVED = "archived"  # done or dropped, and put away by the person: no longer part of the plan
@@ -415,11 +416,18 @@ def validate(
         for need in n.needs:
             if need not in by_id:
                 raise Refused(f"{n.id} waits on {need}, which is not in the plan")
+        if under.get(n.id) and n.owner == COMMAND:
+            # a sub-goal's check runs by itself once its steps are done: a command there would run (and a
+            # push would leave this machine) with nobody's approval
+            raise Refused(
+                f"{n.id}: a command step (run: {n.check}) is a step of its own and takes no steps under it. "
+                "Give the command a step that needs them instead"
+            )
         if under.get(n.id) or not (n.scope or n.check or n.signoff or n.aside):
             continue
         if fresh is not None and n.id not in fresh:
             continue  # a sub-goal (or one whose children are still to come): they carry scope and check
-        if not n.scope:
+        if not n.scope and runs_itself(n) is None:  # a command step changes no file: it has no scope
             raise Refused(
                 f"{n.id}: a leaf needs a scope (the paths it may touch), e.g. --scope 'src/api/**'; "
                 "or give it children, and it is a sub-goal"
@@ -519,6 +527,18 @@ def may_take(node: Node, who: Caller) -> bool:
     return node.owner == AGENT if not who.person else node.owner in (AGENT, who.name)
 
 
+def runs_itself(node: Node) -> bool | None:
+    """A command step (`run:` in the plan's text: its owner is `command`, its check is the command, and it
+    has no scope, for it changes no file): True when `graphene run` runs it by itself, False when its
+    command leaves this machine (a push, a pull request: ``workflow.leaves``), so it waits for the person's
+    approval (`graphene node done`). None for every other node."""
+    if node.owner != COMMAND or not node.check or node.scope:
+        return None
+    from .workflow import leaves as past_the_line  # here: workflow.py imports this module
+
+    return not past_the_line(node.check)
+
+
 def waits_on_person(
     node: Node, by_id: dict[str, Node], back: set[str] | frozenset[str] = frozenset(), every: bool = False
 ) -> list[str]:
@@ -543,6 +563,9 @@ def waits_on_person(
                 walk(child)
             if n.signoff and n.id != node.id:
                 reasons.append(f"{n.id} needs a sign-off")
+        elif runs_itself(n) is not None:  # a command step: the run's own, this side of the line
+            if not runs_itself(n):
+                reasons.append(f"{n.id} leaves this machine, so it waits for your approval")
         elif n.owner != AGENT:
             reasons.append(f"{n.id} is {n.owner}'s")
         elif not n.scope:  # a sub-goal whose leaves are to come: `ready` skips it, so a run never starts it
@@ -3333,6 +3356,8 @@ def reads(node: Node, everything: list[Node], back: set[str] | frozenset[str] = 
         return "came back"
     if unmet(node, by_id):
         return "waiting"
+    if runs_itself(node):  # a command step this side of the line: the run runs it, nobody takes it
+        return "ready"
     if node.owner != AGENT:
         return "yours"
     return "ready" if node.scope else "to fill in"

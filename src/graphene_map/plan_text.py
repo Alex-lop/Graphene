@@ -14,6 +14,8 @@
 
 "-" is a node in the plan and "?" a proposal (make it "-" to accept it). A line indented under a
 node is its child. Under a node, `scope:` `check:` `needs:` `owner:` and `signoff:` are its contract,
+`run:` makes it a command step (the command runs with no agent, and its exit code is its check: in the
+plan, a leaf whose check is the command, whose owner is `command`, and which has no scope),
 `parent:` puts it under the node it names and `id:` is its [id]; any other line under it says what it
 should achieve (`title:` and `children:` are refused: a title is the node's line, a child is indented
 under it). "#" lines are Graphene's notes and are never read. The [id] keeps an edit on the node it
@@ -40,7 +42,8 @@ from pathlib import Path
 from . import board as B
 from . import plan as P
 
-KEYS = ("scope", "check", "needs", "owner", "signoff", "forks", "goal")
+KEYS = ("scope", "check", "needs", "owner", "signoff", "forks", "goal", "run")
+NOT_WITH_RUN = ("scope", "check", "owner", "forks")  # a command step has no agent, so none of an agent's
 # Other spellings of a key that are read as it (compared lower case, with "_" and "-" as spaces): they
 # say nothing else, and a needs: value that is not an id is refused by its line anyway.
 _SAME = {
@@ -77,8 +80,9 @@ HELP = """\
 # to put it there; delete a node's lines (its own and what is under it) to drop it; reorder to reorder.
 # A line with no [id] is a new node; a child goes after its parent's own lines. Under a node: scope:
 # the paths it may write; check: a command that exits 0 when it is done; needs: ids it waits on;
-# owner: me; signoff: yes; forks: 3 (agents at once, its check keeps one). Any other line under a
-# node says what it should achieve. Lines starting with # are notes, never read. The board is the
+# owner: me; signoff: yes; forks: 3 (agents at once, its check keeps one). Or run: a command that
+# runs with no agent, in place of all of those but needs: (its exit code is its check). Any other line
+# under a node says what it should achieve. Lines starting with # are notes, never read. The board is the
 # lines at the left edge before the tree (question:, assume:, risk:, leave out:, note:): answer one
 # with "answer: default", "answer: option 2", "answer: parked" or your own words under it; delete its
 # lines to drop it; add a note: of your own.
@@ -277,6 +281,13 @@ def parse(text: str, strict: bool = False) -> tuple[str | None, list[Line]]:
             )
         if key != "goal":  # a description written after goal: is still description
             last.at.setdefault(key, no)
+        clash = next((k for k in NOT_WITH_RUN if k in last.at), None) if "run" in last.at else None
+        if clash:
+            raise P.Refused(
+                f"line {no}: [{name}] has run: and {clash}:. A command step is its command alone: no agent "
+                f"takes it, it changes no file, and its exit code is its check. Delete the {clash}: line, or "
+                "the run: line to make it an agent's step"
+            )
         if key in ("id", "parent"):
             _place_key(last, key, _uncomment(value).strip("[]`* "), no)
             continue
@@ -354,6 +365,15 @@ def _set(line: Line, name: str, value: str, no: int) -> None:
         if value.lower() not in (*_YES, *_NO):
             raise P.Refused(f"line {no}: signoff is yes or no, not {value!r}")
         line.signoff = value.lower() in _YES
+    elif name == "run":
+        value = _unquoted(value)
+        if value.lower() in _NONE:
+            raise P.Refused(f"line {no}: run: needs the command it runs, e.g. run: uv run pytest -q")
+        if line.check is not None:
+            raise P.Refused(f"line {no}: [{line.id or line.title}] has a command already; join them with &&")
+        line.check, line.owner = value, P.COMMAND
+        line.said |= {"check", "owner"}  # what run: says, in the fields the plan keeps
+        return
     elif name == "forks":
         value = _uncomment(value)
         if not value.isdigit() or int(value) not in P.FORKS:
@@ -538,13 +558,14 @@ def render(store, root: str | None = None, alone: bool = False) -> tuple[str, di
         lines.extend(f"{inner}# {note}" for note in notes(store, n, by_id, under))
         for said in _norm_goal(n.goal if n.goal != n.title else ""):
             lines.append(f"{inner}{said}" if _plain(said) else f"{inner}goal: {said}")
+        command = P.runs_itself(n) is not None and n.forks is None  # a command step: written as run:
         if n.scope:
             lines.append(f"{inner}scope: {_globs(n.scope)}")
         if _norm_check(n.check):
-            lines.append(f"{inner}check: {_norm_check(n.check)}")
+            lines.append(f"{inner}{'run' if command else 'check'}: {_norm_check(n.check)}")
         if n.needs:
             lines.append(f"{inner}needs: {', '.join(n.needs)}")
-        if n.owner != P.AGENT:
+        if n.owner != P.AGENT and not command:
             lines.append(f"{inner}owner: {' '.join(n.owner.split())}")
         if n.signoff:
             lines.append(f"{inner}signoff: yes")
@@ -851,6 +872,11 @@ def _guard_shape(lines, fresh, everything, opened, parent_of, who, faulty=frozen
                     if not (unread or contract or ln.title.startswith(tuple(f"{kind}:" for kind in B.KINDS)))
                     else ""
                 )
+            )
+        if not who.person and "run" in ln.at:
+            raise P.Refused(
+                f"line {ln.at['run']}: run: is the person's to write: a command step runs with no agent and "
+                "no scope to hold it. Give this leaf a scope: and a check:, and it is an agent's"
             )
         if not who.person and P._owner(ln.owner) not in (P.AGENT, "me", P.person_name()):
             raise P.Refused(
