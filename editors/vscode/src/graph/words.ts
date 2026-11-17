@@ -282,10 +282,11 @@ export function planningLine(s: Pick<StateX, "drafting" | "tasks" | "goals">): s
 export const filesChip = (scope: readonly string[]): string => (scope.length > 1 ? `${scope[0]} +${scope.length - 1}` : scope[0] ?? "");
 
 /** How an edge is drawn, by the tasks at its ends (the goal has none): `run` where an agent is working on what
- *  it leads to, `done` where the work it carries landed, `wait` until then. */
+ *  it leads to, `done` where the work it carries landed, `wait` until then. Either end done says it landed: a
+ *  done task's needs are done, and the edge that crosses the line starts at the goal. */
 export function edgeKind(from: Pick<TaskX, "state"> | undefined, to: Pick<TaskX, "state"> | undefined): "run" | "done" | "wait" {
   if (to?.state === "running") return "run";
-  return from?.state === "done" ? "done" : "wait";
+  return from?.state === "done" || to?.state === "done" ? "done" : "wait";
 }
 
 /** The mark on a card's corner: its work landed, an agent is on it, it waits on you, or it came back. A

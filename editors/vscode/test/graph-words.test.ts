@@ -193,6 +193,8 @@ test("an edge moves where an agent is working, is green where the work landed, a
   assert.equal(edgeKind(task("hello"), undefined), "done", "a landed task's edge into the goal");
   assert.equal(edgeKind(task("farewell"), undefined), "wait", "in review: nothing landed yet");
   assert.equal(edgeKind(task("logs"), task("docs")), "wait");
+  // the edge that crosses the line starts at the goal, which is no task: green once the step past it has run
+  assert.deepEqual([edgeKind(undefined, { state: "done" }), edgeKind(undefined, { state: "yours" })], ["done", "wait"]);
 });
 
 test("a card's mark: landed, working, needs you, came back; a suggested task has none, its dashed card says it", () => {
