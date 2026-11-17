@@ -92,9 +92,9 @@ The dollar limit is not a hard spending cap.
 
 ## Use the graph in VS Code or Cursor
 
-![Graphene in Cursor: completed tasks, the kept attempts, and auto mode's round and budget](https://raw.githubusercontent.com/Alex-lop/Graphene/main/dev/process/editor/after/cursor-panel-1920x1050-dark.png)
+![Graphene in Cursor after an auto run on the scripted stand-in: Home in the side bar, and the canvas with four steps landed, the attempt kept for each, the three stages finished, and auto mode's round and budget](https://raw.githubusercontent.com/Alex-lop/Graphene/main/docs/assets/cursor-canvas.png)
 
-*Cursor showing a completed auto run against the scripted stand-in.*
+*Cursor after a completed auto run against the scripted stand-in.*
 
 The screenshots and Home workflow show current `main`, ahead of the
 [0.8.0 packaged release](https://github.com/Alex-lop/Graphene/releases/latest). To use the current CLI and
