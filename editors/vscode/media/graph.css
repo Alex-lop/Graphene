@@ -68,7 +68,12 @@ main { flex: 1; display: flex; min-height: 0; }
 #legend .lg-review::before { background: var(--review); }
 #legend .lg-proposed::before { background: var(--proposed); }
 #legend .lg-came-back::before { background: var(--came-back); }
-#canvas.lanes #zoom, #canvas.lanes #legend { display: none; }
+#canvas.lanes #zoom, #canvas.lanes #legend, #canvas.lanes #planning { display: none; }
+/* while a planner writes the plan: how many steps it has drawn so far, beside the zoom's buttons */
+#planning { position: absolute; left: 16px; bottom: 50px; z-index: 2; font-size: 12px; color: var(--proposed); display: flex; gap: 8px; align-items: center; pointer-events: none; }
+#planning[hidden] { display: none; }
+#planning::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--proposed); animation: blink 1s infinite; }
+@keyframes blink { 50% { opacity: 0.25; } }
 #svg { display: block; position: absolute; left: 0; top: 0; }
 #svg.glide { transition: transform var(--ease); } /* the plan grew: it glides to the middle again */
 #notice {
@@ -111,6 +116,7 @@ footer#hint.asks { color: var(--review); }
   footer#hint.linking .hint-text { white-space: normal; } /* the ways out read whole: the line wraps */
   header { padding: 5px 10px 4px; align-items: center; }
   #zoom, #legend { display: none; } /* the side bar's canvas is small: the keys and the wheel zoom it */
+  #planning { left: 12px; bottom: 8px; } /* no buttons here to sit above */
   #b-more { display: inline-flex; grid-column: 2; }
   #counts, #auto { display: none; }
   #actions { display: none; grid-column: 1 / -1; grid-row: auto; margin-top: 4px; justify-content: start; }
@@ -230,7 +236,7 @@ button:disabled { opacity: 0.45; cursor: default; }
 .port[data-port]:hover, #canvas.wiring .port[data-port] { fill: var(--edge-hot); stroke: var(--edge-hot); }
 .wire { fill: none; stroke: var(--edge-hot); stroke-width: 2; stroke-dasharray: 5 4; pointer-events: none; }
 #canvas.wiring, #canvas.wiring .task { cursor: crosshair; }
-#canvas.wiring .task:hover .box { stroke: var(--edge-hot); stroke-width: 2.5; }
+#canvas.wiring .task:not(.drafted):hover .box { stroke: var(--edge-hot); stroke-width: 2.5; }
 /* the mark on a card's corner: landed, working (a turning ring), needs you, came back */
 .badge circle { fill: var(--done); stroke: var(--bg); stroke-width: 2; }
 .badge text { fill: var(--bg); font-size: 11px; font-weight: 700; font-family: var(--font); }
@@ -242,8 +248,13 @@ button:disabled { opacity: 0.45; cursor: default; }
 .halo { fill: none; stroke: color-mix(in srgb, var(--running) 13%, transparent); stroke-width: 4; animation: glow 1.8s ease-in-out infinite; }
 @keyframes glow { 0%, 100% { opacity: 0; } 50% { opacity: 1; } }
 /* a task being drawn, or suggested: dashed and flat until it is in the plan; the + past a card's out port draws one after it */
-.draft .box, .st-proposed > .box { stroke-dasharray: 5 4; stroke: color-mix(in srgb, var(--proposed) 70%, transparent); fill: color-mix(in srgb, var(--card) 55%, transparent); filter: none; }
-.draft .sub, .st-proposed .sub { fill: var(--proposed); }
+.draft .box, .drafted .box, .st-proposed > .box { stroke-dasharray: 5 4; stroke: color-mix(in srgb, var(--proposed) 70%, transparent); fill: color-mix(in srgb, var(--card) 55%, transparent); filter: none; }
+.draft .sub, .drafted .sub, .st-proposed .sub { fill: var(--proposed); }
+.task.drafted { cursor: default; }
+.wave.planning { color: var(--proposed); text-transform: none; letter-spacing: 0; font-size: 12px; }
+.wave.planning::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 8px; background: var(--proposed); animation: blink 1s infinite; }
+.lane.drafted { border-style: dashed; border-color: var(--proposed); cursor: default; }
+.lane.drafted .l-stripe { background: none; }
 .edge.draft { stroke-dasharray: 5 4; }
 .sub.bad, .l-sub.bad { fill: var(--came-back); color: var(--came-back); }
 .d-title.st-draft { border-color: var(--proposed); border-left-style: dashed; }
@@ -363,6 +374,6 @@ body.vscode-high-contrast #help, body.vscode-high-contrast-light #help { backgro
    amber, its card keeps its ring and a still halo */
 @media (prefers-reduced-motion: reduce) {
   .task, .goal, .edge, .lane, #svg.glide { transition: none; }
-  .task.fresh, .lane.fresh, .edge.run, .badge .spin, .halo { animation: none; }
+  .task.fresh, .lane.fresh, .edge.run, .badge .spin, .halo, #planning::before, .wave.planning::before { animation: none; }
   .halo { opacity: 0.6; }
 }
