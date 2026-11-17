@@ -4,6 +4,7 @@
 // sends is checked first (cards.ts checkHome): nothing from the page reaches a shell but as an argument.
 import * as vscode from "vscode";
 import * as C from "./commands.ts";
+import { stopAfterPlan } from "./graph/words.ts";
 import { checkHome, home, said, unanswered, type FromHome } from "./home/cards.ts";
 import { EXACT, WHO } from "./home/who.ts";
 import { keyTrouble, needs, tryAgain, widen } from "./needs.ts";
@@ -128,6 +129,7 @@ export class HomeHost implements vscode.WebviewViewProvider {
       // Exact: Start waits for every answer; and a question with no default stops the run either way
       case "startAll": return (this.exact && s.state?.questions.length) || (s.state && unanswered(s.state)) ? undefined : this.start();
       case "exact": return this.setExact(m.flag === true);
+      case "stopAfter": return this.setStopAfter(m.flag === true);
       case "discardAll": return this.discard();
       case "run": return void s.terminal("graphene run", C.runReady());
       case "stop": return s.act(C.stop());
@@ -152,9 +154,28 @@ export class HomeHost implements vscode.WebviewViewProvider {
     }
   }
 
-  /** `graphene ask`: the planner suggests tasks, and nothing runs until the person starts them. Cancel stops it. */
+  /** The one switch (decision 225). On, Plan it suggests a plan and waits for Start; off is auto, and the plan
+   *  is still drawn first. It is the `auto` setting, so the terminal and the graph's header see the same one. */
+  private async setStopAfter(on: boolean) {
+    if (!on && this.exact) await this.setExact(false); // Exact holds `auto: off`: its three settings go back together, then the switch moves
+    if (!(await this.session.act(C.stopAfter(on)))) return;
+    this.say([on ? "Stop after the plan is on: Plan it suggests a plan and waits for you to start it."
+      : "Stop after the plan is off: Plan it draws the plan, then runs what fits your limits without waiting. A question with no default still stops it."]);
+    this.push();
+  }
+
+  /** Plan it. While Stop after the plan is on, `graphene ask`: the planner suggests tasks, and nothing runs until
+   *  the person starts them; Cancel stops it. Off, `graphene auto` in a terminal the person can watch, as Start's
+   *  run is: the plan is drawn first, then what fits the limits runs. */
   private async ask(text: string) {
     if (this.planning) return;
+    const s = this.session.state;
+    if (s && !stopAfterPlan(s)) {
+      this.asked = text;
+      this.say(["Auto started in its terminal: it draws the plan first, then runs what fits your limits. If it stops, the terminal and Needs you say why."], { asked: text });
+      this.session.terminal("graphene auto", C.auto(text.replace(/[\u0000-\u001f\u007f]+/g, " "))); // typed into a shell: one line, no control characters
+      return this.push();
+    }
     const stop = new AbortController();
     this.planning = stop;
     this.busy = "Planning: the planner is reading your repository…";
