@@ -28,6 +28,13 @@ Click Graphene in the activity bar. Home is the first view, and it shows the one
 A task that needs help says why and offers its fixes as buttons: try again, allow it a file, add a task for what
 it needs. A question from the planner shows its options as buttons, the default first.
 
+Home and the graph's header show the three stages, **Plan**, **Run** and **Review**, and one switch, **Stop
+after the plan**. It is on by default: you read the plan, then **Start**. Turn it off and **Plan it** draws the
+plan and then runs what fits your limits without waiting, in a terminal you can read and stop; a question with
+no default, or a check that already passes, still stops it. As a run starts, the check of each task that can
+start runs once on the code as it is, before any agent works, and one that already passes is marked on its
+card: it proves nothing yet.
+
 The **graph** under Home is the whole plan: which tasks wait on which, the attempts racing, the one kept and
 why. **Show graph** opens it as a tab. The Explorer marks each file a task owns, a working agent's with its
 number.
