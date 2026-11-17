@@ -1,5 +1,5 @@
 /* The graph's look (the target is dev/ui/canvas.html): a canvas flowing left to right, a card a step,
-   curved edges between ports. Every colour is one of VS
+   curved edges between ports, a region for this machine and one for what leaves it. Every colour is one of VS
    Code's own, or mixed from two of them, so it is native in light, dark and high contrast. Colour means state
    and nothing else: working amber, landed green, needs you purple, drafted blue, came back red (the chart
    colours, as the cockpit's are); a tile's tint says who does the step. No text under 11 px. */
@@ -167,6 +167,11 @@ button:disabled { opacity: 0.45; cursor: default; }
 .edge { transition: d var(--ease); }
 @keyframes appear { from { opacity: 0; } to { opacity: 1; } }
 .task.fresh, .lane.fresh { animation: appear 0.3s ease; }
+/* the regions the flow crosses: this machine, and what leaves it */
+.region { fill: color-mix(in srgb, var(--fg) 1.5%, transparent); stroke: color-mix(in srgb, var(--fg) 10%, transparent); stroke-dasharray: 5 4; }
+.region.away { fill: color-mix(in srgb, var(--review) 4%, transparent); stroke: color-mix(in srgb, var(--review) 45%, transparent); stroke-width: 1.5; }
+.region-label { fill: var(--dim); font-size: 11.5px; font-family: var(--font); letter-spacing: 0.02em; }
+.region-label.away { fill: var(--review); }
 .band { fill: color-mix(in srgb, var(--fg) 3%, transparent); stroke: none; }
 .band-label { fill: var(--dim); font-size: 11px; font-family: var(--font); }
 /* an edge carries the work: dotted while it waits, moving where an agent is working, green where it landed */
@@ -322,6 +327,8 @@ body.vscode-high-contrast, body.vscode-high-contrast-light {
 }
 body.vscode-high-contrast, body.vscode-high-contrast-light { --card: var(--bg); --card-border: var(--border); --tint: transparent; }
 body.vscode-high-contrast .band, body.vscode-high-contrast-light .band { fill: none; stroke: var(--border); stroke-dasharray: 4 3; }
+body.vscode-high-contrast .region, body.vscode-high-contrast-light .region { fill: none; stroke: var(--border); }
+body.vscode-high-contrast .region.away, body.vscode-high-contrast-light .region.away { stroke: var(--review); }
 body.vscode-high-contrast .box, body.vscode-high-contrast .chip, body.vscode-high-contrast .goal-box,
 body.vscode-high-contrast-light .box, body.vscode-high-contrast-light .chip, body.vscode-high-contrast-light .goal-box { stroke-width: 1.5; filter: none; }
 body.vscode-high-contrast .tile rect, body.vscode-high-contrast .pill rect,
