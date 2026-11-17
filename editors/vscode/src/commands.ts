@@ -44,6 +44,9 @@ export const refreshable = (): string[] => ["--version"];
 
 // Free text (a goal, a title, a note, an answer) comes last, after `--`: typed words that start with a dash
 // are words to the CLI, not an option it refuses.
+/** The one switch, Stop after the plan: on is `auto: off` (a plan waits for you), off is `auto: on`. */
+export const stopAfter = (on: boolean): string[] => setting("auto", on ? "off" : "on");
+
 export function auto(goal: string, budget?: number | null, planOnly = false): string[] {
   const argv = ["auto"];
   if (budget !== null && budget !== undefined && Number.isFinite(budget)) argv.push("--budget", String(budget));
