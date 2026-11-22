@@ -41,7 +41,7 @@ const DIMS: Record<Level, Dims> = {
   compact: { w: ROW_W, h: ROW_H, sub: 0, gapX: 32, gapY: 8, padX: 24, padY: 44, bandGap: 24 },
 };
 const FOOT = 46; // the canvas's foot, where the zoom's buttons and the legend sit: the plan can always be clear of it
-const AWAY_W = 236, AWAY_GAP = 20; // the region for what leaves this machine, right of the plan
+const AWAY_W = 264, AWAY_GAP = 20; // the region for what leaves this machine, right of the plan: never narrower than its label, the longest of which is "asks you first"
 const AWAY_PAD = 44; // a step past the line sits this far inside the region, so the gate on the line is clear of it
 /** The narrow view by default: lanes read better than a downward graph at 280 to 400 px (lane 1's notes). */
 const NARROW_VIEW: "lanes" | "graph" = "lanes";
@@ -364,11 +364,12 @@ function place(s: StateX, down: boolean, lv: Level): Placed {
   // laid downward, a row wraps at what the canvas shows; zoomed out it shows more, and the rows stay as they are
   const lay = layout(g.boxes, g.edges, { goal: g.goal, boxW: d.w, boxH: h, labelH: 24, gapX: d.gapX, gapY: d.gapY, bandGap: d.bandGap, ...(down ? {} : { padX: d.padX, padY: d.padY }),
                                          down, width: down ? $("canvas").clientWidth / Math.max(1, zoom.k) : undefined });
-  // across, the plan sits in "this machine", and what leaves it has a region of its own at the right
+  // across, the plan sits in "this machine", and what leaves it has a region of its own at the right; while no
+  // step leaves there is no such region, and the plan has the width
   const here = down || !g.boxes.length ? 0 : lay.width;
   const leaving = s.tasks.filter((t) => t.leaves);
-  const awayW = leaving.length ? Math.max(d.w + 2 * AWAY_PAD, AWAY_W + 28) : AWAY_W; // never narrower than its label, the longest of which is "asks you first"
-  if (here) lay.width += AWAY_GAP + awayW;
+  const awayW = leaving.length ? Math.max(d.w + 2 * AWAY_PAD, AWAY_W) : 0;
+  if (here && awayW) lay.width += AWAY_GAP + awayW;
   // a step past the line stands in its region, one under another in the middle; laid downward, under the plan
   const tall = leaving.length * h + Math.max(0, leaving.length - 1) * d.gapY;
   if (here) lay.height = Math.max(lay.height, tall + d.padY + 24);
@@ -544,8 +545,9 @@ function edgeD(p: { x: number; y: number; w: number; h: number }, q: { x: number
   return `M${x1},${y1} C${x1 + dx},${y1} ${x2 - dx},${y2} ${x2},${y2}`;
 }
 
-/** The two regions the flow crosses: this machine, where each agent works in a worktree of its own, and what
- *  leaves it (a push, a pull request): its label says how many steps do, or that one asks you first. */
+/** The regions the flow crosses: this machine, where each agent works in a worktree of its own, and, once a
+ *  step leaves it (a push, a pull request), the region for those: its label says how many do, or that one asks
+ *  you first. While none does there is one region, and its label says nothing leaves it. */
 function regions(s: StateX, here: number, awayW: number) {
   const root = $("regions") as unknown as SVGGElement;
   root.replaceChildren();
@@ -553,10 +555,10 @@ function regions(s: StateX, here: number, awayW: number) {
   const n = worktrees(s.tasks), h = lay.height - 16, x = here + AWAY_GAP - 8;
   const out = s.tasks.filter((t) => t.leaves).length, asks = s.tasks.filter(asksYou).length;
   root.appendChild(el("rect", { class: "region here", x: 8, y: 8, width: here - 16, height: h, rx: 14 }));
-  root.appendChild(el("text", { class: "region-label", x: 24, y: 29 }, `THIS MACHINE${n ? ` · ${n} worktree${n > 1 ? "s" : ""}, one per agent` : ""}`));
+  fitText(root.appendChild(el("text", { class: "region-label", x: 24, y: 29 }, `THIS MACHINE${n ? ` · ${n} worktree${n > 1 ? "s" : ""}, one per agent` : ""}${out ? "" : " · nothing leaves it"}`)), here - 48);
+  if (!out) return;
   root.appendChild(el("rect", { class: "region away", x, y: 8, width: awayW, height: h, rx: 14 }));
-  const says = !out ? "nothing yet" : asks ? "asks you first" : `${out} step${out > 1 ? "s" : ""}`;
-  root.appendChild(el("text", { class: "region-label away", x: x + 16, y: 29 }, `LEAVES YOUR MACHINE · ${says}`));
+  root.appendChild(el("text", { class: "region-label away", x: x + 16, y: 29 }, `LEAVES YOUR MACHINE · ${asks ? "asks you first" : `${out} step${out > 1 ? "s" : ""}`}`));
 }
 
 /** The approval on the line: where an edge crosses into "leaves your machine", a mark that the step past it
