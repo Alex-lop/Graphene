@@ -102,7 +102,7 @@ main { flex: 1; display: flex; min-height: 0; }
 #legend div { display: flex; align-items: center; gap: 5px; }
 #legend b { color: var(--fg); font-weight: 600; }
 #legend svg, #need svg { flex: none; overflow: visible; }
-#legend .spin, .band-head .spin { animation: none; } /* a mark in a count is not the work: only a card's own ring turns */
+#legend .spin, .band-head .mk .spin { animation: none; } /* a mark in a count is not the work: only a card's own ring turns (over `.mk .spin`, which comes later) */
 #canvas.lanes #zoom, #canvas.lanes #legend, #canvas.lanes #planning, #canvas.lanes #minimap, #canvas.lanes #need { display: none; }
 /* while a planner writes the plan: how many steps it has drawn so far, beside the zoom's buttons */
 #planning { position: absolute; left: 16px; bottom: 50px; z-index: 2; font-size: 12px; color: var(--proposed); display: flex; gap: 8px; align-items: center; pointer-events: none; }
@@ -373,7 +373,7 @@ button:disabled { opacity: 0.45; cursor: default; }
 .foot .hair { stroke: var(--card-border); }
 .foot-k, .foot-v { fill: var(--dim); font-size: 11px; font-family: var(--font); }
 .foot-v { font-family: var(--mono); }
-.foot.warn .foot-v { fill: var(--running); }
+.foot.warn .foot-v { fill: color-mix(in srgb, var(--running) 55%, var(--fg)); } /* amber that still reads as words on the amber foot of a light card */
 .foot.you .foot-v { font-family: var(--font); } /* no check: `you approve` is no command */
 .draft .hair, .drafted .hair, .st-proposed .hair { stroke: color-mix(in srgb, var(--proposed) 45%, transparent); stroke-dasharray: 3 3; }
 /* the card's one act, at the foot's right end: a button as the pane's main one is */
@@ -441,7 +441,7 @@ button:disabled { opacity: 0.45; cursor: default; }
 :where(#svg[data-level="compact"]) .task > .box { filter: none; }
 :where(#svg[data-level="compact"]) .task.st-waiting { opacity: 1; }
 :where(#svg[data-level="compact"]) [data-mark="waiting"] > .box { fill: color-mix(in srgb, var(--card) 45%, transparent); }
-:where(#svg[data-level="compact"]) [data-mark="ready"] > .box { stroke: color-mix(in srgb, var(--bg) 52%, var(--fg)); }
+:where(#svg[data-level="compact"]) [data-mark="ready"] > .box { stroke: color-mix(in srgb, var(--card-border) 65%, var(--fg)); } /* from the card's border, which in high contrast is the contrast border */
 :where(#svg[data-level="compact"]) [data-mark="working"] > .box { fill: color-mix(in srgb, var(--wash, var(--c)) 10%, var(--card)); }
 :where(#svg[data-level="compact"]) [data-mark="you"] > .box { fill: color-mix(in srgb, var(--wash, var(--c)) 22%, var(--card)); }
 :where(#svg[data-level="compact"]) [data-mark="back"] > .box { fill: color-mix(in srgb, var(--wash, var(--c)) 18%, var(--card)); }
