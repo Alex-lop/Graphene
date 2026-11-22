@@ -15,7 +15,7 @@ export const zoomK = (k: number) => (Number.isFinite(k) ? Math.min(ZOOM_MAX, Mat
 export const wheelK = (k: number, deltaY: number) => zoomK(k * Math.exp(-Math.max(-22, Math.min(22, deltaY)) * 0.01));
 
 /** A card at each level: whole (its files, its check, its status, its attempts), and the row it is cut down
- *  to when the plan is read from afar (its tile, its title, its mark). */
+ *  to when the plan is read from afar (its state's mark, its title, and what is news). */
 export const CARD: Record<Level, Size> = { full: { w: 220, h: 84 }, compact: { w: 152, h: 44 } };
 /** A fit keeps whole cards down to this scale: under it nobody reads them, and the plan is fitted as rows. */
 export const FULL_FROM = 0.7;

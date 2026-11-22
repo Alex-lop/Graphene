@@ -37,8 +37,9 @@ card: it proves nothing yet.
 
 The **graph** under Home is the whole plan: which tasks wait on which, the attempts racing, the one kept and
 why. **Show graph** opens it as a tab: a dotted canvas flowing left to right, each step a card with a tile for
-who does it, its files and its check, in a region for **this machine**; a step that would leave it is drawn in
-a region of its own. While Claude Code plans, each step it finishes appears as a drafted box; a planner whose
+who does it, its files and, at its foot, its check with a box only Graphene ticks, in a region for **this
+machine**; a step that would leave it is drawn in a region of its own. A step that needs you wears its one
+button on its card (**Approve**, **Help it…**, **Mark done**). While Claude Code plans, each step it finishes appears as a drafted box; a planner whose
 stream carries no text (Codex) has its boxes appear when the plan arrives, and the graph says so. Each step has
 one colour, on its card's tile and, from the time it is accepted until it lands, on its files in the Explorer,
 a working agent's with its number.

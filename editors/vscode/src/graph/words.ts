@@ -298,16 +298,6 @@ export function edgeKind(from: Pick<TaskX, "state"> | undefined, to: Pick<TaskX,
   return from?.state === "done" || to?.state === "done" ? "done" : "wait";
 }
 
-/** The mark on a card's corner: its work landed, an agent is on it, it waits on you, or it came back. A
- *  suggested task has none: its dashed card says it is drafted, and accepting the plan is one act for them all. */
-export function badge(t: Pick<TaskX, "state" | "needs_you">): "done" | "running" | "you" | "back" | "" {
-  if (t.state === "done") return "done";
-  if (t.state === "came back") return "back";
-  if (t.state === "proposed") return "";
-  if (t.state === "review" || t.state === "yours" || t.needs_you) return "you";
-  return t.state === "running" ? "running" : "";
-}
-
 /** The worktrees on this machine, one per agent at work: each running attempt's, or the task's own. */
 export function worktrees(tasks: readonly TaskX[]): number {
   return tasks.reduce((n, t) => n + (t.forks.some((f) => f.checkout) ? t.forks.filter((f) => f.checkout).length : t.checkout ? 1 : 0), 0);
@@ -315,16 +305,6 @@ export function worktrees(tasks: readonly TaskX[]): number {
 
 /** How many attempts a task runs as: its own number, else the limits' (Set Limits…), else one. */
 export const attemptsOf = (t: Pick<TaskX, "planned">, limit: number | null | undefined): number => Math.min(8, Math.max(1, t.planned ?? limit ?? 1));
-
-/** The fan under a box: its attempts as they run or ran; before anything runs, one waiting chip for each
- *  attempt it is set to (two or more, and a check to keep one: without a check it runs as one agent). None on
- *  a command step: its check is its command, which runs once, with no agent. */
-export function fan(t: TaskX, limit: number | null | undefined): ForkX[] {
-  if (t.forks.length) return t.forks;
-  const n = attemptsOf(t, limit);
-  if (n < 2 || !t.check || t.command || !["proposed", "ready", "waiting"].includes(t.state)) return [];
-  return Array.from({ length: n }, (_, i) => ({ letter: "abcdefgh"[i]!, state: "", why: "", lines: null, model: "", usd: null, attempts: 0, idle: null, checkout: null }));
-}
 
 /** What a change to a task does now, by its state: the one line under the pane's form. It says what
  *  `graphene node set` does (dev/process/graph-edit/edits.md has each state's answer, as the engine gave it).

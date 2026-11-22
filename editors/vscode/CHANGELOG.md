@@ -2,6 +2,28 @@
 
 ## Unreleased, after 0.9.0
 
+The cards say what is true of a step, and where you are needed (22 November 2026).
+
+- A card's foot is its check's: a box only Graphene ticks, the words `done when`, and the check with its end
+  kept (`uv run…test_cache.py`). The box is ticked where the check passed after the work and that verdict still
+  stands, crossed where it failed, dashed and amber where it proves nothing yet, whole and empty where it fails
+  now as it should, dotted where it has not run; a step with no check wears the diamond of your approval. No
+  check wears a ✓ it has not earned. The foot's hover says the verdict in words.
+- The step that needs you wears its one act on its card: Approve, Help it…, Approve and run, Mark done, Allow
+  the write…. It is the pane's own button: a click, or Tab and Enter, and it selects nothing. Never in a replay.
+- One shape a state, on a card's corner and at a row's left: a ticked disc landed, a turning ring working, a
+  filled diamond to review or asks you, a hollow diamond a step of your own, a triangle came back; on a row a
+  dotted, a whole and a dashed ring are waiting, ready and suggested. Needs you and came back no longer differ
+  by colour alone. To review and yours have a purple border, landed a soft green one and a quieter title.
+- The files chip says the latest fact: the files a step may change; `✎ 2 of 4 files` while it works, and
+  `1 refused` in red; `✕ wrote store/repo.py` when it came back for a write outside them.
+- A task set to several attempts says `×3` at the end of its status line, in the lanes too, until they start.
+  The waiting chips under every such card are gone, so a big plan is a good deal shorter; attempts that started
+  keep their chips.
+- From afar a row is filled by its state (landed green, working amber, to review purple, came back red; not
+  started is an outline), and its right end holds only news: its check proves nothing yet, or its attempts as
+  small marks. The minimap's rects take the same colours.
+
 The whole plan in the pane (22 November 2026).
 
 - The graph opens with the whole plan in view, whatever its size: fitted to the pane, never drawn larger than
@@ -10,7 +32,7 @@ The whole plan in the pane (22 November 2026).
 - Zoom goes out to 20% and in to 300%: the − and + buttons, `-` and `=`, ⌘ or Ctrl with the wheel, a pinch. The
   percent between the buttons says how big a card is drawn; a click on it, or `0`, is 100%. The buttons are there
   wherever the graph is drawn across, a narrow tab (561 to 700 px) too.
-- From afar a card is a row: its tile, its title and its mark (landed, working, needs you). A plan too big to
+- From afar a card is a row: its state's mark and its title. A plan too big to
   read as whole cards opens that way; zooming in turns the rows back into whole cards, and a double click on a
   row, the goal's too, opens it at 100%, wherever the pane its first click opens lands. A task drawn from afar
   opens there too, and the whole plan is back once you leave it.
@@ -28,7 +50,7 @@ The graph is built by hand (10 to 11 November 2026). It needs no newer CLI: ever
 - A task's pane is a form: its title, the files it may change and its check are typed in place; attempts are a
   stepper (1 to 8) on that task alone; "wait for my approval" and "I will do this one" are tick boxes. The pop-up
   chain is gone from the graph (Edit Task… stays in the Plan view).
-- The fan is drawn before anything runs: one waiting chip for each attempt a task is set to.
+- A task set to several attempts says so before anything runs.
 - Add task, the + on a box, and the + key draw a draft box: type its title on it, then its files and its check. It joins the
   plan (`graphene node add`) once graphene will take it. "Fill it in for me" hands its title to the planner.
 - Under the form, one line says what a change does now (suggested, not started, working, to review, done), and

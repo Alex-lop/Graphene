@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import * as C from "../src/commands.ts";
-import { actsFor, asksYou, attemptsOf, badge, CHANGES, commandChip, commandWord, cornerWord, counts, draftedSteps, edgeKind, editable, fan, filesChip, fitWidth, fitWords, forkActs, forkWords, HEADER_ACTS, headerFor,
+import { actsFor, asksYou, attemptsOf, CHANGES, commandChip, commandWord, cornerWord, counts, draftedSteps, edgeKind, editable, filesChip, fitWidth, fitWords, forkActs, forkWords, HEADER_ACTS, headerFor,
          checkWords, heldWords, linkHint, mayRun, OUTSIDE, OUTSIDE_OWN, paneKey, pipeline, planningLine, provesNothing, replayLine, scopeTree, stopAfterPlan, stopsOf, sub, tabOrder, tokenWords, topLine,
          whenEdit, who, worktrees, writtenOf, type StateX, type TaskX } from "../src/graph/words.ts";
 import { SAY, WORDS } from "../src/state.ts";
@@ -197,16 +197,6 @@ test("an edge moves where an agent is working, is green where the work landed, a
   assert.deepEqual([edgeKind(undefined, { state: "done" }), edgeKind(undefined, { state: "yours" })], ["done", "wait"]);
 });
 
-test("a card's mark: landed, working, needs you, came back; a suggested task has none, its dashed card says it", () => {
-  assert.equal(badge(task("hello")), "done");
-  assert.equal(badge({ ...task("greet"), needs_you: false }), "running");
-  assert.equal(badge(task("greet")), "you", "a question on a working task: it needs you first");
-  assert.equal(badge(task("farewell")), "you");
-  assert.equal(badge(task("logs")), "back");
-  assert.equal(badge({ ...task("farewell"), state: "proposed" }), "");
-  assert.equal(badge({ ...task("hello"), state: "waiting", needs_you: false }), "");
-});
-
 test("this machine counts a worktree for each agent at work: each running attempt's, or the task's own", () => {
   const greet = task("greet");
   const running = { ...greet, forks: greet.forks.map((f, i) => ({ ...f, checkout: i < 2 ? `/tmp/w${i}` : null })) };
@@ -256,7 +246,6 @@ test("a command step: its tile is the command's word, and one past the line asks
   assert.deepEqual(actsFor(pr, false)[0], { label: "Approve and run", act: "markDone", icon: "check", main: true,
     title: "it leaves your machine: graphene node done runs git push -u origin HEAD && gh pr create --draft --fill" });
   assert.equal(actsFor(suite, false).some((b) => b.act === "markDone"), false, "a command step before the line runs by itself");
-  assert.equal(badge(pr), "you");
   assert.deepEqual(pipeline(wf).map((x) => `${x.label} ${x.at}${x.note ? `: ${x.note}` : ""}`), ["Plan done: 4 steps", "Run now: 1 asks you", "Review next"]);
   // it is its command alone: the pane's form (files, attempts, your approval, whose it is) is closed, and the line says where it changes
   const ready = { ...suite, state: "ready" as const };
@@ -399,16 +388,8 @@ test("every icon is a path; Tab walks the boxes wave by wave, then down each wav
   assert.ok(order.indexOf("logs") < order.indexOf("greet")); // logs sits in wave 1, greet in wave 2, whatever the state's order
 });
 
-test("the fan is drawn before anything runs: one waiting chip for each attempt a task is set to", () => {
-  const ship = { ...task("ship"), state: "ready" as const, forks: [], check: "pytest -q" };
-  assert.deepEqual(fan({ ...ship, planned: 3 }, null).map((f) => f.letter), ["a", "b", "c"]);
-  assert.equal(forkWords(fan({ ...ship, planned: 3 }, null)[0]!, null), "a · waiting");
-  assert.equal(fan({ ...ship, planned: null }, 2).length, 2, "unset on the task: the limits' number");
-  assert.equal(fan({ ...ship, planned: 1 }, 3).length, 0, "the task's own number comes first, and one attempt has no fan");
-  assert.equal(fan({ ...ship, planned: 3, check: null }, null).length, 0, "no check: it runs as one agent");
-  assert.equal(fan({ ...ship, planned: 3, state: "done" }, null).length, 0, "only before it starts");
-  assert.equal(fan({ ...ship, planned: null, command: "pytest -q" }, 3).length, 0, "a command step runs once, with no agent, whatever the limits say");
-  assert.equal(fan(task("farewell"), 8), task("farewell").forks, "attempts that ran are the fan");
+test("how many attempts a task runs as: its own number, else the limits', else one; one that has not started says waiting", () => {
+  assert.equal(forkWords({ ...task("farewell").forks[0]!, letter: "a", state: "", model: "", lines: null, usd: null }, null), "a · waiting");
   assert.equal(attemptsOf({ planned: null }, null), 1);
   assert.equal(attemptsOf({ planned: null }, 4), 4);
   assert.equal(attemptsOf({ planned: 2 }, 4), 2);

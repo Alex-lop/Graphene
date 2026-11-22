@@ -371,7 +371,9 @@ export async function waitForGraph(page, { min = 1, timeout = 60000 } = {}) {
 }
 
 /** What a graph frame shows: the goal, the counts, the tasks' titles and states. A plan fitted from afar is
- *  drawn as rows (`level` is then "compact"): a row has its title, and no status line or attempts to read. */
+ *  drawn as rows (`level` is then "compact"): a row has its title, and no status line or attempts' chips to read.
+ *  `forks` counts the attempts that started, a chip each; `attempts` is the ×3 of a task set to attempts that has
+ *  started none (0 for none), and `mark` the mark its card wears (landed, working, you, yours, back, …). */
 export async function readGraph(frame) {
   return frame.evaluate(() => ({
     goal: document.querySelector("#goal")?.textContent ?? "",
@@ -387,6 +389,8 @@ export async function readGraph(frame) {
         sub: g.querySelector("text.sub")?.textContent ?? "",
         state: [...g.classList].filter((c) => c !== "task" && c !== "selected").join(" "),
         forks: g.querySelectorAll("g.fork").length,
+        attempts: Number(g.dataset.attempts ?? 0),
+        mark: g.dataset.mark ?? "",
       })),
       ...[...document.querySelectorAll("#lanes:not([hidden]) .lane[data-id]")].map((r) => ({
         id: r.getAttribute("data-id"),
@@ -394,6 +398,7 @@ export async function readGraph(frame) {
         sub: r.querySelector(".l-sub")?.textContent ?? "",
         state: [...r.classList].filter((c) => c !== "lane" && c !== "selected" && c !== "fresh").join(" "),
         forks: r.querySelectorAll(".l-chip").length,
+        attempts: Number(r.dataset.attempts ?? 0),
       })),
     ],
   }));

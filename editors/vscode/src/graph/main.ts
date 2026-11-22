@@ -8,9 +8,10 @@ import { STEP_COLOURS, STEP_FALLBACKS, stepColour } from "../owners.ts";
 import { autoLine, SAY, screenWords, usd, type DraftStep, type State } from "../state.ts";
 import { ICONS } from "./icons.ts";
 import { blanks, draftLine, globs, isDraft, lacks, type Draft } from "./draft.ts";
-import { actsFor, asksYou, attemptsOf, badge, checkWords, commandChip, cornerWord, cut, done, draftedSteps, edgeKind, editable, fan, filesChip, FIRST_HINT, fitWidth, forkActs, forkRow, forkWords, HEADER_ACTS, headerFor,
+import { attemptsMark, cardAct, checkMark, cornerMark, doneWhen, filesLine, forkMark, midCut, stateMark, type CheckMark, type Mark } from "./marks.ts";
+import { actsFor, asksYou, attemptsOf, checkWords, commandChip, cornerWord, cut, done, draftedSteps, edgeKind, editable, filesChip, FIRST_HINT, fitWidth, forkActs, forkRow, forkWords, HEADER_ACTS, headerFor,
          heldWords, KEYS, linkHint, mayRun, paneKey, pipeline, planningLine, PROVES_NOTHING, provesNothing, questionOn, scopeTree, STOP_AFTER, STOP_AFTER_HOVER, stopAfterPlan, stopsOf, sub, tabOrder, tokenWords, topLine, twoLines, whenEdit, who, worktrees, writtenOf,
-         type Button, type StateX, type TaskX } from "./words.ts";
+         type Button, type ForkX, type StateX, type TaskX } from "./words.ts";
 import { CARD, dotGap, fitPlan, hold, levelFor, miniFrame, miniSize, nearest, offScreen, panTo, percent, switchK, wheelK, ZOOM_MAX, ZOOM_MIN, zoomK,
          type Level, type Size, type Zoom } from "./zoom.ts";
 
@@ -26,11 +27,12 @@ type Saved = { hinted?: boolean; view?: View; drafts?: Draft[]; drew?: number; t
 
 const GOAL = " goal";
 const PLAN = " p"; // before a step the planner is writing: a space first, so its box is never a task's
-// A card (dev/ui/canvas.html): a tile for who does the step, its title, a chip for its files and one for its check;
-// one line of status under it; then its attempts, a chip each (a chip holds 32 mono characters).
+// A card (dev/ui/canvas.html): a tile for who does the step, its title, a chip for its files; its foot, which
+// is its check's; one line of status under it; then its attempts, a chip each (a chip holds 32 mono characters).
 const BOX_W = CARD.full.w, BOX_H = CARD.full.h, SUB_H = 22, FORK_H = 20, FORK_DX = 22, CHIP_W = 228;
 const TEXT_X = 54; // where a card's words start, right of its tile
-// A row, the card at the compact level (zoom.ts): its tile, its title on up to two lines, and its mark.
+const FOOT_Y = 60; // where a card's foot starts: the hairline over its check
+// A row, the card at the compact level (zoom.ts): its state's mark, its title on up to two lines, and what is news.
 const ROW_W = CARD.compact.w, ROW_H = CARD.compact.h, ROW_X = 36;
 /** What the layout and the lines between the cards measure by, at each level of detail. */
 type Dims = { w: number; h: number; sub: number; gapX: number; gapY: number; padX: number; padY: number; bandGap: number };
@@ -118,19 +120,22 @@ function icon(name: string): SVGSVGElement {
   return s;
 }
 
+/** A button pressed, in the pane or on a card: what it asks of the page, or of graphene. */
+function press(b: Button, id: string) {
+  if (b.act === "link") { linking = id; render(); return; }
+  const near = state?.tasks.find((t) => t.id === id);
+  if (b.act === "add-after" && near) return draw({ after: id, parent: near.parent });
+  if (b.act === "add-under") return draw({ after: null, parent: near?.parent ?? null });
+  api.postMessage({ type: "act", act: b.act, id, ...(b.fork ? { fork: b.fork } : {}) });
+}
+
 function button(b: Button, id: string, parent: HTMLElement) {
   const btn = document.createElement("button");
   if (b.icon) btn.appendChild(icon(b.icon));
   btn.appendChild(document.createTextNode(b.label));
   btn.title = b.title;
   btn.className = b.main ? "" : "quiet";
-  btn.addEventListener("click", () => {
-    if (b.act === "link") { linking = id; render(); return; }
-    const near = state?.tasks.find((t) => t.id === id);
-    if (b.act === "add-after" && near) return draw({ after: id, parent: near.parent });
-    if (b.act === "add-under") return draw({ after: null, parent: near?.parent ?? null });
-    api.postMessage({ type: "act", act: b.act, id, ...(b.fork ? { fork: b.fork } : {}) });
-  });
+  btn.addEventListener("click", () => press(b, id));
   parent.appendChild(btn);
 }
 
@@ -140,7 +145,7 @@ function boxes(s: StateX, lv: Level = "full"): { boxes: Box[]; edges: Edge[]; go
   const w = DIMS[lv].w, h = DIMS[lv].h + DIMS[lv].sub; // a card's own box, at the level asked for
   const away = new Set(s.tasks.filter((t) => t.leaves).map((t) => t.id)); // past the line: placed in their region, not by the layout
   const bs: Box[] = s.tasks.filter((t) => !away.has(t.id)).map((t) => {
-    const n = lv === "full" ? fan(t, s.envelope.forks).length : 0; // a row has no fan under it
+    const n = lv === "full" ? t.forks.length : 0; // its attempts hang under a whole card; a row wears them as marks
     return { id: t.id, band: t.parent ?? "", w: n ? FORK_DX + CHIP_W : w, h: h + (n ? FORK_H * n + 6 : 0) };
   });
   const edges: Edge[] = s.edges.filter(([, , kind]) => kind === "needs").map(([a, b]) => [a, b]);
@@ -451,6 +456,7 @@ function graph(s: StateX, dir: "across" | "down") {
     key = JSON.stringify([key, p.x, p.y, id === selected, down, level]);
     let have = taskEls.get(id);
     if (have && have.key === key) return;
+    if (have?.g.querySelector(".act:active")) return; // its button is under a press: drawn again with the next snapshot, so the release is still its click
     if (!have) {
       const grp = el("g", { class: "task fresh", "data-id": id, ...(watched ? { role: "img" } : { tabindex: 0, role: "button" }) });
       grp.style.transform = `translate(${p.x}px, ${p.y}px)`; // placed before it joins: no glide from the corner
@@ -492,7 +498,7 @@ function graph(s: StateX, dir: "across" | "down") {
       goalG.appendChild(el("rect", { class: "goal-box", x: 0, y: 0, width: gp.w, height: BOX_H, rx: 12 }));
       tile(goalG, "goal", "◎", "the whole goal");
       fitText(goalG.appendChild(el("text", { class: "goal-title", x: TEXT_X, y: 27 }, s.goal)), gp.w - TEXT_X - 8);
-      if (goalCheck) pill(goalG, "check", goalCheck, TEXT_X, 37, gp.w - TEXT_X - 10);
+      if (goalCheck) pill(goalG, "check", "✓", goalCheck, TEXT_X, 37, gp.w - TEXT_X - 10);
       goalG.appendChild(el("text", { class: "sub", x: 2, y: BOX_H + 16 }, `goal · ${done(s.tasks)} done`));
       goalG.appendChild(el("circle", { class: "port in", cx: down ? gp.w / 2 : 0, cy: down ? 0 : BOX_H / 2, r: 5 }));
     }
@@ -588,53 +594,121 @@ function tile(grp: SVGGElement, kind: string, mark: string, label: string, colou
   grp.appendChild(t);
 }
 
-/** A chip on a card, in mono, cut to the card: the files the step may change, or its check. */
-function pill(grp: SVGGElement, kind: "files" | "check" | "run", words: string, x: number, y: number, max: number, hollow = false) {
-  const g = el("g", { class: `pill ${kind}${hollow ? " hollow" : ""}` }); // hollow: the check already passes, so its tick is a warning
+/** A chip on a card, in mono, cut to the card: the files the step may change (or has written, or wrote outside
+ *  them), its command, the goal's check. ``bad`` ends it in the came-back red (a refused write) and stays whole:
+ *  the words give way to it, their last one (`files`) before a number is cut. */
+function pill(grp: SVGGElement, kind: string, glyph: string, words: string, x: number, y: number, max: number, bad = "") {
+  const g = el("g", { class: `pill ${kind}` });
   const rect = g.appendChild(el("rect", { x, y, width: max, height: 17, rx: 5 }));
-  g.appendChild(el("text", { class: "pill-mark", x: x + 6, y: y + 12.5 }, kind === "files" ? "▤" : kind === "run" ? "$" : hollow ? "!" : "✓"));
-  const text = g.appendChild(el("text", { class: "pill-text", x: x + 19, y: y + 12.5 }, words));
+  g.appendChild(el("text", { class: "pill-mark", x: x + 6, y: y + 12.5 }, glyph));
+  const text = g.appendChild(el("text", { class: "pill-text", x: x + 19, y: y + 12.5 }, bad));
   grp.appendChild(g);
-  fitText(text, max - 25);
+  const room = max - 25 - (bad ? text.getComputedTextLength() || bad.length * 6.7 : 0);
+  text.textContent = words;
+  if (bad && text.getComputedTextLength() > room) text.textContent = words.replace(/ \S+$/, "");
+  fitText(text, room);
+  if (bad) text.appendChild(el("tspan", { class: "bad" }, bad));
   const w = text.getComputedTextLength() || (text.textContent ?? "").length * 6.7;
   rect.setAttribute("width", String(Math.min(max, Math.ceil(w) + 25)));
 }
 
-/** The mark on a card's corner (words.ts `badge`): a tick where the work landed, a turning ring where an
- *  agent is working, `!` where it waits on you or came back. */
-function mark(grp: SVGGElement, kind: ReturnType<typeof badge>, w = BOX_W) {
-  if (!kind) return;
-  const g = el("g", { class: `badge ${kind}`, transform: `translate(${w - 2} 2)`, "aria-hidden": "true" });
-  g.appendChild(el("circle", { r: 10 }));
-  if (kind === "running") g.appendChild(inStep(el("path", { class: "spin", d: "M0,-6 a6,6 0 0 1 6,6" }), 900));
-  else g.appendChild(el("text", { y: 4, "text-anchor": "middle" }, kind === "done" ? "✓" : "!"));
-  grp.appendChild(g);
+// The marks, as paths about the origin in a box of 20, each with how it is painted (graph.css `.mk`): `line` an
+// outline, `solid` filled, `ink` drawn on a solid in the canvas's colour. A circle is the run's own business, a
+// diamond is the person, a triangle is trouble, a square is the check (marks.ts).
+const RING = "M0,-8a8,8 0 1 1 0,16a8,8 0 1 1 0,-16", DIAMOND = "M0,-9L9,0L0,9L-9,0Z", TRIANGLE = "M0,-8L9,7.5L-9,7.5Z";
+const SQUARE = "M-4.5,-7.5h9a3,3 0 0 1 3,3v9a3,3 0 0 1 -3,3h-9a3,3 0 0 1 -3,-3v-9a3,3 0 0 1 3,-3z";
+const TICK = "M-4.2,0.4l3,3.2l5.6,-6.6", CROSS = "M-3.4,-3.4l6.8,6.8M3.4,-3.4l-6.8,6.8", BANG = "M0,-3v4.5M0,4.6v.1";
+const MARKS: Record<Mark | CheckMark["box"] | "ended" | "warn", [string, string][]> = {
+  // a step's state (`stateMark`), the same shape at every size
+  waiting: [["line dots", RING]], ready: [["line", RING]], working: [["line faint", RING], ["line spin", "M0,-8a8,8 0 0 1 8,8"]],
+  you: [["solid", DIAMOND]], yours: [["line", DIAMOND]], back: [["solid", TRIANGLE], ["ink", BANG]],
+  landed: [["solid", RING], ["ink", TICK]], suggested: [["line dashes", RING]],
+  // an attempt that ended without passing (`forkMark`); a row whose check proves nothing yet
+  ended: [["line", RING], ["line", CROSS]], warn: [["line", TRIANGLE], ["line", BANG]],
+  // the check's box (`checkMark`): a square Graphene alone ticks; with no check, the diamond of your approval
+  approval: [["line", DIAMOND]], passed: [["solid", SQUARE], ["ink", TICK]], failed: [["solid", SQUARE], ["ink", CROSS]],
+  hollow: [["line dashes", SQUARE], ["line", BANG]], tells: [["line", SQUARE]], unrun: [["line dots", SQUARE]],
+};
+
+/** A mark drawn about a point, ``r`` px from its middle to its edge. Its lines are never thinner than 1.3 px;
+ *  what turns on it takes up where the page's clock is (`inStep`). */
+function mark(grp: SVGGElement, kind: keyof typeof MARKS, x: number, y: number, r: number) {
+  const g = grp.appendChild(el("g", { class: `mk ${kind}`, transform: `translate(${x} ${y}) scale(${r / 10})`, style: `--sw:${Math.max(2, 13 / r)}`, "aria-hidden": "true" }));
+  for (const [how, d] of MARKS[kind]) { // a path's length is said as 100, so its dots and dashes meet where it closes
+    const p = g.appendChild(el("path", { class: how, d, pathLength: 100 }));
+    if (how.endsWith("spin")) inStep(p, 900);
+  }
 }
 
+/** A card's foot, which is its check's: a hairline, the check's box (marks.ts `checkMark`), the words `done
+ *  when` and what follows them (``says``, cut to as many characters as there is room for), tinted where the
+ *  verdict is news. The foot's hover says the verdict in words. At its right end the card's one act, a real
+ *  button: Tab stops on it after the card, Enter and Space press it, and a click on it is the pane's button's
+ *  click (`press`) and not the card's: it selects nothing. A step with no check is done when you approve; a
+ *  draft that has said neither wears the blank. */
+function cardFoot(grp: SVGGElement, c: CheckMark, says: (n: number) => string, act: Button | null = null, id = "", title = "") {
+  const g = grp.appendChild(el("g", { class: `foot ${c.tone}` }));
+  g.appendChild(el("path", { class: "tint", d: `M0.5,${FOOT_Y}H${BOX_W - 0.5}V${BOX_H - 12}a11.5,11.5 0 0 1 -11.5,11.5H12a11.5,11.5 0 0 1 -11.5,-11.5Z` }));
+  g.appendChild(el("path", { class: "hair", d: `M0.5,${FOOT_Y}H${BOX_W - 0.5}` }));
+  mark(g, c.box, 16, FOOT_Y + 12, 7);
+  if (c.words) g.appendChild(el("title", {}, c.words));
+  let right = BOX_W - 8;
+  if (act) {
+    const b = grp.appendChild(el("g", { class: "act", role: "button", tabindex: 0, "aria-label": `${act.label}: ${title}` }));
+    const label = b.appendChild(el("text", { y: FOOT_Y + 16 }, act.label));
+    const w = Math.ceil(label.getComputedTextLength() || act.label.length * 6.6) + 14;
+    right = BOX_W - 5 - w;
+    b.prepend(el("rect", { x: right, y: FOOT_Y + 3, width: w, height: 18, rx: 5 }));
+    label.setAttribute("x", String(right + 7));
+    b.appendChild(el("title", {}, act.title));
+    b.addEventListener("click", (e) => { e.stopPropagation(); if (e.detail < 2) press(act, id); }); // a double click presses it once
+    b.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); press(act, id); } });
+    right -= 6;
+  }
+  const k = g.appendChild(el("text", { class: "foot-k", x: 27, y: FOOT_Y + 16 }, "done when"));
+  const x = 27 + (k.getComputedTextLength() || 54) + 5, room = right - x;
+  if (room < 48) return; // no room beside the act for words that would say anything: the pane says the check whole
+  const v = g.appendChild(el("text", { class: "foot-v", x, y: FOOT_Y + 16 }));
+  let n = Math.floor(room / 6.6); // a mono character at 11 px; then by its drawn length
+  do v.textContent = says(n) || (c.box === "approval" ? "you approve" : "___"); while (v.getComputedTextLength() > room && --n > 6);
+  if (v.getComputedTextLength() > room) v.remove();
+}
+
+/** A draft's foot (a task drawn by hand, a step the planner is writing): its check as one not run yet; with
+ *  none, your approval where it asks for it, else the blank. */
+const draftFoot = (grp: SVGGElement, check: string, approve = false) =>
+  cardFoot(grp, check || approve ? checkMark({ check: check || null, checked: { before: null, after: null }, state: "proposed", hollow: false }) : { box: "unrun", tone: "dim", words: "" },
+       (n) => midCut(check, n));
+
 /** A compact card's title: on one line at the row's middle, or on two when it is longer, the second cut to the
- *  row. Its text reads as the title does, whichever way it is broken. */
-function rowTitle(grp: SVGGElement, kind: "title" | "goal-title", title: string) {
+ *  row (``max`` px: clear of what is at its right end). Its text reads as the title does, whichever way it is broken. */
+function rowTitle(grp: SVGGElement, kind: "title" | "goal-title", title: string, max = ROW_W - ROW_X - 14) {
   const text = grp.appendChild(el("text", { class: kind, x: ROW_X }));
-  // clear of the mark on the row's corner; not drawn yet (the SVG hidden), a line is cut by a character count
-  const lines = twoLines(title, ROW_W - ROW_X - 14, (t) => { text.textContent = t; return text.getComputedTextLength() || t.length * 7.6; });
+  // not drawn yet (the SVG hidden), a line is cut by a character count
+  const lines = twoLines(title, max, (t) => { text.textContent = t; return text.getComputedTextLength() || t.length * 7.6; });
   text.replaceChildren(...lines.map((line, i) => el("tspan", { x: ROW_X, y: lines.length > 1 ? 18 + i * 17 : 27 }, i < lines.length - 1 ? `${line} ` : line)));
 }
 
-/** A card at the compact level, where the plan is read from afar: a row with its tile, its title and its mark,
- *  and the ports its lines join at. Nothing else: the hover says the whole line, and a double click opens it. */
-function drawCompact(grp: SVGGElement, c: { title: string; hover: string; by: { kind: string; mark: string; label: string }; colour?: number; badge?: ReturnType<typeof badge>;
-                                            selected: boolean; running?: boolean; port?: string; naming?: Draft }) {
+/** A card at the compact level, where the plan is read from afar: a row filled and bordered by its state
+ *  (graph.css, by the group's `data-mark`), its state's mark large at the left, its title, and the ports its
+ *  lines join at. At its right end only what is news: that its check proves nothing yet, else its attempts as
+ *  small marks (four to a line). Nothing else: the hover says the whole line, and a double click opens it. */
+function drawCompact(grp: SVGGElement, c: { title: string; hover: string; mark: Mark; selected: boolean; running?: boolean; port?: string; naming?: Draft;
+                                            hollow?: boolean; forks?: readonly ForkX[] }) {
   if (c.running) grp.appendChild(inStep(el("rect", { class: "halo", x: -2.5, y: -2.5, width: ROW_W + 5, height: ROW_H + 5, rx: 12.5 }), 1800));
   if (c.selected) grp.appendChild(el("rect", { class: "ring", x: -5, y: -5, width: ROW_W + 10, height: ROW_H + 10, rx: 14 }));
   grp.appendChild(el("rect", { class: "box", x: 0, y: 0, width: ROW_W, height: ROW_H, rx: 10 }));
-  tile(grp, c.by.kind, c.by.mark, c.by.label, c.colour, true);
+  mark(grp, c.mark, 19, ROW_H / 2, 9.5);
+  const forks = c.hollow ? [] : c.forks ?? [], cols = Math.min(4, forks.length), lines = Math.ceil(forks.length / 4);
+  if (c.hollow) mark(grp, "warn", ROW_W - 15, ROW_H / 2, 7.5);
+  forks.forEach((f, i) => mark(grp, forkMark(f), ROW_W - 11 - (cols - 1 - (i % 4)) * 10, ROW_H / 2 + (Math.floor(i / 4) - (lines - 1) / 2) * 11, 4));
+  const news = c.hollow ? 20 : cols ? cols * 10 + 4 : 0;
   if (c.naming) { // a draft whose title is being typed keeps its box to type in
     const fo = el("foreignObject", { x: ROW_X - 5, y: 10, width: ROW_W - ROW_X - 3, height: 24 });
     fo.appendChild(nameInput(c.naming));
     grp.appendChild(fo);
-  } else rowTitle(grp, "title", c.title);
+  } else rowTitle(grp, "title", c.title, ROW_W - ROW_X - 8 - news);
   grp.appendChild(el("title", {}, c.hover));
-  mark(grp, c.badge ?? "", ROW_W);
   grp.appendChild(el("circle", { class: "port in", cx: 0, cy: ROW_H / 2, r: 5 }));
   const port = grp.appendChild(el("circle", { class: "port", cx: ROW_W, cy: ROW_H / 2, r: 5 }));
   if (!c.port) return;
@@ -642,41 +716,52 @@ function drawCompact(grp: SVGGElement, c: { title: string; hover: string; by: { 
   port.appendChild(el("title", {}, "drag onto another task: it then waits on this one"));
 }
 
-/** A task's card, drawn at the group's origin: who does it, its title, its files and its check; one line of
- *  status under it; its fork chips hanging under that; the ports its lines join at; and its mark. From afar
- *  (the compact level) it is a row instead. */
+/** A task's card, drawn at the group's origin: who does it, its title, its files; its foot, which is its
+ *  check's, with its one act; one line of status under it; its attempts' chips hanging under that; the ports
+ *  its lines join at; and its state's mark on its corner. From afar (the compact level) it is a row instead.
+ *  The group says its mark (`data-mark`: graph.css colours by it) and the attempts it is set to and has not
+ *  started (`data-attempts`), for a script to read as a person reads `×3`. */
 function drawTask(grp: SVGGElement, t: TaskX, h: number, down: boolean, limit: number | null) {
+  const acting = grp.querySelector(".act:focus") !== null; // its button has the keyboard: it keeps it through the redraw
   grp.replaceChildren();
   grp.setAttribute("class", `task ${cls(t.state)}${t.id === selected ? " selected" : ""}${t.needs_you ? " needs-you" : ""}`);
-  const line = sub(t, 36);
+  grp.setAttribute("data-mark", stateMark(t));
+  const line = sub(t, 36), times = attemptsMark(t, limit), check = checkMark(t);
+  if (times) grp.dataset.attempts = times.slice(1); else delete grp.dataset.attempts;
   grp.setAttribute("aria-label", `${t.title}: ${line}${t.id === selected ? ", selected" : ""}`);
-  const by = who(t, state?.executor ?? "");
-  const colour = t.command ? -1 : stepColour(t.id, state?.tasks ?? []); // a command writes no file: no colour to wear
+  const hover = [t.title, sub(t, 200), check.words].filter(Boolean).join(" · "); // the whole line, and the check's verdict
   if (level === "compact") {
-    return drawCompact(grp, { title: t.title, hover: `${t.title} · ${sub(t, 200)}`, by, colour, badge: badge(t), selected: t.id === selected, running: t.state === "running",
-                              port: replaying() || t.leaves ? undefined : t.id });
+    return drawCompact(grp, { title: t.title, hover, mark: stateMark(t), selected: t.id === selected, running: t.state === "running",
+                              port: replaying() || t.leaves ? undefined : t.id, hollow: check.box === "hollow", forks: t.forks });
   }
+  const by = who(t, state?.executor ?? "");
   if (t.state === "running") grp.appendChild(inStep(el("rect", { class: "halo", x: -2.5, y: -2.5, width: BOX_W + 5, height: BOX_H + 5, rx: 14.5 }), 1800));
   if (t.id === selected) grp.appendChild(el("rect", { class: "ring", x: -5, y: -5, width: BOX_W + 10, height: BOX_H + 10, rx: 16 }));
   grp.appendChild(el("rect", { class: "box", x: 0, y: 0, width: BOX_W, height: BOX_H, rx: 12 }));
-  tile(grp, by.kind, by.mark, by.label, colour);
+  cardFoot(grp, check, (n) => doneWhen(t, n), cardAct(t, replaying()), t.id, t.title);
+  if (acting) (grp.querySelector<SVGGElement>(".act") ?? grp).focus({ preventScroll: true }); // pressed, and gone: the card has it
+  tile(grp, by.kind, by.mark, by.label, t.command ? -1 : stepColour(t.id, state?.tasks ?? [])); // a command writes no file: no colour to wear
   fitText(grp.appendChild(el("text", { class: "title", x: TEXT_X, y: 27 }, t.title)), BOX_W - TEXT_X - 8);
-  const files = t.command ? "" : filesChip(t.scope);
-  if (t.command) pill(grp, "run", commandChip(t.command), TEXT_X, 37, BOX_W - TEXT_X - 10); // a command step: what runs, with no agent
-  if (files) pill(grp, "files", files, TEXT_X, 37, BOX_W - TEXT_X - 10);
-  if (t.check && !t.command) pill(grp, "check", t.check, TEXT_X, files ? 58 : 37, BOX_W - TEXT_X - 10, provesNothing(t));
-  // the status, under the card; while it runs, its model at the line's end
-  const model = t.state === "running" && t.model ? grp.appendChild(el("text", { class: "model", x: BOX_W - 2, y: BOX_H + 16, "text-anchor": "end" }, cut(t.model, 14))) : null;
-  fitText(grp.appendChild(el("text", { class: "sub", x: 2, y: BOX_H + 16 }, line)), BOX_W - 4 - (model ? model.getComputedTextLength() + 8 : 0));
-  grp.appendChild(el("title", {}, `${t.title} · ${sub(t, 200)}`)); // the hover: the whole line
-  mark(grp, badge(t));
-  // the fan: one chip a fork, hanging under the status line, each on a line from the card's foot
+  const files = filesLine(t); // the latest fact about its files: what it may change, has written, or wrote outside them
+  if (t.command) pill(grp, "run", "$", commandChip(t.command), TEXT_X, 37, BOX_W - TEXT_X - 10); // a command step: what runs, with no agent
+  if (files.text) pill(grp, `files ${files.tone}`, files.mark, files.text, TEXT_X, 37, BOX_W - TEXT_X - 10, files.refused && ` · ${files.refused}`);
+  // the status, under the card; at the line's end its model while it runs, or the attempts it is set to (×3)
+  const tail = t.state === "running" && t.model ? cut(t.model, 14) : times;
+  const end = tail ? grp.appendChild(el("text", { class: tail === times ? "times" : "model", x: BOX_W - 2, y: BOX_H + 16, "text-anchor": "end" }, tail)) : null;
+  fitText(grp.appendChild(el("text", { class: "sub", x: 2, y: BOX_H + 16 }, line)), BOX_W - 4 - (end ? end.getComputedTextLength() + 8 : 0));
+  grp.appendChild(el("title", {}, hover));
+  const corner = cornerMark(t);
+  if (corner) { // on a plate of the canvas's colour, so the card's border stops short of it
+    grp.appendChild(el("circle", { class: "plate", cx: BOX_W - 2, cy: 2, r: 12.5 }));
+    mark(grp, corner, BOX_W - 2, 2, 9.5);
+  }
+  // its attempts: one chip each, hanging under the status line on a line from the card's foot
   const top = BOX_H + SUB_H;
-  fan(t, limit).forEach((f, i) => { // before anything runs: one waiting chip for each attempt it is set to
+  t.forks.forEach((f, i) => {
     const y = top + 6 + i * FORK_H, x = FORK_DX;
     const kept = t.kept?.letter === f.letter;
     grp.appendChild(el("path", { class: "fan", d: `M10,${top} C10,${y + 10} ${x - 8},${y + 10} ${x},${y + 10}` }));
-    const chip = el("g", { class: `fork ${cls(f.state || "waiting")}${kept ? " kept" : ""}${t.forks.length ? "" : " planned"}` });
+    const chip = el("g", { class: `fork ${cls(f.state || "waiting")}${kept ? " kept" : ""}` });
     chip.appendChild(el("rect", { class: "chip", x, y: y + 1, width: CHIP_W, height: FORK_H - 3, rx: 5 }));
     chip.appendChild(el("text", { class: "chip-text", x: x + 8, y: y + 14 }, forkWords(f, t.kept)));
     const tip = el("title", {}, forkRow(f, t.kept));
@@ -706,10 +791,10 @@ function drawTask(grp: SVGGElement, t: TaskX, h: number, down: boolean, limit: n
 function drawDraft(grp: SVGGElement, d: Draft) {
   grp.replaceChildren();
   grp.setAttribute("class", `task draft${d.key === selected ? " selected" : ""}`);
+  grp.setAttribute("data-mark", "suggested");
   grp.setAttribute("aria-label", `a draft: ${d.title || "no title yet"}: ${blanks(d)}${d.key === selected ? ", selected" : ""}`);
   if (level === "compact") {
-    return drawCompact(grp, { title: d.title, hover: `a draft: ${d.title} · ${blanks(d)}`, by: { kind: "draft", mark: "+", label: "a draft: not in the plan yet" },
-                              selected: d.key === selected, naming: naming === d.key ? d : undefined });
+    return drawCompact(grp, { title: d.title, hover: `a draft: ${d.title} · ${blanks(d)}`, mark: "suggested", selected: d.key === selected, naming: naming === d.key ? d : undefined });
   }
   if (d.key === selected) grp.appendChild(el("rect", { class: "ring", x: -5, y: -5, width: BOX_W + 10, height: BOX_H + 10, rx: 16 }));
   grp.appendChild(el("rect", { class: "box", x: 0, y: 0, width: BOX_W, height: BOX_H, rx: 12 }));
@@ -722,8 +807,8 @@ function drawDraft(grp: SVGGElement, d: Draft) {
     fitText(grp.appendChild(el("text", { class: "title", x: TEXT_X, y: 27 }, d.title)), BOX_W - TEXT_X - 8);
   }
   const files = filesChip(globs(d.files));
-  if (files) pill(grp, "files", files, TEXT_X, 37, BOX_W - TEXT_X - 10);
-  if (d.check) pill(grp, "check", d.check, TEXT_X, files ? 58 : 37, BOX_W - TEXT_X - 10);
+  if (files) pill(grp, "files", "▤", files, TEXT_X, 37, BOX_W - TEXT_X - 10);
+  draftFoot(grp, d.check, d.approve);
   grp.appendChild(el("text", { class: `sub${d.said ? " bad" : ""}`, x: 2, y: BOX_H + 16 }, d.said ? "not taken: see why" : blanks(d)));
   grp.appendChild(el("title", {}, `a draft: ${d.title} · ${blanks(d)}`));
 }
@@ -733,15 +818,16 @@ function drawDraft(grp: SVGGElement, d: Draft) {
 function drawPlanned(grp: SVGGElement, d: DraftStep, executor: string, down: boolean) {
   grp.replaceChildren();
   grp.setAttribute("class", "task drafted");
+  grp.setAttribute("data-mark", "suggested");
   grp.setAttribute("aria-label", `the planner is drafting: ${d.title}`);
+  if (level === "compact") return drawCompact(grp, { title: d.title, hover: `the planner is drafting: ${d.title}`, mark: "suggested", selected: false });
   const w = who({ state: "proposed", owner: "agent" }, executor); // who will do it, as on the card it becomes
-  if (level === "compact") return drawCompact(grp, { title: d.title, hover: `the planner is drafting: ${d.title}`, by: w, selected: false });
   grp.appendChild(el("rect", { class: "box", x: 0, y: 0, width: BOX_W, height: BOX_H, rx: 12 }));
   tile(grp, w.kind, w.mark, w.label);
   fitText(grp.appendChild(el("text", { class: "title", x: TEXT_X, y: 27 }, d.title)), BOX_W - TEXT_X - 8);
   const files = filesChip(d.scope);
-  if (files) pill(grp, "files", files, TEXT_X, 37, BOX_W - TEXT_X - 10);
-  if (d.check) pill(grp, "check", d.check, TEXT_X, files ? 58 : 37, BOX_W - TEXT_X - 10);
+  if (files) pill(grp, "files", "▤", files, TEXT_X, 37, BOX_W - TEXT_X - 10);
+  draftFoot(grp, d.check ?? "");
   grp.appendChild(el("text", { class: "sub", x: 2, y: BOX_H + 16 }, "drafted"));
   grp.appendChild(el("title", {}, `the planner is drafting: ${d.title}`));
   grp.appendChild(el("circle", { class: "port in", cx: down ? BOX_W / 2 : 0, cy: down ? 0 : BOX_H / 2, r: 5 }));
@@ -844,15 +930,16 @@ function drawLane(row: HTMLElement, t: TaskX, s: StateX) {
   div("l-title", t.title, head);
   const corner = cornerWord(t);
   if (corner) div(corner === "◆" ? "l-mark" : "l-model", corner, head);
-  div("l-sub", line, main);
+  const times = attemptsMark(t, s.envelope.forks); // set to attempts it has not started: ×3, as on its card
+  div("l-sub", [line, times].filter(Boolean).join(" · "), main);
+  if (times) row.dataset.attempts = times.slice(1); else delete row.dataset.attempts;
   const band = t.parent ? goalTitle(s, t.parent) : "";
   if (band && band !== s.goal) div("l-band", band, main).title = band; // auto's root sub-goal is the goal itself: said once, at the foot
-  const attempts = fan(t, s.envelope.forks);
-  if (attempts.length) {
+  if (t.forks.length) {
     const forks = div("l-forks", undefined, main);
-    for (const f of attempts) {
+    for (const f of t.forks) {
       const kept = t.kept?.letter === f.letter;
-      const chip = div(`l-chip fork ${cls(f.state || "waiting")}${kept ? " kept" : ""}${t.forks.length ? "" : " planned"}`, forkWords(f, t.kept, 40), forks);
+      const chip = div(`l-chip fork ${cls(f.state || "waiting")}${kept ? " kept" : ""}`, forkWords(f, t.kept, 40), forks);
       chip.title = forkRow(f, t.kept);
     }
   }
@@ -929,8 +1016,8 @@ function refit() {
   render();
 }
 
-/** The minimap, drawn again with the graph: every card a small rect in its state's colour, the sub-goals as
- *  outlines, and a frame (placed by `applyZoom`) for the part on screen. In the drawing's own units. */
+/** The minimap, drawn again with the graph: every card a small rect in its mark's colour (as its row is), the
+ *  sub-goals as outlines, and a frame (placed by `applyZoom`) for the part on screen. In the drawing's own units. */
 function minimap(s: StateX, here: number) {
   const map = $("minimap").firstElementChild;
   if (!lay || !map) return;
@@ -942,7 +1029,7 @@ function minimap(s: StateX, here: number) {
   const of = new Map(s.tasks.map((t) => [t.id, t]));
   for (const p of Object.values(lay.boxes)) {
     const t = of.get(p.id);
-    kids.push(el("rect", { class: `mm-box ${t ? cls(t.state) : p.id === GOAL ? "mm-goal" : "mm-draft"}`, x: p.x, y: p.y, width: D.w, height: D.h, rx: 12 }));
+    kids.push(el("rect", { class: "mm-box", "data-mark": t ? stateMark(t) : p.id === GOAL ? "goal" : "suggested", x: p.x, y: p.y, width: D.w, height: D.h, rx: 12 }));
   }
   kids.push(el("rect", { class: "mm-frame", rx: 6 }));
   map.replaceChildren(...kids);

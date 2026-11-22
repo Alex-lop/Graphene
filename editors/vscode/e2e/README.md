@@ -48,8 +48,9 @@ keeps a screenshot of each step (`E2E_SHOTS=dir`, else in its scratch).
 
 `npm run draw` builds a graph by hand, with no planner and no model: on an empty plan it draws a task (its title
 typed on its box, its files and its check in the pane) and sees it join the plan, draws a second from the + on
-the first with your approval for a check, sets three attempts on the stepper and counts the fan before anything
-runs, changes a title in the form, takes a task for you and gives it back, reads graphene's refusal in the pane,
+the first with your approval for a check, sets three attempts on the stepper and reads ×3 on its card before
+anything runs, changes a title in the form, takes a task for you and gives it back, reads graphene's refusal in
+the pane,
 and changes the files of a task an agent holds. It also checks a shared draft in both graph views, closing its panel, reloading the window, and an inline
 refusal with no duplicate toast. Each step is checked against `graphene plan --json`.
 
