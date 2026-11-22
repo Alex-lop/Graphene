@@ -1,6 +1,7 @@
 // The preview stands in for VS Code: it answers the graph's `ready` with a fixture state (`?fixture=auto`
 // picks one) and shows what the graph asked for in the footer. For screenshots, no editor needed.
 import autoFx from "../../test/fixtures/auto.json";
+import bigFx from "../../test/fixtures/big.json";
 import draftingFx from "../../test/fixtures/drafting.json";
 import emptyFx from "../../test/fixtures/empty.json";
 import proposalsFx from "../../test/fixtures/proposals.json";
@@ -11,7 +12,7 @@ import realAutoFx from "../../test/fixtures/real-auto.json";
 import raceFx from "../../test/fixtures/graph-race.json";
 import { parseState } from "../state.ts";
 
-const fixtures: Record<string, unknown> = { auto: autoFx, empty: emptyFx, proposals: proposalsFx, running: runningFx,
+const fixtures: Record<string, unknown> = { auto: autoFx, big: bigFx, empty: emptyFx, proposals: proposalsFx, running: runningFx,
   real: realAutoFx, race: raceFx, drafting: draftingFx, scope: scopeFx, workflow: workflowFx };
 const params = new URLSearchParams(location.search);
 const name = params.get("fixture") ?? "running";
