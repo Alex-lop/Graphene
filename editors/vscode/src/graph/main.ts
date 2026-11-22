@@ -296,7 +296,7 @@ function render() {
   const [needs, show] = wantingLine(wantYou().length).split(" · "); // `3 steps need you`, `show the next`: the chip's two halves
   $("need").hidden = !needs;
   $("need").children[1]!.textContent = needs ?? "";
-  $("need").children[2]!.textContent = ` · ${show}`;
+  $("need").children[2]!.textContent = show ? ` · ${show}` : "";
   const planning = planningLine(s);
   $("planning").textContent = planning;
   $("planning").hidden = !planning;
@@ -358,7 +358,7 @@ const taskEls = new Map<string, { g: SVGGElement; key: string }>();
 const edgeEls = new Map<string, SVGPathElement>();
 let goalKey = "";
 let fitSize = ""; // the drawing's size when the zoom was last set for it
-let fitRoom = ""; // and the window's room for it then, whatever the pane took of it; "": the plan is fitted again at the next drawing
+let fitRoom = ""; // and the window's size then, whatever the pane took of it; "": the plan is fitted again at the next drawing
 let paneMoved = false; // the pane opened or closed in this render: a plan fitted now glides to its new fit
 
 type Placed = { lay: Layout; g: ReturnType<typeof boxes>; here: number; awayW: number };
@@ -415,11 +415,12 @@ function graph(s: StateX, dir: "across" | "down") {
   const down = dir === "down";
   const was = svg.dataset.level ?? level; // the level of the drawing on screen
   if (down) level = "full"; // the narrow drawing keeps whole cards
-  // Until the person pans or zooms, the whole plan is in the pane: fitted when the page opens, when the window's
-  // room changes, when the plan grows or shrinks, and when asked (`f`, a select from outside the page). The
-  // pane opening or closing beside the canvas is none of these: a card chosen here stays where it is, as big as
-  // it is. The narrow drawing wraps at its canvas's width, so it is laid out for it each time.
-  const main = $("canvas").parentElement!, room = `${main.clientWidth}x${main.clientHeight}`;
+  // Until the person pans or zooms, the whole plan is in the pane: fitted when the page opens, when the window
+  // is resized, when the plan grows or shrinks, and when asked (`f`, a select from outside the page). The pane
+  // opening or closing beside the canvas is none of these, nor is the footer growing a line: a card chosen here
+  // stays where it is, as big as it is. The narrow drawing wraps at its canvas's width, so it is laid out for it
+  // each time.
+  const room = `${innerWidth}x${innerHeight}`;
   const sized = (l: Layout) => `${l.width}x${l.height}`;
   const free = !moved && !drawing;
   let at = free && down ? null : place(s, down, level);
@@ -517,11 +518,11 @@ function graph(s: StateX, dir: "across" | "down") {
       ring(goalG, all.portion, 27, 28, 13);
       fitText(goalG.appendChild(el("text", { class: "goal-title", x: TEXT_X, y: 27 }, s.goal)), gp.w - TEXT_X - 8);
       if (goalCheck) pill(goalG, "check", "✓", goalCheck, TEXT_X, 37, gp.w - TEXT_X - 10);
-      const gap = 5, step = Math.min(14, (gp.w - 24 - (cells.length - 1) * gap) / Math.max(1, all.total)); // the cells share the card's width, however many
+      const step = Math.min(14, (gp.w - 24) / (all.total + (cells.length - 1) * 0.7)); // the cells and the gaps between their groups share the card's width, however many
       let x = 12;
       for (const group of cells) {
-        for (const m of group.marks) { goalG.appendChild(el("rect", { class: "cell", "data-mark": m, x, y: FOOT_Y + 6, width: Math.max(step * 0.7, step - 1.5), height: 10, rx: 1.5 })); x += step; }
-        x += gap;
+        for (const m of group.marks) { goalG.appendChild(el("rect", { class: "cell", "data-mark": m, x, y: FOOT_Y + 6, width: step * 0.8, height: 10, rx: Math.min(1.5, step / 4) })); x += step; }
+        x += step * 0.7;
       }
       goalG.appendChild(el("text", { class: "sub", x: 2, y: BOX_H + 16 }, `goal · ${all.landed} of ${all.total} landed`));
       goalG.appendChild(el("circle", { class: "port in", cx: down ? gp.w / 2 : 0, cy: down ? 0 : BOX_H / 2, r: 5 }));
@@ -683,11 +684,11 @@ function ring(grp: SVGElement, portion: number, x: number, y: number, r: number)
  *  it reads in a fitted plan. It keeps to ``max`` px, the band's width: where all of it has no room the marks
  *  go, whole (part of a bar would be another count), then the words, and the title is cut to what is left. */
 function bandHead(root: SVGGElement, title: string, ts: readonly TaskX[], x: number, y: number, max: number) {
-  const t = tally(ts), far = level === "compact", r = far ? 8 : 6, m = far ? 4.5 : 3.5, gap = far ? 10 : 8, step = 2 * m + 3;
+  const t = tally(ts), rows = level === "compact", r = rows ? 8 : 6, m = rows ? 4.5 : 3.5, gap = rows ? 10 : 8, step = 2 * m + 3;
   const g = root.appendChild(el("g", { class: "band-head" }));
   ring(g, t.portion, x + r, y, r);
-  const text = (kind: string, words: string) => g.appendChild(el("text", { class: kind, y: y + (far ? 5 : 4) }, words));
-  const wide = (n: SVGTextElement) => n.getComputedTextLength() || (n.textContent ?? "").length * (far ? 8.5 : 6.5); // not drawn yet: by its characters
+  const text = (kind: string, words: string) => g.appendChild(el("text", { class: kind, y: y + (rows ? 5 : 4) }, words));
+  const wide = (n: SVGTextElement) => n.getComputedTextLength() || (n.textContent ?? "").length * (rows ? 8.5 : 6.5); // not drawn yet: by its characters
   const name = text("band-label", title), count = t.total ? text("band-count", `${t.landed} of ${t.total}`) : null;
   const wants = t.wants.map((w) => { const n = text("band-want", w.text); n.dataset.mark = w.mark; return n; });
   const cw = count ? wide(count) + gap : 0, mw = t.total ? t.total * step - 3 + gap : 0, ww = wants.reduce((sum, n) => sum + wide(n) + gap, 0);
@@ -1113,7 +1114,7 @@ function legendRow(s: StateX) {
     }));
   }
   root.hidden = false;
-  root.hidden = root.offsetWidth > $("canvas").clientWidth - $("zoom").offsetWidth - 56;
+  root.hidden = !rows.length || root.offsetWidth > $("canvas").clientWidth - $("zoom").offsetWidth - 56;
 }
 
 /** The steps to act on, in the plan's order: what the chip at the canvas's top right counts, and `n` walks.
@@ -1679,7 +1680,7 @@ function notice(st: Status) {
   for (const id of ["regions", "bands", "edges", "gates", "heads", "tasks", "goalg"]) ($(id) as unknown as SVGGElement).replaceChildren();
   taskEls.clear(); edgeEls.clear(); goalKey = "";
   $("lanes").replaceChildren(); laneEls.clear(); lanesKey = "";
-  $("minimap").hidden = true;
+  $("minimap").hidden = $("legend").hidden = $("need").hidden = true;
   $("details").hidden = true; paneLast = "";
   $("goal").textContent = "Graphene";
   $("counts").textContent = "";
@@ -1740,6 +1741,7 @@ window.addEventListener("message", (e: MessageEvent<Incoming>) => {
     if (body && !Array.from(body.querySelectorAll(".refused")).some((r) => r.textContent === m.line)) div("refused", m.line, body).setAttribute("role", "alert");
   } else if (m.type === "status") {
     lastJson = "";
+    state = null; // no plan to read: the one that was here is not drawn again when the canvas resizes under the notice
     notice(m.status);
   } else if (m.type === "select") { // a click in the Plan view: the link, if armed, is not for that task
     disarm();

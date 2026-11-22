@@ -44,6 +44,15 @@ stream carries no text (Codex) has its boxes appear when the plan arrives, and t
 one colour, on its card's tile and, from the time it is accepted until it lands, on its files in the Explorer,
 a working agent's with its number.
 
+It opens with the whole plan in the pane. A plan too big to read as whole cards is drawn as rows, each filled by
+its state and wearing its state's mark: a ticked disc landed, a turning ring working, a diamond where you are
+needed, a triangle came back. Zoom in (`=`, ⌘ or Ctrl with the wheel, a pinch) and the rows are whole cards
+again; `f` fits the plan again. A sub-goal's header has a ring filled by how many of its tasks landed, its count,
+a mark a task and, in words, what wants you there; the goal's card has the same ring and a cell a task. The
+legend at the canvas's foot is those marks with their words and how many steps wear each. While a step needs
+you, a chip at the top right says how many: a click on it, or `n`, selects the next one and brings it on screen.
+Choosing a card opens its pane and moves nothing else. `?` lists every key.
+
 The tab also opens by itself when work starts: when the window opens on a plan with work left, when a plan
 appears, and when a run starts. It does not take the keyboard focus, and it opens beside the file you are
 working in (or the diff, or the notebook), never over it: in the editor group to its side, a new one when there
