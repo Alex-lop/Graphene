@@ -3,7 +3,7 @@
 // chip's latest fact, and the one act a card wears. A mark is drawn only for what a field of the snapshot
 // says (state.ts); the words are words.ts's and `SAY`'s. No DOM here, so `node --test` reads them.
 import { SAY, type Goal } from "../state.ts";
-import { actsFor, asksYou, badge, checkWords, fan, filesChip, provesNothing, writtenOf, type Button, type TaskX } from "./words.ts";
+import { actsFor, asksYou, attemptsOf, checkWords, filesChip, provesNothing, writtenOf, type Button, type ForkX, type TaskX } from "./words.ts";
 
 /** The one mark a step's state wears, the same shape at every size: a circle is the run's own business
  *  (waiting, ready, working, landed, suggested), a diamond is the person (you, yours), a triangle is trouble (back). */
@@ -18,16 +18,17 @@ const BAR: readonly Mark[] = ["landed", ...LOUD.filter((m) => m !== "landed")];
 const WANTS: readonly Mark[] = ["you", "yours", "back"];
 
 /** The mark a step wears, first match: landed, came back, suggested, asks you (a step past the line), yours,
- *  to review or `needs_you`, working, ready, waiting. `badge` (words.ts) decides the corner's four; this names
- *  the rest. A step of the person's own stays `yours` whatever `needs_you` says: the snapshot says it of every
- *  yours step (cockpit/model.py `needs_you`), so read first it would leave no step to wear the hollow diamond. */
+ *  to review or `needs_you`, working, ready, waiting. A suggested step is not the person's move though the
+ *  snapshot says `needs_you` of it: accepting the plan is one act for them all. A step of the person's own
+ *  stays `yours` whatever `needs_you` says: the snapshot says it of every yours step (cockpit/model.py
+ *  `needs_you`), so read first it would leave no step to wear the hollow diamond. */
 export function stateMark(t: Stated): Mark {
-  const b = badge(t);
-  if (b === "done") return "landed";
-  if (b === "back") return "back";
-  if (b === "running") return "working";
-  if (b === "you") return t.state === "yours" && !asksYou(t) ? "yours" : "you";
-  return t.state === "proposed" ? "suggested" : t.state === "ready" ? "ready" : "waiting";
+  if (t.state === "done") return "landed";
+  if (t.state === "came back") return "back";
+  if (t.state === "proposed") return "suggested";
+  if (t.state === "yours") return asksYou(t) ? "you" : "yours";
+  if (t.state === "review" || t.needs_you) return "you";
+  return t.state === "running" ? "working" : t.state === "ready" ? "ready" : "waiting";
 }
 
 /** The full card's corner: the state's mark, or none for waiting, ready and suggested (their words and their
@@ -190,12 +191,18 @@ export function filesLine(t: Pick<TaskX, "state" | "scope" | "files" | "filesN" 
   return { tone: "plain", mark: text ? "▤" : "", text, refused: text ? refused : "" };
 }
 
-/** `×3` at the status line's end for a step set to two or more attempts that has started none: exactly when
- *  `fan` hangs its waiting placeholder chips today, which this replaces. Real attempts keep their chips. */
+/** `×3` at the status line's end for a step set to two or more attempts that has started none, and has a
+ *  check to keep one (without a check it runs as one agent; a command step runs once, with no agent). Real
+ *  attempts are chips under the card, and small marks on its row (`forkMark`). */
 export function attemptsMark(t: TaskX, limit: number | null | undefined): string {
-  const n = t.forks.length ? 0 : fan(t, limit).length;
-  return n ? `×${n}` : "";
+  const n = attemptsOf(t, limit);
+  return n < 2 || t.forks.length || !t.check || t.command || !["proposed", "ready", "waiting"].includes(t.state) ? "" : `×${n}`;
 }
+
+/** An attempt's small mark on a row, by its own state and nothing else: working, passed its check (the tick),
+ *  ended without passing (`ended`: a crossed ring), or not started. */
+export const forkMark = (f: Pick<ForkX, "state">): Mark | "ended" =>
+  (f.state === "running" ? "working" : f.state === "passed" ? "landed" : ["gave up", "failed", "ended"].includes(f.state) ? "ended" : "waiting");
 
 // ---- the one act a full card wears ----
 

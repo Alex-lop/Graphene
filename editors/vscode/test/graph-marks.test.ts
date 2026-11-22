@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFileSync } from "node:fs";
-import { attemptsMark, cardAct, checkMark, cornerMark, doneWhen, filesLine, goalCells, legend, markWord, midCut, nextWanting, stateMark, tally, wanting, wantingLine, type Box, type CheckMark, type Mark } from "../src/graph/marks.ts";
+import { attemptsMark, cardAct, checkMark, cornerMark, doneWhen, filesLine, forkMark, goalCells, legend, markWord, midCut, nextWanting, stateMark, tally, wanting, wantingLine, type Box, type CheckMark, type Mark } from "../src/graph/marks.ts";
 import { check } from "../src/graph/check.ts";
-import { actsFor, checkWords, counts, cut, fan, type TaskX } from "../src/graph/words.ts";
+import { actsFor, checkWords, counts, cut, type TaskX } from "../src/graph/words.ts";
 import { markDone, offerWords, widen } from "../src/needs.ts";
 import { parseState, parseTask, WORDS, type Word } from "../src/state.ts";
 
@@ -277,7 +277,7 @@ test("the files chip says the latest fact: what it may change, what it has writt
   for (const [why, t, want] of rows) assert.deepEqual(filesLine(t), want, why);
 });
 
-test("×3 on a step set to attempts that has started none: exactly where the fan hung its waiting chips", () => {
+test("×3 on a step set to attempts that has started none; an attempt that started wears its own mark", () => {
   const ready = step("ready", { check: CHECK });
   const real = [{ letter: "a", state: "passed", why: "", lines: 41, model: "Nano", usd: 0.007, attempts: 1, idle: null, checkout: null },
                 { letter: "b", state: "running", why: "", lines: 9, model: "Nano", usd: 0.002, attempts: 1, idle: 3, checkout: null }];
@@ -294,10 +294,9 @@ test("×3 on a step set to attempts that has started none: exactly where the fan
     ["working as one agent", step("running", { check: CHECK, planned: 3 }), null, ""],
     ["landed", step("done", { check: CHECK, planned: 3 }), 3, ""],
   ];
-  for (const [why, t, limit, want] of rows) {
-    assert.equal(attemptsMark(t, limit), want, why);
-    assert.equal(want !== "", !t.forks.length && fan(t, limit).length > 0, `${why}: where the fan has placeholders, and only there`);
-  }
+  for (const [why, t, limit, want] of rows) assert.equal(attemptsMark(t, limit), want, why);
+  assert.deepEqual(["running", "passed", "gave up", "failed", "ended", "", "waiting"].map((state) => forkMark({ state })),
+                   ["working", "landed", "ended", "ended", "ended", "waiting", "waiting"]);
 });
 
 // ---- the one act ----
