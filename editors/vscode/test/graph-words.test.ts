@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import * as C from "../src/commands.ts";
 import { actsFor, asksYou, attemptsOf, badge, CHANGES, commandChip, commandWord, cornerWord, counts, draftedSteps, edgeKind, editable, fan, filesChip, fitWidth, fitWords, forkActs, forkWords, HEADER_ACTS, headerFor,
-         checkWords, heldWords, linkHint, mayRun, OUTSIDE, OUTSIDE_OWN, paneKey, pipeline, planningLine, provesNothing, replayLine, scopeTree, stopAfterPlan, stopsOf, sub, tabOrder, tokenWords, zoomK, topLine,
+         checkWords, heldWords, linkHint, mayRun, OUTSIDE, OUTSIDE_OWN, paneKey, pipeline, planningLine, provesNothing, replayLine, scopeTree, stopAfterPlan, stopsOf, sub, tabOrder, tokenWords, topLine,
          whenEdit, who, worktrees, writtenOf, type StateX, type TaskX } from "../src/graph/words.ts";
 import { SAY, WORDS } from "../src/state.ts";
 import { ICONS } from "../src/graph/icons.ts";
@@ -374,14 +374,6 @@ test("May run, Held by, Stopped, Done when and Tokens say what is known, and no 
   assert.deepEqual(tokenWords(step("rows")), { total: "41k in · 6k out", read: 87, written: 13,
     line: "reading 87% (30k of it from cache) · writing 13% · its check 0%: Graphene runs it, no model" });
   assert.equal(tokenWords(step("button")), null, "no meter, or nothing spent yet");
-});
-
-test("the zoom never goes under 1, where the smallest text is 11 px, nor over 3; a remembered zoom is clamped too", () => {
-  assert.equal(zoomK(0.5), 1);
-  assert.equal(zoomK(1), 1);
-  assert.equal(zoomK(1.5), 1.5);
-  assert.equal(zoomK(5), 3);
-  assert.equal(zoomK(Number.NaN), 1); // a saved state from an older page
 });
 
 test("every icon is a path; Tab walks the boxes wave by wave, then down each wave", () => {

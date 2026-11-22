@@ -38,6 +38,18 @@ export function fitWidth(s: string, max: number, width: (t: string) => number): 
   return out;
 }
 
+/** A title on up to two lines of ``max`` px, for a compact card: whole words on the first while they fit, the
+ *  rest on the second, cut as `fitWidth` cuts. One line when it all fits, or when its first word alone does not
+ *  (then that line is cut). */
+export function twoLines(s: string, max: number, width: (t: string) => number): string[] {
+  if (width(s) <= max) return [s];
+  const words = s.split(/\s+/).filter(Boolean);
+  let n = 0;
+  while (n < words.length - 1 && width(words.slice(0, n + 1).join(" ")) <= max) n++;
+  if (!n) return [fitWidth(words.join(" "), max, width)];
+  return [words.slice(0, n).join(" "), fitWidth(words.slice(n).join(" "), max, width)];
+}
+
 /** Words joined with ` · `, the last dropped until they fit ``max`` characters; the first always stays. */
 export function fitWords(words: string[], max: number): string {
   const parts = words.filter(Boolean);
@@ -48,10 +60,6 @@ export function fitWords(words: string[], max: number): string {
 export function forkWord(f: Fork): string {
   return f.state || "waiting";
 }
-
-/** The zoom's bounds: never under 1, where the smallest text is drawn at its 11 px (pan and scroll show
- *  more, never a shrink past reading), never over 3. */
-export const zoomK = (k: number) => (Number.isFinite(k) ? Math.min(3, Math.max(1, k)) : 1);
 
 /** The box's corner: the model while the task runs, cut to about six characters (`Nano`, `claude…`), or the
  *  mark that it needs you. The hover and the pane say the model whole. */
@@ -486,13 +494,16 @@ export const KEYS: readonly [string, string][] = [
   ["Enter", "open the box's details"],
   ["Esc", "close the details, or stop linking"],
   ["g", "bring the goal on screen"],
-  ["f", "fit the graph again"],
+  ["f", "fit the whole plan in the pane"],
+  ["- · =", "zoom out · zoom in; far out, a card is its title alone"],
+  ["0", "back to whole cards at their own size (100%)"],
   ["v", "graph or lanes"],
   ["?", "this list"],
   ["+", "draw a task: after the selected one, or on its own (the + past a card's out port, and Add task, do the same)"],
   ["drag a dot", "onto another task: that task waits on this one"],
   ["×", "beside a need: it stops waiting on it"],
-  ["wheel · drag", "scroll · pan; ⌘ or Ctrl with the wheel zooms"],
+  ["wheel · drag", "scroll · pan; ⌘ or Ctrl with the wheel, or a pinch, zooms about the pointer"],
+  ["double click", "on a card that is its title alone: whole cards, that one in the middle; on the canvas: fit"],
 ];
 
 /** The hint while a link is armed: what to click or where to drop, and the two ways out. Esc works only with
