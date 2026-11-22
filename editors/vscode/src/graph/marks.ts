@@ -74,8 +74,10 @@ export const wanting = (tasks: readonly (Stated & Pick<TaskX, "id">)[]): string[
  *  first when none of them is selected. Null when no step wants the person. */
 export const nextWanting = (ids: readonly string[], selected: string | null): string | null => ids[(ids.indexOf(selected ?? "") + 1) % ids.length] ?? null;
 
-/** The chip's words: `3 need you · show the next`, `1 needs you · show it`; nothing for none. */
-export const wantingLine = (n: number): string => (n > 1 ? `${n} need you · show the next` : n === 1 ? "1 needs you · show it" : "");
+/** The chip's words: `3 steps need you · show the next`, `1 step needs you · show it`; nothing for none. It
+ *  names what it counts, the steps to act on: the header's `4 need you` (words.ts `counts`) is the engine's
+ *  sum, with every suggested step and every open question in it, so the same words would carry two numbers. */
+export const wantingLine = (n: number): string => (n > 1 ? `${n} steps need you · show the next` : n === 1 ? "1 step needs you · show it" : "");
 
 /** The legend's rows, loudest first, only the marks the plan has: the mark, its word, how many. Two words
  *  where its steps say two (`to review / asks you`). ``drafts``: the hand-drawn drafts and the planner's
@@ -111,27 +113,43 @@ export interface CheckMark { box: Box; tone: "you" | "ok" | "warn" | "red" | "pl
 
 type Checked = Pick<TaskX, "check" | "checked" | "state" | "hollow"> & { command?: string | null; leaves?: boolean };
 
+/** The verdict after the work, where it is this card's to wear. The snapshot's `after` is the task's last
+ *  check row whichever attempt wrote it (state.py `checked`): it outlives a send back, a reopen and a new
+ *  start, so the step's own state says whether it stands. A pass that counts puts a step to review or lands
+ *  it (plan.finish): on any other step the work it passed on was sent back or reopened, or its done was
+ *  refused, and a tick would say proven of work that is not. A fail is the work's as it lies (it came back, it
+ *  is the person's own, the person landed it over its check), never an attempt's that is to come or under
+ *  way: ready, waiting, suggested, working. A command step has no attempts: its last exit stands until a run
+ *  tries it again. */
+function standing(t: Checked, open: boolean): "passed" | "failed" | null {
+  if (t.checked.after === "passed") return open ? null : "passed";
+  return t.checked.after === "failed" && (t.command || !open || t.state === "came back" || t.state === "yours") ? "failed" : null;
+}
+
 /** What the check's box says, by the snapshot's `checked` and nothing else: a tick or a cross only for a
- *  verdict after the work; before it, hollow, telling or not run. The box and its words are read off the
- *  pane's own table (`checkWords`), so the card and the pane cannot say two things of one check: a verdict
- *  the pane warns of is hollow here, one it has no line for is no verdict. `hollow` is the cockpit saying
- *  the check passed before the work, the same verdict as `before: passes`. An older CLI says no verdict at
- *  all: the box is dotted, a step not started says it has not run, one at work says when it runs, and a
- *  step that is done or to review says nothing. A command step's command is its check: its box by its exit. */
+ *  verdict after the work that still stands (`standing`); else by the verdict before it, hollow, telling or
+ *  not run. The box and its words are read off the pane's own table (`checkWords`), so the card and the pane
+ *  cannot say two things of one check: a verdict the pane warns of is hollow here, one it has no line for is
+ *  no verdict. `hollow` warns: the check passed before the work, by the verdict the snapshot gives (`passes`,
+ *  or `landed` on a step landed again on the check it landed with), and `passes` where an older CLI gives
+ *  none. That CLI says no verdict at all: the box is dotted, a step not started says it has not run, one at
+ *  work says when it runs, and a step that is done or to review says nothing. A command step's command is
+ *  its check: its box by its exit. */
 export function checkMark(t: Checked): CheckMark {
   const open = provesNothing({ hollow: true, state: t.state }); // its work is not finished: words.ts's one rule for it
+  const after = standing(t, open);
   if (t.command) {
-    if (t.checked.after === "passed") return { box: "passed", tone: "ok", words: "it ran, and exited 0" };
-    if (t.checked.after === "failed") return { box: "failed", tone: "red", words: "it ran, and failed" };
+    if (after === "passed") return { box: "passed", tone: "ok", words: "it ran, and exited 0" };
+    if (after === "failed") return { box: "failed", tone: "red", words: "it ran, and failed" };
     return { box: "unrun", tone: "dim", words: !open ? "" : t.leaves ? "it runs when you approve it" : "it runs once what it waits on has landed" };
   }
-  const before = t.hollow ? "passes" : t.checked.before;
-  const [b, a] = checkWords({ check: t.check, state: t.state, checked: { before, after: t.checked.after } });
+  const before = t.checked.before ?? (t.hollow ? "passes" : null);
+  const [b, a] = checkWords({ check: t.check, state: t.state, checked: { before, after } });
   if (!a) return { box: "approval", tone: "you", words: b!.line }; // no check: the pane's one line
   const unsaid = checkWords({ check: t.check, state: t.state, checked: { before: null, after: null } })[0]!.line;
   const said = b!.line === unsaid ? "" : b!.line; // what the snapshot said of the code as it was, if anything
   const both = [said, a.line].filter(Boolean).join(" · ");
-  if (a.tone === "ok") return { box: "passed", tone: before === "passes" ? "warn" : "ok", words: both };
+  if (a.tone === "ok") return { box: "passed", tone: t.hollow || before === "passes" ? "warn" : "ok", words: both };
   if (a.tone === "red") return { box: "failed", tone: "red", words: both };
   if (b!.tone === "warn" && open) return { box: "hollow", tone: "warn", words: said };
   if (b!.tone === "red") return { box: "tells", tone: "plain", words: said };
@@ -183,6 +201,7 @@ export function attemptsMark(t: TaskX, limit: number | null | undefined): string
 
 /** The one button on a full card, for the step that needs the person: the first main act its pane offers
  *  (`actsFor`), so a click goes through the same command and asks whatever that command asks first: to review
- *  `Approve`, came back `Help it…`, past the line `Approve and run`, a step of your own `Mark done`. Never
- *  Accept: accepting the plan is one act for every suggested step. None in a replay, which is watched. */
+ *  `Approve`, came back `Help it…`, past the line `Approve and run`, a step of your own `Mark done`, at work
+ *  with a write stopped `Allow the write…`: every step `wanting` lists wears one. Never Accept: accepting
+ *  the plan is one act for every suggested step. None in a replay, which is watched. */
 export const cardAct = (t: TaskX, replay: boolean): Button | null => actsFor(t, replay).find((b) => b.main && b.act !== "accept") ?? null;

@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFileSync } from "node:fs";
-import { attemptsMark, cardAct, checkMark, cornerMark, doneWhen, filesLine, goalCells, legend, markWord, midCut, nextWanting, stateMark, tally, wanting, wantingLine, type CheckMark, type Mark } from "../src/graph/marks.ts";
+import { attemptsMark, cardAct, checkMark, cornerMark, doneWhen, filesLine, goalCells, legend, markWord, midCut, nextWanting, stateMark, tally, wanting, wantingLine, type Box, type CheckMark, type Mark } from "../src/graph/marks.ts";
 import { check } from "../src/graph/check.ts";
-import { actsFor, checkWords, cut, fan, type TaskX } from "../src/graph/words.ts";
-import { markDone } from "../src/needs.ts";
+import { actsFor, checkWords, counts, cut, fan, type TaskX } from "../src/graph/words.ts";
+import { markDone, offerWords, widen } from "../src/needs.ts";
 import { parseState, parseTask, WORDS, type Word } from "../src/state.ts";
 
 const big = parseState(readFileSync(new URL("./fixtures/big.json", import.meta.url), "utf8"));
@@ -79,8 +79,10 @@ test("the steps that want the person, in plan order, and the next one round agai
   assert.equal(nextWanting(["cache"], "cache"), "cache", "the only one: itself, brought on screen");
   assert.deepEqual([wanting([]), nextWanting([], null), nextWanting([], "cache")], [[], null, null]);
   assert.deepEqual(wanting(calm), []);
-  assert.deepEqual([wantingLine(3), wantingLine(1), wantingLine(0)], ["3 need you · show the next", "1 needs you · show it", ""]);
-  assert.equal(wantingLine(wanting(plan).length), "4 need you · show the next");
+  assert.deepEqual([wantingLine(3), wantingLine(1), wantingLine(0)], ["3 steps need you · show the next", "1 step needs you · show it", ""]);
+  assert.equal(wantingLine(wanting(plan).length), "4 steps need you · show the next");
+  // the header's own words (`counts`: `4 need you`) are the engine's sum, suggested steps and questions in it: never those words for this count
+  for (let n = 0; n < 30; n++) assert.doesNotMatch(wantingLine(n), /^\d+ needs? you/, `${n}`);
 });
 
 test("the legend lists the marks the plan has, loudest first, each with its word and its count", () => {
@@ -111,6 +113,7 @@ test("the goal's row groups the marks by sub-goal, in the order the plan first n
 const CHECK = "uv run pytest -q tests/store/test_cache.py";
 const RED = "failed before the work, so it can tell", PASSES = "passed before the work: it proves nothing yet";
 const PASSED = "passed after the work, in a clean copy", UNRUN = "not run on the code as it is yet: it runs once before the work starts";
+const LANDED = "passed when it landed; reopened, it passes until the check is changed";
 const checked = (before: string | null, after: string | null) => ({ before, after });
 
 test("the check's box says what the snapshot said of the check, in the pane's words, and no more", () => {
@@ -126,8 +129,7 @@ test("the check's box says what the snapshot said of the check, in the pane's wo
     ["it fails on a path outside its files", step("ready", { check: CHECK, checked: checked("outside", null) }),
      { box: "hollow", tone: "warn", words: "failed before the work on a path outside its files" }],
     ["it could not be run here", step("running", { check: CHECK, checked: checked("environment", null) }), { box: "hollow", tone: "warn", words: "could not be run here before the work" }],
-    ["landed once and reopened", step("ready", { check: CHECK, checked: checked("landed", null) }),
-     { box: "unrun", tone: "dim", words: "passed when it landed; reopened, it passes until the check is changed" }],
+    ["landed once and reopened", step("ready", { check: CHECK, checked: checked("landed", null) }), { box: "unrun", tone: "dim", words: LANDED }],
     ["failed before the work, passes now", step("done", { check: CHECK, checked: checked("red", "passed") }), { box: "passed", tone: "ok", words: `${RED} · ${PASSED}` }],
     ["to review, the same", step("review", { check: CHECK, checked: checked("red", "passed") }), { box: "passed", tone: "ok", words: `${RED} · ${PASSED}` }],
     ["it passes, as it did before: a tick that warns", step("done", { check: CHECK, hollow: true, checked: checked("passes", "passed") }),
@@ -136,6 +138,20 @@ test("the check's box says what the snapshot said of the check, in the pane's wo
     ["failed after the work", step("came back", { check: CHECK, checked: checked("red", "failed") }), { box: "failed", tone: "red", words: `${RED} · failed after the work` }],
     ["a cross outranks a hollow check", step("came back", { check: CHECK, hollow: true, checked: checked("passes", "failed") }),
      { box: "failed", tone: "red", words: `${PASSES} · failed after the work` }],
+    ["landed over a failed check, by the person's word: the cross stays true", step("done", { check: CHECK, checked: checked("red", "failed") }),
+     { box: "failed", tone: "red", words: `${RED} · failed after the work` }],
+    ["your own step, and Mark done failed its check", step("yours", { check: CHECK, checked: checked("red", "failed") }), { box: "failed", tone: "red", words: `${RED} · failed after the work` }],
+    // a verdict after the work that no longer stands: `after` is the task's last check row, whichever attempt wrote it
+    ["sent back from review: the pass was the rejected work's, no tick", step("ready", { check: CHECK, checked: checked("red", "passed") }), { box: "tells", tone: "plain", words: RED }],
+    ["and while an agent redoes it", step("running", { check: CHECK, checked: checked("landed", "passed") }), { box: "unrun", tone: "dim", words: LANDED }],
+    ["its check passed and its done was refused (nothing changed): it works on, no tick", step("running", { check: CHECK, checked: checked(null, "passed") }),
+     { box: "unrun", tone: "dim", words: "runs in a clean copy when the agent says done" }],
+    ["a step of your own, reopened after it landed", step("yours", { check: CHECK, checked: checked("red", "passed") }), { box: "tells", tone: "plain", words: RED }],
+    ["came back, the pass an attempt's before this one", step("came back", { check: CHECK, checked: checked("red", "passed") }), { box: "tells", tone: "plain", words: RED }],
+    ["tried again: the cross was the last attempt's, this one's verdict is to come", step("running", { check: CHECK, checked: checked("red", "failed") }), { box: "tells", tone: "plain", words: RED }],
+    ["ready to be tried again", step("ready", { check: CHECK, checked: checked("red", "failed") }), { box: "tells", tone: "plain", words: RED }],
+    ["landed again on the check it landed with: the snapshot's own verdict, and a tick that warns", step("done", { check: CHECK, hollow: true, checked: checked("landed", "passed") }),
+     { box: "passed", tone: "warn", words: `${LANDED} · ${PASSED}` }],
     ["landed with no verdict after the work: no tick", step("done", { check: CHECK, checked: checked("red", null) }), { box: "tells", tone: "plain", words: RED }],
     ["landed, hollow, no verdict after: the work is finished, so no hollow box", step("done", { check: CHECK, hollow: true, checked: checked("passes", null) }),
      { box: "unrun", tone: "dim", words: PASSES }],
@@ -152,19 +168,53 @@ test("the check's box says what the snapshot said of the check, in the pane's wo
     ["after it failed: a run tries it again", step("ready", { check: "uv run pytest -q", command: "uv run pytest -q", checked: checked(null, "failed") }),
      { box: "failed", tone: "red", words: "it ran, and failed" }],
     ["an older CLI's command step, done: no verdict, no words", step("done", { check: "uv run pytest -q", command: "uv run pytest -q" }), { box: "unrun", tone: "dim", words: "" }],
+    ["a command step reopened after it ran: it runs again, no tick", step("ready", { check: "uv run pytest -q", command: "uv run pytest -q", checked: checked(null, "passed") }),
+     { box: "unrun", tone: "dim", words: "it runs once what it waits on has landed" }],
   ];
   for (const [why, t, want] of rows) assert.deepEqual(checkMark(t), want, why);
 });
 
-test("whatever the snapshot says, the box agrees with the pane: its words are the pane's lines, a tick or a cross only for a verdict after the work", () => {
+// what the engine's own snapshot said of a step on real stores (plan.finish, reopen, release, start again, a done refused, an override), field for field
+test("the check's box by what the engine really says: a verdict that outlived its attempt is not worn", () => {
+  const said: [string, Word, boolean, string | null, string | null, Box, CheckMark["tone"]][] = [
+    ["to review: its check passed", "review", false, "red", "passed", "passed", "ok"],
+    ["sent back from review, ready again", "ready", false, "red", "passed", "tells", "plain"],
+    ["and red first ran on it again", "ready", false, "landed", "passed", "unrun", "dim"],
+    ["an agent is redoing it", "running", false, "landed", "passed", "unrun", "dim"],
+    ["landed", "done", false, "red", "passed", "passed", "ok"],
+    ["reopened after it landed", "ready", false, "landed", "passed", "unrun", "dim"],
+    ["landed again on the check it landed with", "done", true, "landed", "passed", "passed", "warn"],
+    ["landed on a check that passed before the work", "done", true, "passes", "passed", "passed", "warn"],
+    ["at work: its own done failed the check", "running", false, "red", "failed", "tells", "plain"],
+    ["came back after its check failed", "came back", false, "red", "failed", "failed", "red"],
+    ["at work again after that: the same fields as its own failed done", "running", false, "red", "failed", "tells", "plain"],
+    ["at work: its check passed, its done was refused", "running", false, null, "passed", "unrun", "dim"],
+    ["landed over a failed check by the person's word", "done", false, "red", "failed", "failed", "red"],
+    ["your own: Mark done failed its check", "yours", false, "red", "failed", "failed", "red"],
+    ["your own: done by hand, its check passed", "done", false, "red", "passed", "passed", "ok"],
+  ];
+  for (const [why, state, hollow, before, after, box, tone] of said) {
+    const m = checkMark(step(state, { check: CHECK, hollow, checked: checked(before, after) }));
+    assert.deepEqual([m.box, m.tone], [box, tone], why);
+  }
+});
+
+test("whatever the snapshot says, the box agrees with the pane: its words are the pane's lines, a tick or a cross only for a verdict after the work that stands", () => {
+  const stands: Record<string, Word[]> = { passed: ["done", "review"], failed: ["done", "review", "came back", "yours"] }; // not a step open to an attempt again
   for (const state of WORDS) for (const before of [null, "red", "passes", "outside", "environment", "landed", "a verdict of tomorrow"]) {
     for (const after of [null, "passed", "failed", "something else"]) for (const hollow of [false, true]) {
       const t = step(state, { check: CHECK, hollow, checked: checked(before, after) });
       const m = checkMark(t), at = `${state} · before ${before} · after ${after}${hollow ? " · hollow" : ""}`;
-      const pane = [...checkWords(t), ...(hollow ? checkWords({ ...t, checked: checked("passes", after) }) : [])]; // `hollow` is the cockpit's `passes`
+      const worn = stands[after ?? ""]?.includes(state) ?? false;
+      // the pane's lines for the same fields: the verdict before the work as the snapshot gives it (`hollow` is `passes`
+      // only where it gives none), the one after it where it stands, else what the pane says of a check still to run
+      const pane = checkWords({ ...t, checked: checked(before ?? (hollow ? "passes" : null), worn ? after : null) });
       for (const part of m.words ? m.words.split(" · ") : []) assert.ok(pane.some((x) => x.line === part), `${at}: “${part}” is not a line of the pane's`);
-      assert.equal(m.box === "passed", after === "passed", `${at}: a tick`);
-      assert.equal(m.box === "failed", after === "failed", `${at}: a cross`);
+      assert.equal(m.box === "passed", worn && after === "passed", `${at}: a tick`);
+      assert.equal(m.box === "failed", worn && after === "failed", `${at}: a cross`);
+      if (worn) assert.ok(m.words.endsWith(checkWords(t)[1]!.line), `${at}: the verdict it wears is the pane's line for it`);
+      else assert.doesNotMatch(m.words, /(passed|failed) after the work/, `${at}: no word of a verdict it does not wear`);
+      if (hollow && m.box === "passed") assert.equal(m.tone, "warn", `${at}: a tick on a check that passed before the work warns`);
       if (m.box === "hollow") assert.ok(pane.some((x) => x.tone === "warn") && state !== "done" && state !== "review", `${at}: hollow`);
       if (m.box === "tells") assert.equal(checkWords(t)[0]!.tone, "red", `${at}: tells`);
       if (state === "done" || state === "review") assert.doesNotMatch(m.words, /not run|runs in a clean copy/, `${at}: a finished step is told nothing that has yet to happen`);
@@ -261,7 +311,8 @@ test("a full card wears one act, the pane's first main one, and never Accept; a 
     ["a step of your own with a check", step("yours", { check: CHECK, needs_you: true }), ["Mark done", "markDone"]],
     ["suggested: accepting the plan is one act for them all", step("proposed", { check: CHECK }), null],
     ["working", step("running", { check: CHECK }), null],
-    ["working, and the run stopped for the person: the pane has the moves, the card no button", step("running", { check: CHECK, needs_you: true, stopped: ["README.md"] }), null],
+    ["working, and a write was stopped: the run waits on the person to allow it", step("running", { check: CHECK, needs_you: true, stopped: ["README.md"] }), ["Allow the write…", "handBack"]],
+    ["working, a snapshot that says needs_you and names no stopped write: nothing to allow", step("running", { check: CHECK, needs_you: true }), null],
     ["ready", step("ready", { check: CHECK }), null], ["waiting", step("waiting", { check: CHECK }), null], ["landed", step("done", { check: CHECK }), null],
     ["a command step this side of the line runs by itself", step("ready", { check: "uv run pytest -q", command: "uv run pytest -q" }), null],
     ["a step past the line that has not come up", { ...pr, state: "waiting" }, null],
@@ -290,6 +341,23 @@ test("Mark done on a step of your own: the pane offers it, the host lets it thro
   assert.deepEqual(actsFor(step("yours", { leaves: true, command: "git push", check: "git push" }), false).filter((b) => b.act === "markDone").map((b) => b.label), ["Approve and run"]);
 });
 
+test("Allow the write on a working step the gate stopped: the pane offers it, the host lets it through, and the pick it opens widens that step", () => {
+  const blocked = step("running", { id: "audit", check: CHECK, scope: ["store/audit.py"], needs_you: true, stopped: ["store/repo.py", "README.md"] });
+  assert.deepEqual(actsFor(blocked, false).filter((b) => b.main), [{ label: "Allow the write…", act: "handBack", icon: "check", main: true,
+    title: "it was stopped writing README.md, outside its files: graphene node widen lets it" }]);
+  assert.ok(actsFor(blocked, false)[0]!.title.includes(`graphene ${widen(blocked.id).slice(0, 2).join(" ")}`), "the hover names the command the pick runs");
+  const plan = { ...big, tasks: [blocked] };
+  assert.deepEqual(check({ type: "act", act: "handBack", id: blocked.id }, { state: plan }), { type: "act", act: "handBack", id: blocked.id, target: undefined, fork: undefined });
+  assert.equal(check({ type: "act", act: "handBack", id: blocked.id }, { state: { ...plan, replay: { shown: "a replay", day: "", repository: "" } } }), null, "not in a replay");
+  // graphene.handBack takes a working step with a stopped write (needsView.ts) and asks with these moves: the widen alone
+  assert.deepEqual(offerWords(blocked).map((m) => [m.label, m.argv]), [["Widen its scope to README.md", widen(blocked.id)]]);
+  assert.deepEqual(actsFor({ ...blocked, stopped: [] }, false).filter((b) => b.main), [], "the write allowed, `stopped` empties: the button goes");
+  // the chip joins the overview to the act: every step it counts wears one, as the engine sends each state
+  const sent = [...WORDS.map((w) => step(w, { check: CHECK, needs_you: ["review", "came back", "yours", "proposed"].includes(w) })), blocked,
+                step("yours", { id: "pr", check: "git push", command: "git push", leaves: true, needs_you: true })];
+  for (const t of sent) assert.equal(cardAct(t, false) !== null, wanting([t]).length === 1, `${t.id} (${t.state})`);
+});
+
 // ---- the preview's plan (?fixture=big): every new mark is on it, from values a current CLI would send ----
 test("the repo-sized fixture shows every mark, from what a current snapshot says", () => {
   const at = (id: string) => big.tasks.find((t) => t.id === id)!;
@@ -311,6 +379,8 @@ test("the repo-sized fixture shows every mark, from what a current snapshot says
     "the docs say so: waiting waiting suggested",
   ]);
   assert.deepEqual(wanting(big.tasks), ["cache", "cancel", "a11y"]);
+  // two counts on one canvas, each by its own rule (the header's has the suggested changelog in it), so in two wordings
+  assert.deepEqual([counts(big), wantingLine(wanting(big.tasks).length)], ["3 working · 4 need you · 5 of 26 done · $0.12", "3 steps need you · show the next"]);
   // the check's box, by state: landed and to review ticked, at work and ready telling, one ready step hollow, the rest not run
   const boxes = (state: Word) => [...new Set(big.tasks.filter((t) => t.state === state && t.check).map((t) => checkMark(t).box))].sort();
   assert.deepEqual([boxes("done"), boxes("review"), boxes("running"), boxes("came back"), boxes("ready"), boxes("waiting")],

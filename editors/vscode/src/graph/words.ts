@@ -436,6 +436,8 @@ export function actsFor(t: TaskX, replay: boolean): Button[] {
   if (t.state === "review") out.push({ label: "Approve", act: "signOff", title: "it lands in your repository: graphene node signoff", icon: "check", main: true });
   if (t.state === "proposed") out.push({ label: "Accept", act: "accept", title: "graphene plan accept", icon: "check", main: true });
   if (t.state === "came back") out.push({ label: "Help it…", act: "handBack", title: "allow what it needs, add a task for it, or try again", icon: "debug-step-back", main: true });
+  if (t.state === "running" && t.stopped.length) out.push({ label: "Allow the write…", act: "handBack", icon: "check", main: true, // the run waits on it, as Home's Allow it to change
+                                                           title: `it was stopped writing ${cut(t.stopped[t.stopped.length - 1]!, 60)}, outside its files: graphene node widen lets it` });
   if (hasChanges) out.push({ label: "Open changes", act: "openDiff", title: "its changes so far, in the diff editor", icon: "diff" });
   if (t.forks.length >= 2) out.push({ label: "Compare attempts", act: "compareForks", title: "the attempts side by side", icon: "split-horizontal" });
   if (!t.leaves) out.push({ label: "Add task after", act: "add-after", title: "draw a new task that waits on this one", icon: "add" });
