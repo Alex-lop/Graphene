@@ -731,7 +731,7 @@ function cardFoot(grp: SVGGElement, c: CheckMark, says: (n: number) => string, a
   }
   const k = g.appendChild(el("text", { class: "foot-k", x: 27, y: FOOT_Y + 16 }, "done when"));
   const x = 27 + (k.getComputedTextLength() || 54) + 5, room = right - x;
-  if (room < 48) return; // no room beside the act for words that would say anything: the pane says the check whole
+  if (room < 48) return k.remove(); // no room beside the act for words that would say anything: the box and the act alone, and the pane says the check whole
   const v = g.appendChild(el("text", { class: "foot-v", x, y: FOOT_Y + 16 }));
   let n = Math.floor(room / 6.6); // a mono character at 11 px; then by its drawn length
   do v.textContent = says(n) || (c.box === "approval" ? "you approve" : "___"); while (v.getComputedTextLength() > room && --n > 6);

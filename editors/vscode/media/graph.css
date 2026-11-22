@@ -82,7 +82,7 @@ main { flex: 1; display: flex; min-height: 0; }
 #canvas.dragging { cursor: grabbing; }
 #canvas.lanes { cursor: default; overflow: auto; background-image: none; }
 /* the zoom's buttons and the legend, at the canvas's foot */
-#zoom { position: absolute; left: 16px; bottom: 14px; display: flex; gap: 4px; z-index: 2; }
+#zoom { position: absolute; left: 13px; bottom: 11px; display: flex; gap: 4px; z-index: 2; padding: 3px; border-radius: 8px; background: var(--bg); } /* its own ground, as the legend has: a card may pass under it */
 #zoom button { width: 28px; height: 28px; padding: 0; justify-content: center; font-size: 14px; }
 #zoom #zoom-pct { width: 48px; font-size: 12px; font-variant-numeric: tabular-nums; } /* how big a card is drawn; a click is 100% */
 /* the minimap, over the legend while part of the plan is off screen: a rect a card in its mark's colour (a step

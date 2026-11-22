@@ -38,7 +38,9 @@ The cards:
   kept (`uv run…test_cache.py`). The box is ticked where the check passed after the work and that verdict still
   stands, crossed where it failed, dashed and amber where it proves nothing yet, whole and empty where it fails
   now as it should, dotted where it has not run; a step with no check wears the diamond of your approval. No
-  check wears a ✓ it has not earned. The foot's hover says the verdict in words.
+  check wears a ✓ it has not earned. The foot's hover says the verdict in words. Beside a button that leaves the
+  check no room, the foot is the box and the button alone. The verdicts are the snapshot's own (`checked`), which
+  the CLI says after 0.9.0: with 0.9.0 as released the box stays dotted, landed steps too.
 - The step that needs you wears its one act on its card: Approve, Help it…, Approve and run, Mark done, Allow
   the write…. It is the pane's own button: a click, or Tab and Enter, and it selects nothing. Never in a replay.
 - One shape a state, on a card's corner and at a row's left: a ticked disc landed, a turning ring working, a
