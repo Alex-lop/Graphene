@@ -73,6 +73,7 @@ const offered = new Set<string>(); // drafts graphene is being asked to take: no
 const refused = new Map<string, string>(); // a task's id -> graphene's refusal of the last change to it
 let arriving: string | null = null; // a drawn task graphene took: selected once the plan shows it
 let pressing = false; // a press inside the pane: it is not rebuilt between the press and its click
+let held = false; // a card under a press was not drawn again (`graph`): it is once the press is let go
 const LONG = 2000; // the longest title, check or line of files the host passes on
 
 function remember(patch: Partial<Saved>) {
@@ -473,7 +474,7 @@ function graph(s: StateX, dir: "across" | "down") {
     key = JSON.stringify([key, p.x, p.y, id === selected, down, level]);
     let have = taskEls.get(id);
     if (have && have.key === key) return;
-    if (have?.g.querySelector(".act:active")) return; // its button is under a press: drawn again with the next snapshot, so the release is still its click
+    if (have?.g.matches(":active")) { held = true; return; } // under a press, on it or on its button: drawn again at the release, which is then still its click
     if (!have) {
       const grp = el("g", { class: "task fresh", "data-id": id, ...(watched ? { role: "img" } : { tabindex: 0, role: "button" }) });
       grp.style.transform = `translate(${p.x}px, ${p.y}px)`; // placed before it joins: no glide from the corner
@@ -1151,9 +1152,11 @@ function applyZoom() {
   const pct = percent(level, zoom.k);
   $("zoom-pct").textContent = `${pct}%`;
   $("zoom-pct").setAttribute("aria-label", `zoom ${pct}%: back to 100%`);
-  // part of the plan off screen: the minimap shows all of it, and frames the part in view
+  // part of the plan off screen: the minimap shows all of it, and frames the part in view. Not while a pane is
+  // open on a plan still fitted for the window: what is out of view then is what the pane's side hid, and the
+  // minimap would stand on the cards beside it
   const map = $("minimap"), all = lay ? sizeOf(lay) : null;
-  map.hidden = !all || view() === "lanes" || canvas.clientHeight < 240 || !offScreen(zoom, paneSize(), all);
+  map.hidden = !all || view() === "lanes" || canvas.clientHeight < 240 || (!moved && !drawing && !$("details").hidden) || !offScreen(zoom, paneSize(), all);
   if (all && !map.hidden) {
     const f = miniFrame(zoom, paneSize(), all), frame = map.querySelector(".mm-frame");
     for (const [k, v] of [["x", f.x], ["y", f.y], ["width", f.w], ["height", f.h]] as const) frame?.setAttribute(k, String(v));
@@ -1172,8 +1175,9 @@ function applyZoom() {
 }
 
 /** Pan so a box is on screen (the goal on `g`, a task the host selects). One on screen already moves nothing:
- *  a fitted plan stays fitted. */
-function reveal(id: string) {
+ *  a fitted plan stays fitted. ``own``: the pan is the page's (a card chosen, or reached by the keys), not the
+ *  person's: the plan is still fitted again at the next resize. */
+function reveal(id: string, own = false) {
   const p = lay?.boxes[id];
   if (!p || !lay) return;
   const canvas = $("canvas");
@@ -1185,7 +1189,7 @@ function reveal(id: string) {
   if (y0 < 0) ty -= y0 - 12; else if (y1 > h) ty -= y1 - h + 12;
   if (tx === zoom.tx && ty === zoom.ty) return;
   zoom = clamp({ ...zoom, tx, ty });
-  moved = true;
+  if (!own) moved = true;
   applyZoom();
 }
 
@@ -1212,10 +1216,7 @@ function select(id: string | null, focus = false) {
   if (!id) return;
   const lanes = view() === "lanes";
   if (focus) ((lanes ? laneEls.get(id)?.el : taskEls.get(id)?.g) as HTMLElement | SVGGElement | undefined)?.focus({ preventScroll: !lanes });
-  if (lanes) return;
-  const was = moved;
-  reveal(id);
-  moved = was;
+  if (!lanes) reveal(id, true);
 }
 
 /** Link mode off: nothing armed, no wire drawn. On Esc, Cancel, or a select from outside the graph. */
@@ -1808,7 +1809,7 @@ window.addEventListener("keydown", (e) => {
   }
   // the arrows walk the cards a person can act on: one the planner is still writing is watched, not selected
   const next = step({ ...lay, boxes: Object.fromEntries(Object.entries(lay.boxes).filter(([id]) => !id.startsWith(PLAN))) }, from, dir);
-  if (next === GOAL) { goalG.focus({ preventScroll: true }); reveal(GOAL); return; } // the goal is not a task: focused, not selected
+  if (next === GOAL) { goalG.focus({ preventScroll: true }); reveal(GOAL, true); return; } // the goal is not a task: focused, not selected
   if (next) select(next, true);
 });
 
@@ -1888,6 +1889,13 @@ function wire() {
     const card = on.closest(".task, .goal");
     if (!card) refit(); else if (level === "compact") detail(card.getAttribute("data-id") ?? GOAL);
   });
+  // Tab onto a card out of view pans it in, as choosing it does: the canvas itself never scrolls (graph.css). A
+  // press is no keyboard's focus, so no card moves from under the pointer; nor is a card that kept its focus
+  // through a redraw brought back from where a hand left it
+  $("svg").addEventListener("focusin", (e) => {
+    const on = e.target as Element;
+    if (!painting && on.matches(":focus-visible")) reveal(on.closest(".task")?.getAttribute("data-id") ?? GOAL, true);
+  });
   // the canvas narrows with the window, and with the details pane opening beside it: a narrow one turns to
   // lanes or lays the graph downward; the drawing says which of the two it was, and fits the plan again for the
   // window alone (`graph`)
@@ -1895,7 +1903,10 @@ function wire() {
   $("help").addEventListener("click", (e) => { if (e.target === $("help")) help(false); });
   // a press in the pane keeps the pane it pressed: a box left by that press is rebuilt after the click, not under it
   $("details").addEventListener("pointerdown", () => { pressing = true; });
-  const released = () => { if (pressing) setTimeout(() => { pressing = false; if (paneLast === "stale") pane(); }, 0); };
+  const released = () => {
+    if (pressing) setTimeout(() => { pressing = false; if (paneLast === "stale") pane(); }, 0);
+    if (held) { held = false; setTimeout(render, 0); } // the card the press kept as it was: drawn now, after its click
+  };
   window.addEventListener("pointerup", released);
   window.addEventListener("pointercancel", released);
   window.addEventListener("pointermove", (e) => { if (e.buttons === 0) released(); }); // let go outside the page

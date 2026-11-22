@@ -75,8 +75,8 @@ button.switch:hover { background: none; color: var(--fg); }
 .switch[aria-checked="true"] i { background: var(--vscode-button-background, #0e639c); }
 .switch[aria-checked="true"] i::after { left: 15px; }
 main { flex: 1; display: flex; min-height: 0; }
-#canvas {
-  flex: 1; position: relative; overflow: hidden; cursor: grab; outline: none; background-color: var(--bg);
+#canvas { /* clipped, never scrolled: the page's own pan moves the plan, so a focus out of view cannot slide the buttons and the legend away */
+  flex: 1; position: relative; overflow: clip; cursor: grab; outline: none; background-color: var(--bg);
   background-image: radial-gradient(circle at 1px 1px, var(--dot) 1.1px, transparent 1.3px); background-size: 22px 22px;
 }
 #canvas.dragging { cursor: grabbing; }
