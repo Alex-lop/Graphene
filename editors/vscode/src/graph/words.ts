@@ -61,10 +61,10 @@ export function forkWord(f: Fork): string {
   return f.state || "waiting";
 }
 
-/** The box's corner: the model while the task runs, cut to about six characters (`Nano`, `claude…`), or the
- *  mark that it needs you. The hover and the pane say the model whole. */
+/** A lane's corner: the model while the task runs, cut to about six characters (`Nano`, `claude…`); the pane
+ *  says it whole. Beside it the row wears its state's mark, which is marks.ts's to say (`cornerMark`). */
 export function cornerWord(t: TaskX): string {
-  return t.state === "running" && t.model ? cut(t.model, 7) : t.needs_you ? "◆" : "";
+  return t.state === "running" && t.model ? cut(t.model, 7) : "";
 }
 
 /** Who does a step, for the tile on its card: you, or the executor by a letter (Claude Code `C`, Codex `X`, any

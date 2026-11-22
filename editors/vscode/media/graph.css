@@ -330,7 +330,8 @@ button:disabled { opacity: 0.45; cursor: default; }
 .pill rect { fill: var(--tint); }
 .pill-text, .pill-mark { fill: var(--dim); font-size: 11px; font-family: var(--mono); }
 .pill-mark { opacity: 0.75; }
-.pill.check .pill-mark { fill: var(--done); opacity: 1; }
+.goal .mk.passed { --c: var(--done); } /* the box on the goal's own check: ticked once the goal is done, dotted until then */
+.goal .mk.unrun { --c: var(--waiting); }
 .pill.run .pill-mark { opacity: 1; }
 /* the files chip's latest fact: written so far, a refused write in the came-back red, a write outside its files */
 .pill.working .pill-mark { fill: var(--running); opacity: 1; }
@@ -491,13 +492,12 @@ button:disabled { opacity: 0.45; cursor: default; }
 .lane.st-done .l-stripe { background: var(--done); }
 .lane.st-waiting .l-stripe { background: var(--waiting); }
 .l-main { flex: 1; min-width: 0; }
-.l-head { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+.l-head { display: flex; gap: 8px; align-items: baseline; }
+.l-head .l-title { flex: 1; } /* its model and its mark stand together at the row's end */
 .l-title { font-weight: 600; overflow-wrap: anywhere; }
 .lane.st-done .l-title, .lane.st-waiting .l-title { color: var(--dim); font-weight: 500; }
 .l-model { color: var(--running); font-family: var(--mono); font-size: 11px; font-weight: 600; flex: none; }
-.l-mark { color: var(--review); font-size: 11px; flex: none; }
-.lane.st-came-back .l-mark { color: var(--came-back); }
-.lane.st-proposed .l-mark { color: var(--proposed); }
+.l-mark { flex: none; overflow: visible; align-self: center; } /* its state's mark, the shape its card's corner wears */
 .l-sub { color: var(--dim); font-family: var(--mono); font-size: 11px; margin-top: 2px; overflow-wrap: anywhere; }
 .l-band { color: var(--dim); font-size: 11px; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .l-forks { display: flex; flex-direction: column; gap: 3px; margin-top: 5px; }

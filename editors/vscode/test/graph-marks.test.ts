@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFileSync } from "node:fs";
-import { attemptsMark, cardAct, checkMark, cornerMark, doneWhen, filesLine, forkMark, goalCells, legend, markWord, midCut, nextWanting, stateMark, tally, wanting, wantingLine, type Box, type CheckMark, type Mark } from "../src/graph/marks.ts";
+import { attemptsMark, cardAct, checkLines, checkMark, cornerMark, doneWhen, filesLine, forkMark, goalBox, goalCells, legend, markWord, midCut, nextWanting, stateMark, tally, wanting, wantingLine, type Box, type CheckMark, type Mark } from "../src/graph/marks.ts";
 import { check } from "../src/graph/check.ts";
 import { actsFor, checkWords, counts, cut, KEYS, type TaskX } from "../src/graph/words.ts";
 import { markDone, offerWords, widen } from "../src/needs.ts";
@@ -211,6 +211,8 @@ test("whatever the snapshot says, the box agrees with the pane: its words are th
       // the pane's lines for the same fields: the verdict before the work as the snapshot gives it (`hollow` is `passes`
       // only where it gives none), the one after it where it stands, else what the pane says of a check still to run
       const pane = checkWords({ ...t, checked: checked(before ?? (hollow ? "passes" : null), worn ? after : null) });
+      // and the lines the pane draws (main.ts `scopeTab`): the snapshot's own verdict before the work, the one after it only where it stands
+      assert.deepEqual(checkLines(t), [checkWords(t)[0], pane[1]], `${at}: the pane's Done when`);
       for (const part of m.words ? m.words.split(" · ") : []) assert.ok(pane.some((x) => x.line === part), `${at}: “${part}” is not a line of the pane's`);
       assert.equal(m.box === "passed", worn && after === "passed", `${at}: a tick`);
       assert.equal(m.box === "failed", worn && after === "failed", `${at}: a cross`);
@@ -223,6 +225,13 @@ test("whatever the snapshot says, the box agrees with the pane: its words are th
       if (m.tone === "red") assert.equal(after, "failed", `${at}: red is for a check that failed after the work`);
     }
   }
+});
+
+test("the goal's own check is ticked only once the goal itself is done", () => {
+  const real = parseState(readFileSync(new URL("./fixtures/real-auto.json", import.meta.url), "utf8")); // auto's root sub-goal is the goal, with a check of its own
+  const root = real.goals.find((g) => !g.parent && g.title === real.goal)!;
+  assert.deepEqual([root.check, root.state, goalBox(root)], ["python3 -m unittest", "done", "passed"], "done, which the engine says only once that check passed");
+  for (const state of ["open", "waiting", "running", "review", "", "passed"]) assert.equal(goalBox({ state }), "unrun", `${state}: nothing says it ran`);
 });
 
 test("a check is cut in its middle, so both ends stay; short ones are left alone; never longer than asked", () => {
@@ -404,10 +413,7 @@ test("a command step's box says what its pane says: the workflow fixture's two, 
   assert.deepEqual(checkMark(suite), { box: "passed", tone: "ok", words: "it ran, and exited 0" });
   assert.deepEqual(checkMark(pr), { box: "unrun", tone: "dim", words: "it runs when you approve it" });
   assert.deepEqual([stateMark(suite), stateMark(pr), cardAct(pr, false)?.label, doneWhen(pr, 20), filesLine(pr).text], ["landed", "you", "Approve and run", "it exits 0", ""]);
-  // the pane's Done when for a command step is written where it is drawn (main.ts `commandScope`), out of this
-  // module's reach: until it reads `checkMark(t).words`, this holds the two to the same lines. Once it does, drop this.
-  const pane = readFileSync(new URL("../src/graph/main.ts", import.meta.url), "utf8");
-  for (const t of [suite, pr, { ...suite, state: "ready" as const, checked: checked(null, "failed") }, { ...suite, state: "ready" as const, checked: checked(null, null) }]) {
-    assert.ok(pane.includes(`"${checkMark(t).words}"`), `the pane no longer says “${checkMark(t).words}” of a command step: say it one way in both`);
-  }
+  // the pane's Done when is drawn from this module (`checkLines`; a command step's from `checkMark`): the page
+  // reads no verdict of its own, so it cannot say one the card does not wear
+  assert.doesNotMatch(readFileSync(new URL("../src/graph/main.ts", import.meta.url), "utf8"), /checkWords|checked\.after/);
 });

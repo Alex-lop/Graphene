@@ -160,12 +160,12 @@ test("text is cut to a measured width, with an ellipsis, in a few measures", () 
   assert.equal(fitWidth("abc", 1, mono), "a…"); // never empty: one character and the ellipsis at least
 });
 
-test("the corner's word is the running task's model, cut to about six characters, or the mark that it needs you", () => {
+test("a lane's corner word is the running task's model, cut to about six characters, and nothing else", () => {
   const greet = task("greet"); // running, Nano
   assert.equal(cornerWord(greet), "Nano");
   assert.equal(cornerWord({ ...greet, model: "claude-sonnet-4-5" }), "claude…");
   assert.equal(cornerWord({ ...greet, model: "qwen3-coder-480b" }), "qwen3-…");
-  assert.equal(cornerWord(task("farewell")), "◆"); // in review: it needs you
+  assert.equal(cornerWord(task("farewell")), ""); // in review: its mark says so, and that is marks.ts's (`cornerMark`)
   assert.equal(cornerWord(task("hello")), "");
 });
 

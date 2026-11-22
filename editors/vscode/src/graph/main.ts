@@ -8,9 +8,9 @@ import { STEP_COLOURS, STEP_FALLBACKS, stepColour } from "../owners.ts";
 import { autoLine, SAY, screenWords, usd, type DraftStep, type State } from "../state.ts";
 import { ICONS } from "./icons.ts";
 import { blanks, draftLine, globs, isDraft, lacks, type Draft } from "./draft.ts";
-import { attemptsMark, cardAct, checkMark, cornerMark, doneWhen, filesLine, forkMark, goalCells, legend, midCut, nextWanting, stateMark, tally, wanting, wantingLine,
+import { attemptsMark, cardAct, checkLines, checkMark, cornerMark, doneWhen, filesLine, forkMark, goalBox, goalCells, legend, midCut, nextWanting, stateMark, tally, wanting, wantingLine,
          type CheckMark, type Mark } from "./marks.ts";
-import { actsFor, asksYou, attemptsOf, checkWords, commandChip, cornerWord, cut, done, draftedSteps, edgeKind, editable, filesChip, FIRST_HINT, fitWidth, forkActs, forkRow, forkWords, HEADER_ACTS, headerFor,
+import { actsFor, asksYou, attemptsOf, commandChip, cornerWord, cut, done, draftedSteps, edgeKind, editable, filesChip, FIRST_HINT, fitWidth, forkActs, forkRow, forkWords, HEADER_ACTS, headerFor,
          heldWords, KEYS, linkHint, mayRun, paneKey, pipeline, planningLine, PROVES_NOTHING, provesNothing, questionOn, scopeTree, STOP_AFTER, STOP_AFTER_HOVER, stopAfterPlan, stopsOf, sub, tabOrder, tokenWords, topLine, twoLines, whenEdit, who, worktrees, writtenOf,
          type Button, type ForkX, type StateX, type TaskX } from "./words.ts";
 import { CARD, dotGap, FAR, fitPlan, hold, levelFor, miniFrame, miniSize, nearest, offScreen, panTo, percent, switchK, wheelK, ZOOM_MAX, ZOOM_MIN, zoomK,
@@ -501,9 +501,9 @@ function graph(s: StateX, dir: "across" | "down") {
   // the goal
   const goalG = $("goalg") as unknown as SVGGElement;
   const gp = g.goal ? lay.boxes[GOAL] : undefined;
-  const goalCheck = s.goals.find((x) => !x.parent && x.title === s.goal)?.check ?? ""; // the root that is the goal: its own check
+  const root = s.goals.find((x) => !x.parent && x.title === s.goal); // the root that is the goal: its own check, and whether it is done
   const cells = goalCells(s.tasks, s.goals), all = tally(s.tasks);
-  const gk = gp ? JSON.stringify([s.goal, goalCheck, cells, gp.x, gp.y, down, level]) : "";
+  const gk = gp ? JSON.stringify([s.goal, root, cells, gp.x, gp.y, down, level]) : "";
   if (gk !== goalKey) {
     goalKey = gk;
     goalG.replaceChildren();
@@ -517,7 +517,10 @@ function graph(s: StateX, dir: "across" | "down") {
       goalG.appendChild(el("rect", { class: "goal-box", x: 0, y: 0, width: gp.w, height: BOX_H, rx: 12 }));
       ring(goalG, all.portion, 27, 28, 13);
       fitText(goalG.appendChild(el("text", { class: "goal-title", x: TEXT_X, y: 27 }, s.goal)), gp.w - TEXT_X - 8);
-      if (goalCheck) pill(goalG, "check", "✓", goalCheck, TEXT_X, 37, gp.w - TEXT_X - 10);
+      if (root?.check) { // in its box, as a step's check is: ticked only once the goal itself is done
+        pill(goalG, "check", "", root.check, TEXT_X, 37, gp.w - TEXT_X - 10);
+        mark(goalG, goalBox(root), TEXT_X + 9.5, 45.5, 5.5);
+      }
       const step = Math.min(14, (gp.w - 24) / (all.total + (cells.length - 1) * 0.7)); // the cells and the gaps between their groups share the card's width, however many
       let x = 12;
       for (const group of cells) {
@@ -992,8 +995,9 @@ function drawLane(row: HTMLElement, t: TaskX, s: StateX) {
   const main = div("l-main", undefined, row);
   const head = div("l-head", undefined, main);
   div("l-title", t.title, head);
-  const corner = cornerWord(t);
-  if (corner) div(corner === "◆" ? "l-mark" : "l-model", corner, head);
+  const model = cornerWord(t), corner = cornerMark(t); // its model while it works, and its state's mark as its card's corner wears it
+  if (model) div("l-model", model, head);
+  if (corner) mark(head.appendChild(el("svg", { class: "l-mark", width: 14, height: 14, viewBox: "-7 -7 14 14" })), corner, 0, 0, 6);
   const times = attemptsMark(t, s.envelope.forks); // set to attempts it has not started: ×3, as on its card
   div("l-sub", [line, times].filter(Boolean).join(" · "), main);
   if (times) row.dataset.attempts = times.slice(1); else delete row.dataset.attempts;
@@ -1456,7 +1460,7 @@ function scopeTab(body: HTMLElement, t: TaskX, s: StateX) {
   if (!stops.rows.length) div("dim", "no write was refused", stopped);
   const when = part(body, "Done when");
   if (t.check) code(t.check, div("", undefined, when));
-  for (const c of checkWords(t)) {
+  for (const c of checkLines(t)) { // the verdict after the work only where it stands, as the card's box wears it
     const row = div("checkrow", undefined, when);
     div(`dot ${c.tone}`, undefined, row);
     row.append(c.line);
@@ -1489,8 +1493,8 @@ function commandScope(body: HTMLElement, t: TaskX) {
   const when = part(body, "Done when");
   const row = (tone: string, line: string) => { const r = div("checkrow", undefined, when); div(`dot ${tone}`, undefined, r); r.append(line); };
   row("dim", "its exit code is its check: 0 and it is done");
-  if (t.checked.after) row(t.checked.after === "passed" ? "ok" : "red", t.checked.after === "passed" ? "it ran, and exited 0" : "it ran, and failed");
-  else row("dim", t.leaves ? "it runs when you approve it" : "it runs once what it waits on has landed");
+  const c = checkMark(t); // its exit, as its card's box says it: no line where that says nothing
+  if (c.words) row(c.tone, c.words);
   div("dim", "no model: no tokens", part(body, "Tokens"));
 }
 

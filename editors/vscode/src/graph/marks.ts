@@ -113,6 +113,8 @@ export type Box = "approval" | "passed" | "failed" | "hollow" | "tells" | "unrun
 export interface CheckMark { box: Box; tone: "you" | "ok" | "warn" | "red" | "plain" | "dim"; words: string }
 
 type Checked = Pick<TaskX, "check" | "checked" | "state" | "hollow"> & { command?: string | null; leaves?: boolean };
+/** Its work is not finished: words.ts's one rule for it. */
+const unfinished = (t: Pick<TaskX, "state">) => provesNothing({ hollow: true, state: t.state });
 
 /** The verdict after the work, where it is this card's to wear. The snapshot's `after` is the task's last
  *  check row whichever attempt wrote it (state.py `checked`): it outlives a send back, a reopen and a new
@@ -122,10 +124,14 @@ type Checked = Pick<TaskX, "check" | "checked" | "state" | "hollow"> & { command
  *  is the person's own, the person landed it over its check), never an attempt's that is to come or under
  *  way: ready, waiting, suggested, working. A command step has no attempts: its last exit stands until a run
  *  tries it again. */
-function standing(t: Checked, open: boolean): "passed" | "failed" | null {
-  if (t.checked.after === "passed") return open ? null : "passed";
-  return t.checked.after === "failed" && (t.command || !open || t.state === "came back" || t.state === "yours") ? "failed" : null;
+function standing(t: Checked): "passed" | "failed" | null {
+  if (t.checked.after === "passed") return unfinished(t) ? null : "passed";
+  return t.checked.after === "failed" && (t.command || !unfinished(t) || t.state === "came back" || t.state === "yours") ? "failed" : null;
 }
+
+/** The pane's Done when lines for a step's check: its own table (`checkWords`), read with the verdict after
+ *  the work only where it stands, as the box below reads it. */
+export const checkLines = (t: Checked) => checkWords({ check: t.check, state: t.state, checked: { before: t.checked.before, after: standing(t) } });
 
 /** What the check's box says, by the snapshot's `checked` and nothing else: a tick or a cross only for a
  *  verdict after the work that still stands (`standing`); else by the verdict before it, hollow, telling or
@@ -137,8 +143,7 @@ function standing(t: Checked, open: boolean): "passed" | "failed" | null {
  *  work says when it runs, and a step that is done or to review says nothing. A command step's command is
  *  its check: its box by its exit. */
 export function checkMark(t: Checked): CheckMark {
-  const open = provesNothing({ hollow: true, state: t.state }); // its work is not finished: words.ts's one rule for it
-  const after = standing(t, open);
+  const open = unfinished(t), after = standing(t);
   if (t.command) {
     if (after === "passed") return { box: "passed", tone: "ok", words: "it ran, and exited 0" };
     if (after === "failed") return { box: "failed", tone: "red", words: "it ran, and failed" };
@@ -156,6 +161,10 @@ export function checkMark(t: Checked): CheckMark {
   if (b!.tone === "red") return { box: "tells", tone: "plain", words: said };
   return { box: "unrun", tone: "dim", words: said || (!open ? "" : t.state === "running" || t.state === "came back" ? a.line : unsaid) };
 }
+
+/** The box on the goal's own check: ticked once the goal itself is done, which the engine says only after that
+ *  check passed (plan.py `roll_up`); until then nothing says it ran, and the box is dotted. */
+export const goalBox = (g: Pick<Goal, "state">): Box => (g.state === "done" ? "passed" : "unrun");
 
 /** A string cut in its middle with an ellipsis to ``n`` characters, the end kept twice as long as the start:
  *  a check's news is its last words (`uv run…test_cache.py`). Short strings untouched; never longer than ``n``. */
