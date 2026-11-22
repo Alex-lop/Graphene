@@ -24,7 +24,7 @@
  },
  "spent": 0.118,
  "scoreboard": {
-  "need_you": 3,
+  "need_you": 4,
   "running": 3,
   "proven": 5,
   "total": 26
@@ -95,7 +95,22 @@
    "outside": [],
    "forks": [],
    "kept": null,
-   "hollow": false
+   "hollow": false,
+   "files": [
+    "migrations/0001_orders.py",
+    "store/schema.py"
+   ],
+   "files_n": 2,
+   "touched": [],
+   "stops": [],
+   "checked": {
+    "before": "red",
+    "after": "passed"
+   },
+   "held": {
+    "state": "caught",
+    "by": "nemotron"
+   }
   },
   {
    "id": "repo",
@@ -124,7 +139,21 @@
    "outside": [],
    "forks": [],
    "kept": null,
-   "hollow": false
+   "hollow": false,
+   "files": [
+    "store/repo.py"
+   ],
+   "files_n": 1,
+   "touched": [],
+   "stops": [],
+   "checked": {
+    "before": "red",
+    "after": "passed"
+   },
+   "held": {
+    "state": "caught",
+    "by": "nemotron"
+   }
   },
   {
    "id": "index",
@@ -153,7 +182,21 @@
    "outside": [],
    "forks": [],
    "kept": null,
-   "hollow": false
+   "hollow": false,
+   "files": [
+    "store/index.py"
+   ],
+   "files_n": 1,
+   "touched": [],
+   "stops": [],
+   "checked": {
+    "before": "red",
+    "after": "passed"
+   },
+   "held": {
+    "state": "caught",
+    "by": "nemotron"
+   }
   },
   {
    "id": "cache",
@@ -210,7 +253,19 @@
     }
    ],
    "kept": null,
-   "hollow": false
+   "hollow": false,
+   "files": [],
+   "files_n": 0,
+   "touched": [],
+   "stops": [],
+   "checked": {
+    "before": "red",
+    "after": "passed"
+   },
+   "held": {
+    "state": "caught",
+    "by": "nemotron"
+   }
   },
   {
    "id": "audit",
@@ -241,7 +296,28 @@
    "outside": [],
    "forks": [],
    "kept": null,
-   "hollow": false
+   "hollow": false,
+   "attempts": 2,
+   "files": [],
+   "files_n": 0,
+   "touched": [
+    "store/audit.py"
+   ],
+   "stops": [
+    {
+     "path": "store/repo.py",
+     "at": "2026-11-21T14:02:11",
+     "how": "edit"
+    }
+   ],
+   "checked": {
+    "before": "red",
+    "after": null
+   },
+   "held": {
+    "state": "caught",
+    "by": "nemotron"
+   }
   },
   {
    "id": "purge",
@@ -269,7 +345,19 @@
    "outside": [],
    "forks": [],
    "kept": null,
-   "hollow": false
+   "hollow": false,
+   "files": [],
+   "files_n": 0,
+   "touched": [],
+   "stops": [],
+   "checked": {
+    "before": null,
+    "after": null
+   },
+   "held": {
+    "state": "caught",
+    "by": "nemotron"
+   }
   },
   {
    "id": "models",
@@ -296,7 +384,21 @@
    "outside": [],
    "forks": [],
    "kept": null,
-   "hollow": false
+   "hollow": false,
+   "files": [
+    "api/models.py"
+   ],
+   "files_n": 1,
+   "touched": [],
+   "stops": [],
+   "checked": {
+    "before": "red",
+    "after": "passed"
+   },
+   "held": {
+    "state": "caught",
+    "by": "nemotron"
+   }
   },
   {
    "id": "list",
@@ -354,7 +456,21 @@
     }
    ],
    "kept": null,
-   "hollow": false
+   "hollow": false,
+   "files": [],
+   "files_n": 0,
+   "touched": [
+    "api/list.py"
+   ],
+   "stops": [],
+   "checked": {
+    "before": "red",
+    "after": null
+   },
+   "held": {
+    "state": "caught",
+    "by": "nemotron"
+   }
   },
   {
    "id": "create",
@@ -363,7 +479,8 @@
    "state": "running",
    "parent": "api",
    "scope": [
-    "api/create.py"
+    "api/create.py",
+    "api/validators/**"
    ],
    "needs": [
     "models",
@@ -375,16 +492,40 @@
    "usd": 0.003,
    "idle": 1,
    "needs_you": false,
-   "tail": [],
+   "tail": [
+    "edit api/validators/items.py",
+    "edit api/create.py"
+   ],
    "note": "",
    "changed": [
-    "api/create.py"
+    "api/create.py",
+    "api/validators/items.py"
    ],
    "stopped": [],
    "outside": [],
    "forks": [],
    "kept": null,
-   "hollow": false
+   "hollow": false,
+   "files": [
+    "api/create.py",
+    "api/validators/__init__.py",
+    "api/validators/items.py",
+    "api/validators/totals.py"
+   ],
+   "files_n": 4,
+   "touched": [
+    "api/create.py",
+    "api/validators/items.py"
+   ],
+   "stops": [],
+   "checked": {
+    "before": "red",
+    "after": null
+   },
+   "held": {
+    "state": "caught",
+    "by": "nemotron"
+   }
   },
   {
    "id": "cancel",
@@ -416,7 +557,19 @@
    "kept": null,
    "hollow": false,
    "why": "wrote outside its files: store/repo.py",
-   "attempts": 2
+   "attempts": 2,
+   "files": [],
+   "files_n": 0,
+   "touched": [],
+   "stops": [],
+   "checked": {
+    "before": "red",
+    "after": null
+   },
+   "held": {
+    "state": "caught",
+    "by": "nemotron"
+   }
   },
   {
    "id": "auth",
@@ -443,7 +596,19 @@
    "outside": [],
    "forks": [],
    "kept": null,
-   "hollow": false
+   "hollow": false,
+   "files": [],
+   "files_n": 0,
+   "touched": [],
+   "stops": [],
+   "checked": {
+    "before": "red",
+    "after": null
+   },
+   "held": {
+    "state": "caught",
+    "by": "nemotron"
+   }
   },
   {
    "id": "paging",
@@ -470,7 +635,19 @@
    "outside": [],
    "forks": [],
    "kept": null,
-   "hollow": false
+   "hollow": false,
+   "files": [],
+   "files_n": 0,
+   "touched": [],
+   "stops": [],
+   "checked": {
+    "before": null,
+    "after": null
+   },
+   "held": {
+    "state": "caught",
+    "by": "nemotron"
+   }
   },
   {
    "id": "rate",
@@ -497,7 +674,19 @@
    "outside": [],
    "forks": [],
    "kept": null,
-   "hollow": false
+   "hollow": false,
+   "files": [],
+   "files_n": 0,
+   "touched": [],
+   "stops": [],
+   "checked": {
+    "before": null,
+    "after": null
+   },
+   "held": {
+    "state": "caught",
+    "by": "nemotron"
+   }
   },
   {
    "id": "errors",
@@ -526,7 +715,19 @@
    "outside": [],
    "forks": [],
    "kept": null,
-   "hollow": false
+   "hollow": false,
+   "files": [],
+   "files_n": 0,
+   "touched": [],
+   "stops": [],
+   "checked": {
+    "before": null,
+    "after": null
+   },
+   "held": {
+    "state": "caught",
+    "by": "nemotron"
+   }
   },
   {
    "id": "client",
@@ -553,7 +754,19 @@
    "outside": [],
    "forks": [],
    "kept": null,
-   "hollow": false
+   "hollow": false,
+   "files": [],
+   "files_n": 0,
+   "touched": [],
+   "stops": [],
+   "checked": {
+    "before": "red",
+    "after": null
+   },
+   "held": {
+    "state": "caught",
+    "by": "nemotron"
+   }
   },
   {
    "id": "table",
@@ -581,7 +794,19 @@
    "outside": [],
    "forks": [],
    "kept": null,
-   "hollow": false
+   "hollow": false,
+   "files": [],
+   "files_n": 0,
+   "touched": [],
+   "stops": [],
+   "checked": {
+    "before": null,
+    "after": null
+   },
+   "held": {
+    "state": "caught",
+    "by": "nemotron"
+   }
   },
   {
    "id": "form",
@@ -609,7 +834,19 @@
    "outside": [],
    "forks": [],
    "kept": null,
-   "hollow": false
+   "hollow": false,
+   "files": [],
+   "files_n": 0,
+   "touched": [],
+   "stops": [],
+   "checked": {
+    "before": null,
+    "after": null
+   },
+   "held": {
+    "state": "caught",
+    "by": "nemotron"
+   }
   },
   {
    "id": "detail",
@@ -636,7 +873,19 @@
    "outside": [],
    "forks": [],
    "kept": null,
-   "hollow": false
+   "hollow": false,
+   "files": [],
+   "files_n": 0,
+   "touched": [],
+   "stops": [],
+   "checked": {
+    "before": null,
+    "after": null
+   },
+   "held": {
+    "state": "caught",
+    "by": "nemotron"
+   }
   },
   {
    "id": "empty",
@@ -665,7 +914,19 @@
    "outside": [],
    "forks": [],
    "kept": null,
-   "hollow": false
+   "hollow": false,
+   "files": [],
+   "files_n": 0,
+   "touched": [],
+   "stops": [],
+   "checked": {
+    "before": null,
+    "after": null
+   },
+   "held": {
+    "state": "caught",
+    "by": "nemotron"
+   }
   },
   {
    "id": "a11y",
@@ -676,15 +937,13 @@
    "scope": [
     "web/**"
    ],
-   "needs": [
-    "empty"
-   ],
+   "needs": [],
    "check": null,
    "agent": "",
    "model": "",
    "usd": null,
    "idle": null,
-   "needs_you": false,
+   "needs_you": true,
    "tail": [],
    "note": "",
    "changed": [],
@@ -692,7 +951,19 @@
    "outside": [],
    "forks": [],
    "kept": null,
-   "hollow": false
+   "hollow": false,
+   "files": [],
+   "files_n": 0,
+   "touched": [],
+   "stops": [],
+   "checked": {
+    "before": null,
+    "after": null
+   },
+   "held": {
+    "state": "none",
+    "by": "you"
+   }
   },
   {
    "id": "ci",
@@ -719,7 +990,21 @@
    "outside": [],
    "forks": [],
    "kept": null,
-   "hollow": false
+   "hollow": false,
+   "files": [
+    ".github/workflows/ci.yml"
+   ],
+   "files_n": 1,
+   "touched": [],
+   "stops": [],
+   "checked": {
+    "before": "red",
+    "after": "passed"
+   },
+   "held": {
+    "state": "caught",
+    "by": "nemotron"
+   }
   },
   {
    "id": "docker",
@@ -747,7 +1032,21 @@
    "outside": [],
    "forks": [],
    "kept": null,
-   "hollow": false
+   "hollow": true,
+   "files": [
+    "Dockerfile"
+   ],
+   "files_n": 1,
+   "touched": [],
+   "stops": [],
+   "checked": {
+    "before": "passes",
+    "after": null
+   },
+   "held": {
+    "state": "caught",
+    "by": "nemotron"
+   }
   },
   {
    "id": "smoke",
@@ -775,7 +1074,19 @@
    "outside": [],
    "forks": [],
    "kept": null,
-   "hollow": false
+   "hollow": false,
+   "files": [],
+   "files_n": 0,
+   "touched": [],
+   "stops": [],
+   "checked": {
+    "before": null,
+    "after": null
+   },
+   "held": {
+    "state": "caught",
+    "by": "nemotron"
+   }
   },
   {
    "id": "readme",
@@ -802,7 +1113,21 @@
    "outside": [],
    "forks": [],
    "kept": null,
-   "hollow": false
+   "hollow": false,
+   "files": [
+    "README.md"
+   ],
+   "files_n": 1,
+   "touched": [],
+   "stops": [],
+   "checked": {
+    "before": null,
+    "after": null
+   },
+   "held": {
+    "state": "caught",
+    "by": "nemotron"
+   }
   },
   {
    "id": "apidoc",
@@ -830,7 +1155,19 @@
    "outside": [],
    "forks": [],
    "kept": null,
-   "hollow": false
+   "hollow": false,
+   "files": [],
+   "files_n": 0,
+   "touched": [],
+   "stops": [],
+   "checked": {
+    "before": null,
+    "after": null
+   },
+   "held": {
+    "state": "caught",
+    "by": "nemotron"
+   }
   },
   {
    "id": "changelog",
@@ -850,7 +1187,7 @@
    "model": "",
    "usd": null,
    "idle": null,
-   "needs_you": false,
+   "needs_you": true,
    "tail": [],
    "note": "",
    "changed": [],
@@ -858,7 +1195,19 @@
    "outside": [],
    "forks": [],
    "kept": null,
-   "hollow": false
+   "hollow": false,
+   "files": [],
+   "files_n": 0,
+   "touched": [],
+   "stops": [],
+   "checked": {
+    "before": null,
+    "after": null
+   },
+   "held": {
+    "state": "caught",
+    "by": "nemotron"
+   }
   }
  ],
  "edges": [
@@ -995,11 +1344,6 @@
   [
    "detail",
    "empty",
-   "needs"
-  ],
-  [
-   "empty",
-   "a11y",
    "needs"
   ],
   [

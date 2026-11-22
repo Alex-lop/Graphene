@@ -1,9 +1,9 @@
 // The rules behind the graph's cards, pure: which mark a step's state wears, what a band, the goal, the legend
-// and the "need you" chip count from those marks, and what the check's box at a card's foot says. A mark is
-// drawn only for what a field of the snapshot says (state.ts); the words are words.ts's and `SAY`'s. No DOM
-// here, so `node --test` reads them.
+// and the "need you" chip count from those marks, what the check's box at a card's foot says, the files
+// chip's latest fact, and the one act a card wears. A mark is drawn only for what a field of the snapshot
+// says (state.ts); the words are words.ts's and `SAY`'s. No DOM here, so `node --test` reads them.
 import { SAY, type Goal } from "../state.ts";
-import { asksYou, badge, checkWords, fan, filesChip, provesNothing, writtenOf, type TaskX } from "./words.ts";
+import { actsFor, asksYou, badge, checkWords, fan, filesChip, provesNothing, writtenOf, type Button, type TaskX } from "./words.ts";
 
 /** The one mark a step's state wears, the same shape at every size: a circle is the run's own business
  *  (waiting, ready, working, landed, suggested), a diamond is the person (you, yours), a triangle is trouble (back). */
@@ -178,3 +178,11 @@ export function attemptsMark(t: TaskX, limit: number | null | undefined): string
   const n = t.forks.length ? 0 : fan(t, limit).length;
   return n ? `×${n}` : "";
 }
+
+// ---- the one act a full card wears ----
+
+/** The one button on a full card, for the step that needs the person: the first main act its pane offers
+ *  (`actsFor`), so a click goes through the same command and asks whatever that command asks first: to review
+ *  `Approve`, came back `Help it…`, past the line `Approve and run`, a step of your own `Mark done`. Never
+ *  Accept: accepting the plan is one act for every suggested step. None in a replay, which is watched. */
+export const cardAct = (t: TaskX, replay: boolean): Button | null => actsFor(t, replay).find((b) => b.main && b.act !== "accept") ?? null;

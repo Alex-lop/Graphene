@@ -431,6 +431,8 @@ export function actsFor(t: TaskX, replay: boolean): Button[] {
   if (replay) return out;
   const hasChanges = t.changed.length > 0 || ["running", "review", "done", "came back"].includes(t.state);
   if (asksYou(t)) out.push({ label: "Approve and run", act: "markDone", title: `it leaves your machine: graphene node done runs ${cut(t.command ?? "", 80)}`, icon: "check", main: true });
+  else if (t.state === "yours") out.push({ label: "Mark done", act: "markDone", icon: "check", main: true, // a step of your own, as Home's Mark done
+                                           title: `you did it yourself: graphene node done ${t.check ? "runs its check first, in a terminal" : "finishes it, it has no check to run"}` });
   if (t.state === "review") out.push({ label: "Approve", act: "signOff", title: "it lands in your repository: graphene node signoff", icon: "check", main: true });
   if (t.state === "proposed") out.push({ label: "Accept", act: "accept", title: "graphene plan accept", icon: "check", main: true });
   if (t.state === "came back") out.push({ label: "Help it…", act: "handBack", title: "allow what it needs, add a task for it, or try again", icon: "debug-step-back", main: true });

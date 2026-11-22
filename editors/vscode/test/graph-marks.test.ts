@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFileSync } from "node:fs";
-import { attemptsMark, checkMark, cornerMark, doneWhen, filesLine, goalCells, legend, markWord, midCut, nextWanting, stateMark, tally, wanting, wantingLine, type CheckMark, type Mark } from "../src/graph/marks.ts";
-import { checkWords, cut, fan, type TaskX } from "../src/graph/words.ts";
+import { attemptsMark, cardAct, checkMark, cornerMark, doneWhen, filesLine, goalCells, legend, markWord, midCut, nextWanting, stateMark, tally, wanting, wantingLine, type CheckMark, type Mark } from "../src/graph/marks.ts";
+import { check } from "../src/graph/check.ts";
+import { actsFor, checkWords, cut, fan, type TaskX } from "../src/graph/words.ts";
+import { markDone } from "../src/needs.ts";
 import { parseState, parseTask, WORDS, type Word } from "../src/state.ts";
 
 const big = parseState(readFileSync(new URL("./fixtures/big.json", import.meta.url), "utf8"));
@@ -245,5 +247,96 @@ test("×3 on a step set to attempts that has started none: exactly where the fan
   for (const [why, t, limit, want] of rows) {
     assert.equal(attemptsMark(t, limit), want, why);
     assert.equal(want !== "", !t.forks.length && fan(t, limit).length > 0, `${why}: where the fan has placeholders, and only there`);
+  }
+});
+
+// ---- the one act ----
+test("a full card wears one act, the pane's first main one, and never Accept; a replay wears none", () => {
+  const pr = step("yours", { check: "gh pr create --draft", command: "gh pr create --draft", leaves: true });
+  const rows: [string, TaskX, [string, string] | null][] = [
+    ["to review", step("review", { check: CHECK }), ["Approve", "signOff"]],
+    ["came back", step("came back", { check: CHECK }), ["Help it…", "handBack"]],
+    ["past the line", pr, ["Approve and run", "markDone"]],
+    ["a step of your own", step("yours"), ["Mark done", "markDone"]],
+    ["a step of your own with a check", step("yours", { check: CHECK, needs_you: true }), ["Mark done", "markDone"]],
+    ["suggested: accepting the plan is one act for them all", step("proposed", { check: CHECK }), null],
+    ["working", step("running", { check: CHECK }), null],
+    ["working, and the run stopped for the person: the pane has the moves, the card no button", step("running", { check: CHECK, needs_you: true, stopped: ["README.md"] }), null],
+    ["ready", step("ready", { check: CHECK }), null], ["waiting", step("waiting", { check: CHECK }), null], ["landed", step("done", { check: CHECK }), null],
+    ["a command step this side of the line runs by itself", step("ready", { check: "uv run pytest -q", command: "uv run pytest -q" }), null],
+    ["a step past the line that has not come up", { ...pr, state: "waiting" }, null],
+  ];
+  for (const [why, t, want] of rows) {
+    const b = cardAct(t, false);
+    assert.deepEqual(b && [b.label, b.act], want, why);
+    assert.equal(cardAct(t, true), null, `${why}: a replay is watched`);
+    if (b) assert.deepEqual(b, actsFor(t, false).find((x) => x.main), `${why}: the pane's own button, not a second one`);
+  }
+});
+
+test("Mark done on a step of your own: the pane offers it, the host lets it through, and it runs `graphene node done` on that step", () => {
+  const mine = big.tasks.find((t) => t.state === "yours")!;
+  const acts = actsFor(mine, false);
+  assert.deepEqual(acts.filter((b) => b.act === "markDone").map((b) => [b.label, b.main, b.title]),
+                   [["Mark done", true, "you did it yourself: graphene node done finishes it, it has no check to run"]]);
+  assert.equal(acts[0]!.act, "markDone", "its first button");
+  assert.match(actsFor({ ...mine, check: "npm test" }, false)[0]!.title, /graphene node done runs its check first/);
+  assert.ok(acts[0]!.title.includes(`graphene ${markDone(mine.id).slice(0, 2).join(" ")}`), "the hover names the command the click runs");
+  assert.deepEqual(check({ type: "act", act: "markDone", id: mine.id }, { state: big }), { type: "act", act: "markDone", id: mine.id, target: undefined, fork: undefined });
+  assert.equal(check({ type: "act", act: "markDone", id: mine.id }, { state: { ...big, replay: { shown: "a replay", day: "", repository: "" } } }), null, "not in a replay");
+  assert.deepEqual(markDone(mine.id), ["node", "done", mine.id]);
+  // one markDone row a step, whichever it is: past the line it approves and runs, and no other state offers it
+  for (const state of WORDS) assert.equal(actsFor(step(state, { check: CHECK }), false).filter((b) => b.act === "markDone").length, state === "yours" ? 1 : 0, state);
+  assert.deepEqual(actsFor(step("yours", { leaves: true, command: "git push", check: "git push" }), false).filter((b) => b.act === "markDone").map((b) => b.label), ["Approve and run"]);
+});
+
+// ---- the preview's plan (?fixture=big): every new mark is on it, from values a current CLI would send ----
+test("the repo-sized fixture shows every mark, from what a current snapshot says", () => {
+  const at = (id: string) => big.tasks.find((t) => t.id === id)!;
+  // the cockpit's own rule for `needs_you` (cockpit/model.py), so a step of your own carries it as a real snapshot does
+  for (const t of big.tasks) assert.equal(t.needs_you, ["review", "came back", "yours", "proposed"].includes(t.state) || (t.state === "running" && t.stopped.length > 0), t.id);
+  assert.equal(big.scoreboard.need_you, big.questions.length + big.tasks.filter((t) => t.needs_you).length);
+  // the engine reads a step behind an unmet need as waiting, the person's own too (plan.reads), and `node done` on it is refused
+  for (const t of big.tasks) if (t.state !== "waiting" && t.state !== "proposed") assert.deepEqual(t.needs.filter((n) => at(n).state !== "done"), [], `${t.id} is ${t.state} behind an unmet need`);
+  assert.deepEqual(big.edges.map(([a, b]) => `${a}>${b}`).sort(), big.tasks.flatMap((t) => t.needs.map((n) => `${n}>${t.id}`)).sort(), "an edge a need, and no other");
+  assert.deepEqual(legend(big.tasks), [["you", "to review", 1], ["back", "came back", 1], ["yours", "yours", 1], ["working", "working", 3],
+                                       ["landed", "landed", 5], ["ready", "ready", 3], ["waiting", "waiting", 11], ["suggested", "suggested", 1]]);
+  const all = tally(big.tasks);
+  assert.deepEqual([all.landed, all.total, all.wants.map((w) => w.text)], [5, 26, ["1 to review", "1 came back", "1 yours"]]);
+  assert.deepEqual(goalCells(big.tasks, big.goals).map((g) => `${g.title}: ${g.marks.join(" ")}`), [
+    "the store keeps orders: landed landed landed you working waiting",
+    "the API serves them: landed back working working ready waiting waiting waiting",
+    "the pages show them: yours ready waiting waiting waiting waiting",
+    "it runs in CI: landed ready waiting",
+    "the docs say so: waiting waiting suggested",
+  ]);
+  assert.deepEqual(wanting(big.tasks), ["cache", "cancel", "a11y"]);
+  // the check's box, by state: landed and to review ticked, at work and ready telling, one ready step hollow, the rest not run
+  const boxes = (state: Word) => [...new Set(big.tasks.filter((t) => t.state === state && t.check).map((t) => checkMark(t).box))].sort();
+  assert.deepEqual([boxes("done"), boxes("review"), boxes("running"), boxes("came back"), boxes("ready"), boxes("waiting")],
+                   [["passed"], ["passed"], ["tells"], ["tells"], ["hollow", "tells"], ["unrun"]]);
+  assert.deepEqual(checkMark(at("docker")), { box: "hollow", tone: "warn", words: "passed before the work: it proves nothing yet" });
+  assert.deepEqual([checkMark(at("a11y")).box, checkMark(at("changelog")).box], ["approval", "approval"]);
+  // the files chip's three other facts
+  assert.deepEqual(filesLine(at("create")), { tone: "working", mark: "✎", text: "2 of 4 files", refused: "" });
+  assert.deepEqual(filesLine(at("audit")), { tone: "working", mark: "✎", text: "1 of 1 file", refused: "1 refused" });
+  assert.equal(stateMark(at("audit")), "working", "the refused write was its first attempt's: nothing is stopped in the one going now");
+  assert.deepEqual(filesLine(at("cancel")), { tone: "back", mark: "✕", text: "wrote store/repo.py", refused: "" });
+  // ×3 where the limits' three attempts have not started; the two races under way keep their chips
+  for (const t of big.tasks) assert.equal(attemptsMark(t, big.envelope.forks), ["ready", "waiting"].includes(t.state) ? "×3" : "", t.id);
+  assert.deepEqual(big.tasks.filter((t) => cardAct(t, false)).map((t) => `${t.id}: ${cardAct(t, false)!.label}`), ["cache: Approve", "cancel: Help it…", "a11y: Mark done"]);
+});
+
+test("a command step's box says what its pane says: the workflow fixture's two, and the pane's own lines", () => {
+  const wf = parseState(readFileSync(new URL("./fixtures/workflow.json", import.meta.url), "utf8"));
+  const suite = wf.tasks.find((t) => t.id === "suite-48")!, pr = wf.tasks.find((t) => t.id === "pr-48")!;
+  assert.deepEqual(checkMark(suite), { box: "passed", tone: "ok", words: "it ran, and exited 0" });
+  assert.deepEqual(checkMark(pr), { box: "unrun", tone: "dim", words: "it runs when you approve it" });
+  assert.deepEqual([stateMark(suite), stateMark(pr), cardAct(pr, false)?.label, doneWhen(pr, 20), filesLine(pr).text], ["landed", "you", "Approve and run", "it exits 0", ""]);
+  // the pane's Done when for a command step is written where it is drawn (main.ts `commandScope`), out of this
+  // module's reach: until it reads `checkMark(t).words`, this holds the two to the same lines. Once it does, drop this.
+  const pane = readFileSync(new URL("../src/graph/main.ts", import.meta.url), "utf8");
+  for (const t of [suite, pr, { ...suite, state: "ready" as const, checked: checked(null, "failed") }, { ...suite, state: "ready" as const, checked: checked(null, null) }]) {
+    assert.ok(pane.includes(`"${checkMark(t).words}"`), `the pane no longer says “${checkMark(t).words}” of a command step: say it one way in both`);
   }
 });
