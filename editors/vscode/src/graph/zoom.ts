@@ -47,6 +47,16 @@ export function fitView(canvas: Size, drawing: Size, foot = 0): Zoom & { whole: 
   return { k, tx: Math.max(0, (canvas.w - drawing.w * k) / 2), ty: Math.max(0, (h - drawing.h * k) / 2), whole: want >= ZOOM_MIN };
 }
 
+/** How a plan opens in its pane: as whole cards where they fit at a scale they read at, else as rows, fitted;
+ *  null when not even rows fit at the smallest scale. ``rows`` (the plan's size laid out as rows) is asked for
+ *  only when it is needed. */
+export function fitPlan(canvas: Size, full: Size, rows: () => Size, foot = 0): (Zoom & { level: Level }) | null {
+  const whole = fitView(canvas, full, foot);
+  if (whole.k >= FULL_FROM) return { level: "full", k: whole.k, tx: whole.tx, ty: whole.ty };
+  const far = fitView(canvas, rows(), foot);
+  return far.whole ? { level: "compact", k: far.k, tx: far.tx, ty: far.ty } : null;
+}
+
 /** A pan never loses the drawing: one larger than the canvas stays against an edge at most, a smaller one
  *  stays inside it, wherever it was put. */
 export function hold(z: Zoom, canvas: Size, drawing: Size): Zoom {

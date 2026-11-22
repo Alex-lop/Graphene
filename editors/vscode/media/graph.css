@@ -3,7 +3,8 @@
    Code's own, or mixed from two of them, so it is native in light, dark and high contrast. Colour means state:
    working amber, landed green, needs you purple, drafted blue, came back red (the chart colours, as the
    cockpit's are). A task's tile is the one other colour: its step's own, as its files wear it in the Explorer;
-   the tile's letter says who does the step. No text under 11 px. */
+   the tile's letter says who does the step. No text under 11 px at the drawing's own size (100%); a plan
+   fitted smaller than that is read from afar, and its cards are then rows with their titles drawn larger. */
 :root {
   --running: var(--vscode-charts-yellow, #e9c46a);
   --review: var(--vscode-charts-purple, #c77dff);
@@ -101,6 +102,7 @@ main { flex: 1; display: flex; min-height: 0; }
 .mm-frame { fill: color-mix(in srgb, var(--focus) 14%, transparent); stroke: var(--focus); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
 #legend { position: absolute; right: 16px; bottom: 16px; display: flex; gap: 14px; font-size: 11.5px; color: var(--dim); pointer-events: none;
           padding: 3px 9px; border-radius: 6px; background: var(--bg); } /* its own ground: a region or an edge may pass under it */
+#legend[hidden] { display: none; }
 #legend div::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; background: var(--running); }
 #legend .lg-done::before { background: var(--done); }
 #legend .lg-review::before { background: var(--review); }

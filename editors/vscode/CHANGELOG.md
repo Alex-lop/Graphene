@@ -2,6 +2,20 @@
 
 ## Unreleased, after 0.9.0
 
+The whole plan in the pane (22 November 2026).
+
+- The graph opens with the whole plan in view, whatever its size: fitted to the pane, never drawn larger than
+  its own size. It is fitted again while you have not panned or zoomed (a task's pane opening, a task added, the
+  window resized), and every time the page opens. `f`, the ⤢ button and a double click on the canvas fit it again.
+- Zoom goes out to 20% and in to 300%: the − and + buttons, `-` and `=`, ⌘ or Ctrl with the wheel, a pinch. The
+  percent between the buttons says how big a card is drawn; a click on it, or `0`, is 100%.
+- From afar a card is a row: its tile, its title and its mark (landed, working, needs you). A plan too big to
+  read as whole cards opens that way; zooming in turns the rows back into whole cards, a double click on a row
+  opens it at 100%, and a task drawn from afar opens there too.
+- A minimap in the canvas's corner while part of the plan is off screen: a click or a drag in it goes there.
+- The "goal" chip stands clear of the legend and the minimap, and the legend gives way to the zoom's buttons on a
+  narrow canvas. The narrow graph (under 560 px) and the lanes are as they were.
+
 The graph is built by hand (10 to 11 November 2026). It needs no newer CLI: every click is a 0.9.0 command.
 
 - A task's pane is a form: its title, the files it may change and its check are typed in place; attempts are a

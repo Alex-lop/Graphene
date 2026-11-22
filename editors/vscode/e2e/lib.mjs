@@ -365,10 +365,12 @@ export async function waitForGraph(page, { min = 1, timeout = 60000 } = {}) {
   throw new Error(`no graph with ${min} task(s) in ${timeout} ms`);
 }
 
-/** What a graph frame shows: the goal, the counts, the tasks' titles and states. */
+/** What a graph frame shows: the goal, the counts, the tasks' titles and states. A plan fitted from afar is
+ *  drawn as rows (`level` is then "compact"): a row has its title, and no status line or attempts to read. */
 export async function readGraph(frame) {
   return frame.evaluate(() => ({
     goal: document.querySelector("#goal")?.textContent ?? "",
+    level: document.querySelector("#svg")?.dataset.level ?? "",
     // narrow, the header is one line: the counts are then in the goal's hover, not on the page
     counts: document.querySelector("#counts:not([hidden])")?.textContent || document.querySelector("#goal")?.title || "",
     notice: document.querySelector("#notice:not([hidden])")?.textContent ?? "",
