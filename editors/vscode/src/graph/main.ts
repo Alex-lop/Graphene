@@ -190,7 +190,7 @@ function draw(at: { after: string | null; parent: string | null }) {
   if (view() === "lanes") return;
   // drawn on a plan seen from afar, it is opened as a double click opens a row: its title is typed at a size that reads
   const was = moved;
-  if (level === "compact") detail(d.key); else reveal(d.key);
+  if (level === "compact") detail(d.key);
   moved = was; // the page's own move, not the person's: the canvas holds still under what is typed for as long as
   drawing = d.key; // the draft is open, and then the plan is fitted again if no hand panned or zoomed
 }
@@ -279,8 +279,8 @@ function direction(): "across" | "down" {
 function render() {
   if (!state) return;
   const s = state;
-  if (drawing !== selected) drawing = null; // the drawn task was left (closed, discarded, or taken into the plan)
-  // the pane first: it opens or closes beside the canvas, which is then as wide as the plan is fitted to
+  if (drawing && drawing !== selected) { drawing = null; fitRoom = ""; } // the drawn task was left (closed, discarded, or taken into the plan): the plan is fitted again
+  // the pane first: it opens or closes beside the canvas, which is as wide as a plan fitted now is fitted to
   const shut = $("details").hidden;
   pane();
   if ($("details").hidden !== shut) paneMoved = true;
@@ -352,8 +352,9 @@ function header(s: StateX) {
 const taskEls = new Map<string, { g: SVGGElement; key: string }>();
 const edgeEls = new Map<string, SVGPathElement>();
 let goalKey = "";
-let fitSize = ""; // the drawing's size when it was last fitted
-let paneMoved = false; // the pane opened or closed in this render: the plan glides to its new fit
+let fitSize = ""; // the drawing's size when the zoom was last set for it
+let fitRoom = ""; // and the window's room for it then, whatever the pane took of it; "": the plan is fitted again at the next drawing
+let paneMoved = false; // the pane opened or closed in this render: a plan fitted now glides to its new fit
 
 type Placed = { lay: Layout; g: ReturnType<typeof boxes>; here: number; awayW: number };
 
@@ -409,10 +410,19 @@ function graph(s: StateX, dir: "across" | "down") {
   const down = dir === "down";
   const was = svg.dataset.level ?? level; // the level of the drawing on screen
   if (down) level = "full"; // the narrow drawing keeps whole cards
-  const opened = moved || drawing ? null : opening(s, down); // until the person pans or zooms, the whole plan is in the pane
+  // Until the person pans or zooms, the whole plan is in the pane: fitted when the page opens, when the window's
+  // room changes, when the plan grows or shrinks, and when asked (`f`, a select from outside the page). The
+  // pane opening or closing beside the canvas is none of these: a card chosen here stays where it is, as big as
+  // it is. The narrow drawing wraps at its canvas's width, so it is laid out for it each time.
+  const main = $("canvas").parentElement!, room = `${main.clientWidth}x${main.clientHeight}`;
+  const sized = (l: Layout) => `${l.width}x${l.height}`;
+  const free = !moved && !drawing;
+  let at = free && down ? null : place(s, down, level);
+  const grew = !at || sized(at.lay) !== fitSize, same = !grew && room === fitRoom; // neither the window nor the plan changed
+  const opened = free && !same ? opening(s, down) : null;
   if (opened) level = opened.level;
   D = DIMS[level];
-  const at = opened?.at ?? place(s, down, level);
+  at = opened?.at ?? at!;
   const { g, here, awayW } = at;
   lay = at.lay;
   svg.dataset.level = level;
@@ -518,14 +528,15 @@ function graph(s: StateX, dir: "across" | "down") {
   svg.setAttribute("viewBox", `0 0 ${Math.max(lay.width, 10)} ${Math.max(lay.height, 10)}`);
   svg.setAttribute("width", String(lay.width));
   svg.setAttribute("height", String(lay.height));
-  // until the person pans or zooms, the plan keeps the pane: when it grows or shrinks, or the pane beside it
-  // opens, it glides to its new fit
-  const size = `${lay.width}x${lay.height}`;
+  // fitted again because it grew or shrank, or with the pane opening beside it, it glides to its new fit. In a
+  // hand's own place it is held to the canvas when the window or the plan changed, and not for the pane: a
+  // clamp then would shift it under the click
   if (opened) {
-    if (fitted && level === was && (size !== fitSize || paneMoved)) { svg.classList.add("glide"); setTimeout(() => svg.classList.remove("glide"), 300); }
+    if (fitted && level === was && (grew || paneMoved)) { svg.classList.add("glide"); setTimeout(() => svg.classList.remove("glide"), 300); }
     zoom = opened.zoom;
-  } else zoom = clamp(zoom);
-  fitSize = size;
+  } else if (!same) zoom = clamp(zoom);
+  fitSize = sized(lay);
+  fitRoom = room;
   fitted = true;
   minimap(s, here);
   applyZoom();
@@ -1015,6 +1026,7 @@ const detail = (id: string) => turn("full", 1, { id, sx: $("canvas").clientWidth
 function refit() {
   moved = false;
   drawing = null;
+  fitRoom = "";
   render();
 }
 
@@ -1106,14 +1118,19 @@ function clicked(id: string) {
   select(id);
 }
 
+/** A card chosen: its pane opens beside the canvas, and nothing else moves: not the zoom, not the level. Only
+ *  where that leaves the card out of view (under the pane's side of the canvas, or off it already) does the
+ *  plan pan, just enough to show it. That pan is the page's own, not the person's: the next resize fits again. */
 function select(id: string | null, focus = false) {
   selected = id;
   render();
-  if (id && focus) {
-    const node = (view() === "lanes" ? laneEls.get(id)?.el : taskEls.get(id)?.g) as HTMLElement | SVGGElement | undefined;
-    node?.focus({ preventScroll: view() !== "lanes" });
-    if (view() !== "lanes") reveal(id);
-  }
+  if (!id) return;
+  const lanes = view() === "lanes";
+  if (focus) ((lanes ? laneEls.get(id)?.el : taskEls.get(id)?.g) as HTMLElement | SVGGElement | undefined)?.focus({ preventScroll: !lanes });
+  if (lanes) return;
+  const was = moved;
+  reveal(id);
+  moved = was;
 }
 
 /** Link mode off: nothing armed, no wire drawn. On Esc, Cancel, or a select from outside the graph. */
@@ -1646,6 +1663,7 @@ window.addEventListener("message", (e: MessageEvent<Incoming>) => {
     notice(m.status);
   } else if (m.type === "select") { // a click in the Plan view: the link, if armed, is not for that task
     disarm();
+    fitRoom = ""; // chosen from outside the page, as it is when the page opens on a task: the plan is fitted beside its pane
     select(m.id, true);
   }
 });
@@ -1783,16 +1801,10 @@ function wire() {
     const card = on.closest(".task, .goal");
     if (!card) refit(); else if (level === "compact") detail(card.getAttribute("data-id") ?? GOAL);
   });
-  // the details pane opening narrows the canvas, as does a narrower window: a narrow one turns to lanes or
-  // lays the graph downward, and the plan is fitted to what is left until the person pans themselves
-  let lastW = canvas.clientWidth;
-  new ResizeObserver(() => {
-    if (!state) return;
-    const w = canvas.clientWidth;
-    if (modeFor(w) !== modeFor(lastW) || (view() !== "lanes" && lay?.down)) { lastW = w; render(); return; }
-    lastW = w;
-    if (lay && !moved) render(); else if (lay) { zoom = clamp(zoom); applyZoom(); }
-  }).observe(canvas);
+  // the canvas narrows with the window, and with the details pane opening beside it: a narrow one turns to
+  // lanes or lays the graph downward; the drawing says which of the two it was, and fits the plan again for the
+  // window alone (`graph`)
+  new ResizeObserver(() => { if (state) render(); }).observe(canvas);
   $("help").addEventListener("click", (e) => { if (e.target === $("help")) help(false); });
   // a press in the pane keeps the pane it pressed: a box left by that press is rebuilt after the click, not under it
   $("details").addEventListener("pointerdown", () => { pressing = true; });
