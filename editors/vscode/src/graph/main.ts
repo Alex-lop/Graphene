@@ -8,7 +8,7 @@ import { STEP_COLOURS, STEP_FALLBACKS, stepColour } from "../owners.ts";
 import { autoLine, SAY, screenWords, usd, type DraftStep, type State } from "../state.ts";
 import { ICONS } from "./icons.ts";
 import { blanks, draftLine, globs, isDraft, lacks, type Draft } from "./draft.ts";
-import { attemptsMark, cardAct, checkMark, cornerMark, doneWhen, filesLine, forkMark, goalCells, midCut, stateMark, tally,
+import { attemptsMark, cardAct, checkMark, cornerMark, doneWhen, filesLine, forkMark, goalCells, legend, midCut, nextWanting, stateMark, tally, wanting, wantingLine,
          type CheckMark, type Mark } from "./marks.ts";
 import { actsFor, asksYou, attemptsOf, checkWords, commandChip, cornerWord, cut, done, draftedSteps, edgeKind, editable, filesChip, FIRST_HINT, fitWidth, forkActs, forkRow, forkWords, HEADER_ACTS, headerFor,
          heldWords, KEYS, linkHint, mayRun, paneKey, pipeline, planningLine, PROVES_NOTHING, provesNothing, questionOn, scopeTree, STOP_AFTER, STOP_AFTER_HOVER, stopAfterPlan, stopsOf, sub, tabOrder, tokenWords, topLine, twoLines, whenEdit, who, worktrees, writtenOf,
@@ -39,7 +39,7 @@ const ROW_W = CARD.compact.w, ROW_H = CARD.compact.h, ROW_X = 36;
 type Dims = { w: number; h: number; sub: number; gapX: number; gapY: number; padX: number; padY: number; bandGap: number; label: number };
 const DIMS: Record<Level, Dims> = { // `label`: the room over a sub-goal's first row for its header, which is drawn larger over rows
   full: { w: BOX_W, h: BOX_H, sub: SUB_H, gapX: 56, gapY: 14, padX: 30, padY: 46, bandGap: 28, label: 24 },
-  compact: { w: ROW_W, h: ROW_H, sub: 0, gapX: 32, gapY: 8, padX: 24, padY: 44, bandGap: 24, label: 32 },
+  compact: { w: ROW_W, h: ROW_H, sub: 0, gapX: 32, gapY: 8, padX: 24, padY: 44, bandGap: 24, label: 28 },
 };
 const FOOT = 46; // the canvas's foot, where the zoom's buttons and the legend sit: the plan can always be clear of it
 const AWAY_W = 264, AWAY_GAP = 20; // the region for what leaves this machine, right of the plan: never narrower than its label, the longest of which is "asks you first"
@@ -293,6 +293,10 @@ function render() {
   ($("svg") as unknown as SVGSVGElement).style.display = v === "lanes" ? "none" : "block";
   $("canvas").classList.toggle("lanes", v === "lanes");
   $("notice").hidden = s.tasks.length > 0 || drawn().length > 0 || Boolean(s.drafting); // a planner writing says so at the canvas's foot
+  const [needs, show] = wantingLine(wantYou().length).split(" · "); // `3 steps need you`, `show the next`: the chip's two halves
+  $("need").hidden = !needs;
+  $("need").children[1]!.textContent = needs ?? "";
+  $("need").children[2]!.textContent = ` · ${show}`;
   const planning = planningLine(s);
   $("planning").textContent = planning;
   $("planning").hidden = !planning;
@@ -548,6 +552,7 @@ function graph(s: StateX, dir: "across" | "down") {
   fitRoom = room;
   fitted = true;
   minimap(s, here);
+  legendRow(s);
   applyZoom();
   if (level !== was) { void svg.getBoundingClientRect(); svg.classList.remove("cut"); } // the cut is made: what moves next glides again
 }
@@ -1094,6 +1099,34 @@ function minimap(s: StateX, here: number) {
   map.replaceChildren(...kids);
 }
 
+/** The legend at the canvas's foot: the marks the plan has, each with its word and how many wear it, the
+ *  loudest first (marks.ts `legend`). With no room beside the zoom's buttons it gives way: each card says its state. */
+function legendRow(s: StateX) {
+  const root = $("legend"), rows = legend(s.tasks, drawn().length + draftedSteps(s).length), key = JSON.stringify(rows);
+  if (root.dataset.key !== key) {
+    root.dataset.key = key;
+    root.replaceChildren(...rows.map(([kind, word, n]) => {
+      const row = div("", word);
+      mark(row.insertBefore(el("svg", { width: 14, height: 14, viewBox: "-7 -7 14 14" }), row.firstChild), kind, 0, 0, 6);
+      row.appendChild(document.createElement("b")).textContent = String(n);
+      return row;
+    }));
+  }
+  root.hidden = false;
+  root.hidden = root.offsetWidth > $("canvas").clientWidth - $("zoom").offsetWidth - 56;
+}
+
+/** The steps to act on, in the plan's order: what the chip at the canvas's top right counts, and `n` walks.
+ *  None in a replay, which is watched. */
+const wantYou = (): string[] => (state && !replaying() ? wanting(state.tasks) : []);
+
+/** The next step that wants you, selected and brought on screen; round again after the last. */
+function showNext() {
+  first();
+  const id = nextWanting(wantYou(), selected);
+  if (id) select(id, true);
+}
+
 /** A pan never loses the graph (zoom.ts `hold`). The canvas's foot is the buttons': the plan's last row can
  *  always be brought above it, and a plan smaller than the canvas stays above it. */
 const clamp = (z: Zoom): Zoom => (lay ? hold(z, { w: paneSize().w, h: paneSize().h - foot() }, sizeOf(lay)) : z);
@@ -1111,7 +1144,6 @@ function applyZoom() {
   const pct = percent(level, zoom.k);
   $("zoom-pct").textContent = `${pct}%`;
   $("zoom-pct").setAttribute("aria-label", `zoom ${pct}%: back to 100%`);
-  $("legend").hidden = canvas.clientWidth < 640; // no room for it beside the zoom's buttons: each card says its state in words
   // part of the plan off screen: the minimap shows all of it, and frames the part in view
   const map = $("minimap"), all = lay ? sizeOf(lay) : null;
   map.hidden = !all || view() === "lanes" || canvas.clientHeight < 240 || !offScreen(zoom, paneSize(), all);
@@ -1126,6 +1158,7 @@ function applyZoom() {
   toGoal.hidden = !off;
   const below = Boolean(p && off && p.y * zoom.k + zoom.ty > canvas.clientHeight);
   toGoal.classList.toggle("below", below);
+  toGoal.style.right = below || !$("need").offsetWidth ? "" : `${$("need").offsetWidth + 18}px`; // at the top it stands beside the chip for what needs you
   // at the foot it stands on whatever the corner holds, the legend and the minimap: never over them
   const over = (el: HTMLElement) => (el.offsetHeight ? canvas.clientHeight - el.offsetTop + 8 : 0);
   toGoal.style.bottom = below ? `${Math.max(10, over($("legend")), over(map))}px` : "";
@@ -1744,6 +1777,7 @@ window.addEventListener("keydown", (e) => {
     return;
   }
   if (e.key === "f") return refit();
+  if (e.key === "n") return showNext();
   if (view() !== "lanes" && (e.key === "-" || e.key === "=" || e.key === "0")) { // out, in, and back to 100%
     first();
     return e.key === "0" ? actual() : nudge(e.key === "-" ? 0.8 : 1.25);
@@ -1796,7 +1830,7 @@ function wire() {
       render();
       return;
     }
-    if ((e.target as Element).closest(".task, .goal, #zoom, #minimap")) return;
+    if ((e.target as Element).closest(".task, .goal, #zoom, #minimap, button")) return;
     drag = { x: e.clientX, y: e.clientY, tx: zoom.tx, ty: zoom.ty };
     canvas.classList.add("dragging");
   });
@@ -1841,7 +1875,7 @@ function wire() {
   }, true);
   canvas.addEventListener("dblclick", (e) => {
     const on = e.target as Element;
-    if (tapped || on.closest(".lane, #zoom, #minimap")) return; // a chosen card's: its second click opened it
+    if (tapped || on.closest(".lane, #zoom, #minimap, button")) return; // a chosen card's: its second click opened it; a chip's two clicks are its own
     // a card no click chooses (the goal, a step the planner is writing) opens as a row does; the canvas fits the plan again
     const card = on.closest(".task, .goal");
     if (!card) refit(); else if (level === "compact") detail(card.getAttribute("data-id") ?? GOAL);
@@ -1858,7 +1892,7 @@ function wire() {
   window.addEventListener("pointercancel", released);
   window.addEventListener("pointermove", (e) => { if (e.buttons === 0) released(); }); // let go outside the page
   // what the canvas gains over the shell (the preview's is the same shell): the regions under the drawing, the
-  // zoom's buttons at its foot, and the legend: colour means state and nothing else
+  // zoom's buttons at its foot, the legend, and the chip for what needs you
   $("view").prepend(el("g", { id: "regions" }));
   $("edges").after(el("g", { id: "gates" }), el("g", { id: "heads" })); // on the line, over the edges that cross it; and the sub-goals' headers
   const zooms = div("", undefined, canvas);
@@ -1895,10 +1929,17 @@ function wire() {
   planning.id = "planning";
   planning.hidden = true;
   planning.setAttribute("role", "status");
-  const legend = div("", undefined, canvas);
-  legend.id = "legend";
-  legend.setAttribute("aria-hidden", "true"); // each card says its state in words
-  for (const [word, state] of [["working", "running"], ["landed", "done"], ["needs you", "review"], ["drafted", "proposed"], ["came back", "came-back"]]) div(`lg-${state}`, word, legend);
+  const key = div("", undefined, canvas); // filled by `legendRow`
+  key.id = "legend";
+  key.setAttribute("aria-hidden", "true"); // each card says its state in words
+  const need = canvas.appendChild(document.createElement("button")); // while a step wants you: how many, and a click shows the next
+  need.id = "need";
+  need.className = "quiet";
+  need.hidden = true;
+  need.title = "select the next step that needs you, and bring it on screen (n)";
+  mark(need.appendChild(el("svg", { width: 14, height: 14, viewBox: "-7 -7 14 14" })), "you", 0, 0, 6.5);
+  need.append(document.createElement("b"), document.createElement("span"));
+  need.addEventListener("click", showNext);
   const toGoal = $("to-goal");
   toGoal.appendChild(document.createTextNode("goal"));
   toGoal.appendChild(icon("arrow-right"));

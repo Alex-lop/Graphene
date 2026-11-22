@@ -95,16 +95,15 @@ main { flex: 1; display: flex; min-height: 0; }
 .mm-box[data-mark="yours"] { fill: none; stroke: var(--c); vector-effect: non-scaling-stroke; }
 .mm-box[data-mark="goal"] { fill: none; stroke: var(--done); stroke-width: 2; vector-effect: non-scaling-stroke; }
 .mm-frame { fill: color-mix(in srgb, var(--focus) 14%, transparent); stroke: var(--focus); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+/* the legend: the marks the plan has, as its cards wear them, each with its word and its count */
 #legend { position: absolute; right: 16px; bottom: 16px; display: flex; gap: 14px; font-size: 11.5px; color: var(--dim); pointer-events: none;
-          padding: 3px 9px; border-radius: 6px; background: var(--bg); } /* its own ground: a region or an edge may pass under it */
+          padding: 3px 9px; border-radius: 6px; background: var(--bg); white-space: nowrap; } /* its own ground: a region or an edge may pass under it */
 #legend[hidden] { display: none; }
-#legend div::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; background: var(--running); }
-#legend .lg-done::before { background: var(--done); }
-#legend .lg-review::before { background: var(--review); }
-#legend .lg-proposed::before { background: var(--proposed); }
-#legend .lg-came-back::before { background: var(--came-back); }
-#canvas.lanes #zoom, #canvas.lanes #legend, #canvas.lanes #planning, #canvas.lanes #minimap { display: none; }
-.band-head .spin { animation: none; } /* a mark in a count is not the work: only a card's own ring turns */
+#legend div { display: flex; align-items: center; gap: 5px; }
+#legend b { color: var(--fg); font-weight: 600; }
+#legend svg, #need svg { flex: none; overflow: visible; }
+#legend .spin, .band-head .spin { animation: none; } /* a mark in a count is not the work: only a card's own ring turns */
+#canvas.lanes #zoom, #canvas.lanes #legend, #canvas.lanes #planning, #canvas.lanes #minimap, #canvas.lanes #need { display: none; }
 /* while a planner writes the plan: how many steps it has drawn so far, beside the zoom's buttons */
 #planning { position: absolute; left: 16px; bottom: 50px; z-index: 2; font-size: 12px; color: var(--proposed); display: flex; gap: 8px; align-items: center; pointer-events: none; }
 #planning[hidden] { display: none; }
@@ -119,8 +118,11 @@ main { flex: 1; display: flex; min-height: 0; }
   background: var(--panel); border: 1px solid var(--border); border-radius: 8px; white-space: pre-wrap;
 }
 #notice[hidden] { display: none; }
-#to-goal { position: absolute; right: 10px; top: 10px; z-index: 2; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3); }
+#to-goal, #need { position: absolute; right: 10px; top: 10px; z-index: 2; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3); white-space: nowrap; }
 #to-goal.below { top: auto; bottom: 10px; }
+/* while a step wants you: how many, and a click (or n) shows the next. The goal's chip stands beside it */
+#need { border-color: color-mix(in srgb, var(--review) 65%, transparent); }
+#need b { font-weight: 600; }
 #to-goal.below .ico { transform: rotate(90deg); }
 #notice.missing, #notice.error { color: var(--came-back); }
 /* beside the canvas the pane's body scrolls on its own: its head and its acts stay in view, however long a
@@ -155,7 +157,7 @@ footer#hint.asks { color: var(--review); }
   /* the side bar's canvas is small (the lanes, or the graph laid downward): the keys and the wheel zoom it. A
      graph drawn across (a canvas over 560 px) is fitted to its pane, so it keeps the buttons that say how far
      out it is and bring it back, and its minimap */
-  #legend, body:not([data-mode="across"]) :is(#zoom, #minimap) { display: none; }
+  #legend, #need span, body:not([data-mode="across"]) :is(#zoom, #minimap) { display: none; }
   #minimap { bottom: 14px; } /* no legend here to stand on; and smaller, as its canvas is */
   #minimap svg { max-width: 120px; height: auto; }
   body:not([data-mode="across"]) #planning { left: 12px; bottom: 8px; } /* no buttons here to sit above */

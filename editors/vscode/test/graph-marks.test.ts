@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { readFileSync } from "node:fs";
 import { attemptsMark, cardAct, checkMark, cornerMark, doneWhen, filesLine, forkMark, goalCells, legend, markWord, midCut, nextWanting, stateMark, tally, wanting, wantingLine, type Box, type CheckMark, type Mark } from "../src/graph/marks.ts";
 import { check } from "../src/graph/check.ts";
-import { actsFor, checkWords, counts, cut, type TaskX } from "../src/graph/words.ts";
+import { actsFor, checkWords, counts, cut, KEYS, type TaskX } from "../src/graph/words.ts";
 import { markDone, offerWords, widen } from "../src/needs.ts";
 import { parseState, parseTask, WORDS, type Word } from "../src/state.ts";
 
@@ -83,6 +83,8 @@ test("the steps that want the person, in plan order, and the next one round agai
   assert.equal(wantingLine(wanting(plan).length), "4 steps need you · show the next");
   // the header's own words (`counts`: `4 need you`) are the engine's sum, suggested steps and questions in it: never those words for this count
   for (let n = 0; n < 30; n++) assert.doesNotMatch(wantingLine(n), /^\d+ needs? you/, `${n}`);
+  assert.equal(wantingLine(3).split(" · ").length, 2, "the chip's two halves: narrow, it keeps the count alone");
+  assert.match(KEYS.find(([k]) => k === "n")?.[1] ?? "", /next step that needs you/, "the keys' list says the key that walks them");
 });
 
 test("the legend lists the marks the plan has, loudest first, each with its word and its count", () => {

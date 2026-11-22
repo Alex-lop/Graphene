@@ -474,6 +474,7 @@ export const KEYS: readonly [string, string][] = [
   ["Enter", "open the box's details"],
   ["Esc", "close the details, or stop linking"],
   ["g", "bring the goal on screen"],
+  ["n", "the next step that needs you: selected, and brought on screen"],
   ["f", "fit the whole plan in the pane"],
   ["- · =", "zoom out · zoom in; far out, a card is its title alone"],
   ["0", "back to whole cards at their own size (100%)"],
