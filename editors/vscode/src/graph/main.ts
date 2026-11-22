@@ -13,7 +13,7 @@ import { attemptsMark, cardAct, checkMark, cornerMark, doneWhen, filesLine, fork
 import { actsFor, asksYou, attemptsOf, checkWords, commandChip, cornerWord, cut, done, draftedSteps, edgeKind, editable, filesChip, FIRST_HINT, fitWidth, forkActs, forkRow, forkWords, HEADER_ACTS, headerFor,
          heldWords, KEYS, linkHint, mayRun, paneKey, pipeline, planningLine, PROVES_NOTHING, provesNothing, questionOn, scopeTree, STOP_AFTER, STOP_AFTER_HOVER, stopAfterPlan, stopsOf, sub, tabOrder, tokenWords, topLine, twoLines, whenEdit, who, worktrees, writtenOf,
          type Button, type ForkX, type StateX, type TaskX } from "./words.ts";
-import { CARD, dotGap, fitPlan, hold, levelFor, miniFrame, miniSize, nearest, offScreen, panTo, percent, switchK, wheelK, ZOOM_MAX, ZOOM_MIN, zoomK,
+import { CARD, dotGap, FAR, fitPlan, hold, levelFor, miniFrame, miniSize, nearest, offScreen, panTo, percent, switchK, wheelK, ZOOM_MAX, ZOOM_MIN, zoomK,
          type Level, type Size, type Zoom } from "./zoom.ts";
 
 declare function acquireVsCodeApi(): { postMessage(m: unknown): void; getState(): unknown; setState(s: unknown): void };
@@ -423,7 +423,7 @@ function graph(s: StateX, dir: "across" | "down") {
   const sized = (l: Layout) => `${l.width}x${l.height}`;
   const free = !moved && !drawing;
   let at = free && down ? null : place(s, down, level);
-  const grew = !at || sized(at.lay) !== fitSize, same = !grew && room === fitRoom; // neither the window nor the plan changed
+  const same = at !== null && sized(at.lay) === fitSize && room === fitRoom; // neither the window nor the plan changed
   const opened = free && !same ? opening(s, down) : null;
   if (opened) level = opened.level;
   D = DIMS[level];
@@ -545,7 +545,7 @@ function graph(s: StateX, dir: "across" | "down") {
   // hand's own place it is held to the canvas when the window or the plan changed, and not for the pane: a
   // clamp then would shift it under the click
   if (opened) {
-    if (fitted && level === was && (grew || paneMoved)) { svg.classList.add("glide"); setTimeout(() => svg.classList.remove("glide"), 300); }
+    if (fitted && level === was && (sized(lay) !== fitSize || paneMoved)) { svg.classList.add("glide"); setTimeout(() => svg.classList.remove("glide"), 300); }
     zoom = opened.zoom;
   } else if (!same) zoom = clamp(zoom);
   fitSize = sized(lay);
@@ -1135,6 +1135,8 @@ function applyZoom() {
   const svg = $("svg"), canvas = $("canvas");
   svg.style.transform = `translate(${zoom.tx}px, ${zoom.ty}px) scale(${zoom.k})`;
   svg.style.transformOrigin = "0 0";
+  svg.style.setProperty("--k", String(zoom.k)); // what must keep its size on screen divides by it (graph.css `.far`)
+  svg.classList.toggle("far", level === "compact" && zoom.k < FAR);
   const dots = canvas.style, gap = dotGap(zoom.k); // the canvas's dots move with the plan, and thin out as it shrinks
   dots.backgroundPosition = `${zoom.tx}px ${zoom.ty}px`;
   dots.backgroundSize = `${gap}px ${gap}px`;

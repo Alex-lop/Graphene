@@ -447,6 +447,13 @@ button:disabled { opacity: 0.45; cursor: default; }
 :where(#svg[data-level="compact"]) [data-mark="back"] > .box { fill: color-mix(in srgb, var(--wash, var(--c)) 18%, var(--card)); }
 :where(#svg[data-level="compact"]) [data-mark="landed"] > .box { fill: color-mix(in srgb, var(--wash, var(--c)) 13%, var(--card)); }
 :where(#svg[data-level="compact"]) :is([data-mark="waiting"], [data-mark="suggested"]) .title { fill: var(--dim); font-weight: 500; }
+/* from far (rows under 45%) nobody reads a title: it goes, the fills grow stronger, and what wants you keeps its
+   size: the diamond and the triangle are 16 px on screen however small the plan is drawn (`--k` is the zoom) */
+#svg.far :is(.title, .goal-title, .goal .sub) { display: none; }
+#svg.far [data-mark="working"] > .box { fill: color-mix(in srgb, var(--wash, var(--c)) 32%, var(--card)); }
+#svg.far [data-mark="landed"] > .box { fill: color-mix(in srgb, var(--wash, var(--c)) 42%, var(--card)); }
+#svg.far :is([data-mark="you"], [data-mark="back"]) > .box { fill: color-mix(in srgb, var(--wash, var(--c)) 50%, var(--card)); }
+#svg.far .task > .mk:is(.you, .yours, .back) { transform: translate(calc(9px + 9px / var(--k)), 22px) scale(calc(0.9 / var(--k))); }
 .fork .chip { fill: var(--bg); stroke: var(--border); }
 .fork.st-running .chip { stroke: var(--running); }
 .fork.st-passed .chip { stroke: var(--done); }

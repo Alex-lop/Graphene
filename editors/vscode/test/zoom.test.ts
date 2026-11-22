@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { KEYS, twoLines } from "../src/graph/words.ts";
-import { CARD, dotGap, fitPlan, fitView, FULL_FROM, hold, levelFor, miniFrame, miniSize, nearest, offScreen, panTo, percent, switchK, TO_COMPACT, TO_FULL, wheelK,
+import { CARD, dotGap, FAR, fitPlan, fitView, FULL_FROM, hold, levelFor, miniFrame, miniSize, nearest, offScreen, panTo, percent, switchK, TO_COMPACT, TO_FULL, wheelK,
          ZOOM_MAX, ZOOM_MIN, zoomK } from "../src/graph/zoom.ts";
 
 test("the zoom goes out to a fifth and in to three times; what is not a number is 1", () => {
@@ -68,6 +68,8 @@ test("whole cards turn to rows under 0.55 and rows to whole cards over 1.2; betw
     assert.equal(levelFor("compact", k), "compact");
   }
   assert.ok(FULL_FROM > TO_COMPACT, "a plan fitted as whole cards is not one step from rows");
+  // rows are read from far well after they were turned to (switchK lands near 0.9), and before the floor
+  assert.ok(FAR > ZOOM_MIN && FAR < switchK(TO_COMPACT, "full", "compact") - 0.3, `far at ${FAR}`);
 });
 
 test("across a change of level a card covers as much of the screen, no side moves by more than 15%, and the level holds", () => {

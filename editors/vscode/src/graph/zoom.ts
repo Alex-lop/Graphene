@@ -22,6 +22,10 @@ export const FULL_FROM = 0.7;
 /** Zooming: whole cards turn to rows under the first, rows to whole cards over the second. */
 export const TO_COMPACT = 0.55, TO_FULL = 1.2;
 
+/** Rows drawn smaller than this are read from far: nobody reads a title there, so the page drops it and lets
+ *  the row's fill and what wants the person say the plan. */
+export const FAR = 0.45;
+
 /** The level after a zoom to ``k``. Between the two thresholds a level holds, so nothing flaps at either. */
 export const levelFor = (level: Level, k: number): Level =>
   (level === "full" ? (k < TO_COMPACT ? "compact" : "full") : k > TO_FULL ? "full" : "compact");
