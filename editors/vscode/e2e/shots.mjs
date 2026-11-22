@@ -22,7 +22,7 @@ const app = await L.findApp(appName);
 if (!app) { console.error(`no ${appName} here`); process.exit(1); }
 const graphene = L.findGraphene();
 const base = L.scratch(`shots-${appName}-`);
-const profile = L.makeProfile(base, { graphene });
+const profile = L.makeProfile(base, { graphene, settings: L.ASKED_ONLY }); // the side bar's shots have an empty editor area; the tab opens when asked
 L.installVsix(app, profile, vsix);
 const standin = await L.startStandin();
 const fx = L.makeFixture(path.join(base, "wordkit"), graphene, { standin: standin.url });

@@ -25,9 +25,16 @@ Mac's `/Applications/Visual Studio Code.app`, else a build `@vscode/test-electro
 
 ## The check
 
-`npm test` installs the `.vsix` in a fresh profile, adds three tasks to a wordkit fixture, launches VS Code,
-opens Graphene and the graph panel, and fails when either graph does not draw the three tasks. On Linux
-run it under `xvfb-run`. `E2E_APP=cursor` runs it in Cursor; `E2E_SHOT=file.png` keeps a screenshot.
+`npm test` installs the `.vsix` in a fresh profile, adds three tasks to a wordkit fixture and launches VS Code.
+The plan has work left, so the graph's tab opens by itself (`graphene.graph.openOnStart`, left at its default):
+the check runs no command for it, and fails when the tab does not open, when it took the keyboard, or when it or
+the side bar's graph does not draw the three tasks. Show Graph must then reveal that same tab. On Linux run it
+under `xvfb-run`. `E2E_APP=cursor` runs it in Cursor; `E2E_SHOT=file.png` keeps a screenshot.
+
+The other walks are about something else, and their profiles turn that setting off (`settings: L.ASKED_ONLY`):
+`home.mjs`, `shots.mjs` and the three measures open the tab when they want it, and see one graph until then.
+`draw.mjs` and `drive.mjs` keep the default: the first starts on an empty plan and opens the tab itself before
+anything joins it, the second shows a reader what a person would see.
 
 `npm run home` clicks Home through, against the stand-in: a folder with no plan is set up with one click (and
 `review: every`), an ask is planned, Start runs the agents, Approve before the changes were opened asks first,
@@ -90,7 +97,8 @@ uv run python editors/vscode/e2e/measure/moves.py        # the cockpit's keys ag
 
 ## From your own script
 
-`lib.mjs` exports the pieces: `findApp`, `makeProfile`, `installVsix`, `makeFixture`, `startStandin`,
+`lib.mjs` exports the pieces: `findApp`, `makeProfile` (`settings: L.ASKED_ONLY` for a graph tab that opens only
+when you ask), `installVsix`, `makeFixture`, `startStandin`,
 `startAuto`, `launch`, `openSidebar`, `openPanel`, `palette`, `setSidebarWidth`, `setSize`, `setTheme`,
 `graphFrames` (the webview frames that hold a graph, found by their content: VS Code nests the page two
 iframes deep), `waitForGraph`, `readGraph`, `smallestText`, `framesText`, `shot`.

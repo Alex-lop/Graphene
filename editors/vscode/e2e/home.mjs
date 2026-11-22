@@ -56,7 +56,8 @@ const sectionShown = (frame, words, what, timeout) =>
 const state = (dir) => JSON.parse(execFileSync(graphene, ["state", "--json"], { cwd: dir, env: L.cleanEnv(L.safeEnv(standin.url)) }));
 
 try {
-  const profile = L.makeProfile(base, { graphene, settings: { "window.dialogStyle": "custom" } }); // a modal the driver can click
+  // a modal the driver can click; and the graph's tab only when the walk opens it (its last part counts on that)
+  const profile = L.makeProfile(base, { graphene, settings: { "window.dialogStyle": "custom", ...L.ASKED_ONLY } });
   L.installVsix(app, profile, vsix);
   const dir = path.join(base, "wordkit");
   const python = path.join(L.ROOT, ".venv", "bin", "python");

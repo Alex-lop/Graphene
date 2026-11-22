@@ -43,6 +43,11 @@ stream carries no text (Codex) has its boxes appear when the plan arrives, and t
 one colour, on its card's tile and, from the time it is accepted until it lands, on its files in the Explorer,
 a working agent's with its number.
 
+The tab also opens by itself when work starts: when the window opens on a plan with work left, when a plan
+appears, and when a run starts. It opens in the editor area without taking the keyboard. Close it and it stays
+closed until the next plan or run; a plan with every task done, and a folder with no plan, open nothing. The
+setting `graphene.graph.openOnStart` turns this off, and **Show graph** still opens it.
+
 You can build the graph by hand, before and while agents run. **Add task**, or the **+** on a box, draws a draft:
 type its title on the box, then its files and its check in the pane, and it joins the plan (**Fill it in for me**
 asks the planner instead). Click any task and its pane opens on **Scope**: the files it may change, as a tree,
@@ -120,6 +125,7 @@ by hand, the cockpit in a terminal) and the Needs You, Agents, Plan and Rounds v
 | `graphene.path` | `graphene` | the command: a name on PATH or an absolute path. Read from your own settings only, never a folder's |
 | `graphene.pollMs` | `1500` | how often the plan is read again while a view is open, when the CLI has no `--watch` stream |
 | `graphene.advanced` | off | every command in the palette, and the Needs You, Agents, Plan and Rounds views |
+| `graphene.graph.openOnStart` | on | the graph opens as a tab by itself when work starts (the window opens on a plan with work left, a plan appears, a run starts), without taking the keyboard; off, only **Show graph** opens it |
 
 ## Editors
 

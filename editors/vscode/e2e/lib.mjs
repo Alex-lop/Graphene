@@ -82,6 +82,11 @@ export function makeProfile(base, { graphene, theme = THEMES.dark, settings = {}
   return profile;
 }
 
+/** For a walk that is about something else: the graph's tab opens only when the walk asks for it. By default
+ *  (graphene.graph.openOnStart) it opens by itself when work starts, which is a second graph frame and an editor
+ *  area that is no longer empty. test.mjs checks the default; a profile given this sees what it saw before. */
+export const ASKED_ONLY = { "graphene.graph.openOnStart": false };
+
 /** Writes (or changes) the profile's user settings; a running window takes a change at once. */
 export function writeSettings(profile, more) {
   Object.assign(profile.settings, more);

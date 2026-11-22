@@ -704,6 +704,11 @@
           "type": "boolean",
           "default": false,
           "description": "Show the advanced views (Needs You, Agents, Plan, Rounds) and every Graphene command in the Command Palette. Off, Home and the graph do it all."
+        },
+        "graphene.graph.openOnStart": {
+          "type": "boolean",
+          "default": true,
+          "description": "Open the graph as a tab by itself when work starts: the window opens on a plan with work left, a plan appears, or a run starts. It opens without taking the keyboard, and a tab you close stays closed until the next plan or run. Off, Show graph opens it."
         }
       }
     }

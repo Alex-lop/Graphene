@@ -21,6 +21,9 @@ The whole plan in the pane (22 November 2026).
 
 The graph is built by hand (10 to 11 November 2026). It needs no newer CLI: every click is a 0.9.0 command.
 
+- The graph opens as a tab by itself when work starts: the window opens on a plan with work left, a plan appears,
+  or a run starts. It does not take the keyboard, and a tab you close stays closed until the next plan or run.
+  `graphene.graph.openOnStart` (on by default) turns it off; Show graph opens the same tab as before.
 - A task's pane is a form: its title, the files it may change and its check are typed in place; attempts are a
   stepper (1 to 8) on that task alone; "wait for my approval" and "I will do this one" are tick boxes. The pop-up
   chain is gone from the graph (Edit Task… stays in the Plan view).

@@ -14,7 +14,7 @@ const runs = Number(arg("--runs", 3));
 const times = [];
 for (let i = 0; i < runs; i++) {
   const base = L.scratch("first-graph-");
-  const profile = L.makeProfile(base, { graphene });
+  const profile = L.makeProfile(base, { graphene, settings: L.ASKED_ONLY }); // the side bar's graph is the one timed, not a tab that opened by itself
   const fx = L.makeFixture(path.join(base, "wordkit"), graphene);
   for (const [id, title] of [["top", "the CLI prints the top words"], ["reading", "a reading time in minutes"], ["hyphens", "hyphenated words stay whole"]]) {
     execFileSync(graphene, ["node", "add", title, "--id", id, "--scope", `wordkit/${id}.py`, "--check", "true"], { cwd: fx.dir, env: fx.env, stdio: "pipe" });
