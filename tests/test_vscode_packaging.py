@@ -104,7 +104,7 @@ def test_the_settings_are_the_command_and_the_poll():
     assert props["graphene.path"]["default"] == "graphene"
     assert props["graphene.path"]["scope"] == "machine"  # a cloned folder's settings never choose what runs
     assert props["graphene.pollMs"]["default"] == 1500
-    assert props["graphene.graph.openOnStart"]["default"] is True  # the graph's tab opens by itself when work starts
+    assert props["graphene.graph.openOnStart"]["default"] is True  # the graph's tab opens by itself
     readme = (EXT / "README.md").read_text()
     for name in props:  # the listing's table says what each one does
         assert f"| `{name}` |" in readme, name

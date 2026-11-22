@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { opens, seen, type Seen } from "../src/open.ts";
+import { beside, opens, seen, type Seen } from "../src/open.ts";
 import { parseState, type State } from "../src/state.ts";
 
 const fixture = (name: string) => parseState(readFileSync(new URL(`./fixtures/${name}.json`, import.meta.url), "utf8"));
@@ -69,6 +69,13 @@ test("a person who closes the tab is not chased: no later snapshot reopens it un
 test("a tab that is already there is left as it is, and a start it sat through is not made up for later", () => {
   assert.equal(opens(null, seen(proposals), { on: true, tab: true }), false);
   assert.deepEqual(walk([empty, drafting, proposals, proposals], { tab: (i) => i < 2 }), [], "it was there when the plan appeared; closed after, it stays closed");
+});
+
+test("it opens beside what a person has in front, and in the group when nothing of theirs is there", () => {
+  // the active tab's input, as VS Code's tabs give it: an object for a file, a diff, a terminal, an extension's page
+  for (const front of [{ uri: "file:///repo/notes.md" }, { original: "a", modified: "b" }, {}, { viewType: "another.page" }]) assert.equal(beside(front), true);
+  assert.equal(beside(undefined), false, "an empty group, or a page of VS Code's own (Welcome, Settings)");
+  assert.equal(beside(null), false);
 });
 
 test("the setting off opens nothing, and turning it on waits for the next start", () => {

@@ -6,7 +6,7 @@ import * as vscode from "vscode";
 import * as C from "./commands.ts";
 import { draftKey, draftOf, type Draft } from "./graph/draft.ts";
 import { check, type FromPage } from "./graph/check.ts";
-import { opens, seen, type Seen } from "./open.ts";
+import { beside, opens, seen, type Seen } from "./open.ts";
 import type { Session } from "./session.ts";
 
 
@@ -34,10 +34,10 @@ export class GraphHost implements vscode.WebviewViewProvider {
     session.onDidChange(() => { this.push(); this.start(); });
   }
 
-  /** The tab opens by itself, once for each start (the setting graphene.graph.openOnStart), and leaves the
-   *  keyboard where it was. A read that gave no plan is no snapshot: the next one is compared with the last
-   *  that was, so a plan that could not be read for a moment is not a plan appearing. Never a replay's: Watch
-   *  the Demo opens its own. */
+  /** The tab opens by itself, once for each start (the setting graphene.graph.openOnStart), without the
+   *  keyboard and beside what a person has in front. A read that gave no plan is no snapshot: the next one is
+   *  compared with the last that was, so a plan that could not be read for a moment is not a plan appearing.
+   *  Never a replay's: Watch the Demo opens its own. */
   private start() {
     const s = this.session.state;
     if (!s || this.session.own) return;
@@ -48,10 +48,12 @@ export class GraphHost implements vscode.WebviewViewProvider {
   }
 
   /** The panel, made or revealed; with ``select`` the page selects that task. ``quiet``: nobody asked for it
-   *  (it opens by itself), so it does not take the keyboard. */
+   *  (it opens by itself), so it does not take the keyboard, and it opens beside a file that is in front, not
+   *  over it (open.ts says why). Asked for, it opens in front of the active group and takes the keyboard. */
   show(select?: string, quiet = false) {
     if (!this.panel) {
-      const panel = vscode.window.createWebviewPanel("graphene.graphPanel", this.title, { viewColumn: vscode.ViewColumn.Active, preserveFocus: quiet }, {
+      const viewColumn = quiet && beside(front()) ? vscode.ViewColumn.Beside : vscode.ViewColumn.Active;
+      const panel = vscode.window.createWebviewPanel("graphene.graphPanel", this.title, { viewColumn, preserveFocus: quiet }, {
         enableScripts: true, retainContextWhenHidden: true,
         localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, "dist"), vscode.Uri.joinPath(this.context.extensionUri, "media")],
       });
@@ -212,6 +214,12 @@ export class GraphHost implements vscode.WebviewViewProvider {
 </body>
 </html>`;
   }
+}
+
+/** What the active editor group has in front, as VS Code's tabs name it. Asked before VS Code has sent the
+ *  window's tabs (they come once its editor groups are restored), the API throws: nothing is in front yet. */
+function front(): unknown {
+  try { return vscode.window.tabGroups.activeTabGroup.activeTab?.input; } catch { return undefined; }
 }
 
 /** The page's own key of the drawn task an unchecked message is about, when it reads as one (` d12`). */

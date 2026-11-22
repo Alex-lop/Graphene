@@ -19,10 +19,12 @@ class Panel { constructor(type, title) { this.type = type; this.title = title; t
   reveal() { if (this.disposed) throw new Error("Webview is disposed"); this.revealed++; }
   dispose() { this.disposed = true; for (const h of this.handlers) { try { h(); } catch (e) { this.threw = String(e); } } } }
 export const notifications = [];
+export const tabs = { front: undefined, early: false }; // the tab the active group has in front; early: asked before VS Code sent its tabs
 export const window = { showErrorMessage(m) { notifications.push(m); return Promise.resolve(undefined); }, createWebviewPanel(type, title, show) { const p = new Panel(type, title); p.show = show; panels.push(p); return p; },
-  showInformationMessage() { return Promise.resolve(undefined); } };
+  showInformationMessage() { return Promise.resolve(undefined); },
+  tabGroups: { get activeTabGroup() { if (tabs.early) throw new Error("Assertion Failed: argument is undefined or null"); return { activeTab: tabs.front }; } } };
 export const Uri = { joinPath(...p) { return p.join("/"); } };
-export const ViewColumn = { Active: -1 };
+export const ViewColumn = { Active: -1, Beside: -2 };
 export const workspace = { settings: {}, getConfiguration() { return { get: (k, d) => (k in workspace.settings ? workspace.settings[k] : d) }; } };
 export const commands = { ran: [], registered: [], fns: {}, registerCommand(id, fn) { this.registered.push(id); this.fns[id] = fn; return { dispose() {} }; },
   getCommands() { return Promise.resolve(["graphene.runReady", "graphene.stop", "graphene.auto", "graphene.openCockpit", "graphene.addStep", ...this.registered]); },
@@ -35,7 +37,8 @@ export async function resolve(spec, ctx, next) { return spec === "vscode" ? { ur
 register(`data:text/javascript,${encodeURIComponent(hooks)}`);
 
 type Panel = { disposed: boolean; title: string; revealed: number; threw?: string; show?: unknown; dispose(): void; w: { receive(m: unknown): Promise<unknown> } };
-const vscode = await import("vscode") as unknown as { panels: Panel[]; commands: { ran: [string, unknown][] }; workspace: { settings: Record<string, unknown> } };
+const vscode = await import("vscode") as unknown as { panels: Panel[]; commands: { ran: [string, unknown][] }; workspace: { settings: Record<string, unknown> };
+                                                      tabs: { front: { input: unknown } | undefined; early: boolean } };
 const { GraphHost } = await import("../src/graph.ts");
 const context = { extensionUri: "ext", subscriptions: [], workspaceState: { get: (_: string, fallback: unknown) => fallback, update: async () => {} } } as never;
 const session = { state: null, status: { kind: "reading", text: "Reading the plan…" }, onDidChange: () => ({ dispose() {} }) } as never;
@@ -56,7 +59,7 @@ test("a closed panel is let go: open is false, a new show makes a new panel, and
   assert.equal(vscode.panels[0]!.revealed, 0);
 });
 
-test("the tab opens by itself once for each start and leaves the keyboard; Show graph reveals the same tab and may take it; a replay's never opens by itself", async () => {
+test("the tab opens by itself once for each start, without the keyboard; Show graph reveals the same tab and may take it; a replay's never opens by itself", async () => {
   const { parseState } = await import("../src/state.ts");
   const { readFileSync } = await import("node:fs");
   const read = (name: string) => parseState(readFileSync(new URL(`./fixtures/${name}.json`, import.meta.url), "utf8"));
@@ -74,7 +77,7 @@ test("the tab opens by itself once for each start and leaves the keyboard; Show 
   own.fire(); // the same snapshot again (its contracts were read): not a second start
   assert.equal(opened(), 1);
   const tab = vscode.panels[n]!;
-  assert.deepEqual(tab.show, { viewColumn: -1, preserveFocus: true }, "nobody asked for it: the keyboard stays where it was");
+  assert.deepEqual(tab.show, { viewColumn: -1, preserveFocus: true }, "nobody asked for it: it is not given the keyboard");
   host.show(); // Show graph on Home, a task in the Plan view, the palette
   assert.equal(opened(), 1, "the same tab, not a second one");
   assert.equal(tab.revealed, 1, "revealed, and it may take the keyboard");
@@ -106,6 +109,35 @@ test("the tab opens by itself once for each start and leaves the keyboard; Show 
   new GraphHost(context, replay as never, "Graphene demo");
   replay.fire();
   assert.equal(opened(), 3, "Watch the Demo opens its own graph itself");
+});
+
+test("by itself the tab opens beside what a person has in front, never over it; asked for, it opens in front as it did", async () => {
+  const { parseState } = await import("../src/state.ts");
+  const { readFileSync } = await import("node:fs");
+  const plan = parseState(readFileSync(new URL("./fixtures/proposals.json", import.meta.url), "utf8"));
+  /** A window that opens on a plan with work left, the active group showing `front`: how the tab was asked for. */
+  const opened = (front: { input: unknown } | undefined, early = false) => {
+    Object.assign(vscode.tabs, { front, early });
+    const s = { ...(session as object), state: plan, fire: () => {}, onDidChange(l: () => void) { s.fire = l; return { dispose() {} }; } };
+    const host = new GraphHost(context, s as never);
+    s.fire();
+    const tab = vscode.panels.at(-1)!;
+    Object.assign(vscode.tabs, { front: undefined, early: false });
+    return { host, tab, show: tab.show };
+  };
+  const file = { input: { uri: "file:///repo/notes.md" } };
+  // in the file's own group the tab would hide the file, and VS Code would leave the keyboard in nothing
+  assert.deepEqual(opened(file).show, { viewColumn: -2, preserveFocus: true }, "a file in front stays in front, with its caret: the tab opens beside it");
+  assert.deepEqual(opened({ input: { viewType: "another.page" } }).show, { viewColumn: -2, preserveFocus: true }, "so does a page of another extension's");
+  assert.deepEqual(opened(undefined).show, { viewColumn: -1, preserveFocus: true }, "an empty editor area: the tab has it");
+  assert.deepEqual(opened({ input: undefined }).show, { viewColumn: -1, preserveFocus: true }, "a page of VS Code's own (Welcome): the tab opens in front of it");
+  assert.deepEqual(opened(file, true).show, { viewColumn: -1, preserveFocus: true }, "VS Code has not said what is in front yet: nothing is");
+  const { host, tab } = opened(file);
+  tab.dispose();
+  vscode.tabs.front = file;
+  host.show(); // Show graph, with the same file in front
+  vscode.tabs.front = undefined;
+  assert.deepEqual(vscode.panels.at(-1)!.show, { viewColumn: -1, preserveFocus: false }, "asked for, it opens where the person is and takes the keyboard");
 });
 
 test("a replay's host runs no command of the person's, even before its plan is read; the person's own host does", async () => {
