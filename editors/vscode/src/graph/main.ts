@@ -42,6 +42,7 @@ const DIMS: Record<Level, Dims> = { // `label`: the room over a sub-goal's first
   compact: { w: ROW_W, h: ROW_H, sub: 0, gapX: 32, gapY: 8, padX: 24, padY: 44, bandGap: 24, label: 28 },
 };
 const FOOT = 46; // the canvas's foot, where the zoom's buttons and the legend sit: the plan can always be clear of it
+const NEED_H = 46; // and its head in the narrow graph, where the chip for what needs you sits over the first row
 const AWAY_W = 264, AWAY_GAP = 20; // the region for what leaves this machine, right of the plan: never narrower than its label, the longest of which is "asks you first"
 const AWAY_PAD = 44; // a step past the line sits this far inside the region, so the gate on the line is clear of it
 /** The narrow view by default: lanes read better than a downward graph at 280 to 400 px (lane 1's notes). */
@@ -264,18 +265,22 @@ function goalTitle(s: State, id: string): string {
 
 const replaying = () => Boolean(state?.replay);
 
-/** The view on screen: lanes when the canvas is narrow, unless the person chose. */
+/** The tab's width, the canvas and a pane beside it: what says whether it is narrow. Not the canvas alone, which
+ *  a pane opening beside it narrows: choosing a card would turn the graph to lanes, or lay it downward. */
+const tabMode = () => modeFor($("canvas").parentElement!.clientWidth);
+
+/** The view on screen: lanes when the tab is narrow, unless the person chose. */
 function view(): "graph" | "lanes" {
   const want = saved.view ?? "auto";
   if (want !== "auto") return want;
-  return modeFor($("canvas").clientWidth) === "down" ? NARROW_VIEW : "graph";
+  return tabMode() === "down" ? NARROW_VIEW : "graph";
 }
 
 /** The graph's direction: downward when narrow, or as the preview page forces it (data-dir on body). */
 function direction(): "across" | "down" {
   const forced = document.body.dataset.dir;
   if (forced === "down" || forced === "across") return forced;
-  return modeFor($("canvas").clientWidth);
+  return tabMode();
 }
 
 function render() {
@@ -368,8 +373,11 @@ type Placed = { lay: Layout; g: ReturnType<typeof boxes>; here: number; awayW: n
 function place(s: StateX, down: boolean, lv: Level): Placed {
   const d = DIMS[lv], h = d.h + d.sub;
   const g = boxes(s, lv);
-  // laid downward, a row wraps at what the canvas shows; zoomed out it shows more, and the rows stay as they are
-  const lay = layout(g.boxes, g.edges, { goal: g.goal, boxW: d.w, boxH: h, labelH: d.label, gapX: d.gapX, gapY: d.gapY, bandGap: d.bandGap, ...(down ? {} : { padX: d.padX, padY: d.padY }),
+  // laid downward, a row wraps at what the canvas shows; zoomed out it shows more, and the rows stay as they are.
+  // Its first row starts under the chip for what needs you, while that is there (`render` says so first): the
+  // top row cannot be panned clear of it
+  const lay = layout(g.boxes, g.edges, { goal: g.goal, boxW: d.w, boxH: h, labelH: d.label, gapX: d.gapX, gapY: d.gapY, bandGap: d.bandGap,
+                                         ...(down ? ($("need").hidden ? {} : { padY: NEED_H }) : { padX: d.padX, padY: d.padY }),
                                          down, width: down ? $("canvas").clientWidth / Math.max(1, zoom.k) : undefined });
   // across, the plan sits in "this machine", and what leaves it has a region of its own at the right; while no
   // step leaves there is no such region, and the plan has the width
@@ -547,12 +555,13 @@ function graph(s: StateX, dir: "across" | "down") {
   svg.setAttribute("width", String(lay.width));
   svg.setAttribute("height", String(lay.height));
   // fitted again because it grew or shrank, or with the pane opening beside it, it glides to its new fit. In a
-  // hand's own place it is held to the canvas when the window or the plan changed, and not for the pane: a
-  // clamp then would shift it under the click
+  // hand's own place it is held to the canvas when the window or the plan changed, and not for a pane beside it:
+  // a clamp then would shift it under the click. A pane under the canvas (the narrow tab) takes half its height:
+  // there the plan is held to what is left, at the same zoom, or its rows would sit under the pane
   if (opened) {
     if (fitted && level === was && (sized(lay) !== fitSize || paneMoved)) { svg.classList.add("glide"); setTimeout(() => svg.classList.remove("glide"), 300); }
     zoom = opened.zoom;
-  } else if (!same) zoom = clamp(zoom);
+  } else if (!same || (paneMoved && narrow())) zoom = clamp(zoom);
   fitSize = sized(lay);
   fitRoom = room;
   fitted = true;
@@ -1896,9 +1905,9 @@ function wire() {
     const on = e.target as Element;
     if (!painting && on.matches(":focus-visible")) reveal(on.closest(".task")?.getAttribute("data-id") ?? GOAL, true);
   });
-  // the canvas narrows with the window, and with the details pane opening beside it: a narrow one turns to
-  // lanes or lays the graph downward; the drawing says which of the two it was, and fits the plan again for the
-  // window alone (`graph`)
+  // the canvas narrows with the window, and with the details pane opening beside it: a narrow tab turns to
+  // lanes or lays the graph downward (`tabMode`); the drawing says which of the two it was, and fits the plan
+  // again for the window alone (`graph`)
   new ResizeObserver(() => { if (state) render(); }).observe(canvas);
   $("help").addEventListener("click", (e) => { if (e.target === $("help")) help(false); });
   // a press in the pane keeps the pane it pressed: a box left by that press is rebuilt after the click, not under it

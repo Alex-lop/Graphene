@@ -128,9 +128,8 @@ main { flex: 1; display: flex; min-height: 0; }
 /* beside the canvas the pane's body scrolls on its own: its head and its acts stay in view, however long a
    note is (narrow, under the canvas, the whole pane scrolls instead: see the media query) */
 #details {
-  /* the target's 340 px where there is room; in a narrower tab it gives the canvas the width, so opening a
-     task's pane does not push the graph under the 560 px where it turns to lanes (a 1280 px window with the
-     side bar open) */
+  /* the target's 340 px where there is room; in a narrower tab it gives the canvas the width (a 1280 px window
+     with the side bar open) */
   width: clamp(280px, 26%, 340px); border-left: 1px solid var(--border); background: var(--panel); overflow: hidden;
   display: flex; flex-direction: column;
 }
