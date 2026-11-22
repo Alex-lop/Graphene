@@ -8,7 +8,8 @@ import { STEP_COLOURS, STEP_FALLBACKS, stepColour } from "../owners.ts";
 import { autoLine, SAY, screenWords, usd, type DraftStep, type State } from "../state.ts";
 import { ICONS } from "./icons.ts";
 import { blanks, draftLine, globs, isDraft, lacks, type Draft } from "./draft.ts";
-import { attemptsMark, cardAct, checkMark, cornerMark, doneWhen, filesLine, forkMark, midCut, stateMark, type CheckMark, type Mark } from "./marks.ts";
+import { attemptsMark, cardAct, checkMark, cornerMark, doneWhen, filesLine, forkMark, goalCells, midCut, stateMark, tally,
+         type CheckMark, type Mark } from "./marks.ts";
 import { actsFor, asksYou, attemptsOf, checkWords, commandChip, cornerWord, cut, done, draftedSteps, edgeKind, editable, filesChip, FIRST_HINT, fitWidth, forkActs, forkRow, forkWords, HEADER_ACTS, headerFor,
          heldWords, KEYS, linkHint, mayRun, paneKey, pipeline, planningLine, PROVES_NOTHING, provesNothing, questionOn, scopeTree, STOP_AFTER, STOP_AFTER_HOVER, stopAfterPlan, stopsOf, sub, tabOrder, tokenWords, topLine, twoLines, whenEdit, who, worktrees, writtenOf,
          type Button, type ForkX, type StateX, type TaskX } from "./words.ts";
@@ -35,10 +36,10 @@ const FOOT_Y = 60; // where a card's foot starts: the hairline over its check
 // A row, the card at the compact level (zoom.ts): its state's mark, its title on up to two lines, and what is news.
 const ROW_W = CARD.compact.w, ROW_H = CARD.compact.h, ROW_X = 36;
 /** What the layout and the lines between the cards measure by, at each level of detail. */
-type Dims = { w: number; h: number; sub: number; gapX: number; gapY: number; padX: number; padY: number; bandGap: number };
-const DIMS: Record<Level, Dims> = {
-  full: { w: BOX_W, h: BOX_H, sub: SUB_H, gapX: 56, gapY: 14, padX: 30, padY: 46, bandGap: 28 },
-  compact: { w: ROW_W, h: ROW_H, sub: 0, gapX: 32, gapY: 8, padX: 24, padY: 44, bandGap: 24 },
+type Dims = { w: number; h: number; sub: number; gapX: number; gapY: number; padX: number; padY: number; bandGap: number; label: number };
+const DIMS: Record<Level, Dims> = { // `label`: the room over a sub-goal's first row for its header, which is drawn larger over rows
+  full: { w: BOX_W, h: BOX_H, sub: SUB_H, gapX: 56, gapY: 14, padX: 30, padY: 46, bandGap: 28, label: 24 },
+  compact: { w: ROW_W, h: ROW_H, sub: 0, gapX: 32, gapY: 8, padX: 24, padY: 44, bandGap: 24, label: 32 },
 };
 const FOOT = 46; // the canvas's foot, where the zoom's buttons and the legend sit: the plan can always be clear of it
 const AWAY_W = 264, AWAY_GAP = 20; // the region for what leaves this machine, right of the plan: never narrower than its label, the longest of which is "asks you first"
@@ -363,7 +364,7 @@ function place(s: StateX, down: boolean, lv: Level): Placed {
   const d = DIMS[lv], h = d.h + d.sub;
   const g = boxes(s, lv);
   // laid downward, a row wraps at what the canvas shows; zoomed out it shows more, and the rows stay as they are
-  const lay = layout(g.boxes, g.edges, { goal: g.goal, boxW: d.w, boxH: h, labelH: 24, gapX: d.gapX, gapY: d.gapY, bandGap: d.bandGap, ...(down ? {} : { padX: d.padX, padY: d.padY }),
+  const lay = layout(g.boxes, g.edges, { goal: g.goal, boxW: d.w, boxH: h, labelH: d.label, gapX: d.gapX, gapY: d.gapY, bandGap: d.bandGap, ...(down ? {} : { padX: d.padX, padY: d.padY }),
                                          down, width: down ? $("canvas").clientWidth / Math.max(1, zoom.k) : undefined });
   // across, the plan sits in "this machine", and what leaves it has a region of its own at the right; while no
   // step leaves there is no such region, and the plan has the width
@@ -431,15 +432,15 @@ function graph(s: StateX, dir: "across" | "down") {
   if (level !== was) svg.classList.remove("glide");
   regions(s, here, awayW);
   gates(s, here);
-  // bands: few, redrawn
-  const bands = $("bands") as unknown as SVGGElement;
+  // bands: few, redrawn; their headers over the edges, which cross them on the way to a later column
+  const bands = $("bands") as unknown as SVGGElement, heads = $("heads") as unknown as SVGGElement;
   bands.replaceChildren();
+  heads.replaceChildren();
   for (const band of lay.bands) {
     if (!band.id) continue;
-    const ts = s.tasks.filter((t) => t.parent === band.id);
     bands.appendChild(el("rect", { class: "band", x: 18, y: band.y0, width: here - 36, height: band.y1 - band.y0, rx: 10 }));
-    const label = bands.appendChild(el("text", { class: "band-label", x: 30, y: band.y0 + 16 }, ts.length ? `${goalTitle(s, band.id)} · ${done(ts)}` : goalTitle(s, band.id)));
-    fitText(label, Math.min(here - 36, $("canvas").clientWidth / (opened?.zoom ?? zoom).k) - 28); // the band's visible width
+    bandHead(heads, goalTitle(s, band.id), s.tasks.filter((t) => t.parent === band.id), 30, band.y0 + D.label / 2 + 1,
+             Math.min(here - 36, $("canvas").clientWidth / (opened?.zoom ?? zoom).k) - 28); // within the band's visible width
   }
   // edges: keyed by their ends; a changed path glides (CSS transitions d)
   const edges = $("edges") as unknown as SVGGElement;
@@ -496,25 +497,33 @@ function graph(s: StateX, dir: "across" | "down") {
   const goalG = $("goalg") as unknown as SVGGElement;
   const gp = g.goal ? lay.boxes[GOAL] : undefined;
   const goalCheck = s.goals.find((x) => !x.parent && x.title === s.goal)?.check ?? ""; // the root that is the goal: its own check
-  const gk = gp ? JSON.stringify([s.goal, goalCheck, done(s.tasks), gp.x, gp.y, down, level]) : "";
+  const cells = goalCells(s.tasks, s.goals), all = tally(s.tasks);
+  const gk = gp ? JSON.stringify([s.goal, goalCheck, cells, gp.x, gp.y, down, level]) : "";
   if (gk !== goalKey) {
     goalKey = gk;
     goalG.replaceChildren();
-    if (gp && level === "compact") { // as a row: its tile and its words
+    if (gp && level === "compact") { // as a row: a ring filled by what landed, its title, and the count
       goalG.appendChild(el("rect", { class: "goal-box", x: 0, y: 0, width: ROW_W, height: ROW_H, rx: 10 }));
-      tile(goalG, "goal", "◎", "the whole goal", -1, true);
-      rowTitle(goalG, "goal-title", s.goal);
+      ring(goalG, all.portion, 19, ROW_H / 2, 9.5);
+      fitText(goalG.appendChild(el("text", { class: "goal-title", x: ROW_X, y: 18 }, s.goal)), ROW_W - ROW_X - 8);
+      goalG.appendChild(el("text", { class: "sub", x: ROW_X, y: 35 }, `${all.landed} of ${all.total}`));
       goalG.appendChild(el("circle", { class: "port in", cx: 0, cy: ROW_H / 2, r: 5 }));
-    } else if (gp) { // the goal is a card as a task is: its tile, its words, its own check, and the count under it
+    } else if (gp) { // the goal is a card as a task is: the ring, its words, its own check; at its foot a cell a task, a group a sub-goal; the count under it
       goalG.appendChild(el("rect", { class: "goal-box", x: 0, y: 0, width: gp.w, height: BOX_H, rx: 12 }));
-      tile(goalG, "goal", "◎", "the whole goal");
+      ring(goalG, all.portion, 27, 28, 13);
       fitText(goalG.appendChild(el("text", { class: "goal-title", x: TEXT_X, y: 27 }, s.goal)), gp.w - TEXT_X - 8);
       if (goalCheck) pill(goalG, "check", "✓", goalCheck, TEXT_X, 37, gp.w - TEXT_X - 10);
-      goalG.appendChild(el("text", { class: "sub", x: 2, y: BOX_H + 16 }, `goal · ${done(s.tasks)} done`));
+      const gap = 5, step = Math.min(14, (gp.w - 24 - (cells.length - 1) * gap) / Math.max(1, all.total)); // the cells share the card's width, however many
+      let x = 12;
+      for (const group of cells) {
+        for (const m of group.marks) { goalG.appendChild(el("rect", { class: "cell", "data-mark": m, x, y: FOOT_Y + 6, width: Math.max(step * 0.7, step - 1.5), height: 10, rx: 1.5 })); x += step; }
+        x += gap;
+      }
+      goalG.appendChild(el("text", { class: "sub", x: 2, y: BOX_H + 16 }, `goal · ${all.landed} of ${all.total} landed`));
       goalG.appendChild(el("circle", { class: "port in", cx: down ? gp.w / 2 : 0, cy: down ? 0 : BOX_H / 2, r: 5 }));
     }
     if (gp) {
-      goalG.setAttribute("aria-label", `goal: ${s.goal}, ${done(s.tasks)} done`);
+      goalG.setAttribute("aria-label", `goal: ${s.goal}, ${all.landed} of ${all.total} landed`);
       goalG.setAttribute("role", "group"); // reachable by Tab and the arrows, announced
       goalG.setAttribute("tabindex", "0");
       goalG.appendChild(el("title", {}, s.goal));
@@ -596,13 +605,13 @@ function inStep<T extends SVGElement>(node: T, period: number): T {
   return node;
 }
 
-/** The tile at a card's left: who does the step, by a letter or a mark. Smaller on a row. */
-function tile(grp: SVGGElement, kind: string, mark: string, label: string, colour = -1, row = false) {
+/** The tile at a card's left: who does the step, by a letter or a mark. */
+function tile(grp: SVGGElement, kind: string, mark: string, label: string, colour = -1) {
   const t = el("g", { class: `tile ${kind}${colour < 0 ? "" : " step"}` });
   // a step's one colour, the same as its files wear in the Explorer: the theme's own, by its id
   if (colour >= 0) t.style.setProperty("--step", `var(--vscode-${STEP_COLOURS[colour]!.replace(".", "-")}, ${STEP_FALLBACKS[colour]})`);
-  t.appendChild(el("rect", row ? { x: 8, y: 11, width: 22, height: 22, rx: 6 } : { x: 10, y: 11, width: 34, height: 34, rx: 9 }));
-  t.appendChild(el("text", { x: row ? 19 : 27, y: row ? 26.5 : kind === "cmd" ? 32 : 33, "text-anchor": "middle" }, mark));
+  t.appendChild(el("rect", { x: 10, y: 11, width: 34, height: 34, rx: 9 }));
+  t.appendChild(el("text", { x: 27, y: kind === "cmd" ? 32 : 33, "text-anchor": "middle" }, mark));
   t.appendChild(el("title", {}, label));
   grp.appendChild(t);
 }
@@ -631,13 +640,15 @@ function pill(grp: SVGGElement, kind: string, glyph: string, words: string, x: n
 const RING = "M0,-8a8,8 0 1 1 0,16a8,8 0 1 1 0,-16", DIAMOND = "M0,-9L9,0L0,9L-9,0Z", TRIANGLE = "M0,-8L9,7.5L-9,7.5Z";
 const SQUARE = "M-4.5,-7.5h9a3,3 0 0 1 3,3v9a3,3 0 0 1 -3,3h-9a3,3 0 0 1 -3,-3v-9a3,3 0 0 1 3,-3z";
 const TICK = "M-4.2,0.4l3,3.2l5.6,-6.6", CROSS = "M-3.4,-3.4l6.8,6.8M3.4,-3.4l-6.8,6.8", BANG = "M0,-3v4.5M0,4.6v.1";
-const MARKS: Record<Mark | CheckMark["box"] | "ended" | "warn", [string, string][]> = {
+const MARKS: Record<Mark | CheckMark["box"] | "ended" | "warn" | "portion", [string, string][]> = {
   // a step's state (`stateMark`), the same shape at every size
   waiting: [["line dots", RING]], ready: [["line", RING]], working: [["line faint", RING], ["line spin", "M0,-8a8,8 0 0 1 8,8"]],
   you: [["solid", DIAMOND]], yours: [["line", DIAMOND]], back: [["solid", TRIANGLE], ["ink", BANG]],
   landed: [["solid", RING], ["ink", TICK]], suggested: [["line dashes", RING]],
   // an attempt that ended without passing (`forkMark`); a row whose check proves nothing yet
   ended: [["line", RING], ["line", CROSS]], warn: [["line", TRIANGLE], ["line", BANG]],
+  // how much of a sub-goal, or of the goal, landed (`ring`): its arc is cut to the portion
+  portion: [["line faint", RING], ["line", RING]],
   // the check's box (`checkMark`): a square Graphene alone ticks; with no check, the diamond of your approval
   approval: [["line", DIAMOND]], passed: [["solid", SQUARE], ["ink", TICK]], failed: [["solid", SQUARE], ["ink", CROSS]],
   hollow: [["line dashes", SQUARE], ["line", BANG]], tells: [["line", SQUARE]], unrun: [["line dots", SQUARE]],
@@ -645,12 +656,46 @@ const MARKS: Record<Mark | CheckMark["box"] | "ended" | "warn", [string, string]
 
 /** A mark drawn about a point, ``r`` px from its middle to its edge. Its lines are never thinner than 1.3 px;
  *  what turns on it takes up where the page's clock is (`inStep`). */
-function mark(grp: SVGGElement, kind: keyof typeof MARKS, x: number, y: number, r: number) {
+function mark(grp: SVGElement, kind: keyof typeof MARKS, x: number, y: number, r: number): SVGGElement {
   const g = grp.appendChild(el("g", { class: `mk ${kind}`, transform: `translate(${x} ${y}) scale(${r / 10})`, style: `--sw:${Math.max(2, 13 / r)}`, "aria-hidden": "true" }));
   for (const [how, d] of MARKS[kind]) { // a path's length is said as 100, so its dots and dashes meet where it closes
     const p = g.appendChild(el("path", { class: how, d, pathLength: 100 }));
     if (how.endsWith("spin")) inStep(p, 900);
   }
+  return g;
+}
+
+/** A ring filled by the portion that landed, of a sub-goal's tasks or of the plan's: the ticked disc once all
+ *  have, an empty ring while none has. */
+function ring(grp: SVGElement, portion: number, x: number, y: number, r: number) {
+  if (portion >= 1) return void mark(grp, "landed", x, y, r);
+  const arc = mark(grp, "portion", x, y, r).lastElementChild as SVGPathElement;
+  if (portion > 0) arc.style.strokeDasharray = `${portion * 100} 100`; else arc.remove();
+}
+
+/** A sub-goal's header, over its first row: the ring, its title, `3 of 6`, a small mark a task (landed first,
+ *  so they read as a bar), then what wants you there in words, each in its mark's colour. Larger over rows, so
+ *  it reads in a fitted plan. It keeps to ``max`` px, the band's width: where all of it has no room the marks
+ *  go, whole (part of a bar would be another count), then the words, and the title is cut to what is left. */
+function bandHead(root: SVGGElement, title: string, ts: readonly TaskX[], x: number, y: number, max: number) {
+  const t = tally(ts), far = level === "compact", r = far ? 8 : 6, m = far ? 4.5 : 3.5, gap = far ? 10 : 8, step = 2 * m + 3;
+  const g = root.appendChild(el("g", { class: "band-head" }));
+  ring(g, t.portion, x + r, y, r);
+  const text = (kind: string, words: string) => g.appendChild(el("text", { class: kind, y: y + (far ? 5 : 4) }, words));
+  const wide = (n: SVGTextElement) => n.getComputedTextLength() || (n.textContent ?? "").length * (far ? 8.5 : 6.5); // not drawn yet: by its characters
+  const name = text("band-label", title), count = t.total ? text("band-count", `${t.landed} of ${t.total}`) : null;
+  const wants = t.wants.map((w) => { const n = text("band-want", w.text); n.dataset.mark = w.mark; return n; });
+  const cw = count ? wide(count) + gap : 0, mw = t.total ? t.total * step - 3 + gap : 0, ww = wants.reduce((sum, n) => sum + wide(n) + gap, 0);
+  const room = max - 2 * r - gap, least = Math.min(wide(name), 90);
+  const marks = least + cw + mw + ww <= room, words = marks || least + cw + ww <= room;
+  if (!words) for (const n of wants.splice(0)) n.remove();
+  fitText(name, room - cw - (marks ? mw : 0) - (words ? ww : 0));
+  let at = x + 2 * r + gap;
+  const put = (n: SVGTextElement) => { n.setAttribute("x", String(at)); at += wide(n) + gap; };
+  put(name);
+  if (count) put(count);
+  if (marks) { for (const k of t.marks) { mark(g, k, at + m, y, m); at += step; } at += gap - 3; }
+  wants.forEach(put);
 }
 
 /** A card's foot, which is its check's: a hairline, the check's box (marks.ts `checkMark`), the words `done
@@ -695,8 +740,8 @@ const draftFoot = (grp: SVGGElement, check: string, approve = false) =>
 
 /** A compact card's title: on one line at the row's middle, or on two when it is longer, the second cut to the
  *  row (``max`` px: clear of what is at its right end). Its text reads as the title does, whichever way it is broken. */
-function rowTitle(grp: SVGGElement, kind: "title" | "goal-title", title: string, max = ROW_W - ROW_X - 14) {
-  const text = grp.appendChild(el("text", { class: kind, x: ROW_X }));
+function rowTitle(grp: SVGGElement, title: string, max: number) {
+  const text = grp.appendChild(el("text", { class: "title", x: ROW_X }));
   // not drawn yet (the SVG hidden), a line is cut by a character count
   const lines = twoLines(title, max, (t) => { text.textContent = t; return text.getComputedTextLength() || t.length * 7.6; });
   text.replaceChildren(...lines.map((line, i) => el("tspan", { x: ROW_X, y: lines.length > 1 ? 18 + i * 17 : 27 }, i < lines.length - 1 ? `${line} ` : line)));
@@ -720,7 +765,7 @@ function drawCompact(grp: SVGGElement, c: { title: string; hover: string; mark: 
     const fo = el("foreignObject", { x: ROW_X - 5, y: 10, width: ROW_W - ROW_X - 3, height: 24 });
     fo.appendChild(nameInput(c.naming));
     grp.appendChild(fo);
-  } else rowTitle(grp, "title", c.title, ROW_W - ROW_X - 8 - news);
+  } else rowTitle(grp, c.title, ROW_W - ROW_X - 8 - news);
   grp.appendChild(el("title", {}, c.hover));
   grp.appendChild(el("circle", { class: "port in", cx: 0, cy: ROW_H / 2, r: 5 }));
   const port = grp.appendChild(el("circle", { class: "port", cx: ROW_W, cy: ROW_H / 2, r: 5 }));
@@ -1596,7 +1641,7 @@ function notice(st: Status) {
   n.hidden = false;
   n.textContent = st.text;
   n.className = st.kind;
-  for (const id of ["regions", "bands", "edges", "gates", "tasks", "goalg"]) ($(id) as unknown as SVGGElement).replaceChildren();
+  for (const id of ["regions", "bands", "edges", "gates", "heads", "tasks", "goalg"]) ($(id) as unknown as SVGGElement).replaceChildren();
   taskEls.clear(); edgeEls.clear(); goalKey = "";
   $("lanes").replaceChildren(); laneEls.clear(); lanesKey = "";
   $("minimap").hidden = true;
@@ -1815,7 +1860,7 @@ function wire() {
   // what the canvas gains over the shell (the preview's is the same shell): the regions under the drawing, the
   // zoom's buttons at its foot, and the legend: colour means state and nothing else
   $("view").prepend(el("g", { id: "regions" }));
-  $("edges").after(el("g", { id: "gates" })); // on the line, over the edges that cross it
+  $("edges").after(el("g", { id: "gates" }), el("g", { id: "heads" })); // on the line, over the edges that cross it; and the sub-goals' headers
   const zooms = div("", undefined, canvas);
   zooms.id = "zoom";
   for (const [id, label, sign, title, on] of [["zoom-fit", "fit the graph", "⤢", "fit the whole plan in the pane (f)", refit],

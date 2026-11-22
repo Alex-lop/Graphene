@@ -104,6 +104,7 @@ main { flex: 1; display: flex; min-height: 0; }
 #legend .lg-proposed::before { background: var(--proposed); }
 #legend .lg-came-back::before { background: var(--came-back); }
 #canvas.lanes #zoom, #canvas.lanes #legend, #canvas.lanes #planning, #canvas.lanes #minimap { display: none; }
+.band-head .spin { animation: none; } /* a mark in a count is not the work: only a card's own ring turns */
 /* while a planner writes the plan: how many steps it has drawn so far, beside the zoom's buttons */
 #planning { position: absolute; left: 16px; bottom: 50px; z-index: 2; font-size: 12px; color: var(--proposed); display: flex; gap: 8px; align-items: center; pointer-events: none; }
 #planning[hidden] { display: none; }
@@ -287,7 +288,15 @@ button:disabled { opacity: 0.45; cursor: default; }
 .region-label { fill: var(--dim); font-size: 11.5px; font-family: var(--font); letter-spacing: 0.02em; }
 .region-label.away { fill: var(--review); }
 .band { fill: color-mix(in srgb, var(--fg) 3%, transparent); stroke: none; }
-.band-label { fill: var(--dim); font-size: 11px; font-family: var(--font); }
+/* a sub-goal's header: its ring, its title, its count, a mark a task, and in its mark's colour what wants you there */
+.band-head { pointer-events: none; }
+.band-head text { font-size: 11.5px; font-family: var(--font); fill: var(--dim); paint-order: stroke; stroke: var(--bg); stroke-width: 4px; stroke-linejoin: round; } /* its own ground: an edge may pass under it */
+.band-head .band-label { fill: color-mix(in srgb, var(--fg) 88%, var(--bg)); font-weight: 600; }
+.band-head .band-want { fill: var(--c); font-weight: 600; }
+.mk.portion { --c: var(--done); }
+/* the goal's cells, one a task and a group a sub-goal: filled where the step landed, is worked on, or wants you */
+.cell { fill: var(--c); }
+.cell:is([data-mark="yours"], [data-mark="ready"], [data-mark="waiting"], [data-mark="suggested"]) { fill: none; stroke: color-mix(in srgb, var(--c) 70%, transparent); }
 /* an edge carries the work: dotted while it waits, moving where an agent is working, green where it landed */
 .edge { fill: none; stroke: var(--edge); stroke-width: 2; marker-end: none; }
 .edge.wait { stroke-dasharray: 2 6; stroke-linecap: round; }
@@ -315,8 +324,6 @@ button:disabled { opacity: 0.45; cursor: default; }
 .tile.codex:not(.step) text, .tile.draft text { fill: var(--proposed); }
 .tile.you:not(.step) rect { fill: color-mix(in srgb, var(--review) 16%, transparent); }
 .tile.you:not(.step) text { fill: var(--review); }
-.tile.goal rect { fill: color-mix(in srgb, var(--done) 15%, transparent); }
-.tile.goal text { fill: var(--done); font-size: 16px; font-weight: 400; }
 .tile.cmd text { font-family: var(--mono); font-size: 12px; font-weight: 600; }
 .pill rect { fill: var(--tint); }
 .pill-text, .pill-mark { fill: var(--dim); font-size: 11px; font-family: var(--mono); }
@@ -405,10 +412,9 @@ button:disabled { opacity: 0.45; cursor: default; }
 /* from afar (the compact level) a card is a row, its state's mark and its title: the words are drawn larger,
    since the whole drawing is drawn smaller, and a sub-goal's name reads as a heading */
 #svg[data-level="compact"] .title, #svg[data-level="compact"] .goal-title { font-size: 14px; }
-#svg[data-level="compact"] .tile text { font-size: 12px; }
-#svg[data-level="compact"] .tile.cmd text { font-size: 11px; }
-#svg[data-level="compact"] .tile.goal text { font-size: 14px; }
-#svg[data-level="compact"] .band-label { font-size: 13px; font-weight: 600; }
+#svg[data-level="compact"] .band-head text { font-size: 13.5px; }
+#svg[data-level="compact"] .band-head .band-label { font-size: 15px; }
+#svg[data-level="compact"] .goal .sub { font-size: 12.5px; }
 
 /* a state's colour, by its mark (marks.ts `stateMark`, the card's `data-mark`): the mark itself, its card's
    border, its row's fill, its rect in the minimap. Working amber, to review or asks you purple (a step of your
