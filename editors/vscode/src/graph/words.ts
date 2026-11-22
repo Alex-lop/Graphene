@@ -476,7 +476,7 @@ export const KEYS: readonly [string, string][] = [
   ["g", "bring the goal on screen"],
   ["n", "the next step that needs you: selected, and brought on screen"],
   ["f", "fit the whole plan in the pane"],
-  ["- · =", "zoom out · zoom in; far out, a card is its title alone"],
+  ["- · =", "zoom out · zoom in; far out, a card is a row: its mark and its title, then its mark alone"],
   ["0", "back to whole cards at their own size (100%)"],
   ["v", "graph or lanes"],
   ["?", "this list"],
@@ -484,7 +484,7 @@ export const KEYS: readonly [string, string][] = [
   ["drag a dot", "onto another task: that task waits on this one"],
   ["×", "beside a need: it stops waiting on it"],
   ["wheel · drag", "scroll · pan; ⌘ or Ctrl with the wheel, or a pinch, zooms about the pointer"],
-  ["double click", "on a card that is its title alone: whole cards, that one in the middle; on the canvas: fit"],
+  ["double click", "on a row: whole cards, that one in the middle; on the canvas: fit"],
 ];
 
 /** The hint while a link is armed: what to click or where to drop, and the two ways out. Esc works only with

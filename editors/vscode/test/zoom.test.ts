@@ -94,6 +94,8 @@ test("the percent a person reads is a card's size against a whole card at 100%: 
     assert.equal(percent(to, switchK(k, from, to)), percent(from, k), `${from} at ${k} reads the same after it turns to ${to}`);
   }
   assert.ok(percent("compact", 0.3) < percent("compact", 0.6) && percent("compact", 1.2) < percent("full", 1), "it rises all the way in");
+  // the numbers the changelog gives a person, who reads the percent and not the scale: the floor, where the titles go, the ceiling
+  assert.deepEqual([percent("compact", ZOOM_MIN), percent("compact", FAR), percent("full", ZOOM_MAX)], [12, 27, 300]);
 });
 
 test("a pan never loses the drawing: a larger one keeps to the edges, a smaller one stays inside where it was put", () => {
@@ -160,4 +162,5 @@ test("the keys' list says each key the zoom answers", () => {
   for (const k of ["f", "- · =", "0", "wheel · drag", "double click"]) assert.ok(keys.includes(k), `no ${k} in the list`);
   assert.ok(keys.includes("+"), "+ still draws a task");
   assert.match(KEYS.find(([k]) => k === "wheel · drag")![1], /pinch/);
+  assert.doesNotMatch(KEYS.map(([, what]) => what).join("\n"), /title alone/, "a row is its mark and its title, and far out its mark alone");
 });
