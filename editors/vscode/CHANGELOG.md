@@ -8,13 +8,16 @@ The whole plan in the pane (22 November 2026).
   its own size. It is fitted again while you have not panned or zoomed (a task's pane opening, a task added, the
   window resized), and every time the page opens. `f`, the ⤢ button and a double click on the canvas fit it again.
 - Zoom goes out to 20% and in to 300%: the − and + buttons, `-` and `=`, ⌘ or Ctrl with the wheel, a pinch. The
-  percent between the buttons says how big a card is drawn; a click on it, or `0`, is 100%.
+  percent between the buttons says how big a card is drawn; a click on it, or `0`, is 100%. The buttons are there
+  wherever the graph is drawn across, a narrow tab (561 to 700 px) too.
 - From afar a card is a row: its tile, its title and its mark (landed, working, needs you). A plan too big to
-  read as whole cards opens that way; zooming in turns the rows back into whole cards, a double click on a row
-  opens it at 100%, and a task drawn from afar opens there too.
+  read as whole cards opens that way; zooming in turns the rows back into whole cards, and a double click on a
+  row, the goal's too, opens it at 100%, wherever the pane its first click opens lands. A task drawn from afar
+  opens there too, and the whole plan is back once you leave it.
 - A minimap in the canvas's corner while part of the plan is off screen: a click or a drag in it goes there.
-- The "goal" chip stands clear of the legend and the minimap, and the legend gives way to the zoom's buttons on a
-  narrow canvas. The narrow graph (under 560 px) and the lanes are as they were.
+- The "goal" chip stands clear of the legend and the minimap and has its arrow, and the legend gives way to the
+  zoom's buttons on a narrow canvas. The narrow graph (under 560 px) and the lanes are as they were.
+- The `+` key draws a task and no longer types a + into its title.
 
 The graph is built by hand (10 to 11 November 2026). It needs no newer CLI: every click is a 0.9.0 command.
 

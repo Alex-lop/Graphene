@@ -58,7 +58,8 @@ let zoom: Zoom = { k: 1, tx: 0, ty: 0 }; // every page opens fitted: last time's
 let moved = false; // the person zoomed or panned: the plan is no longer fitted again under them
 let level: Level = "full"; // the level of detail on screen: whole cards, or rows when the plan is read from afar
 let D = DIMS.full; // and its measures
-let tapped: { id: string; at: number } | null = null; // the card a click last landed on: a double click is on that one
+let tapped: string | null = null; // the card the last click chose: a double click is on that one, wherever its second click lands
+let drawing: string | null = null; // a task drawn here and still open: the canvas holds still under it, and is the plan's again once it is left
 let fitted = false;
 let saving: ReturnType<typeof setTimeout> | undefined;
 // Drafts live in the host's workspace storage, shared by every graph page.
@@ -181,9 +182,12 @@ function draw(at: { after: string | null; parent: string | null }) {
   remember({ drafts, drew: n });
   naming = d.key;
   select(d.key);
+  if (view() === "lanes") return;
   // drawn on a plan seen from afar, it is opened as a double click opens a row: its title is typed at a size that reads
-  if (level === "compact" && view() !== "lanes") detail(d.key); else reveal(d.key);
-  moved = true; // a hand is on the canvas: it holds still under what is typed, as it always has, and `f` fits again
+  const was = moved;
+  if (level === "compact") detail(d.key); else reveal(d.key);
+  moved = was; // the page's own move, not the person's: the canvas holds still under what is typed for as long as
+  drawing = d.key; // the draft is open, and then the plan is fitted again if no hand panned or zoomed
 }
 
 /** A draft's field changed: kept, and once it lacks nothing graphene is asked to take it (`node add`). */
@@ -270,6 +274,7 @@ function direction(): "across" | "down" {
 function render() {
   if (!state) return;
   const s = state;
+  if (drawing !== selected) drawing = null; // the drawn task was left (closed, discarded, or taken into the plan)
   // the pane first: it opens or closes beside the canvas, which is then as wide as the plan is fitted to
   const shut = $("details").hidden;
   pane();
@@ -398,7 +403,7 @@ function graph(s: StateX, dir: "across" | "down") {
   const down = dir === "down";
   const was = svg.dataset.level ?? level; // the level of the drawing on screen
   if (down) level = "full"; // the narrow drawing keeps whole cards
-  const opened = moved ? null : opening(s, down); // until the person pans or zooms, the whole plan is in the pane
+  const opened = moved || drawing ? null : opening(s, down); // until the person pans or zooms, the whole plan is in the pane
   if (opened) level = opened.level;
   D = DIMS[level];
   const at = opened?.at ?? place(s, down, level);
@@ -451,7 +456,7 @@ function graph(s: StateX, dir: "across" | "down") {
       grp.style.transform = `translate(${p.x}px, ${p.y}px)`; // placed before it joins: no glide from the corner
       if (!watched) { // a step the planner is still writing is watched: it is clicked once it is a suggestion
         // a double click's second click is not another choice: the pane the first one opened may have moved the plan under it
-        grp.addEventListener("click", (e) => { e.stopPropagation(); if (e.detail > 1) return; tapped = { id, at: e.timeStamp }; clicked(id); });
+        grp.addEventListener("click", (e) => { e.stopPropagation(); if (e.detail > 1) return; tapped = id; clicked(id); });
         grp.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); clicked(id); } });
       }
       tasks.appendChild(grp);
@@ -920,6 +925,7 @@ const detail = (id: string) => turn("full", 1, { id, sx: $("canvas").clientWidth
 /** The whole plan in the pane again, as `f` and a double click on the canvas ask. */
 function refit() {
   moved = false;
+  drawing = null;
   render();
 }
 
@@ -1581,6 +1587,7 @@ window.addEventListener("keydown", (e) => {
   if (e.key === "+" && state) { // a task drawn after the selected one, or on its own
     const near = state.tasks.find((t) => t.id === selected);
     if (near?.leaves) return; // nothing is drawn after a step past the line
+    e.preventDefault(); // the key draws the task: it is not then typed into the title its box opens with
     draw(near ? { after: near.id, parent: near.parent } : { after: null, parent: null });
     return;
   }
@@ -1669,13 +1676,23 @@ function wire() {
     canvas.classList.remove("dragging");
   });
   canvas.addEventListener("click", (e) => { if (!(e.target as Element).closest(".task, .lane, .goal")) first(); });
+  // a double click on a card is heard wherever its second click lands: the pane its first click opened may be
+  // under the pointer by then (beside the canvas, or under a narrow one). That click presses nothing there, takes
+  // no focus and selects no word; a row opens: whole cards, that one in the middle
+  const second = (e: MouseEvent) => e.detail > 1 && tapped !== null;
+  window.addEventListener("mousedown", (e) => { if (second(e)) e.preventDefault(); }, true);
+  window.addEventListener("click", (e) => {
+    if (!second(e)) { tapped = null; return; } // any other click: the card's own handler says so if it chose one
+    e.preventDefault();
+    e.stopPropagation();
+    if (level === "compact" && lay?.boxes[tapped!]) detail(tapped!);
+  }, true);
   canvas.addEventListener("dblclick", (e) => {
     const on = e.target as Element;
-    if (on.closest(".lane, #zoom, #minimap")) return;
-    // on a card: the one its first click chose (the pane that click opened may have moved the plan under the
-    // second). A row opens: whole cards, that one in the middle. On the canvas: the whole plan again.
-    if (tapped && e.timeStamp - tapped.at < 700) { if (level === "compact" && lay?.boxes[tapped.id]) detail(tapped.id); return; }
-    if (!on.closest(".task, .goal")) refit();
+    if (tapped || on.closest(".lane, #zoom, #minimap")) return; // a chosen card's: its second click opened it
+    // a card no click chooses (the goal, a step the planner is writing) opens as a row does; the canvas fits the plan again
+    const card = on.closest(".task, .goal");
+    if (!card) refit(); else if (level === "compact") detail(card.getAttribute("data-id") ?? GOAL);
   });
   // the details pane opening narrows the canvas, as does a narrower window: a narrow one turns to lanes or
   // lays the graph downward, and the plan is fitted to what is left until the person pans themselves

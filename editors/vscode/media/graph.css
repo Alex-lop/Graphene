@@ -156,8 +156,13 @@ footer#hint.asks { color: var(--review); }
   #details .d-body { flex: none; min-height: auto; overflow: visible; }
   footer#hint.linking .hint-text { white-space: normal; } /* the ways out read whole: the line wraps */
   header { padding: 5px 10px 4px; align-items: center; }
-  #zoom, #legend, #minimap { display: none; } /* the side bar's canvas is small: the keys and the wheel zoom it */
-  #planning { left: 12px; bottom: 8px; } /* no buttons here to sit above */
+  /* the side bar's canvas is small (the lanes, or the graph laid downward): the keys and the wheel zoom it. A
+     graph drawn across (a canvas over 560 px) is fitted to its pane, so it keeps the buttons that say how far
+     out it is and bring it back, and its minimap */
+  #legend, body:not([data-mode="across"]) :is(#zoom, #minimap) { display: none; }
+  #minimap { bottom: 14px; } /* no legend here to stand on; and smaller, as its canvas is */
+  #minimap svg { max-width: 120px; height: auto; }
+  body:not([data-mode="across"]) #planning { left: 12px; bottom: 8px; } /* no buttons here to sit above */
   #b-more { display: inline-flex; grid-column: 2; }
   #counts, #auto, #pipe { display: none; } /* Home, above the side bar's graph, shows the stages and the switch */
   #actions { display: none; grid-column: 1 / -1; grid-row: auto; margin-top: 4px; justify-content: start; }
