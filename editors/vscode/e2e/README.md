@@ -29,9 +29,11 @@ Mac's `/Applications/Visual Studio Code.app`, else a build `@vscode/test-electro
 The plan has work left, so the graph's tab opens by itself (`graphene.graph.openOnStart`, left at its default):
 the check runs no command for it, and fails when the tab does not open, when it took the keyboard, or when it or
 the side bar's graph does not draw the three tasks. Show Graph must then reveal that same tab. Then the plan is
-emptied, the tab closed and an untitled file opened, and a task joins the plan from outside the window: the tab
-must open by itself beside the file, in a group of its own, and not take the keyboard out of the file. On Linux
-run it under `xvfb-run`. `E2E_APP=cursor` runs it in Cursor; `E2E_SHOT=file.png` keeps a screenshot.
+emptied and the tab closed, and a task joins the plan from outside the window: the side bar's graph must draw it
+and the tab must stay closed, as a tab a person closed does in that window. Then a second window opens on a folder
+whose plan is empty, an untitled file is opened in it, and a task joins that plan: the tab must open by itself
+beside the file, in a group of its own, and not take the keyboard out of the file. On Linux run it under
+`xvfb-run`. `E2E_APP=cursor` runs it in Cursor; `E2E_SHOT=file.png` keeps a screenshot.
 
 The other walks are about something else, and their profiles turn that setting off (`settings: L.ASKED_ONLY`):
 `home.mjs`, `shots.mjs` and the three measures open the tab when they want it, and see one graph until then.

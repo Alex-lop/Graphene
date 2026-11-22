@@ -71,8 +71,8 @@ The graph's own tab:
 
 - The graph opens as a tab by itself when work starts: the window opens on a plan with work left, a plan appears,
   or a run starts. It does not take the keyboard focus and opens beside the file you are working in, never over
-  it; a tab you close stays closed until the next plan or run. `graphene.graph.openOnStart` (on by default) turns
-  it off; Show graph opens the same tab as before.
+  it; a tab you close stays closed in that window until you ask for it. `graphene.graph.openOnStart` (on by
+  default) turns it off; Show graph opens the same tab as before.
 
 The graph is built by hand (10 to 11 November 2026). It needs no newer CLI: every click is a 0.9.0 command.
 

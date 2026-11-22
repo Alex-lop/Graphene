@@ -57,9 +57,9 @@ The tab also opens by itself when work starts: when the window opens on a plan w
 appears, and when a run starts. It does not take the keyboard focus, and it opens beside the file you are
 working in (or the diff, or the notebook), never over it: in the editor group to its side, a new one when there
 is none, so the file stays where it is with its cursor. When your editor group is empty or shows a page of VS
-Code's own (Welcome, Settings), the tab opens there. Close it and it stays closed until the next plan or run; a
-plan with every task done, and a folder with no plan, open nothing. The setting `graphene.graph.openOnStart`
-turns this off, and **Show graph** still opens it.
+Code's own (Welcome, Settings), the tab opens there. Close it and it stays closed in that window, whatever plan
+or run comes next, until you ask for it with **Show graph**. A plan with every task done, and a folder with no
+plan, open nothing. The setting `graphene.graph.openOnStart` turns this off, and **Show graph** still opens it.
 
 You can build the graph by hand, before and while agents run. **Add task**, or the **+** on a box, draws a draft:
 type its title on the box, then its files and its check in the pane, and it joins the plan (**Fill it in for me**
@@ -138,7 +138,7 @@ by hand, the cockpit in a terminal) and the Needs You, Agents, Plan and Rounds v
 | `graphene.path` | `graphene` | the command: a name on PATH or an absolute path. Read from your own settings only, never a folder's |
 | `graphene.pollMs` | `1500` | how often the plan is read again while a view is open, when the CLI has no `--watch` stream |
 | `graphene.advanced` | off | every command in the palette, and the Needs You, Agents, Plan and Rounds views |
-| `graphene.graph.openOnStart` | on | the graph opens as a tab by itself when work starts (the window opens on a plan with work left, a plan appears, a run starts), beside the file you are working in and without taking the keyboard focus; off, only **Show graph** opens it |
+| `graphene.graph.openOnStart` | on | the graph opens as a tab by itself when work starts (the window opens on a plan with work left, a plan appears, a run starts), beside the file you are working in and without taking the keyboard focus, until you close it; off, only **Show graph** opens it |
 
 ## Editors
 

@@ -59,7 +59,7 @@ test("a closed panel is let go: open is false, a new show makes a new panel, and
   assert.equal(vscode.panels[0]!.revealed, 0);
 });
 
-test("the tab opens by itself once for each start, without the keyboard; Show graph reveals the same tab and may take it; a replay's never opens by itself", async () => {
+test("the tab opens by itself on a start, without the keyboard; Show graph reveals the same tab and may take it; closed by a person, no start opens it again; a replay's never opens by itself", async () => {
   const { parseState } = await import("../src/state.ts");
   const { readFileSync } = await import("node:fs");
   const read = (name: string) => parseState(readFileSync(new URL(`./fixtures/${name}.json`, import.meta.url), "utf8"));
@@ -93,22 +93,27 @@ test("the tab opens by itself once for each start, without the keyboard; Show gr
   own.state = { ...running, run: { going: false, pid: null } }; // the run ends
   own.fire();
   assert.equal(opened(), 1, "closed, it stays closed: none of that is a start");
-  own.state = running; // the next run starts
-  own.fire();
-  assert.equal(opened(), 2, "the next start opens it again");
-  vscode.panels[n + 1]!.dispose();
-  host.show();
-  assert.deepEqual(vscode.panels[n + 2]!.show, { viewColumn: -1, preserveFocus: false }, "asked for, it takes the keyboard as it did");
+  const again = () => { // a round of `graphene auto`: the plan is done, another appears, its run starts
+    for (const next of [{ ...running, tasks: [], run: { going: false, pid: null } }, read("proposals"), running]) { own.state = next; own.fire(); }
+  };
+  again();
+  assert.equal(opened(), 1, "nor do the next plan and the next run open it: a person closed it in this window");
+  host.show(); // they ask for it
+  assert.deepEqual(vscode.panels[n + 1]!.show, { viewColumn: -1, preserveFocus: false }, "asked for, it opens and takes the keyboard as it did");
+  assert.equal((host as unknown as { shut: boolean }).shut, false, "and the close before it is forgotten");
+  vscode.panels[n + 1]!.dispose(); // and close it again
+  again();
+  assert.equal(opened(), 2, "closed again, it stays closed again");
   vscode.workspace.settings["graph.openOnStart"] = false;
   const off = live({ state: read("proposals") });
   new GraphHost(context, off as never);
   off.fire();
   delete vscode.workspace.settings["graph.openOnStart"];
-  assert.equal(opened(), 3, "the setting off: only Show graph opens it");
+  assert.equal(opened(), 2, "the setting off: only Show graph opens it");
   const replay = live({ state: read("running"), own: "/tmp/graphene-demo-x" });
   new GraphHost(context, replay as never, "Graphene demo");
   replay.fire();
-  assert.equal(opened(), 3, "Watch the Demo opens its own graph itself");
+  assert.equal(opened(), 2, "Watch the Demo opens its own graph itself");
 });
 
 test("by itself the tab opens beside what a person has in front, never over it; asked for, it opens in front as it did", async () => {

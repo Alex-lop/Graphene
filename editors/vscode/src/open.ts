@@ -1,8 +1,9 @@
 // When the graph opens by itself in the editor area (the setting graphene.graph.openOnStart): once for each
-// start. A start is the window opening on a plan with work to show, a plan appearing where there was none, or
-// a run starting. Only a start opens it, so a person who closes the tab is not chased: nothing here remembers
-// the close, and nothing reopens the tab until the next start. Where it opens leaves a person's work as it was:
-// beside what they have in front, never over it. Pure: no VS Code here.
+// start, until a person closes the tab. A start is the window opening on a plan with work to show, a plan
+// appearing where there was none, or a run starting. A person who closes the tab is not chased: each round of
+// `graphene auto` is a plan appearing and a run starting, so a start is no reason to bring back what they put
+// away. Closed, it stays closed in this window until they ask for it. Where it opens leaves a person's work as
+// it was: beside what they have in front, never over it. Pure: no VS Code here.
 import type { State } from "./state.ts";
 
 /** What of a snapshot a start is read from: work to show (a task that is not done, or a planner writing a
@@ -15,9 +16,9 @@ export function seen(s: Pick<State, "tasks" | "drafting" | "run">): Seen {
 
 /** Whether the tab opens now. `was`: the snapshot read before this one, null when this is the first (the
  *  window just opened). `on`: the setting. `tab`: the tab is already there, in front or behind another, and
- *  is left as it is. */
-export function opens(was: Seen | null, now: Seen, o: { on: boolean; tab: boolean }): boolean {
-  if (!o.on || o.tab) return false;
+ *  is left as it is. `shut`: a person closed the tab in this window and has not asked for it since. */
+export function opens(was: Seen | null, now: Seen, o: { on: boolean; tab: boolean; shut: boolean }): boolean {
+  if (!o.on || o.tab || o.shut) return false;
   return (now.work && !was?.work) || (now.going && !was?.going);
 }
 

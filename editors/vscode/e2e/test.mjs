@@ -2,7 +2,8 @@
 // graph's tab and in the side bar's Graph view of real VS Code. The profile leaves graphene.graph.openOnStart at
 // its default, so the tab is not asked for: the window opens on a plan with work left and the tab opens by itself,
 // without taking the keyboard. It fails when the tab does not open, takes the keyboard, or a graph lacks a task.
-// Then a file is in front with the caret in it when a plan appears: the tab must open beside the file, not over it.
+// Then the tab is closed and a plan appears: it must stay closed. Then, in a second window, where the tab was never
+// closed, a file is in front with the caret in it when a plan appears: the tab must open beside the file, not over it.
 // VSCODE_EXECUTABLE names the app (CI: a build @vscode/test-electron downloads, under xvfb); VSIX the package.
 import { execFileSync } from "node:child_process";
 import { existsSync, rmSync } from "node:fs";
@@ -43,13 +44,13 @@ try {
   const got = await L.setSize(session.electronApp, session.page, 1200, 700);
   if (JSON.stringify(await inner()) !== JSON.stringify([got.width, got.height]) || got.width !== 1200) throw new Error(`setSize said ${JSON.stringify(got)}, the window is ${await inner()}`);
   await L.setSize(session.electronApp, session.page, 1280, 800);
-  const page = session.page;
+  let page = session.page;
   // No command is run and nothing is clicked: the plan has work left, so the graph's tab opens by itself. The side
   // bar is still the Explorer's (a fresh profile), so the only graph there can be is the tab's.
   const own = await L.waitForGraph(page, { min: TASKS.length, timeout: 60000 })
     .catch(() => { throw new Error("no graph drew by itself: the window opened on a plan with work left, and the tab did not open"); });
-  const tabs = page.locator(".editor-group-container .tab", { hasText: "Graphene" });
-  await tabs.first().waitFor({ timeout: 10000 }).catch(() => { throw new Error("a graph drew by itself, but not in a tab of the editor area"); });
+  const tabs = () => page.locator(".editor-group-container .tab", { hasText: "Graphene" });
+  await tabs().first().waitFor({ timeout: 10000 }).catch(() => { throw new Error("a graph drew by itself, but not in a tab of the editor area"); });
   if (await page.evaluate(inTab)) throw new Error("the tab that opened by itself took the keyboard");
   await L.openSidebar(page);
   let side, shown = { tasks: [], counts: "" };
@@ -70,29 +71,42 @@ try {
   // is said, not required: it is what shows the check above can tell a tab that took the keyboard from one that did not.
   await L.palette(page, "Graphene: Show Graph");
   const took = await page.waitForFunction(inTab, null, { timeout: 5000 }).then(() => true, () => false);
-  if (await tabs.count() !== 1) throw new Error(`${await tabs.count()} Graphene tabs after Show Graph: it reveals the one that is there`);
-  // A file in front with the caret in it, and a start nobody clicked for: the plan is emptied and the tab closed, a
-  // file is opened, and a task joins the plan from outside the window, as an agent's proposal does. In the file's
-  // group the tab would hide the file and VS Code would leave the keyboard in nothing: it must open beside it.
-  const cli = (argv) => execFileSync(graphene, argv, { cwd: fx.dir, env: fx.env, stdio: "pipe" });
+  if (await tabs().count() !== 1) throw new Error(`${await tabs().count()} Graphene tabs after Show Graph: it reveals the one that is there`);
+  // The tab is closed, and a start nobody clicked for follows: the plan is emptied, and a task joins it from outside
+  // the window, as an agent's proposal does. A tab a person closed stays closed in that window: the side bar's
+  // graph draws the task, and no tab opens.
+  const cli = (argv, at = fx) => execFileSync(graphene, argv, { cwd: at.dir, env: at.env, stdio: "pipe" });
+  const joins = ["node", "add", "a count of sentences", "--id", "sentences", "--scope", "wordkit/sentences.py", "--check", "true"];
   cli(["node", "drop", ...TASKS.map(([id]) => id)]);
   for (const t0 = Date.now(); shown.tasks.length; await page.waitForTimeout(100)) { // the window has read the empty plan
     if (Date.now() - t0 > 60000) throw new Error(`every task was dropped, and the side bar's graph still draws ${JSON.stringify(shown.tasks)}`);
     shown = await L.readGraph(side).catch(() => shown);
   }
   await L.palette(page, "View: Close All Editors");
-  await tabs.first().waitFor({ state: "detached", timeout: 10000 }).catch(() => { throw new Error("Close All Editors left the graph's tab open"); });
+  await tabs().first().waitFor({ state: "detached", timeout: 10000 }).catch(() => { throw new Error("Close All Editors left the graph's tab open"); });
+  cli(joins);
+  for (const t0 = Date.now(); !shown.tasks.length; await page.waitForTimeout(100)) { // the window has read the plan that appeared
+    if (Date.now() - t0 > 60000) throw new Error("a task joined the plan, and the side bar's graph does not draw it");
+    shown = await L.readGraph(side).catch(() => shown);
+  }
+  await page.waitForTimeout(2000); // the read that drew the task is the one that would have opened the tab
+  if (await tabs().count()) throw new Error("the tab was closed, a plan appeared, and the tab opened by itself again: closed, it stays closed in that window");
+  // A file in front with the caret in it, and a start nobody clicked for, in a window where the tab was never
+  // closed: a second one, on a folder whose plan is empty. A file is opened, and the task joins that plan. In the
+  // file's group the tab would hide the file and VS Code would leave the keyboard in nothing: it must open beside it.
+  await L.close(session);
+  const fx2 = L.makeFixture(path.join(base, "wordkit-beside"), graphene);
+  session = await L.launch(app, profile, fx2.dir, { width: 1280, height: 800 });
+  page = session.page;
   await L.palette(page, "File: New Untitled Text File");
   await page.locator(".editor-group-container .tab", { hasText: "Untitled-1" }).waitFor({ timeout: 10000 })
     .catch(() => { throw new Error("no untitled file opened to stand in front"); });
   // whether the caret was seen in the file before the start: said, not required, as the keyboard in the tab is above
   const typing = await page.waitForFunction(inFile, null, { timeout: 5000 }).then(() => true, () => false);
-  cli(["node", "add", "a count of sentences", "--id", "sentences", "--scope", "wordkit/sentences.py", "--check", "true"]);
-  for (let t0 = Date.now(), drew = false; !drew; await page.waitForTimeout(100)) { // a graph that is not the side bar's, drawn
-    if (Date.now() - t0 > 60000) throw new Error("a plan appeared with a file in front, and no graph's tab opened by itself");
-    for (const f of await L.graphFrames(page)) drew ||= f !== side && (await L.readGraph(f).catch(() => ({ tasks: [] }))).tasks.length > 0;
-  }
-  await tabs.first().waitFor({ timeout: 10000 }).catch(() => { throw new Error("a graph drew by itself beside a file, but not in a tab of the editor area"); });
+  cli(joins, fx2);
+  await L.waitForGraph(page, { timeout: 60000 }) // nothing of Graphene's was opened in this window: the graph that draws is the tab's
+    .catch(() => { throw new Error("a plan appeared with a file in front, and no graph's tab opened by itself"); });
+  await tabs().first().waitFor({ timeout: 10000 }).catch(() => { throw new Error("a graph drew by itself beside a file, but not in a tab of the editor area"); });
   const group = (label) => page.locator(".editor-group-container", { has: page.locator(".tab", { hasText: label }) });
   if (await group("Graphene").filter({ has: page.locator(".tab", { hasText: "Untitled-1" }) }).count()) throw new Error("the tab opened by itself in the group of the file in front: over the file, not beside it");
   if (await group("Untitled-1").count() !== 1) throw new Error("the file that was in front is gone from the editor area");
@@ -101,7 +115,7 @@ try {
   if (process.env.E2E_SHOT) await L.shot(page, process.env.E2E_SHOT);
   console.log(`e2e: ${app.name} opened the graph's tab by itself on a plan with work left, the keyboard not in it, and drew ${TASKS.length} tasks in it and in the side bar; `
     + `Show Graph revealed the same tab${took ? " and gave it the keyboard" : ", and the keyboard was not seen in it (so the check that it was left alone proved nothing)"}; `
-    + `with a file in front, a plan that appeared opened the tab beside the file${typing ? " and the keyboard stayed in the file" : ", and the keyboard was not seen in the file before it (so where it stayed is not known)"}`);
+    + `closed, the tab stayed closed when a plan appeared; in a second window with a file in front, a plan that appeared opened the tab beside the file${typing ? " and the keyboard stayed in the file" : ", and the keyboard was not seen in the file before it (so where it stayed is not known)"}`);
 } catch (err) {
   failed = err;
   if (session) await L.shot(session.page, path.join(base, "failed.png")).catch(() => {});

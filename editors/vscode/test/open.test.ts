@@ -9,15 +9,16 @@ const empty = fixture("empty"), drafting = fixture("drafting"), proposals = fixt
 /** The same plan with every task done, or with its run going or stopped. */
 const done = (s: State): State => ({ ...s, tasks: s.tasks.map((t) => ({ ...t, state: "done" as const })), run: { going: false, pid: null } });
 const run = (s: State, going: boolean): State => ({ ...s, run: { going, pid: going ? 4242 : null } });
-const ON = { on: true, tab: false };
+const ON = { on: true, tab: false, shut: false };
 
-/** A window's life: each snapshot in turn, the tab open or closed as `tab` says before it; which of them opened it. */
-function walk(states: State[], o: { on?: boolean; tab?: (i: number) => boolean } = {}): number[] {
+/** A window's life: each snapshot in turn, the tab there as `tab` says before it, and closed by a person and not
+ *  asked for since as `shut` says; which of them opened it. */
+function walk(states: State[], o: { on?: boolean; tab?: (i: number) => boolean; shut?: (i: number) => boolean } = {}): number[] {
   const opened: number[] = [];
   let was: Seen | null = null;
   states.forEach((s, i) => {
     const now = seen(s);
-    if (opens(was, now, { on: o.on ?? true, tab: o.tab?.(i) ?? false })) opened.push(i);
+    if (opens(was, now, { on: o.on ?? true, tab: o.tab?.(i) ?? false, shut: o.shut?.(i) ?? false })) opened.push(i);
     was = now;
   });
   return opened;
@@ -56,18 +57,29 @@ test("at most once for a start: drafting, then its tasks, is one plan appearing"
   assert.deepEqual(walk([empty, drafting, drafting, proposals, proposals]), [1]);
 });
 
-test("a person who closes the tab is not chased: no later snapshot reopens it until the next start", () => {
-  const working = { ...proposals, tasks: proposals.tasks.map((t, i) => ({ ...t, state: i ? t.state : "running" as const })) };
-  // the tab opened on the first read and was closed at once: the plan moves on, and nothing opens
+const working = { ...proposals, tasks: proposals.tasks.map((t, i) => ({ ...t, state: i ? t.state : "running" as const })) };
+
+test("a tab that is not there and that nobody closed opens on each start, and on nothing between two", () => {
+  // the plan moves on, and nothing opens
   assert.deepEqual(walk([proposals, proposals, working, { ...working, cursor: working.cursor + 1 }]), [0]);
-  // closed while the planner wrote: its tasks arriving is the same plan, the run that starts is the next start
+  // the planner's tasks arriving is the same plan; the run that starts is the next start
   assert.deepEqual(walk([empty, drafting, proposals, run(proposals, true), run(working, true)]), [1, 3]);
-  // closed during a run: the run ending opens nothing; the next plan that appears does
+  // the run ending opens nothing; the next plan that appears does
   assert.deepEqual(walk([running, run(running, false), done(running), drafting]), [0, 3]);
 });
 
+test("a person who closes the tab is not chased: no start opens it again in this window", () => {
+  // a round of `graphene auto` after another: a plan appears and a run starts, twice a round
+  const rounds = [proposals, run(working, true), done(running), drafting, proposals, run(working, true), done(running), drafting];
+  assert.deepEqual(walk(rounds), [0, 1, 3, 5, 7], "the cost of chasing: nobody closed it, and every start opens it");
+  assert.deepEqual(walk(rounds, { shut: (i) => i > 0 }), [0], "closed after the first: the run that starts and the plans that appear open nothing");
+  // closed, asked for (the tab is there and the close forgotten), closed again: it stays closed again
+  assert.deepEqual(walk(rounds, { tab: (i) => i === 1 || i === 2, shut: (i) => i > 2 }), [0]);
+  assert.equal(opens(null, seen(running), { on: true, tab: false, shut: true }), false, "not even the first read, were the close before it");
+});
+
 test("a tab that is already there is left as it is, and a start it sat through is not made up for later", () => {
-  assert.equal(opens(null, seen(proposals), { on: true, tab: true }), false);
+  assert.equal(opens(null, seen(proposals), { ...ON, tab: true }), false);
   assert.deepEqual(walk([empty, drafting, proposals, proposals], { tab: (i) => i < 2 }), [], "it was there when the plan appeared; closed after, it stays closed");
 });
 
@@ -81,7 +93,7 @@ test("it opens beside what a person has in front, and in the group when nothing 
 test("the setting off opens nothing, and turning it on waits for the next start", () => {
   assert.deepEqual(walk([proposals, run(proposals, true)], { on: false }), []);
   let was: Seen | null = null;
-  const at = (s: State, on: boolean) => { const now = seen(s), o = opens(was, now, { on, tab: false }); was = now; return o; };
+  const at = (s: State, on: boolean) => { const now = seen(s), o = opens(was, now, { ...ON, on }); was = now; return o; };
   assert.equal(at(proposals, false), false);
   assert.equal(at(proposals, true), false, "the window's opening is past");
   assert.equal(at(run(proposals, true), true), true);
