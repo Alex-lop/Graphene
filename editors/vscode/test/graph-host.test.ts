@@ -100,7 +100,6 @@ test("the tab opens by itself on a start, without the keyboard; Show graph revea
   assert.equal(opened(), 1, "nor do the next plan and the next run open it: a person closed it in this window");
   host.show(); // they ask for it
   assert.deepEqual(vscode.panels[n + 1]!.show, { viewColumn: -1, preserveFocus: false }, "asked for, it opens and takes the keyboard as it did");
-  assert.equal((host as unknown as { shut: boolean }).shut, false, "and the close before it is forgotten");
   vscode.panels[n + 1]!.dispose(); // and close it again
   again();
   assert.equal(opened(), 2, "closed again, it stays closed again");

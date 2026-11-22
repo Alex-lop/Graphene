@@ -11,8 +11,8 @@ const done = (s: State): State => ({ ...s, tasks: s.tasks.map((t) => ({ ...t, st
 const run = (s: State, going: boolean): State => ({ ...s, run: { going, pid: going ? 4242 : null } });
 const ON = { on: true, tab: false, shut: false };
 
-/** A window's life: each snapshot in turn, the tab there as `tab` says before it, and closed by a person and not
- *  asked for since as `shut` says; which of them opened it. */
+/** A window's life: each snapshot in turn, the tab there as `tab` says before it, and closed by a person before
+ *  it as `shut` says; which of them opened it. */
 function walk(states: State[], o: { on?: boolean; tab?: (i: number) => boolean; shut?: (i: number) => boolean } = {}): number[] {
   const opened: number[] = [];
   let was: Seen | null = null;
@@ -73,8 +73,8 @@ test("a person who closes the tab is not chased: no start opens it again in this
   const rounds = [proposals, run(working, true), done(running), drafting, proposals, run(working, true), done(running), drafting];
   assert.deepEqual(walk(rounds), [0, 1, 3, 5, 7], "the cost of chasing: nobody closed it, and every start opens it");
   assert.deepEqual(walk(rounds, { shut: (i) => i > 0 }), [0], "closed after the first: the run that starts and the plans that appear open nothing");
-  // closed, asked for (the tab is there and the close forgotten), closed again: it stays closed again
-  assert.deepEqual(walk(rounds, { tab: (i) => i === 1 || i === 2, shut: (i) => i > 2 }), [0]);
+  // closed, asked for (the tab is there for a while), closed again: it stays closed again
+  assert.deepEqual(walk(rounds, { tab: (i) => i === 1 || i === 2, shut: (i) => i > 0 }), [0]);
   assert.equal(opens(null, seen(running), { on: true, tab: false, shut: true }), false, "not even the first read, were the close before it");
 });
 

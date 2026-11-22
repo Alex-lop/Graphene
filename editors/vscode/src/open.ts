@@ -16,7 +16,7 @@ export function seen(s: Pick<State, "tasks" | "drafting" | "run">): Seen {
 
 /** Whether the tab opens now. `was`: the snapshot read before this one, null when this is the first (the
  *  window just opened). `on`: the setting. `tab`: the tab is already there, in front or behind another, and
- *  is left as it is. `shut`: a person closed the tab in this window and has not asked for it since. */
+ *  is left as it is. `shut`: a person closed the tab in this window. */
 export function opens(was: Seen | null, now: Seen, o: { on: boolean; tab: boolean; shut: boolean }): boolean {
   if (!o.on || o.tab || o.shut) return false;
   return (now.work && !was?.work) || (now.going && !was?.going);

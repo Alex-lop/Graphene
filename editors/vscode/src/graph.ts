@@ -20,7 +20,7 @@ export class GraphHost implements vscode.WebviewViewProvider {
   private drafts: Draft[];
   private draftStore: string;
   private was: Seen | null = null; // the last snapshot read: a start is a change from it (open.ts)
-  private shut = false; // a person closed the tab and has not asked for it since: no start opens it (open.ts)
+  private shut = false; // a person closed the tab in this window: no start opens it again (open.ts)
   private closed = new vscode.EventEmitter<void>();
   /** The panel was closed (Watch the Demo ends its replay then). */
   readonly onDidClose = this.closed.event;
@@ -52,7 +52,6 @@ export class GraphHost implements vscode.WebviewViewProvider {
    *  (it opens by itself), so it does not take the keyboard, and it opens beside a file that is in front, not
    *  over it (open.ts says why). Asked for, it opens in front of the active group and takes the keyboard. */
   show(select?: string, quiet = false) {
-    if (!quiet) this.shut = false; // asked for: the close before it is forgotten
     if (!this.panel) {
       const viewColumn = quiet && beside(front()) ? vscode.ViewColumn.Beside : vscode.ViewColumn.Active;
       const panel = vscode.window.createWebviewPanel("graphene.graphPanel", this.title, { viewColumn, preserveFocus: quiet }, {
