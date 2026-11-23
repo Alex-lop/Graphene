@@ -10,7 +10,7 @@ import { ICONS } from "./icons.ts";
 import { blanks, draftLine, globs, isDraft, lacks, type Draft } from "./draft.ts";
 import { attemptsMark, cardAct, checkLines, checkMark, cornerMark, doneWhen, filesLine, forkMark, goalBox, goalCells, legend, midCut, nextWanting, stateMark, tally, wanting, wantingLine,
          type CheckMark, type Mark } from "./marks.ts";
-import { actsFor, asksYou, attemptsOf, commandChip, cornerWord, cut, done, draftedSteps, edgeKind, editable, filesChip, FIRST_HINT, fitWidth, forkActs, forkRow, forkWords, HEADER_ACTS, headerFor,
+import { actsFor, ASK_AGENT, askLine, asksYou, attemptsOf, commandChip, cornerWord, CURSOR_AGENT, cut, done, draftedSteps, edgeKind, editable, filesChip, FIRST_HINT, fitWidth, forkActs, forkRow, forkWords, HEADER_ACTS, headerFor,
          heldWords, KEYS, linkHint, mainAct, mayRun, paneKey, pipeline, planningLine, PROVES_NOTHING, provesNothing, questionOn, scopeTree, stopsOf, sub, tabOrder, tokenWords, topLine, twoLines, whenEdit, who, writtenOf,
          type Button, type ForkX, type StateX, type TaskX } from "./words.ts";
 import { CARD, dotGap, FAR, fitPlan, hold, levelFor, miniFrame, miniSize, nearest, offScreen, panTo, percent, switchK, wheelK, ZOOM_MAX, ZOOM_MIN, zoomK,
@@ -291,18 +291,17 @@ function render() {
   const shut = $("details").hidden;
   pane();
   if ($("details").hidden !== shut) paneMoved = true;
-  header(s);
+  const blank = !s.tasks.length && !drawn().length && !s.drafting; // nothing drawn: the notice says what to do, alone
+  header(s, blank);
   const v = view();
   const dir = direction();
   document.body.dataset.mode = v === "lanes" ? "lanes" : dir;
   $("lanes").hidden = v !== "lanes";
   ($("svg") as unknown as SVGSVGElement).style.display = v === "lanes" ? "none" : "block";
   $("canvas").classList.toggle("lanes", v === "lanes");
-  $("notice").hidden = s.tasks.length > 0 || drawn().length > 0 || Boolean(s.drafting); // a planner writing says so at the canvas's foot
-  const [needs, show] = wantingLine(wantYou().length).split(" · "); // `3 tasks need you`, `show the next`: the chip's two halves
-  $("need").hidden = !needs;
-  $("need").children[1]!.textContent = needs ?? "";
-  $("need").children[2]!.textContent = show ? ` · ${show}` : "";
+  $("notice").hidden = !blank; // a planner writing says so at the canvas's foot
+  $("zoom").style.display = blank ? "none" : ""; // nothing to zoom
+  chips(s);
   const planning = planningLine(s);
   $("planning").textContent = planning;
   $("planning").hidden = !planning;
@@ -310,7 +309,8 @@ function render() {
     $("notice").className = "";
     $("notice").replaceChildren();
     div("notice-head", "Nothing is planned yet.", $("notice")); // what is so, then what to do about it
-    if (!replaying()) $("notice").append("Ask your coding agent for something in its chat: its plan appears here. Or draw the first task.");
+    if (!replaying()) $("notice").append(ASK_AGENT);
+    if (!replaying() && document.body.dataset.editor === "cursor") div("notice-aside", CURSOR_AGENT, $("notice")); // the host says which editor (graph.ts)
     if (!replaying()) button({ label: "Add task", act: "add-under", title: "draw a task: its title, then its files and its check", icon: "add", main: true }, "", $("notice"));
   }
   painting = true;
@@ -324,10 +324,50 @@ function render() {
   hint();
 }
 
+let asking = false; // the card of the plan's open question is out, under its chip
+
+/** At the canvas's top right, what needs you: how many tasks, a click showing the next; and the plan's open
+ *  questions, a click opening the first under its chip, to answer there. A question about the whole plan is on
+ *  no card, so this is where the graph shows it. A replay is watched: neither. */
+function chips(s: StateX) {
+  const half = (b: HTMLElement, line: string) => {
+    const [n, then] = line.split(" · "); // `3 tasks need you`, `show the next`: the count, and what a click does
+    b.hidden = !n;
+    b.children[1]!.textContent = n ?? "";
+    b.children[2]!.textContent = then ? ` · ${then}` : "";
+  };
+  half($("b-next"), wantingLine(wantYou().length));
+  const asks = replaying() ? 0 : s.questions.length;
+  half($("b-ask"), askLine(asks));
+  if (!asks) asking = false;
+  $("b-ask").setAttribute("aria-expanded", String(asking));
+  $("need").hidden = $("b-next").hidden && $("b-ask").hidden;
+  const card = $("asked"), q = s.questions[0];
+  card.hidden = !asking || !q;
+  if (card.hidden || !q || card.dataset.key === JSON.stringify(q)) return;
+  card.dataset.key = JSON.stringify(q);
+  const on = q.about ? (s.tasks.find((t) => t.id === q.about)?.title ?? goalTitle(s, q.about)).replace(/^\?\s+/, "") : ""; // a sub-goal's `? ` says it asks: the card says so
+  card.replaceChildren();
+  div("q-on", on ? `Question on “${on}”` : "Question on the plan", card);
+  div("q-text", q.text, card);
+  const opts = div("q-opts", undefined, card);
+  const answer = (label: string, target?: string) => {
+    const b = opts.appendChild(document.createElement("button"));
+    b.className = "quiet"; // none filled: the default is said under them, not chosen for you
+    if (target === undefined) b.appendChild(icon("comment-discussion"));
+    b.append(label);
+    b.title = target === undefined ? "answer in your own words" : "answer with this";
+    b.addEventListener("click", () => { asking = false; api.postMessage({ type: "act", act: "answer", id: q.id, ...(target === undefined ? {} : { target }) }); render(); });
+  };
+  for (const o of new Set([...(q.default ? [q.default] : []), ...q.options])) answer(o, o);
+  answer("In your own words…");
+  if (q.default) div("q-if", `If unanswered: ${q.default}`, card);
+}
+
 /** A narrow tab (the editor area beside the side bar and an agent's chat): the pane goes under the canvas. */
 const narrow = () => matchMedia("(max-width: 700px)").matches;
 
-function header(s: StateX) {
+function header(s: StateX, blank: boolean) {
   const first = topLine(s); // a replay, or a live race against the stand-in: said before anything else
   $("replay").textContent = $("replay").title = first; // a pill cut to the header's room: its hover says it whole
   $("replay").hidden = !first;
@@ -335,8 +375,8 @@ function header(s: StateX) {
   $("goal").textContent = $("goal").title = h.goal; // cut to its row: the hover says it whole
   $("auto").textContent = $("auto").title = h.auto;
   $("auto").hidden = !h.auto;
-  // one pipeline, the plan first: Plan, Run, Review
-  $("pipe").hidden = false;
+  // one pipeline, the plan first: Plan, Run, Review; none before there is a plan to be at a stage of
+  $("pipe").hidden = !s.tasks.length;
   $("stages").replaceChildren(...h.stages.map((st, i) => {
     const stage = div(`stage ${st.at}`);
     stage.setAttribute("role", "listitem");
@@ -347,6 +387,9 @@ function header(s: StateX) {
     return stage;
   }));
   for (const [id] of HEADER_ACTS) $(id).hidden = replaying(); // a replay is watched: nothing acts on a plan, or outside it
+  if (blank) $("b-add").hidden = true; // the notice's own Add task is the act then
+  if (!s.tasks.length) $("b-save").hidden = $("b-view").hidden = true; // no plan: nothing to save, or to see as lanes
+  else $("b-view").hidden = false;
   // the one act on the whole plan: Start a suggestion, Run what is ready, Stop a run (words.ts `mainAct`)
   const act = mainAct(s), run = $<HTMLButtonElement>("b-run");
   if (!act) run.hidden = true;
@@ -356,9 +399,10 @@ function header(s: StateX) {
     run.className = act.main ? "" : "quiet"; // filled only when it starts something
     run.disabled = Boolean(act.off);
   }
-  const toggle = $("b-view");
-  const v = view();
-  toggle.replaceChildren(icon(v === "lanes" ? "type-hierarchy-sub" : "list-flat"), document.createTextNode(v === "lanes" ? "Graph" : "Lanes"));
+  const toggle = $("b-view"), lanes = view() === "lanes"; // what a click turns to
+  toggle.replaceChildren(icon(lanes ? "type-hierarchy-sub" : "list-flat"));
+  toggle.title = lanes ? "Graph (v)" : "Lanes (v)";
+  toggle.setAttribute("aria-label", lanes ? "Graph" : "Lanes");
 }
 
 // ---- the graph: SVG, keyed by task id ----
@@ -1261,6 +1305,7 @@ function disarm() {
 
 function hint() {
   const h = $("hint");
+  h.hidden = false;
   const from = wiring?.from ?? linking;
   if (from && state) {
     const a = state.tasks.find((t) => t.id === from);
@@ -1271,11 +1316,13 @@ function hint() {
     cancel.addEventListener("click", () => { disarm(); render(); });
     h.replaceChildren(div("hint-text", linkHint(a?.title ?? from, Boolean(wiring))), cancel);
     h.className = "linking";
-  } else if (state?.questions.length) { // an open question outranks the news: answering it is the person's
+  } else if (state?.questions.length && view() === "lanes") { // the lanes have no chip: an open question outranks the news
     const q = state.questions[0]!;
     const about = q.about ? state.tasks.find((t) => t.id === q.about)?.title : "";
-    h.textContent = `question${about ? ` on “${about}”` : ""}: ${q.text}${q.default ? ` (unanswered: ${q.default})` : ""}`;
+    h.textContent = `question${about ? ` on “${about}”` : ""}: ${q.text}${q.default ? ` (if unanswered: ${q.default})` : ""}`;
     h.className = "asks";
+  } else if (!state?.tasks.length && !drawn().length) { // nothing drawn to click, link or follow: no line
+    h.hidden = true;
   } else if (!saved.hinted) {
     h.textContent = FIRST_HINT;
     h.className = "";
@@ -1725,6 +1772,8 @@ function notice(st: Status) {
   $("replay").hidden = true;
   $("pipe").hidden = true; // no plan to read: no stage to be at, and nothing to run or add to
   for (const [id] of HEADER_ACTS) $(id).hidden = true;
+  $("zoom").style.display = "none";
+  $("hint").hidden = true;
   $("planning").hidden = true;
 }
 
@@ -1799,6 +1848,7 @@ window.addEventListener("keydown", (e) => {
   if ((e.target as HTMLElement).tagName === "INPUT" && e.key !== "Escape") return; // a tick box: Space is its own
   if (e.key === "Escape") {
     if (!$("help").hidden) help(false);
+    else if (asking) { asking = false; $("b-ask").focus(); }
     else if (wiring || linking) disarm();
     else selected = null;
     render();
@@ -1985,32 +2035,50 @@ function wire() {
   const key = div("", undefined, canvas); // filled by `legendRow`
   key.id = "legend";
   key.setAttribute("aria-hidden", "true"); // each card says its state in words
-  const need = canvas.appendChild(document.createElement("button")); // while a step wants you: how many, and a click shows the next
+  const need = div("", undefined, canvas); // what needs you (`chips`): the tasks, then the plan's questions and the card of the first
   need.id = "need";
-  need.className = "quiet";
   need.hidden = true;
-  need.title = "select the next task that needs you, and bring it on screen (n)";
-  mark(need.appendChild(el("svg", { width: 14, height: 14, viewBox: "-7 -7 14 14" })), "you", 0, 0, 6.5);
-  need.append(document.createElement("b"), document.createElement("span"));
-  need.addEventListener("click", showNext);
-  // the header's buttons
-  const actions = $("actions");
-  const top = (id: string, label: string, ico: string, title: string, on: () => void) => {
-    const b = document.createElement("button");
+  const chip = (id: string, title: string, on: () => void) => {
+    const b = need.appendChild(document.createElement("button"));
     b.id = id;
     b.className = "quiet";
-    b.appendChild(icon(ico));
-    b.appendChild(document.createTextNode(label));
     b.title = title;
     b.addEventListener("click", on);
-    actions.appendChild(b);
+    return b;
   };
+  const next = chip("b-next", "select the next task that needs you, and bring it on screen (n)", showNext);
+  mark(next.appendChild(el("svg", { width: 14, height: 14, viewBox: "-7 -7 14 14" })), "you", 0, 0, 6.5);
+  next.append(document.createElement("b"), document.createElement("span"));
+  const ask = chip("b-ask", "the plan's open question: its answers", () => {
+    asking = !asking;
+    render();
+    if (asking) $("asked").querySelector("button")?.focus();
+  });
+  ask.append(icon("question"), document.createElement("b"), document.createElement("span"));
+  const card = div("", undefined, need);
+  card.id = "asked";
+  card.hidden = true;
+  card.setAttribute("role", "dialog");
+  card.setAttribute("aria-label", "the plan's question");
+  // a press anywhere else puts the card away, as a menu goes
+  window.addEventListener("pointerdown", (e) => { if (asking && !need.contains(e.target as Node)) { asking = false; render(); } });
+  // the header's buttons: the rare ones an icon each (their hover names them), Add task, and last the one act on
+  // the whole plan (`header` says which); none bordered but that one, which fills when it starts something
+  const actions = $("actions");
+  const top = (id: string, label: string, ico: string, title: string, on: () => void) => {
+    const b = actions.appendChild(document.createElement("button"));
+    b.id = id;
+    b.className = "quiet";
+    b.append(icon(ico), label);
+    b.title = title;
+    b.addEventListener("click", on);
+    if (!label) { b.classList.add("icon"); b.setAttribute("aria-label", title.replace(/:.*| \(.*/, "")); }
+  };
+  top("b-save", "", "save", "Save as workflow: this graph to workflows/, to run again on new inputs", () => api.postMessage({ type: "act", act: "saveWorkflow", id: "" }));
+  top("b-view", "", "list-flat", "Lanes (v)", () => { remember({ view: view() === "lanes" ? "graph" : "lanes" }); fitted = false; render(); });
+  top("b-help", "", "question", "Keys (?)", () => help($("help").hidden));
   top("b-add", "Add task", "add", "draw a task: its title, then its files and its check (or the planner fills them in)", () => draw({ after: null, parent: null }));
   top("b-run", "Run", "play", "", () => { const a = state && mainAct(state); if (a) api.postMessage({ type: "act", act: a.act, id: "" }); });
-  top("b-save", "Save as workflow", "save", "write this graph to workflows/ so it can run again on new inputs", () => api.postMessage({ type: "act", act: "saveWorkflow", id: "" }));
-  top("b-view", "Lanes", "list-flat", "graph or lanes (v)", () => { remember({ view: view() === "lanes" ? "graph" : "lanes" }); fitted = false; render(); });
-  top("b-help", "", "question", "every key (?)", () => help($("help").hidden));
-  $("b-help").setAttribute("aria-label", "keys");
   // under the goal: the pipeline's three stages (made here, so the preview's shell has them too). Stop after the
   // plan is Home's, under its Settings: beside Start and Stop here it read as a third way to stop
   const pipe = div("", undefined, document.querySelector("header")!);

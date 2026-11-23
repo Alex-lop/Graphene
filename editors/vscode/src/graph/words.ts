@@ -236,18 +236,16 @@ export function tokenWords(t: Pick<TaskX, "tokens">): { total: string; read: num
 export interface Stage { key: "plan" | "run" | "review"; label: string; at: "done" | "now" | "next"; note: string }
 
 /** One pipeline, the plan always first: Plan, Run, Review. Where the work is (the first stage not finished is
- *  `now`), and a few words under each: how big the plan is and what it asks, who is working, what waits for
- *  you. Auto is the same pipeline with no stop after the plan (`stopAfterPlan`). A command step is never
+ *  `now`), and a few words under each: how big the plan is, who is working, what waits for you. Auto is the same pipeline with no stop after the plan (`stopAfterPlan`). A command step is never
  *  `running` (the run executes it itself): a run going with one ready is running it, not starting. */
-export function pipeline(s: Pick<StateX, "drafting" | "tasks" | "goals" | "questions" | "run">): Stage[] {
+export function pipeline(s: Pick<StateX, "drafting" | "tasks" | "goals" | "run">): Stage[] {
   const n = (k: TaskX["state"]) => s.tasks.filter((t) => t.state === k).length;
   const count = (k: number, word: string) => `${k} ${word}${k === 1 ? "" : "s"}`;
   const planned = s.tasks.length > 0 && (n("running") > 0 || (!n("proposed") && !s.drafting)); // agents at work: the plan was started
   const ran = planned && s.tasks.every((t) => t.state === "review" || t.state === "done");
   const landed = ran && !n("review");
-  const asks = s.questions.length ? count(s.questions.length, "question") : "";
   const plan = s.drafting ? (s.drafting.live ? `${count(draftedSteps(s).length, "task")} so far` : "the planner is writing")
-    : [s.tasks.length ? count(s.tasks.length, "task") : "", planned && n("proposed") ? `${n("proposed")} suggested` : "", asks].filter(Boolean).join(" · ");
+    : [s.tasks.length ? count(s.tasks.length, "task") : "", planned && n("proposed") ? `${n("proposed")} suggested` : ""].filter(Boolean).join(" · "); // an open question is its chip's to say
   const run = !planned || ran ? "" : n("running") ? `${n("running")} working` : n("came back") ? `${n("came back")} need${n("came back") === 1 ? "s" : ""} help` : s.run.going ? (s.tasks.some((t) => t.command && !t.leaves && t.state === "ready") ? "running a command" : "starting")
     : n("yours") ? `${n("yours")} ask${n("yours") === 1 ? "s" : ""} you` : n("ready") ? `${n("ready")} ready` : "waiting";
   const review = n("review") ? `${n("review")} to review` : landed ? "done" : "";
@@ -414,9 +412,9 @@ export interface Button {
 
 /** The header's one act on the whole plan: Stop while a run goes; Start while the plan is a suggestion (Home's
  *  Start: every suggested task accepted, then the run), held while a question with no default is open; else
- *  Run, filled while a task is ready and held while none is. None for no plan: nothing to start. */
+ *  Run, filled while a task is ready and held while none is. None for no plan, or one all done: nothing to start. */
 export function mainAct(s: Pick<StateX, "run" | "tasks" | "questions">): Button | null {
-  if (!s.tasks.length) return null;
+  if (!s.tasks.length || (!s.run.going && s.tasks.every((t) => t.state === "done"))) return null;
   if (s.run.going) return { label: "Stop", act: "stop", icon: "debug-stop", title: "stop every agent: their tasks go back to the plan" };
   const n = (k: TaskX["state"]) => s.tasks.filter((t) => t.state === k).length;
   if (n("proposed") && !n("ready") && !n("running")) {
@@ -510,6 +508,14 @@ export const KEYS: readonly [string, string][] = [
 export function linkHint(title: string, dragging: boolean): string {
   return `link: ${dragging ? "drop it on" : "click"} the task that waits on “${title}” · Cancel or Esc stops it`;
 }
+
+/** The empty graph's words: who plans here, by name. Graphene's hooks reach Claude Code and Codex alone, not
+ *  Cursor's own Agent: in Cursor that is said too, in the same words wherever a screen points to an agent. */
+export const ASK_AGENT = "Ask Claude Code or Codex for something in its chat: its plan appears here. Or draw the first task.";
+export const CURSOR_AGENT = "Cursor's own Agent does not plan with Graphene yet.";
+
+/** The question chip's words, its two halves as the tasks' chip has them: `1 question · answer`; none for none. */
+export const askLine = (n: number): string => (n ? `${n} question${n === 1 ? "" : "s"} · answer` : "");
 
 /** The first-time hint under the graph. */
 export const FIRST_HINT = "click a task to change it · + draws a new one · drag a dot onto another task to link them · ? lists every key";

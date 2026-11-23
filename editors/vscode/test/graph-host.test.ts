@@ -24,6 +24,7 @@ export const window = { showErrorMessage(m) { notifications.push(m); return Prom
   showInformationMessage() { return Promise.resolve(undefined); },
   tabGroups: { get activeTabGroup() { if (tabs.early) throw new Error("Assertion Failed: argument is undefined or null"); return { activeTab: tabs.front }; } } };
 export const Uri = { joinPath(...p) { return p.join("/"); } };
+export const env = { appName: "Visual Studio Code" };
 export const ViewColumn = { Active: -1, Beside: -2 };
 export const workspace = { settings: {}, getConfiguration() { return { get: (k, d) => (k in workspace.settings ? workspace.settings[k] : d) }; } };
 export const commands = { ran: [], registered: [], fns: {}, registerCommand(id, fn) { this.registered.push(id); this.fns[id] = fn; return { dispose() {} }; },
@@ -36,8 +37,8 @@ export async function resolve(spec, ctx, next) { return spec === "vscode" ? { ur
 `;
 register(`data:text/javascript,${encodeURIComponent(hooks)}`);
 
-type Panel = { disposed: boolean; title: string; revealed: number; threw?: string; show?: unknown; dispose(): void; w: { receive(m: unknown): Promise<unknown> } };
-const vscode = await import("vscode") as unknown as { panels: Panel[]; commands: { ran: [string, unknown][] }; workspace: { settings: Record<string, unknown> };
+type Panel = { disposed: boolean; title: string; revealed: number; threw?: string; show?: unknown; dispose(): void; w: { html: string; receive(m: unknown): Promise<unknown> } };
+const vscode = await import("vscode") as unknown as { panels: Panel[]; commands: { ran: [string, unknown][] }; workspace: { settings: Record<string, unknown> }; env: { appName: string };
                                                       tabs: { front: { input: unknown } | undefined; early: boolean } };
 const { GraphHost } = await import("../src/graph.ts");
 const context = { extensionUri: "ext", subscriptions: [], workspaceState: { get: (_: string, fallback: unknown) => fallback, update: async () => {} } } as never;
@@ -182,6 +183,15 @@ test("a replay's host runs no command of the person's, even before its plan is r
   own.show();
   await vscode.panels.at(-1)!.w.receive({ type: "act", act: "cockpit", id: "" });
   assert.deepEqual(ran(), ["graphene.openCockpit"]);
+});
+
+test("in Cursor the page is told so (it says Cursor's own Agent does not plan here); in VS Code it is not", () => {
+  new GraphHost(context, session).show();
+  assert.doesNotMatch(vscode.panels.at(-1)!.w.html, /data-editor/);
+  vscode.env.appName = "Cursor";
+  new GraphHost(context, session).show();
+  vscode.env.appName = "Visual Studio Code";
+  assert.match(vscode.panels.at(-1)!.w.html, /<body data-editor="cursor">/);
 });
 
 test("the panel takes the title the host was given; Graphene by default", () => {

@@ -213,7 +213,7 @@ export class GraphHost {
   <link rel="stylesheet" href="${uri("media", "graph.css")}">
   <title>Graphene</title>
 </head>
-<body>
+<body${vscode.env.appName.includes("Cursor") ? ' data-editor="cursor"' : ""}>
   <header>
     <div id="replay" hidden></div>
     <div id="goal">Graphene</div>
