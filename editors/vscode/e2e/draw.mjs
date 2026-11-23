@@ -1,7 +1,7 @@
 // The graph, built by hand in real VS Code, with no planner and no model ($0): on an empty plan a task is drawn,
 // its title typed on its box and its files and check in the pane, and it joins the plan (`graphene node add`); a
 // second is drawn after it from the + on its box, with your approval for a check; attempts are set on the stepper
-// and the fan is drawn before anything runs; the form changes a title, takes a task for yourself and gives it
+// and its card says ×3 before anything runs; the form changes a title, takes a task for yourself and gives it
 // back; graphene's refusal shows in the pane; and a task an agent holds says what an edit does now, and takes it.
 // It fails when a step does not show what it should, and keeps a screenshot of each (E2E_SHOTS, else the scratch).
 import { execFileSync } from "node:child_process";
@@ -119,7 +119,7 @@ try {
   say(`the + drew ${second.id} after ${first.id}; “wait for my approval” stood in for a check`);
   await shot("second");
 
-  // 3. attempts on one task: the stepper, and the fan before anything runs
+  // 3. attempts on one task: the stepper, and ×3 on its card before anything runs (the card's group says it: data-attempts)
   await box(first.id).locator("rect.box").click();
   await until(g, () => document.querySelector("#details button.tab.on")?.textContent === "Scope", null, "the pane to open on Scope");
   if (await scopeParts() !== "May change, May run, Held by, Stopped, Done when, Tokens") throw new Error(`the Scope tab's parts are: ${await scopeParts()}`);
@@ -131,9 +131,9 @@ try {
     await g.locator('#details button[aria-label="one more attempt"]').click();
     await until(g, (n) => document.querySelector("#details .count")?.textContent === String(n), i + 2, `${i + 2} attempts on the stepper`);
   }
-  const fan = await box(first.id).locator("g.fork.planned").count();
-  if (fan !== 3 || plan()["print the top words"].forks !== 3) throw new Error(`the fan has ${fan} chips; the plan says ${plan()["print the top words"].forks}`);
-  say("the stepper set 3 attempts on that task alone, and the fan is drawn before anything runs");
+  const times = await box(first.id).getAttribute("data-attempts");
+  if (times !== "3" || plan()["print the top words"].forks !== 3) throw new Error(`the card says ×${times}; the plan says ${plan()["print the top words"].forks}`);
+  say("the stepper set 3 attempts on that task alone, and its card says ×3 before anything runs");
   await shot("attempts");
 
   // 4. the form: a new title, typed in place; the task taken for yourself, and given back

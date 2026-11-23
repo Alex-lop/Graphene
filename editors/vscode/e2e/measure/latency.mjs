@@ -15,7 +15,7 @@ const vsix = arg("--vsix", null) ? path.resolve(arg("--vsix")) : L.findVsix();
 const graphene = L.findGraphene();
 const runs = Number(arg("--runs", 20));
 const base = L.scratch("latency-");
-const profile = L.makeProfile(base, { graphene });
+const profile = L.makeProfile(base, { graphene, settings: L.ASKED_ONLY }); // one graph on screen, as in every run before: no tab that opened by itself
 L.installVsix(app, profile, vsix);
 const fx = L.makeFixture(path.join(base, "wordkit"), graphene);
 execFileSync(graphene, ["node", "add", "a task to rename", "--id", "t1", "--scope", "wordkit/t1.py", "--check", "true"], { cwd: fx.dir, env: fx.env, stdio: "pipe" });

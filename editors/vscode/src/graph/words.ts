@@ -38,6 +38,18 @@ export function fitWidth(s: string, max: number, width: (t: string) => number): 
   return out;
 }
 
+/** A title on up to two lines of ``max`` px, for a compact card: whole words on the first while they fit, the
+ *  rest on the second, cut as `fitWidth` cuts. One line when it all fits, or when its first word alone does not
+ *  (then that line is cut). */
+export function twoLines(s: string, max: number, width: (t: string) => number): string[] {
+  if (width(s) <= max) return [s];
+  const words = s.split(/\s+/).filter(Boolean);
+  let n = 0;
+  while (n < words.length - 1 && width(words.slice(0, n + 1).join(" ")) <= max) n++;
+  if (!n) return [fitWidth(words.join(" "), max, width)];
+  return [words.slice(0, n).join(" "), fitWidth(words.slice(n).join(" "), max, width)];
+}
+
 /** Words joined with ` · `, the last dropped until they fit ``max`` characters; the first always stays. */
 export function fitWords(words: string[], max: number): string {
   const parts = words.filter(Boolean);
@@ -49,14 +61,10 @@ export function forkWord(f: Fork): string {
   return f.state || "waiting";
 }
 
-/** The zoom's bounds: never under 1, where the smallest text is drawn at its 11 px (pan and scroll show
- *  more, never a shrink past reading), never over 3. */
-export const zoomK = (k: number) => (Number.isFinite(k) ? Math.min(3, Math.max(1, k)) : 1);
-
-/** The box's corner: the model while the task runs, cut to about six characters (`Nano`, `claude…`), or the
- *  mark that it needs you. The hover and the pane say the model whole. */
+/** A lane's corner: the model while the task runs, cut to about six characters (`Nano`, `claude…`); the pane
+ *  says it whole. Beside it the row wears its state's mark, which is marks.ts's to say (`cornerMark`). */
 export function cornerWord(t: TaskX): string {
-  return t.state === "running" && t.model ? cut(t.model, 7) : t.needs_you ? "◆" : "";
+  return t.state === "running" && t.model ? cut(t.model, 7) : "";
 }
 
 /** Who does a step, for the tile on its card: you, or the executor by a letter (Claude Code `C`, Codex `X`, any
@@ -290,16 +298,6 @@ export function edgeKind(from: Pick<TaskX, "state"> | undefined, to: Pick<TaskX,
   return from?.state === "done" || to?.state === "done" ? "done" : "wait";
 }
 
-/** The mark on a card's corner: its work landed, an agent is on it, it waits on you, or it came back. A
- *  suggested task has none: its dashed card says it is drafted, and accepting the plan is one act for them all. */
-export function badge(t: Pick<TaskX, "state" | "needs_you">): "done" | "running" | "you" | "back" | "" {
-  if (t.state === "done") return "done";
-  if (t.state === "came back") return "back";
-  if (t.state === "proposed") return "";
-  if (t.state === "review" || t.state === "yours" || t.needs_you) return "you";
-  return t.state === "running" ? "running" : "";
-}
-
 /** The worktrees on this machine, one per agent at work: each running attempt's, or the task's own. */
 export function worktrees(tasks: readonly TaskX[]): number {
   return tasks.reduce((n, t) => n + (t.forks.some((f) => f.checkout) ? t.forks.filter((f) => f.checkout).length : t.checkout ? 1 : 0), 0);
@@ -307,16 +305,6 @@ export function worktrees(tasks: readonly TaskX[]): number {
 
 /** How many attempts a task runs as: its own number, else the limits' (Set Limits…), else one. */
 export const attemptsOf = (t: Pick<TaskX, "planned">, limit: number | null | undefined): number => Math.min(8, Math.max(1, t.planned ?? limit ?? 1));
-
-/** The fan under a box: its attempts as they run or ran; before anything runs, one waiting chip for each
- *  attempt it is set to (two or more, and a check to keep one: without a check it runs as one agent). None on
- *  a command step: its check is its command, which runs once, with no agent. */
-export function fan(t: TaskX, limit: number | null | undefined): ForkX[] {
-  if (t.forks.length) return t.forks;
-  const n = attemptsOf(t, limit);
-  if (n < 2 || !t.check || t.command || !["proposed", "ready", "waiting"].includes(t.state)) return [];
-  return Array.from({ length: n }, (_, i) => ({ letter: "abcdefgh"[i]!, state: "", why: "", lines: null, model: "", usd: null, attempts: 0, idle: null, checkout: null }));
-}
 
 /** What a change to a task does now, by its state: the one line under the pane's form. It says what
  *  `graphene node set` does (dev/process/graph-edit/edits.md has each state's answer, as the engine gave it).
@@ -431,9 +419,13 @@ export function actsFor(t: TaskX, replay: boolean): Button[] {
   if (replay) return out;
   const hasChanges = t.changed.length > 0 || ["running", "review", "done", "came back"].includes(t.state);
   if (asksYou(t)) out.push({ label: "Approve and run", act: "markDone", title: `it leaves your machine: graphene node done runs ${cut(t.command ?? "", 80)}`, icon: "check", main: true });
+  else if (t.state === "yours") out.push({ label: "Mark done", act: "markDone", icon: "check", main: true, // a step of your own, as Home's Mark done
+                                           title: `you did it yourself: graphene node done ${t.check ? "runs its check first, in a terminal" : "finishes it, it has no check to run"}` });
   if (t.state === "review") out.push({ label: "Approve", act: "signOff", title: "it lands in your repository: graphene node signoff", icon: "check", main: true });
   if (t.state === "proposed") out.push({ label: "Accept", act: "accept", title: "graphene plan accept", icon: "check", main: true });
   if (t.state === "came back") out.push({ label: "Help it…", act: "handBack", title: "allow what it needs, add a task for it, or try again", icon: "debug-step-back", main: true });
+  if (t.state === "running" && t.stopped.length) out.push({ label: "Allow the write…", act: "handBack", icon: "check", main: true, // the run waits on it, as Home's Allow it to change
+                                                           title: `it was stopped writing ${cut(t.stopped[t.stopped.length - 1]!, 60)}, outside its files: graphene node widen lets it` });
   if (hasChanges) out.push({ label: "Open changes", act: "openDiff", title: "its changes so far, in the diff editor", icon: "diff" });
   if (t.forks.length >= 2) out.push({ label: "Compare attempts", act: "compareForks", title: "the attempts side by side", icon: "split-horizontal" });
   if (!t.leaves) out.push({ label: "Add task after", act: "add-after", title: "draw a new task that waits on this one", icon: "add" });
@@ -482,13 +474,17 @@ export const KEYS: readonly [string, string][] = [
   ["Enter", "open the box's details"],
   ["Esc", "close the details, or stop linking"],
   ["g", "bring the goal on screen"],
-  ["f", "fit the graph again"],
+  ["n", "the next step that needs you: selected, and brought on screen"],
+  ["f", "fit the whole plan in the pane"],
+  ["- · =", "zoom out · zoom in; far out, a card is a row: its mark and its title, then its mark alone"],
+  ["0", "back to whole cards at their own size (100%)"],
   ["v", "graph or lanes"],
   ["?", "this list"],
   ["+", "draw a task: after the selected one, or on its own (the + past a card's out port, and Add task, do the same)"],
   ["drag a dot", "onto another task: that task waits on this one"],
   ["×", "beside a need: it stops waiting on it"],
-  ["wheel · drag", "scroll · pan; ⌘ or Ctrl with the wheel zooms"],
+  ["wheel · drag", "scroll · pan; ⌘ or Ctrl with the wheel, or a pinch, zooms about the pointer"],
+  ["double click", "on a row: whole cards, that one in the middle; on the canvas: fit"],
 ];
 
 /** The hint while a link is armed: what to click or where to drop, and the two ways out. Esc works only with

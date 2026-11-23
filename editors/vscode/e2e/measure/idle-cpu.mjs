@@ -14,7 +14,7 @@ const vsix = arg("--vsix", null) ? path.resolve(arg("--vsix")) : L.findVsix();
 const graphene = L.findGraphene();
 const seconds = Number(arg("--seconds", 60));
 const base = L.scratch("idle-cpu-");
-const profile = L.makeProfile(base, { graphene });
+const profile = L.makeProfile(base, { graphene, settings: L.ASKED_ONLY }); // openPanel below opens the tab: it waits for a graph that was not there
 L.installVsix(app, profile, vsix);
 const fx = L.makeFixture(path.join(base, "wordkit"), graphene);
 for (const [id, title] of [["top", "the CLI prints the top words"], ["reading", "a reading time in minutes"], ["hyphens", "hyphenated words stay whole"]]) {

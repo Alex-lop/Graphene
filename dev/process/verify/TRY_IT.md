@@ -6,7 +6,7 @@
 4. Open Graphene's graph and choose Add task. Type a title and files, leaving the check blank. Expect a draft with its missing check shown; `graphene plan --json` still has no task.
 5. Open the sidebar's Graph view. Expect the same draft and files. Close/reopen the graph tab, then reload the window and open Graphene again. Expect the draft to survive.
 6. Enter a check, such as `grep -qx done inside.txt`. Expect one task in the plan and the draft to disappear from both views.
-7. Set three attempts. Expect three waiting attempt chips before any agent starts. Set one again if you want a single run.
+7. Set three attempts. Expect `×3` at the end of the line under its card before any agent starts. Set one again if you want a single run.
 8. Add a second task owning a different file. Try to give it the first task's file. Expect one refusal beside the form, no duplicate toast, and the original files retained in the plan.
 9. Toggle “I will do this one”, then give it back. Expect “yours”, then “ready”. Toggle approval and change the title; expect the CLI plan to agree.
 10. On Home, enable Exact while a suggested plan has an open question. Expect Start to wait. Answer the question and expect Start to become available. Terminal `plan accept` still takes defaults: Exact is a Home control.

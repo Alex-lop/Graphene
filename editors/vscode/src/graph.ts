@@ -6,6 +6,7 @@ import * as vscode from "vscode";
 import * as C from "./commands.ts";
 import { draftKey, draftOf, type Draft } from "./graph/draft.ts";
 import { check, type FromPage } from "./graph/check.ts";
+import { beside, opens, seen, type Seen } from "./open.ts";
 import type { Session } from "./session.ts";
 
 
@@ -18,6 +19,8 @@ export class GraphHost implements vscode.WebviewViewProvider {
   private title: string;
   private drafts: Draft[];
   private draftStore: string;
+  private was: Seen | null = null; // the last snapshot read: a start is a change from it (open.ts)
+  private shut = false; // a person closed the tab in this window: no start opens it again (open.ts)
   private closed = new vscode.EventEmitter<void>();
   /** The panel was closed (Watch the Demo ends its replay then). */
   readonly onDidClose = this.closed.event;
@@ -29,13 +32,29 @@ export class GraphHost implements vscode.WebviewViewProvider {
     this.draftStore = `graphene.drafts:${session.folder?.uri.fsPath ?? session.own ?? ""}`;
     const saved = context.workspaceState.get<unknown>(this.draftStore, []);
     this.drafts = (Array.isArray(saved) ? saved : []).map(draftOf).filter((d): d is Draft => d !== null);
-    session.onDidChange(() => this.push());
+    session.onDidChange(() => { this.push(); this.start(); });
   }
 
-  /** The panel, made or revealed; with ``select`` the page selects that task. */
-  show(select?: string) {
+  /** The tab opens by itself, once for each start (the setting graphene.graph.openOnStart), without the
+   *  keyboard and beside what a person has in front, until a person closes it: then only asking opens it. A
+   *  read that gave no plan is no snapshot: the next one is compared with the last that was, so a plan that
+   *  could not be read for a moment is not a plan appearing. Never a replay's: Watch the Demo opens its own. */
+  private start() {
+    const s = this.session.state;
+    if (!s || this.session.own) return;
+    const now = seen(s);
+    const on = vscode.workspace.getConfiguration("graphene").get<boolean>("graph.openOnStart", true);
+    if (opens(this.was, now, { on, tab: this.panel !== null, shut: this.shut })) this.show(undefined, true);
+    this.was = now;
+  }
+
+  /** The panel, made or revealed; with ``select`` the page selects that task. ``quiet``: nobody asked for it
+   *  (it opens by itself), so it does not take the keyboard, and it opens beside a file that is in front, not
+   *  over it (open.ts says why). Asked for, it opens in front of the active group and takes the keyboard. */
+  show(select?: string, quiet = false) {
     if (!this.panel) {
-      const panel = vscode.window.createWebviewPanel("graphene.graphPanel", this.title, vscode.ViewColumn.Active, {
+      const viewColumn = quiet && beside(front()) ? vscode.ViewColumn.Beside : vscode.ViewColumn.Active;
+      const panel = vscode.window.createWebviewPanel("graphene.graphPanel", this.title, { viewColumn, preserveFocus: quiet }, {
         enableScripts: true, retainContextWhenHidden: true,
         localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, "dist"), vscode.Uri.joinPath(this.context.extensionUri, "media")],
       });
@@ -46,6 +65,7 @@ export class GraphHost implements vscode.WebviewViewProvider {
       panel.onDidDispose(() => {
         this.views.delete(webview);
         if (this.panel === panel) this.panel = null;
+        this.shut = true; // a person's close: the host never closes its own tab
         this.closed.fire();
       });
     } else {
@@ -196,6 +216,12 @@ export class GraphHost implements vscode.WebviewViewProvider {
 </body>
 </html>`;
   }
+}
+
+/** What the active editor group has in front, as VS Code's tabs name it. Asked before VS Code has sent the
+ *  window's tabs (they come once its editor groups are restored), the API throws: nothing is in front yet. */
+function front(): unknown {
+  try { return vscode.window.tabGroups.activeTabGroup.activeTab?.input; } catch { return undefined; }
 }
 
 /** The page's own key of the drawn task an unchecked message is about, when it reads as one (` d12`). */

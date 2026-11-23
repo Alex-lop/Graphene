@@ -1,0 +1,1394 @@
+{
+ "schema": 1,
+ "graphene": "0.8.0",
+ "repo": "/home/alex/app",
+ "cursor": 1234,
+ "goal": "ship orders 1.0: a store, an API, pages on top, CI and docs",
+ "first": "auto",
+ "planner": "nemotron",
+ "executor": "nemotron",
+ "envelope": {
+  "auto": "off",
+  "budget": 2.0,
+  "tasks": 40,
+  "rounds": 2,
+  "forks": 3,
+  "review": "off",
+  "protected": [],
+  "readonly": []
+ },
+ "auto": null,
+ "run": {
+  "going": true,
+  "pid": 4242
+ },
+ "spent": 0.118,
+ "scoreboard": {
+  "need_you": 4,
+  "running": 3,
+  "proven": 5,
+  "total": 26
+ },
+ "width": 4,
+ "questions": [],
+ "goals": [
+  {
+   "id": "store",
+   "title": "the store keeps orders",
+   "parent": null,
+   "state": "open",
+   "check": "uv run pytest -q tests/store"
+  },
+  {
+   "id": "api",
+   "title": "the API serves them",
+   "parent": null,
+   "state": "open",
+   "check": "uv run pytest -q tests/api"
+  },
+  {
+   "id": "ui",
+   "title": "the pages show them",
+   "parent": null,
+   "state": "open",
+   "check": "npm test"
+  },
+  {
+   "id": "ops",
+   "title": "it runs in CI",
+   "parent": null,
+   "state": "open",
+   "check": null
+  },
+  {
+   "id": "docs",
+   "title": "the docs say so",
+   "parent": null,
+   "state": "open",
+   "check": null
+  }
+ ],
+ "tasks": [
+  {
+   "id": "schema",
+   "title": "orders table and its migration",
+   "full": "orders table and its migration",
+   "state": "done",
+   "parent": "store",
+   "scope": [
+    "store/schema.py",
+    "migrations/**"
+   ],
+   "needs": [],
+   "check": "uv run pytest -q tests/store/test_schema.py",
+   "agent": "1",
+   "model": "Nano",
+   "usd": 0.011,
+   "idle": null,
+   "needs_you": false,
+   "tail": [],
+   "note": "",
+   "changed": [
+    "store/schema.py"
+   ],
+   "stopped": [],
+   "outside": [],
+   "forks": [],
+   "kept": null,
+   "hollow": false,
+   "files": [
+    "migrations/0001_orders.py",
+    "store/schema.py"
+   ],
+   "files_n": 2,
+   "touched": [],
+   "stops": [],
+   "checked": {
+    "before": "red",
+    "after": "passed"
+   },
+   "held": {
+    "state": "caught",
+    "by": "nemotron"
+   }
+  },
+  {
+   "id": "repo",
+   "title": "repository reads and writes orders",
+   "full": "repository reads and writes orders",
+   "state": "done",
+   "parent": "store",
+   "scope": [
+    "store/repo.py"
+   ],
+   "needs": [
+    "schema"
+   ],
+   "check": "uv run pytest -q tests/store/test_repo.py",
+   "agent": "2",
+   "model": "Nano",
+   "usd": 0.014,
+   "idle": null,
+   "needs_you": false,
+   "tail": [],
+   "note": "",
+   "changed": [
+    "store/repo.py"
+   ],
+   "stopped": [],
+   "outside": [],
+   "forks": [],
+   "kept": null,
+   "hollow": false,
+   "files": [
+    "store/repo.py"
+   ],
+   "files_n": 1,
+   "touched": [],
+   "stops": [],
+   "checked": {
+    "before": "red",
+    "after": "passed"
+   },
+   "held": {
+    "state": "caught",
+    "by": "nemotron"
+   }
+  },
+  {
+   "id": "index",
+   "title": "index orders by customer",
+   "full": "index orders by customer",
+   "state": "done",
+   "parent": "store",
+   "scope": [
+    "store/index.py"
+   ],
+   "needs": [
+    "schema"
+   ],
+   "check": "uv run pytest -q tests/store/test_index.py",
+   "agent": "3",
+   "model": "Nano",
+   "usd": 0.006,
+   "idle": null,
+   "needs_you": false,
+   "tail": [],
+   "note": "",
+   "changed": [
+    "store/index.py"
+   ],
+   "stopped": [],
+   "outside": [],
+   "forks": [],
+   "kept": null,
+   "hollow": false,
+   "files": [
+    "store/index.py"
+   ],
+   "files_n": 1,
+   "touched": [],
+   "stops": [],
+   "checked": {
+    "before": "red",
+    "after": "passed"
+   },
+   "held": {
+    "state": "caught",
+    "by": "nemotron"
+   }
+  },
+  {
+   "id": "cache",
+   "title": "cache the hot reads",
+   "full": "cache the hot reads",
+   "state": "review",
+   "parent": "store",
+   "scope": [
+    "store/cache.py"
+   ],
+   "needs": [
+    "repo"
+   ],
+   "check": "uv run pytest -q tests/store/test_cache.py",
+   "agent": "4",
+   "model": "Nano",
+   "usd": 0.02,
+   "idle": null,
+   "needs_you": true,
+   "tail": [],
+   "note": "",
+   "changed": [
+    "store/cache.py"
+   ],
+   "stopped": [],
+   "outside": [],
+   "forks": [
+    {
+     "letter": "a",
+     "state": "passed",
+     "why": "",
+     "lines": 41,
+     "model": "Nano",
+     "usd": 0.007,
+     "idle": null
+    },
+    {
+     "letter": "b",
+     "state": "passed",
+     "why": "",
+     "lines": 18,
+     "model": "Nano",
+     "usd": 0.006,
+     "idle": null
+    },
+    {
+     "letter": "c",
+     "state": "gave up",
+     "why": "its check failed twice",
+     "lines": null,
+     "model": "Nano",
+     "usd": 0.007,
+     "idle": null
+    }
+   ],
+   "kept": null,
+   "hollow": false,
+   "files": [],
+   "files_n": 0,
+   "touched": [],
+   "stops": [],
+   "checked": {
+    "before": "red",
+    "after": "passed"
+   },
+   "held": {
+    "state": "caught",
+    "by": "nemotron"
+   }
+  },
+  {
+   "id": "audit",
+   "title": "audit log of every write",
+   "full": "audit log of every write",
+   "state": "running",
+   "parent": "store",
+   "scope": [
+    "store/audit.py"
+   ],
+   "needs": [
+    "repo"
+   ],
+   "check": "uv run pytest -q tests/store/test_audit.py",
+   "agent": "5",
+   "model": "Nano",
+   "usd": 0.004,
+   "idle": 12,
+   "needs_you": false,
+   "tail": [
+    "edit store/audit.py"
+   ],
+   "note": "",
+   "changed": [
+    "store/audit.py"
+   ],
+   "stopped": [],
+   "outside": [],
+   "forks": [],
+   "kept": null,
+   "hollow": false,
+   "attempts": 2,
+   "files": [],
+   "files_n": 0,
+   "touched": [
+    "store/audit.py"
+   ],
+   "stops": [
+    {
+     "path": "store/repo.py",
+     "at": "2026-11-21T14:02:11",
+     "how": "edit"
+    }
+   ],
+   "checked": {
+    "before": "red",
+    "after": null
+   },
+   "held": {
+    "state": "caught",
+    "by": "nemotron"
+   }
+  },
+  {
+   "id": "purge",
+   "title": "purge orders past retention",
+   "full": "purge orders past retention",
+   "state": "waiting",
+   "parent": "store",
+   "scope": [
+    "store/purge.py"
+   ],
+   "needs": [
+    "audit",
+    "index"
+   ],
+   "check": "uv run pytest -q tests/store/test_purge.py",
+   "agent": "",
+   "model": "",
+   "usd": null,
+   "idle": null,
+   "needs_you": false,
+   "tail": [],
+   "note": "",
+   "changed": [],
+   "stopped": [],
+   "outside": [],
+   "forks": [],
+   "kept": null,
+   "hollow": false,
+   "files": [],
+   "files_n": 0,
+   "touched": [],
+   "stops": [],
+   "checked": {
+    "before": null,
+    "after": null
+   },
+   "held": {
+    "state": "caught",
+    "by": "nemotron"
+   }
+  },
+  {
+   "id": "models",
+   "title": "request and response models",
+   "full": "request and response models",
+   "state": "done",
+   "parent": "api",
+   "scope": [
+    "api/models.py"
+   ],
+   "needs": [],
+   "check": "uv run pytest -q tests/api/test_models.py",
+   "agent": "1",
+   "model": "Nano",
+   "usd": 0.008,
+   "idle": null,
+   "needs_you": false,
+   "tail": [],
+   "note": "",
+   "changed": [
+    "api/models.py"
+   ],
+   "stopped": [],
+   "outside": [],
+   "forks": [],
+   "kept": null,
+   "hollow": false,
+   "files": [
+    "api/models.py"
+   ],
+   "files_n": 1,
+   "touched": [],
+   "stops": [],
+   "checked": {
+    "before": "red",
+    "after": "passed"
+   },
+   "held": {
+    "state": "caught",
+    "by": "nemotron"
+   }
+  },
+  {
+   "id": "list",
+   "title": "GET /orders lists a page",
+   "full": "GET /orders lists a page",
+   "state": "running",
+   "parent": "api",
+   "scope": [
+    "api/list.py"
+   ],
+   "needs": [
+    "models",
+    "repo"
+   ],
+   "check": "uv run pytest -q tests/api/test_list.py",
+   "agent": "6",
+   "model": "Nano",
+   "usd": 0.009,
+   "idle": 3,
+   "needs_you": false,
+   "tail": [],
+   "note": "",
+   "changed": [
+    "api/list.py"
+   ],
+   "stopped": [],
+   "outside": [],
+   "forks": [
+    {
+     "letter": "a",
+     "state": "running",
+     "why": "",
+     "lines": 22,
+     "model": "Nano",
+     "usd": 0.003,
+     "idle": 3
+    },
+    {
+     "letter": "b",
+     "state": "passed",
+     "why": "",
+     "lines": 30,
+     "model": "Nano",
+     "usd": 0.004,
+     "idle": null
+    },
+    {
+     "letter": "c",
+     "state": "running",
+     "why": "",
+     "lines": 9,
+     "model": "Nano",
+     "usd": 0.002,
+     "idle": 40
+    }
+   ],
+   "kept": null,
+   "hollow": false,
+   "files": [],
+   "files_n": 0,
+   "touched": [
+    "api/list.py"
+   ],
+   "stops": [],
+   "checked": {
+    "before": "red",
+    "after": null
+   },
+   "held": {
+    "state": "caught",
+    "by": "nemotron"
+   }
+  },
+  {
+   "id": "create",
+   "title": "POST /orders creates one",
+   "full": "POST /orders creates one",
+   "state": "running",
+   "parent": "api",
+   "scope": [
+    "api/create.py",
+    "api/validators/**"
+   ],
+   "needs": [
+    "models",
+    "repo"
+   ],
+   "check": "uv run pytest -q tests/api/test_create.py",
+   "agent": "7",
+   "model": "Nano",
+   "usd": 0.003,
+   "idle": 1,
+   "needs_you": false,
+   "tail": [
+    "edit api/validators/items.py",
+    "edit api/create.py"
+   ],
+   "note": "",
+   "changed": [
+    "api/create.py",
+    "api/validators/items.py"
+   ],
+   "stopped": [],
+   "outside": [],
+   "forks": [],
+   "kept": null,
+   "hollow": false,
+   "files": [
+    "api/create.py",
+    "api/validators/__init__.py",
+    "api/validators/items.py",
+    "api/validators/totals.py"
+   ],
+   "files_n": 4,
+   "touched": [
+    "api/create.py",
+    "api/validators/items.py"
+   ],
+   "stops": [],
+   "checked": {
+    "before": "red",
+    "after": null
+   },
+   "held": {
+    "state": "caught",
+    "by": "nemotron"
+   }
+  },
+  {
+   "id": "cancel",
+   "title": "DELETE /orders/:id cancels",
+   "full": "DELETE /orders/:id cancels",
+   "state": "came back",
+   "parent": "api",
+   "scope": [
+    "api/cancel.py"
+   ],
+   "needs": [
+    "models",
+    "repo"
+   ],
+   "check": "uv run pytest -q tests/api/test_cancel.py",
+   "agent": "8",
+   "model": "Nano",
+   "usd": 0.012,
+   "idle": null,
+   "needs_you": true,
+   "tail": [],
+   "note": "",
+   "changed": [],
+   "stopped": [],
+   "outside": [
+    "store/repo.py"
+   ],
+   "forks": [],
+   "kept": null,
+   "hollow": false,
+   "why": "wrote outside its files: store/repo.py",
+   "attempts": 2,
+   "files": [],
+   "files_n": 0,
+   "touched": [],
+   "stops": [],
+   "checked": {
+    "before": "red",
+    "after": null
+   },
+   "held": {
+    "state": "caught",
+    "by": "nemotron"
+   }
+  },
+  {
+   "id": "auth",
+   "title": "every route checks the token",
+   "full": "every route checks the token",
+   "state": "ready",
+   "parent": "api",
+   "scope": [
+    "api/auth.py"
+   ],
+   "needs": [
+    "models"
+   ],
+   "check": "uv run pytest -q tests/api/test_auth.py",
+   "agent": "",
+   "model": "",
+   "usd": null,
+   "idle": null,
+   "needs_you": false,
+   "tail": [],
+   "note": "",
+   "changed": [],
+   "stopped": [],
+   "outside": [],
+   "forks": [],
+   "kept": null,
+   "hollow": false,
+   "files": [],
+   "files_n": 0,
+   "touched": [],
+   "stops": [],
+   "checked": {
+    "before": "red",
+    "after": null
+   },
+   "held": {
+    "state": "caught",
+    "by": "nemotron"
+   }
+  },
+  {
+   "id": "paging",
+   "title": "cursor paging on the list",
+   "full": "cursor paging on the list",
+   "state": "waiting",
+   "parent": "api",
+   "scope": [
+    "api/paging.py"
+   ],
+   "needs": [
+    "list"
+   ],
+   "check": "uv run pytest -q tests/api/test_paging.py",
+   "agent": "",
+   "model": "",
+   "usd": null,
+   "idle": null,
+   "needs_you": false,
+   "tail": [],
+   "note": "",
+   "changed": [],
+   "stopped": [],
+   "outside": [],
+   "forks": [],
+   "kept": null,
+   "hollow": false,
+   "files": [],
+   "files_n": 0,
+   "touched": [],
+   "stops": [],
+   "checked": {
+    "before": null,
+    "after": null
+   },
+   "held": {
+    "state": "caught",
+    "by": "nemotron"
+   }
+  },
+  {
+   "id": "rate",
+   "title": "rate limit per token",
+   "full": "rate limit per token",
+   "state": "waiting",
+   "parent": "api",
+   "scope": [
+    "api/rate.py"
+   ],
+   "needs": [
+    "auth"
+   ],
+   "check": "uv run pytest -q tests/api/test_rate.py",
+   "agent": "",
+   "model": "",
+   "usd": null,
+   "idle": null,
+   "needs_you": false,
+   "tail": [],
+   "note": "",
+   "changed": [],
+   "stopped": [],
+   "outside": [],
+   "forks": [],
+   "kept": null,
+   "hollow": false,
+   "files": [],
+   "files_n": 0,
+   "touched": [],
+   "stops": [],
+   "checked": {
+    "before": null,
+    "after": null
+   },
+   "held": {
+    "state": "caught",
+    "by": "nemotron"
+   }
+  },
+  {
+   "id": "errors",
+   "title": "one error shape for every route",
+   "full": "one error shape for every route",
+   "state": "waiting",
+   "parent": "api",
+   "scope": [
+    "api/errors.py"
+   ],
+   "needs": [
+    "create",
+    "cancel",
+    "list"
+   ],
+   "check": "uv run pytest -q tests/api/test_errors.py",
+   "agent": "",
+   "model": "",
+   "usd": null,
+   "idle": null,
+   "needs_you": false,
+   "tail": [],
+   "note": "",
+   "changed": [],
+   "stopped": [],
+   "outside": [],
+   "forks": [],
+   "kept": null,
+   "hollow": false,
+   "files": [],
+   "files_n": 0,
+   "touched": [],
+   "stops": [],
+   "checked": {
+    "before": null,
+    "after": null
+   },
+   "held": {
+    "state": "caught",
+    "by": "nemotron"
+   }
+  },
+  {
+   "id": "client",
+   "title": "typed client for the API",
+   "full": "typed client for the API",
+   "state": "ready",
+   "parent": "ui",
+   "scope": [
+    "web/client.ts"
+   ],
+   "needs": [
+    "models"
+   ],
+   "check": "npm test -- client",
+   "agent": "",
+   "model": "",
+   "usd": null,
+   "idle": null,
+   "needs_you": false,
+   "tail": [],
+   "note": "",
+   "changed": [],
+   "stopped": [],
+   "outside": [],
+   "forks": [],
+   "kept": null,
+   "hollow": false,
+   "files": [],
+   "files_n": 0,
+   "touched": [],
+   "stops": [],
+   "checked": {
+    "before": "red",
+    "after": null
+   },
+   "held": {
+    "state": "caught",
+    "by": "nemotron"
+   }
+  },
+  {
+   "id": "table",
+   "title": "orders table with sorting",
+   "full": "orders table with sorting",
+   "state": "waiting",
+   "parent": "ui",
+   "scope": [
+    "web/table.tsx"
+   ],
+   "needs": [
+    "client",
+    "list"
+   ],
+   "check": "npm test -- table",
+   "agent": "",
+   "model": "",
+   "usd": null,
+   "idle": null,
+   "needs_you": false,
+   "tail": [],
+   "note": "",
+   "changed": [],
+   "stopped": [],
+   "outside": [],
+   "forks": [],
+   "kept": null,
+   "hollow": false,
+   "files": [],
+   "files_n": 0,
+   "touched": [],
+   "stops": [],
+   "checked": {
+    "before": null,
+    "after": null
+   },
+   "held": {
+    "state": "caught",
+    "by": "nemotron"
+   }
+  },
+  {
+   "id": "form",
+   "title": "new order form validates",
+   "full": "new order form validates",
+   "state": "waiting",
+   "parent": "ui",
+   "scope": [
+    "web/form.tsx"
+   ],
+   "needs": [
+    "client",
+    "create"
+   ],
+   "check": "npm test -- form",
+   "agent": "",
+   "model": "",
+   "usd": null,
+   "idle": null,
+   "needs_you": false,
+   "tail": [],
+   "note": "",
+   "changed": [],
+   "stopped": [],
+   "outside": [],
+   "forks": [],
+   "kept": null,
+   "hollow": false,
+   "files": [],
+   "files_n": 0,
+   "touched": [],
+   "stops": [],
+   "checked": {
+    "before": null,
+    "after": null
+   },
+   "held": {
+    "state": "caught",
+    "by": "nemotron"
+   }
+  },
+  {
+   "id": "detail",
+   "title": "order detail page",
+   "full": "order detail page",
+   "state": "waiting",
+   "parent": "ui",
+   "scope": [
+    "web/detail.tsx"
+   ],
+   "needs": [
+    "client"
+   ],
+   "check": "npm test -- detail",
+   "agent": "",
+   "model": "",
+   "usd": null,
+   "idle": null,
+   "needs_you": false,
+   "tail": [],
+   "note": "",
+   "changed": [],
+   "stopped": [],
+   "outside": [],
+   "forks": [],
+   "kept": null,
+   "hollow": false,
+   "files": [],
+   "files_n": 0,
+   "touched": [],
+   "stops": [],
+   "checked": {
+    "before": null,
+    "after": null
+   },
+   "held": {
+    "state": "caught",
+    "by": "nemotron"
+   }
+  },
+  {
+   "id": "empty",
+   "title": "empty and error states",
+   "full": "empty and error states",
+   "state": "waiting",
+   "parent": "ui",
+   "scope": [
+    "web/states.tsx"
+   ],
+   "needs": [
+    "table",
+    "form",
+    "detail"
+   ],
+   "check": "npm test -- states",
+   "agent": "",
+   "model": "",
+   "usd": null,
+   "idle": null,
+   "needs_you": false,
+   "tail": [],
+   "note": "",
+   "changed": [],
+   "stopped": [],
+   "outside": [],
+   "forks": [],
+   "kept": null,
+   "hollow": false,
+   "files": [],
+   "files_n": 0,
+   "touched": [],
+   "stops": [],
+   "checked": {
+    "before": null,
+    "after": null
+   },
+   "held": {
+    "state": "caught",
+    "by": "nemotron"
+   }
+  },
+  {
+   "id": "a11y",
+   "title": "keyboard and screen reader pass",
+   "full": "keyboard and screen reader pass",
+   "state": "yours",
+   "parent": "ui",
+   "scope": [
+    "web/**"
+   ],
+   "needs": [],
+   "check": null,
+   "agent": "",
+   "model": "",
+   "usd": null,
+   "idle": null,
+   "needs_you": true,
+   "tail": [],
+   "note": "",
+   "changed": [],
+   "stopped": [],
+   "outside": [],
+   "forks": [],
+   "kept": null,
+   "hollow": false,
+   "files": [],
+   "files_n": 0,
+   "touched": [],
+   "stops": [],
+   "checked": {
+    "before": null,
+    "after": null
+   },
+   "held": {
+    "state": "none",
+    "by": "you"
+   }
+  },
+  {
+   "id": "ci",
+   "title": "CI runs both suites",
+   "full": "CI runs both suites",
+   "state": "done",
+   "parent": "ops",
+   "scope": [
+    ".github/workflows/ci.yml"
+   ],
+   "needs": [],
+   "check": "actionlint",
+   "agent": "2",
+   "model": "Nano",
+   "usd": 0.002,
+   "idle": null,
+   "needs_you": false,
+   "tail": [],
+   "note": "",
+   "changed": [
+    ".github/workflows/ci.yml"
+   ],
+   "stopped": [],
+   "outside": [],
+   "forks": [],
+   "kept": null,
+   "hollow": false,
+   "files": [
+    ".github/workflows/ci.yml"
+   ],
+   "files_n": 1,
+   "touched": [],
+   "stops": [],
+   "checked": {
+    "before": "red",
+    "after": "passed"
+   },
+   "held": {
+    "state": "caught",
+    "by": "nemotron"
+   }
+  },
+  {
+   "id": "docker",
+   "title": "one image for API and worker",
+   "full": "one image for API and worker",
+   "state": "ready",
+   "parent": "ops",
+   "scope": [
+    "Dockerfile",
+    "compose.yml"
+   ],
+   "needs": [
+    "ci"
+   ],
+   "check": "docker build -q .",
+   "agent": "",
+   "model": "",
+   "usd": null,
+   "idle": null,
+   "needs_you": false,
+   "tail": [],
+   "note": "",
+   "changed": [],
+   "stopped": [],
+   "outside": [],
+   "forks": [],
+   "kept": null,
+   "hollow": true,
+   "files": [
+    "Dockerfile"
+   ],
+   "files_n": 1,
+   "touched": [],
+   "stops": [],
+   "checked": {
+    "before": "passes",
+    "after": null
+   },
+   "held": {
+    "state": "caught",
+    "by": "nemotron"
+   }
+  },
+  {
+   "id": "smoke",
+   "title": "smoke test against the image",
+   "full": "smoke test against the image",
+   "state": "waiting",
+   "parent": "ops",
+   "scope": [
+    "tests/smoke/**"
+   ],
+   "needs": [
+    "docker",
+    "errors"
+   ],
+   "check": "uv run pytest -q tests/smoke",
+   "agent": "",
+   "model": "",
+   "usd": null,
+   "idle": null,
+   "needs_you": false,
+   "tail": [],
+   "note": "",
+   "changed": [],
+   "stopped": [],
+   "outside": [],
+   "forks": [],
+   "kept": null,
+   "hollow": false,
+   "files": [],
+   "files_n": 0,
+   "touched": [],
+   "stops": [],
+   "checked": {
+    "before": null,
+    "after": null
+   },
+   "held": {
+    "state": "caught",
+    "by": "nemotron"
+   }
+  },
+  {
+   "id": "readme",
+   "title": "README quick start",
+   "full": "README quick start",
+   "state": "waiting",
+   "parent": "docs",
+   "scope": [
+    "README.md"
+   ],
+   "needs": [
+    "smoke"
+   ],
+   "check": "uv run pytest -q tests -k readme",
+   "agent": "",
+   "model": "",
+   "usd": null,
+   "idle": null,
+   "needs_you": false,
+   "tail": [],
+   "note": "",
+   "changed": [],
+   "stopped": [],
+   "outside": [],
+   "forks": [],
+   "kept": null,
+   "hollow": false,
+   "files": [
+    "README.md"
+   ],
+   "files_n": 1,
+   "touched": [],
+   "stops": [],
+   "checked": {
+    "before": null,
+    "after": null
+   },
+   "held": {
+    "state": "caught",
+    "by": "nemotron"
+   }
+  },
+  {
+   "id": "apidoc",
+   "title": "API reference from the models",
+   "full": "API reference from the models",
+   "state": "waiting",
+   "parent": "docs",
+   "scope": [
+    "docs/api.md"
+   ],
+   "needs": [
+    "errors",
+    "paging"
+   ],
+   "check": "uv run python docs/build.py --check",
+   "agent": "",
+   "model": "",
+   "usd": null,
+   "idle": null,
+   "needs_you": false,
+   "tail": [],
+   "note": "",
+   "changed": [],
+   "stopped": [],
+   "outside": [],
+   "forks": [],
+   "kept": null,
+   "hollow": false,
+   "files": [],
+   "files_n": 0,
+   "touched": [],
+   "stops": [],
+   "checked": {
+    "before": null,
+    "after": null
+   },
+   "held": {
+    "state": "caught",
+    "by": "nemotron"
+   }
+  },
+  {
+   "id": "changelog",
+   "title": "changelog for 1.0",
+   "full": "changelog for 1.0",
+   "state": "proposed",
+   "parent": "docs",
+   "scope": [
+    "CHANGELOG.md"
+   ],
+   "needs": [
+    "readme",
+    "apidoc"
+   ],
+   "check": null,
+   "agent": "",
+   "model": "",
+   "usd": null,
+   "idle": null,
+   "needs_you": true,
+   "tail": [],
+   "note": "",
+   "changed": [],
+   "stopped": [],
+   "outside": [],
+   "forks": [],
+   "kept": null,
+   "hollow": false,
+   "files": [],
+   "files_n": 0,
+   "touched": [],
+   "stops": [],
+   "checked": {
+    "before": null,
+    "after": null
+   },
+   "held": {
+    "state": "caught",
+    "by": "nemotron"
+   }
+  }
+ ],
+ "edges": [
+  [
+   "schema",
+   "repo",
+   "needs"
+  ],
+  [
+   "schema",
+   "index",
+   "needs"
+  ],
+  [
+   "repo",
+   "cache",
+   "needs"
+  ],
+  [
+   "repo",
+   "audit",
+   "needs"
+  ],
+  [
+   "audit",
+   "purge",
+   "needs"
+  ],
+  [
+   "index",
+   "purge",
+   "needs"
+  ],
+  [
+   "models",
+   "list",
+   "needs"
+  ],
+  [
+   "repo",
+   "list",
+   "needs"
+  ],
+  [
+   "models",
+   "create",
+   "needs"
+  ],
+  [
+   "repo",
+   "create",
+   "needs"
+  ],
+  [
+   "models",
+   "cancel",
+   "needs"
+  ],
+  [
+   "repo",
+   "cancel",
+   "needs"
+  ],
+  [
+   "models",
+   "auth",
+   "needs"
+  ],
+  [
+   "list",
+   "paging",
+   "needs"
+  ],
+  [
+   "auth",
+   "rate",
+   "needs"
+  ],
+  [
+   "create",
+   "errors",
+   "needs"
+  ],
+  [
+   "cancel",
+   "errors",
+   "needs"
+  ],
+  [
+   "list",
+   "errors",
+   "needs"
+  ],
+  [
+   "models",
+   "client",
+   "needs"
+  ],
+  [
+   "client",
+   "table",
+   "needs"
+  ],
+  [
+   "list",
+   "table",
+   "needs"
+  ],
+  [
+   "client",
+   "form",
+   "needs"
+  ],
+  [
+   "create",
+   "form",
+   "needs"
+  ],
+  [
+   "client",
+   "detail",
+   "needs"
+  ],
+  [
+   "table",
+   "empty",
+   "needs"
+  ],
+  [
+   "form",
+   "empty",
+   "needs"
+  ],
+  [
+   "detail",
+   "empty",
+   "needs"
+  ],
+  [
+   "ci",
+   "docker",
+   "needs"
+  ],
+  [
+   "docker",
+   "smoke",
+   "needs"
+  ],
+  [
+   "errors",
+   "smoke",
+   "needs"
+  ],
+  [
+   "smoke",
+   "readme",
+   "needs"
+  ],
+  [
+   "errors",
+   "apidoc",
+   "needs"
+  ],
+  [
+   "paging",
+   "apidoc",
+   "needs"
+  ],
+  [
+   "readme",
+   "changelog",
+   "needs"
+  ],
+  [
+   "apidoc",
+   "changelog",
+   "needs"
+  ]
+ ],
+ "news": [
+  "cache the hot reads is ready for your review",
+  "DELETE /orders/:id cancels came back: it wrote outside its files"
+ ]
+}

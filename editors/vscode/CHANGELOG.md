@@ -2,12 +2,95 @@
 
 ## Unreleased, after 0.9.0
 
+The whole plan in the pane, cards that say what is true of a step and where you are needed, and a tab of the
+graph's own (22 November 2026).
+
+The whole plan in the pane:
+
+- The graph opens with the whole plan in view, whatever its size: fitted to the pane, never drawn larger than
+  its own size. It is fitted again when the window is resized, when the plan grows or shrinks, and every time
+  the page opens, until you pan or zoom. `f`, the ⤢ button and a double click on the canvas fit it again.
+- Choosing a card does not move the plan. Its pane opens beside the canvas and the zoom, the cards and the card
+  under the pointer stay as they were; the plan pans only when that card would be out of view, and just enough
+  to show it. Closing the pane moves nothing either. (A task opened from the Plan view, or a page that opens on
+  one, is fitted beside its pane.) In a tab of 700 px or less the pane opens under the canvas and takes half of
+  it: there the plan moves up into what is left, at the same zoom. A tab of 701 to 840 px keeps its graph when
+  a card is chosen, where the pane's width used to turn it into the lanes.
+- Zoom goes out to 12% and in to 300%: the − and + buttons, `-` and `=`, ⌘ or Ctrl with the wheel, a pinch. The
+  percent between the buttons says how big a card is drawn; a click on it, or `0`, is 100%. The buttons are there
+  wherever the graph is drawn across, a narrow tab (561 to 700 px) too.
+- From afar a card is a row: its state's mark and its title, filled by its state (landed green, working amber,
+  to review purple, came back red; not started is an outline). Its right end holds only news: its check proves
+  nothing yet, or its attempts as small marks. A plan too big to read as whole cards opens that way; zooming in
+  turns the rows back into whole cards, and a double click on a row, the goal's too, opens it at 100%. A task
+  drawn from afar opens there too, and the whole plan is back once you leave it.
+- From far (under about 27%) the titles go and the fills grow stronger, and what wants you keeps its size: the
+  diamond and the triangle are 16 px on screen however small the plan is drawn.
+- While no step leaves your machine the region for what leaves it is not drawn: the plan has its width (a
+  seven-task plan opens at 85% where it opened at 77%), and "THIS MACHINE" ends with `nothing leaves it`.
+  The region is back, as it was, with the first step that pushes or opens a pull request.
+- A minimap in the canvas's corner while part of the plan is off screen: a click or a drag in it goes there. Its
+  rects take the rows' colours. It stays away while a pane is open on a plan still fitted to the window, where
+  it would stand on the cards beside the pane.
+- Tab onto a card that is out of view pans it in, as choosing it does. The canvas itself never scrolls, so the
+  zoom's buttons, the legend and the chip stay where they are.
+- A click on a working card is no longer lost when a snapshot lands between the press and the release.
+- The `+` key draws a task and no longer types a + into its title. The narrow graph (under 560 px) starts its
+  first row under the chip for what needs you, and is otherwise as it was.
+
+The cards:
+
+- A card's foot is its check's: a box only Graphene ticks, the words `done when`, and the check with its end
+  kept (`uv run…test_cache.py`). The box is ticked where the check passed after the work and that verdict still
+  stands, crossed where it failed, dashed and amber where it proves nothing yet, whole and empty where it fails
+  now as it should, dotted where it has not run; a step with no check wears the diamond of your approval. No
+  check wears a ✓ it has not earned. The foot's hover says the verdict in words, and the pane's Done when says
+  the same: a verdict from before a step was sent back is on neither. Beside a button that leaves the check no
+  room, the foot is the box and the button alone. The verdicts are the snapshot's own (`checked`), which the
+  CLI says after 0.9.0: with 0.9.0 as released the box stays dotted, landed steps too.
+- The step that needs you wears its one act on its card: Approve, Help it…, Approve and run, Mark done, Allow
+  the write…. It is the pane's own button: a click, or Tab and Enter, and it selects nothing. Never in a replay.
+- One shape a state, on a card's corner and at a row's left: a ticked disc landed, a turning ring working, a
+  filled diamond to review or asks you, a hollow diamond a step of your own, a triangle came back; on a row a
+  dotted, a whole and a dashed ring are waiting, ready and suggested. Needs you and came back no longer differ
+  by colour alone. To review and yours have a purple border, landed a soft green one and a quieter title. A
+  lane wears the same mark at its row's end, beside the model while its step works.
+- The files chip says the latest fact: the files a step may change; `✎ 2 of 4 files` while it works, and
+  `1 refused` in red; `✕ wrote store/repo.py` when it came back for a write outside them.
+- A task set to several attempts says `×3` at the end of its status line, in the lanes too, until they start.
+  The waiting chips under every such card are gone, so a big plan is a good deal shorter; attempts that started
+  keep their chips.
+
+Around the cards:
+
+- A sub-goal's header is a ring filled by how many of its tasks landed (the ticked disc when all have), its
+  title, `3 of 6`, one small mark a task with the landed first, and in words what wants you there (`1 to
+  review`, `1 came back`, `1 yours`), each in its mark's colour. It is larger over rows, so it reads in a fitted
+  plan, and it is drawn over the lines that cross it.
+- The goal's card wears the same ring and, at its foot, a cell a task grouped by sub-goal; under it,
+  `goal · 5 of 26 landed`. As a row it is the ring, its title and `5 of 26`. Its own check, where it has one,
+  wears a box as a step's does: ticked once the goal itself is done, dotted until then.
+- The legend is the marks themselves with their words and how many steps wear each, the loudest first, only
+  those the plan has: `◆ to review 1`, `▲ came back 1`, and so on. It replaces the five colour dots, and gives
+  way where it has no room beside the zoom's buttons.
+- A chip at the canvas's top right says how many steps need you: `3 steps need you · show the next`. A click,
+  or `n`, selects the next one in the plan's order and brings it on screen, round again after the last. It
+  counts the steps to act on (to review, came back, yours, asks you), not the suggested ones: accepting a plan
+  is one act. The "goal" chip stands beside it, clear of the legend and the minimap. `?` lists `n`.
+
+The graph's own tab:
+
+- The graph opens as a tab by itself when work starts: the window opens on a plan with work left, a plan appears,
+  or a run starts. It does not take the keyboard focus and opens beside the file you are working in, never over
+  it; a tab you close stays closed in that window until you ask for it. `graphene.graph.openOnStart` (on by
+  default) turns it off; Show graph opens the same tab as before.
+
 The graph is built by hand (10 to 11 November 2026). It needs no newer CLI: every click is a 0.9.0 command.
 
 - A task's pane is a form: its title, the files it may change and its check are typed in place; attempts are a
   stepper (1 to 8) on that task alone; "wait for my approval" and "I will do this one" are tick boxes. The pop-up
   chain is gone from the graph (Edit Task… stays in the Plan view).
-- The fan is drawn before anything runs: one waiting chip for each attempt a task is set to.
+- A task set to several attempts says so before anything runs.
 - Add task, the + on a box, and the + key draw a draft box: type its title on it, then its files and its check. It joins the
   plan (`graphene node add`) once graphene will take it. "Fill it in for me" hands its title to the planner.
 - Under the form, one line says what a change does now (suggested, not started, working, to review, done), and

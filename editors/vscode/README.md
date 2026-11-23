@@ -37,11 +37,29 @@ card: it proves nothing yet.
 
 The **graph** under Home is the whole plan: which tasks wait on which, the attempts racing, the one kept and
 why. **Show graph** opens it as a tab: a dotted canvas flowing left to right, each step a card with a tile for
-who does it, its files and its check, in a region for **this machine**; a step that would leave it is drawn in
-a region of its own. While Claude Code plans, each step it finishes appears as a drafted box; a planner whose
+who does it, its files and, at its foot, its check with a box only Graphene ticks, in a region for **this
+machine**; a step that would leave it is drawn in a region of its own. A step that needs you wears its one
+button on its card (**Approve**, **Help it…**, **Mark done**). While Claude Code plans, each step it finishes appears as a drafted box; a planner whose
 stream carries no text (Codex) has its boxes appear when the plan arrives, and the graph says so. Each step has
 one colour, on its card's tile and, from the time it is accepted until it lands, on its files in the Explorer,
 a working agent's with its number.
+
+It opens with the whole plan in the pane. A plan too big to read as whole cards is drawn as rows, each filled by
+its state and wearing its state's mark: a ticked disc landed, a turning ring working, a diamond where you are
+needed, a triangle came back. Zoom in (`=`, ⌘ or Ctrl with the wheel, a pinch) and the rows are whole cards
+again; `f` fits the plan again. A sub-goal's header has a ring filled by how many of its tasks landed, its count,
+a mark a task and, in words, what wants you there; the goal's card has the same ring and a cell a task. The
+legend at the canvas's foot is those marks with their words and how many steps wear each. While a step needs
+you, a chip at the top right says how many: a click on it, or `n`, selects the next one and brings it on screen.
+Choosing a card opens its pane and moves nothing else. `?` lists every key.
+
+The tab also opens by itself when work starts: when the window opens on a plan with work left, when a plan
+appears, and when a run starts. It does not take the keyboard focus, and it opens beside the file you are
+working in (or the diff, or the notebook), never over it: in the editor group to its side, a new one when there
+is none, so the file stays where it is with its cursor. When your editor group is empty or shows a page of VS
+Code's own (Welcome, Settings), the tab opens there. Close it and it stays closed in that window, whatever plan
+or run comes next, until you ask for it with **Show graph**. A plan with every task done, and a folder with no
+plan, open nothing. The setting `graphene.graph.openOnStart` turns this off, and **Show graph** still opens it.
 
 You can build the graph by hand, before and while agents run. **Add task**, or the **+** on a box, draws a draft:
 type its title on the box, then its files and its check in the pane, and it joins the plan (**Fill it in for me**
@@ -120,6 +138,7 @@ by hand, the cockpit in a terminal) and the Needs You, Agents, Plan and Rounds v
 | `graphene.path` | `graphene` | the command: a name on PATH or an absolute path. Read from your own settings only, never a folder's |
 | `graphene.pollMs` | `1500` | how often the plan is read again while a view is open, when the CLI has no `--watch` stream |
 | `graphene.advanced` | off | every command in the palette, and the Needs You, Agents, Plan and Rounds views |
+| `graphene.graph.openOnStart` | on | the graph opens as a tab by itself when work starts (the window opens on a plan with work left, a plan appears, a run starts), beside the file you are working in and without taking the keyboard focus, until you close it; off, only **Show graph** opens it |
 
 ## Editors
 
