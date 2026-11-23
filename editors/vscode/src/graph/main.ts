@@ -625,9 +625,9 @@ function graph(s: StateX, dir: "across" | "down") {
       title.setAttribute("transform", `translate(0 ${top})`);
       goalG.appendChild(el("text", { class: "sub", x: ROW_X, y: top + 19 * (n - 1) + 17 }, `${all.landed} of ${all.total} done`));
       goalG.appendChild(el("circle", { class: "port in", cx: 0, cy: gp.h / 2, r: 5 }));
-    } else if (gp) { // the goal is a card as a task is: its title on up to four lines (as many as the card holds), and under it a cell a task (a group a sub-goal) and the count, in the card's middle; its own check at its foot
+    } else if (gp) { // the goal is a card as a task is: its title on up to three lines, and under it a cell a task (a group a sub-goal) and the count, in the card's middle; its own check at its foot
       goalG.appendChild(el("rect", { class: "goal-box", x: 0, y: 0, width: gp.w, height: gp.h, rx: 12 }));
-      const title = titleLines(goalG, "goal-title", s.goal, PAD, 0, 20, gp.w - 2 * PAD, 4), n = title.childElementCount;
+      const title = titleLines(goalG, "goal-title", s.goal, PAD, 0, 20, gp.w - 2 * PAD, 3), n = title.childElementCount;
       const top = (BOX_H - (20 * n + 18)) / 2, y = top + 20 * n + 4; // the title's block and the cells' row, as one
       title.setAttribute("transform", `translate(0 ${top + 12})`);
       const count = goalG.appendChild(el("text", { class: "sub", x: gp.w - PAD, y: y + 10, "text-anchor": "end" }, `${all.landed} of ${all.total} done`));
@@ -931,11 +931,9 @@ function cardTitle(grp: SVGGElement, title: string, aside = 0) {
  *  its state's mark on its corner. From afar (the compact level) it is a row instead. The group says its mark
  *  (`data-mark`: graph.css colours by it) and the attempts it is set to and has not started (`data-attempts`),
  *  for a script to read as a person reads `3 agents at once`. */
-function drawTask(grp: SVGGElement, task: TaskX, h: number, down: boolean, limit: number | null) {
+function drawTask(grp: SVGGElement, t: TaskX, h: number, down: boolean, limit: number | null) {
   const acting = grp.querySelector(".act:focus") !== null; // its button has the keyboard: it keeps it through the redraw
   grp.replaceChildren();
-  // a practice run (the scripted stand-in) or a replay spent nothing: its cards say no cost, as its header does
-  const t = state?.stand_in || replaying() ? { ...task, usd: null, forks: task.forks.map((f) => ({ ...f, usd: null })) } : task;
   grp.setAttribute("class", `task ${cls(t.state)}${t.id === selected ? " selected" : ""}${t.needs_you ? " needs-you" : ""}`);
   grp.setAttribute("data-mark", stateMark(t));
   const asked = state ? questionOn(state, t.id)?.text ?? "" : "";
