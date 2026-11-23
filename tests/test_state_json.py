@@ -37,10 +37,10 @@ ALEX = Caller("alex", True)
 BOT = Caller("claude:5e55105e", False, "5e55105e-0000-4000-8000-0000000000a1")
 AGENT_ENV = {"CLAUDECODE": "1", "CLAUDE_CODE_SESSION_ID": "5e55105e-0000-4000-8000-000000000001"}
 TOP = {
-    "schema": int, "graphene": str, "repo": str, "cursor": int, "goal": str, "first": str, "planner": str,
-    "executor": str, "envelope": dict, "auto": (dict, type(None)), "run": dict, "spent": float,
-    "scoreboard": dict, "width": int, "questions": list, "goals": list, "tasks": list, "edges": list,
-    "news": list, "tree": list, "allows": (list, type(None)),
+    "schema": int, "graphene": str, "repo": str, "cursor": int, "goal": str, "asked": str, "first": str,
+    "planner": str, "executor": str, "envelope": dict, "auto": (dict, type(None)), "run": dict,
+    "spent": float, "scoreboard": dict, "width": int, "questions": list, "goals": list, "tasks": list,
+    "edges": list, "news": list, "tree": list, "allows": (list, type(None)),
 }  # fmt: skip
 TASK = {
     "id": str, "title": str, "full": str, "state": str, "parent": (str, type(None)), "scope": list,

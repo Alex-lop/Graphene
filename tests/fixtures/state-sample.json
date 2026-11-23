@@ -6,6 +6,7 @@
   "stand_in": false,
   "cursor": 42,
   "goal": "the app greets, says goodbye, and knows its users",
+  "asked": "",
   "first": "auto",
   "planner": "",
   "executor": "",

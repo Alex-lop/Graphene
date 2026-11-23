@@ -24,7 +24,7 @@ export function register(context: vscode.ExtensionContext, session: Session, _ui
     stat: () => ({ type: vscode.FileType.File, ctime: 0, mtime, size: Buffer.byteLength(text) }),
     readDirectory: () => [],
     createDirectory: () => fail("the plan is one document"),
-    delete: () => fail("the plan is not a file to delete; drop its steps"),
+    delete: () => fail("the plan is not a file to delete; remove its tasks"),
     rename: () => fail("the plan is not a file to rename"),
     async readFile() {
       await session.refresh(); // the cursor the save is checked against is from no later than the text

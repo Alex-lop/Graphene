@@ -6,10 +6,10 @@ import * as vscode from "vscode";
 import * as C from "./commands.ts";
 import { GraphHost } from "./graph.ts";
 import { HomeHost } from "./home.ts";
-import { which } from "./find.ts";
+import { behind, which } from "./find.ts";
 import { owner } from "./owners.ts";
-import { autoNews, mdText, summary, type Task } from "./state.ts";
-import { topLine } from "./graph/words.ts";
+import { autoNews, headline, mdText, SAY, summary, type Task } from "./state.ts";
+import { newsWords, topLine } from "./graph/words.ts";
 import { DROPPABLE, keyTrouble } from "./needs.ts";
 import { parseLog, rounds, type LogRow } from "./rounds.ts";
 import { RoundsTree } from "./roundsView.ts";
@@ -29,7 +29,7 @@ export { Session } from "./session.ts";
 type Arg = string | { id?: string; task?: Task; after?: boolean; under?: boolean } | undefined;
 
 export function activate(context: vscode.ExtensionContext) {
-  const session = new Session();
+  const session = new Session(undefined, context.workspaceState);
   const tree = new PlanTree();
   const treeView = vscode.window.createTreeView("graphene.plan", { treeDataProvider: tree, showCollapseAll: true });
   const roundsTree = new RoundsTree();
@@ -58,14 +58,13 @@ export function activate(context: vscode.ExtensionContext) {
   };
   context.subscriptions.push(roundsView, roundsView.onDidChangeVisibility(() => void readRounds()));
   const graph = new GraphHost(context, session);
-  const home = new HomeHost(context, session);
+  const home = new HomeHost(context, session, (on) => graph.sidebar(on));
   const bar = vscode.window.createStatusBarItem("graphene", vscode.StatusBarAlignment.Left, 50);
   bar.name = "Graphene";
   bar.command = "graphene.home";
   bar.text = "◆ Graphene";
   bar.show();
-  context.subscriptions.push(treeView, bar, vscode.window.registerWebviewViewProvider("graphene.graph", graph, { webviewOptions: { retainContextWhenHidden: true } }),
-                             vscode.window.registerWebviewViewProvider("graphene.home", home, { webviewOptions: { retainContextWhenHidden: true } }));
+  context.subscriptions.push(treeView, bar, vscode.window.registerWebviewViewProvider("graphene.home", home, { webviewOptions: { retainContextWhenHidden: true } }));
 
   // the Explorer marks each file a live task owns, a running one's with its agent's number: whose is whose
   const owners = new vscode.EventEmitter<undefined>();
@@ -94,19 +93,19 @@ export function activate(context: vscode.ExtensionContext) {
     if (said) {
       const show = said.kind === "waits" ? vscode.window.showWarningMessage : vscode.window.showInformationMessage;
       const key = keyTrouble(said.text); // it waits on a key, refused or missing: set it from here
-      void show(C.plain(said.text), ...(key.key ? ["Set API Key", "Open Home"] : said.kind === "waits" ? ["Open Home", "Show Graph"] : ["Show Graph"])).then((pick) => {
+      void show(C.plain(said.text), ...(key.key ? ["Set API Key", "Open Home"] : said.kind === "waits" ? ["Open Home", "Open the Graph"] : ["Open the Graph"])).then((pick) => {
         if (pick === "Set API Key") void vscode.commands.executeCommand("graphene.setKey", key.endpoint ?? undefined);
         if (pick === "Open Home") void vscode.commands.executeCommand("graphene.home");
-        if (pick === "Show Graph") void vscode.commands.executeCommand("graphene.showGraph");
+        if (pick === "Open the Graph") void vscode.commands.executeCommand("graphene.showGraph");
       });
     }
     if (s && (session.status.kind === "ok" || session.status.kind === "empty")) {
       bar.text = `◆ ${summary(s)}`;
       const md = new vscode.MarkdownString(undefined, true);
-      md.appendMarkdown(`**${mdText(s.goal || "no goal yet")}**\n\n`); // the plan's words as text, not markup
+      md.appendMarkdown(`**${mdText(headline(s) || "no goal yet")}**\n\n`); // the plan's words as text, not markup
       const top = topLine(s); // a replay, or a race against the scripted stand-in: not a paid run, said as the graph says it
       if (top) md.appendMarkdown(`${mdText(top)}\n\n`);
-      for (const line of s.news.slice(-4)) md.appendMarkdown(`- ${mdText(line)}\n`);
+      for (const line of s.news.slice(-4)) md.appendMarkdown(`- ${mdText(newsWords(line))}\n`); // suggested, as every screen says it
       md.appendMarkdown(`\n${mdText(which(session.file || session.path, session.version))}${session.found ? ", off this editor's PATH" : ""}\n\n`);
       md.appendMarkdown(session.stream.live ? "live: `graphene state --json --watch`\n\n" : "");
       md.appendMarkdown("Click for Graphene's Home");
@@ -117,6 +116,7 @@ export function activate(context: vscode.ExtensionContext) {
       bar.text = `◆ Graphene · ${words[k] ?? k}`;
       bar.tooltip = k === "missing" || k === "nofolder" ? session.status.text : `${session.status.text}\n\n${which(session.file || session.path, session.version)}`;
     }
+    if (behind(session.version)) bar.text = `◆ ${session.version} · older`; // a click opens Home, which says it, with Upgrade
   });
 
   // read again when the store's own files change (graphene.db, its WAL, the run lock: not an agent's save
@@ -150,7 +150,7 @@ export function activate(context: vscode.ExtensionContext) {
     if (given) return given;
     if (!among.length) { void vscode.window.showInformationMessage("No task to choose from."); return undefined; }
     const chosen = await vscode.window.showQuickPick( // a planner's title as text: a label reads `$(name)` as an icon
-      among.map((t) => ({ label: C.plain(t.title), description: `${t.state} · ${t.id}`, detail: C.plain(t.scope.join("  ")), t })), { placeHolder });
+      among.map((t) => ({ label: C.plain(t.title), description: `${SAY[t.state]} · ${t.id}`, detail: C.plain(t.scope.join("  ")), t })), { placeHolder });
     return chosen?.t;
   };
   const cmd = (name: string, fn: (arg?: Arg) => unknown) =>
@@ -162,21 +162,6 @@ export function activate(context: vscode.ExtensionContext) {
   cmd("openCockpit", () => session.terminal("graphene watch", C.watch()));
   cmd("runReady", () => session.terminal("graphene run", C.runReady()));
   cmd("stop", () => session.act(C.stop()));
-  cmd("auto", async () => {
-    const goal = await vscode.window.showInputBox({ prompt: "The goal Graphene plans and runs on its own", placeHolder: "what you want, in a sentence",
-                                                   ignoreFocusOut: true, validateInput: (v) => (v.trim() ? undefined : "say what you want") });
-    if (!goal?.trim()) return;
-    const budget = await vscode.window.showInputBox({ prompt: "A budget in dollars for the whole run (empty: the configured one)", placeHolder: "2",
-                                                     ignoreFocusOut: true, validateInput: (v) => (!v.trim() || Number(v) > 0 ? undefined : "a number of dollars, or nothing") });
-    if (budget === undefined) return;
-    // Plan first comes first: with auto on, Plan and run lands the race before the person has seen the plan
-    const how = await vscode.window.showQuickPick(
-      [{ label: "Plan first", description: "--plan: see what your envelope accepts; Auto… again, or graphene auto, runs it", planOnly: true },
-       { label: "Plan and run", description: "plan, race, land, check the goal, fix", planOnly: false }],
-      { placeHolder: "look at the plan first, or run it now?" });
-    if (!how) return;
-    session.terminal("graphene auto", C.auto(goal.trim(), budget.trim() ? Number(budget) : null, how.planOnly));
-  });
   cmd("envelope", async () => {
     // the settings `graphene auto` and an agent's proposals stay inside, set once, as `graphene config set` does
     const e = session.state?.envelope;
@@ -202,13 +187,13 @@ export function activate(context: vscode.ExtensionContext) {
     await session.act(C.setting(chosen.key, value.trim()));
   });
   cmd("accept", async (arg) => {
-    const t = await pick(arg, "the proposed task to accept", session.tasks().filter((x) => x.state === "proposed"));
+    const t = await pick(arg, "the suggested task to accept", session.tasks().filter((x) => x.state === "proposed"));
     if (t) await session.act(C.accept(t.id));
   });
   cmd("acceptAll", async () => {
     const n = session.tasks().filter((x) => x.state === "proposed").length;
-    if (!n) return void vscode.window.showInformationMessage("Nothing is proposed.");
-    const ok = await vscode.window.showWarningMessage(`Accept all ${n} proposed task${n > 1 ? "s" : ""}?`, { modal: true }, "Accept");
+    if (!n) return void vscode.window.showInformationMessage("Nothing is suggested.");
+    const ok = await vscode.window.showWarningMessage(`Accept all ${n} suggested task${n > 1 ? "s" : ""}?`, { modal: true }, "Accept");
     if (ok) await session.act(C.acceptAll());
   });
   cmd("link", async (arg) => {
@@ -234,9 +219,9 @@ export function activate(context: vscode.ExtensionContext) {
     await session.act(C.editStep(t.id, field.f, field.f === "scope" ? C.globs(value) : value.trim()));
   });
   cmd("dropStep", async (arg) => {
-    const t = await pick(arg, "the task to drop", session.tasks().filter((x) => DROPPABLE.includes(x.state)));
+    const t = await pick(arg, "the task to remove", session.tasks().filter((x) => DROPPABLE.includes(x.state)));
     if (!t) return;
-    const ok = await vscode.window.showWarningMessage(`Drop “${t.title}”? \`graphene plan undo\` puts it back.`, { modal: true }, "Drop");
+    const ok = await vscode.window.showWarningMessage(`Remove “${t.title}”? \`graphene plan undo\` puts it back.`, { modal: true }, "Remove");
     if (ok) await session.act(C.dropStep(t.id));
   });
   cmd("tell", async (arg) => {

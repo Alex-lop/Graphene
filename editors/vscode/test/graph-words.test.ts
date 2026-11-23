@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import * as C from "../src/commands.ts";
-import { actsFor, asksYou, attemptsOf, CHANGES, commandChip, commandWord, cornerWord, counts, draftedSteps, edgeKind, editable, filesChip, fitWidth, fitWords, forkActs, forkWords, HEADER_ACTS, headerFor,
-         checkWords, heldWords, linkHint, mayRun, OUTSIDE, OUTSIDE_OWN, paneKey, pipeline, planningLine, provesNothing, replayLine, scopeTree, stopAfterPlan, stopsOf, sub, tabOrder, tokenWords, topLine,
-         whenEdit, who, worktrees, writtenOf, type StateX, type TaskX } from "../src/graph/words.ts";
+import { actsFor, ASK_AGENT, askLine, asksYou, attemptsOf, CHANGES, commandChip, commandWord, cornerWord, CURSOR_AGENT, draftedSteps, earlier, edgeKind, editable, filesChip, fitWidth, fitWords, forkActs, forkWords, HEADER_ACTS, headerFor,
+         checkWords, heldWords, linkHint, mainAct, mayRun, newsLine, OUTSIDE, OUTSIDE_OWN, paneKey, pipeline, planningLine, provesNothing, replayLine, scopeTree, startAnswers, stopAfterPlan, stopsOf, sub, tabOrder, tokenWords, topLine,
+         whatFor, whenEdit, who, writtenOf, type StateX, type TaskX } from "../src/graph/words.ts";
 import { SAY, WORDS } from "../src/state.ts";
 import { ICONS } from "../src/graph/icons.ts";
 import { layout } from "../src/layout.ts";
@@ -21,19 +21,37 @@ const tasks: TaskX[] = parsed.tasks.map((t) => {
 const task = (id: string) => tasks.find((t) => t.id === id)!;
 const state: StateX = { ...parsed, tasks };
 
-test("narrow, the header is the goal alone: the counts and the auto line move to its hover and the footer", () => {
-  const wide = headerFor(state, false);
-  assert.equal(wide.goal, state.goal);
-  assert.equal(wide.counts, counts(state));
-  assert.equal(wide.auto, autoLine(state));
-  assert.equal(wide.footer, "");
-  const narrow = headerFor(state, true);
-  assert.equal(narrow.goal, state.goal);
-  assert.equal(narrow.counts, "");
-  assert.equal(narrow.auto, "");
-  assert.equal(narrow.hover, [state.goal, counts(state), autoLine(state)].filter(Boolean).join("\n"));
-  assert.equal(narrow.footer, autoLine(state) || counts(state)); // the live line first, else the counts
-  assert.equal(headerFor({ ...state, auto: null }, true).footer, counts(state));
+test("the header says each number once: the stages, the cost in Run's note unless auto's line says it against its budget, and auto's line while it works", () => {
+  const fx = (name: string) => parseState(readFileSync(new URL(`./fixtures/${name}.json`, import.meta.url), "utf8")) as StateX;
+  const run = (s: StateX) => headerFor(s).stages.find((x) => x.key === "run")!.note;
+  const h = headerFor(state);
+  assert.equal(h.goal, state.goal);
+  assert.equal(h.auto, autoLine(state));
+  assert.match(h.auto, /\$0\.61 of \$2\.00/);
+  assert.equal(run(state), "1 working", "the auto line says the cost: not again");
+  assert.equal(run({ ...state, auto: null }), "1 working · $0.61");
+  assert.equal(run({ ...state, auto: null, stand_in: true }), "1 working", "a stand-in's calls cost nothing");
+  assert.equal(run({ ...state, auto: null, replay: { shown: "demo", day: "", repository: "" } }), "1 working", "nor does a replay spend");
+  const done = { ...state, auto: { ...state.auto!, stage: "done" } };
+  assert.deepEqual([headerFor(done).auto, run(done)], ["", "1 working · $0.61"], "auto done: the stages say where the plan is");
+  assert.equal(run(fx("proposals")), "", "nothing has run: no cost under Run");
+  assert.equal(headerFor(fx("drafting")).goal, "CSV export of the visible rows", "a planner drawing: what it draws");
+  assert.equal(headerFor(fx("empty")).goal, "Graphene", "no plan: no placeholder for a goal");
+  assert.match(ASK_AGENT, /Claude Code or Codex/, "the agents Graphene's hooks reach, by name");
+  assert.equal(CURSOR_AGENT, "Cursor's own Agent does not plan with Graphene yet.");
+  assert.deepEqual(headerFor(state).stages.map((x) => x.label), pipeline(state).map((x) => x.label));
+});
+
+test("the news a screen reader hears is in the screen's words, and not what a chip or auto's line says already", () => {
+  const fx = (name: string) => parseState(readFileSync(new URL(`./fixtures/${name}.json`, import.meta.url), "utf8")) as StateX;
+  const plan = fx("proposals"), auto = fx("auto");
+  assert.equal(newsLine(plan, false), "the planner suggested 4 tasks under 2 sub-goals", "the CLI's proposed is suggested; its question is its chip's");
+  assert.equal(newsLine({ ...plan, news: ["proposed: Input loop, quit and exit"] }, false), "suggested: Input loop, quit and exit");
+  assert.equal(newsLine(fx("big"), false), "DELETE /orders/:id cancels needs help: it wrote outside its files");
+  assert.equal(newsLine({ ...plan, news: ["proposed: List proposed changes"] }, false), "suggested: List proposed changes", "a title keeps its own words");
+  assert.equal(newsLine({ ...plan, news: ["Retry when the API came back came back: it failed"] }, false), "Retry when the API came back needs help: it failed");
+  assert.equal(newsLine(auto, true), "round 2 checked the goal: red", "auto's wait is its line's in the header, said once");
+  assert.equal(newsLine(auto, false), "auto waits: the budget has $0.63 left and a question is open");
 });
 
 test("words drop from the end until they fit, the first always stays", () => {
@@ -74,7 +92,7 @@ test("the kept fork's chip says so in the cockpit's words; a running one its pro
   assert.equal(chip("b"), "b ✓ kept: 4 lines against 12");
   assert.equal(chip("a", 60), "a · Nano · gave up · 12 lines · 2 tries · $0.09"); // finished: the state is the news
   assert.equal(chip("a"), "a · Nano · gave up · 12 lines");
-  assert.equal(chip("c", 60), "c · Super · 7 lines · 23 s quiet · $0.15 · running"); // running: the numbers are the news
+  assert.equal(chip("c", 60), "c · Super · 7 lines · 23 s quiet · $0.15 · working"); // working: the numbers are the news
   assert.equal(chip("c"), "c · Super · 7 lines · 23 s quiet"); // the chip's own width holds the progress
   assert.equal(forkWords({ ...g.forks[2]!, idle: 0 }, g.kept), "c · Super · 7 lines · $0.15");
 });
@@ -102,6 +120,32 @@ test("a live race against the stand-in says so first; a replay's line wins; a re
                "replay · a scripted stand-in, no model ran");
 });
 
+test("the header's one act: Start a suggested plan (held by a question with no default), Run what is ready, Stop a run", () => {
+  const fx = (name: string) => parseState(readFileSync(new URL(`./fixtures/${name}.json`, import.meta.url), "utf8")) as StateX;
+  const say = (s: StateX) => { const a = mainAct(s); return a && `${a.label} ${a.act}${a.main ? " main" : ""}${a.off ? " off" : ""}`; };
+  const plan = fx("proposals");
+  assert.equal(say(plan), "Start start main", "a suggestion: Run would fail in a terminal, nobody accepted it");
+  assert.equal(say({ ...plan, questions: plan.questions.map((q) => ({ ...q, default: null })) }), "Start start off");
+  assert.match(mainAct({ ...plan, questions: [{ ...plan.questions[0]!, default: null }] })!.title, /question with no default/);
+  assert.deepEqual([mainAct(plan, true)!.off, mainAct(plan, true)!.title], [true, "Exact is on: it waits for your answers"], "Exact: any question holds it, as Home's");
+  assert.equal(mainAct({ ...plan, questions: [] }, true)!.main, true, "Exact with nothing asked: nothing to wait for");
+  const accepted = { ...plan, tasks: plan.tasks.map((t, i) => (i ? t : { ...t, state: "ready" as const })) }; // one accepted in its pane
+  assert.equal(say(accepted), "Start start main", "one task accepted alone: Start still takes the rest, not a Run that leaves them behind");
+  assert.equal(say({ ...accepted, questions: [], tasks: accepted.tasks.map((t) => ({ ...t, state: "ready" as const })) }), "Run run main", "nothing suggested: Run");
+  const stopped = { ...fx("running"), run: { going: false, pid: null } };
+  const readied = { ...stopped, tasks: stopped.tasks.map((t) => (t.state === "running" ? { ...t, state: "ready" as const } : t)) };
+  assert.equal(say(readied), "Run run main", "something ready, nothing working: Run");
+  assert.equal(say({ ...readied, questions: [{ ...plan.questions[0]!, default: null }] }), "Run run main", "a question with no default leaves Run as it is: graphene run and Home's Run leave it open");
+  assert.equal(mainAct({ ...readied, questions: [] })!.title, "start an agent on every task that is ready");
+  assert.equal(mainAct({ ...readied, questions: [plan.questions[0]!, { ...plan.questions[0]!, default: null }] })!.title,
+               "answer an open question with its default (“8000, as the README says”), then start an agent on every task that is ready",
+               "Run takes the defaults there are, as graphene run does: its hover says so");
+  assert.equal(say(fx("running")), "Stop stop", "a run going: Stop, never filled");
+  assert.equal(say(stopped), "Run run off", "nothing ready: Run is there, held");
+  assert.equal(say(fx("empty")), null, "no plan: nothing to start");
+  assert.equal(say({ ...plan, tasks: plan.tasks.map((t) => ({ ...t, state: "done" as const })) }), null, "all done: nothing to start");
+});
+
 test("a replay offers none of the header's acts: the cockpit would open graphene watch in the person's folder", () => {
   for (const [id, act] of HEADER_ACTS) assert.ok(CHANGES.includes(act), `${id} (${act}) stays in a replay`);
 });
@@ -121,7 +165,17 @@ test("the link hint names the task, says Cancel as well as Esc, and drop while a
 
 test("a task offers the acts its state takes; a replay offers only what reads", () => {
   const acts = (id: string, replay = false) => actsFor(task(id), replay).map((b) => b.act);
-  assert.deepEqual(acts("farewell"), ["signOff", "openDiff", "compareForks", "add-after", "add-under", "link"]);
+  // to review, as Home's card: two attempts passed and none kept, Compare first; else its changes until opened, then Approve
+  assert.deepEqual(acts("farewell"), ["compareForks", "openDiff", "sendBack", "add-after", "add-under", "link"]);
+  // a task that came back with nothing written offers no Open changes, which would open nothing (Home's card neither)
+  const stopped = { ...task("farewell"), state: "came back" as const, changed: [], forks: [] };
+  assert.ok(!actsFor(stopped, false).some((b) => b.act === "openDiff"));
+  assert.ok(actsFor({ ...stopped, changed: ["app.py"] }, false).some((b) => b.act === "openDiff"));
+  const docs = (opened: boolean) => actsFor(task("docs"), false, opened).map((b) => `${b.act}${b.main ? " (main)" : ""}`).slice(0, 3);
+  assert.deepEqual(docs(false), ["openDiff (main)", "signOff", "sendBack"]);
+  assert.deepEqual(docs(true), ["signOff (main)", "openDiff", "sendBack"]);
+  assert.equal(acts("hello").includes("sendBack"), true, "a finished task is sent back, as Edit's line says");
+  assert.match(actsFor(task("hello"), false).find((b) => b.act === "sendBack")!.title, /^what landed stays: /, "and its hover says what that does to work that landed");
   assert.deepEqual(acts("logs"), ["handBack", "openDiff", "add-after", "add-under", "link", "tell"]);
   assert.deepEqual(acts("ship"), ["add-after", "add-under", "link", "drop", "tell"]); // no Edit: the pane is the form
   assert.deepEqual(acts("farewell", true), []);
@@ -129,10 +183,31 @@ test("a task offers the acts its state takes; a replay offers only what reads", 
   assert.equal(actsFor(task("farewell"), false)[0]!.main, true);
 });
 
+test("the pane says what a task is for under its title only where the plan's line says more than the title", () => {
+  const w = (title: string, full: string) => whatFor({ title, full });
+  assert.equal(w("Librarian service", "Librarian service: collections, JSON import"), "Collections, JSON import", "only what is new after `title:`, as Home's");
+  assert.equal(w("Librarian service", "The librarian service: collections"), "Collections");
+  assert.equal(w("Planner service", "Planner service:"), "", "nothing after its colon: nothing to say");
+  assert.equal(w("hello", "a hello"), "", "the title again, with an `a` before it, as Home's");
+  assert.equal(w("hello says hello", "hello says hello to the person by name"), "", "starts with the title: its hover has it whole");
+  assert.equal(w("greet route", "a /greet route that says hello"), "a /greet route that says hello", "another line: said whole");
+  assert.equal(w("greet route", ""), "");
+});
+
+test("Activity says an agent tried a task before it was open again, and how its check went: what the snapshot keeps of a send back", () => {
+  const sent = { ...task("ship"), state: "ready" as const, agent: "2", checked: { before: "red", after: "passed" } }; // as `graphene state --json` says it after a reopen
+  assert.equal(earlier(sent), "agent 2's work passed its check and was sent back: your note goes to the agent that takes it next");
+  assert.equal(earlier({ ...sent, state: "waiting", checked: { before: null, after: "failed" } }), "agent 2 tried it, and its check failed");
+  assert.equal(earlier({ ...sent, checked: { before: null, after: null } }), "agent 2 tried it", "stopped before its check: no verdict to say");
+  assert.equal(earlier({ ...sent, agent: "" }), "", "no agent has been on it");
+  for (const state of ["running", "review", "done"] as const) assert.equal(earlier({ ...sent, state }), "", `${state}: the head names its agent`);
+});
+
 test("a button's hover names the graphene command its click runs", () => {
   const named = (b: { title: string }, argv: string[]) => assert.ok(b.title.includes(`graphene ${argv.slice(0, 2).join(" ")}`), `"${b.title}" names ${argv.join(" ")}`);
   const r = actsFor(task("farewell"), false);
-  named(r.find((b) => b.act === "signOff")!, C.signOff("farewell"));
+  named(actsFor(task("docs"), false).find((b) => b.act === "signOff")!, C.signOff("docs"));
+  named(r.find((b) => b.act === "sendBack")!, C.reopen("farewell", "x"));
   named(actsFor({ ...task("ship"), state: "proposed" }, false).find((b) => b.act === "accept")!, C.accept("ship"));
   const f = task("farewell");
   named(forkActs(f, f.forks[0]!, false).find((b) => b.act === "pickFork")!, C.pickFork("farewell", "a"));
@@ -158,13 +233,14 @@ test("text is cut to a measured width, with an ellipsis, in a few measures", () 
   assert.ok(out.endsWith("…") && out.length >= 5, out);
   assert.ok(measures <= 8, `${measures} measures`);
   assert.equal(fitWidth("abc", 1, mono), "a…"); // never empty: one character and the ellipsis at least
+  assert.equal(fitWidth("ship orders 1.0: a store", 100, mono), "ship orders 1…"); // no stop left before the ellipsis
 });
 
 test("a lane's corner word is the running task's model, cut to about six characters, and nothing else", () => {
   const greet = task("greet"); // running, Nano
   assert.equal(cornerWord(greet), "Nano");
   assert.equal(cornerWord({ ...greet, model: "claude-sonnet-4-5" }), "claude…");
-  assert.equal(cornerWord({ ...greet, model: "qwen3-coder-480b" }), "qwen3-…");
+  assert.equal(cornerWord({ ...greet, model: "qwen3-coder-480b" }), "qwen3…"); // no dash left before the ellipsis
   assert.equal(cornerWord(task("farewell")), ""); // in review: its mark says so, and that is marks.ts's (`cornerMark`)
   assert.equal(cornerWord(task("hello")), "");
 });
@@ -174,7 +250,10 @@ test("a card's tile says who does the step: you, the executor by its letter, or 
   assert.deepEqual(who(greet, "claude"), { kind: "claude", mark: "C", label: "Claude Code" });
   assert.deepEqual(who(greet, "codex --full-auto"), { kind: "codex", mark: "X", label: "Codex" });
   assert.equal(who(greet, "nemotron").mark, "N");
-  assert.deepEqual(who(greet, "stand-in"), { kind: "agent", mark: "S", label: "stand-in" }, "the demo's scripted stand-in");
+  assert.deepEqual(who(greet, "stand-in"), { kind: "agent", mark: "S", label: "Stand-in" }, "the demo's scripted stand-in");
+  assert.equal(who(greet, "nemotron").label, "Nemotron", "a name as a person writes it, not the setting's word");
+  assert.deepEqual(who(greet, "claude:opus"), { kind: "claude", mark: "C", label: "Claude Code" }, "the setting names the model too: the family is who");
+  assert.equal(who(greet, "nemotron:super").label, "Nemotron");
   assert.deepEqual(who(greet, "/usr/local/bin/aider --yes {prompt}"), { kind: "cmd", mark: "ai", label: "aider" });
   assert.equal(who(greet, "").mark, "?");
   assert.equal(who({ ...greet, owner: "alex" }, "claude").kind, "you", "a task you took is yours, whoever the executor is");
@@ -197,26 +276,18 @@ test("an edge moves where an agent is working, is green where the work landed, a
   assert.deepEqual([edgeKind(undefined, { state: "done" }), edgeKind(undefined, { state: "yours" })], ["done", "wait"]);
 });
 
-test("this machine counts a worktree for each agent at work: each running attempt's, or the task's own", () => {
-  const greet = task("greet");
-  const running = { ...greet, forks: greet.forks.map((f, i) => ({ ...f, checkout: i < 2 ? `/tmp/w${i}` : null })) };
-  assert.equal(worktrees([running]), 2);
-  assert.equal(worktrees([{ ...greet, forks: [], checkout: "/tmp/w" }]), 1);
-  assert.equal(worktrees([{ ...greet, forks: [], checkout: null }]), 0);
-});
-
 test("while a planner writes, its finished steps are drawn: tasks only, and none the plan already has", () => {
   const writing = parseState(readFileSync(new URL("./fixtures/drafting.json", import.meta.url), "utf8")) as StateX;
   assert.deepEqual(draftedSteps(writing).map((d) => d.id), ["failing", "rows", "button", "empty"], "the sub-goal is a band, not a box");
-  assert.equal(planningLine(writing), "The planner (claude) is drawing: 4 steps so far");
+  assert.equal(planningLine(writing), "The planner (claude) is drawing: 4 tasks so far");
   const one = { ...writing, drafting: { ...writing.drafting!, steps: writing.drafting!.steps.slice(0, 2) } };
-  assert.equal(planningLine(one), "The planner (claude) is drawing: 1 step so far");
+  assert.equal(planningLine(one), "The planner (claude) is drawing: 1 task so far");
   // a line that names a task the plan has is an anchor: the task is drawn once, as itself
   const anchored = { ...state, drafting: { by: "claude", live: true, steps: [{ id: "greet", title: "greet route", parent: null, leaf: true, scope: [], check: null, needs: [] },
                                                                               { id: "new", title: "a new step", parent: null, leaf: true, scope: [], check: null, needs: ["greet"] }] } };
   assert.deepEqual(draftedSteps(anchored).map((d) => d.id), ["new"]);
   // a planner whose stream has no text: the boxes come with the plan, and the graph says so
-  assert.equal(planningLine({ ...writing, drafting: { by: "codex", live: false, steps: [] } }), "The planner (codex) is writing: its steps appear when the plan arrives");
+  assert.equal(planningLine({ ...writing, drafting: { by: "codex", live: false, steps: [] } }), "The planner (codex) is writing: its tasks appear when the plan arrives");
   assert.equal(planningLine(state), "", "no planner is writing");
 });
 
@@ -246,11 +317,11 @@ test("a command step: its tile is the command's word, and one past the line asks
   assert.deepEqual(actsFor(pr, false)[0], { label: "Approve and run", act: "markDone", icon: "check", main: true,
     title: "it leaves your machine: graphene node done runs git push -u origin HEAD && gh pr create --draft --fill" });
   assert.equal(actsFor(suite, false).some((b) => b.act === "markDone"), false, "a command step before the line runs by itself");
-  assert.deepEqual(pipeline(wf).map((x) => `${x.label} ${x.at}${x.note ? `: ${x.note}` : ""}`), ["Plan done: 4 steps", "Run now: 1 asks you", "Review next"]);
+  assert.deepEqual(pipeline(wf).map((x) => `${x.label} ${x.at}${x.note ? `: ${x.note}` : ""}`), ["Plan done: 4 tasks", "Run now: 1 asks you", "Review next"]);
   // it is its command alone: the pane's form (files, attempts, your approval, whose it is) is closed, and the line says where it changes
   const ready = { ...suite, state: "ready" as const };
   assert.deepEqual([editable(ready, false), editable(pr, false)], [false, false]);
-  for (const t of [ready, pr]) assert.equal(whenEdit(t), "A command step is its command alone: no files, no attempts, no agent. Change its run: line in the plan's text.");
+  for (const t of [ready, pr]) assert.equal(whenEdit(t), "A command task is its command alone: no files, no attempts, no agent. Change its run: line in the plan's text.");
   assert.match(whenEdit(suite), /^Done:/, "finished, it is not edited, as any task");
   assert.deepEqual(actsFor(ready, false).map((b) => b.act), ["add-after", "add-under", "link", "drop"], "no agent to message");
   // nothing is drawn after a step past the line: a task there would land in the first column, its edge running backwards
@@ -264,21 +335,32 @@ test("one pipeline, the plan first: Plan, Run, Review, and where the work is in 
   const fx = (name: string) => parseState(readFileSync(new URL(`./fixtures/${name}.json`, import.meta.url), "utf8")) as StateX;
   const at = (s: StateX) => pipeline(s).map((x) => `${x.label} ${x.at}${x.note ? `: ${x.note}` : ""}`);
   assert.deepEqual(at(fx("empty")), ["Plan now", "Run next", "Review next"]);
-  assert.deepEqual(at(fx("drafting")), ["Plan now: 4 steps so far", "Run next", "Review next"]);
+  assert.deepEqual(at(fx("drafting")), ["Plan now: 4 tasks so far", "Run next", "Review next"]);
   assert.deepEqual(at({ ...fx("drafting"), drafting: { by: "codex", live: false, steps: [] } }), ["Plan now: the planner is writing", "Run next", "Review next"]);
-  assert.deepEqual(at(fx("proposals")), ["Plan now: 4 steps · 1 question", "Run next", "Review next"]); // suggested: it waits for Start
-  assert.deepEqual(at(state), ["Plan done: 7 steps · 1 question", "Run now: 1 working", "Review next: 2 to review"]); // what waits for you is said while the rest runs
+  assert.deepEqual(at(fx("proposals")), ["Plan now: 4 tasks", "Run next", "Review next"]); // suggested: it waits for Start; its question is said once, by its chip
+  assert.equal(askLine(fx("proposals").questions), "1 question · answer");
+  // Start takes the open questions' defaults (plan accept on the whole plan): said in its hover and in the chip, the default by its words
+  const plan = fx("proposals");
+  assert.match(mainAct(plan)!.title, /^accept the 4 suggested, answer the open question with its default \(“8000, as the README says”\), then start/);
+  assert.equal(startAnswers({ questions: [plan.questions[0]!, plan.questions[0]!] }), "answer the 2 open questions with their defaults");
+  assert.equal(startAnswers({ questions: [{ ...plan.questions[0]!, default: null }] }), "", "one with no default: nothing to take");
+  const q = plan.questions[0]!, none = { ...q, default: null };
+  assert.deepEqual([askLine([q], "Start"), askLine([q, q], "Run"), askLine([q, q, none], "Run")],
+                   ["1 question · Start picks “8000, as the README says”", "2 questions · Run picks their defaults", "3 questions · Run picks 2 defaults"]);
+  assert.deepEqual([askLine([none], "Start"), askLine([q, q]), askLine([])], ["1 question · answer", "2 questions · answer", ""], "nothing to pick, or no act to pick it");
+  assert.equal(askLine([{ default: "all six, since you asked for every service" }], "Start"), "1 question · Start picks “all six, since you asked…”", "a long default cut at a word");
+  assert.deepEqual(at(state), ["Plan done: 7 tasks", "Run now: 1 working", "Review next: 2 to review"]); // what waits for you is said while the rest runs
   const all = (word: TaskX["state"]) => ({ ...state, questions: [], run: { going: false, pid: null }, tasks: state.tasks.map((t) => ({ ...t, state: word })) });
-  assert.deepEqual(at(all("ready")), ["Plan done: 7 steps", "Run now: 7 ready", "Review next"]);
-  assert.deepEqual(at({ ...all("ready"), run: { going: true, pid: 1 } }), ["Plan done: 7 steps", "Run now: starting", "Review next"]);
-  assert.deepEqual(at(all("review")), ["Plan done: 7 steps", "Run done", "Review now: 7 to review"]);
-  assert.deepEqual(at(all("done")), ["Plan done: 7 steps", "Run done", "Review done: landed"]);
+  assert.deepEqual(at(all("ready")), ["Plan done: 7 tasks", "Run now: 7 ready", "Review next"]);
+  assert.deepEqual(at({ ...all("ready"), run: { going: true, pid: 1 } }), ["Plan done: 7 tasks", "Run now: starting", "Review next"]);
+  assert.deepEqual(at(all("review")), ["Plan done: 7 tasks", "Run done", "Review now: 7 to review"]);
+  assert.deepEqual(at(all("done")), ["Plan done: 7 tasks", "Run done", "Review done: done"]);
   // something suggested while agents work (an agent's proposal, a second ask): the work is still at Run, and the plan says what waits
   const more = { ...state, tasks: [...state.tasks, { ...task("ship"), id: "extra", state: "proposed" as const }] };
-  assert.deepEqual(at(more), ["Plan done: 8 steps · 1 suggested · 1 question", "Run now: 1 working", "Review next: 2 to review"]);
+  assert.deepEqual(at(more), ["Plan done: 8 tasks · 1 suggested", "Run now: 1 working", "Review next: 2 to review"]);
   const back = { ...all("ready"), tasks: all("ready").tasks.map((t, i) => (i ? t : { ...t, state: "came back" as const })) };
   assert.equal(at(back)[1], "Run now: 1 needs help");
-  assert.deepEqual(at({ ...all("done"), run: { going: true, pid: 1 } }), ["Plan done: 7 steps", "Run done", "Review done: landed"], "a run winding down has nothing left to start");
+  assert.deepEqual(at({ ...all("done"), run: { going: true, pid: 1 } }), ["Plan done: 7 tasks", "Run done", "Review done: done"], "a run winding down has nothing left to start");
   // the switch is the envelope's auto setting, the other way round; an older CLI that says nothing leaves it on
   assert.equal(stopAfterPlan(fx("proposals")), true);
   assert.equal(stopAfterPlan({ envelope: { auto: "on" } }), false);
@@ -304,7 +386,7 @@ const step = (id: string) => scoped.tasks.find((t) => t.id === id)!;
 test("May change is a tree: its folder opened to its files, the written ones marked, another step's named, the rest dim", () => {
   assert.deepEqual(scopeTree(step("rows"), scoped).map((r) => `${"  ".repeat(r.depth)}${r.name} [${r.kind}]${r.note ? ` ${r.note}` : ""}`), [
     "src/export/ [in]", "  __init__.py [in]", "  csv.py [in] written", "  formats.py [in]", "  rows.py [in] written",
-    "tests/ [other] another step's", "web/ [other] another step's", "README.md [out]",
+    "tests/ [other] another task's", "web/ [other] another task's", "README.md [out]",
   ]);
   assert.equal(writtenOf(step("rows")), "2 of 4");
   const top = { id: "top", scope: ["wordkit/cli.py", "tests/test_top.py"], files: ["wordkit/cli.py"], filesN: 1, touched: [], changed: ["tests/test_top.py", "wordkit/cli.py"] };
@@ -315,13 +397,17 @@ test("May change is a tree: its folder opened to its files, the written ones mar
   assert.equal(writtenOf(strayed), "1 of 2");
   assert.ok(!scopeTree(strayed, { tree: [], tasks: [] }).some((r) => r.name === "README.md"));
   // a replay's repository is empty, and an older CLI names no files: what is there is not known, so no path says "not there yet"
-  assert.deepEqual(scopeTree({ ...top, files: [], filesN: 0, changed: [] }, { tree: [], tasks: [] }).map((r) => `${r.name} ${r.note}`), ["tests/test_top.py ", "wordkit/cli.py "]);
+  assert.deepEqual(scopeTree({ ...top, files: [], filesN: 0, changed: [] }, { tree: [], tasks: [] }).map((r) => `${r.name} ${r.note}`), ["tests/ ", "test_top.py ", "wordkit/ ", "cli.py "]);
   // a scope past the 200 files a snapshot lists: its other folders are still its own, and the rest are counted
   const wide = { id: "all", scope: ["**"], files: ["a/x.py"], filesN: 300, touched: [], changed: [] };
   assert.deepEqual(scopeTree(wide, { tree: ["a/", "z/", "README.md"], tasks: [] }).map((r) => `${"  ".repeat(r.depth)}${r.name} [${r.kind}]`),
                    ["a/ [in]", "  x.py [in]", "z/ [in]", "README.md [in]", "… and 299 more files [in]"]);
-  // a path the step will create is its own, and says it is not there yet; a finished step's changes are its written files
-  assert.deepEqual(scopeTree(step("docs"), scoped).filter((r) => r.kind === "in"), [{ name: "docs/EXPORT.md", depth: 0, kind: "in", note: "not there yet" }]);
+  // a path the step will create is its own, and says it is new, under its folder as its files are; a finished step's changes are its written files
+  assert.deepEqual(scopeTree(step("docs"), scoped).filter((r) => r.kind === "in"), [{ name: "docs/", depth: 0, kind: "in", note: "" },
+                                                                                   { name: "EXPORT.md", depth: 1, kind: "in", note: "new" }]);
+  const twin = { id: "lib", scope: ["src/main/impl/Lib.java", "src/test/impl/LibTest.java"], files: ["src/main/impl/Lib.java"], filesN: 1, touched: [], changed: [] };
+  assert.deepEqual(scopeTree(twin, { tree: ["src/"], tasks: [] }).map((r) => `${"  ".repeat(r.depth)}${r.name}${r.note ? ` ${r.note}` : ""}`),
+                   ["src/main/impl/", "  Lib.java", "src/test/impl/", "  LibTest.java new"], "a code file and the test it creates, each under its own folder");
   assert.deepEqual(scopeTree(step("test"), scoped).filter((r) => r.kind === "in"), [{ name: "tests/", depth: 0, kind: "in", note: "" },
                                                                                    { name: "test_export.py", depth: 1, kind: "in", note: "written" }]);
   assert.equal(writtenOf(step("docs")), "");
@@ -332,17 +418,29 @@ test("May change is a tree: its folder opened to its files, the written ones mar
 });
 
 test("May run, Held by, Stopped, Done when and Tokens say what is known, and no more", () => {
-  assert.deepEqual(mayRun(scoped, step("rows")), { commands: ["graphene node *", "graphene plan *"], words: "", outside: OUTSIDE });
+  // Graphene's own two are not the repository's commands: left out, and the check the agent cannot run is named, with where that is set
+  assert.deepEqual(mayRun(scoped, step("rows")), { commands: [], words: "no shell command", outside: OUTSIDE,
+    note: "It cannot run pytest: Graphene runs its check for it, after the work. What it may run is set by the executor's `--allowedTools`." });
+  assert.equal(OUTSIDE, "none");
+  const npm = { ...scoped, allows: ["graphene node *", "npm test *"] };
+  assert.deepEqual(mayRun(npm, { ...step("rows"), check: "npm test table" }), { commands: ["npm test *"], words: "", note: "", outside: OUTSIDE }, "a check it may run: nothing to say");
+  assert.equal(mayRun(npm, { ...step("rows"), check: null }).note, "", "no check: nothing it cannot run");
+  assert.match(mayRun(npm, { ...step("rows"), check: "cd app && npm test table" }).note, /^$/, "the command a check runs, not the cd before it");
+  assert.match(mayRun(scoped, { ...step("rows"), check: "cd app && ./gradlew test" }).note, /^It cannot run \.\/gradlew: Graphene runs its check for it, after the work\./);
+  assert.match(mayRun(scoped, { ...step("rows"), check: "PYTHONPATH=. pytest -q" }).note, /^It cannot run pytest:/, "the command, not the setting before it");
   assert.match(mayRun({ allows: null, executor: "claude" }, step("rows")).words, /^any command: what a command writes is still held/);
   // the list is the repository's executor's: a step Codex holds, or one that is yours, is not under it
-  assert.deepEqual(mayRun(scoped, step("button")), { commands: [], words: "any command: what a command writes is still held to its files", outside: OUTSIDE_OWN });
-  assert.deepEqual(mayRun(scoped, step("docs")), { commands: [], words: "any command", outside: OUTSIDE_OWN });
+  assert.deepEqual(mayRun(scoped, step("button")), { commands: [], words: "any command: what a command writes is still held to its files", note: "", outside: OUTSIDE_OWN });
+  assert.deepEqual(mayRun(scoped, step("docs")), { commands: [], words: "any command", note: "", outside: OUTSIDE_OWN });
   // the setting names the model (`claude:opus`), a run names the holder by family (`claude`): the same executor, the same list and name
-  assert.deepEqual(mayRun({ ...scoped, executor: "claude:opus" }, step("rows")).commands, ["graphene node *", "graphene plan *"]);
+  assert.deepEqual(mayRun({ ...scoped, executor: "claude:opus" }, step("rows")).words, "no shell command");
   assert.match(heldWords({ held: { state: "refused", by: "claude:opus" } }).proof, /^Claude Code's hook/);
   // held: three states, each as the tests prove it; a Graphene that does not say is not held, never a shield
   assert.deepEqual([heldWords(step("rows")).shield, heldWords(step("rows")).line], [true, "A write outside its files is refused before it happens."]);
-  assert.match(heldWords(step("rows")).proof, /^Claude Code's hook, proven by tests\/test_every_agent\.py$/);
+  assert.equal(heldWords(step("rows")).proof, "Claude Code's hook stops it, and its finish checks again.");
+  // in plain words: the test that proves it is the README's to name, not the inspector's
+  for (const state of ["refused", "caught", "none", ""] as const) assert.doesNotMatch(heldWords({ held: { state, by: "nemotron" } }).proof, /tests\/|\.py\b/);
+  assert.match(heldWords({ held: { state: "refused", by: "nemotron" } }).proof, /^Nemotron's hook/);
   assert.match(heldWords(step("button")).line, /caught when it finishes/);
   assert.deepEqual([heldWords(step("docs")).shield, heldWords(step("docs")).line], [false, "Not held: nothing stops a write outside its files."]);
   assert.equal(heldWords({ held: { state: "", by: "" } }).shield, false);
@@ -365,12 +463,12 @@ test("May run, Held by, Stopped, Done when and Tokens say what is known, and no 
   assert.equal(tokenWords(step("button")), null, "no meter, or nothing spent yet");
 });
 
-test("an icon the graph's page asks for by name is one it has: the goal chip's arrow was a blank", () => {
+test("an icon the graph's page asks for by name is one it has: the pane's close, the run's play, a button's check", () => {
   const src = (file: string) => readFileSync(new URL(`../src/graph/${file}`, import.meta.url), "utf8");
   // `icon("close")`, `icon(going ? "debug-stop" : "play")` on the page; `icon: "check"` on a button's words
   const asked = [...src("main.ts").matchAll(/\bicon\(([^()]*)\)/g)].flatMap((m) => [...m[1]!.matchAll(/(?:^|[?:]\s*)"([a-z-]+)"/g)].map((n) => n[1]!));
   asked.push(...[...src("words.ts").matchAll(/\bicon: "([a-z-]+)"/g)].map((m) => m[1]!));
-  assert.ok(asked.includes("arrow-right") && asked.includes("play") && asked.includes("check"), "the page's source is read as it is written");
+  assert.ok(asked.includes("close") && asked.includes("play") && asked.includes("check"), "the page's source is read as it is written");
   assert.deepEqual([...new Set(asked)].filter((name) => !ICONS[name]), []);
 });
 
@@ -407,5 +505,6 @@ test("every state says what an edit does now, in the screen's words; only a fini
     assert.equal(editable({ state }, true), false, "a replay is watched");
   }
   assert.match(whenEdit({ state: "running" }), /next write/);
-  assert.match(whenEdit({ state: "done" }), /not edited/);
+  assert.match(whenEdit({ state: "done" }), /not edited\. Send it back, from the …,/, "Send back… waits in the …, not at the foot");
+  assert.equal(whenEdit({ state: "done", command: "uv run pytest -q" }), "Done: a finished task is not edited.", "a command step has no Send back… to point to");
 });

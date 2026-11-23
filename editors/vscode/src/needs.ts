@@ -70,7 +70,7 @@ export const markDone = (id: string): string[] => ["node", "done", id]; // runs 
  *  it asks them, and approving it runs its command, which leaves their machine. */
 export function yoursWords(t: Task): { description: string; hover: string; title: string } {
   if (t.leaves && t.command) return { description: `asks you: it leaves your machine · approving runs ${t.command}`, title: "Approve and Run",
-    hover: `This step leaves your machine, so it asks you first. Click to approve it: that runs its command in a terminal, with no agent.\n\nRuns: ${mdText(t.command)}` };
+    hover: `This task leaves your machine, so it asks you first. Click to approve it: that runs its command in a terminal, with no agent.\n\nRuns: ${mdText(t.command)}` };
   return { description: "yours · mark done", title: "Mark Done", hover: "Your own task. Click when it is done: its check runs in a terminal." };
 }
 export const widen = (id: string): string[] => ["node", "widen", id]; // exactly what the gate stopped
@@ -100,6 +100,6 @@ export function offerWords(t: Task, titles: Record<string, string> = {}): { labe
     const label = k === "b" ? `A new task for ${on}; this one waits on it` : on ? `${what} ${on}` : what;
     return { label, detail: `graphene ${argv.join(" ")}`, argv, long: false };
   });
-  out.push({ label: "Try it again", detail: `graphene ${tryAgain(t.id).join(" ")}: a new agent, told why it came back`, argv: tryAgain(t.id), long: true });
+  out.push({ label: "Try it again", detail: `graphene ${tryAgain(t.id).join(" ")}: a new agent, told why the last one stopped`, argv: tryAgain(t.id), long: true });
   return out;
 }

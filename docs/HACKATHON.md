@@ -54,7 +54,7 @@ lands. Then the goal's own check runs on the merged result, and when it is red U
 rounds you allowed. Token Factory is what makes a race on every task affordable: the replay's whole run, two plans
 by Ultra and twelve Nano forks, cost $0.02 at the scripted stand-in's prices (`tests/test_demo_auto.py`), and
 `graphene demo --auto` replays it with no key. The same plan, forks racing, shows in VS Code (`editors/vscode`):
-Home first, where everything is a click (set up, Plan it, Start, then Open changes, Approve or Send back on each
+Home first, where everything is a click (set up, Start, then Open changes, Approve or Send back on each
 finished task); every running agent with what it edits and its dollars; a task's changes in the diff editor; and
 every click a `graphene` command run as you. The `.vsix` is on each GitHub release, and a harness drove it in real VS Code 1.143.1 and Cursor 3.25.6
 (`editors/vscode/e2e`).
@@ -194,7 +194,7 @@ runs unless you run it, or set `GRAPHENE_SHAPE` to run them after each `graphene
   with a stand-in in place of Token Factory, took 11 minutes to its first graph and 28 to its first accept from
   it, with nine guesses. The worst wall was a 401 that no surface said how to fix
   (`dev/process/editor/before/stranger.md`). Now the refusal names `graphene key set`, the extension offers Set
-  Key, Auto… leads with Plan first, and a task that came back can be dropped from the editor.
+  Key, the plan comes first, and a task that came back can be dropped from the editor.
 - **Where the agent loop runs decides what can be refused.** With Graphene's own loop on your machine and the
   tools in the sandbox, an out-of-scope write was refused in Graphene's words before it happened, 3 runs of 3.
   With a harness inside the sandbox (OpenCode 1.18.31), Graphene never heard of it in 3 of 3, the key sat where

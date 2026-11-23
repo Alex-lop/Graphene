@@ -170,6 +170,10 @@ export interface State {
   stand_in: boolean; // the run is against the scripted stand-in, no model
   cursor: number;
   goal: string;
+  /** The newest ask, whole: the news cuts it at 60 characters. "" from an older CLI, which does not say it. */
+  asked?: string;
+  /** What the person last asked for, as the editor keeps it (session.ts) once the news no longer says it. */
+  kept?: string;
   first: string;
   planner: string;
   executor: string;
@@ -294,7 +298,7 @@ export function parseState(text: string): State {
     schema: int(r.schema, 1), graphene: str(r.graphene), repo: str(r.repo), cursor: int(r.cursor, 0),
     replay: str(replay.shown) ? { shown: str(replay.shown), day: str(replay.day), repository: str(replay.repository) } : null,
     stand_in: bool(r.stand_in),
-    goal: str(r.goal), first: str(r.first), planner: str(r.planner), executor: str(r.executor),
+    goal: str(r.goal), asked: str(r.asked), first: str(r.first), planner: str(r.planner), executor: str(r.executor),
     envelope: {
       auto: str(env.auto, "off"), budget: num(env.budget), tasks: num(env.tasks), rounds: num(env.rounds),
       forks: num(env.forks), review: str(env.review, "off"), protected: strs(env.protected),
@@ -333,12 +337,15 @@ export function usd(n: number | null | undefined): string {
   return n >= 0.01 ? `$${n.toFixed(2)}` : `$${n.toFixed(3)}`;
 }
 
-/** What the plan is for: its goal, else what the person last asked for (`graphene ask` sets no goal); "" when
- *  the news no longer says. */
-export function headline(s: Pick<State, "goal" | "news">): string {
+/** What the plan is for: its goal, else what the person last asked for (`graphene ask` sets no goal), from the
+ *  news or, once it scrolled out of them, as the editor kept it; "" when nobody knows. */
+export function headline(s: Pick<State, "goal" | "news" | "asked" | "kept">): string {
   if (s.goal) return s.goal;
-  const asked = [...s.news].reverse().find((l) => l.startsWith("you asked: "));
-  return asked ? asked.slice("you asked: ".length) : "";
+  const line = [...s.news].reverse().find((l) => l.startsWith("you asked: "))?.slice("you asked: ".length);
+  if (!line) return s.kept ?? "";
+  // the news line is cut (`…`); the snapshot's `asked` is that same ask whole, and the header has the room
+  const whole = s.asked ?? "";
+  return whole && (whole === line || (line.endsWith("…") && whole.startsWith(line.slice(0, -1)))) ? whole : line;
 }
 
 /** The plan's words for a Markdown hover, as text: an agent writes some of them (a title it proposed, a command
@@ -348,8 +355,17 @@ export function mdText(s: string): string {
   return s.replace(/\s+/g, " ").replace(/[\\`*_{}[\]()#+\-.!|<>~$&:]/g, "\\$&");
 }
 
-/** The status bar's words: `2 working · 1 needs you · $0.42`, `3 of 6 done` when nothing runs; while auto is on,
- *  its round first (`auto round 2 · …`), or that it waits for you, or is done. */
+/** A practice run (every model call went to the scripted stand-in) or a replay (no model runs): nothing is spent
+ *  here, so no screen says a cost, the status bar, auto's line and the graph's (graph.ts sends it none) alike. */
+export const free = (s: Pick<State, "stand_in" | "replay">): boolean => s.stand_in || Boolean(s.replay);
+/** The snapshot a page is sent: a free one with no cost in it to put on a card, a lane, an attempt or a Cost row. */
+export function unpriced(s: State): State {
+  return free(s) ? { ...s, spent: null, tasks: s.tasks.map((t) => ({ ...t, usd: null, forks: t.forks.map((f) => ({ ...f, usd: null })) })) } : s;
+}
+
+/** The status bar's words: `2 working · 1 needs you · $0.42`, `3 of 6 done` when nothing runs; while auto plans,
+ *  runs and fixes on its own, its round first (`on its own, round 2 · …`), and that it waits for you when no task
+ *  says so. Not once it is done: the counts say what is left, and "done" beside three waiting tasks read as all done. */
 export function summary(s: State): string {
   const sb = s.scoreboard;
   const parts: string[] = [];
@@ -357,23 +373,27 @@ export function summary(s: State): string {
   if (sb.need_you) parts.push(sb.need_you === 1 ? "1 needs you" : `${sb.need_you} need you`);
   if (!parts.length) parts.push(sb.total ? `${sb.proven} of ${sb.total} done` : "no plan yet");
   const spent = usd(s.spent);
-  if (spent) parts.push(spent);
+  if (spent && !free(s)) parts.push(spent);
   const a = autoLine(s) ? s.auto : null;
-  if (a?.stage) parts.unshift(a.stage === "waits" ? "auto waits" : a.stage === "done" ? "auto done" : `auto round ${a.round ?? 1}`);
+  if (a?.stage === "waits" ? !sb.need_you : a?.stage && a.stage !== "done") parts.unshift(a!.stage === "waits" ? "waits for you" : `on its own, round ${a!.round ?? 1}`);
   return parts.join(" · ");
 }
 
-/** The auto header, as the cockpit's: `auto · round 1 of 3 · running · $0.42 of $2.00` (a round is the first plan or
- * a fix round, `rounds + 1` in all); a fix round says what the goal failed on; empty when auto is off. */
+/** What auto is at, in the screen's words: it is the plan run on its own (Stop after the plan off), so it is said so,
+ *  not by the CLI's word. Waiting, it is not on its own: `waits for you`, as the CLI, the status bar and the toast say. */
+const AT: Record<string, string> = { planning: "planning on its own", running: "running on its own", checking: "checking the goal on its own",
+                                     fixing: "fixing on its own", done: "done on its own", waits: "waits for you" };
+
+/** The auto header: `waits for you: the goal's check is still red · round 2 of 3 · $1.37 of $2.00` (a
+ * round is the first plan or a fix round, `rounds + 1` in all). What it is at and why come first, so a tab too narrow
+ * for the line cuts the bookkeeping, not the reason it stopped; empty when auto is off. */
 export function autoLine(s: State): string {
   const a = s.auto;
   if (!a || s.envelope.auto !== "on" && !a.stage) return "";
-  const parts = ["auto"];
+  const parts = [`${AT[a.stage] ?? (a.stage ? `${a.stage} on its own` : "on its own")}${a.why ? `: ${screenWords(a.why)}` : ""}`];
   if (a.round !== null) parts.push(a.rounds !== null ? `round ${a.round} of ${a.rounds + 1}` : `round ${a.round}`);
-  if (a.stage) parts.push(a.stage);
   const spent = a.spent === null ? "" : usd(a.spent) || "$0.00";
-  if (spent) parts.push(a.budget !== null ? `${spent} of ${usd(a.budget) || "$0.00"}` : spent);
-  if (a.why) parts.push(screenWords(a.why));
+  if (spent && !free(s)) parts.push(a.budget !== null ? `${spent} of ${usd(a.budget) || "$0.00"}` : spent);
   return parts.join(" · ");
 }
 
@@ -382,10 +402,10 @@ export function autoLine(s: State): string {
 export function autoNews(before: State | null, now: State): { kind: "waits" | "fixing" | "done"; text: string } | null {
   const was = before?.auto, a = now.auto;
   if (!before || !a || !a.stage || (was?.stage === a.stage && was?.round === a.round)) return null;
-  const money = a.spent === null ? "" : ` · ${usd(a.spent) || "$0.00"}${a.budget !== null ? ` of ${usd(a.budget) || "$0.00"}` : ""}`;
-  if (a.stage === "waits") return { kind: "waits", text: `Graphene auto waits for you: ${screenWords(a.why) || "see the plan"}` };
-  if (a.stage === "fixing") return { kind: "fixing", text: `Graphene auto: the goal's check failed${a.why ? ` (${screenWords(a.why)})` : ""}; round ${a.round} plans the fix` };
-  if (a.stage === "done") return { kind: "done", text: `Graphene auto is done: the goal's check passed in round ${a.round}${money}` };
+  const money = a.spent === null || free(now) ? "" : ` · ${usd(a.spent) || "$0.00"}${a.budget !== null ? ` of ${usd(a.budget) || "$0.00"}` : ""}`;
+  if (a.stage === "waits") return { kind: "waits", text: `Graphene waits for you: ${screenWords(a.why) || "see the plan"}` };
+  if (a.stage === "fixing") return { kind: "fixing", text: `Graphene, on its own: the goal's check failed${a.why ? ` (${screenWords(a.why)})` : ""}; round ${a.round} plans the fix` };
+  if (a.stage === "done") return { kind: "done", text: `Graphene finished on its own: the goal's check passed in round ${a.round}${money}` };
   return null;
 }
 

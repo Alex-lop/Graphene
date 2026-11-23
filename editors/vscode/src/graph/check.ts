@@ -7,10 +7,10 @@ import { CHANGES } from "./words.ts";
 // answer: id is a question's, target one of its options (none: the command asks);
 // set: one field of the task's form, with its value; draw: a task drawn on the graph, whole, for `node add`;
 // add-after (id a task) and add-under (id a sub-goal, or none): the planner fills a drawn task in, from its
-// title as the sentence; stopAfter: the header's one switch, its value the position it moves to
-export const ACTS = ["add-after", "add-under", "link", "unlink", "drop", "accept", "tell", "run", "stop", "auto", "cockpit",
-                     "openDiff", "compareForks", "pickFork", "signOff", "answer", "handBack", "set", "draw", "stopAfter", "saveWorkflow",
-                     "markDone"] as const;
+// title as the sentence
+export const ACTS = ["add-after", "add-under", "link", "unlink", "drop", "accept", "tell", "start", "run", "stop", "cockpit",
+                     "openDiff", "compareForks", "pickFork", "signOff", "sendBack", "answer", "handBack", "set", "draw", "saveWorkflow",
+                     "markDone", "demo"] as const;
 export type Act = (typeof ACTS)[number];
 export type Drawn = { key: string; title: string; files: string; check: string; approve: boolean; after: string | null; parent: string | null };
 export type FromPage = { type: "ready" }
@@ -64,14 +64,13 @@ export function check(m: unknown, session: { state: Plan }): FromPage | null {
   const s = session.state;
   const tasks = s?.tasks ?? [];
   const task = tasks.find((t) => t.id === id);
-  const global: readonly Act[] = ["run", "stop", "auto", "cockpit", "saveWorkflow"];
+  const global: readonly Act[] = ["start", "run", "stop", "cockpit", "saveWorkflow", "demo"];
   if (act === "answer") {
     const q = s?.questions.find((x) => x.id === id);
     if (!q) return null;
     if (target !== undefined && target !== q.default && !q.options.includes(target)) return null;
     return { type: "act", act, id, target };
   }
-  if (act === "stopAfter") return typeof r.value === "boolean" ? { type: "act", act, id: "", value: r.value } : null;
   if (act === "draw") { // a task of the page's own: no id yet
     const draft = drawn(r.draft, tasks, s?.goals ?? []);
     return s && draft ? { type: "act", act, id: "", draft } : null;

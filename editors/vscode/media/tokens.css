@@ -1,0 +1,54 @@
+/* The colours, lines and shapes the graph and Home share (linked before graph.css and home.css). Every colour is
+   the theme's own, built the way Cursor builds its own UI: the text colour at a few strengths over whatever is
+   behind it, and the button colour as the one accent. Three theme variables are never leaned on:
+   focusBorder (20% white in Cursor Dark, fully transparent in Cursor Dark Midnight), button.foreground for
+   anything but text on a button (it is near-black in both), and widget.shadow (14% white in Cursor Dark). */
+:root {
+  --fg: var(--vscode-foreground, #cccccc);
+  --dim: var(--vscode-descriptionForeground, #9d9d9d);
+  --bg: var(--vscode-editor-background, #1e1e1e);
+  --font: var(--vscode-font-family, system-ui, sans-serif);
+  --mono: var(--vscode-editor-font-family, ui-monospace, Menlo, monospace);
+
+  /* the text colour over the ground: fills and lines (Cursor's --cursor-bg-* and --cursor-stroke-*) */
+  --fill-1: color-mix(in srgb, var(--fg) 4%, transparent);
+  --fill-2: color-mix(in srgb, var(--fg) 7%, transparent);
+  --fill-3: color-mix(in srgb, var(--fg) 11%, transparent);
+  --line-1: color-mix(in srgb, var(--fg) 8%, transparent);
+  --line-2: color-mix(in srgb, var(--fg) 13%, transparent);
+  --line-3: color-mix(in srgb, var(--fg) 24%, transparent);
+  --divider: var(--vscode-panel-border, var(--line-1));  /* between header, canvas, pane and foot */
+  --border: var(--vscode-widget-border, var(--line-2));  /* round a widget */
+  --hover: var(--vscode-list-hoverBackground, var(--fill-2));
+
+  /* the accent: the button colour fills, the link colour draws lines and the focus */
+  --accent: var(--vscode-button-background, #0e639c);
+  --accent-ink: var(--vscode-button-foreground, #ffffff);
+  --accent-line: var(--vscode-textLink-foreground, #3794ff);
+  --accent-soft: color-mix(in srgb, var(--accent-line) 14%, transparent);
+  --focus: var(--accent-line);
+  --knob: #ffffff;
+
+  /* state: the chart colours */
+  --running: var(--vscode-charts-yellow, #cca700);
+  --review: var(--vscode-charts-purple, #b180d7);
+  --came-back: var(--vscode-charts-red, #f14c4c);
+  --proposed: var(--vscode-charts-blue, #3794ff);
+  --done: var(--vscode-charts-green, #89d185);
+  --waiting: var(--dim);
+
+  /* shape: a button's corner is Cursor's own (.monaco-text-button), a card's and a popover's a little rounder */
+  --r-sm: 4px;
+  --r: 6px;
+  --r-lg: 8px;
+  --shadow: rgba(0, 0, 0, 0.36);
+  --pop: 0 0 0 1px var(--border), 0 8px 24px -6px var(--shadow);
+}
+:root:has(> body.vscode-light) { --shadow: rgba(0, 0, 0, 0.1); }
+:root:has(> body.vscode-high-contrast), :root:has(> body.vscode-high-contrast-light) {
+  --fill-1: transparent; --fill-2: transparent; --fill-3: transparent; --hover: transparent; --accent-soft: transparent;
+  --line-1: var(--vscode-contrastBorder, #6fc3df); --line-2: var(--line-1); --line-3: var(--line-1);
+  --divider: var(--line-1); --border: var(--line-1);
+  --focus: var(--vscode-contrastActiveBorder, var(--vscode-focusBorder, #f38518)); --accent-line: var(--focus);
+  --knob: var(--fg); --shadow: transparent; --pop: 0 0 0 1px var(--border);
+}

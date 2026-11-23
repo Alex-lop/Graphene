@@ -1,26 +1,23 @@
-// Home, the first view in Graphene's side bar: everything a person does, with a click. Set the folder up, say
-// what you want, start the agents on the suggested plan, and review what each one did before it lands. The host
+// Home, Graphene's side bar: everything a person does, with a click. Set the folder up, open the graph, start
+// the agents on the plan your coding agent proposed, and review what each one did before it lands. The host
 // runs graphene as the person (Session); the page (home/main.ts) draws what cards.ts says, and every message it
 // sends is checked first (cards.ts checkHome): nothing from the page reaches a shell but as an argument.
 import * as vscode from "vscode";
 import * as C from "./commands.ts";
-import { stopAfterPlan } from "./graph/words.ts";
-import { checkHome, home, said, unanswered, type FromHome } from "./home/cards.ts";
-import { EXACT, WHO } from "./home/who.ts";
+import { behind, olderWords } from "./find.ts";
+import { checkHome, home, unanswered, type FromHome } from "./home/cards.ts";
+import { WHO } from "./home/who.ts";
 import { keyTrouble, needs, tryAgain, widen } from "./needs.ts";
 import type { Session } from "./session.ts";
 import type { Task } from "./state.ts";
 
-type Last = { n: number; lines: string[]; bad: boolean; asked?: string; key?: boolean };
+type Last = { n: number; lines: string[]; bad: boolean; key?: boolean };
 
 export class HomeHost implements vscode.WebviewViewProvider {
   private views = new Set<vscode.WebviewView>();
-  private planning: AbortController | null = null;
-  /** What Home is doing now ("Planning…"), and what the last thing it did said, for the page. */
+  /** What Home is doing now ("Setting up this folder…"), and what the last thing it did said, for the page. */
   private busy = "";
   private last: Last = { n: 0, lines: [], bad: false };
-  /** What was last planned here: the headline once the plan's news no longer says it (an ask sets no goal). */
-  private asked = "";
   /** `board:` as `graphene config` last said it: on, with every task to review and auto off, is Exact.
    *  ponytail: read when Home opens and when its switch moves, so a `config set board` typed in a terminal
    *  shows here at the next of those; the snapshot would have to carry the setting to follow it live. */
@@ -31,16 +28,23 @@ export class HomeHost implements vscode.WebviewViewProvider {
   private lastWorkflow: { name: string; inputs: Record<string, string> } | null = null;
   private readonly context: vscode.ExtensionContext;
   private readonly session: Session;
+  /** Home came into view, or went out of it: the graph's tab opens with it (graph.ts sidebar). */
+  private readonly shown: (on: boolean) => void;
 
-  constructor(context: vscode.ExtensionContext, session: Session) {
+  constructor(context: vscode.ExtensionContext, session: Session, shown: (on: boolean) => void = () => {}) {
     this.context = context;
     this.session = session;
+    this.shown = shown;
     session.onDidChange(() => this.push());
     session.onDidSee(() => this.push());
     // the graph's header asks for these by name: its Save as workflow button, and its switch, which moves as Home's
     // does (Exact's settings go back with it). Home may never have opened: the board setting is read first.
     context.subscriptions.push(vscode.commands.registerCommand("graphene.saveWorkflow", () => this.saveWorkflow()),
-                               vscode.commands.registerCommand("graphene.stopAfter", async (flag?: unknown) => { await this.readBoard(); return this.setStopAfter(flag === true); }));
+                               vscode.commands.registerCommand("graphene.stopAfter", async (flag?: unknown) => { await this.readBoard(); return this.setStopAfter(flag === true); }),
+                               vscode.commands.registerCommand("graphene.sendBack", (arg?: { id?: unknown }) => { // the graph pane's Send back…
+                                 const t = session.tasks().find((x) => x.id === arg?.id);
+                                 return t && this.sendBack(t);
+                               }));
   }
 
   resolveWebviewView(view: vscode.WebviewView) {
@@ -49,6 +53,9 @@ export class HomeHost implements vscode.WebviewViewProvider {
     view.webview.html = this.html(view.webview);
     this.views.add(view);
     view.onDidDispose(() => this.views.delete(view));
+    const seen = () => this.shown(view.visible); // a click on Graphene's icon lands on the graph
+    seen();
+    view.onDidChangeVisibility(seen);
     view.webview.onDidReceiveMessage((m: unknown) => {
       const msg = checkHome(m, this.session.state, this.workflows);
       if (!msg) return;
@@ -63,9 +70,10 @@ export class HomeHost implements vscode.WebviewViewProvider {
     if (h && this.busy) for (const section of h.sections) for (const button of section.buttons) {
       if (button.act === "startAll" || button.act === "discardAll") button.off = true;
     }
-    if (h && !s?.goal && this.asked) h.goal = this.asked; // whole: the news cuts what was asked at 60 characters
+    const { version } = this.session; // an older graphene: said above everything for as long as it runs, with Upgrade
+    const older = behind(version) ? olderWords(this.session.file || this.session.path, version).replaceAll("`", "") : "";
     const model = { type: "home", status: this.session.status, home: h, review: s?.envelope.review === "every", exact: this.exact, busy: this.busy,
-                    planning: Boolean(this.planning), last: this.last };
+                    last: this.last, older, cursor: vscode.env?.appName.includes("Cursor") === true }; // no env: the tests' stand-in for vscode
     const n = s ? needs(s).length : 0;
     for (const v of this.views) {
       v.badge = n ? { value: n, tooltip: n === 1 ? "1 thing needs you" : `${n} things need you` } : undefined;
@@ -172,8 +180,9 @@ export class HomeHost implements vscode.WebviewViewProvider {
       if (!on || !ok) await this.context.workspaceState.update(KEY, undefined);
       await this.readBoard();
       await this.session.refresh();
-      this.say(!ok ? ["Exact did not change: graphene refused a setting."] : on ? [`${EXACT}.`] : ["Exact is off: what you leave unanswered takes its default at Start."],
-               { bad: !ok });
+      this.say(!ok ? ["Wait for every answer did not change: graphene refused a setting."]
+        : on ? ["Start waits for every answer now, and each finished task for your approval."]
+        : ["Start no longer waits for every answer: what you leave unanswered takes its default at Start."], { bad: !ok });
     } finally {
       this.switching = false;
       this.push();
@@ -197,13 +206,12 @@ export class HomeHost implements vscode.WebviewViewProvider {
     const task = () => s.tasks().find((t) => t.id === m.id);
     const run = (name: string, arg?: unknown) => vscode.commands.executeCommand(`graphene.${name}`, arg);
     switch (m.act) {
-      case "ask": return this.ask(m.arg!);
-      case "cancel": return this.planning?.abort();
       case "setup": return this.setUp(m.arg!, m.flag === true);
       // Exact: Start waits for every answer; and a question with no default stops the run either way
       case "startAll": return (this.exact && s.state?.questions.length) || (s.state && unanswered(s.state)) ? undefined : this.start();
       case "exact": return this.setExact(m.flag === true);
       case "stopAfter": return this.setStopAfter(m.flag === true);
+      case "review": return this.setReview(m.flag === true);
       case "runWorkflow": return this.runWorkflow(m.arg!);
       case "discardAll": return this.discard();
       case "run": return void s.terminal("graphene run", C.runReady());
@@ -229,45 +237,31 @@ export class HomeHost implements vscode.WebviewViewProvider {
     }
   }
 
-  /** The one switch (decision 225). On, Plan it suggests a plan and waits for Start; off is auto, and the plan
-   *  is still drawn first. It is the `auto` setting, so the terminal and the graph's header see the same one. */
+  /** The one switch (decision 225). On, a plan your agent proposes waits for Start; off is auto: what fits your
+   *  limits is accepted and runs. It is the `auto` setting, so the terminal and the graph's header see the same one. */
   private async setStopAfter(on: boolean) {
     if (!on && this.exact) await this.setExact(false); // Exact holds `auto: off`: its three settings go back together, then the switch moves
     if (!(await this.session.act(C.stopAfter(on)))) return;
-    this.say([on ? "Stop after the plan is on: Plan it suggests a plan and waits for you to start it."
-      : "Stop after the plan is off: Plan it draws the plan, then runs what fits your limits without waiting. A question with no default still stops it."]);
+    this.say([on ? "Stop after the plan is on: a plan your agent proposes waits here for you to start it."
+      : "Stop after the plan is off: a plan that fits your limits runs without waiting. A question with no default still stops it."]);
     this.push();
   }
 
-  /** Plan it. While Stop after the plan is on, `graphene ask`: the planner suggests tasks, and nothing runs until
-   *  the person starts them; Cancel stops it. Off, `graphene auto` in a terminal the person can watch, as Start's
-   *  run is: the plan is drawn first, then what fits the limits runs. */
-  private async ask(text: string) {
-    if (this.planning) return;
-    const s = this.session.state;
-    if (s && !stopAfterPlan(s)) {
-      this.asked = text;
-      this.say(["Auto started in its terminal: it draws the plan first, then runs what fits your limits. If it stops, the terminal and Needs you say why."], { asked: text });
-      this.session.terminal("graphene auto", C.auto(text.replace(/[\u0000-\u001f\u007f]+/g, " "))); // typed into a shell: one line, no control characters
-      return this.push();
+  /** Approval, as Set Up asks it: each finished task waits for the person before it lands (`review: every`).
+   *  Off while Exact holds it: only Exact goes (`board` back to auto), and Stop after the plan stays as Settings
+   *  show it, not as it was before Exact. Pushed either way: the page's switch moves only when the host says so. */
+  private async setReview(on: boolean) {
+    const exact = !on && this.exact;
+    if (exact) {
+      await this.session.run(C.setting("board", "auto"));
+      await this.context.workspaceState.update("graphene.exact.before", undefined);
+      await this.readBoard();
     }
-    const stop = new AbortController();
-    this.planning = stop;
-    this.busy = "Planning: the planner is reading your repository…";
-    this.push();
-    const out = await this.session.run(C.ask(text), undefined, stop.signal);
-    this.planning = null;
-    this.busy = "";
-    if (stop.signal.aborted) this.say(["Planning stopped."]);
-    else if (out.code !== 0) {
-      const why = out.code === -1 ? "graphene was not found" : C.refusal(out.stderr, out.stdout);
-      this.say([why], { bad: true, key: keyTrouble(why).key });
-    } else {
-      this.asked = text;
-      this.say(said(out.stdout), { asked: text });
+    if (await this.session.act(C.setting("review", on ? "every" : "off"))) {
+      this.say([on ? "Each finished task waits for your approval before it lands." : "Approval is off: a finished task lands once its check passes.",
+                ...(exact ? ["Wait for every answer is off with it."] : [])]);
     }
     this.push();
-    void this.session.refresh();
   }
 
   /** Set Up: one AI plans and does the work (`graphene init` with both named, so it asks nothing), then, unless
@@ -284,8 +278,13 @@ export class HomeHost implements vscode.WebviewViewProvider {
       this.say([why], { bad: true, key: keyTrouble(why).key || (who === "nemotron" && /key/i.test(why)) });
     } else {
       const label = WHO.find((w) => w.word === who)?.label ?? who;
-      const warn = `${out.stdout}\n${out.stderr}`.split(/\r?\n/).filter((l) => /no commit yet|^warning:/.test(l.trim()));
-      this.say([`${label} plans and does the work here.`, ...(review ? ["Each finished task waits for your approval before it lands."] : []), ...warn]);
+      // the CLI's warnings, in its words; what it wrote and records, in Home's (`graphene init` installs both
+      // tools' hooks whoever is picked), and the one step a Codex gate needs from the person
+      const warn = `${out.stdout}\n${out.stderr}`.split(/\r?\n/).map((l) => l.trim().replace(/`/g, ""))
+        .filter((l) => /no commit yet|^warning:/.test(l));
+      this.say([`${label} plans and does the work here.`, ...(review ? ["Each finished task waits for your approval before it lands."] : []),
+                "Hooks are in .claude/settings.local.json and .codex/hooks.json: each Claude Code session here is recorded on this machine only. graphene init --remove takes them out.",
+                ...(who === "codex" ? ["In a new Codex session, trust this project and review its hooks with /hooks before running tasks."] : []), ...warn]);
     }
     this.session.moved();
     await this.session.refresh();
@@ -322,9 +321,9 @@ export class HomeHost implements vscode.WebviewViewProvider {
       prompt: C.plain(`What is wrong with “${t.title}”? The next agent on it reads this.`), placeHolder: "the test only covers one word",
       ignoreFocusOut: true, validateInput: (v) => (v.trim() ? undefined : "say what is wrong"),
     });
-    if (!note?.trim() || !(await this.session.act(C.reopen(t.id, note.trim())))) return;
-    const again = await vscode.window.showInformationMessage(C.plain(`“${t.title}” goes back to an agent with your note.`), "Run It Now");
-    if (again) this.session.terminal("graphene run", tryAgain(t.id));
+    // no Run of its own: the graph's header and Home already offer Run, and two filled Runs ask for one click. So it
+    // says what is so now, not that an agent takes it: with auto off and nothing running, none does until Run
+    if (note?.trim() && (await this.session.act(C.reopen(t.id, note.trim())))) void vscode.window.showInformationMessage(C.plain(`“${t.title}” is open again: the next agent on it reads your note.`));
   }
 
   private html(webview: vscode.Webview): string {
@@ -336,6 +335,7 @@ export class HomeHost implements vscode.WebviewViewProvider {
   <meta charset="utf-8">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource}; script-src 'nonce-${nonce}';">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="${uri("media", "tokens.css")}">
   <link rel="stylesheet" href="${uri("media", "home.css")}">
   <title>Graphene</title>
 </head>

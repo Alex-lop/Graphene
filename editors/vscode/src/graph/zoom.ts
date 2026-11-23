@@ -14,11 +14,27 @@ export const zoomK = (k: number) => (Number.isFinite(k) ? Math.min(ZOOM_MAX, Mat
  *  however far a mouse says its notch turned. */
 export const wheelK = (k: number, deltaY: number) => zoomK(k * Math.exp(-Math.max(-22, Math.min(22, deltaY)) * 0.01));
 
-/** A card at each level: whole (its files, its check, its status, its attempts), and the row it is cut down
- *  to when the plan is read from afar (its state's mark, its title, and what is news). */
-export const CARD: Record<Level, Size> = { full: { w: 220, h: 84 }, compact: { w: 152, h: 44 } };
-/** A fit keeps whole cards down to this scale: under it nobody reads them, and the plan is fitted as rows. */
-export const FULL_FROM = 0.7;
+/** A card at each level: whole (its title on two lines, its files, its status and its act, its check; its
+ *  attempts make it taller), and the row it is cut down to when the plan is read from afar (its state's mark, its
+ *  title on two lines, about 32 characters, and what is news). */
+export const CARD: Record<Level, Size> = { full: { w: 200, h: 116 }, compact: { w: 168, h: 48 } };
+/** A whole card's smallest words, in px at the drawing's own size: its files, its status, its check. */
+export const CARD_TEXT = 12;
+/** A fit keeps whole cards down to this scale, where a card's smallest words are still drawn at 11 px: under
+ *  it nobody reads them, and the plan is fitted as rows. */
+export const FULL_FROM = 11 / CARD_TEXT;
+/** Fitted again with whole cards on screen (a pane opened beside them, a task chosen from Home), they stay whole
+ *  down to this: the card the person asked to see keeps its files and its check. */
+export const FULL_KEEP = 0.7;
+/** Rows a fit draws no larger than their own size: a plan that has room enough is whole cards, and rows blown
+ *  up past their size are only big, with nothing more in them. Under TO_FULL, so a fitted plan stays rows. */
+export const ROWS_MOST = 1;
+/** A row's title, in px at the drawing's own size. */
+export const ROW_TEXT = 14;
+/** Nor smaller than this, where a row's title is still drawn at 11 px: a plan too big to read whole at it (a
+ *  Cursor tab beside its agent's chat, a pane open beside it) opens at it on the card that matters, the rest a pan
+ *  away. Under it a fitted plan was blank bars. */
+export const ROWS_FROM = 11 / ROW_TEXT;
 /** Zooming: whole cards turn to rows under the first, rows to whole cards over the second. */
 export const TO_COMPACT = 0.55, TO_FULL = 1.2;
 
@@ -33,8 +49,9 @@ export const levelFor = (level: Level, k: number): Level =>
 /** How many times its drawn size a card of one level is, against the other, to cover as much of the screen. */
 const ratio = (from: Size, to: Size) => Math.sqrt((from.w * from.h) / (to.w * to.h));
 
-/** The scale across a change of level: the card covers as much of the screen after as before, so neither of
- *  its sides moves by more than about 15%, and the scale lands well inside the level it turned to. */
+/** The scale across a change of level: the card covers as much of the screen after as before, and the scale lands
+ *  well inside the level it turned to. A row is its title alone, so it is wider and shorter than its card on screen,
+ *  by under half either way. */
 export const switchK = (k: number, from: Level, to: Level) => zoomK(k * ratio(CARD[from], CARD[to]));
 
 /** The zoom as a person reads it: a card's size on screen against a whole card at its own size. One number
@@ -42,23 +59,85 @@ export const switchK = (k: number, from: Level, to: Level) => zoomK(k * ratio(CA
 export const percent = (level: Level, k: number) => Math.round((100 * k) / ratio(CARD.full, CARD[level]));
 
 /** The scale and the place at which a drawing sits whole in its canvas, in the middle and clear of ``foot`` px
- *  at the canvas's foot (the zoom's buttons, the legend): the largest scale that fits, never over 1 (a small
- *  plan is not blown up). ``whole`` is false when even the smallest scale cannot hold it. */
-export function fitView(canvas: Size, drawing: Size, foot = 0): Zoom & { whole: boolean } {
+ *  at the canvas's foot (the zoom's buttons, the legend): the largest scale that fits, never over ``most`` (a
+ *  small plan is not blown up past it), nor under ``least``. ``whole`` is false when it cannot hold it at ``least``:
+ *  it is then at its top left along each side it overflows. */
+export function fitView(canvas: Size, drawing: Size, foot = 0, most = 1, least = ZOOM_MIN): Zoom & { whole: boolean } {
   const h = Math.max(1, canvas.h - foot);
-  const want = Math.min(1, canvas.w / Math.max(1, drawing.w), h / Math.max(1, drawing.h));
-  const k = Math.max(ZOOM_MIN, want);
-  return { k, tx: Math.max(0, (canvas.w - drawing.w * k) / 2), ty: Math.max(0, (h - drawing.h * k) / 2), whole: want >= ZOOM_MIN };
+  const want = Math.min(most, canvas.w / Math.max(1, drawing.w), h / Math.max(1, drawing.h));
+  const k = Math.max(least, want);
+  return { k, tx: Math.max(0, (canvas.w - drawing.w * k) / 2), ty: Math.max(0, (h - drawing.h * k) / 2), whole: want >= least };
 }
 
-/** How a plan opens in its pane: as whole cards where they fit at a scale they read at, else as rows, fitted;
- *  null when not even rows fit at the smallest scale. ``rows`` (the plan's size laid out as rows) is asked for
- *  only when it is needed. */
-export function fitPlan(canvas: Size, full: Size, rows: () => Size, foot = 0): (Zoom & { level: Level }) | null {
-  const whole = fitView(canvas, full, foot);
-  if (whole.k >= FULL_FROM) return { level: "full", k: whole.k, tx: whole.tx, ty: whole.ty };
-  const far = fitView(canvas, rows(), foot);
-  return far.whole ? { level: "compact", k: far.k, tx: far.tx, ty: far.ty } : null;
+/** How a plan opens in its pane: as whole cards where they fit at a scale they read at (``keep``: the level on
+ *  screen, which whole cards hold down to FULL_KEEP), else as rows, fitted and drawn no larger than their own size
+ *  nor smaller than ROWS_FROM (``whole`` false: the plan is larger than its pane). ``rows`` (the plan's size laid
+ *  out as rows) is asked for only when it is needed. ``cut``: the plan's own box in a level's drawing of that size,
+ *  the rest empty margin, which a fit just too tight for that level may cut so as to keep it, the plan in the
+ *  canvas's middle (a laptop's tab opens the running plan as whole cards, not as rows for want of 10 px of
+ *  nothing); a looser fit keeps all of it. ``least``: the rows' floor, which a fit the person asks for (`f`) lowers
+ *  to the zoom's own, to show the whole plan. */
+export function fitPlan(canvas: Size, full: Size, rows: () => Size, foot = 0, keep: Level = "compact",
+                        cut: (l: Level, s: Size) => Rect = (_, s) => ({ x: 0, y: 0, ...s }), least = ROWS_FROM): Zoom & { level: Level; whole: boolean } {
+  const fits = (l: Level, size: Size, least: number) => {
+    const z = fitView(canvas, size, foot, l === "full" ? 1 : ROWS_MOST, least), c = cut(l, size);
+    if (z.whole || !fitView(canvas, c, foot, 1, least).whole) return z;
+    return { k: least, tx: (canvas.w - c.w * least) / 2 - c.x * least, ty: (Math.max(1, canvas.h - foot) - c.h * least) / 2 - c.y * least, whole: true };
+  };
+  const whole = fits("full", full, keep === "full" ? FULL_KEEP : FULL_FROM);
+  return whole.whole ? { level: "full", ...whole } : { level: "compact", ...fits("compact", rows(), least) };
+}
+
+/** A fit larger than its canvas, moved just enough to bring a box of the drawing (the card that matters) ``margin``
+ *  px inside the canvas, and held to it: the plan's start and its sub-goals' titles stay in view where they can. */
+export function onto(z: Zoom, canvas: Size, drawing: Size, b: Rect, margin = 24): Zoom {
+  const along = (t: number, room: number, at: number, len: number) => {
+    const lo = at * z.k + t, hi = (at + len) * z.k + t;
+    return hi > room - margin ? t - (hi - room + margin) : lo < margin ? t - lo + margin : t;
+  };
+  return hold({ k: z.k, tx: along(z.tx, canvas.w, b.x, b.w), ty: along(z.ty, canvas.h, b.y, b.h) }, canvas, drawing);
+}
+
+/** A fit wider than its canvas, panned across so that neither side of the canvas cuts a box to a sliver (under a
+ *  quarter of it: a ring on a border, which reads as a failed drawing), nor, where it can, through its words. Of the
+ *  places that keep ``keep`` (the card that matters) whole on screen: the fewest slivers, then the fewest boxes cut,
+ *  then ``goal`` whole where it can be, then the nearest to where it was; and there, in the middle of the room it
+ *  has. To push a sliver off the drawing's end it may stand off that end by as much as a sliver is. A box pushed off
+ *  goes RING px further, with its border, its ports and a chosen card's ring: on the edge they read as a coloured bar. */
+const RING = 6;
+export function settle(z: Zoom, canvas: Size, drawing: Size, boxes: readonly Rect[], keep?: Rect, goal?: Rect): Zoom {
+  const k = z.k, w = canvas.w, end = w - drawing.w * k;
+  if (end >= 0) return z;
+  const over = Math.max(0, ...boxes.map((b) => (b.w * k) / 4));
+  const at = (b: Rect, t: number) => [b.x * k + t, (b.x + b.w) * k + t] as const;
+  const whole = (b: Rect, t: number) => { const [p, q] = at(b, t); return p >= -0.5 && q <= w + 0.5; };
+  const cost = (t: number) => {
+    if (keep && !whole(keep, t)) return Infinity;
+    let c = Math.abs(t - z.tx) / w + (goal && !whole(goal, t) ? 2 : 0);
+    for (const b of boxes) {
+      const [p, q] = at(b, t), seen = Math.min(q, w) - Math.max(p, 0);
+      if ((seen > 0.5 && seen < (q - p) / 4) || (seen <= 0.5 && q > -RING && p < w + RING)) c += 4; // a sliver, or off but for its ring
+      else if (seen > 0.5 && seen < q - p - 0.5) c += 2; // cut through its words: the plan reads as cut off, not as going on
+      else if (p > -0.5 && q < w + 0.5 && (p < 6 || q > w - 6)) c += 0.5; // whole, but its side against the canvas's
+    }
+    return c;
+  };
+  // each box whole at either side, 12 px in or against it, or just off it
+  const ts = [z.tx, ...boxes.flatMap((b) => [12 - b.x * k, w - 12 - (b.x + b.w) * k, -b.x * k, w - (b.x + b.w) * k, w - b.x * k + RING, -(b.x + b.w) * k - RING])]
+    .map((t) => Math.min(over, Math.max(end - over, t)));
+  const t = ts.reduce((best, t) => (cost(t) < cost(best) ? t : best));
+  // its room: no box whole on screen leaves it, none off it comes on, none cut is cut further, the drawing's ends
+  // keep to the canvas
+  let lo = Math.min(t, end), hi = Math.max(t, 0);
+  for (const b of boxes) {
+    const [p, q] = at(b, t);
+    if (q <= 0.5) hi = Math.min(hi, t - Math.min(0, q + RING));
+    else if (p >= w - 0.5) lo = Math.max(lo, t - Math.max(0, p - RING - w));
+    else if (p < -0.5) lo = Math.max(lo, t);
+    else if (q > w + 0.5) hi = Math.min(hi, t);
+    else { lo = Math.max(lo, t - p); hi = Math.min(hi, t + w - q); }
+  }
+  return { ...z, tx: lo <= hi ? (lo + hi) / 2 : t };
 }
 
 /** A pan never loses the drawing: one larger than the canvas stays against an edge at most, a smaller one

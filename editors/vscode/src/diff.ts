@@ -8,7 +8,7 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import * as C from "./commands.ts";
 import type { Session, UI } from "./session.ts";
-import type { Task } from "./state.ts";
+import { SAY, type Task } from "./state.ts";
 
 export const SCHEME = C.SCHEME;
 
@@ -40,7 +40,7 @@ export function contentOf(q: C.Query, fsPath: string): Promise<string> {
 /** The diff the active tab shows, when it is one of ours: a diff editor or a multi-file one. */
 const activeDiff = () => C.diffOf(vscode.window.tabGroups.activeTabGroup.activeTab?.input);
 
-export function register(context: vscode.ExtensionContext, session: Session, _ui: UI) {
+export function register(context: vscode.ExtensionContext, session: Session, ui: UI) {
   // what one of our diffs showed last, for an action run while none of them is the active tab
   let last: { id: string; fork: string | null } | null = null;
   const current = () => activeDiff() ?? last;
@@ -58,12 +58,24 @@ export function register(context: vscode.ExtensionContext, session: Session, _ui
     for (const d of vscode.workspace.textDocuments) if (queryOf(d.uri)?.rev === null) changed.fire(d.uri);
   }));
 
+  // Cursor shows an extension's title action only while it is pinned (package.json pins ours, but a person's own pins
+  // replace that list whole): Approve is in the status bar too, while a diff of ours to review is in front
+  const approveItem = vscode.window.createStatusBarItem("graphene.approve", vscode.StatusBarAlignment.Left, 49);
+  approveItem.name = "Graphene: Approve";
+  approveItem.text = "$(check) Approve";
+  approveItem.command = "graphene.signOff";
+  context.subscriptions.push(approveItem);
+
   // the title actions (Keep This Fork, Sign Off) show on our diffs: lane 2a's package.json reads these keys
   const keys = () => {
     const d = current();
     const t = d && session.tasks().find((x) => x.id === d.id);
     void vscode.commands.executeCommand("setContext", "graphene.diff.fork", Boolean(d?.fork && t && t.state !== "done"));
     void vscode.commands.executeCommand("setContext", "graphene.diff.review", Boolean(d && t?.state === "review"));
+    const front = activeDiff(), review = front && session.tasks().find((x) => x.id === front.id && x.state === "review");
+    if (!review) return approveItem.hide();
+    approveItem.tooltip = `Approve “${C.plain(review.title)}”: its changes land in your repository`;
+    approveItem.show();
   };
   context.subscriptions.push(vscode.window.tabGroups.onDidChangeTabs(() => {
     const open = vscode.window.tabGroups.all.flatMap((g) => g.tabs).some((tab) => C.diffOf(tab.input));
@@ -121,7 +133,7 @@ export function register(context: vscode.ExtensionContext, session: Session, _ui
   const pick = async (among: Task[], placeHolder: string, none: string): Promise<Task | undefined> => {
     if (!among.length) return void vscode.window.showInformationMessage(`Graphene: ${none}`);
     const chosen = await vscode.window.showQuickPick(
-      among.map((t) => ({ label: C.plain(t.title), description: `${t.state} · ${t.id}`, t })), { placeHolder });
+      among.map((t) => ({ label: C.plain(t.title), description: `${SAY[t.state]} · ${t.id}`, t })), { placeHolder });
     return chosen?.t;
   };
 
@@ -158,7 +170,11 @@ export function register(context: vscode.ExtensionContext, session: Session, _ui
       if (pick === "Open Changes") return void vscode.commands.executeCommand("graphene.openDiff", { id });
       if (pick !== "Approve Anyway") return;
     }
-    await session.act(C.signOff(id));
+    if (!(await session.act(C.signOff(id)))) return;
+    // landed: its diff tabs go (a landed task's changes are the code now), and the graph moves on to what is next
+    const tabs = vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((tab) => C.diffOf(tab.input)?.id === id);
+    if (tabs.length) await vscode.window.tabGroups.close(tabs, true);
+    ui.graph.landed(id);
   };
 
   cmd("pickFork", async (arg) => {

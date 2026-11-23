@@ -31,7 +31,7 @@ export class AgentsTree implements vscode.TreeDataProvider<AgentRow> {
     it.iconPath = new vscode.ThemeIcon(long ? "debug-pause" : "loading~spin", new vscode.ThemeColor(long ? "charts.orange" : "charts.yellow"));
     it.contextValue = r.fork ? "agent:fork" : "agent";
     const md = new vscode.MarkdownString(undefined, true);
-    md.appendMarkdown(`**agent ${mdText(r.number)}** on **${mdText(r.title)}**${r.model ? ` · ${mdText(r.model)}` : ""}${r.fork ? ` · fork ${mdText(r.fork)}` : ""}\n\n`);
+    md.appendMarkdown(`**agent ${mdText(r.number)}** on **${mdText(r.title)}**${r.model ? ` · ${mdText(r.model)}` : ""}${r.fork ? ` · attempt ${mdText(r.fork)}` : ""}\n\n`);
     if (r.now) md.appendMarkdown(`now: ${mdText(r.now)}\n\n`);
     if (secs !== null) md.appendMarkdown(`quiet ${ago(secs)}\n\n`);
     if (usd(r.usd)) md.appendMarkdown(`${mdText(usd(r.usd))} so far\n\n`);

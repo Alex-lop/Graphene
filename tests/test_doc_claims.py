@@ -216,18 +216,19 @@ def test_the_readme_and_the_pickers_name_no_nemotron_nebius_or_hackathon():
 
 def test_the_readme_leads_with_the_canvas_and_its_two_pillars():
     """The first screen is the canvas (the picture `dev/process/canvas/shoot.mjs readme` takes from Watch the
-    Demo) with the two pillars of dev/VISION.md in a sentence each, above "What it solves". What it says of
-    workflows is held to the file the repository ships and to the two commands the machine line knows."""
+    Demo) with the two pillars of dev/VISION.md in a sentence each, above "What it solves". The canvas is
+    named as the editor names it, the graph (Show Graph, the tab). What it says of workflows is held to the
+    file the repository ships and to the two commands the machine line knows."""
     from graphene_map import workflow
 
     readme = doc("README.md")
     assert "## What it solves" in readme  # else the first screen below would be the whole file
     first = readme.split("## What it solves")[0]
     assert "editors/vscode/media/graph.png" in first and "a scripted stand-in, no model ran" in first
-    assert "**A canvas you watch and shape.**" in first and "**Scope you can see.**" in first
+    assert "**A graph you watch and shape.**" in first and "**Scope you can see.**" in first
     assert "Plan → Run → Review" in first and "**Stop after the plan**" in first
     assert "which files it may change" in first and "which writes were stopped" in first  # the second's
-    assert "a Codex plan appears whole" in first  # live drawing is Claude Code's stream: ask.live
+    assert "a Codex plan appears whole" in readme  # Claude Code's stream draws live (ask.live)
     assert (ROOT / "editors/vscode/media/graph.png").read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
     assert (ROOT / "workflows/fix-issue.md").exists() and "workflows/fix-issue.md" in readme
     assert "(`git push`, `gh pr`)" in readme
@@ -488,7 +489,8 @@ def test_the_release_notes_are_this_versions_and_every_command_they_name_is_the_
     """dev/launch/release-notes.md is pasted into the GitHub release, and it was 0.5.1's, a version PyPI never
     got. It names pyproject's version; the two install lines are the package's and its `graphene-map`
     command's; it has six to ten bullets, the release's headline first (0.6.0's was the watch, 0.7.0's was
-    forks, 0.8.0's is auto mode); each command it names, with each option, answers `--help`."""
+    forks, 0.8.0's and 0.9.0's auto mode, 0.10.0's is the graph); each command it names, with each option,
+    answers `--help`."""
     import shlex
     import tomllib
     from itertools import takewhile
@@ -504,7 +506,7 @@ def test_the_release_notes_are_this_versions_and_every_command_they_name_is_the_
     assert "graphene-map" in project["scripts"] and project["name"] == "graphene-map"
     assert "`uv tool install graphene-map`" in said and "`uvx graphene-map demo`" in said
     bullets = re.findall(r"^- \*\*(.+?)\*\*", text.split("## What you get")[1].split("## ")[0], re.M)
-    assert 6 <= len(bullets) <= 10 and "Auto mode" in bullets[0]
+    assert 6 <= len(bullets) <= 10 and "graph" in bullets[0]
     runner, ran = CliRunner(), 0
     for span in re.findall(r"`(graphene [^`]+)`", said):
         words = shlex.split(span)

@@ -186,12 +186,12 @@ export function safeEnv(standin) {
   mkdirSync(zdot, { recursive: true });
   return { ZDOTDIR: zdot, NEBIUS_API_KEY: "fake-key", GRAPHENE_KEYCHAIN: "off", GRAPHENE_TOKENFACTORY_URL: standin || DEAD_URL };
 }
-export async function launch(app, profile, folder, { width = 1280, height = 800, video, timeout = 90000, standin } = {}) {
+export async function launch(app, profile, folder, { width = 1280, height = 800, video, timeout = 90000, standin, args: more = [] } = {}) {
   const args = [
     folder,
     "--user-data-dir", profile.userDataDir, "--extensions-dir", profile.extensionsDir,
     "--skip-welcome", "--skip-release-notes", "--disable-updates", "--disable-telemetry", "--disable-crash-reporter",
-    "--disable-workspace-trust", "--no-cached-data", "--disable-gpu", "--new-window",
+    "--disable-workspace-trust", "--no-cached-data", "--disable-gpu", "--new-window", ...more,
   ];
   const env = { ...cleanEnv(), ...safeEnv(standin), VSCODE_SKIP_PRELAUNCH: "1", ELECTRON_ENABLE_LOGGING: process.env.E2E_LOG ? "1" : undefined };
   delete env.ELECTRON_RUN_AS_NODE;
@@ -260,13 +260,15 @@ export async function setSize(electronApp, page, width, height) {
 
 /** The command palette, typed to: the first entry that matches `title` runs. */
 export async function palette(page, title) {
+  // a webview with the keyboard (Home, once its side bar is shown) keeps F1 in Cursor: the workbench takes it first
+  await page.evaluate(() => { if (document.activeElement?.tagName === "IFRAME") document.activeElement.blur(); });
   await page.keyboard.press("F1");
   const input = page.locator(".quick-input-widget .quick-input-box input"); // Cursor's palette has checkboxes too
   await input.waitFor({ timeout: 10000 });
   await input.fill(">" + title);
   const row = page.locator(".quick-input-list .monaco-list-row").filter({ hasText: title }).first();
   await row.waitFor({ timeout: 10000 });
-  await page.keyboard.press("Enter");
+  await row.click(); // that row, not the first: Enter can take a row that only looks like it (File: Compare New Untitled Text Files)
   await page.waitForSelector(".quick-input-widget", { state: "hidden", timeout: 10000 }).catch(() => {});
 }
 
@@ -281,28 +283,40 @@ export async function command(page, profile, id) {
   await page.keyboard.press(chord);
 }
 
-/** Graphene's side bar container, and its Graph view in it. */
+/** Graphene's side bar container, Home in it (and, with graphene.graph.openOnStart on, the graph's tab beside). */
 export async function openSidebar(page) {
   await palette(page, "View: Show Graphene");
-  await page.waitForSelector(".sidebar .pane-header", { timeout: 20000, state: "attached" });
-  const flat = await page.evaluate(() => (document.querySelector(".sidebar .pane-header")?.getBoundingClientRect().height ?? 0) === 0);
+  // Home's body: a container with one view hides that view's header
+  await page.waitForSelector(".sidebar .pane-body", { timeout: 20000, state: "attached" });
+  const flat = await page.evaluate(() => (document.querySelector(".sidebar .pane-body")?.getBoundingClientRect().height ?? 0) === 0);
   if (flat) { // Cursor: the part was hidden when the views came; a nudge to the window lays them out
     await page.evaluate(() => window.dispatchEvent(new Event("resize")));
     await page.waitForTimeout(500);
   }
-  await page.waitForSelector(".sidebar .pane-header", { timeout: 20000 });
+  await page.waitForSelector(".sidebar .pane-body", { timeout: 20000 });
 }
 
-/** The graph in the editor area (Graphene: Show Graph). */
-export async function openPanel(page) {
-  const before = (await graphFrames(page)).length;
-  await palette(page, "Graphene: Show Graph");
-  const t0 = Date.now();
-  while ((await graphFrames(page)).length <= before) {
-    if (Date.now() - t0 > 20000) throw new Error("the graph panel did not open");
-    await page.waitForTimeout(100);
+/** The frame that holds Home's page, found by its content. */
+export async function homeFrame(page, timeout = 60000) {
+  const end = Date.now() + timeout;
+  while (Date.now() < end) {
+    for (const f of page.frames()) {
+      const is = await f.evaluate(() => Boolean(document.querySelector("section.screen") && document.querySelector("section.work"))).catch(() => false);
+      if (is) return f;
+    }
+    await page.waitForTimeout(200);
   }
-  await page.waitForSelector(".editor-group-container .tab", { timeout: 10000 }).catch(() => {});
+  throw new Error("Home's page never appeared");
+}
+
+/** The graph in the editor area (Graphene: Open the Graph). */
+export async function openPanel(page) {
+  await palette(page, "Graphene: Open the Graph"); // opens the tab, or reveals the one the side bar opened
+  await page.locator(".editor-group-container .tab", { hasText: "Graphene" }).first().waitFor({ timeout: 20000 })
+    .catch(() => { throw new Error("the graph panel did not open"); });
+  for (const t0 = Date.now(); !(await graphFrames(page)).length; await page.waitForTimeout(100)) {
+    if (Date.now() - t0 > 20000) throw new Error("the graph panel opened, and its page did not draw");
+  }
 }
 
 /** The side bar's width in px, by dragging its sash. */
@@ -378,8 +392,8 @@ export async function readGraph(frame) {
   return frame.evaluate(() => ({
     goal: document.querySelector("#goal")?.textContent ?? "",
     level: document.querySelector("#svg")?.dataset.level ?? "",
-    // narrow, the header is one line: the counts are then in the goal's hover, not on the page
-    counts: document.querySelector("#counts:not([hidden])")?.textContent || document.querySelector("#goal")?.title || "",
+    // the stages say the counts now (the header has no counts line): Plan 7 tasks · Run 2 working · Review 1 to review
+    counts: [...document.querySelectorAll("#pipe .stage")].map((st) => st.textContent.trim()).join(" · "),
     notice: document.querySelector("#notice:not([hidden])")?.textContent ?? "",
     view: document.querySelector("#lanes:not([hidden])") ? "lanes" : "graph",
     tasks: [

@@ -3,9 +3,17 @@
 !dist/graph.js
 !dist/home.js
 !media/graphene.svg
+!media/graphene-dark.svg
+!media/graphene-light.svg
 !media/graph.css
+!media/tokens.css
 !media/home.css
 !media/graph.png
+!media/walk-demo.png
+!media/walk-install.png
+!media/walk-setup.png
+!media/walk-ask.png
+!media/walk-review.png
 !media/icon.png
 !package.json
 !README.md

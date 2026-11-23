@@ -1,7 +1,7 @@
 // First run without hunting: find graphene on PATH, in ~/.local/bin or in `uv tool dir --bin`; use the one
 // found when graphene.path is unset and say where in the status bar; offer to install it when none is; Set
 // Up This Folder as a pair of quick picks, then `graphene init` in a terminal (an init that sees no terminal
-// leaves the gate open), then Auto…. Pure: no VS Code here; setup.ts does the asking.
+// leaves the gate open). Pure: no VS Code here; setup.ts does the asking.
 import * as path from "node:path";
 import { OLDER } from "./commands.ts";
 
@@ -36,6 +36,13 @@ export function resolved(cmd: string, pathEnv: string | undefined, exists: (p: s
  *  path (a machine may hold two: uv's in ~/.local/bin and the one on the PATH). */
 export function which(path: string, version: string | null): string {
   return `${version || "graphene"} at ${path}${version ? "" : " (its version did not read)"}`;
+}
+
+/** Is `graphene --version`'s line older than 0.10? An older one reads, but its snapshot has no task's scope or
+ *  checks, so every pane would say Not held. A line with no version in it is not called older. */
+export function behind(version: string | null): boolean {
+  const m = /(\d+)\.(\d+)/.exec(version ?? "");
+  return m !== null && Number(m[1]) * 1000 + Number(m[2]) < 10;
 }
 
 /** The older-CLI line, naming the graphene that answered: the person sees which one to upgrade or point past. */

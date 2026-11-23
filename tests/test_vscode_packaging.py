@@ -18,7 +18,7 @@ PYPROJECT = tomllib.loads((ROOT / "pyproject.toml").read_text())
 CI = (ROOT / ".github/workflows/ci.yml").read_text()
 STORE = ".graphene/graphene.db"
 
-COMMANDS = ["Home", "Show Graph", "Open Cockpit", "Auto…", "Set Limits…", "Run Ready Tasks",
+COMMANDS = ["Home", "Open the Graph", "Open Cockpit", "Set Limits…", "Run Ready Tasks",
             "Stop All Agents", "Accept", "Accept All Suggestions", "Add Task…",
             "Make a Task Wait on Another…", "Edit Task…", "Remove Task", "Message Agent…",
             "Set Up This Folder", "Refresh", "Answer…", "Help a Task…", "Install Graphene…",
@@ -35,7 +35,7 @@ def test_the_manifest_names_the_product_and_its_version():
     assert MANIFEST["name"] == "graphene-vscode"
     assert MANIFEST["displayName"] == "Graphene"
     assert MANIFEST["publisher"] == "alex-lop"
-    assert MANIFEST["version"] == "0.9.0"
+    assert MANIFEST["version"] == "0.10.0"
     assert MANIFEST["license"] == "Apache-2.0"
     assert MANIFEST["repository"]["url"] == PYPROJECT["project"]["urls"]["Repository"]
     assert MANIFEST["engines"]["vscode"] == "^1.95.0"
@@ -71,7 +71,7 @@ def test_the_walkthrough_buttons_are_the_extensions_own_commands_and_its_picture
         assert (EXT / s["media"]["image"]).is_file() and f"!{s['media']['image']}" in shipped, s["id"]
 
 
-def test_the_activity_bar_shows_the_brand_mark_and_a_plan_view_and_the_graph():
+def test_the_activity_bar_shows_the_brand_mark_and_a_plan_view():
     (container,) = MANIFEST["contributes"]["viewsContainers"]["activitybar"]
     assert container["title"] == "Graphene"
     icon = (EXT / container["icon"]).read_text()
@@ -79,16 +79,15 @@ def test_the_activity_bar_shows_the_brand_mark_and_a_plan_view_and_the_graph():
     assert icon == brand  # the mark as the brand draws it, in currentColor so the bar's own colour paints it
     views = {v["id"]: v for v in MANIFEST["contributes"]["views"]["graphene"]}
     assert views["graphene.plan"]["name"] == "Plan"
-    assert views["graphene.graph"]["type"] == "webview"
+    assert "graphene.graph" not in views  # the graph is a tab of its own (graph.ts sidebar())
 
 
 def test_the_first_open_view_says_what_to_do_before_there_is_a_plan():
-    # Home sits first, a page that draws its own Set Up for a folder with no plan, then the graph; the other
-    # views show only with graphene.advanced, and Plan and Rounds start collapsed there too.
+    # Home is the side bar's one page, and draws its own Set Up for a folder with no plan; the other views
+    # show only with graphene.advanced, and Plan and Rounds start collapsed there too.
     views = MANIFEST["contributes"]["views"]["graphene"]
-    assert [v["id"] for v in views[:2]] == ["graphene.home", "graphene.graph"]
-    assert views[0]["type"] == "webview" and views[0]["initialSize"] > views[1]["initialSize"]
-    assert all(v["when"] == ADVANCED for v in views[2:])
+    assert views[0]["id"] == "graphene.home" and views[0]["type"] == "webview"
+    assert all(v["when"] == ADVANCED for v in views[1:])
     collapsed = {v["id"] for v in views if v.get("visibility") == "collapsed"}
     assert collapsed == {"graphene.plan", "graphene.rounds"}
     welcome = {w["when"]: w["contents"] for w in MANIFEST["contributes"]["viewsWelcome"]
@@ -141,7 +140,7 @@ def test_the_licence_is_the_repositorys():
 
 def test_the_readme_says_how_it_is_installed_and_whose_click_it_is():
     readme = (EXT / "README.md").read_text()
-    assert "code --install-extension graphene-0.9.0.vsix" in readme
+    assert f"code --install-extension graphene-{MANIFEST['version']}.vsix" in readme
     assert "graphene state --json" in readme
     assert "A click in VS Code is the person's" in readme
     assert "uv tool install graphene-map" in readme

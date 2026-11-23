@@ -91,13 +91,6 @@ export function parseWorkflows(text: string): { workflows: Workflow[]; last: { n
 /** The one switch, Stop after the plan: on is `auto: off` (a plan waits for you), off is `auto: on`. */
 export const stopAfter = (on: boolean): string[] => setting("auto", on ? "off" : "on");
 
-export function auto(goal: string, budget?: number | null, planOnly = false): string[] {
-  const argv = ["auto"];
-  if (budget !== null && budget !== undefined && Number.isFinite(budget)) argv.push("--budget", String(budget));
-  if (planOnly) argv.push("--plan"); // the plan your envelope accepts, shown, and nothing run
-  return [...argv, "--", goal];
-}
-
 export function addStep(s: NewStep): string[] {
   const argv = ["node", "add"];
   if (s.parent) argv.push("--parent", s.parent);
@@ -159,8 +152,6 @@ export function editStep(id: string, field: Field, value: string | string[] | nu
 export const dropStep = (id: string): string[] => ["node", "drop", id];
 /** Several at once, as one drop: one at a time, a task another of them waits on is refused (`plan.drop`). */
 export const dropAll = (ids: string[]): string[] => ["node", "drop", ...ids.map(id)];
-/** What the person wants, to the planner: a proposal comes back, and nothing runs until it is accepted. */
-export const ask = (text: string): string[] => ["ask", "--", text];
 /** A finished task (to review, or done) back to an agent with what is wrong; `--note=` keeps a note that starts
  *  with a dash a note. */
 export const reopen = (node: string, note: string): string[] => ["node", "reopen", id(node), `--note=${note}`];
@@ -320,7 +311,12 @@ export function agentCopy(root: string, node: string, checkout: string | null | 
 /** Globs typed in one box: spaces or commas between them (the graph's page splits them the same way). */
 export { globs } from "./graph/draft.ts";
 
-export const OLDER = "This Graphene is older than the extension: it needs 0.9 (`uv tool upgrade graphene-map`).";
+/** Install a missing graphene; bring an older one up to PyPI's newest with `upgrade`, which keeps what its install
+ *  asked for (the [nemotron] extra, its Python): `install --upgrade` would drop them. */
+export const UV_INSTALL = "uv tool install graphene-map";
+export const UV_UPGRADE = "uv tool upgrade graphene-map";
+
+export const OLDER = `This Graphene is older than the extension: it needs 0.10 (\`${UV_UPGRADE}\`).`;
 
 /** A CLI that does not know an option or a command of this extension's is an older one: that is the line,
  *  wherever the refusal is shown (an id or free text never reaches argv as an option, so nothing else says it). */

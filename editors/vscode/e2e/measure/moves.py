@@ -55,7 +55,10 @@ COVER_080 = {  # 0.8.0: the before (dev/process/editor/before/moves.md)
     "v p": ("", "no"),
     "`:` q": ("graphene.auto, graphene.envelope, graphene.stop, graphene.init, each its own command", "part"),
 }
-TABLES = {"0.9.0": COVER, "0.8.0": COVER_080}  # the newest at or under the manifest's version is its table
+# 0.10.0: no box to type a goal in (Graphene: Auto… is gone); the goal comes from your agent's chat
+COVER_0100 = {**COVER, "`:` q": ("graphene.envelope, stop, init, addStep and the rest, each its own command; a goal "
+                                 "comes from your agent's chat, not a box here", "part")}
+TABLES = {"0.10.0": COVER_0100, "0.9.0": COVER, "0.8.0": COVER_080}  # the newest at or under the manifest's version is its table
 
 
 def table_for(version: str) -> dict:

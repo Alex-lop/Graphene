@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFileSync } from "node:fs";
-import { attemptsMark, cardAct, checkLines, checkMark, cornerMark, doneWhen, filesLine, forkMark, goalBox, goalCells, legend, markWord, midCut, nextWanting, stateMark, tally, wanting, wantingLine, type Box, type CheckMark, type Mark } from "../src/graph/marks.ts";
+import { attemptsMark, attemptsWhy, cardAct, cardLine, covers, coversIn, checkLines, checkMark, cornerMark, doneWhen, filesLine, forkMark, goalBox, goalCells, legend, markWord, checkCut, cutWhole, nextWanting, tailPath, wrap, stateMark, tally, wanting, wantingLine, type Box, type CheckMark, type Mark } from "../src/graph/marks.ts";
 import { check } from "../src/graph/check.ts";
-import { actsFor, checkWords, counts, cut, KEYS, type TaskX } from "../src/graph/words.ts";
+import { actsFor, checkWords, cut, KEYS, sub, type TaskX } from "../src/graph/words.ts";
 import { markDone, offerWords, widen } from "../src/needs.ts";
 import { parseState, parseTask, WORDS, type Word } from "../src/state.ts";
 
@@ -12,11 +12,11 @@ const big = parseState(readFileSync(new URL("./fixtures/big.json", import.meta.u
 /** A step in a state, as the parser fills an older CLI's snapshot, with what the case is about on top. */
 const step = (state: Word, more: Partial<TaskX> = {}): TaskX => ({ ...parseTask({ id: more.id ?? state, state }), ...more });
 
-test("every state wears one mark, and the full card's corner leaves out the three its border says", () => {
+test("every state wears one mark, and the full card's corner leaves out the two its words say", () => {
   const rows: [Word, Mark, Mark | "", string][] = [
     ["waiting", "waiting", "", "waiting"], ["ready", "ready", "", "ready"], ["running", "working", "working", "working"],
-    ["review", "you", "you", "to review"], ["yours", "yours", "yours", "yours"], ["came back", "back", "back", "came back"],
-    ["done", "landed", "landed", "landed"], ["proposed", "suggested", "", "suggested"],
+    ["review", "you", "you", "to review"], ["yours", "yours", "yours", "yours"], ["came back", "back", "back", "needs help"],
+    ["done", "landed", "landed", "done"], ["proposed", "suggested", "suggested", "suggested"],
   ];
   assert.deepEqual(rows.map((r) => r[0]).sort(), [...WORDS].sort(), "a state the snapshot can say has no row");
   for (const [state, mark, corner, word] of rows) {
@@ -32,11 +32,11 @@ test("the first match decides: landed, came back and suggested before what needs
     ["a step past the line is the person's move", step("yours", { leaves: true, command: "git push" }), "you", "asks you"],
     ["the snapshot says needs_you of every yours step: it stays the hollow diamond", step("yours", { needs_you: true }), "yours", "yours"],
     ["to review, as the snapshot sends it", step("review", { needs_you: true }), "you", "to review"],
-    ["came back, as the snapshot sends it", step("came back", { needs_you: true }), "back", "came back"],
+    ["came back, as the snapshot sends it", step("came back", { needs_you: true }), "back", "needs help"],
     ["suggested, as the snapshot sends it", step("proposed", { needs_you: true }), "suggested", "suggested"],
-    ["landed stays landed", step("done", { needs_you: true }), "landed", "landed"],
+    ["landed stays landed", step("done", { needs_you: true }), "landed", "done"],
     ["a step past the line that has not come up yet waits", step("waiting", { leaves: true, command: "git push" }), "waiting", "waiting"],
-    ["and once it ran it landed", step("done", { leaves: true, command: "git push" }), "landed", "landed"],
+    ["and once it ran it landed", step("done", { leaves: true, command: "git push" }), "landed", "done"],
   ];
   for (const [why, t, mark, word] of cases) {
     assert.equal(stateMark(t), mark, why);
@@ -58,15 +58,16 @@ test("a tally reads as a bar: landed first, then loudest first, and says in word
   assert.deepEqual(tally(plan), {
     landed: 2, total: 10, portion: 0.2,
     marks: ["landed", "landed", "you", "you", "back", "yours", "working", "ready", "waiting", "suggested"],
-    wants: [{ mark: "you", text: "1 to review" }, { mark: "back", text: "1 came back" }, { mark: "yours", text: "1 yours" }, { mark: "you", text: "1 asks you" }],
+    wants: [{ mark: "you", text: "1 to review" }, { mark: "back", text: "1 needs help" }, { mark: "yours", text: "1 yours" }, { mark: "you", text: "1 asks you" }],
   });
   const store = tally(plan.filter((t) => t.parent === "store"));
   assert.deepEqual([store.landed, store.total, store.portion, store.wants.map((w) => w.text)], [1, 4, 0.25, ["1 to review"]]);
   assert.deepEqual(tally([]), { landed: 0, total: 0, portion: 0, marks: [], wants: [] }, "an empty plan: nothing, and no division by none");
   assert.deepEqual(tally(calm).wants, [], "nothing needs the person: no words");
   assert.equal(tally([step("done"), step("done", { id: "b" })]).portion, 1);
-  const many = tally([step("review"), step("review", { id: "r2" }), step("running", { id: "w1", needs_you: true }), step("running", { id: "w2", needs_you: true })]);
-  assert.deepEqual(many.wants.map((w) => w.text), ["2 to review", "2 ask you"]);
+  const many = tally([step("review"), step("review", { id: "r2" }), step("running", { id: "w1", needs_you: true }), step("running", { id: "w2", needs_you: true }),
+                     step("came back", { id: "b1" }), step("came back", { id: "b2" })]);
+  assert.deepEqual(many.wants.map((w) => w.text), ["2 to review", "2 need help", "2 ask you"]);
 });
 
 test("the steps that want the person, in plan order, and the next one round again", () => {
@@ -79,22 +80,22 @@ test("the steps that want the person, in plan order, and the next one round agai
   assert.equal(nextWanting(["cache"], "cache"), "cache", "the only one: itself, brought on screen");
   assert.deepEqual([wanting([]), nextWanting([], null), nextWanting([], "cache")], [[], null, null]);
   assert.deepEqual(wanting(calm), []);
-  assert.deepEqual([wantingLine(3), wantingLine(1), wantingLine(0)], ["3 steps need you · show the next", "1 step needs you · show it", ""]);
-  assert.equal(wantingLine(wanting(plan).length), "4 steps need you · show the next");
+  assert.deepEqual([wantingLine(3), wantingLine(1), wantingLine(0)], ["3 tasks need you · show the next", "1 task needs you · show it", ""]);
+  assert.equal(wantingLine(wanting(plan).length), "4 tasks need you · show the next");
   // the header's own words (`counts`: `4 need you`) are the engine's sum, suggested steps and questions in it: never those words for this count
   for (let n = 0; n < 30; n++) assert.doesNotMatch(wantingLine(n), /^\d+ needs? you/, `${n}`);
   assert.equal(wantingLine(3).split(" · ").length, 2, "the chip's two halves: narrow, it keeps the count alone");
-  assert.match(KEYS.find(([k]) => k === "n")?.[1] ?? "", /next step that needs you/, "the keys' list says the key that walks them");
+  assert.match(KEYS.find(([k]) => k === "n")?.[1] ?? "", /next task that needs you/, "the keys' list says the key that walks them");
 });
 
 test("the legend lists the marks the plan has, loudest first, each with its word and its count", () => {
-  assert.deepEqual(legend(plan), [["you", "to review / asks you", 2], ["back", "came back", 1], ["yours", "yours", 1], ["working", "working", 1],
-                                  ["landed", "landed", 2], ["ready", "ready", 1], ["waiting", "waiting", 1], ["suggested", "suggested", 1]]);
-  assert.deepEqual(legend(calm), [["working", "working", 1], ["landed", "landed", 1], ["ready", "ready", 1], ["waiting", "waiting", 1], ["suggested", "suggested", 1]]);
+  assert.deepEqual(legend(plan), [["you", "to review / asks you", 2], ["back", "needs help", 1], ["yours", "yours", 1], ["working", "working", 1],
+                                  ["landed", "done", 2], ["ready", "ready", 1], ["waiting", "waiting", 1], ["suggested", "suggested", 1]]);
+  assert.deepEqual(legend(calm), [["working", "working", 1], ["landed", "done", 1], ["ready", "ready", 1], ["waiting", "waiting", 1], ["suggested", "suggested", 1]]);
   assert.deepEqual(legend([]), [], "an empty plan has no legend");
   assert.deepEqual(legend([step("yours", { leaves: true })]), [["you", "asks you", 1]], "a diamond that is no review says what it is");
-  assert.deepEqual(legend([], 2), [["suggested", "a draft", 2]], "drafts on an empty canvas: the dashed ring, by its own word");
-  assert.deepEqual(legend(calm, 2).at(-1), ["suggested", "suggested / a draft", 3]);
+  assert.deepEqual(legend([], 2), [["suggested", "drafted", 2]], "drafts on an empty canvas: the dashed ring, by its own word");
+  assert.deepEqual(legend(calm, 2).at(-1), ["suggested", "suggested / drafted", 3]);
 });
 
 test("the goal's row groups the marks by sub-goal, in the order the plan first names each", () => {
@@ -234,26 +235,72 @@ test("the goal's own check is ticked only once the goal itself is done", () => {
   for (const state of ["open", "waiting", "running", "review", "", "passed"]) assert.equal(goalBox({ state }), "unrun", `${state}: nothing says it ran`);
 });
 
-test("a check is cut in its middle, so both ends stay; short ones are left alone; never longer than asked", () => {
-  assert.equal(midCut(CHECK, 20), "uv run…test_cache.py");
-  assert.equal(midCut("npm test", 20), "npm test");
-  assert.equal(midCut("x".repeat(20), 20), "x".repeat(20), "exactly as long as asked: untouched");
-  assert.equal(midCut("uv run pytest -q tests", 12), "uv…-q tests", "no space is left hanging at the cut");
-  assert.deepEqual([midCut(CHECK, 2), midCut(CHECK, 1), midCut(CHECK, 0), midCut(CHECK, -3), midCut(CHECK, Number.NaN)], ["…y", "…", "", "", ""]);
-  for (const s of [CHECK, "a  b  c  d  e  f  g  h", "docker build -q .", "…………………………"]) for (let n = 0; n <= s.length + 2; n++) {
-    const out = midCut(s, n);
+test("a check is cut at its words: its first and what it runs on, else that alone; short ones are left alone; never longer than asked", () => {
+  assert.equal(checkCut("uv run pytest -q tests/store/test_cache.py", 24), "uv … test_cache.py");
+  assert.equal(checkCut("pytest tests/test_words.py", 22), "pytest … test_words.py");
+  assert.equal(checkCut("python -m pytest tests/test_app.py -k log", 22), "python … test_app.py", "a path, not the flag's word after it");
+  assert.equal(checkCut("./gradlew test --tests 'app.cookyourbooks.services.impl.RecipeLookupServiceImplTest'", 30), "RecipeLookupServiceImplTest", "a dotted test, by its own name");
+  assert.equal(checkCut("./gradlew test --tests 'app.cookyourbooks.services.impl.RecipeLookupServiceImplTest'", 22), "RecipeLookup…ImplTest", "cut only when nothing whole fits, in its middle at its humps: its end says it is the test");
+  // Alex's real plan: each test named by its own humps, never cut inside one, and still ending in Test; at 21 characters,
+  // and at about the 24 a card's foot holds in the UI's font (it is measured)
+  const real = (n: number) => ["RecipeLookup", "Librarian", "Cook", "Planner", "Transformer"].map((x) => checkCut(`./gradlew test --tests 'app.cookyourbooks.services.impl.${x}ServiceImplTest'`, n));
+  assert.deepEqual(real(21), ["RecipeLookup…ImplTest", "LibrarianService…Test", "CookServiceImplTest", "PlannerService…Test", "Transformer…ImplTest"]);
+  assert.deepEqual(real(24), ["RecipeLookupService…Test", "LibrarianServiceImplTest", "CookServiceImplTest", "PlannerServiceImplTest", "TransformerService…Test"]);
+  assert.equal(checkCut("./gradlew test --tests 'app.cli.commands.GeneralCommandTests.unknownCommand_displaysUnknownMessage'", 21), "unknownCommand…");
+  // Alex's CLI task runs three tests of one class: its card names that class and how many, never the last test as if it were the check
+  const cli = "./gradlew test --tests 'app.cookyourbooks.cli.commands.GeneralCommandTests.quit_displaysGoodbyeAndExits' --tests 'app.cookyourbooks.cli.commands.GeneralCommandTests.exit_displaysGoodbyeAndExits' --tests 'app.cookyourbooks.cli.commands.GeneralCommandTests.unknownCommand_displaysUnknownMessage'";
+  // short of room for `· 3 tests` it keeps the count as `×3` (a 240 px card's 27 characters), then the class alone
+  assert.deepEqual([44, 30, 27, 22, 21, 12].map((n) => checkCut(cli, n)),
+                   ["./gradlew … GeneralCommandTests · 3 tests", "GeneralCommandTests · 3 tests", "GeneralCommandTests ×3", "GeneralCommandTests ×3", "GeneralCommandTests", "GeneralComm…"]);
+  assert.equal(checkCut("grep -q /greet README.md", 18), "grep … README.md", "a pattern with a slash is not a second test");
+  assert.equal(checkCut("dotnet test App.Tests.csproj", 26), "dotnet … App.Tests.csproj", "a file's type is not a test's name");
+  assert.equal(checkCut("grep -q greet README.md", 18), "grep … README.md");
+  assert.equal(checkCut("grep -q greet README.md", 12), "README.md", "what it runs on alone, with no ellipsis before it");
+  assert.equal(checkCut("npm test", 20), "npm test");
+  assert.equal(checkCut("x".repeat(20), 20), "x".repeat(20), "exactly as long as asked: untouched");
+  assert.deepEqual([checkCut(CHECK, 2), checkCut(CHECK, 1), checkCut(CHECK, 0), checkCut(CHECK, -3), checkCut(CHECK, Number.NaN)], ["t…", "…", "", "", ""]);
+  for (const s of [CHECK, "a  b  c  d  e  f  g  h", "docker build -q .", "…………………………", "./gradlew test --tests 'a.b.c.SomeLongTestName'"]) for (let n = 0; n <= s.length + 2; n++) {
+    const out = checkCut(s, n);
     assert.ok(out.length <= Math.max(0, n), `“${out}” is longer than ${n}`);
     if (n >= s.length) assert.equal(out, s);
-    else if (n >= 5) assert.ok(out.includes("…") && s.startsWith(out.split("…")[0]!) && s.endsWith(out.slice(out.indexOf("…") + 1)), `${n}: “${out}” keeps both ends`);
+    // never a word cut in two while a whole one would have fitted: what is cut is the last word, at its end
+    if (n < s.length && out.endsWith("…")) assert.ok(!out.includes(" … "), `${n}: “${out}”`);
   }
   // what it is for: the preview's 24 checks read apart at a card's width, where a cut at the end left 16 of them the same
   const checks = big.tasks.map((t) => t.check).filter((c): c is string => c !== null);
-  assert.equal(new Set(checks.map((c) => midCut(c, 20))).size, new Set(checks).size);
+  assert.equal(new Set(checks.map((c) => checkCut(c, 22))).size, new Set(checks).size);
   assert.equal(new Set(checks.map((c) => cut(c, 20))).size, 9);
 });
 
-test("after `done when`, the foot says the check cut in its middle, or that a command step exits 0", () => {
-  assert.equal(doneWhen(step("ready", { check: CHECK }), 20), "uv run…test_cache.py");
+test("a cut keeps a whole part of a word where one fills most of the room", () => {
+  assert.equal(cutWhole("Input loop, command registry, quit and exit, harness wiring", 18), "Input loop…");
+  assert.equal(cutWhole("quit and exit, harness wiring", 16), "quit and exit…");
+  assert.equal(cutWhole('Application services: replace every "to be implemented', 44), 'Application services: replace every "to be…');
+  assert.equal(cutWhole("CookServiceImpl.java", 18), "CookServiceImpl…");
+  assert.equal(cutWhole("b ✓ kept: 4 lines against 12", 22), "b ✓ kept: 4 lines…");
+  assert.equal(cutWhole("internationalisation", 10), "internati…", "no whole part fills enough: cut as it was");
+  assert.equal(cutWhole("short", 10), "short");
+  for (const s of ["RecipeLookupServiceImplTest", "a b c d e f g", "x_y_z.w-v"]) for (let n = 2; n <= s.length; n++) assert.ok(cutWhole(s, n).length <= n, `${s} at ${n}`);
+  assert.deepEqual(wrap("Input loop, command registry, quit and exit, harness wiring", 176, (t) => t.length * 8, 2), ["Input loop, command", "registry, quit and…"]);
+});
+
+test("a path too long for its chip says its file; a folder's glob keeps its folder", () => {
+  assert.equal(tailPath("src/main/java/app/services/impl/RecipeLookupServiceImpl.java"), "…/RecipeLookupServiceImpl.java");
+  assert.equal(tailPath("api/create/**"), "…/create/**");
+  assert.deepEqual(["README.md", "+1", "**", "files"].map(tailPath), ["README.md", "+1", "**", "files"]);
+});
+
+test("a title wraps at its words onto as many lines as it is given, the last cut", () => {
+  const mono = (t: string) => t.length * 7;
+  assert.deepEqual(wrap("make the app friendlier", 105, mono, 3), ["make the app", "friendlier"]);
+  assert.deepEqual(wrap("Show the new Graphene plan on a wide tree by filling in", 105, mono, 3), ["Show the new", "Graphene plan", "on a wide tree…"]);
+  assert.deepEqual(wrap("internationalisation everywhere", 105, mono, 3), ["internationali…"], "a first word too long for a line is cut on it");
+  assert.deepEqual(wrap("", 105, mono, 2), []);
+  for (const most of [1, 2, 3]) assert.ok(wrap("a b c d e f g h i j k l m n o p", 30, mono, most).length <= most);
+});
+
+test("after `done when`, the foot says the check cut at its words, or that a command step exits 0", () => {
+  assert.equal(doneWhen(step("ready", { check: CHECK }), 24), "uv … test_cache.py");
   assert.equal(doneWhen(step("ready", { check: "gh pr create --draft --fill", command: "gh pr create --draft --fill" }), 20), "it exits 0");
   assert.equal(doneWhen(step("yours"), 20), "", "no check: the box's words say whose approval finishes it");
 });
@@ -265,40 +312,40 @@ const stop = (path: string) => ({ path, at: "2026-11-21T14:02:11", how: "edit" }
 test("the files chip says the latest fact: what it may change, what it has written, what was refused, what it wrote outside", () => {
   const working = step("running", { scope: ["api/create/**"], files: FOUR, filesN: 4, touched: FOUR.slice(1, 3) });
   const rows: [string, TaskX, ReturnType<typeof filesLine>][] = [
-    ["not started: the files it may change", step("ready", { scope: ["store/cache.py", "tests/store/**"] }), { tone: "plain", mark: "▤", text: "store/cache.py +1", refused: "" }],
+    ["not started: the files it may change", step("ready", { scope: ["store/cache.py", "tests/store/**"] }), { tone: "plain", mark: "file", text: "store/cache.py +1", refused: "" }],
     ["no files named: no chip", step("waiting"), { tone: "plain", mark: "", text: "", refused: "" }],
-    ["working: how many of its files it has written", working, { tone: "working", mark: "✎", text: "2 of 4 files", refused: "" }],
-    ["and how many writes were refused, apart", { ...working, stops: [stop("store/repo.py")] }, { tone: "working", mark: "✎", text: "2 of 4 files", refused: "1 refused" }],
+    ["working: how many of its files it has written", working, { tone: "working", mark: "edit", text: "2 of 4 files", refused: "" }],
+    ["and how many writes were refused, apart", { ...working, stops: [stop("store/repo.py")] }, { tone: "working", mark: "edit", text: "2 of 4 files", refused: "1 refused" }],
     ["a file it created counts, and one file is a file", step("running", { scope: ["store/audit.py"], touched: ["store/audit.py"], stops: [stop("a"), stop("b")] }),
-     { tone: "working", mark: "✎", text: "1 of 1 file", refused: "2 refused" }],
-    ["working, nothing written yet", { ...working, touched: [] }, { tone: "working", mark: "✎", text: "0 of 4 files", refused: "" }],
-    ["working under an older CLI, which counts no files: the scope, as today", step("running", { scope: ["api/list.py"] }), { tone: "plain", mark: "▤", text: "api/list.py", refused: "" }],
+     { tone: "working", mark: "edit", text: "1 of 1 file", refused: "2 refused" }],
+    ["working, nothing written yet", { ...working, touched: [] }, { tone: "working", mark: "edit", text: "0 of 4 files", refused: "" }],
+    ["working under an older CLI, which counts no files: the scope, as today", step("running", { scope: ["api/list.py"] }), { tone: "plain", mark: "file", text: "api/list.py", refused: "" }],
     ["working where no file is there yet: the scope, and still the refused write", step("running", { scope: ["src/new/**"], stops: [stop("README.md")] }),
-     { tone: "plain", mark: "▤", text: "src/new/**", refused: "1 refused" }],
+     { tone: "plain", mark: "file", text: "src/new/**", refused: "1 refused" }],
     ["the count is for a step at work: to review, the scope again", { ...working, state: "review", changed: FOUR.slice(1, 3), touched: [], stops: [stop("x")] },
-     { tone: "plain", mark: "▤", text: "api/create/**", refused: "" }],
-    ["came back for a write outside its files: which", step("came back", { scope: ["api/cancel.py"], outside: ["store/repo.py"] }), { tone: "back", mark: "✕", text: "wrote store/repo.py", refused: "" }],
+     { tone: "plain", mark: "file", text: "api/create/**", refused: "" }],
+    ["came back for a write outside its files: which", step("came back", { scope: ["api/cancel.py"], outside: ["store/repo.py"] }), { tone: "back", mark: "close", text: "wrote store/repo.py", refused: "" }],
     ["and how many more", step("came back", { scope: ["api/cancel.py"], outside: ["store/repo.py", "store/index.py", "README.md"] }),
-     { tone: "back", mark: "✕", text: "wrote store/repo.py +2", refused: "" }],
-    ["came back for another reason: the scope", step("came back", { scope: ["api/cancel.py"] }), { tone: "plain", mark: "▤", text: "api/cancel.py", refused: "" }],
+     { tone: "back", mark: "close", text: "wrote store/repo.py +2", refused: "" }],
+    ["came back for another reason: the scope", step("came back", { scope: ["api/cancel.py"] }), { tone: "plain", mark: "file", text: "api/cancel.py", refused: "" }],
     ["`outside` on a step that did not come back says nothing here", step("running", { scope: ["api/cancel.py"], outside: ["store/repo.py"] }),
-     { tone: "plain", mark: "▤", text: "api/cancel.py", refused: "" }],
+     { tone: "plain", mark: "file", text: "api/cancel.py", refused: "" }],
     ["a command step keeps its own chip", step("ready", { check: "uv run pytest -q", command: "uv run pytest -q" }), { tone: "plain", mark: "", text: "", refused: "" }],
   ];
   for (const [why, t, want] of rows) assert.deepEqual(filesLine(t), want, why);
 });
 
-test("×3 on a step set to attempts that has started none; an attempt that started wears its own mark", () => {
+test("3 agents at once on a step set to attempts that has started none, not tries one after another; an attempt that started wears its own mark", () => {
   const ready = step("ready", { check: CHECK });
   const real = [{ letter: "a", state: "passed", why: "", lines: 41, model: "Nano", usd: 0.007, attempts: 1, idle: null, checkout: null },
                 { letter: "b", state: "running", why: "", lines: 9, model: "Nano", usd: 0.002, attempts: 1, idle: 3, checkout: null }];
   const rows: [string, TaskX, number | null, string][] = [
-    ["its own number", { ...ready, planned: 3 }, null, "×3"],
-    ["unset on the step: the limits' number", ready, 2, "×2"],
+    ["its own number", { ...ready, planned: 3 }, null, "3 agents at once"],
+    ["unset on the step: the limits' number", ready, 2, "2 agents at once"],
     ["the step's number comes first, and one attempt is no news", { ...ready, planned: 1 }, 3, ""],
     ["nothing set anywhere", ready, null, ""],
-    ["suggested and waiting steps too", step("proposed", { check: CHECK }), 3, "×3"],
-    ["waiting", step("waiting", { check: CHECK, planned: 8 }), null, "×8"],
+    ["suggested and waiting steps too", step("proposed", { check: CHECK }), 3, "3 agents at once"],
+    ["waiting", step("waiting", { check: CHECK, planned: 8 }), null, "8 agents at once"],
     ["no check: it runs as one agent", step("ready", { planned: 3 }), null, ""],
     ["a command step runs once", step("ready", { check: "uv run pytest -q", command: "uv run pytest -q" }), 3, ""],
     ["started: its real attempts are its chips", step("running", { check: CHECK, planned: 3, forks: real }), 3, ""],
@@ -306,15 +353,58 @@ test("×3 on a step set to attempts that has started none; an attempt that start
     ["landed", step("done", { check: CHECK, planned: 3 }), 3, ""],
   ];
   for (const [why, t, limit, want] of rows) assert.equal(attemptsMark(t, limit), want, why);
+  assert.equal(attemptsWhy(3), "3 agents work on it at once, each in its own copy; its check keeps one. About 3× the cost.", "its hover says what it costs, in the pane stepper's words");
   assert.deepEqual(["running", "passed", "gave up", "failed", "ended", "", "waiting"].map((state) => forkMark({ state })),
                    ["working", "landed", "ended", "ended", "ended", "waiting", "waiting"]);
+});
+
+// ---- a card's status line ----
+test("a card's status says its state first and what its other parts do not: a question on it, no attempts as words; what a suggestion covers is its title's second line", () => {
+  const real = parseState(readFileSync(new URL("./fixtures/real-auto.json", import.meta.url), "utf8"));
+  const race = parseState(readFileSync(new URL("./fixtures/graph-race.json", import.meta.url), "utf8"));
+  // what each suggestion covers, as its planner wrote it past its title and a colon; a full text in any other shape says nothing
+  assert.deepEqual([covers({ title: "Librarian service", full: "Librarian service: collections, JSON import, ingredient search" }),
+                    covers({ title: "the export", full: "Export: CSV for the weekly report" }),
+                    covers({ title: "Recipe lookup by title or short ID", full: "Recipe lookup by title or short ID" }),
+                    covers({ title: "hello says hello", full: "hello says hello to the person by name" }),
+                    covers({ title: "the export", full: "Write the export: CSV for the weekly report" })],
+                   ["Collections, JSON import, ingredient search", "CSV for the weekly report", "", "", ""]);
+  // a task sent back with a note says so, not ready, as if no agent had touched it
+  assert.equal(cardLine(step("ready", { note: "the test only covers one case" }), 40), "sent back");
+  assert.notEqual(cardLine(step("ready"), 40), "sent back");
+  const suggested = (title: string, full: string) => cardLine(step("proposed", { title, full, check: CHECK }), 60);
+  assert.equal(suggested("Planner service", "Planner service: shopping list and Markdown export"), "suggested", "the row says one thing on every suggestion: what it covers is a line of its own");
+  assert.equal(suggested("Planner service", "Planner service"), "suggested");
+  // on Alex's plan, in a card's line (28 characters): whole items where they fill most of it, else as many whole words
+  // as fit, so Planner keeps its Markdown export; never ending on `and…`
+  const cards = (full: string, n = 28) => coversIn(covers({ title: full.slice(0, full.indexOf(":")), full }), n);
+  assert.deepEqual([cards("Transformer service: scale, convert, house conversions, unit names"),
+                    cards("Planner service: shopping list and Markdown export"),
+                    cards("Librarian service: collections, JSON import, ingredient search"),
+                    cards("the export: a weekly report of every order shipped")],
+                   ["Scale, convert, house…", "Shopping list and Markdown…", "Collections, JSON import…", "A weekly report of every…"]);
+  assert.equal(cards("Planner service: shopping list and Markdown export", 22), "Shopping list…", "not `Shopping list and…`");
+  assert.equal(coversIn("Internationalisation", 10), "", "not even a word fits: nothing");
+  // a question on a suggestion is the line's news, as on a step at work
+  assert.equal(cardLine(step("proposed", { title: "greet route", full: "greet route: a /greet route", check: CHECK }), 24, "which port does the dev server take?"), "asks you: which port…");
+  // the race's main card wears the filled diamond for the question on it: it says so, with the question, and not `agent 3 · 3 attempts`
+  const greet = race.tasks.find((t) => t.id === "greet")!, q = race.questions.find((x) => x.about === "greet")!.text;
+  assert.equal(stateMark(greet), "you");
+  assert.equal(cardLine(greet, 60, q), "asks you: which port does the dev server take?");
+  assert.equal(cardLine(greet, 24, q), "asks you: which port…");
+  assert.equal(cardLine(greet, 60), "working · agent 3 · $0.31", "no question: working first, its attempts are its rows");
+  assert.equal(cardLine({ ...greet, usd: null }, 60), "working · agent 3", "a practice run's card has no cost to say");
+  assert.equal(cardLine(step("running", { agent: "4", idle: 20 }), 60), "working · agent 4 · 20 s quiet");
+  assert.equal(cardLine(step("review", { check: CHECK }), 60, "which port?"), "to review", "to review is its own news: the question is the pane's");
+  // the rest say what words.ts says of them
+  for (const t of [...race.tasks, ...real.tasks].filter((x) => !["proposed", "running"].includes(x.state))) assert.equal(cardLine(t, 40), sub(t, 40), t.id);
 });
 
 // ---- the one act ----
 test("a full card wears one act, the pane's first main one, and never Accept; a replay wears none", () => {
   const pr = step("yours", { check: "gh pr create --draft", command: "gh pr create --draft", leaves: true });
   const rows: [string, TaskX, [string, string] | null][] = [
-    ["to review", step("review", { check: CHECK }), ["Approve", "signOff"]],
+    ["to review, its changes not opened in this window: they are the act, as Home's", step("review", { check: CHECK }), ["Open changes", "openDiff"]],
     ["came back", step("came back", { check: CHECK }), ["Help it…", "handBack"]],
     ["past the line", pr, ["Approve and run", "markDone"]],
     ["a step of your own", step("yours"), ["Mark done", "markDone"]],
@@ -333,6 +423,10 @@ test("a full card wears one act, the pane's first main one, and never Accept; a 
     assert.equal(cardAct(t, true), null, `${why}: a replay is watched`);
     if (b) assert.deepEqual(b, actsFor(t, false).find((x) => x.main), `${why}: the pane's own button, not a second one`);
   }
+  // its changes opened in this window, a task to review wears Approve, as its pane does, not Open changes again
+  const opened = cardAct(step("review", { check: CHECK }), false, true);
+  assert.deepEqual(opened && [opened.label, opened.act], ["Approve", "signOff"]);
+  assert.deepEqual(opened, actsFor(step("review", { check: CHECK }), false, true).find((x) => x.main));
 });
 
 test("Mark done on a step of your own: the pane offers it, the host lets it through, and it runs `graphene node done` on that step", () => {
@@ -377,10 +471,10 @@ test("the repo-sized fixture shows every mark, from what a current snapshot says
   // the engine reads a step behind an unmet need as waiting, the person's own too (plan.reads), and `node done` on it is refused
   for (const t of big.tasks) if (t.state !== "waiting" && t.state !== "proposed") assert.deepEqual(t.needs.filter((n) => at(n).state !== "done"), [], `${t.id} is ${t.state} behind an unmet need`);
   assert.deepEqual(big.edges.map(([a, b]) => `${a}>${b}`).sort(), big.tasks.flatMap((t) => t.needs.map((n) => `${n}>${t.id}`)).sort(), "an edge a need, and no other");
-  assert.deepEqual(legend(big.tasks), [["you", "to review", 1], ["back", "came back", 1], ["yours", "yours", 1], ["working", "working", 3],
-                                       ["landed", "landed", 5], ["ready", "ready", 3], ["waiting", "waiting", 11], ["suggested", "suggested", 1]]);
+  assert.deepEqual(legend(big.tasks), [["you", "to review", 1], ["back", "needs help", 1], ["yours", "yours", 1], ["working", "working", 3],
+                                       ["landed", "done", 5], ["ready", "ready", 3], ["waiting", "waiting", 11], ["suggested", "suggested", 1]]);
   const all = tally(big.tasks);
-  assert.deepEqual([all.landed, all.total, all.wants.map((w) => w.text)], [5, 26, ["1 to review", "1 came back", "1 yours"]]);
+  assert.deepEqual([all.landed, all.total, all.wants.map((w) => w.text)], [5, 26, ["1 to review", "1 needs help", "1 yours"]]);
   assert.deepEqual(goalCells(big.tasks, big.goals).map((g) => `${g.title}: ${g.marks.join(" ")}`), [
     "the store keeps orders: landed landed landed you working waiting",
     "the API serves them: landed back working working ready waiting waiting waiting",
@@ -389,8 +483,8 @@ test("the repo-sized fixture shows every mark, from what a current snapshot says
     "the docs say so: waiting waiting suggested",
   ]);
   assert.deepEqual(wanting(big.tasks), ["cache", "cancel", "a11y"]);
-  // two counts on one canvas, each by its own rule (the header's has the suggested changelog in it), so in two wordings
-  assert.deepEqual([counts(big), wantingLine(wanting(big.tasks).length)], ["3 working · 4 need you · 5 of 26 done · $0.12", "3 steps need you · show the next"]);
+  // the chip counts the tasks to act on, not the engine's need_you (which has every suggested task and question in it)
+  assert.equal(wantingLine(wanting(big.tasks).length), "3 tasks need you · show the next");
   // the check's box, by state: landed and to review ticked, at work and ready telling, one ready step hollow, the rest not run
   const boxes = (state: Word) => [...new Set(big.tasks.filter((t) => t.state === state && t.check).map((t) => checkMark(t).box))].sort();
   assert.deepEqual([boxes("done"), boxes("review"), boxes("running"), boxes("came back"), boxes("ready"), boxes("waiting")],
@@ -398,13 +492,16 @@ test("the repo-sized fixture shows every mark, from what a current snapshot says
   assert.deepEqual(checkMark(at("docker")), { box: "hollow", tone: "warn", words: "passed before the work: it proves nothing yet" });
   assert.deepEqual([checkMark(at("a11y")).box, checkMark(at("changelog")).box], ["approval", "approval"]);
   // the files chip's three other facts
-  assert.deepEqual(filesLine(at("create")), { tone: "working", mark: "✎", text: "2 of 4 files", refused: "" });
-  assert.deepEqual(filesLine(at("audit")), { tone: "working", mark: "✎", text: "1 of 1 file", refused: "1 refused" });
+  assert.deepEqual(filesLine(at("create")), { tone: "working", mark: "edit", text: "2 of 4 files", refused: "" });
+  assert.deepEqual(filesLine(at("audit")), { tone: "working", mark: "edit", text: "1 of 1 file", refused: "1 refused" });
   assert.equal(stateMark(at("audit")), "working", "the refused write was its first attempt's: nothing is stopped in the one going now");
-  assert.deepEqual(filesLine(at("cancel")), { tone: "back", mark: "✕", text: "wrote store/repo.py", refused: "" });
-  // ×3 where the limits' three attempts have not started; the two races under way keep their chips
-  for (const t of big.tasks) assert.equal(attemptsMark(t, big.envelope.forks), ["ready", "waiting"].includes(t.state) ? "×3" : "", t.id);
-  assert.deepEqual(big.tasks.filter((t) => cardAct(t, false)).map((t) => `${t.id}: ${cardAct(t, false)!.label}`), ["cache: Approve", "cancel: Help it…", "a11y: Mark done"]);
+  assert.deepEqual(filesLine(at("cancel")), { tone: "back", mark: "close", text: "wrote store/repo.py", refused: "" });
+  // 3 agents at once where the limits' three have not started; the two races under way keep their rows
+  for (const t of big.tasks) assert.equal(attemptsMark(t, big.envelope.forks), ["ready", "waiting"].includes(t.state) ? "3 agents at once" : "", t.id);
+  assert.deepEqual(big.tasks.filter((t) => cardAct(t, false)).map((t) => `${t.id}: ${cardAct(t, false)!.label}`), ["cache: Compare", "cancel: Help it…", "a11y: Mark done"]);
+  // Compare, in a word, so the race's `to review` beside it is whole; the pane's own act otherwise, its hover saying what it compares
+  const race = big.tasks.find((t) => t.id === "cache")!;
+  assert.deepEqual(cardAct(race, false), { ...actsFor(race, false).find((x) => x.main)!, label: "Compare" });
 });
 
 test("a command step's box says what its pane says: the workflow fixture's two, and the pane's own lines", () => {

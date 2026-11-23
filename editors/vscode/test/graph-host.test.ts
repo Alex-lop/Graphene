@@ -3,7 +3,7 @@
 // so the test needs no extra module on disk.
 import assert from "node:assert/strict";
 import { register } from "node:module";
-import { test } from "node:test";
+import { mock, test } from "node:test";
 
 const stub = `
 export const panels = [];
@@ -16,18 +16,24 @@ class Panel { constructor(type, title) { this.type = type; this.title = title; t
   get webview() { if (this.disposed) throw new Error("Webview is disposed"); return this.w; }
   get visible() { if (this.disposed) throw new Error("Webview is disposed"); return true; }
   onDidDispose(h) { this.handlers.push(h); return { dispose() {} }; }
+  onDidChangeViewState(h) { this.viewState = h; return { dispose() {} }; }
   reveal() { if (this.disposed) throw new Error("Webview is disposed"); this.revealed++; }
   dispose() { this.disposed = true; for (const h of this.handlers) { try { h(); } catch (e) { this.threw = String(e); } } } }
 export const notifications = [];
 export const tabs = { front: undefined, early: false }; // the tab the active group has in front; early: asked before VS Code sent its tabs
 export const window = { showErrorMessage(m) { notifications.push(m); return Promise.resolve(undefined); }, createWebviewPanel(type, title, show) { const p = new Panel(type, title); p.show = show; panels.push(p); return p; },
   showInformationMessage() { return Promise.resolve(undefined); },
+  terminals: [], ended: null, createTerminal(o) { const t = { name: o.name, shown: 0, lines: [], exitStatus: undefined, shellIntegration: undefined,
+    show() { this.shown++; }, sendText(l) { this.lines.push(l); } }; window.terminals.push(t); return t; },
+  onDidEndTerminalShellExecution(l) { window.ended = l; return { dispose() {} }; }, onDidCloseTerminal() { return { dispose() {} }; },
   tabGroups: { get activeTabGroup() { if (tabs.early) throw new Error("Assertion Failed: argument is undefined or null"); return { activeTab: tabs.front }; } } };
 export const Uri = { joinPath(...p) { return p.join("/"); } };
+export class ThemeIcon { constructor(id) { this.id = id; } }
+export const env = { appName: "Visual Studio Code" };
 export const ViewColumn = { Active: -1, Beside: -2 };
 export const workspace = { settings: {}, getConfiguration() { return { get: (k, d) => (k in workspace.settings ? workspace.settings[k] : d) }; } };
 export const commands = { ran: [], registered: [], fns: {}, registerCommand(id, fn) { this.registered.push(id); this.fns[id] = fn; return { dispose() {} }; },
-  getCommands() { return Promise.resolve(["graphene.runReady", "graphene.stop", "graphene.auto", "graphene.openCockpit", "graphene.addStep", ...this.registered]); },
+  getCommands() { return Promise.resolve(["graphene.runReady", "graphene.stop", "graphene.openCockpit", "graphene.addStep", ...this.registered]); },
   executeCommand(id, arg) { this.ran.push([id, arg]); return Promise.resolve(this.fns[id]?.(arg)); } };
 `;
 const hooks = `
@@ -36,12 +42,13 @@ export async function resolve(spec, ctx, next) { return spec === "vscode" ? { ur
 `;
 register(`data:text/javascript,${encodeURIComponent(hooks)}`);
 
-type Panel = { disposed: boolean; title: string; revealed: number; threw?: string; show?: unknown; dispose(): void; w: { receive(m: unknown): Promise<unknown> } };
-const vscode = await import("vscode") as unknown as { panels: Panel[]; commands: { ran: [string, unknown][] }; workspace: { settings: Record<string, unknown> };
+type Panel = { disposed: boolean; title: string; revealed: number; threw?: string; show?: unknown; dispose(): void; viewState(e: unknown): void;
+               w: { html: string; sent: unknown[]; receive(m: unknown): Promise<unknown> } };
+const vscode = await import("vscode") as unknown as { panels: Panel[]; commands: { ran: [string, unknown][] }; workspace: { settings: Record<string, unknown> }; env: { appName: string };
                                                       tabs: { front: { input: unknown } | undefined; early: boolean } };
 const { GraphHost } = await import("../src/graph.ts");
 const context = { extensionUri: "ext", subscriptions: [], workspaceState: { get: (_: string, fallback: unknown) => fallback, update: async () => {} } } as never;
-const session = { state: null, status: { kind: "reading", text: "Reading the plan…" }, onDidChange: () => ({ dispose() {} }) } as never;
+const session = { state: null, status: { kind: "reading", text: "Reading the plan…" }, onDidChange: () => ({ dispose() {} }), seen: new Set(), onDidSee: () => ({ dispose() {} }), onDidRefuse: () => ({ dispose() {} }) } as never;
 
 test("a closed panel is let go: open is false, a new show makes a new panel, and onDidClose fires once", () => {
   const host = new GraphHost(context, session);
@@ -57,6 +64,15 @@ test("a closed panel is let go: open is false, a new show makes a new panel, and
   host.show("hello");
   assert.equal(vscode.panels.length, 2, "a show after the close makes a new panel, not a reveal of the dead one");
   assert.equal(vscode.panels[0]!.revealed, 0);
+});
+
+test("the page hears when its tab goes behind another and comes back: hidden, it draws nothing at a size not its own", () => {
+  const host = new GraphHost(context, session);
+  host.show();
+  const panel = vscode.panels.at(-1)!;
+  panel.viewState({ webviewPanel: { visible: false } });
+  panel.viewState({ webviewPanel: { visible: true } });
+  assert.deepEqual(panel.w.sent.filter((m) => (m as { type: string }).type === "shown"), [{ type: "shown", on: false }, { type: "shown", on: true }]);
 });
 
 test("the tab opens by itself on a start, without the keyboard; Show graph reveals the same tab and may take it; closed by a person, no start opens it again; a replay's never opens by itself", async () => {
@@ -113,6 +129,28 @@ test("the tab opens by itself on a start, without the keyboard; Show graph revea
   new GraphHost(context, replay as never, "Graphene demo");
   replay.fire();
   assert.equal(opened(), 2, "Watch the Demo opens its own graph itself");
+  // Graphene's icon is clicked: Home comes into view, and the tab opens with it, on any plan, once it is read
+  const gone = live(), away = new GraphHost(context, gone as never);
+  away.sidebar(); // before the first read (a folder not set up yet), and back to the Explorer
+  away.sidebar(false);
+  gone.state = read("empty"); // an hour later the folder is set up
+  gone.fire();
+  assert.equal(opened(), 2, "the side bar out of view no longer asks: a read much later opens nothing");
+  const icon = live(), clicked = new GraphHost(context, icon as never);
+  clicked.sidebar(); // before the first read: nothing to show yet
+  assert.equal(opened(), 2);
+  icon.state = read("empty");
+  vscode.tabs.front = { input: { uri: "file:///repo/notes.md" } }; // a file in front
+  icon.fire(); // an empty plan: no start, but the side bar asked
+  vscode.tabs.front = undefined;
+  assert.equal(opened(), 3, "a click on the icon lands on the graph, an empty plan's included");
+  assert.deepEqual(vscode.panels.at(-1)!.show, { viewColumn: -1, preserveFocus: true },
+    "in the active group, whole, a file in front or not (beside, it would be the narrow lanes), and the keyboard left in the side bar");
+  clicked.sidebar(); // the side bar again, the tab there
+  assert.equal(opened(), 3, "a tab that is there is left as it is");
+  vscode.panels.at(-1)!.dispose();
+  clicked.sidebar(); // the side bar again, after a person closed the tab
+  assert.equal(opened(), 3, "closed in this window, it stays closed: Open the graph on Home brings it back");
 });
 
 test("by itself the tab opens beside what a person has in front, never over it; asked for, it opens in front as it did", async () => {
@@ -142,12 +180,32 @@ test("by itself the tab opens beside what a person has in front, never over it; 
   host.show(); // Show graph, with the same file in front
   vscode.tabs.front = undefined;
   assert.deepEqual(vscode.panels.at(-1)!.show, { viewColumn: -1, preserveFocus: false }, "asked for, it opens where the person is and takes the keyboard");
+  vscode.env.appName = "Cursor";
+  assert.deepEqual(opened(file).show, { viewColumn: -1, preserveFocus: true }, "in Cursor, whose chat narrows the editor area, it opens in the file's group without the keyboard");
+  vscode.env.appName = "Visual Studio Code";
+});
+
+test("a practice run's page and a replay's are sent no cost: no card, lane, attempt or Cost row can say one", async () => {
+  const { parseState } = await import("../src/state.ts");
+  const { readFileSync } = await import("node:fs");
+  const running = parseState(readFileSync(new URL("./fixtures/running.json", import.meta.url), "utf8"));
+  const sent = (state: unknown) => {
+    const host = new GraphHost(context, { ...(session as object), state, onDidChange: () => ({ dispose() {} }) } as never);
+    host.show();
+    void vscode.panels.at(-1)!.w.receive({ type: "ready" });
+    const w = vscode.panels.at(-1)!.w as unknown as { sent: { type: string; state?: typeof running }[] };
+    return w.sent.find((m) => m.type === "state")!.state!;
+  };
+  const money = (s: typeof running) => [s.spent, ...s.tasks.flatMap((t) => [t.usd, ...t.forks.map((f) => f.usd)])].filter((x) => x !== null);
+  assert.ok(money(sent(running)).length > 0, "a real run's cost is sent");
+  assert.deepEqual(money(sent({ ...running, stand_in: true })), [], "the scripted stand-in's");
+  assert.deepEqual(money(sent({ ...running, replay: { shown: "demo", day: "", repository: "" } })), [], "a replay's");
 });
 
 test("a replay's host runs no command of the person's, even before its plan is read; the person's own host does", async () => {
   // a replay's state is null before its store reads (and after a read fails): check() lets the acts that
   // take no id through then, and every command they name acts on the person's folder
-  const acts = ["run", "stop", "auto", "cockpit", "add-under"];
+  const acts = ["run", "stop", "cockpit", "add-under"];
   const replay = new GraphHost(context, { ...(session as object), own: "/tmp/graphene-demo-x" } as never, "Graphene demo");
   replay.show();
   const w = vscode.panels.at(-1)!.w;
@@ -160,6 +218,15 @@ test("a replay's host runs no command of the person's, even before its plan is r
   own.show();
   await vscode.panels.at(-1)!.w.receive({ type: "act", act: "cockpit", id: "" });
   assert.deepEqual(ran(), ["graphene.openCockpit"]);
+});
+
+test("in Cursor the page is told so (it says Cursor's own Agent does not plan here); in VS Code it is not", () => {
+  new GraphHost(context, session).show();
+  assert.doesNotMatch(vscode.panels.at(-1)!.w.html, /data-editor/);
+  vscode.env.appName = "Cursor";
+  new GraphHost(context, session).show();
+  vscode.env.appName = "Visual Studio Code";
+  assert.match(vscode.panels.at(-1)!.w.html, /<body data-editor="cursor">/);
 });
 
 test("the panel takes the title the host was given; Graphene by default", () => {
@@ -197,21 +264,6 @@ test("a field set on the page is one `node set`, a drawn task one `node add`; gr
   assert.equal(ran.length, n);
   const last = w.sent.at(-1) as { type: string; key: string; ok: boolean };
   assert.deepEqual([last.type, last.key, last.ok], ["said", " d2", false]);
-});
-
-test("graphene's answer goes to the page that asked: another page's draft has the same key", async () => {
-  const { parseState } = await import("../src/state.ts");
-  const { readFileSync } = await import("node:fs");
-  const state = parseState(readFileSync(new URL("./fixtures/graph-race.json", import.meta.url), "utf8"));
-  const host = new GraphHost(context, { ...(session as object), state, change: async () => ({ ok: true, line: "done", stdout: "○ a flag  n9  ready\n" }) } as never);
-  host.show();
-  const panel = vscode.panels.at(-1)!.w as unknown as { sent: unknown[]; receive(m: unknown): Promise<unknown> };
-  const side = { html: "", cspSource: "", sent: [] as unknown[], options: {}, asWebviewUri: (u: unknown) => u, h: (_: unknown) => undefined as unknown,
-                 postMessage(m: unknown) { this.sent.push(m); return Promise.resolve(true); }, onDidReceiveMessage(h: (m: unknown) => unknown) { this.h = h; return { dispose() {} }; } };
-  host.resolveWebviewView({ webview: side, onDidDispose: () => ({ dispose() {} }), visible: true } as never);
-  await panel.receive({ type: "act", act: "draw", id: "", draft: { key: " d1", title: "a flag", files: "cli.py", check: "true", approve: false, after: null, parent: null } });
-  assert.ok(panel.sent.some((m) => (m as { type: string }).type === "said"));
-  assert.ok(!side.sent.some((m) => (m as { type: string }).type === "said"), "the side bar's own ` d1` is not taken away by the tab's answer");
 });
 
 test("draft edits survive a new host, reach both pages, and preserve another page's concurrent draft", async () => {
@@ -258,23 +310,56 @@ test("a form refusal is inline once; an act with no form still gets a notificati
   assert.equal(ui.notifications.length, 1);
 });
 
-test("the graph header's switch moves as Home's does: with Exact on, its three settings go back before auto turns on", async () => {
+test("the header's Start is Home's: every suggested task accepted, then the run; a question with no default holds it, and with Exact on any question", async () => {
+  const { parseState } = await import("../src/state.ts");
+  const { readFileSync } = await import("node:fs");
+  const C = await import("../src/commands.ts");
+  const plan = parseState(readFileSync(new URL("./fixtures/proposals.json", import.meta.url), "utf8")); // its question has a default
+  const ran: string[][] = [];
+  const page = (state: unknown, board = "off") => {
+    new GraphHost(context, { ...(session as object), state, act: async (argv: string[]) => { ran.push(argv); return true; },
+      run: async (argv: string[]) => { ran.push(argv); return { code: 0, stdout: `board: ${board}\n`, stderr: "" }; } } as never).show();
+    return vscode.panels.at(-1)!.w;
+  };
+  const started = () => vscode.commands.ran.filter((r) => r[0] === "graphene.runReady").length, n = started();
+  await page(plan).receive({ type: "act", act: "start", id: "" });
+  assert.deepEqual([ran, started() - n], [[C.acceptAll()], 1], "accepted, then the run, as Home's Start");
+  ran.length = 0;
+  await page({ ...plan, questions: plan.questions.map((q) => ({ ...q, default: null })) }).receive({ type: "act", act: "start", id: "" });
+  const exact = { ...plan, envelope: { ...plan.envelope, review: "every", auto: "off" } };
+  await page(exact, "on").receive({ type: "act", act: "start", id: "" });
+  assert.deepEqual([ran.filter((argv) => argv[0] !== "config"), started() - n], [[], 1], "held: nothing accepted, nothing run");
+  const told = page(exact, "on") as unknown as { sent: { type: string; exact?: boolean }[]; receive(m: unknown): Promise<unknown> };
+  await told.receive({ type: "ready" });
+  await new Promise((r) => setTimeout(r, 0)); // `graphene config` answered
+  assert.equal(told.sent.filter((m) => m.type === "state").at(-1)?.exact, true, "the page is told, so its Start is held before a click, as Home's");
+  ran.length = 0;
+  await page(exact, "off").receive({ type: "act", act: "start", id: "" });
+  assert.deepEqual([ran.filter((argv) => argv[0] !== "config"), started() - n], [[C.acceptAll()], 2], "Exact off: the default answers, as Home's Start takes it");
+});
+
+test("Home's Stop after the plan, turned off with Exact on: Exact's three settings go back first, then auto turns on", async () => {
   const { HomeHost } = await import("../src/home.ts");
   const { parseState } = await import("../src/state.ts");
   const state = parseState(JSON.stringify({ envelope: { review: "every", auto: "off" } }));
   const ran: string[][] = [];
   const fake = { ...(session as object), state, seen: new Set(), onDidSee: () => ({ dispose() {} }), refresh: async () => {},
-    run: async (argv: string[]) => { ran.push(argv); return { code: 0, stdout: "board: on\n", stderr: "" }; }, // `graphene config`: Exact is on
+    run: async (argv: string[]) => { ran.push(argv); return argv.length === 1 ? { code: 0, stdout: "board: on\n", stderr: "" } : { code: argv[0] === "config" ? 0 : 1, stdout: "", stderr: "" }; },
     act: async (argv: string[]) => { ran.push(argv); return true; } } as never;
-  new HomeHost(context, fake); // it registers graphene.stopAfter; Home's page was never opened, so the board setting is read then
-  new GraphHost(context, fake).show();
-  await vscode.panels.at(-1)!.w.receive({ type: "act", act: "stopAfter", id: "", value: false });
-  assert.deepEqual(vscode.commands.ran.at(-1), ["graphene.stopAfter", false]);
-  assert.deepEqual(ran.filter((argv) => argv.length > 1), [["config", "set", "board", "auto"], ["config", "set", "review", "every"], ["config", "set", "auto", "off"],
-                                                          ["config", "set", "auto", "on"]], "Exact's three go back together, then the switch moves");
+  let said: (m: unknown) => void = () => {};
+  const page = { html: "", cspSource: "", options: {}, asWebviewUri: (u: unknown) => u, postMessage: () => Promise.resolve(true),
+    onDidReceiveMessage(h: (m: unknown) => void) { said = h; return { dispose() {} }; } };
+  new HomeHost(context, fake).resolveWebviewView({ webview: page, onDidDispose: () => ({ dispose() {} }), onDidChangeVisibility: () => ({ dispose() {} }), visible: true } as never);
+  const settled = async () => { for (let i = 0; i < 50; i++) await new Promise((r) => setTimeout(r, 0)); };
+  said({ type: "ready" }); // Home reads `board:` as it opens
+  await settled();
+  said({ type: "act", act: "stopAfter", flag: false });
+  await settled();
+  assert.deepEqual(ran.filter((argv) => argv[0] === "config" && argv.length > 1), [["config", "set", "board", "auto"], ["config", "set", "review", "every"], ["config", "set", "auto", "off"],
+                                                                                  ["config", "set", "auto", "on"]], "Exact's three go back together, then the switch moves");
 });
 
-test("Home disables Start while planning finishes, so a visible plan cannot swallow the click", async () => {
+test("Home disables Start while it is busy (a workflow proposing), so a plan that appears cannot swallow the click", async () => {
   const { HomeHost } = await import("../src/home.ts");
   const { parseState } = await import("../src/state.ts");
   const { readFileSync } = await import("node:fs");
@@ -284,13 +369,91 @@ test("Home disables Start while planning finishes, so a visible plan cannot swal
   const page = { html: "", cspSource: "", options: {}, asWebviewUri: (u: unknown) => u,
     sent: [] as { type: string; home: { sections: { buttons: { act: string; off?: boolean }[] }[] } }[],
     postMessage(m: never) { this.sent.push(m); return Promise.resolve(true); }, onDidReceiveMessage() { return { dispose() {} }; } };
-  host.resolveWebviewView({ webview: page, onDidDispose: () => ({ dispose() {} }), visible: true } as never);
+  host.resolveWebviewView({ webview: page, onDidDispose: () => ({ dispose() {} }), onDidChangeVisibility: () => ({ dispose() {} }), visible: true } as never);
   const inspect = host as unknown as { busy: string; push(): void };
   const start = () => page.sent.at(-1)!.home.sections.flatMap((s) => s.buttons).find((b) => b.act === "startAll")!;
-  inspect.busy = "Planning…";
+  inspect.busy = "Proposing fix-issue…";
   inspect.push();
   assert.equal(start().off, true);
   inspect.busy = "";
   inspect.push();
   assert.equal(start().off, false);
+});
+
+test("the pane's Send back… is Home's: a note asked, then graphene node reopen; and the page hears whose changes were opened", async () => {
+  const { HomeHost } = await import("../src/home.ts");
+  const { parseState } = await import("../src/state.ts");
+  const { readFileSync } = await import("node:fs");
+  const C = await import("../src/commands.ts");
+  const state = parseState(readFileSync(new URL("./fixtures/running.json", import.meta.url), "utf8"));
+  const acted: string[][] = [], saw: (() => void)[] = [];
+  const fake = { ...(session as object), state, seen: new Set<string>(), tasks: () => state.tasks, onDidSee: (l: () => void) => { saw.push(l); return { dispose() {} }; },
+                 act: async (argv: string[]) => { acted.push(argv); return true; } };
+  new HomeHost(context, fake as never); // it registers graphene.sendBack
+  (vscode as unknown as { window: Record<string, unknown> }).window.showInputBox = async () => "it names the wrong route";
+  new GraphHost(context, fake as never).show();
+  const page = vscode.panels.at(-1)!.w as unknown as { sent: { type: string; seen?: string[] }[]; receive(m: unknown): Promise<unknown> };
+  await page.receive({ type: "act", act: "sendBack", id: "docs" });
+  assert.deepEqual(acted, [C.reopen("docs", "it names the wrong route")]);
+  await page.receive({ type: "ready" });
+  assert.deepEqual(page.sent.filter((m) => m.type === "state").at(-1)?.seen, []);
+  fake.seen.add("docs"); // its changes opened (diff.ts)
+  for (const l of saw) l();
+  assert.deepEqual(page.sent.filter((m) => m.type === "state").at(-1)?.seen, ["docs"], "so its pane's act is Approve now");
+});
+
+test("the run's terminal: one for the run, not shown; a second click while it starts is no second run; refused, it comes forward and the graph hears it; a shell that cannot say so shows it after a moment", async () => {
+  const { Session } = await import("../src/session.ts");
+  const ui = await import("vscode") as unknown as { window: { terminals: { name: string; shown: number; lines: string[]; shellIntegration?: object }[]; ended: (e: unknown) => void } };
+  const { EventEmitter } = await import("vscode") as unknown as { EventEmitter: new () => { event: (l: (v: string) => void) => void; fire(v: string): void } };
+  ui.window.terminals.length = 0;
+  mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  try {
+    const refused: string[] = [], at = new EventEmitter();
+    at.event((n) => refused.push(n));
+    const s = { hear: Session.prototype["hear" as never], sent: new Map(), busy: new Set(), shells: [], refusedAt: at, path: "graphene", folder: undefined };
+    const run = () => Session.prototype.terminal.call(s as never, "graphene run", ["run"]);
+    const t = run() as unknown as (typeof ui.window.terminals)[number];
+    assert.equal(run(), t as never, "clicked again a moment later: the same terminal, nothing sent again");
+    assert.deepEqual([ui.window.terminals.length, t.lines.length, t.shown], [1, 1, 0], "the graph shows the run: its terminal stays in the panel's list");
+    t.shellIntegration = {};
+    mock.timers.tick(3000);
+    assert.equal(t.shown, 0, "a shell that will say how the run ended: still not shown");
+    ui.window.ended({ terminal: t, exitCode: 1 });
+    assert.deepEqual([t.shown, refused], [1, ["graphene run"]], "refused at its start: shown, and the graph drops its Starting…");
+    const bare = Session.prototype.terminal.call({ ...s, sent: new Map() } as never, "graphene run", ["run"]) as unknown as (typeof ui.window.terminals)[number];
+    mock.timers.tick(3000);
+    assert.equal(bare.shown, 1, "no integration: it cannot say it was refused, so it is shown, as before");
+  } finally {
+    mock.timers.reset();
+  }
+});
+
+test("a run stopped in its first seconds is a stop: its terminal stays in the list, and the graph only drops its Starting…", async () => {
+  const { Session } = await import("../src/session.ts");
+  const ui = await import("vscode") as unknown as { window: { terminals: { shown: number }[]; ended: (e: unknown) => void } };
+  const { EventEmitter } = await import("vscode") as unknown as { EventEmitter: new () => { event: (l: (v: string) => void) => void; fire(v: string): void } };
+  ui.window.terminals.length = 0;
+  const refused: string[] = [], at = new EventEmitter();
+  at.event((n) => refused.push(n));
+  const s = { hear: Session.prototype["hear" as never], sent: new Map(), busy: new Set(), shells: [], refusedAt: at, path: "graphene", folder: undefined, stopAt: 0,
+              changing: 0, held: null, run: async () => ({ code: 0, stdout: "", stderr: "" }), readContracts: async () => true, refresh: async () => {} };
+  const t = Session.prototype.terminal.call(s as never, "graphene run", ["run"]) as unknown as { shown: number };
+  await Session.prototype.change.call(s as never, ["run", "--stop"]); // the header's Stop, or Home's
+  ui.window.ended({ terminal: t, exitCode: 1 });
+  assert.deepEqual([t.shown, refused], [0, ["graphene run"]]);
+});
+
+test("what was asked titles the plan through its run, and not a plan suggested after it with no ask or goal of its own", async () => {
+  const { Session } = await import("../src/session.ts");
+  const { headline } = await import("../src/state.ts");
+  const me = { memo: undefined, asked: { asked: "", ids: [] }, folder: undefined };
+  const task = (id: string, state: string) => ({ id, state });
+  const kept = (Session.prototype as unknown as { kept(this: unknown, s: unknown): never }).kept;
+  const title = (tasks: object[], news: string[] = [], drafting = false) => headline(kept.call(me, { goal: "", news, tasks, drafting }));
+  assert.equal(title([], ["you asked: wordkit grows three things"], true), "wordkit grows three things", "said while its planner drafts");
+  assert.equal(title([task("a", "proposed"), task("b", "proposed")], ["proposed: a", "proposed: b"]), "wordkit grows three things", "out of the news: kept");
+  assert.equal(title([task("a", "running"), task("b", "review")]), "wordkit grows three things", "through the run");
+  assert.equal(title([task("a", "done"), task("b", "done"), task("c", "proposed")], ["proposed: c"]), "", "a suggestion it was not said for: not titled with it");
+  assert.equal(title([task("a", "done"), task("b", "done"), task("c", "ready")]), "", "and it is not back");
 });

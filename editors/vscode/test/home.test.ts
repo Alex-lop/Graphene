@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { register } from "node:module";
 import { test } from "node:test";
 import * as C from "../src/commands.ts";
-import { banner, checkHome, countsLine, home, PROVES_NOTHING, said, type Card, type Home } from "../src/home/cards.ts";
+import { banner, checkHome, countsLine, home, PROVES_NOTHING, type Card, type Home } from "../src/home/cards.ts";
 import { headline, parseState, type State } from "../src/state.ts";
+import { HOW, WHAT } from "../src/home/who.ts";
 
 const fixture = (name: string): State => parseState(readFileSync(new URL(`./fixtures/${name}.json`, import.meta.url), "utf8"));
 const section = (h: Home, key: string) => h.sections.find((s) => s.key === key);
@@ -15,25 +17,54 @@ test("a suggested plan is read before it starts: each task says what for, what i
   assert.deepEqual(h.sections.map((s) => s.key), ["needs", "suggested"]); // the question first: it changes the plan
   const s = section(h, "suggested")!;
   assert.equal(s.title, "Suggested plan · 4 tasks");
-  assert.deepEqual(s.buttons.map((b) => [b.label, b.act, Boolean(b.main)]), [["Start", "startAll", true], ["Discard all", "discardAll", false]]);
+  // outlined, as Up next's Run: the graph's header, open beside Home on a suggested plan, has the one filled Start
+  assert.deepEqual(s.buttons.map((b) => [b.label, b.act, Boolean(b.main)]), [["Start", "startAll", false], ["Discard all", "discardAll", false]]);
   const hello = card(h, "p:hello");
-  assert.equal(hello.tag, "suggested");
+  assert.equal(hello.tag, "", "its section says suggested: the card does not say it again");
+  assert.equal(hello.task, "hello", "its title opens it in the graph's pane, where its files and check are whole");
+  assert.deepEqual(checkHome({ type: "act", act: "showGraph", id: "hello" }, fixture("proposals")), { type: "act", act: "showGraph", id: "hello" });
+  // in a side bar too narrow for a label beside its value, each line runs on from its short label (home.css)
   assert.deepEqual(hello.lines, [
-    { k: "What for", v: "hello says hello to the person by name" },
-    { k: "May change", v: "words.py", mono: true },
-    { k: "Done when", v: "pytest -q tests/test_words.py passes", mono: true },
+    { k: "What for", v: "hello says hello to the person by name", short: "" },
+    { k: "May change", v: "words.py", mono: true, short: "$(file)" },
+    { k: "Done when", v: "pytest … test_words.py passes", mono: true, hover: "pytest -q tests/test_words.py passes", short: "done when" },
   ]);
-  assert.deepEqual(card(h, "p:farewell").lines.find((l) => l.k === "After"), { k: "After", v: "bye says goodbye, greet route" });
+  // a side bar is for a glance: a task not started names its files and its check short, the whole on hover
+  const java = { ...fixture("proposals"), tasks: fixture("proposals").tasks.map((t) => (t.id !== "hello" ? t : { ...t,
+    scope: ["src/main/java/app/impl/CookServiceImpl.java", "src/main/java/app/impl/CookingSessionImpl.java", "src/test/java/app/impl/CookServiceImplTest.java"],
+    check: "./gradlew test --tests 'app.cookyourbooks.services.impl.CookServiceImplTest'" })) };
+  assert.deepEqual(card(home(java), "p:hello").lines.slice(1), [
+    { k: "May change", v: "CookServiceImpl.java +2", mono: true, short: "$(file)", // no +2 alone on a line
+      hover: "src/main/java/app/impl/CookServiceImpl.java\nsrc/main/java/app/impl/CookingSessionImpl.java\nsrc/test/java/app/impl/CookServiceImplTest.java" },
+    { k: "Done when", v: "CookServiceImplTest passes", mono: true, hover: "./gradlew test --tests 'app.cookyourbooks.services.impl.CookServiceImplTest' passes", short: "done when" },
+  ]);
+  // a folder by its name, its slash off; a glob from its last plain folder
+  const scoped = (scope: string[]) => card(home({ ...java, tasks: java.tasks.map((t) => (t.id === "hello" ? { ...t, scope } : t)) }), "p:hello").lines[1]!.v;
+  assert.deepEqual([scoped(["src/api/"]), scoped(["docs/**/*.md"]), scoped(["src/api/**", "web/"])], ["api", "docs/**/*.md", "api/** +1"]);
+  assert.deepEqual(card(h, "p:farewell").lines.find((l) => l.k === "After"), { k: "After", v: "bye says goodbye, greet route", short: "after" });
   assert.deepEqual(labels(hello), ["Remove"]);
 });
 
-test("a question offers its default first, each option, and the person's own words", () => {
+test("a question offers its default first, each option, and the person's own words; none looks chosen", () => {
   const q = card(home(fixture("proposals")), "q:which-port");
   assert.equal(q.title, "which port does the dev server take?");
-  assert.deepEqual(q.lines, [{ k: "About", v: "greet route" }, { k: "If unanswered", v: "8000, as the README says" }]);
-  assert.deepEqual(q.buttons.map((b) => [b.label, b.arg, Boolean(b.main)]),
-                   [["8000, as the README says", "8000, as the README says", true], ["pick a free one at start", "pick a free one at start", false],
-                    ["In your own words…", undefined, false]]);
+  assert.deepEqual(q.lines, [{ v: "About greet route" }]); // the default's button says it is the default
+  // about a sub-goal: its name, never its id, and no "? " nor what follows its first ": "
+  const s = fixture("proposals");
+  const services = { ...s, goals: [...s.goals, { id: "services", title: "? Application services: replace every throw", parent: null, state: "proposed", check: null }],
+                     questions: s.questions.map((x) => ({ ...x, about: "services" })) };
+  assert.deepEqual(card(home(services), "q:which-port").lines, [{ v: "About Application services" }]);
+  assert.deepEqual(q.buttons.map((b) => [b.label, b.arg, b.note, Boolean(b.main)]),
+                   [["8000, as the README says", "8000, as the README says", "default", false],
+                    ["pick a free one at start", "pick a free one at start", undefined, false], ["In your own words…", undefined, undefined, false]]);
+});
+
+test("a task's What for is left out when it only says the title again, and says only what is new after it", () => {
+  const s = fixture("proposals");
+  const again = { ...s, tasks: s.tasks.map((t) => (t.id === "hello" ? { ...t, title: "export command writing json", full: "An export command writing JSON" } : t)) };
+  assert.equal(card(home(again), "p:hello").lines.find((l) => l.k === "What for"), undefined);
+  const prefix = { ...s, tasks: s.tasks.map((t) => (t.id === "hello" ? { ...t, title: "Librarian service", full: "Librarian service: collections, JSON import" } : t)) };
+  assert.deepEqual(card(home(prefix), "p:hello").lines.find((l) => l.k === "What for"), { k: "What for", v: "Collections, JSON import", short: "" });
 });
 
 test("a finished task to review shows its evidence; Open changes leads until the person has opened them", () => {
@@ -51,7 +82,7 @@ test("a finished task to review shows its evidence; Open changes leads until the
 test("two attempts that both passed: the person compares them and keeps one before anything is approved", () => {
   const s = fixture("graph-race");
   const farewell = card(home(s), "review:farewell");
-  assert.deepEqual(farewell.lines, [{ k: "Attempts", v: "a: passed, 9 lines · b: passed, 15 lines", mono: true },
+  assert.deepEqual(farewell.lines, [{ k: "Attempts", v: "a: passed, 9 lines\nb: passed, 15 lines" }, // a line each, words and counts: no mono
                                     { v: "2 attempts passed the check. Compare them and keep one, then approve it.", warn: true }]);
   assert.deepEqual(farewell.buttons.map((b) => [b.label, b.act, b.arg, Boolean(b.main)]),
                    [["Compare attempts", "compare", undefined, true], ["Keep a", "keep", "a", false], ["Keep b", "keep", "b", false],
@@ -90,13 +121,22 @@ test("who is working, what is up next, and what is done, each in its own section
   assert.ok(greet.lines.some((l) => l.k === "Attempts"));
   assert.deepEqual(labels(greet), ["Open changes so far", "Message agent…", "Compare attempts"]);
   assert.deepEqual(section(h, "working")!.buttons.map((b) => b.act), ["stop"]);
-  assert.equal(card(h, "n:ship").tag, "waiting");
+  assert.equal(card(h, "n:ship").tag, "waiting"); // Up next holds ready and waiting: its cards say which
+  // ready and waiting counted apart, as the graph's legend counts them: Run starts the ready ones only
+  assert.equal(section(h, "next")!.title, "Up next · 1 waiting");
+  assert.equal(section(home(fixture("big")), "next")!.title, "Up next · 3 ready, 11 waiting");
+  assert.equal(greet.tag, "", "Working now says it");
   assert.equal(section(h, "done")!.folded, true);
   assert.deepEqual(labels(card(h, "d:hello")), ["Open changes", "Send back…"]);
   // Run is always there: while a run goes, `graphene run` hands the ready tasks to it (a run fixes its set at start)
   assert.deepEqual(section(h, "next")!.buttons.map((b) => [b.act, b.title]), [["run", "hand these to the run that is going"]]);
-  const idle = section(home({ ...fixture("running"), run: { going: false, pid: null } }), "next")!;
-  assert.deepEqual(idle.buttons.map((b) => [b.act, b.title]), [["run", "start an agent on every task that is ready"]]);
+  const idle = section(home({ ...fixture("big"), run: { going: false, pid: null } }), "next")!;
+  assert.deepEqual(idle.buttons.map((b) => [b.act, b.title, b.off]), [["run", "start an agent on every task that is ready", false]]);
+  // nothing ready and no run: off, as the graph's Run is, not a terminal that starts nothing
+  const none = section(home({ ...fixture("running"), run: { going: false, pid: null } }), "next")!;
+  assert.deepEqual(none.buttons.map((b) => [b.act, b.title, b.off]), [["run", "nothing is ready to run", true]]);
+  // never filled: the graph's header, open beside Home, has the one filled Run
+  assert.deepEqual([section(h, "next")!.buttons[0]!.main, idle.buttons[0]!.main], [undefined, undefined]);
 });
 
 test("the header: the goal, else what was last asked; the counts in plain words; a practice run says so", () => {
@@ -104,20 +144,17 @@ test("the header: the goal, else what was last asked; the counts in plain words;
   assert.equal(headline(s), "make the app friendlier");
   assert.equal(headline({ ...s, goal: "", news: ["you asked: a --json flag", "proposed: x"] }), "a --json flag");
   assert.equal(headline({ ...s, goal: "", news: [] }), "");
-  assert.equal(countsLine(s), "2 working · 2 need you · 2 of 7 done · $0.42 spent");
+  assert.equal(countsLine(s), "2 of 7 done · $0.42 so far, at list price"); // who is working and what needs you: the stages and Needs you say it
+  // on a subscription nothing is billed: never "spent"; nor "planned for", as the store's bill holds a dropped
+  // plan's and an earlier run's too; "so far", so on a plan nobody started it is what was, not a price for Start; none, no cost
+  assert.equal(countsLine({ ...fixture("proposals"), spent: 1.336791 }), "0 of 4 done · $1.34 so far, at list price");
+  assert.equal(countsLine(fixture("proposals")), "0 of 4 done");
   assert.equal(banner(s), "");
   assert.equal(banner({ ...s, stand_in: true }), "Practice run: a scripted stand-in answers for the AI, so nothing is spent");
+  assert.equal(countsLine({ ...s, stand_in: true }), "2 of 7 done", "a practice run spends nothing, and says no cost");
+  assert.equal(card(home({ ...s, stand_in: true }), "w:greet").lines.find((l) => l.k === "Cost"), undefined);
   assert.equal(banner({ ...s, replay: { shown: "a scripted stand-in, no model ran", day: "", repository: "" } }), "Demo replay: a scripted stand-in, no model ran");
   assert.equal(home(fixture("empty")).empty, true);
-});
-
-test("what an ask printed: the planner's own words and what planning cost, not the CLI's next steps", () => {
-  const out = ["asking the planner (nemotron)…", "the planner says:",
-               "  Three wishes, three tasks: each owns one file and its own test file, so all three run at once.",
-               "proposed top: the CLI prints the top words", "the planner (nemotron): 5 calls, 9942 in, 385 out, $0.0069 at list price",
-               "next: `graphene plan accept`, or prune in `graphene watch` (y accepts, d drops)"].join("\n");
-  assert.deepEqual(said(out), ["Three wishes, three tasks: each owns one file and its own test file, so all three run at once.", "Planning cost $0.0069."]);
-  assert.deepEqual(said("proposed top: x\n"), []);
 });
 
 test("the page's messages are checked against the plan before anything runs", () => {
@@ -127,11 +164,8 @@ test("the page's messages are checked against the plan before anything runs", ()
   const ok = (m: unknown) => assert.ok(checkHome(m, plan), JSON.stringify(m));
   const no = (m: unknown) => assert.equal(checkHome(m, plan), null, JSON.stringify(m));
   ok({ type: "ready" });
-  ok({ type: "act", act: "ask", arg: "  a --json flag  " });
-  assert.equal((checkHome({ type: "act", act: "ask", arg: "  a --json flag  " }, plan) as { arg: string }).arg, "a --json flag");
-  no({ type: "act", act: "ask", arg: "   " });
-  no({ type: "act", act: "ask", arg: "x".repeat(4001) });
-  no({ type: "act", act: "ask" });
+  no({ type: "act", act: "ask", arg: "a --json flag" }); // a plan comes from the person's coding agent: Home takes no ask
+  no({ type: "act", act: "cancel" });
   ok({ type: "act", act: "setup", arg: "codex", flag: true });
   no({ type: "act", act: "setup", arg: "nemotron", flag: true }); // Home's picker offers Claude Code and Codex; the CLI still takes --executor nemotron
   no({ type: "act", act: "setup", arg: "rm -rf /" });
@@ -155,8 +189,7 @@ test("the page's messages are checked against the plan before anything runs", ()
   assert.equal(checkHome({ type: "act", act: "setup", arg: "claude" }, null)?.type, "act"); // set up: no plan yet
 });
 
-test("Home's commands: an ask, a send-back with its note, a set-up that asks nothing", () => {
-  assert.deepEqual(C.ask("-v please"), ["ask", "--", "-v please"]);
+test("Home's commands: a send-back with its note, a set-up that asks nothing", () => {
   assert.deepEqual(C.reopen("top", "-- the test only checks one word"), ["node", "reopen", "top", "--note=-- the test only checks one word"]);
   assert.throws(() => C.reopen("-x", "why"));
   assert.deepEqual(C.initWith("codex"), ["init", "--planner", "codex", "--executor", "codex"]);
@@ -174,10 +207,11 @@ test("the palette shows seven commands; the rest, and the advanced views, only w
                                   "graphene.stop", "graphene.watchDemo"]);
   for (const x of c.commands) assert.match(x.title, /^Graphene: /);
   const views = c.views.graphene;
-  assert.equal(views[0].id, "graphene.home");
-  assert.equal(views[1].id, "graphene.graph");
-  for (const v of views.slice(2)) assert.equal(v.when, "config.graphene.advanced", v.id);
+  assert.equal(views[0].id, "graphene.home", "the side bar is Home: the graph is a tab of the editor, opened with it");
+  for (const v of views.slice(1)) assert.equal(v.when, "config.graphene.advanced", v.id);
   assert.equal(c.configuration.properties["graphene.advanced"].default, false);
+  assert.equal(c.walkthroughs[0].description, WHAT, "one sentence for what Graphene is, as Set Up says it");
+  assert.equal(pkg.description, `${WHAT} ${HOW}`, "the Extensions view says it as Set Up does");
 });
 
 test("Home shows the pipeline's three stages and the one switch, on until `auto` is on", () => {
@@ -229,14 +263,14 @@ test("a step past the line asks you on Home: what leaves your machine, the comma
   const h = home(s);
   const c = card(h, "yours:pr-48");
   assert.equal(c.tag, "asks you");
-  assert.match(c.lines[0]!.v, /^This step leaves your machine, so it asks you first\./);
+  assert.match(c.lines[0]!.v, /^This task leaves your machine, so it asks you first\./);
   assert.deepEqual(c.lines[1], { k: "Runs", v: "git push -u origin HEAD && gh pr create --draft --fill", mono: true });
   assert.deepEqual(c.buttons.map((b) => [b.label, b.act, b.id]), [["Approve and run", "markDone", "pr-48"]]);
   // before Start, the suggested plan is where each step is read: a command step says what runs, with no agent,
   // and the one past the line says it will ask first. Neither says "no files named" or "... passes".
   const before = home({ ...s, tasks: s.tasks.map((t) => ({ ...t, state: "proposed" as const })) });
   const lines = (id: string) => before.sections.flatMap((x) => x.cards).find((x) => x.key.endsWith(`:${id}`))!.lines;
-  assert.deepEqual(lines("suite-48").slice(0, 2), [{ k: "Runs", v: "uv run pytest -q", mono: true }, { v: "A command, with no agent: its exit code is its check." }]);
+  assert.deepEqual(lines("suite-48").slice(0, 2), [{ k: "Runs", v: "uv run pytest -q", mono: true, short: "$" }, { v: "A command, with no agent: its exit code is its check." }]);
   assert.deepEqual(lines("pr-48")[1], { v: "It leaves your machine, so it asks you before it runs." });
   // a command that failed stays open and reads as before it ran: its card says it ran, once the terminal is gone
   const failed = (id: string, state: "ready" | "yours") => home({ ...s, tasks: s.tasks.map((t) => (t.id === id ? { ...t, state, checked: { before: null, after: "failed" } } : t)) });
@@ -265,8 +299,74 @@ test("Exact: Start waits while anything the plan asks is open, and says how many
   assert.equal(start(home(s)).off, false, "off by default: what is left open takes its default at Start");
   const exact = home(s, new Set(), true);
   assert.equal(start(exact).off, true);
-  assert.match(suggested(exact).note, /^Exact is on: answer the 1 open question under Needs you first/);
+  assert.match(suggested(exact).note, /^Start waits for every answer: answer the 1 open question under Needs you first/);
   assert.equal(start(home({ ...s, questions: [] }, new Set(), true)).off, false, "nothing open: nothing to wait for");
   assert.deepEqual(checkHome({ type: "act", act: "exact", flag: true }, s), { type: "act", act: "exact", id: "", flag: true });
   assert.equal(checkHome({ type: "act", act: "exact" }, s), null, "the switch says which way");
+  // approval, as Set Up asks it, is its own tick in Settings: Exact no longer hides it
+  assert.deepEqual(checkHome({ type: "act", act: "review", flag: false }, s), { type: "act", act: "review", id: "", flag: false });
+  assert.equal(checkHome({ type: "act", act: "review", arg: "every" }, s), null, "the tick says which way, and nothing else");
+});
+
+test("unticking Approve while Exact is on turns only Exact off: Stop after the plan stays on, and the tick is redrawn even when refused", async () => {
+  // home.ts against the least of the vscode module it reaches here (this file runs in a process of its own)
+  const stub = "export const commands = { registerCommand() { return { dispose() {} }; } }; export const env = { appName: 'Code' };";
+  const hook = `export async function resolve(s, c, n) { return s === "vscode" ? { url: ${JSON.stringify(`data:text/javascript,${encodeURIComponent(stub)}`)}, shortCircuit: true } : n(s, c); }`;
+  register(`data:text/javascript,${encodeURIComponent(hook)}`);
+  const { HomeHost } = await import("../src/home.ts");
+  const ran: string[][] = [];
+  let refuse = false;
+  const session = { state: { ...fixture("proposals"), envelope: { ...fixture("proposals").envelope, review: "every", auto: "off" } }, seen: new Set(),
+    onDidChange: () => ({ dispose() {} }), onDidSee: () => ({ dispose() {} }), refresh: async () => {}, status: { kind: "ok", text: "" },
+    run: async (argv: string[]) => { ran.push(argv); return { code: 0, stdout: "board: on\n", stderr: "" }; }, // `graphene config`: Exact is on
+    act: async (argv: string[]) => { ran.push(argv); return !refuse; } };
+  const context = { subscriptions: [], workspaceState: { update: async () => {}, get: () => ({ review: "off", auto: "on" }) } };
+  const host = new HomeHost(context as never, session as never) as unknown as { readBoard(): Promise<void>; setReview(on: boolean): Promise<void>; push(): void; last: { lines: string[] } };
+  await host.readBoard();
+  let pushed = 0;
+  const push = host.push.bind(host);
+  host.push = () => { pushed++; push(); };
+  await host.setReview(false);
+  assert.deepEqual(ran.filter((a) => a[0] === "config" && a.length > 1), [["config", "set", "board", "auto"], ["config", "set", "review", "off"]], "auto is left as it is");
+  assert.deepEqual(host.last.lines, ["Approval is off: a finished task lands once its check passes.", "Wait for every answer is off with it."]);
+  refuse = true;
+  pushed = 0;
+  await host.setReview(true);
+  assert.equal(pushed, 1, "a refused setting still redraws the tick");
+});
+
+test("Set Up says in Home's words what it wrote and what it records, a Codex gate's step, and the CLI's warnings", async () => {
+  const stub = "export const commands = { registerCommand() { return { dispose() {} }; } }; export const env = { appName: 'Code' };";
+  const hook = `export async function resolve(s, c, n) { return s === "vscode" ? { url: ${JSON.stringify(`data:text/javascript,${encodeURIComponent(stub)}`)}, shortCircuit: true } : n(s, c); }`;
+  register(`data:text/javascript,${encodeURIComponent(hook)}`);
+  const { HomeHost } = await import("../src/home.ts");
+  const said = ["planner: claude, executor: claude", "hooks added to .claude/settings.local.json (7 Claude Code hooks)",
+                "each Claude Code session here is recorded on this machine only (its prompts, tool calls and what they returned, the files it edits); `graphene init --remove` takes the hooks out",
+                "warning: `git` is old", "Codex gate: .codex/hooks.json; trust this project", "next: `graphene auto '<what you want>'` plans it"];
+  const session = { state: null, seen: new Set(), onDidChange: () => ({ dispose() {} }), onDidSee: () => ({ dispose() {} }), refresh: async () => {}, moved() {},
+    status: { kind: "uninitialised", text: "" }, run: async () => ({ code: 0, stdout: said.join("\n"), stderr: "" }) };
+  const host = new HomeHost({ subscriptions: [] } as never, session as never) as unknown as { setUp(who: string, review: boolean): Promise<void>; last: { lines: string[] } };
+  const hooks = "Hooks are in .claude/settings.local.json and .codex/hooks.json: each Claude Code session here is recorded on this machine only. graphene init --remove takes them out.";
+  await host.setUp("claude", false);
+  assert.deepEqual(host.last.lines, ["Claude Code plans and does the work here.", hooks, "warning: git is old"]);
+  await host.setUp("codex", false);
+  assert.deepEqual(host.last.lines, ["Codex plans and does the work here.", hooks,
+                                     "In a new Codex session, trust this project and review its hooks with /hooks before running tasks.", "warning: git is old"]);
+});
+
+test("an older graphene is said above Home, whatever it shows, with Upgrade: once its toast is gone every pane would say Not held", async () => {
+  const stub = "export const commands = { registerCommand() { return { dispose() {} }; } }; export const env = { appName: 'Code' };";
+  const hook = `export async function resolve(s, c, n) { return s === "vscode" ? { url: ${JSON.stringify(`data:text/javascript,${encodeURIComponent(stub)}`)}, shortCircuit: true } : n(s, c); }`;
+  register(`data:text/javascript,${encodeURIComponent(hook)}`);
+  const { HomeHost } = await import("../src/home.ts");
+  const session = { state: fixture("running"), seen: new Set(), onDidChange: () => ({ dispose() {} }), onDidSee: () => ({ dispose() {} }),
+    status: { kind: "ok", text: "" }, version: "graphene 0.9.0", file: "/u/.local/bin/graphene", path: "graphene" };
+  const host = new HomeHost({ subscriptions: [] } as never, session as never) as unknown as { push(): void; views: Set<unknown> };
+  const posted: { older: string }[] = [];
+  host.views.add({ webview: { postMessage: async (m: { older: string }) => posted.push(m) } });
+  host.push();
+  assert.equal(posted[0]!.older, "This Graphene is older than the extension: it needs 0.10 (uv tool upgrade graphene-map). This editor runs graphene 0.9.0 at /u/.local/bin/graphene.");
+  session.version = "graphene 0.10.0";
+  host.push();
+  assert.equal(posted[1]!.older, "");
 });

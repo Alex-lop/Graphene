@@ -8,7 +8,8 @@ import * as os from "node:os";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import * as C from "./commands.ts";
-import { candidates, found } from "./find.ts";
+import { behind, candidates, found, olderWords } from "./find.ts";
+import { ASK, NOT_CURSOR } from "./home/who.ts";
 import type { Session, UI } from "./session.ts";
 
 const PLANNERS = [
@@ -52,19 +53,31 @@ export function register(context: vscode.ExtensionContext, session: Session, _ui
       });
   }));
 
+  // an older graphene reads, but every pane would say Not held: said once a version here (Home says it for as long
+  // as it holds), and the walkthrough's Install step is not done while it does
+  let told = "", old = false;
+  context.subscriptions.push(session.onDidChange(() => {
+    if (old !== behind(session.version)) void vscode.commands.executeCommand("setContext", "graphene.older", old = !old);
+    if (!old || told === session.version) return;
+    told = session.version ?? "";
+    void vscode.window.showWarningMessage(olderWords(session.file || session.path, session.version).replaceAll("`", ""), "Upgrade Graphene")
+      .then((pick) => { if (pick) void vscode.commands.executeCommand("graphene.install"); });
+  }));
+
   context.subscriptions.push(vscode.commands.registerCommand("graphene.install", async () => {
-    const ok = await vscode.window.showInformationMessage("Install Graphene with uv, in a terminal you can watch? It runs `uv tool install graphene-map`.",
-                                                           { modal: true, detail: "uv itself: https://docs.astral.sh/uv/ (one line to install)." }, "Install");
-    if (ok !== "Install") return;
-    const term = vscode.window.createTerminal({ name: "uv tool install graphene-map", env: C.unmarked(), iconPath: new vscode.ThemeIcon("cloud-download") });
+    const [word, line] = behind(session.version) ? ["Upgrade", C.UV_UPGRADE] : ["Install", C.UV_INSTALL];
+    const ok = await vscode.window.showInformationMessage(`${word} Graphene with uv, in a terminal you can watch? It runs \`${line}\`.`,
+                                                           { modal: true, detail: "It gets the newest graphene-map from where uv installed it: PyPI, or the folder it was installed from (then pull that folder first, or `uv tool install --force graphene-map`); this extension needs 0.10 or later. uv itself: https://docs.astral.sh/uv/ (one line to install)." }, word);
+    if (ok !== word) return;
+    const term = vscode.window.createTerminal({ name: line, env: C.unmarked(), iconPath: new vscode.ThemeIcon("cloud-download") });
     term.show(true);
-    term.sendText("uv tool install graphene-map", true);
+    term.sendText(line, true);
     const done = vscode.window.onDidCloseTerminal((t) => { if (t === term) { done.dispose(); void look().then(() => { session.moved(); return session.refresh(); }); } });
     context.subscriptions.push(done);
   }));
 
   // Set Up This Folder: planner, executor, then `graphene init --planner X --executor Y` in a terminal; once
-  // the store appears (uninitialised -> empty), Auto… is offered, once
+  // the store appears (uninitialised -> empty), a toast says the plan comes from your agent's chat, once
   let setUp = false;
   context.subscriptions.push(vscode.commands.registerCommand("graphene.init", async () => {
     // a folder with no plan is set up on Home, in one pick; the two picks here change who plans and who works
@@ -79,7 +92,8 @@ export function register(context: vscode.ExtensionContext, session: Session, _ui
   context.subscriptions.push(session.onDidChange(() => {
     if (!setUp || session.status.kind !== "empty") return;
     setUp = false;
-    void vscode.window.showInformationMessage("This folder is set up. Say what you want done on Graphene's Home.", "Open Home")
+    const cursor = vscode.env.appName.includes("Cursor") ? ` ${NOT_CURSOR}` : "";
+    void vscode.window.showInformationMessage(`This folder is set up. ${ASK}: its plan shows on the graph.${cursor}`, "Open Home")
       .then((pick) => { if (pick) void vscode.commands.executeCommand("graphene.home"); });
   }));
 

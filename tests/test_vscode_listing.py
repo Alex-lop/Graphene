@@ -54,14 +54,18 @@ def test_releasing_names_open_vsxs_real_claim_form_and_what_it_asks():
 
 def test_the_readme_installs_the_vsix_the_package_script_makes_today():
     """The README told people to install graphene-0.9.0.vsix while package.json said 0.8.0, so `npm run
-    package` made a file of another name. The README travels inside the .vsix: its install line names the
-    version the manifest has, and a bump that forgets it fails here."""
+    package` made a file of another name. The README travels inside the .vsix, and the repository's is PyPI's
+    page: each downloads the release the manifest names and installs that file, and a bump that forgets either
+    fails here."""
     import json
 
     version = json.loads((ROOT / "editors/vscode/package.json").read_text())["version"]
-    readme = (ROOT / "editors/vscode/README.md").read_text()
-    assert f"code --install-extension graphene-{version}.vsix" in readme
-    assert "graphene-0." not in readme.replace(f"graphene-{version}.vsix", "")  # no other version's file
+    for path in ("README.md", "editors/vscode/README.md"):
+        readme = (ROOT / path).read_text()
+        assert f"releases/download/v{version}/graphene-{version}.vsix" in readme, path
+        assert f"code --install-extension graphene-{version}.vsix" in readme, path
+        others = readme.replace(f"graphene-{version}.vsix", "")
+        assert "graphene-0." not in others, path  # no other version's file
 
 
 def test_releasing_walks_one_version_through_its_commands():

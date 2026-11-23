@@ -118,7 +118,7 @@ test("a step past the line is not your own finished task: its row says it asks y
   const row = yoursWords(wf.tasks.find((t) => t.id === "pr-48")!);
   assert.equal(row.description, "asks you: it leaves your machine · approving runs git push -u origin HEAD && gh pr create --draft --fill");
   assert.equal(row.title, "Approve and Run");
-  assert.match(row.hover, /^This step leaves your machine, so it asks you first\. Click to approve it: that runs its command in a terminal/);
+  assert.match(row.hover, /^This task leaves your machine, so it asks you first\. Click to approve it: that runs its command in a terminal/);
   assert.match(row.hover, /Runs: git push/);
   assert.doesNotMatch(row.description + row.hover, /mark done|Your own task/);
   assert.equal(yoursWords(mixed.tasks.find((t) => t.id === "mine")!).description, "yours · mark done", "a task of your own reads as before");
@@ -126,4 +126,34 @@ test("a step past the line is not your own finished task: its row says it asks y
 
 test("a task that came back can be dropped; a running one cannot", () => {
   assert.ok(DROPPABLE.includes("came back") && DROPPABLE.includes("proposed") && !DROPPABLE.includes("running"));
+});
+
+test("Answer from a page's own-words button opens the box for the words at once; from the Needs view, the pick", async () => {
+  // vscode, as far as the answer command reaches it: what it was shown, and the words typed
+  const stub = `export const shown = [];
+    export class TreeItem {} export class ThemeIcon {} export class ThemeColor {} export class MarkdownString { appendMarkdown() {} }
+    export class EventEmitter { event = () => ({ dispose() {} }); fire() {} }
+    export const TreeItemCollapsibleState = { None: 0 };
+    export const commands = { fns: {}, registerCommand(id, fn) { this.fns[id] = fn; return {}; } };
+    export const window = { createTreeView: () => ({}), showInformationMessage: async () => undefined,
+      showQuickPick: async () => { shown.push("pick"); return undefined; },
+      showInputBox: async (o) => { shown.push(\`box: \${o.prompt}\`); return "up, but never below one minute"; } };`;
+  const { register } = await import("node:module");
+  register(`data:text/javascript,${encodeURIComponent(`export async function resolve(spec, ctx, next) { return spec === "vscode" ? { url: ${JSON.stringify(`data:text/javascript,${encodeURIComponent(stub)}`)}, shortCircuit: true } : next(spec, ctx); }`)}`);
+  const vscode = await import("vscode") as unknown as { shown: string[]; commands: { fns: Record<string, (arg?: unknown) => Promise<unknown>> } };
+  const view = await import("../src/needsView.ts");
+  const acts: string[][] = [];
+  const q = { id: "round", text: "round up or to the nearest?", default: "up", options: ["nearest"], about: null, kind: "question" };
+  const session = { state: { questions: [q] }, onDidChange: () => ({}), act: async (argv: string[]) => { acts.push(argv); return true; } };
+  view.register({ subscriptions: [] } as never, session as never, {} as never);
+  const answer = vscode.commands.fns["graphene.answer"]!;
+  await answer({ id: "round" }); // the graph's question card, its pane, Home: "In your own words…"
+  assert.deepEqual([vscode.shown, acts], [["box: round up or to the nearest?"], [["board", "answer", "round", "--", "up, but never below one minute"]]]);
+  await answer({ id: "round", option: "nearest" });
+  assert.deepEqual(acts.at(-1), ["board", "pick", "round", "1"], "an option sent with it: no box, no pick");
+  vscode.shown.length = 0;
+  await answer("round"); // the Needs view's row
+  await answer({ kind: "question", id: "round", q }); // its inline icon: the row's element
+  assert.deepEqual(vscode.shown, ["pick", "pick"]);
+  assert.equal(view.item({ kind: "question", q } as never, { tasks: [] } as never).command?.arguments?.[0], "round", "the row names it by its id alone");
 });

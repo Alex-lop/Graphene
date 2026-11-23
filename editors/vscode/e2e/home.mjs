@@ -1,10 +1,10 @@
 // Home, clicked through in real VS Code against the scripted stand-in ($0): a folder with no plan is set up with one
-// click (then pointed at the stand-in from the shell), an ask is planned, Start runs the agents, and each finished task is reviewed: Approve before its changes
+// click (then pointed at the stand-in from the shell), a plan arrives as an agent's does (graphene on the shell: Home takes no ask), Start runs the agents, and each finished task is reviewed: Approve before its changes
 // were opened asks first, Open Changes shows them, Approve lands it, Send back… returns another with a note. It
 // fails when a step does not show what it should, and keeps a screenshot of each step (E2E_SHOTS, else the scratch).
 // Then the Exact switch: on, it sets board on, review every and auto off, and Start waits while a question is open.
-// Then the other position of Stop after the plan, on a folder of its own: off is auto, so Plan it draws the plan
-// and runs it with no Start. Home's three stages are read at each end.
+// Then the other position of Stop after the plan, on a folder of its own: off is auto, so a goal given to
+// `graphene auto` is drawn and run with no Start. Home's three stages are read at each end.
 // Last, a workflow, on a third folder: Home lists workflows/fix-issue.md, Run asks for its inputs and proposes its
 // four steps with no planner call, Start runs the two agent steps and the suite's command, and the run stops at
 // the line: the pull request step is drawn past it and asks first. Nothing is pushed. Save as workflow, in the
@@ -36,19 +36,6 @@ const t0 = Date.now();
 const say = (what) => console.log(`home: ${((Date.now() - t0) / 1000).toFixed(1)} s  ${what}`);
 const shot = async (name) => L.shot(session.page, path.join(shots, `home-${String(++step).padStart(2, "0")}-${name}.png`));
 
-/** The frame that holds Home's page, found by its content. */
-async function homeFrame(page, timeout = 60000) {
-  const end = Date.now() + timeout;
-  while (Date.now() < end) {
-    for (const f of page.frames()) {
-      const is = await f.evaluate(() => Boolean(document.querySelector("section.screen") && document.querySelector("section.work"))).catch(() => false);
-      if (is) return f;
-    }
-    await page.waitForTimeout(200);
-  }
-  throw new Error("Home's page never appeared");
-}
-
 const until = (frame, fn, arg, what, timeout = 60000) =>
   frame.waitForFunction(fn, arg, { timeout, polling: 200 }).catch(() => { throw new Error(`waited ${timeout / 1000} s for ${what}`); });
 const sectionShown = (frame, words, what, timeout) =>
@@ -66,14 +53,16 @@ try {
   const page = session.page;
   await L.openSidebar(page);
   await L.setSidebarWidth(page, 400);
-  let home = await homeFrame(page);
+  let home = await L.homeFrame(page);
   await until(home, () => document.querySelector("section.screen h2")?.textContent === "Set up Graphene in this folder", null, "the Set Up screen");
   say("a folder with no plan opens on Set Up");
   await shot("setup");
 
   await home.locator("button.pick", { hasText: "Claude Code" }).click();
-  await until(home, () => !document.querySelector("section.work").hidden && Boolean(document.querySelector("textarea"))
-    && document.querySelector(".said")?.textContent.includes("waits for your approval"), null, "Set Up done, review on"); // init, then config set
+  await until(home, () => !document.querySelector("section.work").hidden && document.querySelector(".head.empty button.open")
+    && document.querySelector(".said:not(.older)")?.textContent.includes("waits for your approval"), null, "Set Up done, review on"); // init, then config set
+  if ((await home.locator(".prefs button.switch.approve").getAttribute("aria-checked")) !== "true") throw new Error("Set Up asked for approval, yet Settings show it off");
+  if (await home.locator("textarea").count()) throw new Error("Home offers a box to type an ask in: a plan comes from the agent's chat");
   const set = state(dir);
   if (set.envelope.review !== "every") throw new Error(`Set Up left review ${set.envelope.review}, not every`);
   if (set.planner !== "claude" || set.executor !== "claude") throw new Error(`Set Up chose ${set.planner} and ${set.executor}, not claude`);
@@ -83,16 +72,16 @@ try {
   if (state(dir).envelope.review !== "every") throw new Error("pointing the folder at the stand-in lost review: every");
   await shot("ask");
 
-  home = await homeFrame(page);
-  await home.locator("textarea").fill(ASK);
-  await home.locator("button", { hasText: "Plan it" }).click();
+  home = await L.homeFrame(page);
+  // the person asks their coding agent, in its chat; the plan reaches Graphene as this does
+  execFileSync(graphene, ["ask", "--", ASK], { cwd: dir, env: L.cleanEnv(L.safeEnv(standin.url)), stdio: "pipe", timeout: 120000 });
   await sectionShown(home, "Suggested plan", "the suggested plan");
   const suggested = await home.locator("article.tone-proposed").count();
   if (suggested < 1) throw new Error("no suggested task");
   const stage = () => home.evaluate(() => document.querySelector(".pipe .stage.now")?.textContent ?? "");
   if (!(await stage()).includes("Plan")) throw new Error(`a suggested plan, yet the stage is “${await stage()}”, not Plan`);
-  if ((await home.locator("button.switch").getAttribute("aria-checked")) !== "true") throw new Error("Stop after the plan is not on by default");
-  say(`Plan it: ${suggested} suggested tasks, each with what it may change and what proves it; the stage is Plan, and it stopped there`);
+  if ((await home.locator("button.switch.stop").getAttribute("aria-checked")) !== "true") throw new Error("Stop after the plan is not on by default");
+  say(`an ask from outside: ${suggested} suggested tasks, each with what it may change and what proves it; the stage is Plan, and it stopped there`);
   await shot("suggested");
 
   await home.locator(".sec-suggested .sec-head button", { hasText: "Start" }).click();
@@ -140,15 +129,15 @@ try {
   if (by[title] !== "done") throw new Error(`“${title}” is ${by[title]}, not done`);
   if (!["ready", "waiting"].includes(by[back])) throw new Error(`“${back}” is ${by[back]}, not back on the plan`);
 
-  // Exact, off until its box is ticked: three settings that exist, and Home's Start waits for your answers
+  // Exact, off until its switch is turned on: three settings that exist, and Home's Start waits for your answers
   const env = L.cleanEnv(L.safeEnv(standin.url));
   const settings = () => execFileSync(graphene, ["config"], { cwd: dir, env }).toString().split("\n");
-  const exact = home.locator(".tick.exact input");
-  if (await exact.isChecked()) throw new Error("Exact is on before anyone turned it on");
+  const exact = home.locator("button.switch.exact");
+  if ((await exact.getAttribute("aria-checked")) !== "false") throw new Error("Exact is on before anyone turned it on");
   execFileSync(graphene, ["config", "set", "review", "off"], { cwd: dir, env, stdio: "pipe" }); // so that off has something to put back
   await page.waitForTimeout(1000); // the stream brings Home the setting
-  await exact.check();
-  await until(home, () => document.querySelector(".said")?.textContent.startsWith("Exact: Start waits"), null, "Exact said on");
+  await exact.click();
+  await until(home, () => document.querySelector(".said:not(.older)")?.textContent.startsWith("Start waits for every answer now"), null, "Exact said on");
   for (const line of ["board: on", "review: every", "auto: off"]) if (!settings().includes(line)) throw new Error(`Exact on left no “${line}”`);
   execFileSync(graphene, ["plan", "propose", "-"], { cwd: dir, input: ASKS, stdio: ["pipe", "pipe", "pipe"], // a plan that asks something, as an agent proposes one
                                                     env: { ...env, CLAUDECODE: "1", CLAUDE_CODE_SESSION_ID: "e2e-home-agent" } });
@@ -160,36 +149,35 @@ try {
   await home.locator("article.tone-question button", { hasText: "ten" }).click(); // the default's button confirms it
   await until(home, () => [...document.querySelectorAll(".sec-suggested .sec-head button")].some((x) => x.textContent === "Start" && !x.disabled), null,
               "Start, once the question is answered");
-  await exact.uncheck();
-  await until(home, () => document.querySelector(".said")?.textContent.startsWith("Exact is off"), null, "Exact said off");
+  await exact.click();
+  await until(home, () => document.querySelector(".said:not(.older)")?.textContent.startsWith("Start no longer waits"), null, "Exact said off");
   for (const line of ["board: auto", "review: off", "auto: off"]) if (!settings().includes(line)) throw new Error(`Exact off left no “${line}”`);
   say("the default's button confirmed it and Start came back; Exact off put the board and review back as they were");
 
   // Stop after the plan, off: auto. A folder of its own (auto stops on any proposal a plan still holds), set up
-  // for the stand-in. Nothing is clicked between Plan it and the landed tasks.
+  // for the stand-in. Nothing is clicked between the goal and the landed tasks.
   await L.close(session);
   const fx = L.makeFixture(path.join(base, "wordkit-auto"), graphene, { standin: standin.url });
   session = await L.launch(app, profile, fx.dir, { width: 1440, height: 900, standin: standin.url });
   await L.openSidebar(session.page);
   await L.setSidebarWidth(session.page, 400);
-  home = await homeFrame(session.page);
-  const checked = (want) => until(home, (w) => document.querySelector("button.switch")?.getAttribute("aria-checked") === w, want, `the switch ${want}`);
+  home = await L.homeFrame(session.page);
+  const checked = (want) => until(home, (w) => document.querySelector("button.switch.stop")?.getAttribute("aria-checked") === w, want, `the switch ${want}`);
   await checked("true");
-  await home.locator("button.switch").click();
+  await home.locator("button.switch.stop").click();
   await checked("false");
-  await until(home, () => document.querySelector(".said")?.textContent.startsWith("Stop after the plan is off"), null, "the switch said off");
+  await until(home, () => document.querySelector(".said:not(.older)")?.textContent.startsWith("Stop after the plan is off"), null, "the switch said off");
   if (state(fx.dir).envelope.auto !== "on") throw new Error("the switch went off, yet auto is not on");
   await shot("switch-off");
-  await home.locator("textarea").fill(ASK);
-  await home.locator("button", { hasText: "Plan it" }).click();
+  execFileSync(graphene, ["auto", "--", ASK], { cwd: fx.dir, env: L.cleanEnv(L.safeEnv(standin.url)), stdio: "pipe", timeout: 180000 });
   await sectionShown(home, "Done · 3", "the three tasks landed with no Start", 120000);
-  await until(home, () => document.querySelector(".pipe")?.textContent.includes("landed"), null, "the Review stage to say landed");
+  await until(home, () => [...document.querySelectorAll(".pipe .stage small")].at(-1)?.textContent === "done", null, "the Review stage to say done");
   const ran = state(fx.dir);
   if (ran.tasks.length !== 3 || ran.tasks.some((t) => t.state !== "done")) throw new Error(`auto left ${ran.tasks.map((t) => `${t.id} ${t.state}`).join(", ")}`);
   if (await home.locator(".sec-suggested").count()) throw new Error("auto ran, yet a suggested plan still waits for Start");
-  say("Stop after the plan off: Plan it drew the plan and ran it with no Start; 3 tasks landed, and the stage is Review, landed");
+  say("Stop after the plan off: auto drew the plan and ran it with no Start; 3 tasks landed, and the stage is Review, done");
   await shot("auto-landed");
-  await home.locator("button.switch").click();
+  await home.locator("button.switch.stop").click();
   await checked("true");
   if (state(fx.dir).envelope.auto !== "off") throw new Error("the switch went back on, yet auto is not off");
 
@@ -204,7 +192,7 @@ try {
   session = await L.launch(app, profile, flow.dir, { width: 1440, height: 900, standin: standin.url });
   await L.openSidebar(session.page);
   await L.setSidebarWidth(session.page, 400);
-  home = await homeFrame(session.page);
+  home = await L.homeFrame(session.page);
   await sectionShown(home, "Workflows · 1", "the repository's workflows on Home");
   await shot("workflows");
   await home.locator("article.card", { has: home.locator(".c-title", { hasText: "fix-issue" }) }).locator("button", { hasText: "Run" }).click();

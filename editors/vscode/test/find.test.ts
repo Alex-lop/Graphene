@@ -22,7 +22,7 @@ test("the extension says which graphene it runs, its path and its version, and t
   assert.equal(which("/Users/alex/.local/bin/graphene", "graphene 0.8.0"), "graphene 0.8.0 at /Users/alex/.local/bin/graphene");
   assert.equal(which("graphene", null), "graphene at graphene (its version did not read)");
   const line = olderWords("/Users/alex/.local/bin/graphene", "graphene 0.8.0");
-  assert.match(line, /older than the extension.*needs 0\.9/);
+  assert.match(line, /older than the extension.*needs 0\.10/);
   assert.match(line, /runs graphene 0\.8\.0 at \/Users\/alex\/\.local\/bin\/graphene/);
 });
 

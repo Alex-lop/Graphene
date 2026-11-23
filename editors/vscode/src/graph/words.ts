@@ -1,8 +1,9 @@
 // The graph's words, pure: what a box and a fork chip say, what the header says of a replay, which acts a
 // task offers, and the keys. No DOM here, so `node --test` reads them.
+import { ASK, NOT_CURSOR } from "../home/who.ts"; // Home's words for the agents, said the same on the graph
 import type { Layout } from "../layout.ts";
 import { inScope } from "../owners.ts";
-import { autoLine, headline, SAY, screenWords, usd, type DraftStep, type Fork, type Kept, type Question, type State, type Task } from "../state.ts";
+import { autoLine, free, headline, SAY, screenWords, usd, type DraftStep, type Fork, type Kept, type Question, type State, type Task } from "../state.ts";
 
 /** What the snapshot gains tonight (dev/process/editor/CONTRACT.md): read when present, nothing when not. */
 export type ForkX = Fork & { attempts?: number; idle?: number | null };
@@ -11,21 +12,22 @@ export type Replay = { shown: string; day: string; repository: string } | null;
 /** `stand_in`: every model call on record went to the scripted stand-in (the snapshot's, since 867c326c). */
 export type StateX = Omit<State, "tasks"> & { replay?: Replay; stand_in?: boolean; tasks: TaskX[] };
 
-export type Act = "add-after" | "add-under" | "link" | "unlink" | "drop" | "accept" | "tell" | "run" | "stop" | "auto" | "cockpit"
-  | "openDiff" | "compareForks" | "pickFork" | "signOff" | "answer" | "handBack" | "set" | "draw" | "stopAfter" | "saveWorkflow" | "markDone";
+export type Act = "add-after" | "add-under" | "link" | "unlink" | "drop" | "accept" | "tell" | "start" | "run" | "stop" | "cockpit"
+  | "openDiff" | "compareForks" | "pickFork" | "signOff" | "sendBack" | "answer" | "handBack" | "set" | "draw" | "saveWorkflow" | "markDone" | "demo";
 
 /** The acts a replay offers none of: they change a plan, or they act outside the replay (the cockpit opens
  *  `graphene watch` in the person's own folder; openDiff and compareForks look the id up in the person's
  *  plan). That is every act: a replay is watched. The host refuses them too (check.ts). */
-export const CHANGES: readonly Act[] = ["add-after", "add-under", "link", "unlink", "drop", "accept", "tell", "run", "stop", "auto",
-                                        "cockpit", "openDiff", "compareForks", "pickFork", "signOff", "answer", "handBack", "set", "draw", "stopAfter",
-                                        "saveWorkflow", "markDone"];
+export const CHANGES: readonly Act[] = ["add-after", "add-under", "link", "unlink", "drop", "accept", "tell", "start", "run", "stop",
+                                        "cockpit", "openDiff", "compareForks", "pickFork", "signOff", "sendBack", "answer", "handBack", "set", "draw",
+                                        "saveWorkflow", "markDone", "demo"];
 
 /** The header's act buttons, by their element id: each one is hidden in a replay. Auto and the cockpit are
  *  Home's and the palette's (with graphene.advanced), not the graph's. */
 export const HEADER_ACTS: readonly [string, Act][] = [["b-add", "add-under"], ["b-run", "run"], ["b-save", "saveWorkflow"]];
 
-export const cut = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1).trimEnd() + "…" : s);
+/** ``s`` cut to ``n`` characters, the ellipsis one of them; no space or stop left before it (`1.…` is `1…`). */
+export const cut = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1).replace(/[\s.,:;·-]+$/, "") + "…" : s);
 
 /** Text cut with an ellipsis to ``max`` px as ``width`` measures it (the drawn text's own length): a guess
  *  from the whole text's width, then a character off at a time until it fits. A few measures, never empty. */
@@ -58,7 +60,7 @@ export function fitWords(words: string[], max: number): string {
 }
 
 export function forkWord(f: Fork): string {
-  return f.state || "waiting";
+  return f.state === "running" ? SAY.running : f.state || "waiting";
 }
 
 /** A lane's corner: the model while the task runs, cut to about six characters (`Nano`, `claude…`); the pane
@@ -74,12 +76,15 @@ export function who(t: Pick<TaskX, "state" | "owner"> & { command?: string | nul
   if (t.command) return { kind: "cmd", mark: commandWord(t.command).slice(0, 3), label: "a command, with no agent" }; // a workflow's `run:` step
   if (t.state === "yours" || (t.owner && t.owner !== "agent")) return { kind: "you", mark: "◆", label: "you" };
   const words = executor.trim().split(/\s+/).filter(Boolean);
-  const name = (words[0] ?? "").split("/").pop() ?? "";
+  const name = family((words[0] ?? "").split("/").pop() ?? ""); // `claude` of the setting's `claude:opus`
   if (name === "claude") return { kind: "claude", mark: "C", label: "Claude Code" };
   if (name === "codex") return { kind: "codex", mark: "X", label: "Codex" };
   if (!name) return { kind: "agent", mark: "?", label: "an agent" };
-  return words.length > 1 || words[0]!.includes("/") ? { kind: "cmd", mark: name.slice(0, 2), label: name } : { kind: "agent", mark: name[0]!.toUpperCase(), label: name };
+  return words.length > 1 || words[0]!.includes("/") ? { kind: "cmd", mark: name.slice(0, 2), label: name } : { kind: "agent", mark: name[0]!.toUpperCase(), label: named(name) };
 }
+
+/** An agent's name as a person writes it (`Nemotron`, not the setting's `nemotron`). */
+const named = (word: string) => word.charAt(0).toUpperCase() + word.slice(1);
 
 /** The part of a command step's command its chip shows: the one its tile names (`gh pr create --draft` of
  *  `cd .. && git push && gh pr create --draft`), so the chip says what leaves the machine and not the `cd` before it. */
@@ -114,16 +119,19 @@ const fixedOf = (glob: string) => {
 };
 
 /** May change, as a tree: the repository's top-level entries; this step's folders opened to the files it covers
- *  (a written one says so, at most ``most`` a folder); a path it may create that is not there yet; another
- *  step's entries named; everything else dim. The glob itself is the pane's to show when asked. */
+ *  (a written one says so, at most ``most`` a folder); a path it may create that is not there yet (new; a file under
+ *  its folder); another step's entries named; everything else dim. The glob itself is the pane's to show when asked. */
 export function scopeTree(t: Pick<TaskX, "id" | "scope" | "files" | "filesN" | "touched" | "changed">, s: Pick<StateX, "tree" | "tasks">, most = 12): TreeRow[] {
   const wrote = writtenIn(t), written = new Set(wrote);
   const files = [...new Set([...t.files, ...wrote])].sort(); // a file it created is one of its files, though git does not track it yet
   const cut = t.filesN > t.files.length; // the snapshot lists 200 at most: the rest are its own all the same
-  const mine = new Map<string, string[]>(); // a folder of its files -> the files
-  for (const f of files) mine.set(dirOf(f), [...(mine.get(dirOf(f)) ?? []), f]);
   const globs = t.scope.filter((g) => !g.startsWith("!")).map(fixedOf);
   const fresh = cut ? [] : globs.filter((g) => g && !files.some((f) => f === g || f.startsWith(g))); // nothing there yet
+  // a file it may create stands under its folder, as its files do, so a deep path never wraps into what reads as a child
+  const born = new Set(fresh.filter((g) => g.includes("/") && !g.endsWith("/")));
+  const isNew = s.tree.length ? "new" : ""; // no tree (a replay, an older CLI): nobody knows what is there
+  const mine = new Map<string, string[]>(); // a folder of its files -> the files
+  for (const f of [...files, ...born].sort()) mine.set(dirOf(f), [...(mine.get(dirOf(f)) ?? []), f]);
   const others = new Map<string, string>(); // a top-level entry -> the other step whose files are under it
   for (const o of s.tasks) {
     if (o.id === t.id) continue;
@@ -135,18 +143,18 @@ export function scopeTree(t: Pick<TaskX, "id" | "scope" | "files" | "filesN" | "
   const open = (dir: string) => {
     const files = mine.get(dir) ?? [];
     if (dir) rows.push({ name: dir, depth: 0, kind: "in", note: "" });
-    for (const f of files.slice(0, most)) rows.push({ name: dir ? f.slice(dir.length) : f, depth: dir ? 1 : 0, kind: "in", note: written.has(f) ? "written" : "" });
+    for (const f of files.slice(0, most)) rows.push({ name: dir ? f.slice(dir.length) : f, depth: dir ? 1 : 0, kind: "in", note: written.has(f) ? "written" : born.has(f) ? isNew : "" });
     if (files.length > most) rows.push({ name: `… and ${files.length - most} more`, depth: dir ? 1 : 0, kind: "in", note: "" });
   };
   for (const top of tops) {
     const dirs = [...mine.keys()].filter((d) => (top.endsWith("/") ? d.startsWith(top) : false)).sort();
-    const here = fresh.filter((g) => topOf(g) === top);
+    const here = fresh.filter((g) => topOf(g) === top && !born.has(g));
     if (!top.endsWith("/") && files.includes(top)) rows.push({ name: top, depth: 0, kind: "in", note: written.has(top) ? "written" : "" });
     else if (dirs.length || here.length) {
       for (const d of dirs) open(d);
-      for (const g of here) rows.push({ name: g, depth: 0, kind: "in", note: written.has(g) ? "written" : s.tree.length ? "not there yet" : "" }); // no tree (a replay, an older CLI): nobody knows what is there
+      for (const g of here) rows.push({ name: g, depth: 0, kind: "in", note: isNew });
     } else if (cut && globs.some((g) => !g || g.startsWith(top))) rows.push({ name: top, depth: 0, kind: "in", note: "" }); // its own, past the list's cut
-    else rows.push({ name: top, depth: 0, kind: others.has(top) ? "other" : "out", note: others.has(top) ? "another step's" : "" });
+    else rows.push({ name: top, depth: 0, kind: others.has(top) ? "other" : "out", note: others.has(top) ? "another task's" : "" });
   }
   if (cut) rows.push({ name: `… and ${t.filesN - t.files.length} more files`, depth: 0, kind: "in", note: "" });
   return rows;
@@ -170,27 +178,37 @@ const family = (by: string) => by.split(":")[0]!;
 
 /** May run: the commands the repository's executor may run without asking, as its own command line lists them
  *  (`allows`), or that it names no list. The list is that executor's: a step someone else holds (another agent
- *  a run was given, you) is not under it. Outside: Graphene has nothing to grant a step yet, and says no more
- *  than that of an agent whose own settings decide what it reaches. */
-export function mayRun(s: Pick<StateX, "allows" | "executor">, t: Pick<TaskX, "held">): { commands: string[]; words: string; outside: string } {
-  if (s.allows && family(t.held.by) === family(s.executor)) return { commands: s.allows, words: s.allows.length ? "" : "no shell command", outside: OUTSIDE };
+ *  a run was given, you) is not under it. Graphene's own two (`graphene node *`, `graphene plan *`, how the agent
+ *  says it is done) are left out: they are not the repository's. Where the list does not let it run its own
+ *  check (`./gradlew` with the default list), the ``note`` says so, and where that is set (a flag in it between
+ *  backticks): `graphene init --executor` takes the executor's whole command, so naming it alone would lead nowhere. Outside: Graphene grants a step nothing, and says no more than that of an agent whose own
+ *  settings decide what it reaches. */
+export function mayRun(s: Pick<StateX, "allows" | "executor">, t: Pick<TaskX, "held" | "check">): { commands: string[]; words: string; note: string; outside: string } {
+  if (s.allows && family(t.held.by) === family(s.executor)) {
+    const commands = s.allows.filter((c) => !/^graphene (node|plan)\b/.test(c));
+    // `./gradlew` of `cd app && ./gradlew test`; `pytest` of `PYTHONPATH=. pytest -q`, not the setting before it
+    const check = commandChip((t.check ?? "").trim()), first = check.split(/\s+/).find((w) => !/^\w+=/.test(w)) ?? "";
+    const can = !first || commands.some((c) => check.startsWith(c.replace(/:?\*$/, "").trim())); // `npm test *`, `npm run test:*`
+    return { commands, words: commands.length ? "" : "no shell command", outside: OUTSIDE,
+             note: can ? "" : `It cannot run ${first}: Graphene runs its check for it, after the work. What it may run is set by the executor's \`--allowedTools\`.` };
+  }
   const held = t.held.state === "refused" || t.held.state === "caught";
-  return { commands: [], words: held ? "any command: what a command writes is still held to its files" : "any command", outside: OUTSIDE_OWN };
+  return { commands: [], words: held ? "any command: what a command writes is still held to its files" : "any command", note: "", outside: OUTSIDE_OWN };
 }
-export const OUTSIDE = "none granted: a step cannot be given outside tools or network yet";
+export const OUTSIDE = "none";
 export const OUTSIDE_OWN = "none granted by Graphene: this agent's own settings decide what else it reaches";
 
 /** Held by, in one of three states and never more than the tests prove (tests/test_every_agent.py,
  *  dev/process/graph-edit/hooks.md): refused before the write, caught when it finishes, or not held. A
  *  Graphene that does not say reads as not held: no shield for an agent nobody has tested. */
 export function heldWords(t: Pick<TaskX, "held">): { shield: boolean; line: string; proof: string } {
-  const by = family(t.held.by) === "claude" ? "Claude Code" : family(t.held.by) === "codex" ? "Codex" : t.held.by || "this agent";
-  if (t.held.state === "refused") return { shield: true, line: "A write outside its files is refused before it happens.", proof: `${by}'s hook, proven by tests/test_every_agent.py` };
-  if (t.held.state === "caught") return { shield: true, line: "A write outside its files is caught when it finishes, at the latest: the task comes back and none of its work is merged.",
-                                          proof: `Proven for every agent a run starts, ${by} too, by tests/test_every_agent.py: the finish checks what changed against its files.` };
+  const by = family(t.held.by) === "claude" ? "Claude Code" : family(t.held.by) === "codex" ? "Codex" : named(family(t.held.by)) || "This agent";
+  if (t.held.state === "refused") return { shield: true, line: "A write outside its files is refused before it happens.", proof: `${by}'s hook stops it, and its finish checks again.` };
+  if (t.held.state === "caught") return { shield: true, line: "A write outside its files is caught when it finishes, at the latest.",
+                                          proof: "Its finish checks what changed against its files: then none of its work lands, and the task needs your help." };
   return { shield: false, line: "Not held: nothing stops a write outside its files.",
            proof: t.held.state === "none" ? "A task you do yourself, or give to an editor's own agent (Cursor, Copilot), is checked only when you mark it done."
-             : "This Graphene does not say how this step is held." };
+             : "This version of Graphene does not say how this task is held." };
 }
 
 /** Stopped: this step's refused writes against the run's, then each with its time as the clock here reads it. */
@@ -222,6 +240,29 @@ export function checkWords(t: Pick<TaskX, "check" | "checked" | "state">): { ton
   return [{ tone: b[0], line: b[1] }, { tone: a[0], line: a[1] }];
 }
 
+const bare = (s: string) => s.trim().replace(/^(an?|the)\s+/i, "").toLowerCase();
+/** What a task is for, under its title in the pane: what follows `title:` in the plan's line (`Librarian service:
+ *  collections, …` says `Collections, …`); nothing where the line is its title again or starts with it (`hello says
+ *  hello to the person by name`: the title's hover has it whole); else the line. */
+export function whatFor(t: Pick<TaskX, "title" | "full">): string {
+  const full = t.full.trim(), title = bare(t.title);
+  if (!title || !bare(full).startsWith(title)) return full;
+  const rest = full.slice(full.toLowerCase().indexOf(title) + title.length).trim();
+  const said = rest.startsWith(":") ? rest.slice(1).trim() : "";
+  return said && said[0]!.toUpperCase() + said.slice(1);
+}
+
+/** Activity's line for a task open again after an agent was on it (sent back, tried again, or stopped): what the
+ *  snapshot keeps of that try, its agent and its check's last verdict, which the card does not wear, as it no longer
+ *  stands (marks.ts `standing`). Work that passed is open again only by a person's send back, whose note the next
+ *  agent is given (plan.reopen): Activity's Note row says it (state.py `note`); its moves and its files are not in the
+ *  snapshot. Nothing for any other task. */
+export function earlier(t: Pick<TaskX, "state" | "agent" | "checked">): string {
+  if (!t.agent || (t.state !== "ready" && t.state !== "waiting")) return "";
+  if (t.checked.after === "passed") return `agent ${t.agent}'s work passed its check and was sent back: your note goes to the agent that takes it next`;
+  return `agent ${t.agent} tried it${t.checked.after === "failed" ? ", and its check failed" : ""}`;
+}
+
 const thousands = (n: number) => (n >= 1000 ? `${Math.round(n / 1000)}k` : String(n));
 /** Tokens: what its attempts read and wrote, as shares; the check is Graphene's to run and costs none. */
 export function tokenWords(t: Pick<TaskX, "tokens">): { total: string; read: number; written: number; line: string } | null {
@@ -235,21 +276,19 @@ export function tokenWords(t: Pick<TaskX, "tokens">): { total: string; read: num
 export interface Stage { key: "plan" | "run" | "review"; label: string; at: "done" | "now" | "next"; note: string }
 
 /** One pipeline, the plan always first: Plan, Run, Review. Where the work is (the first stage not finished is
- *  `now`), and a few words under each: how big the plan is and what it asks, who is working, what waits for
- *  you. Auto is the same pipeline with no stop after the plan (`stopAfterPlan`). A command step is never
+ *  `now`), and a few words under each: how big the plan is, who is working, what waits for you. Auto is the same pipeline with no stop after the plan (`stopAfterPlan`). A command step is never
  *  `running` (the run executes it itself): a run going with one ready is running it, not starting. */
-export function pipeline(s: Pick<StateX, "drafting" | "tasks" | "goals" | "questions" | "run">): Stage[] {
+export function pipeline(s: Pick<StateX, "drafting" | "tasks" | "goals" | "run">): Stage[] {
   const n = (k: TaskX["state"]) => s.tasks.filter((t) => t.state === k).length;
   const count = (k: number, word: string) => `${k} ${word}${k === 1 ? "" : "s"}`;
   const planned = s.tasks.length > 0 && (n("running") > 0 || (!n("proposed") && !s.drafting)); // agents at work: the plan was started
   const ran = planned && s.tasks.every((t) => t.state === "review" || t.state === "done");
   const landed = ran && !n("review");
-  const asks = s.questions.length ? count(s.questions.length, "question") : "";
-  const plan = s.drafting ? (s.drafting.live ? `${count(draftedSteps(s).length, "step")} so far` : "the planner is writing")
-    : [s.tasks.length ? count(s.tasks.length, "step") : "", planned && n("proposed") ? `${n("proposed")} suggested` : "", asks].filter(Boolean).join(" · ");
+  const plan = s.drafting ? (s.drafting.live ? `${count(draftedSteps(s).length, "task")} so far` : "the planner is writing")
+    : [s.tasks.length ? count(s.tasks.length, "task") : "", planned && n("proposed") ? `${n("proposed")} suggested` : ""].filter(Boolean).join(" · "); // an open question is its chip's to say
   const run = !planned || ran ? "" : n("running") ? `${n("running")} working` : n("came back") ? `${n("came back")} need${n("came back") === 1 ? "s" : ""} help` : s.run.going ? (s.tasks.some((t) => t.command && !t.leaves && t.state === "ready") ? "running a command" : "starting")
     : n("yours") ? `${n("yours")} ask${n("yours") === 1 ? "s" : ""} you` : n("ready") ? `${n("ready")} ready` : "waiting";
-  const review = n("review") ? `${n("review")} to review` : landed ? "landed" : "";
+  const review = n("review") ? `${n("review")} to review` : landed ? "done" : "";
   return [
     { key: "plan", label: "Plan", at: planned ? "done" : "now", note: plan },
     { key: "run", label: "Run", at: !planned ? "next" : ran ? "done" : "now", note: run },
@@ -282,9 +321,9 @@ export function draftedSteps(s: Pick<StateX, "drafting" | "tasks" | "goals">): D
 export function planningLine(s: Pick<StateX, "drafting" | "tasks" | "goals">): string {
   if (!s.drafting) return "";
   const by = s.drafting.by ? ` (${s.drafting.by})` : "";
-  if (!s.drafting.live) return `The planner${by} is writing: its steps appear when the plan arrives`;
+  if (!s.drafting.live) return `The planner${by} is writing: its tasks appear when the plan arrives`;
   const n = draftedSteps(s).length;
-  return `The planner${by} is drawing: ${n} step${n === 1 ? "" : "s"} so far`;
+  return `The planner${by} is drawing: ${n} task${n === 1 ? "" : "s"} so far`;
 }
 
 /** The files chip on a card: the first of the paths it may change, and how many more there are. */
@@ -298,11 +337,6 @@ export function edgeKind(from: Pick<TaskX, "state"> | undefined, to: Pick<TaskX,
   return from?.state === "done" || to?.state === "done" ? "done" : "wait";
 }
 
-/** The worktrees on this machine, one per agent at work: each running attempt's, or the task's own. */
-export function worktrees(tasks: readonly TaskX[]): number {
-  return tasks.reduce((n, t) => n + (t.forks.some((f) => f.checkout) ? t.forks.filter((f) => f.checkout).length : t.checkout ? 1 : 0), 0);
-}
-
 /** How many attempts a task runs as: its own number, else the limits' (Set Limits…), else one. */
 export const attemptsOf = (t: Pick<TaskX, "planned">, limit: number | null | undefined): number => Math.min(8, Math.max(1, t.planned ?? limit ?? 1));
 
@@ -310,7 +344,7 @@ export const attemptsOf = (t: Pick<TaskX, "planned">, limit: number | null | und
  *  `graphene node set` does (dev/process/graph-edit/edits.md has each state's answer, as the engine gave it).
  *  A command step has no form: its line says where it changes. */
 export function whenEdit(t: Pick<TaskX, "state"> & { command?: string | null }): string {
-  if (t.command && t.state !== "done") return "A command step is its command alone: no files, no attempts, no agent. Change its run: line in the plan's text.";
+  if (t.command && t.state !== "done") return "A command task is its command alone: no files, no attempts, no agent. Change its run: line in the plan's text.";
   switch (t.state) {
     case "proposed": return "Suggested: nothing runs yet. A change binds once you accept it.";
     case "ready": case "waiting": return "Not started: its agent starts from what you set here.";
@@ -318,7 +352,7 @@ export function whenEdit(t: Pick<TaskX, "state"> & { command?: string | null }):
     case "review": return "To review: its work is finished. A change binds when it starts again, if you send it back.";
     case "came back": return "Needs help: a change binds when it starts again.";
     case "yours": return "Yours: no agent takes it. Untick “I will do this one” and one can.";
-    case "done": return "Done: a finished task is not edited. Send it back to open it again.";
+    case "done": return `Done: a finished task is not edited.${t.command ? "" : " Send it back, from the …, to open it again."}`; // actsFor's Send back…
   }
 }
 
@@ -378,23 +412,17 @@ export function topLine(s: Pick<StateX, "replay" | "stand_in">): string {
   return replayLine(s.replay) || (s.stand_in ? "practice run · a scripted stand-in, no real AI" : "");
 }
 
-/** The counts under the goal: `2 working · 2 need you · 2 of 7 done · $0.42`. */
-export function counts(s: State): string {
-  const sb = s.scoreboard;
-  const parts = [`${sb.running} working`, `${sb.need_you} need${sb.need_you === 1 ? "s" : ""} you`, `${sb.proven} of ${sb.total} done`];
-  const spent = usd(s.spent);
-  if (spent) parts.push(spent);
-  return parts.join(" · ");
-}
-
-/** The header's lines. Narrow (the side bar), the header is the goal alone, one line, so the first wave
- *  shows in whatever height the view gets: the counts and the auto line move to the goal's hover and to
- *  the footer, the live line first. */
-export function headerFor(s: StateX, narrow: boolean): { goal: string; hover: string; counts: string; auto: string; footer: string } {
-  const goal = headline(s) || (s.tasks.length ? "your plan" : "no goal yet"); // an ask sets no goal: what was asked
-  const c = counts(s), a = autoLine(s);
-  if (!narrow) return { goal, hover: "", counts: c, auto: a, footer: "" };
-  return { goal, hover: [goal, c, a].filter(Boolean).join("\n"), counts: "", auto: "", footer: a || c };
+/** The header: the goal (what was asked, or the sub-goal a planner is drawing), the stages with what the run has
+ *  cost in Run's note, and auto's line while auto is at work (`done`, it is said by the stages and the status
+ *  bar). The cost is said once: not beside an auto line that says it against its budget, and not for a race
+ *  against the scripted stand-in or a replay, which spend nothing (state.ts `free`). */
+export function headerFor(s: StateX): { goal: string; auto: string; stages: Stage[] } {
+  const drawing = s.drafting?.steps.find((d) => !d.leaf && !d.parent)?.title;
+  const goal = headline(s) || drawing || (s.tasks.length ? "your plan" : "Graphene"); // an ask sets no goal: what was asked
+  const auto = s.auto?.stage === "done" ? "" : autoLine(s);
+  const spent = free(s) || (auto && s.auto?.spent !== null) ? "" : usd(s.spent);
+  const stages = pipeline(s).map((st) => (st.key === "run" && spent && st.at !== "next" ? { ...st, note: [st.note, spent].filter(Boolean).join(" · ") } : st));
+  return { goal, auto, stages };
 }
 
 export function done(ts: Task[]): string {
@@ -409,30 +437,75 @@ export interface Button {
   icon: string; // a codicon's name, "" for none
   fork?: string;
   main?: boolean; // drawn as the primary button
+  off?: boolean; // shown, and not pressed: its hover says why
 }
 
-/** The buttons a task's pane offers, in order. A replay offers none: its pane reads. A step past the line
- *  offers nothing after it (a task drawn there lands in the first column, its edge running backwards), and a
- *  command step has no agent to message. */
-export function actsFor(t: TaskX, replay: boolean): Button[] {
+/** The header's one act on the whole plan: Stop while a run goes; Start while any task is a suggestion and none
+ *  works (Home's Start: every suggested task accepted, the plan's open questions answered with their defaults,
+ *  then the run), so a task accepted alone in its pane does not turn it into a Run that leaves the rest behind;
+ *  else Run, filled while a task is ready. Start is held as Home's is: while a question with no default is open,
+ *  and with Exact on (the host says) while any question is. Run is not, as Home's and `graphene run` are not: it
+ *  leaves such a question open. None for no plan, or one all done: nothing to start. */
+export function mainAct(s: Pick<StateX, "run" | "tasks" | "questions">, exact = false): Button | null {
+  if (!s.tasks.length || (!s.run.going && s.tasks.every((t) => t.state === "done"))) return null;
+  if (s.run.going) return { label: "Stop", act: "stop", icon: "debug-stop", title: "stop every agent: their tasks go back to the plan" };
+  const n = (k: TaskX["state"]) => s.tasks.filter((t) => t.state === k).length;
+  const answers = startAnswers(s);
+  if (n("proposed") && !n("running")) {
+    const waits = exact && s.questions.length > 0, held = waits || s.questions.some((q) => !q.default); // home/cards.ts `unanswered`
+    return { label: "Start", act: "start", icon: "play", main: !held, off: held,
+             title: waits ? "Exact is on: it waits for your answers" : held ? "it waits for an answer: a question with no default is open"
+               : `accept the ${n("proposed")} suggested${answers ? `, ${answers}` : ""}, then start an agent on each that is ready` };
+  }
+  const ready = n("ready");
+  return { label: "Run", act: "run", icon: "play", main: ready > 0, off: !ready,
+           title: !ready ? "nothing is ready to run" : `${answers ? `${answers}, then ` : ""}start an agent on every task that is ready` };
+}
+
+/** What Start and Run do to the plan's open questions: each with a default takes it, as `graphene run` and
+ *  accepting the whole plan do (one with none stays open, and holds Start). Said in their hover and under the
+ *  question's chip, so a click on either is not an answer nobody saw. */
+export function startAnswers(s: Pick<StateX, "questions">): string {
+  const q = s.questions.filter((x) => x.default), all = q.length === s.questions.length;
+  if (!q.length) return "";
+  if (q.length === 1) return `answer ${all ? "the" : "an"} open question with its default (“${cut(q[0]!.default!, 60)}”)`;
+  return `answer ${all ? "the " : ""}${q.length} open questions with their defaults`;
+}
+
+/** The buttons a task's pane offers, in order, its main one first. A replay offers none: its pane reads. A step
+ *  past the line offers nothing after it (a task drawn there lands in the first column, its edge running
+ *  backwards), and a command step has no agent to message. To review, it is Home's card (home/cards.ts): Compare
+ *  first while two attempts passed and none is kept, else Open changes until they were ``opened`` in this
+ *  window, and only then a filled Approve; Send back… beside them either way. */
+export function actsFor(t: TaskX, replay: boolean, opened = false): Button[] {
   const out: Button[] = [];
   if (replay) return out;
-  const hasChanges = t.changed.length > 0 || ["running", "review", "done", "came back"].includes(t.state);
+  // a task that came back may have stopped before writing: its changes only when it has some, else the diff opens nothing
+  const hasChanges = t.changed.length > 0 || ["running", "review", "done"].includes(t.state);
+  const review = t.state === "review";
+  const choose = review && !t.kept && t.forks.filter((f) => f.state === "passed").length > 1; // its check could not choose: the person keeps one
+  const look = review && !choose && !opened;
   if (asksYou(t)) out.push({ label: "Approve and run", act: "markDone", title: `it leaves your machine: graphene node done runs ${cut(t.command ?? "", 80)}`, icon: "check", main: true });
   else if (t.state === "yours") out.push({ label: "Mark done", act: "markDone", icon: "check", main: true, // a step of your own, as Home's Mark done
                                            title: `you did it yourself: graphene node done ${t.check ? "runs its check first, in a terminal" : "finishes it, it has no check to run"}` });
-  if (t.state === "review") out.push({ label: "Approve", act: "signOff", title: "it lands in your repository: graphene node signoff", icon: "check", main: true });
-  if (t.state === "proposed") out.push({ label: "Accept", act: "accept", title: "graphene plan accept", icon: "check", main: true });
+  if (choose) out.push({ label: "Compare attempts", act: "compareForks", title: "more than one attempt passed its check: compare them and keep one, then approve it", icon: "split-horizontal", main: true });
+  if (look) out.push({ label: "Open changes", act: "openDiff", title: "you have not opened its changes yet: the diff editor shows them", icon: "diff", main: true });
+  if (review && !choose) out.push({ label: "Approve", act: "signOff", title: "it lands in your repository: graphene node signoff", icon: "check", main: !look });
+  // one task alone, from the …: the header's Start accepts every suggested task, and a card's × leaves one out
+  if (t.state === "proposed") out.push({ label: "Accept only this task", act: "accept", title: "the others stay suggested: graphene plan accept", icon: "check" });
   if (t.state === "came back") out.push({ label: "Help it…", act: "handBack", title: "allow what it needs, add a task for it, or try again", icon: "debug-step-back", main: true });
   if (t.state === "running" && t.stopped.length) out.push({ label: "Allow the write…", act: "handBack", icon: "check", main: true, // the run waits on it, as Home's Allow it to change
                                                            title: `it was stopped writing ${cut(t.stopped[t.stopped.length - 1]!, 60)}, outside its files: graphene node widen lets it` });
-  if (hasChanges) out.push({ label: "Open changes", act: "openDiff", title: "its changes so far, in the diff editor", icon: "diff" });
-  if (t.forks.length >= 2) out.push({ label: "Compare attempts", act: "compareForks", title: "the attempts side by side", icon: "split-horizontal" });
+  if (hasChanges && !look) out.push({ label: "Open changes", act: "openDiff", title: "its changes so far, in the diff editor", icon: "diff" });
+  if (t.forks.length >= 2 && !choose) out.push({ label: "Compare attempts", act: "compareForks", title: "the attempts side by side", icon: "split-horizontal" });
+  if (review || (t.state === "done" && !t.command)) out.push({ label: "Send back…", act: "sendBack", icon: "debug-step-back", // as Home's, and Edit's line for a finished task says it
+                                                                title: review ? "say what is wrong, and an agent takes it again: graphene node reopen"
+                                                                  : "what landed stays: say what is wrong, and an agent takes it again from there: graphene node reopen" });
   if (!t.leaves) out.push({ label: "Add task after", act: "add-after", title: "draw a new task that waits on this one", icon: "add" });
   out.push({ label: "Add task beside", act: "add-under", title: "draw a new task under the same sub-goal", icon: "add" });
   if (!t.leaves) out.push({ label: "Link to…", act: "link", title: "then click the task that waits on this one", icon: "link" });
-  if (["proposed", "ready", "waiting"].includes(t.state)) out.push({ label: "Remove", act: "drop", title: "graphene node drop", icon: "trash" });
-  if (!t.command && ["running", "ready", "waiting", "came back"].includes(t.state)) out.push({ label: "Message agent", act: "tell", title: "a line the agent on it reads with its next step", icon: "comment" });
+  if (["proposed", "ready", "waiting"].includes(t.state)) out.push({ label: "Remove", act: "drop", title: "take it out of the plan: graphene node drop", icon: "trash" });
+  if (!t.command && ["running", "ready", "waiting", "came back"].includes(t.state)) out.push({ label: "Message agent", act: "tell", title: "a line the agent on it reads with its next move", icon: "comment" });
   return out;
 }
 
@@ -467,24 +540,24 @@ export function tabOrder(lay: Layout, ids: string[]): string[] {
   return ids.filter(at).sort((a, b) => (at(a)!.rank - at(b)!.rank) || (at(a)!.y - at(b)!.y) || (at(a)!.x - at(b)!.x));
 }
 
-/** Every key the page answers, for the `?` overlay. */
+/** Every key the page answers and what the mouse does, for the `?` overlay, in the screen's words: what a person
+ *  moves between, adds, links and sees, then how the view moves. */
 export const KEYS: readonly [string, string][] = [
-  ["Tab", "the next box"],
-  ["← → ↑ ↓", "the box beside it (across the waves, or along one)"],
-  ["Enter", "open the box's details"],
-  ["Esc", "close the details, or stop linking"],
-  ["g", "bring the goal on screen"],
-  ["n", "the next step that needs you: selected, and brought on screen"],
-  ["f", "fit the whole plan in the pane"],
-  ["- · =", "zoom out · zoom in; far out, a card is a row: its mark and its title, then its mark alone"],
-  ["0", "back to whole cards at their own size (100%)"],
-  ["v", "graph or lanes"],
-  ["?", "this list"],
-  ["+", "draw a task: after the selected one, or on its own (the + past a card's out port, and Add task, do the same)"],
+  ["Tab", "the next task"],
+  ["← → ↑ ↓", "move between tasks"],
+  ["Enter", "open the task's details"],
+  ["Esc", "close what is open, or stop linking"],
+  ["n", "the next task that needs you"],
+  ["g", "the goal"],
+  ["+", "add a task, after the selected one if there is one"],
   ["drag a dot", "onto another task: that task waits on this one"],
-  ["×", "beside a need: it stops waiting on it"],
-  ["wheel · drag", "scroll · pan; ⌘ or Ctrl with the wheel, or a pinch, zooms about the pointer"],
-  ["double click", "on a row: whole cards, that one in the middle; on the canvas: fit"],
+  ["v", "graph or lanes"],
+  ["f", "fit the plan"],
+  ["- · =", "zoom out · zoom in"],
+  ["0", "100%: whole cards at their own size"],
+  ["wheel · drag", "scroll · pan; with ⌘ or Ctrl, or a pinch, zoom"],
+  ["double click", "a row: open it as a card; the canvas: fit the plan"],
+  ["?", "this list"],
 ];
 
 /** The hint while a link is armed: what to click or where to drop, and the two ways out. Esc works only with
@@ -493,5 +566,34 @@ export function linkHint(title: string, dragging: boolean): string {
   return `link: ${dragging ? "drop it on" : "click"} the task that waits on “${title}” · Cancel or Esc stops it`;
 }
 
-/** The first-time hint under the graph. */
-export const FIRST_HINT = "click a task to change it · + draws a new one · drag a dot onto another task to link them · ? lists every key";
+/** The empty graph's words: who plans here, by name. Graphene's hooks reach Claude Code and Codex alone, not
+ *  Cursor's own Agent: in Cursor that is said too, in the same words wherever a screen points to an agent. */
+export const ASK_AGENT = `${ASK}: its plan appears here. Or draw the first task.`;
+export const CURSOR_AGENT = NOT_CURSOR;
+
+/** The question chip's words, its two halves as the tasks' chip has them: how many, then what a click on Start or Run
+ *  (``act``) picks for them unanswered, from their own defaults (`1 question · Start picks “json and csv”`), or
+ *  `answer` while it picks nothing; none for none. A narrow tab cuts it to its room, and the hover says it whole. */
+export function askLine(qs: readonly Pick<Question, "default">[], act = ""): string {
+  if (!qs.length) return "";
+  const n = `${qs.length} question${qs.length === 1 ? "" : "s"}`, d = qs.filter((q) => q.default);
+  if (!act || !d.length) return `${n} · answer`;
+  return `${n} · ${act} picks ${d.length === 1 ? `“${cutAtWord(d[0]!.default!, 28)}”` : d.length === qs.length ? "their defaults" : `${d.length} defaults`}`;
+}
+/** ``s`` cut to ``n`` characters at a space where one is near, so no word is left in half (`asked fo…`). */
+const cutAtWord = (s: string, n: number) => {
+  const c = cut(s, n), sp = s.lastIndexOf(" ", n - 1);
+  return c === s || sp < n * 0.6 ? c : `${s.slice(0, sp).replace(/[\s.,:;·-]+$/, "")}…`;
+};
+
+/** The news a screen reader hears from the graph: the latest line that nothing on screen says already (the
+ *  plan's open question has its chip, auto's wait its line in the header), in the screen's words, so the CLI's
+ *  `proposed` is suggested and `came back` needs help. */
+export function newsLine(s: Pick<StateX, "news" | "questions">, autoShown: boolean): string {
+  const said = (line: string) => (s.questions.length > 0 && /^asks: |\bquestions? waits? for you\b/.test(line)) || (autoShown && /^auto\b/.test(line));
+  return newsWords([...s.news].reverse().find((l) => !said(l)) ?? "");
+}
+/** A news line in the screen's words (the status bar's hover reads them too): only the narrator's own verbs
+ *  (`proposed: <title>`, `proposed goal: …`, `<title> came back: why`), so a title that says proposed keeps it. */
+export const newsWords = (line: string): string =>
+  screenWords(line).replace(/^(the planner )?proposed(?=:| goal:| \d)/, `$1${SAY.proposed}`).replace(/ came back(?=: )/, ` ${SAY["came back"]}`);
