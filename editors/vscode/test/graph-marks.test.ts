@@ -12,11 +12,11 @@ const big = parseState(readFileSync(new URL("./fixtures/big.json", import.meta.u
 /** A step in a state, as the parser fills an older CLI's snapshot, with what the case is about on top. */
 const step = (state: Word, more: Partial<TaskX> = {}): TaskX => ({ ...parseTask({ id: more.id ?? state, state }), ...more });
 
-test("every state wears one mark, and the full card's corner leaves out the three its border says", () => {
+test("every state wears one mark, and the full card's corner leaves out the two its words say", () => {
   const rows: [Word, Mark, Mark | "", string][] = [
     ["waiting", "waiting", "", "waiting"], ["ready", "ready", "", "ready"], ["running", "working", "working", "working"],
     ["review", "you", "you", "to review"], ["yours", "yours", "yours", "yours"], ["came back", "back", "back", "needs help"],
-    ["done", "landed", "landed", "done"], ["proposed", "suggested", "", "suggested"],
+    ["done", "landed", "landed", "done"], ["proposed", "suggested", "suggested", "suggested"],
   ];
   assert.deepEqual(rows.map((r) => r[0]).sort(), [...WORDS].sort(), "a state the snapshot can say has no row");
   for (const [state, mark, corner, word] of rows) {

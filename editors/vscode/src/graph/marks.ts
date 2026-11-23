@@ -31,11 +31,11 @@ export function stateMark(t: Stated): Mark {
   return t.state === "running" ? "working" : t.state === "ready" ? "ready" : "waiting";
 }
 
-/** The full card's corner: the state's mark, or none for waiting, ready and suggested (their words and their
- *  border say it). */
+/** The full card's corner: the state's mark, or none for waiting and ready (their words say it). A suggested card
+ *  wears its dashed ring there: its border is a card's, and its status says what it covers. */
 export function cornerMark(t: Stated): Mark | "" {
   const m = stateMark(t);
-  return m === "waiting" || m === "ready" || m === "suggested" ? "" : m;
+  return m === "waiting" || m === "ready" ? "" : m;
 }
 
 const WORD: Record<Mark, string> = { waiting: SAY.waiting, ready: SAY.ready, working: SAY.running, you: SAY.review, yours: SAY.yours,
