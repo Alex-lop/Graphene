@@ -7,7 +7,7 @@ import { needs, OFFERS, offerOn } from "../needs.ts";
 import { headline, SAY, usd, type Question, type State, type Task } from "../state.ts";
 import { WHO } from "./who.ts";
 
-export const ACTS = ["ask", "cancel", "startAll", "discardAll", "run", "stop", "drop", "answer", "openDiff", "compare", "keep",
+export const ACTS = ["startAll", "discardAll", "run", "stop", "drop", "answer", "openDiff", "compare", "keep",
                      "approve", "sendBack", "offer", "tryAgain", "allow", "message", "markDone", "showGraph", "demo", "setup",
                      "install", "setKey", "refresh", "openFolder", "exact", "stopAfter", "runWorkflow"] as const;
 export type Act = (typeof ACTS)[number];
@@ -230,25 +230,14 @@ export function home(s: State, seen: ReadonlySet<string> = new Set(), exact = fa
            empty: !s.tasks.length && !s.questions.length };
 }
 
-/** What `graphene ask` printed that a person wants to read: the planner's own words, and what planning cost. */
-export function said(stdout: string): string[] {
-  const lines = stdout.split(/\r?\n/);
-  const out: string[] = [];
-  const at = lines.findIndex((l) => l.trim() === "the planner says:");
-  if (at >= 0) for (const l of lines.slice(at + 1)) { if (!/^\s+\S/.test(l)) break; out.push(l.trim()); }
-  const cost = lines.find((l) => /^the planner \(/.test(l))?.match(/\$[\d.]+/);
-  if (cost) out.push(`Planning cost ${cost[0]}.`);
-  return out;
-}
-
 export type FromHome = { type: "ready" } | { type: "act"; act: Act; id: string; arg?: string; flag?: boolean };
 
 /** The acts that take no task: each still checked for what it carries. */
-const GLOBAL: readonly Act[] = ["ask", "cancel", "startAll", "discardAll", "run", "stop", "showGraph", "demo", "setup", "install",
+const GLOBAL: readonly Act[] = ["startAll", "discardAll", "run", "stop", "showGraph", "demo", "setup", "install",
                                 "setKey", "refresh", "openFolder", "exact", "stopAfter", "runWorkflow"];
 
-/** A message from the page, checked against the plan before anything runs: a known act; the text of an ask; a
- *  planner the Set Up offers; a task the plan has (a question, for answer); an option the question has; an offer
+/** A message from the page, checked against the plan before anything runs: a known act; a planner the Set Up
+ *  offers; a task the plan has (a question, for answer); an option the question has; an offer
  *  the task carries. Null for anything else. */
 export function checkHome(m: unknown, s: State | null, workflows: readonly Pick<Listed, "name" | "error">[] = []): FromHome | null {
   if (!m || typeof m !== "object") return null;
@@ -258,7 +247,6 @@ export function checkHome(m: unknown, s: State | null, workflows: readonly Pick<
   const act = r.act as Act;
   const id = typeof r.id === "string" ? r.id : "";
   const arg = typeof r.arg === "string" ? r.arg : undefined;
-  if (act === "ask") return arg?.trim() && arg.length <= 4000 ? { type: "act", act, id: "", arg: arg.trim() } : null;
   if (act === "exact" || act === "stopAfter") return typeof r.flag === "boolean" ? { type: "act", act, id: "", flag: r.flag } : null;
   if (act === "runWorkflow") return workflows.some((w) => w.name === arg && !w.error) ? { type: "act", act, id: "", arg } : null; // one the repository has
   if (act === "setup") return WHO.some((w) => w.word === arg) ? { type: "act", act, id: "", arg, flag: r.flag === true } : null;

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import * as C from "../src/commands.ts";
-import { banner, checkHome, countsLine, home, PROVES_NOTHING, said, type Card, type Home } from "../src/home/cards.ts";
+import { banner, checkHome, countsLine, home, PROVES_NOTHING, type Card, type Home } from "../src/home/cards.ts";
 import { headline, parseState, type State } from "../src/state.ts";
 
 const fixture = (name: string): State => parseState(readFileSync(new URL(`./fixtures/${name}.json`, import.meta.url), "utf8"));
@@ -111,15 +111,6 @@ test("the header: the goal, else what was last asked; the counts in plain words;
   assert.equal(home(fixture("empty")).empty, true);
 });
 
-test("what an ask printed: the planner's own words and what planning cost, not the CLI's next steps", () => {
-  const out = ["asking the planner (nemotron)…", "the planner says:",
-               "  Three wishes, three tasks: each owns one file and its own test file, so all three run at once.",
-               "proposed top: the CLI prints the top words", "the planner (nemotron): 5 calls, 9942 in, 385 out, $0.0069 at list price",
-               "next: `graphene plan accept`, or prune in `graphene watch` (y accepts, d drops)"].join("\n");
-  assert.deepEqual(said(out), ["Three wishes, three tasks: each owns one file and its own test file, so all three run at once.", "Planning cost $0.0069."]);
-  assert.deepEqual(said("proposed top: x\n"), []);
-});
-
 test("the page's messages are checked against the plan before anything runs", () => {
   const s = fixture("graph-race");
   const logs = s.tasks.find((t) => t.id === "logs")!;
@@ -127,11 +118,8 @@ test("the page's messages are checked against the plan before anything runs", ()
   const ok = (m: unknown) => assert.ok(checkHome(m, plan), JSON.stringify(m));
   const no = (m: unknown) => assert.equal(checkHome(m, plan), null, JSON.stringify(m));
   ok({ type: "ready" });
-  ok({ type: "act", act: "ask", arg: "  a --json flag  " });
-  assert.equal((checkHome({ type: "act", act: "ask", arg: "  a --json flag  " }, plan) as { arg: string }).arg, "a --json flag");
-  no({ type: "act", act: "ask", arg: "   " });
-  no({ type: "act", act: "ask", arg: "x".repeat(4001) });
-  no({ type: "act", act: "ask" });
+  no({ type: "act", act: "ask", arg: "a --json flag" }); // a plan comes from the person's coding agent: Home takes no ask
+  no({ type: "act", act: "cancel" });
   ok({ type: "act", act: "setup", arg: "codex", flag: true });
   no({ type: "act", act: "setup", arg: "nemotron", flag: true }); // Home's picker offers Claude Code and Codex; the CLI still takes --executor nemotron
   no({ type: "act", act: "setup", arg: "rm -rf /" });
@@ -155,8 +143,7 @@ test("the page's messages are checked against the plan before anything runs", ()
   assert.equal(checkHome({ type: "act", act: "setup", arg: "claude" }, null)?.type, "act"); // set up: no plan yet
 });
 
-test("Home's commands: an ask, a send-back with its note, a set-up that asks nothing", () => {
-  assert.deepEqual(C.ask("-v please"), ["ask", "--", "-v please"]);
+test("Home's commands: a send-back with its note, a set-up that asks nothing", () => {
   assert.deepEqual(C.reopen("top", "-- the test only checks one word"), ["node", "reopen", "top", "--note=-- the test only checks one word"]);
   assert.throws(() => C.reopen("-x", "why"));
   assert.deepEqual(C.initWith("codex"), ["init", "--planner", "codex", "--executor", "codex"]);

@@ -1,6 +1,6 @@
 // Home, in the webview: draws what the host sends (cards.ts's model) and asks the host to act. Plain DOM, no
 // library, and every word goes in as text, never as markup: task titles and the planner's words are a model's.
-// The ask box is made once and kept, so a snapshot that arrives while the person types moves nothing under them.
+// Nothing is typed here: a plan comes from the person's coding agent, in its chat (`graphene plan propose`).
 import { STOP_AFTER, STOP_AFTER_HOVER } from "../graph/words.ts";
 import type { Act, Btn, Card, Home, Section } from "./cards.ts";
 import { EXACT, WHO } from "./who.ts";
@@ -8,11 +8,9 @@ import { EXACT, WHO } from "./who.ts";
 declare function acquireVsCodeApi(): { postMessage(m: unknown): void; getState(): unknown; setState(s: unknown): void };
 
 type Status = { kind: string; text: string };
-type Last = { n: number; lines: string[]; bad: boolean; asked?: string; key?: boolean };
-type Model = { type: "home"; status: Status; home: Home | null; review: boolean; exact: boolean; busy: string; planning: boolean; last: Last };
-type Saved = { open?: Record<string, boolean>; draft?: string; review?: boolean; cleared?: number };
-
-const PLACEHOLDER = "What do you want done? For example: a --json flag on the list command, with a test";
+type Last = { n: number; lines: string[]; bad: boolean; key?: boolean };
+type Model = { type: "home"; status: Status; home: Home | null; review: boolean; exact: boolean; busy: string; last: Last };
+type Saved = { open?: Record<string, boolean>; review?: boolean };
 const api = acquireVsCodeApi();
 let saved: Saved = (() => { try { return (api.getState() as Saved) ?? {}; } catch { return {}; } })();
 const remember = (patch: Partial<Saved>) => {
@@ -40,55 +38,61 @@ function button(b: Btn, parent: HTMLElement): HTMLButtonElement {
 
 // ---- the page, made once ----
 
+/** The graph's mark, three tasks and their links, drawn in the button's own colour. */
+function mark(parent: HTMLElement) {
+  const NS = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(NS, "svg");
+  svg.setAttribute("viewBox", "0 0 16 16");
+  svg.setAttribute("aria-hidden", "true");
+  for (const [tag, attrs] of [["path", { d: "M4.5 5.5 11 8M4.5 10.5 11 8" }], ["circle", { cx: "3.5", cy: "5", r: "2" }],
+                               ["circle", { cx: "3.5", cy: "11", r: "2" }], ["circle", { cx: "12", cy: "8", r: "2.5" }]] as const) {
+    const e = document.createElementNS(NS, tag);
+    for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+    svg.appendChild(e);
+  }
+  parent.appendChild(svg);
+}
+
 const banner = el("div", "banner");
 const screen = el("section", "screen");
 const work = el("section", "work");
-const head = el("div", "head", undefined, work);
+const head = el("div", "head", undefined, work); // the hero: the plan in one card, and the way into the graph
 const goal = el("div", "goal", undefined, head);
 const counts = el("div", "counts", undefined, head);
+const intro = el("p", "intro", undefined, head);
 const pipe = el("div", "pipe", undefined, head); // Plan, Run, Review: where the work is
 pipe.setAttribute("role", "list");
-const ask = el("div", "ask", undefined, work);
-const box = el("textarea", "", undefined, ask);
-box.rows = 3;
-box.placeholder = PLACEHOLDER;
-box.setAttribute("aria-label", "What do you want done?");
-box.value = saved.draft ?? "";
-const row = el("div", "ask-row", undefined, ask);
-const go = el("button", "", "Plan it", row);
-go.title = "the planner reads your repository and suggests tasks; nothing runs until you start them (⌘ or Ctrl + Enter)";
-const cancel = el("button", "quiet", "Cancel", row);
-const busy = el("span", "busy", "", row);
-const stopAfter = el("button", "switch", undefined, ask); // the one switch: off is auto
+const toGraph = el("button", "open", undefined, head);
+mark(toGraph);
+toGraph.append("Open the graph");
+toGraph.title = "the whole plan in a tab of the editor: every task, what it waits on, and what proves it";
+toGraph.addEventListener("click", () => send("showGraph"));
+const hand = el("p", "hand", "On the graph, Add task draws a task by hand.", head);
+const busy = el("div", "busy", "", head);
+const out = el("div", "said", undefined, work);
+const sections = el("div", "sections", undefined, work);
+const prefs = el("div", "prefs", undefined, work); // engine settings, which plans from any agent follow too
+el("div", "prefs-head", "Settings", prefs);
+const stopAfter = el("button", "switch", undefined, prefs); // the one switch: off is auto
 stopAfter.setAttribute("role", "switch");
 el("i", "", undefined, stopAfter);
 stopAfter.append(STOP_AFTER);
 stopAfter.title = STOP_AFTER_HOVER;
 stopAfter.addEventListener("click", () => send("stopAfter", { flag: stopAfter.getAttribute("aria-checked") !== "true" }));
-const exactLabel = el("label", "tick exact", undefined, ask);
+const stopNote = el("p", "pref-note", "", prefs);
+const exactLabel = el("label", "tick exact", undefined, prefs);
 const exact = el("input", "", undefined, exactLabel);
 exact.type = "checkbox";
 exactLabel.append(" Exact");
 exactLabel.title = EXACT;
 exact.addEventListener("change", () => send("exact", { flag: exact.checked }));
-const out = el("div", "said", undefined, ask);
-const intro = el("p", "intro", undefined, work);
-const sections = el("div", "sections", undefined, work);
+el("p", "pref-note", "Start waits for every answer, and each finished task for your approval.", prefs);
 const foot = el("div", "foot", undefined, work);
-button({ label: "Show graph", act: "showGraph" }, foot);
 button({ label: "Watch the demo", act: "demo" }, foot);
 document.body.append(banner, screen, work);
-work.hidden = screen.hidden = banner.hidden = cancel.hidden = true;
+work.hidden = screen.hidden = banner.hidden = true;
 
 let model: Model | null = null;
-const submit = () => {
-  const text = box.value.trim();
-  if (text && !model?.planning) send("ask", { arg: text });
-};
-go.addEventListener("click", submit);
-box.addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submit(); } });
-box.addEventListener("input", () => remember({ draft: box.value }));
-cancel.addEventListener("click", () => send("cancel"));
 
 // ---- drawing ----
 
@@ -100,43 +104,31 @@ function render(m: Model) {
   const h = m.home;
   banner.textContent = h.banner;
   banner.hidden = !h.banner;
-  goal.textContent = h.goal || "Nothing asked yet";
+  head.classList.toggle("empty", h.empty);
+  goal.textContent = h.goal || (h.empty ? "No plan yet" : "");
   goal.title = h.goal; // three lines at most on the page
-  goal.classList.toggle("dim", !h.goal);
-  goal.hidden = !h.goal && !h.empty; // a plan whose ask is no longer known: no headline rather than a wrong one
+  goal.hidden = !goal.textContent; // a plan whose ask is no longer known: no headline rather than a wrong one
   counts.textContent = h.counts;
-  counts.hidden = !h.counts;
-  pipe.replaceChildren(...h.stages.map((st, i) => {
+  counts.hidden = !h.counts || h.empty;
+  pipe.replaceChildren(...h.stages.map((st) => {
     const stage = el("span", `stage ${st.at}`);
     stage.setAttribute("role", "listitem");
     stage.setAttribute("aria-current", st.at === "now" ? "step" : "false");
-    el("i", "", String(i + 1), stage);
-    stage.append(st.label);
-    if (st.note) el("small", "", st.note, stage);
+    el("b", "", st.label, stage);
+    el("small", "", st.note || "\u00a0", stage); // the bars line up whether or not a stage says more
     return stage;
   }));
-  pipe.hidden = h.empty; // nothing asked yet: the intro says what happens
+  pipe.hidden = h.empty; // no plan yet: the intro says where one comes from
+  intro.hidden = hand.hidden = !h.empty;
+  intro.textContent = "Ask your coding agent for something, in its chat: Claude Code or Codex. Its plan shows here and on the graph, "
+    + (h.stopAfter ? "and nothing runs until you start it. " : "and what fits your limits runs without waiting. ")
+    + `Each task lands only when its check passes${m.review ? " and you approve it" : ""}.`;
   stopAfter.setAttribute("aria-checked", String(h.stopAfter));
-  go.title = h.stopAfter ? "the planner reads your repository and suggests tasks; nothing runs until you start them (⌘ or Ctrl + Enter)"
-    : "auto: the planner draws the plan, then what fits your limits runs without waiting (⌘ or Ctrl + Enter)";
-  box.disabled = m.planning;
-  go.hidden = m.planning;
-  cancel.hidden = !m.planning;
+  stopNote.textContent = h.stopAfter ? "A plan your agent proposes waits for your Start." : "Off: a plan that fits your limits runs at once.";
   busy.textContent = m.busy;
   busy.hidden = !m.busy;
   exact.checked = m.exact;
-  if (m.last.asked && m.last.n !== saved.cleared) { // planned: the box is free for the next thing
-    if (box.value.trim() === m.last.asked) box.value = "";
-    remember({ draft: box.value, cleared: m.last.n });
-  }
-  box.placeholder = h.sections.some((s) => s.key === "suggested") ? "Ask for something else…" : PLACEHOLDER;
-  ask.classList.toggle("compact", h.sections.length > 0); // one line while there is work to read; it grows on focus
   drawSaid(out, m.last);
-  intro.hidden = !h.empty;
-  intro.textContent = "Say what you want done, in a sentence or a paragraph. "
-    + (h.stopAfter ? "The planner splits it into small tasks; you read them, remove what you do not want, and start the agents. "
-      : "The planner draws the plan as small tasks, then what fits your limits runs without waiting. ")
-    + `Each agent works in its own copy of your repository, and a task lands only when its check passes${m.review ? " and you approve it" : ""}.`;
   const focused = document.activeElement instanceof HTMLButtonElement && sections.contains(document.activeElement)
     ? document.activeElement.dataset.mark : "";
   sections.replaceChildren(...h.sections.map(drawSection));
@@ -155,7 +147,9 @@ function drawSection(s: Section): HTMLElement {
   const open = saved.open?.[s.key] ?? !s.folded;
   const sec = el("section", `sec sec-${s.key}`);
   const top = el("div", "sec-head", undefined, sec);
-  const fold = el("button", "fold", `${open ? "▾" : "▸"} ${s.title}`, top);
+  const fold = el("button", "fold", undefined, top);
+  el("span", "chev", open ? "▾" : "▸", fold);
+  fold.append(s.title);
   fold.setAttribute("aria-expanded", String(open));
   fold.dataset.mark = `fold|${s.key}`;
   fold.addEventListener("click", () => { remember({ open: { ...saved.open, [s.key]: !open } }); if (model) render(model); });
@@ -169,9 +163,8 @@ function drawSection(s: Section): HTMLElement {
 
 function drawCard(c: Card): HTMLElement {
   const card = el("article", `card tone-${c.tone}`);
-  const top = el("div", "c-head", undefined, card);
-  el("div", "c-title", c.title, top);
-  el("span", "c-tag", c.tag, top);
+  el("div", "c-tag", c.tag, card); // what it is, in its state's colour, above what it is called
+  el("div", "c-title", c.title, card);
   if (c.lines.length) {
     const dl = el("dl", "c-lines", undefined, card);
     for (const l of c.lines) {
