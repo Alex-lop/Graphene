@@ -194,7 +194,9 @@ function drawCard(c: Card, stack: boolean): HTMLElement {
     x.classList.add("remove");
     x.setAttribute("aria-label", b.label);
   }
-  el("div", "c-title", c.title, card);
+  // a task not started says its files and check short: its title is the way to the whole, in the graph's pane
+  if (c.task) button({ label: c.title, act: "showGraph", id: c.task, title: "open it on the graph: its files and check in full" }, card).classList.add("c-title");
+  else el("div", "c-title", c.title, card);
   if (c.lines.length) {
     const dl = el("dl", stack ? "c-lines stack" : "c-lines", undefined, card);
     for (const l of c.lines) {

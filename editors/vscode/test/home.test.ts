@@ -19,6 +19,8 @@ test("a suggested plan is read before it starts: each task says what for, what i
   assert.deepEqual(s.buttons.map((b) => [b.label, b.act, Boolean(b.main)]), [["Start", "startAll", true], ["Discard all", "discardAll", false]]);
   const hello = card(h, "p:hello");
   assert.equal(hello.tag, "", "its section says suggested: the card does not say it again");
+  assert.equal(hello.task, "hello", "its title opens it in the graph's pane, where its files and check are whole");
+  assert.deepEqual(checkHome({ type: "act", act: "showGraph", id: "hello" }, fixture("proposals")), { type: "act", act: "showGraph", id: "hello" });
   // in a side bar too narrow for a label beside its value, each line runs on from its short label (home.css)
   assert.deepEqual(hello.lines, [
     { k: "What for", v: "hello says hello to the person by name", short: "" },

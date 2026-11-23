@@ -20,8 +20,9 @@ export interface Btn { label: string; act: Act; id?: string; arg?: string; main?
  *  ``short``: the label where a side bar has no row for it, run into the value (`glance`). */
 export interface Line { k?: string; v: string; mono?: boolean; warn?: boolean; paths?: string[]; hover?: string; short?: string }
 export type Tone = "question" | "proposed" | "running" | "review" | "came-back" | "ready" | "waiting" | "done" | "yours";
-/** ``tag``: the state in a word, where its section does not say it already (Needs you, Up next); else empty. */
-export interface Card { key: string; tone: Tone; title: string; tag: string; lines: Line[]; buttons: Btn[] }
+/** ``tag``: the state in a word, where its section does not say it already (Needs you, Up next); else empty.
+ *  ``task``: its title opens this task in the graph's pane, where a card says its files and check short. */
+export interface Card { key: string; tone: Tone; title: string; tag: string; lines: Line[]; buttons: Btn[]; task?: string }
 export interface Section { key: string; title: string; note: string; buttons: Btn[]; cards: Card[]; folded: boolean }
 /** ``stages``: Plan, Run, Review, and where the work is. ``stopAfter``: the one switch, on by default. */
 export interface Home { banner: string; goal: string; counts: string; stages: Stage[]; stopAfter: boolean; sections: Section[]; empty: boolean }
@@ -85,7 +86,8 @@ function tail(p: string): string {
 /** What a task is for, what it may change, and what proves it: the three lines a person reads before saying yes.
  *  ``brief``, for a task not started (Suggested plan, Up next): a line each, as the graph's card says them, its
  *  files by name (`CookServiceImpl.java +2`) and its check by what it runs on, the whole of each on hover and in
- *  the graph's pane; a side bar is for a glance, and a whole gradlew command wraps there over four lines. */
+ *  the graph's pane, which the card's title opens; a side bar is for a glance, and a whole gradlew command wraps
+ *  there over four lines. */
 function contract(t: Task, name: (id: string) => string, brief = false): Line[] {
   if (t.command) return [ // a command step: no agent and no files; what runs, and whether it asks first
     { k: "Runs", v: t.command, mono: true },
@@ -218,7 +220,7 @@ export function home(s: State, seen: ReadonlySet<string> = new Set(), exact = fa
 
   const suggested = s.tasks.filter((t) => t.state === "proposed");
   section("suggested", `Suggested plan · ${plural(suggested.length, "task")}`, suggested.map((t) => ({
-    key: `p:${t.id}`, tone: "proposed" as const, title: t.title, tag: "", lines: glance(contract(t, name, true)),
+    key: `p:${t.id}`, tone: "proposed" as const, title: t.title, tag: "", lines: glance(contract(t, name, true)), task: t.id,
     buttons: [{ label: "Remove", act: "drop" as const, id: t.id, title: "leave this task out of the plan" }],
   })), {
     note: exact && s.questions.length
@@ -247,7 +249,7 @@ export function home(s: State, seen: ReadonlySet<string> = new Set(), exact = fa
 
   const next = s.tasks.filter((t) => t.state === "ready" || t.state === "waiting");
   section("next", `Up next · ${next.length}`, next.map((t) => ({
-    key: `n:${t.id}`, tone: t.state === "ready" ? "ready" as const : "waiting" as const, title: t.title, tag: SAY[t.state],
+    key: `n:${t.id}`, tone: t.state === "ready" ? "ready" as const : "waiting" as const, title: t.title, tag: SAY[t.state], task: t.id,
     lines: glance([...line("Waits for", t.state === "waiting" ? t.needs.map(name).join(", ") : ""), ...contract(t, name, true).filter((l) => l.k !== "After")]),
     buttons: [{ label: "Remove", act: "drop" as const, id: t.id, title: "take this task out of the plan" }],
   })), { buttons: [{ label: "Run", act: "run", main: !s.run.going, title: s.run.going ? "hand these to the run that is going"

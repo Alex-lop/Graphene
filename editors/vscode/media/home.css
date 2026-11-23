@@ -89,6 +89,9 @@ button.fold:hover { background: none; color: var(--fg); }
 .card.tone-waiting .c-tag, .card.tone-ready .c-tag { color: var(--dim); } /* outranks the light rule below */
 body.vscode-light .c-tag { color: color-mix(in srgb, var(--tone) 55%, var(--fg)); } /* a chart yellow is ~2.5:1 on a light card */
 .c-title { font-weight: 600; margin-top: 2px; word-break: break-word; }
+/* a title that opens its task on the graph: the title still, a link only on hover */
+.card button.c-title { display: block; padding: 0; border: none; background: none; color: var(--fg); line-height: inherit; text-align: left; }
+.card button.c-title:hover { background: none; text-decoration: underline; }
 /* one grid for every line: the labels' column is as wide as the widest, so none wraps ("Last actions"), and
    at least as wide as most, so the values of one card line up with the next one's */
 .c-lines { display: grid; grid-template-columns: minmax(72px, max-content) minmax(0, 1fr); gap: 3px 10px; margin: 8px 0 0; font-size: 12px; }
