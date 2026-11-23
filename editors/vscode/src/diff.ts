@@ -8,7 +8,7 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import * as C from "./commands.ts";
 import type { Session, UI } from "./session.ts";
-import type { Task } from "./state.ts";
+import { SAY, type Task } from "./state.ts";
 
 export const SCHEME = C.SCHEME;
 
@@ -121,7 +121,7 @@ export function register(context: vscode.ExtensionContext, session: Session, _ui
   const pick = async (among: Task[], placeHolder: string, none: string): Promise<Task | undefined> => {
     if (!among.length) return void vscode.window.showInformationMessage(`Graphene: ${none}`);
     const chosen = await vscode.window.showQuickPick(
-      among.map((t) => ({ label: C.plain(t.title), description: `${t.state} · ${t.id}`, t })), { placeHolder });
+      among.map((t) => ({ label: C.plain(t.title), description: `${SAY[t.state]} · ${t.id}`, t })), { placeHolder });
     return chosen?.t;
   };
 

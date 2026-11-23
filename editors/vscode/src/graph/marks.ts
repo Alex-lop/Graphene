@@ -39,7 +39,7 @@ export function cornerMark(t: Stated): Mark | "" {
 }
 
 const WORD: Record<Mark, string> = { waiting: SAY.waiting, ready: SAY.ready, working: SAY.running, you: SAY.review, yours: SAY.yours,
-                                     back: "came back", landed: "landed", suggested: SAY.proposed };
+                                     back: SAY["came back"], landed: SAY.done, suggested: SAY.proposed };
 const ASKS = "asks you";
 /** What the legend says of a hand-drawn draft or a planner's drafted step: no task yet, the same dashed ring. */
 export const DRAFT = "a draft";
@@ -55,14 +55,14 @@ export interface Want { mark: Mark; text: string }
 export interface Tally { landed: number; total: number; portion: number; marks: Mark[]; wants: Want[] }
 
 /** The count of a band's tasks, or the plan's: `3 of 6`, the ring's portion, the bar of marks, and the words
- *  for what needs the person there (`1 to review`, `1 came back`, `1 yours`, `1 asks you`; none when nothing does). */
+ *  for what needs the person there (`1 to review`, `1 needs help`, `2 need help`, `1 yours`, `1 asks you`; none when nothing does). */
 export function tally(tasks: readonly Stated[]): Tally {
   const own = tasks.map(stateMark);
   const landed = own.filter((m) => m === "landed").length;
   const wants: Want[] = [];
   for (const word of [WORD.you, WORD.back, WORD.yours, ASKS]) {
     const mine = own.filter((m, i) => WANTS.includes(m) && markWord(m, tasks[i]) === word);
-    if (mine.length) wants.push({ mark: mine[0]!, text: `${mine.length} ${word === ASKS && mine.length > 1 ? "ask you" : word}` });
+    if (mine.length) wants.push({ mark: mine[0]!, text: `${mine.length} ${mine.length > 1 ? word.replace(/^(ask|need)s /, "$1 ") : word}` });
   }
   return { landed, total: tasks.length, portion: tasks.length ? landed / tasks.length : 0,
            marks: [...own].sort((a, b) => BAR.indexOf(a) - BAR.indexOf(b)), wants };
@@ -75,10 +75,10 @@ export const wanting = (tasks: readonly (Stated & Pick<TaskX, "id">)[]): string[
  *  first when none of them is selected. Null when no step wants the person. */
 export const nextWanting = (ids: readonly string[], selected: string | null): string | null => ids[(ids.indexOf(selected ?? "") + 1) % ids.length] ?? null;
 
-/** The chip's words: `3 steps need you · show the next`, `1 step needs you · show it`; nothing for none. It
+/** The chip's words: `3 tasks need you · show the next`, `1 task needs you · show it`; nothing for none. It
  *  names what it counts, the steps to act on: the header's `4 need you` (words.ts `counts`) is the engine's
  *  sum, with every suggested step and every open question in it, so the same words would carry two numbers. */
-export const wantingLine = (n: number): string => (n > 1 ? `${n} steps need you · show the next` : n === 1 ? "1 step needs you · show it" : "");
+export const wantingLine = (n: number): string => (n > 1 ? `${n} tasks need you · show the next` : n === 1 ? "1 task needs you · show it" : "");
 
 /** The legend's rows, loudest first, only the marks the plan has: the mark, its word, how many. Two words
  *  where its steps say two (`to review / asks you`). ``drafts``: the hand-drawn drafts and the planner's

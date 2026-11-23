@@ -299,7 +299,7 @@ function render() {
   ($("svg") as unknown as SVGSVGElement).style.display = v === "lanes" ? "none" : "block";
   $("canvas").classList.toggle("lanes", v === "lanes");
   $("notice").hidden = s.tasks.length > 0 || drawn().length > 0 || Boolean(s.drafting); // a planner writing says so at the canvas's foot
-  const [needs, show] = wantingLine(wantYou().length).split(" · "); // `3 steps need you`, `show the next`: the chip's two halves
+  const [needs, show] = wantingLine(wantYou().length).split(" · "); // `3 tasks need you`, `show the next`: the chip's two halves
   $("need").hidden = !needs;
   $("need").children[1]!.textContent = needs ?? "";
   $("need").children[2]!.textContent = show ? ` · ${show}` : "";
@@ -564,11 +564,11 @@ function graph(s: StateX, dir: "across" | "down") {
         for (const m of group.marks) { goalG.appendChild(el("rect", { class: "cell", "data-mark": m, x, y: FOOT_Y + 6, width: step * 0.8, height: 10, rx: Math.min(1.5, step / 4) })); x += step; }
         x += step * 0.7;
       }
-      goalG.appendChild(el("text", { class: "sub", x: 2, y: BOX_H + 16 }, `goal · ${all.landed} of ${all.total} landed`));
+      goalG.appendChild(el("text", { class: "sub", x: 2, y: BOX_H + 16 }, `goal · ${all.landed} of ${all.total} done`));
       goalG.appendChild(el("circle", { class: "port in", cx: down ? gp.w / 2 : 0, cy: down ? 0 : BOX_H / 2, r: 5 }));
     }
     if (gp) {
-      goalG.setAttribute("aria-label", `goal: ${s.goal}, ${all.landed} of ${all.total} landed`);
+      goalG.setAttribute("aria-label", `goal: ${s.goal}, ${all.landed} of ${all.total} done`);
       goalG.setAttribute("role", "group"); // reachable by Tab and the arrows, announced
       goalG.setAttribute("tabindex", "0");
       goalG.appendChild(el("title", {}, s.goal));
@@ -622,7 +622,7 @@ function regions(s: StateX, here: number, awayW: number) {
   if (!here || !lay || !out) return;
   const x = here + AWAY_GAP - 8;
   root.appendChild(el("rect", { class: "region away", x, y: 8, width: awayW, height: lay.height - 16, rx: 14 }));
-  root.appendChild(el("text", { class: "region-label away", x: x + 16, y: 29 }, `Leaves your machine · ${asks ? "asks you first" : `${out} step${out > 1 ? "s" : ""}`}`));
+  root.appendChild(el("text", { class: "region-label away", x: x + 16, y: 29 }, `Leaves your machine · ${asks ? "asks you first" : `${out} task${out > 1 ? "s" : ""}`}`));
 }
 
 /** The approval on the line: where an edge crosses into "leaves your machine", a mark that the step past it
@@ -1512,7 +1512,7 @@ function scopeTab(body: HTMLElement, t: TaskX, s: StateX) {
 
 /** Scope, for a command step: no agent and no file. What runs, whether it leaves this machine, and its exit code. */
 function commandScope(body: HTMLElement, t: TaskX) {
-  div("dim", "nothing: a command step changes no file of the repository", part(body, "May change"));
+  div("dim", "nothing: a command task changes no file of the repository", part(body, "May change"));
   const kv = div("kv", undefined, part(body, "May run"));
   div("kv-k", "Command", kv);
   const cmd = div("kv-v", undefined, kv);
@@ -1990,7 +1990,7 @@ function wire() {
   need.id = "need";
   need.className = "quiet";
   need.hidden = true;
-  need.title = "select the next step that needs you, and bring it on screen (n)";
+  need.title = "select the next task that needs you, and bring it on screen (n)";
   mark(need.appendChild(el("svg", { width: 14, height: 14, viewBox: "-7 -7 14 14" })), "you", 0, 0, 6.5);
   need.append(document.createElement("b"), document.createElement("span"));
   need.addEventListener("click", showNext);

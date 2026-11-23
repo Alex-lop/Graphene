@@ -118,7 +118,7 @@ test("a step past the line is not your own finished task: its row says it asks y
   const row = yoursWords(wf.tasks.find((t) => t.id === "pr-48")!);
   assert.equal(row.description, "asks you: it leaves your machine · approving runs git push -u origin HEAD && gh pr create --draft --fill");
   assert.equal(row.title, "Approve and Run");
-  assert.match(row.hover, /^This step leaves your machine, so it asks you first\. Click to approve it: that runs its command in a terminal/);
+  assert.match(row.hover, /^This task leaves your machine, so it asks you first\. Click to approve it: that runs its command in a terminal/);
   assert.match(row.hover, /Runs: git push/);
   assert.doesNotMatch(row.description + row.hover, /mark done|Your own task/);
   assert.equal(yoursWords(mixed.tasks.find((t) => t.id === "mine")!).description, "yours · mark done", "a task of your own reads as before");

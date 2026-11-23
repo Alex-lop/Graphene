@@ -49,6 +49,7 @@ or opens a pull request (`git push`, `gh pr`) waits past the **leaves your machi
 
 | On screen | What it means | The CLI's word |
 | --- | --- | --- |
+| task | one piece of the plan, a card on the graph: the files it may change and the check that proves it | leaf |
 | suggested | proposed by your agent or the planner; nothing runs until you start it | proposed |
 | working | an agent is on it now | running |
 | to review | its check passed; it waits for your approval | review |

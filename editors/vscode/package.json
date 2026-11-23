@@ -109,7 +109,7 @@
       },
       {
         "view": "graphene.needs",
-        "contents": "Nothing waits for you.\n\nA question, a proposal, a task that came back, a sign-off or auto mode waiting shows here, each with its move.",
+        "contents": "Nothing waits for you.\n\nA question, a suggested task, a task that needs help or is to review, or auto mode waiting shows here, each with its move.",
         "when": "graphene.status == ok || graphene.status == empty"
       },
       {
@@ -139,7 +139,7 @@
       },
       {
         "view": "graphene.agents",
-        "contents": "No agent is running.\n\nEach running agent shows here: its number, task, model and fork, what it is doing now, seconds quiet and dollars.",
+        "contents": "No agent is running.\n\nEach running agent shows here: its number, task, model and attempt, what it is doing now, seconds quiet and dollars.",
         "when": "graphene.status == ok || graphene.status == empty"
       },
       {
@@ -169,7 +169,7 @@
       },
       {
         "view": "graphene.rounds",
-        "contents": "No auto rounds here yet.\n\n`graphene auto`, in a terminal, plans a goal, races it, checks it and plans the fix; each round shows here, with what your envelope accepted, the fork each task kept and why, and what landed."
+        "contents": "No auto rounds here yet.\n\n`graphene auto`, in a terminal, plans a goal, races it, checks it and plans the fix; each round shows here, with what your envelope accepted, the attempt each task kept and why, and what landed."
       }
     ],
     "commands": [

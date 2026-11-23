@@ -59,7 +59,7 @@ export function fitWords(words: string[], max: number): string {
 }
 
 export function forkWord(f: Fork): string {
-  return f.state || "waiting";
+  return f.state === "running" ? SAY.running : f.state || "waiting";
 }
 
 /** A lane's corner: the model while the task runs, cut to about six characters (`Nano`, `claude…`); the pane
@@ -147,7 +147,7 @@ export function scopeTree(t: Pick<TaskX, "id" | "scope" | "files" | "filesN" | "
       for (const d of dirs) open(d);
       for (const g of here) rows.push({ name: g, depth: 0, kind: "in", note: written.has(g) ? "written" : s.tree.length ? "not there yet" : "" }); // no tree (a replay, an older CLI): nobody knows what is there
     } else if (cut && globs.some((g) => !g || g.startsWith(top))) rows.push({ name: top, depth: 0, kind: "in", note: "" }); // its own, past the list's cut
-    else rows.push({ name: top, depth: 0, kind: others.has(top) ? "other" : "out", note: others.has(top) ? "another step's" : "" });
+    else rows.push({ name: top, depth: 0, kind: others.has(top) ? "other" : "out", note: others.has(top) ? "another task's" : "" });
   }
   if (cut) rows.push({ name: `… and ${t.filesN - t.files.length} more files`, depth: 0, kind: "in", note: "" });
   return rows;
@@ -178,7 +178,7 @@ export function mayRun(s: Pick<StateX, "allows" | "executor">, t: Pick<TaskX, "h
   const held = t.held.state === "refused" || t.held.state === "caught";
   return { commands: [], words: held ? "any command: what a command writes is still held to its files" : "any command", outside: OUTSIDE_OWN };
 }
-export const OUTSIDE = "none granted: a step cannot be given outside tools or network yet";
+export const OUTSIDE = "none granted: a task cannot be given outside tools or network yet";
 export const OUTSIDE_OWN = "none granted by Graphene: this agent's own settings decide what else it reaches";
 
 /** Held by, in one of three states and never more than the tests prove (tests/test_every_agent.py,
@@ -187,11 +187,11 @@ export const OUTSIDE_OWN = "none granted by Graphene: this agent's own settings 
 export function heldWords(t: Pick<TaskX, "held">): { shield: boolean; line: string; proof: string } {
   const by = family(t.held.by) === "claude" ? "Claude Code" : family(t.held.by) === "codex" ? "Codex" : t.held.by || "this agent";
   if (t.held.state === "refused") return { shield: true, line: "A write outside its files is refused before it happens.", proof: `${by}'s hook, proven by tests/test_every_agent.py` };
-  if (t.held.state === "caught") return { shield: true, line: "A write outside its files is caught when it finishes, at the latest: the task comes back and none of its work is merged.",
+  if (t.held.state === "caught") return { shield: true, line: "A write outside its files is caught when it finishes, at the latest: the task needs help and none of its work is merged.",
                                           proof: `Proven for every agent a run starts, ${by} too, by tests/test_every_agent.py: the finish checks what changed against its files.` };
   return { shield: false, line: "Not held: nothing stops a write outside its files.",
            proof: t.held.state === "none" ? "A task you do yourself, or give to an editor's own agent (Cursor, Copilot), is checked only when you mark it done."
-             : "This Graphene does not say how this step is held." };
+             : "This Graphene does not say how this task is held." };
 }
 
 /** Stopped: this step's refused writes against the run's, then each with its time as the clock here reads it. */
@@ -246,11 +246,11 @@ export function pipeline(s: Pick<StateX, "drafting" | "tasks" | "goals" | "quest
   const ran = planned && s.tasks.every((t) => t.state === "review" || t.state === "done");
   const landed = ran && !n("review");
   const asks = s.questions.length ? count(s.questions.length, "question") : "";
-  const plan = s.drafting ? (s.drafting.live ? `${count(draftedSteps(s).length, "step")} so far` : "the planner is writing")
-    : [s.tasks.length ? count(s.tasks.length, "step") : "", planned && n("proposed") ? `${n("proposed")} suggested` : "", asks].filter(Boolean).join(" · ");
+  const plan = s.drafting ? (s.drafting.live ? `${count(draftedSteps(s).length, "task")} so far` : "the planner is writing")
+    : [s.tasks.length ? count(s.tasks.length, "task") : "", planned && n("proposed") ? `${n("proposed")} suggested` : "", asks].filter(Boolean).join(" · ");
   const run = !planned || ran ? "" : n("running") ? `${n("running")} working` : n("came back") ? `${n("came back")} need${n("came back") === 1 ? "s" : ""} help` : s.run.going ? (s.tasks.some((t) => t.command && !t.leaves && t.state === "ready") ? "running a command" : "starting")
     : n("yours") ? `${n("yours")} ask${n("yours") === 1 ? "s" : ""} you` : n("ready") ? `${n("ready")} ready` : "waiting";
-  const review = n("review") ? `${n("review")} to review` : landed ? "landed" : "";
+  const review = n("review") ? `${n("review")} to review` : landed ? "done" : "";
   return [
     { key: "plan", label: "Plan", at: planned ? "done" : "now", note: plan },
     { key: "run", label: "Run", at: !planned ? "next" : ran ? "done" : "now", note: run },
@@ -283,9 +283,9 @@ export function draftedSteps(s: Pick<StateX, "drafting" | "tasks" | "goals">): D
 export function planningLine(s: Pick<StateX, "drafting" | "tasks" | "goals">): string {
   if (!s.drafting) return "";
   const by = s.drafting.by ? ` (${s.drafting.by})` : "";
-  if (!s.drafting.live) return `The planner${by} is writing: its steps appear when the plan arrives`;
+  if (!s.drafting.live) return `The planner${by} is writing: its tasks appear when the plan arrives`;
   const n = draftedSteps(s).length;
-  return `The planner${by} is drawing: ${n} step${n === 1 ? "" : "s"} so far`;
+  return `The planner${by} is drawing: ${n} task${n === 1 ? "" : "s"} so far`;
 }
 
 /** The files chip on a card: the first of the paths it may change, and how many more there are. */
@@ -306,7 +306,7 @@ export const attemptsOf = (t: Pick<TaskX, "planned">, limit: number | null | und
  *  `graphene node set` does (dev/process/graph-edit/edits.md has each state's answer, as the engine gave it).
  *  A command step has no form: its line says where it changes. */
 export function whenEdit(t: Pick<TaskX, "state"> & { command?: string | null }): string {
-  if (t.command && t.state !== "done") return "A command step is its command alone: no files, no attempts, no agent. Change its run: line in the plan's text.";
+  if (t.command && t.state !== "done") return "A command task is its command alone: no files, no attempts, no agent. Change its run: line in the plan's text.";
   switch (t.state) {
     case "proposed": return "Suggested: nothing runs yet. A change binds once you accept it.";
     case "ready": case "waiting": return "Not started: its agent starts from what you set here.";
@@ -429,7 +429,7 @@ export function actsFor(t: TaskX, replay: boolean): Button[] {
   out.push({ label: "Add task beside", act: "add-under", title: "draw a new task under the same sub-goal", icon: "add" });
   if (!t.leaves) out.push({ label: "Link to…", act: "link", title: "then click the task that waits on this one", icon: "link" });
   if (["proposed", "ready", "waiting"].includes(t.state)) out.push({ label: "Remove", act: "drop", title: "graphene node drop", icon: "trash" });
-  if (!t.command && ["running", "ready", "waiting", "came back"].includes(t.state)) out.push({ label: "Message agent", act: "tell", title: "a line the agent on it reads with its next step", icon: "comment" });
+  if (!t.command && ["running", "ready", "waiting", "came back"].includes(t.state)) out.push({ label: "Message agent", act: "tell", title: "a line the agent on it reads with its next move", icon: "comment" });
   return out;
 }
 
@@ -466,12 +466,12 @@ export function tabOrder(lay: Layout, ids: string[]): string[] {
 
 /** Every key the page answers, for the `?` overlay. */
 export const KEYS: readonly [string, string][] = [
-  ["Tab", "the next box"],
-  ["← → ↑ ↓", "the box beside it (across the waves, or along one)"],
-  ["Enter", "open the box's details"],
+  ["Tab", "the next card"],
+  ["← → ↑ ↓", "the card beside it (across the waves, or along one)"],
+  ["Enter", "open the card's details"],
   ["Esc", "close the details, or stop linking"],
   ["g", "bring the goal on screen"],
-  ["n", "the next step that needs you: selected, and brought on screen"],
+  ["n", "the next task that needs you: selected, and brought on screen"],
   ["f", "fit the whole plan in the pane"],
   ["- · =", "zoom out · zoom in; far out, a card is a row: its mark and its title, then its mark alone"],
   ["0", "back to whole cards at their own size (100%)"],

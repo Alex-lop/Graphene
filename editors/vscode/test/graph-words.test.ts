@@ -77,7 +77,7 @@ test("the kept fork's chip says so in the cockpit's words; a running one its pro
   assert.equal(chip("b"), "b ✓ kept: 4 lines against 12");
   assert.equal(chip("a", 60), "a · Nano · gave up · 12 lines · 2 tries · $0.09"); // finished: the state is the news
   assert.equal(chip("a"), "a · Nano · gave up · 12 lines");
-  assert.equal(chip("c", 60), "c · Super · 7 lines · 23 s quiet · $0.15 · running"); // running: the numbers are the news
+  assert.equal(chip("c", 60), "c · Super · 7 lines · 23 s quiet · $0.15 · working"); // working: the numbers are the news
   assert.equal(chip("c"), "c · Super · 7 lines · 23 s quiet"); // the chip's own width holds the progress
   assert.equal(forkWords({ ...g.forks[2]!, idle: 0 }, g.kept), "c · Super · 7 lines · $0.15");
 });
@@ -204,15 +204,15 @@ test("an edge moves where an agent is working, is green where the work landed, a
 test("while a planner writes, its finished steps are drawn: tasks only, and none the plan already has", () => {
   const writing = parseState(readFileSync(new URL("./fixtures/drafting.json", import.meta.url), "utf8")) as StateX;
   assert.deepEqual(draftedSteps(writing).map((d) => d.id), ["failing", "rows", "button", "empty"], "the sub-goal is a band, not a box");
-  assert.equal(planningLine(writing), "The planner (claude) is drawing: 4 steps so far");
+  assert.equal(planningLine(writing), "The planner (claude) is drawing: 4 tasks so far");
   const one = { ...writing, drafting: { ...writing.drafting!, steps: writing.drafting!.steps.slice(0, 2) } };
-  assert.equal(planningLine(one), "The planner (claude) is drawing: 1 step so far");
+  assert.equal(planningLine(one), "The planner (claude) is drawing: 1 task so far");
   // a line that names a task the plan has is an anchor: the task is drawn once, as itself
   const anchored = { ...state, drafting: { by: "claude", live: true, steps: [{ id: "greet", title: "greet route", parent: null, leaf: true, scope: [], check: null, needs: [] },
                                                                               { id: "new", title: "a new step", parent: null, leaf: true, scope: [], check: null, needs: ["greet"] }] } };
   assert.deepEqual(draftedSteps(anchored).map((d) => d.id), ["new"]);
   // a planner whose stream has no text: the boxes come with the plan, and the graph says so
-  assert.equal(planningLine({ ...writing, drafting: { by: "codex", live: false, steps: [] } }), "The planner (codex) is writing: its steps appear when the plan arrives");
+  assert.equal(planningLine({ ...writing, drafting: { by: "codex", live: false, steps: [] } }), "The planner (codex) is writing: its tasks appear when the plan arrives");
   assert.equal(planningLine(state), "", "no planner is writing");
 });
 
@@ -242,11 +242,11 @@ test("a command step: its tile is the command's word, and one past the line asks
   assert.deepEqual(actsFor(pr, false)[0], { label: "Approve and run", act: "markDone", icon: "check", main: true,
     title: "it leaves your machine: graphene node done runs git push -u origin HEAD && gh pr create --draft --fill" });
   assert.equal(actsFor(suite, false).some((b) => b.act === "markDone"), false, "a command step before the line runs by itself");
-  assert.deepEqual(pipeline(wf).map((x) => `${x.label} ${x.at}${x.note ? `: ${x.note}` : ""}`), ["Plan done: 4 steps", "Run now: 1 asks you", "Review next"]);
+  assert.deepEqual(pipeline(wf).map((x) => `${x.label} ${x.at}${x.note ? `: ${x.note}` : ""}`), ["Plan done: 4 tasks", "Run now: 1 asks you", "Review next"]);
   // it is its command alone: the pane's form (files, attempts, your approval, whose it is) is closed, and the line says where it changes
   const ready = { ...suite, state: "ready" as const };
   assert.deepEqual([editable(ready, false), editable(pr, false)], [false, false]);
-  for (const t of [ready, pr]) assert.equal(whenEdit(t), "A command step is its command alone: no files, no attempts, no agent. Change its run: line in the plan's text.");
+  for (const t of [ready, pr]) assert.equal(whenEdit(t), "A command task is its command alone: no files, no attempts, no agent. Change its run: line in the plan's text.");
   assert.match(whenEdit(suite), /^Done:/, "finished, it is not edited, as any task");
   assert.deepEqual(actsFor(ready, false).map((b) => b.act), ["add-after", "add-under", "link", "drop"], "no agent to message");
   // nothing is drawn after a step past the line: a task there would land in the first column, its edge running backwards
@@ -260,21 +260,21 @@ test("one pipeline, the plan first: Plan, Run, Review, and where the work is in 
   const fx = (name: string) => parseState(readFileSync(new URL(`./fixtures/${name}.json`, import.meta.url), "utf8")) as StateX;
   const at = (s: StateX) => pipeline(s).map((x) => `${x.label} ${x.at}${x.note ? `: ${x.note}` : ""}`);
   assert.deepEqual(at(fx("empty")), ["Plan now", "Run next", "Review next"]);
-  assert.deepEqual(at(fx("drafting")), ["Plan now: 4 steps so far", "Run next", "Review next"]);
+  assert.deepEqual(at(fx("drafting")), ["Plan now: 4 tasks so far", "Run next", "Review next"]);
   assert.deepEqual(at({ ...fx("drafting"), drafting: { by: "codex", live: false, steps: [] } }), ["Plan now: the planner is writing", "Run next", "Review next"]);
-  assert.deepEqual(at(fx("proposals")), ["Plan now: 4 steps · 1 question", "Run next", "Review next"]); // suggested: it waits for Start
-  assert.deepEqual(at(state), ["Plan done: 7 steps · 1 question", "Run now: 1 working", "Review next: 2 to review"]); // what waits for you is said while the rest runs
+  assert.deepEqual(at(fx("proposals")), ["Plan now: 4 tasks · 1 question", "Run next", "Review next"]); // suggested: it waits for Start
+  assert.deepEqual(at(state), ["Plan done: 7 tasks · 1 question", "Run now: 1 working", "Review next: 2 to review"]); // what waits for you is said while the rest runs
   const all = (word: TaskX["state"]) => ({ ...state, questions: [], run: { going: false, pid: null }, tasks: state.tasks.map((t) => ({ ...t, state: word })) });
-  assert.deepEqual(at(all("ready")), ["Plan done: 7 steps", "Run now: 7 ready", "Review next"]);
-  assert.deepEqual(at({ ...all("ready"), run: { going: true, pid: 1 } }), ["Plan done: 7 steps", "Run now: starting", "Review next"]);
-  assert.deepEqual(at(all("review")), ["Plan done: 7 steps", "Run done", "Review now: 7 to review"]);
-  assert.deepEqual(at(all("done")), ["Plan done: 7 steps", "Run done", "Review done: landed"]);
+  assert.deepEqual(at(all("ready")), ["Plan done: 7 tasks", "Run now: 7 ready", "Review next"]);
+  assert.deepEqual(at({ ...all("ready"), run: { going: true, pid: 1 } }), ["Plan done: 7 tasks", "Run now: starting", "Review next"]);
+  assert.deepEqual(at(all("review")), ["Plan done: 7 tasks", "Run done", "Review now: 7 to review"]);
+  assert.deepEqual(at(all("done")), ["Plan done: 7 tasks", "Run done", "Review done: done"]);
   // something suggested while agents work (an agent's proposal, a second ask): the work is still at Run, and the plan says what waits
   const more = { ...state, tasks: [...state.tasks, { ...task("ship"), id: "extra", state: "proposed" as const }] };
-  assert.deepEqual(at(more), ["Plan done: 8 steps · 1 suggested · 1 question", "Run now: 1 working", "Review next: 2 to review"]);
+  assert.deepEqual(at(more), ["Plan done: 8 tasks · 1 suggested · 1 question", "Run now: 1 working", "Review next: 2 to review"]);
   const back = { ...all("ready"), tasks: all("ready").tasks.map((t, i) => (i ? t : { ...t, state: "came back" as const })) };
   assert.equal(at(back)[1], "Run now: 1 needs help");
-  assert.deepEqual(at({ ...all("done"), run: { going: true, pid: 1 } }), ["Plan done: 7 steps", "Run done", "Review done: landed"], "a run winding down has nothing left to start");
+  assert.deepEqual(at({ ...all("done"), run: { going: true, pid: 1 } }), ["Plan done: 7 tasks", "Run done", "Review done: done"], "a run winding down has nothing left to start");
   // the switch is the envelope's auto setting, the other way round; an older CLI that says nothing leaves it on
   assert.equal(stopAfterPlan(fx("proposals")), true);
   assert.equal(stopAfterPlan({ envelope: { auto: "on" } }), false);
@@ -300,7 +300,7 @@ const step = (id: string) => scoped.tasks.find((t) => t.id === id)!;
 test("May change is a tree: its folder opened to its files, the written ones marked, another step's named, the rest dim", () => {
   assert.deepEqual(scopeTree(step("rows"), scoped).map((r) => `${"  ".repeat(r.depth)}${r.name} [${r.kind}]${r.note ? ` ${r.note}` : ""}`), [
     "src/export/ [in]", "  __init__.py [in]", "  csv.py [in] written", "  formats.py [in]", "  rows.py [in] written",
-    "tests/ [other] another step's", "web/ [other] another step's", "README.md [out]",
+    "tests/ [other] another task's", "web/ [other] another task's", "README.md [out]",
   ]);
   assert.equal(writtenOf(step("rows")), "2 of 4");
   const top = { id: "top", scope: ["wordkit/cli.py", "tests/test_top.py"], files: ["wordkit/cli.py"], filesN: 1, touched: [], changed: ["tests/test_top.py", "wordkit/cli.py"] };

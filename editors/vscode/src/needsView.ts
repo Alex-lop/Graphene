@@ -49,7 +49,7 @@ export function item(n: Need, s: State): vscode.TreeItem {
     const arg = { id: t.id };
     if (n.kind === "proposal") {
       it.description = `suggested · ${t.scope.length ? t.scope.join("  ") : "no files yet"}`;
-      md.appendMarkdown(`scope: ${mdText(t.scope.join("  ") || "none")}\n\ncheck: ${mdText(t.check ?? "none")}\n\nClick to accept it; the trash can drops it (\`graphene plan undo\` puts it back).`);
+      md.appendMarkdown(`scope: ${mdText(t.scope.join("  ") || "none")}\n\ncheck: ${mdText(t.check ?? "none")}\n\nClick to accept it; the trash can removes it (\`graphene plan undo\` puts it back).`);
       it.command = { command: "graphene.accept", title: "Accept", arguments: [arg] };
     } else if (n.kind === "hand-back") {
       const why = t.why || t.note || "stuck";
@@ -58,7 +58,7 @@ export function item(n: Need, s: State): vscode.TreeItem {
       it.command = { command: "graphene.handBack", title: "Help a Task", arguments: [arg] };
     } else if (n.kind === "sign-off") {
       it.description = `${t.hollow ? "passed before the work" : "check passed"} · approve`;
-      md.appendMarkdown(`${t.changed.length ? `changed: ${mdText(t.changed.join("  "))}` : "its check passed"}\n\nClick to open its changes; the check mark signs it off.`);
+      md.appendMarkdown(`${t.changed.length ? `changed: ${mdText(t.changed.join("  "))}` : "its check passed"}\n\nClick to open its changes; the check mark approves it.`);
       it.command = { command: "graphene.openDiff", title: "Open Changes", arguments: [arg] };
     } else if (n.kind === "yours") {
       const w = yoursWords(t);
@@ -134,12 +134,12 @@ export function register(context: vscode.ExtensionContext, session: Session, _ui
     const back = session.tasks().filter((t) => t.state === "came back" || (t.state === "running" && t.stopped.length));
     let t = back.find((x) => x.id === idOf(arg));
     if (!t) {
-      if (!back.length) return void vscode.window.showInformationMessage("No task came back.");
-      t = back.length === 1 ? back[0] : (await vscode.window.showQuickPick(back.map((x) => ({ label: C.plain(x.title), description: C.plain(x.why || x.note), t: x })), { placeHolder: "the task that came back" }))?.t;
+      if (!back.length) return void vscode.window.showInformationMessage("No task needs help.");
+      t = back.length === 1 ? back[0] : (await vscode.window.showQuickPick(back.map((x) => ({ label: C.plain(x.title), description: C.plain(x.why || x.note), t: x })), { placeHolder: "the task that needs help" }))?.t;
       if (!t) return;
     }
     const titles = Object.fromEntries(session.tasks().map((x) => [x.id, x.title]));
-    const why = t.state === "running" ? `agent ${t.agent || "?"} was stopped writing ${t.stopped[t.stopped.length - 1]}` : t.why || t.note || "it came back";
+    const why = t.state === "running" ? `agent ${t.agent || "?"} was stopped writing ${t.stopped[t.stopped.length - 1]}` : t.why || t.note || "it stopped before its check passed";
     const chosen = await vscode.window.showQuickPick(offerWords(t, titles), { placeHolder: C.plain(`${t.title}: ${why}`), ignoreFocusOut: true });
     if (!chosen) return;
     if (chosen.long) session.terminal(`graphene ${chosen.argv.slice(0, 2).join(" ")}`, chosen.argv);
@@ -153,7 +153,7 @@ export function register(context: vscode.ExtensionContext, session: Session, _ui
     // and with no id a lone step that leaves is still picked by hand, its command beside it
     const t = id ? yours.find((x) => x.id === id) : yours.length === 1 && !yours[0]!.leaves ? yours[0]
       : (await vscode.window.showQuickPick(yours.map((x) => ({ label: C.plain(x.title), description: x.leaves ? C.plain(yoursWords(x).description) : "", t: x })),
-                                           { placeHolder: "your task that is done, or the step to approve" }))?.t;
+                                           { placeHolder: "your task that is done, or the task to approve" }))?.t;
     if (t) session.terminal("graphene node done", markDone(t.id));
   });
 
