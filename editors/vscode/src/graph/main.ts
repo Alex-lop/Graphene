@@ -1678,6 +1678,7 @@ function pane() {
     return;
   }
   paneLast = key;
+  if (selected !== paneOf) menuOf = null; // another task, or none (× and Esc hide the pane with no event): its … starts closed
   paneOf = selected;
   const t = state?.tasks.find((x) => x.id === selected);
   if (!state || (!t && !d) || !key) { pane.hidden = true; pane.replaceChildren(); return; }
@@ -1778,19 +1779,22 @@ function paneMenu(tools: HTMLElement, id: string, acts: Button[]) {
     if (b.icon) item.appendChild(icon(b.icon));
     item.append(b.label);
     item.title = b.title;
-    item.addEventListener("click", () => { menuOf = null; menu.hidePopover(); press(b, id); });
+    item.addEventListener("click", () => { menu.hidePopover(); press(b, id); });
     menu.appendChild(item);
   }
   menu.addEventListener("beforetoggle", (e) => {
-    if ((e as ToggleEvent).newState !== "open") return;
+    // closed by the person: this fires at once, while the menu is still here; a rebuild takes it away with no event
+    if ((e as ToggleEvent).newState !== "open") { menuOf = null; return; }
     const r = more.getBoundingClientRect(); // under the …, its right edge on the …'s
     menu.style.top = `${r.bottom + 4}px`;
     menu.style.right = `${Math.max(8, innerWidth - r.right)}px`;
+    // narrow, the whole pane scrolls and would leave it behind: it closes, as the editor's own menus do
+    $("details").addEventListener("scroll", () => menu.hidePopover(), { once: true, passive: true });
   });
   menu.addEventListener("toggle", (e) => {
-    const open = (e as ToggleEvent).newState === "open";
-    if (open && menuOf !== id) menu.querySelector("button")?.focus(); // opened by the person, not again after a rebuild
-    if (open || menu.isConnected) menuOf = open ? id : null; // a rebuild takes it away: not closed by the person
+    if ((e as ToggleEvent).newState !== "open") return;
+    if (menuOf !== id) menu.querySelector("button")?.focus(); // opened by the person, not again after a rebuild
+    menuOf = id;
   });
   menu.addEventListener("keydown", (e) => {
     if (e.key === "Escape") { e.stopPropagation(); return; } // the menu's Esc, not the pane's
