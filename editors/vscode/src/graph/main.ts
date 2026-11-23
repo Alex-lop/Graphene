@@ -1705,13 +1705,14 @@ function pane() {
   });
   if (d) return draftPane(pane, d);
   if (!t) return;
-  // the head: what it is, its state and who is on it; the id, the CLI's word for it, on the title's hover
+  // the head: what it is, its state and who is on it (or, nobody on it yet, who it is for); the id, the CLI's
+  // word for it, on the title's hover
   const head = div("d-head", undefined, pane);
   div(`d-title ${cls(t.state)}`, t.title, head).title = `${t.full || t.title} (${t.id})`;
   const meta = div("d-id", undefined, head);
   div("d-state", SAY[t.state], meta);
-  const by = t.agent ? `agent ${t.agent}${t.model ? ` · ${t.model}` : ""}` : who(t, s.executor).label;
-  if (by) meta.append(` · ${by}`);
+  const w = who(t, s.executor);
+  meta.append(` · ${t.agent ? `agent ${t.agent}${t.model ? ` · ${t.model}` : ""}` : w.kind === "you" || t.command ? w.label : `for ${w.label}`}`);
   // one act is the pane's to offer at its foot (the state's own, and the look at its work); the rest wait in the …
   const all = actsFor(t, replaying());
   const inFoot = (b: Button) => b.main || b.act === "openDiff" || b.act === "compareForks";
@@ -1761,7 +1762,10 @@ function pane() {
   else if (tab() === "edit") editTab(body, t, s);
   else activityTab(body, t);
   const foot = all.filter(inFoot);
-  if (foot.length) { const acts = div("d-acts", undefined, pane); for (const b of foot) button(b, t.id, acts); }
+  if (foot.length) { // Compare, in a word, so the two looks fit one row under the act; its hover says it whole
+    const acts = div("d-acts", undefined, pane);
+    for (const b of foot) button(b.act === "compareForks" ? { ...b, label: "Compare", title: `Compare attempts: ${b.title}` } : b, t.id, acts);
+  }
 }
 
 let menuOf: string | null = null; // the task whose … is open: open again when its pane is rebuilt under it

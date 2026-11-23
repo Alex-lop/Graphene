@@ -210,7 +210,8 @@ button.unlink:hover { color: var(--vscode-errorForeground, #f48771); }
 .d-tools { position: absolute; right: 10px; top: 12px; display: flex; gap: 2px; }
 .d-tools button { padding: 3px; }
 /* the state, a dot before the title: the state rules below colour the title's border, and the dot wears it */
-.d-title { font-weight: 600; font-size: 15px; line-height: 1.3; padding-right: 48px; border: 0 solid var(--ready); }
+/* the dot hangs left of the title, so a title's every line starts where the line under it does */
+.d-title { font-weight: 600; font-size: 15px; line-height: 1.3; padding: 0 48px 0 16px; text-indent: -16px; border: 0 solid var(--ready); }
 .d-title::before { content: ""; display: inline-block; border: 4px solid; border-color: inherit; border-radius: 50%; margin: 0 8px 2px 0; vertical-align: middle; }
 .d-id { color: var(--dim); font-size: 12px; margin: 4px 0 0 16px; }
 .d-state { display: inline; color: var(--fg); font-weight: 500; }
@@ -244,11 +245,16 @@ body.vscode-high-contrast .d-menu button:focus-visible, body.vscode-high-contras
 .fork-row.kept { font-weight: 600; }
 .fork-acts { display: flex; gap: 4px; margin-top: 3px; font-weight: 400; }
 .fork-acts button { padding: 1px 6px; font-size: 0.92em; }
-/* the pane's foot: its one main act the pane's width, and a look at the work beside each other under it while
-   both labels fit, else one to a row; never a label cut */
-.d-acts { display: flex; flex-wrap: wrap; gap: 6px; padding: 12px 16px; border-top: 1px solid var(--divider); }
-.d-acts button { flex: 1 1 auto; height: 28px; justify-content: center; padding: 0 10px; white-space: nowrap; }
-.d-acts button:not(.quiet) { flex-basis: 100%; }
+/* the pane's foot: its one main act the pane's width, and the looks at the work as words under it, so the one
+   button is the act; never a label cut */
+.d-acts { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 6px; padding: 12px 16px; border-top: 1px solid var(--divider); }
+.d-acts button { height: 28px; justify-content: center; padding: 0 10px; white-space: nowrap; }
+.d-acts button:not(.quiet) { flex: 1 1 100%; }
+.d-acts button.quiet { height: 24px; padding: 0 6px; background: none; border-color: transparent; color: var(--dim); }
+.d-acts button.quiet:hover { color: var(--fg); background: var(--hover); }
+/* high contrast: the looks stay words (only the act keeps its border), outlined under the pointer */
+body.vscode-high-contrast .d-acts button.quiet, body.vscode-high-contrast-light .d-acts button.quiet { border-color: transparent; }
+body.vscode-high-contrast .d-acts button.quiet:hover, body.vscode-high-contrast-light .d-acts button.quiet:hover { outline: 1px dashed var(--focus); outline-offset: -1px; }
 /* the pane's tabs: Scope (what the step may do), Edit (its form), Activity (what its agents did); the chosen
    one underlined in the text's colour, as the editor's own panel tabs are */
 .tabs { display: flex; gap: 16px; border-bottom: 1px solid var(--divider); margin: 4px 0 14px; }
