@@ -69,7 +69,7 @@ try {
   }
   // Show Graph, asked for, reveals that tab: there is still one, and it may take the keyboard now. Whether it did
   // is said, not required: it is what shows the check above can tell a tab that took the keyboard from one that did not.
-  await L.palette(page, "Graphene: Show Graph");
+  await L.palette(page, "Graphene: Open the Graph");
   const took = await page.waitForFunction(inTab, null, { timeout: 5000 }).then(() => true, () => false);
   if (await tabs().count() !== 1) throw new Error(`${await tabs().count()} Graphene tabs after Show Graph: it reveals the one that is there`);
   // The tab is closed, and a start nobody clicked for follows: the plan is emptied, and a task joins it from outside

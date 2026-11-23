@@ -51,7 +51,7 @@ test("a finished task to review shows its evidence; Open changes leads until the
 test("two attempts that both passed: the person compares them and keeps one before anything is approved", () => {
   const s = fixture("graph-race");
   const farewell = card(home(s), "review:farewell");
-  assert.deepEqual(farewell.lines, [{ k: "Attempts", v: "a: passed, 9 lines · b: passed, 15 lines", mono: true },
+  assert.deepEqual(farewell.lines, [{ k: "Attempts", v: "a: passed, 9 lines · b: passed, 15 lines" }, // words and counts: no mono
                                     { v: "2 attempts passed the check. Compare them and keep one, then approve it.", warn: true }]);
   assert.deepEqual(farewell.buttons.map((b) => [b.label, b.act, b.arg, Boolean(b.main)]),
                    [["Compare attempts", "compare", undefined, true], ["Keep a", "keep", "a", false], ["Keep b", "keep", "b", false],

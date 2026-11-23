@@ -293,10 +293,10 @@ export async function openSidebar(page) {
   await page.waitForSelector(".sidebar .pane-header", { timeout: 20000 });
 }
 
-/** The graph in the editor area (Graphene: Show Graph). */
+/** The graph in the editor area (Graphene: Open the Graph). */
 export async function openPanel(page) {
   const before = (await graphFrames(page)).length;
-  await palette(page, "Graphene: Show Graph");
+  await palette(page, "Graphene: Open the Graph");
   const t0 = Date.now();
   while ((await graphFrames(page)).length <= before) {
     if (Date.now() - t0 > 20000) throw new Error("the graph panel did not open");

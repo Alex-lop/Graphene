@@ -67,7 +67,8 @@ export class GraphHost {
         localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, "dist"), vscode.Uri.joinPath(this.context.extensionUri, "media")],
       });
       this.panel = panel;
-      panel.iconPath = vscode.Uri.joinPath(this.context.extensionUri, "media", "graphene.svg");
+      const icon = (f: string) => vscode.Uri.joinPath(this.context.extensionUri, "media", f);
+      panel.iconPath = { light: icon("graphene-light.svg"), dark: icon("graphene-dark.svg") }; // an image: currentColor would be black
       const webview = panel.webview; // held now: a disposed panel throws on `webview`
       this.attach(webview);
       panel.onDidDispose(() => {

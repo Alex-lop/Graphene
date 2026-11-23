@@ -93,10 +93,10 @@ export function activate(context: vscode.ExtensionContext) {
     if (said) {
       const show = said.kind === "waits" ? vscode.window.showWarningMessage : vscode.window.showInformationMessage;
       const key = keyTrouble(said.text); // it waits on a key, refused or missing: set it from here
-      void show(C.plain(said.text), ...(key.key ? ["Set API Key", "Open Home"] : said.kind === "waits" ? ["Open Home", "Show Graph"] : ["Show Graph"])).then((pick) => {
+      void show(C.plain(said.text), ...(key.key ? ["Set API Key", "Open Home"] : said.kind === "waits" ? ["Open Home", "Open the Graph"] : ["Open the Graph"])).then((pick) => {
         if (pick === "Set API Key") void vscode.commands.executeCommand("graphene.setKey", key.endpoint ?? undefined);
         if (pick === "Open Home") void vscode.commands.executeCommand("graphene.home");
-        if (pick === "Show Graph") void vscode.commands.executeCommand("graphene.showGraph");
+        if (pick === "Open the Graph") void vscode.commands.executeCommand("graphene.showGraph");
       });
     }
     if (s && (session.status.kind === "ok" || session.status.kind === "empty")) {
