@@ -49,8 +49,8 @@ reviews and the critics' findings are summed up in the pull request.*
 
 ## Decisions for your veto
 
-In the PR body, each with what undoes it. The PR has 67 commits: 50 after the first fold, 7 and 6 for rounds four
-and five, then this brief and a last look's fix (pushed commits are not rewritten); each passes the extension's checks.
+In the PR body, each with what undoes it. The PR's history: 50 commits after the first fold, 7 and 6 for rounds four
+and five, then this brief and the last look's fix (pushed commits are not rewritten); each passes the extension's checks.
 
 ## Not verified
 
