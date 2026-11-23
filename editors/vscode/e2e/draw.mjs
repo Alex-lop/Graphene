@@ -120,7 +120,7 @@ try {
   await openForm(first.id);
   await until(g, () => document.querySelector("#details .d-id")?.textContent.includes("ready"), null, "the first task's pane");
   for (let i = 0; i < 2; i++) {
-    await g.locator('#details button[aria-label="one more attempt"]').click();
+    await g.locator('#details button[aria-label="one agent more"]').click();
     await until(g, (n) => document.querySelector("#details .count")?.textContent === String(n), i + 2, `${i + 2} attempts on the stepper`);
   }
   const times = await box(first.id).getAttribute("data-attempts");

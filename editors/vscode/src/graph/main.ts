@@ -1466,7 +1466,7 @@ function setField(t: TaskX, name: "title" | "scope" | "check" | "forks" | "signo
   api.postMessage({ type: "act", act: "set", id: t.id, field: name, value });
 }
 
-/** A task's form: its title, the files it may change, its check, its attempts, your approval, and whether it
+/** A task's form: its title, the files it may change, its check, its agents at once, your approval, and whether it
  *  is yours; each change is graphene's to take or refuse, and the line under them says what it does now. */
 function form(body: HTMLElement, t: TaskX, s: StateX) {
   const same = (a: string, b: string) => a.trim() === b.trim();
@@ -1477,24 +1477,27 @@ function form(body: HTMLElement, t: TaskX, s: StateX) {
         (v) => (!globs(v).length || globs(v).join(" ") === t.scope.join(" ") ? back() : setField(t, "scope", globs(v).join(" "))));
   field(body, "check", "Check", t.check ?? "", "pytest -q", "the command that passes only when the task is done; empty: your approval finishes it",
         (v) => (same(v, t.check ?? "") ? back() : setField(t, "check", v.trim())));
+  // how many agents work on it at once, each in its own copy and each spending: not retries, so it says so
   const n = attemptsOf(t, s.envelope.forks);
   const r = div("row", undefined, body);
-  div("k", "Attempts", r);
+  r.title = n > 1 ? `${n} agents work on it at once, each in its own copy; its check keeps one. About ${n}× the cost.`
+    : "one agent works on it; with more, they work at once, each in its own copy, and its check keeps one";
+  div("k", "Agents", r);
   const v = div("v stepper", undefined, r);
   const step = (label: string, to: number, sign: string) => {
     const b = document.createElement("button");
     b.className = "quiet";
     b.textContent = sign;
     b.setAttribute("aria-label", label);
-    b.title = t.check ? label : "attempts need a check to keep one";
+    b.title = t.check ? label : "more agents need a check to keep one";
     b.disabled = !t.check || to < 1 || to > 8;
     b.addEventListener("click", () => setField(t, "forks", to));
     v.appendChild(b);
   };
-  step("one attempt fewer", n - 1, "−");
-  div("count", String(n), v).setAttribute("aria-label", `${n} attempt${n > 1 ? "s" : ""}`);
-  step("one more attempt", n + 1, "+");
-  div("dim", !t.check ? "one agent: attempts need a check to keep one" : n > 1 ? "agents at once; its check keeps one" : "one agent", v);
+  step("one agent fewer", n - 1, "−");
+  div("count", String(n), v).setAttribute("aria-label", `${n} agent${n > 1 ? "s" : ""} at once`);
+  step("one agent more", n + 1, "+");
+  div("dim", !t.check ? "more need a check to keep one" : n > 1 ? `at once · about ${n}× the cost` : "", v);
   const unread = t.signoff === null; // `graphene plan --json` not read yet: a moment
   tick(body, "signoff", "Wait for my approval", t.signoff === true, "it lands only once you approve it, as well as passing its check", (on) => setField(t, "signoff", on), unread);
   tick(body, "owner", "I will do this one", Boolean(t.owner) && t.owner !== "agent", "no agent takes it: it is yours to do", (on) => setField(t, "owner", on), unread);
