@@ -1663,10 +1663,10 @@ function scopeTab(body: HTMLElement, t: TaskX, s: StateX) {
   div("shield", held.shield ? "⛉" : "○", hold).setAttribute("aria-hidden", "true");
   const said = div("", held.line, hold);
   small(held.proof, said);
-  // Stopped only where a write could be refused (a task nothing holds has nothing to refuse), and never as all
-  // clear under a write outside its files
+  // Stopped only where a write could be refused (a task nothing holds has nothing to refuse, one no agent has
+  // been on has written nothing), and never as all clear under a write outside its files
   const stops = stopsOf(t, s.tasks);
-  if (stops.rows.length || (held.shield && !t.outside.length)) {
+  if (stops.rows.length || (held.shield && t.agent && !t.outside.length)) {
     const stopped = part(body, "Stopped", stops.rows.length ? stops.count : ""); // no count of nothing
     for (const x of stops.rows) small(x.note, div("stop", x.line, stopped));
     if (!stops.rows.length) div("dim", "no write was refused", stopped);
