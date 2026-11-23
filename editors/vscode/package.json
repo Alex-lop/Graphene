@@ -1,7 +1,7 @@
 {
   "name": "graphene-vscode",
   "displayName": "Graphene",
-  "description": "Say what you want, read the plan, start the agents, and approve what they did: coding agents on one repo, each in its own copy, your checks and your review deciding what lands.",
+  "description": "Your coding agent's plan as a graph: read it, start it, and approve what each agent did. A plan comes from Claude Code or Codex in its chat, a workflow, or Add task; each agent works in its own copy of the repo, and your checks and your review decide what lands.",
   "version": "0.9.0",
   "publisher": "alex-lop",
   "license": "Apache-2.0",
