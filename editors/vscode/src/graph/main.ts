@@ -38,6 +38,9 @@ const ROW_W = CARD.compact.w, ROW_H = CARD.compact.h, ROW_X = 36;
 // under it, its own check at its foot; from afar a row with its ring, its title on up to three lines and its count,
 // wider and taller than a task's row and in larger words, so it is still the clearest thing on the canvas.
 const GOAL_W = 220, GOAL_ROW_W = ROW_W + 72, GOAL_ROW_H = 84;
+/** The goal's title is read whole on its card: as many lines as it takes, up to six (a goal an agent wrote is a
+ *  sentence, and its card is alone in its column), the card as tall as they need. */
+const GOAL_LINES = 6;
 /** What the layout and the lines between the cards measure by, at each level of detail. */
 type Dims = { w: number; h: number; gapX: number; gapY: number; padX: number; padY: number; bandGap: number; label: number; inset: number };
 // `label`: the room over a sub-goal's first row for its header, which is drawn larger over rows. A band reaches half
@@ -157,6 +160,13 @@ function button(b: Button, id: string, parent: HTMLElement) {
 
 const cls = (word: string) => `st-${word.replace(/\s+/g, "-")}`;
 
+/** How many lines the goal's title takes on its card at a level: measured as it is drawn, in the goal's group. */
+function goalLines(title: string, lv: Level): number {
+  const probe = titleLines($("goalg") as unknown as SVGGElement, "goal-title", title, 0, 0, 20, lv === "compact" ? GOAL_ROW_W - ROW_X - 10 : GOAL_W - 2 * PAD, GOAL_LINES);
+  probe.remove();
+  return probe.childElementCount;
+}
+
 function boxes(s: StateX, lv: Level = "full"): { boxes: Box[]; edges: Edge[]; goal: string | null } {
   const w = DIMS[lv].w, h = DIMS[lv].h; // a card's own box, at the level asked for
   const away = new Set(s.tasks.filter((t) => t.leaves).map((t) => t.id)); // past the line: placed in their region, not by the layout
@@ -177,7 +187,8 @@ function boxes(s: StateX, lv: Level = "full"): { boxes: Box[]; edges: Edge[]; go
   }
   const hasGoal = Boolean(s.goal) && s.tasks.length > 0;
   if (hasGoal) {
-    bs.push(lv === "compact" ? { id: GOAL, band: "", w: GOAL_ROW_W, h: GOAL_ROW_H } : { id: GOAL, band: "", w: GOAL_W, h: BOX_H + (rootOf(s)?.check ? FOOT_H : 0) });
+    const n = goalLines(s.goal, lv);
+    bs.push(lv === "compact" ? { id: GOAL, band: "", w: GOAL_ROW_W, h: Math.max(GOAL_ROW_H, 19 * n + 27) } : { id: GOAL, band: "", w: GOAL_W, h: Math.max(BOX_H, 20 * n + 56) + (rootOf(s)?.check ? FOOT_H : 0) });
     const needed = new Set(edges.filter(([, b]) => !away.has(b)).map(([a]) => a)); // what only a step past the line waits on still ends the work here
     for (const b of bs) if (b.id !== GOAL && !needed.has(b.id)) edges.push([b.id, GOAL]);
     // the run crosses the line from the goal, as the target draws it: what a step past the line waits on here ends at the goal
@@ -545,12 +556,12 @@ function graph(s: StateX, dir: "across" | "down") {
     const ps = band.id ? Object.values(lay.boxes).filter((p) => p.band === band.id) : [];
     if (!ps.length) continue;
     const x0 = Math.min(...ps.map((p) => p.x)) - D.inset, x1 = Math.max(...ps.map((p) => p.x + p.w)) + D.inset, most = Math.max(x1, right);
-    const title = goalTitle(s, band.id).replace(/^\? /, ""); // the plan text's mark for a suggestion, where a planner left it in a title
+    const { name, whole } = bandName(goalTitle(s, band.id));
     const rect = bands.appendChild(el("rect", { class: "band", x: x0, y: band.y0, height: band.y1 - band.y0, rx: 10 }));
-    rect.appendChild(el("title", {}, title));
+    rect.appendChild(el("title", {}, whole));
     // its header has the band's room on to the trunk, wherever the plan is panned or zoomed: what is off screen is
     // cut by the screen, and a redraw never cuts it to the part that was on it
-    const said = bandHead(heads, title, s.tasks.filter((t) => t.parent === band.id), x0 + D.inset, band.y0 + D.label / 2 + 1, most - x0 - 2 * D.inset);
+    const said = bandHead(heads, name, s.tasks.filter((t) => t.parent === band.id), x0 + D.inset, band.y0 + D.label / 2 + 1, most - x0 - 2 * D.inset);
     const end = Math.min(most, Math.max(x1, x0 + said + 2 * D.inset));
     rect.setAttribute("width", String(end - x0));
     spans.set(band.id, { x0, x1: end });
@@ -632,15 +643,15 @@ function graph(s: StateX, dir: "across" | "down") {
     if (gp && level === "compact") { // as a row: a ring filled by what is done, its title, and the count under it
       goalG.appendChild(el("rect", { class: "goal-box", x: 0, y: 0, width: gp.w, height: gp.h, rx: 10 }));
       ring(goalG, all.portion, 19, gp.h / 2, 9.5);
-      const title = titleLines(goalG, "goal-title", s.goal, ROW_X, 0, 19, gp.w - ROW_X - 10, 3), n = title.childElementCount;
+      const title = titleLines(goalG, "goal-title", s.goal, ROW_X, 0, 19, gp.w - ROW_X - 10, GOAL_LINES), n = title.childElementCount;
       const top = (gp.h - 19 * (n - 1) - 32) / 2 + 12; // the title and the count, as one block in the row's middle
       title.setAttribute("transform", `translate(0 ${top})`);
       goalG.appendChild(el("text", { class: "sub", x: ROW_X, y: top + 19 * (n - 1) + 17 }, `${all.landed} of ${all.total} done`));
       goalG.appendChild(el("circle", { class: "port in", cx: 0, cy: gp.h / 2, r: 5 }));
     } else if (gp) { // the goal is a card as a task is: its title on up to three lines, and under it a cell a task (a group a sub-goal) and the count, in the card's middle; its own check at its foot
       goalG.appendChild(el("rect", { class: "goal-box", x: 0, y: 0, width: gp.w, height: gp.h, rx: 12 }));
-      const title = titleLines(goalG, "goal-title", s.goal, PAD, 0, 20, gp.w - 2 * PAD, 3), n = title.childElementCount;
-      const top = (BOX_H - (20 * n + 18)) / 2, y = top + 20 * n + 4; // the title's block and the cells' row, as one
+      const title = titleLines(goalG, "goal-title", s.goal, PAD, 0, 20, gp.w - 2 * PAD, GOAL_LINES), n = title.childElementCount;
+      const top = (gp.h - (root?.check ? FOOT_H : 0) - (20 * n + 18)) / 2, y = top + 20 * n + 4; // the title's block and the cells' row, as one, over its check
       title.setAttribute("transform", `translate(0 ${top + 12})`);
       const count = goalG.appendChild(el("text", { class: "sub", x: gp.w - PAD, y: y + 10, "text-anchor": "end" }, `${all.landed} of ${all.total} done`));
       const room = gp.w - 2 * PAD - (count.getComputedTextLength() || 70) - 12;
@@ -807,6 +818,14 @@ function ring(grp: SVGElement, portion: number, x: number, y: number, r: number)
   if (portion >= 1) return void mark(grp, "landed", x, y, r);
   const arc = mark(grp, "portion", x, y, r).lastElementChild as SVGPathElement;
   if (portion > 0) arc.style.strokeDasharray = `${portion * 100} 100`; else arc.remove();
+}
+
+/** A sub-goal's title as a band's header and a lanes group say it: without the plan text's `? ` (its mark for a
+ *  suggestion, where a planner left it in a title), and where the planner wrote `Name: what it covers`, its name
+ *  alone (`CLI`, not `CLI: the walking skeleton every provided test starts…`); ``whole`` for its hover. */
+function bandName(title: string): { name: string; whole: string } {
+  const whole = title.replace(/^\?\s+/, ""), at = whole.indexOf(": ");
+  return { name: at > 0 && at <= 40 ? whole.slice(0, at) : whole, whole };
 }
 
 /** A sub-goal's header, over its first row: the ring, its title, `3 of 6`, then what wants you there in words,
