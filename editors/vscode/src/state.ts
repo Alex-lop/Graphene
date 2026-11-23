@@ -371,17 +371,16 @@ export function summary(s: State): string {
   return parts.join(" · ");
 }
 
-/** The auto header, as the cockpit's: `auto · round 1 of 3 · running · $0.42 of $2.00` (a round is the first plan or
- * a fix round, `rounds + 1` in all); a fix round says what the goal failed on; empty when auto is off. */
+/** The auto header: `auto waits: the goal's check is still red · round 2 of 3 · $1.37 of $2.00` (a round is the
+ * first plan or a fix round, `rounds + 1` in all). What it is at and why come first, so a tab too narrow for the
+ * line cuts the bookkeeping, not the reason it stopped; empty when auto is off. */
 export function autoLine(s: State): string {
   const a = s.auto;
   if (!a || s.envelope.auto !== "on" && !a.stage) return "";
-  const parts = ["auto"];
+  const parts = [`auto${a.stage ? ` ${a.stage}` : ""}${a.why ? `: ${screenWords(a.why)}` : ""}`];
   if (a.round !== null) parts.push(a.rounds !== null ? `round ${a.round} of ${a.rounds + 1}` : `round ${a.round}`);
-  if (a.stage) parts.push(a.stage);
   const spent = a.spent === null ? "" : usd(a.spent) || "$0.00";
   if (spent && !free(s)) parts.push(a.budget !== null ? `${spent} of ${usd(a.budget) || "$0.00"}` : spent);
-  if (a.why) parts.push(screenWords(a.why));
   return parts.join(" · ");
 }
 
