@@ -59,7 +59,8 @@ button.open svg { width: 14px; height: 14px; flex: none; fill: currentColor; }
 .said.bad { color: var(--bad); background: color-mix(in srgb, var(--bad) 9%, transparent); border-color: color-mix(in srgb, var(--bad) 35%, transparent); }
 .said button { margin-top: 6px; }
 
-/* sections: a quiet label, as VS Code's own; Needs you in the review colour */
+/* sections: a quiet label, as VS Code's own; Needs you in the review colour, Working now in the amber of an
+   agent at work on the graph (its cards wear no tag: the head says it once) */
 .sec { margin: 18px 0 0; }
 .sec-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; min-height: 26px; }
 .sec-acts { display: flex; gap: 6px; flex-wrap: wrap; }
@@ -70,21 +71,18 @@ button.fold, .prefs-head {
 button.fold:hover { background: none; color: var(--fg); }
 .chev { display: inline-block; width: 12px; }
 .sec-needs button.fold { color: var(--review); }
+.sec-working button.fold { color: var(--running); }
+body.vscode-light .sec-working button.fold { color: color-mix(in srgb, var(--running) 55%, var(--fg)); } /* as a tag's, below */
 .sec-note { color: var(--dim); font-size: 12px; margin: 6px 0 8px; }
 
 /* cards: what it is called, the lines a person reads before saying yes, and its state in a word in its colour
    only where the section's head does not say it (Needs you, Up next): a state is said once, so no edge */
 .card {
-  --tone: var(--line-3);
   position: relative; margin: 8px 0; padding: 10px 12px; background: var(--card); border: 1px solid var(--line-1); border-radius: var(--r);
 }
 .card:has(> .remove) > .c-title { padding-right: 18px; } /* clear of the × */
 .tone-question, .tone-review, .tone-yours { --tone: var(--review); }
 .tone-came-back { --tone: var(--came-back); }
-.tone-proposed { --tone: var(--proposed); }
-.tone-running { --tone: var(--running); }
-.tone-done { --tone: var(--done); }
-.tone-ready { --tone: color-mix(in srgb, var(--fg) 45%, transparent); } /* Cursor's dim grey is brighter than its purple */
 .c-tag { color: var(--tone); font-size: 12px; font-weight: 600; } /* in words, as the graph's cards say it: capitals are the section heads' */
 .card.tone-waiting .c-tag, .card.tone-ready .c-tag { color: var(--dim); } /* outranks the light rule below */
 body.vscode-light .c-tag { color: color-mix(in srgb, var(--tone) 55%, var(--fg)); } /* a chart yellow is ~2.5:1 on a light card */
