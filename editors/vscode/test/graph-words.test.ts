@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import * as C from "../src/commands.ts";
 import { actsFor, ASK_AGENT, askLine, askNote, asksYou, attemptsOf, CHANGES, commandChip, commandWord, cornerWord, CURSOR_AGENT, draftedSteps, edgeKind, editable, filesChip, fitWidth, fitWords, forkActs, forkWords, HEADER_ACTS, headerFor,
-         checkWords, heldWords, linkHint, mainAct, mayRun, OUTSIDE, OUTSIDE_OWN, paneKey, pipeline, planningLine, provesNothing, replayLine, scopeTree, startAnswers, stopAfterPlan, stopsOf, sub, tabOrder, tokenWords, topLine,
+         checkWords, heldWords, linkHint, mainAct, mayRun, newsLine, OUTSIDE, OUTSIDE_OWN, paneKey, pipeline, planningLine, provesNothing, replayLine, scopeTree, startAnswers, stopAfterPlan, stopsOf, sub, tabOrder, tokenWords, topLine,
          whenEdit, who, writtenOf, type StateX, type TaskX } from "../src/graph/words.ts";
 import { SAY, WORDS } from "../src/state.ts";
 import { ICONS } from "../src/graph/icons.ts";
@@ -40,6 +40,16 @@ test("the header says each number once: the stages, the cost in Run's note unles
   assert.match(ASK_AGENT, /Claude Code or Codex/, "the agents Graphene's hooks reach, by name");
   assert.equal(CURSOR_AGENT, "Cursor's own Agent does not plan with Graphene yet.");
   assert.deepEqual(headerFor(state).stages.map((x) => x.label), pipeline(state).map((x) => x.label));
+});
+
+test("the news a screen reader hears is in the screen's words, and not what a chip or auto's line says already", () => {
+  const fx = (name: string) => parseState(readFileSync(new URL(`./fixtures/${name}.json`, import.meta.url), "utf8")) as StateX;
+  const plan = fx("proposals"), auto = fx("auto");
+  assert.equal(newsLine(plan, false), "the planner suggested 4 tasks under 2 sub-goals", "the CLI's proposed is suggested; its question is its chip's");
+  assert.equal(newsLine({ ...plan, news: ["proposed: Input loop, quit and exit"] }, false), "suggested: Input loop, quit and exit");
+  assert.equal(newsLine(fx("big"), false), "DELETE /orders/:id cancels needs help: it wrote outside its files");
+  assert.equal(newsLine(auto, true), "round 2 checked the goal: red", "auto's wait is its line's in the header, said once");
+  assert.equal(newsLine(auto, false), "auto waits: the budget has $0.63 left and a question is open");
 });
 
 test("words drop from the end until they fit, the first always stays", () => {

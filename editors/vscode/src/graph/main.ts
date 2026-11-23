@@ -10,7 +10,7 @@ import { blanks, draftLine, globs, isDraft, lacks, type Draft } from "./draft.ts
 import { attemptsMark, cardAct, checkCut, checkLines, checkMark, cornerMark, cutWhole, doneWhen, filesLine, fitWhole, forkMark, goalBox, goalCells, legend, nextWanting, stateMark, tailPath, tally, wanting, wantingLine, wrap,
          type CheckMark, type Mark } from "./marks.ts";
 import { actsFor, ASK_AGENT, askLine, askNote, asksYou, attemptsOf, commandChip, cornerWord, CURSOR_AGENT, cut, done, draftedSteps, edgeKind, editable,
-         filesChip, FIRST_HINT, forkActs, forkRow, forkWords, HEADER_ACTS, headerFor, heldWords, KEYS, linkHint, mainAct, mayRun, paneKey, pipeline,
+         filesChip, FIRST_HINT, forkActs, forkRow, forkWords, HEADER_ACTS, headerFor, heldWords, KEYS, linkHint, mainAct, mayRun, newsLine, paneKey, pipeline,
          planningLine, PROVES_NOTHING, provesNothing, questionOn, scopeTree, startAnswers, stopsOf, sub, tabOrder, tokenWords, topLine, whenEdit, who, writtenOf,
          type Button, type ForkX, type StateX, type TaskX } from "./words.ts";
 import { CARD, dotGap, FAR, fitPlan, hold, levelFor, miniFrame, miniSize, nearest, offScreen, panTo, percent, switchK, wheelK, ZOOM_MAX, ZOOM_MIN, zoomK,
@@ -1363,6 +1363,9 @@ function disarm() {
   $("canvas").classList.remove("wiring");
 }
 
+/** The strip under the canvas, there only while it has something to do: the first visit's keys, until the first
+ *  touch, and a link being drawn, with its way out. Otherwise the cards, the chips and the header say what changed,
+ *  and the latest news is in it for a screen reader alone (`sr`), not a log line over the editor's status bar. */
 function hint() {
   const h = $("hint");
   h.hidden = false;
@@ -1376,15 +1379,12 @@ function hint() {
     cancel.addEventListener("click", () => { disarm(); render(); });
     h.replaceChildren(div("hint-text", linkHint(a?.title ?? from, Boolean(wiring))), cancel);
     h.className = "linking";
-  } else if (!state?.tasks.length && !drawn().length) { // nothing drawn to click, link or follow: no line
-    h.hidden = true;
-  } else if (!saved.hinted) {
+  } else if (!saved.hinted && (state?.tasks.length || drawn().length)) {
     h.textContent = FIRST_HINT;
     h.className = "";
-  } else { // the news, but the plan's open question: its chip says it, once
-    const asked = (line: string) => Boolean(state?.questions.length) && /^asks: |\bquestions? waits? for you\b/.test(line);
-    h.textContent = screenWords([...state?.news ?? []].reverse().find((line) => !asked(line)) ?? "");
-    h.className = "";
+  } else {
+    h.textContent = state ? newsLine(state, !$("auto").hidden) : "";
+    h.className = "sr";
   }
 }
 
@@ -2250,7 +2250,7 @@ function wire() {
   stages.id = "stages";
   stages.setAttribute("role", "list");
   stages.setAttribute("aria-label", "Plan, Run, Review");
-  $("hint").setAttribute("aria-live", "polite"); // a question or a hand-back is announced
+  $("hint").setAttribute("aria-live", "polite"); // the news is read out (`hint`): a hand-back, a task to review
   api.postMessage({ type: "ready" });
 }
 

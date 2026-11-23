@@ -167,6 +167,7 @@ footer#hint {
 footer#hint.linking { color: var(--edge-hot); display: flex; align-items: center; gap: 8px; padding-top: 3px; padding-bottom: 3px; }
 .hint-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 footer#hint button { padding: 1px 8px; font-size: 1em; }
+footer#hint.sr { position: absolute; width: 1px; height: 1px; min-height: 0; padding: 0; border: 0; overflow: hidden; clip-path: inset(50%); } /* read out, not shown */
 /* a narrow tab (the editor area beside the side bar and an agent's chat): the header wraps as it does anywhere,
    and the details go under the canvas */
 @media (max-width: 700px) {

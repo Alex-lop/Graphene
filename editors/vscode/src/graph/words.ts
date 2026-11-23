@@ -525,5 +525,14 @@ export const askLine = (n: number): string => (n ? `${n} question${n === 1 ? "" 
 /** The line under that chip while Start would take the defaults (`startAnswers`). */
 export const askNote = (n: number): string => (n === 1 ? "or Start takes its default" : "or Start takes their defaults");
 
+/** The news a screen reader hears from the graph: the latest line that nothing on screen says already (the
+ *  plan's open question has its chip, auto's wait its line in the header), in the screen's words, so the CLI's
+ *  `proposed` is suggested and `came back` needs help. */
+export function newsLine(s: Pick<StateX, "news" | "questions">, autoShown: boolean): string {
+  const said = (line: string) => (s.questions.length > 0 && /^asks: |\bquestions? waits? for you\b/.test(line)) || (autoShown && /^auto\b/.test(line));
+  const line = [...s.news].reverse().find((l) => !said(l)) ?? "";
+  return screenWords(line).replace(/\bproposed\b/g, SAY.proposed).replace(/\bcame back\b/g, SAY["came back"]);
+}
+
 /** The first-time hint under the graph. */
 export const FIRST_HINT = "click a task to change it · + draws a new one · drag a dot onto another task to link them · ? lists every key";
