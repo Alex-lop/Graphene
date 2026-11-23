@@ -1502,23 +1502,28 @@ let restOpen = false; // May change's fold, as the person left it
 const code = (text: string, parent: HTMLElement) => { const c = document.createElement("code"); c.textContent = text; parent.appendChild(c); return c; };
 const small = (text: string, parent: HTMLElement) => { const c = document.createElement("small"); c.textContent = text; parent.appendChild(c); return c; };
 
-/** Scope: what this step may do, in plain view. May change (a tree, the glob behind it), may run, outside,
- *  held by, stopped, done when, tokens. Every word is what the snapshot says; where it says nothing, so does this. */
+/** Scope: what this step may do, in plain view. May change (a tree, the glob behind it), done when, may run,
+ *  outside, held by, stopped, tokens. Every word is what the snapshot says; where it says nothing, so does this. */
 function scopeTab(body: HTMLElement, t: TaskX, s: StateX) {
   if (t.command) return commandScope(body, t);
   const wrote = writtenOf(t);
-  const change = part(body, "May change", wrote ? `✎ ${wrote}` : "");
+  const change = part(body, "May change", wrote && !wrote.startsWith("0 ") ? `✎ ${wrote}` : ""); // a count once something is written
   const tree = div("tree", undefined, change);
   const rows = scopeTree(t, s);
+  // a deep path by its last two parts (`…/impl/LookupTest.java`), so a repository's nested files are told apart; whole on the hover
+  const short = (p: string) => { const at = p.split("/").filter(Boolean); return at.length > 3 ? `…/${at.slice(-2).join("/")}${p.endsWith("/") ? "/" : ""}` : p; };
   const line = (r: { name: string; kind: string; depth: number; note: string }, parent: HTMLElement) => {
     const row = div(`tr ${r.kind}${r.depth ? " in1" : ""}`, undefined, parent);
-    div("tr-name", r.name, row).title = r.name;
+    const name = div("tr-name", undefined, row);
+    name.title = r.name;
+    // it wraps after a slash, not inside a name
+    (r.depth ? r.name : short(r.name)).split("/").forEach((bit, i) => name.append(...(i ? ["/", document.createElement("wbr")] : []), bit));
     if (r.note) div(`tr-note${r.note === "written" ? " wr" : ""}`, r.note, row);
   };
   // its own files, then what it wrote outside them (as its card says it, in the came-back red); the rest of the
   // repository, which it may not change, folded under one line
   for (const r of rows.filter((x) => x.kind === "in")) line(r, tree);
-  for (const f of t.outside) line({ name: f, kind: "bad", depth: 0, note: "written outside its files" }, tree);
+  for (const f of t.outside) line({ name: f, kind: "bad", depth: 0, note: "outside its files" }, tree);
   const rest = rows.filter((x) => x.kind !== "in" && !t.outside.includes(x.name));
   if (!tree.childElementCount) div("tr out", "no files named", tree);
   if (rest.length) {
@@ -1541,25 +1546,7 @@ function scopeTab(body: HTMLElement, t: TaskX, s: StateX) {
     for (const g of t.scope) code(g, glob);
     change.appendChild(glob);
   }
-  const run = part(body, "May run");
-  const kv = div("kv", undefined, run);
-  div("kv-k", "Commands", kv);
-  const cmds = div("kv-v", undefined, kv);
-  const may = mayRun(s, t);
-  for (const c of may.commands) code(c, cmds);
-  if (may.words) cmds.append(may.words);
-  if (t.check) div("kv-note", "Graphene itself runs its check, under Done when.", cmds); // the command once, there
-  div("kv-k", "Outside", kv);
-  div("kv-v", may.outside, kv);
-  const held = heldWords(t);
-  const hold = div(`held${held.shield ? "" : " none"}`, undefined, part(body, "Held by"));
-  div("shield", held.shield ? "⛉" : "○", hold).setAttribute("aria-hidden", "true");
-  const said = div("", held.line, hold);
-  small(held.proof, said);
-  const stops = stopsOf(t, s.tasks);
-  const stopped = part(body, "Stopped", stops.rows.length ? stops.count : ""); // no count of nothing
-  for (const x of stops.rows) small(x.note, div("stop", x.line, stopped));
-  if (!stops.rows.length) div("dim", "no write was refused", stopped);
+  // what decides Approve, Accept or Help it, next to the files: the rest is the same on most tasks
   const when = part(body, "Done when");
   if (t.check) code(t.check, div("", undefined, when));
   for (const c of checkLines(t)) { // the verdict after the work only where it stands, as the card's box wears it
@@ -1568,19 +1555,45 @@ function scopeTab(body: HTMLElement, t: TaskX, s: StateX) {
     row.append(c.line);
   }
   if (t.hollow && t.checked.before !== "passes") div("checkrow warn", "its check passed before the work too: it proves nothing new", when);
+  const run = part(body, "May run");
+  const kv = div("kv", undefined, run);
+  div("kv-k", "Commands", kv);
+  const cmds = div("kv-v", undefined, kv);
+  const may = mayRun(s, t);
+  for (const c of may.commands) code(c, cmds);
+  if (may.words) cmds.append(may.words);
+  div("kv-k", "Outside", kv);
+  div("kv-v", may.outside, kv);
+  const held = heldWords(t);
+  const hold = div(`held${held.shield ? "" : " none"}`, undefined, part(body, "Held by"));
+  div("shield", held.shield ? "⛉" : "○", hold).setAttribute("aria-hidden", "true");
+  const said = div("", held.line, hold);
+  small(held.proof, said);
+  // Stopped only where a write could be refused (a task nothing holds has nothing to refuse), and never as all
+  // clear under a write outside its files
+  const stops = stopsOf(t, s.tasks);
+  if (stops.rows.length || (held.shield && !t.outside.length)) {
+    const stopped = part(body, "Stopped", stops.rows.length ? stops.count : ""); // no count of nothing
+    for (const x of stops.rows) small(x.note, div("stop", x.line, stopped));
+    if (!stops.rows.length) div("dim", "no write was refused", stopped);
+  }
   const spent = tokenWords(t);
-  const tokens = part(body, "Tokens", spent?.total ?? "");
-  if (spent) {
-    const bar = div("bar", undefined, tokens);
-    div("read", undefined, bar).style.width = `${spent.read}%`;
-    div("wrote", undefined, bar).style.width = `${spent.written}%`;
-    div("checkrow dim", spent.line, tokens);
-  } else div("dim", t.attempts ? "this agent reports no tokens" : "nothing metered yet: Graphene counts the agents a run starts", tokens);
+  if (!spent) return; // nothing metered: no part to say so
+  const tokens = part(body, "Tokens", spent.total);
+  const bar = div("bar", undefined, tokens);
+  div("read", undefined, bar).style.width = `${spent.read}%`;
+  div("wrote", undefined, bar).style.width = `${spent.written}%`;
+  div("checkrow dim", spent.line, tokens);
 }
 
-/** Scope, for a command step: no agent and no file. What runs, whether it leaves this machine, and its exit code. */
+/** Scope, for a command step: no agent and no file. Its exit code, what runs, and whether it leaves this machine. */
 function commandScope(body: HTMLElement, t: TaskX) {
   div("dim", "nothing: a command task changes no file of the repository", part(body, "May change"));
+  const when = part(body, "Done when");
+  const row = (tone: string, line: string) => { const r = div("checkrow", undefined, when); div(`dot ${tone}`, undefined, r); r.append(line); };
+  row("dim", "its exit code is its check: 0 and it is done");
+  const c = checkMark(t); // its exit, as its card's box says it: no line where that says nothing
+  if (c.words) row(c.tone, c.words);
   const kv = div("kv", undefined, part(body, "May run"));
   div("kv-k", "Command", kv);
   const cmd = div("kv-v", undefined, kv);
@@ -1592,12 +1605,6 @@ function commandScope(body: HTMLElement, t: TaskX) {
   const hold = div("held none", undefined, part(body, "Held by"));
   div("shield", "○", hold).setAttribute("aria-hidden", "true");
   small("What it writes in its clean copy is thrown away.", div("", "No agent writes here: there is nothing to hold.", hold));
-  const when = part(body, "Done when");
-  const row = (tone: string, line: string) => { const r = div("checkrow", undefined, when); div(`dot ${tone}`, undefined, r); r.append(line); };
-  row("dim", "its exit code is its check: 0 and it is done");
-  const c = checkMark(t); // its exit, as its card's box says it: no line where that says nothing
-  if (c.words) row(c.tone, c.words);
-  div("dim", "no model: no tokens", part(body, "Tokens"));
 }
 
 /** Edit: the task's form (or, finished, a command step or in a replay, what it says), the sub-goal it is under and what it waits on. */
