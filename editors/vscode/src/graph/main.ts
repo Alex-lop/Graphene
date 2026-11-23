@@ -2220,7 +2220,9 @@ function wire() {
     if (label) b.appendChild(document.createElement("span")).append(label); // a tab too narrow for it shows the icon alone (graph.css)
     b.title = title;
     b.addEventListener("click", on);
-    b.setAttribute("aria-label", label || title.replace(/:.*| \(.*/, ""));
+    // a name where no words show: an icon, or Add task in a tab too narrow for its words. The main act is named
+    // by its words, which `header` changes (Start, Run, Stop)
+    if (!label || id === "b-add") b.setAttribute("aria-label", label || title.replace(/:.*| \(.*/, ""));
     if (!label) b.classList.add("icon");
   };
   top("b-save", "", "save", "Save as workflow: this graph to workflows/, to run again on new inputs", () => api.postMessage({ type: "act", act: "saveWorkflow", id: "" }));
