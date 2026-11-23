@@ -1,9 +1,9 @@
 // The graph, in the webview: boxes for the tasks coloured by their state, bands for the sub-goals, the goal
 // at the right (or at the foot, when the view is narrow), a forked task fanning out into its forks; or, in
-// the sidebar, the same plan as lanes, one row a task, wave by wave. A click selects and opens the details
+// the sidebar, the same plan as lanes, one row a task, grouped by sub-goal. A click selects and opens the details
 // pane whose buttons ask the extension to run graphene. No network, no library: SVG and DOM from the state.
 // Boxes are keyed by task id and updated in place, so a snapshot that changed nothing moves nothing.
-import { layout, modeFor, rounded, route, step, type Box, type Edge, type Layout } from "../layout.ts";
+import { layout, modeFor, rounded, route, spread, step, type Box, type Edge, type Layout, type Point } from "../layout.ts";
 import { autoLine, SAY, screenWords, usd, type DraftStep, type State } from "../state.ts";
 import { ICONS } from "./icons.ts";
 import { blanks, draftLine, globs, isDraft, lacks, type Draft } from "./draft.ts";
@@ -13,7 +13,7 @@ import { actsFor, ASK_AGENT, askLine, askNote, asksYou, attemptsOf, commandChip,
          filesChip, forkActs, forkRow, forkWords, HEADER_ACTS, headerFor, heldWords, KEYS, linkHint, mainAct, mayRun, newsLine, paneKey, pipeline,
          planningLine, PROVES_NOTHING, provesNothing, questionOn, scopeTree, startAnswers, stopsOf, sub, tabOrder, tokenWords, topLine, whenEdit, who, writtenOf,
          type Button, type ForkX, type StateX, type TaskX } from "./words.ts";
-import { CARD, dotGap, FAR, fitPlan, hold, levelFor, miniFrame, miniSize, nearest, offScreen, onto, panTo, percent, switchK, wheelK, ZOOM_MAX, ZOOM_MIN, zoomK,
+import { CARD, dotGap, FAR, fitPlan, hold, levelFor, miniFrame, miniSize, nearest, offScreen, onto, panTo, percent, ROWS_FROM, settle, switchK, wheelK, ZOOM_MAX, ZOOM_MIN, zoomK,
          type Level, type Size, type Zoom } from "./zoom.ts";
 
 declare function acquireVsCodeApi(): { postMessage(m: unknown): void; getState(): unknown; setState(s: unknown): void };
@@ -46,11 +46,11 @@ type Dims = { w: number; h: number; gapX: number; gapY: number; padX: number; pa
 // `label`: the room over a sub-goal's first row for its header, which is drawn larger over rows. A band reaches half
 // a `gapY` past its rows, so two bands stand `bandGap - gapY` apart, 8 px, and never share an edge. Whole cards' top
 // and foot pay for that room, so the running plan still opens as cards in a laptop's tab (1140 by 820). `inset`: a
-// band's room either side of its cards, under half a `gapX`, so a line down the middle of a gap (`edgeD`) keeps 6 px
-// off a band's side and is never drawn along it
+// band's room either side of its cards, well under half a `gapX`, so a line down the middle of a gap (`edgeD`) keeps
+// 10 px or more off a band's side and is never drawn along it, and two trunks side by side in it (`spread`) 7 px
 const DIMS: Record<Level, Dims> = {
-  full: { w: BOX_W, h: BOX_H, gapX: 32, gapY: 16, padX: 24, padY: 16, bandGap: 24, label: 28, inset: 10 },
-  compact: { w: ROW_W, h: ROW_H, gapX: 28, gapY: 8, padX: 24, padY: 24, bandGap: 16, label: 30, inset: 8 },
+  full: { w: BOX_W, h: BOX_H, gapX: 34, gapY: 16, padX: 24, padY: 16, bandGap: 24, label: 28, inset: 7 },
+  compact: { w: ROW_W, h: ROW_H, gapX: 36, gapY: 8, padX: 24, padY: 24, bandGap: 16, label: 30, inset: 6 },
 };
 /** A sub-goal's loose tasks (no line in or out but to the goal) stand at most this many high, then side by side. */
 const STACK = 3;
@@ -314,9 +314,9 @@ function render() {
   const s = state;
   if (drawing && drawing !== selected) { drawing = null; fitRoom = ""; } // the drawn task was left (closed, discarded, or taken into the plan): the plan is fitted again
   // the pane first: it opens or closes beside the canvas, which is as wide as a plan fitted now is fitted to
-  const shut = $("details").hidden;
+  const shut = $("details").hidden, was = paneOf;
   pane();
-  if ($("details").hidden !== shut) paneMoved = true;
+  if ($("details").hidden !== shut) { paneMoved = true; closedOn = shut ? null : was; }
   const blank = !s.tasks.length && !drawn().length && !s.drafting; // nothing drawn: the notice says what to do, alone
   header(s, blank);
   const v = view();
@@ -445,6 +445,8 @@ let goalKey = "";
 let fitSize = ""; // the drawing's size when the zoom was last set for it
 let fitRoom = ""; // and the window's size then, whatever the pane took of it; "": the plan is fitted again at the next drawing
 let paneMoved = false; // the pane opened or closed in this render: a plan fitted now glides to its new fit
+let closedOn: string | null = null; // and the card whose pane it was, when it closed: the view stays on it
+let sticky: { g: SVGGElement; x: number; room: number }[] = []; // each sub-goal's header, its band's left and how far it may slide right in it
 
 type Placed = { lay: Layout; g: ReturnType<typeof boxes>; here: number; awayW: number };
 
@@ -484,29 +486,39 @@ const paneSize = (): Size => ({ w: $("canvas").clientWidth || 800, h: $("canvas"
 /** The canvas's foot, while the zoom's buttons are there (the side bar's canvas has none). */
 const foot = () => ($("zoom").offsetHeight ? FOOT : 0);
 const sizeOf = (l: Layout): Size => ({ w: l.width, h: l.height });
+/** A plan wider than its canvas, its sides cutting no card to a sliver, ``id``'s card whole, the goal whole where it
+ *  can be (zoom.ts `settle`). */
+const settled = (z: Zoom, l: Layout, id?: string | null): Zoom =>
+  settle(z, paneSize(), sizeOf(l), Object.values(l.boxes), id ? l.boxes[id] : undefined, l.boxes[GOAL]);
 
-/** How the plan opens, and how `f` and a double click on the canvas fit it again: the whole plan in the pane.
- *  Whole cards when they fit at a scale they read at, else rows (zoom.ts), never so small their titles do not
- *  read: a plan larger than that (a Cursor tab beside its agent's chat) opens on the card that matters, the chosen
- *  one, else the first that wants you, else the first at work. Laid downward (the narrow canvas) it is whole cards
- *  from the top: that one opens on the step that asks you. */
-function opening(s: StateX, down: boolean): { level: Level; at: Placed; zoom: Zoom } {
+/** How the plan opens: the whole plan in the pane. Whole cards when they fit at a scale they read at, else rows
+ *  (zoom.ts), never so small their titles do not read: a plan larger than that (a Cursor tab beside its agent's
+ *  chat) opens on the card that matters, the chosen one, else the first that wants you, else the first at work.
+ *  Asked for (`fitAll`: `f`, the fit button, a double click on the canvas), it is the whole plan however small.
+ *  Laid downward (the narrow canvas) it is whole cards from the top: that one opens on the step that asks you. */
+function opening(s: StateX, down: boolean): { level: Level; at: Placed; zoom: Zoom; whole: boolean } {
   const canvas = paneSize();
   const full = place(s, down, "full");
   let rows: Placed | undefined;
   const keep = fitted && !$("details").hidden ? level : "compact"; // a pane open beside whole cards keeps them whole a little further
-  const fit = down ? null : fitPlan(canvas, sizeOf(full.lay), () => sizeOf((rows = place(s, down, "compact")).lay), foot(), keep);
+  // the plan and its bands in the drawing, and its empty margin round them, which a fit just too tight may cut
+  // (zoom.ts): a band's side at the left, the goal's (or the region's) at the right, a band's edge top and foot
+  const cut = (l: Level, size: Size) => {
+    const d = DIMS[l], x = d.padX - d.inset, y = Math.min(d.padY - d.gapY / 2, full.awayW ? 8 : Infinity);
+    return { x, y, w: size.w - x - (full.awayW ? 8 : full.g.goal ? d.padX : x), h: size.h - 2 * y };
+  };
+  const fit = down ? null : fitPlan(canvas, sizeOf(full.lay), () => sizeOf((rows = place(s, down, "compact")).lay), foot(), keep, cut, fitAll ? ZOOM_MIN : ROWS_FROM);
   if (fit) {
-    const at = fit.level === "compact" && rows ? rows : full, { k, tx, ty } = fit;
+    const at = fit.level === "compact" && rows ? rows : full, z = { k: fit.k, tx: fit.tx, ty: fit.ty };
     const id = fit.whole ? undefined : [selected, ...wantYou(), ...s.tasks.filter((t) => t.state === "running").map((t) => t.id)].find((x) => x && at.lay.boxes[x]);
     const p = id ? at.lay.boxes[id] : undefined;
-    return { level: fit.level, at, zoom: p ? onto({ k, tx, ty }, { w: canvas.w, h: canvas.h - foot() }, sizeOf(at.lay), p) : { k, tx, ty } };
+    return { level: fit.level, at, zoom: fit.whole ? z : settled(p ? onto(z, { w: canvas.w, h: canvas.h - foot() }, sizeOf(at.lay), p) : z, at.lay, id), whole: fit.whole };
   }
   // a step that asks you is the thing to see: a graph wider than its canvas opens on that step, past the line,
   // and not on its left edge; a short one sits in the middle
   const ask = s.tasks.find(asksYou), p = ask ? full.lay.boxes[ask.id] : undefined;
   const tx = full.lay.width <= canvas.w ? (canvas.w - full.lay.width) / 2 : p ? Math.min(0, canvas.w - (p.x + p.w + AWAY_PAD)) : 0;
-  return { level: "full", at: full, zoom: hold({ k: 1, tx, ty: Math.max(0, (canvas.h - full.lay.height) / 2 - 10) }, { w: canvas.w, h: canvas.h - foot() }, sizeOf(full.lay)) };
+  return { level: "full", at: full, zoom: hold({ k: 1, tx, ty: Math.max(0, (canvas.h - full.lay.height) / 2 - 10) }, { w: canvas.w, h: canvas.h - foot() }, sizeOf(full.lay)), whole: true };
 }
 
 function graph(s: StateX, dir: "across" | "down") {
@@ -515,16 +527,19 @@ function graph(s: StateX, dir: "across" | "down") {
   const was = svg.dataset.level ?? level; // the level of the drawing on screen
   if (down) level = "full"; // the narrow drawing keeps whole cards
   // Until the person pans or zooms, the whole plan is in the pane: fitted when the page opens, when the window
-  // is resized, when the plan grows or shrinks, when the pane closes (a plan fitted beside it, in a narrow tab,
-  // would stay at half its size), and when asked (`f`, a select from outside the page). The pane opening is none
-  // of these, nor is the footer growing a line: a card chosen here stays where it is, as big as it is. The narrow
-  // drawing wraps at its canvas's width, so it is laid out for it each time.
+  // is resized, when the plan grows or shrinks, when the pane closes and the plan then fits whole (a plan fitted
+  // beside it, in a narrow tab, would stay at half its size), and when asked (`f`, a select from outside the page).
+  // The pane opening is none of these, nor is the footer growing a line: a card chosen here stays where it is, as
+  // big as it is. The narrow drawing wraps at its canvas's width, so it is laid out for it each time.
   const room = `${innerWidth}x${innerHeight}`;
   const sized = (l: Layout) => `${l.width}x${l.height}`;
   const free = !moved && !drawing;
   let at = free && down ? null : place(s, down, level);
-  const same = at !== null && sized(at.lay) === fitSize && room === fitRoom && !(paneMoved && $("details").hidden); // neither the window, the plan nor the pane's close changed it
-  const opened = free && !same ? opening(s, down) : null;
+  const kept = at !== null && sized(at.lay) === fitSize && room === fitRoom; // neither the window nor the plan changed
+  const same = kept && !(paneMoved && $("details").hidden); // nor did the pane close
+  let opened = free && !same ? opening(s, down) : null;
+  const stay = opened && kept && !opened.whole; // closed on a plan larger than its tab: the card just read stays where it is
+  if (stay) opened = null;
   if (opened) level = opened.level;
   D = DIMS[level];
   at = opened?.at ?? at!;
@@ -540,6 +555,7 @@ function graph(s: StateX, dir: "across" | "down") {
   const bands = $("bands") as unknown as SVGGElement, heads = $("heads") as unknown as SVGGElement;
   bands.replaceChildren();
   heads.replaceChildren();
+  sticky = [];
   // across, a band ends half a gap past its last column, short of the goal's (`place` set it a gap further out):
   // the goal is no band's, and each band runs into it as one line along a trunk in the gap between
   const gAt = g.goal && !down ? lay.boxes[GOAL] : undefined, right = gAt ? gAt.x - 1.5 * D.gapX : here - 18;
@@ -559,12 +575,14 @@ function graph(s: StateX, dir: "across" | "down") {
     const { name, whole } = bandName(goalTitle(s, band.id));
     const rect = bands.appendChild(el("rect", { class: "band", x: x0, y: band.y0, height: band.y1 - band.y0, rx: 10 }));
     rect.appendChild(el("title", {}, whole));
-    // its header has the band's room on to the trunk, wherever the plan is panned or zoomed: what is off screen is
-    // cut by the screen, and a redraw never cuts it to the part that was on it
+    // its header has the band's room on to the trunk, wherever the plan is panned or zoomed, and a redraw never
+    // cuts it to the part that was on it; a band whose start is panned off the canvas keeps it at the canvas's
+    // edge while the band is there (`applyZoom`), not cut to its last words
     const said = bandHead(heads, name, s.tasks.filter((t) => t.parent === band.id), x0 + D.inset, band.y0 + D.label / 2 + 1, most - x0 - 2 * D.inset);
     const end = Math.min(most, Math.max(x1, x0 + said + 2 * D.inset));
     rect.setAttribute("width", String(end - x0));
     spans.set(band.id, { x0, x1: end });
+    sticky.push({ g: heads.lastElementChild as SVGGElement, x: x0, room: end - x0 - said - 2 * D.inset });
   }
   // edges: keyed by their ends; a changed path glides (CSS transitions d)
   const edges = $("edges") as unknown as SVGGElement;
@@ -577,15 +595,24 @@ function graph(s: StateX, dir: "across" | "down") {
     path.setAttribute("d", d);
     path.setAttribute("class", `edge ${kind}`);
   };
-  // what a line across keeps clear of: every box, and each sub-goal's header row
-  const blocks = [...Object.values(lay.boxes), ...lay.bands.flatMap((b) => { const sp = spans.get(b.id); return sp ? [{ x: sp.x0, y: b.y0, w: sp.x1 - sp.x0, h: D.label }] : []; })];
+  // what a line across keeps clear of: every box, each sub-goal's header row, and its band's foot, which a line
+  // going round a card is never drawn along
+  const blocks = [...Object.values(lay.boxes), ...lay.bands.flatMap((b) => {
+    const sp = spans.get(b.id);
+    return sp ? [{ x: sp.x0, y: b.y0, w: sp.x1 - sp.x0, h: D.label }, { x: sp.x0, y: b.y1 - 1, w: sp.x1 - sp.x0, h: 2 }] : [];
+  })];
+  const routed: { key: string; kind: string; pts: Point[] }[] = [];
   for (const [a, b] of g.edges) {
     const p = lay.boxes[a], q = lay.boxes[b];
     if (!p || !q || (b === GOAL && gAt && p.band)) continue; // a sub-goal's last steps end in its band, and the band runs into the goal
     // the edge carries the work: moving where an agent is working, green where it landed, a hairline until then; a
     // step in no sub-goal joins the goal on the bands' trunk
-    line(`${a}>${b}`, b === GOAL && gAt ? bracket(p.x + D.w, p.y + D.h / 2) : edgeD(p, q, down, blocks), `${edgeKind(taskOf.get(a), taskOf.get(b))}${selected && (a === selected || b === selected) ? " hot" : ""}${isDraft(a) || isDraft(b) ? " draft" : ""}`);
+    const key = `${a}>${b}`, kind = `${edgeKind(taskOf.get(a), taskOf.get(b))}${selected && (a === selected || b === selected) ? " hot" : ""}${isDraft(a) || isDraft(b) ? " draft" : ""}`;
+    const d = b === GOAL && gAt ? bracket(p.x + D.w, p.y + D.h / 2) : edgeD(p, q, down, blocks);
+    if (typeof d === "string") line(key, d, kind); else routed.push({ key, kind, pts: d });
   }
+  // the trunks set apart in their gaps, clear of a band's side by 4 px at least (layout.ts `spread`)
+  spread(routed.map((r) => r.pts), D.gapX - 2 * D.inset - 8).forEach((pts, i) => line(routed[i]!.key, rounded(pts), routed[i]!.kind));
   if (gAt) for (const band of lay.bands) { // a sub-goal into the goal: a bracket out of its band, along a trunk half way, into the goal
     const mine = band.id ? s.tasks.filter((t) => t.parent === band.id) : [], span = spans.get(band.id);
     if (!mine.length || !span) continue;
@@ -679,14 +706,16 @@ function graph(s: StateX, dir: "across" | "down") {
   svg.setAttribute("viewBox", `0 0 ${Math.max(lay.width, 10)} ${Math.max(lay.height, 10)}`);
   svg.setAttribute("width", String(lay.width));
   svg.setAttribute("height", String(lay.height));
-  // fitted again because it grew or shrank, or with the pane opening beside it, it glides to its new fit. In a
-  // hand's own place it is held to the canvas when the window or the plan changed, and not for a pane beside it:
-  // a clamp then would shift it under the click. A pane under the canvas (the narrow tab) takes half its height:
-  // there the plan is held to what is left, at the same zoom, or its rows would sit under the pane
+  // fitted again because it grew or shrank, or because the pane closed, it glides to its new fit. Not fitted, it
+  // is held to the canvas when the window or the plan changed, or the pane closed (then on the card just read, no
+  // card cut to a sliver), and not for a pane opening beside it: a clamp then would shift it under the click. A
+  // pane under the canvas (the narrow tab) takes half its height: there the plan is held to what is left, at the
+  // same zoom, or its rows would sit under it
   if (opened) {
     if (fitted && level === was && (sized(lay) !== fitSize || paneMoved)) { svg.classList.add("glide"); setTimeout(() => svg.classList.remove("glide"), 300); }
     zoom = opened.zoom;
-  } else if (!same || (paneMoved && narrow())) zoom = clamp(zoom);
+  } else if (!same) zoom = stay ? settled(clamp(zoom), lay, closedOn) : clamp(zoom);
+  else if (paneMoved && narrow()) zoom = { ...clamp(zoom), tx: zoom.tx }; // it took height, not width: where the plan stood across holds
   fitSize = sized(lay);
   fitRoom = room;
   fitted = true;
@@ -698,17 +727,17 @@ function graph(s: StateX, dir: "across" | "down") {
 
 type Spot = Layout["boxes"][string];
 /** An edge, port to port: across, out of a card's right side and into the next's left, square and in the gaps
- *  between the cards (layout.ts `route`), never along a card's border or behind one; laid downward, a curve out of
- *  its foot into the top. A card's ports are at its own size's middle, however tall its attempts make it; the goal's
- *  at its own. */
-function edgeD(p: Spot, q: Spot, down: boolean, blocks: readonly { x: number; y: number; w: number; h: number }[]): string {
+ *  between the cards (layout.ts `route`), never along a card's border or behind one: its corners, which `graph`
+ *  sets apart from the other lines' before drawing them; laid downward, a curve out of its foot into the top. A
+ *  card's ports are at its own size's middle, however tall its attempts make it; the goal's at its own. */
+function edgeD(p: Spot, q: Spot, down: boolean, blocks: readonly { x: number; y: number; w: number; h: number }[]): string | Point[] {
   const w = (b: Spot) => (b.id === GOAL ? b.w : D.w), h = (b: Spot) => (b.id === GOAL ? b.h : D.h);
   if (down) {
     const x1 = p.x + w(p) / 2, y1 = p.y + p.h, x2 = q.x + w(q) / 2, y2 = q.y;
     const dy = Math.max(16, (y2 - y1) / 2);
     return `M${x1},${y1} C${x1},${y1 + dy} ${x2},${y2 - dy} ${x2},${y2}`;
   }
-  return rounded(route(p.x + w(p), p.y + h(p) / 2, q.x, q.y + h(q) / 2, D.gapX, D.gapY, blocks));
+  return route(p.x + w(p), p.y + h(p) / 2, q.x, q.y + h(q) / 2, D.gapX, D.gapY, blocks);
 }
 
 /** The region for what leaves this machine (a push, a pull request), right of the plan, once a step does: its
@@ -849,8 +878,8 @@ function bandHead(root: SVGGElement, title: string, ts: readonly TaskX[], x: num
   put(name);
   if (count) put(count);
   wants.forEach(put);
-  // on a plate of the band's own ground, so a line crossing the band passes under the header and not through it
-  g.prepend(el("rect", { class: "plate", x: x - 6, y: y - 11, width: at - gap - x + 12, height: 22, rx: 6 }));
+  // its words ringed in the band's own ground (graph.css), so a line crossing the header passes behind them and
+  // goes on between them, not under a plate where it seems to end
   return at - gap - x;
 }
 
@@ -1086,7 +1115,7 @@ function drawPlanned(grp: SVGGElement, d: DraftStep, down: boolean) {
   grp.appendChild(el("circle", { class: "port", cx: down ? BOX_W / 2 : BOX_W, cy: down ? BOX_H : BOX_H / 2, r: 5 }));
 }
 
-// ---- the lanes: one row a task, wave by wave ----
+// ---- the lanes: one row a task, grouped by sub-goal ----
 
 const laneEls = new Map<string, { el: HTMLElement; key: string }>();
 let lanesKey = "";
@@ -1096,24 +1125,31 @@ function lanes(s: StateX) {
   const g = boxes(s);
   const order = layout(g.boxes, g.edges, { goal: g.goal, boxW: BOX_W, boxH: BOX_H });
   lay = null; // arrows walk the rows, not a drawing
-  const waves: TaskX[][] = [];
-  // a step past the line is not in the layout: it comes after every wave, under its own heading
-  const past = Math.max(-1, ...Object.values(order.boxes).filter((p) => p.id !== GOAL).map((p) => p.rank)) + 1;
-  for (const t of s.tasks) {
-    const r = t.leaves ? past : order.boxes[t.id]?.rank ?? 0;
-    (waves[r] ??= []).push(t);
-  }
-  for (const w of waves) w?.sort((p, q) => (order.boxes[p.id]?.y ?? 0) - (order.boxes[q.id]?.y ?? 0));
+  // a sub-goal a group, headed as its band is on the canvas, in the graph's order, its tasks in the order they
+  // start; tasks in none (or in auto's root, which is the goal) last, over the goal, headed only where groups
+  // stand above them, so they never read as the last group's; a step past the line after them all, under its own
+  const AWAY = " away", groups = new Map<string, TaskX[]>(order.bands.filter((b) => b.id && goalTitle(s, b.id) !== s.goal).map((b) => [b.id, []]));
+  groups.set("", []).set(AWAY, []);
+  for (const t of s.tasks) groups.get(t.leaves ? AWAY : groups.has(t.parent ?? "") ? t.parent ?? "" : "")!.push(t);
+  const box = (t: TaskX) => order.boxes[t.id];
+  for (const ts of groups.values()) ts.sort((p, q) => (box(p)?.rank ?? 0) - (box(q)?.rank ?? 0) || (box(p)?.y ?? 0) - (box(q)?.y ?? 0));
+  const heads = [...groups].filter(([, ts]) => ts.length).map(([id, ts]) => [id, ts, id === AWAY ? `leaves your machine${ts.some(asksYou) ? " · asks you first" : ""}` : id ? done(ts) : ""] as const);
   const steps = draftedSteps(s);
-  const key = JSON.stringify([waves.map((w) => w?.map((t) => t.id)), selected, s.goal, done(s.tasks), drawn(), naming, steps, planningLine(s)]);
+  const key = JSON.stringify([heads.map(([id, ts, n]) => [id, n, goalTitle(s, id), ts.map((t) => t.id)]), selected, s.goal, done(s.tasks), drawn(), naming, steps, planningLine(s)]);
   const rows: HTMLElement[] = [];
   const seen = new Set<string>();
-  waves.forEach((w, i) => {
-    if (!w?.length) return;
-    rows.push(div("wave", w[0]!.leaves ? `leaves your machine${w.some(asksYou) ? " · asks you first" : ""}` : `wave ${i + 1} · ${done(w)} done`));
-    for (const t of w) {
+  for (const [id, ts, n] of heads) {
+    if (id === AWAY) rows.push(div("wave", n));
+    else if (!id) { if (heads.some(([h]) => h && h !== AWAY)) rows.push(div("wave", "in no sub-goal")); }
+    else {
+      const { name, whole } = bandName(goalTitle(s, id)), head = div("wave");
+      div("w-name", name, head).title = whole;
+      head.append(n);
+      rows.push(head);
+    }
+    for (const t of ts) {
       seen.add(t.id);
-      const k = JSON.stringify([t, t.id === selected, s.goals.find((x) => x.id === t.parent)?.title, s.envelope.forks]);
+      const k = JSON.stringify([t, t.id === selected, s.envelope.forks]);
       let have = laneEls.get(t.id);
       if (!have) {
         const row = div("lane fresh");
@@ -1128,7 +1164,7 @@ function lanes(s: StateX) {
       if (have.key !== k) { have.key = k; drawLane(have.el, t, s); }
       rows.push(have.el);
     }
-  });
+  }
   for (const [id, have] of laneEls) if (!seen.has(id)) { have.el.remove(); laneEls.delete(id); }
   if (drawn().length) rows.push(div("wave", "drawn, not in the plan yet"));
   for (const d of drawn()) { // few, so made again each time; kept only when the rows changed (the key above)
@@ -1152,7 +1188,8 @@ function lanes(s: StateX) {
     const main = div("l-main", undefined, row);
     div("l-title", d.title, main);
     div("l-sub", ["drafted", filesChip(d.scope), d.check ?? ""].filter(Boolean).join(" · "), main);
-    if (d.parent) div("l-band", goalTitle(s, d.parent), main).title = goalTitle(s, d.parent);
+    const b = d.parent ? bandName(goalTitle(s, d.parent)) : null;
+    if (b && b.whole !== s.goal) div("l-band", b.name, main).title = b.whole; // a planner's root sub-goal is the goal itself: said once, at the foot
     rows.push(row);
   }
   if (s.goal) {
@@ -1186,8 +1223,9 @@ function drawLane(row: HTMLElement, t: TaskX, s: StateX) {
   const times = attemptsMark(t, s.envelope.forks); // set to attempts it has not started: 3 attempts, as on its card
   div("l-sub", [line, times].filter(Boolean).join(" · "), main);
   if (times) row.dataset.attempts = String(parseInt(times)); else delete row.dataset.attempts;
-  const band = t.parent ? goalTitle(s, t.parent) : "";
-  if (band && band !== s.goal) div("l-band", band, main).title = band; // auto's root sub-goal is the goal itself: said once, at the foot
+  // its scope, as its card says it: the files it may change (or has written) by their names, and the check it is done when
+  const files = filesLine(t), check = doneWhen(t, 48), what = [t.command ? commandChip(t.command) : files.text.split(" ").map((w) => tailPath(w).replace(/^…\//, "")).join(" "), check].filter(Boolean);
+  if (what.length) div(`l-scope${files.tone === "back" ? " bad" : ""}`, what.join(" · "), main).title = [t.command ?? t.scope.join(" "), t.check ? `done when ${t.check}` : ""].filter(Boolean).join("\n");
   if (t.forks.length) {
     const forks = div("l-forks", undefined, main);
     for (const f of t.forks) {
@@ -1262,12 +1300,16 @@ function actual() {
 /** A row, opened by a double click: whole cards at their own size, that one in the canvas's middle. */
 const detail = (id: string) => turn("full", 1, { id, sx: $("canvas").clientWidth / 2, sy: $("canvas").clientHeight / 2 });
 
-/** The whole plan in the pane again, as `f` and a double click on the canvas ask. */
+/** The whole plan in the pane again, as `f` and a double click on the canvas ask: however small that draws it,
+ *  which the plan opening does not (`opening`). */
+let fitAll = false;
 function refit() {
   moved = false;
   drawing = null;
   fitRoom = "";
+  fitAll = true;
   render();
+  fitAll = false;
 }
 
 /** The minimap, drawn again with the graph: every card a small rect in its mark's colour (as its row is), the
@@ -1335,6 +1377,10 @@ function applyZoom() {
   svg.style.transformOrigin = "0 0";
   svg.style.setProperty("--k", String(zoom.k)); // what must keep its size on screen divides by it (graph.css `.far`)
   svg.classList.toggle("far", level === "compact" && zoom.k < FAR);
+  for (const h of sticky) { // a band's start off the canvas's left: its header slides along it, to the canvas's edge
+    const by = Math.min(h.room, Math.max(0, -(h.x * zoom.k + zoom.tx) / zoom.k));
+    h.g.style.transform = by > 0 ? `translate(${by}px, 0)` : "";
+  }
   const dots = canvas.style, gap = dotGap(zoom.k); // the canvas's dots move with the plan, and thin out as it shrinks
   dots.backgroundPosition = `${zoom.tx}px ${zoom.ty}px`;
   dots.backgroundSize = `${gap}px ${gap}px`;

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { layout, modeFor, order, ranks, rounded, route, step, type Edge } from "../src/layout.ts";
+import { layout, modeFor, order, ranks, rounded, route, spread, step, type Edge } from "../src/layout.ts";
 import { parseState } from "../src/state.ts";
 
 const fixture = (name: string) => readFileSync(new URL(`./fixtures/${name}.json`, import.meta.url), "utf8");
@@ -166,7 +166,27 @@ test("an edge across is square and in the gaps: along, down the gap before its t
   assert.equal(route(100, 50, 264, 50, 32, 16, [...both, { x: 132, y: -100, w: 100, h: 116 }])[2]![1], 78, "else the middle of the row gap");
   // a box not in a later column is joined straight
   assert.deepEqual(route(300, 50, 132, 150, 32, 16, []), [[300, 50], [132, 150]]);
+  // round a box in a one-row band, under its header: 14 under the box would run 6 px along the band's foot (a thin
+  // block 8 under the box), so the line goes 14 under the band
+  const band = [{ x: 0, y: 0, w: 400, h: 28 }, { x: 132, y: 30, w: 100, h: 40 }];
+  assert.equal(route(100, 50, 264, 50, 32, 16, band)[2]![1], 84);
+  assert.equal(route(100, 50, 264, 50, 32, 16, [...band, { x: 0, y: 77, w: 400, h: 2 }])[2]![1], 93);
   // drawn with each corner rounded, never wider than half a leg
   assert.equal(rounded([[0, 0], [16, 0], [16, 100], [32, 100]]), "M0,0 L8,0 Q16,0 16,8 L16,92 Q16,100 24,100 L32,100");
   assert.equal(rounded([[0, 0], [16, 0], [16, 4], [32, 4]]), "M0,0 L14,0 Q16,0 16,2 L16,2 Q16,4 18,4 L32,4");
+});
+
+test("lines into two cards never share a trunk where they meet: the one going further down stands left; one card's lines share its own", () => {
+  // the running plan: bye (50) into farewell (150), and greet (150, beside farewell) into README (250), one gap
+  const toFarewell = route(100, 50, 132, 150, 32, 16, []), toReadme = route(100, 150, 132, 250, 32, 16, []);
+  assert.equal(toFarewell[1]![0], toReadme[1]![0], "routed alone, they turn at the same x: greet's line seems to run on into farewell");
+  const alsoReadme = route(100, 50, 132, 250, 32, 16, []), far = route(100, 600, 132, 700, 32, 16, []);
+  const [f, r, also, away] = spread([toFarewell, toReadme, alsoReadme, far], 12);
+  assert.ok(r![1]![0] < f![1]![0] && f![1]![0] - r![1]![0] === 6, "6 px apart, README's left");
+  assert.deepEqual([r![1]![0], r![2]![0]], [also![1]![0], also![2]![0]], "README's lines share its trunk");
+  assert.equal(away![1]![0], 116, "a trunk with none beside it keeps the gap's middle");
+  assert.deepEqual([f![0], f![3]], [toFarewell[0], toFarewell[3]], "the ports do not move");
+  // more trunks than room: closer together, inside it
+  const many = spread([0, 1, 2, 3].map((i) => route(100, 50 + i * 10, 132, 400 - i * 10, 32, 16, [])), 12).map((p) => p[1]![0]);
+  assert.ok(Math.max(...many) - Math.min(...many) <= 12 && new Set(many).size === 4);
 });

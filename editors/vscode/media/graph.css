@@ -121,7 +121,7 @@ main { flex: 1; display: flex; min-height: 0; }
 #planning[hidden] { display: none; }
 #planning::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--proposed); animation: blink 1s infinite; }
 @keyframes blink { 50% { opacity: 0.25; } }
-#svg { display: block; position: absolute; left: 0; top: 0; }
+#svg { display: block; position: absolute; left: 0; top: 0; overflow: visible; } /* a line going round a last band's card runs past its foot */
 #svg.glide { transition: transform var(--ease); } /* the plan grew: it glides to the middle again */
 #svg.cut .task, #svg.cut .goal, #svg.cut .edge { transition: none; } /* whole cards to rows, or back: another drawing, at once */
 #notice {
@@ -374,7 +374,9 @@ button:disabled { opacity: 0.45; cursor: default; }
 /* a sub-goal's header: its ring, its title, its count, and in its mark's colour what wants you there */
 .band-head { pointer-events: none; }
 .band-head text { font-size: 12px; font-family: var(--font); fill: var(--dim); }
-.band-head .plate { fill: color-mix(in srgb, var(--fg) 4%, var(--bg)); } /* the band's own ground, opaque: an edge passes under the header */
+/* each word ringed in the band's own ground, opaque: an edge crossing the header passes behind the words and is
+   seen going on between them */
+.band-head text { paint-order: stroke; stroke: color-mix(in srgb, var(--fg) 4%, var(--bg)); stroke-width: 5px; stroke-linejoin: round; }
 .band-head .band-label { font-weight: 600; } /* a step under its cards' titles, so a band groups them and does not compete */
 .band-head .band-want { fill: var(--c); font-weight: 600; }
 .mk.portion { --c: var(--done); }
@@ -458,7 +460,7 @@ button:disabled { opacity: 0.45; cursor: default; }
    corner, as the suggestion it becomes (blue round a card is the selection's); the + past a card's out port draws one after it */
 .draft .box, .drafted .box { stroke-dasharray: 5 4; fill: color-mix(in srgb, var(--card) 55%, var(--bg)); filter: none; }
 .task.drafted { cursor: default; }
-.wave.planning { color: var(--proposed); text-transform: none; letter-spacing: 0; font-size: 12px; }
+.wave.planning { color: var(--proposed); }
 .wave.planning::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 8px; background: var(--proposed); animation: blink 1s infinite; }
 .lane.drafted { border-style: dashed; border-color: var(--proposed); cursor: default; }
 .lane.drafted .l-stripe { background: none; }
@@ -538,10 +540,12 @@ button:disabled { opacity: 0.45; cursor: default; }
 .fork-row.st-passed, .fork-row.kept { border-color: var(--done); }
 .fork-row.st-gave-up, .fork-row.st-failed, .fork-row.st-ended { border-color: var(--came-back); }
 
-/* the lanes: the narrow view, one row a task, wave by wave; HTML, so every word wraps and nothing shrinks */
-#lanes { padding: 6px 8px 12px; }
+/* the lanes: the narrow view, one row a task, grouped by sub-goal; HTML, so every word wraps and nothing shrinks */
+#lanes { padding: 6px 8px 12px; max-width: 760px; margin: 0 auto; } /* a list, not a stretched table: a row reads across at a glance */
 #lanes[hidden] { display: none; }
-.wave { color: var(--dim); font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; padding: 10px 4px 4px; }
+/* a group's head, as its band's on the canvas: the sub-goal's name, then how many of its tasks are done */
+.wave { color: var(--dim); font-size: 12px; padding: 12px 4px 4px; display: flex; gap: 8px; align-items: baseline; }
+.w-name { color: var(--fg); font-weight: 600; font-size: 13px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .lane {
   display: flex; gap: 8px; padding: 6px 8px 6px 6px; margin: 3px 0; border: 1px solid var(--line-1); border-radius: var(--r);
   background: var(--fill-1); cursor: pointer; outline: none; transition: border-color var(--ease);
@@ -567,6 +571,8 @@ button:disabled { opacity: 0.45; cursor: default; }
 .l-mark { flex: none; overflow: visible; align-self: center; } /* its state's mark, the shape its card's corner wears */
 .l-sub { color: var(--dim); font-size: 12px; margin-top: 2px; overflow-wrap: anywhere; }
 .l-band { color: var(--dim); font-size: 11px; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.l-scope { color: var(--dim); font-family: var(--mono); font-size: 11.5px; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } /* its files and its check, as its card's chip and foot */
+.l-scope.bad { color: var(--came-back); }
 .l-forks { display: flex; flex-direction: column; gap: 3px; margin-top: 5px; }
 .l-chip {
   font-size: 11.5px; padding: 2px 7px; border: 0 solid var(--line-3); border-left-width: 2px; border-radius: var(--r-sm);
@@ -576,7 +582,7 @@ button:disabled { opacity: 0.45; cursor: default; }
 .l-chip.st-passed { border-color: var(--done); }
 .l-chip.kept { border-color: var(--done); font-weight: 600; background: var(--vscode-editor-inactiveSelectionBackground, rgba(128, 128, 128, 0.15)); }
 .l-chip.st-gave-up, .l-chip.st-failed, .l-chip.st-ended { border-color: var(--came-back); color: var(--dim); }
-.goal-row { border-color: var(--fg); box-shadow: inset 0 0 0 1px var(--fg); flex-direction: column; gap: 2px; margin-top: 10px; cursor: default; }
+.goal-row { border-color: var(--line-3); flex-direction: column; gap: 2px; margin-top: 10px; cursor: default; } /* a card's border, a step stronger: not the focus ring's white */
 .goal-row .l-sub { color: var(--dim); }
 
 /* the keys, on ? */
@@ -595,7 +601,7 @@ button:disabled { opacity: 0.45; cursor: default; }
 body.vscode-high-contrast, body.vscode-high-contrast-light { --edge: var(--border); --card: var(--bg); --card-border: var(--border); --tint: transparent; --dot: color-mix(in srgb, var(--fg) 20%, transparent);
   --wash: var(--bg); } /* what a state's tint is mixed from: here the canvas's own colour, so a row, a foot and a chip keep their border and their mark alone */
 body.vscode-high-contrast .band, body.vscode-high-contrast-light .band { fill: none; stroke: var(--border); stroke-dasharray: 4 3; }
-body.vscode-high-contrast .band-head .plate, body.vscode-high-contrast-light .band-head .plate { fill: var(--bg); }
+body.vscode-high-contrast .band-head text, body.vscode-high-contrast-light .band-head text { stroke: var(--bg); }
 /* the goal the clearest node: the text colour round it; a cell not started an outline in its colour, not a faint fill */
 body.vscode-high-contrast .goal-box, body.vscode-high-contrast-light .goal-box { stroke: var(--fg); }
 :is(body.vscode-high-contrast, body.vscode-high-contrast-light) .cell:is([data-mark="yours"], [data-mark="ready"], [data-mark="waiting"], [data-mark="suggested"]) { fill: none; stroke: var(--c); stroke-width: 1; }

@@ -244,7 +244,7 @@ function downward(cols: string[][], by: Map<string, Box>, goal: string | null, o
 }
 
 type Rect = { x: number; y: number; w: number; h: number };
-type Point = [number, number];
+export type Point = [number, number];
 
 /** An edge's corners across, from (x1, y1) on a box's right side to (x2, y2) on a later one's left, square and in
  *  the gaps, as a DAG view routes them: along to the gap before the target's column (``gap`` wide), down or up it,
@@ -262,6 +262,45 @@ export function route(x1: number, y1: number, x2: number, y2: number, gap: numbe
   const cost = ([v, m]: number[]) => Math.abs(v! - y1) + Math.abs(v! - y2) + (m === 14 ? 0 : 40);
   const y = ways.sort((a, b) => cost(a) - cost(b)).find(([v, m]) => clear(v!, t1, t2, m! - 0.5))?.[0] ?? y1;
   return [[x1, y1], [t1, y1], [t1, y], [t2, y], [t2, y2], [x2, y2]];
+}
+
+/** Routes' trunks spread in their gaps. Lines into one card share its trunk; but two trunks in one gap that share
+ *  any stretch of height (or meet end to end: a line out of a card turning down just where another turns into the
+ *  card beside it) stand apart, at most ``most`` px and within ``room``, so no line seems to run on into another's
+ *  card. Of two side by side, the one going further down stands left (further up, left too), so their legs do not
+ *  cross. A trunk is a route's vertical leg; its last is its target's, any other its source's. */
+export function spread(routes: readonly Point[][], room: number, most = 6): Point[][] {
+  type Trunk = { x: number; y0: number; y1: number; from: number; to: number; legs: [number, number][] };
+  const trunks = new Map<string, Trunk>();
+  routes.forEach((pts, r) => {
+    const legs = pts.slice(1).flatMap((p, i) => (p[0] === pts[i]![0] && p[1] !== pts[i]![1] ? [i] : []));
+    legs.forEach((i, n) => {
+      const [x, a] = pts[i]!, b = pts[i + 1]![1], end = n === legs.length - 1 ? pts.at(-1)! : pts[0]!;
+      const key = `${x} ${n === legs.length - 1 ? "in" : "out"} ${end[0]},${end[1]}`;
+      const t = trunks.get(key) ?? { x, y0: Infinity, y1: -Infinity, from: 0, to: b, legs: [] };
+      t.y0 = Math.min(t.y0, a, b); t.y1 = Math.max(t.y1, a, b); t.from += a; t.legs.push([r, i]);
+      trunks.set(key, t);
+    });
+  });
+  const out = routes.map((pts) => pts.map((p) => [...p] as Point));
+  const gaps = new Map<number, Trunk[]>();
+  for (const t of trunks.values()) gaps.set(t.x, [...(gaps.get(t.x) ?? []), t]);
+  for (const ts of gaps.values()) {
+    const down = (t: Trunk) => t.to * t.legs.length > t.from;
+    ts.sort((p, q) => (down(p) === down(q) ? (down(p) ? q.to - p.to : p.to - q.to) : down(p) ? -1 : 1));
+    const slot = new Map<Trunk, number>(), near = (t: Trunk, u: Trunk) => u.y0 <= t.y1 + most && t.y0 <= u.y1 + most;
+    for (const t of ts) { // the first slot no trunk beside it in height has
+      let s = 0;
+      while (ts.some((u) => slot.get(u) === s && near(t, u))) s++;
+      slot.set(t, s);
+    }
+    for (const t of ts) { // in the middle of the gap, or of the trunks beside it
+      const n = 1 + Math.max(...ts.filter((u) => near(t, u)).map((u) => slot.get(u)!));
+      const x = n > 1 ? t.x + (slot.get(t)! - (n - 1) / 2) * Math.min(most, room / (n - 1)) : t.x;
+      for (const [r, i] of t.legs) { out[r]![i]![0] = x; out[r]![i + 1]![0] = x; }
+    }
+  }
+  return out;
 }
 
 /** A route as a path, each corner rounded to ``r`` px (less where a leg is short). */

@@ -72,11 +72,20 @@ export function fitView(canvas: Size, drawing: Size, foot = 0, most = 1, least =
 /** How a plan opens in its pane: as whole cards where they fit at a scale they read at (``keep``: the level on
  *  screen, which whole cards hold down to FULL_KEEP), else as rows, fitted and drawn no larger than their own size
  *  nor smaller than ROWS_FROM (``whole`` false: the plan is larger than its pane). ``rows`` (the plan's size laid
- *  out as rows) is asked for only when it is needed. */
-export function fitPlan(canvas: Size, full: Size, rows: () => Size, foot = 0, keep: Level = "compact"): Zoom & { level: Level; whole: boolean } {
-  const whole = fitView(canvas, full, foot);
-  if (whole.k >= (keep === "full" ? FULL_KEEP : FULL_FROM)) return { level: "full", ...whole };
-  return { level: "compact", ...fitView(canvas, rows(), foot, ROWS_MOST, ROWS_FROM) };
+ *  out as rows) is asked for only when it is needed. ``cut``: the plan's own box in a level's drawing of that size,
+ *  the rest empty margin, which a fit just too tight for that level may cut so as to keep it, the plan in the
+ *  canvas's middle (a laptop's tab opens the running plan as whole cards, not as rows for want of 10 px of
+ *  nothing); a looser fit keeps all of it. ``least``: the rows' floor, which a fit the person asks for (`f`) lowers
+ *  to the zoom's own, to show the whole plan. */
+export function fitPlan(canvas: Size, full: Size, rows: () => Size, foot = 0, keep: Level = "compact",
+                        cut: (l: Level, s: Size) => Rect = (_, s) => ({ x: 0, y: 0, ...s }), least = ROWS_FROM): Zoom & { level: Level; whole: boolean } {
+  const fits = (l: Level, size: Size, least: number) => {
+    const z = fitView(canvas, size, foot, l === "full" ? 1 : ROWS_MOST, least), c = cut(l, size);
+    if (z.whole || !fitView(canvas, c, foot, 1, least).whole) return z;
+    return { k: least, tx: (canvas.w - c.w * least) / 2 - c.x * least, ty: (Math.max(1, canvas.h - foot) - c.h * least) / 2 - c.y * least, whole: true };
+  };
+  const whole = fits("full", full, keep === "full" ? FULL_KEEP : FULL_FROM);
+  return whole.whole ? { level: "full", ...whole } : { level: "compact", ...fits("compact", rows(), least) };
 }
 
 /** A fit larger than its canvas, moved just enough to bring a box of the drawing (the card that matters) ``margin``
@@ -87,6 +96,45 @@ export function onto(z: Zoom, canvas: Size, drawing: Size, b: Rect, margin = 24)
     return hi > room - margin ? t - (hi - room + margin) : lo < margin ? t - lo + margin : t;
   };
   return hold({ k: z.k, tx: along(z.tx, canvas.w, b.x, b.w), ty: along(z.ty, canvas.h, b.y, b.h) }, canvas, drawing);
+}
+
+/** A fit wider than its canvas, panned across so that neither side of the canvas cuts a box to a sliver (under a
+ *  quarter of it: a ring on a border, which reads as a failed drawing). Of the places that keep ``keep`` (the card
+ *  that matters) whole on screen: the fewest slivers, then ``goal`` whole where it can be, then the nearest to
+ *  where it was; and there, in the middle of the room it has. To push a sliver off the drawing's end it may stand
+ *  off that end by as much as a sliver is. */
+export function settle(z: Zoom, canvas: Size, drawing: Size, boxes: readonly Rect[], keep?: Rect, goal?: Rect): Zoom {
+  const k = z.k, w = canvas.w, end = w - drawing.w * k;
+  if (end >= 0) return z;
+  const over = Math.max(0, ...boxes.map((b) => (b.w * k) / 4));
+  const at = (b: Rect, t: number) => [b.x * k + t, (b.x + b.w) * k + t] as const;
+  const whole = (b: Rect, t: number) => { const [p, q] = at(b, t); return p >= -0.5 && q <= w + 0.5; };
+  const cost = (t: number) => {
+    if (keep && !whole(keep, t)) return Infinity;
+    let c = Math.abs(t - z.tx) / w + (goal && !whole(goal, t) ? 2 : 0);
+    for (const b of boxes) {
+      const [p, q] = at(b, t), seen = Math.min(q, w) - Math.max(p, 0);
+      if (seen > 0.5 && seen < (q - p) / 4) c += 4; // a sliver
+      else if (p > -0.5 && q < w + 0.5 && (p < 6 || q > w - 6)) c += 0.5; // whole, but its side against the canvas's
+    }
+    return c;
+  };
+  // each box whole at either side, 12 px in or against it, or just off it
+  const ts = [z.tx, ...boxes.flatMap((b) => [12 - b.x * k, w - 12 - (b.x + b.w) * k, -b.x * k, w - (b.x + b.w) * k, w - b.x * k, -(b.x + b.w) * k])]
+    .map((t) => Math.min(over, Math.max(end - over, t)));
+  const t = ts.reduce((best, t) => (cost(t) < cost(best) ? t : best));
+  // its room: no box whole on screen leaves it, none off it comes on, none cut is cut further, the drawing's ends
+  // keep to the canvas
+  let lo = Math.min(t, end), hi = Math.max(t, 0);
+  for (const b of boxes) {
+    const [p, q] = at(b, t);
+    if (q <= 0.5) hi = Math.min(hi, t - q);
+    else if (p >= w - 0.5) lo = Math.max(lo, t + w - p);
+    else if (p < -0.5) lo = Math.max(lo, t);
+    else if (q > w + 0.5) hi = Math.min(hi, t);
+    else { lo = Math.max(lo, t - p); hi = Math.min(hi, t + w - q); }
+  }
+  return { ...z, tx: lo <= hi ? (lo + hi) / 2 : t };
 }
 
 /** A pan never loses the drawing: one larger than the canvas stays against an edge at most, a smaller one
