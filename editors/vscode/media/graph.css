@@ -489,6 +489,9 @@ button:disabled { opacity: 0.45; cursor: default; }
 [data-mark="you"] > .box, [data-mark="back"] > .box { stroke: var(--c); stroke-width: 1.5; }
 [data-mark="yours"] > .box { stroke: color-mix(in srgb, var(--c) 55%, transparent); }
 [data-mark="landed"] .title { fill: var(--dim); font-weight: 500; }
+/* a working card says so by its ring alone: on a light card the amber is darkened to read as a graphic does (3:1) */
+:is(body.vscode-light, body.vscode-high-contrast-light) .task .mk.working { --c: color-mix(in srgb, var(--running) 70%, var(--fg)); }
+:is(body.vscode-light, body.vscode-high-contrast-light) .task .mk.working .faint { stroke-opacity: 0.5; }
 .st-came-back .sub { fill: var(--came-back); }
 .task.st-waiting { opacity: 0.78; } /* the card alone: not its row in the lanes, an attempt's chip or the pane's title */
 /* a row is filled only where it wants you, flat: to review purple, came back red; working and landed are the
@@ -511,7 +514,7 @@ button:disabled { opacity: 0.45; cursor: default; }
 #svg.far .task > .mk:is(.you, .yours, .back) { transform: translate(calc(9px + 9px / var(--k)), 24px) scale(calc(0.9 / var(--k))); }
 /* an attempt on a card: a status line, its mark in its state's colour and its words; no box (a box reads as a field
    to type in). The kept one on a quiet fill, in bold; one that ended steps back */
-.fork .chip { fill: transparent; stroke: none; }
+.fork .chip { fill: transparent; stroke: none; pointer-events: all; } /* its hover (why it was kept) is reached with no fill too, as in high contrast */
 .fork.kept .chip { fill: var(--fill-2); }
 .fork.kept .chip-text { font-weight: 600; }
 .fork:is(.st-gave-up, .st-failed, .st-ended) .chip-text { fill: var(--dim); }
@@ -594,7 +597,6 @@ body.vscode-high-contrast .ring, body.vscode-high-contrast .lane.selected,
 body.vscode-high-contrast-light .ring, body.vscode-high-contrast-light .lane.selected { stroke: var(--focus); border-color: var(--focus); box-shadow: none; }
 body.vscode-high-contrast .fork.kept .chip, body.vscode-high-contrast .l-chip.kept,
 body.vscode-high-contrast-light .fork.kept .chip, body.vscode-high-contrast-light .l-chip.kept { fill: none; background: none; }
-body.vscode-high-contrast .fork.kept .chip, body.vscode-high-contrast-light .fork.kept .chip { stroke: var(--border); } /* no fill here: the kept one is outlined */
 body.vscode-high-contrast button:not(.tab), body.vscode-high-contrast-light button:not(.tab) { border-color: var(--border); } /* a tab's underline is its own */
 body.vscode-high-contrast #need > button, body.vscode-high-contrast-light #need > button { border-color: var(--border); }
 /* the header's ghosts have no edge, as the editor's own toolbar: hovered, its dashed outline (no fill in HC) */
