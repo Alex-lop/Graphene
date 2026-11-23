@@ -98,7 +98,7 @@ body.vscode-light .c-tag { color: color-mix(in srgb, var(--tone) 55%, var(--fg))
 .c-line dd { margin: 0; overflow-wrap: break-word; }
 /* a command or a file breaks at its seams (main.ts), mid-word only when one is wider than the card, and what it
    wraps onto is indented, so a file that wraps does not read as two */
-.c-line dd.mono { overflow-wrap: anywhere; padding-left: 2ch; text-indent: -2ch; }
+.c-line dd.mono { overflow-wrap: anywhere; padding-left: 2ch; text-indent: -2ch; text-wrap: wrap; } /* not pretty: it would split a name that fits to even its last line */
 .nb { white-space: nowrap; }
 .c-line .row { display: block; } /* a file, an attempt, an action: a line each */
 .row .dir { color: var(--dim); }

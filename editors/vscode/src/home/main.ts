@@ -238,11 +238,12 @@ function path(p: string, parent: HTMLElement) {
 }
 
 /** A command, breakable where it reads as a seam: at its spaces, after a slash, and after the dots or before the
- *  humps of a long dotted, snake_case or camelCase name (`app.cookyourbooks.services.impl.RecipeLookupServiceImplTest`). <wbr>, so a copied command is the command; and a
- *  short piece with a hyphen held whole, as the browser would break `--tests` after its dashes. */
+ *  humps of a long dotted, snake_case or camelCase name (`app.cookyourbooks.services.impl.RecipeLookupServiceImplTest`),
+ *  never before a file's extension (`Impl.java`, not `Impl.` and `java`). <wbr>, so a copied command is the
+ *  command; and a short piece with a hyphen held whole, as the browser would break `--tests` after its dashes. */
 function code(v: string, parent: HTMLElement) {
   for (const w of v.split(/(\s+)/)) {
-    w.split(w.length >= 24 ? /(?<=[/._])|(?<=[a-z0-9])(?=[A-Z])/ : /(?<=\/)/).forEach((part, i) => {
+    w.split(w.length >= 24 ? /(?<=[/_])|(?<=\.)(?![A-Za-z]{1,5}\W*$)|(?<=[a-z0-9])(?=[A-Z])/ : /(?<=\/)/).forEach((part, i) => {
       if (i) parent.append(document.createElement("wbr"));
       if (part.length < 24 && part.includes("-")) el("span", "nb", part, parent);
       else parent.append(part);
