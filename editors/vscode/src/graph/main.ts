@@ -878,8 +878,8 @@ function bandHead(root: SVGGElement, title: string, ts: readonly TaskX[], x: num
   put(name);
   if (count) put(count);
   wants.forEach(put);
-  // on a plate of the band's own ground, so a line crossing the band passes under the header and not through it
-  g.prepend(el("rect", { class: "plate", x: x - 6, y: y - 11, width: at - gap - x + 12, height: 22, rx: 6 }));
+  // its words ringed in the band's own ground (graph.css), so a line crossing the header passes behind them and
+  // goes on between them, not under a plate where it seems to end
   return at - gap - x;
 }
 

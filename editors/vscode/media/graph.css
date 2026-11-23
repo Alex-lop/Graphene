@@ -374,7 +374,9 @@ button:disabled { opacity: 0.45; cursor: default; }
 /* a sub-goal's header: its ring, its title, its count, and in its mark's colour what wants you there */
 .band-head { pointer-events: none; }
 .band-head text { font-size: 12px; font-family: var(--font); fill: var(--dim); }
-.band-head .plate { fill: color-mix(in srgb, var(--fg) 4%, var(--bg)); } /* the band's own ground, opaque: an edge passes under the header */
+/* each word ringed in the band's own ground, opaque: an edge crossing the header passes behind the words and is
+   seen going on between them */
+.band-head text { paint-order: stroke; stroke: color-mix(in srgb, var(--fg) 4%, var(--bg)); stroke-width: 5px; stroke-linejoin: round; }
 .band-head .band-label { font-weight: 600; } /* a step under its cards' titles, so a band groups them and does not compete */
 .band-head .band-want { fill: var(--c); font-weight: 600; }
 .mk.portion { --c: var(--done); }
@@ -599,7 +601,7 @@ button:disabled { opacity: 0.45; cursor: default; }
 body.vscode-high-contrast, body.vscode-high-contrast-light { --edge: var(--border); --card: var(--bg); --card-border: var(--border); --tint: transparent; --dot: color-mix(in srgb, var(--fg) 20%, transparent);
   --wash: var(--bg); } /* what a state's tint is mixed from: here the canvas's own colour, so a row, a foot and a chip keep their border and their mark alone */
 body.vscode-high-contrast .band, body.vscode-high-contrast-light .band { fill: none; stroke: var(--border); stroke-dasharray: 4 3; }
-body.vscode-high-contrast .band-head .plate, body.vscode-high-contrast-light .band-head .plate { fill: var(--bg); }
+body.vscode-high-contrast .band-head text, body.vscode-high-contrast-light .band-head text { stroke: var(--bg); }
 /* the goal the clearest node: the text colour round it; a cell not started an outline in its colour, not a faint fill */
 body.vscode-high-contrast .goal-box, body.vscode-high-contrast-light .goal-box { stroke: var(--fg); }
 :is(body.vscode-high-contrast, body.vscode-high-contrast-light) .cell:is([data-mark="yours"], [data-mark="ready"], [data-mark="waiting"], [data-mark="suggested"]) { fill: none; stroke: var(--c); stroke-width: 1; }
