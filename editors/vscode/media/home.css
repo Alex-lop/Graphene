@@ -88,7 +88,7 @@ button.fold:hover { background: none; color: var(--fg); }
 .card.tone-waiting .c-tag, .card.tone-ready .c-tag { color: var(--dim); } /* outranks the light rule below */
 body.vscode-light .c-tag { color: color-mix(in srgb, var(--tone) 55%, var(--fg)); } /* a chart yellow is ~2.5:1 on a light card */
 .c-title { font-weight: 600; margin-top: 2px; word-break: break-word; }
-/* one grid for every line: the labels' column is as wide as the widest, so none wraps ("If unanswered"), and
+/* one grid for every line: the labels' column is as wide as the widest, so none wraps ("Last actions"), and
    at least as wide as most, so the values of one card line up with the next one's */
 .c-lines { display: grid; grid-template-columns: minmax(72px, max-content) minmax(0, 1fr); gap: 3px 10px; margin: 8px 0 0; font-size: 12px; }
 .c-line { display: contents; }
@@ -100,8 +100,11 @@ body.vscode-light .c-tag { color: color-mix(in srgb, var(--tone) 55%, var(--fg))
 .c-line dd.mono { overflow-wrap: anywhere; padding-left: 2ch; text-indent: -2ch; }
 .path { display: block; }
 .path .dir { color: var(--dim); }
-/* a narrow side bar: a long value goes under its label, with the card's whole width */
-@media (max-width: 360px) { .c-line.long dt, .c-line.long dd { grid-column: 1 / -1; } }
+/* a narrow side bar: when one value of a card is long, each label of that card goes over its value */
+@media (max-width: 360px) {
+  .c-lines.stack { grid-template-columns: minmax(0, 1fr); row-gap: 1px; }
+  .c-lines.stack .c-line + .c-line > :first-child { margin-top: 5px; }
+}
 .c-line.warn dd { color: var(--warn); }
 .mono { font-family: var(--mono); font-size: 0.95em; }
 .c-acts, .acts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }

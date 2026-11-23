@@ -2,7 +2,7 @@
 // library, and every word goes in as text, never as markup: task titles and the planner's words are a model's.
 // Nothing is typed here: a plan comes from the person's coding agent, in its chat (`graphene plan propose`).
 import { STOP_AFTER, STOP_AFTER_HOVER } from "../graph/words.ts";
-import type { Act, Btn, Card, Home, Section } from "./cards.ts";
+import type { Act, Btn, Card, Home, Line, Section } from "./cards.ts";
 import { ASK, EXACT, EXACT_HOVER, NOT_CURSOR, WHO } from "./who.ts";
 
 declare function acquireVsCodeApi(): { postMessage(m: unknown): void; getState(): unknown; setState(s: unknown): void };
@@ -189,11 +189,13 @@ function drawCard(c: Card): HTMLElement {
   }
   el("div", "c-title", c.title, card);
   if (c.lines.length) {
-    const dl = el("dl", "c-lines", undefined, card);
+    // one long value puts every label of the card over its value in a narrow side bar (home.css), so a card's
+    // values never zigzag between beside their label and under it; of files, the longest one shown counts
+    const size = (l: Line) => Math.max(...(l.paths ? l.paths.map(short) : [l.v]).map((x) => x.length));
+    const stack = c.lines.some((l) => l.k && size(l) > (l.mono ? 26 : 40));
+    const dl = el("dl", stack ? "c-lines stack" : "c-lines", undefined, card);
     for (const l of c.lines) {
-      const size = l.paths ? Math.max(...l.paths.map((x) => short(x).length)) : l.v.length; // files are one a line: the longest counts
-      const long = l.k && size > (l.mono ? 26 : 40) ? " long" : ""; // under its label in a narrow side bar (home.css)
-      const r = el("div", `c-line${l.warn ? " warn" : ""}${l.k ? "" : " wide"}${long}`, undefined, dl);
+      const r = el("div", `c-line${l.warn ? " warn" : ""}${l.k ? "" : " wide"}`, undefined, dl);
       if (l.k) el("dt", "", l.k, r);
       const dd = el("dd", l.mono ? "mono" : "", undefined, r);
       if (l.paths) for (const p of l.paths) path(p, dd);
