@@ -3,7 +3,8 @@
    leaves this machine. Every colour is one of VS
    Code's own, or mixed from two of them, so it is native in light, dark and high contrast. Colour means state:
    working amber, landed green, needs you purple, drafted blue, came back red (the chart colours, as the
-   cockpit's are), and nothing else on a card is coloured. A card's smallest words are 12 px at the drawing's own
+   cockpit's are), and on a card it is the mark's alone, with the border of a card that wants you: when every part
+   is coloured nothing stands out. Blue round a card is the selection's. A card's smallest words are 12 px at the drawing's own
    size (100%), so a plan opened as whole cards (at 92% or more) draws none under 11 px; a plan fitted smaller is
    read from afar, and its cards are then rows.
    tokens.css, linked first, gives what the graph shares with Home (the colours, lines, accent, corners and
@@ -363,7 +364,7 @@ button:disabled { opacity: 0.45; cursor: default; }
 .band-head { pointer-events: none; }
 .band-head text { font-size: 12px; font-family: var(--font); fill: var(--dim); }
 .band-head .plate { fill: color-mix(in srgb, var(--fg) 4%, var(--bg)); } /* the band's own ground, opaque: an edge passes under the header */
-.band-head .band-label { fill: var(--fg); font-size: 14px; font-weight: 600; }
+.band-head .band-label { font-weight: 600; } /* a step under its cards' titles, so a band groups them and does not compete */
 .band-head .band-want { fill: var(--c); font-weight: 600; }
 .mk.portion { --c: var(--done); }
 /* the goal's cells, one a task and a group a sub-goal: full where the task is done, is worked on, or wants you;
@@ -380,7 +381,7 @@ button:disabled { opacity: 0.45; cursor: default; }
 #svg.has-sel .edge:not(.hot) { opacity: 0.35; }
 /* a card: the box takes every click, so what is drawn on it lets the pointer through */
 .task { cursor: pointer; outline: none; }
-.task text, .pill, .mk, .plate, .halo, .ring, .goal text, .gate { pointer-events: none; }
+.task text, .pill, .mk, .plate, .ring, .goal text, .gate { pointer-events: none; }
 .box, .goal-box { fill: var(--card); stroke: var(--card-border); stroke-width: 1; filter: drop-shadow(0 1px 2px var(--shadow)); }
 /* the goal, where every line ends: the text colour round it, a little stronger than a card's border */
 .goal-box { stroke: color-mix(in srgb, var(--bg) 62%, var(--fg)); stroke-width: 1.25; }
@@ -394,8 +395,8 @@ button:disabled { opacity: 0.45; cursor: default; }
 .goal .mk.passed { --c: var(--done); } /* the box on the goal's own check: ticked once the goal is done, dotted until then */
 .goal .mk.unrun { --c: var(--waiting); }
 .pill.run .pill-mark { opacity: 1; }
-/* the files chip's latest fact: written so far, a refused write in the came-back red, a write outside its files */
-.pill.working .pill-mark { fill: var(--running); opacity: 1; }
+/* the files chip's latest fact: a refused write in the came-back red, a write outside its files (written so far is
+   its ✎ alone: the card's mark says it works) */
 .pill.back rect { fill: color-mix(in srgb, var(--wash, var(--came-back)) 15%, transparent); }
 .pill.back text, .pill .bad { fill: var(--came-back); opacity: 1; }
 /* the approval on the line: where the run crosses to leave this machine */
@@ -422,9 +423,8 @@ button:disabled { opacity: 0.45; cursor: default; }
 .mk .dashes { stroke-dasharray: 8 6.2857; }
 .mk .spin { animation: spin 0.9s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
-.plate { fill: var(--bg); }
-/* a card's foot is its check's: a hairline, the check's box and the check, tinted where the verdict is news (it
-   passed, it failed after the work, it proves nothing yet); the foot's hover says `done when` and the verdict */
+/* a card's foot is its check's: a hairline, the check's box and the check, tinted where the verdict is trouble (it
+   failed after the work, it proves nothing yet; a pass is its green box); the foot's hover says `done when` and the verdict */
 .foot.ok { --c: var(--done); }
 .foot.warn { --c: var(--running); }
 .foot.red { --c: var(--came-back); }
@@ -432,26 +432,22 @@ button:disabled { opacity: 0.45; cursor: default; }
 .foot.plain { --c: var(--fg); }
 .foot.dim { --c: var(--waiting); }
 .foot .tint { fill: none; pointer-events: all; }
-.foot:is(.ok, .warn, .red) .tint { fill: color-mix(in srgb, var(--wash, var(--c)) 11%, transparent); }
+.foot:is(.warn, .red) .tint { fill: color-mix(in srgb, var(--wash, var(--c)) 11%, transparent); }
 .foot .hair { stroke: var(--card-border); }
 .foot-v { fill: var(--dim); font-size: 12px; font-family: var(--mono); }
 .foot.warn .foot-v { fill: color-mix(in srgb, var(--running) 55%, var(--fg)); } /* amber that still reads as words on the amber foot of a light card */
 .foot.you .foot-v { font-family: var(--font); } /* no check: `you approve` is no command */
 .draft .hair, .drafted .hair { stroke: color-mix(in srgb, var(--proposed) 45%, transparent); stroke-dasharray: 3 3; }
-.st-proposed .hair { stroke: color-mix(in srgb, var(--proposed) 30%, var(--card-border)); }
 /* the card's one act, at its status line's right end: a button as the pane's main one is */
 .act rect { fill: var(--vscode-button-background, #0e639c); stroke: var(--vscode-button-border, transparent); }
 .act:hover rect { fill: var(--vscode-button-hoverBackground, #1177bb); }
 .act text { fill: var(--vscode-button-foreground, #fff); font-size: 12px; font-weight: 600; font-family: var(--font); pointer-events: auto; } /* its label is the button too */
 .act, .act:focus-visible { outline: none; } /* Chrome rings a focused SVG element, a clicked one too: the dashed border says the keyboard's focus */
 .act:focus-visible rect { stroke: var(--vscode-button-foreground, #fff); stroke-width: 1.5; stroke-dasharray: 3 2; }
-.halo { fill: none; stroke: color-mix(in srgb, var(--running) 13%, transparent); stroke-width: 4; animation: glow 1.8s ease-in-out infinite; }
-@keyframes glow { 0%, 100% { opacity: 0; } 50% { opacity: 1; } }
-/* a task being drawn: dashed and flat until it is in the plan. A suggested one is a card already, its border a
-   quiet blue (its status says suggested); the + past a card's out port draws one after it */
+/* a task being drawn: dashed and flat until it is in the plan. A suggested one is a card already, a card's border
+   and its dashed ring in its corner (blue round a card is the selection's); the + past a card's out port draws one after it */
 .draft .box, .drafted .box { stroke-dasharray: 5 4; stroke: color-mix(in srgb, var(--proposed) 70%, transparent); fill: color-mix(in srgb, var(--card) 55%, var(--bg)); filter: none; }
-.st-proposed > .box { stroke: color-mix(in srgb, var(--proposed) 45%, var(--card-border)); }
-.draft .sub, .drafted .sub, .st-proposed .sub { fill: var(--proposed); }
+.draft .sub, .drafted .sub { fill: var(--proposed); }
 .task.drafted { cursor: default; }
 .wave.planning { color: var(--proposed); text-transform: none; letter-spacing: 0; font-size: 12px; }
 .wave.planning::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 8px; background: var(--proposed); animation: blink 1s infinite; }
@@ -472,20 +468,19 @@ button:disabled { opacity: 0.45; cursor: default; }
 .title, .goal-title { fill: var(--fg); font-size: 14px; font-weight: 600; font-family: var(--font); }
 .goal-title { font-size: 16px; }
 .sub { fill: var(--dim); font-size: 12px; font-family: var(--font); }
-.model { fill: var(--running); font-size: 12px; font-family: var(--font); font-weight: 600; }
-.times { fill: var(--dim); font-size: 12px; font-family: var(--font); font-variant-numeric: tabular-nums; } /* 3 attempts: what a task is set to and has not started */
-.chip { fill: var(--bg); stroke: var(--border); }
+.model { fill: var(--dim); font-size: 12px; font-family: var(--font); }
+.times { fill: var(--dim); font-size: 12px; font-family: var(--font); font-variant-numeric: tabular-nums; } /* 3 agents at once: what a task is set to and has not started */
+.task .times { pointer-events: auto; } /* its hover says what that costs */
 .chip-text { fill: var(--fg); font-size: 12px; font-family: var(--font); font-variant-numeric: tabular-nums; }
-.fork.kept .chip { stroke-width: 2; }
 /* from afar (the compact level) a card is a row, its state's mark and its title: the words are drawn larger,
    since the whole drawing is drawn smaller, and a sub-goal's name reads as a heading */
 #svg[data-level="compact"] .band-head text { font-size: 13.5px; }
 #svg[data-level="compact"] .band-head .band-label { font-size: 15px; }
 #svg[data-level="compact"] .goal .sub { font-size: 12.5px; }
 
-/* a state's colour, by its mark (marks.ts `stateMark`, the card's `data-mark`): the mark itself, its card's
-   border, its row's fill, its rect in the minimap. Working amber, to review or asks you purple (a step of your
-   own a quieter purple), came back red, landed a soft green with its title stepping back */
+/* a state's colour, by its mark (marks.ts `stateMark`, the card's `data-mark`): the mark itself, its rect in the
+   minimap, and the border and the row's fill only of what wants you: to review or asks you purple (a step of your
+   own a quieter purple), came back red. Working and landed keep a card's border; landed's title steps back */
 [data-mark="waiting"], .mk.waiting { --c: var(--waiting); }
 [data-mark="ready"], .mk.ready { --c: var(--ready); }
 [data-mark="working"], .mk.working, .mk.warn { --c: var(--running); }
@@ -493,22 +488,18 @@ button:disabled { opacity: 0.45; cursor: default; }
 [data-mark="back"], .mk.back, .mk.ended { --c: var(--came-back); }
 [data-mark="landed"], .mk.landed { --c: var(--done); }
 [data-mark="suggested"], .mk.suggested { --c: var(--proposed); }
-[data-mark="working"] > .box { stroke: color-mix(in srgb, var(--c) 70%, transparent); }
 [data-mark="you"] > .box, [data-mark="back"] > .box { stroke: var(--c); stroke-width: 1.5; }
 [data-mark="yours"] > .box { stroke: color-mix(in srgb, var(--c) 55%, transparent); }
-[data-mark="landed"] > .box { stroke: color-mix(in srgb, var(--c) 38%, var(--card-border)); }
 [data-mark="landed"] .title { fill: var(--dim); font-weight: 500; }
 .st-came-back .sub { fill: var(--came-back); }
 .task.st-waiting { opacity: 0.78; } /* the card alone: not its row in the lanes, an attempt's chip or the pane's title */
-/* a row is filled by its state, flat, so the plan reads from afar as bricks: working amber, to review purple,
-   came back red; landed is the card's own (its tick says it); not started is an outline (ready the stronger), a
-   step of your own too. `:where`
+/* a row is filled only where it wants you, flat: to review purple, came back red; working and landed are the
+   card's own (their marks say it); not started is an outline (ready the stronger), a step of your own too. `:where`
    keeps these under the hover's and the focus's border */
 :where(#svg[data-level="compact"]) .task > .box { filter: none; }
 :where(#svg[data-level="compact"]) .task.st-waiting { opacity: 1; }
 :where(#svg[data-level="compact"]) [data-mark="waiting"] > .box { fill: color-mix(in srgb, var(--card) 45%, var(--bg)); } /* opaque, as a card is: a line behind it never strikes it through */
 :where(#svg[data-level="compact"]) [data-mark="ready"] > .box { stroke: color-mix(in srgb, var(--card-border) 65%, var(--fg)); } /* from the card's border, which in high contrast is the contrast border */
-:where(#svg[data-level="compact"]) [data-mark="working"] > .box { fill: color-mix(in srgb, var(--wash, var(--c)) 10%, var(--card)); }
 :where(#svg[data-level="compact"]) [data-mark="you"] > .box { fill: color-mix(in srgb, var(--wash, var(--c)) 22%, var(--card)); }
 :where(#svg[data-level="compact"]) [data-mark="back"] > .box { fill: color-mix(in srgb, var(--wash, var(--c)) 18%, var(--card)); }
 :where(#svg[data-level="compact"]) [data-mark="landed"] > .box { fill: var(--card); } /* landed steps back: its tick says it, and the colour is kept for what wants you */
@@ -520,13 +511,12 @@ button:disabled { opacity: 0.45; cursor: default; }
 #svg.far [data-mark="landed"] > .box { fill: color-mix(in srgb, var(--wash, var(--c)) 42%, var(--card)); }
 #svg.far :is([data-mark="you"], [data-mark="back"]) > .box { fill: color-mix(in srgb, var(--wash, var(--c)) 50%, var(--card)); }
 #svg.far .task > .mk:is(.you, .yours, .back) { transform: translate(calc(9px + 9px / var(--k)), 24px) scale(calc(0.9 / var(--k))); }
-.fork .chip { fill: var(--bg); stroke: var(--border); }
-.fork.st-running .chip { stroke: var(--running); }
-.fork.st-passed .chip { stroke: var(--done); }
-.fork.kept .chip { fill: var(--vscode-editor-inactiveSelectionBackground, rgba(128, 128, 128, 0.15)); stroke: var(--done); }
+/* an attempt on a card: a status line, its mark in its state's colour and its words; no box (a box reads as a field
+   to type in). The kept one on a quiet fill, in bold; one that ended steps back */
+.fork .chip { fill: transparent; stroke: none; }
+.fork.kept .chip { fill: var(--fill-2); }
 .fork.kept .chip-text { font-weight: 600; }
-.fork.st-gave-up .chip, .fork.st-failed .chip, .fork.st-ended .chip { stroke: var(--came-back); }
-.fork.st-gave-up .chip-text, .fork.st-ended .chip-text { fill: var(--dim); }
+.fork:is(.st-gave-up, .st-failed, .st-ended) .chip-text { fill: var(--dim); }
 .d-title.st-running { border-color: var(--running); }
 .d-title.st-review, .d-title.st-yours { border-color: var(--review); }
 .d-title.st-came-back { border-color: var(--came-back); }
@@ -606,6 +596,7 @@ body.vscode-high-contrast .ring, body.vscode-high-contrast .lane.selected,
 body.vscode-high-contrast-light .ring, body.vscode-high-contrast-light .lane.selected { stroke: var(--focus); border-color: var(--focus); box-shadow: none; }
 body.vscode-high-contrast .fork.kept .chip, body.vscode-high-contrast .l-chip.kept,
 body.vscode-high-contrast-light .fork.kept .chip, body.vscode-high-contrast-light .l-chip.kept { fill: none; background: none; }
+body.vscode-high-contrast .fork.kept .chip, body.vscode-high-contrast-light .fork.kept .chip { stroke: var(--border); } /* no fill here: the kept one is outlined */
 body.vscode-high-contrast button:not(.tab), body.vscode-high-contrast-light button:not(.tab) { border-color: var(--border); } /* a tab's underline is its own */
 body.vscode-high-contrast #need > button, body.vscode-high-contrast-light #need > button { border-color: var(--border); }
 /* the header's ghosts have no edge, as the editor's own toolbar: hovered, its dashed outline (no fill in HC) */
@@ -617,9 +608,8 @@ body.vscode-high-contrast #help, body.vscode-high-contrast-light #help { backgro
 body.vscode-high-contrast #svg.has-sel .edge, body.vscode-high-contrast-light #svg.has-sel .edge { opacity: 1; } /* the chosen card's lines are the focus colour: the rest keep their contrast */
 
 /* motion only where work is happening, and none when the system asks for less: a working edge stays dashed and
-   amber, its card keeps its ring and a still halo */
+   amber, its card keeps its ring */
 @media (prefers-reduced-motion: reduce) {
   .task, .goal, .edge, .lane, #svg.glide, #minimap, .port { transition: none; }
-  .task.fresh, .lane.fresh, .edge.run, .mk .spin, .halo, #planning::before, .wave.planning::before { animation: none; }
-  .halo { opacity: 0.6; }
+  .task.fresh, .lane.fresh, .edge.run, .mk .spin, #planning::before, .wave.planning::before { animation: none; }
 }

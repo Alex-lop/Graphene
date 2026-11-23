@@ -7,7 +7,7 @@ import { layout, modeFor, step, type Box, type Edge, type Layout } from "../layo
 import { autoLine, SAY, screenWords, usd, type DraftStep, type State } from "../state.ts";
 import { ICONS } from "./icons.ts";
 import { blanks, draftLine, globs, isDraft, lacks, type Draft } from "./draft.ts";
-import { attemptsMark, cardAct, checkCut, checkLines, checkMark, cornerMark, cutWhole, doneWhen, filesLine, fitWhole, forkMark, goalBox, goalCells, legend, nextWanting, stateMark, tailPath, tally, wanting, wantingLine, wrap,
+import { attemptsMark, attemptsWhy, cardAct, cardLine, checkCut, checkLines, checkMark, cornerMark, cutWhole, doneWhen, filesLine, fitWhole, forkMark, goalBox, goalCells, legend, nextWanting, stateMark, tailPath, tally, wanting, wantingLine, wrap,
          type CheckMark, type Mark } from "./marks.ts";
 import { actsFor, ASK_AGENT, askLine, askNote, asksYou, attemptsOf, commandChip, cornerWord, CURSOR_AGENT, cut, done, draftedSteps, edgeKind, editable,
          filesChip, forkActs, forkRow, forkWords, HEADER_ACTS, headerFor, heldWords, KEYS, linkHint, mainAct, mayRun, newsLine, paneKey, pipeline,
@@ -625,9 +625,9 @@ function graph(s: StateX, dir: "across" | "down") {
       title.setAttribute("transform", `translate(0 ${top})`);
       goalG.appendChild(el("text", { class: "sub", x: ROW_X, y: top + 19 * (n - 1) + 17 }, `${all.landed} of ${all.total} done`));
       goalG.appendChild(el("circle", { class: "port in", cx: 0, cy: gp.h / 2, r: 5 }));
-    } else if (gp) { // the goal is a card as a task is: its title on up to three lines, and under it a cell a task (a group a sub-goal) and the count, in the card's middle; its own check at its foot
+    } else if (gp) { // the goal is a card as a task is: its title on up to four lines (as many as the card holds), and under it a cell a task (a group a sub-goal) and the count, in the card's middle; its own check at its foot
       goalG.appendChild(el("rect", { class: "goal-box", x: 0, y: 0, width: gp.w, height: gp.h, rx: 12 }));
-      const title = titleLines(goalG, "goal-title", s.goal, PAD, 0, 20, gp.w - 2 * PAD, 3), n = title.childElementCount;
+      const title = titleLines(goalG, "goal-title", s.goal, PAD, 0, 20, gp.w - 2 * PAD, 4), n = title.childElementCount;
       const top = (BOX_H - (20 * n + 18)) / 2, y = top + 20 * n + 4; // the title's block and the cells' row, as one
       title.setAttribute("transform", `translate(0 ${top + 12})`);
       const count = goalG.appendChild(el("text", { class: "sub", x: gp.w - PAD, y: y + 10, "text-anchor": "end" }, `${all.landed} of ${all.total} done`));
@@ -727,9 +727,10 @@ function inStep<T extends SVGElement>(node: T, period: number): T {
 }
 
 /** A chip on a card, in mono, cut to the card: the files the step may change (or has written, or wrote outside
- *  them), its command. A path too long for it says its file (`…/RecipeLookupServiceImpl.java +1`), then its file's
- *  name (`CookServiceImpl +2`) before it is cut. ``bad`` ends it in the came-back red (a refused write) and stays
- *  whole: the words give way to it, their last one (`files`) before a number is cut. */
+ *  them), its command. A path too long for it says its file (`CookServiceImpl.java +2`), then its file's name
+ *  (`RecipeLookupServiceImpl +1`) before it is cut; never `…/` before it, one more spelling in a band for a folder
+ *  it does not name. ``bad`` ends it in the came-back red (a refused write) and stays whole: the words give way to
+ *  it, their last one (`files`) before a number is cut. */
 function pill(grp: SVGGElement, kind: string, glyph: string, words: string, x: number, y: number, max: number, bad = "") {
   const g = el("g", { class: `pill ${kind}` });
   const rect = g.appendChild(el("rect", { x, y, width: max, height: 18, rx: 5 }));
@@ -741,8 +742,8 @@ function pill(grp: SVGGElement, kind: string, glyph: string, words: string, x: n
   const room = max - 26 - (bad || more ? text.getComputedTextLength() || (bad + more).length * 7.2 : 0);
   words = words.slice(0, words.length - more.length);
   text.textContent = words;
-  const tail = words.split(" ").map(tailPath).join(" "), file = tail.replace(/(^|\s)…\//g, "$1"); // a path says its file, then its file alone, then its name
-  for (const shorter of [tail, file, file.replace(/\.\w+(?=\s|$)/g, "")]) if (text.getComputedTextLength() > room) text.textContent = words = shorter;
+  const file = words.split(" ").map(tailPath).join(" ").replace(/(^|\s)…\//g, "$1"); // a path says its file, then its name
+  for (const shorter of [file, file.replace(/\.\w+(?=\s|$)/g, "")]) if (text.getComputedTextLength() > room) text.textContent = words = shorter;
   if (bad && text.getComputedTextLength() > room) text.textContent = words.replace(/ \S+$/, "");
   fitText(text, room);
   if (more) text.appendChild(document.createTextNode(more));
@@ -876,9 +877,8 @@ function rowTitle(grp: SVGGElement, title: string, max: number) {
  *  (graph.css, by the group's `data-mark`), its state's mark large at the left, its title, and the ports its
  *  lines join at. At its right end only what is news: that its check proves nothing yet, else its attempts as
  *  small marks (four to a line). Nothing else: the hover says the whole line, and a double click opens it. */
-function drawCompact(grp: SVGGElement, c: { title: string; hover: string; mark: Mark; selected: boolean; running?: boolean; port?: string; naming?: Draft;
+function drawCompact(grp: SVGGElement, c: { title: string; hover: string; mark: Mark; selected: boolean; port?: string; naming?: Draft;
                                             hollow?: boolean; forks?: readonly ForkX[] }) {
-  if (c.running) grp.appendChild(inStep(el("rect", { class: "halo", x: -2.5, y: -2.5, width: ROW_W + 5, height: ROW_H + 5, rx: 12.5 }), 1800));
   if (c.selected) grp.appendChild(el("rect", { class: "ring", x: -5, y: -5, width: ROW_W + 10, height: ROW_H + 10, rx: 14 }));
   grp.appendChild(el("rect", { class: "box", x: 0, y: 0, width: ROW_W, height: ROW_H, rx: 10 }));
   mark(grp, c.mark, 19, ROW_H / 2, 9.5);
@@ -899,10 +899,9 @@ function drawCompact(grp: SVGGElement, c: { title: string; hover: string; mark: 
   port.appendChild(el("title", {}, "drag onto another task: it then waits on this one"));
 }
 
-/** A whole card's frame, ``h`` tall (its attempts make it taller): the halo of a working one, the ring of the
- *  chosen one, the box. */
-function frame(grp: SVGGElement, h: number, running: boolean, chosen: boolean) {
-  if (running) grp.appendChild(inStep(el("rect", { class: "halo", x: -2.5, y: -2.5, width: BOX_W + 5, height: h + 5, rx: 14.5 }), 1800));
+/** A whole card's frame, ``h`` tall (its attempts make it taller): the ring of the chosen one, the box. A working
+ *  card has no halo: its turning mark and its moving edge say it works. */
+function frame(grp: SVGGElement, h: number, chosen: boolean) {
   if (chosen) grp.appendChild(el("rect", { class: "ring", x: -5, y: -5, width: BOX_W + 10, height: h + 10, rx: 16 }));
   grp.appendChild(el("rect", { class: "box", x: 0, y: 0, width: BOX_W, height: h, rx: 12 }));
 }
@@ -920,11 +919,10 @@ function status(grp: SVGGElement, words: (n: number) => string, right: number, b
   fitText(grp.appendChild(el("text", { class: `sub${bad ? " bad" : ""}`, x: PAD, y: STATUS_Y }, line)), room);
 }
 
-/** A card's title on up to two lines, set close so the second clears the files chip; one line stands in the middle
- *  of the room for two. */
-function cardTitle(grp: SVGGElement, title: string) {
-  const text = titleLines(grp, "title", title, PAD, 21, 16, BOX_W - 2 * PAD, 2);
-  if (text.childElementCount < 2) text.setAttribute("transform", "translate(0 8)");
+/** A card's title on up to two lines, set close so the second clears the files chip. One line starts where two
+ *  do, so the titles in a row share a top. ``aside``: the room its state's mark takes at its right. */
+function cardTitle(grp: SVGGElement, title: string, aside = 0) {
+  titleLines(grp, "title", title, PAD, 21, 16, BOX_W - 2 * PAD - aside, 2);
 }
 
 /** A task's card, drawn at the group's origin, everything inside it: its title on up to two lines, its files;
@@ -932,54 +930,59 @@ function cardTitle(grp: SVGGElement, title: string) {
  *  attempts, a chip each, while it is not done; its foot, which is its check's; the ports its lines join at, and
  *  its state's mark on its corner. From afar (the compact level) it is a row instead. The group says its mark
  *  (`data-mark`: graph.css colours by it) and the attempts it is set to and has not started (`data-attempts`),
- *  for a script to read as a person reads `3 attempts`. */
-function drawTask(grp: SVGGElement, t: TaskX, h: number, down: boolean, limit: number | null) {
+ *  for a script to read as a person reads `3 agents at once`. */
+function drawTask(grp: SVGGElement, task: TaskX, h: number, down: boolean, limit: number | null) {
   const acting = grp.querySelector(".act:focus") !== null; // its button has the keyboard: it keeps it through the redraw
   grp.replaceChildren();
+  // a practice run (the scripted stand-in) or a replay spent nothing: its cards say no cost, as its header does
+  const t = state?.stand_in || replaying() ? { ...task, usd: null, forks: task.forks.map((f) => ({ ...f, usd: null })) } : task;
   grp.setAttribute("class", `task ${cls(t.state)}${t.id === selected ? " selected" : ""}${t.needs_you ? " needs-you" : ""}`);
   grp.setAttribute("data-mark", stateMark(t));
-  const line = sub(t, 60), times = attemptsMark(t, limit), check = checkMark(t);
+  const asked = state ? questionOn(state, t.id)?.text ?? "" : "";
+  const line = cardLine(t, 60, asked), times = attemptsMark(t, limit), check = checkMark(t);
   if (times) grp.dataset.attempts = String(parseInt(times)); else delete grp.dataset.attempts;
   grp.setAttribute("aria-label", `${t.title}: ${line}${t.id === selected ? ", selected" : ""}`);
-  const hover = [t.title, sub(t, 200), check.words].filter(Boolean).join(" · "); // the whole line, and the check's verdict
+  const hover = [t.title, cardLine(t, LONG, asked), check.words].filter(Boolean).join(" · "); // the whole line, and the check's verdict
   if (level === "compact") {
-    return drawCompact(grp, { title: t.title, hover, mark: stateMark(t), selected: t.id === selected, running: t.state === "running",
+    return drawCompact(grp, { title: t.title, hover, mark: stateMark(t), selected: t.id === selected,
                               port: replaying() || t.leaves ? undefined : t.id, hollow: check.box === "hollow", forks: t.forks });
   }
-  frame(grp, h, t.state === "running", t.id === selected);
-  cardTitle(grp, t.title);
+  frame(grp, h, t.id === selected);
+  const corner = cornerMark(t); // its state's mark, inside the card at its title's right, as a row has it at its left
+  cardTitle(grp, t.title, corner ? 20 : 0);
+  if (corner) mark(grp, corner, BOX_W - PAD - 7, 16, 7);
   const files = filesLine(t); // the latest fact about its files: what it may change, has written, or wrote outside them
   if (t.command) pill(grp, "run", "$", commandChip(t.command), PAD, 48, BOX_W - 2 * PAD); // a command step: what runs, with no agent
   if (files.text) pill(grp, `files ${files.tone}`, files.mark, files.text, PAD, 48, BOX_W - 2 * PAD, files.refused && ` · ${files.refused}`);
-  // the status; at its end the card's act, else its model while it runs, or the attempts it is set to
+  // the status; at its end the card's act, else its model while one agent runs it (attempts each name theirs), or
+  // the agents it is set to, whose hover says what that costs
   const act = cardAct(t, replaying());
   let right = BOX_W - PAD;
   if (act) right = actButton(grp, act, t.id, t.title);
   else {
-    const tail = t.state === "running" && t.model ? cut(t.model, 14) : times;
+    const tail = t.state === "running" && t.model && t.forks.length < 2 ? cut(t.model, 14) : times;
     const end = tail ? grp.appendChild(el("text", { class: tail === times ? "times" : "model", x: right, y: STATUS_Y, "text-anchor": "end" }, tail)) : null;
     if (end) right -= (end.getComputedTextLength() || tail.length * 7) + 8;
+    if (end && tail === times) end.appendChild(el("title", {}, attemptsWhy(parseInt(times))));
   }
-  status(grp, (n) => sub(t, n), right);
+  status(grp, (n) => cardLine(t, n, asked), right);
   if (acting) (grp.querySelector<SVGGElement>(".act") ?? grp).focus({ preventScroll: true }); // pressed, and gone: the card has it
-  // its attempts: a chip each, over its foot; once it is done they are history (the pane's Activity has them)
+  // its attempts: a row each, over its foot, its mark and its words as a status reads (no box: they are not
+  // fields); the kept one on a quiet fill, its why in its hover. Once it is done they are history (the pane's Activity)
   (t.state === "done" ? [] : t.forks).forEach((f, i) => {
     const y = BOX_H - FOOT_H + 2 + i * FORK_H;
-    const kept = t.kept?.letter === f.letter, room = BOX_W - 2 * PAD - 16;
+    const kept = t.kept?.letter === f.letter, room = BOX_W - 2 * PAD - 26;
     const chip = el("g", { class: `fork ${cls(f.state || "waiting")}${kept ? " kept" : ""}` });
-    chip.appendChild(el("rect", { class: "chip", x: PAD, y, width: BOX_W - 2 * PAD, height: FORK_H - 4, rx: 5 }));
-    // the kept one is bold and says why: it is cut by its drawn length, at its words, not by a count of characters
-    fitText(chip.appendChild(el("text", { class: "chip-text", x: PAD + 8, y: y + 13 }, forkWords(f, t.kept, kept ? LONG : Math.floor(room / 6.6)))), room);
+    chip.appendChild(el("rect", { class: "chip", x: PAD, y, width: BOX_W - 2 * PAD, height: FORK_H - 4, rx: 5 })); // its hover's
+    mark(chip, forkMark(f), PAD + 9, y + 9, 5);
+    // the kept one says so where its state would be (`b · Nano · kept`), its mark already ticked
+    const words = forkWords(kept ? { ...f, state: "kept" } : f, kept ? null : t.kept, Math.floor(room / 6.6));
+    fitText(chip.appendChild(el("text", { class: "chip-text", x: PAD + 20, y: y + 13 }, words)), room);
     chip.appendChild(el("title", {}, forkRow(f, t.kept)));
     grp.appendChild(chip);
   });
   cardFoot(grp, check, (n) => doneWhen(t, n), h);
   grp.appendChild(el("title", {}, hover));
-  const corner = cornerMark(t);
-  if (corner) { // on a plate of the canvas's colour, so the card's border stops short of it
-    grp.appendChild(el("circle", { class: "plate", cx: BOX_W - 2, cy: 2, r: 12.5 }));
-    mark(grp, corner, BOX_W - 2, 2, 9.5);
-  }
   // its ports, where its lines join: in at the left, out at the right (the top and the foot when laid downward)
   grp.appendChild(el("circle", { class: "port in", cx: down ? BOX_W / 2 : 0, cy: down ? 0 : BOX_H / 2, r: 5 }));
   const port = grp.appendChild(el("circle", { class: "port", cx: down ? BOX_W / 2 : BOX_W, cy: down ? h : BOX_H / 2, r: 5 }));
@@ -1008,7 +1011,7 @@ function drawDraft(grp: SVGGElement, d: Draft) {
   if (level === "compact") {
     return drawCompact(grp, { title: d.title, hover: `a draft: ${d.title} · ${blanks(d)}`, mark: "suggested", selected: d.key === selected, naming: naming === d.key ? d : undefined });
   }
-  frame(grp, BOX_H, false, d.key === selected);
+  frame(grp, BOX_H, d.key === selected);
   if (naming === d.key) {
     const fo = el("foreignObject", { x: PAD - 5, y: 10, width: BOX_W - 2 * PAD + 10, height: 24 });
     fo.appendChild(nameInput(d));
@@ -1029,7 +1032,7 @@ function drawPlanned(grp: SVGGElement, d: DraftStep, down: boolean) {
   grp.setAttribute("data-mark", "suggested");
   grp.setAttribute("aria-label", `the planner is drafting: ${d.title}`);
   if (level === "compact") return drawCompact(grp, { title: d.title, hover: `the planner is drafting: ${d.title}`, mark: "suggested", selected: false });
-  frame(grp, BOX_H, false, false);
+  frame(grp, BOX_H, false);
   cardTitle(grp, d.title);
   const files = filesChip(d.scope);
   if (files) pill(grp, "files", "▤", files, PAD, 48, BOX_W - 2 * PAD);

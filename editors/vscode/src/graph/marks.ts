@@ -3,7 +3,7 @@
 // chip's latest fact, and the one act a card wears. A mark is drawn only for what a field of the snapshot
 // says (state.ts); the words are words.ts's and `SAY`'s. No DOM here, so `node --test` reads them.
 import { SAY, type Goal } from "../state.ts";
-import { actsFor, asksYou, attemptsOf, checkWords, cut, filesChip, fitWidth, provesNothing, writtenOf, type Button, type ForkX, type TaskX } from "./words.ts";
+import { actsFor, asksYou, attemptsOf, checkWords, cut, filesChip, fitWidth, fitWords, provesNothing, sub, writtenOf, type Button, type ForkX, type TaskX } from "./words.ts";
 
 /** The one mark a step's state wears, the same shape at every size: a circle is the run's own business
  *  (waiting, ready, working, landed, suggested), a diamond is the person (you, yours), a triangle is trouble (back). */
@@ -31,11 +31,11 @@ export function stateMark(t: Stated): Mark {
   return t.state === "running" ? "working" : t.state === "ready" ? "ready" : "waiting";
 }
 
-/** The full card's corner: the state's mark, or none for waiting, ready and suggested (their words and their
- *  border say it). */
+/** The full card's corner: the state's mark, or none for waiting and ready (their words say it). A suggested card
+ *  wears its dashed ring there: its border is a card's, and its status says what it covers. */
 export function cornerMark(t: Stated): Mark | "" {
   const m = stateMark(t);
-  return m === "waiting" || m === "ready" || m === "suggested" ? "" : m;
+  return m === "waiting" || m === "ready" ? "" : m;
 }
 
 const WORD: Record<Mark, string> = { waiting: SAY.waiting, ready: SAY.ready, working: SAY.running, you: SAY.review, yours: SAY.yours,
@@ -208,16 +208,22 @@ export function tailPath(p: string): string {
 /** A check cut to ``n`` characters at its words, never inside one while a whole one fits: its first word and
  *  what it runs on (`pytest … test_words.py`, `./gradlew … RecipeLookupServiceImplTest`), else that alone, cut at
  *  its end if it must. What it runs on is its last path or dotted name (else its last word that is no flag),
- *  quotes off: a path's file, a dotted test's own name. Short strings untouched; never longer than ``n``. */
+ *  quotes off: a path's file, a dotted test's own name. Several `--tests` of one class are that class and how many
+ *  (`GeneralCommandTests · 3 tests`, not the last test's name as if it were the check); short of room its first
+ *  word goes, then the count. Short strings untouched; never longer than ``n``. */
 export function checkCut(s: string, n: number): string {
   if (s.length <= n) return s;
   if (!(n >= 2)) return n >= 1 ? "…" : "";
   const words = s.split(/\s+/).filter(Boolean), back = words.slice(1).map((w) => w.replace(/^['"]|['"]$/g, "")).filter((w) => !w.startsWith("-")).reverse();
   const last = back.find((w) => /[/.]/.test(w)) ?? back[0] ?? words[0] ?? "";
   // a dotted name's last part is a test's own name when it says so (a capital, an underscore), not a file's type
-  const on = last.includes("/") ? last.slice(last.lastIndexOf("/") + 1) || last : /\.[^.\s]*[A-Z_][^.\s]*$/.test(last) ? last.slice(last.lastIndexOf(".") + 1) : last;
-  if (words.length > 1 && `${words[0]} … ${on}`.length <= n) return `${words[0]} … ${on}`;
-  return cutWhole(on, Math.floor(n));
+  const own = (w: string) => (w.includes("/") ? w.slice(w.lastIndexOf("/") + 1) || w : /\.[^.\s]*[A-Z_][^.\s]*$/.test(w) ? w.slice(w.lastIndexOf(".") + 1) : w);
+  const classOf = (w: string) => /\.[A-Z][^.]*\.[a-z_][^.]*$/.test(w) ? w.split(".").at(-2)! : ""; // `….GeneralCommandTests.quit_…`
+  const tests = [...s.matchAll(/--tests[=\s]+['"]?([^'"\s]+)/g)].map((m) => m[1]!);
+  const one = tests.length > 1 && tests.every((w) => classOf(w) && classOf(w) === classOf(tests[0]!));
+  const on = one ? classOf(last) : own(last), more = one ? ` · ${tests.length} tests` : "";
+  const said = [...(words.length > 1 ? [`${words[0]} … ${on}${more}`] : []), `${on}${more}`, ...(words.length > 1 && more ? [`${words[0]} … ${on}`] : []), on];
+  return said.find((x) => x.length <= n) ?? cutWhole(on, Math.floor(n));
 }
 
 /** What follows `done when` on a card's foot: the check, cut at its words to ``n`` characters; `it exits 0`
@@ -245,12 +251,41 @@ export function filesLine(t: Pick<TaskX, "state" | "scope" | "files" | "filesN" 
   return { tone: "plain", mark: text ? "▤" : "", text, refused: text ? refused : "" };
 }
 
-/** `3 attempts` at the status line's end for a step set to two or more attempts that has started none, and has
- *  a check to keep one (without a check it runs as one agent; a command step runs once, with no agent). Real
- *  attempts are chips on the card, and small marks on its row (`forkMark`). */
+/** `3 agents at once` at the status line's end for a step set to two or more attempts that has started none, and
+ *  has a check to keep one (without a check it runs as one agent; a command step runs once, with no agent). They
+ *  are not tries one after another: each costs from the start (`attemptsWhy`). Real attempts are rows on the card,
+ *  and small marks on its row (`forkMark`). */
 export function attemptsMark(t: TaskX, limit: number | null | undefined): string {
   const n = attemptsOf(t, limit);
-  return n < 2 || t.forks.length || !t.check || t.command || !["proposed", "ready", "waiting"].includes(t.state) ? "" : `${n} attempts`;
+  return n < 2 || t.forks.length || !t.check || t.command || !["proposed", "ready", "waiting"].includes(t.state) ? "" : `${n} agents at once`;
+}
+
+/** What `3 agents at once` means, for its hover and the pane's stepper. */
+export const attemptsWhy = (n: number): string =>
+  `${n} agents work on it at once, each in its own copy of the repository; its check keeps one. About ${n}× the cost of one.`;
+
+// ---- a card's status line ----
+
+const bare = (s: string) => s.trim().replace(/^(an?|the)\s+/i, "").toLowerCase();
+/** What a step covers past its title, where the planner wrote it as `title: what it covers` (`Librarian service:
+ *  collections, JSON import, …` says `Collections, JSON import, …`); nothing else, as a card has room for no more. */
+export function covers(t: Pick<TaskX, "title" | "full">): string {
+  const full = t.full.trim(), head = full.toLowerCase().indexOf(`${bare(t.title)}:`);
+  if (!bare(t.title) || head < 0 || bare(full.slice(0, head + bare(t.title).length)) !== bare(t.title)) return "";
+  const rest = full.slice(head + bare(t.title).length + 1).trim();
+  return rest && rest[0]!.toUpperCase() + rest.slice(1);
+}
+
+/** A card's status line in ``n`` characters, its state first (words.ts `sub`), with what the card's other parts do
+ *  not say: a suggested step what it covers (its corner's ring says suggested); a working one `working` and its
+ *  agent (each of its attempts is a row naming its model); one that wears the filled diamond for a ``question`` on
+ *  it says it asks you, and what. */
+export function cardLine(t: TaskX, n: number, question = ""): string {
+  if (question && stateMark(t) === "you" && !["review", "yours"].includes(t.state)) return cutWhole(`${ASKS}: ${question}`, n);
+  if (t.state === "proposed") return cutWhole(covers(t) || SAY.proposed, n);
+  if (t.state !== "running") return sub(t, n);
+  const parts = sub({ ...t, forks: [] }, 1000).split(" · "), agent = parts.find((p) => p.startsWith("agent ")) ?? "";
+  return fitWords([SAY.running, agent, ...parts.filter((p) => p !== SAY.running && p !== agent)], n);
 }
 
 /** An attempt's small mark on a row, by its own state and nothing else: working, passed its check (the tick),
