@@ -1573,6 +1573,7 @@ function part(body: HTMLElement, title: string, aside = ""): HTMLElement {
 }
 
 let restOpen = false; // May change's fold, as the person left it
+let wholeCheck = false; // a long check shown whole, as the person left it
 
 /** A command or a path, breakable where it reads as a seam, as Home's are (home/main.ts code()): its spaces; a path
  *  after its slashes; a long dotted name after its dots and underscores (`app.cookyourbooks.services.impl.` and
@@ -1657,7 +1658,17 @@ function scopeTab(body: HTMLElement, t: TaskX, s: StateX) {
   }
   // what decides Approve, Accept or Help it, next to the files: the rest is the same on most tasks
   const when = part(body, "Done when");
-  if (t.check) code(t.check, div("", undefined, when));
+  const check = t.check ? code(t.check, div("", undefined, when)) : null;
+  if (check && t.check!.length > 120) { // three --tests: four lines until asked, hidden from the eye alone, so a copy is whole
+    const more = document.createElement("button");
+    more.className = "more-link";
+    const show = () => { check.classList.toggle("clamp", !wholeCheck); more.textContent = wholeCheck ? "less" : "the whole check"; more.setAttribute("aria-expanded", String(wholeCheck)); };
+    more.addEventListener("click", () => { wholeCheck = !wholeCheck; show(); });
+    show();
+    when.appendChild(more);
+    // ponytail: measured as the pane is built; a tab resized after keeps its link until the pane is next drawn
+    if (!wholeCheck && check.scrollHeight <= check.clientHeight) more.remove(); // its four lines hold it all here
+  }
   for (const c of checkLines(t)) { // the verdict after the work only where it stands, as the card's box wears it
     const row = div("checkrow", undefined, when);
     div(`dot ${c.tone}`, undefined, row);
