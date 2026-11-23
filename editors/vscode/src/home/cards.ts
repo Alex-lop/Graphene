@@ -150,7 +150,7 @@ function help(t: Task, titles: Record<string, string>): Btn[] {
   const offers = OFFERS.filter(([k]) => t.offers[k]).map(([k]) =>
     ({ label: cut(words[k]!(offerOn(k, t.offers[k]!, t, titles)), 80), act: "offer" as const, id: t.id, arg: k }));
   return [{ label: "Try again", act: "tryAgain", id: t.id, main: true, title: "a new agent, told why the last one stopped" }, ...offers,
-          { label: "Open changes", act: "openDiff", id: t.id }, { label: "Remove task", act: "drop", id: t.id }];
+          ...(t.changed.length ? [{ label: "Open changes", act: "openDiff" as const, id: t.id }] : []), { label: "Remove task", act: "drop", id: t.id }];
 }
 
 /** A workflow as Home lists it: a graph saved to workflows/, with the inputs Run asks for. */

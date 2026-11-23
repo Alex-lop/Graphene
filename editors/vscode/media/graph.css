@@ -185,6 +185,11 @@ footer#hint.sr { position: absolute; width: 1px; height: 1px; min-height: 0; pad
    and the details go under the canvas */
 @media (max-width: 700px) {
   #details .d-acts button:not(.quiet) { flex: 0 1 320px; } /* the one filled act a button, not a bar the tab's width */
+  /* the canvas's foot fades into the ground, so a card the pane's opening scrolled down passes under the zoom and
+     the legend instead of being covered by them half cut */
+  #canvas:not(.lanes)::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 56px; z-index: 1;
+    pointer-events: none; background: linear-gradient(transparent, var(--bg) 70%); }
+  #legend, #minimap, #notice { z-index: 2; } /* above the fade, as the zoom is */
   main { flex-direction: column; }
   /* under the canvas the pane can be shorter than its head and its acts (a short tab, a panel open under it):
      the whole pane scrolls, so a mouse reaches every act */

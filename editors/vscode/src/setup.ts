@@ -67,7 +67,7 @@ export function register(context: vscode.ExtensionContext, session: Session, _ui
   context.subscriptions.push(vscode.commands.registerCommand("graphene.install", async () => {
     const [word, line] = behind(session.version) ? ["Upgrade", C.UV_UPGRADE] : ["Install", C.UV_INSTALL];
     const ok = await vscode.window.showInformationMessage(`${word} Graphene with uv, in a terminal you can watch? It runs \`${line}\`.`,
-                                                           { modal: true, detail: "It gets the newest graphene-map on PyPI; this extension needs 0.10 or later. uv itself: https://docs.astral.sh/uv/ (one line to install)." }, word);
+                                                           { modal: true, detail: "It gets the newest graphene-map from where uv installed it: PyPI, or the folder it was installed from (then pull that folder first, or `uv tool install --force graphene-map`); this extension needs 0.10 or later. uv itself: https://docs.astral.sh/uv/ (one line to install)." }, word);
     if (ok !== word) return;
     const term = vscode.window.createTerminal({ name: line, env: C.unmarked(), iconPath: new vscode.ThemeIcon("cloud-download") });
     term.show(true);

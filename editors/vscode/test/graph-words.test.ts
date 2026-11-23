@@ -167,6 +167,10 @@ test("a task offers the acts its state takes; a replay offers only what reads", 
   const acts = (id: string, replay = false) => actsFor(task(id), replay).map((b) => b.act);
   // to review, as Home's card: two attempts passed and none kept, Compare first; else its changes until opened, then Approve
   assert.deepEqual(acts("farewell"), ["compareForks", "openDiff", "sendBack", "add-after", "add-under", "link"]);
+  // a task that came back with nothing written offers no Open changes, which would open nothing (Home's card neither)
+  const stopped = { ...task("farewell"), state: "came back" as const, changed: [], forks: [] };
+  assert.ok(!actsFor(stopped, false).some((b) => b.act === "openDiff"));
+  assert.ok(actsFor({ ...stopped, changed: ["app.py"] }, false).some((b) => b.act === "openDiff"));
   const docs = (opened: boolean) => actsFor(task("docs"), false, opened).map((b) => `${b.act}${b.main ? " (main)" : ""}`).slice(0, 3);
   assert.deepEqual(docs(false), ["openDiff (main)", "signOff", "sendBack"]);
   assert.deepEqual(docs(true), ["signOff (main)", "openDiff", "sendBack"]);

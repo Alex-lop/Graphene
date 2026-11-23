@@ -480,7 +480,8 @@ export function startAnswers(s: Pick<StateX, "questions">): string {
 export function actsFor(t: TaskX, replay: boolean, opened = false): Button[] {
   const out: Button[] = [];
   if (replay) return out;
-  const hasChanges = t.changed.length > 0 || ["running", "review", "done", "came back"].includes(t.state);
+  // a task that came back may have stopped before writing: its changes only when it has some, else the diff opens nothing
+  const hasChanges = t.changed.length > 0 || ["running", "review", "done"].includes(t.state);
   const review = t.state === "review";
   const choose = review && !t.kept && t.forks.filter((f) => f.state === "passed").length > 1; // its check could not choose: the person keeps one
   const look = review && !choose && !opened;
