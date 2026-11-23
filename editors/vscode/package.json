@@ -149,7 +149,7 @@
       },
       {
         "view": "graphene.plan",
-        "contents": "This folder has no plan yet.\n\nSet it up once with `graphene init`: it asks which planner and executor to use.\n[Set Up This Folder](command:graphene.init)\nThen `graphene ask \"what you want\"`, or Graphene: Auto…\n[Watch the Demo](command:graphene.watchDemo)",
+        "contents": "This folder has no plan yet.\n\nSet it up once with `graphene init`: it asks which planner and executor to use.\n[Set Up This Folder](command:graphene.init)\nThen ask your coding agent for a plan, in its chat.\n[Watch the Demo](command:graphene.watchDemo)",
         "when": "graphene.status == uninitialised"
       },
       {
@@ -159,7 +159,7 @@
       },
       {
         "view": "graphene.plan",
-        "contents": "Nothing is planned yet.\n\n[Graphene: Auto…](command:graphene.auto)\n[Add Step…](command:graphene.addStep)",
+        "contents": "Nothing is planned yet.\n\nAsk your coding agent for a plan, in its chat, or add a task.\n[Add Task…](command:graphene.addStep)",
         "when": "graphene.status == empty"
       },
       {
@@ -169,7 +169,7 @@
       },
       {
         "view": "graphene.rounds",
-        "contents": "No auto rounds here yet.\n\nGraphene: Auto… plans a goal, races it, checks it and plans the fix; each round shows here, with what your envelope accepted, the fork each task kept and why, and what landed.\n[Graphene: Auto…](command:graphene.auto)"
+        "contents": "No auto rounds here yet.\n\n`graphene auto`, in a terminal, plans a goal, races it, checks it and plans the fix; each round shows here, with what your envelope accepted, the fork each task kept and why, and what landed."
       }
     ],
     "commands": [
@@ -187,11 +187,6 @@
         "command": "graphene.openCockpit",
         "title": "Graphene: Open Cockpit",
         "icon": "$(terminal)"
-      },
-      {
-        "command": "graphene.auto",
-        "title": "Graphene: Auto…",
-        "icon": "$(rocket)"
       },
       {
         "command": "graphene.envelope",
@@ -324,10 +319,6 @@
           "when": "config.graphene.advanced"
         },
         {
-          "command": "graphene.auto",
-          "when": "config.graphene.advanced"
-        },
-        {
           "command": "graphene.envelope",
           "when": "config.graphene.advanced"
         },
@@ -450,11 +441,6 @@
           "command": "graphene.addStep",
           "when": "view == graphene.plan",
           "group": "navigation@4"
-        },
-        {
-          "command": "graphene.auto",
-          "when": "view == graphene.plan",
-          "group": "1_run@1"
         },
         {
           "command": "graphene.envelope",

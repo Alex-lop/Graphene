@@ -38,10 +38,6 @@ test("every mutation is the argv the cockpit's verbs use", () => {
   assert.deepEqual(C.stop(), ["run", "--stop"]);
   assert.deepEqual(C.runReady(), ["run", "--parallel", "4"]);
   assert.deepEqual(C.stateJson(), ["state", "--json"]);
-  assert.deepEqual(C.auto("a CLI that greets", 2), ["auto", "--budget", "2", "--", "a CLI that greets"]);
-  assert.deepEqual(C.auto("a CLI that greets"), ["auto", "--", "a CLI that greets"]);
-  assert.deepEqual(C.auto("x", null), ["auto", "--", "x"]);
-  assert.deepEqual(C.auto("x", 2, true), ["auto", "--budget", "2", "--plan", "--", "x"]);
   assert.deepEqual(C.setting("budget", "2"), ["config", "set", "budget", "2"]);
   assert.deepEqual(C.setting("auto", "on"), ["config", "set", "auto", "on"]);
 });
@@ -89,8 +85,8 @@ test("a refusal is read from the first line of stderr, then stdout", () => {
 });
 
 test("a terminal line quotes what a shell would split", () => {
-  assert.equal(C.shellLine("graphene", C.auto("a CLI that greets, in Rust's words", 2)),
-               "graphene auto --budget 2 -- 'a CLI that greets, in Rust'\\''s words'");
+  assert.equal(C.shellLine("graphene", C.tell("n1", "greet it, in Rust's words")),
+               "graphene board note --about n1 -- 'greet it, in Rust'\\''s words'");
   assert.equal(C.shellLine("/opt/bin/graphene", ["watch"]), "/opt/bin/graphene watch");
 });
 
@@ -105,13 +101,12 @@ test("a planner's words reach a toast as text: no link, no command, no icon", ()
   assert.equal(C.plain("two\nlines"), "two lines");
 });
 
-test("free text comes after `--`, so a title, a note, an answer or a goal that starts with a dash is words, not an option", () => {
+test("free text comes after `--`, so a title, a note or an answer that starts with a dash is words, not an option", () => {
   assert.deepEqual(C.addStep({ title: "- add tests for the counter", scope: ["a.py"], check: "true" }),
                    ["node", "add", "--scope", "a.py", "--check", "true", "--", "- add tests for the counter"]);
   assert.deepEqual(C.tell("n1", "-1 for this route"), ["board", "note", "--about", "n1", "--", "-1 for this route"]);
   assert.deepEqual(C.tell("n1", "-v keep both routes"), ["board", "note", "--about", "n1", "--", "-v keep both routes"]);
-  assert.deepEqual(C.auto("--plan a goal", 2, true), ["auto", "--budget", "2", "--plan", "--", "--plan a goal"]);
-  for (const argv of [C.addStep({ title: "-x" }), C.tell("n1", "-x"), C.auto("-x")]) {
+  for (const argv of [C.addStep({ title: "-x" }), C.tell("n1", "-x")]) {
     assert.equal(argv.indexOf("--"), argv.length - 2, `${argv.join(" ")}: the words are last, after --`);
   }
 });
