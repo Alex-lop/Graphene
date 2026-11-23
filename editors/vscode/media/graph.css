@@ -394,7 +394,7 @@ button:disabled { opacity: 0.45; cursor: default; }
 .halo { fill: none; stroke: color-mix(in srgb, var(--running) 13%, transparent); stroke-width: 4; animation: glow 1.8s ease-in-out infinite; }
 @keyframes glow { 0%, 100% { opacity: 0; } 50% { opacity: 1; } }
 /* a task being drawn, or suggested: dashed and flat until it is in the plan; the + past a card's out port draws one after it */
-.draft .box, .drafted .box, .st-proposed > .box { stroke-dasharray: 5 4; stroke: color-mix(in srgb, var(--proposed) 70%, transparent); fill: color-mix(in srgb, var(--card) 55%, transparent); filter: none; }
+.draft .box, .drafted .box, .st-proposed > .box { stroke-dasharray: 5 4; stroke: color-mix(in srgb, var(--proposed) 70%, transparent); fill: color-mix(in srgb, var(--card) 55%, var(--bg)); filter: none; }
 .draft .sub, .drafted .sub, .st-proposed .sub { fill: var(--proposed); }
 .task.drafted { cursor: default; }
 .wave.planning { color: var(--proposed); text-transform: none; letter-spacing: 0; font-size: 12px; }
@@ -450,7 +450,7 @@ button:disabled { opacity: 0.45; cursor: default; }
    keeps these under the hover's and the focus's border */
 :where(#svg[data-level="compact"]) .task > .box { filter: none; }
 :where(#svg[data-level="compact"]) .task.st-waiting { opacity: 1; }
-:where(#svg[data-level="compact"]) [data-mark="waiting"] > .box { fill: color-mix(in srgb, var(--card) 45%, transparent); }
+:where(#svg[data-level="compact"]) [data-mark="waiting"] > .box { fill: color-mix(in srgb, var(--card) 45%, var(--bg)); } /* opaque, as a card is: a line behind it never strikes it through */
 :where(#svg[data-level="compact"]) [data-mark="ready"] > .box { stroke: color-mix(in srgb, var(--card-border) 65%, var(--fg)); } /* from the card's border, which in high contrast is the contrast border */
 :where(#svg[data-level="compact"]) [data-mark="working"] > .box { fill: color-mix(in srgb, var(--wash, var(--c)) 10%, var(--card)); }
 :where(#svg[data-level="compact"]) [data-mark="you"] > .box { fill: color-mix(in srgb, var(--wash, var(--c)) 22%, var(--card)); }
