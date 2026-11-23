@@ -329,11 +329,13 @@ button:disabled { opacity: 0.45; cursor: default; }
 /* a tile is neutral, so the only coloured shapes on a card are its state's: the colour is its letter's, a
    step's own (the same as its files wear in the Explorer), else who does it */
 .tile rect { fill: var(--tint); }
-.tile text { fill: var(--fg); font-size: 14px; font-weight: 700; font-family: var(--font); }
-.tile.step text { fill: var(--step, var(--fg)); }
-.tile.claude:not(.step) text { fill: var(--claude); }
-.tile.codex:not(.step) text, .tile.draft text { fill: var(--proposed); }
-.tile.you:not(.step) text { fill: var(--review); }
+.tile text { fill: var(--letter, var(--fg)); font-size: 14px; font-weight: 700; font-family: var(--font); }
+.tile.step { --letter: var(--step, var(--fg)); }
+.tile.claude:not(.step) { --letter: var(--claude); }
+.tile.codex:not(.step), .tile.draft { --letter: var(--proposed); }
+.tile.you:not(.step) { --letter: var(--review); }
+/* a light theme's bright terminal colours are made for a dark ground: the letter keeps its hue, darkened to read */
+:root:has(> body.vscode-light) .tile text { fill: color-mix(in srgb, var(--letter, var(--fg)) 50%, var(--fg)); }
 .tile.cmd text { font-family: var(--mono); font-size: 12px; font-weight: 600; }
 .pill rect { fill: var(--tint); }
 .pill-text, .pill-mark { fill: var(--dim); font-size: 11px; font-family: var(--mono); }
@@ -551,6 +553,7 @@ body.vscode-high-contrast button:not(.tab), body.vscode-high-contrast-light butt
 body.vscode-high-contrast .switch i, body.vscode-high-contrast-light .switch i { outline: 1px solid var(--border); }
 body.vscode-high-contrast .stage.now, body.vscode-high-contrast-light .stage.now { background: none; outline: 1px solid var(--border); }
 body.vscode-high-contrast #help, body.vscode-high-contrast-light #help { background: rgba(0, 0, 0, 0.7); }
+body.vscode-high-contrast #svg.has-sel .edge, body.vscode-high-contrast-light #svg.has-sel .edge { opacity: 1; } /* the chosen card's lines are the focus colour: the rest keep their contrast */
 
 /* motion only where work is happening, and none when the system asks for less: a working edge stays dashed and
    amber, its card keeps its ring and a still halo */
