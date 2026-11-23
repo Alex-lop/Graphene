@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFileSync } from "node:fs";
-import { attemptsMark, cardAct, checkLines, checkMark, cornerMark, doneWhen, filesLine, forkMark, goalBox, goalCells, legend, markWord, checkCut, cutWhole, nextWanting, tailPath, wrap, stateMark, tally, wanting, wantingLine, type Box, type CheckMark, type Mark } from "../src/graph/marks.ts";
+import { attemptsMark, attemptsWhy, cardAct, cardLine, covers, checkLines, checkMark, cornerMark, doneWhen, filesLine, forkMark, goalBox, goalCells, legend, markWord, checkCut, cutWhole, nextWanting, tailPath, wrap, stateMark, tally, wanting, wantingLine, type Box, type CheckMark, type Mark } from "../src/graph/marks.ts";
 import { check } from "../src/graph/check.ts";
-import { actsFor, checkWords, cut, KEYS, type TaskX } from "../src/graph/words.ts";
+import { actsFor, checkWords, cut, KEYS, sub, type TaskX } from "../src/graph/words.ts";
 import { markDone, offerWords, widen } from "../src/needs.ts";
 import { parseState, parseTask, WORDS, type Word } from "../src/state.ts";
 
@@ -327,17 +327,17 @@ test("the files chip says the latest fact: what it may change, what it has writt
   for (const [why, t, want] of rows) assert.deepEqual(filesLine(t), want, why);
 });
 
-test("3 attempts on a step set to attempts that has started none; an attempt that started wears its own mark", () => {
+test("3 agents at once on a step set to attempts that has started none, not tries one after another; an attempt that started wears its own mark", () => {
   const ready = step("ready", { check: CHECK });
   const real = [{ letter: "a", state: "passed", why: "", lines: 41, model: "Nano", usd: 0.007, attempts: 1, idle: null, checkout: null },
                 { letter: "b", state: "running", why: "", lines: 9, model: "Nano", usd: 0.002, attempts: 1, idle: 3, checkout: null }];
   const rows: [string, TaskX, number | null, string][] = [
-    ["its own number", { ...ready, planned: 3 }, null, "3 attempts"],
-    ["unset on the step: the limits' number", ready, 2, "2 attempts"],
+    ["its own number", { ...ready, planned: 3 }, null, "3 agents at once"],
+    ["unset on the step: the limits' number", ready, 2, "2 agents at once"],
     ["the step's number comes first, and one attempt is no news", { ...ready, planned: 1 }, 3, ""],
     ["nothing set anywhere", ready, null, ""],
-    ["suggested and waiting steps too", step("proposed", { check: CHECK }), 3, "3 attempts"],
-    ["waiting", step("waiting", { check: CHECK, planned: 8 }), null, "8 attempts"],
+    ["suggested and waiting steps too", step("proposed", { check: CHECK }), 3, "3 agents at once"],
+    ["waiting", step("waiting", { check: CHECK, planned: 8 }), null, "8 agents at once"],
     ["no check: it runs as one agent", step("ready", { planned: 3 }), null, ""],
     ["a command step runs once", step("ready", { check: "uv run pytest -q", command: "uv run pytest -q" }), 3, ""],
     ["started: its real attempts are its chips", step("running", { check: CHECK, planned: 3, forks: real }), 3, ""],
@@ -345,8 +345,37 @@ test("3 attempts on a step set to attempts that has started none; an attempt tha
     ["landed", step("done", { check: CHECK, planned: 3 }), 3, ""],
   ];
   for (const [why, t, limit, want] of rows) assert.equal(attemptsMark(t, limit), want, why);
+  assert.match(attemptsWhy(3), /^3 agents work on it at once, each in its own copy .*its check keeps one\. About 3× the cost/, "its hover says what it costs");
   assert.deepEqual(["running", "passed", "gave up", "failed", "ended", "", "waiting"].map((state) => forkMark({ state })),
                    ["working", "landed", "ended", "ended", "ended", "waiting", "waiting"]);
+});
+
+// ---- a card's status line ----
+test("a card's status says its state first and what its other parts do not: what a suggestion covers, a question on it, no attempts as words", () => {
+  const real = parseState(readFileSync(new URL("./fixtures/real-auto.json", import.meta.url), "utf8"));
+  const race = parseState(readFileSync(new URL("./fixtures/graph-race.json", import.meta.url), "utf8"));
+  // what each suggestion covers, as its planner wrote it past its title and a colon; a full text in any other shape says nothing
+  assert.deepEqual([covers({ title: "Librarian service", full: "Librarian service: collections, JSON import, ingredient search" }),
+                    covers({ title: "the export", full: "Export: CSV for the weekly report" }),
+                    covers({ title: "Recipe lookup by title or short ID", full: "Recipe lookup by title or short ID" }),
+                    covers({ title: "hello says hello", full: "hello says hello to the person by name" }),
+                    covers({ title: "the export", full: "Write the export: CSV for the weekly report" })],
+                   ["Collections, JSON import, ingredient search", "CSV for the weekly report", "", "", ""]);
+  const suggested = (title: string, full: string) => cardLine(step("proposed", { title, full, check: CHECK }), 60);
+  assert.equal(suggested("Planner service", "Planner service: shopping list and Markdown export"), "Shopping list and Markdown export", "not `suggested` again: its corner's ring says it");
+  assert.equal(suggested("Planner service", "Planner service"), "suggested", "nothing more to say: its state");
+  assert.equal(cardLine(step("proposed", { title: "Transformer service", full: "Transformer service: scale, convert, house conversions, unit names" }), 26), "Scale, convert, house…", "cut at a whole word");
+  // the race's main card wears the filled diamond for the question on it: it says so, with the question, and not `agent 3 · 3 attempts`
+  const greet = race.tasks.find((t) => t.id === "greet")!, q = race.questions.find((x) => x.about === "greet")!.text;
+  assert.equal(stateMark(greet), "you");
+  assert.equal(cardLine(greet, 60, q), "asks you: which port does the dev server take?");
+  assert.equal(cardLine(greet, 24, q), "asks you: which port…");
+  assert.equal(cardLine(greet, 60), "working · agent 3 · $0.31", "no question: working first, its attempts are its rows");
+  assert.equal(cardLine({ ...greet, usd: null }, 60), "working · agent 3", "a practice run's card has no cost to say");
+  assert.equal(cardLine(step("running", { agent: "4", idle: 20 }), 60), "working · agent 4 · 20 s quiet");
+  assert.equal(cardLine(step("review", { check: CHECK }), 60, "which port?"), "to review", "to review is its own news: the question is the pane's");
+  // the rest say what words.ts says of them
+  for (const t of [...race.tasks, ...real.tasks].filter((x) => !["proposed", "running"].includes(x.state))) assert.equal(cardLine(t, 40), sub(t, 40), t.id);
 });
 
 // ---- the one act ----
@@ -441,8 +470,8 @@ test("the repo-sized fixture shows every mark, from what a current snapshot says
   assert.deepEqual(filesLine(at("audit")), { tone: "working", mark: "✎", text: "1 of 1 file", refused: "1 refused" });
   assert.equal(stateMark(at("audit")), "working", "the refused write was its first attempt's: nothing is stopped in the one going now");
   assert.deepEqual(filesLine(at("cancel")), { tone: "back", mark: "✕", text: "wrote store/repo.py", refused: "" });
-  // 3 attempts where the limits' three have not started; the two races under way keep their chips
-  for (const t of big.tasks) assert.equal(attemptsMark(t, big.envelope.forks), ["ready", "waiting"].includes(t.state) ? "3 attempts" : "", t.id);
+  // 3 agents at once where the limits' three have not started; the two races under way keep their rows
+  for (const t of big.tasks) assert.equal(attemptsMark(t, big.envelope.forks), ["ready", "waiting"].includes(t.state) ? "3 agents at once" : "", t.id);
   assert.deepEqual(big.tasks.filter((t) => cardAct(t, false)).map((t) => `${t.id}: ${cardAct(t, false)!.label}`), ["cache: Approve", "cancel: Help it…", "a11y: Mark done"]);
 });
 

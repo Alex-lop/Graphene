@@ -7,7 +7,7 @@ import { layout, modeFor, step, type Box, type Edge, type Layout } from "../layo
 import { autoLine, SAY, screenWords, usd, type DraftStep, type State } from "../state.ts";
 import { ICONS } from "./icons.ts";
 import { blanks, draftLine, globs, isDraft, lacks, type Draft } from "./draft.ts";
-import { attemptsMark, cardAct, checkCut, checkLines, checkMark, cornerMark, cutWhole, doneWhen, filesLine, fitWhole, forkMark, goalBox, goalCells, legend, nextWanting, stateMark, tailPath, tally, wanting, wantingLine, wrap,
+import { attemptsMark, attemptsWhy, cardAct, cardLine, checkCut, checkLines, checkMark, cornerMark, cutWhole, doneWhen, filesLine, fitWhole, forkMark, goalBox, goalCells, legend, nextWanting, stateMark, tailPath, tally, wanting, wantingLine, wrap,
          type CheckMark, type Mark } from "./marks.ts";
 import { actsFor, ASK_AGENT, askLine, askNote, asksYou, attemptsOf, commandChip, cornerWord, CURSOR_AGENT, cut, done, draftedSteps, edgeKind, editable,
          filesChip, forkActs, forkRow, forkWords, HEADER_ACTS, headerFor, heldWords, KEYS, linkHint, mainAct, mayRun, newsLine, paneKey, pipeline,
@@ -929,16 +929,19 @@ function cardTitle(grp: SVGGElement, title: string, aside = 0) {
  *  attempts, a chip each, while it is not done; its foot, which is its check's; the ports its lines join at, and
  *  its state's mark on its corner. From afar (the compact level) it is a row instead. The group says its mark
  *  (`data-mark`: graph.css colours by it) and the attempts it is set to and has not started (`data-attempts`),
- *  for a script to read as a person reads `3 attempts`. */
-function drawTask(grp: SVGGElement, t: TaskX, h: number, down: boolean, limit: number | null) {
+ *  for a script to read as a person reads `3 agents at once`. */
+function drawTask(grp: SVGGElement, task: TaskX, h: number, down: boolean, limit: number | null) {
   const acting = grp.querySelector(".act:focus") !== null; // its button has the keyboard: it keeps it through the redraw
   grp.replaceChildren();
+  // a practice run (the scripted stand-in) or a replay spent nothing: its cards say no cost, as its header does
+  const t = state?.stand_in || replaying() ? { ...task, usd: null, forks: task.forks.map((f) => ({ ...f, usd: null })) } : task;
   grp.setAttribute("class", `task ${cls(t.state)}${t.id === selected ? " selected" : ""}${t.needs_you ? " needs-you" : ""}`);
   grp.setAttribute("data-mark", stateMark(t));
-  const line = sub(t, 60), times = attemptsMark(t, limit), check = checkMark(t);
+  const asked = state ? questionOn(state, t.id)?.text ?? "" : "";
+  const line = cardLine(t, 60, asked), times = attemptsMark(t, limit), check = checkMark(t);
   if (times) grp.dataset.attempts = String(parseInt(times)); else delete grp.dataset.attempts;
   grp.setAttribute("aria-label", `${t.title}: ${line}${t.id === selected ? ", selected" : ""}`);
-  const hover = [t.title, sub(t, 200), check.words].filter(Boolean).join(" · "); // the whole line, and the check's verdict
+  const hover = [t.title, cardLine(t, LONG, asked), check.words].filter(Boolean).join(" · "); // the whole line, and the check's verdict
   if (level === "compact") {
     return drawCompact(grp, { title: t.title, hover, mark: stateMark(t), selected: t.id === selected,
                               port: replaying() || t.leaves ? undefined : t.id, hollow: check.box === "hollow", forks: t.forks });
@@ -950,25 +953,30 @@ function drawTask(grp: SVGGElement, t: TaskX, h: number, down: boolean, limit: n
   const files = filesLine(t); // the latest fact about its files: what it may change, has written, or wrote outside them
   if (t.command) pill(grp, "run", "$", commandChip(t.command), PAD, 48, BOX_W - 2 * PAD); // a command step: what runs, with no agent
   if (files.text) pill(grp, `files ${files.tone}`, files.mark, files.text, PAD, 48, BOX_W - 2 * PAD, files.refused && ` · ${files.refused}`);
-  // the status; at its end the card's act, else its model while it runs, or the attempts it is set to
+  // the status; at its end the card's act, else its model while one agent runs it (attempts each name theirs), or
+  // the agents it is set to, whose hover says what that costs
   const act = cardAct(t, replaying());
   let right = BOX_W - PAD;
   if (act) right = actButton(grp, act, t.id, t.title);
   else {
-    const tail = t.state === "running" && t.model ? cut(t.model, 14) : times;
+    const tail = t.state === "running" && t.model && t.forks.length < 2 ? cut(t.model, 14) : times;
     const end = tail ? grp.appendChild(el("text", { class: tail === times ? "times" : "model", x: right, y: STATUS_Y, "text-anchor": "end" }, tail)) : null;
     if (end) right -= (end.getComputedTextLength() || tail.length * 7) + 8;
+    if (end && tail === times) end.appendChild(el("title", {}, attemptsWhy(parseInt(times))));
   }
-  status(grp, (n) => sub(t, n), right);
+  status(grp, (n) => cardLine(t, n, asked), right);
   if (acting) (grp.querySelector<SVGGElement>(".act") ?? grp).focus({ preventScroll: true }); // pressed, and gone: the card has it
-  // its attempts: a chip each, over its foot; once it is done they are history (the pane's Activity has them)
+  // its attempts: a row each, over its foot, its mark and its words as a status reads (no box: they are not
+  // fields); the kept one on a quiet fill, its why in its hover. Once it is done they are history (the pane's Activity)
   (t.state === "done" ? [] : t.forks).forEach((f, i) => {
     const y = BOX_H - FOOT_H + 2 + i * FORK_H;
-    const kept = t.kept?.letter === f.letter, room = BOX_W - 2 * PAD - 16;
+    const kept = t.kept?.letter === f.letter, room = BOX_W - 2 * PAD - 26;
     const chip = el("g", { class: `fork ${cls(f.state || "waiting")}${kept ? " kept" : ""}` });
-    chip.appendChild(el("rect", { class: "chip", x: PAD, y, width: BOX_W - 2 * PAD, height: FORK_H - 4, rx: 5 }));
-    // the kept one is bold and says why: it is cut by its drawn length, at its words, not by a count of characters
-    fitText(chip.appendChild(el("text", { class: "chip-text", x: PAD + 8, y: y + 13 }, forkWords(f, t.kept, kept ? LONG : Math.floor(room / 6.6)))), room);
+    chip.appendChild(el("rect", { class: "chip", x: PAD, y, width: BOX_W - 2 * PAD, height: FORK_H - 4, rx: 5 })); // its hover's
+    mark(chip, forkMark(f), PAD + 9, y + 9, 5);
+    // the kept one says so where its state would be (`b · Nano · kept`), its mark already ticked
+    const words = forkWords(kept ? { ...f, state: "kept" } : f, kept ? null : t.kept, Math.floor(room / 6.6));
+    fitText(chip.appendChild(el("text", { class: "chip-text", x: PAD + 20, y: y + 13 }, words)), room);
     chip.appendChild(el("title", {}, forkRow(f, t.kept)));
     grp.appendChild(chip);
   });

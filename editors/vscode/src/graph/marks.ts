@@ -3,7 +3,7 @@
 // chip's latest fact, and the one act a card wears. A mark is drawn only for what a field of the snapshot
 // says (state.ts); the words are words.ts's and `SAY`'s. No DOM here, so `node --test` reads them.
 import { SAY, type Goal } from "../state.ts";
-import { actsFor, asksYou, attemptsOf, checkWords, cut, filesChip, fitWidth, provesNothing, writtenOf, type Button, type ForkX, type TaskX } from "./words.ts";
+import { actsFor, asksYou, attemptsOf, checkWords, cut, filesChip, fitWidth, fitWords, provesNothing, sub, writtenOf, type Button, type ForkX, type TaskX } from "./words.ts";
 
 /** The one mark a step's state wears, the same shape at every size: a circle is the run's own business
  *  (waiting, ready, working, landed, suggested), a diamond is the person (you, yours), a triangle is trouble (back). */
@@ -245,12 +245,41 @@ export function filesLine(t: Pick<TaskX, "state" | "scope" | "files" | "filesN" 
   return { tone: "plain", mark: text ? "▤" : "", text, refused: text ? refused : "" };
 }
 
-/** `3 attempts` at the status line's end for a step set to two or more attempts that has started none, and has
- *  a check to keep one (without a check it runs as one agent; a command step runs once, with no agent). Real
- *  attempts are chips on the card, and small marks on its row (`forkMark`). */
+/** `3 agents at once` at the status line's end for a step set to two or more attempts that has started none, and
+ *  has a check to keep one (without a check it runs as one agent; a command step runs once, with no agent). They
+ *  are not tries one after another: each costs from the start (`attemptsWhy`). Real attempts are rows on the card,
+ *  and small marks on its row (`forkMark`). */
 export function attemptsMark(t: TaskX, limit: number | null | undefined): string {
   const n = attemptsOf(t, limit);
-  return n < 2 || t.forks.length || !t.check || t.command || !["proposed", "ready", "waiting"].includes(t.state) ? "" : `${n} attempts`;
+  return n < 2 || t.forks.length || !t.check || t.command || !["proposed", "ready", "waiting"].includes(t.state) ? "" : `${n} agents at once`;
+}
+
+/** What `3 agents at once` means, for its hover and the pane's stepper. */
+export const attemptsWhy = (n: number): string =>
+  `${n} agents work on it at once, each in its own copy of the repository; its check keeps one. About ${n}× the cost of one.`;
+
+// ---- a card's status line ----
+
+const bare = (s: string) => s.trim().replace(/^(an?|the)\s+/i, "").toLowerCase();
+/** What a step covers past its title, where the planner wrote it as `title: what it covers` (`Librarian service:
+ *  collections, JSON import, …` says `Collections, JSON import, …`); nothing else, as a card has room for no more. */
+export function covers(t: Pick<TaskX, "title" | "full">): string {
+  const full = t.full.trim(), head = full.toLowerCase().indexOf(`${bare(t.title)}:`);
+  if (!bare(t.title) || head < 0 || bare(full.slice(0, head + bare(t.title).length)) !== bare(t.title)) return "";
+  const rest = full.slice(head + bare(t.title).length + 1).trim();
+  return rest && rest[0]!.toUpperCase() + rest.slice(1);
+}
+
+/** A card's status line in ``n`` characters, its state first (words.ts `sub`), with what the card's other parts do
+ *  not say: a suggested step what it covers (its corner's ring says suggested); a working one `working` and its
+ *  agent (each of its attempts is a row naming its model); one that wears the filled diamond for a ``question`` on
+ *  it says it asks you, and what. */
+export function cardLine(t: TaskX, n: number, question = ""): string {
+  if (question && stateMark(t) === "you" && !["review", "yours"].includes(t.state)) return cutWhole(`${ASKS}: ${question}`, n);
+  if (t.state === "proposed") return cutWhole(covers(t) || SAY.proposed, n);
+  if (t.state !== "running") return sub(t, n);
+  const parts = sub({ ...t, forks: [] }, 1000).split(" · "), agent = parts.find((p) => p.startsWith("agent ")) ?? "";
+  return fitWords([SAY.running, agent, ...parts.filter((p) => p !== SAY.running && p !== agent)], n);
 }
 
 /** An attempt's small mark on a row, by its own state and nothing else: working, passed its check (the tick),

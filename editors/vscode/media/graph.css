@@ -469,10 +469,9 @@ button:disabled { opacity: 0.45; cursor: default; }
 .goal-title { font-size: 16px; }
 .sub { fill: var(--dim); font-size: 12px; font-family: var(--font); }
 .model { fill: var(--dim); font-size: 12px; font-family: var(--font); }
-.times { fill: var(--dim); font-size: 12px; font-family: var(--font); font-variant-numeric: tabular-nums; } /* 3 attempts: what a task is set to and has not started */
-.chip { fill: var(--bg); stroke: var(--border); }
+.times { fill: var(--dim); font-size: 12px; font-family: var(--font); font-variant-numeric: tabular-nums; } /* 3 agents at once: what a task is set to and has not started */
+.task .times { pointer-events: auto; } /* its hover says what that costs */
 .chip-text { fill: var(--fg); font-size: 12px; font-family: var(--font); font-variant-numeric: tabular-nums; }
-.fork.kept .chip { stroke-width: 2; }
 /* from afar (the compact level) a card is a row, its state's mark and its title: the words are drawn larger,
    since the whole drawing is drawn smaller, and a sub-goal's name reads as a heading */
 #svg[data-level="compact"] .band-head text { font-size: 13.5px; }
@@ -512,13 +511,12 @@ button:disabled { opacity: 0.45; cursor: default; }
 #svg.far [data-mark="landed"] > .box { fill: color-mix(in srgb, var(--wash, var(--c)) 42%, var(--card)); }
 #svg.far :is([data-mark="you"], [data-mark="back"]) > .box { fill: color-mix(in srgb, var(--wash, var(--c)) 50%, var(--card)); }
 #svg.far .task > .mk:is(.you, .yours, .back) { transform: translate(calc(9px + 9px / var(--k)), 24px) scale(calc(0.9 / var(--k))); }
-.fork .chip { fill: var(--bg); stroke: var(--border); }
-.fork.st-running .chip { stroke: var(--running); }
-.fork.st-passed .chip { stroke: var(--done); }
-.fork.kept .chip { fill: var(--vscode-editor-inactiveSelectionBackground, rgba(128, 128, 128, 0.15)); stroke: var(--done); }
+/* an attempt on a card: a status line, its mark in its state's colour and its words; no box (a box reads as a field
+   to type in). The kept one on a quiet fill, in bold; one that ended steps back */
+.fork .chip { fill: transparent; stroke: none; }
+.fork.kept .chip { fill: var(--fill-2); }
 .fork.kept .chip-text { font-weight: 600; }
-.fork.st-gave-up .chip, .fork.st-failed .chip, .fork.st-ended .chip { stroke: var(--came-back); }
-.fork.st-gave-up .chip-text, .fork.st-ended .chip-text { fill: var(--dim); }
+.fork:is(.st-gave-up, .st-failed, .st-ended) .chip-text { fill: var(--dim); }
 .d-title.st-running { border-color: var(--running); }
 .d-title.st-review, .d-title.st-yours { border-color: var(--review); }
 .d-title.st-came-back { border-color: var(--came-back); }
@@ -598,6 +596,7 @@ body.vscode-high-contrast .ring, body.vscode-high-contrast .lane.selected,
 body.vscode-high-contrast-light .ring, body.vscode-high-contrast-light .lane.selected { stroke: var(--focus); border-color: var(--focus); box-shadow: none; }
 body.vscode-high-contrast .fork.kept .chip, body.vscode-high-contrast .l-chip.kept,
 body.vscode-high-contrast-light .fork.kept .chip, body.vscode-high-contrast-light .l-chip.kept { fill: none; background: none; }
+body.vscode-high-contrast .fork.kept .chip, body.vscode-high-contrast-light .fork.kept .chip { stroke: var(--border); } /* no fill here: the kept one is outlined */
 body.vscode-high-contrast button:not(.tab), body.vscode-high-contrast-light button:not(.tab) { border-color: var(--border); } /* a tab's underline is its own */
 body.vscode-high-contrast #need > button, body.vscode-high-contrast-light #need > button { border-color: var(--border); }
 /* the header's ghosts have no edge, as the editor's own toolbar: hovered, its dashed outline (no fill in HC) */
