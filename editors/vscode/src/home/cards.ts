@@ -56,6 +56,15 @@ export const unanswered = (s: Pick<State, "questions">): number => s.questions.f
 const failed = (t: Task): Line[] => (t.command && t.checked.after === "failed" && t.state !== "done"
   ? [{ v: `Its command failed the last time it ran: the terminal said why. ${t.leaves ? "Approve and run" : "Run"} tries it again.`, warn: true }] : []);
 
+/** What a task is for, past its title: none when it says the title again (with an "an" before it), and only what
+ *  is new when it starts with the title (`Librarian service: collections, …`). */
+function whatFor(t: Task): string {
+  const head = `${bare(t.title)}:`, at = t.full.toLowerCase().indexOf(head);
+  const rest = bare(t.full).startsWith(head) ? t.full.slice(at + head.length).trim() : t.full;
+  if (rest === t.full) return bare(t.full) === bare(t.title) ? "" : t.full;
+  return rest && rest[0]!.toUpperCase() + rest.slice(1);
+}
+
 /** What a task is for, what it may change, and what proves it: the three lines a person reads before saying yes. */
 function contract(t: Task, name: (id: string) => string): Line[] {
   if (t.command) return [ // a command step: no agent and no files; what runs, and whether it asks first
@@ -65,7 +74,7 @@ function contract(t: Task, name: (id: string) => string): Line[] {
     ...line("After", t.needs.map(name).join(", ")),
   ];
   return [
-    ...line("What for", t.full && bare(t.full) !== bare(t.title) ? t.full : ""), // not the title again, with an "an" before it
+    ...line("What for", whatFor(t)),
     ...fileLine("May change", t.scope, "no files named"),
     { k: "Done when", v: t.check ? `${t.check} passes` : "you approve it", mono: Boolean(t.check) },
     ...(t.hollow ? [{ v: PROVES_NOTHING, warn: true }] : []), // the check ran once on the code as it is, before the run

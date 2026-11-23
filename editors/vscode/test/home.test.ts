@@ -36,10 +36,12 @@ test("a question offers its default first, each option, and the person's own wor
                     ["pick a free one at start", "pick a free one at start", undefined, false], ["In your own words…", undefined, undefined, false]]);
 });
 
-test("a task's What for is left out when it only says the title again", () => {
+test("a task's What for is left out when it only says the title again, and says only what is new after it", () => {
   const s = fixture("proposals");
   const again = { ...s, tasks: s.tasks.map((t) => (t.id === "hello" ? { ...t, title: "export command writing json", full: "An export command writing JSON" } : t)) };
   assert.equal(card(home(again), "p:hello").lines.find((l) => l.k === "What for"), undefined);
+  const prefix = { ...s, tasks: s.tasks.map((t) => (t.id === "hello" ? { ...t, title: "Librarian service", full: "Librarian service: collections, JSON import" } : t)) };
+  assert.deepEqual(card(home(prefix), "p:hello").lines.find((l) => l.k === "What for"), { k: "What for", v: "Collections, JSON import" });
 });
 
 test("a finished task to review shows its evidence; Open changes leads until the person has opened them", () => {
