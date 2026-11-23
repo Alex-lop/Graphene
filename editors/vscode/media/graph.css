@@ -79,6 +79,7 @@ main { flex: 1; display: flex; min-height: 0; }
   background-image: radial-gradient(circle at 1px 1px, var(--dot) 1.1px, transparent 1.3px); background-size: 22px 22px;
 }
 #canvas.dragging { cursor: grabbing; }
+#svg { user-select: none; -webkit-user-select: none; } /* a drag pans the plan: it selects no card's words on the way (a title being typed is an input, its own) */
 #canvas.lanes { cursor: default; overflow: auto; background-image: none; }
 /* what floats over the canvas is one family: a card's ground (a card may pass under it), a hairline ring and a
    soft shadow (tokens.css `--pop`): the zoom, the legend, the minimap, the notice, and the chip for what needs you */
@@ -316,8 +317,9 @@ button:disabled { opacity: 0.45; cursor: default; }
 .task:focus-visible, .goal:focus-visible { outline: none; } /* the dashed card says the focus: no square frame round its attempts too */
 .tile rect { fill: var(--tint); }
 .tile text { fill: var(--fg); font-size: 14px; font-weight: 700; font-family: var(--font); }
-/* a step's own colour, the same as its files wear in the Explorer: who does it is the tile's letter */
-.tile.step rect { fill: color-mix(in srgb, var(--step, var(--fg)) 18%, transparent); }
+/* a step's own colour, the same as its files wear in the Explorer, is its letter's: the tile stays neutral, so
+   the only coloured shapes on a card are its state's */
+.tile.step rect { fill: var(--tint); }
 .tile.step text { fill: var(--step, var(--fg)); }
 .tile.claude:not(.step) rect { fill: color-mix(in srgb, var(--claude) 18%, transparent); }
 .tile.claude:not(.step) text { fill: var(--claude); }
@@ -342,7 +344,8 @@ button:disabled { opacity: 0.45; cursor: default; }
 .gate.now rect { stroke: var(--review); }
 .gate.now text { fill: var(--review); font-weight: 600; }
 /* the ports, where a card's lines join; the out port is the dot a link is dragged from */
-.port { fill: var(--bg); stroke: var(--edge); stroke-width: 2; }
+.port { fill: var(--bg); stroke: var(--edge); stroke-width: 1.5; opacity: 0; transition: opacity 0.15s; }
+.task:hover .port, .task.selected .port, .task:focus-visible .port, .goal:hover .port, #canvas.wiring .port { opacity: 1; } /* where a hand is: unseen, it still takes a drag */
 .port[data-port] { cursor: crosshair; }
 .port[data-port]:hover, #canvas.wiring .port[data-port] { fill: var(--edge-hot); stroke: var(--edge-hot); }
 .wire { fill: none; stroke: var(--edge-hot); stroke-width: 2; stroke-dasharray: 5 4; pointer-events: none; }
@@ -435,8 +438,9 @@ button:disabled { opacity: 0.45; cursor: default; }
 [data-mark="landed"] .title { fill: var(--dim); font-weight: 500; }
 .st-came-back .sub { fill: var(--came-back); }
 .task.st-waiting { opacity: 0.78; } /* the card alone: not its row in the lanes, an attempt's chip or the pane's title */
-/* a row is filled by its state, flat, so the plan reads from afar as bricks: landed green, working amber, to
-   review purple, came back red; not started is an outline (ready the stronger), a step of your own too. `:where`
+/* a row is filled by its state, flat, so the plan reads from afar as bricks: working amber, to review purple,
+   came back red; landed is the card's own (its tick says it); not started is an outline (ready the stronger), a
+   step of your own too. `:where`
    keeps these under the hover's and the focus's border */
 :where(#svg[data-level="compact"]) .task > .box { filter: none; }
 :where(#svg[data-level="compact"]) .task.st-waiting { opacity: 1; }
@@ -445,7 +449,7 @@ button:disabled { opacity: 0.45; cursor: default; }
 :where(#svg[data-level="compact"]) [data-mark="working"] > .box { fill: color-mix(in srgb, var(--wash, var(--c)) 10%, var(--card)); }
 :where(#svg[data-level="compact"]) [data-mark="you"] > .box { fill: color-mix(in srgb, var(--wash, var(--c)) 22%, var(--card)); }
 :where(#svg[data-level="compact"]) [data-mark="back"] > .box { fill: color-mix(in srgb, var(--wash, var(--c)) 18%, var(--card)); }
-:where(#svg[data-level="compact"]) [data-mark="landed"] > .box { fill: color-mix(in srgb, var(--wash, var(--c)) 13%, var(--card)); }
+:where(#svg[data-level="compact"]) [data-mark="landed"] > .box { fill: var(--card); } /* landed steps back: its tick says it, and the colour is kept for what wants you */
 :where(#svg[data-level="compact"]) :is([data-mark="waiting"], [data-mark="suggested"]) .title { fill: var(--dim); font-weight: 500; }
 /* from far (rows under 45%) nobody reads a title: it goes, the fills grow stronger, and what wants you keeps its
    size: the diamond and the triangle are 16 px on screen however small the plan is drawn (`--k` is the zoom) */
@@ -544,7 +548,7 @@ body.vscode-high-contrast #help, body.vscode-high-contrast-light #help { backgro
 /* motion only where work is happening, and none when the system asks for less: a working edge stays dashed and
    amber, its card keeps its ring and a still halo */
 @media (prefers-reduced-motion: reduce) {
-  .task, .goal, .edge, .lane, #svg.glide, .switch i, .switch i::after, #minimap { transition: none; }
+  .task, .goal, .edge, .lane, #svg.glide, .switch i, .switch i::after, #minimap, .port { transition: none; }
   .task.fresh, .lane.fresh, .edge.run, .mk .spin, .halo, #planning::before, .wave.planning::before { animation: none; }
   .halo { opacity: 0.6; }
 }

@@ -148,7 +148,7 @@ function boxes(s: StateX, lv: Level = "full"): { boxes: Box[]; edges: Edge[]; go
   const w = DIMS[lv].w, h = DIMS[lv].h + DIMS[lv].sub; // a card's own box, at the level asked for
   const away = new Set(s.tasks.filter((t) => t.leaves).map((t) => t.id)); // past the line: placed in their region, not by the layout
   const bs: Box[] = s.tasks.filter((t) => !away.has(t.id)).map((t) => {
-    const n = lv === "full" ? t.forks.length : 0; // its attempts hang under a whole card; a row wears them as marks
+    const n = lv === "full" && t.state !== "done" ? t.forks.length : 0; // its attempts hang under a whole card until it lands; a row wears them as marks
     return { id: t.id, band: t.parent ?? "", w: n ? FORK_DX + CHIP_W : w, h: h + (n ? FORK_H * n + 6 : 0) };
   });
   const edges: Edge[] = s.edges.filter(([, , kind]) => kind === "needs").map(([a, b]) => [a, b]);
@@ -840,9 +840,10 @@ function drawTask(grp: SVGGElement, t: TaskX, h: number, down: boolean, limit: n
     grp.appendChild(el("circle", { class: "plate", cx: BOX_W - 2, cy: 2, r: 12.5 }));
     mark(grp, corner, BOX_W - 2, 2, 9.5);
   }
-  // its attempts: one chip each, hanging under the status line on a line from the card's foot
+  // its attempts: one chip each, hanging under the status line on a line from the card's foot; landed, they are
+  // history (the pane's Activity has them) and the card is its own size again
   const top = BOX_H + SUB_H;
-  t.forks.forEach((f, i) => {
+  (t.state === "done" ? [] : t.forks).forEach((f, i) => {
     const y = top + 6 + i * FORK_H, x = FORK_DX;
     const kept = t.kept?.letter === f.letter;
     grp.appendChild(el("path", { class: "fan", d: `M10,${top} C10,${y + 10} ${x - 8},${y + 10} ${x},${y + 10}` }));
