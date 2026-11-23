@@ -112,7 +112,7 @@ main { flex: 1; display: flex; min-height: 0; }
 #legend b { color: var(--fg); font-weight: 500; font-variant-numeric: tabular-nums; }
 #legend svg, #need svg { flex: none; overflow: visible; }
 #legend .spin, .band-head .mk .spin { animation: none; } /* a mark in a count is not the work: only a card's own ring turns (over `.mk .spin`, which comes later) */
-#canvas.lanes #zoom, #canvas.lanes #legend, #canvas.lanes #planning, #canvas.lanes #minimap, #canvas.lanes #need { display: none; }
+#canvas.lanes #zoom, #canvas.lanes #legend, #canvas.lanes #planning, #canvas.lanes #minimap, #canvas.lanes #b-next { display: none; } /* the lanes list each task: the question stays */
 /* while a planner writes the plan: how many steps it has drawn so far, beside the zoom's buttons */
 #planning { position: absolute; left: 16px; bottom: 50px; z-index: 2; font-size: 12px; color: var(--proposed); display: flex; gap: 8px; align-items: center; pointer-events: none; }
 #planning[hidden] { display: none; }
@@ -132,6 +132,7 @@ main { flex: 1; display: flex; min-height: 0; }
    click opens the first under its chip, to answer there), purple as the person's marks are */
 #need { position: absolute; right: 12px; top: 12px; z-index: 3; display: flex; gap: 8px; }
 #need[hidden] { display: none; }
+#canvas.lanes #need { position: sticky; top: 6px; height: 0; width: max-content; margin: 0 16px 0 auto; } /* the lanes scroll: it stays at their head */
 #need > button { height: 28px; font-size: 12px; white-space: nowrap; color: var(--fg); border-color: color-mix(in srgb, var(--review) 55%, transparent);
                  background: color-mix(in srgb, var(--review) 12%, var(--card)); box-shadow: 0 8px 24px -6px var(--shadow); }
 #need > button:hover, #b-ask[aria-expanded="true"] { background: color-mix(in srgb, var(--review) 20%, var(--card)); }
@@ -163,7 +164,6 @@ footer#hint {
 footer#hint.linking { color: var(--edge-hot); display: flex; align-items: center; gap: 8px; padding-top: 3px; padding-bottom: 3px; }
 .hint-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 footer#hint button { padding: 1px 8px; font-size: 1em; }
-footer#hint.asks { color: var(--review); }
 /* a narrow tab (the editor area beside the side bar and an agent's chat): the header wraps as it does anywhere,
    and the details go under the canvas */
 @media (max-width: 700px) {

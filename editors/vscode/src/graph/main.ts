@@ -343,13 +343,13 @@ function chips(s: StateX) {
   if (!asks) asking = false;
   $("b-ask").setAttribute("aria-expanded", String(asking));
   $("need").hidden = $("b-next").hidden && $("b-ask").hidden;
-  const card = $("asked"), q = s.questions[0];
+  const card = $("asked"), n = s.questions.length, q = s.questions.find((x) => !x.default) ?? s.questions[0]; // the one that holds Start first
   card.hidden = !asking || !q;
   if (card.hidden || !q || card.dataset.key === JSON.stringify(q)) return;
   card.dataset.key = JSON.stringify(q);
   const on = q.about ? (s.tasks.find((t) => t.id === q.about)?.title ?? goalTitle(s, q.about)).replace(/^\?\s+/, "") : ""; // a sub-goal's `? ` says it asks: the card says so
   card.replaceChildren();
-  div("q-on", on ? `Question on “${on}”` : "Question on the plan", card);
+  div("q-on", `Question${n > 1 ? ` 1 of ${n}` : ""} on ${on ? `“${on}”` : "the plan"}`, card); // answered, the next follows
   div("q-text", q.text, card);
   const opts = div("q-opts", undefined, card);
   const answer = (label: string, target?: string) => {
@@ -1317,18 +1317,14 @@ function hint() {
     cancel.addEventListener("click", () => { disarm(); render(); });
     h.replaceChildren(div("hint-text", linkHint(a?.title ?? from, Boolean(wiring))), cancel);
     h.className = "linking";
-  } else if (state?.questions.length && view() === "lanes") { // the lanes have no chip: an open question outranks the news
-    const q = state.questions[0]!;
-    const about = q.about ? state.tasks.find((t) => t.id === q.about)?.title : "";
-    h.textContent = `question${about ? ` on “${about}”` : ""}: ${q.text}${q.default ? ` (if unanswered: ${q.default})` : ""}`;
-    h.className = "asks";
   } else if (!state?.tasks.length && !drawn().length) { // nothing drawn to click, link or follow: no line
     h.hidden = true;
   } else if (!saved.hinted) {
     h.textContent = FIRST_HINT;
     h.className = "";
-  } else { // the news
-    h.textContent = state ? screenWords(state.news[state.news.length - 1] ?? "") : "";
+  } else { // the news, but the plan's open question: its chip says it, once
+    const asked = (line: string) => Boolean(state?.questions.length) && /^asks: |\bquestions? waits? for you\b/.test(line);
+    h.textContent = screenWords([...state?.news ?? []].reverse().find((line) => !asked(line)) ?? "");
     h.className = "";
   }
 }
@@ -2039,6 +2035,7 @@ function wire() {
   key.setAttribute("aria-hidden", "true"); // each card says its state in words
   const need = div("", undefined, canvas); // what needs you (`chips`): the tasks, then the plan's questions and the card of the first
   need.id = "need";
+  canvas.prepend(need); // first: over the lanes, which scroll, it stays at their head (graph.css)
   need.hidden = true;
   const chip = (id: string, title: string, on: () => void) => {
     const b = need.appendChild(document.createElement("button"));
