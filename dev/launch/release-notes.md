@@ -1,4 +1,4 @@
-# Graphene 0.9.0
+# Graphene 0.10.0
 
 Install: `uv tool install graphene-map` (over 0.8.0, `uv tool upgrade graphene-map`), or `uv tool install
 'graphene-map[nemotron]'` for the Nemotron path. Or try it with nothing installed: `uvx graphene-map demo --auto`,

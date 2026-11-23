@@ -35,7 +35,7 @@ def test_the_manifest_names_the_product_and_its_version():
     assert MANIFEST["name"] == "graphene-vscode"
     assert MANIFEST["displayName"] == "Graphene"
     assert MANIFEST["publisher"] == "alex-lop"
-    assert MANIFEST["version"] == "0.9.0"
+    assert MANIFEST["version"] == "0.10.0"
     assert MANIFEST["license"] == "Apache-2.0"
     assert MANIFEST["repository"]["url"] == PYPROJECT["project"]["urls"]["Repository"]
     assert MANIFEST["engines"]["vscode"] == "^1.95.0"
