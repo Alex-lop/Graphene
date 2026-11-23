@@ -489,8 +489,8 @@ export function tabOrder(lay: Layout, ids: string[]): string[] {
   return ids.filter(at).sort((a, b) => (at(a)!.rank - at(b)!.rank) || (at(a)!.y - at(b)!.y) || (at(a)!.x - at(b)!.x));
 }
 
-/** Every key the page answers, for the `?` overlay, in the screen's words: what a person moves between, adds,
- *  links and sees, then how the view moves. */
+/** Every key the page answers and what the mouse does, for the `?` overlay, in the screen's words: what a person
+ *  moves between, adds, links and sees, then how the view moves. */
 export const KEYS: readonly [string, string][] = [
   ["Tab", "the next task"],
   ["← → ↑ ↓", "move between tasks"],
@@ -500,7 +500,6 @@ export const KEYS: readonly [string, string][] = [
   ["g", "the goal"],
   ["+", "add a task, after the selected one if there is one"],
   ["drag a dot", "onto another task: that task waits on this one"],
-  ["×", "in the details, beside what a task waits on: it stops waiting"],
   ["v", "graph or lanes"],
   ["f", "fit the plan"],
   ["- · =", "zoom out · zoom in"],

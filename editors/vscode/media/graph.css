@@ -585,6 +585,7 @@ button:disabled { opacity: 0.45; cursor: default; }
 .help-title { font-weight: 600; }
 .help-rows { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; }
 .help-key { font-family: var(--mono); color: var(--fg); white-space: nowrap; }
+.help-key.gesture { font-family: inherit; } /* the mouse, said in words: not typed */
 .help-what { color: var(--dim); }
 
 /* high contrast: every edge a contrast border, no tints, the focus border loud (tokens.css sets the borders,

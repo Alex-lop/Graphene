@@ -1883,7 +1883,7 @@ function paneMenu(tools: HTMLElement, id: string, acts: Button[]) {
 
 let helpFrom: Element | null = null; // where the focus was when ? opened: it goes back there on Esc
 
-/** The keys, as a dialog: the focus moves into it and returns on Esc. */
+/** The keys and the mouse, as a dialog: the focus moves into it and returns on Esc. */
 function help(show: boolean) {
   const h = $("help");
   h.hidden = !show;
@@ -1892,11 +1892,11 @@ function help(show: boolean) {
   if (!h.childElementCount) {
     h.setAttribute("role", "dialog");
     h.setAttribute("aria-modal", "true");
-    h.setAttribute("aria-label", "Keys");
+    h.setAttribute("aria-label", "Keys and mouse");
     const card = div("help-card", undefined, h);
     card.tabIndex = -1;
     const head = div("help-head", undefined, card);
-    div("help-title", "Keys", head);
+    div("help-title", "Keys and mouse", head);
     const close = head.appendChild(document.createElement("button"));
     close.className = "close"; // as the pane's ×: a backdrop click and Esc close it too
     close.appendChild(icon("close"));
@@ -1905,7 +1905,7 @@ function help(show: boolean) {
     close.addEventListener("click", () => help(false));
     const table = div("help-rows", undefined, card);
     for (const [key, what] of KEYS) {
-      div("help-key", key, table);
+      div(/^[a-z]{4}/.test(key) ? "help-key gesture" : "help-key", key, table); // a gesture is words (drag a dot), not a key's name
       div("help-what", what, table);
     }
   }
