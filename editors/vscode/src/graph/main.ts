@@ -35,8 +35,9 @@ const STATUS_Y = BOX_H - FOOT_H - 11; // the status line's baseline: its act sta
 // A row, the card at the compact level (zoom.ts): its state's mark, its title on up to two lines, and what is news.
 const ROW_W = CARD.compact.w, ROW_H = CARD.compact.h, ROW_X = 36;
 // The goal, alone in the last column, a little wider than a card: its title on up to three lines, a cell a task
-// under it, its own check at its foot; from afar a row with its ring, its title and its count.
-const GOAL_W = 220, GOAL_ROW_H = 62;
+// under it, its own check at its foot; from afar a row with its ring, its title on up to three lines and its count,
+// wider and taller than a task's row and in larger words, so it is still the clearest thing on the canvas.
+const GOAL_W = 220, GOAL_ROW_W = ROW_W + 72, GOAL_ROW_H = 84;
 /** What the layout and the lines between the cards measure by, at each level of detail. */
 type Dims = { w: number; h: number; gapX: number; gapY: number; padX: number; padY: number; bandGap: number; label: number };
 // `label`: the room over a sub-goal's first row for its header, which is drawn larger over rows. A band reaches half
@@ -173,7 +174,7 @@ function boxes(s: StateX, lv: Level = "full"): { boxes: Box[]; edges: Edge[]; go
   }
   const hasGoal = Boolean(s.goal) && s.tasks.length > 0;
   if (hasGoal) {
-    bs.push(lv === "compact" ? { id: GOAL, band: "", w: ROW_W + 16, h: GOAL_ROW_H } : { id: GOAL, band: "", w: GOAL_W, h: BOX_H + (rootOf(s)?.check ? FOOT_H : 0) });
+    bs.push(lv === "compact" ? { id: GOAL, band: "", w: GOAL_ROW_W, h: GOAL_ROW_H } : { id: GOAL, band: "", w: GOAL_W, h: BOX_H + (rootOf(s)?.check ? FOOT_H : 0) });
     const needed = new Set(edges.filter(([, b]) => !away.has(b)).map(([a]) => a)); // what only a step past the line waits on still ends the work here
     for (const b of bs) if (b.id !== GOAL && !needed.has(b.id)) edges.push([b.id, GOAL]);
     // the run crosses the line from the goal, as the target draws it: what a step past the line waits on here ends at the goal
@@ -614,10 +615,10 @@ function graph(s: StateX, dir: "across" | "down") {
     if (gp && level === "compact") { // as a row: a ring filled by what is done, its title, and the count under it
       goalG.appendChild(el("rect", { class: "goal-box", x: 0, y: 0, width: gp.w, height: gp.h, rx: 10 }));
       ring(goalG, all.portion, 19, gp.h / 2, 9.5);
-      const title = titleLines(goalG, "goal-title", s.goal, ROW_X, 0, 17, gp.w - ROW_X - 10, 2), n = title.childElementCount;
-      const top = (gp.h - 17 * n - 15) / 2 + 13; // the title and the count, as one block in the row's middle
+      const title = titleLines(goalG, "goal-title", s.goal, ROW_X, 0, 19, gp.w - ROW_X - 10, 3), n = title.childElementCount;
+      const top = (gp.h - 19 * (n - 1) - 32) / 2 + 12; // the title and the count, as one block in the row's middle
       title.setAttribute("transform", `translate(0 ${top})`);
-      goalG.appendChild(el("text", { class: "sub", x: ROW_X, y: top + 17 * n }, `${all.landed} of ${all.total} done`));
+      goalG.appendChild(el("text", { class: "sub", x: ROW_X, y: top + 19 * (n - 1) + 17 }, `${all.landed} of ${all.total} done`));
       goalG.appendChild(el("circle", { class: "port in", cx: 0, cy: gp.h / 2, r: 5 }));
     } else if (gp) { // the goal is a card as a task is: its title on up to three lines, and under it a cell a task (a group a sub-goal) and the count, in the card's middle; its own check at its foot
       goalG.appendChild(el("rect", { class: "goal-box", x: 0, y: 0, width: gp.w, height: gp.h, rx: 12 }));

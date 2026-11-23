@@ -462,7 +462,6 @@ button:disabled { opacity: 0.45; cursor: default; }
 .fork.kept .chip { stroke-width: 2; }
 /* from afar (the compact level) a card is a row, its state's mark and its title: the words are drawn larger,
    since the whole drawing is drawn smaller, and a sub-goal's name reads as a heading */
-#svg[data-level="compact"] .goal-title { font-size: 14px; }
 #svg[data-level="compact"] .band-head text { font-size: 13.5px; }
 #svg[data-level="compact"] .band-head .band-label { font-size: 15px; }
 #svg[data-level="compact"] .goal .sub { font-size: 12.5px; }
