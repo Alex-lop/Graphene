@@ -3,7 +3,7 @@
 import { ASK, NOT_CURSOR } from "../home/who.ts"; // Home's words for the agents, said the same on the graph
 import type { Layout } from "../layout.ts";
 import { inScope } from "../owners.ts";
-import { autoLine, headline, SAY, screenWords, usd, type DraftStep, type Fork, type Kept, type Question, type State, type Task } from "../state.ts";
+import { autoLine, free, headline, SAY, screenWords, usd, type DraftStep, type Fork, type Kept, type Question, type State, type Task } from "../state.ts";
 
 /** What the snapshot gains tonight (dev/process/editor/CONTRACT.md): read when present, nothing when not. */
 export type ForkX = Fork & { attempts?: number; idle?: number | null };
@@ -376,12 +376,12 @@ export function topLine(s: Pick<StateX, "replay" | "stand_in">): string {
 /** The header: the goal (what was asked, or the sub-goal a planner is drawing), the stages with what the run has
  *  cost in Run's note, and auto's line while auto is at work (`done`, it is said by the stages and the status
  *  bar). The cost is said once: not beside an auto line that says it against its budget, and not for a race
- *  against the scripted stand-in, whose calls cost nothing. */
+ *  against the scripted stand-in or a replay, which spend nothing (state.ts `free`). */
 export function headerFor(s: StateX): { goal: string; auto: string; stages: Stage[] } {
   const drawing = s.drafting?.steps.find((d) => !d.leaf && !d.parent)?.title;
   const goal = headline(s) || drawing || (s.tasks.length ? "your plan" : "Graphene"); // an ask sets no goal: what was asked
   const auto = s.auto?.stage === "done" ? "" : autoLine(s);
-  const spent = s.stand_in || (auto && s.auto?.spent !== null) ? "" : usd(s.spent);
+  const spent = free(s) || (auto && s.auto?.spent !== null) ? "" : usd(s.spent);
   const stages = pipeline(s).map((st) => (st.key === "run" && spent && st.at !== "next" ? { ...st, note: [st.note, spent].filter(Boolean).join(" · ") } : st));
   return { goal, auto, stages };
 }
@@ -401,23 +401,36 @@ export interface Button {
   off?: boolean; // shown, and not pressed: its hover says why
 }
 
-/** The header's one act on the whole plan: Stop while a run goes; Start while the plan is a suggestion (Home's
- *  Start: every suggested task accepted, then the run), held as Home's is: while a question with no default is
- *  open, and with Exact on (the host says) while any question is; else Run, filled while a task is ready and held
- *  while none is. None for no plan, or one all done: nothing to start. */
+/** The header's one act on the whole plan: Stop while a run goes; Start while any task is a suggestion and none
+ *  works (Home's Start: every suggested task accepted, the plan's open questions answered with their defaults,
+ *  then the run), so a task accepted alone in its pane does not turn it into a Run that leaves the rest behind;
+ *  else Run, filled while a task is ready. Both are held as Home's Start is: while a question with no default is
+ *  open (it stops a run), and Start with Exact on (the host says) while any question is. None for no plan, or
+ *  one all done: nothing to start. */
 export function mainAct(s: Pick<StateX, "run" | "tasks" | "questions">, exact = false): Button | null {
   if (!s.tasks.length || (!s.run.going && s.tasks.every((t) => t.state === "done"))) return null;
   if (s.run.going) return { label: "Stop", act: "stop", icon: "debug-stop", title: "stop every agent: their tasks go back to the plan" };
   const n = (k: TaskX["state"]) => s.tasks.filter((t) => t.state === k).length;
-  if (n("proposed") && !n("ready") && !n("running")) {
-    const waits = exact && s.questions.length > 0, held = waits || s.questions.some((q) => !q.default); // home/cards.ts `unanswered`: such a question stops a run
+  const blank = s.questions.some((q) => !q.default); // home/cards.ts `unanswered`: such a question stops a run
+  const waitsWhy = "it waits for an answer: a question with no default is open";
+  if (n("proposed") && !n("running")) {
+    const waits = exact && s.questions.length > 0, held = waits || blank;
     return { label: "Start", act: "start", icon: "play", main: !held, off: held,
-             title: waits ? "Exact is on: it waits for your answers" : held ? "it waits for an answer: a question with no default is open"
-               : `accept the ${n("proposed")} suggested, then start an agent on each that is ready` };
+             title: waits ? "Exact is on: it waits for your answers" : held ? waitsWhy
+               : `accept the ${n("proposed")} suggested${startAnswers(s) ? `, ${startAnswers(s)}` : ""}, then start an agent on each that is ready` };
   }
   const ready = n("ready");
-  return { label: "Run", act: "run", icon: "play", main: ready > 0, off: !ready,
-           title: ready ? "start an agent on every task that is ready" : "nothing is ready to run" };
+  return { label: "Run", act: "run", icon: "play", main: ready > 0 && !blank, off: !ready || blank,
+           title: !ready ? "nothing is ready to run" : blank ? waitsWhy : "start an agent on every task that is ready" };
+}
+
+/** What Start does to the plan's open questions, all with a default (one without holds Start): it takes their
+ *  defaults, as accepting the whole plan does. Said in Start's hover and under the question's chip, so a click
+ *  on Start is not an answer nobody saw. */
+export function startAnswers(s: Pick<StateX, "questions">): string {
+  const q = s.questions;
+  if (!q.length || q.some((x) => !x.default)) return "";
+  return q.length === 1 ? `answer the open question with its default (“${cut(q[0]!.default!, 60)}”)` : `answer the ${q.length} open questions with their defaults`;
 }
 
 /** The buttons a task's pane offers, in order. A replay offers none: its pane reads. A step past the line
@@ -476,24 +489,25 @@ export function tabOrder(lay: Layout, ids: string[]): string[] {
   return ids.filter(at).sort((a, b) => (at(a)!.rank - at(b)!.rank) || (at(a)!.y - at(b)!.y) || (at(a)!.x - at(b)!.x));
 }
 
-/** Every key the page answers, for the `?` overlay. */
+/** Every key the page answers, for the `?` overlay, in the screen's words: what a person moves between, adds,
+ *  links and sees, then how the view moves. */
 export const KEYS: readonly [string, string][] = [
-  ["Tab", "the next card"],
-  ["← → ↑ ↓", "the card beside it (across the waves, or along one)"],
-  ["Enter", "open the card's details"],
-  ["Esc", "put the question away, close the details, or stop linking"],
-  ["g", "bring the goal on screen"],
-  ["n", "the next task that needs you: selected, and brought on screen"],
-  ["f", "fit the whole plan in the pane"],
-  ["- · =", "zoom out · zoom in; far out, a card is a row: its mark and its title, then its mark alone"],
-  ["0", "back to whole cards at their own size (100%)"],
-  ["v", "graph or lanes"],
-  ["?", "this list"],
-  ["+", "draw a task: after the selected one, or on its own (the + past a card's out port, and Add task, do the same)"],
+  ["Tab", "the next task"],
+  ["← → ↑ ↓", "move between tasks"],
+  ["Enter", "open the task's details"],
+  ["Esc", "close what is open, or stop linking"],
+  ["n", "the next task that needs you"],
+  ["g", "the goal"],
+  ["+", "add a task, after the selected one if there is one"],
   ["drag a dot", "onto another task: that task waits on this one"],
-  ["×", "beside a need: it stops waiting on it"],
-  ["wheel · drag", "scroll · pan; ⌘ or Ctrl with the wheel, or a pinch, zooms about the pointer"],
-  ["double click", "on a row: whole cards, that one in the middle; on the canvas: fit"],
+  ["×", "in the details, beside what a task waits on: it stops waiting"],
+  ["v", "graph or lanes"],
+  ["f", "fit the plan"],
+  ["- · =", "zoom out · zoom in"],
+  ["0", "100%: whole cards at their own size"],
+  ["wheel · drag", "scroll · pan; with ⌘ or Ctrl, or a pinch, zoom"],
+  ["double click", "a row: open it as a card; the canvas: fit the plan"],
+  ["?", "this list"],
 ];
 
 /** The hint while a link is armed: what to click or where to drop, and the two ways out. Esc works only with
@@ -509,6 +523,18 @@ export const CURSOR_AGENT = NOT_CURSOR;
 
 /** The question chip's words, its two halves as the tasks' chip has them: `1 question · answer`; none for none. */
 export const askLine = (n: number): string => (n ? `${n} question${n === 1 ? "" : "s"} · answer` : "");
+/** The line under that chip while Start would take the defaults (`startAnswers`). */
+export const askNote = (n: number): string => (n === 1 ? "or Start takes its default" : "or Start takes their defaults");
+
+/** The news a screen reader hears from the graph: the latest line that nothing on screen says already (the
+ *  plan's open question has its chip, auto's wait its line in the header), in the screen's words, so the CLI's
+ *  `proposed` is suggested and `came back` needs help. */
+export function newsLine(s: Pick<StateX, "news" | "questions">, autoShown: boolean): string {
+  const said = (line: string) => (s.questions.length > 0 && /^asks: |\bquestions? waits? for you\b/.test(line)) || (autoShown && /^auto\b/.test(line));
+  return newsWords([...s.news].reverse().find((l) => !said(l)) ?? "");
+}
+/** A news line in the screen's words (the status bar's hover reads them too). */
+export const newsWords = (line: string): string => screenWords(line).replace(/\bproposed\b/g, SAY.proposed).replace(/\bcame back\b/g, SAY["came back"]);
 
 /** The first-time hint under the graph. */
 export const FIRST_HINT = "click a task to change it · + draws a new one · drag a dot onto another task to link them · ? lists every key";

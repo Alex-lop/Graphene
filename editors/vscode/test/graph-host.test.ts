@@ -170,6 +170,23 @@ test("by itself the tab opens beside what a person has in front, never over it; 
   vscode.env.appName = "Visual Studio Code";
 });
 
+test("a practice run's page and a replay's are sent no cost: no card, lane, attempt or Cost row can say one", async () => {
+  const { parseState } = await import("../src/state.ts");
+  const { readFileSync } = await import("node:fs");
+  const running = parseState(readFileSync(new URL("./fixtures/running.json", import.meta.url), "utf8"));
+  const sent = (state: unknown) => {
+    const host = new GraphHost(context, { ...(session as object), state, onDidChange: () => ({ dispose() {} }) } as never);
+    host.show();
+    void vscode.panels.at(-1)!.w.receive({ type: "ready" });
+    const w = vscode.panels.at(-1)!.w as unknown as { sent: { type: string; state?: typeof running }[] };
+    return w.sent.find((m) => m.type === "state")!.state!;
+  };
+  const money = (s: typeof running) => [s.spent, ...s.tasks.flatMap((t) => [t.usd, ...t.forks.map((f) => f.usd)])].filter((x) => x !== null);
+  assert.ok(money(sent(running)).length > 0, "a real run's cost is sent");
+  assert.deepEqual(money(sent({ ...running, stand_in: true })), [], "the scripted stand-in's");
+  assert.deepEqual(money(sent({ ...running, replay: { shown: "demo", day: "", repository: "" } })), [], "a replay's");
+});
+
 test("a replay's host runs no command of the person's, even before its plan is read; the person's own host does", async () => {
   // a replay's state is null before its store reads (and after a read fails): check() lets the acts that
   // take no id through then, and every command they name acts on the person's folder

@@ -9,9 +9,9 @@ import { ICONS } from "./icons.ts";
 import { blanks, draftLine, globs, isDraft, lacks, type Draft } from "./draft.ts";
 import { attemptsMark, cardAct, checkCut, checkLines, checkMark, cornerMark, cutWhole, doneWhen, filesLine, fitWhole, forkMark, goalBox, goalCells, legend, nextWanting, stateMark, tailPath, tally, wanting, wantingLine, wrap,
          type CheckMark, type Mark } from "./marks.ts";
-import { actsFor, ASK_AGENT, askLine, asksYou, attemptsOf, commandChip, cornerWord, CURSOR_AGENT, cut, done, draftedSteps, edgeKind, editable,
-         filesChip, FIRST_HINT, forkActs, forkRow, forkWords, HEADER_ACTS, headerFor, heldWords, KEYS, linkHint, mainAct, mayRun, paneKey, pipeline,
-         planningLine, PROVES_NOTHING, provesNothing, questionOn, scopeTree, stopsOf, sub, tabOrder, tokenWords, topLine, whenEdit, who, writtenOf,
+import { actsFor, ASK_AGENT, askLine, askNote, asksYou, attemptsOf, commandChip, cornerWord, CURSOR_AGENT, cut, done, draftedSteps, edgeKind, editable,
+         filesChip, FIRST_HINT, forkActs, forkRow, forkWords, HEADER_ACTS, headerFor, heldWords, KEYS, linkHint, mainAct, mayRun, newsLine, paneKey, pipeline,
+         planningLine, PROVES_NOTHING, provesNothing, questionOn, scopeTree, startAnswers, stopsOf, sub, tabOrder, tokenWords, topLine, whenEdit, who, writtenOf,
          type Button, type ForkX, type StateX, type TaskX } from "./words.ts";
 import { CARD, dotGap, FAR, fitPlan, hold, levelFor, miniFrame, miniSize, nearest, offScreen, panTo, percent, switchK, wheelK, ZOOM_MAX, ZOOM_MIN, zoomK,
          type Level, type Size, type Zoom } from "./zoom.ts";
@@ -355,6 +355,10 @@ function chips(s: StateX) {
   if (!asks) asking = false;
   $("b-ask").setAttribute("aria-expanded", String(asking));
   $("need").hidden = $("b-next").hidden && $("b-ask").hidden;
+  // Start takes the defaults of what is asked: said under the chip, so a click on Start is no answer unseen
+  const act = mainAct(s, exact);
+  $("ask-note").textContent = askNote(asks);
+  $("ask-note").hidden = !asks || asking || act?.act !== "start" || Boolean(act.off) || !startAnswers(s);
   const card = $("asked"), n = s.questions.length, q = s.questions.find((x) => !x.default) ?? s.questions[0]; // the one that holds Start first
   card.hidden = !asking || !q;
   if (card.hidden || !q || card.dataset.key === JSON.stringify(q)) return;
@@ -399,6 +403,8 @@ function header(s: StateX, blank: boolean) {
     if (st.note) { const note = document.createElement("small"); note.textContent = st.note; stage.appendChild(note); }
     return stage;
   }));
+  // a narrow tab cuts the stage's note to its room: a note cut (`6…`) says nothing, so it goes, and the names stay
+  for (const note of Array.from($("stages").querySelectorAll("small"))) if (note.scrollWidth > note.clientWidth) note.hidden = true;
   for (const [id] of HEADER_ACTS) $(id).hidden = replaying(); // a replay is watched: nothing acts on a plan, or outside it
   if (blank) $("b-add").hidden = true; // the notice's own Add task is the act then
   if (!s.tasks.length) $("b-save").hidden = $("b-view").hidden = true; // no plan: nothing to save, or to see as lanes
@@ -1359,6 +1365,9 @@ function disarm() {
   $("canvas").classList.remove("wiring");
 }
 
+/** The strip under the canvas, there only while it has something to do: the first visit's keys, until the first
+ *  touch, and a link being drawn, with its way out. Otherwise the cards, the chips and the header say what changed,
+ *  and the latest news is in it for a screen reader alone (`sr`), not a log line over the editor's status bar. */
 function hint() {
   const h = $("hint");
   h.hidden = false;
@@ -1372,15 +1381,12 @@ function hint() {
     cancel.addEventListener("click", () => { disarm(); render(); });
     h.replaceChildren(div("hint-text", linkHint(a?.title ?? from, Boolean(wiring))), cancel);
     h.className = "linking";
-  } else if (!state?.tasks.length && !drawn().length) { // nothing drawn to click, link or follow: no line
-    h.hidden = true;
-  } else if (!saved.hinted) {
+  } else if (!saved.hinted && (state?.tasks.length || drawn().length)) {
     h.textContent = FIRST_HINT;
     h.className = "";
-  } else { // the news, but the plan's open question: its chip says it, once
-    const asked = (line: string) => Boolean(state?.questions.length) && /^asks: |\bquestions? waits? for you\b/.test(line);
-    h.textContent = screenWords([...state?.news ?? []].reverse().find((line) => !asked(line)) ?? "");
-    h.className = "";
+  } else {
+    h.textContent = state ? newsLine(state, !$("auto").hidden) : "";
+    h.className = "sr";
   }
 }
 
@@ -1895,13 +1901,19 @@ function help(show: boolean) {
     h.setAttribute("aria-label", "Keys");
     const card = div("help-card", undefined, h);
     card.tabIndex = -1;
-    div("help-title", "Keys", card);
+    const head = div("help-head", undefined, card);
+    div("help-title", "Keys", head);
+    const close = head.appendChild(document.createElement("button"));
+    close.className = "close"; // as the pane's ×: a backdrop click and Esc close it too
+    close.appendChild(icon("close"));
+    close.title = "Close (Esc)";
+    close.setAttribute("aria-label", "Close");
+    close.addEventListener("click", () => help(false));
     const table = div("help-rows", undefined, card);
     for (const [key, what] of KEYS) {
       div("help-key", key, table);
       div("help-what", what, table);
     }
-    div("help-foot", "Esc closes", card);
   }
   (h.firstElementChild as HTMLElement).focus({ preventScroll: true });
 }
@@ -2206,6 +2218,7 @@ function wire() {
     if (asking) $("asked").querySelector("button")?.focus();
   });
   ask.append(icon("question"), document.createElement("b"), document.createElement("span"));
+  div("", undefined, need).id = "ask-note";
   const card = div("", undefined, need);
   card.id = "asked";
   card.hidden = true;
@@ -2220,14 +2233,16 @@ function wire() {
     const b = actions.appendChild(document.createElement("button"));
     b.id = id;
     b.className = "quiet";
-    b.append(icon(ico), label);
+    b.append(icon(ico));
+    if (label) div("label", label, b); // a tab too narrow for it shows the icon alone (graph.css)
     b.title = title;
     b.addEventListener("click", on);
-    if (!label) { b.classList.add("icon"); b.setAttribute("aria-label", title.replace(/:.*| \(.*/, "")); }
+    b.setAttribute("aria-label", label || title.replace(/:.*| \(.*/, ""));
+    if (!label) b.classList.add("icon");
   };
   top("b-save", "", "save", "Save as workflow: this graph to workflows/, to run again on new inputs", () => api.postMessage({ type: "act", act: "saveWorkflow", id: "" }));
   top("b-view", "", "list-flat", "Lanes (v)", () => { remember({ view: view() === "lanes" ? "graph" : "lanes" }); fitted = false; render(); });
-  top("b-help", "", "question", "Keys (?)", () => help($("help").hidden));
+  top("b-help", "", "question", "Keys (?)", () => { help($("help").hidden); first(); }); // as the key: the first-time hint's work is done
   top("b-add", "Add task", "add", "draw a task: its title, then its files and its check (or the planner fills them in)", () => draw({ after: null, parent: null }));
   top("b-run", "Run", "play", "", () => {
     const a = state && mainAct(state, exact), run = $<HTMLButtonElement>("b-run");
@@ -2245,7 +2260,7 @@ function wire() {
   stages.id = "stages";
   stages.setAttribute("role", "list");
   stages.setAttribute("aria-label", "Plan, Run, Review");
-  $("hint").setAttribute("aria-live", "polite"); // a question or a hand-back is announced
+  $("hint").setAttribute("aria-live", "polite"); // the news is read out (`hint`): a hand-back, a task to review
   api.postMessage({ type: "ready" });
 }
 

@@ -44,6 +44,14 @@ test("auto waiting reads as a header with the round, the stage and the spend of 
   assert.equal(s.auto?.stage, "waits");
   assert.equal(autoLine(s), "auto · round 2 of 3 · waits · $1.37 of $2.00 · the goal's check is still red after 2 rounds");
   assert.equal(summary(s), "auto waits · 1 needs you · $1.37");
+  // a practice run and a replay spend nothing: no screen says a cost, the status bar and auto's line alike
+  const replay = { shown: "a scripted stand-in, no model ran", day: "", repository: "" };
+  for (const free of [{ ...s, stand_in: true }, { ...s, replay }]) {
+    assert.equal(autoLine(free), "auto · round 2 of 3 · waits · the goal's check is still red after 2 rounds");
+    assert.equal(summary(free), "auto waits · 1 needs you");
+  }
+  const done = { ...s, stand_in: true, auto: { ...s.auto!, stage: "done" } };
+  assert.equal(autoNews(s, done)?.text, "Graphene auto is done: the goal's check passed in round 2");
 });
 
 test("the status bar leads with auto's round while auto is on", () => {
