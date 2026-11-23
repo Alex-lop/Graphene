@@ -1,0 +1,24 @@
+<!doctype html>
+<!-- Home with a fixture state and no VS Code: `npm run build`, then open this file. ?fixture=running (default),
+     auto, big, proposals, workflow, empty, none (no plan yet), missing (no graphene); ?theme= as preview.html's;
+     ?width=300 sets the side bar's width. The extension's HTML is the same shell. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Graphene Home preview</title>
+  <link rel="stylesheet" href="preview-themes.css">
+  <link rel="stylesheet" href="home.css">
+  <style>
+    html { background: #111; }
+    body { width: 300px; min-height: 100vh; box-sizing: border-box; margin: 0 auto 0 0; }
+    #hint { position: fixed; right: 8px; bottom: 8px; max-width: calc(100vw - 340px); color: #888; font: 12px ui-monospace, monospace; }
+  </style>
+</head>
+<body>
+  <div id="hint"></div>
+  <script src="../dist/home-preview.js"></script>
+  <script src="../dist/home.js"></script>
+  <script>const w = new URLSearchParams(location.search).get("width"); if (w) document.body.style.width = w + "px";</script>
+</body>
+</html>
