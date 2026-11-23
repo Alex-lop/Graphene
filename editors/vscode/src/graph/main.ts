@@ -1899,13 +1899,19 @@ function help(show: boolean) {
     h.setAttribute("aria-label", "Keys");
     const card = div("help-card", undefined, h);
     card.tabIndex = -1;
-    div("help-title", "Keys", card);
+    const head = div("help-head", undefined, card);
+    div("help-title", "Keys", head);
+    const close = head.appendChild(document.createElement("button"));
+    close.className = "close"; // as the pane's ×: a backdrop click and Esc close it too
+    close.appendChild(icon("close"));
+    close.title = "Close (Esc)";
+    close.setAttribute("aria-label", "Close");
+    close.addEventListener("click", () => help(false));
     const table = div("help-rows", undefined, card);
     for (const [key, what] of KEYS) {
       div("help-key", key, table);
       div("help-what", what, table);
     }
-    div("help-foot", "Esc closes", card);
   }
   (h.firstElementChild as HTMLElement).focus({ preventScroll: true });
 }
@@ -2232,7 +2238,7 @@ function wire() {
   };
   top("b-save", "", "save", "Save as workflow: this graph to workflows/, to run again on new inputs", () => api.postMessage({ type: "act", act: "saveWorkflow", id: "" }));
   top("b-view", "", "list-flat", "Lanes (v)", () => { remember({ view: view() === "lanes" ? "graph" : "lanes" }); fitted = false; render(); });
-  top("b-help", "", "question", "Keys (?)", () => help($("help").hidden));
+  top("b-help", "", "question", "Keys (?)", () => { help($("help").hidden); first(); }); // as the key: the first-time hint's work is done
   top("b-add", "Add task", "add", "draw a task: its title, then its files and its check (or the planner fills them in)", () => draw({ after: null, parent: null }));
   top("b-run", "Run", "play", "", () => {
     const a = state && mainAct(state, exact), run = $<HTMLButtonElement>("b-run");

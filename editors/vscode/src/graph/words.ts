@@ -489,24 +489,25 @@ export function tabOrder(lay: Layout, ids: string[]): string[] {
   return ids.filter(at).sort((a, b) => (at(a)!.rank - at(b)!.rank) || (at(a)!.y - at(b)!.y) || (at(a)!.x - at(b)!.x));
 }
 
-/** Every key the page answers, for the `?` overlay. */
+/** Every key the page answers, for the `?` overlay, in the screen's words: what a person moves between, adds,
+ *  links and sees, then how the view moves. */
 export const KEYS: readonly [string, string][] = [
-  ["Tab", "the next card"],
-  ["← → ↑ ↓", "the card beside it (across the waves, or along one)"],
-  ["Enter", "open the card's details"],
-  ["Esc", "put the question away, close the details, or stop linking"],
-  ["g", "bring the goal on screen"],
-  ["n", "the next task that needs you: selected, and brought on screen"],
-  ["f", "fit the whole plan in the pane"],
-  ["- · =", "zoom out · zoom in; far out, a card is a row: its mark and its title, then its mark alone"],
-  ["0", "back to whole cards at their own size (100%)"],
-  ["v", "graph or lanes"],
-  ["?", "this list"],
-  ["+", "draw a task: after the selected one, or on its own (the + past a card's out port, and Add task, do the same)"],
+  ["Tab", "the next task"],
+  ["← → ↑ ↓", "move between tasks"],
+  ["Enter", "open the task's details"],
+  ["Esc", "close what is open, or stop linking"],
+  ["n", "the next task that needs you"],
+  ["g", "the goal"],
+  ["+", "add a task, after the selected one if there is one"],
   ["drag a dot", "onto another task: that task waits on this one"],
-  ["×", "beside a need: it stops waiting on it"],
-  ["wheel · drag", "scroll · pan; ⌘ or Ctrl with the wheel, or a pinch, zooms about the pointer"],
-  ["double click", "on a row: whole cards, that one in the middle; on the canvas: fit"],
+  ["×", "in the details, beside what a task waits on: it stops waiting"],
+  ["v", "graph or lanes"],
+  ["f", "fit the plan"],
+  ["- · =", "zoom out · zoom in"],
+  ["0", "100%: whole cards at their own size"],
+  ["wheel · drag", "scroll · pan; with ⌘ or Ctrl, or a pinch, zoom"],
+  ["double click", "a row: open it as a card; the canvas: fit the plan"],
+  ["?", "this list"],
 ];
 
 /** The hint while a link is armed: what to click or where to drop, and the two ways out. Esc works only with
