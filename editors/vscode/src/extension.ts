@@ -8,7 +8,7 @@ import { GraphHost } from "./graph.ts";
 import { HomeHost } from "./home.ts";
 import { which } from "./find.ts";
 import { owner } from "./owners.ts";
-import { autoNews, mdText, SAY, summary, type Task } from "./state.ts";
+import { autoNews, headline, mdText, SAY, summary, type Task } from "./state.ts";
 import { newsWords, topLine } from "./graph/words.ts";
 import { DROPPABLE, keyTrouble } from "./needs.ts";
 import { parseLog, rounds, type LogRow } from "./rounds.ts";
@@ -29,7 +29,7 @@ export { Session } from "./session.ts";
 type Arg = string | { id?: string; task?: Task; after?: boolean; under?: boolean } | undefined;
 
 export function activate(context: vscode.ExtensionContext) {
-  const session = new Session();
+  const session = new Session(undefined, context.workspaceState);
   const tree = new PlanTree();
   const treeView = vscode.window.createTreeView("graphene.plan", { treeDataProvider: tree, showCollapseAll: true });
   const roundsTree = new RoundsTree();
@@ -102,7 +102,7 @@ export function activate(context: vscode.ExtensionContext) {
     if (s && (session.status.kind === "ok" || session.status.kind === "empty")) {
       bar.text = `◆ ${summary(s)}`;
       const md = new vscode.MarkdownString(undefined, true);
-      md.appendMarkdown(`**${mdText(s.goal || "no goal yet")}**\n\n`); // the plan's words as text, not markup
+      md.appendMarkdown(`**${mdText(headline(s) || "no goal yet")}**\n\n`); // the plan's words as text, not markup
       const top = topLine(s); // a replay, or a race against the scripted stand-in: not a paid run, said as the graph says it
       if (top) md.appendMarkdown(`${mdText(top)}\n\n`);
       for (const line of s.news.slice(-4)) md.appendMarkdown(`- ${mdText(newsWords(line))}\n`); // suggested, as every screen says it

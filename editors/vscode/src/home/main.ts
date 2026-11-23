@@ -2,6 +2,7 @@
 // library, and every word goes in as text, never as markup: task titles and the planner's words are a model's.
 // Nothing is typed here: a plan comes from the person's coding agent, in its chat (`graphene plan propose`).
 import { STOP_AFTER, STOP_AFTER_HOVER } from "../graph/words.ts";
+import { wearInk } from "../ink.ts";
 import type { Act, Btn, Card, Home, Line, Section } from "./cards.ts";
 import { ASK, COST_HOVER, EXACT, EXACT_HOVER, HOW, NOT_CURSOR, WHAT, WHO } from "./who.ts";
 
@@ -320,4 +321,5 @@ window.addEventListener("message", (e: MessageEvent<Model>) => {
   model = m;
   render(m);
 });
+wearInk(); // a filled button's words in a colour that reads on it (ink.ts)
 api.postMessage({ type: "ready" });

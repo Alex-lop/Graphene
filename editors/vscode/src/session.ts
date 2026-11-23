@@ -9,9 +9,11 @@ import * as vscode from "vscode";
 import * as C from "./commands.ts";
 import type { GraphHost } from "./graph.ts";
 import { cannotRun, olderWords, resolved } from "./find.ts";
-import { errorOf, parseContracts, parseState, screenWords, withContracts, type Contract, type State, type Task } from "./state.ts";
+import { errorOf, headline, parseContracts, parseState, screenWords, withContracts, type Contract, type State, type Task } from "./state.ts";
 import { Stream } from "./stream.ts";
 import type { Node, PlanTree } from "./tree.ts";
+
+type Kept = { asked: string; ids: string[] }; // what was last asked, and the tasks there were once the news no longer said it
 
 export type Status = { kind: "reading" | "missing" | "uninitialised" | "error" | "nofolder" | "ok" | "empty"; text: string };
 
@@ -45,8 +47,12 @@ export class Session {
   /** `graphene state --json --watch`, a snapshot a line, while the CLI has it. */
   readonly stream: Stream;
 
-  constructor(own?: string) {
+  /** Where what was asked is kept between windows (the workspace's state); none for a replay's. */
+  private readonly memo: vscode.Memento | undefined;
+
+  constructor(own?: string, memo?: vscode.Memento) {
     this.own = own;
+    this.memo = memo;
     this.folder = own ? { uri: vscode.Uri.file(own), name: path.basename(own), index: -1 } : planFolder();
     const self = this;
     this.stream = new Stream({
@@ -148,11 +154,32 @@ export class Session {
     // attempts, approval and owner (the stream brings it before `plan --json` answers)
     if (this.changing) { this.held = state; return; }
     for (const id of this.seen) if (!state.tasks.some((t) => t.id === id && (t.state === "review" || t.state === "done"))) this.seen.delete(id);
-    this.set(withContracts(state, this.contracts), state.tasks.length ? { kind: "ok", text: "" } : { kind: "empty", text: "Nothing is planned yet." });
+    this.set(withContracts(this.kept(state), this.contracts), state.tasks.length ? { kind: "ok", text: "" } : { kind: "empty", text: "Nothing is planned yet." });
     void this.contract();
   }
   private changing = 0;
   private held: State | null = null;
+
+  /** What the plan is for, said until the plan is gone. The snapshot's news holds its last six lines, and an ask
+   *  (`you asked: …`, which sets no goal) scrolls out of them a few moves into a run: the title fell back to "your
+   *  plan" the moment a person started watching. Kept with the tasks there were when the news let it go: a task
+   *  suggested after, none of those (an agent's own `plan propose`, no ask, no goal), is another plan's, and the
+   *  ask no longer titles it. */
+  private kept(s: State): State {
+    const key = `graphene.asked:${this.folder?.uri.fsPath ?? ""}`;
+    const was: Kept = (this.memo ? this.memo.get<Kept>(key) : this.asked) ?? { asked: "", ids: [] };
+    const keep = (v: Kept) => { if (this.memo) void this.memo.update(key, v.asked ? v : undefined); else this.asked = v; };
+    const now = headline(s);
+    if (now || (!s.tasks.length && !s.drafting)) { // said, or no plan left to say it of
+      if (now !== was.asked || was.ids.length) keep({ asked: now, ids: [] });
+      return s;
+    }
+    if (!was.asked) return s;
+    if (!was.ids.length) keep({ ...was, ids: s.tasks.map((t) => t.id) });
+    else if (s.tasks.some((t) => t.state === "proposed" && !was.ids.includes(t.id))) { keep({ asked: "", ids: [] }); return s; }
+    return { ...s, asked: was.asked };
+  }
+  private asked: Kept = { asked: "", ids: [] }; // a replay's, which has no workspace state
 
   /** Each task's attempts, approval and owner, from `graphene plan --json`: the snapshot leaves them out, and
    *  the graph's form shows them. Read again when the plan's log moved, one read at a time and at most one a
@@ -196,7 +223,8 @@ export class Session {
     return out.code === 0;
   }
 
-  /** A change: run it, say the first line it answered, or its refusal; then read the plan again. */
+  /** A change: run it, say its refusal; then read the plan again. What it did is on the cards: the CLI's first line
+   *  (ids, `option 1`, a line cut mid-command) is not repeated in the status bar. */
   async act(argv: string[]): Promise<boolean> {
     const r = await this.change(argv);
     if (!r.ok) void vscode.window.showErrorMessage(C.refused(argv, C.plain(r.line)));
@@ -222,17 +250,52 @@ export class Session {
     // a refusal whole for the page (its second line is often what to do about it); its first line for the toast
     const whole = (out.stderr.trim() || out.stdout.trim()).split(/\r?\n/).map((l) => l.trim()).filter(Boolean).slice(0, 8).join("\n");
     const line = ok || out.code === -1 || first === this.said(C.OLDER) ? first : screenWords(whole || first);
-    if (ok) vscode.window.setStatusBarMessage(`$(check) ${C.plain(first)}`, 6000);
     void this.refresh();
     return { ok, line, stdout: out.stdout };
   }
 
-  /** A long command the person watches and may Ctrl-C: in a terminal of its own, as the person. */
+  /** A long command in a terminal of its own, as the person, the same one again for the same command, not one more
+   *  a click. Its command still running (as the shell's integration says, or sent a moment ago), the same command
+   *  again starts nothing: a second `graphene run` is refused in red. A run's terminal is not shown, for the graph
+   *  and Home show the run; it comes forward when the run is refused at its start, and from a shell that cannot say
+   *  so (no integration), after a moment, as before. Every other command (setting up, a key, the cockpit) asks or
+   *  shows something there, so it is shown. */
   terminal(name: string, argv: string[]): vscode.Terminal {
-    const term = vscode.window.createTerminal({ name, cwd: this.folder?.uri, env: C.unmarked(), iconPath: new vscode.ThemeIcon("type-hierarchy-sub") });
-    term.show(true);
-    term.sendText(C.shellLine(this.path, argv), true);
+    this.hear();
+    const line = C.shellLine(this.path, argv), quiet = name === "graphene run";
+    const was = vscode.window.terminals.find((t) => t.name === name && t.exitStatus === undefined && this.sent.has(t));
+    const busy = was && (Date.now() - this.sent.get(was)!.at < 3000 || (was.shellIntegration && this.busy.has(was)));
+    if (was && busy && this.sent.get(was)!.line === line) { if (!quiet) was.show(true); return was; }
+    // ponytail: a shell without integration never says its command ended, so its terminal is not reused: a new one, as before
+    const term = was && !busy && was.shellIntegration ? was
+      : vscode.window.createTerminal({ name, cwd: this.folder?.uri, env: C.unmarked(), iconPath: new vscode.ThemeIcon("type-hierarchy-sub") });
+    if (!quiet) term.show(true);
+    term.sendText(line, true);
+    this.sent.set(term, { line, at: Date.now() });
+    this.busy.add(term);
+    if (quiet) setTimeout(() => { if (!term.shellIntegration && term.exitStatus === undefined) term.show(true); }, 3000);
     return term;
+  }
+  private sent = new Map<vscode.Terminal, { line: string; at: number }>(); // the terminals of ours, and what each was last sent
+  private busy = new Set<vscode.Terminal>(); // those whose command has not ended
+  private shells: vscode.Disposable[] = []; // what the shells say of our terminals, heard from the first one on
+  private refusedAt = new vscode.EventEmitter<string>();
+  /** A command sent to a terminal of ours failed in its first seconds: the terminal's name. */
+  readonly onDidRefuse = this.refusedAt.event;
+
+  private hear() {
+    if (this.shells.length) return;
+    this.shells = [
+      vscode.window.onDidEndTerminalShellExecution((e) => {
+        const sent = this.sent.get(e.terminal);
+        if (!sent) return;
+        this.busy.delete(e.terminal);
+        if (!e.exitCode || Date.now() - sent.at > 15000) return;
+        e.terminal.show(true); // refused at its start: the terminal says why, and the graph stops saying Starting…
+        this.refusedAt.fire(e.terminal.name);
+      }),
+      vscode.window.onDidCloseTerminal((t) => { this.sent.delete(t); this.busy.delete(t); }),
+    ];
   }
 
   tasks(): Task[] {
@@ -247,10 +310,12 @@ export class Session {
   }
 
   dispose() {
+    for (const d of this.shells) d.dispose();
     clearTimeout(this.contractDue);
     this.stream.dispose();
     this.emitter.dispose();
     this.saw.dispose();
+    this.refusedAt.dispose();
   }
 }
 

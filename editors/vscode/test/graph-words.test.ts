@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import * as C from "../src/commands.ts";
-import { actsFor, ASK_AGENT, askLine, askNote, asksYou, attemptsOf, CHANGES, commandChip, commandWord, cornerWord, CURSOR_AGENT, draftedSteps, earlier, edgeKind, editable, filesChip, fitWidth, fitWords, forkActs, forkWords, HEADER_ACTS, headerFor,
+import { actsFor, ASK_AGENT, askLine, asksYou, attemptsOf, CHANGES, commandChip, commandWord, cornerWord, CURSOR_AGENT, draftedSteps, earlier, edgeKind, editable, filesChip, fitWidth, fitWords, forkActs, forkWords, HEADER_ACTS, headerFor,
          checkWords, heldWords, linkHint, mainAct, mayRun, newsLine, OUTSIDE, OUTSIDE_OWN, paneKey, pipeline, planningLine, provesNothing, replayLine, scopeTree, startAnswers, stopAfterPlan, stopsOf, sub, tabOrder, tokenWords, topLine,
          whatFor, whenEdit, who, writtenOf, type StateX, type TaskX } from "../src/graph/words.ts";
 import { SAY, WORDS } from "../src/state.ts";
@@ -334,14 +334,17 @@ test("one pipeline, the plan first: Plan, Run, Review, and where the work is in 
   assert.deepEqual(at(fx("drafting")), ["Plan now: 4 tasks so far", "Run next", "Review next"]);
   assert.deepEqual(at({ ...fx("drafting"), drafting: { by: "codex", live: false, steps: [] } }), ["Plan now: the planner is writing", "Run next", "Review next"]);
   assert.deepEqual(at(fx("proposals")), ["Plan now: 4 tasks", "Run next", "Review next"]); // suggested: it waits for Start; its question is said once, by its chip
-  assert.equal(askLine(fx("proposals").questions.length), "1 question · answer");
-  // Start takes the open questions' defaults (plan accept on the whole plan): said in its hover and under the chip
+  assert.equal(askLine(fx("proposals").questions), "1 question · answer");
+  // Start takes the open questions' defaults (plan accept on the whole plan): said in its hover and in the chip, the default by its words
   const plan = fx("proposals");
   assert.match(mainAct(plan)!.title, /^accept the 4 suggested, answer the open question with its default \(“8000, as the README says”\), then start/);
   assert.equal(startAnswers({ questions: [plan.questions[0]!, plan.questions[0]!] }), "answer the 2 open questions with their defaults");
   assert.equal(startAnswers({ questions: [{ ...plan.questions[0]!, default: null }] }), "", "one with no default: nothing to take");
-  assert.deepEqual([askNote(1, "Start"), askNote(2, "Run")], ["Start takes its default", "Run takes their defaults"], "no or: it reads without the chip's · answer");
-  assert.deepEqual([askLine(2), askLine(0)], ["2 questions · answer", ""]);
+  const q = plan.questions[0]!, none = { ...q, default: null };
+  assert.deepEqual([askLine([q], "Start"), askLine([q, q], "Run"), askLine([q, q, none], "Run")],
+                   ["1 question · Start picks “8000, as the README says”", "2 questions · Run picks their defaults", "3 questions · Run picks 2 defaults"]);
+  assert.deepEqual([askLine([none], "Start"), askLine([q, q]), askLine([])], ["1 question · answer", "2 questions · answer", ""], "nothing to pick, or no act to pick it");
+  assert.equal(askLine([{ default: "all six, since you asked for every service" }], "Start"), "1 question · Start picks “all six, since you asked…”", "a long default cut at a word");
   assert.deepEqual(at(state), ["Plan done: 7 tasks", "Run now: 1 working", "Review next: 2 to review"]); // what waits for you is said while the rest runs
   const all = (word: TaskX["state"]) => ({ ...state, questions: [], run: { going: false, pid: null }, tasks: state.tasks.map((t) => ({ ...t, state: word })) });
   assert.deepEqual(at(all("ready")), ["Plan done: 7 tasks", "Run now: 7 ready", "Review next"]);

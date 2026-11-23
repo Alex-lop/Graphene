@@ -17,7 +17,7 @@ export const registered = {}, warned = [], told = [], panels = [];
 export const commands = { executeCommand() { return Promise.resolve(); }, registerCommand(id, f) { registered[id] = f; return { dispose() {} }; },
   getCommands() { return Promise.resolve([]); } };
 const webview = { cspSource: "", html: "", asWebviewUri(u) { return u; }, postMessage() { return Promise.resolve(true); }, onDidReceiveMessage() { return { dispose() {} }; } };
-class Panel { constructor() { this.webview = webview; this.closed = []; } onDidDispose(h) { this.closed.push(h); return { dispose() {} }; }
+class Panel { constructor() { this.webview = webview; this.closed = []; } onDidDispose(h) { this.closed.push(h); return { dispose() {} }; } onDidChangeViewState() { return { dispose() {} }; }
   get visible() { return true; } reveal() {} dispose() { for (const h of this.closed) h(); } }
 export const window = { showInformationMessage(m) { told.push(m); return Promise.resolve(undefined); }, showErrorMessage() { return Promise.resolve(undefined); },
   showWarningMessage(...m) { warned.push(m); return Promise.resolve(undefined); },

@@ -5,11 +5,12 @@
 // Boxes are keyed by task id and updated in place, so a snapshot that changed nothing moves nothing.
 import { layout, modeFor, rounded, route, spread, step, type Box, type Edge, type Layout, type Point } from "../layout.ts";
 import { autoLine, SAY, screenWords, usd, type DraftStep, type State } from "../state.ts";
+import { wearInk } from "../ink.ts";
 import { ICONS } from "./icons.ts";
 import { blanks, draftLine, globs, isDraft, lacks, type Draft } from "./draft.ts";
 import { attemptsMark, attemptsWhy, cardAct, cardLine, checkCut, covers, coversIn, checkLines, checkMark, cornerMark, cutWhole, doneWhen, filesLine, fitWhole, forkMark, goalBox, goalCells, legend, markWord, nextWanting, stateMark, tailPath, tally, wanting, wantingLine, wrap,
          type CheckMark, type Mark } from "./marks.ts";
-import { actsFor, ASK_AGENT, askLine, askNote, asksYou, attemptsOf, commandChip, cornerWord, CURSOR_AGENT, cut, done, draftedSteps, earlier, edgeKind, editable,
+import { actsFor, ASK_AGENT, askLine, asksYou, attemptsOf, commandChip, cornerWord, CURSOR_AGENT, cut, done, draftedSteps, earlier, edgeKind, editable,
          filesChip, forkActs, forkRow, forkWords, HEADER_ACTS, headerFor, heldWords, KEYS, linkHint, mainAct, mayRun, newsLine, paneKey, pipeline,
          planningLine, PROVES_NOTHING, provesNothing, questionOn, scopeTree, startAnswers, stopsOf, sub, tabOrder, tokenWords, topLine, whatFor, whenEdit, who, writtenOf,
          type Button, type ForkX, type StateX, type TaskX } from "./words.ts";
@@ -19,9 +20,12 @@ import { CARD, dotGap, FAR, fitPlan, hold, levelFor, miniFrame, miniSize, neares
 declare function acquireVsCodeApi(): { postMessage(m: unknown): void; getState(): unknown; setState(s: unknown): void };
 
 type Status = { kind: "reading" | "missing" | "uninitialised" | "error" | "nofolder"; text: string };
-type Incoming = { type: "state"; state: StateX; exact?: boolean; seen?: string[] } | { type: "status"; status: Status } | { type: "select"; id: string }
+type Incoming = { type: "state"; state: StateX; exact?: boolean; seen?: string[] } | { type: "status"; status: Status }
+  | { type: "select"; id: string; focus?: boolean } // focus false: chosen while the keyboard is elsewhere (Home, a diff)
   | { type: "drafts"; drafts: Draft[] }
-  | { type: "said"; id?: string; key?: string; ok: boolean; line: string; made?: string }; // graphene's answer to a change made here
+  | { type: "said"; id?: string; key?: string; ok: boolean; line: string; made?: string } // graphene's answer to a change made here
+  | { type: "shown"; on: boolean } // the tab came in front, or went behind another
+  | { type: "start"; ok: boolean }; // Start is over: a run was started (ok), or none was
 type View = "auto" | "graph" | "lanes";
 type Tab = "scope" | "edit" | "activity";
 type Saved = { view?: View; drafts?: Draft[]; drew?: number; tab?: Tab };
@@ -309,8 +313,11 @@ function direction(): "across" | "down" {
   return tabMode();
 }
 
+let shown = true; // the tab is in front (the host says so): behind another, its size is no size to draw at
+let chosen: { id: string; focus: boolean } | null = null; // chosen from outside while behind another: selected once in front
+
 function render() {
-  if (!state) return;
+  if (!state || !shown) return;
   const s = state;
   if (drawing && drawing !== selected) { drawing = null; fitRoom = ""; } // the drawn task was left (closed, discarded, or taken into the plan): the plan is fitted again
   // the pane first: it opens or closes beside the canvas, which is as wide as a plan fitted now is fitted to
@@ -351,29 +358,40 @@ function render() {
 }
 
 let asking = false; // the card of the plan's open question is out, under its chip
+let answered = false; // a question was answered from that card: the keyboard is put somewhere once the card is gone, once
 
 /** At the canvas's top right, what needs you: how many tasks, a click showing the next; and the plan's open
  *  questions, a click opening the first under its chip, to answer there. A question about the whole plan is on
  *  no card, so this is where the graph shows it. A replay is watched: neither. */
 function chips(s: StateX) {
   const half = (b: HTMLElement, line: string) => {
-    const [n, then] = line.split(" · "); // `3 tasks need you`, `show the next`: the count, and what a click does
+    const at = line.indexOf(" · "), n = at < 0 ? line : line.slice(0, at); // `3 tasks need you`, `show the next`: the count, and what a click does
     b.hidden = !n;
-    b.children[1]!.textContent = n ?? "";
-    b.children[2]!.textContent = then ? ` · ${then}` : "";
+    b.children[1]!.textContent = n;
+    b.children[2]!.textContent = at < 0 ? "" : line.slice(at);
   };
   half($("b-next"), wantingLine(wantYou().length));
-  const asks = replaying() ? 0 : s.questions.length;
-  half($("b-ask"), askLine(asks));
-  if (!asks) asking = false;
+  // Start and Run take the defaults of what is asked: the chip says which, so a click on either is no answer unseen
+  const act = mainAct(s, exact), picks = act && (act.act === "start" || act.act === "run") && !act.off ? act.label : "";
+  const asks = replaying() ? [] : s.questions;
+  half($("b-ask"), askLine(asks, picks));
+  $("b-ask").title = picks && startAnswers(s) ? `answer here, or ${picks} will ${startAnswers(s)}` : "the plan's open question: its answers";
+  if (!asks.length) asking = false;
   $("b-ask").setAttribute("aria-expanded", String(asking));
   $("need").hidden = $("b-next").hidden && $("b-ask").hidden;
-  // Start and Run take the defaults of what is asked: said under the chip, so a click on either is no answer unseen
-  const act = mainAct(s, exact);
-  $("ask-note").textContent = act ? askNote(s.questions.filter((q) => q.default).length, act.label) : "";
-  $("ask-note").hidden = !asks || asking || !act || act.act === "stop" || Boolean(act.off) || !startAnswers(s);
   const card = $("asked"), n = s.questions.length, q = s.questions.find((x) => !x.default) ?? s.questions[0]; // the one that holds Start first
   card.hidden = !asking || !q;
+  // answered from its card, the keyboard stays on the chip while a question is left, then goes to what needs you, or to
+  // the plan: never onto Start or Run, which a held Enter would press. Put once: a card clicked after is left alone
+  const lost = (e: Element | null) => !e || e === document.body || !e.isConnected || (e instanceof HTMLElement && !e.offsetParent);
+  if (answered) {
+    const at = document.activeElement, chip = $("b-ask");
+    if (lost(at)) {
+      const to = [chip, $("b-next")].find((b) => !b.hidden) ?? $("canvas").querySelector<HTMLElement>('[tabindex="0"]');
+      to?.focus({ preventScroll: true });
+      answered = to === chip;
+    } else if (at !== chip) answered = false;
+  }
   if (card.hidden || !q || card.dataset.key === JSON.stringify(q)) return;
   card.dataset.key = JSON.stringify(q);
   const on = q.about ? (s.tasks.find((t) => t.id === q.about)?.title ?? goalTitle(s, q.about)).replace(/^\?\s+/, "") : ""; // a sub-goal's `? ` says it asks: the card says so
@@ -387,7 +405,7 @@ function chips(s: StateX) {
     if (target === undefined) b.appendChild(icon("comment-discussion"));
     b.append(label);
     b.title = target === undefined ? "answer in your own words" : "answer with this";
-    b.addEventListener("click", () => { asking = false; api.postMessage({ type: "act", act: "answer", id: q.id, ...(target === undefined ? {} : { target }) }); render(); });
+    b.addEventListener("click", () => { asking = false; answered = true; api.postMessage({ type: "act", act: "answer", id: q.id, ...(target === undefined ? {} : { target }) }); render(); });
   };
   for (const o of new Set([...(q.default ? [q.default] : []), ...q.options])) answer(o, o);
   answer("In your own words…");
@@ -396,6 +414,9 @@ function chips(s: StateX) {
 
 /** A narrow tab (the editor area beside the side bar and an agent's chat): the pane goes under the canvas. */
 const narrow = () => matchMedia("(max-width: 700px)").matches;
+
+let startedAt = 0; // when Start or Run was pressed, until the run is seen going
+const START_WAIT = 15000; // nor longer: a run refused at its start says why in its terminal, and the host says so (session.ts)
 
 function header(s: StateX, blank: boolean) {
   const first = topLine(s); // a replay, or a live race against the stand-in: said before anything else
@@ -422,14 +443,26 @@ function header(s: StateX, blank: boolean) {
   if (blank) $("b-add").hidden = true; // the notice's own Add task is the act then
   if (!s.tasks.length) $("b-save").hidden = $("b-view").hidden = true; // no plan: nothing to save, or to see as lanes
   else $("b-view").hidden = false;
-  // the one act on the whole plan: Start a suggestion, Run what is ready, Stop a run (words.ts `mainAct`)
+  // the one act on the whole plan: Start a suggestion, Run what is ready, Stop a run (words.ts `mainAct`). Pressed,
+  // Start or Run says Starting… until the run is seen going, or what it was to run has moved on: the state between
+  // (accepted, not yet running) offered Run for a moment, and a click there a second run, refused in red
+  if (startedAt && (s.run.going || !s.tasks.some((t) => t.state === "ready" || t.state === "proposed") || Date.now() - startedAt > START_WAIT)) startedAt = 0;
   const act = mainAct(s, exact), run = $<HTMLButtonElement>("b-run");
   if (!act) run.hidden = true;
-  else {
+  else if (startedAt) { // busy, not off: its words read whole, its ring turns as a working card's (still, with less motion)
+    const ring = el("svg", { class: "ico", width: 14, height: 14, viewBox: "-7 -7 14 14", "aria-hidden": "true" });
+    mark(ring, "working", 0, 0, 6);
+    run.replaceChildren(ring, document.createTextNode("Starting…"));
+    run.title = "the run is starting: its agents show on the cards";
+    run.className = "quiet";
+    run.disabled = false;
+    run.setAttribute("aria-busy", "true");
+  } else {
     run.replaceChildren(icon(act.icon), document.createTextNode(act.label));
     run.title = act.title;
     run.className = act.main ? "" : "quiet"; // filled only when it starts something
     run.disabled = Boolean(act.off);
+    run.removeAttribute("aria-busy");
   }
   const toggle = $("b-view"), lanes = view() === "lanes"; // what a click turns to
   toggle.replaceChildren(icon(lanes ? "type-hierarchy-sub" : "list-flat"));
@@ -2164,10 +2197,19 @@ window.addEventListener("message", (e: MessageEvent<Incoming>) => {
     lastJson = "";
     state = null; // no plan to read: the one that was here is not drawn again when the canvas resizes under the notice
     notice(m.status);
+  } else if (m.type === "start") { // no run was started (an accept refused, an answer held it): Start again
+    if (!m.ok) { startedAt = 0; if (state) render(); }
+  } else if (m.type === "shown") { // drawn again once in front, at its own size: hidden, Cursor said 260 px, the lanes'
+    shown = m.on;
+    if (shown) requestAnimationFrame(() => {
+      const c = chosen;
+      chosen = null;
+      if (c) select(c.id, c.focus); else if (state) render(); // brought on screen at its own size, not the hidden 260 px
+    });
   } else if (m.type === "select") { // a click in the Plan view: the link, if armed, is not for that task
     disarm();
     fitRoom = ""; // chosen from outside the page, as it is when the page opens on a task: the plan is fitted beside its pane
-    select(m.id, true);
+    if (shown) select(m.id, m.focus !== false); else chosen = { id: m.id, focus: m.focus !== false };
   }
 });
 
@@ -2223,6 +2265,7 @@ window.addEventListener("keydown", (e) => {
 });
 
 function wire() {
+  wearInk(); // a filled button's words in a colour that reads on it (ink.ts)
   const canvas = $("canvas");
   canvas.addEventListener("wheel", (e) => {
     if (view() === "lanes") return; // the rows scroll as a list does
@@ -2379,7 +2422,6 @@ function wire() {
     if (asking) $("asked").querySelector("button")?.focus();
   });
   ask.append(icon("question"), document.createElement("b"), document.createElement("span"));
-  div("", undefined, need).id = "ask-note";
   const card = div("", undefined, need);
   card.id = "asked";
   card.hidden = true;
@@ -2408,12 +2450,14 @@ function wire() {
   top("b-help", "", "question", "Keys and mouse (?)", () => help($("help").hidden));
   top("b-add", "Add task", "add", "draw a task: its title, then its files and its check (or the planner fills them in)", () => draw({ after: null, parent: null }));
   top("b-run", "Run", "play", "", () => {
-    const a = state && mainAct(state, exact), run = $<HTMLButtonElement>("b-run");
-    if (!a) return;
+    const a = state && mainAct(state, exact);
+    if (!a || startedAt) return; // Starting…: one run a click
     api.postMessage({ type: "act", act: a.act, id: "" });
-    // Start accepts the plan before the run's terminal opens: said, as Home's is, until the host's next state
-    // redraws it, the same state too (a refused accept changes nothing; the host pushes once Start is over)
-    if (a.act === "start") { run.disabled = true; run.replaceChildren(icon(a.icon), document.createTextNode("Starting…")); lastJson = ""; }
+    if (a.act === "start" || a.act === "run") { // Starting… until the run is seen (`header`), then drawn again at the wait's end
+      startedAt = Date.now();
+      setTimeout(() => { if (state) render(); }, START_WAIT + 100);
+      render();
+    }
   });
   // under the goal: the pipeline's three stages (made here, so the preview's shell has them too). Stop after the
   // plan is Home's, under its Settings: beside Start and Stop here it read as a third way to stop

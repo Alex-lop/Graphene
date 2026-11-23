@@ -569,11 +569,20 @@ export function linkHint(title: string, dragging: boolean): string {
 export const ASK_AGENT = `${ASK}: its plan appears here. Or draw the first task.`;
 export const CURSOR_AGENT = NOT_CURSOR;
 
-/** The question chip's words, its two halves as the tasks' chip has them: `1 question · answer`; none for none. */
-export const askLine = (n: number): string => (n ? `${n} question${n === 1 ? "" : "s"} · answer` : "");
-/** The line under that chip while the main act would take the defaults of `n` of them (`startAnswers`): it reads
- *  with the chip's `· answer` or without it (a narrow tab hides that). */
-export const askNote = (n: number, act: string): string => `${act} takes ${n === 1 ? "its default" : "their defaults"}`;
+/** The question chip's words, its two halves as the tasks' chip has them: how many, then what a click on Start or Run
+ *  (``act``) picks for them unanswered, from their own defaults (`1 question · Start picks “json and csv”`), or
+ *  `answer` while it picks nothing; none for none. A narrow tab cuts it to its room, and the hover says it whole. */
+export function askLine(qs: readonly Pick<Question, "default">[], act = ""): string {
+  if (!qs.length) return "";
+  const n = `${qs.length} question${qs.length === 1 ? "" : "s"}`, d = qs.filter((q) => q.default);
+  if (!act || !d.length) return `${n} · answer`;
+  return `${n} · ${act} picks ${d.length === 1 ? `“${cutAtWord(d[0]!.default!, 28)}”` : d.length === qs.length ? "their defaults" : `${d.length} defaults`}`;
+}
+/** ``s`` cut to ``n`` characters at a space where one is near, so no word is left in half (`asked fo…`). */
+const cutAtWord = (s: string, n: number) => {
+  const c = cut(s, n), sp = s.lastIndexOf(" ", n - 1);
+  return c === s || sp < n * 0.6 ? c : `${s.slice(0, sp).replace(/[\s.,:;·-]+$/, "")}…`;
+};
 
 /** The news a screen reader hears from the graph: the latest line that nothing on screen says already (the
  *  plan's open question has its chip, auto's wait its line in the header), in the screen's words, so the CLI's

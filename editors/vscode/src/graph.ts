@@ -7,6 +7,7 @@ import * as C from "./commands.ts";
 import { draftKey, draftOf, type Draft } from "./graph/draft.ts";
 import { unanswered } from "./home/cards.ts";
 import { check, type FromPage } from "./graph/check.ts";
+import { wanting } from "./graph/marks.ts";
 import { beside, opens, seen, type Seen } from "./open.ts";
 import type { Session } from "./session.ts";
 import { unpriced } from "./state.ts";
@@ -37,6 +38,7 @@ export class GraphHost {
     this.drafts = (Array.isArray(saved) ? saved : []).map(draftOf).filter((d): d is Draft => d !== null);
     session.onDidChange(() => { this.push(); this.start(); });
     session.onDidSee(() => this.push()); // a task's changes opened: its pane's Approve is the act now
+    session.onDidRefuse((name) => { if (name === "graphene run") for (const w of this.views) void w.postMessage({ type: "start", ok: false }); });
   }
 
   /** The tab opens by itself, once for each start (the setting graphene.graph.openOnStart), without the
@@ -78,6 +80,8 @@ export class GraphHost {
       panel.iconPath = { light: icon("graphene-light.svg"), dark: icon("graphene-dark.svg") }; // an image: currentColor would be black
       const webview = panel.webview; // held now: a disposed panel throws on `webview`
       this.attach(webview);
+      // hidden behind another tab, Cursor tells the page it is 260 px wide: the page draws nothing until it is shown
+      panel.onDidChangeViewState((e) => void webview.postMessage({ type: "shown", on: e.webviewPanel.visible }));
       panel.onDidDispose(() => {
         this.views.delete(webview);
         if (this.panel === panel) this.panel = null;
@@ -88,6 +92,16 @@ export class GraphHost {
       this.panel.reveal();
     }
     if (select) void this.panel.webview.postMessage({ type: "select", id: select });
+  }
+
+  /** A task landed (Approve, on the graph, on Home or on its diff): the page moves to the first task that wants the
+   *  person, else stays on the landed one, not left on a pane of landed work. Focused only when the Approve was the
+   *  graph's own (its tab active): from Home or a diff the keyboard stays there. Only for a tab that is there:
+   *  approving from Home opens no tab. */
+  landed(id: string) {
+    const s = this.session.state;
+    if (!this.panel || !s) return;
+    void this.panel.webview.postMessage({ type: "select", id: wanting(s.tasks).find((x) => x !== id) ?? id, focus: this.panel.active });
   }
 
   /** Whether the graph is on screen: the poll runs only then. */
@@ -210,16 +224,20 @@ export class GraphHost {
    *  off) so does any open question, as Home's Start waits for every answer. The page holds its Start then too:
    *  this is for a board switched on since the page last heard. */
   private async startPlan() {
-    const s = this.session.state;
-    if (this.starting || !s || unanswered(s)) return;
+    if (this.starting) return;
     this.starting = true;
+    let ran = false;
     try {
+      const s = this.session.state;
+      if (!s || unanswered(s)) return;
       if (s.questions.length && s.envelope.review === "every" && s.envelope.auto === "off") await this.readBoard();
       if (this.exact && s.questions.length) return void vscode.window.showInformationMessage("Exact is on: Start waits for your answer to the plan's question.");
-      if (await this.session.act(C.acceptAll())) await run("runReady");
+      if (await this.session.act(C.acceptAll())) { await run("runReady"); ran = true; }
     } finally {
       this.starting = false;
-      this.push(); // the page said Starting…: whatever happened, it draws the header again
+      // the page says Starting… until it sees the run going: told now when no run was started, it drops it
+      for (const w of this.views) void w.postMessage({ type: "start", ok: ran });
+      this.push();
     }
   }
 

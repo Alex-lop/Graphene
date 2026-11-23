@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { autoLine, autoNews, errorOf, mdText, parseState, summary, usd } from "../src/state.ts";
+import { autoLine, autoNews, errorOf, headline, mdText, parseState, summary, usd } from "../src/state.ts";
 
 const fixture = (name: string) => readFileSync(new URL(`./fixtures/${name}.json`, import.meta.url), "utf8");
 
@@ -42,24 +42,27 @@ test("auto waiting reads as a header with the stage and why, then the round and 
   const s = parseState(fixture("auto"));
   assert.equal(s.envelope.auto, "on");
   assert.equal(s.auto?.stage, "waits");
-  assert.equal(autoLine(s), "auto waits: the goal's check is still red after 2 rounds · round 2 of 3 · $1.37 of $2.00", "why first: a narrow tab cuts the bookkeeping");
-  assert.equal(summary(s), "auto waits · 1 needs you · $1.37");
+  assert.equal(autoLine(s), "waits for you: the goal's check is still red after 2 rounds · round 2 of 3 · $1.37 of $2.00", "why first: a narrow tab cuts the bookkeeping");
+  assert.equal(summary(s), "1 needs you · $1.37", "the task that needs you says it waits");
+  assert.equal(summary({ ...s, scoreboard: { ...s.scoreboard, need_you: 0 } }), "waits for you · 3 of 4 done · $1.37", "waiting on no task (a key, the budget): said");
   // a practice run and a replay spend nothing: no screen says a cost, the status bar and auto's line alike
   const replay = { shown: "a scripted stand-in, no model ran", day: "", repository: "" };
   for (const free of [{ ...s, stand_in: true }, { ...s, replay }]) {
-    assert.equal(autoLine(free), "auto waits: the goal's check is still red after 2 rounds · round 2 of 3");
-    assert.equal(summary(free), "auto waits · 1 needs you");
+    assert.equal(autoLine(free), "waits for you: the goal's check is still red after 2 rounds · round 2 of 3");
+    assert.equal(summary(free), "1 needs you");
   }
   const done = { ...s, stand_in: true, auto: { ...s.auto!, stage: "done" } };
-  assert.equal(autoNews(s, done)?.text, "Graphene auto is done: the goal's check passed in round 2");
+  assert.equal(autoNews(s, done)?.text, "Graphene finished on its own: the goal's check passed in round 2");
 });
 
-test("the status bar leads with auto's round while auto is on", () => {
+test("the status bar leads with auto's round while it runs on its own, and says nothing of it once done", () => {
   const done = parseState(fixture("real-auto"));
-  assert.equal(summary(done), "auto done · 4 of 4 done · $0.02");
+  assert.equal(summary(done), "4 of 4 done · $0.02");
+  const left = { ...done, scoreboard: { ...done.scoreboard, proven: 1, need_you: 0 } };
+  assert.equal(summary(left), "1 of 4 done · $0.02", "not done beside three tasks that wait");
   const going = parseState(JSON.stringify({ ...JSON.parse(fixture("real-auto")),
     auto: { round: 1, rounds: 2, stage: "running", spent: 0.01, budget: 2 } }));
-  assert.ok(summary(going).startsWith("auto round 1 · "), summary(going));
+  assert.ok(summary(going).startsWith("on its own, round 1 · "), summary(going));
 });
 
 test("a planner writing a plan is `drafting`: its steps so far, each with what of its lines is complete", () => {
@@ -150,7 +153,7 @@ test("a real snapshot, `graphene state --json` at the end of the --auto replay, 
   assert.deepEqual(s.tasks.map((t) => [t.id, t.state]), [["top", "done"], ["reading", "done"], ["hyphens", "done"], ["count-test", "done"]]);
   assert.ok(s.tasks.every((t) => t.model === "stand-in-Nano" && t.forks.length === 3));
   assert.deepEqual(s.tasks[0]!.forks.map((f) => f.state), ["passed", "passed", "gave up"]);
-  assert.equal(autoLine(s), "auto done · round 2 of 3 · $0.02 of $2.00");
+  assert.equal(autoLine(s), "done on its own · round 2 of 3 · $0.02 of $2.00");
 });
 
 test("auto mode's news is said once, when its round's stage changes, never on the first read", () => {
@@ -159,11 +162,11 @@ test("auto mode's news is said once, when its round's stage changes, never on th
   assert.equal(autoNews(null, at("waits", 1, "a question")), null);
   assert.equal(autoNews(at("running", 1), at("running", 1)), null);
   assert.deepEqual(autoNews(at("running", 1), at("waits", 1, "t1 has no check")),
-                   { kind: "waits", text: "Graphene auto waits for you: t1 has no check" });
+                   { kind: "waits", text: "Graphene waits for you: t1 has no check" });
   assert.deepEqual(autoNews(at("checking", 1), at("fixing", 2, "FAIL: test_x")),
-                   { kind: "fixing", text: "Graphene auto: the goal's check failed (FAIL: test_x); round 2 plans the fix" });
+                   { kind: "fixing", text: "Graphene, on its own: the goal's check failed (FAIL: test_x); round 2 plans the fix" });
   assert.deepEqual(autoNews(at("checking", 2), at("done", 2)),
-                   { kind: "done", text: "Graphene auto is done: the goal's check passed in round 2 · $0.42 of $2.00" });
+                   { kind: "done", text: "Graphene finished on its own: the goal's check passed in round 2 · $0.42 of $2.00" });
 });
 
 test("a hover reads the plan's words as text: no link, image, HTML or icon of an agent's renders", () => {
@@ -234,4 +237,13 @@ test("engine prose uses the screen's task, files and attempt words while command
   assert.equal(screenWords(command), command);
   assert.equal(screenWords("fork.py node/file.py --forks scope.json"), "fork.py node/file.py --forks scope.json");
   assert.equal(screenWords("graphene node done n1"), "graphene node done n1");
+});
+
+test("what was asked stays the title once the news no longer says it: the goal first, then the news, then what was kept", () => {
+  const s = parseState(fixture("running"));
+  const ask = { ...s, goal: "", news: ["you asked: a --json flag", "top started"] };
+  assert.equal(headline(ask), "a --json flag");
+  assert.equal(headline({ ...ask, news: ["top started"], asked: "a --json flag" }), "a --json flag", "scrolled out of the news, kept by the session");
+  assert.equal(headline({ ...ask, asked: "an older ask" }), "a --json flag", "a new ask in the news is the one");
+  assert.equal(headline({ ...ask, goal: "the goal", asked: "an ask" }), "the goal");
 });

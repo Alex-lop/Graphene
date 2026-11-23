@@ -3,7 +3,7 @@
 // so the test needs no extra module on disk.
 import assert from "node:assert/strict";
 import { register } from "node:module";
-import { test } from "node:test";
+import { mock, test } from "node:test";
 
 const stub = `
 export const panels = [];
@@ -16,14 +16,19 @@ class Panel { constructor(type, title) { this.type = type; this.title = title; t
   get webview() { if (this.disposed) throw new Error("Webview is disposed"); return this.w; }
   get visible() { if (this.disposed) throw new Error("Webview is disposed"); return true; }
   onDidDispose(h) { this.handlers.push(h); return { dispose() {} }; }
+  onDidChangeViewState(h) { this.viewState = h; return { dispose() {} }; }
   reveal() { if (this.disposed) throw new Error("Webview is disposed"); this.revealed++; }
   dispose() { this.disposed = true; for (const h of this.handlers) { try { h(); } catch (e) { this.threw = String(e); } } } }
 export const notifications = [];
 export const tabs = { front: undefined, early: false }; // the tab the active group has in front; early: asked before VS Code sent its tabs
 export const window = { showErrorMessage(m) { notifications.push(m); return Promise.resolve(undefined); }, createWebviewPanel(type, title, show) { const p = new Panel(type, title); p.show = show; panels.push(p); return p; },
   showInformationMessage() { return Promise.resolve(undefined); },
+  terminals: [], ended: null, createTerminal(o) { const t = { name: o.name, shown: 0, lines: [], exitStatus: undefined, shellIntegration: undefined,
+    show() { this.shown++; }, sendText(l) { this.lines.push(l); } }; window.terminals.push(t); return t; },
+  onDidEndTerminalShellExecution(l) { window.ended = l; return { dispose() {} }; }, onDidCloseTerminal() { return { dispose() {} }; },
   tabGroups: { get activeTabGroup() { if (tabs.early) throw new Error("Assertion Failed: argument is undefined or null"); return { activeTab: tabs.front }; } } };
 export const Uri = { joinPath(...p) { return p.join("/"); } };
+export class ThemeIcon { constructor(id) { this.id = id; } }
 export const env = { appName: "Visual Studio Code" };
 export const ViewColumn = { Active: -1, Beside: -2 };
 export const workspace = { settings: {}, getConfiguration() { return { get: (k, d) => (k in workspace.settings ? workspace.settings[k] : d) }; } };
@@ -37,12 +42,13 @@ export async function resolve(spec, ctx, next) { return spec === "vscode" ? { ur
 `;
 register(`data:text/javascript,${encodeURIComponent(hooks)}`);
 
-type Panel = { disposed: boolean; title: string; revealed: number; threw?: string; show?: unknown; dispose(): void; w: { html: string; receive(m: unknown): Promise<unknown> } };
+type Panel = { disposed: boolean; title: string; revealed: number; threw?: string; show?: unknown; dispose(): void; viewState(e: unknown): void;
+               w: { html: string; sent: unknown[]; receive(m: unknown): Promise<unknown> } };
 const vscode = await import("vscode") as unknown as { panels: Panel[]; commands: { ran: [string, unknown][] }; workspace: { settings: Record<string, unknown> }; env: { appName: string };
                                                       tabs: { front: { input: unknown } | undefined; early: boolean } };
 const { GraphHost } = await import("../src/graph.ts");
 const context = { extensionUri: "ext", subscriptions: [], workspaceState: { get: (_: string, fallback: unknown) => fallback, update: async () => {} } } as never;
-const session = { state: null, status: { kind: "reading", text: "Reading the plan…" }, onDidChange: () => ({ dispose() {} }), seen: new Set(), onDidSee: () => ({ dispose() {} }) } as never;
+const session = { state: null, status: { kind: "reading", text: "Reading the plan…" }, onDidChange: () => ({ dispose() {} }), seen: new Set(), onDidSee: () => ({ dispose() {} }), onDidRefuse: () => ({ dispose() {} }) } as never;
 
 test("a closed panel is let go: open is false, a new show makes a new panel, and onDidClose fires once", () => {
   const host = new GraphHost(context, session);
@@ -58,6 +64,15 @@ test("a closed panel is let go: open is false, a new show makes a new panel, and
   host.show("hello");
   assert.equal(vscode.panels.length, 2, "a show after the close makes a new panel, not a reveal of the dead one");
   assert.equal(vscode.panels[0]!.revealed, 0);
+});
+
+test("the page hears when its tab goes behind another and comes back: hidden, it draws nothing at a size not its own", () => {
+  const host = new GraphHost(context, session);
+  host.show();
+  const panel = vscode.panels.at(-1)!;
+  panel.viewState({ webviewPanel: { visible: false } });
+  panel.viewState({ webviewPanel: { visible: true } });
+  assert.deepEqual(panel.w.sent.filter((m) => (m as { type: string }).type === "shown"), [{ type: "shown", on: false }, { type: "shown", on: true }]);
 });
 
 test("the tab opens by itself on a start, without the keyboard; Show graph reveals the same tab and may take it; closed by a person, no start opens it again; a replay's never opens by itself", async () => {
@@ -385,4 +400,45 @@ test("the pane's Send back… is Home's: a note asked, then graphene node reopen
   fake.seen.add("docs"); // its changes opened (diff.ts)
   for (const l of saw) l();
   assert.deepEqual(page.sent.filter((m) => m.type === "state").at(-1)?.seen, ["docs"], "so its pane's act is Approve now");
+});
+
+test("the run's terminal: one for the run, not shown; a second click while it starts is no second run; refused, it comes forward and the graph hears it; a shell that cannot say so shows it after a moment", async () => {
+  const { Session } = await import("../src/session.ts");
+  const ui = await import("vscode") as unknown as { window: { terminals: { name: string; shown: number; lines: string[]; shellIntegration?: object }[]; ended: (e: unknown) => void } };
+  const { EventEmitter } = await import("vscode") as unknown as { EventEmitter: new () => { event: (l: (v: string) => void) => void; fire(v: string): void } };
+  ui.window.terminals.length = 0;
+  mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  try {
+    const refused: string[] = [], at = new EventEmitter();
+    at.event((n) => refused.push(n));
+    const s = { hear: Session.prototype["hear" as never], sent: new Map(), busy: new Set(), shells: [], refusedAt: at, path: "graphene", folder: undefined };
+    const run = () => Session.prototype.terminal.call(s as never, "graphene run", ["run"]);
+    const t = run() as unknown as (typeof ui.window.terminals)[number];
+    assert.equal(run(), t as never, "clicked again a moment later: the same terminal, nothing sent again");
+    assert.deepEqual([ui.window.terminals.length, t.lines.length, t.shown], [1, 1, 0], "the graph shows the run: its terminal stays in the panel's list");
+    t.shellIntegration = {};
+    mock.timers.tick(3000);
+    assert.equal(t.shown, 0, "a shell that will say how the run ended: still not shown");
+    ui.window.ended({ terminal: t, exitCode: 1 });
+    assert.deepEqual([t.shown, refused], [1, ["graphene run"]], "refused at its start: shown, and the graph drops its Starting…");
+    const bare = Session.prototype.terminal.call({ ...s, sent: new Map() } as never, "graphene run", ["run"]) as unknown as (typeof ui.window.terminals)[number];
+    mock.timers.tick(3000);
+    assert.equal(bare.shown, 1, "no integration: it cannot say it was refused, so it is shown, as before");
+  } finally {
+    mock.timers.reset();
+  }
+});
+
+test("what was asked titles the plan through its run, and not a plan suggested after it with no ask or goal of its own", async () => {
+  const { Session } = await import("../src/session.ts");
+  const { headline } = await import("../src/state.ts");
+  const me = { memo: undefined, asked: { asked: "", ids: [] }, folder: undefined };
+  const task = (id: string, state: string) => ({ id, state });
+  const kept = (Session.prototype as unknown as { kept(this: unknown, s: unknown): never }).kept;
+  const title = (tasks: object[], news: string[] = [], drafting = false) => headline(kept.call(me, { goal: "", news, tasks, drafting }));
+  assert.equal(title([], ["you asked: wordkit grows three things"], true), "wordkit grows three things", "said while its planner drafts");
+  assert.equal(title([task("a", "proposed"), task("b", "proposed")], ["proposed: a", "proposed: b"]), "wordkit grows three things", "out of the news: kept");
+  assert.equal(title([task("a", "running"), task("b", "review")]), "wordkit grows three things", "through the run");
+  assert.equal(title([task("a", "done"), task("b", "done"), task("c", "proposed")], ["proposed: c"]), "", "a suggestion it was not said for: not titled with it");
+  assert.equal(title([task("a", "done"), task("b", "done"), task("c", "ready")]), "", "and it is not back");
 });
