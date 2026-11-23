@@ -191,7 +191,8 @@ function drawCard(c: Card): HTMLElement {
   if (c.lines.length) {
     const dl = el("dl", "c-lines", undefined, card);
     for (const l of c.lines) {
-      const long = l.k && l.v.length > (l.mono ? 26 : 40) ? " long" : ""; // under its label in a narrow side bar (home.css)
+      const size = l.paths ? Math.max(...l.paths.map((x) => x.length)) : l.v.length; // files are one a line: the longest counts
+      const long = l.k && size > (l.mono ? 26 : 40) ? " long" : ""; // under its label in a narrow side bar (home.css)
       const r = el("div", `c-line${l.warn ? " warn" : ""}${l.k ? "" : " wide"}${long}`, undefined, dl);
       if (l.k) el("dt", "", l.k, r);
       const dd = el("dd", l.mono ? "mono" : "", undefined, r);
