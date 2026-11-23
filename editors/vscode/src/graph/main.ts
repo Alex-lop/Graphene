@@ -3,7 +3,7 @@
 // the sidebar, the same plan as lanes, one row a task, wave by wave. A click selects and opens the details
 // pane whose buttons ask the extension to run graphene. No network, no library: SVG and DOM from the state.
 // Boxes are keyed by task id and updated in place, so a snapshot that changed nothing moves nothing.
-import { layout, modeFor, step, type Box, type Edge, type Layout } from "../layout.ts";
+import { layout, modeFor, rounded, route, step, type Box, type Edge, type Layout } from "../layout.ts";
 import { autoLine, SAY, screenWords, usd, type DraftStep, type State } from "../state.ts";
 import { ICONS } from "./icons.ts";
 import { blanks, draftLine, globs, isDraft, lacks, type Draft } from "./draft.ts";
@@ -13,7 +13,7 @@ import { actsFor, ASK_AGENT, askLine, askNote, asksYou, attemptsOf, commandChip,
          filesChip, forkActs, forkRow, forkWords, HEADER_ACTS, headerFor, heldWords, KEYS, linkHint, mainAct, mayRun, newsLine, paneKey, pipeline,
          planningLine, PROVES_NOTHING, provesNothing, questionOn, scopeTree, startAnswers, stopsOf, sub, tabOrder, tokenWords, topLine, whenEdit, who, writtenOf,
          type Button, type ForkX, type StateX, type TaskX } from "./words.ts";
-import { CARD, dotGap, FAR, fitPlan, hold, levelFor, miniFrame, miniSize, nearest, offScreen, panTo, percent, switchK, wheelK, ZOOM_MAX, ZOOM_MIN, zoomK,
+import { CARD, dotGap, FAR, fitPlan, hold, levelFor, miniFrame, miniSize, nearest, offScreen, onto, panTo, percent, switchK, wheelK, ZOOM_MAX, ZOOM_MIN, zoomK,
          type Level, type Size, type Zoom } from "./zoom.ts";
 
 declare function acquireVsCodeApi(): { postMessage(m: unknown): void; getState(): unknown; setState(s: unknown): void };
@@ -38,14 +38,19 @@ const ROW_W = CARD.compact.w, ROW_H = CARD.compact.h, ROW_X = 36;
 // under it, its own check at its foot; from afar a row with its ring, its title on up to three lines and its count,
 // wider and taller than a task's row and in larger words, so it is still the clearest thing on the canvas.
 const GOAL_W = 220, GOAL_ROW_W = ROW_W + 72, GOAL_ROW_H = 84;
+/** The goal's title is read whole on its card: as many lines as it takes, up to six (a goal an agent wrote is a
+ *  sentence, and its card is alone in its column), the card as tall as they need. */
+const GOAL_LINES = 6;
 /** What the layout and the lines between the cards measure by, at each level of detail. */
-type Dims = { w: number; h: number; gapX: number; gapY: number; padX: number; padY: number; bandGap: number; label: number };
+type Dims = { w: number; h: number; gapX: number; gapY: number; padX: number; padY: number; bandGap: number; label: number; inset: number };
 // `label`: the room over a sub-goal's first row for its header, which is drawn larger over rows. A band reaches half
 // a `gapY` past its rows, so two bands stand `bandGap - gapY` apart, 8 px, and never share an edge. Whole cards' top
-// and foot pay for that room, so the running plan still opens as cards in a laptop's tab (1140 by 820)
+// and foot pay for that room, so the running plan still opens as cards in a laptop's tab (1140 by 820). `inset`: a
+// band's room either side of its cards, under half a `gapX`, so a line down the middle of a gap (`edgeD`) keeps 6 px
+// off a band's side and is never drawn along it
 const DIMS: Record<Level, Dims> = {
-  full: { w: BOX_W, h: BOX_H, gapX: 32, gapY: 16, padX: 24, padY: 16, bandGap: 24, label: 28 },
-  compact: { w: ROW_W, h: ROW_H, gapX: 24, gapY: 8, padX: 24, padY: 24, bandGap: 16, label: 30 },
+  full: { w: BOX_W, h: BOX_H, gapX: 32, gapY: 16, padX: 24, padY: 16, bandGap: 24, label: 28, inset: 10 },
+  compact: { w: ROW_W, h: ROW_H, gapX: 28, gapY: 8, padX: 24, padY: 24, bandGap: 16, label: 30, inset: 8 },
 };
 /** A sub-goal's loose tasks (no line in or out but to the goal) stand at most this many high, then side by side. */
 const STACK = 3;
@@ -155,6 +160,13 @@ function button(b: Button, id: string, parent: HTMLElement) {
 
 const cls = (word: string) => `st-${word.replace(/\s+/g, "-")}`;
 
+/** How many lines the goal's title takes on its card at a level: measured as it is drawn, in the goal's group. */
+function goalLines(title: string, lv: Level): number {
+  const probe = titleLines($("goalg") as unknown as SVGGElement, "goal-title", title, 0, 0, 20, lv === "compact" ? GOAL_ROW_W - ROW_X - 10 : GOAL_W - 2 * PAD, GOAL_LINES);
+  probe.remove();
+  return probe.childElementCount;
+}
+
 function boxes(s: StateX, lv: Level = "full"): { boxes: Box[]; edges: Edge[]; goal: string | null } {
   const w = DIMS[lv].w, h = DIMS[lv].h; // a card's own box, at the level asked for
   const away = new Set(s.tasks.filter((t) => t.leaves).map((t) => t.id)); // past the line: placed in their region, not by the layout
@@ -175,7 +187,8 @@ function boxes(s: StateX, lv: Level = "full"): { boxes: Box[]; edges: Edge[]; go
   }
   const hasGoal = Boolean(s.goal) && s.tasks.length > 0;
   if (hasGoal) {
-    bs.push(lv === "compact" ? { id: GOAL, band: "", w: GOAL_ROW_W, h: GOAL_ROW_H } : { id: GOAL, band: "", w: GOAL_W, h: BOX_H + (rootOf(s)?.check ? FOOT_H : 0) });
+    const n = goalLines(s.goal, lv);
+    bs.push(lv === "compact" ? { id: GOAL, band: "", w: GOAL_ROW_W, h: Math.max(GOAL_ROW_H, 19 * n + 27) } : { id: GOAL, band: "", w: GOAL_W, h: Math.max(BOX_H, 20 * n + 56) + (rootOf(s)?.check ? FOOT_H : 0) });
     const needed = new Set(edges.filter(([, b]) => !away.has(b)).map(([a]) => a)); // what only a step past the line waits on still ends the work here
     for (const b of bs) if (b.id !== GOAL && !needed.has(b.id)) edges.push([b.id, GOAL]);
     // the run crosses the line from the goal, as the target draws it: what a step past the line waits on here ends at the goal
@@ -473,15 +486,22 @@ const foot = () => ($("zoom").offsetHeight ? FOOT : 0);
 const sizeOf = (l: Layout): Size => ({ w: l.width, h: l.height });
 
 /** How the plan opens, and how `f` and a double click on the canvas fit it again: the whole plan in the pane.
- *  Whole cards when they fit at a scale they read at, else rows (zoom.ts). Laid downward (the narrow canvas) it
- *  is whole cards from the top, and so is a plan no scale can hold: that one opens on the step that asks you. */
+ *  Whole cards when they fit at a scale they read at, else rows (zoom.ts), never so small their titles do not
+ *  read: a plan larger than that (a Cursor tab beside its agent's chat) opens on the card that matters, the chosen
+ *  one, else the first that wants you, else the first at work. Laid downward (the narrow canvas) it is whole cards
+ *  from the top: that one opens on the step that asks you. */
 function opening(s: StateX, down: boolean): { level: Level; at: Placed; zoom: Zoom } {
   const canvas = paneSize();
   const full = place(s, down, "full");
   let rows: Placed | undefined;
   const keep = fitted && !$("details").hidden ? level : "compact"; // a pane open beside whole cards keeps them whole a little further
   const fit = down ? null : fitPlan(canvas, sizeOf(full.lay), () => sizeOf((rows = place(s, down, "compact")).lay), foot(), keep);
-  if (fit) return { level: fit.level, at: fit.level === "compact" && rows ? rows : full, zoom: { k: fit.k, tx: fit.tx, ty: fit.ty } };
+  if (fit) {
+    const at = fit.level === "compact" && rows ? rows : full, { k, tx, ty } = fit;
+    const id = fit.whole ? undefined : [selected, ...wantYou(), ...s.tasks.filter((t) => t.state === "running").map((t) => t.id)].find((x) => x && at.lay.boxes[x]);
+    const p = id ? at.lay.boxes[id] : undefined;
+    return { level: fit.level, at, zoom: p ? onto({ k, tx, ty }, { w: canvas.w, h: canvas.h - foot() }, sizeOf(at.lay), p) : { k, tx, ty } };
+  }
   // a step that asks you is the thing to see: a graph wider than its canvas opens on that step, past the line,
   // and not on its left edge; a short one sits in the middle
   const ask = s.tasks.find(asksYou), p = ask ? full.lay.boxes[ask.id] : undefined;
@@ -495,15 +515,15 @@ function graph(s: StateX, dir: "across" | "down") {
   const was = svg.dataset.level ?? level; // the level of the drawing on screen
   if (down) level = "full"; // the narrow drawing keeps whole cards
   // Until the person pans or zooms, the whole plan is in the pane: fitted when the page opens, when the window
-  // is resized, when the plan grows or shrinks, and when asked (`f`, a select from outside the page). The pane
-  // opening or closing beside the canvas is none of these, nor is the footer growing a line: a card chosen here
-  // stays where it is, as big as it is. The narrow drawing wraps at its canvas's width, so it is laid out for it
-  // each time.
+  // is resized, when the plan grows or shrinks, when the pane closes (a plan fitted beside it, in a narrow tab,
+  // would stay at half its size), and when asked (`f`, a select from outside the page). The pane opening is none
+  // of these, nor is the footer growing a line: a card chosen here stays where it is, as big as it is. The narrow
+  // drawing wraps at its canvas's width, so it is laid out for it each time.
   const room = `${innerWidth}x${innerHeight}`;
   const sized = (l: Layout) => `${l.width}x${l.height}`;
   const free = !moved && !drawing;
   let at = free && down ? null : place(s, down, level);
-  const same = at !== null && sized(at.lay) === fitSize && room === fitRoom; // neither the window nor the plan changed
+  const same = at !== null && sized(at.lay) === fitSize && room === fitRoom && !(paneMoved && $("details").hidden); // neither the window, the plan nor the pane's close changed it
   const opened = free && !same ? opening(s, down) : null;
   if (opened) level = opened.level;
   D = DIMS[level];
@@ -535,14 +555,14 @@ function graph(s: StateX, dir: "across" | "down") {
   for (const band of lay.bands) {
     const ps = band.id ? Object.values(lay.boxes).filter((p) => p.band === band.id) : [];
     if (!ps.length) continue;
-    const x0 = Math.min(...ps.map((p) => p.x)) - 12, x1 = Math.max(...ps.map((p) => p.x + p.w)) + 12, most = Math.max(x1, right);
-    const title = goalTitle(s, band.id).replace(/^\? /, ""); // the plan text's mark for a suggestion, where a planner left it in a title
+    const x0 = Math.min(...ps.map((p) => p.x)) - D.inset, x1 = Math.max(...ps.map((p) => p.x + p.w)) + D.inset, most = Math.max(x1, right);
+    const { name, whole } = bandName(goalTitle(s, band.id));
     const rect = bands.appendChild(el("rect", { class: "band", x: x0, y: band.y0, height: band.y1 - band.y0, rx: 10 }));
-    rect.appendChild(el("title", {}, title));
+    rect.appendChild(el("title", {}, whole));
     // its header has the band's room on to the trunk, wherever the plan is panned or zoomed: what is off screen is
     // cut by the screen, and a redraw never cuts it to the part that was on it
-    const said = bandHead(heads, title, s.tasks.filter((t) => t.parent === band.id), x0 + 12, band.y0 + D.label / 2 + 1, most - x0 - 24);
-    const end = Math.min(most, Math.max(x1, x0 + said + 24));
+    const said = bandHead(heads, name, s.tasks.filter((t) => t.parent === band.id), x0 + D.inset, band.y0 + D.label / 2 + 1, most - x0 - 2 * D.inset);
+    const end = Math.min(most, Math.max(x1, x0 + said + 2 * D.inset));
     rect.setAttribute("width", String(end - x0));
     spans.set(band.id, { x0, x1: end });
   }
@@ -557,12 +577,14 @@ function graph(s: StateX, dir: "across" | "down") {
     path.setAttribute("d", d);
     path.setAttribute("class", `edge ${kind}`);
   };
+  // what a line across keeps clear of: every box, and each sub-goal's header row
+  const blocks = [...Object.values(lay.boxes), ...lay.bands.flatMap((b) => { const sp = spans.get(b.id); return sp ? [{ x: sp.x0, y: b.y0, w: sp.x1 - sp.x0, h: D.label }] : []; })];
   for (const [a, b] of g.edges) {
     const p = lay.boxes[a], q = lay.boxes[b];
     if (!p || !q || (b === GOAL && gAt && p.band)) continue; // a sub-goal's last steps end in its band, and the band runs into the goal
     // the edge carries the work: moving where an agent is working, green where it landed, a hairline until then; a
     // step in no sub-goal joins the goal on the bands' trunk
-    line(`${a}>${b}`, b === GOAL && gAt ? bracket(p.x + D.w, p.y + D.h / 2) : edgeD(p, q, down), `${edgeKind(taskOf.get(a), taskOf.get(b))}${selected && (a === selected || b === selected) ? " hot" : ""}${isDraft(a) || isDraft(b) ? " draft" : ""}`);
+    line(`${a}>${b}`, b === GOAL && gAt ? bracket(p.x + D.w, p.y + D.h / 2) : edgeD(p, q, down, blocks), `${edgeKind(taskOf.get(a), taskOf.get(b))}${selected && (a === selected || b === selected) ? " hot" : ""}${isDraft(a) || isDraft(b) ? " draft" : ""}`);
   }
   if (gAt) for (const band of lay.bands) { // a sub-goal into the goal: a bracket out of its band, along a trunk half way, into the goal
     const mine = band.id ? s.tasks.filter((t) => t.parent === band.id) : [], span = spans.get(band.id);
@@ -621,15 +643,15 @@ function graph(s: StateX, dir: "across" | "down") {
     if (gp && level === "compact") { // as a row: a ring filled by what is done, its title, and the count under it
       goalG.appendChild(el("rect", { class: "goal-box", x: 0, y: 0, width: gp.w, height: gp.h, rx: 10 }));
       ring(goalG, all.portion, 19, gp.h / 2, 9.5);
-      const title = titleLines(goalG, "goal-title", s.goal, ROW_X, 0, 19, gp.w - ROW_X - 10, 3), n = title.childElementCount;
+      const title = titleLines(goalG, "goal-title", s.goal, ROW_X, 0, 19, gp.w - ROW_X - 10, GOAL_LINES), n = title.childElementCount;
       const top = (gp.h - 19 * (n - 1) - 32) / 2 + 12; // the title and the count, as one block in the row's middle
       title.setAttribute("transform", `translate(0 ${top})`);
       goalG.appendChild(el("text", { class: "sub", x: ROW_X, y: top + 19 * (n - 1) + 17 }, `${all.landed} of ${all.total} done`));
       goalG.appendChild(el("circle", { class: "port in", cx: 0, cy: gp.h / 2, r: 5 }));
     } else if (gp) { // the goal is a card as a task is: its title on up to three lines, and under it a cell a task (a group a sub-goal) and the count, in the card's middle; its own check at its foot
       goalG.appendChild(el("rect", { class: "goal-box", x: 0, y: 0, width: gp.w, height: gp.h, rx: 12 }));
-      const title = titleLines(goalG, "goal-title", s.goal, PAD, 0, 20, gp.w - 2 * PAD, 3), n = title.childElementCount;
-      const top = (BOX_H - (20 * n + 18)) / 2, y = top + 20 * n + 4; // the title's block and the cells' row, as one
+      const title = titleLines(goalG, "goal-title", s.goal, PAD, 0, 20, gp.w - 2 * PAD, GOAL_LINES), n = title.childElementCount;
+      const top = (gp.h - (root?.check ? FOOT_H : 0) - (20 * n + 18)) / 2, y = top + 20 * n + 4; // the title's block and the cells' row, as one, over its check
       title.setAttribute("transform", `translate(0 ${top + 12})`);
       const count = goalG.appendChild(el("text", { class: "sub", x: gp.w - PAD, y: y + 10, "text-anchor": "end" }, `${all.landed} of ${all.total} done`));
       const room = gp.w - 2 * PAD - (count.getComputedTextLength() || 70) - 12;
@@ -675,19 +697,18 @@ function graph(s: StateX, dir: "across" | "down") {
 }
 
 type Spot = Layout["boxes"][string];
-/** An edge's curve, port to port: out of a card's right side into the next's left, or down out of its foot
- *  into the top. A card's ports are at its own size's middle, however tall its attempts make it; the goal's at
- *  its own. */
-function edgeD(p: Spot, q: Spot, down: boolean): string {
+/** An edge, port to port: across, out of a card's right side and into the next's left, square and in the gaps
+ *  between the cards (layout.ts `route`), never along a card's border or behind one; laid downward, a curve out of
+ *  its foot into the top. A card's ports are at its own size's middle, however tall its attempts make it; the goal's
+ *  at its own. */
+function edgeD(p: Spot, q: Spot, down: boolean, blocks: readonly { x: number; y: number; w: number; h: number }[]): string {
   const w = (b: Spot) => (b.id === GOAL ? b.w : D.w), h = (b: Spot) => (b.id === GOAL ? b.h : D.h);
   if (down) {
     const x1 = p.x + w(p) / 2, y1 = p.y + p.h, x2 = q.x + w(q) / 2, y2 = q.y;
     const dy = Math.max(16, (y2 - y1) / 2);
     return `M${x1},${y1} C${x1},${y1 + dy} ${x2},${y2 - dy} ${x2},${y2}`;
   }
-  const x1 = p.x + w(p), y1 = p.y + h(p) / 2, x2 = q.x, y2 = q.y + h(q) / 2;
-  const dx = Math.max(Math.min(24, D.gapX / 2), (x2 - x1) / 2);
-  return `M${x1},${y1} C${x1 + dx},${y1} ${x2 - dx},${y2} ${x2},${y2}`;
+  return rounded(route(p.x + w(p), p.y + h(p) / 2, q.x, q.y + h(q) / 2, D.gapX, D.gapY, blocks));
 }
 
 /** The region for what leaves this machine (a push, a pull request), right of the plan, once a step does: its
@@ -797,6 +818,14 @@ function ring(grp: SVGElement, portion: number, x: number, y: number, r: number)
   if (portion >= 1) return void mark(grp, "landed", x, y, r);
   const arc = mark(grp, "portion", x, y, r).lastElementChild as SVGPathElement;
   if (portion > 0) arc.style.strokeDasharray = `${portion * 100} 100`; else arc.remove();
+}
+
+/** A sub-goal's title as a band's header and a lanes group say it: without the plan text's `? ` (its mark for a
+ *  suggestion, where a planner left it in a title), and where the planner wrote `Name: what it covers`, its name
+ *  alone (`CLI`, not `CLI: the walking skeleton every provided test starts…`); ``whole`` for its hover. */
+function bandName(title: string): { name: string; whole: string } {
+  const whole = title.replace(/^\?\s+/, ""), at = whole.indexOf(": ");
+  return { name: at > 0 && at <= 40 ? whole.slice(0, at) : whole, whole };
 }
 
 /** A sub-goal's header, over its first row: the ring, its title, `3 of 6`, then what wants you there in words,

@@ -29,6 +29,12 @@ export const FULL_KEEP = 0.7;
 /** Rows a fit draws no larger than their own size: a plan that has room enough is whole cards, and rows blown
  *  up past their size are only big, with nothing more in them. Under TO_FULL, so a fitted plan stays rows. */
 export const ROWS_MOST = 1;
+/** A row's title, in px at the drawing's own size. */
+export const ROW_TEXT = 14;
+/** Nor smaller than this, where a row's title is still drawn at 11 px: a plan too big to read whole at it (a
+ *  Cursor tab beside its agent's chat, a pane open beside it) opens at it on the card that matters, the rest a pan
+ *  away. Under it a fitted plan was blank bars. */
+export const ROWS_FROM = 11 / ROW_TEXT;
 /** Zooming: whole cards turn to rows under the first, rows to whole cards over the second. */
 export const TO_COMPACT = 0.55, TO_FULL = 1.2;
 
@@ -54,23 +60,33 @@ export const percent = (level: Level, k: number) => Math.round((100 * k) / ratio
 
 /** The scale and the place at which a drawing sits whole in its canvas, in the middle and clear of ``foot`` px
  *  at the canvas's foot (the zoom's buttons, the legend): the largest scale that fits, never over ``most`` (a
- *  small plan is not blown up past it). ``whole`` is false when even the smallest scale cannot hold it. */
-export function fitView(canvas: Size, drawing: Size, foot = 0, most = 1): Zoom & { whole: boolean } {
+ *  small plan is not blown up past it), nor under ``least``. ``whole`` is false when it cannot hold it at ``least``:
+ *  it is then at its top left along each side it overflows. */
+export function fitView(canvas: Size, drawing: Size, foot = 0, most = 1, least = ZOOM_MIN): Zoom & { whole: boolean } {
   const h = Math.max(1, canvas.h - foot);
   const want = Math.min(most, canvas.w / Math.max(1, drawing.w), h / Math.max(1, drawing.h));
-  const k = Math.max(ZOOM_MIN, want);
-  return { k, tx: Math.max(0, (canvas.w - drawing.w * k) / 2), ty: Math.max(0, (h - drawing.h * k) / 2), whole: want >= ZOOM_MIN };
+  const k = Math.max(least, want);
+  return { k, tx: Math.max(0, (canvas.w - drawing.w * k) / 2), ty: Math.max(0, (h - drawing.h * k) / 2), whole: want >= least };
 }
 
 /** How a plan opens in its pane: as whole cards where they fit at a scale they read at (``keep``: the level on
- *  screen, which whole cards hold down to FULL_KEEP), else as rows, fitted and drawn no larger than their own size;
- *  null when not even rows fit at the smallest scale. ``rows`` (the plan's size laid out as rows) is asked for
- *  only when it is needed. */
-export function fitPlan(canvas: Size, full: Size, rows: () => Size, foot = 0, keep: Level = "compact"): (Zoom & { level: Level }) | null {
+ *  screen, which whole cards hold down to FULL_KEEP), else as rows, fitted and drawn no larger than their own size
+ *  nor smaller than ROWS_FROM (``whole`` false: the plan is larger than its pane). ``rows`` (the plan's size laid
+ *  out as rows) is asked for only when it is needed. */
+export function fitPlan(canvas: Size, full: Size, rows: () => Size, foot = 0, keep: Level = "compact"): Zoom & { level: Level; whole: boolean } {
   const whole = fitView(canvas, full, foot);
-  if (whole.k >= (keep === "full" ? FULL_KEEP : FULL_FROM)) return { level: "full", k: whole.k, tx: whole.tx, ty: whole.ty };
-  const far = fitView(canvas, rows(), foot, ROWS_MOST);
-  return far.whole ? { level: "compact", k: far.k, tx: far.tx, ty: far.ty } : null;
+  if (whole.k >= (keep === "full" ? FULL_KEEP : FULL_FROM)) return { level: "full", ...whole };
+  return { level: "compact", ...fitView(canvas, rows(), foot, ROWS_MOST, ROWS_FROM) };
+}
+
+/** A fit larger than its canvas, moved just enough to bring a box of the drawing (the card that matters) ``margin``
+ *  px inside the canvas, and held to it: the plan's start and its sub-goals' titles stay in view where they can. */
+export function onto(z: Zoom, canvas: Size, drawing: Size, b: Rect, margin = 24): Zoom {
+  const along = (t: number, room: number, at: number, len: number) => {
+    const lo = at * z.k + t, hi = (at + len) * z.k + t;
+    return hi > room - margin ? t - (hi - room + margin) : lo < margin ? t - lo + margin : t;
+  };
+  return hold({ k: z.k, tx: along(z.tx, canvas.w, b.x, b.w), ty: along(z.ty, canvas.h, b.y, b.h) }, canvas, drawing);
 }
 
 /** A pan never loses the drawing: one larger than the canvas stays against an edge at most, a smaller one

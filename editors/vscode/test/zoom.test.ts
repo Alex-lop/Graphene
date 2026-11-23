@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { KEYS } from "../src/graph/words.ts";
 import { wrap } from "../src/graph/marks.ts";
-import { CARD, CARD_TEXT, dotGap, FAR, fitPlan, fitView, FULL_FROM, FULL_KEEP, hold, ROWS_MOST, levelFor, miniFrame, miniSize, nearest, offScreen, panTo, percent, switchK, TO_COMPACT, TO_FULL, wheelK,
+import { CARD, CARD_TEXT, dotGap, FAR, fitPlan, fitView, FULL_FROM, FULL_KEEP, hold, ROW_TEXT, ROWS_FROM, ROWS_MOST, levelFor, miniFrame, miniSize, nearest, offScreen, onto, panTo, percent, switchK, TO_COMPACT, TO_FULL, wheelK,
          ZOOM_MAX, ZOOM_MIN, zoomK } from "../src/graph/zoom.ts";
 
 test("the zoom goes out to a fifth and in to three times; what is not a number is 1", () => {
@@ -38,33 +38,50 @@ test("a fit is the largest scale that holds the whole drawing, never over 1, in 
   assert.equal(fitView({ w: 1280, h: 670 }, { w: 6400, h: 1000 }).whole, true, "at the floor exactly it still fits");
 });
 
-test("a plan opens as whole cards where they fit at 11/12 or more, else as rows, fitted; no scale may hold it", () => {
+test("a plan opens as whole cards where they fit at 11/12 or more, else as rows, fitted, never under 11 px", () => {
   const canvas = { w: 1280, h: 670 }, never = () => { throw new Error("the rows were not needed"); };
   // a few tasks: whole cards at 0.93, their smallest words over 11 px
-  const some = fitPlan(canvas, { w: 1380, h: 600 }, never, 46)!;
+  const some = fitPlan(canvas, { w: 1380, h: 600 }, never, 46);
   assert.equal(some.level, "full");
-  assert.ok(Math.abs(some.k - 1280 / 1380) < 1e-9 && some.tx === 0 && Math.abs(some.ty - (624 - 600 * some.k) / 2) < 1e-9);
+  assert.ok(Math.abs(some.k - 1280 / 1380) < 1e-9 && some.tx === 0 && Math.abs(some.ty - (624 - 600 * some.k) / 2) < 1e-9 && some.whole);
   assert.ok(FULL_FROM * CARD_TEXT >= 11 - 1e-9 && CARD_TEXT >= 12, "a whole card's smallest words are drawn at 11 px or more");
   // at the threshold, still whole; a hair under it, rows
-  assert.equal(fitPlan({ w: 917, h: 2000 }, { w: 1000, h: 100 }, never)!.level, "full");
-  assert.equal(fitPlan({ w: 916, h: 2000 }, { w: 1000, h: 100 }, () => ({ w: 700, h: 60 }))!.level, "compact");
-  // twenty-six: whole cards would sit at a third, so rows, fitted to the width, in the middle above the foot
-  const many = fitPlan(canvas, { w: 2618, h: 1982 }, () => ({ w: 1744, h: 784 }), 46)!;
+  assert.equal(fitPlan({ w: 917, h: 2000 }, { w: 1000, h: 100 }, never).level, "full");
+  assert.equal(fitPlan({ w: 916, h: 2000 }, { w: 1000, h: 100 }, () => ({ w: 700, h: 60 })).level, "compact");
+  // twenty-six in a wide tab: whole cards would sit at a third, so rows, fitted to the width, in the middle above the foot
+  const many = fitPlan({ w: 1440, h: 800 }, { w: 2618, h: 1982 }, () => ({ w: 1744, h: 784 }), 46);
   assert.equal(many.level, "compact");
-  assert.ok(Math.abs(many.k - 1280 / 1744) < 1e-9 && many.tx === 0 && Math.abs(many.ty - (624 - 784 * many.k) / 2) < 1e-9);
-  assert.ok(many.k * 14 >= 9, "a row's title is drawn at 9 px or more there");
+  assert.ok(Math.abs(many.k - 1440 / 1744) < 1e-9 && many.tx === 0 && Math.abs(many.ty - (754 - 784 * many.k) / 2) < 1e-9 && many.whole);
   // rows that would fit at more than their own size are drawn at it, never blown up, and stay rows
-  assert.equal(fitPlan({ w: 2600, h: 1400 }, { w: 2618, h: 1982 }, () => ({ w: 1744, h: 784 }), 46)!.k, ROWS_MOST);
+  assert.equal(fitPlan({ w: 2600, h: 1400 }, { w: 2618, h: 1982 }, () => ({ w: 1744, h: 784 }), 46).k, ROWS_MOST);
   assert.equal(ROWS_MOST, 1);
   assert.equal(levelFor("compact", ROWS_MOST), "compact");
   // fitted again with whole cards on screen (a pane opened beside them), they hold down to FULL_KEEP
-  assert.equal(fitPlan({ w: 780, h: 2000 }, { w: 1000, h: 100 }, never, 0, "full")!.level, "full");
-  assert.equal(fitPlan({ w: 700, h: 2000 }, { w: 1000, h: 100 }, never, 0, "full")!.level, "full");
-  assert.equal(fitPlan({ w: 699, h: 2000 }, { w: 1000, h: 100 }, () => ({ w: 700, h: 60 }), 0, "full")!.level, "compact");
-  assert.equal(fitPlan({ w: 780, h: 2000 }, { w: 1000, h: 100 }, () => ({ w: 700, h: 60 }), 0, "compact")!.level, "compact");
+  assert.equal(fitPlan({ w: 780, h: 2000 }, { w: 1000, h: 100 }, never, 0, "full").level, "full");
+  assert.equal(fitPlan({ w: 700, h: 2000 }, { w: 1000, h: 100 }, never, 0, "full").level, "full");
+  assert.equal(fitPlan({ w: 699, h: 2000 }, { w: 1000, h: 100 }, () => ({ w: 700, h: 60 }), 0, "full").level, "compact");
+  assert.equal(fitPlan({ w: 780, h: 2000 }, { w: 1000, h: 100 }, () => ({ w: 700, h: 60 }), 0, "compact").level, "compact");
   assert.ok(FULL_KEEP > TO_COMPACT && FULL_KEEP < FULL_FROM);
-  // hundreds of tasks: not even rows fit at the floor
-  assert.equal(fitPlan(canvas, { w: 20000, h: 9000 }, () => ({ w: 12000, h: 4000 }), 46), null);
+  // a Cursor tab beside its agent's chat (680 px), a pane beside the plan, hundreds of tasks: rows at the floor,
+  // their titles at 11 px, larger than the pane (``whole`` false), at its top left; never blank bars
+  assert.ok(ROWS_FROM * ROW_TEXT >= 11 - 1e-9 && ROWS_FROM > FAR, "a fitted row's title reads");
+  for (const [room, rows] of [[{ w: 680, h: 780 }, { w: 1744, h: 784 }], [{ w: 440, h: 700 }, { w: 690, h: 300 }], [canvas, { w: 12000, h: 4000 }]] as const) {
+    const fit = fitPlan(room, { w: 20000, h: 9000 }, () => rows, 46);
+    assert.deepEqual(fit, { level: "compact", k: ROWS_FROM, tx: 0, ty: rows.h * ROWS_FROM <= room.h - 46 ? (room.h - 46 - rows.h * ROWS_FROM) / 2 : 0, whole: false });
+  }
+});
+
+test("a plan larger than its pane opens moved just enough to show the card that matters, its start kept where it can be", () => {
+  const canvas = { w: 680, h: 500 }, drawing = { w: 1744, h: 784 }, k = ROWS_FROM, fit = { k, tx: 0, ty: 0 };
+  // in view already: nothing moves, the plan's start and its sub-goals' titles stay on screen
+  assert.deepEqual(onto(fit, canvas, drawing, { x: 400, y: 100, w: 168, h: 48 }), fit);
+  // past the right edge: in by just enough to stand 24 px inside it
+  const far = onto(fit, canvas, drawing, { x: 1200, y: 100, w: 168, h: 48 });
+  assert.ok(Math.abs((1200 + 168) * k + far.tx - (680 - 24)) < 1e-9 && far.ty === 0);
+  // below the foot: up; and never past the drawing's own edges
+  const low = onto(fit, canvas, drawing, { x: 0, y: 760, w: 168, h: 24 });
+  assert.equal(low.ty, 500 - 784 * k);
+  assert.equal(onto(fit, canvas, drawing, { x: 1700, y: 0, w: 44, h: 48 }).tx, 680 - 1744 * k);
 });
 
 test("whole cards turn to rows under 0.55 and rows to whole cards over 1.2; between the two a level holds", () => {
