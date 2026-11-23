@@ -5,6 +5,7 @@
 import * as vscode from "vscode";
 import * as C from "./commands.ts";
 import { draftKey, draftOf, type Draft } from "./graph/draft.ts";
+import { unanswered } from "./home/cards.ts";
 import { check, type FromPage } from "./graph/check.ts";
 import { beside, opens, seen, type Seen } from "./open.ts";
 import type { Session } from "./session.ts";
@@ -21,6 +22,7 @@ export class GraphHost {
   private was: Seen | null = null; // the last snapshot read: a start is a change from it (open.ts)
   private shut = false; // a person closed the tab in this window: no start opens it again (open.ts)
   private wanted = false; // Graphene's side bar came into view, and no plan was read since
+  private starting = false; // a Start is under way: a double click is one Start
   private closed = new vscode.EventEmitter<void>();
   /** The panel was closed (Watch the Demo ends its replay then). */
   readonly onDidClose = this.closed.event;
@@ -166,9 +168,9 @@ export class GraphHost {
       case "drop": return run("dropStep", arg);
       case "accept": return run("accept", arg);
       case "tell": return run("tell", arg);
+      case "start": return this.startPlan();
       case "run": return run("runReady");
       case "stop": return run("stop");
-      case "stopAfter": return typeof m.value === "boolean" ? run("stopAfter", m.value) : undefined; // the header's switch: Home's host moves it, so Exact goes off with it
       case "saveWorkflow": return run("saveWorkflow"); // the header's Save as workflow: Home's host asks its name and writes it
       case "markDone": return run("markDone", arg); // a step past the line: approving it runs its command
       case "cockpit": return run("openCockpit");
@@ -178,6 +180,23 @@ export class GraphHost {
       case "signOff": return run("signOff", arg);
       case "answer": return run("answer", m.target !== undefined ? { ...arg, option: m.target } : arg);
       case "handBack": return run("handBack", arg);
+    }
+  }
+
+  /** Start, as Home's (home.ts `start`): every suggested task accepted, then an agent on each that is ready, in a
+   *  terminal. A question with no default stops it; with Exact on (Home's box: board on, every task reviewed, auto
+   *  off) so does any open question, as Home's Start waits for every answer. */
+  private async startPlan() {
+    const s = this.session.state;
+    if (this.starting || !s || unanswered(s)) return;
+    this.starting = true;
+    try {
+      const exact = s.questions.length > 0 && s.envelope.review === "every" && s.envelope.auto === "off"
+        && /^board:\s*on\b/m.test((await this.session.run(["config"])).stdout);
+      if (exact) return void vscode.window.showInformationMessage("Exact is on: Start waits for your answer to the plan's question.");
+      if (await this.session.act(C.acceptAll())) await run("runReady");
+    } finally {
+      this.starting = false;
     }
   }
 
@@ -198,7 +217,6 @@ export class GraphHost {
   <header>
     <div id="replay" hidden></div>
     <div id="goal">Graphene</div>
-    <div id="counts"></div>
     <div id="auto" hidden></div>
     <div id="actions"></div>
   </header>

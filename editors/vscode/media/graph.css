@@ -31,7 +31,8 @@ body {
   display: flex; flex-direction: column; background: var(--bg); color: var(--fg);
   font-family: var(--font); font-size: var(--vscode-font-size, 13px); overflow: hidden;
 }
-/* the header, two rows: the goal and its buttons; then the stages, the switch, the auto line and the counts */
+/* the header, two rows at any width: the goal and its buttons; then the stages, and auto's line while it works.
+   Each number is said once: the cost is in Run's note, and what needs you is the canvas's chip */
 header {
   display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 10px 16px 8px;
   border-bottom: 1px solid var(--divider);
@@ -49,18 +50,16 @@ header:has(#pipe[hidden])::after { display: none; }
 #actions { order: 3; margin-left: auto; display: flex; gap: 6px; align-items: center; }
 #actions button { height: 28px; padding: 0 10px; }
 #b-help { width: 28px; padding: 0; justify-content: center; }
-/* one pipeline, the plan first: Plan, Run, Review; then the one switch, Stop after the plan */
+/* one pipeline, the plan first: Plan, Run, Review */
 #pipe { display: contents; }
 #pipe[hidden] { display: none; }
 #stages { order: 5; display: flex; align-items: center; }
-#b-stop-after { order: 6; margin-left: 10px; }
 #auto { /* what auto is at: a line, its dot amber */
-  order: 7; flex: 1 1 0; min-width: 160px; margin-left: 10px; /* it takes the row's room and is cut to it before it wraps */
+  order: 7; flex: 1 1 0; min-width: 160px; margin-left: 18px; /* it takes the row's room and is cut to it before it wraps */
   color: var(--dim); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 #auto::before { content: ""; display: inline-block; width: 6px; height: 6px; margin: 0 6px 1px 0; border-radius: 50%; background: var(--running); }
 #auto[hidden] { display: none; }
-#counts { order: 8; margin-left: auto; color: var(--dim); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .stage { display: flex; align-items: center; gap: 6px; padding: 3px 10px 3px 4px; border-radius: 99px; color: var(--dim); white-space: nowrap; }
 .stage + .stage { margin-left: 22px; position: relative; }
 .stage + .stage::before { content: ""; position: absolute; left: -20px; top: 50%; width: 18px; height: 1px; background: var(--line-2); }
@@ -71,12 +70,6 @@ header:has(#pipe[hidden])::after { display: none; }
 /* where the plan is: a quiet pill, its number in the accent (amber is the working colour, not the stage's) */
 .stage.now { color: var(--fg); background: var(--fill-2); }
 .stage.now .n { border-color: var(--accent-line); background: var(--accent-line); color: var(--bg); }
-button.switch { background: none; border: none; padding: 2px 0; gap: 8px; color: var(--dim); font-size: 12px; }
-button.switch:hover { background: none; color: var(--fg); }
-.switch i { width: 28px; height: 16px; border-radius: 99px; background: var(--line-3); position: relative; flex: none; transition: background 0.2s; }
-.switch i::after { content: ""; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%; background: var(--knob); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25); transition: left 0.2s; }
-.switch[aria-checked="true"] i { background: var(--accent); }
-.switch[aria-checked="true"] i::after { left: 14px; }
 main { flex: 1; display: flex; min-height: 0; }
 #canvas { /* clipped, never scrolled: the page's own pan moves the plan, so a focus out of view cannot slide the buttons and the legend away */
   flex: 1; position: relative; overflow: clip; cursor: grab; outline: none; background-color: var(--bg);
@@ -150,32 +143,22 @@ footer#hint.linking { color: var(--edge-hot); display: flex; align-items: center
 .hint-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 footer#hint button { padding: 1px 8px; font-size: 1em; }
 footer#hint.asks { color: var(--review); }
-#b-more { display: none; padding: 3px 6px; order: 1; }
-/* the sidebar's graph is narrow: the header is one line, the goal and a `…` that unfolds the buttons (the
-   counts and the auto line are in the goal's hover and the footer); the details go under the canvas */
+/* a narrow tab (the editor area beside the side bar and an agent's chat): the header wraps as it does anywhere,
+   and the details go under the canvas */
 @media (max-width: 700px) {
   main { flex-direction: column; }
-  /* under the canvas the pane can be shorter than its head and its acts (the side bar's Graph view at a
-     fresh profile's split is 120 px tall): the whole pane scrolls, so a mouse reaches every act */
+  /* under the canvas the pane can be shorter than its head and its acts (a short tab, a panel open under it):
+     the whole pane scrolls, so a mouse reaches every act */
   #details { width: auto; max-height: 55%; border-left: none; border-top: 1px solid var(--divider); overflow: auto; }
   #details .d-body { flex: none; min-height: auto; overflow: visible; }
   footer#hint.linking .hint-text { white-space: normal; } /* the ways out read whole: the line wraps */
-  header { padding: 5px 10px 4px; }
-  header::after { display: none; }
-  #goal { flex: 1; max-width: none; } /* the `…` at the line's end */
-  #replay { order: 0; flex-basis: 100%; }
-  /* the side bar's canvas is small (the lanes, or the graph laid downward): the keys and the wheel zoom it. A
+  /* a canvas under 560 px shows the lanes, or the graph laid downward: the keys and the wheel zoom it. A
      graph drawn across (a canvas over 560 px) is fitted to its pane, so it keeps the buttons that say how far
      out it is and bring it back, and its minimap */
   #legend, #need span, body:not([data-mode="across"]) :is(#zoom, #minimap) { display: none; }
   #minimap { bottom: 14px; } /* no legend here to stand on; and smaller, as its canvas is */
   #minimap svg { max-width: 120px; height: auto; }
   body:not([data-mode="across"]) #planning { left: 12px; bottom: 8px; } /* no buttons here to sit above */
-  #b-more { display: inline-flex; }
-  #counts, #auto, #pipe { display: none; } /* Home, above the side bar's graph, shows the stages and the switch */
-  #actions { display: none; order: 5; flex-basis: 100%; flex-wrap: wrap; margin: 4px 0 0; }
-  header.open #actions { display: flex; }
-  #actions button { height: auto; padding: 3px 7px; }
 }
 
 /* buttons, as VS Code's: the primary filled; a quiet one a hairline round its words, so the one filled is the act */
@@ -551,7 +534,6 @@ body.vscode-high-contrast-light .ring, body.vscode-high-contrast-light .lane.sel
 body.vscode-high-contrast .fork.kept .chip, body.vscode-high-contrast .l-chip.kept,
 body.vscode-high-contrast-light .fork.kept .chip, body.vscode-high-contrast-light .l-chip.kept { fill: none; background: none; }
 body.vscode-high-contrast button:not(.tab), body.vscode-high-contrast-light button:not(.tab) { border-color: var(--border); } /* a tab's underline is its own */
-body.vscode-high-contrast .switch i, body.vscode-high-contrast-light .switch i { outline: 1px solid var(--border); }
 body.vscode-high-contrast .stage.now, body.vscode-high-contrast-light .stage.now { background: none; outline: 1px solid var(--border); }
 body.vscode-high-contrast #help, body.vscode-high-contrast-light #help { background: rgba(0, 0, 0, 0.7); }
 body.vscode-high-contrast #svg.has-sel .edge, body.vscode-high-contrast-light #svg.has-sel .edge { opacity: 1; } /* the chosen card's lines are the focus colour: the rest keep their contrast */
@@ -559,7 +541,7 @@ body.vscode-high-contrast #svg.has-sel .edge, body.vscode-high-contrast-light #s
 /* motion only where work is happening, and none when the system asks for less: a working edge stays dashed and
    amber, its card keeps its ring and a still halo */
 @media (prefers-reduced-motion: reduce) {
-  .task, .goal, .edge, .lane, #svg.glide, .switch i, .switch i::after, #minimap, .port { transition: none; }
+  .task, .goal, .edge, .lane, #svg.glide, #minimap, .port { transition: none; }
   .task.fresh, .lane.fresh, .edge.run, .mk .spin, .halo, #planning::before, .wave.planning::before { animation: none; }
   .halo { opacity: 0.6; }
 }

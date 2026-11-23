@@ -265,20 +265,28 @@ test("a form refusal is inline once; an act with no form still gets a notificati
   assert.equal(ui.notifications.length, 1);
 });
 
-test("the graph header's switch moves as Home's does: with Exact on, its three settings go back before auto turns on", async () => {
-  const { HomeHost } = await import("../src/home.ts");
+test("the header's Start is Home's: every suggested task accepted, then the run; a question with no default holds it, and with Exact on any question", async () => {
   const { parseState } = await import("../src/state.ts");
-  const state = parseState(JSON.stringify({ envelope: { review: "every", auto: "off" } }));
+  const { readFileSync } = await import("node:fs");
+  const C = await import("../src/commands.ts");
+  const plan = parseState(readFileSync(new URL("./fixtures/proposals.json", import.meta.url), "utf8")); // its question has a default
   const ran: string[][] = [];
-  const fake = { ...(session as object), state, seen: new Set(), onDidSee: () => ({ dispose() {} }), refresh: async () => {},
-    run: async (argv: string[]) => { ran.push(argv); return { code: 0, stdout: "board: on\n", stderr: "" }; }, // `graphene config`: Exact is on
-    act: async (argv: string[]) => { ran.push(argv); return true; } } as never;
-  new HomeHost(context, fake); // it registers graphene.stopAfter; Home's page was never opened, so the board setting is read then
-  new GraphHost(context, fake).show();
-  await vscode.panels.at(-1)!.w.receive({ type: "act", act: "stopAfter", id: "", value: false });
-  assert.deepEqual(vscode.commands.ran.at(-1), ["graphene.stopAfter", false]);
-  assert.deepEqual(ran.filter((argv) => argv.length > 1), [["config", "set", "board", "auto"], ["config", "set", "review", "every"], ["config", "set", "auto", "off"],
-                                                          ["config", "set", "auto", "on"]], "Exact's three go back together, then the switch moves");
+  const page = (state: unknown, board = "off") => {
+    new GraphHost(context, { ...(session as object), state, act: async (argv: string[]) => { ran.push(argv); return true; },
+      run: async (argv: string[]) => { ran.push(argv); return { code: 0, stdout: `board: ${board}\n`, stderr: "" }; } } as never).show();
+    return vscode.panels.at(-1)!.w;
+  };
+  const started = () => vscode.commands.ran.filter((r) => r[0] === "graphene.runReady").length, n = started();
+  await page(plan).receive({ type: "act", act: "start", id: "" });
+  assert.deepEqual([ran, started() - n], [[C.acceptAll()], 1], "accepted, then the run, as Home's Start");
+  ran.length = 0;
+  await page({ ...plan, questions: plan.questions.map((q) => ({ ...q, default: null })) }).receive({ type: "act", act: "start", id: "" });
+  const exact = { ...plan, envelope: { ...plan.envelope, review: "every", auto: "off" } };
+  await page(exact, "on").receive({ type: "act", act: "start", id: "" });
+  assert.deepEqual([ran, started() - n], [[["config"]], 1], "held: nothing accepted, nothing run");
+  ran.length = 0;
+  await page(exact, "off").receive({ type: "act", act: "start", id: "" });
+  assert.deepEqual([ran.at(-1), started() - n], [C.acceptAll(), 2], "Exact off: the default answers, as Home's Start takes it");
 });
 
 test("Home disables Start while it is busy (a workflow proposing), so a plan that appears cannot swallow the click", async () => {
