@@ -817,8 +817,8 @@ function cardFoot(grp: SVGGElement, c: CheckMark, says: (n: number) => string, h
   g.appendChild(el("path", { class: "tint", d: `M0.5,${y}H${w - 0.5}V${h - 12}a11.5,11.5 0 0 1 -11.5,11.5H12a11.5,11.5 0 0 1 -11.5,-11.5Z` }));
   g.appendChild(el("path", { class: "hair", d: `M0.5,${y}H${w - 0.5}` }));
   mark(g, c.box, PAD + 7, y + 11, 7);
-  const whole = says(Infinity);
-  g.appendChild(el("title", {}, [whole ? `done when ${whole}` : "", c.words].filter(Boolean).join(" · ") || "done when you approve"));
+  const whole = says(Infinity), hover = [whole ? `done when ${whole}` : "", c.words].filter(Boolean).join(" · ") || (c.box === "approval" ? "done when you approve" : "");
+  if (hover) g.appendChild(el("title", {}, hover)); // a draft that has said neither has nothing to say yet
   const x = PAD + 20, room = w - PAD - x;
   const v = g.appendChild(el("text", { class: "foot-v", x, y: y + 15 }));
   let n = Math.floor(room / 7.2); // a mono character at 12 px; then by its drawn length
