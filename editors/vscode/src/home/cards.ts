@@ -9,7 +9,7 @@ import { WHO } from "./who.ts";
 
 export const ACTS = ["startAll", "discardAll", "run", "stop", "drop", "answer", "openDiff", "compare", "keep",
                      "approve", "sendBack", "offer", "tryAgain", "allow", "message", "markDone", "showGraph", "demo", "setup",
-                     "install", "setKey", "refresh", "openFolder", "exact", "stopAfter", "runWorkflow"] as const;
+                     "install", "setKey", "refresh", "openFolder", "exact", "stopAfter", "review", "runWorkflow"] as const;
 export type Act = (typeof ACTS)[number];
 
 /** ``main``: the card's one filled button, if any. ``note``: a dim word after the label (a question's default). */
@@ -182,11 +182,11 @@ export function home(s: State, seen: ReadonlySet<string> = new Set(), exact = fa
     buttons: [{ label: "Remove", act: "drop" as const, id: t.id, title: "leave this task out of the plan" }],
   })), {
     note: exact && s.questions.length
-      ? `Exact is on: answer the ${plural(s.questions.length, "open question")} under Needs you first (a default's button confirms it), then start.`
+      ? `Start waits for every answer: answer the ${plural(s.questions.length, "open question")} under Needs you first (a default's button confirms it).`
       : unanswered(s) ? `Answer the ${plural(unanswered(s), "question")} with no default under Needs you first: a question with no default stops the run.`
       : "Read what each task may change and what proves it done. A card's × leaves it out.",
     buttons: [{ label: "Start", act: "startAll", main: true, off: (exact && s.questions.length > 0) || unanswered(s) > 0,
-                title: exact && s.questions.length ? "Exact is on: it waits for your answers" : unanswered(s) ? "it waits for an answer: a question with no default is open"
+                title: exact && s.questions.length ? "it waits for every answer, as Settings say" : unanswered(s) ? "it waits for an answer: a question with no default is open"
                   : "accept these tasks and start an agent on each" },
               { label: "Discard all", act: "discardAll" }],
   });
@@ -236,7 +236,7 @@ export type FromHome = { type: "ready" } | { type: "act"; act: Act; id: string; 
 
 /** The acts that take no task: each still checked for what it carries. */
 const GLOBAL: readonly Act[] = ["startAll", "discardAll", "run", "stop", "showGraph", "demo", "setup", "install",
-                                "setKey", "refresh", "openFolder", "exact", "stopAfter", "runWorkflow"];
+                                "setKey", "refresh", "openFolder", "exact", "stopAfter", "review", "runWorkflow"];
 
 /** A message from the page, checked against the plan before anything runs: a known act; a planner the Set Up
  *  offers; a task the plan has (a question, for answer); an option the question has; an offer
@@ -249,7 +249,7 @@ export function checkHome(m: unknown, s: State | null, workflows: readonly Pick<
   const act = r.act as Act;
   const id = typeof r.id === "string" ? r.id : "";
   const arg = typeof r.arg === "string" ? r.arg : undefined;
-  if (act === "exact" || act === "stopAfter") return typeof r.flag === "boolean" ? { type: "act", act, id: "", flag: r.flag } : null;
+  if (act === "exact" || act === "stopAfter" || act === "review") return typeof r.flag === "boolean" ? { type: "act", act, id: "", flag: r.flag } : null;
   if (act === "runWorkflow") return workflows.some((w) => w.name === arg && !w.error) ? { type: "act", act, id: "", arg } : null; // one the repository has
   if (act === "setup") return WHO.some((w) => w.word === arg) ? { type: "act", act, id: "", arg, flag: r.flag === true } : null;
   if (act === "setKey") return arg === undefined || /^\w+$/.test(arg) ? { type: "act", act, id: "", arg } : null;

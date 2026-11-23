@@ -5,7 +5,7 @@
 import * as vscode from "vscode";
 import * as C from "./commands.ts";
 import { checkHome, home, unanswered, type FromHome } from "./home/cards.ts";
-import { EXACT, WHO } from "./home/who.ts";
+import { WHO } from "./home/who.ts";
 import { keyTrouble, needs, tryAgain, widen } from "./needs.ts";
 import type { Session } from "./session.ts";
 import type { Task } from "./state.ts";
@@ -173,8 +173,9 @@ export class HomeHost implements vscode.WebviewViewProvider {
       if (!on || !ok) await this.context.workspaceState.update(KEY, undefined);
       await this.readBoard();
       await this.session.refresh();
-      this.say(!ok ? ["Exact did not change: graphene refused a setting."] : on ? [`${EXACT}.`] : ["Exact is off: what you leave unanswered takes its default at Start."],
-               { bad: !ok });
+      this.say(!ok ? ["Wait for every answer did not change: graphene refused a setting."]
+        : on ? ["Start waits for every answer now, and each finished task for your approval."]
+        : ["Start no longer waits for every answer: what you leave unanswered takes its default at Start."], { bad: !ok });
     } finally {
       this.switching = false;
       this.push();
@@ -203,6 +204,7 @@ export class HomeHost implements vscode.WebviewViewProvider {
       case "startAll": return (this.exact && s.state?.questions.length) || (s.state && unanswered(s.state)) ? undefined : this.start();
       case "exact": return this.setExact(m.flag === true);
       case "stopAfter": return this.setStopAfter(m.flag === true);
+      case "review": return this.setReview(m.flag === true);
       case "runWorkflow": return this.runWorkflow(m.arg!);
       case "discardAll": return this.discard();
       case "run": return void s.terminal("graphene run", C.runReady());
@@ -235,6 +237,15 @@ export class HomeHost implements vscode.WebviewViewProvider {
     if (!(await this.session.act(C.stopAfter(on)))) return;
     this.say([on ? "Stop after the plan is on: a plan your agent proposes waits here for you to start it."
       : "Stop after the plan is off: a plan that fits your limits runs without waiting. A question with no default still stops it."]);
+    this.push();
+  }
+
+  /** Approval, as Set Up asks it: each finished task waits for the person before it lands (`review: every`).
+   *  Off while Exact holds it: Exact's settings go back together first, as they do for the switch. */
+  private async setReview(on: boolean) {
+    if (!on && this.exact) await this.setExact(false);
+    if (!(await this.session.act(C.setting("review", on ? "every" : "off")))) return;
+    this.say([on ? "Each finished task waits for your approval before it lands." : "Approval is off: a finished task lands once its check passes."]);
     this.push();
   }
 

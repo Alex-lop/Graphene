@@ -260,8 +260,11 @@ test("Exact: Start waits while anything the plan asks is open, and says how many
   assert.equal(start(home(s)).off, false, "off by default: what is left open takes its default at Start");
   const exact = home(s, new Set(), true);
   assert.equal(start(exact).off, true);
-  assert.match(suggested(exact).note, /^Exact is on: answer the 1 open question under Needs you first/);
+  assert.match(suggested(exact).note, /^Start waits for every answer: answer the 1 open question under Needs you first/);
   assert.equal(start(home({ ...s, questions: [] }, new Set(), true)).off, false, "nothing open: nothing to wait for");
   assert.deepEqual(checkHome({ type: "act", act: "exact", flag: true }, s), { type: "act", act: "exact", id: "", flag: true });
   assert.equal(checkHome({ type: "act", act: "exact" }, s), null, "the switch says which way");
+  // approval, as Set Up asks it, is its own tick in Settings: Exact no longer hides it
+  assert.deepEqual(checkHome({ type: "act", act: "review", flag: false }, s), { type: "act", act: "review", id: "", flag: false });
+  assert.equal(checkHome({ type: "act", act: "review", arg: "every" }, s), null, "the tick says which way, and nothing else");
 });

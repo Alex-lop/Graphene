@@ -3,7 +3,7 @@
 // Nothing is typed here: a plan comes from the person's coding agent, in its chat (`graphene plan propose`).
 import { STOP_AFTER, STOP_AFTER_HOVER } from "../graph/words.ts";
 import type { Act, Btn, Card, Home, Section } from "./cards.ts";
-import { ASK, EXACT, NOT_CURSOR, WHO } from "./who.ts";
+import { ASK, EXACT, EXACT_HOVER, NOT_CURSOR, WHO } from "./who.ts";
 
 declare function acquireVsCodeApi(): { postMessage(m: unknown): void; getState(): unknown; setState(s: unknown): void };
 
@@ -87,13 +87,19 @@ stopAfter.append(STOP_AFTER);
 stopAfter.title = STOP_AFTER_HOVER;
 stopAfter.addEventListener("click", () => send("stopAfter", { flag: stopAfter.getAttribute("aria-checked") !== "true" }));
 const stopNote = el("p", "pref-note", "", prefs);
-const exactLabel = el("label", "tick exact", undefined, prefs);
-const exact = el("input", "", undefined, exactLabel);
-exact.type = "checkbox";
-exactLabel.append(" Exact");
-exactLabel.title = EXACT;
-exact.addEventListener("change", () => send("exact", { flag: exact.checked }));
-el("p", "pref-note", "Start waits for every answer, and each finished task for your approval.", prefs);
+/** A tick in Settings, its box under the switch's knob. */
+function tick(cls: string, words: string, act: "review" | "exact"): HTMLInputElement {
+  const label = el("label", `tick ${cls}`, undefined, prefs);
+  const box = el("input", "", undefined, label);
+  box.type = "checkbox";
+  label.append(words);
+  box.addEventListener("change", () => send(act, { flag: box.checked }));
+  return box;
+}
+const approve = tick("approve", "Approve each finished task before it lands", "review"); // as Set Up asked it, ticked as it was left
+const exact = tick("exact", EXACT, "exact");
+exact.parentElement!.title = EXACT_HOVER;
+el("p", "pref-note", "Even a question with a default waits for you. It turns the two above on too.", prefs);
 const foot = el("div", "foot", undefined, work);
 button({ label: "Watch the demo", act: "demo" }, foot);
 document.body.append(banner, screen, work);
@@ -138,6 +144,7 @@ function render(m: Model) {
   busy.textContent = m.busy;
   busy.hidden = !m.busy;
   exact.checked = m.exact;
+  approve.checked = m.review;
   drawSaid(out, m.last);
   const focused = document.activeElement instanceof HTMLButtonElement && sections.contains(document.activeElement)
     ? document.activeElement.dataset.mark : "";
