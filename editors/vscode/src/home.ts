@@ -241,11 +241,19 @@ export class HomeHost implements vscode.WebviewViewProvider {
   }
 
   /** Approval, as Set Up asks it: each finished task waits for the person before it lands (`review: every`).
-   *  Off while Exact holds it: Exact's settings go back together first, as they do for the switch. */
+   *  Off while Exact holds it: only Exact goes (`board` back to auto), and Stop after the plan stays as Settings
+   *  show it, not as it was before Exact. Pushed either way: the page has moved its tick already. */
   private async setReview(on: boolean) {
-    if (!on && this.exact) await this.setExact(false);
-    if (!(await this.session.act(C.setting("review", on ? "every" : "off")))) return;
-    this.say([on ? "Each finished task waits for your approval before it lands." : "Approval is off: a finished task lands once its check passes."]);
+    const exact = !on && this.exact;
+    if (exact) {
+      await this.session.run(C.setting("board", "auto"));
+      await this.context.workspaceState.update("graphene.exact.before", undefined);
+      await this.readBoard();
+    }
+    if (await this.session.act(C.setting("review", on ? "every" : "off"))) {
+      this.say([on ? "Each finished task waits for your approval before it lands." : "Approval is off: a finished task lands once its check passes.",
+                ...(exact ? ["Wait for every answer is off with it."] : [])]);
+    }
     this.push();
   }
 

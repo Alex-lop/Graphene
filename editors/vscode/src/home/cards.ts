@@ -14,7 +14,8 @@ export type Act = (typeof ACTS)[number];
 
 /** ``main``: the card's one filled button, if any. ``note``: a dim word after the label (a question's default). */
 export interface Btn { label: string; act: Act; id?: string; arg?: string; main?: boolean; title?: string; off?: boolean; note?: string }
-/** ``paths``: the value is these files, drawn one a line and cut in the middle when long (``v`` says them all). */
+/** ``paths``: the value is these files, drawn one a line, a deep one from its last folder (``v`` says them all).
+ *  A ``v`` of several lines (attempts, last actions) is drawn a line each. */
 export interface Line { k?: string; v: string; mono?: boolean; warn?: boolean; paths?: string[] }
 export type Tone = "question" | "proposed" | "running" | "review" | "came-back" | "ready" | "waiting" | "done" | "yours";
 export interface Card { key: string; tone: Tone; title: string; tag: string; lines: Line[]; buttons: Btn[] }
@@ -30,8 +31,8 @@ const fileLine = (k: string, paths: string[], none: string): Line[] =>
   paths.length ? [{ k, v: files(paths), mono: true, paths }] : line(k, none);
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 const line = (k: string, v: string, more: Partial<Line> = {}): Line[] => (v ? [{ k, v, ...more }] : []);
-/** `a: passed, 9 lines · b: working`: each attempt at a task, as one line. */
-const attempts = (t: Task) => t.forks.map((f) => `${f.letter}: ${forkWord(f)}${f.lines !== null ? `, ${f.lines} lines` : ""}`).join(" · ");
+/** `a: passed, 9 lines`, then `b: working`: each attempt at a task, a line of its own (no dot left at a line's end). */
+const attempts = (t: Task) => t.forks.map((f) => `${f.letter}: ${forkWord(f)}${f.lines !== null ? `, ${f.lines} lines` : ""}`).join("\n");
 
 /** The first words on the page when this is not a real run: a replay, or a race against the scripted stand-in. */
 export function banner(s: State): string {
@@ -55,6 +56,15 @@ export const unanswered = (s: Pick<State, "questions">): number => s.questions.f
 const failed = (t: Task): Line[] => (t.command && t.checked.after === "failed" && t.state !== "done"
   ? [{ v: `Its command failed the last time it ran: the terminal said why. ${t.leaves ? "Approve and run" : "Run"} tries it again.`, warn: true }] : []);
 
+/** What a task is for, past its title: none when it says the title again (with an "an" before it), and only what
+ *  is new when it starts with the title (`Librarian service: collections, …`). */
+function whatFor(t: Task): string {
+  const head = `${bare(t.title)}:`, at = t.full.toLowerCase().indexOf(head);
+  const rest = bare(t.full).startsWith(head) ? t.full.slice(at + head.length).trim() : t.full;
+  if (rest === t.full) return bare(t.full) === bare(t.title) ? "" : t.full;
+  return rest && rest[0]!.toUpperCase() + rest.slice(1);
+}
+
 /** What a task is for, what it may change, and what proves it: the three lines a person reads before saying yes. */
 function contract(t: Task, name: (id: string) => string): Line[] {
   if (t.command) return [ // a command step: no agent and no files; what runs, and whether it asks first
@@ -64,7 +74,7 @@ function contract(t: Task, name: (id: string) => string): Line[] {
     ...line("After", t.needs.map(name).join(", ")),
   ];
   return [
-    ...line("What for", t.full && bare(t.full) !== bare(t.title) ? t.full : ""), // not the title again, with an "an" before it
+    ...line("What for", whatFor(t)),
     ...fileLine("May change", t.scope, "no files named"),
     { k: "Done when", v: t.check ? `${t.check} passes` : "you approve it", mono: Boolean(t.check) },
     ...(t.hollow ? [{ v: PROVES_NOTHING, warn: true }] : []), // the check ran once on the code as it is, before the run
@@ -145,7 +155,7 @@ export function home(s: State, seen: ReadonlySet<string> = new Set(), exact = fa
         continue;
       }
       waiting.push({ key: `review:${t.id}`, tone: "review", title: t.title, tag: SAY.review,
-                     lines: [...evidence(t), ...line("Last actions", t.tail.slice(-3).join(" · "), { mono: true }), // did it run its check itself?
+                     lines: [...evidence(t), ...line("Last actions", t.tail.slice(-3).join("\n"), { mono: true }), // did it run its check itself?
                              { v: opened ? "You opened these changes." : "You have not opened these changes yet.", warn: !opened }],
                      buttons: [{ label: "Open changes", act: "openDiff", id: t.id, main: !opened },
                                { label: "Approve", act: "approve", id: t.id, main: opened, title: "it lands in your repository" }, back] });

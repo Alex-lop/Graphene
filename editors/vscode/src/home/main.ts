@@ -2,7 +2,7 @@
 // library, and every word goes in as text, never as markup: task titles and the planner's words are a model's.
 // Nothing is typed here: a plan comes from the person's coding agent, in its chat (`graphene plan propose`).
 import { STOP_AFTER, STOP_AFTER_HOVER } from "../graph/words.ts";
-import type { Act, Btn, Card, Home, Section } from "./cards.ts";
+import type { Act, Btn, Card, Home, Line, Section } from "./cards.ts";
 import { ASK, EXACT, EXACT_HOVER, NOT_CURSOR, WHO } from "./who.ts";
 
 declare function acquireVsCodeApi(): { postMessage(m: unknown): void; getState(): unknown; setState(s: unknown): void };
@@ -189,43 +189,59 @@ function drawCard(c: Card): HTMLElement {
   }
   el("div", "c-title", c.title, card);
   if (c.lines.length) {
-    const dl = el("dl", "c-lines", undefined, card);
+    // one long value puts every label of the card over its value in a narrow side bar (home.css), so a card's
+    // values never zigzag between beside their label and under it; of files, the longest one shown counts
+    const size = (l: Line) => Math.max(...(l.paths ? l.paths.map(short) : l.v.split("\n")).map((x) => x.length));
+    const stack = c.lines.some((l) => l.k && size(l) > (l.mono ? 26 : 40));
+    const dl = el("dl", stack ? "c-lines stack" : "c-lines", undefined, card);
     for (const l of c.lines) {
-      const size = l.paths ? Math.max(...l.paths.map((x) => x.length)) : l.v.length; // files are one a line: the longest counts
-      const long = l.k && size > (l.mono ? 26 : 40) ? " long" : ""; // under its label in a narrow side bar (home.css)
-      const r = el("div", `c-line${l.warn ? " warn" : ""}${l.k ? "" : " wide"}${long}`, undefined, dl);
+      const r = el("div", `c-line${l.warn ? " warn" : ""}${l.k ? "" : " wide"}`, undefined, dl);
       if (l.k) el("dt", "", l.k, r);
       const dd = el("dd", l.mono ? "mono" : "", undefined, r);
       if (l.paths) for (const p of l.paths) path(p, dd);
-      else if (l.mono) code(l.v, dd);
-      else dd.textContent = l.v;
+      else for (const v of l.v.split("\n")) {
+        const row = el("span", "row", undefined, dd);
+        if (l.mono) code(v, row);
+        else row.textContent = v;
+      }
     }
   }
   const acts = c.buttons.filter((x) => x.act !== "drop");
-  if (acts.length) {
-    const row = el("div", c.tone === "question" ? "c-acts choices" : "c-acts", undefined, card); // a question's options: a list to pick from
-    for (const b of acts) button(b, row);
+  const picks = c.tone === "question" ? acts.filter((b) => b.arg !== undefined) : []; // a question's options: a list to pick from
+  const rest = acts.filter((b) => !picks.includes(b));
+  // outlined buttons only beside a filled one: with none to lead, the acts are links that wrap as a line of text
+  for (const [bs, cls] of [[picks, "c-acts choices"], [rest, rest.some((b) => b.main) ? "c-acts" : "c-acts links"]] as const) {
+    if (!bs.length) continue;
+    const row = el("div", cls, undefined, card);
+    for (const b of bs) button(b, row);
   }
   return card;
 }
 
-/** A file on a line of its own: its name whole, its folder dim and cut from the left when the line is short
- *  (`…ces/impl/RecipeLookupServiceImpl.java`); the whole path on hover. Never broken inside a word. */
+/** A file as Home shows it: deeper than two folders, its last folder and its name (`…/impl/Recipe.java`), so
+ *  every row of a card starts the same way and a folder is never cut inside its name. */
+const short = (p: string) => { const d = p.split("/"); return d.length > 3 ? `…/${d.slice(-2).join("/")}` : p; };
+
+/** A file on a line of its own, its folder dim and the whole path on hover. It breaks as a command does: after
+ *  a slash, after a long name's dots, and mid-word only when nothing else fits. */
 function path(p: string, parent: HTMLElement) {
-  const row = el("span", "path", undefined, parent);
+  const row = el("span", "row", undefined, parent);
   row.title = p;
-  const cut = p.lastIndexOf("/") + 1;
-  if (cut) el("span", "dir", `${p.slice(0, cut)}\u200e`, row); // the mark keeps the last slash on the right, as the dir is set right to left
-  el("span", "file", p.slice(cut), row);
+  const s = short(p), cut = s.lastIndexOf("/") + 1;
+  if (cut) code(s.slice(0, cut), el("span", "dir", undefined, row));
+  row.append(document.createElement("wbr"));
+  code(s.slice(cut), row);
 }
 
 /** A command, breakable where it reads as a seam: at its spaces, after a slash, and after the dots of a long
- *  dotted name (`app.cookyourbooks.services.impl.RecipeTest`). <wbr>, so a copied command is the command. */
+ *  dotted or snake_case name (`app.cookyourbooks.services.impl.RecipeTest`). <wbr>, so a copied command is the command; and a
+ *  short piece with a hyphen held whole, as the browser would break `--tests` after its dashes. */
 function code(v: string, parent: HTMLElement) {
   for (const w of v.split(/(\s+)/)) {
-    w.split(w.length >= 24 ? /(?<=[/.])/ : /(?<=\/)/).forEach((part, i) => {
+    w.split(w.length >= 24 ? /(?<=[/._])/ : /(?<=\/)/).forEach((part, i) => {
       if (i) parent.append(document.createElement("wbr"));
-      parent.append(part);
+      if (part.length < 24 && part.includes("-")) el("span", "nb", part, parent);
+      else parent.append(part);
     });
   }
 }

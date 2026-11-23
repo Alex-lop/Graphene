@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { register } from "node:module";
 import { test } from "node:test";
 import * as C from "../src/commands.ts";
 import { banner, checkHome, countsLine, home, PROVES_NOTHING, type Card, type Home } from "../src/home/cards.ts";
@@ -36,10 +37,12 @@ test("a question offers its default first, each option, and the person's own wor
                     ["pick a free one at start", "pick a free one at start", undefined, false], ["In your own words…", undefined, undefined, false]]);
 });
 
-test("a task's What for is left out when it only says the title again", () => {
+test("a task's What for is left out when it only says the title again, and says only what is new after it", () => {
   const s = fixture("proposals");
   const again = { ...s, tasks: s.tasks.map((t) => (t.id === "hello" ? { ...t, title: "export command writing json", full: "An export command writing JSON" } : t)) };
   assert.equal(card(home(again), "p:hello").lines.find((l) => l.k === "What for"), undefined);
+  const prefix = { ...s, tasks: s.tasks.map((t) => (t.id === "hello" ? { ...t, title: "Librarian service", full: "Librarian service: collections, JSON import" } : t)) };
+  assert.deepEqual(card(home(prefix), "p:hello").lines.find((l) => l.k === "What for"), { k: "What for", v: "Collections, JSON import" });
 });
 
 test("a finished task to review shows its evidence; Open changes leads until the person has opened them", () => {
@@ -57,7 +60,7 @@ test("a finished task to review shows its evidence; Open changes leads until the
 test("two attempts that both passed: the person compares them and keeps one before anything is approved", () => {
   const s = fixture("graph-race");
   const farewell = card(home(s), "review:farewell");
-  assert.deepEqual(farewell.lines, [{ k: "Attempts", v: "a: passed, 9 lines · b: passed, 15 lines" }, // words and counts: no mono
+  assert.deepEqual(farewell.lines, [{ k: "Attempts", v: "a: passed, 9 lines\nb: passed, 15 lines" }, // a line each, words and counts: no mono
                                     { v: "2 attempts passed the check. Compare them and keep one, then approve it.", warn: true }]);
   assert.deepEqual(farewell.buttons.map((b) => [b.label, b.act, b.arg, Boolean(b.main)]),
                    [["Compare attempts", "compare", undefined, true], ["Keep a", "keep", "a", false], ["Keep b", "keep", "b", false],
@@ -267,4 +270,31 @@ test("Exact: Start waits while anything the plan asks is open, and says how many
   // approval, as Set Up asks it, is its own tick in Settings: Exact no longer hides it
   assert.deepEqual(checkHome({ type: "act", act: "review", flag: false }, s), { type: "act", act: "review", id: "", flag: false });
   assert.equal(checkHome({ type: "act", act: "review", arg: "every" }, s), null, "the tick says which way, and nothing else");
+});
+
+test("unticking Approve while Exact is on turns only Exact off: Stop after the plan stays on, and the tick is redrawn even when refused", async () => {
+  // home.ts against the least of the vscode module it reaches here (this file runs in a process of its own)
+  const stub = "export const commands = { registerCommand() { return { dispose() {} }; } }; export const env = { appName: 'Code' };";
+  const hook = `export async function resolve(s, c, n) { return s === "vscode" ? { url: ${JSON.stringify(`data:text/javascript,${encodeURIComponent(stub)}`)}, shortCircuit: true } : n(s, c); }`;
+  register(`data:text/javascript,${encodeURIComponent(hook)}`);
+  const { HomeHost } = await import("../src/home.ts");
+  const ran: string[][] = [];
+  let refuse = false;
+  const session = { state: { ...fixture("proposals"), envelope: { ...fixture("proposals").envelope, review: "every", auto: "off" } }, seen: new Set(),
+    onDidChange: () => ({ dispose() {} }), onDidSee: () => ({ dispose() {} }), refresh: async () => {}, status: { kind: "ok", text: "" },
+    run: async (argv: string[]) => { ran.push(argv); return { code: 0, stdout: "board: on\n", stderr: "" }; }, // `graphene config`: Exact is on
+    act: async (argv: string[]) => { ran.push(argv); return !refuse; } };
+  const context = { subscriptions: [], workspaceState: { update: async () => {}, get: () => ({ review: "off", auto: "on" }) } };
+  const host = new HomeHost(context as never, session as never) as unknown as { readBoard(): Promise<void>; setReview(on: boolean): Promise<void>; push(): void; last: { lines: string[] } };
+  await host.readBoard();
+  let pushed = 0;
+  const push = host.push.bind(host);
+  host.push = () => { pushed++; push(); };
+  await host.setReview(false);
+  assert.deepEqual(ran.filter((a) => a[0] === "config" && a.length > 1), [["config", "set", "board", "auto"], ["config", "set", "review", "off"]], "auto is left as it is");
+  assert.deepEqual(host.last.lines, ["Approval is off: a finished task lands once its check passes.", "Wait for every answer is off with it."]);
+  refuse = true;
+  pushed = 0;
+  await host.setReview(true);
+  assert.equal(pushed, 1, "a refused setting still redraws the tick");
 });
