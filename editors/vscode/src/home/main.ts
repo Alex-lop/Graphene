@@ -55,7 +55,7 @@ function mark(parent: HTMLElement) {
   parent.appendChild(svg);
 }
 
-/** A count's words held together (`3 of 7 done`, `$0.42 spent`), and a dot with the word before it: the hero's
+/** A count's words held together (`3 of 7 done`, `$0.42 at`), and a dot with the word before it: the hero's
  *  lines wrap after a ` · `, not to leave a word or a dot alone. */
 const glue = (t: string) => t.replace(/(\d) /g, "$1 ").replace(/(?<!·) (?=[\d$])/g, " ").replaceAll(" · ", " · ");
 

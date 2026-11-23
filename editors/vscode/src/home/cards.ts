@@ -131,7 +131,9 @@ export interface Listed { name: string; goal: string; inputs: { name: string; de
  *  ``workflows``: the repository's saved graphs, each with a Run that proposes its plan with no planner call. */
 export function home(s: State, seen: ReadonlySet<string> = new Set(), exact = false, workflows: readonly Listed[] = []): Home {
   const titles: Record<string, string> = Object.fromEntries(s.tasks.map((t) => [t.id, t.title]));
-  const name = (id: string) => titles[id] ?? id;
+  // a sub-goal by its name: no "? " (the plan text's mark for a suggestion), nor what follows its first ": "
+  const goals: Record<string, string> = Object.fromEntries(s.goals.map((g) => [g.id, g.title.replace(/^\? /, "").split(": ")[0]!]));
+  const name = (id: string) => titles[id] ?? goals[id] ?? id;
   const sections: Section[] = [];
   const section = (key: string, title: string, cards: Card[], more: Partial<Section> = {}) => {
     if (cards.length) sections.push({ key, title, note: "", buttons: [], cards, folded: false, ...more });
