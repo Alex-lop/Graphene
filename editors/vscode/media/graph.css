@@ -120,6 +120,7 @@ main { flex: 1; display: flex; min-height: 0; }
 }
 #notice[hidden] { display: none; }
 .notice-head { color: var(--fg); font-weight: 600; }
+.notice-aside { font-size: 12px; margin-top: 6px; opacity: 0.8; } /* in Cursor: its own Agent is not one Graphene reaches */
 /* what needs you, at the canvas's top right: the tasks (a click shows the next), then the plan's questions (a
    click opens the first under its chip, to answer there), purple as the person's marks are */
 #need { position: absolute; right: 12px; top: 12px; z-index: 3; display: flex; gap: 8px; }

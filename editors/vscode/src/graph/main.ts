@@ -10,7 +10,7 @@ import { ICONS } from "./icons.ts";
 import { blanks, draftLine, globs, isDraft, lacks, type Draft } from "./draft.ts";
 import { attemptsMark, cardAct, checkLines, checkMark, cornerMark, doneWhen, filesLine, forkMark, goalBox, goalCells, legend, midCut, nextWanting, stateMark, tally, wanting, wantingLine,
          type CheckMark, type Mark } from "./marks.ts";
-import { actsFor, askLine, asksYou, attemptsOf, commandChip, cornerWord, cut, done, draftedSteps, edgeKind, editable, filesChip, FIRST_HINT, fitWidth, forkActs, forkRow, forkWords, HEADER_ACTS, headerFor,
+import { actsFor, ASK_AGENT, askLine, asksYou, attemptsOf, commandChip, cornerWord, CURSOR_AGENT, cut, done, draftedSteps, edgeKind, editable, filesChip, FIRST_HINT, fitWidth, forkActs, forkRow, forkWords, HEADER_ACTS, headerFor,
          heldWords, KEYS, linkHint, mainAct, mayRun, paneKey, pipeline, planningLine, PROVES_NOTHING, provesNothing, questionOn, scopeTree, stopsOf, sub, tabOrder, tokenWords, topLine, twoLines, whenEdit, who, writtenOf,
          type Button, type ForkX, type StateX, type TaskX } from "./words.ts";
 import { CARD, dotGap, FAR, fitPlan, hold, levelFor, miniFrame, miniSize, nearest, offScreen, panTo, percent, switchK, wheelK, ZOOM_MAX, ZOOM_MIN, zoomK,
@@ -291,14 +291,16 @@ function render() {
   const shut = $("details").hidden;
   pane();
   if ($("details").hidden !== shut) paneMoved = true;
-  header(s);
+  const blank = !s.tasks.length && !drawn().length && !s.drafting; // nothing drawn: the notice says what to do, alone
+  header(s, blank);
   const v = view();
   const dir = direction();
   document.body.dataset.mode = v === "lanes" ? "lanes" : dir;
   $("lanes").hidden = v !== "lanes";
   ($("svg") as unknown as SVGSVGElement).style.display = v === "lanes" ? "none" : "block";
   $("canvas").classList.toggle("lanes", v === "lanes");
-  $("notice").hidden = s.tasks.length > 0 || drawn().length > 0 || Boolean(s.drafting); // a planner writing says so at the canvas's foot
+  $("notice").hidden = !blank; // a planner writing says so at the canvas's foot
+  $("zoom").style.display = blank ? "none" : ""; // nothing to zoom
   chips(s);
   const planning = planningLine(s);
   $("planning").textContent = planning;
@@ -307,7 +309,8 @@ function render() {
     $("notice").className = "";
     $("notice").replaceChildren();
     div("notice-head", "Nothing is planned yet.", $("notice")); // what is so, then what to do about it
-    if (!replaying()) $("notice").append("Ask your coding agent for something in its chat: its plan appears here. Or draw the first task.");
+    if (!replaying()) $("notice").append(ASK_AGENT);
+    if (!replaying() && document.body.dataset.editor === "cursor") div("notice-aside", CURSOR_AGENT, $("notice")); // the host says which editor (graph.ts)
     if (!replaying()) button({ label: "Add task", act: "add-under", title: "draw a task: its title, then its files and its check", icon: "add", main: true }, "", $("notice"));
   }
   painting = true;
@@ -364,7 +367,7 @@ function chips(s: StateX) {
 /** A narrow tab (the editor area beside the side bar and an agent's chat): the pane goes under the canvas. */
 const narrow = () => matchMedia("(max-width: 700px)").matches;
 
-function header(s: StateX) {
+function header(s: StateX, blank: boolean) {
   const first = topLine(s); // a replay, or a live race against the stand-in: said before anything else
   $("replay").textContent = $("replay").title = first; // a pill cut to the header's room: its hover says it whole
   $("replay").hidden = !first;
@@ -372,8 +375,8 @@ function header(s: StateX) {
   $("goal").textContent = $("goal").title = h.goal; // cut to its row: the hover says it whole
   $("auto").textContent = $("auto").title = h.auto;
   $("auto").hidden = !h.auto;
-  // one pipeline, the plan first: Plan, Run, Review
-  $("pipe").hidden = false;
+  // one pipeline, the plan first: Plan, Run, Review; none before there is a plan to be at a stage of
+  $("pipe").hidden = !s.tasks.length;
   $("stages").replaceChildren(...h.stages.map((st, i) => {
     const stage = div(`stage ${st.at}`);
     stage.setAttribute("role", "listitem");
@@ -384,6 +387,9 @@ function header(s: StateX) {
     return stage;
   }));
   for (const [id] of HEADER_ACTS) $(id).hidden = replaying(); // a replay is watched: nothing acts on a plan, or outside it
+  if (blank) $("b-add").hidden = true; // the notice's own Add task is the act then
+  if (!s.tasks.length) $("b-save").hidden = $("b-view").hidden = true; // no plan: nothing to save, or to see as lanes
+  else $("b-view").hidden = false;
   // the one act on the whole plan: Start a suggestion, Run what is ready, Stop a run (words.ts `mainAct`)
   const act = mainAct(s), run = $<HTMLButtonElement>("b-run");
   if (!act) run.hidden = true;
@@ -1298,6 +1304,7 @@ function disarm() {
 
 function hint() {
   const h = $("hint");
+  h.hidden = false;
   const from = wiring?.from ?? linking;
   if (from && state) {
     const a = state.tasks.find((t) => t.id === from);
@@ -1313,6 +1320,8 @@ function hint() {
     const about = q.about ? state.tasks.find((t) => t.id === q.about)?.title : "";
     h.textContent = `question${about ? ` on “${about}”` : ""}: ${q.text}${q.default ? ` (if unanswered: ${q.default})` : ""}`;
     h.className = "asks";
+  } else if (!state?.tasks.length && !drawn().length) { // nothing drawn to click, link or follow: no line
+    h.hidden = true;
   } else if (!saved.hinted) {
     h.textContent = FIRST_HINT;
     h.className = "";
@@ -1762,6 +1771,8 @@ function notice(st: Status) {
   $("replay").hidden = true;
   $("pipe").hidden = true; // no plan to read: no stage to be at, and nothing to run or add to
   for (const [id] of HEADER_ACTS) $(id).hidden = true;
+  $("zoom").style.display = "none";
+  $("hint").hidden = true;
   $("planning").hidden = true;
 }
 

@@ -509,6 +509,11 @@ export function linkHint(title: string, dragging: boolean): string {
   return `link: ${dragging ? "drop it on" : "click"} the task that waits on “${title}” · Cancel or Esc stops it`;
 }
 
+/** The empty graph's words: who plans here, by name. Graphene's hooks reach Claude Code and Codex alone, not
+ *  Cursor's own Agent: in Cursor that is said too, in the same words wherever a screen points to an agent. */
+export const ASK_AGENT = "Ask Claude Code or Codex for something in its chat: its plan appears here. Or draw the first task.";
+export const CURSOR_AGENT = "Cursor's own Agent does not plan with Graphene yet.";
+
 /** The question chip's words, its two halves as the tasks' chip has them: `1 question · answer`; none for none. */
 export const askLine = (n: number): string => (n ? `${n} question${n === 1 ? "" : "s"} · answer` : "");
 

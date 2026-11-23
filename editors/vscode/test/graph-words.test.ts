@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import * as C from "../src/commands.ts";
-import { actsFor, askLine, asksYou, attemptsOf, CHANGES, commandChip, commandWord, cornerWord, draftedSteps, edgeKind, editable, filesChip, fitWidth, fitWords, forkActs, forkWords, HEADER_ACTS, headerFor,
+import { actsFor, ASK_AGENT, askLine, asksYou, attemptsOf, CHANGES, commandChip, commandWord, cornerWord, CURSOR_AGENT, draftedSteps, edgeKind, editable, filesChip, fitWidth, fitWords, forkActs, forkWords, HEADER_ACTS, headerFor,
          checkWords, heldWords, linkHint, mainAct, mayRun, OUTSIDE, OUTSIDE_OWN, paneKey, pipeline, planningLine, provesNothing, replayLine, scopeTree, stopAfterPlan, stopsOf, sub, tabOrder, tokenWords, topLine,
          whenEdit, who, writtenOf, type StateX, type TaskX } from "../src/graph/words.ts";
 import { SAY, WORDS } from "../src/state.ts";
@@ -36,6 +36,8 @@ test("the header says each number once: the stages, the cost in Run's note unles
   assert.equal(run(fx("proposals")), "", "nothing has run: no cost under Run");
   assert.equal(headerFor(fx("drafting")).goal, "CSV export of the visible rows", "a planner drawing: what it draws");
   assert.equal(headerFor(fx("empty")).goal, "Graphene", "no plan: no placeholder for a goal");
+  assert.match(ASK_AGENT, /Claude Code or Codex/, "the agents Graphene's hooks reach, by name");
+  assert.equal(CURSOR_AGENT, "Cursor's own Agent does not plan with Graphene yet.");
   assert.deepEqual(headerFor(state).stages.map((x) => x.label), pipeline(state).map((x) => x.label));
 });
 
