@@ -2,7 +2,7 @@
 // in the order a person acts on them (what needs you, the suggested plan, who is working, what is up next, what
 // is done); each card says what its task is for and what proves it, with its buttons. No VS Code and no DOM
 // here: home.ts sends what this returns, home/main.ts draws it, and checkHome reads what the page sends back.
-import { checkCut, tailPath } from "../graph/marks.ts";
+import { checkCut } from "../graph/marks.ts";
 import { filesChip, forkWord, pipeline, PROVES_NOTHING, stopAfterPlan, type Stage } from "../graph/words.ts";
 import { needs, OFFERS, offerOn } from "../needs.ts";
 import { headline, SAY, usd, type Question, type State, type Task } from "../state.ts";
@@ -72,6 +72,14 @@ function whatFor(t: Task): string {
 
 /** A mono line cut short, the whole on hover when it says more. */
 const brief1 = (k: string, v: string, whole: string): Line[] => [{ k, v, mono: true, ...(whole !== v ? { hover: whole } : {}) }];
+/** A scope by its last name (`CookServiceImpl.java`, `api` for `src/api/`); a glob from its last plain folder on
+ *  (`docs/**\/*.md`), so two tasks' Markdown in two folders do not read the same. */
+function tail(p: string): string {
+  const d = p.replace(/\/+$/, "").split("/");
+  let i = d.length - 1;
+  while (i > 0 && /[*?]/.test(d[i]!)) i--;
+  return d.slice(i).join("/");
+}
 
 /** What a task is for, what it may change, and what proves it: the three lines a person reads before saying yes.
  *  ``brief``, for a task not started (Suggested plan, Up next): a line each, as the graph's card says them, its
@@ -86,7 +94,7 @@ function contract(t: Task, name: (id: string) => string, brief = false): Line[] 
   ];
   return [
     ...line("What for", whatFor(t)),
-    ...(brief && t.scope.length ? brief1("May change", filesChip(t.scope.map((p) => tailPath(p).replace(/^…\//, ""))), t.scope.join("\n"))
+    ...(brief && t.scope.length ? brief1("May change", filesChip(t.scope.map(tail)), t.scope.join("\n"))
       : fileLine("May change", t.scope, "no files named")),
     ...(brief && t.check ? brief1("Done when", `${checkCut(t.check, 28)} passes`, `${t.check} passes`)
       : [{ k: "Done when", v: t.check ? `${t.check} passes` : "you approve it", mono: Boolean(t.check) }]),

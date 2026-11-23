@@ -32,6 +32,9 @@ test("a suggested plan is read before it starts: each task says what for, what i
     { k: "May change", v: "CookServiceImpl.java +2", mono: true, hover: "src/main/java/app/impl/CookServiceImpl.java\nsrc/main/java/app/impl/CookingSessionImpl.java\nsrc/test/java/app/impl/CookServiceImplTest.java" },
     { k: "Done when", v: "CookServiceImplTest passes", mono: true, hover: "./gradlew test --tests 'app.cookyourbooks.services.impl.CookServiceImplTest' passes" },
   ]);
+  // a folder by its name, its slash off; a glob from its last plain folder
+  const scoped = (scope: string[]) => card(home({ ...java, tasks: java.tasks.map((t) => (t.id === "hello" ? { ...t, scope } : t)) }), "p:hello").lines[1]!.v;
+  assert.deepEqual([scoped(["src/api/"]), scoped(["docs/**/*.md"]), scoped(["src/api/**", "web/"])], ["api", "docs/**/*.md", "api/** +1"]);
   assert.deepEqual(card(h, "p:farewell").lines.find((l) => l.k === "After"), { k: "After", v: "bye says goodbye, greet route" });
   assert.deepEqual(labels(hello), ["Remove"]);
 });
