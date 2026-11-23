@@ -315,3 +315,18 @@ test("unticking Approve while Exact is on turns only Exact off: Stop after the p
   await host.setReview(true);
   assert.equal(pushed, 1, "a refused setting still redraws the tick");
 });
+
+test("Set Up keeps the CLI's lines on what it wrote and what it records, and drops the rest", async () => {
+  const stub = "export const commands = { registerCommand() { return { dispose() {} }; } }; export const env = { appName: 'Code' };";
+  const hook = `export async function resolve(s, c, n) { return s === "vscode" ? { url: ${JSON.stringify(`data:text/javascript,${encodeURIComponent(stub)}`)}, shortCircuit: true } : n(s, c); }`;
+  register(`data:text/javascript,${encodeURIComponent(hook)}`);
+  const { HomeHost } = await import("../src/home.ts");
+  const said = ["planner: claude, executor: claude", "hooks added to .claude/settings.local.json (7 Claude Code hooks)",
+                "each Claude Code session here is recorded on this machine only (its prompts, tool calls and what they returned, the files it edits); `graphene init --remove` takes the hooks out",
+                "Codex gate: .codex/hooks.json; trust this project", "next: `graphene auto '<what you want>'` plans it"];
+  const session = { state: null, seen: new Set(), onDidChange: () => ({ dispose() {} }), onDidSee: () => ({ dispose() {} }), refresh: async () => {}, moved() {},
+    status: { kind: "uninitialised", text: "" }, run: async () => ({ code: 0, stdout: said.join("\n"), stderr: "" }) };
+  const host = new HomeHost({ subscriptions: [] } as never, session as never) as unknown as { setUp(who: string, review: boolean): Promise<void>; last: { lines: string[] } };
+  await host.setUp("claude", false);
+  assert.deepEqual(host.last.lines, ["Claude Code plans and does the work here.", said[1], said[2]]);
+});

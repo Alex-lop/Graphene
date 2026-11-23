@@ -295,6 +295,15 @@ function drawSetUp(m: Model) {
     b.disabled = Boolean(m.busy);
     b.addEventListener("click", () => send("setup", { arg: w.word, flag: tick.checked }));
   }
+  // what one click writes and records, said before it (`graphene init` installs both tools' hooks either way)
+  const writes = el("p", "writes", "Either choice adds hooks to ", screen);
+  el("span", "mono", ".claude/settings.local.json", writes);
+  writes.append(" and ");
+  el("span", "mono", ".codex/hooks.json", writes);
+  writes.append(": Claude Code here then proposes a plan before it writes, and each of its sessions is recorded on this "
+    + "machine only. ");
+  el("span", "mono", "graphene init --remove", writes);
+  writes.append(" takes them out.");
   if (m.busy) el("p", "busy", m.busy, screen);
   if (m.last.lines.length || m.last.key) drawSaid(el("div", "said", undefined, screen), m.last);
   button({ label: "Watch the demo first", act: "demo" }, el("div", "foot", undefined, screen)); // a link, as on Home's foot

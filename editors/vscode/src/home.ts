@@ -271,7 +271,9 @@ export class HomeHost implements vscode.WebviewViewProvider {
       this.say([why], { bad: true, key: keyTrouble(why).key || (who === "nemotron" && /key/i.test(why)) });
     } else {
       const label = WHO.find((w) => w.word === who)?.label ?? who;
-      const warn = `${out.stdout}\n${out.stderr}`.split(/\r?\n/).filter((l) => /no commit yet|^warning:/.test(l.trim()));
+      // what it wrote and what it records, as the CLI says it, with its warnings
+      const warn = `${out.stdout}\n${out.stderr}`.split(/\r?\n/).map((l) => l.trim())
+        .filter((l) => /no commit yet|^warning:|^hooks (added|already)|recorded on this machine|^the Claude Code hooks are in/.test(l));
       this.say([`${label} plans and does the work here.`, ...(review ? ["Each finished task waits for your approval before it lands."] : []), ...warn]);
     }
     this.session.moved();
