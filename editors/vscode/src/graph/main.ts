@@ -1590,7 +1590,12 @@ function scopeTab(body: HTMLElement, t: TaskX, s: StateX) {
     name.title = r.name;
     // it wraps after a slash, not inside a name
     (r.depth ? r.name : short(r.name)).split("/").forEach((bit, i) => name.append(...(i ? ["/", document.createElement("wbr")] : []), bit));
-    if (r.note) div(`tr-note${r.note === "written" ? " wr" : ""}`, r.note, row);
+    if (r.note) { // after its name, so a wrapped path's note is on its file's line, never a line of its own
+      const note = document.createElement("span");
+      note.className = `tr-note${r.note === "written" ? " wr" : ""}`;
+      note.textContent = r.note;
+      name.append(" ", note);
+    }
   };
   // its own files, then what it wrote outside them (as its card says it, in the came-back red); the rest of the
   // repository, which it may not change, folded under one line
@@ -1604,7 +1609,7 @@ function scopeTab(body: HTMLElement, t: TaskX, s: StateX) {
     fold.open = restOpen; // kept open through a rebuild while a run writes the store
     fold.addEventListener("toggle", () => { restOpen = fold.open; });
     const sum = document.createElement("summary");
-    sum.textContent = `and ${rest.length} it may not change`;
+    sum.textContent = `The rest of the repository (${rest.length})`;
     fold.appendChild(sum);
     for (const r of rest) line(r, fold);
     tree.appendChild(fold);
@@ -1613,7 +1618,7 @@ function scopeTab(body: HTMLElement, t: TaskX, s: StateX) {
     const glob = document.createElement("details");
     glob.className = "glob";
     const sum = document.createElement("summary");
-    sum.textContent = "as the plan writes it";
+    sum.textContent = "Paths as the plan wrote them";
     glob.appendChild(sum);
     for (const g of t.scope) code(g, glob);
     change.appendChild(glob);
@@ -1634,6 +1639,7 @@ function scopeTab(body: HTMLElement, t: TaskX, s: StateX) {
   const may = mayRun(s, t);
   for (const c of may.commands) code(c, cmds);
   if (may.words) cmds.append(may.words);
+  if (may.note) div("kv-note", may.note, cmds); // the check it cannot run, and who runs it
   div("kv-k", "Outside", kv);
   div("kv-v", may.outside, kv);
   const held = heldWords(t);

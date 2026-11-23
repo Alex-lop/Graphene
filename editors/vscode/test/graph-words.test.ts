@@ -225,7 +225,8 @@ test("a card's tile says who does the step: you, the executor by its letter, or 
   assert.deepEqual(who(greet, "claude"), { kind: "claude", mark: "C", label: "Claude Code" });
   assert.deepEqual(who(greet, "codex --full-auto"), { kind: "codex", mark: "X", label: "Codex" });
   assert.equal(who(greet, "nemotron").mark, "N");
-  assert.deepEqual(who(greet, "stand-in"), { kind: "agent", mark: "S", label: "stand-in" }, "the demo's scripted stand-in");
+  assert.deepEqual(who(greet, "stand-in"), { kind: "agent", mark: "S", label: "Stand-in" }, "the demo's scripted stand-in");
+  assert.equal(who(greet, "nemotron").label, "Nemotron", "a name as a person writes it, not the setting's word");
   assert.deepEqual(who(greet, "/usr/local/bin/aider --yes {prompt}"), { kind: "cmd", mark: "ai", label: "aider" });
   assert.equal(who(greet, "").mark, "?");
   assert.equal(who({ ...greet, owner: "alex" }, "claude").kind, "you", "a task you took is yours, whoever the executor is");
@@ -371,8 +372,9 @@ test("May change is a tree: its folder opened to its files, the written ones mar
   const wide = { id: "all", scope: ["**"], files: ["a/x.py"], filesN: 300, touched: [], changed: [] };
   assert.deepEqual(scopeTree(wide, { tree: ["a/", "z/", "README.md"], tasks: [] }).map((r) => `${"  ".repeat(r.depth)}${r.name} [${r.kind}]`),
                    ["a/ [in]", "  x.py [in]", "z/ [in]", "README.md [in]", "… and 299 more files [in]"]);
-  // a path the step will create is its own, and says it is not there yet; a finished step's changes are its written files
-  assert.deepEqual(scopeTree(step("docs"), scoped).filter((r) => r.kind === "in"), [{ name: "docs/EXPORT.md", depth: 0, kind: "in", note: "not there yet" }]);
+  // a path the step will create is its own, and says it is new; a finished step's changes are its written files
+  assert.deepEqual(scopeTree(step("docs"), scoped).filter((r) => r.kind === "in"), [{ name: "docs/EXPORT.md", depth: 0, kind: "in", note: "new file" }]);
+  assert.equal(scopeTree({ ...step("docs"), scope: ["docs/export/**"] }, scoped).find((r) => r.kind === "in")?.note, "new folder");
   assert.deepEqual(scopeTree(step("test"), scoped).filter((r) => r.kind === "in"), [{ name: "tests/", depth: 0, kind: "in", note: "" },
                                                                                    { name: "test_export.py", depth: 1, kind: "in", note: "written" }]);
   assert.equal(writtenOf(step("docs")), "");
@@ -383,17 +385,26 @@ test("May change is a tree: its folder opened to its files, the written ones mar
 });
 
 test("May run, Held by, Stopped, Done when and Tokens say what is known, and no more", () => {
-  assert.deepEqual(mayRun(scoped, step("rows")), { commands: ["graphene node *", "graphene plan *"], words: "", outside: OUTSIDE });
+  // Graphene's own two are not the repository's commands: left out, and the check the agent cannot run is named, with who runs it
+  assert.deepEqual(mayRun(scoped, step("rows")), { commands: [], words: "no shell command", outside: OUTSIDE,
+    note: "It cannot run pytest: it writes its files, and Graphene runs the check after, in a clean copy." });
+  assert.equal(OUTSIDE, "none");
+  const npm = { ...scoped, allows: ["graphene node *", "npm test *"] };
+  assert.deepEqual(mayRun(npm, { ...step("rows"), check: "npm test table" }), { commands: ["npm test *"], words: "", note: "", outside: OUTSIDE }, "a check it may run: nothing to say");
+  assert.equal(mayRun(npm, { ...step("rows"), check: null }).note, "", "no check: nothing it cannot run");
   assert.match(mayRun({ allows: null, executor: "claude" }, step("rows")).words, /^any command: what a command writes is still held/);
   // the list is the repository's executor's: a step Codex holds, or one that is yours, is not under it
-  assert.deepEqual(mayRun(scoped, step("button")), { commands: [], words: "any command: what a command writes is still held to its files", outside: OUTSIDE_OWN });
-  assert.deepEqual(mayRun(scoped, step("docs")), { commands: [], words: "any command", outside: OUTSIDE_OWN });
+  assert.deepEqual(mayRun(scoped, step("button")), { commands: [], words: "any command: what a command writes is still held to its files", note: "", outside: OUTSIDE_OWN });
+  assert.deepEqual(mayRun(scoped, step("docs")), { commands: [], words: "any command", note: "", outside: OUTSIDE_OWN });
   // the setting names the model (`claude:opus`), a run names the holder by family (`claude`): the same executor, the same list and name
-  assert.deepEqual(mayRun({ ...scoped, executor: "claude:opus" }, step("rows")).commands, ["graphene node *", "graphene plan *"]);
+  assert.deepEqual(mayRun({ ...scoped, executor: "claude:opus" }, step("rows")).words, "no shell command");
   assert.match(heldWords({ held: { state: "refused", by: "claude:opus" } }).proof, /^Claude Code's hook/);
   // held: three states, each as the tests prove it; a Graphene that does not say is not held, never a shield
   assert.deepEqual([heldWords(step("rows")).shield, heldWords(step("rows")).line], [true, "A write outside its files is refused before it happens."]);
-  assert.match(heldWords(step("rows")).proof, /^Claude Code's hook, proven by tests\/test_every_agent\.py$/);
+  assert.equal(heldWords(step("rows")).proof, "Claude Code's hook stops it, and its finish checks again.");
+  // in plain words: the test that proves it is the README's to name, not the inspector's
+  for (const state of ["refused", "caught", "none", ""] as const) assert.doesNotMatch(heldWords({ held: { state, by: "nemotron" } }).proof, /tests\/|\.py\b/);
+  assert.match(heldWords({ held: { state: "refused", by: "nemotron" } }).proof, /^Nemotron's hook/);
   assert.match(heldWords(step("button")).line, /caught when it finishes/);
   assert.deepEqual([heldWords(step("docs")).shield, heldWords(step("docs")).line], [false, "Not held: nothing stops a write outside its files."]);
   assert.equal(heldWords({ held: { state: "", by: "" } }).shield, false);

@@ -80,8 +80,11 @@ export function who(t: Pick<TaskX, "state" | "owner"> & { command?: string | nul
   if (name === "claude") return { kind: "claude", mark: "C", label: "Claude Code" };
   if (name === "codex") return { kind: "codex", mark: "X", label: "Codex" };
   if (!name) return { kind: "agent", mark: "?", label: "an agent" };
-  return words.length > 1 || words[0]!.includes("/") ? { kind: "cmd", mark: name.slice(0, 2), label: name } : { kind: "agent", mark: name[0]!.toUpperCase(), label: name };
+  return words.length > 1 || words[0]!.includes("/") ? { kind: "cmd", mark: name.slice(0, 2), label: name } : { kind: "agent", mark: name[0]!.toUpperCase(), label: named(name) };
 }
+
+/** An agent's name as a person writes it (`Nemotron`, not the setting's `nemotron`). */
+const named = (word: string) => word.charAt(0).toUpperCase() + word.slice(1);
 
 /** The part of a command step's command its chip shows: the one its tile names (`gh pr create --draft` of
  *  `cd .. && git push && gh pr create --draft`), so the chip says what leaves the machine and not the `cd` before it. */
@@ -116,7 +119,7 @@ const fixedOf = (glob: string) => {
 };
 
 /** May change, as a tree: the repository's top-level entries; this step's folders opened to the files it covers
- *  (a written one says so, at most ``most`` a folder); a path it may create that is not there yet; another
+ *  (a written one says so, at most ``most`` a folder); a path it may create that is not there yet (new); another
  *  step's entries named; everything else dim. The glob itself is the pane's to show when asked. */
 export function scopeTree(t: Pick<TaskX, "id" | "scope" | "files" | "filesN" | "touched" | "changed">, s: Pick<StateX, "tree" | "tasks">, most = 12): TreeRow[] {
   const wrote = writtenIn(t), written = new Set(wrote);
@@ -146,7 +149,7 @@ export function scopeTree(t: Pick<TaskX, "id" | "scope" | "files" | "filesN" | "
     if (!top.endsWith("/") && files.includes(top)) rows.push({ name: top, depth: 0, kind: "in", note: written.has(top) ? "written" : "" });
     else if (dirs.length || here.length) {
       for (const d of dirs) open(d);
-      for (const g of here) rows.push({ name: g, depth: 0, kind: "in", note: written.has(g) ? "written" : s.tree.length ? "not there yet" : "" }); // no tree (a replay, an older CLI): nobody knows what is there
+      for (const g of here) rows.push({ name: g, depth: 0, kind: "in", note: written.has(g) ? "written" : s.tree.length ? (g.endsWith("/") ? "new folder" : "new file") : "" }); // no tree (a replay, an older CLI): nobody knows what is there
     } else if (cut && globs.some((g) => !g || g.startsWith(top))) rows.push({ name: top, depth: 0, kind: "in", note: "" }); // its own, past the list's cut
     else rows.push({ name: top, depth: 0, kind: others.has(top) ? "other" : "out", note: others.has(top) ? "another task's" : "" });
   }
@@ -172,24 +175,32 @@ const family = (by: string) => by.split(":")[0]!;
 
 /** May run: the commands the repository's executor may run without asking, as its own command line lists them
  *  (`allows`), or that it names no list. The list is that executor's: a step someone else holds (another agent
- *  a run was given, you) is not under it. Outside: Graphene has nothing to grant a step yet, and says no more
- *  than that of an agent whose own settings decide what it reaches. */
-export function mayRun(s: Pick<StateX, "allows" | "executor">, t: Pick<TaskX, "held">): { commands: string[]; words: string; outside: string } {
-  if (s.allows && family(t.held.by) === family(s.executor)) return { commands: s.allows, words: s.allows.length ? "" : "no shell command", outside: OUTSIDE };
+ *  a run was given, you) is not under it. Graphene's own two (`graphene node *`, `graphene plan *`, how the agent
+ *  says it is done) are left out: they are not the repository's. Where the list does not let it run its own
+ *  check (`./gradlew` with the default list), the ``note`` says so, and who runs it. Outside: Graphene grants a
+ *  step nothing, and says no more than that of an agent whose own settings decide what it reaches. */
+export function mayRun(s: Pick<StateX, "allows" | "executor">, t: Pick<TaskX, "held" | "check">): { commands: string[]; words: string; note: string; outside: string } {
+  if (s.allows && family(t.held.by) === family(s.executor)) {
+    const commands = s.allows.filter((c) => !/^graphene (node|plan)\b/.test(c));
+    const check = (t.check ?? "").trim(), first = check.split(/\s+/)[0] ?? "";
+    const can = !first || commands.some((c) => check.startsWith(c.replace(/:?\*$/, "").trim())); // `npm test *`, `npm run test:*`
+    return { commands, words: commands.length ? "" : "no shell command", outside: OUTSIDE,
+             note: can ? "" : `It cannot run ${first}: it writes its files, and Graphene runs the check after, in a clean copy.` };
+  }
   const held = t.held.state === "refused" || t.held.state === "caught";
-  return { commands: [], words: held ? "any command: what a command writes is still held to its files" : "any command", outside: OUTSIDE_OWN };
+  return { commands: [], words: held ? "any command: what a command writes is still held to its files" : "any command", note: "", outside: OUTSIDE_OWN };
 }
-export const OUTSIDE = "none granted: a task cannot be given outside tools or network yet";
+export const OUTSIDE = "none";
 export const OUTSIDE_OWN = "none granted by Graphene: this agent's own settings decide what else it reaches";
 
 /** Held by, in one of three states and never more than the tests prove (tests/test_every_agent.py,
  *  dev/process/graph-edit/hooks.md): refused before the write, caught when it finishes, or not held. A
  *  Graphene that does not say reads as not held: no shield for an agent nobody has tested. */
 export function heldWords(t: Pick<TaskX, "held">): { shield: boolean; line: string; proof: string } {
-  const by = family(t.held.by) === "claude" ? "Claude Code" : family(t.held.by) === "codex" ? "Codex" : t.held.by || "this agent";
-  if (t.held.state === "refused") return { shield: true, line: "A write outside its files is refused before it happens.", proof: `${by}'s hook, proven by tests/test_every_agent.py` };
-  if (t.held.state === "caught") return { shield: true, line: "A write outside its files is caught when it finishes, at the latest: the task needs help and none of its work is merged.",
-                                          proof: `Proven for every agent a run starts, ${by} too, by tests/test_every_agent.py: the finish checks what changed against its files.` };
+  const by = family(t.held.by) === "claude" ? "Claude Code" : family(t.held.by) === "codex" ? "Codex" : named(family(t.held.by)) || "This agent";
+  if (t.held.state === "refused") return { shield: true, line: "A write outside its files is refused before it happens.", proof: `${by}'s hook stops it, and its finish checks again.` };
+  if (t.held.state === "caught") return { shield: true, line: "A write outside its files is caught when it finishes, at the latest.",
+                                          proof: "Its finish checks what changed against its files: then none of its work lands, and the task needs your help." };
   return { shield: false, line: "Not held: nothing stops a write outside its files.",
            proof: t.held.state === "none" ? "A task you do yourself, or give to an editor's own agent (Cursor, Copilot), is checked only when you mark it done."
              : "This version of Graphene does not say how this task is held." };

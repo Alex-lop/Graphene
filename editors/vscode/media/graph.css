@@ -300,14 +300,14 @@ button.tab.on { color: var(--fg); border-bottom-color: var(--fg); }
 }
 .sc small { display: block; color: var(--dim); margin-top: 2px; font-size: 11.5px; }
 .tree { font-family: var(--mono); font-size: 12px; line-height: 1.75; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; }
-/* a path wraps after a slash; where it and its note do not fit one line, the note goes under it, at the right */
-.tr { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 10px; }
-.tr-name { min-width: 0; overflow-wrap: anywhere; }
-.tr.in1 .tr-name { padding-left: 14px; }
+/* a path wraps after a slash and hangs under its first line, so its file is not read as a sibling; its note follows
+   its name, on the file's own line */
+.tr-name { min-width: 0; overflow-wrap: anywhere; padding-left: 2ch; text-indent: -2ch; }
+.tr.in1 .tr-name { padding-left: calc(14px + 2ch); }
 .tr.in { color: var(--fg); }
 .tr.out, .tr.other { color: var(--dim); opacity: 0.8; }
 .tr.bad, .tr.bad .tr-note { color: var(--came-back); }
-.tr-note { font-family: var(--font); font-size: 11.5px; color: var(--dim); flex: none; margin-left: auto; }
+.tr-note { font-family: var(--font); font-size: 11.5px; color: var(--dim); white-space: nowrap; }
 .tr-note.wr { color: var(--running); }
 details.rest summary { font-family: var(--font); font-size: 11.5px; color: var(--dim); cursor: pointer; width: fit-content; }
 details.glob { margin-top: 6px; color: var(--dim); font-size: 11.5px; }
