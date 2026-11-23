@@ -50,7 +50,8 @@ The cards:
   round a card is the selection alone. Its status says what nothing else on it does: what a suggestion covers,
   the agent on a working task, `3 agents at once` for attempts not started.
 - The one act a task needs from you is a button on its card: Open changes, then Approve once they are open,
-  Answer…, Help it…, Compare, Approve and run, Mark done, Allow the write…. Drafts are grey dashes.
+  Answer…, Help it…, Compare, Approve and run, Mark done, Allow the write…; quiet but for those the run waits on,
+  and left to the pane once the card is chosen. A task sent back says so. Drafts are grey dashes.
 
 The pane, an inspector:
 

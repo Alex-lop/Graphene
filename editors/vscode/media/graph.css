@@ -184,6 +184,7 @@ footer#hint.sr { position: absolute; width: 1px; height: 1px; min-height: 0; pad
 /* a narrow tab (the editor area beside the side bar and an agent's chat): the header wraps as it does anywhere,
    and the details go under the canvas */
 @media (max-width: 700px) {
+  #details .d-acts button:not(.quiet) { flex: 0 1 320px; } /* the one filled act a button, not a bar the tab's width */
   main { flex-direction: column; }
   /* under the canvas the pane can be shorter than its head and its acts (a short tab, a panel open under it):
      the whole pane scrolls, so a mouse reaches every act */

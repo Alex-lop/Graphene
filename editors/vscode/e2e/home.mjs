@@ -60,7 +60,7 @@ try {
 
   await home.locator("button.pick", { hasText: "Claude Code" }).click();
   await until(home, () => !document.querySelector("section.work").hidden && document.querySelector(".head.empty button.open")
-    && document.querySelector(".said")?.textContent.includes("waits for your approval"), null, "Set Up done, review on"); // init, then config set
+    && document.querySelector(".said:not(.older)")?.textContent.includes("waits for your approval"), null, "Set Up done, review on"); // init, then config set
   if ((await home.locator(".prefs button.switch.approve").getAttribute("aria-checked")) !== "true") throw new Error("Set Up asked for approval, yet Settings show it off");
   if (await home.locator("textarea").count()) throw new Error("Home offers a box to type an ask in: a plan comes from the agent's chat");
   const set = state(dir);
@@ -137,7 +137,7 @@ try {
   execFileSync(graphene, ["config", "set", "review", "off"], { cwd: dir, env, stdio: "pipe" }); // so that off has something to put back
   await page.waitForTimeout(1000); // the stream brings Home the setting
   await exact.click();
-  await until(home, () => document.querySelector(".said")?.textContent.startsWith("Start waits for every answer now"), null, "Exact said on");
+  await until(home, () => document.querySelector(".said:not(.older)")?.textContent.startsWith("Start waits for every answer now"), null, "Exact said on");
   for (const line of ["board: on", "review: every", "auto: off"]) if (!settings().includes(line)) throw new Error(`Exact on left no “${line}”`);
   execFileSync(graphene, ["plan", "propose", "-"], { cwd: dir, input: ASKS, stdio: ["pipe", "pipe", "pipe"], // a plan that asks something, as an agent proposes one
                                                     env: { ...env, CLAUDECODE: "1", CLAUDE_CODE_SESSION_ID: "e2e-home-agent" } });
@@ -150,7 +150,7 @@ try {
   await until(home, () => [...document.querySelectorAll(".sec-suggested .sec-head button")].some((x) => x.textContent === "Start" && !x.disabled), null,
               "Start, once the question is answered");
   await exact.click();
-  await until(home, () => document.querySelector(".said")?.textContent.startsWith("Start no longer waits"), null, "Exact said off");
+  await until(home, () => document.querySelector(".said:not(.older)")?.textContent.startsWith("Start no longer waits"), null, "Exact said off");
   for (const line of ["board: auto", "review: off", "auto: off"]) if (!settings().includes(line)) throw new Error(`Exact off left no “${line}”`);
   say("the default's button confirmed it and Start came back; Exact off put the board and review back as they were");
 
@@ -166,7 +166,7 @@ try {
   await checked("true");
   await home.locator("button.switch.stop").click();
   await checked("false");
-  await until(home, () => document.querySelector(".said")?.textContent.startsWith("Stop after the plan is off"), null, "the switch said off");
+  await until(home, () => document.querySelector(".said:not(.older)")?.textContent.startsWith("Stop after the plan is off"), null, "the switch said off");
   if (state(fx.dir).envelope.auto !== "on") throw new Error("the switch went off, yet auto is not on");
   await shot("switch-off");
   execFileSync(graphene, ["auto", "--", ASK], { cwd: fx.dir, env: L.cleanEnv(L.safeEnv(standin.url)), stdio: "pipe", timeout: 180000 });

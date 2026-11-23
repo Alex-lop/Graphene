@@ -357,6 +357,7 @@ function render() {
     if (!replaying()) $("notice").append(ASK_AGENT);
     if (!replaying() && document.body.dataset.editor === "cursor") div("notice-aside", CURSOR_AGENT, $("notice")); // the host says which editor (graph.ts)
     if (!replaying()) button({ label: "Add task", act: "add-under", title: "draw a task: its title, then its files and its check", icon: "add", main: true }, "", $("notice"));
+    if (!replaying()) button({ label: "Watch the demo", act: "demo", title: "a plan run by a scripted stand-in: no key, nothing spent", icon: "play", main: false }, "", $("notice"));
   }
   painting = true;
   try {

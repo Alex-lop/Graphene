@@ -13,14 +13,14 @@ export type Replay = { shown: string; day: string; repository: string } | null;
 export type StateX = Omit<State, "tasks"> & { replay?: Replay; stand_in?: boolean; tasks: TaskX[] };
 
 export type Act = "add-after" | "add-under" | "link" | "unlink" | "drop" | "accept" | "tell" | "start" | "run" | "stop" | "cockpit"
-  | "openDiff" | "compareForks" | "pickFork" | "signOff" | "sendBack" | "answer" | "handBack" | "set" | "draw" | "saveWorkflow" | "markDone";
+  | "openDiff" | "compareForks" | "pickFork" | "signOff" | "sendBack" | "answer" | "handBack" | "set" | "draw" | "saveWorkflow" | "markDone" | "demo";
 
 /** The acts a replay offers none of: they change a plan, or they act outside the replay (the cockpit opens
  *  `graphene watch` in the person's own folder; openDiff and compareForks look the id up in the person's
  *  plan). That is every act: a replay is watched. The host refuses them too (check.ts). */
 export const CHANGES: readonly Act[] = ["add-after", "add-under", "link", "unlink", "drop", "accept", "tell", "start", "run", "stop",
                                         "cockpit", "openDiff", "compareForks", "pickFork", "signOff", "sendBack", "answer", "handBack", "set", "draw",
-                                        "saveWorkflow", "markDone"];
+                                        "saveWorkflow", "markDone", "demo"];
 
 /** The header's act buttons, by their element id: each one is hidden in a replay. Auto and the cockpit are
  *  Home's and the palette's (with graphene.advanced), not the graph's. */

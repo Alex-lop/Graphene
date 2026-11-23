@@ -309,6 +309,8 @@ export function coversIn(c: string, n: number): string {
 export function cardLine(t: TaskX, n: number, question = ""): string {
   if (question && (t.state === "proposed" || stateMark(t) === "you") && !["review", "yours"].includes(t.state)) return cutWhole(`${ASKS}: ${question}`, n);
   if (t.state === "proposed") return cutWhole(SAY.proposed, n);
+  // sent back with a note (the snapshot's `note`): it is not a task no agent has touched, so it does not say ready
+  if ((t.state === "ready" || t.state === "waiting") && t.note) return cutWhole("sent back", n);
   if (t.state !== "running") return sub(t, n);
   const parts = sub({ ...t, forks: [] }, 1000).split(" · "), agent = parts.find((p) => p.startsWith("agent ")) ?? "";
   return fitWords([SAY.running, agent, ...parts.filter((p) => p !== SAY.running && p !== agent)], n);

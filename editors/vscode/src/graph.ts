@@ -206,6 +206,7 @@ export class GraphHost {
       case "start": return this.startPlan();
       case "run": return run("runReady");
       case "stop": return run("stop");
+      case "demo": return run("watchDemo"); // the empty graph's Watch the demo, as Home's
       case "saveWorkflow": return run("saveWorkflow"); // the header's Save as workflow: Home's host asks its name and writes it
       case "markDone": return run("markDone", arg); // a step past the line: approving it runs its command
       case "cockpit": return run("openCockpit");

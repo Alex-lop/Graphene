@@ -10,7 +10,7 @@ import { CHANGES } from "./words.ts";
 // title as the sentence
 export const ACTS = ["add-after", "add-under", "link", "unlink", "drop", "accept", "tell", "start", "run", "stop", "cockpit",
                      "openDiff", "compareForks", "pickFork", "signOff", "sendBack", "answer", "handBack", "set", "draw", "saveWorkflow",
-                     "markDone"] as const;
+                     "markDone", "demo"] as const;
 export type Act = (typeof ACTS)[number];
 export type Drawn = { key: string; title: string; files: string; check: string; approve: boolean; after: string | null; parent: string | null };
 export type FromPage = { type: "ready" }
@@ -64,7 +64,7 @@ export function check(m: unknown, session: { state: Plan }): FromPage | null {
   const s = session.state;
   const tasks = s?.tasks ?? [];
   const task = tasks.find((t) => t.id === id);
-  const global: readonly Act[] = ["start", "run", "stop", "cockpit", "saveWorkflow"];
+  const global: readonly Act[] = ["start", "run", "stop", "cockpit", "saveWorkflow", "demo"];
   if (act === "answer") {
     const q = s?.questions.find((x) => x.id === id);
     if (!q) return null;

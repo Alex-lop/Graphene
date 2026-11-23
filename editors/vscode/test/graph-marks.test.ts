@@ -369,6 +369,9 @@ test("a card's status says its state first and what its other parts do not: a qu
                     covers({ title: "hello says hello", full: "hello says hello to the person by name" }),
                     covers({ title: "the export", full: "Write the export: CSV for the weekly report" })],
                    ["Collections, JSON import, ingredient search", "CSV for the weekly report", "", "", ""]);
+  // a task sent back with a note says so, not ready, as if no agent had touched it
+  assert.equal(cardLine(step("ready", { note: "the test only covers one case" }), 40), "sent back");
+  assert.notEqual(cardLine(step("ready"), 40), "sent back");
   const suggested = (title: string, full: string) => cardLine(step("proposed", { title, full, check: CHECK }), 60);
   assert.equal(suggested("Planner service", "Planner service: shopping list and Markdown export"), "suggested", "the row says one thing on every suggestion: what it covers is a line of its own");
   assert.equal(suggested("Planner service", "Planner service"), "suggested");

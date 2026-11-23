@@ -44,7 +44,7 @@ test("a fork the task has passes; so does an answer with one of the question's o
 test("a replay's host runs nothing that changes a plan or acts outside the replay; what reads still passes", () => {
   const replay = { state: { ...state, replay: { shown: "a scripted stand-in, no model ran", day: "", repository: "" } } };
   for (const act of CHANGES) {
-    const id = ["start", "run", "stop", "cockpit", "add-under", "draw", "saveWorkflow"].includes(act) ? "" : act === "answer" ? "which-port" : "farewell";
+    const id = ["start", "run", "stop", "cockpit", "add-under", "draw", "saveWorkflow", "demo"].includes(act) ? "" : act === "answer" ? "which-port" : "farewell";
     const more = act === "set" ? { field: "title", value: "x" } : act === "draw" ? { draft: { key: " d1", title: "t", files: "a.py", check: "true", approve: false } }
       : act.startsWith("add-") ? { sentence: "a flag", key: " d1" } : {};
     assert.ok(check({ type: "act", act, id, fork: act === "pickFork" ? "b" : undefined, target: act === "link" || act === "unlink" ? "hello" : undefined, ...more }, session),

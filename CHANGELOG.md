@@ -27,7 +27,8 @@ The editor (23 November 2026, then PRs #68, #67 and #60). Each line is one chang
   rows, a mark and a title; choosing a card moves nothing (`test/zoom.test.ts`).
 - A card's foot is its check, with a box only Graphene ticks, crossed where the check failed; the one act a task
   needs from you is a button on its card (Open changes, Approve, Answer…, Help it…, Compare, Approve and run, Mark
-  done, Allow the write…), and a chip walks them (`3 tasks need you · show the next`, `n`).
+  done, Allow the write…), quiet but for those the run waits on, and left to the pane once the card is chosen; a
+  chip walks them (`3 tasks need you · show the next`, `n`); a task sent back says so.
 - The graph's tab opens by itself when work starts, without the keyboard: beside your file in VS Code, in front of
   it in Cursor, whose agent chat already narrows the editor; closed, it stays closed (`graphene.graph.openOnStart`;
   CI's `vscode-e2e`).
