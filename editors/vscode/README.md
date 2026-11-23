@@ -26,7 +26,7 @@ files it may change, and lands only when its check passes and, if you keep appro
 
 1. **Click Graphene in the activity bar.** The graph opens full size in an editor tab. **Home**, in the side bar,
    sets up a new folder in one click (Claude Code or Codex); leave approval ticked and nothing lands without you.
-2. **Ask your agent, in its own chat.** Graphene's hooks have it propose its plan (`graphene plan propose`) before
+2. **Ask Claude Code or Codex, in its own chat** (Cursor's own Agent does not plan with Graphene yet). Graphene's hooks have it propose its plan (`graphene plan propose`) before
    it writes. Each task is a card: who does it, the files it may change and, at its foot, the check that proves it.
 3. **Read and change the plan.** Click a card: its pane opens on **Scope**, and **Edit** changes its files, check,
    attempts and approval. Answer the plan's questions; **Add task** draws a task; a card's dot links it to another.

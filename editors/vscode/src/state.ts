@@ -357,7 +357,7 @@ export function summary(s: State): string {
   if (sb.need_you) parts.push(sb.need_you === 1 ? "1 needs you" : `${sb.need_you} need you`);
   if (!parts.length) parts.push(sb.total ? `${sb.proven} of ${sb.total} done` : "no plan yet");
   const spent = usd(s.spent);
-  if (spent) parts.push(spent);
+  if (spent && !s.stand_in) parts.push(spent); // a practice run spends nothing: Home and the graph say no cost either
   const a = autoLine(s) ? s.auto : null;
   if (a?.stage) parts.unshift(a.stage === "waits" ? "auto waits" : a.stage === "done" ? "auto done" : `auto round ${a.round ?? 1}`);
   return parts.join(" · ");
@@ -372,7 +372,7 @@ export function autoLine(s: State): string {
   if (a.round !== null) parts.push(a.rounds !== null ? `round ${a.round} of ${a.rounds + 1}` : `round ${a.round}`);
   if (a.stage) parts.push(a.stage);
   const spent = a.spent === null ? "" : usd(a.spent) || "$0.00";
-  if (spent) parts.push(a.budget !== null ? `${spent} of ${usd(a.budget) || "$0.00"}` : spent);
+  if (spent && !s.stand_in) parts.push(a.budget !== null ? `${spent} of ${usd(a.budget) || "$0.00"}` : spent);
   if (a.why) parts.push(screenWords(a.why));
   return parts.join(" · ");
 }
