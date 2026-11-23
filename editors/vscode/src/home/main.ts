@@ -184,9 +184,13 @@ function drawCard(c: Card): HTMLElement {
   if (c.lines.length) {
     const dl = el("dl", "c-lines", undefined, card);
     for (const l of c.lines) {
-      const r = el("div", `c-line${l.warn ? " warn" : ""}${l.k ? "" : " wide"}`, undefined, dl);
+      const long = l.k && l.v.length > (l.mono ? 26 : 40) ? " long" : ""; // under its label in a narrow side bar (home.css)
+      const r = el("div", `c-line${l.warn ? " warn" : ""}${l.k ? "" : " wide"}${long}`, undefined, dl);
       if (l.k) el("dt", "", l.k, r);
-      el("dd", l.mono ? "mono" : "", l.v, r);
+      const dd = el("dd", l.mono ? "mono" : "", undefined, r);
+      if (l.paths) for (const p of l.paths) path(p, dd);
+      else if (l.mono) code(l.v, dd);
+      else dd.textContent = l.v;
     }
   }
   const acts = c.buttons.filter((x) => x.act !== "drop");
@@ -195,6 +199,27 @@ function drawCard(c: Card): HTMLElement {
     for (const b of acts) button(b, row);
   }
   return card;
+}
+
+/** A file on a line of its own: its name whole, its folder dim and cut from the left when the line is short
+ *  (`…ces/impl/RecipeLookupServiceImpl.java`); the whole path on hover. Never broken inside a word. */
+function path(p: string, parent: HTMLElement) {
+  const row = el("span", "path", undefined, parent);
+  row.title = p;
+  const cut = p.lastIndexOf("/") + 1;
+  if (cut) el("span", "dir", `${p.slice(0, cut)}\u200e`, row); // the mark keeps the last slash on the right, as the dir is set right to left
+  el("span", "file", p.slice(cut), row);
+}
+
+/** A command, breakable where it reads as a seam: at its spaces, after a slash, and after the dots of a long
+ *  dotted name (`app.cookyourbooks.services.impl.RecipeTest`). <wbr>, so a copied command is the command. */
+function code(v: string, parent: HTMLElement) {
+  for (const w of v.split(/(\s+)/)) {
+    w.split(w.length >= 24 ? /(?<=[/.])/ : /(?<=\/)/).forEach((part, i) => {
+      if (i) parent.append(document.createElement("wbr"));
+      parent.append(part);
+    });
+  }
 }
 
 /** Everything that is not a plan to show: reading, no folder, no graphene, a folder to set up, an error. */

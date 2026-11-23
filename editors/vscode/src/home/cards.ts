@@ -14,7 +14,8 @@ export type Act = (typeof ACTS)[number];
 
 /** ``main``: the card's one filled button, if any. ``note``: a dim word after the label (a question's default). */
 export interface Btn { label: string; act: Act; id?: string; arg?: string; main?: boolean; title?: string; off?: boolean; note?: string }
-export interface Line { k?: string; v: string; mono?: boolean; warn?: boolean }
+/** ``paths``: the value is these files, drawn one a line and cut in the middle when long (``v`` says them all). */
+export interface Line { k?: string; v: string; mono?: boolean; warn?: boolean; paths?: string[] }
 export type Tone = "question" | "proposed" | "running" | "review" | "came-back" | "ready" | "waiting" | "done" | "yours";
 export interface Card { key: string; tone: Tone; title: string; tag: string; lines: Line[]; buttons: Btn[] }
 export interface Section { key: string; title: string; note: string; buttons: Btn[]; cards: Card[]; folded: boolean }
@@ -25,6 +26,8 @@ export { PROVES_NOTHING };
 const cut = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1).trimEnd()}…` : s);
 const bare = (s: string) => s.trim().replace(/^(an?|the)\s+/i, "").toLowerCase();
 const files = (paths: string[]) => paths.join(", ");
+const fileLine = (k: string, paths: string[], none: string): Line[] =>
+  paths.length ? [{ k, v: files(paths), mono: true, paths }] : line(k, none);
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 const line = (k: string, v: string, more: Partial<Line> = {}): Line[] => (v ? [{ k, v, ...more }] : []);
 /** `a: passed, 9 lines · b: working`: each attempt at a task, as one line. */
@@ -62,7 +65,7 @@ function contract(t: Task, name: (id: string) => string): Line[] {
   ];
   return [
     ...line("What for", t.full && bare(t.full) !== bare(t.title) ? t.full : ""), // not the title again, with an "an" before it
-    { k: "May change", v: files(t.scope) || "no files named", mono: Boolean(t.scope.length) },
+    ...fileLine("May change", t.scope, "no files named"),
     { k: "Done when", v: t.check ? `${t.check} passes` : "you approve it", mono: Boolean(t.check) },
     ...(t.hollow ? [{ v: PROVES_NOTHING, warn: true }] : []), // the check ran once on the code as it is, before the run
     ...line("After", t.needs.map(name).join(", ")),
@@ -73,7 +76,7 @@ function contract(t: Task, name: (id: string) => string): Line[] {
 function evidence(t: Task): Line[] {
   const kept = t.kept && t.forks.length > 1 ? `attempt ${t.kept.letter} of ${t.forks.length}${t.kept.why ? `: ${t.kept.why}` : ""}` : "";
   return [
-    { k: "Changed", v: files(t.changed) || "no files", mono: Boolean(t.changed.length) },
+    ...fileLine("Changed", t.changed, "no files"),
     { k: "Check", v: t.check ? `${t.check} passed` : "none: your approval finishes it", mono: Boolean(t.check) },
     ...(t.hollow ? [{ v: "This check passed before the work too, so it does not prove the change. Read the changes.", warn: true }] : []),
     ...line("Kept", kept),
@@ -150,7 +153,7 @@ export function home(s: State, seen: ReadonlySet<string> = new Set(), exact = fa
       const t = n.t;
       waiting.push({ key: `help:${t.id}`, tone: "came-back", title: t.title, tag: SAY["came back"],
                      lines: [{ k: "Why", v: t.why || t.note || "it stopped before its check passed", warn: true },
-                             ...line("Tries", t.attempts > 1 ? String(t.attempts) : ""), ...line("Wanted", files(t.outside), { mono: true })],
+                             ...line("Tries", t.attempts > 1 ? String(t.attempts) : ""), ...fileLine("Wanted", t.outside, "")],
                      buttons: help(t, titles) });
     } else if (n.kind === "stopped") {
       const t = n.t, path = t.stopped[t.stopped.length - 1] ?? "a file";

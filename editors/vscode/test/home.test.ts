@@ -20,7 +20,7 @@ test("a suggested plan is read before it starts: each task says what for, what i
   assert.equal(hello.tag, "suggested");
   assert.deepEqual(hello.lines, [
     { k: "What for", v: "hello says hello to the person by name" },
-    { k: "May change", v: "words.py", mono: true },
+    { k: "May change", v: "words.py", mono: true, paths: ["words.py"] },
     { k: "Done when", v: "pytest -q tests/test_words.py passes", mono: true },
   ]);
   assert.deepEqual(card(h, "p:farewell").lines.find((l) => l.k === "After"), { k: "After", v: "bye says goodbye, greet route" });
