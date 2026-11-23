@@ -637,7 +637,7 @@
               "altText": "a race in the graph: three tasks, each with three attempts racing, the goal on the right"
             },
             "completionEvents": [
-              "onCommand:graphene.showGraph"
+              "onContext:graphene.status == ok"
             ]
           },
           {

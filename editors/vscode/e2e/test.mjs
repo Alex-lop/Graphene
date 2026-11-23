@@ -4,8 +4,9 @@
 // without taking the keyboard. It fails when the tab does not open, takes the keyboard, or a graph lacks a task.
 // Then the tab is closed and a plan appears: it must stay closed. Then, in a second window, where the tab was never
 // closed, a file is in front with the caret in it when a plan appears: the tab must open beside the file, not over it.
-// Last, a third window on an empty plan: Graphene's side bar coming into view opens the tab, without the keyboard;
-// closed, it stays closed when the side bar is shown again.
+// Last, a third window on an empty plan, a file in front: Graphene's side bar coming into view opens the tab in
+// the file's group, whole (beside, it would be the narrow lanes), without the keyboard; closed, it stays closed
+// when the side bar is shown again.
 // VSCODE_EXECUTABLE names the app (CI: a build @vscode/test-electron downloads, under xvfb); VSIX the package.
 import { execFileSync } from "node:child_process";
 import { existsSync, rmSync } from "node:fs";
@@ -114,6 +115,9 @@ try {
   page = session.page;
   await said("no plan yet", "a window on an empty plan");
   if (await tabs().count()) throw new Error("an empty plan opened the graph's tab before Graphene's side bar was shown");
+  await L.palette(page, "File: New Untitled Text File"); // a file in front: the tab must still open whole, not beside it
+  await page.locator(".editor-group-container .tab", { hasText: "Untitled-1" }).waitFor({ timeout: 10000 })
+    .catch(() => { throw new Error("no untitled file opened to stand in front"); });
   // the icon itself where the window shows it (VS Code's activity bar), else the side bar by its command (Cursor's
   // top bar keeps it behind a menu): either way Home comes into view, and that is what opens the tab
   const icon = page.locator('.activitybar .action-label[aria-label^="Graphene"]').first();
@@ -122,6 +126,13 @@ try {
   await showGraphene();
   await tabs().first().waitFor({ timeout: 20000 }).catch(() => { throw new Error("Graphene's side bar came into view, and the graph's tab did not open with it"); });
   if (await page.evaluate(inTab)) throw new Error("the tab that opened with the side bar took the keyboard");
+  if (await page.locator(".editor-group-container").count() !== 1) throw new Error("the tab that opened with the side bar opened beside the file, in a group of its own: it is narrow there");
+  let drawn; // the tab's page, once it has drawn the plan: its mode says graph or lanes
+  for (const t0 = Date.now(); !(drawn = (await L.graphFrames(page))[0]); await page.waitForTimeout(100)) {
+    if (Date.now() - t0 > 20000) throw new Error("the tab that opened with the side bar drew no page");
+  }
+  const mode = await drawn.waitForFunction(() => document.body.dataset.mode, null, { timeout: 20000 }).then((h) => h.jsonValue());
+  if (mode === "lanes") throw new Error("the tab that opened with the side bar shows the narrow lanes, not the graph");
   // closed with its own ×, as a person does, and the Explorer shown by its icon: after a click on the icon, the
   // palette's key may land in Home's page
   await tabs().first().hover();
@@ -136,7 +147,7 @@ try {
   console.log(`e2e: ${app.name} opened the graph's tab by itself on a plan with work left, the keyboard not in it, and drew ${TASKS.length} tasks in it; `
     + `Open the Graph revealed the same tab${took ? " and gave it the keyboard" : ", and the keyboard was not seen in it (so the check that it was left alone proved nothing)"}; `
     + `closed, the tab stayed closed when a plan appeared; in a second window with a file in front, a plan that appeared opened the tab beside the file${typing ? " and the keyboard stayed in the file" : ", and the keyboard was not seen in the file before it (so where it stayed is not known)"}; `
-    + `in a third, on an empty plan, ${clicked ? "a click on Graphene's icon" : "showing Graphene's side bar"} opened the tab without the keyboard, and closed, it stayed closed`);
+    + `in a third, on an empty plan with a file in front, ${clicked ? "a click on Graphene's icon" : "showing Graphene's side bar"} opened the tab whole in the file's group (${mode}), without the keyboard, and closed, it stayed closed`);
 } catch (err) {
   failed = err;
   if (session) await L.shot(session.page, path.join(base, "failed.png")).catch(() => {});

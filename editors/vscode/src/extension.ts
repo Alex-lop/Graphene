@@ -58,7 +58,7 @@ export function activate(context: vscode.ExtensionContext) {
   };
   context.subscriptions.push(roundsView, roundsView.onDidChangeVisibility(() => void readRounds()));
   const graph = new GraphHost(context, session);
-  const home = new HomeHost(context, session, () => graph.sidebar());
+  const home = new HomeHost(context, session, (on) => graph.sidebar(on));
   const bar = vscode.window.createStatusBarItem("graphene", vscode.StatusBarAlignment.Left, 50);
   bar.name = "Graphene";
   bar.command = "graphene.home";

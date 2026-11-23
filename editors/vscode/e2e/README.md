@@ -33,9 +33,9 @@ must reveal it. Then the plan is emptied and the tab closed, and a task joins th
 the status bar must count it and the tab must stay closed, as a tab a person closed does in that window. Then a
 second window opens on a folder whose plan is empty, an untitled file is opened in it, and a task joins that
 plan: the tab must open by itself beside the file, in a group of its own, and not take the keyboard out of the
-file. Last, a third window on an empty plan: a click on Graphene's icon (its side bar by command where the icon
-is out of reach) must open the tab without the keyboard, and once closed, showing the side bar again must leave
-it closed. On Linux run it under
+file. Last, a third window on an empty plan, an untitled file in front: a click on Graphene's icon (its side bar
+by command where the icon is out of reach) must open the tab in the file's group, whole and not the narrow lanes,
+without the keyboard, and once closed, showing the side bar again must leave it closed. On Linux run it under
 `xvfb-run`. `E2E_APP=cursor` runs it in Cursor; `E2E_SHOT=file.png` keeps a screenshot.
 
 The other walks are about something else, and their profiles turn that setting off (`settings: L.ASKED_ONLY`):

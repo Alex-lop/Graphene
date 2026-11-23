@@ -38,20 +38,25 @@ function button(b: Btn, parent: HTMLElement): HTMLButtonElement {
 
 // ---- the page, made once ----
 
-/** The graph's mark, three tasks and their links, drawn in the button's own colour. */
+/** Graphene's mark (media/graphene.svg), the tree the tab it opens wears, in the button's own colour. */
 function mark(parent: HTMLElement) {
   const NS = "http://www.w3.org/2000/svg";
   const svg = document.createElementNS(NS, "svg");
   svg.setAttribute("viewBox", "0 0 16 16");
   svg.setAttribute("aria-hidden", "true");
-  for (const [tag, attrs] of [["path", { d: "M4.5 5.5 11 8M4.5 10.5 11 8" }], ["circle", { cx: "3.5", cy: "5", r: "2" }],
-                               ["circle", { cx: "3.5", cy: "11", r: "2" }], ["circle", { cx: "12", cy: "8", r: "2.5" }]] as const) {
-    const e = document.createElementNS(NS, tag);
-    for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
-    svg.appendChild(e);
+  for (const [d, half] of [["M8.64 5.89C9.98 8.35 13.23 8.11 13 10.1L14.2 10.1C13.97 7.16 10.6 7.32 9.71 5.35ZM13.6 10.7C14.59 10.7 15.4 11.51 15.4 12.5C15.4 13.49 14.59 14.3 13.6 14.3C12.61 14.3 11.8 13.49 11.8 12.5C11.8 11.51 12.61 10.7 13.6 10.7Z", true],
+                           ["M6.29 5.35C5.4 7.32 2.03 7.16 1.8 10.1L3 10.1C2.77 8.11 6.02 8.35 7.36 5.89ZM7.4 5.9C7.4 7.98 7.4 7.79 7.4 10.1L8.6 10.1C8.6 7.79 8.6 7.98 8.6 5.9ZM8 1.3C9.1 1.3 10 2.2 10 3.3C10 4.4 9.1 5.3 8 5.3C6.9 5.3 6 4.4 6 3.3C6 2.2 6.9 1.3 8 1.3ZM2.4 10.7C3.39 10.7 4.2 11.51 4.2 12.5C4.2 13.49 3.39 14.3 2.4 14.3C1.41 14.3 0.6 13.49 0.6 12.5C0.6 11.51 1.41 10.7 2.4 10.7ZM8 10.7C8.99 10.7 9.8 11.51 9.8 12.5C9.8 13.49 8.99 14.3 8 14.3C7.01 14.3 6.2 13.49 6.2 12.5C6.2 11.51 7.01 10.7 8 10.7Z", false]] as const) {
+    const p = document.createElementNS(NS, "path");
+    p.setAttribute("d", d);
+    if (half) p.setAttribute("fill-opacity", ".5");
+    svg.appendChild(p);
   }
   parent.appendChild(svg);
 }
+
+/** A count's words held together (`3 of 7 done`, `$0.42 spent`), and a dot with the word before it: the hero's
+ *  lines wrap after a ` · `, not to leave a word or a dot alone. */
+const glue = (t: string) => t.replace(/(\d) /g, "$1 ").replace(/(?<!·) (?=[\d$])/g, " ").replaceAll(" · ", " · ");
 
 const banner = el("div", "banner");
 const screen = el("section", "screen");
@@ -108,14 +113,14 @@ function render(m: Model) {
   goal.textContent = h.goal || (h.empty ? "No plan yet" : "");
   goal.title = h.goal; // three lines at most on the page
   goal.hidden = !goal.textContent; // a plan whose ask is no longer known: no headline rather than a wrong one
-  counts.textContent = h.counts;
+  counts.textContent = glue(h.counts);
   counts.hidden = !h.counts || h.empty;
   pipe.replaceChildren(...h.stages.map((st) => {
     const stage = el("span", `stage ${st.at}`);
     stage.setAttribute("role", "listitem");
     stage.setAttribute("aria-current", st.at === "now" ? "step" : "false");
     el("b", "", st.label, stage);
-    el("small", "", st.note || "\u00a0", stage); // the bars line up whether or not a stage says more
+    el("small", "", glue(st.note) || "\u00a0", stage); // the bars line up whether or not a stage says more
     return stage;
   }));
   pipe.hidden = h.empty; // no plan yet: the intro says where one comes from
@@ -220,7 +225,7 @@ function drawSetUp(m: Model) {
   el("p", "strong", "Who should plan and do the work?", screen);
   const picks = el("div", "picks", undefined, screen);
   for (const w of WHO) {
-    const b = el("button", "pick quiet", undefined, picks);
+    const b = el("button", "pick", undefined, picks);
     el("span", "pick-name", w.label, b);
     el("span", "pick-note", w.note, b);
     b.disabled = Boolean(m.busy);
@@ -228,8 +233,7 @@ function drawSetUp(m: Model) {
   }
   if (m.busy) el("p", "busy", m.busy, screen);
   if (m.last.lines.length || m.last.key) drawSaid(el("div", "said", undefined, screen), m.last);
-  button({ label: "Watch the demo first", act: "demo" }, acts());
-  function acts() { return el("div", "acts", undefined, screen); }
+  button({ label: "Watch the demo first", act: "demo" }, el("div", "foot", undefined, screen)); // a link, as on Home's foot
 }
 
 window.addEventListener("message", (e: MessageEvent<Model>) => {

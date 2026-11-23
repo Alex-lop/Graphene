@@ -3,7 +3,8 @@
 // appearing where there was none, or a run starting. A person who closes the tab is not chased: each round of
 // `graphene auto` is a plan appearing and a run starting, so a start is no reason to bring back what they put
 // away. Closed, it stays closed in this window until they ask for it. Where it opens leaves a person's work as
-// it was: beside what they have in front, never over it. Pure: no VS Code here.
+// it was: beside what they have in front, never over it, unless Graphene's side bar opened it (graph.ts show).
+// Pure: no VS Code here.
 import type { State } from "./state.ts";
 
 /** What of a snapshot a start is read from: work to show (a task that is not done, or a planner writing a

@@ -268,7 +268,7 @@ export async function palette(page, title) {
   await input.fill(">" + title);
   const row = page.locator(".quick-input-list .monaco-list-row").filter({ hasText: title }).first();
   await row.waitFor({ timeout: 10000 });
-  await page.keyboard.press("Enter");
+  await row.click(); // that row, not the first: Enter can take a row that only looks like it (File: Compare New Untitled Text Files)
   await page.waitForSelector(".quick-input-widget", { state: "hidden", timeout: 10000 }).catch(() => {});
 }
 
