@@ -66,7 +66,7 @@ export class HomeHost implements vscode.WebviewViewProvider {
       if (button.act === "startAll" || button.act === "discardAll") button.off = true;
     }
     const model = { type: "home", status: this.session.status, home: h, review: s?.envelope.review === "every", exact: this.exact, busy: this.busy,
-                    last: this.last };
+                    last: this.last, cursor: vscode.env?.appName.includes("Cursor") === true }; // no env: the tests' stand-in for vscode
     const n = s ? needs(s).length : 0;
     for (const v of this.views) {
       v.badge = n ? { value: n, tooltip: n === 1 ? "1 thing needs you" : `${n} things need you` } : undefined;

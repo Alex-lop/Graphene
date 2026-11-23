@@ -3,13 +3,13 @@
 // Nothing is typed here: a plan comes from the person's coding agent, in its chat (`graphene plan propose`).
 import { STOP_AFTER, STOP_AFTER_HOVER } from "../graph/words.ts";
 import type { Act, Btn, Card, Home, Section } from "./cards.ts";
-import { EXACT, WHO } from "./who.ts";
+import { ASK, EXACT, NOT_CURSOR, WHO } from "./who.ts";
 
 declare function acquireVsCodeApi(): { postMessage(m: unknown): void; getState(): unknown; setState(s: unknown): void };
 
 type Status = { kind: string; text: string };
 type Last = { n: number; lines: string[]; bad: boolean; key?: boolean };
-type Model = { type: "home"; status: Status; home: Home | null; review: boolean; exact: boolean; busy: string; last: Last };
+type Model = { type: "home"; status: Status; home: Home | null; review: boolean; exact: boolean; busy: string; last: Last; cursor?: boolean };
 type Saved = { open?: Record<string, boolean>; review?: boolean };
 const api = acquireVsCodeApi();
 let saved: Saved = (() => { try { return (api.getState() as Saved) ?? {}; } catch { return {}; } })();
@@ -65,6 +65,7 @@ const head = el("div", "head", undefined, work); // the hero: the plan in one ca
 const goal = el("div", "goal", undefined, head);
 const counts = el("div", "counts", undefined, head);
 const intro = el("p", "intro", undefined, head);
+const notCursor = el("p", "intro aside", NOT_CURSOR, head); // in Cursor, its Agent's chat is the one at hand
 const pipe = el("div", "pipe", undefined, head); // Plan, Run, Review: where the work is
 pipe.setAttribute("role", "list");
 const toGraph = el("button", "open", undefined, head);
@@ -127,9 +128,10 @@ function render(m: Model) {
   }));
   pipe.hidden = h.empty; // no plan yet: the intro says where one comes from
   intro.hidden = hand.hidden = !h.empty;
-  intro.textContent = "Ask your coding agent for something, in its chat: Claude Code or Codex. Its plan shows here and on the graph, "
+  intro.textContent = `${ASK}. Its plan shows here and on the graph, `
     + (h.stopAfter ? "and nothing runs until you start it. " : "and what fits your limits runs without waiting. ")
     + `Each task lands only when its check passes${m.review ? " and you approve it" : ""}.`;
+  notCursor.hidden = !h.empty || !m.cursor;
   stopAfter.setAttribute("aria-checked", String(h.stopAfter));
   stopNote.textContent = h.stopAfter ? "A plan your agent proposes waits for your Start." : "Off: a plan that fits your limits runs at once.";
   busy.textContent = m.busy;

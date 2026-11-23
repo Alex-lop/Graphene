@@ -30,6 +30,7 @@ p { margin: 6px 0; }
 }
 .counts { color: var(--dim); font-size: 12px; margin-top: 4px; font-variant-numeric: tabular-nums; }
 .intro { color: var(--dim); margin: 6px 0 0; }
+.intro.aside { font-size: 12px; }
 /* Plan, Run, Review as three bars: a finished stage green, the one the work is at yellow */
 .pipe { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
 .stage { display: flex; flex-direction: column; min-width: 0; font-size: 12px; }
