@@ -1430,18 +1430,23 @@ function form(body: HTMLElement, t: TaskX, s: StateX) {
   if (no) div("refused", no, body).setAttribute("role", "alert");
 }
 
-/** A draft's pane: the same form, its own; what it still lacks, or graphene's refusal; and the planner, a click away. */
-function draftPane(pane: HTMLElement, d: Draft) {
-  const head = div("d-head", undefined, pane);
-  div("d-title st-draft", d.title || "A new task", head);
-  div("d-id", "a draft · not in the plan yet", head);
+/** The pane's ×, at its head's right. */
+function closer(parent: HTMLElement) {
   const close = document.createElement("button");
   close.className = "close";
   close.appendChild(icon("close"));
   close.title = "close (Esc)";
   close.setAttribute("aria-label", "close");
   close.addEventListener("click", () => select(null));
-  head.appendChild(close);
+  parent.appendChild(close);
+}
+
+/** A draft's pane: the same form, its own; what it still lacks, or graphene's refusal; and the planner, a click away. */
+function draftPane(pane: HTMLElement, d: Draft) {
+  const head = div("d-head", undefined, pane);
+  div("d-title st-draft", d.title || "A new task", head);
+  div("d-id", "a draft · not in the plan yet", head);
+  closer(div("d-tools", undefined, head));
   const body = div("d-body", undefined, pane);
   const asked = offered.has(d.key) && !d.said; // graphene is deciding: what it was offered is not changed under it
   field(body, "title", "title", d.title, "what this task does", "the task, in a line", (v) => (v.trim() ? redraw(d.key, { title: v.trim() }) : redraw(d.key, {}))).disabled = asked;
@@ -1674,16 +1679,19 @@ function pane() {
   });
   if (d) return draftPane(pane, d);
   if (!t) return;
+  // the head: what it is, its state and who is on it; the id, the CLI's word for it, on the title's hover
   const head = div("d-head", undefined, pane);
-  div(`d-title ${cls(t.state)}`, t.title, head);
-  div("d-id", `${t.id} · ${SAY[t.state]}${t.needs_you ? " · needs you" : ""}`, head);
-  const close = document.createElement("button");
-  close.className = "close";
-  close.appendChild(icon("close"));
-  close.title = "close (Esc)";
-  close.setAttribute("aria-label", "close");
-  close.addEventListener("click", () => select(null));
-  head.appendChild(close);
+  div(`d-title ${cls(t.state)}`, t.title, head).title = `${t.full || t.title} (${t.id})`;
+  const meta = div("d-id", undefined, head);
+  div("d-state", SAY[t.state], meta);
+  const by = t.agent ? `agent ${t.agent}${t.model ? ` · ${t.model}` : ""}` : who(t, s.executor).label;
+  if (by) meta.append(` · ${by}`);
+  // one act is the pane's to offer at its foot (the state's own, and the look at its work); the rest wait in the …
+  const all = actsFor(t, replaying());
+  const inFoot = (b: Button) => b.main || b.act === "openDiff" || b.act === "compareForks";
+  const tools = div("d-tools", undefined, head);
+  paneMenu(tools, t.id, all.filter((b) => !inFoot(b)));
+  closer(tools);
   const body = div("d-body", undefined, pane);
   if (t.state === "came back" && t.why) div("why", screenWords(t.why), body);
   const q = questionOn(s, t.id);
@@ -1725,8 +1733,57 @@ function pane() {
   if (tab() === "scope") scopeTab(body, t, s);
   else if (tab() === "edit") editTab(body, t, s);
   else activityTab(body, t);
-  const acts = div("d-acts", undefined, pane);
-  for (const b of actsFor(t, replaying())) button(b, t.id, acts);
+  const foot = all.filter(inFoot);
+  if (foot.length) { const acts = div("d-acts", undefined, pane); for (const b of foot) button(b, t.id, acts); }
+}
+
+let menuOf: string | null = null; // the task whose … is open: open again when its pane is rebuilt under it
+
+/** The pane's …: the acts a person reaches for less (add a task beside it, link, message its agent, remove),
+ *  as a menu by the close. A popover, so a click outside or Esc closes it, and the focus goes back to the …. */
+function paneMenu(tools: HTMLElement, id: string, acts: Button[]) {
+  if (!acts.length) return;
+  const more = document.createElement("button");
+  more.className = "close more";
+  more.appendChild(icon("ellipsis"));
+  more.title = "more";
+  more.setAttribute("aria-label", "more acts");
+  more.setAttribute("aria-haspopup", "menu");
+  const menu = div("d-menu", undefined, tools);
+  menu.popover = "auto";
+  menu.setAttribute("role", "menu");
+  more.popoverTargetElement = menu;
+  for (const b of acts) {
+    const item = document.createElement("button");
+    item.setAttribute("role", "menuitem");
+    if (b.icon) item.appendChild(icon(b.icon));
+    item.append(b.label);
+    item.title = b.title;
+    item.addEventListener("click", () => { menuOf = null; menu.hidePopover(); press(b, id); });
+    menu.appendChild(item);
+  }
+  menu.addEventListener("beforetoggle", (e) => {
+    if ((e as ToggleEvent).newState !== "open") return;
+    const r = more.getBoundingClientRect(); // under the …, its right edge on the …'s
+    menu.style.top = `${r.bottom + 4}px`;
+    menu.style.right = `${Math.max(8, innerWidth - r.right)}px`;
+  });
+  menu.addEventListener("toggle", (e) => {
+    const open = (e as ToggleEvent).newState === "open";
+    if (open && menuOf !== id) menu.querySelector("button")?.focus(); // opened by the person, not again after a rebuild
+    if (open || menu.isConnected) menuOf = open ? id : null; // a rebuild takes it away: not closed by the person
+  });
+  menu.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") { e.stopPropagation(); return; } // the menu's Esc, not the pane's
+    const step = e.key === "ArrowDown" ? 1 : e.key === "ArrowUp" ? -1 : 0;
+    if (!step) return;
+    e.preventDefault();
+    e.stopPropagation(); // the arrows walk the menu, not the cards
+    const items = Array.from(menu.querySelectorAll("button")), at = items.indexOf(document.activeElement as HTMLButtonElement);
+    items[(at + step + items.length) % items.length]?.focus();
+  });
+  tools.appendChild(more);
+  if (menuOf === id) menu.showPopover();
 }
 
 let helpFrom: Element | null = null; // where the focus was when ? opened: it goes back there on Esc
