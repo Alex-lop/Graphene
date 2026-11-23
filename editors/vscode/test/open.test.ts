@@ -36,6 +36,13 @@ test("the window opens on a plan with work to show: the first snapshot opens the
   for (const s of [proposals, drafting, running, run(done(running), true)]) assert.equal(opens(null, seen(s), ON), true);
 });
 
+test("the side bar coming into view opens the tab on any plan, unless it is there, was closed, or the setting is off", () => {
+  for (const s of [empty, done(running), proposals]) assert.equal(opens(seen(s), seen(s), { ...ON, sidebar: true }), true);
+  assert.equal(opens(null, seen(empty), { ...ON, sidebar: true, tab: true }), false);
+  assert.equal(opens(null, seen(empty), { ...ON, sidebar: true, shut: true }), false);
+  assert.equal(opens(null, seen(empty), { ...ON, sidebar: true, on: false }), false);
+});
+
 test("an empty folder and a plan whose every task is done open nothing", () => {
   assert.equal(opens(null, seen(empty), ON), false);
   assert.equal(opens(null, seen(done(running)), ON), false);

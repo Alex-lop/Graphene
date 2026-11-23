@@ -31,10 +31,13 @@ export class HomeHost implements vscode.WebviewViewProvider {
   private lastWorkflow: { name: string; inputs: Record<string, string> } | null = null;
   private readonly context: vscode.ExtensionContext;
   private readonly session: Session;
+  /** Home came into view: the graph's tab opens with it (graph.ts sidebar). */
+  private readonly shown: () => void;
 
-  constructor(context: vscode.ExtensionContext, session: Session) {
+  constructor(context: vscode.ExtensionContext, session: Session, shown: () => void = () => {}) {
     this.context = context;
     this.session = session;
+    this.shown = shown;
     session.onDidChange(() => this.push());
     session.onDidSee(() => this.push());
     // the graph's header asks for these by name: its Save as workflow button, and its switch, which moves as Home's
@@ -49,6 +52,9 @@ export class HomeHost implements vscode.WebviewViewProvider {
     view.webview.html = this.html(view.webview);
     this.views.add(view);
     view.onDidDispose(() => this.views.delete(view));
+    const seen = () => { if (view.visible) this.shown(); }; // a click on Graphene's icon lands on the graph
+    seen();
+    view.onDidChangeVisibility(seen);
     view.webview.onDidReceiveMessage((m: unknown) => {
       const msg = checkHome(m, this.session.state, this.workflows);
       if (!msg) return;

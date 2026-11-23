@@ -1,5 +1,5 @@
-// The graph's host: one webview panel (Graphene: Show Plan Graph) and the sidebar's Graph view share the
-// same page, dist/graph.js, under a strict CSP; the page asks, the host runs graphene and pushes the state.
+// The graph's host: one webview panel, the graph's tab in the editor area, whose page is dist/graph.js under a
+// strict CSP; the page asks, the host runs graphene and pushes the state.
 // The host checks every message the page sends: a known act, an id the plan has, a fork the task has;
 // nothing from the page reaches a shell, each act is a command's argument or a graphene argv.
 import * as vscode from "vscode";
@@ -10,10 +10,9 @@ import { beside, opens, seen, type Seen } from "./open.ts";
 import type { Session } from "./session.ts";
 
 
-export class GraphHost implements vscode.WebviewViewProvider {
+export class GraphHost {
   private panel: vscode.WebviewPanel | null = null;
   private views = new Set<vscode.Webview>();
-  private sidebars = new Set<vscode.WebviewView>();
   private context: vscode.ExtensionContext;
   private session: Session;
   private title: string;
@@ -21,6 +20,7 @@ export class GraphHost implements vscode.WebviewViewProvider {
   private draftStore: string;
   private was: Seen | null = null; // the last snapshot read: a start is a change from it (open.ts)
   private shut = false; // a person closed the tab in this window: no start opens it again (open.ts)
+  private wanted = false; // Graphene's side bar came into view, and no plan was read since
   private closed = new vscode.EventEmitter<void>();
   /** The panel was closed (Watch the Demo ends its replay then). */
   readonly onDidClose = this.closed.event;
@@ -44,8 +44,16 @@ export class GraphHost implements vscode.WebviewViewProvider {
     if (!s || this.session.own) return;
     const now = seen(s);
     const on = vscode.workspace.getConfiguration("graphene").get<boolean>("graph.openOnStart", true);
-    if (opens(this.was, now, { on, tab: this.panel !== null, shut: this.shut })) this.show(undefined, true);
+    if (opens(this.was, now, { on, tab: this.panel !== null, shut: this.shut, sidebar: this.wanted })) this.show(undefined, true);
+    this.wanted = false;
     this.was = now;
+  }
+
+  /** Graphene's side bar came into view (Home's host says so): the tab opens with it, as for a start, once a
+   *  plan is read (this one, or the next if none is yet), so a click on the icon lands on the graph. */
+  sidebar() {
+    this.wanted = true;
+    this.start();
   }
 
   /** The panel, made or revealed; with ``select`` the page selects that task. ``quiet``: nobody asked for it
@@ -74,19 +82,9 @@ export class GraphHost implements vscode.WebviewViewProvider {
     if (select) void this.panel.webview.postMessage({ type: "select", id: select });
   }
 
-  resolveWebviewView(view: vscode.WebviewView) {
-    view.webview.options = {
-      enableScripts: true,
-      localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, "dist"), vscode.Uri.joinPath(this.context.extensionUri, "media")],
-    };
-    this.attach(view.webview);
-    this.sidebars.add(view);
-    view.onDidDispose(() => { this.views.delete(view.webview); this.sidebars.delete(view); });
-  }
-
-  /** Whether a graph is on screen: the poll runs only then. */
+  /** Whether the graph is on screen: the poll runs only then. */
   get open(): boolean {
-    return Boolean(this.panel?.visible) || [...this.sidebars].some((v) => v.visible);
+    return Boolean(this.panel?.visible);
   }
 
   dispose() {

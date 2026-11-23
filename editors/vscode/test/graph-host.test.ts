@@ -113,6 +113,19 @@ test("the tab opens by itself on a start, without the keyboard; Show graph revea
   new GraphHost(context, replay as never, "Graphene demo");
   replay.fire();
   assert.equal(opened(), 2, "Watch the Demo opens its own graph itself");
+  // Graphene's icon is clicked: Home comes into view, and the tab opens with it, on any plan, once it is read
+  const icon = live(), clicked = new GraphHost(context, icon as never);
+  clicked.sidebar(); // before the first read: nothing to show yet
+  assert.equal(opened(), 2);
+  icon.state = read("empty");
+  icon.fire(); // an empty plan: no start, but the side bar asked
+  assert.equal(opened(), 3, "a click on the icon lands on the graph, an empty plan's included");
+  assert.deepEqual(vscode.panels.at(-1)!.show, { viewColumn: -1, preserveFocus: true }, "and leaves the keyboard in the side bar");
+  clicked.sidebar(); // the side bar again, the tab there
+  assert.equal(opened(), 3, "a tab that is there is left as it is");
+  vscode.panels.at(-1)!.dispose();
+  clicked.sidebar(); // the side bar again, after a person closed the tab
+  assert.equal(opened(), 3, "closed in this window, it stays closed: Open the graph on Home brings it back");
 });
 
 test("by itself the tab opens beside what a person has in front, never over it; asked for, it opens in front as it did", async () => {
@@ -199,21 +212,6 @@ test("a field set on the page is one `node set`, a drawn task one `node add`; gr
   assert.deepEqual([last.type, last.key, last.ok], ["said", " d2", false]);
 });
 
-test("graphene's answer goes to the page that asked: another page's draft has the same key", async () => {
-  const { parseState } = await import("../src/state.ts");
-  const { readFileSync } = await import("node:fs");
-  const state = parseState(readFileSync(new URL("./fixtures/graph-race.json", import.meta.url), "utf8"));
-  const host = new GraphHost(context, { ...(session as object), state, change: async () => ({ ok: true, line: "done", stdout: "○ a flag  n9  ready\n" }) } as never);
-  host.show();
-  const panel = vscode.panels.at(-1)!.w as unknown as { sent: unknown[]; receive(m: unknown): Promise<unknown> };
-  const side = { html: "", cspSource: "", sent: [] as unknown[], options: {}, asWebviewUri: (u: unknown) => u, h: (_: unknown) => undefined as unknown,
-                 postMessage(m: unknown) { this.sent.push(m); return Promise.resolve(true); }, onDidReceiveMessage(h: (m: unknown) => unknown) { this.h = h; return { dispose() {} }; } };
-  host.resolveWebviewView({ webview: side, onDidDispose: () => ({ dispose() {} }), visible: true } as never);
-  await panel.receive({ type: "act", act: "draw", id: "", draft: { key: " d1", title: "a flag", files: "cli.py", check: "true", approve: false, after: null, parent: null } });
-  assert.ok(panel.sent.some((m) => (m as { type: string }).type === "said"));
-  assert.ok(!side.sent.some((m) => (m as { type: string }).type === "said"), "the side bar's own ` d1` is not taken away by the tab's answer");
-});
-
 test("draft edits survive a new host, reach both pages, and preserve another page's concurrent draft", async () => {
   const stored = new Map<string, unknown>();
   const ctx = { extensionUri: "ext", subscriptions: [], workspaceState: {
@@ -284,7 +282,7 @@ test("Home disables Start while planning finishes, so a visible plan cannot swal
   const page = { html: "", cspSource: "", options: {}, asWebviewUri: (u: unknown) => u,
     sent: [] as { type: string; home: { sections: { buttons: { act: string; off?: boolean }[] }[] } }[],
     postMessage(m: never) { this.sent.push(m); return Promise.resolve(true); }, onDidReceiveMessage() { return { dispose() {} }; } };
-  host.resolveWebviewView({ webview: page, onDidDispose: () => ({ dispose() {} }), visible: true } as never);
+  host.resolveWebviewView({ webview: page, onDidDispose: () => ({ dispose() {} }), onDidChangeVisibility: () => ({ dispose() {} }), visible: true } as never);
   const inspect = host as unknown as { busy: string; push(): void };
   const start = () => page.sent.at(-1)!.home.sections.flatMap((s) => s.buttons).find((b) => b.act === "startAll")!;
   inspect.busy = "Planning…";
