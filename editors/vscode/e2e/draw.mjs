@@ -58,23 +58,15 @@ try {
   await typeIn("f-files", "wordkit/cli.py tests/test_top.py");
   await until(g, () => document.querySelector("#view g.task.draft text.sub")?.textContent === "2 files · check ___", null, "the files on the draft's box");
   await shot("files");
-  // A draft belongs to the workspace: a second graph, a closed panel and a reloaded window retain it.
+  // A draft belongs to the workspace: a closed panel and a reloaded window retain it.
   await g.locator("#f-check").press("Escape");
-  const graphIcon = page.locator('.activitybar .action-label[aria-label^="Graphene"]').first();
-  if (await graphIcon.isVisible().catch(() => false)) await graphIcon.click();
-  else await L.openSidebar(page);
-  for (let i = 0; i < 100 && (await L.graphFrames(page)).length < 2; i++) await page.waitForTimeout(100);
-  const side = (await L.graphFrames(page)).find((f) => f !== g);
-  if (!side) throw new Error("no second graph for the shared draft");
-  await until(side, () => document.querySelectorAll(".draft").length > 0, null, "the same draft in the sidebar");
-  say("the sidebar has the shared draft");
   const graphTab = page.locator(".editor-group-container .tab.active");
   await graphTab.hover();
   await graphTab.getByRole("button", { name: /^Close/ }).click();
   await graphTab.waitFor({ state: "detached" });
   say("closed the graph tab");
   await L.openPanel(page);
-  g = (await L.graphFrames(page)).find((f) => f !== side);
+  g = (await L.graphFrames(page))[0];
   await until(g, () => document.querySelector("g.task.draft text.title")?.textContent === "print the top words", null, "the draft after closing its panel");
   say("the reopened tab retained the draft");
   await L.palette(page, "Developer: Reload Window");
@@ -91,7 +83,7 @@ try {
   await g.locator("g.task.draft rect.box").click();
   await until(g, () => document.querySelector("#f-files")?.value === "wordkit/cli.py tests/test_top.py", null, "the draft's retained files");
   if (Object.keys(plan()).length !== 0) throw new Error("an incomplete draft entered the plan");
-  say("the draft and its files survived a second graph, closing the panel and reloading the window");
+  say("the draft and its files survived closing the panel and reloading the window");
   name = g.locator("#view g.task.draft input.name");
   await g.locator("#f-check").focus();
   await typeIn("f-check", "python3 -m unittest -q");

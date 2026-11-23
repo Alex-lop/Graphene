@@ -27,12 +27,15 @@ Mac's `/Applications/Visual Studio Code.app`, else a build `@vscode/test-electro
 
 `npm test` installs the `.vsix` in a fresh profile, adds three tasks to a wordkit fixture and launches VS Code.
 The plan has work left, so the graph's tab opens by itself (`graphene.graph.openOnStart`, left at its default):
-the check runs no command for it, and fails when the tab does not open, when it took the keyboard, or when it or
-the side bar's graph does not draw the three tasks. Show Graph must then reveal that same tab. Then the plan is
-emptied and the tab closed, and a task joins the plan from outside the window: the side bar's graph must draw it
-and the tab must stay closed, as a tab a person closed does in that window. Then a second window opens on a folder
-whose plan is empty, an untitled file is opened in it, and a task joins that plan: the tab must open by itself
-beside the file, in a group of its own, and not take the keyboard out of the file. On Linux run it under
+the check runs no command for it, and fails when the tab does not open, when it took the keyboard, or when it
+does not draw the three tasks. Graphene's side bar, shown then, leaves that one tab as it is, and Open the Graph
+must reveal it. Then the plan is emptied and the tab closed, and a task joins the plan from outside the window:
+the status bar must count it and the tab must stay closed, as a tab a person closed does in that window. Then a
+second window opens on a folder whose plan is empty, an untitled file is opened in it, and a task joins that
+plan: the tab must open by itself beside the file, in a group of its own, and not take the keyboard out of the
+file. Last, a third window on an empty plan: a click on Graphene's icon (its side bar by command where the icon
+is out of reach) must open the tab without the keyboard, and once closed, showing the side bar again must leave
+it closed. On Linux run it under
 `xvfb-run`. `E2E_APP=cursor` runs it in Cursor; `E2E_SHOT=file.png` keeps a screenshot.
 
 The other walks are about something else, and their profiles turn that setting off (`settings: L.ASKED_ONLY`):
@@ -41,9 +44,10 @@ The other walks are about something else, and their profiles turn that setting o
 anything joins it, the second shows a reader what a person would see.
 
 `npm run home` clicks Home through, against the stand-in: a folder with no plan is set up with one click (and
-`review: every`), an ask is planned, Start runs the agents, Approve before the changes were opened asks first,
+`review: every`), a plan arrives as an agent's does (`graphene ask` from the shell: Home has no box to type
+in), Start runs the agents, Approve before the changes were opened asks first,
 Open Changes shows the diff, Approve lands the task and Send back… returns another with a note. Then, on a
-second folder, it turns Stop after the plan off and Plan it runs the plan with no Start (auto). On a third, Home
+second folder, it turns Stop after the plan off and a goal given to `graphene auto` runs with no Start. On a third, Home
 lists `workflows/fix-issue.md`, Run fills its inputs and proposes its plan with no planner call, and Start runs
 it to the line, where the pull request step asks first. It fails when a step does not show what it should, and
 keeps a screenshot of each step (`E2E_SHOTS=dir`, else in its scratch).
@@ -53,7 +57,7 @@ typed on its box, its files and its check in the pane) and sees it join the plan
 the first with your approval for a check, sets three attempts on the stepper and reads ×3 on its card before
 anything runs, changes a title in the form, takes a task for you and gives it back, reads graphene's refusal in
 the pane,
-and changes the files of a task an agent holds. It also checks a shared draft in both graph views, closing its panel, reloading the window, and an inline
+and changes the files of a task an agent holds. It also checks that a draft survives closing its panel and reloading the window, and an inline
 refusal with no duplicate toast. Each step is checked against `graphene plan --json`.
 
 ## Screenshots and video
@@ -63,9 +67,9 @@ node shots.mjs --app code --out shots --video ~/graphene-film/harness
 node shots.mjs --app cursor --out shots --during
 ```
 
-The side bar at 280, 320 and 400 px, the editor tab at 1280x800 and 1920x1080, each in Dark Modern, Light
+Home in the side bar at 280, 320 and 400 px, the graph's tab at 1280x800 and 1920x1080, each in Dark Modern, Light
 Modern and High Contrast: `APP-WHAT-THEME.png`, with `APP-smallest-text.json` beside them (the smallest text
-drawn in each shot, font size times the SVG's scale, in CSS px). The race runs to its end before the window
+drawn in each graph shot, font size times the SVG's scale, in CSS px). The race runs to its end before the window
 opens, so every shot shows the same finished store; `--during` starts it after the window opens, so the
 video shows it live. The store's race is `graphene auto` against `dev/proof/standin.py`.
 
@@ -76,7 +80,7 @@ node drive.mjs --app code --auto --shots /tmp/look &     # prints `port N`
 printf 'shot first\n' | nc 127.0.0.1 N                   # /tmp/look/first.png
 printf 'graph\nframes\n' | nc 127.0.0.1 N                # what the graph frames show; every frame's text
 printf 'sidebar 320\nshot narrow\n' | nc 127.0.0.1 N
-printf 'palette Graphene: Show Graph\nsize 1920x1080\ntheme light\nshot panel\n' | nc 127.0.0.1 N
+printf 'palette Graphene: Open the Graph\nsize 1920x1080\ntheme light\nshot panel\n' | nc 127.0.0.1 N
 printf 'click Run ready\nkey Escape\n' | nc 127.0.0.1 N
 printf 'sh node set top --title "a new title"\n' | nc 127.0.0.1 N
 printf 'quit\n' | nc 127.0.0.1 N
@@ -104,8 +108,8 @@ uv run python editors/vscode/e2e/measure/moves.py        # the cockpit's keys ag
 
 `lib.mjs` exports the pieces: `findApp`, `makeProfile` (`settings: L.ASKED_ONLY` for a graph tab that opens only
 when you ask), `installVsix`, `makeFixture`, `startStandin`,
-`startAuto`, `launch`, `openSidebar`, `openPanel`, `palette`, `setSidebarWidth`, `setSize`, `setTheme`,
-`graphFrames` (the webview frames that hold a graph, found by their content: VS Code nests the page two
+`startAuto`, `launch`, `openSidebar`, `homeFrame`, `openPanel`, `palette`, `setSidebarWidth`, `setSize`, `setTheme`,
+`graphFrames` (the webview frames that hold the graph, found by their content: VS Code nests the page two
 iframes deep), `waitForGraph`, `readGraph`, `smallestText`, `framesText`, `shot`.
 
 A note on the environment: the harness strips the agent's marks (`CLAUDE*`, `CODEX*`, `AI_AGENT`) from

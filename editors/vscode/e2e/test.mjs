@@ -1,9 +1,11 @@
 // `npm test`: the extension, installed from its .vsix in a profile of its own, draws a fixture's tasks in the
-// graph's tab and in the side bar's Graph view of real VS Code. The profile leaves graphene.graph.openOnStart at
+// graph's tab of real VS Code, and its status bar item counts them. The profile leaves graphene.graph.openOnStart at
 // its default, so the tab is not asked for: the window opens on a plan with work left and the tab opens by itself,
 // without taking the keyboard. It fails when the tab does not open, takes the keyboard, or a graph lacks a task.
 // Then the tab is closed and a plan appears: it must stay closed. Then, in a second window, where the tab was never
 // closed, a file is in front with the caret in it when a plan appears: the tab must open beside the file, not over it.
+// Last, a third window on an empty plan: Graphene's side bar coming into view opens the tab, without the keyboard;
+// closed, it stays closed when the side bar is shown again.
 // VSCODE_EXECUTABLE names the app (CI: a build @vscode/test-electron downloads, under xvfb); VSIX the package.
 import { execFileSync } from "node:child_process";
 import { existsSync, rmSync } from "node:fs";
@@ -53,42 +55,35 @@ try {
   await tabs().first().waitFor({ timeout: 10000 }).catch(() => { throw new Error("a graph drew by itself, but not in a tab of the editor area"); });
   if (await page.evaluate(inTab)) throw new Error("the tab that opened by itself took the keyboard");
   await L.openSidebar(page);
-  let side, shown = { tasks: [], counts: "" };
-  for (const t0 = Date.now(); shown.tasks.length < TASKS.length; await page.waitForTimeout(100)) { // the side bar's own frame, drawn
-    if (Date.now() - t0 > 60000) throw new Error(`the side bar's graph drew ${shown.tasks.length} of ${TASKS.length} tasks: ${JSON.stringify(shown)}`);
-    side = (await L.graphFrames(page)).find((f) => f !== own.frame);
-    if (side) shown = await L.readGraph(side).catch(() => shown);
-  }
-  for (const [id] of TASKS) {
-    if (!shown.tasks.some((t) => t.id === id)) throw new Error(`the side bar's graph lacks ${id}: ${JSON.stringify(shown)}`);
-  }
-  if (!shown.counts.includes(`0 of ${TASKS.length} done`)) throw new Error(`the counts read ${shown.counts}`);
+  if (await tabs().count() !== 1) throw new Error(`${await tabs().count()} Graphene tabs once the side bar came into view: the one that is there is left as it is`);
+  // what the window last read, as its status bar item says it (Home's side bar has no graph of its own)
+  const bar = () => page.locator(".statusbar-item", { hasText: "◆" }).first().textContent().catch(() => "");
+  const said = async (want, what) => {
+    for (const t0 = Date.now(); !(await bar()).includes(want); await page.waitForTimeout(100)) {
+      if (Date.now() - t0 > 60000) throw new Error(`${what}: the status bar reads “${await bar()}”, not “${want}”`);
+    }
+  };
+  await said(`0 of ${TASKS.length} done`, "the plan's counts");
   const inOwn = await L.readGraph(own.frame);
   for (const [id] of TASKS) {
     if (!inOwn.tasks.some((t) => t.id === id)) throw new Error(`the tab's graph lacks ${id}: ${JSON.stringify(inOwn)}`);
   }
-  // Show Graph, asked for, reveals that tab: there is still one, and it may take the keyboard now. Whether it did
+  // Open the Graph, asked for, reveals that tab: there is still one, and it may take the keyboard now. Whether it did
   // is said, not required: it is what shows the check above can tell a tab that took the keyboard from one that did not.
   await L.palette(page, "Graphene: Open the Graph");
   const took = await page.waitForFunction(inTab, null, { timeout: 5000 }).then(() => true, () => false);
-  if (await tabs().count() !== 1) throw new Error(`${await tabs().count()} Graphene tabs after Show Graph: it reveals the one that is there`);
+  if (await tabs().count() !== 1) throw new Error(`${await tabs().count()} Graphene tabs after Open the Graph: it reveals the one that is there`);
   // The tab is closed, and a start nobody clicked for follows: the plan is emptied, and a task joins it from outside
-  // the window, as an agent's proposal does. A tab a person closed stays closed in that window: the side bar's
-  // graph draws the task, and no tab opens.
+  // the window, as an agent's proposal does. A tab a person closed stays closed in that window: the status bar
+  // counts the task, and no tab opens.
   const cli = (argv, at = fx) => execFileSync(graphene, argv, { cwd: at.dir, env: at.env, stdio: "pipe" });
   const joins = ["node", "add", "a count of sentences", "--id", "sentences", "--scope", "wordkit/sentences.py", "--check", "true"];
   cli(["node", "drop", ...TASKS.map(([id]) => id)]);
-  for (const t0 = Date.now(); shown.tasks.length; await page.waitForTimeout(100)) { // the window has read the empty plan
-    if (Date.now() - t0 > 60000) throw new Error(`every task was dropped, and the side bar's graph still draws ${JSON.stringify(shown.tasks)}`);
-    shown = await L.readGraph(side).catch(() => shown);
-  }
+  await said("no plan yet", "every task was dropped"); // the window has read the empty plan
   await L.palette(page, "View: Close All Editors");
   await tabs().first().waitFor({ state: "detached", timeout: 10000 }).catch(() => { throw new Error("Close All Editors left the graph's tab open"); });
   cli(joins);
-  for (const t0 = Date.now(); !shown.tasks.length; await page.waitForTimeout(100)) { // the window has read the plan that appeared
-    if (Date.now() - t0 > 60000) throw new Error("a task joined the plan, and the side bar's graph does not draw it");
-    shown = await L.readGraph(side).catch(() => shown);
-  }
+  await said("0 of 1 done", "a task joined the plan"); // the window has read the plan that appeared
   await page.waitForTimeout(2000); // the read that drew the task is the one that would have opened the tab
   if (await tabs().count()) throw new Error("the tab was closed, a plan appeared, and the tab opened by itself again: closed, it stays closed in that window");
   // A file in front with the caret in it, and a start nobody clicked for, in a window where the tab was never
@@ -112,10 +107,36 @@ try {
   if (await group("Untitled-1").count() !== 1) throw new Error("the file that was in front is gone from the editor area");
   if (await page.evaluate(inTab)) throw new Error("the tab that opened by itself beside a file took the keyboard");
   if (typing && !(await page.evaluate(inFile))) throw new Error("the tab that opened by itself took the keyboard out of the file it was in");
+  // Graphene's icon, clicked, on a plan with nothing to start: the side bar is a way in, so the tab opens with it.
+  await L.close(session);
+  const fx3 = L.makeFixture(path.join(base, "wordkit-icon"), graphene);
+  session = await L.launch(app, profile, fx3.dir, { width: 1280, height: 800 });
+  page = session.page;
+  await said("no plan yet", "a window on an empty plan");
+  if (await tabs().count()) throw new Error("an empty plan opened the graph's tab before Graphene's side bar was shown");
+  // the icon itself where the window shows it (VS Code's activity bar), else the side bar by its command (Cursor's
+  // top bar keeps it behind a menu): either way Home comes into view, and that is what opens the tab
+  const icon = page.locator('.activitybar .action-label[aria-label^="Graphene"]').first();
+  const clicked = await icon.isVisible().catch(() => false);
+  const showGraphene = () => (clicked ? icon.click() : L.openSidebar(page));
+  await showGraphene();
+  await tabs().first().waitFor({ timeout: 20000 }).catch(() => { throw new Error("Graphene's side bar came into view, and the graph's tab did not open with it"); });
+  if (await page.evaluate(inTab)) throw new Error("the tab that opened with the side bar took the keyboard");
+  // closed with its own ×, as a person does, and the Explorer shown by its icon: after a click on the icon, the
+  // palette's key may land in Home's page
+  await tabs().first().hover();
+  await tabs().first().getByRole("button", { name: /^Close/ }).click();
+  await tabs().first().waitFor({ state: "detached", timeout: 10000 });
+  const explorer = page.locator('.activitybar .action-label[aria-label^="Explorer"]').first();
+  await (clicked && await explorer.isVisible().catch(() => false) ? explorer.click() : L.palette(page, "View: Show Explorer"));
+  await showGraphene();
+  await page.waitForTimeout(2000);
+  if (await tabs().count()) throw new Error("the tab was closed, the side bar shown again, and the tab came back: closed, it stays closed in that window");
   if (process.env.E2E_SHOT) await L.shot(page, process.env.E2E_SHOT);
-  console.log(`e2e: ${app.name} opened the graph's tab by itself on a plan with work left, the keyboard not in it, and drew ${TASKS.length} tasks in it and in the side bar; `
-    + `Show Graph revealed the same tab${took ? " and gave it the keyboard" : ", and the keyboard was not seen in it (so the check that it was left alone proved nothing)"}; `
-    + `closed, the tab stayed closed when a plan appeared; in a second window with a file in front, a plan that appeared opened the tab beside the file${typing ? " and the keyboard stayed in the file" : ", and the keyboard was not seen in the file before it (so where it stayed is not known)"}`);
+  console.log(`e2e: ${app.name} opened the graph's tab by itself on a plan with work left, the keyboard not in it, and drew ${TASKS.length} tasks in it; `
+    + `Open the Graph revealed the same tab${took ? " and gave it the keyboard" : ", and the keyboard was not seen in it (so the check that it was left alone proved nothing)"}; `
+    + `closed, the tab stayed closed when a plan appeared; in a second window with a file in front, a plan that appeared opened the tab beside the file${typing ? " and the keyboard stayed in the file" : ", and the keyboard was not seen in the file before it (so where it stayed is not known)"}; `
+    + `in a third, on an empty plan, ${clicked ? "a click on Graphene's icon" : "showing Graphene's side bar"} opened the tab without the keyboard, and closed, it stayed closed`);
 } catch (err) {
   failed = err;
   if (session) await L.shot(session.page, path.join(base, "failed.png")).catch(() => {});
