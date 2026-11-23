@@ -34,16 +34,12 @@ export function banner(s: State): string {
   return s.stand_in ? "Practice run: a scripted stand-in answers for the AI, so nothing is spent" : "";
 }
 
-/** `2 working · 1 needs you · 3 of 6 done · $0.42 spent` */
+/** `3 of 6 done · $0.42 spent`: who is working and what needs you are said just under it, by the stages and the
+ *  Needs you section. A practice run spends nothing, so it shows no cost: the stand-in's is a list price. */
 export function countsLine(s: State): string {
   const sb = s.scoreboard;
-  const parts: string[] = [];
-  if (sb.running) parts.push(`${sb.running} working`);
-  if (sb.need_you) parts.push(`${sb.need_you} need${sb.need_you === 1 ? "s" : ""} you`);
-  if (sb.total) parts.push(`${sb.proven} of ${sb.total} done`);
-  const spent = usd(s.spent);
-  if (spent) parts.push(`${spent} spent`);
-  return parts.join(" · ");
+  const spent = s.stand_in ? "" : usd(s.spent);
+  return [sb.total ? `${sb.proven} of ${sb.total} done` : "", spent ? `${spent} spent` : ""].filter(Boolean).join(" · ");
 }
 
 /** The open questions with no default: one stops the run either way, so Start waits for its answer as auto does. */
@@ -195,7 +191,7 @@ export function home(s: State, seen: ReadonlySet<string> = new Set(), exact = fa
     return {
       key: `w:${t.id}`, tone: "running" as const, title: t.title, tag: SAY.running,
       lines: [...line("Agent", `${t.agent || "?"}${t.model ? ` · ${t.model}` : ""}`), ...line("Now", t.tail[t.tail.length - 1] ?? "", { mono: true }),
-              ...line("Quiet for", quiet), ...line("Cost", usd(t.usd)), ...line("Attempts", attempts(t)),
+              ...line("Quiet for", quiet), ...line("Cost", s.stand_in ? "" : usd(t.usd)), ...line("Attempts", attempts(t)),
               ...(t.hollow ? [{ v: PROVES_NOTHING, warn: true }] : [])],
       buttons: [{ label: "Open changes so far", act: "openDiff" as const, id: t.id },
                 { label: "Message agent…", act: "message" as const, id: t.id, title: "it reads your line with its next move" },

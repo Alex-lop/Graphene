@@ -9,6 +9,7 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import * as C from "./commands.ts";
 import { candidates, found } from "./find.ts";
+import { ASK, NOT_CURSOR } from "./home/who.ts";
 import type { Session, UI } from "./session.ts";
 
 const PLANNERS = [
@@ -79,7 +80,8 @@ export function register(context: vscode.ExtensionContext, session: Session, _ui
   context.subscriptions.push(session.onDidChange(() => {
     if (!setUp || session.status.kind !== "empty") return;
     setUp = false;
-    void vscode.window.showInformationMessage("This folder is set up. Ask your coding agent for something, in its chat: its plan shows on the graph.", "Open Home")
+    const cursor = vscode.env.appName.includes("Cursor") ? ` ${NOT_CURSOR}` : "";
+    void vscode.window.showInformationMessage(`This folder is set up. ${ASK}: its plan shows on the graph.${cursor}`, "Open Home")
       .then((pick) => { if (pick) void vscode.commands.executeCommand("graphene.home"); });
   }));
 
