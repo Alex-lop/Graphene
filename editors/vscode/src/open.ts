@@ -3,7 +3,8 @@
 // appearing where there was none, or a run starting. A person who closes the tab is not chased: each round of
 // `graphene auto` is a plan appearing and a run starting, so a start is no reason to bring back what they put
 // away. Closed, it stays closed in this window until they ask for it. Where it opens leaves a person's work as
-// it was: beside what they have in front, never over it, unless Graphene's side bar opened it (graph.ts show).
+// it was: beside what they have in front, never over it, unless Graphene's side bar opened it (graph.ts show). In
+// Cursor it opens over it: beside, it would halve an editor area Cursor's agent chat has narrowed (`beside`).
 // Pure: no VS Code here.
 import type { State } from "./state.ts";
 
@@ -29,8 +30,10 @@ export function opens(was: Seen | null, now: Seen, o: { on: boolean; tab: boolea
  *  empty group and for a page of VS Code's own (Welcome, Settings). In the group, the tab would take the place
  *  of what is in front and VS Code would leave the keyboard in nothing (opened without focus, the editor it
  *  hides loses the caret and the tab is not given it); beside, in the group to its side or a new one, the file
- *  stays and so does its caret. */
-export function beside(front: unknown): boolean {
+ *  stays and so does its caret. `cursor`: the editor is Cursor, whose agent chat takes the window's right side, so
+ *  the editor area is narrow already (650-700 px on a laptop): beside, the tab would halve it into the lanes, so
+ *  it opens in the group, as the side bar's click opens it, the file a tab behind it. */
+export function beside(front: unknown, cursor = false): boolean {
   // ponytail: Settings is covered as Welcome is (VS Code names neither); tell them apart by the tab if a box there matters
-  return front !== undefined && front !== null;
+  return !cursor && front !== undefined && front !== null;
 }
