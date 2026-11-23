@@ -1329,11 +1329,12 @@ function hint() {
   }
 }
 
-function row(label: string, value: string, parent: HTMLElement): HTMLDivElement | null {
+/** A line of the pane: its label, and its value, in mono only where it is a path or a command. */
+function row(label: string, value: string, parent: HTMLElement, mono = false): HTMLDivElement | null {
   if (!value) return null;
   const r = div("row", undefined, parent);
   div("k", label, r);
-  div("v", value, r);
+  div(mono ? "v mono" : "v", value, r);
   return r;
 }
 
@@ -1349,7 +1350,7 @@ function field(parent: HTMLElement, name: string, label: string, value: string, 
   k.textContent = label;
   const input = document.createElement("input");
   input.id = k.htmlFor = `f-${name}`;
-  input.className = "f";
+  input.className = name === "title" ? "f" : "f mono"; // files and a check are paths and a command
   input.type = "text";
   input.value = value;
   input.placeholder = placeholder;
@@ -1398,15 +1399,15 @@ function setField(t: TaskX, name: "title" | "scope" | "check" | "forks" | "signo
 function form(body: HTMLElement, t: TaskX, s: StateX) {
   const same = (a: string, b: string) => a.trim() === b.trim();
   const back = () => setTimeout(() => { paneLast = ""; pane(); }, 0); // what was typed is not a change: the form as it was
-  field(body, "title", "title", t.full || t.title, "what this task does", "the task, in a line",
+  field(body, "title", "Title", t.full || t.title, "what this task does", "the task, in a line",
         (v) => (!v.trim() || same(v, t.full || t.title) ? back() : setField(t, "title", v.trim())));
-  field(body, "files", "files", t.scope.join(" "), "src/api/** tests/test_api.py", "the files it may change: paths or globs, a space between",
+  field(body, "files", "Files", t.scope.join(" "), "src/api/** tests/test_api.py", "the files it may change: paths or globs, a space between",
         (v) => (!globs(v).length || globs(v).join(" ") === t.scope.join(" ") ? back() : setField(t, "scope", globs(v).join(" "))));
-  field(body, "check", "check", t.check ?? "", "a command that passes when it is done", "the command that passes only when the task is done; empty: your approval finishes it",
+  field(body, "check", "Check", t.check ?? "", "a command that passes when it is done", "the command that passes only when the task is done; empty: your approval finishes it",
         (v) => (same(v, t.check ?? "") ? back() : setField(t, "check", v.trim())));
   const n = attemptsOf(t, s.envelope.forks);
   const r = div("row", undefined, body);
-  div("k", "attempts", r);
+  div("k", "Attempts", r);
   const v = div("v stepper", undefined, r);
   const step = (label: string, to: number, sign: string) => {
     const b = document.createElement("button");
@@ -1423,7 +1424,7 @@ function form(body: HTMLElement, t: TaskX, s: StateX) {
   step("one more attempt", n + 1, "+");
   div("dim", !t.check ? "one agent: attempts need a check to keep one" : n > 1 ? "agents at once; its check keeps one" : "one agent", v);
   const unread = t.signoff === null; // `graphene plan --json` not read yet: a moment
-  tick(body, "signoff", "wait for my approval", t.signoff === true, "it lands only once you approve it, as well as passing its check", (on) => setField(t, "signoff", on), unread);
+  tick(body, "signoff", "Wait for my approval", t.signoff === true, "it lands only once you approve it, as well as passing its check", (on) => setField(t, "signoff", on), unread);
   tick(body, "owner", "I will do this one", Boolean(t.owner) && t.owner !== "agent", "no agent takes it: it is yours to do", (on) => setField(t, "owner", on), unread);
   div("when", whenEdit(t), body);
   const no = refused.get(t.id);
@@ -1449,12 +1450,12 @@ function draftPane(pane: HTMLElement, d: Draft) {
   closer(div("d-tools", undefined, head));
   const body = div("d-body", undefined, pane);
   const asked = offered.has(d.key) && !d.said; // graphene is deciding: what it was offered is not changed under it
-  field(body, "title", "title", d.title, "what this task does", "the task, in a line", (v) => (v.trim() ? redraw(d.key, { title: v.trim() }) : redraw(d.key, {}))).disabled = asked;
-  field(body, "files", "files", d.files, "src/api/** tests/test_api.py", "the files it may change: paths or globs, a space between", (v) => redraw(d.key, { files: v.trim() })).disabled = asked;
-  field(body, "check", "check", d.check, "a command that passes when it is done", "the command that passes only when the task is done", (v) => redraw(d.key, { check: v.trim() })).disabled = asked;
-  tick(body, "signoff", "wait for my approval", d.approve, "it lands only once you approve it", (on) => redraw(d.key, { approve: on }), asked);
+  field(body, "title", "Title", d.title, "what this task does", "the task, in a line", (v) => (v.trim() ? redraw(d.key, { title: v.trim() }) : redraw(d.key, {}))).disabled = asked;
+  field(body, "files", "Files", d.files, "src/api/** tests/test_api.py", "the files it may change: paths or globs, a space between", (v) => redraw(d.key, { files: v.trim() })).disabled = asked;
+  field(body, "check", "Check", d.check, "a command that passes when it is done", "the command that passes only when the task is done", (v) => redraw(d.key, { check: v.trim() })).disabled = asked;
+  tick(body, "signoff", "Wait for my approval", d.approve, "it lands only once you approve it", (on) => redraw(d.key, { approve: on }), asked);
   const after = d.after ? state?.tasks.find((t) => t.id === d.after)?.title : "";
-  row("after", after ?? "", body);
+  row("After", after ?? "", body);
   const line = offered.has(d.key) && !d.said ? "Graphene is asked to take it…" : draftLine(d);
   if (line) div("when", line, body);
   if (d.said) div("refused", d.said, body).setAttribute("role", "alert");
@@ -1603,16 +1604,16 @@ function commandScope(body: HTMLElement, t: TaskX) {
 function editTab(body: HTMLElement, t: TaskX, s: StateX) {
   if (editable(t, replaying())) form(body, t, s);
   else { // a finished task, a command step, or a replay: read, and the line says why
-    row("what for", t.full, body);
-    row("may change", t.scope.join("  "), body);
-    row(t.command ? "runs" : "done when", t.command ?? (t.check ? `${t.check} passes` : ""), body);
+    row("What for", t.full, body);
+    row("May change", t.scope.join("  "), body, true);
+    row(t.command ? "Runs" : "Done when", t.command ?? t.check ?? "", body, true);
     if (!replaying()) div("when", whenEdit(t), body);
   }
-  row("under", t.parent ? goalTitle(s, t.parent) : "", body);
+  row("Under", t.parent ? goalTitle(s, t.parent) : "", body);
   if (t.hollow) div("hollow", provesNothing(t) ? PROVES_NOTHING : "its check passed before the work too: it proves nothing new", body); // as the cockpit says
   if (t.needs.length) { // what it waits on, each with the × that stops it waiting
     const r = div("row", undefined, body);
-    div("k", "after", r);
+    div("k", "After", r);
     const v = div("v", undefined, r);
     for (const n of t.needs) {
       const need = div("need", s.tasks.find((x) => x.id === n)?.title ?? n, v);
@@ -1628,18 +1629,17 @@ function editTab(body: HTMLElement, t: TaskX, s: StateX) {
   }
 }
 
-/** Activity: who is on it, what it cost, what it said and its last moves, and each attempt with its changes. */
+/** Activity (who is on it is the head's): what it cost, what it said and its last moves, and each attempt with its changes. */
 function activityTab(body: HTMLElement, t: TaskX) {
   const before = body.childElementCount;
-  row("agent", t.agent ? `agent ${t.agent}${t.model ? ` · ${t.model}` : ""}` : "", body);
-  row("tries", t.attempts !== undefined && t.attempts > 1 ? String(t.attempts) : "", body);
-  row("cost", usd(t.usd), body);
-  row("quiet", t.idle !== null && t.idle > 8 ? `${Math.round(t.idle)} s` : "", body);
-  row("note", t.note, body);
-  row("wanted", t.outside.join("  "), body);
+  row("Tries", t.attempts !== undefined && t.attempts > 1 ? String(t.attempts) : "", body);
+  row("Cost", usd(t.usd), body);
+  row("Quiet", t.idle !== null && t.idle > 8 ? `${Math.round(t.idle)} s` : "", body);
+  row("Note", t.note, body);
+  row("Wanted", t.outside.join("  "), body, true);
   if (t.forks.length) {
     const r = div("row", undefined, body);
-    div("k", "attempts", r);
+    div("k", "Attempts", r);
     const v = div("v", undefined, r);
     for (const f of t.forks) {
       const kept = t.kept?.letter === f.letter;
@@ -1651,11 +1651,11 @@ function activityTab(body: HTMLElement, t: TaskX) {
   }
   if (t.tail.length) {
     const r = div("row", undefined, body);
-    div("k", "last moves", r);
-    const v = div("v", undefined, r);
+    div("k", "Last moves", r);
+    const v = div("v mono", undefined, r); // an agent's moves are its tools on paths and commands
     for (const line of t.tail.slice(-6)) div("move", screenWords(line), v);
   }
-  if (body.childElementCount === before) div("dim", "No agent has been on it yet.", body);
+  if (body.childElementCount === before) div("dim", t.agent ? "Nothing reported yet." : "No agent has been on it yet.", body);
 }
 
 /** The pane is rebuilt only when what it shows changed (its key); then the focused button, by its words,
@@ -1716,12 +1716,13 @@ function pane() {
   if (q) { // its question, with the options to answer inline
     const ask = div("ask", undefined, body);
     div("ask-text", q.text, ask);
-    if (!replaying()) {
+    if (q.default) div("ask-if", `If unanswered: ${q.default}`, ask);
+    if (!replaying()) { // every answer quiet: the default filled would read as already chosen
       const opts = div("ask-opts", undefined, ask);
       const options = [...new Set([...(q.default ? [q.default] : []), ...q.options])];
       for (const o of options) {
         const b = document.createElement("button");
-        b.className = o === q.default ? "" : "quiet";
+        b.className = "quiet";
         b.textContent = o;
         b.title = o === q.default ? "the default: what happens unanswered" : "answer with this";
         b.addEventListener("click", () => api.postMessage({ type: "act", act: "answer", id: q.id, target: o }));
