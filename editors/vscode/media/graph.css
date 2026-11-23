@@ -215,10 +215,11 @@ button.unlink:hover { color: var(--vscode-errorForeground, #f48771); }
 .fork-row.kept { font-weight: 600; }
 .fork-acts { display: flex; gap: 4px; margin-top: 3px; font-weight: 400; }
 .fork-acts button { padding: 1px 6px; font-size: 0.92em; }
-/* the pane's acts: its one main act the pane's width, the rest two to a row under it */
-.d-acts { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 12px 16px; border-top: 1px solid var(--divider); }
+/* the pane's acts: its one main act the pane's width, the rest two to a row under it where the pane is wide
+   enough for both labels (one to a row under ~336 px), and a last one left alone the pane's width too */
+.d-acts { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 6px; padding: 12px 16px; border-top: 1px solid var(--divider); }
 .d-acts button { height: 28px; justify-content: center; padding: 0 8px; min-width: 0; white-space: nowrap; overflow: hidden; }
-.d-acts button:not(.quiet) { grid-column: 1 / -1; }
+.d-acts button:not(.quiet), .d-acts > .quiet:last-child:nth-child(odd of .quiet) { grid-column: 1 / -1; }
 /* the pane's tabs: Scope (what the step may do), Edit (its form), Activity (what its agents did); the chosen
    one underlined in the text's colour, as the editor's own panel tabs are */
 .tabs { display: flex; gap: 16px; border-bottom: 1px solid var(--divider); margin: 4px 0 14px; }
