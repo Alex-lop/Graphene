@@ -20,7 +20,8 @@
         --vscode-charts-yellow: #b89500; --vscode-charts-purple: #652d90;
         --vscode-charts-red: #e51400; --vscode-charts-blue: #007acc; --vscode-charts-green: #388a34;
         --vscode-editor-inactiveSelectionBackground: #e5ebf1; --vscode-sideBar-background: #f8f8f8;
-        --vscode-list-hoverBackground: #f2f2f2; --vscode-list-activeSelectionBackground: #e8e8e8; --vscode-errorForeground: #f85149; }
+        --vscode-list-hoverBackground: #f2f2f2; --vscode-list-activeSelectionBackground: #e8e8e8; --vscode-errorForeground: #f85149;
+        --vscode-panel-border: #e5e5e5; --vscode-textLink-foreground: #005fb8; --vscode-widget-shadow: #00000029; }
 /* ?theme=hc: the Dark High Contrast theme's values; the body gets vscode-high-contrast as VS Code sets it */
 :root.theme-hc { color-scheme: dark; --vscode-editor-background: #000000; --vscode-foreground: #ffffff;
         --vscode-descriptionForeground: #ffffff; --vscode-editorWidget-background: #000000;
