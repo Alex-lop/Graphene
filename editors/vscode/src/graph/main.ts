@@ -1808,9 +1808,9 @@ function pane() {
   const w = who(t, s.executor);
   meta.append(` · ${t.agent ? `agent ${t.agent}${t.model ? ` · ${t.model}` : ""}` : w.kind === "you" || t.command ? w.label : `for ${w.label}`}`);
   // one act is the pane's to offer at its foot (the state's own; the looks at its work, and to review the verdicts
-  // that are not the act now, beside them); the rest wait in the …
+  // that are not the act now, beside them); the rest wait in the …, Compare too once an attempt is kept: the race is settled
   const all = actsFor(t, replaying(), seen.has(t.id));
-  const inFoot = (b: Button) => b.main || ["openDiff", "compareForks", "signOff", "sendBack"].includes(b.act);
+  const inFoot = (b: Button) => b.main || ["openDiff", "signOff", "sendBack"].includes(b.act) || (b.act === "compareForks" && !t.kept);
   const tools = div("d-tools", undefined, head);
   paneMenu(tools, t.id, all.filter((b) => !inFoot(b)));
   closer(tools);
