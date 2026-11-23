@@ -308,7 +308,9 @@ function render() {
   $("planning").hidden = !planning;
   if (!s.tasks.length) {
     $("notice").className = "";
-    $("notice").textContent = replaying() ? "Nothing is planned yet." : "Nothing is planned yet.\nAsk your coding agent for something in its chat: its plan appears here. Or draw the first task.";
+    $("notice").replaceChildren();
+    div("notice-head", "Nothing is planned yet.", $("notice")); // what is so, then what to do about it
+    if (!replaying()) $("notice").append("Ask your coding agent for something in its chat: its plan appears here. Or draw the first task.");
     if (!replaying()) button({ label: "Add task", act: "add-under", title: "draw a task: its title, then its files and its check", icon: "add", main: true }, "", $("notice"));
   }
   painting = true;
@@ -352,6 +354,7 @@ function header(s: StateX) {
   const run = $("b-run"); // while a run goes, the button that started it stops it
   run.replaceChildren(icon(s.run.going ? "debug-stop" : "play"), document.createTextNode(s.run.going ? "Stop" : "Run"));
   run.title = s.run.going ? "stop every agent: their tasks go back to the plan" : "start an agent on every task that is ready";
+  run.className = s.run.going || s.tasks.some((t) => t.state === "ready") ? "" : "quiet"; // filled only when it would start or stop something
   for (const [id] of HEADER_ACTS) $(id).hidden = replaying(); // a replay is watched: nothing acts on a plan, or outside it
   const toggle = $("b-view");
   const v = view();
@@ -379,6 +382,9 @@ function place(s: StateX, down: boolean, lv: Level): Placed {
   const lay = layout(g.boxes, g.edges, { goal: g.goal, boxW: d.w, boxH: h, labelH: d.label, gapX: d.gapX, gapY: d.gapY, bandGap: d.bandGap,
                                          ...(down ? ($("need").hidden ? {} : { padY: NEED_H }) : { padX: d.padX, padY: d.padY }),
                                          down, width: down ? $("canvas").clientWidth / Math.max(1, zoom.k) : undefined });
+  // across, the goal stands one gap further out: its lines gather on a trunk with a gap of its own (`graph`)
+  const gp = g.goal && !down ? lay.boxes[g.goal] : undefined;
+  if (gp) { gp.x += d.gapX; lay.width += d.gapX; }
   // across, the plan sits in "this machine", and what leaves it has a region of its own at the right; while no
   // step leaves there is no such region, and the plan has the width
   const here = down || !g.boxes.length ? 0 : lay.width;
@@ -410,7 +416,8 @@ function opening(s: StateX, down: boolean): { level: Level; at: Placed; zoom: Zo
   const canvas = paneSize();
   const full = place(s, down, "full");
   let rows: Placed | undefined;
-  const fit = down ? null : fitPlan(canvas, sizeOf(full.lay), () => sizeOf((rows = place(s, down, "compact")).lay), foot());
+  const keep = fitted && !$("details").hidden ? level : "compact"; // a pane open beside whole cards keeps them whole a little further
+  const fit = down ? null : fitPlan(canvas, sizeOf(full.lay), () => sizeOf((rows = place(s, down, "compact")).lay), foot(), keep);
   if (fit) return { level: fit.level, at: fit.level === "compact" && rows ? rows : full, zoom: { k: fit.k, tx: fit.tx, ty: fit.ty } };
   // a step that asks you is the thing to see: a graph wider than its canvas opens on that step, past the line,
   // and not on its left edge; a short one sits in the middle
@@ -450,8 +457,15 @@ function graph(s: StateX, dir: "across" | "down") {
   const bands = $("bands") as unknown as SVGGElement, heads = $("heads") as unknown as SVGGElement;
   bands.replaceChildren();
   heads.replaceChildren();
-  // across, a band ends short of the goal's column: the goal is no band's, and each band runs into it as one line
-  const gAt = g.goal && !down ? lay.boxes[GOAL] : undefined, right = gAt ? gAt.x - D.gapX / 2 : here - 18;
+  // across, a band ends half a gap past its last column, short of the goal's (`place` set it a gap further out):
+  // the goal is no band's, and each band runs into it as one line along a trunk in the gap between
+  const gAt = g.goal && !down ? lay.boxes[GOAL] : undefined, right = gAt ? gAt.x - 1.5 * D.gapX : here - 18;
+  const trunk = gAt ? (right + gAt.x) / 2 : 0;
+  /** A bracket into the goal: along from x1 to the trunk, round a corner, down or up it, and into the goal. */
+  const bracket = (x1: number, y1: number) => {
+    const y2 = gAt!.y + D.h / 2, x2 = gAt!.x, t = trunk, r = Math.min(8, Math.abs(y2 - y1) / 2), dir = Math.sign(y2 - y1);
+    return r < 1 ? `M${x1},${y1} H${x2}` : `M${x1},${y1} H${t - r} Q${t},${y1} ${t},${y1 + dir * r} V${y2 - dir * r} Q${t},${y2} ${t + r},${y2} H${x2}`;
+  };
   for (const band of lay.bands) {
     if (!band.id) continue;
     bands.appendChild(el("rect", { class: "band", x: 18, y: band.y0, width: right - 18, height: band.y1 - band.y0, rx: 10 }));
@@ -472,16 +486,17 @@ function graph(s: StateX, dir: "across" | "down") {
   for (const [a, b] of g.edges) {
     const p = lay.boxes[a], q = lay.boxes[b];
     if (!p || !q || (b === GOAL && gAt && p.band)) continue; // a sub-goal's last steps end in its band, and the band runs into the goal
-    // the edge carries the work: moving where an agent is working, green where it landed, a hairline until then
-    line(`${a}>${b}`, edgeD(p, q, a, down), `${edgeKind(taskOf.get(a), taskOf.get(b))}${selected && (a === selected || b === selected) ? " hot" : ""}${isDraft(a) || isDraft(b) ? " draft" : ""}`);
+    // the edge carries the work: moving where an agent is working, green where it landed, a hairline until then; a
+    // step in no sub-goal joins the goal on the bands' trunk
+    line(`${a}>${b}`, b === GOAL && gAt ? bracket(p.x + D.w, p.y + D.h / 2) : edgeD(p, q, a, down), `${edgeKind(taskOf.get(a), taskOf.get(b))}${selected && (a === selected || b === selected) ? " hot" : ""}${isDraft(a) || isDraft(b) ? " draft" : ""}`);
   }
   if (gAt) for (const band of lay.bands) { // a sub-goal into the goal: a bracket out of its band, along a trunk half way, into the goal
     const mine = band.id ? s.tasks.filter((t) => t.parent === band.id) : [];
     if (!mine.length) continue;
-    const y2 = gAt.y + D.h / 2, y1 = Math.min(Math.max(y2, band.y0 + 16), band.y1 - 16), x2 = gAt.x, t = (right + x2) / 2;
-    const r = Math.min(8, Math.abs(y2 - y1) / 2), dir = Math.sign(y2 - y1);
-    line(`band ${band.id}>${GOAL}`, r < 1 ? `M${right},${y1} H${x2}` : `M${right},${y1} H${t - r} Q${t},${y1} ${t},${y1 + dir * r} V${y2 - dir * r} Q${t},${y2} ${t + r},${y2} H${x2}`,
-         `band-link ${mine.every((x) => x.state === "done") ? "done" : "wait"}${mine.some((x) => x.id === selected) ? " hot" : ""}`);
+    const y2 = gAt.y + D.h / 2, y1 = Math.min(Math.max(y2, band.y0 + 16), band.y1 - 16);
+    // lit for the chosen card only when this line stands for its own line into the goal
+    const its = g.edges.some(([a, b]) => b === GOAL && a === selected && lay!.boxes[a]?.band === band.id);
+    line(`band ${band.id}>${GOAL}`, bracket(right, y1), `band-link ${mine.every((x) => x.state === "done") ? "done" : "wait"}${its ? " hot" : ""}`);
   }
   svg.classList.toggle("has-sel", Boolean(selected)); // the chosen card's lines lit, the rest faded
   for (const [key, path] of edgeEls) if (!seenEdges.has(key)) { path.remove(); edgeEls.delete(key); }
@@ -1709,7 +1724,8 @@ function notice(st: Status) {
   $("counts").textContent = "";
   $("auto").hidden = true;
   $("replay").hidden = true;
-  $("pipe").hidden = true; // no plan to read: no stage to be at
+  $("pipe").hidden = true; // no plan to read: no stage to be at, and nothing to run or add to
+  for (const [id] of HEADER_ACTS) $(id).hidden = true;
   $("planning").hidden = true;
 }
 
@@ -1992,7 +2008,6 @@ function wire() {
   };
   top("b-add", "Add task", "add", "draw a task: its title, then its files and its check (or the planner fills them in)", () => draw({ after: null, parent: null }));
   top("b-run", "Run", "play", "start an agent on every task that is ready", () => api.postMessage({ type: "act", act: state?.run.going ? "stop" : "run", id: "" }));
-  $("b-run").className = ""; // the header's one filled button: the run's own act, Run or Stop
   top("b-save", "Save as workflow", "save", "write this graph to workflows/ so it can run again on new inputs", () => api.postMessage({ type: "act", act: "saveWorkflow", id: "" }));
   top("b-view", "Lanes", "list-flat", "graph or lanes (v)", () => { remember({ view: view() === "lanes" ? "graph" : "lanes" }); fitted = false; render(); });
   top("b-help", "", "question", "every key (?)", () => help($("help").hidden));

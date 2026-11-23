@@ -20,6 +20,9 @@ export const CARD: Record<Level, Size> = { full: { w: 220, h: 84 }, compact: { w
 /** A fit keeps whole cards down to this scale, where a card's title is still drawn at 11 px: under it nobody
  *  reads them, and the plan is fitted as rows. */
 export const FULL_FROM = 0.85;
+/** Fitted again with whole cards on screen (a pane opened beside them, a task chosen from Home), they stay whole
+ *  down to this: the card the person asked to see keeps its files and its check. */
+export const FULL_KEEP = 0.7;
 /** Rows a fit may draw larger than their own size where the canvas has room, so a small plan fills its tab: up
  *  to the scale rows turn to whole cards at (TO_FULL), and no further, so a fitted plan stays rows. */
 export const ROWS_MOST = 1.2;
@@ -55,13 +58,14 @@ export function fitView(canvas: Size, drawing: Size, foot = 0, most = 1): Zoom &
   return { k, tx: Math.max(0, (canvas.w - drawing.w * k) / 2), ty: Math.max(0, (h - drawing.h * k) / 2), whole: want >= ZOOM_MIN };
 }
 
-/** How a plan opens in its pane: as whole cards where they fit at a scale they read at, else as rows, fitted
- *  and drawn up to ROWS_MOST, so they fill the pane;
+/** How a plan opens in its pane: as whole cards where they fit at a scale they read at (``keep``: the level on
+ *  screen, which whole cards hold down to FULL_KEEP), else as rows, fitted and drawn up to ROWS_MOST, so they fill
+ *  the pane;
  *  null when not even rows fit at the smallest scale. ``rows`` (the plan's size laid out as rows) is asked for
  *  only when it is needed. */
-export function fitPlan(canvas: Size, full: Size, rows: () => Size, foot = 0): (Zoom & { level: Level }) | null {
+export function fitPlan(canvas: Size, full: Size, rows: () => Size, foot = 0, keep: Level = "compact"): (Zoom & { level: Level }) | null {
   const whole = fitView(canvas, full, foot);
-  if (whole.k >= FULL_FROM) return { level: "full", k: whole.k, tx: whole.tx, ty: whole.ty };
+  if (whole.k >= (keep === "full" ? FULL_KEEP : FULL_FROM)) return { level: "full", k: whole.k, tx: whole.tx, ty: whole.ty };
   const far = fitView(canvas, rows(), foot, ROWS_MOST);
   return far.whole ? { level: "compact", k: far.k, tx: far.tx, ty: far.ty } : null;
 }

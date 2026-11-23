@@ -24,14 +24,17 @@ const state: StateX = { ...parsed, tasks };
 test("narrow, the header is the goal alone: the counts and the auto line move to its hover and the footer", () => {
   const wide = headerFor(state, false);
   assert.equal(wide.goal, state.goal);
-  assert.equal(wide.counts, counts(state));
+  assert.equal(wide.counts, counts(state, false)); // the auto line says the cost, against its budget
+  assert.match(wide.auto, /\$[\d.]+ of \$/);
+  assert.doesNotMatch(wide.counts, /\$/);
+  assert.equal(headerFor({ ...state, auto: null }, false).counts, counts(state));
   assert.equal(wide.auto, autoLine(state));
   assert.equal(wide.footer, "");
   const narrow = headerFor(state, true);
   assert.equal(narrow.goal, state.goal);
   assert.equal(narrow.counts, "");
   assert.equal(narrow.auto, "");
-  assert.equal(narrow.hover, [state.goal, counts(state), autoLine(state)].filter(Boolean).join("\n"));
+  assert.equal(narrow.hover, [state.goal, counts(state, false), autoLine(state)].filter(Boolean).join("\n"));
   assert.equal(narrow.footer, autoLine(state) || counts(state)); // the live line first, else the counts
   assert.equal(headerFor({ ...state, auto: null }, true).footer, counts(state));
 });
@@ -158,13 +161,14 @@ test("text is cut to a measured width, with an ellipsis, in a few measures", () 
   assert.ok(out.endsWith("…") && out.length >= 5, out);
   assert.ok(measures <= 8, `${measures} measures`);
   assert.equal(fitWidth("abc", 1, mono), "a…"); // never empty: one character and the ellipsis at least
+  assert.equal(fitWidth("ship orders 1.0: a store", 100, mono), "ship orders 1…"); // no stop left before the ellipsis
 });
 
 test("a lane's corner word is the running task's model, cut to about six characters, and nothing else", () => {
   const greet = task("greet"); // running, Nano
   assert.equal(cornerWord(greet), "Nano");
   assert.equal(cornerWord({ ...greet, model: "claude-sonnet-4-5" }), "claude…");
-  assert.equal(cornerWord({ ...greet, model: "qwen3-coder-480b" }), "qwen3-…");
+  assert.equal(cornerWord({ ...greet, model: "qwen3-coder-480b" }), "qwen3…"); // no dash left before the ellipsis
   assert.equal(cornerWord(task("farewell")), ""); // in review: its mark says so, and that is marks.ts's (`cornerMark`)
   assert.equal(cornerWord(task("hello")), "");
 });
@@ -357,7 +361,7 @@ test("May run, Held by, Stopped, Done when and Tokens say what is known, and no 
   assert.equal(tokenWords(step("button")), null, "no meter, or nothing spent yet");
 });
 
-test("an icon the graph's page asks for by name is one it has: the goal chip's arrow was a blank", () => {
+test("an icon the graph's page asks for by name is one it has: the pane's close, the run's play, a button's check", () => {
   const src = (file: string) => readFileSync(new URL(`../src/graph/${file}`, import.meta.url), "utf8");
   // `icon("close")`, `icon(going ? "debug-stop" : "play")` on the page; `icon: "check"` on a button's words
   const asked = [...src("main.ts").matchAll(/\bicon\(([^()]*)\)/g)].flatMap((m) => [...m[1]!.matchAll(/(?:^|[?:]\s*)"([a-z-]+)"/g)].map((n) => n[1]!));
