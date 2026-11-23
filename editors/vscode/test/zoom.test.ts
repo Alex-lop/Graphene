@@ -74,13 +74,16 @@ test("a plan opens as whole cards where they fit at 11/12 or more, else as rows,
   assert.ok(asked.whole && Math.abs(asked.k - 680 / 1744) < 1e-9 && asked.k < ROWS_FROM);
 });
 
-test("a fit just too tight for whole cards cuts the drawing's empty margin, evenly, to keep them; a looser one keeps it", () => {
-  const rows = () => ({ w: 1100, h: 400 }), cut = () => ({ w: 28, h: 16 });
+test("a fit just too tight for whole cards cuts the drawing's empty margin to keep them, the plan in the middle; a looser one keeps it", () => {
+  // the plan's own box: its bands 14 px in at the left, its goal 24 px in at the right, 8 px in top and foot
+  const rows = () => ({ w: 1100, h: 400 }), cut = (_: unknown, s: { w: number; h: number }) => ({ x: 14, y: 8, w: s.w - 38, h: s.h - 16 });
   // the running plan in a 1280 by 800 tab: 1228 by 721 with its margin, short of 11/12 by 11 px of height
   const tight = fitPlan({ w: 1280, h: 697 }, { w: 1228, h: 721 }, rows, 46, "compact", cut);
   assert.deepEqual([tight.level, tight.k, tight.whole], ["full", FULL_FROM, true]);
-  assert.ok(Math.abs(tight.ty - (651 - 721 * FULL_FROM) / 2) < 1e-9 && tight.ty < 0 && tight.ty > -8, "its margin cut evenly, under its 8 px");
-  assert.ok(tight.tx > 0, "in the middle across, where it has room");
+  assert.ok(tight.ty < 0 && tight.ty > -8 * FULL_FROM, "its margin cut, under its 8 px");
+  const k = FULL_FROM, top = tight.ty + 8 * k, foot = 651 - (tight.ty + (721 - 8) * k), left = tight.tx + 14 * k, right = 1280 - (tight.tx + (1228 - 24) * k);
+  assert.ok(Math.abs(top - foot) < 1e-9 && top > 0, "the plan as far from the foot as from the top");
+  assert.ok(Math.abs(left - right) < 1e-9 && left > 0, "and from either side, its bands' and its goal's, not the drawing's");
   // without the margin to cut, rows; with room, all of it, as before
   assert.equal(fitPlan({ w: 1280, h: 697 }, { w: 1228, h: 721 }, rows, 46).level, "compact");
   assert.deepEqual(fitPlan({ w: 1440, h: 800 }, { w: 1228, h: 721 }, rows, 46, "compact", cut), fitPlan({ w: 1440, h: 800 }, { w: 1228, h: 721 }, rows, 46));

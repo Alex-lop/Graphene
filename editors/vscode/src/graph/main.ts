@@ -501,8 +501,12 @@ function opening(s: StateX, down: boolean): { level: Level; at: Placed; zoom: Zo
   const full = place(s, down, "full");
   let rows: Placed | undefined;
   const keep = fitted && !$("details").hidden ? level : "compact"; // a pane open beside whole cards keeps them whole a little further
-  // the drawing's empty margin round the plan and its bands, which a fit just too tight may cut (zoom.ts)
-  const cut = (l: Level): Size => ({ w: 2 * (full.awayW ? 8 : DIMS[l].padX - DIMS[l].inset), h: 2 * (DIMS[l].padY - DIMS[l].gapY / 2) });
+  // the plan and its bands in the drawing, and its empty margin round them, which a fit just too tight may cut
+  // (zoom.ts): a band's side at the left, the goal's (or the region's) at the right, a band's edge top and foot
+  const cut = (l: Level, size: Size) => {
+    const d = DIMS[l], x = d.padX - d.inset, y = Math.min(d.padY - d.gapY / 2, full.awayW ? 8 : Infinity);
+    return { x, y, w: size.w - x - (full.awayW ? 8 : full.g.goal ? d.padX : x), h: size.h - 2 * y };
+  };
   const fit = down ? null : fitPlan(canvas, sizeOf(full.lay), () => sizeOf((rows = place(s, down, "compact")).lay), foot(), keep, cut, fitAll ? ZOOM_MIN : ROWS_FROM);
   if (fit) {
     const at = fit.level === "compact" && rows ? rows : full, z = { k: fit.k, tx: fit.tx, ty: fit.ty };

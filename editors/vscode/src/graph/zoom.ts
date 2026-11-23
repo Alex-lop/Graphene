@@ -72,16 +72,17 @@ export function fitView(canvas: Size, drawing: Size, foot = 0, most = 1, least =
 /** How a plan opens in its pane: as whole cards where they fit at a scale they read at (``keep``: the level on
  *  screen, which whole cards hold down to FULL_KEEP), else as rows, fitted and drawn no larger than their own size
  *  nor smaller than ROWS_FROM (``whole`` false: the plan is larger than its pane). ``rows`` (the plan's size laid
- *  out as rows) is asked for only when it is needed. ``cut``: how much of a level's drawing is empty margin round
- *  the plan, which a fit just too tight for that level may cut, evenly, so as to keep it (a laptop's tab opens the
- *  running plan as whole cards, not as rows for want of 10 px of nothing); a looser fit keeps all of it. ``least``:
- *  the rows' floor, which a fit the person asks for (`f`) lowers to the zoom's own, to show the whole plan. */
+ *  out as rows) is asked for only when it is needed. ``cut``: the plan's own box in a level's drawing of that size,
+ *  the rest empty margin, which a fit just too tight for that level may cut so as to keep it, the plan in the
+ *  canvas's middle (a laptop's tab opens the running plan as whole cards, not as rows for want of 10 px of
+ *  nothing); a looser fit keeps all of it. ``least``: the rows' floor, which a fit the person asks for (`f`) lowers
+ *  to the zoom's own, to show the whole plan. */
 export function fitPlan(canvas: Size, full: Size, rows: () => Size, foot = 0, keep: Level = "compact",
-                        cut: (l: Level) => Size = () => ({ w: 0, h: 0 }), least = ROWS_FROM): Zoom & { level: Level; whole: boolean } {
+                        cut: (l: Level, s: Size) => Rect = (_, s) => ({ x: 0, y: 0, ...s }), least = ROWS_FROM): Zoom & { level: Level; whole: boolean } {
   const fits = (l: Level, size: Size, least: number) => {
-    const z = fitView(canvas, size, foot, l === "full" ? 1 : ROWS_MOST, least), c = cut(l);
-    if (z.whole || !fitView(canvas, { w: size.w - c.w, h: size.h - c.h }, foot, 1, least).whole) return z;
-    return { k: least, tx: (canvas.w - size.w * least) / 2, ty: (Math.max(1, canvas.h - foot) - size.h * least) / 2, whole: true };
+    const z = fitView(canvas, size, foot, l === "full" ? 1 : ROWS_MOST, least), c = cut(l, size);
+    if (z.whole || !fitView(canvas, c, foot, 1, least).whole) return z;
+    return { k: least, tx: (canvas.w - c.w * least) / 2 - c.x * least, ty: (Math.max(1, canvas.h - foot) - c.h * least) / 2 - c.y * least, whole: true };
   };
   const whole = fits("full", full, keep === "full" ? FULL_KEEP : FULL_FROM);
   return whole.whole ? { level: "full", ...whole } : { level: "compact", ...fits("compact", rows(), least) };
