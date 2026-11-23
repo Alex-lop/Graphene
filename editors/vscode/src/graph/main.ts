@@ -308,7 +308,7 @@ function render() {
   $("planning").hidden = !planning;
   if (!s.tasks.length) {
     $("notice").className = "";
-    $("notice").textContent = replaying() ? "Nothing is planned yet." : "Nothing is planned yet. Draw the first task here, or say what you want on Home.";
+    $("notice").textContent = replaying() ? "Nothing is planned yet." : "Nothing is planned yet.\nAsk your coding agent for something in its chat: its plan appears here. Or draw the first task.";
     if (!replaying()) button({ label: "Add task", act: "add-under", title: "draw a task: its title, then its files and its check", icon: "add", main: true }, "", $("notice"));
   }
   painting = true;
