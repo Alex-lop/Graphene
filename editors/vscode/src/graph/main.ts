@@ -1022,11 +1022,12 @@ function drawDraft(grp: SVGGElement, d: Draft) {
     return drawCompact(grp, { title: d.title, hover: `a draft: ${d.title} · ${blanks(d)}`, mark: "suggested", selected: d.key === selected, naming: naming === d.key ? d : undefined });
   }
   frame(grp, BOX_H, d.key === selected);
+  mark(grp, "suggested", BOX_W - PAD - 7, 16, 7); // the ring it will wear as a suggestion
   if (naming === d.key) {
-    const fo = el("foreignObject", { x: PAD - 5, y: 10, width: BOX_W - 2 * PAD + 10, height: 24 });
+    const fo = el("foreignObject", { x: PAD - 5, y: 10, width: BOX_W - 2 * PAD - 16, height: 24 }); // clear of its ring
     fo.appendChild(nameInput(d));
     grp.appendChild(fo);
-  } else cardTitle(grp, d.title);
+  } else cardTitle(grp, d.title, 20);
   const files = filesChip(globs(d.files));
   if (files) pill(grp, "files", "▤", files, PAD, 48, BOX_W - 2 * PAD);
   status(grp, () => (d.said ? "not taken: see why" : blanks(d)), BOX_W - PAD, Boolean(d.said));
@@ -1035,7 +1036,8 @@ function drawDraft(grp: SVGGElement, d: Draft) {
 }
 
 /** A step the planner has written so far: a drafted card with what of its files and check it has said, and no
- *  buttons. It is watched while the plan is written, and is a suggested task once the plan arrives. */
+ *  buttons. It is watched while the plan is written, and is a suggested task once the plan arrives: it wears that
+ *  card's shape and its ring already, so it lands as it looked. */
 function drawPlanned(grp: SVGGElement, d: DraftStep, down: boolean) {
   grp.replaceChildren();
   grp.setAttribute("class", "task drafted");
@@ -1043,7 +1045,8 @@ function drawPlanned(grp: SVGGElement, d: DraftStep, down: boolean) {
   grp.setAttribute("aria-label", `the planner is drafting: ${d.title}`);
   if (level === "compact") return drawCompact(grp, { title: d.title, hover: `the planner is drafting: ${d.title}`, mark: "suggested", selected: false });
   frame(grp, BOX_H, false);
-  cardTitle(grp, d.title);
+  cardTitle(grp, d.title, 20);
+  mark(grp, "suggested", BOX_W - PAD - 7, 16, 7);
   const files = filesChip(d.scope);
   if (files) pill(grp, "files", "▤", files, PAD, 48, BOX_W - 2 * PAD);
   status(grp, () => "drafted", BOX_W - PAD);
