@@ -14,18 +14,21 @@ export const zoomK = (k: number) => (Number.isFinite(k) ? Math.min(ZOOM_MAX, Mat
  *  however far a mouse says its notch turned. */
 export const wheelK = (k: number, deltaY: number) => zoomK(k * Math.exp(-Math.max(-22, Math.min(22, deltaY)) * 0.01));
 
-/** A card at each level: whole (its files, its check, its status, its attempts), and the row it is cut down
- *  to when the plan is read from afar (its state's mark, its title, and what is news). */
-export const CARD: Record<Level, Size> = { full: { w: 220, h: 84 }, compact: { w: 152, h: 44 } };
-/** A fit keeps whole cards down to this scale, where a card's title is still drawn at 11 px: under it nobody
- *  reads them, and the plan is fitted as rows. */
-export const FULL_FROM = 0.85;
+/** A card at each level: whole (its title on two lines, its files, its status and its act, its check; its
+ *  attempts make it taller), and the row it is cut down to when the plan is read from afar (its state's mark, its
+ *  title on two lines, about 32 characters, and what is news). */
+export const CARD: Record<Level, Size> = { full: { w: 200, h: 116 }, compact: { w: 168, h: 48 } };
+/** A whole card's smallest words, in px at the drawing's own size: its files, its status, its check. */
+export const CARD_TEXT = 12;
+/** A fit keeps whole cards down to this scale, where a card's smallest words are still drawn at 11 px: under
+ *  it nobody reads them, and the plan is fitted as rows. */
+export const FULL_FROM = 11 / CARD_TEXT;
 /** Fitted again with whole cards on screen (a pane opened beside them, a task chosen from Home), they stay whole
  *  down to this: the card the person asked to see keeps its files and its check. */
 export const FULL_KEEP = 0.7;
-/** Rows a fit may draw larger than their own size where the canvas has room, so a small plan fills its tab: up
- *  to the scale rows turn to whole cards at (TO_FULL), and no further, so a fitted plan stays rows. */
-export const ROWS_MOST = 1.2;
+/** Rows a fit draws no larger than their own size: a plan that has room enough is whole cards, and rows blown
+ *  up past their size are only big, with nothing more in them. Under TO_FULL, so a fitted plan stays rows. */
+export const ROWS_MOST = 1;
 /** Zooming: whole cards turn to rows under the first, rows to whole cards over the second. */
 export const TO_COMPACT = 0.55, TO_FULL = 1.2;
 
@@ -59,8 +62,7 @@ export function fitView(canvas: Size, drawing: Size, foot = 0, most = 1): Zoom &
 }
 
 /** How a plan opens in its pane: as whole cards where they fit at a scale they read at (``keep``: the level on
- *  screen, which whole cards hold down to FULL_KEEP), else as rows, fitted and drawn up to ROWS_MOST, so they fill
- *  the pane;
+ *  screen, which whole cards hold down to FULL_KEEP), else as rows, fitted and drawn no larger than their own size;
  *  null when not even rows fit at the smallest scale. ``rows`` (the plan's size laid out as rows) is asked for
  *  only when it is needed. */
 export function fitPlan(canvas: Size, full: Size, rows: () => Size, foot = 0, keep: Level = "compact"): (Zoom & { level: Level }) | null {

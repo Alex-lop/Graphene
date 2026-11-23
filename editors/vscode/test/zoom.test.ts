@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { KEYS, twoLines } from "../src/graph/words.ts";
-import { CARD, dotGap, FAR, fitPlan, fitView, FULL_FROM, FULL_KEEP, hold, ROWS_MOST, levelFor, miniFrame, miniSize, nearest, offScreen, panTo, percent, switchK, TO_COMPACT, TO_FULL, wheelK,
+import { CARD, CARD_TEXT, dotGap, FAR, fitPlan, fitView, FULL_FROM, FULL_KEEP, hold, ROWS_MOST, levelFor, miniFrame, miniSize, nearest, offScreen, panTo, percent, switchK, TO_COMPACT, TO_FULL, wheelK,
          ZOOM_MAX, ZOOM_MIN, zoomK } from "../src/graph/zoom.ts";
 
 test("the zoom goes out to a fifth and in to three times; what is not a number is 1", () => {
@@ -37,23 +37,24 @@ test("a fit is the largest scale that holds the whole drawing, never over 1, in 
   assert.equal(fitView({ w: 1280, h: 670 }, { w: 6400, h: 1000 }).whole, true, "at the floor exactly it still fits");
 });
 
-test("a plan opens as whole cards where they fit at 0.85 or more, else as rows, fitted; no scale may hold it", () => {
+test("a plan opens as whole cards where they fit at 11/12 or more, else as rows, fitted; no scale may hold it", () => {
   const canvas = { w: 1280, h: 670 }, never = () => { throw new Error("the rows were not needed"); };
-  // a few tasks: whole cards at 0.88, their titles over 11 px
-  const some = fitPlan(canvas, { w: 1450, h: 700 }, never, 46)!;
+  // a few tasks: whole cards at 0.93, their smallest words over 11 px
+  const some = fitPlan(canvas, { w: 1380, h: 600 }, never, 46)!;
   assert.equal(some.level, "full");
-  assert.ok(Math.abs(some.k - 1280 / 1450) < 1e-9 && some.tx === 0 && Math.abs(some.ty - (624 - 700 * some.k) / 2) < 1e-9);
-  assert.ok(FULL_FROM * 13 >= 11, "a whole card's title is drawn at 11 px or more");
-  // at the threshold exactly, still whole; a hair under it, rows
-  assert.equal(fitPlan({ w: 850, h: 2000 }, { w: 1000, h: 100 }, never)!.level, "full");
-  assert.equal(fitPlan({ w: 849, h: 2000 }, { w: 1000, h: 100 }, () => ({ w: 700, h: 60 }))!.level, "compact");
+  assert.ok(Math.abs(some.k - 1280 / 1380) < 1e-9 && some.tx === 0 && Math.abs(some.ty - (624 - 600 * some.k) / 2) < 1e-9);
+  assert.ok(FULL_FROM * CARD_TEXT >= 11 - 1e-9 && CARD_TEXT >= 12, "a whole card's smallest words are drawn at 11 px or more");
+  // at the threshold, still whole; a hair under it, rows
+  assert.equal(fitPlan({ w: 917, h: 2000 }, { w: 1000, h: 100 }, never)!.level, "full");
+  assert.equal(fitPlan({ w: 916, h: 2000 }, { w: 1000, h: 100 }, () => ({ w: 700, h: 60 }))!.level, "compact");
   // twenty-six: whole cards would sit at a third, so rows, fitted to the width, in the middle above the foot
   const many = fitPlan(canvas, { w: 2618, h: 1982 }, () => ({ w: 1744, h: 784 }), 46)!;
   assert.equal(many.level, "compact");
   assert.ok(Math.abs(many.k - 1280 / 1744) < 1e-9 && many.tx === 0 && Math.abs(many.ty - (624 - 784 * many.k) / 2) < 1e-9);
   assert.ok(many.k * 14 >= 9, "a row's title is drawn at 9 px or more there");
-  // rows that fit at more than their own size fill the pane, up to ROWS_MOST, where they stay rows
+  // rows that would fit at more than their own size are drawn at it, never blown up, and stay rows
   assert.equal(fitPlan({ w: 2600, h: 1400 }, { w: 2618, h: 1982 }, () => ({ w: 1744, h: 784 }), 46)!.k, ROWS_MOST);
+  assert.equal(ROWS_MOST, 1);
   assert.equal(levelFor("compact", ROWS_MOST), "compact");
   // fitted again with whole cards on screen (a pane opened beside them), they hold down to FULL_KEEP
   assert.equal(fitPlan({ w: 780, h: 2000 }, { w: 1000, h: 100 }, never, 0, "full")!.level, "full");
@@ -81,11 +82,13 @@ test("whole cards turn to rows under 0.55 and rows to whole cards over 1.2; betw
   assert.ok(FAR > ZOOM_MIN && FAR < switchK(TO_COMPACT, "full", "compact") - 0.3, `far at ${FAR}`);
 });
 
-test("across a change of level a card covers as much of the screen, no side moves by more than 15%, and the level holds", () => {
+test("across a change of level a card covers as much of the screen, a row turned to reads, and the level holds", () => {
+  // a row is much shorter than a card (its title alone): it turns wider on screen and its title larger, drawn at
+  // 11 px or more where whole cards turn to rows
+  assert.ok(14 * switchK(TO_COMPACT, "full", "compact") >= 11, "a row's title reads the moment it is a row");
   for (const [from, to, k] of [["full", "compact", TO_COMPACT - 0.001], ["compact", "full", TO_FULL + 0.001]] as const) {
     const k2 = switchK(k, from, to);
     const w = (CARD[to].w * k2) / (CARD[from].w * k), h = (CARD[to].h * k2) / (CARD[from].h * k);
-    assert.ok(Math.abs(w - 1) <= 0.15 && Math.abs(h - 1) <= 0.15, `${from} to ${to}: its width by ${w.toFixed(3)}, its height by ${h.toFixed(3)}`);
     assert.ok(Math.abs(w * h - 1) < 1e-9, "the same area");
     assert.equal(levelFor(to, k2), to, `${to} at ${k2.toFixed(3)} does not turn straight back`);
     // nor on the next move the same way, nor on one move back

@@ -3,7 +3,7 @@
 // chip's latest fact, and the one act a card wears. A mark is drawn only for what a field of the snapshot
 // says (state.ts); the words are words.ts's and `SAY`'s. No DOM here, so `node --test` reads them.
 import { SAY, type Goal } from "../state.ts";
-import { actsFor, asksYou, attemptsOf, checkWords, filesChip, provesNothing, writtenOf, type Button, type ForkX, type TaskX } from "./words.ts";
+import { actsFor, asksYou, attemptsOf, checkWords, cut, filesChip, fitWidth, provesNothing, writtenOf, type Button, type ForkX, type TaskX } from "./words.ts";
 
 /** The one mark a step's state wears, the same shape at every size: a circle is the run's own business
  *  (waiting, ready, working, landed, suggested), a diamond is the person (you, yours), a triangle is trouble (back). */
@@ -166,18 +166,44 @@ export function checkMark(t: Checked): CheckMark {
  *  check passed (plan.py `roll_up`); until then nothing says it ran, and the box is dotted. */
 export const goalBox = (g: Pick<Goal, "state">): Box => (g.state === "done" ? "passed" : "unrun");
 
-/** A string cut in its middle with an ellipsis to ``n`` characters, the end kept twice as long as the start:
- *  a check's news is its last words (`uv run…test_cache.py`). Short strings untouched; never longer than ``n``. */
-export function midCut(s: string, n: number): string {
-  if (s.length <= n) return s;
-  if (!(n >= 2)) return n >= 1 ? "…" : "";
-  const head = Math.floor((Math.floor(n) - 1) / 3), tail = Math.floor(n) - 1 - head;
-  return `${s.slice(0, head).trimEnd()}…${s.slice(s.length - tail).trimStart()}`;
+/** A title on up to ``most`` lines of ``max`` px as ``width`` measures them: whole words on each line while they
+ *  fit, the rest on the last, cut there as `fitWidth` cuts. A first word too long for a line is cut on it. */
+export function wrap(s: string, max: number, width: (t: string) => number, most: number): string[] {
+  const words = s.split(/\s+/).filter(Boolean), out: string[] = [];
+  while (words.length && out.length < most - 1 && width(words[0]!) <= max) {
+    let n = 1;
+    while (n < words.length && width(words.slice(0, n + 1).join(" ")) <= max) n++;
+    if (n === words.length) break; // the rest fits on this line
+    out.push(words.splice(0, n).join(" "));
+  }
+  if (words.length) out.push(fitWidth(words.join(" "), max, width));
+  return out;
 }
 
-/** What follows `done when` on a card's foot: the check, cut in its middle to ``n`` characters; `it exits 0`
+/** A path cut to its file's name, the folders before it one `…/` (`…/RecipeLookupServiceImpl.java`); a folder's
+ *  glob keeps its folder (`…/create/**`). A word with no folder in it is left as it is. */
+export function tailPath(p: string): string {
+  const parts = p.split("/"), keep = /^\*+$/.test(parts.at(-1) ?? "") ? 2 : 1;
+  return parts.length > keep ? `…/${parts.slice(-keep).join("/")}` : p;
+}
+
+/** A check cut to ``n`` characters at its words, never inside one while a whole one fits: its first word and
+ *  what it runs on (`pytest … test_words.py`, `./gradlew … RecipeLookupServiceImplTest`), else that alone, cut at
+ *  its end if it must. What it runs on is its last path or dotted name (else its last word that is no flag),
+ *  quotes off: a path's file, a dotted test's own name. Short strings untouched; never longer than ``n``. */
+export function checkCut(s: string, n: number): string {
+  if (s.length <= n) return s;
+  if (!(n >= 2)) return n >= 1 ? "…" : "";
+  const words = s.split(/\s+/).filter(Boolean), back = words.slice(1).map((w) => w.replace(/^['"]|['"]$/g, "")).filter((w) => !w.startsWith("-")).reverse();
+  const last = back.find((w) => /[/.]/.test(w)) ?? back[0] ?? words[0] ?? "";
+  const on = last.includes("/") ? last.slice(last.lastIndexOf("/") + 1) || last : /\.[^.\s]{5,}$/.test(last) ? last.slice(last.lastIndexOf(".") + 1) : last;
+  if (words.length > 1 && `${words[0]} … ${on}`.length <= n) return `${words[0]} … ${on}`;
+  return cut(on, Math.floor(n));
+}
+
+/** What follows `done when` on a card's foot: the check, cut at its words to ``n`` characters; `it exits 0`
  *  for a command step, whose command is its check (its chip names it); nothing for a step with no check. */
-export const doneWhen = (t: Pick<TaskX, "check"> & { command?: string | null }, n: number): string => (t.command ? "it exits 0" : midCut(t.check ?? "", n));
+export const doneWhen = (t: Pick<TaskX, "check"> & { command?: string | null }, n: number): string => (t.command ? "it exits 0" : checkCut(t.check ?? "", n));
 
 // ---- the files chip, and the attempts a step is set to ----
 
@@ -200,12 +226,12 @@ export function filesLine(t: Pick<TaskX, "state" | "scope" | "files" | "filesN" 
   return { tone: "plain", mark: text ? "▤" : "", text, refused: text ? refused : "" };
 }
 
-/** `×3` at the status line's end for a step set to two or more attempts that has started none, and has a
- *  check to keep one (without a check it runs as one agent; a command step runs once, with no agent). Real
- *  attempts are chips under the card, and small marks on its row (`forkMark`). */
+/** `3 attempts` at the status line's end for a step set to two or more attempts that has started none, and has
+ *  a check to keep one (without a check it runs as one agent; a command step runs once, with no agent). Real
+ *  attempts are chips on the card, and small marks on its row (`forkMark`). */
 export function attemptsMark(t: TaskX, limit: number | null | undefined): string {
   const n = attemptsOf(t, limit);
-  return n < 2 || t.forks.length || !t.check || t.command || !["proposed", "ready", "waiting"].includes(t.state) ? "" : `×${n}`;
+  return n < 2 || t.forks.length || !t.check || t.command || !["proposed", "ready", "waiting"].includes(t.state) ? "" : `${n} attempts`;
 }
 
 /** An attempt's small mark on a row, by its own state and nothing else: working, passed its check (the tick),
