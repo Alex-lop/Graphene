@@ -11,7 +11,7 @@ import { blanks, draftLine, globs, isDraft, lacks, type Draft } from "./draft.ts
 import { attemptsMark, cardAct, checkLines, checkMark, cornerMark, doneWhen, filesLine, forkMark, goalBox, goalCells, legend, midCut, nextWanting, stateMark, tally, wanting, wantingLine,
          type CheckMark, type Mark } from "./marks.ts";
 import { actsFor, asksYou, attemptsOf, commandChip, cornerWord, cut, done, draftedSteps, edgeKind, editable, filesChip, FIRST_HINT, fitWidth, forkActs, forkRow, forkWords, HEADER_ACTS, headerFor,
-         heldWords, KEYS, linkHint, mainAct, mayRun, paneKey, pipeline, planningLine, PROVES_NOTHING, provesNothing, questionOn, scopeTree, STOP_AFTER, STOP_AFTER_HOVER, stopAfterPlan, stopsOf, sub, tabOrder, tokenWords, topLine, twoLines, whenEdit, who, writtenOf,
+         heldWords, KEYS, linkHint, mainAct, mayRun, paneKey, pipeline, planningLine, PROVES_NOTHING, provesNothing, questionOn, scopeTree, stopsOf, sub, tabOrder, tokenWords, topLine, twoLines, whenEdit, who, writtenOf,
          type Button, type ForkX, type StateX, type TaskX } from "./words.ts";
 import { CARD, dotGap, FAR, fitPlan, hold, levelFor, miniFrame, miniSize, nearest, offScreen, panTo, percent, switchK, wheelK, ZOOM_MAX, ZOOM_MIN, zoomK,
          type Level, type Size, type Zoom } from "./zoom.ts";
@@ -324,23 +324,20 @@ function render() {
   hint();
 }
 
-/** The side bar's width, or a narrow tab: the header folds to one line and the pane goes under the canvas. */
+/** A narrow tab (the editor area beside the side bar and an agent's chat): the pane goes under the canvas. */
 const narrow = () => matchMedia("(max-width: 700px)").matches;
 
 function header(s: StateX) {
   const first = topLine(s); // a replay, or a live race against the stand-in: said before anything else
   $("replay").textContent = $("replay").title = first; // a pill cut to the header's room: its hover says it whole
   $("replay").hidden = !first;
-  const h = headerFor(s, narrow());
-  $("goal").textContent = h.goal;
-  $("goal").title = h.hover;
-  $("counts").textContent = h.counts;
-  $("counts").hidden = !h.counts;
+  const h = headerFor(s); // each number once: the stages and Run's cost here, what needs you in the canvas's chip
+  $("goal").textContent = $("goal").title = h.goal; // cut to its row: the hover says it whole
   $("auto").textContent = $("auto").title = h.auto;
   $("auto").hidden = !h.auto;
-  // one pipeline, the plan first: Plan, Run, Review, and the one switch (a replay is watched: no switch)
+  // one pipeline, the plan first: Plan, Run, Review
   $("pipe").hidden = false;
-  $("stages").replaceChildren(...pipeline(s).map((st, i) => {
+  $("stages").replaceChildren(...h.stages.map((st, i) => {
     const stage = div(`stage ${st.at}`);
     stage.setAttribute("role", "listitem");
     stage.setAttribute("aria-current", st.at === "now" ? "step" : "false");
@@ -349,8 +346,6 @@ function header(s: StateX) {
     if (st.note) { const note = document.createElement("small"); note.textContent = st.note; stage.appendChild(note); }
     return stage;
   }));
-  $("b-stop-after").setAttribute("aria-checked", String(stopAfterPlan(s)));
-  $("b-stop-after").hidden = replaying();
   for (const [id] of HEADER_ACTS) $(id).hidden = replaying(); // a replay is watched: nothing acts on a plan, or outside it
   // the one act on the whole plan: Start a suggestion, Run what is ready, Stop a run (words.ts `mainAct`)
   const act = mainAct(s), run = $<HTMLButtonElement>("b-run");
@@ -1284,8 +1279,8 @@ function hint() {
   } else if (!saved.hinted) {
     h.textContent = FIRST_HINT;
     h.className = "";
-  } else { // the news, or, narrow, the line the header has no room for
-    h.textContent = state ? screenWords(state.news[state.news.length - 1] || headerFor(state, narrow()).footer) : "";
+  } else { // the news
+    h.textContent = state ? screenWords(state.news[state.news.length - 1] ?? "") : "";
     h.className = "";
   }
 }
@@ -1726,7 +1721,6 @@ function notice(st: Status) {
   $("minimap").hidden = $("legend").hidden = $("need").hidden = true;
   $("details").hidden = true; paneLast = "";
   $("goal").textContent = "Graphene";
-  $("counts").textContent = "";
   $("auto").hidden = true;
   $("replay").hidden = true;
   $("pipe").hidden = true; // no plan to read: no stage to be at, and nothing to run or add to
@@ -2017,38 +2011,14 @@ function wire() {
   top("b-view", "Lanes", "list-flat", "graph or lanes (v)", () => { remember({ view: view() === "lanes" ? "graph" : "lanes" }); fitted = false; render(); });
   top("b-help", "", "question", "every key (?)", () => help($("help").hidden));
   $("b-help").setAttribute("aria-label", "keys");
-  // under the goal: the pipeline's three stages and its one switch (made here, so the preview's shell has them too)
+  // under the goal: the pipeline's three stages (made here, so the preview's shell has them too). Stop after the
+  // plan is Home's, under its Settings: beside Start and Stop here it read as a third way to stop
   const pipe = div("", undefined, document.querySelector("header")!);
   pipe.id = "pipe";
   const stages = div("", undefined, pipe);
   stages.id = "stages";
   stages.setAttribute("role", "list");
   stages.setAttribute("aria-label", "Plan, Run, Review");
-  const sw = document.createElement("button");
-  sw.id = "b-stop-after";
-  sw.className = "switch";
-  sw.setAttribute("role", "switch");
-  sw.setAttribute("aria-checked", "true");
-  sw.appendChild(document.createElement("i"));
-  sw.appendChild(document.createTextNode(STOP_AFTER));
-  sw.title = STOP_AFTER_HOVER;
-  sw.addEventListener("click", () => api.postMessage({ type: "act", act: "stopAfter", id: "", value: sw.getAttribute("aria-checked") !== "true" }));
-  pipe.appendChild(sw);
-  pipe.appendChild($("counts")); // the totals end the stages' row, as the target's header has them
-  // narrow, the buttons hide behind one `…` beside the goal, so the header is one line
-  const more = document.createElement("button");
-  more.id = "b-more";
-  more.className = "quiet";
-  more.appendChild(icon("ellipsis"));
-  more.title = "the buttons";
-  more.setAttribute("aria-label", "the buttons");
-  more.setAttribute("aria-expanded", "false");
-  more.addEventListener("click", () => {
-    const open = document.querySelector("header")!.classList.toggle("open");
-    more.setAttribute("aria-expanded", String(open));
-  });
-  $("goal").after(more);
-  matchMedia("(max-width: 700px)").addEventListener("change", render); // the header's lines move
   $("hint").setAttribute("aria-live", "polite"); // a question or a hand-back is announced
   api.postMessage({ type: "ready" });
 }

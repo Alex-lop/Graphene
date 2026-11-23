@@ -44,7 +44,7 @@ test("a replay's host runs nothing that changes a plan or acts outside the repla
   for (const act of CHANGES) {
     const id = ["start", "run", "stop", "cockpit", "add-under", "draw", "saveWorkflow"].includes(act) ? "" : act === "answer" ? "which-port" : "farewell";
     const more = act === "set" ? { field: "title", value: "x" } : act === "draw" ? { draft: { key: " d1", title: "t", files: "a.py", check: "true", approve: false } }
-      : act.startsWith("add-") ? { sentence: "a flag", key: " d1" } : act === "stopAfter" ? { value: false } : {};
+      : act.startsWith("add-") ? { sentence: "a flag", key: " d1" } : {};
     assert.ok(check({ type: "act", act, id, fork: act === "pickFork" ? "b" : undefined, target: act === "link" || act === "unlink" ? "hello" : undefined, ...more }, session),
               `${act} passes outside a replay, so the refusal below is the replay's`);
     const fork = act === "pickFork" ? "b" : undefined;
@@ -54,12 +54,8 @@ test("a replay's host runs nothing that changes a plan or acts outside the repla
   assert.equal(check({ type: "ready" }, replay)?.type, "ready");
 });
 
-test("the header's switch passes with the position it moves to, and nothing else; a replay has no switch", () => {
-  assert.deepEqual(check({ type: "act", act: "stopAfter", id: "", value: false }, session), { type: "act", act: "stopAfter", id: "", value: false });
-  assert.deepEqual(check({ type: "act", act: "stopAfter", id: "greet", value: true }, session), { type: "act", act: "stopAfter", id: "", value: true });
-  assert.equal(check({ type: "act", act: "stopAfter", id: "" }, session), null);
-  assert.equal(check({ type: "act", act: "stopAfter", id: "", value: "off" }, session), null);
-  assert.equal(check({ type: "act", act: "stopAfter", id: "", value: false }, { state: { ...state, replay: { shown: "x", day: "", repository: "" } } }), null);
+test("the switch is Home's alone: the graph's page has no stopAfter to send", () => {
+  assert.equal(check({ type: "act", act: "stopAfter", id: "", value: false }, session), null);
 });
 
 test("with no plan read yet, only ready and the acts that take no id pass", () => {

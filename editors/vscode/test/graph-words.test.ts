@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import * as C from "../src/commands.ts";
-import { actsFor, asksYou, attemptsOf, CHANGES, commandChip, commandWord, cornerWord, counts, draftedSteps, edgeKind, editable, filesChip, fitWidth, fitWords, forkActs, forkWords, HEADER_ACTS, headerFor,
+import { actsFor, asksYou, attemptsOf, CHANGES, commandChip, commandWord, cornerWord, draftedSteps, edgeKind, editable, filesChip, fitWidth, fitWords, forkActs, forkWords, HEADER_ACTS, headerFor,
          checkWords, heldWords, linkHint, mainAct, mayRun, OUTSIDE, OUTSIDE_OWN, paneKey, pipeline, planningLine, provesNothing, replayLine, scopeTree, stopAfterPlan, stopsOf, sub, tabOrder, tokenWords, topLine,
          whenEdit, who, writtenOf, type StateX, type TaskX } from "../src/graph/words.ts";
 import { SAY, WORDS } from "../src/state.ts";
@@ -21,22 +21,22 @@ const tasks: TaskX[] = parsed.tasks.map((t) => {
 const task = (id: string) => tasks.find((t) => t.id === id)!;
 const state: StateX = { ...parsed, tasks };
 
-test("narrow, the header is the goal alone: the counts and the auto line move to its hover and the footer", () => {
-  const wide = headerFor(state, false);
-  assert.equal(wide.goal, state.goal);
-  assert.equal(wide.counts, counts(state, false)); // the auto line says the cost, against its budget
-  assert.match(wide.auto, /\$[\d.]+ of \$/);
-  assert.doesNotMatch(wide.counts, /\$/);
-  assert.equal(headerFor({ ...state, auto: null }, false).counts, counts(state));
-  assert.equal(wide.auto, autoLine(state));
-  assert.equal(wide.footer, "");
-  const narrow = headerFor(state, true);
-  assert.equal(narrow.goal, state.goal);
-  assert.equal(narrow.counts, "");
-  assert.equal(narrow.auto, "");
-  assert.equal(narrow.hover, [state.goal, counts(state, false), autoLine(state)].filter(Boolean).join("\n"));
-  assert.equal(narrow.footer, autoLine(state) || counts(state)); // the live line first, else the counts
-  assert.equal(headerFor({ ...state, auto: null }, true).footer, counts(state));
+test("the header says each number once: the stages, the cost in Run's note unless auto's line says it against its budget, and auto's line while it works", () => {
+  const fx = (name: string) => parseState(readFileSync(new URL(`./fixtures/${name}.json`, import.meta.url), "utf8")) as StateX;
+  const run = (s: StateX) => headerFor(s).stages.find((x) => x.key === "run")!.note;
+  const h = headerFor(state);
+  assert.equal(h.goal, state.goal);
+  assert.equal(h.auto, autoLine(state));
+  assert.match(h.auto, /\$0\.61 of \$2\.00/);
+  assert.equal(run(state), "1 working", "the auto line says the cost: not again");
+  assert.equal(run({ ...state, auto: null }), "1 working · $0.61");
+  assert.equal(run({ ...state, auto: null, stand_in: true }), "1 working", "a stand-in's calls cost nothing");
+  const done = { ...state, auto: { ...state.auto!, stage: "done" } };
+  assert.deepEqual([headerFor(done).auto, run(done)], ["", "1 working · $0.61"], "auto done: the stages say where the plan is");
+  assert.equal(run(fx("proposals")), "", "nothing has run: no cost under Run");
+  assert.equal(headerFor(fx("drafting")).goal, "CSV export of the visible rows", "a planner drawing: what it draws");
+  assert.equal(headerFor(fx("empty")).goal, "Graphene", "no plan: no placeholder for a goal");
+  assert.deepEqual(headerFor(state).stages.map((x) => x.label), pipeline(state).map((x) => x.label));
 });
 
 test("words drop from the end until they fit, the first always stays", () => {
