@@ -107,9 +107,18 @@ body.vscode-light .c-tag { color: color-mix(in srgb, var(--tone) 55%, var(--fg))
   .c-lines.stack { grid-template-columns: minmax(0, 1fr); row-gap: 1px; }
   .c-lines.stack .c-line + .c-line > :first-child { margin-top: 5px; }
 }
+.c-line .short { display: none; }
 @media (max-width: 260px) { /* Cursor's side bar beside its chat: no value fits beside its label */
   .c-lines { grid-template-columns: minmax(0, 1fr); row-gap: 1px; }
   .c-lines .c-line + .c-line > :first-child { margin-top: 5px; }
+  /* a task not started, as the graph's card: each line runs on from its short label (cards.ts glance), and
+     what wraps of a file or a check hangs under it */
+  .c-lines .c-line.run { display: block; }
+  .c-lines .c-line.run + .c-line.run { margin-top: 3px; }
+  .c-line.run :is(dt, dd, .row, .short) { display: inline; margin: 0; }
+  .c-line.run .long { display: none; }
+  .c-line.run:has(dd.mono) { padding-left: 2ch; text-indent: -2ch; }
+  .c-line.run dd.mono { padding: 0; text-indent: 0; }
 }
 .c-line.warn dd { color: var(--warn); }
 .mono { font-family: var(--mono); font-size: 0.95em; }

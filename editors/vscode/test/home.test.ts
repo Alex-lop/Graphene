@@ -19,23 +19,25 @@ test("a suggested plan is read before it starts: each task says what for, what i
   assert.deepEqual(s.buttons.map((b) => [b.label, b.act, Boolean(b.main)]), [["Start", "startAll", true], ["Discard all", "discardAll", false]]);
   const hello = card(h, "p:hello");
   assert.equal(hello.tag, "", "its section says suggested: the card does not say it again");
+  // in a side bar too narrow for a label beside its value, each line runs on from its short label (home.css)
   assert.deepEqual(hello.lines, [
-    { k: "What for", v: "hello says hello to the person by name" },
-    { k: "May change", v: "words.py", mono: true },
-    { k: "Done when", v: "pytest … test_words.py passes", mono: true, hover: "pytest -q tests/test_words.py passes" },
+    { k: "What for", v: "hello says hello to the person by name", short: "" },
+    { k: "May change", v: "words.py", mono: true, short: "▤" },
+    { k: "Done when", v: "pytest … test_words.py passes", mono: true, hover: "pytest -q tests/test_words.py passes", short: "done when" },
   ]);
   // a side bar is for a glance: a task not started names its files and its check short, the whole on hover
   const java = { ...fixture("proposals"), tasks: fixture("proposals").tasks.map((t) => (t.id !== "hello" ? t : { ...t,
     scope: ["src/main/java/app/impl/CookServiceImpl.java", "src/main/java/app/impl/CookingSessionImpl.java", "src/test/java/app/impl/CookServiceImplTest.java"],
     check: "./gradlew test --tests 'app.cookyourbooks.services.impl.CookServiceImplTest'" })) };
   assert.deepEqual(card(home(java), "p:hello").lines.slice(1), [
-    { k: "May change", v: "CookServiceImpl.java +2", mono: true, hover: "src/main/java/app/impl/CookServiceImpl.java\nsrc/main/java/app/impl/CookingSessionImpl.java\nsrc/test/java/app/impl/CookServiceImplTest.java" },
-    { k: "Done when", v: "CookServiceImplTest passes", mono: true, hover: "./gradlew test --tests 'app.cookyourbooks.services.impl.CookServiceImplTest' passes" },
+    { k: "May change", v: "CookServiceImpl.java +2", mono: true, short: "▤", // no +2 alone on a line
+      hover: "src/main/java/app/impl/CookServiceImpl.java\nsrc/main/java/app/impl/CookingSessionImpl.java\nsrc/test/java/app/impl/CookServiceImplTest.java" },
+    { k: "Done when", v: "CookServiceImplTest passes", mono: true, hover: "./gradlew test --tests 'app.cookyourbooks.services.impl.CookServiceImplTest' passes", short: "done when" },
   ]);
   // a folder by its name, its slash off; a glob from its last plain folder
   const scoped = (scope: string[]) => card(home({ ...java, tasks: java.tasks.map((t) => (t.id === "hello" ? { ...t, scope } : t)) }), "p:hello").lines[1]!.v;
-  assert.deepEqual([scoped(["src/api/"]), scoped(["docs/**/*.md"]), scoped(["src/api/**", "web/"])], ["api", "docs/**/*.md", "api/** +1"]);
-  assert.deepEqual(card(h, "p:farewell").lines.find((l) => l.k === "After"), { k: "After", v: "bye says goodbye, greet route" });
+  assert.deepEqual([scoped(["src/api/"]), scoped(["docs/**/*.md"]), scoped(["src/api/**", "web/"])], ["api", "docs/**/*.md", "api/** +1"]);
+  assert.deepEqual(card(h, "p:farewell").lines.find((l) => l.k === "After"), { k: "After", v: "bye says goodbye, greet route", short: "after" });
   assert.deepEqual(labels(hello), ["Remove"]);
 });
 
@@ -58,7 +60,7 @@ test("a task's What for is left out when it only says the title again, and says 
   const again = { ...s, tasks: s.tasks.map((t) => (t.id === "hello" ? { ...t, title: "export command writing json", full: "An export command writing JSON" } : t)) };
   assert.equal(card(home(again), "p:hello").lines.find((l) => l.k === "What for"), undefined);
   const prefix = { ...s, tasks: s.tasks.map((t) => (t.id === "hello" ? { ...t, title: "Librarian service", full: "Librarian service: collections, JSON import" } : t)) };
-  assert.deepEqual(card(home(prefix), "p:hello").lines.find((l) => l.k === "What for"), { k: "What for", v: "Collections, JSON import" });
+  assert.deepEqual(card(home(prefix), "p:hello").lines.find((l) => l.k === "What for"), { k: "What for", v: "Collections, JSON import", short: "" });
 });
 
 test("a finished task to review shows its evidence; Open changes leads until the person has opened them", () => {
@@ -255,7 +257,7 @@ test("a step past the line asks you on Home: what leaves your machine, the comma
   // and the one past the line says it will ask first. Neither says "no files named" or "... passes".
   const before = home({ ...s, tasks: s.tasks.map((t) => ({ ...t, state: "proposed" as const })) });
   const lines = (id: string) => before.sections.flatMap((x) => x.cards).find((x) => x.key.endsWith(`:${id}`))!.lines;
-  assert.deepEqual(lines("suite-48").slice(0, 2), [{ k: "Runs", v: "uv run pytest -q", mono: true }, { v: "A command, with no agent: its exit code is its check." }]);
+  assert.deepEqual(lines("suite-48").slice(0, 2), [{ k: "Runs", v: "uv run pytest -q", mono: true, short: "$" }, { v: "A command, with no agent: its exit code is its check." }]);
   assert.deepEqual(lines("pr-48")[1], { v: "It leaves your machine, so it asks you before it runs." });
   // a command that failed stays open and reads as before it ran: its card says it ran, once the terminal is gone
   const failed = (id: string, state: "ready" | "yours") => home({ ...s, tasks: s.tasks.map((t) => (t.id === id ? { ...t, state, checked: { before: null, after: "failed" } } : t)) });

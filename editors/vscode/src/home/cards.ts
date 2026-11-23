@@ -16,8 +16,9 @@ export type Act = (typeof ACTS)[number];
 /** ``main``: the card's one filled button, if any. ``note``: a dim word after the label (a question's default). */
 export interface Btn { label: string; act: Act; id?: string; arg?: string; main?: boolean; title?: string; off?: boolean; note?: string }
 /** ``paths``: the value is these files, drawn one a line, a deep one from its last folder (``v`` says them all).
- *  A ``v`` of several lines (attempts, last actions) is drawn a line each. ``hover``: the whole, where ``v`` is short. */
-export interface Line { k?: string; v: string; mono?: boolean; warn?: boolean; paths?: string[]; hover?: string }
+ *  A ``v`` of several lines (attempts, last actions) is drawn a line each. ``hover``: the whole, where ``v`` is short.
+ *  ``short``: the label where a side bar has no row for it, run into the value (`glance`). */
+export interface Line { k?: string; v: string; mono?: boolean; warn?: boolean; paths?: string[]; hover?: string; short?: string }
 export type Tone = "question" | "proposed" | "running" | "review" | "came-back" | "ready" | "waiting" | "done" | "yours";
 /** ``tag``: the state in a word, where its section does not say it already (Needs you, Up next); else empty. */
 export interface Card { key: string; tone: Tone; title: string; tag: string; lines: Line[]; buttons: Btn[] }
@@ -94,7 +95,7 @@ function contract(t: Task, name: (id: string) => string, brief = false): Line[] 
   ];
   return [
     ...line("What for", whatFor(t)),
-    ...(brief && t.scope.length ? brief1("May change", filesChip(t.scope.map(tail)), t.scope.join("\n"))
+    ...(brief && t.scope.length ? brief1("May change", filesChip(t.scope.map(tail)).replace(/ (?=\+\d+$)/, " "), t.scope.join("\n")) // no +2 alone
       : fileLine("May change", t.scope, "no files named")),
     ...(brief && t.check ? brief1("Done when", `${checkCut(t.check, 28)} passes`, `${t.check} passes`)
       : [{ k: "Done when", v: t.check ? `${t.check} passes` : "you approve it", mono: Boolean(t.check) }]),
@@ -102,6 +103,12 @@ function contract(t: Task, name: (id: string) => string, brief = false): Line[] 
     ...line("After", t.needs.map(name).join(", ")),
   ];
 }
+
+/** A task not started, at a glance: in Cursor's side bar beside its chat a label has no room beside its value
+ *  (home.css), and a row of its own each made six cards a page and a half. There each line runs on from a short
+ *  label instead, as the graph's card says it: What for with none, its files after ▤, its check after done when. */
+const SHORT: Record<string, string> = { "What for": "", "May change": "▤", Runs: "$" };
+const glance = (ls: Line[]): Line[] => ls.map((l) => (l.k ? { ...l, short: SHORT[l.k] ?? l.k.toLowerCase() } : l));
 
 /** A finished task's evidence: what changed, the check that proved it, and the attempt that was kept. */
 function evidence(t: Task): Line[] {
@@ -211,7 +218,7 @@ export function home(s: State, seen: ReadonlySet<string> = new Set(), exact = fa
 
   const suggested = s.tasks.filter((t) => t.state === "proposed");
   section("suggested", `Suggested plan · ${plural(suggested.length, "task")}`, suggested.map((t) => ({
-    key: `p:${t.id}`, tone: "proposed" as const, title: t.title, tag: "", lines: contract(t, name, true),
+    key: `p:${t.id}`, tone: "proposed" as const, title: t.title, tag: "", lines: glance(contract(t, name, true)),
     buttons: [{ label: "Remove", act: "drop" as const, id: t.id, title: "leave this task out of the plan" }],
   })), {
     note: exact && s.questions.length
@@ -241,7 +248,7 @@ export function home(s: State, seen: ReadonlySet<string> = new Set(), exact = fa
   const next = s.tasks.filter((t) => t.state === "ready" || t.state === "waiting");
   section("next", `Up next · ${next.length}`, next.map((t) => ({
     key: `n:${t.id}`, tone: t.state === "ready" ? "ready" as const : "waiting" as const, title: t.title, tag: SAY[t.state],
-    lines: [...line("Waits for", t.state === "waiting" ? t.needs.map(name).join(", ") : ""), ...contract(t, name, true).filter((l) => l.k !== "After")],
+    lines: glance([...line("Waits for", t.state === "waiting" ? t.needs.map(name).join(", ") : ""), ...contract(t, name, true).filter((l) => l.k !== "After")]),
     buttons: [{ label: "Remove", act: "drop" as const, id: t.id, title: "take this task out of the plan" }],
   })), { buttons: [{ label: "Run", act: "run", main: !s.run.going, title: s.run.going ? "hand these to the run that is going"
                                                                             : "start an agent on every task that is ready" }] });
