@@ -352,6 +352,7 @@ function header(s: StateX) {
   const run = $("b-run"); // while a run goes, the button that started it stops it
   run.replaceChildren(icon(s.run.going ? "debug-stop" : "play"), document.createTextNode(s.run.going ? "Stop" : "Run"));
   run.title = s.run.going ? "stop every agent: their tasks go back to the plan" : "start an agent on every task that is ready";
+  run.className = s.run.going || s.tasks.some((t) => t.state === "ready") ? "" : "quiet"; // filled only when it would start or stop something
   for (const [id] of HEADER_ACTS) $(id).hidden = replaying(); // a replay is watched: nothing acts on a plan, or outside it
   const toggle = $("b-view");
   const v = view();
@@ -1709,7 +1710,8 @@ function notice(st: Status) {
   $("counts").textContent = "";
   $("auto").hidden = true;
   $("replay").hidden = true;
-  $("pipe").hidden = true; // no plan to read: no stage to be at
+  $("pipe").hidden = true; // no plan to read: no stage to be at, and nothing to run or add to
+  for (const [id] of HEADER_ACTS) $(id).hidden = true;
   $("planning").hidden = true;
 }
 
@@ -1992,7 +1994,6 @@ function wire() {
   };
   top("b-add", "Add task", "add", "draw a task: its title, then its files and its check (or the planner fills them in)", () => draw({ after: null, parent: null }));
   top("b-run", "Run", "play", "start an agent on every task that is ready", () => api.postMessage({ type: "act", act: state?.run.going ? "stop" : "run", id: "" }));
-  $("b-run").className = ""; // the header's one filled button: the run's own act, Run or Stop
   top("b-save", "Save as workflow", "save", "write this graph to workflows/ so it can run again on new inputs", () => api.postMessage({ type: "act", act: "saveWorkflow", id: "" }));
   top("b-view", "Lanes", "list-flat", "graph or lanes (v)", () => { remember({ view: view() === "lanes" ? "graph" : "lanes" }); fitted = false; render(); });
   top("b-help", "", "question", "every key (?)", () => help($("help").hidden));
