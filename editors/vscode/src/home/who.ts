@@ -10,6 +10,7 @@ export const WHO = [
 export const ASK = "Ask Claude Code or Codex for something, in its chat";
 export const NOT_CURSOR = "Cursor's own Agent does not plan with Graphene yet.";
 
-/** Exact, said on its switch and when it goes on: what it holds. Here, with no import of its own, so the page's
- *  bundle takes it without the host's modules. */
-export const EXACT = "Exact: Start waits until you have answered every open question, and each finished task waits for your approval";
+/** Exact, on Home by what it adds to approval and the switch, which Settings show on their own; its hover says
+ *  all it holds. Here, with no import of its own, so the page's bundle takes it without the host's modules. */
+export const EXACT = "Wait for every answer";
+export const EXACT_HOVER = "Start waits until you have answered every open question, even one with a default. Approval and Stop after the plan go on with it.";

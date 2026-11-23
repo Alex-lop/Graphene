@@ -3,7 +3,7 @@
 // Nothing is typed here: a plan comes from the person's coding agent, in its chat (`graphene plan propose`).
 import { STOP_AFTER, STOP_AFTER_HOVER } from "../graph/words.ts";
 import type { Act, Btn, Card, Home, Section } from "./cards.ts";
-import { ASK, EXACT, NOT_CURSOR, WHO } from "./who.ts";
+import { ASK, EXACT, EXACT_HOVER, NOT_CURSOR, WHO } from "./who.ts";
 
 declare function acquireVsCodeApi(): { postMessage(m: unknown): void; getState(): unknown; setState(s: unknown): void };
 
@@ -29,6 +29,7 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls = "", text?: stri
 
 function button(b: Btn, parent: HTMLElement): HTMLButtonElement {
   const btn = el("button", b.main ? "" : "quiet", b.label, parent);
+  if (b.note) el("span", "note", b.note, btn);
   if (b.title) btn.title = b.title;
   btn.disabled = b.off === true;
   btn.dataset.mark = `${b.act}|${b.id ?? ""}|${b.arg ?? ""}`; // the same button after a redraw, for the focus
@@ -68,7 +69,7 @@ const intro = el("p", "intro", undefined, head);
 const notCursor = el("p", "intro aside", NOT_CURSOR, head); // in Cursor, its Agent's chat is the one at hand
 const pipe = el("div", "pipe", undefined, head); // Plan, Run, Review: where the work is
 pipe.setAttribute("role", "list");
-const toGraph = el("button", "open", undefined, head);
+const toGraph = el("button", "open quiet", undefined, head); // the graph's tab is most often open already: a way back, not the next act
 mark(toGraph);
 toGraph.append("Open the graph");
 toGraph.title = "the whole plan in a tab of the editor: every task, what it waits on, and what proves it";
@@ -86,13 +87,19 @@ stopAfter.append(STOP_AFTER);
 stopAfter.title = STOP_AFTER_HOVER;
 stopAfter.addEventListener("click", () => send("stopAfter", { flag: stopAfter.getAttribute("aria-checked") !== "true" }));
 const stopNote = el("p", "pref-note", "", prefs);
-const exactLabel = el("label", "tick exact", undefined, prefs);
-const exact = el("input", "", undefined, exactLabel);
-exact.type = "checkbox";
-exactLabel.append(" Exact");
-exactLabel.title = EXACT;
-exact.addEventListener("change", () => send("exact", { flag: exact.checked }));
-el("p", "pref-note", "Start waits for every answer, and each finished task for your approval.", prefs);
+/** A tick in Settings, its box under the switch's knob. */
+function tick(cls: string, words: string, act: "review" | "exact"): HTMLInputElement {
+  const label = el("label", `tick ${cls}`, undefined, prefs);
+  const box = el("input", "", undefined, label);
+  box.type = "checkbox";
+  label.append(words);
+  box.addEventListener("change", () => send(act, { flag: box.checked }));
+  return box;
+}
+const approve = tick("approve", "Approve each finished task before it lands", "review"); // as Set Up asked it, ticked as it was left
+const exact = tick("exact", EXACT, "exact");
+exact.parentElement!.title = EXACT_HOVER;
+el("p", "pref-note", "Even a question with a default waits for you. It turns the two above on too.", prefs);
 const foot = el("div", "foot", undefined, work);
 button({ label: "Watch the demo", act: "demo" }, foot);
 document.body.append(banner, screen, work);
@@ -137,6 +144,7 @@ function render(m: Model) {
   busy.textContent = m.busy;
   busy.hidden = !m.busy;
   exact.checked = m.exact;
+  approve.checked = m.review;
   drawSaid(out, m.last);
   const focused = document.activeElement instanceof HTMLButtonElement && sections.contains(document.activeElement)
     ? document.activeElement.dataset.mark : "";
@@ -173,20 +181,53 @@ function drawSection(s: Section): HTMLElement {
 function drawCard(c: Card): HTMLElement {
   const card = el("article", `card tone-${c.tone}`);
   el("div", "c-tag", c.tag, card); // what it is, in its state's colour, above what it is called
+  // Remove is a small × in the corner, never the biggest thing on a card about work to come (its host asks first)
+  for (const b of c.buttons.filter((x) => x.act === "drop")) {
+    const x = button({ ...b, label: "×", title: b.title ? `${b.label}: ${b.title}` : b.label }, card);
+    x.classList.add("remove");
+    x.setAttribute("aria-label", b.label);
+  }
   el("div", "c-title", c.title, card);
   if (c.lines.length) {
     const dl = el("dl", "c-lines", undefined, card);
     for (const l of c.lines) {
-      const r = el("div", `c-line${l.warn ? " warn" : ""}${l.k ? "" : " wide"}`, undefined, dl);
+      const size = l.paths ? Math.max(...l.paths.map((x) => x.length)) : l.v.length; // files are one a line: the longest counts
+      const long = l.k && size > (l.mono ? 26 : 40) ? " long" : ""; // under its label in a narrow side bar (home.css)
+      const r = el("div", `c-line${l.warn ? " warn" : ""}${l.k ? "" : " wide"}${long}`, undefined, dl);
       if (l.k) el("dt", "", l.k, r);
-      el("dd", l.mono ? "mono" : "", l.v, r);
+      const dd = el("dd", l.mono ? "mono" : "", undefined, r);
+      if (l.paths) for (const p of l.paths) path(p, dd);
+      else if (l.mono) code(l.v, dd);
+      else dd.textContent = l.v;
     }
   }
-  if (c.buttons.length) {
-    const acts = el("div", "c-acts", undefined, card);
-    for (const b of c.buttons) button(b, acts);
+  const acts = c.buttons.filter((x) => x.act !== "drop");
+  if (acts.length) {
+    const row = el("div", c.tone === "question" ? "c-acts choices" : "c-acts", undefined, card); // a question's options: a list to pick from
+    for (const b of acts) button(b, row);
   }
   return card;
+}
+
+/** A file on a line of its own: its name whole, its folder dim and cut from the left when the line is short
+ *  (`…ces/impl/RecipeLookupServiceImpl.java`); the whole path on hover. Never broken inside a word. */
+function path(p: string, parent: HTMLElement) {
+  const row = el("span", "path", undefined, parent);
+  row.title = p;
+  const cut = p.lastIndexOf("/") + 1;
+  if (cut) el("span", "dir", `${p.slice(0, cut)}\u200e`, row); // the mark keeps the last slash on the right, as the dir is set right to left
+  el("span", "file", p.slice(cut), row);
+}
+
+/** A command, breakable where it reads as a seam: at its spaces, after a slash, and after the dots of a long
+ *  dotted name (`app.cookyourbooks.services.impl.RecipeTest`). <wbr>, so a copied command is the command. */
+function code(v: string, parent: HTMLElement) {
+  for (const w of v.split(/(\s+)/)) {
+    w.split(w.length >= 24 ? /(?<=[/.])/ : /(?<=\/)/).forEach((part, i) => {
+      if (i) parent.append(document.createElement("wbr"));
+      parent.append(part);
+    });
+  }
 }
 
 /** Everything that is not a plan to show: reading, no folder, no graphene, a folder to set up, an error. */

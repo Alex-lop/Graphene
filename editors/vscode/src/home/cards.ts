@@ -9,11 +9,13 @@ import { WHO } from "./who.ts";
 
 export const ACTS = ["startAll", "discardAll", "run", "stop", "drop", "answer", "openDiff", "compare", "keep",
                      "approve", "sendBack", "offer", "tryAgain", "allow", "message", "markDone", "showGraph", "demo", "setup",
-                     "install", "setKey", "refresh", "openFolder", "exact", "stopAfter", "runWorkflow"] as const;
+                     "install", "setKey", "refresh", "openFolder", "exact", "stopAfter", "review", "runWorkflow"] as const;
 export type Act = (typeof ACTS)[number];
 
-export interface Btn { label: string; act: Act; id?: string; arg?: string; main?: boolean; title?: string; off?: boolean }
-export interface Line { k?: string; v: string; mono?: boolean; warn?: boolean }
+/** ``main``: the card's one filled button, if any. ``note``: a dim word after the label (a question's default). */
+export interface Btn { label: string; act: Act; id?: string; arg?: string; main?: boolean; title?: string; off?: boolean; note?: string }
+/** ``paths``: the value is these files, drawn one a line and cut in the middle when long (``v`` says them all). */
+export interface Line { k?: string; v: string; mono?: boolean; warn?: boolean; paths?: string[] }
 export type Tone = "question" | "proposed" | "running" | "review" | "came-back" | "ready" | "waiting" | "done" | "yours";
 export interface Card { key: string; tone: Tone; title: string; tag: string; lines: Line[]; buttons: Btn[] }
 export interface Section { key: string; title: string; note: string; buttons: Btn[]; cards: Card[]; folded: boolean }
@@ -22,7 +24,10 @@ export interface Home { banner: string; goal: string; counts: string; stages: St
 export { PROVES_NOTHING };
 
 const cut = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1).trimEnd()}…` : s);
+const bare = (s: string) => s.trim().replace(/^(an?|the)\s+/i, "").toLowerCase();
 const files = (paths: string[]) => paths.join(", ");
+const fileLine = (k: string, paths: string[], none: string): Line[] =>
+  paths.length ? [{ k, v: files(paths), mono: true, paths }] : line(k, none);
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 const line = (k: string, v: string, more: Partial<Line> = {}): Line[] => (v ? [{ k, v, ...more }] : []);
 /** `a: passed, 9 lines · b: working`: each attempt at a task, as one line. */
@@ -59,8 +64,8 @@ function contract(t: Task, name: (id: string) => string): Line[] {
     ...line("After", t.needs.map(name).join(", ")),
   ];
   return [
-    ...line("What for", t.full && t.full !== t.title ? t.full : ""),
-    { k: "May change", v: files(t.scope) || "no files named", mono: Boolean(t.scope.length) },
+    ...line("What for", t.full && bare(t.full) !== bare(t.title) ? t.full : ""), // not the title again, with an "an" before it
+    ...fileLine("May change", t.scope, "no files named"),
     { k: "Done when", v: t.check ? `${t.check} passes` : "you approve it", mono: Boolean(t.check) },
     ...(t.hollow ? [{ v: PROVES_NOTHING, warn: true }] : []), // the check ran once on the code as it is, before the run
     ...line("After", t.needs.map(name).join(", ")),
@@ -71,7 +76,7 @@ function contract(t: Task, name: (id: string) => string): Line[] {
 function evidence(t: Task): Line[] {
   const kept = t.kept && t.forks.length > 1 ? `attempt ${t.kept.letter} of ${t.forks.length}${t.kept.why ? `: ${t.kept.why}` : ""}` : "";
   return [
-    { k: "Changed", v: files(t.changed) || "no files", mono: Boolean(t.changed.length) },
+    ...fileLine("Changed", t.changed, "no files"),
     { k: "Check", v: t.check ? `${t.check} passed` : "none: your approval finishes it", mono: Boolean(t.check) },
     ...(t.hollow ? [{ v: "This check passed before the work too, so it does not prove the change. Read the changes.", warn: true }] : []),
     ...line("Kept", kept),
@@ -82,10 +87,11 @@ function question(q: Question, name: (id: string) => string): Card {
   const options = [...new Set([...(q.default ? [q.default] : []), ...q.options])];
   return {
     key: `q:${q.id}`, tone: "question", title: q.text, tag: "question",
-    lines: [...line("About", q.about ? name(q.about) : ""), ...line("If unanswered", q.default ?? "")],
+    lines: line("About", q.about ? name(q.about) : ""),
+    // none filled: a default that looks chosen is skipped past; it says it is the default instead
     buttons: [
-      ...options.map((o) => ({ label: cut(o, 80), act: "answer" as const, id: q.id, arg: o, main: o === q.default,
-                               title: o === q.default ? "the default: what happens if nobody answers" : o })),
+      ...options.map((o) => ({ label: cut(o, 80), act: "answer" as const, id: q.id, arg: o, ...(o === q.default ? { note: "default" } : {}),
+                               title: o === q.default ? `${o}: the default, what happens if nobody answers` : o })),
       { label: "In your own words…", act: "answer", id: q.id },
     ],
   };
@@ -147,7 +153,7 @@ export function home(s: State, seen: ReadonlySet<string> = new Set(), exact = fa
       const t = n.t;
       waiting.push({ key: `help:${t.id}`, tone: "came-back", title: t.title, tag: SAY["came back"],
                      lines: [{ k: "Why", v: t.why || t.note || "it stopped before its check passed", warn: true },
-                             ...line("Tries", t.attempts > 1 ? String(t.attempts) : ""), ...line("Wanted", files(t.outside), { mono: true })],
+                             ...line("Tries", t.attempts > 1 ? String(t.attempts) : ""), ...fileLine("Wanted", t.outside, "")],
                      buttons: help(t, titles) });
     } else if (n.kind === "stopped") {
       const t = n.t, path = t.stopped[t.stopped.length - 1] ?? "a file";
@@ -176,11 +182,11 @@ export function home(s: State, seen: ReadonlySet<string> = new Set(), exact = fa
     buttons: [{ label: "Remove", act: "drop" as const, id: t.id, title: "leave this task out of the plan" }],
   })), {
     note: exact && s.questions.length
-      ? `Exact is on: answer the ${plural(s.questions.length, "open question")} under Needs you first (a default's button confirms it), then start.`
+      ? `Start waits for every answer: answer the ${plural(s.questions.length, "open question")} under Needs you first (a default's button confirms it).`
       : unanswered(s) ? `Answer the ${plural(unanswered(s), "question")} with no default under Needs you first: a question with no default stops the run.`
-      : "Read each task: what it may change, and what proves it is done. Remove what you do not want, then start.",
+      : "Read what each task may change and what proves it done. A\u00a0card's\u00a0× leaves it out.", // held together: no "A" or "×" alone at a line's end
     buttons: [{ label: "Start", act: "startAll", main: true, off: (exact && s.questions.length > 0) || unanswered(s) > 0,
-                title: exact && s.questions.length ? "Exact is on: it waits for your answers" : unanswered(s) ? "it waits for an answer: a question with no default is open"
+                title: exact && s.questions.length ? "it waits for every answer, as Settings say" : unanswered(s) ? "it waits for an answer: a question with no default is open"
                   : "accept these tasks and start an agent on each" },
               { label: "Discard all", act: "discardAll" }],
   });
@@ -203,8 +209,8 @@ export function home(s: State, seen: ReadonlySet<string> = new Set(), exact = fa
   section("next", `Up next · ${next.length}`, next.map((t) => ({
     key: `n:${t.id}`, tone: t.state === "ready" ? "ready" as const : "waiting" as const, title: t.title, tag: SAY[t.state],
     lines: [...line("Waits for", t.state === "waiting" ? t.needs.map(name).join(", ") : ""), ...contract(t, name).filter((l) => l.k !== "After")],
-    buttons: [{ label: "Remove", act: "drop" as const, id: t.id }],
-  })), { buttons: [{ label: "Run", act: "run", main: true, title: s.run.going ? "hand these to the run that is going"
+    buttons: [{ label: "Remove", act: "drop" as const, id: t.id, title: "take this task out of the plan" }],
+  })), { buttons: [{ label: "Run", act: "run", main: !s.run.going, title: s.run.going ? "hand these to the run that is going"
                                                                             : "start an agent on every task that is ready" }] });
 
   section("workflows", `Workflows · ${workflows.length}`, workflows.map((w) => ({
@@ -230,7 +236,7 @@ export type FromHome = { type: "ready" } | { type: "act"; act: Act; id: string; 
 
 /** The acts that take no task: each still checked for what it carries. */
 const GLOBAL: readonly Act[] = ["startAll", "discardAll", "run", "stop", "showGraph", "demo", "setup", "install",
-                                "setKey", "refresh", "openFolder", "exact", "stopAfter", "runWorkflow"];
+                                "setKey", "refresh", "openFolder", "exact", "stopAfter", "review", "runWorkflow"];
 
 /** A message from the page, checked against the plan before anything runs: a known act; a planner the Set Up
  *  offers; a task the plan has (a question, for answer); an option the question has; an offer
@@ -243,7 +249,7 @@ export function checkHome(m: unknown, s: State | null, workflows: readonly Pick<
   const act = r.act as Act;
   const id = typeof r.id === "string" ? r.id : "";
   const arg = typeof r.arg === "string" ? r.arg : undefined;
-  if (act === "exact" || act === "stopAfter") return typeof r.flag === "boolean" ? { type: "act", act, id: "", flag: r.flag } : null;
+  if (act === "exact" || act === "stopAfter" || act === "review") return typeof r.flag === "boolean" ? { type: "act", act, id: "", flag: r.flag } : null;
   if (act === "runWorkflow") return workflows.some((w) => w.name === arg && !w.error) ? { type: "act", act, id: "", arg } : null; // one the repository has
   if (act === "setup") return WHO.some((w) => w.word === arg) ? { type: "act", act, id: "", arg, flag: r.flag === true } : null;
   if (act === "setKey") return arg === undefined || /^\w+$/.test(arg) ? { type: "act", act, id: "", arg } : null;

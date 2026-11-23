@@ -61,6 +61,7 @@ try {
   await home.locator("button.pick", { hasText: "Claude Code" }).click();
   await until(home, () => !document.querySelector("section.work").hidden && document.querySelector(".head.empty button.open")
     && document.querySelector(".said")?.textContent.includes("waits for your approval"), null, "Set Up done, review on"); // init, then config set
+  if (!(await home.locator(".tick.approve input").isChecked())) throw new Error("Set Up asked for approval, yet Settings show it unticked");
   if (await home.locator("textarea").count()) throw new Error("Home offers a box to type an ask in: a plan comes from the agent's chat");
   const set = state(dir);
   if (set.envelope.review !== "every") throw new Error(`Set Up left review ${set.envelope.review}, not every`);
@@ -136,7 +137,7 @@ try {
   execFileSync(graphene, ["config", "set", "review", "off"], { cwd: dir, env, stdio: "pipe" }); // so that off has something to put back
   await page.waitForTimeout(1000); // the stream brings Home the setting
   await exact.check();
-  await until(home, () => document.querySelector(".said")?.textContent.startsWith("Exact: Start waits"), null, "Exact said on");
+  await until(home, () => document.querySelector(".said")?.textContent.startsWith("Start waits for every answer now"), null, "Exact said on");
   for (const line of ["board: on", "review: every", "auto: off"]) if (!settings().includes(line)) throw new Error(`Exact on left no “${line}”`);
   execFileSync(graphene, ["plan", "propose", "-"], { cwd: dir, input: ASKS, stdio: ["pipe", "pipe", "pipe"], // a plan that asks something, as an agent proposes one
                                                     env: { ...env, CLAUDECODE: "1", CLAUDE_CODE_SESSION_ID: "e2e-home-agent" } });
@@ -149,7 +150,7 @@ try {
   await until(home, () => [...document.querySelectorAll(".sec-suggested .sec-head button")].some((x) => x.textContent === "Start" && !x.disabled), null,
               "Start, once the question is answered");
   await exact.uncheck();
-  await until(home, () => document.querySelector(".said")?.textContent.startsWith("Exact is off"), null, "Exact said off");
+  await until(home, () => document.querySelector(".said")?.textContent.startsWith("Start no longer waits"), null, "Exact said off");
   for (const line of ["board: auto", "review: off", "auto: off"]) if (!settings().includes(line)) throw new Error(`Exact off left no “${line}”`);
   say("the default's button confirmed it and Start came back; Exact off put the board and review back as they were");
 

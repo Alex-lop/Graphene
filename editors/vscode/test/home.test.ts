@@ -20,20 +20,26 @@ test("a suggested plan is read before it starts: each task says what for, what i
   assert.equal(hello.tag, "suggested");
   assert.deepEqual(hello.lines, [
     { k: "What for", v: "hello says hello to the person by name" },
-    { k: "May change", v: "words.py", mono: true },
+    { k: "May change", v: "words.py", mono: true, paths: ["words.py"] },
     { k: "Done when", v: "pytest -q tests/test_words.py passes", mono: true },
   ]);
   assert.deepEqual(card(h, "p:farewell").lines.find((l) => l.k === "After"), { k: "After", v: "bye says goodbye, greet route" });
   assert.deepEqual(labels(hello), ["Remove"]);
 });
 
-test("a question offers its default first, each option, and the person's own words", () => {
+test("a question offers its default first, each option, and the person's own words; none looks chosen", () => {
   const q = card(home(fixture("proposals")), "q:which-port");
   assert.equal(q.title, "which port does the dev server take?");
-  assert.deepEqual(q.lines, [{ k: "About", v: "greet route" }, { k: "If unanswered", v: "8000, as the README says" }]);
-  assert.deepEqual(q.buttons.map((b) => [b.label, b.arg, Boolean(b.main)]),
-                   [["8000, as the README says", "8000, as the README says", true], ["pick a free one at start", "pick a free one at start", false],
-                    ["In your own words…", undefined, false]]);
+  assert.deepEqual(q.lines, [{ k: "About", v: "greet route" }]); // the default's button says it is the default
+  assert.deepEqual(q.buttons.map((b) => [b.label, b.arg, b.note, Boolean(b.main)]),
+                   [["8000, as the README says", "8000, as the README says", "default", false],
+                    ["pick a free one at start", "pick a free one at start", undefined, false], ["In your own words…", undefined, undefined, false]]);
+});
+
+test("a task's What for is left out when it only says the title again", () => {
+  const s = fixture("proposals");
+  const again = { ...s, tasks: s.tasks.map((t) => (t.id === "hello" ? { ...t, title: "export command writing json", full: "An export command writing JSON" } : t)) };
+  assert.equal(card(home(again), "p:hello").lines.find((l) => l.k === "What for"), undefined);
 });
 
 test("a finished task to review shows its evidence; Open changes leads until the person has opened them", () => {
@@ -97,6 +103,7 @@ test("who is working, what is up next, and what is done, each in its own section
   assert.deepEqual(section(h, "next")!.buttons.map((b) => [b.act, b.title]), [["run", "hand these to the run that is going"]]);
   const idle = section(home({ ...fixture("running"), run: { going: false, pid: null } }), "next")!;
   assert.deepEqual(idle.buttons.map((b) => [b.act, b.title]), [["run", "start an agent on every task that is ready"]]);
+  assert.deepEqual([section(h, "next")!.buttons[0]!.main, idle.buttons[0]!.main], [false, true], "filled only when it is the next act");
 });
 
 test("the header: the goal, else what was last asked; the counts in plain words; a practice run says so", () => {
@@ -253,8 +260,11 @@ test("Exact: Start waits while anything the plan asks is open, and says how many
   assert.equal(start(home(s)).off, false, "off by default: what is left open takes its default at Start");
   const exact = home(s, new Set(), true);
   assert.equal(start(exact).off, true);
-  assert.match(suggested(exact).note, /^Exact is on: answer the 1 open question under Needs you first/);
+  assert.match(suggested(exact).note, /^Start waits for every answer: answer the 1 open question under Needs you first/);
   assert.equal(start(home({ ...s, questions: [] }, new Set(), true)).off, false, "nothing open: nothing to wait for");
   assert.deepEqual(checkHome({ type: "act", act: "exact", flag: true }, s), { type: "act", act: "exact", id: "", flag: true });
   assert.equal(checkHome({ type: "act", act: "exact" }, s), null, "the switch says which way");
+  // approval, as Set Up asks it, is its own tick in Settings: Exact no longer hides it
+  assert.deepEqual(checkHome({ type: "act", act: "review", flag: false }, s), { type: "act", act: "review", id: "", flag: false });
+  assert.equal(checkHome({ type: "act", act: "review", arg: "every" }, s), null, "the tick says which way, and nothing else");
 });
