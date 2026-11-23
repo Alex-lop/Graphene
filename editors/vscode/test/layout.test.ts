@@ -141,4 +141,10 @@ test("a sub-goal's loose tasks stand side by side past `stack`, row by row; tied
   const loose = layout(five.map((b) => ({ ...b, band: "" })), [], { boxW: 100, boxH: 40, gapX: 20, gapY: 10, padX: 0, padY: 0, stack: 3 });
   assert.ok(Object.values(loose.boxes).every((p) => p.x === 0));
   assert.ok(Object.values(layout(five, [], { boxW: 100, boxH: 40, padX: 0 }).boxes).every((p) => p.x === 0), "unset, a rank is one column");
+  // a band with nothing past that rank stands in the next ranks' columns, so another band's rank 1 is not pushed
+  // a card further out, leaving a hole
+  const two = layout([...five.slice(0, 4), { id: "x", band: "t" }, { id: "y", band: "t" }], [["x", "y"]], { boxW: 100, boxH: 40, gapX: 20, gapY: 10, padX: 0, padY: 0, stack: 3 });
+  assert.deepEqual(two.columns, [0, 120]);
+  assert.deepEqual(["a", "b", "x", "y"].map((id) => two.boxes[id]!.x), [0, 120, 0, 120]);
+  assert.equal(two.boxes.b!.rank, 0, "still the rank it is");
 });

@@ -151,12 +151,18 @@ export function layout(boxes: Box[], edges: Edge[], opts: Options = {}): Layout 
   const bandRows = new Map<string, number>(bandIds.map((b) => [b, 0]));
   const loose = (id: string) => !edges.some(([a, b]) => b === id || (a === id && b !== goal));
   const wide = cols.map(() => 1); // how many boxes stand side by side in a rank, in its widest band
+  // a band with nothing past the rank it stacks at takes the next ranks' columns, which it leaves empty: a loose box
+  // says no order, and widening the rank would leave a card-wide hole in every other band
+  const lastOf = new Map<string, number>();
+  for (const id of tasks) lastOf.set(by.get(id)!.band, Math.max(lastOf.get(by.get(id)!.band) ?? 0, rank[id] ?? 0));
+  const spread = new Set<string>();
   cols.forEach((col, k) => {
     const groups = new Map<string, string[]>();
     for (const id of col) if (id !== goal) groups.set(by.get(id)!.band, [...(groups.get(by.get(id)!.band) ?? []), id]);
     for (const [band, g] of groups) {
       const n = band && o.stack && g.length > o.stack && g.every(loose) ? Math.ceil(g.length / o.stack) : 1;
-      wide[k] = Math.max(wide[k]!, n);
+      if (n > 1 && lastOf.get(band) === k && k + n - 1 < last) g.forEach((id) => spread.add(id));
+      else wide[k] = Math.max(wide[k]!, n);
       g.forEach((id, i) => { rowOf.set(id, Math.floor(i / n)); sideOf.set(id, i % n); });
       bandRows.set(band, Math.max(bandRows.get(band) ?? 0, Math.ceil(g.length / n)));
     }
@@ -200,7 +206,8 @@ export function layout(boxes: Box[], edges: Edge[], opts: Options = {}): Layout 
       const hs = rowH.get(b.band)!;
       const r = rowOf.get(id) ?? 0;
       const top = (bandTop.get(b.band) ?? o.padY) + hs.slice(0, r).reduce((s, hh) => s + hh + o.gapY, 0);
-      placed[id] = { id, x: columns[k]! + (sideOf.get(id) ?? 0) * (colW[k]! + o.gapX), y: top, w, h, rank: k, band: b.band };
+      const side = sideOf.get(id) ?? 0;
+      placed[id] = { id, x: spread.has(id) ? columns[k + side]! : columns[k]! + side * (colW[k]! + o.gapX), y: top, w, h, rank: k, band: b.band };
     }
   }
   return { boxes: placed, bands, columns, width, height, ranks: cols.length, down: false };
