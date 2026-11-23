@@ -7,7 +7,7 @@ import { layout, modeFor, step, type Box, type Edge, type Layout } from "../layo
 import { autoLine, SAY, screenWords, usd, type DraftStep, type State } from "../state.ts";
 import { ICONS } from "./icons.ts";
 import { blanks, draftLine, globs, isDraft, lacks, type Draft } from "./draft.ts";
-import { attemptsMark, attemptsWhy, cardAct, cardLine, checkCut, checkLines, checkMark, cornerMark, cutWhole, doneWhen, filesLine, fitWhole, forkMark, goalBox, goalCells, legend, nextWanting, stateMark, tailPath, tally, wanting, wantingLine, wrap,
+import { attemptsMark, attemptsWhy, cardAct, cardLine, checkCut, checkLines, checkMark, cornerMark, cutWhole, doneWhen, filesLine, fitWhole, forkMark, goalBox, goalCells, legend, markWord, nextWanting, stateMark, tailPath, tally, wanting, wantingLine, wrap,
          type CheckMark, type Mark } from "./marks.ts";
 import { actsFor, ASK_AGENT, askLine, askNote, asksYou, attemptsOf, commandChip, cornerWord, CURSOR_AGENT, cut, done, draftedSteps, edgeKind, editable,
          filesChip, forkActs, forkRow, forkWords, HEADER_ACTS, headerFor, heldWords, KEYS, linkHint, mainAct, mayRun, newsLine, paneKey, pipeline,
@@ -939,8 +939,10 @@ function drawTask(grp: SVGGElement, t: TaskX, h: number, down: boolean, limit: n
   const asked = state ? questionOn(state, t.id)?.text ?? "" : "";
   const line = cardLine(t, 60, asked), times = attemptsMark(t, limit), check = checkMark(t);
   if (times) grp.dataset.attempts = String(parseInt(times)); else delete grp.dataset.attempts;
-  grp.setAttribute("aria-label", `${t.title}: ${line}${t.id === selected ? ", selected" : ""}`);
-  const hover = [t.title, cardLine(t, LONG, asked), check.words].filter(Boolean).join(" · "); // the whole line, and the check's verdict
+  // its state in words where its line says something else (what a suggestion covers): only its mark says it to the eye
+  const word = markWord(stateMark(t), t), said = (l: string) => (l.startsWith(word) ? l : `${word}, ${l}`);
+  grp.setAttribute("aria-label", `${t.title}: ${said(line)}${t.id === selected ? ", selected" : ""}`);
+  const hover = [t.title, said(cardLine(t, LONG, asked)), check.words].filter(Boolean).join(" · "); // the whole line, and the check's verdict
   if (level === "compact") {
     return drawCompact(grp, { title: t.title, hover, mark: stateMark(t), selected: t.id === selected,
                               port: replaying() || t.leaves ? undefined : t.id, hollow: check.box === "hollow", forks: t.forks });

@@ -350,7 +350,7 @@ test("3 agents at once on a step set to attempts that has started none, not trie
     ["landed", step("done", { check: CHECK, planned: 3 }), 3, ""],
   ];
   for (const [why, t, limit, want] of rows) assert.equal(attemptsMark(t, limit), want, why);
-  assert.match(attemptsWhy(3), /^3 agents work on it at once, each in its own copy .*its check keeps one\. About 3× the cost/, "its hover says what it costs");
+  assert.equal(attemptsWhy(3), "3 agents work on it at once, each in its own copy; its check keeps one. About 3× the cost.", "its hover says what it costs, in the pane stepper's words");
   assert.deepEqual(["running", "passed", "gave up", "failed", "ended", "", "waiting"].map((state) => forkMark({ state })),
                    ["working", "landed", "ended", "ended", "ended", "waiting", "waiting"]);
 });
@@ -369,7 +369,15 @@ test("a card's status says its state first and what its other parts do not: what
   const suggested = (title: string, full: string) => cardLine(step("proposed", { title, full, check: CHECK }), 60);
   assert.equal(suggested("Planner service", "Planner service: shopping list and Markdown export"), "Shopping list and Markdown export", "not `suggested` again: its corner's ring says it");
   assert.equal(suggested("Planner service", "Planner service"), "suggested", "nothing more to say: its state");
-  assert.equal(cardLine(step("proposed", { title: "Transformer service", full: "Transformer service: scale, convert, house conversions, unit names" }), 26), "Scale, convert, house…", "cut at a whole word");
+  // on Alex's plan, in a card's 25 characters: whole items while they fit, never `Shopping list and…`; else its state
+  const cards = (title: string, full: string) => cardLine(step("proposed", { title, full, check: CHECK }), 25);
+  assert.deepEqual([cards("Transformer service", "Transformer service: scale, convert, house conversions, unit names"),
+                    cards("Planner service", "Planner service: shopping list and Markdown export"),
+                    cards("Librarian service", "Librarian service: collections, JSON import, ingredient search"),
+                    cards("the export", "Export: a weekly report of every order shipped")],
+                   ["Scale, convert…", "Shopping list…", "Collections, JSON import…", "suggested"]);
+  // a question on a suggestion is the line's news, as on a step at work
+  assert.equal(cardLine(step("proposed", { title: "greet route", full: "greet route: a /greet route", check: CHECK }), 24, "which port does the dev server take?"), "asks you: which port…");
   // the race's main card wears the filled diamond for the question on it: it says so, with the question, and not `agent 3 · 3 attempts`
   const greet = race.tasks.find((t) => t.id === "greet")!, q = race.questions.find((x) => x.about === "greet")!.text;
   assert.equal(stateMark(greet), "you");
