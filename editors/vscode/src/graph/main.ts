@@ -327,14 +327,14 @@ const narrow = () => matchMedia("(max-width: 700px)").matches;
 
 function header(s: StateX) {
   const first = topLine(s); // a replay, or a live race against the stand-in: said before anything else
-  $("replay").textContent = first;
+  $("replay").textContent = $("replay").title = first; // a pill cut to the header's room: its hover says it whole
   $("replay").hidden = !first;
   const h = headerFor(s, narrow());
   $("goal").textContent = h.goal;
   $("goal").title = h.hover;
   $("counts").textContent = h.counts;
   $("counts").hidden = !h.counts;
-  $("auto").textContent = h.auto;
+  $("auto").textContent = $("auto").title = h.auto;
   $("auto").hidden = !h.auto;
   // one pipeline, the plan first: Plan, Run, Review, and the one switch (a replay is watched: no switch)
   $("pipe").hidden = false;
@@ -1987,6 +1987,7 @@ function wire() {
   };
   top("b-add", "Add task", "add", "draw a task: its title, then its files and its check (or the planner fills them in)", () => draw({ after: null, parent: null }));
   top("b-run", "Run", "play", "start an agent on every task that is ready", () => api.postMessage({ type: "act", act: state?.run.going ? "stop" : "run", id: "" }));
+  $("b-run").className = ""; // the header's one filled button: the run's own act, Run or Stop
   top("b-save", "Save as workflow", "save", "write this graph to workflows/ so it can run again on new inputs", () => api.postMessage({ type: "act", act: "saveWorkflow", id: "" }));
   top("b-view", "Lanes", "list-flat", "graph or lanes (v)", () => { remember({ view: view() === "lanes" ? "graph" : "lanes" }); fitted = false; render(); });
   top("b-help", "", "question", "every key (?)", () => help($("help").hidden));
