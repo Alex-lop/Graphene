@@ -120,11 +120,23 @@ main { flex: 1; display: flex; min-height: 0; }
 }
 #notice[hidden] { display: none; }
 .notice-head { color: var(--fg); font-weight: 600; }
-#need { position: absolute; right: 12px; top: 12px; z-index: 2; height: 28px; font-size: 12px; box-shadow: var(--pop); white-space: nowrap; }
-/* while a step wants you: how many, and a click (or n) shows the next */
-#need { border-color: color-mix(in srgb, var(--review) 55%, transparent); background: color-mix(in srgb, var(--review) 12%, var(--card)); box-shadow: 0 8px 24px -6px var(--shadow); }
-#need:hover { background: color-mix(in srgb, var(--review) 20%, var(--card)); }
+/* what needs you, at the canvas's top right: the tasks (a click shows the next), then the plan's questions (a
+   click opens the first under its chip, to answer there), purple as the person's marks are */
+#need { position: absolute; right: 12px; top: 12px; z-index: 3; display: flex; gap: 8px; }
+#need[hidden] { display: none; }
+#need > button { height: 28px; font-size: 12px; white-space: nowrap; color: var(--fg); border-color: color-mix(in srgb, var(--review) 55%, transparent);
+                 background: color-mix(in srgb, var(--review) 12%, var(--card)); box-shadow: 0 8px 24px -6px var(--shadow); }
+#need > button:hover, #b-ask[aria-expanded="true"] { background: color-mix(in srgb, var(--review) 20%, var(--card)); }
 #need b { font-weight: 600; }
+#b-ask .ico { color: var(--review); }
+/* the question's card, under its chip: what it asks and about what, its answers, and what happens unanswered */
+#asked { position: absolute; right: 0; top: 36px; width: min(340px, calc(100vw - 48px)); box-sizing: border-box; padding: 12px 14px;
+         background: var(--card); border-radius: var(--r-lg); box-shadow: var(--pop); border-top: 2px solid var(--review); white-space: normal; }
+#asked[hidden] { display: none; }
+.q-on { color: var(--dim); font-size: 11.5px; margin-bottom: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.q-text { line-height: 1.45; margin-bottom: 10px; }
+.q-opts { display: flex; flex-wrap: wrap; gap: 6px; }
+.q-if { color: var(--dim); font-size: 11.5px; margin-top: 8px; }
 #notice.missing, #notice.error { color: var(--came-back); }
 /* beside the canvas the pane's body scrolls on its own: its head and its acts stay in view, however long a
    note is (narrow, under the canvas, the whole pane scrolls instead: see the media query) */

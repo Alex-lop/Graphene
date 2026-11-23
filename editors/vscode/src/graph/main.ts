@@ -10,7 +10,7 @@ import { ICONS } from "./icons.ts";
 import { blanks, draftLine, globs, isDraft, lacks, type Draft } from "./draft.ts";
 import { attemptsMark, cardAct, checkLines, checkMark, cornerMark, doneWhen, filesLine, forkMark, goalBox, goalCells, legend, midCut, nextWanting, stateMark, tally, wanting, wantingLine,
          type CheckMark, type Mark } from "./marks.ts";
-import { actsFor, asksYou, attemptsOf, commandChip, cornerWord, cut, done, draftedSteps, edgeKind, editable, filesChip, FIRST_HINT, fitWidth, forkActs, forkRow, forkWords, HEADER_ACTS, headerFor,
+import { actsFor, askLine, asksYou, attemptsOf, commandChip, cornerWord, cut, done, draftedSteps, edgeKind, editable, filesChip, FIRST_HINT, fitWidth, forkActs, forkRow, forkWords, HEADER_ACTS, headerFor,
          heldWords, KEYS, linkHint, mainAct, mayRun, paneKey, pipeline, planningLine, PROVES_NOTHING, provesNothing, questionOn, scopeTree, stopsOf, sub, tabOrder, tokenWords, topLine, twoLines, whenEdit, who, writtenOf,
          type Button, type ForkX, type StateX, type TaskX } from "./words.ts";
 import { CARD, dotGap, FAR, fitPlan, hold, levelFor, miniFrame, miniSize, nearest, offScreen, panTo, percent, switchK, wheelK, ZOOM_MAX, ZOOM_MIN, zoomK,
@@ -299,10 +299,7 @@ function render() {
   ($("svg") as unknown as SVGSVGElement).style.display = v === "lanes" ? "none" : "block";
   $("canvas").classList.toggle("lanes", v === "lanes");
   $("notice").hidden = s.tasks.length > 0 || drawn().length > 0 || Boolean(s.drafting); // a planner writing says so at the canvas's foot
-  const [needs, show] = wantingLine(wantYou().length).split(" · "); // `3 tasks need you`, `show the next`: the chip's two halves
-  $("need").hidden = !needs;
-  $("need").children[1]!.textContent = needs ?? "";
-  $("need").children[2]!.textContent = show ? ` · ${show}` : "";
+  chips(s);
   const planning = planningLine(s);
   $("planning").textContent = planning;
   $("planning").hidden = !planning;
@@ -322,6 +319,46 @@ function render() {
   paneMoved = false;
   if (nameBox?.input.isConnected && document.activeElement !== nameBox.input) nameBox.input.focus({ preventScroll: true });
   hint();
+}
+
+let asking = false; // the card of the plan's open question is out, under its chip
+
+/** At the canvas's top right, what needs you: how many tasks, a click showing the next; and the plan's open
+ *  questions, a click opening the first under its chip, to answer there. A question about the whole plan is on
+ *  no card, so this is where the graph shows it. A replay is watched: neither. */
+function chips(s: StateX) {
+  const half = (b: HTMLElement, line: string) => {
+    const [n, then] = line.split(" · "); // `3 tasks need you`, `show the next`: the count, and what a click does
+    b.hidden = !n;
+    b.children[1]!.textContent = n ?? "";
+    b.children[2]!.textContent = then ? ` · ${then}` : "";
+  };
+  half($("b-next"), wantingLine(wantYou().length));
+  const asks = replaying() ? 0 : s.questions.length;
+  half($("b-ask"), askLine(asks));
+  if (!asks) asking = false;
+  $("b-ask").setAttribute("aria-expanded", String(asking));
+  $("need").hidden = $("b-next").hidden && $("b-ask").hidden;
+  const card = $("asked"), q = s.questions[0];
+  card.hidden = !asking || !q;
+  if (card.hidden || !q || card.dataset.key === JSON.stringify(q)) return;
+  card.dataset.key = JSON.stringify(q);
+  const on = q.about ? (s.tasks.find((t) => t.id === q.about)?.title ?? goalTitle(s, q.about)) : "";
+  card.replaceChildren();
+  div("q-on", on ? `Question on “${on}”` : "Question on the plan", card);
+  div("q-text", q.text, card);
+  const opts = div("q-opts", undefined, card);
+  const answer = (label: string, target?: string) => {
+    const b = opts.appendChild(document.createElement("button"));
+    b.className = "quiet"; // none filled: the default is said under them, not chosen for you
+    if (target === undefined) b.appendChild(icon("comment-discussion"));
+    b.append(label);
+    b.title = target === undefined ? "answer in your own words" : "answer with this";
+    b.addEventListener("click", () => { asking = false; api.postMessage({ type: "act", act: "answer", id: q.id, ...(target === undefined ? {} : { target }) }); render(); });
+  };
+  for (const o of new Set([...(q.default ? [q.default] : []), ...q.options])) answer(o, o);
+  answer("In your own words…");
+  if (q.default) div("q-if", `If unanswered: ${q.default}`, card);
 }
 
 /** A narrow tab (the editor area beside the side bar and an agent's chat): the pane goes under the canvas. */
@@ -1271,10 +1308,10 @@ function hint() {
     cancel.addEventListener("click", () => { disarm(); render(); });
     h.replaceChildren(div("hint-text", linkHint(a?.title ?? from, Boolean(wiring))), cancel);
     h.className = "linking";
-  } else if (state?.questions.length) { // an open question outranks the news: answering it is the person's
+  } else if (state?.questions.length && view() === "lanes") { // the lanes have no chip: an open question outranks the news
     const q = state.questions[0]!;
     const about = q.about ? state.tasks.find((t) => t.id === q.about)?.title : "";
-    h.textContent = `question${about ? ` on “${about}”` : ""}: ${q.text}${q.default ? ` (unanswered: ${q.default})` : ""}`;
+    h.textContent = `question${about ? ` on “${about}”` : ""}: ${q.text}${q.default ? ` (if unanswered: ${q.default})` : ""}`;
     h.className = "asks";
   } else if (!saved.hinted) {
     h.textContent = FIRST_HINT;
@@ -1799,6 +1836,7 @@ window.addEventListener("keydown", (e) => {
   if ((e.target as HTMLElement).tagName === "INPUT" && e.key !== "Escape") return; // a tick box: Space is its own
   if (e.key === "Escape") {
     if (!$("help").hidden) help(false);
+    else if (asking) { asking = false; $("b-ask").focus(); }
     else if (wiring || linking) disarm();
     else selected = null;
     render();
@@ -1985,14 +2023,33 @@ function wire() {
   const key = div("", undefined, canvas); // filled by `legendRow`
   key.id = "legend";
   key.setAttribute("aria-hidden", "true"); // each card says its state in words
-  const need = canvas.appendChild(document.createElement("button")); // while a step wants you: how many, and a click shows the next
+  const need = div("", undefined, canvas); // what needs you (`chips`): the tasks, then the plan's questions and the card of the first
   need.id = "need";
-  need.className = "quiet";
   need.hidden = true;
-  need.title = "select the next task that needs you, and bring it on screen (n)";
-  mark(need.appendChild(el("svg", { width: 14, height: 14, viewBox: "-7 -7 14 14" })), "you", 0, 0, 6.5);
-  need.append(document.createElement("b"), document.createElement("span"));
-  need.addEventListener("click", showNext);
+  const chip = (id: string, title: string, on: () => void) => {
+    const b = need.appendChild(document.createElement("button"));
+    b.id = id;
+    b.className = "quiet";
+    b.title = title;
+    b.addEventListener("click", on);
+    return b;
+  };
+  const next = chip("b-next", "select the next task that needs you, and bring it on screen (n)", showNext);
+  mark(next.appendChild(el("svg", { width: 14, height: 14, viewBox: "-7 -7 14 14" })), "you", 0, 0, 6.5);
+  next.append(document.createElement("b"), document.createElement("span"));
+  const ask = chip("b-ask", "the plan's open question: its answers", () => {
+    asking = !asking;
+    render();
+    if (asking) $("asked").querySelector("button")?.focus();
+  });
+  ask.append(icon("question"), document.createElement("b"), document.createElement("span"));
+  const card = div("", undefined, need);
+  card.id = "asked";
+  card.hidden = true;
+  card.setAttribute("role", "dialog");
+  card.setAttribute("aria-label", "the plan's question");
+  // a press anywhere else puts the card away, as a menu goes
+  window.addEventListener("pointerdown", (e) => { if (asking && !need.contains(e.target as Node)) { asking = false; render(); } });
   // the header's buttons
   const actions = $("actions");
   const top = (id: string, label: string, ico: string, title: string, on: () => void) => {

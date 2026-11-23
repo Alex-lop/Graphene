@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import * as C from "../src/commands.ts";
-import { actsFor, asksYou, attemptsOf, CHANGES, commandChip, commandWord, cornerWord, draftedSteps, edgeKind, editable, filesChip, fitWidth, fitWords, forkActs, forkWords, HEADER_ACTS, headerFor,
+import { actsFor, askLine, asksYou, attemptsOf, CHANGES, commandChip, commandWord, cornerWord, draftedSteps, edgeKind, editable, filesChip, fitWidth, fitWords, forkActs, forkWords, HEADER_ACTS, headerFor,
          checkWords, heldWords, linkHint, mainAct, mayRun, OUTSIDE, OUTSIDE_OWN, paneKey, pipeline, planningLine, provesNothing, replayLine, scopeTree, stopAfterPlan, stopsOf, sub, tabOrder, tokenWords, topLine,
          whenEdit, who, writtenOf, type StateX, type TaskX } from "../src/graph/words.ts";
 import { SAY, WORDS } from "../src/state.ts";
@@ -275,8 +275,10 @@ test("one pipeline, the plan first: Plan, Run, Review, and where the work is in 
   assert.deepEqual(at(fx("empty")), ["Plan now", "Run next", "Review next"]);
   assert.deepEqual(at(fx("drafting")), ["Plan now: 4 tasks so far", "Run next", "Review next"]);
   assert.deepEqual(at({ ...fx("drafting"), drafting: { by: "codex", live: false, steps: [] } }), ["Plan now: the planner is writing", "Run next", "Review next"]);
-  assert.deepEqual(at(fx("proposals")), ["Plan now: 4 tasks · 1 question", "Run next", "Review next"]); // suggested: it waits for Start
-  assert.deepEqual(at(state), ["Plan done: 7 tasks · 1 question", "Run now: 1 working", "Review next: 2 to review"]); // what waits for you is said while the rest runs
+  assert.deepEqual(at(fx("proposals")), ["Plan now: 4 tasks", "Run next", "Review next"]); // suggested: it waits for Start; its question is said once, by its chip
+  assert.equal(askLine(fx("proposals").questions.length), "1 question · answer");
+  assert.deepEqual([askLine(2), askLine(0)], ["2 questions · answer", ""]);
+  assert.deepEqual(at(state), ["Plan done: 7 tasks", "Run now: 1 working", "Review next: 2 to review"]); // what waits for you is said while the rest runs
   const all = (word: TaskX["state"]) => ({ ...state, questions: [], run: { going: false, pid: null }, tasks: state.tasks.map((t) => ({ ...t, state: word })) });
   assert.deepEqual(at(all("ready")), ["Plan done: 7 tasks", "Run now: 7 ready", "Review next"]);
   assert.deepEqual(at({ ...all("ready"), run: { going: true, pid: 1 } }), ["Plan done: 7 tasks", "Run now: starting", "Review next"]);
@@ -284,7 +286,7 @@ test("one pipeline, the plan first: Plan, Run, Review, and where the work is in 
   assert.deepEqual(at(all("done")), ["Plan done: 7 tasks", "Run done", "Review done: done"]);
   // something suggested while agents work (an agent's proposal, a second ask): the work is still at Run, and the plan says what waits
   const more = { ...state, tasks: [...state.tasks, { ...task("ship"), id: "extra", state: "proposed" as const }] };
-  assert.deepEqual(at(more), ["Plan done: 8 tasks · 1 suggested · 1 question", "Run now: 1 working", "Review next: 2 to review"]);
+  assert.deepEqual(at(more), ["Plan done: 8 tasks · 1 suggested", "Run now: 1 working", "Review next: 2 to review"]);
   const back = { ...all("ready"), tasks: all("ready").tasks.map((t, i) => (i ? t : { ...t, state: "came back" as const })) };
   assert.equal(at(back)[1], "Run now: 1 needs help");
   assert.deepEqual(at({ ...all("done"), run: { going: true, pid: 1 } }), ["Plan done: 7 tasks", "Run done", "Review done: done"], "a run winding down has nothing left to start");
