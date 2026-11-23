@@ -9,9 +9,9 @@ import { ICONS } from "./icons.ts";
 import { blanks, draftLine, globs, isDraft, lacks, type Draft } from "./draft.ts";
 import { attemptsMark, attemptsWhy, cardAct, cardLine, checkCut, checkLines, checkMark, cornerMark, cutWhole, doneWhen, filesLine, fitWhole, forkMark, goalBox, goalCells, legend, markWord, nextWanting, stateMark, tailPath, tally, wanting, wantingLine, wrap,
          type CheckMark, type Mark } from "./marks.ts";
-import { actsFor, ASK_AGENT, askLine, askNote, asksYou, attemptsOf, commandChip, cornerWord, CURSOR_AGENT, cut, done, draftedSteps, edgeKind, editable,
+import { actsFor, ASK_AGENT, askLine, askNote, asksYou, attemptsOf, commandChip, cornerWord, CURSOR_AGENT, cut, done, draftedSteps, earlier, edgeKind, editable,
          filesChip, forkActs, forkRow, forkWords, HEADER_ACTS, headerFor, heldWords, KEYS, linkHint, mainAct, mayRun, newsLine, paneKey, pipeline,
-         planningLine, PROVES_NOTHING, provesNothing, questionOn, scopeTree, startAnswers, stopsOf, sub, tabOrder, tokenWords, topLine, whenEdit, who, writtenOf,
+         planningLine, PROVES_NOTHING, provesNothing, questionOn, scopeTree, startAnswers, stopsOf, sub, tabOrder, tokenWords, topLine, whatFor, whenEdit, who, writtenOf,
          type Button, type ForkX, type StateX, type TaskX } from "./words.ts";
 import { CARD, dotGap, FAR, fitPlan, hold, levelFor, miniFrame, miniSize, nearest, offScreen, onto, panTo, percent, ROWS_FROM, settle, switchK, wheelK, ZOOM_MAX, ZOOM_MIN, zoomK,
          type Level, type Size, type Zoom } from "./zoom.ts";
@@ -1757,7 +1757,10 @@ function scopeTab(body: HTMLElement, t: TaskX, s: StateX) {
   const may = mayRun(s, t);
   for (const c of may.commands) code(c, cmds);
   if (may.words) cmds.append(may.words);
-  if (may.note) div("kv-note", may.note, cmds); // the check it cannot run, and who runs it
+  if (may.note) { // the check it cannot run, and where that is set: a flag in it as code
+    const note = div("kv-note", undefined, cmds);
+    may.note.split("`").forEach((bit, i) => (i % 2 ? code(bit, note) : note.append(bit)));
+  }
   div("kv-k", "Outside", kv);
   div("kv-v", may.outside, kv);
   const held = heldWords(t);
@@ -1806,13 +1809,12 @@ function commandScope(body: HTMLElement, t: TaskX) {
 /** Edit: the task's form (or, finished, a command step or in a replay, what it says), the sub-goal it is under and what it waits on. */
 function editTab(body: HTMLElement, t: TaskX, s: StateX) {
   if (editable(t, replaying())) form(body, t, s);
-  else { // a finished task, a command step, or a replay: read, and the line says why
-    row("What for", t.full, body);
-    row("May change", t.scope.join("  "), body, true);
+  else { // a finished task, a command step, or a replay: read (what it is for is the head's), and the line says why
+    row("May change", t.scope.join("\n"), body, true);
     row(t.command ? "Runs" : "Done when", t.command ?? t.check ?? "", body, true);
     if (!replaying()) div("when", whenEdit(t), body);
   }
-  row("Under", t.parent ? goalTitle(s, t.parent) : "", body);
+  row("Under", t.parent ? bandName(goalTitle(s, t.parent)).whole : "", body); // without the plan text's `? `, as its band
   if (t.hollow) div("hollow", provesNothing(t) ? PROVES_NOTHING : "its check passed before the work too: it proves nothing new", body); // as the cockpit says
   if (t.needs.length) { // what it waits on, each with the × that stops it waiting
     const r = div("row", undefined, body);
@@ -1832,14 +1834,22 @@ function editTab(body: HTMLElement, t: TaskX, s: StateX) {
   }
 }
 
-/** Activity (who is on it is the head's): what it cost, what it said and its last moves, and each attempt with its changes. */
+/** Activity (who is on it is the head's): an agent's try before it was open again, what it cost, what it said, what
+ *  it changed and its check's verdict (Home's card for a task to review or done), its last moves, and each attempt
+ *  with its changes. */
 function activityTab(body: HTMLElement, t: TaskX) {
   const before = body.childElementCount;
+  row("Earlier", earlier(t), body);
   row("Tries", t.attempts !== undefined && t.attempts > 1 ? String(t.attempts) : "", body);
   row("Cost", usd(t.usd), body);
   row("Quiet", t.idle !== null && t.idle > 8 ? `${Math.round(t.idle)} s` : "", body);
-  row("Note", t.note, body);
-  row("Wrote outside", t.outside.join("  "), body, true); // as Scope says it, in red
+  row("Note", t.note !== t.why ? t.note : "", body); // why it needs help is the pane's red line already
+  row("Changed", t.changed.join("\n"), body, true); // a path a line: two on one would break into three names
+  // the verdict after the work only where it stands, as the card's box wears it; a command step's, its exit
+  const c = t.command ? checkMark(t) : null, after = c ? { tone: c.tone, line: c.words } : checkLines(t)[1];
+  row("Check", after && after.tone !== "dim" ? after.line : "", body);
+  if (after?.tone === "ok" && t.hollow) div("hollow", provesNothing(t) ? PROVES_NOTHING : "its check passed before the work too: it proves nothing new", body); // as Edit says it
+  row("Wrote outside", t.outside.join("\n"), body, true); // as Scope says it, in red
   if (t.forks.length) {
     const r = div("row", undefined, body);
     div("k", "Attempts", r);
@@ -1858,7 +1868,7 @@ function activityTab(body: HTMLElement, t: TaskX) {
     const v = div("v mono", undefined, r); // an agent's moves are its tools on paths and commands
     for (const line of t.tail.slice(-6)) div("move", screenWords(line), v);
   }
-  if (body.childElementCount === before) div("dim", t.agent ? "Nothing reported yet." : "No agent has been on it yet.", body);
+  if (body.childElementCount === before) div("dim", t.state === "done" ? "Done, with no moves recorded." : t.agent ? "Nothing reported yet." : "No agent has been on it yet.", body);
 }
 
 /** The pane is rebuilt only when what it shows changed (its key); then the focused button, by its words,
@@ -1905,14 +1915,19 @@ function pane() {
   // word for it, on the title's hover
   const head = div("d-head", undefined, pane);
   div(`d-title ${cls(t.state)}`, t.title, head).title = `${t.full || t.title} (${t.id})`;
+  const what = whatFor(t); // past its title, as a suggestion's card says it
+  if (what) div("d-for", what, head).title = what;
   const meta = div("d-id", undefined, head);
   div("d-state", SAY[t.state], meta);
   const w = who(t, s.executor);
-  meta.append(` · ${t.agent ? `agent ${t.agent}${t.model ? ` · ${t.model}` : ""}` : w.kind === "you" || t.command ? w.label : `for ${w.label}`}`);
+  const on = t.agent && !["proposed", "ready", "waiting"].includes(t.state); // one that tried it before it was open again is Activity's
+  meta.append(` · ${on ? `agent ${t.agent}${t.model ? ` · ${t.model}` : ""}` : w.kind === "you" || t.command ? w.label : `for ${w.label}`}`);
   // one act is the pane's to offer at its foot (the state's own; the looks at its work, and to review the verdicts
-  // that are not the act now, beside them); the rest wait in the …, Compare too once an attempt is kept: the race is settled
+  // that are not the act now, beside them; a suggestion's Remove, Home's ×); the rest wait in the …, Compare too once
+  // an attempt is kept (the race is settled), and Send back… once the work landed: a finished task's foot only looks
   const all = actsFor(t, replaying(), seen.has(t.id));
-  const inFoot = (b: Button) => b.main || ["openDiff", "signOff", "sendBack"].includes(b.act) || (b.act === "compareForks" && !t.kept);
+  const inFoot = (b: Button) => b.main || ["openDiff", "signOff"].includes(b.act) || (b.act === "sendBack" && t.state === "review")
+    || (b.act === "drop" && t.state === "proposed") || (b.act === "compareForks" && !t.kept);
   const tools = div("d-tools", undefined, head);
   paneMenu(tools, t.id, all.filter((b) => !inFoot(b)));
   closer(tools);
@@ -1982,7 +1997,8 @@ function paneMenu(tools: HTMLElement, id: string, acts: Button[]) {
   menu.popover = "auto";
   menu.setAttribute("role", "menu");
   more.popoverTargetElement = menu;
-  const late = (b: Button) => (b.act === "drop" ? 2 : b.act === "tell" ? 1 : 0); // Message agent apart, Remove last, as the editor's own menus set them
+  // Message agent and a landed task's Send back… apart (the menu opens on neither), Remove last, as the editor's own menus set them
+  const late = (b: Button) => (b.act === "drop" ? 2 : b.act === "tell" || b.act === "sendBack" ? 1 : 0);
   let was = 0;
   for (const b of [...acts].sort((x, y) => late(x) - late(y))) {
     if (late(b) && !was && menu.childElementCount) div("d-sep", undefined, menu).setAttribute("role", "separator");

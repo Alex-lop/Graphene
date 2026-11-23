@@ -180,8 +180,9 @@ const family = (by: string) => by.split(":")[0]!;
  *  (`allows`), or that it names no list. The list is that executor's: a step someone else holds (another agent
  *  a run was given, you) is not under it. Graphene's own two (`graphene node *`, `graphene plan *`, how the agent
  *  says it is done) are left out: they are not the repository's. Where the list does not let it run its own
- *  check (`./gradlew` with the default list), the ``note`` says so, and who runs it. Outside: Graphene grants a
- *  step nothing, and says no more than that of an agent whose own settings decide what it reaches. */
+ *  check (`./gradlew` with the default list), the ``note`` says so, and where that is set (a flag in it between
+ *  backticks): `graphene init --executor` takes the executor's whole command, so naming it alone would lead nowhere. Outside: Graphene grants a step nothing, and says no more than that of an agent whose own
+ *  settings decide what it reaches. */
 export function mayRun(s: Pick<StateX, "allows" | "executor">, t: Pick<TaskX, "held" | "check">): { commands: string[]; words: string; note: string; outside: string } {
   if (s.allows && family(t.held.by) === family(s.executor)) {
     const commands = s.allows.filter((c) => !/^graphene (node|plan)\b/.test(c));
@@ -189,7 +190,7 @@ export function mayRun(s: Pick<StateX, "allows" | "executor">, t: Pick<TaskX, "h
     const check = commandChip((t.check ?? "").trim()), first = check.split(/\s+/).find((w) => !/^\w+=/.test(w)) ?? "";
     const can = !first || commands.some((c) => check.startsWith(c.replace(/:?\*$/, "").trim())); // `npm test *`, `npm run test:*`
     return { commands, words: commands.length ? "" : "no shell command", outside: OUTSIDE,
-             note: can ? "" : `It cannot run ${first}: it writes its files, and Graphene runs the check after, in a clean copy.` };
+             note: can ? "" : `It cannot run ${first}, so it never runs its own check. What it may run is set by the executor's \`--allowedTools\`.` };
   }
   const held = t.held.state === "refused" || t.held.state === "caught";
   return { commands: [], words: held ? "any command: what a command writes is still held to its files" : "any command", note: "", outside: OUTSIDE_OWN };
@@ -237,6 +238,28 @@ export function checkWords(t: Pick<TaskX, "check" | "checked" | "state">): { ton
     : t.checked.after === "failed" ? ["red", "failed after the work"]
     : ["dim", t.state === "running" ? "runs in a clean copy when the agent says done" : "runs in a clean copy after the work"];
   return [{ tone: b[0], line: b[1] }, { tone: a[0], line: a[1] }];
+}
+
+const bare = (s: string) => s.trim().replace(/^(an?|the)\s+/i, "").toLowerCase();
+/** What a task is for, under its title in the pane: what follows `title:` in the plan's line (`Librarian service:
+ *  collections, …` says `Collections, …`); nothing where the line is its title again or starts with it (`hello says
+ *  hello to the person by name`: the title's hover has it whole); else the line. */
+export function whatFor(t: Pick<TaskX, "title" | "full">): string {
+  const full = t.full.trim(), title = bare(t.title);
+  if (!title || !bare(full).startsWith(title)) return full;
+  const rest = full.slice(full.toLowerCase().indexOf(title) + title.length).trim();
+  const said = rest.startsWith(":") ? rest.slice(1).trim() : "";
+  return said && said[0]!.toUpperCase() + said.slice(1);
+}
+
+/** Activity's line for a task open again after an agent was on it (sent back, tried again, or stopped): what the
+ *  snapshot keeps of that try, its agent and its check's last verdict, which the card does not wear, as it no longer
+ *  stands (marks.ts `standing`). Work that passed is open again only by a person's send back, whose note the next
+ *  agent is given (plan.reopen); its moves, its files and that note are not in the snapshot. Nothing for any other task. */
+export function earlier(t: Pick<TaskX, "state" | "agent" | "checked">): string {
+  if (!t.agent || (t.state !== "ready" && t.state !== "waiting")) return "";
+  if (t.checked.after === "passed") return `agent ${t.agent}'s work passed its check and was sent back: your note goes to the agent that takes it next`;
+  return `agent ${t.agent} tried it${t.checked.after === "failed" ? ", and its check failed" : ""}`;
 }
 
 const thousands = (n: number) => (n >= 1000 ? `${Math.round(n / 1000)}k` : String(n));
@@ -328,7 +351,7 @@ export function whenEdit(t: Pick<TaskX, "state"> & { command?: string | null }):
     case "review": return "To review: its work is finished. A change binds when it starts again, if you send it back.";
     case "came back": return "Needs help: a change binds when it starts again.";
     case "yours": return "Yours: no agent takes it. Untick “I will do this one” and one can.";
-    case "done": return "Done: a finished task is not edited. Send it back to open it again.";
+    case "done": return `Done: a finished task is not edited.${t.command ? "" : " Send it back, from the …, to open it again."}`; // actsFor's Send back…
   }
 }
 
@@ -474,11 +497,12 @@ export function actsFor(t: TaskX, replay: boolean, opened = false): Button[] {
   if (hasChanges && !look) out.push({ label: "Open changes", act: "openDiff", title: "its changes so far, in the diff editor", icon: "diff" });
   if (t.forks.length >= 2 && !choose) out.push({ label: "Compare attempts", act: "compareForks", title: "the attempts side by side", icon: "split-horizontal" });
   if (review || (t.state === "done" && !t.command)) out.push({ label: "Send back…", act: "sendBack", icon: "debug-step-back", // as Home's, and Edit's line for a finished task says it
-                                                                title: "say what is wrong, and an agent takes it again: graphene node reopen" });
+                                                                title: review ? "say what is wrong, and an agent takes it again: graphene node reopen"
+                                                                  : "what landed stays: say what is wrong, and an agent takes it again from there: graphene node reopen" });
   if (!t.leaves) out.push({ label: "Add task after", act: "add-after", title: "draw a new task that waits on this one", icon: "add" });
   out.push({ label: "Add task beside", act: "add-under", title: "draw a new task under the same sub-goal", icon: "add" });
   if (!t.leaves) out.push({ label: "Link to…", act: "link", title: "then click the task that waits on this one", icon: "link" });
-  if (["proposed", "ready", "waiting"].includes(t.state)) out.push({ label: "Remove", act: "drop", title: "graphene node drop", icon: "trash" });
+  if (["proposed", "ready", "waiting"].includes(t.state)) out.push({ label: "Remove", act: "drop", title: "take it out of the plan: graphene node drop", icon: "trash" });
   if (!t.command && ["running", "ready", "waiting", "came back"].includes(t.state)) out.push({ label: "Message agent", act: "tell", title: "a line the agent on it reads with its next move", icon: "comment" });
   return out;
 }

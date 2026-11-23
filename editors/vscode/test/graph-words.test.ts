@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import * as C from "../src/commands.ts";
-import { actsFor, ASK_AGENT, askLine, askNote, asksYou, attemptsOf, CHANGES, commandChip, commandWord, cornerWord, CURSOR_AGENT, draftedSteps, edgeKind, editable, filesChip, fitWidth, fitWords, forkActs, forkWords, HEADER_ACTS, headerFor,
+import { actsFor, ASK_AGENT, askLine, askNote, asksYou, attemptsOf, CHANGES, commandChip, commandWord, cornerWord, CURSOR_AGENT, draftedSteps, earlier, edgeKind, editable, filesChip, fitWidth, fitWords, forkActs, forkWords, HEADER_ACTS, headerFor,
          checkWords, heldWords, linkHint, mainAct, mayRun, newsLine, OUTSIDE, OUTSIDE_OWN, paneKey, pipeline, planningLine, provesNothing, replayLine, scopeTree, startAnswers, stopAfterPlan, stopsOf, sub, tabOrder, tokenWords, topLine,
-         whenEdit, who, writtenOf, type StateX, type TaskX } from "../src/graph/words.ts";
+         whatFor, whenEdit, who, writtenOf, type StateX, type TaskX } from "../src/graph/words.ts";
 import { SAY, WORDS } from "../src/state.ts";
 import { ICONS } from "../src/graph/icons.ts";
 import { layout } from "../src/layout.ts";
@@ -171,11 +171,32 @@ test("a task offers the acts its state takes; a replay offers only what reads", 
   assert.deepEqual(docs(false), ["openDiff (main)", "signOff", "sendBack"]);
   assert.deepEqual(docs(true), ["signOff (main)", "openDiff", "sendBack"]);
   assert.equal(acts("hello").includes("sendBack"), true, "a finished task is sent back, as Edit's line says");
+  assert.match(actsFor(task("hello"), false).find((b) => b.act === "sendBack")!.title, /^what landed stays: /, "and its hover says what that does to work that landed");
   assert.deepEqual(acts("logs"), ["handBack", "openDiff", "add-after", "add-under", "link", "tell"]);
   assert.deepEqual(acts("ship"), ["add-after", "add-under", "link", "drop", "tell"]); // no Edit: the pane is the form
   assert.deepEqual(acts("farewell", true), []);
   assert.deepEqual(acts("ship", true), []);
   assert.equal(actsFor(task("farewell"), false)[0]!.main, true);
+});
+
+test("the pane says what a task is for under its title only where the plan's line says more than the title", () => {
+  const w = (title: string, full: string) => whatFor({ title, full });
+  assert.equal(w("Librarian service", "Librarian service: collections, JSON import"), "Collections, JSON import", "only what is new after `title:`, as Home's");
+  assert.equal(w("Librarian service", "The librarian service: collections"), "Collections");
+  assert.equal(w("Planner service", "Planner service:"), "", "nothing after its colon: nothing to say");
+  assert.equal(w("hello", "a hello"), "", "the title again, with an `a` before it, as Home's");
+  assert.equal(w("hello says hello", "hello says hello to the person by name"), "", "starts with the title: its hover has it whole");
+  assert.equal(w("greet route", "a /greet route that says hello"), "a /greet route that says hello", "another line: said whole");
+  assert.equal(w("greet route", ""), "");
+});
+
+test("Activity says an agent tried a task before it was open again, and how its check went: what the snapshot keeps of a send back", () => {
+  const sent = { ...task("ship"), state: "ready" as const, agent: "2", checked: { before: "red", after: "passed" } }; // as `graphene state --json` says it after a reopen
+  assert.equal(earlier(sent), "agent 2's work passed its check and was sent back: your note goes to the agent that takes it next");
+  assert.equal(earlier({ ...sent, state: "waiting", checked: { before: null, after: "failed" } }), "agent 2 tried it, and its check failed");
+  assert.equal(earlier({ ...sent, checked: { before: null, after: null } }), "agent 2 tried it", "stopped before its check: no verdict to say");
+  assert.equal(earlier({ ...sent, agent: "" }), "", "no agent has been on it");
+  for (const state of ["running", "review", "done"] as const) assert.equal(earlier({ ...sent, state }), "", `${state}: the head names its agent`);
 });
 
 test("a button's hover names the graphene command its click runs", () => {
@@ -390,16 +411,16 @@ test("May change is a tree: its folder opened to its files, the written ones mar
 });
 
 test("May run, Held by, Stopped, Done when and Tokens say what is known, and no more", () => {
-  // Graphene's own two are not the repository's commands: left out, and the check the agent cannot run is named, with who runs it
+  // Graphene's own two are not the repository's commands: left out, and the check the agent cannot run is named, with where that is set
   assert.deepEqual(mayRun(scoped, step("rows")), { commands: [], words: "no shell command", outside: OUTSIDE,
-    note: "It cannot run pytest: it writes its files, and Graphene runs the check after, in a clean copy." });
+    note: "It cannot run pytest, so it never runs its own check. What it may run is set by the executor's `--allowedTools`." });
   assert.equal(OUTSIDE, "none");
   const npm = { ...scoped, allows: ["graphene node *", "npm test *"] };
   assert.deepEqual(mayRun(npm, { ...step("rows"), check: "npm test table" }), { commands: ["npm test *"], words: "", note: "", outside: OUTSIDE }, "a check it may run: nothing to say");
   assert.equal(mayRun(npm, { ...step("rows"), check: null }).note, "", "no check: nothing it cannot run");
   assert.match(mayRun(npm, { ...step("rows"), check: "cd app && npm test table" }).note, /^$/, "the command a check runs, not the cd before it");
-  assert.match(mayRun(scoped, { ...step("rows"), check: "cd app && ./gradlew test" }).note, /^It cannot run \.\/gradlew:/);
-  assert.match(mayRun(scoped, { ...step("rows"), check: "PYTHONPATH=. pytest -q" }).note, /^It cannot run pytest:/, "the command, not the setting before it");
+  assert.match(mayRun(scoped, { ...step("rows"), check: "cd app && ./gradlew test" }).note, /^It cannot run \.\/gradlew, so it never runs its own check\./);
+  assert.match(mayRun(scoped, { ...step("rows"), check: "PYTHONPATH=. pytest -q" }).note, /^It cannot run pytest,/, "the command, not the setting before it");
   assert.match(mayRun({ allows: null, executor: "claude" }, step("rows")).words, /^any command: what a command writes is still held/);
   // the list is the repository's executor's: a step Codex holds, or one that is yours, is not under it
   assert.deepEqual(mayRun(scoped, step("button")), { commands: [], words: "any command: what a command writes is still held to its files", note: "", outside: OUTSIDE_OWN });
@@ -477,5 +498,6 @@ test("every state says what an edit does now, in the screen's words; only a fini
     assert.equal(editable({ state }, true), false, "a replay is watched");
   }
   assert.match(whenEdit({ state: "running" }), /next write/);
-  assert.match(whenEdit({ state: "done" }), /not edited/);
+  assert.match(whenEdit({ state: "done" }), /not edited\. Send it back, from the …,/, "Send back… waits in the …, not at the foot");
+  assert.equal(whenEdit({ state: "done", command: "uv run pytest -q" }), "Done: a finished task is not edited.", "a command step has no Send back… to point to");
 });
