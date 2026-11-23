@@ -729,21 +729,28 @@ function inStep<T extends SVGElement>(node: T, period: number): T {
 /** A chip on a card, in mono, cut to the card: the files the step may change (or has written, or wrote outside
  *  them), its command. A path too long for it says its file (`CookServiceImpl.java +2`), then its file's name
  *  (`RecipeLookupServiceImpl +1`) before it is cut; never `…/` before it, one more spelling in a band for a folder
- *  it does not name. ``bad`` ends it in the came-back red (a refused write) and stays whole: the words give way to
- *  it, their last one (`files`) before a number is cut. */
-function pill(grp: SVGGElement, kind: string, glyph: string, words: string, x: number, y: number, max: number, bad = "") {
+ *  it does not name. A file ``named`` says too (the check on the card's foot, which runs its test) is said there once:
+ *  the chip says how many files (`2 files`, not `PlannerServiceImpl +1` over `PlannerServiceImplTest`), unless it
+ *  is one file that fits (`app.py` says more than `1 file`). ``bad`` ends it in the came-back red (a refused write) and stays whole: the
+ *  words give way to it, their last one (`files`) before a number is cut. */
+function pill(grp: SVGGElement, kind: string, glyph: string, words: string, x: number, y: number, max: number, bad = "", named = "") {
   const g = el("g", { class: `pill ${kind}` });
   const rect = g.appendChild(el("rect", { x, y, width: max, height: 18, rx: 5 }));
   g.appendChild(el("text", { class: "pill-mark", x: x + 6, y: y + 13 }, glyph));
   const text = g.appendChild(el("text", { class: "pill-text", x: x + 20, y: y + 13 }, bad));
   grp.appendChild(g);
-  const more = / \+\d+$/.exec(words)?.[0] ?? ""; // how many more files: kept whole, as the refused writes are
+  let more = / \+\d+$/.exec(words)?.[0] ?? ""; // how many more files: kept whole, as the refused writes are
   text.textContent = bad + more;
   const room = max - 26 - (bad || more ? text.getComputedTextLength() || (bad + more).length * 7.2 : 0);
   words = words.slice(0, words.length - more.length);
   text.textContent = words;
   const file = words.split(" ").map(tailPath).join(" ").replace(/(^|\s)…\//g, "$1"); // a path says its file, then its name
   for (const shorter of [file, file.replace(/\.\w+(?=\s|$)/g, "")]) if (text.getComputedTextLength() > room) text.textContent = words = shorter;
+  if (named && (more || text.getComputedTextLength() > room) && named.includes(words.split(" ")[0]!)) {
+    const n = 1 + Number(more.slice(2) || 0);
+    text.textContent = words = `${n} file${n > 1 ? "s" : ""}`;
+    more = "";
+  }
   if (bad && text.getComputedTextLength() > room) text.textContent = words.replace(/ \S+$/, "");
   fitText(text, room);
   if (more) text.appendChild(document.createTextNode(more));
@@ -953,7 +960,7 @@ function drawTask(grp: SVGGElement, t: TaskX, h: number, down: boolean, limit: n
   if (corner) mark(grp, corner, BOX_W - PAD - 7, 16, 7);
   const files = filesLine(t); // the latest fact about its files: what it may change, has written, or wrote outside them
   if (t.command) pill(grp, "run", "$", commandChip(t.command), PAD, 48, BOX_W - 2 * PAD); // a command step: what runs, with no agent
-  if (files.text) pill(grp, `files ${files.tone}`, files.mark, files.text, PAD, 48, BOX_W - 2 * PAD, files.refused && ` · ${files.refused}`);
+  if (files.text) pill(grp, `files ${files.tone}`, files.mark, files.text, PAD, 48, BOX_W - 2 * PAD, files.refused && ` · ${files.refused}`, files.tone === "plain" ? t.check ?? "" : "");
   // the status; at its end the card's act, else its model while one agent runs it (attempts each name theirs), or
   // the agents it is set to, whose hover says what that costs
   const act = cardAct(t, replaying());

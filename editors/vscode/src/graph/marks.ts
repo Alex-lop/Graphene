@@ -210,7 +210,7 @@ export function tailPath(p: string): string {
  *  its end if it must. What it runs on is its last path or dotted name (else its last word that is no flag),
  *  quotes off: a path's file, a dotted test's own name. Several `--tests` of one class are that class and how many
  *  (`GeneralCommandTests · 3 tests`, not the last test's name as if it were the check); short of room its first
- *  word goes, then the count. Short strings untouched; never longer than ``n``. */
+ *  word goes, then the count is `×3`, then it goes. Short strings untouched; never longer than ``n``. */
 export function checkCut(s: string, n: number): string {
   if (s.length <= n) return s;
   if (!(n >= 2)) return n >= 1 ? "…" : "";
@@ -222,7 +222,8 @@ export function checkCut(s: string, n: number): string {
   const tests = [...s.matchAll(/--tests[=\s]+['"]?([^'"\s]+)/g)].map((m) => m[1]!);
   const one = tests.length > 1 && tests.every((w) => classOf(w) && classOf(w) === classOf(tests[0]!));
   const on = one ? classOf(last) : own(last), more = one ? ` · ${tests.length} tests` : "";
-  const said = [...(words.length > 1 ? [`${words[0]} … ${on}${more}`] : []), `${on}${more}`, ...(words.length > 1 && more ? [`${words[0]} … ${on}`] : []), on];
+  const said = [...(words.length > 1 ? [`${words[0]} … ${on}${more}`] : []), `${on}${more}`, ...(more ? [`${on} ×${tests.length}`] : []),
+                ...(words.length > 1 && more ? [`${words[0]} … ${on}`] : []), on];
   return said.find((x) => x.length <= n) ?? cutWhole(on, Math.floor(n));
 }
 
