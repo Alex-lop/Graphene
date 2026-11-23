@@ -94,6 +94,7 @@ const offered = new Set<string>(); // drafts graphene is being asked to take: no
 const refused = new Map<string, string>(); // a task's id -> graphene's refusal of the last change to it
 let arriving: string | null = null; // a drawn task graphene took: selected once the plan shows it
 let pressing = false; // a press inside the pane: it is not rebuilt between the press and its click
+let chipStep = 0; // how short every files chip in the plan is spelt, 0 to 2: the most any one of them needs (`pill`)
 let held = false; // a card under a press was not drawn again (`graph`): it is once the press is let go
 const LONG = 2000; // the longest title, check or line of files the host passes on
 
@@ -505,10 +506,18 @@ function place(s: StateX, down: boolean, lv: Level, k = zoom.k): Placed {
   const opts = { goal: g.goal, boxW: d.w, boxH: h, labelH: d.label, gapX: d.gapX, gapY: d.gapY, bandGap: d.bandGap, stack: STACK,
                  ...(down ? {} : { padX: d.padX, padY: d.padY }), down, width: down ? $("canvas").clientWidth / Math.max(1, k) : undefined };
   let lay = layout(g.boxes, g.edges, opts);
-  // a plan with no sub-goals whose tower of loose tasks a tab wider than tall would not hold whole at their own size
-  // (Start's terminal under it): side by side, a block, not a tower fitted small in the middle of an empty canvas
-  const tab = tabSize();
-  if (!down && tab.w > tab.h && !lay.bands.some((b) => b.id) && fitView(tab, sizeOf(lay), FOOT).k < 1) lay = layout(g.boxes, g.edges, { ...opts, stackAll: true });
+  // loose tasks in a tab wider than tall, with no sub-goal or one (which says the goal again): not a narrow tower in
+  // the middle of an empty canvas. Two to four stand in one row where it holds them whole at their own size (Start's
+  // terminal under it), but not beside a goal card with no sub-goal to gather their lines: each would climb over the
+  // next card and read as a chain. With no sub-goal, a tower the tab would not hold whole stands as a block, and so do
+  // five or more with no goal card, so a fifth task does not turn their row into a tower
+  const tab = tabSize(), named = lay.bands.filter((b) => b.id).length, n = g.boxes.filter((b) => b.id !== g.goal).length;
+  const whole = (l: Layout) => fitView(tab, sizeOf(l), FOOT).k >= 1;
+  if (!down && tab.w > tab.h && named <= 1) {
+    const row = n <= 4 && lay.bands.length === 1 && (named || !g.goal) ? layout(g.boxes, g.edges, { ...opts, stack: 1, stackAll: true }) : null;
+    if (row && whole(row)) lay = row;
+    else if (!named && ((n > 4 && !g.goal) || !whole(lay))) lay = layout(g.boxes, g.edges, { ...opts, stackAll: true });
+  }
   // across, the goal stands one gap further out: its lines gather on a trunk with a gap of its own (`graph`)
   const gp = g.goal && !down ? lay.boxes[g.goal] : undefined;
   if (gp) { gp.x += d.gapX; lay.width += d.gapX; }
@@ -722,7 +731,7 @@ function graph(s: StateX, dir: "across" | "down") {
     const p = lay!.boxes[id];
     if (!p) return;
     shown.add(id);
-    key = JSON.stringify([key, p.x, p.y, id === selected, down, level]);
+    key = JSON.stringify([key, p.x, p.y, id === selected, down, level, chipStep]);
     let have = taskEls.get(id);
     if (have && have.key === key) return;
     if (have?.g.matches(":active")) { held = true; return; } // under a press, on it or on its button: drawn again at the release, which is then still its click
@@ -742,10 +751,16 @@ function graph(s: StateX, dir: "across" | "down") {
     paint(have.g, p.h);
     have.g.style.transform = `translate(${p.x}px, ${p.y}px)`;
   };
-  for (const t of s.tasks) box(t.id, JSON.stringify([t, s.envelope.forks, seen.has(t.id)]), (grp, h) => drawTask(grp, t, h, down, s.envelope.forks));
-  for (const d of drawn()) box(d.key, JSON.stringify([d, naming === d.key]), (grp) => drawDraft(grp, d));
-  for (const d of draftedSteps(s)) box(PLAN + d.id, JSON.stringify(d), (grp) => drawPlanned(grp, d, down), true);
+  const paint = () => {
+    for (const t of s.tasks) box(t.id, JSON.stringify([t, s.envelope.forks, seen.has(t.id)]), (grp, h) => drawTask(grp, t, h, down, s.envelope.forks));
+    for (const d of drawn()) box(d.key, JSON.stringify([d, naming === d.key]), (grp) => drawDraft(grp, d));
+    for (const d of draftedSteps(s)) box(PLAN + d.id, JSON.stringify(d), (grp) => drawPlanned(grp, d, down), true);
+  };
+  paint();
   for (const [id, have] of taskEls) if (!shown.has(id)) { have.g.remove(); taskEls.delete(id); }
+  // one spelling for every files chip in the plan, the shortest any one needs: when that changed, every card again
+  const need = Math.max(0, ...Array.from(tasks.querySelectorAll<SVGGElement>(".pill.files"), (p) => Number(p.dataset.need)));
+  if (need !== chipStep) { chipStep = need; paint(); }
   // Tab walks the boxes wave by wave, which is their order in the DOM: reordered only when it changed
   const want = tabOrder(lay, [...s.tasks.map((t) => t.id), ...drawn().map((d) => d.key), ...draftedSteps(s).map((d) => PLAN + d.id)]);
   const have = Array.from(tasks.children).map((c) => c.getAttribute("data-id"));
@@ -881,11 +896,12 @@ function inStep<T extends SVGElement>(node: T, period: number): T {
 /** A chip on a card, in the UI's font as its foot's check, cut to the card: the files the step may change (or has written, or wrote outside
  *  them), its command. A path too long for it says its file (`CookServiceImpl.java +2`), then its file's name
  *  (`RecipeLookupServiceImpl +1`) before it is cut; never `…/` before it, one more spelling in a band for a folder
- *  it does not name. Where ``named`` (the check on the card's foot, which runs its test) says its file's name too, the
- *  chip of several files, or of one cut, says how many (`2 files`, not `PlannerServiceImpl +1` over
- *  `PlannerServiceImplTest`), so the card names that class once; one file that fits keeps its name (`app.py`). ``bad`` ends it in the came-back red (a refused write) and stays whole: the
- *  words give way to it, their last one (`files`) before a number is cut. */
-function pill(grp: SVGGElement, kind: string, glyph: string, words: string, x: number, y: number, max: number, bad = "", named = "") {
+ *  it does not name. Every card names its file, whether or not it fits whole: `2 files` beside a card that names
+ *  one read as two rules. And every files chip in the plan is spelt the same way, the shortest any one of them
+ *  needs (`chipStep`): `PlannerServiceImpl.java +1` beside `LibrarianServiceImpl +1` was a rule by pixel width.
+ *  ``bad`` ends it in the came-back red (a refused write) and stays whole: the words give way to it, their last one
+ *  (`files`) before a number is cut. */
+function pill(grp: SVGGElement, kind: string, glyph: string, words: string, x: number, y: number, max: number, bad = "") {
   const g = el("g", { class: `pill ${kind}` });
   const rect = g.appendChild(el("rect", { x, y, width: max, height: 18, rx: 5 }));
   // a codicon, drawn: a font's glyph for an icon is a grey blob at 1x, and another shape in every font. `$` is a word
@@ -893,18 +909,16 @@ function pill(grp: SVGGElement, kind: string, glyph: string, words: string, x: n
   else g.appendChild(el("text", { class: "pill-mark", x: x + 6, y: y + 13 }, glyph));
   const text = g.appendChild(el("text", { class: "pill-text", x: x + 20, y: y + 13 }, bad));
   grp.appendChild(g);
-  let more = / \+\d+$/.exec(words)?.[0] ?? ""; // how many more files: kept whole, as the refused writes are
+  const more = / \+\d+$/.exec(words)?.[0] ?? ""; // how many more files: kept whole, as the refused writes are
   text.textContent = bad + more;
   const room = max - 26 - (bad || more ? text.getComputedTextLength() || (bad + more).length * 7.2 : 0);
   words = words.slice(0, words.length - more.length);
   text.textContent = words;
   const file = words.split(" ").map(tailPath).join(" ").replace(/(^|\s)…\//g, "$1"); // a path says its file, then its name
-  for (const shorter of [file, file.replace(/\.\w+(?=\s|$)/g, "")]) if (text.getComputedTextLength() > room) text.textContent = words = shorter;
-  if (named && (more || text.getComputedTextLength() > room) && named.includes(words.split(" ")[0]!)) {
-    const n = 1 + Number(more.slice(2) || 0);
-    text.textContent = words = `${n} file${n > 1 ? "s" : ""}`;
-    more = "";
-  }
+  const spelt = [words, file, file.replace(/\.\w+(?=\s|$)/g, "")];
+  const need = spelt.findIndex((w) => { text.textContent = w; return text.getComputedTextLength() <= room; });
+  g.dataset.need = String(need < 0 ? 2 : need); // what this chip alone needs: `graph` spells every files chip at the most
+  text.textContent = words = spelt[Math.max(need < 0 ? 2 : need, kind.startsWith("files") ? chipStep : 0)]!;
   if (bad && text.getComputedTextLength() > room) text.textContent = words.replace(/ \S+$/, "");
   fitText(text, room);
   if (more) text.appendChild(document.createTextNode(more));
@@ -1018,8 +1032,8 @@ function cardFoot(grp: SVGGElement, c: CheckMark, says: (n: number) => string, h
 /** The card's one act, a real button at the status line's right end: Tab stops on it after the card, Enter and
  *  Space press it, and a click on it is the pane's button's click (`press`, unless ``go`` says otherwise) and not
  *  the card's. Its left edge, where the status line's room ends. */
-function actButton(grp: SVGGElement, act: Button, id: string, title: string, go = () => press(act, id)): number {
-  const b = grp.appendChild(el("g", { class: "act", role: "button", tabindex: 0, "aria-label": `${act.label}: ${title}` }));
+function actButton(grp: SVGGElement, act: Button, id: string, title: string, go = () => press(act, id), gate = false): number {
+  const b = grp.appendChild(el("g", { class: gate ? "act waits" : "act", role: "button", tabindex: 0, "aria-label": `${act.label}: ${title}` }));
   const label = b.appendChild(el("text", { y: STATUS_Y }, act.label));
   const w = Math.ceil(label.getComputedTextLength() || act.label.length * 7) + 16, x = BOX_W - PAD - w;
   b.prepend(el("rect", { x, y: STATUS_Y - 14, width: w, height: 20, rx: 5 }));
@@ -1101,9 +1115,10 @@ function status(grp: SVGGElement, words: (n: number) => string, right: number, b
 }
 
 /** A card's title on up to two lines, set close so the second clears the files chip. One line starts where two
- *  do, so the titles in a row share a top. ``aside``: the room its state's mark takes at its right. */
-function cardTitle(grp: SVGGElement, title: string, aside = 0) {
-  titleLines(grp, "title", title, PAD, 21, 16, BOX_W - 2 * PAD - aside, 2);
+ *  do, so the titles in a row share a top. Its state's mark has its room at its right whether it is drawn or not
+ *  (ready and waiting have none): a title wraps the same in every state, and does not jump as its task runs. */
+function cardTitle(grp: SVGGElement, title: string) {
+  titleLines(grp, "title", title, PAD, 21, 16, BOX_W - 2 * PAD - 20, 2);
 }
 
 /** A task's card, drawn at the group's origin, everything inside it: its title on up to two lines, its files;
@@ -1130,7 +1145,7 @@ function drawTask(grp: SVGGElement, t: TaskX, h: number, down: boolean, limit: n
   }
   frame(grp, h, t.id === selected);
   const corner = cornerMark(t); // its state's mark, inside the card at its title's right, as a row has it at its left
-  cardTitle(grp, t.title, corner ? 20 : 0);
+  cardTitle(grp, t.title);
   if (corner) mark(grp, corner, BOX_W - PAD - 7, 16, 7);
   // a title on one line leaves its second to what the task covers past it (`Librarian service: collections, …`), dim:
   // no card in a row has an empty band where another has words, and the status row says the state
@@ -1143,13 +1158,15 @@ function drawTask(grp: SVGGElement, t: TaskX, h: number, down: boolean, limit: n
   }
   const files = filesLine(t); // the latest fact about its files: what it may change, has written, or wrote outside them
   if (t.command) pill(grp, "run", "$", commandChip(t.command), PAD, 48, BOX_W - 2 * PAD); // a command step: what runs, with no agent
-  if (files.text) pill(grp, `files ${files.tone}`, files.mark, files.text, PAD, 48, BOX_W - 2 * PAD, files.refused && ` · ${files.refused}`, files.tone === "plain" ? t.check ?? "" : "");
+  if (files.text) pill(grp, `files ${files.tone}`, files.mark, files.text, PAD, 48, BOX_W - 2 * PAD, files.refused && ` · ${files.refused}`);
   // the status; at its end the card's act, else its model while one agent runs it (attempts each name theirs), or
-  // the agents it is set to, whose hover says what that costs
-  const act = cardAct(t, replaying(), seen.has(t.id)); // its changes opened here: Approve, as its pane says
+  // the agents it is set to, whose hover says what that costs. Chosen, it has none: its pane holds that act, once
+  const chosen = t.id === selected;
+  const act = chosen ? null : cardAct(t, replaying(), seen.has(t.id)); // its changes opened here: Approve, as its pane says
   let right = BOX_W - PAD;
-  if (act) right = actButton(grp, act, t.id, t.title);
-  else if (asked && stateMark(t) === "you" && !replaying()) { // it wants you for its question: its answers are in its pane, the first one focused
+  // a gate the run waits on is filled (graph.css `.act.waits`): a step past the line or of your own, a write stopped
+  if (act) right = actButton(grp, act, t.id, t.title, undefined, act.act === "markDone" || (act.act === "handBack" && t.state === "running"));
+  else if (!chosen && asked && stateMark(t) === "you" && !replaying()) { // it wants you for its question: its answers are in its pane, the first one focused
     right = actButton(grp, { label: "Answer…", act: "answer", icon: "", main: true, title: `its answers, in its pane: ${asked}` }, t.id, t.title,
                       () => { select(t.id); document.querySelector<HTMLElement>("#details .ask-opts button")?.focus(); });
   } else {
@@ -1210,7 +1227,7 @@ function drawDraft(grp: SVGGElement, d: Draft) {
     const fo = el("foreignObject", { x: PAD - 5, y: 10, width: BOX_W - 2 * PAD - 16, height: 24 }); // clear of its ring
     fo.appendChild(nameInput(d));
     grp.appendChild(fo);
-  } else cardTitle(grp, d.title, 20);
+  } else cardTitle(grp, d.title);
   const files = filesChip(globs(d.files));
   if (files) pill(grp, "files", "file", files, PAD, 48, BOX_W - 2 * PAD);
   status(grp, () => (d.said ? "not taken: see why" : blanks(d)), BOX_W - PAD, Boolean(d.said));
@@ -1228,7 +1245,7 @@ function drawPlanned(grp: SVGGElement, d: DraftStep, down: boolean) {
   grp.setAttribute("aria-label", `the planner is drafting: ${d.title}`);
   if (level === "compact") return drawCompact(grp, { title: d.title, hover: `the planner is drafting: ${d.title}`, mark: "suggested", selected: false });
   frame(grp, BOX_H, false);
-  cardTitle(grp, d.title, 20);
+  cardTitle(grp, d.title);
   mark(grp, "suggested", BOX_W - PAD - 7, 16, 7);
   const files = filesChip(d.scope);
   if (files) pill(grp, "files", "file", files, PAD, 48, BOX_W - 2 * PAD);

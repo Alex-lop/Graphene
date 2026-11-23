@@ -176,6 +176,12 @@ test("a sub-goal's loose tasks stand side by side past `stack`, row by row; tied
   // a plan with no sub-goals in a canvas wider than tall: its loose tasks a block, not a tower in the middle
   const block = layout(five.map((b) => ({ ...b, band: "" })), [], { boxW: 100, boxH: 40, gapX: 20, gapY: 10, padX: 0, padY: 0, stack: 3, stackAll: true });
   assert.deepEqual(five.map((b) => block.boxes[b.id]!.x), [0, 120, 0, 120, 0]);
+  // and two to four of them one row (the graph's `place`, at `stack: 1`), not a narrow tower of three
+  const row = layout(five.slice(0, 3).map((b) => ({ ...b, band: "" })), [], { boxW: 100, boxH: 40, gapX: 20, gapY: 10, padX: 0, padY: 0, stack: 1, stackAll: true });
+  assert.deepEqual(["a", "b", "c"].map((id) => [row.boxes[id]!.x, row.boxes[id]!.y]), [[0, 0], [120, 0], [240, 0]]);
+  // as the three of one sub-goal (the planner's, which says the goal again) do, their lines still one trunk to the goal
+  const one = layout([...five.slice(0, 3), { id: "g", band: "" }], five.slice(0, 3).map((b) => [b.id, "g"] as Edge), { goal: "g", boxW: 100, boxH: 40, gapX: 20, gapY: 10, padX: 0, padY: 0, stack: 1 });
+  assert.deepEqual(["a", "b", "c"].map((id) => [one.boxes[id]!.x, one.boxes[id]!.y - one.boxes.a!.y]), [[0, 0], [120, 0], [240, 0]]);
   assert.ok(Object.values(layout(five, [], { boxW: 100, boxH: 40, padX: 0 }).boxes).every((p) => p.x === 0), "unset, a rank is one column");
   // a band with nothing past that rank stands in the next ranks' columns, so another band's rank 1 is not pushed
   // a card further out, leaving a hole

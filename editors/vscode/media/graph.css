@@ -436,7 +436,7 @@ body.vscode-dark :is(.pill.back text, .pill .bad, .sub.bad, .st-came-back .sub, 
 .gate.now text { fill: var(--review); font-weight: 600; }
 /* the ports, where a card's lines join; the out port is the dot a link is dragged from */
 .port { fill: var(--bg); stroke: var(--edge); stroke-width: 1.5; opacity: 0; transition: opacity 0.15s; }
-.task:hover .port, .task.selected .port, .task:focus-visible .port, .goal:hover .port, #canvas.wiring .port { opacity: 1; } /* where a hand is: unseen, it still takes a drag */
+.task:hover .port, .goal:hover .port, #canvas.wiring .port { opacity: 1; } /* where a hand is: unseen, it still takes a drag. Not on the chosen or focused card: a drag is a hand's, and there they were two rivets on its ring */
 .port[data-port] { cursor: crosshair; }
 .port[data-port]:hover, #canvas.wiring .port[data-port] { fill: var(--edge-hot); stroke: var(--edge-hot); }
 .wire { fill: none; stroke: var(--edge-hot); stroke-width: 2; stroke-dasharray: 5 4; pointer-events: none; }
@@ -469,12 +469,20 @@ body.vscode-dark :is(.pill.back text, .pill .bad, .sub.bad, .st-came-back .sub, 
 .foot .hair { stroke: var(--card-border); }
 .foot-v { fill: var(--dim); font-size: 12px; font-family: var(--font); } /* the UI's font, not mono: a Java test's name fits whole on a card */
 .foot.warn .foot-v { fill: color-mix(in srgb, var(--running) 55%, var(--fg)); } /* amber that still reads as words on the amber foot of a light card */
-/* the card's one act, at its status line's right end: a button as the pane's main one is */
-.act rect { fill: var(--vscode-button-background, #0e639c); stroke: var(--vscode-button-border, transparent); }
-.act:hover rect { fill: var(--vscode-button-hoverBackground, #1177bb); }
-.act text { fill: var(--vscode-button-foreground, #fff); font-size: 12px; font-weight: 600; font-family: var(--font); pointer-events: auto; } /* its label is the button too */
+/* the card's one act, at its status line's right end: a quiet button, so the one filled act on screen is the pane's
+   or the header's (four cards that want you were four blue bars); the card's border and mark say it wants you. Its
+   fill steps from the card, not the theme's second button, which is drawn for the editor's ground: in Dark Modern
+   it is clear, and on a card the act read as stray bold words */
+.act rect { fill: var(--fill-3); stroke: var(--vscode-button-border, transparent); }
+.act:hover rect { fill: var(--line-3); }
+.act text { fill: var(--vscode-button-secondaryForeground, var(--fg)); font-size: 12px; font-weight: 600; font-family: var(--font); pointer-events: auto; } /* its label is the button too */
+/* but an act the run waits on (a step past the line or of your own, a write stopped) is filled: the header's Run is
+   off or Stop until it is done, and there is rarely two */
+.act.waits rect { fill: var(--vscode-button-background, #0e639c); }
+.act.waits:hover rect { fill: var(--vscode-button-hoverBackground, #1177bb); }
+.act.waits text { fill: var(--vscode-button-foreground, #fff); }
 .act, .act:focus-visible { outline: none; } /* Chrome rings a focused SVG element, a clicked one too: the dashed border says the keyboard's focus */
-.act:focus-visible rect { stroke: var(--vscode-button-foreground, #fff); stroke-width: 1.5; stroke-dasharray: 3 2; }
+.act:focus-visible rect { stroke: var(--vscode-focusBorder, var(--fg)); stroke-width: 1.5; stroke-dasharray: 3 2; }
 /* a task being drawn: dashed and flat until it is in the plan, in a card's border and with the dashed ring in its
    corner, as the suggestion it becomes (blue round a card is the selection's); the + past a card's out port draws one after it */
 .draft .box, .drafted .box { stroke-dasharray: 5 4; fill: color-mix(in srgb, var(--card) 55%, var(--bg)); filter: none; }
@@ -492,7 +500,9 @@ body.vscode-dark :is(.pill.back text, .pill .bad, .sub.bad, .st-came-back .sub, 
 .plus .reach { fill: transparent; }
 .plus circle { fill: var(--card); stroke: var(--edge); stroke-width: 1.5; }
 .plus path { stroke: var(--fg); stroke-width: 1.5; fill: none; }
-.task:hover .plus, .task.selected .plus, .task:focus-visible .plus { opacity: 1; }
+/* where a hand is, as the ports: on the chosen card, which keeps the focus, it sat on its line as a knob, or between
+   two cards as a link; its pane has Add after */
+.task:hover .plus, .task:not(.selected):focus-visible .plus { opacity: 1; }
 .plus:hover circle { fill: var(--edge-hot); stroke: var(--edge-hot); }
 #notice button { display: flex; margin: 10px auto 0; }
 .title, .goal-title { fill: var(--fg); font-size: 14px; font-weight: 600; font-family: var(--font); }
@@ -525,12 +535,12 @@ body.vscode-dark :is(.pill.back text, .pill .bad, .sub.bad, .st-came-back .sub, 
 :is(body.vscode-light, body.vscode-high-contrast-light) .task .mk.working { --c: color-mix(in srgb, var(--running) 70%, var(--fg)); }
 :is(body.vscode-light, body.vscode-high-contrast-light) .task .mk.working .faint { stroke-opacity: 0.5; }
 .st-came-back .sub { fill: var(--came-back); }
-.task.st-waiting { opacity: 0.78; } /* the card alone: not its row in the lanes, an attempt's chip or the pane's title */
+[data-mark="waiting"] .title { fill: var(--dim); font-weight: 500; } /* steps back by its colour, as landed does: at 78% its file and check read under 4.5:1 */
+:is(body.vscode-high-contrast, body.vscode-high-contrast-light) [data-mark="waiting"] .title { font-weight: 400; } /* there --dim is the full ink: its weight says it */
 /* a row is filled only where it wants you, flat: to review purple, came back red; working and landed are the
    card's own (their marks say it); not started is an outline (ready the stronger), a step of your own too. `:where`
    keeps these under the hover's and the focus's border */
 :where(#svg[data-level="compact"]) .task > .box { filter: none; }
-:where(#svg[data-level="compact"]) .task.st-waiting { opacity: 1; }
 :where(#svg[data-level="compact"]) [data-mark="waiting"] > .box { fill: color-mix(in srgb, var(--card) 45%, var(--bg)); } /* opaque, as a card is: a line behind it never strikes it through */
 :where(#svg[data-level="compact"]) [data-mark="ready"] > .box { stroke: color-mix(in srgb, var(--card-border) 65%, var(--fg)); } /* from the card's border, which in high contrast is the contrast border */
 :where(#svg[data-level="compact"]) [data-mark="you"] > .box { fill: color-mix(in srgb, var(--wash, var(--c)) 22%, var(--card)); }

@@ -52,8 +52,8 @@ export interface Options {
    *  high; more stand side by side in that rank, row by row, so a sub-goal of many tasks at once is a block and
    *  not a tower. Across only; unset, a rank is one column. */
   stack?: number;
-  /** The nameless band's loose boxes too: for a plan with no sub-goals whose tower a canvas wider than tall would
-   *  not hold whole, fitted small in the middle of an empty canvas (the graph's `place` says when). */
+  /** The nameless band's loose boxes too: for a plan with no sub-goals in a canvas wider than tall, a block, or at
+   *  `stack: 1` one row, not a tower in the middle of an empty canvas (the graph's `place` says when). */
   stackAll?: boolean;
   /** Lay the ranks out as rows, top to bottom, each row's boxes left to right and wrapping at ``width``
    *  (the canvas's width): the narrow drawing, with no bands. */
