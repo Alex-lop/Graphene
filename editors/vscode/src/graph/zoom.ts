@@ -112,11 +112,16 @@ export function settle(z: Zoom, canvas: Size, drawing: Size, boxes: readonly Rec
   const cost = (t: number) => {
     if (keep && !whole(keep, t)) return Infinity;
     let c = Math.abs(t - z.tx) / w + (goal && !whole(goal, t) ? 2 : 0);
-    for (const b of boxes) { const [p, q] = at(b, t), seen = Math.min(q, w) - Math.max(p, 0); if (seen > 0.5 && seen < (q - p) / 4) c += 4; }
+    for (const b of boxes) {
+      const [p, q] = at(b, t), seen = Math.min(q, w) - Math.max(p, 0);
+      if (seen > 0.5 && seen < (q - p) / 4) c += 4; // a sliver
+      else if (p > -0.5 && q < w + 0.5 && (p < 6 || q > w - 6)) c += 0.5; // whole, but its side against the canvas's
+    }
     return c;
   };
-  // each box whole at either side, or just off it
-  const ts = [z.tx, ...boxes.flatMap((b) => [-b.x * k, w - (b.x + b.w) * k, w - b.x * k, -(b.x + b.w) * k])].map((t) => Math.min(over, Math.max(end - over, t)));
+  // each box whole at either side, 12 px in or against it, or just off it
+  const ts = [z.tx, ...boxes.flatMap((b) => [12 - b.x * k, w - 12 - (b.x + b.w) * k, -b.x * k, w - (b.x + b.w) * k, w - b.x * k, -(b.x + b.w) * k])]
+    .map((t) => Math.min(over, Math.max(end - over, t)));
   const t = ts.reduce((best, t) => (cost(t) < cost(best) ? t : best));
   // its room: no box whole on screen leaves it, none off it comes on, none cut is cut further, the drawing's ends
   // keep to the canvas

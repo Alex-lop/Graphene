@@ -121,7 +121,7 @@ main { flex: 1; display: flex; min-height: 0; }
 #planning[hidden] { display: none; }
 #planning::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--proposed); animation: blink 1s infinite; }
 @keyframes blink { 50% { opacity: 0.25; } }
-#svg { display: block; position: absolute; left: 0; top: 0; }
+#svg { display: block; position: absolute; left: 0; top: 0; overflow: visible; } /* a line going round a last band's card runs past its foot */
 #svg.glide { transition: transform var(--ease); } /* the plan grew: it glides to the middle again */
 #svg.cut .task, #svg.cut .goal, #svg.cut .edge { transition: none; } /* whole cards to rows, or back: another drawing, at once */
 #notice {

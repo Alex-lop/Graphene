@@ -3,7 +3,7 @@
 // the sidebar, the same plan as lanes, one row a task, grouped by sub-goal. A click selects and opens the details
 // pane whose buttons ask the extension to run graphene. No network, no library: SVG and DOM from the state.
 // Boxes are keyed by task id and updated in place, so a snapshot that changed nothing moves nothing.
-import { layout, modeFor, rounded, route, step, type Box, type Edge, type Layout } from "../layout.ts";
+import { layout, modeFor, rounded, route, spread, step, type Box, type Edge, type Layout, type Point } from "../layout.ts";
 import { autoLine, SAY, screenWords, usd, type DraftStep, type State } from "../state.ts";
 import { ICONS } from "./icons.ts";
 import { blanks, draftLine, globs, isDraft, lacks, type Draft } from "./draft.ts";
@@ -46,11 +46,11 @@ type Dims = { w: number; h: number; gapX: number; gapY: number; padX: number; pa
 // `label`: the room over a sub-goal's first row for its header, which is drawn larger over rows. A band reaches half
 // a `gapY` past its rows, so two bands stand `bandGap - gapY` apart, 8 px, and never share an edge. Whole cards' top
 // and foot pay for that room, so the running plan still opens as cards in a laptop's tab (1140 by 820). `inset`: a
-// band's room either side of its cards, under half a `gapX`, so a line down the middle of a gap (`edgeD`) keeps 6 px
-// off a band's side and is never drawn along it
+// band's room either side of its cards, well under half a `gapX`, so a line down the middle of a gap (`edgeD`) keeps
+// 10 px or more off a band's side and is never drawn along it, and two trunks side by side in it (`spread`) 7 px
 const DIMS: Record<Level, Dims> = {
-  full: { w: BOX_W, h: BOX_H, gapX: 32, gapY: 16, padX: 24, padY: 16, bandGap: 24, label: 28, inset: 10 },
-  compact: { w: ROW_W, h: ROW_H, gapX: 28, gapY: 8, padX: 24, padY: 24, bandGap: 16, label: 30, inset: 8 },
+  full: { w: BOX_W, h: BOX_H, gapX: 34, gapY: 16, padX: 24, padY: 16, bandGap: 24, label: 28, inset: 7 },
+  compact: { w: ROW_W, h: ROW_H, gapX: 36, gapY: 8, padX: 24, padY: 24, bandGap: 16, label: 30, inset: 6 },
 };
 /** A sub-goal's loose tasks (no line in or out but to the goal) stand at most this many high, then side by side. */
 const STACK = 3;
@@ -595,15 +595,24 @@ function graph(s: StateX, dir: "across" | "down") {
     path.setAttribute("d", d);
     path.setAttribute("class", `edge ${kind}`);
   };
-  // what a line across keeps clear of: every box, and each sub-goal's header row
-  const blocks = [...Object.values(lay.boxes), ...lay.bands.flatMap((b) => { const sp = spans.get(b.id); return sp ? [{ x: sp.x0, y: b.y0, w: sp.x1 - sp.x0, h: D.label }] : []; })];
+  // what a line across keeps clear of: every box, each sub-goal's header row, and its band's foot, which a line
+  // going round a card is never drawn along
+  const blocks = [...Object.values(lay.boxes), ...lay.bands.flatMap((b) => {
+    const sp = spans.get(b.id);
+    return sp ? [{ x: sp.x0, y: b.y0, w: sp.x1 - sp.x0, h: D.label }, { x: sp.x0, y: b.y1 - 1, w: sp.x1 - sp.x0, h: 2 }] : [];
+  })];
+  const routed: { key: string; kind: string; pts: Point[] }[] = [];
   for (const [a, b] of g.edges) {
     const p = lay.boxes[a], q = lay.boxes[b];
     if (!p || !q || (b === GOAL && gAt && p.band)) continue; // a sub-goal's last steps end in its band, and the band runs into the goal
     // the edge carries the work: moving where an agent is working, green where it landed, a hairline until then; a
     // step in no sub-goal joins the goal on the bands' trunk
-    line(`${a}>${b}`, b === GOAL && gAt ? bracket(p.x + D.w, p.y + D.h / 2) : edgeD(p, q, down, blocks), `${edgeKind(taskOf.get(a), taskOf.get(b))}${selected && (a === selected || b === selected) ? " hot" : ""}${isDraft(a) || isDraft(b) ? " draft" : ""}`);
+    const key = `${a}>${b}`, kind = `${edgeKind(taskOf.get(a), taskOf.get(b))}${selected && (a === selected || b === selected) ? " hot" : ""}${isDraft(a) || isDraft(b) ? " draft" : ""}`;
+    const d = b === GOAL && gAt ? bracket(p.x + D.w, p.y + D.h / 2) : edgeD(p, q, down, blocks);
+    if (typeof d === "string") line(key, d, kind); else routed.push({ key, kind, pts: d });
   }
+  // the trunks set apart in their gaps, clear of a band's side by 4 px at least (layout.ts `spread`)
+  spread(routed.map((r) => r.pts), D.gapX - 2 * D.inset - 8).forEach((pts, i) => line(routed[i]!.key, rounded(pts), routed[i]!.kind));
   if (gAt) for (const band of lay.bands) { // a sub-goal into the goal: a bracket out of its band, along a trunk half way, into the goal
     const mine = band.id ? s.tasks.filter((t) => t.parent === band.id) : [], span = spans.get(band.id);
     if (!mine.length || !span) continue;
@@ -718,17 +727,17 @@ function graph(s: StateX, dir: "across" | "down") {
 
 type Spot = Layout["boxes"][string];
 /** An edge, port to port: across, out of a card's right side and into the next's left, square and in the gaps
- *  between the cards (layout.ts `route`), never along a card's border or behind one; laid downward, a curve out of
- *  its foot into the top. A card's ports are at its own size's middle, however tall its attempts make it; the goal's
- *  at its own. */
-function edgeD(p: Spot, q: Spot, down: boolean, blocks: readonly { x: number; y: number; w: number; h: number }[]): string {
+ *  between the cards (layout.ts `route`), never along a card's border or behind one: its corners, which `graph`
+ *  sets apart from the other lines' before drawing them; laid downward, a curve out of its foot into the top. A
+ *  card's ports are at its own size's middle, however tall its attempts make it; the goal's at its own. */
+function edgeD(p: Spot, q: Spot, down: boolean, blocks: readonly { x: number; y: number; w: number; h: number }[]): string | Point[] {
   const w = (b: Spot) => (b.id === GOAL ? b.w : D.w), h = (b: Spot) => (b.id === GOAL ? b.h : D.h);
   if (down) {
     const x1 = p.x + w(p) / 2, y1 = p.y + p.h, x2 = q.x + w(q) / 2, y2 = q.y;
     const dy = Math.max(16, (y2 - y1) / 2);
     return `M${x1},${y1} C${x1},${y1 + dy} ${x2},${y2 - dy} ${x2},${y2}`;
   }
-  return rounded(route(p.x + w(p), p.y + h(p) / 2, q.x, q.y + h(q) / 2, D.gapX, D.gapY, blocks));
+  return route(p.x + w(p), p.y + h(p) / 2, q.x, q.y + h(q) / 2, D.gapX, D.gapY, blocks);
 }
 
 /** The region for what leaves this machine (a push, a pull request), right of the plan, once a step does: its
