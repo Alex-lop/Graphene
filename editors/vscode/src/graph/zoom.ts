@@ -97,6 +97,40 @@ export function onto(z: Zoom, canvas: Size, drawing: Size, b: Rect, margin = 24)
   return hold({ k: z.k, tx: along(z.tx, canvas.w, b.x, b.w), ty: along(z.ty, canvas.h, b.y, b.h) }, canvas, drawing);
 }
 
+/** A fit wider than its canvas, panned across so that neither side of the canvas cuts a box to a sliver (under a
+ *  quarter of it: a ring on a border, which reads as a failed drawing). Of the places that keep ``keep`` (the card
+ *  that matters) whole on screen: the fewest slivers, then ``goal`` whole where it can be, then the nearest to
+ *  where it was; and there, in the middle of the room it has. To push a sliver off the drawing's end it may stand
+ *  off that end by as much as a sliver is. */
+export function settle(z: Zoom, canvas: Size, drawing: Size, boxes: readonly Rect[], keep?: Rect, goal?: Rect): Zoom {
+  const k = z.k, w = canvas.w, end = w - drawing.w * k;
+  if (end >= 0) return z;
+  const over = Math.max(0, ...boxes.map((b) => (b.w * k) / 4));
+  const at = (b: Rect, t: number) => [b.x * k + t, (b.x + b.w) * k + t] as const;
+  const whole = (b: Rect, t: number) => { const [p, q] = at(b, t); return p >= -0.5 && q <= w + 0.5; };
+  const cost = (t: number) => {
+    if (keep && !whole(keep, t)) return Infinity;
+    let c = Math.abs(t - z.tx) / w + (goal && !whole(goal, t) ? 2 : 0);
+    for (const b of boxes) { const [p, q] = at(b, t), seen = Math.min(q, w) - Math.max(p, 0); if (seen > 0.5 && seen < (q - p) / 4) c += 4; }
+    return c;
+  };
+  // each box whole at either side, or just off it
+  const ts = [z.tx, ...boxes.flatMap((b) => [-b.x * k, w - (b.x + b.w) * k, w - b.x * k, -(b.x + b.w) * k])].map((t) => Math.min(over, Math.max(end - over, t)));
+  const t = ts.reduce((best, t) => (cost(t) < cost(best) ? t : best));
+  // its room: no box whole on screen leaves it, none off it comes on, none cut is cut further, the drawing's ends
+  // keep to the canvas
+  let lo = Math.min(t, end), hi = Math.max(t, 0);
+  for (const b of boxes) {
+    const [p, q] = at(b, t);
+    if (q <= 0.5) hi = Math.min(hi, t - q);
+    else if (p >= w - 0.5) lo = Math.max(lo, t + w - p);
+    else if (p < -0.5) lo = Math.max(lo, t);
+    else if (q > w + 0.5) hi = Math.min(hi, t);
+    else { lo = Math.max(lo, t - p); hi = Math.min(hi, t + w - q); }
+  }
+  return { ...z, tx: lo <= hi ? (lo + hi) / 2 : t };
+}
+
 /** A pan never loses the drawing: one larger than the canvas stays against an edge at most, a smaller one
  *  stays inside it, wherever it was put. */
 export function hold(z: Zoom, canvas: Size, drawing: Size): Zoom {

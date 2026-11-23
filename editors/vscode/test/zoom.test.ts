@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { KEYS } from "../src/graph/words.ts";
 import { wrap } from "../src/graph/marks.ts";
-import { CARD, CARD_TEXT, dotGap, FAR, fitPlan, fitView, FULL_FROM, FULL_KEEP, hold, ROW_TEXT, ROWS_FROM, ROWS_MOST, levelFor, miniFrame, miniSize, nearest, offScreen, onto, panTo, percent, switchK, TO_COMPACT, TO_FULL, wheelK,
+import { CARD, CARD_TEXT, dotGap, FAR, fitPlan, fitView, FULL_FROM, FULL_KEEP, hold, ROW_TEXT, ROWS_FROM, ROWS_MOST, levelFor, miniFrame, miniSize, nearest, offScreen, onto, panTo, percent, settle, switchK, TO_COMPACT, TO_FULL, wheelK,
          ZOOM_MAX, ZOOM_MIN, zoomK } from "../src/graph/zoom.ts";
 
 test("the zoom goes out to a fifth and in to three times; what is not a number is 1", () => {
@@ -99,6 +99,24 @@ test("a plan larger than its pane opens moved just enough to show the card that 
   const low = onto(fit, canvas, drawing, { x: 0, y: 760, w: 168, h: 24 });
   assert.equal(low.ty, 500 - 784 * k);
   assert.equal(onto(fit, canvas, drawing, { x: 1700, y: 0, w: 44, h: 48 }).tx, 680 - 1744 * k);
+});
+
+test("a plan wider than its tab is never cut to a sliver at its sides: the goal whole where the card that matters allows", () => {
+  // the running plan as rows in Alex's 680 px tab: four columns and the goal, 1100 wide at 11 px titles
+  const k = ROWS_FROM, canvas = { w: 680, h: 800 }, drawing = { w: 1100, h: 400 };
+  const cols = [0, 1, 2, 3].map((r) => ({ x: 24 + r * 196, y: 100, w: 168, h: 48 })), goal = { x: 836, y: 80, w: 240, h: 84 }, boxes = [...cols, goal];
+  const seen = (b: typeof goal, t: number) => Math.round(100 * Math.max(0, Math.min((b.x + b.w) * k + t, 680) - Math.max(b.x * k + t, 0)) / (b.w * k)) / 100;
+  const clean = (t: number) => boxes.every((b) => seen(b, t) === 0 || seen(b, t) >= 0.25);
+  const fit = { k, tx: 0, ty: 100 };
+  assert.ok(!clean(0), "at its left edge the goal is a sliver at the right");
+  // the card that wants you in the third column: the done ones go off at the left, the goal comes whole
+  const on = settle(fit, canvas, drawing, boxes, cols[2], goal);
+  assert.ok(clean(on.tx) && seen(goal, on.tx) === 1 && seen(cols[2]!, on.tx) === 1 && on.ty === 100);
+  // the first column's card chosen: it stays, and the goal goes off the edge whole, not as a sliver
+  const first = settle(fit, canvas, drawing, boxes, cols[0], goal);
+  assert.ok(clean(first.tx) && seen(cols[0]!, first.tx) === 1 && seen(goal, first.tx) === 0);
+  // a plan that fits across is left as it is
+  assert.deepEqual(settle({ k: 0.5, tx: 70, ty: 0 }, canvas, drawing, boxes, cols[0], goal), { k: 0.5, tx: 70, ty: 0 });
 });
 
 test("whole cards turn to rows under 0.55 and rows to whole cards over 1.2; between the two a level holds", () => {

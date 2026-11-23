@@ -13,7 +13,7 @@ import { actsFor, ASK_AGENT, askLine, askNote, asksYou, attemptsOf, commandChip,
          filesChip, forkActs, forkRow, forkWords, HEADER_ACTS, headerFor, heldWords, KEYS, linkHint, mainAct, mayRun, newsLine, paneKey, pipeline,
          planningLine, PROVES_NOTHING, provesNothing, questionOn, scopeTree, startAnswers, stopsOf, sub, tabOrder, tokenWords, topLine, whenEdit, who, writtenOf,
          type Button, type ForkX, type StateX, type TaskX } from "./words.ts";
-import { CARD, dotGap, FAR, fitPlan, hold, levelFor, miniFrame, miniSize, nearest, offScreen, onto, panTo, percent, ROWS_FROM, switchK, wheelK, ZOOM_MAX, ZOOM_MIN, zoomK,
+import { CARD, dotGap, FAR, fitPlan, hold, levelFor, miniFrame, miniSize, nearest, offScreen, onto, panTo, percent, ROWS_FROM, settle, switchK, wheelK, ZOOM_MAX, ZOOM_MIN, zoomK,
          type Level, type Size, type Zoom } from "./zoom.ts";
 
 declare function acquireVsCodeApi(): { postMessage(m: unknown): void; getState(): unknown; setState(s: unknown): void };
@@ -314,9 +314,9 @@ function render() {
   const s = state;
   if (drawing && drawing !== selected) { drawing = null; fitRoom = ""; } // the drawn task was left (closed, discarded, or taken into the plan): the plan is fitted again
   // the pane first: it opens or closes beside the canvas, which is as wide as a plan fitted now is fitted to
-  const shut = $("details").hidden;
+  const shut = $("details").hidden, was = paneOf;
   pane();
-  if ($("details").hidden !== shut) paneMoved = true;
+  if ($("details").hidden !== shut) { paneMoved = true; closedOn = shut ? null : was; }
   const blank = !s.tasks.length && !drawn().length && !s.drafting; // nothing drawn: the notice says what to do, alone
   header(s, blank);
   const v = view();
@@ -445,6 +445,8 @@ let goalKey = "";
 let fitSize = ""; // the drawing's size when the zoom was last set for it
 let fitRoom = ""; // and the window's size then, whatever the pane took of it; "": the plan is fitted again at the next drawing
 let paneMoved = false; // the pane opened or closed in this render: a plan fitted now glides to its new fit
+let closedOn: string | null = null; // and the card whose pane it was, when it closed: the view stays on it
+let sticky: { g: SVGGElement; x: number; room: number }[] = []; // each sub-goal's header, its band's left and how far it may slide right in it
 
 type Placed = { lay: Layout; g: ReturnType<typeof boxes>; here: number; awayW: number };
 
@@ -484,6 +486,10 @@ const paneSize = (): Size => ({ w: $("canvas").clientWidth || 800, h: $("canvas"
 /** The canvas's foot, while the zoom's buttons are there (the side bar's canvas has none). */
 const foot = () => ($("zoom").offsetHeight ? FOOT : 0);
 const sizeOf = (l: Layout): Size => ({ w: l.width, h: l.height });
+/** A plan wider than its canvas, its sides cutting no card to a sliver, ``id``'s card whole, the goal whole where it
+ *  can be (zoom.ts `settle`). */
+const settled = (z: Zoom, l: Layout, id?: string | null): Zoom =>
+  settle(z, paneSize(), sizeOf(l), Object.values(l.boxes), id ? l.boxes[id] : undefined, l.boxes[GOAL]);
 
 /** How the plan opens: the whole plan in the pane. Whole cards when they fit at a scale they read at, else rows
  *  (zoom.ts), never so small their titles do not read: a plan larger than that (a Cursor tab beside its agent's
@@ -502,7 +508,7 @@ function opening(s: StateX, down: boolean): { level: Level; at: Placed; zoom: Zo
     const at = fit.level === "compact" && rows ? rows : full, z = { k: fit.k, tx: fit.tx, ty: fit.ty };
     const id = fit.whole ? undefined : [selected, ...wantYou(), ...s.tasks.filter((t) => t.state === "running").map((t) => t.id)].find((x) => x && at.lay.boxes[x]);
     const p = id ? at.lay.boxes[id] : undefined;
-    return { level: fit.level, at, zoom: p ? onto(z, { w: canvas.w, h: canvas.h - foot() }, sizeOf(at.lay), p) : z, whole: fit.whole };
+    return { level: fit.level, at, zoom: fit.whole ? z : settled(p ? onto(z, { w: canvas.w, h: canvas.h - foot() }, sizeOf(at.lay), p) : z, at.lay, id), whole: fit.whole };
   }
   // a step that asks you is the thing to see: a graph wider than its canvas opens on that step, past the line,
   // and not on its left edge; a short one sits in the middle
@@ -528,7 +534,8 @@ function graph(s: StateX, dir: "across" | "down") {
   const kept = at !== null && sized(at.lay) === fitSize && room === fitRoom; // neither the window nor the plan changed
   const same = kept && !(paneMoved && $("details").hidden); // nor did the pane close
   let opened = free && !same ? opening(s, down) : null;
-  if (opened && kept && !opened.whole) opened = null; // closed on a plan larger than its tab: the card just read stays where it is
+  const stay = opened && kept && !opened.whole; // closed on a plan larger than its tab: the card just read stays where it is
+  if (stay) opened = null;
   if (opened) level = opened.level;
   D = DIMS[level];
   at = opened?.at ?? at!;
@@ -544,6 +551,7 @@ function graph(s: StateX, dir: "across" | "down") {
   const bands = $("bands") as unknown as SVGGElement, heads = $("heads") as unknown as SVGGElement;
   bands.replaceChildren();
   heads.replaceChildren();
+  sticky = [];
   // across, a band ends half a gap past its last column, short of the goal's (`place` set it a gap further out):
   // the goal is no band's, and each band runs into it as one line along a trunk in the gap between
   const gAt = g.goal && !down ? lay.boxes[GOAL] : undefined, right = gAt ? gAt.x - 1.5 * D.gapX : here - 18;
@@ -563,12 +571,14 @@ function graph(s: StateX, dir: "across" | "down") {
     const { name, whole } = bandName(goalTitle(s, band.id));
     const rect = bands.appendChild(el("rect", { class: "band", x: x0, y: band.y0, height: band.y1 - band.y0, rx: 10 }));
     rect.appendChild(el("title", {}, whole));
-    // its header has the band's room on to the trunk, wherever the plan is panned or zoomed: what is off screen is
-    // cut by the screen, and a redraw never cuts it to the part that was on it
+    // its header has the band's room on to the trunk, wherever the plan is panned or zoomed, and a redraw never
+    // cuts it to the part that was on it; a band whose start is panned off the canvas keeps it at the canvas's
+    // edge while the band is there (`applyZoom`), not cut to its last words
     const said = bandHead(heads, name, s.tasks.filter((t) => t.parent === band.id), x0 + D.inset, band.y0 + D.label / 2 + 1, most - x0 - 2 * D.inset);
     const end = Math.min(most, Math.max(x1, x0 + said + 2 * D.inset));
     rect.setAttribute("width", String(end - x0));
     spans.set(band.id, { x0, x1: end });
+    sticky.push({ g: heads.lastElementChild as SVGGElement, x: x0, room: end - x0 - said - 2 * D.inset });
   }
   // edges: keyed by their ends; a changed path glides (CSS transitions d)
   const edges = $("edges") as unknown as SVGGElement;
@@ -684,13 +694,15 @@ function graph(s: StateX, dir: "across" | "down") {
   svg.setAttribute("width", String(lay.width));
   svg.setAttribute("height", String(lay.height));
   // fitted again because it grew or shrank, or because the pane closed, it glides to its new fit. Not fitted, it
-  // is held to the canvas when the window, the plan or the pane's close changed the room it has, and not for a
-  // pane opening beside it: a clamp then would shift it under the click. A pane under the canvas (the narrow tab)
-  // takes half its height: there the plan is held to what is left, at the same zoom, or its rows would sit under it
+  // is held to the canvas when the window or the plan changed, or the pane closed (then on the card just read, no
+  // card cut to a sliver), and not for a pane opening beside it: a clamp then would shift it under the click. A
+  // pane under the canvas (the narrow tab) takes half its height: there the plan is held to what is left, at the
+  // same zoom, or its rows would sit under it
   if (opened) {
     if (fitted && level === was && (sized(lay) !== fitSize || paneMoved)) { svg.classList.add("glide"); setTimeout(() => svg.classList.remove("glide"), 300); }
     zoom = opened.zoom;
-  } else if (!same || (paneMoved && narrow())) zoom = clamp(zoom);
+  } else if (!same) zoom = stay ? settled(clamp(zoom), lay, closedOn) : clamp(zoom);
+  else if (paneMoved && narrow()) zoom = { ...clamp(zoom), tx: zoom.tx }; // it took height, not width: where the plan stood across holds
   fitSize = sized(lay);
   fitRoom = room;
   fitted = true;
@@ -1352,6 +1364,10 @@ function applyZoom() {
   svg.style.transformOrigin = "0 0";
   svg.style.setProperty("--k", String(zoom.k)); // what must keep its size on screen divides by it (graph.css `.far`)
   svg.classList.toggle("far", level === "compact" && zoom.k < FAR);
+  for (const h of sticky) { // a band's start off the canvas's left: its header slides along it, to the canvas's edge
+    const by = Math.min(h.room, Math.max(0, -(h.x * zoom.k + zoom.tx) / zoom.k));
+    h.g.style.transform = by > 0 ? `translate(${by}px, 0)` : "";
+  }
   const dots = canvas.style, gap = dotGap(zoom.k); // the canvas's dots move with the plan, and thin out as it shrinks
   dots.backgroundPosition = `${zoom.tx}px ${zoom.ty}px`;
   dots.backgroundSize = `${gap}px ${gap}px`;
