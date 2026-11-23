@@ -11,8 +11,10 @@ reviews and the critics' findings are summed up in the pull request.*
    the activity bar: the graph opens in the editor, whole. Your real plan (the fa26 group repo) is six whole cards
    in two sub-goals, the goal readable, the question's chip in the header saying what Start picks, and **Start** the
    one filled button. Home also says your `graphene` (0.9.0, installed from `~/Desktop/graphene-main`) is older,
-   with Upgrade Graphene: that is true until 0.10.0 is out. Your CLI was not touched; after the merge,
-   `git -C ~/Desktop/graphene-main pull && uv tool install --force ~/Desktop/graphene-main` makes it 0.10.0.
+   with Upgrade Graphene: that is true until 0.10.0 is out, and your CLI was not touched. Do not press Upgrade
+   Graphene yet: your graphene was installed from that folder, so `uv tool upgrade` rebuilds the folder's 0.9.0 and
+   says Nothing to upgrade (a critic reproduced it). Once the release has put 0.10.0 on PyPI, run
+   `uv tool install --force graphene-map`: you then test what a stranger installs, and Upgrade works from then on.
 2. **Click a card.** Its pane is an inspector: the state and who in its head, May change and Done when first, the
    one act at its foot, the rest under **…**. Nothing was started, accepted or answered on your plan tonight.
 3. **Home** (the side bar) has no box to type in: a card for the plan, what needs you, the suggested plan with
@@ -47,8 +49,8 @@ reviews and the critics' findings are summed up in the pull request.*
 
 ## Decisions for your veto
 
-In the PR body, each with what undoes it. The PR has 64 commits: 50 after the first fold, then 7 and 6 for the two
-rounds after it (pushed branches are not rewritten); every one passes the extension's checks on its own.
+In the PR body, each with what undoes it. The PR has 67 commits: 50 after the first fold, 7 and 6 for rounds four
+and five, then this brief and a last look's fix (pushed commits are not rewritten); each passes the extension's checks.
 
 ## Not verified
 
