@@ -207,9 +207,13 @@ function drawCard(c: Card): HTMLElement {
     }
   }
   const acts = c.buttons.filter((x) => x.act !== "drop");
-  if (acts.length) {
-    const row = el("div", c.tone === "question" ? "c-acts choices" : "c-acts", undefined, card); // a question's options: a list to pick from
-    for (const b of acts) button(b, row);
+  const picks = c.tone === "question" ? acts.filter((b) => b.arg !== undefined) : []; // a question's options: a list to pick from
+  const rest = acts.filter((b) => !picks.includes(b));
+  // outlined buttons only beside a filled one: with none to lead, the acts are links that wrap as a line of text
+  for (const [bs, cls] of [[picks, "c-acts choices"], [rest, rest.some((b) => b.main) ? "c-acts" : "c-acts links"]] as const) {
+    if (!bs.length) continue;
+    const row = el("div", cls, undefined, card);
+    for (const b of bs) button(b, row);
   }
   return card;
 }

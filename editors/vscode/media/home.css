@@ -110,9 +110,14 @@ body.vscode-light .c-tag { color: color-mix(in srgb, var(--tone) 55%, var(--fg))
 .c-acts, .acts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
 /* acts at their own width, left: a card ends in its words, not in bars */
 .c-acts button, .sec-acts button { padding: 2px 8px; font-size: 12px; }
-.c-acts.choices { flex-direction: column; gap: 4px; }
-.choices button { justify-content: flex-start; text-align: left; padding: 4px 8px; }
-button .note { margin-left: auto; padding-left: 8px; color: var(--dim); font-size: 11px; }
+/* a question's options: a list to pick from, rows on a faint fill (not boxes that look like fields), the
+   default said under its words; high contrast has no fills, so its rows keep their line */
+.c-acts.choices { flex-direction: column; gap: 3px; }
+.c-acts.choices button { flex-direction: column; align-items: flex-start; gap: 0; text-align: left; padding: 5px 8px; border-color: transparent; background: var(--fill-1); }
+.c-acts.choices button:hover { background: var(--fill-2); }
+body.vscode-high-contrast .choices button, body.vscode-high-contrast-light .choices button { border-color: var(--line-1); }
+button .note { color: var(--dim); font-size: 11px; }
+.c-acts.choices + .c-acts.links { margin-top: 8px; }
 /* Remove: a small × in the card's corner */
 .card button.remove {
   position: absolute; top: 5px; right: 5px; width: 22px; height: 22px; padding: 0; justify-content: center;
@@ -140,8 +145,10 @@ body.vscode-high-contrast .switch i, body.vscode-high-contrast-light .switch i {
 .prefs .tick.exact { margin: 0; }
 .prefs .tick input { flex: none; width: 14px; margin: 2px 7px 0; }
 .foot { margin-top: 14px; }
-.foot button.quiet { background: none; border-color: transparent; padding: 2px 0; color: var(--vscode-textLink-foreground, var(--fg)); } /* a link, not a box */
-.foot button.quiet:hover { background: none; text-decoration: underline; }
+/* a link, not a box: the foot's, and a card's acts when none leads (they wrap as a line of text) */
+.foot button.quiet, .c-acts.links button { background: none; border-color: transparent; padding: 2px 0; color: var(--vscode-textLink-foreground, var(--fg)); }
+.foot button.quiet:hover, .c-acts.links button:hover { background: none; text-decoration: underline; }
+.c-acts.links { gap: 2px 14px; }
 
 /* Set Up, and the screens with no plan to show */
 .screen { padding-top: 4px; }
