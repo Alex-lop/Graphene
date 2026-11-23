@@ -729,9 +729,9 @@ function inStep<T extends SVGElement>(node: T, period: number): T {
 /** A chip on a card, in mono, cut to the card: the files the step may change (or has written, or wrote outside
  *  them), its command. A path too long for it says its file (`CookServiceImpl.java +2`), then its file's name
  *  (`RecipeLookupServiceImpl +1`) before it is cut; never `…/` before it, one more spelling in a band for a folder
- *  it does not name. A file ``named`` says too (the check on the card's foot, which runs its test) is said there once:
- *  the chip says how many files (`2 files`, not `PlannerServiceImpl +1` over `PlannerServiceImplTest`), unless it
- *  is one file that fits (`app.py` says more than `1 file`). ``bad`` ends it in the came-back red (a refused write) and stays whole: the
+ *  it does not name. Where ``named`` (the check on the card's foot, which runs its test) says its file's name too, the
+ *  chip of several files, or of one cut, says how many (`2 files`, not `PlannerServiceImpl +1` over
+ *  `PlannerServiceImplTest`), so the card names that class once; one file that fits keeps its name (`app.py`). ``bad`` ends it in the came-back red (a refused write) and stays whole: the
  *  words give way to it, their last one (`files`) before a number is cut. */
 function pill(grp: SVGGElement, kind: string, glyph: string, words: string, x: number, y: number, max: number, bad = "", named = "") {
   const g = el("g", { class: `pill ${kind}` });
