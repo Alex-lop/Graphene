@@ -44,24 +44,27 @@ export class GraphHost {
     if (!s || this.session.own) return;
     const now = seen(s);
     const on = vscode.workspace.getConfiguration("graphene").get<boolean>("graph.openOnStart", true);
-    if (opens(this.was, now, { on, tab: this.panel !== null, shut: this.shut, sidebar: this.wanted })) this.show(undefined, true);
+    if (opens(this.was, now, { on, tab: this.panel !== null, shut: this.shut, sidebar: this.wanted })) this.show(undefined, true, this.wanted);
     this.wanted = false;
     this.was = now;
   }
 
   /** Graphene's side bar came into view (Home's host says so): the tab opens with it, as for a start, once a
-   *  plan is read (this one, or the next if none is yet), so a click on the icon lands on the graph. */
-  sidebar() {
-    this.wanted = true;
-    this.start();
+   *  plan is read (this one, or the next if none is yet), so a click on the icon lands on the graph. Out of
+   *  view before a plan was read, it no longer asks: a read an hour later does not open the tab. */
+  sidebar(on = true) {
+    this.wanted = on;
+    if (on) this.start();
   }
 
   /** The panel, made or revealed; with ``select`` the page selects that task. ``quiet``: nobody asked for it
    *  (it opens by itself), so it does not take the keyboard, and it opens beside a file that is in front, not
-   *  over it (open.ts says why). Asked for, it opens in front of the active group and takes the keyboard. */
-  show(select?: string, quiet = false) {
+   *  over it (open.ts says why). ``whole``: the side bar opened it, so the keyboard is there, not in the file,
+   *  and it takes the active group's whole width (beside, it would be the narrow lanes). Asked for, it opens
+   *  in front of the active group and takes the keyboard. */
+  show(select?: string, quiet = false, whole = false) {
     if (!this.panel) {
-      const viewColumn = quiet && beside(front()) ? vscode.ViewColumn.Beside : vscode.ViewColumn.Active;
+      const viewColumn = quiet && !whole && beside(front()) ? vscode.ViewColumn.Beside : vscode.ViewColumn.Active;
       const panel = vscode.window.createWebviewPanel("graphene.graphPanel", this.title, { viewColumn, preserveFocus: quiet }, {
         enableScripts: true, retainContextWhenHidden: true,
         localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, "dist"), vscode.Uri.joinPath(this.context.extensionUri, "media")],
@@ -133,8 +136,7 @@ export class GraphHost {
   }
 
   /** What graphene answered to a change made on a page, for that page to show beside it: on the task's form
-   *  (``id``), or on the drawn task (``key``, the page's own: another page's drafts have the same keys), which
-   *  is gone once the plan has it (``ok``). */
+   *  (``id``), or on the drawn task (``key``), which is gone once the plan has it (``ok``). */
   private said(page: vscode.Webview, to: { id?: string; key?: string }, r: { ok: boolean; line: string }, made?: string | null) {
     if (this.views.has(page)) void page.postMessage({ type: "said", ...to, ok: r.ok, line: r.ok ? "" : r.line, made: made ?? undefined });
   }

@@ -114,13 +114,22 @@ test("the tab opens by itself on a start, without the keyboard; Show graph revea
   replay.fire();
   assert.equal(opened(), 2, "Watch the Demo opens its own graph itself");
   // Graphene's icon is clicked: Home comes into view, and the tab opens with it, on any plan, once it is read
+  const gone = live(), away = new GraphHost(context, gone as never);
+  away.sidebar(); // before the first read (a folder not set up yet), and back to the Explorer
+  away.sidebar(false);
+  gone.state = read("empty"); // an hour later the folder is set up
+  gone.fire();
+  assert.equal(opened(), 2, "the side bar out of view no longer asks: a read much later opens nothing");
   const icon = live(), clicked = new GraphHost(context, icon as never);
   clicked.sidebar(); // before the first read: nothing to show yet
   assert.equal(opened(), 2);
   icon.state = read("empty");
+  vscode.tabs.front = { input: { uri: "file:///repo/notes.md" } }; // a file in front
   icon.fire(); // an empty plan: no start, but the side bar asked
+  vscode.tabs.front = undefined;
   assert.equal(opened(), 3, "a click on the icon lands on the graph, an empty plan's included");
-  assert.deepEqual(vscode.panels.at(-1)!.show, { viewColumn: -1, preserveFocus: true }, "and leaves the keyboard in the side bar");
+  assert.deepEqual(vscode.panels.at(-1)!.show, { viewColumn: -1, preserveFocus: true },
+    "in the active group, whole, a file in front or not (beside, it would be the narrow lanes), and the keyboard left in the side bar");
   clicked.sidebar(); // the side bar again, the tab there
   assert.equal(opened(), 3, "a tab that is there is left as it is");
   vscode.panels.at(-1)!.dispose();
@@ -272,7 +281,7 @@ test("the graph header's switch moves as Home's does: with Exact on, its three s
                                                           ["config", "set", "auto", "on"]], "Exact's three go back together, then the switch moves");
 });
 
-test("Home disables Start while planning finishes, so a visible plan cannot swallow the click", async () => {
+test("Home disables Start while it is busy (a workflow proposing), so a plan that appears cannot swallow the click", async () => {
   const { HomeHost } = await import("../src/home.ts");
   const { parseState } = await import("../src/state.ts");
   const { readFileSync } = await import("node:fs");
@@ -285,7 +294,7 @@ test("Home disables Start while planning finishes, so a visible plan cannot swal
   host.resolveWebviewView({ webview: page, onDidDispose: () => ({ dispose() {} }), onDidChangeVisibility: () => ({ dispose() {} }), visible: true } as never);
   const inspect = host as unknown as { busy: string; push(): void };
   const start = () => page.sent.at(-1)!.home.sections.flatMap((s) => s.buttons).find((b) => b.act === "startAll")!;
-  inspect.busy = "Planning…";
+  inspect.busy = "Proposing fix-issue…";
   inspect.push();
   assert.equal(start().off, true);
   inspect.busy = "";

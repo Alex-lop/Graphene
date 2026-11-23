@@ -27,10 +27,10 @@ export class HomeHost implements vscode.WebviewViewProvider {
   private lastWorkflow: { name: string; inputs: Record<string, string> } | null = null;
   private readonly context: vscode.ExtensionContext;
   private readonly session: Session;
-  /** Home came into view: the graph's tab opens with it (graph.ts sidebar). */
-  private readonly shown: () => void;
+  /** Home came into view, or went out of it: the graph's tab opens with it (graph.ts sidebar). */
+  private readonly shown: (on: boolean) => void;
 
-  constructor(context: vscode.ExtensionContext, session: Session, shown: () => void = () => {}) {
+  constructor(context: vscode.ExtensionContext, session: Session, shown: (on: boolean) => void = () => {}) {
     this.context = context;
     this.session = session;
     this.shown = shown;
@@ -48,7 +48,7 @@ export class HomeHost implements vscode.WebviewViewProvider {
     view.webview.html = this.html(view.webview);
     this.views.add(view);
     view.onDidDispose(() => this.views.delete(view));
-    const seen = () => { if (view.visible) this.shown(); }; // a click on Graphene's icon lands on the graph
+    const seen = () => this.shown(view.visible); // a click on Graphene's icon lands on the graph
     seen();
     view.onDidChangeVisibility(seen);
     view.webview.onDidReceiveMessage((m: unknown) => {
