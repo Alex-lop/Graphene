@@ -313,7 +313,7 @@ function render() {
   }
   painting = true;
   try {
-    if (v === "lanes") { lanes(s); $("to-goal").hidden = true; } else graph(s, dir);
+    if (v === "lanes") lanes(s); else graph(s, dir);
   } finally {
     painting = false;
   }
@@ -1146,9 +1146,18 @@ function showNext() {
  *  always be brought above it, and a plan smaller than the canvas stays above it. */
 const clamp = (z: Zoom): Zoom => (lay ? hold(z, { w: paneSize().w, h: paneSize().h - foot() }, sizeOf(lay)) : z);
 
+let placed = ""; // the transform last applied: what says the plan moved since
+let mapIdle: ReturnType<typeof setTimeout> | undefined;
+/** The minimap fades a moment after the plan stops moving, unless the pointer is on it. */
+function idle(map: HTMLElement) {
+  clearTimeout(mapIdle);
+  mapIdle = setTimeout(() => { if (!map.matches(":hover")) map.classList.remove("live"); }, 1500);
+}
+
 function applyZoom() {
   const svg = $("svg"), canvas = $("canvas");
-  svg.style.transform = `translate(${zoom.tx}px, ${zoom.ty}px) scale(${zoom.k})`;
+  const to = `translate(${zoom.tx}px, ${zoom.ty}px) scale(${zoom.k})`, moving = to !== placed;
+  placed = svg.style.transform = to;
   svg.style.transformOrigin = "0 0";
   svg.style.setProperty("--k", String(zoom.k)); // what must keep its size on screen divides by it (graph.css `.far`)
   svg.classList.toggle("far", level === "compact" && zoom.k < FAR);
@@ -1163,24 +1172,15 @@ function applyZoom() {
   $("zoom-pct").setAttribute("aria-label", `zoom ${pct}%: back to 100%`);
   // part of the plan off screen: the minimap shows all of it, and frames the part in view. Not while a pane is
   // open on a plan still fitted for the window: what is out of view then is what the pane's side hid, and the
-  // minimap would stand on the cards beside it
+  // minimap would stand on the cards beside it. It shows while a hand moves the plan, and a moment after: it is
+  // never parked over the cards (graph.css `.live`)
   const map = $("minimap"), all = lay ? sizeOf(lay) : null;
   map.hidden = !all || view() === "lanes" || canvas.clientHeight < 240 || (!moved && !drawing && !$("details").hidden) || !offScreen(zoom, paneSize(), all);
   if (all && !map.hidden) {
     const f = miniFrame(zoom, paneSize(), all), frame = map.querySelector(".mm-frame");
     for (const [k, v] of [["x", f.x], ["y", f.y], ["width", f.w], ["height", f.h]] as const) frame?.setAttribute(k, String(v));
+    if (moving && moved) { map.classList.add("live"); idle(map); }
   }
-  // the goal off screen, whole or in part: a chip at the edge says where it is, and a click brings it (as `g` does)
-  const p = lay?.boxes[GOAL], toGoal = $("to-goal");
-  const off = Boolean(p && view() !== "lanes" && ((p.x + p.w) * zoom.k + zoom.tx > canvas.clientWidth || (p.y + p.h) * zoom.k + zoom.ty < 0
-                      || p.y * zoom.k + zoom.ty > canvas.clientHeight || (p.x + p.w) * zoom.k + zoom.tx < 0));
-  toGoal.hidden = !off;
-  const below = Boolean(p && off && p.y * zoom.k + zoom.ty > canvas.clientHeight);
-  toGoal.classList.toggle("below", below);
-  toGoal.style.right = below || !$("need").offsetWidth ? "" : `${$("need").offsetWidth + 18}px`; // at the top it stands beside the chip for what needs you
-  // at the foot it stands on whatever the corner holds, the legend and the minimap: never over them
-  const over = (el: HTMLElement) => (el.offsetHeight ? canvas.clientHeight - el.offsetTop + 8 : 0);
-  toGoal.style.bottom = below ? `${Math.max(10, over($("legend")), over(map))}px` : "";
 }
 
 /** Pan so a box is on screen (the goal on `g`, a task the host selects). One on screen already moves nothing:
@@ -1953,6 +1953,7 @@ function wire() {
   };
   map.addEventListener("pointerdown", (e) => { e.preventDefault(); map.setPointerCapture(e.pointerId); first(); panned(e); });
   map.addEventListener("pointermove", (e) => { if (e.buttons & 1) panned(e); });
+  map.addEventListener("mouseleave", () => idle(map));
   const planning = div("", undefined, canvas); // while a planner writes: how many steps it has drawn so far
   planning.id = "planning";
   planning.hidden = true;
@@ -1968,11 +1969,6 @@ function wire() {
   mark(need.appendChild(el("svg", { width: 14, height: 14, viewBox: "-7 -7 14 14" })), "you", 0, 0, 6.5);
   need.append(document.createElement("b"), document.createElement("span"));
   need.addEventListener("click", showNext);
-  const toGoal = $("to-goal");
-  toGoal.appendChild(document.createTextNode("goal"));
-  toGoal.appendChild(icon("arrow-right"));
-  toGoal.title = "the goal is off screen: bring it (g)";
-  toGoal.addEventListener("click", () => reveal(GOAL));
   // the header's buttons
   const actions = $("actions");
   const top = (id: string, label: string, ico: string, title: string, on: () => void) => {
