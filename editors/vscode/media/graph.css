@@ -39,11 +39,13 @@ header {
 header::after { content: ""; order: 4; flex-basis: 100%; } /* where the second row starts */
 header:has(#pipe[hidden])::after { display: none; }
 /* a basis of 10em (or its own width, if less): a long goal is cut to the room its buttons leave; a tab that leaves
-   it less than that (narrow, beside an agent's chat) gives the goal its own row and the buttons the next */
-#goal { order: 1; flex: 1 1 10em; max-width: max-content; min-width: 0; font-weight: 600; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* a replay, or a live race against the stand-in: a pill beside the goal */
+   it less than that (narrow, beside an agent's chat) gives the goal its own row and the buttons the next. It takes
+   the room before the pill beside it does (1000 to 1): the pill is cut first */
+#goal { order: 1; flex: 1000 1 10em; max-width: max-content; min-width: 0; font-weight: 600; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* a replay, or a live race against the stand-in: a pill beside the goal, whole where there is room and else cut
+   (its hover says it whole), never the goal */
 #replay {
-  order: 2; flex: 0 1 auto; min-width: 0; padding: 2px 8px; border-radius: 99px; font-size: 11px; font-weight: 500; color: var(--review);
+  order: 2; flex: 1 1 6em; max-width: max-content; min-width: 0; padding: 2px 8px; border-radius: 99px; font-size: 11px; font-weight: 500; color: var(--review);
   background: color-mix(in srgb, var(--review) 13%, transparent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 #replay[hidden] { display: none; }
@@ -139,9 +141,9 @@ main { flex: 1; display: flex; min-height: 0; }
 #need > button:hover, #b-ask[aria-expanded="true"] { background: color-mix(in srgb, var(--review) 20%, var(--card)); }
 #need b { font-weight: 600; }
 #b-ask .ico { color: var(--review); }
-/* under the question's chip while Start would take its default: on the canvas's ground, so a card under it reads */
+/* under the question's chip while Start or Run would take its default: on the canvas's ground, so a card under it reads */
 #ask-note { position: absolute; right: 0; top: 34px; padding: 1px 6px; border-radius: var(--r-sm); background: var(--bg); color: var(--dim); font-size: 12px; white-space: nowrap; }
-#ask-note[hidden], #canvas.lanes #ask-note, body[data-mode="down"] #ask-note { display: none; } /* there it would stand on the first row: Start's hover says it */
+#ask-note[hidden], #canvas.lanes #ask-note, body[data-mode="down"] #ask-note { display: none; } /* there it would stand on the first row: the act's hover says it */
 /* the question's card, under its chip: what it asks and about what, its answers, and what happens unanswered */
 #asked { position: absolute; right: 0; top: 36px; width: min(340px, calc(100vw - 48px)); box-sizing: border-box; padding: 12px 14px;
          background: var(--card); border-radius: var(--r-lg); box-shadow: var(--pop); border-top: 2px solid var(--review); white-space: normal; }
@@ -194,7 +196,8 @@ footer#hint.sr { position: absolute; width: 1px; height: 1px; min-height: 0; pad
 /* the narrowest tab an editor gives (about 220 px): Add task is its icon, and the stages stand closer, with no line
    between them, so the three names still fit whole */
 @media (max-width: 320px) {
-  #b-add .label { display: none; }
+  #b-add span { display: none; }
+  #canvas.lanes #need { position: static; height: auto; margin: 6px 16px 0 auto; } /* over the first lane's head it would cover it */
   #b-add { width: 28px; padding: 0; justify-content: center; }
   .stage { padding: 3px 6px 3px 2px; gap: 4px; }
   .stage + .stage { margin-left: 4px; }
@@ -582,6 +585,7 @@ button:disabled { opacity: 0.45; cursor: default; }
 .help-title { font-weight: 600; }
 .help-rows { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; }
 .help-key { font-family: var(--mono); color: var(--fg); white-space: nowrap; }
+.help-key.gesture { font-family: inherit; } /* the mouse, said in words: not typed */
 .help-what { color: var(--dim); }
 
 /* high contrast: every edge a contrast border, no tints, the focus border loud (tokens.css sets the borders,

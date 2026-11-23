@@ -351,6 +351,10 @@ export function mdText(s: string): string {
 /** A practice run (every model call went to the scripted stand-in) or a replay (no model runs): nothing is spent
  *  here, so no screen says a cost, the status bar, auto's line and the graph's (graph.ts sends it none) alike. */
 export const free = (s: Pick<State, "stand_in" | "replay">): boolean => s.stand_in || Boolean(s.replay);
+/** The snapshot a page is sent: a free one with no cost in it to put on a card, a lane, an attempt or a Cost row. */
+export function unpriced(s: State): State {
+  return free(s) ? { ...s, spent: null, tasks: s.tasks.map((t) => ({ ...t, usd: null, forks: t.forks.map((f) => ({ ...f, usd: null })) })) } : s;
+}
 
 /** The status bar's words: `2 working · 1 needs you · $0.42`, `3 of 6 done` when nothing runs; while auto is on,
  *  its round first (`auto round 2 · …`), or that it waits for you, or is done. */
@@ -367,17 +371,16 @@ export function summary(s: State): string {
   return parts.join(" · ");
 }
 
-/** The auto header, as the cockpit's: `auto · round 1 of 3 · running · $0.42 of $2.00` (a round is the first plan or
- * a fix round, `rounds + 1` in all); a fix round says what the goal failed on; empty when auto is off. */
+/** The auto header: `auto waits: the goal's check is still red · round 2 of 3 · $1.37 of $2.00` (a round is the
+ * first plan or a fix round, `rounds + 1` in all). What it is at and why come first, so a tab too narrow for the
+ * line cuts the bookkeeping, not the reason it stopped; empty when auto is off. */
 export function autoLine(s: State): string {
   const a = s.auto;
   if (!a || s.envelope.auto !== "on" && !a.stage) return "";
-  const parts = ["auto"];
+  const parts = [`auto${a.stage ? ` ${a.stage}` : ""}${a.why ? `: ${screenWords(a.why)}` : ""}`];
   if (a.round !== null) parts.push(a.rounds !== null ? `round ${a.round} of ${a.rounds + 1}` : `round ${a.round}`);
-  if (a.stage) parts.push(a.stage);
   const spent = a.spent === null ? "" : usd(a.spent) || "$0.00";
   if (spent && !free(s)) parts.push(a.budget !== null ? `${spent} of ${usd(a.budget) || "$0.00"}` : spent);
-  if (a.why) parts.push(screenWords(a.why));
   return parts.join(" · ");
 }
 

@@ -404,33 +404,33 @@ export interface Button {
 /** The header's one act on the whole plan: Stop while a run goes; Start while any task is a suggestion and none
  *  works (Home's Start: every suggested task accepted, the plan's open questions answered with their defaults,
  *  then the run), so a task accepted alone in its pane does not turn it into a Run that leaves the rest behind;
- *  else Run, filled while a task is ready. Both are held as Home's Start is: while a question with no default is
- *  open (it stops a run), and Start with Exact on (the host says) while any question is. None for no plan, or
- *  one all done: nothing to start. */
+ *  else Run, filled while a task is ready. Start is held as Home's is: while a question with no default is open,
+ *  and with Exact on (the host says) while any question is. Run is not, as Home's and `graphene run` are not: it
+ *  leaves such a question open. None for no plan, or one all done: nothing to start. */
 export function mainAct(s: Pick<StateX, "run" | "tasks" | "questions">, exact = false): Button | null {
   if (!s.tasks.length || (!s.run.going && s.tasks.every((t) => t.state === "done"))) return null;
   if (s.run.going) return { label: "Stop", act: "stop", icon: "debug-stop", title: "stop every agent: their tasks go back to the plan" };
   const n = (k: TaskX["state"]) => s.tasks.filter((t) => t.state === k).length;
-  const blank = s.questions.some((q) => !q.default); // home/cards.ts `unanswered`: such a question stops a run
-  const waitsWhy = "it waits for an answer: a question with no default is open";
+  const answers = startAnswers(s);
   if (n("proposed") && !n("running")) {
-    const waits = exact && s.questions.length > 0, held = waits || blank;
+    const waits = exact && s.questions.length > 0, held = waits || s.questions.some((q) => !q.default); // home/cards.ts `unanswered`
     return { label: "Start", act: "start", icon: "play", main: !held, off: held,
-             title: waits ? "Exact is on: it waits for your answers" : held ? waitsWhy
-               : `accept the ${n("proposed")} suggested${startAnswers(s) ? `, ${startAnswers(s)}` : ""}, then start an agent on each that is ready` };
+             title: waits ? "Exact is on: it waits for your answers" : held ? "it waits for an answer: a question with no default is open"
+               : `accept the ${n("proposed")} suggested${answers ? `, ${answers}` : ""}, then start an agent on each that is ready` };
   }
   const ready = n("ready");
-  return { label: "Run", act: "run", icon: "play", main: ready > 0 && !blank, off: !ready || blank,
-           title: !ready ? "nothing is ready to run" : blank ? waitsWhy : "start an agent on every task that is ready" };
+  return { label: "Run", act: "run", icon: "play", main: ready > 0, off: !ready,
+           title: !ready ? "nothing is ready to run" : `${answers ? `${answers}, then ` : ""}start an agent on every task that is ready` };
 }
 
-/** What Start does to the plan's open questions, all with a default (one without holds Start): it takes their
- *  defaults, as accepting the whole plan does. Said in Start's hover and under the question's chip, so a click
- *  on Start is not an answer nobody saw. */
+/** What Start and Run do to the plan's open questions: each with a default takes it, as `graphene run` and
+ *  accepting the whole plan do (one with none stays open, and holds Start). Said in their hover and under the
+ *  question's chip, so a click on either is not an answer nobody saw. */
 export function startAnswers(s: Pick<StateX, "questions">): string {
-  const q = s.questions;
-  if (!q.length || q.some((x) => !x.default)) return "";
-  return q.length === 1 ? `answer the open question with its default (“${cut(q[0]!.default!, 60)}”)` : `answer the ${q.length} open questions with their defaults`;
+  const q = s.questions.filter((x) => x.default), all = q.length === s.questions.length;
+  if (!q.length) return "";
+  if (q.length === 1) return `answer ${all ? "the" : "an"} open question with its default (“${cut(q[0]!.default!, 60)}”)`;
+  return `answer ${all ? "the " : ""}${q.length} open questions with their defaults`;
 }
 
 /** The buttons a task's pane offers, in order. A replay offers none: its pane reads. A step past the line
@@ -489,8 +489,8 @@ export function tabOrder(lay: Layout, ids: string[]): string[] {
   return ids.filter(at).sort((a, b) => (at(a)!.rank - at(b)!.rank) || (at(a)!.y - at(b)!.y) || (at(a)!.x - at(b)!.x));
 }
 
-/** Every key the page answers, for the `?` overlay, in the screen's words: what a person moves between, adds,
- *  links and sees, then how the view moves. */
+/** Every key the page answers and what the mouse does, for the `?` overlay, in the screen's words: what a person
+ *  moves between, adds, links and sees, then how the view moves. */
 export const KEYS: readonly [string, string][] = [
   ["Tab", "the next task"],
   ["← → ↑ ↓", "move between tasks"],
@@ -500,7 +500,6 @@ export const KEYS: readonly [string, string][] = [
   ["g", "the goal"],
   ["+", "add a task, after the selected one if there is one"],
   ["drag a dot", "onto another task: that task waits on this one"],
-  ["×", "in the details, beside what a task waits on: it stops waiting"],
   ["v", "graph or lanes"],
   ["f", "fit the plan"],
   ["- · =", "zoom out · zoom in"],
@@ -523,8 +522,9 @@ export const CURSOR_AGENT = NOT_CURSOR;
 
 /** The question chip's words, its two halves as the tasks' chip has them: `1 question · answer`; none for none. */
 export const askLine = (n: number): string => (n ? `${n} question${n === 1 ? "" : "s"} · answer` : "");
-/** The line under that chip while Start would take the defaults (`startAnswers`). */
-export const askNote = (n: number): string => (n === 1 ? "or Start takes its default" : "or Start takes their defaults");
+/** The line under that chip while the main act would take the defaults of `n` of them (`startAnswers`): it reads
+ *  with the chip's `· answer` or without it (a narrow tab hides that). */
+export const askNote = (n: number, act: string): string => `${act} takes ${n === 1 ? "its default" : "their defaults"}`;
 
 /** The news a screen reader hears from the graph: the latest line that nothing on screen says already (the
  *  plan's open question has its chip, auto's wait its line in the header), in the screen's words, so the CLI's
@@ -533,8 +533,7 @@ export function newsLine(s: Pick<StateX, "news" | "questions">, autoShown: boole
   const said = (line: string) => (s.questions.length > 0 && /^asks: |\bquestions? waits? for you\b/.test(line)) || (autoShown && /^auto\b/.test(line));
   return newsWords([...s.news].reverse().find((l) => !said(l)) ?? "");
 }
-/** A news line in the screen's words (the status bar's hover reads them too). */
-export const newsWords = (line: string): string => screenWords(line).replace(/\bproposed\b/g, SAY.proposed).replace(/\bcame back\b/g, SAY["came back"]);
-
-/** The first-time hint under the graph. */
-export const FIRST_HINT = "click a task to change it · + draws a new one · drag a dot onto another task to link them · ? lists every key";
+/** A news line in the screen's words (the status bar's hover reads them too): only the narrator's own verbs
+ *  (`proposed: <title>`, `proposed goal: …`, `<title> came back: why`), so a title that says proposed keeps it. */
+export const newsWords = (line: string): string =>
+  screenWords(line).replace(/^(the planner )?proposed(?=:| goal:| \d)/, `$1${SAY.proposed}`).replace(/ came back(?=: )/, ` ${SAY["came back"]}`);

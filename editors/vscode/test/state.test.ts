@@ -38,16 +38,16 @@ test("a running plan with three forks keeps each fork's letter, model, state and
   assert.equal(summary(s), "2 working · 2 need you · $0.42");
 });
 
-test("auto waiting reads as a header with the round, the stage and the spend of the budget", () => {
+test("auto waiting reads as a header with the stage and why, then the round and the spend of the budget", () => {
   const s = parseState(fixture("auto"));
   assert.equal(s.envelope.auto, "on");
   assert.equal(s.auto?.stage, "waits");
-  assert.equal(autoLine(s), "auto · round 2 of 3 · waits · $1.37 of $2.00 · the goal's check is still red after 2 rounds");
+  assert.equal(autoLine(s), "auto waits: the goal's check is still red after 2 rounds · round 2 of 3 · $1.37 of $2.00", "why first: a narrow tab cuts the bookkeeping");
   assert.equal(summary(s), "auto waits · 1 needs you · $1.37");
   // a practice run and a replay spend nothing: no screen says a cost, the status bar and auto's line alike
   const replay = { shown: "a scripted stand-in, no model ran", day: "", repository: "" };
   for (const free of [{ ...s, stand_in: true }, { ...s, replay }]) {
-    assert.equal(autoLine(free), "auto · round 2 of 3 · waits · the goal's check is still red after 2 rounds");
+    assert.equal(autoLine(free), "auto waits: the goal's check is still red after 2 rounds · round 2 of 3");
     assert.equal(summary(free), "auto waits · 1 needs you");
   }
   const done = { ...s, stand_in: true, auto: { ...s.auto!, stage: "done" } };
@@ -150,7 +150,7 @@ test("a real snapshot, `graphene state --json` at the end of the --auto replay, 
   assert.deepEqual(s.tasks.map((t) => [t.id, t.state]), [["top", "done"], ["reading", "done"], ["hyphens", "done"], ["count-test", "done"]]);
   assert.ok(s.tasks.every((t) => t.model === "stand-in-Nano" && t.forks.length === 3));
   assert.deepEqual(s.tasks[0]!.forks.map((f) => f.state), ["passed", "passed", "gave up"]);
-  assert.equal(autoLine(s), "auto · round 2 of 3 · done · $0.02 of $2.00");
+  assert.equal(autoLine(s), "auto done · round 2 of 3 · $0.02 of $2.00");
 });
 
 test("auto mode's news is said once, when its round's stage changes, never on the first read", () => {
