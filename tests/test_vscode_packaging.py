@@ -141,7 +141,7 @@ def test_the_licence_is_the_repositorys():
 
 def test_the_readme_says_how_it_is_installed_and_whose_click_it_is():
     readme = (EXT / "README.md").read_text()
-    assert "code --install-extension graphene-0.9.0.vsix" in readme
+    assert f"code --install-extension graphene-{MANIFEST['version']}.vsix" in readme
     assert "graphene state --json" in readme
     assert "A click in VS Code is the person's" in readme
     assert "uv tool install graphene-map" in readme
