@@ -11,7 +11,7 @@ import { blanks, draftLine, globs, isDraft, lacks, type Draft } from "./draft.ts
 import { attemptsMark, cardAct, checkLines, checkMark, cornerMark, doneWhen, filesLine, forkMark, goalBox, goalCells, legend, midCut, nextWanting, stateMark, tally, wanting, wantingLine,
          type CheckMark, type Mark } from "./marks.ts";
 import { actsFor, asksYou, attemptsOf, commandChip, cornerWord, cut, done, draftedSteps, edgeKind, editable, filesChip, FIRST_HINT, fitWidth, forkActs, forkRow, forkWords, HEADER_ACTS, headerFor,
-         heldWords, KEYS, linkHint, mayRun, paneKey, pipeline, planningLine, PROVES_NOTHING, provesNothing, questionOn, scopeTree, STOP_AFTER, STOP_AFTER_HOVER, stopAfterPlan, stopsOf, sub, tabOrder, tokenWords, topLine, twoLines, whenEdit, who, worktrees, writtenOf,
+         heldWords, KEYS, linkHint, mayRun, paneKey, pipeline, planningLine, PROVES_NOTHING, provesNothing, questionOn, scopeTree, STOP_AFTER, STOP_AFTER_HOVER, stopAfterPlan, stopsOf, sub, tabOrder, tokenWords, topLine, twoLines, whenEdit, who, writtenOf,
          type Button, type ForkX, type StateX, type TaskX } from "./words.ts";
 import { CARD, dotGap, FAR, fitPlan, hold, levelFor, miniFrame, miniSize, nearest, offScreen, panTo, percent, switchK, wheelK, ZOOM_MAX, ZOOM_MIN, zoomK,
          type Level, type Size, type Zoom } from "./zoom.ts";
@@ -313,7 +313,7 @@ function render() {
   }
   painting = true;
   try {
-    if (v === "lanes") { lanes(s); $("to-goal").hidden = true; } else graph(s, dir);
+    if (v === "lanes") lanes(s); else graph(s, dir);
   } finally {
     painting = false;
   }
@@ -450,27 +450,40 @@ function graph(s: StateX, dir: "across" | "down") {
   const bands = $("bands") as unknown as SVGGElement, heads = $("heads") as unknown as SVGGElement;
   bands.replaceChildren();
   heads.replaceChildren();
+  // across, a band ends short of the goal's column: the goal is no band's, and each band runs into it as one line
+  const gAt = g.goal && !down ? lay.boxes[GOAL] : undefined, right = gAt ? gAt.x - D.gapX / 2 : here - 18;
   for (const band of lay.bands) {
     if (!band.id) continue;
-    bands.appendChild(el("rect", { class: "band", x: 18, y: band.y0, width: here - 36, height: band.y1 - band.y0, rx: 10 }));
+    bands.appendChild(el("rect", { class: "band", x: 18, y: band.y0, width: right - 18, height: band.y1 - band.y0, rx: 10 }));
     bandHead(heads, goalTitle(s, band.id), s.tasks.filter((t) => t.parent === band.id), 30, band.y0 + D.label / 2 + 1,
-             Math.min(here - 36, $("canvas").clientWidth / (opened?.zoom ?? zoom).k) - 28); // within the band's visible width
+             Math.min(right - 18, $("canvas").clientWidth / (opened?.zoom ?? zoom).k) - 28); // within the band's visible width
   }
   // edges: keyed by their ends; a changed path glides (CSS transitions d)
   const edges = $("edges") as unknown as SVGGElement;
   const seenEdges = new Set<string>();
   const taskOf = new Map(s.tasks.map((t) => [t.id, t]));
-  for (const [a, b] of g.edges) {
-    const p = lay.boxes[a], q = lay.boxes[b];
-    if (!p || !q) continue;
-    const key = `${a}>${b}`;
+  const line = (key: string, d: string, kind: string) => {
     seenEdges.add(key);
     let path = edgeEls.get(key);
     if (!path) { path = el("path", { class: "edge" }); edgeEls.set(key, path); edges.appendChild(path); }
-    path.setAttribute("d", edgeD(p, q, a, down));
-    // the edge carries the work: moving where an agent is working, green where it landed, dotted until then
-    path.setAttribute("class", `edge ${edgeKind(taskOf.get(a), taskOf.get(b))}${selected && (a === selected || b === selected) ? " hot" : ""}${isDraft(a) || isDraft(b) ? " draft" : ""}`);
+    path.setAttribute("d", d);
+    path.setAttribute("class", `edge ${kind}`);
+  };
+  for (const [a, b] of g.edges) {
+    const p = lay.boxes[a], q = lay.boxes[b];
+    if (!p || !q || (b === GOAL && gAt && p.band)) continue; // a sub-goal's last steps end in its band, and the band runs into the goal
+    // the edge carries the work: moving where an agent is working, green where it landed, a hairline until then
+    line(`${a}>${b}`, edgeD(p, q, a, down), `${edgeKind(taskOf.get(a), taskOf.get(b))}${selected && (a === selected || b === selected) ? " hot" : ""}${isDraft(a) || isDraft(b) ? " draft" : ""}`);
   }
+  if (gAt) for (const band of lay.bands) { // a sub-goal into the goal: a bracket out of its band, along a trunk half way, into the goal
+    const mine = band.id ? s.tasks.filter((t) => t.parent === band.id) : [];
+    if (!mine.length) continue;
+    const y2 = gAt.y + D.h / 2, y1 = Math.min(Math.max(y2, band.y0 + 16), band.y1 - 16), x2 = gAt.x, t = (right + x2) / 2;
+    const r = Math.min(8, Math.abs(y2 - y1) / 2), dir = Math.sign(y2 - y1);
+    line(`band ${band.id}>${GOAL}`, r < 1 ? `M${right},${y1} H${x2}` : `M${right},${y1} H${t - r} Q${t},${y1} ${t},${y1 + dir * r} V${y2 - dir * r} Q${t},${y2} ${t + r},${y2} H${x2}`,
+         `band-link ${mine.every((x) => x.state === "done") ? "done" : "wait"}${mine.some((x) => x.id === selected) ? " hot" : ""}`);
+  }
+  svg.classList.toggle("has-sel", Boolean(selected)); // the chosen card's lines lit, the rest faded
   for (const [key, path] of edgeEls) if (!seenEdges.has(key)) { path.remove(); edgeEls.delete(key); }
   // boxes: one group a task, rebuilt only when its words or its place changed
   const tasks = $("tasks") as unknown as SVGGElement;
@@ -565,7 +578,7 @@ function graph(s: StateX, dir: "across" | "down") {
   fitSize = sized(lay);
   fitRoom = room;
   fitted = true;
-  minimap(s, here);
+  minimap(s, right);
   legendRow(s);
   applyZoom();
   if (level !== was) { void svg.getBoundingClientRect(); svg.classList.remove("cut"); } // the cut is made: what moves next glides again
@@ -584,20 +597,17 @@ function edgeD(p: { x: number; y: number; w: number; h: number }, q: { x: number
   return `M${x1},${y1} C${x1 + dx},${y1} ${x2 - dx},${y2} ${x2},${y2}`;
 }
 
-/** The regions the flow crosses: this machine, where each agent works in a worktree of its own, and, once a
- *  step leaves it (a push, a pull request), the region for those: its label says how many do, or that one asks
- *  you first. While none does there is one region, and its label says nothing leaves it. */
+/** The region for what leaves this machine (a push, a pull request), right of the plan, once a step does: its
+ *  label says how many do, or that one asks you first. While none does nothing is drawn: the plan is this
+ *  machine's, and a frame round all of it would say nothing. */
 function regions(s: StateX, here: number, awayW: number) {
   const root = $("regions") as unknown as SVGGElement;
   root.replaceChildren();
-  if (!here || !lay) return;
-  const n = worktrees(s.tasks), h = lay.height - 16, x = here + AWAY_GAP - 8;
   const out = s.tasks.filter((t) => t.leaves).length, asks = s.tasks.filter(asksYou).length;
-  root.appendChild(el("rect", { class: "region here", x: 8, y: 8, width: here - 16, height: h, rx: 14 }));
-  fitText(root.appendChild(el("text", { class: "region-label", x: 24, y: 29 }, `THIS MACHINE${n ? ` · ${n} worktree${n > 1 ? "s" : ""}, one per agent` : ""}${out ? "" : " · nothing leaves it"}`)), here - 48);
-  if (!out) return;
-  root.appendChild(el("rect", { class: "region away", x, y: 8, width: awayW, height: h, rx: 14 }));
-  root.appendChild(el("text", { class: "region-label away", x: x + 16, y: 29 }, `LEAVES YOUR MACHINE · ${asks ? "asks you first" : `${out} step${out > 1 ? "s" : ""}`}`));
+  if (!here || !lay || !out) return;
+  const x = here + AWAY_GAP - 8;
+  root.appendChild(el("rect", { class: "region away", x, y: 8, width: awayW, height: lay.height - 16, rx: 14 }));
+  root.appendChild(el("text", { class: "region-label away", x: x + 16, y: 29 }, `Leaves your machine · ${asks ? "asks you first" : `${out} step${out > 1 ? "s" : ""}`}`));
 }
 
 /** The approval on the line: where an edge crosses into "leaves your machine", a mark that the step past it
@@ -692,28 +702,26 @@ function ring(grp: SVGElement, portion: number, x: number, y: number, r: number)
   if (portion > 0) arc.style.strokeDasharray = `${portion * 100} 100`; else arc.remove();
 }
 
-/** A sub-goal's header, over its first row: the ring, its title, `3 of 6`, a small mark a task (landed first,
- *  so they read as a bar), then what wants you there in words, each in its mark's colour. Larger over rows, so
- *  it reads in a fitted plan. It keeps to ``max`` px, the band's width: where all of it has no room the marks
- *  go, whole (part of a bar would be another count), then the words, and the title is cut to what is left. */
+/** A sub-goal's header, over its first row: the ring, its title, `3 of 6`, then what wants you there in words,
+ *  each in its mark's colour (the cards under it wear each task's mark). Larger over rows, so it reads in a
+ *  fitted plan. It keeps to ``max`` px, the band's width: where all of it has no room the words go, and the
+ *  title is cut to what is left. */
 function bandHead(root: SVGGElement, title: string, ts: readonly TaskX[], x: number, y: number, max: number) {
-  const t = tally(ts), rows = level === "compact", r = rows ? 8 : 6, m = rows ? 4.5 : 3.5, gap = rows ? 10 : 8, step = 2 * m + 3;
+  const t = tally(ts), rows = level === "compact", r = rows ? 8 : 6, gap = rows ? 10 : 8;
   const g = root.appendChild(el("g", { class: "band-head" }));
   ring(g, t.portion, x + r, y, r);
   const text = (kind: string, words: string) => g.appendChild(el("text", { class: kind, y: y + (rows ? 5 : 4) }, words));
   const wide = (n: SVGTextElement) => n.getComputedTextLength() || (n.textContent ?? "").length * (rows ? 8.5 : 6.5); // not drawn yet: by its characters
   const name = text("band-label", title), count = t.total ? text("band-count", `${t.landed} of ${t.total}`) : null;
   const wants = t.wants.map((w) => { const n = text("band-want", w.text); n.dataset.mark = w.mark; return n; });
-  const cw = count ? wide(count) + gap : 0, mw = t.total ? t.total * step - 3 + gap : 0, ww = wants.reduce((sum, n) => sum + wide(n) + gap, 0);
-  const room = max - 2 * r - gap, least = Math.min(wide(name), 90);
-  const marks = least + cw + mw + ww <= room, words = marks || least + cw + ww <= room;
+  const cw = count ? wide(count) + gap : 0, ww = wants.reduce((sum, n) => sum + wide(n) + gap, 0);
+  const room = max - 2 * r - gap, words = Math.min(wide(name), 90) + cw + ww <= room;
   if (!words) for (const n of wants.splice(0)) n.remove();
-  fitText(name, room - cw - (marks ? mw : 0) - (words ? ww : 0));
+  fitText(name, room - cw - (words ? ww : 0));
   let at = x + 2 * r + gap;
   const put = (n: SVGTextElement) => { n.setAttribute("x", String(at)); at += wide(n) + gap; };
   put(name);
   if (count) put(count);
-  if (marks) { for (const k of t.marks) { mark(g, k, at + m, y, m); at += step; } at += gap - 3; }
   wants.forEach(put);
 }
 
@@ -1097,14 +1105,14 @@ function refit() {
 
 /** The minimap, drawn again with the graph: every card a small rect in its mark's colour (as its row is), the
  *  sub-goals as outlines, and a frame (placed by `applyZoom`) for the part on screen. In the drawing's own units. */
-function minimap(s: StateX, here: number) {
+function minimap(s: StateX, right: number) {
   const map = $("minimap").firstElementChild;
   if (!lay || !map) return;
   const size = miniSize(sizeOf(lay));
   map.setAttribute("viewBox", `0 0 ${lay.width} ${lay.height}`);
   map.setAttribute("width", String(size.w));
   map.setAttribute("height", String(size.h));
-  const kids: SVGElement[] = lay.bands.filter((b) => b.id).map((b) => el("rect", { class: "mm-band", x: 18, y: b.y0, width: here - 36, height: b.y1 - b.y0, rx: 10 }));
+  const kids: SVGElement[] = lay.bands.filter((b) => b.id).map((b) => el("rect", { class: "mm-band", x: 18, y: b.y0, width: right - 18, height: b.y1 - b.y0, rx: 10 }));
   const of = new Map(s.tasks.map((t) => [t.id, t]));
   for (const p of Object.values(lay.boxes)) {
     const t = of.get(p.id);
@@ -1146,9 +1154,18 @@ function showNext() {
  *  always be brought above it, and a plan smaller than the canvas stays above it. */
 const clamp = (z: Zoom): Zoom => (lay ? hold(z, { w: paneSize().w, h: paneSize().h - foot() }, sizeOf(lay)) : z);
 
+let placed = ""; // the transform last applied: what says the plan moved since
+let mapIdle: ReturnType<typeof setTimeout> | undefined;
+/** The minimap fades a moment after the plan stops moving, unless the pointer is on it. */
+function idle(map: HTMLElement) {
+  clearTimeout(mapIdle);
+  mapIdle = setTimeout(() => { if (!map.matches(":hover")) map.classList.remove("live"); }, 1500);
+}
+
 function applyZoom() {
   const svg = $("svg"), canvas = $("canvas");
-  svg.style.transform = `translate(${zoom.tx}px, ${zoom.ty}px) scale(${zoom.k})`;
+  const to = `translate(${zoom.tx}px, ${zoom.ty}px) scale(${zoom.k})`, moving = to !== placed;
+  placed = svg.style.transform = to;
   svg.style.transformOrigin = "0 0";
   svg.style.setProperty("--k", String(zoom.k)); // what must keep its size on screen divides by it (graph.css `.far`)
   svg.classList.toggle("far", level === "compact" && zoom.k < FAR);
@@ -1163,24 +1180,15 @@ function applyZoom() {
   $("zoom-pct").setAttribute("aria-label", `zoom ${pct}%: back to 100%`);
   // part of the plan off screen: the minimap shows all of it, and frames the part in view. Not while a pane is
   // open on a plan still fitted for the window: what is out of view then is what the pane's side hid, and the
-  // minimap would stand on the cards beside it
+  // minimap would stand on the cards beside it. It shows while a hand moves the plan, and a moment after: it is
+  // never parked over the cards (graph.css `.live`)
   const map = $("minimap"), all = lay ? sizeOf(lay) : null;
   map.hidden = !all || view() === "lanes" || canvas.clientHeight < 240 || (!moved && !drawing && !$("details").hidden) || !offScreen(zoom, paneSize(), all);
   if (all && !map.hidden) {
     const f = miniFrame(zoom, paneSize(), all), frame = map.querySelector(".mm-frame");
     for (const [k, v] of [["x", f.x], ["y", f.y], ["width", f.w], ["height", f.h]] as const) frame?.setAttribute(k, String(v));
+    if (moving && moved) { map.classList.add("live"); idle(map); }
   }
-  // the goal off screen, whole or in part: a chip at the edge says where it is, and a click brings it (as `g` does)
-  const p = lay?.boxes[GOAL], toGoal = $("to-goal");
-  const off = Boolean(p && view() !== "lanes" && ((p.x + p.w) * zoom.k + zoom.tx > canvas.clientWidth || (p.y + p.h) * zoom.k + zoom.ty < 0
-                      || p.y * zoom.k + zoom.ty > canvas.clientHeight || (p.x + p.w) * zoom.k + zoom.tx < 0));
-  toGoal.hidden = !off;
-  const below = Boolean(p && off && p.y * zoom.k + zoom.ty > canvas.clientHeight);
-  toGoal.classList.toggle("below", below);
-  toGoal.style.right = below || !$("need").offsetWidth ? "" : `${$("need").offsetWidth + 18}px`; // at the top it stands beside the chip for what needs you
-  // at the foot it stands on whatever the corner holds, the legend and the minimap: never over them
-  const over = (el: HTMLElement) => (el.offsetHeight ? canvas.clientHeight - el.offsetTop + 8 : 0);
-  toGoal.style.bottom = below ? `${Math.max(10, over($("legend")), over(map))}px` : "";
 }
 
 /** Pan so a box is on screen (the goal on `g`, a task the host selects). One on screen already moves nothing:
@@ -1953,6 +1961,7 @@ function wire() {
   };
   map.addEventListener("pointerdown", (e) => { e.preventDefault(); map.setPointerCapture(e.pointerId); first(); panned(e); });
   map.addEventListener("pointermove", (e) => { if (e.buttons & 1) panned(e); });
+  map.addEventListener("mouseleave", () => idle(map));
   const planning = div("", undefined, canvas); // while a planner writes: how many steps it has drawn so far
   planning.id = "planning";
   planning.hidden = true;
@@ -1968,11 +1977,6 @@ function wire() {
   mark(need.appendChild(el("svg", { width: 14, height: 14, viewBox: "-7 -7 14 14" })), "you", 0, 0, 6.5);
   need.append(document.createElement("b"), document.createElement("span"));
   need.addEventListener("click", showNext);
-  const toGoal = $("to-goal");
-  toGoal.appendChild(document.createTextNode("goal"));
-  toGoal.appendChild(icon("arrow-right"));
-  toGoal.title = "the goal is off screen: bring it (g)";
-  toGoal.addEventListener("click", () => reveal(GOAL));
   // the header's buttons
   const actions = $("actions");
   const top = (id: string, label: string, ico: string, title: string, on: () => void) => {

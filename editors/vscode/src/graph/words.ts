@@ -298,11 +298,6 @@ export function edgeKind(from: Pick<TaskX, "state"> | undefined, to: Pick<TaskX,
   return from?.state === "done" || to?.state === "done" ? "done" : "wait";
 }
 
-/** The worktrees on this machine, one per agent at work: each running attempt's, or the task's own. */
-export function worktrees(tasks: readonly TaskX[]): number {
-  return tasks.reduce((n, t) => n + (t.forks.some((f) => f.checkout) ? t.forks.filter((f) => f.checkout).length : t.checkout ? 1 : 0), 0);
-}
-
 /** How many attempts a task runs as: its own number, else the limits' (Set Limits…), else one. */
 export const attemptsOf = (t: Pick<TaskX, "planned">, limit: number | null | undefined): number => Math.min(8, Math.max(1, t.planned ?? limit ?? 1));
 

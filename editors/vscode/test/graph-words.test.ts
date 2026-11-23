@@ -4,7 +4,7 @@ import { test } from "node:test";
 import * as C from "../src/commands.ts";
 import { actsFor, asksYou, attemptsOf, CHANGES, commandChip, commandWord, cornerWord, counts, draftedSteps, edgeKind, editable, filesChip, fitWidth, fitWords, forkActs, forkWords, HEADER_ACTS, headerFor,
          checkWords, heldWords, linkHint, mayRun, OUTSIDE, OUTSIDE_OWN, paneKey, pipeline, planningLine, provesNothing, replayLine, scopeTree, stopAfterPlan, stopsOf, sub, tabOrder, tokenWords, topLine,
-         whenEdit, who, worktrees, writtenOf, type StateX, type TaskX } from "../src/graph/words.ts";
+         whenEdit, who, writtenOf, type StateX, type TaskX } from "../src/graph/words.ts";
 import { SAY, WORDS } from "../src/state.ts";
 import { ICONS } from "../src/graph/icons.ts";
 import { layout } from "../src/layout.ts";
@@ -197,14 +197,6 @@ test("an edge moves where an agent is working, is green where the work landed, a
   assert.deepEqual([edgeKind(undefined, { state: "done" }), edgeKind(undefined, { state: "yours" })], ["done", "wait"]);
 });
 
-test("this machine counts a worktree for each agent at work: each running attempt's, or the task's own", () => {
-  const greet = task("greet");
-  const running = { ...greet, forks: greet.forks.map((f, i) => ({ ...f, checkout: i < 2 ? `/tmp/w${i}` : null })) };
-  assert.equal(worktrees([running]), 2);
-  assert.equal(worktrees([{ ...greet, forks: [], checkout: "/tmp/w" }]), 1);
-  assert.equal(worktrees([{ ...greet, forks: [], checkout: null }]), 0);
-});
-
 test("while a planner writes, its finished steps are drawn: tasks only, and none the plan already has", () => {
   const writing = parseState(readFileSync(new URL("./fixtures/drafting.json", import.meta.url), "utf8")) as StateX;
   assert.deepEqual(draftedSteps(writing).map((d) => d.id), ["failing", "rows", "button", "empty"], "the sub-goal is a band, not a box");
@@ -370,7 +362,7 @@ test("an icon the graph's page asks for by name is one it has: the goal chip's a
   // `icon("close")`, `icon(going ? "debug-stop" : "play")` on the page; `icon: "check"` on a button's words
   const asked = [...src("main.ts").matchAll(/\bicon\(([^()]*)\)/g)].flatMap((m) => [...m[1]!.matchAll(/(?:^|[?:]\s*)"([a-z-]+)"/g)].map((n) => n[1]!));
   asked.push(...[...src("words.ts").matchAll(/\bicon: "([a-z-]+)"/g)].map((m) => m[1]!));
-  assert.ok(asked.includes("arrow-right") && asked.includes("play") && asked.includes("check"), "the page's source is read as it is written");
+  assert.ok(asked.includes("close") && asked.includes("play") && asked.includes("check"), "the page's source is read as it is written");
   assert.deepEqual([...new Set(asked)].filter((name) => !ICONS[name]), []);
 });
 
