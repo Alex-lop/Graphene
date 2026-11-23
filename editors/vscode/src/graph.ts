@@ -190,6 +190,7 @@ export class GraphHost implements vscode.WebviewViewProvider {
   <meta charset="utf-8">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource}; script-src 'nonce-${nonce}';">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="${uri("media", "tokens.css")}">
   <link rel="stylesheet" href="${uri("media", "graph.css")}">
   <title>Graphene</title>
 </head>
