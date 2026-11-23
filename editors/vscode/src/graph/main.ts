@@ -1598,17 +1598,33 @@ function scopeTab(body: HTMLElement, t: TaskX, s: StateX) {
   const change = part(body, "May change", wrote && !wrote.startsWith("0 ") ? `✎ ${wrote}` : ""); // a count once something is written
   const tree = div("tree", undefined, change);
   const rows = scopeTree(t, s);
-  // a deep path by its last two parts (`…/impl/LookupTest.java`), so a repository's nested files are told apart; whole on the hover
-  const short = (p: string) => { const at = p.split("/").filter(Boolean); return at.length > 3 ? `…/${at.slice(-2).join("/")}${p.endsWith("/") ? "/" : ""}` : p; };
+  // a deep path by its first two parts and its last, a file's folder too (`src/main/…/impl/`, `src/test/…/impl/`:
+  // code and its test told apart); whole on the hover
+  const short = (p: string) => {
+    const at = p.split("/").filter(Boolean), end = p.endsWith("/") ? 1 : 2;
+    return at.length > end + 3 ? `${[...at.slice(0, 2), "…", ...at.slice(-end)].join("/")}${p.endsWith("/") ? "/" : ""}` : p;
+  };
   const line = (r: { name: string; kind: string; depth: number; note: string }, parent: HTMLElement) => {
     const row = div(`tr ${r.kind}${r.depth ? " in1" : ""}`, undefined, parent);
     const name = div("tr-name", undefined, row);
     name.title = r.name;
+    // what is become of a file is a mark in the gutter before it, its word on the hover: never a word left alone on a
+    // line under a long name
+    const mark = ({ new: ["+", "new: not there yet, it may create it"], written: ["✎", "written"], "outside its files": ["✕", "written outside its files"] } as Record<string, string[]>)[r.note];
+    if (mark) {
+      const m = document.createElement("span");
+      m.className = `tr-mark${r.note === "written" ? " wr" : ""}`;
+      m.textContent = mark[0]!;
+      m.title = mark[1]!;
+      m.setAttribute("role", "img");
+      m.setAttribute("aria-label", mark[1]!);
+      name.append(m);
+    }
     // it wraps after a slash, not inside a name
     (r.depth ? r.name : short(r.name)).split("/").forEach((bit, i) => name.append(...(i ? ["/", document.createElement("wbr")] : []), bit));
-    if (r.note) { // after its name, so a wrapped path's note is on its file's line, never a line of its own
+    if (r.note && !mark) { // another task's: after its name
       const note = document.createElement("span");
-      note.className = `tr-note${r.note === "written" ? " wr" : ""}`;
+      note.className = "tr-note";
       note.textContent = r.note;
       name.append(" ", note);
     }

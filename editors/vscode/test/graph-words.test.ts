@@ -369,13 +369,17 @@ test("May change is a tree: its folder opened to its files, the written ones mar
   assert.equal(writtenOf(strayed), "1 of 2");
   assert.ok(!scopeTree(strayed, { tree: [], tasks: [] }).some((r) => r.name === "README.md"));
   // a replay's repository is empty, and an older CLI names no files: what is there is not known, so no path says "not there yet"
-  assert.deepEqual(scopeTree({ ...top, files: [], filesN: 0, changed: [] }, { tree: [], tasks: [] }).map((r) => `${r.name} ${r.note}`), ["tests/test_top.py ", "wordkit/cli.py "]);
+  assert.deepEqual(scopeTree({ ...top, files: [], filesN: 0, changed: [] }, { tree: [], tasks: [] }).map((r) => `${r.name} ${r.note}`), ["tests/ ", "test_top.py ", "wordkit/ ", "cli.py "]);
   // a scope past the 200 files a snapshot lists: its other folders are still its own, and the rest are counted
   const wide = { id: "all", scope: ["**"], files: ["a/x.py"], filesN: 300, touched: [], changed: [] };
   assert.deepEqual(scopeTree(wide, { tree: ["a/", "z/", "README.md"], tasks: [] }).map((r) => `${"  ".repeat(r.depth)}${r.name} [${r.kind}]`),
                    ["a/ [in]", "  x.py [in]", "z/ [in]", "README.md [in]", "… and 299 more files [in]"]);
-  // a path the step will create is its own, and says it is new; a finished step's changes are its written files
-  assert.deepEqual(scopeTree(step("docs"), scoped).filter((r) => r.kind === "in"), [{ name: "docs/EXPORT.md", depth: 0, kind: "in", note: "new" }]);
+  // a path the step will create is its own, and says it is new, under its folder as its files are; a finished step's changes are its written files
+  assert.deepEqual(scopeTree(step("docs"), scoped).filter((r) => r.kind === "in"), [{ name: "docs/", depth: 0, kind: "in", note: "" },
+                                                                                   { name: "EXPORT.md", depth: 1, kind: "in", note: "new" }]);
+  const twin = { id: "lib", scope: ["src/main/impl/Lib.java", "src/test/impl/LibTest.java"], files: ["src/main/impl/Lib.java"], filesN: 1, touched: [], changed: [] };
+  assert.deepEqual(scopeTree(twin, { tree: ["src/"], tasks: [] }).map((r) => `${"  ".repeat(r.depth)}${r.name}${r.note ? ` ${r.note}` : ""}`),
+                   ["src/main/impl/", "  Lib.java", "src/test/impl/", "  LibTest.java new"], "a code file and the test it creates, each under its own folder");
   assert.deepEqual(scopeTree(step("test"), scoped).filter((r) => r.kind === "in"), [{ name: "tests/", depth: 0, kind: "in", note: "" },
                                                                                    { name: "test_export.py", depth: 1, kind: "in", note: "written" }]);
   assert.equal(writtenOf(step("docs")), "");
