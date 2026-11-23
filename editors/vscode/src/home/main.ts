@@ -55,7 +55,7 @@ function mark(parent: HTMLElement) {
   parent.appendChild(svg);
 }
 
-/** A count's words held together (`3 of 7 done`, `$0.42 spent`), and a dot with the word before it: the hero's
+/** A count's words held together (`3 of 7 done`, `$0.42 at`), and a dot with the word before it: the hero's
  *  lines wrap after a ` · `, not to leave a word or a dot alone. */
 const glue = (t: string) => t.replace(/(\d) /g, "$1 ").replace(/(?<!·) (?=[\d$])/g, " ").replaceAll(" · ", " · ");
 
@@ -262,9 +262,8 @@ function drawScreen(m: Model) {
     el("h2", "", "Graphene is not installed", screen);
     el("p", "", "This extension drives the graphene command. Install it once with uv, or set graphene.path in Settings if it is "
       + "somewhere else.", screen);
-    const a = acts();
-    button({ label: "Install Graphene", act: "install", main: true }, a);
-    button({ label: "Watch the demo", act: "demo" }, a);
+    // no demo here: it is the graphene command too, the one that is missing
+    button({ label: "Install Graphene", act: "install", main: true }, acts());
     return;
   }
   if (k === "uninitialised") return drawSetUp(m);

@@ -32,6 +32,11 @@ test("a question offers its default first, each option, and the person's own wor
   const q = card(home(fixture("proposals")), "q:which-port");
   assert.equal(q.title, "which port does the dev server take?");
   assert.deepEqual(q.lines, [{ k: "About", v: "greet route" }]); // the default's button says it is the default
+  // about a sub-goal: its name, never its id, and no "? " nor what follows its first ": "
+  const s = fixture("proposals");
+  const services = { ...s, goals: [...s.goals, { id: "services", title: "? Application services: replace every throw", parent: null, state: "proposed", check: null }],
+                     questions: s.questions.map((x) => ({ ...x, about: "services" })) };
+  assert.deepEqual(card(home(services), "q:which-port").lines, [{ k: "About", v: "Application services" }]);
   assert.deepEqual(q.buttons.map((b) => [b.label, b.arg, b.note, Boolean(b.main)]),
                    [["8000, as the README says", "8000, as the README says", "default", false],
                     ["pick a free one at start", "pick a free one at start", undefined, false], ["In your own words…", undefined, undefined, false]]);
@@ -114,7 +119,10 @@ test("the header: the goal, else what was last asked; the counts in plain words;
   assert.equal(headline(s), "make the app friendlier");
   assert.equal(headline({ ...s, goal: "", news: ["you asked: a --json flag", "proposed: x"] }), "a --json flag");
   assert.equal(headline({ ...s, goal: "", news: [] }), "");
-  assert.equal(countsLine(s), "2 of 7 done · $0.42 spent"); // who is working and what needs you: the stages and Needs you say it
+  assert.equal(countsLine(s), "2 of 7 done · $0.42 at list price"); // who is working and what needs you: the stages and Needs you say it
+  // on a subscription nothing is billed: never "spent"; before Start the cost is the planner's call; none, no cost
+  assert.equal(countsLine({ ...fixture("proposals"), spent: 1.336791 }), "0 of 4 done · planned for $1.34 at list price");
+  assert.equal(countsLine(fixture("proposals")), "0 of 4 done");
   assert.equal(banner(s), "");
   assert.equal(banner({ ...s, stand_in: true }), "Practice run: a scripted stand-in answers for the AI, so nothing is spent");
   assert.equal(countsLine({ ...s, stand_in: true }), "2 of 7 done", "a practice run spends nothing, and says no cost");

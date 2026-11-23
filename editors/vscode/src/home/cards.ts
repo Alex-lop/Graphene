@@ -40,12 +40,15 @@ export function banner(s: State): string {
   return s.stand_in ? "Practice run: a scripted stand-in answers for the AI, so nothing is spent" : "";
 }
 
-/** `3 of 6 done · $0.42 spent`: who is working and what needs you are said just under it, by the stages and the
- *  Needs you section. A practice run spends nothing, so it shows no cost: the stand-in's is a list price. */
+/** `3 of 6 done · $0.42 at list price`: who is working and what needs you are said just under it, by the stages
+ *  and the Needs you section. The cost is what the agents' calls would cost at list price, as the CLI says it: on
+ *  a subscription nothing is billed, so it is never "spent"; before Start it is the planner's call alone. A
+ *  practice run spends nothing, so it shows no cost: the stand-in's is a list price. */
 export function countsLine(s: State): string {
   const sb = s.scoreboard;
-  const spent = s.stand_in ? "" : usd(s.spent);
-  return [sb.total ? `${sb.proven} of ${sb.total} done` : "", spent ? `${spent} spent` : ""].filter(Boolean).join(" · ");
+  const cost = s.stand_in ? "" : usd(s.spent);
+  const planned = s.tasks.length > 0 && s.tasks.every((t) => t.state === "proposed");
+  return [sb.total ? `${sb.proven} of ${sb.total} done` : "", cost ? `${planned ? "planned for " : ""}${cost} at list price` : ""].filter(Boolean).join(" · ");
 }
 
 /** The open questions with no default: one stops the run either way, so Start waits for its answer as auto does. */
@@ -128,7 +131,9 @@ export interface Listed { name: string; goal: string; inputs: { name: string; de
  *  ``workflows``: the repository's saved graphs, each with a Run that proposes its plan with no planner call. */
 export function home(s: State, seen: ReadonlySet<string> = new Set(), exact = false, workflows: readonly Listed[] = []): Home {
   const titles: Record<string, string> = Object.fromEntries(s.tasks.map((t) => [t.id, t.title]));
-  const name = (id: string) => titles[id] ?? id;
+  // a sub-goal by its name: no "? " (the plan text's mark for a suggestion), nor what follows its first ": "
+  const goals: Record<string, string> = Object.fromEntries(s.goals.map((g) => [g.id, g.title.replace(/^\? /, "").split(": ")[0]!]));
+  const name = (id: string) => titles[id] ?? goals[id] ?? id;
   const sections: Section[] = [];
   const section = (key: string, title: string, cards: Card[], more: Partial<Section> = {}) => {
     if (cards.length) sections.push({ key, title, note: "", buttons: [], cards, folded: false, ...more });
