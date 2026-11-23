@@ -555,6 +555,11 @@ body.vscode-high-contrast-light .ring, body.vscode-high-contrast-light .lane.sel
 body.vscode-high-contrast .fork.kept .chip, body.vscode-high-contrast .l-chip.kept,
 body.vscode-high-contrast-light .fork.kept .chip, body.vscode-high-contrast-light .l-chip.kept { fill: none; background: none; }
 body.vscode-high-contrast button:not(.tab), body.vscode-high-contrast-light button:not(.tab) { border-color: var(--border); } /* a tab's underline is its own */
+body.vscode-high-contrast #need > button, body.vscode-high-contrast-light #need > button { border-color: var(--border); }
+/* the header's ghosts have no edge, as the editor's own toolbar: hovered, its dashed outline (no fill in HC) */
+body.vscode-high-contrast #actions button.quiet:hover:not(:disabled), body.vscode-high-contrast-light #actions button.quiet:hover:not(:disabled) {
+  outline: 1px dashed var(--focus); outline-offset: -1px;
+}
 body.vscode-high-contrast .stage.now, body.vscode-high-contrast-light .stage.now { background: none; outline: 1px solid var(--border); }
 body.vscode-high-contrast #help, body.vscode-high-contrast-light #help { background: rgba(0, 0, 0, 0.7); }
 body.vscode-high-contrast #svg.has-sel .edge, body.vscode-high-contrast-light #svg.has-sel .edge { opacity: 1; } /* the chosen card's lines are the focus colour: the rest keep their contrast */
