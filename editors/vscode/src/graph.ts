@@ -9,6 +9,7 @@ import { unanswered } from "./home/cards.ts";
 import { check, type FromPage } from "./graph/check.ts";
 import { beside, opens, seen, type Seen } from "./open.ts";
 import type { Session } from "./session.ts";
+import { free, type State } from "./state.ts";
 
 
 export class GraphHost {
@@ -133,7 +134,7 @@ export class GraphHost {
   private push(only?: vscode.Webview) {
     const s = this.session.state;
     const message = s // an empty plan is a state too: the page says so under the goal
-      ? { type: "state", state: s, exact: this.exact }
+      ? { type: "state", state: unpriced(s), exact: this.exact }
       : { type: "status", status: this.session.status };
     for (const w of only ? [only] : this.views) void w.postMessage(message);
     // ponytail: `graphene config` is read again at each push while Exact could hold Start (a suggestion, a
@@ -254,6 +255,12 @@ export class GraphHost {
 </body>
 </html>`;
   }
+}
+
+/** A practice run or a replay spends nothing (state.ts `free`): its page is sent no cost to put on a card, a
+ *  lane, an attempt or the pane's Cost. */
+function unpriced(s: State): State {
+  return free(s) ? { ...s, spent: null, tasks: s.tasks.map((t) => ({ ...t, usd: null, forks: t.forks.map((f) => ({ ...f, usd: null })) })) } : s;
 }
 
 /** What the active editor group has in front, as VS Code's tabs name it. Asked before VS Code has sent the

@@ -3,7 +3,7 @@
 import { ASK, NOT_CURSOR } from "../home/who.ts"; // Home's words for the agents, said the same on the graph
 import type { Layout } from "../layout.ts";
 import { inScope } from "../owners.ts";
-import { autoLine, headline, SAY, screenWords, usd, type DraftStep, type Fork, type Kept, type Question, type State, type Task } from "../state.ts";
+import { autoLine, free, headline, SAY, screenWords, usd, type DraftStep, type Fork, type Kept, type Question, type State, type Task } from "../state.ts";
 
 /** What the snapshot gains tonight (dev/process/editor/CONTRACT.md): read when present, nothing when not. */
 export type ForkX = Fork & { attempts?: number; idle?: number | null };
@@ -376,12 +376,12 @@ export function topLine(s: Pick<StateX, "replay" | "stand_in">): string {
 /** The header: the goal (what was asked, or the sub-goal a planner is drawing), the stages with what the run has
  *  cost in Run's note, and auto's line while auto is at work (`done`, it is said by the stages and the status
  *  bar). The cost is said once: not beside an auto line that says it against its budget, and not for a race
- *  against the scripted stand-in, whose calls cost nothing. */
+ *  against the scripted stand-in or a replay, which spend nothing (state.ts `free`). */
 export function headerFor(s: StateX): { goal: string; auto: string; stages: Stage[] } {
   const drawing = s.drafting?.steps.find((d) => !d.leaf && !d.parent)?.title;
   const goal = headline(s) || drawing || (s.tasks.length ? "your plan" : "Graphene"); // an ask sets no goal: what was asked
   const auto = s.auto?.stage === "done" ? "" : autoLine(s);
-  const spent = s.stand_in || (auto && s.auto?.spent !== null) ? "" : usd(s.spent);
+  const spent = free(s) || (auto && s.auto?.spent !== null) ? "" : usd(s.spent);
   const stages = pipeline(s).map((st) => (st.key === "run" && spent && st.at !== "next" ? { ...st, note: [st.note, spent].filter(Boolean).join(" · ") } : st));
   return { goal, auto, stages };
 }

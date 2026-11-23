@@ -31,6 +31,7 @@ test("the header says each number once: the stages, the cost in Run's note unles
   assert.equal(run(state), "1 working", "the auto line says the cost: not again");
   assert.equal(run({ ...state, auto: null }), "1 working · $0.61");
   assert.equal(run({ ...state, auto: null, stand_in: true }), "1 working", "a stand-in's calls cost nothing");
+  assert.equal(run({ ...state, auto: null, replay: { shown: "demo", day: "", repository: "" } }), "1 working", "nor does a replay spend");
   const done = { ...state, auto: { ...state.auto!, stage: "done" } };
   assert.deepEqual([headerFor(done).auto, run(done)], ["", "1 working · $0.61"], "auto done: the stages say where the plan is");
   assert.equal(run(fx("proposals")), "", "nothing has run: no cost under Run");

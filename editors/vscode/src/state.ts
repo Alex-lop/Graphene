@@ -348,6 +348,10 @@ export function mdText(s: string): string {
   return s.replace(/\s+/g, " ").replace(/[\\`*_{}[\]()#+\-.!|<>~$&:]/g, "\\$&");
 }
 
+/** A practice run (every model call went to the scripted stand-in) or a replay (no model runs): nothing is spent
+ *  here, so no screen says a cost, the status bar, auto's line and the graph's (graph.ts sends it none) alike. */
+export const free = (s: Pick<State, "stand_in" | "replay">): boolean => s.stand_in || Boolean(s.replay);
+
 /** The status bar's words: `2 working · 1 needs you · $0.42`, `3 of 6 done` when nothing runs; while auto is on,
  *  its round first (`auto round 2 · …`), or that it waits for you, or is done. */
 export function summary(s: State): string {
@@ -357,7 +361,7 @@ export function summary(s: State): string {
   if (sb.need_you) parts.push(sb.need_you === 1 ? "1 needs you" : `${sb.need_you} need you`);
   if (!parts.length) parts.push(sb.total ? `${sb.proven} of ${sb.total} done` : "no plan yet");
   const spent = usd(s.spent);
-  if (spent && !s.stand_in) parts.push(spent); // a practice run spends nothing: Home and the graph say no cost either
+  if (spent && !free(s)) parts.push(spent);
   const a = autoLine(s) ? s.auto : null;
   if (a?.stage) parts.unshift(a.stage === "waits" ? "auto waits" : a.stage === "done" ? "auto done" : `auto round ${a.round ?? 1}`);
   return parts.join(" · ");
@@ -372,7 +376,7 @@ export function autoLine(s: State): string {
   if (a.round !== null) parts.push(a.rounds !== null ? `round ${a.round} of ${a.rounds + 1}` : `round ${a.round}`);
   if (a.stage) parts.push(a.stage);
   const spent = a.spent === null ? "" : usd(a.spent) || "$0.00";
-  if (spent && !s.stand_in) parts.push(a.budget !== null ? `${spent} of ${usd(a.budget) || "$0.00"}` : spent);
+  if (spent && !free(s)) parts.push(a.budget !== null ? `${spent} of ${usd(a.budget) || "$0.00"}` : spent);
   if (a.why) parts.push(screenWords(a.why));
   return parts.join(" · ");
 }
@@ -382,7 +386,7 @@ export function autoLine(s: State): string {
 export function autoNews(before: State | null, now: State): { kind: "waits" | "fixing" | "done"; text: string } | null {
   const was = before?.auto, a = now.auto;
   if (!before || !a || !a.stage || (was?.stage === a.stage && was?.round === a.round)) return null;
-  const money = a.spent === null ? "" : ` · ${usd(a.spent) || "$0.00"}${a.budget !== null ? ` of ${usd(a.budget) || "$0.00"}` : ""}`;
+  const money = a.spent === null || free(now) ? "" : ` · ${usd(a.spent) || "$0.00"}${a.budget !== null ? ` of ${usd(a.budget) || "$0.00"}` : ""}`;
   if (a.stage === "waits") return { kind: "waits", text: `Graphene auto waits for you: ${screenWords(a.why) || "see the plan"}` };
   if (a.stage === "fixing") return { kind: "fixing", text: `Graphene auto: the goal's check failed${a.why ? ` (${screenWords(a.why)})` : ""}; round ${a.round} plans the fix` };
   if (a.stage === "done") return { kind: "done", text: `Graphene auto is done: the goal's check passed in round ${a.round}${money}` };
