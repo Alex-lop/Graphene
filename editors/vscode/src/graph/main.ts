@@ -10,7 +10,7 @@ import { blanks, draftLine, globs, isDraft, lacks, type Draft } from "./draft.ts
 import { attemptsMark, cardAct, checkCut, checkLines, checkMark, cornerMark, cutWhole, doneWhen, filesLine, fitWhole, forkMark, goalBox, goalCells, legend, nextWanting, stateMark, tailPath, tally, wanting, wantingLine, wrap,
          type CheckMark, type Mark } from "./marks.ts";
 import { actsFor, ASK_AGENT, askLine, askNote, asksYou, attemptsOf, commandChip, cornerWord, CURSOR_AGENT, cut, done, draftedSteps, edgeKind, editable,
-         filesChip, FIRST_HINT, forkActs, forkRow, forkWords, HEADER_ACTS, headerFor, heldWords, KEYS, linkHint, mainAct, mayRun, newsLine, paneKey, pipeline,
+         filesChip, forkActs, forkRow, forkWords, HEADER_ACTS, headerFor, heldWords, KEYS, linkHint, mainAct, mayRun, newsLine, paneKey, pipeline,
          planningLine, PROVES_NOTHING, provesNothing, questionOn, scopeTree, startAnswers, stopsOf, sub, tabOrder, tokenWords, topLine, whenEdit, who, writtenOf,
          type Button, type ForkX, type StateX, type TaskX } from "./words.ts";
 import { CARD, dotGap, FAR, fitPlan, hold, levelFor, miniFrame, miniSize, nearest, offScreen, panTo, percent, switchK, wheelK, ZOOM_MAX, ZOOM_MIN, zoomK,
@@ -24,7 +24,7 @@ type Incoming = { type: "state"; state: StateX; exact?: boolean } | { type: "sta
   | { type: "said"; id?: string; key?: string; ok: boolean; line: string; made?: string }; // graphene's answer to a change made here
 type View = "auto" | "graph" | "lanes";
 type Tab = "scope" | "edit" | "activity";
-type Saved = { hinted?: boolean; view?: View; drafts?: Draft[]; drew?: number; tab?: Tab };
+type Saved = { view?: View; drafts?: Draft[]; drew?: number; tab?: Tab };
 
 const GOAL = " goal";
 const PLAN = " p"; // before a step the planner is writing: a space first, so its box is never a task's
@@ -193,7 +193,6 @@ const drawn = (): Draft[] => (replaying() ? [] : drafts);
 /** A new draft box, after a task or on its own, its title typed on the box. */
 function draw(at: { after: string | null; parent: string | null }) {
   if (!state || replaying()) return;
-  first();
   const n = (saved.drew ?? 0) + 1;
   const d: Draft = { key: ` d${crypto.randomUUID()}`, title: "", files: "", check: "", approve: false, ...at };
   drafts = [...drafts, d];
@@ -1267,7 +1266,6 @@ const wantYou = (): string[] => (state && !replaying() ? wanting(state.tasks) : 
 
 /** The next step that wants you, selected and brought on screen; round again after the last. */
 function showNext() {
-  first();
   const id = nextWanting(wantYou(), selected);
   if (id) select(id, true);
 }
@@ -1335,7 +1333,6 @@ function reveal(id: string, own = false) {
 // ---- selection, the pane, the hint, the help ----
 
 function clicked(id: string) {
-  first();
   if (linking && linking !== id) {
     if (isDraft(id)) redraw(id, { after: linking }); // a draft waits on it from the start
     else api.postMessage({ type: "act", act: "link", id: linking, target: id });
@@ -1365,9 +1362,9 @@ function disarm() {
   $("canvas").classList.remove("wiring");
 }
 
-/** The strip under the canvas, there only while it has something to do: the first visit's keys, until the first
- *  touch, and a link being drawn, with its way out. Otherwise the cards, the chips and the header say what changed,
- *  and the latest news is in it for a screen reader alone (`sr`), not a log line over the editor's status bar. */
+/** The strip under the canvas, there only while a link is being drawn, with its way out (the header's ? lists the
+ *  keys). Otherwise the cards, the chips and the header say what changed, and the latest news is in it for a screen
+ *  reader alone (`sr`), not a log line over the editor's status bar. */
 function hint() {
   const h = $("hint");
   h.hidden = false;
@@ -1381,9 +1378,6 @@ function hint() {
     cancel.addEventListener("click", () => { disarm(); render(); });
     h.replaceChildren(div("hint-text", linkHint(a?.title ?? from, Boolean(wiring))), cancel);
     h.className = "linking";
-  } else if (!saved.hinted && (state?.tasks.length || drawn().length)) {
-    h.textContent = FIRST_HINT;
-    h.className = "";
   } else {
     h.textContent = state ? newsLine(state, !$("auto").hidden) : "";
     h.className = "sr";
@@ -1999,12 +1993,6 @@ window.addEventListener("message", (e: MessageEvent<Incoming>) => {
   }
 });
 
-function first() { // the first touch: the first-time hint has done its work
-  if (saved.hinted) return;
-  remember({ hinted: true });
-  hint();
-}
-
 window.addEventListener("keydown", (e) => {
   if ((e.target as HTMLElement).tagName === "BUTTON" && (e.key === "Enter" || e.key === " ")) return;
   if ((e.target as HTMLElement).tagName === "INPUT" && e.key !== "Escape") return; // a tick box: Space is its own
@@ -2016,7 +2004,7 @@ window.addEventListener("keydown", (e) => {
     render();
     return;
   }
-  if (e.key === "?") { help($("help").hidden); first(); return; }
+  if (e.key === "?") { help($("help").hidden); return; }
   if (e.metaKey || e.ctrlKey || e.altKey) return;
   if (e.key === "g" && state) { // the goal, on screen
     if (view() === "lanes") $("lanes").querySelector(".goal-row")?.scrollIntoView({ block: "nearest" });
@@ -2033,7 +2021,6 @@ window.addEventListener("keydown", (e) => {
   if (e.key === "f") return refit();
   if (e.key === "n") return showNext();
   if (view() !== "lanes" && (e.key === "-" || e.key === "=" || e.key === "0")) { // out, in, and back to 100%
-    first();
     return e.key === "0" ? actual() : nudge(e.key === "-" ? 0.8 : 1.25);
   }
   if (e.key === "v") { remember({ view: view() === "lanes" ? "graph" : "lanes" }); fitted = false; render(); return; }
@@ -2041,7 +2028,6 @@ window.addEventListener("keydown", (e) => {
   const dir = keys[e.key];
   if (!dir || !state) return;
   e.preventDefault();
-  first();
   const goalG = $("goalg");
   const from = document.activeElement === goalG ? GOAL : selected; // the arrows walk from the goal box too
   if (!from) { select(state.tasks[0]?.id ?? null, true); return; }
@@ -2063,7 +2049,6 @@ function wire() {
   canvas.addEventListener("wheel", (e) => {
     if (view() === "lanes") return; // the rows scroll as a list does
     e.preventDefault();
-    first();
     if (e.ctrlKey || e.metaKey) { // a pinch, or the wheel with the modifier: zoom about the pointer
       const rect = canvas.getBoundingClientRect();
       return zoomAt(wheelK(zoom.k, e.deltaY), e.clientX - rect.left, e.clientY - rect.top);
@@ -2078,7 +2063,6 @@ function wire() {
     const port = (e.target as Element).closest("[data-port]");
     if (port && !replaying()) { // a drag from a task's dot draws a link
       e.preventDefault();
-      first();
       wiring = { from: port.getAttribute("data-port")!, ...at(e) };
       canvas.classList.add("wiring");
       render();
@@ -2115,7 +2099,6 @@ function wire() {
     drag = null;
     canvas.classList.remove("dragging");
   });
-  canvas.addEventListener("click", (e) => { if (!(e.target as Element).closest(".task, .lane, .goal")) first(); });
   // a double click on a card is heard wherever its second click lands: the pane its first click opened may be
   // under the pointer by then (beside the canvas, or under a narrow one). That click presses nothing there, takes
   // no focus and selects no word; a row opens: whole cards, that one in the middle
@@ -2187,7 +2170,7 @@ function wire() {
     moved = true;
     applyZoom();
   };
-  map.addEventListener("pointerdown", (e) => { e.preventDefault(); map.setPointerCapture(e.pointerId); first(); panned(e); });
+  map.addEventListener("pointerdown", (e) => { e.preventDefault(); map.setPointerCapture(e.pointerId); panned(e); });
   map.addEventListener("pointermove", (e) => { if (e.buttons & 1) panned(e); });
   map.addEventListener("mouseleave", () => idle(map));
   const planning = div("", undefined, canvas); // while a planner writes: how many steps it has drawn so far
@@ -2242,7 +2225,7 @@ function wire() {
   };
   top("b-save", "", "save", "Save as workflow: this graph to workflows/, to run again on new inputs", () => api.postMessage({ type: "act", act: "saveWorkflow", id: "" }));
   top("b-view", "", "list-flat", "Lanes (v)", () => { remember({ view: view() === "lanes" ? "graph" : "lanes" }); fitted = false; render(); });
-  top("b-help", "", "question", "Keys (?)", () => { help($("help").hidden); first(); }); // as the key: the first-time hint's work is done
+  top("b-help", "", "question", "Keys and mouse (?)", () => help($("help").hidden));
   top("b-add", "Add task", "add", "draw a task: its title, then its files and its check (or the planner fills them in)", () => draw({ after: null, parent: null }));
   top("b-run", "Run", "play", "", () => {
     const a = state && mainAct(state, exact), run = $<HTMLButtonElement>("b-run");

@@ -535,6 +535,3 @@ export function newsLine(s: Pick<StateX, "news" | "questions">, autoShown: boole
 }
 /** A news line in the screen's words (the status bar's hover reads them too). */
 export const newsWords = (line: string): string => screenWords(line).replace(/\bproposed\b/g, SAY.proposed).replace(/\bcame back\b/g, SAY["came back"]);
-
-/** The first-time hint under the graph. */
-export const FIRST_HINT = "click a task to change it · + draws a new one · drag a dot onto another task to link them · ? lists every key";
