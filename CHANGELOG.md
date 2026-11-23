@@ -18,19 +18,23 @@ The editor (23 November 2026, then PRs #68, #67 and #60). Each line is one chang
 - One set of colours, lines and corners for the graph and Home (`media/tokens.css`), none read from what Cursor's
   themes leave weak: focus and selection in the link colour, real shadows, a white switch knob, a themed tab icon;
   `media/preview.html` and `media/home-preview.html` draw both in Cursor's themes with no VS Code (`?theme=`).
-- The graph restyled: a two-row header with Run the one filled button, neutral tiles (who does a task is its
-  letter's colour), no frame round a plan that stays on this machine, no floating goal chip (`g` still brings the
-  goal), the minimap only while the plan moves.
-- The whole plan opens in view, zoom 12% to 300%; a plan too big for whole cards is drawn as rows, a mark and a
-  title filled by state; choosing a card moves nothing (`test/zoom.test.ts`).
-- A card's foot is its check: `done when …` with a box only Graphene ticks, crossed where the check failed; the one
-  act a task needs from you is a button on its card (Approve, Help it…, Approve and run, Mark done, Allow the
-  write…), and a chip walks them (`3 tasks need you · show the next`, `n`).
-- The graph's tab opens by itself when work starts, beside your file and without the keyboard; closed, it stays
-  closed (`graphene.graph.openOnStart`; CI's `vscode-e2e`).
+- The graph restyled: a two-row header with one main act (Start for a suggested plan, Run, Stop), Stop after the
+  plan left to Home's Settings; whole cards inside their border, with no letter tile (who does a task is in its
+  pane) and colour only where a card wants you; square edges in the gaps between cards; no frame round a plan
+  that stays on this machine, no floating goal chip (`g` still brings the goal), the minimap only while the plan
+  moves.
+- The whole plan opens in view, zoom 20% to 300%; whole cards only where their smallest words read at 11 px, else
+  rows, a mark and a title; choosing a card moves nothing (`test/zoom.test.ts`).
+- A card's foot is its check, with a box only Graphene ticks, crossed where the check failed; the one act a task
+  needs from you is a button on its card (Open changes, Approve, Answer…, Help it…, Compare, Approve and run, Mark
+  done, Allow the write…), and a chip walks them (`3 tasks need you · show the next`, `n`).
+- The graph's tab opens by itself when work starts, without the keyboard: beside your file in VS Code, in front of
+  it in Cursor, whose agent chat already narrows the editor; closed, it stays closed (`graphene.graph.openOnStart`;
+  CI's `vscode-e2e`).
 - Plan, Run and Review across Home and the graph's header; a plan Claude Code is still writing is drawn task by
-  task; a task's pane opens on Scope: the files it may change, what it may run, how a write outside them is held
-  (no more than the tests prove), the writes stopped, its check before and after the work.
+  task; a task's pane is an inspector, its state and who in its head, and opens on Scope: the files it may change,
+  what it may run, how a write outside them is held (no more than the tests prove), the writes stopped, its check
+  before and after the work.
 - Drawn by hand: Add task, the + past a card and the `+` key draw a draft that joins the plan once it has files and
   a check (`graphene node add`); a task's Edit tab is a form (title, files, check, attempts 1 to 8, wait for my
   approval, I will do this one); drafts survive a reload; Home's Exact holds Start for every open question
@@ -56,7 +60,8 @@ The CLI. Each line is one change.
 - `graphene ask` keeps Claude Code's plan as it is written (`--include-partial-messages`; the snapshot's
   `drafting`); one live call confirmed the stream's shape, and no real planner was watched in the editor.
 - `graphene state --json` says each task's check before and after the work (`checked`), how a write outside it is
-  held (`held`), its `command` and whether it `leaves`; with 0.9.0's CLI the extension leaves every box dotted.
+  held (`held`), its `command` and whether it `leaves`; with 0.9.0's CLI every task's pane says Not held and no
+  check's box is ticked.
 
 ## 0.9.0 (29 October 2026)
 

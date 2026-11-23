@@ -14,7 +14,7 @@ it, and approve what lands. Works with Claude Code and Codex.
   <a href="https://github.com/Alex-lop/Graphene/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-5e5d59" alt="License"></a>
 </p>
 
-![Graphene's graph in an editor tab. Across the top: Plan, Run and Review. On the graph: a plan's task cards flowing left to right into the goal, each with its files and its check. Beside them, the selected task's Scope pane: the files it may change, what it may run, the writes that were stopped, and its check](https://raw.githubusercontent.com/Alex-lop/Graphene/main/editors/vscode/media/graph.png)
+![Graphene's graph in an editor tab. Across the top: the goal, then Plan, Run and Review. On the graph: four task cards under one sub-goal, three done and one working with its three attempts, each card with its files and, at its foot, its check, all leading into the goal. Beside them, the selected task's Scope pane: the files it may change, its check failing before the work and passing after it, what it may run, how a write outside its files is held, and the write it was stopped from making](https://raw.githubusercontent.com/Alex-lop/Graphene/main/editors/vscode/media/graph.png)
 
 *The graph, replaying the bundled demo: a scripted stand-in, no model ran.*
 
@@ -34,13 +34,19 @@ More agents means overlapping edits, hidden dependencies, and changes that look 
 
 ## In VS Code or Cursor
 
-Install the CLI, then the extension from the `.vsix` on the
-[latest release](https://github.com/Alex-lop/Graphene/releases/latest) (it is not on the Marketplace or Open VSX):
+The extension and the CLI go together, 0.10.0 each: with 0.9.0's CLI every task's pane says **Not held** and no
+check's box is ticked. Until PyPI and the [latest release](https://github.com/Alex-lop/Graphene/releases/latest)
+have 0.10.0, install both from this repository (Node 22+ builds the extension, which is not on the Marketplace or
+Open VSX):
 
 ```sh
-uv tool install graphene-map
-cursor --install-extension graphene-0.10.0.vsix   # VS Code: code --install-extension graphene-0.10.0.vsix
+git clone https://github.com/Alex-lop/Graphene && cd Graphene
+uv tool install .                                  # released: uv tool install graphene-map
+cd editors/vscode && npm ci && npm run package     # released: the .vsix on the latest release
+cursor --install-extension graphene-0.10.0.vsix    # VS Code: code --install-extension graphene-0.10.0.vsix
 ```
+
+**Graphene: Watch the Demo** (in the palette) replays a run on the graph: no key, no model. Then, on your repository:
 
 1. Click Graphene in the activity bar: the graph opens in an editor tab; **Home**, in the side bar, sets up the folder.
 2. Ask Claude Code or Codex for something, in its own chat. Graphene's hooks have it propose a plan first, on the
@@ -58,10 +64,11 @@ pushes or opens a pull request (`git push`, `gh pr`) waits past the **leaves you
 
 Try the scripted replay first: `uvx graphene-map demo --auto` needs no API key and writes nothing to your project.
 Graphene needs Python 3.12+, [uv](https://docs.astral.sh/uv/getting-started/installation/) and Git, on macOS or
-Linux (Windows via WSL). On your repository, with Claude Code or Codex installed and signed in:
+Linux (Windows via WSL). PyPI's `graphene-map` is still 0.9.0, with no Codex hooks and no workflows: until 0.10.0 is
+released, install it from this repository. On your repository, with Claude Code or Codex installed and signed in:
 
 ```sh
-uv tool install graphene-map
+uv tool install git+https://github.com/Alex-lop/Graphene   # released: uv tool install graphene-map
 cd your-repo
 graphene init    # choose the planner and executor; installs the Claude Code and Codex hooks
 graphene watch   # the cockpit: the plan the editor shows

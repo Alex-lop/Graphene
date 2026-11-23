@@ -1,19 +1,24 @@
 # Graphene 0.10.0
 
+<!-- Before tagging: README.md's two install blocks and editors/vscode/README.md's go back to the released commands
+     in their comments (uv tool install graphene-map, the .vsix on the latest release), and the sentences saying
+     0.10.0 is not released yet go: PyPI's page for 0.10.0 is the README as tagged. The release does not show
+     this comment. -->
+
 Install: `uv tool install graphene-map` (over 0.9.0, `uv tool upgrade graphene-map`). The VS Code extension's
 `.vsix` is attached below: `cursor --install-extension graphene-0.10.0.vsix` (VS Code: `code --install-extension
-graphene-0.10.0.vsix`). Upgrade both: with 0.9.0's CLI the extension leaves every check's box dotted. Or try it
-with nothing installed: `uvx graphene-map demo --auto`, a scripted replay (no key, nothing written to your
-project); `uvx graphene-map demo` is the older one, a run you steer by hand. In the editor, Graphene: Watch the
-Demo plays it.
+graphene-0.10.0.vsix`). Upgrade both: with 0.9.0's CLI every task's pane says Not held and no check's box is
+ticked. Or try it with nothing installed: `uvx graphene-map demo --auto`, a scripted replay (no key,
+nothing written to your project); `uvx graphene-map demo` is the older one, a run you steer by hand. In the
+editor, Graphene: Watch the Demo plays it.
 
 ## What you get that 0.9.0 did not have
 
 - **The graph, whole, in a tab of its own.** Click Graphene's icon and the plan opens in an editor tab, fitted
-  whatever its size: a plan too big for whole cards is drawn as rows, zoom goes from 12% to 300%, and choosing a
-  card moves nothing. It opens by itself when work starts, beside your file. Each card's foot is its check, `done
-  when …`, with a box only Graphene ticks; the one act a task needs from you is a button on its card, and a chip
-  walks them (`3 tasks need you · show the next`).
+  whatever its size: a plan too big for whole cards is drawn as rows, zoom goes from 20% to 300%, and choosing a
+  card moves nothing. It opens by itself when work starts: beside your file in VS Code, in front of it in Cursor.
+  Each card's foot is its check, with a box only Graphene ticks; the one act a task needs from you is a button on
+  its card, and a chip walks them (`3 tasks need you · show the next`).
 - **A plan from your agent's chat.** There is no box to type a goal in: Graphene's hooks have Claude Code or Codex
   propose a plan in its own chat before it writes, and it appears on the graph (Claude Code's task by task, as
   `graphene ask` reads it). Change a task's files, check or attempts on its Edit tab, draw one with Add task, then

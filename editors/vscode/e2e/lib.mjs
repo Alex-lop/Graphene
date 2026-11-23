@@ -186,12 +186,12 @@ export function safeEnv(standin) {
   mkdirSync(zdot, { recursive: true });
   return { ZDOTDIR: zdot, NEBIUS_API_KEY: "fake-key", GRAPHENE_KEYCHAIN: "off", GRAPHENE_TOKENFACTORY_URL: standin || DEAD_URL };
 }
-export async function launch(app, profile, folder, { width = 1280, height = 800, video, timeout = 90000, standin } = {}) {
+export async function launch(app, profile, folder, { width = 1280, height = 800, video, timeout = 90000, standin, args: more = [] } = {}) {
   const args = [
     folder,
     "--user-data-dir", profile.userDataDir, "--extensions-dir", profile.extensionsDir,
     "--skip-welcome", "--skip-release-notes", "--disable-updates", "--disable-telemetry", "--disable-crash-reporter",
-    "--disable-workspace-trust", "--no-cached-data", "--disable-gpu", "--new-window",
+    "--disable-workspace-trust", "--no-cached-data", "--disable-gpu", "--new-window", ...more,
   ];
   const env = { ...cleanEnv(), ...safeEnv(standin), VSCODE_SKIP_PRELAUNCH: "1", ELECTRON_ENABLE_LOGGING: process.env.E2E_LOG ? "1" : undefined };
   delete env.ELECTRON_RUN_AS_NODE;

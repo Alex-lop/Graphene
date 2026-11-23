@@ -2,147 +2,81 @@
 
 ## 0.10.0 (not yet tagged)
 
-The graph whole in a tab of its own, a plan from your agent's chat, one look and one word for one thing
-(23 November 2026). Nothing here ran with a real agent.
+The graph is where you watch and shape agent work: whole, in a tab of its own, with a plan from your agent's chat
+(10 to 23 November 2026). It needs Graphene 0.10.0's CLI: with 0.9.0's every task's pane says Not held and no
+check's box is ticked. Nothing here ran with a real agent: every walk used the scripted stand-in.
 
-- A click on Graphene's icon opens the graph whole in the editor area, not beside a file as narrow lanes. The side
-  bar's narrow Graph view is gone: Home is the side bar's one page (the advanced views aside).
-- Show Graph is Open the Graph: in the palette, on Home's title bar (an expand icon) and as Home's first card.
-- No box to type a goal in, on Home or in the palette: Plan it and Graphene: Auto… are gone. A plan comes from
-  your coding agent's chat (Graphene's hooks have Claude Code or Codex propose it first), a workflow, or Add task
-  on the graph.
-- Home: Stop after the plan and Exact under Settings at its foot, cards lifted off the side bar with a hairline
-  edge, smaller buttons, Set Up's picks as cards, Watch the demo a plain link.
-- One set of colours, lines and corners for the graph and Home (`media/tokens.css`), none read from what Cursor's
-  themes leave weak: focus and selection in the link colour, real shadows, a white switch knob, themed tab icons.
-- The header in two rows: the goal and its buttons, then the stages, the switch, the auto line and the counts. Run
-  is filled only when it would start something (Stop while a run goes); with no plan there is no Run, Add or Save.
-- The cards: every tile neutral, who does a task said by its letter's colour; a done card drops its attempts and a
-  done row its fill; a waiting row and a draft are opaque, so no line strikes through their titles.
-- The canvas: no frame round a plan that stays on this machine; one line from each sub-goal into the goal, on a
-  trunk; a chosen card's lines lit and the rest faded; no floating goal chip (`g` still brings the goal); the
-  minimap only while the plan moves, and a moment after.
-- A plan opens big: rows drawn larger to fill the tab, whole cards only where their titles read (85%, was 70%),
-  and whole down to 70% beside an open pane, so the task chosen from Home keeps its files and its check.
-- The pane: its state a dot before the title, the chosen tab underlined, the main act the pane's width and the
-  rest two to a row, or one where two would cut their words.
-- One word a thing on every screen: task, suggested, working, to review, needs help, done, attempt, card (`3 tasks
-  need you`, `2 of 7 done`, `2 need help`, Remove where it said Drop); the Explorer's hovers and the advanced views
-  too.
-- An empty plan points to your coding agent's chat, or to Add task; the walkthrough's Ask your agent for a plan is
-  ticked when a plan is there.
-- `media/home-preview.html` draws Home with no VS Code, as `media/preview.html` draws the graph, both in Cursor
-  Dark, Cursor Dark Midnight, Cursor Light and Default Dark+ (`?theme=`). The README is half as long.
+The tab:
 
-The whole plan in the pane, cards that say what is true of a task and where you are needed, and a tab of the
-graph's own (22 November 2026).
+- A click on Graphene's icon opens the graph whole in the editor area; the side bar's narrow Graph view is gone,
+  and Home is the side bar's one page. Show Graph is Open the Graph: in the palette, on Home's title bar and as
+  Home's first card.
+- It opens by itself when work starts (a plan with work left, a plan appearing, a run starting), without the
+  keyboard: beside your file in VS Code, in front of it in Cursor, whose agent chat already narrows the editor.
+  Closed, it stays closed in that window until Open the Graph (`graphene.graph.openOnStart`).
+- No box to type a goal in, on Home or in the palette (Plan it and Graphene: Auto… are gone): a plan comes from
+  your coding agent's chat, a workflow, or Add task. In Cursor, one dim line says its own Agent does not plan
+  with Graphene yet. An empty plan points to your agent's chat or to Add task. A plan Claude Code is still
+  writing is drawn task by task, as `graphene ask` reads it; a Codex plan appears whole.
 
-The whole plan in the pane:
+The header:
 
-- The graph opens with the whole plan in view, whatever its size: fitted to the pane. It is fitted again when the
-  window is resized, when the plan grows or shrinks, and every time the page opens, until you pan or zoom. `f`,
-  the ⤢ button and a double click on the canvas fit it again.
-- Choosing a card does not move the plan. Its pane opens beside the canvas and the zoom, the cards and the card
-  under the pointer stay as they were; the plan pans only when that card would be out of view, and just enough
-  to show it. Closing the pane moves nothing either. (A task opened from the Plan view, or a page that opens on
-  one, is fitted beside its pane.) In a tab of 700 px or less the pane opens under the canvas and takes half of
-  it: there the plan moves up into what is left, at the same zoom. A tab of 701 to 840 px keeps its graph when
-  a card is chosen, where the pane's width used to turn it into the lanes.
-- Zoom goes out to 12% and in to 300%: the − and + buttons, `-` and `=`, ⌘ or Ctrl with the wheel, a pinch. The
-  percent between the buttons says how big a card is drawn; a click on it, or `0`, is 100%. The buttons are there
-  wherever the graph is drawn across, a narrow tab (561 to 700 px) too.
-- From afar a card is a row: its state's mark and its title, filled by its state (working amber, to review purple,
-  needs help red; done plain, its tick says it; not started is an outline). Its right end holds only news: its
-  check proves nothing yet, or its attempts as small marks. A plan too big to read as whole cards opens that way;
-  zooming in turns the rows back into whole cards, and a double click on a row, the goal's too, opens it at 100%.
-  A task drawn from afar opens there too, and the whole plan is back once you leave it.
-- From far (under about 27%) the titles go and the fills grow stronger, and what wants you keeps its size: the
-  diamond and the triangle are 16 px on screen however small the plan is drawn.
-- The region for what leaves your machine is drawn only once a task pushes or opens a pull request: until then the
-  plan has its width.
-- A minimap in the canvas's corner while part of the plan is off screen: a click or a drag in it goes there. Its
-  rects take the rows' colours. It stays away while a pane is open on a plan still fitted to the window, where
-  it would stand on the cards beside the pane.
-- Tab onto a card that is out of view pans it in, as choosing it does. The canvas itself never scrolls, so the
-  zoom's buttons, the legend and the chip stay where they are.
-- A click on a working card is no longer lost when a snapshot lands between the press and the release.
-- The `+` key draws a task and no longer types a + into its title. The narrow graph (under 560 px) starts its
-  first row under the chip for what needs you, and is otherwise as it was.
+- Two rows: the goal and its buttons, then Plan, Run and Review with their counts and, for a plan running on its
+  own, its round. One main act: Start for a suggested plan (it accepts, then runs, as Home's), Run, or Stop while
+  a run goes; Exact holds Start while a question is open. Save as workflow, Lanes and Keys and mouse are icons.
+- Stop after the plan is Home's, under its Settings: beside Start and Stop it read as another stop. A practice
+  run or a replay shows no cost anywhere.
+
+The canvas:
+
+- The whole plan opens in view, fitted again when the window or the plan changes until you pan or zoom (`f`,
+  the fit button, a double click). Whole cards only where their smallest words read at 11 px, else rows: a mark
+  and a title. Zoom 20% to 300%. Choosing a card moves nothing.
+- A sub-goal's tasks are grouped under its header (a ring, `3 of 6`, what wants you there), loose tasks side by
+  side; edges are square, in the gaps between cards, one from each sub-goal into the goal; a chosen card's lines
+  are lit. No frame round a plan that stays on this machine; the leaves your machine region shows only once a
+  task would push or open a pull request.
+- A chip walks what needs you (`3 tasks need you · show the next`, `n`), and an open question has a chip of its
+  own (`1 question · answer`). The legend is the marks with their words and counts; the minimap shows only while
+  the plan moves; `g` still brings the goal.
 
 The cards:
 
-- A card's foot is its check's: a box only Graphene ticks, the words `done when`, and the check with its end
-  kept (`uv run…test_cache.py`). The box is ticked where the check passed after the work and that verdict still
-  stands, crossed where it failed, dashed and amber where it proves nothing yet, whole and empty where it fails
-  now as it should, dotted where it has not run; a task with no check wears the diamond of your approval. No
-  check wears a ✓ it has not earned. The foot's hover says the verdict in words, and the pane's Done when says
-  the same: a verdict from before a task was sent back is on neither. Beside a button that leaves the check no
-  room, the foot is the box and the button alone. The verdicts are the snapshot's own (`checked`), which the
-  CLI says from 0.10.0: with 0.9.0's the box stays dotted, done tasks too.
-- The task that needs you wears its one act on its card: Approve, Help it…, Approve and run, Mark done, Allow
-  the write…. It is the pane's own button: a click, or Tab and Enter, and it selects nothing. Never in a replay.
-- One shape a state, on a card's corner and at a row's left: a ticked disc done, a turning ring working, a
-  filled diamond to review or asks you, a hollow diamond a task of your own, a triangle needs help; on a row a
-  dotted, a whole and a dashed ring are waiting, ready and suggested. To review and needs help no longer differ
-  by colour alone. To review and yours have a purple border, done a soft green one and a quieter title. A
-  lane wears the same mark at its row's end, beside the model while its task works.
-- The files chip says the latest fact: the files a task may change; `✎ 2 of 4 files` while it works, and
-  `1 refused` in red; `✕ wrote store/repo.py` when it needs help for a write outside them.
-- A task set to several attempts says `×3` at the end of its status line, in the lanes too, until they start.
-  The waiting chips under every such card are gone, so a big plan is a good deal shorter; attempts that started
-  keep their chips.
+- A card is whole and inside its border: its title on two lines, its files, a status, and at its foot its check,
+  with a box only Graphene ticks (ticked passed, crossed failed, dotted not run). No letter tile: who does a task
+  is in its pane.
+- A card wears its state on its mark, and colour only where it wants you (to review, needs help, asks you); blue
+  round a card is the selection alone. Its status says what nothing else on it does: what a suggestion covers,
+  the agent on a working task, `3 agents at once` for attempts not started.
+- The one act a task needs from you is a button on its card: Open changes, then Approve once they are open,
+  Answer…, Help it…, Compare, Approve and run, Mark done, Allow the write…. Drafts are grey dashes.
 
-Around the cards:
+The pane, an inspector:
 
-- A sub-goal's header is a ring filled by how many of its tasks are done (the ticked disc when all are), its
-  title, `3 of 6`, one small mark a task with the done first, and in words what wants you there (`1 to
-  review`, `1 needs help`, `1 yours`), each in its mark's colour. It is larger over rows, so it reads in a fitted
-  plan, and it is drawn over the lines that cross it.
-- The goal's card wears the same ring and, at its foot, a cell a task grouped by sub-goal; under it,
-  `goal · 5 of 26 done`. As a row it is the ring, its title and `5 of 26`. Its own check, where it has one,
-  wears a box as a task's does: ticked once the goal itself is done, dotted until then.
-- The legend is the marks themselves with their words and how many tasks wear each, the loudest first, only
-  those the plan has: `◆ to review 1`, `▲ needs help 1`, and so on. It replaces the five colour dots, and gives
-  way where it has no room beside the zoom's buttons.
-- A chip at the canvas's top right says how many tasks need you: `3 tasks need you · show the next`. A click,
-  or `n`, selects the next one in the plan's order and brings it on screen, round again after the last. It
-  counts the tasks to act on (to review, needs help, yours, asks you), not the suggested ones: accepting a plan
-  is one act. `?` lists `n`.
+- Its head says the state and who does the task; its tabs are Scope, Edit and Activity; its foot holds what you
+  do to the task now, and adding, linking, messaging and removing sit in a … menu. A task to review is opened
+  before it is approved, with Send back… beside Approve.
+- Scope: the files it may change, under their folders; done when, and what its check said before and after the
+  work; what it may run; how a write outside its files is held (no more than the tests prove); the writes stopped.
+- Edit is a form: title, files, check, attempts (a stepper, 1 to 8), wait for my approval, I will do this one.
+  Add task, the + past a card and the `+` key draw a draft that joins the plan once it has files and a check.
 
-The graph's own tab:
+Home:
 
-- The graph opens as a tab by itself when work starts: the window opens on a plan with work left, a plan appears,
-  or a run starts. It does not take the keyboard focus and opens beside the file you are working in, never over
-  it; a tab you close stays closed in that window until you ask for it. `graphene.graph.openOnStart` (on by
-  default) turns it off; Open the Graph opens the same tab.
+- Its first card opens the graph; Stop after the plan and Exact sit under Settings at its foot; Exact holds Start
+  for every open question. One filled act a card at most, a card's state said once, paths cut at whole folders.
+- Working now in amber, a plan's cost said at list price, a question named by its sub-goal, Install only when
+  graphene is missing, and Set Up says before the click what it writes. Home lists the folder's workflows and
+  runs one on new inputs with no planner call; a `run:` task that pushes or opens a pull request waits past the
+  leaves your machine line for Approve and run.
 
-The canvas (17 November 2026): the graph as the place to watch and shape agent work. Every walk used the scripted
-stand-in or a fake planner.
+The look and the words:
 
-- Plan, Run and Review across Home and the graph's header, and one switch, Stop after the plan (the `auto` setting
-  read the other way round, so the CLI agrees): off, a plan that fits your limits runs at once.
-- A plan Claude Code is still writing is drawn task by task, dashed, as `graphene ask` reads it; a Codex plan
-  arrives whole. Seen in the preview page, not yet with a real planner.
-- A task's pane opens on Scope: the files it may change, what it may run, how a write outside them is held (no
-  more than the tests prove), the writes stopped, its check before and after the work. The form is its Edit tab.
-- Home lists the folder's workflows (`workflows/*.md`) and runs one on new inputs; Save as workflow, on the graph's
-  header, writes the graph to one.
-- A `run:` task is a command card. One that pushes or opens a pull request stands past the leaves your machine
-  line and waits for Approve and run; nothing was pushed by a workflow, and Approve and run was not clicked.
-
-The graph is built by hand (10 to 11 November 2026). It needs no newer CLI: every click is a 0.9.0 command.
-
-- A task's Edit tab is a form: its title, the files it may change and its check are typed in place; attempts are
-  a stepper (1 to 8) on that task alone; "wait for my approval" and "I will do this one" are tick boxes. The
-  pop-up chain is gone from the graph (Edit Task… stays in the Plan view).
-- A task set to several attempts says so before anything runs.
-- Add task, the + past a card, and the + key draw a draft card: type its title on it, then its files and its check.
-  It joins the plan (`graphene node add`) once graphene will take it. "Fill it in for me" hands its title to the
-  planner. A draft survives closing the tab and reloading the window.
-- Under the form, one line says what a change does now (suggested, not started, working, to review, needs help,
-  done), and graphene's refusal of a change shows there once, whole.
-- Home has an Exact switch, off by default. On, it sets `board: on`, `review: every` and `auto: off`, and Home's
-  Start waits until you have answered every open question (a default's button confirms it).
+- One set of colours, lines and corners for the graph and Home (`media/tokens.css`), none read from what Cursor's
+  themes leave weak; `media/preview.html` and `media/home-preview.html` draw both in Cursor's themes and VS
+  Code's with no editor (`?theme=`).
+- One word a thing on every screen: task, suggested, working, to review, needs help, done, attempt, card (`3 tasks
+  need you`, `2 of 7 done`, Remove where it said Drop). The README is half as long.
 
 ## 0.9.0 (29 October 2026)
 
