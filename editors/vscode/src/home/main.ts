@@ -120,7 +120,9 @@ function render(m: Model) {
     stage.setAttribute("role", "listitem");
     stage.setAttribute("aria-current", st.at === "now" ? "step" : "false");
     el("b", "", st.label, stage);
-    el("small", "", glue(st.note) || "\u00a0", stage); // the bars line up whether or not a stage says more
+    // a line for each thing a stage says (`4 tasks`, `1 question`): a column is too narrow to join them with a dot;
+    // the bars line up whether or not a stage says more
+    el("small", "", st.note.split(" \u00b7 ").map(glue).join("\n") || "\u00a0", stage);
     return stage;
   }));
   pipe.hidden = h.empty; // no plan yet: the intro says where one comes from
