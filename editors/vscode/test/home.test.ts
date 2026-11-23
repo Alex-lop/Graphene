@@ -174,9 +174,8 @@ test("the palette shows seven commands; the rest, and the advanced views, only w
                                   "graphene.stop", "graphene.watchDemo"]);
   for (const x of c.commands) assert.match(x.title, /^Graphene: /);
   const views = c.views.graphene;
-  assert.equal(views[0].id, "graphene.home");
-  assert.equal(views[1].id, "graphene.graph");
-  for (const v of views.slice(2)) assert.equal(v.when, "config.graphene.advanced", v.id);
+  assert.equal(views[0].id, "graphene.home", "the side bar is Home: the graph is a tab of the editor, opened with it");
+  for (const v of views.slice(1)) assert.equal(v.when, "config.graphene.advanced", v.id);
   assert.equal(c.configuration.properties["graphene.advanced"].default, false);
 });
 

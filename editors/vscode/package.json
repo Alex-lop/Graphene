@@ -65,14 +65,6 @@
           "initialSize": 3
         },
         {
-          "id": "graphene.graph",
-          "type": "webview",
-          "name": "Graph",
-          "icon": "media/graphene.svg",
-          "contextualTitle": "Graphene",
-          "initialSize": 2
-        },
-        {
           "id": "graphene.needs",
           "name": "Needs You",
           "icon": "media/graphene.svg",
@@ -708,7 +700,7 @@
         "graphene.graph.openOnStart": {
           "type": "boolean",
           "default": true,
-          "description": "Open the graph as a tab by itself when work starts: the window opens on a plan with work left, a plan appears, or a run starts. It does not take the keyboard focus and opens beside the file you are working in, never over it. A tab you close stays closed in that window until you ask for it with Show graph. Off, Show graph opens it."
+          "description": "Open the graph as a tab by itself when you open Graphene's side bar, and when work starts: the window opens on a plan with work left, a plan appears, or a run starts. It does not take the keyboard focus and opens beside the file you are working in, never over it. A tab you close stays closed in that window until you ask for it with Show graph. Off, Show graph opens it."
         }
       }
     }

@@ -58,14 +58,13 @@ export function activate(context: vscode.ExtensionContext) {
   };
   context.subscriptions.push(roundsView, roundsView.onDidChangeVisibility(() => void readRounds()));
   const graph = new GraphHost(context, session);
-  const home = new HomeHost(context, session);
+  const home = new HomeHost(context, session, () => graph.sidebar());
   const bar = vscode.window.createStatusBarItem("graphene", vscode.StatusBarAlignment.Left, 50);
   bar.name = "Graphene";
   bar.command = "graphene.home";
   bar.text = "◆ Graphene";
   bar.show();
-  context.subscriptions.push(treeView, bar, vscode.window.registerWebviewViewProvider("graphene.graph", graph, { webviewOptions: { retainContextWhenHidden: true } }),
-                             vscode.window.registerWebviewViewProvider("graphene.home", home, { webviewOptions: { retainContextWhenHidden: true } }));
+  context.subscriptions.push(treeView, bar, vscode.window.registerWebviewViewProvider("graphene.home", home, { webviewOptions: { retainContextWhenHidden: true } }));
 
   // the Explorer marks each file a live task owns, a running one's with its agent's number: whose is whose
   const owners = new vscode.EventEmitter<undefined>();

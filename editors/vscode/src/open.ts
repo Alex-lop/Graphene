@@ -16,10 +16,11 @@ export function seen(s: Pick<State, "tasks" | "drafting" | "run">): Seen {
 
 /** Whether the tab opens now. `was`: the snapshot read before this one, null when this is the first (the
  *  window just opened). `on`: the setting. `tab`: the tab is already there, in front or behind another, and
- *  is left as it is. `shut`: a person closed the tab in this window. */
-export function opens(was: Seen | null, now: Seen, o: { on: boolean; tab: boolean; shut: boolean }): boolean {
+ *  is left as it is. `shut`: a person closed the tab in this window. `sidebar`: Graphene's side bar came into
+ *  view (its icon was clicked): that is a start too, whatever the plan holds, an empty one included. */
+export function opens(was: Seen | null, now: Seen, o: { on: boolean; tab: boolean; shut: boolean; sidebar?: boolean }): boolean {
   if (!o.on || o.tab || o.shut) return false;
-  return (now.work && !was?.work) || (now.going && !was?.going);
+  return o.sidebar === true || (now.work && !was?.work) || (now.going && !was?.going);
 }
 
 /** Whether it opens beside the active group, not in it. `front`: the input of the tab that group has in front,
