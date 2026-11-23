@@ -19,7 +19,7 @@ import { CARD, dotGap, FAR, fitPlan, hold, levelFor, miniFrame, miniSize, neares
 declare function acquireVsCodeApi(): { postMessage(m: unknown): void; getState(): unknown; setState(s: unknown): void };
 
 type Status = { kind: "reading" | "missing" | "uninitialised" | "error" | "nofolder"; text: string };
-type Incoming = { type: "state"; state: StateX; exact?: boolean } | { type: "status"; status: Status } | { type: "select"; id: string }
+type Incoming = { type: "state"; state: StateX; exact?: boolean; seen?: string[] } | { type: "status"; status: Status } | { type: "select"; id: string }
   | { type: "drafts"; drafts: Draft[] }
   | { type: "said"; id?: string; key?: string; ok: boolean; line: string; made?: string }; // graphene's answer to a change made here
 type View = "auto" | "graph" | "lanes";
@@ -62,6 +62,7 @@ const svgNS = "http://www.w3.org/2000/svg";
 
 let state: StateX | null = null;
 let exact = false; // Exact is on (the host reads `board`): Start waits for every answer, as Home's
+let seen = new Set<string>(); // the tasks whose changes were opened in this window (the host's Session.seen)
 let lastJson = "";
 let lay: Layout | null = null;
 let selected: string | null = null;
@@ -1745,7 +1746,7 @@ function pane() {
   const shown = state?.tasks.find((x) => x.id === selected);
   const scoped = shown && state && tab() === "scope" ? JSON.stringify([scopeTree(shown, state), stopsOf(shown, state.tasks).count, state.allows]) : "";
   const key = d ? JSON.stringify([d, offered.has(d.key)])
-    : state ? paneKey(state, selected, replaying()) + (refused.get(selected ?? "") ?? "") + state.envelope.forks + tab() + scoped : "";
+    : state ? paneKey(state, selected, replaying()) + (refused.get(selected ?? "") ?? "") + state.envelope.forks + tab() + scoped + seen.has(selected ?? "") : "";
   if (key === paneLast) return;
   const at = document.activeElement as HTMLInputElement | null;
   if (paneOf === selected && pressing) { paneLast = "stale"; return; } // rebuilt once the press has had its click
@@ -1784,9 +1785,10 @@ function pane() {
   div("d-state", SAY[t.state], meta);
   const w = who(t, s.executor);
   meta.append(` · ${t.agent ? `agent ${t.agent}${t.model ? ` · ${t.model}` : ""}` : w.kind === "you" || t.command ? w.label : `for ${w.label}`}`);
-  // one act is the pane's to offer at its foot (the state's own, and the look at its work); the rest wait in the …
-  const all = actsFor(t, replaying());
-  const inFoot = (b: Button) => b.main || b.act === "openDiff" || b.act === "compareForks";
+  // one act is the pane's to offer at its foot (the state's own; the looks at its work, and to review the verdicts
+  // that are not the act now, beside them); the rest wait in the …
+  const all = actsFor(t, replaying(), seen.has(t.id));
+  const inFoot = (b: Button) => b.main || ["openDiff", "compareForks", "signOff", "sendBack"].includes(b.act);
   const tools = div("d-tools", undefined, head);
   paneMenu(tools, t.id, all.filter((b) => !inFoot(b)));
   closer(tools);
@@ -1834,9 +1836,9 @@ function pane() {
   else if (tab() === "edit") editTab(body, t, s);
   else activityTab(body, t);
   const foot = all.filter(inFoot);
-  if (foot.length) { // Compare, in a word, so the two looks fit one row under the act; its hover says it whole
+  if (foot.length) { // Compare, in a word, so the quiet ones fit one row under the act; its hover says it whole
     const acts = div("d-acts", undefined, pane);
-    for (const b of foot) button(b.act === "compareForks" ? { ...b, label: "Compare", title: `Compare attempts: ${b.title}` } : b, t.id, acts);
+    for (const b of foot) button(b.act === "compareForks" && !b.main ? { ...b, label: "Compare", title: `Compare attempts: ${b.title}` } : b, t.id, acts);
   }
 }
 
@@ -1954,11 +1956,12 @@ window.addEventListener("message", (e: MessageEvent<Incoming>) => {
   const m = e.data;
   if (!m || typeof m !== "object") return;
   if (m.type === "state") {
-    const json = JSON.stringify([m.state, m.exact === true]);
+    const json = JSON.stringify([m.state, m.exact === true, m.seen]);
     if (json === lastJson) return; // nothing changed: nothing moves
     lastJson = json;
     state = m.state;
     exact = m.exact === true;
+    seen = new Set(m.seen ?? []);
     const has = (id: string | null) => state!.tasks.some((t) => t.id === id);
     if (arriving && has(arriving)) { selected = arriving; arriving = null; }
     if (selected && !has(selected) && !isDraft(selected)) selected = null;

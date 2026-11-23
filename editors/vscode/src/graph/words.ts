@@ -13,13 +13,13 @@ export type Replay = { shown: string; day: string; repository: string } | null;
 export type StateX = Omit<State, "tasks"> & { replay?: Replay; stand_in?: boolean; tasks: TaskX[] };
 
 export type Act = "add-after" | "add-under" | "link" | "unlink" | "drop" | "accept" | "tell" | "start" | "run" | "stop" | "cockpit"
-  | "openDiff" | "compareForks" | "pickFork" | "signOff" | "answer" | "handBack" | "set" | "draw" | "saveWorkflow" | "markDone";
+  | "openDiff" | "compareForks" | "pickFork" | "signOff" | "sendBack" | "answer" | "handBack" | "set" | "draw" | "saveWorkflow" | "markDone";
 
 /** The acts a replay offers none of: they change a plan, or they act outside the replay (the cockpit opens
  *  `graphene watch` in the person's own folder; openDiff and compareForks look the id up in the person's
  *  plan). That is every act: a replay is watched. The host refuses them too (check.ts). */
 export const CHANGES: readonly Act[] = ["add-after", "add-under", "link", "unlink", "drop", "accept", "tell", "start", "run", "stop",
-                                        "cockpit", "openDiff", "compareForks", "pickFork", "signOff", "answer", "handBack", "set", "draw",
+                                        "cockpit", "openDiff", "compareForks", "pickFork", "signOff", "sendBack", "answer", "handBack", "set", "draw",
                                         "saveWorkflow", "markDone"];
 
 /** The header's act buttons, by their element id: each one is hidden in a replay. Auto and the cockpit are
@@ -433,23 +433,32 @@ export function startAnswers(s: Pick<StateX, "questions">): string {
   return `answer ${all ? "the " : ""}${q.length} open questions with their defaults`;
 }
 
-/** The buttons a task's pane offers, in order. A replay offers none: its pane reads. A step past the line
- *  offers nothing after it (a task drawn there lands in the first column, its edge running backwards), and a
- *  command step has no agent to message. */
-export function actsFor(t: TaskX, replay: boolean): Button[] {
+/** The buttons a task's pane offers, in order, its main one first. A replay offers none: its pane reads. A step
+ *  past the line offers nothing after it (a task drawn there lands in the first column, its edge running
+ *  backwards), and a command step has no agent to message. To review, it is Home's card (home/cards.ts): Compare
+ *  first while two attempts passed and none is kept, else Open changes until they were ``opened`` in this
+ *  window, and only then a filled Approve; Send back… beside them either way. */
+export function actsFor(t: TaskX, replay: boolean, opened = false): Button[] {
   const out: Button[] = [];
   if (replay) return out;
   const hasChanges = t.changed.length > 0 || ["running", "review", "done", "came back"].includes(t.state);
+  const review = t.state === "review";
+  const choose = review && !t.kept && t.forks.filter((f) => f.state === "passed").length > 1; // its check could not choose: the person keeps one
+  const look = review && !choose && !opened;
   if (asksYou(t)) out.push({ label: "Approve and run", act: "markDone", title: `it leaves your machine: graphene node done runs ${cut(t.command ?? "", 80)}`, icon: "check", main: true });
   else if (t.state === "yours") out.push({ label: "Mark done", act: "markDone", icon: "check", main: true, // a step of your own, as Home's Mark done
                                            title: `you did it yourself: graphene node done ${t.check ? "runs its check first, in a terminal" : "finishes it, it has no check to run"}` });
-  if (t.state === "review") out.push({ label: "Approve", act: "signOff", title: "it lands in your repository: graphene node signoff", icon: "check", main: true });
+  if (choose) out.push({ label: "Compare attempts", act: "compareForks", title: "more than one attempt passed its check: compare them and keep one, then approve it", icon: "split-horizontal", main: true });
+  if (look) out.push({ label: "Open changes", act: "openDiff", title: "you have not opened its changes yet: the diff editor shows them", icon: "diff", main: true });
+  if (review && !choose) out.push({ label: "Approve", act: "signOff", title: "it lands in your repository: graphene node signoff", icon: "check", main: !look });
   if (t.state === "proposed") out.push({ label: "Accept", act: "accept", title: "graphene plan accept", icon: "check", main: true });
   if (t.state === "came back") out.push({ label: "Help it…", act: "handBack", title: "allow what it needs, add a task for it, or try again", icon: "debug-step-back", main: true });
   if (t.state === "running" && t.stopped.length) out.push({ label: "Allow the write…", act: "handBack", icon: "check", main: true, // the run waits on it, as Home's Allow it to change
                                                            title: `it was stopped writing ${cut(t.stopped[t.stopped.length - 1]!, 60)}, outside its files: graphene node widen lets it` });
-  if (hasChanges) out.push({ label: "Open changes", act: "openDiff", title: "its changes so far, in the diff editor", icon: "diff" });
-  if (t.forks.length >= 2) out.push({ label: "Compare attempts", act: "compareForks", title: "the attempts side by side", icon: "split-horizontal" });
+  if (hasChanges && !look) out.push({ label: "Open changes", act: "openDiff", title: "its changes so far, in the diff editor", icon: "diff" });
+  if (t.forks.length >= 2 && !choose) out.push({ label: "Compare attempts", act: "compareForks", title: "the attempts side by side", icon: "split-horizontal" });
+  if (review || (t.state === "done" && !t.command)) out.push({ label: "Send back…", act: "sendBack", icon: "debug-step-back", // as Home's, and Edit's line for a finished task says it
+                                                                title: "say what is wrong, and an agent takes it again: graphene node reopen" });
   if (!t.leaves) out.push({ label: "Add task after", act: "add-after", title: "draw a new task that waits on this one", icon: "add" });
   out.push({ label: "Add task beside", act: "add-under", title: "draw a new task under the same sub-goal", icon: "add" });
   if (!t.leaves) out.push({ label: "Link to…", act: "link", title: "then click the task that waits on this one", icon: "link" });

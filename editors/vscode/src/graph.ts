@@ -36,6 +36,7 @@ export class GraphHost {
     const saved = context.workspaceState.get<unknown>(this.draftStore, []);
     this.drafts = (Array.isArray(saved) ? saved : []).map(draftOf).filter((d): d is Draft => d !== null);
     session.onDidChange(() => { this.push(); this.start(); });
+    session.onDidSee(() => this.push()); // a task's changes opened: its pane's Approve is the act now
   }
 
   /** The tab opens by itself, once for each start (the setting graphene.graph.openOnStart), without the
@@ -134,7 +135,7 @@ export class GraphHost {
   private push(only?: vscode.Webview) {
     const s = this.session.state;
     const message = s // an empty plan is a state too: the page says so under the goal
-      ? { type: "state", state: unpriced(s), exact: this.exact } // a practice run or a replay: no cost to show
+      ? { type: "state", state: unpriced(s), exact: this.exact, seen: [...this.session.seen] } // unpriced: a practice run or a replay shows no cost; seen: the tasks whose changes were opened here
       : { type: "status", status: this.session.status };
     for (const w of only ? [only] : this.views) void w.postMessage(message);
     // ponytail: `graphene config` is read again at each push while Exact could hold Start (a suggestion, a
@@ -198,6 +199,7 @@ export class GraphHost {
       case "compareForks": return run("compareForks", arg);
       case "pickFork": return m.fork ? run("pickFork", { ...arg, fork: m.fork }) : undefined;
       case "signOff": return run("signOff", arg);
+      case "sendBack": return run("sendBack", arg); // Home's: a note, then `graphene node reopen`
       case "answer": return run("answer", m.target !== undefined ? { ...arg, option: m.target } : arg);
       case "handBack": return run("handBack", arg);
     }

@@ -165,7 +165,12 @@ test("the link hint names the task, says Cancel as well as Esc, and drop while a
 
 test("a task offers the acts its state takes; a replay offers only what reads", () => {
   const acts = (id: string, replay = false) => actsFor(task(id), replay).map((b) => b.act);
-  assert.deepEqual(acts("farewell"), ["signOff", "openDiff", "compareForks", "add-after", "add-under", "link"]);
+  // to review, as Home's card: two attempts passed and none kept, Compare first; else its changes until opened, then Approve
+  assert.deepEqual(acts("farewell"), ["compareForks", "openDiff", "sendBack", "add-after", "add-under", "link"]);
+  const docs = (opened: boolean) => actsFor(task("docs"), false, opened).map((b) => `${b.act}${b.main ? " (main)" : ""}`).slice(0, 3);
+  assert.deepEqual(docs(false), ["openDiff (main)", "signOff", "sendBack"]);
+  assert.deepEqual(docs(true), ["signOff (main)", "openDiff", "sendBack"]);
+  assert.equal(acts("hello").includes("sendBack"), true, "a finished task is sent back, as Edit's line says");
   assert.deepEqual(acts("logs"), ["handBack", "openDiff", "add-after", "add-under", "link", "tell"]);
   assert.deepEqual(acts("ship"), ["add-after", "add-under", "link", "drop", "tell"]); // no Edit: the pane is the form
   assert.deepEqual(acts("farewell", true), []);
@@ -176,7 +181,8 @@ test("a task offers the acts its state takes; a replay offers only what reads", 
 test("a button's hover names the graphene command its click runs", () => {
   const named = (b: { title: string }, argv: string[]) => assert.ok(b.title.includes(`graphene ${argv.slice(0, 2).join(" ")}`), `"${b.title}" names ${argv.join(" ")}`);
   const r = actsFor(task("farewell"), false);
-  named(r.find((b) => b.act === "signOff")!, C.signOff("farewell"));
+  named(actsFor(task("docs"), false).find((b) => b.act === "signOff")!, C.signOff("docs"));
+  named(r.find((b) => b.act === "sendBack")!, C.reopen("farewell", "x"));
   named(actsFor({ ...task("ship"), state: "proposed" }, false).find((b) => b.act === "accept")!, C.accept("ship"));
   const f = task("farewell");
   named(forkActs(f, f.forks[0]!, false).find((b) => b.act === "pickFork")!, C.pickFork("farewell", "a"));
