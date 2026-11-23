@@ -911,10 +911,11 @@ function status(grp: SVGGElement, words: (n: number) => string, right: number, b
   fitText(grp.appendChild(el("text", { class: `sub${bad ? " bad" : ""}`, x: PAD, y: STATUS_Y }, line)), room);
 }
 
-/** A card's title on up to two lines; one line stands in the middle of the room for two. */
+/** A card's title on up to two lines, set close so the second clears the files chip; one line stands in the middle
+ *  of the room for two. */
 function cardTitle(grp: SVGGElement, title: string) {
-  const text = titleLines(grp, "title", title, PAD, 23, 17, BOX_W - 2 * PAD, 2);
-  if (text.childElementCount < 2) text.setAttribute("transform", "translate(0 8.5)");
+  const text = titleLines(grp, "title", title, PAD, 21, 16, BOX_W - 2 * PAD, 2);
+  if (text.childElementCount < 2) text.setAttribute("transform", "translate(0 8)");
 }
 
 /** A task's card, drawn at the group's origin, everything inside it: its title on up to two lines, its files;
