@@ -399,9 +399,10 @@ function header(s: StateX, blank: boolean) {
     run.className = act.main ? "" : "quiet"; // filled only when it starts something
     run.disabled = Boolean(act.off);
   }
-  const toggle = $("b-view");
-  const v = view();
-  toggle.replaceChildren(icon(v === "lanes" ? "type-hierarchy-sub" : "list-flat"), document.createTextNode(v === "lanes" ? "Graph" : "Lanes"));
+  const toggle = $("b-view"), lanes = view() === "lanes"; // what a click turns to
+  toggle.replaceChildren(icon(lanes ? "type-hierarchy-sub" : "list-flat"));
+  toggle.title = lanes ? "Graph (v)" : "Lanes (v)";
+  toggle.setAttribute("aria-label", lanes ? "Graph" : "Lanes");
 }
 
 // ---- the graph: SVG, keyed by task id ----
@@ -2061,24 +2062,23 @@ function wire() {
   card.setAttribute("aria-label", "the plan's question");
   // a press anywhere else puts the card away, as a menu goes
   window.addEventListener("pointerdown", (e) => { if (asking && !need.contains(e.target as Node)) { asking = false; render(); } });
-  // the header's buttons
+  // the header's buttons: the rare ones an icon each (their hover names them), Add task, and last the one act on
+  // the whole plan (`header` says which); none bordered but that one, which fills when it starts something
   const actions = $("actions");
   const top = (id: string, label: string, ico: string, title: string, on: () => void) => {
-    const b = document.createElement("button");
+    const b = actions.appendChild(document.createElement("button"));
     b.id = id;
     b.className = "quiet";
-    b.appendChild(icon(ico));
-    b.appendChild(document.createTextNode(label));
+    b.append(icon(ico), label);
     b.title = title;
     b.addEventListener("click", on);
-    actions.appendChild(b);
+    if (!label) { b.classList.add("icon"); b.setAttribute("aria-label", title.replace(/:.*| \(.*/, "")); }
   };
+  top("b-save", "", "save", "Save as workflow: this graph to workflows/, to run again on new inputs", () => api.postMessage({ type: "act", act: "saveWorkflow", id: "" }));
+  top("b-view", "", "list-flat", "Lanes (v)", () => { remember({ view: view() === "lanes" ? "graph" : "lanes" }); fitted = false; render(); });
+  top("b-help", "", "question", "Keys (?)", () => help($("help").hidden));
   top("b-add", "Add task", "add", "draw a task: its title, then its files and its check (or the planner fills them in)", () => draw({ after: null, parent: null }));
   top("b-run", "Run", "play", "", () => { const a = state && mainAct(state); if (a) api.postMessage({ type: "act", act: a.act, id: "" }); });
-  top("b-save", "Save as workflow", "save", "write this graph to workflows/ so it can run again on new inputs", () => api.postMessage({ type: "act", act: "saveWorkflow", id: "" }));
-  top("b-view", "Lanes", "list-flat", "graph or lanes (v)", () => { remember({ view: view() === "lanes" ? "graph" : "lanes" }); fitted = false; render(); });
-  top("b-help", "", "question", "every key (?)", () => help($("help").hidden));
-  $("b-help").setAttribute("aria-label", "keys");
   // under the goal: the pipeline's three stages (made here, so the preview's shell has them too). Stop after the
   // plan is Home's, under its Settings: beside Start and Stop here it read as a third way to stop
   const pipe = div("", undefined, document.querySelector("header")!);

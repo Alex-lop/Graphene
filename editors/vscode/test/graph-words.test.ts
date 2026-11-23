@@ -118,6 +118,7 @@ test("the header's one act: Start a suggested plan (held by a question with no d
   assert.equal(say(fx("running")), "Stop stop", "a run going: Stop, never filled");
   assert.equal(say({ ...fx("running"), run: { going: false, pid: null } }), "Run run off", "nothing ready: Run is there, held");
   assert.equal(say(fx("empty")), null, "no plan: nothing to start");
+  assert.equal(say({ ...plan, tasks: plan.tasks.map((t) => ({ ...t, state: "done" as const })) }), null, "all done: nothing to start");
 });
 
 test("a replay offers none of the header's acts: the cockpit would open graphene watch in the person's folder", () => {

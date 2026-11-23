@@ -47,9 +47,16 @@ header:has(#pipe[hidden])::after { display: none; }
   background: color-mix(in srgb, var(--review) 13%, transparent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 #replay[hidden] { display: none; }
-#actions { order: 3; margin-left: auto; display: flex; gap: 6px; align-items: center; }
+#actions { order: 3; margin-left: auto; display: flex; gap: 2px; align-items: center; }
 #actions button { height: 28px; padding: 0 10px; }
-#b-help { width: 28px; padding: 0; justify-content: center; }
+/* one act filled, the plan's (Start, Run); the rest are ghosts that fill on hover, the rare ones an icon each:
+   the editor's own title bar has its buttons just above */
+#actions button.quiet { border-color: transparent; }
+#actions button.quiet:hover:not(:disabled) { background: var(--hover); }
+#actions .icon { width: 28px; padding: 0; justify-content: center; color: var(--dim); }
+#actions .icon:hover { color: var(--fg); }
+#b-run { margin-left: 6px; }
+#actions #b-run.quiet { border-color: var(--line-2); } /* Stop, or Run with nothing ready: a hairline, never a fill */
 /* one pipeline, the plan first: Plan, Run, Review */
 #pipe { display: contents; }
 #pipe[hidden] { display: none; }

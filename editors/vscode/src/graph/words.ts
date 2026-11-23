@@ -412,9 +412,9 @@ export interface Button {
 
 /** The header's one act on the whole plan: Stop while a run goes; Start while the plan is a suggestion (Home's
  *  Start: every suggested task accepted, then the run), held while a question with no default is open; else
- *  Run, filled while a task is ready and held while none is. None for no plan: nothing to start. */
+ *  Run, filled while a task is ready and held while none is. None for no plan, or one all done: nothing to start. */
 export function mainAct(s: Pick<StateX, "run" | "tasks" | "questions">): Button | null {
-  if (!s.tasks.length) return null;
+  if (!s.tasks.length || (!s.run.going && s.tasks.every((t) => t.state === "done"))) return null;
   if (s.run.going) return { label: "Stop", act: "stop", icon: "debug-stop", title: "stop every agent: their tasks go back to the plan" };
   const n = (k: TaskX["state"]) => s.tasks.filter((t) => t.state === k).length;
   if (n("proposed") && !n("ready") && !n("running")) {
