@@ -441,7 +441,7 @@ test("the repo-sized fixture shows every mark, from what a current snapshot says
   assert.deepEqual(filesLine(at("audit")), { tone: "working", mark: "✎", text: "1 of 1 file", refused: "1 refused" });
   assert.equal(stateMark(at("audit")), "working", "the refused write was its first attempt's: nothing is stopped in the one going now");
   assert.deepEqual(filesLine(at("cancel")), { tone: "back", mark: "✕", text: "wrote store/repo.py", refused: "" });
-  // ×3 where the limits' three attempts have not started; the two races under way keep their chips
+  // 3 attempts where the limits' three have not started; the two races under way keep their chips
   for (const t of big.tasks) assert.equal(attemptsMark(t, big.envelope.forks), ["ready", "waiting"].includes(t.state) ? "3 attempts" : "", t.id);
   assert.deepEqual(big.tasks.filter((t) => cardAct(t, false)).map((t) => `${t.id}: ${cardAct(t, false)!.label}`), ["cache: Approve", "cancel: Help it…", "a11y: Mark done"]);
 });

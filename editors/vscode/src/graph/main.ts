@@ -1128,9 +1128,9 @@ function drawLane(row: HTMLElement, t: TaskX, s: StateX) {
   const model = cornerWord(t), corner = cornerMark(t); // its model while it works, and its state's mark as its card's corner wears it
   if (model) div("l-model", model, head);
   if (corner) mark(head.appendChild(el("svg", { class: "l-mark", width: 14, height: 14, viewBox: "-7 -7 14 14" })), corner, 0, 0, 6);
-  const times = attemptsMark(t, s.envelope.forks); // set to attempts it has not started: ×3, as on its card
+  const times = attemptsMark(t, s.envelope.forks); // set to attempts it has not started: 3 attempts, as on its card
   div("l-sub", [line, times].filter(Boolean).join(" · "), main);
-  if (times) row.dataset.attempts = times.slice(1); else delete row.dataset.attempts;
+  if (times) row.dataset.attempts = String(parseInt(times)); else delete row.dataset.attempts;
   const band = t.parent ? goalTitle(s, t.parent) : "";
   if (band && band !== s.goal) div("l-band", band, main).title = band; // auto's root sub-goal is the goal itself: said once, at the foot
   if (t.forks.length) {
