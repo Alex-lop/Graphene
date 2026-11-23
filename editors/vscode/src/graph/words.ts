@@ -531,9 +531,10 @@ export const askNote = (n: number): string => (n === 1 ? "or Start takes its def
  *  `proposed` is suggested and `came back` needs help. */
 export function newsLine(s: Pick<StateX, "news" | "questions">, autoShown: boolean): string {
   const said = (line: string) => (s.questions.length > 0 && /^asks: |\bquestions? waits? for you\b/.test(line)) || (autoShown && /^auto\b/.test(line));
-  const line = [...s.news].reverse().find((l) => !said(l)) ?? "";
-  return screenWords(line).replace(/\bproposed\b/g, SAY.proposed).replace(/\bcame back\b/g, SAY["came back"]);
+  return newsWords([...s.news].reverse().find((l) => !said(l)) ?? "");
 }
+/** A news line in the screen's words (the status bar's hover reads them too). */
+export const newsWords = (line: string): string => screenWords(line).replace(/\bproposed\b/g, SAY.proposed).replace(/\bcame back\b/g, SAY["came back"]);
 
 /** The first-time hint under the graph. */
 export const FIRST_HINT = "click a task to change it · + draws a new one · drag a dot onto another task to link them · ? lists every key";

@@ -9,7 +9,7 @@ import { HomeHost } from "./home.ts";
 import { which } from "./find.ts";
 import { owner } from "./owners.ts";
 import { autoNews, mdText, SAY, summary, type Task } from "./state.ts";
-import { topLine } from "./graph/words.ts";
+import { newsWords, topLine } from "./graph/words.ts";
 import { DROPPABLE, keyTrouble } from "./needs.ts";
 import { parseLog, rounds, type LogRow } from "./rounds.ts";
 import { RoundsTree } from "./roundsView.ts";
@@ -105,7 +105,7 @@ export function activate(context: vscode.ExtensionContext) {
       md.appendMarkdown(`**${mdText(s.goal || "no goal yet")}**\n\n`); // the plan's words as text, not markup
       const top = topLine(s); // a replay, or a race against the scripted stand-in: not a paid run, said as the graph says it
       if (top) md.appendMarkdown(`${mdText(top)}\n\n`);
-      for (const line of s.news.slice(-4)) md.appendMarkdown(`- ${mdText(line)}\n`);
+      for (const line of s.news.slice(-4)) md.appendMarkdown(`- ${mdText(newsWords(line))}\n`); // suggested, as every screen says it
       md.appendMarkdown(`\n${mdText(which(session.file || session.path, session.version))}${session.found ? ", off this editor's PATH" : ""}\n\n`);
       md.appendMarkdown(session.stream.live ? "live: `graphene state --json --watch`\n\n" : "");
       md.appendMarkdown("Click for Graphene's Home");
