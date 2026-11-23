@@ -1403,7 +1403,7 @@ function form(body: HTMLElement, t: TaskX, s: StateX) {
         (v) => (!v.trim() || same(v, t.full || t.title) ? back() : setField(t, "title", v.trim())));
   field(body, "files", "Files", t.scope.join(" "), "src/api/** tests/test_api.py", "the files it may change: paths or globs, a space between",
         (v) => (!globs(v).length || globs(v).join(" ") === t.scope.join(" ") ? back() : setField(t, "scope", globs(v).join(" "))));
-  field(body, "check", "Check", t.check ?? "", "a command that passes when it is done", "the command that passes only when the task is done; empty: your approval finishes it",
+  field(body, "check", "Check", t.check ?? "", "pytest -q", "the command that passes only when the task is done; empty: your approval finishes it",
         (v) => (same(v, t.check ?? "") ? back() : setField(t, "check", v.trim())));
   const n = attemptsOf(t, s.envelope.forks);
   const r = div("row", undefined, body);
@@ -1452,7 +1452,7 @@ function draftPane(pane: HTMLElement, d: Draft) {
   const asked = offered.has(d.key) && !d.said; // graphene is deciding: what it was offered is not changed under it
   field(body, "title", "Title", d.title, "what this task does", "the task, in a line", (v) => (v.trim() ? redraw(d.key, { title: v.trim() }) : redraw(d.key, {}))).disabled = asked;
   field(body, "files", "Files", d.files, "src/api/** tests/test_api.py", "the files it may change: paths or globs, a space between", (v) => redraw(d.key, { files: v.trim() })).disabled = asked;
-  field(body, "check", "Check", d.check, "a command that passes when it is done", "the command that passes only when the task is done", (v) => redraw(d.key, { check: v.trim() })).disabled = asked;
+  field(body, "check", "Check", d.check, "pytest -q", "the command that passes only when the task is done", (v) => redraw(d.key, { check: v.trim() })).disabled = asked;
   tick(body, "signoff", "Wait for my approval", d.approve, "it lands only once you approve it", (on) => redraw(d.key, { approve: on }), asked);
   const after = d.after ? state?.tasks.find((t) => t.id === d.after)?.title : "";
   row("After", after ?? "", body);
@@ -1643,7 +1643,7 @@ function activityTab(body: HTMLElement, t: TaskX) {
   row("Cost", usd(t.usd), body);
   row("Quiet", t.idle !== null && t.idle > 8 ? `${Math.round(t.idle)} s` : "", body);
   row("Note", t.note, body);
-  row("Wanted", t.outside.join("  "), body, true);
+  row("Wrote outside", t.outside.join("  "), body, true); // as Scope says it, in red
   if (t.forks.length) {
     const r = div("row", undefined, body);
     div("k", "Attempts", r);
@@ -1725,14 +1725,15 @@ function pane() {
   if (q) { // its question, with the options to answer inline
     const ask = div("ask", undefined, body);
     div("ask-text", q.text, ask);
-    if (q.default) div("ask-if", `If unanswered: ${q.default}`, ask);
-    if (!replaying()) { // every answer quiet: the default filled would read as already chosen
+    if (q.default && replaying()) div("ask-if", `If unanswered: ${q.default}`, ask); // no answers to wear it
+    if (!replaying()) { // every answer quiet: the default filled would read as already chosen, so it says so on itself
       const opts = div("ask-opts", undefined, ask);
       const options = [...new Set([...(q.default ? [q.default] : []), ...q.options])];
       for (const o of options) {
         const b = document.createElement("button");
         b.className = "quiet";
-        b.textContent = o;
+        const words = div("", o, b);
+        if (o === q.default) div("dim", "if unanswered", words); // the default says so under its words
         b.title = o === q.default ? "the default: what happens unanswered" : "answer with this";
         b.addEventListener("click", () => api.postMessage({ type: "act", act: "answer", id: q.id, target: o }));
         opts.appendChild(b);
