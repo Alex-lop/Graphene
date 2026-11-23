@@ -43,8 +43,7 @@ p { margin: 6px 0; }
 .stage.next b { color: var(--dim); font-weight: 500; }
 .stage small { color: var(--dim); font-size: 11px; line-height: 1.3; }
 button.open { width: 100%; justify-content: center; gap: 8px; margin-top: 14px; padding: 5px 10px; font-weight: 600; }
-button.open svg { width: 16px; height: 16px; flex: none; fill: currentColor; stroke: currentColor; stroke-width: 1.4; }
-button.open svg path { fill: none; }
+button.open svg { width: 16px; height: 16px; flex: none; fill: currentColor; }
 .head.empty button.open { margin-top: 12px; }
 .hand { color: var(--dim); font-size: 12px; margin: 8px 0 0; text-align: center; }
 .busy { margin-top: 8px; color: var(--dim); font-size: 12px; }
@@ -70,9 +69,10 @@ button.fold:hover { background: none; color: var(--fg); }
 .sec-needs button.fold { color: var(--review); }
 .sec-note { color: var(--dim); font-size: 12px; margin: 6px 0 8px; }
 
-/* cards: what it is in its state's colour, what it is called, the lines a person reads before saying yes */
+/* cards: what it is in its state's colour, what it is called, the lines a person reads before saying yes.
+   Waiting is the faintest edge and ready a step above: colour is left to what needs a person */
 .card {
-  --tone: var(--waiting);
+  --tone: var(--line-3);
   margin: 8px 0; padding: 10px 12px; background: var(--card); border: 1px solid var(--line-1); border-radius: var(--r);
   box-shadow: inset 2px 0 0 var(--tone);
 }
@@ -81,9 +81,10 @@ button.fold:hover { background: none; color: var(--fg); }
 .tone-proposed { --tone: var(--proposed); }
 .tone-running { --tone: var(--running); }
 .tone-done { --tone: var(--done); }
-.tone-ready { --tone: var(--fg); }
+.tone-ready { --tone: var(--dim); }
 .c-tag { color: var(--tone); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
-.tone-waiting .c-tag, .tone-ready .c-tag { color: var(--dim); }
+.card.tone-waiting .c-tag, .card.tone-ready .c-tag { color: var(--dim); } /* outranks the light rule below */
+body.vscode-light .c-tag { color: color-mix(in srgb, var(--tone) 55%, var(--fg)); } /* a chart yellow is ~2.5:1 on a light card */
 .c-title { font-weight: 600; margin-top: 2px; word-break: break-word; }
 /* one grid for every line: the labels' column is as wide as the widest, so none wraps ("If unanswered"), and
    at least as wide as most, so the values of one card line up with the next one's */
@@ -96,6 +97,7 @@ button.fold:hover { background: none; color: var(--fg); }
 .mono { font-family: var(--mono); font-size: 0.95em; }
 .c-acts, .acts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
 .c-acts button, .sec-acts button { padding: 2px 8px; font-size: 12px; }
+.c-acts button { flex: 1 1 auto; justify-content: center; } /* each wrapped row is flush with the card */
 
 /* settings: what any agent's plan follows too, at the foot */
 .prefs { margin-top: 24px; padding-top: 12px; border-top: 1px solid var(--divider); }
