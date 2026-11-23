@@ -644,14 +644,14 @@
           },
           {
             "id": "ask",
-            "title": "Say what you want",
-            "description": "Type it on Home and click Plan it. The planner suggests small tasks, each with the files it may change and the check that proves it. Remove what you do not want, then Start.\n[Open Home](command:graphene.home)",
+            "title": "Ask your agent for a plan",
+            "description": "In Claude Code or Codex, say what you want, in its chat. It proposes a plan to Graphene: small tasks, each with the files it may change and the check that proves it. A workflow on Home, or Add task on the graph, makes one too. Read it on the graph, remove what you do not want, then Start.\n[Open the Graph](command:graphene.showGraph)",
             "media": {
               "image": "media/graph.png",
               "altText": "a race in the graph: three tasks, each with three attempts racing, the goal on the right"
             },
             "completionEvents": [
-              "onCommand:graphene.home"
+              "onCommand:graphene.showGraph"
             ]
           },
           {

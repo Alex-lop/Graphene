@@ -1,26 +1,22 @@
-// Home, the first view in Graphene's side bar: everything a person does, with a click. Set the folder up, say
-// what you want, start the agents on the suggested plan, and review what each one did before it lands. The host
+// Home, Graphene's side bar: everything a person does, with a click. Set the folder up, open the graph, start
+// the agents on the plan your coding agent proposed, and review what each one did before it lands. The host
 // runs graphene as the person (Session); the page (home/main.ts) draws what cards.ts says, and every message it
 // sends is checked first (cards.ts checkHome): nothing from the page reaches a shell but as an argument.
 import * as vscode from "vscode";
 import * as C from "./commands.ts";
-import { stopAfterPlan } from "./graph/words.ts";
-import { checkHome, home, said, unanswered, type FromHome } from "./home/cards.ts";
+import { checkHome, home, unanswered, type FromHome } from "./home/cards.ts";
 import { EXACT, WHO } from "./home/who.ts";
 import { keyTrouble, needs, tryAgain, widen } from "./needs.ts";
 import type { Session } from "./session.ts";
 import type { Task } from "./state.ts";
 
-type Last = { n: number; lines: string[]; bad: boolean; asked?: string; key?: boolean };
+type Last = { n: number; lines: string[]; bad: boolean; key?: boolean };
 
 export class HomeHost implements vscode.WebviewViewProvider {
   private views = new Set<vscode.WebviewView>();
-  private planning: AbortController | null = null;
-  /** What Home is doing now ("Planning…"), and what the last thing it did said, for the page. */
+  /** What Home is doing now ("Setting up this folder…"), and what the last thing it did said, for the page. */
   private busy = "";
   private last: Last = { n: 0, lines: [], bad: false };
-  /** What was last planned here: the headline once the plan's news no longer says it (an ask sets no goal). */
-  private asked = "";
   /** `board:` as `graphene config` last said it: on, with every task to review and auto off, is Exact.
    *  ponytail: read when Home opens and when its switch moves, so a `config set board` typed in a terminal
    *  shows here at the next of those; the snapshot would have to carry the setting to follow it live. */
@@ -69,9 +65,8 @@ export class HomeHost implements vscode.WebviewViewProvider {
     if (h && this.busy) for (const section of h.sections) for (const button of section.buttons) {
       if (button.act === "startAll" || button.act === "discardAll") button.off = true;
     }
-    if (h && !s?.goal && this.asked) h.goal = this.asked; // whole: the news cuts what was asked at 60 characters
     const model = { type: "home", status: this.session.status, home: h, review: s?.envelope.review === "every", exact: this.exact, busy: this.busy,
-                    planning: Boolean(this.planning), last: this.last };
+                    last: this.last };
     const n = s ? needs(s).length : 0;
     for (const v of this.views) {
       v.badge = n ? { value: n, tooltip: n === 1 ? "1 thing needs you" : `${n} things need you` } : undefined;
@@ -203,8 +198,6 @@ export class HomeHost implements vscode.WebviewViewProvider {
     const task = () => s.tasks().find((t) => t.id === m.id);
     const run = (name: string, arg?: unknown) => vscode.commands.executeCommand(`graphene.${name}`, arg);
     switch (m.act) {
-      case "ask": return this.ask(m.arg!);
-      case "cancel": return this.planning?.abort();
       case "setup": return this.setUp(m.arg!, m.flag === true);
       // Exact: Start waits for every answer; and a question with no default stops the run either way
       case "startAll": return (this.exact && s.state?.questions.length) || (s.state && unanswered(s.state)) ? undefined : this.start();
@@ -235,45 +228,14 @@ export class HomeHost implements vscode.WebviewViewProvider {
     }
   }
 
-  /** The one switch (decision 225). On, Plan it suggests a plan and waits for Start; off is auto, and the plan
-   *  is still drawn first. It is the `auto` setting, so the terminal and the graph's header see the same one. */
+  /** The one switch (decision 225). On, a plan your agent proposes waits for Start; off is auto: what fits your
+   *  limits is accepted and runs. It is the `auto` setting, so the terminal and the graph's header see the same one. */
   private async setStopAfter(on: boolean) {
     if (!on && this.exact) await this.setExact(false); // Exact holds `auto: off`: its three settings go back together, then the switch moves
     if (!(await this.session.act(C.stopAfter(on)))) return;
-    this.say([on ? "Stop after the plan is on: Plan it suggests a plan and waits for you to start it."
-      : "Stop after the plan is off: Plan it draws the plan, then runs what fits your limits without waiting. A question with no default still stops it."]);
+    this.say([on ? "Stop after the plan is on: a plan your agent proposes waits here for you to start it."
+      : "Stop after the plan is off: a plan that fits your limits runs without waiting. A question with no default still stops it."]);
     this.push();
-  }
-
-  /** Plan it. While Stop after the plan is on, `graphene ask`: the planner suggests tasks, and nothing runs until
-   *  the person starts them; Cancel stops it. Off, `graphene auto` in a terminal the person can watch, as Start's
-   *  run is: the plan is drawn first, then what fits the limits runs. */
-  private async ask(text: string) {
-    if (this.planning) return;
-    const s = this.session.state;
-    if (s && !stopAfterPlan(s)) {
-      this.asked = text;
-      this.say(["Auto started in its terminal: it draws the plan first, then runs what fits your limits. If it stops, the terminal and Needs you say why."], { asked: text });
-      this.session.terminal("graphene auto", C.auto(text.replace(/[\u0000-\u001f\u007f]+/g, " "))); // typed into a shell: one line, no control characters
-      return this.push();
-    }
-    const stop = new AbortController();
-    this.planning = stop;
-    this.busy = "Planning: the planner is reading your repository…";
-    this.push();
-    const out = await this.session.run(C.ask(text), undefined, stop.signal);
-    this.planning = null;
-    this.busy = "";
-    if (stop.signal.aborted) this.say(["Planning stopped."]);
-    else if (out.code !== 0) {
-      const why = out.code === -1 ? "graphene was not found" : C.refusal(out.stderr, out.stdout);
-      this.say([why], { bad: true, key: keyTrouble(why).key });
-    } else {
-      this.asked = text;
-      this.say(said(out.stdout), { asked: text });
-    }
-    this.push();
-    void this.session.refresh();
   }
 
   /** Set Up: one AI plans and does the work (`graphene init` with both named, so it asks nothing), then, unless
