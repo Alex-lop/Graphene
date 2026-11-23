@@ -373,8 +373,7 @@ test("May change is a tree: its folder opened to its files, the written ones mar
   assert.deepEqual(scopeTree(wide, { tree: ["a/", "z/", "README.md"], tasks: [] }).map((r) => `${"  ".repeat(r.depth)}${r.name} [${r.kind}]`),
                    ["a/ [in]", "  x.py [in]", "z/ [in]", "README.md [in]", "… and 299 more files [in]"]);
   // a path the step will create is its own, and says it is new; a finished step's changes are its written files
-  assert.deepEqual(scopeTree(step("docs"), scoped).filter((r) => r.kind === "in"), [{ name: "docs/EXPORT.md", depth: 0, kind: "in", note: "new file" }]);
-  assert.equal(scopeTree({ ...step("docs"), scope: ["docs/export/**"] }, scoped).find((r) => r.kind === "in")?.note, "new folder");
+  assert.deepEqual(scopeTree(step("docs"), scoped).filter((r) => r.kind === "in"), [{ name: "docs/EXPORT.md", depth: 0, kind: "in", note: "new" }]);
   assert.deepEqual(scopeTree(step("test"), scoped).filter((r) => r.kind === "in"), [{ name: "tests/", depth: 0, kind: "in", note: "" },
                                                                                    { name: "test_export.py", depth: 1, kind: "in", note: "written" }]);
   assert.equal(writtenOf(step("docs")), "");

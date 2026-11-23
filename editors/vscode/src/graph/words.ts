@@ -149,7 +149,7 @@ export function scopeTree(t: Pick<TaskX, "id" | "scope" | "files" | "filesN" | "
     if (!top.endsWith("/") && files.includes(top)) rows.push({ name: top, depth: 0, kind: "in", note: written.has(top) ? "written" : "" });
     else if (dirs.length || here.length) {
       for (const d of dirs) open(d);
-      for (const g of here) rows.push({ name: g, depth: 0, kind: "in", note: written.has(g) ? "written" : s.tree.length ? (g.endsWith("/") ? "new folder" : "new file") : "" }); // no tree (a replay, an older CLI): nobody knows what is there
+      for (const g of here) rows.push({ name: g, depth: 0, kind: "in", note: written.has(g) ? "written" : s.tree.length ? "new" : "" }); // no tree (a replay, an older CLI): nobody knows what is there
     } else if (cut && globs.some((g) => !g || g.startsWith(top))) rows.push({ name: top, depth: 0, kind: "in", note: "" }); // its own, past the list's cut
     else rows.push({ name: top, depth: 0, kind: others.has(top) ? "other" : "out", note: others.has(top) ? "another task's" : "" });
   }

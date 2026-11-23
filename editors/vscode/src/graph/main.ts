@@ -1406,7 +1406,7 @@ function row(label: string, value: string, parent: HTMLElement, mono = false): H
   if (!value) return null;
   const r = div("row", undefined, parent);
   div("k", label, r);
-  div(mono ? "v mono" : "v", value, r);
+  if (mono) seams(value, div("v mono", undefined, r)); else div("v", value, r);
   return r;
 }
 
@@ -1571,7 +1571,19 @@ function part(body: HTMLElement, title: string, aside = ""): HTMLElement {
 
 let restOpen = false; // May change's fold, as the person left it
 
-const code = (text: string, parent: HTMLElement) => { const c = document.createElement("code"); c.textContent = text; parent.appendChild(c); return c; };
+/** A command or a path, breakable where it reads as a seam, as Home's are (home/main.ts code()): its spaces, after a
+ *  slash, after the dots and underscores of a long name (`app.cookyourbooks.services.impl.CookServiceImplTest`); a
+ *  short piece with a hyphen held whole (`--tests`). <wbr>, so a copied command is the command. */
+function seams(text: string, parent: HTMLElement) {
+  for (const w of text.split(/(\s+)/)) {
+    w.split(w.length >= 24 ? /(?<=[/._])/ : /(?<=\/)/).forEach((part, i) => {
+      if (i) parent.append(document.createElement("wbr"));
+      if (part.length < 24 && part.includes("-")) { const nb = document.createElement("span"); nb.className = "nb"; nb.textContent = part; parent.append(nb); }
+      else parent.append(part);
+    });
+  }
+}
+const code = (text: string, parent: HTMLElement) => { const c = document.createElement("code"); seams(text, c); parent.appendChild(c); return c; };
 const small = (text: string, parent: HTMLElement) => { const c = document.createElement("small"); c.textContent = text; parent.appendChild(c); return c; };
 
 /** Scope: what this step may do, in plain view. May change (a tree, the glob behind it), done when, may run,

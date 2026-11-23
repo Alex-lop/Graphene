@@ -298,6 +298,7 @@ button.tab.on { color: var(--fg); border-bottom-color: var(--fg); }
   font-family: var(--mono); font-size: 12px; background: var(--tint); padding: 1px 5px; border-radius: 4px; margin: 0 4px 3px 0;
   display: inline-block; max-width: 100%; box-sizing: border-box; overflow-wrap: anywhere; vertical-align: bottom;
 }
+.nb { white-space: nowrap; } /* a short piece of a command held whole (seams in main.ts) */
 .sc small { display: block; color: var(--dim); margin-top: 2px; font-size: 11.5px; }
 .tree { font-family: var(--mono); font-size: 12px; line-height: 1.75; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; }
 /* a path wraps after a slash and hangs under its first line, so its file is not read as a sibling; its note follows
