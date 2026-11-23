@@ -184,7 +184,7 @@ export function home(s: State, seen: ReadonlySet<string> = new Set(), exact = fa
     note: exact && s.questions.length
       ? `Start waits for every answer: answer the ${plural(s.questions.length, "open question")} under Needs you first (a default's button confirms it).`
       : unanswered(s) ? `Answer the ${plural(unanswered(s), "question")} with no default under Needs you first: a question with no default stops the run.`
-      : "Read what each task may change and what proves it done. A card's × leaves it out.",
+      : "Read what each task may change and what proves it done. A\u00a0card's\u00a0× leaves it out.", // held together: no "A" or "×" alone at a line's end
     buttons: [{ label: "Start", act: "startAll", main: true, off: (exact && s.questions.length > 0) || unanswered(s) > 0,
                 title: exact && s.questions.length ? "it waits for every answer, as Settings say" : unanswered(s) ? "it waits for an answer: a question with no default is open"
                   : "accept these tasks and start an agent on each" },
