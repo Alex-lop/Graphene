@@ -14,7 +14,8 @@ export type Act = (typeof ACTS)[number];
 
 /** ``main``: the card's one filled button, if any. ``note``: a dim word after the label (a question's default). */
 export interface Btn { label: string; act: Act; id?: string; arg?: string; main?: boolean; title?: string; off?: boolean; note?: string }
-/** ``paths``: the value is these files, drawn one a line, a deep one from its last folder (``v`` says them all). */
+/** ``paths``: the value is these files, drawn one a line, a deep one from its last folder (``v`` says them all).
+ *  A ``v`` of several lines (attempts, last actions) is drawn a line each. */
 export interface Line { k?: string; v: string; mono?: boolean; warn?: boolean; paths?: string[] }
 export type Tone = "question" | "proposed" | "running" | "review" | "came-back" | "ready" | "waiting" | "done" | "yours";
 export interface Card { key: string; tone: Tone; title: string; tag: string; lines: Line[]; buttons: Btn[] }
@@ -30,8 +31,8 @@ const fileLine = (k: string, paths: string[], none: string): Line[] =>
   paths.length ? [{ k, v: files(paths), mono: true, paths }] : line(k, none);
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 const line = (k: string, v: string, more: Partial<Line> = {}): Line[] => (v ? [{ k, v, ...more }] : []);
-/** `a: passed, 9 lines · b: working`: each attempt at a task, as one line. */
-const attempts = (t: Task) => t.forks.map((f) => `${f.letter}: ${forkWord(f)}${f.lines !== null ? `, ${f.lines} lines` : ""}`).join(" · ");
+/** `a: passed, 9 lines`, then `b: working`: each attempt at a task, a line of its own (no dot left at a line's end). */
+const attempts = (t: Task) => t.forks.map((f) => `${f.letter}: ${forkWord(f)}${f.lines !== null ? `, ${f.lines} lines` : ""}`).join("\n");
 
 /** The first words on the page when this is not a real run: a replay, or a race against the scripted stand-in. */
 export function banner(s: State): string {
@@ -145,7 +146,7 @@ export function home(s: State, seen: ReadonlySet<string> = new Set(), exact = fa
         continue;
       }
       waiting.push({ key: `review:${t.id}`, tone: "review", title: t.title, tag: SAY.review,
-                     lines: [...evidence(t), ...line("Last actions", t.tail.slice(-3).join(" · "), { mono: true }), // did it run its check itself?
+                     lines: [...evidence(t), ...line("Last actions", t.tail.slice(-3).join("\n"), { mono: true }), // did it run its check itself?
                              { v: opened ? "You opened these changes." : "You have not opened these changes yet.", warn: !opened }],
                      buttons: [{ label: "Open changes", act: "openDiff", id: t.id, main: !opened },
                                { label: "Approve", act: "approve", id: t.id, main: opened, title: "it lands in your repository" }, back] });

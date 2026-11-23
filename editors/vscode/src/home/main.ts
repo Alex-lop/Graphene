@@ -191,7 +191,7 @@ function drawCard(c: Card): HTMLElement {
   if (c.lines.length) {
     // one long value puts every label of the card over its value in a narrow side bar (home.css), so a card's
     // values never zigzag between beside their label and under it; of files, the longest one shown counts
-    const size = (l: Line) => Math.max(...(l.paths ? l.paths.map(short) : [l.v]).map((x) => x.length));
+    const size = (l: Line) => Math.max(...(l.paths ? l.paths.map(short) : l.v.split("\n")).map((x) => x.length));
     const stack = c.lines.some((l) => l.k && size(l) > (l.mono ? 26 : 40));
     const dl = el("dl", stack ? "c-lines stack" : "c-lines", undefined, card);
     for (const l of c.lines) {
@@ -199,8 +199,11 @@ function drawCard(c: Card): HTMLElement {
       if (l.k) el("dt", "", l.k, r);
       const dd = el("dd", l.mono ? "mono" : "", undefined, r);
       if (l.paths) for (const p of l.paths) path(p, dd);
-      else if (l.mono) code(l.v, dd);
-      else dd.textContent = l.v;
+      else for (const v of l.v.split("\n")) {
+        const row = el("span", "row", undefined, dd);
+        if (l.mono) code(v, row);
+        else row.textContent = v;
+      }
     }
   }
   const acts = c.buttons.filter((x) => x.act !== "drop");
@@ -218,7 +221,7 @@ const short = (p: string) => { const d = p.split("/"); return d.length > 3 ? `â€
 /** A file on a line of its own, its folder dim and the whole path on hover. It breaks as a command does: after
  *  a slash, after a long name's dots, and mid-word only when nothing else fits. */
 function path(p: string, parent: HTMLElement) {
-  const row = el("span", "path", undefined, parent);
+  const row = el("span", "row", undefined, parent);
   row.title = p;
   const s = short(p), cut = s.lastIndexOf("/") + 1;
   if (cut) code(s.slice(0, cut), el("span", "dir", undefined, row));

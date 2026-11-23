@@ -98,8 +98,8 @@ body.vscode-light .c-tag { color: color-mix(in srgb, var(--tone) 55%, var(--fg))
 /* a command or a file breaks at its seams (main.ts), mid-word only when one is wider than the card, and what it
    wraps onto is indented, so a file that wraps does not read as two */
 .c-line dd.mono { overflow-wrap: anywhere; padding-left: 2ch; text-indent: -2ch; }
-.path { display: block; }
-.path .dir { color: var(--dim); }
+.c-line .row { display: block; } /* a file, an attempt, an action: a line each */
+.row .dir { color: var(--dim); }
 /* a narrow side bar: when one value of a card is long, each label of that card goes over its value */
 @media (max-width: 360px) {
   .c-lines.stack { grid-template-columns: minmax(0, 1fr); row-gap: 1px; }
