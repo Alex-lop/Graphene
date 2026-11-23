@@ -39,7 +39,7 @@ const GOAL_W = 220, GOAL_ROW_H = 62;
 /** What the layout and the lines between the cards measure by, at each level of detail. */
 type Dims = { w: number; h: number; gapX: number; gapY: number; padX: number; padY: number; bandGap: number; label: number };
 const DIMS: Record<Level, Dims> = { // `label`: the room over a sub-goal's first row for its header, which is drawn larger over rows
-  full: { w: BOX_W, h: BOX_H, gapX: 32, gapY: 12, padX: 24, padY: 24, bandGap: 16, label: 28 },
+  full: { w: BOX_W, h: BOX_H, gapX: 32, gapY: 16, padX: 24, padY: 24, bandGap: 16, label: 28 },
   compact: { w: ROW_W, h: ROW_H, gapX: 24, gapY: 8, padX: 24, padY: 24, bandGap: 16, label: 30 },
 };
 /** A sub-goal's loose tasks (no line in or out but to the goal) stand at most this many high, then side by side. */
@@ -528,7 +528,7 @@ function graph(s: StateX, dir: "across" | "down") {
     const rect = bands.appendChild(el("rect", { class: "band", x: x0, y: band.y0, height: band.y1 - band.y0, rx: 10 }));
     rect.appendChild(el("title", {}, title));
     const said = bandHead(heads, title, s.tasks.filter((t) => t.parent === band.id), x0 + 12, band.y0 + D.label / 2 + 1,
-                          Math.min(most - x0, $("canvas").clientWidth / (opened?.zoom ?? zoom).k) - 24); // within the band's visible width
+                          Math.min(most, $("canvas").clientWidth / (opened?.zoom ?? zoom).k) - x0 - 24); // within the band's visible width
     const end = Math.min(most, Math.max(x1, x0 + said + 24));
     rect.setAttribute("width", String(end - x0));
     spans.set(band.id, { x0, x1: end });
