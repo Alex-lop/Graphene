@@ -17,8 +17,12 @@ export const wheelK = (k: number, deltaY: number) => zoomK(k * Math.exp(-Math.ma
 /** A card at each level: whole (its files, its check, its status, its attempts), and the row it is cut down
  *  to when the plan is read from afar (its state's mark, its title, and what is news). */
 export const CARD: Record<Level, Size> = { full: { w: 220, h: 84 }, compact: { w: 152, h: 44 } };
-/** A fit keeps whole cards down to this scale: under it nobody reads them, and the plan is fitted as rows. */
-export const FULL_FROM = 0.7;
+/** A fit keeps whole cards down to this scale, where a card's title is still drawn at 11 px: under it nobody
+ *  reads them, and the plan is fitted as rows. */
+export const FULL_FROM = 0.85;
+/** Rows a fit may draw larger than their own size where the canvas has room, so a small plan fills its tab: up
+ *  to the scale rows turn to whole cards at (TO_FULL), and no further, so a fitted plan stays rows. */
+export const ROWS_MOST = 1.2;
 /** Zooming: whole cards turn to rows under the first, rows to whole cards over the second. */
 export const TO_COMPACT = 0.55, TO_FULL = 1.2;
 
@@ -42,22 +46,23 @@ export const switchK = (k: number, from: Level, to: Level) => zoomK(k * ratio(CA
 export const percent = (level: Level, k: number) => Math.round((100 * k) / ratio(CARD.full, CARD[level]));
 
 /** The scale and the place at which a drawing sits whole in its canvas, in the middle and clear of ``foot`` px
- *  at the canvas's foot (the zoom's buttons, the legend): the largest scale that fits, never over 1 (a small
- *  plan is not blown up). ``whole`` is false when even the smallest scale cannot hold it. */
-export function fitView(canvas: Size, drawing: Size, foot = 0): Zoom & { whole: boolean } {
+ *  at the canvas's foot (the zoom's buttons, the legend): the largest scale that fits, never over ``most`` (a
+ *  small plan is not blown up past it). ``whole`` is false when even the smallest scale cannot hold it. */
+export function fitView(canvas: Size, drawing: Size, foot = 0, most = 1): Zoom & { whole: boolean } {
   const h = Math.max(1, canvas.h - foot);
-  const want = Math.min(1, canvas.w / Math.max(1, drawing.w), h / Math.max(1, drawing.h));
+  const want = Math.min(most, canvas.w / Math.max(1, drawing.w), h / Math.max(1, drawing.h));
   const k = Math.max(ZOOM_MIN, want);
   return { k, tx: Math.max(0, (canvas.w - drawing.w * k) / 2), ty: Math.max(0, (h - drawing.h * k) / 2), whole: want >= ZOOM_MIN };
 }
 
-/** How a plan opens in its pane: as whole cards where they fit at a scale they read at, else as rows, fitted;
+/** How a plan opens in its pane: as whole cards where they fit at a scale they read at, else as rows, fitted
+ *  and drawn up to ROWS_MOST, so they fill the pane;
  *  null when not even rows fit at the smallest scale. ``rows`` (the plan's size laid out as rows) is asked for
  *  only when it is needed. */
 export function fitPlan(canvas: Size, full: Size, rows: () => Size, foot = 0): (Zoom & { level: Level }) | null {
   const whole = fitView(canvas, full, foot);
   if (whole.k >= FULL_FROM) return { level: "full", k: whole.k, tx: whole.tx, ty: whole.ty };
-  const far = fitView(canvas, rows(), foot);
+  const far = fitView(canvas, rows(), foot, ROWS_MOST);
   return far.whole ? { level: "compact", k: far.k, tx: far.tx, ty: far.ty } : null;
 }
 

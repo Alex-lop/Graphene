@@ -120,10 +120,11 @@ main { flex: 1; display: flex; min-height: 0; }
 #svg.glide { transition: transform var(--ease); } /* the plan grew: it glides to the middle again */
 #svg.cut .task, #svg.cut .goal, #svg.cut .edge { transition: none; } /* whole cards to rows, or back: another drawing, at once */
 #notice {
-  position: absolute; left: 50%; top: 40%; transform: translate(-50%, -50%); max-width: 70%;
+  position: absolute; left: 50%; top: 40%; transform: translate(-50%, -50%); max-width: min(70%, 460px); text-wrap: balance;
   text-align: center; color: var(--dim); font-size: 13px; line-height: 1.5; padding: 16px 20px; white-space: pre-wrap;
 }
 #notice[hidden] { display: none; }
+#notice::first-line { color: var(--fg); font-weight: 600; } /* what is so, then what to do about it */
 #need { position: absolute; right: 12px; top: 12px; z-index: 2; height: 28px; font-size: 12px; box-shadow: var(--pop); white-space: nowrap; }
 /* while a step wants you: how many, and a click (or n) shows the next */
 #need { border-color: color-mix(in srgb, var(--review) 55%, transparent); background: color-mix(in srgb, var(--review) 12%, var(--card)); box-shadow: 0 8px 24px -6px var(--shadow); }
@@ -323,17 +324,13 @@ button:disabled { opacity: 0.45; cursor: default; }
 .ring { fill: var(--accent-soft); stroke: var(--edge-hot); stroke-width: 2; }
 .task:not(.selected):focus-visible .box, .goal:focus-visible .goal-box { stroke: var(--focus); stroke-width: 2; stroke-dasharray: 3 2; } /* a chosen card's ring says it */
 .task:focus-visible, .goal:focus-visible { outline: none; } /* the dashed card says the focus: no square frame round its attempts too */
+/* a tile is neutral, so the only coloured shapes on a card are its state's: the colour is its letter's, a
+   step's own (the same as its files wear in the Explorer), else who does it */
 .tile rect { fill: var(--tint); }
 .tile text { fill: var(--fg); font-size: 14px; font-weight: 700; font-family: var(--font); }
-/* a step's own colour, the same as its files wear in the Explorer, is its letter's: the tile stays neutral, so
-   the only coloured shapes on a card are its state's */
-.tile.step rect { fill: var(--tint); }
 .tile.step text { fill: var(--step, var(--fg)); }
-.tile.claude:not(.step) rect { fill: color-mix(in srgb, var(--claude) 18%, transparent); }
 .tile.claude:not(.step) text { fill: var(--claude); }
-.tile.codex:not(.step) rect, .tile.draft rect { fill: color-mix(in srgb, var(--proposed) 15%, transparent); }
 .tile.codex:not(.step) text, .tile.draft text { fill: var(--proposed); }
-.tile.you:not(.step) rect { fill: color-mix(in srgb, var(--review) 16%, transparent); }
 .tile.you:not(.step) text { fill: var(--review); }
 .tile.cmd text { font-family: var(--mono); font-size: 12px; font-weight: 600; }
 .pill rect { fill: var(--tint); }
