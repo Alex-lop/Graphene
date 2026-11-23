@@ -361,7 +361,7 @@ test("May run, Held by, Stopped, Done when and Tokens say what is known, and no 
   assert.equal(tokenWords(step("button")), null, "no meter, or nothing spent yet");
 });
 
-test("an icon the graph's page asks for by name is one it has: the goal chip's arrow was a blank", () => {
+test("an icon the graph's page asks for by name is one it has: the pane's close, the run's play, a button's check", () => {
   const src = (file: string) => readFileSync(new URL(`../src/graph/${file}`, import.meta.url), "utf8");
   // `icon("close")`, `icon(going ? "debug-stop" : "play")` on the page; `icon: "check"` on a button's words
   const asked = [...src("main.ts").matchAll(/\bicon\(([^()]*)\)/g)].flatMap((m) => [...m[1]!.matchAll(/(?:^|[?:]\s*)"([a-z-]+)"/g)].map((n) => n[1]!));

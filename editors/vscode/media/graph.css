@@ -1,9 +1,10 @@
 /* The graph's look (the target is dev/ui/canvas.html): a dotted canvas flowing left to right, a card a step,
-   curved edges between ports, a region for this machine and one for what leaves it. Every colour is one of VS
+   curved edges between ports, each sub-goal one line into the goal, and a region of its own only for a step that
+   leaves this machine. Every colour is one of VS
    Code's own, or mixed from two of them, so it is native in light, dark and high contrast. Colour means state:
    working amber, landed green, needs you purple, drafted blue, came back red (the chart colours, as the
-   cockpit's are). A task's tile is the one other colour: its step's own, as its files wear it in the Explorer;
-   the tile's letter says who does the step. No text under 11 px at the drawing's own size (100%); a plan
+   cockpit's are). A task's tile is neutral; its letter is the one other colour: its step's own, as its files
+   wear it in the Explorer, else who does the step. No text under 11 px at the drawing's own size (100%); a plan
    fitted smaller than that is read from afar, and its cards are then rows with their titles drawn larger.
    tokens.css, linked first, gives what the graph shares with Home (the colours, lines, accent, corners and
    shadows); these are the graph's own. */
