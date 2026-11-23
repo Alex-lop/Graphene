@@ -11,6 +11,7 @@ import workflowFx from "../../test/fixtures/workflow.json";
 import realAutoFx from "../../test/fixtures/real-auto.json";
 import raceFx from "../../test/fixtures/graph-race.json";
 import { parseState } from "../state.ts";
+import { wearTheme } from "../previewTheme.ts";
 
 const fixtures: Record<string, unknown> = { auto: autoFx, big: bigFx, empty: emptyFx, proposals: proposalsFx, running: runningFx,
   real: realAutoFx, race: raceFx, drafting: draftingFx, scope: scopeFx, workflow: workflowFx };
@@ -38,9 +39,7 @@ for (const t of state.tasks) {
     if (typeof rf.idle === "number") f.idle = rf.idle;
   }
 }
-const theme = params.get("theme");
-if (theme === "light") document.documentElement.classList.add("light"); // VS Code's light colours
-if (theme === "hc") { document.documentElement.classList.add("hc"); document.body.classList.add("vscode-high-contrast"); }
+wearTheme(params.get("theme"));
 const dir = params.get("dir");
 if (dir) document.body.dataset.dir = dir;
 let saved: unknown = params.get("view") ? { view: params.get("view") } : undefined;

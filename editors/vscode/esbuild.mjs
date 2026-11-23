@@ -1,5 +1,6 @@
 // The bundles: the extension (Node, run by VS Code), the graph's and Home's webview scripts; and the preview's,
-// which puts a fixture state into the graph with no VS Code around (media/preview.html).
+// and the previews', which put a fixture state into the graph and Home with no VS Code around (media/preview.html,
+// media/home-preview.html).
 import { build } from "esbuild";
 
 const common = { bundle: true, sourcemap: false, logLevel: "warning", legalComments: "none" };
@@ -12,4 +13,7 @@ await Promise.all([
           platform: "browser", format: "iife", target: "es2022" }),
   build({ ...common, entryPoints: ["src/graph/preview.ts"], outfile: "dist/preview.js",
           platform: "browser", format: "iife", target: "es2022" }),
+  // Home's model is the host's (cards.ts), whose commands join paths: a browser's stand-in for node:path will do
+  build({ ...common, entryPoints: ["src/home/preview.ts"], outfile: "dist/home-preview.js",
+          platform: "browser", format: "iife", target: "es2022", alias: { "node:path": "./src/home/path.ts" } }),
 ]);
