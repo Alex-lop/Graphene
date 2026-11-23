@@ -8,7 +8,7 @@ import { CHANGES } from "./words.ts";
 // set: one field of the task's form, with its value; draw: a task drawn on the graph, whole, for `node add`;
 // add-after (id a task) and add-under (id a sub-goal, or none): the planner fills a drawn task in, from its
 // title as the sentence; stopAfter: the header's one switch, its value the position it moves to
-export const ACTS = ["add-after", "add-under", "link", "unlink", "drop", "accept", "tell", "run", "stop", "cockpit",
+export const ACTS = ["add-after", "add-under", "link", "unlink", "drop", "accept", "tell", "start", "run", "stop", "cockpit",
                      "openDiff", "compareForks", "pickFork", "signOff", "answer", "handBack", "set", "draw", "stopAfter", "saveWorkflow",
                      "markDone"] as const;
 export type Act = (typeof ACTS)[number];
@@ -64,7 +64,7 @@ export function check(m: unknown, session: { state: Plan }): FromPage | null {
   const s = session.state;
   const tasks = s?.tasks ?? [];
   const task = tasks.find((t) => t.id === id);
-  const global: readonly Act[] = ["run", "stop", "cockpit", "saveWorkflow"];
+  const global: readonly Act[] = ["start", "run", "stop", "cockpit", "saveWorkflow"];
   if (act === "answer") {
     const q = s?.questions.find((x) => x.id === id);
     if (!q) return null;

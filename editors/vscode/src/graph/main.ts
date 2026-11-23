@@ -11,7 +11,7 @@ import { blanks, draftLine, globs, isDraft, lacks, type Draft } from "./draft.ts
 import { attemptsMark, cardAct, checkLines, checkMark, cornerMark, doneWhen, filesLine, forkMark, goalBox, goalCells, legend, midCut, nextWanting, stateMark, tally, wanting, wantingLine,
          type CheckMark, type Mark } from "./marks.ts";
 import { actsFor, asksYou, attemptsOf, commandChip, cornerWord, cut, done, draftedSteps, edgeKind, editable, filesChip, FIRST_HINT, fitWidth, forkActs, forkRow, forkWords, HEADER_ACTS, headerFor,
-         heldWords, KEYS, linkHint, mayRun, paneKey, pipeline, planningLine, PROVES_NOTHING, provesNothing, questionOn, scopeTree, STOP_AFTER, STOP_AFTER_HOVER, stopAfterPlan, stopsOf, sub, tabOrder, tokenWords, topLine, twoLines, whenEdit, who, writtenOf,
+         heldWords, KEYS, linkHint, mainAct, mayRun, paneKey, pipeline, planningLine, PROVES_NOTHING, provesNothing, questionOn, scopeTree, STOP_AFTER, STOP_AFTER_HOVER, stopAfterPlan, stopsOf, sub, tabOrder, tokenWords, topLine, twoLines, whenEdit, who, writtenOf,
          type Button, type ForkX, type StateX, type TaskX } from "./words.ts";
 import { CARD, dotGap, FAR, fitPlan, hold, levelFor, miniFrame, miniSize, nearest, offScreen, panTo, percent, switchK, wheelK, ZOOM_MAX, ZOOM_MIN, zoomK,
          type Level, type Size, type Zoom } from "./zoom.ts";
@@ -351,11 +351,16 @@ function header(s: StateX) {
   }));
   $("b-stop-after").setAttribute("aria-checked", String(stopAfterPlan(s)));
   $("b-stop-after").hidden = replaying();
-  const run = $("b-run"); // while a run goes, the button that started it stops it
-  run.replaceChildren(icon(s.run.going ? "debug-stop" : "play"), document.createTextNode(s.run.going ? "Stop" : "Run"));
-  run.title = s.run.going ? "stop every agent: their tasks go back to the plan" : "start an agent on every task that is ready";
-  run.className = s.run.going || s.tasks.some((t) => t.state === "ready") ? "" : "quiet"; // filled only when it would start or stop something
   for (const [id] of HEADER_ACTS) $(id).hidden = replaying(); // a replay is watched: nothing acts on a plan, or outside it
+  // the one act on the whole plan: Start a suggestion, Run what is ready, Stop a run (words.ts `mainAct`)
+  const act = mainAct(s), run = $<HTMLButtonElement>("b-run");
+  if (!act) run.hidden = true;
+  else {
+    run.replaceChildren(icon(act.icon), document.createTextNode(act.label));
+    run.title = act.title;
+    run.className = act.main ? "" : "quiet"; // filled only when it starts something
+    run.disabled = Boolean(act.off);
+  }
   const toggle = $("b-view");
   const v = view();
   toggle.replaceChildren(icon(v === "lanes" ? "type-hierarchy-sub" : "list-flat"), document.createTextNode(v === "lanes" ? "Graph" : "Lanes"));
@@ -2007,7 +2012,7 @@ function wire() {
     actions.appendChild(b);
   };
   top("b-add", "Add task", "add", "draw a task: its title, then its files and its check (or the planner fills them in)", () => draw({ after: null, parent: null }));
-  top("b-run", "Run", "play", "start an agent on every task that is ready", () => api.postMessage({ type: "act", act: state?.run.going ? "stop" : "run", id: "" }));
+  top("b-run", "Run", "play", "", () => { const a = state && mainAct(state); if (a) api.postMessage({ type: "act", act: a.act, id: "" }); });
   top("b-save", "Save as workflow", "save", "write this graph to workflows/ so it can run again on new inputs", () => api.postMessage({ type: "act", act: "saveWorkflow", id: "" }));
   top("b-view", "Lanes", "list-flat", "graph or lanes (v)", () => { remember({ view: view() === "lanes" ? "graph" : "lanes" }); fitted = false; render(); });
   top("b-help", "", "question", "every key (?)", () => help($("help").hidden));

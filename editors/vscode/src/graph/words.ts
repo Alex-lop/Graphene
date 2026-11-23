@@ -11,13 +11,13 @@ export type Replay = { shown: string; day: string; repository: string } | null;
 /** `stand_in`: every model call on record went to the scripted stand-in (the snapshot's, since 867c326c). */
 export type StateX = Omit<State, "tasks"> & { replay?: Replay; stand_in?: boolean; tasks: TaskX[] };
 
-export type Act = "add-after" | "add-under" | "link" | "unlink" | "drop" | "accept" | "tell" | "run" | "stop" | "cockpit"
+export type Act = "add-after" | "add-under" | "link" | "unlink" | "drop" | "accept" | "tell" | "start" | "run" | "stop" | "cockpit"
   | "openDiff" | "compareForks" | "pickFork" | "signOff" | "answer" | "handBack" | "set" | "draw" | "stopAfter" | "saveWorkflow" | "markDone";
 
 /** The acts a replay offers none of: they change a plan, or they act outside the replay (the cockpit opens
  *  `graphene watch` in the person's own folder; openDiff and compareForks look the id up in the person's
  *  plan). That is every act: a replay is watched. The host refuses them too (check.ts). */
-export const CHANGES: readonly Act[] = ["add-after", "add-under", "link", "unlink", "drop", "accept", "tell", "run", "stop",
+export const CHANGES: readonly Act[] = ["add-after", "add-under", "link", "unlink", "drop", "accept", "tell", "start", "run", "stop",
                                         "cockpit", "openDiff", "compareForks", "pickFork", "signOff", "answer", "handBack", "set", "draw", "stopAfter",
                                         "saveWorkflow", "markDone"];
 
@@ -406,6 +406,24 @@ export interface Button {
   icon: string; // a codicon's name, "" for none
   fork?: string;
   main?: boolean; // drawn as the primary button
+  off?: boolean; // shown, and not pressed: its hover says why
+}
+
+/** The header's one act on the whole plan: Stop while a run goes; Start while the plan is a suggestion (Home's
+ *  Start: every suggested task accepted, then the run), held while a question with no default is open; else
+ *  Run, filled while a task is ready and held while none is. None for no plan: nothing to start. */
+export function mainAct(s: Pick<StateX, "run" | "tasks" | "questions">): Button | null {
+  if (!s.tasks.length) return null;
+  if (s.run.going) return { label: "Stop", act: "stop", icon: "debug-stop", title: "stop every agent: their tasks go back to the plan" };
+  const n = (k: TaskX["state"]) => s.tasks.filter((t) => t.state === k).length;
+  if (n("proposed") && !n("ready") && !n("running")) {
+    const held = s.questions.some((q) => !q.default); // home/cards.ts `unanswered`: such a question stops a run
+    return { label: "Start", act: "start", icon: "play", main: !held, off: held,
+             title: held ? "it waits for an answer: a question with no default is open" : `accept the ${n("proposed")} suggested, then start an agent on each that is ready` };
+  }
+  const ready = n("ready");
+  return { label: "Run", act: "run", icon: "play", main: ready > 0, off: !ready,
+           title: ready ? "start an agent on every task that is ready" : "nothing is ready to run" };
 }
 
 /** The buttons a task's pane offers, in order. A replay offers none: its pane reads. A step past the line

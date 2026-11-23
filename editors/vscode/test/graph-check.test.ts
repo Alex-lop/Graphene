@@ -14,6 +14,7 @@ test("the host takes ready, and an act it knows on an id the plan has", () => {
   assert.deepEqual(ok({ type: "act", act: "signOff", id: "farewell" }), { type: "act", act: "signOff", id: "farewell", target: undefined, fork: undefined });
   assert.deepEqual(ok({ type: "act", act: "link", id: "hello", target: "ship" })?.target, "ship");
   assert.equal(ok({ type: "act", act: "run", id: "" })?.type, "act");
+  assert.equal(ok({ type: "act", act: "start", id: "" })?.type, "act", "Start, on the whole plan: no id");
   assert.equal(ok({ type: "act", act: "add-under", id: "" }), null, "Add task draws on the page: the host is asked only with a sentence for the planner");
 });
 
@@ -41,7 +42,7 @@ test("a fork the task has passes; so does an answer with one of the question's o
 test("a replay's host runs nothing that changes a plan or acts outside the replay; what reads still passes", () => {
   const replay = { state: { ...state, replay: { shown: "a scripted stand-in, no model ran", day: "", repository: "" } } };
   for (const act of CHANGES) {
-    const id = ["run", "stop", "cockpit", "add-under", "draw", "saveWorkflow"].includes(act) ? "" : act === "answer" ? "which-port" : "farewell";
+    const id = ["start", "run", "stop", "cockpit", "add-under", "draw", "saveWorkflow"].includes(act) ? "" : act === "answer" ? "which-port" : "farewell";
     const more = act === "set" ? { field: "title", value: "x" } : act === "draw" ? { draft: { key: " d1", title: "t", files: "a.py", check: "true", approve: false } }
       : act.startsWith("add-") ? { sentence: "a flag", key: " d1" } : act === "stopAfter" ? { value: false } : {};
     assert.ok(check({ type: "act", act, id, fork: act === "pickFork" ? "b" : undefined, target: act === "link" || act === "unlink" ? "hello" : undefined, ...more }, session),

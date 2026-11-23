@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import * as C from "../src/commands.ts";
 import { actsFor, asksYou, attemptsOf, CHANGES, commandChip, commandWord, cornerWord, counts, draftedSteps, edgeKind, editable, filesChip, fitWidth, fitWords, forkActs, forkWords, HEADER_ACTS, headerFor,
-         checkWords, heldWords, linkHint, mayRun, OUTSIDE, OUTSIDE_OWN, paneKey, pipeline, planningLine, provesNothing, replayLine, scopeTree, stopAfterPlan, stopsOf, sub, tabOrder, tokenWords, topLine,
+         checkWords, heldWords, linkHint, mainAct, mayRun, OUTSIDE, OUTSIDE_OWN, paneKey, pipeline, planningLine, provesNothing, replayLine, scopeTree, stopAfterPlan, stopsOf, sub, tabOrder, tokenWords, topLine,
          whenEdit, who, writtenOf, type StateX, type TaskX } from "../src/graph/words.ts";
 import { SAY, WORDS } from "../src/state.ts";
 import { ICONS } from "../src/graph/icons.ts";
@@ -103,6 +103,19 @@ test("a live race against the stand-in says so first; a replay's line wins; a re
   // an older CLI sends no stand_in: parseState fills false, the line above
   assert.equal(topLine({ replay: { shown: "a scripted stand-in, no model ran", day: "", repository: "" }, stand_in: true }),
                "replay · a scripted stand-in, no model ran");
+});
+
+test("the header's one act: Start a suggested plan (held by a question with no default), Run what is ready, Stop a run", () => {
+  const fx = (name: string) => parseState(readFileSync(new URL(`./fixtures/${name}.json`, import.meta.url), "utf8")) as StateX;
+  const say = (s: StateX) => { const a = mainAct(s); return a && `${a.label} ${a.act}${a.main ? " main" : ""}${a.off ? " off" : ""}`; };
+  const plan = fx("proposals");
+  assert.equal(say(plan), "Start start main", "a suggestion: Run would fail in a terminal, nobody accepted it");
+  assert.equal(say({ ...plan, questions: plan.questions.map((q) => ({ ...q, default: null })) }), "Start start off");
+  assert.match(mainAct({ ...plan, questions: [{ ...plan.questions[0]!, default: null }] })!.title, /question with no default/);
+  assert.equal(say({ ...plan, tasks: [...plan.tasks, { ...plan.tasks[0]!, id: "r", state: "ready" }] }), "Run run main", "something ready: Run, the suggestion waits on Home");
+  assert.equal(say(fx("running")), "Stop stop", "a run going: Stop, never filled");
+  assert.equal(say({ ...fx("running"), run: { going: false, pid: null } }), "Run run off", "nothing ready: Run is there, held");
+  assert.equal(say(fx("empty")), null, "no plan: nothing to start");
 });
 
 test("a replay offers none of the header's acts: the cockpit would open graphene watch in the person's folder", () => {
