@@ -37,7 +37,7 @@ files it may change, and lands only when its check passes and, if you keep appro
 
 **Stop after the plan**, on Home and the graph's header, is on by default: the plan waits for **Start**. Off, a plan
 runs as soon as it appears, within your limits; a question with no default still stops it. The tab opens by itself
-when work starts, beside your file and without taking the focus; close it and it stays closed until **Show Graph**.
+when work starts, beside your file and without taking the focus; close it and it stays closed until **Open the Graph**.
 
 **Save as workflow** writes the plan to `workflows/<name>.md`, with the values you name as inputs; Home lists them,
 and **Run** proposes the plan again with no planner call. A `run:` line is a command with no agent; one that pushes
@@ -60,7 +60,7 @@ or opens a pull request (`git push`, `gh pr`) waits past the **leaves your machi
 
 ## Commands and settings
 
-Seven commands in the palette, under `Graphene:`: **Home**, **Show Graph**, **Watch the Demo**, **Stop All Agents**,
+Seven commands in the palette, under `Graphene:`: **Home**, **Open the Graph**, **Watch the Demo**, **Stop All Agents**,
 **Set Up This Folder**, **Install Graphene…** and **Set API Key…**. Everything else is a button on Home, on the
 graph, or in a diff's title (**Keep This Attempt**, **Approve**).
 
@@ -69,7 +69,7 @@ graph, or in a diff's title (**Keep This Attempt**, **Approve**).
 | `graphene.path` | `graphene` | the command: a name on PATH or an absolute path, from your own settings only |
 | `graphene.pollMs` | `1500` | how often the plan is read again when the CLI has no `--watch` stream |
 | `graphene.advanced` | off | every command in the palette, and the Needs You, Agents, Plan and Rounds views |
-| `graphene.graph.openOnStart` | on | the graph opens as a tab by itself when work starts; off, only **Show Graph** opens it |
+| `graphene.graph.openOnStart` | on | the graph opens as a tab by itself when work starts; off, only **Open the Graph** opens it |
 
 ## Trust and privacy
 
