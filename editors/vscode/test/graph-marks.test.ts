@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFileSync } from "node:fs";
-import { attemptsMark, cardAct, checkLines, checkMark, cornerMark, doneWhen, filesLine, forkMark, goalBox, goalCells, legend, markWord, midCut, nextWanting, stateMark, tally, wanting, wantingLine, type Box, type CheckMark, type Mark } from "../src/graph/marks.ts";
+import { attemptsMark, cardAct, checkLines, checkMark, cornerMark, doneWhen, filesLine, forkMark, goalBox, goalCells, legend, markWord, checkCut, nextWanting, tailPath, wrap, stateMark, tally, wanting, wantingLine, type Box, type CheckMark, type Mark } from "../src/graph/marks.ts";
 import { check } from "../src/graph/check.ts";
 import { actsFor, checkWords, counts, cut, KEYS, type TaskX } from "../src/graph/words.ts";
 import { markDone, offerWords, widen } from "../src/needs.ts";
@@ -235,26 +235,47 @@ test("the goal's own check is ticked only once the goal itself is done", () => {
   for (const state of ["open", "waiting", "running", "review", "", "passed"]) assert.equal(goalBox({ state }), "unrun", `${state}: nothing says it ran`);
 });
 
-test("a check is cut in its middle, so both ends stay; short ones are left alone; never longer than asked", () => {
-  assert.equal(midCut(CHECK, 20), "uv run…test_cache.py");
-  assert.equal(midCut("npm test", 20), "npm test");
-  assert.equal(midCut("x".repeat(20), 20), "x".repeat(20), "exactly as long as asked: untouched");
-  assert.equal(midCut("uv run pytest -q tests", 12), "uv…-q tests", "no space is left hanging at the cut");
-  assert.deepEqual([midCut(CHECK, 2), midCut(CHECK, 1), midCut(CHECK, 0), midCut(CHECK, -3), midCut(CHECK, Number.NaN)], ["…y", "…", "", "", ""]);
-  for (const s of [CHECK, "a  b  c  d  e  f  g  h", "docker build -q .", "…………………………"]) for (let n = 0; n <= s.length + 2; n++) {
-    const out = midCut(s, n);
+test("a check is cut at its words: its first and what it runs on, else that alone; short ones are left alone; never longer than asked", () => {
+  assert.equal(checkCut("uv run pytest -q tests/store/test_cache.py", 24), "uv … test_cache.py");
+  assert.equal(checkCut("pytest tests/test_words.py", 22), "pytest … test_words.py");
+  assert.equal(checkCut("python -m pytest tests/test_app.py -k log", 22), "python … test_app.py", "a path, not the flag's word after it");
+  assert.equal(checkCut("./gradlew test --tests 'app.cookyourbooks.services.impl.RecipeLookupServiceImplTest'", 30), "RecipeLookupServiceImplTest", "a dotted test, by its own name");
+  assert.equal(checkCut("./gradlew test --tests 'app.cookyourbooks.services.impl.RecipeLookupServiceImplTest'", 22), "RecipeLookupServiceIm…", "cut at its end only when nothing whole fits");
+  assert.equal(checkCut("grep -q greet README.md", 18), "grep … README.md");
+  assert.equal(checkCut("grep -q greet README.md", 12), "README.md", "what it runs on alone, with no ellipsis before it");
+  assert.equal(checkCut("npm test", 20), "npm test");
+  assert.equal(checkCut("x".repeat(20), 20), "x".repeat(20), "exactly as long as asked: untouched");
+  assert.deepEqual([checkCut(CHECK, 2), checkCut(CHECK, 1), checkCut(CHECK, 0), checkCut(CHECK, -3), checkCut(CHECK, Number.NaN)], ["t…", "…", "", "", ""]);
+  for (const s of [CHECK, "a  b  c  d  e  f  g  h", "docker build -q .", "…………………………", "./gradlew test --tests 'a.b.c.SomeLongTestName'"]) for (let n = 0; n <= s.length + 2; n++) {
+    const out = checkCut(s, n);
     assert.ok(out.length <= Math.max(0, n), `“${out}” is longer than ${n}`);
     if (n >= s.length) assert.equal(out, s);
-    else if (n >= 5) assert.ok(out.includes("…") && s.startsWith(out.split("…")[0]!) && s.endsWith(out.slice(out.indexOf("…") + 1)), `${n}: “${out}” keeps both ends`);
+    // never a word cut in two while a whole one would have fitted: what is cut is the last word, at its end
+    if (n < s.length && out.endsWith("…")) assert.ok(!out.includes(" … "), `${n}: “${out}”`);
   }
   // what it is for: the preview's 24 checks read apart at a card's width, where a cut at the end left 16 of them the same
   const checks = big.tasks.map((t) => t.check).filter((c): c is string => c !== null);
-  assert.equal(new Set(checks.map((c) => midCut(c, 20))).size, new Set(checks).size);
+  assert.equal(new Set(checks.map((c) => checkCut(c, 22))).size, new Set(checks).size);
   assert.equal(new Set(checks.map((c) => cut(c, 20))).size, 9);
 });
 
-test("after `done when`, the foot says the check cut in its middle, or that a command step exits 0", () => {
-  assert.equal(doneWhen(step("ready", { check: CHECK }), 20), "uv run…test_cache.py");
+test("a path too long for its chip says its file; a folder's glob keeps its folder", () => {
+  assert.equal(tailPath("src/main/java/app/services/impl/RecipeLookupServiceImpl.java"), "…/RecipeLookupServiceImpl.java");
+  assert.equal(tailPath("api/create/**"), "…/create/**");
+  assert.deepEqual(["README.md", "+1", "**", "files"].map(tailPath), ["README.md", "+1", "**", "files"]);
+});
+
+test("a title wraps at its words onto as many lines as it is given, the last cut", () => {
+  const mono = (t: string) => t.length * 7;
+  assert.deepEqual(wrap("make the app friendlier", 105, mono, 3), ["make the app", "friendlier"]);
+  assert.deepEqual(wrap("Show the new Graphene plan on a wide tree by filling in", 105, mono, 3), ["Show the new", "Graphene plan", "on a wide tree…"]);
+  assert.deepEqual(wrap("internationalisation everywhere", 105, mono, 3), ["internationali…"], "a first word too long for a line is cut on it");
+  assert.deepEqual(wrap("", 105, mono, 2), []);
+  for (const most of [1, 2, 3]) assert.ok(wrap("a b c d e f g h i j k l m n o p", 30, mono, most).length <= most);
+});
+
+test("after `done when`, the foot says the check cut at its words, or that a command step exits 0", () => {
+  assert.equal(doneWhen(step("ready", { check: CHECK }), 24), "uv … test_cache.py");
   assert.equal(doneWhen(step("ready", { check: "gh pr create --draft --fill", command: "gh pr create --draft --fill" }), 20), "it exits 0");
   assert.equal(doneWhen(step("yours"), 20), "", "no check: the box's words say whose approval finishes it");
 });
@@ -289,17 +310,17 @@ test("the files chip says the latest fact: what it may change, what it has writt
   for (const [why, t, want] of rows) assert.deepEqual(filesLine(t), want, why);
 });
 
-test("×3 on a step set to attempts that has started none; an attempt that started wears its own mark", () => {
+test("3 attempts on a step set to attempts that has started none; an attempt that started wears its own mark", () => {
   const ready = step("ready", { check: CHECK });
   const real = [{ letter: "a", state: "passed", why: "", lines: 41, model: "Nano", usd: 0.007, attempts: 1, idle: null, checkout: null },
                 { letter: "b", state: "running", why: "", lines: 9, model: "Nano", usd: 0.002, attempts: 1, idle: 3, checkout: null }];
   const rows: [string, TaskX, number | null, string][] = [
-    ["its own number", { ...ready, planned: 3 }, null, "×3"],
-    ["unset on the step: the limits' number", ready, 2, "×2"],
+    ["its own number", { ...ready, planned: 3 }, null, "3 attempts"],
+    ["unset on the step: the limits' number", ready, 2, "2 attempts"],
     ["the step's number comes first, and one attempt is no news", { ...ready, planned: 1 }, 3, ""],
     ["nothing set anywhere", ready, null, ""],
-    ["suggested and waiting steps too", step("proposed", { check: CHECK }), 3, "×3"],
-    ["waiting", step("waiting", { check: CHECK, planned: 8 }), null, "×8"],
+    ["suggested and waiting steps too", step("proposed", { check: CHECK }), 3, "3 attempts"],
+    ["waiting", step("waiting", { check: CHECK, planned: 8 }), null, "8 attempts"],
     ["no check: it runs as one agent", step("ready", { planned: 3 }), null, ""],
     ["a command step runs once", step("ready", { check: "uv run pytest -q", command: "uv run pytest -q" }), 3, ""],
     ["started: its real attempts are its chips", step("running", { check: CHECK, planned: 3, forks: real }), 3, ""],
@@ -404,7 +425,7 @@ test("the repo-sized fixture shows every mark, from what a current snapshot says
   assert.equal(stateMark(at("audit")), "working", "the refused write was its first attempt's: nothing is stopped in the one going now");
   assert.deepEqual(filesLine(at("cancel")), { tone: "back", mark: "✕", text: "wrote store/repo.py", refused: "" });
   // ×3 where the limits' three attempts have not started; the two races under way keep their chips
-  for (const t of big.tasks) assert.equal(attemptsMark(t, big.envelope.forks), ["ready", "waiting"].includes(t.state) ? "×3" : "", t.id);
+  for (const t of big.tasks) assert.equal(attemptsMark(t, big.envelope.forks), ["ready", "waiting"].includes(t.state) ? "3 attempts" : "", t.id);
   assert.deepEqual(big.tasks.filter((t) => cardAct(t, false)).map((t) => `${t.id}: ${cardAct(t, false)!.label}`), ["cache: Approve", "cancel: Help it…", "a11y: Mark done"]);
 });
 

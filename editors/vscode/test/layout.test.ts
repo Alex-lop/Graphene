@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { layout, modeFor, order, ranks, step } from "../src/layout.ts";
+import { layout, modeFor, order, ranks, step, type Edge } from "../src/layout.ts";
 import { parseState } from "../src/state.ts";
 
 const fixture = (name: string) => readFileSync(new URL(`./fixtures/${name}.json`, import.meta.url), "utf8");
@@ -120,4 +120,25 @@ test("downward, the arrows walk the rows: down and up across the waves, left and
   assert.equal(step(lay, row1[0]!, "right"), row1[1]);
   assert.equal(step(lay, row1[1]!, "left"), row1[0]);
   assert.equal(step(lay, row1[0]!, "up"), "hello");
+});
+
+test("a sub-goal's loose tasks stand side by side past `stack`, row by row; tied ones and a nameless band's stay one column", () => {
+  const five = ["a", "b", "c", "d", "e"].map((id) => ({ id, band: "s" }));
+  const lay = layout([...five, { id: "g", band: "" }], five.map((b) => [b.id, "g"] as Edge), { goal: "g", boxW: 100, boxH: 40, gapX: 20, gapY: 10, padX: 0, padY: 0, stack: 3 });
+  const at = (id: string) => [lay.boxes[id]!.x, lay.boxes[id]!.y];
+  assert.deepEqual(five.map((b) => at(b.id)), [[0, 0], [120, 0], [0, 50], [120, 50], [0, 100]], "two side by side, three rows");
+  assert.ok(five.every((b) => lay.boxes[b.id]!.rank === 0), "one rank still: nothing waits on another");
+  assert.equal(lay.boxes.g!.x, 240, "the goal past both");
+  // the arrows: across the row first, then on to the goal; down the column, the one in line
+  assert.equal(step(lay, "a", "right"), "b");
+  assert.equal(step(lay, "b", "right"), "g");
+  assert.equal(step(lay, "b", "left"), "a");
+  assert.equal(step(lay, "b", "down"), "d");
+  assert.equal(step(lay, "c", "up"), "a");
+  // a task that waits on another, or one in no sub-goal, keeps the column
+  const tied = layout(five, [["a", "b"]], { boxW: 100, boxH: 40, gapX: 20, gapY: 10, padX: 0, padY: 0, stack: 3 });
+  assert.deepEqual(["c", "d", "e"].map((id) => tied.boxes[id]!.x), [0, 0, 0]);
+  const loose = layout(five.map((b) => ({ ...b, band: "" })), [], { boxW: 100, boxH: 40, gapX: 20, gapY: 10, padX: 0, padY: 0, stack: 3 });
+  assert.ok(Object.values(loose.boxes).every((p) => p.x === 0));
+  assert.ok(Object.values(layout(five, [], { boxW: 100, boxH: 40, padX: 0 }).boxes).every((p) => p.x === 0), "unset, a rank is one column");
 });
