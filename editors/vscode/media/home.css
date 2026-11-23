@@ -81,7 +81,7 @@ button.fold:hover { background: none; color: var(--fg); }
 .tone-proposed { --tone: var(--proposed); }
 .tone-running { --tone: var(--running); }
 .tone-done { --tone: var(--done); }
-.tone-ready { --tone: var(--dim); }
+.tone-ready { --tone: color-mix(in srgb, var(--fg) 45%, transparent); } /* Cursor's dim grey is brighter than its purple */
 .c-tag { color: var(--tone); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
 .card.tone-waiting .c-tag, .card.tone-ready .c-tag { color: var(--dim); } /* outranks the light rule below */
 body.vscode-light .c-tag { color: color-mix(in srgb, var(--tone) 55%, var(--fg)); } /* a chart yellow is ~2.5:1 on a light card */
