@@ -1,5 +1,63 @@
 # Changelog
 
+## 0.10.0 (not yet tagged)
+
+The graph is where you watch and shape agent work (11 to 23 November 2026). In VS Code and Cursor the plan is a
+graph in an editor tab, and it comes from your coding agent's chat, a saved workflow or Add task, never from a box
+on Home. No real agent ran any editor change here: the walks drive VS Code against the scripted stand-in.
+
+The editor (23 November 2026, then PRs #68, #67 and #60). Each line is one change, with what shows it.
+- A click on Graphene's icon opens the graph whole in an editor tab; the side bar's narrow Graph view is gone, and
+  Home's title bar and the palette say Open the Graph, where they said Show Graph (`e2e/test.mjs`,
+  `test/graph-host.test.ts`).
+- Home has no box to type a goal in, and Graphene: Auto… is gone from the palette: the Claude Code and Codex hooks
+  have your agent propose its plan in its own chat. Home's first card opens the graph, and Stop after the plan and
+  Exact sit under Settings at its foot (`test/home.test.ts`).
+- One word a thing on every screen: task, suggested, working, to review, needs help, done, attempt, card (`3 tasks
+  need you`, `2 of 7 done`, `2 need help`; `test/graph-marks.test.ts`, `test/graph-words.test.ts`).
+- One set of colours, lines and corners for the graph and Home (`media/tokens.css`), none read from what Cursor's
+  themes leave weak: focus and selection in the link colour, real shadows, a white switch knob, a themed tab icon;
+  `media/preview.html` and `media/home-preview.html` draw both in Cursor's themes with no VS Code (`?theme=`).
+- The graph restyled: a two-row header with Run the one filled button, neutral tiles (who does a task is its
+  letter's colour), no frame round a plan that stays on this machine, no floating goal chip (`g` still brings the
+  goal), the minimap only while the plan moves.
+- The whole plan opens in view, zoom 12% to 300%; a plan too big for whole cards is drawn as rows, a mark and a
+  title filled by state; choosing a card moves nothing (`test/zoom.test.ts`).
+- A card's foot is its check: `done when …` with a box only Graphene ticks, crossed where the check failed; the one
+  act a task needs from you is a button on its card (Approve, Help it…, Approve and run, Mark done, Allow the
+  write…), and a chip walks them (`3 tasks need you · show the next`, `n`).
+- The graph's tab opens by itself when work starts, beside your file and without the keyboard; closed, it stays
+  closed (`graphene.graph.openOnStart`; CI's `vscode-e2e`).
+- Plan, Run and Review across Home and the graph's header; a plan Claude Code is still writing is drawn task by
+  task; a task's pane opens on Scope: the files it may change, what it may run, how a write outside them is held
+  (no more than the tests prove), the writes stopped, its check before and after the work.
+- Drawn by hand: Add task, the + past a card and the `+` key draw a draft that joins the plan once it has files and
+  a check (`graphene node add`); a task's Edit tab is a form (title, files, check, attempts 1 to 8, wait for my
+  approval, I will do this one); drafts survive a reload; Home's Exact holds Start for every open question
+  (`e2e/draw.mjs`).
+
+Workflows (17 November 2026, PR #67). Each line is one change.
+- Save as workflow writes the graph to `workflows/<name>.md`; Home lists them and runs one on new inputs with no
+  planner call (`graphene workflow NAME -i name=value`, `--save`; `tests/test_workflow.py`,
+  `workflows/fix-issue.md`).
+- A `run:` step is a command step: no agent, its exit code is its check. One that pushes or opens a pull request
+  (`git push`, `gh pr`) stands past the leaves your machine line and waits for Approve and run (`graphene node done
+  ID`); red first never runs it. Tried only against a bare origin and a script named `gh`.
+
+Codex (12 November 2026, PRs #60 and #61). Each line is one change.
+- `graphene init` installs Graphene's hooks for Codex too (`.codex/hooks.json`; `--remove` takes them out): live,
+  three Codex attempts on one task had each patch outside its files refused before it landed
+  (`tests/test_codex_hooks.py`). A hook that is not trusted, crashes or times out lets the write through to the
+  finish, which catches it.
+- The gate fails closed: a write with no session, no path it can read, or a plan it cannot read is refused
+  (`tests/test_verify_gate.py`); every kind of agent is tested against it (`tests/test_every_agent.py`).
+
+The CLI. Each line is one change.
+- `graphene ask` keeps Claude Code's plan as it is written (`--include-partial-messages`; the snapshot's
+  `drafting`); one live call confirmed the stream's shape, and no real planner was watched in the editor.
+- `graphene state --json` says each task's check before and after the work (`checked`), how a write outside it is
+  held (`held`), its `command` and whether it `leaves`; with 0.9.0's CLI the extension leaves every box dotted.
+
 ## 0.9.0 (29 October 2026)
 
 The editor night (26 to 27 October 2026), then Home and refusals that lead somewhere (28 October). Graphene for
