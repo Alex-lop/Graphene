@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { KEYS, twoLines } from "../src/graph/words.ts";
-import { CARD, dotGap, FAR, fitPlan, fitView, FULL_FROM, hold, ROWS_MOST, levelFor, miniFrame, miniSize, nearest, offScreen, panTo, percent, switchK, TO_COMPACT, TO_FULL, wheelK,
+import { CARD, dotGap, FAR, fitPlan, fitView, FULL_FROM, FULL_KEEP, hold, ROWS_MOST, levelFor, miniFrame, miniSize, nearest, offScreen, panTo, percent, switchK, TO_COMPACT, TO_FULL, wheelK,
          ZOOM_MAX, ZOOM_MIN, zoomK } from "../src/graph/zoom.ts";
 
 test("the zoom goes out to a fifth and in to three times; what is not a number is 1", () => {
@@ -55,6 +55,12 @@ test("a plan opens as whole cards where they fit at 0.85 or more, else as rows, 
   // rows that fit at more than their own size fill the pane, up to ROWS_MOST, where they stay rows
   assert.equal(fitPlan({ w: 2600, h: 1400 }, { w: 2618, h: 1982 }, () => ({ w: 1744, h: 784 }), 46)!.k, ROWS_MOST);
   assert.equal(levelFor("compact", ROWS_MOST), "compact");
+  // fitted again with whole cards on screen (a pane opened beside them), they hold down to FULL_KEEP
+  assert.equal(fitPlan({ w: 780, h: 2000 }, { w: 1000, h: 100 }, never, 0, "full")!.level, "full");
+  assert.equal(fitPlan({ w: 700, h: 2000 }, { w: 1000, h: 100 }, never, 0, "full")!.level, "full");
+  assert.equal(fitPlan({ w: 699, h: 2000 }, { w: 1000, h: 100 }, () => ({ w: 700, h: 60 }), 0, "full")!.level, "compact");
+  assert.equal(fitPlan({ w: 780, h: 2000 }, { w: 1000, h: 100 }, () => ({ w: 700, h: 60 }), 0, "compact")!.level, "compact");
+  assert.ok(FULL_KEEP > TO_COMPACT && FULL_KEEP < FULL_FROM);
   // hundreds of tasks: not even rows fit at the floor
   assert.equal(fitPlan(canvas, { w: 20000, h: 9000 }, () => ({ w: 12000, h: 4000 }), 46), null);
 });

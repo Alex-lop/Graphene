@@ -416,7 +416,8 @@ function opening(s: StateX, down: boolean): { level: Level; at: Placed; zoom: Zo
   const canvas = paneSize();
   const full = place(s, down, "full");
   let rows: Placed | undefined;
-  const fit = down ? null : fitPlan(canvas, sizeOf(full.lay), () => sizeOf((rows = place(s, down, "compact")).lay), foot());
+  const keep = fitted && !$("details").hidden ? level : "compact"; // a pane open beside whole cards keeps them whole a little further
+  const fit = down ? null : fitPlan(canvas, sizeOf(full.lay), () => sizeOf((rows = place(s, down, "compact")).lay), foot(), keep);
   if (fit) return { level: fit.level, at: fit.level === "compact" && rows ? rows : full, zoom: { k: fit.k, tx: fit.tx, ty: fit.ty } };
   // a step that asks you is the thing to see: a graph wider than its canvas opens on that step, past the line,
   // and not on its left edge; a short one sits in the middle
