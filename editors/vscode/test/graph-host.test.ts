@@ -42,7 +42,7 @@ const vscode = await import("vscode") as unknown as { panels: Panel[]; commands:
                                                       tabs: { front: { input: unknown } | undefined; early: boolean } };
 const { GraphHost } = await import("../src/graph.ts");
 const context = { extensionUri: "ext", subscriptions: [], workspaceState: { get: (_: string, fallback: unknown) => fallback, update: async () => {} } } as never;
-const session = { state: null, status: { kind: "reading", text: "Reading the plan…" }, onDidChange: () => ({ dispose() {} }) } as never;
+const session = { state: null, status: { kind: "reading", text: "Reading the plan…" }, onDidChange: () => ({ dispose() {} }), seen: new Set(), onDidSee: () => ({ dispose() {} }) } as never;
 
 test("a closed panel is let go: open is false, a new show makes a new panel, and onDidClose fires once", () => {
   const host = new GraphHost(context, session);
@@ -363,4 +363,26 @@ test("Home disables Start while it is busy (a workflow proposing), so a plan tha
   inspect.busy = "";
   inspect.push();
   assert.equal(start().off, false);
+});
+
+test("the pane's Send back… is Home's: a note asked, then graphene node reopen; and the page hears whose changes were opened", async () => {
+  const { HomeHost } = await import("../src/home.ts");
+  const { parseState } = await import("../src/state.ts");
+  const { readFileSync } = await import("node:fs");
+  const C = await import("../src/commands.ts");
+  const state = parseState(readFileSync(new URL("./fixtures/running.json", import.meta.url), "utf8"));
+  const acted: string[][] = [], saw: (() => void)[] = [];
+  const fake = { ...(session as object), state, seen: new Set<string>(), tasks: () => state.tasks, onDidSee: (l: () => void) => { saw.push(l); return { dispose() {} }; },
+                 act: async (argv: string[]) => { acted.push(argv); return true; } };
+  new HomeHost(context, fake as never); // it registers graphene.sendBack
+  (vscode as unknown as { window: Record<string, unknown> }).window.showInputBox = async () => "it names the wrong route";
+  new GraphHost(context, fake as never).show();
+  const page = vscode.panels.at(-1)!.w as unknown as { sent: { type: string; seen?: string[] }[]; receive(m: unknown): Promise<unknown> };
+  await page.receive({ type: "act", act: "sendBack", id: "docs" });
+  assert.deepEqual(acted, [C.reopen("docs", "it names the wrong route")]);
+  await page.receive({ type: "ready" });
+  assert.deepEqual(page.sent.filter((m) => m.type === "state").at(-1)?.seen, []);
+  fake.seen.add("docs"); // its changes opened (diff.ts)
+  for (const l of saw) l();
+  assert.deepEqual(page.sent.filter((m) => m.type === "state").at(-1)?.seen, ["docs"], "so its pane's act is Approve now");
 });

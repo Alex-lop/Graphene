@@ -19,7 +19,7 @@ import { CARD, dotGap, FAR, fitPlan, hold, levelFor, miniFrame, miniSize, neares
 declare function acquireVsCodeApi(): { postMessage(m: unknown): void; getState(): unknown; setState(s: unknown): void };
 
 type Status = { kind: "reading" | "missing" | "uninitialised" | "error" | "nofolder"; text: string };
-type Incoming = { type: "state"; state: StateX; exact?: boolean } | { type: "status"; status: Status } | { type: "select"; id: string }
+type Incoming = { type: "state"; state: StateX; exact?: boolean; seen?: string[] } | { type: "status"; status: Status } | { type: "select"; id: string }
   | { type: "drafts"; drafts: Draft[] }
   | { type: "said"; id?: string; key?: string; ok: boolean; line: string; made?: string }; // graphene's answer to a change made here
 type View = "auto" | "graph" | "lanes";
@@ -62,6 +62,7 @@ const svgNS = "http://www.w3.org/2000/svg";
 
 let state: StateX | null = null;
 let exact = false; // Exact is on (the host reads `board`): Start waits for every answer, as Home's
+let seen = new Set<string>(); // the tasks whose changes were opened in this window (the host's Session.seen)
 let lastJson = "";
 let lay: Layout | null = null;
 let selected: string | null = null;
@@ -1405,7 +1406,7 @@ function row(label: string, value: string, parent: HTMLElement, mono = false): H
   if (!value) return null;
   const r = div("row", undefined, parent);
   div("k", label, r);
-  div(mono ? "v mono" : "v", value, r);
+  if (mono) seams(value, div("v mono", undefined, r)); else div("v", value, r);
   return r;
 }
 
@@ -1570,7 +1571,19 @@ function part(body: HTMLElement, title: string, aside = ""): HTMLElement {
 
 let restOpen = false; // May change's fold, as the person left it
 
-const code = (text: string, parent: HTMLElement) => { const c = document.createElement("code"); c.textContent = text; parent.appendChild(c); return c; };
+/** A command or a path, breakable where it reads as a seam, as Home's are (home/main.ts code()): its spaces, after a
+ *  slash, after the dots and underscores of a long name (`app.cookyourbooks.services.impl.CookServiceImplTest`); a
+ *  short piece with a hyphen held whole (`--tests`). <wbr>, so a copied command is the command. */
+function seams(text: string, parent: HTMLElement) {
+  for (const w of text.split(/(\s+)/)) {
+    w.split(w.length >= 24 ? /(?<=[/._])/ : /(?<=\/)/).forEach((part, i) => {
+      if (i) parent.append(document.createElement("wbr"));
+      if (part.length < 24 && part.includes("-")) { const nb = document.createElement("span"); nb.className = "nb"; nb.textContent = part; parent.append(nb); }
+      else parent.append(part);
+    });
+  }
+}
+const code = (text: string, parent: HTMLElement) => { const c = document.createElement("code"); seams(text, c); parent.appendChild(c); return c; };
 const small = (text: string, parent: HTMLElement) => { const c = document.createElement("small"); c.textContent = text; parent.appendChild(c); return c; };
 
 /** Scope: what this step may do, in plain view. May change (a tree, the glob behind it), done when, may run,
@@ -1589,7 +1602,12 @@ function scopeTab(body: HTMLElement, t: TaskX, s: StateX) {
     name.title = r.name;
     // it wraps after a slash, not inside a name
     (r.depth ? r.name : short(r.name)).split("/").forEach((bit, i) => name.append(...(i ? ["/", document.createElement("wbr")] : []), bit));
-    if (r.note) div(`tr-note${r.note === "written" ? " wr" : ""}`, r.note, row);
+    if (r.note) { // after its name, so a wrapped path's note is on its file's line, never a line of its own
+      const note = document.createElement("span");
+      note.className = `tr-note${r.note === "written" ? " wr" : ""}`;
+      note.textContent = r.note;
+      name.append(" ", note);
+    }
   };
   // its own files, then what it wrote outside them (as its card says it, in the came-back red); the rest of the
   // repository, which it may not change, folded under one line
@@ -1603,7 +1621,7 @@ function scopeTab(body: HTMLElement, t: TaskX, s: StateX) {
     fold.open = restOpen; // kept open through a rebuild while a run writes the store
     fold.addEventListener("toggle", () => { restOpen = fold.open; });
     const sum = document.createElement("summary");
-    sum.textContent = `and ${rest.length} it may not change`;
+    sum.textContent = `The rest of the repository (${rest.length})`;
     fold.appendChild(sum);
     for (const r of rest) line(r, fold);
     tree.appendChild(fold);
@@ -1612,7 +1630,7 @@ function scopeTab(body: HTMLElement, t: TaskX, s: StateX) {
     const glob = document.createElement("details");
     glob.className = "glob";
     const sum = document.createElement("summary");
-    sum.textContent = "as the plan writes it";
+    sum.textContent = "Paths as the plan wrote them";
     glob.appendChild(sum);
     for (const g of t.scope) code(g, glob);
     change.appendChild(glob);
@@ -1633,6 +1651,7 @@ function scopeTab(body: HTMLElement, t: TaskX, s: StateX) {
   const may = mayRun(s, t);
   for (const c of may.commands) code(c, cmds);
   if (may.words) cmds.append(may.words);
+  if (may.note) div("kv-note", may.note, cmds); // the check it cannot run, and who runs it
   div("kv-k", "Outside", kv);
   div("kv-v", may.outside, kv);
   const held = heldWords(t);
@@ -1745,7 +1764,7 @@ function pane() {
   const shown = state?.tasks.find((x) => x.id === selected);
   const scoped = shown && state && tab() === "scope" ? JSON.stringify([scopeTree(shown, state), stopsOf(shown, state.tasks).count, state.allows]) : "";
   const key = d ? JSON.stringify([d, offered.has(d.key)])
-    : state ? paneKey(state, selected, replaying()) + (refused.get(selected ?? "") ?? "") + state.envelope.forks + tab() + scoped : "";
+    : state ? paneKey(state, selected, replaying()) + (refused.get(selected ?? "") ?? "") + state.envelope.forks + tab() + scoped + seen.has(selected ?? "") : "";
   if (key === paneLast) return;
   const at = document.activeElement as HTMLInputElement | null;
   if (paneOf === selected && pressing) { paneLast = "stale"; return; } // rebuilt once the press has had its click
@@ -1784,9 +1803,10 @@ function pane() {
   div("d-state", SAY[t.state], meta);
   const w = who(t, s.executor);
   meta.append(` · ${t.agent ? `agent ${t.agent}${t.model ? ` · ${t.model}` : ""}` : w.kind === "you" || t.command ? w.label : `for ${w.label}`}`);
-  // one act is the pane's to offer at its foot (the state's own, and the look at its work); the rest wait in the …
-  const all = actsFor(t, replaying());
-  const inFoot = (b: Button) => b.main || b.act === "openDiff" || b.act === "compareForks";
+  // one act is the pane's to offer at its foot (the state's own; the looks at its work, and to review the verdicts
+  // that are not the act now, beside them); the rest wait in the …
+  const all = actsFor(t, replaying(), seen.has(t.id));
+  const inFoot = (b: Button) => b.main || ["openDiff", "compareForks", "signOff", "sendBack"].includes(b.act);
   const tools = div("d-tools", undefined, head);
   paneMenu(tools, t.id, all.filter((b) => !inFoot(b)));
   closer(tools);
@@ -1834,9 +1854,9 @@ function pane() {
   else if (tab() === "edit") editTab(body, t, s);
   else activityTab(body, t);
   const foot = all.filter(inFoot);
-  if (foot.length) { // Compare, in a word, so the two looks fit one row under the act; its hover says it whole
+  if (foot.length) { // Compare, in a word, so the quiet ones fit one row under the act; its hover says it whole
     const acts = div("d-acts", undefined, pane);
-    for (const b of foot) button(b.act === "compareForks" ? { ...b, label: "Compare", title: `Compare attempts: ${b.title}` } : b, t.id, acts);
+    for (const b of foot) button(b.act === "compareForks" && !b.main ? { ...b, label: "Compare", title: `Compare attempts: ${b.title}` } : b, t.id, acts);
   }
 }
 
@@ -1954,11 +1974,12 @@ window.addEventListener("message", (e: MessageEvent<Incoming>) => {
   const m = e.data;
   if (!m || typeof m !== "object") return;
   if (m.type === "state") {
-    const json = JSON.stringify([m.state, m.exact === true]);
+    const json = JSON.stringify([m.state, m.exact === true, m.seen]);
     if (json === lastJson) return; // nothing changed: nothing moves
     lastJson = json;
     state = m.state;
     exact = m.exact === true;
+    seen = new Set(m.seen ?? []);
     const has = (id: string | null) => state!.tasks.some((t) => t.id === id);
     if (arriving && has(arriving)) { selected = arriving; arriving = null; }
     if (selected && !has(selected) && !isDraft(selected)) selected = null;

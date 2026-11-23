@@ -12,6 +12,7 @@ const ok = (m: unknown) => { const r = check(m, session); return r?.type === "ac
 test("the host takes ready, and an act it knows on an id the plan has", () => {
   assert.equal(check({ type: "ready" }, session)?.type, "ready");
   assert.deepEqual(ok({ type: "act", act: "signOff", id: "farewell" }), { type: "act", act: "signOff", id: "farewell", target: undefined, fork: undefined });
+  assert.deepEqual(ok({ type: "act", act: "sendBack", id: "docs" }), { type: "act", act: "sendBack", id: "docs", target: undefined, fork: undefined }, "Send back…, as Home's");
   assert.deepEqual(ok({ type: "act", act: "link", id: "hello", target: "ship" })?.target, "ship");
   assert.equal(ok({ type: "act", act: "run", id: "" })?.type, "act");
   assert.equal(ok({ type: "act", act: "start", id: "" })?.type, "act", "Start, on the whole plan: no id");
@@ -24,6 +25,7 @@ test("an unknown act, a stranger's id, a target or a fork the plan lacks, or jun
   assert.equal(ok({ type: "act", act: "rm -rf", id: "hello" }), null);
   assert.equal(ok({ type: "act", act: "signOff", id: "nobody" }), null);
   assert.equal(ok({ type: "act", act: "signOff", id: "" }), null); // an act on a task needs one
+  assert.equal(ok({ type: "act", act: "sendBack", id: "" }), null);
   assert.equal(ok({ type: "act", act: "link", id: "hello", target: "../x" }), null);
   assert.equal(ok({ type: "act", act: "pickFork", id: "farewell", fork: "z" }), null);
   assert.equal(ok({ type: "act", act: "pickFork", id: "hello", fork: "a" }), null); // no forks on hello

@@ -396,7 +396,7 @@ test("a card's status says its state first and what its other parts do not: what
 test("a full card wears one act, the pane's first main one, and never Accept; a replay wears none", () => {
   const pr = step("yours", { check: "gh pr create --draft", command: "gh pr create --draft", leaves: true });
   const rows: [string, TaskX, [string, string] | null][] = [
-    ["to review", step("review", { check: CHECK }), ["Approve", "signOff"]],
+    ["to review, its changes not opened in this window: they are the act, as Home's", step("review", { check: CHECK }), ["Open changes", "openDiff"]],
     ["came back", step("came back", { check: CHECK }), ["Help it…", "handBack"]],
     ["past the line", pr, ["Approve and run", "markDone"]],
     ["a step of your own", step("yours"), ["Mark done", "markDone"]],
@@ -486,7 +486,7 @@ test("the repo-sized fixture shows every mark, from what a current snapshot says
   assert.deepEqual(filesLine(at("cancel")), { tone: "back", mark: "✕", text: "wrote store/repo.py", refused: "" });
   // 3 agents at once where the limits' three have not started; the two races under way keep their rows
   for (const t of big.tasks) assert.equal(attemptsMark(t, big.envelope.forks), ["ready", "waiting"].includes(t.state) ? "3 agents at once" : "", t.id);
-  assert.deepEqual(big.tasks.filter((t) => cardAct(t, false)).map((t) => `${t.id}: ${cardAct(t, false)!.label}`), ["cache: Approve", "cancel: Help it…", "a11y: Mark done"]);
+  assert.deepEqual(big.tasks.filter((t) => cardAct(t, false)).map((t) => `${t.id}: ${cardAct(t, false)!.label}`), ["cache: Compare attempts", "cancel: Help it…", "a11y: Mark done"]);
 });
 
 test("a command step's box says what its pane says: the workflow fixture's two, and the pane's own lines", () => {

@@ -9,7 +9,7 @@ import { CHANGES } from "./words.ts";
 // add-after (id a task) and add-under (id a sub-goal, or none): the planner fills a drawn task in, from its
 // title as the sentence
 export const ACTS = ["add-after", "add-under", "link", "unlink", "drop", "accept", "tell", "start", "run", "stop", "cockpit",
-                     "openDiff", "compareForks", "pickFork", "signOff", "answer", "handBack", "set", "draw", "saveWorkflow",
+                     "openDiff", "compareForks", "pickFork", "signOff", "sendBack", "answer", "handBack", "set", "draw", "saveWorkflow",
                      "markDone"] as const;
 export type Act = (typeof ACTS)[number];
 export type Drawn = { key: string; title: string; files: string; check: string; approve: boolean; after: string | null; parent: string | null };
