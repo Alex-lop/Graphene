@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFileSync } from "node:fs";
-import { attemptsMark, cardAct, checkLines, checkMark, cornerMark, doneWhen, filesLine, forkMark, goalBox, goalCells, legend, markWord, checkCut, nextWanting, tailPath, wrap, stateMark, tally, wanting, wantingLine, type Box, type CheckMark, type Mark } from "../src/graph/marks.ts";
+import { attemptsMark, cardAct, checkLines, checkMark, cornerMark, doneWhen, filesLine, forkMark, goalBox, goalCells, legend, markWord, checkCut, cutWhole, nextWanting, tailPath, wrap, stateMark, tally, wanting, wantingLine, type Box, type CheckMark, type Mark } from "../src/graph/marks.ts";
 import { check } from "../src/graph/check.ts";
 import { actsFor, checkWords, counts, cut, KEYS, type TaskX } from "../src/graph/words.ts";
 import { markDone, offerWords, widen } from "../src/needs.ts";
@@ -240,7 +240,12 @@ test("a check is cut at its words: its first and what it runs on, else that alon
   assert.equal(checkCut("pytest tests/test_words.py", 22), "pytest … test_words.py");
   assert.equal(checkCut("python -m pytest tests/test_app.py -k log", 22), "python … test_app.py", "a path, not the flag's word after it");
   assert.equal(checkCut("./gradlew test --tests 'app.cookyourbooks.services.impl.RecipeLookupServiceImplTest'", 30), "RecipeLookupServiceImplTest", "a dotted test, by its own name");
-  assert.equal(checkCut("./gradlew test --tests 'app.cookyourbooks.services.impl.RecipeLookupServiceImplTest'", 22), "RecipeLookupServiceIm…", "cut at its end only when nothing whole fits");
+  assert.equal(checkCut("./gradlew test --tests 'app.cookyourbooks.services.impl.RecipeLookupServiceImplTest'", 22), "RecipeLookupService…", "cut at its end only when nothing whole fits, at a hump of its name");
+  // Alex's real plan: each card's foot (21 characters) names its own test, never cut inside a word
+  assert.deepEqual(["RecipeLookup", "Librarian", "Cook", "Planner", "Transformer"].map((x) => checkCut(`./gradlew test --tests 'app.cookyourbooks.services.impl.${x}ServiceImplTest'`, 21)),
+                   ["RecipeLookupService…", "LibrarianServiceImpl…", "CookServiceImplTest", "PlannerServiceImpl…", "TransformerService…"]);
+  assert.equal(checkCut("./gradlew test --tests 'app.cli.commands.GeneralCommandTests.unknownCommand_displaysUnknownMessage'", 21), "unknownCommand…");
+  assert.equal(checkCut("dotnet test App.Tests.csproj", 26), "dotnet … App.Tests.csproj", "a file's type is not a test's name");
   assert.equal(checkCut("grep -q greet README.md", 18), "grep … README.md");
   assert.equal(checkCut("grep -q greet README.md", 12), "README.md", "what it runs on alone, with no ellipsis before it");
   assert.equal(checkCut("npm test", 20), "npm test");
@@ -257,6 +262,18 @@ test("a check is cut at its words: its first and what it runs on, else that alon
   const checks = big.tasks.map((t) => t.check).filter((c): c is string => c !== null);
   assert.equal(new Set(checks.map((c) => checkCut(c, 22))).size, new Set(checks).size);
   assert.equal(new Set(checks.map((c) => cut(c, 20))).size, 9);
+});
+
+test("a cut keeps a whole part of a word where one fills most of the room", () => {
+  assert.equal(cutWhole("Input loop, command registry, quit and exit, harness wiring", 18), "Input loop…");
+  assert.equal(cutWhole("quit and exit, harness wiring", 16), "quit and exit…");
+  assert.equal(cutWhole('Application services: replace every "to be implemented', 44), 'Application services: replace every "to be…');
+  assert.equal(cutWhole("CookServiceImpl.java", 18), "CookServiceImpl…");
+  assert.equal(cutWhole("b ✓ kept: 4 lines against 12", 22), "b ✓ kept: 4 lines…");
+  assert.equal(cutWhole("internationalisation", 10), "internati…", "no whole part fills enough: cut as it was");
+  assert.equal(cutWhole("short", 10), "short");
+  for (const s of ["RecipeLookupServiceImplTest", "a b c d e f g", "x_y_z.w-v"]) for (let n = 2; n <= s.length; n++) assert.ok(cutWhole(s, n).length <= n, `${s} at ${n}`);
+  assert.deepEqual(wrap("Input loop, command registry, quit and exit, harness wiring", 176, (t) => t.length * 8, 2), ["Input loop, command", "registry, quit and…"]);
 });
 
 test("a path too long for its chip says its file; a folder's glob keeps its folder", () => {

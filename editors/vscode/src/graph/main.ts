@@ -7,10 +7,11 @@ import { layout, modeFor, step, type Box, type Edge, type Layout } from "../layo
 import { autoLine, SAY, screenWords, usd, type DraftStep, type State } from "../state.ts";
 import { ICONS } from "./icons.ts";
 import { blanks, draftLine, globs, isDraft, lacks, type Draft } from "./draft.ts";
-import { attemptsMark, cardAct, checkCut, checkLines, checkMark, cornerMark, doneWhen, filesLine, forkMark, goalBox, goalCells, legend, nextWanting, stateMark, tailPath, tally, wanting, wantingLine, wrap,
+import { attemptsMark, cardAct, checkCut, checkLines, checkMark, cornerMark, cutWhole, doneWhen, filesLine, fitWhole, forkMark, goalBox, goalCells, legend, nextWanting, stateMark, tailPath, tally, wanting, wantingLine, wrap,
          type CheckMark, type Mark } from "./marks.ts";
-import { actsFor, ASK_AGENT, askLine, asksYou, attemptsOf, commandChip, cornerWord, CURSOR_AGENT, cut, done, draftedSteps, edgeKind, editable, filesChip, FIRST_HINT, fitWidth, forkActs, forkRow, forkWords, HEADER_ACTS, headerFor,
-         heldWords, KEYS, linkHint, mainAct, mayRun, paneKey, pipeline, planningLine, PROVES_NOTHING, provesNothing, questionOn, scopeTree, stopsOf, sub, tabOrder, tokenWords, topLine, twoLines, whenEdit, who, writtenOf,
+import { actsFor, ASK_AGENT, askLine, asksYou, attemptsOf, commandChip, cornerWord, CURSOR_AGENT, cut, done, draftedSteps, edgeKind, editable,
+         filesChip, FIRST_HINT, forkActs, forkRow, forkWords, HEADER_ACTS, headerFor, heldWords, KEYS, linkHint, mainAct, mayRun, paneKey, pipeline,
+         planningLine, PROVES_NOTHING, provesNothing, questionOn, scopeTree, stopsOf, sub, tabOrder, tokenWords, topLine, whenEdit, who, writtenOf,
          type Button, type ForkX, type StateX, type TaskX } from "./words.ts";
 import { CARD, dotGap, FAR, fitPlan, hold, levelFor, miniFrame, miniSize, nearest, offScreen, panTo, percent, switchK, wheelK, ZOOM_MAX, ZOOM_MIN, zoomK,
          type Level, type Size, type Zoom } from "./zoom.ts";
@@ -116,12 +117,12 @@ function div(cls: string, text?: string, parent?: HTMLElement): HTMLDivElement {
   return d;
 }
 
-/** An SVG text cut to ``max`` px by its drawn length. Not drawn yet (the SVG hidden), it is cut by a
- *  character count instead, so nothing runs past its box in the meantime. */
+/** An SVG text cut to ``max`` px by its drawn length, at a whole part of a word (marks.ts `cutWhole`). Not drawn
+ *  yet (the SVG hidden), it is cut by a character count instead, so nothing runs past its box in the meantime. */
 function fitText(text: SVGTextElement, max: number) {
   const whole = text.textContent ?? "";
-  if (text.getComputedTextLength() === 0 && whole) { text.textContent = cut(whole, Math.max(2, Math.floor(max / 7))); return; }
-  text.textContent = fitWidth(whole, max, (t) => { text.textContent = t; return text.getComputedTextLength(); });
+  if (text.getComputedTextLength() === 0 && whole) { text.textContent = cutWhole(whole, Math.max(2, Math.floor(max / 7))); return; }
+  text.textContent = fitWhole(whole, max, (t) => { text.textContent = t; return text.getComputedTextLength(); });
 }
 
 /** A codicon, inline: its path in a 16 by 16 box. */
@@ -719,9 +720,9 @@ function inStep<T extends SVGElement>(node: T, period: number): T {
 }
 
 /** A chip on a card, in mono, cut to the card: the files the step may change (or has written, or wrote outside
- *  them), its command. A path too long for it says its file (`…/RecipeLookupServiceImpl.java +1`) before it is
- *  cut. ``bad`` ends it in the came-back red (a refused write) and stays whole: the words give way to it, their
- *  last one (`files`) before a number is cut. */
+ *  them), its command. A path too long for it says its file (`…/RecipeLookupServiceImpl.java +1`), then its file's
+ *  name (`CookServiceImpl +2`) before it is cut. ``bad`` ends it in the came-back red (a refused write) and stays
+ *  whole: the words give way to it, their last one (`files`) before a number is cut. */
 function pill(grp: SVGGElement, kind: string, glyph: string, words: string, x: number, y: number, max: number, bad = "") {
   const g = el("g", { class: `pill ${kind}` });
   const rect = g.appendChild(el("rect", { x, y, width: max, height: 18, rx: 5 }));
@@ -733,8 +734,8 @@ function pill(grp: SVGGElement, kind: string, glyph: string, words: string, x: n
   const room = max - 26 - (bad || more ? text.getComputedTextLength() || (bad + more).length * 7.2 : 0);
   words = words.slice(0, words.length - more.length);
   text.textContent = words;
-  const tail = words.split(" ").map(tailPath).join(" "); // a path says its file, then its file alone
-  for (const shorter of [tail, tail.replace(/(^|\s)…\//g, "$1")]) if (text.getComputedTextLength() > room) text.textContent = words = shorter;
+  const tail = words.split(" ").map(tailPath).join(" "), file = tail.replace(/(^|\s)…\//g, "$1"); // a path says its file, then its file alone, then its name
+  for (const shorter of [tail, file, file.replace(/\.\w+(?=\s|$)/g, "")]) if (text.getComputedTextLength() > room) text.textContent = words = shorter;
   if (bad && text.getComputedTextLength() > room) text.textContent = words.replace(/ \S+$/, "");
   fitText(text, room);
   if (more) text.appendChild(document.createTextNode(more));
@@ -954,9 +955,11 @@ function drawTask(grp: SVGGElement, t: TaskX, h: number, down: boolean, limit: n
   // its attempts: a chip each, over its foot; once it is done they are history (the pane's Activity has them)
   (t.state === "done" ? [] : t.forks).forEach((f, i) => {
     const y = BOX_H - FOOT_H + 2 + i * FORK_H;
-    const chip = el("g", { class: `fork ${cls(f.state || "waiting")}${t.kept?.letter === f.letter ? " kept" : ""}` });
+    const kept = t.kept?.letter === f.letter, room = BOX_W - 2 * PAD - 16;
+    const chip = el("g", { class: `fork ${cls(f.state || "waiting")}${kept ? " kept" : ""}` });
     chip.appendChild(el("rect", { class: "chip", x: PAD, y, width: BOX_W - 2 * PAD, height: FORK_H - 4, rx: 5 }));
-    fitText(chip.appendChild(el("text", { class: "chip-text", x: PAD + 8, y: y + 13 }, forkWords(f, t.kept, Math.floor((BOX_W - 2 * PAD - 16) / 6.6)))), BOX_W - 2 * PAD - 16);
+    // the kept one is bold and says why: it is cut by its drawn length, at its words, not by a count of characters
+    fitText(chip.appendChild(el("text", { class: "chip-text", x: PAD + 8, y: y + 13 }, forkWords(f, t.kept, kept ? LONG : Math.floor(room / 6.6)))), room);
     chip.appendChild(el("title", {}, forkRow(f, t.kept)));
     grp.appendChild(chip);
   });
