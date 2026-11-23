@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import * as C from "../src/commands.ts";
+import { behind } from "../src/find.ts";
 
 test("every mutation is the argv the cockpit's verbs use", () => {
   assert.deepEqual(C.addStep({ title: "greet route", parent: "api", needs: ["hello"], scope: ["app.py", "tests/**"], check: "pytest -q" }),
@@ -119,7 +120,7 @@ test("a refusal's toast names the command once: the CLI's line already does when
 });
 
 test("an older CLI's refusal of a new shape is the one 'older Graphene' line, not a Typer usage line", () => {
-  const says = /older than the extension.*0\.9/;
+  const says = /older than the extension.*0\.10 \(`uv tool upgrade graphene-map`\)/; // upgrade: it keeps the [nemotron] extra
   assert.equal(C.firstLine("graphene node diff: no such option: --json (`graphene node diff --help` says what it takes)\n"), C.OLDER);
   assert.equal(C.firstLine("graphene plan edit: no such option: --from (`graphene plan edit --help` says what it takes)\n"), C.OLDER);
   assert.equal(C.firstLine("graphene demo: no such option: --into (`graphene demo --help` says what it takes)\n"), C.OLDER);
@@ -127,6 +128,11 @@ test("an older CLI's refusal of a new shape is the one 'older Graphene' line, no
   assert.equal(C.refusal("asking the planner…\ngraphene ask: no such option: --step\n"), C.OLDER);
   assert.match(C.OLDER, says);
   assert.equal(C.firstLine("n2: a leaf needs a scope\n"), "n2: a leaf needs a scope", "a refusal of the plan's own is said as it is");
+});
+
+test("a graphene older than 0.10 is said as older, from its --version line; one that did not read is not", () => {
+  for (const v of ["graphene 0.9.0", "graphene 0.5.1", "graphene, version 0.9.3.dev2"]) assert.equal(behind(v), true, v);
+  for (const v of ["graphene 0.10.0", "graphene 0.11.2", "graphene 1.0.0", null, "", "graphene"]) assert.equal(behind(v), false, String(v));
 });
 
 test("the one new command, `graphene workflow`: list, run with its inputs, save; and what its listing says", () => {

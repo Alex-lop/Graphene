@@ -26,7 +26,7 @@ test("a suggested plan is read before it starts: each task says what for, what i
   // in a side bar too narrow for a label beside its value, each line runs on from its short label (home.css)
   assert.deepEqual(hello.lines, [
     { k: "What for", v: "hello says hello to the person by name", short: "" },
-    { k: "May change", v: "words.py", mono: true, short: "▤" },
+    { k: "May change", v: "words.py", mono: true, short: "$(file)" },
     { k: "Done when", v: "pytest … test_words.py passes", mono: true, hover: "pytest -q tests/test_words.py passes", short: "done when" },
   ]);
   // a side bar is for a glance: a task not started names its files and its check short, the whole on hover
@@ -34,7 +34,7 @@ test("a suggested plan is read before it starts: each task says what for, what i
     scope: ["src/main/java/app/impl/CookServiceImpl.java", "src/main/java/app/impl/CookingSessionImpl.java", "src/test/java/app/impl/CookServiceImplTest.java"],
     check: "./gradlew test --tests 'app.cookyourbooks.services.impl.CookServiceImplTest'" })) };
   assert.deepEqual(card(home(java), "p:hello").lines.slice(1), [
-    { k: "May change", v: "CookServiceImpl.java +2", mono: true, short: "▤", // no +2 alone on a line
+    { k: "May change", v: "CookServiceImpl.java +2", mono: true, short: "$(file)", // no +2 alone on a line
       hover: "src/main/java/app/impl/CookServiceImpl.java\nsrc/main/java/app/impl/CookingSessionImpl.java\nsrc/test/java/app/impl/CookServiceImplTest.java" },
     { k: "Done when", v: "CookServiceImplTest passes", mono: true, hover: "./gradlew test --tests 'app.cookyourbooks.services.impl.CookServiceImplTest' passes", short: "done when" },
   ]);
@@ -122,13 +122,19 @@ test("who is working, what is up next, and what is done, each in its own section
   assert.deepEqual(labels(greet), ["Open changes so far", "Message agent…", "Compare attempts"]);
   assert.deepEqual(section(h, "working")!.buttons.map((b) => b.act), ["stop"]);
   assert.equal(card(h, "n:ship").tag, "waiting"); // Up next holds ready and waiting: its cards say which
+  // ready and waiting counted apart, as the graph's legend counts them: Run starts the ready ones only
+  assert.equal(section(h, "next")!.title, "Up next · 1 waiting");
+  assert.equal(section(home(fixture("big")), "next")!.title, "Up next · 3 ready, 11 waiting");
   assert.equal(greet.tag, "", "Working now says it");
   assert.equal(section(h, "done")!.folded, true);
   assert.deepEqual(labels(card(h, "d:hello")), ["Open changes", "Send back…"]);
   // Run is always there: while a run goes, `graphene run` hands the ready tasks to it (a run fixes its set at start)
   assert.deepEqual(section(h, "next")!.buttons.map((b) => [b.act, b.title]), [["run", "hand these to the run that is going"]]);
-  const idle = section(home({ ...fixture("running"), run: { going: false, pid: null } }), "next")!;
-  assert.deepEqual(idle.buttons.map((b) => [b.act, b.title]), [["run", "start an agent on every task that is ready"]]);
+  const idle = section(home({ ...fixture("big"), run: { going: false, pid: null } }), "next")!;
+  assert.deepEqual(idle.buttons.map((b) => [b.act, b.title, b.off]), [["run", "start an agent on every task that is ready", false]]);
+  // nothing ready and no run: off, as the graph's Run is, not a terminal that starts nothing
+  const none = section(home({ ...fixture("running"), run: { going: false, pid: null } }), "next")!;
+  assert.deepEqual(none.buttons.map((b) => [b.act, b.title, b.off]), [["run", "nothing is ready to run", true]]);
   // never filled: the graph's header, open beside Home, has the one filled Run
   assert.deepEqual([section(h, "next")!.buttons[0]!.main, idle.buttons[0]!.main], [undefined, undefined]);
 });
@@ -346,4 +352,21 @@ test("Set Up says in Home's words what it wrote and what it records, a Codex gat
   await host.setUp("codex", false);
   assert.deepEqual(host.last.lines, ["Codex plans and does the work here.", hooks,
                                      "In a new Codex session, trust this project and review its hooks with /hooks before running tasks.", "warning: git is old"]);
+});
+
+test("an older graphene is said above Home, whatever it shows, with Upgrade: once its toast is gone every pane would say Not held", async () => {
+  const stub = "export const commands = { registerCommand() { return { dispose() {} }; } }; export const env = { appName: 'Code' };";
+  const hook = `export async function resolve(s, c, n) { return s === "vscode" ? { url: ${JSON.stringify(`data:text/javascript,${encodeURIComponent(stub)}`)}, shortCircuit: true } : n(s, c); }`;
+  register(`data:text/javascript,${encodeURIComponent(hook)}`);
+  const { HomeHost } = await import("../src/home.ts");
+  const session = { state: fixture("running"), seen: new Set(), onDidChange: () => ({ dispose() {} }), onDidSee: () => ({ dispose() {} }),
+    status: { kind: "ok", text: "" }, version: "graphene 0.9.0", file: "/u/.local/bin/graphene", path: "graphene" };
+  const host = new HomeHost({ subscriptions: [] } as never, session as never) as unknown as { push(): void; views: Set<unknown> };
+  const posted: { older: string }[] = [];
+  host.views.add({ webview: { postMessage: async (m: { older: string }) => posted.push(m) } });
+  host.push();
+  assert.equal(posted[0]!.older, "This Graphene is older than the extension: it needs 0.10 (uv tool upgrade graphene-map). This editor runs graphene 0.9.0 at /u/.local/bin/graphene.");
+  session.version = "graphene 0.10.0";
+  host.push();
+  assert.equal(posted[1]!.older, "");
 });

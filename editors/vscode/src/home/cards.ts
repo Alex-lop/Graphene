@@ -109,8 +109,9 @@ function contract(t: Task, name: (id: string) => string, brief = false): Line[] 
 
 /** A task not started, at a glance: in Cursor's side bar beside its chat a label has no room beside its value
  *  (home.css), and a row of its own each made six cards a page and a half. There each line runs on from a short
- *  label instead, as the graph's card says it: What for with none, its files after ▤, its check after done when. */
-const SHORT: Record<string, string> = { "What for": "", "May change": "▤", Runs: "$" };
+ *  label instead, as the graph's card says it: What for with none, its files after the file icon (`$(file)`, a codicon
+ *  as VS Code writes one), its check after done when. */
+const SHORT: Record<string, string> = { "What for": "", "May change": "$(file)", Runs: "$" };
 const glance = (ls: Line[]): Line[] => ls.map((l) => (l.k ? { ...l, short: SHORT[l.k] ?? l.k.toLowerCase() } : l));
 
 /** A finished task's evidence: what changed, the check that proved it, and the attempt that was kept. */
@@ -250,12 +251,15 @@ export function home(s: State, seen: ReadonlySet<string> = new Set(), exact = fa
   }), { buttons: [{ label: "Stop all", act: "stop", title: "stop every agent: their tasks go back to the plan" }] });
 
   const next = s.tasks.filter((t) => t.state === "ready" || t.state === "waiting");
-  section("next", `Up next · ${next.length}`, next.map((t) => ({
+  // the legend's counts, beside the graph header's `Run 2 ready`: one number for all would say Run starts all
+  const ready = next.filter((t) => t.state === "ready").length, held = next.length - ready;
+  section("next", `Up next · ${[ready ? `${ready} ready` : "", held ? `${held} waiting` : ""].filter(Boolean).join(", ")}`, next.map((t) => ({
     key: `n:${t.id}`, tone: t.state === "ready" ? "ready" as const : "waiting" as const, title: t.title, tag: SAY[t.state], task: t.id,
     lines: glance([...line("Waits for", t.state === "waiting" ? t.needs.map(name).join(", ") : ""), ...contract(t, name, true).filter((l) => l.k !== "After")]),
     buttons: [{ label: "Remove", act: "drop" as const, id: t.id, title: "take this task out of the plan" }],
-  })), { buttons: [{ label: "Run", act: "run", title: s.run.going ? "hand these to the run that is going" // outlined: the graph's header,
-                                                     : "start an agent on every task that is ready" }] }); // beside it, has the filled Run
+  })), { buttons: [{ label: "Run", act: "run", off: !ready && !s.run.going, // off as the graph's is: a run would start nothing
+                    title: s.run.going ? "hand these to the run that is going" // outlined: the graph's header,
+                      : ready ? "start an agent on every task that is ready" : "nothing is ready to run" }] }); // beside it, has the filled Run
 
   section("workflows", `Workflows · ${workflows.length}`, workflows.map((w) => ({
     key: `wf:${w.name}`, tone: "ready" as const, title: w.name, tag: "",

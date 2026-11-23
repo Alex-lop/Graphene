@@ -311,7 +311,12 @@ export function agentCopy(root: string, node: string, checkout: string | null | 
 /** Globs typed in one box: spaces or commas between them (the graph's page splits them the same way). */
 export { globs } from "./graph/draft.ts";
 
-export const OLDER = "This Graphene is older than the extension: it needs 0.9 (`uv tool upgrade graphene-map`).";
+/** Install a missing graphene; bring an older one up to PyPI's newest with `upgrade`, which keeps what its install
+ *  asked for (the [nemotron] extra, its Python): `install --upgrade` would drop them. */
+export const UV_INSTALL = "uv tool install graphene-map";
+export const UV_UPGRADE = "uv tool upgrade graphene-map";
+
+export const OLDER = `This Graphene is older than the extension: it needs 0.10 (\`${UV_UPGRADE}\`).`;
 
 /** A CLI that does not know an option or a command of this extension's is an older one: that is the line,
  *  wherever the refusal is shown (an id or free text never reaches argv as an option, so nothing else says it). */

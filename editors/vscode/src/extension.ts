@@ -6,7 +6,7 @@ import * as vscode from "vscode";
 import * as C from "./commands.ts";
 import { GraphHost } from "./graph.ts";
 import { HomeHost } from "./home.ts";
-import { which } from "./find.ts";
+import { behind, which } from "./find.ts";
 import { owner } from "./owners.ts";
 import { autoNews, headline, mdText, SAY, summary, type Task } from "./state.ts";
 import { newsWords, topLine } from "./graph/words.ts";
@@ -116,6 +116,7 @@ export function activate(context: vscode.ExtensionContext) {
       bar.text = `◆ Graphene · ${words[k] ?? k}`;
       bar.tooltip = k === "missing" || k === "nofolder" ? session.status.text : `${session.status.text}\n\n${which(session.file || session.path, session.version)}`;
     }
+    if (behind(session.version)) bar.text = `◆ ${session.version} · older`; // a click opens Home, which says it, with Upgrade
   });
 
   // read again when the store's own files change (graphene.db, its WAL, the run lock: not an agent's save

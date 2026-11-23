@@ -2,6 +2,7 @@
 // library, and every word goes in as text, never as markup: task titles and the planner's words are a model's.
 // Nothing is typed here: a plan comes from the person's coding agent, in its chat (`graphene plan propose`).
 import { STOP_AFTER, STOP_AFTER_HOVER } from "../graph/words.ts";
+import { ICONS } from "../graph/icons.ts";
 import { wearInk } from "../ink.ts";
 import type { Act, Btn, Card, Home, Line, Section } from "./cards.ts";
 import { ASK, COST_HOVER, EXACT, EXACT_HOVER, HOW, NOT_CURSOR, WHAT, WHO } from "./who.ts";
@@ -10,7 +11,7 @@ declare function acquireVsCodeApi(): { postMessage(m: unknown): void; getState()
 
 type Status = { kind: string; text: string };
 type Last = { n: number; lines: string[]; bad: boolean; key?: boolean };
-type Model = { type: "home"; status: Status; home: Home | null; review: boolean; exact: boolean; busy: string; last: Last; cursor?: boolean };
+type Model = { type: "home"; status: Status; home: Home | null; review: boolean; exact: boolean; busy: string; last: Last; older?: string; cursor?: boolean };
 type Saved = { open?: Record<string, boolean>; review?: boolean };
 const api = acquireVsCodeApi();
 let saved: Saved = (() => { try { return (api.getState() as Saved) ?? {}; } catch { return {}; } })();
@@ -56,10 +57,26 @@ function mark(parent: HTMLElement) {
   parent.appendChild(svg);
 }
 
+/** A codicon's path (graph/icons.ts) at the front of `parent`, in its colour, read as `label` (its label's words
+ *  are hidden where it stands for them); none, `parent` as it is. */
+function icon(d: string | undefined, parent: HTMLElement, label: string): HTMLElement {
+  if (!d) return parent;
+  const NS = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(NS, "svg"), p = document.createElementNS(NS, "path");
+  svg.setAttribute("viewBox", "0 0 16 16");
+  svg.setAttribute("role", "img");
+  svg.setAttribute("aria-label", label);
+  p.setAttribute("d", d);
+  svg.appendChild(p);
+  parent.prepend(svg);
+  return parent;
+}
+
 /** A count's words held together (`3 of 7 done`, `$0.42 at`), and a dot with the word before it: the hero's
  *  lines wrap after a ` · `, not to leave a word or a dot alone. */
 const glue = (t: string) => t.replace(/(\d) /g, "$1 ").replace(/(?<!·) (?=[\d$])/g, " ").replaceAll(" · ", " · ");
 
+const older = el("div", "said bad older"); // an older graphene: every pane would say Not held, so first, whatever the screen
 const banner = el("div", "banner");
 const screen = el("section", "screen");
 const work = el("section", "work");
@@ -99,8 +116,8 @@ exact.title = EXACT_HOVER;
 el("p", "pref-note", "Even a question with a default waits for you. It turns the two above on too.", prefs);
 const foot = el("div", "foot", undefined, work);
 button({ label: "Watch the demo", act: "demo" }, foot);
-document.body.append(banner, screen, work);
-work.hidden = screen.hidden = banner.hidden = true;
+document.body.append(older, banner, screen, work);
+work.hidden = screen.hidden = banner.hidden = older.hidden = true;
 
 let model: Model | null = null;
 
@@ -205,7 +222,8 @@ function drawCard(c: Card, stack: boolean): HTMLElement {
       if (l.k) {
         const dt = el("dt", "", l.short === undefined ? l.k : undefined, r);
         if (l.short !== undefined) el("span", "long", l.k, dt); // the label, or its short form: home.css shows one
-        if (l.short) el("span", "short", `${l.short}\u00a0`, dt); // held to its value: no ▤ alone at a line's end
+        const ic = /^\$\((.+)\)$/.exec(l.short ?? "")?.[1]; // `$(file)`: the codicon, as the graph's card draws it
+        if (l.short) icon(ic && ICONS[ic], el("span", "short", ic ? undefined : l.short, dt), l.k).append("\u00a0"); // held to its value: no icon alone at a line's end
       }
       const dd = el("dd", l.mono ? "mono" : "", undefined, r);
       if (l.hover) dd.title = l.hover;
@@ -319,6 +337,9 @@ window.addEventListener("message", (e: MessageEvent<Model>) => {
   const m = e.data;
   if (!m || m.type !== "home") return;
   model = m;
+  older.replaceChildren();
+  if (m.older) { el("div", "", m.older, older); button({ label: "Upgrade Graphene", act: "install", main: true }, older); }
+  older.hidden = !m.older;
   render(m);
 });
 wearInk(); // a filled button's words in a colour that reads on it (ink.ts)

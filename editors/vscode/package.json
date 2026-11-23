@@ -598,7 +598,7 @@
             "description": "A recorded run plays in the graph: three agents race one task, and its check keeps one. No key and no network; it needs the graphene command, and offers to install it first.\n[Watch the Demo](command:graphene.watchDemo)",
             "media": {
               "image": "media/walk-demo.png",
-              "altText": "a race on the graph: one task with three attempts, its check keeping one; a task asking you, one that needs help, one to review"
+              "altText": "the demo on the graph: one task raced by three attempts at once, a, b and c, beside three done and the goal they build"
             },
             "completionEvents": [
               "onCommand:graphene.watchDemo"
@@ -607,13 +607,13 @@
           {
             "id": "install",
             "title": "Install Graphene",
-            "description": "This extension drives the graphene command. Install it once with uv; the button runs uv tool install graphene-map for you.\n[Install Graphene](command:graphene.install)",
+            "description": "This extension drives the graphene command, 0.10 or later. Install it once with uv; the button runs uv tool install graphene-map for you, or uv tool upgrade graphene-map for an older one.\n[Install Graphene](command:graphene.install)",
             "media": {
               "image": "media/walk-install.png",
               "altText": "Home with no graphene command found: Graphene is not installed, and an Install Graphene button"
             },
             "completionEvents": [
-              "onContext:graphene.status && graphene.status != missing"
+              "onContext:graphene.status && graphene.status != missing && !graphene.older"
             ]
           },
           {

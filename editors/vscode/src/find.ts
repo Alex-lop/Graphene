@@ -38,6 +38,13 @@ export function which(path: string, version: string | null): string {
   return `${version || "graphene"} at ${path}${version ? "" : " (its version did not read)"}`;
 }
 
+/** Is `graphene --version`'s line older than 0.10? An older one reads, but its snapshot has no task's scope or
+ *  checks, so every pane would say Not held. A line with no version in it is not called older. */
+export function behind(version: string | null): boolean {
+  const m = /(\d+)\.(\d+)/.exec(version ?? "");
+  return m !== null && Number(m[1]) * 1000 + Number(m[2]) < 10;
+}
+
 /** The older-CLI line, naming the graphene that answered: the person sees which one to upgrade or point past. */
 export function olderWords(path: string, version: string | null): string {
   return `${OLDER} This editor runs ${which(path, version)}.`;

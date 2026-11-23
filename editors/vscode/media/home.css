@@ -61,6 +61,7 @@ button.open svg { width: 14px; height: 14px; flex: none; fill: currentColor; }
 }
 .said.bad { color: var(--bad); background: color-mix(in srgb, var(--bad) 9%, transparent); border-color: color-mix(in srgb, var(--bad) 35%, transparent); }
 .said button { margin-top: 6px; }
+.said.older { margin: 0 0 10px; }
 .said > div + div { margin-top: 4px; } /* a line each thing it says, apart: four run together read as one block */
 
 /* sections: a quiet label, as VS Code's own; Needs you in the review colour, Working now in the amber of an
@@ -90,6 +91,8 @@ body.vscode-light .sec-working button.fold { color: color-mix(in srgb, var(--run
 .c-tag { color: var(--tone); font-size: 12px; font-weight: 600; } /* in words, as the graph's cards say it: capitals are the section heads' */
 .card.tone-waiting .c-tag, .card.tone-ready .c-tag { color: var(--dim); } /* outranks the light rule below */
 body.vscode-light .c-tag { color: color-mix(in srgb, var(--tone) 55%, var(--fg)); } /* a chart yellow is ~2.5:1 on a light card */
+/* the chart red as words in a dark theme is 3.9:1 on a Dark+ card: a little white, as the graph's red words */
+body.vscode-dark .card.tone-came-back .c-tag { color: color-mix(in srgb, var(--came-back) 72%, #fff); }
 .c-title { font-weight: 600; margin-top: 2px; word-break: break-word; }
 /* a title that opens its task on the graph: the title still, a link only on hover */
 .card button.c-title { display: block; padding: 0; border: none; background: none; color: var(--fg); line-height: inherit; text-align: left; }
@@ -113,7 +116,9 @@ body.vscode-light .c-tag { color: color-mix(in srgb, var(--tone) 55%, var(--fg))
   .c-lines.stack .c-line + .c-line > :first-child { margin-top: 5px; }
 }
 .c-line .short { display: none; }
+.short svg { width: 12px; height: 12px; fill: currentColor; vertical-align: -2px; }
 @media (max-width: 260px) { /* Cursor's side bar beside its chat: no value fits beside its label */
+  .sec-head button.fold { letter-spacing: 0; } /* `Up next · 2 ready, 1 waiting` and its Run on one row */
   .c-lines { grid-template-columns: minmax(0, 1fr); row-gap: 1px; }
   .c-lines .c-line + .c-line > :first-child { margin-top: 5px; }
   /* a task not started, as the graph's card: each line runs on from its short label (cards.ts glance), and
@@ -126,7 +131,7 @@ body.vscode-light .c-tag { color: color-mix(in srgb, var(--tone) 55%, var(--fg))
   .c-line.run dd.mono { padding: 0; text-indent: 0; }
 }
 .c-line.warn dd { color: var(--warn); }
-body.vscode-light .c-line.warn dd { color: color-mix(in srgb, var(--warn) 55%, var(--fg)); } /* a warning amber is ~2-3:1 on a light card, as a tag's */
+body.vscode-light .c-line.warn dd { color: color-mix(in srgb, var(--warn) 45%, var(--fg)); } /* a warning amber is ~2-3:1 on a light card, as a tag's */
 .mono { font-family: var(--mono); font-size: 0.95em; }
 .c-acts, .acts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
 /* acts at their own width, left: a card ends in its words, not in bars */

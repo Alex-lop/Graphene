@@ -4,6 +4,7 @@
 // sends is checked first (cards.ts checkHome): nothing from the page reaches a shell but as an argument.
 import * as vscode from "vscode";
 import * as C from "./commands.ts";
+import { behind, olderWords } from "./find.ts";
 import { checkHome, home, unanswered, type FromHome } from "./home/cards.ts";
 import { WHO } from "./home/who.ts";
 import { keyTrouble, needs, tryAgain, widen } from "./needs.ts";
@@ -69,8 +70,10 @@ export class HomeHost implements vscode.WebviewViewProvider {
     if (h && this.busy) for (const section of h.sections) for (const button of section.buttons) {
       if (button.act === "startAll" || button.act === "discardAll") button.off = true;
     }
+    const { version } = this.session; // an older graphene: said above everything for as long as it runs, with Upgrade
+    const older = behind(version) ? olderWords(this.session.file || this.session.path, version).replaceAll("`", "") : "";
     const model = { type: "home", status: this.session.status, home: h, review: s?.envelope.review === "every", exact: this.exact, busy: this.busy,
-                    last: this.last, cursor: vscode.env?.appName.includes("Cursor") === true }; // no env: the tests' stand-in for vscode
+                    last: this.last, older, cursor: vscode.env?.appName.includes("Cursor") === true }; // no env: the tests' stand-in for vscode
     const n = s ? needs(s).length : 0;
     for (const v of this.views) {
       v.badge = n ? { value: n, tooltip: n === 1 ? "1 thing needs you" : `${n} things need you` } : undefined;

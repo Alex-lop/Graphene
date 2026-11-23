@@ -19,6 +19,7 @@ const state = parseState(JSON.stringify(fixtures[name] ?? runningFx));
 const kind = name === "none" ? "uninitialised" : name === "missing" ? "missing" : state.tasks.length ? "ok" : "empty";
 const model = { type: "home", status: { kind, text: "" }, home: kind === "ok" || kind === "empty" ? home(state) : null,
                 review: state.envelope.review === "every", exact: false, busy: "", last: { n: 0, lines: [], bad: false },
+                older: params.has("older") ? "This Graphene is older than the extension: it needs 0.10 (uv tool upgrade graphene-map). This editor runs graphene 0.9.0 at /Users/you/.local/bin/graphene." : "",
                 cursor: /^(cursor|midnight)/.test(params.get("theme") ?? "") }; // a Cursor theme: the page is in Cursor
 let saved: unknown;
 (window as unknown as { acquireVsCodeApi: () => unknown }).acquireVsCodeApi = () => ({
