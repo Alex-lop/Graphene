@@ -1,4 +1,4 @@
-// Latency from a store write to the screen: `graphene node set ID --title T`, then the side bar's graph
+// Latency from a store write to the screen: `graphene node set ID --title T`, then the graph's tab
 // shows T. The clock starts when the command returns (the store holds the write), and stops when a graph
 // frame draws the new title. The write lands at a random phase of the extension's poll, so one run says
 // little: 20 runs, and the spread (p50, p90, max, mean) with the machine's load beside it.
@@ -20,7 +20,7 @@ L.installVsix(app, profile, vsix);
 const fx = L.makeFixture(path.join(base, "wordkit"), graphene);
 execFileSync(graphene, ["node", "add", "a task to rename", "--id", "t1", "--scope", "wordkit/t1.py", "--check", "true"], { cwd: fx.dir, env: fx.env, stdio: "pipe" });
 const s = await L.launch(app, profile, fx.dir);
-await L.openSidebar(s.page);
+await L.openPanel(s.page); // the graph is a tab: the side bar is Home
 await L.waitForGraph(s.page, { min: 1 });
 await s.page.waitForTimeout(3000); // let the first reads settle
 const ms = [];
@@ -32,7 +32,7 @@ for (let i = 0; i < runs; i++) {
   for (;;) {
     let seen = false;
     for (const f of await L.graphFrames(s.page)) {
-      // the graph's boxes, or the side bar's lanes when the canvas is narrow: either drawing shows the title
+      // the graph's boxes, or the lanes when the tab is narrow: either drawing shows the title
       const titles = await f.evaluate(() => [...document.querySelectorAll("#view g.task text.title, #lanes:not([hidden]) .lane[data-id] .l-title")].map((t) => t.textContent)).catch(() => []);
       if (titles.some((t) => t.startsWith(short))) seen = true;
     }

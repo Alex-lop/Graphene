@@ -260,6 +260,8 @@ export async function setSize(electronApp, page, width, height) {
 
 /** The command palette, typed to: the first entry that matches `title` runs. */
 export async function palette(page, title) {
+  // a webview with the keyboard (Home, once its side bar is shown) keeps F1 in Cursor: the workbench takes it first
+  await page.evaluate(() => { if (document.activeElement?.tagName === "IFRAME") document.activeElement.blur(); });
   await page.keyboard.press("F1");
   const input = page.locator(".quick-input-widget .quick-input-box input"); // Cursor's palette has checkboxes too
   await input.waitFor({ timeout: 10000 });
@@ -281,28 +283,40 @@ export async function command(page, profile, id) {
   await page.keyboard.press(chord);
 }
 
-/** Graphene's side bar container, and its Graph view in it. */
+/** Graphene's side bar container, Home in it (and, with graphene.graph.openOnStart on, the graph's tab beside). */
 export async function openSidebar(page) {
   await palette(page, "View: Show Graphene");
-  await page.waitForSelector(".sidebar .pane-header", { timeout: 20000, state: "attached" });
-  const flat = await page.evaluate(() => (document.querySelector(".sidebar .pane-header")?.getBoundingClientRect().height ?? 0) === 0);
+  // Home's body: a container with one view hides that view's header
+  await page.waitForSelector(".sidebar .pane-body", { timeout: 20000, state: "attached" });
+  const flat = await page.evaluate(() => (document.querySelector(".sidebar .pane-body")?.getBoundingClientRect().height ?? 0) === 0);
   if (flat) { // Cursor: the part was hidden when the views came; a nudge to the window lays them out
     await page.evaluate(() => window.dispatchEvent(new Event("resize")));
     await page.waitForTimeout(500);
   }
-  await page.waitForSelector(".sidebar .pane-header", { timeout: 20000 });
+  await page.waitForSelector(".sidebar .pane-body", { timeout: 20000 });
+}
+
+/** The frame that holds Home's page, found by its content. */
+export async function homeFrame(page, timeout = 60000) {
+  const end = Date.now() + timeout;
+  while (Date.now() < end) {
+    for (const f of page.frames()) {
+      const is = await f.evaluate(() => Boolean(document.querySelector("section.screen") && document.querySelector("section.work"))).catch(() => false);
+      if (is) return f;
+    }
+    await page.waitForTimeout(200);
+  }
+  throw new Error("Home's page never appeared");
 }
 
 /** The graph in the editor area (Graphene: Open the Graph). */
 export async function openPanel(page) {
-  const before = (await graphFrames(page)).length;
-  await palette(page, "Graphene: Open the Graph");
-  const t0 = Date.now();
-  while ((await graphFrames(page)).length <= before) {
-    if (Date.now() - t0 > 20000) throw new Error("the graph panel did not open");
-    await page.waitForTimeout(100);
+  await palette(page, "Graphene: Open the Graph"); // opens the tab, or reveals the one the side bar opened
+  await page.locator(".editor-group-container .tab", { hasText: "Graphene" }).first().waitFor({ timeout: 20000 })
+    .catch(() => { throw new Error("the graph panel did not open"); });
+  for (const t0 = Date.now(); !(await graphFrames(page)).length; await page.waitForTimeout(100)) {
+    if (Date.now() - t0 > 20000) throw new Error("the graph panel opened, and its page did not draw");
   }
-  await page.waitForSelector(".editor-group-container .tab", { timeout: 10000 }).catch(() => {});
 }
 
 /** The side bar's width in px, by dragging its sash. */

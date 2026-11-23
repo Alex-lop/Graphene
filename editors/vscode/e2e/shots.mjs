@@ -1,6 +1,6 @@
 // Screenshots and video of the extension in the real app, on a store a stand-in race changed:
 //   node shots.mjs --app code|cursor --vsix FILE --out DIR [--video DIR] [--during] [--keep]
-// The side bar at 280, 320 and 400 px; the editor tab at 1280x800 and 1920x1080 (or what fits the display: on a
+// Home in the side bar at 280, 320 and 400 px; the editor tab at 1280x800 and 1920x1080 (or what fits the display: on a
 // 1920x1080 screen a window takes 1920x1050); each in Dark Modern, Light Modern and High Contrast; named
 // APP-WHAT-THEME.png under --out by the size the window took, with smallest-text.json beside them (the
 // smallest text drawn in each, font size times the SVG's scale). By default the race runs to its end before
@@ -38,8 +38,9 @@ const session = await L.launch(app, profile, fx.dir, { width: 1280, height: 800,
 say("launched");
 if (flag("--during")) auto = L.startAuto(fx, { log: autoLog });
 await L.openSidebar(session.page);
-await L.waitForGraph(session.page, { min: 1, timeout: 90000 });
-say("the side bar's graph is drawn");
+const home = await L.homeFrame(session.page, 90000);
+await home.waitForFunction(() => document.querySelector(".head .goal")?.textContent, null, { timeout: 90000 });
+say("Home is drawn");
 const smallest = {};
 const take = async (what, theme) => {
   const frames = await L.graphFrames(session.page);
@@ -47,9 +48,8 @@ const take = async (what, theme) => {
   await L.shot(session.page, file);
   const texts = [];
   for (const f of frames) texts.push(await L.smallestText(f).catch(() => null));
-  // the side bar's frame is the narrow canvas, the panel's the wide one: measure the one the shot is about
-  const wide = what.startsWith("panel");
-  smallest[path.basename(file)] = texts.filter(Boolean).sort((a, b) => wide ? b.canvas - a.canvas : a.canvas - b.canvas)[0] ?? null;
+  // the graph is the tab's alone: the side bar's shots are Home's, and measure none
+  smallest[path.basename(file)] = texts.filter(Boolean)[0] ?? null;
   say(`shot ${path.basename(file)} smallest text ${JSON.stringify(smallest[path.basename(file)])}`);
 };
 for (const [key, theme] of Object.entries(L.THEMES)) {
