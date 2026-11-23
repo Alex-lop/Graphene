@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { readFileSync } from "node:fs";
 import { attemptsMark, cardAct, checkLines, checkMark, cornerMark, doneWhen, filesLine, forkMark, goalBox, goalCells, legend, markWord, checkCut, cutWhole, nextWanting, tailPath, wrap, stateMark, tally, wanting, wantingLine, type Box, type CheckMark, type Mark } from "../src/graph/marks.ts";
 import { check } from "../src/graph/check.ts";
-import { actsFor, checkWords, counts, cut, KEYS, type TaskX } from "../src/graph/words.ts";
+import { actsFor, checkWords, cut, KEYS, type TaskX } from "../src/graph/words.ts";
 import { markDone, offerWords, widen } from "../src/needs.ts";
 import { parseState, parseTask, WORDS, type Word } from "../src/state.ts";
 
@@ -428,8 +428,8 @@ test("the repo-sized fixture shows every mark, from what a current snapshot says
     "the docs say so: waiting waiting suggested",
   ]);
   assert.deepEqual(wanting(big.tasks), ["cache", "cancel", "a11y"]);
-  // two counts on one canvas, each by its own rule (the header's has the suggested changelog in it), so in two wordings
-  assert.deepEqual([counts(big), wantingLine(wanting(big.tasks).length)], ["3 working · 4 need you · 5 of 26 done · $0.12", "3 tasks need you · show the next"]);
+  // the chip counts the tasks to act on, not the engine's need_you (which has every suggested task and question in it)
+  assert.equal(wantingLine(wanting(big.tasks).length), "3 tasks need you · show the next");
   // the check's box, by state: landed and to review ticked, at work and ready telling, one ready step hollow, the rest not run
   const boxes = (state: Word) => [...new Set(big.tasks.filter((t) => t.state === state && t.check).map((t) => checkMark(t).box))].sort();
   assert.deepEqual([boxes("done"), boxes("review"), boxes("running"), boxes("came back"), boxes("ready"), boxes("waiting")],

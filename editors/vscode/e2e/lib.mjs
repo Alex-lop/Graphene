@@ -392,8 +392,8 @@ export async function readGraph(frame) {
   return frame.evaluate(() => ({
     goal: document.querySelector("#goal")?.textContent ?? "",
     level: document.querySelector("#svg")?.dataset.level ?? "",
-    // narrow, the header is one line: the counts are then in the goal's hover, not on the page
-    counts: document.querySelector("#counts:not([hidden])")?.textContent || document.querySelector("#goal")?.title || "",
+    // the stages say the counts now (the header has no counts line): Plan 7 tasks · Run 2 working · Review 1 to review
+    counts: [...document.querySelectorAll("#pipe .stage")].map((st) => st.textContent.trim()).join(" · "),
     notice: document.querySelector("#notice:not([hidden])")?.textContent ?? "",
     view: document.querySelector("#lanes:not([hidden])") ? "lanes" : "graph",
     tasks: [

@@ -373,16 +373,6 @@ export function topLine(s: Pick<StateX, "replay" | "stand_in">): string {
   return replayLine(s.replay) || (s.stand_in ? "practice run · a scripted stand-in, no real AI" : "");
 }
 
-/** The plan's counts in one line: `2 working · 2 need you · 2 of 7 done · $0.42`. Not on the graph: its header
- *  says each of these once (the stages, the cost in Run's note), and what needs you is the canvas's chip. */
-export function counts(s: State, cost = true): string {
-  const sb = s.scoreboard;
-  const parts = [`${sb.running} working`, `${sb.need_you} need${sb.need_you === 1 ? "s" : ""} you`, `${sb.proven} of ${sb.total} done`];
-  const spent = cost ? usd(s.spent) : "";
-  if (spent) parts.push(spent);
-  return parts.join(" · ");
-}
-
 /** The header: the goal (what was asked, or the sub-goal a planner is drawing), the stages with what the run has
  *  cost in Run's note, and auto's line while auto is at work (`done`, it is said by the stages and the status
  *  bar). The cost is said once: not beside an auto line that says it against its budget, and not for a race
